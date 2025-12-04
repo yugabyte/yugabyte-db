@@ -43,28 +43,32 @@ export const K8EncryptionTypeField = ({ disabled }: K8EncryptionTypeProps): Reac
   const clientCertVal = watch(CLIENT_CERT_FIELD);
   const enableTLSVal = watch(ENABLE_TLS_FIELD);
 
-  useUpdateEffect(() => {
-    if (k8sEncryption === K8sEncryptionOption.EnableBoth) {
+  const updateStates = (encryptionType: K8sEncryptionOption) => {
+    if (encryptionType === K8sEncryptionOption.EnableBoth) {
       setValue(NODE_TO_NODE_ENCRYPT_FIELD, true);
       setValue(CLIENT_TO_NODE_ENCRYPT_FIELD, true);
       setValue(ROOT_CA_CLIENT_CA_SAME_FIELD, true);
       setValue(ROOT_CERT_FIELD, rootCertVal ? rootCertVal : clientCertVal);
       setValue(CLIENT_CERT_FIELD, rootCertVal ? rootCertVal : clientCertVal);
     }
-    if (k8sEncryption === K8sEncryptionOption.NodeToNode) {
+    if (encryptionType === K8sEncryptionOption.NodeToNode) {
       setValue(NODE_TO_NODE_ENCRYPT_FIELD, true);
       setValue(CLIENT_TO_NODE_ENCRYPT_FIELD, false);
       setValue(ROOT_CA_CLIENT_CA_SAME_FIELD, false);
       setValue(ROOT_CERT_FIELD, rootCertVal ? rootCertVal : clientCertVal);
       setValue(CLIENT_CERT_FIELD, '');
     }
-    if (k8sEncryption === K8sEncryptionOption.ClienToNode) {
+    if (encryptionType === K8sEncryptionOption.ClienToNode) {
       setValue(NODE_TO_NODE_ENCRYPT_FIELD, false);
       setValue(CLIENT_TO_NODE_ENCRYPT_FIELD, true);
       setValue(ROOT_CA_CLIENT_CA_SAME_FIELD, false);
       setValue(CLIENT_CERT_FIELD, rootCertVal ? rootCertVal : clientCertVal);
       setValue(ROOT_CERT_FIELD, '');
     }
+  };
+
+  useUpdateEffect(() => {
+    if (k8sEncryption) updateStates(k8sEncryption);
   }, [k8sEncryption]);
 
   useUpdateEffect(() => {
@@ -73,7 +77,7 @@ export const K8EncryptionTypeField = ({ disabled }: K8EncryptionTypeProps): Reac
       setValue(CLIENT_TO_NODE_ENCRYPT_FIELD, false);
       setValue(CLIENT_CERT_FIELD, '');
       setValue(ROOT_CERT_FIELD, '');
-    }
+    } else updateStates(k8sEncryption ? k8sEncryption : K8sEncryptionOption.EnableBoth);
   }, [enableTLSVal]);
 
   return (
