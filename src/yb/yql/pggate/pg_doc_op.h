@@ -689,6 +689,7 @@ class InExpressionWrapper {
 
   bool Next();
   void GetValues(std::vector<const LWQLValuePB*>* permutation);
+  void ResetPos() { pos_ = 0; }
 
  private:
   InExpressionWrapper(
@@ -719,6 +720,7 @@ class InPermutationGenerator {
 
   bool HasPermutation() { return !done_; }
   const std::vector<const LWQLValuePB*>& NextPermutation();
+  void Reset();
 
  private:
   friend class InPermutationBuilder;

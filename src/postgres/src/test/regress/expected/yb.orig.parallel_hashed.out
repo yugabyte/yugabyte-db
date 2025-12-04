@@ -174,10 +174,32 @@ SELECT * FROM pctest1 WHERE c = 10;
          Index Cond: (c = 10)
 (4 rows)
 
--- TODO investigate and fix (#29021)
--- /*+ Parallel(pctest1 2 hard) */
--- SELECT * FROM pctest1 WHERE c = 10;
--- ERROR:  Error when decoding hashed components of a document key: Unexpected end of key when decoding document key
+/*+ Parallel(pctest1 2 hard) */
+SELECT * FROM pctest1 WHERE c = 10;
+  k  |  a  |  b  | c  |    d     
+-----+-----+-----+----+----------
+ 660 | 340 | 220 | 10 | Value660
+ 410 | 590 | 136 | 10 | Value410
+ 510 | 490 | 170 | 10 | Value510
+ 610 | 390 | 203 | 10 | Value610
+  60 | 940 |  20 | 10 | Value60
+  10 | 990 |   3 | 10 | Value10
+ 960 |  40 | 320 | 10 | Value960
+ 460 | 540 | 153 | 10 | Value460
+ 310 | 690 | 103 | 10 | Value310
+ 910 |  90 | 303 | 10 | Value910
+ 760 | 240 | 253 | 10 | Value760
+ 810 | 190 | 270 | 10 | Value810
+ 710 | 290 | 236 | 10 | Value710
+ 260 | 740 |  86 | 10 | Value260
+ 210 | 790 |  70 | 10 | Value210
+ 860 | 140 | 286 | 10 | Value860
+ 560 | 440 | 186 | 10 | Value560
+ 110 | 890 |  36 | 10 | Value110
+ 360 | 640 | 120 | 10 | Value360
+ 160 | 840 |  53 | 10 | Value160
+(20 rows)
+
 -- with aggregates
 /*+ Parallel(pctest1 2 hard) */
 EXPLAIN (costs off)
@@ -607,21 +629,6 @@ SELECT * FROM pctest1 WHERE d LIKE 'Value_9' ORDER BY k;
 --secondary index
 /*+ Parallel(pctest1 2 hard) */
 EXPLAIN (costs off)
-SELECT * FROM pctest1 WHERE c = 10;
-                        QUERY PLAN                        
-----------------------------------------------------------
- Gather
-   Workers Planned: 2
-   ->  Parallel Index Scan using pctest1_c_idx on pctest1
-         Index Cond: (c = 10)
-(4 rows)
-
--- /*+ Parallel(pctest1 2 hard) */
--- SELECT * FROM pctest1 WHERE c = 10;
--- ERROR:  Error when decoding hashed components of a document key: Unexpected end of key when decoding document key
---secondary index
-/*+ Parallel(pctest1 2 hard) */
-EXPLAIN (costs off)
 SELECT * FROM pctest1 ORDER BY a LIMIT 10;
                    QUERY PLAN                   
 ------------------------------------------------
@@ -648,89 +655,6 @@ SELECT * FROM pctest1 ORDER BY a LIMIT 10;
   992 | 8 | 330 | 42 | Value992
   991 | 9 | 330 | 41 | Value991
 (10 rows)
-
--- with aggregates
-/*+ Parallel(pctest1 2 hard) */
-EXPLAIN (costs off)
-SELECT count(*) FROM pctest1 WHERE k > 123;
-                   QUERY PLAN                   
-------------------------------------------------
- Finalize Aggregate
-   ->  Gather
-         Workers Planned: 2
-         ->  Noop Aggregate
-               ->  Parallel Seq Scan on pctest1
-                     Storage Filter: (k > 123)
-                     Partial Aggregate: true
-(7 rows)
-
-/*+ Parallel(pctest1 2 hard) */
-SELECT count(*) FROM pctest1 WHERE k > 123;
- count 
--------
-   877
-(1 row)
-
--- index only
-/*+ Parallel(pctest1 2 hard) */
-EXPLAIN (costs off)
-SELECT a FROM pctest1 WHERE a < 10;
-                          QUERY PLAN                           
----------------------------------------------------------------
- Gather
-   Workers Planned: 2
-   ->  Parallel Index Only Scan using pctest1_a_idx on pctest1
-         Storage Filter: (a < 10)
-(4 rows)
-
-/*+ Parallel(pctest1 2 hard) */
-SELECT a FROM pctest1 WHERE a < 10;
- a 
----
- 5
- 1
- 6
- 7
- 9
- 4
- 0
- 2
- 8
- 3
-(10 rows)
-
--- with grouping
-/*+ Parallel(pctest1 2 hard) */
-EXPLAIN (costs off)
-SELECT c, count(*) FROM pctest1 WHERE c > 40 GROUP BY c;
-                                   QUERY PLAN                                    
----------------------------------------------------------------------------------
- Finalize GroupAggregate
-   Group Key: c
-   ->  Gather Merge
-         Workers Planned: 2
-         ->  Sort
-               Sort Key: c
-               ->  Partial HashAggregate
-                     Group Key: c
-                     ->  Parallel Index Only Scan using pctest1_c_idx on pctest1
-                           Storage Filter: (c > 40)
-(10 rows)
-
-/*+ Parallel(pctest1 2 hard) */
-SELECT c, count(*) FROM pctest1 WHERE c > 40 GROUP BY c;
- c  | count 
-----+-------
- 41 |    20
- 42 |    20
- 43 |    20
- 44 |    20
- 45 |    20
- 46 |    20
- 47 |    20
- 48 |    18
- 49 |    20
-(9 rows)
 
 -- Joins
 -- Nest loop
@@ -763,7 +687,8 @@ SELECT pctest1.* FROM pctest1, pctest2
 -- SELECT pctest1.* FROM pctest1, pctest2
 --  WHERE pctest1.a = pctest2.b and pctest1.a % 10 = 0;
 EXPLAIN (costs off)
-/*+YbBatchedNL(pctest1 pctest2) Parallel(pctest1 2 hard) Parallel(pctest2 2 hard) */ SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
+/*+YbBatchedNL(pctest1 pctest2) Parallel(pctest1 2 hard) Parallel(pctest2 2 hard) */
+SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
   WHERE pctest1.c = 42 AND pctest1.k = pctest2.k ORDER BY pctest1.k;
                                  QUERY PLAN                                 
 ----------------------------------------------------------------------------
@@ -779,9 +704,17 @@ EXPLAIN (costs off)
                Index Cond: (k = ANY (ARRAY[pctest1.k, $2, $3, ..., $1024]))
 (10 rows)
 
--- /*+YbBatchedNL(pctest1 pctest2) Parallel(pctest1 2 hard) Parallel(pctest2 2 hard) */ SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
---   WHERE pctest1.c = 42 AND pctest1.k = pctest2.k ORDER BY pctest1.k;
--- ERROR:  Error when decoding hashed components of a document key: Unexpected end of key when decoding document key
+/*+YbBatchedNL(pctest1 pctest2) Parallel(pctest1 2 hard) Parallel(pctest2 2 hard) */
+SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
+  WHERE pctest1.c = 42 AND pctest1.k = pctest2.k ORDER BY pctest1.k;
+  k  |  a  | b  | c  |    d     |  k  
+-----+-----+----+----+----------+-----
+  42 | 958 | 14 | 42 | Value42  |  42
+  92 | 908 | 30 | 42 | Value92  |  92
+ 142 | 858 | 47 | 42 | Value142 | 142
+ 192 | 808 | 64 | 42 | Value192 | 192
+(4 rows)
+
 -- Hash join
 set enable_mergejoin to false;
 /*+ Parallel(pctest1 2 hard) Parallel(pctest2 2 hard) */
@@ -840,10 +773,17 @@ SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
                      Index Cond: (c = 42)
 (13 rows)
 
--- /*+ Parallel(pctest1 2 hard) Parallel(pctest2 2 hard) */
--- SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
---   WHERE pctest1.c = 42 AND pctest1.k = pctest2.k ORDER BY pctest1.k;
--- ERROR:  Error when decoding hashed components of a document key: Unexpected end of key when decoding document key
+/*+ Parallel(pctest1 2 hard) Parallel(pctest2 2 hard) */
+SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
+  WHERE pctest1.c = 42 AND pctest1.k = pctest2.k ORDER BY pctest1.k;
+  k  |  a  | b  | c  |    d     |  k  
+-----+-----+----+----+----------+-----
+  42 | 958 | 14 | 42 | Value42  |  42
+  92 | 908 | 30 | 42 | Value92  |  92
+ 142 | 858 | 47 | 42 | Value142 | 142
+ 192 | 808 | 64 | 42 | Value192 | 192
+(4 rows)
+
 reset enable_hashjoin;
 -- Subquery
 /*+ Parallel(pctest1 2 hard) Parallel(pctest2 2 hard) */
