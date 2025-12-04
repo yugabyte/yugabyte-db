@@ -178,6 +178,9 @@ static void show_yb_rpc_stats(PlanState *planstate, ExplainState *es);
 static void YbAppendPgMemInfo(ExplainState *es, const Size peakMem);
 static void YbAggregateExplainableRPCRequestStat(ExplainState *es,
 												 const YbInstrumentation *instr);
+static void YbExplainSaopMerge(PlanState *planstate, List *indextlist,
+							   YbSaopMergeInfo *saop_merge_info,
+							   ExplainState *es, List *ancestors);
 static void YbExplainDistinctPrefixLen(PlanState *planstate, List *indextlist,
 									   int yb_distinct_prefixlen,
 									   ExplainState *es, List *ancestors);
@@ -2913,6 +2916,10 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			if (((IndexScan *) plan)->indexqualorig)
 				show_instrumentation_count("Rows Removed by Index Recheck", 2,
 										   planstate, es);
+			YbExplainSaopMerge(planstate,
+							   ((IndexScan *) plan)->indextlist,
+							   ((IndexScan *) plan)->yb_saop_merge_info,
+							   es, ancestors);
 			/*
 			 * YB note: Quals are shown in the order they are applied: index
 			 * pushdown, relation pushdown, local clauses.
@@ -2947,6 +2954,10 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			if (((IndexOnlyScan *) plan)->recheckqual)
 				show_instrumentation_count("Rows Removed by Index Recheck", 2,
 										   planstate, es);
+			YbExplainSaopMerge(planstate,
+							   ((IndexOnlyScan *) plan)->indextlist,
+							   ((IndexOnlyScan *) plan)->yb_saop_merge_info,
+							   es, ancestors);
 			show_scan_qual(((IndexOnlyScan *) plan)->indexorderby,
 						   "Order By", planstate, ancestors, es);
 			/*
@@ -6640,4 +6651,87 @@ YbExplainDistinctPrefixLen(PlanState *planstate, List *indextlist,
 
 		ExplainPropertyList("Distinct Keys", result, es);
 	}
+}
+
+static void
+YbExplainSaopMerge(PlanState *planstate, List *indextlist,
+				   YbSaopMergeInfo *saop_merge_info,
+				   ExplainState *es, List *ancestors)
+{
+	List	   *saop_keys = NIL;
+	List	   *saops = NIL;
+	int			num_streams = 1;
+	List	   *sort_keys = NIL;
+	ListCell   *lc;
+	List	   *context;
+	StringInfoData sortkeybuf;
+	bool		useprefix;
+	int			keyno;
+
+	/* If no SAOP merge, nothing to do. */
+	if (!saop_merge_info)
+		return;
+
+	initStringInfo(&sortkeybuf);
+
+	/* Set up deparsing context */
+	context = set_deparse_context_plan(es->deparse_cxt,
+									   planstate->plan,
+									   ancestors);
+	useprefix = (list_length(es->rtable) > 1 || es->verbose);
+
+	foreach(lc, saop_merge_info->saop_cols)
+	{
+		YbSaopMergeSaopColInfo *item = lfirst(lc);
+		TargetEntry *target = get_tle_by_resno(indextlist,
+											   item->indexcol + 1);
+		char	   *exprstr;
+
+		if (!target)
+			elog(ERROR, "no tlist entry for key %d", item->indexcol);
+		/* Deparse the expression, showing any top-level cast */
+		exprstr = deparse_expression((Node *) target->expr, context,
+									 useprefix, true);
+
+		saop_keys = lappend(saop_keys, exprstr);
+		saops = lappend(saops, item->saop);
+		num_streams *= item->num_elems;
+	}
+
+	YbSortInfo *sort_cols = saop_merge_info->sort_cols;
+
+	/* Parts copied from show_sort_group_keys. */
+	for (keyno = 0; keyno < sort_cols->numCols; keyno++)
+	{
+		/* find key expression in tlist */
+		AttrNumber	keyresno = sort_cols->sortColIdx[keyno];
+		TargetEntry *target = get_tle_by_resno(indextlist,
+											   keyresno);
+		char	   *exprstr;
+
+		if (!target)
+			elog(ERROR, "no tlist entry for key %d", keyresno);
+		/* Deparse the expression, showing any top-level cast */
+		exprstr = deparse_expression((Node *) target->expr, context,
+									 useprefix, true);
+		resetStringInfo(&sortkeybuf);
+		appendStringInfoString(&sortkeybuf, exprstr);
+		/* Append sort order information */
+		Assert(sort_cols->sortOperators != NULL);
+		show_sortorder_options(&sortkeybuf,
+							   (Node *) target->expr,
+							   sort_cols->sortOperators[keyno],
+							   sort_cols->collations[keyno],
+							   sort_cols->nullsFirst[keyno]);
+		/* Emit one property-list item per sort key */
+		sort_keys = lappend(sort_keys, pstrdup(sortkeybuf.data));
+	}
+
+	if (sort_keys)
+		ExplainPropertyList("Merge Sort Key", sort_keys, es);
+	Assert(saop_keys);
+	ExplainPropertyList("Merge Stream Key", saop_keys, es);
+	ExplainPropertyInteger("Merge Streams", NULL, num_streams, es);
+	if (es->verbose)
+		show_scan_qual(saops, "Merge Cond", planstate, ancestors, es);
 }

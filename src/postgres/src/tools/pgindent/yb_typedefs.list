@@ -165,6 +165,8 @@ YbRowBounds
 YbRunWithPrefetcherContext
 YbSample
 YbSampleData
+YbSaopMergeInfo
+YbSaopMergeSaopColInfo
 YbScanDesc
 YbScanDescData
 YbScanPlan
@@ -175,6 +177,7 @@ YbSeqScanState
 YbSessionStats
 YbSkippableEntities
 YbSkippableEntityType
+YbSortInfo
 YbSplitType
 YbStatLabel
 YbStatLabelData

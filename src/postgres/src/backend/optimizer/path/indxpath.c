@@ -41,6 +41,7 @@
 #include "executor/ybExpr.h"
 #include "optimizer/planmain.h"
 #include "optimizer/tlist.h"
+#include "optimizer/yb_saop_merge.h"
 #include "parser/parsetree.h"
 #include "pg_yb_utils.h"
 #include "utils/fmgroids.h"
@@ -1218,6 +1219,7 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	bool		yb_supports_distinct_pushdown;
 	int			yb_distinct_prefixlen;
 	int			yb_distinct_nkeys;
+	List	   *yb_saop_merge_saop_cols = NIL;
 
 	/*
 	 * Check that index supports the desired scan type(s)
@@ -1422,7 +1424,8 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 		yb_distinct_nkeys = index->nhashcolumns ? -1 : yb_distinct_prefixlen;
 		index_pathkeys = build_index_pathkeys(root, index,
 											  ForwardScanDirection,
-											  &yb_distinct_nkeys);
+											  &yb_distinct_nkeys,
+											  &yb_saop_merge_saop_cols);
 		useful_pathkeys = truncate_useless_pathkeys(root, rel,
 													index_pathkeys,
 													yb_distinct_nkeys);
@@ -1466,6 +1469,7 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	 * YB: We also generate distinct index paths if there is a valid distinct
 	 * prefix, i.e. 'yb_distinct_prefixlen' >= 0.
 	 */
+yb_step_4:
 	if (index_clauses != NIL || useful_pathkeys != NIL || useful_predicate ||
 		index_only_scan || yb_distinct_prefixlen >= 0)
 	{
@@ -1481,7 +1485,8 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 								  index_only_scan,
 								  outer_relids,
 								  loop_count,
-								  false);
+								  false,
+								  yb_saop_merge_saop_cols);
 
 		/*
 		 * YB: Generate a distinct index path.
@@ -1525,7 +1530,8 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 									  index_only_scan,
 									  outer_relids,
 									  loop_count,
-									  true);
+									  true,
+									  yb_saop_merge_saop_cols);
 
 			/*
 			 * if, after costing the path, we find that it's not worth using
@@ -1535,6 +1541,27 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 				add_partial_path(rel, (Path *) ipath);
 			else
 				pfree(ipath);
+		}
+
+		/*
+		 * 4.5. YB: In case SAOP merge index paths were created, try creating
+		 * them without.
+		 */
+		if (yb_saop_merge_saop_cols != NIL)
+		{
+			/* Get useful_pathkeys without SAOP merge. */
+			yb_distinct_nkeys =
+				index->nhashcolumns ? -1 : yb_distinct_prefixlen;
+			index_pathkeys = build_index_pathkeys(root, index,
+												  ForwardScanDirection,
+												  &yb_distinct_nkeys,
+												  NULL);	/* yb_saop_merge_saop_cols */
+			useful_pathkeys = truncate_useless_pathkeys(root, rel,
+														index_pathkeys,
+														yb_distinct_nkeys);
+			yb_saop_merge_saop_cols = NIL;
+
+			goto yb_step_4;
 		}
 	}
 
@@ -1550,10 +1577,12 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 		yb_distinct_nkeys = index->nhashcolumns ? -1 : yb_distinct_prefixlen;
 		index_pathkeys = build_index_pathkeys(root, index,
 											  BackwardScanDirection,
-											  &yb_distinct_nkeys);
+											  &yb_distinct_nkeys,
+											  &yb_saop_merge_saop_cols);
 		useful_pathkeys = truncate_useless_pathkeys(root, rel,
 													index_pathkeys,
 													yb_distinct_nkeys);
+yb_step_5:
 		if (useful_pathkeys != NIL)
 		{
 			ipath = create_index_path(root, index,
@@ -1566,7 +1595,8 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 									  index_only_scan,
 									  outer_relids,
 									  loop_count,
-									  false);
+									  false,
+									  yb_saop_merge_saop_cols);
 
 			/*
 			 * YB: Generate a backwards scanning distinct index path.
@@ -1600,7 +1630,8 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 										  index_only_scan,
 										  outer_relids,
 										  loop_count,
-										  true);
+										  true,
+										  yb_saop_merge_saop_cols);
 
 				/*
 				 * if, after costing the path, we find that it's not worth
@@ -1611,6 +1642,27 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 				else
 					pfree(ipath);
 			}
+		}
+
+		/*
+		 * 5.5. YB: In case SAOP merge index paths were created, try creating
+		 * them without.
+		 */
+		if (yb_saop_merge_saop_cols != NIL)
+		{
+			/* Get useful_pathkeys without SAOP merge. */
+			yb_distinct_nkeys =
+				index->nhashcolumns ? -1 : yb_distinct_prefixlen;
+			index_pathkeys = build_index_pathkeys(root, index,
+												  BackwardScanDirection,
+												  &yb_distinct_nkeys,
+												  NULL);	/* yb_saop_merge_saop_cols */
+			useful_pathkeys = truncate_useless_pathkeys(root, rel,
+														index_pathkeys,
+														yb_distinct_nkeys);
+			yb_saop_merge_saop_cols = NIL;
+
+			goto yb_step_5;
 		}
 	}
 

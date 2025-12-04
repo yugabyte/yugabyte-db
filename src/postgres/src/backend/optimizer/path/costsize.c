@@ -8644,6 +8644,19 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	if (!enable_indexscan)
 		startup_cost += disable_cost;
 
+	/* TODO(#29078): cost this better. */
+	if (path->yb_index_path_info.saop_merge_saop_cols)
+	{
+		/*
+		 * We need SAOP merge index scans to cost higher than plain index scans
+		 * to avoid doing SAOP merge where it doesn't give any gains for upper
+		 * nodes.  Make them cost twice of STD_FUZZ_FACTOR higher, where
+		 * STD_FUZZ_FACTOR = 1.01.
+		 */
+		startup_cost *= 1.02;
+		run_cost *= 1.02;
+	}
+
 	path->path.startup_cost = startup_cost;
 	path->path.total_cost = startup_cost + run_cost;
 }
