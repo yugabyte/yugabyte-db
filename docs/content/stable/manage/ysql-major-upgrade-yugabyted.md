@@ -58,6 +58,8 @@ Performing a YSQL major upgrade on a universe with [CDC with logical replication
     CREATE USER yugabyte_upgrade WITH SUPERUSER PASSWORD '<strong_password>';
     ```
 
+- If you have PITR enabled, you must disable it before performing the upgrade. Re-enable it only after the major upgrade is either finalized or rolled back.
+
 ### Precheck
 
 New PostgreSQL major versions add many new features and performance improvements, but also remove some older unsupported features and data types. You can only upgrade after you remove all deprecated features and data types from your databases.

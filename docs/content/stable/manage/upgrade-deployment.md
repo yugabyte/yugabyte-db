@@ -74,6 +74,8 @@ To upgrade YugabyteDB to a version based on a different version of PostgreSQL (f
 
   If PITR has been enabled on the YSQL database `yugabyte`, disable it before starting the upgrade.
 
+  If you are performing a [major YSQL upgrade](../ysql-major-upgrade-yugabyted/), and have PITR enabled, you must disable it before performing the upgrade. Re-enable it only after the upgrade is either finalized or rolled back.
+
 ## Upgrade YugabyteDB cluster
 
 You upgrade a cluster in the following phases:

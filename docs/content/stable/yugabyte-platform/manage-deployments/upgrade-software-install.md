@@ -146,13 +146,16 @@ To finalize an upgrade, do the following:
 
 ## Upgrades with xCluster and xCluster DR
 
+During the upgrade process, xCluster Disaster Recovery continues to function, with the following caveats:
+
+- Failover is not available while the DR replica is being upgraded.
+- Switchover is only available after the upgrade is finalized on both the DR standby and the DR primary. This is due to the requirement that a DR target must always be the same or newer than the DR primary.
+
 Use the following guidance when upgrading universes in [xCluster replication](../xcluster-replication/) or with [xCluster Disaster Recovery](../../back-up-restore-universes/disaster-recovery/) (DR).
 
-### xCluster DR and unidirectional xCluster
+### Upgrade xCluster DR and unidirectional xCluster
 
 It is recommended to upgrade the target (DR replica) before the source (DR primary). After the target universe is upgraded and finalized, you can proceed to upgrade the source universe.
-
-During the upgrade process, you cannot perform any xCluster DR operations. The only exception is failover, provided the target universe is not undergoing an upgrade at the time.
 
 In v2025.1.2.0 or later, Yugabyte Anywhere automatically disables Point-in-Time Recovery (PITR) schedules associated with transactional xCluster at the start of an upgrade. This lasts until the upgrade is either successfully finalized or rolled back. Replication continues to work.
 
@@ -162,17 +165,19 @@ xCluster replication requires the target universe version to be the same or late
 
 To upgrade universes in DR or transactional xCluster, the sequence is as follows:
 
-1. Upgrade the target.
-1. Finalize the upgrade on the target.
+1. Upgrade the target (DR replica).
 1. Validate that reads work on the target.
-1. Upgrade the source.
+1. Finalize the upgrade on the target.
+1. Upgrade the source (DR primary).
 1. Perform validation tests ([Monitor phase](#monitor-phase)).
 
     Perform any application-level tests as needed (including, if needed, application-level failovers).
 
 1. Finalize the upgrade on the source.
 
-### Bidirectional xCluster
+DR failover is available after step 3; DR switchover is available after both universes are finalized.
+
+### Upgrade bidirectional xCluster
 
 If you have bidirectional xCluster replication, then you should upgrade and finalize both universes at the same time. Perform the upgrade steps for each universe individually and monitor both of them. If you encounter any issues, roll back both universes. If everything appears to be in good condition, finalize both universes with as little delay as possible.
 
