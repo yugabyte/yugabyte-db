@@ -422,6 +422,11 @@ class PgSession::RunHelper {
         });
   }
 
+  // Check if there are operations that will be flushed (not just buffered)
+  bool HasOpsToFlush() const {
+    return !ops_info_.ops.Empty();
+  }
+
  private:
   inline static bool IsTransactional(SessionType type) {
     return type == SessionType::kTransactional;
@@ -770,6 +775,18 @@ Result<FlushFuture> PgSession::FlushOperations(BufferableOperations&& ops, bool 
                           << " session (num ops: " << ops.Size() << ")";
   }
 
+  // Create a batch span for buffered operations being flushed
+  std::unique_ptr<ScopedOtelSpan> scoped_batch_span;
+  if (OtelTracing::HasActiveContext()) {
+    auto batch_span = OtelTracing::StartSpan("pggate.batch");
+    if (batch_span.IsActive()) {
+      batch_span.SetAttribute("yb.session_type", transactional ? "transactional" : "regular");
+      batch_span.SetAttribute("yb.buffered", true);
+      batch_span.SetAttribute("yb.op_count", static_cast<int64_t>(ops.Size()));
+      scoped_batch_span = std::make_unique<ScopedOtelSpan>(std::move(batch_span));
+    }
+  }
+
   if (transactional) {
     RETURN_NOT_OK(pg_txn_manager_->CalculateIsolation(
         false /* read_only */,
@@ -1114,21 +1131,12 @@ Result<PerformFuture> PgSession::DoRunAsync(
       this, group_session_type, in_txn_limit, force_non_bufferable);
   const auto ddl_force_catalog_mod_opt = pg_txn_manager_->GetDdlForceCatalogModification();
 
-  OtelSpanHandle batch_span;
-  std::unique_ptr<ScopedOtelSpan> scoped_batch_span;
   int64_t catalog_read_count = 0;
   int64_t catalog_write_count = 0;
   int64_t user_read_count = 0;
   int64_t user_write_count = 0;
   std::string table_names;
   std::set<std::string> seen_tables;
-
-  if (OtelTracing::HasActiveContext()) {
-    batch_span = OtelTracing::StartSpan("pggate.batch");
-    if (batch_span.IsActive()) {
-      scoped_batch_span = std::make_unique<ScopedOtelSpan>(std::move(batch_span));
-    }
-  }
 
   auto processor =
       [this,
@@ -1189,19 +1197,27 @@ Result<PerformFuture> PgSession::DoRunAsync(
     RETURN_NOT_OK(processor(table_op));
   }
 
-  if (scoped_batch_span && scoped_batch_span->span().IsActive()) {
-    std::string session_type_str;
-    switch (group_session_type) {
-      case SessionType::kCatalog: session_type_str = "catalog"; break;
-      case SessionType::kTransactional: session_type_str = "transactional"; break;
-      case SessionType::kRegular: session_type_str = "regular"; break;
+  // Only create batch span if we're actually going to flush (not just buffer)
+  // The span will be created inside Flush() when we know we'll make an RPC
+  OtelSpanHandle batch_span;
+  std::unique_ptr<ScopedOtelSpan> scoped_batch_span;
+  if (runner.HasOpsToFlush() && OtelTracing::HasActiveContext()) {
+    batch_span = OtelTracing::StartSpan("pggate.batch");
+    if (batch_span.IsActive()) {
+      std::string session_type_str;
+      switch (group_session_type) {
+        case SessionType::kCatalog: session_type_str = "catalog"; break;
+        case SessionType::kTransactional: session_type_str = "transactional"; break;
+        case SessionType::kRegular: session_type_str = "regular"; break;
+      }
+      batch_span.SetAttribute("yb.session_type", session_type_str);
+      batch_span.SetAttribute("db.tables", table_names);
+      batch_span.SetAttribute("yb.catalog_read_count", catalog_read_count);
+      batch_span.SetAttribute("yb.catalog_write_count", catalog_write_count);
+      batch_span.SetAttribute("yb.user_read_count", user_read_count);
+      batch_span.SetAttribute("yb.user_write_count", user_write_count);
+      scoped_batch_span = std::make_unique<ScopedOtelSpan>(std::move(batch_span));
     }
-    scoped_batch_span->span().SetAttribute("yb.session_type", session_type_str);
-    scoped_batch_span->span().SetAttribute("yb.catalog_read_count", catalog_read_count);
-    scoped_batch_span->span().SetAttribute("yb.catalog_write_count", catalog_write_count);
-    scoped_batch_span->span().SetAttribute("yb.user_read_count", user_read_count);
-    scoped_batch_span->span().SetAttribute("yb.user_write_count", user_write_count);
-    scoped_batch_span->span().SetAttribute("db.tables", table_names);
   }
   
   return runner.Flush(std::move(cache_options));
