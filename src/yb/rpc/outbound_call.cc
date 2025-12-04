@@ -250,11 +250,6 @@ OutboundCall::OutboundCall(const RemoteMethod& remote_method,
     if (otel_span_.IsActive()) {
       otel_span_.SetAttribute("rpc.service", remote_method_.service_name());
       otel_span_.SetAttribute("rpc.method", remote_method_.method_name());
-      const auto& remote = conn_id_.remote();
-      otel_span_.SetAttribute("net.peer.name", remote.address().to_string());
-      otel_span_.SetAttribute(
-          "net.peer.address",
-          Format("$0:$1", remote.address().to_string(), remote.port()));
       otel_span_.SetAttribute("rpc.call_id", static_cast<int64_t>(call_id_));
       if (controller_->timeout().Initialized()) {
         otel_span_.SetAttribute("rpc.timeout_ms", controller_->timeout().ToMilliseconds());
@@ -574,6 +569,11 @@ void OutboundCall::SetResponse(CallResponse&& resp) {
       SetFailed(status);
       return;
     }
+    // End the OpenTelemetry span with success status
+    if (otel_span_.IsActive()) {
+      otel_span_.SetStatus(true, "OK");
+      otel_span_.End();
+    }
     if (SetState(RpcCallState::FINISHED_SUCCESS)) {
       InvokeCallback(now);
     }
@@ -622,7 +622,7 @@ void OutboundCall::SetFinished() {
   // End the OpenTelemetry span with success status
   if (otel_span_.IsActive()) {
     otel_span_.SetStatus(true, "OK");
-    otel_span_ = OtelSpanHandle();  // End span now by triggering destructor
+    otel_span_.End();
   }
   
   if (SetState(RpcCallState::FINISHED_SUCCESS)) {
@@ -637,7 +637,7 @@ void OutboundCall::SetFailed(const Status &status, std::unique_ptr<ErrorStatusPB
   if (otel_span_.IsActive()) {
     otel_span_.SetStatus(false, status.ToString());
     otel_span_.SetAttribute("rpc.error", status.CodeAsString());
-    otel_span_ = OtelSpanHandle();  // End span now by triggering destructor
+    otel_span_.End();
   }
   
   bool invoke_callback;
@@ -676,7 +676,7 @@ void OutboundCall::SetTimedOut() {
   if (otel_span_.IsActive()) {
     otel_span_.SetStatus(false, "Timeout");
     otel_span_.SetAttribute("rpc.error", "TimedOut");
-    otel_span_ = OtelSpanHandle();  // End span now by triggering destructor
+    otel_span_.End();
   }
   
   bool invoke_callback;

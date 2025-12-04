@@ -44,6 +44,9 @@ class OtelSpanHandle {
   void SetAttribute(const std::string& key, double value);
   void SetAttribute(const std::string& key, bool value);
 
+  // Explicitly end the span. Safe to call multiple times.
+  void End();
+
   bool IsActive() const;
 
  private:

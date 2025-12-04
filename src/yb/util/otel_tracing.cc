@@ -137,10 +137,26 @@ OtelSpanHandle::OtelSpanHandle(std::unique_ptr<otel_internal::SpanContext> conte
     : context_(std::move(context)) {}
 
 OtelSpanHandle::~OtelSpanHandle() {
+  End();  // Safety net - end span if not already ended
+}
+
+OtelSpanHandle::OtelSpanHandle(OtelSpanHandle&& other) noexcept
+    : context_(std::move(other.context_)) {}
+
+OtelSpanHandle& OtelSpanHandle::operator=(OtelSpanHandle&& other) noexcept {
+  if (this != &other) {
+    End();  // End current span before replacing
+    context_ = std::move(other.context_);
+  }
+  return *this;
+}
+
+void OtelSpanHandle::End() {
   if (!context_ || !context_->active || !context_->span) {
     return;
   }
 
+  // Capture end time and send span data
   if (GetGlobalOtlpSender().IsEnabled()) {
     SimpleSpanData span_data;
     auto span_context = context_->span->GetContext();
@@ -162,16 +178,7 @@ OtelSpanHandle::~OtelSpanHandle() {
   }
 
   context_->span->End();
-}
-
-OtelSpanHandle::OtelSpanHandle(OtelSpanHandle&& other) noexcept
-    : context_(std::move(other.context_)) {}
-
-OtelSpanHandle& OtelSpanHandle::operator=(OtelSpanHandle&& other) noexcept {
-  if (this != &other) {
-    context_ = std::move(other.context_);
-  }
-  return *this;
+  context_->active = false;  // Mark as ended so End() is idempotent
 }
 
 void OtelSpanHandle::SetStatus(bool ok, const std::string& description) {
