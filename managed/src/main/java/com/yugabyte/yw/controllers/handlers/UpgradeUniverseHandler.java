@@ -495,7 +495,11 @@ public class UpgradeUniverseHandler {
 
     // Set rootCA to clientRootCA if rootCA is not provided
     if (requestParams.rootCA == null && requestParams.getClientRootCA() != null) {
-      requestParams.rootCA = requestParams.getClientRootCA();
+      if (requestParams.rootAndClientRootCASame) {
+        requestParams.rootCA = requestParams.getClientRootCA();
+      } else {
+        requestParams.rootCA = universe.getUniverseDetails().rootCA;
+      }
     }
 
     log.info(
