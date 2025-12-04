@@ -1059,6 +1059,11 @@ int od_backend_ready_wait(od_server_t *server, char *context, int count,
 					 machine_msg_size(msg));
 			machine_msg_free(msg);
 			continue;
+		} else if (type == YB_BE_PARSE_PREPARE_ERROR_RESPONSE) {
+			od_backend_evict_server_hashmap(server, context,
+				machine_msg_data(msg), machine_msg_size(msg));
+			machine_msg_free(msg);
+			continue;
 		} else if (type == KIWI_BE_READY_FOR_QUERY) {
 			od_backend_ready(server, machine_msg_data(msg),
 					 machine_msg_size(msg));
