@@ -43,6 +43,8 @@ You can perform regularly scheduled backups of your YugabyteDB Anywhere installa
 
 Before you can set up automatic backups of YugabyteDB Anywhere, you need to [configure a storage location](../../back-up-restore-universes/configure-backup-storage/) for the backups.
 
+Automatic backups do not include universe Prometheus data, but they do include local releases, including releases you have imported.
+
 To configure automatic backups of your YugabyteDB Anywhere installation, do the following:
 
 1. Navigate to **Admin>Platform HA and Backups** and select **Automated Platform Backups**.
@@ -52,7 +54,7 @@ To configure automatic backups of your YugabyteDB Anywhere installation, do the 
 
     If you are backing up more than one YugabyteDB Anywhere instance to the same storage, provide a name that uniquely identifies the instance you are backing up. For example, `yba_104.72.167.2_backups`.
 
-1. Enter the backup frequency in minutes. More frequent backups provide more recovery points but may impact performance.
+1. Enter the backup frequency in minutes. 5 minutes works well for most purposes. More frequent backups provide more recovery points but may impact performance.
 1. Click **Apply Changes**.
 
 Click **Remove** to disable periodic backups (this stops automatic backups but does not delete existing backup files).
@@ -68,7 +70,6 @@ Perform a manual backup:
 - Before upgrading YugabyteDB Anywhere.
 - When migrating YugabyteDB Anywhere to a different host.
 - When you need to include Prometheus metrics data.
-- When you need to include release archives.
 - For ad-hoc backups outside your periodic backup schedule.
 
 To create a one-time backup:
@@ -114,7 +115,7 @@ To restore a YugabyteDB Anywhere backup from external storage:
 
 1. Select **Cloud Backup**.
 1. Select the storage configuration for the backup you want to restore.
-1. Enter the backup directory name specified for the periodic backup.
+1. Enter the name of the folder that you specified for the periodic backup you are restoring (for example, `yba_104.72.167.2_backups`).
 1. Click **Restore**.
 
 YugabyteDB Anywhere restores the most recent backup and restarts automatically after the restore finishes.
