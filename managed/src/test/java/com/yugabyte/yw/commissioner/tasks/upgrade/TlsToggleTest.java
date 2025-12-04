@@ -358,7 +358,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
         expectedNumberOfInvocations += 18;
       }
     } else {
-      if (nodeToNodeChange != 0) {
+      if (nodeToNodeChange == 1) {
         expectedPosition += 20;
         expectedNumberOfInvocations += 24;
       } else {
@@ -510,8 +510,11 @@ public class TlsToggleTest extends UpgradeTaskTest {
       assertEquals(3, certUpdateTasks.size());
     }
     // First round gflag update tasks
-    position = assertSequence(subTasksByPosition, MASTER, position, upgrade.getFirst());
-    position = assertSequence(subTasksByPosition, TSERVER, position, upgrade.getFirst());
+    // for disabling node-to-node encryption + non-rolling upgrade round1 is not required
+    if (nodeToNodeChange != -1) {
+      position = assertSequence(subTasksByPosition, MASTER, position, upgrade.getFirst());
+      position = assertSequence(subTasksByPosition, TSERVER, position, upgrade.getFirst());
+    }
     position = assertCommonTasks(subTasksByPosition, position, upgrade.getFirst(), true);
     if (nodeToNodeChange != 0) {
       // Second round gflag update tasks
