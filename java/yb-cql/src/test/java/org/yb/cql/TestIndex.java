@@ -2704,4 +2704,35 @@ public class TestIndex extends BaseCQLTest {
 
     session.execute("create index i1 on test_create_index (s1)");
   }
+
+  @Test
+  public void testDropCreateTable() throws Exception {
+    // We need >3 tservers for the test.
+    int expectedTServers = miniCluster.getTabletServers().size() + 2;
+    miniCluster.startTServer(getTServerFlags());
+    miniCluster.startTServer(getTServerFlags());
+    assertTrue(miniCluster.waitForTabletServers(expectedTServers));
+
+    session.execute("create table test_tbl (h int primary key, a int, b float) " +
+                    "with transactions = { 'enabled' : true }");
+    session.execute("create index on test_tbl(a) ");
+    for (int i = 1; i <= 1000; ++i) {
+      session.execute("insert into test_tbl (h, a, b) values" +
+                      " (" + String.valueOf(i) +                     // h
+                      ", " + String.valueOf(100 + i) +               // a
+                      ", " + String.valueOf(2.14 + (float)i) + ")"); // b
+    }
+
+    session.execute("drop table test_tbl");
+    session.execute("create table test_tbl (h int primary key, a int, b float) " +
+                    "with transactions = { 'enabled' : true }");
+    session.execute("create index on test_tbl(a) ");
+    Thread.sleep(1000); // Let index backfilling finish.
+
+    // Test the index 'test_tbl_a_idx' against all TSes twice.
+    for (int i = 1; i <= 2*expectedTServers; ++i) {
+      // This SELECT statement returns expected empty result. It should not fail.
+      assertQuery("select a from " + DEFAULT_TEST_KEYSPACE + ".test_tbl where a=1", "");
+    }
+  }
 }
