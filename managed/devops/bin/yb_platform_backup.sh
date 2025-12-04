@@ -411,6 +411,9 @@ create_backup() {
     if [[ "$exclude_releases" = true ]]; then
       exclude_flags="--exclude_releases"
     fi
+    if [[ "$exclude_prometheus" = true ]]; then
+      exclude_flags+=" --exclude_prometheus"
+    fi
     kubectl -n "${k8s_namespace}" exec -it "${k8s_pod}" -c yugaware -- /bin/bash -c \
       "${backup_script} create ${verbose_flag} ${exclude_flags} --output ${K8S_BACKUP_DIR}"
     # Determine backup archive filename.
