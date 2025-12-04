@@ -66,6 +66,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/main_util.h"
 #include "yb/util/mem_tracker.h"
+#include "yb/util/otel_tracing.h"
 #include "yb/util/port_picker.h"
 #include "yb/util/result.h"
 #include "yb/util/size_literals.h"
@@ -247,6 +248,9 @@ int TabletServerMain(int argc, char** argv) {
 
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(MasterTServerParseFlagsAndInit(
       TabletServerOptions::kServerType, /*is_master=*/false, &argc, &argv));
+
+  // Initialize OpenTelemetry tracing (if enabled via environment variables)
+  LOG_AND_RETURN_FROM_MAIN_NOT_OK(OtelTracing::InitFromEnv("yb-tserver"));
 
   auto termination_monitor = TerminationMonitor::Create();
 
@@ -436,6 +440,9 @@ int TabletServerMain(int argc, char** argv) {
 
   LOG(WARNING) << "Stopping Tablet server";
   server->Shutdown();
+
+  // Shutdown OpenTelemetry tracing
+  OtelTracing::Shutdown();
 
   return EXIT_SUCCESS;
 }

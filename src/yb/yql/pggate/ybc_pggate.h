@@ -119,6 +119,37 @@ const unsigned char* YBCGetLocalTserverUuid();
 // Get access to callbacks.
 const YbcPgCallbacks* YBCGetPgCallbacks();
 
+// Initialize OpenTelemetry tracing for the current process (e.g., postgres backend).
+// Should be called once during process startup.
+void YBCInitOtelTracing(const char* service_name);
+
+// Get the current traceparent string for OTEL tracing (may be empty).
+const char* YBCGetCurrentTraceparent();
+
+// Clear the current traceparent.
+void YBCResetTraceparent();
+
+// OTEL Query-level tracing functions (called from DTrace probe points)
+// Main query span - extracts traceparent from query_string if present
+void YBCOtelQueryStart(const char* query_string);
+void YBCOtelQueryDone(void);
+
+// Query phase child spans
+void YBCOtelParseStart(void);
+void YBCOtelParseDone(void);
+void YBCOtelRewriteStart(void);
+void YBCOtelRewriteDone(void);
+void YBCOtelPlanStart(void);
+void YBCOtelPlanDone(void);
+void YBCOtelExecuteStart(void);
+void YBCOtelExecuteDone(void);
+
+// Transaction phase spans
+void YBCOtelCommitStart(void);
+void YBCOtelCommitDone(void);
+void YBCOtelAbortStart(void);
+void YBCOtelAbortDone(void);
+
 int64_t YBCGetPgggateCurrentAllocatedBytes();
 
 int64_t YBCGetActualHeapSizeBytes();

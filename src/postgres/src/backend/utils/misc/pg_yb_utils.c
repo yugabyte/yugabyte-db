@@ -1059,6 +1059,13 @@ YBInitPostgresBackend(const char *program_name, uint64_t *session_id)
 	HandleYBStatus(YBCInit(program_name, palloc, cstring_to_text_with_len));
 
 	/*
+	 * Initialize OpenTelemetry tracing for this postgres backend process.
+	 * Each backend process needs its own OTEL initialization since they are
+	 * separate processes with separate memory spaces.
+	 */
+	YBCInitOtelTracing("postgres-backend");
+
+	/*
 	 * Enable "YB mode" for PostgreSQL so that we will initiate a connection
 	 * to the YugaByte cluster right away from every backend process. We only
 
@@ -7944,4 +7951,111 @@ YbUseTserverResponseCacheForAuth(uint64_t shared_catalog_version)
 	if (shared_catalog_version == YB_CATCACHE_VERSION_UNINITIALIZED)
 		return false;
 	return true;
+}
+
+/* Buffer to store the current traceparent for OTEL tracing */
+#define YB_TRACEPARENT_MAX_LEN 128
+static char yb_current_traceparent[YB_TRACEPARENT_MAX_LEN] = {0};
+
+/*
+ * Parse and store the traceparent from a SQL query comment.
+ * Expected format: comment with traceparent:00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01
+ */
+void
+YbSetTraceparentFromQuery(const char *query_string)
+{
+	const char *p;
+	const char *traceparent_start;
+	const char *traceparent_end;
+	size_t len;
+
+	/* Clear any existing traceparent */
+	yb_current_traceparent[0] = '\0';
+
+	if (!query_string)
+		return;
+
+	/* Skip leading whitespace */
+	p = query_string;
+	while (*p && (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r'))
+		p++;
+
+	/* Check if query starts with a block comment */
+	if (p[0] != '/' || p[1] != '*')
+	{
+		/* No comment - silently return to reduce log noise */
+		return;
+	}
+
+	/* Move past the opening comment delimiter */
+	p += 2;
+
+	/* Skip whitespace inside the comment */
+	while (*p && (*p == ' ' || *p == '\t'))
+		p++;
+
+	/* Look for "traceparent:" (case-sensitive) */
+	if (strncmp(p, "traceparent:", 12) != 0)
+	{
+		/* No traceparent in comment - silently return to reduce log noise */
+		return;
+	}
+
+	/* Move past "traceparent:" */
+	p += 12;
+
+	/* The traceparent value starts here */
+	traceparent_start = p;
+
+	/* Find the end of the traceparent (either whitespace or closing comment) */
+	traceparent_end = traceparent_start;
+	while (*traceparent_end && *traceparent_end != ' ' && *traceparent_end != '\t' &&
+		   *traceparent_end != '\n' && *traceparent_end != '\r' &&
+		   *traceparent_end != '*')
+		traceparent_end++;
+
+	len = traceparent_end - traceparent_start;
+
+	/* Ensure we don't overflow the buffer */
+	if (len >= YB_TRACEPARENT_MAX_LEN)
+		len = YB_TRACEPARENT_MAX_LEN - 1;
+
+	if (len > 0)
+	{
+		memcpy(yb_current_traceparent, traceparent_start, len);
+		yb_current_traceparent[len] = '\0';
+
+		ereport(LOG,
+				(errmsg("[OTEL DEBUG] Parsed traceparent from query: '%s'",
+						yb_current_traceparent)));
+	}
+	else
+	{
+		ereport(LOG,
+				(errmsg("[OTEL DEBUG] Empty traceparent value in comment")));
+	}
+}
+
+/*
+ * Get the current traceparent string.
+ */
+const char *
+YbGetCurrentTraceparent(void)
+{
+	return yb_current_traceparent;
+}
+
+/*
+ * Clear the current traceparent.
+ */
+void
+YbClearTraceparent(void)
+{
+	if (yb_current_traceparent[0] != '\0')
+	{
+		ereport(LOG,
+				(errmsg("[OTEL DEBUG] Clearing traceparent: '%s'",
+						yb_current_traceparent)));
+		yb_current_traceparent[0] = '\0';
+	}
 }
