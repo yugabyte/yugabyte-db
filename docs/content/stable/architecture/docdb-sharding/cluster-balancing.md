@@ -29,25 +29,24 @@ The cluster balancer can be disabled by setting the flag [enable_load_balancing]
 
 {{< warning title="Warning" >}}
 
-It is strongly recommended to not disable the cluster balancer, as disabling the cluster balancer prevents automatic re-replication after node failure and can thus cause long-term durability issues.
-
+It's strongly recommended not to disable the cluster balancer. If the balancer is disabled, the cluster cannot automatically re-replicate data after a node failure.
 {{< /warning >}}
 
 ## Background
 
 ### Placement policy
 
-A placement policy is a specification of how data and queries should be distributed across the cluster. For example, a typical [replication factor](../../key-concepts/#replication-factor-rf) of 3 (RF-3) placement might specify that there should be one replica of each [tablet](../../key-concepts/#tablet) in three separate regions (for example, `us-west-1a`, `us-east-2a`, and `us-central-1a`), with [leader](../../key-concepts/#tablet-leader) preference towards `us-west-1a`.
+A placement policy is a specification of how data and queries should be distributed across the cluster. For example, a typical [replication factor](../../key-concepts/#replication-factor-rf) of 3 (RF-3) placement might specify that there should be one replica of each tablet in three separate regions (for example, `us-west-1a`, `us-east-2a`, and `us-central-1a`), with leader preference towards `us-west-1a`.
 
 The default placement policy is automatically inferred when a cluster is created, but it can be modified at the cluster-level with [yb-admin](../../../admin/yb-admin/), or overridden on a per-table basis with [tablespaces](../../../explore/going-beyond-sql/tablespaces/) (for YSQL clusters).
 
 ### Remote bootstrap
 
-The cluster balancer creates new [tablet](../../key-concepts/#tablet) replicas by a process called remote bootstrap. This involves copying data from a [YB-TServer](../../yb-tserver/) hosting an up-to-date [tablet peer](../../docdb-replication/replication/#tablet-peers) (typically, the geographically closest peer) to the destination [YB-TServer](../../yb-tserver/).
+The cluster balancer creates new tablet replicas by a process called remote bootstrap. This involves copying data from a [YB-TServer](../../yb-tserver/) hosting an up-to-date [tablet peer](../../docdb-replication/replication/#tablet-peers) (typically, the geographically closest peer) to the destination YB-TServer.
 
 ### Blacklisting
 
-A [YB-TServer](../../yb-tserver/) can be blacklisted or "leader blacklisted" to prevent it from hosting data or [leaders](../../key-concepts/#tablet-leader), respectively. Blacklists are used to facilitate graceful shutdowns (for example, when performing staged restarts or OS patching on a node).
+A YB-TServer can be blacklisted or "leader blacklisted" to prevent it from hosting data or leaders, respectively. Blacklists are used to facilitate graceful shutdowns (for example, when performing staged restarts or OS patching on a node).
 
 ## Cluster balancing scenarios
 
@@ -57,30 +56,33 @@ Cluster balancing automatically occurs when a cluster is scaled in or out, when 
 
 #### Scaling out
 
-When scaling out (adding nodes), the cluster balancer will gracefully move [tablet](../../key-concepts/#tablet) data and [leaders](../../key-concepts/#tablet-leader) to the new nodes, without any application impact. [Tablet leaders](../../key-concepts/#tablet-leader) handle queries, so moving leaders is equivalent to moving where the queries execute.
+When scaling out (adding nodes), the cluster balancer will gracefully move tablet data and leaders to the new nodes, without any application impact. Tablet leaders handle queries, so moving leaders is equivalent to moving where the queries execute.
+
 
 #### Scaling in
 
-When scaling in, nodes being removed are marked as "blacklisted" (Applicable only to [YugabyteDB Anywhere](../../../yugabyte-platform/) and [YugabyteDB Aeon](/stable/yugabyte-cloud/)). This signals to the cluster balancer that it should:
+When scaling in, nodes being removed are marked as "blacklisted". This signals to the cluster balancer that it should:
 
-- Gracefully transfer [leader](../../key-concepts/#tablet-leader)ship off of the node being removed.
+- Gracefully transfer leadership off of the node being removed.
 - Re-replicate the data that was on the node to other nodes in the same region.
 
 After all data and queries have moved off of the node, the node can be removed safely.
 
+Blacklisting is performed automatically by YugabyteDB Anywhere and YugabyteDB Aeon. For yugabyted clusters, you should use [yb-admin](../../../admin/yb-admin/#change-blacklist) to blacklist the node being removed.
+
 ### Cluster balancing after node outages
 
-On an unplanned node outage, cluster balancing occurs twice: when the node goes down, and if or when it recovers.
+On an unplanned node outage, cluster balancing occurs twice: first when the node goes down, and again if the node recovers.
 
 #### When the node goes down
 
-- [Tablet leadership](../../key-concepts/#tablet-leader) is automatically transferred to healthy nodes in 3 seconds.
-- If the node is down for a prolonged time (according to [follower_unavailable_considered_failed_sec](../../configuration/yb-master/#follower-unavailable-considered-failed-sec), which is 15 minutes by default) the cluster balancer starts creating new replicas of the data on the failed node on other nodes in the same region (if any exist).
-- Queries will succeed as soon as [tablet leaders](../../key-concepts/#tablet-leader) move off of the failed node. The data balancing phase does not impact the availability of the database.
+- Tablet leadership is automatically transferred to healthy nodes in 3 seconds.
+- If the node is down for a prolonged time (according to [follower_unavailable_considered_failed_sec](../../../reference/configuration/yb-tserver/#follower-unavailable-considered-failed-sec), which is 15 minutes by default) the cluster balancer starts creating new replicas of the data on the failed node on other nodes in the same region (if any exist).
+- Queries will succeed as soon as tablet leaders move off of the failed node. The data balancing phase does not impact the availability of the database.
 
 #### When the failed node recovers
 
-If or when the failed node recovers, the cluster balancer rebalances [tablet leaders](../../key-concepts/#tablet-leader) onto the recovered node, as well as [tablet](../../key-concepts/#tablet) data (if data had moved off of the node).
+If or when the failed node recovers, the cluster balancer rebalances tablet leaders onto the recovered node, as well as tablet data (if data had moved off of the node).
 
 ### Table and tablet creation and deletion
 
@@ -91,12 +93,6 @@ Operations that create or delete tablets may also trigger cluster balancing. Som
 - [Tablet splitting](../tablet-splitting/)
 
 ## Monitoring cluster balancer progress
-
-{{< note title="Version availability" >}}
-
-The following views are available in YugabyteDB {{<release "2024.2.6">}} and later, and {{<release "2025.1.1">}} and later.
-
-{{< /note >}}
 
 While leader rebalancing is fast, data rebalancing can take anywhere from seconds to hours. The major factors influencing how long data rebalancing takes are:
 
@@ -126,15 +122,17 @@ With yugabyted, you can access the YB-Master UI at <http://localhost:7000> to ac
 
 #### Tablet Servers view
 
-The "Tablet Servers" view contains information about how many [peers](../../docdb-replication/replication/#tablet-peers) and [leaders](../../key-concepts/#tablet-leader) are hosted on each tablet server, as well as whether each tablet server is currently data or leader blacklisted.
+The "Tablet Servers" view contains information about how many peers and leaders are hosted on each tablet server, as well as whether each tablet server is currently data or leader blacklisted.
 
 To access the view, click **Tablet Servers** on your YB-Master UI.
 
 #### Cluster Balancer view
 
+This view is available only in YugabyteDB {{<release "2024.2.6">}} and later, and {{<release "2025.1.1">}} and later.
+
 The Cluster Balancer view displays information about:
 
-- Ongoing cluster balancing tasks (for example, [tablet leader](../../key-concepts/#tablet-leader)ship movement, [tablets](../../key-concepts/#tablet) being added or removed).
+- Ongoing cluster balancing tasks (for example, tablet leadership movement, tablets being added or removed).
 - Any warnings during cluster balancing (for example, a placement policy being unsatisfiable because there are no TServers in the requested zone)
 - Ongoing remote bootstraps from one tablet server to another, including the speed of data transfer.
 
@@ -143,7 +141,7 @@ To access the view, click **Utilities > Load Balancer** on your YB-Master UI.
   </div>
   <div id="yba" class="tab-pane fade" role="tabpanel" aria-labelledby="yba-tab">
 
-The [YugabyteDB Anywhere](../../../yugabyte-platform/) [Metrics](../../../yugabyte-platform/alerts-monitoring/anywhere-metrics/) page has graphs to monitoring cluster balancing progress.
+The YugabyteDB Anywhere [Metrics](../../../yugabyte-platform/alerts-monitoring/anywhere-metrics/) page has graphs to monitoring cluster balancing progress.
 
 You access metrics by navigating to **Universes > Universe-Name > Metrics**.
 
@@ -155,7 +153,9 @@ To view the graph, select the **Resources** tab on your universe **Metrics** pag
 
 #### Cluster load balancer statistics graph
 
-The "Cluster load balancer statistics" graph displays an estimate of the number of [tablets](../../key-concepts/#tablet) that still have to be moved before the cluster is considered balanced.
+This graph is available only in YugabyteDB {{<release "2024.2.6">}} and later, and {{<release "2025.1.1">}} and later.
+
+The "Cluster load balancer statistics" graph displays an estimate of the number of tablets that still have to be moved before the cluster is considered balanced.
 
 To view the graph, select the **Master Server** tab on your universe **Metrics** page as per the following illustration:
 
@@ -165,13 +165,13 @@ Cluster balancing is complete when this graph reaches 0.
 
 #### Monitoring progress from metrics
 
-The graph above shows the following metrics, which can be used to track the number of [tablet](../../key-concepts/#tablet) moves that are required before the cluster is considered balanced:
+The graph above shows the following metrics, which can be used to track the number of tablet moves that are required before the cluster is considered balanced:
 
 - `total_table_load_difference`
 - `blacklisted_leaders`
 - `tablets_in_wrong_placement`
 
-The metric `estimated_data_to_balance_bytes` tracks how much data (in bytes) must be transferred before a [cluster](../../key-concepts/#cluster) is balanced. This is often the best indicator of how long cluster balancing will take, as many clusters are disk or network limited.
+The metric `estimated_data_to_balance_bytes` tracks how much data (in bytes) must be transferred before a cluster is balanced. This is the most accurate indicator of how long cluster balancing will take for clusters that are limited by data transfer speed.
 
   </div>
 </div>
@@ -198,8 +198,8 @@ The following flags are recommended to use in {{<release "2025.1.1">}} and later
 
 | Flag | Description |
 | :--- | :---------- |
-| `remote_bootstrap_rate_limit_bytes_per_sec` | The maximum transmission rate during a remote bootstrap. This is the total limit across all remote bootstrap sessions for which this process is acting as a sender or receiver. The total limit is therefore 2 × `remote_bootstrap_rate_limit_bytes_per_sec` because a [YB-TServer](../../yb-tserver/) or [YB-Master](../../yb-master/) can act as both a sender and receiver at the same time. |
-| `enable_load_balancing` | Choose whether to enable cluster balancing. **Note:** It is strongly recommended to not disable the cluster balancer, as disabling the cluster balancer prevents automatic re-replication after node failure and can thus cause long-term durability issues. |
+| `remote_bootstrap_rate_limit_bytes_per_sec` | The maximum transmission rate during a remote bootstrap. This is the total limit across all remote bootstrap sessions for which this process is acting as a sender or receiver. The total limit is therefore 2 × `remote_bootstrap_rate_limit_bytes_per_sec` because a YB-TServer or YB-Master can act as both a sender and receiver at the same time. |
+| `enable_load_balancing` | Choose whether to enable cluster balancing. <br/>**Note:** It's strongly recommended not to disable the cluster balancer. If the balancer is disabled, the cluster cannot automatically re-replicate data after a node failure, |
 
 ### Legacy flags
 
@@ -207,15 +207,15 @@ The following flags are available in releases prior to {{<release "2025.1.1">}} 
 
 | Flag | Description |
 | :--- | :---------- |
-| `load_balancer_max_concurrent_tablet_remote_bootstraps` | The maximum number of [tablets](../../key-concepts/#tablet) being remote bootstrapped across the cluster. If set to -1, there is no global limit on the number of concurrent remote bootstraps (per-table or per [YB-TServer](../../yb-tserver/) limits still apply). |
-| `load_balancer_max_concurrent_tablet_remote_bootstraps_per_table` | The maximum number of [tablets](../../key-concepts/#tablet) being remote bootstrapped for any table. The maximum number of remote bootstraps _across the cluster_ is still limited by the flag `load_balancer_max_concurrent_tablet_remote_bootstraps`. This flag prevents a single table from using all the available remote bootstrap sessions and starving other tables. |
-| `load_balancer_max_inbound_remote_bootstraps_per_tserver` | Maximum number of [tablets](../../key-concepts/#tablet) simultaneously remote bootstrapping on a [YB-TServer](../../yb-tserver/). |
-| `load_balancer_min_inbound_remote_bootstraps_per_tserver` | Minimum number of [tablets](../../key-concepts/#tablet) simultaneously remote bootstrapping on a [YB-TServer](../../yb-tserver/) (if any are required). |
-| `load_balancer_max_over_replicated_tablets` | Maximum number of running [tablet](../../key-concepts/#tablet) replicas per table that are allowed to be over the configured [replication factor](../../key-concepts/#replication-factor-rf). This controls the amount of space amplification in the cluster when tablet removal is slow. A value less than 0 means no limit. |
-| `load_balancer_max_concurrent_adds` | Maximum number of [tablet peer](../../docdb-replication/replication/#tablet-peers) replicas to add in any one run of the cluster balancer. |
-| `load_balancer_max_concurrent_removals` | Maximum number of over-replicated [tablet peer](../../docdb-replication/replication/#tablet-peers) removals to do in any one run of the cluster balancer. A value less than 0 means no limit. |
-| `load_balancer_max_concurrent_moves` | Maximum number of [tablet leaders](../../key-concepts/#tablet-leader) on tablet servers (across the cluster) to move in any one run of the cluster balancer. |
-| `load_balancer_max_concurrent_moves_per_table` | Maximum number of [tablet leaders](../../key-concepts/#tablet-leader) per table to move in any one run of the cluster balancer. The maximum number of tablet leader moves _across the cluster_ is still limited by the flag `load_balancer_max_concurrent_moves`. This flag is meant to prevent a single table from using all of the leader moves quota and starving other tables. If set to -1, the number of leader moves per table is set to the global number of leader moves (`load_balancer_max_concurrent_moves`). |
+| `load_balancer_max_concurrent_tablet_remote_bootstraps` | The maximum number of tablets being remote bootstrapped across the cluster. If set to -1, there is no global limit on the number of concurrent remote bootstraps (per-table or per YB-TServer limits still apply). |
+| `load_balancer_max_concurrent_tablet_remote_bootstraps_per_table` | The maximum number of tablets being remote bootstrapped for any table. The maximum number of remote bootstraps _across the cluster_ is still limited by the flag `load_balancer_max_concurrent_tablet_remote_bootstraps`. This flag prevents a single table from using all the available remote bootstrap sessions and starving other tables. |
+| `load_balancer_max_inbound_remote_bootstraps_per_tserver` | Maximum number of tablets simultaneously remote bootstrapping on a YB-TServer. |
+| `load_balancer_min_inbound_remote_bootstraps_per_tserver` | Minimum number of tablets simultaneously remote bootstrapping on a YB-TServer (if any are required). |
+| `load_balancer_max_over_replicated_tablets` | Maximum number of running tablet replicas per table that are allowed to be over the configured replication factor. This controls the amount of space amplification in the cluster when tablet removal is slow. A value less than 0 means no limit. |
+| `load_balancer_max_concurrent_adds` | Maximum number of tablet peer replicas to add in any one run of the cluster balancer. |
+| `load_balancer_max_concurrent_removals` | Maximum number of over-replicated tablet peer removals to do in any one run of the cluster balancer. A value less than 0 means no limit. |
+| `load_balancer_max_concurrent_moves` | Maximum number of tablet leaders on tablet servers (across the cluster) to move in any one run of the cluster balancer. |
+| `load_balancer_max_concurrent_moves_per_table` | Maximum number of tablet leaders per table to move in any one run of the cluster balancer. The maximum number of tablet leader moves _across the cluster_ is still limited by the flag `load_balancer_max_concurrent_moves`. This flag is meant to prevent a single table from using all of the leader moves quota and starving other tables. If set to -1, the number of leader moves per table is set to the global number of leader moves (`load_balancer_max_concurrent_moves`). |
 
 ## Metrics
 
@@ -224,9 +224,9 @@ The following metrics can be used to monitor cluster balancing progress:
 | Metric | Description |
 | :----- | :---------- |
 | `estimated_data_to_balance_bytes` | The estimated amount of data (in bytes) that needs to be moved for the cluster to be balanced. |
-| `total_table_load_difference` | The estimated number of [tablet](../../key-concepts/#tablet) moves required for the cluster to be balanced. |
-| `blacklisted_leaders` | The number of [leaders](../../key-concepts/#tablet-leader) on leader blacklisted TServers. |
-| `tablets_in_wrong_placement` | The number of [tablet peers](../../docdb-replication/replication/#tablet-peers) in invalid or blacklisted TServers. (An invalid TServer is one that is not part of the tablet's current placement policy). |
+| `total_table_load_difference` | The estimated number of tablet moves required for the cluster to be balanced. |
+| `blacklisted_leaders` | The number of leaders on leader blacklisted TServers. |
+| `tablets_in_wrong_placement` | The number of tablet peers in invalid or blacklisted TServers. (An invalid TServer is one that is not part of the tablet's current placement policy). |
 | `load_balancer_duration` | How long the previous cluster balancer run took, in milliseconds. |
 
 ## Learn more
