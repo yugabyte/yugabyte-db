@@ -68,6 +68,12 @@ To upgrade YugabyteDB to a version based on a different version of PostgreSQL (f
 
   - For information on upgrading or enabling cost-based optimizer, refer to [Enable cost-based optimizer](../../best-practices-operations/ysql-yb-enable-cbo/).
 
+    If you upgrade to v2025.2 and the universe already has cost-based optimizer enabled, the following features are enabled by default:
+
+    - Auto Analyze (ysql_enable_auto_analyze=true)
+    - YugabyteDB bitmap scan (yb_enable_bitmapscan=true)
+    - Parallel query (yb_enable_parallel_append=true)
+
 For more information, refer to [Upgrade FAQ](/stable/faq/operations-faq/#upgrade).
 
 ## Upgrade YugabyteDB cluster
