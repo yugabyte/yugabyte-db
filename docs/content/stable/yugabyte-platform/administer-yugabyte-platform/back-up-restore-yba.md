@@ -37,13 +37,15 @@ YugabyteDB Anywhere installations include configuration settings, certificates a
 
 </ul>
 
-You can perform regularly scheduled backups of your YugabyteDB Anywhere installation to external storage. You can also perform ad hoc manual backups.
+If you aren't running [high availability](../high-availability/), use automated backups to take regulary scheduled backups of your YugabyteDB Anywhere installation for recovery in case of the loss of the node running your YugabyteDB Anywhere instance.
+
+You can also perform ad hoc manual backups.
 
 ## Set up automatic backups
 
 Before you can set up automatic backups of YugabyteDB Anywhere, you need to [configure a storage location](../../back-up-restore-universes/configure-backup-storage/) for the backups.
 
-Automatic backups do not include universe Prometheus data, but they do include local releases, including releases you have imported.
+Automatic backups do not include universe Prometheus data, but they do include locally stored YugabyteDB releases.
 
 To configure automatic backups of your YugabyteDB Anywhere installation, do the following:
 
@@ -79,7 +81,7 @@ To create a one-time backup:
 1. Select the data you want to back up.
 
     - **Platform Metadata**: YugabyteDB Anywhere instance settings and metadata.
-    - **YugabyteDB Releases**: Imported [YugabyteDB releases](../../manage-deployments/ybdb-releases/).
+    - **Local YugabyteDB Releases**: [YugabyteDB releases](../../manage-deployments/ybdb-releases/) stored on universe nodes.
     - **Universe Metrics (Prometheus Data)**: Prometheus metrics data for your universes.
 
 1. Specify the destination for the backup, as a full path. For example, `/opt/yugabyte/yba_backups` or `/tmp/yba_export`.
@@ -94,13 +96,16 @@ To create a one-time backup:
 
 ## Restore YugabyteDB Anywhere
 
+When restoring YugabyteDB Anywhere (for example, after the loss of the node running YugabyteDB Anywhere):
+
+1. Create an fresh YugabyteDB Anywhere installation, either on the existing node after it is recovered, or on a new node.
+1. Using the new YugabyteDB Anywhere instance, restore from the most recent backup.
+
 When doing a restore, YugabyteDB Anywhere performs the following checks:
 
 - Existing universes. By default, due to the possibility of data loss, you can only do a restore if your instance is not managing any universes. You can override this by setting the **Allow YBA Restore With Universes** Global Runtime Configuration option (config key `yb.yba_backup.allow_restore_with_universes`) to true.
 
 - The selected backup is not older than one day. By default you cannot restore from backups older than one day, as the backup may be inconsistent if you performed management operations after the backup was taken. You can override this by setting the **Allow YBA Restore With Old Backup** Global Runtime Configuration option (config key `yb.yba_backup.allow_restore_with_old_backup`) to true.
-
-- [High availability](../high-availability/) is not running.
 
 Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings.
 
@@ -108,6 +113,7 @@ Refer to [Manage runtime configuration settings](../../administer-yugabyte-platf
 
 To restore a YugabyteDB Anywhere backup from external storage:
 
+1. If YugabyteDB Anywhere is not installed, [install it](../../install-yugabyte-platform/install-software/installer/).
 1. Navigate to **Admin>Platform HA and Backups** and select **Automated Platform Backups**.
 1. Click **Advanced Restore**.
 
@@ -124,6 +130,7 @@ YugabyteDB Anywhere restores the most recent backup and restarts automatically a
 
 To restore a YugabyteDB Anywhere backup from a manual backup:
 
+1. If YugabyteDB Anywhere is not installed, [install it](../../install-yugabyte-platform/install-software/installer/).
 1. Navigate to **Admin>Platform HA and Backups** and select **Automated Platform Backups**.
 1. Click **Advanced Restore**.
 

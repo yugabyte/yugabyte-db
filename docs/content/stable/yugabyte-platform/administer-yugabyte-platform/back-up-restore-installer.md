@@ -84,7 +84,7 @@ The following table describes optional flags you can include with the `createBac
 
 To restore the YugabyteDB Anywhere content from your saved backup, perform the following:
 
-1. If YugabyteDB Anywhere is not installed, [install it](../../install-yugabyte-platform/install-software/installer/) using YBA Installer.
+1. If YugabyteDB Anywhere is not installed, [install it](../../install-yugabyte-platform/install-software/installer/).
 
 1. Copy the backup file from your storage location.
 
