@@ -80,7 +80,7 @@ class PgDocSampleOp : public PgDocReadOp {
   Result<bool> DoCreateRequests() override {
     VLOG_WITH_PREFIX_AND_FUNC(1) << "Preparing sampling requests";
 
-    const auto& template_read_req = GetTemplateReadOp().read_request();
+    const auto& template_read_req = GetTemplateReadReq();
     SCHECK(
         template_read_req.has_sampling_state(), IllegalState,
         "PgDocSampleOp is expected to have sampling state");
@@ -112,46 +112,42 @@ class PgDocSampleOp : public PgDocReadOp {
       // server uses this information to operate on correct tablet.
       // - Range partition uses range partition key to identify partition.
       // - Hash partition uses "next_partition_key" and "max_hash_code" to identify partition.
-      auto& read_req = GetReadReq(partition);
+      auto& read_op = GetReadOp(partition);
+      auto& read_req = read_op.read_request();
       if (VERIFY_RESULT(SetLowerUpperBound(&read_req, partition))) {
         // Currently we do not set boundaries on sampling requests other than partition boundaries,
         // so result is going to be always true, though that may change.
         if (!sample_blocks_feed.has_value() ||
             VERIFY_RESULT(AssignSampleBlocks(
                 &read_req, partition_keys, partition, &sample_blocks_feed.value()))) {
-          pgsql_ops_[partition]->set_active(true);
+          read_op.set_active(true);
           VLOG_WITH_PREFIX_AND_FUNC(3)
               << "Request #" << partition << " of " << partition_keys.size()
               << " for partition: " << Slice(partition_keys[partition]).ToDebugHexString();
-          ++active_op_count_;
         }
       }
     }
 
-    VLOG_WITH_PREFIX_AND_FUNC(1) << "Number of partitions to sample: " << active_op_count_;
+    const auto active_op_count = MoveInactiveOpsOutside();
 
-    // Got some inactive operations, move them away
-    if (active_op_count_ < pgsql_ops_.size()) {
-      MoveInactiveOpsOutside();
-    }
+    VLOG_WITH_PREFIX_AND_FUNC(1) << "Number of partitions to sample: " << active_op_count;
 
     return true;
   }
 
   Status CompleteProcessResponse() override {
-    const auto send_count = std::min(parallelism_level_, active_op_count_);
-
-    // There can be at most one op at a time for sampling, since any modifications to the random
-    // sampling state need to be propagated after one op completes to the next.
-    SCHECK_LE(
-        send_count, size_t{1}, IllegalState,
-        "We should send at most 1 sampling request at a time.");
-    if (send_count == 0) {
+    if (!HasActiveOps()) {
       // Let super class to complete processing if still needed.
       return PgDocReadOp::CompleteProcessResponse();
     }
 
-    auto& res = *GetReadOp(0).response();
+    // There can be one op at a time for sampling, since any modifications to the random
+    // sampling state need to be propagated after one op completes to the next.
+    RSTATUS_DCHECK(
+        parallelism_level_ < 2 || pgsql_ops_.size() < 2 || !pgsql_ops_[1]->is_active(),
+        IllegalState, "We should send single sampling request at a time.");
+
+    auto& res = *pgsql_ops_.front()->response();
     SCHECK(res.has_sampling_state(), IllegalState, "Sampling response should have sampling state");
     auto* sampling_state = res.mutable_sampling_state();
     VLOG_WITH_PREFIX_AND_FUNC(1) << "Received sampling state: "
@@ -167,7 +163,7 @@ class PgDocSampleOp : public PgDocReadOp {
 
     RETURN_NOT_OK(PgDocReadOp::CompleteProcessResponse());
 
-    if (active_op_count_ > 0) {
+    if (HasActiveOps()) {
       auto& next_active_op = GetReadOp(0);
       next_active_op.read_request().ref_sampling_state(sampling_state);
       VLOG_WITH_PREFIX_AND_FUNC(1)
