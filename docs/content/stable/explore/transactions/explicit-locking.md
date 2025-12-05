@@ -124,7 +124,7 @@ YugabyteDB's YSQL supports table-level locks (also known as object locks) to coo
 
 Table-level locks depend on:
 
-- [Transactional DDL](../transactional-ddl/), controlled by [ysql_yb_ddl_transaction_block_enabled](../transactional-ddl/#enable-transactional-ddl) (preview flag).
+- [Transactional DDL](../transactional-ddl/), controlled by [ysql_yb_ddl_transaction_block_enabled](../transactional-ddl/#enable-transactional-ddl).
 - [YSQL lease](../../../architecture/transactions/concurrency-control/#ysql-lease-mechanism), lease period controlled by [master_ysql_operation_lease_ttl_ms](../../../reference/configuration/yb-master/#master-ysql-operation-lease-ttl-ms).
 - Per-database catalog caching, controlled by [ysql_enable_db_catalog_version_mode](../../../reference/configuration/yb-master/#ysql-enable-db-catalog-version-mode).
 
@@ -138,7 +138,7 @@ Table-level locks are disabled by default. To enable the feature, set the [yb-ts
 
 Because `enable_object_locking_for_table_locks` is a preview flag, to use it, add the flag to the [allowed_preview_flags_csv](../../../reference/configuration/yb-tserver/#allowed-preview-flags-csv) list (that is, `allowed_preview_flags_csv=enable_object_locking_for_table_locks`).
 
-As the table-level locks feature depends on Transactional DDL (currently not enabled by default), you need to enable the preview flag, [ysql_yb_ddl_transaction_block_enabled](../transactional-ddl/#enable-transactional-ddl).
+As the table-level locks feature depends on Transactional DDL (currently not enabled by default), you need to enable the flag [ysql_yb_ddl_transaction_block_enabled](../transactional-ddl/#enable-transactional-ddl).
 
 For more information on the lock scopes and lifecycle, see [Table-level locks](../../../architecture/transactions/concurrency-control/#table-level-locks).
 
