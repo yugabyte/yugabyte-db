@@ -37,7 +37,7 @@ YugabyteDB Anywhere installations include configuration settings, certificates a
 
 </ul>
 
-If you aren't running [high availability](../high-availability/), use automated backups to take regulary scheduled backups of your YugabyteDB Anywhere installation for recovery in case of the loss of the node running your YugabyteDB Anywhere instance.
+If you aren't running [high availability](../high-availability/), use automated backups to take regularly scheduled backups of your YugabyteDB Anywhere installation for recovery in case of the loss of the node running your YugabyteDB Anywhere instance.
 
 You can also perform ad hoc manual backups.
 
