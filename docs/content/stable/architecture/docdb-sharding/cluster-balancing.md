@@ -215,7 +215,7 @@ The following flags are available in releases prior to {{<release "2025.1.1">}} 
 | `load_balancer_max_concurrent_adds` | Maximum number of tablet peer replicas to add in any one run of the cluster balancer. |
 | `load_balancer_max_concurrent_removals` | Maximum number of over-replicated tablet peer removals to do in any one run of the cluster balancer. A value less than 0 means no limit. |
 | `load_balancer_max_concurrent_moves` | Maximum number of tablet leaders on tablet servers (across the cluster) to move in any one run of the cluster balancer. |
-| `load_balancer_max_concurrent_moves_per_table` | Maximum number of tablet leaders per table to move in any one run of the cluster balancer. The maximum number of tablet leader moves _across the cluster_ is still limited by the flag `load_balancer_max_concurrent_moves`. This flag is meant to prevent a single table from using all of the leader moves quota and starving other tables. If set to -1, the number of leader moves per table is set to the global number of leader moves (`load_balancer_max_concurrent_moves`). |
+| `load_balancer_max_concurrent_moves_per_table` | Maximum number of tablet leaders per table to move in any one run of the cluster balancer. The maximum number of tablet leader moves _across the cluster_ is still limited by the flag `load_balancer_max_concurrent_moves`. This flag is meant to prevent a single table from using all of the leader moves quota and starving other tables. If set to -1, the number of leader moves per table is set to the global number of leader moves ()`load_balancer_max_concurrent_moves`). |
 
 ## Metrics
 
@@ -232,3 +232,4 @@ The following metrics can be used to monitor cluster balancing progress:
 ## Learn more
 
 - [YFTT: Cluster Balancing](http://youtube.com/watch?v=AiIM3bb5kS8)
+- [Smart drivers](/stable/develop/drivers-orms/smart-drivers/)
