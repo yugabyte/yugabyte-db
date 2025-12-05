@@ -306,10 +306,10 @@ class BlockBasedTable : public TableReader {
   // Converts an index entry (i.e. an encoded BlockHandle) into an iterator over the contents of
   // a corresponding block (data block or lower level index block). Updates and returns input_iter
   // if the one is specified, or returns a new iterator.
-  InternalIterator* NewBlockIterator(
+  BlockIter* NewBlockIterator(
       const ReadOptions& ro, const Slice index_value, BlockType block_type,
       BlockIter* input_iter = nullptr);
-  InternalIterator* NewBlockIterator(
+  BlockIter* NewBlockIterator(
       const ReadOptions& ro, CachableEntry<Block>* block, BlockType block_type,
       BlockIter* input_iter);
 
