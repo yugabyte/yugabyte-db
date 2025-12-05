@@ -394,6 +394,7 @@ typedef struct YbSampleData
 {
 	/* The handle for the internal YB Sample statement. */
 	YbcPgStatement handle;
+	YbcPgExecParameters exec_params;
 
 	Relation	relation;
 	int			targrows;		/* # of rows to collect */

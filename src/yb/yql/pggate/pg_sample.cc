@@ -35,13 +35,14 @@
 
 DEFINE_test_flag(bool, refresh_partitions_after_fetched_sample_blocks, false,
     "Force table partitions refresh after sample blocks are fetched.");
-DEFINE_test_flag(int64, delay_after_table_analyze_ms, 0,
-    "Add this delay after each table is analyzed.");
 
 DEFINE_RUNTIME_int32(
     ysql_docdb_blocks_sampling_method, yb::DocDbBlocksSamplingMethod::SPLIT_INTERSECTING_BLOCKS_V3,
     "Controls how we define blocks for 1st phase of block-based sampling.");
 TAG_FLAG(ysql_docdb_blocks_sampling_method, hidden);
+
+DECLARE_uint64(rpc_max_message_size);
+DECLARE_double(max_buffer_size_to_rpc_limit_ratio);
 
 namespace yb::pggate {
 
@@ -782,21 +783,18 @@ Status PgSample::Prepare(
 Result<bool> PgSample::SampleNextBlock() {
   const auto continue_sampling = VERIFY_RESULT(sample_rows_picker_->ProcessNextBlock());
   if (!continue_sampling) {
-    const auto& ybctids = VERIFY_RESULT(sample_rows_picker_->FetchYbctids());
-    if (!ybctids.get().empty()) {
-      SetRequestedYbctids(ybctids);
-    }
+    ybctids_ = &VERIFY_RESULT_REF(sample_rows_picker_->FetchYbctids());
   }
   return continue_sampling;
 }
 
 EstimatedRowCount PgSample::GetEstimatedRowCount() {
-  AtomicFlagSleepMs(&FLAGS_TEST_delay_after_table_analyze_ms);
   const auto estimated_total_rows = sample_rows_picker_->GetEstimatedRowCount();
   VLOG_WITH_FUNC(1) << "Returning liverows " << estimated_total_rows;
   // Postgres wants estimation of dead tuples count to trigger vacuuming, but it is unlikely it
   // will be useful for us.
-  return EstimatedRowCount{.live = estimated_total_rows, .dead = 0};
+  return EstimatedRowCount{.sampledrows = static_cast<int>(ybctids_->size()),
+                           .live = estimated_total_rows, .dead = 0};
 }
 
 Result<std::unique_ptr<PgSample>> PgSample::Make(
@@ -805,6 +803,41 @@ Result<std::unique_ptr<PgSample>> PgSample::Make(
   std::unique_ptr<PgSample> result{new PgSample{pg_session}};
   RETURN_NOT_OK(result->Prepare(table_id, is_region_local, targrows, rand_state, read_time));
   return result;
+}
+
+Status PgSample::SetNextBatchYbctids(const YbcPgExecParameters* exec_params) {
+  DCHECK(ybctids_);
+  auto& ybctids = *ybctids_;
+  SCHECK_LT(index_, ybctids.size(), InternalError, "Trying to fetch more rows than expected");
+  // Limits: 0 means 'unlimited'.
+  uint64_t row_limit = exec_params->yb_fetch_row_limit;
+  row_limit = row_limit > 0 ? row_limit : INT_MAX;
+  uint64_t size_limit = exec_params->yb_fetch_size_limit;
+  uint64_t max_size = FLAGS_rpc_max_message_size * FLAGS_max_buffer_size_to_rpc_limit_ratio;
+  if (size_limit == 0 || size_limit > max_size)
+    size_limit = max_size;
+
+  uint64_t start_index = index_;
+  // Estimate the number of ybctids based on row_limit and size_limit.
+  uint64_t size = 0;
+  for (; index_ < ybctids.size(); ++index_) {
+    if (size + ybctids[index_].size() > size_limit || index_ - start_index >= row_limit) {
+      break;
+    }
+    size += ybctids[index_].size();
+  }
+  // In case size_limit is too small, we want to fetch at least one row.
+  if (start_index == index_) {
+    ++index_;
+  }
+
+  // Set request with the next batch of ybctids to fetch the next batch of rows.
+  SetRequestedYbctids({make_lw_function([it = ybctids.begin() + start_index,
+                                         end = ybctids.begin() + index_]() mutable {
+    return it != end ? *it++ : Slice();
+  }), index_ - start_index});
+  VLOG_WITH_FUNC(3) << "Fetching " << index_ - start_index << " sampled rows";
+  return Status::OK();
 }
 
 } // namespace yb::pggate

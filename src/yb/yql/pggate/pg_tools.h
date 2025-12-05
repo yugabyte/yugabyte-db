@@ -72,6 +72,7 @@ class PgWaitEventWatcher {
 };
 
 struct EstimatedRowCount {
+  int sampledrows;
   double live;
   double dead;
 };

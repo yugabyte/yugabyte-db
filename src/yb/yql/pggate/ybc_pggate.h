@@ -634,9 +634,10 @@ YbcStatus YBCPgNewSample(const YbcPgOid database_oid,
 
 YbcStatus YBCPgSampleNextBlock(YbcPgStatement handle, bool *has_more);
 
-YbcStatus YBCPgExecSample(YbcPgStatement handle);
+YbcStatus YBCPgExecSample(YbcPgStatement handle, YbcPgExecParameters* exec_params);
 
-YbcStatus YBCPgGetEstimatedRowCount(YbcPgStatement handle, double *liverows, double *deadrows);
+YbcStatus YBCPgGetEstimatedRowCount(YbcPgStatement handle, int *sampledrows, double *liverows,
+                                    double *deadrows);
 
 // INSERT ------------------------------------------------------------------------------------------
 

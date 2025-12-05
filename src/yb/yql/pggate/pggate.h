@@ -663,7 +663,7 @@ class PgApiImpl {
 
   Result<bool> SampleNextBlock(PgStatement* handle);
 
-  Status ExecSample(PgStatement *handle);
+  Status ExecSample(PgStatement *handle, YbcPgExecParameters* exec_params);
 
   Result<EstimatedRowCount> GetEstimatedRowCount(PgStatement* handle);
 

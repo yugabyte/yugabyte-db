@@ -1573,14 +1573,16 @@ YbcStatus YBCPgSampleNextBlock(YbcPgStatement handle, bool *has_more) {
   return ExtractValueFromResult(pgapi->SampleNextBlock(handle), has_more);
 }
 
-YbcStatus YBCPgExecSample(YbcPgStatement handle) {
-  return ToYBCStatus(pgapi->ExecSample(handle));
+YbcStatus YBCPgExecSample(YbcPgStatement handle, YbcPgExecParameters* exec_params) {
+  return ToYBCStatus(pgapi->ExecSample(handle, exec_params));
 }
 
-YbcStatus YBCPgGetEstimatedRowCount(YbcPgStatement handle, double *liverows, double *deadrows) {
+YbcStatus YBCPgGetEstimatedRowCount(YbcPgStatement handle, int *sampledrows, double *liverows,
+                                    double *deadrows) {
   return ExtractValueFromResult(
       pgapi->GetEstimatedRowCount(handle),
-      [liverows, deadrows](const auto& count) {
+      [sampledrows, liverows, deadrows](const auto& count) {
+        *sampledrows = count.sampledrows;
         *liverows = count.live;
         *deadrows = count.dead;
       });

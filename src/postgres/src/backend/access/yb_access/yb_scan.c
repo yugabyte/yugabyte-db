@@ -4535,6 +4535,10 @@ ybBeginSample(Relation rel, int targrows)
 			YbDmlAppendTargetRegular(tupdesc, attnum, ybSample->handle);
 	}
 
+	ybSample->exec_params.yb_fetch_row_limit = yb_fetch_row_limit;
+	ybSample->exec_params.yb_fetch_size_limit = yb_fetch_size_limit;
+	ybSample->exec_params.rowmark = -1;
+
 	return ybSample;
 }
 
@@ -4571,26 +4575,30 @@ ybFetchSample(YbSample ybSample, HeapTuple *rows)
 	TupleDesc	tupdesc = RelationGetDescr(ybSample->relation);
 	Datum	   *values = (Datum *) palloc0(tupdesc->natts * sizeof(Datum));
 	bool	   *nulls = (bool *) palloc(tupdesc->natts * sizeof(bool));
-	int			numrows;
+	int			numrows = 0;
+	int			sampledrows;
+	bool		has_data = false;
 
-	/*
-	 * Execute equivalent of
-	 *   SELECT * FROM table WHERE ybctid IN [yctid0, ybctid1, ...];
-	 */
-	HandleYBStatus(YBCPgExecSample(ybSample->handle));
 	/*
 	 * Retrieve liverows and deadrows counters.
 	 * TODO: count deadrows
 	 */
 	HandleYBStatus(YBCPgGetEstimatedRowCount(ybSample->handle,
+											 &sampledrows,
 											 &ybSample->liverows,
 											 &ybSample->deadrows));
-
-	for (numrows = 0; numrows < ybSample->targrows; numrows++)
+	while (numrows < sampledrows)
 	{
-		bool		has_data = false;
+		/*
+		 * Execute equivalent of
+		 *   SELECT * FROM table WHERE ybctid IN [yctid0, ybctid1, ...];
+		 */
+		if (!has_data)
+		{
+			HandleYBStatus(YBCPgExecSample(ybSample->handle,
+										   &ybSample->exec_params));
+		}
 		YbcPgSysColumns syscols;
-
 		/* Fetch one row. */
 		HandleYBStatus(YBCPgDmlFetch(ybSample->handle,
 									 tupdesc->natts,
@@ -4599,15 +4607,22 @@ ybFetchSample(YbSample ybSample, HeapTuple *rows)
 									 &syscols,
 									 &has_data));
 
-		if (!has_data)
-			break;
-
-		/* Make a heap tuple in current memory context */
-		rows[numrows] = heap_form_tuple(tupdesc, values, nulls);
-		if (syscols.ybctid != NULL)
-			HEAPTUPLE_YBCTID(rows[numrows]) = PointerGetDatum(syscols.ybctid);
-		rows[numrows]->t_tableOid = relid;
+		if (has_data)
+		{
+			/* Make a heap tuple in current memory context */
+			rows[numrows] = heap_form_tuple(tupdesc, values, nulls);
+			if (syscols.ybctid != NULL)
+				HEAPTUPLE_YBCTID(rows[numrows]) = PointerGetDatum(syscols.ybctid);
+			rows[numrows]->t_tableOid = relid;
+			++numrows;
+		}
 	}
+
+	if (*YBCGetGFlags()->TEST_delay_after_table_analyze_ms > 0)
+	{
+		pg_usleep(*YBCGetGFlags()->TEST_delay_after_table_analyze_ms * 1000L);
+	}
+
 	pfree(values);
 	pfree(nulls);
 	/* Close the DocDB statement */

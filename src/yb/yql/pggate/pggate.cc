@@ -1601,8 +1601,10 @@ Result<bool> PgApiImpl::SampleNextBlock(PgStatement* handle) {
   return VERIFY_RESULT_REF(GetStatementAs<PgSample>(handle)).SampleNextBlock();
 }
 
-Status PgApiImpl::ExecSample(PgStatement* handle) {
-  return VERIFY_RESULT_REF(GetStatementAs<PgSample>(handle)).Exec(nullptr);
+Status PgApiImpl::ExecSample(PgStatement* handle, YbcPgExecParameters* exec_params) {
+  auto& sample = VERIFY_RESULT_REF(GetStatementAs<PgSample>(handle));
+  RETURN_NOT_OK(sample.SetNextBatchYbctids(exec_params));
+  return sample.Exec(exec_params);
 }
 
 Result<EstimatedRowCount> PgApiImpl::GetEstimatedRowCount(PgStatement* handle) {
