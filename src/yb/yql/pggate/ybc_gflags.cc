@@ -126,6 +126,9 @@ DEFINE_test_flag(bool, ysql_bypass_auto_analyze_auth_check, false,
     "Bypass the yb-tserver-key authentication method check when connecting using "
     "yb_auto_analyze backend type.");
 
+DEFINE_test_flag(int64, delay_after_table_analyze_ms, 0,
+    "Add this delay after each table is analyzed.");
+
 DECLARE_bool(ysql_enable_colocated_tables_with_tablespaces);
 DECLARE_bool(TEST_ysql_enable_db_logical_client_version_mode);
 DECLARE_bool(TEST_ysql_yb_enable_ddl_savepoint_support);
@@ -242,6 +245,7 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .placement_region = FLAGS_placement_region.c_str(),
       .placement_zone = FLAGS_placement_zone.c_str(),
       .TEST_ysql_bypass_auto_analyze_auth_check = &FLAGS_TEST_ysql_bypass_auto_analyze_auth_check,
+      .TEST_delay_after_table_analyze_ms = &FLAGS_TEST_delay_after_table_analyze_ms,
   };
   // clang-format on
   return &accessor;

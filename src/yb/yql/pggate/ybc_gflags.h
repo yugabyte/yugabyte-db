@@ -76,6 +76,7 @@ typedef struct {
   const char *    placement_region;
   const char *    placement_zone;
   const bool*     TEST_ysql_bypass_auto_analyze_auth_check;
+  const int64_t*  TEST_delay_after_table_analyze_ms;
 } YbcPgGFlagsAccessor;
 
 const YbcPgGFlagsAccessor* YBCGetGFlags();
