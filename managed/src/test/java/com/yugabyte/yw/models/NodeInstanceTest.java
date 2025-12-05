@@ -3,13 +3,18 @@ package com.yugabyte.yw.models;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
+import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
+import com.yugabyte.yw.models.helpers.NodeConfig;
+import com.yugabyte.yw.models.helpers.NodeConfig.Type;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -37,11 +42,16 @@ public class NodeInstanceTest extends FakeDBApplication {
   }
 
   private NodeInstance createNode(String instanceType) {
-    NodeInstanceFormData.NodeInstanceData nodeData = new NodeInstanceFormData.NodeInstanceData();
+    return createNode(instanceType, null);
+  }
+
+  private NodeInstance createNode(String instanceType, Set<NodeConfig> nodeConfigs) {
+    NodeInstanceFormData.NodeInstanceData nodeData = new NodeInstanceData();
     nodeData.ip = "fake_ip";
     nodeData.region = region.getCode();
     nodeData.zone = zone.getCode();
     nodeData.instanceType = instanceType;
+    nodeData.nodeConfigs = nodeConfigs;
     return NodeInstance.create(zone.getUuid(), nodeData);
   }
 
@@ -206,5 +216,25 @@ public class NodeInstanceTest extends FakeDBApplication {
     assertTrue(reservedInstances.containsKey(universeNodeName2));
     reservedInstance = reservedInstances.get(universeNodeName2);
     assertEquals(node2.getNodeUuid(), reservedInstance.getNodeUuid());
+  }
+
+  @Test
+  public void testCreateWithNodeConfigs() {
+    Set<NodeConfig> nodeConfigs =
+        ImmutableSet.of(
+            new NodeConfig(Type.HOME_DIR_EXISTS, "true"),
+            new NodeConfig(Type.MOUNT_POINTS_VOLUME, "/mnt/d0"));
+    NodeInstance node = createNode("default_instance_type", nodeConfigs);
+    String defaultNodeName = "";
+    assertNotNull(node);
+    assertEquals(defaultNodeName, node.getNodeName());
+    assertEquals(zone.getUuid(), node.getZoneUuid());
+    NodeInstanceFormData.NodeInstanceData details = node.getDetails();
+    assertEquals("fake_ip", details.ip);
+    assertEquals("default_instance_type", details.instanceType);
+    assertEquals(region.getCode(), details.region);
+    assertEquals(zone.getCode(), details.zone);
+    assertEquals(defaultNodeName, details.nodeName);
+    assertNull(details.nodeConfigs);
   }
 }
