@@ -30,6 +30,7 @@ namespace yb::pgwrapper {
 
 class PgMiniTestBase : public MiniClusterTestWithClient<MiniCluster> {
  protected:
+  // Use TS-0 IP for PG server. YBC process and PG auto analyze service use this IP.
   constexpr static size_t kPgTsIndex = 0;
 
   // This allows modifying flags before we start the postgres process in SetUp.
@@ -85,7 +86,7 @@ class PgMiniTestBase : public MiniClusterTestWithClient<MiniCluster> {
 
   virtual void StartPgSupervisor(uint16_t pg_port, const int pg_ts_idx);
 
-  Status SetupPGCallbacksAndStartPG(uint16_t pg_port, int pg_ts_idx, bool wait_for_pg = true);
+  Status SetupPGCallbacksAndStartPG(uint16_t pg_port, size_t pg_ts_idx, bool wait_for_pg = true);
 
   Status RestartPostgres();
 
