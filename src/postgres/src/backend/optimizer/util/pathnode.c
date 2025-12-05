@@ -514,13 +514,16 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 				(yb_does_new_path_req_batch != yb_does_old_path_req_batch);
 
 			/*
-			 * YB: If CBO is on, force batch-requiring plans to not be pruned
-			 * early. Without this protection, they'd be pruned undesirably early
-			 * as these batched paths will output more rows than their
-			 * unbatched equivalents.
+			 * YB: Force batch-requiring plans to not be pruned early. Without
+			 * this protection, they'd be pruned undesirably early as these
+			 * batched paths will output more rows than their unbatched
+			 * equivalents.
 			 */
-			bool yb_should_keep_all_batched_plans = yb_has_diff_req_batch &&
-				yb_enable_base_scans_cost_model;
+			bool		yb_keep_all_batched_plans;
+
+			yb_keep_all_batched_plans = (yb_has_diff_req_batch &&
+										 (yb_enable_base_scans_cost_model ||
+										  yb_legacy_bnl_cost));
 
 			if (yb_prefer_bnl &&
 				IsA(old_path, NestPath) && IsA(new_path, NestPath))
@@ -568,7 +571,7 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 					case COSTS_EQUAL:
 						outercmp = bms_subset_compare(PATH_REQ_OUTER(new_path),
 													  PATH_REQ_OUTER(old_path));
-						if (yb_should_keep_all_batched_plans)
+						if (yb_keep_all_batched_plans)
 						{
 							outercmp = BMS_DIFFERENT;
 							if (!yb_does_new_path_req_batch)
@@ -661,7 +664,7 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 							outercmp = bms_subset_compare(PATH_REQ_OUTER(new_path),
 														  PATH_REQ_OUTER(old_path));
 
-							if (yb_should_keep_all_batched_plans)
+							if (yb_keep_all_batched_plans)
 							{
 								outercmp = BMS_DIFFERENT;
 								if (!yb_does_new_path_req_batch)
@@ -681,7 +684,7 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 							outercmp = bms_subset_compare(PATH_REQ_OUTER(new_path),
 														  PATH_REQ_OUTER(old_path));
 
-							if (yb_should_keep_all_batched_plans)
+							if (yb_keep_all_batched_plans)
 							{
 								outercmp = BMS_DIFFERENT;
 								if (!yb_does_new_path_req_batch)
