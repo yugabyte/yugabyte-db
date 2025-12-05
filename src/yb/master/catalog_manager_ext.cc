@@ -1325,7 +1325,7 @@ Result<SnapshotInfoPB> CatalogManager::GetSnapshotInfoForBackup(const TxnSnapsho
   return snapshot_info;
 }
 
-Result<std::pair<SnapshotInfoPB, std::unordered_set<TabletId>>>
+Result<CatalogManagerIf::CloneSnapshotInfo>
 CatalogManager::GenerateSnapshotInfoFromScheduleForClone(
     const SnapshotScheduleId& snapshot_schedule_id, HybridTime read_time,
     CoarseTimePoint deadline) {
@@ -1367,8 +1367,9 @@ CatalogManager::GenerateSnapshotInfoFromScheduleForClone(
   snapshot_info.mutable_entry()->clear_previous_snapshot_hybrid_time();
 
   // Set backup_entries based on what entries were running in the sys catalog as of read_time.
-  *snapshot_info.mutable_backup_entries() = VERIFY_RESULT(
+  auto backup_entries = VERIFY_RESULT(
       GetBackupEntriesAsOfTime(snapshot_id, source_ns_id, read_time));
+  *snapshot_info.mutable_backup_entries() = std::move(backup_entries.backup_entries);
   VLOG_WITH_FUNC(1) << Format("snapshot_info returned: $0", snapshot_info.ShortDebugString());
 
   // Compute the set of tablets that were running as of read_time but were not snapshotted because
@@ -1380,10 +1381,13 @@ CatalogManager::GenerateSnapshotInfoFromScheduleForClone(
       not_snapshotted_tablets.insert(backup_entry.entry().id());
     }
   }
-  return std::make_pair(std::move(snapshot_info), std::move(not_snapshotted_tablets));
+  return CatalogManagerIf::CloneSnapshotInfo{
+      std::move(snapshot_info),
+      std::move(not_snapshotted_tablets),
+      std::move(backup_entries.replication_info_and_num_tablets)};
 }
 
-Result<RepeatedPtrField<BackupRowEntryPB>> CatalogManager::GetBackupEntriesAsOfTime(
+Result<CatalogManager::BackupEntriesAndTabletLimitInfo> CatalogManager::GetBackupEntriesAsOfTime(
     const TxnSnapshotId& snapshot_id, const NamespaceId& source_ns_id, HybridTime read_time) {
   // Open a temporary on-the-side DocDB for the sys.catalog using the data files of snapshot_id and
   // read sys.catalog data as of export_time to get the list of tablets that were running at that
@@ -1483,7 +1487,7 @@ Result<RepeatedPtrField<BackupRowEntryPB>> CatalogManager::GetBackupEntriesAsOfT
         // We always clone the set of active children as of the snapshot time. If tablet splits
         // occurred between the restore time and snapshot time, this means we will have more
         // children after the clone than were present at clone time, but:
-        // 1. The children still contain the correct data because history retention is preserved
+        // 1. The children still contain the correct data because history retention is preserved.
         // 2. This allows us to clone from a snapshot instead of active rocksdb (like we do for
         //    cloning deleted tables), which is safer because it is more targeted.
         // Ignore DELETED / REPLACED tablets since they would otherwise cause partition conflicts
@@ -1500,8 +1504,17 @@ Result<RepeatedPtrField<BackupRowEntryPB>> CatalogManager::GetBackupEntriesAsOfT
       }));
   // Order SysTabletsEntries in each SysTableEntry by partition start_key as CreateTable relies on
   // the order of tablets.
-  for (auto& sys_table_entry : tables_to_tablets) {
-    sys_table_entry.second.OrderTabletsByPartitions();
+  std::vector<std::pair<ReplicationInfoPB, int>> replication_info_and_num_tablets;
+  for (auto& [table_id, table_with_tablets] : tables_to_tablets) {
+    table_with_tablets.OrderTabletsByPartitions();
+    // Populate the replication info for the tablet limit pre-checks.
+    auto table_ptr = GetTableInfo(table_id);
+    if (!table_ptr) {
+      return STATUS_FORMAT(NotFound, "Failed to get table info for table $0", table_id);
+    }
+    replication_info_and_num_tablets.push_back({
+        VERIFY_RESULT(GetTableReplicationInfo(table_ptr)),
+        table_with_tablets.tablets_entries.size()});
   }
   // Populate the backup_entries with SysTablesEntry and SysTabletsEntry.
   // Start with the colocation_parent_table_id if the database is colocated.
@@ -1516,7 +1529,8 @@ Result<RepeatedPtrField<BackupRowEntryPB>> CatalogManager::GetBackupEntriesAsOfT
   for (auto& sys_table_entry : tables_to_tablets) {
     sys_table_entry.second.AddToBackupEntries(sys_table_entry.first, backup_entries);
   }
-  return backup_entries;
+  return BackupEntriesAndTabletLimitInfo{
+      std::move(backup_entries), std::move(replication_info_and_num_tablets)};
 }
 
 Status CatalogManager::GetFullUniverseKeyRegistry(const GetFullUniverseKeyRegistryRequestPB* req,

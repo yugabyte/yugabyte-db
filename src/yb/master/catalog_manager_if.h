@@ -203,7 +203,12 @@ class CatalogManagerIf : public tserver::TabletPeerLookupIf {
   virtual Status ListSnapshotRestorations(
       const ListSnapshotRestorationsRequestPB* req, ListSnapshotRestorationsResponsePB* resp) = 0;
 
-  virtual Result<std::pair<SnapshotInfoPB, std::unordered_set<TabletId>>>
+  struct CloneSnapshotInfo {
+    SnapshotInfoPB snapshot_info;
+    std::unordered_set<TabletId> not_snapshotted_tablets;
+    std::vector<std::pair<ReplicationInfoPB, int>> replication_info_and_num_tablets;
+  };
+  virtual Result<CloneSnapshotInfo>
   GenerateSnapshotInfoFromScheduleForClone(
       const SnapshotScheduleId& snapshot_schedule_id, HybridTime export_time,
       CoarseTimePoint deadline) = 0;
