@@ -2,7 +2,8 @@
 title: Cluster balancing
 headerTitle: Cluster balancing
 linkTitle: Cluster balancing
-description: Learn about cluster balancing (load balancing) mechanisms in YugabyteDB.
+description: Learn how YugabyteDB balances data and queries across nodes
+headContent: Learn how YugabyteDB balances data and queries across nodes
 menu:
   stable:
     identifier: docdb-cluster-balancing
@@ -27,7 +28,7 @@ Many of the flags and metrics on this page refer to the cluster balancer as the 
 
 A placement policy is a specification of how data and queries should be distributed across the cluster. For example, a typical [replication factor](../../key-concepts/#replication-factor-rf) of 3 (RF-3) placement might specify that there should be one replica of each tablet in three separate regions (for example, `us-west-1a`, `us-east-2a`, and `us-central-1a`), with leader preference towards `us-west-1a`.
 
-The default placement policy is automatically inferred when a cluster is created, but you can change it at the cluster-level using [yb-admin](../../../admin/yb-admin/), or overridde it on a per-table basis using [tablespaces](../../../explore/going-beyond-sql/tablespaces/) (for YSQL clusters).
+The default placement policy is automatically inferred when a cluster is created, but you can change it at the cluster-level using [yb-admin](../../../admin/yb-admin/), or override it on a per-table basis using [tablespaces](../../../explore/going-beyond-sql/tablespaces/) (for YSQL clusters).
 
 ### Remote bootstrap
 
@@ -62,7 +63,7 @@ Blacklisting is performed automatically by YugabyteDB Anywhere and YugabyteDB Ae
 
 On an unplanned node outage, cluster balancing occurs twice: first when the node goes down, and again if the node recovers.
 
-When a node goes down, the cluster balancer sutomatically transfers tablet leadership to healthy nodes. This happens in 3 seconds or less.
+When a node goes down, the cluster balancer automatically transfers tablet leadership to healthy nodes. This happens in 3 seconds or less.
 
 If the node stays down for a predetermined length of time (15 minutes by default, as set using the [follower_unavailable_considered_failed_sec](../../../reference/configuration/yb-tserver/#follower-unavailable-considered-failed-sec) flag) the cluster balancer starts creating new replicas of the data that was on the failed node on other nodes in the same region (if any exist).
 
@@ -118,7 +119,7 @@ This view is available in YugabyteDB {{<release "2024.2.6">}} and later, and {{<
 
 The Cluster Balancer view displays the following information:
 
-- Ongoing cluster balancing tasks (for example, tablet leadership movement, tablets being added or removed).
+- Ongoing cluster balancing tasks (for example, moving tablet leaders, and tablets being added or removed).
 - Any warnings during cluster balancing. For example, if a placement policy cannot be satisfied because there are no TServers in the requested zone.
 - Ongoing remote bootstraps from one tablet server to another, including the speed of data transfer.
 
