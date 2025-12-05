@@ -6137,9 +6137,15 @@ bool DBImpl::NeedsDelay() {
   return write_controller_.NeedsDelay();
 }
 
-Result<std::string> DBImpl::GetMiddleKey() {
+Result<std::string> DBImpl::GetMiddleKey(Slice lower_bound_key) {
   InstrumentedMutexLock lock(&mutex_);
-  return default_cf_handle_->cfd()->current()->GetMiddleKey();
+  if (!lower_bound_key.empty()) {
+    auto lower_bound_internal_key = InternalKey::MinPossibleForUserKey(lower_bound_key);
+    return default_cf_handle_->cfd()->current()->GetMiddleKey(lower_bound_internal_key.Encode());
+  }
+  // Use an empty (invalid) internal key to get the middle key without a lower bound.
+  const Slice kEmptyInternalKey;
+  return default_cf_handle_->cfd()->current()->GetMiddleKey(kEmptyInternalKey);
 }
 
 yb::Result<TableReader*> DBImpl::TEST_GetLargestSstTableReader() {

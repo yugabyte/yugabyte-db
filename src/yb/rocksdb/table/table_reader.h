@@ -128,9 +128,9 @@ class TableReader {
     return STATUS(NotSupported, "DumpTable() not supported");
   }
 
-  // Returns approximate middle key which divides SST file into two parts containing roughly the
-  // same amount of keys.
-  virtual yb::Result<std::string> GetMiddleKey() {
+  // Returns approximate middle key that divides the SST file, starting from the lower bound key,
+  // into two parts containing roughly the same number of keys.
+  virtual yb::Result<std::string> GetMiddleKey(Slice lower_bound_key) {
     return STATUS(NotSupported, "GetMiddleKey() not supported");
   }
 };
