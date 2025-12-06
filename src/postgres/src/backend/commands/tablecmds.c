@@ -5641,10 +5641,6 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode,
 		}
 	}
 
-	/* YugaByte doesn't support toast tables. */
-	if (IsYugaByteEnabled())
-		return;
-
 	/* Check to see if a toast table must be added. */
 	foreach(ltab, *wqueue)
 	{
@@ -5654,6 +5650,8 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode,
 		 * If the table is source table of ATTACH PARTITION command, we did
 		 * not modify anything about it that will change its toasting
 		 * requirement, so no need to check.
+		 * YB: AlterTableCreateToastTable knows to only work on temp tables,
+		 * so we can run through this always.
 		 */
 		if (((tab->relkind == RELKIND_RELATION ||
 			  tab->relkind == RELKIND_PARTITIONED_TABLE) &&
@@ -9278,6 +9276,11 @@ ATExecSetStorage(Relation rel, const char *colName, Node *newValue, LOCKMODE loc
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("column data type %s can only have storage PLAIN",
 						format_type_be(attrtuple->atttypid))));
+
+
+	if (IsYBRelation(rel))
+		ereport(NOTICE,
+				(errmsg("ALTER action ALTER COLUMN ... SET STORAGE has no effect on YB tables")));
 
 	CatalogTupleUpdate(attrelation, &tuple->t_self, tuple);
 

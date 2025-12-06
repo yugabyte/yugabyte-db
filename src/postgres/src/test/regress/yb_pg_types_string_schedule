@@ -23,3 +23,5 @@ test: yb.port.tsdicts
 
 # TODO(neil) Must build postgres with --with-libxml
 # test: yb.port.xml
+
+test: yb.port.compression
