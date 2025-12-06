@@ -25,6 +25,8 @@ YugabyteDB Anywhere provides preconfigured alerts to notify you of potential pro
 
 Use the Live Queries and Slow Queries dashboards to monitor and display current running queries and analyze statistics of past queries on your YugabyteDB universes.
 
+Integrate with third-party tools such as Datadog, Dynatrace, and Splunk to export database metrics and audit logs for analysis.
+
 {{<index/block>}}
 
   {{<index/item
@@ -37,31 +39,31 @@ Use the Live Queries and Slow Queries dashboards to monitor and display current 
     title="Performance metrics"
     body="View universe performance metrics."
     href="anywhere-metrics/"
-    icon="/images/section_icons/explore/high_performance.png">}}
+    icon="fa-thin fa-chart">}}
 
   {{<index/item
     title="Live queries dashboard"
-    body="Monitor and display current running queries on your YugabyteDB universes."
+    body="Monitor and display current running queries."
     href="live-queries-dashboard/"
-    icon="/images/section_icons/explore/monitoring.png">}}
+    icon="fa-thin fa-gauge-circle-bolt">}}
 
   {{<index/item
     title="Slow queries dashboard"
-    body="Analyze statistics and execution times of past queries on your YugabyteDB universes."
+    body="Analyze statistics and execution times of past queries."
     href="slow-queries-dashboard/"
-    icon="/images/section_icons/explore/monitoring.png">}}
+    icon="fa-thin fa-turtle">}}
 
   {{<index/item
     title="Performance advisor"
     body="Scan your database for potential optimizations."
     href="performance-advisor/"
-    icon="/images/section_icons/manage/diagnostics.png">}}
+    icon="fa-thin fa-user-robot">}}
 
   {{<index/item
     title="Latency histogram and P99 latencies"
-    body="Use the Slow Queries dashboard to view latency histogram and P99 latency metrics."
+    body="View latency histogram and P99 latency metrics."
     href="latency-histogram/"
-    icon="/images/section_icons/introduction/benefits.png">}}
+    icon="fa-thin fa-chart-simple">}}
 
   {{<index/item
     title="CDC observability"
@@ -70,21 +72,15 @@ Use the Live Queries and Slow Queries dashboards to monitor and display current 
     icon="fa-regular fa-arrows-spin">}}
 
   {{<index/item
-    title="Export YSQL audit logs"
-    body="Export universe audit logs to third-party logging tools."
-    href="universe-logging/"
-    icon="/images/section_icons/explore/monitoring.png">}}
-
-  {{<index/item
-    title="Create export configurations"
-    body="Configure telemetry providers."
+    title="Export metrics and logs"
+    body="Export audit logs and node-level metrics to third-party tools."
     href="anywhere-export-configuration/"
-    icon="/images/section_icons/explore/monitoring.png">}}
+    icon="fa-thin fa-chart-pie">}}
 
   {{<index/item
     title="Custom Prometheus"
     body="Use your own Prometheus server to scrape metrics."
     href="prometheus-custom/"
-    icon="/images/section_icons/introduction/benefits.png">}}
+    icon="fa-thin fa-fire">}}
 
 {{</index/block>}}

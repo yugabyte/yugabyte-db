@@ -84,11 +84,11 @@ When finished, the following three files have created in the project directory, 
 
 ## 2. Start the Prisma server
 
-To start the Prisma server (in the Docker container) and launch the connected YugabyteDB database, navigate to the `prisma-yb` directory and then run the `docker-compose` command:
+To start the Prisma server (in the Docker container) and launch the connected YugabyteDB database, navigate to the `prisma-yb` directory and then run the `docker compose` command:
 
 ```sh
 cd prisma-yb
-docker-compose up -d
+docker compose up -d
 ```
 
 You should now have a `prismagraphql/prisma` container running. You can check that by running `docker ps`.
