@@ -5,7 +5,7 @@ linkTitle: YSQL Connection Manager
 description: Built-in server-side connection pooler for YSQL
 headcontent: Built-in server-side connection pooler for YSQL
 menu:
-  stable:
+  v2024.2:
     identifier: connection-manager
     parent: additional-features
     weight: 10
