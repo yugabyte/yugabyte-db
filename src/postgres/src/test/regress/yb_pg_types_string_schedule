@@ -20,3 +20,5 @@ test: yb.port.collate.icu.utf8
 
 test: yb.port.tsearch
 test: yb.port.tsdicts
+
+test: yb.port.compression
