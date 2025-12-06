@@ -33,7 +33,7 @@ For information on configuring alerts, health checks, and diagnostics reporting 
   {{<index/item
     title="Back up and restore YugabyteDB Anywhere"
     body="Back up and restore the YugabyteDB Anywhere server."
-    href="back-up-restore-yp/"
+    href="back-up-restore-yba/"
     icon="fa-thin fa-arrow-down-to-bracket">}}
 
   {{<index/item
