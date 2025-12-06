@@ -848,7 +848,7 @@ TEST_F(PgObjectLocksTest, VerifyLockTimeout) {
   // Verify the lock attempt fails with lock timeout error.
   Status result = conn2_lock_future.get();
   ASSERT_NOK(result);
-  ASSERT_STR_CONTAINS(result.ToString(), "Timed out");
+  ASSERT_STR_CONTAINS(result.ToString(), "canceling statement due to lock timeout");
 
   // Conn1 should still be able to commit
   ASSERT_OK(conn1.CommitTransaction());
