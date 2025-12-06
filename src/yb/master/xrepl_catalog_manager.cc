@@ -2991,7 +2991,7 @@ Status CatalogManager::CleanupXReplStreamFromMaps(CDCStreamInfoPtr stream) {
 
 Status CatalogManager::GetCDCStream(
     const GetCDCStreamRequestPB* req, GetCDCStreamResponsePB* resp, rpc::RpcContext* rpc) {
-  LOG(INFO) << "GetCDCStream from " << RequestorString(rpc) << ": " << req->DebugString();
+  VLOG(2) << "GetCDCStream from " << RequestorString(rpc) << ": " << req->DebugString();
 
   if (!req->has_stream_id() && !req->has_cdcsdk_ysql_replication_slot_name()) {
     return STATUS(

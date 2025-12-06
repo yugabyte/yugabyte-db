@@ -635,7 +635,7 @@ void Reactor::ScanIdleConnections() {
     if (connection_delta > connection_keepalive_time_) {
       conn->Shutdown(STATUS_FORMAT(
           NetworkError, "Connection timed out after $0", ToSeconds(connection_delta)));
-      LOG_WITH_PREFIX(INFO)
+      VLOG(2)
           << "DEBUG: Closing idle connection: " << conn->ToString()
           << " - it has been idle for " << ToSeconds(connection_delta) << "s";
       VLOG(1) << "(delta: " << ToSeconds(connection_delta)

@@ -2150,7 +2150,7 @@ Result<FileNumbersHolder> DBImpl::FlushMemTableToOutputFile(
       *made_progress = 1;
     }
     VersionStorageInfo::LevelSummaryStorage tmp;
-    YB_LOG_EVERY_N_SECS(INFO, 1)
+    YB_LOG_EVERY_N_SECS(INFO, 10)
         << "[" << cfd->GetName() << "] Level summary: "
         << cfd->current()->storage_info()->LevelSummary(&tmp);
   }

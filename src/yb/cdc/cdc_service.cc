@@ -4768,8 +4768,7 @@ void CDCServiceImpl::RemoveXReplTabletMetrics(
   }
   auto tablet = tablet_peer->shared_tablet();
   if (tablet == nullptr) {
-    YB_LOG_EVERY_N_SECS_OR_VLOG(WARNING, 300, 4)
-        << "Could not find tablet for tablet peer: " << tablet_peer->tablet_id();
+    VLOG_WITH_FUNC(2) << "Could not find tablet for tablet peer: " << tablet_peer->tablet_id();
     return;
   }
 
