@@ -314,37 +314,32 @@ COMMENT ON CONSTRAINT ctlt1_a_check ON ctlt1 IS 't1_a_check';
 COMMENT ON INDEX ctlt1_pkey IS 'index pkey';
 COMMENT ON INDEX ctlt1_b_key IS 'index b_key';
 ALTER TABLE ctlt1 ALTER COLUMN a SET STORAGE MAIN;
-ERROR:  ALTER action ALTER COLUMN ... SET STORAGE not supported yet
-LINE 1: ALTER TABLE ctlt1 ALTER COLUMN a SET STORAGE MAIN;
-                          ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
+NOTICE:  ALTER action ALTER COLUMN ... SET STORAGE has no effect on YB tables
 -- Uncomment the following when ALTER COLUMN is supported (#1200)
 CREATE TABLE ctlt2 (c text);
-/* YB: set STORAGE is not suported #1200
 ALTER TABLE ctlt2 ALTER COLUMN c SET STORAGE EXTERNAL;
-*/ -- YB
+NOTICE:  ALTER action ALTER COLUMN ... SET STORAGE has no effect on YB tables
 COMMENT ON COLUMN ctlt2.c IS 'C';
 CREATE TABLE ctlt3 (a text CHECK (length(a) < 5), c text CHECK (length(c) < 7));
-/* YB: set STORAGE is not suported #1200
 ALTER TABLE ctlt3 ALTER COLUMN c SET STORAGE EXTERNAL;
+NOTICE:  ALTER action ALTER COLUMN ... SET STORAGE has no effect on YB tables
 ALTER TABLE ctlt3 ALTER COLUMN a SET STORAGE MAIN;
-*/ -- YB
+NOTICE:  ALTER action ALTER COLUMN ... SET STORAGE has no effect on YB tables
 CREATE INDEX ctlt3_fnidx ON ctlt3 ((a || c));
 COMMENT ON COLUMN ctlt3.a IS 'A3';
 COMMENT ON COLUMN ctlt3.c IS 'C';
 COMMENT ON CONSTRAINT ctlt3_a_check ON ctlt3 IS 't3_a_check';
 CREATE TABLE ctlt4 (a text, c text);
-/* YB: set STORAGE is not suported #1200
 ALTER TABLE ctlt4 ALTER COLUMN c SET STORAGE EXTERNAL;
-*/ -- YB
+NOTICE:  ALTER action ALTER COLUMN ... SET STORAGE has no effect on YB tables
 CREATE TABLE ctlt12_storage (LIKE ctlt1 INCLUDING STORAGE, LIKE ctlt2 INCLUDING STORAGE);
 \d+ ctlt12_storage
                              Table "public.ctlt12_storage"
  Column | Type | Collation | Nullable | Default | Storage  | Stats target | Description 
 --------+------+-----------+----------+---------+----------+--------------+-------------
- a      | text |           | not null |         | extended |              | 
+ a      | text |           | not null |         | main     |              | 
  b      | text |           |          |         | extended |              | 
- c      | text |           |          |         | extended |              | 
+ c      | text |           |          |         | external |              | 
 
 CREATE TABLE ctlt12_comments (LIKE ctlt1 INCLUDING COMMENTS, LIKE ctlt2 INCLUDING COMMENTS);
 \d+ ctlt12_comments
@@ -363,7 +358,7 @@ NOTICE:  merging constraint "ctlt1_a_check" with inherited definition
                                 Table "public.ctlt1_inh"
  Column | Type | Collation | Nullable | Default | Storage  | Stats target | Description 
 --------+------+-----------+----------+---------+----------+--------------+-------------
- a      | text |           | not null |         | extended |              | A
+ a      | text |           | not null |         | main     |              | A
  b      | text |           |          |         | extended |              | B
 Check constraints:
     "ctlt1_a_check" CHECK (length(a) > 2)
@@ -381,9 +376,9 @@ NOTICE:  merging multiple inherited definitions of column "a"
                                Table "public.ctlt13_inh"
  Column | Type | Collation | Nullable | Default | Storage  | Stats target | Description 
 --------+------+-----------+----------+---------+----------+--------------+-------------
- a      | text |           | not null |         | extended |              | 
+ a      | text |           | not null |         | main     |              | 
  b      | text |           |          |         | extended |              | 
- c      | text |           |          |         | extended |              | 
+ c      | text |           |          |         | external |              | 
 Check constraints:
     "ctlt1_a_check" CHECK (length(a) > 2)
     "ctlt3_a_check" CHECK (length(a) < 5)
@@ -397,9 +392,9 @@ NOTICE:  merging column "a" with inherited definition
                                Table "public.ctlt13_like"
  Column | Type | Collation | Nullable | Default | Storage  | Stats target | Description 
 --------+------+-----------+----------+---------+----------+--------------+-------------
- a      | text |           | not null |         | extended |              | A3
+ a      | text |           | not null |         | main     |              | A3
  b      | text |           |          |         | extended |              | 
- c      | text |           |          |         | extended |              | C
+ c      | text |           |          |         | external |              | C
 Indexes:
     "ctlt13_like_expr_idx" lsm ((a || c) ASC)
 Check constraints:
@@ -419,7 +414,7 @@ CREATE TABLE ctlt_all (LIKE ctlt1 INCLUDING ALL);
                                 Table "public.ctlt_all"
  Column | Type | Collation | Nullable | Default | Storage  | Stats target | Description 
 --------+------+-----------+----------+---------+----------+--------------+-------------
- a      | text |           | not null |         | extended |              | A
+ a      | text |           | not null |         | main     |              | A
  b      | text |           |          |         | extended |              | B
 Indexes:
     "ctlt_all_pkey" PRIMARY KEY, lsm (a ASC)
@@ -447,15 +442,19 @@ SELECT s.stxname, objsubid, description FROM pg_description, pg_statistic_ext s 
 
 CREATE TABLE inh_error1 () INHERITS (ctlt1, ctlt4);
 NOTICE:  merging multiple inherited definitions of column "a"
+ERROR:  inherited column "a" has a storage parameter conflict
+DETAIL:  MAIN versus EXTENDED
 CREATE TABLE inh_error2 (LIKE ctlt4 INCLUDING STORAGE) INHERITS (ctlt1);
 NOTICE:  merging column "a" with inherited definition
+ERROR:  column "a" has a storage parameter conflict
+DETAIL:  MAIN versus EXTENDED
 -- Check that LIKE isn't confused by a system catalog of the same name
 CREATE TABLE pg_attrdef (LIKE ctlt1 INCLUDING ALL);
 \d+ public.pg_attrdef
                                Table "public.pg_attrdef"
  Column | Type | Collation | Nullable | Default | Storage  | Stats target | Description 
 --------+------+-----------+----------+---------+----------+--------------+-------------
- a      | text |           | not null |         | extended |              | A
+ a      | text |           | not null |         | main     |              | A
  b      | text |           |          |         | extended |              | B
 Indexes:
     "pg_attrdef_pkey" PRIMARY KEY, lsm (a ASC)
@@ -479,7 +478,7 @@ CREATE TABLE ctlt1 (LIKE ctlt1 INCLUDING ALL);
                                 Table "ctl_schema.ctlt1"
  Column | Type | Collation | Nullable | Default | Storage  | Stats target | Description 
 --------+------+-----------+----------+---------+----------+--------------+-------------
- a      | text |           | not null |         | extended |              | A
+ a      | text |           | not null |         | main     |              | A
  b      | text |           |          |         | extended |              | B
 Indexes:
     "ctlt1_pkey" PRIMARY KEY, lsm (a ASC)
@@ -495,9 +494,7 @@ Statistics objects:
 ROLLBACK; 
 */ -- YB
 DROP TABLE ctlt1, ctlt2, ctlt3, ctlt4, ctlt12_storage, ctlt12_comments, ctlt1_inh, ctlt13_inh, ctlt13_like, ctlt_all, ctla, ctlb CASCADE;
-NOTICE:  drop cascades to 2 other objects
-DETAIL:  drop cascades to table inh_error1
-drop cascades to table inhe
+NOTICE:  drop cascades to table inhe
 SET search_path = public; /* YB: DDL rollback is not supported, restore search path */
 -- LIKE must respect NO INHERIT property of constraints
 CREATE TABLE noinh_con_copy (a int CHECK (a > 0) NO INHERIT);

@@ -1803,10 +1803,7 @@ insert into toasttest values(repeat('1234567890',10000));
 -- operation used in that case
 --
 alter table toasttest alter column f1 set storage external;
-ERROR:  ALTER action ALTER COLUMN ... SET STORAGE not supported yet
-LINE 1: alter table toasttest alter column f1 set storage external;
-                              ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
+NOTICE:  ALTER action ALTER COLUMN ... SET STORAGE has no effect on YB tables
 insert into toasttest values(repeat('1234567890',10000));
 insert into toasttest values(repeat('1234567890',10000));
 -- If the starting position is zero or less, then return from the start of the string
@@ -1885,10 +1882,7 @@ insert into toasttest values(decode(repeat('1234567890',10000),'escape'));
 -- operation used in that case
 --
 alter table toasttest alter column f1 set storage external;
-ERROR:  ALTER action ALTER COLUMN ... SET STORAGE not supported yet
-LINE 1: alter table toasttest alter column f1 set storage external;
-                              ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
+NOTICE:  ALTER action ALTER COLUMN ... SET STORAGE has no effect on YB tables
 insert into toasttest values(decode(repeat('1234567890',10000),'escape'));
 insert into toasttest values(decode(repeat('1234567890',10000),'escape'));
 -- If the starting position is zero or less, then return from the start of the string

@@ -1773,6 +1773,8 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 				break;
 			}
 
+		case AT_SetStorage:
+			yb_switch_fallthrough();
 		case AT_SetLogged:
 			yb_switch_fallthrough();
 		case AT_SetUnLogged:
