@@ -3565,6 +3565,20 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_ignore_bool_cond_for_legacy_estimate", PGC_USERSET, COMPAT_OPTIONS_PREVIOUS,
+			gettext_noop("Ignore boolean condition for row count estimate in legacy cost model."),
+			gettext_noop("Negates the side effect on legacy mode row count "
+						 "estimate introduced by the fix \"[#26266] YSQL: Add "
+						 "BOOL_LSM_FAM_OID to boolean family\" for backward "
+						 "compatibility"),
+			GUC_EXPLAIN
+		},
+		&yb_ignore_bool_cond_for_legacy_estimate,
+		false,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL

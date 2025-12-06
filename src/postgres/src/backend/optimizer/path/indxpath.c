@@ -961,16 +961,25 @@ get_join_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	/* We should have found something, else caller passed silly relids */
 	Assert(clauseset.nonempty);
 
+	/* Build index path(s) using the collected set of clauses */
+
 	/*
 	 * YB: We collect batched paths first to prioritize them in the path queue.
+	 * In the legacy bnl mode, we even don't create unbatched paths.
 	 */
+	bool yb_batched_paths_exist = false;
 	if (yb_bnl_batch_size > 1)
-		yb_get_batched_index_paths(root, rel, index, &clauseset,
-								   bitindexpaths);
+	{
+		yb_batched_paths_exist = yb_get_batched_index_paths(root, rel, index,
+															&clauseset,
+															bitindexpaths);
+	}
 
-	/* Build index path(s) using the collected set of clauses */
-	get_index_paths(root, rel, index, &clauseset,
-					NIL /* yb_bitmap_idx_pushdowns */ , bitindexpaths);
+	if (!yb_legacy_bnl_cost || !yb_batched_paths_exist)
+	{
+		get_index_paths(root, rel, index, &clauseset,
+						NIL /* yb_bitmap_idx_pushdowns */ , bitindexpaths);
+	}
 
 	/*
 	 * Remember we considered paths for this set of relids.
@@ -2538,7 +2547,7 @@ get_loop_count(PlannerInfo *root, Index cur_relid, Relids outer_relids)
 	}
 
 	if (!bms_is_empty(root->yb_cur_batched_relids) &&
-		yb_enable_base_scans_cost_model)
+		(yb_enable_base_scans_cost_model || yb_legacy_bnl_cost))
 		result /= yb_bnl_batch_size;
 
 	/* Return 1.0 if we found no valid relations (shouldn't happen) */

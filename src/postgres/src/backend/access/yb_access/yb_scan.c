@@ -3770,7 +3770,15 @@ yb_is_hashed(Expr *clause, IndexOptInfo *index)
 	return is_hashed;
 }
 
-
+/*
+ * Compute index access portion of IndexScan/IndexOnlyScan node.
+ *   - Table row fetch costs are added by cost_index().
+ *   - When yb_enable_optimizer_statistics is false, this function also updates
+ *     baserel->rows if the current index qual is more selective than the ones
+ *     seen so far.  i.e.: the table cardinality is determined by the most
+ *     selective index qual regardless of the access path that is eventually
+ *     chosen.
+ */
 void
 ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 					 Selectivity *selectivity, Cost *startup_cost,
@@ -3864,8 +3872,18 @@ ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 				OpExpr	   *op = (OpExpr *) clause;
 				Oid			clause_op = op->opno;
 				Node	   *other_operand = (Node *) lsecond(op->args);
+				Oid			opfamily = path->indexinfo->opfamily[indexcol];
 
-				if (OidIsValid(clause_op))
+				/*
+				 * If specified, skip boolean index qual to avoid the row count
+				 * estimate change, a side effect introduced by the fix for
+				 * https://github.com/yugabyte/yugabyte-db/issues/26266
+				 * for backward compatibility.  See the function header
+				 * comment and around the lines updating baserel->rows, too.
+				 */
+				if (OidIsValid(clause_op) &&
+					(!yb_ignore_bool_cond_for_legacy_estimate ||
+					 !IsBooleanOpfamily(opfamily)))
 				{
 					ybcAddAttributeColumn(&scan_plan, attnum);
 					if (other_operand && IsA(other_operand, Const))
