@@ -1058,15 +1058,13 @@ Default: `true`
 
 ## Auto Analyze service flags
 
-{{<tags/feature/ea idea="590">}}To learn about the Auto Analyze service, see [Auto Analyze service](../../../additional-features/auto-analyze).
+To learn about the Auto Analyze service, see [Auto Analyze service](../../../additional-features/auto-analyze).
 
-See also [Auto Analyze Service TServer flags](../yb-tserver/#auto-analyze-service-flags).
+Auto analyze is automatically enabled when the [cost-based optimizer](../../../architecture/query-layer/planner-optimizer/) (CBO) is enabled by setting the [yb_enable_cbo](../tb-tserver/#yb_enable_cbo) flag to `on`.
 
-##### ysql_enable_auto_analyze_service
+##### ysql_enable_auto_analyze_service (deprecated)
 
-{{<tags/feature/ea idea="590">}}Enable the Auto Analyze service, which automatically runs ANALYZE to update table statistics for tables that have changed more than a configurable threshold.
-
-Default: false
+Use [ysql_enable_auto_analyze](../yb-tserver#ysql_enable_auto_analyze) on yb-tservers instead.
 
 ## Advisory lock flags
 
