@@ -77,7 +77,7 @@ How does YugabyteDB prevent this clock skew anomaly?
 
 You can handle and mitigate read restart errors using the following techniques:
 
-- {{<tags/feature/tp idea="1807">}} Configure [highly accurate clocks](../../../deploy/manual-deployment/system-config#set-up-time-synchronization).
+- {{<tags/feature/ea idea="1807">}} Configure [highly accurate clocks](../../../deploy/manual-deployment/system-config#set-up-time-synchronization).
 - Implement retry logic in the application. Application retries can help mitigate read restart errors. Moreover, a statement or a transaction may fail in other ways such as transaction conflicts or infrastructure failures. Therefore, a retry mechanism is strongly recommended for a cloud-native, distributed database such as YugabyteDB.
 
   While implementing application retries is the best long-term approach, there are a few short-term solutions you can use in the interim.

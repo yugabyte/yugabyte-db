@@ -3,8 +3,6 @@ title: pg_partman extension
 headerTitle: Partition manager extension
 linkTitle: pg_partman
 description: Using the pg_partman extension in YugabyteDB
-tags:
-  feature: early-access
 menu:
   stable:
     identifier: extension-pgpartman
