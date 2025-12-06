@@ -418,7 +418,7 @@ FATAL[2023-04-25T00:14:57Z] createBackup must be run from the installed yba-ctl
 
 ## Non-sudo installation
 
-{{<tags/feature/ea>}}YBA Installer supports non-sudo installation, where sudo access is not required for any step of the installation.
+YBA Installer supports non-sudo installation, where sudo access is not required for any step of the installation.
 
 To facilitate a non-sudo install, YBA Installer will not create any additional users or set up services in systemd. The target location for the installation defaults to the current user's home directory, instead of `/opt`, ensuring YBA Installer has write access to the base install directory. User-level systemd is used to manage services.
 

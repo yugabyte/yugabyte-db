@@ -50,13 +50,11 @@ Encryption at rest uses a master key to encrypt and decrypt universe keys. The m
 
 Encryption at rest in YugabyteDB Anywhere supports the use of [CipherTrust KMS](https://thalesdocs.com/ctp/cm/latest/).
 
-{{<tags/feature/ea idea="1227">}}CipherTrust support is Early Access. To enable the feature in YugabyteDB Anywhere, set the **Allow CipherTrust KMS** Global Runtime Configuration option (config key `yb.kms.allow_ciphertrust`) to true. Refer to [Manage runtime configuration settings](../../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings.
-
 ## CipherTrust Manager prerequisites
 
 You must have a running CipherTrust Manager installation, and it must be accessible to YugabyteDB Anywhere.
 
-To create a KMS configuration, you need either the credenials of a CipherTrust user, or an authentication token.
+To create a KMS configuration, you need either the credentials of a CipherTrust user, or an authentication token.
 
 - You can use a normal local user, or an LDAP-based user.
 
@@ -64,7 +62,7 @@ To create a KMS configuration, you need either the credenials of a CipherTrust u
   - Read
   - Use
   - Encrypt
-  - Decypt
+  - Decrypt
 
   For more information on managing users, refer to the [CipherTrust Administration](https://thalesdocs.com/ctp/cm/latest/admin/cm_admin/authentication/users/index.html) documentation.
 
@@ -97,7 +95,7 @@ You can create a KMS configuration that uses CipherTrust, as follows:
     - **Key Algorithm** — Choose the encryption algorithm to use to create a new key.
     - **Key Size** — Choose the key size for a new key.
 
-    ![Ciphertrust KMS](/images/yp/security/kms-ciphertrust-config.png)
+    ![CipherTrust KMS](/images/yp/security/kms-ciphertrust-config.png)
 
 1. Click **Save**.
 
