@@ -114,14 +114,16 @@ static bool destroy_tablespace_directories(Oid tablespaceoid, bool redo);
  * "zone" and "min_number_of_replicas".
  */
 void
-validatePlacementConfiguration(const char *value)
+validatePlacementConfigurations(const char *live_placement,
+								const char *read_replica_placement)
 {
 	/*
 	 * Do not validate that the current set of tservers can satisfy the placement
 	 * because some users add tservers after creating a tablespace (but
 	 * before creating any associated table).
 	 */
-	YBCValidatePlacement(value, /* check_satisfiable */ false);
+	YBCValidatePlacements(live_placement, read_replica_placement,
+						  /* check_satisfiable */ false);
 }
 
 /*

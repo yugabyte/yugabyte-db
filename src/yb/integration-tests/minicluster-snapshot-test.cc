@@ -1326,9 +1326,10 @@ TEST_F(PgCloneTest, PreventConnectionsUntilCloneSuccessful) {
 
 TEST_F(PgCloneTest, Tablespaces) {
   const auto kTablespaceName = "test_tablespace";
+  // With (index_ + 1) / FLAGS_TEST_nodes_per_cloud formula, ts-0 (index_=1) is in cloud1.region1
   ASSERT_OK(source_conn_->ExecuteFormat(
       "CREATE TABLESPACE $0 WITH (replica_placement='{\"num_replicas\": 1, \"placement_blocks\": "
-      "[{\"cloud\":\"cloud1\",\"region\":\"rack1\",\"zone\":\"zone\","
+      "[{\"cloud\":\"cloud1\",\"region\":\"region1\",\"zone\":\"zone\","
       "\"min_num_replicas\":1}]}')", kTablespaceName));
   auto* catalog_mgr = cluster_->mini_master()->master()->catalog_manager();
 
