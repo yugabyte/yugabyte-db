@@ -62,7 +62,19 @@ To upgrade YugabyteDB to a version based on a different version of PostgreSQL (f
   - If you have PITR enabled, you must disable it before performing an upgrade. Re-enable it only after the upgrade is either finalized or rolled back.
   - After the upgrade, PITR cannot be done to a time before the upgrade.
 
-- For more information, refer to [Upgrade FAQ](/stable/faq/operations-faq/#upgrade).
+- YSQL
+
+  - For additional information on upgrading universes that have Enhanced PostgreSQL Compatibility Mode, refer to [Enhanced PostgreSQL Compatibility Mode](../../reference/configuration/postgresql-compatibility/).
+
+  - For information on upgrading or enabling cost-based optimizer, refer to [Enable cost-based optimizer](../../best-practices-operations/ysql-yb-enable-cbo/).
+
+    If you upgrade to v2025.2 and the universe already has cost-based optimizer enabled, the following features are enabled by default:
+
+    - Auto Analyze (ysql_enable_auto_analyze=true)
+    - YugabyteDB bitmap scan (yb_enable_bitmapscan=true)
+    - Parallel query (yb_enable_parallel_append=true)
+
+For more information, refer to [Upgrade FAQ](/stable/faq/operations-faq/#upgrade).
 
 ## Upgrade YugabyteDB cluster
 
