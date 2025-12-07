@@ -4346,6 +4346,30 @@ TEST_F_EX(PgLibPqTest, PgEnumPreloadMinPreloadTest, BasePgEnumPreloadMinimalPrel
   RunTest(false /* preloaded */);
 }
 
+// Test that negative caching works correctly when ysql_minimal_catalog_caches_preload=true.
+TEST_F_EX(PgLibPqTest, PgEnumMinPreloadNegativeCaching, BasePgEnumPreloadMinimalPreloadTest) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  // Create a user-defined enum type.
+  ASSERT_OK(conn.Execute(
+      "CREATE TYPE user_color AS ENUM ('red', 'green', 'blue');"
+      "CREATE TABLE user_enum_table (c user_color);"
+    ));
+
+  auto conn2 = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn2.Execute("SET yb_neg_catcache_ids='23,24'"));
+  ASSERT_OK(conn2.Execute("INSERT INTO user_enum_table VALUES ('red')"));
+
+  auto result = ASSERT_RESULT(conn2.FetchRow<std::string>(
+      "SELECT c::text FROM user_enum_table"));
+  ASSERT_EQ(result, "red");
+
+  auto cast_result = ASSERT_RESULT(conn2.FetchRow<std::string>(
+      "SELECT 'green'::user_color::text"));
+  ASSERT_EQ(cast_result, "green");
+}
+
 class PgLibPqCreateSequenceNamespaceRaceTest : public PgLibPqTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_tserver_flags.push_back(
