@@ -3145,6 +3145,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
     // The table info objects of the tables affected by this rollback to sub-transaction operation.
     std::vector<TableInfoPtr> tables;
+    // Set of index tables whose deletion due to rollback to sub-transaction operation was skipped
+    // since its base table.
+    std::unordered_set<TableId> indexes_skipped_due_to_base_table_deletion;
   };
 
   // This map stores the transaction ids of all the DDL transactions undergoing verification.
