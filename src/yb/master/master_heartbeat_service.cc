@@ -922,7 +922,7 @@ Status MasterHeartbeatServiceImpl::ProcessTabletReportBatch(
     } else if (full_report.is_incremental() &&
         (report.state() == tablet::NOT_STARTED || report.state() == tablet::BOOTSTRAPPING)) {
       // When a tablet server is restarted, it sends a full tablet report with all of its tablets
-      // in the NOT_STARTED state, so this would make the load balancer think that all the
+      // in the NOT_STARTED state, so this would make the cluster balancer think that all the
       // tablets are being remote bootstrapped at once, so only process incremental reports here.
       UpdateTabletReplicaInLocalMemory(ts_desc, nullptr /* consensus */, report, tablet);
     }

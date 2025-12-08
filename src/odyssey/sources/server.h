@@ -120,7 +120,7 @@ static inline void od_server_init(od_server_t *server, int reserve_prep_stmts)
 
 	kiwi_key_init(&server->key);
 	kiwi_key_init(&server->key_client);
-	kiwi_vars_init(&server->vars);
+	kiwi_vars_init(&server->vars, true);
 
 	od_io_init(&server->io);
 	od_relay_init(&server->relay, &server->io);

@@ -44,6 +44,7 @@
 
 #include "yb/gutil/macros.h"
 #include "yb/tablet/tablet_fwd.h"
+#include "yb/tablet/tablet_types.pb.h"
 #include "yb/tserver/tablet_server_options.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status_fwd.h"
@@ -109,6 +110,13 @@ class MiniTabletServer {
   Status WaitStarted();
 
   void Shutdown();
+
+  // Deletes the specified tablet directly through the tablet manager.
+  // delete_state: should be either TABLET_DATA_DELETED or TABLET_DATA_TOMBSTONED.
+  // keep_on_disk: whether to keep data on disk.
+  Status DeleteTablet(
+      const TabletId& tablet_id, tablet::TabletDataState delete_state, bool keep_on_disk = false);
+
   Status FlushTablets(
       tablet::FlushMode mode = tablet::FlushMode::kSync,
       tablet::FlushFlags flags = tablet::FlushFlags::kAllDbs);

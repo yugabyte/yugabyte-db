@@ -55,7 +55,11 @@ public class NodeInstanceFormData {
         accessMode = READ_ONLY)
     public String nodeName;
 
-    @ApiModelProperty(value = "Node configurations")
+    @ApiModelProperty(value = "Node configurations", hidden = true)
+    /**
+     * Hide this as it is not persisted. See {{@link
+     * com.yugabyte.yw.models.NodeInstance#setDetails(NodeInstanceData)}
+     */
     public Set<NodeConfig> nodeConfigs;
   }
 }

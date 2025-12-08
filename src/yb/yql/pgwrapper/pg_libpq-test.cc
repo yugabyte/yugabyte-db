@@ -4924,7 +4924,16 @@ TEST_F(PgLibPqTest, RelfilenodeOidCollision) {
   result = ASSERT_RESULT(conn.FetchAllAsString(
     "SELECT oid,relfilenode,relname FROM pg_class WHERE relname LIKE 'base_t%'"));
   LOG(INFO) << "result: " << result;
-  std::string tmpname = std::tmpnam(nullptr);
+
+  std::unique_ptr<WritableFile> file_handle;
+  std::string tmpname;
+  ASSERT_OK(yb::Env::Default()->NewTempWritableFile(
+    WritableFileOptions(),
+    "/tmp/tmp_fileXXXXXX",
+    &tmpname,
+    &file_handle));
+  ASSERT_OK(file_handle->Close());
+
   auto hostport = cluster_->ysql_hostport(0);
   std::string ysql_dump_path = ASSERT_RESULT(path_utils::GetPgToolPath("ysql_dump"));
   std::string ysql_dump_cmd = Format(

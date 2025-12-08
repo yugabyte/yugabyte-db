@@ -44,6 +44,11 @@ struct od_client {
 	uint64_t time_last_active;
 
 	kiwi_be_startup_t startup;
+	/*
+	 * All GUC settings sent in startup packet other than
+	 * user, database & replication
+	 */
+	kiwi_vars_t yb_startup_settings;
 	kiwi_vars_t vars;
 	kiwi_key_t key;
 
@@ -135,7 +140,8 @@ static inline void od_client_init(od_client_t *client)
 #endif
 
 	kiwi_be_startup_init(&client->startup);
-	kiwi_vars_init(&client->vars);
+	kiwi_vars_init(&client->yb_startup_settings, false);
+	kiwi_vars_init(&client->vars, true);
 	kiwi_key_init(&client->key);
 
 	od_io_init(&client->io);
@@ -179,10 +185,8 @@ static inline void od_client_free(od_client_t *client)
 	if (client->prep_stmt_ids) {
 		od_hashmap_free(client->prep_stmt_ids);
 	}
-	if (client->vars.vars) {
-		free(client->vars.vars);
-		client->vars.vars = NULL;
-	}
+	yb_kiwi_vars_free(&client->vars);
+	yb_kiwi_vars_free(&client->yb_startup_settings);
 	if (client->deploy_err) {
 		free(client->deploy_err);
 		client->deploy_err = NULL;

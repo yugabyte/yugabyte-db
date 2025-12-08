@@ -171,47 +171,34 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({
 
     if (values.enableNodeToNodeEncrypt === false) {
       payload['rootCA'] = null;
-      payload['createNewRootCA'] = false;
     }
     if (values.enableNodeToNodeEncrypt === true) {
       if (!values['rootCA']) {
         payload['rootCA'] = null;
-        payload['createNewRootCA'] = true;
-      } else {
-        payload['createNewRootCA'] = false;
       }
     }
 
     if (values.enableClientToNodeEncrypt === false) {
       payload['clientRootCA'] = null;
-      payload['createNewClientRootCA'] = false;
     }
     if (values.enableClientToNodeEncrypt === true && !values.rootAndClientRootCASame) {
       if (!values['clientRootCA']) {
         payload['clientRootCA'] = null;
-        payload['createNewClientRootCA'] = true;
-      } else {
-        payload['createNewClientRootCA'] = false;
       }
     }
 
     if (values.rootAndClientRootCASame) {
       if (values.enableNodeToNodeEncrypt && values.enableClientToNodeEncrypt) {
         payload['clientRootCA'] = values.rootCA;
-        payload['createNewClientRootCA'] = false;
       }
     }
 
     if (isItKubernetesUniverse && values.k8sEncryptionType === K8sEncryptionOption.EnableBoth) {
       if (!values['rootCA']) {
         payload['rootCA'] = null;
-        payload['createNewRootCA'] = true;
         payload['clientRootCA'] = null;
-        payload['createNewClientRootCA'] = true;
       } else {
         payload['clientRootCA'] = values.rootCA;
-        payload['createNewRootCA'] = false;
-        payload['createNewClientRootCA'] = false;
       }
     }
 

@@ -972,7 +972,6 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
     params.setUniverseUUID(u.getUniverseUUID());
     params.clusters = u.getUniverseDetails().clusters;
     params.rootCA = UUID.randomUUID();
-    params.createNewClientRootCA = true;
     params.rootAndClientRootCASame = false;
 
     PlatformServiceException exception =
@@ -1048,8 +1047,6 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
     Universe u = createKubernetesUniverseInternal(c, UUID.randomUUID(), true, false);
 
     CertsRotateParams params = new CertsRotateParams();
-    params.createNewRootCA = true;
-    params.createNewClientRootCA = false;
     params.selfSignedClientCertRotate = true;
     params.selfSignedServerCertRotate = false;
 
@@ -1067,8 +1064,6 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
     Universe u = createKubernetesUniverseInternal(c, UUID.randomUUID(), false, true);
 
     CertsRotateParams params = new CertsRotateParams();
-    params.createNewRootCA = false;
-    params.createNewClientRootCA = true;
     params.selfSignedServerCertRotate = true;
     params.selfSignedClientCertRotate = false;
 
@@ -1078,43 +1073,6 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
     assertEquals(
         "Cannot rotate server certificate when node to node encryption is disabled.",
         exception.getMessage());
-  }
-
-  // Tests for createNewRootCA validation
-  @Test
-  public void testRotateCertsCreateNewRootCAWhenRootCAProvided() {
-    Customer c = ModelFactory.testCustomer();
-    Universe u = createKubernetesUniverseInternal(c, null, true, false);
-
-    CertsRotateParams params = new CertsRotateParams();
-    params.setUniverseUUID(u.getUniverseUUID());
-    params.clusters = u.getUniverseDetails().clusters;
-    params.rootCA = UUID.randomUUID();
-    params.createNewRootCA = true;
-
-    PlatformServiceException exception =
-        assertThrows(PlatformServiceException.class, () -> handler.rotateCerts(params, c, u));
-
-    assertEquals(
-        "Cannot create new rootCA when rootCA is already provided.", exception.getMessage());
-  }
-
-  @Test
-  public void testRotateCertsCreateNewRootCAFalseWhenRootCANull() {
-    Customer c = ModelFactory.testCustomer();
-    Universe u = createKubernetesUniverseInternal(c, null, true, false);
-
-    CertsRotateParams params = new CertsRotateParams();
-    params.setUniverseUUID(u.getUniverseUUID());
-    params.clusters = u.getUniverseDetails().clusters;
-    params.rootCA = null;
-    params.createNewRootCA = false;
-
-    PlatformServiceException exception =
-        assertThrows(PlatformServiceException.class, () -> handler.rotateCerts(params, c, u));
-
-    assertEquals(
-        "Cannot use existing rootCA when createNewRootCA is false.", exception.getMessage());
   }
 
   @Test
@@ -1136,7 +1094,6 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
     params.setUniverseUUID(u.getUniverseUUID());
     params.clusters = u.getUniverseDetails().clusters;
     params.rootCA = null;
-    params.createNewRootCA = true;
     params.rootAndClientRootCASame = true;
 
     // Create certificate info for the new rootCA
@@ -1184,7 +1141,6 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
     params.setUniverseUUID(u.getUniverseUUID());
     params.clusters = u.getUniverseDetails().clusters;
     params.rootCA = newRootCA;
-    params.createNewRootCA = false;
     params.rootAndClientRootCASame = true;
 
     // Create certificate info for the new rootCA
@@ -1209,51 +1165,6 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
 
     CertsRotateParams capturedParams = paramsArgumentCaptor.getValue();
     assertEquals(newRootCA, capturedParams.rootCA);
-  }
-
-  // Tests for createNewClientRootCA validation
-  @Test
-  public void testRotateCertsCreateNewClientRootCAWhenClientRootCAProvided() {
-    Customer c = ModelFactory.testCustomer();
-    UUID existingRootCA = UUID.randomUUID();
-    Universe u = createKubernetesUniverseInternal(c, existingRootCA, true, true);
-
-    CertsRotateParams params = new CertsRotateParams();
-    params.setUniverseUUID(u.getUniverseUUID());
-    params.clusters = u.getUniverseDetails().clusters;
-    params.rootCA = existingRootCA;
-    params.setClientRootCA(UUID.randomUUID());
-    params.createNewClientRootCA = true;
-    params.rootAndClientRootCASame = false;
-
-    PlatformServiceException exception =
-        assertThrows(PlatformServiceException.class, () -> handler.rotateCerts(params, c, u));
-
-    assertEquals(
-        "Cannot create new clientRootCA when clientRootCA is already provided.",
-        exception.getMessage());
-  }
-
-  @Test
-  public void testRotateCertsCreateNewClientRootCAFalseWhenClientRootCANull() {
-    Customer c = ModelFactory.testCustomer();
-    UUID existingRootCA = UUID.randomUUID();
-    Universe u = createKubernetesUniverseInternal(c, existingRootCA, true, true);
-
-    CertsRotateParams params = new CertsRotateParams();
-    params.setUniverseUUID(u.getUniverseUUID());
-    params.clusters = u.getUniverseDetails().clusters;
-    params.rootCA = existingRootCA;
-    params.setClientRootCA(null);
-    params.createNewClientRootCA = false;
-    params.rootAndClientRootCASame = false;
-
-    PlatformServiceException exception =
-        assertThrows(PlatformServiceException.class, () -> handler.rotateCerts(params, c, u));
-
-    assertEquals(
-        "Cannot create new clientRootCA when createNewClientRootCA is false.",
-        exception.getMessage());
   }
 
   @Test
@@ -1314,7 +1225,6 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
     params.clusters = u.getUniverseDetails().clusters;
     params.setClientRootCA(null);
     params.rootCA = existingRootCA;
-    params.createNewClientRootCA = true;
     params.rootAndClientRootCASame = false;
 
     // Mock the static method for createClientCertificate
@@ -1369,7 +1279,6 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
     params.clusters = u.getUniverseDetails().clusters;
     params.rootCA = existingRootCA;
     params.setClientRootCA(null);
-    params.createNewClientRootCA = false;
     params.rootAndClientRootCASame = true;
 
     // Mock the static method for createClientCertificate

@@ -120,10 +120,41 @@ std::string MakeTableInfoLogPrefix(
   return primary ? tablet_log_prefix : Format("TBL $0 $1", table_id, tablet_log_prefix);
 }
 
+std::string MakeTabletDirName(const TabletId& tablet_id) {
+  return Format("tablet-$0", tablet_id);
+}
+
+template <typename Filter, typename... Other>
+inline bool DoApplyFilter0(const TableInfoPtr& info, Filter&& filter, Other&&...) {
+  static_assert(sizeof...(Other) == 0);
+  return filter(info);
+}
+
+template <typename... Filter>
+inline bool DoApplyFilter(const TableInfoPtr& info, Filter&&... filter) {
+  if constexpr (sizeof...(Filter) == 0) {
+    return true;
+  } else {
+    return DoApplyFilter0(info, std::forward<Filter>(filter)...);
+  }
+}
+
+// Using variadic template args to be able to pass no filter at all.
+template <typename... Filter>
+std::vector<TableInfoPtr> DoCollectTableInfos(const TableInfoMap& tables, Filter&&... filter) {
+  std::vector<TableInfoPtr> result;
+  result.reserve(tables.size());
+  for (const auto& [_, info] : tables) {
+    if (DoApplyFilter(info, std::forward<Filter>(filter)...)) {
+      result.push_back(info);
+    }
+  }
+  return result;
+}
+
 } // namespace
 
 const int64 kNoDurableMemStore = -1;
-const std::string kSnapshotsDirName = "snapshots";
 
 // ============================================================================
 //  Raft group metadata
@@ -255,7 +286,7 @@ TableInfo::TableInfo(const TableInfo& other, SchemaVersion min_schema_version)
 TableInfo::~TableInfo() = default;
 
 void TableInfo::CompleteInit() {
-  if (index_info && index_info->is_vector_index()) {
+  if (IsVectorIndex()) {
     doc_read_context->vector_idx_options = index_info->vector_idx_options();
   }
 
@@ -466,8 +497,12 @@ TableInfoPtr TableInfo::TEST_CreateWithLogPrefix(
       "" /* pg_table_id */, tablet::SkipTableTombstoneCheck::kFalse);
 }
 
+bool TableInfo::IsVectorIndex() const {
+  return index_info && index_info->is_vector_index();
+}
+
 bool TableInfo::NeedVectorIndex() const {
-  return index_info && index_info->is_vector_index() &&
+  return IsVectorIndex() &&
          index_info->vector_idx_options().idx_type() != PgVectorIndexType::DEPRECATED_DUMMY;
 }
 
@@ -563,7 +598,7 @@ Status KvStoreInfo::RestoreMissingValuesAndMergeTableSchemaPackings(
         continue;
       }
       RSTATUS_DCHECK(
-          table_info->index_info && table_info->index_info->is_vector_index(), Corruption,
+          table_info->IsVectorIndex(), Corruption,
           "Only vector indexes could be colocated to the non colocated table: $0",
           table_info->ToString());
     }
@@ -693,14 +728,6 @@ bool KvStoreInfo::TEST_Equals(const KvStoreInfo& lhs, const KvStoreInfo& rhs) {
          MapsEqual(lhs.tables, rhs.tables, eq) &&
          MapsEqual(lhs.colocation_to_table, rhs.colocation_to_table, eq);
 }
-
-namespace {
-
-std::string MakeTabletDirName(const TabletId& tablet_id) {
-  return Format("tablet-$0", tablet_id);
-}
-
-} // namespace
 
 // ============================================================================
 
@@ -911,6 +938,17 @@ Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
   if (fs_manager_->env()->FileExists(intents_dir)) {
     auto s = fs_manager_->env()->DeleteRecursively(intents_dir);
     LOG_IF_WITH_PREFIX(WARNING, !s.ok()) << "Unable to delete intents directory " << intents_dir;
+  }
+
+  for (const auto& info : GetAllColocatedVectorIndexes()) {
+    auto storage_dir = vector_index_dir(info->index_info->vector_idx_options());
+    auto status = fs_manager_->env()->DeleteRecursively(storage_dir);
+    if (status.ok()) {
+      LOG_WITH_PREFIX(INFO) << "Successfully destroyed vector index storage at: " << storage_dir;
+    } else {
+      LOG_WITH_PREFIX(DFATAL)
+          << "Failed to destroy vector index storage at: " << storage_dir  << ": " << status;
+    }
   }
 
   // TODO(tsplit): decide what to do with snapshots for split tablets that we delete after split.
@@ -2260,12 +2298,13 @@ RaftGroupMetadata::GetAllColocatedTablesWithColocationId() const {
 
 std::vector<TableInfoPtr> RaftGroupMetadata::GetAllColocatedTableInfos() const {
   std::lock_guard lock(data_mutex_);
-  std::vector<TableInfoPtr> result;
-  result.reserve(kv_store_.tables.size());
-  for (const auto& [id, info] : kv_store_.tables) {
-    result.push_back(info);
-  }
-  return result;
+  return DoCollectTableInfos(kv_store_.tables);
+}
+
+std::vector<TableInfoPtr> RaftGroupMetadata::GetAllColocatedVectorIndexes() const {
+  std::lock_guard lock(data_mutex_);
+  return DoCollectTableInfos(
+      kv_store_.tables, [](const auto& info) { return info->IsVectorIndex(); });
 }
 
 Status CheckCanServeTabletData(const RaftGroupMetadata& metadata) {
@@ -2411,7 +2450,13 @@ std::string RaftGroupMetadata::intents_rocksdb_dir() const {
 }
 
 std::string RaftGroupMetadata::snapshots_dir() const {
-  return docdb::GetStorageDir(kv_store_.rocksdb_dir, kSnapshotsDirName);
+  return docdb::GetStorageDir(kv_store_.rocksdb_dir, docdb::kSnapshotsDirName);
+}
+
+std::string RaftGroupMetadata::vector_index_dir(
+    const PgVectorIdxOptionsPB& vector_index_options) const {
+  return docdb::GetStorageDir(
+      kv_store_.rocksdb_dir, docdb::GetVectorIndexStorageName(vector_index_options));
 }
 
 docdb::KeyBounds RaftGroupMetadata::MakeKeyBounds() const {

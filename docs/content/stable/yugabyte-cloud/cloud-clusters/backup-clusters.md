@@ -173,17 +173,19 @@ For more information, see [IAM roles for Cloud Storage](https://cloud.google.com
 
 ### Manage remote backup replication
 
-To enable or modify remote backup repliction, do the following:
+To enable or modify remote backup replication, do the following:
 
-1. On the **Backups** tab, click **Remote Backup Replication**. If backup replication is enabled, click **Edit Settings**.
+1. On the **Backups** tab, click **Enable Remote Backup Replication**. If backup replication is enabled, click **Edit Settings**.
 1. Enter the address of the bucket.
 
     For Replicate across regions clusters, provide the bucket address. To reduce transfer costs, use a bucket in the same region as the current backup region (the region selected by Aeon to store cluster backups). See [Location of backups](#location-of-backups) for more information.
 
     For Partition by region clusters, provide a bucket address for each region. To reduce transfer costs and for compliance, use buckets located in the same regions.
 
-1. Click **Apply Changes**.
+1. Click **Enable** or, if you are modifying settings, **Apply Changes**.
 
 To disable remote backup replication, on the **Backups** tab, click **Disable Remote Backup Replication**.
 
 Disabling backup replication does not immediately stop transfers. To ensure no data is lost, the transfer job remains active for a few additional days so that any backups created before disabling replication are fully replicated. Because Google Cloud does not provide a SLA on transfer completion time or on how many transfer operations may be needed, you should keep destination buckets available for at least 7 days after disabling backup replication or after changing remote backup regions. This ensures that all in-progress and pending transfers complete successfully.
+
+If backup replication fails, YugabyteDB Aeon displays an alert and also sends a notification email. After you have addressed the issue (by, for example, fixing permissions on the bucket, or setting up a new bucket), click the alert in YugabyteDB Aeon and try the connection again, either with the current bucket or new bucket, as appropriate.

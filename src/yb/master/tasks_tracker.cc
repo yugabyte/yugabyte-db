@@ -23,14 +23,14 @@ DEFINE_UNKNOWN_int32(tasks_tracker_num_tasks, 100,
 
 DEFINE_UNKNOWN_int32(tasks_tracker_keep_time_multiplier, 300,
              "How long we should keep tasks before cleaning them up, as a multiple of the "
-             "load balancer interval (catalog_manager_bg_task_wait_ms).");
+             "cluster balancer interval (catalog_manager_bg_task_wait_ms).");
 
 DEFINE_UNKNOWN_int32(tasks_tracker_num_long_term_tasks, 20,
              "Number of most recent tasks to track for displaying in utilities UI.");
 
 DEFINE_UNKNOWN_int32(long_term_tasks_tracker_keep_time_multiplier, 86400,
              "How long we should keep long-term tasks before cleaning them up, "
-             "as a multiple of the load balancer interval (catalog_manager_bg_task_wait_ms).");
+             "as a multiple of the cluster balancer interval (catalog_manager_bg_task_wait_ms).");
 
 namespace yb {
 namespace master {

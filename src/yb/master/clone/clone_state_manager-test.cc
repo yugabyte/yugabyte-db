@@ -46,6 +46,17 @@
 
 DECLARE_bool(enable_db_clone);
 
+// This is needed for the mock of GetBlacklist - must be in std namespace for ADL.
+namespace std {
+std::ostream& operator<<(
+    std::ostream& os, const std::unordered_set<yb::HostPort, yb::HostPortHash>& blacklist) {
+  for (const auto& host_port : blacklist) {
+    os << host_port.ToString() << ", ";
+  }
+  return os;
+}
+}
+
 namespace yb {
 namespace master {
 
@@ -67,14 +78,18 @@ MATCHER_P(CloneTabletRequestPBMatcher, expected, "CloneTabletRequestPBs did not 
 
 // This is needed for the mock of GenerateSnapshotInfoFromScheduleForClone.
 std::ostream& operator<<(
-    std::ostream& os, const Result<std::pair<SnapshotInfoPB, std::unordered_set<TabletId>>>& res) {
+    std::ostream& os, const Result<CatalogManagerIf::CloneSnapshotInfo>& res) {
   if (!res.ok()) {
     os << res.status().ToString();
   } else {
-    os << res->first.ShortDebugString();
+    os << res->snapshot_info.ShortDebugString();
     os << "Not snapshotted tablets: ";
-    for (const auto& tablet_id : res->second) {
+    for (const auto& tablet_id : res->not_snapshotted_tablets) {
       os << tablet_id << ", ";
+    }
+    os << "Replication info and num tablets: ";
+    for (const auto& [replication_info, num_tablets] : res->replication_info_and_num_tablets) {
+      os << replication_info.ShortDebugString() << ", " << num_tablets << ", ";
     }
   }
   return os;
@@ -138,7 +153,7 @@ class CloneStateManagerTest : public YBTest {
          CoarseTimePoint deadline, const LeaderEpoch& epoch), (override));
 
     MOCK_METHOD(
-        (Result<std::pair<SnapshotInfoPB, std::unordered_set<TabletId>>>),
+        Result<CatalogManagerIf::CloneSnapshotInfo>,
         GenerateSnapshotInfoFromScheduleForClone,
         (const SnapshotScheduleId& snapshot_schedule_id, HybridTime export_time,
         CoarseTimePoint deadline), (override));
@@ -152,6 +167,7 @@ class CloneStateManagerTest : public YBTest {
 
     MOCK_METHOD(Result<TSDescriptorPtr>, GetClosestLiveTserver, (), (override));
     MOCK_METHOD(TSDescriptorVector, GetTservers, (), (override));
+    MOCK_METHOD(Result<BlacklistSet>, GetBlacklist, (), (override));
   };
 
  private:
@@ -316,12 +332,14 @@ class CloneStateManagerTest : public YBTest {
   }
 
   AsyncClonePgSchema::ClonePgSchemaCallbackType MakeDoneClonePgSchemaCallback(
-      CloneStateInfoPtr clone_state, const SnapshotScheduleId& snapshot_schedule_id,
-      const std::string& target_namespace_name,
-      CoarseTimePoint deadline, const LeaderEpoch& epoch) {
-    return clone_state_manager_->MakeDoneClonePgSchemaCallback(
-      clone_state, snapshot_schedule_id, target_namespace_name, deadline);
-  }
+    CloneStateInfoPtr clone_state, const SnapshotScheduleId& snapshot_schedule_id,
+    const std::string& target_namespace_name,
+    CatalogManagerIf::CloneSnapshotInfo clone_snapshot_info,
+    CoarseTimePoint deadline) {
+  return clone_state_manager_->MakeDoneClonePgSchemaCallback(
+      clone_state, snapshot_schedule_id, target_namespace_name, std::move(clone_snapshot_info),
+      deadline);
+}
 
   void AssertCloneIsAborted() {
     auto clone_state = GetLatestCloneState();
@@ -567,6 +585,9 @@ TEST_F_EX(CloneStateManagerTest, AbortIfFailToSchedulePgCloneSchema, CloneStateM
       .WillOnce(DoAll(SetArgPointee<0>(DefaultListSnapshotSchedules()), Return(Status::OK())));
   TSDescriptorPtr dummy_ts_desc = std::make_shared<TSDescriptor>(
       "ts0" /* perm_id*/, RegisteredThroughHeartbeat::kTrue, CloudInfoPB(), nullptr);
+  EXPECT_CALL(MockFuncs(), GenerateSnapshotInfoFromScheduleForClone).WillOnce(
+      Return(CatalogManagerIf::CloneSnapshotInfo()));
+  EXPECT_CALL(MockFuncs(), GetBlacklist).WillOnce(Return(BlacklistSet()));
   EXPECT_CALL(MockFuncs(), GetClosestLiveTserver).WillOnce(Return(dummy_ts_desc));
   EXPECT_CALL(MockFuncs(), Upsert(kEpoch.leader_term, _)).WillRepeatedly(Return(Status::OK()));
   EXPECT_CALL(MockFuncs(),
@@ -586,7 +607,7 @@ TEST_F_EX(CloneStateManagerTest, AbortInPgSchemaClone, CloneStateManagerPgTest) 
   auto clone_state = ASSERT_RESULT(CreateCloneState(DefaultTableSnapshotData()));
   auto callback = MakeDoneClonePgSchemaCallback(
       clone_state, kSnapshotScheduleId, kTargetNamespaceName,
-      CoarseMonoClock::Now() + 10s /* deadline */, kEpoch);
+      CatalogManagerIf::CloneSnapshotInfo(), CoarseMonoClock::Now() + 10s /* deadline */);
 
   // We expect an upsert when aborting the clone.
   EXPECT_CALL(MockFuncs(), Upsert(kEpoch.leader_term, _));
@@ -600,11 +621,11 @@ TEST_F_EX(CloneStateManagerTest, AbortInStartTabletsCloningPg, CloneStateManager
   auto clone_state = ASSERT_RESULT(CreateCloneState(DefaultTableSnapshotData()));
   auto callback = MakeDoneClonePgSchemaCallback(
       clone_state, kSnapshotScheduleId, kTargetNamespaceName,
-      CoarseMonoClock::Now() + 10s /* deadline */, kEpoch);
+      CatalogManagerIf::CloneSnapshotInfo(), CoarseMonoClock::Now() + 10s /* deadline */);
 
   // We expect an upsert when aborting the clone.
-  EXPECT_CALL(MockFuncs(), GenerateSnapshotInfoFromScheduleForClone).WillOnce(Return(
-      STATUS_FORMAT(IllegalState, "Fail GenerateSnapshotInfoFromScheduleForClone for test")));
+  EXPECT_CALL(MockFuncs(), DoImportSnapshotMeta).WillOnce(Return(
+      STATUS_FORMAT(IllegalState, "Fail DoImportSnapshotMeta for test")));
   EXPECT_CALL(MockFuncs(), Upsert(kEpoch.leader_term, _));
   ASSERT_OK(callback(Status::OK() /* pg_schema_cloning_status */));
 

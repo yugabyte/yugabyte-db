@@ -1149,8 +1149,11 @@ public class CertificateHelper {
 
   public static UUID getTemporaryRootCAUUID(Universe universe) {
     try {
-      CertificateInfo oldRootCert =
-          CertificateInfo.getOrBadRequest(universe.getUniverseDetails().rootCA);
+      UUID rootCA =
+          universe.getUniverseDetails().rootAndClientRootCASame
+              ? getRootCAWhenRootAndClientRootCASameIsTrue(universe)
+              : universe.getUniverseDetails().rootCA;
+      CertificateInfo oldRootCert = CertificateInfo.getOrBadRequest(rootCA);
       CertificateInfo temporaryCert =
           CertificateInfo.createCopy(
               oldRootCert,
@@ -1161,5 +1164,15 @@ public class CertificateHelper {
       log.error("Failed to create temporary multi cert", e);
       throw new RuntimeException("Failed to create temporary multi cert", e);
     }
+  }
+
+  public static UUID getRootCAWhenRootAndClientRootCASameIsTrue(Universe universe) {
+    if (universe.getUniverseDetails().rootCA != null) {
+      return universe.getUniverseDetails().rootCA;
+    }
+    if (universe.getUniverseDetails().getClientRootCA() != null) {
+      return universe.getUniverseDetails().getClientRootCA();
+    }
+    return null;
   }
 }

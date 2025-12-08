@@ -358,18 +358,25 @@ BoundedRocksDbIterator CreateIntentsIteratorWithHybridTimeFilter(
     const KeyBounds* docdb_key_bounds,
     const Slice* iterate_upper_bound,
     const rocksdb::CacheRestartBlockKeys cache_restart_block_keys,
-    rocksdb::Statistics* statistics) {
-  auto min_running_ht = status_manager->MinRunningHybridTime();
-  if (min_running_ht == HybridTime::kMax) {
-    VLOG(4) << "No transactions running";
-    return {};
+    rocksdb::Statistics* statistics,
+    bool use_ht_file_filter) {
+  std::shared_ptr<rocksdb::ReadFileFilter> file_filter = nullptr;
+
+  if (use_ht_file_filter) {
+    auto min_running_ht = status_manager->MinRunningHybridTime();
+    if (min_running_ht == HybridTime::kMax) {
+      VLOG(4) << "No transactions running";
+      return {};
+    }
+    file_filter = CreateIntentHybridTimeFileFilter(min_running_ht);
   }
+
   return CreateRocksDBIterator(
       intentsdb,
       docdb_key_bounds,
       docdb::BloomFilterOptions::Inactive(),
       rocksdb::kDefaultQueryId,
-      CreateIntentHybridTimeFileFilter(min_running_ht),
+      file_filter,
       iterate_upper_bound,
       cache_restart_block_keys,
       statistics);
