@@ -88,7 +88,7 @@ In these cases you can encounter errors such as 'Cannot list objects in backup l
 
 Typically, the signing region is the AWS region where the S3 bucket is located (for example, `us-east-1`). Enter the AWS region in the **Signing region** field.
 
-By default, the **Signing region** field is not available in the UI. To make it available, set the **Enable Signing Region** Global Runtime Configuration option (config key `yb.ui.feature_flags.enable_signing_region`) to true. Refer to [Manage runtime configuration settings](../../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/). You must be a Super Admin to set global runtime configuration flags.
+By default, the **Signing region** field is not available in the UI. To make it available, set the **Enable Signing Region** Global Runtime Configuration option (config key `yb.ui.feature_flags.enable_signing_region`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). You must be a Super Admin to set global runtime configuration flags.
 
 ## Google Cloud Storage
 
