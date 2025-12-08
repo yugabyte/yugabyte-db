@@ -2319,18 +2319,36 @@ static void od_frontend_cleanup(od_client_t *client, char *context,
 		       od_frontend_status_to_str(status));
 		if (!client->server)
 			break;
-
 		/*
-		 * TODO(#29301): We need to handle the possibility of server socket
-		 * write buffer being full here
+		 * Since client has been disconnected, if IOV buffer has pending data, that means
+		 * write socket buffer got full at some point. So we want to avoid writing any new packet
+		 * on the server socket whether from od_reset or terminate packet to avoid TCP deadlock.
+		 * TODO(mkumar): GH#29417: Make conn mgr consume results from server socket even when
+		 * server is synchronized. Currently od_reset consumes the results but until only server is
+		 * not synchronized.
 		 */
-		rc = od_reset(server);
-		if (rc != 1) {
-			/* close backend connection */
-			od_log(&instance->logger, context, client, server,
-			       "reset unsuccessful, closing server connection");
-			od_router_close(router, client);
-			break;
+		if (server->relay.iov != NULL && machine_iov_pending(server->relay.iov)) {
+			od_debug(&instance->logger, context, client, server,
+					 "Client disconnected and server's IOV buffer has pending data on it. "
+					 "Directly closing the server socket without sending terminate packet.");
+			/*
+			 * TODO(mkumar): GH#29459: Sending 'terminate' packet causes deadlock. Sending 'Sync'
+			 * in order to reuse the connection can also cause deadlock. Need to investigate more.
+			 * Therefore directly closing the socket and marking the server offline will cleanup
+			 * the server in od_router_detach and thus killing the backend connection as well.
+			 */
+			od_io_close(&server->io);
+			server->offline = true;
+		}
+		else {
+			rc = od_reset(server);
+			if (rc != 1) {
+				/* close backend connection */
+				od_log(&instance->logger, context, client, server,
+					   "reset unsuccessful, closing server connection");
+				od_router_close(router, client);
+				break;
+			}
 		}
 		/* push server to router server pool */
 		od_router_detach(router, client);
