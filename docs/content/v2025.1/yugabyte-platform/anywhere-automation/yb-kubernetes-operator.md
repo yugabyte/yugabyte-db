@@ -366,7 +366,7 @@ Set up scheduled backups as follows:
 1. Apply latest CRDs with new scheduled backups CRD on the Kubernetes cluster.
 
     ```sh
-    kubectl apply -f https://raw.github.com/yugabyte/charts/{{< yb-version version="stable" format="short">}}/crds/concatenated_crd.yaml
+    kubectl apply -f https://raw.github.com/yugabyte/charts/{{< yb-version version="v2025.1" format="short">}}/crds/concatenated_crd.yaml
     ```
 
 1. Verify scheduled backup fields in the backup CRD specification using `kubectl explain` to understand the available configuration options.
@@ -507,7 +507,7 @@ Set up incremental backups as follows:
 1. Apply the latest CRD for backup:
 
     ```sh
-    kubectl apply -f https://raw.github.com/yugabyte/charts/{{< yb-version version="stable" format="short">}}/crds/concatenated_crd.yaml
+    kubectl apply -f https://raw.github.com/yugabyte/charts/{{< yb-version version="v2025.1" format="short">}}/crds/concatenated_crd.yaml
     ```
 
 1. Verify incremental backup fields in the backup CRD specification using `kubectl explain` to understand the available configuration options.

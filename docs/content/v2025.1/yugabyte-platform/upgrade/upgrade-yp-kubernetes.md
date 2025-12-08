@@ -40,7 +40,7 @@ helm repo update
 To upgrade to a specific version while preserving overrides you might have applied to your initial YugabyteDB Anywhere installation or previous upgrades, execute the following command:
 
 ```sh
-helm upgrade yw-test yugabytedb/yugaware --version {{<yb-version version="stable" format="short">}} -n yb-platform --reset-then-reuse-values --set image.tag={{<yb-version version="stable" format="build">}} --wait
+helm upgrade yw-test yugabytedb/yugaware --version {{<yb-version version="v2025.1" format="short">}} -n yb-platform --reset-then-reuse-values --set image.tag={{<yb-version version="v2025.1" format="build">}} --wait
 ```
 
 To obtain the value for `--set image.tag`, execute the following command:
@@ -60,7 +60,7 @@ The [YugabyteDB Kubernetes Operator](../../anywhere-automation/yb-kubernetes-ope
 1. Apply the following Custom Resource Definition:
 
     ```sh
-    kubectl apply -f https://raw.github.com/yugabyte/charts/{{< yb-version version="stable" format="short">}}/crds/concatenated_crd.yaml
+    kubectl apply -f https://raw.github.com/yugabyte/charts/{{< yb-version version="v2025.1" format="short">}}/crds/concatenated_crd.yaml
     ```
 
 1. Get a list of Helm chart releases in namespace using the following command:

@@ -42,8 +42,8 @@ Download and extract YugabyteDB as follows:
   {{% tab header="x86" lang="x86" %}}
 
 ```sh
-wget https://software.yugabyte.com/releases/{{< yb-version version="stable">}}/yugabyte-{{< yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
-tar xvfz yugabyte-{{< yb-version version="stable" format="build">}}-linux-x86_64.tar.gz && cd yugabyte-{{< yb-version version="stable">}}/
+wget https://software.yugabyte.com/releases/{{< yb-version version="v2025.1">}}/yugabyte-{{< yb-version version="v2025.1" format="build">}}-linux-x86_64.tar.gz
+tar xvfz yugabyte-{{< yb-version version="v2025.1" format="build">}}-linux-x86_64.tar.gz && cd yugabyte-{{< yb-version version="v2025.1">}}/
 ```
 
   {{% /tab %}}
@@ -51,8 +51,8 @@ tar xvfz yugabyte-{{< yb-version version="stable" format="build">}}-linux-x86_64
   {{% tab header="aarch64" lang="aarch64" %}}
 
 ```sh
-wget https://software.yugabyte.com/releases/{{< yb-version version="stable">}}/yugabyte-{{< yb-version version="stable" format="build">}}-el8-aarch64.tar.gz
-tar xvfz yugabyte-{{< yb-version version="stable" format="build">}}-el8-aarch64.tar.gz && cd yugabyte-{{< yb-version version="stable">}}/
+wget https://software.yugabyte.com/releases/{{< yb-version version="v2025.1">}}/yugabyte-{{< yb-version version="v2025.1" format="build">}}-el8-aarch64.tar.gz
+tar xvfz yugabyte-{{< yb-version version="v2025.1" format="build">}}-el8-aarch64.tar.gz && cd yugabyte-{{< yb-version version="v2025.1">}}/
 ```
 
   {{% /tab %}}

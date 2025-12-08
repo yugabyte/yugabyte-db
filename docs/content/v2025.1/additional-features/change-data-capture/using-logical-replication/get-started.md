@@ -104,7 +104,7 @@ After starting YugabyteDB, use ysqlsh to create your database:
     You should see output similar to the following:
 
     ```output
-    ysqlsh (15.2-YB-{{<yb-version version="stable">}}-b0)
+    ysqlsh (15.2-YB-{{<yb-version version="v2025.1">}}-b0)
     Type "help" for help.
 
     yugabyte=#

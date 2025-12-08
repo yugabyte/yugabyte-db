@@ -97,7 +97,7 @@ Install the new version of YugabyteDB in a new directory on every YugabyteDB nod
 For example:
 
 ```sh
-wget https://software.yugabyte.com/releases/{{< yb-version version="stable">}}/yugabyte-$NEW_VER-linux-x86_64.tar.gz
+wget https://software.yugabyte.com/releases/{{< yb-version version="v2025.1">}}/yugabyte-$NEW_VER-linux-x86_64.tar.gz
 tar xf yugabyte-$NEW_VER-linux-x86_64.tar.gz -C /home/yugabyte/softwareyb-$NEW_VER/
 cd /home/yugabyte/softwareyb-$NEW_VER/
 ./bin/post_install.sh

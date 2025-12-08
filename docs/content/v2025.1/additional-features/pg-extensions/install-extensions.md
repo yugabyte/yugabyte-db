@@ -72,7 +72,7 @@ Ideally, use the same version of the PostgreSQL extension as that used by Yugaby
 ```
 
 ```output
-psql (PostgreSQL) 15.2-YB-{{<yb-version version="stable">}}-b0
+psql (PostgreSQL) 15.2-YB-{{<yb-version version="v2025.1">}}-b0
 ```
 
 If you already have PostgreSQL (use version 15 for best YSQL compatibility) with the extension installed, you can find the extension's files as follows:

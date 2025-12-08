@@ -102,7 +102,7 @@ $ ./bin/ysqlsh -U yugabyte
 You are prompted to enter the password. After logging in, you should see the following output:
 
 ```output
-ysqlsh (15.2-YB-{{<yb-version version="stable">}}-b0)
+ysqlsh (15.2-YB-{{<yb-version version="v2025.1">}}-b0)
 Type "help" for help.
 
 yugabyte=#

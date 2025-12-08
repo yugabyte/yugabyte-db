@@ -29,9 +29,9 @@ You can install and use the YugabyteDB Anywhere CLI in two ways.
 1. Download and extract the YugabyteDB Anywhere CLI by entering the following commands:
 
     ```sh
-    wget https://downloads.yugabyte.com/releases/{{<yb-version version="stable" format="long">}}/yba_cli-{{<yb-version     version="stable" format="build">}}-linux-amd64.tar.gz
-    tar -xf yba_cli-{{<yb-version version="stable" format="build">}}-linux-amd64.tar.gz
-    cd yba_cli-{{<yb-version version="stable" format="build">}}-linux-amd64/
+    wget https://downloads.yugabyte.com/releases/{{<yb-version version="v2025.1" format="long">}}/yba_cli-{{<yb-version     version="stable" format="build">}}-linux-amd64.tar.gz
+    tar -xf yba_cli-{{<yb-version version="v2025.1" format="build">}}-linux-amd64.tar.gz
+    cd yba_cli-{{<yb-version version="v2025.1" format="build">}}-linux-amd64/
     ```
 
 1. Verify that the package is available:

@@ -83,7 +83,7 @@ You can start ysqlsh as follows:
 ```
 
 ```output
-ysqlsh (15.2-YB-{{<yb-version version="stable">}}-b0)
+ysqlsh (15.2-YB-{{<yb-version version="v2025.1">}}-b0)
 Type "help" for help.
 
 yugabyte=#

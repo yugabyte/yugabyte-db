@@ -58,7 +58,7 @@ Use this method if you don't have internet connectivity. This downloads the same
 Extract the package and go to the `scripts` directory.
 
 ```sh
-tar -xvzf node-agent.tar.gz && cd {{<yb-version version="stable" format="build">}}/scripts/
+tar -xvzf node-agent.tar.gz && cd {{<yb-version version="v2025.1" format="build">}}/scripts/
 ```
 
 #### Direct download
@@ -66,28 +66,28 @@ tar -xvzf node-agent.tar.gz && cd {{<yb-version version="stable" format="build">
 Alternatively, the node agent package is included in the YBA Installer package. Download and extract the YBA Installer by entering the following commands:
 
 ```sh
-wget https://downloads.yugabyte.com/releases/{{<yb-version version="stable" format="long">}}/yba_installer_full-{{<yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
-tar -xf yba_installer_full-{{<yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
-cd yba_installer_full-{{<yb-version version="stable" format="build">}}/
+wget https://downloads.yugabyte.com/releases/{{<yb-version version="v2025.1" format="long">}}/yba_installer_full-{{<yb-version version="v2025.1" format="build">}}-linux-x86_64.tar.gz
+tar -xf yba_installer_full-{{<yb-version version="v2025.1" format="build">}}-linux-x86_64.tar.gz
+cd yba_installer_full-{{<yb-version version="v2025.1" format="build">}}/
 ```
 
 Extract the yugabundle package:
 
 ```sh
-tar -xf yugabundle-{{<yb-version version="stable" format="build">}}-centos-x86_64.tar.gz
-cd yugabyte-{{<yb-version version="stable" format="build">}}/
+tar -xf yugabundle-{{<yb-version version="v2025.1" format="build">}}-centos-x86_64.tar.gz
+cd yugabyte-{{<yb-version version="v2025.1" format="build">}}/
 ```
 
 Extract the node agent package and go to the `scripts` directory:
 
 ```sh
-tar -xf node_agent-{{<yb-version version="stable" format="build">}}-linux-amd64.tar.gz && cd {{<yb-version version="stable" format="build">}}/scripts/
+tar -xf node_agent-{{<yb-version version="v2025.1" format="build">}}-linux-amd64.tar.gz && cd {{<yb-version version="v2025.1" format="build">}}/scripts/
 ```
 
 or
 
 ```sh
-tar -xf node_agent-{{<yb-version version="stable" format="build">}}-linux-arm64.tar.gz && cd {{<yb-version version="stable" format="build">}}/scripts/
+tar -xf node_agent-{{<yb-version version="v2025.1" format="build">}}-linux-arm64.tar.gz && cd {{<yb-version version="v2025.1" format="build">}}/scripts/
 ```
 
 ### Create data directories or mount points
@@ -98,7 +98,7 @@ Configure data directories or mount points for the node (typically `/data`). If 
 
 Edit the `node-agent-provision.yaml` file in the scripts directory.
 
-The following table describes options that are changed for a typical installation. The file is commented; you can [review the file](https://github.com/yugabyte/yugabyte-db/blob/{{< yb-version version="stable" format="short">}}/managed/node-agent/resources/node-agent-provision.yaml) and its default settings on GitHub.
+The following table describes options that are changed for a typical installation. The file is commented; you can [review the file](https://github.com/yugabyte/yugabyte-db/blob/{{< yb-version version="v2025.1" format="short">}}/managed/node-agent/resources/node-agent-provision.yaml) and its default settings on GitHub.
 
 | Option | Value |
 | :--- | :--- |

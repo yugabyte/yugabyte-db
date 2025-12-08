@@ -64,8 +64,8 @@ export AZ2_NODES="<ip2> <ip2> ..."
 export AZ3_NODES="<ip1> <ip2> ..."
 
 # Version of YugabyteDB you plan to install.
-export YB_VERSION={{<yb-version version="stable" format="version">}}
-export YB_VERSION_BUILD={{<yb-version version="stable" format="build">}}
+export YB_VERSION={{<yb-version version="v2025.1" format="version">}}
+export YB_VERSION_BUILD={{<yb-version version="v2025.1" format="build">}}
 
 # Comma separated list of directories available for YB on each node
 # In this example, it is just 1. But if you have two then the RHS
