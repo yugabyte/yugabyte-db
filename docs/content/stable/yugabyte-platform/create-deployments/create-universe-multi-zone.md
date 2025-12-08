@@ -42,7 +42,7 @@ Before you start creating a universe, ensure that you have created a provider co
 
 [ClockBound](https://github.com/aws/clock-bound) improves clock accuracy by several orders of magnitude and significantly reduces read-restart errors in YSQL. To enable ClockBound for cloud provider universes, set the provider runtime configuration flag `yb.provider.configure_clockbound_cloud_provisioning` to `true` before creating the universe. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
 
-When enabled, ClockBound is automatically configured during node provisioning, and the universe creation task sets the [time_source](../../../reference/configuration/yb-master/#time-source) flag to `clockbound`.
+When enabled, ClockBound is automatically configured during node provisioning, and the universe creation task sets the [time_source](../../../../reference/configuration/yb-master/#time-source) flag to `clockbound`.
 
 ClockBound is supported on AWS and GCP. Azure and Kubernetes deployments are not supported.
 
