@@ -28,7 +28,7 @@ int yb_set_client_id(od_client_t *client, od_server_t *server)
 	int rc = 0;
 
 	/* Send `SET SESSION PARAMETER` packet. */
-	rc = od_write(&server->io, msg);
+	rc = od_write(&server->io, &msg);
 	if (rc == -1) {
 		od_debug(&instance->logger, "set client_id", client, server,
 			 "Unable to send `SET SESSION PARAMETER` packet");
@@ -122,7 +122,7 @@ int od_deploy(od_client_t *client, char *context)
 			return -1;
 		}
 
-		rc = od_write(&server->io, msg);
+		rc = od_write(&server->io, &msg);
 		if (rc == -1) {
 			free(query);
 			return -1;

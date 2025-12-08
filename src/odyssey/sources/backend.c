@@ -34,7 +34,7 @@ static inline int od_backend_terminate(od_server_t *server)
 	msg = kiwi_fe_write_terminate(NULL);
 	if (msg == NULL)
 		return -1;
-	return od_write(&server->io, msg);
+	return od_write(&server->io, &msg);
 }
 
 void od_backend_close_connection(od_server_t *server)
@@ -151,7 +151,7 @@ void od_backend_error(od_server_t *server, char *context, char *data,
 				/* YB: best-effort forward to client, already handling error */
 				if (msg == NULL)
 					return;
-				od_write(&yb_external_client->io, msg);
+				od_write(&yb_external_client->io, &msg);
 			}
 		}
 	}
@@ -171,7 +171,7 @@ void od_backend_error(od_server_t *server, char *context, char *data,
 				/* YB: best-effort forward to client, already handling error */
 				if (msg == NULL)
 					return;
-				od_write(&yb_external_client->io, msg);
+				od_write(&yb_external_client->io, &msg);
 			}	
 		}
 }
@@ -254,7 +254,7 @@ static inline int yb_send_parameter_status(od_io_t *io, char *name,
 	if (msg == NULL) {
 		return -1;
 	}
-	int rc = od_write(io, msg);
+	int rc = od_write(io, &msg);
 	if (rc != 0) {
 		return -1;
 	}
@@ -386,7 +386,7 @@ static inline int od_backend_startup(od_server_t *server,
 	if (msg == NULL)
 		return -1;
 	int rc;
-	rc = od_write(&server->io, msg);
+	rc = od_write(&server->io, &msg);
 	if (rc == -1) {
 		od_error(&instance->logger, "startup", NULL, server,
 			 "write error: %s", od_io_error(&server->io));
@@ -998,7 +998,7 @@ int od_backend_connect_cancel(od_server_t *server, od_rule_storage_t *storage,
 	if (msg == NULL)
 		return -1;
 
-	rc = od_write(&server->io, msg);
+	rc = od_write(&server->io, &msg);
 	if (rc == -1) {
 		od_error(&instance->logger, "cancel", NULL, NULL,
 			 "write error: %s", od_io_error(&server->io));
@@ -1142,7 +1142,7 @@ od_retcode_t od_backend_query_send(od_server_t *server, char *context,
 	}
 
 	int rc;
-	rc = od_write(&server->io, msg);
+	rc = od_write(&server->io, &msg);
 	if (rc == -1) {
 		od_error(&instance->logger, context, server->client, server,
 			 "write error: %s", od_io_error(&server->io));
