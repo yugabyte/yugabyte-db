@@ -646,7 +646,8 @@ Status CatalogManager::YsqlDdlTxnDropTableHelper(
   dtreq.set_is_index_table(table->is_index());
   auto action =
       success ? "roll forward" : (is_rollback_to_subtxn ? "rollback to sub-txn" : "rollback");
-  LOG(INFO) << "Delete table " << table->id() << " as part of " << action;
+  LOG(INFO) << "Delete table " << table->id() << " as part of " << action
+            << " with is_rollback_to_subtxn: " << is_rollback_to_subtxn;
 
   if (RandomActWithProbability(FLAGS_TEST_ysql_ddl_rollback_failure_probability)) {
     return STATUS(InternalError, "Injected random failure for testing.");
@@ -1025,7 +1026,7 @@ Status CatalogManager::YsqlRollbackDocdbSchemaToSubTxn(const std::string& pb_txn
     tables = verifier_state->tables;
   }
 
-  auto rollback_to_sub_txn_success = true;
+  vector<TableInfoPtr> tables_to_trigger_rollback_for;
   for (auto& table : tables) {
     auto table_txn_id = table->LockForRead()->pb_transaction_id();
 
@@ -1060,6 +1061,8 @@ Status CatalogManager::YsqlRollbackDocdbSchemaToSubTxn(const std::string& pb_txn
     }
 
     {
+      LOG(INFO) << "Adding table: " << table->ToString()
+                << " to ysql_ddl_txn_undergoing_subtransaction_rollback_map_";
       LockGuard lock(ddl_txn_verifier_mutex_);
       if (is_table_index) {
         ysql_ddl_txn_undergoing_subtransaction_rollback_map_[txn]
@@ -1069,7 +1072,11 @@ Status CatalogManager::YsqlRollbackDocdbSchemaToSubTxn(const std::string& pb_txn
 
       ysql_ddl_txn_undergoing_subtransaction_rollback_map_[txn].tables.push_back(table);
     }
+    tables_to_trigger_rollback_for.push_back(table);
+  }
 
+  bool rollback_to_sub_txn_success = true;
+  for (auto& table : tables_to_trigger_rollback_for) {
     auto s = background_tasks_thread_pool_->SubmitFunc([this, table, txn, sub_txn_id, epoch]() {
       auto s = YsqlRollbackDocdbSchemaToSubTxnHelper(table.get(), txn, sub_txn_id, epoch);
       if (!s.ok()) {

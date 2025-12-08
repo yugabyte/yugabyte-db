@@ -140,3 +140,18 @@ REFRESH MATERIALIZED VIEW txn_self_abort_mv;
 ROLLBACK TO SAVEPOINT s4_refreshed_final;
 SELECT COUNT(*) FROM txn_self_abort_base;
 ROLLBACK;
+
+-- #29414
+CREATE TABLE test_table (id INT PRIMARY KEY, val TEXT);
+INSERT INTO test_table SELECT i, 'val' || i FROM generate_series(1, 1000) i;
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+SAVEPOINT s1_start;
+CREATE MATERIALIZED VIEW test_table_mv AS SELECT * FROM test_table;
+SAVEPOINT s2_created_mv;
+INSERT INTO test_table SELECT i, 'val' || i FROM generate_series(1001, 2000) i;
+REFRESH MATERIALIZED VIEW test_table_mv;
+SAVEPOINT s3_refreshed_mv;
+CREATE INDEX test_table_idx_mv ON test_table_mv (val);
+SELECT indexname FROM pg_indexes WHERE indexname = 'test_table_idx_mv';
+ROLLBACK TO SAVEPOINT s3_refreshed_mv;
+ROLLBACK;
