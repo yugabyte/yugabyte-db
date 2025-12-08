@@ -261,6 +261,10 @@ struct PgClientSessionOperation {
   std::unique_ptr<PgsqlReadRequestPB> vector_index_read_request;
   // TODO(vector_index): Handle table-splitting when it will be supported.
   size_t partition_idx = 0;
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(partition_idx, vector_index_read_request, op);
+  }
 };
 
 using PgClientSessionOperations = std::vector<PgClientSessionOperation>;
@@ -454,6 +458,10 @@ struct FetchedVector {
   uint64_t distance;
   RefCntSlice data;
   size_t partition_idx;
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(partition_idx, distance, data);
+  }
 };
 
 struct VectorIndexQueryPartitionData {
@@ -480,25 +488,22 @@ class VectorIndexQuery {
     return paging_state.main_key() == id_.ToString();
   }
 
-  void Prepare(
+  Status Prepare(
       const PgsqlReadRequestPB& read_req, const client::YBTablePtr& table,
       PgClientSessionOperations& ops) {
     DCHECK(!active_);
     active_ = true;
-    auto partitions = table->GetPartitionsShared();
-    if (partitions_.empty()) {
-      partitions_.resize(partitions->size());
-    } else {
-      DCHECK_EQ(partitions_.size(), partitions->size());
-      DCHECK_EQ(table_->id(), table->id());
-    }
+
+    auto partitions = table->GetVersionedPartitions();
+    RETURN_NOT_OK(UpdatePartitions(table->id(), *partitions));
+
     table_ = table;
     auto prefetch_size = read_req.index_request().vector_idx_options().prefetch_size();
     prefetch_size_ = prefetch_size < 0 ? std::numeric_limits<size_t>::max() : prefetch_size;
 
     sidecars_ = std::make_unique<rpc::Sidecars>();
     size_t partition_idx = 0;
-    for (const auto& key : *partitions) {
+    for (const auto& key : partitions->keys) {
       const auto& partition_state = partitions_[partition_idx];
       VLOG_WITH_FUNC(4) << partition_idx << ": " << partition_state.ToString();
       if (!partition_state.whether_all_vectors_was_fetched &&
@@ -520,17 +525,39 @@ class VectorIndexQuery {
     }
     return_paging_state_ = read_req.return_paging_state();
     fetch_start_ = MonoTime::NowIf(FLAGS_vector_index_dump_stats);
+
+    return Status::OK();
   }
 
   Status ProcessResponse(
       const PgClientSessionOperations& ops, TabletReadTime* used_read_time,
       PgPerformResponsePB& resp, rpc::Sidecars& sidecars) {
+    VLOG_WITH_FUNC(4) << "Resp: " << resp.ShortDebugString();
     active_ = false;
     auto dump_stats = fetch_start_ != MonoTime();
     auto process_start_time = MonoTime::NowIf(dump_stats);
 
     MonoTime reduce_start_time;
-    if (!ops.empty()) {
+    bool partitions_are_stale = false;
+    const auto table_partition_list_version = table_->GetPartitionListVersion();
+    if (partitions_version_ != table_partition_list_version) {
+      LOG_WITH_FUNC(INFO) << Format(
+          "Partition list version changed ($0 => $1), request results should be ignored",
+          partitions_version_, table_partition_list_version);
+      // If a paging state has not been requested, the PG layer will not retry the request,
+      // so we must notify the user that the request needs to be retried explicitly.
+      if (!return_paging_state_) {
+        return STATUS(TryAgain, "Partition list was changed. Please retry the request");
+      }
+
+      // TODO(vector_index): it seems possible to refresh the batcher logic to retry vector index
+      // query internally, as the PG layer does not track partitions list for a vector index.
+      partitions_are_stale = true;
+    }
+
+    // If partitions became stale, it is required to return an empty response to let the PG
+    // to retrigger the request transparently and to force partitions refresh by Prepare().
+    if (!partitions_are_stale && !ops.empty()) {
       ProcessOperationsResponse(ops, used_read_time);
       reduce_start_time = MonoTime::NowIf(dump_stats);
 
@@ -563,8 +590,8 @@ class VectorIndexQuery {
     // TODO(vector_index): Check actual response status.
     out_resp.set_status(PgsqlResponsePB::PGSQL_STATUS_OK);
     out_resp.set_rows_data_sidecar(narrow_cast<int32_t>(sidecars.Complete()));
-    out_resp.set_partition_list_version(table_->GetPartitionListVersion());
-    if (return_paging_state_ && CouldFetchMore()) {
+    out_resp.set_partition_list_version(table_partition_list_version);
+    if (return_paging_state_ && (CouldFetchMore() || partitions_are_stale)) {
       auto& paging_state = *out_resp.mutable_paging_state();
       paging_state.set_table_id(table_->id());
       paging_state.set_main_key(id_.ToString());
@@ -583,7 +610,69 @@ class VectorIndexQuery {
     return Status::OK();
   }
 
+  std::string ToString() const {
+    return YB_CLASS_TO_STRING(active, id);
+  }
+
  private:
+  size_t CalculateNumVectorSentToPg() const {
+    DCHECK(!partitions_.empty());
+    return std::accumulate(
+        partitions_.begin(), partitions_.end(), /* initial value = */ 0,
+        [](size_t sum, const auto& partition) {
+          return sum + partition.number_of_vectors_returned_to_postgres;
+        });
+  }
+
+  void ResetPartitions(const client::VersionedTablePartitionList& table_partitions) {
+    partitions_.clear();
+    partitions_.resize(table_partitions.keys.size());
+    partitions_version_ = table_partitions.version;
+    VLOG_WITH_FUNC(2) << AsString(table_partitions);
+  }
+
+  Status UpdatePartitions(
+      const TableId& table_id, const client::VersionedTablePartitionList& table_partitions) {
+    if (partitions_.empty()) {
+      ResetPartitions(table_partitions);
+      return Status::OK();
+    }
+
+    // Sanity check to make sure table is the same.
+    DCHECK_EQ(table_->id(), table_id);
+    DCHECK_LE(partitions_version_, table_partitions.version);
+
+    // No update is required if partition version hasn't been changed. Only sanity checks.
+    if (partitions_version_ == table_partitions.version) {
+      DCHECK_EQ(partitions_.size(), table_partitions.keys.size());
+      return Status::OK();
+    }
+
+    // Partitions has been updated due to a split operation. Let's try to refresh partitions
+    // if nothing got sent to PG layer. Otherwise, an error should be returned to notify
+    // the user that the request retry is required.
+    const auto num_vectors_sent_to_pg = CalculateNumVectorSentToPg();
+    LOG_WITH_FUNC(INFO) << Format(
+        "Partitions version changed ($0 => $1), num vectors sent to PG: $2",
+        partitions_version_, table_partitions.version, num_vectors_sent_to_pg);
+
+    // Currently, there's no way to correctly update the paging state if a partition has been split,
+    // so an error is returned to the PG layer to notify the user to retry the entire request.
+    // However, if no vectors have been returned to PG yet, we can try to tolerate the split and
+    // just refresh the partitions.
+    if (num_vectors_sent_to_pg > 0) {
+      return STATUS(TryAgain, "Partition list changed. Please retry the request");
+    }
+
+    // We don't expect any vector to be stored.
+    LOG_IF_WITH_FUNC(DFATAL, !vectors_.empty()) <<
+        "No vector are expected, current number of vectors: " << vectors_.size();
+    vectors_.clear();
+
+    ResetPartitions(table_partitions);
+    return Status::OK();
+  }
+
   bool CouldFetchMore() const {
     if (!vectors_.empty()) {
       return true;
@@ -625,6 +714,7 @@ class VectorIndexQuery {
   std::vector<FetchedVector> vectors_;
   client::YBTablePtr table_;
   std::vector<VectorIndexQueryPartitionData> partitions_;
+  client::PartitionListVersion partitions_version_ = 0;
   std::unique_ptr<rpc::Sidecars> sidecars_;
   bool return_paging_state_ = false;
   MonoTime fetch_start_;
@@ -1298,6 +1388,9 @@ Result<std::pair<PgClientSessionOperations, VectorIndexQueryPtr>> PrepareOperati
   CancelableScopeExit abort_se{[session] { session->Abort(); }};
   const auto read_from_followers = req->options().read_from_followers();
   bool has_write_ops = false;
+
+  // TODO(vector_index): it is unexpected to have a mix of vector index read ops and
+  // non-vector index read ops. A sanity DCHECK is required.
   for (auto& op : *req->mutable_ops()) {
     if (op.has_read()) {
       auto& read = *op.mutable_read();
@@ -1315,7 +1408,7 @@ Result<std::pair<PgClientSessionOperations, VectorIndexQueryPtr>> PrepareOperati
           vector_index_query = std::make_shared<VectorIndexQuery>();
         }
         result.second = vector_index_query;
-        result.second->Prepare(read, table, ops);
+        RETURN_NOT_OK(result.second->Prepare(read, table, ops));
       } else {
         auto read_op = std::make_shared<client::YBPgsqlReadOp>(table, *sidecars, &read);
         if (read_from_followers) {

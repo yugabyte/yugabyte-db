@@ -714,10 +714,10 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   bool is_matview() const;
 
   // Return the table's ID. Does not require synchronization.
-  virtual const std::string& id() const override { return table_id_; }
+  virtual const TableId& id() const override { return table_id_; }
 
   // Return the indexed table id if the table is an index table. Otherwise, return an empty string.
-  std::string indexed_table_id() const;
+  TableId indexed_table_id() const;
 
   bool is_index() const {
     return !indexed_table_id().empty();
@@ -827,7 +827,10 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // Get info of the specified index.
   qlexpr::IndexInfo GetIndexInfo(const TableId& index_id) const;
-  std::vector<qlexpr::IndexInfo> GetIndexInfos() const;
+
+  // Get TableIds of all or a specific type of indexes.
+  TableIds GetIndexIds() const;
+  TableIds GetVectorIndexIds() const;
 
   // Returns true if all tablets of the table are deleted.
   Result<bool> AreAllTabletsDeleted() const;
@@ -1638,6 +1641,12 @@ class SnapshotInfo : public RefCountedThreadSafe<SnapshotInfo>,
 };
 
 bool IsReplicationInfoSet(const ReplicationInfoPB& replication_info);
+
+// Instantiates a new tablet without any write locks or starting mutation.
+// If tablet_id is not specified, generates a new id via GenerateObjectId().
+TabletInfoPtr MakeUnlockedTabletInfo(
+    const TableInfoPtr& table,
+    const TabletId& tablet_id = TabletId());
 
 // Leaves the tablet "write locked" with the new info in the "dirty" state field.
 TabletInfoPtr MakeTabletInfo(

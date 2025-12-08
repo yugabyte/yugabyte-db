@@ -13,6 +13,8 @@
 
 #include "yb/docdb/docdb_util.h"
 
+#include <boost/algorithm/string.hpp>
+
 #include "yb/common/entity_ids.h"
 
 #include "yb/docdb/consensus_frontier.h"
@@ -595,6 +597,18 @@ std::string GetStorageCheckpointDir(const std::string& data_dir, const std::stri
 
 std::string GetVectorIndexStorageName(const PgVectorIdxOptionsPB& options) {
   return kVectorIndexDirPrefix + options.id();
+}
+
+std::string GetVectorIndexChunkFileExtension(const PgVectorIdxOptionsPB& options) {
+  switch (options.idx_type()) {
+    case PgVectorIndexType::HNSW:
+      return "." + boost::to_lower_copy(HnswBackend_Name(options.hnsw().backend()));
+    case PgVectorIndexType::DUMMY: [[fallthrough]];
+    case PgVectorIndexType::IVFFLAT: [[fallthrough]];
+    case PgVectorIndexType::UNKNOWN_IDX:
+      break;
+  }
+  FATAL_INVALID_PB_ENUM_VALUE(PgVectorIndexType, options.idx_type());
 }
 
 Status MoveChild(Env& env, const std::string& data_dir, const std::string& child) {

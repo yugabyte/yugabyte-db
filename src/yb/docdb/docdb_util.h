@@ -288,6 +288,7 @@ class DocDBRocksDBUtil : public SchemaPackingProvider {
 std::string GetStorageDir(const std::string& data_dir, const std::string& storage);
 std::string GetStorageCheckpointDir(const std::string& data_dir, const std::string& storage);
 std::string GetVectorIndexStorageName(const PgVectorIdxOptionsPB& options);
+std::string GetVectorIndexChunkFileExtension(const PgVectorIdxOptionsPB& options);
 
 Status MoveChild(Env& env, const std::string& data_dir, const std::string& child);
 Status MoveChildren(Env& env, const std::string& db_dir, IncludeIntents include_intents);
