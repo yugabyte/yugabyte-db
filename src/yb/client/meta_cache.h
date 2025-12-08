@@ -729,6 +729,8 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
 
   void RefreshTablePartitions(const std::shared_ptr<YBTable>& table, StdStatusCallback callback);
 
+  void InvalidateVectorIndexes(const YBTable& indexed_table);
+
   Result<RemoteTabletPtr> ProcessTabletLocation(
       const master::TabletLocationsPB& locations, ProcessedTablesMap* processed_tables,
       const std::optional<PartitionListVersion>& table_partition_list_version,

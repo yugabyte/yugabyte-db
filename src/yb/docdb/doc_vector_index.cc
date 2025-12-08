@@ -117,18 +117,6 @@ auto GetVectorLSMFactory(
         PgVectorIndexType_Name(options.idx_type()));
 }
 
-std::string GetFileExtension(const PgVectorIdxOptionsPB& options) {
-  switch (options.idx_type()) {
-    case PgVectorIndexType::HNSW:
-      return "." + boost::to_lower_copy(HnswBackend_Name(options.hnsw().backend()));
-    case PgVectorIndexType::DEPRECATED_DUMMY: [[fallthrough]];
-    case PgVectorIndexType::IVFFLAT: [[fallthrough]];
-    case PgVectorIndexType::UNKNOWN_IDX:
-      break;
-  }
-  FATAL_INVALID_PB_ENUM_VALUE(PgVectorIndexType, options.idx_type());
-}
-
 template<vector_index::IndexableVectorType Vector>
 Result<Vector> VectorFromYSQL(Slice slice) {
   Slice original_slice = slice;
@@ -272,7 +260,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
       .compaction_token = thread_pools.compaction_token,
       .frontiers_factory = [] { return std::make_unique<docdb::ConsensusFrontiers>(); },
       .vector_merge_filter_factory = std::move(merge_filter_factory),
-      .file_extension = GetFileExtension(options_),
+      .file_extension = GetVectorIndexChunkFileExtension(options_),
       .metric_entity = metric_entity_,
     };
     return lsm_.Open(std::move(lsm_options));

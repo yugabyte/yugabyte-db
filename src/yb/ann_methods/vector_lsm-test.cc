@@ -462,15 +462,7 @@ void VectorLSMTest::CheckQueryVector(
 }
 
 Result<std::vector<std::string>> VectorLSMTest::GetFiles(FloatVectorLSM& lsm) {
-  auto files = VERIFY_RESULT(lsm.TEST_GetEnv()->GetChildren(lsm.StorageDir()));
-  std::erase_if(files, [](const auto& file) {
-    return !boost::ends_with(file, ".meta") && !boost::contains(file, "vectorindex");
-  });
-  std::sort(files.begin(), files.end(), [](auto&& lhs, auto&& rhs){
-    // Refer to VectorLSMMetadataLoad().
-    return lhs.size() < rhs.size() || (lhs.size() == rhs.size() && lhs < rhs);
-  });
-  return files;
+  return path_utils::GetVectorIndexFiles(*lsm.TEST_GetEnv(), lsm.StorageDir());
 }
 
 MergeFilterPtr VectorLSMTest::GetMergeFilter() {

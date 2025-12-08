@@ -231,11 +231,13 @@ Status TabletInfo::CheckRunning() const {
 void TabletInfo::SetTableIds(std::vector<TableId>&& table_ids) {
   std::lock_guard l(lock_);
   table_ids_ = std::move(table_ids);
+  VLOG_WITH_FUNC(2) << "Tablet " << tablet_id_ << " table ids: " << AsString(table_ids_);
 }
 
 void TabletInfo::AddTableId(const TableId& table_id) {
   std::lock_guard l(lock_);
   table_ids_.push_back(table_id);
+  VLOG_WITH_FUNC(2) << "Tablet " << tablet_id_ << " table ids: " << AsString(table_ids_);
 }
 
 std::vector<TableId> TabletInfo::GetTableIds() const {
@@ -1014,16 +1016,6 @@ Result<bool> TableInfo::HasOutstandingSplits(bool wait_for_parent_deletion) cons
   return false;
 }
 
-std::vector<qlexpr::IndexInfo> TableInfo::GetIndexInfos() const {
-  std::vector<qlexpr::IndexInfo> result;
-  auto l = LockForRead();
-  result.reserve(l->pb.indexes().size());
-  for (const auto& index_info_pb : l->pb.indexes()) {
-    result.emplace_back(index_info_pb);
-  }
-  return result;
-}
-
 qlexpr::IndexInfo TableInfo::GetIndexInfo(const TableId& index_id) const {
   auto l = LockForRead();
   for (const auto& index_info_pb : l->pb.indexes()) {
@@ -1032,6 +1024,28 @@ qlexpr::IndexInfo TableInfo::GetIndexInfo(const TableId& index_id) const {
     }
   }
   return qlexpr::IndexInfo();
+}
+
+TableIds TableInfo::GetIndexIds() const {
+  TableIds result;
+  auto lock = LockForRead();
+  result.reserve(lock->pb.indexes().size());
+  for (const auto& index_info_pb : lock->pb.indexes()) {
+    result.emplace_back(index_info_pb.table_id());
+  }
+  return result;
+}
+
+TableIds TableInfo::GetVectorIndexIds() const {
+  TableIds result;
+  auto lock = LockForRead();
+  result.reserve(lock->pb.indexes().size());
+  for (const auto& index_info_pb : lock->pb.indexes()) {
+    if (index_info_pb.has_vector_idx_options()) {
+      result.emplace_back(index_info_pb.table_id());
+    }
+  }
+  return result;
 }
 
 bool TableInfo::UsesTablespacesForPlacement() const {
@@ -1710,7 +1724,7 @@ bool SnapshotInfo::IsDeleteInProgress() const {
   return LockForRead()->is_deleting();
 }
 
-TabletInfoPtr MakeTabletInfo(
+TabletInfoPtr MakeUnlockedTabletInfo(
     const TableInfoPtr& table,
     const TabletId& tablet_id) {
   auto tablet = std::make_shared<TabletInfo>(
@@ -1719,8 +1733,14 @@ TabletInfoPtr MakeTabletInfo(
   VLOG_WITH_FUNC(2)
       << "Table: " << table->ToString() << ", tablet: " << tablet->ToString();
 
-  tablet->mutable_metadata()->StartMutation();
+  return tablet;
+}
 
+TabletInfoPtr MakeTabletInfo(
+    const TableInfoPtr& table,
+    const TabletId& tablet_id) {
+  auto tablet = MakeUnlockedTabletInfo(table, tablet_id);
+  tablet->mutable_metadata()->StartMutation();
   return tablet;
 }
 
