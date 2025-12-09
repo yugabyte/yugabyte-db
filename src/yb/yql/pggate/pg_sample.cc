@@ -415,12 +415,16 @@ class SamplePickerBase : public PgSelect {
   const PgDocSampleOp& GetSampleOp() const { return down_cast<const PgDocSampleOp&>(*doc_op_); }
 
   Status Prepare(
-      const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info) {
+      const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info,
+      bool skip_intents_read) {
     target_ = PgTable(VERIFY_RESULT(pg_session_->LoadTable(table_id)));
     bind_ = PgTable(nullptr);
     auto read_op = ArenaMakeShared<PgsqlReadOp>(
         arena_ptr(), &arena(), *target_, locality_info, pg_session_->metrics().metrics_capture());
     read_req_ = std::shared_ptr<LWPgsqlReadRequestPB>(read_op, &read_op->read_request());
+    if (skip_intents_read) {
+      read_req_->set_skip_intents_read(skip_intents_read);
+    }
     doc_op_ = std::make_shared<PgDocSampleOp>(pg_session_, &target_, std::move(read_op), clock_);
     return Status::OK();
   }
@@ -531,13 +535,13 @@ class SampleBlocksPicker : public SamplePickerBase {
 
   static Result<std::unique_ptr<SampleBlocksPicker>> Make(
       const PgSessionPtr& pg_session, const PgObjectId& table_id,
-      const YbcPgTableLocalityInfo& locality_info, int targrows,
+      const YbcPgTableLocalityInfo& locality_info, bool skip_read_skip, int targrows,
       const SampleRandomState& rand_state, scoped_refptr<ClockBase> clock,
       YsqlSamplingAlgorithm ysql_sampling_algorithm) {
     std::unique_ptr<SampleBlocksPicker> result{
         new SampleBlocksPicker{pg_session, std::move(clock)}};
     RETURN_NOT_OK(result->Prepare(
-        table_id, locality_info, targrows, rand_state,
+        table_id, locality_info, skip_read_skip, targrows, rand_state,
         ysql_sampling_algorithm));
     return result;
   }
@@ -548,12 +552,13 @@ class SampleBlocksPicker : public SamplePickerBase {
   }
 
   Status Prepare(
-      const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info, int targrows,
+      const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info,
+      bool skip_intents_read, int targrows,
       const SampleRandomState& rand_state,
       YsqlSamplingAlgorithm ysql_sampling_algorithm) {
 
     RETURN_NOT_OK(
-        SamplePickerBase::Prepare(table_id, locality_info));
+        SamplePickerBase::Prepare(table_id, locality_info, skip_intents_read));
     SetSamplingState(targrows, rand_state, ysql_sampling_algorithm);
     read_req_->mutable_sampling_state()->set_is_blocks_sampling_stage(true);
 
@@ -683,12 +688,12 @@ class SampleRowsPicker : public SamplePickerBase, public SampleRowsPickerIf {
 
   static Result<std::unique_ptr<SampleRowsPicker>> Make(
       const PgSessionPtr& pg_session, const PgObjectId& table_id,
-      const YbcPgTableLocalityInfo& locality_info,
+      const YbcPgTableLocalityInfo& locality_info, bool skip_intents_read,
       int targrows, const SampleRandomState& rand_state, scoped_refptr<ClockBase> clock,
       YsqlSamplingAlgorithm ysql_sampling_algorithm) {
     std::unique_ptr<SampleRowsPicker> result{new SampleRowsPicker{pg_session, std::move(clock)}};
     RETURN_NOT_OK(result->Prepare(
-        table_id, locality_info, targrows, rand_state,
+        table_id, locality_info, skip_intents_read, targrows, rand_state,
         ysql_sampling_algorithm));
     return result;
   }
@@ -699,10 +704,11 @@ class SampleRowsPicker : public SamplePickerBase, public SampleRowsPickerIf {
   }
 
   Status Prepare(
-      const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info, int targrows,
+      const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info,
+      bool skip_intents_read, int targrows,
       const SampleRandomState& rand_state,
       YsqlSamplingAlgorithm ysql_sampling_algorithm) {
-    RETURN_NOT_OK(SamplePickerBase::Prepare(table_id, locality_info));
+    RETURN_NOT_OK(SamplePickerBase::Prepare(table_id, locality_info, skip_intents_read));
 
     SetSamplingState(targrows, rand_state, ysql_sampling_algorithm);
     read_req_->mutable_sampling_state()->set_is_blocks_sampling_stage(false);
@@ -767,12 +773,12 @@ class TwoStageSampleRowsPicker : public SampleRowsPickerIf {
 
   static Result<std::unique_ptr<SampleRowsPickerIf>> Make(
       const PgSessionPtr& pg_session, const PgObjectId& table_id,
-      const YbcPgTableLocalityInfo& locality_info,
+      const YbcPgTableLocalityInfo& locality_info, bool skip_intents_read,
       int targrows, const SampleRandomState& rand_state, scoped_refptr<ClockBase> clock,
       YsqlSamplingAlgorithm ysql_sampling_algorithm) {
     std::unique_ptr<TwoStageSampleRowsPicker> result{new TwoStageSampleRowsPicker{pg_session}};
     RETURN_NOT_OK(result->Prepare(
-        table_id, locality_info, targrows, rand_state, std::move(clock),
+        table_id, locality_info, skip_intents_read, targrows, rand_state, std::move(clock),
         ysql_sampling_algorithm));
     return result;
   }
@@ -783,14 +789,15 @@ class TwoStageSampleRowsPicker : public SampleRowsPickerIf {
   }
 
   Status Prepare(
-      const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info, int targrows,
+      const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info,
+      bool skip_intents_read, int targrows,
       const SampleRandomState& rand_state, scoped_refptr<ClockBase> clock,
       YsqlSamplingAlgorithm ysql_sampling_algorithm) {
     sample_blocks_picker_ = VERIFY_RESULT(SampleBlocksPicker::Make(
-        pg_session_, table_id, locality_info, targrows, rand_state, clock,
+        pg_session_, table_id, locality_info, skip_intents_read, targrows, rand_state, clock,
         ysql_sampling_algorithm));
     sample_rows_picker_ = VERIFY_RESULT(SampleRowsPicker::Make(
-        pg_session_, table_id, locality_info, targrows, rand_state,
+        pg_session_, table_id, locality_info, skip_intents_read, targrows, rand_state,
         std::move(clock), ysql_sampling_algorithm));
     return Status::OK();
   }
@@ -809,7 +816,8 @@ PgSample::PgSample(const PgSessionPtr& pg_session)
 PgSample::~PgSample() {}
 
 Status PgSample::Prepare(
-    const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info, int targrows,
+    const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info,
+    bool skip_intents_read, int targrows,
     const SampleRandomState& rand_state, scoped_refptr<ClockBase> clock) {
   // Setup target and bind descriptor.
   target_ = PgTable(VERIFY_RESULT(pg_session_->LoadTable(table_id)));
@@ -828,11 +836,11 @@ Status PgSample::Prepare(
 
   if (ysql_sampling_algorithm == YsqlSamplingAlgorithm::BLOCK_BASED_SAMPLING) {
     sample_rows_picker_ = VERIFY_RESULT(TwoStageSampleRowsPicker::Make(
-        pg_session_, table_id, locality_info, targrows, rand_state,
+        pg_session_, table_id, locality_info, skip_intents_read, targrows, rand_state,
         std::move(clock), ysql_sampling_algorithm));
   } else {
     sample_rows_picker_ = VERIFY_RESULT(SampleRowsPicker::Make(
-        pg_session_, table_id, locality_info, targrows, rand_state,
+        pg_session_, table_id, locality_info, skip_intents_read, targrows, rand_state,
         std::move(clock), ysql_sampling_algorithm));
   }
 
@@ -842,6 +850,9 @@ Status PgSample::Prepare(
       arena_ptr(), &arena(), *target_, locality_info,
       pg_session_->metrics().metrics_capture());
   read_req_ = std::shared_ptr<LWPgsqlReadRequestPB>(read_op, &read_op->read_request());
+  if (skip_intents_read) {
+    read_req_->set_skip_intents_read(skip_intents_read);
+  }
   doc_op_ = make_shared<PgDocSampleFetchOp>(pg_session_, &target_, std::move(read_op));
 
   VLOG_WITH_FUNC(3)
@@ -878,10 +889,10 @@ EstimatedRowCount PgSample::GetEstimatedRowCount() {
 
 Result<std::unique_ptr<PgSample>> PgSample::Make(
     const PgSessionPtr& pg_session, const PgObjectId& table_id,
-    const YbcPgTableLocalityInfo& locality_info,
+    const YbcPgTableLocalityInfo& locality_info, bool skip_intents_read,
     int targrows, const SampleRandomState& rand_state, scoped_refptr<ClockBase> clock) {
   std::unique_ptr<PgSample> result{new PgSample{pg_session}};
-  RETURN_NOT_OK(result->Prepare(table_id, locality_info, targrows,
+  RETURN_NOT_OK(result->Prepare(table_id, locality_info, skip_intents_read, targrows,
       rand_state, std::move(clock)));
   return result;
 }

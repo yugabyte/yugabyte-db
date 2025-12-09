@@ -77,6 +77,11 @@ METRIC_DEFINE_counter(server, consistent_prefix_failed_reads,
     yb::MetricUnit::kRequests,
     "Number of consistent prefix reads that failed to be served by the closest replica.");
 
+METRIC_DEFINE_counter(server, skip_intents_writes,
+    "Number of writes that have skipped intents db within a transaction.",
+    yb::MetricUnit::kRequests,
+    "Number of writes that have skipped intents db within a transaction.");
+
 DEFINE_RUNTIME_int32(ybclient_print_trace_every_n, 0,
     "Controls the rate at which traces from ybclient are printed. Setting this to 0 "
     "disables printing the collected traces.");
@@ -156,7 +161,8 @@ AsyncRpcMetrics::AsyncRpcMetrics(const scoped_refptr<yb::MetricEntity>& entity)
       time_to_send(METRIC_handler_latency_yb_client_time_to_send.Instantiate(entity)),
       consistent_prefix_successful_reads(
           METRIC_consistent_prefix_successful_reads.Instantiate(entity)),
-      consistent_prefix_failed_reads(METRIC_consistent_prefix_failed_reads.Instantiate(entity)) {
+      consistent_prefix_failed_reads(METRIC_consistent_prefix_failed_reads.Instantiate(entity)),
+      skip_intents_writes(METRIC_skip_intents_writes.Instantiate(entity)) {
 }
 
 AsyncRpc::AsyncRpc(
@@ -437,11 +443,19 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(
   }
   const auto& metadata = batcher_->in_flight_ops().metadata;
   if (!metadata.transaction.transaction_id.IsNil()) {
+    DCHECK(!data.skip_intents);
     SetMetadata(metadata, data.need_metadata, &req_);
     bool serializable = metadata.transaction.isolation == IsolationLevel::SERIALIZABLE_ISOLATION;
     LOG_IF(DFATAL, has_read_time && serializable)
         << "Read time should NOT be specified for serializable isolation: "
         << read_point->GetReadTime().ToString();
+  } else if (data.skip_intents) {
+    if constexpr (std::is_same_v<Req, tserver::LWWriteRequestPB>) {
+      IncrementCounter(async_rpc_metrics_->skip_intents_writes);
+    }
+    if (req_.read_time().read_ht() > 0) {
+      req_.clear_read_time();
+    }
   }
 }
 

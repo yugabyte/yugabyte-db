@@ -321,6 +321,9 @@ message PgsqlWriteRequestPB {
 
   // Table space oid of the table specified by table_id.
   optional uint32 tablespace_oid = 29;
+
+  // Optimization to skip intents write and directly writes to regular db.
+  optional bool skip_intents_write = 30;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -597,6 +600,8 @@ message PgsqlReadRequestPB {
 
   // Table space oid of the table specified by table_id.
   optional uint32 tablespace_oid = 45;
+
+  optional bool skip_intents_read = 46;
 }
 
 //--------------------------------------------------------------------------------------------------

@@ -48,7 +48,7 @@ class PgSample final : public PgStatementLeafBase<PgDmlRead, StmtOp::kSample>  {
 
   static Result<std::unique_ptr<PgSample>> Make(
       const PgSessionPtr& pg_session, const PgObjectId& table_id,
-      const YbcPgTableLocalityInfo& locality_info, int targrows,
+      const YbcPgTableLocalityInfo& locality_info, bool skip_intents_read, int targrows,
       const SampleRandomState& rand_state, scoped_refptr<ClockBase> clock);
 
   Status SetNextBatchYbctids(const YbcPgExecParameters* exec_params);
@@ -57,7 +57,8 @@ class PgSample final : public PgStatementLeafBase<PgDmlRead, StmtOp::kSample>  {
   explicit PgSample(const PgSessionPtr& pg_session);
 
   Status Prepare(
-      const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info, int targrows,
+      const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info,
+      bool skip_intents_read, int targrows,
       const SampleRandomState& rand_state, scoped_refptr<ClockBase> clock);
 
   std::unique_ptr<SampleRowsPickerIf> sample_rows_picker_;

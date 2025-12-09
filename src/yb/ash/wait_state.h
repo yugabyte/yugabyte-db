@@ -283,6 +283,7 @@ YB_DEFINE_TYPED_ENUM(PggateRPC, uint16_t,
   (kDeleteDBSequences)
   (kCheckIfPitrActive)
   (kIsObjectPartOfXRepl)
+  (kIsNamespacePartOfCDCSDK)
   (kGetTserverCatalogVersionInfo)
   (kGetTserverCatalogMessageLists)
   (kSetTserverCatalogMessageList)

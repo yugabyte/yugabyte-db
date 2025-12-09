@@ -674,6 +674,17 @@ extern bool yb_ignore_freeze_with_copy;
 /* GUC variables needed by YB via their YB pointers. */
 extern int	StatementTimeout;
 
+
+/*
+ * Enable the skip intents write optimization.
+ */
+extern bool yb_enable_new_relation_fastpath_write;
+
+/*
+ * Enable the skip intents write optimization in transaction blocks.
+ */
+extern bool yb_enable_new_relation_fastpath_write_in_txn_blocks;
+
 /* ------------------------------------------------------------------------------ */
 /* YB Debug utils. */
 
@@ -1145,7 +1156,8 @@ typedef enum YbTableDistribution
 	YB_HASH_SHARDED,
 	YB_RANGE_SHARDED
 } YbTableDistribution;
-YbTableDistribution YbGetTableDistribution(Oid relid);
+extern YbTableDistribution YbGetTableDistribution(Relation rel);
+extern YbTableDistribution YbGetTableDistributionById(Oid relid);
 
 /*
  * Check whether the given libc locale is supported in YugaByte mode.
@@ -1731,6 +1743,9 @@ extern YbcPgStatement YbNewTruncateColocated(Relation rel,
 
 extern YbcPgStatement YbNewTruncateColocatedIgnoreNotFound(Relation rel,
 														   YbcPgTransactionSetting transaction_setting);
+extern bool YbCanSkipIntentsWrite(Relation rel);
+extern void YbEnableSkipIntentsForNewTransaction();
+extern void YbMaybeDisableSkipIntentsForCDCSDK(Oid database_oid);
 
 extern const unsigned char *YbGetLocalTServerUuid();
 extern void YbUCharToUuid(const unsigned char *in, pg_uuid_t *out);
@@ -1750,6 +1765,7 @@ extern const char *YbGetTraceparentResultErrmsg(YbTraceparentResult result);
 extern YbTraceparentResult YbGetTraceparentFromTraceContext(const char *trace_context,
 															size_t trace_context_len,
 															char *traceparent_out);
+extern bool YBHasSkippedIntentsWrite();
 
 extern void YbInvalidatePlannerRelcache(struct PlannerInfo *root);
 
