@@ -441,6 +441,9 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
 
   std::optional<TransactionMetadata> object_locking_txn_meta_;
 
+  // True if all the ops are PG read/write that skips intents db.
+  bool skip_intents_ = false;
+
   DISALLOW_COPY_AND_ASSIGN(Batcher);
 };
 

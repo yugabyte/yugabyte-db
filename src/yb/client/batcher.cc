@@ -314,6 +314,17 @@ void Batcher::Add(YBOperationPtr op) {
     return;
   }
 
+  const bool skip_intents =
+      (op->type() == YBOperation::Type::PGSQL_WRITE &&
+       down_cast<YBPgsqlWriteOp*>(op.get())->skip_intents()) ||
+      (op->type() == YBOperation::Type::PGSQL_READ &&
+       down_cast<YBPgsqlReadOp*>(op.get())->skip_intents());
+  if (ops_.empty()) {
+    skip_intents_ = skip_intents;
+  } else {
+    CHECK_EQ(skip_intents_, skip_intents)
+        << "PG should only send all skip intents ops, or all normal ops.";
+  }
   ops_.emplace_back(std::move(op));
 }
 
@@ -583,7 +594,8 @@ void Batcher::ExecuteOperations(Initial initial) {
   }
   state_ = BatcherState::kTransactionReady;
 
-  const bool force_consistent_read = force_consistent_read_ || this->transaction();
+  const bool force_consistent_read =
+      force_consistent_read_ || this->transaction();
 
   // Use big enough value for preallocated storage, to avoid unnecessary allocations.
   boost::container::small_vector<std::shared_ptr<AsyncRpc>,
@@ -632,6 +644,9 @@ rpc::ProxyCache& Batcher::proxy_cache() const {
 }
 
 YBTransactionPtr Batcher::transaction() const {
+  if (skip_intents_) {
+    return nullptr;
+  }
   return transaction_;
 }
 
@@ -688,6 +703,7 @@ Result<std::shared_ptr<AsyncRpc>> Batcher::CreateRpc(
     .tablet = tablet,
     .allow_local_calls_in_curr_thread = allow_local_calls_in_curr_thread,
     .need_consistent_read = need_consistent_read,
+    .skip_intents = skip_intents_,
     .arena = arena_,
     .ops = InFlightOps(group.begin, group.end),
     .need_metadata = group.need_metadata

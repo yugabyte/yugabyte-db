@@ -215,6 +215,7 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
           FLAGS_ysql_catalog_preload_additional_table_list.c_str(),
       .ysql_use_relcache_file                   = &FLAGS_ysql_use_relcache_file,
       .ysql_use_optimized_relcache_update       = &FLAGS_ysql_use_optimized_relcache_update,
+      .ysql_cdcsdk_enable_old_namespace_streams  = &FLAGS_ysql_cdcsdk_enable_old_namespace_streams,
       .ysql_enable_pg_per_database_oid_allocator =
           &FLAGS_ysql_enable_pg_per_database_oid_allocator,
       .TEST_hide_details_for_pg_regress =

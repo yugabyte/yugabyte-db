@@ -200,8 +200,14 @@ lnext:
 			   node->yb_are_row_marks_for_yb_rels);
 		if (node->yb_are_row_marks_for_yb_rels)
 		{
-			test = YBCLockTuple(erm->relation, datum, erm->markType,
-								erm->waitPolicy, estate);
+			if (!YbCanSkipIntentsWrite(erm->relation))
+				test = YBCLockTuple(erm->relation, datum, erm->markType,
+									erm->waitPolicy, estate);
+			else
+			{
+				elog(DEBUG1, "Skipping lock acquisition for relation %u since intents are skipped", erm->relation->rd_id);
+				test = TM_Ok;
+			}
 		}
 		else
 		{

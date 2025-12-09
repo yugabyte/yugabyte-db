@@ -3930,6 +3930,27 @@ Status CatalogManager::IsObjectPartOfXRepl(
   return Status::OK();
 }
 
+// This function checks if a namespace is part of a CDCSDK stream.
+// It separates CDCSDK streams from xcluster streams, as CDCSDK streams
+// have the namespace_id field set in their stream metadata, whereas xcluster
+// streams do not.
+Status CatalogManager::IsNamespacePartOfCDCSDK(
+    const IsNamespacePartOfCDCSDKRequestPB* req, IsNamespacePartOfCDCSDKResponsePB* resp) {
+  SCHECK(!req->namespace_id().empty(), InvalidArgument, "namespace_id must not be empty");
+  SharedLock lock(mutex_);
+  for (const auto& [_, stream] : cdc_stream_map_) {
+    auto ltm = stream->LockForRead();
+    if (!ltm->is_deleting() &&
+        !ltm->namespace_id().empty() &&
+        ltm->namespace_id() == req->namespace_id()) {
+      resp->set_is_namespace_part_of_cdcsdk(true);
+      return Status::OK();
+    }
+  }
+  resp->set_is_namespace_part_of_cdcsdk(false);
+  return Status::OK();
+}
+
 Status CatalogManager::UpdateCDCStreams(
     const std::vector<xrepl::StreamId>& stream_ids,
     const std::vector<yb::master::SysCDCStreamEntryPB>& update_entries) {

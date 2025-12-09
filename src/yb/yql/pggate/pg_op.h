@@ -94,6 +94,8 @@ class PgsqlOp {
 
   virtual Status InitPartitionKey(const PgTableDesc& table) = 0;
 
+  virtual bool skip_intents() const = 0;
+
  private:
   virtual std::string RequestToString() const = 0;
 
@@ -133,6 +135,10 @@ class PgsqlReadOp : public PgsqlOp {
   PgsqlOpPtr DeepCopy(const std::shared_ptr<ThreadSafeArena>& arena_ptr) const;
 
   std::string RequestToString() const override;
+
+  bool skip_intents() const override {
+    return read_request_.skip_intents_read();
+  }
 
  private:
   Status InitPartitionKey(const PgTableDesc& table) override;
@@ -175,6 +181,10 @@ class PgsqlWriteOp : public PgsqlOp {
   }
 
   std::string RequestToString() const override;
+
+  bool skip_intents() const override {
+    return write_request_.skip_intents_write();
+  }
 
  private:
   Status InitPartitionKey(const PgTableDesc& table) override;

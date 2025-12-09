@@ -2094,6 +2094,7 @@ YBStartTransaction(TransactionState s)
 
 	if (IsYugaByteEnabled())
 	{
+		YbEnableSkipIntentsForNewTransaction();
 		YBInitializeTransaction();
 	}
 }

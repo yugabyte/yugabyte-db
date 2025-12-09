@@ -593,6 +593,8 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 		return;					/* Nothing to do. */
 	}
 
+	YbMaybeDisableSkipIntentsForCDCSDK(MyDatabaseId);
+
 	YbcPgStatement handle = NULL;
 	ListCell   *listptr;
 	bool		is_shared_relation = tablespaceId == GLOBALTABLESPACE_OID;

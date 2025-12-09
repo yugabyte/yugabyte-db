@@ -922,7 +922,7 @@ create_plain_partial_paths(PlannerInfo *root, RelOptInfo *rel)
 
 		parallel_workers =
 			yb_compute_parallel_worker(rel,
-									   YbGetTableDistribution(rte->relid),
+									   YbGetTableDistributionById(rte->relid),
 									   max_parallel_workers_per_gather);
 	}
 	else

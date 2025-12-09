@@ -56,7 +56,8 @@ class PgDmlWrite : public PgDml {
       bool packed = false);
 
   // Prepare write operations.
-  Status Prepare(const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info);
+  Status Prepare(const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info,
+                 bool skip_intents_write);
 
   // Allocate column expression.
   Result<LWPgsqlExpressionPB*> AllocColumnBindPB(PgColumn* col, PgExpr* expr) override;

@@ -2578,13 +2578,26 @@ class PgClientServiceImpl::Impl : public SessionProvider {
   }
 
   Status IsObjectPartOfXRepl(
-    const PgIsObjectPartOfXReplRequestPB& req, PgIsObjectPartOfXReplResponsePB* resp,
-    rpc::RpcContext* context) {
+      const PgIsObjectPartOfXReplRequestPB& req, PgIsObjectPartOfXReplResponsePB* resp,
+      rpc::RpcContext* context) {
     auto res = client().IsObjectPartOfXRepl(PgObjectId::GetYbTableIdFromPB(req.table_id()));
     if (!res.ok()) {
       StatusToPB(res.status(), resp->mutable_status());
     } else {
       resp->set_is_object_part_of_xrepl(*res);
+    }
+    return Status::OK();
+  }
+
+  Status IsNamespacePartOfCDCSDK(
+      const PgIsNamespacePartOfCDCSDKRequestPB& req, PgIsNamespacePartOfCDCSDKResponsePB* resp,
+      rpc::RpcContext* context) {
+    auto namespace_id = GetPgsqlNamespaceId(req.database_oid());
+    auto res = client().IsNamespacePartOfCDCSDK(namespace_id);
+    if (!res.ok()) {
+      StatusToPB(res.status(), resp->mutable_status());
+    } else {
+      resp->set_is_namespace_part_of_cdcsdk(*res);
     }
     return Status::OK();
   }

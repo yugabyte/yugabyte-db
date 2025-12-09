@@ -309,6 +309,9 @@ static void assign_yb_dist_tracecontext(const char *newval, void *extra);
 static bool check_yb_silence_advisory_locks_not_supported_error(bool *newval, void **extra,
 																GucSource source);
 static void assign_yb_enable_pg_stat_statements_rpc_stats(bool newval, void *extra);
+static bool check_yb_enable_new_relation_fastpath_write(bool *newval, void **extra, GucSource source);
+static bool check_yb_enable_new_relation_fastpath_write_in_txn_blocks(bool *newval, void **extra,
+																	 GucSource source);
 
 /* Private functions in guc-file.l that need to be called from guc.c */
 static ConfigVariable *ProcessConfigFileInternal(GucContext context,
@@ -4067,6 +4070,30 @@ static struct config_bool ConfigureNamesBool[] =
 		&yb_qpm_configuration.show_max_exec_params,
 		false,
 		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_new_relation_fastpath_write", PGC_SUSET, CUSTOM_OPTIONS,
+			gettext_noop("Enables fastpath writes for relations created in the current transaction "
+						 "(apply writes directly to the regular RocksDB DB when safe, skipping the "
+						 "intents DB)."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_new_relation_fastpath_write,
+		true,
+		check_yb_enable_new_relation_fastpath_write, NULL, NULL
+	},
+
+	{
+		{"yb_enable_new_relation_fastpath_write_in_txn_blocks", PGC_SUSET, CUSTOM_OPTIONS,
+			gettext_noop("Allows yb_enable_new_relation_fastpath_write to be applicable inside explicit transaction blocks too."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_new_relation_fastpath_write_in_txn_blocks,
+		false,
+		check_yb_enable_new_relation_fastpath_write_in_txn_blocks, NULL, NULL
 	},
 
 	/* End-of-list marker */
@@ -17426,6 +17453,42 @@ assign_yb_dist_tracecontext(const char *newval, void *extra)
 	MemoryContext oldcontext = MemoryContextSwitchTo(TopMemoryContext);
 	yb_guc_remote_span_ctx = YBCGetValidSpanContext((const char *) extra);
 	MemoryContextSwitchTo(oldcontext);
+}
+
+/*
+ * YB: check_skip_intents_internal
+ * Common logic for skip-intent GUCs to handle transaction block restrictions.
+ */
+static bool
+check_skip_intents_internal(const char *guc_name, bool *newval, GucSource source)
+{
+	if (IsTransactionBlock() || FirstSnapshotSet)
+	{
+		GUC_check_errdetail("%s cannot be changed inside a transaction block or "
+							"after any query has been run in the transaction.", guc_name);
+		return false;
+	}
+
+	return true;
+}
+
+static bool
+check_yb_enable_new_relation_fastpath_write(bool *newval, void **extra, GucSource source)
+{
+	return check_skip_intents_internal("yb_enable_new_relation_fastpath_write", newval, source);
+}
+
+static bool
+check_yb_enable_new_relation_fastpath_write_in_txn_blocks(bool *newval, void **extra,
+														  GucSource source)
+{
+	if (*newval && !yb_enable_new_relation_fastpath_write)
+	{
+		GUC_check_errdetail("Cannot enable yb_enable_new_relation_fastpath_write_in_txn_blocks "
+							"when yb_enable_new_relation_fastpath_write is disabled.");
+		return false;
+	}
+	return check_skip_intents_internal("yb_enable_new_relation_fastpath_write_in_txn_blocks", newval, source);
 }
 
 #include "guc-file.c"

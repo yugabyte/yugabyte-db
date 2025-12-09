@@ -40,6 +40,7 @@ typedef struct {
   const char*     ysql_catalog_preload_additional_table_list;
   const bool*     ysql_use_relcache_file;
   const bool*     ysql_use_optimized_relcache_update;
+  const bool*     ysql_cdcsdk_enable_old_namespace_streams;
   const bool*     ysql_enable_pg_per_database_oid_allocator;
   const bool*     TEST_hide_details_for_pg_regress;
   const bool*     TEST_generate_ybrowid_sequentially;

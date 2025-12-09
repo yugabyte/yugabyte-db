@@ -122,6 +122,8 @@ service PgClientService {
   rpc CheckIfPitrActive(PgCheckIfPitrActiveRequestPB) returns (PgCheckIfPitrActiveResponsePB);
   rpc IsObjectPartOfXRepl(PgIsObjectPartOfXReplRequestPB)
       returns (PgIsObjectPartOfXReplResponsePB);
+  rpc IsNamespacePartOfCDCSDK(PgIsNamespacePartOfCDCSDKRequestPB)
+      returns (PgIsNamespacePartOfCDCSDKResponsePB);
   rpc GetTserverCatalogVersionInfo(PgGetTserverCatalogVersionInfoRequestPB)
       returns (PgGetTserverCatalogVersionInfoResponsePB);
   rpc CancelTransaction(PgCancelTransactionRequestPB) returns (PgCancelTransactionResponsePB);
@@ -1064,6 +1066,15 @@ message PgIsObjectPartOfXReplRequestPB {
 message PgIsObjectPartOfXReplResponsePB {
   AppStatusPB status = 1;
   bool is_object_part_of_xrepl = 2;
+}
+
+message PgIsNamespacePartOfCDCSDKRequestPB {
+  uint32 database_oid = 1;
+}
+
+message PgIsNamespacePartOfCDCSDKResponsePB {
+  AppStatusPB status = 1;
+  bool is_namespace_part_of_cdcsdk = 2;
 }
 
 message PgGetTserverCatalogVersionInfoRequestPB {

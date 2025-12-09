@@ -3465,3 +3465,15 @@ SPI_register_trigger_data(TriggerData *tdata)
 
 	return SPI_OK_TD_REGISTER;
 }
+
+int
+YbGetSPIStackDepth(void)
+{
+	/*
+	 *_SPI_connected is -1 when idle.
+	 * We return _SPI_connected + 1 so that:
+	 * 0 = Top level (standalone)
+	 * 1+ = Nested (Function/Trigger/Procedure)
+	 */
+	return _SPI_connected + 1;
+}

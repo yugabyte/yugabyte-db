@@ -56,6 +56,7 @@ struct AsyncRpcMetrics {
   scoped_refptr<EventStats> time_to_send;
   scoped_refptr<Counter> consistent_prefix_successful_reads;
   scoped_refptr<Counter> consistent_prefix_failed_reads;
+  scoped_refptr<Counter> skip_intents_writes;
 };
 
 using InFlightOps = boost::iterator_range<std::vector<InFlightOp>::iterator>;
@@ -65,6 +66,7 @@ struct AsyncRpcData {
   RemoteTablet* tablet = nullptr;
   bool allow_local_calls_in_curr_thread = false;
   bool need_consistent_read = false;
+  bool skip_intents = false;
   ThreadSafeArenaPtr arena;
   InFlightOps ops;
   bool need_metadata = false;

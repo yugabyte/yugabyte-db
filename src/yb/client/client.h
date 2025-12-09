@@ -746,6 +746,8 @@ class YBClient {
 
   Result<bool> IsObjectPartOfXRepl(const TableId& table_id);
 
+  Result<bool> IsNamespacePartOfCDCSDK(const NamespaceId& namespace_id);
+
   Result<bool> IsBootstrapRequired(
       const TableIds& table_ids,
       const std::optional<xrepl::StreamId>& stream_id = std::nullopt);

@@ -187,6 +187,14 @@ DEFINE_NON_RUNTIME_bool(ysql_use_relcache_file, true, "Use relcache init file");
 DEFINE_NON_RUNTIME_bool(ysql_use_optimized_relcache_update, true,
     "Use optimized relcache update during connection startup and cache refresh.");
 
+DEFINE_NON_RUNTIME_bool(ysql_cdcsdk_enable_old_namespace_streams, true,
+    "When true, old-style namespace-level CDCSDK streams (without replication slots) "
+    "may exist, so a master RPC fallback is used when no publications are found during "
+    "skip-intents optimization checks. When false, only publication-based CDCSDK is "
+    "checked.");
+TAG_FLAG(ysql_cdcsdk_enable_old_namespace_streams, advanced);
+TAG_FLAG(ysql_cdcsdk_enable_old_namespace_streams, hidden);
+
 DEFINE_RUNTIME_double(max_buffer_size_to_rpc_limit_ratio, 0.9, "the max buffer size is set to "
                       "max_buffer_size_to_rpc_limit_ratio*FLAGS_rpc_max_message_size.");
 

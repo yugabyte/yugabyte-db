@@ -26,14 +26,14 @@ BEGIN;
 
 CREATE TABLE self_insert_test (id INT PRIMARY KEY);
 
-INSERT INTO self_insert_test SELECT i FROM generate_series(1, 10) i;
+INSERT INTO self_insert_test SELECT i FROM generate_series(1, 100000) i;
 
--- The SELECT must find the first 10 rows in the Regular DB.
--- The INSERT then writes 10 new rows (ID 11-20) to the Regular DB.
+-- The SELECT must find the first 100000 rows in the Regular DB.
+-- The INSERT then writes 100000 new rows (ID 100001-200000) to the Regular DB.
 -- This must NOT loop indefinitely.
-INSERT INTO self_insert_test SELECT id + 10 FROM self_insert_test;
+INSERT INTO self_insert_test SELECT id + 100000 FROM self_insert_test;
 
--- Final count should be exactly 20.
+-- Final count should be exactly 200000.
 SELECT count(*) FROM self_insert_test;
 
 COMMIT;
@@ -45,7 +45,7 @@ BEGIN;
 CREATE TABLE mixed_visibility_test (id INT PRIMARY KEY, balance INT);
 
 -- First batch
-INSERT INTO mixed_visibility_test VALUES (1, 100), (2, 200);
+INSERT INTO mixed_visibility_test VALUES (1, 100000), (2, 200000);
 
 -- Use a statement that references the data to perform a calculation
 INSERT INTO mixed_visibility_test
@@ -71,10 +71,10 @@ INSERT INTO increment_test VALUES (1, 10);
 -- 4. 11 < 100 is still TRUE.
 -- 5. UPDATE writes val=12... and so on.
 
-UPDATE increment_test SET val = val + 1 WHERE val < 100;
+UPDATE increment_test SET val = val + 1 WHERE val < 100000;
 
 -- EXPECTED (Correct Isolation): val = 11
--- ACTUAL (If Isolation Fails): val = 100 (or the query loops/times out)
+-- ACTUAL (If Isolation Fails): val = 100000 (or the query loops/times out)
 SELECT * FROM increment_test;
 
 COMMIT;

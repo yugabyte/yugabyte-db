@@ -302,6 +302,8 @@ class PgClient {
 
   Result<bool> IsObjectPartOfXRepl(const PgObjectId& table_id);
 
+  Result<bool> IsNamespacePartOfCDCSDK(uint32_t database_oid);
+
   Result<TableKeyRanges> GetTableKeyRanges(
       const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
       uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length);

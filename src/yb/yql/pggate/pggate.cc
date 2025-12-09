@@ -177,12 +177,12 @@ std::optional<PgSelect::IndexQueryInfo> MakeIndexQueryInfo(
 Result<std::unique_ptr<PgStatement>> MakeSelectStatement(
     const PgSessionPtr& pg_session, const PgObjectId& table_id,
     const PgObjectId& index_id, const YbcPgPrepareParameters* params,
-    const YbcPgTableLocalityInfo& locality_info) {
+    const YbcPgTableLocalityInfo& locality_info, bool skip_intents_read) {
   if (params && params->index_only_scan) {
-    return PgSelectIndex::Make(pg_session, index_id, locality_info);
+    return PgSelectIndex::Make(pg_session, index_id, locality_info, skip_intents_read);
   }
   return PgSelect::Make(
-      pg_session, table_id, locality_info, MakeIndexQueryInfo(index_id, params));
+      pg_session, table_id, locality_info, skip_intents_read, MakeIndexQueryInfo(index_id, params));
 }
 
 std::vector<size_t> GetColIndexToInput(
@@ -1619,7 +1619,7 @@ Status PgApiImpl::DmlExecWriteOp(PgStatement *handle, int32_t *rows_affected_cou
 Result<PgStatement*> PgApiImpl::NewInsertBlock(
     const PgObjectId& table_id,
     const YbcPgTableLocalityInfo& locality_info,
-    YbcPgTransactionSetting transaction_setting) {
+    YbcPgTransactionSetting transaction_setting, bool skip_intents_write) {
   if (!FLAGS_ysql_pack_inserted_value) {
     return nullptr;
   }
@@ -1627,19 +1627,21 @@ Result<PgStatement*> PgApiImpl::NewInsertBlock(
   PgStatement *result = nullptr;
   RETURN_NOT_OK(AddToCurrentPgMemctx(
       VERIFY_RESULT(PgInsert::Make(
-          pg_session_, table_id, locality_info, transaction_setting, /* packed= */ true)),
+          pg_session_, table_id, locality_info, transaction_setting, skip_intents_write,
+          /* packed= */ true)),
       &result));
   return result;
 }
 
 Status PgApiImpl::NewInsert(
     const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info,
-    YbcPgTransactionSetting transaction_setting,
+    YbcPgTransactionSetting transaction_setting, bool skip_intents_write,
     PgStatement **handle) {
   *handle = nullptr;
   return AddToCurrentPgMemctx(
     VERIFY_RESULT(PgInsert::Make(
-        pg_session_, table_id, locality_info, transaction_setting, /* packed= */ false)),
+        pg_session_, table_id, locality_info, transaction_setting, skip_intents_write,
+        /* packed= */ false)),
     handle);
 }
 
@@ -1665,11 +1667,12 @@ Status PgApiImpl::InsertStmtSetIsBackfill(PgStatement* handle, bool is_backfill)
 
 Status PgApiImpl::NewUpdate(
     const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info,
-    YbcPgTransactionSetting transaction_setting,
+    YbcPgTransactionSetting transaction_setting, bool skip_intents_write,
     PgStatement** handle) {
   *handle = nullptr;
   return AddToCurrentPgMemctx(
-      VERIFY_RESULT(PgUpdate::Make(pg_session_, table_id, locality_info, transaction_setting)),
+      VERIFY_RESULT(PgUpdate::Make(pg_session_, table_id, locality_info, transaction_setting,
+                                   skip_intents_write)),
       handle);
 }
 
@@ -1681,11 +1684,12 @@ Status PgApiImpl::ExecUpdate(PgStatement* handle) {
 
 Status PgApiImpl::NewDelete(
     const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info,
-    YbcPgTransactionSetting transaction_setting,
+    YbcPgTransactionSetting transaction_setting, bool skip_intents_write,
     PgStatement** handle) {
   *handle = nullptr;
   return AddToCurrentPgMemctx(
-      VERIFY_RESULT(PgDelete::Make(pg_session_, table_id, locality_info, transaction_setting)),
+      VERIFY_RESULT(PgDelete::Make(pg_session_, table_id, locality_info, transaction_setting,
+                                   skip_intents_write)),
       handle);
 }
 
@@ -1694,12 +1698,14 @@ Status PgApiImpl::ExecDelete(PgStatement* handle) {
 }
 
 Status PgApiImpl::NewSample(
-    const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info, int targrows,
-    const SampleRandomState& rand_state, PgStatement** handle) {
+    const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info,
+    bool skip_intents_read, int targrows, const SampleRandomState& rand_state,
+    PgStatement** handle) {
   *handle = nullptr;
   return AddToCurrentPgMemctx(
       VERIFY_RESULT(PgSample::Make(
-          pg_session_, table_id, locality_info, targrows, rand_state, clock_->Now())),
+          pg_session_, table_id, locality_info, skip_intents_read, targrows, rand_state,
+          clock_->Now())),
       handle);
 }
 
@@ -1743,6 +1749,7 @@ Status PgApiImpl::ExecTruncateColocated(PgStatement* handle) {
 Status PgApiImpl::NewSelect(
     const PgObjectId& table_id, const PgObjectId& index_id,
     const YbcPgPrepareParameters* prepare_params, const YbcPgTableLocalityInfo& locality_info,
+    bool skip_intents_read,
     PgStatement** handle) {
   DCHECK(index_id.IsValid() || table_id.IsValid());
   DCHECK(!(prepare_params && prepare_params->index_only_scan) || index_id.IsValid());
@@ -1750,7 +1757,7 @@ Status PgApiImpl::NewSelect(
   *handle = nullptr;
   return AddToCurrentPgMemctx(
       VERIFY_RESULT(MakeSelectStatement(
-          pg_session_, table_id, index_id, prepare_params, locality_info)),
+          pg_session_, table_id, index_id, prepare_params, locality_info, skip_intents_read)),
       handle);
 }
 
@@ -2492,6 +2499,10 @@ Result<bool> PgApiImpl::CheckIfPitrActive() {
 
 Result<bool> PgApiImpl::IsObjectPartOfXRepl(const PgObjectId& table_id) {
   return pg_client_.IsObjectPartOfXRepl(table_id);
+}
+
+Result<bool> PgApiImpl::IsNamespacePartOfCDCSDK(uint32_t database_oid) {
+  return pg_client_.IsNamespacePartOfCDCSDK(database_oid);
 }
 
 Result<TableKeyRanges> PgApiImpl::GetTableKeyRanges(
