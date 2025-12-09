@@ -1174,6 +1174,11 @@ static char *yb_prepare_server_key(char *stmt_name, int stmt_name_len, char *que
 static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 						      char *data, int size)
 {
+	/*
+	 * YB: This is called during relay processing, so any message to be forwarded
+	 * needs to be added to the relay->iov buffer and not written using od_write.
+	 * The latter can cause a TCP deadlock in case the TCP write buffer is full
+	 */
 	od_client_t *client = relay->on_packet_arg;
 	od_instance_t *instance = client->global->instance;
 	(void)size;
@@ -1194,8 +1199,6 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 			 "%s", kiwi_fe_type_to_string(type));
 
 	od_frontend_status_t retstatus = OD_OK;
-	machine_msg_t *msg = NULL;
-	bool forwarded = 0;
 	switch (type) {
 	case KIWI_FE_COPY_DONE:
 	case KIWI_FE_COPY_FAIL:
@@ -1256,19 +1259,18 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				}
 
 				od_stat_parse(&route->stats);
-				rc = od_write(&server->io, msg_new);
+
+				rc = machine_iov_add(relay->iov, msg_new);
 				if (rc == -1) {
 					od_error(&instance->logger,
-						"rewrite parse", NULL, server,
-						"write error: %s",
-						od_io_error(&server->io));
-					return OD_ESERVER_WRITE;
+						 "rewrite parse", NULL, server,
+						 "out of memory");
+					return OD_EOOM;
 				}
 				break;
 			}
 
 			assert(client->prep_stmt_ids);
-			retstatus = OD_SKIP;
 			int opname_start_offset =
 				kiwi_be_describe_opname_offset(data, size);
 			if (opname_start_offset < 0) {
@@ -1343,9 +1345,11 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				// rewrite msg
 				// allocate prepered statement under name equal to yb_stmt_hash
 
+				machine_msg_t *msg;
 				msg = kiwi_fe_write_parse_description(
 					NULL, opname, OD_HASH_LEN, desc->data,
-					desc->len, YB_KIWI_FE_PARSE_NO_PARSE_COMPLETE);
+					desc->len,
+					YB_KIWI_FE_PARSE_NO_PARSE_COMPLETE);
 				if (msg == NULL) {
 					return OD_ESERVER_WRITE;
 				}
@@ -1360,13 +1364,12 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				}
 
 				od_stat_parse(&route->stats);
-				rc = od_write(&server->io, msg);
+				rc = machine_iov_add(relay->iov, msg);
+				retstatus = OD_SKIP;
 				if (rc == -1) {
 					od_error(&instance->logger, "describe",
-						 NULL, server,
-						 "write error: %s",
-						 od_io_error(&server->io));
-					return OD_ESERVER_WRITE;
+						 NULL, server, "out of memory");
+					return OD_EOOM;
 				}
 			} else {
 				int *refcnt;
@@ -1375,6 +1378,7 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				free(server_key_desc.data);
 			}
 
+			machine_msg_t *msg;
 			msg = kiwi_fe_write_describe(NULL, 'S', opname,
 						     OD_HASH_LEN);
 
@@ -1390,13 +1394,12 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 			}
 
 			// msg if deallocated automaictly
-			rc = od_write(&server->io, msg);
-			forwarded = 1;
+			rc = machine_iov_add(relay->iov, msg);
+			retstatus = OD_SKIP;
 			if (rc == -1) {
 				od_error(&instance->logger, "describe", NULL,
-					 server, "write error: %s",
-					 od_io_error(&server->io));
-				return OD_ESERVER_WRITE;
+					 server, "out of memory");
+				return OD_EOOM;
 			}
 		}
 		break;
@@ -1407,7 +1410,6 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 
 		if (route->rule->pool->reserve_prepared_statement) {
 			/* skip client parse msg */
-			retstatus = OD_SKIP;
 			kiwi_prepared_statement_t desc;
 			int rc;
 			rc = kiwi_be_read_parse_dest(data, size, &desc);
@@ -1579,6 +1581,7 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				// rewrite msg
 				// allocate prepered statement under name equal to yb_stmt_hash
 
+				machine_msg_t *msg;
 				msg = kiwi_fe_write_parse_description(NULL, buf, OD_HASH_LEN,
 					desc.description, desc.description_len, KIWI_FE_PARSE);
 				if (msg == NULL) {
@@ -1597,19 +1600,19 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				// stat backend parse msg
 				od_stat_parse(&route->stats);
 
-				rc = od_write(&server->io, msg);
+				rc = machine_iov_add(relay->iov, msg);
+				retstatus = OD_SKIP;
 				if (rc == -1) {
 					od_error(&instance->logger, "parse",
-						 NULL, server,
-						 "write error: %s",
-						 od_io_error(&server->io));
-					return OD_ESERVER_WRITE;
+						 NULL, server, "out of memory");
+					return OD_EOOM;
 				}
 			} else {
 				int *refcnt = value_ptr->data;
 				*refcnt = 1 + *refcnt;
 				free(server_key_desc.data);
 
+				machine_msg_t *msg;
 				if (!instance->config.yb_optimized_extended_query_protocol) {
 					od_debug(&instance->logger, "parse",
 						 client, server,
@@ -1628,13 +1631,12 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 					return OD_ESERVER_WRITE;
 				}
 
-				rc = od_write(&server->io, msg);
+				rc = machine_iov_add(relay->iov, msg);
+				retstatus = OD_SKIP;
 				if (rc == -1) {
 					od_error(&instance->logger, "parse",
-						 NULL, server,
-						 "write error: %s",
-						 od_io_error(&server->io));
-					return OD_ESERVER_WRITE;
+						 NULL, server, "out of memory");
+					return OD_EOOM;
 				}
 			}
 #ifndef YB_SUPPORT_FOUND
@@ -1653,7 +1655,6 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				return OD_ESERVER_WRITE;
 			}
 #endif
-			forwarded = 1;
 		}
 		break;
 	case KIWI_FE_BIND:
@@ -1662,7 +1663,6 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 					     size);
 
 		if (route->rule->pool->reserve_prepared_statement) {
-			retstatus = OD_SKIP;
 			uint32_t operator_name_len;
 			char *operator_name;
 
@@ -1699,12 +1699,13 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				}
 
 				od_stat_parse(&route->stats);
-				rc = od_write(&server->io, msg_new);
+				rc = machine_iov_add(relay->iov, msg_new);
+				retstatus = OD_SKIP;
 				if (rc == -1) {
 					od_error(&instance->logger,
-						"rewrite parse", NULL, server,
-						"write error: %s",
-						od_io_error(&server->io));
+						 "rewrite parse", NULL, server,
+						 "out of memory",
+						 od_io_error(&server->io));
 					return OD_ESERVER_WRITE;
 				}
 				break;
@@ -1783,6 +1784,7 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				// rewrite msg
 				// allocate prepered statement under name equal to yb_stmt_hash
 
+				machine_msg_t *msg;
 				msg = kiwi_fe_write_parse_description(
 					NULL, opname, OD_HASH_LEN, desc->data,
 					desc->len, YB_KIWI_FE_PARSE_NO_PARSE_COMPLETE);
@@ -1801,13 +1803,13 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				}
 
 				od_stat_parse(&route->stats);
-				rc = od_write(&server->io, msg);
+				rc = machine_iov_add(relay->iov, msg);
+				retstatus = OD_SKIP;
 				if (rc == -1) {
 					od_error(&instance->logger,
 						 "rewrite parse", NULL, server,
-						 "write error: %s",
-						 od_io_error(&server->io));
-					return OD_ESERVER_WRITE;
+						 "out of memory");
+					return OD_EOOM;
 				}
 			} else {
 				int *refcnt = value_ptr->data;
@@ -1815,6 +1817,7 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				free(server_key_desc.data);
 			}
 
+			machine_msg_t *msg;
 			msg = od_frontend_rewrite_msg(data, size,
 						      opname_start_offset,
 						      operator_name_len,
@@ -1832,14 +1835,13 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 						     machine_msg_size(msg));
 			}
 
-			rc = od_write(&server->io, msg);
-			forwarded = 1;
+			rc = machine_iov_add(relay->iov, msg);
+			retstatus = OD_SKIP;
 
 			if (rc == -1) {
 				od_error(&instance->logger, "rewrite bind",
-					 NULL, server, "write error: %s",
-					 od_io_error(&server->io));
-				return OD_ESERVER_WRITE;
+					 NULL, server, "out of memory");
+				return OD_EOOM;
 			}
 		}
 		break;
@@ -1853,7 +1855,6 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 			uint32_t name_len;
 			kiwi_fe_close_type_t type;
 			int rc;
-			forwarded = 1;
 
 			if (od_frontend_parse_close(data, size, &name,
 						    &name_len,
@@ -1873,6 +1874,7 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				machine_msg_t *pmsg;
 				pmsg = kiwi_be_write_close_complete(NULL);
 
+				/* TODO(#29442): Replace with async write to avoid TCP deadlock */
 				rc = od_write(&client->io, pmsg);
 				if (rc == -1) {
 					od_error(&instance->logger,
@@ -1907,19 +1909,6 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 		break;
 	default:
 		break;
-	}
-
-	/* If the retstatus is not SKIP */
-	if (route->rule->pool->reserve_prepared_statement && forwarded != 1) {
-		msg = kiwi_fe_copy_msg(msg, data, size);
-		int rc = od_write(&server->io, msg);
-		if (rc == -1) {
-			od_error(&instance->logger, "error while forwarding",
-				client, server, "Got error while forwarding the packet");
-			return OD_ESERVER_WRITE;
-		}
-
-		retstatus = OD_SKIP;
 	}
 
 	/* update server stats */
@@ -2330,6 +2319,11 @@ static void od_frontend_cleanup(od_client_t *client, char *context,
 		       od_frontend_status_to_str(status));
 		if (!client->server)
 			break;
+
+		/*
+		 * TODO(#29301): We need to handle the possibility of server socket
+		 * write buffer being full here
+		 */
 		rc = od_reset(server);
 		if (rc != 1) {
 			/* close backend connection */
