@@ -51,6 +51,7 @@ public class UpdatePitrConfigTest extends CommissionerBaseTest {
     pitrConfig = PitrConfig.create(defaultUniverse.getUniverseUUID(), createParams);
 
     mockClient = mock(YBClient.class);
+    when(mockOperatorStatusUpdaterFactory.create()).thenReturn(mockOperatorStatusUpdater);
   }
 
   private UpdatePitrConfigParams createParams(long retention, long interval) {

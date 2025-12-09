@@ -32,6 +32,7 @@ import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupRequestParams.KeyspaceTable;
 import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.forms.CreatePitrConfigParams;
 import com.yugabyte.yw.forms.DrConfigCreateForm;
 import com.yugabyte.yw.forms.DrConfigSetDatabasesForm;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
@@ -41,6 +42,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UpdatePitrConfigParams;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams;
 import com.yugabyte.yw.forms.XClusterConfigRestartFormData.RestartBootstrapParams;
 import com.yugabyte.yw.forms.YbcThrottleParametersResponse;
@@ -85,6 +87,7 @@ import io.yugabyte.operator.v1alpha1.BackupScheduleSpec;
 import io.yugabyte.operator.v1alpha1.BackupSpec;
 import io.yugabyte.operator.v1alpha1.BackupStatus;
 import io.yugabyte.operator.v1alpha1.DrConfig;
+import io.yugabyte.operator.v1alpha1.PitrConfig;
 import io.yugabyte.operator.v1alpha1.Release;
 import io.yugabyte.operator.v1alpha1.ReleaseSpec;
 import io.yugabyte.operator.v1alpha1.StorageConfig;
@@ -1730,5 +1733,54 @@ public class OperatorUtils {
       log.warn("Unable to get YSQL service endpoints", e);
     }
     return endpoints;
+  }
+
+  public CreatePitrConfigParams getCreatePitrConfigParamsFromCr(PitrConfig pitrConfig)
+      throws Exception {
+
+    ObjectNode crParams = objectMapper.valueToTree(pitrConfig.getSpec());
+    Customer cust = getOperatorCustomer();
+    String crUniverseName = crParams.get("universe").asText();
+    Universe universe = getUniverseFromNameAndNamespace(cust.getId(), crUniverseName, namespace);
+    if (universe == null) {
+      throw new Exception("No universe found with name " + crUniverseName);
+    }
+    UUID universeUUID = universe.getUniverseUUID();
+    UUID customerUUID = cust.getUuid();
+    String keyspaceName = crParams.get("database").asText();
+    crParams.put("universeUUID", universeUUID.toString());
+    crParams.put("customerUUID", customerUUID.toString());
+
+    CreatePitrConfigParams createPitrConfigParams =
+        validatingFormFactory.getFormDataOrBadRequest(crParams, CreatePitrConfigParams.class);
+    createPitrConfigParams.setKubernetesResourceDetails(
+        KubernetesResourceDetails.fromResource(pitrConfig));
+    return createPitrConfigParams;
+  }
+
+  public UpdatePitrConfigParams getUpdatePitrConfigParamsFromCr(PitrConfig pitrConfig)
+      throws Exception {
+
+    ObjectNode crParams = objectMapper.valueToTree(pitrConfig.getSpec());
+    Customer cust = getOperatorCustomer();
+    String crUniverseName = crParams.get("universe").asText();
+    Universe universe = getUniverseFromNameAndNamespace(cust.getId(), crUniverseName, namespace);
+    if (universe == null) {
+      throw new Exception("No universe found with name " + crUniverseName);
+    }
+    UUID universeUUID = universe.getUniverseUUID();
+    UUID customerUUID = cust.getUuid();
+    UUID pitrConfigUUID = UUID.fromString(pitrConfig.getStatus().getResourceUUID());
+    crParams.put("universeUUID", universeUUID.toString());
+    crParams.put("customerUUID", customerUUID.toString());
+    crParams.put("pitrConfigUUID", pitrConfigUUID.toString());
+
+    UpdatePitrConfigParams updatePitrConfigParams =
+        validatingFormFactory.getFormDataOrBadRequest(crParams, UpdatePitrConfigParams.class);
+
+    updatePitrConfigParams.setKubernetesResourceDetails(
+        KubernetesResourceDetails.fromResource(pitrConfig));
+
+    return updatePitrConfigParams;
   }
 }
