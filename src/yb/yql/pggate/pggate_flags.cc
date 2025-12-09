@@ -35,6 +35,9 @@ DEFINE_UNKNOWN_int32(pggate_ybclient_reactor_threads, 2,
 DEFINE_UNKNOWN_string(pggate_master_addresses, "",
               "Addresses of the master servers to which the PostgreSQL proxy server connects.");
 
+DEFINE_NON_RUNTIME_string(pggate_cert_base_name, "",
+              "Certificate base name computed by pg_wrapper");
+
 DEFINE_NON_RUNTIME_string(pggate_tserver_shared_memory_uuid, "",
                           "UUID for shared memory allocator files. This is used by tserver when "
                           "starting postmaster and should never be set explicitly.");

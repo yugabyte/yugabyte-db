@@ -126,7 +126,8 @@ Result<PgApiImpl::MessengerHolder> BuildMessenger(
   if (FLAGS_use_node_to_node_encryption) {
     secure_context = VERIFY_RESULT(rpc::CreateSecureContext(
         FLAGS_certs_dir,
-        rpc::UseClientCerts(FLAGS_node_to_node_encryption_use_client_certificates)));
+        rpc::UseClientCerts(FLAGS_node_to_node_encryption_use_client_certificates),
+        FLAGS_pggate_cert_base_name));
   }
   return PgApiImpl::MessengerHolder{
       std::move(secure_context),
