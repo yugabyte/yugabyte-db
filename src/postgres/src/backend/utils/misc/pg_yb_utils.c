@@ -1471,6 +1471,8 @@ YBCRollbackToSubTransaction(SubTransactionId id)
 	if (unlikely(status))
 		elog(FATAL, "Failed to rollback to subtransaction %" PRId32 ": %s",
 			 id, YBCMessageAsCString(status));
+
+	YbInvalidateTableCacheForAlteredTables();
 }
 
 bool
@@ -4337,6 +4339,8 @@ YBCInstallTxnDdlHook()
  *    1. Phase 3 scan/rewrite tables.
  *    2. Any failures during the ALTER TABLE operation, if DDL + DML transaction
  *       support is disabled.
+ * c) ROLLBACK TO SAVEPOINT operation if DDL savepoint support is enabled and
+ *    transaction block included an ALTER TABLE operation.
  */
 void
 YbInvalidateTableCacheForAlteredTables()
