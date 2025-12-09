@@ -2993,6 +2993,9 @@ Status CatalogManager::DoSplitTablet(
 
     // If child tablets are already registered, use the existing split key and tablets.
     if (source_tablet_lock->pb.split_tablet_ids().size() > 0) {
+      SCHECK_EQ(
+          kNumSplitParts, source_tablet_lock->pb.split_tablet_ids().size(), IllegalState,
+          "Unexpected number of split tablets registered");
       const auto parent_partition = source_tablet_lock->pb.partition();
       for (auto& split_tablet_id : source_tablet_lock->pb.split_tablet_ids()) {
         // This should only fail if there is a concurrent split on the same tablet that has not yet
@@ -3010,45 +3013,49 @@ Status CatalogManager::DoSplitTablet(
           split_partition_key = child_partition.partition_key_start();
         }
       }
+
       // Re-compute the encoded key to ensure we use the same partition boundary for both child
       // tablets.
       split_encoded_key = VERIFY_RESULT(PartitionSchema::GetEncodedPartitionKey(
           split_partition_key, source_table_lock->pb.partition_schema()));
-    }
 
-    LOG(INFO) << "Starting tablet split: " << source_tablet_info->ToString()
-              << " by partition key: " << Slice(split_partition_key).ToDebugHexString();
+      lock.unlock();
+      LOG(INFO) << "Retrying tablet split for tablet " << source_tablet_info->ToString()
+                << " by partition key: " << Slice(split_partition_key).ToDebugHexString();
+    } else {
+      LOG(INFO) << "Starting tablet split for tablet " << source_tablet_info->ToString()
+                << " by partition key: " << Slice(split_partition_key).ToDebugHexString();
 
-    // Get partitions for the split children.
-    std::array<PartitionPB, kNumSplitParts> tablet_partitions = VERIFY_RESULT(
+      // Get partitions for the split children.
+      std::array<PartitionPB, kNumSplitParts> tablet_partitions = VERIFY_RESULT(
         CreateNewTabletsPartition(*source_tablet_info, split_partition_key));
 
-    // Create in-memory (uncommitted) tablets for new split children.
-    for (int i = 0; i < kNumSplitParts; ++i) {
-      if (!child_tablet_ids_sorted[i].empty()) {
-        continue;
+      // Create in-memory (uncommitted) tablets for new split children.
+      for (int i = 0; i < kNumSplitParts; ++i) {
+        auto new_child = std::move(temp_tablet_info[i]);
+        SetupTabletInfo(*new_child, *table, tablet_partitions[i], SysTabletsEntryPB::CREATING);
+        child_tablet_ids_sorted[i] = new_child->id();
+        new_tablets.push_back(std::move(new_child));
       }
-      auto new_child = std::move(temp_tablet_info[i]);
-      SetupTabletInfo(*new_child, *table, tablet_partitions[i], SysTabletsEntryPB::CREATING);
-      child_tablet_ids_sorted[i] = new_child->id();
-      new_tablets.push_back(std::move(new_child));
+
+      // Release the catalog manager mutex before doing disk IO to register new child tablets.
+      lock.unlock();
+      if (FLAGS_TEST_delay_split_registration_secs > 0) {
+        SleepFor(MonoDelta::FromSeconds(FLAGS_TEST_delay_split_registration_secs));
+      }
+
+      // Add new split children to the sys catalog.
+      RETURN_NOT_OK(RegisterNewTabletsForSplit(
+          source_tablet_info.get(), new_tablets, epoch, &source_table_lock, &source_tablet_lock));
+
+      source_tablet_lock.Commit();
+      source_table_lock.Commit();
     }
-
-    // Release the catalog manager mutex before doing disk IO to register new child tablets.
-    lock.unlock();
-    if (FLAGS_TEST_delay_split_registration_secs > 0) {
-      SleepFor(MonoDelta::FromSeconds(FLAGS_TEST_delay_split_registration_secs));
-    }
-
-    // Add new split children to the sys catalog.
-    RETURN_NOT_OK(RegisterNewTabletsForSplit(
-        source_tablet_info.get(), new_tablets, epoch, &source_table_lock, &source_tablet_lock));
-
-    source_tablet_lock.Commit();
-    source_table_lock.Commit();
   }
-  // At this point, the tablets exist in the table but not in the tablet map. Users that need these
-  // tablets should retry until the tablets are inserted into the tablet map.
+
+  // At this point, if new tablets were registered, they exist in the table but not in the tablet
+  // map. Users that need these tablets should retry until the tablets are inserted into the tablet
+  // map.
 
   MAYBE_FAULT(FLAGS_TEST_fault_crash_after_registering_split_children);
 
