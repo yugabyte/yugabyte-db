@@ -1575,16 +1575,17 @@ void WriteQuery::IncrementActiveWriteQueryObjectsBy(int64_t value) {
   }
 }
 
-PgsqlResponsePB* WriteQuery::GetPgsqlResponseForMetricsCapture() const {
+std::pair<PgsqlResponsePB*, PgsqlMetricsCaptureType>
+    WriteQuery::GetPgsqlResponseAndMetricsCapture() const {
   if (!pgsql_write_ops_.empty()) {
     auto& write_op = pgsql_write_ops_.at(0);
+    auto metrics_capture = write_op->request().metrics_capture();
     if (GetAtomicFlag(&FLAGS_ysql_analyze_dump_metrics) &&
-        write_op->request().metrics_capture() ==
-            PgsqlMetricsCaptureType::PGSQL_METRICS_CAPTURE_ALL) {
-      return write_op->response();
+        metrics_capture != PgsqlMetricsCaptureType::PGSQL_METRICS_CAPTURE_NONE) {
+      return {write_op->response(), metrics_capture};
     }
   }
-  return nullptr;
+  return {nullptr, PgsqlMetricsCaptureType::PGSQL_METRICS_CAPTURE_NONE};
 }
 
 }  // namespace tablet

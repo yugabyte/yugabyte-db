@@ -7018,6 +7018,13 @@ YbSetMetricsCaptureType(YbcPgMetricsCaptureType metrics_capture)
 }
 
 void
+YbSetMetricsCaptureTypeIfUnset(YbcPgMetricsCaptureType metrics_capture)
+{
+	if (yb_session_stats.current_state.metrics_capture == YB_YQL_METRICS_CAPTURE_NONE)
+		yb_session_stats.current_state.metrics_capture = metrics_capture;
+}
+
+void
 YbSetCatalogCacheVersion(YbcPgStatement handle, uint64_t version)
 {
 	/*

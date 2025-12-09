@@ -33,12 +33,14 @@ class DocDBStatistics {
   // Returns number of metric changes dumped.
   size_t Dump(std::stringstream* out) const;
 
-  void CopyToPgsqlResponse(PgsqlResponsePB* response) const;
-  void CopyToPgsqlResponse(LWPgsqlResponsePB* response) const;
+  void CopyToPgsqlResponse(
+    PgsqlResponsePB* response, PgsqlMetricsCaptureType metrics_capture) const;
+  void CopyToPgsqlResponse(
+    LWPgsqlResponsePB* response, PgsqlMetricsCaptureType metrics_capture) const;
 
  private:
   template<class PB>
-  void DoCopyToPgsqlResponse(PB* response) const;
+  void DoCopyToPgsqlResponse(PB* response, PgsqlMetricsCaptureType metrics_capture) const;
 
   rocksdb::ScopedStatistics regulardb_statistics_;
   rocksdb::ScopedStatistics intentsdb_statistics_;

@@ -501,6 +501,10 @@ typedef struct {
 typedef enum {
   YB_YQL_METRICS_CAPTURE_NONE = 0,
   YB_YQL_METRICS_CAPTURE_ALL = 1,
+  // List of metrics to capture for PGSS metrics:
+  // - kCountersForPgStatStatements, kEventStatsForPgStatStatements in tablet_metrics.cc
+  // - kRegularDBTickersForPgStatStatements in docdb_statistics.cc
+  YB_YQL_METRICS_CAPTURE_PGSS_METRICS = 2,
 } YbcPgMetricsCaptureType;
 
 typedef struct {
