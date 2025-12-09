@@ -61,11 +61,13 @@ static inline int od_route_id_copy(od_route_id_t *dest, od_route_id_t *id)
 
 static inline int od_route_id_compare(od_route_id_t *a, od_route_id_t *b)
 {
-
+		/*
+		 * YB: physical_rep is not supported in YugabyteDB. So no comparison
+		 * is required for it.
+		 */
 		if (a->yb_db_oid == b->yb_db_oid &&
 		    a->yb_user_oid == b->yb_user_oid &&
 		    a->logical_rep == b->logical_rep)
-			if (a->physical_rep == b->physical_rep)
 				return 1;
 	return 0;
 }
