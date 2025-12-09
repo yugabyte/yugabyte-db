@@ -320,7 +320,7 @@ By default, Voyager attempts to discover replicas via the [pg_stat_replication](
 
 Run the assessment as follows:
 
-  {{< tabpane text=true >}}
+{{< tabpane text=true >}}
   {{% tab header="CLI" lang="cli" %}}
 
   ```sh
@@ -351,9 +351,7 @@ Run the assessment as follows:
   ```
 
   {{% /tab %}}
-  {{< /tabpane >}}
-
-Ensure that all provided endpoints are accessible as they are strictly validated.
+{{< /tabpane >}}
 
 Voyager discovers replicas from the primary, attempts best-effort validation, and prompts you to include them. If validation fails (common in RDS, Aurora, Kubernetes, or when using internal IPs), you can either continue with primary-only assessment or manually specify replica endpoints.
 
@@ -363,7 +361,7 @@ You can specify the read replica endpoints explicitly if automatic discovery fai
 
 Run the assessment as follows:
 
-  {{< tabpane text=true >}}
+{{< tabpane text=true >}}
   {{% tab header="CLI" lang="cli" %}}
 
   ```sh
@@ -396,7 +394,7 @@ Run the assessment as follows:
   ```
 
   {{% /tab %}}
-  {{< /tabpane >}}
+{{< /tabpane >}}
 
 Ensure that all provided endpoints are accessible as they are strictly validated.
 
