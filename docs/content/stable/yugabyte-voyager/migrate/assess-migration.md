@@ -309,15 +309,15 @@ Depending on the recommendations in the assessment report, do the following when
 Voyager can collect assessment metadata from [read replicas](/stable/architecture/docdb-replication/read-replicas/) in addition to the primary node, providing a comprehensive view of your workload distribution.
 
 {{< note title="Note" >}}
-Read replica support is limited to replicas created using physical replication. Replicas created using logical replication are not supported.
+Support for assessing read replicas is limited to replicas created using physical replication. Replicas created using logical replication are not supported.
 {{< /note >}}
 
-Two ways to use read replicas:
+You can include read replicas in the assessment in two ways: via automatic discovery, or by manually specifying endpoints.  
 
--  Automatic discovery (Default).
-    By default, Voyager attempts to discover replicas via [pg_stat_replication](/stable/additional-features/change-data-capture/using-logical-replication/monitor/#pg-stat-replication) and validate them by connecting to the primary.
+### Automatic discovery (Default)
+By default, Voyager attempts to discover replicas via the [pg_stat_replication](/stable/additional-features/change-data-capture/using-logical-replication/monitor/#pg-stat-replication) view, and validate them by connecting to the primary.
 
-    Run the command as follows:
+Run the assessment as follows:
 
     {{< tabpane text=true >}}
   {{% tab header="CLI" lang="cli" %}}
@@ -357,10 +357,10 @@ Two ways to use read replicas:
     Voyager discovers replicas from the primary, attempts best-effort validation, and prompts you to include them. If validation fails (common in RDS, Aurora, Kubernetes, or when using internal IPs), you can either continue with primary-only assessment or manually specify replica endpoints.
 
 
-- Manual specification.
-    Explicitly provide the read replica endpoints when automatic discovery fails, or if you want precise control.
+### Manually specify
+You can specify the read replica endpoints explicitly if automatic discovery fails, or if you want precise control.
 
-    Run the command as follows:
+Run the assessment as follows: 
 
    {{< tabpane text=true >}}
   {{% tab header="CLI" lang="cli" %}}
