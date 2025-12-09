@@ -484,6 +484,9 @@ class YBPgsqlWriteOp : public YBPgsqlOpSidecarBase {
   const HybridTime& write_time() const { return write_time_; }
   void SetWriteTime(const HybridTime& value) { write_time_ = value; }
 
+  uint32_t XreplOriginId() const { return xrepl_origin_id_; }
+  void SetXreplOriginId(uint32_t value) { xrepl_origin_id_ = value; }
+
   Status GetPartitionKey(std::string* partition_key) const override;
 
   static YBPgsqlWriteOpPtr NewInsert(const YBTablePtr& table, rpc::Sidecars* sidecars);
@@ -500,6 +503,7 @@ class YBPgsqlWriteOp : public YBPgsqlOpSidecarBase {
   // Else could be distributed transaction (or non-transactional) depending on target table type.
   bool is_single_row_txn_ = false;
   HybridTime write_time_;
+  uint32_t xrepl_origin_id_ = 0;
 };
 
 class YBPgsqlReadOp : public YBPgsqlOpSidecarBase {

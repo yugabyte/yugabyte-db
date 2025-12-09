@@ -1019,6 +1019,10 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
 
   DCHECK(!options.has_read_time() || options.isolation() != IsolationLevel::SERIALIZABLE_ISOLATION);
 
+  if (auto origin_id = GetSessionReplicationOriginId()) {
+    options.set_xrepl_origin_id(origin_id);
+  }
+
   DEBUG_ONLY(pg_txn_manager_->DEBUG_CheckOptionsForPerform(options));
 
   PgsqlOps operations;
@@ -1391,6 +1395,10 @@ Status PgSession::AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLoc
 
   return pg_txn_manager_->AcquireObjectLock(
       VERIFY_RESULT(FlushBufferedOperations(debug_context)), lock_id, mode);
+}
+
+uint16_t PgSession::GetSessionReplicationOriginId() const {
+  return pg_callbacks_.GetSessionReplicationOriginId();
 }
 
 }  // namespace yb::pggate

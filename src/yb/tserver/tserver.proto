@@ -105,6 +105,8 @@ message WriteRequestPB {
   optional int64 raft_config_opid_index = 24;
 
   optional bool use_async_write = 26;
+
+  optional uint32 xrepl_origin_id = 27;
 }
 
 message WriteResponsePB {

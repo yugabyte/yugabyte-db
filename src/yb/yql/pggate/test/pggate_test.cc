@@ -82,6 +82,10 @@ YbcWaitEventInfo PgstatReportWaitStartNoOp(YbcWaitEventInfo info) {
   return info;
 }
 
+uint16_t GetSessionReplicationOriginId() {
+  return 0;
+}
+
 } // namespace
 
 PggateTest::PggateTest() = default;
@@ -158,6 +162,7 @@ Status PggateTest::Init(
   callbacks.GetCurrentYbMemctx = &GetCurrentTestYbMemctx;
   callbacks.GetDebugQueryString = &GetDebugQueryStringStub;
   callbacks.PgstatReportWaitStart = &PgstatReportWaitStartNoOp;
+  callbacks.GetSessionReplicationOriginId = &GetSessionReplicationOriginId;
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_pggate_tserver_shared_memory_uuid) =
       cluster_->tablet_server(0)->instance_id().permanent_uuid();

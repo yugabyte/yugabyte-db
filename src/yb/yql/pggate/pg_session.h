@@ -298,6 +298,9 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
 
   Status AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLockMode mode);
 
+  // Returns current PostgreSQL replication origin id for this backend session (0 if unset).
+  uint16_t GetSessionReplicationOriginId() const;
+
  private:
   Result<PgTableDescPtr> DoLoadTable(
       const PgObjectId& table_id, bool fail_on_cache_hit,
