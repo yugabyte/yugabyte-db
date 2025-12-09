@@ -192,6 +192,14 @@ You can customize the Network Time Protocol server, as follows:
 Use this option with caution. Time synchronization is critical to database data consistency; failure to run NTP may cause data loss.
     {{< /warning >}}
 
+#### Configure ClockBound (optional)
+
+{{<tags/feature/ea idea="2133">}}[ClockBound](https://github.com/aws/clock-bound) improves clock accuracy by several orders of magnitude and significantly reduces read-restart errors in YSQL. To enable ClockBound for universes created using your provider, after you have created the provider, set the provider runtime configuration flag `yb.provider.configure_clockbound_cloud_provisioning` for the provider to `true`. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
+
+When enabled, ClockBound is automatically configured during node provisioning, and the universe creation task sets the [time_source](../../../reference/configuration/yb-master/#time-source) flag to `clockbound`.
+
+ClockBound is supported on AWS and GCP. (Azure and Kubernetes deployments are not supported.)
+
 ### GCP instance templates
 
 You can optionally add a GCP [instance template](https://cloud.google.com/compute/docs/instance-templates) as a region-level property when creating a GCP provider in YBA.
