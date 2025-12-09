@@ -13,6 +13,8 @@ import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import io.prometheus.metrics.config.EscapingScheme;
 import io.prometheus.metrics.expositionformats.PrometheusTextFormatWriter;
 import io.prometheus.metrics.model.registry.PrometheusRegistry;
+import io.prometheus.metrics.model.snapshots.CounterSnapshot;
+import io.prometheus.metrics.model.snapshots.CounterSnapshot.CounterDataPointSnapshot;
 import io.prometheus.metrics.model.snapshots.GaugeSnapshot;
 import io.prometheus.metrics.model.snapshots.GaugeSnapshot.GaugeDataPointSnapshot;
 import io.prometheus.metrics.model.snapshots.Labels;
@@ -44,6 +46,8 @@ import play.mvc.*;
 @Api(value = "Metrics", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 @Slf4j
 public class MetricsController extends Controller {
+
+  private static final String TOTAL_SUFFIX = "_total";
 
   @Inject
   public MetricsController(AppInit appInit) {
@@ -147,20 +151,42 @@ public class MetricsController extends Controller {
         unit = StringUtils.EMPTY;
       }
 
-      MetricMetadata metadata =
-          new MetricMetadata(
-              metricName, help, StringUtils.isNoneEmpty(unit) ? new Unit(unit) : null);
-      List<GaugeDataPointSnapshot> samples =
-          metrics.stream().map(this::convert).collect(Collectors.toList());
-      GaugeSnapshot snapshot = new GaugeSnapshot(metadata, samples);
-      snapshots.add(snapshot);
+      if (metricName.endsWith(TOTAL_SUFFIX)) {
+        MetricMetadata metadata =
+            new MetricMetadata(
+                metricName.substring(0, metricName.length() - TOTAL_SUFFIX.length()),
+                help,
+                StringUtils.isNoneEmpty(unit) ? new Unit(unit) : null);
+        List<CounterDataPointSnapshot> samples =
+            metrics.stream().map(this::toCounter).collect(Collectors.toList());
+        CounterSnapshot snapshot = new CounterSnapshot(metadata, samples);
+        snapshots.add(snapshot);
+      } else {
+        MetricMetadata metadata =
+            new MetricMetadata(
+                metricName, help, StringUtils.isNoneEmpty(unit) ? new Unit(unit) : null);
+        List<GaugeDataPointSnapshot> samples =
+            metrics.stream().map(this::toGauge).collect(Collectors.toList());
+        GaugeSnapshot snapshot = new GaugeSnapshot(metadata, samples);
+        snapshots.add(snapshot);
+      }
     }
     return new MetricSnapshots(snapshots);
   }
 
-  private GaugeDataPointSnapshot convert(Metric metric) {
+  private GaugeDataPointSnapshot toGauge(Metric metric) {
     List<String> labelNames = new ArrayList<>(metric.getLabels().keySet());
     List<String> labelValues = new ArrayList<>(metric.getLabels().values());
     return new GaugeDataPointSnapshot(metric.getValue(), Labels.of(labelNames, labelValues), null);
+  }
+
+  private CounterDataPointSnapshot toCounter(Metric metric) {
+    List<String> labelNames = new ArrayList<>(metric.getLabels().keySet());
+    List<String> labelValues = new ArrayList<>(metric.getLabels().values());
+    return new CounterDataPointSnapshot(
+        metric.getValue(),
+        Labels.of(labelNames, labelValues),
+        null,
+        metric.getCreateTime().getTime());
   }
 }

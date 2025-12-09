@@ -17,6 +17,23 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, where `YYYY` is the release year, `M` is the month, and `N` is the number of the release in that month.
 
+## v2025.11.2 - November 25, 2025
+
+### New feature
+
+- Assess migration now supports fetching metadata from PostgreSQL read replicas in addition to the primary source database using the replica endpoints passed in the `--source-read-replica-endpoints` argument. This provides a more comprehensive and accurate workload assessment by aggregating metrics across both primary and replica nodes.
+
+### Enhancement
+
+- Added ability to sort the Object Usage column in the Performance Optimizations table of the Assessment Report.
+
+### Bug fixes
+
+- Fixed a nil pointer error when a table was missing in the target database during live migration.
+- Schema Optimization Report now excludes parent partitioned tables from "Colocated" recommendations, as colocation applies only to leaf partitions.
+- Fixed an issue in the Schema Optimization Report where Colocation Recommendations were incorrectly marked as "Applied" when assess-migration could not provide sizing recommendations.
+- Fixed an issue with sorting options in the "Assessment Issues" and "Performance Optimizations" sections of the Assessment Report.
+
 ## v2025.11.1 - November 11, 2025
 
 ### Enhancements

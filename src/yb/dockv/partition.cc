@@ -357,6 +357,16 @@ Status PartitionSchema::EncodeRedisKey(const Slice& slice, string* buf) const {
 
 Status PartitionSchema::EncodeKey(const RepeatedPtrField<QLExpressionPB>& hash_col_values,
                                   string* buf) const {
+  return DoEncodeKey(hash_col_values, buf);
+}
+
+Status PartitionSchema::EncodeKey(const ArenaList<LWQLExpressionPB>& hash_col_values,
+                                  string* buf) const {
+  return DoEncodeKey(hash_col_values, buf);
+}
+
+template <class Col>
+Status PartitionSchema::DoEncodeKey(const Col& hash_col_values, string* buf) const {
   if (!hash_schema_) {
     return Status::OK();
   }

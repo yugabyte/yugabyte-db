@@ -44,8 +44,6 @@ namespace yb::docdb {
 
 using EncodedDistance = uint64_t;
 
-extern const std::string kVectorIndexDirPrefix;
-
 struct DocVectorIndexInsertEntry {
   ValueBuffer value;
 };
@@ -79,6 +77,7 @@ class DocVectorIndex {
   virtual const TableId& table_id() const = 0;
   virtual Slice indexed_table_key_prefix() const = 0;
   virtual ColumnId column_id() const = 0;
+  virtual const PgVectorIdxOptionsPB& options() const = 0;
   virtual const std::string& path() const = 0;
   virtual HybridTime hybrid_time() const = 0;
   virtual const DocVectorIndexedTableContext& indexed_table_context() const = 0;
@@ -132,7 +131,7 @@ using DocVectorIndexThreadPoolProvider = std::function<DocVectorIndexThreadPools
 // don't forget to call EnableAutoCompactions().
 Result<DocVectorIndexPtr> CreateDocVectorIndex(
     const std::string& log_prefix,
-    const std::string& data_root_dir,
+    const std::string& storage_dir,
     const DocVectorIndexThreadPoolProvider& thread_pool_provider,
     Slice indexed_table_key_prefix,
     HybridTime hybrid_time,

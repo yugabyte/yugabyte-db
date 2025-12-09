@@ -10,7 +10,7 @@ menu:
     parent: authentication
     weight: 10
 aliases:
-  - /preview/yugabyte-platform/security/ldap-authentication-platform/
+  - /stable/yugabyte-platform/security/ldap-authentication-platform/
 type: docs
 ---
 

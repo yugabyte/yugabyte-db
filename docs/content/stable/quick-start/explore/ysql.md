@@ -4,15 +4,15 @@ headerTitle: Explore Yugabyte SQL
 linkTitle: Explore distributed SQL APIs
 description: Explore Yugabyte SQL (YSQL), a PostgreSQL-compatible fully-relational distributed SQL API
 aliases:
-  - /preview/quick-start/explore-ysql/
-  - /preview/quick-start/explore/
+  - /stable/quick-start/explore-ysql/
+  - /stable/quick-start/explore/
   - /quick-start/test-postgresql/
-  - /preview/quick-start/test-postgresql/
-  - /preview/quick-start/test-ysql/
-  - /preview/explore/postgresql/joins/
-  - /preview/explore/postgresql/aggregations/
-  - /preview/explore/postgresql/expressions/
-  - /preview/explore/postgresql/views/
+  - /stable/quick-start/test-postgresql/
+  - /stable/quick-start/test-ysql/
+  - /stable/explore/postgresql/joins/
+  - /stable/explore/postgresql/aggregations/
+  - /stable/explore/postgresql/expressions/
+  - /stable/explore/postgresql/views/
 menu:
   stable:
     parent: quick-start

@@ -2334,11 +2334,40 @@ Status TabletServer::ClearMetacache(const std::string& namespace_id) {
 Result<std::vector<tablet::TabletStatusPB>> TabletServer::GetLocalTabletsMetadata() const {
   std::vector<tablet::TabletStatusPB> result;
   auto peers = tablet_manager_.get()->GetTabletPeers();
+
+  std::unordered_map<std::string, std::unordered_map<std::string, std::vector<size_t>>>
+      db_to_table_to_indices;
+
   for (const std::shared_ptr<tablet::TabletPeer>& peer : peers) {
     tablet::TabletStatusPB status;
     peer->GetTabletStatusPB(&status);
-    status.set_pgschema_name(peer->status_listener()->schema()->SchemaName());
+
+    // Group tablets by database (namespace)
+    if (status.has_namespace_name() && !status.namespace_name().empty() &&
+      status.has_table_type() && status.table_type() == TableType::PGSQL_TABLE_TYPE) {
+      db_to_table_to_indices[status.namespace_name()][status.table_id()].push_back(result.size());
+    }
     result.emplace_back(std::move(status));
+  }
+
+  // For each database, finding current schema names
+  for (const auto& [db_name, table_map] : db_to_table_to_indices) {
+    // Call Master server using RPC call for current schema names
+    auto list_result = client()->ListTables("", db_name);
+    if (!list_result.ok()) {
+      VLOG(1) << "Skipping database " << db_name << "status " << list_result.status();
+      continue;
+    }
+
+    // Update schema names for matching tables
+    for (const auto& table : list_result->tables()) {
+      auto it = table_map.find(table.id());
+      if (it != table_map.end()) {
+        for (auto& idx : it->second) {
+          result[idx].set_pgschema_name(table.pgschema_name());
+        }
+      }
+    }
   }
   return result;
 }

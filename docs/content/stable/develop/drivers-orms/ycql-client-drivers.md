@@ -6,7 +6,7 @@ description: Lists the client drivers that you can use to build and access YCQL 
 tags:
   other: ycql
 aliases:
-  - /preview/reference/drivers/ycql-client-drivers/
+  - /stable/reference/drivers/ycql-client-drivers/
 menu:
   stable_develop:
     identifier: ycql-client-libraries

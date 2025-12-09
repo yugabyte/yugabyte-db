@@ -6,8 +6,8 @@ description: YugabyteDB Psycopg2 Smart Driver for YSQL
 tags:
   other: ysql
 aliases:
-  - /preview/reference/drivers/python/
-  - /preview/reference/drivers/python/yugabyte-psycopg2-reference/
+  - /stable/reference/drivers/python/
+  - /stable/reference/drivers/python/yugabyte-psycopg2-reference/
 menu:
   stable_develop:
     name: Python drivers

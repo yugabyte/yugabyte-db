@@ -40,13 +40,13 @@
 #include "yb/util/status_log.h"
 
 DEFINE_RUNTIME_bool(enable_load_balancing, true,
-    "Choose whether to enable the load balancing algorithm, to move tablets around.");
+    "Choose whether to enable cluster load balancing.");
 
 DEFINE_RUNTIME_bool(transaction_tables_use_preferred_zones, false,
     "Choose whether transaction tablet leaders respect preferred zones.");
 
 DEFINE_RUNTIME_bool(enable_global_load_balancing, true,
-    "Choose whether to allow the load balancer to make moves that strictly only balance "
+    "Choose whether to allow the cluster balancer to make moves that strictly only balance "
     "global load. Note that global balancing only occurs after all tables are balanced.");
 
 DEFINE_RUNTIME_int32(leader_balance_threshold, 0,
@@ -67,16 +67,17 @@ DEFINE_RUNTIME_int32(load_balancer_max_concurrent_tablet_remote_bootstraps_per_t
     "Maximum number of tablets being remote bootstrapped for any table. The maximum "
     "number of remote bootstraps across the cluster is still limited by the flag "
     "load_balancer_max_concurrent_tablet_remote_bootstraps. This flag is meant to prevent "
-    "a single table use all the available remote bootstrap sessions and starving other "
+    "a single table from using all the available remote bootstrap sessions and starving other "
     "tables.");
 
 DEFINE_RUNTIME_int32(load_balancer_max_inbound_remote_bootstraps_per_tserver, 50,
     "Maximum number of tablets simultaneously remote bootstrapping on a tserver. Past this value, "
-    "the load balancer will not add tablets to this tserver.");
+    "the cluster balancer will not add tablets to this tserver.");
 
 DEFINE_RUNTIME_int32(load_balancer_min_inbound_remote_bootstraps_per_tserver, 4,
-    "Maximum number of tablets simultaneously remote bootstrapping on a tserver. Past this value, "
-    "the load balancer will not add tablets to this tserver.");
+    "Minimum number of tablets simultaneously remote bootstrapping on a tserver (if there are this "
+    "many to remote bootstrap). This forces some parallelism during remote bootstrap, which avoids "
+    "single-threaded bottlenecks.");
 
 DEFINE_RUNTIME_int32(load_balancer_max_over_replicated_tablets, 50,
     "Maximum number of running tablet replicas per table that are allowed to be over the "
@@ -84,18 +85,18 @@ DEFINE_RUNTIME_int32(load_balancer_max_over_replicated_tablets, 50,
     "when tablet removal is slow. A value less than 0 means no limit.");
 
 DEFINE_RUNTIME_int32(load_balancer_max_concurrent_adds, 25,
-    "Maximum number of tablet peer replicas to add in any one run of the load balancer.");
+    "Maximum number of tablet peer replicas to add in any one run of the cluster balancer.");
 
 DEFINE_RUNTIME_int32(load_balancer_max_concurrent_removals, 50,
     "Maximum number of over-replicated tablet peer removals to do in any one run of the "
-    "load balancer. A value less than 0 means no limit.");
+    "cluster balancer. A value less than 0 means no limit.");
 
 DEFINE_RUNTIME_int32(load_balancer_max_concurrent_moves, 100,
     "Maximum number of tablet leaders on tablet servers (across the cluster) to move in "
-    "any one run of the load balancer.");
+    "any one run of the cluster balancer.");
 
 DEFINE_RUNTIME_int32(load_balancer_max_concurrent_moves_per_table, -1,
-    "Maximum number of tablet leaders per table to move in any one run of the load "
+    "Maximum number of tablet leaders per table to move in any one run of the cluster "
     "balancer. The maximum number of tablet leader moves across the cluster is still "
     "limited by the flag load_balancer_max_concurrent_moves. This flag is meant to "
     "prevent a single table from using all of the leader moves quota and starving "
@@ -104,10 +105,10 @@ DEFINE_RUNTIME_int32(load_balancer_max_concurrent_moves_per_table, -1,
     "moves (load_balancer_max_concurrent_moves).");
 
 DEFINE_RUNTIME_int32(load_balancer_num_idle_runs, 5,
-    "Number of idle runs of load balancer to deem it idle.");
+    "Number of idle runs of cluster balancer to deem it idle.");
 
 DEFINE_test_flag(bool, load_balancer_handle_under_replicated_tablets_only, false,
-                 "Limit the functionality of the load balancer during tests so tests can make "
+                 "Limit the functionality of the cluster balancer during tests so tests can make "
                  "progress");
 
 // No longer used because leader stepdown is not as slow as it used to be.
@@ -118,7 +119,7 @@ DEFINE_RUNTIME_bool(allow_leader_balancing_dead_node, true,
     "have a replica on this tserver");
 
 DEFINE_test_flag(int32, load_balancer_wait_ms, 0,
-                 "For testing purposes, number of milliseconds to wait at the start of a load "
+                 "For testing purposes, number of milliseconds to wait at the start of a cluster "
                  "balancer iteration.");
 
 DEFINE_test_flag(int32, load_balancer_wait_after_count_pending_tasks_ms, 0,
@@ -141,9 +142,9 @@ DECLARE_int32(replication_factor);
 
 METRIC_DEFINE_gauge_int64(cluster,
                           is_load_balancing_enabled,
-                          "Is Load Balancing Enabled",
+                          "Is Cluster Balancing Enabled",
                           yb::MetricUnit::kUnits,
-                          "Is load balancing enabled in the cluster where "
+                          "Is cluster balancing enabled in the cluster where "
                           "1 indicates it is enabled.");
 
 METRIC_DEFINE_gauge_uint32(cluster,
@@ -317,7 +318,7 @@ bool ClusterLoadBalancer::IsLoadBalancerEnabled() const {
   return FLAGS_enable_load_balancing && is_enabled_;
 }
 
-// Load balancer class.
+// Cluster balancer class.
 ClusterLoadBalancer::ClusterLoadBalancer(CatalogManager* cm)
     : random_(GetRandomSeed32()),
       is_enabled_(FLAGS_enable_load_balancing),
@@ -362,15 +363,15 @@ void ClusterLoadBalancer::TrackTask(const std::shared_ptr<RetryingRpcTask>& task
 //  - Things that are printed at most once per run can be at any level >= 1
 //  - Things that are printed at most once per table per run can be at any level >= 2
 //  - Things that are printed multiple times per table per run can be at any level >= 3
-void ClusterLoadBalancer::RunLoadBalancerWithOptions(
+void ClusterLoadBalancer::RunClusterBalancerWithOptions(
     Options* options, const std::vector<TableInfoPtr>& tables, const TabletInfoMap& tablet_map) {
   if (!IsLoadBalancerEnabled()) {
-    YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 10, 1) << "Load balancing is not enabled.";
+    YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 10, 1) << "Cluster balancing is not enabled.";
     return;
   }
   AtomicFlagSleepMs(&FLAGS_TEST_load_balancer_wait_ms);
-  VLOG(1) << "Running load balancer";
-  VLOG(2) << "Load balancer options: " << options->ToString();
+  VLOG(1) << "Running cluster balancer";
+  VLOG(2) << "Cluster balancer options: " << options->ToString();
 
   ResetGlobalState();
 
@@ -411,7 +412,7 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(
 
     if (tablespace_manager_->NeedsRefreshToFindTablePlacement(table)) {
       // Placement information was not present in catalog manager cache. This is probably a
-      // recently created table, skip load balancing for now, hopefully by the next run,
+      // recently created table, skip cluster balancing for now, hopefully by the next run,
       // the background task in the catalog manager will pick up the placement information
       // for this table from the PG catalog tables.
       // TODO(deepthi) Keep track of the number of times this happens, take appropriate action
@@ -419,7 +420,7 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(
       LOG_AND_COUNT_WARNING(
           1 /* vlog_level */,
           ClusterBalancerWarningType::kSkipTableLoadBalancing,
-          Format("Skipping load balancing for table $0 as its placement information is not "
+          Format("Skipping cluster balancing for table $0 as its placement information is not "
                  "available yet", table_id));
       continue;
     }
@@ -431,7 +432,7 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(
     if (options->type == ReplicaType::kReadOnly) {
       if (replication_info.read_replicas_size() == 0) {
         // The table has a replication policy without any read replicas present.
-        // The LoadBalancer is handling read replicas in this run, so this
+        // The ClusterBalancer is handling read replicas in this run, so this
         // table can be skipped.
         VLOG(2) << Format("Skipping table $0 with no read replicas configured in read replica run",
             table_id);
@@ -443,7 +444,7 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(
 
     auto populate_ri_status = PopulateReplicationInfo(table, replication_info);
     if (!populate_ri_status.ok()) {
-      YB_LOG_EVERY_N_SECS_OR_VLOG(WARNING, 10, 2) << "Skipping load balancing for table "
+      YB_LOG_EVERY_N_SECS_OR_VLOG(WARNING, 10, 2) << "Skipping cluster balancing for table "
           << table_id << ": as populating replication info failed with error "
           << StatusToString(populate_ri_status);
       continue;
@@ -461,7 +462,7 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(
       LOG_AND_COUNT_WARNING(
           1 /* vlog_level */,
           ClusterBalancerWarningType::kSkipTableLoadBalancing,
-          Format("Skipping load balancing for table $0: $1", table_id, StatusToString(s)));
+          Format("Skipping cluster balancing for table $0: $1", table_id, StatusToString(s)));
       continue;
     }
     VLOG(2) << "Table " << table_id << " has " << pending_add_replica_tasks << " pending adds, "
@@ -485,8 +486,9 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(
   set_remaining(pending_remove_replica_tasks, &remaining_removals);
   set_remaining(pending_stepdown_leader_tasks, &remaining_leader_moves);
 
-  // At the start of the run, report LB state that might prevent it from running smoothly.
-  ReportUnusualLoadBalancerState();
+  // At the start of the run, report cluster balancer state that might prevent it from running
+  // smoothly.
+  ReportUnusualClusterBalancerState();
 
   // Loop over all tables to analyze the global and per-table load.
   for (const auto& table : tables) {
@@ -508,7 +510,7 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(
       LOG_AND_COUNT_WARNING(
           1 /* vlog_level */,
           ClusterBalancerWarningType::kSkipTableLoadBalancing,
-          Format("Skipping load balancing for table $0: $1", table->id(),
+          Format("Skipping cluster balancing for table $0: $1", table->id(),
                  StatusToString(handle_analyze_tablets)));
       per_table_states_.erase(table->id());
       continue;
@@ -545,7 +547,7 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(
   VLOG(1) << "Global state after analyzing all tablets: " << global_state_->ToString();
 
   bool task_added = false;
-  // Output parameters are unused in the load balancer, but useful in testing.
+  // Output parameters are unused in the cluster balancer, but useful in testing.
   TabletId out_tablet_id;
   TabletServerId out_from_ts;
   TabletServerId out_to_ts;
@@ -567,7 +569,7 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(
     if (it == per_table_states_.end()) {
       // If the table state doesn't exist, it didn't get analyzed by the previous iteration.
       VLOG(2) << "Unable to find table state for table " << table->id()
-              << ". Skipping load balancing execution";
+              << ". Skipping cluster balancing execution";
       continue;
     }
     state_ = it->second.get();
@@ -666,7 +668,7 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(
     }
   }
 
-  // Update the list of tables the load balancer skipped this run.
+  // Update the list of tables the cluster balancer skipped this run.
   {
     std::lock_guard l(mutex_);
     skipped_tables_ = skipped_tables_per_run_;
@@ -742,7 +744,7 @@ void ClusterLoadBalancer::ProcessUnderReplicatedTablets(
   }
 }
 
-void ClusterLoadBalancer::RunLoadBalancer(
+void ClusterLoadBalancer::RunClusterBalancer(
     const LeaderEpoch& epoch, const std::vector<TableInfoPtr>& tables,
     const TabletInfoMap& tablet_map) {
   epoch_ = epoch;
@@ -761,14 +763,14 @@ void ClusterLoadBalancer::RunLoadBalancer(
     options_ent->live_placement_uuid = "";
   }
   per_run_state_ = std::make_unique<PerRunState>(tablet_map);
-  RunLoadBalancerWithOptions(options_ent, tables, tablet_map);
+  RunClusterBalancerWithOptions(options_ent, tables, tablet_map);
 
   // Then, we balance all read-only clusters.
   options_ent->type = ReplicaType::kReadOnly;
   for (int i = 0; i < config.replication_info().read_replicas_size(); i++) {
     const PlacementInfoPB& read_only_cluster = config.replication_info().read_replicas(i);
     options_ent->placement_uuid = read_only_cluster.placement_uuid();
-    RunLoadBalancerWithOptions(options_ent, tables, tablet_map);
+    RunClusterBalancerWithOptions(options_ent, tables, tablet_map);
   }
 
   UpdatePerRunMetrics();
@@ -810,7 +812,7 @@ void ClusterLoadBalancer::ReportMetrics() {
   is_load_balancing_enabled_metric_->set_value(IsLoadBalancerEnabled());
 }
 
-void ClusterLoadBalancer::ReportUnusualLoadBalancerState() const {
+void ClusterLoadBalancer::ReportUnusualClusterBalancerState() const {
   for (const auto& ts_desc : global_state_->ts_descs_) {
     // Report if any ts has a pending delete.
     if (ts_desc->HasTabletDeletePending()) {
@@ -880,7 +882,7 @@ Status ClusterLoadBalancer::AnalyzeTablets(const TableInfoPtr& table) {
   state_->SetInitialized();
 
   // Once we've analyzed both the tablet server information as well as the tablets, we can sort the
-  // load and are ready to apply the load balancing rules.
+  // load and are ready to apply the cluster balancing rules.
   state_->SortLoad();
 
   // Since leader load is only needed to rebalance leaders, we keep the sorting separate.
@@ -1049,7 +1051,7 @@ Result<bool> ClusterLoadBalancer::HandleAddReplicas(
     return true;
   }
 
-  // Finally, handle normal load balancing.
+  // Finally, handle normal cluster balancing.
   auto move_made = VERIFY_RESULT(GetLoadToMove(out_tablet_id, out_from_ts, out_to_ts));
   if (!move_made && VLOG_IS_ON(2)) {
       VLOG(2) << "Cannot find any more tablets to move for this table, under current constraints. "
@@ -1099,7 +1101,7 @@ Result<bool> ClusterLoadBalancer::GetLoadToMove(
   // We will try to find two TSs that have at least one tablet that can be moved amongst them, from
   // the higher load to the lower load TS. To do this, we will go through comparing the TSs
   // corresponding to our left and right indices, exclude tablets from the right, high loaded TS
-  // according to our load balancing rules, such as load variance, starting tablets and not moving
+  // according to our balancing rules, such as load variance, starting tablets and not moving
   // already over-replicated tablets. We then compare the remaining set of tablets with the ones
   // hosted by the lower loaded TS and use ReservoirSample to pick a tablet from the set
   // difference. If there were no tablets to pick, we advance our state.
@@ -1190,7 +1192,7 @@ Result<bool> ClusterLoadBalancer::GetLoadToMove(
   }
 
   // Should never get here.
-  return STATUS(IllegalState, "Load balancing algorithm reached illegal state.");
+  return STATUS(IllegalState, "Cluster balancing algorithm reached illegal state.");
 }
 
 Result<std::optional<TabletId>> ClusterLoadBalancer::GetTabletToMove(
@@ -1438,7 +1440,7 @@ Result<std::optional<ClusterLoadBalancer::LeaderMoveDetails>>
           .reason = std::move(reason),
         };
 
-        VLOG(3) << "For leader load balancing found tablet " << tablet_id << " to move from "
+        VLOG(3) << "For leader balancing found tablet " << tablet_id << " to move from "
                 << move_details.from_ts << " to " << move_details.to_ts;
         const auto& per_tablet_meta = state_->per_tablet_meta_;
         const auto tablet_meta_iter = per_tablet_meta.find(tablet_id);
@@ -1459,7 +1461,7 @@ Result<std::optional<ClusterLoadBalancer::LeaderMoveDetails>>
             continue;
           }
         } else {
-          LOG(WARNING) << "Did not find load balancer metadata for tablet "
+          LOG(WARNING) << "Did not find cluster balancer metadata for tablet "
                        << move_details.tablet_id;
         }
 
@@ -1472,7 +1474,7 @@ Result<std::optional<ClusterLoadBalancer::LeaderMoveDetails>>
   }
 
   // Should never get here.
-  FATAL_ERROR("Load balancing algorithm reached invalid state!");
+  FATAL_ERROR("Cluster balancing algorithm reached invalid state!");
 }
 
 Result<bool> ClusterLoadBalancer::HandleRemoveReplicas(
@@ -1647,8 +1649,8 @@ Result<bool> ClusterLoadBalancer::HandleLeaderMoves(
 Status ClusterLoadBalancer::AddOrMoveReplica(
     const TabletId& tablet_id, const std::string& from_ts, const TabletServerId& to_ts,
     const std::string& reason) {
-  // from_ts is only used for logging, because the remove replica happens in a later load balancer
-  // iteration (once the tablet is already over-replicated).
+  // from_ts is only used for logging, because the remove replica happens in a later cluster
+  // balancer iteration (once the tablet is already over-replicated).
   if (from_ts.empty()) {
     LOG(INFO) << Format("Adding replica of tablet $0 to $1. Reason: $2", tablet_id, to_ts, reason);
   } else {
@@ -1781,15 +1783,15 @@ bool ClusterLoadBalancer::SkipLoadBalancing(const TableInfo& table) const {
   // currently as well, load distribution wouldn't matter as eventually they would get deleted.
   auto l = table.LockForRead();
   if (table.is_system()) {
-    VLOG(3) << "Skipping system table " << table.id() << " for load balancing";
+    VLOG(3) << "Skipping system table " << table.id() << " for cluster balancing";
     return true;
   }
   if (table.IsSecondaryTable()) {
-    VLOG(2) << "Skipping colocated user table " << table.id() << " for load balancing";
+    VLOG(2) << "Skipping colocated user table " << table.id() << " for cluster balancing";
     return true;
   }
   if (l->started_deleting()) {
-    VLOG(2) << "Skipping deleting / deleted table " << table.id() << " for load balancing";
+    VLOG(2) << "Skipping deleting / deleted table " << table.id() << " for cluster balancing";
     return true;
   }
   return false;
@@ -1930,7 +1932,7 @@ const PlacementInfoPB& ClusterLoadBalancer::GetLiveClusterPlacementInfo() const 
   return l->pb.replication_info().live_replicas();
 }
 
-std::vector<scoped_refptr<TableInfo>> ClusterLoadBalancer::GetAllTablesLoadBalancerSkipped() {
+std::vector<scoped_refptr<TableInfo>> ClusterLoadBalancer::GetAllTablesClusterBalancerSkipped() {
   SharedLock<decltype(mutex_)> l(mutex_);
   return skipped_tables_;
 }

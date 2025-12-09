@@ -12,34 +12,37 @@ LINE 1: CREATE TABLESPACE x OWNER yugabyte;
                                           ^
 -- Ill formed JSON
 CREATE TABLESPACE x WITH (replica_placement='[{"cloud"}]');
-ERROR:  Json parsing of replica_placement option failed: [{"cloud"}]
+ERROR:  JSON parsing of live placement option failed:
+Missing a colon after a name of object member.
+  [{"cloud"}]
+           ^
 -- num_replicas field missing.
 CREATE TABLESPACE x WITH (replica_placement='{"placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":3}]}');
-ERROR:  Invalid or missing "num_replicas" field in the placement policy: {"placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":3}]}
+ERROR:  Invalid or missing "num_replicas" field in the replica_placement option:  Provided replica_placement: {"placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":3}]}
 -- missing zone field
 CREATE TABLESPACE x WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","min_num_replicas":3}]}');
-ERROR:  Missing required key (cloud/region/zone/min_num_replicas) in placement block. Placement policy: {"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","min_num_replicas":3}]}. 
-To indicate that any region/zone is acceptable, use the wildcard character: '*'
+ERROR:  replica_placement: Missing required key (cloud/region/zone/min_num_replicas) in placement block.
+To indicate that any region/zone is acceptable, use the wildcard character: '*':  Provided replica_placement: {"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","min_num_replicas":3}]}
 -- missing region field
 CREATE TABLESPACE x WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","zone":"z1","min_num_replicas":3}]}');
-ERROR:  Missing required key (cloud/region/zone/min_num_replicas) in placement block. Placement policy: {"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","zone":"z1","min_num_replicas":3}]}. 
-To indicate that any region/zone is acceptable, use the wildcard character: '*'
+ERROR:  replica_placement: Missing required key (cloud/region/zone/min_num_replicas) in placement block.
+To indicate that any region/zone is acceptable, use the wildcard character: '*':  Provided replica_placement: {"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","zone":"z1","min_num_replicas":3}]}
 -- missing cloud field
 CREATE TABLESPACE x WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"region":"r1","zone":"z1","min_num_replicas":3}]}');
-ERROR:  Missing required key (cloud/region/zone/min_num_replicas) in placement block. Placement policy: {"num_replicas":3, "placement_blocks":[{"region":"r1","zone":"z1","min_num_replicas":3}]}. 
-To indicate that any region/zone is acceptable, use the wildcard character: '*'
+ERROR:  replica_placement: Missing required key (cloud/region/zone/min_num_replicas) in placement block.
+To indicate that any region/zone is acceptable, use the wildcard character: '*':  Provided replica_placement: {"num_replicas":3, "placement_blocks":[{"region":"r1","zone":"z1","min_num_replicas":3}]}
 -- wildcard cloud field is not allowed
 CREATE TABLESPACE x WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"*","region":"r1","zone":"z1","min_num_replicas":3}]}');
-ERROR:  Cannot use wildcard placement at cloud level. Placement policy: {"num_replicas":3, "placement_blocks":[{"cloud":"*","region":"r1","zone":"z1","min_num_replicas":3}]}
+ERROR:  replica_placement placement policy: cannot use wildcard placement at cloud level.:  Provided replica_placement: {"num_replicas":3, "placement_blocks":[{"cloud":"*","region":"r1","zone":"z1","min_num_replicas":3}]}
 -- wildcard region with specific zone is not allowed
 CREATE TABLESPACE x WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"*","zone":"z1","min_num_replicas":3}]}');
-ERROR:  A wildcard '*' at region level should be followed by a wildcard at zone level
+ERROR:  replica_placement: A wildcard '*' at region level should be followed by a wildcard at zone level.:  Provided replica_placement: {"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"*","zone":"z1","min_num_replicas":3}]}
 -- Invalid value for num_replicas.
 CREATE TABLESPACE x WITH (replica_placement='{"num_replicas":"three", "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":3}]}');
-ERROR:  Invalid or missing "num_replicas" field in the placement policy: {"num_replicas":"three", "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":3}]}
+ERROR:  Invalid or missing "num_replicas" field in the replica_placement option:  Provided replica_placement: {"num_replicas":"three", "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":3}]}
 -- Invalid value for min_num_replicas.
 CREATE TABLESPACE x WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":"three"}]}');
-ERROR:  Invalid type/value for some key in placement block. Placement policy: {"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":"three"}]}
+ERROR:  replica_placement: Invalid type for "min_num_replicas" in placement block. Expected int, got string.:  Provided replica_placement: {"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":"three"}]}
 -- Sum of min_num_replicas greater than num_replicas.
 CREATE TABLESPACE y WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":2},{"cloud":"cloud2","region":"r2", "zone":"z2", "min_num_replicas":2}]}');
 ERROR:  Sum of min_num_replicas fields (4) exceeds the total replication factor in the placement policy (3)
@@ -718,13 +721,16 @@ DROP TABLESPACE tblspace_other;
 -- Test leader_preference
 -- Empty leader_preference
 CREATE TABLESPACE LP WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1,"leader_preference":}]}');
-ERROR:  Json parsing of replica_placement option failed: {"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1,"leader_preference":}]}
+ERROR:  JSON parsing of live placement option failed:
+Invalid value.
+  {"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1,"leader_preference":}]}
+                                                                                                                                      ^
 -- Negative leader_preference
 CREATE TABLESPACE LP WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1,"leader_preference":-1}]}');
-ERROR:  Invalid type/value for leader_preference option (must be >0): {"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1,"leader_preference":-1}]}
+ERROR:  Invalid value for leader_preference option in replica_placement. Expected: >0, got: -1:  Provided replica_placement: {"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1,"leader_preference":-1}]}
 -- Zero as leader_preference
 CREATE TABLESPACE LP WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1,"leader_preference":0}]}');
-ERROR:  Invalid type/value for leader_preference option (must be >0): {"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1,"leader_preference":0}]}
+ERROR:  Invalid value for leader_preference option in replica_placement. Expected: >0, got: 0:  Provided replica_placement: {"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1,"leader_preference":0}]}
 -- No leader_preference 1
 CREATE TABLESPACE LP WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1,"leader_preference":2}]}');
 ERROR:  Empty affinitized leader zone set found in replication info (leader preferences must be contiguous from 1..N): live_replicas { num_replicas: 1 placement_blocks { cloud_info { placement_cloud: "cloud1" placement_region: "region1" placement_zone: "zone1" } min_num_replicas: 1 } } multi_affinitized_leaders { } multi_affinitized_leaders { zones { placement_cloud: "cloud1" placement_region: "region1" placement_zone: "zone1" } }

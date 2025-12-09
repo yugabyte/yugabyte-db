@@ -6,7 +6,7 @@ description: Rust postgres Smart Driver for YSQL
 tags:
   other: ysql
 aliases:
-  - /preview/reference/drivers/rust/rust-postgres-reference/
+  - /stable/reference/drivers/rust/rust-postgres-reference/
 menu:
   stable_develop:
     name: Rust Drivers

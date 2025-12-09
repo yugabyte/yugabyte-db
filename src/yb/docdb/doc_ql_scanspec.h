@@ -24,8 +24,9 @@
 
 #include "yb/util/col_group.h"
 
-namespace yb {
-namespace docdb {
+namespace yb::docdb {
+
+using qlexpr::QLConditionPBPtr;
 
 // DocDB variant of QL scanspec.
 class DocQLScanSpec : public qlexpr::QLScanSpec {
@@ -55,7 +56,7 @@ class DocQLScanSpec : public qlexpr::QLScanSpec {
       const Schema& schema, std::optional<int32_t> hash_code, std::optional<int32_t> max_hash_code,
       const ArenaPtr& arena,
       const std::vector<Slice>& hashed_components,
-      const QLConditionPB* req, const QLConditionPB* if_req, rocksdb::QueryId query_id,
+      QLConditionPBPtr req, QLConditionPBPtr if_req, rocksdb::QueryId query_id,
       bool is_forward_scan = true, bool include_static_columns = false,
       const dockv::DocKey& start_doc_key = DefaultStartDocKey(), const size_t prefix_length = 0);
 
@@ -82,7 +83,8 @@ class DocQLScanSpec : public qlexpr::QLScanSpec {
   // Initialize options_ if range columns have one or more options (i.e. using EQ/IN
   // conditions). Otherwise options_ will stay null and we will only use the range_bounds for
   // scanning.
-  void InitOptions(const QLConditionPB& condition);
+  template <class ConditionPB>
+  void InitOptions(const ConditionPB& condition);
 
   // Returns the lower/upper doc key based on the range components.
   dockv::KeyBytes BoundKey(
@@ -126,5 +128,4 @@ class DocQLScanSpec : public qlexpr::QLScanSpec {
   DISALLOW_COPY_AND_ASSIGN(DocQLScanSpec);
 };
 
-}  // namespace docdb
-}  // namespace yb
+}  // namespace yb::docdb

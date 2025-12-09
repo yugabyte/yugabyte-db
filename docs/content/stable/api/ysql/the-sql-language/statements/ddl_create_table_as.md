@@ -8,7 +8,7 @@ menu:
     identifier: ddl_create_table_as
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/ddl_create_table_as/
+  - /stable/api/ysql/commands/ddl_create_table_as/
 type: docs
 ---
 

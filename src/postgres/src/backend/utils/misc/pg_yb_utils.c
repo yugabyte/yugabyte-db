@@ -1154,8 +1154,10 @@ YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *ini
 			.shared_data = &MyProc->yb_shared_data
 		};
 
-		YBCInitPgGate(YbGetTypeTable(), &callbacks,
-					  init_info ? init_info : &default_init_info, &ash_config);
+		HandleYBStatusAtErrorLevel(YBCInitPgGate(YbGetTypeTable(),
+												 &callbacks,
+												 init_info ? init_info : &default_init_info,
+												 &ash_config), FATAL);
 		YBCInstallTxnDdlHook();
 
 		/*
@@ -7487,7 +7489,8 @@ YbATCopyPrimaryKeyToCreateStmt(Relation rel, Relation pg_constraint,
  */
 void
 YbIndexSetNewRelfileNode(Relation indexRel, Oid newRelfileNodeId,
-						 bool yb_copy_split_options)
+						 bool yb_copy_split_options,
+						 YbOptSplit *preserved_index_split_options)
 {
 	bool		isNull;
 	HeapTuple	indexTuple;
@@ -7497,6 +7500,7 @@ YbIndexSetNewRelfileNode(Relation indexRel, Oid newRelfileNodeId,
 	IndexInfo  *indexInfo;
 	oidvector  *indclass = NULL;
 	Datum		indclassDatum;
+	YbOptSplit *splitOpt = NULL;
 
 	tuple = SearchSysCache1(RELOID,
 							ObjectIdGetDatum(RelationGetRelid(indexRel)));
@@ -7512,7 +7516,9 @@ YbIndexSetNewRelfileNode(Relation indexRel, Oid newRelfileNodeId,
 							ShareLock);
 	indexInfo = BuildIndexInfo(indexRel);
 
-	YbGetTableProperties(indexRel);
+	YbTryGetTableProperties(indexRel);
+	YbGetTableProperties(indexedRel);
+
 
 	indexTuple = SearchSysCache1(INDEXRELID,
 								 ObjectIdGetDatum(RelationGetRelid(indexRel)));
@@ -7526,6 +7532,13 @@ YbIndexSetNewRelfileNode(Relation indexRel, Oid newRelfileNodeId,
 		indclass = (oidvector *) DatumGetPointer(indclassDatum);
 	ReleaseSysCache(indexTuple);
 
+	if (yb_copy_split_options)
+	{
+		splitOpt = indexRel->yb_table_properties
+					? YbGetSplitOptions(indexRel)
+					: preserved_index_split_options;
+	}
+
 	YBCCreateIndex(RelationGetRelationName(indexRel),
 				   indexInfo,
 				   RelationGetDescr(indexRel),
@@ -7533,14 +7546,15 @@ YbIndexSetNewRelfileNode(Relation indexRel, Oid newRelfileNodeId,
 				   reloptions,
 				   RelationGetRelid(indexRel),
 				   indexedRel,
-				   yb_copy_split_options ? YbGetSplitOptions(indexRel) : NULL,
+				   splitOpt,
 				   true /* skip_index_backfill */ ,
-				   indexRel->yb_table_properties->is_colocated,
-				   indexRel->yb_table_properties->tablegroup_oid,
+				   indexedRel->yb_table_properties->is_colocated,
+				   indexedRel->yb_table_properties->tablegroup_oid,
 				   InvalidOid /* colocation ID */ ,
 				   indexRel->rd_rel->reltablespace,
 				   newRelfileNodeId,
-				   YbGetRelfileNodeId(indexRel),
+				   !indexRel->yb_table_properties ?
+					   InvalidOid : YbGetRelfileNodeId(indexRel) /* oldRelfileNodeId */ ,
 				   indclass ? indclass->values : NULL);
 
 	table_close(indexedRel, ShareLock);

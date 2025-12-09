@@ -6,7 +6,7 @@ description: Benchmark YugabyteDB using TPC-C.
 aliases:
   - /benchmark/tpcc
   - /benchmark/tpcc-ysql
-  - /preview/benchmark/tpcc-ysql/
+  - /stable/benchmark/tpcc-ysql/
 menu:
   stable:
     identifier: tpcc

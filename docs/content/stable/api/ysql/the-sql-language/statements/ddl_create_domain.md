@@ -8,7 +8,7 @@ menu:
     identifier: ddl_create_domain
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/ddl_create_domain/
+  - /stable/api/ysql/commands/ddl_create_domain/
 type: docs
 ---
 

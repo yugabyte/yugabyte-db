@@ -52,6 +52,7 @@
 
 /* YB includes */
 #include "pg_yb_utils.h"
+#include "utils/timeout.h"
 
 
 /* This configuration variable is used to set the lock table size */
@@ -848,7 +849,17 @@ LockAcquireExtended(const LOCKTAG *locktag,
 		elog(log_level, "LockAcquire start: lock [%u,%u] mode: %s",
 			 locktag->locktag_field1, locktag->locktag_field2, lockMethodTable->lockModeNames[lockmode]);
 
-		HandleYBStatus(YBCAcquireObjectLock(GetYBObjectLockId(locktag), (YbcObjectLockMode) lockmode));
+		if (LockTimeout > 0)
+			enable_timeout_after(LOCK_TIMEOUT, LockTimeout);
+
+		 YbcStatus status = YBCAcquireObjectLock(GetYBObjectLockId(locktag), (YbcObjectLockMode) lockmode);
+
+		 CHECK_FOR_INTERRUPTS();
+
+		if (LockTimeout > 0)
+			disable_timeout(LOCK_TIMEOUT, false);
+
+		HandleYBStatus(status);
 
 		elog(log_level, "LockAcquired: lock [%u,%u] mode: %s",
 			 locktag->locktag_field1, locktag->locktag_field2, lockMethodTable->lockModeNames[lockmode]);

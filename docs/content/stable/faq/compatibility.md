@@ -5,7 +5,7 @@ linkTitle: API FAQ
 description: Answers to common questions about YugabyteDB APIs and compatibility.
 aliases:
   - /faq/cassandra/
-  - /preview/faq/cassandra/
+  - /stable/faq/cassandra/
 menu:
   stable_faq:
     identifier: faq-api-compatibility

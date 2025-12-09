@@ -4968,12 +4968,6 @@
           "$ref" : "#/definitions/CommunicationPorts",
           "description" : "Communication ports"
         },
-        "createNewClientRootCA" : {
-          "type" : "boolean"
-        },
-        "createNewRootCA" : {
-          "type" : "boolean"
-        },
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
         },
@@ -5580,8 +5574,6 @@
       },
       "required" : [
         "clusters",
-        "createNewClientRootCA",
-        "createNewRootCA",
         "creatingUser",
         "kubernetesUpgradeSupported",
         "platformUrl",
@@ -7332,6 +7324,7 @@
           "description" : "Storage type used for this instance",
           "enum" : [
             "IO1",
+            "IO2",
             "GP2",
             "GP3",
             "Scratch",
@@ -13141,80 +13134,6 @@
       },
       "type" : "object"
     },
-    "NodeConfig" : {
-      "description" : "A node configuration.",
-      "properties" : {
-        "type" : {
-          "enum" : [
-            "NTP_SERVICE_STATUS",
-            "PROMETHEUS_SPACE",
-            "MOUNT_POINTS_WRITABLE",
-            "USER",
-            "USER_GROUP",
-            "HOME_DIR_SPACE",
-            "HOME_DIR_EXISTS",
-            "HOME_DIR_MATCHES",
-            "RAM_SIZE",
-            "INTERNET_CONNECTION",
-            "CPU_CORES",
-            "PROMETHEUS_NO_NODE_EXPORTER",
-            "TMP_DIR_SPACE",
-            "PAM_LIMITS_WRITABLE",
-            "PYTHON_VERSION",
-            "MOUNT_POINTS_VOLUME",
-            "CHRONYD_RUNNING",
-            "LOCALE_PRESENT",
-            "SSH_PORT",
-            "SUDO_ACCESS",
-            "OPENSSL",
-            "POLICYCOREUTILS",
-            "RSYNC",
-            "XXHASH",
-            "LIBATOMIC1",
-            "LIBNCURSES6",
-            "LIBATOMIC",
-            "AZCOPY",
-            "CHRONYC",
-            "GSUTIL",
-            "S3CMD",
-            "NODE_EXPORTER_RUNNING",
-            "NODE_EXPORTER_PORT",
-            "SWAPPINESS",
-            "ULIMIT_CORE",
-            "ULIMIT_OPEN_FILES",
-            "ULIMIT_USER_PROCESSES",
-            "SSH_ACCESS",
-            "NODE_AGENT_ACCESS",
-            "MASTER_HTTP_PORT",
-            "MASTER_RPC_PORT",
-            "TSERVER_HTTP_PORT",
-            "TSERVER_RPC_PORT",
-            "YB_CONTROLLER_HTTP_PORT",
-            "YB_CONTROLLER_RPC_PORT",
-            "REDIS_SERVER_HTTP_PORT",
-            "REDIS_SERVER_RPC_PORT",
-            "YB_HOME_DIR_CLEAN",
-            "DATA_DIR_CLEAN",
-            "YCQL_SERVER_HTTP_PORT",
-            "YCQL_SERVER_RPC_PORT",
-            "YSQL_SERVER_HTTP_PORT",
-            "YSQL_SERVER_RPC_PORT",
-            "VM_MAX_MAP_COUNT",
-            "NTP_SKEW"
-          ],
-          "type" : "string"
-        },
-        "value" : {
-          "description" : "true",
-          "type" : "string"
-        }
-      },
-      "required" : [
-        "type",
-        "value"
-      ],
-      "type" : "object"
-    },
     "NodeData" : {
       "properties" : {
         "details" : {
@@ -13845,14 +13764,6 @@
           "description" : "IP address",
           "example" : "1.1.1.1",
           "type" : "string"
-        },
-        "nodeConfigs" : {
-          "description" : "Node configurations",
-          "items" : {
-            "$ref" : "#/definitions/NodeConfig"
-          },
-          "type" : "array",
-          "uniqueItems" : true
         },
         "nodeName" : {
           "description" : "Node name in a universe",
@@ -15091,7 +15002,8 @@
           "type" : "string"
         },
         "config_uuid" : {
-          "$ref" : "#/definitions/HighAvailabilityConfig"
+          "format" : "uuid",
+          "type" : "string"
         },
         "instance_state" : {
           "enum" : [
@@ -15123,7 +15035,6 @@
       },
       "required" : [
         "address",
-        "config_uuid",
         "instance_state",
         "is_leader",
         "is_local",
@@ -46315,6 +46226,7 @@
               "items" : {
                 "enum" : [
                   "IO1",
+                  "IO2",
                   "GP2",
                   "GP3",
                   "Scratch",
@@ -46340,6 +46252,7 @@
               "items" : {
                 "enum" : [
                   "IO1",
+                  "IO2",
                   "GP2",
                   "GP3",
                   "Scratch",
@@ -46381,6 +46294,7 @@
               "items" : {
                 "enum" : [
                   "IO1",
+                  "IO2",
                   "GP2",
                   "GP3",
                   "Scratch",
@@ -46406,6 +46320,7 @@
               "items" : {
                 "enum" : [
                   "IO1",
+                  "IO2",
                   "GP2",
                   "GP3",
                   "Scratch",
@@ -46447,6 +46362,7 @@
               "items" : {
                 "enum" : [
                   "IO1",
+                  "IO2",
                   "GP2",
                   "GP3",
                   "Scratch",
@@ -46472,6 +46388,7 @@
               "items" : {
                 "enum" : [
                   "IO1",
+                  "IO2",
                   "GP2",
                   "GP3",
                   "Scratch",

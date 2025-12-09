@@ -69,7 +69,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
@@ -416,21 +418,33 @@ public class UpgradeUniverseHandler {
   }
 
   public UUID rotateCerts(CertsRotateParams requestParams, Customer customer, Universe universe) {
+
+    // Restore explicitly set null values for rootCA and clientRootCA
+    // This ensures that when a user explicitly sets these to null, they are preserved
+    // instead of being overridden by the universe's existing values during binding
+    if (requestParams.rootCAExplicitlyNull) {
+      requestParams.rootCA = null;
+    }
+    if (requestParams.clientRootCAExplicitlyNull) {
+      requestParams.setClientRootCA(null);
+    }
+
     log.debug(
-        "rotateCerts called with rootCA: {}",
-        (requestParams.rootCA != null) ? requestParams.rootCA.toString() : "NULL");
+        "rootCAExplicitlyNull: {}, clientRootCAExplicitlyNull: {}",
+        requestParams.rootCAExplicitlyNull,
+        requestParams.clientRootCAExplicitlyNull);
+
+    log.debug(
+        "rotateCerts called with rootCA: {}, clientRootCA: {}",
+        (requestParams.rootCA != null) ? requestParams.rootCA.toString() : "NULL",
+        (requestParams.getRawClientRootCA() != null)
+            ? requestParams.getRawClientRootCA().toString()
+            : "NULL");
+
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
 
     if (userIntent.enableNodeToNodeEncrypt) {
-      if (requestParams.rootCA != null && requestParams.createNewRootCA) {
-        throw new PlatformServiceException(
-            BAD_REQUEST, "Cannot create new rootCA when rootCA is already provided.");
-      }
-      if (requestParams.rootCA == null && !requestParams.createNewRootCA) {
-        throw new PlatformServiceException(
-            BAD_REQUEST, "Cannot use existing rootCA when createNewRootCA is false.");
-      }
-      if (requestParams.rootCA == null && requestParams.createNewRootCA) {
+      if (requestParams.rootCA == null) {
         requestParams.rootCA =
             certificateHelper.createRootCA(
                 runtimeConfigFactory.staticApplicationConf(),
@@ -442,54 +456,60 @@ public class UpgradeUniverseHandler {
     }
 
     if (userIntent.enableClientToNodeEncrypt) {
-
-      if (requestParams.getRawClientRootCA() != null && requestParams.createNewClientRootCA) {
-        throw new PlatformServiceException(
-            BAD_REQUEST, "Cannot create new clientRootCA when clientRootCA is already provided.");
-      }
-      if (requestParams.getClientRootCA() == null && !requestParams.createNewClientRootCA) {
-        throw new PlatformServiceException(
-            BAD_REQUEST, "Cannot create new clientRootCA when createNewClientRootCA is false.");
-      }
-
       boolean isKubernetes = userIntent.providerType.equals(CloudType.kubernetes);
       // For Kubernetes, clientRootCA must be same as rootCA
       // For non-Kubernetes, check rootAndClientRootCASame flag
       boolean useSameAsRootCA =
           isKubernetes || (requestParams.rootAndClientRootCASame && requestParams.rootCA != null);
 
-      if (useSameAsRootCA
-          && requestParams.rootCA != null
-          && requestParams.getRawClientRootCA() == null) {
-        requestParams.setClientRootCA(requestParams.rootCA);
-        log.info(
-            "Using clientRootCA is same as rootCA: {} for universe {}",
-            requestParams.getClientRootCA(),
-            universe.getUniverseUUID());
-      } else if (requestParams.getRawClientRootCA() == null
-          && requestParams.createNewClientRootCA) {
-        requestParams.setClientRootCA(
-            certificateHelper.createClientRootCA(
-                runtimeConfigFactory.staticApplicationConf(),
-                universe.getUniverseDetails().nodePrefix,
-                customer.getUuid()));
-        log.info(
-            "Created clientRootCA: {} for universe {}",
-            requestParams.getClientRootCA(),
-            universe.getUniverseUUID());
+      if (requestParams.getRawClientRootCA() == null) {
+        if (useSameAsRootCA) {
+          if (requestParams.rootCA == null) {
+            requestParams.setClientRootCA(
+                certificateHelper.createClientRootCA(
+                    runtimeConfigFactory.staticApplicationConf(),
+                    universe.getUniverseDetails().nodePrefix,
+                    customer.getUuid()));
+            log.info(
+                "Created clientRootCA: {} for universe {}",
+                requestParams.getClientRootCA(),
+                universe.getUniverseUUID());
+          } else {
+            requestParams.setClientRootCA(requestParams.rootCA);
+            log.info(
+                "Using clientRootCA is same as rootCA: {} for universe {}",
+                requestParams.getClientRootCA(),
+                universe.getUniverseUUID());
+          }
+        } else {
+          requestParams.setClientRootCA(
+              certificateHelper.createClientRootCA(
+                  runtimeConfigFactory.staticApplicationConf(),
+                  universe.getUniverseDetails().nodePrefix,
+                  customer.getUuid()));
+          log.info(
+              "Created clientRootCA: {} for universe {}",
+              requestParams.getClientRootCA(),
+              universe.getUniverseUUID());
+        }
       }
     }
 
+    // Set rootCA to clientRootCA if rootCA is not provided
     if (requestParams.rootCA == null && requestParams.getClientRootCA() != null) {
-      requestParams.rootCA = requestParams.getClientRootCA();
+      if (requestParams.rootAndClientRootCASame) {
+        requestParams.rootCA = requestParams.getClientRootCA();
+      } else {
+        requestParams.rootCA = universe.getUniverseDetails().rootCA;
+      }
     }
 
     log.info(
         "Rotating certs for universe {} with rootCA: {} and clientRootCA: {}",
         universe.getUniverseUUID(),
         requestParams.rootCA != null ? requestParams.rootCA.toString() : "NULL",
-        requestParams.getClientRootCA() != null
-            ? requestParams.getClientRootCA().toString()
+        requestParams.getRawClientRootCA() != null
+            ? requestParams.getRawClientRootCA().toString()
             : "NULL");
 
     // Temporary fix for PLAT-4791 until PLAT-4653 fixed.
@@ -620,6 +640,23 @@ public class UpgradeUniverseHandler {
         }
       }
 
+      // Verify if the exporter credentials are consistent on the universe.
+      // Applies to AWS and GCP TPs since they are exported as environment variables on the DB
+      // nodes.
+      Set<UUID> auditLogExporterUuids =
+          requestParams.auditLogConfig.getUniverseLogsExporterConfig().stream()
+              .map(UniverseLogsExporterConfig::getExporterUuid)
+              .collect(Collectors.toSet());
+      if (!telemetryProviderService.areTPsCredentialsConsistentOnUniverse(
+          universe, auditLogExporterUuids, null, null)) {
+        String errorMessage =
+            "Exporter credentials are not consistent on universe '"
+                + universe.getUniverseUUID()
+                + "'.";
+        log.error(errorMessage);
+        throw new PlatformServiceException(BAD_REQUEST, errorMessage);
+      }
+
       // For Kubernetes provider, verify the universe version is compatible with otel exporter.
       if (userIntent.providerType.equals(CloudType.kubernetes)
           && !KubernetesUtil.isExporterSupported(userIntent.ybSoftwareVersion)) {
@@ -715,6 +752,23 @@ public class UpgradeUniverseHandler {
 
       if (userIntent.providerType.equals(CloudType.kubernetes)) {
         String errorMessage = "Query log exporter is not supported for kubernetes provider.";
+        log.error(errorMessage);
+        throw new PlatformServiceException(BAD_REQUEST, errorMessage);
+      }
+
+      // Verify if the exporter credentials are consistent on the universe.
+      // Applies to AWS and GCP TPs since they are exported as environment variables on the DB
+      // nodes.
+      Set<UUID> queryLogExporterUuids =
+          requestParams.queryLogConfig.getUniverseLogsExporterConfig().stream()
+              .map(UniverseQueryLogsExporterConfig::getExporterUuid)
+              .collect(Collectors.toSet());
+      if (!telemetryProviderService.areTPsCredentialsConsistentOnUniverse(
+          universe, null, queryLogExporterUuids, null)) {
+        String errorMessage =
+            "Exporter credentials are not consistent on universe '"
+                + universe.getUniverseUUID()
+                + "'.";
         log.error(errorMessage);
         throw new PlatformServiceException(BAD_REQUEST, errorMessage);
       }

@@ -956,6 +956,10 @@ static inline int od_config_reader_pgoptions_kv_pair(
 static inline int od_config_reader_pgoptions(od_config_reader_t *reader,
 					     kiwi_vars_t *dest)
 {
+	/*
+	 * YB Note: This is not expected to be called, we don't support reading
+	 * options from config file right now
+	 */
 	od_token_t token;
 	int rc;
 	rc = od_parser_next(&reader->parser, &token);
@@ -990,7 +994,7 @@ static inline int od_config_reader_pgoptions(od_config_reader_t *reader,
 				return NOT_OK_RESPONSE;
 			}
 			kiwi_vars_update(dest, optarg, optarg_len + 1, optval,
-					 optval_len + 1);
+					 optval_len + 1, false);
 			free(optarg);
 			free(optval);
 			break;

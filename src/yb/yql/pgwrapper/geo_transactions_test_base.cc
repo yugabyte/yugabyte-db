@@ -65,7 +65,7 @@ void GeoTransactionsTestBase::SetUp() {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_track_last_transaction) = true;
   // These don't get set in automatically in tests.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_placement_cloud) = "cloud0";
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_placement_region) = "rack1";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_placement_region) = "region1";
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_placement_zone) = "zone";
   // Put everything in the same cloud.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_nodes_per_cloud) = 14;
@@ -110,7 +110,7 @@ void GeoTransactionsTestBase::CreateTransactionTable(int region) {
   replicas->set_num_replicas(1);
   auto pb = replicas->add_placement_blocks();
   pb->mutable_cloud_info()->set_placement_cloud("cloud0");
-  pb->mutable_cloud_info()->set_placement_region(strings::Substitute("rack$0", region));
+  pb->mutable_cloud_info()->set_placement_region(strings::Substitute("region$0", region));
   pb->mutable_cloud_info()->set_placement_zone("zone");
   pb->set_min_num_replicas(1);
   ASSERT_OK(client_->CreateTransactionsStatusTable(name, &replication_info));
@@ -154,12 +154,12 @@ void GeoTransactionsTestBase::CreateMultiRegionTransactionTable() {
   replicas->set_num_replicas(3);
   auto pb = replicas->add_placement_blocks();
   pb->mutable_cloud_info()->set_placement_cloud("cloud0");
-  pb->mutable_cloud_info()->set_placement_region("rack1");
+  pb->mutable_cloud_info()->set_placement_region("region1");
   pb->mutable_cloud_info()->set_placement_zone("zone");
   pb->set_min_num_replicas(1);
   pb = replicas->add_placement_blocks();
   pb->mutable_cloud_info()->set_placement_cloud("cloud0");
-  pb->mutable_cloud_info()->set_placement_region("rack2");
+  pb->mutable_cloud_info()->set_placement_region("region2");
   pb->mutable_cloud_info()->set_placement_zone("zone");
   pb->set_min_num_replicas(1);
   ASSERT_OK(client_->CreateTransactionsStatusTable(name, &replication_info));
@@ -178,7 +178,7 @@ void GeoTransactionsTestBase::SetupTablespaces() {
           "num_replicas": 1,
           "placement_blocks":[{
             "cloud": "cloud0",
-            "region": "rack$0",
+            "region": "region$0",
             "zone": "zone",
             "min_num_replicas": 1
           }]
@@ -265,11 +265,11 @@ void GeoTransactionsTestBase::WaitForLoadBalanceCompletion() {
 }
 
 Status GeoTransactionsTestBase::StartTabletServersByRegion(int region) {
-  return StartTabletServers(yb::Format("rack$0", region), std::nullopt /* zone_str */);
+  return StartTabletServers(yb::Format("region$0", region), std::nullopt /* zone_str */);
 }
 
 Status GeoTransactionsTestBase::ShutdownTabletServersByRegion(int region) {
-  return ShutdownTabletServers(yb::Format("rack$0", region), std::nullopt /* zone_str */);
+  return ShutdownTabletServers(yb::Format("region$0", region), std::nullopt /* zone_str */);
 }
 
 Status GeoTransactionsTestBase::StartTabletServers(
@@ -321,7 +321,7 @@ void GeoTransactionsTestBase::ValidateAllTabletLeaderInZone(std::vector<TabletId
 
 bool GeoTransactionsTestBase::AllTabletLeaderInZone(
     std::vector<TabletId> tablet_uuids, int region) {
-  std::string region_str = Format("rack$0", region);
+  std::string region_str = Format("region$0", region);
   std::sort(tablet_uuids.begin(), tablet_uuids.end());
   auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
   for (const auto& peer : peers) {

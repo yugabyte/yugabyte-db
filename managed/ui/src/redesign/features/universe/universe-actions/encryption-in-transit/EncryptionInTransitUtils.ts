@@ -95,9 +95,7 @@ export enum K8sEncryptionOption {
 export interface EncryptionInTransitFormValues {
   enableUniverseEncryption: boolean;
   rootCA?: string | null;
-  createNewRootCA?: boolean;
   clientRootCA?: string | null;
-  createNewClientRootCA?: boolean;
   enableNodeToNodeEncrypt: boolean;
   enableClientToNodeEncrypt: boolean;
   rootAndClientRootCASame: boolean;
@@ -120,9 +118,7 @@ export const FORM_RESET_VALUES = {
   enableClientToNodeEncrypt: false,
   enableNodeToNodeEncrypt: false,
   rootCA: null,
-  createNewRootCA: false,
   clientRootCA: null,
-  createNewClientRootCA: false,
   rootAndClientRootCASame: false
 };
 
@@ -131,6 +127,12 @@ export const getInitialFormValues = (
   isItKubernetesUniverse: boolean
 ) => {
   const cluster = getPrimaryCluster(universeDetails.clusters);
+  const isRootClientCASameforK8s =
+    cluster?.userIntent?.enableNodeToNodeEncrypt &&
+    cluster?.userIntent.enableClientToNodeEncrypt &&
+    universeDetails.rootCA === universeDetails.clientRootCA
+      ? true
+      : false;
   return {
     enableUniverseEncryption: !!(
       cluster?.userIntent?.enableNodeToNodeEncrypt || cluster?.userIntent.enableClientToNodeEncrypt
@@ -143,9 +145,9 @@ export const getInitialFormValues = (
       : universeDetails?.rootAndClientRootCASame
       ? universeDetails.rootCA
       : null,
-    createNewRootCA: false,
-    createNewClientRootCA: false,
-    rootAndClientRootCASame: !!universeDetails?.rootAndClientRootCASame,
+    rootAndClientRootCASame: isItKubernetesUniverse
+      ? isRootClientCASameforK8s
+      : !!universeDetails?.rootAndClientRootCASame,
     rollingUpgrade: true,
     upgradeDelay: 240,
     upgradeOption: UpgradeOptions.NonRestart,

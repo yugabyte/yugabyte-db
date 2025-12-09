@@ -171,7 +171,7 @@ inline std::optional<Bound> MakeBound(YbcPgBoundType type, uint16_t value) {
   return Bound{.value = value, .is_inclusive = (type == YB_YQL_BOUND_VALID_INCLUSIVE)};
 }
 
-void InitPgGateImpl(
+Status InitPgGateImpl(
     YbcPgTypeEntities type_entities, const YbcPgCallbacks& pg_callbacks,
     YbcPgAshConfig& ash_config, const YbcPgInitPostgresInfo& init_postgres_info) {
   // TODO: We should get rid of hybrid clock usage in YSQL backend processes (see #16034).
@@ -192,8 +192,10 @@ void InitPgGateImpl(
 
   pgapi_shutdown_done.exchange(false);
   pgapi = new PgApiImpl(type_entities, pg_callbacks, init_postgres_info, ash_config);
+  RETURN_NOT_OK(pgapi->StartPgApi(init_postgres_info));
 
   VLOG(1) << "PgGate open";
+  return Status::OK();
 }
 
 Status PgInitSessionImpl(YbcPgExecStatsState& session_stats, bool is_binary_upgrade) {
@@ -497,13 +499,12 @@ YbcPgTabletsDescriptor MakeYbcPgTabletsDescriptor(const tablet::TabletStatusPB& 
 
 extern "C" {
 
-void YBCInitPgGate(
+YbcStatus YBCInitPgGate(
     YbcPgTypeEntities type_entities, const YbcPgCallbacks *pg_callbacks,
     const YbcPgInitPostgresInfo *init_postgres_info, YbcPgAshConfig *ash_config) {
-  CHECK_OK(WithMaskedYsqlSignals(
+  return ToYBCStatus(WithMaskedYsqlSignals(
       [&type_entities, pg_callbacks, init_postgres_info, ash_config]() -> Status {
-        InitPgGateImpl(type_entities, *pg_callbacks, *ash_config, *init_postgres_info);
-        return Status::OK();
+        return InitPgGateImpl(type_entities, *pg_callbacks, *ash_config, *init_postgres_info);
   }));
 }
 
@@ -2015,8 +2016,11 @@ bool YBCCurrentTransactionUsesFastPath() {
 //------------------------------------------------------------------------------------------------
 // System validation.
 //------------------------------------------------------------------------------------------------
-YbcStatus YBCPgValidatePlacement(const char *placement_info, bool check_satisfiable) {
-  return ToYBCStatus(pgapi->ValidatePlacement(placement_info, check_satisfiable));
+YbcStatus YBCPgValidatePlacements(
+    const char *live_placement_info, const char *read_replica_placement_info,
+    bool check_satisfiable) {
+  return ToYBCStatus(pgapi->ValidatePlacements(
+      live_placement_info, read_replica_placement_info, check_satisfiable));
 }
 
 // Referential Integrity Caching

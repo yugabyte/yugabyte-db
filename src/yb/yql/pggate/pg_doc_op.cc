@@ -15,7 +15,6 @@
 #include "yb/yql/pggate/pg_doc_op.h"
 
 #include <algorithm>
-#include <utility>
 
 #include "yb/ash/wait_state.h"
 
@@ -48,14 +47,6 @@ DECLARE_uint64(rpc_max_message_size);
 DECLARE_double(max_buffer_size_to_rpc_limit_ratio);
 
 namespace yb::pggate {
-
-// These values are set by  PgGate to optimize query to narrow the scanning range of a query.
-// Returns false if new boundary makes request range empty.
-bool ApplyPartitionBounds(
-    LWPgsqlReadRequestPB& req, const Slice partition_lower_bound, bool lower_bound_is_inclusive,
-    const Slice partition_upper_bound, bool upper_bound_is_inclusive, const Schema& schema);
-// Check if boundaries set on request define valid (not empty) range.
-bool CheckScanBoundary(const LWPgsqlReadRequestPB& req);
 namespace {
 
 struct PgDocReadOpCachedHelper {
@@ -195,6 +186,69 @@ Result<PgDocResponse::Data> GetResponse(
       table.IsIndex() ||
       (op.is_read() && down_cast<const PgsqlReadOp&>(op).read_request().has_index_request())
           ? TableType::INDEX : TableType::USER;
+}
+
+// These values are set by  PgGate to optimize query to narrow the scanning range of a query.
+// Returns false if new boundary makes request range empty.
+bool ApplyPartitionBounds(
+    LWPgsqlReadRequestPB& req,
+    Slice partition_lower_bound, bool lower_bound_is_inclusive,
+    Slice partition_upper_bound, bool upper_bound_is_inclusive,
+    const Schema& schema) {
+  auto lower_bound = partition_lower_bound;
+  auto upper_bound = partition_upper_bound;
+  dockv::KeyBytes lower_key_bytes_holder, upper_key_bytes_holder;
+
+  if (schema.num_hash_key_columns()) {
+    auto bound_builder =
+        [&schema] (auto& holder, Slice bound, bool& is_inclusive, bool is_lower) {
+            holder =  HashCodeToDocKeyBound(
+                schema, dockv::PartitionSchema::DecodeMultiColumnHashValue(bound), is_inclusive,
+                is_lower);
+            is_inclusive = false;
+            return holder.AsSlice();
+        };
+
+    if (!partition_lower_bound.empty()) {
+      lower_bound = bound_builder(
+          lower_key_bytes_holder, partition_lower_bound, lower_bound_is_inclusive,
+          /* is_lower = */ true);
+    }
+
+    if (!partition_upper_bound.empty()) {
+      upper_bound = bound_builder(
+          upper_key_bytes_holder, partition_upper_bound, upper_bound_is_inclusive,
+          /* is_lower = */ false);
+    }
+  }
+
+  return ApplyBounds(
+      req, lower_bound, lower_bound_is_inclusive, upper_bound, upper_bound_is_inclusive);
+}
+
+// Check if boundaries set on request define valid (not empty) range.
+bool CheckScanBoundary(const LWPgsqlReadRequestPB& req) {
+  const auto key_diff = req.has_lower_bound() && req.has_upper_bound()
+      ? req.lower_bound().key().compare(req.upper_bound().key()) : -1;
+  return key_diff < 0 ||
+         (key_diff == 0 && req.lower_bound().is_inclusive() && req.upper_bound().is_inclusive());
+}
+
+bool IsActiveOp(const PgsqlOpPtr& op) {
+  return DCHECK_NOTNULL(op)->is_active();
+}
+
+bool IsReadOp(const PgsqlOpPtr& op) {
+  return DCHECK_NOTNULL(op)->is_read();
+}
+
+PgsqlReadOp& AsReadOp(const PgsqlOpPtr& op) {
+  DCHECK(IsReadOp(op));
+  return down_cast<PgsqlReadOp&>(*op);
+}
+
+LWPgsqlReadRequestPB& AsReadReq(const PgsqlOpPtr& op) {
+  return AsReadOp(op).read_request();
 }
 
 } // namespace
@@ -569,7 +623,7 @@ Status PgDocOp::FetchMoreResults() {
   RETURN_NOT_OK(exec_status_);
 
   if (end_of_data_) {
-    DCHECK_EQ(active_op_count_, 0);
+    DCHECK(!HasActiveOps());
     return Status::OK();
   }
 
@@ -616,11 +670,8 @@ void PgDocOp::AddOpsToResultStream() {
   }
 }
 
-void PgDocOp::MoveInactiveOpsOutside() {
-  const auto inactive_op_begin = std::partition(
-      pgsql_ops_.begin(), pgsql_ops_.end(),
-      [](const auto& op) { return op->is_active(); });
-  active_op_count_ = inactive_op_begin - pgsql_ops_.begin();
+size_t PgDocOp::MoveInactiveOpsOutside() {
+  return std::ranges::partition(pgsql_ops_, &IsActiveOp).begin() - pgsql_ops_.begin();
 }
 
 Status PgDocOp::SendRequest(ForceNonBufferable force_non_bufferable) {
@@ -630,34 +681,40 @@ Status PgDocOp::SendRequest(ForceNonBufferable force_non_bufferable) {
   return exec_status_;
 }
 
+auto PgDocOp::ActiveOps() const {
+  return pgsql_ops_ | std::views::take_while(&IsActiveOp);
+}
+
+bool PgDocOp::HasActiveOps() const {
+  return !pgsql_ops_.empty() && pgsql_ops_.front()->is_active();
+}
+
 Status PgDocOp::SendRequestImpl(ForceNonBufferable force_non_bufferable) {
   // Populate collected information into protobuf requests before sending to DocDB.
-  RETURN_NOT_OK(CreateRequests());
+  const auto active_op_count = VERIFY_RESULT(CreateRequests());
 
-  // Exit if there's nothing to send
-  if (active_op_count_ == 0) {
+  if (!active_op_count) {
     return Status::OK();
   }
 
   // Send at most "parallelism_level_" number of requests at one time.
-  size_t send_count = std::min(parallelism_level_, active_op_count_);
+  const auto send_count = std::min(parallelism_level_, active_op_count);
 
   uint64_t max_size = FLAGS_rpc_max_message_size * FLAGS_max_buffer_size_to_rpc_limit_ratio
                       / send_count;
 
-  for (const auto& op : pgsql_ops_) {
-    if (op->is_active() && op->is_read()) {
-      auto& read_op = down_cast<PgsqlReadOp&>(*op);
-      auto req_size_limit = read_op.read_request().size_limit();
-      if (req_size_limit > 0) {
-        VLOG(2) << "Capping read op at size limit: " << max_size
-                << " (from " << req_size_limit << ")";
-      }
+  for (auto& read_req : ActiveOps() |
+                        std::views::filter(&IsReadOp) |
+                        std::views::transform(&AsReadReq)) {
+    const auto req_size_limit = read_req.size_limit();
+    if (req_size_limit > 0) {
+      VLOG(2) << "Capping read op at size limit: " << max_size
+              << " (from " << req_size_limit << ")";
+    }
 
-      // Cap the size limit if the size limit is unset or exceeds the maximum size.
-      if (req_size_limit > max_size || req_size_limit == 0) {
-            read_op.read_request().set_size_limit(max_size);
-      }
+    // Cap the size limit if the size limit is unset or exceeds the maximum size.
+    if (req_size_limit > max_size || req_size_limit == 0) {
+        read_req.set_size_limit(max_size);
     }
   }
 
@@ -708,9 +765,9 @@ Status PgDocOp::SendRequestImpl(ForceNonBufferable force_non_bufferable) {
 
 void PgDocOp::RecordRequestMetrics() {
   auto& metrics = pg_session_->metrics();
-  for (const auto& op : pgsql_ops_) {
+  for (const auto& op : ActiveOps()) {
     const auto* response = op->response();
-    if (!(op->is_active() && response && response->has_metrics())) {
+    if (!(response && response->has_metrics())) {
       continue;
     }
     const auto& response_metrics = response->metrics();
@@ -764,10 +821,7 @@ Status PgDocOp::ProcessCallResponse(const rpc::CallResponse& response) {
   // Process data coming from tablet server.
 
   rows_affected_count_ = 0;
-  for (auto& op : pgsql_ops_) {
-    if (!op->is_active()) {
-      break;
-    }
+  for (const auto& op : ActiveOps()) {
     auto* op_response = op->response();
     if (!op_response) {
       continue;
@@ -825,7 +879,7 @@ uint64_t& PgDocOp::GetInTxnLimitHt() {
       : in_txn_limit_ht_;
 }
 
-Status PgDocOp::CreateRequests() {
+Result<size_t> PgDocOp::CreateRequests() {
   if (!request_population_completed_) {
     if (VERIFY_RESULT(DoCreateRequests())) {
       request_population_completed_ = true;
@@ -837,15 +891,16 @@ Status PgDocOp::CreateRequests() {
 Result<bool> PgDocOp::PopulateByYbctidOps(const YbctidGenerator& generator, KeepOrder keep_order) {
   RETURN_NOT_OK(DoPopulateByYbctidOps(generator, keep_order));
   request_population_completed_ = true;
-  if (active_op_count_ > 0) {
+  if (HasActiveOps()) {
     RETURN_NOT_OK(CompleteRequests());
     return true;
   }
   return false;
 }
 
-Status PgDocOp::CompleteRequests() {
-  for (const auto& op : pgsql_ops_) {
+Result<size_t> PgDocOp::CompleteRequests() {
+  size_t count = 0;
+  for (const auto& op : ActiveOps()) {
     if (op->is_read() && table_->num_hash_key_columns() > 0 && !yb_allow_dockey_bounds) {
       // With GHI#28219, lower_bound and upper_bound fields are dockeys in read requests of hash
       // partitioned tables. Since the AutoFlag is false, it is possible that some tservers may not
@@ -854,8 +909,9 @@ Status PgDocOp::CompleteRequests() {
       RETURN_NOT_OK(op->ConvertBoundsToHashCode());
     }
     RETURN_NOT_OK(op->InitPartitionKey(*table_));
+    ++count;
   }
-  return Status::OK();
+  return count;
 }
 
 Result<PgDocResponse> PgDocOp::DefaultSender(
@@ -1043,7 +1099,7 @@ Status PgDocReadOp::ExecuteInit(const YbcPgExecParameters* exec_params) {
       IllegalState, "Exec params can't be changed for already created operations");
   RETURN_NOT_OK(PgDocOp::ExecuteInit(exec_params));
   if (!VERIFY_RESULT(SetScanBounds())) {
-    DCHECK_EQ(active_op_count_, 0);
+    DCHECK(!HasActiveOps());
     end_of_data_ = true;
     return Status::OK();
   }
@@ -1118,16 +1174,13 @@ Result<bool> PgDocReadOp::DoCreateRequests() {
     return PopulateParallelSelectOps();
   } else {
     // No optimization.
-    if (exec_params_.partition_key != nullptr) {
-      if (!VERIFY_RESULT(SetScanPartitionBoundary())) {
-        // Target partition boundaries do not intersect with request boundaries, no results
-        return false;
-      }
+    // Target partition boundaries do not intersect with request boundaries, no results
+    if (exec_params_.partition_key && !VERIFY_RESULT(SetScanPartitionBoundary())) {
+      return false;
     }
     ClonePgsqlOps(1);
     auto& read_op = GetReadOp(0);
     read_op.set_active(true);
-    active_op_count_ = 1;
     if (req.has_ybctid_column_value()) {
       const Slice& ybctid = req.ybctid_column_value().value().binary_value();
       const size_t partition = VERIFY_RESULT(table_->FindPartitionIndex(ybctid));
@@ -1241,15 +1294,15 @@ void PgDocReadOp::InitializeYbctidOperators() {
 }
 
 Result<bool> PgDocReadOp::BindExprsRegular(
-    LWPgsqlReadRequestPB& read_req, const std::vector<const LWQLValuePB*>& values) {
+    LWPgsqlReadRequestPB& read_req, const QLValuePBs& values) {
   std::span hash_values(values.begin(), table_->num_hash_key_columns());
   auto hash = VERIFY_RESULT(table_->partition_schema().PgsqlHashColumnCompoundValue(hash_values));
-  const auto& lower_bound =
-      HashCodeToDocKeyBound(table_->schema(), hash, true /* is_inclusive*/, true /* is_lower */);
-  const auto& upper_bound =
-      HashCodeToDocKeyBound(table_->schema(), hash, true /* is_inclusive*/, false /* is_lower */);
-  if (!ApplyBounds(read_req, lower_bound.Encode().AsSlice(), false /* lower_bound_is_inclusive*/,
-                   upper_bound.Encode().AsSlice(), false /* upper_bound_is_inclusive*/)) {
+  const auto lower_bound =
+      HashCodeToDocKeyBound(table_->schema(), hash, true /* is_inclusive */, true /* is_lower */);
+  const auto upper_bound =
+      HashCodeToDocKeyBound(table_->schema(), hash, true /* is_inclusive */, false /* is_lower */);
+  if (!ApplyBounds(read_req, lower_bound, false /* lower_bound_is_inclusive */,
+                   upper_bound, false /* upper_bound_is_inclusive */)) {
     return false;
   }
   read_req.mutable_partition_column_values()->clear();
@@ -1277,8 +1330,8 @@ Result<bool> PgDocReadOp::BindExprsRegular(
 }
 
 Result<bool> PgDocReadOp::BindExprsToBatch(
-    std::vector<std::pair<bool, LWPgsqlExpressionPB*>>& partition_batches,
-    const std::vector<const LWQLValuePB*>& values) {
+    PartitionBatches& partition_batches, const QLValuePBs& values,
+    const ReadOpProvider& read_op_provider) {
   std::span hash_values(values.begin(), table_->num_hash_key_columns());
   auto partition_key = VERIFY_RESULT(table_->partition_schema().EncodePgsqlHash(hash_values));
   auto partition = client::FindPartitionStartIndex(table_->GetPartitionList(), partition_key);
@@ -1286,12 +1339,11 @@ Result<bool> PgDocReadOp::BindExprsToBatch(
   auto& partition_batch = partition_batches[partition];
   if (!partition_batch.first) {
     partition_batch.first = true;
-    DCHECK(active_op_count_ < pgsql_ops_.size());
-    auto& read_op = GetReadOp(active_op_count_++);
+    auto& read_op = VERIFY_RESULT_REF(read_op_provider());
     auto& read_req = read_op.read_request();
     if (VERIFY_RESULT(SetLowerUpperBound(&read_req, partition))) {
       read_op.set_active(true);
-      partition_batch.second = VERIFY_RESULT(InitHashPermutationBatch(read_req));
+      partition_batch.second = InitHashPermutationBatch(read_req);
     }
   }
   if (!partition_batch.second) {
@@ -1320,9 +1372,9 @@ bool PgDocReadOp::IsHashBatchingEnabled() {
 }
 
 bool PgDocReadOp::IsBatchFlushRequired() const {
-  return (exec_params_.work_mem > 0 &&
-          pgsql_op_arena_ &&
-          pgsql_op_arena_->UsedBytes() > (implicit_cast<size_t>(exec_params_.work_mem) * 1024));
+  return exec_params_.work_mem > 0 &&
+         pgsql_op_arena_ &&
+         pgsql_op_arena_->UsedBytes() > (implicit_cast<size_t>(exec_params_.work_mem) * 1024);
 }
 
 // Collect hash expressions to prepare for generating permutations.
@@ -1355,34 +1407,35 @@ Result<bool> PgDocReadOp::PopulateNextHashPermutationOps() {
   }
 
   // Continue with operations if any are still in flight
-  if (active_op_count_ > 0) {
+  if (HasActiveOps()) {
     return false;
   }
 
   // Setup operations
-  auto max_op_count = std::min(hash_permutations_->Size(),
+  const auto max_op_count = std::min(hash_permutations_->Size(),
                                IsHashBatchingEnabled() ?
                                    table_->GetPartitionListSize() :
                                    implicit_cast<size_t>(FLAGS_ysql_request_limit));
   ClonePgsqlOps(max_op_count);
   if (IsHashBatchingEnabled()) {
-    const auto batch_count = table_->GetPartitionList();
-    std::vector<std::pair<bool, LWPgsqlExpressionPB*>> partition_batches(
-        table_->GetPartitionListSize(), {false, nullptr});
-    while (hash_permutations_->HasPermutation()) {
-      if (VERIFY_RESULT(BindExprsToBatch(partition_batches,
-                                         hash_permutations_->NextPermutation()))) {
-        if (IsBatchFlushRequired()) {
-          break;
-        }
+    PartitionBatches batches(table_->GetPartitionListSize(), {false, nullptr});
+    const auto op_provider =
+        [it = pgsql_ops_.begin(), end = pgsql_ops_.end()] () mutable -> Result<PgsqlReadOp&> {
+          RSTATUS_DCHECK(it != end, IllegalState, "No more read ops available");
+          return AsReadOp(*it++);
+        };
+    for (; hash_permutations_->HasPermutation(); ) {
+      if (VERIFY_RESULT(BindExprsToBatch(
+              batches, hash_permutations_->NextPermutation(), make_lw_function(op_provider))) &&
+            IsBatchFlushRequired()) {
+        break;
       }
     }
   } else {
-    for (size_t idx = 0; idx < pgsql_ops_.size() && hash_permutations_->HasPermutation(); ++idx) {
-      auto& read_op = GetReadOp(idx);
-      if (VERIFY_RESULT(BindExprsRegular(read_op.read_request(),
-                                         hash_permutations_->NextPermutation()))) {
-        read_op.set_active(true);
+    for (auto it = pgsql_ops_.begin();
+         it != pgsql_ops_.end() && hash_permutations_->HasPermutation(); ++it) {
+      if (VERIFY_RESULT(BindExprsRegular(AsReadReq(*it), hash_permutations_->NextPermutation()))) {
+        (**it).set_active(true);
       }
     }
   }
@@ -1391,24 +1444,23 @@ Result<bool> PgDocReadOp::PopulateNextHashPermutationOps() {
   return !hash_permutations_->HasPermutation();
 }
 
-Result<LWPgsqlExpressionPB*> PgDocReadOp::InitHashPermutationBatch(LWPgsqlReadRequestPB& read_req) {
+LWPgsqlExpressionPB* PgDocReadOp::InitHashPermutationBatch(LWPgsqlReadRequestPB& read_req) {
   read_req.mutable_partition_column_values()->clear();
   if (!read_req.has_condition_expr()) {
     read_req.mutable_condition_expr()->mutable_condition()->set_op(QL_OP_AND);
   }
-  auto* cond_bind_expr = read_req.mutable_condition_expr()->mutable_condition()->add_operands();
-  cond_bind_expr->mutable_condition()->set_op(QL_OP_IN);
-  auto* add_targets = cond_bind_expr->mutable_condition()->add_operands()->mutable_tuple();
+  auto& cond_bind_expr = *read_req.mutable_condition_expr()->mutable_condition()->add_operands();
+  cond_bind_expr.mutable_condition()->set_op(QL_OP_IN);
+  auto& add_targets = *cond_bind_expr.mutable_condition()->add_operands()->mutable_tuple();
 
   // ROW(YbHashCode, HashColumns, RangeColumns)
-  auto* yb_hash_code = add_targets->add_elems();
-  yb_hash_code->set_column_id(kYbHashCodeColId);
-  for (size_t idx : hash_permutations_->Targets()) {
-    auto& col = table_.ColumnForIndex(idx);
-    add_targets->add_elems()->set_column_id(col.id());
+  auto& yb_hash_code = *add_targets.add_elems();
+  yb_hash_code.set_column_id(kYbHashCodeColId);
+  for (auto idx : hash_permutations_->Targets()) {
+    add_targets.add_elems()->set_column_id(table_.ColumnForIndex(idx).id());
   }
   // RHS of IN condition
-  return cond_bind_expr->mutable_condition()->add_operands();
+  return cond_bind_expr.mutable_condition()->add_operands();
 }
 
 Result<bool> PgDocReadOp::PopulateParallelSelectOps() {
@@ -1447,13 +1499,10 @@ Result<bool> PgDocReadOp::PopulateParallelSelectOps() {
   for (size_t partition = 0; partition < partition_keys.size(); ++partition) {
     if (VERIFY_RESULT(SetLowerUpperBound(&GetReadReq(partition), partition))) {
       pgsql_ops_[partition]->set_active(true);
-      ++active_op_count_;
     }
   }
-  // Got some inactive operations, move them away
-  if (active_op_count_ < pgsql_ops_.size()) {
-    MoveInactiveOpsOutside();
-  }
+
+  MoveInactiveOpsOutside();
 
   return true;
 }
@@ -1489,13 +1538,9 @@ Result<bool> PgDocReadOp::SetScanPartitionBoundary() {
 }
 
 Status PgDocReadOp::CompleteProcessResponse() {
-  // For each read_op, set up its request for the next batch of data or make it in-active.
-  bool has_more_data = false;
-  auto send_count = std::min(parallelism_level_, active_op_count_);
-
-  for (size_t op_index = 0; op_index < send_count; op_index++) {
-    auto& read_op = GetReadOp(op_index);
-
+  for (auto& read_op : ActiveOps() |
+                       std::views::take(parallelism_level_) |
+                       std::views::transform(&AsReadOp)) {
     // Check for completion.
     bool has_more_arg = false;
     auto& res = *read_op.response();
@@ -1521,23 +1566,13 @@ Status PgDocReadOp::CompleteProcessResponse() {
       FormulateRequestForRollingUpgrade(&req);
     }
 
-    if (has_more_arg) {
-      has_more_data = true;
-    } else {
+    if (!has_more_arg) {
       read_op.set_active(false);
     }
   }
 
-  if (has_more_data || send_count < active_op_count_) {
-    // Move inactive ops to the end of
-    // to make room for new set of arguments.
-    MoveInactiveOpsOutside();
-    end_of_data_ = false;
-  } else {
-    // There should be no active op left in queue.
-    active_op_count_ = 0;
-    end_of_data_ = request_population_completed_;
-  }
+  MoveInactiveOpsOutside();
+  end_of_data_ =  !HasActiveOps() && request_population_completed_;
 
   if (exec_params_.out_param && has_out_param_backfill_spec()) {
     YbcPgExecOutParamValue value;
@@ -1647,8 +1682,10 @@ void PgDocReadOp::SetReadTimeForBackfill() {
 }
 
 void PgDocReadOp::ResetInactivePgsqlOps() {
-  auto op_count = pgsql_ops_.size();
-  if (pgsql_op_arena_ && active_op_count_ == 0 && op_count > 0) {
+  if (pgsql_ops_.empty()) {
+    return;
+  }
+  if (pgsql_op_arena_ && !HasActiveOps()) {
     // All past operations are done, can perform full reset to release memory
     VLOG_WITH_FUNC(3) << "do full reset";
     ResetResultStream();
@@ -1657,8 +1694,9 @@ void PgDocReadOp::ResetInactivePgsqlOps() {
     return;
   }
   // Clear the existing requests.
-  for (auto op_index = active_op_count_; op_index < op_count; ++op_index) {
-    auto& read_req = GetReadReq(op_index);
+  for (auto& read_req : std::views::reverse(pgsql_ops_) |
+                        std::views::take_while(std::not_fn(&IsActiveOp)) |
+                        std::views::transform(&AsReadReq)) {
     read_req.clear_ybctid_column_value();
     read_req.mutable_batch_arguments()->clear();
     read_req.clear_hash_code();
@@ -1670,9 +1708,7 @@ void PgDocReadOp::ResetInactivePgsqlOps() {
 }
 
 Status PgDocReadOp::ResetPgsqlOps() {
-  SCHECK_EQ(active_op_count_, 0,
-            IllegalState,
-            "Can't reset operations when some of them are active");
+  SCHECK(!HasActiveOps(), IllegalState, "Can't reset operations when some of them are active");
   // Discard outstanding results, if any
   result_stream_ = nullptr;
   // Request cleanup for recycling like in ResetInactivePgsqlOps isn't sufficient here
@@ -1707,7 +1743,8 @@ void PgDocReadOp::FormulateRequestForRollingUpgrade(LWPgsqlReadRequestPB *read_r
 }
 
 PgsqlReadOp& PgDocReadOp::GetReadOp(size_t op_index) {
-  return down_cast<PgsqlReadOp&>(*pgsql_ops_[op_index]);
+  DCHECK(op_index < pgsql_ops_.size());
+  return AsReadOp(pgsql_ops_[op_index]);
 }
 
 LWPgsqlReadRequestPB& PgDocReadOp::GetReadReq(size_t op_index) {
@@ -1762,7 +1799,6 @@ Result<bool> PgDocWriteOp::DoCreateRequests() {
   pgsql_ops_.push_back(write_op_);
   pgsql_ops_.back()->set_active(true);
   AddOpsToResultStream();
-  active_op_count_ = 1;
 
   // Log non buffered request.
   VLOG_IF(1, response_.Valid()) << __PRETTY_FUNCTION__ << ": Sending request for " << this;
@@ -1782,60 +1818,16 @@ PgDocOp::SharedPtr MakeDocReadOpWithData(
   return std::make_shared<PgDocReadOpCached>(pg_session, std::move(data));
 }
 
-bool ApplyPartitionBounds(LWPgsqlReadRequestPB& req,
-                          const Slice partition_lower_bound,
-                          bool lower_bound_is_inclusive,
-                          const Slice partition_upper_bound,
-                          bool upper_bound_is_inclusive,
-                          const Schema& schema) {
-  Slice lower_bound, upper_bound;
-  dockv::KeyBytes lower_key_bytes, upper_key_bytes;
-
-  bool hash_partitioned = schema.num_hash_key_columns() > 0;
-
-  // Calculate lower_bound.
-  if (!partition_lower_bound.empty()) {
-    if (hash_partitioned) {
-      uint16_t hash = dockv::PartitionSchema::DecodeMultiColumnHashValue(partition_lower_bound);
-      const auto& lower_bound_dockey =
-          HashCodeToDocKeyBound(schema, hash, lower_bound_is_inclusive, /* is_lower =*/true);
-      lower_key_bytes = lower_bound_dockey.Encode();
-      lower_bound = lower_key_bytes.AsSlice();
-      lower_bound_is_inclusive = false;
-    } else {
-      lower_bound = partition_lower_bound;
-    }
-  }
-
-  // Calculate upper_bound.
-  if (!partition_upper_bound.empty()) {
-    if (hash_partitioned) {
-      uint16_t hash = dockv::PartitionSchema::DecodeMultiColumnHashValue(partition_upper_bound);
-      const auto& upper_bound_dockey =
-          HashCodeToDocKeyBound(schema, hash, upper_bound_is_inclusive, /* is_lower =*/false);
-      upper_key_bytes = upper_bound_dockey.Encode();
-      upper_bound = upper_key_bytes.AsSlice();
-      upper_bound_is_inclusive = false;
-    } else {
-      upper_bound = partition_upper_bound;
-    }
-  }
-
-  return ApplyBounds(
-      req, lower_bound, lower_bound_is_inclusive, upper_bound, upper_bound_is_inclusive);
-}
-
-bool ApplyBounds(LWPgsqlReadRequestPB& req,
-                 const Slice lower_bound,
-                 bool lower_bound_is_inclusive,
-                 const Slice upper_bound,
-                 bool upper_bound_is_inclusive) {
+bool ApplyBounds(
+    LWPgsqlReadRequestPB& req,
+    Slice lower_bound, bool lower_bound_is_inclusive,
+    Slice upper_bound, bool upper_bound_is_inclusive) {
   ApplyLowerBound(req, lower_bound, lower_bound_is_inclusive);
   ApplyUpperBound(req, upper_bound, upper_bound_is_inclusive);
   return CheckScanBoundary(req);
 }
 
-dockv::DocKey HashCodeToDocKeyBound(
+dockv::KeyBytes HashCodeToDocKeyBound(
     const Schema& schema, uint16_t hash, bool is_inclusive, bool is_lower) {
   if (!is_inclusive) {
     if (is_lower) {
@@ -1847,18 +1839,19 @@ dockv::DocKey HashCodeToDocKeyBound(
     }
   }
 
-  // Use static vectors to avoid repeated construction.
-  static const dockv::KeyEntryValues kLowestVector{
-      dockv::KeyEntryValue(dockv::KeyEntryType::kLowest)};
-  static const dockv::KeyEntryValues kHighestVector{
-      dockv::KeyEntryValue(dockv::KeyEntryType::kHighest)};
+  using dockv::KeyEntryValues;
+  using dockv::KeyEntryValue;
+  using dockv::KeyEntryType;
 
-  const auto& hash_range_components = is_lower ? kLowestVector : kHighestVector;
+  static const KeyEntryValues kLowest{KeyEntryValue{KeyEntryType::kLowest}};
+  static const KeyEntryValues kHighest{KeyEntryValue{KeyEntryType::kHighest}};
 
-  return dockv::DocKey(schema, hash, hash_range_components, hash_range_components);
+  const auto& hash_range_components = is_lower ? kLowest : kHighest;
+
+  return dockv::DocKey(schema, hash, hash_range_components, hash_range_components).Encode();
 }
 
-void ApplyLowerBound(LWPgsqlReadRequestPB& req, const Slice lower_bound, bool is_inclusive) {
+void ApplyLowerBound(LWPgsqlReadRequestPB& req, Slice lower_bound, bool is_inclusive) {
   if (lower_bound.empty()) {
     return;
   }
@@ -1867,14 +1860,15 @@ void ApplyLowerBound(LWPgsqlReadRequestPB& req, const Slice lower_bound, bool is
   DCHECK(!dockv::PartitionSchema::IsValidHashPartitionKeyBound(lower_bound));
 
   if (req.has_lower_bound()) {
+    const auto key = req.lower_bound().key();
     // With GHI#28219, bounds are expected to be dockeys.
-    DCHECK(!dockv::PartitionSchema::IsValidHashPartitionKeyBound(req.lower_bound().key()));
-
-    if (req.lower_bound().key() > lower_bound) {
+    DCHECK(!dockv::PartitionSchema::IsValidHashPartitionKeyBound(key));
+    const auto diff = key.compare(lower_bound);
+    if (diff > 0) {
       return;
     }
 
-    if (req.lower_bound().key() == lower_bound) {
+    if (!diff) {
       is_inclusive = is_inclusive & req.lower_bound().is_inclusive();
       req.mutable_lower_bound()->set_is_inclusive(is_inclusive);
       return;
@@ -1885,7 +1879,7 @@ void ApplyLowerBound(LWPgsqlReadRequestPB& req, const Slice lower_bound, bool is
   req.mutable_lower_bound()->set_is_inclusive(is_inclusive);
 }
 
-void ApplyUpperBound(LWPgsqlReadRequestPB& req, const Slice upper_bound, bool is_inclusive) {
+void ApplyUpperBound(LWPgsqlReadRequestPB& req, Slice upper_bound, bool is_inclusive) {
   if (upper_bound.empty()) {
     return;
   }
@@ -1894,14 +1888,16 @@ void ApplyUpperBound(LWPgsqlReadRequestPB& req, const Slice upper_bound, bool is
   DCHECK(!dockv::PartitionSchema::IsValidHashPartitionKeyBound(upper_bound));
 
   if (req.has_upper_bound()) {
+    const auto key = req.upper_bound().key();
     // With GHI#28219, bounds are expected to be dockeys.
-    DCHECK(!dockv::PartitionSchema::IsValidHashPartitionKeyBound(req.upper_bound().key()));
+    DCHECK(!dockv::PartitionSchema::IsValidHashPartitionKeyBound(key));
+    const auto diff = key.compare(upper_bound);
 
-    if (req.upper_bound().key() < upper_bound) {
+    if (diff < 0) {
       return;
     }
 
-    if (req.upper_bound().key() == upper_bound) {
+    if (!diff) {
       is_inclusive = is_inclusive & req.upper_bound().is_inclusive();
       req.mutable_upper_bound()->set_is_inclusive(is_inclusive);
       return;
@@ -1910,17 +1906,6 @@ void ApplyUpperBound(LWPgsqlReadRequestPB& req, const Slice upper_bound, bool is
   }
   req.mutable_upper_bound()->dup_key(upper_bound);
   req.mutable_upper_bound()->set_is_inclusive(is_inclusive);
-}
-
-bool CheckScanBoundary(const LWPgsqlReadRequestPB& req) {
-  if (req.has_lower_bound() && req.has_upper_bound() &&
-      ((req.lower_bound().key() > req.upper_bound().key()) ||
-       (req.lower_bound().key() == req.upper_bound().key() &&
-        !(req.lower_bound().is_inclusive() && req.upper_bound().is_inclusive())))) {
-    return false;
-  }
-
-  return true;
 }
 
 }  // namespace yb::pggate

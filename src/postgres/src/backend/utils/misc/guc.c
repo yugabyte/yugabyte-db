@@ -3714,6 +3714,20 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_ignore_bool_cond_for_legacy_estimate", PGC_USERSET, COMPAT_OPTIONS_PREVIOUS,
+			gettext_noop("Ignore boolean condition for row count estimate in legacy cost model."),
+			gettext_noop("Negates the side effect on legacy mode row count "
+						 "estimate introduced by the fix \"[#26266] YSQL: Add "
+						 "BOOL_LSM_FAM_OID to boolean family\" for backward "
+						 "compatibility"),
+			GUC_EXPLAIN
+		},
+		&yb_ignore_bool_cond_for_legacy_estimate,
+		false,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL
@@ -9293,7 +9307,13 @@ BeginReportingGUCOptions(void)
 	{
 		struct config_generic *conf = guc_variables[i];
 
-		if (conf->flags & GUC_REPORT)
+		/*
+		 * YB_TODO(#27725): Replace with a tighter reporting that is needed for
+		 * connection manager
+		 */
+		if ((conf->flags & GUC_REPORT) ||
+			(conf->context >= PGC_SU_BACKEND &&
+			 (conf->source == PGC_S_CLIENT || conf->source == PGC_S_SESSION)))
 			ReportGUCOption(conf);
 	}
 
@@ -9375,7 +9395,42 @@ ReportGUCOption(struct config_generic *record)
 			if (record->flags & GUC_REPORT)
 				flags |= YB_PARAM_STATUS_REPORT_ENABLED;
 
-			/* TODO(arpit.saxena): Populate other bits in flags */
+			switch (record->context)
+			{
+				case PGC_INTERNAL:
+				case PGC_POSTMASTER:
+				case PGC_SIGHUP:
+					/*
+					 * These can never be set by an external client, so
+					 * connection manager doesn't care about these
+					 */
+					break;
+				case PGC_SU_BACKEND:
+				case PGC_BACKEND:
+					/*
+					 * Connection Manager only cares if the external client set
+					 * this variable. That can only happen through the startup
+					 * packet i.e. PGC_S_CLIENT source
+					 */
+
+					if (record->source == PGC_S_CLIENT)
+						flags |= YB_PARAM_STATUS_CONTEXT_BACKEND;
+					break;
+				case PGC_SUSET:
+				case PGC_USERSET:
+					if (record->source == PGC_S_CLIENT)
+						flags |=
+							YB_PARAM_STATUS_USERSET_OR_SUSET_SOURCE_STARTUP;
+					else if (record->source == PGC_S_SESSION)
+						flags |=
+							YB_PARAM_STATUS_USERSET_OR_SUSET_SOURCE_SESSION;
+
+					/*
+					 * TODO(#28445): Populate
+					 * YB_PARAM_STATUS_USERSET_SOURCE_RESET
+					 */
+					break;
+			}
 
 			pq_beginmessage(&msgbuf, 'r');
 			pq_sendstring(&msgbuf, record->name);

@@ -126,11 +126,16 @@ class Block {
       MiddlePointPolicy middle_entry_policy = MiddlePointPolicy::kMiddleLow
   ) const;
 
- private:
   // Returns key for corresponding restart block.
   yb::Result<Slice> GetRestartKey(
       uint32_t restart_idx, KeyValueEncodingFormat key_value_encoding_format) const;
 
+  static inline uint32_t GetMiddlePointIndex(
+      const uint32_t num_points, const MiddlePointPolicy middle_point_policy) {
+    return num_points ? (num_points - std::to_underlying(middle_point_policy)) / 2 : 0;
+  }
+
+ private:
   // Returns a key of a middle entry for the specificed restart point.
   yb::Result<std::string> GetRestartBlockMiddleEntryKey(
       uint32_t restart_idx, const Comparator* comparator,
@@ -228,6 +233,10 @@ class BlockIter : public InternalIterator {
 
   inline uint32_t GetCurrentRestart() const {
     return restart_index_;
+  }
+
+  inline uint32_t GetNumRestarts() const {
+    return num_restarts_;
   }
 
  private:

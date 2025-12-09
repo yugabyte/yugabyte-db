@@ -26,12 +26,16 @@
 
 #include "yb/common/hybrid_time.h"
 
+#include "yb/dockv/key_bytes.h"
+
 #include "yb/gutil/macros.h"
 
 #include "yb/util/concepts.h"
 #include "yb/util/locks.h"
 #include "yb/util/lw_function.h"
 #include "yb/util/ref_cnt_buffer.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
 
 #include "yb/yql/pggate/pg_doc_metrics.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
@@ -365,9 +369,7 @@ class MergingPgDocResultStream : public PgDocResultStream {
 //
 // (3) SendRequest:
 //     PgSession API requires contiguous array of operators. For this reason, before sending the
-//     pgsql_ops_ is soreted to place active ops first, and all inactive ops are place at the end.
-//     For example,
-//        PgSession::RunAsync(pgsql_ops_.data(), active_op_count)
+//     pgsql_ops_ is sorted to place active ops first, and all inactive ops are place at the end.
 //
 // (4) ReadResponse:
 //     Response are written to a local cache PgDocResult.
@@ -410,17 +412,10 @@ class MergingPgDocResultStream : public PgDocResultStream {
 //
 // (3) Execution
 //  This section exchanges RPC calls with tablet servers.
-//  * Attributes
-//    - active_op_counts_: Number of active operators in vector "pgsql_ops_".
-//        Exec/active op range = pgsql_ops_[0, active_op_count_)
-//        Inactive op range = pgsql_ops_[active_op_count_, total_count)
-//      The vector pgsql_ops_ is fixed sized, can have inactive operators as operators are not
-//      completing execution at the same time.
 //  * Methods
 //    - ExecuteInit()
 //    - Execute() Driver for all RPC related effort.
 //    - SendRequest() Send request for active operators to tablet server using YBPgsqlOp.
-//        RunAsync(pgsql_ops_.data(), active_op_count_)
 //    - ProcessResponse() Get response from tablet server using YBPgsqlOp.
 //    - MoveInactiveOpsOutside() Sort pgsql_ops_ to move inactive operators outside of exec range.
 //
@@ -511,7 +506,7 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   // - This op will not send request to tablet server.
   // - This op will return empty result-set when being requested for data.
   void AbandonExecution() {
-    DCHECK_EQ(active_op_count_, 0);
+    DCHECK(!HasActiveOps());
     end_of_data_ = true;
   }
 
@@ -539,7 +534,7 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
 
   virtual bool IsWrite() const = 0;
 
-  Status CreateRequests();
+  Result<size_t> CreateRequests();
 
   const PgTable& table() const { return table_; }
 
@@ -557,16 +552,17 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
 
   virtual Status DoPopulateByYbctidOps(const YbctidGenerator& generator, KeepOrder keep_order) = 0;
 
-  // Only active operators are kept in the active range [0, active_op_count_)
-  // - Not execute operators that are outside of range [0, active_op_count_).
-  // - Sort the operators in "pgsql_ops_" to move "inactive" operators to the end of the list.
-  void MoveInactiveOpsOutside();
+  // Sorts the operators in "pgsql_ops_" to move "inactive" operators to the end of the list.
+  size_t MoveInactiveOpsOutside();
 
   // If there is a result stream, reset it.
   void ResetResultStream();
 
   // If there is a result stream, add current operations to it.
   void AddOpsToResultStream();
+
+  auto ActiveOps() const;
+  bool HasActiveOps() const;
 
   // Session control.
   PgSession::ScopedRefPtr pg_session_;
@@ -583,9 +579,6 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
 
   // Populated protobuf request.
   std::vector<PgsqlOpPtr> pgsql_ops_;
-
-  // Number of active operators in the pgsql_ops_ list.
-  size_t active_op_count_ = 0;
 
   // Indicator for completing all request populations.
   bool request_population_completed_ = false;
@@ -631,7 +624,7 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
 
   virtual Status CompleteProcessResponse() = 0;
 
-  Status CompleteRequests();
+  Result<size_t> CompleteRequests();
 
   // Returns a reference to the in_txn_limit_ht to be used.
   //
@@ -796,9 +789,12 @@ class PgDocReadOp : public PgDocOp {
   //       PopulateNextHashPermutationOps()
   void ClonePgsqlOps(size_t op_count);
 
-  const PgsqlReadOp& GetTemplateReadOp() { return *read_op_; }
+  const LWPgsqlReadRequestPB& GetTemplateReadReq() const { return read_op_->read_request(); }
 
  private:
+  using QLValuePBs = std::vector<const LWQLValuePB*>;
+  using PartitionBatches = std::vector<std::pair<bool, LWPgsqlExpressionPB*>>;
+
   // Check request conditions if they allow to limit the scan range
   // Returns true if resulting range is not empty, false otherwise
   Result<bool> SetScanBounds();
@@ -831,20 +827,18 @@ class PgDocReadOp : public PgDocOp {
   // Hash column values are bound to the request's partition_column_values, range column values are
   // added as equality conditions to the condition_expr.
   // Performs boundary check, if the request range is empty, returns false
-  Result<bool> BindExprsRegular(
-    LWPgsqlReadRequestPB& read_req, const std::vector<const LWQLValuePB*>& values);
+  Result<bool> BindExprsRegular(LWPgsqlReadRequestPB& read_req, const QLValuePBs& values);
 
   // Binds the given values to the partition defined by hash column values.
   // The partition_batches vector for each partition stores the flag indicating the partition
   // has been initialized, and the references to initialized RHSs of the batched IN expression,
   // or null, if the partition batch is inactive.
   // Batch may be inactive if it has not been yet initialized, or its request range is empty.
+  using ReadOpProvider = LWFunction<Result<PgsqlReadOp&>()>;
   Result<bool> BindExprsToBatch(
-      std::vector<std::pair<bool, LWPgsqlExpressionPB*>>& partition_batches,
-      const std::vector<const LWQLValuePB*>& values);
-
-  Result<LWPgsqlExpressionPB*> InitHashPermutationBatch(LWPgsqlReadRequestPB& read_req);
-
+      PartitionBatches& partition_batches, const QLValuePBs& values,
+      const ReadOpProvider& read_op_provider);
+  LWPgsqlExpressionPB* InitHashPermutationBatch(LWPgsqlReadRequestPB& read_req);
   // Create operators by partitions.
   // - Optimization for aggregating or filtering requests.
   Result<bool> PopulateParallelSelectOps();
@@ -948,14 +942,13 @@ PgDocOp::SharedPtr MakeDocReadOpWithData(
     const PgSession::ScopedRefPtr& pg_session, PrefetchedDataHolder data);
 
 
-bool ApplyBounds(LWPgsqlReadRequestPB& req,
-                 const Slice lower_bound,
-                 bool lower_bound_is_inclusive,
-                 const Slice upper_bound,
-                 bool upper_bound_is_inclusive);
-void ApplyLowerBound(LWPgsqlReadRequestPB& req, const Slice lower_bound, bool is_inclusive);
-void ApplyUpperBound(LWPgsqlReadRequestPB& req, const Slice upper_bound, bool is_inclusive);
-dockv::DocKey HashCodeToDocKeyBound(
+bool ApplyBounds(
+    LWPgsqlReadRequestPB& req,
+    Slice lower_bound, bool lower_bound_is_inclusive,
+    Slice upper_bound, bool upper_bound_is_inclusive);
+void ApplyLowerBound(LWPgsqlReadRequestPB& req, Slice lower_bound, bool is_inclusive);
+void ApplyUpperBound(LWPgsqlReadRequestPB& req, Slice upper_bound, bool is_inclusive);
+dockv::KeyBytes HashCodeToDocKeyBound(
     const Schema& schema, uint16_t hash, bool is_inclusive, bool is_lower);
 
 }  // namespace yb::pggate

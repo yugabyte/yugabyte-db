@@ -6,7 +6,9 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.nullValue;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyMap;
@@ -22,11 +24,25 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.WSClientRefresher;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.TelemetryProvider;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.audit.UniverseLogsExporterConfig;
+import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
+import com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterConfig;
+import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig;
+import com.yugabyte.yw.models.helpers.telemetry.AWSCloudWatchConfig;
 import com.yugabyte.yw.models.helpers.telemetry.DataDogConfig;
+import com.yugabyte.yw.models.helpers.telemetry.GCPCloudMonitoringConfig;
 import com.yugabyte.yw.models.helpers.telemetry.ProviderType;
 import com.yugabyte.yw.models.helpers.telemetry.TelemetryProviderConfig;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -50,6 +66,7 @@ public class TelemetryProviderServiceTest extends FakeDBApplication {
   @Mock WSClientRefresher wsClientRefresher;
   @Mock BeanValidator beanValidator;
   @Mock BeanValidator.ErrorMessageBuilder errorMessageBuilder;
+  @Mock RuntimeConfGetter mockConfGetter;
 
   @Before
   public void setUp() {
@@ -78,7 +95,11 @@ public class TelemetryProviderServiceTest extends FakeDBApplication {
     when(wsClientRefresher.getClient(anyString())).thenReturn(null);
 
     // Create a real service instance with mocked dependencies
-    telemetryProviderService = new TelemetryProviderService(beanValidator, null, wsClientRefresher);
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.skipTPsCredsConsistencyCheck)))
+        .thenReturn(false);
+    telemetryProviderService =
+        new TelemetryProviderService(beanValidator, mockConfGetter, wsClientRefresher);
 
     // Create a spy to override only the problematic getApiHelper method
     telemetryProviderService = spy(telemetryProviderService);
@@ -170,6 +191,242 @@ public class TelemetryProviderServiceTest extends FakeDBApplication {
     assertThat(fromDb, nullValue());
   }
 
+  @Test
+  public void testAreCredentialsConsistent_MultipleAWSProviders_SameCredentials() {
+    Universe universe = ModelFactory.createUniverse("test-universe");
+    TelemetryProvider awsProvider1 =
+        createAWSTelemetryProvider("aws-provider-1", "access-key-1", "secret-key-1");
+    TelemetryProvider awsProvider2 =
+        createAWSTelemetryProvider("aws-provider-2", "access-key-1", "secret-key-1");
+    TelemetryProvider awsProvider3 =
+        createAWSTelemetryProvider("aws-provider-3", "access-key-1", "secret-key-1");
+    List<TelemetryProvider> providers = Arrays.asList(awsProvider1, awsProvider2, awsProvider3);
+
+    boolean result = telemetryProviderService.areCredentialsConsistent(universe, providers);
+    assertTrue(result);
+  }
+
+  @Test
+  public void testAreCredentialsConsistent_MultipleAWSProviders_DifferentAccessKey() {
+    Universe universe = ModelFactory.createUniverse("test-universe");
+    TelemetryProvider awsProvider1 =
+        createAWSTelemetryProvider("aws-provider-1", "access-key-1", "secret-key-1");
+    TelemetryProvider awsProvider2 =
+        createAWSTelemetryProvider("aws-provider-2", "access-key-2", "secret-key-1");
+    List<TelemetryProvider> providers = Arrays.asList(awsProvider1, awsProvider2);
+
+    boolean result = telemetryProviderService.areCredentialsConsistent(universe, providers);
+    assertFalse(result);
+  }
+
+  @Test
+  public void testAreCredentialsConsistent_MultipleAWSProviders_DifferentSecretKey() {
+    Universe universe = ModelFactory.createUniverse("test-universe");
+    TelemetryProvider awsProvider1 =
+        createAWSTelemetryProvider("aws-provider-1", "access-key-1", "secret-key-1");
+    TelemetryProvider awsProvider2 =
+        createAWSTelemetryProvider("aws-provider-2", "access-key-1", "secret-key-2");
+    List<TelemetryProvider> providers = Arrays.asList(awsProvider1, awsProvider2);
+
+    boolean result = telemetryProviderService.areCredentialsConsistent(universe, providers);
+    assertFalse(result);
+  }
+
+  @Test
+  public void testAreCredentialsConsistent_MultipleGCPProviders_SameCredentials() {
+    Universe universe = ModelFactory.createUniverse("test-universe");
+    JsonNode credentials = createTestGCPCredentials();
+    TelemetryProvider gcpProvider1 = createGCPTelemetryProvider("gcp-provider-1", credentials);
+    TelemetryProvider gcpProvider2 = createGCPTelemetryProvider("gcp-provider-2", credentials);
+    TelemetryProvider gcpProvider3 = createGCPTelemetryProvider("gcp-provider-3", credentials);
+    List<TelemetryProvider> providers = Arrays.asList(gcpProvider1, gcpProvider2, gcpProvider3);
+
+    boolean result = telemetryProviderService.areCredentialsConsistent(universe, providers);
+    assertTrue(result);
+  }
+
+  @Test
+  public void testAreCredentialsConsistent_MultipleGCPProviders_DifferentCredentials() {
+    Universe universe = ModelFactory.createUniverse("test-universe");
+    JsonNode credentials1 = createTestGCPCredentials("project-1");
+    JsonNode credentials2 = createTestGCPCredentials("project-2");
+    TelemetryProvider gcpProvider1 = createGCPTelemetryProvider("gcp-provider-1", credentials1);
+    TelemetryProvider gcpProvider2 = createGCPTelemetryProvider("gcp-provider-2", credentials2);
+    List<TelemetryProvider> providers = Arrays.asList(gcpProvider1, gcpProvider2);
+
+    boolean result = telemetryProviderService.areCredentialsConsistent(universe, providers);
+    assertFalse(result);
+  }
+
+  @Test
+  public void testAreCredentialsConsistent_MixedProviderTypes() {
+    Universe universe = ModelFactory.createUniverse("test-universe");
+    TelemetryProvider awsProvider1 =
+        createAWSTelemetryProvider("aws-provider-1", "access-key-1", "secret-key-1");
+    TelemetryProvider awsProvider2 =
+        createAWSTelemetryProvider("aws-provider-2", "access-key-1", "secret-key-1");
+    JsonNode credentials = createTestGCPCredentials();
+    TelemetryProvider gcpProvider1 = createGCPTelemetryProvider("gcp-provider-1", credentials);
+    TelemetryProvider gcpProvider2 = createGCPTelemetryProvider("gcp-provider-2", credentials);
+    List<TelemetryProvider> providers =
+        Arrays.asList(awsProvider1, awsProvider2, gcpProvider1, gcpProvider2);
+
+    boolean result = telemetryProviderService.areCredentialsConsistent(universe, providers);
+    assertTrue(result);
+  }
+
+  @Test
+  public void testAreCredentialsConsistent_MixedProviderTypes_WithInconsistencies() {
+    Universe universe = ModelFactory.createUniverse("test-universe");
+    TelemetryProvider awsProvider1 =
+        createAWSTelemetryProvider("aws-provider-1", "access-key-1", "secret-key-1");
+    TelemetryProvider awsProvider2 =
+        createAWSTelemetryProvider("aws-provider-2", "access-key-2", "secret-key-1");
+    JsonNode credentials1 = createTestGCPCredentials("project-1");
+    JsonNode credentials2 = createTestGCPCredentials("project-2");
+    TelemetryProvider gcpProvider1 = createGCPTelemetryProvider("gcp-provider-1", credentials1);
+    TelemetryProvider gcpProvider2 = createGCPTelemetryProvider("gcp-provider-2", credentials2);
+    List<TelemetryProvider> providers =
+        Arrays.asList(awsProvider1, awsProvider2, gcpProvider1, gcpProvider2);
+
+    boolean result = telemetryProviderService.areCredentialsConsistent(universe, providers);
+    assertFalse(result);
+  }
+
+  @Test
+  public void testAreTPsCredentialsConsistentOnUniverse_WithConsistentCredentials() {
+    // Create telemetry providers with consistent credentials
+    TelemetryProvider awsProvider1 =
+        createAWSTelemetryProvider("aws-provider-1", "access-key-1", "secret-key-1");
+    telemetryProviderService.save(awsProvider1);
+    TelemetryProvider awsProvider2 =
+        createAWSTelemetryProvider("aws-provider-2", "access-key-1", "secret-key-1");
+    telemetryProviderService.save(awsProvider2);
+    JsonNode gcpCredentials = createTestGCPCredentials();
+    TelemetryProvider gcpProvider1 = createGCPTelemetryProvider("gcp-provider-1", gcpCredentials);
+    telemetryProviderService.save(gcpProvider1);
+    TelemetryProvider gcpProvider2 = createGCPTelemetryProvider("gcp-provider-2", gcpCredentials);
+    telemetryProviderService.save(gcpProvider2);
+
+    // Create universe with all three export configs
+    Universe universe = ModelFactory.createUniverse("test-universe");
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            new UniverseUpdater() {
+              @Override
+              public void run(Universe universe) {
+                UniverseDefinitionTaskParams params = universe.getUniverseDetails();
+                UniverseDefinitionTaskParams.UserIntent userIntent =
+                    params.getPrimaryCluster().userIntent;
+
+                // Set up audit log config
+                AuditLogConfig auditLogConfig = new AuditLogConfig();
+                List<UniverseLogsExporterConfig> auditExporterConfigs = new ArrayList<>();
+                UniverseLogsExporterConfig auditExporter1 = new UniverseLogsExporterConfig();
+                auditExporter1.setExporterUuid(awsProvider1.getUuid());
+                auditExporterConfigs.add(auditExporter1);
+                auditLogConfig.setUniverseLogsExporterConfig(auditExporterConfigs);
+                userIntent.auditLogConfig = auditLogConfig;
+
+                // Set up query log config
+                QueryLogConfig queryLogConfig = new QueryLogConfig();
+                List<UniverseQueryLogsExporterConfig> queryExporterConfigs = new ArrayList<>();
+                UniverseQueryLogsExporterConfig queryExporter1 =
+                    new UniverseQueryLogsExporterConfig();
+                queryExporter1.setExporterUuid(awsProvider2.getUuid());
+                queryExporterConfigs.add(queryExporter1);
+                queryLogConfig.setUniverseLogsExporterConfig(queryExporterConfigs);
+                userIntent.queryLogConfig = queryLogConfig;
+
+                // Set up metrics export config
+                MetricsExportConfig metricsExportConfig = new MetricsExportConfig();
+                List<UniverseMetricsExporterConfig> metricsExporterConfigs = new ArrayList<>();
+                UniverseMetricsExporterConfig metricsExporter1 =
+                    new UniverseMetricsExporterConfig();
+                metricsExporter1.setExporterUuid(gcpProvider1.getUuid());
+                metricsExporterConfigs.add(metricsExporter1);
+                UniverseMetricsExporterConfig metricsExporter2 =
+                    new UniverseMetricsExporterConfig();
+                metricsExporter2.setExporterUuid(gcpProvider2.getUuid());
+                metricsExporterConfigs.add(metricsExporter2);
+                metricsExportConfig.setUniverseMetricsExporterConfig(metricsExporterConfigs);
+                userIntent.metricsExportConfig = metricsExportConfig;
+
+                params.getPrimaryCluster().userIntent = userIntent;
+                universe.setUniverseDetails(params);
+              }
+            },
+            false);
+
+    boolean result = telemetryProviderService.areTPsCredentialsConsistentOnUniverse(universe);
+    assertTrue(result);
+  }
+
+  @Test
+  public void testAreTPsCredentialsConsistentOnUniverse_WithInconsistentCredentials() {
+    // Create telemetry providers with inconsistent credentials
+    TelemetryProvider awsProvider1 =
+        createAWSTelemetryProvider("aws-provider-1", "access-key-1", "secret-key-1");
+    telemetryProviderService.save(awsProvider1);
+    TelemetryProvider awsProvider2 =
+        createAWSTelemetryProvider("aws-provider-2", "access-key-2", "secret-key-1");
+    telemetryProviderService.save(awsProvider2);
+    JsonNode gcpCredentials = createTestGCPCredentials();
+    TelemetryProvider gcpProvider1 = createGCPTelemetryProvider("gcp-provider-1", gcpCredentials);
+    telemetryProviderService.save(gcpProvider1);
+
+    // Create universe with all three export configs
+    Universe universe = ModelFactory.createUniverse("test-universe");
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            new UniverseUpdater() {
+              @Override
+              public void run(Universe universe) {
+                UniverseDefinitionTaskParams params = universe.getUniverseDetails();
+                UniverseDefinitionTaskParams.UserIntent userIntent =
+                    params.getPrimaryCluster().userIntent;
+
+                // Set up audit log config with AWS provider
+                AuditLogConfig auditLogConfig = new AuditLogConfig();
+                List<UniverseLogsExporterConfig> auditExporterConfigs = new ArrayList<>();
+                UniverseLogsExporterConfig auditExporter1 = new UniverseLogsExporterConfig();
+                auditExporter1.setExporterUuid(awsProvider1.getUuid());
+                auditExporterConfigs.add(auditExporter1);
+                auditLogConfig.setUniverseLogsExporterConfig(auditExporterConfigs);
+                userIntent.auditLogConfig = auditLogConfig;
+
+                // Set up query log config with AWS provider
+                QueryLogConfig queryLogConfig = new QueryLogConfig();
+                List<UniverseQueryLogsExporterConfig> queryExporterConfigs = new ArrayList<>();
+                UniverseQueryLogsExporterConfig queryExporter1 =
+                    new UniverseQueryLogsExporterConfig();
+                queryExporter1.setExporterUuid(awsProvider2.getUuid());
+                queryExporterConfigs.add(queryExporter1);
+                queryLogConfig.setUniverseLogsExporterConfig(queryExporterConfigs);
+                userIntent.queryLogConfig = queryLogConfig;
+
+                // Set up metrics export config with GCP provider
+                MetricsExportConfig metricsExportConfig = new MetricsExportConfig();
+                List<UniverseMetricsExporterConfig> metricsExporterConfigs = new ArrayList<>();
+                UniverseMetricsExporterConfig metricsExporter1 =
+                    new UniverseMetricsExporterConfig();
+                metricsExporter1.setExporterUuid(gcpProvider1.getUuid());
+                metricsExporterConfigs.add(metricsExporter1);
+                metricsExportConfig.setUniverseMetricsExporterConfig(metricsExporterConfigs);
+                userIntent.metricsExportConfig = metricsExportConfig;
+
+                params.getPrimaryCluster().userIntent = userIntent;
+                universe.setUniverseDetails(params);
+              }
+            },
+            false);
+
+    boolean result = telemetryProviderService.areTPsCredentialsConsistentOnUniverse(universe);
+    assertFalse(result);
+  }
+
   private TelemetryProvider createTestProvider(String name) {
     return createTestProvider(defaultCustomerUuid, name);
   }
@@ -192,5 +449,54 @@ public class TelemetryProviderServiceTest extends FakeDBApplication {
       provider.setConfig(dataDogConfig);
     }
     return provider;
+  }
+
+  private TelemetryProvider createAWSTelemetryProvider(
+      String name, String accessKey, String secretKey) {
+    TelemetryProvider provider = new TelemetryProvider();
+    provider.setUuid(UUID.randomUUID());
+    provider.setCustomerUUID(defaultCustomerUuid);
+    provider.setName(name);
+    provider.setTags(new HashMap<>());
+
+    AWSCloudWatchConfig awsConfig = new AWSCloudWatchConfig();
+    awsConfig.setAccessKey(accessKey);
+    awsConfig.setSecretKey(secretKey);
+    awsConfig.setLogGroup("test-log-group");
+    awsConfig.setLogStream("test-log-stream");
+    awsConfig.setRegion("us-west-2");
+    provider.setConfig(awsConfig);
+
+    return provider;
+  }
+
+  private TelemetryProvider createGCPTelemetryProvider(String name, JsonNode credentials) {
+    TelemetryProvider provider = new TelemetryProvider();
+    provider.setUuid(UUID.randomUUID());
+    provider.setCustomerUUID(defaultCustomerUuid);
+    provider.setName(name);
+    provider.setTags(new HashMap<>());
+
+    GCPCloudMonitoringConfig gcpConfig = new GCPCloudMonitoringConfig();
+    gcpConfig.setProject("test-project");
+    gcpConfig.setCredentials(credentials);
+    provider.setConfig(gcpConfig);
+
+    return provider;
+  }
+
+  private JsonNode createTestGCPCredentials() {
+    return createTestGCPCredentials("test-project");
+  }
+
+  private JsonNode createTestGCPCredentials(String projectId) {
+    Map<String, String> credentialsMap = new HashMap<>();
+    credentialsMap.put("type", "service_account");
+    credentialsMap.put("project_id", projectId);
+    credentialsMap.put("private_key_id", "test-key-id");
+    credentialsMap.put(
+        "private_key", "-----BEGIN PRIVATE KEY-----\ntest-key\n-----END PRIVATE KEY-----\n");
+    credentialsMap.put("client_email", "test@test-project.iam.gserviceaccount.com");
+    return Json.toJson(credentialsMap);
   }
 }

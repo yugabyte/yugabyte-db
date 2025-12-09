@@ -6,7 +6,7 @@ description: PostgreSQL node-postgres Driver for YSQL
 tags:
   other: ysql
 aliases:
-  - /preview/reference/drivers/nodejs/postgres-pg-reference/
+  - /stable/reference/drivers/nodejs/postgres-pg-reference/
 menu:
   stable_develop:
     name: Node.js Drivers

@@ -117,7 +117,9 @@ message SysTablesEntryPB {
   // This prevents column ID reuse.
   optional int32 next_column_id = 8;
 
-  // Replication information for this table.
+  // Replication information for this table. If set, this overrides cluster-level replication info
+  // and tablespaces. This is only expected to be set for YCQL tables; YSQL tables should use
+  // tablespaces.
   optional ReplicationInfoPB replication_info = 5;
 
   // Debug state for the table.

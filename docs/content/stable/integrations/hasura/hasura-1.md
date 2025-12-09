@@ -3,7 +3,7 @@ title: Building applications with Hasura
 linkTitle: Application development
 description: Building applications with Hasura
 aliases:
-  - /preview/develop/graphql/hasura/
+  - /stable/develop/graphql/hasura/
 menu:
   stable_integrations:
     identifier: hasura-1

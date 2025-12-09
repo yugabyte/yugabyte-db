@@ -8,7 +8,7 @@ menu:
     identifier: ddl_create_trigger
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/ddl_create_trigger/
+  - /stable/api/ysql/commands/ddl_create_trigger/
 type: docs
 ---
 

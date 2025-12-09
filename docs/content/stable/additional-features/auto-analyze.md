@@ -12,7 +12,7 @@ menu:
     parent: additional-features
     weight: 100
 aliases:
-  - /preview/explore/query-1-performance/auto-analyze/
+  - /stable/explore/query-1-performance/auto-analyze/
 type: docs
 ---
 

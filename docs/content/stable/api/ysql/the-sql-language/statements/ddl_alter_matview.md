@@ -8,7 +8,7 @@ menu:
     identifier: ddl_alter_matview
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/ddl_alter_matview/
+  - /stable/api/ysql/commands/ddl_alter_matview/
 type: docs
 ---
 

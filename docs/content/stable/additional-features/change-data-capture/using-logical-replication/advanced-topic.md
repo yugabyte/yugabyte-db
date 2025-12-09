@@ -4,7 +4,7 @@ headerTitle: Advanced topics
 linkTitle: Advanced topics
 description: Advanced topics for Change Data Capture in YugabyteDB.
 aliases:
-  - /preview/explore/change-data-capture/using-logical-replication/advanced-topic/
+  - /stable/explore/change-data-capture/using-logical-replication/advanced-topic/
 menu:
   stable:
     parent: explore-change-data-capture-logical-replication

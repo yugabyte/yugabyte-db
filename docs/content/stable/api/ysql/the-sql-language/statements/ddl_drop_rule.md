@@ -8,7 +8,7 @@ menu:
     identifier: ddl_drop_rule
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/ddl_drop_rule/
+  - /stable/api/ysql/commands/ddl_drop_rule/
 type: docs
 ---
 

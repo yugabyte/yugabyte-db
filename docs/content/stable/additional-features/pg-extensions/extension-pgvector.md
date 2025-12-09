@@ -10,7 +10,7 @@ menu:
     weight: 20
 type: docs
 aliases:
-  - /preview/explore/ysql-language-features/pg-extensions/extension-pgvector
+  - /stable/explore/ysql-language-features/pg-extensions/extension-pgvector
 ---
 
 The [pgvector](https://github.com/pgvector/pgvector) PostgreSQL extension allows you to store and query vectors, for use in performing similarity searches.
@@ -213,6 +213,7 @@ A higher `ef_construction` value provides faster recall at the cost of index bui
 
 - Concurrent index creation is not supported yet.
 - Partial indexes on vector columns are not supported yet.
+- Vector indexes are not supported for [xCluster replication](../../../architecture/docdb-replication/async-replication/).
 
 ## Learn more
 

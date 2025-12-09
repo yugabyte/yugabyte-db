@@ -3,9 +3,9 @@ title: Enhanced PostgreSQL Compatibility Mode
 linkTitle: Enhanced PG compatibility
 description: Enhance your application performance for PostgreSQL parity
 aliases:
-  - /preview/ysql/postgresql-compatibility/
-  - /preview/explore/ysql-language-features/postgresql-compatibility/
-  - /preview/develop/postgresql-compatibility/
+  - /stable/ysql/postgresql-compatibility/
+  - /stable/explore/ysql-language-features/postgresql-compatibility/
+  - /stable/develop/postgresql-compatibility/
 menu:
   stable:
     identifier: ysql-postgresql-compatibility

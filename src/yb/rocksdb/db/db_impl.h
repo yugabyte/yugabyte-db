@@ -502,7 +502,7 @@ class DBImpl : public DB {
   bool AreWritesStopped();
   bool NeedsDelay() override;
 
-  Result<std::string> GetMiddleKey() override;
+  Result<std::string> GetMiddleKey(Slice lower_bound_key) override;
 
   void SetAllowCompactionFailures(AllowCompactionFailures allow_compaction_failures) override;
 

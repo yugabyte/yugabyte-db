@@ -10,7 +10,7 @@ menu:
     parent: explore-indexes-constraints-ysql
     weight: 210
 aliases:
-  - /preview/explore/indexes-constraints/secondary-indexes/
+  - /stable/explore/indexes-constraints/secondary-indexes/
 type: docs
 ---
 

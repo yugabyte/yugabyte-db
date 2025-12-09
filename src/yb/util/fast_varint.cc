@@ -14,6 +14,8 @@
 
 #include <array>
 
+#include "yb/gutil/endian.h"
+
 #include "yb/util/cast.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
@@ -360,6 +362,7 @@ uint8_t* EncodeFieldLength(uint32_t len, uint8_t* out) {
   }
 
 #ifdef IS_LITTLE_ENDIAN
+  DCHECK_EQ((len << 1) >> 1, len);
   len = (len << 1) | 1;
   memcpy(out, &len, sizeof(uint32_t));
   return out + sizeof(uint32_t);
@@ -370,14 +373,11 @@ uint8_t* EncodeFieldLength(uint32_t len, uint8_t* out) {
 
 std::pair<uint32_t, const uint8_t*> DecodeFieldLength(const uint8_t* inp) {
 #ifdef IS_LITTLE_ENDIAN
-  uint32_t result;
-  ANNOTATE_IGNORE_READS_BEGIN();
-  memcpy(&result, inp, sizeof(uint32_t));
-  ANNOTATE_IGNORE_READS_END();
-  if ((result & 1) == 0) {
-    return std::pair((result & 0xff) >> 1, ++inp);
+  auto len = *inp;
+  if ((len & 1) == 0) {
+    return std::pair(len >> 1, ++inp);
   }
-  return std::pair(result >> 1, inp + sizeof(uint32_t));
+  return std::pair(LittleEndian::Load32(inp) >> 1, inp + sizeof(uint32_t));
 #else
   #error "Big endian not implemented"
 #endif

@@ -10,7 +10,7 @@ menu:
     parent: authorization
     weight: 717
 aliases:
-  - /preview/secure/authorization/ysql-create-roles/
+  - /stable/secure/authorization/ysql-create-roles/
 type: docs
 ---
 

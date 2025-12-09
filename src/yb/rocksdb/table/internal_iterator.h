@@ -148,6 +148,13 @@ class DataBlockAwareIndexInternalIterator : public InternalIterator {
  public:
   class Empty;
   virtual yb::Result<std::pair<std::string, std::string>> GetCurrentDataBlockBounds() const = 0;
+
+  // Returns approximate middle key from the index, starting from the lower bound key if provided.
+  // Key from the index might not match any key actually written to SST file, because keys could be
+  // shortened and substituted before them are written into the index (see ShortenedIndexBuilder).
+  virtual yb::Result<std::string> GetMiddleKey(Slice lower_bound_key) const {
+    return STATUS(NotSupported, "GetMiddleKey(lower_bound_key) not supported for this iterator.");
+  }
 };
 
 template <class IteratorType>

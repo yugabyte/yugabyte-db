@@ -5,7 +5,7 @@ linkTitle: API keys
 description: Manage API keys for use with YugabyteDB Aeon automation tools including API, CLI, and Terraform provider.
 headcontent: Use API keys to authenticate with automation tools
 aliases:
-  - /preview/yugabyte-cloud/cloud-admin/cloud-admin-apikeys/
+  - /stable/yugabyte-cloud/cloud-admin/cloud-admin-apikeys/
 menu:
   stable_yugabyte-cloud:
     identifier: managed-apikeys

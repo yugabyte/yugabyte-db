@@ -4,7 +4,7 @@ headerTitle: Build an application using Go
 linkTitle: Go
 description: Use Go to build a YugabyteDB application that interacts with YEDIS
 aliases:
-  - /preview/yedis/develop/client-drivers/go
+  - /stable/yedis/develop/client-drivers/go
 menu:
   stable:
     identifier: client-drivers-yedis-go

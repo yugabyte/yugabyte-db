@@ -8,7 +8,7 @@ menu:
     identifier: txn_commit
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/txn_commit/
+  - /stable/api/ysql/commands/txn_commit/
 type: docs
 ---
 

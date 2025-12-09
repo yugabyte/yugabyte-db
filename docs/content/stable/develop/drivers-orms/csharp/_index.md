@@ -4,7 +4,7 @@ headerTitle: C#
 linkTitle: C#
 description: C# Drivers and ORMs support for YugabyteDB.
 aliases:
-  - /preview/develop/client-drivers/csharp/
+  - /stable/develop/client-drivers/csharp/
 menu:
   stable_develop:
     identifier: csharp-drivers

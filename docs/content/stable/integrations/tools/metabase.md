@@ -9,7 +9,7 @@ menu:
     weight: 70
 aliases:
   - /integrations/metabase/
-  - /preview/tools/metabase/
+  - /stable/tools/metabase/
 type: docs
 ---
 

@@ -71,7 +71,7 @@ AsyncClonePgSchema::AsyncClonePgSchema(
       source_owner_(source_owner),
       target_owner_(target_owner),
       restore_ht_(restore_ht),
-      callback_(callback) {
+      callback_(std::move(callback)) {
   // May not honor unresponsive deadline, refer to UnresponsiveDeadline().
   deadline_ = deadline;  // Time out according to earliest(deadline_,
                          // time of sending request + ysql_clone_pg_schema_rpc_timeout_ms).
