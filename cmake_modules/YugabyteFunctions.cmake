@@ -986,8 +986,9 @@ endfunction()
 
 macro(yb_setup_odyssey)
   # Flags common to C and C++.
+  # TODO: Add -Werror=strict-prototypes
   set(OD_EXTRA_COMPILER_FLAGS
-      -Wno-implicit-fallthrough
+      -Werror=enum-conversion
       -Wno-missing-field-initializers
       -Wno-unused-but-set-variable
       -Wno-unused-function
@@ -995,14 +996,9 @@ macro(yb_setup_odyssey)
       -Wno-unused-variable
       # This is needed to e.g. have access to pthread_setname_np when including pthread.h.
       -D_GNU_SOURCE
-      # This is needed so that compiler can throw warnings instead of errors
-      # for the uninitialized variables throughout the odyssey code base.
-      -Wno-uninitialized
      )
   set(OD_EXTRA_C_FLAGS
       -Wno-strict-prototypes
-      # https://gist.githubusercontent.com/mbautin/323dd6fe9c6685377288397d4adf826c/raw
-      -Wno-incompatible-pointer-types
      )
 
   if(IS_CLANG)
@@ -1012,6 +1008,11 @@ macro(yb_setup_odyssey)
          -Wno-static-in-inline
          -Wno-pointer-bool-conversion
          -Wno-newline-eof
+        )
+  else()
+    # https://gist.githubusercontent.com/mbautin/323dd6fe9c6685377288397d4adf826c/raw
+    list(APPEND OD_EXTRA_C_FLAGS
+         -Wno-incompatible-pointer-types
         )
   endif()
   if(IS_GCC)
