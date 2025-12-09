@@ -21,7 +21,7 @@ Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, 
 
 ### Enhancements
 
-- When importing data to YugabyteDB, batches are now ingested in random order. This helps avoid hotspots and ensures writes are distributed uniformly across cluster nodes, particularly when importing sequentially ordered data into range-sharded tables.
+- When importing data to YugabyteDB, batches are now ingested in random order. This helps avoid hotspots and ensures writes are distributed uniformly across cluster nodes, particularly when importing sequentially-ordered data into range-sharded tables.
 
 - Auto-discovery of read replicas during assessment. When assessing the migration for PostgreSQL databases, physical read replicas are automatically detected and incorporated into the various aspects of assessment (sizing, detecting incompatibilities in queries, detecting object usage when reporting performance issues, comparing performance, and so on).
 
