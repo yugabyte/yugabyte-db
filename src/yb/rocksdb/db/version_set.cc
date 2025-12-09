@@ -2200,6 +2200,10 @@ static bool compareKeys(MiddleKeyWithSize f1,
 
 Result<std::string> Version::GetMiddleOfMiddleKeys(Slice lower_bound_internal_key) {
   const auto level = storage_info_.num_levels_ - 1;
+  if (storage_info_.files_[level].size() == 0) {
+    return STATUS_FORMAT(Incomplete, "No SST file at level $0", level);
+  }
+
   // Largest files are at lowest level.
   std::vector <MiddleKeyWithSize> sst_files;
   sst_files.reserve(storage_info_.files_[level].size());
@@ -2225,7 +2229,7 @@ Result<std::string> Version::GetMiddleOfMiddleKeys(Slice lower_bound_internal_ke
   }
 
   if (sst_files.size() == 0) {
-    return STATUS(Incomplete, "Either no SST file or too small SST files.");
+    return STATUS(Incomplete, "SST files too small");
   }
 
   std::sort(sst_files.begin(), sst_files.end(), compareKeys);
