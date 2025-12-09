@@ -1,7 +1,7 @@
 # Adding servers to chrony.conf
 {% if chrony_servers is defined and chrony_servers | trim != '' %}
-    {% for server in chrony_servers | split_servers %}
-        {% if server.strip() %}
+    {% for server in chrony_servers | split_string %}
+        {% if server %}
             echo 'server {{ server }} prefer iburst minpoll 4 maxpoll 4' >> /etc/chrony.conf
         {% endif %}
     {% endfor %}

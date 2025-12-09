@@ -17,6 +17,7 @@ import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.AdditionalServicesStateData;
@@ -249,7 +250,8 @@ public class YNPProvisioning extends NodeTaskBase {
     nodeManager
         .nodeCommand(NodeManager.NodeCommandType.Provision, ansibleParams)
         .processErrors("Dual NIC setup failed");
-
+    boolean disableGolangYnpDriver =
+        confGetter.getGlobalConf(GlobalConfKeys.disableGolangYnpDriver);
     String customTmpDirectory =
         confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory);
     String targetConfigPath =
@@ -266,6 +268,9 @@ public class YNPProvisioning extends NodeTaskBase {
     sb.append(" && mv -f ").append(targetConfigPath);
     sb.append(" config.json && chmod +x node-agent-provision.sh");
     sb.append(" && ./node-agent-provision.sh --extra_vars config.json");
+    if (disableGolangYnpDriver) {
+      sb.append(" --use_python_driver");
+    }
     sb.append(" --cloud_type ").append(node.cloudInfo.cloud);
     if (provider.getDetails().airGapInstall) {
       sb.append(" --is_airgap");

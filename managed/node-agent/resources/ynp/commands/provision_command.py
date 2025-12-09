@@ -27,7 +27,7 @@ class OSFamily(Enum):
 
 class ProvisionCommand(Command):
 
-    cloud_only_modules = ['Preprovision', 'MountEpemeralDrive', 'InstallPackages']
+    cloud_only_modules = ['Preprovision', 'MountEphemeralDrive', 'InstallPackages']
     onprem_only_modules = ['RebootNode']
     required_os_packages = {
         OSFamily.REDHAT.value: ['openssl', 'policycoreutils'],

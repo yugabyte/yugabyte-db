@@ -3,7 +3,11 @@
 # Use 'True' or 'False' for boolean comparisons in jinja and shell files.
 
 {% macro render_section(section, prefix="") -%}
-{%- for key, value in section.items() if value != '' -%}
+{%- for key in section -%}
+    {%- set value = section[key] -%}
+    {%- if value == '' -%}
+        continue
+    {%- endif -%}
     {%- if value is mapping -%}
         {{ render_section(value, prefix + key + "_") -}}
     {%- else -%}
@@ -14,9 +18,11 @@
 
 [DEFAULT]
 version = 1.0.0
+ynp_driver = {{ ynp_driver }}
 # Keep this as debug level for printing the shell file output.
-{% for section_key, section_value in ynp_config.items() %}
+{% for section_key in ynp_config %}
     {% if section_key not in ['ynp', 'yba', 'logging'] %}
+        {% set section_value = ynp_config[section_key] %}
         {{ render_section(section_value) }}
     {% endif %}
 {% endfor %}
@@ -31,7 +37,7 @@ yb_user = yugabyte
 is_install_node_agent = {{ ynp_config['ynp'].is_install_node_agent }}
 tmp_directory = {{ ynp_config['ynp'].tmp_directory }}
 # empty is null in ini, hence that syntax
-{% if not ynp_config['ynp'].no_proxy_list %}
+{% if ynp_config['ynp'].no_proxy_list is not defined or not ynp_config['ynp'].no_proxy_list %}
 no_proxy =
 {% else %}
 no_proxy = "{{ ynp_config['ynp'].no_proxy_list| join(', ') }}"
@@ -40,15 +46,18 @@ node_exporter_port = {{ ynp_config['ynp'].node_exporter_port | default(9300) }}
 {% if ynp_config['yba'].instance_type.mount_points %}
 mount_paths = {{ ynp_config['yba'].instance_type.mount_points | join(' ') }}
 {% endif %}
-configure_clockbound = {{ ynp_config['ynp'].is_configure_clockbound }}
+configure_clockbound = {{ ynp_config['ynp'].is_configure_clockbound | default(false)}}
 is_yb_prebuilt_image = {{ ynp_config['ynp'].is_yb_prebuilt_image | default(false) }}
 is_ybcontroller_disabled = {{ ynp_config['ynp'].is_ybcontroller_disabled | default(false) }}
 
 [Preprovision]
+is_cloud_only_module = "True"
 
-[MountEpemeralDrive]
+[MountEphemeralDrive]
+is_cloud_only_module = "True"
 
 [InstallPackages]
+is_cloud_only_module = "True"
 
 [ConfigureChrony]
 chrony_servers = "{{ ynp_config['ynp'].chrony_servers | join(', ') }}"
@@ -77,7 +86,11 @@ message = "Configure limits and sysctl parameters"
 fd_limit = 1048576
 nproc_limit = 64000
 vm_swappiness = 0
+{%- if ynp_driver == "python" %}
 kernel_core_pattern = {{ ynp_config['ynp'].yb_home_dir }}/cores/core_%%p_%%t_%%E
+{%- else %}
+kernel_core_pattern = {{ ynp_config['ynp'].yb_home_dir }}/cores/core_%p_%t_%E
+{%- endif %}
 vm_max_map_count = 262144
 
 [ConfigureOs.limits]
@@ -122,6 +135,7 @@ earlyoom_args = {{ ynp_config['ynp']['earlyoom'].earlyoom_args | default('') }}
 {%- endif %}
 
 [RebootNode]
+is_onprem_only_module = "True"
 
 {%- if 'extra' in ynp_config and ynp_config.extra.is_ybm %}
 [ConfigureYBMAMI]

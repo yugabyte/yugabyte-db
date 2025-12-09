@@ -36,7 +36,7 @@ py_version_major=$(echo "$py_version" | cut -d. -f1)
 py_version_minor=$(echo "$py_version" | cut -d. -f2)
 
 # Download python3-distutils if required (only for Python < 3.12)
-{% if is_airgap is not true and os_family == 'Debian' %}
+{% if is_airgap == 'False' and os_family == 'Debian' %}
   if [[ "$py_version_major" -eq 3 && "$py_version_minor" -lt 12 ]]; then
       apt-get update
       apt-get install -y python3-distutils

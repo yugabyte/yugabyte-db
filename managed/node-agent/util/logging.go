@@ -13,21 +13,43 @@ import (
 
 	"github.com/apex/log"
 	"github.com/apex/log/handlers/cli"
-	"github.com/apex/log/handlers/logfmt"
 	"google.golang.org/grpc/grpclog"
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
-type AppLogger struct {
+// AppLogger is the logger interface.
+type AppLogger interface {
+	Error(ctx context.Context, msg string)
+	Errorf(ctx context.Context, msg string, v ...interface{})
+	Info(ctx context.Context, msg string)
+	Infof(ctx context.Context, msg string, v ...interface{})
+	Debug(ctx context.Context, msg string)
+	Debugf(ctx context.Context, msg string, v ...interface{})
+	Warn(ctx context.Context, msg string)
+	Warnf(ctx context.Context, msg string, v ...interface{})
+	Fatal(ctx context.Context, msg string, v ...interface{})
+	Fatalf(ctx context.Context, msg string, v ...interface{})
+	IsDebugEnabled() bool
+	IsInfoEnabled() bool
+	IsLevelEnabled(level log.Level) bool
+}
+
+// appLogger implements the AppLogger interface.
+type appLogger struct {
 	logger      *log.Logger
 	enableDebug bool
+	// Path prefix upto node-agent.
+	pathPrefix string
+}
+
+// multiAppLogger implements the AppLogger interface for multiple loggers.
+type multiAppLogger struct {
+	loggers []AppLogger
 }
 
 var (
-	// Path prefix upto node-agent.
-	pathPrefix    string
-	consoleLogger *AppLogger
-	fileLogger    *AppLogger
+	consoleLogger AppLogger
+	fileLogger    AppLogger
 
 	onceConsoleLogger = &sync.Once{}
 	onceFileLogger    = &sync.Once{}
@@ -39,10 +61,16 @@ var (
 	}
 )
 
+func NewMultiAppLogger(loggers ...AppLogger) AppLogger {
+	return &multiAppLogger{
+		loggers: loggers,
+	}
+}
+
 // Returns the console logger.
-func ConsoleLogger() *AppLogger {
+func ConsoleLogger() AppLogger {
 	onceConsoleLogger.Do(func() {
-		consoleLogger = &AppLogger{
+		consoleLogger = &appLogger{
 			logger: &log.Logger{
 				Handler: cli.New(os.Stdout),
 				Level:   log.DebugLevel,
@@ -67,41 +95,82 @@ func setupGrpcLogger(config *Config) {
 	grpclog.SetLoggerV2(grpclog.NewLoggerV2(writer, writer, writer))
 }
 
+func createLogger(path string,
+	maxSizeMB, maxBackups, maxAgeDays int,
+	level log.Level, enableConsole bool,
+) AppLogger {
+	jLogger := &lumberjack.Logger{
+		Filename:   path,
+		MaxSize:    maxSizeMB,
+		MaxBackups: maxBackups,
+		MaxAge:     maxAgeDays,
+		Compress:   true,
+	}
+	appLoggers := []AppLogger{}
+	if enableConsole {
+		consoleLogger = ConsoleLogger()
+		appLoggers = append(appLoggers, consoleLogger)
+	}
+	appLogger := &appLogger{
+		logger: &log.Logger{
+			Handler: NewLogHandler(jLogger),
+			Level:   level,
+		},
+		enableDebug: true,
+	}
+	if appLogger.pathPrefix == "" {
+		_, file, _, ok := runtime.Caller(0)
+		if ok {
+			appLogger.pathPrefix = filepath.Dir(filepath.Dir(file))
+		}
+	}
+	appLoggers = append(appLoggers, appLogger)
+	return NewMultiAppLogger(appLoggers...)
+}
+
+func InitCustomAppLogger(
+	path string,
+	maxSizeMB, maxBackups, maxAgeDays int,
+	level log.Level,
+	enableConsole bool,
+) AppLogger {
+	onceFileLogger.Do(func() {
+		fileLogger = createLogger(
+			path,
+			maxSizeMB,
+			maxBackups,
+			maxAgeDays,
+			level,
+			enableConsole,
+		)
+	})
+	return fileLogger
+}
+
 // Returns the file logger.
-func FileLogger() *AppLogger {
+func FileLogger() AppLogger {
 	onceFileLogger.Do(func() {
 		config := CurrentConfig()
 		err := os.MkdirAll(LogsDir(), os.ModePerm)
 		if err != nil {
 			panic("Unable to create logs dir - " + err.Error())
 		}
-		if pathPrefix == "" {
-			_, file, _, ok := runtime.Caller(0)
-			if ok {
-				pathPrefix = filepath.Dir(filepath.Dir(file))
-			}
-		}
+
 		setupGrpcLogger(config)
 		logFilepath := filepath.Join(LogsDir(), config.String(NodeAgentLoggerKey))
-		writer := &lumberjack.Logger{
-			Filename:   logFilepath,
-			MaxSize:    config.Int(NodeAgentLogMaxMbKey),
-			MaxBackups: config.Int(NodeAgentLogMaxBackupsKey),
-			MaxAge:     config.Int(NodeAgentLogMaxDaysKey),
-			Compress:   true,
-		}
-		fileLogger = &AppLogger{
-			logger: &log.Logger{
-				Handler: logfmt.New(writer),
-				Level:   log.Level(config.Int(NodeAgentLogLevelKey)),
-			},
-			enableDebug: true,
-		}
+		fileLogger = createLogger(
+			logFilepath,
+			config.Int(NodeAgentLogMaxMbKey),
+			config.Int(NodeAgentLogMaxBackupsKey),
+			config.Int(NodeAgentLogMaxDaysKey),
+			log.Level(config.Int(NodeAgentLogLevelKey)),
+			false, /* enableConsole */
+		)
 	})
 	return fileLogger
 }
 
-func (l *AppLogger) getEntry(ctx context.Context) *log.Entry {
+func (l *appLogger) getEntry(ctx context.Context) *log.Entry {
 	entry := log.NewEntry(l.logger)
 	if l.enableDebug {
 		config := CurrentConfig()
@@ -109,7 +178,7 @@ func (l *AppLogger) getEntry(ctx context.Context) *log.Entry {
 		funcPtr, file, line, ok := runtime.Caller(2)
 		if ok {
 			// Trim the unwanted path prefix.
-			file = strings.TrimPrefix(file, pathPrefix)
+			file = strings.TrimPrefix(file, l.pathPrefix)
 			entry = entry.WithFields(
 				log.Fields{
 					"func": runtime.FuncForPC(funcPtr).Name(),
@@ -132,65 +201,147 @@ func (l *AppLogger) getEntry(ctx context.Context) *log.Entry {
 	return entry
 }
 
-func (l *AppLogger) Error(ctx context.Context, msg string) {
+func (l *appLogger) Error(ctx context.Context, msg string) {
 	l.getEntry(ctx).Error(msg)
 }
 
-func (l *AppLogger) Errorf(ctx context.Context, msg string, v ...interface{}) {
+func (l *appLogger) Errorf(ctx context.Context, msg string, v ...interface{}) {
 	l.getEntry(ctx).Errorf(msg, v...)
 }
 
-func (l *AppLogger) Info(ctx context.Context, msg string) {
+func (l *appLogger) Info(ctx context.Context, msg string) {
 	if l.IsInfoEnabled() {
 		l.getEntry(ctx).Info(msg)
 	}
 }
 
-func (l *AppLogger) Infof(ctx context.Context, msg string, v ...interface{}) {
+func (l *appLogger) Infof(ctx context.Context, msg string, v ...interface{}) {
 	if l.IsInfoEnabled() {
 		l.getEntry(ctx).Infof(msg, v...)
 	}
 }
 
-func (l *AppLogger) Debug(ctx context.Context, msg string) {
+func (l *appLogger) Debug(ctx context.Context, msg string) {
 	if l.IsDebugEnabled() {
 		l.getEntry(ctx).Debug(msg)
 	}
 }
 
-func (l *AppLogger) Debugf(ctx context.Context, msg string, v ...interface{}) {
+func (l *appLogger) Debugf(ctx context.Context, msg string, v ...interface{}) {
 	if l.IsDebugEnabled() {
 		l.getEntry(ctx).Debugf(msg, v...)
 	}
 }
 
-func (l *AppLogger) Warn(ctx context.Context, msg string) {
+func (l *appLogger) Warn(ctx context.Context, msg string) {
 	l.getEntry(ctx).Warn(msg)
 }
 
-func (l *AppLogger) Warnf(ctx context.Context, msg string, v ...interface{}) {
+func (l *appLogger) Warnf(ctx context.Context, msg string, v ...interface{}) {
 	l.getEntry(ctx).Warnf(msg, v...)
 }
 
-func (l *AppLogger) Fatal(ctx context.Context, msg string, v ...interface{}) {
+func (l *appLogger) Fatal(ctx context.Context, msg string, v ...interface{}) {
 	l.getEntry(ctx).Fatal(msg)
 }
 
-func (l *AppLogger) Fatalf(ctx context.Context, msg string, v ...interface{}) {
+func (l *appLogger) Fatalf(ctx context.Context, msg string, v ...interface{}) {
 	l.getEntry(ctx).Fatalf(msg, v...)
 }
 
 // IsDebugEnabled returns true only if debug is enabled.
-func (l *AppLogger) IsDebugEnabled() bool {
+func (l *appLogger) IsDebugEnabled() bool {
 	return l.IsLevelEnabled(log.DebugLevel)
 }
 
 // IsInfoEnabled returns true only if info is enabled.
-func (l *AppLogger) IsInfoEnabled() bool {
+func (l *appLogger) IsInfoEnabled() bool {
 	return l.IsLevelEnabled(log.InfoLevel)
 }
 
 // IsLevelEnabled returns true only if the given level is enabled.
-func (l *AppLogger) IsLevelEnabled(level log.Level) bool {
+func (l *appLogger) IsLevelEnabled(level log.Level) bool {
 	return int(l.logger.Level) <= int(level)
+}
+
+func (l *multiAppLogger) Error(ctx context.Context, msg string) {
+	for _, logger := range l.loggers {
+		logger.Error(ctx, msg)
+	}
+}
+
+func (l *multiAppLogger) Errorf(ctx context.Context, msg string, v ...interface{}) {
+	for _, logger := range l.loggers {
+		logger.Errorf(ctx, msg, v...)
+	}
+}
+func (l *multiAppLogger) Info(ctx context.Context, msg string) {
+	for _, logger := range l.loggers {
+		logger.Info(ctx, msg)
+	}
+}
+func (l *multiAppLogger) Infof(ctx context.Context, msg string, v ...interface{}) {
+	for _, logger := range l.loggers {
+		logger.Infof(ctx, msg, v...)
+	}
+}
+func (l *multiAppLogger) Debug(ctx context.Context, msg string) {
+	for _, logger := range l.loggers {
+		logger.Debug(ctx, msg)
+	}
+}
+func (l *multiAppLogger) Debugf(ctx context.Context, msg string, v ...interface{}) {
+	for _, logger := range l.loggers {
+		logger.Debugf(ctx, msg, v...)
+	}
+}
+func (l *multiAppLogger) Warn(ctx context.Context, msg string) {
+	for _, logger := range l.loggers {
+		logger.Warn(ctx, msg)
+	}
+}
+func (l *multiAppLogger) Warnf(ctx context.Context, msg string, v ...interface{}) {
+	for _, logger := range l.loggers {
+		logger.Warnf(ctx, msg, v...)
+	}
+}
+func (l *multiAppLogger) Fatal(ctx context.Context, msg string, v ...interface{}) {
+	for _, logger := range l.loggers {
+		logger.Fatal(ctx, msg, v...)
+	}
+}
+func (l *multiAppLogger) Fatalf(ctx context.Context, msg string, v ...interface{}) {
+	for _, logger := range l.loggers {
+		logger.Fatalf(ctx, msg, v...)
+	}
+}
+
+// IsDebugEnabled returns true only if debug is enabled.
+func (l *multiAppLogger) IsDebugEnabled() bool {
+	for _, logger := range l.loggers {
+		if logger.IsDebugEnabled() {
+			return true
+		}
+	}
+	return false
+}
+
+// IsInfoEnabled returns true only if info is enabled.
+func (l *multiAppLogger) IsInfoEnabled() bool {
+	for _, logger := range l.loggers {
+		if logger.IsInfoEnabled() {
+			return true
+		}
+	}
+	return false
+}
+
+// IsLevelEnabled returns true only if the given level is enabled.
+func (l *multiAppLogger) IsLevelEnabled(level log.Level) bool {
+	for _, logger := range l.loggers {
+		if logger.IsLevelEnabled(level) {
+			return true
+		}
+	}
+	return false
 }
