@@ -357,7 +357,6 @@ Ensure that all provided endpoints are accessible as they are strictly validated
 
 Voyager discovers replicas from the primary, attempts best-effort validation, and prompts you to include them. If validation fails (common in RDS, Aurora, Kubernetes, or when using internal IPs), you can either continue with primary-only assessment or manually specify replica endpoints.
 
-
 ### Manually specify
 
 You can specify the read replica endpoints explicitly if automatic discovery fails, or if you want precise control.
