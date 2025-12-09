@@ -312,7 +312,7 @@ Voyager can collect assessment metadata from [read replicas](/stable/architectur
 Read replica support is limited to replicas created using physical replication. Replicas created using logical replication are not supported.
 {{< /note >}}
 
-There are two ways to use read replicas:
+Two ways to use read replicas:
 
 -  Automatic discovery (Default).
     By default, Voyager attempts to discover replicas via [pg_stat_replication](/stable/additional-features/change-data-capture/using-logical-replication/monitor/#pg-stat-replication) and validate them by connecting to the primary.
