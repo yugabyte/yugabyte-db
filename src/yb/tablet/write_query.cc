@@ -114,6 +114,9 @@ void SetupKeyValueBatch(const tserver::WriteRequestPB& client_request, LWWritePB
   if (client_request.has_start_time_micros()) {
     out_request->set_start_time_micros(client_request.start_time_micros());
   }
+  if (client_request.has_xrepl_origin_id()) {
+    out_request->set_xrepl_origin_id(client_request.xrepl_origin_id());
+  }
   out_request->set_batch_idx(client_request.batch_idx());
   // Actually, in production code, we could check for external hybrid time only when there are
   // no ql, pgsql, redis operations.

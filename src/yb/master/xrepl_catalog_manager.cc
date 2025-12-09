@@ -1488,7 +1488,7 @@ Status CatalogManager::PopulateCDCStateTableWithCDCSDKSnapshotSafeOpIdDetails(
   TEST_SYNC_POINT("PopulateCDCStateTableWithCDCSDKSnapshotSafeOpIdDetails::Start");
 
   LOG_WITH_FUNC(INFO) << "Table id: " << table->id()
-                      << "Tablet id: " << tablet_id
+                      << ", Tablet id: " << tablet_id
                       << ", Stream id:" << cdc_sdk_stream_id.ToString()
                       << ", snapshot safe opid: " << snapshot_safe_opid.term()
                       << " and " << snapshot_safe_opid.index()

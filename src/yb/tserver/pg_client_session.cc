@@ -1324,6 +1324,9 @@ Result<std::pair<PgClientSessionOperations, VectorIndexQueryPtr>> PrepareOperati
       if (write_time) {
         write_op->SetWriteTime(write_time);
       }
+      if (req->options().xrepl_origin_id()) {
+        write_op->SetXreplOriginId(req->options().xrepl_origin_id());
+      }
       ops.push_back(PgClientSessionOperation {
         .op = std::move(write_op),
         .vector_index_read_request = nullptr,
@@ -2930,6 +2933,10 @@ class PgClientSession::Impl {
         data->req.options(), deadline, in_txn_limit, locality));
     auto* session = setup_session_result.session_data.session.get();
     auto& transaction = setup_session_result.session_data.transaction;
+
+    if (transaction && options.xrepl_origin_id()) {
+      transaction->SetOriginId(options.xrepl_origin_id());
+    }
 
     TracePtr trace = Trace::CurrentTrace();
     bool trace_created_locally = false;

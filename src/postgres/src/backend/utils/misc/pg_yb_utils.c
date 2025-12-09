@@ -111,6 +111,7 @@
 #include "pg_yb_utils.h"
 #include "pgstat.h"
 #include "postmaster/interrupt.h"
+#include "replication/origin.h"
 #ifndef HAVE_GETRUSAGE
 #include "rusagestub.h"
 #endif
@@ -1121,6 +1122,12 @@ IpAddressToBytes(YbcPgAshConfig *ash_config)
 	}
 }
 
+static uint16_t
+YbGetSessionReplicationOriginId(void)
+{
+	return replorigin_session_origin;
+}
+
 void
 YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *init_info)
 {
@@ -1143,8 +1150,8 @@ YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *ini
 			.ConstructArrayDatum = &YbConstructArrayDatum,
 			.CheckUserMap = &check_usermap,
 			.PgstatReportWaitStart = &yb_pgstat_report_wait_start,
-			.GetCatalogSnapshotReadPoint = &YbGetCatalogSnapshotReadPoint
-		};
+			.GetCatalogSnapshotReadPoint = &YbGetCatalogSnapshotReadPoint,
+			.GetSessionReplicationOriginId = &YbGetSessionReplicationOriginId};
 
 		ash_config.metadata = &MyProc->yb_ash_metadata;
 
