@@ -267,6 +267,7 @@ set(TSERVER_SRCS
   tablet_validator.cc
   ts_data_size_metrics.cc
   ts_local_lock_manager.cc
+  ts_snapshots_page_handler.cc
   ts_tablet_manager.cc
   tserver-path-handlers.cc
   tserver_auto_flags_manager.cc
