@@ -157,7 +157,7 @@ Use the following guidance when upgrading universes in [xCluster replication](..
 
 It is recommended to upgrade the target (DR replica) before the source (DR primary). After the target universe is upgraded and finalized, you can proceed to upgrade the source universe.
 
-In v2025.1.2.0 or later, Yugabyte Anywhere automatically disables Point-in-Time Recovery (PITR) schedules associated with transactional xCluster at the start of an upgrade. This lasts until the upgrade is either successfully finalized or rolled back. Replication continues to work.
+In {{<release "2025.1.2.0">}} or later, YugabyteDB Anywhere automatically disables Point-in-Time Recovery (PITR) schedules associated with transactional xCluster at the start of an upgrade. This lasts until the upgrade is either successfully finalized or rolled back. Replication continues to work.
 
 {{< note title="Note" >}}
 xCluster replication requires the target universe version to be the same or later than the source universe version. Setup of a new xCluster replication will fail if this check fails. Existing replications will automatically pause if the source universe is finalized before the target universe.

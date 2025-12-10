@@ -63,7 +63,7 @@ To upgrade YugabyteDB to a version based on a different version of PostgreSQL (f
 
 - [Point-in-time-recovery](../backup-restore/point-in-time-recovery/) (PITR)
 
-  When you start the upgrade, the PITR change history is invalidated. This means that after an upgrade starts, you will no longer be able to access or restore to any time before the upgrade was started - _regardless of the outcome of the upgrade_.
+  When you start the [upgrade](#upgrade-phase), the PITR change history is invalidated. This means that after an upgrade starts, you will no longer be able to access or restore to any time before the upgrade was started - _regardless of the outcome of the upgrade_.
 
   During the [monitoring phase](#monitor-phase) (that is, after upgrading but before finalizing or rolling back), any attempt to perform any PITR-based actions (such as rewind or clone a database to a point in time, back up and restore a database with PITR, or inspect a database at a point in time) will fail.
 
@@ -305,9 +305,9 @@ Use the following procedure to roll back all YB-Masters:
 
 ### Unidirectional xCluster
 
-When you have unidirectional xCluster replication, it is recommended to upgrade the target cluster before the source. After the target cluster is upgraded and finalized, you can proceed to upgrade the source cluster.
+When you have unidirectional xCluster replication, upgrade the target cluster before the source. After the target cluster is upgraded and finalized, you can proceed to upgrade the source cluster.
 
-{{< note title="Note" >}}
+{{< note title="Target cluster version" >}}
 xCluster replication requires the target cluster version to be the same or later than the source cluster version. The setup of a new xCluster replication will fail if this check fails. Existing replications will automatically pause if the source cluster is finalized before the target cluster.
 {{< /note >}}
 
