@@ -22,8 +22,8 @@ Result<bool> IsBootstrapRequiredForTablet(
 class XClusterProducerBootstrap {
  public:
   XClusterProducerBootstrap(
-      CDCServiceImpl* cdc_service, const BootstrapProducerRequestPB& req,
-      BootstrapProducerResponsePB* resp, CDCCreationState* creation_state,
+      CDCServiceImpl* cdc_service, const cdc::BootstrapProducerRequestPB& req,
+      cdc::BootstrapProducerResponsePB* resp, CDCCreationState* creation_state,
       CDCServiceContext* cdc_service_context, CDCStateTable* cdc_state_table)
       : cdc_service_(cdc_service),
         req_(req),
@@ -61,8 +61,8 @@ class XClusterProducerBootstrap {
   Result<bool> IsBootstrapRequired();
 
   CDCServiceImpl* cdc_service_;
-  const BootstrapProducerRequestPB& req_;
-  BootstrapProducerResponsePB* resp_;
+  const cdc::BootstrapProducerRequestPB& req_;
+  cdc::BootstrapProducerResponsePB* resp_;
   CDCCreationState* creation_state_;
   CDCServiceContext* cdc_service_context_;
   CDCStateTable* cdc_state_table_;

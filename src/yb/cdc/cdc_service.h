@@ -14,13 +14,13 @@
 
 #include <memory>
 
-#include "yb/cdc/xrepl_types.h"
-#include "yb/cdc/xrepl_metrics.h"
 #include "yb/cdc/cdc_producer.h"
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/cdc/cdc_service.service.h"
 #include "yb/cdc/cdc_types.h"
 #include "yb/cdc/cdc_util.h"
+#include "yb/cdc/xrepl_metrics.h"
+#include "yb/cdc/xrepl_types.h"
 
 #include "yb/master/master_client.fwd.h"
 
@@ -67,8 +67,8 @@ namespace cdc {
 class CDCStateTable;
 struct CDCStateTableEntry;
 
-typedef std::unordered_map<HostPort, std::shared_ptr<CDCServiceProxy>, HostPortHash>
-    CDCServiceProxyMap;
+using CDCServiceProxyMap =
+    std::unordered_map<HostPort, std::shared_ptr<CDCServiceProxy>, HostPortHash>;
 
 YB_STRONGLY_TYPED_BOOL(CreateMetricsEntityIfNotFound);
 
@@ -152,7 +152,7 @@ class CDCServiceImpl : public CDCServiceIf {
   CDCServiceImpl(const CDCServiceImpl&) = delete;
   void operator=(const CDCServiceImpl&) = delete;
 
-  ~CDCServiceImpl();
+  ~CDCServiceImpl() override;
 
   void CreateCDCStream(
       const CreateCDCStreamRequestPB* req,
@@ -230,8 +230,8 @@ class CDCServiceImpl : public CDCServiceIf {
       const GetLatestEntryOpIdRequestPB& req, CoarseTimePoint deadline) override;
 
   void BootstrapProducer(
-      const BootstrapProducerRequestPB* req,
-      BootstrapProducerResponsePB* resp,
+      const cdc::BootstrapProducerRequestPB* req,
+      cdc::BootstrapProducerResponsePB* resp,
       rpc::RpcContext rpc) override;
 
   void GetCDCDBStreamInfo(

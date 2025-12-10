@@ -534,7 +534,6 @@ TEST_F(XClusterDDLReplicationTest, CreateTableWithEnum) {
     auto actual = ASSERT_RESULT(conn.FetchAllAsString("SELECT paint_color::TEXT, amount FROM t;"));
     ASSERT_EQ(expected, actual);
   }
-
 }
 
 TEST_F(XClusterDDLReplicationTest, MultistatementQuery) {
