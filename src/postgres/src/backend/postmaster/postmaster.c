@@ -4959,9 +4959,6 @@ BackendInitialize(Port *port)
 		else
 			snprintf(remote_ps_data, sizeof(remote_ps_data), "%s(%s)", remote_host, remote_port);
 
-		/* Cannot be a walsender and an auth-backend simultaneously. */
-		Assert(!(am_walsender && yb_is_auth_backend));
-
 		YBC_LOG_INFO("Started %s backend with pid: %d, user_name: %s, "
 					 "remote_ps_data: %s",
 					 (am_walsender ?
