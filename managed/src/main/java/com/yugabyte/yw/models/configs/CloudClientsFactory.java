@@ -5,6 +5,7 @@ package com.yugabyte.yw.models.configs;
 import com.azure.storage.blob.BlobContainerClient;
 import com.azure.storage.blob.models.BlobStorageException;
 import com.google.cloud.storage.Storage;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageAzureData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
 import java.io.IOException;
@@ -17,7 +18,8 @@ public interface CloudClientsFactory {
   Storage createGcpStorage(CustomerConfigStorageGCSData configData)
       throws IOException, UnsupportedEncodingException;
 
-  BlobContainerClient createBlobContainerClient(String azUrl, String azSasToken, String container)
+  BlobContainerClient createBlobContainerClient(
+      CustomerConfigStorageAzureData configData, String azureUrl, String container)
       throws BlobStorageException;
 
   S3Client createS3Client(CustomerConfigStorageS3Data configData) throws S3Exception;

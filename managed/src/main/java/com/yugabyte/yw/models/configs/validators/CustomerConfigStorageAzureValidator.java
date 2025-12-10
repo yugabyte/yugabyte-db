@@ -4,7 +4,9 @@ package com.yugabyte.yw.models.configs.validators;
 
 import com.azure.storage.blob.BlobContainerClient;
 import com.azure.storage.blob.models.BlobStorageException;
+import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.SetMultimap;
 import com.yugabyte.yw.common.AZUtil;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.CloudUtil.ExtraPermissionToValidate;
@@ -47,29 +49,41 @@ public class CustomerConfigStorageAzureValidator extends CustomerConfigStorageVa
     super.validate(data);
 
     CustomerConfigStorageAzureData azureData = (CustomerConfigStorageAzureData) data;
-    if (!StringUtils.isEmpty(azureData.azureSasToken)) {
-      validateAzureUrl(
-          azureData.azureSasToken,
-          CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME,
-          azureData.backupLocation);
-      if (azureData.regionLocations != null) {
-        for (RegionLocations location : azureData.regionLocations) {
-          if (StringUtils.isEmpty(location.region)) {
-            throwBeanConfigDataValidatorError(
-                CustomerConfigConsts.REGION_FIELDNAME, "This field cannot be empty.");
-          }
-          validateUrl(
-              CustomerConfigConsts.REGION_LOCATION_FIELDNAME, location.location, true, false);
-          validateAzureUrl(
-              location.azureSasToken,
-              CustomerConfigConsts.REGION_LOCATION_FIELDNAME,
-              location.location);
+
+    // Block config creation if both Azure SAS token and USE_AZURE_IAM passed, or
+    // neither of the two.
+    if (StringUtils.isBlank(azureData.azureSasToken) ^ (azureData.useAzureIam)) {
+      SetMultimap<String, String> validationErrorsMap = HashMultimap.create();
+      validationErrorsMap.put(
+          CustomerConfigConsts.USE_AZURE_IAM_FIELDNAME,
+          "Must pass only one of 'AZURE_STORAGE_SAS_TOKEN' or 'USE_AZURE_IAM'.");
+      validationErrorsMap.put(
+          AZUtil.AZURE_STORAGE_SAS_TOKEN_FIELDNAME,
+          "Must pass only one of 'AZURE_STORAGE_SAS_TOKEN' or 'USE_AZURE_IAM'.");
+      throwMultipleBeanConfigDataValidatorError(validationErrorsMap, "storageConfigValidation");
+    }
+
+    validateAzureUrl(
+        azureData, CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME, azureData.backupLocation);
+    if (azureData.regionLocations != null) {
+      for (RegionLocations location : azureData.regionLocations) {
+        if (StringUtils.isEmpty(location.region)) {
+          throwBeanConfigDataValidatorError(
+              CustomerConfigConsts.REGION_FIELDNAME, "This field cannot be empty.");
         }
+        validateUrl(CustomerConfigConsts.REGION_LOCATION_FIELDNAME, location.location, true, false);
+        // For region locations, a temporary config with region-specific SAS token
+        CustomerConfigStorageAzureData regionConfig = new CustomerConfigStorageAzureData();
+        regionConfig.azureSasToken = location.azureSasToken;
+        regionConfig.useAzureIam = azureData.useAzureIam;
+        validateAzureUrl(
+            regionConfig, CustomerConfigConsts.REGION_LOCATION_FIELDNAME, location.location);
       }
     }
   }
 
-  private void validateAzureUrl(String azSasToken, String fieldName, String azUriPath) {
+  private void validateAzureUrl(
+      CustomerConfigStorageAzureData azureData, String fieldName, String azUriPath) {
     String protocol =
         azUriPath.indexOf(':') >= 0 ? azUriPath.substring(0, azUriPath.indexOf(':')) : "";
 
@@ -95,7 +109,7 @@ public class CustomerConfigStorageAzureValidator extends CustomerConfigStorageVa
 
       try {
         BlobContainerClient blobContainerClient =
-            factory.createBlobContainerClient(azUrl, azSasToken, container);
+            factory.createBlobContainerClient(azureData, azUrl, container);
         ((AZUtil) (storageUtilFactory.getCloudUtil(Util.AZ)))
             .validateOnBlobContainerClient(blobContainerClient, cloudPath, permissions);
       } catch (BlobStorageException e) {
