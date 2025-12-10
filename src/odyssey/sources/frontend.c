@@ -3070,6 +3070,12 @@ int yb_auth_via_auth_backend(od_client_t *client)
 		goto failed_to_acquire_auth_backend;
 	}
 
+	if (client->startup.replication.value_len != 0) {
+		yb_kiwi_var_set(&control_conn_client->startup.replication,
+			client->startup.replication.value,
+			client->startup.replication.value_len);
+	}
+
 	/*
 	 * Set control connection route user and database. The auth-backend is
 	 * created from the control pool, so these values are set so that the pool
