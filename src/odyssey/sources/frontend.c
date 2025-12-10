@@ -712,6 +712,7 @@ static inline bool od_should_drop_connection(od_client_t *client,
 		}
 	}
 		/* fall through */
+		yb_od_attribute_fallthrough;
 	case OD_RULE_POOL_STATEMENT:
 	case OD_RULE_POOL_TRANSACTION: {
 		//TODO:: drop no more than X connection per sec/min/whatever
