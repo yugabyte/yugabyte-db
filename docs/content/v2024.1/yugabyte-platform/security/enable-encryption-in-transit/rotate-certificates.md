@@ -58,15 +58,22 @@ YugabyteDB Anywhere restarts the universe.
 
 ## Rotate certificates
 
+The following instructions assume that Encryption in transit is already [enabled](#enable-or-disable-encryption-in-transit) on the universe.
+
 **Node-to-node certificates**
 
 If your node-to-node root certificate has expired, rotation requires a simultaneous restart of all nodes, resulting in some downtime.
 
-If the certificate has not expired, then the rotation requires a restart, which can be done in a rolling manner with no downtime. You can opt to not perform a rolling update to update all nodes at the same time, but this will result in downtime.
+If the certificate has not expired:
+
+- If the universe was created using YugabyteDB Anywhere v2.16.5 and earlier, then the rotation requires a restart, which can be done in a rolling manner with no downtime. You can opt to not perform a rolling update to update all nodes at the same time, but this will result in downtime.
+- If the universe was created using YugabyteDB Anywhere v2.16.6 or later, then the rotation is done without a restart and no downtime.
 
 **Client-to-node certificates**
 
-Rotation requires a restart, which can be done in a rolling manner with no downtime. You can opt to not perform a rolling update to update all nodes at the same time, but this will result in downtime.
+If the universe was created using YugabyteDB Anywhere v2.16.5 and earlier, then the rotation requires a restart. This can be done in a rolling manner with no downtime, regardless of whether the client-to-node certificates are expired or not expired.
+
+If the universe was created using YugabyteDB Anywhere v2.16.6 or later, then the rotation is done without a restart and no downtime.
 
 If you change your client-to-node root certificate, be sure to update your clients and applications to use the new certificate. Refer to [Download the universe certificate](../../../create-deployments/connect-to-universe/#download-the-universe-certificate).
 
@@ -80,7 +87,9 @@ To rotate server (node) certificates for a universe, do the following:
 
 1. On the **Server Certificate** tab, select the **Rotate Node-to-Node Server Certificate** and **Rotate Client-to-Node Server Certificate** options as appropriate.
 
-1. Choose whether to apply the changes using a rolling restart or a concurrent restart (faster, but requires some downtime).
+1. _Deselect_ the rolling upgrade option to perform a hot certificate reload with no downtime.
+
+    If the universe was created using YugabyteDB Anywhere v2.16.5 and earlier, select the **Use rolling upgrade to apply this change** option to perform the upgrade in a rolling update (recommended) and enter the number of seconds to wait between node upgrades.
 
 1. Click **Apply**.
 
@@ -100,6 +109,8 @@ To rotate root certificates for a universe, do the following:
 
     Note that when you rotate the root certificate, the server certificates are automatically rotated.
 
-1. Choose whether to apply the changes using a rolling restart or a concurrent restart (faster, but requires some downtime).
+1. _Deselect_ the rolling upgrade option to perform a hot certificate reload with no downtime.
+
+    If the universe was created using YugabyteDB Anywhere v2.16.5 and earlier, select the **Use rolling upgrade to apply this change** option to perform the upgrade in a rolling update (recommended) and enter the number of seconds to wait between node upgrades.
 
 1. Click **Apply**.
