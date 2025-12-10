@@ -13,6 +13,8 @@
 
 #pragma once
 
+#include <cmath>
+
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/split.h"
 
