@@ -77,6 +77,10 @@ If the universe was created using YugabyteDB Anywhere v2.16.6 (v2025.2 on Kubern
 
 If you change your client-to-node root certificate, be sure to update your clients and applications to use the new certificate. Refer to [Download the universe certificate](../../../create-deployments/connect-to-universe/#download-the-universe-certificate).
 
+{{< warning title="Client-to-node encryption" >}}
+For universes with _only_ client-to-node encryption enabled, when rotating certificates, a restart is required; choose either the rolling or concurrent restart options. Do not use the **Apply all changes which do not require a restart immediately** option (which is selected by default) in this configuration.
+{{< /warning >}}
+
 ### Rotate server certificates
 
 To rotate server (node) certificates for a universe, do the following:
