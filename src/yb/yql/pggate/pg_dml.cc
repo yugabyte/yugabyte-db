@@ -74,6 +74,12 @@ Status PgDml::AppendTarget(PgExpr* target) {
       ? AppendTargetPB(target) : secondary_index_query->AppendTargetPB(target);
 }
 
+Status PgDml::AddBaseYbctidTarget() {
+  RETURN_NOT_OK(PrepareColumnForRead(
+      static_cast<int>(PgSystemAttrNum::kYBIdxBaseTupleId), AllocTargetPB()));
+  return Status::OK();
+}
+
 Status PgDml::AppendTargetPB(PgExpr* target) {
   // Append to targets_.
   bool is_aggregate = target->is_aggregate();

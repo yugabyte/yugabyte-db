@@ -442,6 +442,10 @@ Status PgDmlRead::Exec(const YbcPgExecParameters* exec_params) {
     return Status::OK();
   }
 
+  if (auto* secondary_index = SecondaryIndexQuery(); secondary_index) {
+    RETURN_NOT_OK(secondary_index->AddBaseYbctidTarget());
+  }
+
   RETURN_NOT_OK(InitDocOp(doc_op_init_params));
 
   const auto has_ybctid = VERIFY_RESULT(ProcessProvidedYbctids());

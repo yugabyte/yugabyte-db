@@ -48,6 +48,8 @@ class PgDml : public PgStatement {
   // Append a target in SELECT or RETURNING.
   Status AppendTarget(PgExpr* target);
 
+  Status AddBaseYbctidTarget();
+
   // Append a column reference.
   // If any serialized Postgres expressions appended to other lists require explicit addition
   // of their column references. Those column references should have Postgres type information.
