@@ -2638,10 +2638,10 @@ Result<std::vector<CDCStreamInfoPtr>> CatalogManager::FindXReplStreamsMarkedForD
   for (const CDCStreamInfoMap::value_type& entry : cdc_stream_map_) {
     auto ltm = entry.second->LockForRead();
     if (deletion_state == SysCDCStreamEntryPB::DELETING_METADATA && ltm->is_deleting_metadata()) {
-      LOG(INFO) << "Stream " << entry.second->id() << " was marked as DELETING_METADATA";
+      VLOG(2) << "Stream " << entry.second->id() << " was marked as DELETING_METADATA";
       streams.push_back(entry.second);
     } else if (deletion_state == SysCDCStreamEntryPB::DELETING && ltm->is_deleting()) {
-      LOG(INFO) << "Stream " << entry.second->id() << " was marked as DELETING";
+      VLOG(2) << "Stream " << entry.second->id() << " was marked as DELETING";
       streams.push_back(entry.second);
     }
   }
