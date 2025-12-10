@@ -19,6 +19,12 @@ Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, 
 
 ## v2025.12.1 - December 9, 2025
 
+{{< note title="Important: Breaking change" >}}
+
+This release introduces breaking changes for Voyager migrations. Migrations started with previous Voyager versions cannot continue with this version. To proceed, either continue the migration using an older Voyager version, or restart the migration using the new version.
+
+{{< /note >}}
+
 ### Enhancements
 
 - When importing data to YugabyteDB, batches are now ingested in random order. This helps avoid hotspots and ensures writes are distributed uniformly across cluster nodes, particularly when importing sequentially-ordered data into range-sharded tables.
