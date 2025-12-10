@@ -168,7 +168,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   AutoFlagsConfigPB TEST_GetAutoFlagConfig() const;
 
-  TSTabletManager* tablet_manager() override { return tablet_manager_.get(); }
+  TSTabletManager* tablet_manager() const override { return tablet_manager_.get(); }
   TabletPeerLookupIf* tablet_peer_lookup() override;
   TSLocalLockManagerPtr ts_local_lock_manager() const override {
     std::lock_guard l(lock_);

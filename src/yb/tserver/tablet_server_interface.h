@@ -59,7 +59,7 @@ class TabletServerIf : public LocalTabletServer {
  public:
   virtual ~TabletServerIf() {}
 
-  virtual TSTabletManager* tablet_manager() = 0;
+  virtual TSTabletManager* tablet_manager() const = 0;
   virtual TabletPeerLookupIf* tablet_peer_lookup() = 0;
   virtual TSLocalLockManagerPtr ts_local_lock_manager() const = 0;
 

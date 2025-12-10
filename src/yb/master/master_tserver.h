@@ -34,7 +34,7 @@ class MasterTabletServer : public tserver::TabletServerIf,
                            public tserver::TabletPeerLookupIf {
  public:
   MasterTabletServer(Master* master, scoped_refptr<MetricEntity> metric_entity);
-  tserver::TSTabletManager* tablet_manager() override;
+  tserver::TSTabletManager* tablet_manager() const override;
   tserver::TabletPeerLookupIf* tablet_peer_lookup() override;
   tserver::TSLocalLockManagerPtr ts_local_lock_manager() const override;
 
