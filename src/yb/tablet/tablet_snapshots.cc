@@ -98,7 +98,7 @@ std::string TabletSnapshots::SnapshotsDirName(const std::string& rocksdb_dir) {
 }
 
 bool TabletSnapshots::IsTempSnapshotDir(const std::string& dir) {
-  return boost::ends_with(dir, kTempSnapshotDirSuffix);
+  return dir.ends_with(kTempSnapshotDirSuffix);
 }
 
 Status TabletSnapshots::Prepare(SnapshotOperation* operation) {

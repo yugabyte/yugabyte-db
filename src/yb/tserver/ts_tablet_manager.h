@@ -387,7 +387,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   bool IsTabletInTransition(const TabletId& tablet_id) const;
 
-  TabletServer* server() { return server_; }
+  TabletServer* server() const { return server_; }
 
   MemoryMonitor* memory_monitor() { return tablet_options_.memory_monitor.get(); }
 

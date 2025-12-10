@@ -505,6 +505,10 @@ Status TabletServerPathHandlers::Register(Webserver* server) {
   RegisterTabletPathHandler(server, tserver_, "/sharedlockmanager", &HandleInMemoryLocksPage);
   RegisterTabletPathHandler(server, tserver_, "/preparer", &HandlePreparerPage);
   server->RegisterPathHandler(
+      "/snapshots", "Snapshots",
+      std::bind(&TabletServerPathHandlers::HandleSnapshotsPage, this, _1, _2), true /* styled */,
+      true /* is_on_nav_bar */, "fa fa-camera");
+  server->RegisterPathHandler(
       "/", "Dashboards",
       std::bind(&TabletServerPathHandlers::HandleDashboardsPage, this, _1, _2), true /* styled */,
       true /* is_on_nav_bar */, "fa fa-dashboard");
