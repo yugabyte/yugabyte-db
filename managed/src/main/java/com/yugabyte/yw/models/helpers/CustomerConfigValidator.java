@@ -42,6 +42,7 @@ public class CustomerConfigValidator extends BaseBeanValidator {
 
   private final RuntimeConfGetter runtimeConfGetter;
   public final AWSUtil awsUtil;
+  public final AZUtil azUtil;
 
   private final Map<Class<? extends CustomerConfigData>, ConfigDataValidator> validators =
       new HashMap<>();
@@ -52,12 +53,14 @@ public class CustomerConfigValidator extends BaseBeanValidator {
       StorageUtilFactory storageUtilFactory,
       RuntimeConfGetter runtimeConfGetter,
       AWSUtil awsUtil,
+      AZUtil azUtil,
       GCPUtil gcpUtil) {
     super(beanValidator);
     this.factory = createCloudFactory();
     this.storageUtilFactory = storageUtilFactory;
     this.runtimeConfGetter = runtimeConfGetter;
     this.awsUtil = awsUtil;
+    this.azUtil = azUtil;
 
     validators.put(
         CustomerConfigStorageGCSData.class,
@@ -178,8 +181,9 @@ public class CustomerConfigValidator extends BaseBeanValidator {
 
     @Override
     public BlobContainerClient createBlobContainerClient(
-        String azUrl, String azSasToken, String container) throws BlobStorageException {
-      return AZUtil.createBlobContainerClient(azUrl, azSasToken, container);
+        CustomerConfigStorageAzureData configData, String azureUrl, String container)
+        throws BlobStorageException {
+      return azUtil.createBlobContainerClient(configData, azureUrl, container);
     }
 
     @Override
