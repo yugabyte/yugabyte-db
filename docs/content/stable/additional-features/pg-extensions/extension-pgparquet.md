@@ -4,7 +4,7 @@ headerTitle: pg_parquet extension
 linkTitle: pg_parquet
 description: Using the pg_parquet extension in YugabyteDB
 tags:
-  feature: early-access
+  feature: tech-preview
 menu:
   preview:
     identifier: extension-pgparquet
@@ -12,6 +12,10 @@ menu:
     weight: 20
 type: docs
 ---
+
+{{< warning title="Extension support" >}}
+Support for pg_parquet extension is in {{<tags/feature/tp>}} only. It may get replaced by another extension in future. So it is not recommended for use in production.
+{{< /warning >}}
 
 The [pg_parquet](https://www.crunchydata.com/blog/pg_parquet-an-extension-to-connect-postgres-and-parquet) extension allows you to read from and write to [Parquet](https://parquet.apache.org/) files by extending the PostgreSQL COPY command. Files can be located in S3, Azure Blob Storage, Google Cloud Storage, http(s) endpoints, or on a file system.
 
