@@ -40,7 +40,6 @@
 
 DECLARE_bool(enable_object_lock_fastpath);
 DECLARE_bool(enable_object_locking_for_table_locks);
-DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(pg_client_use_shared_memory);
 DECLARE_bool(report_ysql_ddl_txn_status_to_master);
 DECLARE_bool(ysql_ddl_transaction_wait_for_ddl_verification);
@@ -243,15 +242,7 @@ class PgObjectLocksTestRF1 : public PgMiniTestBase {
   tserver::TSLocalLockManagerPtr master_lock_manager_;
 };
 
-class TestWithTransactionalDDL: public PgObjectLocksTestRF1 {
- protected:
-  void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
-    PgObjectLocksTestRF1::SetUp();
-  }
-};
-
-TEST_F_EX(PgObjectLocksTestRF1, TestLockTuple, TestWithTransactionalDDL) {
+TEST_F(PgObjectLocksTestRF1, TestLockTuple) {
   auto setup_conn = ASSERT_RESULT(Connect());
   ASSERT_OK(setup_conn.Execute(
       "CREATE OR REPLACE FUNCTION add1(integer, integer) RETURNS integer "
@@ -379,16 +370,7 @@ class PgObjectLocksTestRF1SessionExpiry : public PgObjectLocksTestRF1 {
   std::optional<PGConn> conn_;
 };
 
-class PgObjectLocksTestRF1SessionExpiryMaybeUseTxnDdl : public PgObjectLocksTestRF1SessionExpiry,
-                                                        public ::testing::WithParamInterface<bool> {
- protected:
-  void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = GetParam();
-    PgObjectLocksTestRF1SessionExpiry::SetUp();
-  }
-};
-
-TEST_P(PgObjectLocksTestRF1SessionExpiryMaybeUseTxnDdl, CleanupSharedLocksOnExpiredSessions) {
+TEST_F(PgObjectLocksTestRF1SessionExpiry, CleanupSharedLocksOnExpiredSessions) {
   auto conn = ASSERT_RESULT(Connect());
   // Clean up a shared lock from the local TServer.
   LOG(INFO) << "Acquiring shared lock on test table in another session";
@@ -400,7 +382,7 @@ TEST_P(PgObjectLocksTestRF1SessionExpiryMaybeUseTxnDdl, CleanupSharedLocksOnExpi
   ASSERT_OK(WaitToReleaseAllLocks(kSessionTimeout * 2));
 }
 
-TEST_P(PgObjectLocksTestRF1SessionExpiryMaybeUseTxnDdl, CleanupExclusiveLocksOnExpiredSessions) {
+TEST_F(PgObjectLocksTestRF1SessionExpiry, CleanupExclusiveLocksOnExpiredSessions) {
   auto conn = ASSERT_RESULT(Connect());
   // Clean up an exclusive lock from the master and local TServer.
   LOG(INFO) << "Acquiring exclusive lock on test table";
@@ -413,7 +395,7 @@ TEST_P(PgObjectLocksTestRF1SessionExpiryMaybeUseTxnDdl, CleanupExclusiveLocksOnE
   ASSERT_OK(WaitToReleaseAllLocks(kSessionTimeout * 2));
 }
 
-TEST_P(PgObjectLocksTestRF1SessionExpiryMaybeUseTxnDdl, CleanupReadOnlyLocksOnExpiredSessions) {
+TEST_F(PgObjectLocksTestRF1SessionExpiry, CleanupReadOnlyLocksOnExpiredSessions) {
   auto conn = ASSERT_RESULT(Connect());
   // Clean up a shared lock from the local TServer.
   LOG(INFO) << "Acquiring shared lock on test table in another session";
@@ -425,27 +407,18 @@ TEST_P(PgObjectLocksTestRF1SessionExpiryMaybeUseTxnDdl, CleanupReadOnlyLocksOnEx
   ASSERT_OK(WaitToReleaseAllLocks(kSessionTimeout * 2));
 }
 
-std::string MaybeUseTxnDdlTaskToName(const ::testing::TestParamInfo<bool>& info) {
-  return info.param ? "EnableTxnDdl" : "DisableTxnDdl";
-}
-
-INSTANTIATE_TEST_CASE_P(
-    MaybeUseTxnDdl, PgObjectLocksTestRF1SessionExpiryMaybeUseTxnDdl, ::testing::Bool(),
-    MaybeUseTxnDdlTaskToName);
-
-class PgObjectLocksTestRF1SessionExpiryWithDdlMaybeUseTxnDdl
+class PgObjectLocksTestRF1SessionExpiryWithDdl
     : public PgObjectLocksTestRF1SessionExpiry,
-      public ::testing::WithParamInterface<std::pair<bool, bool>> {
+      public ::testing::WithParamInterface<bool> {
  protected:
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = GetParam().first;
-    allow_ddl_verification_task_ = GetParam().second;
+    allow_ddl_verification_task_ = GetParam();
     PgObjectLocksTestRF1SessionExpiry::SetUp();
   }
   bool allow_ddl_verification_task_;
 };
 
-TEST_P(PgObjectLocksTestRF1SessionExpiryWithDdlMaybeUseTxnDdl, CleanupDdlLocksOnExpiredSessions) {
+TEST_P(PgObjectLocksTestRF1SessionExpiryWithDdl, CleanupDdlLocksOnExpiredSessions) {
   auto conn = ASSERT_RESULT(Connect());
   auto pid = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT pg_backend_pid();"));
   TestThreadHolder thread_holder;
@@ -479,22 +452,18 @@ TEST_P(PgObjectLocksTestRF1SessionExpiryWithDdlMaybeUseTxnDdl, CleanupDdlLocksOn
   }
 }
 
-std::string UseTxnDdlAndDdlVerificationTaskToName(
-    const ::testing::TestParamInfo<std::pair<bool, bool>>& info) {
-  return yb::Format(
-      "$0$1", info.param.first ? "EnableTxnDdl" : "DisableTxnDdl",
-      info.param.second ? "ReleaseByDdlVerifier" : "ReleaseByLocalTServer");
+std::string DdlVerificationTaskToName(
+    const ::testing::TestParamInfo<bool>& info) {
+  return yb::Format("$0", info.param ? "ReleaseByDdlVerifier" : "ReleaseByLocalTServer");
 }
 
 INSTANTIATE_TEST_CASE_P(
-    MaybeUseTxnDdlAndVerifyTxnAtMaster, PgObjectLocksTestRF1SessionExpiryWithDdlMaybeUseTxnDdl,
+    VerifyTxnAtMaster, PgObjectLocksTestRF1SessionExpiryWithDdl,
     ::testing::Values(
-        std::make_pair(false, false),
-        std::make_pair(false, true),
-        std::make_pair(true, false),
-        std::make_pair(true, true)
+      false,
+      true
     ),
-    UseTxnDdlAndDdlVerificationTaskToName);
+    DdlVerificationTaskToName);
 
 // Test that the exclusive locks are released only after the DDL schema changes have been applied
 // at the docdb layer.
@@ -556,6 +525,58 @@ class PgObjectLocksTest : public LibPqTestBase {
 
   virtual bool EnableTableLocks() const {
     return true;
+  }
+
+  void testConcurrentAlterSelect(bool fresh_catalog_cache) {
+    const auto ts1_idx = 0;
+    const auto ts2_idx = 1;
+    auto* ts1 = cluster_->tablet_server(ts1_idx);
+    auto* ts2 = cluster_->tablet_server(ts2_idx);
+
+    auto conn1 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    auto conn2 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+
+    ASSERT_OK(conn1.Execute("CREATE TABLE t1(c1 INT, c2 INT)"));
+    ASSERT_OK(conn2.Execute("INSERT INTO t1 VALUES (1, 2)"));
+
+    if (fresh_catalog_cache) {
+      // Reset to new conns so we don't retain any catalog cache entries
+      conn1 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+      conn2 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+    } else {
+      auto row1 = ASSERT_RESULT(conn2.FetchRowAsString("SELECT * FROM t1"));
+      LOG(INFO) << "Row was " << row1;
+    }
+    ASSERT_OK(cluster_->SetFlag(
+        ts2,
+        "TEST_tserver_disable_catalog_refresh_on_heartbeat",
+        "true"));
+
+    ASSERT_OK(conn1.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+    ASSERT_OK(conn2.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+    LOG(INFO) << "conn1: Acquiring exclusive lock on test table";
+    ASSERT_OK(conn1.Execute("ALTER TABLE t1 DROP COLUMN c2"));
+
+    TestThreadHolder thread_holder;
+    thread_holder.AddThreadFunctor([&conn2]() {
+      LOG(INFO) << "conn2: going to wait on conn1's table lock";
+      // without propagation of inval msgs on lock acquire, this statement would hit a
+      // schema mismatch error
+      auto row2 = ASSERT_RESULT(conn2.FetchRowAsString("SELECT * FROM t1"));
+      LOG(INFO) << "Row was " << row2;
+    });
+
+    ASSERT_OK(conn1.Execute("COMMIT"));
+    thread_holder.JoinAll();
+    ASSERT_OK(conn2.Execute("COMMIT"));
+
+    ASSERT_OK(cluster_->SetFlag(
+        ts2,
+        "TEST_tserver_disable_catalog_refresh_on_heartbeat",
+        "false"));
+    LOG(INFO) << "Verifying new conns go through";
+    auto conn4 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+    ASSERT_OK(conn4.Fetch("SELECT * FROM t1"));
   }
 };
 
@@ -633,71 +654,12 @@ TEST_F(PgObjectLocksTest, ExclusiveLockReleaseInvalidatesCatalogCache) {
   // The DML should now see the updated schema and not hit a catalog cache/schema version mismatch.
   ASSERT_OK(conn2.FetchMatrix("SELECT * FROM test WHERE k=1", 1 /* rows */, 3 /* columns */));
 }
-class TestWithTransactionalDDLRF3: public PgObjectLocksTest {
- protected:
-  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
-    PgObjectLocksTest::UpdateMiniClusterOptions(opts);
-    opts->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=true");
-  }
 
-  void testConcurrentAlterSelect(bool fresh_catalog_cache) {
-    const auto ts1_idx = 0;
-    const auto ts2_idx = 1;
-    auto* ts1 = cluster_->tablet_server(ts1_idx);
-    auto* ts2 = cluster_->tablet_server(ts2_idx);
-
-    auto conn1 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
-    auto conn2 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
-
-    ASSERT_OK(conn1.Execute("CREATE TABLE t1(c1 INT, c2 INT)"));
-    ASSERT_OK(conn2.Execute("INSERT INTO t1 VALUES (1, 2)"));
-
-    if (fresh_catalog_cache) {
-      // Reset to new conns so we don't retain any catalog cache entries
-      conn1 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
-      conn2 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
-    } else {
-      auto row1 = ASSERT_RESULT(conn2.FetchRowAsString("SELECT * FROM t1"));
-      LOG(INFO) << "Row was " << row1;
-    }
-    ASSERT_OK(cluster_->SetFlag(
-        ts2,
-        "TEST_tserver_disable_catalog_refresh_on_heartbeat",
-        "true"));
-
-    ASSERT_OK(conn1.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
-    ASSERT_OK(conn2.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
-    LOG(INFO) << "conn1: Acquiring exclusive lock on test table";
-    ASSERT_OK(conn1.Execute("ALTER TABLE t1 DROP COLUMN c2"));
-
-    TestThreadHolder thread_holder;
-    thread_holder.AddThreadFunctor([&conn2]() {
-      LOG(INFO) << "conn2: going to wait on conn1's table lock";
-      // without propagation of inval msgs on lock acquire, this statement would hit a
-      // schema mismatch error
-      auto row2 = ASSERT_RESULT(conn2.FetchRowAsString("SELECT * FROM t1"));
-      LOG(INFO) << "Row was " << row2;
-    });
-
-    ASSERT_OK(conn1.Execute("COMMIT"));
-    thread_holder.JoinAll();
-    ASSERT_OK(conn2.Execute("COMMIT"));
-
-    ASSERT_OK(cluster_->SetFlag(
-        ts2,
-        "TEST_tserver_disable_catalog_refresh_on_heartbeat",
-        "false"));
-    LOG(INFO) << "Verifying new conns go through";
-    auto conn4 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
-    ASSERT_OK(conn4.Fetch("SELECT * FROM t1"));
-  }
-};
-
-TEST_F_EX(PgObjectLocksTest, ConcurrentAlterSelectFreshCache, TestWithTransactionalDDLRF3) {
+TEST_F(PgObjectLocksTest, ConcurrentAlterSelectFreshCache) {
   testConcurrentAlterSelect(true);
 }
 
-TEST_F_EX(PgObjectLocksTest, ConcurrentAlterSelect, TestWithTransactionalDDLRF3) {
+TEST_F(PgObjectLocksTest, ConcurrentAlterSelect) {
   testConcurrentAlterSelect(false);
 }
 
@@ -1115,9 +1077,7 @@ TEST_F(PgObjectLocksTestRF1, TestShutdownWithWaiters) {
   thread_holder.JoinAll();
 }
 
-TEST_F_EX(
-    PgObjectLocksTestRF1, YB_DISABLE_TEST_IN_TSAN(TestDeadlockFastPath),
-    TestWithTransactionalDDL) {
+TEST_F(PgObjectLocksTestRF1, YB_DISABLE_TEST_IN_TSAN(TestDeadlockFastPath)) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
   ASSERT_OK(conn.Execute("INSERT INTO test SELECT generate_series(0, 10), 0"));
@@ -1155,7 +1115,7 @@ TEST_F_EX(
   }
 }
 
-TEST_F_EX(PgObjectLocksTestRF1, TestDisableReuseAbortedPlainTxn, TestWithTransactionalDDL) {
+TEST_F(PgObjectLocksTestRF1, TestDisableReuseAbortedPlainTxn) {
   constexpr auto kStatementTimeoutMs = 1000 * kTimeMultiplier;
   // Restart the cluster_ with the poll interval set to 5x of statment timeout
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_olm_poll_interval_ms) = 5 * kStatementTimeoutMs;
@@ -1165,6 +1125,7 @@ TEST_F_EX(PgObjectLocksTestRF1, TestDisableReuseAbortedPlainTxn, TestWithTransac
 
   auto conn1 = ASSERT_RESULT(Connect());
   ASSERT_OK(conn1.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn1.Execute("INSERT INTO test SELECT generate_series(1, 10), 0"));
   ASSERT_OK(conn1.Execute("CREATE TABLE test1(k INT)"));
 
   ASSERT_OK(conn1.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
@@ -1175,11 +1136,48 @@ TEST_F_EX(PgObjectLocksTestRF1, TestDisableReuseAbortedPlainTxn, TestWithTransac
   ASSERT_OK(conn2.ExecuteFormat("SET statement_timeout=$0", kStatementTimeoutMs));
   ASSERT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
   auto log_waiter = StringWaiterLogSink("Consuming re-usable kPlain txn");
+  ASSERT_OK(conn2.Execute("LOCK TABLE test1 in ACCESS SHARE mode"));
   // Would timeout before the waiting lock at the OLM is released.
   ASSERT_NOK(conn2.Execute("LOCK TABLE test in ACCESS SHARE mode"));
   ASSERT_OK(conn2.RollbackTransaction());
-  ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromMilliseconds(5 * kTimeMultiplier)));
+  ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(2 * kTimeMultiplier)));
+  ASSERT_OK(conn1.Execute("COMMIT"));
+  ASSERT_EQ(ASSERT_RESULT(conn2.FetchRow<PGUint64>("SELECT COUNT(*) FROM test")), 10);
+  ASSERT_OK(AssertNumLocks(0, 0));
 }
+
+#ifndef NDEBUG
+TEST_F(PgObjectLocksTestRF1, TestDisableReuseOfFailedTxn) {
+  google::SetVLOGLevel("pg_client_session*", 1);
+  google::SetVLOGLevel("transaction*", 1);
+  auto conn1 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn1.Execute("INSERT INTO test SELECT generate_series(1, 10), 0"));
+
+  TransactionId txn_id = TransactionId::Nil();
+  yb::SyncPoint::GetInstance()->SetCallBack(
+      "PgClientSession::Impl::DoAcquireObjectLock",
+      [&](void* arg) { txn_id = *(static_cast<TransactionId*>(arg)); });
+  SyncPoint::GetInstance()->ClearTrace();
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  ASSERT_OK(conn1.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn1.Execute("LOCK TABLE test in ACCESS SHARE mode"));
+  ASSERT_TRUE(!txn_id.Nil());
+  SyncPoint::GetInstance()->DisableProcessing();
+
+  auto conn2 = ASSERT_RESULT(Connect());
+  auto log_waiter1 = RegexWaiterLogSink(Format(".*$0.*Heartbeat failed.*", txn_id));
+  ASSERT_TRUE(ASSERT_RESULT(
+      conn2.FetchRow<bool>(Format("SELECT yb_cancel_transaction('$0')", txn_id))));
+  ASSERT_OK(log_waiter1.WaitFor(MonoDelta::FromSeconds(5 * kTimeMultiplier)));
+  auto log_waiter2 = StringWaiterLogSink("Consuming re-usable kPlain txn");
+  ASSERT_OK(conn1.Execute("COMMIT"));
+  ASSERT_OK(log_waiter2.WaitFor(MonoDelta::FromSeconds(2 * kTimeMultiplier)));
+  ASSERT_EQ(ASSERT_RESULT(conn1.FetchRow<PGUint64>("SELECT COUNT(*) FROM test")), 10);
+  ASSERT_OK(AssertNumLocks(0, 0));
+}
+#endif
 
 class PgObjectLocksFastpathTest : public PgObjectLocksTestRF1 {
  protected:
