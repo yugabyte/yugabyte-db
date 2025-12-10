@@ -6,7 +6,7 @@ headcontent: Back up your YugabyteDB Anywhere installation
 linkTitle: Back up YugabyteDB Anywhere
 menu:
   stable_yugabyte-platform:
-    identifier: back-up-restore-installer
+    identifier: back-up-restore-2-installer
     parent: administer-yugabyte-platform
     weight: 30
 type: docs
@@ -15,17 +15,17 @@ type: docs
 Your YugabyteDB Anywhere installation includes provider configurations, KMS configurations, certificates, users, roles, and other components required for managing YugabyteDB universes.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="../back-up-restore-yba/" class="nav-link">
+      <i class="fa-solid fa-cloud"></i>
+      YugabyteDB Anywhere
+    </a>
+  </li>
+
   <li>
     <a href="../back-up-restore-installer/" class="nav-link active">
       <i class="fa-solid fa-building"></i>
       YBA Installer</a>
-  </li>
-
-  <li >
-    <a href="../back-up-restore-yp/" class="nav-link">
-      <i class="fa-solid fa-cloud"></i>
-      Replicated
-    </a>
   </li>
 
   <li>
@@ -84,7 +84,7 @@ The following table describes optional flags you can include with the `createBac
 
 To restore the YugabyteDB Anywhere content from your saved backup, perform the following:
 
-1. If YugabyteDB Anywhere is not installed, [install it](../../install-yugabyte-platform/install-software/installer/) using YBA Installer.
+1. If YugabyteDB Anywhere is not installed, [install it](../../install-yugabyte-platform/install-software/installer/).
 
 1. Copy the backup file from your storage location.
 
