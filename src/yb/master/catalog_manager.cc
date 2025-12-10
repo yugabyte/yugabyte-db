@@ -12111,7 +12111,7 @@ Status CatalogManager::GetTabletLocations(
     YB_LOG_EVERY_N_SECS(WARNING, 1)
         << "Expected replicas " << num_replicas << " but found "
         << locs_pb->replicas().size() << " for tablet " << tablet_info->id() << ": "
-        << locs_pb->ShortDebugString() << THROTTLE_MSG;
+        << locs_pb->ShortDebugString();
   }
   return s;
 }

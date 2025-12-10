@@ -197,7 +197,7 @@ class DnsResolver::Impl {
           if (start_time + 250ms < now) {
             YB_LOG_EVERY_N_SECS(WARNING, 5)
                 << "Long time to resolve DNS for " << host_copy << ": "
-                << MonoDelta(now - start_time) << THROTTLE_MSG;
+                << MonoDelta(now - start_time);
           }
           SetResult(PickResolvedAddress(host_copy, error, entries), promise.get());
         });

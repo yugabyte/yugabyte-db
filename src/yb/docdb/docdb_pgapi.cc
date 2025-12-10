@@ -2024,8 +2024,7 @@ Status SetValueFromQLBinaryHelper(
       YB_LOG_EVERY_N_SECS(WARNING, 5)
           << Format(
                  "For column: $0 unsuppported pg_type_oid: $1 found in SetValueFromQLBinaryHelper",
-                 cdc_datum_message->column_name(), pg_data_type)
-          << THROTTLE_MSG;
+                 cdc_datum_message->column_name(), pg_data_type);
       cdc_datum_message->set_datum_string("");
       break;
   }
