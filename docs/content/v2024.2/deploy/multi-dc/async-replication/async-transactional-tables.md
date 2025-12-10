@@ -51,7 +51,7 @@ Remove tables from replication in the following sequence:
 
 1. Remove the table from replication.
 
-    For instructions on removing tables from replication, refer to [Removing objects](../async-deployment/#removing-objects).
+    For instructions on removing tables from replication, refer to [Remove objects](../async-deployment/#remove-objects).
 
 1. Drop the table from both Primary and Standby databases separately.
 

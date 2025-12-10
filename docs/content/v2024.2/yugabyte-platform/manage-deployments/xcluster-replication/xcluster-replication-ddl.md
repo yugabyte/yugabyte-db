@@ -114,7 +114,7 @@ When dropping a table, you can drop the tables and YugabyteDB Anywhere automatic
 
 To add an index, refer to [Order of operations](#order-of-operations) for your setup.
 
-For non-transactional YSQL xCluster configurations, adding an index table to a main table that already has data will trigger a [full copy](../xcluster-replication-setup/#full-copy-during-xcluster-setup) of the entire database. To avoid the full copy, you can add the index table manually (see [Adding indexes](../../../../deploy/multi-dc/async-replication/async-deployment/#adding-indexes-in-unidirectional-replication)), and then [reconcile the configuration](#reconcile-configuration).
+For non-transactional YSQL xCluster configurations, adding an index table to a main table that already has data will trigger a [full copy](../xcluster-replication-setup/#full-copy-during-xcluster-setup) of the entire database. To avoid the full copy, you can add the index table manually (see [Add indexes](../../../../deploy/multi-dc/async-replication/async-deployment/#add-indexes-in-unidirectional-replication)), and then [reconcile the configuration](#reconcile-configuration).
 
 For YCQL xCluster configurations, if adding an index table triggers a full copy, the main table and all associated index tables are copied.
 
