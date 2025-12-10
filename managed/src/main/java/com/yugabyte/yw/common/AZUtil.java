@@ -12,6 +12,7 @@ import com.azure.core.http.rest.PagedIterable;
 import com.azure.core.http.rest.PagedResponse;
 import com.azure.core.util.BinaryData;
 import com.azure.core.util.IterableStream;
+import com.azure.identity.DefaultAzureCredentialBuilder;
 import com.azure.resourcemanager.AzureResourceManager;
 import com.azure.resourcemanager.monitor.fluent.models.EventDataInner;
 import com.azure.storage.blob.BlobClient;
@@ -34,6 +35,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageAzureData;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -78,6 +80,8 @@ public class AZUtil implements CloudUtil {
 
   public static final String YBC_AZURE_STORAGE_END_POINT_FIELDNAME = "AZURE_STORAGE_END_POINT";
 
+  public static final String YBC_USE_AZURE_IAM_FIELDNAME = "USE_AZURE_IAM";
+
   private static final String PRICING_JSON_URL =
       "https://prices.azure.com/api/retail/prices?$filter=";
 
@@ -115,6 +119,11 @@ public class AZUtil implements CloudUtil {
   }
 
   @Override
+  public boolean isIamEnabled(CustomerConfig config) {
+    return ((CustomerConfigStorageAzureData) config.getDataObject()).useAzureIam;
+  }
+
+  @Override
   public CloudLocationInfo getCloudLocationInfo(
       String region, CustomerConfigData configData, @Nullable String backupLocation) {
     CustomerConfigStorageAzureData s3Data = (CustomerConfigStorageAzureData) configData;
@@ -137,14 +146,11 @@ public class AZUtil implements CloudUtil {
         (CloudLocationInfoAzure)
             getCloudLocationInfo(
                 YbcBackupUtil.DEFAULT_REGION_STRING, configData, defaultBackupLocation);
-    String azureUrl = cLInfo.azureUrl;
-    String container = cLInfo.bucket;
     String blob = cLInfo.cloudPath;
     String keyLocation = blob.substring(0, blob.lastIndexOf('/')) + KEY_LOCATION_SUFFIX;
-    String sasToken = azData.azureSasToken;
     try {
       BlobContainerClient blobContainerClient =
-          createBlobContainerClient(azureUrl, sasToken, container);
+          createBlobContainerClient(azData, YbcBackupUtil.DEFAULT_REGION_STRING);
       ListBlobsOptions blobsOptions = new ListBlobsOptions().setPrefix(keyLocation);
       PagedIterable<BlobItem> pagedIterable =
           blobContainerClient.listBlobs(blobsOptions, Duration.ofHours(4));
@@ -206,23 +212,11 @@ public class AZUtil implements CloudUtil {
       return true;
     }
     CustomerConfigStorageAzureData azData = (CustomerConfigStorageAzureData) configData;
-    Map<String, String> containerTokenMap = getContainerTokenMap(azData);
     for (Map.Entry<String, String> entry : regionLocationsMap.entrySet()) {
       String region = entry.getKey();
       String location = entry.getValue();
-      CloudLocationInfoAzure cLInfo =
-          (CloudLocationInfoAzure) getCloudLocationInfo(region, configData, location);
-      String azureUrl = cLInfo.azureUrl;
-      String container = cLInfo.bucket;
-      String containerEndpoint = String.format("%s/%s", azureUrl, container);
-      String sasToken = containerTokenMap.get(containerEndpoint);
-      if (StringUtils.isEmpty(sasToken)) {
-        log.error("No SAS token for given location {}", location);
-        return false;
-      }
       try {
-        BlobContainerClient blobContainerClient =
-            createBlobContainerClient(azureUrl, sasToken, container);
+        BlobContainerClient blobContainerClient = createBlobContainerClient(azData, region);
         tryListObjects(blobContainerClient, null);
       } catch (Exception e) {
         log.error(
@@ -242,31 +236,21 @@ public class AZUtil implements CloudUtil {
         csSpec.getBucketLocationsMap();
     Map<String, String> configRegions = getRegionLocationsMap(configData);
     CustomerConfigStorageAzureData azData = (CustomerConfigStorageAzureData) configData;
-    Map<String, String> containerTokenMap = getContainerTokenMap(azData);
     for (Map.Entry<String, ResponseCloudStoreSpec.BucketLocation> regionPrefix :
         regionPrefixesMap.entrySet()) {
-      if (configRegions.containsKey(regionPrefix.getKey())) {
+      String region = regionPrefix.getKey();
+      if (configRegions.containsKey(region)) {
         // Use "cloudDir" of success marker as object prefix
         String prefix = regionPrefix.getValue().cloudDir;
-        // Use config's Azure Url and container
-        CloudLocationInfoAzure cLInfo =
-            (CloudLocationInfoAzure) getCloudLocationInfo(regionPrefix.getKey(), configData, null);
-        String container = cLInfo.bucket;
-        String azureUrl = cLInfo.azureUrl;
-        String containerEndpoint = String.format("%s/%s", azureUrl, container);
-        String sasToken = containerTokenMap.get(containerEndpoint);
-        log.debug(
-            "Trying object listing with Azure URL {} and prefix {}", containerEndpoint, prefix);
+        String location = configRegions.get(region);
+        log.debug("Trying object listing with location {} and prefix {}", location, prefix);
         try {
-          BlobContainerClient blobContainerClient =
-              createBlobContainerClient(azureUrl, sasToken, container);
+          BlobContainerClient blobContainerClient = createBlobContainerClient(azData, region);
           tryListObjects(blobContainerClient, prefix);
         } catch (Exception e) {
           String msg =
               String.format(
-                  "Cannot list objects in cloud location with container endpoint %s and cloud"
-                      + " directory %s",
-                  containerEndpoint, prefix);
+                  "Cannot list objects in cloud location %s with prefix %s", location, prefix);
           log.error(msg, e);
           throw new PlatformServiceException(
               PRECONDITION_FAILED, msg + ": " + e.getLocalizedMessage());
@@ -294,37 +278,65 @@ public class AZUtil implements CloudUtil {
     return createBlobContainerClient(azureUrl, sasToken, container);
   }
 
+  private BlobContainerClient createBlobContainerClientWithIam(String azureUrl, String container)
+      throws BlobStorageException {
+    return new BlobContainerClientBuilder()
+        .endpoint(azureUrl)
+        .credential(new DefaultAzureCredentialBuilder().build())
+        .containerName(container)
+        .buildClient();
+  }
+
+  public BlobContainerClient createBlobContainerClient(
+      CustomerConfigStorageAzureData configData, String region) throws BlobStorageException {
+    CloudLocationInfoAzure cLInfo =
+        (CloudLocationInfoAzure) getCloudLocationInfo(region, configData, null);
+    String azureUrl = cLInfo.azureUrl;
+    String container = cLInfo.bucket;
+    if (configData.useAzureIam) {
+      return createBlobContainerClientWithIam(azureUrl, container);
+    } else {
+      Map<String, String> containerTokenMap = getContainerTokenMap(configData);
+      String containerEndpoint = String.format("%s/%s", azureUrl, container);
+      String sasToken = containerTokenMap.get(containerEndpoint);
+      if (StringUtils.isEmpty(sasToken)) {
+        sasToken = configData.azureSasToken;
+      }
+      return createBlobContainerClient(azureUrl, sasToken, container);
+    }
+  }
+
+  public BlobContainerClient createBlobContainerClient(
+      CustomerConfigStorageAzureData configData, String azureUrl, String container)
+      throws BlobStorageException {
+    if (configData.useAzureIam) {
+      return createBlobContainerClientWithIam(azureUrl, container);
+    } else {
+      return createBlobContainerClient(azureUrl, configData.azureSasToken, container);
+    }
+  }
+
   @Override
   public boolean deleteStorage(
       CustomerConfigData configData, Map<String, List<String>> backupRegionLocationsMap) {
     CustomerConfigStorageAzureData azData = (CustomerConfigStorageAzureData) configData;
-    Map<String, String> containerTokenMap = getContainerTokenMap(azData);
+    Map<String, String> regionLocationsMap = getRegionLocationsMap(configData);
     for (Map.Entry<String, List<String>> backupRegionLocations :
         backupRegionLocationsMap.entrySet()) {
       String region = backupRegionLocations.getKey();
       try {
-        CloudLocationInfoAzure cLInfo =
-            (CloudLocationInfoAzure) getCloudLocationInfo(region, configData, "");
-        String azureUrl = cLInfo.azureUrl;
-        String container = cLInfo.bucket;
-        String containerEndpoint = String.format("%s/%s", azureUrl, container);
-        String sasToken = containerTokenMap.get(containerEndpoint);
-        if (StringUtils.isEmpty(sasToken)) {
-          log.error("No SAS token for given region {}, container {}", region, container);
-        }
-        BlobContainerClient blobContainerClient =
-            createBlobContainerClient(azureUrl, sasToken, container);
+        BlobContainerClient blobContainerClient = createBlobContainerClient(azData, region);
         for (String backupLocation : backupRegionLocations.getValue()) {
           try {
-            cLInfo =
+            CloudLocationInfoAzure backupCLInfo =
                 (CloudLocationInfoAzure) getCloudLocationInfo(region, configData, backupLocation);
-            String blob = cLInfo.cloudPath;
+            String blob = backupCLInfo.cloudPath;
             ListBlobsOptions blobsOptions = new ListBlobsOptions().setPrefix(blob);
             PagedIterable<BlobItem> pagedIterable =
                 blobContainerClient.listBlobs(blobsOptions, Duration.ofHours(4));
             Iterator<PagedResponse<BlobItem>> pagedResponse =
                 pagedIterable.iterableByPage().iterator();
-            log.debug("Retrieved blobs info for container " + container + " with prefix " + blob);
+            log.debug("Retrieved blobs info for location {} with prefix {}", backupLocation, blob);
             retrieveAndDeleteObjects(pagedResponse, blobContainerClient);
           } catch (BlobStorageException e) {
             log.error(
@@ -417,20 +429,29 @@ public class AZUtil implements CloudUtil {
         (CloudLocationInfoAzure) getCloudLocationInfo(region, configData, "");
     String azureUrl = csInfoAzure.azureUrl;
     String container = csInfoAzure.bucket;
-    Map<String, String> containerTokenMap = getContainerTokenMap(azData);
-    String containerEndpoint = String.format("%s/%s", azureUrl, container);
-    String azureSasToken = containerTokenMap.get(containerEndpoint);
-    Map<String, String> azCredsMap = createCredsMapYbc(azureSasToken, azureUrl);
+    Map<String, String> azCredsMap = createCredsMapYbc(azData, azureUrl, container);
     return new Pair<String, Map<String, String>>(container, azCredsMap);
   }
 
-  private Map<String, String> createCredsMapYbc(String azureSasToken, String azureContainerUrl) {
+  private Map<String, String> createCredsMapYbc(
+      CustomerConfigStorageAzureData azData, String azureUrl, String container) {
     Map<String, String> azCredsMap = new HashMap<>();
-    if (!azureSasToken.startsWith("?")) {
-      azureSasToken = "?" + azureSasToken;
+    Map<String, String> containerTokenMap = getContainerTokenMap(azData);
+    String containerEndpoint = String.format("%s/%s", azureUrl, container);
+    String azureSasToken = containerTokenMap.get(containerEndpoint);
+    if (StringUtils.isNotBlank(azureSasToken)) {
+      if (!azureSasToken.startsWith("?")) {
+        azureSasToken = "?" + azureSasToken;
+      }
+      azCredsMap.put(YBC_AZURE_STORAGE_SAS_TOKEN_FIELDNAME, azureSasToken);
+    } else if (azData.useAzureIam) {
+      azCredsMap.put(YBC_USE_AZURE_IAM_FIELDNAME, "true");
+    } else {
+      throw new RuntimeException(
+          "Neither 'AZURE_STORAGE_SAS_TOKEN' nor 'USE_AZURE_IAM' are present in the backup"
+              + " config.");
     }
-    azCredsMap.put(YBC_AZURE_STORAGE_SAS_TOKEN_FIELDNAME, azureSasToken);
-    azCredsMap.put(YBC_AZURE_STORAGE_END_POINT_FIELDNAME, azureContainerUrl);
+    azCredsMap.put(YBC_AZURE_STORAGE_END_POINT_FIELDNAME, azureUrl);
     return azCredsMap;
   }
 
@@ -470,15 +491,15 @@ public class AZUtil implements CloudUtil {
     try {
       CustomerConfigStorageAzureData azData = (CustomerConfigStorageAzureData) configData;
       BlobContainerClient blobContainerClient =
-          createBlobContainerClient(azData.azureSasToken, azData.backupLocation);
+          createBlobContainerClient(azData, YbcBackupUtil.DEFAULT_REGION_STRING);
       AtomicInteger count = new AtomicInteger(0);
       return locations.stream()
           .map(
               l -> {
-                CloudLocationInfoAzure cLInfo =
+                CloudLocationInfoAzure locationCLInfo =
                     (CloudLocationInfoAzure)
                         getCloudLocationInfo(YbcBackupUtil.DEFAULT_REGION_STRING, configData, l);
-                String blob = cLInfo.cloudPath;
+                String blob = locationCLInfo.cloudPath;
 
                 // objectSuffix is the exact suffix with file name
                 String objectSuffix =
@@ -505,13 +526,14 @@ public class AZUtil implements CloudUtil {
   public void validate(CustomerConfigData configData, List<ExtraPermissionToValidate> permissions)
       throws Exception {
     CustomerConfigStorageAzureData azData = (CustomerConfigStorageAzureData) configData;
-    if (!StringUtils.isEmpty(azData.azureSasToken)) {
+    if (azData.useAzureIam || !StringUtils.isEmpty(azData.azureSasToken)) {
       CloudLocationInfoAzure cLInfo =
           (CloudLocationInfoAzure)
               getCloudLocationInfo(
                   YbcBackupUtil.DEFAULT_REGION_STRING, azData, azData.backupLocation);
-      String cloudPath = cLInfo.cloudPath;
-      validateTokenAndLocation(azData.azureSasToken, azData.backupLocation, cloudPath, permissions);
+      BlobContainerClient client =
+          createBlobContainerClient(azData, YbcBackupUtil.DEFAULT_REGION_STRING);
+      validateOnBlobContainerClient(client, cLInfo.cloudPath, permissions);
       if (CollectionUtils.isNotEmpty(azData.regionLocations)) {
         azData.regionLocations.stream()
             .forEach(
@@ -519,15 +541,16 @@ public class AZUtil implements CloudUtil {
                   CloudLocationInfoAzure cLInfoRegion =
                       (CloudLocationInfoAzure)
                           getCloudLocationInfo(location.region, azData, location.location);
-                  String regionalCloudPath = cLInfoRegion.cloudPath;
-                  validateTokenAndLocation(
-                      location.azureSasToken, location.location, regionalCloudPath, permissions);
+                  BlobContainerClient regionClient =
+                      createBlobContainerClient(azData, location.region);
+                  validateOnBlobContainerClient(regionClient, cLInfoRegion.cloudPath, permissions);
                 });
       }
     } else {
       throw new PlatformServiceException(
           BAD_REQUEST,
-          "Not carrying out Azure Storage Config validation because sas token is empty!");
+          "Not carrying out Azure Storage Config validation because neither SAS token nor IAM is"
+              + " configured!");
     }
   }
 
@@ -569,19 +592,6 @@ public class AZUtil implements CloudUtil {
     }
 
     validateDelete(blobContainerClient, completeObjectPath);
-  }
-
-  /**
-   * Validates create permissions on an azure sas token and location, apart from read, list or
-   * delete permissions if specified.
-   */
-  private void validateTokenAndLocation(
-      String sasToken,
-      String location,
-      String cloudPath,
-      List<ExtraPermissionToValidate> permissions) {
-    BlobContainerClient blobContainerClient = createBlobContainerClient(sasToken, location);
-    validateOnBlobContainerClient(blobContainerClient, cloudPath, permissions);
   }
 
   /**

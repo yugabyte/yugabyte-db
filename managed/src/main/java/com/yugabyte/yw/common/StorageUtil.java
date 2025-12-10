@@ -58,6 +58,10 @@ public interface StorageUtil {
         universe);
   }
 
+  public default boolean isIamEnabled(CustomerConfig config) {
+    return false;
+  }
+
   public default org.yb.ybc.ProxyConfig createYbcProxyConfig(
       Universe universe, CustomerConfigData configData) {
     return null;

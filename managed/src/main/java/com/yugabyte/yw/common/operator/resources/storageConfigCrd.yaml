@@ -65,7 +65,7 @@ spec:
                       description: AWS secret access key for the S3 storage configuration.
                       type: string
                     USE_IAM:
-                      description: Use IAM for storage account access. Valid for S3/GCS.
+                      description: Use IAM for storage account access. Valid for S3/GCS/AZ.
                       type: boolean
                     BACKUP_LOCATION:
                       description: Backup location for the storage configuration.

@@ -85,9 +85,11 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
         iamFieldName = CustomerConfigConsts.USE_S3_IAM_FIELDNAME;
       } else if (configType.equals(CustomerConfigConsts.NAME_GCS)) {
         iamFieldName = CustomerConfigConsts.USE_GCP_IAM_FIELDNAME;
+      } else if (configType.equals(CustomerConfigConsts.NAME_AZURE)) {
+        iamFieldName = CustomerConfigConsts.USE_AZURE_IAM_FIELDNAME;
       } else {
         throw new RuntimeException(
-            String.format("IAM only works with S3/GCS but %s config type used", configType));
+            String.format("IAM only works with S3/GCS/AZ but %s config type used", configType));
       }
       object.put(iamFieldName, useIAM);
     }
