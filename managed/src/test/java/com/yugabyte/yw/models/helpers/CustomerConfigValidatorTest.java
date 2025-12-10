@@ -93,6 +93,7 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
             mockStorageUtilFactory,
             app.injector().instanceOf(RuntimeConfGetter.class),
             mockAWSUtil,
+            mockAZUtil,
             mockGCPUtil);
     when(mockStorageUtilFactory.getCloudUtil("AZ")).thenReturn(mockAZUtil);
     doCallRealMethod().when(mockAWSUtil).getRegionLocationsMap(any());
@@ -1070,7 +1071,7 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
     "https://stoe.ws.net/container, fakeToken, null, false",
     "https://stoe.ws.net, fakeToken, Invalid azUriPath format: https://stoe.ws.net, false",
     "http://stoe.ws.net, fakeToken, Invalid field value 'http://stoe.ws.net', false",
-    "https://storagetestazure.windows.net/container, tttt, Invalid SAS token!, true"
+    "https://storagetestazure.windows.net/container, tttt, Invalid credentials!, true"
   })
   @Test
   public void testValidateDataContent_Storage_AZPreflightCheckValidator(

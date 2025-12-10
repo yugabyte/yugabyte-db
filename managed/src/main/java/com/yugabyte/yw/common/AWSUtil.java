@@ -62,6 +62,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data.RegionLocations;
@@ -228,6 +229,11 @@ public class AWSUtil implements CloudUtil {
     } finally {
       maybeEnableCertVerification();
     }
+  }
+
+  @Override
+  public boolean isIamEnabled(CustomerConfig config) {
+    return ((CustomerConfigStorageS3Data) config.getDataObject()).isIAMInstanceProfile;
   }
 
   @Override

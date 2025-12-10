@@ -41,6 +41,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData.RegionLocations;
@@ -133,6 +134,11 @@ public class GCPUtil implements CloudUtil {
         || backupLocation.startsWith(HTTPS_PROTOCOL_PREFIX))) {
       throw new PlatformServiceException(PRECONDITION_FAILED, "Not a GCS location");
     }
+  }
+
+  @Override
+  public boolean isIamEnabled(CustomerConfig config) {
+    return ((CustomerConfigStorageGCSData) config.getDataObject()).useGcpIam;
   }
 
   @Override

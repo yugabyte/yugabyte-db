@@ -5,6 +5,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.doReturn;
@@ -241,7 +242,7 @@ public class AZUtilTest {
       azData.backupLocation = "https://test-account.blob.core.windows.net/test-container/backup";
       when(mockAZUtil.getSplitLocationValue(any())).thenCallRealMethod();
       mockedStaticAZUtil
-          .when(() -> AZUtil.createBlobContainerClient(any(), any(), any()))
+          .when(() -> AZUtil.createBlobContainerClient(anyString(), anyString(), anyString()))
           .thenReturn(mockBlobContainerClient);
 
       // Mock the listBlobs method to throw exception
@@ -578,7 +579,9 @@ public class AZUtilTest {
     CloudLocationInfoAzure cLInfo =
         mockAZUtil.new CloudLocationInfoAzure(azureUrl, bucket, cloudPath);
     doReturn(cLInfo).when(mockAZUtil).getCloudLocationInfo(any(), any(), any());
-    doReturn(mockBlobContainerClient).when(mockAZUtil).createBlobContainerClient(any(), any());
+    doReturn(mockBlobContainerClient)
+        .when(mockAZUtil)
+        .createBlobContainerClient(any(CustomerConfigStorageAzureData.class), anyString());
     UUID randomFile = UUID.randomUUID();
     when(mockAZUtil.getRandomUUID()).thenReturn(randomFile);
     mockAZUtil.validate(azData, new ArrayList<>());

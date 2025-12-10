@@ -19,6 +19,8 @@ public class CustomerConfigConsts {
 
   public static final String USE_S3_IAM_FIELDNAME = "IAM_INSTANCE_PROFILE";
 
+  public static final String USE_AZURE_IAM_FIELDNAME = "USE_AZURE_IAM";
+
   public static final String NAME_S3 = "S3";
 
   public static final String NAME_GCS = "GCS";
