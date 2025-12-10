@@ -2970,9 +2970,6 @@ ybcBuildRequiredAttrs(YbScanDesc yb_scan, YbScanPlan scan_plan,
 				ybcAddNonDroppedAttr(target_desc, attnum, &result);
 	}
 
-	if (index && !index->rd_index->indisprimary && !is_index_only_scan)
-		ybcAttnumBmsAdd(&result, YBIdxBaseTupleIdAttributeNumber);
-
 	return result;
 }
 
@@ -3123,11 +3120,6 @@ YbDmlAppendTargetsAggregate(List *aggrefs, Scan *outer_plan,
 		/* Add aggregate operator as scan target. */
 		HandleYBStatus(YBCPgDmlAppendTarget(handle, op_handle));
 	}
-
-	/* Set ybbasectid in case of non-primary secondary index scan. */
-	if (index && !xs_want_itup && !index->rd_index->indisprimary)
-		YbDmlAppendTargetSystem(YBIdxBaseTupleIdAttributeNumber,
-								handle);
 }
 
 /*

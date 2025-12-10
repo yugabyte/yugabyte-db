@@ -52,14 +52,14 @@ template <class T>
 concept PgDocResultYbctidProcessor = InvocableAs<T, void(Slice, const RefCntBuffer&)>;
 
 //--------------------------------------------------------------------------------------------------
-// PgDocResult represents a batch of rows in ONE reply from tablet servers.
-class PgDocResult {
+// DocResult represents data in ONE reply from tablet servers.
+class DocResult {
  public:
-  explicit PgDocResult(rpc::SidecarHolder data);
-  PgDocResult(rpc::SidecarHolder data, const LWPgsqlResponsePB& response);
+  explicit DocResult(rpc::SidecarHolder data);
+  DocResult(rpc::SidecarHolder data, const LWPgsqlResponsePB& response);
 
-  PgDocResult(const PgDocResult&) = delete;
-  PgDocResult& operator=(const PgDocResult&) = delete;
+  DocResult(const DocResult&) = delete;
+  DocResult& operator=(const DocResult&) = delete;
 
   // Get the order of the next row in this batch.
   int64_t NextRowOrder() const;
@@ -119,7 +119,7 @@ class PgDocResult {
 
 class PgDocOp;
 
-// PgsqlResultStream's fetch status.
+// DocResultStream's fetch status.
 // kHasLocalData - there are buffered data in the queue.
 // kNeedsFetch - no buffered data in the queue, but the operation is active.
 // kDone - no buffered data in the queue, and operation is not defined or inactive.
@@ -127,14 +127,14 @@ YB_DEFINE_ENUM(StreamFetchStatus, (kHasLocalData)(kNeedsFetch)(kDone));
 
 // Stream of data from a DocDB source, usually a tablet.
 // Since DocDB sources are ordered, designed to maintain the order.
-// In fact, implements a wrapper for a queue of PgDocResult instances.
-class PgsqlResultStream {
+// In fact, implements a wrapper for a queue of DocResult instances.
+class DocResultStream {
  public:
-  // PgsqlResultStream provides access to either fetchable or static data.
+  // DocResultStream provides access to either fetchable or static data.
   // Fetchable data require PgsqlOpPtr to check if it is active, so there's something to fetch.
-  // Static data is a predefined list of PgDocResult.
-  explicit PgsqlResultStream(PgsqlOpPtr op);
-  explicit PgsqlResultStream(std::list<PgDocResult>&& results);
+  // Static data is a predefined list of DocResult.
+  explicit DocResultStream(PgsqlOpPtr op);
+  explicit DocResultStream(std::list<DocResult>&& results);
 
   bool operator==(const PgsqlOpPtr& op) const { return op_ == op; }
 
@@ -147,7 +147,7 @@ class PgsqlResultStream {
 
  private:
   // Returns nullptr if nothing is available. May invalidate previously returned data.
-  Result<PgDocResult*> GetNextDocResult();
+  Result<DocResult*> GetNextDocResult();
 
   // Append another batch of the fetched data to the queue and return the number of
   // rows received
@@ -156,9 +156,9 @@ class PgsqlResultStream {
   friend class PgDocResultStream;
 
   PgsqlOpPtr op_;
-  std::list<PgDocResult> results_queue_;
+  std::list<DocResult> results_queue_;
 
-  DISALLOW_COPY_AND_ASSIGN(PgsqlResultStream);
+  DISALLOW_COPY_AND_ASSIGN(DocResultStream);
 };
 
 using PgDocFetchCallback = std::function<Status()>;
@@ -209,26 +209,26 @@ class PgDocResultStream {
   }
 
   // To be used by the PgDocOp's fetcher.
-  // Find PgsqlResultStream for the op and put the fetched data into the queue.
+  // Find DocResultStream for the op and put the fetched data into the queue.
   // Returns the number of rows received.
   Result<uint64_t> EmplaceOpDocResult(
       const PgsqlOpPtr& op, rpc::SidecarHolder&& data, const LWPgsqlResponsePB& response);
 
  protected:
-  // Next PgsqlResultStream to read from. Key method to implement by the subclasses.
-  virtual Result<PgsqlResultStream*> NextReadStream() = 0;
+  // Next DocResultStream to read from. Key method to implement by the subclasses.
+  virtual Result<DocResultStream*> NextReadStream() = 0;
 
   // Find the op to put response data to.
-  // Subclasses may store their PgsqlResultStream differently and should implement this method to
+  // Subclasses may store their DocResultStream differently and should implement this method to
   // provide access to the PgDocOp's fetcher.
-  virtual Result<PgsqlResultStream&> FindReadStream(
+  virtual Result<DocResultStream&> FindReadStream(
       const PgsqlOpPtr& op, const LWPgsqlResponsePB& response) = 0;
 
   PgDocFetchCallback fetch_func_;
 
  private:
-  // Returns first PgDocResult from NextReadStream() or nullptr if EOF.
-  Result<PgDocResult*> NextDocResult();
+  // Returns first DocResult from NextReadStream() or nullptr if EOF.
+  Result<DocResult*> NextDocResult();
 
   DISALLOW_COPY_AND_ASSIGN(PgDocResultStream);
 };
@@ -247,19 +247,19 @@ class ParallelPgDocResultStream : public PgDocResultStream {
   virtual void ResetOps(const std::vector<PgsqlOpPtr> &ops) override;
 
  protected:
-  virtual Result<PgsqlResultStream*> NextReadStream() override;
+  virtual Result<DocResultStream*> NextReadStream() override;
 
-  virtual Result<PgsqlResultStream&> FindReadStream(
+  virtual Result<DocResultStream&> FindReadStream(
       const PgsqlOpPtr& op, const LWPgsqlResponsePB& response) override;
 
  private:
-  std::list<PgsqlResultStream> read_streams_;
+  std::list<DocResultStream> read_streams_;
 };
 
 // CachedPgDocResultStream provides access to static (cached) data.
 class CachedPgDocResultStream : public PgDocResultStream {
  public:
-  explicit CachedPgDocResultStream(std::list<PgDocResult>&& results);
+  explicit CachedPgDocResultStream(std::list<DocResult>&& results);
 
   virtual ~CachedPgDocResultStream() = default;
 
@@ -268,22 +268,22 @@ class CachedPgDocResultStream : public PgDocResultStream {
   virtual void ResetOps(const std::vector<PgsqlOpPtr> &ops) override;
 
  protected:
-  virtual Result<PgsqlResultStream*> NextReadStream() override;
+  virtual Result<DocResultStream*> NextReadStream() override;
 
-  virtual Result<PgsqlResultStream&> FindReadStream(
+  virtual Result<DocResultStream&> FindReadStream(
       const PgsqlOpPtr& op, const LWPgsqlResponsePB& response) override;
 
  private:
-  PgsqlResultStream read_stream_;
+  DocResultStream read_stream_;
 };
 
 // Implementation of PgDocResultStream which merge sorts rows in its streams.
 // Each stream is expected to be pre-sorted in the same order.
 // The MergingPgDocResultStream takes a function, which retrieves order from the order of the first
-// row in the PgsqlResultStream as a value of type T. The MergingPgDocResultStream puts
-// PgsqlResultStreams into priority queue and uses values returned by the row order function as the
+// row in the DocResultStream as a value of type T. The MergingPgDocResultStream puts
+// DocResultStreams into priority queue and uses values returned by the row order function as the
 // priorities. It is assumed that order values are retrieved from locally buffered data, so only
-// PgsqlResultStreams with locally buffered data are put to the queue. The merge sort algorithm
+// DocResultStreams with locally buffered data are put to the queue. The merge sort algorithm
 // require all the streams to provide the order of their first element. Therefore
 // MergingPgDocResultStream keeps fetching until all participant have some locally buffered data.
 // Like other PgDocResultStream subclasses, the MergingPgDocResultStream can be reset. Obviously,
@@ -294,7 +294,7 @@ class MergingPgDocResultStream : public PgDocResultStream {
  public:
   MergingPgDocResultStream(
       PgDocFetchCallback fetch_func, const std::vector<PgsqlOpPtr>& ops,
-      std::function<T(PgsqlResultStream*)> get_order_fn);
+      std::function<T(DocResultStream*)> get_order_fn);
 
   virtual ~MergingPgDocResultStream() = default;
 
@@ -303,23 +303,23 @@ class MergingPgDocResultStream : public PgDocResultStream {
   virtual void ResetOps(const std::vector<PgsqlOpPtr> &ops) override;
 
  protected:
-  virtual Result<PgsqlResultStream*> NextReadStream() override;
+  virtual Result<DocResultStream*> NextReadStream() override;
 
-  virtual Result<PgsqlResultStream&> FindReadStream(
+  virtual Result<DocResultStream&> FindReadStream(
       const PgsqlOpPtr& op, const LWPgsqlResponsePB& response) override;
 
  private:
   // The list of streams participating in merge sort.
-  std::list<PgsqlResultStream> read_streams_;
+  std::list<DocResultStream> read_streams_;
 
   const struct StreamComparator {
-    std::function<T(PgsqlResultStream*)> get_order_fn_;
-    bool operator()(PgsqlResultStream* a, PgsqlResultStream* b) const {
+    std::function<T(DocResultStream*)> get_order_fn_;
+    bool operator()(DocResultStream* a, DocResultStream* b) const {
       return get_order_fn_(a) > get_order_fn_(b);
     }
   } comp_;
   using MergeSortPQ =
-      std::priority_queue<PgsqlResultStream*, std::vector<PgsqlResultStream*>, StreamComparator>;
+      std::priority_queue<DocResultStream*, std::vector<DocResultStream*>, StreamComparator>;
   // Pointers to read_streams_ elements ordered.
   MergeSortPQ read_queue_;
   // Last result of NextReadStream. The pointer is not in the read_queue_.
@@ -327,7 +327,7 @@ class MergingPgDocResultStream : public PgDocResultStream {
   // otherwise MergingPgDocResultStream may not work correctly.
   // Next time when NextReadStream will be called, current_stream_ will be added to the read_queue_
   // with new priority, unless exhausted.
-  PgsqlResultStream* current_stream_ = nullptr;
+  DocResultStream* current_stream_ = nullptr;
   // The MergingPgDocResultStream starts and ends the batch with empty read queue.
   // We need this flag to distinguish not yet initialized batch from exhausted.
   bool started_ = false;
@@ -339,7 +339,7 @@ class MergingPgDocResultStream : public PgDocResultStream {
 // - PgDocOp: Shared functionalities among all ops, mostly just RPC calls to tablet servers.
 // - PgDocReadOp: Definition for data & method members to be used in READ operation.
 // - PgDocWriteOp: Definition for data & method members to be used in WRITE operation.
-// - PgDocResult: Definition data holder before they are passed to Postgres layer.
+// - DocResult: Definition data holder before they are passed to Postgres layer.
 //
 // Processing Steps
 // (1) Collecting Data:
@@ -370,7 +370,7 @@ class MergingPgDocResultStream : public PgDocResultStream {
 //        PgSession::RunAsync(pgsql_ops_.data(), active_op_count)
 //
 // (4) ReadResponse:
-//     Response are written to a local cache PgDocResult.
+//     Response are written to a local cache DocResult.
 //
 // This API has several sets of methods and attributes for different purposes.
 // (1) Build request.
@@ -427,7 +427,7 @@ class MergingPgDocResultStream : public PgDocResultStream {
 // (4) Return result
 //  This section return result via PgGate API to postgres.
 //  * Attributes
-//    - Objects of class PgDocResult
+//    - Objects of class DocResult
 //    - rows_affected_count_: Number of rows that was operated by this doc_op.
 //  * Methods
 //    - GetResult()
