@@ -3652,6 +3652,32 @@ class PgClientSession::Impl {
         ResetReadPoint(kind);
       } else {
         VLOG_WITH_PREFIX(3) << "Keep read time: " << session.read_point()->GetReadTime();
+
+        // TODO: The below check would have caught #29283.
+        //
+        // Weexpect a read time to be already set except for cases such as:
+        //
+        // 1. Serializable isolation
+        //
+        // 2. NON_TRANSACTIONAL writes. For example, the PgOpBufferingTest.FKCheckWithNonTxnWrites
+        // test results in an INSERT performing a NON_TRANSACTIONAL write followed by a
+        // transactional write with the same read_time_serial_no. This will fail the below check.
+        //
+        // 3. Any session other than kPlain
+        //
+        // 4. The rpcs before this rpc were AcquireObjectLock rpcs which don't pick a
+        //    read time.
+        //
+        // The check is disabled now because the above list might not be exhaustive.
+        //
+        // auto invariant = session.read_point()->GetReadTime().read != HybridTime::kInvalid ||
+        //     !is_plain_session ||
+        //     (txn && txn->isolation() == SERIALIZABLE_ISOLATION) ||
+        //     (options.isolation() == IsolationLevel::NON_TRANSACTIONAL);
+        // if (!invariant) {
+        //   LOG(ERROR) << "Read time is expected to be set";
+        //   return STATUS(IllegalState, "Read time is expected to be set");
+        // }
       }
     }
 
@@ -3661,6 +3687,8 @@ class PgClientSession::Impl {
     if (!options.ddl_mode() && !options.use_catalog_session() && options.defer_read_point()) {
       // For DMLs, only fast path writes cannot be deferred.
       RETURN_NOT_OK(session.read_point()->TrySetDeferredCurrentReadTime());
+      VLOG_WITH_PREFIX(3) << "Set current read time for deferred mode "
+          << session.read_point()->GetReadTime();
     }
 
     // TODO: Reset in_txn_limit which might be on session from past Perform? Not resetting will not

@@ -334,8 +334,7 @@ bool IsTableAffectedByOperations(
 }
 
 std::optional<ReadTimeAction> MakeReadTimeActionForFlush(const PgTxnManager& txn_manager) {
-  // TODO(#29283): Change this to IsDdlModeWithSeparateTransaction()
-  if (txn_manager.IsDdlMode()) {
+  if (txn_manager.IsDdlModeWithSeparateTransaction()) {
     return std::nullopt;
   }
   return txn_manager.GetIsolationLevel() == IsolationLevel::NON_TRANSACTIONAL
