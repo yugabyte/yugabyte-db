@@ -2,8 +2,20 @@
   "dbVersions":
   [
     {
-      "series": "v2025.1",
+      "series": "v2025.2",
       "alias": "stable",
+      "display": "v2025.2 (LTS)",
+      "version": "2025.2.0.0",
+      "versionShort": "2025.2.0",
+      "appVersion": "2025.2.0.0-b131",
+      "isStable": true,
+      "isLTS": true,
+      "initialRelease": "2025-12-11",
+      "endOfMaintenance": "2027-12-11",
+      "endOfLife": "2028-06-11"
+    },
+      {
+      "series": "v2025.1",
       "display": "v2025.1 (LTS)",
       "version": "2025.1.2.1",
       "versionShort": "2025.1.2",
