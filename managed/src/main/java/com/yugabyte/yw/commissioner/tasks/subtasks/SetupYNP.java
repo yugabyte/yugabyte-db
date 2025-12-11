@@ -57,6 +57,11 @@ public class SetupYNP extends NodeTaskBase {
     return (Params) taskParams;
   }
 
+  @Override
+  public int getRetryLimit() {
+    return 2;
+  }
+
   void removeNodeAgentDirectory(
       NodeDetails node, Universe universe, ShellProcessContext shellContext, String nodeAgentHome) {
     List<String> command = getCommand("/bin/bash", "-c", "rm -rf", nodeAgentHome);

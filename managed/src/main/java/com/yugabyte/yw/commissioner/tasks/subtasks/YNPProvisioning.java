@@ -73,6 +73,11 @@ public class YNPProvisioning extends NodeTaskBase {
     return (Params) taskParams;
   }
 
+  @Override
+  public int getRetryLimit() {
+    return 2;
+  }
+
   public void getProvisionArguments(
       Universe universe,
       NodeDetails node,
