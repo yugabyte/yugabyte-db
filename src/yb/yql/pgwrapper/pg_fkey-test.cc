@@ -40,6 +40,7 @@ DECLARE_bool(enable_wait_queues);
 DECLARE_bool(pg_client_use_shared_memory);
 DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_string(ysql_pg_conf_csv);
+DECLARE_bool(enable_object_locking_for_table_locks);
 
 namespace yb::pgwrapper {
 namespace {
@@ -87,6 +88,8 @@ class PgFKeyTest : public PgMiniTestBase {
     // Disable auto analyze in this test suite because it introduce flakiness of metrics.
     FLAGS_ysql_enable_auto_analyze = false;
     AppendPgConfOption(MaxQueryLayerRetriesConf(0));
+    // Tests assert for expected rpc counts from ysql which change with object locking enabled.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
     PgMiniTestBase::SetUp();
     rpc_count_.emplace(*cluster_->mini_tablet_server(0)->server()->metric_entity());
   }
