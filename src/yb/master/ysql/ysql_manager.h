@@ -131,6 +131,10 @@ class YsqlManager : public YsqlManagerIf {
       const PgTableAllOids& oids,
       const ReadHybridTime& read_time = ReadHybridTime()) const override;
 
+  Result<bool> GetPgIndexStatus(
+      PgOid database_oid, PgOid index_oid, const std::string& status_col_name,
+      const ReadHybridTime& read_time = ReadHybridTime()) const override;
+
  private:
   Result<bool> StartRunningInitDbIfNeededInternal(const LeaderEpoch& epoch);
 

@@ -11,6 +11,7 @@
 // under the License.
 
 #include <memory>
+#include <optional>
 #include <queue>
 #include <unordered_set>
 
@@ -631,15 +632,13 @@ Status CatalogManager::RepackSnapshotsForBackup(
 
     unordered_set<TableId> tables_to_skip;
     for (SysRowEntry& entry : *sys_entry.mutable_entries()) {
-      BackupRowEntryPB* const backup_entry = snapshot.add_backup_entries();
-
       // Setup BackupRowEntryPB fields.
       // Set BackupRowEntryPB::pg_schema_name for YSQL table to disambiguate in case tables
       // in different schema have same name.
+      std::optional<string> pg_schema_name_to_set;
       if (entry.type() == SysRowEntryType::TABLE) {
         // Skip repacking the special table sequences_data as sequences are backed up in ysql_dump
         if (entry.id() == kPgSequencesDataTableId) {
-          snapshot.mutable_backup_entries()->RemoveLast();
           // Keep track of table so we skip its tablets as well. Note, since tablets always
           // follow their table in sys_entry, we don't need to check previous tablet entries.
           tables_to_skip.insert(entry.id());
@@ -680,7 +679,6 @@ Status CatalogManager::RepackSnapshotsForBackup(
             if (res.status().IsNotFound() &&
                 MasterError(res.status()) == MasterErrorPB::DOCDB_TABLE_NOT_COMMITTED) {
               LOG(WARNING) << "Skipping backup of table " << table_info->id() << " : " << res;
-              snapshot.mutable_backup_entries()->RemoveLast();
               // Keep track of table so we skip its tablets as well. Note, since tablets
               // always follow their table in sys_entry, we don't need to check previous
               // tablet entries.
@@ -693,7 +691,22 @@ Status CatalogManager::RepackSnapshotsForBackup(
           }
           const string pg_schema_name = res.get();
           VLOG(1) << "PG Schema: " << pg_schema_name << " for table " << table_info->ToString();
-          backup_entry->set_pg_schema_name(pg_schema_name);
+          // If this DocDB table is an index, check pg_index.indisvalid as of the snapshot time and
+          // skip exporting invalid indexes.
+          if (table_info->is_index()) {
+            const auto oids = VERIFY_RESULT(table_info->GetPgTableAllOids());
+            const bool is_valid = VERIFY_RESULT(GetYsqlManager().GetPgIndexStatus(
+                oids.database_oid, oids.pg_table_oid, "indisvalid", snapshot_hybrid_time));
+            if (!is_valid) {
+              LOG(INFO) << "Skipping backup of invalid index table " << table_info->id();
+              // Keep track of table so we skip its tablets as well. Note, since tablets
+              // always follow their table in sys_entry, we don't need to check previous
+              // tablet entries.
+              tables_to_skip.insert(table_info->id());
+              continue;
+            }
+          }
+          pg_schema_name_to_set = pg_schema_name;
         }
       } else if (!tables_to_skip.empty() && entry.type() == SysRowEntryType::TABLET) {
         // Note: Ordering here is important, we expect tablet entries only after their table entry.
@@ -701,12 +714,14 @@ Status CatalogManager::RepackSnapshotsForBackup(
         if (tables_to_skip.contains(meta.table_id())) {
           LOG(WARNING) << "Skipping backup of tablet " << entry.id() << " since its table "
                        << meta.table_id() << " was skipped.";
-          snapshot.mutable_backup_entries()->RemoveLast();
           continue;
         }
       }
 
-      // Init BackupRowEntryPB::entry.
+      BackupRowEntryPB* const backup_entry = snapshot.add_backup_entries();
+      if (pg_schema_name_to_set.has_value()) {
+        backup_entry->set_pg_schema_name(*pg_schema_name_to_set);
+      }
       backup_entry->mutable_entry()->Swap(&entry);
     }
 
