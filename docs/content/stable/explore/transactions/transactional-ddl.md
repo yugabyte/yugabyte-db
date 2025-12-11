@@ -4,8 +4,6 @@ headerTitle: Transactional DDL
 linkTitle: Transactional DDL
 description: Learn how YugabyteDB handles DDLs in a transaction
 headcontent: Learn how YugabyteDB handles DDLs in a transaction
-tags:
-   feature: tech-preview
 menu:
   stable:
     identifier: transactional-ddl
