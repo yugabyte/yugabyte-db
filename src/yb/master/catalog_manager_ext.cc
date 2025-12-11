@@ -496,12 +496,14 @@ Result<std::vector<TableDescription>> CatalogManager::CollectTablesAsOfTime(
     const auto tablet_id = tablet_id_slice.ToString();
     SysTabletsEntryPB tablet_pb =
         VERIFY_RESULT(pb_util::ParseFromSlice<SysTabletsEntryPB>(metadata_slice));
-
-    if (tablet_pb.state() != SysTabletsEntryPB::RUNNING) {
+    // TODO(Yamen): Handle split tablet issue GH-29059.
+    if (tablet_pb.state() == SysTabletsEntryPB::DELETED ||
+        tablet_pb.state() == SysTabletsEntryPB::REPLACED) {
       return Status::OK();
     }
 
-    if (tables_to_tablets.contains(tablet_pb.table_id())) {
+    if (tables_to_tablets.contains(tablet_pb.table_id()) &&
+        tablet_pb.split_tablet_ids_size() == 0) {
       VLOG_WITH_PREFIX_AND_FUNC(2) << "Including tablet " << tablet_id << " for table "
                                    << tablet_pb.table_id() << " as of time " << read_time;
       tables_to_tablets[tablet_pb.table_id()].tablets_entries.push_back(
