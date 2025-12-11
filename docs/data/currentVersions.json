@@ -10,9 +10,9 @@
       "appVersion": "2025.2.0.0-b131",
       "isStable": true,
       "isLTS": true,
-      "initialRelease": "2025-12-10",
-      "endOfMaintenance": "2027-12-10",
-      "endOfLife": "2028-06-10"
+      "initialRelease": "2025-12-11",
+      "endOfMaintenance": "2027-12-11",
+      "endOfLife": "2028-06-11"
     },
       {
       "series": "v2025.1",
