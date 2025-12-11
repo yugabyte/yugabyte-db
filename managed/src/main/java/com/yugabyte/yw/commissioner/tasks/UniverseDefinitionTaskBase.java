@@ -2366,6 +2366,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             params.sshUser = imageBundleUtil.findEffectiveSshUser(provider, universe, n);
           }
           params.nodeName = n.nodeName;
+          params.azUuid = n.azUuid;
           params.customerUuid = customer.getUuid();
           params.setUniverseUUID(universe.getUniverseUUID());
           params.nodeAgentInstallDir = installPath;
@@ -2417,6 +2418,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           }
           params.deviceInfo = userIntent.getDeviceInfoForNode(n);
           params.nodeName = n.nodeName;
+          params.azUuid = n.azUuid;
           params.customerUuid = customer.getUuid();
           params.setUniverseUUID(universe.getUniverseUUID());
           params.nodeAgentInstallDir = installPath;
