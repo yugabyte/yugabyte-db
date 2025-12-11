@@ -272,6 +272,9 @@ public class KubernetesOperator {
                   YBProviderReconciler ybProviderReconciler =
                       reconcilerFactory.getYBProviderReconciler(client);
 
+                  PitrConfigReconciler pitrConfigReconciler =
+                      reconcilerFactory.getPitrConfigReconciler(client);
+
                   ReleaseReconciler releaseReconciler =
                       new ReleaseReconciler(
                           ybSoftwareReleaseIndexInformer,
@@ -349,22 +352,28 @@ public class KubernetesOperator {
                   Thread scheduledBackupReconcilerThread =
                       new Thread(() -> scheduledBackupReconciler.run());
                   Thread ybProviderReconcilerThread = new Thread(() -> ybProviderReconciler.run());
+                  Thread pitrConfigReconcilerThread = new Thread(() -> pitrConfigReconciler.run());
                   if (confGetter.getGlobalConf(
                       GlobalConfKeys.KubernetesOperatorCrashYbaOnOperatorFail)) {
                     Thread.UncaughtExceptionHandler exceptionHandler = getExceptionHandler();
                     ybUniverseReconcilerThread.setUncaughtExceptionHandler(exceptionHandler);
                     scheduledBackupReconcilerThread.setUncaughtExceptionHandler(exceptionHandler);
                     ybProviderReconcilerThread.setUncaughtExceptionHandler(exceptionHandler);
+                    pitrConfigReconcilerThread.setUncaughtExceptionHandler(exceptionHandler);
                   }
                   ybUniverseReconcilerThread.start();
                   scheduledBackupReconcilerThread.start();
                   ybProviderReconcilerThread.start();
+                  pitrConfigReconcilerThread.start();
 
                   ybUniverseReconcilerThread.join();
                   scheduledBackupReconcilerThread.join();
                   ybProviderReconcilerThread.join();
+                  pitrConfigReconcilerThread.join();
 
-                  LOG.info("Finished running ybUniverseController");
+                  LOG.info(
+                      "Finished running ybUniverseController, scheduledBackupReconciler,"
+                          + " ybProviderReconcilerThread, pitrConfigReconcilerThread");
                 } catch (KubernetesClientException | ExecutionException exception) {
                   LOG.error("Kubernetes Client Exception : ", exception);
                   throw new RuntimeException(

@@ -313,6 +313,9 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
 
   YbcReadPointHandle GetCatalogSnapshotReadPoint(YbcPgOid table_oid, bool create_if_not_exists);
 
+  // Returns current PostgreSQL replication origin id for this backend session (0 if unset).
+  uint16_t GetSessionReplicationOriginId() const;
+
  private:
   Result<PgTableDescPtr> DoLoadTable(
       const PgObjectId& table_id, bool fail_on_cache_hit,

@@ -119,7 +119,7 @@ class GcpCreateRootVolumesMethod(CreateRootVolumesMethod):
         res = self.cloud.get_admin().create_disk(args.zone, args.instance_tags, body={
             "name": name,
             "sizeGb": args.boot_disk_size_gb,
-            "diskType": deviceType,
+            "type": deviceType,
             "sourceImage": args.machine_image})
         return res["targetLink"]
 

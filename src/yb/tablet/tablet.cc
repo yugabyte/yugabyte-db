@@ -451,9 +451,9 @@ class YSQLMetricsScope : public MetricsScope {
     }
 
     if (GetAtomicFlag(&FLAGS_ysql_analyze_dump_metrics) &&
-        metrics_capture_ == PgsqlMetricsCaptureType::PGSQL_METRICS_CAPTURE_ALL) {
-      scoped_tablet_metrics_.CopyToPgsqlResponse(&pgsql_response_);
-      scoped_docdb_statistics_.CopyToPgsqlResponse(&pgsql_response_);
+        metrics_capture_ != PgsqlMetricsCaptureType::PGSQL_METRICS_CAPTURE_NONE) {
+      scoped_tablet_metrics_.CopyToPgsqlResponse(&pgsql_response_, metrics_capture_);
+      scoped_docdb_statistics_.CopyToPgsqlResponse(&pgsql_response_, metrics_capture_);
     }
   }
 

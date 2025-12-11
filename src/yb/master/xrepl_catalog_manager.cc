@@ -1488,7 +1488,7 @@ Status CatalogManager::PopulateCDCStateTableWithCDCSDKSnapshotSafeOpIdDetails(
   TEST_SYNC_POINT("PopulateCDCStateTableWithCDCSDKSnapshotSafeOpIdDetails::Start");
 
   LOG_WITH_FUNC(INFO) << "Table id: " << table->id()
-                      << "Tablet id: " << tablet_id
+                      << ", Tablet id: " << tablet_id
                       << ", Stream id:" << cdc_sdk_stream_id.ToString()
                       << ", snapshot safe opid: " << snapshot_safe_opid.term()
                       << " and " << snapshot_safe_opid.index()
@@ -2638,10 +2638,10 @@ Result<std::vector<CDCStreamInfoPtr>> CatalogManager::FindXReplStreamsMarkedForD
   for (const CDCStreamInfoMap::value_type& entry : cdc_stream_map_) {
     auto ltm = entry.second->LockForRead();
     if (deletion_state == SysCDCStreamEntryPB::DELETING_METADATA && ltm->is_deleting_metadata()) {
-      LOG(INFO) << "Stream " << entry.second->id() << " was marked as DELETING_METADATA";
+      VLOG(2) << "Stream " << entry.second->id() << " was marked as DELETING_METADATA";
       streams.push_back(entry.second);
     } else if (deletion_state == SysCDCStreamEntryPB::DELETING && ltm->is_deleting()) {
-      LOG(INFO) << "Stream " << entry.second->id() << " was marked as DELETING";
+      VLOG(2) << "Stream " << entry.second->id() << " was marked as DELETING";
       streams.push_back(entry.second);
     }
   }

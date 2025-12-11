@@ -155,6 +155,7 @@ struct NotifyApplyingData {
   SubtxnSetPB aborted;
   HybridTime commit_time;
   bool sealed;
+  uint32_t xrepl_origin_id = 0;
   // Only for external/xcluster transactions. How long to wait before retrying a failed apply
   // transaction.
   std::string ToString() const {
@@ -959,6 +960,9 @@ class TransactionState {
     }
 
     status_ = TransactionStatus::COMMITTED;
+    if (data.state.has_xrepl_origin_id()) {
+      xrepl_origin_id_ = data.state.xrepl_origin_id();
+    }
     StartApply();
     return Status::OK();
   }
@@ -1026,12 +1030,14 @@ class TransactionState {
     tablets_with_not_applied_intents_ = involved_tablets_.size();
     if (context_.leader()) {
       for (const auto& tablet : involved_tablets_) {
-        context_.NotifyApplying(
-            {.tablet = tablet.first,
-             .transaction = id_,
-             .aborted = GetAbortedSubtxnInfo()->pb(),
-             .commit_time = commit_time_,
-             .sealed = status_ == TransactionStatus::SEALED});
+        context_.NotifyApplying({
+            .tablet = tablet.first,
+            .transaction = id_,
+            .aborted = GetAbortedSubtxnInfo()->pb(),
+            .commit_time = commit_time_,
+            .sealed = status_ == TransactionStatus::SEALED,
+            .xrepl_origin_id = xrepl_origin_id_,
+        });
       }
     }
     NotifyAbortWaiters(TransactionStatusResult(TransactionStatus::COMMITTED, commit_time_));
@@ -1121,6 +1127,7 @@ class TransactionState {
   // Indicates whether the wait-for dependency from session level txn to the regular txn has changed
   // based on which the coordinator forwards the wait-for probe to the deadlock detector.
   bool forward_probe_to_detector_ = false;
+  uint32_t xrepl_origin_id_ = 0;
 };
 
 struct CompleteWithStatusEntry {
@@ -1663,6 +1670,9 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
     state.add_tablets(context_.tablet_id());
     state.set_commit_hybrid_time(action.commit_time.ToUint64());
     state.set_sealed(action.sealed);
+    if (action.xrepl_origin_id) {
+      state.set_xrepl_origin_id(action.xrepl_origin_id);
+    }
     *state.mutable_aborted() = action.aborted;
 
     auto handle = rpcs_.Prepare();

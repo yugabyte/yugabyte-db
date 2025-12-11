@@ -99,7 +99,7 @@ MasterTabletServer::MasterTabletServer(Master* master, scoped_refptr<MetricEntit
     : master_(master), metric_entity_(metric_entity) {
 }
 
-tserver::TSTabletManager* MasterTabletServer::tablet_manager() {
+tserver::TSTabletManager* MasterTabletServer::tablet_manager() const {
   return nullptr;
 }
 

@@ -42,7 +42,7 @@ enum YB_CLI_AUTH_STATUS {
  * Forward a "WARNING" packet as a "FATAL" packet to the client.
  * WARNING packets are of type KIWI_BE_NOTICE_RESPONSE.
  */
-static int yb_forward_fatal_msg(od_server_t *client,
+static int yb_forward_fatal_msg(od_client_t *client,
 				machine_msg_t *warning_packet)
 {
 	int rc = 0;

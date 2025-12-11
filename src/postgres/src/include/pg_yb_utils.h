@@ -1188,6 +1188,12 @@ extern void YbRecordCommitLatency(uint64_t latency_us);
 void		YbSetMetricsCaptureType(YbcPgMetricsCaptureType metrics_capture);
 
 /*
+ * Update the global flag indicating what metric changes to capture and return
+ * from the tserver to PG only if the flag is YB_YQL_METRICS_CAPTURE_NONE.
+ */
+ extern void YbSetMetricsCaptureTypeIfUnset(YbcPgMetricsCaptureType metrics_capture);
+
+/*
  * If the tserver gflag --ysql_disable_server_file_access is set to
  * true, then prevent any server file writes/reads/execution.
  */

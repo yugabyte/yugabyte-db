@@ -464,11 +464,6 @@ ybginSetupTargets(IndexScanDesc scan)
 	tupdesc = RelationGetDescr(scan->heapRelation);
 
 	/*
-	 * IndexScan needs to get base ctids from the index table to pass as binds
-	 * to the base table.  This is handled in the pggate layer.
-	 */
-	YbDmlAppendTargetSystem(YBIdxBaseTupleIdAttributeNumber, ybso->handle);
-	/*
 	 * For scans that touch the base table, we seem to always query for the
 	 * ybctid, even if the table may have explicit primary keys.  A lower layer
 	 * probably filters this out when not applicable.

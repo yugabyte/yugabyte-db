@@ -689,6 +689,7 @@ static int od_config_reader_listen(od_config_reader_t *reader)
 				return OK_RESPONSE;
 			}
 			/* fall through */
+			yb_od_attribute_fallthrough;
 		default:
 			od_config_reader_error(
 				reader, &token,
@@ -811,6 +812,7 @@ static int od_config_reader_storage(od_config_reader_t *reader,
 				return OK_RESPONSE;
 			}
 			/* fall through */
+			yb_od_attribute_fallthrough;
 		default:
 			od_config_reader_error(
 				reader, &token,
@@ -975,6 +977,7 @@ static inline int od_config_reader_pgoptions(od_config_reader_t *reader,
 		if (token.value.num == '{')
 			break;
 		/* fall through */
+		yb_od_attribute_fallthrough;
 	default:
 		od_config_reader_error(reader, &token,
 				       "incorrect or unexpected parameter");
@@ -1007,6 +1010,7 @@ static inline int od_config_reader_pgoptions(od_config_reader_t *reader,
 			if (token.value.num == '}')
 				return 0;
 			/* fall through */
+			yb_od_attribute_fallthrough;
 		case OD_PARSER_KEYWORD:
 		default:
 			od_config_reader_error(
@@ -1082,6 +1086,7 @@ od_config_reader_ldap_storage_credentials(od_config_reader_t *reader,
 				return OK_RESPONSE;
 			}
 			/* fall through */
+			yb_od_attribute_fallthrough;
 		case OD_PARSER_KEYWORD:
 			break;
 		default:
@@ -1156,6 +1161,7 @@ static int od_config_reader_rule_settings(od_config_reader_t *reader,
 			if (token.value.num == '}')
 				return 0;
 			/* fall through */
+			yb_od_attribute_fallthrough;
 		default:
 			od_config_reader_error(
 				reader, &token,
@@ -1750,6 +1756,7 @@ od_config_reader_ldap_endpoint(od_config_reader_t *reader)
 				goto init;
 			}
 			/* fall through */
+			yb_od_attribute_fallthrough;
 		case OD_PARSER_KEYWORD:
 			break;
 		default:
@@ -1882,6 +1889,7 @@ static inline od_retcode_t od_config_reader_module(od_config_reader_t *reader,
 					return 0;
 				}
 				/* fall through */
+				yb_od_attribute_fallthrough;
 			default:
 				continue;
 			}
@@ -1956,6 +1964,7 @@ static int od_config_reader_database(od_config_reader_t *reader,
 				return 0;
 			}
 			/* fall through */
+			yb_od_attribute_fallthrough;
 		default:
 			od_config_reader_error(
 				reader, &token,
@@ -2321,6 +2330,7 @@ static int od_config_reader_parse(od_config_reader_t *reader,
 				}
 			}
 			// fall through
+			yb_od_attribute_fallthrough;
 			default:
 				od_config_reader_error(
 					reader, &tok,

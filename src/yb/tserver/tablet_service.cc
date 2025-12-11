@@ -565,9 +565,10 @@ class WriteQueryCompletionCallback {
     auto tablet_metrics = query_->scoped_tablet_metrics();
     auto statistics = query_->scoped_statistics();
 
-    if (auto* resp = query_->GetPgsqlResponseForMetricsCapture()) {
-      tablet_metrics.CopyToPgsqlResponse(resp);
-      statistics.CopyToPgsqlResponse(resp);
+    auto [resp_ptr, metrics_capture] = query_->GetPgsqlResponseAndMetricsCapture();
+    if (resp_ptr) {
+      tablet_metrics.CopyToPgsqlResponse(resp_ptr, metrics_capture);
+      statistics.CopyToPgsqlResponse(resp_ptr, metrics_capture);
     }
   }
 

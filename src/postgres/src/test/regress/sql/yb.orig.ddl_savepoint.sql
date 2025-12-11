@@ -155,3 +155,24 @@ CREATE INDEX test_table_idx_mv ON test_table_mv (val);
 SELECT indexname FROM pg_indexes WHERE indexname = 'test_table_idx_mv';
 ROLLBACK TO SAVEPOINT s3_refreshed_mv;
 ROLLBACK;
+
+-- #29538: No Schema version mismatch in case of ALTER TABLE
+CREATE TABLE schema_version_mismatch_table (
+    id INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    val TEXT
+);
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+SAVEPOINT s1_start;
+ALTER TABLE schema_version_mismatch_table ALTER COLUMN id RESTART WITH 100;
+INSERT INTO schema_version_mismatch_table (val) VALUES ('c');
+SELECT id FROM schema_version_mismatch_table WHERE val = 'c';
+SAVEPOINT s2_restarted;
+ALTER TABLE schema_version_mismatch_table ALTER COLUMN id DROP IDENTITY;
+INSERT INTO schema_version_mismatch_table (id, val) VALUES (500, 'd');
+ROLLBACK TO SAVEPOINT s2_restarted;
+INSERT INTO schema_version_mismatch_table (val) VALUES ('e');
+SELECT id FROM schema_version_mismatch_table WHERE val = 'e';
+ROLLBACK TO SAVEPOINT s1_start;
+INSERT INTO schema_version_mismatch_table (val) VALUES ('f');
+SELECT id FROM schema_version_mismatch_table WHERE val = 'f';
+ROLLBACK;

@@ -709,6 +709,7 @@ static inline bool od_should_drop_connection(od_client_t *client,
 		}
 	}
 		/* fall through */
+		yb_od_attribute_fallthrough;
 	case OD_RULE_POOL_STATEMENT:
 	case OD_RULE_POOL_TRANSACTION: {
 		//TODO:: drop no more than X connection per sec/min/whatever
@@ -3053,6 +3054,12 @@ int yb_auth_via_auth_backend(od_client_t *client)
 			client, NULL,
 			"failed to allocate internal client for the auth backend");
 		goto failed_to_acquire_auth_backend;
+	}
+
+	if (client->startup.replication.value_len != 0) {
+		yb_kiwi_var_set(&control_conn_client->startup.replication,
+			client->startup.replication.value,
+			client->startup.replication.value_len);
 	}
 
 	/*

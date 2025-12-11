@@ -936,6 +936,10 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
 
   DCHECK(!options.has_read_time() || options.isolation() != IsolationLevel::SERIALIZABLE_ISOLATION);
 
+  if (auto origin_id = GetSessionReplicationOriginId()) {
+    options.set_xrepl_origin_id(origin_id);
+  }
+
   DEBUG_ONLY(pg_txn_manager_->DEBUG_CheckOptionsForPerform(options));
 
   VLOG(2) << "Perform options: " << options.ShortDebugString();
@@ -1311,6 +1315,10 @@ Status PgSession::AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLoc
 YbcReadPointHandle PgSession::GetCatalogSnapshotReadPoint(
     YbcPgOid table_oid, bool create_if_not_exists) {
   return pg_callbacks_.GetCatalogSnapshotReadPoint(table_oid, create_if_not_exists);
+}
+
+uint16_t PgSession::GetSessionReplicationOriginId() const {
+  return pg_callbacks_.GetSessionReplicationOriginId();
 }
 
 }  // namespace yb::pggate

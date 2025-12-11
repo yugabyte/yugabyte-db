@@ -783,6 +783,8 @@ message PgPerformOptionsPB {
   bool clamp_uncertainty_window = 24;
 
   bool xcluster_target_ddl_bypass = 26;
+
+  uint32 xrepl_origin_id = 31;
 }
 
 message PgPerformRequestPB {

@@ -557,6 +557,9 @@ void HandleExtraFields(YBPgsqlWriteOp* op, tserver::WriteRequestPB* req) {
   if (op->write_time()) {
     req->set_external_hybrid_time(op->write_time().ToUint64());
   }
+  if (op->XreplOriginId()) {
+    req->set_xrepl_origin_id(op->XreplOriginId());
+  }
 }
 
 void HandleExtraFields(YBqlReadOp* op, tserver::ReadRequestPB* req) {

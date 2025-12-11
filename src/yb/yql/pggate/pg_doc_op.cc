@@ -57,7 +57,7 @@ class PgDocReadOpCached : private PgDocReadOpCachedHelper, public PgDocOp {
  public:
   PgDocReadOpCached(const PgSession::ScopedRefPtr& pg_session, PrefetchedDataHolder data)
       : PgDocOp(pg_session, &dummy_table) {
-    std::list<PgDocResult> results;
+    std::list<DocResult> results;
     for (const auto& d : *data) {
       results.emplace_back(d);
     }
@@ -253,13 +253,13 @@ LWPgsqlReadRequestPB& AsReadReq(const PgsqlOpPtr& op) {
 
 } // namespace
 
-PgDocResult::PgDocResult(rpc::SidecarHolder data)
+DocResult::DocResult(rpc::SidecarHolder data)
     : data_(std::move(data)), current_row_idx_(0) {
   PgDocData::LoadCache(data_.second, &row_count_, &row_iterator_);
 }
 
-PgDocResult::PgDocResult(rpc::SidecarHolder data, const LWPgsqlResponsePB& response)
-    : PgDocResult(std::move(data)) {
+DocResult::DocResult(rpc::SidecarHolder data, const LWPgsqlResponsePB& response)
+    : DocResult(std::move(data)) {
   if (!response.batch_orders().empty()) {
     const auto& orders = response.batch_orders();
     row_orders_.assign(orders.begin(), orders.end());
@@ -268,13 +268,13 @@ PgDocResult::PgDocResult(rpc::SidecarHolder data, const LWPgsqlResponsePB& respo
   }
 }
 
-int64_t PgDocResult::NextRowOrder() const {
+int64_t DocResult::NextRowOrder() const {
   DCHECK(current_row_idx_ < static_cast<size_t>(row_count_));
   DCHECK(!row_orders_.empty());
   return row_orders_[current_row_idx_];
 }
 
-Status PgDocResult::WritePgTuple(const std::vector<PgFetchedTarget*>& targets, PgTuple *pg_tuple) {
+Status DocResult::WritePgTuple(const std::vector<PgFetchedTarget*>& targets, PgTuple *pg_tuple) {
   for (auto* target : targets) {
     if (PgDocData::ReadHeaderIsNull(&row_iterator_)) {
       target->SetNull(pg_tuple);
@@ -286,7 +286,7 @@ Status PgDocResult::WritePgTuple(const std::vector<PgFetchedTarget*>& targets, P
   return Status::OK();
 }
 
-Result<Slice> PgDocResult::ReadYbctid(Slice& data) {
+Result<Slice> DocResult::ReadYbctid(Slice& data) {
   SCHECK(!PgDocData::ReadHeaderIsNull(&data), InternalError, "System column ybctid cannot be NULL");
   const auto data_size = PgDocData::ReadNumber<int64_t>(&data);
   const auto* data_ptr = data.data();
@@ -297,12 +297,12 @@ Result<Slice> PgDocResult::ReadYbctid(Slice& data) {
 
 //--------------------------------------------------------------------------------------------------
 
-PgsqlResultStream::PgsqlResultStream(PgsqlOpPtr op) : op_(op) {}
+DocResultStream::DocResultStream(PgsqlOpPtr op) : op_(op) {}
 
-PgsqlResultStream::PgsqlResultStream(std::list<PgDocResult>&& results)
+DocResultStream::DocResultStream(std::list<DocResult>&& results)
     : results_queue_(std::move(results)) {}
 
-Result<PgDocResult*> PgsqlResultStream::GetNextDocResult() {
+Result<DocResult*> DocResultStream::GetNextDocResult() {
   while (!results_queue_.empty() && results_queue_.front().is_eof()) {
     results_queue_.pop_front();
   }
@@ -315,7 +315,7 @@ Result<PgDocResult*> PgsqlResultStream::GetNextDocResult() {
   return nullptr;
 }
 
-uint64_t PgsqlResultStream::EmplaceDocResult(
+uint64_t DocResultStream::EmplaceDocResult(
     rpc::SidecarHolder&& data, const LWPgsqlResponsePB& response) {
   results_queue_.emplace_back(std::move(data), response);
   uint64_t rows_received = results_queue_.back().row_count();
@@ -330,13 +330,13 @@ uint64_t PgsqlResultStream::EmplaceDocResult(
   return rows_received;
 }
 
-int64_t PgsqlResultStream::NextRowOrder() {
+int64_t DocResultStream::NextRowOrder() {
   auto res = GetNextDocResult();
   DCHECK(res.ok());
   return (*res)->NextRowOrder();
 }
 
-StreamFetchStatus PgsqlResultStream::FetchStatus() const {
+StreamFetchStatus DocResultStream::FetchStatus() const {
   for (const auto& result : results_queue_) {
     if (!result.is_eof()) {
       return StreamFetchStatus::kHasLocalData;
@@ -345,7 +345,7 @@ StreamFetchStatus PgsqlResultStream::FetchStatus() const {
   return (op_ && op_->is_active()) ? StreamFetchStatus::kNeedsFetch : StreamFetchStatus::kDone;
 }
 
-void PgsqlResultStream::Detach() {
+void DocResultStream::Detach() {
   if (op_) {
     DCHECK(!op_->is_active());
     op_ = nullptr;
@@ -354,7 +354,7 @@ void PgsqlResultStream::Detach() {
 
 PgDocResultStream::PgDocResultStream(PgDocFetchCallback fetch_func) : fetch_func_(fetch_func) {}
 
-Result<PgDocResult*> PgDocResultStream::NextDocResult() {
+Result<DocResult*> PgDocResultStream::NextDocResult() {
   auto pgsql_op_stream = VERIFY_RESULT(NextReadStream());
   return pgsql_op_stream ? pgsql_op_stream->GetNextDocResult() : nullptr;
 }
@@ -393,7 +393,7 @@ void ParallelPgDocResultStream::ResetOps(const std::vector<PgsqlOpPtr>& ops) {
   }
 }
 
-Result<PgsqlResultStream*> ParallelPgDocResultStream::NextReadStream() {
+Result<DocResultStream*> ParallelPgDocResultStream::NextReadStream() {
   for (;;) {
     for (auto it = read_streams_.begin(); it != read_streams_.end();) {
       switch (it->FetchStatus()) {
@@ -420,7 +420,7 @@ Result<PgsqlResultStream*> ParallelPgDocResultStream::NextReadStream() {
   return STATUS(RuntimeError, "Unreachable statement");
 }
 
-Result<PgsqlResultStream&> ParallelPgDocResultStream::FindReadStream(
+Result<DocResultStream&> ParallelPgDocResultStream::FindReadStream(
     const PgsqlOpPtr& op, const LWPgsqlResponsePB& response) {
   auto it = std::find(read_streams_.begin(), read_streams_.end(), op);
   if (it == read_streams_.end()) {
@@ -429,7 +429,7 @@ Result<PgsqlResultStream&> ParallelPgDocResultStream::FindReadStream(
   return *it;
 }
 
-CachedPgDocResultStream::CachedPgDocResultStream(std::list<PgDocResult>&& results)
+CachedPgDocResultStream::CachedPgDocResultStream(std::list<DocResult>&& results)
     : PgDocResultStream([]() {
           return STATUS(RuntimeError, "CachedPgDocResultStream does not fetch");
       }),
@@ -439,19 +439,19 @@ void CachedPgDocResultStream::ResetOps(const std::vector<PgsqlOpPtr>& ops) {
   LOG(FATAL) << "Can't reset CachedPgDocResultStream";
 }
 
-Result<PgsqlResultStream&> CachedPgDocResultStream::FindReadStream(
+Result<DocResultStream&> CachedPgDocResultStream::FindReadStream(
     const PgsqlOpPtr& op, const LWPgsqlResponsePB& response) {
   return STATUS(RuntimeError, Format("Operation $0 not found", op));
 }
 
-Result<PgsqlResultStream*> CachedPgDocResultStream::NextReadStream() {
+Result<DocResultStream*> CachedPgDocResultStream::NextReadStream() {
   return read_stream_.FetchStatus() == StreamFetchStatus::kDone ? nullptr : &read_stream_;
 }
 
 template <typename T>
 MergingPgDocResultStream<T>::MergingPgDocResultStream(
     PgDocFetchCallback fetch_func, const std::vector<PgsqlOpPtr>& ops,
-    std::function<T(PgsqlResultStream*)> get_order_fn)
+    std::function<T(DocResultStream*)> get_order_fn)
     : PgDocResultStream(fetch_func), comp_({get_order_fn}), read_queue_(comp_) {
   ResetOps(ops);
 }
@@ -477,7 +477,7 @@ void MergingPgDocResultStream<T>::ResetOps(const std::vector<PgsqlOpPtr>& ops) {
 }
 
 template <typename T>
-Result<PgsqlResultStream&> MergingPgDocResultStream<T>::FindReadStream(
+Result<DocResultStream&> MergingPgDocResultStream<T>::FindReadStream(
     const PgsqlOpPtr& op, const LWPgsqlResponsePB& response) {
   if (response.has_paging_state()) {
     // If request paginates, we don't know what it exactly means, has DocDB hit some limit and
@@ -510,7 +510,7 @@ Result<PgsqlResultStream&> MergingPgDocResultStream<T>::FindReadStream(
 }
 
 template <typename T>
-Result<PgsqlResultStream*> MergingPgDocResultStream<T>::NextReadStream() {
+Result<DocResultStream*> MergingPgDocResultStream<T>::NextReadStream() {
   if (!started_) {
     VLOG_WITH_FUNC(2) << "Initialize merge sort of " << read_streams_.size() << " streams";
     DCHECK(current_stream_ == nullptr);
@@ -1215,7 +1215,7 @@ Status PgDocReadOp::DoPopulateByYbctidOps(const YbctidGenerator& generator, Keep
       result_stream_ = std::make_unique<MergingPgDocResultStream<int64_t>>(
           [this]() { return this->FetchMoreResults(); },
           pgsql_ops_,
-          [](PgsqlResultStream* stream) { return stream->NextRowOrder(); });
+          [](DocResultStream* stream) { return stream->NextRowOrder(); });
       VLOG(3) << "Created MergingPgDocResultStream";
     }
   }

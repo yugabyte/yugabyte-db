@@ -111,6 +111,7 @@
 #include "pg_yb_utils.h"
 #include "pgstat.h"
 #include "postmaster/interrupt.h"
+#include "replication/origin.h"
 #ifndef HAVE_GETRUSAGE
 #include "rusagestub.h"
 #endif
@@ -1121,6 +1122,12 @@ IpAddressToBytes(YbcPgAshConfig *ash_config)
 	}
 }
 
+static uint16_t
+YbGetSessionReplicationOriginId(void)
+{
+	return replorigin_session_origin;
+}
+
 void
 YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *init_info)
 {
@@ -1143,8 +1150,8 @@ YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *ini
 			.ConstructArrayDatum = &YbConstructArrayDatum,
 			.CheckUserMap = &check_usermap,
 			.PgstatReportWaitStart = &yb_pgstat_report_wait_start,
-			.GetCatalogSnapshotReadPoint = &YbGetCatalogSnapshotReadPoint
-		};
+			.GetCatalogSnapshotReadPoint = &YbGetCatalogSnapshotReadPoint,
+			.GetSessionReplicationOriginId = &YbGetSessionReplicationOriginId};
 
 		ash_config.metadata = &MyProc->yb_ash_metadata;
 
@@ -1471,6 +1478,8 @@ YBCRollbackToSubTransaction(SubTransactionId id)
 	if (unlikely(status))
 		elog(FATAL, "Failed to rollback to subtransaction %" PRId32 ": %s",
 			 id, YBCMessageAsCString(status));
+
+	YbInvalidateTableCacheForAlteredTables();
 }
 
 bool
@@ -4337,6 +4346,8 @@ YBCInstallTxnDdlHook()
  *    1. Phase 3 scan/rewrite tables.
  *    2. Any failures during the ALTER TABLE operation, if DDL + DML transaction
  *       support is disabled.
+ * c) ROLLBACK TO SAVEPOINT operation if DDL savepoint support is enabled and
+ *    transaction block included an ALTER TABLE operation.
  */
 void
 YbInvalidateTableCacheForAlteredTables()
@@ -7015,6 +7026,13 @@ void
 YbSetMetricsCaptureType(YbcPgMetricsCaptureType metrics_capture)
 {
 	yb_session_stats.current_state.metrics_capture = metrics_capture;
+}
+
+void
+YbSetMetricsCaptureTypeIfUnset(YbcPgMetricsCaptureType metrics_capture)
+{
+	if (yb_session_stats.current_state.metrics_capture == YB_YQL_METRICS_CAPTURE_NONE)
+		yb_session_stats.current_state.metrics_capture = metrics_capture;
 }
 
 void
