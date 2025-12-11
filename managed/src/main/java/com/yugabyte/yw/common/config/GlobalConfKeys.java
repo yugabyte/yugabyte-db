@@ -1711,4 +1711,13 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable AWS signing region for S3 access",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> allowLocalLoginWithSso =
+      new ConfKeyInfo<>(
+          "yb.security.allow_local_login_with_sso",
+          ScopeType.GLOBAL,
+          "Allow Local Login with SSO",
+          "Allow local user login with SSO enabled. when disabled, only superAdmin can login using"
+              + " local credentials.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
