@@ -22,6 +22,7 @@ import java.sql.Connection;
 import java.sql.Statement;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.Test;
@@ -54,6 +55,16 @@ public class TestSchemaVersionMismatch extends BasePgSQLTest {
   
   private static final String updateSqlWithPlaceholder = String.format(updateSqlTemplate, "?");
   private static final String updateSqlWithUuid = String.format(updateSqlTemplate, "'" + uuid + "'");
+
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    // The test expects schema version mismatch errors admist processing of DDLs, most of which
+    // are eliminated with object locking. Hence, disable the feature for the test.
+    flagMap.put("enable_object_locking_for_table_locks", "false");
+    flagMap.put("allowed_preview_flags_csv", "enable_object_locking_for_table_locks");
+    return flagMap;
+  }
 
   /**
    * Helper method to setup the test table with initial data.
