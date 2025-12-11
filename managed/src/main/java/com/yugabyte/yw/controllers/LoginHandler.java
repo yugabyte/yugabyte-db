@@ -65,7 +65,9 @@ public class LoginHandler {
       throw new PlatformServiceException(Status.UNAUTHORIZED, "Invalid User Credentials.");
     }
 
-    if (useOAuth && !user.getRole().equals(Role.SuperAdmin)) {
+    boolean allowLocalLoginWithSso =
+        this.confGetter.getGlobalConf(GlobalConfKeys.allowLocalLoginWithSso);
+    if (useOAuth && !user.getRole().equals(Role.SuperAdmin) && !allowLocalLoginWithSso) {
       throw new PlatformServiceException(
           Status.UNAUTHORIZED,
           "Only SuperAdmin access permitted via normal login when SSO is enabled.");

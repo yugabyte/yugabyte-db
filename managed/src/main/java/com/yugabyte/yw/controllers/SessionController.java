@@ -402,10 +402,15 @@ public class SessionController extends AbstractPlatformController {
     boolean useOAuth = runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.use_oauth");
     boolean showJWTTokenInfo =
         runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.showJWTInfoOnLogin");
+    boolean allowLocalLoginWithSso =
+        runtimeConfigFactory
+            .globalRuntimeConf()
+            .getBoolean("yb.security.allow_local_login_with_sso");
     String platformConfig = "window.YB_Platform_Config = window.YB_Platform_Config || %s";
     ObjectNode responseJson = Json.newObject();
     responseJson.put("use_oauth", useOAuth);
     responseJson.put("show_jwt_token_info", showJWTTokenInfo);
+    responseJson.put("allow_local_login_with_sso", allowLocalLoginWithSso);
     platformConfig = String.format(platformConfig, responseJson.toString());
     return ok(platformConfig).as(MimeTypes.JSON);
   }
