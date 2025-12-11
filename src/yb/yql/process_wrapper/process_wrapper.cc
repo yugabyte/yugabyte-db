@@ -49,8 +49,6 @@ void ProcessWrapper::Kill(int signal) {
 
 void ProcessWrapper::Shutdown() { Kill(); }
 
-void ProcessWrapper::ImmediateShutdown() { Shutdown(); }
-
 // ------------------------------------------------------------------------------------------------
 // ProcessWrapper: managing one instance of a child process
 // ------------------------------------------------------------------------------------------------
@@ -196,7 +194,7 @@ Status ProcessSupervisor::StopProcessAndChangeState(YbSubProcessState new_state)
           IllegalState, "State must be either paused or running, state is $0", state_);
     }
     if (process_wrapper_) {
-      process_wrapper_->ImmediateShutdown();
+      process_wrapper_->Shutdown();
     }
     state_ = new_state;
   }
