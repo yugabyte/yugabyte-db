@@ -90,6 +90,9 @@ uint16_t GetSessionReplicationOriginId() {
   return 0;
 }
 
+void CheckForInterruptsNoOp() {
+}
+
 } // namespace
 
 PggateTest::PggateTest() = default;
@@ -168,6 +171,7 @@ Status PggateTest::Init(
   callbacks.PgstatReportWaitStart = &PgstatReportWaitStartNoOp;
   callbacks.GetCatalogSnapshotReadPoint = &GetCatalogSnapshotReadPoint;
   callbacks.GetSessionReplicationOriginId = &GetSessionReplicationOriginId;
+  callbacks.CheckForInterrupts = &CheckForInterruptsNoOp;
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_pggate_tserver_shared_memory_uuid) =
       cluster_->tablet_server(0)->instance_id().permanent_uuid();
