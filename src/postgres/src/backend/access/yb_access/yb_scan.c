@@ -443,10 +443,10 @@ YbDmlAppendTargetImpl(YbcPgStatement handle, AttrNumber attnum, Oid typid, Oid c
 {
 	const YbcPgTypeAttrs type_attrs = {.typmod = typmod};
 
-	HandleYBStatus(YBCPgDmlAppendTarget(handle, YBCNewColumnRef(handle,
-																attnum, typid,
-																collation,
-																&type_attrs)));
+	HandleYBStatus(YBCPgDmlAppendTarget(handle,
+										YBCNewColumnRef(handle, attnum, typid,
+														collation, &type_attrs),
+										false /* is_for_secondary_index */ ));
 }
 
 /*
@@ -3118,7 +3118,8 @@ YbDmlAppendTargetsAggregate(List *aggrefs, Scan *outer_plan,
 		}
 
 		/* Add aggregate operator as scan target. */
-		HandleYBStatus(YBCPgDmlAppendTarget(handle, op_handle));
+		HandleYBStatus(YBCPgDmlAppendTarget(handle, op_handle,
+											false /* is_for_secondary_index */ ));
 	}
 }
 
@@ -3146,7 +3147,7 @@ YbDmlAppendTargets(List *colrefs, YbcPgStatement handle)
 							   colref->typid,
 							   colref->collid,
 							   &type_attrs);
-		HandleYBStatus(YBCPgDmlAppendTarget(handle, expr));
+		HandleYBStatus(YBCPgDmlAppendTarget(handle, expr, false /* is_for_secondary_index */ ));
 	}
 }
 
@@ -3221,6 +3222,118 @@ void
 YbApplySecondaryIndexPushdown(YbcPgStatement dml, const YbPushdownExprs *pushdown)
 {
 	YbApplyPushdownImpl(dml, pushdown, true /* is_for_secondary_index */ );
+}
+
+/*
+ * Allows to call ApplySortComparator from the PgGate, which does not know
+ * Datum, SortSupport data types.
+ */
+static inline int
+yb_sort_comparator_adapter(uint64_t datum1, bool isnull1,
+						   uint64_t datum2, bool isnull2, void *state)
+{
+	return ApplySortComparator((Datum) datum1, isnull1,
+							   (Datum) datum2, isnull2, (SortSupport) state);
+}
+
+/*
+ * YbAddSortTarget - add specified attribute to the secondary index scan as a target
+ *
+ * Typically the only target on the secondary index scan is the base table ybctid.
+ * However, if the secondary index scan performs merge sort of multiple streams,
+ * it also needs to fetch and parse values of the sort keys, hence they are added
+ * as the targets.
+ */
+static void
+YbAddSortTarget(YbcPgStatement stmt, TupleDesc tupdesc, AttrNumber attno)
+{
+	Form_pg_attribute attr = TupleDescAttr(tupdesc, attno - 1);
+	YbcPgTypeAttrs type_attrs = {attr->atttypmod};
+	Oid			attcollation = YBEncodingCollation(stmt, attno,
+												   ybc_get_attcollation(tupdesc, attno));
+	YbcPgExpr	colref = YBCNewColumnRef(stmt, attno, attr->atttypid, attcollation, &type_attrs);
+
+	HandleYBStatus(YBCPgDmlAppendTarget(stmt, colref, true /* is_for_secondary_index */ ));
+}
+
+/*
+ * YbApplyMergeSortKeys - set up planned merge sort in PgGate
+ *
+ * Apply merge sort info to the scan. merge stream conditions are expected to be applied separately.
+ * Merge sort assumes ordered data, so it is applicable to Index and IndexOnly scan with defined
+ * scan order.
+ */
+static void
+YbApplyMergeSortKeys(YbScanDesc ybScan, Scan *pg_scan_plan)
+{
+	YbSortInfo *sort_info = NULL;
+	bool		reverse = false;
+	bool		yb_add_sort_targets = false;
+	int16	   *indkey_values = NULL;
+
+	if (IsA(pg_scan_plan, IndexScan))
+	{
+		IndexScan  *plan = (IndexScan *) pg_scan_plan;
+
+		if (plan->yb_saop_merge_info)
+		{
+			sort_info = plan->yb_saop_merge_info->sort_cols;
+			Assert(!ScanDirectionIsNoMovement(plan->indexorderdir));
+			reverse = ScanDirectionIsBackward(plan->indexorderdir);
+			/*
+			 * Key columns of a primary or embedded index may have different attribute numbers than
+			 * the respective columns of the base table. So we need to provide their positions in
+			 * the DocDB tuple. On the other hand, when we make separate request to the secondary
+			 * index, we need to set up key column data retrieval, in addition to the ybctid.
+			 */
+			if (ybScan->index->rd_index->indisprimary || ybScan->prepare_params.embedded_idx)
+			{
+				indkey_values = ybScan->index->rd_index->indkey.values;
+			}
+			else
+			{
+				yb_add_sort_targets = true;
+			}
+		}
+	}
+	else if (IsA(pg_scan_plan, IndexOnlyScan))
+	{
+		IndexOnlyScan *plan = (IndexOnlyScan *) pg_scan_plan;
+
+		if (plan->yb_saop_merge_info)
+		{
+			sort_info = plan->yb_saop_merge_info->sort_cols;
+			Assert(!ScanDirectionIsNoMovement(plan->indexorderdir));
+			reverse = ScanDirectionIsBackward(plan->indexorderdir);
+		}
+	}
+	if (!sort_info)
+		return;
+
+	/* Create and apply sort keys */
+	YbcPgStatement stmt = ybScan->handle;
+	YbcSortKey *yb_sort_keys = (YbcSortKey *) palloc(sort_info->numCols * sizeof(YbcSortKey));
+
+	for (int i = 0; i < sort_info->numCols; ++i)
+	{
+		YbcSortKey *key = &yb_sort_keys[i];
+
+		key->att_idx = sort_info->sortColIdx[i] - 1;
+		key->value_idx = indkey_values ? indkey_values[key->att_idx] - 1 : key->att_idx;
+		key->comparator = yb_sort_comparator_adapter;
+		key->sortstate = palloc0(sizeof(SortSupportData));
+		SortSupport sort_support = (SortSupport) key->sortstate;
+
+		sort_support->ssup_cxt = CurrentMemoryContext;
+		sort_support->ssup_collation = sort_info->collations[i];
+		sort_support->ssup_nulls_first = sort_info->nullsFirst[i];
+		sort_support->ssup_reverse = reverse;
+		sort_support->abbreviate = false;
+		PrepareSortSupportFromOrderingOp(sort_info->sortOperators[i], sort_support);
+		if (yb_add_sort_targets)
+			YbAddSortTarget(stmt, RelationGetDescr(ybScan->index), sort_info->sortColIdx[i]);
+	}
+	HandleYBStatus(YBCPgDmlSetMergeSortKeys(stmt, sort_info->numCols, yb_sort_keys));
 }
 
 /*
@@ -3340,6 +3453,9 @@ ybcBeginScan(Relation relation,
 	/* Set distinct prefix length. */
 	if (distinct_prefixlen > 0)
 		YBCPgSetDistinctPrefixLength(ybScan->handle, distinct_prefixlen);
+
+	if (pg_scan_plan)
+		YbApplyMergeSortKeys(ybScan, pg_scan_plan);
 
 	bms_free(scan_plan.hash_key);
 	bms_free(scan_plan.primary_key);

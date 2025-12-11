@@ -735,7 +735,12 @@ webserver_worker_main(Datum unused)
 	/*
 	* We call YBCInit here so that HandleYBStatus can correctly report potential error.
 	*/
-	HandleYBStatus(YBCInit(NULL /* argv[0] */ , palloc, NULL /* cstring_to_text_with_len_fn */ ));
+	HandleYBStatus(YBCInit(NULL /* argv[0] */ ,
+						   palloc,
+						   NULL /* cstring_to_text_with_len_fn */ ,
+						   NULL /* YbSwitchPgGateMemoryContext */ ,
+						   NULL /* YbCreatePgGateMemoryContext */ ,
+						   NULL /* YbDeletePgGateMemoryContext */ ));
 
 	backendStatusArray = getBackendStatusArray();
 

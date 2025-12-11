@@ -1397,8 +1397,9 @@ YbcStatus YBCPgWaitVectorIndexReady(
 // DML Statements.
 //--------------------------------------------------------------------------------------------------
 
-YbcStatus YBCPgDmlAppendTarget(YbcPgStatement handle, YbcPgExpr target) {
-  return ToYBCStatus(pgapi->DmlAppendTarget(handle, target));
+YbcStatus YBCPgDmlAppendTarget(
+    YbcPgStatement handle, YbcPgExpr target, bool is_for_secondary_index) {
+  return ToYBCStatus(pgapi->DmlAppendTarget(handle, target, is_for_secondary_index));
 }
 
 YbcStatus YbPgDmlAppendQual(YbcPgStatement handle, YbcPgExpr qual, bool is_for_secondary_index) {
@@ -1488,6 +1489,11 @@ YbcStatus YBCPgDmlBindRange(YbcPgStatement handle,
   return ToYBCStatus(pgapi->DmlBindRange(
     handle, Slice(lower_bound, lower_bound_len), true,
             Slice(upper_bound, upper_bound_len), false));
+}
+
+YbcStatus YBCPgDmlSetMergeSortKeys(YbcPgStatement handle, int num_keys,
+                                   const YbcSortKey *sort_keys) {
+  return ToYBCStatus(pgapi->DmlSetMergeSortKeys(handle, num_keys, sort_keys));
 }
 
 YbcStatus YBCPgDmlBindTable(YbcPgStatement handle) {

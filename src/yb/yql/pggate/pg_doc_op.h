@@ -26,6 +26,8 @@
 
 #include "yb/common/hybrid_time.h"
 
+#include "yb/dockv/doc_key.h"
+
 #include "yb/gutil/macros.h"
 
 #include "yb/util/concepts.h"
@@ -39,6 +41,7 @@
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/pg_sys_table_prefetcher.h"
+#include "yb/yql/pggate/util/pg_tuple.h"
 
 namespace yb::pggate {
 
@@ -48,8 +51,11 @@ YB_STRONGLY_TYPED_BOOL(KeepOrder);
 template <class T>
 concept PgDocResultSysEntryProcessor = InvocableAs<T, Status(Slice&)>;
 
-template <class T>
-concept PgDocResultYbctidProcessor = InvocableAs<T, void(Slice, const RefCntBuffer&)>;
+using FetchedTargets = std::vector<PgFetchedTarget*>;
+using FetchedTargetsPtr = std::shared_ptr<FetchedTargets>;
+using MergeSortKeys = std::vector<YbcSortKey>;
+using MergeSortKeysPtr = std::shared_ptr<MergeSortKeys>;
+using YbctidProcessor = std::function<void(Slice, const RefCntBuffer&)>;
 
 //--------------------------------------------------------------------------------------------------
 // DocResult represents data in ONE reply from tablet servers.
@@ -57,23 +63,20 @@ class DocResult {
  public:
   explicit DocResult(rpc::SidecarHolder data);
   DocResult(rpc::SidecarHolder data, const LWPgsqlResponsePB& response);
-
-  DocResult(const DocResult&) = delete;
-  DocResult& operator=(const DocResult&) = delete;
-
-  // Get the order of the next row in this batch.
-  int64_t NextRowOrder() const;
+  virtual ~DocResult() = default;
 
   // End of this batch.
-  bool is_eof() const {
+  virtual bool is_eof() const {
     return row_count_ == 0 || row_iterator_.empty();
   }
 
   // Get the postgres tuple from this batch.
-  Status WritePgTuple(const std::vector<PgFetchedTarget*>& targets, PgTuple* pg_tuple);
+  virtual Status WritePgTuple(const std::vector<PgFetchedTarget*>& targets, PgTuple* pg_tuple);
+  Status NextPgTuple();
 
-  template <PgDocResultYbctidProcessor Processor>
-  Status ProcessYbctids(const Processor& processor) {
+  int CompareTo(DocResult& other);
+
+  virtual Status ProcessYbctids(const YbctidProcessor& processor) {
     return ProcessSysEntries([this, &processor](Slice& data) -> Status {
       processor(VERIFY_RESULT(ReadYbctid(data)), data_.first);
       return Status::OK();
@@ -83,12 +86,6 @@ class DocResult {
   // Processes rows containing data other than PG rows. (currently ybctids or sampling reservoir)
   template <PgDocResultSysEntryProcessor Processor>
   Status ProcessSysEntries(const Processor& processor) {
-    // Sanity check: special rows must be unordered
-    // Row orders assume that multiple PgDocResults are merge sorted row by row.
-    // That contradicts ProcessEntries, which batch reads all the rows ignoring order.
-    // If there is a need to order non-PG rows, consider to add a row reading function
-    // like WritePgTuple.
-    DCHECK(row_orders_.empty()) << "System data rows can't be ordered";
     for ([[maybe_unused]] auto _ : std::views::iota(0, row_count_)) {
       RETURN_NOT_OK(processor(row_iterator_));
     }
@@ -101,23 +98,62 @@ class DocResult {
     return row_count_;
   }
 
- private:
+ protected:
   static Result<Slice> ReadYbctid(Slice& data);
-
   // Data selected from DocDB.
   rpc::SidecarHolder data_;
 
   // Iterator on "data_" from row to row.
   Slice row_iterator_;
-
-  // The row number of only this batch.
   int64_t row_count_ = 0;
-
-  std::vector<int64_t> row_orders_;
   size_t current_row_idx_;
+
+ private:
+  std::vector<int64_t> row_orders_;
+  DISALLOW_COPY_AND_ASSIGN(DocResult);
 };
 
-class PgDocOp;
+// DocResult subclass to handle specifically Postgres data.
+// It allocates built-in PgTuple instance to parse current row data, store the values and access
+// them. Currently the values are accessed for the merge sort purposes.
+// The class overrides the WritePgTuple(const std::vector<PgFetchedTarget*>&, PgTuple*) method of
+// the DocResult class to copy data from the built-in PgTuple if it already has been read.
+class PgDocResult : public DocResult {
+ public:
+  PgDocResult(rpc::SidecarHolder data, FetchedTargetsPtr targets,
+              MergeSortKeysPtr merge_sort_keys, size_t nattrs);
+  virtual ~PgDocResult() = default;
+
+  int CompareTo(PgDocResult& other);
+
+  // Get the postgres tuple from this batch.
+  virtual Status WritePgTuple(
+      const std::vector<PgFetchedTarget*>& targets, PgTuple* pg_tuple) override;
+  Status WritePgTuple(PgTuple* pg_tuple);
+  Status NextPgTuple();
+  virtual bool is_eof() const override {
+    return row_count_ == 0 || (!pg_tuple_is_valid_ && row_iterator_.empty());
+  }
+  virtual Status ProcessYbctids(const YbctidProcessor& processor) override;
+ private:
+  struct PgMemoryContextWrapper {
+    explicit PgMemoryContextWrapper(void* ptr_) : ptr(ptr_) {}
+    ~PgMemoryContextWrapper();
+    void* ptr;
+  };
+  PgTuple MakePgTuple();
+  PgMemoryContextWrapper mem_context_;
+  FetchedTargetsPtr targets_;
+  MergeSortKeysPtr merge_sort_keys_;
+  size_t nattrs_;
+  uint64_t* datums_;
+  bool* isnulls_;
+  YbcPgSysColumns syscols_;
+  PgTuple pg_tuple_;
+  bool pg_tuple_is_valid_ = false;
+
+  DISALLOW_COPY_AND_ASSIGN(PgDocResult);
+};
 
 // DocResultStream's fetch status.
 // kHasLocalData - there are buffered data in the queue.
@@ -128,35 +164,38 @@ YB_DEFINE_ENUM(StreamFetchStatus, (kHasLocalData)(kNeedsFetch)(kDone));
 // Stream of data from a DocDB source, usually a tablet.
 // Since DocDB sources are ordered, designed to maintain the order.
 // In fact, implements a wrapper for a queue of DocResult instances.
+template <class R>
 class DocResultStream {
  public:
   // DocResultStream provides access to either fetchable or static data.
   // Fetchable data require PgsqlOpPtr to check if it is active, so there's something to fetch.
   // Static data is a predefined list of DocResult.
-  explicit DocResultStream(PgsqlOpPtr op);
-  explicit DocResultStream(std::list<DocResult>&& results);
+  explicit DocResultStream(PgsqlOpPtr op) : op_(op) {}
+  explicit DocResultStream(std::list<R>&& results) : results_queue_(std::move(results)) {}
 
   bool operator==(const PgsqlOpPtr& op) const { return op_ == op; }
-
-  // Returns the row order of the next row in this stream.
-  int64_t NextRowOrder();
 
   StreamFetchStatus FetchStatus() const;
 
   void Detach();
 
- private:
-  // Returns nullptr if nothing is available. May invalidate previously returned data.
-  Result<DocResult*> GetNextDocResult();
+  // Do not discard empty DocResults. The held DocResults are discarded when HoldResults() is
+  // called again or when the DocResultStream instance is destroyed.
+  void HoldResults() { old_results_holder_.emplace(); }
 
-  // Append another batch of the fetched data to the queue and return the number of
-  // rows received
-  uint64_t EmplaceDocResult(rpc::SidecarHolder&& data, const LWPgsqlResponsePB& response);
+  // Returns nullptr if nothing is available. May invalidate previously returned data.
+  R* GetNextDocResult();
+
+ private:
+  // Append another batch of the fetched data to the queue
+  template <typename... Args>
+  uint64_t EmplaceDocResult(Args&&... args);
 
   friend class PgDocResultStream;
 
   PgsqlOpPtr op_;
-  std::list<DocResult> results_queue_;
+  std::list<R> results_queue_;
+  std::optional<std::list<R>> old_results_holder_;
 
   DISALLOW_COPY_AND_ASSIGN(DocResultStream);
 };
@@ -164,16 +203,21 @@ class DocResultStream {
 using PgDocFetchCallback = std::function<Status()>;
 // Base class to control fetch from multiple streams of data from the DocDB sources, and their read
 // order.
-// Fetch is controlled by calling PgDocOp's FetchMoreResults() when and where appropriate.
-// The PgDocOp is expected to return fetched data to the PgDocResultStream by calling
+// Fetch is controlled by calling the fetch_func when and where appropriate.
+// The fetch_func is expected to return fetched data to the PgDocResultStream by calling
 // the EmplaceOpDocResult method.
 // The class provides single data stream to the caller.
-// Supports work in batches, caller can reset the PgsqlOps to set up new batch.
+// Supports work in batches, caller can reset the PgsqlOps to set up the new batch.
 class PgDocResultStream {
  public:
-  explicit PgDocResultStream(PgDocFetchCallback fetch_func);
+  explicit PgDocResultStream(PgDocFetchCallback fetch_func) : fetch_func_(fetch_func) {}
 
   virtual ~PgDocResultStream() = default;
+
+  // Parsers for the column values
+  void SetFetchedTargets(FetchedTargetsPtr targets) { targets_ = targets; }
+  // Merge sort support data for each key (comparator, etc.)
+  void SetMergeSortKeys(MergeSortKeysPtr merge_sort_keys) { merge_sort_keys_ = merge_sort_keys; }
 
   // Reset the stream, but keep the accumulated responses to serve data from.
   virtual void ResetOps() = 0;
@@ -181,12 +225,12 @@ class PgDocResultStream {
   // Reset the stream and set up new batch of PgsqlOps to read results from.
   virtual void ResetOps(const std::vector<PgsqlOpPtr> &ops) = 0;
 
-  // Accessors, each of these returns false or std::nullopt once the batch is out of results (EOF).
+  // Accessors, each of these returns false once the batch is out of results (EOF).
   // Executing any of these may invalidate previously returned data, so caller should copy what
   // is needed.
 
   // Read next one row into the tuple. It is caller responsibility to provide matching targets
-  Result<bool> GetNextRow(const std::vector<PgFetchedTarget*>& targets, PgTuple* pg_tuple);
+  Result<bool> GetNextRow(PgTuple* pg_tuple);
 
   template <PgDocResultSysEntryProcessor Processor>
   Result<bool> ProcessNextSysEntries(const Processor& processor) {
@@ -198,8 +242,7 @@ class PgDocResultStream {
     return false;
   }
 
-  template <PgDocResultYbctidProcessor Processor>
-  Result<bool> ProcessNextYbctids(const Processor& processor) {
+  virtual Result<bool> ProcessNextYbctids(const YbctidProcessor& processor) {
     auto* result = VERIFY_RESULT(NextDocResult());
     if (result) {
       RETURN_NOT_OK(result->ProcessYbctids(processor));
@@ -208,28 +251,22 @@ class PgDocResultStream {
     return false;
   }
 
-  // To be used by the PgDocOp's fetcher.
+  // Returns next DocResult to read from or nullptr if EOF.
+  virtual Result<DocResult*> NextDocResult() = 0;
+
+  // To be used by the fetcher function.
   // Find DocResultStream for the op and put the fetched data into the queue.
-  // Returns the number of rows received.
-  Result<uint64_t> EmplaceOpDocResult(
-      const PgsqlOpPtr& op, rpc::SidecarHolder&& data, const LWPgsqlResponsePB& response);
+  virtual Result<uint64_t> EmplaceOpDocResult(
+      const PgsqlOpPtr& op, rpc::SidecarHolder&& data, const LWPgsqlResponsePB& response) = 0;
 
  protected:
-  // Next DocResultStream to read from. Key method to implement by the subclasses.
-  virtual Result<DocResultStream*> NextReadStream() = 0;
-
-  // Find the op to put response data to.
-  // Subclasses may store their DocResultStream differently and should implement this method to
-  // provide access to the PgDocOp's fetcher.
-  virtual Result<DocResultStream&> FindReadStream(
-      const PgsqlOpPtr& op, const LWPgsqlResponsePB& response) = 0;
-
+  template<class R, typename... Args>
+  uint64_t EmplaceDocResult(DocResultStream<R>& stream, Args&&... args);
   PgDocFetchCallback fetch_func_;
+  FetchedTargetsPtr targets_;
+  MergeSortKeysPtr merge_sort_keys_;
 
  private:
-  // Returns first DocResult from NextReadStream() or nullptr if EOF.
-  Result<DocResult*> NextDocResult();
-
   DISALLOW_COPY_AND_ASSIGN(PgDocResultStream);
 };
 
@@ -246,14 +283,15 @@ class ParallelPgDocResultStream : public PgDocResultStream {
 
   virtual void ResetOps(const std::vector<PgsqlOpPtr> &ops) override;
 
- protected:
-  virtual Result<DocResultStream*> NextReadStream() override;
+  virtual Result<uint64_t> EmplaceOpDocResult(
+      const PgsqlOpPtr& op, rpc::SidecarHolder&& data, const LWPgsqlResponsePB& response) override;
 
-  virtual Result<DocResultStream&> FindReadStream(
-      const PgsqlOpPtr& op, const LWPgsqlResponsePB& response) override;
+  virtual Result<DocResult*> NextDocResult() override;
 
  private:
-  std::list<DocResultStream> read_streams_;
+  Result<DocResultStream<DocResult>&> FindReadStream(const PgsqlOpPtr& op);
+
+  std::list<DocResultStream<DocResult>> read_streams_;
 };
 
 // CachedPgDocResultStream provides access to static (cached) data.
@@ -267,14 +305,13 @@ class CachedPgDocResultStream : public PgDocResultStream {
 
   virtual void ResetOps(const std::vector<PgsqlOpPtr> &ops) override;
 
- protected:
-  virtual Result<DocResultStream*> NextReadStream() override;
+  virtual Result<uint64_t> EmplaceOpDocResult(
+      const PgsqlOpPtr& op, rpc::SidecarHolder&& data, const LWPgsqlResponsePB& response) override;
 
-  virtual Result<DocResultStream&> FindReadStream(
-      const PgsqlOpPtr& op, const LWPgsqlResponsePB& response) override;
+  virtual Result<DocResult*> NextDocResult() override;
 
  private:
-  DocResultStream read_stream_;
+  DocResultStream<DocResult> read_stream_;
 };
 
 // Implementation of PgDocResultStream which merge sorts rows in its streams.
@@ -289,12 +326,11 @@ class CachedPgDocResultStream : public PgDocResultStream {
 // Like other PgDocResultStream subclasses, the MergingPgDocResultStream can be reset. Obviously,
 // MergingPgDocResultStream guarantees order only within the batch, so ResetOps should be used with
 // care.
-template <typename T>
+template <class R>
 class MergingPgDocResultStream : public PgDocResultStream {
  public:
   MergingPgDocResultStream(
-      PgDocFetchCallback fetch_func, const std::vector<PgsqlOpPtr>& ops,
-      std::function<T(DocResultStream*)> get_order_fn);
+      PgDocFetchCallback fetch_func, const std::vector<PgsqlOpPtr>& ops, size_t nattrs);
 
   virtual ~MergingPgDocResultStream() = default;
 
@@ -302,32 +338,59 @@ class MergingPgDocResultStream : public PgDocResultStream {
 
   virtual void ResetOps(const std::vector<PgsqlOpPtr> &ops) override;
 
- protected:
-  virtual Result<DocResultStream*> NextReadStream() override;
+  virtual Result<uint64_t> EmplaceOpDocResult(
+      const PgsqlOpPtr& op, rpc::SidecarHolder&& data, const LWPgsqlResponsePB& response) override;
 
-  virtual Result<DocResultStream&> FindReadStream(
-      const PgsqlOpPtr& op, const LWPgsqlResponsePB& response) override;
+  virtual Result<DocResult*> NextDocResult() override;
+
+  virtual Result<bool> ProcessNextYbctids(const YbctidProcessor& processor) override {
+    VLOG(4) << "MergingPgDocResultStream::ProcessNextYbctids start";
+    size_t found = 0;
+    for (auto& stream : read_streams_) {
+      stream.HoldResults();
+    }
+    while (true) {
+      auto* result = VERIFY_RESULT(NextDocResult());
+      if (!result) {
+        VLOG(4) << "MergingPgDocResultStream::ProcessNextYbctids is all done after "
+                << found << " ybctids processed";
+        return found > 0;
+      }
+      ++found;
+      RETURN_NOT_OK(result->ProcessYbctids(processor));
+      if (current_stream_->FetchStatus() == StreamFetchStatus::kNeedsFetch) {
+        VLOG(4) << "MergingPgDocResultStream::ProcessNextYbctids would fetch after "
+                << found << " ybctids processed";
+        return true;
+      }
+    }
+  }
 
  private:
-  // The list of streams participating in merge sort.
-  std::list<DocResultStream> read_streams_;
+  Result<DocResultStream<R>&> FindReadStream(
+      const PgsqlOpPtr& op, const LWPgsqlResponsePB& response);
 
-  const struct StreamComparator {
-    std::function<T(DocResultStream*)> get_order_fn_;
-    bool operator()(DocResultStream* a, DocResultStream* b) const {
-      return get_order_fn_(a) > get_order_fn_(b);
+  // The list of streams participating in merge sort.
+  std::list<DocResultStream<R>> read_streams_;
+  size_t nattrs_;
+
+  struct StreamComparator {
+    bool operator()(DocResultStream<R>* a, DocResultStream<R>* b) const {
+      return a->GetNextDocResult()->CompareTo(*b->GetNextDocResult()) > 0;
     }
-  } comp_;
-  using MergeSortPQ =
-      std::priority_queue<DocResultStream*, std::vector<DocResultStream*>, StreamComparator>;
+  };
+  using MergeSortPQ = std::priority_queue<DocResultStream<R>*,
+                                          std::vector<DocResultStream<R>*>,
+                                          StreamComparator>;
   // Pointers to read_streams_ elements ordered.
   MergeSortPQ read_queue_;
-  // Last result of NextReadStream. The pointer is not in the read_queue_.
-  // The caller is expected to read one and only one row from the stream,
-  // otherwise MergingPgDocResultStream may not work correctly.
-  // Next time when NextReadStream will be called, current_stream_ will be added to the read_queue_
+  // The stream from where last NextDocResult has returned the DocResult.
+  // The pointer is not in the read_queue_.
+  // The caller is expected to read one and only one row from the stream, otherwise
+  // the MergingPgDocResultStream may not work correctly.
+  // Next time when NextDocResult will be called, current_stream_ will be added to the read_queue_
   // with new priority, unless exhausted.
-  DocResultStream* current_stream_ = nullptr;
+  DocResultStream<R>* current_stream_ = nullptr;
   // The MergingPgDocResultStream starts and ends the batch with empty read queue.
   // We need this flag to distinguish not yet initialized batch from exhausted.
   bool started_ = false;
@@ -521,6 +584,7 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   // Send requests for new pages if necessary.
   virtual Status FetchMoreResults();
   PgDocResultStream& ResultStream();
+  void SetFetchedTargets(FetchedTargetsPtr targets);
 
   // This operation is requested internally within PgGate, and that request does not go through
   // all the steps as other operation from Postgres thru PgDocOp.
@@ -528,6 +592,12 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   // request. Function returns true result if it ended up with any requests to execute.
   // Response will have same order of ybctids as request in case of using KeepOrder::kTrue.
   Result<bool> PopulateByYbctidOps(const YbctidGenerator& generator, KeepOrder = KeepOrder::kFalse);
+
+  // Create PgsqlOp instances and adjust their requests for the merge streams defined by provided
+  // sort keys and conditions on the template requests.
+  // Check requests boundaries and discard those that are out of bounds.
+  // Returns true if requests are successfully created, false if all are out of bounds.
+  Result<bool> PopulateMergeStreams(MergeSortKeysPtr merge_sort_keys);
 
   bool has_out_param_backfill_spec() {
     return !out_param_backfill_spec_.empty();
@@ -557,9 +627,9 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
 
   virtual Status DoPopulateByYbctidOps(const YbctidGenerator& generator, KeepOrder keep_order) = 0;
 
-  // Only active operators are kept in the active range [0, active_op_count_)
-  // - Not execute operators that are outside of range [0, active_op_count_).
-  // - Sort the operators in "pgsql_ops_" to move "inactive" operators to the end of the list.
+  virtual Status DoPopulateMergeStreams(MergeSortKeysPtr merge_sort_keys) = 0;
+
+  // Sorts the operators in "pgsql_ops_" to move "inactive" operators to the end of the list.
   void MoveInactiveOpsOutside();
 
   // If there is a result stream, reset it.
@@ -603,6 +673,7 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   bool end_of_data_ = false;
 
   std::unique_ptr<PgDocResultStream> result_stream_;
+  FetchedTargetsPtr targets_;
 
   // This counter is used to maintain the row order when the operator sends requests in parallel
   // by partition. Currently only query by YBCTID uses this variable.
@@ -766,6 +837,8 @@ class PgDocReadOp : public PgDocOp {
 
   Status DoPopulateByYbctidOps(const YbctidGenerator& generator, KeepOrder keep_order) override;
 
+  Status DoPopulateMergeStreams(MergeSortKeysPtr merge_sort_keys) override;
+
   Status ResetPgsqlOps();
 
  protected:
@@ -801,7 +874,7 @@ class PgDocReadOp : public PgDocOp {
  private:
   // Check request conditions if they allow to limit the scan range
   // Returns true if resulting range is not empty, false otherwise
-  Result<bool> SetScanBounds();
+  Result<bool> SetScanBounds(LWPgsqlReadRequestPB& request);
 
   // Create protobuf requests using template_op_.
   Result<bool> DoCreateRequests() override;
@@ -932,6 +1005,11 @@ class PgDocWriteOp : public PgDocOp {
   // TODO(neil) This function will be implemented when we push down sub-query inside WRITE ops to
   // the proxy layer. There's many scenarios where this optimization can be done.
   Status DoPopulateByYbctidOps(const YbctidGenerator& generator, KeepOrder keep_order) override {
+    LOG(FATAL) << "Not yet implemented";
+    return Status::OK();
+  }
+
+  Status DoPopulateMergeStreams(MergeSortKeysPtr merge_sort_keys) override {
     LOG(FATAL) << "Not yet implemented";
     return Status::OK();
   }

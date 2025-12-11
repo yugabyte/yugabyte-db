@@ -1377,8 +1377,10 @@ Status PgApiImpl::WaitVectorIndexReady(const PgObjectId& table_id) {
 // DML Statement Support.
 //--------------------------------------------------------------------------------------------------
 
-Status PgApiImpl::DmlAppendTarget(PgStatement* handle, PgExpr* target) {
-  return VERIFY_RESULT_REF(GetStatementAs<PgDml>(handle)).AppendTarget(target);
+Status PgApiImpl::DmlAppendTarget(
+    PgStatement* handle, PgExpr* target, bool is_for_secondary_index) {
+  return VERIFY_RESULT_REF(
+      GetStatementAs<PgDml>(handle)).AppendTarget(target, is_for_secondary_index);
 }
 
 Status PgApiImpl::DmlAppendQual(PgStatement* handle, PgExpr* qual, bool is_for_secondary_index) {
@@ -1449,6 +1451,11 @@ Status PgApiImpl::DmlBindBounds(
   VERIFY_RESULT_REF(GetStatementAs<PgDmlRead>(handle))
       .BindBounds(lower_bound, lower_bound_inclusive, upper_bound, upper_bound_inclusive);
   return Status::OK();
+}
+
+Status PgApiImpl::DmlSetMergeSortKeys(YbcPgStatement handle, int num_keys,
+                                      const YbcSortKey *sort_keys) {
+  return VERIFY_RESULT_REF(GetStatementAs<PgDmlRead>(handle)).SetMergeSortKeys(num_keys, sort_keys);
 }
 
 Status PgApiImpl::DmlBindTable(PgStatement* handle) {

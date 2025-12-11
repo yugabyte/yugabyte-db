@@ -450,7 +450,7 @@ class PgApiImpl {
 
   //------------------------------------------------------------------------------------------------
   // All DML statements
-  Status DmlAppendTarget(PgStatement *handle, PgExpr *expr);
+  Status DmlAppendTarget(PgStatement *handle, PgExpr *expr, bool is_for_secondary_index);
 
   Status DmlAppendQual(PgStatement *handle, PgExpr *expr, bool is_for_secondary_index);
 
@@ -511,6 +511,8 @@ class PgApiImpl {
                              int n_col_values,
                              YbcPgExpr *col_values,
                              bool is_inclusive);
+
+  Status DmlSetMergeSortKeys(YbcPgStatement handle, int num_keys, const YbcSortKey *sort_keys);
 
   // Binding Tables: Bind the whole table in a statement.  Do not use with BindColumn.
   Status DmlBindTable(YbcPgStatement handle);

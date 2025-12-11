@@ -26,7 +26,6 @@
 #include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
 
-#include "yb/dockv/doc_key.h"
 #include "yb/dockv/partition.h"
 #include "yb/dockv/primitive_value.h"
 #include "yb/dockv/value_type.h"
@@ -271,8 +270,38 @@ void PgDmlRead::SetColumnRefs() {
   ColumnRefsToPB(read_req_->mutable_column_refs());
 }
 
-// Method removes empty primary binds and moves tailing non empty range primary binds
-// which are following after empty binds into the 'condition_expr' field.
+// Method normalizes the primary binds: partition_column_values (hash) and
+// range_column_values (range) on the request to the shape supported by DocDB.
+// Postgres may bind the key to any of the following: scalar value (equality condition),
+// tuple of values (IN condition), tuple of tuples (ROW IN condition).
+// DocDB supports only scalar value, so other variants need to be transformed.
+// There are two available transformations for the primary binds.
+// One is to move the condition into condition_expr as an operand of the top level AND operator.
+// Other is to build permutations: if there're multiple IN and equality conditions like these:
+//   k1 IN (a, b, c)
+//   k2 = z
+//   ROW(k3, k4) IN ((1, 11), (2, 12))
+// we can make all possible combinations of one value from each condition, like these:
+//   k1 = a AND k2 = z AND k3 = 1 AND k4 = 11
+//   k1 = b AND k2 = z AND k3 = 1 AND k4 = 11
+//   k1 = c AND k2 = z AND k3 = 1 AND k4 = 11
+//   k1 = a AND k2 = z AND k3 = 2 AND k4 = 12
+//   k1 = b AND k2 = z AND k3 = 2 AND k4 = 12
+//   k1 = c AND k2 = z AND k3 = 2 AND k4 = 12
+// put those sets into separate requests, combine their results to make result equivalent to the
+// original condition.
+// The permutations transformation is currently used if there are IN conditions on the hash columns
+// and for merge sort. While the permutations transformation occurs later in the execution process,
+// the PgDmlRead::ProcessEmptyPrimaryBinds must keep relevant original conditions in
+// partition_column_values and range_column_values to set up the permutations transformation.
+// Irrelevant condition must be moved into condition_expr regardless.
+// TODO revisit to find out if we can combine the parts of such split logic.
+// There are couple more important limitations enforced here.
+// DocDB does not support partial condition on the hash columns. It is an error if some, but not
+// all the hash columns are bound.
+// DocDB takes values in the range_column_values as the prefix of the range key columns, no null
+// values allowed. So if one of the key columns are not bound, all conditions on following columns
+// must be moved to the condition_expr, even if they are simple scalars.
 Status PgDmlRead::ProcessEmptyPrimaryBinds() {
   if (!bind_) {
     // This query does not have any binds.
@@ -281,6 +310,7 @@ Status PgDmlRead::ProcessEmptyPrimaryBinds() {
     return Status::OK();
   }
 
+  VLOG_WITH_FUNC(3) << "Request before: " << read_req_->ShortDebugString();
   // NOTE: ybctid is a system column and not processed as bind.
   bool miss_partition_columns = false;
   bool has_partition_columns = false;
@@ -291,10 +321,10 @@ Status PgDmlRead::ProcessEmptyPrimaryBinds() {
   bool preceding_key_column_missed = false;
 
   for (size_t index = 0; index != bind_->num_hash_key_columns(); ++index) {
-    const auto& column = bind_.ColumnForIndex(index);
-    auto expr = column.bind_pb();
-    auto colid = column.id();
-    if (!expr || (!IsForInOperator(*expr) && !column.ValueBound() &&
+    const auto& col = bind_.ColumnForIndex(index);
+    auto expr = col.bind_pb();
+    auto colid = col.id();
+    if (!expr || (!IsForInOperator(*expr) && !col.ValueBound() &&
                   (std::find(tuple_col_ids.begin(), tuple_col_ids.end(), colid) ==
                        tuple_col_ids.end()))) {
       miss_partition_columns = true;
@@ -303,7 +333,7 @@ Status PgDmlRead::ProcessEmptyPrimaryBinds() {
       has_partition_columns = true;
     }
 
-    if (expr && expr->has_condition()) {
+    if (IsForInOperator(*expr)) {
       // Move any range column binds into the 'condition_expr' field if
       // we are batching hash columns.
       preceding_key_column_missed = pg_session_->IsHashBatchingEnabled();
@@ -328,11 +358,19 @@ Status PgDmlRead::ProcessEmptyPrimaryBinds() {
     preceding_key_column_missed = true;
   }
 
-  size_t num_bound_range_columns = 0;
-
+  auto range_column_values_it = read_req_->mutable_range_column_values()->begin();
   for (auto index = bind_->num_hash_key_columns(); index < bind_->num_key_columns(); ++index) {
     auto& col = bind_.ColumnForIndex(index);
     auto expr = col.bind_pb();
+    auto merge_sort_col_type = IsMergeSortColumn(index);
+    if (merge_sort_col_type == MergeSortColumnType::kStreamKey) {
+      DCHECK(expr && (expr->has_value() || IsForInOperator(*expr)));
+      preceding_key_column_missed = true;
+      ++range_column_values_it;
+      continue;
+    } else if (merge_sort_col_type == MergeSortColumnType::kSortKey) {
+      preceding_key_column_missed = true;
+    }
     if (expr && IsForInOperator(*expr)) {
       preceding_key_column_missed = true;
       RETURN_NOT_OK(col.MoveBoundKeyInOperator(read_req_.get()));
@@ -350,14 +388,14 @@ Status PgDmlRead::ProcessEmptyPrimaryBinds() {
 
       col.MoveBoundValueTo(op2_pb);
     } else {
-      ++num_bound_range_columns;
+      ++range_column_values_it;
+      continue;
     }
+    range_column_values_it =
+        read_req_->mutable_range_column_values()->erase(range_column_values_it);
   }
 
-  auto& range_column_values = *read_req_->mutable_range_column_values();
-  while (range_column_values.size() > num_bound_range_columns) {
-    range_column_values.pop_back();
-  }
+  VLOG_WITH_FUNC(3) << "Request after: " << read_req_->ShortDebugString();
   return Status::OK();
 }
 
@@ -450,6 +488,17 @@ Status PgDmlRead::Exec(const YbcPgExecParameters* exec_params) {
   }
 
   RETURN_NOT_OK(InitDocOp(doc_op_init_params));
+
+  if (targets_) {
+    doc_op_->SetFetchedTargets(targets_);
+  }
+  if (merge_sort_keys_) {
+    // Create requests for the merge streams
+    if (!VERIFY_RESULT(doc_op_->PopulateMergeStreams(merge_sort_keys_))) {
+      doc_op_->AbandonExecution();
+      return Status::OK();
+    }
+  }
 
   const auto has_ybctid = VERIFY_RESULT(ProcessProvidedYbctids());
 
@@ -702,6 +751,16 @@ Status PgDmlRead::AddRowLowerBound(
   return Status::OK();
 }
 
+Status PgDmlRead::SetMergeSortKeys(int num_keys, const YbcSortKey* sort_keys) {
+  if (auto* secondary_index = SecondaryIndexQuery(); secondary_index) {
+    return secondary_index->SetMergeSortKeys(num_keys, sort_keys);
+  }
+
+  DCHECK(!merge_sort_keys_) << "Merge sort keys are already set";
+  merge_sort_keys_ = std::make_shared<MergeSortKeys>(sort_keys, sort_keys + num_keys);
+  return Status::OK();
+}
+
 Status PgDmlRead::SubstitutePrimaryBindsWithYbctids() {
   SetYbctidProvider(VERIFY_RESULT(BuildYbctidsFromPrimaryBinds()));
   for (auto& col : bind_.columns()) {
@@ -860,6 +919,9 @@ void PgDmlRead::UpgradeDocOp(PgDocOp::SharedPtr doc_op) {
   CHECK(doc_op_) << "No DocOp object for upgrade";
   original_doc_op_.swap(doc_op_);
   doc_op_.swap(doc_op);
+  if (targets_) {
+    doc_op_->SetFetchedTargets(targets_);
+  }
 }
 
 bool PgDmlRead::IsReadFromYsqlCatalog() const {

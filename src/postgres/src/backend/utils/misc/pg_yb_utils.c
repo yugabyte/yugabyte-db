@@ -1169,7 +1169,9 @@ YbGetSessionReplicationOriginId(void)
 void
 YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *init_info)
 {
-	HandleYBStatus(YBCInit(program_name, palloc, cstring_to_text_with_len));
+	HandleYBStatus(YBCInit(program_name, palloc, cstring_to_text_with_len,
+						   YbSwitchPgGateMemoryContext, YbCreatePgGateMemoryContext,
+						   YbDeletePgGateMemoryContext));
 
 	/*
 	 * Enable "YB mode" for PostgreSQL so that we will initiate a connection
