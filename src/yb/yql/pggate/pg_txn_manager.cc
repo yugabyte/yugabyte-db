@@ -190,9 +190,11 @@ void PgTxnManager::SerialNo::IncTxn(
   IncReadTime();
   if (!preserve_read_time_history) {
     min_read_time_ = read_time_;
-    if (catalog_read_time_serial_no && catalog_read_time_serial_no < min_read_time_) {
+    if (!YBCIsLegacyModeForCatalogOps() && catalog_read_time_serial_no &&
+        catalog_read_time_serial_no < min_read_time_) {
       min_read_time_ = catalog_read_time_serial_no;
     }
+    VLOG_WITH_FUNC(4) << "Updated min_read_time_ to: " << min_read_time_;
   }
 }
 

@@ -63,6 +63,8 @@
 #include "yb/master/master_types.pb.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog.h"
+#include "yb/master/tablet_creation_limits.h"
+#include "yb/master/ts_manager.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
@@ -86,9 +88,11 @@ DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_int32(data_size_metric_updater_interval_sec);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_bool(enable_db_clone);
+DECLARE_bool(enforce_tablet_replica_limits);
 DECLARE_int32(load_balancer_initial_delay_secs);
 DECLARE_bool(master_auto_run_initdb);
 DECLARE_int32(metrics_snapshotter_interval_ms);
+DECLARE_int32(num_cpus);
 DECLARE_int32(pgsql_proxy_webserver_port);
 DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
@@ -560,7 +564,7 @@ TEST_P(MasterExportSnapshotTest, ExportSnapshotAsOfTime) {
   LOG(INFO) << Format(
       "Exporting snapshot from snapshot schedule: $0, Hybrid time = $1", schedule_id, time);
   auto deadline = CoarseMonoClock::Now() + timeout;
-  auto [snapshot_info_as_of_time, not_snapshotted_tablets] = ASSERT_RESULT(
+  auto [snapshot_info_as_of_time, not_snapshotted_tablets, _] = ASSERT_RESULT(
       mini_cluster()
           ->mini_master()
           ->catalog_manager_impl()
@@ -607,7 +611,7 @@ TEST_P(MasterExportSnapshotTest, ExportSnapshotAsOfTimeWithHiddenTables) {
   LOG(INFO) << Format(
       "Exporting snapshot from snapshot schedule: $0, Hybrid time = $1", schedule_id, time);
   auto deadline = CoarseMonoClock::Now() + timeout;
-  auto [snapshot_info_as_of_time, not_snapshotted_tablets] = ASSERT_RESULT(
+  auto [snapshot_info_as_of_time, not_snapshotted_tablets, _] = ASSERT_RESULT(
       mini_cluster()
           ->mini_master()
           ->catalog_manager_impl()
@@ -712,7 +716,8 @@ class PgCloneTest : public PgCloneInitiallyEmptyDBTest {
 class PgCloneTestWithColocatedDBParam
     : public PgCloneTest,
       public ::testing::WithParamInterface<master::YsqlColocationConfig> {
-  void SetUp() override { PgCloneTest::SetUp(); }
+ public:
+  virtual void SetUp() override { PgCloneTest::SetUp(); }
 
   master::YsqlColocationConfig ColocateDatabase() override { return GetParam(); }
 };
@@ -1040,8 +1045,8 @@ TEST_F(PgCloneTest, AbortMessage) {
 }
 
 TEST_F(PgCloneTest, CloneTimeoutExceeded) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_clone_pg_schema_delay_ms) = 1000;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_clone_pg_schema_rpc_timeout_ms) = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_clone_pg_schema_delay_ms) = 10000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_clone_pg_schema_rpc_timeout_ms) = 1000;
   auto status = source_conn_->ExecuteFormat(
       "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName);
   ASSERT_NOK(status);
@@ -1321,9 +1326,10 @@ TEST_F(PgCloneTest, PreventConnectionsUntilCloneSuccessful) {
 
 TEST_F(PgCloneTest, Tablespaces) {
   const auto kTablespaceName = "test_tablespace";
+  // With (index_ + 1) / FLAGS_TEST_nodes_per_cloud formula, ts-0 (index_=1) is in cloud1.region1
   ASSERT_OK(source_conn_->ExecuteFormat(
       "CREATE TABLESPACE $0 WITH (replica_placement='{\"num_replicas\": 1, \"placement_blocks\": "
-      "[{\"cloud\":\"cloud1\",\"region\":\"rack1\",\"zone\":\"zone\","
+      "[{\"cloud\":\"cloud1\",\"region\":\"region1\",\"zone\":\"zone\","
       "\"min_num_replicas\":1}]}')", kTablespaceName));
   auto* catalog_mgr = cluster_->mini_master()->master()->catalog_manager();
 
@@ -1407,6 +1413,70 @@ class PgCloneColocationTest : public PgCloneTest {
     return master::YsqlColocationConfig::kDBColocated;
   }
 };
+
+class PgCloneTestWithColocatedDBTabletLimitsCheck : public PgCloneTestWithColocatedDBParam {
+ public:
+  void SetUp() override {
+    // Simulate a single core cluster.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_cpus) = 1;
+    PgCloneTestWithColocatedDBParam::SetUp();
+  }
+};
+
+INSTANTIATE_TEST_CASE_P(
+  Colocation, PgCloneTestWithColocatedDBTabletLimitsCheck,
+  ::testing::Values(
+      master::YsqlColocationConfig::kNotColocated, master::YsqlColocationConfig::kDBColocated));
+
+TEST_P(PgCloneTestWithColocatedDBTabletLimitsCheck, TabletLimitsCheck) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_replicas_per_core_limit) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enforce_tablet_replica_limits) = true;
+  ASSERT_NOK_STR_CONTAINS(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName),
+      "to exceed the safe system maximum");
+
+  // If we don't hit a limit, the clone should succeed.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_replicas_per_core_limit) = 1000;
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName));
+}
+
+class PgCloneColocationTestWithTabletLimitsCheck : public PgCloneColocationTest {
+ public:
+  void SetUp() override {
+    // Simulate a single core cluster.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_cpus) = 1;
+    PgCloneColocationTest::SetUp();
+  }
+};
+
+TEST_F(PgCloneColocationTestWithTabletLimitsCheck, TabletLimitsColocated) {
+  // We should only count physical tables when checking the tablet limits.
+  auto leader_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
+  auto cluster_info = ComputeAggregatedClusterInfo(
+      leader_master->catalog_manager().GetAllLiveNotBlacklistedTServers(), BlacklistSet(), "");
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enforce_tablet_replica_limits) = true;
+  // Allow no extra tablet replicas initially.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_replicas_per_core_limit) =
+      static_cast<uint32_t>(cluster_info.total_live_replicas) / NumTabletServers();
+
+  // Create some more colocated tables. These should use the existing tablet created in the test
+  // setup.
+  for (int i = 0; i < 10; i++) {
+    ASSERT_OK(source_conn_->ExecuteFormat("CREATE TABLE table_$0 (id INT)", i));
+  }
+
+  // The clone should fail because we are at the limit.
+  ASSERT_NOK_STR_CONTAINS(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName),
+      "to exceed the safe system maximum");
+  // Allow for NumTabletServers() more tablet replicas so the clone of the one colocated tablet
+  // succeeds.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_replicas_per_core_limit) =
+      static_cast<uint32_t>(cluster_info.total_live_replicas + NumTabletServers());
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName));
+}
 
 // Verify that after a successful clone, the target database is readable even after performing
 // master leader failover. This is a sanity check on the persisted tables and tablet sys catalog

@@ -223,6 +223,7 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
       const TabletId& tablet_id, const OpId& op_id, const Status& status);
   std::optional<int64_t> GetPendingAsyncWriteTerm(const TabletId& tablet_id) const;
   void WaitForAsyncWrites(const TabletId& tablet_id, StdStatusCallback&& callback);
+  void SetOriginId(uint32_t origin_id);
 
  private:
   class Impl;

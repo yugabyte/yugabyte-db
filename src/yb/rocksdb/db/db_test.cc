@@ -4750,7 +4750,7 @@ class ModelDB: public DB {
     return nullptr;
   }
 
-  Result<std::string> GetMiddleKey() override {
+  Result<std::string> GetMiddleKey(Slice lower_bound_key) override {
     return NotSupported();
   }
 

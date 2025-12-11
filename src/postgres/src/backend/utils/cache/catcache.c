@@ -706,7 +706,7 @@ CatCacheInvalidate(CatCache *cache, uint32 hashValue)
 
 		if (hashValue == ct->hash_value)
 		{
-			if (YbCanTryInvalidateTableCacheEntry())
+			if (YbCanTryInvalidateTableCacheEntry() && !ct->negative)
 			{
 				if (cache->id == RELOID)
 				{

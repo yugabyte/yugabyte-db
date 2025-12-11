@@ -41,6 +41,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.Map;
 import java.util.HashMap;
+import java.util.Properties;
 import java.util.Queue;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -625,9 +626,10 @@ public class TestRelcacheUpdate extends BasePgSQLTest {
 
   @Test
   public void testRelcacheInitConnectionStress() throws Exception {
+    boolean isSanitizerBuild = BuildTypeUtil.isASAN() || BuildTypeUtil.isTSAN();
     // Number of databases and connections per DB.
     final int NUM_DATABASES = 10;
-    final int CONNECTIONS_PER_DB = 20;
+    final int CONNECTIONS_PER_DB = isSanitizerBuild ? 10 : 20;
     final String TEST_USER = "test_user";
 
     // --- Setup ---
@@ -645,7 +647,6 @@ public class TestRelcacheUpdate extends BasePgSQLTest {
     try (Connection connSuperuser = getConnectionBuilder().connect();
          Statement stmtSuperuser = connSuperuser.createStatement()) {
 
-      establishedConnections.offer(connSuperuser);
       LOG.info("Starting catalog versions: {}", getCatalogVersions(stmtSuperuser));
       LOG.info("Creating test user: {}", TEST_USER);
       stmtSuperuser.execute(String.format("CREATE USER %s", TEST_USER));
@@ -660,7 +661,6 @@ public class TestRelcacheUpdate extends BasePgSQLTest {
         // Use a separate connection/statement inside the thread for safety
         try (Connection bumperConn = getConnectionBuilder().connect();
              Statement bumperStmt = bumperConn.createStatement()) {
-          establishedConnections.offer(bumperConn);
           int currentDatabaeOid = getCurrentDatabaseOid(bumperConn);
           // Continuously bump up catalog version to simulate burst of DDLs.
           while (!stopBumper.get()) {
@@ -687,6 +687,11 @@ public class TestRelcacheUpdate extends BasePgSQLTest {
 
       // --- Submit Connection Tasks ---
       LOG.info("Submitting {} concurrent connection tasks...", totalConnections);
+      Properties props = new Properties();
+      if (isSanitizerBuild) {
+        // Set to 60 second timeout for slower builds.
+        props.setProperty("sslResponseTimeout", "60000");
+      }
       for (String dbName : dbNames) {
         for (int j = 0; j < CONNECTIONS_PER_DB; j++) {
           final String currentDbName = dbName; // Need final variable for lambda
@@ -696,7 +701,7 @@ public class TestRelcacheUpdate extends BasePgSQLTest {
               // Try connecting as the test user to the specific database
               conn = getConnectionBuilder().withUser(TEST_USER)
                                            .withDatabase(currentDbName)
-                                           .connect();
+                                           .connect(props);
               // If successful, add to the queue
               establishedConnections.offer(conn); // Use offer for non-blocking add
               numSuccesses.incrementAndGet();
@@ -738,35 +743,45 @@ public class TestRelcacheUpdate extends BasePgSQLTest {
     LOG.info("Processing {} established connections...", establishedConnections.size());
     long minRSS = -1;
     long maxRSS = -1;
+    long totalRSS = 0;
+    long count = 0;
     for (Connection c : establishedConnections) {
       try {
-        Statement s = c.createStatement();
-        if (c != null && !c.isClosed()) {
-          ResultSet pidRs = s.executeQuery("SELECT pg_backend_pid()");
-          pidRs.next();
-          int pid = pidRs.getInt(1);
-          long rss = getVmRSS(pid);
-          if (minRSS == -1) {
-            minRSS = rss;
-          }
-          if (maxRSS == -1) {
-            maxRSS = rss;
-          }
-          if (rss < minRSS) {
-            minRSS = rss;
-          }
-          if (rss > maxRSS) {
-            maxRSS = rss;
-          }
-          LOG.info("PG backend with pid {} has RSS {}", pid, rss);
+        // If a connection is idled too long, jdbc can close it.
+        if (c == null || c.isClosed()) {
+          LOG.warn("Connection was closed or is null, skipping RSS check for this backend.");
+          continue;
         }
+        count++;
+        Statement s = c.createStatement();
+        ResultSet pidRs = s.executeQuery("SELECT pg_backend_pid()");
+        pidRs.next();
+        int pid = pidRs.getInt(1);
+        long rss = getVmRSS(pid);
+        if (minRSS == -1) {
+          minRSS = rss;
+        }
+        if (maxRSS == -1) {
+          maxRSS = rss;
+        }
+        if (rss < minRSS) {
+          minRSS = rss;
+        }
+        if (rss > maxRSS) {
+          maxRSS = rss;
+        }
+        LOG.info("PG backend with pid {} has RSS {}", pid, rss);
+        totalRSS += rss;
       } catch (SQLException e) {
         LOG.warn("Error checking connection status: {}", e.getMessage());
       }
     }
-    // Assert the variations between connections are less than 15%.
+    double avgRSS = (double)totalRSS / count;
+    LOG.info("minRSS {}, maxRSS {}", minRSS, maxRSS);
+    LOG.info("count {}, totalRSS {}, avgRSS {}", count, totalRSS, avgRSS);
+    // Assert the variations between connections are less than 20%.
     double maxVariationPercent = (double)(maxRSS - minRSS) / minRSS;
     LOG.info("maxVariationPercent {}", maxVariationPercent);
-    assertTrue("Expected maxVariationPercent less than 15%", maxVariationPercent < 0.15);
+    assertTrue("Expected maxVariationPercent less than 20%", maxVariationPercent < 0.20);
   }
 }

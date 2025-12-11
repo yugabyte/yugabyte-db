@@ -12598,5 +12598,70 @@ TEST_F(CDCSDKYsqlTest, TestUPAMMovesRetentionBarriersForCatalogTablet) {
   ASSERT_NE(tablet_peer_ptr->GetLatestCheckPoint(), OpId::Max());
 }
 
+TEST_F(CDCSDKYsqlTest, TestOriginId) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ASSERT_OK(SetUpWithParams(1 /* rf */, 1 /* num_masters*/));
+  const auto kOrigin1 = "origin1";
+  const auto kOrigin2 = "origin2";
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  // Create 2 replication origins.
+  ASSERT_OK(conn.FetchFormat("SELECT pg_replication_origin_create('$0');", kOrigin1));
+  ASSERT_OK(conn.FetchFormat("SELECT pg_replication_origin_create('$0');", kOrigin2));
+
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  auto get_xrepl_origin_id = [](const GetChangesResponsePB& change_resp) -> int32_t {
+    for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+      if (record.row_message().has_xrepl_origin_id()) {
+        return record.row_message().xrepl_origin_id();
+      }
+    }
+    return 0;
+  };
+
+  // Local insert.
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 100)", kTableName));
+  auto change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  LOG(INFO) << "CDC response: " << change_resp.ShortDebugString();
+  // First response includes the DDL schema change record.
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 4);
+  ASSERT_EQ(get_xrepl_origin_id(change_resp), 0);
+  auto cdc_sdk_checkpoint = change_resp.cdc_sdk_checkpoint();
+
+  // Insert from origin1
+  ASSERT_OK(conn.FetchFormat("SELECT pg_replication_origin_session_setup('$0');", kOrigin1));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (2, 200)", kTableName));
+  ASSERT_OK(conn.Fetch("SELECT pg_replication_origin_session_reset()"));
+  change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &cdc_sdk_checkpoint));
+  LOG(INFO) << "CDC response: " << change_resp.ShortDebugString();
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 3);
+  ASSERT_EQ(get_xrepl_origin_id(change_resp), 1);
+  cdc_sdk_checkpoint = change_resp.cdc_sdk_checkpoint();
+
+  // Update from origin2
+  ASSERT_OK(conn.FetchFormat("SELECT pg_replication_origin_session_setup('$0');", kOrigin2));
+  ASSERT_OK(conn.ExecuteFormat(
+      "UPDATE $0 SET $1 = 300 WHERE $2 = 1", kTableName, kValueColumnName, kKeyColumnName));
+  ASSERT_OK(conn.Fetch("SELECT pg_replication_origin_session_reset()"));
+  change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &cdc_sdk_checkpoint));
+  LOG(INFO) << "CDC response: : " << change_resp.ShortDebugString();
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 3);
+  ASSERT_EQ(get_xrepl_origin_id(change_resp), 2);
+  cdc_sdk_checkpoint = change_resp.cdc_sdk_checkpoint();
+
+  // Delete from Local
+  ASSERT_OK(conn.ExecuteFormat("DELETE FROM $0 WHERE $1 = 1", kTableName, kKeyColumnName));
+  change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &cdc_sdk_checkpoint));
+  LOG(INFO) << "CDC response: " << change_resp.ShortDebugString();
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 3);
+  ASSERT_EQ(get_xrepl_origin_id(change_resp), 0);
+  cdc_sdk_checkpoint = change_resp.cdc_sdk_checkpoint();
+}
+
 }  // namespace cdc
 }  // namespace yb

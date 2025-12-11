@@ -158,7 +158,8 @@ typedef IndexBuildResult *(*yb_ambackfill_function) (Relation heapRelation,
 													 struct YbPgExecOutParam *bfresult);
 
 /* return whether this Yugabyte-based index might recheck indexquals */
-typedef bool (*yb_ammightrecheck_function) (Relation heap,
+typedef bool (*yb_ammightrecheck_function) (Scan *scan,
+											Relation heap,
 											Relation index,
 											bool xs_want_itup,
 											ScanKey keys,

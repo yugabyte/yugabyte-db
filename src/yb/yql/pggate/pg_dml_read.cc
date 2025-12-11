@@ -442,6 +442,10 @@ Status PgDmlRead::Exec(const YbcPgExecParameters* exec_params) {
     return Status::OK();
   }
 
+  if (auto* secondary_index = SecondaryIndexQuery(); secondary_index) {
+    RETURN_NOT_OK(secondary_index->AddBaseYbctidTarget());
+  }
+
   RETURN_NOT_OK(InitDocOp(doc_op_init_params));
 
   const auto has_ybctid = VERIFY_RESULT(ProcessProvidedYbctids());
@@ -801,15 +805,15 @@ void PgDmlRead::BindHashCode(const std::optional<Bound>& start, const std::optio
   }
 
   if (start) {
-    const auto& lower_bound = HashCodeToDocKeyBound(
-        bind_->schema(), start->value, start->is_inclusive, /* is_lower =*/true);
-    ApplyLowerBound(*read_req_, lower_bound.Encode().AsSlice(), /* is_inclusive =*/false);
+    const auto bound = HashCodeToDocKeyBound(
+        bind_->schema(), start->value, start->is_inclusive, /* is_lower = */ true);
+    ApplyLowerBound(*read_req_, bound, /* is_inclusive = */ false);
   }
 
   if (end) {
-    const auto& upper_bound = HashCodeToDocKeyBound(
-        bind_->schema(), end->value, end->is_inclusive, /* is_lower =*/false);
-    ApplyUpperBound(*read_req_, upper_bound.Encode().AsSlice(), /* is_inclusive =*/false);
+    const auto bound = HashCodeToDocKeyBound(
+        bind_->schema(), end->value, end->is_inclusive, /* is_lower = */ false);
+    ApplyUpperBound(*read_req_, bound, /* is_inclusive = */ false);
   }
 }
 

@@ -343,7 +343,7 @@ void Batcher::LookupTabletFor(InFlightOp* op) {
 
 void Batcher::TabletLookupFinished(
     InFlightOp* op, Result<internal::RemoteTabletPtr> lookup_result) {
-  VLOG_WITH_PREFIX_AND_FUNC(lookup_result.ok() ? 4 : 3)
+  VLOG_WITH_PREFIX_AND_FUNC(3)
       << "Op: " << op->ToString() << ", result: " << AsString(lookup_result);
 
   if (lookup_result.ok()) {

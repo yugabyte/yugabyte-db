@@ -77,6 +77,19 @@ The following S3 IAM permissions are required:
 "s3:GetBucketLocation"
 ```
 
+### Specify signing region
+
+In some circumstances, you may need to additionally specify the signing region for the AWS backup configuration. For example:
+
+- The S3 bucket uses a non-standard S3 endpoint, such as a private VPC endpoint, or S3-compatible storage; and
+- YugabyteDB Anywhere is running in a region that is different than the region where the S3 bucket is located.
+
+In these cases you can encounter errors such as 'Cannot list objects in backup location'.
+
+Typically, the signing region is the AWS region where the S3 bucket is located (for example, `us-east-1`). Enter the AWS region in the **Signing region** field.
+
+By default, the **Signing region** field is not available in the UI. To make it available, set the **Enable Signing Region** Global Runtime Configuration option (config key `yb.ui.feature_flags.enable_signing_region`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). You must be a Super Admin to set global runtime configuration flags.
+
 ## Google Cloud Storage
 
 You can configure Google Cloud Storage (GCS) as your backup target.

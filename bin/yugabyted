@@ -9500,8 +9500,9 @@ class ControlScript(object):
 
         # Initialize the binary path of ybadmin
         # TODO(Sanket): Clean up and refactor this file
-        YBAdminProxy.set_certs_dir(self.configs.saved_data.get("master_flags"), \
-            self.configs.saved_data.get("secure"), self.configs.saved_data.get("certs_dir"))
+        YBAdminProxy.set_certs_dir(
+            self.configs.saved_data.get("master_flags"), self.configs.saved_data.get("secure"),
+            self.configs.saved_data.get("certs_dir"), self.find_hostname_of_node())
 
         YBTableServerCLIProxy.set_certs_dir(self.configs.saved_data.get("master_flags"), \
             self.configs.saved_data.get("secure"), self.configs.saved_data.get("certs_dir"))
@@ -10399,22 +10400,31 @@ class YBAdminProxy(object):
         YBAdminProxy.cmd_args.append(find_binary_location("yb-admin"))
 
     @staticmethod
-    def set_certs_dir(master_flags, secure, certs_dir):
+    def set_certs_dir(master_flags, secure, certs_dir, hostname):
         # If the user is attempting to use TLS, let's point yb-admin to
         # the same certs dir as the master
+
         if secure:
             YBAdminProxy.cmd_args.append("--certs_dir_name={}".format(certs_dir))
-        elif master_flags:
+
+        if master_flags:
+
             flags_list = master_flags.split(",")
-            if 'use_node_to_node_encryption=true' not in flags_list:
-                return
-            certs_dir_name = [y for y in
-                [re.match('certs_dir=(.*)', x) for x in flags_list]
-                if y is not None]
-            if not certs_dir_name[0]:
-                raise RuntimeError("use_node_to_node_encryption=true must "
-                                "be accompanied by a certs_dir setting")
-            YBAdminProxy.cmd_args.append('--certs_dir_name={}'.format(certs_dir_name[0].group(1)))
+
+            if not secure:
+                if 'use_node_to_node_encryption=true' not in flags_list:
+                    return
+                certs_dir_name = [y for y in
+                    [re.match('certs_dir=(.*)', x) for x in flags_list]
+                    if y is not None]
+                if not certs_dir_name[0]:
+                    raise RuntimeError("use_node_to_node_encryption=true must "
+                                    "be accompanied by a certs_dir setting")
+                YBAdminProxy.cmd_args.append(
+                  '--certs_dir_name={}'.format(certs_dir_name[0].group(1)))
+
+            if 'node_to_node_encryption_use_client_certificates=true' in flags_list:
+                YBAdminProxy.cmd_args.append('--client_node_name={}'.format(hostname))
 
     @staticmethod
     def add_master(master_addrs, new_master_ip, new_master_rpc_port, timeout=30):

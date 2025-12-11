@@ -77,6 +77,10 @@ message TransactionStatePB {
   // For detection deadlocks spanning session advisory locks and row-level locks, the status tablet
   // needs to be made aware of the active regular docdb transaction of the ysql session, if any.
   optional TransactionMetadataPB background_transaction_meta = 15;
+
+  // Replication origin id associated with the transaction. Used by CDCSDK and
+  // xCluster to prevent loops in bidirectional replication.
+  optional uint32 xrepl_origin_id = 16;
 }
 
 message TruncatePB {
@@ -101,6 +105,8 @@ message WritePB {
   optional uint64 batch_idx = 20;
 
   optional uint64 start_time_micros = 21;
+
+  optional uint32 xrepl_origin_id = 22;
 }
 
 message ChangeMetadataRequestPB {

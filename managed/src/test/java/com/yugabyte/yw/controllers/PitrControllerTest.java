@@ -26,6 +26,7 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.audit.AuditService;
+import com.yugabyte.yw.common.pitr.PitrConfigHelper;
 import com.yugabyte.yw.forms.CreatePitrConfigParams;
 import com.yugabyte.yw.forms.RestoreSnapshotScheduleParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -72,6 +73,7 @@ public class PitrControllerTest extends FakeDBApplication {
   private UUID taskUUID;
   private YBClient mockClient;
   private AuditService auditService;
+  private PitrConfigHelper pitrConfigHelper;
   private PitrController pitrController;
   private ListSnapshotSchedulesResponse mockListSnapshotSchedulesResponse;
   private DeleteSnapshotScheduleResponse mockDeleteSnapshotScheduleResponse;
@@ -91,7 +93,8 @@ public class PitrControllerTest extends FakeDBApplication {
     defaultUniverse.save();
     Commissioner commissioner = app.injector().instanceOf(Commissioner.class);
     auditService = new AuditService();
-    pitrController = new PitrController(commissioner, mockService);
+    pitrConfigHelper = new PitrConfigHelper(commissioner);
+    pitrController = new PitrController(commissioner, mockService, pitrConfigHelper);
     pitrController.setAuditService(auditService);
   }
 

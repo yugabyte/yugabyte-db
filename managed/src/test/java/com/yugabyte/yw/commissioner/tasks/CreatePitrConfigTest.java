@@ -55,6 +55,7 @@ public class CreatePitrConfigTest extends CommissionerBaseTest {
     super.setUpBase();
     defaultUniverse = ModelFactory.createUniverse();
     mockClient = mock(YBClient.class);
+    when(mockOperatorStatusUpdaterFactory.create()).thenReturn(mockOperatorStatusUpdater);
   }
 
   private CreatePitrConfigParams createParams() {

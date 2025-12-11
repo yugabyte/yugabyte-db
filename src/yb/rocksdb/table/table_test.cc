@@ -58,6 +58,7 @@
 #include "yb/rocksdb/table/meta_blocks.h"
 #include "yb/rocksdb/table/plain_table_factory.h"
 #include "yb/rocksdb/table/scoped_arena_iterator.h"
+#include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/compression.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
 #include "yb/rocksdb/util/logging.h"
@@ -1037,7 +1038,12 @@ class TableTest : public RocksDBTest {
 };
 
 class GeneralTableTest : public TableTest {};
-class BlockBasedTableTest : public TableTest {};
+class BlockBasedTableTest : public TableTest {
+ public:
+  void TestMiddleKey(
+      uint64_t num_records, uint64_t index_step, size_t data_block_size,
+      int expected_num_index_levels, int expected_num_data_blocks = 0);
+};
 class PlainTableTest : public TableTest {};
 class TablePropertyTest : public RocksDBTest {};
 
@@ -3012,15 +3018,17 @@ TEST_F(TableTest, MiddleOfMiddleKey) {
   GenerateSSTFile(db, 200, 300);
 
   // Same as the midkey of the largest sst which has 300 records.
-  const auto mkey_first = ASSERT_RESULT(db->GetMiddleKey());
+  const Slice kEmptyKey;
+  const Slice kEmptyInternalKey;
+  const auto mkey_first = ASSERT_RESULT(db->GetMiddleKey(kEmptyKey));
   const auto tw = ASSERT_RESULT(db->TEST_GetLargestSstTableReader());
-  const auto mid_key_of_sst = ASSERT_RESULT(tw->GetMiddleKey());
+  const auto mid_key_of_sst = ASSERT_RESULT(tw->GetMiddleKey(kEmptyInternalKey));
   ASSERT_EQ(mkey_first, mid_key_of_sst);
 
   // Create a file with 400 records. This is largest sst.
   GenerateSSTFile(db, 500, 400);
 
-  const auto mkey_second = ASSERT_RESULT(db->GetMiddleKey());
+  const auto mkey_second = ASSERT_RESULT(db->GetMiddleKey(kEmptyKey));
   // Still the same as the midkey of the previous largest sst.
   ASSERT_EQ(mkey_second, mid_key_of_sst);
   delete db;
@@ -3046,7 +3054,8 @@ TEST_F(TableTest, YB_LINUX_ONLY_TEST(BlockCacheWithHardlink)) {
 
   GenerateSSTFile(db, 0, 10);
 
-  const auto mkey = ASSERT_RESULT(db->GetMiddleKey());
+  const Slice kEmptyKey;
+  const auto mkey = ASSERT_RESULT(db->GetMiddleKey(kEmptyKey));
   const auto tw_1 = ASSERT_RESULT(db->TEST_GetLargestSstTableReader());
   auto* table_reader_1 = dynamic_cast<BlockBasedTable*>(tw_1);
   ASSERT_TRUE(table_reader_1->TEST_KeyInCache(ReadOptions(), mkey));
@@ -3063,6 +3072,128 @@ TEST_F(TableTest, YB_LINUX_ONLY_TEST(BlockCacheWithHardlink)) {
   delete db;
   delete checkpoint_db;
 }
+
+void BlockBasedTableTest::TestMiddleKey(
+    uint64_t num_records, uint64_t index_step, size_t data_block_size,
+    int expected_num_index_levels, int expected_num_data_blocks) {
+  // Magic numbers to produce test index structures.
+  constexpr auto kIndexBlockSize = 1_KB;
+  constexpr auto kRecordValSize = 48;
+
+  // Reverse comparator is used to preserve order since the table keys are encoded in little-endian
+  // format.
+  TableConstructor c(&reverse_key_comparator);
+  const std::string val(kRecordValSize, 'v');
+  for (uint64_t key = 0; key < num_records; ++key) {
+    std::string key_str;
+    PutFixed64(&key_str, key);
+    c.Add(key_str, val);
+  }
+
+  std::vector<std::string> keys;
+  stl_wrappers::KVMap kvmap;
+  Options options;
+  options.compression = kNoCompression;
+  BlockBasedTableOptions table_options;
+  table_options.block_size = data_block_size;
+  table_options.index_block_size = kIndexBlockSize;
+  options.table_factory.reset(NewBlockBasedTableFactory(table_options));
+  const ImmutableCFOptions ioptions(options);
+  auto comparator = GetPlainInternalComparator(&reverse_key_comparator);
+  c.Finish(options, ioptions, table_options, comparator, &keys, &kvmap);
+  // Verify inserts.
+  ASSERT_EQ(num_records, keys.size());
+  // Verify number of index levels.
+  auto* reader = c.GetTableReader();
+  {
+    auto props = c.GetTableProperties().user_collected_properties;
+    auto pos = props.find(BlockBasedTablePropertyNames::kNumIndexLevels);
+    DCHECK(pos != props.end());
+    int num_index_levels = DecodeFixed32(pos->second.c_str());
+    ASSERT_EQ(expected_num_index_levels, num_index_levels);
+  }
+  // If applicable, verify number of data blocks.
+  if (expected_num_data_blocks > 0)  {
+    auto props = reader->GetTableProperties();
+    ASSERT_EQ(expected_num_data_blocks, props->num_data_blocks);
+  }
+
+  auto lower_bound = num_records - index_step;
+  for (int i = 1; i <= 5; ++i) {
+    LOG(INFO) << "Testing with " << i << " top-level index entries";
+    std::string lower_bound_str;
+    PutFixed64(&lower_bound_str, lower_bound);
+    auto middle_key_str = ASSERT_RESULT(reader->GetMiddleKey(lower_bound_str));
+    Slice middle_key_buf(middle_key_str);
+    LOG(INFO) << "Middle Key: " << middle_key_buf.ToDebugHexString();
+    uint64_t middle_key;
+    ASSERT_TRUE(GetFixed64(&middle_key_buf, &middle_key));
+    ASSERT_GE(middle_key, lower_bound);
+    auto split_percent =
+        narrow_cast<int>(100 * (middle_key - lower_bound + 1) / (num_records - lower_bound));
+    LOG(INFO) << "Split Ratio: " << split_percent << "%";
+    auto deviation = abs(split_percent - 50);
+    if (i <= 3) {
+      ASSERT_LE(deviation, 16);
+    } else {
+      ASSERT_LE(deviation, 10);
+    }
+    lower_bound -= index_step;
+  }
+
+  // Notes on deviation:
+  // - With three qualifying top-level index entries, the middle key is chosen as the second key.
+  // The second restart key represents the upper bound of the key range corresponding to that
+  // restart. Hence we expect this calculated midpoint to skew greater (~66th percentile) than the
+  // actual midpoint.
+  // - The above-mentioned skew is absent when the number of qualifying entries is even. For
+  // instance, here the second restart key of the four entries is chosen, and that key is the upper
+  // bound of the first and second key ranges, i.e., the midpoint of the four key ranges.
+  // - The above-mentioned skew for odd number of entries reduces as number of entries increase
+  // since the fraction of the total key range represented by each restart reduces.
+}
+
+TEST_F(BlockBasedTableTest, SplitKeyOneLevelIndex) {
+  // Magic numbers to produce test index structures.
+  constexpr auto kDataBlockSize = 4_KB;
+  constexpr auto kNumRecords = 544;
+
+  constexpr auto kExpectedNumIndexLevels = 1;
+  constexpr auto kExpectedNumDataBlocks = 8;
+  constexpr auto kNumTopLevelEntries = kExpectedNumDataBlocks;
+  constexpr auto kApproxIndexEntryStep = kNumRecords / kNumTopLevelEntries;
+
+  TestMiddleKey(
+      kNumRecords, kApproxIndexEntryStep, kDataBlockSize, kExpectedNumIndexLevels,
+      kExpectedNumDataBlocks);
+  // Note: These are the exact split ratios:
+  // 48% when 1 out of 8 entries qualify in the top-level block.
+  // 50% when 2 out of 8 entries qualify in the top-level block.
+  // 66% when 3 out of 8 entries qualify in the top-level block.
+  // 50% when 4 out of 8 entries qualify in the top-level block.
+  // 60% when 5 out of 8 entries qualify in the top-level block.
+}
+
+TEST_F(BlockBasedTableTest, SplitKeyTwoLevelIndex) {
+  // Magic numbers to produce test index structures.
+  constexpr auto kDataBlockSize = 1_KB;
+  constexpr auto kNumRecords = 8568;
+
+  constexpr auto kExpectedNumIndexLevels = 2;
+  constexpr auto kNumTopLevelEntries = 8;
+  // Note: kNumTopLevelEntries is not verfied by the test and may change with changes to storage
+  // organization.
+  constexpr auto kApproxIndexEntryStep = kNumRecords / kNumTopLevelEntries;
+
+  TestMiddleKey(kNumRecords, kApproxIndexEntryStep, kDataBlockSize, kExpectedNumIndexLevels);
+  // Note: These are the exact split ratios:
+  // 50% when 1 out of 8 entries qualify in the top-level block.
+  // 50% when 2 out of 8 entries qualify in the top-level block.
+  // 66% when 3 out of 8 entries qualify in the top-level block.
+  // 50% when 4 out of 8 entries qualify in the top-level block.
+  // 60% when 5 out of 8 entries qualify in the top-level block.
+}
+
 }  // namespace rocksdb
 
 int main(int argc, char** argv) {

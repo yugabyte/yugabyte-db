@@ -114,6 +114,9 @@ void SetupKeyValueBatch(const tserver::WriteRequestPB& client_request, LWWritePB
   if (client_request.has_start_time_micros()) {
     out_request->set_start_time_micros(client_request.start_time_micros());
   }
+  if (client_request.has_xrepl_origin_id()) {
+    out_request->set_xrepl_origin_id(client_request.xrepl_origin_id());
+  }
   out_request->set_batch_idx(client_request.batch_idx());
   // Actually, in production code, we could check for external hybrid time only when there are
   // no ql, pgsql, redis operations.
@@ -1575,16 +1578,17 @@ void WriteQuery::IncrementActiveWriteQueryObjectsBy(int64_t value) {
   }
 }
 
-PgsqlResponsePB* WriteQuery::GetPgsqlResponseForMetricsCapture() const {
+std::pair<PgsqlResponsePB*, PgsqlMetricsCaptureType>
+    WriteQuery::GetPgsqlResponseAndMetricsCapture() const {
   if (!pgsql_write_ops_.empty()) {
     auto& write_op = pgsql_write_ops_.at(0);
+    auto metrics_capture = write_op->request().metrics_capture();
     if (GetAtomicFlag(&FLAGS_ysql_analyze_dump_metrics) &&
-        write_op->request().metrics_capture() ==
-            PgsqlMetricsCaptureType::PGSQL_METRICS_CAPTURE_ALL) {
-      return write_op->response();
+        metrics_capture != PgsqlMetricsCaptureType::PGSQL_METRICS_CAPTURE_NONE) {
+      return {write_op->response(), metrics_capture};
     }
   }
-  return nullptr;
+  return {nullptr, PgsqlMetricsCaptureType::PGSQL_METRICS_CAPTURE_NONE};
 }
 
 }  // namespace tablet

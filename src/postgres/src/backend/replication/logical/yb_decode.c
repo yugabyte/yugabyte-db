@@ -150,11 +150,7 @@ YBDecodeInsert(LogicalDecodingContext *ctx, XLogReaderState *record)
 	Assert(ctx->reader->ReadRecPtr == yb_record->lsn);
 
 	change->action = REORDER_BUFFER_CHANGE_INSERT;
-	/*
-	 * We do not send the replication origin information. So any dummy value is
-	 * sufficient here.
-	 */
-	change->origin_id = 1;
+	change->origin_id = yb_record->xrepl_origin_id;
 
 	ReorderBufferProcessXid(ctx->reorder, yb_record->xid,
 							ctx->reader->ReadRecPtr);
@@ -212,7 +208,7 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 
 	change->action = REORDER_BUFFER_CHANGE_UPDATE;
 	change->lsn = yb_record->lsn;
-	change->origin_id = yb_record->lsn;
+	change->origin_id = yb_record->xrepl_origin_id;
 
 	relation =
 		YbGetRelationWithOverwrittenReplicaIdentity(yb_record->table_oid,
@@ -375,11 +371,7 @@ YBDecodeDelete(LogicalDecodingContext *ctx, XLogReaderState *record)
 	Assert(ctx->reader->ReadRecPtr == yb_record->lsn);
 
 	change->action = REORDER_BUFFER_CHANGE_DELETE;
-	/*
-	 * We do not send the replication origin information. So any dummy value is
-	 * sufficient here.
-	 */
-	change->origin_id = 1;
+	change->origin_id = yb_record->xrepl_origin_id;
 
 	ReorderBufferProcessXid(ctx->reorder, yb_record->xid,
 							ctx->reader->ReadRecPtr);
@@ -412,12 +404,6 @@ YBDecodeCommit(LogicalDecodingContext *ctx, XLogReaderState *record)
 	XLogRecPtr	origin_lsn = yb_record->lsn;
 
 	/*
-	 * We do not send the replication origin information. So any dummy value is
-	 * sufficient here.
-	 */
-	RepOriginId origin_id = 1;
-
-	/*
 	 * Skip the records which the client hasn't asked for. Simpler version of a
 	 * similar check done in DecodeCommit in decode.c
 	 */
@@ -442,7 +428,8 @@ YBDecodeCommit(LogicalDecodingContext *ctx, XLogReaderState *record)
 		 yb_record->xid, commit_lsn, end_lsn);
 
 	ReorderBufferCommit(ctx->reorder, yb_record->xid, commit_lsn, end_lsn,
-						yb_record->commit_time, origin_id, origin_lsn);
+						yb_record->commit_time, yb_record->xrepl_origin_id,
+						origin_lsn);
 
 	elog(DEBUG1,
 		 "Successfully streamed transaction: %d with commit_lsn: %lu and "

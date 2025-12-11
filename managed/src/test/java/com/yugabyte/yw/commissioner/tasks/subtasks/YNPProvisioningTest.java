@@ -117,6 +117,9 @@ public class YNPProvisioningTest extends FakeDBApplication {
         .when(confGetter.getGlobalConf(eq(GlobalConfKeys.nodeAgentConnectionCacheSize)))
         .thenReturn(100);
     lenient()
+        .when(confGetter.getGlobalConf(eq(GlobalConfKeys.nodeAgentIgnoreConnectionCacheSize)))
+        .thenReturn(false);
+    lenient()
         .when(confGetter.getGlobalConf(eq(GlobalConfKeys.nodeAgentTokenLifetime)))
         .thenReturn(Duration.ofHours(1));
     lenient()

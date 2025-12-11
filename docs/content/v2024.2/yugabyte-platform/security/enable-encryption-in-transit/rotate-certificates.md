@@ -58,6 +58,8 @@ YugabyteDB Anywhere restarts the universe.
 
 ## Rotate certificates
 
+The following instructions assume that Encryption in transit is already [enabled](#enable-or-disable-encryption-in-transit) on the universe.
+
 **Node-to-node certificates**
 
 If your node-to-node root certificate has expired, rotation requires a simultaneous restart of all nodes, resulting in some downtime.

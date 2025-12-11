@@ -98,6 +98,8 @@ class TabletSnapshots : public TabletComponent {
 
   static bool IsTempSnapshotDir(const std::string& dir);
 
+  static bool IsLastSnapshotTimeFilePath(const std::string& dir);
+
  private:
   struct RestoreMetadata;
   struct ColocatedTableMetadata;

@@ -713,10 +713,10 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYCQLKeyspaceBackupWithLB)
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", keyspace, "create"}));
 
-  // Add in a new tserver to trigger the load balancer.
+  // Add in a new tserver to trigger the cluster balancer.
   ASSERT_OK(cluster_->AddTabletServer());
 
-  // Start running the restore while the load balancer is balancing the load.
+  // Start running the restore while the cluster balancer is balancing the load.
   // Use the --TEST_sleep_during_download_dir param to inject a sleep before the rsync calls.
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "new_" + keyspace,
@@ -758,7 +758,7 @@ TEST_F(YBBackupTest, DISABLED_TestYSQLBackupWithLearnerTS) {
   bool learner_found = false;
   int num_new_ts = 0;
   for (int round = 0; round < 300; ++round) {
-    // Add a new TS every 60 seconds to trigger the load balancer and
+    // Add a new TS every 60 seconds to trigger the cluster balancer and
     // so to trigger creation of new peers for existing tables.
     if (round % 60 == 0 && num_new_ts < 3) {
       ++num_new_ts;

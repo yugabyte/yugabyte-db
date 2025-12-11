@@ -306,11 +306,60 @@ Depending on the recommendations in the assessment report, do the following when
 
 ## Assess with read replicas (PostgreSQL only)
 
-Voyager can collect assessment metadata from [read replicas](/stable/architecture/docdb-replication/read-replicas/) in addition to the primary node, providing a comprehensive view of your workload distribution.
+Voyager can collect assessment metadata from read replicas in addition to the primary node, providing a comprehensive view of your workload distribution.
 
-You can use read replicas by explicitly providing the read replica endpoints.
+{{< note title="Read replica support" >}}
+Support for assessing read replicas is limited to replicas created using physical replication. Replicas created using logical replication are not supported.
+{{< /note >}}
 
-Run the command as follows:
+You can include read replicas in the assessment in two ways: via automatic discovery, or by manually specifying endpoints.
+
+### Automatic discovery (Default)
+
+By default, Voyager attempts to discover replicas via the [pg_stat_replication](/stable/additional-features/change-data-capture/using-logical-replication/monitor/#pg-stat-replication) view, and validate them by connecting to the primary.
+
+Run the assessment as follows:
+
+{{< tabpane text=true >}}
+  {{% tab header="CLI" lang="cli" %}}
+
+  ```sh
+  yb-voyager assess-migration --source-db-type postgresql \
+      --source-db-host primary-host \
+      --source-db-user ybvoyager \
+      --source-db-password password \
+      --source-db-name dbname \
+      --export-dir /path/to/export/dir
+  ```
+
+  {{% /tab %}}
+  {{% tab header="Config file" lang="config" %}}
+
+  ```sh
+  yb-voyager assess-migration --config-file <path-to-config-file>
+  ```
+
+  A sample source database configuration is as follows:
+
+  ```yaml
+  source:
+    host: primary-host
+    port: 5432
+    user: ybvoyager
+    password: password
+    db-name: dbname
+  ```
+
+  {{% /tab %}}
+{{< /tabpane >}}
+
+Voyager discovers replicas from the primary, attempts best-effort validation, and prompts you to include them. If validation fails (common in RDS, Aurora, Kubernetes, or when using internal IPs), you can either continue with primary-only assessment or manually specify replica endpoints.
+
+### Manually specify
+
+You can specify the read replica endpoints explicitly if automatic discovery fails, or if you want precise control.
+
+Run the assessment as follows:
 
 {{< tabpane text=true >}}
   {{% tab header="CLI" lang="cli" %}}
@@ -328,47 +377,26 @@ Run the command as follows:
   {{% /tab %}}
   {{% tab header="Config file" lang="config" %}}
 
-```sh
-yb-voyager assess-migration --config-file <path-to-config-file>
-```
+  ```sh
+  yb-voyager assess-migration --config-file <path-to-config-file>
+  ```
 
-A sample source database configuration is as follows:
+  A sample source database configuration is as follows:
 
-```yaml
-source:
-  host: primary-host
-  port: 5432
-  user: ybvoyager
-  password: password
-  db-name: dbname
-  read-replica-endpoints: "replica1:5432,replica2:5432"
-```
+  ```yaml
+  source:
+    host: primary-host
+    port: 5432
+    user: ybvoyager
+    password: password
+    db-name: dbname
+    read-replica-endpoints: "replica1:5432,replica2:5432"
+  ```
 
   {{% /tab %}}
 {{< /tabpane >}}
 
-  Ensure that all provided endpoints are accessible as they are strictly validated.
-
-<!--
-Add during next release or when it is supported
--  Automatic discovery (Default)
-
-    By default, Voyager attempts to discover replicas via [pg_stat_replication](/stable/additional-features/change-data-capture/using-logical-replication/monitor/#pg-stat-replication) and validate them by connecting to the primary as follows:
-
-    ```sh
-    yb-voyager assess-migration --source-db-type postgresql \
-        --source-db-host primary-host \
-        --source-db-user ybvoyager \
-        --source-db-password password \
-        --source-db-name dbname \
-        --export-dir /path/to/export/dir
-    ```
-
-    Voyager discovers replicas from the primary, attempts best-effort validation, and prompts you to include them. If validation fails (common in RDS, Aurora, Kubernetes, or when using internal IPs), you can either continue with primary-only assessment or manually specify replica endpoints.
-
-    - Manual specification.
-    Explicitly provide the read replica endpoints when automatic discovery fails, or if you want precise control.
-    -->
+Ensure that all provided endpoints are accessible as they are strictly validated.
 
 ## Assess a fleet of databases (Oracle only)
 
