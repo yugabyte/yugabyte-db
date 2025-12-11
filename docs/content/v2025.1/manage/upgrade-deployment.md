@@ -26,6 +26,8 @@ YugabyteDB is a distributed database that can be installed on multiple nodes. Up
 
 The `data`, `log`, and `conf` directories are typically stored in a fixed location that remains unchanged during the upgrade process. This ensures that the cluster's data and configuration settings are preserved throughout the upgrade.
 
+For more information on upgrading YugabyteDB, refer to [Upgrade FAQ](/stable/faq/operations-faq/#upgrade).
+
 ## Important information
 
 {{< warning >}}
@@ -51,13 +53,15 @@ To upgrade YugabyteDB to a version based on a different version of PostgreSQL (f
 
 - You can upgrade from one stable version to another in one go, even across major versions, as long as they are in the same major YSQL version. For information on performing major YSQL version upgrades, refer to [YSQL major upgrade](../ysql-major-upgrade-yugabyted/).
 
+### Backups and point-in-time-recovery
+
 - Backups
 
   - Backups taken on a newer version cannot be restored to universes running a previous version.
   - Backups taken during the upgrade cannot be restored to universes running a previous version.
   - Backups taken before the upgrade _can_ be used for restore to the new version.
 
-- [Point-in-time-restore](../backup-restore/point-in-time-recovery/) (PITR)
+- [Point-in-time-recovery](../backup-restore/point-in-time-recovery/) (PITR)
 
   - If you have PITR enabled, you must disable it before performing an upgrade. Re-enable it only after the upgrade is either finalized or rolled back.
   - After the upgrade, PITR cannot be done to a time before the upgrade.
