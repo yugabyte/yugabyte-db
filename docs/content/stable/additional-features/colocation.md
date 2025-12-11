@@ -251,9 +251,7 @@ For information on how to set up xCluster for non-colocated tables, refer to [xC
 
 ## Colocated tables with tablespaces
 
-{{<tags/feature/ea idea="1104">}}Colocated tables can be placed in [tablespaces](../../explore/going-beyond-sql/tablespaces/). When a colocated table is created in a tablespace, the colocation tablet is placed and replicated exclusively in the tablespace.
-
-During Early Access, by default colocation support for tablespaces is not enabled. To enable the feature, set the flag `ysql_enable_colocated_tables_with_tablespaces=true`.
+Colocated tables can be placed in [tablespaces](../../explore/going-beyond-sql/tablespaces/). When a colocated table is created in a tablespace, the colocation tablet is placed and replicated exclusively in the tablespace.
 
 ### Create a colocated table in a tablespace
 
