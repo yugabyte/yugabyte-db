@@ -2669,7 +2669,7 @@ If specified, *dest-ts-uuid* becomes the new leader. If the argument is empty (`
 
 ### Cluster balancing commands
 
-For information on YB-Master cluster balancing, see [Cluster balancing](../../../architecture/yb-master/#cluster-balancing).
+For information on YB-Master cluster balancing, see [Cluster balancing](../../architecture/yb-master/#cluster-balancing).
 
 For YB-Master cluster balancing flags, see [Cluster balancing flags](../../reference/configuration/yb-master/#cluster-balancing-flags).
 

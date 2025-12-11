@@ -4,8 +4,6 @@ headerTitle: Transactional DDL
 linkTitle: Transactional DDL
 description: Learn how YugabyteDB handles DDLs in a transaction
 headcontent: Learn how YugabyteDB handles DDLs in a transaction
-tags:
-   feature: tech-preview
 menu:
   stable:
     identifier: transactional-ddl
@@ -20,7 +18,7 @@ YugabyteDB's transactional DDL provides similar guarantees for rolling back DDL 
 
 ## Enable transactional DDL
 
-Support for transactional DDL is disabled by default, and to enable the feature, set the [yb-tserver](../../..reference/configuration/yb-tserver/) flag `ysql_yb_ddl_transaction_block_enabled` to true.
+Support for transactional DDL is disabled by default, and to enable the feature, set the [yb-tserver](../../../reference/configuration/yb-tserver/) flag `ysql_yb_ddl_transaction_block_enabled` to true.
 
 ## Rollback capabilities
 
