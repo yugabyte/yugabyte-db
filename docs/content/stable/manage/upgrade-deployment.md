@@ -74,21 +74,19 @@ To upgrade YugabyteDB to a version based on a different version of PostgreSQL (f
 
   If PITR has been enabled on the YSQL database `yugabyte`, disable it before starting the upgrade.
 
-  If you are performing a [major YSQL upgrade](../ysql-major-upgrade-yugabyted/), and have PITR enabled, you must disable it before performing the upgrade. Re-enable it only after the upgrade is either finalized or rolled back.
+  If you are performing a [major YSQL upgrade](../ysql-major-upgrade-yugabyted/), and have PITR enabled, delete the configuration before performing the upgrade. Recreate it only after the upgrade is either finalized or rolled back.
 
-- YSQL
+### YSQL
 
-  - For additional information on upgrading universes that have Enhanced PostgreSQL Compatibility Mode, refer to [Enhanced PostgreSQL Compatibility Mode](../../reference/configuration/postgresql-compatibility/).
+- For additional information on upgrading universes that have Enhanced PostgreSQL Compatibility Mode, refer to [Enhanced PostgreSQL Compatibility Mode](../../reference/configuration/postgresql-compatibility/).
 
-  - For information on upgrading or enabling cost-based optimizer, refer to [Enable cost-based optimizer](../../best-practices-operations/ysql-yb-enable-cbo/).
+- For information on upgrading or enabling cost-based optimizer, refer to [Enable cost-based optimizer](../../best-practices-operations/ysql-yb-enable-cbo/).
 
-    If you upgrade to v2025.2 and the universe already has cost-based optimizer enabled, the following features are enabled by default:
+  If you upgrade to v2025.2 and the universe already has cost-based optimizer enabled, the following features are enabled by default:
 
-    - Auto Analyze (ysql_enable_auto_analyze=true)
-    - YugabyteDB bitmap scan (yb_enable_bitmapscan=true)
-    - Parallel query (yb_enable_parallel_append=true)
-
-For more information, refer to [Upgrade FAQ](/stable/faq/operations-faq/#upgrade).
+  - Auto Analyze (ysql_enable_auto_analyze=true)
+  - YugabyteDB bitmap scan (yb_enable_bitmapscan=true)
+  - Parallel query (yb_enable_parallel_append=true)
 
 ## Upgrade YugabyteDB cluster
 
@@ -322,7 +320,7 @@ Use the following procedure to roll back all YB-Masters:
 When you have unidirectional xCluster replication, upgrade the target cluster before the source. After the target cluster is upgraded and finalized, you can proceed to upgrade the source cluster.
 
 {{< note title="Target cluster version" >}}
-xCluster replication requires the target cluster version to be the same or later than the source cluster version. The setup of a new xCluster replication will fail if this check fails. Existing replications will automatically pause if the source cluster is finalized before the target cluster.
+xCluster replication requires the target cluster version to be the same or later than the source cluster version. Setup of a new xCluster replication will fail if this check fails. Existing replications will automatically pause if the source cluster is finalized before the target cluster.
 {{< /note >}}
 
 To upgrade clusters in transactional xCluster, the sequence is as follows:

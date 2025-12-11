@@ -52,7 +52,7 @@ Transparent hugepages (THP) should be enabled on nodes for optimal performance. 
 
 - [Point-in-time-recovery](../../back-up-restore-universes/pitr/) (PITR)
 
-  When you start the upgrade, the PITR change history is invalidated. This means that after an upgrade starts, you will no longer be able to access or restore to any time before the upgrade was started - _regardless of the outcome of the upgrade_.
+  When you start the [upgrade](../upgrade-software-install/#perform-the-upgrade), the PITR change history is invalidated. This means that after an upgrade starts, you will no longer be able to access or restore to any time before the upgrade was started - _regardless of the outcome of the upgrade_.
 
   During the [monitoring phase](../upgrade-software-install/#monitor-the-universe) (that is, after upgrading but before finalizing or rolling back), any attempt to perform any PITR-based actions (such as rewind or clone a database to a point in time, back up and restore a database with PITR, or inspect a database at a point in time) will fail.
 

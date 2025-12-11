@@ -58,7 +58,7 @@ Performing a YSQL major upgrade on a universe with [CDC with logical replication
     CREATE USER yugabyte_upgrade WITH SUPERUSER PASSWORD '<strong_password>';
     ```
 
-- If you have PITR enabled, you must disable it before performing the upgrade. Re-enable it only after the major upgrade is either finalized or rolled back.
+- If you have PITR enabled, delete the configuration before performing the upgrade. Recreate it only after the major upgrade is either finalized or rolled back.
 
 ### Precheck
 
