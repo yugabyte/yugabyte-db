@@ -142,6 +142,8 @@ public class TokenAuthenticator extends Action.Simple {
     String token;
     Users user = null;
     boolean useOAuth = confGetter.getGlobalConf(GlobalConfKeys.useOauth);
+    boolean allowLocalLoginWithSso =
+        confGetter.getGlobalConf(GlobalConfKeys.allowLocalLoginWithSso);
     Optional<Http.Cookie> cookieValue = request.getCookie(COOKIE_PLAY_SESSION);
     if (useOAuth) {
       final PlayWebContext context = new PlayWebContext(request);
@@ -163,7 +165,9 @@ public class TokenAuthenticator extends Action.Simple {
         // Defaulting to regular flow to support dual login.
         token = fetchToken(request, false /* isApiToken */);
         user = authWithToken(token, false);
-        if (user != null && !user.getRole().equals(Users.Role.SuperAdmin)) {
+        if (user != null
+            && !user.getRole().equals(Users.Role.SuperAdmin)
+            && !allowLocalLoginWithSso) {
           user = null; // We want to only allow SuperAdmins access.
         }
       }
