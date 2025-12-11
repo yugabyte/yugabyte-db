@@ -173,10 +173,6 @@ class PgCatalogPerfTestBase : public PgMiniTestBase {
     return 1;
   }
 
-  void OverrideMiniClusterOptions(MiniClusterOptions* options) override {
-    options->wait_for_pg = false;
-  }
-
   Result<uint64_t> CacheRefreshRPCCount() {
     auto conn = VERIFY_RESULT(Connect());
     RETURN_NOT_OK(EnableCatCacheEventLogging(&conn));

@@ -37,7 +37,6 @@ class XClusterYsqlTestBase : public XClusterTestBase {
     // different OIDs?
     bool use_different_database_oids = false;
     bool start_yb_controller_servers = false;
-    bool wait_for_pg = true;
   };
 
   void SetUp() override;
@@ -69,7 +68,7 @@ class XClusterYsqlTestBase : public XClusterTestBase {
   Status SetUpClusters(const SetupParams& params);
 
   Status InitProducerClusterOnly(const MiniClusterOptions& opts);
-  Status Initialize(uint32_t replication_factor, uint32_t num_masters = 1, bool wait_for_pg = true);
+  Status Initialize(uint32_t replication_factor, uint32_t num_masters = 1);
 
   static std::string GetCompleteTableName(const client::YBTableName& table);
 

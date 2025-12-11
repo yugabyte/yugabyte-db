@@ -66,7 +66,6 @@ namespace tserver {
 class TabletServer;
 
 YB_STRONGLY_TYPED_BOOL(WaitTabletsBootstrapped);
-YB_STRONGLY_TYPED_BOOL(WaitToAcceptPgConnections);
 
 // An in-process tablet server meant for use in test cases.
 class MiniTabletServer {
@@ -100,11 +99,9 @@ class MiniTabletServer {
   // server to be fully initialized, including
   // having all its tablets bootstrapped.
   Status Start(
-      WaitTabletsBootstrapped wait_tablets_bootstrapped = WaitTabletsBootstrapped::kTrue,
-      WaitToAcceptPgConnections wait_for_pg = WaitToAcceptPgConnections::kTrue);
+      WaitTabletsBootstrapped wait_tablets_bootstrapped = WaitTabletsBootstrapped::kTrue);
 
-  Status StartPgIfConfigured(
-      WaitToAcceptPgConnections wait_for_pg = WaitToAcceptPgConnections::kTrue);
+  Status StartPgIfConfigured();
 
   std::string ToString() const;
 
@@ -131,7 +128,7 @@ class MiniTabletServer {
 
   // Stop and start the tablet server on the same RPC and webserver ports. The tserver must be
   // running.
-  Status Restart(WaitToAcceptPgConnections wait_for_pg = WaitToAcceptPgConnections::kTrue);
+  Status Restart();
   Status RestartStoppedServer();
 
   // Add a new tablet to the test server, use the default consensus configuration.

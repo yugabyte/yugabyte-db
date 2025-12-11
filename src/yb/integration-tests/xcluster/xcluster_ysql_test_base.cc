@@ -72,11 +72,10 @@ void XClusterYsqlTestBase::SetUp() {
 }
 
 Status XClusterYsqlTestBase::Initialize(
-    uint32_t replication_factor, uint32_t num_masters, bool wait_for_pg) {
+    uint32_t replication_factor, uint32_t num_masters) {
   MiniClusterOptions opts;
   opts.num_tablet_servers = replication_factor;
   opts.num_masters = num_masters;
-  opts.wait_for_pg = wait_for_pg;
 
   RETURN_NOT_OK(InitClusters(opts));
 
@@ -952,7 +951,7 @@ Status XClusterYsqlTestBase::SetUpClusters(const SetupParams& params) {
       "yugabyte is an existing database and cannot be caused to have different OIDs. Set "
       "namespace_name to a different value");
 
-  RETURN_NOT_OK(Initialize(params.replication_factor, params.num_masters, params.wait_for_pg));
+  RETURN_NOT_OK(Initialize(params.replication_factor, params.num_masters));
 
   if (params.start_yb_controller_servers) {
     {

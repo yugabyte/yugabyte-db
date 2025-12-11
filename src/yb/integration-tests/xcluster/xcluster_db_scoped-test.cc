@@ -634,10 +634,7 @@ TEST_F(XClusterDBScopedTestWithTwoDBsAutomaticDDLMode, AddRemoveNamespace) {
 // Remove a namespaces from replication when the target side is down.
 TEST_F_EX(XClusterDBScopedTest, RemoveNamespaceWhenTargetIsDown, XClusterDBScopedTestWithTwoDBs) {
   // Setup replication with both databases.
-  // TODO(#29233): Remove below logic of not waiting for pg once the GH is addressed.
-  SetupParams params;
-  params.wait_for_pg = false;
-  ASSERT_OK(SetUpClusters(params));
+  ASSERT_OK(SetUpClusters());
   ASSERT_OK(CheckpointReplicationGroup());
   ASSERT_OK(CreateReplicationFromCheckpoint());
   auto source_xcluster_client = client::XClusterClient(*producer_client());
@@ -688,10 +685,7 @@ TEST_F_EX(XClusterDBScopedTest, RemoveNamespaceWhenTargetIsDown, XClusterDBScope
 
 // Remove a namespaces from replication when the source side is down.
 TEST_F_EX(XClusterDBScopedTest, RemoveNamespaceWhenSourceIsDown, XClusterDBScopedTestWithTwoDBs) {
-  // TODO(#29233): Remove below logic of not waiting for pg once the GH is addressed.
-  SetupParams params;
-  params.wait_for_pg = false;
-  ASSERT_OK(SetUpClusters(params));
+  ASSERT_OK(SetUpClusters());
   ASSERT_OK(CheckpointReplicationGroup());
   ASSERT_OK(CreateReplicationFromCheckpoint());
   auto source_xcluster_client = client::XClusterClient(*producer_client());
@@ -772,10 +766,7 @@ TEST_F(XClusterDBScopedTest, Delete) {
 
 // Delete replication when the target side is down.
 TEST_F(XClusterDBScopedTest, DeleteWhenTargetIsDown) {
-  // TODO(#29233): Remove below logic of not waiting for pg once the GH is addressed.
-  SetupParams params;
-  params.wait_for_pg = false;
-  ASSERT_OK(SetUpClusters(params));
+  ASSERT_OK(SetUpClusters());
   ASSERT_OK(CheckpointReplicationGroup());
   ASSERT_OK(CreateReplicationFromCheckpoint());
 
@@ -824,10 +815,7 @@ TEST_F(XClusterDBScopedTest, DeleteWhenTargetIsDown) {
 
 // Delete replication when the source side is down.
 TEST_F(XClusterDBScopedTest, DeleteWhenSourceIsDown) {
-  // TODO(#29233): Remove below logic of not waiting for pg once the GH is addressed.
-  SetupParams params;
-  params.wait_for_pg = false;
-  ASSERT_OK(SetUpClusters(params));
+  ASSERT_OK(SetUpClusters());
   ASSERT_OK(CheckpointReplicationGroup());
   ASSERT_OK(CreateReplicationFromCheckpoint());
 

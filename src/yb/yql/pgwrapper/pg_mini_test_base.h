@@ -84,9 +84,7 @@ class PgMiniTestBase : public MiniClusterTestWithClient<MiniCluster> {
 
   void EnableFailOnConflict();
 
-  virtual void StartPgSupervisor(uint16_t pg_port, const int pg_ts_idx);
-
-  Status SetupPGCallbacksAndStartPG(uint16_t pg_port, size_t pg_ts_idx, bool wait_for_pg = true);
+  Status SetupPGCallbacksAndStartPG(uint16_t pg_port, size_t pg_ts_idx);
 
   Status RestartPostgres();
 
