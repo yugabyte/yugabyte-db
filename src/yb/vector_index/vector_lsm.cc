@@ -337,8 +337,9 @@ class VectorLSMInsertRegistryBase {
   void Shutdown() {
     for (;;) {
       {
-        SharedLock lock(mutex_);
-        if (active_tasks_.empty()) {
+        std::lock_guard lock(mutex_);
+        stopping_ = true;
+        if (active_tasks_.empty() && allocated_tasks_ == 0) {
           break;
         }
       }
@@ -387,9 +388,12 @@ class VectorLSMInsertRegistryBase {
     return log_prefix_;
   }
 
-  InsertTaskList DoAllocateTasks(
+  Result<InsertTaskList> DoAllocateTasks(
       size_t num_tasks, const VectorIndexPtr& index,
       InsertCallback&& insert_callback) REQUIRES(mutex_) {
+    if (stopping_) {
+      return STATUS_FORMAT(ShutdownInProgress, "VectorLSM registry is shutting down");
+    }
     InsertTaskList result;
     allocated_tasks_ += num_tasks;
     for (size_t left = num_tasks; left-- > 0;) {
@@ -416,6 +420,7 @@ class VectorLSMInsertRegistryBase {
   const std::string log_prefix_;
   rpc::ThreadPool& thread_pool_;
   std::shared_mutex mutex_;
+  bool stopping_ GUARDED_BY(mutex_) = false;
   size_t allocated_tasks_ GUARDED_BY(mutex_) = 0;
   InsertTaskList active_tasks_ GUARDED_BY(mutex_);
   std::vector<InsertTaskPtr> task_pool_ GUARDED_BY(mutex_);
@@ -433,7 +438,7 @@ class VectorLSMInsertRegistry : public VectorLSMInsertRegistryBase<Vector, Dista
       : Base(log_prefix, thread_pool) {}
 
   template <typename... Args>
-  InsertTaskList AllocateTasks(size_t num_tasks, Args&&... args) EXCLUDES(mutex_) {
+  Result<InsertTaskList> AllocateTasks(size_t num_tasks, Args&&... args) EXCLUDES(mutex_) {
     UniqueLock lock(mutex_);
     while (allocated_tasks_ &&
             allocated_tasks_ + num_tasks >= FLAGS_vector_index_max_insert_tasks) {
@@ -490,7 +495,7 @@ class VectorLSMMergeRegistry : public VectorLSMInsertRegistryBase<Vector, Distan
       : Base(log_prefix, thread_pool) {}
 
   template <typename... Args>
-  InsertTaskList AllocateTasks(size_t num_tasks, Args&&... args) EXCLUDES(mutex_) {
+  Result<InsertTaskList> AllocateTasks(size_t num_tasks, Args&&... args) EXCLUDES(mutex_) {
     // Sanity check for the case the flag has been set to 0 right before calling this method.
     size_t max_tasks = MaxCapacity();
     if (max_tasks == 0) {
@@ -501,7 +506,7 @@ class VectorLSMMergeRegistry : public VectorLSMInsertRegistryBase<Vector, Distan
     {
       UniqueLock lock(mutex_);
       if (allocated_tasks_ >= max_tasks) {
-        return {};
+        return InsertTaskList{};
       }
 
       num_tasks = std::min(num_tasks, max_tasks - allocated_tasks_);
@@ -673,22 +678,22 @@ struct VectorLSM<Vector, DistanceResult>::ImmutableChunk {
   }
 
   bool TryLockForCompaction() {
-    auto state = CompactionState::kNone;
-    return compaction_state.compare_exchange_strong(state, CompactionState::kCompacting);
+    auto expected_state = CompactionState::kNone;
+    return compaction_state.compare_exchange_strong(expected_state, CompactionState::kCompacting);
   }
 
   bool UnlockForCompaction() {
     // A chunk can be "unlocked for compaction" if it is being compacted now or still non-compacted.
-    auto state = CompactionState::kCompacting;
-    return compaction_state.compare_exchange_strong(state, CompactionState::kNone) ||
-           state == CompactionState::kNone;
+    auto expected_state = CompactionState::kCompacting;
+    return compaction_state.compare_exchange_strong(expected_state, CompactionState::kNone) ||
+           expected_state == CompactionState::kNone;
   }
 
   void Compacted() {
     // A chunk must fall into all stages before being marked as compacted:
     // kNone => kCompaction => kCompacted.
-    auto state = CompactionState::kCompacting;
-    CHECK(compaction_state.compare_exchange_strong(state, CompactionState::kCompacted));
+    auto expected_state = CompactionState::kCompacting;
+    CHECK(compaction_state.compare_exchange_strong(expected_state, CompactionState::kCompacted));
     MarkObsolete();
   }
 
@@ -1261,7 +1266,7 @@ Status VectorLSM<Vector, DistanceResult>::Insert(
 
   size_t entries_per_task = ceil_div(entries.size(), num_tasks);
 
-  auto tasks = insert_registry_->AllocateTasks(
+  auto tasks = VERIFY_RESULT(insert_registry_->AllocateTasks(
       num_tasks, chunk->index,
       [this, chunk](const Status& status) {
         if (!status.ok()) {
@@ -1271,7 +1276,7 @@ Status VectorLSM<Vector, DistanceResult>::Insert(
           chunk->insertion_failed.store(false, std::memory_order::release);
         }
         chunk->InsertTaskDone();
-      });
+      }));
   DCHECK_EQ(num_tasks, tasks.size());
 
   auto tasks_it = tasks.begin();
@@ -2399,12 +2404,12 @@ class Merger {
     while (source_iterator.Valid()) {
       RETURN_NOT_OK(lsm_.RUNNING_STATUS());
 
-      auto tasks = merge_registry_.AllocateTasks(
+      auto tasks = VERIFY_RESULT(merge_registry_.AllocateTasks(
           num_total_tasks, target_index,
           [&num_completed_tasks](const Status&) {
             // TODO: Handle failure
             num_completed_tasks.fetch_add(1, std::memory_order::relaxed);
-          });
+          }));
 
       VLOG_WITH_PREFIX(3) << "Allocated " << tasks.size() << " merge tasks";
 

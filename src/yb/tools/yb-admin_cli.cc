@@ -1032,7 +1032,7 @@ Status set_load_balancer_enabled_action(
 
   const bool is_enabled = VERIFY_RESULT(CheckedStoi(args[0])) != 0;
   RETURN_NOT_OK_PREPEND(
-      client->SetLoadBalancerEnabled(is_enabled), "Unable to change load balancer state");
+      client->SetLoadBalancerEnabled(is_enabled), "Unable to change cluster balancer state");
   return Status::OK();
 }
 
@@ -1043,7 +1043,7 @@ Status get_load_balancer_state_action(
     return ClusterAdminCli::kInvalidArguments;
   }
 
-  RETURN_NOT_OK_PREPEND(client->GetLoadBalancerState(), "Unable to get the load balancer state");
+  RETURN_NOT_OK_PREPEND(client->GetLoadBalancerState(), "Unable to get the cluster balancer state");
   return Status::OK();
 }
 
@@ -1065,7 +1065,7 @@ Status get_leader_blacklist_completion_action(
 const auto get_is_load_balancer_idle_args = "";
 Status get_is_load_balancer_idle_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
-  RETURN_NOT_OK_PREPEND(client->GetIsLoadBalancerIdle(), "Unable to get is load balancer idle");
+  RETURN_NOT_OK_PREPEND(client->GetIsLoadBalancerIdle(), "Unable to get is cluster balancer idle");
   return Status::OK();
 }
 

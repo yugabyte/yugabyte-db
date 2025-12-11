@@ -104,7 +104,7 @@ prometheus_user = prometheus
 
 [ConfigureNetwork]
 ip_address={{ ynp_config['ynp'].node_ip }}
-ports = 7000 7100 9000 9100 18018 22 5433 9042 9070 9300 12000 13000
+ports = 7000 7100 9000 9100 18018 5433 9042 9070 9300 12000 13000
 
 [InstallNodeAgent]
 {{ render_section(ynp_config['yba']) -}}

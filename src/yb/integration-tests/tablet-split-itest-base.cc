@@ -540,11 +540,12 @@ Result<TabletId> TabletSplitITest::SplitTabletAndValidate(
       RegularBuildVsDebugVsSanitizers(10s, 20s, 30s)));
 
   // If the parent tablet will not be deleted, then we will expect another tablet at the end.
-  const auto expected_split_tablets =
-      (FLAGS_TEST_skip_deleting_split_tablets || parent_tablet_protected_from_deletion) ? 1 : 0;
+  const int expected_split_tablets =
+      ANNOTATE_UNPROTECTED_READ(FLAGS_TEST_skip_deleting_split_tablets) ||
+      parent_tablet_protected_from_deletion;
 
-  RETURN_NOT_OK(
-      WaitForTabletSplitCompletion(/* expected_non_split_tablets =*/2, expected_split_tablets));
+  RETURN_NOT_OK(WaitForTabletSplitCompletion(
+      /* expected_non_split_tablets =*/ kNumSplitParts, expected_split_tablets));
 
   RETURN_NOT_OK(CheckPostSplitTabletReplicasData(num_rows));
 
@@ -1040,7 +1041,7 @@ Status TabletSplitExternalMiniClusterITest::SplitTabletCrashMaster(
 
   // Wait for parent tablet clean up
   std::this_thread::sleep_for(5 * raft_heartbeat_roundtrip_time * kTimeMultiplier);
-  return WaitForTablets(2);
+  return WaitForTablets(kNumSplitParts);
 }
 
 }  // namespace yb

@@ -226,6 +226,7 @@ static inline od_frontend_status_t od_relay_on_packet_msg(od_relay_t *relay,
 	case OD_SKIP:
 		status = OD_OK;
 	/* fallthrough */
+		yb_od_attribute_fallthrough;
 	default:
 		machine_msg_free(msg);
 		break;

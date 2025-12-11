@@ -165,7 +165,8 @@ class CatalogManagerIf : public tserver::TabletPeerLookupIf {
 
   virtual bool IsLoadBalancerEnabled() = 0;
 
-  // API to check if all the live tservers have similar tablet workload.
+  // This API is badly named. It actually checks whether the cluster balancer is idle, which may
+  // be possible even if cluster load is not balanced.
   virtual Status IsLoadBalanced(
       const IsLoadBalancedRequestPB* req, IsLoadBalancedResponsePB* resp) = 0;
 
@@ -203,7 +204,12 @@ class CatalogManagerIf : public tserver::TabletPeerLookupIf {
   virtual Status ListSnapshotRestorations(
       const ListSnapshotRestorationsRequestPB* req, ListSnapshotRestorationsResponsePB* resp) = 0;
 
-  virtual Result<std::pair<SnapshotInfoPB, std::unordered_set<TabletId>>>
+  struct CloneSnapshotInfo {
+    SnapshotInfoPB snapshot_info;
+    std::unordered_set<TabletId> not_snapshotted_tablets;
+    std::vector<std::pair<ReplicationInfoPB, int>> replication_info_and_num_tablets;
+  };
+  virtual Result<CloneSnapshotInfo>
   GenerateSnapshotInfoFromScheduleForClone(
       const SnapshotScheduleId& snapshot_schedule_id, HybridTime export_time,
       CoarseTimePoint deadline) = 0;
@@ -279,7 +285,7 @@ class CatalogManagerIf : public tserver::TabletPeerLookupIf {
 
   virtual int64_t leader_ready_term() const = 0;
 
-  virtual ClusterLoadBalancer* load_balancer() = 0;
+  virtual ClusterLoadBalancer* cluster_balancer() = 0;
 
   virtual XClusterManagerIf* GetXClusterManager() = 0;
 

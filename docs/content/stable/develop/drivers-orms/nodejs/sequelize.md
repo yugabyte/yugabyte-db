@@ -88,6 +88,27 @@ The following code creates an Employees model to store and retrieve employee inf
 - The actual table is created by calling the `Employee.sync()` API in the `createTableAndInsert()` function. This also inserts the data for three employees into the table using the `Employee.create()` API.
 - Finally, you can retrieve the information of all employees using `Employee.findAll()`.
 
+#### Using the YugabyteDB node-postgres smart driver
+
+You can also use the [YugabyteDB node-postgres smart driver](/stable/develop/drivers-orms/nodejs/yugabyte-node-driver/) (`@yugabytedb/pg`), which includes connection load balancing features, to distribute connections uniformly across the nodes in the entire cluster or in specific placements (zones or regions).
+
+For more information on the smart driver features, refer to [Using YugabyteDB smart drivers](../../smart-drivers/#using-yugabytedb-smart-drivers).
+
+To use the YugabyteDB node-postgres smart driver instead of the vanilla pg driver, add the following dependencies to your application's `package.json` file, to override the default PostgreSQL driver with the YugabyteDB smart driver:
+
+```json
+{
+  "dependencies": {
+    "sequelize-yugabytedb": "^1.0.5",
+    "pg": "npm:@yugabytedb/pg@8.7.3-yb-10"
+  }
+}
+```
+
+To configure load balancing properties, use either environment variables or connection parameters. See [Specify load balance properties](#specify-load-balance-properties) for examples and more details.
+
+For a complete working example, refer to the [Sequelize ORM example application](https://github.com/YugabyteDB-Samples/orm-examples/tree/master/node/sequelize).
+
 Add the code in the `example.js` file.
 
 ```js
@@ -189,9 +210,74 @@ Employees Details:
 ]
 ```
 
-## Specifying SSL configuration
+#### Specify load balance properties
 
-This configuration can be used while connecting to a YugabyteDB Aeon cluster or a local YB cluster with SSL enabled.
+You can specify load balance properties using environment variables or connection parameters.
+
+For information on all load balance modes, see [Node type-aware load balancing](../../smart-drivers/#node-type-aware-load-balancing).
+
+##### Environment variables
+
+The following table summarizes some environment variables available for configuring the YugabyteDB node-postgres smart driver:
+
+| Environment variable | Description | Default |
+| :--- | :--- | :--- |
+| PGLOADBALANCE | Enables cluster-aware or node type-aware load balancing.<br>Valid values are `any`, `prefer-primary`, `prefer-rr`, `only-primary`, `only-rr`, `true` (alias for `any`), and `false` (disabled). | `false` |
+| PGTOPOLOGYKEYS | Enables topology-aware load balancing by specifying comma-separated geo-locations. Provide locations in the form `cloud.region.zone` (for example, `aws.us-east-1.us-east-1a`). Specify multiple zones by separating values using commas. You can use a wildcard to specify all zones in a region (`cloud.region.*`). Indicate fallback priority using `cloud.region.zone:n`, where `n` is priority number. | Empty (disabled) |
+| PGYBSERVERSREFRESHINTERVAL | The interval (in seconds) to refresh the servers list | `300` (5 minutes) |
+
+These environment variables are only effective when using the YugabyteDB smart driver (`@yugabytedb/pg`). For a complete list of all available environment variables, refer to [Environment variables](../yugabyte-node-driver/#environment-variables).
+
+```js
+const { Sequelize, DataTypes } = require('sequelize-yugabytedb')
+
+// Enable load balancing across nodes in the cluster
+process.env.PGLOADBALANCE = 'any';  // Valid values: any, prefer-primary, prefer-rr, only-primary, only-rr
+// Specify the region(s)/zone(s) to target nodes from (Optional)
+process.env.PGTOPOLOGYKEYS = 'aws.us-east-2.us-east-2a';
+// Set the minimum time interval for refreshing the cluster topology information (Optional)
+process.env.PGYBSERVERSREFRESHINTERVAL = '5';
+
+const sequelize = new Sequelize('yugabyte', 'yugabyte', 'yugabyte', {
+   host: 'localhost',
+   port: '5433',
+   dialect: 'postgres'
+})
+```
+
+You can also set these in your shell or in a `.env` file:
+
+```sh
+export PGLOADBALANCE=any
+export PGTOPOLOGYKEYS=aws.us-east-2.us-east-2a
+export PGYBSERVERSREFRESHINTERVAL=5
+```
+
+##### Connection parameters
+
+Alternatively, you can specify load balancing properties directly in the connection string:
+
+```js
+const connectionString = 
+  'postgres://yugabyte:yugabyte@localhost:5433/yugabyte' +
+  '?loadBalance=any' +
+  '&topologyKeys=aws.us-east-2.us-east-2a' +
+  '&ybServersRefreshInterval=5';
+
+const sequelize = new Sequelize(connectionString, {
+   dialect: 'postgres',
+   pool: {
+      max: 10,
+      min: 2,
+      idle: 10000,
+      acquire: 30000
+   }
+});
+```
+
+## Specify SSL configuration
+
+This configuration can be used while connecting to a YugabyteDB Aeon cluster or a local YugabyteDB cluster with SSL enabled.
 
 1. Install the `fs` package to read the SSL certificate:
 
@@ -224,3 +310,4 @@ This configuration can be used while connecting to a YugabyteDB Aeon cluster or 
 ## Learn more
 
 - [YugabyteDB smart drivers for YSQL](../../smart-drivers/)
+- [Sequelize ORM example application](https://github.com/YugabyteDB-Samples/orm-examples/tree/master/node/sequelize)

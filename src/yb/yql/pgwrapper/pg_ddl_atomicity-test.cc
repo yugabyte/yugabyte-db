@@ -1044,6 +1044,7 @@ TEST_P(PgDdlAtomicitySanityTestWithTableLocks, DmlWithAddColTest) {
   // With table locks, the add-column operation will be blocked until the DML transaction
   // is committed. This is because the add-column operation acquires an EXCLUSIVE lock on the table
   // and the DML transaction acquires an ACCESS_SHARE lock on the table (at ts-1).
+  const int kTimeoutSec = 3;
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   const string table = "dml_with_add_col_test";
   CreateTable(table);
@@ -1056,7 +1057,7 @@ TEST_P(PgDdlAtomicitySanityTestWithTableLocks, DmlWithAddColTest) {
 
   // Conn2: Initiate rollback of the alter.
   ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_ddl_rollback", "true"));
-  ASSERT_OK(conn2.Execute("SET statement_timeout = 8"));
+  ASSERT_OK(conn2.Execute("SET statement_timeout = '" + std::to_string(kTimeoutSec) + "s'"));
 
   if (TableLocksEnabled()) {
     // Conn2 will have to fail because it cannot get the table locks held by conn1.

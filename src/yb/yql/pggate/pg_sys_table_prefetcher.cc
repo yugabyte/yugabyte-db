@@ -405,7 +405,6 @@ class Loader {
           index_req.dup_table_id(index->relfilenode_id().GetYbTableId());
           SetupPaging(&index_req);
           AddTargetColumn(&index_req, column);
-          info.index_targets.push_back(column.id());
           break;
         }
       }

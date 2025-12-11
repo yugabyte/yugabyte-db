@@ -317,6 +317,39 @@ constexpr std::pair<uint32_t, uint32_t> kIntentsDBEventStats[] = {
       rocksdb::GET_FILTER_BLOCK_FROM_CACHE_NANOS},
 };
 
+constexpr std::pair<uint32_t, uint32_t> kRegularDBTickersForPgStatStatements[] = {
+  {pggate::YB_STORAGE_GAUGE_REGULARDB_NUMBER_DB_SEEK, rocksdb::NUMBER_DB_SEEK},
+  {pggate::YB_STORAGE_GAUGE_REGULARDB_NUMBER_DB_NEXT, rocksdb::NUMBER_DB_NEXT},
+  {pggate::YB_STORAGE_GAUGE_REGULARDB_NUMBER_DB_PREV, rocksdb::NUMBER_DB_PREV},
+};
+
+struct MetricsLists {
+  std::span<const std::pair<uint32_t, uint32_t>> regular_db_tickers;
+  std::span<const std::pair<uint32_t, uint32_t>> regular_db_event_stats;
+  std::span<const std::pair<uint32_t, uint32_t>> intents_db_tickers;
+  std::span<const std::pair<uint32_t, uint32_t>> intents_db_event_stats;
+};
+
+const MetricsLists& GetMetricsForCaptureType(PgsqlMetricsCaptureType metrics_capture) {
+  static const MetricsLists kAllMetrics = {
+      kRegularDBTickers,
+      kRegularDBEventStats,
+      kIntentsDBTickers,
+      kIntentsDBEventStats,
+  };
+  static const MetricsLists kPgssMetrics = {
+      kRegularDBTickersForPgStatStatements,
+      {},
+      {},
+      {},
+  };
+
+  if (metrics_capture == PgsqlMetricsCaptureType::PGSQL_METRICS_CAPTURE_PGSS) {
+    return kPgssMetrics;
+  }
+  return kAllMetrics;
+}
+
 template <class PB>
 void CopyRocksDBStatisticsToPgsqlResponse(
     const rocksdb::Statistics& statistics,
@@ -408,24 +441,28 @@ size_t DocDBStatistics::Dump(std::stringstream* out) const {
   return dumped;
 }
 
-void DocDBStatistics::CopyToPgsqlResponse(PgsqlResponsePB* response) const {
-  DoCopyToPgsqlResponse(response);
+void DocDBStatistics::CopyToPgsqlResponse(
+    PgsqlResponsePB* response, PgsqlMetricsCaptureType metrics_capture) const {
+  DoCopyToPgsqlResponse(response, metrics_capture);
 }
 
-void DocDBStatistics::CopyToPgsqlResponse(LWPgsqlResponsePB* response) const {
-  DoCopyToPgsqlResponse(response);
+void DocDBStatistics::CopyToPgsqlResponse(
+    LWPgsqlResponsePB* response, PgsqlMetricsCaptureType metrics_capture) const {
+  DoCopyToPgsqlResponse(response, metrics_capture);
 }
 
 template <class PB>
-void DocDBStatistics::DoCopyToPgsqlResponse(PB* response) const {
+void DocDBStatistics::DoCopyToPgsqlResponse(
+    PB* response, PgsqlMetricsCaptureType metrics_capture) const {
   auto* metrics = response->mutable_metrics();
+  const auto& metrics_lists = GetMetricsForCaptureType(metrics_capture);
   CopyRocksDBStatisticsToPgsqlResponse(
-      regulardb_statistics_, std::span{kRegularDBTickers}, std::span{kRegularDBEventStats},
-      metrics);
+      regulardb_statistics_, metrics_lists.regular_db_tickers,
+      metrics_lists.regular_db_event_stats, metrics);
   if (GetAtomicFlag(&FLAGS_ysql_analyze_dump_intentsdb_metrics)) {
     CopyRocksDBStatisticsToPgsqlResponse(
-        intentsdb_statistics_, std::span{kIntentsDBTickers}, std::span{kIntentsDBEventStats},
-        metrics);
+        intentsdb_statistics_, metrics_lists.intents_db_tickers,
+        metrics_lists.intents_db_event_stats, metrics);
   }
 }
 

@@ -181,9 +181,13 @@ static int od_frontend_startup(od_client_t *client)
 		if (msg == NULL)
 			goto error;
 
-		int rc = kiwi_be_read_startup(machine_msg_data(msg),
-					      machine_msg_size(msg),
-					      &client->startup, &client->vars);
+		int rc = kiwi_be_read_startup(
+			machine_msg_data(msg), machine_msg_size(msg),
+			&client->startup,
+			instance->config.yb_use_auth_backend ?
+				&client->yb_startup_settings :
+				&client->vars,
+			yb_od_instance_should_parse_startup_options(instance));
 		machine_msg_free(msg);
 		if (rc == -1)
 			goto error;
@@ -228,8 +232,12 @@ static int od_frontend_startup(od_client_t *client)
 			      client->config_listen->client_login_timeout);
 	if (msg == NULL)
 		return -1;
-	rc = kiwi_be_read_startup(machine_msg_data(msg), machine_msg_size(msg),
-				  &client->startup, &client->vars);
+	rc = kiwi_be_read_startup(
+		machine_msg_data(msg), machine_msg_size(msg), &client->startup,
+		instance->config.yb_use_auth_backend ?
+			&client->yb_startup_settings :
+			&client->vars,
+		yb_od_instance_should_parse_startup_options(instance));
 	machine_msg_free(msg);
 	if (rc == -1)
 		goto error;
@@ -428,20 +436,25 @@ static inline od_frontend_status_t od_frontend_setup_params(od_client_t *client)
 		}
 	}
 
-	od_debug(&instance->logger, "setup", client, NULL, "sending params:");
-
-	/* send parameters set by client or cached by the route */
-	kiwi_param_t *param = route->params.params.list;
-
-	machine_msg_t *stream = machine_msg_create(0);
-	if (stream == NULL)
-		return OD_EOOM;
-
+	/* YB: ParameterStatus messages are sent in od_backend_startup() in case of auth backend */
 	if (!instance->config.yb_use_auth_backend) {
+		od_debug(&instance->logger, "setup", client, NULL,
+			 "sending params:");
+
+		/* send parameters set by client or cached by the route */
+		kiwi_param_t *param = route->params.params.list;
+
+		machine_msg_t *stream = machine_msg_create(0);
+		if (stream == NULL)
+			return OD_EOOM;
+
 		while (param) {
 #ifndef YB_GUC_SUPPORT_VIA_SHMEM
 			kiwi_var_t *var;
-			var = yb_kiwi_vars_get(&client->vars, kiwi_param_name(param));
+			var = yb_kiwi_vars_get(
+				&client->vars, kiwi_param_name(param),
+				yb_od_instance_should_lowercase_guc_name(
+					instance));
 #else
 			kiwi_var_type_t type;
 			type = kiwi_vars_find(&client->vars, kiwi_param_name(param),
@@ -477,45 +490,11 @@ static inline od_frontend_status_t od_frontend_setup_params(od_client_t *client)
 
 			param = param->next;
 		}
-	} else {
-		/*
-		 * Send the client vars which also includes the values received from the
-		 * auth-backend to the client.
-		 */
-		kiwi_var_t *var = NULL;
-		size_t num_vars = client->vars.size, i = 0;
-		while (i < num_vars)
-		{
-			machine_msg_t *msg;
 
-			var = &client->vars.vars[i];
-			if (var == NULL) {
-				od_debug(&instance->logger, "setup", client, NULL,
-					"unexpected NULL value in client->vars");
-
-				i++;
-				continue;
-			}
-
-			msg = kiwi_be_write_parameter_status(stream, var->name,
-								var->name_len, var->value,
-								var->value_len);
-			if (msg == NULL) {
-				machine_msg_free(stream);
-				return OD_EOOM;
-			}
-
-			od_debug(&instance->logger, "setup", client, NULL,
-				" %.*s = %.*s", var->name_len, var->name,
-				var->value_len, var->value);
-
-			i++;
-		}
+		rc = od_write(&client->io, stream);
+		if (rc == -1)
+			return OD_ECLIENT_WRITE;
 	}
-
-	rc = od_write(&client->io, stream);
-	if (rc == -1)
-		return OD_ECLIENT_WRITE;
 
 	return OD_OK;
 }
@@ -730,6 +709,7 @@ static inline bool od_should_drop_connection(od_client_t *client,
 		}
 	}
 		/* fall through */
+		yb_od_attribute_fallthrough;
 	case OD_RULE_POOL_STATEMENT:
 	case OD_RULE_POOL_TRANSACTION: {
 		//TODO:: drop no more than X connection per sec/min/whatever
@@ -2103,8 +2083,10 @@ static od_frontend_status_t od_frontend_remote(od_client_t *client)
 		if (status == OD_ATTACH) {
 			uint32_t catchup_timeout = route->rule->catchup_timeout;
 #ifndef YB_GUC_SUPPORT_VIA_SHMEM
-			kiwi_var_t *timeout_var =
-				yb_kiwi_vars_get(&client->vars, "odyssey_catchup_timeout");
+			kiwi_var_t *timeout_var = yb_kiwi_vars_get(
+				&client->vars, "odyssey_catchup_timeout",
+				yb_od_instance_should_lowercase_guc_name(
+					instance));
 #else
 			kiwi_var_t *timeout_var =
 				kiwi_vars_get(&client->vars,
@@ -2447,13 +2429,16 @@ static void od_application_name_add_host(od_client_t *client)
 {
 	if (client == NULL || client->io.io == NULL)
 		return;
+	od_instance_t *instance = client->global->instance;
+
 	char app_name_with_host[KIWI_MAX_VAR_SIZE];
 	char peer_name[KIWI_MAX_VAR_SIZE];
 	int app_name_len = 7;
 	char *app_name = "unknown";
 #ifndef YB_GUC_SUPPORT_VIA_SHMEM
-	kiwi_var_t *app_name_var =
-		yb_kiwi_vars_get(&client->vars, "application_name");
+	kiwi_var_t *app_name_var = yb_kiwi_vars_get(
+		&client->vars, "application_name",
+		yb_od_instance_should_lowercase_guc_name(instance));
 #else
 	kiwi_var_t *app_name_var =
 		kiwi_vars_get(&client->vars, KIWI_VAR_APPLICATION_NAME);
@@ -2470,7 +2455,9 @@ static void od_application_name_add_host(od_client_t *client)
 			    app_name_len, app_name, peer_name);
 #ifndef YB_GUC_SUPPORT_VIA_SHMEM
 	kiwi_vars_update(&client->vars, "application_name", 17,
-		      app_name_with_host, length + 1); // return code ignored
+			 app_name_with_host, length + 1,
+			 yb_od_instance_should_lowercase_guc_name(
+				 instance)); // return code ignored
 #else
 	kiwi_vars_set(&client->vars, KIWI_VAR_APPLICATION_NAME,
 		      app_name_with_host,
@@ -3067,6 +3054,12 @@ int yb_auth_via_auth_backend(od_client_t *client)
 			client, NULL,
 			"failed to allocate internal client for the auth backend");
 		goto failed_to_acquire_auth_backend;
+	}
+
+	if (client->startup.replication.value_len != 0) {
+		yb_kiwi_var_set(&control_conn_client->startup.replication,
+			client->startup.replication.value,
+			client->startup.replication.value_len);
 	}
 
 	/*

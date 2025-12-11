@@ -91,6 +91,52 @@ postgresql://yugabyte:yugabyte@128.0.0.1:5433/yugabyte?loadBalance=true? \
 
 After the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load-balances subsequent connection requests across these servers.
 
+#### Environment variables
+
+You can also specify load balance properties using environment variables. The following table shows the mapping between environment variables and their corresponding connection parameters.
+
+| Environment variable | Connection parameter |
+| :--- | :--- |
+| PGHOST | host |
+| PGPORT | port |
+| PGDATABASE | database |
+| PGUSER | user |
+| PGPASSWORD | password |
+| PGLOADBALANCE | loadBalance |
+| PGTOPOLOGYKEYS | topologyKeys |
+| PGYBSERVERSREFRESHINTERVAL | ybServersRefreshInterval |
+
+The following is an example of how you can set up the connection using environment variables.
+
+```js
+const pg = require('@yugabytedb/pg');
+
+// Enable load balancing across nodes in the cluster
+process.env.PGLOADBALANCE = 'any';  // Valid values: any, prefer-primary, prefer-rr, only-primary, only-rr
+// Specify the region(s)/zone(s) to target nodes from (Optional)
+process.env.PGTOPOLOGYKEYS = 'aws.us-east-2.us-east-2a';
+// Set the minimum time interval for refreshing the cluster topology information (Optional)
+process.env.PGYBSERVERSREFRESHINTERVAL = '5';
+
+const client = new pg.Client({
+   host: 'localhost',
+   port: 5433,
+   database: 'yugabyte',
+   user: 'yugabyte',
+   password: 'yugabyte'
+});
+```
+
+You can also set these variables in your shell or in a `.env` file:
+
+```sh
+export PGLOADBALANCE=any
+export PGTOPOLOGYKEYS=aws.us-east-2.us-east-2a
+export PGYBSERVERSREFRESHINTERVAL=5
+```
+
+For information on all load balance modes, see [Node type-aware load balancing](../../smart-drivers/#node-type-aware-load-balancing).
+
 #### Use SSL
 
 The following table describes the connection parameters required to connect using TLS/SSL.

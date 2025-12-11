@@ -55,11 +55,6 @@ namespace {
 // - num_restarts: uint32
 const size_t kMinBlockSize = 2 * sizeof(uint32_t);
 
-inline uint32_t GetMiddleIndex(
-    const uint32_t total_number, const MiddlePointPolicy middle_point_policy) {
-  return total_number ? (total_number - std::to_underlying(middle_point_policy)) / 2 : 0;
-}
-
 // Helper routine: decode the next block entry starting at "p",
 // storing the number of shared key bytes, non_shared key bytes,
 // and the length of the value in "*shared", "*non_shared", and
@@ -686,7 +681,7 @@ yb::Result<std::string> Block::GetRestartBlockMiddleEntryKey(
   }
 
   // Second step is to advance to the middle record.
-  const auto middle_record_idx = GetMiddleIndex(records_count, middle_restart_policy);
+  const auto middle_record_idx = Block::GetMiddlePointIndex(records_count, middle_restart_policy);
   for (block_iter.SeekToFirst(), records_count = 0;
        block_iter.Valid() && (records_count < middle_record_idx);
        block_iter.Next()) {
@@ -730,11 +725,11 @@ yb::Result<std::string> Block::GetMiddleKey(
     const KeyValueEncodingFormat key_value_encoding_format, const Comparator* cmp,
     const MiddlePointPolicy middle_entry_policy) const {
   if (PREDICT_FALSE((NumRestarts() == 0))) {
-    // Not possible to have less than 1 restart at all, refer to the BlockBuilder's constuctor.
+    // Not possible to have less than 1 restart at all, refer to the BlockBuilder's constructor.
     return STATUS(Corruption, "Restarts number cannot be zero, this might be a data corruption!");
   }
   if (PREDICT_TRUE(NumRestarts() > 1)) {
-    const auto restart_idx = GetMiddleIndex(NumRestarts(), middle_entry_policy);
+    const auto restart_idx = Block::GetMiddlePointIndex(NumRestarts(), middle_entry_policy);
     const auto middle_key =
         VERIFY_RESULT(GetRestartKey(restart_idx, key_value_encoding_format));
     return middle_key.ToBuffer();

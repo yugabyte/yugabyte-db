@@ -181,7 +181,7 @@ ybvectorendscan(IndexScanDesc scan)
  *	 TODO(tanuj): Make sure this is false and correct.
  */
 bool
-ybvectormightrecheck(Relation heapRelation, Relation indexRelation,
+ybvectormightrecheck(Scan *scan, Relation heapRelation, Relation indexRelation,
 					 bool xs_want_itup, ScanKey keys, int nkeys)
 {
 	return true;

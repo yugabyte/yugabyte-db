@@ -214,6 +214,47 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
   }
 
   /*
+   * Update PitrConfig Status
+   */
+  @Override
+  public void updatePitrConfigStatus(
+      com.yugabyte.yw.models.PitrConfig pitrConfig, String taskName, UUID taskUUID) {
+    try {
+      if (pitrConfig != null && pitrConfig.getKubernetesResourceDetails() != null) {
+        log.info("Update PITR config Status called for task {} ", taskUUID);
+        try (final KubernetesClient kubernetesClient =
+            new KubernetesClientBuilder().withConfig(k8sClientConfig).build()) {
+          PitrConfig pitrConfigCr =
+              operatorUtils.getResource(
+                  pitrConfig.getKubernetesResourceDetails(),
+                  kubernetesClient.resources(PitrConfig.class),
+                  PitrConfig.class);
+          PitrConfigStatus status = pitrConfigCr.getStatus();
+          if (status == null) {
+            status = new PitrConfigStatus();
+          }
+
+          status.setMessage("PITR Config State: " + pitrConfig.getState().toString());
+          status.setResourceUUID(pitrConfig.getUuid().toString());
+          status.setTaskUUID(taskUUID.toString());
+
+          pitrConfigCr.setStatus(status);
+          kubernetesClient
+              .resources(PitrConfig.class)
+              .inNamespace(namespace)
+              .resource(pitrConfigCr)
+              .updateStatus();
+          log.info("Updated Status for PITR config CR {}", pitrConfigCr);
+        }
+      }
+    } catch (Exception e) {
+      // This can happen for a variety of reasons.
+      // We might fail to talk to the API server, might need to add retries around this logic
+      log.error("Exception in updating pitr config cr status", e);
+    }
+  }
+
+  /*
    * Universe Status Updates
    */
 

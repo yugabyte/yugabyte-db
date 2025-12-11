@@ -2016,8 +2016,11 @@ bool YBCCurrentTransactionUsesFastPath() {
 //------------------------------------------------------------------------------------------------
 // System validation.
 //------------------------------------------------------------------------------------------------
-YbcStatus YBCPgValidatePlacement(const char *placement_info, bool check_satisfiable) {
-  return ToYBCStatus(pgapi->ValidatePlacement(placement_info, check_satisfiable));
+YbcStatus YBCPgValidatePlacements(
+    const char *live_placement_info, const char *read_replica_placement_info,
+    bool check_satisfiable) {
+  return ToYBCStatus(pgapi->ValidatePlacements(
+      live_placement_info, read_replica_placement_info, check_satisfiable));
 }
 
 // Referential Integrity Caching
@@ -2868,7 +2871,6 @@ YbcStatus YBCPgGetCDCConsistentChanges(
       }
     }
 
-
     new (&resp_rows[row_idx]) YbcPgRowMessage{
         .col_count = col_count,
         .cols = cols,
@@ -2879,7 +2881,9 @@ YbcStatus YBCPgGetCDCConsistentChanges(
         .action = GetRowMessageAction(row_message_pb),
         .table_oid = table_oid,
         .lsn = row_message_pb.pg_lsn(),
-        .xid = row_message_pb.pg_transaction_id()};
+        .xid = row_message_pb.pg_transaction_id(),
+        .xrepl_origin_id =
+            row_message_pb.has_xrepl_origin_id() ? row_message_pb.xrepl_origin_id() : 0};
 
     min_resp_lsn = std::min(min_resp_lsn, row_message_pb.pg_lsn());
     max_resp_lsn = std::max(max_resp_lsn, row_message_pb.pg_lsn());

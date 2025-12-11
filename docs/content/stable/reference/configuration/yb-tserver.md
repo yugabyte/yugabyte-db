@@ -396,7 +396,13 @@ Default: `false`
 
 {{% /tags/wrap %}}
 
-Enables or disables the query planner's use of bitmap scans for YugabyteDB relations. Both [enable_bitmapscan](#enable-bitmapscan) and `yb_enable_bitmapscan` must be set to true for a YugabyteDB relation to use a bitmap scan. If `yb_enable_bitmapscan` is false, the planner never uses a YugabyteDB bitmap scan.
+Enables or disables the query planner's use of bitmap scans for YugabyteDB relations.
+
+In v2025.2 and later, bitmap scan is enabled by default in new universes when you deploy using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon.
+
+In addition, when upgrading a deployment to v2025.2 or later, if the universe has the cost-based optimizer enabled (`on`), YugabyteDB will enable bitmap scan.
+
+Both [enable_bitmapscan](#enable-bitmapscan) and `yb_enable_bitmapscan` must be set to true for a YugabyteDB relation to use a bitmap scan. If `yb_enable_bitmapscan` is false, the planner never uses a YugabyteDB bitmap scan.
 
 | enable_bitmapscan | yb_enable_bitmapscan | Result |
 | :--- | :---  | :--- |
@@ -435,6 +441,8 @@ Default: `legacy_mode`
 {{% /tags/wrap %}}
 
 Enables the YugabyteDB [cost-based optimizer](../../../architecture/query-layer/planner-optimizer/) (CBO). Options are `on`, `off`, `legacy_mode`, and `legacy_stats_mode`.
+
+In v2025.2 and later, CBO is enabled by default (`on`) in new universes when you deploy using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon.
 
 This parameter replaces the [yb_enable_base_scans_cost_model](#yb-enable-base-scans-cost-model) and [yb_enable_optimizer_statistics](#yb-enable-optimizer-statistics) parameters.
 
@@ -2131,70 +2139,82 @@ Default: `legacy_mode`
 
 Enables the YugabyteDB [cost-based optimizer](../../../architecture/query-layer/planner-optimizer/) (CBO). Options are `on`, `off`, `legacy_mode`, and `legacy_stats_mode`.
 
-When enabling CBO, you must run ANALYZE on user tables to maintain up-to-date statistics.
+In v2025.2 and later, CBO is enabled ('on') by default in new universes when you deploy using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon.
+
+When CBO is enabled (set to `on`), [auto analyze](#auto-analyze-service-flags) is also enabled automatically. If you disable auto analyze explicitly, you are responsible for periodically running ANALYZE on user tables to maintain up-to-date statistics.
 
 For information on using this parameter to configure CBO, refer to [Enable cost-based optimizer](../../../best-practices-operations/ysql-yb-enable-cbo/).
 
 ### Auto Analyze service flags
 
-{{<tags/feature/ea idea="590">}}To learn about the Auto Analyze service, see [Auto Analyze service](../../../additional-features/auto-analyze).
+To learn about the Auto Analyze service, see [Auto Analyze service](../../../additional-features/auto-analyze).
 
-{{< note title="Note" >}}
+Auto analyze is automatically enabled when the [cost-based optimizer](../../../best-practices-operations/ysql-yb-enable-cbo/) (CBO) is enabled ([yb_enable_cbo](#yb_enable_cbo) is set to `on`).
 
-To fully enable the Auto Analyze service, you need to enable `ysql_enable_auto_analyze_service` on all YB-Masters and YB-TServers, and `ysql_enable_table_mutation_counter` on all YB-TServers.
+In v2025.2 and later, CBO and Auto Analyze are enabled by default in new universes when you deploy using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon. In addition, when upgrading a deployment to v2025.2 or later, if the universe has the cost-based optimizer enabled (`on`), YugabyteDB will enable Auto Analyze.
 
-{{< /note >}}
+To explicitly control the service, you can set the `ysql_enable_auto_analyze` flag.
 
-See also [Auto Analyze Service Master flags](../yb-master/#auto-analyze-service-flags).
-
-##### --ysql_enable_auto_analyze_service
+##### --ysql_enable_auto_analyze
 
 {{% tags/wrap %}}
-{{<tags/feature/ea idea="590">}}
-{{<tags/feature/t-server>}}
-{{<tags/feature/restart-needed>}}
+
 Default: `false`
 {{% /tags/wrap %}}
 
 Enable the Auto Analyze service, which automatically runs ANALYZE to update table statistics for tables that have changed more than a configurable threshold.
 
-##### --ysql_enable_table_mutation_counter
-
-{{% tags/wrap %}}
-
-
-Default: `false`
-{{% /tags/wrap %}}
-
-Enable per table mutation (INSERT, UPDATE, DELETE) counting. The Auto Analyze service runs ANALYZE when the number of mutations of a table exceeds the threshold determined by the [ysql_auto_analyze_threshold](#ysql-auto-analyze-threshold) and [ysql_auto_analyze_scale_factor](#ysql-auto-analyze-scale-factor) settings.
+In v2025.2 and later, Auto Analyze is enabled by default in new universes when you deploy using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon.
 
 ##### --ysql_auto_analyze_threshold
 
 {{% tags/wrap %}}
 
-{{<tags/feature/restart-needed>}}
 Default: `50`
 {{% /tags/wrap %}}
 
-The minimum number of mutations needed to run ANALYZE on a table.
+The minimum number of mutations needed to run ANALYZE on a table. For more details, see [Auto Analyze service](../../../additional-features/auto-analyze).
 
 ##### --ysql_auto_analyze_scale_factor
 
 {{% tags/wrap %}}
 
-{{<tags/feature/restart-needed>}}
 Default: `0.1`
 {{% /tags/wrap %}}
 
-The fraction defining when sufficient mutations have been accumulated to run ANALYZE for a table.
+The fraction defining when sufficient mutations have been accumulated to run ANALYZE for a table. For more details, see [Auto Analyze service](../../../additional-features/auto-analyze).
 
-ANALYZE runs when the mutation count exceeds `ysql_auto_analyze_scale_factor * <table_size> + ysql_auto_analyze_threshold`, where table_size is the value of the `reltuples` column in the `pg_class` catalog.
+##### --ysql_auto_analyze_min_cooldown_per_table
+
+{{% tags/wrap %}}
+
+Default: `10000` (10 seconds)
+{{% /tags/wrap %}}
+
+The minimum duration (in milliseconds) for the cooldown period between successive runs of ANALYZE on a specific table by the auto analyze service. For more details, see [Auto Analyze service](../../../additional-features/auto-analyze).
+
+##### --ysql_auto_analyze_max_cooldown_per_table
+
+{{% tags/wrap %}}
+
+Default: `86400000` (24 hours)
+{{% /tags/wrap %}}
+
+The maximum duration (in milliseconds) for the cooldown period between successive runs of ANALYZE on a specific table by the auto analyze service. For more details, see [Auto Analyze service](../../../additional-features/auto-analyze).
+
+##### --ysql_auto_analyze_cooldown_per_table_scale_factor
+
+{{% tags/wrap %}}
+
+Default: `2`
+{{% /tags/wrap %}}
+
+The exponential factor by which the per table cooldown period is scaled up each time from the value ysql_auto_analyze_min_cooldown_per_table to the value ysql_auto_analyze_max_cooldown_per_table. For more details, see [Auto Analyze service](../../../additional-features/auto-analyze). 
 
 ##### --ysql_auto_analyze_batch_size
 
 {{% tags/wrap %}}
 
-{{<tags/feature/restart-needed>}}
 Default: `10`
 {{% /tags/wrap %}}
 
@@ -2204,7 +2224,6 @@ The maximum number of tables the Auto Analyze service tries to analyze in a sing
 
 {{% tags/wrap %}}
 
-{{<tags/feature/restart-needed>}}
 Default: `10000`
 {{% /tags/wrap %}}
 
@@ -2214,7 +2233,6 @@ Interval at which the reported node level table mutation counts are persisted to
 
 {{% tags/wrap %}}
 
-{{<tags/feature/restart-needed>}}
 Default: `10000`
 {{% /tags/wrap %}}
 
@@ -2224,7 +2242,6 @@ Timeout for the RPCs used to persist mutation counts in the auto-analyze mutatio
 
 {{% tags/wrap %}}
 
-{{<tags/feature/restart-needed>}}
 Default: `5000`
 {{% /tags/wrap %}}
 
@@ -2234,11 +2251,30 @@ Interval, in milliseconds, at which the node-level table mutation counts are sen
 
 {{% tags/wrap %}}
 
-{{<tags/feature/restart-needed>}}
 Default: `5000`
 {{% /tags/wrap %}}
 
 Timeout, in milliseconds, for the node-level mutation reporting RPC to the Auto Analyze service.
+
+##### --ysql_enable_auto_analyze_service (deprecated)
+
+{{% tags/wrap %}}
+{{<tags/feature/t-server>}}
+{{<tags/feature/restart-needed>}}
+Default: `false`
+{{% /tags/wrap %}}
+
+Enable the Auto Analyze service, which automatically runs ANALYZE to update table statistics for tables that have changed more than a configurable threshold.
+
+##### --ysql_enable_table_mutation_counter (deprecated)
+
+{{% tags/wrap %}}
+
+
+Default: `false`
+{{% /tags/wrap %}}
+
+Enable per table mutation (INSERT, UPDATE, DELETE) counting. The Auto Analyze service runs ANALYZE when the number of mutations of a table exceeds the threshold determined by the [ysql_auto_analyze_threshold](#ysql-auto-analyze-threshold) and [ysql_auto_analyze_scale_factor](#ysql-auto-analyze-scale-factor) settings.
 
 ### Advisory lock flags
 
@@ -2649,7 +2685,11 @@ Specifies the default transaction isolation level.
 
 Valid values: `SERIALIZABLE`, `REPEATABLE READ`, `READ COMMITTED`, and `READ UNCOMMITTED`.
 
-[Read Committed Isolation](../../../explore/transactions/isolation-levels/) is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
+[Read Committed Isolation](../../../explore/transactions/isolation-levels/) is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`.
+
+For new universes running v2025.2 or later, `yb_enable_read_committed_isolation` is set to `true` by default when you deploy using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon.
+
+If `yb_enable_read_committed_isolation` is `false`, the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
 
 ##### --yb_enable_read_committed_isolation
 
@@ -2658,7 +2698,11 @@ Valid values: `SERIALIZABLE`, `REPEATABLE READ`, `READ COMMITTED`, and `READ UNC
 Default: `false`
 {{% /tags/wrap %}}
 
-Enables Read Committed Isolation. By default this flag is false and in this case `READ COMMITTED` (and `READ UNCOMMITTED`) isolation level of YSQL fall back to the stricter [Snapshot Isolation](../../../explore/transactions/isolation-levels/). See [--ysql_default_transaction_isolation](#ysql-default-transaction-isolation) flag for more details.
+Enables Read Committed Isolation.
+
+For new universes running v2025.2 or later, `yb_enable_read_committed_isolation` is set to `true` by default when you deploy using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon.
+
+When set to false, `READ COMMITTED` (and `READ UNCOMMITTED`) isolation level of YSQL fall back to the stricter [Snapshot Isolation](../../../explore/transactions/isolation-levels/). See also the [--ysql_default_transaction_isolation](#ysql-default-transaction-isolation) flag.
 
 ##### --pg_client_use_shared_memory
 

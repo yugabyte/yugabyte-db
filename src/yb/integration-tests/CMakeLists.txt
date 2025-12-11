@@ -94,6 +94,7 @@ set(INTEGRATION_TESTS_SRCS
   mini_cluster_base.cc
   mini_cluster_utils.cc
   packed_row_test_base.cc
+  path_handlers_util.cc
   postgres-minicluster.cc
   redis_table_test_base.cc
   test_workload.cc
@@ -250,6 +251,7 @@ ADD_YB_TEST(cdc_state_table-test)
 ADD_YB_TEST(cdcsdk_stream-test)
 ADD_YB_TEST(cdcsdk_ysql-test)
 ADD_YB_TEST(cdcsdk_before_image-test)
+ADD_YB_TEST(cdc_intratx_before_image-test)
 ADD_YB_TEST(cdcsdk_replica_identity-test)
 ADD_YB_TEST(cdcsdk_consistent_stream-test)
 ADD_YB_TEST(cdcsdk_consumption_consistent_changes-test)

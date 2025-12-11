@@ -191,6 +191,7 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
     mockClient = mock(YBClient.class);
     when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
     when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
+    when(mockOperatorStatusUpdaterFactory.create()).thenReturn(mockOperatorStatusUpdater);
 
     // Use reflection to access the package-private constructor.
     Constructor<ListCDCStreamsResponse> constructor =

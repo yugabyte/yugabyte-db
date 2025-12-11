@@ -19,6 +19,7 @@
 #include <concepts>
 #include <initializer_list>
 #include <iterator>
+#include <string>
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -127,7 +128,8 @@ Result<PgApiImpl::MessengerHolder> BuildMessenger(
   if (FLAGS_use_node_to_node_encryption) {
     secure_context = VERIFY_RESULT(rpc::CreateSecureContext(
         FLAGS_certs_dir,
-        rpc::UseClientCerts(FLAGS_node_to_node_encryption_use_client_certificates)));
+        rpc::UseClientCerts(FLAGS_node_to_node_encryption_use_client_certificates),
+        FLAGS_pggate_cert_base_name));
   }
   return PgApiImpl::MessengerHolder{
       std::move(secure_context),
@@ -2294,8 +2296,13 @@ Status PgApiImpl::GetIndexBackfillProgress(std::vector<PgObjectId> oids,
                                                num_rows_backfilled);
 }
 
-Status PgApiImpl::ValidatePlacement(const char *placement_info, bool check_satisfiable) {
-  return pg_session_->ValidatePlacement(placement_info, check_satisfiable);
+Status PgApiImpl::ValidatePlacements(
+    const char *live_placement_info, const char *read_replica_placement_info,
+    bool check_satisfiable) {
+  return pg_session_->ValidatePlacements(
+      live_placement_info ? std::string(live_placement_info) : std::string(),
+      read_replica_placement_info ? std::string(read_replica_placement_info) : std::string(),
+      check_satisfiable);
 }
 
 void PgApiImpl::StartSysTablePrefetching(const PrefetcherOptions& options) {
