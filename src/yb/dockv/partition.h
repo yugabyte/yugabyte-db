@@ -224,6 +224,9 @@ class PartitionSchema {
   Status EncodeKey(const google::protobuf::RepeatedPtrField<QLExpressionPB>& hash_values,
                    std::string* buf) const;
 
+  Status EncodeKey(const ArenaList<LWQLExpressionPB>& hash_values,
+                   std::string* buf) const;
+
   template <class Collection>
   Result<uint16_t> PgsqlHashColumnCompoundValue(const Collection& hash_values) const {
     SCHECK(hash_schema_ && *hash_schema_ == YBHashSchema::kPgsqlHash,
@@ -403,7 +406,6 @@ class PartitionSchema {
   }
 
  private:
-
   struct HashBucketSchema {
     std::vector<ColumnId> column_ids;
     int32_t num_buckets;
@@ -500,6 +502,9 @@ class PartitionSchema {
   // Validates that this partition schema is valid. Returns OK, or an
   // appropriate error code for an invalid partition schema.
   Status Validate(const Schema& schema) const;
+
+  template <class Col>
+  Status DoEncodeKey(const Col& hash_values, std::string* buf) const;
 
   std::vector<HashBucketSchema> hash_bucket_schemas_;
   RangeSchema range_schema_;

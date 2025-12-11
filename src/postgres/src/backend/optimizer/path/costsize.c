@@ -213,6 +213,7 @@ bool		yb_enable_batchednl = false;
 YbCostModel yb_enable_cbo = YB_COST_MODEL_LEGACY;
 bool		yb_ignore_stats = false;
 bool		yb_legacy_bnl_cost = false;
+bool		yb_ignore_bool_cond_for_legacy_estimate = false;
 
 extern int	yb_bnl_batch_size;
 
@@ -3289,7 +3290,7 @@ initial_cost_nestloop(PlannerInfo *root, JoinCostWorkspace *workspace,
 			yb_batch_size = yb_bnl_batch_size;
 	}
 
-	bool		yb_costing_bnl = yb_batch_size > 1;
+	bool		yb_costing_bnl = yb_batch_size > 1 && !yb_legacy_bnl_cost;
 
 	/*
 	 * NOTE: clearly, we must pay both outer and inner paths' startup_cost
@@ -3385,7 +3386,8 @@ final_cost_nestloop(PlannerInfo *root, NestPath *path,
 		(yb_enable_base_scans_cost_model || yb_legacy_bnl_cost))
 		yb_batch_size = yb_bnl_batch_size;
 
-	bool		yb_costing_bnl = yb_batch_size > 1;
+	bool		yb_costing_bnl = yb_batch_size > 1 && !yb_legacy_bnl_cost;
+	int			yb_legacy_bnl_bs = (yb_legacy_bnl_cost? yb_batch_size : 1);
 
 	/* For partial paths, scale row estimate. */
 	if (path->jpath.path.parallel_workers > 0)
@@ -3448,7 +3450,8 @@ final_cost_nestloop(PlannerInfo *root, NestPath *path,
 		 * account for successfully-matched outer rows.
 		 */
 
-		ntuples = outer_matched_rows * inner_path_rows * inner_scan_frac;
+		ntuples = ((outer_matched_rows / yb_legacy_bnl_bs) *
+				   inner_path_rows * inner_scan_frac);
 
 		/*
 		 * Now we need to estimate the actual costs of scanning the inner
@@ -3478,8 +3481,10 @@ final_cost_nestloop(PlannerInfo *root, NestPath *path,
 			if (outer_matched_rows > 0)
 				run_cost += inner_run_cost * inner_scan_frac;
 
-			if (outer_matched_rows > 1)
-				run_cost += (outer_matched_rows - 1) * inner_rescan_run_cost * inner_scan_frac;
+			if (outer_matched_rows > yb_legacy_bnl_bs)
+				run_cost += (((outer_matched_rows - yb_legacy_bnl_bs) /
+							  yb_legacy_bnl_bs) *
+							 inner_rescan_run_cost * inner_scan_frac);
 
 			/*
 			 * Add the cost of inner-scan executions for unmatched outer rows.
@@ -3487,8 +3492,10 @@ final_cost_nestloop(PlannerInfo *root, NestPath *path,
 			 * of a nonempty scan.  We consider that these are all rescans,
 			 * since we used inner_run_cost once already.
 			 */
-			run_cost += outer_unmatched_rows *
-				inner_rescan_run_cost / inner_path_rows;
+
+			if (yb_legacy_bnl_bs == 1)
+				run_cost += (outer_unmatched_rows *
+							 inner_rescan_run_cost / inner_path_rows);
 
 			/*
 			 * We won't be evaluating any quals at all for unmatched rows, so
@@ -3511,22 +3518,27 @@ final_cost_nestloop(PlannerInfo *root, NestPath *path,
 			 */
 
 			/* First, count all unmatched join tuples as being processed */
-			ntuples += outer_unmatched_rows * inner_path_rows;
+			ntuples += ((outer_unmatched_rows / yb_legacy_bnl_bs) *
+						inner_path_rows);
 
 			/* Now add the forced full scan, and decrement appropriate count */
 			run_cost += inner_run_cost;
-			if (outer_unmatched_rows >= 1)
-				outer_unmatched_rows -= 1;
+			if (outer_unmatched_rows >= yb_legacy_bnl_bs)
+				outer_unmatched_rows -= yb_legacy_bnl_bs;
+			else if (outer_matched_rows < yb_legacy_bnl_bs)
+				outer_matched_rows -= outer_matched_rows;
 			else
-				outer_matched_rows -= 1;
+				outer_matched_rows -= yb_legacy_bnl_bs;
 
 			/* Add inner run cost for additional outer tuples having matches */
 			if (outer_matched_rows > 0)
-				run_cost += outer_matched_rows * inner_rescan_run_cost * inner_scan_frac;
+				run_cost += ((outer_matched_rows / yb_legacy_bnl_bs) *
+							 inner_rescan_run_cost * inner_scan_frac);
 
 			/* Add inner run cost for additional unmatched outer tuples */
 			if (outer_unmatched_rows > 0)
-				run_cost += outer_unmatched_rows * inner_rescan_run_cost;
+				run_cost += ((outer_unmatched_rows / yb_legacy_bnl_bs) *
+							 inner_rescan_run_cost);
 		}
 	}
 	else
@@ -3536,8 +3548,8 @@ final_cost_nestloop(PlannerInfo *root, NestPath *path,
 		/* Compute number of tuples processed (not number emitted!) */
 		ntuples = (outer_path_rows / yb_batch_size) * inner_path_rows;
 
-		if (path->jpath.jointype == JOIN_SEMI || path->jpath.jointype == JOIN_ANTI
-			|| extra->inner_unique)
+		if ((path->jpath.jointype == JOIN_SEMI || path->jpath.jointype == JOIN_ANTI
+			 || extra->inner_unique) && !yb_legacy_bnl_cost)
 		{
 			Assert(yb_is_batched);
 			double		outer_matched_rows;
@@ -8642,6 +8654,19 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	/* we don't need to check enable_index_onlyscan; indxpath.c does that */
 	if (!enable_indexscan)
 		startup_cost += disable_cost;
+
+	/* TODO(#29078): cost this better. */
+	if (path->yb_index_path_info.saop_merge_saop_cols)
+	{
+		/*
+		 * We need SAOP merge index scans to cost higher than plain index scans
+		 * to avoid doing SAOP merge where it doesn't give any gains for upper
+		 * nodes.  Make them cost twice of STD_FUZZ_FACTOR higher, where
+		 * STD_FUZZ_FACTOR = 1.01.
+		 */
+		startup_cost *= 1.02;
+		run_cost *= 1.02;
+	}
 
 	path->path.startup_cost = startup_cost;
 	path->path.total_cost = startup_cost + run_cost;

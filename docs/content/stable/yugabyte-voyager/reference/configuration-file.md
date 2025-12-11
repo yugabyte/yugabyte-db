@@ -71,15 +71,22 @@ log-level: info
 # Default : true
 send-diagnostics: true
 
-# Control plane type refers to the deployment type of YugabyteDB.
-# Accepted value - (yugabyted)
-# Optional
+# *********** Control Plane Configuration ************
+# To see the Voyager migration workflow details in the UI, set the following parameters.
+
+# Control plane type refers to the deployment type of YugabyteDB
+# Accepted values: yugabyted
+# Optional (if not set, no visualization will be available)
 control-plane-type: yugabyted
 
-# YSQL connection string
-# Provide the standard PostgreSQL connection parameters, excluding dbname.
-# Required if control-plane-type is set to yugabyted
-yugabyted-db-conn-string: <ysql-connection-parameters>
+# Yugabyted Control Plane Configuration (for local yugabyted clusters)
+# Uncomment the section below if control-plane-type is 'yugabyted'
+yugabyted-control-plane:
+  # YSQL connection string to yugabyted database
+  # Provide standard PostgreSQL connection parameters: user name, host name, and port
+  # Example: postgresql://yugabyte:yugabyte@127.0.0.1:5433
+  # Note: Don't include the dbname parameter; the default 'yugabyte' database is used for metadata
+  db-conn-string: postgresql://yugabyte:yugabyte@127.0.0.1:5433
 ```
 
 ### Source database configuration
@@ -111,6 +118,12 @@ source:
   # Source password to connect as the specified user
   # Can be specified via SOURCE_DB_PASSWORD environmental variable
   db-password: test_password
+
+  # Comma-separated list of read replica endpoints.
+  # Default port: 5432
+  # Example: "host1, host2:5433"
+  # Note - Valid only for PostgreSQL
+  read-replica-endpoints: host:port
 
   # Path to source SSL Certificate
   ssl-cert: /path/to/cert

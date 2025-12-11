@@ -5,9 +5,9 @@ package com.yugabyte.yw.metrics;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.utils.CapacityReservationUtil;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
-import io.prometheus.client.CollectorRegistry;
-import io.prometheus.client.Gauge;
-import io.prometheus.client.Histogram;
+import io.prometheus.metrics.core.metrics.Gauge;
+import io.prometheus.metrics.core.metrics.Histogram;
+import io.prometheus.metrics.model.registry.PrometheusRegistry;
 import java.util.UUID;
 import java.util.function.Supplier;
 import javax.inject.Singleton;
@@ -21,13 +21,15 @@ public class CapacityReservationMetrics {
   public static final String RESERVATION_TIME = "ybp_capacity_reservation_time";
 
   private static final Gauge RESERVATION_GAUGE =
-      initReservationGauge(CollectorRegistry.defaultRegistry);
+      initReservationGauge(PrometheusRegistry.defaultRegistry);
 
   private static final Histogram RESERVATION_TIME_HISTOGRAM =
-      initReservationTimeHistogram(CollectorRegistry.defaultRegistry);
+      initReservationTimeHistogram(PrometheusRegistry.defaultRegistry);
 
-  public static Gauge initReservationGauge(CollectorRegistry registry) {
-    return Gauge.build(RESERVATION, "Capacity reservation count")
+  public static Gauge initReservationGauge(PrometheusRegistry registry) {
+    return Gauge.builder()
+        .name(RESERVATION)
+        .help("Capacity reservation count")
         .labelNames(
             KnownAlertLabels.CLOUD_TYPE.labelName(),
             KnownAlertLabels.OPERATION_TYPE.labelName(),
@@ -37,8 +39,10 @@ public class CapacityReservationMetrics {
         .register(registry);
   }
 
-  public static Histogram initReservationTimeHistogram(CollectorRegistry registry) {
-    return Histogram.build(RESERVATION_TIME, "Capacity reservation operation time")
+  public static Histogram initReservationTimeHistogram(PrometheusRegistry registry) {
+    return Histogram.builder()
+        .name(RESERVATION_TIME)
+        .help("Capacity reservation operation time")
         .labelNames(
             KnownAlertLabels.CLOUD_TYPE.labelName(),
             KnownAlertLabels.OPERATION_TYPE.labelName(),
@@ -70,7 +74,7 @@ public class CapacityReservationMetrics {
       T result = action.get();
       try {
         getReservationGauge()
-            .labels(
+            .labelValues(
                 cloudType.toString(),
                 reservationAction.name(),
                 operationStatus,
@@ -85,7 +89,7 @@ public class CapacityReservationMetrics {
       operationStatus = "failure";
       try {
         getReservationGauge()
-            .labels(cloudType.toString(), reservationAction.name(), operationStatus)
+            .labelValues(cloudType.toString(), reservationAction.name(), operationStatus)
             .set(count);
       } catch (Exception ex) {
         log.error("Failed to update counter", e);
@@ -94,7 +98,7 @@ public class CapacityReservationMetrics {
     } finally {
       try {
         getReservationTimeHistogram()
-            .labels(cloudType.toString(), reservationAction.name(), operationStatus)
+            .labelValues(cloudType.toString(), reservationAction.name(), operationStatus)
             .observe(System.currentTimeMillis() - start);
       } catch (Exception e) {
         log.error("Failed to update counter", e);

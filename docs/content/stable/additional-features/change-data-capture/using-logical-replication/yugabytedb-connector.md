@@ -4,7 +4,7 @@ headerTitle: YugabyteDB connector
 linkTitle: YugabyteDB connector
 description: YugabyteDB connector for Change Data Capture in YugabyteDB.
 aliases:
-  - /preview/explore/change-data-capture/using-logical-replication/yugabytedb-connector/
+  - /stable/explore/change-data-capture/using-logical-replication/yugabytedb-connector/
 menu:
   stable:
     parent: explore-change-data-capture-logical-replication

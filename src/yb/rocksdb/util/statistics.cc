@@ -371,6 +371,9 @@ void StatisticsMetricImpl::recordTick(uint32_t ticker_type, uint64_t count) {
     if (ticker_type == CURRENT_VERSION_SST_FILES_SIZE) {
       tickers_[OLD_BK_COMPAT_CURRENT_VERSION_SST_FILES_SIZE]->IncrementBy(count);
     }
+    if (ticker_type == ITER_BYTES_READ) {
+      tickers_[BYTES_READ]->IncrementBy(count);
+    }
   }
 }
 

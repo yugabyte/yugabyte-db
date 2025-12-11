@@ -20,6 +20,7 @@ typedef struct {
 
 	/* suppress compiler warnings */
 	bool yb_sticky_connection;
+	bool yb_replication_connection;
 } od_ldap_server_t;
 
 extern od_retcode_t od_auth_ldap(od_client_t *cl, kiwi_password_t *tok);

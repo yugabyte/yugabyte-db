@@ -156,7 +156,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
         [this, original_value] { is_read_time_history_cutoff_disabled_ = original_value; });
   }
 
-  bool IsTableLockingOnAndParallelLeader() const;
+  bool IsTableLockingEnabled() const;
 
  private:
   class SerialNo {
@@ -171,6 +171,9 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
     [[nodiscard]] uint64_t read_time() const { return read_time_; }
     [[nodiscard]] uint64_t min_read_time() const { return min_read_time_; }
     [[nodiscard]] uint64_t max_read_time() const { return max_read_time_; }
+    std::string ToString() const {
+      return YB_CLASS_TO_STRING(txn, read_time, min_read_time, max_read_time);
+    }
 
    private:
     uint64_t txn_;
@@ -269,10 +272,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
  public:
   void DEBUG_CheckOptionsForPerform(const tserver::PgPerformOptionsPB& options) const;
  private:
-  struct DEBUG_TxnInfo;
-  friend DEBUG_TxnInfo;
   void DEBUG_UpdateLastObjectLockingInfo();
-  std::unique_ptr<DEBUG_TxnInfo> debug_last_object_locking_txn_info_;
+  uint64_t debug_last_object_locking_txn_serial_ = 0;
 #endif
 
   DISALLOW_COPY_AND_ASSIGN(PgTxnManager);

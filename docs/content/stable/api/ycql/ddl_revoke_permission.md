@@ -8,8 +8,8 @@ menu:
     parent: api-cassandra
     weight: 1283
 aliases:
-  - /preview/api/cassandra/ddl_revoke_permission
-  - /preview/api/ycql/ddl_revoke_permission
+  - /stable/api/cassandra/ddl_revoke_permission
+  - /stable/api/ycql/ddl_revoke_permission
 type: docs
 ---
 

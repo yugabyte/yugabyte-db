@@ -4,7 +4,7 @@ headerTitle: Build a Java application using Apache Spark and YugabyteDB
 linkTitle: YCQL
 description: Learn how to build a Java-based application using Apache Spark and YugabyteDB YCQL.
 aliases:
-  - /preview/integrations/apache-spark/java/
+  - /stable/integrations/apache-spark/java/
 menu:
   stable_integrations:
     identifier: apache-spark-2-java-ycql

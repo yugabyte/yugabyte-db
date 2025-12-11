@@ -1096,7 +1096,7 @@ EventTriggerSupportsObjectClass(ObjectClass objclass)
 			return true;
 
 			/* YB cases */
-		case OCLASS_TBLGROUP:
+		case OCLASS_YBTBLGROUP:
 			/* no support for event triggers on tablegroups */
 			return false;
 		case OCLASS_YBPROFILE:

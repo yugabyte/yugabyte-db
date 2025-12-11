@@ -1780,6 +1780,18 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 	return needs_recheck;
 }
 
+static Datum
+YbGetArrayConst(ScanKey *keys)
+{
+	/*
+	 * Get array from keys.  See skey.h and ybExtractScanKeys for layout
+	 * details.
+	 */
+	if (YbIsRowHeader(*keys))
+		return (*(++keys))->sk_argument;
+	return (*keys)->sk_argument;
+}
+
 /*
  * Given an array, cull it by removing unsatisfiable and duplicate elements.
  *
@@ -2011,16 +2023,7 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 	if (is_for_precheck)
 		return;
 
-	/*
-	 * Get array from keys.  See skey.h and ybExtractScanKeys for layout
-	 * details.
-	 */
-	if (is_row)
-		arrayval =
-			DatumGetArrayTypeP((ybScan->keys[skey_index + 1])->sk_argument);
-	else
-		arrayval = DatumGetArrayTypeP(key->sk_argument);
-
+	arrayval = DatumGetArrayTypeP(YbGetArrayConst(&ybScan->keys[skey_index]));
 	Assert(key->sk_subtype == ARR_ELEMTYPE(arrayval));
 	if (!YbCullArray(arrayval,
 					 key,
@@ -2061,7 +2064,8 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
  * TODO(jason): do a proper cleanup.
  */
 static bool
-YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, bool is_for_precheck)
+YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *scan,
+			   bool is_for_precheck)
 {
 	Relation	relation = scan_plan->target_relation;
 
@@ -2149,6 +2153,60 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, bool is_for_precheck)
 	{
 		length_of_key = YbGetLengthOfKey(&ybScan->keys[i]);
 		ScanKey		key = ybScan->keys[i];
+
+		/* Prioritize binding SAOPs that are pinned by SAOP merge. */
+		if (YbIsSearchArray(key))
+		{
+			Datum		this_array_const;
+			ListCell   *lc;
+			YbSaopMergeInfo *yb_saop_merge_info = NULL;
+
+			this_array_const = YbGetArrayConst(&ybScan->keys[i]);
+
+			if (scan)
+			{
+				if (IsA(scan, IndexScan))
+					yb_saop_merge_info =
+						((IndexScan *) scan)->yb_saop_merge_info;
+				else if (IsA(scan, IndexOnlyScan))
+					yb_saop_merge_info =
+						((IndexOnlyScan *) scan)->yb_saop_merge_info;
+			}
+
+			if (yb_saop_merge_info)
+			{
+				foreach(lc, yb_saop_merge_info->saop_cols)
+				{
+					ScalarArrayOpExpr *pinned_saop =
+						((YbSaopMergeSaopColInfo *) lfirst(lc))->saop;
+					Datum		pinned_array_const =
+						((Const *) lsecond(pinned_saop->args))->constvalue;
+
+					/*
+					 * Direct datum comparison (compared to datumIsEqual) is
+					 * safe because yb_match_in_index_clause and
+					 * ExecIndexBuildScanKeys set pinned_array_const and
+					 * this_array_const, respectively, to the same field in
+					 * memory.
+					 */
+					if (this_array_const == pinned_array_const)
+					{
+						bool		bail_out = false;
+
+						/* YbBindSearchArray updates is_column_bound. */
+						YbBindSearchArray(ybScan, scan_plan, i,
+										  is_for_precheck,
+										  is_column_bound,
+										  &bail_out);
+
+						if (bail_out)
+							return false;
+
+						continue;
+					}
+				}
+			}
+		}
 
 		/* Check if this is full key row comparison expression */
 		if (YbIsRowHeader(key) &&
@@ -2496,7 +2554,8 @@ YbMayFailPreliminaryCheck(YbScanDesc ybScan)
  * TODO(jason): there may be room for further cleanup/optimization.
  */
 bool
-YbPredetermineNeedsRecheck(Relation relation,
+YbPredetermineNeedsRecheck(Scan *scan,
+						   Relation relation,
 						   Relation index,
 						   bool xs_want_itup,
 						   ScanKey keys,
@@ -2524,7 +2583,7 @@ YbPredetermineNeedsRecheck(Relation relation,
 	ybcSetupScanPlan(xs_want_itup, &ybscan, &scan_plan);
 	ybcSetupScanKeys(&ybscan, &scan_plan);
 
-	YbBindScanKeys(&ybscan, &scan_plan, true /* is_for_precheck */ );
+	YbBindScanKeys(&ybscan, &scan_plan, scan, true /* is_for_precheck */ );
 
 	/*
 	 * Finally, ybscan has everything needed to determine recheck.  Do it now.
@@ -2913,9 +2972,6 @@ ybcBuildRequiredAttrs(YbScanDesc yb_scan, YbScanPlan scan_plan,
 				ybcAddNonDroppedAttr(target_desc, attnum, &result);
 	}
 
-	if (index && !index->rd_index->indisprimary && !is_index_only_scan)
-		ybcAttnumBmsAdd(&result, YBIdxBaseTupleIdAttributeNumber);
-
 	return result;
 }
 
@@ -3066,11 +3122,6 @@ YbDmlAppendTargetsAggregate(List *aggrefs, Scan *outer_plan,
 		/* Add aggregate operator as scan target. */
 		HandleYBStatus(YBCPgDmlAppendTarget(handle, op_handle));
 	}
-
-	/* Set ybbasectid in case of non-primary secondary index scan. */
-	if (index && !xs_want_itup && !index->rd_index->indisprimary)
-		YbDmlAppendTargetSystem(YBIdxBaseTupleIdAttributeNumber,
-								handle);
 }
 
 /*
@@ -3244,7 +3295,8 @@ ybcBeginScan(Relation relation,
 	ybScan->handle = YbNewSelect(relation, &ybScan->prepare_params);
 
 	/* Set up binds */
-	if (!YbBindScanKeys(ybScan, &scan_plan, false /* is_for_precheck */ ) ||
+	if (!YbBindScanKeys(ybScan, &scan_plan, pg_scan_plan,
+						false /* is_for_precheck */ ) ||
 		!YbBindHashKeys(ybScan))
 	{
 		ybScan->quit_scan = true;
@@ -3909,7 +3961,15 @@ yb_is_hashed(Expr *clause, IndexOptInfo *index)
 	return is_hashed;
 }
 
-
+/*
+ * Compute index access portion of IndexScan/IndexOnlyScan node.
+ *   - Table row fetch costs are added by cost_index().
+ *   - When yb_enable_optimizer_statistics is false, this function also updates
+ *     baserel->rows if the current index qual is more selective than the ones
+ *     seen so far.  i.e.: the table cardinality is determined by the most
+ *     selective index qual regardless of the access path that is eventually
+ *     chosen.
+ */
 void
 ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 					 Selectivity *selectivity, Cost *startup_cost,
@@ -4008,8 +4068,18 @@ ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 				OpExpr	   *op = (OpExpr *) clause;
 				Oid			clause_op = op->opno;
 				Node	   *other_operand = (Node *) lsecond(op->args);
+				Oid			opfamily = path->indexinfo->opfamily[indexcol];
 
-				if (OidIsValid(clause_op))
+				/*
+				 * If specified, skip boolean index qual to avoid the row count
+				 * estimate change, a side effect introduced by the fix for
+				 * https://github.com/yugabyte/yugabyte-db/issues/26266
+				 * for backward compatibility.  See the function header
+				 * comment and around the lines updating baserel->rows, too.
+				 */
+				if (OidIsValid(clause_op) &&
+					(!yb_ignore_bool_cond_for_legacy_estimate ||
+					 !IsBooleanOpfamily(opfamily)))
 				{
 					ybcAddAttributeColumn(&scan_plan, attnum);
 					if (other_operand && IsA(other_operand, Const))
@@ -4065,6 +4135,9 @@ ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 					false /* is_seq_scan */ , is_uncovered_idx_scan,
 					startup_cost, total_cost,
 					path->indexinfo->reltablespace);
+
+	/* SAOP merge index scans should not be possible in non-CBO mode. */
+	Assert(!path->yb_index_path_info.saop_merge_saop_cols);
 
 	if (!yb_enable_optimizer_statistics)
 	{

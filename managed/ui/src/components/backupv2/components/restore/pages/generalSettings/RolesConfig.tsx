@@ -50,7 +50,7 @@ export const RolesConfig = () => {
 
   const { watch, setValue } = useFormContext<IGeneralSettings>();
   const useRoles = watch('useRoles');
-  const errorIfRoleExists = watch('errorIfRoleExists');
+  const errorIfRolesExists = watch('errorIfRolesExists');
   const classes = useStyles();
 
   return (
@@ -71,17 +71,17 @@ export const RolesConfig = () => {
             }}
           />
         </Box>
-        <Box ml={2}>
+        {/* <Box ml={2}>
           {useRoles && (
             <>
               <YBCheckbox
                 label={t('newRestoreModal.rolesConfig.checkboxTitle2')}
-                checked={errorIfRoleExists}
-                name="errorIfRoleExists"
+                checked={errorIfRolesExists}
+                name="errorIfRolesExists"
                 icon={<img src={UnChecked} alt="unchecked" />}
                 checkedIcon={<img src={Checked} alt="checked" />}
                 onChange={(event) => {
-                  setValue('errorIfRoleExists', event.target.checked);
+                  setValue('errorIfRolesExists', event.target.checked);
                 }}
               />
               <span className={classes.tablespaceHelpText}>
@@ -89,10 +89,9 @@ export const RolesConfig = () => {
               </span>
           </>
           )}
-        </Box>
+        </Box> */}
       </Box>
     </Box>
   );
 };
 
-// errorIfRoleExists: false

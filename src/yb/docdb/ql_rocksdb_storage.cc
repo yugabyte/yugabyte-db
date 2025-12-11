@@ -15,8 +15,8 @@
 
 #include <utility>
 
-#include "yb/common/pgsql_protocol.pb.h"
-#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_protocol.messages.h"
+#include "yb/common/pgsql_protocol.messages.h"
 
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/partition.h"
@@ -112,8 +112,8 @@ Status QLRocksDBStorage::BuildYQLScanSpec(
   // Construct the scan spec basing on the WHERE condition.
   *spec = std::make_unique<DocQLScanSpec>(
       schema, hash_code, max_hash_code, arena, hashed_components,
-      request.has_where_expr() ? &request.where_expr().condition() : nullptr,
-      request.has_if_expr() ? &request.if_expr().condition() : nullptr,
+      QLConditionPBPtr(request.has_where_expr() ? &request.where_expr().condition() : nullptr),
+      QLConditionPBPtr(request.has_if_expr() ? &request.if_expr().condition() : nullptr),
       request.query_id(), request.is_forward_scan(),
       request.is_forward_scan() && include_static_columns, start_sub_doc_key.doc_key());
   return Status::OK();
@@ -247,7 +247,8 @@ Status QLRocksDBStorage::GetIterator(
           arena,
           hashed_components,
           range_components,
-          request.has_condition_expr() ? &request.condition_expr().condition() : nullptr,
+          PgsqlConditionPBPtr(
+                request.has_condition_expr() ? &request.condition_expr().condition() : nullptr),
           request.hash_code(),
           request.has_max_hash_code() ? std::make_optional<int32_t>(request.max_hash_code())
                                       : std::nullopt,
@@ -628,20 +629,13 @@ Result<std::unique_ptr<SampleBlocksIterator>> CreateSampleBlocksIterator(
       blocks_sampling_method);
 }
 
-bool PutAdjustedSampleBlockBounds(
-    std::pair<Slice, Slice> sample_block, Slice partition_lower_bound_key,
-    Slice partition_upper_bound_key, size_t index,
+void PutSampleBlockToReservoir(const std::pair<Slice, Slice> sample_block, size_t index,
     QLRocksDBStorage::SampleBlocksReservoir* reservoir) {
+  VLOG_WITH_FUNC(3) << "Putting sample block to reservoir at index #" << index
+                    << ", block bounds: " << AsDebugHexString(sample_block);
   auto adjusted_sample_block_bounds = std::make_pair(
-      KeyBuffer(sample_block.first.empty() ? partition_lower_bound_key : sample_block.first),
-      KeyBuffer(sample_block.second.empty() ? partition_upper_bound_key : sample_block.second));
-  if (adjusted_sample_block_bounds.first == adjusted_sample_block_bounds.second &&
-      !adjusted_sample_block_bounds.first.empty()) {
-    // Don't put empty sample block
-    return false;
-  }
+      KeyBuffer(sample_block.first), KeyBuffer(sample_block.second));
   (*reservoir)[index] = std::move(adjusted_sample_block_bounds);
-  return true;
 }
 
 } // namespace
@@ -737,35 +731,31 @@ Result<YQLStorageIf::SampleBlocksReservoir> QLRocksDBStorage::GetSampleBlocks(
       blocks_sampling_method, index_iter.get(), partition_upper_bound_key));
 
   Status status;
-  for (; VERIFY_RESULT(sample_block_iter->CheckedValid());
-       ++state->num_blocks_processed, status = sample_block_iter->Next()) {
+  for (; VERIFY_RESULT(sample_block_iter->CheckedValid()); status = sample_block_iter->Next()) {
     RETURN_NOT_OK(status);
-    if (state->num_blocks_collected < num_blocks_for_sample) {
-      const auto block_bounds = VERIFY_RESULT(sample_block_iter->GetCurrentBlockBounds());
-      VLOG_WITH_PREFIX_AND_FUNC(3)
-          << "Candidate sample block bounds: " << AsDebugHexString(block_bounds)
-          << " state: " << state->ToString();
-      if (PutAdjustedSampleBlockBounds(
-              block_bounds, partition_lower_bound_key, partition_upper_bound_key,
-              state->num_blocks_collected, &blocks_reservoir)) {
-        ++state->num_blocks_collected;
-      }
-    } else {
-      VLOG_WITH_PREFIX_AND_FUNC(4)
-          << "Current sample block bounds: "
-          << AsDebugHexString(sample_block_iter->GetCurrentBlockBounds())
-          << " state: " << state->ToString();
-      if (RandomActWithProbability(
-              1.0 * num_blocks_for_sample / (state->num_blocks_processed + 1))) {
-        const auto block_bounds = VERIFY_RESULT(sample_block_iter->GetCurrentBlockBounds());
-        VLOG_WITH_PREFIX_AND_FUNC(3)
-            << "Candidate sample block bounds: " << AsDebugHexString(block_bounds);
-        const auto replace_idx = RandomUniformInt<size_t>(0, num_blocks_for_sample - 1);
-        PutAdjustedSampleBlockBounds(
-            block_bounds, partition_lower_bound_key, partition_upper_bound_key, replace_idx,
-            &blocks_reservoir);
-      }
+    auto block_bounds = VERIFY_RESULT(sample_block_iter->GetCurrentBlockBounds());
+    VLOG_WITH_PREFIX_AND_FUNC(4) << "Got sample block bounds: " << AsDebugHexString(block_bounds)
+                                 << " state: " << state->ToString();
+    if (block_bounds.first.empty()) {
+      block_bounds.first = partition_lower_bound_key;
     }
+    if (block_bounds.second.empty()) {
+      block_bounds.second = partition_upper_bound_key;
+    }
+    if (block_bounds.first == block_bounds.second && !block_bounds.first.empty()) {
+      // Skip empty sample blocks. (The one with both boundaries not set is treated as the whole
+      // partition, so it isn't empty).
+      continue;
+    }
+    if (state->num_blocks_collected < num_blocks_for_sample) {
+      PutSampleBlockToReservoir(block_bounds, state->num_blocks_collected, &blocks_reservoir);
+      ++state->num_blocks_collected;
+    } else if (RandomActWithProbability(
+                   1.0 * num_blocks_for_sample / (state->num_blocks_processed + 1))) {
+      const auto replace_idx = RandomUniformInt<size_t>(0, num_blocks_for_sample - 1);
+      PutSampleBlockToReservoir(block_bounds, replace_idx, &blocks_reservoir);
+    }
+    ++state->num_blocks_processed;
   }
 
   LOG_WITH_PREFIX_AND_FUNC(INFO) << "state: " << state->ToString();

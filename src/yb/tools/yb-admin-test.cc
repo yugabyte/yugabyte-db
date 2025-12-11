@@ -168,6 +168,7 @@ const auto kRollbackAutoFlagsCmd = "rollback_auto_flags";
 const auto kPromoteAutoFlagsCmd = "promote_auto_flags";
 const auto kClusterConfigEntryTypeName =
     master::SysRowEntryType_Name(master::SysRowEntryType::CLUSTER_CONFIG);
+const auto kTableEntryTypeName = master::SysRowEntryType_Name(master::SysRowEntryType::TABLE);
 
 YB_STRONGLY_TYPED_BOOL(EmergencyRepairMode);
 
@@ -517,12 +518,13 @@ TEST_F(AdminCliTest, GetIsLoadBalancerIdle) {
       .add_master_server_addr(master_address)
       .Build());
 
-  // Load balancer IsIdle() logic has been changed to the following - unless a task was explicitly
-  // triggered by the load balancer (AsyncAddServerTask / AsyncRemoveServerTask / AsyncTryStepDown)
-  // then the task does not count towards determining whether the load balancer is active. If no
-  // pending LB tasks of the aforementioned types exist, the load balancer will report idle.
+  // Cluster balancer IsIdle() logic has been changed to the following - unless a task was
+  // explicitly triggered by the cluster balancer (AsyncAddServerTask / AsyncRemoveServerTask /
+  // AsyncTryStepDown) then the task does not count towards determining whether the cluster balancer
+  // is active. If no pending cluster balancer tasks of the aforementioned types exist, the cluster
+  // balancer will report idle.
 
-  // Delete table should not activate the load balancer.
+  // Delete table should not activate the cluster balancer.
   ASSERT_OK(client->DeleteTable(kTableName, false /* wait */));
   // This should timeout.
   Status s = WaitFor(
@@ -531,7 +533,7 @@ TEST_F(AdminCliTest, GetIsLoadBalancerIdle) {
         return output.compare("Idle = 0\n") == 0;
       },
       kWaitTime,
-      "wait for load balancer to stay idle");
+      "wait for cluster balancer to stay idle");
 
   ASSERT_FALSE(s.ok());
 }
@@ -1041,7 +1043,7 @@ TEST_F(AdminCliTest, TestGetClusterLoadBalancerState) {
 
   output = ASSERT_RESULT(CallAdmin("set_load_balancer_enabled", "0"));
 
-  ASSERT_EQ(output.find("Unable to change load balancer state"), std::string::npos);
+  ASSERT_EQ(output.find("Unable to change cluster balancer state"), std::string::npos);
 
   output = ASSERT_RESULT(CallAdmin("get_load_balancer_state"));
 
@@ -1049,7 +1051,7 @@ TEST_F(AdminCliTest, TestGetClusterLoadBalancerState) {
 
   output = ASSERT_RESULT(CallAdmin("set_load_balancer_enabled", "1"));
 
-  ASSERT_EQ(output.find("Unable to change load balancer state"), std::string::npos);
+  ASSERT_EQ(output.find("Unable to change cluster balancer state"), std::string::npos);
 
   output = ASSERT_RESULT(CallAdmin("get_load_balancer_state"));
 
@@ -2051,6 +2053,64 @@ TEST_F(AdminCliTest, TestInsertDeleteSysCatalogEntry) {
   // would crash and fail to start.
   ASSERT_OK(RestartMaster(EmergencyRepairMode::kFalse));
   ASSERT_OK(cluster_->WaitForTabletServerCount(cluster_->num_tablet_servers(), 30s));
+}
+
+// Test insert and delete of TableEntry.
+TEST_F(AdminCliTest, TestInsertDeleteTableEntry) {
+  const auto new_table_name = "new_table";
+  const auto new_table_id = Uuid::Generate().ToString();
+  auto env = Env::Default();
+
+  BuildAndStart();
+  const auto tables =
+      ASSERT_RESULT(client_->ListTables(kTableName.table_name(), /* exclude_ysql */ true));
+  ASSERT_EQ(1, tables.size());
+  const auto& table_id = tables.front().table_id();
+
+  ASSERT_OK(RestartMaster(EmergencyRepairMode::kTrue));
+
+  const auto folder_path = *tmp_dir_;
+  const auto existing_table_file_path = tmp_dir_ / Format("$0-$1", kTableEntryTypeName, table_id);
+  const auto new_table_file_path = tmp_dir_ / Format("$0-$1", kTableEntryTypeName, new_table_id);
+  auto output = ASSERT_RESULT(
+      CallAdmin("dump_sys_catalog_entries", kTableEntryTypeName, folder_path, table_id));
+  ASSERT_STR_CONTAINS(output, existing_table_file_path);
+  auto file_contents = ASSERT_RESULT(ReadFileToString(existing_table_file_path));
+  boost::replace_all(file_contents, table_id, new_table_id);
+  boost::replace_all(file_contents, kTableName.table_name(), new_table_name);
+  ASSERT_OK(WriteStringToFileSync(env, file_contents, new_table_file_path));
+
+  ASSERT_OK(CallAdmin(
+      "write_sys_catalog_entry", "insert", kTableEntryTypeName, new_table_id, new_table_file_path,
+      "force"));
+
+  auto validate_dump_cluster_config = [&]() -> Status {
+    RETURN_NOT_OK(env->DeleteFile(new_table_file_path));
+    auto output = VERIFY_RESULT(
+        CallAdmin("dump_sys_catalog_entries", kTableEntryTypeName, folder_path, new_table_id));
+    SCHECK_STR_CONTAINS(output, new_table_file_path);
+    auto file_contents = VERIFY_RESULT(ReadFileToString(new_table_file_path));
+    SCHECK_STR_CONTAINS(file_contents, new_table_name);
+    return Status::OK();
+  };
+
+  // Dump the new entry to make sure it was inserted.
+  ASSERT_OK(validate_dump_cluster_config());
+
+  // Restart the master and dump the new entry to make sure it was persisted.
+  auto* leader_master = cluster_->GetLeaderMaster();
+  leader_master->Shutdown();
+  ASSERT_OK(leader_master->Restart());
+
+  ASSERT_OK(validate_dump_cluster_config());
+
+  // Delete the new table.
+  ASSERT_OK(CallAdmin(
+      "write_sys_catalog_entry", "delete", kTableEntryTypeName, new_table_id, "", "force"));
+
+  output = ASSERT_RESULT(
+      CallAdmin("dump_sys_catalog_entries", kTableEntryTypeName, *tmp_dir_, new_table_id));
+  ASSERT_STR_CONTAINS(output, "Found 0 entries of type TABLE");
 }
 
 // Update the ClusterConfig entry in the sys catalog and verify that the change is persisted across

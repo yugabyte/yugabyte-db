@@ -5,7 +5,7 @@ linkTitle: Offline migration
 headcontent: Steps for an offline migration using YugabyteDB Voyager
 description: Run the steps to ensure a successful offline migration using YugabyteDB Voyager.
 aliases:
-  - /preview/yugabyte-voyager/migrate-steps/
+  - /stable/yugabyte-voyager/migrate-steps/
 menu:
   stable_yugabyte-voyager:
     identifier: migrate-offline
@@ -193,7 +193,7 @@ target:
 
 Refer to the [offline-migration.yaml](https://github.com/yugabyte/yb-voyager/blob/{{< yb-voyager-release >}}/yb-voyager/config-templates/offline-migration.yaml) template for more information on the available global, source, and target configuration parameters supported by Voyager.
 
-## Configure yugabyted UI
+### Configure yugabyted UI
 
 You can use [yugabyted UI](/stable/reference/configuration/yugabyted/) to view the migration assessment report, and to visualize and review the database migration workflow performed by YugabyteDB Voyager.
 
@@ -201,21 +201,26 @@ Configure the yugabyted UI as follows:
 
   1. Start a local YugabyteDB cluster. Refer to the steps described in [Use a local cluster](/stable/quick-start/macos/). Skip this step if you already have a local YugabyteDB cluster as your [target database](#prepare-the-target-database).
 
-  1. To see the Voyager migration workflow details in the UI, set the following configuration parameters before starting the migration:
+  1. Set the Control Plane configuration parameters:
 
         ```yaml
+        ### *********** Control Plane Configuration ************
+        ### To see the Voyager migration workflow details in the UI, set the following parameters.
+
         ### Control plane type refers to the deployment type of YugabyteDB
+        ### Accepted values: yugabyted
+        ### Optional (if not set, no visualization will be available)
         control-plane-type: yugabyted
 
-        ### YSQL connection string
-        ### Provide the standard PostgreSQL connection parameters, including user name, host name, and port. For example, postgresql://yugabyte:yugabyte@127.0.0.1:5433
-        yugabyted-db-conn-string: postgresql://yugabyte:yugabyte@127.0.0.1:5433
+        ### Yugabyted Control Plane Configuration (for local yugabyted clusters)
+        ### Uncomment the section below if control-plane-type is 'yugabyted'
+        yugabyted-control-plane:
+          ### YSQL connection string to yugabyted database
+          ### Provide standard PostgreSQL connection parameters: user name, host name, and port
+          ### Example: postgresql://yugabyte:yugabyte@127.0.0.1:5433
+          ### Note: Don't include the dbname parameter; the default 'yugabyte' database is used for metadata
+          db-conn-string: postgresql://yugabyte:yugabyte@127.0.0.1:5433
         ```
-
-        {{< note title="Note" >}}
-
-Don't include the `dbname` parameter in the connection string; the default `yugabyte` database is used to store the meta information for showing the migration in the yugabyted UI.
-        {{< /note >}}
 
 ## Assess migration
 

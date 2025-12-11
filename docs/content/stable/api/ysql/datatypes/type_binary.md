@@ -9,7 +9,7 @@ menu:
     identifier: api-ysql-datatypes-binary
     parent: api-ysql-datatypes
 aliases:
-  - /preview/api/ysql/datatypes/type_binary
+  - /stable/api/ysql/datatypes/type_binary
 type: docs
 ---
 

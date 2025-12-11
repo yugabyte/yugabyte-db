@@ -5,9 +5,9 @@ linkTitle: Connect an app
 description: Connect a Ruby application using YugabyteDB Ruby-pg Smart Driver for YSQL
 aliases:
   - /develop/client-drivers/ruby/
-  - /preview/develop/client-drivers/ruby/
-  - /preview/develop/build-apps/ruby/
-  - /preview/quick-start/build-apps/ruby/
+  - /stable/develop/client-drivers/ruby/
+  - /stable/develop/build-apps/ruby/
+  - /stable/quick-start/build-apps/ruby/
 menu:
   stable_develop:
     identifier: ruby-pg-driver-1-yb

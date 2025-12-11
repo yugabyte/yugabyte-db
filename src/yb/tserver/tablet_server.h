@@ -72,6 +72,7 @@
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tablet_server_options.h"
 #include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/ysql_lease_manager.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/locks.h"
@@ -169,11 +170,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   AutoFlagsConfigPB TEST_GetAutoFlagConfig() const;
 
-  TSTabletManager* tablet_manager() override { return tablet_manager_.get(); }
+  TSTabletManager* tablet_manager() const override { return tablet_manager_.get(); }
   TabletPeerLookupIf* tablet_peer_lookup() override;
   TSLocalLockManagerPtr ts_local_lock_manager() const override {
-    std::lock_guard l(lock_);
-    return ts_local_lock_manager_;
+    return ysql_lease_manager_->ts_local_lock_manager();
   }
 
   Heartbeater* heartbeater() { return heartbeater_.get(); }
@@ -215,14 +215,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   }
 
   Status PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp) EXCLUDES(lock_);
-  Status ProcessLeaseUpdate(const master::RefreshYsqlLeaseInfoPB& lease_refresh_info);
   Result<YSQLLeaseInfo> GetYSQLLeaseInfo() const override;
   Status RestartPG() const override;
   Status KillPg() const override;
-
-  static bool IsYsqlLeaseEnabled();
-  tserver::TSLocalLockManagerPtr ResetAndGetTSLocalLockManager() EXCLUDES(lock_);
-  bool HasBootstrappedLocalLockManager() const EXCLUDES(lock_);
 
   Status GetLiveTServers(std::vector<master::TSInformationPB>* live_tservers) const
       EXCLUDES(lock_) override;
@@ -460,6 +455,12 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   void TEST_SetIsCronLeader(bool is_cron_leader);
 
+  std::shared_ptr<ObjectLockTracker> object_lock_tracker() { return object_lock_tracker_; }
+
+  docdb::ObjectLockSharedStateManager* object_lock_shared_state_manager() {
+    return object_lock_shared_state_manager_.get();
+  }
+
  protected:
   virtual Status RegisterServices();
 
@@ -483,10 +484,6 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   Result<pgwrapper::PGConn> CreateInternalPGConn(
       const std::string& database_name, const std::optional<CoarseTimePoint>& deadline) override;
 
-  void StartTSLocalLockManager() EXCLUDES (lock_);
-
-  void StartTSLocalLockManagerUnlocked() REQUIRES (lock_);
-
   std::atomic<bool> initted_{false};
 
   // If true, all heartbeats will be seen as failed.
@@ -505,8 +502,6 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   // Thread responsible for heartbeating to the master.
   std::unique_ptr<Heartbeater> heartbeater_;
-
-  std::unique_ptr<YsqlLeaseClient> ysql_lease_poller_;
 
   std::unique_ptr<client::UniverseKeyClient> universe_key_client_;
 
@@ -678,8 +673,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   std::shared_ptr<ObjectLockTracker> object_lock_tracker_;
 
-  // Lock Manager to maintain table/object locking activity in memory.
-  tserver::TSLocalLockManagerPtr ts_local_lock_manager_ GUARDED_BY(lock_);
+  std::unique_ptr<YSQLLeaseManager> ysql_lease_manager_;
 
   std::unique_ptr<docdb::ObjectLockSharedStateManager> object_lock_shared_state_manager_;
   OneTimeBool shutting_down_;

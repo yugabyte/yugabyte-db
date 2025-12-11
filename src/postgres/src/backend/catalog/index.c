@@ -747,7 +747,8 @@ index_create(Relation heapRelation,
 			 const bool skip_index_backfill,
 			 bool is_colocated,
 			 Oid tablegroupId,
-			 Oid colocationId)
+			 Oid colocationId,
+			 bool yb_skip_index_creation)
 {
 	Oid			heapRelationId = RelationGetRelid(heapRelation);
 	Relation	pg_class;
@@ -1031,7 +1032,7 @@ index_create(Relation heapRelation,
 	 * Create index in YugaByte only if it is a secondary index. Primary key is
 	 * an implicit part of the base table in YugaByte and doesn't need to be created.
 	 */
-	if (IsYBRelation(indexRelation) && !isprimary)
+	if (IsYBRelation(indexRelation) && !isprimary && !yb_skip_index_creation)
 	{
 		YBCCreateIndex(indexRelationName,
 					   indexInfo,
@@ -1570,9 +1571,10 @@ index_concurrently_create_copy(Relation heapRelation, Oid oldIndexId,
 							  InvalidOid,	/* tablegroupId, TODO: fill this
 											 * appropriately when adding
 											 * support for reindex */
-							  InvalidOid);	/* colocationId, TODO: fill this
+							  InvalidOid,	/* colocationId, TODO: fill this
 											 * appropriately when adding
 											 * support for reindex */
+							  false /* yb_skip_index_creation */ );
 
 	/* Close the relations used and clean up */
 	index_close(indexRelation, NoLock);
@@ -3889,11 +3891,18 @@ IndexGetRelation(Oid indexId, bool missing_ok)
 
 /*
  * reindex_index - This routine is used to recreate a single index
+ *
+ * preserved_index_split_options:
+ * During ALTER TYPE on columns with dependent indexes, indexes are rebuilt by
+ * dropping and recreating them. We skip DocDB index table creation during the rebuild
+ * phase and defer it to the reindex phase. Since DocDB tables don't exist during the
+ * reindex phase, split options must be retrieved beforehand and passed via these
+ * parallel lists to restore correct split options.
  */
 void
 reindex_index(Oid indexId, bool skip_constraint_checks, char persistence,
 			  ReindexParams *params, bool is_yb_table_rewrite,
-			  bool yb_copy_split_options)
+			  bool yb_copy_split_options, YbOptSplit *preserved_index_split_options)
 {
 	Relation	iRel,
 				heapRelation;
@@ -4137,7 +4146,8 @@ reindex_index(Oid indexId, bool skip_constraint_checks, char persistence,
 	else
 	{
 		/* Create a new physical relation for the index */
-		RelationSetNewRelfilenode(iRel, persistence, yb_copy_split_options);
+		RelationSetNewRelfilenode(iRel, persistence, yb_copy_split_options,
+								  preserved_index_split_options);
 	}
 
 	/* Initialize the index and rebuild */
@@ -4293,10 +4303,18 @@ reindex_index(Oid indexId, bool skip_constraint_checks, char persistence,
  * Returns true if any indexes were rebuilt (including toast table's index
  * when relevant).  Note that a CommandCounterIncrement will occur after each
  * index rebuild.
+ *
+ * changedIndexNames and changedIndexSplitOpts:
+ * During ALTER TYPE on columns with dependent indexes, the indexes are first rebuilt by
+ * dropping and recreating them. We skip DocDB index creation during the rebuild
+ * phase and defer it to the reindex phase. Since DocDB tables don't exist during the
+ * reindex phase, split options must be retrieved beforehand and passed via these
+ * parallel lists to restore correct split options.
  */
 bool
 reindex_relation(Oid relid, int flags, ReindexParams *params, bool is_yb_table_rewrite,
-				 bool yb_copy_split_options)
+				 bool yb_copy_split_options, List *changedIndexNames,
+				 List *changedIndexSplitOpts)
 {
 	Relation	rel;
 	Oid			toast_relid;
@@ -4374,6 +4392,8 @@ reindex_relation(Oid relid, int flags, ReindexParams *params, bool is_yb_table_r
 		/* TODO(fizaa): add YB prefix to iRel. */
 		Relation	iRel = index_open(indexOid, AccessExclusiveLock);
 
+		char *currentIndexName = RelationGetRelationName(iRel);
+
 		if (IsYBRelation(iRel))
 		{
 			if (!is_yb_table_rewrite && !iRel->rd_index->indisprimary)
@@ -4415,9 +4435,27 @@ reindex_relation(Oid relid, int flags, ReindexParams *params, bool is_yb_table_r
 			continue;
 		}
 
+		YbOptSplit *preserved_index_split_options = NULL;
+		if (changedIndexNames != NIL && changedIndexSplitOpts != NIL)
+		{
+			ListCell   *lc_name;
+			ListCell   *lc_split;
+
+			forboth(lc_name, changedIndexNames,
+					lc_split, changedIndexSplitOpts)
+			{
+				char *savedIndexName = (char *) lfirst(lc_name);
+				if (strcmp(savedIndexName, currentIndexName) == 0)
+				{
+					preserved_index_split_options = (YbOptSplit *) lfirst(lc_split);
+					break;
+				}
+			}
+		}
+
 		reindex_index(indexOid, !(flags & REINDEX_REL_CHECK_CONSTRAINTS),
 					  persistence, params, is_yb_table_rewrite,
-					  yb_copy_split_options);
+					  yb_copy_split_options, preserved_index_split_options);
 
 		CommandCounterIncrement();
 
@@ -4455,7 +4493,9 @@ reindex_relation(Oid relid, int flags, ReindexParams *params, bool is_yb_table_r
 		newparams.tablespaceOid = InvalidOid;
 		result |= reindex_relation(toast_relid, flags, &newparams,
 								   false /* is_yb_table_rewrite */ ,
-								   yb_copy_split_options);
+								   yb_copy_split_options,
+								   NIL /* changedIndexNames */ ,
+								   NIL /* changedIndexSplitOpts */ );
 	}
 
 	return result;

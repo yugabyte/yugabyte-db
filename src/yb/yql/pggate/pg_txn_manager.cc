@@ -190,9 +190,11 @@ void PgTxnManager::SerialNo::IncTxn(
   IncReadTime();
   if (!preserve_read_time_history) {
     min_read_time_ = read_time_;
-    if (catalog_read_time_serial_no && catalog_read_time_serial_no < min_read_time_) {
+    if (!YBCIsLegacyModeForCatalogOps() && catalog_read_time_serial_no &&
+        catalog_read_time_serial_no < min_read_time_) {
       min_read_time_ = catalog_read_time_serial_no;
     }
+    VLOG_WITH_FUNC(4) << "Updated min_read_time_ to: " << min_read_time_;
   }
 }
 
@@ -218,26 +220,8 @@ Status PgTxnManager::SerialNo::RestoreReadTime(uint64_t read_time_serial_no) {
 }
 
 #ifndef NDEBUG
-struct PgTxnManager::DEBUG_TxnInfo {
-  uint64_t txn_serial_no;
-  uint64_t subtxn_id;
-
-  explicit DEBUG_TxnInfo(const PgTxnManager& manager)
-      : txn_serial_no(manager.serial_no_.txn()), subtxn_id(manager.active_sub_transaction_id_) {}
-
-  bool operator==(const DEBUG_TxnInfo&) const = default;
-
-  std::string ToString() const {
-    return YB_STRUCT_TO_STRING(txn_serial_no, subtxn_id);
-  }
-};
-
 void PgTxnManager::DEBUG_UpdateLastObjectLockingInfo() {
-  if (!debug_last_object_locking_txn_info_) {
-    debug_last_object_locking_txn_info_ = std::make_unique<DEBUG_TxnInfo>(*this);
-  } else {
-    *debug_last_object_locking_txn_info_ = DEBUG_TxnInfo(*this);
-  }
+  debug_last_object_locking_txn_serial_ = serial_no_.txn();
 }
 
 void PgTxnManager::DEBUG_CheckOptionsForPerform(
@@ -245,20 +229,15 @@ void PgTxnManager::DEBUG_CheckOptionsForPerform(
   // Functions like YBCheckSharedCatalogCacheVersion, being executed outside scope of a
   // transaction block seem to issue custom selects on pg_yb_catalog_version table using
   // YBCPgNewSelect, skipping object locks. Skip the assertion for such cases for now.
-  if (!enable_table_locking_ || options.ddl_mode() || options.use_catalog_session() ||
+  if (!IsTableLockingEnabled() || options.ddl_mode() || options.use_catalog_session() ||
       options.yb_non_ddl_txn_for_sys_tables_allowed() || YBCIsInitDbModeEnvVarSet() ||
       !YBCIsLegacyModeForCatalogOps()) {
     return;
   }
-
-  const DEBUG_TxnInfo active_txn_info{*this};
-
-  if (!debug_last_object_locking_txn_info_ ||
-      *debug_last_object_locking_txn_info_ != active_txn_info) {
-    LOG(DFATAL)
-        << "active txn info: " << AsString(active_txn_info)
-        << " , last object locking txn info: " << AsString(debug_last_object_locking_txn_info_);
-  }
+  LOG_IF(DFATAL, debug_last_object_locking_txn_serial_ != serial_no_.txn())
+      << "txn state: " << TxnStateDebugStr()
+      << ", last object locking txn serial: " << debug_last_object_locking_txn_serial_
+      << ", query: {" << ::yb::pggate::GetDebugQueryString(pg_callbacks_) << "}";
 }
 #endif
 
@@ -268,10 +247,10 @@ PgTxnManager::PgTxnManager(
     : client_(client),
       clock_(std::move(clock)),
       pg_callbacks_(pg_callbacks),
-      enable_table_locking_(enable_table_locking) {}
+      enable_table_locking_(enable_table_locking && enable_object_locking_infra) {}
 
-bool PgTxnManager::IsTableLockingOnAndParallelLeader() const {
-  return enable_table_locking_ && enable_object_locking_infra;
+bool PgTxnManager::IsTableLockingEnabled() const {
+  return enable_table_locking_;
 }
 
 PgTxnManager::~PgTxnManager() {
@@ -424,7 +403,7 @@ Status PgTxnManager::CalculateIsolation(
   //
   // TODO(table-locks): Need to explicitly handle READ_COMMITTED case since YSQL internally bumps up
   // subtxn id for every statement. Else, every RC read-only txn would burn a docdb txn.
-  if (PREDICT_FALSE(IsTableLockingOnAndParallelLeader()) &&
+  if (PREDICT_FALSE(IsTableLockingEnabled()) &&
       active_sub_transaction_id_ > kMinSubTransactionId &&
       pg_isolation_level_ != PgIsolationLevel::READ_COMMITTED) {
     read_only_op = false;
@@ -598,7 +577,7 @@ Status PgTxnManager::FinishPlainTransaction(
   }
 
   const auto is_read_only = isolation_level_ == IsolationLevel::NON_TRANSACTIONAL;
-  if (is_read_only && !PREDICT_FALSE(IsTableLockingOnAndParallelLeader())) {
+  if (is_read_only && !PREDICT_FALSE(IsTableLockingEnabled())) {
     VLOG_TXN_STATE(2) << "This was a read-only transaction, nothing to commit.";
     ResetTxnAndSession();
     return Status::OK();
@@ -744,6 +723,7 @@ std::string PgTxnManager::TxnStateDebugStr() const {
       read_only,
       deferrable,
       txn_in_progress,
+      serial_no,
       pg_isolation_level,
       isolation_level);
 }
@@ -982,7 +962,7 @@ Status PgTxnManager::RollbackToSubTransaction(
     return Status::OK();
   }
   if (isolation_level_ == IsolationLevel::NON_TRANSACTIONAL &&
-      !PREDICT_FALSE(IsTableLockingOnAndParallelLeader())) {
+      !PREDICT_FALSE(IsTableLockingEnabled())) {
     VLOG(4) << "This isn't a distributed transaction, so nothing to rollback.";
     return Status::OK();
   }

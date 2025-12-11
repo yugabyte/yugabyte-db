@@ -5,7 +5,7 @@ linkTitle: Administer
 description: Administer YugabyteDB Anywhere
 headcontent: Manage your YugabyteDB Anywhere installation
 aliases:
-  - /preview/yugabyte-platform/administer-yp
+  - /stable/yugabyte-platform/administer-yp
 menu:
   stable_yugabyte-platform:
     parent: yugabytedb-anywhere
@@ -33,7 +33,7 @@ For information on configuring alerts, health checks, and diagnostics reporting 
   {{<index/item
     title="Back up and restore YugabyteDB Anywhere"
     body="Back up and restore the YugabyteDB Anywhere server."
-    href="back-up-restore-yp/"
+    href="back-up-restore-yba/"
     icon="fa-thin fa-arrow-down-to-bracket">}}
 
   {{<index/item

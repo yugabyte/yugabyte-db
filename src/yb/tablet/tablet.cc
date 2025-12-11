@@ -264,6 +264,9 @@ DEFINE_RUNTIME_bool(tablet_exclusive_full_compaction, false,
        "scheduled and unscheduled compactions are run before the full compaction and no other "
        "compactions will get scheduled during a full compaction.");
 
+DEFINE_RUNTIME_bool(tablet_split_use_middle_user_key, true,
+       "Consider only user keys while determining middle key for tablet split");
+
 DEFINE_RUNTIME_uint32(cdcsdk_retention_barrier_no_revision_interval_secs, 120,
                      "Duration for which CDCSDK retention barriers cannot be revised from the "
                      "cdcsdk_block_barrier_revision_start_time");
@@ -448,9 +451,9 @@ class YSQLMetricsScope : public MetricsScope {
     }
 
     if (GetAtomicFlag(&FLAGS_ysql_analyze_dump_metrics) &&
-        metrics_capture_ == PgsqlMetricsCaptureType::PGSQL_METRICS_CAPTURE_ALL) {
-      scoped_tablet_metrics_.CopyToPgsqlResponse(&pgsql_response_);
-      scoped_docdb_statistics_.CopyToPgsqlResponse(&pgsql_response_);
+        metrics_capture_ != PgsqlMetricsCaptureType::PGSQL_METRICS_CAPTURE_NONE) {
+      scoped_tablet_metrics_.CopyToPgsqlResponse(&pgsql_response_, metrics_capture_);
+      scoped_docdb_statistics_.CopyToPgsqlResponse(&pgsql_response_, metrics_capture_);
     }
   }
 
@@ -4524,7 +4527,7 @@ Result<RaftGroupMetadataPtr> Tablet::CreateSubtablet(
       tablet_id, partition, key_bounds.lower.ToStringBuffer(), key_bounds.upper.ToStringBuffer()));
 
   RETURN_NOT_OK(snapshots_->CreateCheckpoint(
-      metadata->rocksdb_dir(), CreateIntentsCheckpointIn::kSubDir));
+      metadata->rocksdb_dir(), CreateCheckpointIn::kUseSuffix));
 
   // We want flushed frontier to cover split_op_id, so during bootstrap of after-split tablets
   // we don't replay split operation.
@@ -4649,7 +4652,11 @@ Result<std::string> Tablet::GetEncodedMiddleSplitKey(std::string *partition_spli
   };
 
   // TODO(tsplit): should take key_bounds_ into account.
-  auto middle_key = VERIFY_RESULT(regular_db_->GetMiddleKey());
+  Slice lower_bound_key;
+  if (FLAGS_tablet_split_use_middle_user_key) {
+    lower_bound_key = Slice(&dockv::kMinRegularDbTableRowFirstByte, 1);
+  }
+  auto middle_key = VERIFY_RESULT(regular_db_->GetMiddleKey(lower_bound_key));
 
   // In some rare cases middle key can point to a special internal record which is not visible
   // for a user, but tablet splitting routines expect the specific structure for partition keys

@@ -946,10 +946,9 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
   QLTableRow existing_row;
   if (request_.has_if_expr()) {
     // Check if the if-condition is satisfied.
-    bool should_apply = true;
     dockv::ReaderProjection static_projection, non_static_projection;
     RETURN_NOT_OK(ReadColumns(data, &static_projection, &non_static_projection, &existing_row));
-    RETURN_NOT_OK(EvalCondition(request_.if_expr().condition(), existing_row, &should_apply));
+    bool should_apply = VERIFY_RESULT(EvalCondition(request_.if_expr().condition(), existing_row));
     // Set the response accordingly.
     response_->set_applied(should_apply);
     if (!should_apply && request_.else_error()) {
@@ -1209,7 +1208,8 @@ Status QLWriteOperation::ApplyDelete(
         range_covers_whole_partition_key && doc_read_context_->schema().has_statics();
     DocQLScanSpec spec(
         doc_read_context_->schema(), hash_code, /* max_hash_code= */ hash_code, arena,
-        hashed_components, request_.has_where_expr() ? &request_.where_expr().condition() : nullptr,
+        hashed_components,
+        QLConditionPBPtr(request_.has_where_expr() ? &request_.where_expr().condition() : nullptr),
         nullptr, request_.query_id(), true /* is_forward_scan */, include_static_columns_in_scan);
 
     // Create iterator.
@@ -1434,9 +1434,8 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& existing_row, const QLT
     bool is_row_deleted = VERIFY_RESULT(IsRowDeleted(existing_row, new_row));
 
     if (index->where_predicate_spec()) {
-      RETURN_NOT_OK(EvalCondition(
-        index->where_predicate_spec()->where_expr().condition(), existing_row,
-        &index_pred_existing_row));
+      index_pred_existing_row = VERIFY_RESULT(EvalCondition(
+        index->where_predicate_spec()->where_expr().condition(), existing_row));
     } else {
       VLOG(3) << "No where predicate for index " << index->table_id();
     }
@@ -1624,9 +1623,8 @@ Result<QLWriteRequestPB*> CreateAndSetupIndexInsertRequest(
   bool new_row_satisfies_idx_pred = true;
   if (index->where_predicate_spec()) {
     // TODO(Piyush): Ensure EvalCondition returns an error if some column is missing.
-    RETURN_NOT_OK(expr_executor->EvalCondition(
-      index->where_predicate_spec()->where_expr().condition(), new_row,
-      &new_row_satisfies_idx_pred));
+    new_row_satisfies_idx_pred = VERIFY_RESULT(expr_executor->EvalCondition(
+        index->where_predicate_spec()->where_expr().condition(), new_row));
     VLOG(2) << "Eval condition on partial index, new: " << new_row_satisfies_idx_pred
             << ", existing: " << index_pred_existing_row;
     if (index_pred_new_row) {

@@ -18,8 +18,8 @@ import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
-import io.prometheus.client.CollectorRegistry;
-import io.prometheus.client.Counter;
+import io.prometheus.metrics.core.metrics.Counter;
+import io.prometheus.metrics.model.registry.PrometheusRegistry;
 import java.time.Duration;
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -38,16 +38,16 @@ public class SwamperTargetsFileUpdater {
       "ybp_swamper_target_file_failed_universes";
 
   private static final Counter SWAMPER_TARGET_FILE_UPDATED_UNIVERSES_COUNTER =
-      Counter.build(
-              SWAMPER_TARGET_FILE_UPDATED_UNIVERSES,
-              "Count of successful updates of swamper target file for universe")
-          .register(CollectorRegistry.defaultRegistry);
+      Counter.builder()
+          .name(SWAMPER_TARGET_FILE_UPDATED_UNIVERSES)
+          .help("Count of successful updates of swamper target file for universe")
+          .register(PrometheusRegistry.defaultRegistry);
 
   private static final Counter SWAMPER_TARGET_FILE_FAILED_UNIVERSES_COUNTER =
-      Counter.build(
-              SWAMPER_TARGET_FILE_FAILED_UNIVERSES,
-              "Count of failed updates of swamper target file for universe")
-          .register(CollectorRegistry.defaultRegistry);
+      Counter.builder()
+          .name(SWAMPER_TARGET_FILE_FAILED_UNIVERSES)
+          .help("Count of failed updates of swamper target file for universe")
+          .register(PrometheusRegistry.defaultRegistry);
 
   @VisibleForTesting
   static final String CONFIG_SYNC_INTERVAL_PARAM = "yb.metrics.config_sync_interval_sec";

@@ -86,13 +86,6 @@ class PgMiniTestBase : public MiniClusterTestWithClient<MiniCluster> {
 
   Status SetupPGCallbacksAndStartPG(uint16_t pg_port, size_t pg_ts_idx);
 
-  void StopPostgres();
-  // Be careful using this method in your test. If you are just trying to restart postgres,
-  // the postmaster will not be respawned after calling this method if the ysql lease is enabled.
-  Status StartPostgres();
-
-  // Restarts the postmaster using the tserver callback.
-  // This should work smoothly with the ysql lease.
   Status RestartPostgres();
 
   std::unique_ptr<PgSupervisor> pg_supervisor_;
@@ -100,6 +93,8 @@ class PgMiniTestBase : public MiniClusterTestWithClient<MiniCluster> {
  private:
   Result<PgProcessConf> CreatePgProcessConf(uint16_t port, size_t ts_idx);
   Status RecreatePgSupervisor();
+  void StopPostgres();
+  Status StartPostgres();
 
   HostPort pg_host_port_;
 };

@@ -8,7 +8,7 @@ menu:
     identifier: ddl_drop_domain
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/ddl_drop_domain/
+  - /stable/api/ysql/commands/ddl_drop_domain/
 type: docs
 ---
 

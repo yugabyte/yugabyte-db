@@ -100,7 +100,7 @@ MiniTabletServer::MiniTabletServer(const std::vector<std::string>& wal_paths,
   opts_.webserver_opts.bind_interface = rpc_host;
   if (!opts_.has_placement_cloud()) {
     opts_.SetPlacement(Format("cloud$0", (index_ + 1) / FLAGS_TEST_nodes_per_cloud),
-                       Format("rack$0", index_), "zone");
+                       Format("region$0", index_), "zone");
   }
   opts_.fs_opts.wal_paths = wal_paths;
   opts_.fs_opts.data_paths = data_paths;
@@ -231,6 +231,17 @@ Status ForAllTablets(
 }
 
 }  // namespace
+
+Status MiniTabletServer::DeleteTablet(
+    const TabletId& tablet_id, tablet::TabletDataState delete_state, bool keep_on_disk) {
+  std::optional<int64_t> cas_config_opid_index_less_or_equal;
+  std::optional<tserver::TabletServerErrorPB::Code> error_code;
+  RETURN_NOT_OK(server()->tablet_manager()->DeleteTablet(
+      tablet_id, delete_state, tablet::ShouldAbortActiveTransactions::kFalse,
+      cas_config_opid_index_less_or_equal, /* hide_only = */ false, keep_on_disk, &error_code));
+  LOG(INFO) << "Tablet " << tablet_id << " deleted as " << TabletDataState_Name(delete_state);
+  return Status::OK();
+}
 
 Status MiniTabletServer::FlushTablets(tablet::FlushMode mode, tablet::FlushFlags flags) {
   if (!server_) {

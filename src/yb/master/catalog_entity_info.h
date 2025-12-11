@@ -90,6 +90,10 @@ struct ExternalTableSnapshotData {
   // tables' schemas and schema versions are added to the target tablet's superblock when applying
   // the clone_op.
   std::optional<int> new_table_schema_version = std::nullopt;
+  // When false, skip old DocDB vs new DocDB schema equality checks at import time for this table.
+  // This is set to false for YSQL tables that were undergoing DDL verification at backup time
+  // (i.e. the SysTablesEntryPB has ysql_ddl_txn_verifier_state).
+  bool validate_schema = true;
 };
 using ExternalTableSnapshotDataMap = std::unordered_map<TableId, ExternalTableSnapshotData>;
 
@@ -604,6 +608,10 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB> {
 
   const std::string& state_name() const {
     return SysTablesEntryPB_State_Name(pb.state());
+  }
+
+  const std::string& hide_state_name() const {
+    return SysTablesEntryPB_HideState_Name(pb.hide_state());
   }
 
   // Helper to set the state of the tablet with a custom message.

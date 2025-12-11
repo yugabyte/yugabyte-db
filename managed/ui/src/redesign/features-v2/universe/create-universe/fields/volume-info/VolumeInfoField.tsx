@@ -131,6 +131,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
       diskIops &&
       [
         StorageType.IO1,
+        StorageType.IO2,
         StorageType.GP3,
         StorageType.UltraSSD_LRS,
         StorageType.PremiumV2_LRS
@@ -350,6 +351,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
       fieldValue?.storageType &&
       ![
         StorageType.IO1,
+        StorageType.IO2,
         StorageType.GP3,
         StorageType.UltraSSD_LRS,
         StorageType.PremiumV2_LRS,

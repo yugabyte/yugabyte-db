@@ -17,16 +17,6 @@
 
 namespace yb::tserver {
 
-static const std::string kTabletServerErrorCategoryName = "tablet server error";
-
-static StatusCategoryRegisterer tablet_server_error_category_registerer(
-    StatusCategoryDescription::Make<TabletServerErrorTag>(&kTabletServerErrorCategoryName));
-
-static const std::string kTabletServerDelayCategoryName = "tablet server delay";
-
-static StatusCategoryRegisterer tablet_server_delay_category_registerer(
-    StatusCategoryDescription::Make<TabletServerDelayTag>(&kTabletServerDelayCategoryName));
-
 void SetupError(TabletServerErrorPB* error, const Status& s) {
   auto ts_error = TabletServerError::FromStatus(s);
   auto code = ts_error ? ts_error->value() : TabletServerErrorPB::UNKNOWN_ERROR;

@@ -1771,6 +1771,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Cache size for node agent client connections",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> nodeAgentIgnoreConnectionCacheSize =
+      new ConfKeyInfo<>(
+          "yb.node_agent.ignore_connection_cache_size",
+          ScopeType.GLOBAL,
+          "Ignore Node Agent Client Connection Cache Size",
+          "Ignore the cache size (limit) for node agent client connections",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> nodeAgentConnectTimeout =
       new ConfKeyInfo<>(
           "yb.node_agent.connect_timeout",
@@ -1943,4 +1951,13 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " than 1 day old",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<List> accessLogExcludeRegex =
+      new ConfKeyInfo<>(
+          "yb.log.access.exclude_regex",
+          ScopeType.GLOBAL,
+          "List of 'METHOD uri' regexes to exclude from the access log",
+          "List of 'METHOD uri' regexes which we don't print in access log, like 'GET"
+              + " \\/some\\/path\\/.+",
+          ConfDataType.StringListType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

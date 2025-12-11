@@ -4,7 +4,7 @@ headerTitle: Build a Python application using Apache Spark and YugabyteDB
 linkTitle: YCQL
 description: Learn how to build a Python application using Apache Spark and YugabyteDB YCQL
 aliases:
-  - /preview/integrations/apache-spark/python/
+  - /stable/integrations/apache-spark/python/
 menu:
   stable_integrations:
     identifier: apache-spark-3-python-ycql

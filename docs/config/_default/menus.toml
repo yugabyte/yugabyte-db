@@ -459,7 +459,7 @@
     excludeVersion = true
     imageUrl = "/images/migrate/migration-icon.svg"
 
-########## Menus for preview
+########## Menus for stable
 
 [[stable]]
   weight = 1
@@ -538,7 +538,7 @@
   [stable.params]
     showSection = true
 
-########## Menus (in preview) for Integrations
+########## Menus (in stable) for Integrations
 
 # [[stable_integrations]]
 #   name = "Docs Home"
@@ -643,7 +643,7 @@
   [stable_integrations.params]
     showSection = true
 
-########## Menus (in preview) for Develop
+########## Menus (in stable) for Develop
 
 # [[stable_develop]]
 #   name = "Docs Home"
@@ -776,7 +776,7 @@
   [stable_develop.params]
     showSection = true
 
-########## Menus (in preview) for APIs
+########## Menus (in stable) for APIs
 
 # [[stable_api]]
 #   name = "Docs Home"
@@ -854,7 +854,7 @@
   [stable_api.params]
     showSection = true
 
-########## Menus (in preview) for releases section
+########## Menus (in stable) for releases section
 
 # [[stable_releases]]
 #   name = "Docs Home"
@@ -940,7 +940,7 @@
   [stable_releases.params]
     showSection = true
 
-########## Menus (in preview) for FAQ section
+########## Menus (in stable) for FAQ section
 
 # [[stable_faq]]
 #   name = "Docs Home"
@@ -983,7 +983,7 @@
     showSection = true
     hideLink = true
 
-########## Menus (in preview) for YB Managed section
+########## Menus (in stable) for YB Managed section
 
 [[stable_yugabyte-cloud]]
   weight = 1
@@ -999,7 +999,7 @@
     showSection = true
     hideLink = true
 
-########## Menus (in preview) for YB Voyager section
+########## Menus (in stable) for YB Voyager section
 
 [[stable_yugabyte-voyager]]
   weight = 1

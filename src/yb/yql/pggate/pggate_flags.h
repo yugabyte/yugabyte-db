@@ -18,6 +18,7 @@
 DECLARE_int32(pggate_rpc_timeout_secs);
 DECLARE_int32(pggate_ybclient_reactor_threads);
 DECLARE_string(pggate_master_addresses);
+DECLARE_string(pggate_cert_base_name);
 DECLARE_string(pggate_tserver_shared_memory_uuid);
 DECLARE_int32(ysql_request_limit);
 DECLARE_uint64(ysql_prefetch_limit);

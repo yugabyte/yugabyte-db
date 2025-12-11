@@ -186,14 +186,6 @@ CREATE TABLE orders (
   customer_id INT
 ) PARTITION BY RANGE (order_date);
 
-CREATE EXTENSION pg_partman WITH SCHEMA partman;
-
-CREATE TABLE orders (
-  order_id SERIAL,
-  order_date DATE NOT NULL,
-  customer_id INT
-) PARTITION BY RANGE (order_date);
-
 SELECT partman.create_parent( p_parent_table => 'public.orders',
   p_control => 'order_date',
   p_type => 'partman',

@@ -8,7 +8,7 @@ menu:
     identifier: ddl_drop_trigger
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/ddl_drop_trigger/
+  - /stable/api/ysql/commands/ddl_drop_trigger/
 type: docs
 ---
 

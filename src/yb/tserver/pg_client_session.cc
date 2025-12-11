@@ -229,11 +229,6 @@ bool IsHomogeneousErrors(const client::CollectedErrors& errors) {
   return true;
 }
 
-std::optional<YBPgErrorCode> PsqlErrorCode(const Status& status) {
-  const auto* err_data = status.ErrorData(PgsqlErrorTag::kCategory);
-  return err_data ? std::optional(PgsqlErrorTag::Decode(err_data)) : std::nullopt;
-}
-
 // Get a common Postgres error code from the status and all errors, and append it to a previous
 // Status.
 // If any of those have different conflicting error codes, previous result is returned as-is.
@@ -241,7 +236,7 @@ Status AppendPsqlErrorCode(
     const Status& status, const client::CollectedErrors& errors) {
   std::optional<YBPgErrorCode> common_psql_error;
   for(const auto& error : errors) {
-    const auto psql_error = PsqlErrorCode(error->status());
+    const auto psql_error = PgsqlError::ValueFromStatus(error->status());
     if (!common_psql_error) {
       common_psql_error = psql_error;
     } else if (psql_error && common_psql_error != psql_error) {
@@ -1186,23 +1181,40 @@ class TransactionProvider {
     }
   }
 
-  std::optional<TransactionMetadata> NextTxnMetaForPlainIfExists(CoarseTimePoint deadline) {
-    if (!next_plain_) {
-      return std::nullopt;
+  struct TxnMetaAndConsumeInfo {
+    TransactionMetadata txn_meta;
+    bool was_txn_consumed;
+  };
+  Result<TxnMetaAndConsumeInfo> CheckTxnMetaForPlainFinish() {
+    RSTATUS_DCHECK(
+        next_plain_, IllegalState,
+        "Attempt to access next_plain_ transaction where there isn't one");
+    // next_plain_ would be ready at this point i.e status tablet picked.
+    auto txn_meta_res = next_plain_->metadata();
+    if (txn_meta_res.ok()) {
+      next_plain_->SetStartTimeIfNecessary();
+      return TxnMetaAndConsumeInfo {
+        .txn_meta = std::move(*txn_meta_res),
+        .was_txn_consumed = false
+      };
     }
-    // next_plain_ exists, so the locality passed here doesn't matter as we won't be creating
-    // a new transaction.
-    auto res = NextTxnMetaForPlain(
-        TransactionFullLocality::RegionLocal(), deadline, /*is_for_release=*/true);
-    if (!res.ok()) {
-      LOG(DFATAL) << "Unexpected error while fetching existing plain re-usable txn";
-      return std::nullopt;
-    }
-    return *res;
+    VLOG_WITH_FUNC(1) << "transaction already failed";
+    // If the transaction has already failed due to some reason, we should release the locks.
+    // And also reset next_plain_, so the subsequent ysql transaction would use a new docdb txn.
+    TransactionMetadata txn_meta_for_release;
+    txn_meta_for_release.transaction_id = next_plain_->id();
+    next_plain_ = nullptr;
+    VLOG_WITH_FUNC(1)
+        << "Consuming re-usable kPlain txn " << txn_meta_for_release.transaction_id
+        << ", next_plain_ transaction reset";
+    return TxnMetaAndConsumeInfo {
+      .txn_meta = std::move(txn_meta_for_release),
+      .was_txn_consumed = true
+    };
   }
 
   Result<TransactionMetadata> NextTxnMetaForPlain(
-      TransactionFullLocality locality, CoarseTimePoint deadline, bool is_for_release = false) {
+      TransactionFullLocality locality, CoarseTimePoint deadline) {
     client::internal::InFlightOpsGroupsWithMetadata ops_info;
     if (!next_plain_) {
       VLOG_WITH_FUNC(1) << "requesting new transaction of locality " << locality;
@@ -1221,22 +1233,9 @@ class TransactionProvider {
       VLOG_WITH_FUNC(1) << "trying to reuse existing transaction " << next_plain_->id();
     }
     // next_plain_ would be ready at this point i.e status tablet picked.
-    auto txn_meta_res = next_plain_->metadata();
-    if (txn_meta_res.ok()) {
-      next_plain_->SetStartTimeIfNecessary();
-      return txn_meta_res;
-    }
-    VLOG_WITH_FUNC(1) << "transaction already failed";
-    if (!is_for_release) {
-      return txn_meta_res.status();
-    }
-    // If the transaction has already failed due to some reason, we should release the locks.
-    // And also reset next_plain_, so the subsequent ysql transaction would use a new docdb txn.
-    TransactionMetadata txn_meta_for_release;
-    txn_meta_for_release.transaction_id = next_plain_->id();
-    next_plain_ = nullptr;
-    VLOG_WITH_FUNC(1) << "next_plain_ transaction reset";
-    return txn_meta_for_release;
+    auto metadata = VERIFY_RESULT(next_plain_->metadata());
+    next_plain_->SetStartTimeIfNecessary();
+    return metadata;
   }
 
   bool HasNextTxnForPlain() const {
@@ -1328,6 +1327,9 @@ Result<std::pair<PgClientSessionOperations, VectorIndexQueryPtr>> PrepareOperati
       auto write_op = std::make_shared<client::YBPgsqlWriteOp>(table, *sidecars, &write);
       if (write_time) {
         write_op->SetWriteTime(write_time);
+      }
+      if (req->options().xrepl_origin_id()) {
+        write_op->SetXreplOriginId(req->options().xrepl_origin_id());
       }
       ops.push_back(PgClientSessionOperation {
         .op = std::move(write_op),
@@ -1989,11 +1991,17 @@ class PgClientSession::Impl {
     const auto deadline = context->GetClientDeadline();
     RETURN_NOT_OK(transaction->RollbackToSubTransaction(subtxn_id, deadline));
 
-    if (req.has_options() && req.options().ddl_mode() &&
+    if (FLAGS_TEST_ysql_yb_enable_ddl_savepoint_support &&
+        req.has_options() && req.options().ddl_mode() &&
         req.options().ddl_use_regular_transaction_block() &&
-        FLAGS_TEST_ysql_yb_enable_ddl_savepoint_support) {
+        // Ensure that we have executed a DDL in this transaction block.
+        // We can arrive here in case a transaction aborts due to a failure
+        // during processing a DDL. In that case, ddl_mode in the request will
+        // be true since we start the ddl_mode upon receiving a DDL statement.
+        !ddl_txn_metadata_.transaction_id.IsNil()) {
       RSTATUS_DCHECK(ddl_txn_metadata_.transaction_id == transaction->id(), IllegalState,
-                    "Unexpected DDL transaction metadata found");
+                     Format("Unexpected DDL transaction metadata found. Expected: $0, found: $1",
+                            transaction->id(), ddl_txn_metadata_.transaction_id));
       RETURN_NOT_OK(client_.RollbackDocdbSchemaToSubtxn(ddl_txn_metadata_, subtxn_id));
       RETURN_NOT_OK(
           client_.WaitForRollbackDocdbSchemaToSubtxnToFinish(ddl_txn_metadata_, subtxn_id));
@@ -2030,10 +2038,18 @@ class PgClientSession::Impl {
       VLOG_WITH_PREFIX_AND_FUNC(1) << "Consuming re-usable kPlain txn " << txn->id();
     }
 
+    // If this transaction executed a DDL statement, then cleanup the ddl_txn_metadata_ post
+    // finishing. This is applicable to both separate DDL transactions or regular transactions with
+    // txn ddl enabled.
+    bool requires_ddl_txn_metadata_cleanup = ddl_txn_metadata_.transaction_id == txn->id();
     client::YBTransactionPtr txn_value;
     txn.swap(txn_value);
     Session(kind)->SetTransaction(nullptr);
-    return DoFinishTransaction(req, deadline, txn_value, kind);
+    auto s = DoFinishTransaction(req, deadline, txn_value, kind);
+    if (requires_ddl_txn_metadata_cleanup) {
+      ddl_txn_metadata_ = TransactionMetadata();
+    }
+    return s;
   }
 
   Status CleanupObjectLocks() {
@@ -2657,6 +2673,8 @@ class PgClientSession::Impl {
         << "txn_id " << txn_meta_res->transaction_id
         << " lock_type: " << AsString(lock_type)
         << " req: " << data->req.ShortDebugString();
+    DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK(
+        "PgClientSession::Impl::DoAcquireObjectLock", &txn_meta_res->transaction_id);
 
     auto callback = [data](const Status& s) {
       client::FlushStatus flush_status;
@@ -2921,6 +2939,10 @@ class PgClientSession::Impl {
         data->req.options(), deadline, in_txn_limit, locality));
     auto* session = setup_session_result.session_data.session.get();
     auto& transaction = setup_session_result.session_data.transaction;
+
+    if (transaction && options.xrepl_origin_id()) {
+      transaction->SetOriginId(options.xrepl_origin_id());
+    }
 
     TracePtr trace = Trace::CurrentTrace();
     bool trace_created_locally = false;
@@ -3695,11 +3717,15 @@ class PgClientSession::Impl {
     }
     // It could happen that transaction_provider_.next_plain_ is null when txn finish
     // calls are redundant. If so, treat it as a no-op instead of setting next_plain_.
-    auto opt_txn_meta = transaction_provider_.NextTxnMetaForPlainIfExists(deadline);
-    return opt_txn_meta
-        ? DoReleaseObjectLocks(
-              opt_txn_meta->transaction_id, subtxn_id, deadline, has_exclusive_locks)
-        : Status::OK();
+    if (!transaction_provider_.HasNextTxnForPlain()) {
+      return Status::OK();
+    }
+    auto txn_meta_info = VERIFY_RESULT(transaction_provider_.CheckTxnMetaForPlainFinish());
+    if (txn_meta_info.was_txn_consumed) {
+      object_lock_owner_.reset();
+    }
+    return DoReleaseObjectLocks(
+        txn_meta_info.txn_meta.transaction_id, subtxn_id, deadline, has_exclusive_locks);
   }
 
   Status DoReleaseObjectLocks(

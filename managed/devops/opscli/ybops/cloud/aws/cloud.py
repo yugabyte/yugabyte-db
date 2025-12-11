@@ -685,9 +685,9 @@ class AwsCloud(AbstractCloud):
             if instance.state['Name'] != 'running':
                 if instance.state['Name'] != 'pending':
                     # Add capacity reservation logic here
+                    # Use the EC2 client to modify instance attributes
+                    ec2_client = boto3.client('ec2', region_name=host_info["region"])
                     if capacity_reservation:
-                        # Use the EC2 client to modify instance attributes
-                        ec2_client = boto3.client('ec2', region_name=host_info["region"])
                         ec2_client.modify_instance_capacity_reservation_attributes(
                             InstanceId=host_info["id"],
                             CapacityReservationSpecification={
@@ -697,6 +697,18 @@ class AwsCloud(AbstractCloud):
                                 }
                             }
                         )
+                    else:
+                        current_reservation = instance.capacity_reservation_specification
+                        preference = current_reservation["CapacityReservationPreference"]
+                        if preference == 'capacity-reservations-only':
+                            # Already pointing to some reservation, need to remove the reference
+                            ec2_client.modify_instance_capacity_reservation_attributes(
+                                InstanceId=host_info["id"],
+                                CapacityReservationSpecification={
+                                    'CapacityReservationPreference': 'open'
+                                }
+                            )
+
                     instance.start()
                 # Increase wait timeout to 15 * 80 = 1200 seconds
                 # to work around failures in provisioning instances.

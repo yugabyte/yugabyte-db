@@ -391,7 +391,8 @@ class TransactionParticipant::Impl
                         << " with begin_time: " << metadata.start_time.ToUint64();
 
     auto txn = std::make_shared<RunningTransaction>(
-        metadata, TransactionalBatchData(), OneWayBitmap(), metadata.start_time, this);
+        metadata, TransactionalBatchData(), OneWayBitmap(), metadata.start_time, this,
+        metric_aborted_transactions_pending_cleanup_);
 
     {
       // Some transactions might not have metadata flushed into intents DB, but may have apply state
@@ -730,16 +731,6 @@ class TransactionParticipant::Impl
     }
 
     QueueWritePostApplyMetadata(std::move(post_apply_metadatas));
-  }
-
-  void NotifyAbortedTransactionIncrement (const TransactionId& id) override {
-    VLOG_WITH_PREFIX(4) << "Transaction: " << id << " is aborted";
-    metric_aborted_transactions_pending_cleanup_->Increment();
-  }
-
-  void NotifyAbortedTransactionDecrement (const TransactionId& id) override {
-    VLOG_WITH_PREFIX(4) << "Aborted Transaction: " << id << " is removed";
-    metric_aborted_transactions_pending_cleanup_->Decrement();
   }
 
   void SignalAborted(const TransactionId& id) EXCLUDES(mutex_) override {
@@ -2105,7 +2096,8 @@ class TransactionParticipant::Impl
     std::lock_guard lock(mutex_);
     auto txn = std::make_shared<RunningTransaction>(
         std::move(metadata), std::move(last_batch_data), std::move(replicated_batches),
-        participant_context_.Now().AddDelta(1ms * FLAGS_transaction_abort_check_timeout_ms), this);
+        participant_context_.Now().AddDelta(1ms * FLAGS_transaction_abort_check_timeout_ms), this,
+        metric_aborted_transactions_pending_cleanup_);
     if (pending_apply) {
       VLOG_WITH_PREFIX(4) << "Apply state found for " << txn->id() << ": "
                           << pending_apply->ToString();
@@ -2206,7 +2198,7 @@ class TransactionParticipant::Impl
       if ((**it).UpdateStatus(
           info.status_tablet, info.status, info.status_ht, info.coordinator_safe_time,
           info.aborted_subtxn_set, info.expected_deadlock_status, info.pg_session_req_version)) {
-        NotifyAbortedTransactionIncrement(info.transaction_id);
+        metric_aborted_transactions_pending_cleanup_->Increment();
         EnqueueRemoveUnlocked(
             info.transaction_id, RemoveReason::kStatusReceived, &min_running_notifier,
             info.expected_deadlock_status);
@@ -2335,7 +2327,8 @@ class TransactionParticipant::Impl
         .old_status_tablet = {},
       };
       it = transactions_.insert(std::make_shared<RunningTransaction>(
-          metadata, TransactionalBatchData(), OneWayBitmap(), HybridTime::kMax, this)).first;
+          metadata, TransactionalBatchData(), OneWayBitmap(), HybridTime::kMax, this,
+          metric_aborted_transactions_pending_cleanup_)).first;
       mem_tracker_->Consume(kRunningTransactionSize);
       TransactionsModifiedUnlocked(&min_running_notifier);
     }

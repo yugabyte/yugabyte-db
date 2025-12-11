@@ -46,6 +46,8 @@ class EventStats;
 class MetricEntity;
 class PgsqlResponsePB;
 
+enum PgsqlMetricsCaptureType : int;
+
 namespace tablet {
 
 YB_DEFINE_ENUM(TabletEventStats,
@@ -143,7 +145,8 @@ class ScopedTabletMetrics final : public TabletMetrics {
 
   void AddAggregateStats(TabletEventStats event_stats, const AggregateStats& other) override;
 
-  void CopyToPgsqlResponse(PgsqlResponsePB* response) const;
+  void CopyToPgsqlResponse(
+    PgsqlResponsePB* response, PgsqlMetricsCaptureType metrics_capture) const;
 
   // Returns number of metric changes dumped.
   size_t Dump(std::stringstream* out) const;

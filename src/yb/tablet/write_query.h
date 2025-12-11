@@ -122,7 +122,9 @@ class WriteQuery {
 
   uint64_t request_start_us() const { return request_start_us_; }
 
-  PgsqlResponsePB* GetPgsqlResponseForMetricsCapture() const;
+  // Returns response and metrics_capture type if metrics capture is enabled, nullptr otherwise.
+  std::pair<PgsqlResponsePB*, PgsqlMetricsCaptureType> GetPgsqlResponseAndMetricsCapture() const;
+
   ScopedTabletMetrics scoped_tablet_metrics() { return scoped_tablet_metrics_; }
   docdb::DocDBStatistics scoped_statistics() { return scoped_statistics_; }
 

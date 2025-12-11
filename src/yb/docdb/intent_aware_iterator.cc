@@ -220,7 +220,8 @@ IntentAwareIterator::IntentAwareIterator(
         docdb::CreateIntentsIteratorWithHybridTimeFilter(
             doc_db.intents, txn_op_context.txn_status_manager, doc_db.key_bounds,
             &intent_upperbound_, read_opts.cache_restart_block_keys,
-            GetIntentsDBStatistics(read_operation_data.statistics)));
+            GetIntentsDBStatistics(read_operation_data.statistics),
+            read_operation_data.use_ht_file_filter));
   }
   // WARNING: It is important for regular DB iterator to be created after intents DB iterator,
   // otherwise consistency could break, for example in following scenario:

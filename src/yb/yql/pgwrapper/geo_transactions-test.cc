@@ -70,7 +70,7 @@ class GeoTransactionsTest : public GeoTransactionsTestBase {
             "num_replicas": 1,
             "placement_blocks":[{
               "cloud": "cloud0",
-              "region": "rack$0",
+              "region": "region$0",
               "zone": "zone",
               "min_num_replicas": 1
             }]
@@ -689,7 +689,7 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestPreferredZone)) {
     placement_blocks1 += strings::Substitute(
         R"#($0{
               "cloud": "cloud0",
-              "region": "rack$1",
+              "region": "region$1",
               "zone": "zone",
               "min_num_replicas": 1,
               "leader_preference": $1
@@ -710,7 +710,7 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestPreferredZone)) {
     placement_blocks2 += strings::Substitute(
         R"#($0{
               "cloud": "cloud0",
-              "region": "rack$1",
+              "region": "region$1",
               "zone": "zone",
               "min_num_replicas": 1,
               "leader_preference": $2
@@ -949,7 +949,7 @@ TEST_F(GeoTransactionsTablespaceBasedSelectionCandidatesTest, TestCandidates) {
 
   CloudInfoPB local_cloud_info;
   local_cloud_info.set_placement_cloud("cloud0");
-  local_cloud_info.set_placement_region(Format("rack$0", kLocalRegion));
+  local_cloud_info.set_placement_region(Format("region$0", kLocalRegion));
   local_cloud_info.set_placement_zone("zone");
 
   {
@@ -1004,13 +1004,13 @@ class GeoTransactionsTablespaceLocalityTest : public GeoTransactionsTest {
           "placement_blocks": [
             {
               "cloud": "cloud0",
-              "region": "rack1",
+              "region": "region1",
               "zone": "zone",
               "min_num_replicas": 1
             },
             {
               "cloud": "cloud0",
-              "region": "rack3",
+              "region": "region3",
               "zone": "zone",
               "min_num_replicas": 1
             }
@@ -1023,13 +1023,13 @@ class GeoTransactionsTablespaceLocalityTest : public GeoTransactionsTest {
           "placement_blocks": [
             {
               "cloud": "cloud0",
-              "region": "rack1",
+              "region": "region1",
               "zone": "zone",
               "min_num_replicas": 1
             },
             {
               "cloud": "cloud0",
-              "region": "rack2",
+              "region": "region2",
               "zone": "zone",
               "min_num_replicas": 1
             }
@@ -1390,7 +1390,7 @@ class GeoTransactionsWildcardTest : public GeoTransactionsTest {
             "num_replicas": 1,
             "placement_blocks":[{
               "cloud": "cloud0",
-              "region": "rack$0",
+              "region": "region$0",
               "zone": "*",
               "min_num_replicas": 1
             }]

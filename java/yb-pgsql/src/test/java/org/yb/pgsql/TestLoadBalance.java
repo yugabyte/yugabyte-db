@@ -15,7 +15,7 @@ package org.yb.pgsql;
 
 import com.google.common.net.HostAndPort;
 import com.yugabyte.jdbc.PgConnection;
-import com.yugabyte.ysql.ClusterAwareLoadBalancer;
+import com.yugabyte.ysql.LoadBalanceService;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
@@ -119,8 +119,6 @@ public class TestLoadBalance extends BasePgSQLTest {
     }
     AssertionWrappers.assertEquals(
       "expected servers started by minicluster", hostPortsDaemonMap.size(), cnt);
-    ClusterAwareLoadBalancer clb = ClusterAwareLoadBalancer.instance();
-    AssertionWrappers.assertNotNull(clb);
     List<Connection> connList = new ArrayList<>();
     try {
       Map<String, Integer> hostToNumConnections = new HashMap<>();
@@ -141,7 +139,7 @@ public class TestLoadBalance extends BasePgSQLTest {
       String firstHost = ((PgConnection)connection).getQueryExecutor().getHostSpec().getHost();
       Integer numConns = hostToNumConnections.get(firstHost);
       hostToNumConnections.put(firstHost, numConns+1);
-      clb.printHostToConnMap();
+      LoadBalanceService.printHostToConnectionMap();
       AssertionWrappers.assertEquals(7, hostToNumConnections.size());
       for (Map.Entry<String, Integer> e : hostToNumConnections.entrySet()) {
         AssertionWrappers.assertTrue(e.getValue() >= 2);

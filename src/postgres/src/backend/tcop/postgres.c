@@ -1197,8 +1197,8 @@ exec_simple_query(const char *query_string)
 	bool		use_implicit_block;
 	char		msec_str[32];
 
-	const char *redacted_query_string;
-	CommandTag	command_tag;
+	const char *yb_redacted_query_string;
+	CommandTag	yb_command_tag;
 
 	/*
 	 * Report query to various monitoring facilities.
@@ -1206,9 +1206,10 @@ exec_simple_query(const char *query_string)
 	debug_query_string = query_string;
 
 	/* Use YbParseCommandTag to suppress error warnings. */
-	command_tag = YbParseCommandTag(query_string);
-	redacted_query_string = YbRedactPasswordIfExists(query_string, command_tag);
-	pgstat_report_activity(STATE_RUNNING, redacted_query_string);
+	yb_command_tag = YbParseCommandTag(query_string);
+	yb_redacted_query_string = YbRedactPasswordIfExists(query_string,
+														yb_command_tag);
+	pgstat_report_activity(STATE_RUNNING, yb_redacted_query_string);
 
 	TRACE_POSTGRESQL_QUERY_START(query_string);
 
@@ -1226,7 +1227,7 @@ exec_simple_query(const char *query_string)
 	 * one of those, else bad things will happen in xact.c. (Note that this
 	 * will normally change current memory context.)
 	 */
-	yb_start_xact_command_internal(yb_skip_read_committed_internal_savepoint(command_tag));
+	yb_start_xact_command_internal(yb_skip_read_committed_internal_savepoint(yb_command_tag));
 
 	/*
 	 * Zap any pre-existing unnamed statement.  (While not strictly necessary,
@@ -1251,7 +1252,7 @@ exec_simple_query(const char *query_string)
 	if (check_log_statement(parsetree_list))
 	{
 		ereport(LOG,
-				(errmsg("statement: %s", redacted_query_string),
+				(errmsg("statement: %s", yb_redacted_query_string),
 				 errhidestmt(true),
 				 errdetail_execute(parsetree_list)));
 		was_logged = true;
@@ -1450,7 +1451,7 @@ exec_simple_query(const char *query_string)
 		MemoryContextSwitchTo(oldcontext);
 
 		yb_collect_commit_stats =
-			YbShouldCollectCommitStats(command_tag,
+			YbShouldCollectCommitStats(yb_command_tag,
 									   use_implicit_block,
 									   (lnext(parsetree_list, parsetree_item) == NULL));
 
@@ -1570,7 +1571,7 @@ exec_simple_query(const char *query_string)
 		case 2:
 			ereport(LOG,
 					(errmsg("duration: %s ms  statement: %s",
-							msec_str, redacted_query_string),
+							msec_str, yb_redacted_query_string),
 					 errhidestmt(true),
 					 errdetail_execute(parsetree_list)));
 			break;
@@ -1608,8 +1609,8 @@ exec_parse_message(const char *query_string,	/* string to execute */
 	bool		save_log_statement_stats = log_statement_stats;
 	char		msec_str[32];
 
-	const char *redacted_query_string;
-	CommandTag	command_tag;
+	const char *yb_redacted_query_string;
+	CommandTag	yb_command_tag;
 
 	/*
 	 * Report query to various monitoring facilities.
@@ -1617,9 +1618,10 @@ exec_parse_message(const char *query_string,	/* string to execute */
 	debug_query_string = query_string;
 
 	/* Use YbParseCommandTag to suppress error warnings. */
-	command_tag = YbParseCommandTag(query_string);
-	redacted_query_string = YbRedactPasswordIfExists(query_string, command_tag);
-	pgstat_report_activity(STATE_RUNNING, redacted_query_string);
+	yb_command_tag = YbParseCommandTag(query_string);
+	yb_redacted_query_string = YbRedactPasswordIfExists(query_string,
+														yb_command_tag);
+	pgstat_report_activity(STATE_RUNNING, yb_redacted_query_string);
 
 	set_ps_display("PARSE");
 
@@ -1629,7 +1631,7 @@ exec_parse_message(const char *query_string,	/* string to execute */
 	ereport(DEBUG2,
 			(errmsg_internal("parse %s: %s",
 							 *stmt_name ? stmt_name : "<unnamed>",
-							 redacted_query_string)));
+							 yb_redacted_query_string)));
 
 	/*
 	 * Start up a transaction command so we can run parse analysis etc. (Note
@@ -1637,7 +1639,7 @@ exec_parse_message(const char *query_string,	/* string to execute */
 	 * if we are already in one.  This also arms the statement timeout if
 	 * necessary.
 	 */
-	yb_start_xact_command_internal(yb_skip_read_committed_internal_savepoint(command_tag));
+	yb_start_xact_command_internal(yb_skip_read_committed_internal_savepoint(yb_command_tag));
 
 	/*
 	 * Switch to appropriate context for constructing parsetrees.
@@ -1821,7 +1823,7 @@ exec_parse_message(const char *query_string,	/* string to execute */
 					(errmsg("duration: %s ms  parse %s: %s",
 							msec_str,
 							*stmt_name ? stmt_name : "<unnamed>",
-							redacted_query_string),
+							yb_redacted_query_string),
 					 errhidestmt(true)));
 			break;
 	}
@@ -1861,8 +1863,8 @@ exec_bind_message(StringInfo input_message)
 	ErrorContextCallback params_errcxt;
 	ListCell   *lc;
 
-	const char *redacted_query_string;
-	CommandTag	command_tag;
+	const char *yb_redacted_query_string;
+	CommandTag	yb_command_tag;
 
 	/* Get the fixed part of the message */
 	portal_name = pq_getmsgstring(input_message);
@@ -1897,9 +1899,10 @@ exec_bind_message(StringInfo input_message)
 	debug_query_string = psrc->query_string;
 
 	/* Use YbParseCommandTag to suppress error warnings. */
-	command_tag = YbParseCommandTag(psrc->query_string);
-	redacted_query_string = YbRedactPasswordIfExists(psrc->query_string, command_tag);
-	pgstat_report_activity(STATE_RUNNING, redacted_query_string);
+	yb_command_tag = YbParseCommandTag(psrc->query_string);
+	yb_redacted_query_string = YbRedactPasswordIfExists(psrc->query_string,
+														yb_command_tag);
+	pgstat_report_activity(STATE_RUNNING, yb_redacted_query_string);
 
 	foreach(lc, psrc->query_list)
 	{
@@ -1923,7 +1926,7 @@ exec_bind_message(StringInfo input_message)
 	 * we are already in one.  This also arms the statement timeout if
 	 * necessary.
 	 */
-	yb_start_xact_command_internal(yb_skip_read_committed_internal_savepoint(command_tag));
+	yb_start_xact_command_internal(yb_skip_read_committed_internal_savepoint(yb_command_tag));
 
 	/* Switch back to message context */
 	MemoryContextSwitchTo(MessageContext);
@@ -2300,7 +2303,7 @@ exec_bind_message(StringInfo input_message)
 							*stmt_name ? stmt_name : "<unnamed>",
 							*portal_name ? "/" : "",
 							*portal_name ? portal_name : "",
-							redacted_query_string),
+							yb_redacted_query_string),
 					 errhidestmt(true),
 					 errdetail_params(params)));
 			break;
@@ -3187,7 +3190,7 @@ quickdie(SIGNAL_ARGS)
 				ereport(WARNING,
 						(errcode(ERRCODE_ADMIN_SHUTDOWN),
 						 errmsg("terminating connection because of unexpected SIGQUIT signal")));
-			}
+			}					/* YB */
 			break;
 		case PMQUIT_FOR_CRASH:
 			/* A crash-and-restart cycle is in progress */
@@ -4197,10 +4200,10 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx,
 			case 'b':
 				/* Undocumented flag used for binary upgrades */
 				if (secure)
-				{
+				{				/* YB */
 					IsBinaryUpgrade = true;
 					YBCSetBinaryUpgrade(true);
-				}
+				}				/* YB */
 				break;
 
 			case 'C':
@@ -6555,8 +6558,7 @@ PostgresMain(const char *dbname, const char *username)
 			 * config file.
 			 * Control connection is identified if a connection receives a
 			 * Auth Passthrough Request ('A') packet.
-			*/
-
+			 */
 			if (firstchar == 'A')	/* Auth Passthrough Request */
 			{
 				/*
@@ -6575,7 +6577,7 @@ PostgresMain(const char *dbname, const char *username)
 			else
 			{
 				ProcessConfigFile(PGC_SIGHUP);
-			}
+			}					/* YB */
 		}
 
 		/*
@@ -6614,23 +6616,25 @@ PostgresMain(const char *dbname, const char *username)
 
 					query_string = pq_getmsgstring(&input_message);
 					pq_getmsgend(&input_message);
-					MemoryContext oldcontext = CurrentMemoryContext;
+					MemoryContext yb_oldcontext = CurrentMemoryContext;
 
+					/* YB: attempt transparent retry on error */
 					PG_TRY();
 					{
 						if (am_walsender)
 						{
 							if (!exec_replication_command(query_string))
-								yb_exec_simple_query(query_string, oldcontext);
+								yb_exec_simple_query(query_string,
+													 yb_oldcontext);
 						}
 						else
-							yb_exec_simple_query(query_string, oldcontext);
+							yb_exec_simple_query(query_string, yb_oldcontext);
 					}
 					PG_CATCH();
 					{
 						/* Get error data */
 						ErrorData  *edata;
-						MemoryContext errorcontext = MemoryContextSwitchTo(oldcontext);
+						MemoryContext errorcontext = MemoryContextSwitchTo(yb_oldcontext);
 
 						edata = CopyErrorData();
 
@@ -6656,12 +6660,13 @@ PostgresMain(const char *dbname, const char *username)
 									 * the memory context will get reset after anyway.
 									 */
 									FreeErrorData(edata);
-									yb_exec_simple_query(query_string, oldcontext);
+									yb_exec_simple_query(query_string,
+														 yb_oldcontext);
 								}
 							}
 							PG_CATCH();
 							{
-								errorcontext = MemoryContextSwitchTo(oldcontext);
+								errorcontext = MemoryContextSwitchTo(yb_oldcontext);
 								edata = CopyErrorData();
 								edata->sqlerrcode = yb_external_errcode(edata->sqlerrcode);
 								MemoryContextSwitchTo(errorcontext);
@@ -6674,7 +6679,7 @@ PostgresMain(const char *dbname, const char *username)
 							MemoryContextSwitchTo(errorcontext);
 							ThrowErrorData(edata);
 						}
-					}
+					}			/* YB */
 					PG_END_TRY();
 
 					send_ready_for_query = true;
@@ -6723,7 +6728,7 @@ PostgresMain(const char *dbname, const char *username)
 					}
 					pq_getmsgend(&input_message);
 
-					MemoryContext oldcontext = CurrentMemoryContext;
+					MemoryContext yb_oldcontext = CurrentMemoryContext;
 
 					PG_TRY();
 					{
@@ -6737,7 +6742,7 @@ PostgresMain(const char *dbname, const char *username)
 					{
 						/* Get error data */
 						ErrorData  *edata;
-						MemoryContext errorcontext = MemoryContextSwitchTo(oldcontext);
+						MemoryContext errorcontext = MemoryContextSwitchTo(yb_oldcontext);
 
 						edata = CopyErrorData();
 
@@ -6752,7 +6757,13 @@ PostgresMain(const char *dbname, const char *username)
 													  yb_is_dml_command(query_string),
 													  &need_retry);
 						MemoryContextSwitchTo(errorcontext);
-						if (YbIsClientYsqlConnMgr())
+						/*
+						 * YB: Report parse error with the prepared statement name to connection
+						 * manager. This is done so that connection manager can evict the entry
+						 * from the server hashmap as parse has failed. Conn mgr does not record
+						 * any entry for unnamed prepared statement in it's server hashmap.
+						 */
+						if (YbIsClientYsqlConnMgr() && stmt_name[0] != '\0')
 						{
 							pq_puttextmessage('4', stmt_name);
 							pq_flush();
@@ -6790,7 +6801,6 @@ PostgresMain(const char *dbname, const char *username)
 
 					portal_name = pq_getmsgstring(&input_message);
 					max_rows = pq_getmsgint(&input_message, 4);
-
 					pq_getmsgend(&input_message);
 
 					MemoryContext oldcontext = CurrentMemoryContext;
@@ -7064,38 +7074,37 @@ PostgresMain(const char *dbname, const char *username)
 				break;
 
 			case 'S':			/* sync */
+				/*
+				 * YB: TODO(kramanathan): Display commit stats for the extended
+				 * query protocol. (#28409)
+				 */
+				pq_getmsgend(&input_message);
+				MemoryContext yb_oldcontext = CurrentMemoryContext;
+
+				/* YB: substitute with YB errcode on failure */
+				PG_TRY();
 				{
-					/*
-					 * TODO(kramanathan): Display commit stats for the extended
-					 * query protocol. (#28409)
-					 */
-					pq_getmsgend(&input_message);
-					MemoryContext oldcontext = CurrentMemoryContext;
-
-					PG_TRY();
-					{
-						finish_xact_command();
-					}
-					PG_CATCH();
-					{
-						MemoryContext errorcontext = MemoryContextSwitchTo(oldcontext);
-						ErrorData  *edata = CopyErrorData();
-
-						edata->sqlerrcode = yb_external_errcode(edata->sqlerrcode);
-						MemoryContextSwitchTo(errorcontext);
-						ThrowErrorData(edata);
-					}
-					PG_END_TRY();
-					/*
-					 * Fetch the updated session execution stats at the end of each query, so
-					 * that stats don't accumulate across queries. The stats collected here
-					 * typically correspond to completed flushes, reads associated with triggers
-					 * etc. This is put here for the extended query protocol where the last
-					 * packet is 'S'.
-					 */
-					YbRefreshSessionStatsDuringExecution();
-					send_ready_for_query = true;
+					finish_xact_command();
 				}
+				PG_CATCH();
+				{
+					MemoryContext errorcontext = MemoryContextSwitchTo(yb_oldcontext);
+					ErrorData  *edata = CopyErrorData();
+
+					edata->sqlerrcode = yb_external_errcode(edata->sqlerrcode);
+					MemoryContextSwitchTo(errorcontext);
+					ThrowErrorData(edata);
+				}
+				PG_END_TRY();
+				/*
+				 * Fetch the updated session execution stats at the end of each query, so
+				 * that stats don't accumulate across queries. The stats collected here
+				 * typically correspond to completed flushes, reads associated with triggers
+				 * etc. This is put here for the extended query protocol where the last
+				 * packet is 'S'.
+				 */
+				YbRefreshSessionStatsDuringExecution();
+				send_ready_for_query = true;
 				break;
 
 				/*

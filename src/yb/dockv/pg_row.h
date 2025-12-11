@@ -131,8 +131,10 @@ class PgTableRow {
   }
 
   Status SetValue(ColumnId column_id, const QLValuePB& value);
+  Status SetValue(ColumnId column_id, const LWQLValuePB& value);
 
   Status SetValueByColumnIdx(size_t idx, const QLValuePB& value);
+  Status SetValueByColumnIdx(size_t idx, const LWQLValuePB& value);
 
   const ReaderProjection& projection() const {
     return *projection_;
@@ -167,6 +169,8 @@ class PgTableRow {
 
  private:
   PgValueDatum GetDatum(size_t idx) const;
+  template <class Value>
+  Status DoSetValueByColumnIdx(size_t idx, const Value& value);
 
   const ReaderProjection* projection_;
   boost::container::small_vector<bool, 0x10> is_null_;

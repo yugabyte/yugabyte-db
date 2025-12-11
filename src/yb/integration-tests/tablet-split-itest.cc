@@ -175,6 +175,7 @@ DECLARE_bool(TEST_asyncrpc_finished_set_timedout);
 DECLARE_bool(enable_copy_retryable_requests_from_parent);
 DECLARE_bool(enable_flush_retryable_requests);
 DECLARE_int32(max_create_tablets_per_ts);
+DECLARE_bool(tablet_split_use_middle_user_key);
 DECLARE_double(tablet_split_min_size_ratio);
 
 namespace yb {
@@ -2521,10 +2522,10 @@ TEST_F(TabletSplitSingleServerITest, TabletServerSplitAlreadySplitTablet) {
   auto tablet_peer = ASSERT_RESULT(GetSingleTabletLeaderPeer());
   const auto tserver_uuid = tablet_peer->permanent_uuid();
 
-  SetAtomicFlag(true, &FLAGS_TEST_skip_deleting_split_tablets);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = true;
   const auto source_tablet_id = ASSERT_RESULT(SplitSingleTablet(split_hash_code));
   ASSERT_OK(WaitForTabletSplitCompletion(
-      /* expected_non_split_tablets =*/ 2, /* expected_split_tablets = */ 1));
+      /* expected_non_split_tablets =*/ kNumSplitParts, /* expected_split_tablets = */ 1));
 
   auto send_split_request = [this, &tserver_uuid, &source_tablet_id]()
       -> Result<tserver::SplitTabletResponsePB> {
@@ -2550,8 +2551,8 @@ TEST_F(TabletSplitSingleServerITest, TabletServerSplitAlreadySplitTablet) {
   EXPECT_TRUE(resp.has_error());
   EXPECT_TRUE(StatusFromPB(resp.error().status()).IsAlreadyPresent()) << resp.error().DebugString();
 
-  SetAtomicFlag(false, &FLAGS_TEST_skip_deleting_split_tablets);
-  ASSERT_OK(WaitForTabletSplitCompletion(/* expected_non_split_tablets =*/ 2));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = false;
+  ASSERT_OK(WaitForTabletSplitCompletion(/* expected_non_split_tablets =*/ kNumSplitParts));
 
   // If the parent tablet has been cleaned up or is still being cleaned up, this should trigger
   // a Not Found error or a Not Running error correspondingly.
@@ -3437,6 +3438,9 @@ TEST_P(TabletSplitSystemRecordsITest, GetSplitKey) {
   //   2) run kNumTxns transaction with the same keys
   //   3) run manual compaction to collapse all user records to the latest transaciton content
   //   4) at this step there are kNumTxns internal records followed by 2 * kNumRows user records
+
+  // Disable the fix to split only across user keys.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_use_middle_user_key) = false;
 
   // Selecting a small period for history cutoff to force compacting records with the same keys.
   constexpr auto kHistoryRetentionSec = 1;

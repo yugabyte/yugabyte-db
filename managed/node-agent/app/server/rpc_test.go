@@ -23,7 +23,9 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 )
 
 var (
@@ -512,4 +514,17 @@ func TestMetric(t *testing.T) {
 		log.Fatal("No nodeagent metric found")
 	}
 	t.Log(output)
+}
+
+func TestErrorType(t *testing.T) {
+	err := status.New(codes.DeadlineExceeded, "Client deadline exceeded").Err()
+	st, ok := status.FromError(err)
+	if ok {
+		t.Logf("It is a grpc error. code: %v, message: %s", st.Code(), st.Message())
+		if st.Code() != codes.DeadlineExceeded {
+			t.Fatalf("Expected code %v, found %v", codes.DeadlineExceeded, st.Code())
+		}
+	} else {
+		t.Fatalf("It is not a grpc error. error: %v", err)
+	}
 }

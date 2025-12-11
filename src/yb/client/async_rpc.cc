@@ -300,18 +300,10 @@ void AsyncRpc::Failed(const Status& status) {
         StatusToPB(status, resp->add_error_status());
         // For backward compatibility set also deprecated fields
         resp->set_error_message(error_message);
-        const uint8_t* pg_err_ptr = status.ErrorData(PgsqlErrorTag::kCategory);
-        if (pg_err_ptr != nullptr) {
-          resp->set_pg_error_code(static_cast<uint32_t>(PgsqlErrorTag::Decode(pg_err_ptr)));
-        } else {
-          resp->set_pg_error_code(static_cast<uint32_t>(YBPgErrorCode::YB_PG_INTERNAL_ERROR));
-        }
-        const uint8_t* txn_err_ptr = status.ErrorData(TransactionErrorTag::kCategory);
-        if (txn_err_ptr != nullptr) {
-          resp->set_txn_error_code(static_cast<uint16_t>(TransactionErrorTag::Decode(txn_err_ptr)));
-        } else {
-          resp->set_txn_error_code(static_cast<uint16_t>(TransactionErrorCode::kNone));
-        }
+        resp->set_pg_error_code(static_cast<uint32_t>(
+            PgsqlError::ValueFromStatus(status).value_or(YBPgErrorCode::YB_PG_INTERNAL_ERROR)));
+        resp->set_txn_error_code(static_cast<uint16_t>(
+            TransactionError::ValueFromStatus(status).value_or(TransactionErrorCode::kNone)));
         break;
       }
       default:
@@ -564,6 +556,9 @@ void HandleExtraFields(YBqlWriteOp* op, tserver::WriteRequestPB* req) {
 void HandleExtraFields(YBPgsqlWriteOp* op, tserver::WriteRequestPB* req) {
   if (op->write_time()) {
     req->set_external_hybrid_time(op->write_time().ToUint64());
+  }
+  if (op->XreplOriginId()) {
+    req->set_xrepl_origin_id(op->XreplOriginId());
   }
 }
 

@@ -22,11 +22,32 @@ Perform the following steps to install yb-voyager using brew for macOS:
 
     Note that the tap `yugabyte/yugabytedb` has been updated to `yugabyte/tap`. If you have previously installed yb-voyager using the tap `yugabyte/yugabytedb`, untap the entry using `brew untap yugabyte/yugabytedb`, and then tap using the preceding command.
 
-1. Install the `postgresql@16` package to access `pg_dump` or `pg_restore` using the following command:
+1. Install PostgreSQL 17 (required for `pg_dump` and `pg_restore`) using Homebrew:
 
     ```sh
-    brew install postgresql@16
+    brew install postgresql@17
     ```
+
+
+    After installing PostgreSQL 17, Homebrew displays instructions on how to add the PostgreSQL 17 binaries to your shell's PATH.
+    These steps vary depending on your system's Homebrew installation path (for example: `/opt/homebrew` or `/usr/local`) and the shell you are using.
+
+      1. Update your PATH by following the _exact_ instructions shown by Homebrew. Following is an example of what Homebrew may display:
+
+          ```output
+          If you need to have postgresql@17 first in your PATH, run:
+          echo 'export PATH="/opt/homebrew/opt/postgresql@17/bin:$PATH"' >> ~/.zshrc
+          For compilers to find postgresql@17 you may need to set:
+          export LDFLAGS="-L/opt/homebrew/opt/postgresql@17/lib"
+          export CPPFLAGS="-I/opt/homebrew/opt/postgresql@17/include"
+          ```
+
+      1. After the update, restart your terminal and verify that both report to PostgreSQL 17:
+
+          ```sh
+          pg_dump --version
+          pg_restore --version
+          ```
 
 1. Install `yb-voyager` and its dependencies using the following command:
 
@@ -34,13 +55,11 @@ Perform the following steps to install yb-voyager using brew for macOS:
     brew install yb-voyager
     ```
 
-    {{< note >}}
+    To install a specific version of `yb-voyager`, use the following command:
 
-Install a specific version of `yb-voyager` using the following command:
-
+    ```sh
     brew install yb-voyager@<VERSION>
-
-    {{< /note >}}
+    ```
 
 1. Check that yb-voyager is installed using the following command:
 

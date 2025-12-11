@@ -31,7 +31,7 @@ To test and take advantage of features developed for enhanced PostgreSQL compati
 
 After turning this mode on, as you upgrade universes, YugabyteDB will automatically enable new designated PostgreSQL compatibility features.
 
-As features included in the PostgreSQL compatibility mode transition from {{<tags/feature/ea>}} to {{<tags/feature/ga>}} in subsequent versions of YugabyteDB, they become enabled by default on new universes, and are no longer managed under EPCM on your existing universes after the upgrade.
+As features included in the PostgreSQL compatibility mode transition from {{<tags/feature/ea>}} to {{<tags/feature/ga>}} in subsequent versions of YugabyteDB, they are no longer managed under EPCM on your existing universes after the upgrade.
 
 {{<note title="Note">}}
 If you have set these features independent of EPCM, you cannot use EPCM.

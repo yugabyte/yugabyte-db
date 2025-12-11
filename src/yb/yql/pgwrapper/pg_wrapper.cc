@@ -948,6 +948,18 @@ Status PgWrapper::UpdateAndReloadConfig() {
   return ReloadConfig();
 }
 
+void PgWrapper::Shutdown() {
+  // We use PG's fast shutdown mode for stopping PG when the tserver shuts down.
+  // See https://www.postgresql.org/docs/current/server-shutdown.html
+  Kill(SIGINT);
+}
+
+void PgWrapper::ImmediateShutdown() {
+  // We use PG's immediate shutdown mode for stopping PG when losing the lease.
+  // See https://www.postgresql.org/docs/current/server-shutdown.html
+  Kill(SIGQUIT);
+}
+
 Status PgWrapper::InitDb(InitdbParams initdb_params) {
   const string initdb_program_path = GetInitDbExecutablePath();
   RETURN_NOT_OK(CheckExecutableValid(initdb_program_path));
@@ -1224,6 +1236,7 @@ void PgWrapper::SetCommonEnv(Subprocess* proc, bool yb_enabled) {
     // Solution is to specify it explicitly.
     proc->SetEnv("FLAGS_certs_dir", conf_.certs_dir);
     proc->SetEnv("FLAGS_certs_for_client_dir", conf_.certs_for_client_dir);
+    proc->SetEnv("FLAGS_pggate_cert_base_name", conf_.cert_base_name);
 
     proc->SetEnv("YB_PG_TRANSACTIONS_ENABLED", FLAGS_pg_transactions_enabled ? "1" : "0");
 
@@ -1243,6 +1256,7 @@ void PgWrapper::SetCommonEnv(Subprocess* proc, bool yb_enabled) {
     static const std::vector<string> explicit_flags{"pggate_master_addresses",
                                                     "certs_dir",
                                                     "certs_for_client_dir",
+                                                    "pggate_cert_base_name",
                                                     "mem_tracker_tcmalloc_gc_release_bytes",
                                                     "mem_tracker_update_consumption_interval_us"};
     std::vector<google::CommandLineFlagInfo> flag_infos;
@@ -1461,7 +1475,7 @@ std::shared_ptr<ProcessWrapper> PgSupervisor::CreateProcessWrapper() {
     if (FLAGS_enable_ysql_conn_mgr_stats)
       CHECK_OK(pgwrapper->SetYsqlConnManagerStatsShmKey(GetYsqlConnManagerStatsShmkey()));
   } else {
-    FLAGS_enable_ysql_conn_mgr_stats = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql_conn_mgr_stats) = false;
   }
 
   if (server_) {

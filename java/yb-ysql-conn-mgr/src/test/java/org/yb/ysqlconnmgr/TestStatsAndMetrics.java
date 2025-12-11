@@ -6,19 +6,13 @@ import static org.yb.AssertionWrappers.assertNotNull;
 import static org.yb.AssertionWrappers.assertTrue;
 
 import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
-import java.io.IOException;
-import java.net.URL;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
-import java.util.Scanner;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.minicluster.MiniYBClusterBuilder;
-import org.yb.minicluster.MiniYBDaemon;
 import org.yb.pgsql.ConnectionEndpoint;
 
 @RunWith(value = YBTestRunnerYsqlConnMgr.class)

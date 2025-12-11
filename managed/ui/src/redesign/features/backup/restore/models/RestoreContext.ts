@@ -149,7 +149,7 @@ export const defaultRestoreFormValues: RestoreFormModel = {
     },
 
     useRoles: false,
-    errorIfRoleExists: false,
+    errorIfRolesExists: false,
 
     timeToRestoreType: TimeToRestoreType.RECENT_BACKUP,
 
@@ -169,7 +169,7 @@ export const defaultRestoreFormValues: RestoreFormModel = {
 
     useTablespaces: false,
     useRoles: false,
-    errorIfRoleExists: false,
+    errorIfRolesExists: false,
 
     parallelThreads: 0
   },

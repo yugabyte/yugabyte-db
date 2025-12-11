@@ -343,7 +343,8 @@ static void binary_upgrade_set_pg_class_oids(Archive *fout,
 static void yb_binary_upgrade_preserve_index_tablegroup_oid(Archive *fout,
 														 PQExpBuffer buffer,
 														 const IndxInfo *indxinfo,
-														 const TableInfo *tbinfo);
+														 const TableInfo *tbinfo,
+														 bool emit_colocation_id);
 static void binary_upgrade_extension_member(PQExpBuffer upgrade_buffer,
 											const DumpableObject *dobj,
 											const char *objtype,
@@ -362,10 +363,6 @@ static bool forcePartitionRootLoad(const TableInfo *tbinfo);
 
 /* YB functions */
 static void dumpTablegroup(Archive *fout, const YbTablegroupInfo *tginfo);
-static void YbAppendReloptions2(PQExpBuffer buffer, bool newline_before,
-								const char *reloptions1, const char *reloptions1_prefix,
-								const char *reloptions2, const char *reloptions2_prefix,
-								Archive *fout);
 static void YbAppendReloptions3(PQExpBuffer buffer, bool newline_before,
 								const char *reloptions1, const char *reloptions1_prefix,
 								const char *reloptions2, const char *reloptions2_prefix,
@@ -5359,7 +5356,8 @@ static void
 yb_binary_upgrade_preserve_index_tablegroup_oid(Archive *fout,
 											 PQExpBuffer buffer,
 											 const IndxInfo *indxinfo,
-											 const TableInfo *tbinfo)
+											 const TableInfo *tbinfo,
+											 bool emit_colocation_id)
 {
 	YbcTableProperties yb_properties;
 	PQExpBuffer yb_reloptions;
@@ -5379,17 +5377,28 @@ yb_binary_upgrade_preserve_index_tablegroup_oid(Archive *fout,
 
 	if (yb_properties && yb_properties->is_colocated)
 	{
-		appendPQExpBufferStr(buffer,
-							 "\n-- For YB colocation backup, must preserve implicit tablegroup pg_yb_tablegroup oid\n");
-		appendPQExpBuffer(buffer,
-						  "SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('%u'::pg_catalog.oid);\n",
-						  yb_properties->tablegroup_oid);
-		if (strcmp(yb_properties->tablegroup_name, "default") == 0)
+		if (emit_colocation_id)
 		{
 			appendPQExpBufferStr(buffer,
-								 "\n-- For YB colocation backup without tablespace information, must preserve default tablegroup tables\n");
+								 "\n-- For YB colocation backup, must preserve implicit colocation id\n");
 			appendPQExpBuffer(buffer,
-							  "SELECT pg_catalog.binary_upgrade_set_next_tablegroup_default(true);\n");
+							  "SELECT pg_catalog.yb_binary_upgrade_set_next_colocation_id('%u'::pg_catalog.oid);\n",
+							  yb_properties->colocation_id);
+		}
+		else
+		{
+			appendPQExpBufferStr(buffer,
+								 "\n-- For YB colocation backup, must preserve implicit tablegroup pg_yb_tablegroup oid\n");
+			appendPQExpBuffer(buffer,
+							  "SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('%u'::pg_catalog.oid);\n",
+							  yb_properties->tablegroup_oid);
+			if (strcmp(yb_properties->tablegroup_name, "default") == 0)
+			{
+				appendPQExpBufferStr(buffer,
+									 "\n-- For YB colocation backup without tablespace information, must preserve default tablegroup tables\n");
+				appendPQExpBuffer(buffer,
+								  "SELECT pg_catalog.binary_upgrade_set_next_tablegroup_default(true);\n");
+			}
 		}
 	}
 
@@ -17686,7 +17695,8 @@ dumpIndex(Archive *fout, const IndxInfo *indxinfo)
 			binary_upgrade_set_pg_class_oids(fout, q,
 											 indxinfo->dobj.catId.oid, true);
 
-		yb_binary_upgrade_preserve_index_tablegroup_oid(fout, q, indxinfo, tbinfo);
+		yb_binary_upgrade_preserve_index_tablegroup_oid(fout, q, indxinfo, tbinfo,
+														false /* emit_colocation_id */ );
 
 		/* Plain secondary index */
 		appendPQExpBuffer(q, "%s;\n", indxinfo->indexdef);
@@ -17954,7 +17964,8 @@ dumpConstraint(Archive *fout, const ConstraintInfo *coninfo)
 		 * To preserve this in a dump, YB emits the CREATE INDEX separately.
 		 * However, this causes an issue for partitioned tables, because
 		 * they do not support ALTER TABLE / ADD CONSTRAINT / USING INDEX,
-		 * so we do not emit this in that case.
+		 * so we do not emit this in that case. Instead we emit colocation_id
+		 * that the implicitly created unique index will preserve.
 		 *
 		 * If the constraint type is unique and index definition (indexdef)
 		 * exists, it means a constraint exists for this table which is
@@ -17963,11 +17974,11 @@ dumpConstraint(Archive *fout, const ConstraintInfo *coninfo)
 		 * unique or non-unique index exists for a table. The indexdef
 		 * contains the full YSQL command to create the index.
 		 */
-		const bool	dump_index_for_constraint = (coninfo->contype == 'u' &&
-												 indxinfo->indexdef &&
-												 indxinfo->parentidx == 0 &&
-												 tbinfo->relkind != RELKIND_PARTITIONED_TABLE);
-
+		const bool	is_unique_index = (coninfo->contype == 'u' &&
+									   indxinfo->indexdef);
+		const bool	is_partitioned = (OidIsValid(indxinfo->parentidx) ||
+									  tbinfo->relkind == RELKIND_PARTITIONED_TABLE);
+		const bool	dump_index_for_constraint = (is_unique_index && !is_partitioned);
 		if (dump_index_for_constraint)
 		{
 			/*
@@ -17975,7 +17986,8 @@ dumpConstraint(Archive *fout, const ConstraintInfo *coninfo)
 			 * for the index's implicit tablegroup during binary upgrade.
 			 * This is similar to what's done in dumpIndex for non-constraint indexes.
 			 */
-			yb_binary_upgrade_preserve_index_tablegroup_oid(fout, q, indxinfo, tbinfo);
+			yb_binary_upgrade_preserve_index_tablegroup_oid(fout, q, indxinfo, tbinfo,
+															false /* emit_colocation_id */ );
 
 			if (dopt->include_yb_metadata || (IsYugabyteEnabled && dopt->binary_upgrade))
 			{
@@ -17994,6 +18006,9 @@ dumpConstraint(Archive *fout, const ConstraintInfo *coninfo)
 								  index_def_prefix, &indxinfo->indexdef[20]);
 			}
 		}
+		else if (is_unique_index && is_partitioned)
+			yb_binary_upgrade_preserve_index_tablegroup_oid(fout, q, indxinfo, tbinfo,
+																true /* emit_colocation_id */ );
 
 		appendPQExpBuffer(q, "ALTER %sTABLE ONLY %s\n", foreign,
 						  fmtQualifiedDumpable(tbinfo));
@@ -19846,19 +19861,6 @@ nonemptyReloptions(const char *reloptions)
 {
 	/* Don't want to print it if it's just "{}" */
 	return (reloptions != NULL && strlen(reloptions) > 2);
-}
-
-static void
-YbAppendReloptions2(PQExpBuffer buffer, bool newline_before,
-					const char *reloptions1, const char *reloptions1_prefix,
-					const char *reloptions2, const char *reloptions2_prefix,
-					Archive *fout)
-{
-	YbAppendReloptions3(buffer, newline_before,
-						reloptions1, reloptions1_prefix,
-						reloptions2, reloptions2_prefix,
-						NULL, NULL,
-						fout);
 }
 
 static void

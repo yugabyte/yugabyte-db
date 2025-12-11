@@ -73,6 +73,15 @@ class CloneStateManager {
       const std::string& target_namespace_name,
       const HybridTime& restore_time);
 
+  Status TryCloneNamespace(
+      CloneStateInfoPtr clone_state,
+      const SnapshotScheduleId& snapshot_schedule_id,
+      CoarseTimePoint deadline,
+      const NamespaceInfoPtr& source_namespace,
+      const std::string& target_namespace_name,
+      const std::string& pg_source_owner,
+      const std::string& pg_target_owner);
+
   Status UpdateCloneStateWithSnapshotInfo(
       const CloneStateInfoPtr& clone_state,
       const TxnSnapshotId& source_snapshot_id,
@@ -86,16 +95,21 @@ class CloneStateManager {
       const std::string& target_db_name,
       const std::string& pg_source_owner,
       const std::string& pg_target_owner,
-      const SnapshotScheduleId& snapshot_schedule_id);
+      const SnapshotScheduleId& snapshot_schedule_id,
+      CatalogManagerIf::CloneSnapshotInfo clone_snapshot_info);
+
+  Status CheckTabletLimits(
+      const std::vector<std::pair<ReplicationInfoPB, int>>& replication_info_and_num_tablets);
 
   // Starts snapshot related operations for clone (mainly generate snapshotInfoPB as of
   // restore_time and then import it and create a new snapshot for target_namespace). Then it
   // schedules async clone tasks for every tablet. The function is the whole clone process in case
   // of YCQL and the second part of the clone process in case of YSQL.
-  Status StartTabletsCloning(
+  Status ImportSnapshotAndStartTabletsCloning(
       CloneStateInfoPtr clone_state,
       const SnapshotScheduleId& snapshot_schedule_id,
       const std::string& target_namespace_name,
+      CatalogManagerIf::CloneSnapshotInfo clone_snapshot_info,
       CoarseTimePoint deadline);
 
   Status LoadCloneState(
@@ -109,6 +123,7 @@ class CloneStateManager {
       CloneStateInfoPtr clone_state,
       const SnapshotScheduleId& snapshot_schedule_id,
       const std::string& target_namespace_name,
+      CatalogManagerIf::CloneSnapshotInfo clone_snapshot_info,
       CoarseTimePoint deadline);
 
   // Clear the metacaches from stale entries for all running tservers as they have stale tablets.

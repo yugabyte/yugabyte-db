@@ -15,6 +15,7 @@
 #include "yb/yql/pggate/pg_value.h"
 
 #include "yb/common/ql_value.h"
+#include "yb/common/value.messages.h"
 
 #include "yb/dockv/pg_row.h"
 
@@ -221,10 +222,13 @@ Status PBToDatum(const YbcPgTypeEntity *type_entity,
   return Status::OK();
 }
 
-Status PgValueToPB(const YbcPgTypeEntity *type_entity,
-                   uint64_t datum,
-                   bool is_null,
-                   QLValuePB* ql_value) {
+namespace {
+
+template <class Value>
+Status DoPgValueToPB(const YbcPgTypeEntity *type_entity,
+                     uint64_t datum,
+                     bool is_null,
+                     Value* ql_value) {
   if (is_null) {
     SetNull(ql_value);
     return Status::OK();
@@ -271,7 +275,11 @@ Status PgValueToPB(const YbcPgTypeEntity *type_entity,
       char *value;
       int64_t bytes = type_entity->datum_fixed_size;
       type_entity->datum_to_yb(datum, &value, &bytes);
-      ql_value->set_string_value(value, bytes);
+      if constexpr (std::is_same_v<Value, QLValuePB>) {
+        ql_value->set_string_value(value, bytes);
+      } else {
+        ql_value->dup_string_value(Slice(value, bytes));
+      }
       break;
     }
     case YB_YQL_DATA_TYPE_BOOL: {
@@ -297,14 +305,22 @@ Status PgValueToPB(const YbcPgTypeEntity *type_entity,
       uint8_t *value;
       int64_t bytes = type_entity->datum_fixed_size;
       type_entity->datum_to_yb(datum, &value, &bytes);
-      ql_value->set_binary_value(value, bytes);
+      if constexpr (std::is_same_v<Value, QLValuePB>) {
+        ql_value->set_binary_value(value, bytes);
+      } else {
+        ql_value->dup_binary_value(Slice(value, bytes));
+      }
       break;
     }
     case YB_YQL_DATA_TYPE_BSON: {
       uint8_t* value;
       int64_t bytes = type_entity->datum_fixed_size;
       type_entity->datum_to_yb(datum, &value, &bytes);
-      ql_value->set_bson_value(value, bytes);
+      if constexpr (std::is_same_v<Value, QLValuePB>) {
+        ql_value->set_bson_value(value, bytes);
+      } else {
+        ql_value->dup_bson_value(Slice(value, bytes));
+      }
       break;
     }
     case YB_YQL_DATA_TYPE_TIMESTAMP: {
@@ -317,7 +333,12 @@ Status PgValueToPB(const YbcPgTypeEntity *type_entity,
       char* plaintext;
       type_entity->datum_to_yb(datum, &plaintext, nullptr);
       util::Decimal yb_decimal(plaintext);
-      ql_value->set_decimal_value(yb_decimal.EncodeToComparable());
+      auto value = yb_decimal.EncodeToComparable();
+      if constexpr (std::is_same_v<Value, QLValuePB>) {
+        ql_value->set_decimal_value(std::move(value));
+      } else {
+        ql_value->dup_decimal_value(value);
+      }
       break;
     }
     case YB_YQL_DATA_TYPE_GIN_NULL: {
@@ -331,6 +352,22 @@ Status PgValueToPB(const YbcPgTypeEntity *type_entity,
       return STATUS_SUBSTITUTE(InternalError, "unsupported type $0", type_entity->yb_type);
   }
   return Status::OK();
+}
+
+} // namespace
+
+Status PgValueToPB(const YbcPgTypeEntity *type_entity,
+                   uint64_t datum,
+                   bool is_null,
+                   QLValuePB* ql_value) {
+  return DoPgValueToPB(type_entity, datum, is_null, ql_value);
+}
+
+Status PgValueToPB(const YbcPgTypeEntity *type_entity,
+                   uint64_t datum,
+                   bool is_null,
+                   LWQLValuePB* ql_value) {
+  return DoPgValueToPB(type_entity, datum, is_null, ql_value);
 }
 
 }  // namespace pggate

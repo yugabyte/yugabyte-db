@@ -154,6 +154,7 @@ extern PGDLLIMPORT bool yb_enable_batchednl;
 extern PGDLLIMPORT YbCostModel yb_enable_cbo;
 extern PGDLLIMPORT bool yb_ignore_stats;
 extern PGDLLIMPORT bool yb_legacy_bnl_cost;
+extern PGDLLIMPORT bool yb_ignore_bool_cond_for_legacy_estimate;
 
 extern double index_pages_fetched(double tuples_fetched, BlockNumber pages,
 								  double index_pages, PlannerInfo *root);

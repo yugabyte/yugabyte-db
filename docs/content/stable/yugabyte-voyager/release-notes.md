@@ -17,6 +17,44 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, where `YYYY` is the release year, `M` is the month, and `N` is the number of the release in that month.
 
+## v2025.12.1 - December 9, 2025
+
+{{< note title="Important: Breaking change" >}}
+
+This release introduces breaking changes for Voyager migrations. Migrations started with previous Voyager versions cannot continue with this version. To proceed, either continue the migration using an older Voyager version, or restart the migration using the new version.
+
+{{< /note >}}
+
+### Enhancements
+
+- When importing data to YugabyteDB, batches are now ingested in random order. This helps avoid hotspots and ensures writes are distributed uniformly across cluster nodes, particularly when importing sequentially-ordered data into range-sharded tables.
+
+- Auto-discovery of read replicas during assessment. When assessing the migration for PostgreSQL databases, physical read replicas are automatically detected and incorporated into the various aspects of assessment (sizing, detecting incompatibilities in queries, detecting object usage when reporting performance issues, comparing performance, and so on).
+
+- Aggregate query statistics from all source nodes. The [compare-performance](../reference/compare-performance/) command now aggregates query statistics from all source database nodes (primary and replicas) when PostgreSQL read replicas are used. This provides a more comprehensive and accurate workload performance comparison by merging execution counts, total execution times, and preserving minimum or maximum execution times across all nodes.
+
+### Bug fixes
+
+- Unique partial index handling. Fixed an issue in live migration where ingesting events from tables having unique partial indexes could lead to unique index conflicts because of parallel processing of events.
+- Expression-based unique index handling. Fixed an issue in live migration where tables having expression-based unique indexes could encounter conflicts when events were processed in parallel. Events for such tables are now executed sequentially to avoid potential unique key conflicts.
+
+## v2025.11.2 - November 25, 2025
+
+### New feature
+
+- Assess migration now supports fetching metadata from PostgreSQL read replicas in addition to the primary source database using the replica endpoints passed in the `--source-read-replica-endpoints` argument. This provides a more comprehensive and accurate workload assessment by aggregating metrics across both primary and replica nodes.
+
+### Enhancement
+
+- Added ability to sort the Object Usage column in the Performance Optimizations table of the Assessment Report.
+
+### Bug fixes
+
+- Fixed a nil pointer error when a table was missing in the target database during live migration.
+- Schema Optimization Report now excludes parent partitioned tables from "Colocated" recommendations, as colocation applies only to leaf partitions.
+- Fixed an issue in the Schema Optimization Report where Colocation Recommendations were incorrectly marked as "Applied" when assess-migration could not provide sizing recommendations.
+- Fixed an issue with sorting options in the "Assessment Issues" and "Performance Optimizations" sections of the Assessment Report.
+
 ## v2025.11.1 - November 11, 2025
 
 ### Enhancements

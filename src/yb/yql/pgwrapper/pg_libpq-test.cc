@@ -4460,6 +4460,30 @@ TEST_F_EX(PgLibPqTest, PgEnumPreloadMinPreloadTest, BasePgEnumPreloadMinimalPrel
   RunTest(false /* preloaded */);
 }
 
+// Test that negative caching works correctly when ysql_minimal_catalog_caches_preload=true.
+TEST_F_EX(PgLibPqTest, PgEnumMinPreloadNegativeCaching, BasePgEnumPreloadMinimalPreloadTest) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  // Create a user-defined enum type.
+  ASSERT_OK(conn.Execute(
+      "CREATE TYPE user_color AS ENUM ('red', 'green', 'blue');"
+      "CREATE TABLE user_enum_table (c user_color);"
+    ));
+
+  auto conn2 = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn2.Execute("SET yb_neg_catcache_ids='23,24'"));
+  ASSERT_OK(conn2.Execute("INSERT INTO user_enum_table VALUES ('red')"));
+
+  auto result = ASSERT_RESULT(conn2.FetchRow<std::string>(
+      "SELECT c::text FROM user_enum_table"));
+  ASSERT_EQ(result, "red");
+
+  auto cast_result = ASSERT_RESULT(conn2.FetchRow<std::string>(
+      "SELECT 'green'::user_color::text"));
+  ASSERT_EQ(cast_result, "green");
+}
+
 // Test that preloading pg_range prevents cache misses on the RANGEMULTIRANGE catcache.
 class PgRangeTest : public PgLibPqTest,
       public ::testing::WithParamInterface<bool> {
@@ -4900,7 +4924,16 @@ TEST_F(PgLibPqTest, RelfilenodeOidCollision) {
   result = ASSERT_RESULT(conn.FetchAllAsString(
     "SELECT oid,relfilenode,relname FROM pg_class WHERE relname LIKE 'base_t%'"));
   LOG(INFO) << "result: " << result;
-  std::string tmpname = std::tmpnam(nullptr);
+
+  std::unique_ptr<WritableFile> file_handle;
+  std::string tmpname;
+  ASSERT_OK(yb::Env::Default()->NewTempWritableFile(
+    WritableFileOptions(),
+    "/tmp/tmp_fileXXXXXX",
+    &tmpname,
+    &file_handle));
+  ASSERT_OK(file_handle->Close());
+
   auto hostport = cluster_->ysql_hostport(0);
   std::string ysql_dump_path = ASSERT_RESULT(path_utils::GetPgToolPath("ysql_dump"));
   std::string ysql_dump_cmd = Format(

@@ -61,6 +61,7 @@ export interface CommunicationPorts {
 
 export enum StorageType {
   IO1 = 'IO1',
+  IO2 = 'IO2',
   GP2 = 'GP2',
   GP3 = 'GP3',
   Scratch = 'Scratch',
@@ -559,6 +560,7 @@ export interface InstanceConfigFormValue {
   arch?: ArchitectureType | null;
   imageBundleUUID?: string | null;
   k8sEncryptionType?: K8sEncryptionOption;
+  enableTLS?: boolean;
 }
 
 export interface AdvancedConfigFormValue {
@@ -663,7 +665,8 @@ export const DEFAULT_INSTANCE_CONFIG: InstanceConfigFormValue = {
   kmsConfig: null,
   arch: null,
   imageBundleUUID: '',
-  k8sEncryptionType: K8sEncryptionOption.EnableBoth
+  k8sEncryptionType: K8sEncryptionOption.EnableBoth,
+  enableTLS: true
 };
 
 export const DEFAULT_ADVANCED_CONFIG: AdvancedConfigFormValue = {

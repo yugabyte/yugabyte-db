@@ -8,7 +8,7 @@ menu:
     parent: api-cassandra
     weight: 1360
 aliases:
-  - /preview/api/cassandra/expr_ocall
+  - /stable/api/cassandra/expr_ocall
 type: docs
 ---
 

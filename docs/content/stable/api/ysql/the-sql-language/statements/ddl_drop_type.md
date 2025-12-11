@@ -8,7 +8,7 @@ menu:
     identifier: ddl_drop_type
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/ddl_drop_type/
+  - /stable/api/ysql/commands/ddl_drop_type/
 type: docs
 ---
 

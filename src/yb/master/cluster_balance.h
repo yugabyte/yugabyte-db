@@ -83,19 +83,19 @@ class ClusterLoadBalancer {
 
   void InitMetrics();
 
-  // Executes one run of the load balancing algorithm. This currently does not persist any state,
+  // Executes one run of the cluster balancing algorithm. This currently does not persist any state,
   // so it needs to scan the in-memory tablet and TS data in the CatalogManager on every run and
   // create a new PerTableLoadState object.
-  void RunLoadBalancerWithOptions(
+  void RunClusterBalancerWithOptions(
       Options* options, const std::vector<TableInfoPtr>& tables, const TabletInfoMap& tablet_map);
 
-  // Runs the load balancer once for the live and all read only clusters, in order
+  // Runs the cluster balancer once for the live and all read only clusters, in order
   // of the cluster config.
-  void RunLoadBalancer(
+  void RunClusterBalancer(
       const LeaderEpoch& epoch, const std::vector<TableInfoPtr>& tables,
       const TabletInfoMap& tablet_map);
 
-  // Sets whether to enable or disable the load balancer, on demand.
+  // Sets whether to enable or disable the cluster balancer, on demand.
   void SetLoadBalancerEnabled(bool is_enabled) { is_enabled_ = is_enabled; }
 
   bool IsLoadBalancerEnabled() const;
@@ -109,13 +109,13 @@ class ClusterLoadBalancer {
   Status IsIdle() const;
   ClusterBalancerActivityInfo GetLatestActivityInfo() const;
 
-  // Returns the TableInfo of all the tables for whom load balancing is being skipped.
+  // Returns the TableInfo of all the tables for whom cluster balancing is being skipped.
   // As of today, this constitutes all the system tables, colocated user tables
   // and tables which have been marked as DELETING OR DELETED.
   // N.B. Currently this function is only used in test code. If using in production be mindful
   // that this function will not return colocated user tables as those are pre-filtered by the
-  // table API the load balancer uses.
-  std::vector<scoped_refptr<TableInfo>> GetAllTablesLoadBalancerSkipped();
+  // table API the cluster balancer uses.
+  std::vector<scoped_refptr<TableInfo>> GetAllTablesClusterBalancerSkipped();
 
   // Return the replication info for 'table'.
   virtual ReplicationInfoPB GetTableReplicationInfo(
@@ -137,7 +137,7 @@ class ClusterLoadBalancer {
   virtual std::optional<std::reference_wrapper<const TabletInfoPtr>> GetTabletInfo(
       const TabletId& id) const;
 
-  // Should skip load-balancing of this table?
+  // Should skip cluster balancing of this table?
   bool SkipLoadBalancing(const TableInfo& table) const;
 
   // Increment the provided variables by the number of pending tasks that were found. Do not call
@@ -350,8 +350,9 @@ class ClusterLoadBalancer {
   std::string GetSortedLoad() const;
   std::string GetSortedLeaderLoad() const;
 
-  // Report unusual state at the beginning of an LB run which may prevent LB from making moves.
-  void ReportUnusualLoadBalancerState() const;
+  // Report unusual state at the beginning of a cluster balancer run which may prevent it from
+  // making moves.
+  void ReportUnusualClusterBalancerState() const;
 
   Result<std::optional<LeaderMoveDetails>> GetLeaderToMove(
       const std::vector<TabletServerId>& sorted_leader_load);
@@ -382,10 +383,10 @@ class ClusterLoadBalancer {
   // Random number generator for picking items at random from sets, using ReservoirSample.
   ThreadSafeRandom random_;
 
-  // Controls whether to run the load balancing algorithm or not.
+  // Controls whether to run the cluster balancing algorithm or not.
   std::atomic<bool> is_enabled_;
 
-  // Circular buffer of load balancer activity.
+  // Circular buffer of cluster balancer activity.
   ClusterBalancerActivityBuffer activity_buffer_;
 
   // Check if we are able to balance global load. With the current algorithm, we only allow for
@@ -397,14 +398,14 @@ class ClusterLoadBalancer {
   typedef rw_spinlock LockType;
   mutable LockType mutex_;
 
-  // Maintains a list of all tables for whom LB has been skipped.
-  // Currently for consumption by components outside the LB.
-  // Protected by a readers-writers lock. Only the LB writes to it.
+  // Maintains a list of all tables for whom cluster balancing has been skipped.
+  // Currently for consumption by components outside the cluster balancer.
+  // Protected by a readers-writers lock. Only the cluster balancer writes to it.
   // Other components such as test, admin UI, etc. should
   // ideally read from it using a shared_lock<>.
   std::vector<scoped_refptr<TableInfo>> skipped_tables_ GUARDED_BY(mutex_);
-  // Internal to LB structure to keep track of skipped tables.
-  // skipped_tables_ is set at the end of each LB run using
+  // Internal to cluster balancer structure to keep track of skipped tables.
+  // skipped_tables_ is set at the end of each cluster balancer run using
   // skipped_tables_per_run_.
   std::vector<scoped_refptr<TableInfo>> skipped_tables_per_run_;
 

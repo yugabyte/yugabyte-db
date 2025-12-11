@@ -87,9 +87,9 @@ class KeyBytes {
 
   void AppendKeyEntryTypeBeforeGroupEnd(KeyEntryType key_entry_type);
 
-  void AppendString(const std::string& raw_string);
+  void AppendString(std::string_view raw_string);
 
-  void AppendDescendingString(const std::string &raw_string);
+  void AppendDescendingString(std::string_view raw_string);
 
   void AppendBson(const std::string& raw_string);
 

@@ -6,8 +6,8 @@ description: Interactive third party clients that you can use with YugabyteDB.
 headcontent: Use popular third party clients with YugabyteDB
 aliases:
   - /develop/tools/
-  - /preview/develop/tools/
-  - /preview/tools/
+  - /stable/develop/tools/
+  - /stable/tools/
 type: indexpage
 showRightNav: true
 cascade:

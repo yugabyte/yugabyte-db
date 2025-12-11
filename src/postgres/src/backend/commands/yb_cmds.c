@@ -2124,60 +2124,16 @@ YbBackfillIndexResultDesc(YbBackfillIndexStmt *stmt)
 	return tupdesc;
 }
 
-void
-YbDropAndRecreateIndex(Oid index_oid, Oid new_rel_id, Relation old_rel,
-					   AttrMap *new_to_old_attmap)
-{
-	Relation	index_rel = index_open(index_oid, AccessExclusiveLock);
-
-	/* Construct the new CREATE INDEX stmt */
-	IndexStmt  *index_stmt = generateClonedIndexStmt(NULL,	/* heapRel, we provide
-															 * an oid instead */
-													 index_rel,
-													 new_to_old_attmap,
-													 NULL); /* parent constraint OID
-															 * pointer */
-
-	const char *index_name = RelationGetRelationName(index_rel);
-	const char *index_namespace_name = get_namespace_name(index_rel->rd_rel->relnamespace);
-
-	index_stmt->idxname = pstrdup(index_name);
-
-	index_close(index_rel, AccessExclusiveLock);
-
-	/* Drop old index */
-
-	DropStmt   *stmt = makeNode(DropStmt);
-
-	stmt->removeType = OBJECT_INDEX;
-	stmt->missing_ok = false;
-	stmt->objects = list_make1(list_make2(makeString(pstrdup(index_namespace_name)),
-										  makeString(pstrdup(index_name))));
-	stmt->behavior = DROP_CASCADE;
-	stmt->concurrent = false;
-
-	RemoveRelations(stmt);
-
-	/* Create the new index */
-
-	DefineIndex(new_rel_id,
-				index_stmt,
-				InvalidOid,		/* no predefined OID */
-				InvalidOid,		/* no parent index */
-				InvalidOid,		/* no parent constraint */
-				false,			/* is_alter_table */
-				false,			/* check_rights */
-				false,			/* check_not_in_use */
-				false,			/* skip_build */
-				true /* quiet */ );
-}
-
 /* ------------------------------------------------------------------------- */
 /*  System validation. */
 void
-YBCValidatePlacement(const char *placement_info, bool check_satisfiable)
+YBCValidatePlacements(const char *live_placement_info,
+					  const char *read_replica_placement_info,
+					  bool check_satisfiable)
 {
-	HandleYBStatus(YBCPgValidatePlacement(placement_info, check_satisfiable));
+	HandleYBStatus(YBCPgValidatePlacements(live_placement_info,
+										   read_replica_placement_info,
+										   check_satisfiable));
 }
 
 /* ------------------------------------------------------------------------- */

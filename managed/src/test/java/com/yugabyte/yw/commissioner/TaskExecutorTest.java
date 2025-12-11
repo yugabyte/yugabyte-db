@@ -167,7 +167,10 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.UpdateYbcThrottleFlags,
           TaskType.UpdateK8sYbcThrottleFlags,
           TaskType.KubernetesToggleImmutableYbc,
-          TaskType.OperatorImportUniverse);
+          TaskType.OperatorImportUniverse,
+          TaskType.CreatePitrConfig,
+          TaskType.UpdatePitrConfig,
+          TaskType.DeletePitrConfig);
 
   @Override
   protected Application provideApplication() {

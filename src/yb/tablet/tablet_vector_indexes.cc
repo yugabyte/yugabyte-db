@@ -224,10 +224,10 @@ Status TabletVectorIndexes::DoCreateIndex(
 
   auto vector_index = VERIFY_RESULT(docdb::CreateDocVectorIndex(
       AddSuffixToLogPrefix(LogPrefix(), Format(" VI $0", index_table.table_id)),
-      metadata().rocksdb_dir(), vector_index_thread_pool_provider,
-      indexed_table->doc_read_context->table_key_prefix(), index_table.hybrid_time,
-      *index_table.index_info, std::move(indexed_table_context), block_cache_,
-      MemTracker::CreateTracker(-1, index_table.table_id, mem_tracker_),
+      metadata().vector_index_dir(index_table.index_info->vector_idx_options()),
+      vector_index_thread_pool_provider, indexed_table->doc_read_context->table_key_prefix(),
+      index_table.hybrid_time, *index_table.index_info, std::move(indexed_table_context),
+      block_cache_, MemTracker::CreateTracker(-1, index_table.table_id, mem_tracker_),
       vector_index_metric_entity));
 
   if (!bootstrap) {
@@ -454,8 +454,12 @@ void TabletVectorIndexes::ScheduleBackfill(
       [this, vector_index, backfill_ht, key = key.ToBuffer(), op_id, indexed_table,
        read_op = std::move(read_op)] {
     auto status = Backfill(vector_index, *indexed_table, key, backfill_ht, op_id);
-    LOG_IF_WITH_PREFIX(DFATAL, !status.ok())
-        << "Backfill " << AsString(vector_index) << " failed: " << status;
+    if (status.IsShutdownInProgress()) {
+      LOG_WITH_PREFIX(WARNING) << "Backfill " << AsString(vector_index) << " failed: " << status;
+    } else {
+      LOG_IF_WITH_PREFIX(DFATAL, !status.ok())
+          << "Backfill " << AsString(vector_index) << " failed: " << status;
+    }
   });
 }
 

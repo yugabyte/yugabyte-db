@@ -1531,6 +1531,15 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "If true, YBA will add commonName to the CertificateRequest sent to cert manager.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> skipTPsCredsConsistencyCheck =
+      new ConfKeyInfo<>(
+          "yb.universe.skip_tp_creds_consistency_check",
+          ScopeType.UNIVERSE,
+          "Skip Telemetry Provider Credential Consistency Check",
+          "If true, YBA will skip checking for telemetry provider credential consistency validation"
+              + " on the universe, currently only used for AWS and GCP telemetry providers.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> skipOpentelemetryOperatorCheck =
       new ConfKeyInfo<>(
           "yb.universe.skip_otel_operator_check",

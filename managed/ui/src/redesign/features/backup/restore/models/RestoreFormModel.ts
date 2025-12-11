@@ -45,7 +45,7 @@ export interface RestoreSourceModel {
    useRoles: boolean;
 
    // whether to fail restore if role already exists in target database
-   errorIfRoleExists: boolean;
+   errorIfRolesExists: boolean;
 
   // selected tables to restore. Is used only for YCQL
   selectedTables: ITable[];
@@ -71,7 +71,7 @@ export interface RestoreTargetModel {
   useRoles: boolean;
 
   // whether to fail restore if role already exists in target database
-  errorIfRoleExists: boolean;
+  errorIfRolesExists: boolean;
 
   // kms config to use for decryption.
   kmsConfig: {

@@ -5,8 +5,8 @@ linkTitle: Connect an app
 description: Connect a C++ application using libpqxx
 aliases:
   - /develop/client-drivers/cpp/
-  - /preview/develop/client-drivers/cpp/
-  - /preview/quick-start/build-apps/cpp/
+  - /stable/develop/client-drivers/cpp/
+  - /stable/quick-start/build-apps/cpp/
 menu:
   stable_develop:
     identifier: cpp-ysql-driver

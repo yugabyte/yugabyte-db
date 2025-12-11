@@ -9,7 +9,7 @@ menu:
     parent: tools
     weight: 80
 aliases:
-  - /preview/tools/pgadmin/
+  - /stable/tools/pgadmin/
 type: docs
 ---
 

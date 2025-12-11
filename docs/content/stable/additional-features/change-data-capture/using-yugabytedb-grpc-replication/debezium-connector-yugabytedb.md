@@ -4,12 +4,12 @@ headerTitle: YugabyteDB gRPC Connector
 linkTitle: YugabyteDB gRPC Connector
 description: YugabyteDB gRPC Connector is an open source distributed platform used to capture the changes in a database.
 aliases:
-  - /preview/explore/change-data-capture/debezium-connector-yugabytedb-ysql
-  - /preview/explore/change-data-capture/debezium-connector
-  - /preview/explore/change-data-capture/debezium
-  - /preview/explore/change-data-capture/debezium-connector-postgresql
-  - /preview/explore/change-data-capture/debezium-connector-yugabytedb
-  - /preview/explore/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/
+  - /stable/explore/change-data-capture/debezium-connector-yugabytedb-ysql
+  - /stable/explore/change-data-capture/debezium-connector
+  - /stable/explore/change-data-capture/debezium
+  - /stable/explore/change-data-capture/debezium-connector-postgresql
+  - /stable/explore/change-data-capture/debezium-connector-yugabytedb
+  - /stable/explore/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/
 menu:
   stable:
     parent: explore-change-data-capture-grpc-replication
@@ -33,7 +33,8 @@ The connector is compatible with the following versions of YugabyteDB.
 | 2.18.2 | 1.9.5.y.33.2 |
 | 2.20 | 1.9.5.y.220.4 |
 | 2024.1 | dz.1.9.5.yb.grpc.2024.1 |
-| 2024.2 | dz.1.9.5.yb.grpc.2024.2.2 |
+| 2024.2 | dz.1.9.5.yb.grpc.2024.2.3 |
+| 2025.1 | dz.1.9.5.yb.grpc.2024.2.3 |
 
 Starting with YugabyteDB v2024.1, the connector uses the following naming convention:
 

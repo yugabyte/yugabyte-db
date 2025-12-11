@@ -58,6 +58,12 @@ Use the Live Queries and Slow Queries dashboards to monitor and display current 
     icon="/images/section_icons/introduction/benefits.png">}}
 
   {{<index/item
+    title="CDC observability"
+    body="Monitor replication slots used for CDC."
+    href="cdc-observability/"
+    icon="fa-regular fa-arrows-spin">}}
+
+  {{<index/item
     title="Export YSQL audit logs"
     body="Export universe audit logs to third-party logging tools."
     href="universe-logging/"

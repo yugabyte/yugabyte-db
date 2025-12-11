@@ -77,6 +77,7 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
   private Commissioner mockCommissioner;
   private RuntimeConfGetter runtimeConfGetter;
   private RuntimeConfigFactory mockRuntimeConfigFactory;
+  private CertificateHelper mockCertificateHelper;
 
   @Before
   public void setUp() {
@@ -87,6 +88,7 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
     gFlagsAuditHandler = new GFlagsAuditHandler(gFlagsValidationHandler);
     runtimeConfGetter = mock(RuntimeConfGetter.class);
     mockRuntimeConfigFactory = mock(RuntimeConfigFactory.class);
+    mockCertificateHelper = mock(CertificateHelper.class);
 
     // Mock KubernetesManagerFactory
     KubernetesManagerFactory mockKubernetesManagerFactory = mock(KubernetesManagerFactory.class);
@@ -101,7 +103,7 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
             mockRuntimeConfigFactory,
             mock(YbcManager.class),
             runtimeConfGetter,
-            mock(CertificateHelper.class),
+            mockCertificateHelper,
             mock(AutoFlagUtil.class),
             mock(XClusterUniverseService.class),
             mock(TelemetryProviderService.class),
@@ -940,23 +942,6 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testRotateCertsKubernetesNullRootCA() throws IOException, NoSuchAlgorithmException {
-    Customer c = ModelFactory.testCustomer();
-    Universe u = createKubernetesUniverse(c);
-
-    CertsRotateParams params = new CertsRotateParams();
-    params.setUniverseUUID(u.getUniverseUUID());
-    params.clusters = u.getUniverseDetails().clusters;
-    params.rootCA = null;
-    params.rootAndClientRootCASame = true;
-
-    PlatformServiceException exception =
-        assertThrows(PlatformServiceException.class, () -> handler.rotateCerts(params, c, u));
-
-    assertEquals("rootCA is null. Cannot perform any upgrade.", exception.getMessage());
-  }
-
-  @Test
   public void testRotateCertsKubernetesDifferentClientRootCA()
       throws IOException, NoSuchAlgorithmException {
     Customer c = ModelFactory.testCustomer();
@@ -1088,6 +1073,231 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
     assertEquals(
         "Cannot rotate server certificate when node to node encryption is disabled.",
         exception.getMessage());
+  }
+
+  @Test
+  public void testRotateCertsCreateNewRootCASuccess() throws IOException, NoSuchAlgorithmException {
+    UUID fakeTaskUUID =
+        FakeDBApplication.buildTaskInfo(null, TaskType.CertsRotateKubernetesUpgrade);
+    when(mockCommissioner.submit(any(TaskType.class), any(ITaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+
+    UUID newRootCA = UUID.randomUUID();
+    when(mockCertificateHelper.createRootCA(any(), anyString(), any(UUID.class)))
+        .thenReturn(newRootCA);
+    when(mockRuntimeConfigFactory.staticApplicationConf()).thenReturn(app.config());
+
+    Customer c = ModelFactory.testCustomer();
+    Universe u = createKubernetesUniverseInternal(c, null, true, false);
+
+    CertsRotateParams params = new CertsRotateParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    params.clusters = u.getUniverseDetails().clusters;
+    params.rootCA = null;
+    params.rootAndClientRootCASame = true;
+
+    // Create certificate info for the new rootCA
+    String certBasePath = TestHelper.TMP_PATH + "/" + UUID.randomUUID();
+    TestHelper.createTempFile(certBasePath, "test.crt", "test-cert");
+    CertificateInfo.create(
+        newRootCA,
+        c.getUuid(),
+        "test-cert",
+        new Date(),
+        new Date(),
+        "privateKey",
+        certBasePath + "/test.crt",
+        CertConfigType.SelfSigned);
+
+    handler.rotateCerts(params, c, u);
+
+    ArgumentCaptor<CertsRotateParams> paramsArgumentCaptor =
+        ArgumentCaptor.forClass(CertsRotateParams.class);
+    verify(mockCommissioner)
+        .submit(eq(TaskType.CertsRotateKubernetesUpgrade), paramsArgumentCaptor.capture());
+
+    CertsRotateParams capturedParams = paramsArgumentCaptor.getValue();
+    assertEquals(newRootCA, capturedParams.rootCA);
+    verify(mockCertificateHelper)
+        .createRootCA(any(), eq(u.getUniverseDetails().nodePrefix), eq(c.getUuid()));
+  }
+
+  @Test
+  public void testRotateCertsExistingRootCASuccess() throws IOException, NoSuchAlgorithmException {
+    UUID fakeTaskUUID =
+        FakeDBApplication.buildTaskInfo(null, TaskType.CertsRotateKubernetesUpgrade);
+    when(mockCommissioner.submit(any(TaskType.class), any(ITaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+
+    UUID newRootCA = UUID.randomUUID();
+    when(mockCertificateHelper.createRootCA(any(), anyString(), any(UUID.class)))
+        .thenReturn(newRootCA);
+    when(mockRuntimeConfigFactory.staticApplicationConf()).thenReturn(app.config());
+
+    Customer c = ModelFactory.testCustomer();
+    Universe u = createKubernetesUniverseInternal(c, null, true, false);
+
+    CertsRotateParams params = new CertsRotateParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    params.clusters = u.getUniverseDetails().clusters;
+    params.rootCA = newRootCA;
+    params.rootAndClientRootCASame = true;
+
+    // Create certificate info for the new rootCA
+    String certBasePath = TestHelper.TMP_PATH + "/" + UUID.randomUUID();
+    TestHelper.createTempFile(certBasePath, "test.crt", "test-cert");
+    CertificateInfo.create(
+        newRootCA,
+        c.getUuid(),
+        "test-cert",
+        new Date(),
+        new Date(),
+        "privateKey",
+        certBasePath + "/test.crt",
+        CertConfigType.SelfSigned);
+
+    handler.rotateCerts(params, c, u);
+
+    ArgumentCaptor<CertsRotateParams> paramsArgumentCaptor =
+        ArgumentCaptor.forClass(CertsRotateParams.class);
+    verify(mockCommissioner)
+        .submit(eq(TaskType.CertsRotateKubernetesUpgrade), paramsArgumentCaptor.capture());
+
+    CertsRotateParams capturedParams = paramsArgumentCaptor.getValue();
+    assertEquals(newRootCA, capturedParams.rootCA);
+  }
+
+  @Test
+  public void testRotateCertsCreateNewClientRootCASuccess()
+      throws IOException, NoSuchAlgorithmException {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CertsRotate);
+    when(mockCommissioner.submit(any(TaskType.class), any(ITaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+
+    UUID existingRootCA = UUID.randomUUID();
+    UUID newClientRootCA = UUID.randomUUID();
+    when(mockCertificateHelper.createClientRootCA(any(), anyString(), any(UUID.class)))
+        .thenReturn(newClientRootCA);
+    when(mockRuntimeConfigFactory.staticApplicationConf()).thenReturn(app.config());
+
+    Customer c = ModelFactory.testCustomer();
+    // Use non-Kubernetes universe since rootAndClientRootCASame = false is only valid for non-K8s
+    Universe u = ModelFactory.createUniverse(c.getId());
+    u =
+        Universe.saveDetails(
+            u.getUniverseUUID(),
+            universe -> {
+              UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+              details.getPrimaryCluster().userIntent.providerType = CloudType.aws;
+              details.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt = true;
+              details.getPrimaryCluster().userIntent.enableClientToNodeEncrypt = true;
+              details.rootCA = existingRootCA;
+              universe.setUniverseDetails(details);
+            });
+
+    // Create certificate info for existing rootCA
+    String certBasePath = TestHelper.TMP_PATH + "/" + UUID.randomUUID();
+    TestHelper.createTempFile(certBasePath, "test.crt", "test-cert");
+    CertificateInfo.create(
+        existingRootCA,
+        c.getUuid(),
+        "test-cert",
+        new Date(),
+        new Date(),
+        "privateKey",
+        certBasePath + "/test.crt",
+        CertConfigType.SelfSigned);
+
+    // Create certificate info for new clientRootCA
+    TestHelper.createTempFile(certBasePath, "test-client.crt", "test-client-cert");
+    CertificateInfo.create(
+        newClientRootCA,
+        c.getUuid(),
+        "test-client-cert",
+        new Date(),
+        new Date(),
+        "privateKey",
+        certBasePath + "/test-client.crt",
+        CertConfigType.SelfSigned);
+
+    CertsRotateParams params = new CertsRotateParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    params.clusters = u.getUniverseDetails().clusters;
+    params.setClientRootCA(null);
+    params.rootCA = existingRootCA;
+    params.rootAndClientRootCASame = false;
+
+    // Mock the static method for createClientCertificate
+    try (MockedStatic<CertificateHelper> mockedCertificateHelper =
+        mockStatic(CertificateHelper.class)) {
+      mockedCertificateHelper
+          .when(() -> CertificateHelper.createClientCertificate(any(), any(), any()))
+          .thenReturn(null);
+
+      handler.rotateCerts(params, c, u);
+
+      ArgumentCaptor<CertsRotateParams> paramsArgumentCaptor =
+          ArgumentCaptor.forClass(CertsRotateParams.class);
+      verify(mockCommissioner).submit(eq(TaskType.CertsRotate), paramsArgumentCaptor.capture());
+
+      CertsRotateParams capturedParams = paramsArgumentCaptor.getValue();
+      assertEquals(newClientRootCA, capturedParams.getClientRootCA());
+      verify(mockCertificateHelper)
+          .createClientRootCA(any(), eq(u.getUniverseDetails().nodePrefix), eq(c.getUuid()));
+    }
+  }
+
+  @Test
+  public void testRotateCertsUseRootCAAsClientRootCAWhenRootAndClientRootCASame()
+      throws IOException, NoSuchAlgorithmException {
+    UUID fakeTaskUUID =
+        FakeDBApplication.buildTaskInfo(null, TaskType.CertsRotateKubernetesUpgrade);
+    when(mockCommissioner.submit(any(TaskType.class), any(ITaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+
+    UUID existingRootCA = UUID.randomUUID();
+    when(mockRuntimeConfigFactory.staticApplicationConf()).thenReturn(app.config());
+
+    Customer c = ModelFactory.testCustomer();
+    Universe u = createKubernetesUniverseInternal(c, existingRootCA, true, true);
+
+    // Create certificate info for existing rootCA
+    String certBasePath = TestHelper.TMP_PATH + "/" + UUID.randomUUID();
+    TestHelper.createTempFile(certBasePath, "test.crt", "test-cert");
+    CertificateInfo.create(
+        existingRootCA,
+        c.getUuid(),
+        "test-cert",
+        new Date(),
+        new Date(),
+        "privateKey",
+        certBasePath + "/test.crt",
+        CertConfigType.SelfSigned);
+
+    CertsRotateParams params = new CertsRotateParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    params.clusters = u.getUniverseDetails().clusters;
+    params.rootCA = existingRootCA;
+    params.setClientRootCA(null);
+    params.rootAndClientRootCASame = true;
+
+    // Mock the static method for createClientCertificate
+    try (MockedStatic<CertificateHelper> mockedCertificateHelper =
+        mockStatic(CertificateHelper.class)) {
+      mockedCertificateHelper
+          .when(() -> CertificateHelper.createClientCertificate(any(), any(), any()))
+          .thenReturn(null);
+
+      handler.rotateCerts(params, c, u);
+
+      ArgumentCaptor<CertsRotateParams> paramsArgumentCaptor =
+          ArgumentCaptor.forClass(CertsRotateParams.class);
+      verify(mockCommissioner)
+          .submit(eq(TaskType.CertsRotateKubernetesUpgrade), paramsArgumentCaptor.capture());
+
+      CertsRotateParams capturedParams = paramsArgumentCaptor.getValue();
+      assertEquals(existingRootCA, capturedParams.getClientRootCA());
+    }
   }
 
   private Universe createKubernetesUniverse(Customer customer) {

@@ -903,7 +903,7 @@ function BackupConfigurationForm({
                 disabled={isEditMode || isIncrementalBackup}
                 checkState={values['useRoles']}
               />
-              Backup global roles
+              {"Backup global roles"}
             </Col>
           </Row>
         </Col>

@@ -26,6 +26,7 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.audit.AuditService;
+import com.yugabyte.yw.common.pitr.PitrConfigHelper;
 import com.yugabyte.yw.forms.CreatePitrConfigParams;
 import com.yugabyte.yw.forms.RestoreSnapshotScheduleParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -51,6 +52,7 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.CommonTypes.TableType;
+import org.yb.CommonTypes.YQLDatabase;
 import org.yb.client.DeleteSnapshotScheduleResponse;
 import org.yb.client.ListSnapshotSchedulesResponse;
 import org.yb.client.SnapshotInfo;
@@ -71,6 +73,7 @@ public class PitrControllerTest extends FakeDBApplication {
   private UUID taskUUID;
   private YBClient mockClient;
   private AuditService auditService;
+  private PitrConfigHelper pitrConfigHelper;
   private PitrController pitrController;
   private ListSnapshotSchedulesResponse mockListSnapshotSchedulesResponse;
   private DeleteSnapshotScheduleResponse mockDeleteSnapshotScheduleResponse;
@@ -90,7 +93,8 @@ public class PitrControllerTest extends FakeDBApplication {
     defaultUniverse.save();
     Commissioner commissioner = app.injector().instanceOf(Commissioner.class);
     auditService = new AuditService();
-    pitrController = new PitrController(commissioner, mockService);
+    pitrConfigHelper = new PitrConfigHelper(commissioner);
+    pitrController = new PitrController(commissioner, mockService, pitrConfigHelper);
     pitrController.setAuditService(auditService);
   }
 
@@ -354,7 +358,14 @@ public class PitrControllerTest extends FakeDBApplication {
             snapshotUUID12, currentTime11 + 1000 * 100L, currentTime11, State.COMPLETE);
     snapshotList1.add(snapshot12);
     SnapshotScheduleInfo schedule1 =
-        new SnapshotScheduleInfo(scheduleUUID1, 86400L, 7L * 86400L, snapshotList1);
+        new SnapshotScheduleInfo(
+            scheduleUUID1,
+            86400L,
+            7L * 86400L,
+            snapshotList1,
+            null,
+            null,
+            YQLDatabase.YQL_DATABASE_PGSQL);
     scheduleInfoList.add(schedule1);
     scheduleInfoMap.put(scheduleUUID1, schedule1);
 
@@ -383,7 +394,14 @@ public class PitrControllerTest extends FakeDBApplication {
             snapshotUUID22, currentTime21 + 1000 * 100L, currentTime21, State.COMPLETE);
     snapshotList2.add(snapshot22);
     SnapshotScheduleInfo schedule2 =
-        new SnapshotScheduleInfo(scheduleUUID2, 86400L, 7L * 86400L, snapshotList2);
+        new SnapshotScheduleInfo(
+            scheduleUUID2,
+            86400L,
+            7L * 86400L,
+            snapshotList2,
+            null,
+            null,
+            YQLDatabase.YQL_DATABASE_PGSQL);
     scheduleInfoList.add(schedule2);
     scheduleInfoMap.put(scheduleUUID2, schedule2);
 
@@ -404,7 +422,14 @@ public class PitrControllerTest extends FakeDBApplication {
         new SnapshotInfo(snapshotUUID31, currentTime3 + 1000 * 100L, 0L, State.COMPLETE);
     snapshotList3.add(snapshot31);
     SnapshotScheduleInfo schedule3 =
-        new SnapshotScheduleInfo(scheduleUUID3, 86400L, 7L * 86400L, snapshotList3);
+        new SnapshotScheduleInfo(
+            scheduleUUID3,
+            86400L,
+            7L * 86400L,
+            snapshotList3,
+            null,
+            null,
+            YQLDatabase.YQL_DATABASE_PGSQL);
     scheduleInfoList.add(schedule3);
     scheduleInfoMap.put(scheduleUUID3, schedule3);
 
@@ -440,7 +465,14 @@ public class PitrControllerTest extends FakeDBApplication {
         new SnapshotInfo(snapshotUUID43, currentTime4 + 1000 * 100L, currentTime4, State.COMPLETE);
     snapshotList4.add(snapshot43);
     SnapshotScheduleInfo schedule4 =
-        new SnapshotScheduleInfo(scheduleUUID4, 86400L, 2L * 86400L, snapshotList4);
+        new SnapshotScheduleInfo(
+            scheduleUUID4,
+            86400L,
+            2L * 86400L,
+            snapshotList4,
+            null,
+            null,
+            YQLDatabase.YQL_DATABASE_PGSQL);
     scheduleInfoList.add(schedule4);
     scheduleInfoMap.put(scheduleUUID4, schedule4);
     // PITR config is updated to have a longer retention period.
@@ -733,7 +765,14 @@ public class PitrControllerTest extends FakeDBApplication {
         new SnapshotInfo(snapshotUUID, snapshotTime, snapshotTime - 1000 * 86400L, State.COMPLETE);
     snapshotList.add(snapshot);
     SnapshotScheduleInfo schedule =
-        new SnapshotScheduleInfo(pitrConfigUUID, 86400L, 7L * 86400L, snapshotList);
+        new SnapshotScheduleInfo(
+            pitrConfigUUID,
+            86400L,
+            7L * 86400L,
+            snapshotList,
+            null,
+            null,
+            YQLDatabase.YQL_DATABASE_PGSQL);
     scheduleInfoList.add(schedule);
     when(mockListSnapshotSchedulesResponse.getSnapshotScheduleInfoList())
         .thenReturn(scheduleInfoList);

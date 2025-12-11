@@ -2930,8 +2930,8 @@ class XClusterDDLReplicationTableRewriteTest : public XClusterDDLReplicationTest
         GetYsqlTable(&producer_cluster_, namespace_name, /*schema_name*/ "", kBaseTableName_));
 
     // Create index on the second column.
-    ASSERT_OK(producer_conn_->ExecuteFormat("CREATE INDEX idx ON $0($1 ASC)",
-        kBaseTableName_, kColumn2Name_));
+    ASSERT_OK(producer_conn_->ExecuteFormat("CREATE INDEX $0 ON $1($2 ASC)",
+        kIndexTableName_, kBaseTableName_, kColumn2Name_));
 
     // Check number of tables in the universe replication.
     ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
@@ -2963,6 +2963,7 @@ class XClusterDDLReplicationTableRewriteTest : public XClusterDDLReplicationTest
   }
 
   const std::string kBaseTableName_ = "base_table";
+  const std::string kIndexTableName_ = "idx";
   const std::string kColumn2Name_ = "b";
   client::YBTableName producer_base_table_name_;
 };
@@ -3042,29 +3043,30 @@ TEST_F(XClusterDDLReplicationTableRewriteTest, AddColumnDefaultVolatile) {
   VerifyIndex(kColumn2Name_, /* expected_indexed */ true);
 }
 
-TEST_F(XClusterDDLReplicationTableRewriteTest, AlterTypeIsBlocked) {
+TEST_F(XClusterDDLReplicationTableRewriteTest, AlterColumnType) {
   ASSERT_OK(producer_conn_->ExecuteFormat(
       "INSERT INTO $0 SELECT i, i%2 FROM generate_series(1, 100) as i;", kBaseTableName_));
 
-  // Execute ALTER COLUMN ... TYPE table rewrite.
-  auto status = producer_conn_->ExecuteFormat(
+  // Test 1: ALTER TYPE on indexed column (triggers index recreation + reindex)
+  ASSERT_OK(producer_conn_->ExecuteFormat(
       "ALTER TABLE $0 ALTER COLUMN $1 TYPE float USING(random());",
-      kBaseTableName_, kColumn2Name_);
-  ASSERT_NOK(status);
-  ASSERT_STR_CONTAINS(status.ToString(), "Table Rewrite ALTER COLUMN TYPE is not supported");
+      kBaseTableName_, kColumn2Name_));
 
-  // Ensure the table rewrite is not processed by verifying that
-  // the table ID and column type remain unchanged.
-  auto producer_base_table_name_after_rewrite_failed = ASSERT_RESULT(
-      GetYsqlTable(&producer_cluster_, namespace_name, "", kBaseTableName_));
-  ASSERT_EQ(producer_base_table_name_.table_id(),
-      producer_base_table_name_after_rewrite_failed.table_id());
-  auto column2_type = ASSERT_RESULT(producer_conn_->FetchAllAsString(
-      Format("SELECT data_type FROM information_schema.columns WHERE table_name = '$0' "
-             "AND column_name = '$1';", kBaseTableName_, kColumn2Name_)));
-  ASSERT_EQ(column2_type, "integer");
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT i, i%2 FROM generate_series(101, 200) as i;",
+      kBaseTableName_));
+  VerifyTableRewrite();
+  VerifyIndex(kColumn2Name_, /* expected_indexed */ true);
 
-  // Verify column 2 is still indexed.
+  // Test 2: ALTER TYPE on non-indexed column (reindex only)
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "ALTER TABLE $0 ALTER COLUMN $1 TYPE float USING(random());",
+      kBaseTableName_, kKeyColumnName));
+
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT i, i%2 FROM generate_series(201, 300) as i;",
+      kBaseTableName_));
+  VerifyTableRewrite();
   VerifyIndex(kColumn2Name_, /* expected_indexed */ true);
 }
 
@@ -3109,6 +3111,110 @@ TEST_F(XClusterDDLReplicationTableRewriteTest, IncrementalSafeTimeBump) {
   ASSERT_OK(producer_conn_->ExecuteFormat(
       "INSERT INTO $0 SELECT i, i%2 FROM generate_series(101, 200) as i;", kBaseTableName_));
   VerifyTableRewrite();
+}
+
+TEST_F(XClusterDDLReplicationTest, AlterColumnTypePartitioned) {
+  ASSERT_OK(SetUpClustersAndReplication());
+  auto producer_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+  const auto kPartitionedTableName = "partitioned_table";
+  const auto kPartition1Name = "partitioned_table_p1";
+  const auto kPartition2Name = "partitioned_table_p2";
+  const auto kDataColumn = "data_col";
+
+  ASSERT_OK(producer_conn.ExecuteFormat(
+      "CREATE TABLE $0 ($1 int, $2 int) PARTITION BY RANGE ($1)",
+      kPartitionedTableName, kKeyColumnName, kDataColumn));
+  ASSERT_OK(producer_conn.ExecuteFormat(
+      "CREATE TABLE $0 PARTITION OF $1 FOR VALUES FROM (0) TO (15)",
+      kPartition1Name, kPartitionedTableName));
+  ASSERT_OK(producer_conn.ExecuteFormat(
+      "CREATE TABLE $0 PARTITION OF $1 FOR VALUES FROM (15) TO (40)",
+      kPartition2Name, kPartitionedTableName));
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "INSERT INTO $0 ($1, $2) SELECT i, random() FROM generate_series(1, 10) as i",
+      kPartitionedTableName, kKeyColumnName, kDataColumn));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(producer_conn.ExecuteFormat(
+      "CREATE INDEX partition_idx ON $0 ($1)", kPartitionedTableName, kDataColumn));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // ALTER TYPE on indexed column (triggers table rewrite + index recreation)
+  ASSERT_OK(producer_conn.ExecuteFormat(
+      "ALTER TABLE $0 ALTER COLUMN $1 TYPE float USING(random())",
+      kPartitionedTableName, kDataColumn));
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "INSERT INTO $0 ($1, $2) SELECT i, random() FROM generate_series(11, 20) as i",
+      kPartitionedTableName, kKeyColumnName, kDataColumn));
+
+  // Double the timeout as partitioned table rewrite involved multiple rewrites.
+  propagation_timeout_ = propagation_timeout_ * 2;
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Verify replication for parent table and all partitions
+  for (const auto& table_name : {kPartitionedTableName, kPartition1Name, kPartition2Name}) {
+    auto producer_table = ASSERT_RESULT(GetProducerTable(
+        ASSERT_RESULT(GetYsqlTable(&producer_cluster_, namespace_name, "", table_name))));
+    auto consumer_table = ASSERT_RESULT(GetConsumerTable(
+        ASSERT_RESULT(GetYsqlTable(&producer_cluster_, namespace_name, "", table_name))));
+    ASSERT_OK(VerifyWrittenRecords(producer_table, consumer_table));
+  }
+
+  // ALTER TYPE on partition key should fail as it would require repartitioning existing data
+  auto status = producer_conn.ExecuteFormat(
+      "ALTER TABLE $0 ALTER COLUMN $1 TYPE bigint",
+      kPartitionedTableName, kKeyColumnName);
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "partition key");
+}
+
+TEST_F(XClusterDDLReplicationTest, AlterColumnTypeWithDependentIndex) {
+  const auto kTableName = "test_table";
+  const auto kIndexName = "test_index";
+  ASSERT_OK(SetUpClustersAndReplication());
+  auto producer_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
+  ASSERT_OK(producer_conn.ExecuteFormat("CREATE TABLE $0 ($1 varchar)",
+      kTableName, kKeyColumnName));
+  ASSERT_OK(producer_conn.ExecuteFormat(
+      "INSERT INTO $0 ($1) SELECT 'row_' || i FROM generate_series(1, 100) as i",
+      kTableName, kKeyColumnName));
+  ASSERT_OK(producer_conn.ExecuteFormat(
+      "CREATE INDEX $0 ON $1 ((lower($2)))", kIndexName, kTableName, kKeyColumnName));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Get original index OIDs before ALTER
+  auto producer_index_oid_before = ASSERT_RESULT(producer_conn.FetchRow<pgwrapper::PGOid>(
+      Format("SELECT oid FROM pg_class WHERE relname = '$0'", kIndexName)));
+  auto consumer_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+  auto consumer_index_oid_before = ASSERT_RESULT(consumer_conn.FetchRow<pgwrapper::PGOid>(
+      Format("SELECT oid FROM pg_class WHERE relname = '$0'", kIndexName)));
+
+  // ALTER TYPE: varchar -> text (no table rewrite, but index is dropped and recreated)
+  ASSERT_OK(producer_conn.ExecuteFormat(
+      "ALTER TABLE $0 ALTER COLUMN $1 TYPE text", kTableName, kKeyColumnName));
+
+  // Verify row counts
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  auto producer_table = ASSERT_RESULT(GetProducerTable(
+      ASSERT_RESULT(GetYsqlTable(&producer_cluster_, namespace_name, "", kTableName))));
+  auto consumer_table = ASSERT_RESULT(GetConsumerTable(
+      ASSERT_RESULT(GetYsqlTable(&producer_cluster_, namespace_name, "", kTableName))));
+  ASSERT_OK(VerifyWrittenRecords(producer_table, consumer_table));
+
+  // Verify index
+  const auto stmt = Format(
+      "SELECT COUNT(*) FROM $0 WHERE lower($1) = 'row_1'", kTableName, kKeyColumnName);
+  ASSERT_TRUE(ASSERT_RESULT(producer_conn.HasIndexScan(stmt)));
+  ASSERT_TRUE(ASSERT_RESULT(consumer_conn.HasIndexScan(stmt)));
+
+  // Get new index OIDs after ALTER
+  auto producer_index_oid_after = ASSERT_RESULT(producer_conn.FetchRow<pgwrapper::PGOid>(
+      Format("SELECT oid FROM pg_class WHERE relname = '$0'", kIndexName)));
+  auto consumer_index_oid_after = ASSERT_RESULT(consumer_conn.FetchRow<pgwrapper::PGOid>(
+      Format("SELECT oid FROM pg_class WHERE relname = '$0'", kIndexName)));
+
+  // Verify index OIDs changed (index was recreated)
+  ASSERT_NE(producer_index_oid_before, producer_index_oid_after);
+  ASSERT_NE(consumer_index_oid_before, consumer_index_oid_after);
 }
 
 TEST_F(XClusterDDLReplicationTest, BackupRestorePreservesEnumSortValue) {

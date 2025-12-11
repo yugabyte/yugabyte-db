@@ -322,7 +322,8 @@ extern bool YbIsScanningEmbeddedIdx(Relation table, Relation index);
  * Used in Agg node init phase to determine whether YB preliminary check or PG
  * recheck may be needed.
  */
-extern bool YbPredetermineNeedsRecheck(Relation relation,
+extern bool YbPredetermineNeedsRecheck(Scan *scan,
+									   Relation relation,
 									   Relation index,
 									   bool xs_want_itup,
 									   ScanKey keys,

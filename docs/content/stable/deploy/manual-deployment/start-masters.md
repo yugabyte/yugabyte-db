@@ -4,7 +4,7 @@ headerTitle: 3. Deploy
 linkTitle: 3. Deploy
 description: How to manually start the YB-Masters Server service for your YugabyteDB database cluster.
 aliases:
-  - /preview/deploy/manual-deployment/start-tservers/
+  - /stable/deploy/manual-deployment/start-tservers/
 menu:
   stable:
     identifier: deploy-2-manual
@@ -74,6 +74,8 @@ $ ./bin/yb-master \
 The number of comma-separated addresses in `--master_addresses` should equal the replication factor.
 
 You can specify multiple directories using the [`--fs_data_dirs`](../../../reference/configuration/yb-master/#fs-data-dirs) flag. Replace the [`--rpc_bind_addresses`](../../../reference/configuration/yb-master/#rpc-bind-addresses) value with the private IP address of the host, and set the `placement_cloud`, `placement_region`, and `placement_zone` values appropriately. For single zone deployment, use the same value for the `placement_zone` flag.
+
+If you are running YSQL, for enhanced PostgreSQL compatibility, you can enable [Enhanced PostgreSQL Compatibility Mode](../../../reference/configuration/postgresql-compatibility/) (recommended).
 
 {{<tags/feature/tp idea="1807">}} Highly accurate clocks can be configured by specifying `--time_source=clockbound`. Requires [system configuration](../system-config#set-up-time-synchronization).
 

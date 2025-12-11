@@ -8,7 +8,7 @@ menu:
     identifier: txn_lock
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/txn_lock/
+  - /stable/api/ysql/commands/txn_lock/
 type: docs
 ---
 

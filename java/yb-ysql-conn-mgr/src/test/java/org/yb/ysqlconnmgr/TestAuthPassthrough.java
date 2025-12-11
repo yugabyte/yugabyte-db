@@ -1,16 +1,14 @@
 package org.yb.ysqlconnmgr;
 
 import java.sql.Connection;
-import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.minicluster.MiniYBClusterBuilder;
+import org.yb.pgsql.ConnectionBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
 
 @RunWith(value = YBTestRunnerYsqlConnMgr.class)
@@ -29,6 +27,11 @@ public class TestAuthPassthrough extends BaseYsqlConnMgr {
     };
 
     builder.addCommonTServerFlags(additionalTserverFlags);
+  }
+
+  @Override
+  public ConnectionBuilder connectionBuilderForVerification(ConnectionBuilder builder) {
+    return builder.withUser("yugabyte").withPassword("yugabyte");
   }
 
   @Test

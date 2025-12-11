@@ -8,7 +8,7 @@ menu:
     identifier: ddl_refresh_matview
     parent: statements
 aliases:
-  - /preview/api/ysql/commands/ddl_refresh_matview/
+  - /stable/api/ysql/commands/ddl_refresh_matview/
 type: docs
 ---
 
