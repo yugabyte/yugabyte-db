@@ -38,6 +38,9 @@ export const setShowJWTTokenInfo = (value) =>
 export const shouldShowJWTTokenInfo = () =>
   _.get(window, 'YB_Platform_Config.show_jwt_token_info', false);
 
+export const isLocalLoginWithSSOAllowed = () =>
+  _.get(window, 'YB_Platform_Config.allow_local_login_with_sso', false);
+
 // TODO : probably fetch the provider metadata (name and code from backend)
 export const PROVIDER_TYPES = [
   { code: 'aws', name: 'Amazon', label: 'Amazon Web Services' },

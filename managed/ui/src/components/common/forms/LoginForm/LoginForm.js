@@ -11,7 +11,7 @@ import { browserHistory } from 'react-router';
 import { Field, Form, Formik } from 'formik';
 import * as Yup from 'yup';
 import _ from 'lodash';
-import { ROOT_URL, isSSOEnabled, shouldShowJWTTokenInfo } from '../../../../config';
+import { ROOT_URL, isSSOEnabled, shouldShowJWTTokenInfo, isLocalLoginWithSSOAllowed } from '../../../../config';
 import { clearCredentials } from '../../../../routes';
 import { trimString } from '../../../../utils/ObjectUtils';
 import { LDAP_CA_CERT_ERR_MSG, handleCACertErrMsg } from '../../../customCACerts';
@@ -138,7 +138,7 @@ class LoginForm extends Component {
                       this.setState({ showLoginFrom: true });
                     }}
                   >
-                    Super Admin Login
+                    {isLocalLoginWithSSOAllowed() ? 'Local User Login' : 'Super Admin Login'}
                   </div>
                 </div>
               )}
@@ -165,7 +165,7 @@ class LoginForm extends Component {
                 <Form onSubmit={handleSubmit} className={clsx(isSSOEnabled() && 'fade-in')}>
                   {isSSOEnabled() && (
                     <div className="align-center form-title">
-                      Enter super admin credentials to login
+                      {isLocalLoginWithSSOAllowed() ? 'Enter user credentials to login' : 'Enter super admin credentials to login'}
                     </div>
                   )}
                   <div
