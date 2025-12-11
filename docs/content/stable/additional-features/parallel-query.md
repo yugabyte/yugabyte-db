@@ -26,6 +26,10 @@ To enable and configure parallel queries, set the following configuration parame
 | yb_parallel_range_rows | The number of rows to plan per parallel worker. To enable parallel query, set this to a value other than 0. (Recommended: 10000) | 0 |
 | yb_parallel_range_size | Approximate size of parallel range for DocDB relation scans. | 1MB |
 
+For new universes running v2025.2 or later, parallel append is enabled by default when you deploy using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon.
+
+In addition, when upgrading a deployment to v2025.2 or later, if the universe has the cost-based optimizer enabled (`on`), YugabyteDB will enable parallel append.
+
 In addition, you can use the following PostgreSQL configuration parameters to configure parallel queries:
 
 - Optimize the number of workers used by the parallel query.

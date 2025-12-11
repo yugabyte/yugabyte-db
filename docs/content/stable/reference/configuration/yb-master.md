@@ -1066,7 +1066,9 @@ Auto analyze is automatically enabled when the [cost-based optimizer](../../../a
 
 ##### ysql_enable_auto_analyze_service (deprecated)
 
-Use [ysql_enable_auto_analyze](../yb-tserver#ysql_enable_auto_analyze) on yb-tservers instead.
+Default: `false`
+
+Use [ysql_enable_auto_analyze](../yb-tserver/#ysql_enable_auto_analyze) on yb-tservers instead.
 
 ## Advisory lock flags
 
