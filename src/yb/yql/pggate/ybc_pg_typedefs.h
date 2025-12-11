@@ -1029,6 +1029,16 @@ typedef struct {
   YbcPgOid tablespace_oid;
 } YbcPgTableLocalityInfo;
 
+// Merge sort key information
+typedef struct {
+  // Position of the merge sort column in the index
+  uint16_t att_idx;
+  // Position of the merge sort column in the table
+  uint16_t value_idx;
+  int (*comparator)(uint64_t datum1, bool isnull1, uint64_t datum2, bool isnull2, void *sortstate);
+  void *sortstate;
+} YbcSortKey;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

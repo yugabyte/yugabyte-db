@@ -123,6 +123,18 @@ struct varlena* PggateTestCStringToTextWithLen(const char* c, int size) {
   return reinterpret_cast<struct varlena*>(buf);
 }
 
+void *PggateTestSwitchMemoryContext(void* context) {
+  return context;
+}
+
+void *PggateTestCreateMemContext(void* parent, const char*name) {
+  static MemoryContext memctx;
+  return static_cast<void*>(&memctx);
+}
+
+void PggateTestDeleteMemContext(void* context) {
+}
+
 //--------------------------------------------------------------------------------------------------
 // Starting and ending routines.
 
@@ -159,7 +171,9 @@ Status PggateTest::Init(
   RETURN_NOT_OK(CreateCluster(num_tablet_servers, replication_factor));
 
   // Init PgGate API.
-  CHECK_YBC_STATUS(YBCInit(test_name, PggateTestAlloc, PggateTestCStringToTextWithLen));
+  CHECK_YBC_STATUS(YBCInit(test_name, PggateTestAlloc, PggateTestCStringToTextWithLen,
+                           PggateTestSwitchMemoryContext, PggateTestCreateMemContext,
+                           PggateTestDeleteMemContext));
 
   YbcPgCallbacks callbacks;
 

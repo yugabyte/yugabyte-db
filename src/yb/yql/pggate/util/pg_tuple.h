@@ -17,6 +17,10 @@
 #include "yb/yql/pggate/util/pg_wire.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
+#ifndef NDEBUG
+#define PGTUPLE_DEBUG
+#endif
+
 namespace yb {
 namespace pggate {
 
@@ -28,7 +32,13 @@ namespace pggate {
 // Currently we allocate one individual buffer per column and write result there.
 class PgTuple {
  public:
+#ifdef PGTUPLE_DEBUG
+  PgTuple(size_t nattrs, uint64_t *datums, bool *isnulls, YbcPgSysColumns *syscols);
+#else
   PgTuple(uint64_t *datums, bool *isnulls, YbcPgSysColumns *syscols);
+#endif
+
+  void CopyFrom(const PgTuple& other, size_t nattrs);
 
   // Write null value.
   void WriteNull(int index);
@@ -42,6 +52,9 @@ class PgTuple {
   }
 
  private:
+#ifdef PGTUPLE_DEBUG
+  size_t nattrs_;
+#endif
   uint64_t *datums_;
   bool *isnulls_;
   YbcPgSysColumns *syscols_;

@@ -492,7 +492,8 @@ YbcStatus YBCPgWaitVectorIndexReady(
 // This function is for specifying the selected or returned expressions.
 // - SELECT target_expr1, target_expr2, ...
 // - INSERT / UPDATE / DELETE ... RETURNING target_expr1, target_expr2, ...
-YbcStatus YBCPgDmlAppendTarget(YbcPgStatement handle, YbcPgExpr target);
+YbcStatus YBCPgDmlAppendTarget(
+    YbcPgStatement handle, YbcPgExpr target, bool is_for_secondary_index);
 
 // Add a WHERE clause condition to the statement.
 // Currently only SELECT statement supports WHERE clause conditions.
@@ -573,6 +574,9 @@ YbcStatus YBCPgDmlAddRowUpperBound(YbcPgStatement handle, int n_col_values,
 
 YbcStatus YBCPgDmlAddRowLowerBound(YbcPgStatement handle, int n_col_values,
                                     YbcPgExpr *col_values, bool is_inclusive);
+
+YbcStatus YBCPgDmlSetMergeSortKeys(YbcPgStatement handle, int num_keys,
+                                   const YbcSortKey *sort_keys);
 
 // Binding Tables: Bind the whole table in a statement.  Do not use with BindColumn.
 YbcStatus YBCPgDmlBindTable(YbcPgStatement handle);
