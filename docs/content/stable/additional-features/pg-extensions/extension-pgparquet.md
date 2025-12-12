@@ -6,7 +6,7 @@ description: Using the pg_parquet extension in YugabyteDB
 tags:
   feature: tech-preview
 menu:
-  preview:
+  stable:
     identifier: extension-pgparquet
     parent: pg-extensions
     weight: 20
