@@ -961,12 +961,6 @@ void PgWrapper::Shutdown() {
   Kill(SIGINT);
 }
 
-void PgWrapper::ImmediateShutdown() {
-  // We use PG's immediate shutdown mode for stopping PG when losing the lease.
-  // See https://www.postgresql.org/docs/current/server-shutdown.html
-  Kill(SIGQUIT);
-}
-
 Status PgWrapper::InitDb(InitdbParams initdb_params) {
   const string initdb_program_path = GetInitDbExecutablePath();
   RETURN_NOT_OK(CheckExecutableValid(initdb_program_path));
