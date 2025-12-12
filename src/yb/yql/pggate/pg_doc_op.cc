@@ -1210,11 +1210,9 @@ void PgDocReadOp::InitializeYbctidOperators() {
     DCHECK(pgsql_ops_.empty());
     pgsql_op_arena_ = SharedArena();
   }
-  if (pgsql_ops_.empty()) {
-    ClonePgsqlOps(table_->GetPartitionListSize());
-  } else {
-    ResetInactivePgsqlOps();
-  }
+  ResetInactivePgsqlOps();
+  // Make sure we have one operation per partition
+  ClonePgsqlOps(table_->GetPartitionListSize());
 }
 
 Result<bool> PgDocReadOp::BindExprsRegular(
@@ -1321,27 +1319,27 @@ Result<bool> PgDocReadOp::PopulateNextHashPermutationOps() {
   // Permutations and operations are reset between parallel ranges, in this case we need to clone
   // a new set of operations.
   if (!hash_permutations_) {
+    DCHECK(pgsql_ops_.empty());
     hash_permutations_.emplace(InitializeHashPermutationStates());
+    // Setup arena to control memory footprint
+    if (!pgsql_op_arena_) {
+      pgsql_op_arena_ = SharedArena();
+    }
   } else {
     ResetInactivePgsqlOps();
   }
+
   // Continue with operations if any are still in flight
   if (active_op_count_ > 0) {
     return false;
   }
 
-  // Setup arena to control memory footprint
-  if (!pgsql_op_arena_) {
-    pgsql_op_arena_ = SharedArena();
-  }
   // Setup operations
-  if (pgsql_ops_.empty()) {
-    auto max_op_count = std::min(hash_permutations_->Size(),
-                                 IsHashBatchingEnabled() ?
-                                     table_->GetPartitionListSize() :
-                                     implicit_cast<size_t>(FLAGS_ysql_request_limit));
-    ClonePgsqlOps(max_op_count);
-  }
+  auto max_op_count = std::min(hash_permutations_->Size(),
+                               IsHashBatchingEnabled() ?
+                                   table_->GetPartitionListSize() :
+                                   implicit_cast<size_t>(FLAGS_ysql_request_limit));
+  ClonePgsqlOps(max_op_count);
   if (IsHashBatchingEnabled()) {
     const auto batch_count = table_->GetPartitionList();
     std::vector<std::pair<bool, LWPgsqlExpressionPB*>> partition_batches(
@@ -1625,15 +1623,12 @@ void PgDocReadOp::SetReadTimeForBackfill() {
 
 void PgDocReadOp::ResetInactivePgsqlOps() {
   auto op_count = pgsql_ops_.size();
-  if (pgsql_op_arena_ && active_op_count_ == 0) {
+  if (pgsql_op_arena_ && active_op_count_ == 0 && op_count > 0) {
     // All past operations are done, can perform full reset to release memory
-    if (op_count > 0) {
-      VLOG_WITH_FUNC(3) << "do full reset";
-      ResetResultStream();
-      pgsql_ops_.clear();
-      pgsql_op_arena_->Reset(ResetMode::kKeepLast);
-      ClonePgsqlOps(op_count);
-    }
+    VLOG_WITH_FUNC(3) << "do full reset";
+    ResetResultStream();
+    pgsql_ops_.clear();
+    pgsql_op_arena_->Reset(ResetMode::kKeepLast);
     return;
   }
   // Clear the existing requests.
