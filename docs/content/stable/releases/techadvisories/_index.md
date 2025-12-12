@@ -21,6 +21,12 @@ For an RSS feed of all technical advisories, point your feed reader to the [RSS 
 {{%table%}}
 | Advisory&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Synopsis | Product | Affected Versions | Date |
 | :------------------------------- | :------- | :-----: | :---------------: | :--- |
+| {{<ta 24313>}}
+| YSQL online index backfill consistency issue
+| {{<product "ysql">}}
+| {{<release "2.14, 2.16, 2.18, 2.20, 2024.1, 2024.2.0">}}
+| {{<nobreak "10 December 2025">}}
+|
 | {{<ta 29060>}}
 | Rows larger than 4MB can cause CDC to miss WAL records
 | {{<product "cdc">}}
