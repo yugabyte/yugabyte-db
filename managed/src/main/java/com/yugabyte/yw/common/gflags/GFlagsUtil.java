@@ -1264,7 +1264,12 @@ public class GFlagsUtil {
       mergeHostAndPort(userGFlags, PSQL_PROXY_BIND_ADDRESS, ysqlPort);
     }
     if (userGFlags.containsKey(CSQL_PROXY_BIND_ADDRESS)) {
-      mergeHostAndPort(userGFlags, CSQL_PROXY_BIND_ADDRESS, node.yqlServerRpcPort);
+      // If user is changing the port during configure YCQL upgrade, need to use the new port.
+      int yqlPort =
+          taskParams.overrideNodePorts
+              ? taskParams.communicationPorts.yqlServerRpcPort
+              : node.yqlServerRpcPort;
+      mergeHostAndPort(userGFlags, CSQL_PROXY_BIND_ADDRESS, yqlPort);
     }
     if (userGFlags.containsKey(REDIS_PROXY_BIND_ADDRESS)) {
       mergeHostAndPort(userGFlags, REDIS_PROXY_BIND_ADDRESS, node.redisServerRpcPort);
