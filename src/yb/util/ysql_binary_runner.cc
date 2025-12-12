@@ -14,9 +14,13 @@
 #include <fstream>
 
 #include "yb/util/env.h"
+#include "yb/util/flags.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/ysql_binary_runner.h"
+
+DEFINE_RUNTIME_bool(ysql_clone_disable_connections, true,
+                    "Disable connections to the cloned database during the clone process.");
 
 namespace yb {
 
@@ -65,7 +69,7 @@ Result<std::string> YsqlDumpRunner::RunAndModifyForClone(
   std::string modified_dump = ModifyDbOwnerInScript(dump_output, source_owner, target_owner);
   // Pass 2, modify the DB name in the script and disallow connection to the DB.
   std::string final_dump =
-      ModifyDbNameInScript(modified_dump, target_db_name, /* disallow_db_connections */ true);
+      ModifyDbNameInScript(modified_dump, target_db_name, FLAGS_ysql_clone_disable_connections);
   return final_dump;
 }
 
