@@ -408,6 +408,7 @@ message PgsqlBackfillSpecPB {
 enum PgsqlMetricsCaptureType {
   PGSQL_METRICS_CAPTURE_NONE = 0;
   PGSQL_METRICS_CAPTURE_ALL = 1;
+  PGSQL_METRICS_CAPTURE_PGSS = 2;
 }
 
 // TODO(get_table_key_ranges): deprecate after/if separate GetTabletKeyRanges RPC to the tablet

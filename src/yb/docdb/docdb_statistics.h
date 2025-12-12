@@ -20,6 +20,7 @@
 namespace yb {
 
 class PgsqlResponsePB;
+enum PgsqlMetricsCaptureType: int;
 
 namespace docdb {
 
@@ -35,7 +36,8 @@ class DocDBStatistics {
   // Returns number of metric changes dumped.
   size_t Dump(std::stringstream* out) const;
 
-  void CopyToPgsqlResponse(PgsqlResponsePB* response) const;
+  void CopyToPgsqlResponse(
+    PgsqlResponsePB* response, PgsqlMetricsCaptureType metrics_capture) const;
 
  private:
   rocksdb::ScopedStatistics regulardb_statistics_;

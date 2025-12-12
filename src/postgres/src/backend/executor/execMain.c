@@ -159,6 +159,9 @@ standard_ExecutorStart(QueryDesc *queryDesc, int eflags)
 	Assert(queryDesc != NULL);
 	Assert(queryDesc->estate == NULL);
 
+	if (yb_enable_pg_stat_statements_rpc_stats)
+		YbSetMetricsCaptureTypeIfUnset(YB_YQL_METRICS_CAPTURE_PGSS_METRICS);
+
 	/*
 	 * If the transaction is read-only, we need to check if any writes are
 	 * planned to non-temporary tables.  EXPLAIN is considered read-only.
@@ -529,6 +532,8 @@ standard_ExecutorEnd(QueryDesc *queryDesc)
 	queryDesc->planstate = NULL;
 	queryDesc->totaltime = NULL;
 	queryDesc->yb_query_stats = NULL;
+	if (yb_enable_pg_stat_statements_rpc_stats)
+		YbSetMetricsCaptureType(YB_YQL_METRICS_CAPTURE_NONE);
 }
 
 /* ----------------------------------------------------------------

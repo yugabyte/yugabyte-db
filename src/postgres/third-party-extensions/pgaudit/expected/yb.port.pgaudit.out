@@ -2573,9 +2573,9 @@ SET pgaudit.log_level = 'warning';
 CREATE EXTENSION pg_stat_statements; -- YB: already installed by default
 WARNING:  AUDIT: SESSION,3,1,DDL,CREATE EXTENSION,,,CREATE EXTENSION pg_stat_statements;,<not logged>
 ERROR:  extension "pg_stat_statements" already exists
-ALTER EXTENSION pg_stat_statements UPDATE TO '1.10-yb-2.0'; -- YB: change to latest version number
-WARNING:  AUDIT: SESSION,4,1,DDL,ALTER EXTENSION,,,ALTER EXTENSION pg_stat_statements UPDATE TO '1.10-yb-2.0';,<not logged>
-NOTICE:  version "1.10-yb-2.0" of extension "pg_stat_statements" is already installed
+ALTER EXTENSION pg_stat_statements UPDATE TO '1.10-yb-2.1'; -- YB: change to latest version number
+WARNING:  AUDIT: SESSION,4,1,DDL,ALTER EXTENSION,,,ALTER EXTENSION pg_stat_statements UPDATE TO '1.10-yb-2.1';,<not logged>
+NOTICE:  version "1.10-yb-2.1" of extension "pg_stat_statements" is already installed
 DROP EXTENSION pg_stat_statements;
 WARNING:  AUDIT: SESSION,5,1,DDL,DROP EXTENSION,,,DROP EXTENSION pg_stat_statements;,<not logged>
 SET pgaudit.log_level = 'notice';

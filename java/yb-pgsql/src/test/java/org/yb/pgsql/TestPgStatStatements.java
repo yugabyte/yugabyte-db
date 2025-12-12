@@ -17,11 +17,15 @@ import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_MODIFY_TABLE;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_VALUES_SCAN;
 import static org.yb.AssertionWrappers.*;
 
+import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.Map;
 import java.io.ByteArrayOutputStream;
 
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.yugabyte.copy.CopyManager;
 import com.yugabyte.core.BaseConnection;
 
@@ -47,6 +51,9 @@ import org.yb.YBTestRunner;
 public class TestPgStatStatements extends BasePgExplainAnalyzeTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgStatStatements.class);
   private static final String TABLE_NAME = "test_table";
+  private static final String METRIC_NUM_DB_SEEK = "Metric rocksdb_number_db_seek";
+  private static final String METRIC_NUM_DB_NEXT = "Metric rocksdb_number_db_next";
+  private static final String METRIC_NUM_DB_PREV = "Metric rocksdb_number_db_prev";
 
   @Rule
   public TestName testName = new TestName();
@@ -74,7 +81,7 @@ public class TestPgStatStatements extends BasePgExplainAnalyzeTest {
       stmt.execute(String.format("CREATE TABLE %s_3 (k SERIAL PRIMARY KEY, v INT)",
           TABLE_NAME));
 
-      if (!"testInsertRpcStats".equals(testName.getMethodName())) {
+      if (!testName.getMethodName().equals("testInsertRpcStats")) {
         String insertQuery = String.format("INSERT INTO %s_%%d VALUES " +
             "(1, 1, 1, 'abc'), (1000, 1000, 1000, 'abc'), (50, 50, 50, 'def')",
             TABLE_NAME);
@@ -82,6 +89,18 @@ public class TestPgStatStatements extends BasePgExplainAnalyzeTest {
         stmt.execute(String.format(insertQuery, 1));
         stmt.execute(String.format(insertQuery, 2));
       }
+    }
+  }
+
+  private void resetTable2(Statement stmt) throws Exception {
+    stmt.execute("TRUNCATE TABLE " + TABLE_NAME + "_2");
+
+    if (!testName.getMethodName().equals("testInsertRpcStats")) {
+        String insertQuery = String.format("INSERT INTO %s_%%d VALUES " +
+                "(1, 1, 1, 'abc'), (1000, 1000, 1000, 'abc'), (50, 50, 50, 'def')",
+                TABLE_NAME);
+
+        stmt.execute(String.format(insertQuery, 2));
     }
   }
 
@@ -96,6 +115,85 @@ public class TestPgStatStatements extends BasePgExplainAnalyzeTest {
   public void testExplain(String query, Checker checker) throws Exception {
     try (Statement stmt = connection.createStatement()) {
       ExplainAnalyzeUtils.testExplain(stmt, query, checker);
+    }
+  }
+
+  /*
+   * Helper class to hold DocDB metrics.
+   */
+  private static class DocDBMetrics {
+    final long seeks;
+    final long nexts;
+    final long prevs;
+
+    DocDBMetrics(long seeks, long nexts, long prevs) {
+      this.seeks = seeks;
+      this.nexts = nexts;
+      this.prevs = prevs;
+    }
+  }
+
+  /*
+   * Helper method to extract a specific metric value from the metrics JSON array object.
+   * Returns 0 if the metric is not found.
+   */
+  private static long getMetricValue(JsonObject metricsObj, String metricName) {
+      if (metricsObj == null || !metricsObj.has(metricName)) {
+          return 0L;
+      }
+      return metricsObj.get(metricName).getAsLong();
+  }
+
+  /*
+   * Helper method to extract DocDB metrics from a metrics JSON object.
+   */
+  private static DocDBMetrics extractDocdbMetrics(JsonObject metricsObj) {
+    if (metricsObj == null) {
+      return new DocDBMetrics(0L, 0L, 0L);
+    }
+    long seeks = getMetricValue(metricsObj, METRIC_NUM_DB_SEEK);
+    long nexts = getMetricValue(metricsObj, METRIC_NUM_DB_NEXT);
+    long prevs = getMetricValue(metricsObj, METRIC_NUM_DB_PREV);
+    return new DocDBMetrics(seeks, nexts, prevs);
+  }
+
+  /*
+   * Helper method to verify that docdbSeeks equals the sum of read and write metrics seeks.
+   * Executes EXPLAIN ANALYZE and extracts the metrics to perform the verification.
+   */
+  private void verifyMetrics(String query, long expectedDocdbSeeks,
+          long expectedDocdbNexts, long expectedDocdbPrevs) throws Exception {
+    try (Connection conn = getConnectionBuilder().connect();
+         Statement stmt = conn.createStatement()) {
+      String explainQuery = String.format(
+              "EXPLAIN (FORMAT json, ANALYZE true, DIST true, DEBUG true) %s", query);
+
+      ResultSet rs = stmt.executeQuery(explainQuery);
+      rs.next();
+      JsonElement json = JsonParser.parseString(rs.getString(1));
+      JsonObject root = json.getAsJsonArray().get(0).getAsJsonObject();
+
+      // Extract read and write metrics
+      JsonObject readMetricsObj = root.has("Read Metrics") ?
+                                  root.getAsJsonObject("Read Metrics") : null;
+      JsonObject writeMetricsObj = root.has("Write Metrics") ?
+                                   root.getAsJsonObject("Write Metrics") : null;
+
+      LOG.info("Read Metrics: {}", JsonUtil.asPrettyString(readMetricsObj));
+      LOG.info("Write Metrics: {}", JsonUtil.asPrettyString(writeMetricsObj));
+
+      LOG.info("Expected Docdb Seeks: {}, Expected Docdb Nexts: {}, Expected Docdb Prevs: {}",
+          expectedDocdbSeeks, expectedDocdbNexts, expectedDocdbPrevs);
+
+      DocDBMetrics readMetrics = extractDocdbMetrics(readMetricsObj);
+      DocDBMetrics writeMetrics = extractDocdbMetrics(writeMetricsObj);
+
+      assertEquals(expectedDocdbSeeks, readMetrics.seeks + writeMetrics.seeks);
+      assertEquals(expectedDocdbNexts, readMetrics.nexts + writeMetrics.nexts);
+      assertEquals(expectedDocdbPrevs, readMetrics.prevs + writeMetrics.prevs);
+
+      //Reset test_table_2's state to utilize testExplain
+      resetTable2(stmt);
     }
   }
 
@@ -131,7 +229,8 @@ public class TestPgStatStatements extends BasePgExplainAnalyzeTest {
 
       ResultSet rs = stmt.executeQuery(String.format(
           "SELECT docdb_read_operations, docdb_read_rpcs, catalog_wait_time, " +
-          "docdb_wait_time, docdb_rows_scanned, rows, docdb_rows_returned " +
+          "docdb_wait_time, docdb_rows_scanned, rows, docdb_rows_returned, " +
+          "docdb_nexts, docdb_prevs, docdb_seeks " +
           "FROM pg_stat_statements WHERE query LIKE 'SELECT * FROM %s%%'", TABLE_NAME));
 
       int rowCount = 0;
@@ -144,6 +243,11 @@ public class TestPgStatStatements extends BasePgExplainAnalyzeTest {
         long docdbRowsScanned = rs.getLong("docdb_rows_scanned");
         long rows = rs.getLong("rows");
         long docdbRowsReturned = rs.getLong("docdb_rows_returned");
+        long docdbNexts = rs.getLong("docdb_nexts");
+        long docdbPrevs = rs.getLong("docdb_prevs");
+        long docdbSeeks = rs.getLong("docdb_seeks");
+
+        verifyMetrics(String.format(selectQuery, 2), docdbSeeks, docdbNexts, docdbPrevs);
 
         testExplain(
           String.format(selectQuery, 2),
@@ -180,7 +284,8 @@ public class TestPgStatStatements extends BasePgExplainAnalyzeTest {
 
   @Test
   public void testInsertRpcStats() throws Exception {
-    try (Statement stmt = connection.createStatement()) {
+    try (Connection conn = getConnectionBuilder().connect();
+         Statement stmt = conn.createStatement()) {
       String insertQuery = String.format("INSERT INTO %s_%%d VALUES " +
           "(10, 10, 10, 'abc'), (10000, 10000, 10000, 'abc'), (500, 500, 500, 'def')",
           TABLE_NAME);
@@ -189,7 +294,8 @@ public class TestPgStatStatements extends BasePgExplainAnalyzeTest {
 
       ResultSet rs = stmt.executeQuery(String.format(
           "SELECT docdb_write_operations, docdb_write_rpcs, catalog_wait_time, " +
-          "docdb_wait_time FROM pg_stat_statements WHERE query LIKE 'INSERT INTO %s_1%%'",
+          "docdb_wait_time, docdb_nexts, docdb_prevs, docdb_seeks " +
+          "FROM pg_stat_statements WHERE query LIKE 'INSERT INTO %s_1%%'",
           TABLE_NAME));
 
       int rowCount = 0;
@@ -199,6 +305,11 @@ public class TestPgStatStatements extends BasePgExplainAnalyzeTest {
         long docdbWriteRpcs = rs.getLong("docdb_write_rpcs");
         double catalogWaitTime = rs.getDouble("catalog_wait_time");
         double docdbWaitTime = rs.getDouble("docdb_wait_time");
+        long docdbNexts = rs.getLong("docdb_nexts");
+        long docdbPrevs = rs.getLong("docdb_prevs");
+        long docdbSeeks = rs.getLong("docdb_seeks");
+
+        verifyMetrics(String.format(insertQuery, 2), docdbSeeks, docdbNexts, docdbPrevs);
 
         testExplain(
           String.format(insertQuery, 2),
@@ -243,7 +354,8 @@ public class TestPgStatStatements extends BasePgExplainAnalyzeTest {
       ResultSet rs = stmt.executeQuery(String.format(
           "SELECT docdb_read_operations, docdb_read_rpcs, docdb_write_operations, " +
           "docdb_write_rpcs, catalog_wait_time, docdb_wait_time, docdb_rows_scanned, " +
-          "docdb_rows_returned FROM pg_stat_statements WHERE query LIKE 'UPDATE %s%%'",
+          "docdb_rows_returned, docdb_nexts, docdb_prevs, docdb_seeks " +
+          "FROM pg_stat_statements WHERE query LIKE 'UPDATE %s%%'",
           TABLE_NAME));
 
       int rowCount = 0;
@@ -257,6 +369,11 @@ public class TestPgStatStatements extends BasePgExplainAnalyzeTest {
         double docdbWaitTime = rs.getDouble("docdb_wait_time");
         long docdbRowsScanned = rs.getLong("docdb_rows_scanned");
         long docdbRowsReturned = rs.getLong("docdb_rows_returned");
+        long docdbNexts = rs.getLong("docdb_nexts");
+        long docdbPrevs = rs.getLong("docdb_prevs");
+        long docdbSeeks = rs.getLong("docdb_seeks");
+
+        verifyMetrics(String.format(updateQuery, 2), docdbSeeks, docdbNexts, docdbPrevs);
 
         testExplain(
           String.format(updateQuery, 2),
@@ -308,7 +425,8 @@ public class TestPgStatStatements extends BasePgExplainAnalyzeTest {
       ResultSet rs = stmt.executeQuery(String.format(
           "SELECT docdb_read_operations, docdb_read_rpcs, docdb_write_operations, " +
           "docdb_write_rpcs, catalog_wait_time, docdb_wait_time, docdb_rows_scanned, " +
-          "docdb_rows_returned FROM pg_stat_statements WHERE query LIKE 'DELETE FROM %s%%'",
+          "docdb_rows_returned, docdb_nexts, docdb_prevs, docdb_seeks " +
+          "FROM pg_stat_statements WHERE query LIKE 'DELETE FROM %s%%'",
           TABLE_NAME));
 
       int rowCount = 0;
@@ -322,6 +440,11 @@ public class TestPgStatStatements extends BasePgExplainAnalyzeTest {
         double docdbWaitTime = rs.getDouble("docdb_wait_time");
         long docdbRowsScanned = rs.getLong("docdb_rows_scanned");
         long docdbRowsReturned = rs.getLong("docdb_rows_returned");
+        long docdbNexts = rs.getLong("docdb_nexts");
+        long docdbPrevs = rs.getLong("docdb_prevs");
+        long docdbSeeks = rs.getLong("docdb_seeks");
+
+        verifyMetrics(String.format(deleteQuery, 2), docdbSeeks, docdbNexts, docdbPrevs);
 
         testExplain(
           String.format(deleteQuery, 2),

@@ -1599,7 +1599,7 @@ SET pgaudit.log = 'all,-misc_set';
 SET pgaudit.log_level = 'warning';
 
 CREATE EXTENSION pg_stat_statements; -- YB: already installed by default
-ALTER EXTENSION pg_stat_statements UPDATE TO '1.10-yb-2.0'; -- YB: change to latest version number
+ALTER EXTENSION pg_stat_statements UPDATE TO '1.10-yb-2.1'; -- YB: change to latest version number
 DROP EXTENSION pg_stat_statements;
 
 SET pgaudit.log_level = 'notice';
