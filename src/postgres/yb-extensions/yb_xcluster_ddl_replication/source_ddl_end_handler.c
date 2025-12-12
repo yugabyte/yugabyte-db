@@ -243,6 +243,32 @@ IsSequence(Oid rel_oid)
 }
 
 void
+ReplicateAssociatedIndexes(Oid rel_oid, List **new_rel_list, bool is_table_rewrite)
+{
+	Relation	rel = RelationIdGetRelation(rel_oid);
+	if (!rel)
+		elog(ERROR, "Could not find relation with OID %u", rel_oid);
+	if (IsIndex(rel))
+	{
+		/* Avoid recursion by only going table->index not also index->table. */
+		RelationClose(rel);
+		return;
+	}
+
+	List	   *indexes = RelationGetIndexList(rel);
+	ListCell   *cell;
+
+	foreach(cell, indexes)
+	{
+		Oid index_oid = lfirst_oid(cell);
+
+		ShouldReplicateNewRelation(index_oid, new_rel_list, is_table_rewrite);
+	}
+
+	RelationClose(rel);
+}
+
+void
 ReplicateInheritedRelations(Oid rel_oid, List **new_rel_list, bool is_table_rewrite)
 {
 	List	   *children = find_inheritance_children(rel_oid, NoLock);
@@ -260,11 +286,15 @@ bool
 ShouldReplicateRelationHelper(Oid rel_oid, List **new_rel_list, bool is_table_rewrite,
 							  bool include_inheritance_children)
 {
+	char       *name;
 	Oid         namespace_oid;
+	char       *namespace;
 	Relation	rel = RelationIdGetRelation(rel_oid);
-
 	if (!rel)
 		elog(ERROR, "Could not find relation with OID %u", rel_oid);
+	name = RelationGetRelationName(rel);
+	namespace_oid = RelationGetNamespace(rel);
+	namespace = get_namespace_name(namespace_oid);
 
 	/* Ignore temporary tables. */
 	if (!IsYBBackedRelation(rel))
@@ -279,19 +309,38 @@ ShouldReplicateRelationHelper(Oid rel_oid, List **new_rel_list, bool is_table_re
 		return true;
 	}
 
-	/* Add the new relation to the list of relations to replicate. */
-	YbNewRelMapEntry *new_rel_entry = palloc(sizeof(struct YbNewRelMapEntry));
+	/*
+	 * Add the new relation to the list of relations to replicate if not already
+	 * present.
+	 */
+	ListCell *cell;
+	bool found = false;
+	foreach (cell, *new_rel_list)
+	{
+		YbNewRelMapEntry *existing_entry = (YbNewRelMapEntry *) lfirst(cell);
+		if (!strcmp(existing_entry->name, name) &&
+			!strcmp(existing_entry->namespace, namespace))
+		{
+			found = true;
+			break;
+		}
+	}
+	if (!found)
+	{
+		YbNewRelMapEntry *new_rel_entry = palloc(sizeof(struct YbNewRelMapEntry));
 
-	new_rel_entry->name = pstrdup(RelationGetRelationName(rel));
-	namespace_oid = RelationGetNamespace(rel);
-	new_rel_entry->namespace = pstrdup(get_namespace_name(namespace_oid));
-	new_rel_entry->relfile_oid = YbGetRelfileNodeId(rel);
-	new_rel_entry->colocation_id = GetColocationIdFromRelation(&rel, is_table_rewrite);
-	new_rel_entry->is_index = IsIndex(rel);
+		new_rel_entry->name = pstrdup(RelationGetRelationName(rel));
+		new_rel_entry->namespace = pstrdup(namespace);
+		new_rel_entry->relfile_oid = YbGetRelfileNodeId(rel);
+		new_rel_entry->colocation_id = GetColocationIdFromRelation(&rel, is_table_rewrite);
+		new_rel_entry->is_index = IsIndex(rel);
 
-	*new_rel_list = lappend(*new_rel_list, new_rel_entry);
+		*new_rel_list = lappend(*new_rel_list, new_rel_entry);
+	}
 
 	RelationClose(rel);
+
+	ReplicateAssociatedIndexes(rel_oid, new_rel_list, is_table_rewrite);
 
 	if (include_inheritance_children)
 		ReplicateInheritedRelations(rel_oid, new_rel_list, is_table_rewrite);
