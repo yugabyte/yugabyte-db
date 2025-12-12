@@ -4,8 +4,6 @@ headerTitle: OIDC authentication with JumpCloud
 linkTitle: OIDC authentication
 description: Configuring YugabyteDB Anywhere universe to use OIDC with JumpCloud.
 headcontent: Use JumpCloud to authenticate accounts for database access
-tags:
-  feature: early-access
 menu:
   stable_yugabyte-platform:
     identifier: oidc-authentication-jumpcloud
