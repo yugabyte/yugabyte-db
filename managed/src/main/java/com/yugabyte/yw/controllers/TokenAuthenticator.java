@@ -188,11 +188,11 @@ public class TokenAuthenticator extends Action.Simple {
 
   @Override
   public CompletionStage<Result> call(Http.Request request) {
-    boolean useNewAuthz = runtimeConfigCache.getBoolean(GlobalConfKeys.useNewRbacAuthz.getKey());
-    if (useNewAuthz) {
-      return delegate.call(request);
-    }
     try {
+      boolean useNewAuthz = runtimeConfigCache.getBoolean(GlobalConfKeys.useNewRbacAuthz.getKey());
+      if (useNewAuthz) {
+        return delegate.call(request);
+      }
       String endPoint = "";
       String path = request.path();
       String requestType = request.method();
