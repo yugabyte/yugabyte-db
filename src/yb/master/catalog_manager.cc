@@ -7864,6 +7864,7 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   lock.unlock();
 
   TEST_SYNC_POINT("YBBackupTestWithColocationParam::AlterTableDocDBTableCommitted");
+  TEST_SYNC_POINT("YBBackupTestWithColocationParam::ContinueAlterTable");
   if (PREDICT_FALSE(FLAGS_TEST_fail_alter_table_after_commit)) {
     return STATUS(IllegalState, "Injected failure after in-memory commit");
   }
