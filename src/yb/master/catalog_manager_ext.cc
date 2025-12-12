@@ -708,6 +708,29 @@ Status CatalogManager::RepackSnapshotsForBackup(
             }
           }
           pg_schema_name_to_set = pg_schema_name;
+
+          // Repair schema version skew between the snapshotted SysTablesEntryPB and the current
+          // in-memory state. The snapshot coordinator may have captured an older schema version
+          // for the table while tablets later advanced to a newer version due to an ALTER TABLE
+          // that raced with CREATE_ON_TABLET snapshot operations. At restore time, we rely on
+          // the invariant that the latest schema version in the snapshot is at least as large as
+          // the schema versions persisted on tablets. To restore this invariant for backups, if
+          // the in-memory schema version is greater than the snapshotted version, override the
+          // version fields in the snapshotted SysTablesEntryPB.
+          SysTablesEntryPB snapshotted_table_pb =
+              VERIFY_RESULT(ParseFromSlice<SysTablesEntryPB>(entry.data()));
+          const auto current_version = l->pb.version();
+          const auto snapshotted_version = snapshotted_table_pb.version();
+          if (current_version > snapshotted_version) {
+            LOG(INFO) << Format(
+                "Overriding snapshotted schema version for table $0 from $1 to $2 "
+                "during snapshot repack for backup",
+                table_info->id(), snapshotted_version, current_version);
+            snapshotted_table_pb.set_version(current_version);
+            std::string serialized;
+            snapshotted_table_pb.AppendToString(&serialized);
+            entry.set_data(serialized);
+          }
         }
       } else if (!tables_to_skip.empty() && entry.type() == SysRowEntryType::TABLET) {
         // Note: Ordering here is important, we expect tablet entries only after their table entry.

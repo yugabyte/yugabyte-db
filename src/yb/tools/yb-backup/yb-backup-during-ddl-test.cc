@@ -674,6 +674,74 @@ INSTANTIATE_TEST_CASE_P(
     AlterTable, YBBackupDuringAlterTable,
     ::testing::Values(YsqlColocationConfig::kNotColocated, YsqlColocationConfig::kDBColocated));
 
+  // Test a race condition when a DDL is issued in the window between the master leader collecting
+  // snapshot entries and submitting CREATE_ON_MASTER (and thus CREATE_ON_TABLET) operations.
+TEST_P(YBBackupDuringAlterTable, AlterTableDuringCreateSnapshot) {
+  if (!UseYbController()) {
+    GTEST_SKIP() << "Test requires YBC";
+  }
+
+  auto conn = ASSERT_RESULT(ConnectToDB(kBackupSourceDbName));
+  const std::string table_name = "test_table";
+
+  // Set up table with initial schema.
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY)", table_name));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 (k) VALUES (1)", table_name));
+
+  // Orchestrate the following timeline:
+  // 1. Backup creation starts and the master collects snapshot entries for the namespace.
+  // 2. Before submitting CREATE_ON_MASTER (and thus CREATE_ON_TABLET) operations, we run
+  //    "ALTER TABLE ... ADD COLUMN v INT" which bumps the DocDB schema.
+  // 3. Snapshot creation then finishes and backup completes.
+  // 4. We restore the backup into a new database and assert that restore succeeds.
+  std::vector<SyncPoint::Dependency> dependencies;
+  dependencies.push_back(
+      {"YBBackupTestWithColocationParam::CreateSnapshotEntriesCollected",
+       "YBBackupTestWithColocationParam::StartAlterTableAfterCollectingSnapshotEntries"});
+  dependencies.push_back(
+      {"YBBackupTestWithColocationParam::AlterTableDuringCreateSnapshotFinished",
+       "YBBackupTestWithColocationParam::StartSnapshotSubmitCreate"});
+  yb::SyncPoint::GetInstance()->LoadDependency(dependencies);
+  yb::SyncPoint::GetInstance()->EnableProcessing();
+
+  const string backup_dir = GetTempDir("backup");
+  TestThreadHolder thread_holder;
+  // Run the backup creation in a background thread so that we can interleave it with the ALTER.
+  thread_holder.AddThreadFunctor([&] {
+    LOG(INFO) << Format(
+        "Starting backup create for keyspace ysql.$0 into dir $1", kBackupSourceDbName, backup_dir);
+    ASSERT_OK(RunBackupCommand(
+        {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", kBackupSourceDbName),
+         "create"},
+        cluster_.get()));
+    LOG(INFO) << "Backup create finished";
+  });
+
+  // Run ALTER TABLE while snapshot creation is between entries collection and
+  // submitting CREATE_ON_MASTER / CREATE_ON_TABLET operations.
+  TEST_SYNC_POINT("YBBackupTestWithColocationParam::StartAlterTableAfterCollectingSnapshotEntries");
+  LOG(INFO) << Format("Started altering table $0 after collecting snapshot entries", table_name);
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN v INT", table_name));
+  TEST_SYNC_POINT("YBBackupTestWithColocationParam::AlterTableDuringCreateSnapshotFinished");
+
+  // Wait for the backup creation to finish.
+  thread_holder.JoinAll();
+
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", kRestoreTargetDbName),
+       "restore"},
+      cluster_.get()));
+
+  // Connect to the restored database and ensure the table is accessible.
+  auto restored_conn = ASSERT_RESULT(ConnectToDB(kRestoreTargetDbName));
+  auto rows = ASSERT_RESULT(
+      restored_conn.FetchRows<int32_t>(Format("SELECT k FROM $0 ORDER BY k", table_name)));
+  ASSERT_EQ(rows.size(), 1);
+  ASSERT_EQ(rows[0], 1);
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
 TEST_P(YBBackupDuringAlterTable, AddColumn) {
   if (!UseYbController()) {
     GTEST_SKIP() << "Test requires YBC";

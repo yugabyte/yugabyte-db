@@ -373,7 +373,7 @@ Status TableInfo::MergeSchemaPackings(
       DFATAL, !latest_packing.SchemaContainsPacking(table_type, doc_read_context->schema()))
       << Format(
              "After merging schema packings during restore, latest schema does not have the same"
-             "packing as the corresponding latest packing for table $0, latest packing: $1, "
+             " packing as the corresponding latest packing for table $0, latest packing: $1, "
              "current schema: $2",
              table_id, latest_packing.ToString(), doc_read_context->schema().ToString());
   return Status::OK();
@@ -1247,7 +1247,7 @@ Status RaftGroupMetadata::MergeWithRestored(
     const std::string& path, dockv::OverwriteSchemaPacking overwrite) {
   RaftGroupReplicaSuperBlockPB snapshot_superblock;
   RETURN_NOT_OK(ReadSuperBlockFromDisk(&snapshot_superblock, path));
-  LOG_WITH_FUNC(INFO) << "Superblock: " << AsString(snapshot_superblock);
+  LOG_WITH_FUNC(INFO) << "Snapshot superblock: " << AsString(snapshot_superblock);
   std::lock_guard lock(data_mutex_);
   return kv_store_.MergeWithRestored(
       snapshot_superblock.kv_store(), primary_table_id_, colocated_, overwrite);
