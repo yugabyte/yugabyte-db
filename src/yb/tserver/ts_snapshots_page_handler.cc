@@ -69,14 +69,8 @@ using NamespaceToSnapshotToInodesMap =
     std::unordered_map<NamespaceName, std::map<std::pair<HybridTimeMicros, SnapshotId>, InodeMap>>;
 
 Result<SnapshotMetadataMap> GetSnapshotMetadata(client::YBClient* client) {
-  master::MasterBackupProxy proxy(&client->proxy_cache(), client->GetMasterLeaderAddress());
-  master::ListSnapshotsRequestPB req;
-  master::ListSnapshotsResponsePB resp;
-  rpc::RpcController controller;
-  controller.set_timeout(MonoDelta::FromSeconds(FLAGS_yb_client_admin_operation_timeout_sec));
-  RETURN_NOT_OK(proxy.ListSnapshots(req, &resp, &controller));
   SnapshotMetadataMap result;
-  for (const auto& snapshot : resp.snapshots()) {
+  for (const auto& snapshot : VERIFY_RESULT(client->ListSnapshots())) {
     result[TryFullyDecodeTxnSnapshotId(snapshot.id()).ToString()] = std::move(snapshot.entry());
   }
   return result;
