@@ -794,6 +794,24 @@ Status delete_index_by_id_action(
   return Status::OK();
 }
 
+const auto clear_cache_args = "[<timeout_in_seconds>] (default 20)";
+
+Status clear_cache_action(const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  RETURN_NOT_OK(CheckArgumentsCount(args.size(), 0, 1));
+  std::optional<int> timeout_secs;
+  if (!args.empty()) {
+    int parsed_timeout = VERIFY_RESULT(CheckedStoi(args[0]));
+    if (parsed_timeout <= 0) {
+      return ClusterAdminCli::kInvalidArguments;
+    }
+    timeout_secs = parsed_timeout;
+  }
+  RETURN_NOT_OK_PREPEND(
+      client->ClearCache(MonoDelta::FromSeconds(timeout_secs.value_or(20))),
+      "Unable to clear cache");
+  return Status::OK();
+}
+
 YB_DEFINE_ENUM(FlushTableFlag, (ADD_INDEXES));
 
 Result<pair<std::optional<int>, bool>> ParseFlushTableArgs(
@@ -2904,6 +2922,7 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(flush_table);
   REGISTER_COMMAND(flush_table_by_id);
   REGISTER_COMMAND(flush_sys_catalog);
+  REGISTER_COMMAND(clear_cache);
   REGISTER_COMMAND(compact_sys_catalog);
   REGISTER_COMMAND(compact_table);
   REGISTER_COMMAND(compact_table_by_id);
