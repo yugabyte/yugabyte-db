@@ -174,17 +174,49 @@ recheck:
 	if (function)
 	{
 		/* We have a compiled function, but is it still valid? */
-		if (IsYugaByteEnabled() ? function->yb_catalog_version == YBGetActiveCatalogCacheVersion() :
+		if (IsYugaByteEnabled() ?
+			(!function->yb_invalid && function->yb_catalog_version == YBGetActiveCatalogCacheVersion()) :
 			(function->fn_xmin == HeapTupleHeaderGetRawXmin(procTup->t_data) &&
 			 ItemPointerEquals(&function->fn_tid, &procTup->t_self)))
 			function_valid = true;
 		else
 		{
 			/*
+			 * A Trigger Function (a function that RETURNS TRIGGER) is like a template, when first
+			 * time created it is inserted into plpgsql_HashTable. Later when a trigger is fired,
+			 * a second entry will be inserted into plpgsql_HashTable. In a sense, this second entry
+			 * is like an "instantiation" of this trigger function so that its OLD/NEW are bound to
+			 * the table on which the trigger is fired. The condition function->yb_catalog_version <
+			 * YBGetActiveCatalogCacheVersion() indicates that the function is being replaced. When
+			 * ddl transaction block is enabled, during the CREATE (OR REPLACE) statement
+			 * YBGetActiveCatalogCacheVersion() will return the current catalog version + 1. After
+			 * the CREATE (OR REPLACE) statement YBGetActiveCatalogCacheVersion() will return the
+			 * current catalog version. If the current catalog version is equal to the value of
+			 * yb_catalog_version of those secondary entries, we would incorrectly accept them as
+			 * still valid. Therefore we need to also invalidate all those secondary entries of this
+			 * function in case it is a Trigger Function.
+			 */
+			bool yb_invalidate_trigger_fns =
+				function->fn_is_trigger != PLPGSQL_NOT_TRIGGER &&
+				IsYugaByteEnabled() && YBIsDdlTransactionBlockEnabled() &&
+				!function->yb_invalid &&
+				function->yb_catalog_version < YBGetActiveCatalogCacheVersion();
+
+			/*
 			 * Nope, so remove it from hashtable and try to drop associated
 			 * storage (if not done already).
 			 */
 			delete_function(function);
+
+			if (yb_invalidate_trigger_fns)
+			{
+				HASH_SEQ_STATUS status;
+				plpgsql_HashEnt *hentry;
+				hash_seq_init(&status, plpgsql_HashTable);
+				while ((hentry = hash_seq_search(&status)) != NULL)
+					if (hentry->function->fn_oid == funcOid)
+						hentry->function->yb_invalid = true;
+			}
 
 			/*
 			 * If the function isn't in active use then we can overwrite the

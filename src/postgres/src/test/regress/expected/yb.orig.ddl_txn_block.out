@@ -430,3 +430,55 @@ UPDATE pg_index SET indisvalid = false
     WHERE indexrelid = 'test_partitioned_even_i_idx'::regclass;
 \c
 REINDEX INDEX test_partitioned_i_idx;
+\c
+-- #29424
+CREATE TABLE _33_s_1_data (id INT PRIMARY KEY);
+CREATE TABLE _33_s_1_audit (log_id SERIAL PRIMARY KEY, data_id INT, notes TEXT);
+CREATE FUNCTION _33_func_audit() RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO _33_s_1_audit (data_id, notes) VALUES (NEW.id, 'V1');
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+CREATE TRIGGER _33_trig_data
+AFTER INSERT ON _33_s_1_data
+FOR EACH ROW EXECUTE FUNCTION _33_func_audit();
+CREATE PROCEDURE _33_sp_insert(val INT) LANGUAGE SQL AS $$
+INSERT INTO _33_s_1_data (id) VALUES (val);
+$$;
+CALL _33_sp_insert(1);
+SELECT COUNT(*) FROM _33_s_1_audit WHERE notes = 'V1';
+ count 
+-------
+     1
+(1 row)
+
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+CREATE OR REPLACE FUNCTION _33_func_audit() RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO _33_s_1_audit (data_id, notes) VALUES (NEW.id, 'V2');
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+CREATE OR REPLACE PROCEDURE _33_sp_insert(val INT) LANGUAGE SQL AS $$
+INSERT INTO _33_s_1_data (id) VALUES (val * 100);
+$$;
+CALL _33_sp_insert(2);
+SELECT COUNT(*) FROM _33_s_1_data WHERE id = 200;
+ count 
+-------
+     1
+(1 row)
+
+SELECT COUNT(*) FROM _33_s_1_audit WHERE notes = 'V2';
+ count 
+-------
+     1
+(1 row)
+
+SELECT * FROM _33_s_1_audit WHERE notes = 'V2';
+ log_id | data_id | notes 
+--------+---------+-------
+      2 |     200 | V2
+(1 row)
+
