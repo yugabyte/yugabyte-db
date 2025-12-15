@@ -3821,7 +3821,8 @@ void TabletServiceImpl::AcquireObjectLocks(
   VLOG(2) << "Received AcquireObjectLocks RPC: " << req->DebugString();
 
   if (auto s = CheckLocalLeaseEpoch(GetRecipientLeaseEpoch(*req)); !s.ok()) {
-    return SetupErrorAndRespond(resp->mutable_error(), s, &context);
+    return SetupErrorAndRespond(
+        resp->mutable_error(), s, TabletServerErrorPB::INVALID_YSQL_LEASE, &context);
   }
   auto ts_local_lock_manager = server_->ts_local_lock_manager();
   if (!ts_local_lock_manager) {
@@ -3841,7 +3842,8 @@ void TabletServiceImpl::ReleaseObjectLocks(
   VLOG(2) << "Received ReleaseObjectLocks RPC: " << req->DebugString();
 
   if (auto s = CheckLocalLeaseEpoch(GetRecipientLeaseEpoch(*req)); !s.ok()) {
-    return SetupErrorAndRespond(resp->mutable_error(), s, &context);
+    return SetupErrorAndRespond(
+        resp->mutable_error(), s, TabletServerErrorPB::INVALID_YSQL_LEASE, &context);
   }
   auto ts_local_lock_manager = server_->ts_local_lock_manager();
   if (!ts_local_lock_manager) {
