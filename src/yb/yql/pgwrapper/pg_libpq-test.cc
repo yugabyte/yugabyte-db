@@ -980,14 +980,14 @@ class PgLibPqReadFromSysCatalogTest : public PgLibPqTest {
     auto conn = ASSERT_RESULT(Connect());
     auto client = ASSERT_RESULT(cluster_->CreateClient());
 
-    uint64_t ver_orig;
-    ASSERT_OK(client->GetYsqlCatalogMasterVersion(&ver_orig));
+    uint64_t ver_orig = 0;
+    ASSERT_OK(client->GetYsqlDBCatalogMasterVersion("postgres", &ver_orig));
     for (int i = 1; i <= FLAGS_num_iter; i++) {
       LOG(INFO) << "ITERATION " << i;
       BumpCatalogVersion(1, &conn, i % 2 == 1 ? "NOSUPERUSER" : "SUPERUSER");
       LOG(INFO) << "Fetching CatalogVersion. Expecting " << i + ver_orig;
-      uint64_t ver;
-      ASSERT_OK(client->GetYsqlCatalogMasterVersion(&ver));
+      uint64_t ver = 0;
+      ASSERT_OK(client->GetYsqlDBCatalogMasterVersion("postgres", &ver));
       ASSERT_EQ(ver_orig + i, ver);
     }
   }

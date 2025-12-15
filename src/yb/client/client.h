@@ -521,7 +521,11 @@ class YBClient {
                           uint32_t next_oid, uint32_t count,
                           uint32_t* begin_oid, uint32_t* end_oid);
 
-  Status GetYsqlCatalogMasterVersion(uint64_t *ysql_catalog_version);
+  // Deprecated. Use instead per-db version below.
+  Status DEPRECATED_GetYsqlCatalogMasterVersion(uint64_t *ysql_catalog_version);
+
+  Status GetYsqlDBCatalogMasterVersion(
+      const std::string& database_name, uint64_t *ysql_catalog_version);
 
   // Grant permission with given arguments.
   Status GrantRevokePermission(GrantRevokeStatementType statement_type,
