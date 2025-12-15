@@ -28,16 +28,16 @@ import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
 
 @RunWith(value = YBTestRunnerYsqlConnMgr.class)
-public class TestYsqlMaxConnectionsPercentage extends BaseYsqlConnMgr {
+public class TestReserveYsqlInternalConns extends BaseYsqlConnMgr {
 
     private static final int TOTAL_CONNECTIONS = 30;
-    private static final int YSQL_MAX_CONNECTIONS = 14;
-    private static final int CONN_MGR_MAX_PHY_CONN_PERCENT = 70;
+    private static final int RESERVED_CONNS_FOR_NON_REPLICATION_SUPERUSER = 3;
+    private static final int YSQL_MAX_CONNECTIONS = 20;
+    private static final int NUM_CONNS_BYPASS_CM = 10;
     private final int num_phy_conn_mgr_connections =
-        (int)Math.ceil(
-            YSQL_MAX_CONNECTIONS * (CONN_MGR_MAX_PHY_CONN_PERCENT / 100.0));// 10
+            YSQL_MAX_CONNECTIONS - NUM_CONNS_BYPASS_CM;// 10
     private final int num_postgres_connections =
-        YSQL_MAX_CONNECTIONS - num_phy_conn_mgr_connections;// 4
+            NUM_CONNS_BYPASS_CM - RESERVED_CONNS_FOR_NON_REPLICATION_SUPERUSER;// 7
     private final CountDownLatch latch = new CountDownLatch(1);
     // A shared lock object for wait/notify mechanism.
     private final Object lock = new Object();
@@ -51,10 +51,12 @@ public class TestYsqlMaxConnectionsPercentage extends BaseYsqlConnMgr {
         builder.addCommonTServerFlag("ysql_max_connections",
             Integer.toString(YSQL_MAX_CONNECTIONS));
         builder.addCommonTServerFlag("ysql_conn_mgr_use_auth_backend", "true");
-        builder.addCommonTServerFlag("ysql_conn_mgr_max_phy_conn_percent",
-            Integer.toString(CONN_MGR_MAX_PHY_CONN_PERCENT));
+        builder.addCommonTServerFlag("ysql_conn_mgr_reserve_internal_conns",
+            Integer.toString(NUM_CONNS_BYPASS_CM));
         builder.addCommonTServerFlag("ysql_conn_mgr_stats_interval",
             Integer.toString(STATS_UPDATE_INTERVAL));
+        builder.addCommonTServerFlag("ysql_pg_conf_csv",
+            "superuser_reserved_connections=" + RESERVED_CONNS_FOR_NON_REPLICATION_SUPERUSER);
     }
 
     private void createUser(String userName) throws Exception {
@@ -145,8 +147,9 @@ public class TestYsqlMaxConnectionsPercentage extends BaseYsqlConnMgr {
         // to utilize slots reserved for non-replication superuser connections.
         latch.await();
 
-        // While the test is running, we should be able to make 30% of connections with postgres.
-        LOG.info("Num postgres connections: " + num_postgres_connections);
+        LOG.info("Num postgres connections: " + num_postgres_connections + ". Keep " +
+            RESERVED_CONNS_FOR_NON_REPLICATION_SUPERUSER + " connections reserved " +
+            "for non-replication superuser connections.");
         Thread[] postgres_threads = new Thread[num_postgres_connections];
         Exception[] postgres_exceptions = new Exception[num_postgres_connections];
         for (int i = 0; i < num_postgres_connections; i++) {
@@ -223,17 +226,21 @@ public class TestYsqlMaxConnectionsPercentage extends BaseYsqlConnMgr {
     }
 
     @Test
-    public void testYsqlMaxConnectionsPercentage() throws Exception {
+    public void testReserveYsqlInternalConns() throws Exception {
         // This test validates connection manager doesn't exceeds from creating physical
-        // connections than what percentage of total ysql connections has been set for it.
+        // connections than set for it.
         // It is done by validating:
-        // 1. Conn mgr could not create more than what percentage of total ysql connections
-        //    has been set for it even there is demand to create more physical connections.
+        // 1. Conn mgr could not create more physical connections than what has been set for it
+        // even there is demand to create more physical connections.
         //  It's expected that conn mgr can exceed the limit by 1 or 2 connections due to race
         //  conditions in connection manager while creating physical connections.
         // 2. When traffic is at it's peak at conn mgr end point, we should be able to create
         //  same number of connections to postgres end point that are not reserved to be used by
         //  conn mgr within total ysql connections limit.
+        // 3. Avoid last RESERVED_CONNS_FOR_NON_REPLICATION_SUPERUSER conns to create either
+        // via conn mgr or postgres. As connection manager is making non-superuser connections, so
+        // can gurantee that last RESERVED_CONNS_FOR_NON_REPLICATION_SUPERUSER will be superuser or
+        // non-superuser connections.
 
         createUser("us1");
         createConnections();
