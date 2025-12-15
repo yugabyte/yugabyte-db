@@ -124,22 +124,29 @@ The [Prometheus](https://prometheus.io/docs/introduction/overview/) integration 
 
 - Prometheus instance
   - Deployed in a VPC on AWS or GCP.
-  - [OTLP Receiver](https://prometheus.io/docs/prometheus/latest/querying/api/#otlp-receiver) feature flag enabled.
-  {{< note title="Note" >}}
-How you enable the OTLP Receiver feature flag differs between Prometheus versions. Be sure to check the appropriate documentation for your version of Prometheus.
-  {{< /note >}}
-  - Publicly-accessible endpoint URL that resolves to the private IP of the Prometheus instance.
-
-    The DNS for the endpoint must be in a publicly accessible DNS record, allowing it to resolve globally. This typically involves adding the URL to a public DNS zone. For example, in AWS, this would mean adding the URL to a Public Hosted Zone in Route 53. To confirm that the address is publicly resolvable, you can use a tool like nslookup.
-  - Enable out-of-order ingestion.
-
-    Prometheus does not guarantee the order of metrics. To ensure that metrics are ingested in order and prevent out-of-order ingestion errors, you must enable out-of-order ingestion. For more information, see [Prometheus out-of-order ingestion](https://prometheus.io/docs/guides/opentelemetry/#enable-out-of-order-ingestion).
 
   - VPC hosting the Prometheus instance has the following Inbound Security Group rules:
     - Allow HTTP inbound traffic on port 80 for Prometheus endpoint URL (HTTP).
     - Allow HTTPS inbound traffic on port 443 for Prometheus endpoint URL (HTTPS).
 
     See [Control traffic to your AWS resources using security groups](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-security-groups.html) in the AWS documentation, or [VPC firewall rules](https://cloud.google.com/firewall/docs/firewalls) in the Google Cloud documentation.
+
+  - [OTLP Receiver](https://prometheus.io/docs/prometheus/latest/querying/api/#otlp-receiver) feature flag enabled.
+  {{< note title="Note" >}}
+How you enable the OTLP Receiver feature flag differs between Prometheus versions. Be sure to check the appropriate documentation for your version of Prometheus.
+  {{< /note >}}
+
+  - Endpoint URL that is publicly resolvable and maps to the private IP of the Prometheus instance.
+
+    The endpoint URL must have a publicly accessible DNS record so that its hostname can be resolved globally. Typically, this involves adding the URL to a public DNS zone. For example, in AWS, you would add the endpoint URL to a Public Hosted Zone in Route 53.
+
+    To verify that the endpoint is publicly resolvable, you can use a tool such as nslookup.
+
+    Note that the Prometheus instance itself should not be publicly accessible, but must be reachable from your YugabyteDB Aeon cluster via VPC peering (see YugabyteDB Aeon requirements below).
+
+  - Enable out-of-order ingestion.
+
+    Prometheus does not guarantee the order of metrics. To ensure that metrics are ingested in order and prevent out-of-order ingestion errors, you must enable out-of-order ingestion. For more information, see [Prometheus out-of-order ingestion](https://prometheus.io/docs/guides/opentelemetry/#enable-out-of-order-ingestion).
 
 - YugabyteDB Aeon cluster from which you want to export metrics
   - Cluster deployed in VPCs on AWS, or a VPC in GCP. See [VPCs](../../cloud-basics/cloud-vpcs/cloud-add-vpc/).
