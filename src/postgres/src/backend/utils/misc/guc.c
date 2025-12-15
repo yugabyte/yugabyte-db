@@ -3099,6 +3099,18 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_derived_equalities", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enable derivation of additional equalities for"
+						 " generated columns and expression indexes"),
+			NULL,
+			GUC_EXPLAIN
+		},
+		&yb_enable_derived_equalities,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_enable_base_scans_cost_model", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Enables YB cost model for Sequential and Index scans. "
 						 "  DEPRECATED: This setting is deprecated and will "
