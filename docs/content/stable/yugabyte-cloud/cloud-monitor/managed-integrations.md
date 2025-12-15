@@ -131,11 +131,6 @@ The [Prometheus](https://prometheus.io/docs/introduction/overview/) integration 
 
     See [Control traffic to your AWS resources using security groups](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-security-groups.html) in the AWS documentation, or [VPC firewall rules](https://cloud.google.com/firewall/docs/firewalls) in the Google Cloud documentation.
 
-  - [OTLP Receiver](https://prometheus.io/docs/prometheus/latest/querying/api/#otlp-receiver) feature flag enabled.
-  {{< note title="Note" >}}
-How you enable the OTLP Receiver feature flag differs between Prometheus versions. Be sure to check the appropriate documentation for your version of Prometheus.
-  {{< /note >}}
-
   - Endpoint URL that is publicly resolvable and maps to the private IP of the Prometheus instance.
 
     The endpoint URL must have a publicly accessible DNS record so that its hostname can be resolved globally. Typically, this involves adding the URL to a public DNS zone. For example, in AWS, you would add the endpoint URL to a Public Hosted Zone in Route 53.
@@ -143,6 +138,11 @@ How you enable the OTLP Receiver feature flag differs between Prometheus version
     To verify that the endpoint is publicly resolvable, you can use a tool such as nslookup.
 
     Note that the Prometheus instance itself should not be publicly accessible, but must be reachable from your YugabyteDB Aeon cluster via VPC peering (see YugabyteDB Aeon requirements below).
+
+  - [OTLP Receiver](https://prometheus.io/docs/prometheus/latest/querying/api/#otlp-receiver) feature flag enabled.
+  {{< note title="Note" >}}
+How you enable the OTLP Receiver feature flag differs between Prometheus versions. Be sure to check the appropriate documentation for your version of Prometheus.
+  {{< /note >}}
 
   - Enable out-of-order ingestion.
 
