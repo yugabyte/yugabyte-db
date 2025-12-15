@@ -182,6 +182,7 @@ YbSplitType
 YbStatLabel
 YbStatLabelData
 YbStatementType
+YbSubstituteContext
 YbSysCatalogModificationAspect
 YbSysScanBase
 YbSysScanBaseData

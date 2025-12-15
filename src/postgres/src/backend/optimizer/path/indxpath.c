@@ -44,6 +44,8 @@
 #include "optimizer/yb_saop_merge.h"
 #include "parser/parsetree.h"
 #include "pg_yb_utils.h"
+#include "rewrite/rewriteHandler.h"
+#include "rewrite/rewriteManip.h"
 #include "utils/fmgroids.h"
 #include "utils/guc.h"
 #include "utils/rel.h"
@@ -215,7 +217,10 @@ static Cost yb_bitmap_scan_cost_est(PlannerInfo *root, RelOptInfo *rel,
 									Path *ipath);
 static bool yb_can_pushdown_distinct(PlannerInfo *root, IndexOptInfo *index);
 static bool yb_can_pushdown_as_filter(PlannerInfo *root, IndexOptInfo *index, RestrictInfo *rinfo);
+static void yb_derive_equal_cond(PlannerInfo *root, RelOptInfo *rel, IndexOptInfo *index,
+								 Relids relids, IndexClauseSet *clauseset);
 
+bool yb_enable_derived_equalities;
 
 /*
  * create_index_paths()
@@ -965,6 +970,12 @@ get_join_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	/* Build index path(s) using the collected set of clauses */
 
 	/*
+	 * YB: Add derived join clauses for these specific outer relations
+	 */
+	if (IsYugaByteEnabled() && yb_enable_derived_equalities)
+		yb_derive_equal_cond(root, rel, index, relids, &clauseset);
+
+	/*
 	 * YB: We collect batched paths first to prioritize them in the path queue.
 	 * In the legacy bnl mode, we even don't create unbatched paths.
 	 */
@@ -1061,6 +1072,13 @@ get_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	bool		skip_nonnative_saop = false;
 	bool		skip_lower_saop = false;
 	ListCell   *lc;
+
+	/*
+	 * YB: Add derived clauses for indexed generated columns and
+	 * index expressions.
+	 */
+	if (IsYugaByteEnabled() && yb_enable_derived_equalities)
+		yb_derive_equal_cond(root, rel, index, NULL /* relids */ , clauses);
 
 	/*
 	 * Build simple index paths using the clauses.  Allow ScalarArrayOpExpr
@@ -4842,4 +4860,130 @@ yb_can_pushdown_distinct(PlannerInfo *root, IndexOptInfo *index)
 									 get_sortgrouplist_exprs(root->parse->distinctClause,
 															 root->processed_tlist)) &&
 		!yb_reject_distinct_pushdown((Node *) clause_list);
+}
+
+/*
+ * yb_derive_equal_cond
+ *   Add derived clauses for indexed generated columns and index expressions
+ */
+static void
+yb_derive_equal_cond(PlannerInfo *root, RelOptInfo *rel,
+					 IndexOptInfo *index, Relids relids,
+					 IndexClauseSet *clauseset)
+{
+	Relids		outer_relids = NULL;
+	Relation	index_rel;
+	Relation	base_rel;
+	RangeTblEntry *rte;
+	ListCell   *expr_lc;
+
+	/* skip non-YB and hypothetical indexes */
+	if (!index->rel->is_yb_relation || index->hypothetical)
+		return;
+
+	/* for joins, compute outer relations */
+	if (relids != NULL)
+	{
+		outer_relids = bms_difference(relids, rel->relids);
+		if (bms_is_empty(outer_relids))
+		{
+			bms_free(outer_relids);
+			return;
+		}
+	}
+
+	index_rel = index_open(index->indexoid, NoLock);
+	rte = root->simple_rte_array[rel->relid];
+	base_rel = table_open(rte->relid, NoLock);
+	expr_lc = list_head(index_rel->rd_indexprs);
+
+	/* process each index key */
+	for (int i = 0; i < index_rel->rd_index->indnatts; i++)
+	{
+		Expr	   *inferrable_expr = NULL;
+		Expr	   *generation_expr = NULL;
+		AttrNumber	attnum = index_rel->rd_index->indkey.values[i];
+		List	   *rinfos = NIL;
+
+		if (attnum == InvalidAttrNumber)
+		{
+			/* expression index */
+			Assert(expr_lc != NULL);
+			Node	   *index_expr = copyObject(lfirst(expr_lc));
+
+			ChangeVarNodes(index_expr, 1, rel->relid, 0);
+
+			inferrable_expr = (Expr *) index_expr;
+			generation_expr = (Expr *) index_expr;
+
+			expr_lc = lnext(index_rel->rd_indexprs, expr_lc);
+		}
+		else
+		{
+			/* regular column - check if generated */
+			TupleDesc	tupdesc = RelationGetDescr(base_rel);
+			Form_pg_attribute attr = TupleDescAttr(tupdesc, attnum - 1);
+
+			if (attr->attgenerated != ATTRIBUTE_GENERATED_STORED)
+				continue;
+
+			generation_expr = (Expr *) build_column_default(base_rel, attnum);
+			ChangeVarNodes((Node *) generation_expr, 1, rel->relid, 0);
+
+			inferrable_expr = (Expr *) makeVar(rel->relid, attnum, attr->atttypid,
+											   attr->atttypmod, attr->attcollation, 0);
+		}
+
+		if (outer_relids == NULL)
+		{
+			RestrictInfo *rinfo = yb_try_create_derived_clause(root, rel->relid, 0,
+															   inferrable_expr,
+															   generation_expr,
+															   index->opfamily[i]);
+
+			if (rinfo)
+				rinfos = list_make1(rinfo);
+		}
+		else
+		{
+			int			outer_relid = -1;
+
+			while ((outer_relid = bms_next_member(outer_relids, outer_relid)) >= 0)
+			{
+				RestrictInfo *rinfo = yb_try_create_derived_clause(root,
+																   rel->relid,
+																   (Index) outer_relid,
+																   inferrable_expr,
+																   generation_expr,
+																   index->opfamily[i]);
+
+				if (rinfo)
+					rinfos = lappend(rinfos, rinfo);
+			}
+		}
+
+		/* add IndexClauses for all generated RestrictInfos */
+		ListCell   *lc;
+
+		foreach(lc, rinfos)
+		{
+			RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
+			IndexClause *iclause = makeNode(IndexClause);
+
+			iclause->rinfo = rinfo;
+			iclause->indexquals = list_make1(rinfo);
+			iclause->lossy = false;
+			iclause->indexcol = i;
+			iclause->indexcols = NIL;
+
+			clauseset->indexclauses[i] =
+				lappend(clauseset->indexclauses[i], iclause);
+			clauseset->nonempty = true;
+		}
+	}
+
+	table_close(base_rel, NoLock);
+	index_close(index_rel, NoLock);
+	if (outer_relids)
+		bms_free(outer_relids);
 }
