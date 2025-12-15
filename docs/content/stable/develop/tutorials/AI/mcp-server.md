@@ -21,7 +21,13 @@ With the YugabyteDB MCP Server, developers can:
 - Enable LLMs to safely issue read-only SQL queries
 - Integrate instantly with tools like Claude Desktop, Cursor, and Windsurf
 
-For more information about the YugabyteDB MCP Server, see [Unlock AI-Driven Data Experiences with YugabyteDB MCP Server](https://www.yugabyte.com/blog/yugabytedb-mcp-server-on-aws-marketplace/).
+Learn more about the YugabyteDB MCP Server:
+
+- [Introducing the YugabyteDB MCP Server](https://www.yugabyte.com/blog/yugabytedb-mcp-server/)
+- [Unlock AI-Driven Data Experiences with YugabyteDB MCP Server](https://www.yugabyte.com/blog/yugabytedb-mcp-server-on-aws-marketplace/)
+- [YugabyteDB Joins Google's MCP Toolbox for AI Agent Development](https://www.yugabyte.com/blog/yugabytedb-joins-googles-mcp-toolbox/)
+- [Build a Retail Agent with MCP Toolbox, YugabyteDB, and Google ADK](https://www.yugabyte.com/blog/build-a-retail-agent/)
+- [How to Integrate the YugabyteDB MCP Server with Visual Studio Code](https://www.yugabyte.com/blog/integrate-yugabytedb-mcp-server-with-vs-code/)
 
 This tutorial walks you through using the YugabyteDB MCP Server to allow an AI application to access, query, analyze, and interpret data in your YugabyteDB database, using only natural language prompts.
 
