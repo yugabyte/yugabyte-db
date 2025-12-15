@@ -173,7 +173,7 @@ For versions prior to v2025.2 (or when deploying manually), you can enable EPCM 
 
 ### YugabyteDB
 
-To enable EPCM in YugabyteDB:
+To enable EPCM in YugabyteDB for a version prior to v2025.2:
 
 - Pass the `enable_pg_parity_early_access` flag to [yugabyted](../yugabyted/) when starting your cluster.
 
