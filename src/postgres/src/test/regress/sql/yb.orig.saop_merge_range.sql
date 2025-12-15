@@ -316,6 +316,11 @@ SPLIT AT VALUES (
 \set query 'SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) LIMIT 5'
 :explain2
 
+-- No limit
+-- TODO(#29078): this likely should use SAOP merge.
+\set query 'SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY r3, r4, r5'
+:explain2
+
 -- Following queries send various numbers of requests/scan various number of rows
 -- due to non-deterministic order of equal rows in merge sort, hide their DIST
 \set explain 'EXPLAIN (ANALYZE, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'

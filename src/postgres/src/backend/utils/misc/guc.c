@@ -2983,6 +2983,19 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_derived_saops", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("If true, derives additional scalar array operation "
+						 "conditions from table constraints and adds them to "
+						 "queries to improve performance."),
+			gettext_noop("Has no impact in case yb_max_saop_merge_streams is 0."),
+			GUC_EXPLAIN
+		},
+		&yb_enable_derived_saops,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_enable_upsert_mode", PGC_USERSET, CLIENT_CONN_STATEMENT,
 			gettext_noop("Sets the boolean flag to enable or disable upsert mode for writes."),
 			NULL
