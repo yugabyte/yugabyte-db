@@ -1067,6 +1067,15 @@ typedef struct {
   int32_t follower_read_staleness_ms;
 } YbcPgInitTransactionData;
 
+typedef struct {
+  char data[32];
+} YbcPgSharedDataPlaceholder;
+
+typedef struct {
+  const uint64_t *parallel_leader_session_id;
+  YbcPgSharedDataPlaceholder *shared_data;
+} YbcPgInitPostgresInfo;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

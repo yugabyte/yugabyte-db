@@ -1070,7 +1070,7 @@ IpAddressToBytes(YbcPgAshConfig *ash_config)
 }
 
 void
-YBInitPostgresBackend(const char *program_name, uint64_t *session_id)
+YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *init_info)
 {
 	HandleYBStatus(YBCInit(program_name, palloc, cstring_to_text_with_len));
 
@@ -1098,9 +1098,15 @@ YBInitPostgresBackend(const char *program_name, uint64_t *session_id)
 		};
 
 		IpAddressToBytes(&ash_config);
+
+		const YbcPgInitPostgresInfo default_init_info = {
+			.parallel_leader_session_id = NULL,
+			.shared_data = &MyProc->yb_shared_data
+		};
+
 		HandleYBStatusAtErrorLevel(YBCInitPgGate(YbGetTypeTable(),
 												 &callbacks,
-												 session_id,
+												 init_info ? init_info : &default_init_info,
 												 &ash_config), FATAL);
 		YBCInstallTxnDdlHook();
 

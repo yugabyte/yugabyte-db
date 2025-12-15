@@ -53,6 +53,7 @@ namespace pggate {
 namespace {
 
 YbcPgMemctx global_test_memctx = nullptr;
+YbcPgSharedDataPlaceholder shared_data_placeholder;
 
 YbcPgMemctx GetCurrentTestYbMemctx() {
   if (!global_test_memctx) {
@@ -157,7 +158,11 @@ Status PggateTest::Init(
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_pggate_tserver_shared_memory_uuid) =
       cluster_->tablet_server(0)->instance_id().permanent_uuid();
 
-  YBCInitPgGate(YBCTestGetTypeTable(), &callbacks, nullptr /* session_id */, &ash_config);
+  YbcPgInitPostgresInfo init_info{
+    .parallel_leader_session_id = nullptr,
+    .shared_data = &shared_data_placeholder};
+  YBCInitPgGate(
+      YBCTestGetTypeTable(), &callbacks, &init_info, &ash_config);
 
   CHECK_YBC_STATUS(YBCPgInitSession(session_stats, false /* is_binary_upgrade */));
   if (should_create_db) {

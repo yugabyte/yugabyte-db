@@ -293,7 +293,7 @@ inline std::optional<Bound> MakeBound(YbcPgBoundType type, uint16_t value) {
 
 Status InitPgGateImpl(
     YbcPgTypeEntities type_entities, const YbcPgCallbacks& pg_callbacks,
-    const YbcPgAshConfig& ash_config, std::optional<uint64_t> session_id) {
+    const YbcPgAshConfig& ash_config, const YbcPgInitPostgresInfo& init_postgres_info) {
   // TODO: We should get rid of hybrid clock usage in YSQL backend processes (see #16034).
   // However, this is added to allow simulating and testing of some known bugs until we remove
   // HybridClock usage.
@@ -311,8 +311,11 @@ Status InitPgGateImpl(
 #endif
 
   pgapi_shutdown_done.exchange(false);
-  pgapi = new PgApiImpl(type_entities, pg_callbacks, session_id, ash_config);
-  RETURN_NOT_OK(pgapi->StartPgApi(session_id));
+
+  pgapi = new PgApiImpl(type_entities, pg_callbacks, init_postgres_info, ash_config);
+  RETURN_NOT_OK(pgapi->StartPgApi(
+      init_postgres_info.parallel_leader_session_id
+          ? std::optional(*init_postgres_info.parallel_leader_session_id) : std::nullopt));
 
   VLOG(1) << "PgGate open";
   return Status::OK();
@@ -584,13 +587,12 @@ Status YBCCommitTransactionIntermediateImpl(const YbcPgInitTransactionData& data
 extern "C" {
 
 YbcStatus YBCInitPgGate(
-    YbcPgTypeEntities type_entities, const YbcPgCallbacks *pg_callbacks, uint64_t *session_id,
-    const YbcPgAshConfig *ash_config) {
-  return ToYBCStatus(WithMaskedYsqlSignals([&type_entities, pg_callbacks, session_id, ash_config] {
-      return InitPgGateImpl(
-          type_entities, *pg_callbacks, *ash_config,
-          session_id ? std::optional(*session_id) : std::nullopt);
-  }));
+    YbcPgTypeEntities type_entities, const YbcPgCallbacks *pg_callbacks,
+    const YbcPgInitPostgresInfo *init_postgres_info, const YbcPgAshConfig *ash_config) {
+  return ToYBCStatus(WithMaskedYsqlSignals(
+      [&type_entities, pg_callbacks, init_postgres_info, ash_config] {
+        return InitPgGateImpl(type_entities, *pg_callbacks, *ash_config, *init_postgres_info);
+      }));
 }
 
 void YBCDestroyPgGate() {

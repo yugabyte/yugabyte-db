@@ -776,6 +776,7 @@ message PgPerformRequestPB {
   PgPerformOptionsPB options = 2;
   repeated PgPerformOpPB ops = 3;
   fixed64 write_time = 4;
+  uint64 serial_no = 5;
 }
 
 message PgPerformResponsePB {

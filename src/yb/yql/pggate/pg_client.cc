@@ -488,10 +488,12 @@ static ash::PggateRPC kDebugLogRPCs[] = {
 class PgClient::Impl : public BigDataFetcher {
  public:
   Impl(const YbcPgAshConfig& ash_config,
-       std::reference_wrapper<const WaitEventWatcher> wait_event_watcher)
+       std::reference_wrapper<const WaitEventWatcher> wait_event_watcher,
+       std::atomic<uint64_t>& next_perform_op_serial_no)
     : heartbeat_poller_(std::bind(&Impl::Heartbeat, this, false)),
       ash_config_(ash_config),
-      wait_event_watcher_(wait_event_watcher) {
+      wait_event_watcher_(wait_event_watcher),
+      next_perform_op_serial_no_(next_perform_op_serial_no) {
     tablet_server_count_cache_.fill(0);
   }
 
@@ -916,6 +918,7 @@ class PgClient::Impl : public BigDataFetcher {
     AshMetadataToPB(*options);
     req.set_session_id(session_id_);
     *req.mutable_options() = std::move(*options);
+    req.set_serial_no(next_perform_op_serial_no_.fetch_add(1, std::memory_order_acq_rel));
     PrepareOperations(&req, operations);
 
     return PrepareAndSend<PerformTraits>(
@@ -1747,6 +1750,7 @@ class PgClient::Impl : public BigDataFetcher {
   boost::interprocess::shared_memory_object big_shared_memory_object_;
   boost::interprocess::mapped_region big_mapped_region_;
   ThreadSafeArena object_locks_arena_;
+  std::atomic<uint64_t>& next_perform_op_serial_no_;
 };
 
 std::string DdlMode::ToString() const {
@@ -1763,8 +1767,9 @@ void DdlMode::ToPB(tserver::PgFinishTransactionRequestPB_DdlModePB* dest) const 
 }
 
 PgClient::PgClient(const YbcPgAshConfig& ash_config,
-                   std::reference_wrapper<const WaitEventWatcher> wait_event_watcher)
-    : impl_(new Impl(ash_config, wait_event_watcher)) {}
+                   std::reference_wrapper<const WaitEventWatcher> wait_event_watcher,
+                   std::atomic<uint64_t>& seq_number)
+    : impl_(new Impl(ash_config, wait_event_watcher, seq_number)) {}
 
 PgClient::~PgClient() = default;
 

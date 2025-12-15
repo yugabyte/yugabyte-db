@@ -13,6 +13,8 @@
 
 #pragma once
 
+#include <atomic>
+#include <future>
 #include <memory>
 #include <optional>
 #include <string>
@@ -171,8 +173,11 @@ using WaitEventWatcher = std::function<PgWaitEventWatcher(ash::WaitStateCode, as
 
 class PgClient {
  public:
-  PgClient(const YbcPgAshConfig& ash_config,
-           std::reference_wrapper<const WaitEventWatcher> wait_event_watcher);
+  PgClient(
+      const YbcPgAshConfig& ash_config,
+      std::reference_wrapper<const WaitEventWatcher> wait_event_watcher,
+      std::atomic<uint64_t>& next_perform_op_serial_no);
+
   ~PgClient();
 
   Status Start(rpc::ProxyCache* proxy_cache,
