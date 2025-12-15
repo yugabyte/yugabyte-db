@@ -41,4 +41,19 @@ concept TemplateType = requires (const T& t) { concepts::internal::TemplateTypeH
 template <class T, template <class...> class... Tmpls>
 concept AnyOfTemplateTypes = (... || TemplateType<T, Tmpls>);
 
+template <class T>
+concept ContainerType = requires (const T& t) {
+  typename T::value_type;
+  typename T::iterator;
+  typename T::const_iterator;
+  t.begin();
+  t.end();
+  t.cbegin();
+  t.cend();
+  t.empty();
+};
+
+template <class Container, class T>
+concept ContainerOf = ContainerType<Container> && std::same_as<typename Container::value_type, T>;
+
 } // namespace yb

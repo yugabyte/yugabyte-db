@@ -20,6 +20,7 @@
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/strip.h"
 
+#include "yb/util/concepts.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
