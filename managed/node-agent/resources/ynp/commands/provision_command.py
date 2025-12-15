@@ -55,7 +55,7 @@ class ProvisionCommand(Command):
                 full_module_name = f"{module_base}.{module_name}"
                 importlib.import_module(full_module_name)
 
-    def _build_script(self, all_templates, phase):
+    def _build_script(self, all_templates, phase, create_subshell=False):
         key = next(iter(self.config), None)
         context = self.config[key]
         with tempfile.NamedTemporaryFile(mode="w+", dir=context.get('tmp_directory'),
@@ -64,13 +64,31 @@ class ProvisionCommand(Command):
             loglevel = context.get('loglevel')
             if loglevel == "DEBUG":
                 temp_file.write("set -x\n")
-            self.add_results_helper(temp_file)
+            if create_subshell:
+                # Initialize parent exit code and errors array.
+                temp_file.write("parent_exit_code=0\n")
+                temp_file.write("errors=()\n")
+            else:
+                # add_result_helper works only in the same shell.
+                self.add_results_helper(temp_file)
             self.populate_sudo_check(temp_file)
             for key in all_templates:
                 temp_file.write(f"\n######## BEGIN {key} #########\n")
-                temp_file.write(all_templates[key][phase])
+                template = all_templates[key][phase]
+                if template:
+                    if create_subshell:
+                        temp_file.write("(\n")
+                        temp_file.write(template)
+                        temp_file.write("\n)\n")
+                        self.add_exit_code_check(temp_file)
+                    else:
+                        temp_file.write(template)
                 temp_file.write(f"\n######## END {key} #########\n")
-            self.print_results_helper(temp_file)
+            if create_subshell:
+                temp_file.write("\n######## Summary #########\n")
+                self.print_exit_errors(temp_file)
+            else:
+                self.print_results_helper(temp_file)
 
         os.chmod(temp_file.name, 0o755)
         logger.info("Temp file for " + phase + " is: " + temp_file.name)
@@ -83,6 +101,31 @@ class ProvisionCommand(Command):
         logger.info("Error: %s", result.stderr)
         logger.info("Return Code: %s", result.returncode)
         return result
+
+    def add_exit_code_check(self, file):
+        file.write(
+            """
+            exit_code=$?
+            if [ $exit_code -ne 0 ]; then
+                parent_exit_code=$exit_code
+                err="Module {{ key }} failed with code $exit_code"
+                errors+=("$err")
+                echo "$err"
+            fi
+            """
+        )
+
+    def print_exit_errors(self, file):
+        file.write(
+            """
+            if [ ${#errors[@]} -ne 0 ]; then
+                for err in "${errors[@]}"; do
+                    echo "$err"
+                done
+            fi
+            exit $parent_exit_code
+            """
+        )
 
     def add_results_helper(self, file):
         file.write(
@@ -180,7 +223,7 @@ class ProvisionCommand(Command):
                 all_templates[key] = rendered_template
 
         precheck_combined_script = self._build_script(all_templates, "precheck")
-        run_combined_script = self._build_script(all_templates, "run")
+        run_combined_script = self._build_script(all_templates, "run", create_subshell=True)
 
         return run_combined_script, precheck_combined_script
 
