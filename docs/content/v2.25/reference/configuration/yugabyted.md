@@ -820,7 +820,7 @@ For on-premises deployments, consider racks as zones to treat them as fault doma
 : Using the `--backup_daemon` flag requires YB Controller; see [Installation](#installation).
 
 --enable_pg_parity_early_access *PostgreSQL-compatibilty*
-: Enable Enhanced PostgreSQL Compatibility Mode. Default: `false`
+: Enable [Enhanced PostgreSQL Compatibility Mode](../postgresql-compatibility/). Default: `false`
 
 #### Advanced flags
 
