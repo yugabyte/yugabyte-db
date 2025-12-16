@@ -13093,6 +13093,7 @@ void CatalogManager::CheckTableDeleted(const TableInfoPtr& table, const LeaderEp
     }
     lock.Commit();
     if (!transaction_id.IsNil()) {
+      TEST_SYNC_POINT("CatalogManager::CheckTableDeleted:BeforeRemoveDdlTransactionState");
       RemoveDdlTransactionState(table->id(), {transaction_id});
     }
   }), "Failed to submit update table task");
