@@ -1030,6 +1030,16 @@ Status CatalogManager::YsqlRollbackDocdbSchemaToSubTxn(const std::string& pb_txn
   for (auto& table : tables) {
     auto table_txn_id = table->LockForRead()->pb_transaction_id();
 
+    // Deletion of a table is async. It is possible that the table was deleted in a previous
+    // rollback to sub-transaction operation but before it could be removed from the
+    // ysql_ddl_txn_verfication_state_map_ map, another RollbackDocdbSchemaToSubTxn RPC arrived.
+    // In such cases, we should skip the rollback to sub-transaction for this table.
+    if (table->LockForRead()->is_deleting() || table->LockForRead()->is_deleted()) {
+      LOG(INFO) << "Skipping rollback to sub-transaction for table " << table->ToString()
+                << " as it is being deleted or deleted";
+      continue;
+    }
+
     // If the table is no longer involved in a DDL transaction or involved in a new DDL transaction,
     // then txn has already completed.
     // This can happen if the transaction aborts (say client disconnect) during the processing of
@@ -1039,6 +1049,7 @@ Status CatalogManager::YsqlRollbackDocdbSchemaToSubTxn(const std::string& pb_txn
     if (table_txn_id.empty() || table_txn_id != pb_txn_id) {
       VLOG(3) << "Rolling back to sub-transaction for an already completed "
               << " transaction: " << txn
+              << ", table: " << table->ToString()
               << ", table_txn_id: " << table_txn_id
               << ", pb_txn_id: " << pb_txn_id;
       return Status::OK();
