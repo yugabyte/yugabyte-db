@@ -10,6 +10,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <chrono>
+
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
 #include "yb/util/countdown_latch.h"
@@ -18,6 +20,8 @@
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
+
+using namespace std::chrono_literals;
 
 namespace yb::pgwrapper {
 namespace {
@@ -99,6 +103,32 @@ TEST_F(PgDDLConcurrencyTest, IndexCreation) {
   for (size_t i = 0; i < 3; ++i) {
     ASSERT_OK(RunIndexCreationQueries(&conn, table_name));
   }
+}
+
+/*
+ * Test concurrent temp table creation across multiple threads.
+ * Each thread creates its own connection and continuously creates temp tables
+ * until the test completes.
+ * Stress test to check read restart errors (see GH #29704).
+ */
+TEST_F(PgDDLConcurrencyTest, TempTableCreation) {
+  TestThreadHolder thread_holder;
+  constexpr size_t kThreadsCount = 10;
+  CountDownLatch start_latch(kThreadsCount);
+  for (size_t i = 0; i < kThreadsCount; ++i) {
+    thread_holder.AddThreadFunctor(
+        [this, &stop = thread_holder.stop_flag(), &start_latch] {
+          start_latch.CountDown();
+          start_latch.Wait();
+          while (!stop.load(std::memory_order_acquire)) {
+            auto conn = ASSERT_RESULT(SetDefaultTransactionIsolation(
+                Connect(), IsolationLevel::SNAPSHOT_ISOLATION));
+            ASSERT_OK(conn.Execute("CREATE TEMP TABLE temp_table(k int, v int)"));
+          }
+        });
+  }
+
+  thread_holder.WaitAndStop(10s * kTimeMultiplier);
 }
 
 } // namespace yb::pgwrapper
