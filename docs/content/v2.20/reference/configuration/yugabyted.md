@@ -513,9 +513,6 @@ For on-premises deployments, consider racks as zones to treat them as fault doma
 --read_replica *read_replica_node*
 : Use this flag to start a read replica node.
 
---enable_pg_parity_early_access *PostgreSQL-compatibilty*
-: Enable Enhanced PostgreSQL Compatibility Mode. Default: `false`
-
 #### Advanced flags
 
 Advanced flags can be set by using the configuration file in the `--config` flag. The advanced flags support for the `start` command is as follows:
