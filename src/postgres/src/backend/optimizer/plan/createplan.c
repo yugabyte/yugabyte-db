@@ -6936,6 +6936,28 @@ fix_indexqual_references(PlannerInfo *root, IndexPath *index_path,
 		}
 	}
 
+	/*
+	 * YB: Besides indexclauses, there could be derived clauses in
+	 * yb_index_path_info.saop_merge_saop_cols.  Add these to ..._indexquals as
+	 * well.
+	 */
+	foreach(lc, index_path->yb_index_path_info.saop_merge_saop_cols)
+	{
+		YbSaopMergeSaopColInfo *info = lfirst_node(YbSaopMergeSaopColInfo, lc);
+
+		if (info->derived)
+		{
+			Node	   *clause;
+
+			stripped_indexquals = lappend(stripped_indexquals, info->saop);
+			/* For now, row-array-compare SAOP merge is not supported. */
+			clause = fix_indexqual_clause(root, index, info->indexcol,
+										  (Node *) info->saop,
+										  list_make1_int(info->indexcol));
+			fixed_indexquals = lappend(fixed_indexquals, clause);
+		}
+	}
+
 	*stripped_indexquals_p = stripped_indexquals;
 	*fixed_indexquals_p = fixed_indexquals;
 }

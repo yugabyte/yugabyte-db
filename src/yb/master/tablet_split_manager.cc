@@ -222,7 +222,8 @@ Status TabletSplitManager::ValidatePartitioningVersion(const TableInfo& table) {
 
 Status TabletSplitManager::ValidateSplitCandidateTable(
     const TableInfoPtr& table,
-    const IgnoreDisabledList ignore_disabled_lists) {
+    const IgnoreDisabledList ignore_disabled_lists,
+    const IgnoreVectorIndexes ignore_vector_indexes) {
   if (PREDICT_FALSE(FLAGS_TEST_validate_all_tablet_candidates)) {
     return Status::OK();
   }
@@ -246,12 +247,14 @@ Status TabletSplitManager::ValidateSplitCandidateTable(
         *table);
   }
 
-  for (const auto& index : table_lock->pb.indexes()) {
-    if (index.has_vector_idx_options()) {
-      return STATUS_FORMAT(
-          NotSupported,
-          "Tablet splitting is not supported for tables indexed with vector index: $0",
-          *table);
+  if (!ignore_vector_indexes) {
+    for (const auto& index : table_lock->pb.indexes()) {
+      if (index.has_vector_idx_options()) {
+        return STATUS_FORMAT(
+            NotSupported,
+            "Tablet splitting is not supported for tables indexed with vector index: $0",
+            *table);
+      }
     }
   }
 
@@ -821,7 +824,7 @@ void TabletSplitManager::DoSplitting(
         }
         YB_LOG_EVERY_N_SECS(INFO, 30) << Format(
             "Found split with ongoing task. Task type: $0. Split parent id: $1.",
-            task->type_name(), tablet_id) << THROTTLE_MSG;
+            task->type_name(), tablet_id);
         if (!state.CanSplitMoreGlobal()) {
           return;
         }
@@ -836,8 +839,7 @@ void TabletSplitManager::DoSplitting(
       YB_LOG_EVERY_N_SECS(WARNING, 30) << "Skipping tablet splitting for table "
                                        << table->id() << ": "
                                        << "as fetching replication factor failed with error "
-                                       << StatusToString(replication_factor.status())
-                                       << THROTTLE_MSG;
+                                       << StatusToString(replication_factor.status());
       continue;
     }
     auto tablets_result = table->GetTablets();
@@ -958,8 +960,7 @@ bool TabletSplitManager::IsTabletSplittingComplete(
     if (task->type() == server::MonitoredTaskType::kGetTabletSplitKey ||
         task->type() == server::MonitoredTaskType::kSplitTablet) {
       YB_LOG_EVERY_N_SECS(INFO, 10)
-          << Format("Tablet Splitting: Table $0 has outstanding splitting tasks", table.id())
-          << THROTTLE_MSG;
+          << Format("Tablet Splitting: Table $0 has outstanding splitting tasks", table.id());
       return false;
     }
   }

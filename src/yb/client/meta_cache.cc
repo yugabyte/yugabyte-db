@@ -2406,12 +2406,33 @@ void MetaCache::LookupTabletById(const TabletId& tablet_id,
   LOG_IF(DFATAL, !result) << "Lookup was not started for tablet " << tablet_id;
 }
 
+void MetaCache::InvalidateVectorIndexes(const YBTable& indexed_table) {
+  TableIds vector_index_ids;
+  vector_index_ids.reserve(indexed_table.index_map().size());
+  for (const auto& [_, index] : indexed_table.index_map()) {
+    if (index.is_vector_index()) {
+      vector_index_ids.emplace_back(index.table_id());
+    }
+  }
+  VLOG_WITH_FUNC(3) << "Collected: " << AsString(vector_index_ids);
+
+  size_t num_removed = 0;
+  {
+    std::lock_guard lock(mutex_);
+    for (const auto& id : vector_index_ids) {
+      num_removed += tables_.erase(id);
+    }
+  }
+  VLOG_WITH_FUNC(3) << "Removed " << num_removed << " cached vector indexes";
+}
+
 void MetaCache::RefreshTablePartitions(
     const std::shared_ptr<YBTable>& table, StdStatusCallback callback) {
-  // TODO(vector_index): it could be required to remove table's cached vector indexes here
-  // to let them get the actual partitions, because vector index does not participate in any DML,
-  // and hence the meta cache will never trigger partitions refresh for the vector index.
-  // Will be addressed by https://github.com/yugabyte/yugabyte-db/issues/29377.
+  // It is required to invalidate table's cached vector indexes completely to let them get
+  // the actual partitions, because vector index does not participate in any DML, and hence
+  // the meta cache will never trigger partitions refresh for the vector index.
+  InvalidateVectorIndexes(*table);
+
   table->RefreshPartitions(
       client_,
       [this, table, callback = std::move(callback)](

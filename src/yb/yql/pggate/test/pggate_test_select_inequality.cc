@@ -128,11 +128,11 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
   // Specify the selected expressions.
   YbcPgExpr colref;
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::STRING, &colref));
-  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 2, DataType::INT64, &colref));
-  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 3, DataType::STRING, &colref));
-  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
 
   // Set partition and range columns for SELECT to select a specific row.
   // SELECT ... WHERE hash = 0 AND id = seed.
@@ -197,11 +197,11 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
 
   // Specify the selected expressions.
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::STRING, &colref));
-  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 2, DataType::INT64, &colref));
-  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 3, DataType::STRING, &colref));
-  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
 
   // Set partition and range columns for SELECT to select a specific row.
   // SELECT ... WHERE hash = 0 AND id = seed.
@@ -264,11 +264,11 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
 
   // Specify the selected expressions.
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::STRING, &colref));
-  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 2, DataType::INT64, &colref));
-  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 3, DataType::STRING, &colref));
-  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
 
   // Set partition and range columns for SELECT to select a specific row.
   // SELECT ... WHERE hash = 0 AND id = seed.
@@ -331,11 +331,11 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
 
   // Specify the selected expressions.
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::STRING, &colref));
-  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 2, DataType::INT64, &colref));
-  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 3, DataType::STRING, &colref));
-  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
 
   // Set partition and range columns for SELECT to select a specific row.
   // SELECT ... WHERE hash = 0 AND id = seed.

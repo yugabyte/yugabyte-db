@@ -328,10 +328,22 @@ const char** YBCStatusArguments(YbcStatus s, size_t* nargs) {
 
 YbcStatus YBCInit(const char* argv0,
                   YbcPallocFn palloc_fn,
-                  YbcCstringToTextWithLenFn cstring_to_text_with_len_fn) {
+                  YbcCstringToTextWithLenFn cstring_to_text_with_len_fn,
+                  YbcSwitchMemoryContextFn switch_mem_context_fn,
+                  YbcCreateMemoryContextFn create_mem_context_fn,
+                  YbcDeleteMemoryContextFn delete_mem_context_fn) {
   YBCSetPAllocFn(palloc_fn);
   if (cstring_to_text_with_len_fn) {
     YBCSetCStringToTextWithLenFn(cstring_to_text_with_len_fn);
+  }
+  if (switch_mem_context_fn) {
+    YBCSetSwitchMemoryContextFn(switch_mem_context_fn);
+  }
+  if (create_mem_context_fn) {
+    YBCSetCreateMemoryContextFn(create_mem_context_fn);
+  }
+  if (delete_mem_context_fn) {
+    YBCSetDeleteMemoryContextFn(delete_mem_context_fn);
   }
   auto status = InitGFlags(argv0);
   if (status.ok() && !FLAGS_TEST_process_info_dir.empty()) {

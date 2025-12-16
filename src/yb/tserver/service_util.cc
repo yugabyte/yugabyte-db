@@ -413,7 +413,7 @@ Status RejectWrite(
       ServiceUnavailable, message, TabletServerDelay(std::chrono::milliseconds(delay_ms)));
   YB_LOG_EVERY_N_SECS(WARNING, 1)
       << "T " << tablet_peer->tablet_id() << " P " << tablet_peer->permanent_uuid()
-      << ": Rejecting Write request, " << status << THROTTLE_MSG;
+      << ": Rejecting Write request, " << status;
   return status;
 }
 
@@ -430,9 +430,9 @@ Status CheckWriteThrottling(double score, tablet::TabletPeer* tablet_peer) {
         soft_limit_exceeded_result.current_capacity_pct, score);
     if (soft_limit_exceeded_result.current_capacity_pct >=
             FLAGS_memory_limit_warn_threshold_percentage) {
-      YB_LOG_EVERY_N_SECS(WARNING, 1) << "Rejecting Write request: " << msg << THROTTLE_MSG;
+      YB_LOG_EVERY_N_SECS(WARNING, 1) << "Rejecting Write request: " << msg;
     } else {
-      YB_LOG_EVERY_N_SECS(INFO, 1) << "Rejecting Write request: " << msg << THROTTLE_MSG;
+      YB_LOG_EVERY_N_SECS(INFO, 1) << "Rejecting Write request: " << msg;
     }
     return STATUS(ServiceUnavailable, msg);
   }

@@ -1289,6 +1289,7 @@ typedef struct YbSaopMergeSaopColInfo
 	ScalarArrayOpExpr *saop;
 	int			indexcol;
 	int			num_elems;
+	bool		derived;
 } YbSaopMergeSaopColInfo;
 
 /*

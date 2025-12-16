@@ -2,8 +2,8 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="version" content="%SNOWPACK_PUBLIC_BUILD_VERSION%" />
-    <meta name="commit" content="%SNOWPACK_PUBLIC_BUILD_COMMIT%" />
+    <meta name="version" content="<%- VITE_BUILD_VERSION %>" />
+    <meta name="commit" content="<%- VITE_BUILD_COMMIT %>" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
@@ -56,7 +56,7 @@
     <!-- End Google Tag Manager (noscript) -->
     <div id="root"></div>
     <noscript>You need to enable JavaScript to run this app.</noscript>
-    <script type="module" src="/dist/index.js"></script>
+    <script type="module" src="./src/index.tsx"></script>
   </body>
 </html>
 <!-- fdc3f152-5a93-4737-842c-cbb2a23ec293 -->

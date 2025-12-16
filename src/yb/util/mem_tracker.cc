@@ -960,9 +960,9 @@ bool CheckMemoryPressureWithLogging(
       soft_limit_exceeded_result.current_capacity_pct, score);
   if (soft_limit_exceeded_result.current_capacity_pct >=
       FLAGS_memory_limit_warn_threshold_percentage) {
-    YB_LOG_EVERY_N_SECS(WARNING, 1) << error_prefix << msg << THROTTLE_MSG;
+    YB_LOG_EVERY_N_SECS(WARNING, 1) << error_prefix << msg;
   } else {
-    YB_LOG_EVERY_N_SECS(INFO, 1) << error_prefix << msg << THROTTLE_MSG;
+    YB_LOG_EVERY_N_SECS(INFO, 1) << error_prefix << msg;
   }
 
   return false;

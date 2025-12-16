@@ -90,6 +90,9 @@ uint16_t GetSessionReplicationOriginId() {
   return 0;
 }
 
+void CheckForInterruptsNoOp() {
+}
+
 } // namespace
 
 PggateTest::PggateTest() = default;
@@ -118,6 +121,18 @@ struct varlena* PggateTestCStringToTextWithLen(const char* c, int size) {
   memcpy(buf, c, size);
   buf[size] = 0;
   return reinterpret_cast<struct varlena*>(buf);
+}
+
+void *PggateTestSwitchMemoryContext(void* context) {
+  return context;
+}
+
+void *PggateTestCreateMemContext(void* parent, const char*name) {
+  static MemoryContext memctx;
+  return static_cast<void*>(&memctx);
+}
+
+void PggateTestDeleteMemContext(void* context) {
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -156,7 +171,9 @@ Status PggateTest::Init(
   RETURN_NOT_OK(CreateCluster(num_tablet_servers, replication_factor));
 
   // Init PgGate API.
-  CHECK_YBC_STATUS(YBCInit(test_name, PggateTestAlloc, PggateTestCStringToTextWithLen));
+  CHECK_YBC_STATUS(YBCInit(test_name, PggateTestAlloc, PggateTestCStringToTextWithLen,
+                           PggateTestSwitchMemoryContext, PggateTestCreateMemContext,
+                           PggateTestDeleteMemContext));
 
   YbcPgCallbacks callbacks;
 
@@ -168,6 +185,7 @@ Status PggateTest::Init(
   callbacks.PgstatReportWaitStart = &PgstatReportWaitStartNoOp;
   callbacks.GetCatalogSnapshotReadPoint = &GetCatalogSnapshotReadPoint;
   callbacks.GetSessionReplicationOriginId = &GetSessionReplicationOriginId;
+  callbacks.CheckForInterrupts = &CheckForInterruptsNoOp;
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_pggate_tserver_shared_memory_uuid) =
       cluster_->tablet_server(0)->instance_id().permanent_uuid();

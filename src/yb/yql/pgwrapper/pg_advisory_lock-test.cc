@@ -368,7 +368,8 @@ TEST_F(PgAdvisoryLockTest, VerifyLockTimeout) {
   // Verify the lock attempt fails with advisory lock timeout error.
   Status result = conn2_session_lock_future.get();
   ASSERT_NOK(result);
-  ASSERT_STR_CONTAINS(result.ToString(), "Timed out waiting for Acquire Advisory Lock");
+  // Most build types return "Timed out" while Mac returns "timed out". Ignore the 'T'.
+  ASSERT_STR_CONTAINS(result.ToString(), "imed out waiting for Acquire Advisory Lock");
 }
 
 TEST_F(PgAdvisoryLockTest, ToggleAdvisoryLockFlag) {

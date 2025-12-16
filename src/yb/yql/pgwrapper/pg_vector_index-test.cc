@@ -21,6 +21,7 @@
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_vector_index.h"
 
+#include "yb/docdb/docdb_util.h"
 #include "yb/integration-tests/cluster_itest_util.h"
 
 #include "yb/qlexpr/index.h"
@@ -41,6 +42,7 @@
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/path_util.h"
 #include "yb/util/test_thread_holder.h"
 
 #include "yb/vector_index/usearch_include_wrapper_internal.h"
@@ -60,6 +62,7 @@ DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_bool(ysql_enable_auto_analyze_infra);
 DECLARE_bool(ysql_use_packed_row_v2);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
+DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_uint32(vector_index_concurrent_reads);
@@ -1265,10 +1268,23 @@ using PgDistributedVectorIndexTestParamsDecorator =
 
 class PgDistributedVectorIndexTest
     : public PgDistributedVectorIndexTestParamsDecorator<PgVectorIndexTestBase> {
+  using Base = PgDistributedVectorIndexTestParamsDecorator<PgVectorIndexTestBase>;
+
+ protected:
+  void SetUp() override {
+    FLAGS_cleanup_split_tablets_interval_sec = GetCleanupSplitTabletsIntervalSec();
+    Base::SetUp();
+  }
+
+  virtual int GetCleanupSplitTabletsIntervalSec() const {
+    return 1;
+  }
 };
 
 MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(PgDistributedVectorIndexTest);
 
+// Use `BaseTable` test name prefix to identify the tests where indexable table split happens
+// before the vector index creation.
 TEST_P(PgDistributedVectorIndexTest, BaseTableManualSplitSimple) {
   constexpr size_t kNumRows = 20;
 
@@ -1298,6 +1314,63 @@ TEST_P(PgDistributedVectorIndexTest, BaseTableManualSplitSimple) {
 
   // Make sure drop table works fine.
   ASSERT_OK(conn.Execute("DROP TABLE test"));
+}
+
+TEST_P(PgDistributedVectorIndexTest, ManualSplitSimple) {
+  num_pre_split_tablets_ = 2;
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, /* start_row = */ 1, /* end_row = */ 80));
+
+  // Wait for all intents are applied and flush tablets.
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  // Trigger tablet split for the second tablet.
+  auto peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(peers.size(), 2);
+  std::ranges::sort(peers, [](const auto& peer1, const auto& peer2) {
+    const auto& part1 = peer1->tablet_metadata()->partition()->partition_key_start();
+    const auto& part2 = peer2->tablet_metadata()->partition()->partition_key_start();
+    return part1 < part2;
+  });
+
+  LOG(INFO) << "Splitting tablet " << peers.back()->tablet_id();
+  ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(
+     cluster_.get(), peers.back()->tablet_id()));
+
+  // Make sure parent tablet got cleaned up.
+  SleepFor(MonoDelta::FromSeconds(
+      2 * ANNOTATE_UNPROTECTED_READ(FLAGS_cleanup_split_tablets_interval_sec)));
+
+  peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(peers.size(), 3);
+
+  // Verify tablet dirs exist.
+  auto* env = Env::Default();
+  for (const auto& peer : peers) {
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    DCHECK_ONLY_NOTNULL(tablet.get());
+    const auto* meta = tablet->metadata();
+    ASSERT_TRUE(env->DirExists(meta->rocksdb_dir()));
+    ASSERT_TRUE(env->DirExists(meta->intents_rocksdb_dir()));
+    ASSERT_TRUE(env->DirExists(meta->snapshots_dir()));
+    auto indexes = tablet->vector_indexes().List();
+    ASSERT_ONLY_NOTNULL(indexes.get());
+    ASSERT_FALSE(indexes->empty());
+    for (const auto& vi : *indexes) {
+      const auto vi_dir = meta->vector_index_dir(vi->options());
+      ASSERT_TRUE(env->DirExists(vi_dir));
+      const auto files = AsString(ASSERT_RESULT(path_utils::GetVectorIndexFiles(*env, vi_dir)));
+      const auto expected_files = Format(
+          "[0.meta, vectorindex_1$0]", docdb::GetVectorIndexChunkFileExtension(vi->options()));
+      ASSERT_STR_EQ(files, expected_files);
+    }
+  }
+
+  // TODO(vector_index): Add simple search when GH29543 is fixed.
+  // TODO(vector_index): Verify compacted tablets content once GH29378 is fixed.
 }
 
 ////////////////////////////////////////////////////////

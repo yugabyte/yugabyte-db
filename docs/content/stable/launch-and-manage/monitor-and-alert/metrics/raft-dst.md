@@ -22,6 +22,7 @@ The following are key metrics for monitoring Raft processing. All metrics are co
 
 | Metric (Counter \| microseconds) | Description |
 | :----- | :--- |
+| `ts_live_tablet_peers` | The count of live RAFT tablet peers hosted by a TServer, including system tablets like transaction tablets. |
 | `handler_latency_yb_consensus_ConsensusService_UpdateConsensus` | Time to replicate a batch of log entries from the leader to the follower. Includes the total count of the RPC method being invoked.
 | `handler_latency_yb_consensus_ConsensusService_RequestConsensusVotes` | Time by candidates to gather votes. Includes the total count of the RPC method being invoked.
 | `handler_latency_yb_consensus_ConsensusService_ChangeConfig` | Time by candidates to add or remove a peer from the Raft group. Includes the total count of the RPC method being invoked.

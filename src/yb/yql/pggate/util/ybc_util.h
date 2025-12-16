@@ -58,11 +58,20 @@ typedef void* (*YbcPallocFn)(size_t size);
 
 typedef struct varlena* (*YbcCstringToTextWithLenFn)(const char* c, int size);
 
+typedef void* (*YbcSwitchMemoryContextFn)(void* context);
+
+typedef void* (*YbcCreateMemoryContextFn)(void* parent, const char* name);
+
+typedef void (*YbcDeleteMemoryContextFn)(void* context);
+
 // Global initialization of the YugaByte subsystem.
 CHECKED_YBC_STATUS YBCInit(
     const char* argv0,
     YbcPallocFn palloc_fn,
-    YbcCstringToTextWithLenFn cstring_to_text_with_len_fn);
+    YbcCstringToTextWithLenFn cstring_to_text_with_len_fn,
+    YbcSwitchMemoryContextFn switch_mem_context_fn,
+    YbcCreateMemoryContextFn create_mem_context_fn,
+    YbcDeleteMemoryContextFn delete_mem_context_fn);
 
 // From glog's log_severity.h:
 // const int GLOG_INFO = 0, GLOG_WARNING = 1, GLOG_ERROR = 2, GLOG_FATAL = 3;

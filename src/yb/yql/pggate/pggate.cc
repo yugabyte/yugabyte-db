@@ -1369,8 +1369,10 @@ Status PgApiImpl::WaitVectorIndexReady(const PgObjectId& table_id) {
 // DML Statement Support.
 //--------------------------------------------------------------------------------------------------
 
-Status PgApiImpl::DmlAppendTarget(PgStatement* handle, PgExpr* target) {
-  return VERIFY_RESULT_REF(GetStatementAs<PgDml>(handle)).AppendTarget(target);
+Status PgApiImpl::DmlAppendTarget(
+    PgStatement* handle, PgExpr* target, bool is_for_secondary_index) {
+  return VERIFY_RESULT_REF(
+      GetStatementAs<PgDml>(handle)).AppendTarget(target, is_for_secondary_index);
 }
 
 Status PgApiImpl::DmlAppendQual(
@@ -1444,6 +1446,11 @@ Status PgApiImpl::DmlBindBounds(
   VERIFY_RESULT_REF(GetStatementAs<PgDmlRead>(handle))
       .BindBounds(lower_bound, lower_bound_inclusive, upper_bound, upper_bound_inclusive);
   return Status::OK();
+}
+
+Status PgApiImpl::DmlSetMergeSortKeys(YbcPgStatement handle, int num_keys,
+                                      const YbcSortKey *sort_keys) {
+  return VERIFY_RESULT_REF(GetStatementAs<PgDmlRead>(handle)).SetMergeSortKeys(num_keys, sort_keys);
 }
 
 Status PgApiImpl::DmlBindTable(PgStatement* handle) {
@@ -2272,11 +2279,15 @@ void PgApiImpl::ClearInsertOnConflictCache(void* state) {
 //--------------------------------------------------------------------------------------------------
 
 void PgApiImpl::SetTimeout(int timeout_ms) {
-  pg_session_->SetTimeout(timeout_ms);
+  pg_session_->pg_client().SetTimeout(timeout_ms);
+}
+
+void PgApiImpl::ClearTimeout() {
+  pg_session_->pg_client().ClearTimeout();
 }
 
 void PgApiImpl::SetLockTimeout(int lock_timeout_ms) {
-  pg_session_->SetLockTimeout(lock_timeout_ms);
+  pg_session_->pg_client().SetLockTimeout(lock_timeout_ms);
 }
 
 Result<yb::tserver::PgGetLockStatusResponsePB> PgApiImpl::GetLockStatusData(

@@ -528,8 +528,7 @@ Status ReadQuery::Complete() {
     const auto result = VERIFY_RESULT(DoRead());
     if (allow_retry_ && read_time_ && read_time_ == result.restart_time) {
       YB_LOG_EVERY_N_SECS(DFATAL, 5)
-          << __func__ << ", restarting read with the same read time: " << result.restart_time
-          << THROTTLE_MSG;
+          << __func__ << ", restarting read with the same read time: " << result.restart_time;
       allow_retry_ = false;
     }
     read_time_ = result.restart_time;

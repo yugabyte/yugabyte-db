@@ -107,6 +107,12 @@ extern void ResetThreadLocalCurrentMemoryContext();
 
 extern void DeleteThreadLocalCurrentMemoryContext();
 
+extern void *YbSwitchPgGateMemoryContext(void *context);
+
+extern void *YbCreatePgGateMemoryContext(void *parent, const char *name);
+
+extern void YbDeletePgGateMemoryContext(void *context);
+
 struct PgMemctx *GetCurrentYbMemctx();
 
 /*

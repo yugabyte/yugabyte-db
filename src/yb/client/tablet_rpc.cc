@@ -171,7 +171,7 @@ void TabletInvoker::SelectTabletServer()  {
     } else {
       YB_LOG_EVERY_N_SECS(INFO, 1)
           << "Unable to pick leader for " << tablet_id_ << ", replicas: " << AsString(replicas)
-          << ", followers: " << AsString(followers_) << THROTTLE_MSG;
+          << ", followers: " << AsString(followers_);
     }
   } else {
     VLOG(4) << "Selected TServer " << current_ts_->ToString() << " as leader for " << tablet_id_;

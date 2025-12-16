@@ -1575,6 +1575,15 @@ yb_step_4:
 	}
 
 	/*
+	 * YB: It is possible that there are no index clauses or useful pathkeys
+	 * but SAOP merge SAOP cols are derived for the above forward scan case.
+	 * Clear that state before attempting backwards scan.  Don't bother freeing
+	 * memory as it's negligible and will be cleaned up with the memory context
+	 * after the query.
+	 */
+	yb_saop_merge_saop_cols = NIL;
+
+	/*
 	 * 5. If the index is ordered, a backwards scan might be interesting.
 	 */
 	if (index_is_ordered && pathkeys_possibly_useful)

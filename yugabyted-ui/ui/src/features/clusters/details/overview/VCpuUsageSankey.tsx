@@ -95,6 +95,8 @@ export const VCpuUsageSankey: FC<VCpuUsageSankey> = ({ cluster, sankeyProps, sho
       return;
     }
 
+    let isMounted = true;
+
     const populateCpu = async () => {
       const getNodeCpu = async (nodeName: string) => {
         try {
@@ -128,10 +130,16 @@ export const VCpuUsageSankey: FC<VCpuUsageSankey> = ({ cluster, sankeyProps, sho
         cpuUsage.push(nodeCPU);
       }
 
-      setNodeCpuUsage(cpuUsage);
+      if (isMounted) {
+        setNodeCpuUsage(cpuUsage);
+      }
     }
 
     populateCpu();
+
+    return () => {
+      isMounted = false;
+    };
   }, [nodeList])
 
   const data = useMemo(() => {

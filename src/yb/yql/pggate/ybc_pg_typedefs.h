@@ -387,6 +387,8 @@ typedef struct {
   YbcReadPointHandle (*GetCatalogSnapshotReadPoint)(YbcPgOid table_oid, bool create_if_not_exists);
   /* replication origin */
   uint16_t (*GetSessionReplicationOriginId)();
+  /* CHECK_FOR_INTERRUPTS */
+  void (*CheckForInterrupts)();
 } YbcPgCallbacks;
 
 typedef struct {
@@ -1026,6 +1028,16 @@ typedef struct {
   bool is_region_local;
   YbcPgOid tablespace_oid;
 } YbcPgTableLocalityInfo;
+
+// Merge sort key information
+typedef struct {
+  // Position of the merge sort column in the index
+  uint16_t att_idx;
+  // Position of the merge sort column in the table
+  uint16_t value_idx;
+  int (*comparator)(uint64_t datum1, bool isnull1, uint64_t datum2, bool isnull2, void *sortstate);
+  void *sortstate;
+} YbcSortKey;
 
 #ifdef __cplusplus
 }  // extern "C"

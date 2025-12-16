@@ -31,7 +31,6 @@
 DEFINE_RUNTIME_int32(ysql_ddl_rpc_timeout_sec, 180, "Timeout for YSQL DDL operations.");
 
 DECLARE_int32(max_num_tablets_for_table);
-DECLARE_int32(yb_client_admin_operation_timeout_sec);
 DECLARE_int32(ysql_clone_pg_schema_rpc_timeout_ms);
 
 namespace yb::pggate {

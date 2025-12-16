@@ -109,6 +109,7 @@ The following table describes options that are changed for a typical installatio
 | `use_system_level_systemd` | Defaults to false (which uses user-level systemd for service management). |
 | `node_ip` | The fully-qualified domain name or IP address of the node you are provisioning. Must be accessible to other nodes. |
 | `tmp_directory` | The directory on the node to use for storing temporary files during provisioning. |
+| `is_configure_clockbound` | {{<tags/feature/ea idea="2133">}}Set to `true` to configure [ClockBound](https://github.com/aws/clock-bound) during provisioning. ClockBound improves clock accuracy and reduces read-restart errors in YSQL. ClockBound requires [chrony](https://chrony-project.org/) to be configured. <br/>When enabled, the provisioning script installs ClockBound as a systemd unit and configures it to communicate with chronyd. <br/>The script also configures the on-premises provider configuration (see the following options) so that universes created using the provider automatically have the [time_source](../../../../reference/configuration/yb-master/#time-source) flag set to `clockbound`. |
 
 Set the following options to have node agent create (or update) the [on-premises provider configuration](../../../configure-yugabyte-platform/on-premises-provider/) where you want to add the node. (YugabyteDB Anywhere must be installed and running.)
 

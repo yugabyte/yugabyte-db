@@ -4655,6 +4655,7 @@ Result<std::string> Tablet::GetEncodedMiddleSplitKey(std::string *partition_spli
   Slice lower_bound_key;
   if (FLAGS_tablet_split_use_middle_user_key) {
     lower_bound_key = Slice(&dockv::kMinRegularDbTableRowFirstByte, 1);
+    LOG_WITH_PREFIX(INFO) << "Middle split key lower bound: " << lower_bound_key.ToDebugHexString();
   }
   auto middle_key = VERIFY_RESULT(regular_db_->GetMiddleKey(lower_bound_key));
 

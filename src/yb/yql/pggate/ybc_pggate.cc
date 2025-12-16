@@ -83,8 +83,6 @@ DECLARE_int32(num_connections_to_server);
 
 DECLARE_int32(delay_alter_sequence_sec);
 
-DECLARE_int32(client_read_write_timeout_ms);
-
 DEPRECATE_FLAG(bool, ysql_disable_per_tuple_memory_context_in_update_relattrs, "06_2023");
 
 DEFINE_RUNTIME_PG_FLAG(
@@ -1392,8 +1390,9 @@ YbcStatus YBCPgWaitVectorIndexReady(
 // DML Statements.
 //--------------------------------------------------------------------------------------------------
 
-YbcStatus YBCPgDmlAppendTarget(YbcPgStatement handle, YbcPgExpr target) {
-  return ToYBCStatus(pgapi->DmlAppendTarget(handle, target));
+YbcStatus YBCPgDmlAppendTarget(
+    YbcPgStatement handle, YbcPgExpr target, bool is_for_secondary_index) {
+  return ToYBCStatus(pgapi->DmlAppendTarget(handle, target, is_for_secondary_index));
 }
 
 YbcStatus YbPgDmlAppendQual(
@@ -1486,6 +1485,11 @@ YbcStatus YBCPgDmlBindRange(YbcPgStatement handle,
   return ToYBCStatus(pgapi->DmlBindRange(
     handle, Slice(lower_bound, lower_bound_len), true,
             Slice(upper_bound, upper_bound_len), false));
+}
+
+YbcStatus YBCPgDmlSetMergeSortKeys(YbcPgStatement handle, int num_keys,
+                                   const YbcSortKey *sort_keys) {
+  return ToYBCStatus(pgapi->DmlSetMergeSortKeys(handle, num_keys, sort_keys));
 }
 
 YbcStatus YBCPgDmlBindTable(YbcPgStatement handle) {
@@ -2224,29 +2228,32 @@ bool YBCPgIsYugaByteEnabled() {
   return pgapi;
 }
 
-static int GetTimeoutValue(int timeout_ms) {
-  DCHECK_GE(timeout_ms, 0) << "Timeout value should be non-negative";
-  const auto default_client_timeout_ms = client::YsqlClientReadWriteTimeoutMs();
-  // If the timeout is 0, it means no timeout in Postgres, so we use the default value.
-  if (timeout_ms == 0) {
-    return default_client_timeout_ms;
-  }
-  // Otherwise, return the minimum of the provided timeout and the default timeout.
-  return std::min(timeout_ms, default_client_timeout_ms);
-}
-
 void YBCSetLockTimeout(int lock_timeout_ms, void* extra) {
   if (!pgapi || lock_timeout_ms < 0) {
     return;
   }
-  pgapi->SetLockTimeout(GetTimeoutValue(lock_timeout_ms));
+  pgapi->SetLockTimeout(lock_timeout_ms);
 }
 
-void YBCSetTimeout(int timeout_ms, void* extra) {
-  if (!pgapi || timeout_ms < 0) {
+void YBCSetTimeout(int timeout_ms) {
+  if (!pgapi || timeout_ms <= 0) {
     return;
   }
-  pgapi->SetTimeout(GetTimeoutValue(timeout_ms));
+  pgapi->SetTimeout(timeout_ms);
+}
+
+void YBCClearTimeout() {
+  if (!pgapi) {
+    return;
+  }
+  pgapi->ClearTimeout();
+}
+
+void YBCCheckForInterrupts() {
+  LOG_IF(FATAL, !is_main_thread())
+      << __PRETTY_FUNCTION__ << " should only be invoked from the main thread";
+
+  pgapi->pg_callbacks()->CheckForInterrupts();
 }
 
 YbcStatus YBCNewGetLockStatusDataSRF(YbcPgFunction *handle) {

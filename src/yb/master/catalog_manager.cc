@@ -2915,52 +2915,236 @@ Status CatalogManager::ShouldSplitValidCandidate(
   return Status::OK();
 }
 
+namespace {
+
+std::string AsDebugHexString(const PartitionPB& partition) {
+  return Format(
+      "partition_key_start: $0, partition_key_end: $1",
+      Slice(partition.partition_key_start()).PrefixNoLongerThan(64).ToDebugHexString(),
+      Slice(partition.partition_key_end()).PrefixNoLongerThan(64).ToDebugHexString());
+}
+
+class SplitScope {
+ public:
+  SplitScope(CatalogManager& catalog, TabletInfo& source_tablet_info)
+      : catalog_(catalog), source_tablet_info_(source_tablet_info) {
+    tables_.push_back(source_tablet_info_.table());
+    MakeTempTablets();
+  }
+
+  ~SplitScope() {
+    if (temp_tablet_info_locked_) {
+      for (auto& temp_tablet : temp_tablet_info_) {
+        if (temp_tablet) {
+          temp_tablet->mutable_metadata()->AbortMutation();
+          temp_tablet = nullptr;
+        }
+      }
+    }
+  }
+
+  auto& source_table() {
+    return tables_.front();
+  }
+
+  auto& source_table_lock() {
+    DCHECK(!table_locks_.empty());
+    return table_locks_.front();
+  }
+
+  auto& source_tablet_meta() {
+    return source_tablet_lock_->pb;
+  }
+
+  Status Lock() NO_THREAD_SAFETY_ANALYSIS {
+    auto primary_lock = source_table()->LockForWrite();
+
+    // Collect vector index tables.
+    auto vector_index_ids = source_table()->GetVectorIndexIds();
+    tables_.reserve(1 + vector_index_ids.size());
+    for (const auto& id : vector_index_ids) {
+      tables_.push_back(catalog_.GetTableInfoUnlocked(id));
+      SCHECK_NOTNULL(tables_.back().get());
+    }
+
+    // Sort vector tables by table_id, don't touch source table.
+    DCHECK(!tables_.empty());
+    std::ranges::sort(
+        std::ranges::next(std::ranges::begin(tables_)),
+        std::ranges::end(tables_), /* comp = */ {},
+        [](const auto& table) -> const TableId& { return table->id(); });
+
+    // Take write locks for vector tables.
+    table_locks_.reserve(1 + vector_index_ids.size());
+    table_locks_.push_back(std::move(primary_lock));
+    for (auto it = std::next(tables_.begin()); it != tables_.end(); ++it) {
+      table_locks_.push_back((*it)->LockForWrite());
+    }
+
+    // Lock tablets in the correct order.
+    for (size_t i = 0; i < kNumSplitParts; ++i) {
+      if (!source_tablet_lock_.locked() && temp_tablet_info_[i]->id() > source_tablet_info_.id()) {
+        source_tablet_lock_ = source_tablet_info_.LockForWrite();
+      }
+      temp_tablet_info_[i]->mutable_metadata()->StartMutation();
+    }
+    temp_tablet_info_locked_ = true;
+    if (!source_tablet_lock_.locked()) {
+      source_tablet_lock_ = source_tablet_info_.LockForWrite();
+    }
+
+    return Status::OK();
+  }
+
+  int PropagateNextPartitionListVersion() {
+    // Take the version from the source table, and push it to all vector indexes.
+    auto new_version = source_table_lock().mutable_data()->pb.partition_list_version() + 1;
+
+    for (auto& lock : table_locks_) {
+      auto old_version = lock.mutable_data()->pb.partition_list_version();
+      if (new_version > old_version) {
+        LOG_WITH_FUNC(INFO)
+            << "Table " << lock->pb.name() << " partition list version changed from "
+            << old_version << " => " << new_version;
+        lock.mutable_data()->pb.set_partition_list_version(new_version);
+      } else {
+        DCHECK_GE(new_version, old_version);
+      }
+    }
+    return new_version;
+  }
+
+  TabletInfoPtr CreateChildTablet(size_t idx, const PartitionPB& partition) {
+    CHECK_LT(idx, temp_tablet_info_.size());
+    auto& child = temp_tablet_info_[idx];
+    CHECK(child);
+    SetupTabletInfo(*child, *source_table(), partition, SysTabletsEntryPB::CREATING);
+    return std::move(child);
+  }
+
+  Status RegisterNewTabletsForSplit(
+      SysCatalogTable& sys_catalog, const TabletInfos& new_tablets, const LeaderEpoch& epoch) {
+    const auto& source_tablet_meta = source_tablet_info_.metadata().state().pb;
+    const auto new_split_depth = source_tablet_meta.split_depth() + 1;
+    for (auto& new_tablet : new_tablets) {
+      auto& new_tablet_meta = new_tablet->mutable_metadata()->mutable_dirty()->pb;
+      new_tablet_meta.mutable_committed_consensus_state()->CopyFrom(
+          source_tablet_meta.committed_consensus_state());
+      new_tablet_meta.set_split_depth(new_split_depth);
+      new_tablet_meta.set_split_parent_tablet_id(source_tablet_info_.tablet_id());
+
+      source_tablet_lock_.mutable_data()->pb.add_split_tablet_ids(new_tablet->id());
+    }
+
+    int new_partition_list_version = PropagateNextPartitionListVersion();
+
+    RETURN_NOT_OK(sys_catalog.Upsert(epoch, tables_, new_tablets, &source_tablet_info_));
+
+    MAYBE_FAULT(FLAGS_TEST_crash_after_registering_split_tablets);
+    if (PREDICT_FALSE(FLAGS_TEST_error_after_registering_split_tablets)) {
+      return STATUS(IllegalState, "TEST: error happened while registering a new tablet.");
+    }
+
+    // This has to be done while the table lock is held since TableInfo::partitions_ must be updated
+    // at the same time as the partition list version.
+    RETURN_NOT_OK(AddTablets(new_tablets));
+
+    // TODO: We use this pattern in other places, but what if concurrent thread accesses not yet
+    // committed TabletInfo from the `table` ?
+    for (auto& new_tablet : new_tablets) {
+      AddSecondaryTablesTo(*new_tablet);
+      new_tablet->mutable_metadata()->CommitMutation();
+      LOG(INFO) << "Registered new tablet " << new_tablet->tablet_id() << " ("
+                << AsDebugHexString(new_tablet->LockForRead()->pb.partition())
+                << ", split_depth: " << new_split_depth << ") to split the tablet "
+                << source_tablet_info_.tablet_id() << " ("
+                << AsDebugHexString(source_tablet_meta.partition()) << ") for table(s) "
+                << AsString(tables_)
+                << ", new partition_list_version: " << new_partition_list_version;
+    }
+    return Status::OK();
+  }
+
+  void Commit() {
+    source_tablet_lock_.Commit();
+    for (auto& lock : table_locks_ | std::views::reverse) {
+      lock.Commit();
+    }
+  }
+
+ private:
+  void MakeTempTablets() {
+    // To guarantee correct lock order we always generate new tablet infos for potential children.
+    // Since we don't register them anywhere, unused infos could be freely dropped.
+    std::array<TabletId, kNumSplitParts> temp_tablet_ids;
+    for (auto& tablet_id : temp_tablet_ids) {
+      tablet_id = GenerateObjectId();
+    }
+    std::ranges::sort(temp_tablet_ids);
+
+    for (size_t i = 0; i < kNumSplitParts; ++i) {
+      temp_tablet_info_[i] = MakeUnlockedTabletInfo(source_table(), temp_tablet_ids[i]);
+    }
+  }
+
+  Status AddTablets(const TabletInfos& tablets) {
+    for (auto& table : tables_ | std::views::reverse) {
+      RETURN_NOT_OK(table->AddTablets(tablets));
+    }
+    return Status::OK();
+  }
+
+  void AddSecondaryTablesTo(TabletInfo& tablet) {
+    // No need to add first tablet because it was added during CreateChildTablet().
+    DCHECK_GE(tables_.size(), 1);
+    for (auto it = std::next(tables_.begin()); it != tables_.end(); ++it) {
+      if (FLAGS_use_parent_table_id_field) {
+        tablet.AddTableId((*it)->id());
+      } else {
+        tablet.mutable_metadata()->mutable_dirty()->pb.add_table_ids((*it)->id());
+      }
+    }
+
+#ifndef NDEBUG
+    // Sanity check for number of tables set for the tablet.
+    if (FLAGS_use_parent_table_id_field) {
+      DCHECK_EQ(tablet.GetTableIds().size(), tables_.size());
+    } else {
+      DCHECK_EQ(tablet.mutable_metadata()->mutable_dirty()->pb.table_ids_size(), tables_.size());
+    }
+#endif
+  }
+
+  CatalogManager& catalog_;
+  TabletInfo& source_tablet_info_;
+  TabletInfo::WriteLock source_tablet_lock_;
+  std::vector<TableInfoPtr> tables_;
+  std::vector<TableInfo::WriteLock> table_locks_;
+  std::array<TabletInfoPtr, kNumSplitParts> temp_tablet_info_;
+  bool temp_tablet_info_locked_ = false; // To determine if it is safe to abort the mutation.
+};
+
+} // namespace
+
 Status CatalogManager::DoSplitTablet(
     const TabletInfoPtr& source_tablet_info, std::string split_encoded_key,
     std::string split_partition_key, const ManualSplit is_manual_split, const LeaderEpoch& epoch) {
   std::vector<TabletInfoPtr> new_tablets;
   std::array<TabletId, kNumSplitParts> child_tablet_ids_sorted;
-  auto table = source_tablet_info->table();
 
   // Note that the tablet map update is deferred to avoid holding the catalog manager mutex during
   // the sys catalog upsert.
   {
-    // To guarantee correct lock order we always generate new tablet infos for potential children.
-    // Since we don't register them anywhere, unused infos could be freely dropped.
-    std::array<TabletId, kNumSplitParts> temp_tablet_ids;
-    std::array<TabletInfoPtr, kNumSplitParts> temp_tablet_info;
-    for (auto& tablet_id : temp_tablet_ids) {
-      tablet_id = GenerateObjectId();
-    }
-    std::sort(temp_tablet_ids.begin(), temp_tablet_ids.end());
+    SplitScope scope(*this, *source_tablet_info);
 
     // The validation functions below take read locks on the table and tablet. The write lock here
     // prevents the state from changing between the individual read locks. The locking order of
     // mutex_ -> table -> tablet is required to prevent deadlocks.
     // TODO: Pass the table and tablet locks in directly to the validation functions.
     SharedLock lock(mutex_);
-    // todo(GH29185): Acquiring a write lock while holding mutex_.
-    auto source_table_lock = table->LockForWrite();
-    TabletInfo::WriteLock source_tablet_lock;
-    {
-      for (size_t i = 0; i != kNumSplitParts; ++i) {
-        if (!source_tablet_lock.locked() && temp_tablet_ids[i] > source_tablet_info->id()) {
-          source_tablet_lock = source_tablet_info->LockForWrite();
-        }
-        temp_tablet_info[i] = MakeTabletInfo(table, temp_tablet_ids[i]);
-      }
-      if (!source_tablet_lock.locked()) {
-        source_tablet_lock = source_tablet_info->LockForWrite();
-      }
-    }
-    auto se = ScopeExit([&temp_tablet_info] {
-      for (auto& tablet_info : temp_tablet_info) {
-        if (tablet_info) {
-          tablet_info->mutable_metadata()->AbortMutation();
-          tablet_info = nullptr;
-        }
-      }
-    });
+
+    // TODO(GH29185): Acquiring write locks while holding mutex_.
+    RETURN_NOT_OK(scope.Lock());
 
     // We must re-validate the split candidate here *after* grabbing locks on the table and tablet.
     // If this is a manual split, then we should select all potential tablets for the split
@@ -2973,8 +3157,9 @@ Status CatalogManager::DoSplitTablet(
       return s;
     }
 
-    auto drive_info = VERIFY_RESULT(source_tablet_info->GetLeaderReplicaDriveInfo());
     if (!is_manual_split) {
+      auto drive_info = VERIFY_RESULT(source_tablet_info->GetLeaderReplicaDriveInfo());
+
       // It is possible that we queued up a split candidate in TabletSplitManager which was, at the
       // time, a valid split candidate, but by the time the candidate was actually processed here,
       // the cluster may have changed, putting us in a new split threshold phase, and it may no
@@ -2992,12 +3177,13 @@ Status CatalogManager::DoSplitTablet(
     // After this point, we expect to split the tablet.
 
     // If child tablets are already registered, use the existing split key and tablets.
-    if (source_tablet_lock->pb.split_tablet_ids().size() > 0) {
+    if (scope.source_tablet_meta().split_tablet_ids().size() > 0) {
       SCHECK_EQ(
-          kNumSplitParts, source_tablet_lock->pb.split_tablet_ids().size(), IllegalState,
+          kNumSplitParts,  scope.source_tablet_meta().split_tablet_ids().size(), IllegalState,
           "Unexpected number of split tablets registered");
-      const auto parent_partition = source_tablet_lock->pb.partition();
-      for (auto& split_tablet_id : source_tablet_lock->pb.split_tablet_ids()) {
+
+      const auto& parent_partition = scope.source_tablet_meta().partition();
+      for (const auto& split_tablet_id : scope.source_tablet_meta().split_tablet_ids()) {
         // This should only fail if there is a concurrent split on the same tablet that has not yet
         // inserted the child tablets into the tablets map.
         auto existing_child = VERIFY_RESULT(GetTabletInfoUnlocked(split_tablet_id));
@@ -3008,7 +3194,7 @@ Status CatalogManager::DoSplitTablet(
           split_partition_key = child_partition.partition_key_end();
         } else {
           SCHECK_EQ(parent_partition.partition_key_end(), child_partition.partition_key_end(),
-            IllegalState, "Parent partition key end does not equal child partition key end");
+              IllegalState, "Parent partition key end does not equal child partition key end");
           child_tablet_ids_sorted[1] = existing_child->id();
           split_partition_key = child_partition.partition_key_start();
         }
@@ -3017,7 +3203,7 @@ Status CatalogManager::DoSplitTablet(
       // Re-compute the encoded key to ensure we use the same partition boundary for both child
       // tablets.
       split_encoded_key = VERIFY_RESULT(PartitionSchema::GetEncodedPartitionKey(
-          split_partition_key, source_table_lock->pb.partition_schema()));
+          split_partition_key, scope.source_table_lock()->pb.partition_schema()));
 
       lock.unlock();
       LOG(INFO) << "Retrying tablet split for tablet " << source_tablet_info->ToString()
@@ -3028,28 +3214,26 @@ Status CatalogManager::DoSplitTablet(
 
       // Get partitions for the split children.
       std::array<PartitionPB, kNumSplitParts> tablet_partitions = VERIFY_RESULT(
-        CreateNewTabletsPartition(*source_tablet_info, split_partition_key));
+          CreateNewTabletsPartition(*source_tablet_info, split_partition_key));
 
       // Create in-memory (uncommitted) tablets for new split children.
-      for (int i = 0; i < kNumSplitParts; ++i) {
-        auto new_child = std::move(temp_tablet_info[i]);
-        SetupTabletInfo(*new_child, *table, tablet_partitions[i], SysTabletsEntryPB::CREATING);
+      for (size_t i = 0; i < kNumSplitParts; ++i) {
+        auto new_child = scope.CreateChildTablet(i, tablet_partitions[i]);
         child_tablet_ids_sorted[i] = new_child->id();
         new_tablets.push_back(std::move(new_child));
       }
 
       // Release the catalog manager mutex before doing disk IO to register new child tablets.
       lock.unlock();
+
       if (FLAGS_TEST_delay_split_registration_secs > 0) {
         SleepFor(MonoDelta::FromSeconds(FLAGS_TEST_delay_split_registration_secs));
       }
 
       // Add new split children to the sys catalog.
-      RETURN_NOT_OK(RegisterNewTabletsForSplit(
-          source_tablet_info.get(), new_tablets, epoch, &source_table_lock, &source_tablet_lock));
+      RETURN_NOT_OK(scope.RegisterNewTabletsForSplit(*sys_catalog_, new_tablets, epoch));
 
-      source_tablet_lock.Commit();
-      source_table_lock.Commit();
+      scope.Commit();
     }
   }
 
@@ -3231,8 +3415,9 @@ Status CatalogManager::ValidateSplitCandidate(
 Status CatalogManager::ValidateSplitCandidateUnlocked(
     const TabletInfoPtr& tablet, const ManualSplit is_manual_split) {
   const IgnoreDisabledList ignore_disabled_list { is_manual_split.get() };
+  const IgnoreVectorIndexes ignore_vector_indexes { is_manual_split.get() };
   RETURN_NOT_OK(master_->tablet_split_manager().ValidateSplitCandidateTable(
-      tablet->table(), ignore_disabled_list));
+      tablet->table(), ignore_disabled_list, ignore_vector_indexes));
   RETURN_NOT_OK(XReplValidateSplitCandidateTableUnlocked(tablet->table()->id()));
 
   const IgnoreTtlValidation ignore_ttl_validation { is_manual_split.get() };
@@ -3902,11 +4087,7 @@ Result<ColocationId> CatalogManager::ObtainColocationId(
     }
     table_ids = it->second->GetTableIds();
   } else if (req.index_info().has_vector_idx_options()) {
-    auto indexes = indexed_table->GetIndexInfos();
-    table_ids.reserve(indexes.size());
-    for (const auto& index : indexes) {
-      table_ids.push_back(index.table_id());
-    }
+    table_ids = indexed_table->GetIndexIds();
   } else {
     return STATUS(RuntimeError, "Unexpected colocation mode");
   }
@@ -7842,65 +8023,6 @@ Status CatalogManager::IsAlterTableDone(const IsAlterTableDoneRequestPB* req,
   return Status::OK();
 }
 
-namespace {
-
-std::string AsDebugHexString(const PartitionPB& partition) {
-  return Format(
-      "partition_key_start: $0, partition_key_end: $1",
-      Slice(partition.partition_key_start()).PrefixNoLongerThan(64).ToDebugHexString(),
-      Slice(partition.partition_key_end()).PrefixNoLongerThan(64).ToDebugHexString());
-}
-
-} // namespace
-
-Status CatalogManager::RegisterNewTabletsForSplit(
-    TabletInfo* source_tablet_info, const std::vector<TabletInfoPtr>& new_tablets,
-    const LeaderEpoch& epoch, TableInfo::WriteLock* table_write_lock,
-    TabletInfo::WriteLock* parent_write_lock) {
-  const auto tablet_lock = source_tablet_info->LockForRead();
-
-  auto table = source_tablet_info->table();
-  const auto& source_tablet_meta = tablet_lock->pb;
-  const auto new_split_depth = source_tablet_meta.split_depth() + 1;
-  for (auto& new_tablet : new_tablets) {
-    auto& new_tablet_meta = new_tablet->mutable_metadata()->mutable_dirty()->pb;
-    new_tablet_meta.mutable_committed_consensus_state()->CopyFrom(
-        source_tablet_meta.committed_consensus_state());
-    new_tablet_meta.set_split_depth(new_split_depth);
-    new_tablet_meta.set_split_parent_tablet_id(source_tablet_info->tablet_id());
-
-    parent_write_lock->mutable_data()->pb.add_split_tablet_ids(new_tablet->id());
-  }
-
-  int new_partition_list_version;
-  auto& table_pb = table_write_lock->mutable_data()->pb;
-  new_partition_list_version = table_pb.partition_list_version() + 1;
-  table_pb.set_partition_list_version(new_partition_list_version);
-
-  RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table, new_tablets, source_tablet_info));
-
-  MAYBE_FAULT(FLAGS_TEST_crash_after_registering_split_tablets);
-  if (PREDICT_FALSE(FLAGS_TEST_error_after_registering_split_tablets)) {
-    return STATUS(IllegalState, "TEST: error happened while registering a new tablet.");
-  }
-
-  // This has to be done while the table lock is held since TableInfo::partitions_ must be updated
-  // at the same time as the partition list version.
-  RETURN_NOT_OK(table->AddTablets(new_tablets));
-  // TODO: We use this pattern in other places, but what if concurrent thread accesses not yet
-  // committed TabletInfo from the `table` ?
-  for (auto& new_tablet : new_tablets) {
-    new_tablet->mutable_metadata()->CommitMutation();
-    LOG(INFO) << "Registered new tablet " << new_tablet->tablet_id() << " ("
-              << AsDebugHexString(new_tablet->LockForRead()->pb.partition())
-              << ", split_depth: " << new_split_depth << ") to split the tablet "
-              << source_tablet_info->tablet_id() << " ("
-              << AsDebugHexString(source_tablet_meta.partition()) << ") for table "
-              << table->ToString()
-              << ", new partition_list_version: " << new_partition_list_version;
-  }
-  return Status::OK();
-}
 
 Result<NamespaceId> CatalogManager::GetTableNamespaceId(TableId table_id) {
   SharedLock lock(mutex_);
@@ -10391,7 +10513,7 @@ Status CatalogManager::GetYsqlAllDBCatalogVersions(
   RETURN_NOT_OK(GetYsqlAllDBCatalogVersionsImpl(versions));
   if (fingerprint) {
     *fingerprint = FingerprintCatalogVersions<DbOidToCatalogVersionMap>(*versions);
-    VLOG_WITH_FUNC(2) << "databases: " << versions->size() << ", fingerprint: " << *fingerprint;
+    VLOG_WITH_FUNC(3) << "databases: " << versions->size() << ", fingerprint: " << *fingerprint;
   }
   if (!catalog_version_table_in_perdb_mode_ &&
       versions->size() > 1 && !FLAGS_TEST_disable_set_catalog_version_table_in_perdb_mode) {
@@ -12111,7 +12233,7 @@ Status CatalogManager::GetTabletLocations(
     YB_LOG_EVERY_N_SECS(WARNING, 1)
         << "Expected replicas " << num_replicas << " but found "
         << locs_pb->replicas().size() << " for tablet " << tablet_info->id() << ": "
-        << locs_pb->ShortDebugString() << THROTTLE_MSG;
+        << locs_pb->ShortDebugString();
   }
   return s;
 }

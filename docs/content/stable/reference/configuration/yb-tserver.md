@@ -108,7 +108,7 @@ Specifies the queue size for the tablet server to serve reads and writes from ap
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
-{{<tags/feature/tp idea="1807">}}
+{{<tags/feature/ea idea="1807">}}
 Default: `""`
 {{% /tags/wrap %}}
 
@@ -2256,9 +2256,10 @@ Default: `5000`
 
 Timeout, in milliseconds, for the node-level mutation reporting RPC to the Auto Analyze service.
 
-##### --ysql_enable_auto_analyze_service (deprecated)
+##### --ysql_enable_auto_analyze_service
 
 {{% tags/wrap %}}
+{{<tags/feature/deprecated>}}
 {{<tags/feature/t-server>}}
 {{<tags/feature/restart-needed>}}
 Default: `false`
@@ -2266,10 +2267,10 @@ Default: `false`
 
 Enable the Auto Analyze service, which automatically runs ANALYZE to update table statistics for tables that have changed more than a configurable threshold.
 
-##### --ysql_enable_table_mutation_counter (deprecated)
+##### --ysql_enable_table_mutation_counter
 
 {{% tags/wrap %}}
-
+{{<tags/feature/deprecated>}}
 
 Default: `false`
 {{% /tags/wrap %}}
@@ -2586,7 +2587,7 @@ Specifies the web server port for YSQL metrics monitoring.
 
 ##### --ysql_hba_conf
 
-{{% tags/wrap %}}{{<tags/feature/restart-needed>}}{{<tags/feature/deprecated>}}{{% /tags/wrap %}}
+{{% tags/wrap %}}{{<tags/feature/deprecated>}}{{<tags/feature/restart-needed>}}{{% /tags/wrap %}}
 
 Deprecated. Use `--ysql_hba_conf_csv` instead.
 
@@ -2619,7 +2620,7 @@ To set the flag, join the fields using a comma (`,`) and enclose the final flag 
 
 ##### --ysql_pg_conf
 
-{{% tags/wrap %}}{{<tags/feature/restart-needed>}}{{<tags/feature/deprecated>}}{{% /tags/wrap %}}
+{{% tags/wrap %}}{{<tags/feature/deprecated>}}{{<tags/feature/restart-needed>}}{{% /tags/wrap %}}
 
 Deprecated. Use `--ysql_pg_conf_csv` instead.
 

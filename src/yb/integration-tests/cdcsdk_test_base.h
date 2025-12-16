@@ -40,7 +40,6 @@ DECLARE_int32(pgsql_proxy_webserver_port);
 DECLARE_bool(enable_ysql);
 DECLARE_bool(hide_pg_catalog_table_creation_logs);
 DECLARE_bool(master_auto_run_initdb);
-DECLARE_int32(pggate_rpc_timeout_secs);
 DECLARE_bool(cdc_populate_safepoint_record);
 DECLARE_uint32(max_replication_slots);
 DECLARE_bool(ysql_yb_enable_replication_commands);

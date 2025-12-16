@@ -113,7 +113,7 @@ YbGetMasterLogicalClientVersionFromTable(Oid db_oid, uint64_t *version)
 		YbcPgExpr	expr = YBCNewColumnRef(ybc_stmt, attnum, att->atttypid,
 										   att->attcollation, &type_attrs);
 
-		HandleYBStatus(YBCPgDmlAppendTarget(ybc_stmt, expr));
+		HandleYBStatus(YBCPgDmlAppendTarget(ybc_stmt, expr, false /* is_for_secondary_index */ ));
 	}
 
 	HandleYBStatus(YBCPgExecSelect(ybc_stmt, NULL /* exec_params */ ));

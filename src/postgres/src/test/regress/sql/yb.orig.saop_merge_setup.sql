@@ -111,6 +111,28 @@ ALTER TABLE parent ATTACH PARTITION child3 FOR VALUES FROM (7, 4) TO (9, 10);
 INSERT INTO parent (r1, r2, r3, p1, p2) SELECT r1, r2, r3, r4, r5 FROM r5n;
 
 --
+-- Bucketed PK
+--
+CREATE TABLE bkt_tbl (
+    n int GENERATED ALWAYS AS ((r1 + r2 * 10 + r3 * 100 + r4 * 1000 + r5 * 10000)::int) STORED,
+    r5 float8,
+    r3 int,
+    r1 int2,
+    r2 int8,
+    r4 numeric,
+    bkt int GENERATED ALWAYS AS (yb_hash_code(r3, r2, r4, r5, r1) % 3) STORED,
+    PRIMARY KEY (bkt ASC, r1, r2, r3, r4, r5))
+SPLIT AT VALUES (
+    (1),
+    (2),
+    (2, 2),
+    (2, 2, 2),
+    (2, 2, 2, 2),
+    (2, 2, 2, 2, 2),
+    (3));
+INSERT INTO bkt_tbl (r1, r2, r3, r4, r5) SELECT r1, r2, r3, r4, r5 FROM r5n;
+
+--
 -- Analyze
 --
-ANALYZE r5n, h3r2n, parent;
+ANALYZE r5n, h3r2n, parent, bkt_tbl;

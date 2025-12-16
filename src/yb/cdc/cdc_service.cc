@@ -2536,7 +2536,7 @@ bool CDCServiceImpl::ShouldUpdateMetrics(MonoTime time_of_last_update_metrics) {
   // By default, this is 15s * 4 = 1 minute.
   if (delta_since_last_update >= update_interval_ms * 4ms) {
     YB_LOG_EVERY_N_SECS(WARNING, 300)
-        << "UpdateCDCMetrics was delayed by " << delta_since_last_update << THROTTLE_MSG;
+        << "UpdateCDCMetrics was delayed by " << delta_since_last_update;
   }
   return delta_since_last_update >= MonoDelta::FromMilliseconds(update_interval_ms);
 }
