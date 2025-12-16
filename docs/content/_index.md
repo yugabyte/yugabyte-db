@@ -53,14 +53,14 @@ YugabyteDB provides PostgreSQL without limits and is an excellent fit for new or
     title="AI"
     description="Add a scalable and highly-available database to your AI projects."
     linkText1="RAG"
-    linkUrl1="/preview/develop/tutorials/ai/hello-rag/"
+    linkUrl1="/preview/develop/ai/hello-rag/"
     linkText2="YugabyteDB MCP Server"
-    linkUrl2="/preview/develop/tutorials/ai/mcp-server/"
+    linkUrl2="/preview/develop/ai/mcp-server/"
     linkText3="Vector AI"
-    linkUrl3="/preview/develop/tutorials/ai/ai-ollama/"
+    linkUrl3="/preview/develop/ai/ai-ollama/"
     linkText4="Explore more"
     linkClass4="more"
-    linkUrl4="/preview/develop/tutorials/ai/"
+    linkUrl4="/preview/develop/ai/"
   >}}
   {{< sections/3-box-card
     title="Under the hood"

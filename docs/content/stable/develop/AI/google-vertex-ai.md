@@ -17,7 +17,7 @@ type: docs
 
 This tutorial outlines the steps required to build a scalable, generative AI application using Google Vertex AI and YugabyteDB.
 
-Follow the guide to learn how to programmatically interface with the Google Vertex AI to generate text embeddings (a vectorized representation of the data) for each listing description, store embeddings in YugabyteDB, and perform a similarity search across a distributed YugabyteDB cluster using the [pgvector extension](../../../../additional-features/pg-extensions/extension-pgvector/).
+Follow the guide to learn how to programmatically interface with the Google Vertex AI to generate text embeddings (a vectorized representation of the data) for each listing description, store embeddings in YugabyteDB, and perform a similarity search across a distributed YugabyteDB cluster using the [pgvector extension](../../../additional-features/pg-extensions/extension-pgvector/).
 
 The [sample application](https://github.com/YugabyteDB-Samples/yugabytedb-google-vertexai-lodging-service) we will use is a lodging recommendations service for travelers going to San Francisco.
 
@@ -30,7 +30,7 @@ The [sample application](https://github.com/YugabyteDB-Samples/yugabytedb-google
 - A YugabyteDB cluster running [v2.25.1](https://download.yugabyte.com/) or later
 - [Node.js](https://github.com/nodejs/release#release-schedule) v18 or later
 - The latest version of [Docker](https://docs.docker.com/desktop/)
-- [ysqlsh](../../../../api/ysqlsh/) or [psql](https://www.postgresql.org/docs/15/app-psql.html)
+- [ysqlsh](../../../api/ysqlsh/) or [psql](https://www.postgresql.org/docs/15/app-psql.html)
 
 ## Set up YugabyteDB
 
@@ -199,7 +199,7 @@ const dbRes = await pool.query(
 
 ![YugaLodgings Application Search Results](/images/tutorials/google/google-vertex-ai/yugalodgings-search-results.png "YugaLodgings Application Search Results")
 
-This application uses cosine distance for indexing, as the backend query is using cosine similarity search. Using [vector indexing](../../../../additional-features/pg-extensions/extension-pgvector/#vector-indexing) improves the search speed. YugabyteDB currently supports the Hierarchical Navigable Small World (HNSW) index type in pgvector.
+This application uses cosine distance for indexing, as the backend query is using cosine similarity search. Using [vector indexing](../../../additional-features/pg-extensions/extension-pgvector/#vector-indexing) improves the search speed. YugabyteDB currently supports the Hierarchical Navigable Small World (HNSW) index type in pgvector.
 
 ```sql
 # sql/1_airbnb_embeddings.sql

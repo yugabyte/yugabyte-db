@@ -155,6 +155,6 @@ SELECT category_id, AVG(embedding) FROM items GROUP BY category_id;
 ## Read more
 
 - Tutorial: [Build and Learn](/preview/develop/tutorials/build-and-learn/)
-- Tutorials: [Build scalable generative AI applications with YugabyteDB](/preview/develop/tutorials/ai/)
+- Tutorials: [Build scalable generative AI applications with YugabyteDB](/preview/develop/ai/)
 - [PostgreSQL pgvector: Getting Started and Scaling](https://www.yugabyte.com/blog/postgresql-pgvector-getting-started/)
 - [Multimodal Search with PostgreSQL pgvector](https://www.yugabyte.com/blog/postgresql-pgvector-multimodal-search/)
