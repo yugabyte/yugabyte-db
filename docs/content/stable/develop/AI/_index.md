@@ -17,7 +17,7 @@ Explore the following examples to get started building scalable gen AI applicati
 
 ## Retrieval-augmented generation
 
-RAG combines large language models (LLM) with external knowledge sources to produce more accurate and context-aware responses. YugabyteDB serves as the retrieval layer, storing vector representations of your data, and enabling efficient similarity searches.
+RAG combines large language models (LLM) with external knowledge sources to produce more accurate and context-aware responses. YugabyteDB serves as the retrieval layer for your RAG applications, combining vector similarity search with transactional data access. Unlike standalone vector databases, YugabyteDB enables you to join embeddings with user data, metadata, and business logic in a single query, delivering faster and more contextually rich responses.
 
 {{<index/block>}}
 {{<index/item
@@ -45,7 +45,7 @@ RAG combines large language models (LLM) with external knowledge sources to prod
 
 ## Vector basics
 
-Vector databases enable semantic search, which allows you to find content with a similar meaning even if it doesn’t include the same text.
+Vector databases enable semantic search, which allows you to find content with a similar meaning even if it doesn't include the same text.
 
 {{<index/block>}}
 {{<index/item
