@@ -41,19 +41,15 @@ YugabyteDB Anywhere installations include configuration settings, certificates a
 
 You can also perform ad hoc manual backups.
 
-While in Tech Preview, automated YugabyteDB Anywhere backups are not available by default. To make the feature available, do the following:
+While in Tech Preview, automated YugabyteDB Anywhere backups are not available by default. To make the feature available, use the following [API request](../../anywhere-automation/anywhere-api/):
 
-1. Make the preview flag available using the following [API request](../../anywhere-automation/anywhere-api/):
-
-  ```sh
-  curl --request PUT \
-  --url http://<YBA_IP>/api/v1/customers/<customer-uuid>/runtime_config/00000000-0000-0000-0000-000000000000/key/yb.ui.feature_flags.continuous_platform_backups \
-  --header 'Content-Type: text/plain' \
-  --header 'X-AUTH-YW-API-TOKEN: <api-token>' \
-  --data true
-  ```
-
-1. Set the **Enable new YBA platform backup and restore UI** Global Runtime Configuration option (config key `yb.ui.feature_flags.continuous_platform_backups`) to true. Refer to [Manage runtime configuration settings](../manage-runtime-config/). You must be a Super Admin to set global runtime configuration flags.
+```sh
+curl --request PUT \
+--url http://<YBA_IP>/api/v1/customers/<customer-uuid>/runtime_config/00000000-0000-0000-0000-000000000000/key/yb.ui.feature_flags.continuous_platform_backups \
+--header 'Content-Type: text/plain' \
+--header 'X-AUTH-YW-API-TOKEN: <api-token>' \
+--data true
+```
 
 ## Set up automatic backups
 
