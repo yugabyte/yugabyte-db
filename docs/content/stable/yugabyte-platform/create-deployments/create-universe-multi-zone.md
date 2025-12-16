@@ -164,7 +164,7 @@ Enhanced Postgres Compatibility
 : For new universes running v2025.2 or later, note that the following features are _enabled by default_ when you deploy using YugabyteDB Anywhere:
 
 - [Read committed](../../../architecture/transactions/read-committed/)
-- [Cost based optimizer](../../../best-practices-operations/ysql-yb-enable-cbo/)
+- [Cost-based optimizer](../../../best-practices-operations/ysql-yb-enable-cbo/)
 - [Auto Analyze](../../../additional-features/auto-analyze/)
 - [YugabyteDB bitmap scan](../../../reference/configuration/postgresql-compatibility/#yugabytedb-bitmap-scan)
 - [Parallel query](../../../additional-features/parallel-query/)

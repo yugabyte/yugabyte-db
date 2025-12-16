@@ -68,7 +68,7 @@ mkdir ybc | tar -xvf share/ybc-2.0.0.0-b19-linux-x86_64.tar.gz -C ybc --strip-co
 For _new universes_ running v2025.2 or later, the following features are enabled by default when you deploy using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon:
 
 - [Read committed](../../../architecture/transactions/read-committed/) (yb_enable_read_committed_isolation=true)
-- [Cost based optimizer](../../../best-practices-operations/ysql-yb-enable-cbo/) (yb_enable_cbo=on)
+- [Cost-based optimizer](../../../best-practices-operations/ysql-yb-enable-cbo/) (yb_enable_cbo=on)
 - [Auto Analyze](../../../additional-features/auto-analyze/) (ysql_enable_auto_analyze=true)
 - [YugabyteDB bitmap scan](../../../reference/configuration/postgresql-compatibility/#yugabytedb-bitmap-scan) (yb_enable_bitmapscan=true)
 - [Parallel query](../../../additional-features/parallel-query/) (yb_enable_parallel_append=true)
