@@ -49,7 +49,6 @@ public class TestDefaultConfig extends BaseYsqlConnMgr {
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
-    builder.addCommonTServerFlag("ysql_conn_mgr_max_phy_conn_percent", "100");
   }
 
   private Path configFile;
