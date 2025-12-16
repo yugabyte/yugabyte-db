@@ -67,7 +67,7 @@ class CqlGeoTransactionsTest: public CqlTestBase<MiniCluster> {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_track_last_transaction) = true;
     // These don't get set in automatically in tests.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_placement_cloud) = "cloud0";
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_placement_region) = "rack1";
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_placement_region) = "region1";
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_placement_zone) = "zone";
     // Put everything in the same cloud.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_nodes_per_cloud) = 5;
@@ -97,7 +97,7 @@ class CqlGeoTransactionsTest: public CqlTestBase<MiniCluster> {
     placement_info->set_num_replicas(1);
     auto pb = placement_info->add_placement_blocks();
     pb->mutable_cloud_info()->set_placement_cloud("cloud0");
-    pb->mutable_cloud_info()->set_placement_region(strings::Substitute("rack$0", region));
+    pb->mutable_cloud_info()->set_placement_region(strings::Substitute("region$0", region));
     pb->mutable_cloud_info()->set_placement_zone("zone");
     pb->set_min_num_replicas(1);
   }
