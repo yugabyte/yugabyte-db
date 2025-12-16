@@ -1502,9 +1502,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       ChangeXClusterRoleResponsePB* resp,
       rpc::RpcContext* rpc);
 
-  Status BootstrapProducer(const BootstrapProducerRequestPB* req,
-                            BootstrapProducerResponsePB* resp,
-                            rpc::RpcContext* rpc);
+  Status BootstrapProducer(
+      const master::BootstrapProducerRequestPB* req, master::BootstrapProducerResponsePB* resp,
+      rpc::RpcContext* rpc);
 
   // Get Universe Replication.
   Status GetUniverseReplication(

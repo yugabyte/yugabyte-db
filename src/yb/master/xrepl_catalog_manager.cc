@@ -40,8 +40,8 @@
 #include "yb/master/snapshot_transfer_manager.h"
 #include "yb/master/xcluster/master_xcluster_util.h"
 #include "yb/master/xcluster/xcluster_manager.h"
-#include "yb/master/xcluster_consumer_registry_service.h"
 #include "yb/master/xcluster/xcluster_replication_group.h"
+#include "yb/master/xcluster_consumer_registry_service.h"
 #include "yb/master/xcluster_rpc_tasks.h"
 #include "yb/master/ysql/ysql_manager_if.h"
 
@@ -3708,8 +3708,7 @@ Status CatalogManager::ChangeXClusterRole(
 }
 
 Status CatalogManager::BootstrapProducer(
-    const BootstrapProducerRequestPB* req,
-    BootstrapProducerResponsePB* resp,
+    const master::BootstrapProducerRequestPB* req, master::BootstrapProducerResponsePB* resp,
     rpc::RpcContext* rpc) {
   LOG(INFO) << "Servicing BootstrapProducer request from " << RequestorString(rpc) << ": "
             << req->ShortDebugString();
@@ -3728,7 +3727,7 @@ Status CatalogManager::BootstrapProducer(
   // This is only called in non-DB-scoped xCluster, so is_automatic_ddl_mode is false (this will
   // skip getting sequences data and materialized views).
   auto all_tables = VERIFY_RESULT(
-      GetTablesEligibleForXClusterReplication(*this, ns->id(), /*is_automatic_ddl_mode=*/false));
+      GetTablesEligibleForXClusterReplication(*this, ns->id(), /*automatic_ddl_mode=*/false));
 
   cdc::BootstrapProducerRequestPB bootstrap_req;
   master::TSDescriptorPtr ts = nullptr;

@@ -99,6 +99,7 @@ const char* kDDLJsonSchema = "schema";
 const char* kDDLJsonUser = "user";
 const char* kDDLJsonNewRelMap = "new_rel_map";
 const char* kDDLJsonRelName = "rel_name";
+const char* kDDLJsonRelPgSchemaName = "rel_namespace";
 const char* kDDLJsonRelFileOid = "relfile_oid";
 const char* kDDLJsonColocationId = "colocation_id";
 const char* kDDLJsonIsIndex = "is_index";
@@ -283,6 +284,12 @@ Result<XClusterDDLQueryInfo> GetDDLQueryInfo(
       XClusterDDLQueryInfo::RelationInfo rel_info;
       rel_info.relfile_oid = rel[kDDLJsonRelFileOid].GetUint();
       rel_info.relation_name = rel[kDDLJsonRelName].GetString();
+      if (rel.HasMember(kDDLJsonRelPgSchemaName)) {
+        VALIDATE_MEMBER(rel, kDDLJsonRelPgSchemaName, String);
+        rel_info.relation_pgschema_name = rel[kDDLJsonRelPgSchemaName].GetString();
+      } else {
+        rel_info.relation_pgschema_name = query_info.schema;
+      }
       rel_info.is_index =
           HAS_MEMBER_OF_TYPE(rel, kDDLJsonIsIndex, IsBool) ? rel[kDDLJsonIsIndex].GetBool() : false;
       rel_info.colocation_id = HAS_MEMBER_OF_TYPE(rel, kDDLJsonColocationId, IsUint)
@@ -441,7 +448,7 @@ Status XClusterDDLQueueHandler::ProcessNewRelations(
     const auto& backfill_time_opt = rel.is_index ? commit_time : HybridTime::kInvalid;
 
     RETURN_NOT_OK(xcluster_context_.SetSourceTableInfoMappingForCreateTable(
-        {namespace_name_, query_info.schema, rel.relation_name},
+        {namespace_name_, rel.relation_pgschema_name, rel.relation_name},
         PgObjectId(source_db_oid, rel.relfile_oid), rel.colocation_id, backfill_time_opt));
     new_relations.insert({namespace_name_, query_info.schema, rel.relation_name});
   }
