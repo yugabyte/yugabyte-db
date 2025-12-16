@@ -167,7 +167,7 @@ To learn about parallel queries, see [Parallel queries](../../../additional-feat
 
 ## Enable EPCM
 
-In v2025.2 and later, most of the features in EPCM are enabled by default in new universes when you deploy using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon. Use individual flags to set features.
+In v2025.2 and later, most of the features in EPCM are enabled by default in new universes when you deploy using [yugabyted](../yugabyted/), YugabyteDB Anywhere, or YugabyteDB Aeon. Use individual flags to set features.
 
 For versions prior to v2025.2 (or when deploying manually), you can enable EPCM as follows.
 
@@ -175,7 +175,7 @@ For versions prior to v2025.2 (or when deploying manually), you can enable EPCM 
 
 To enable EPCM when deploying using yugabyted (versions earlier than v2025.2 only):
 
-- Pass the `enable_pg_parity_early_access` flag to [yugabyted](../yugabyted/) when starting your cluster.
+- Pass the `enable_pg_parity_early_access` flag to yugabyted when starting your cluster.
 
 For example, from your YugabyteDB home directory, run the following command:
 
