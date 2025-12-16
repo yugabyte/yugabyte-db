@@ -2667,7 +2667,7 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 				 * YB NOTE: this implies a performance hit for DDL statements
 				 * that do not need to call YbInitPinnedCacheIfNeeded.
 				 */
-				YbInitPinnedCacheIfNeeded(true /* shared_only */);
+				YbInitPinnedCacheIfNeeded(true /* reset_snapshot */);
 
 			YBIncrementDdlNestingLevel(ddl_mode.value);
 

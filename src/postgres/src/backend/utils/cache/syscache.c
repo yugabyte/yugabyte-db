@@ -1559,9 +1559,12 @@ YbBuildPinnedObjectCache(const char *name,
 
 /* Build the cache in case it is not yet ready. */
 void
-YbInitPinnedCacheIfNeeded(bool shared_only)
+YbInitPinnedCacheIfNeeded(bool reset_snapshot)
 {
 	if (!YbPinnedObjectsCache.shared)
+	{
+		if (reset_snapshot)
+			YBCPgResetCatalogReadTime();
 		YbPinnedObjectsCache.shared =
 			YbBuildPinnedObjectCache("Shared pinned objects cache",
 									 20, /* Number of pinned objects in pg_shdepend is 9 */
@@ -1569,7 +1572,11 @@ YbInitPinnedCacheIfNeeded(bool shared_only)
 									 Anum_pg_shdepend_deptype,
 									 SHARED_DEPENDENCY_PIN,
 									 YbFetchPinnedObjectKeyFromPgShdepend);
-	if (!shared_only && !YbPinnedObjectsCache.regular)
+	}
+	if (!YbPinnedObjectsCache.regular)
+	{
+		if (reset_snapshot)
+			YBCPgResetCatalogReadTime();
 		YbPinnedObjectsCache.regular =
 			YbBuildPinnedObjectCache("Pinned objects cache",
 									 6500, /* Number of pinned object is pg_depend 6179 */
@@ -1577,6 +1584,7 @@ YbInitPinnedCacheIfNeeded(bool shared_only)
 									 Anum_pg_depend_deptype,
 									 DEPENDENCY_PIN,
 									 YbFetchPinnedObjectKeyFromPgDepend);
+	}
 }
 
 void
@@ -1599,7 +1607,7 @@ YbResetPinnedCache()
 bool
 YbIsObjectPinned(Oid classId, Oid objectId, bool shared_dependency)
 {
-	YbInitPinnedCacheIfNeeded(false /* shared_only */);
+	YbInitPinnedCacheIfNeeded(false /* reset_snapshot */);
 
 	HTAB *cache = shared_dependency ? YbPinnedObjectsCache.shared
 									: YbPinnedObjectsCache.regular;
