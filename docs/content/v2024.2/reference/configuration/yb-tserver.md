@@ -1719,7 +1719,7 @@ If you are using YugabyteDB Anywhere, as with other flags, set `allowed_preview_
 After adding a preview flag to the `allowed_preview_flags_csv` list, you still need to set the flag using **Edit Flags** as well.
 {{</note>}}
 
-## PostgreSQL server options
+## PostgreSQL configuration parameters
 
 YugabyteDB uses [PostgreSQL server configuration parameters](https://www.postgresql.org/docs/11/config-setting.html) to apply server configuration settings to new server instances.
 
