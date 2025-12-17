@@ -289,7 +289,7 @@ YugabyteDB uses [PostgreSQL server configuration parameters](https://www.postgre
 
 You can modify these parameters in the following ways. 
 
-These methods are listed in order of precedence, so that explicitly set values for a configuration parameter through later methods have higher precedence than earlier methods. So for example, if a GUC is explicitly set through both the `ysql_<GUC>` flag and the ysql_pg_conf_csv flag, the `ysql_<GUC>` flag takes precedence.
+These methods are listed in order of precedence, so that explicitly set values for a configuration parameter through later methods have higher precedence than earlier methods. For example, if a GUC is explicitly set through both the `ysql_<GUC>` flag and the ysql_pg_conf_csv flag, the `ysql_<GUC>` flag takes precedence.
 
 - Use the [ysql_pg_conf_csv](#ysql-pg-conf-csv) flag. For example `--ysql_pg_conf_csv=yb_bnl_batch_size=512`. 
 
