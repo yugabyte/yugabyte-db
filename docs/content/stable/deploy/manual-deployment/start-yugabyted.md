@@ -71,7 +71,7 @@ For _new universes_ running v2025.2 or later, the following features are enabled
 - [Cost-based optimizer](../../../best-practices-operations/ysql-yb-enable-cbo/) (yb_enable_cbo=on)
 - [Auto Analyze](../../../additional-features/auto-analyze/) (ysql_enable_auto_analyze=true)
 - [YugabyteDB bitmap scan](../../../reference/configuration/postgresql-compatibility/#yugabytedb-bitmap-scan) (yb_enable_bitmapscan=true)
-- [Parallel query](../../../additional-features/parallel-query/) (yb_enable_parallel_append=true)
+- [Parallel append](../../../additional-features/parallel-query/) (yb_enable_parallel_append=true)
 
 ## Deploy a multi-zone cluster
 

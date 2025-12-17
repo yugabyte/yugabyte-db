@@ -167,7 +167,7 @@ Enhanced Postgres Compatibility
 - [Cost-based optimizer](../../../best-practices-operations/ysql-yb-enable-cbo/)
 - [Auto Analyze](../../../additional-features/auto-analyze/)
 - [YugabyteDB bitmap scan](../../../reference/configuration/postgresql-compatibility/#yugabytedb-bitmap-scan)
-- [Parallel query](../../../additional-features/parallel-query/)
+- [Parallel append](../../../additional-features/parallel-query/)
 
 Enable Connection Pooling
 : {{<tags/feature/ea idea="1368">}}If database version is v2024.2 or later, you can enable [Built-in connection pooling](../../../additional-features/connection-manager-ysql/).
