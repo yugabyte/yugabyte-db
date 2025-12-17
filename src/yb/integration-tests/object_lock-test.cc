@@ -1166,13 +1166,47 @@ TEST_F(ExternalObjectLockTest, RefreshYsqlLease) {
   ASSERT_FALSE(info.has_ddl_lock_entries());
 }
 
+TEST_F(ExternalObjectLockTest, TServerCrashRestartAndDoesNotReacquireLease) {
+  auto ts = tablet_server(0);
+  // We do an ungraceful shutdown here so the tserver does not relinquish its lease.
+  ts->Shutdown(SafeShutdown::kFalse);
+  ASSERT_OK(ts->Restart(true, {{kTServerYsqlLeaseRefreshFlagName, "false"}}));
+  auto master_proxy = cluster_->GetLeaderMasterProxy<master::MasterDdlProxy>();
+  // This should succeed once the tserver's lease expires.
+  ASSERT_OK(AcquireLockGlobally(
+      &master_proxy, tablet_server(1)->uuid(), kTxn1, kDatabaseID, kRelationId, kLeaseEpoch,
+      nullptr, std::nullopt, kTimeout * 2));
+}
+
 class ExternalObjectLockTestLongLeaseTTL : public ExternalObjectLockTest {
   ClusterFlags FlagOverrides() override;
+};
+
+TEST_F(ExternalObjectLockTestLongLeaseTTL, TServerCrashRestartAndReacquiresLease) {
+  auto ts = tablet_server(0);
+  // We do an ungraceful shutdown here so the tserver does not relinquish its lease.
+  ts->Shutdown(SafeShutdown::kFalse);
+  ASSERT_OK(ts->Restart(true, {{kTServerYsqlLeaseRefreshFlagName, "false"}}));
+  auto master_proxy = cluster_->GetLeaderMasterProxy<master::MasterDdlProxy>();
+  auto future = AcquireLockGloballyAsync(
+      &master_proxy, tablet_server(1)->uuid(), kTxn1, kDatabaseID, kRelationId, kLeaseEpoch,
+      nullptr, std::nullopt, kTimeout * 2);
+  // Sleep for a bit to allow the tserver to handle some RPCs. We do not expect the future to
+  // resolve yet.
+  auto first_future_status = future.wait_for(1s);
+  EXPECT_EQ(first_future_status, std::future_status::timeout);
+  ASSERT_OK(cluster_->SetFlag(ts, kTServerYsqlLeaseRefreshFlagName, "true"));
+  auto second_future_status = future.wait_for(10s);
+  EXPECT_EQ(second_future_status, std::future_status::ready);
+  ASSERT_OK(future.get());
+}
+
+class ExternalObjectLockTestLongLeaseTTLOneTS : public ExternalObjectLockTestLongLeaseTTL {
   int ReplicationFactor() override;
   size_t NumberOfTabletServers() override;
 };
 
-TEST_F(ExternalObjectLockTestLongLeaseTTL, SigTerm) {
+TEST_F(ExternalObjectLockTestLongLeaseTTLOneTS, SigTerm) {
   auto kLeaseTimeoutDeadline = MonoDelta::FromSeconds(10);
   ASSERT_LT(
       kLeaseTimeoutDeadline.ToMilliseconds(),
@@ -1489,8 +1523,10 @@ TEST_P(ExternalObjectLockTestLeaseLost, TSRejectsLockRequestsAfterLeaseExpiry) {
   auto master_proxy = cluster_->GetLeaderMasterProxy<master::MasterDdlProxy>();
   auto other_ts = cluster_->tablet_server(1);
   ASSERT_THAT(
-      AcquireLockGlobally(&master_proxy, other_ts->uuid(), kTxn1, kDatabaseID, kRelationId),
-      EqualsStatus(ExpectedFailureStatusWithoutLease()));
+      AcquireLockGlobally(
+          &master_proxy, other_ts->uuid(), kTxn1, kDatabaseID, kRelationId, kLeaseEpoch, nullptr,
+          std::nullopt, 1s),
+      EqualsStatus(STATUS(TimedOut, "Request timed out")));
   auto ts_proxy = ts_to_lose_lease->Proxy<tserver::TabletServerServiceProxy>();
   // It is difficult to verify release requests fail using the master because of the master's retry
   // logic. Instead we issue a request directly to the tserver.
@@ -1857,7 +1893,6 @@ ClusterFlags ExternalObjectLockTestLongLeaseTTL::FlagOverrides() {
   return flags;
 }
 
-
 ClusterFlags ExternalObjectLockTestLeaseLost::FlagOverrides() {
   ClusterFlags flags;
   flags.master_flags = FlagMap{
@@ -1866,7 +1901,7 @@ ClusterFlags ExternalObjectLockTestLeaseLost::FlagOverrides() {
   return flags;
 }
 
-uint64_t ExternalObjectLockTestLeaseLost::ysql_lease_ttl_ms() { return 1000; }
+uint64_t ExternalObjectLockTestLeaseLost::ysql_lease_ttl_ms() { return 3000; }
 
 Status ExternalObjectLockTestLeaseLost::ExpectedFailureStatusWithoutLease() {
   if (GetParam() == DisableLeaseMode::DisablePoller) {
@@ -1895,8 +1930,8 @@ Status ExternalObjectLockTestLeaseLost::ToggleLeaseFlags(ExternalTabletServer* t
   return Status::OK();
 }
 
-int ExternalObjectLockTestLongLeaseTTL::ReplicationFactor() { return 1; }
-size_t ExternalObjectLockTestLongLeaseTTL::NumberOfTabletServers() { return 1; }
+int ExternalObjectLockTestLongLeaseTTLOneTS::ReplicationFactor() { return 1; }
+size_t ExternalObjectLockTestLongLeaseTTLOneTS::NumberOfTabletServers() { return 1; }
 
 std::string FormatFlagValue(const FlagValue& v) {
   if (const auto* uintp = std::get_if<uint64_t>(&v)) {
