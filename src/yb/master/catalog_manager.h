@@ -2073,7 +2073,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   // Starts the background task to send the SplitTablet RPC to the leader for the specified tablet.
   Status SendSplitTabletRequest(
-      const TabletInfoPtr& tablet, std::array<TabletId, kNumSplitParts> new_tablet_ids,
+      const TabletInfoPtr& tablet, std::array<TabletId, kDefaultNumSplitParts> new_tablet_ids,
       const std::string& split_encoded_key, const std::string& split_partition_key,
       const LeaderEpoch& epoch);
 
@@ -2340,7 +2340,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   struct HiddenReplicationParentTabletInfo {
     TableId table_id_;
     std::string parent_tablet_id_;
-    std::array<TabletId, kNumSplitParts> split_tablets_;
+    std::array<TabletId, kDefaultNumSplitParts> split_tablets_;
     HybridTime hide_time_;
   };
   std::unordered_map<TabletId, HiddenReplicationParentTabletInfo> retained_by_cdcsdk_

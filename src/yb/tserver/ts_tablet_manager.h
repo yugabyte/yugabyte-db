@@ -107,7 +107,7 @@ typedef std::unordered_map<TabletId, std::string> TransitionInProgressMap;
 
 class TransitionInProgressDeleter;
 struct TabletCreationMetaData;
-typedef boost::container::static_vector<TabletCreationMetaData, kNumSplitParts>
+typedef boost::container::static_vector<TabletCreationMetaData, kDefaultNumSplitParts>
     SplitTabletsCreationMetaData;
 
 typedef Callback<void(tablet::TabletPeerPtr)> ConsensusChangeCallback;

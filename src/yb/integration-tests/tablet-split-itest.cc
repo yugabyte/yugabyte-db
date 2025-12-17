@@ -2525,7 +2525,7 @@ TEST_F(TabletSplitSingleServerITest, TabletServerSplitAlreadySplitTablet) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = true;
   const auto source_tablet_id = ASSERT_RESULT(SplitSingleTablet(split_hash_code));
   ASSERT_OK(WaitForTabletSplitCompletion(
-      /* expected_non_split_tablets =*/ kNumSplitParts, /* expected_split_tablets = */ 1));
+      /* expected_non_split_tablets =*/ kDefaultNumSplitParts, /* expected_split_tablets = */ 1));
 
   auto send_split_request = [this, &tserver_uuid, &source_tablet_id]()
       -> Result<tserver::SplitTabletResponsePB> {
@@ -2552,7 +2552,7 @@ TEST_F(TabletSplitSingleServerITest, TabletServerSplitAlreadySplitTablet) {
   EXPECT_TRUE(StatusFromPB(resp.error().status()).IsAlreadyPresent()) << resp.error().DebugString();
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = false;
-  ASSERT_OK(WaitForTabletSplitCompletion(/* expected_non_split_tablets =*/ kNumSplitParts));
+  ASSERT_OK(WaitForTabletSplitCompletion(/* expected_non_split_tablets =*/ kDefaultNumSplitParts));
 
   // If the parent tablet has been cleaned up or is still being cleaned up, this should trigger
   // a Not Found error or a Not Running error correspondingly.

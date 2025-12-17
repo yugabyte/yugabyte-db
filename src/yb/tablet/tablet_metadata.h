@@ -685,7 +685,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   // Return standard "T xxx P yyy" log prefix.
   const std::string& LogPrefix() const;
 
-  std::array<TabletId, kNumSplitParts> split_child_tablet_ids() const;
+  std::array<TabletId, kDefaultNumSplitParts> split_child_tablet_ids() const;
 
   OpId split_op_id() const;
 
@@ -876,7 +876,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   // SPLIT_OP ID designated for this tablet (so child tablets will have this unset until they've
   // been split themselves).
   OpId split_op_id_ GUARDED_BY(data_mutex_);
-  std::array<TabletId, kNumSplitParts> split_child_tablet_ids_ GUARDED_BY(data_mutex_);
+  std::array<TabletId, kDefaultNumSplitParts> split_child_tablet_ids_ GUARDED_BY(data_mutex_);
 
   std::vector<TxnSnapshotRestorationId> active_restorations_;
 

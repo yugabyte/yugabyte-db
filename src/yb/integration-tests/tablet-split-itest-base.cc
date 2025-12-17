@@ -545,7 +545,7 @@ Result<TabletId> TabletSplitITest::SplitTabletAndValidate(
       parent_tablet_protected_from_deletion;
 
   RETURN_NOT_OK(WaitForTabletSplitCompletion(
-      /* expected_non_split_tablets =*/ kNumSplitParts, expected_split_tablets));
+      /* expected_non_split_tablets =*/ kDefaultNumSplitParts, expected_split_tablets));
 
   RETURN_NOT_OK(CheckPostSplitTabletReplicasData(num_rows));
 
@@ -1041,7 +1041,7 @@ Status TabletSplitExternalMiniClusterITest::SplitTabletCrashMaster(
 
   // Wait for parent tablet clean up
   std::this_thread::sleep_for(5 * raft_heartbeat_roundtrip_time * kTimeMultiplier);
-  return WaitForTablets(kNumSplitParts);
+  return WaitForTablets(kDefaultNumSplitParts);
 }
 
 }  // namespace yb

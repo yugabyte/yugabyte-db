@@ -1854,7 +1854,7 @@ TabletDataState RaftGroupMetadata::tablet_data_state() const {
   return tablet_data_state_;
 }
 
-std::array<TabletId, kNumSplitParts> RaftGroupMetadata::split_child_tablet_ids() const {
+std::array<TabletId, kDefaultNumSplitParts> RaftGroupMetadata::split_child_tablet_ids() const {
   std::lock_guard lock(data_mutex_);
   return split_child_tablet_ids_;
 }

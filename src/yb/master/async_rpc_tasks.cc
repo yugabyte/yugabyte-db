@@ -1215,7 +1215,7 @@ void AsyncGetTabletSplitKey::Finished(const Status& status) {
 // ============================================================================
 AsyncSplitTablet::AsyncSplitTablet(
     Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
-    const std::array<TabletId, kNumSplitParts>& new_tablet_ids,
+    const std::array<TabletId, kDefaultNumSplitParts>& new_tablet_ids,
     const std::string& split_encoded_key, const std::string& split_partition_key,
                                    LeaderEpoch epoch)
   : AsyncTabletLeaderTask(master, callback_pool, tablet, std::move(epoch)) {

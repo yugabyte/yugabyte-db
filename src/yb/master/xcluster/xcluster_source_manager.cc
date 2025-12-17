@@ -774,7 +774,7 @@ void XClusterSourceManager::RecordHiddenTablets(
     decltype(HiddenTabletInfo::split_tablets) split_tablets = {};
     auto tablet_lock = hidden_tablet->LockForRead();
     auto& tablet_pb = tablet_lock->pb;
-    if (tablet_pb.split_tablet_ids_size() == kNumSplitParts) {
+    if (tablet_pb.split_tablet_ids_size() == kDefaultNumSplitParts) {
       split_tablets = {tablet_pb.split_tablet_ids(0), tablet_pb.split_tablet_ids(1)};
     }
 

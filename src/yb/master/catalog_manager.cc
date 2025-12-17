@@ -2776,7 +2776,7 @@ Status CatalogManager::CompactSysCatalog(
 
 namespace {
 
-Result<std::array<PartitionPB, kNumSplitParts>> CreateNewTabletsPartition(
+Result<std::array<PartitionPB, kDefaultNumSplitParts>> CreateNewTabletsPartition(
     const TabletInfo& tablet_info, const std::string& split_partition_key) {
   // Making a copy of PartitionPB to avoid holding a lock.
   const auto source_partition = tablet_info.LockForRead()->pb.partition();
@@ -2794,13 +2794,13 @@ Result<std::array<PartitionPB, kNumSplitParts>> CreateNewTabletsPartition(
         FormatBytesAsStr(split_partition_key));
   }
 
-  std::array<PartitionPB, kNumSplitParts> new_tablets_partition;
+  std::array<PartitionPB, kDefaultNumSplitParts> new_tablets_partition;
 
   new_tablets_partition.fill(source_partition);
 
   new_tablets_partition[0].set_partition_key_end(split_partition_key);
   new_tablets_partition[1].set_partition_key_start(split_partition_key);
-  static_assert(kNumSplitParts == 2, "We expect tablet to be split into 2 new tablets here");
+  static_assert(kDefaultNumSplitParts == 2, "We expect tablet to be split into 2 new tablets here");
 
   return new_tablets_partition;
 }
@@ -2982,7 +2982,7 @@ class SplitScope {
     }
 
     // Lock tablets in the correct order.
-    for (size_t i = 0; i < kNumSplitParts; ++i) {
+    for (size_t i = 0; i < kDefaultNumSplitParts; ++i) {
       if (!source_tablet_lock_.locked() && temp_tablet_info_[i]->id() > source_tablet_info_.id()) {
         source_tablet_lock_ = source_tablet_info_.LockForWrite();
       }
@@ -3076,13 +3076,13 @@ class SplitScope {
   void MakeTempTablets() {
     // To guarantee correct lock order we always generate new tablet infos for potential children.
     // Since we don't register them anywhere, unused infos could be freely dropped.
-    std::array<TabletId, kNumSplitParts> temp_tablet_ids;
+    std::array<TabletId, kDefaultNumSplitParts> temp_tablet_ids;
     for (auto& tablet_id : temp_tablet_ids) {
       tablet_id = GenerateObjectId();
     }
     std::ranges::sort(temp_tablet_ids);
 
-    for (size_t i = 0; i < kNumSplitParts; ++i) {
+    for (size_t i = 0; i < kDefaultNumSplitParts; ++i) {
       temp_tablet_info_[i] = MakeUnlockedTabletInfo(source_table(), temp_tablet_ids[i]);
     }
   }
@@ -3120,7 +3120,7 @@ class SplitScope {
   TabletInfo::WriteLock source_tablet_lock_;
   std::vector<TableInfoPtr> tables_;
   std::vector<TableInfo::WriteLock> table_locks_;
-  std::array<TabletInfoPtr, kNumSplitParts> temp_tablet_info_;
+  std::array<TabletInfoPtr, kDefaultNumSplitParts> temp_tablet_info_;
   bool temp_tablet_info_locked_ = false; // To determine if it is safe to abort the mutation.
 };
 
@@ -3130,7 +3130,7 @@ Status CatalogManager::DoSplitTablet(
     const TabletInfoPtr& source_tablet_info, std::string split_encoded_key,
     std::string split_partition_key, const ManualSplit is_manual_split, const LeaderEpoch& epoch) {
   std::vector<TabletInfoPtr> new_tablets;
-  std::array<TabletId, kNumSplitParts> child_tablet_ids_sorted;
+  std::array<TabletId, kDefaultNumSplitParts> child_tablet_ids_sorted;
 
   // Note that the tablet map update is deferred to avoid holding the catalog manager mutex during
   // the sys catalog upsert.
@@ -3179,8 +3179,8 @@ Status CatalogManager::DoSplitTablet(
     // If child tablets are already registered, use the existing split key and tablets.
     if (scope.source_tablet_meta().split_tablet_ids().size() > 0) {
       SCHECK_EQ(
-          kNumSplitParts,  scope.source_tablet_meta().split_tablet_ids().size(), IllegalState,
-          "Unexpected number of split tablets registered");
+          kDefaultNumSplitParts,  scope.source_tablet_meta().split_tablet_ids().size(),
+          IllegalState, "Unexpected number of split tablets registered");
 
       const auto& parent_partition = scope.source_tablet_meta().partition();
       for (const auto& split_tablet_id : scope.source_tablet_meta().split_tablet_ids()) {
@@ -3213,11 +3213,11 @@ Status CatalogManager::DoSplitTablet(
                 << " by partition key: " << Slice(split_partition_key).ToDebugHexString();
 
       // Get partitions for the split children.
-      std::array<PartitionPB, kNumSplitParts> tablet_partitions = VERIFY_RESULT(
+      std::array<PartitionPB, kDefaultNumSplitParts> tablet_partitions = VERIFY_RESULT(
           CreateNewTabletsPartition(*source_tablet_info, split_partition_key));
 
       // Create in-memory (uncommitted) tablets for new split children.
-      for (size_t i = 0; i < kNumSplitParts; ++i) {
+      for (size_t i = 0; i < kDefaultNumSplitParts; ++i) {
         auto new_child = scope.CreateChildTablet(i, tablet_partitions[i]);
         child_tablet_ids_sorted[i] = new_child->id();
         new_tablets.push_back(std::move(new_child));
@@ -10966,7 +10966,7 @@ Status CatalogManager::SendAlterTableRequestInternal(
 }
 
 Status CatalogManager::SendSplitTabletRequest(
-    const TabletInfoPtr& tablet, std::array<TabletId, kNumSplitParts> new_tablet_ids,
+    const TabletInfoPtr& tablet, std::array<TabletId, kDefaultNumSplitParts> new_tablet_ids,
     const std::string& split_encoded_key, const std::string& split_partition_key,
     const LeaderEpoch& epoch) {
   VLOG(2) << "Scheduling SplitTablet request to leader tserver for source tablet ID: "
