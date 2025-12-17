@@ -1,5 +1,6 @@
 {# Start of the configuration file #}
 # This is an auto-generated file. Do not edit manually.
+# Use 'True' or 'False' for boolean comparisons in jinja and shell files.
 
 {% macro render_section(section, prefix="") -%}
 {%- for key, value in section.items() if value != '' -%}
@@ -35,12 +36,13 @@ no_proxy =
 {% else %}
 no_proxy = "{{ ynp_config['ynp'].no_proxy_list| join(', ') }}"
 {% endif %}
-node_exporter_port = {{ ynp_config['ynp'].node_exporter_port|default(9300) }}
+node_exporter_port = {{ ynp_config['ynp'].node_exporter_port | default(9300) }}
 {% if ynp_config['yba'].instance_type.mount_points %}
 mount_paths = {{ ynp_config['yba'].instance_type.mount_points | join(' ') }}
 {% endif %}
 configure_clockbound = {{ ynp_config['ynp'].is_configure_clockbound }}
-is_yb_prebuilt_image = {{ ynp_config['ynp'].is_yb_prebuilt_image | default('False') }}
+is_yb_prebuilt_image = {{ ynp_config['ynp'].is_yb_prebuilt_image | default(false) }}
+is_ybcontroller_disabled = {{ ynp_config['ynp'].is_ybcontroller_disabled | default(false) }}
 
 [Preprovision]
 
@@ -110,12 +112,12 @@ ports = 7000 7100 9000 9100 18018 5433 9042 9070 9300 12000 13000
 {{ render_section(ynp_config['yba']) -}}
 node_ip = {{ ynp_config['yba'].node_external_fqdn }}
 bind_ip = {{ ynp_config['ynp'].node_ip }}
-node_agent_port = {{ ynp_config['ynp'].node_agent_port|default(9070) }}
+node_agent_port = {{ ynp_config['ynp'].node_agent_port | default(9070) }}
 
 
 {%- if 'earlyoom' in ynp_config['ynp'] %}
 [InstallConfigureEarlyoom]
-earlyoom_enable = {{ ynp_config['ynp']['earlyoom'].earlyoom_enable | default('False') }}
+earlyoom_enable = {{ ynp_config['ynp']['earlyoom'].earlyoom_enable | default(false) }}
 earlyoom_args = {{ ynp_config['ynp']['earlyoom'].earlyoom_args | default('') }}
 {%- endif %}
 

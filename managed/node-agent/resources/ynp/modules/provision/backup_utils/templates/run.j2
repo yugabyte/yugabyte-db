@@ -1,5 +1,5 @@
+{% if is_ybcontroller_disabled == 'True' %}
 export PATH="/usr/local/bin:/usr/bin:$PATH"
-
 # Define necessary variables
 setuptools_package_path="/usr/local/setuptools-59.6.0"
 python_magic_package_path="/usr/local/python-magic-0.4.18"
@@ -100,3 +100,4 @@ if [[ -f "$package_path/$gsutil_package.tar.gz" ]]; then
 else
   echo "Warning: gsutil package $gsutil_package.tar.gz not found in $package_path, skipping..."
 fi
+{% endif %}

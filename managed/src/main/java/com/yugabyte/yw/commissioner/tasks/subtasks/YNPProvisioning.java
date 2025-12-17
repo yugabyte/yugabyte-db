@@ -98,6 +98,7 @@ public class YNPProvisioning extends NodeTaskBase {
       ynpNode.put("yb_user_id", "1994");
       ynpNode.put("is_airgap", provider.getDetails().airGapInstall);
       ynpNode.put("is_yb_prebuilt_image", taskParams().isYbPrebuiltImage);
+      ynpNode.put("is_ybcontroller_disabled", !universe.getUniverseDetails().isYbcInstalled());
       ynpNode.put(
           "tmp_directory",
           confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory));

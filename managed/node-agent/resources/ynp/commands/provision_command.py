@@ -279,7 +279,7 @@ class ProvisionCommand(Command):
             logger.info(f"{package_name} is installed.")
         except subprocess.CalledProcessError:
             logger.info(f"{package_name} is not installed.")
-            sys.exit()
+            sys.exit(1)
 
     def _discover_package_manager(self):
         package_manager = None
