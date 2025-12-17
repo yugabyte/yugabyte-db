@@ -34,7 +34,7 @@ In addition, if you upgrade to v2025.2 and the universe already has cost-based o
 
 Otherwise, upgrading from earlier versions does not change the defaults for any of these features.
 
-For versions earlier than v2025.2, to test and take advantage of features developed for enhanced PostgreSQL compatibility in YugabyteDB that are in {{<tags/feature/ea>}}, you can enable Enhanced PostgreSQL Compatibility Mode (EPCM). When this mode is turned on, YugabyteDB is configured to use the following features developed for feature and performance parity. EPCM is available in [v2024.1](/stable/releases/ybdb-releases/v2024.1/) and later.
+For versions earlier than v2025.2, to test and take advantage of features developed for enhanced PostgreSQL compatibility in YugabyteDB that are in {{<tags/feature/ea>}}, you can enable Enhanced PostgreSQL Compatibility Mode (EPCM). When this mode is turned on, YugabyteDB is configured to use the following features developed for feature and performance parity. EPCM is available in {{<release "2024.1">}} and later.
 
 The following features are part of EPCM.
 
