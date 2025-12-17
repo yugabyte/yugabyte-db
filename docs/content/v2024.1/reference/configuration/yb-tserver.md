@@ -758,7 +758,7 @@ For example:
 
 For information on available PostgreSQL server configuration parameters, refer to [Server Configuration](https://www.postgresql.org/docs/11/runtime-config.html) in the PostgreSQL documentation.
 
-The server configuration parameters for YugabyteDB are the same as for PostgreSQL, with some minor exceptions. Refer to [PostgreSQL server options](#postgresql-server-options).
+The server configuration parameters for YugabyteDB are the same as for PostgreSQL, with some minor exceptions. Refer to [PostgreSQL configuration parameters](#postgresql-configuration-parameters).
 
 ##### --ysql_timezone
 
@@ -780,7 +780,7 @@ This is a maximum per server, so a 3-node cluster will have a default of 900 ava
 
 Any active, idle in transaction, or idle in session connection counts toward the connection limit.
 
-Some connections are reserved for superusers. The total number of superuser connections is determined by the `superuser_reserved_connections` [PostgreSQL server parameter](#postgresql-server-options). Connections available to non-superusers is equal to `ysql_max_connections` - `superuser_reserved_connections`.
+Some connections are reserved for superusers. The total number of superuser connections is determined by the `superuser_reserved_connections` [PostgreSQL configuration parameter](#postgresql-configuration-parameters). Connections available to non-superusers is equal to `ysql_max_connections` - `superuser_reserved_connections`.
 
 Default: If `ysql_max_connections` is not set, the database startup process will determine the highest number of connections the system can support, from a minimum of 50 to a maximum of 300 (per node).
 
