@@ -195,7 +195,7 @@ class BlockBasedTable : public TableReader {
 
   const ImmutableCFOptions& ioptions();
 
-  yb::Result<std::string> GetMiddleKey() override;
+  yb::Result<std::string> GetMiddleKey(Slice lower_bound_key) override;
 
   yb::Result<uint32_t> TEST_GetBlockNumRestarts(
       const ReadOptions& ro, const Slice index_value, BlockType block_type);
@@ -359,6 +359,11 @@ class BlockBasedTable : public TableReader {
   template <typename IndexIteratorType>
   void RegisterCleanupForIndexIterator(
       const CachableEntry<IndexReader>& index_reader_entry, IndexIteratorType* iter);
+
+  // Returns approximate middle key from the index, starting from the lower bound key if provided.
+  // Key from the index might not match any key actually written to SST file, because keys could be
+  // shortened and substituted before them are written into the index (see ShortenedIndexBuilder).
+  yb::Result<std::string> GetIndexMiddleKey(Slice lower_bound_internal_key);
 };
 
 }  // namespace rocksdb

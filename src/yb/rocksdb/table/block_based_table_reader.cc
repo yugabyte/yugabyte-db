@@ -2198,15 +2198,24 @@ const ImmutableCFOptions& BlockBasedTable::ioptions() {
   return rep_->ioptions;
 }
 
-yb::Result<std::string> BlockBasedTable::GetMiddleKey() {
+Result<std::string> BlockBasedTable::GetIndexMiddleKey(Slice lower_bound_internal_key) {
+  // If a lower bound key is provided, find the middle key starting from that.
+  if (!lower_bound_internal_key.empty()) {
+    std::unique_ptr<DataBlockAwareIndexInternalIterator> index_iter(
+        NewDataBlockAwareIndexIterator(ReadOptions::kDefault));
+    return index_iter->GetMiddleKey(lower_bound_internal_key);
+  }
+
+  // If a lower bound key is not provided, find the middle key across all keys by retrieving the
+  // restart key at the middle position of the (top-level) index block.
   auto index_reader = VERIFY_RESULT(GetIndexReader(ReadOptions::kDefault));
+  auto middle_key = index_reader.value->GetMiddleKey();
+  index_reader.Release(rep_->table_options.block_cache.get());
+  return middle_key;
+}
 
-  // TODO: remove this trick after https://github.com/yugabyte/yugabyte-db/issues/4720 is resolved.
-  auto se = yb::ScopeExit([this, &index_reader] {
-    index_reader.Release(rep_->table_options.block_cache.get());
-  });
-
-  auto index_middle_key = index_reader.value->GetMiddleKey();
+yb::Result<std::string> BlockBasedTable::GetMiddleKey(Slice lower_bound_internal_key) {
+  Result<std::string> index_middle_key = GetIndexMiddleKey(lower_bound_internal_key);
   if (PREDICT_TRUE(index_middle_key.ok())) {
     // Seek to a nearest data block key is required as index may contain non-existent key
     std::unique_ptr<InternalIterator> iter(
@@ -2218,21 +2227,31 @@ yb::Result<std::string> BlockBasedTable::GetMiddleKey() {
     return iter->key().ToBuffer();
   }
 
-  // Incomplete status might mean number of block entries is 0 or 1. Let's check the last case and
-  // try to manually locate a data block and retrieve it's middle key.
   if (!index_middle_key.status().IsIncomplete()) {
     return index_middle_key.status().CloneAndPrepend(
         "Failed to locate a middle key in index SST file");
   }
 
+  // On Incomplete status, find the middle key by manually locating the sole data block in the SST.
+  // If a lower bound was not used (traditional algorithm), we reach here when the SST has only one
+  // data block (consequently the top-level index block has only one entry).
+  // If a lower bound was used, we reach here when the SST has only one data block with user keys
+  // in them. There may be several index levels and data blocks.
   std::unique_ptr<InternalIterator> index_iter(NewIndexIterator(ReadOptions::kDefault));
   RETURN_NOT_OK_PREPEND(index_iter->status(), "Index iterator creation failed");
-  index_iter->SeekToFirst();
+  if (!lower_bound_internal_key.empty()) {
+    index_iter->Seek(lower_bound_internal_key);
+  } else {
+    index_iter->SeekToFirst();
+  }
   RETURN_NOT_OK_PREPEND(index_iter->status(), "Failed to seek to first index entry");
   if (!index_iter->Valid()) {
     return STATUS(Incomplete, "Index iterator is not valid after SeekToFirst");
   }
 
+  // The middle key retrieved from the sole data block may be lesser than the lower bound (i.e., a
+  // DocDB system record) since the lower bound is not applied in the middle key determination
+  // below.
   auto data_block = VERIFY_RESULT(
       RetrieveBlock(ReadOptions::kDefault, index_iter->value(), BlockType::kData));
   auto middle_key_res = data_block.value->GetMiddleKey(

@@ -175,6 +175,7 @@ DECLARE_bool(TEST_asyncrpc_finished_set_timedout);
 DECLARE_bool(enable_copy_retryable_requests_from_parent);
 DECLARE_bool(enable_flush_retryable_requests);
 DECLARE_int32(max_create_tablets_per_ts);
+DECLARE_bool(tablet_split_use_middle_user_key);
 DECLARE_double(tablet_split_min_size_ratio);
 
 namespace yb {
@@ -3437,6 +3438,9 @@ TEST_P(TabletSplitSystemRecordsITest, GetSplitKey) {
   //   2) run kNumTxns transaction with the same keys
   //   3) run manual compaction to collapse all user records to the latest transaciton content
   //   4) at this step there are kNumTxns internal records followed by 2 * kNumRows user records
+
+  // Disable the fix to split only across user keys.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_use_middle_user_key) = false;
 
   // Selecting a small period for history cutoff to force compacting records with the same keys.
   constexpr auto kHistoryRetentionSec = 1;

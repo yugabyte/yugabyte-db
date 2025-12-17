@@ -2198,7 +2198,7 @@ static bool compareKeys(MiddleKeyWithSize f1,
 
 } // namespace
 
-Result<std::string> Version::GetMiddleOfMiddleKeys() {
+Result<std::string> Version::GetMiddleOfMiddleKeys(Slice lower_bound_internal_key) {
   const auto level = storage_info_.num_levels_ - 1;
   // Largest files are at lowest level.
   std::vector <MiddleKeyWithSize> sst_files;
@@ -2211,7 +2211,7 @@ Result<std::string> Version::GetMiddleOfMiddleKeys() {
         /* no_io = */ false, cfd_->internal_stats()->GetFileReadHist(level),
         IsFilterSkipped(level, /* is_file_last_in_level = */ true)));
 
-    const auto result_mkey = trwh.table_reader->GetMiddleKey();
+    const auto result_mkey = trwh.table_reader->GetMiddleKey(lower_bound_internal_key);
     if (!result_mkey.ok()) {
       if (result_mkey.status().IsIncomplete()) {
         continue;
@@ -2260,8 +2260,8 @@ Result<TableCache::TableReaderWithHandle> Version::GetLargestSstTableReader() {
       IsFilterSkipped(level, /* is_file_last_in_level = */ true));
 }
 
-Result<std::string> Version::GetMiddleKey() {
-  return GetMiddleOfMiddleKeys();
+Result<std::string> Version::GetMiddleKey(Slice lower_bound_internal_key) {
+  return GetMiddleOfMiddleKeys(lower_bound_internal_key);
 }
 
 Result<TableReader*> Version::TEST_GetLargestSstTableReader() {
