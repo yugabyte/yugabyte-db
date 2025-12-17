@@ -68,7 +68,7 @@ To display the online help, run `yb-tserver --help` from the YugabyteDB home dir
 ./bin/yb-tserver --help
 ```
 
-Use `--helpon`  on modules named by the specified flag value.
+Use `--helpon` to display help on modules named by the specified flag value.
 
 ## All flags
 
