@@ -8,6 +8,8 @@ menu:
     identifier: yb-tserver
     parent: configuration
     weight: 2100
+rightNav:
+  hideH4: true
 type: docs
 body_class: configuration
 ---
@@ -52,10 +54,10 @@ yb-tserver [ flags ]
 
 ```sh
 ./bin/yb-tserver \
---tserver_master_addrs 172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 \
---rpc_bind_addresses 172.151.17.130 \
---enable_ysql \
---fs_data_dirs "/home/centos/disk1,/home/centos/disk2" &
+    --tserver_master_addrs 172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 \
+    --rpc_bind_addresses 172.151.17.130 \
+    --enable_ysql \
+    --fs_data_dirs "/home/centos/disk1,/home/centos/disk2" &
 ```
 
 **Online help**
@@ -66,7 +68,7 @@ To display the online help, run `yb-tserver --help` from the YugabyteDB home dir
 ./bin/yb-tserver --help
 ```
 
-Use `--helpon` to displays help on modules named by the specified flag value.
+Use `--helpon` to display help on modules named by the specified flag value.
 
 ## All flags
 
@@ -293,9 +295,13 @@ For example, if you set a parameter explicitly using both the YSQL flag (`ysql_<
 
 #### Methods
 
-- Use the PostgreSQL server configuration flag [ysql_pg_conf_csv](#ysql-pg-conf-csv). For example, `--ysql_pg_conf_csv=yb_bnl_batch_size=512`.
+- Use the PostgreSQL server configuration flag [ysql_pg_conf_csv](#ysql-pg-conf-csv).
 
-- If a flag is available with the same parameter name and the `ysql_` prefix, then set the flag directly. For example, `--ysql_yb_bnl_batch_size=512`.
+    For example, `--ysql_pg_conf_csv=yb_bnl_batch_size=512`.
+
+- If a flag is available with the same parameter name and the `ysql_` prefix, then set the flag directly.
+
+    For example, `--ysql_yb_bnl_batch_size=512`.
 
 - Set the option per-database:
 
