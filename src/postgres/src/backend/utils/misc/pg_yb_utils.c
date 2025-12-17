@@ -143,15 +143,23 @@ static uint64_t yb_logical_client_cache_version = YB_CATCACHE_VERSION_UNINITIALI
 static bool yb_need_invalidate_all_table_cache = false;
 
 static bool YbHasDdlMadeChanges();
+static int YbGetNumCreateFunctionStmts();
+static bool YBIsCurrentStmtCreateFunction();
 
 uint64_t
 YBGetActiveCatalogCacheVersion()
 {
-	if (yb_catalog_version_type == CATALOG_VERSION_CATALOG_TABLE &&
-		(YBGetDdlNestingLevel() > 0 ||
-		 (YBIsDdlTransactionBlockEnabled() && YBIsCurrentStmtDdl())))
-		return yb_catalog_cache_version + 1;
-
+	if (yb_catalog_version_type == CATALOG_VERSION_CATALOG_TABLE)
+	{
+		/*
+		 * Note that YBIsCurrentStmtCreateFunction is for both CREATE (OR REPLACE)
+		 * FUNCTION and CREATE (OR REPLACE) PROCEDURE.
+		 */
+		if (YBGetDdlNestingLevel() > 0 && YBIsCurrentStmtCreateFunction())
+			return yb_catalog_cache_version + 1;
+		if (YBIsDdlTransactionBlockEnabled() && YBIsCurrentStmtCreateFunction())
+			return yb_catalog_cache_version + YbGetNumCreateFunctionStmts();
+	}
 	return yb_catalog_cache_version;
 }
 
@@ -1367,6 +1375,11 @@ typedef struct
 	Oid			database_oid;
 	int			num_committed_pg_txns;
 
+	/*
+	 * Number of create function or procedure statements in the current ddl
+	 * transaction block. Only used when ddl transaction block is enabled.
+	 */
+	int			num_create_function_stmts;
 	/*
 	 * This indicates whether the current DDL transaction is running as part of
 	 * the regular transaction block.
@@ -2607,6 +2620,12 @@ YBIsCurrentStmtDdl()
 	return ddl_transaction_state.is_top_level_ddl_active;
 }
 
+static bool
+YBIsCurrentStmtCreateFunction()
+{
+	return ddl_transaction_state.current_stmt_node_tag == T_CreateFunctionStmt;
+}
+
 bool
 YBGetDdlUseRegularTransactionBlock()
 {
@@ -2726,6 +2745,13 @@ YBAddDdlTxnState(YbDdlMode mode)
 		 *    ddl_transaction_state.use_regular_txn_block as true.
 		 */
 		ddl_transaction_state.catalog_modification_aspects.pending |= mode;
+
+		/*
+		 * Note that T_CreateFunctionStmt is for both CREATE (OR REPLACE) FUNCTION
+		 * and CREATE (OR REPLACE) PROCEDURE.
+		 */
+		ddl_transaction_state.num_create_function_stmts +=
+			ddl_transaction_state.current_stmt_node_tag == T_CreateFunctionStmt ? 1 : 0;
 		return;
 	}
 
@@ -2737,6 +2763,8 @@ YBAddDdlTxnState(YbDdlMode mode)
 	 * this YB DDL transaction.
 	 */
 	ddl_transaction_state.num_committed_pg_txns = 0;
+	ddl_transaction_state.num_create_function_stmts =
+		ddl_transaction_state.current_stmt_node_tag == T_CreateFunctionStmt ? 1 : 0;
 	ddl_transaction_state.mem_context =
 		AllocSetContextCreate(CurrentMemoryContext,
 							  "aux ddl memory context",
@@ -2900,6 +2928,12 @@ void
 YbIncrementPgTxnsCommitted()
 {
 	++ddl_transaction_state.num_committed_pg_txns;
+}
+
+static int
+YbGetNumCreateFunctionStmts()
+{
+	return ddl_transaction_state.num_create_function_stmts;
 }
 
 /*

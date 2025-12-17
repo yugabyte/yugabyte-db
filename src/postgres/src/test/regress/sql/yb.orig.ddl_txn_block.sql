@@ -323,3 +323,18 @@ SELECT COUNT(*) FROM _33_s_1_data WHERE id = 200;
 SELECT COUNT(*) FROM _33_s_1_audit WHERE notes = 'V2';
 
 SELECT * FROM _33_s_1_audit WHERE notes = 'V2';
+
+CREATE OR REPLACE PROCEDURE _33_sp_insert(val INT) LANGUAGE SQL AS $$
+INSERT INTO _33_s_1_data (id) VALUES (val * 200);
+$$;
+
+CREATE OR REPLACE FUNCTION _33_func_audit() RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO _33_s_1_audit (data_id, notes) VALUES (NEW.id, 'V3');
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CALL _33_sp_insert(3);
+
+SELECT * FROM _33_s_1_audit WHERE notes = 'V3';
