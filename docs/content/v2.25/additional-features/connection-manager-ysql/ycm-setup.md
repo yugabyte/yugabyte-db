@@ -173,3 +173,4 @@ When using YSQL Connection Manager, sticky connections can form in the following
 - Although the use of auth-backends (`ysql_conn_mgr_use_auth_backend=true`) to authenticate client connections can result in higher connection acquisition latencies, using auth-passthrough (`ysql_conn_mgr_use_auth_backend=false`) may not be suitable depending on your workload. Contact {{% support-general %}} before setting `ysql_conn_mgr_use_auth_backend` to false. {{<issue 25313>}}
 - Salted Challenge Response Authentication Mechanism ([SCRAM](https://docs.yugabyte.com/preview/secure/authentication/password-authentication/#scram-sha-256)) is not supported with YSQL Connection Manager. {{<issue 25870>}}
 - Unix socket connections to YSQL Connection Manager are not supported. {{<issue 20048>}}
+- Connection manager is not supported or present in the MacOS YugabyteDB releases.
