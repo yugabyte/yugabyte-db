@@ -222,6 +222,19 @@ typedef enum YbIndexCondTypes {
 	UPPER_BOUND_INEQUALITY_EXPR = 16
 } YbIndexCondTypes;
 
+/*
+ * YB: Cardinality is a type alias for double used for declaring variables that
+ * contain the number of rows in a table or other values that derive from it,
+ * such as number of result pages, seeks and nexts etc. This can help clarify
+ * intent and avoid type errors.
+ * 
+ * In YB 2025.x, this was imported from PG upgrade and is defined in
+ * postgres/src/include/nodes/nodes.h. In 2024.x, this is only used in this
+ * file currently, so we define it here.
+ */
+typedef double Cardinality;		/* (estimated) number of rows or other integer
+								 * count */
+
 static List *extract_nonindex_conditions(List *qual_clauses, List *indexquals);
 static MergeScanSelCache *cached_scansel(PlannerInfo *root,
 			   RestrictInfo *rinfo,
@@ -255,8 +268,8 @@ static void set_rel_width(PlannerInfo *root, RelOptInfo *rel);
 static double relation_byte_size(double tuples, int width);
 static double page_size(double tuples, int width);
 static double get_parallel_divisor(Path *path);
-static Cost yb_compute_result_transfer_cost(double result_tuples,
-											int result_width,
+static Cost yb_compute_result_transfer_cost(Cardinality result_tuples,
+											int32 result_width,
 											Cost roundtrip_cost,
 											Cost transfer_cost);
 
@@ -1279,7 +1292,9 @@ yb_cost_bitmap_tree_node(Path *path, Cost *cost, Selectivity *selec, int *ybctid
 		long maxentries = yb_tbm_calculate_entries(work_mem * 1024L,
 												   ipath->ybctid_width);
 
-		double bitmap_rows = clamp_row_est(ipath->indexselectivity * ipath->path.parent->tuples);
+		Cardinality	bitmap_rows =
+				clamp_row_est(ipath->indexselectivity *
+							  ipath->path.parent->tuples);
 
 		if (bitmap_rows > maxentries && *cost < bitmap_exceeded_work_mem_disable_cost)
 			*cost += bitmap_exceeded_work_mem_disable_cost;
@@ -1334,7 +1349,7 @@ yb_cost_bitmap_and_node(BitmapAndPath *path, PlannerInfo *root)
 	Cost		startup_cost;
 	Cost		run_cost;
 	Selectivity selec;
-	double		least_rows;
+	Cardinality	least_rows;
 	ListCell   *l;
 	int			ybctid_width_sum;
 	bool		exceeded_work_mem;
@@ -5952,8 +5967,8 @@ compute_bitmap_pages(PlannerInfo *root, RelOptInfo *baserel, Path *bitmapqual,
 }
 
 static Cost
-yb_data_transfer_cost(int round_trips,
-					  double data_size,
+yb_data_transfer_cost(Cardinality round_trips,
+					  Cardinality data_size,
 					  Cost roundtrip_cost,
 					  Cost transfer_cost)
 {
@@ -5976,13 +5991,13 @@ yb_data_transfer_cost(int round_trips,
  * bandwidth of the connection.
  */
 static Cost
-yb_compute_result_transfer_cost(double result_tuples,
-								int result_width,
+yb_compute_result_transfer_cost(Cardinality result_tuples,
+								int32 result_width,
 								Cost roundtrip_cost,
 								Cost transfer_cost)
 {
-	int			num_result_pages;
-	double		result_page_size;
+	Cardinality	num_result_pages;
+	Cardinality	result_page_size;
 
 	/* Network costs */
 	if (yb_fetch_size_limit == 0 &&
@@ -6017,10 +6032,10 @@ yb_compute_result_transfer_cost(double result_tuples,
  * yb_get_num_result_pages
  *		Returns the number of result pages will be transferred over network.
  */
-static double
-yb_get_num_result_pages(double result_tuples, int result_width)
+static Cardinality
+yb_get_num_result_pages(Cardinality result_tuples, int32 result_width)
 {
-	double		num_result_pages = 0;
+	Cardinality	num_result_pages = 0;
 
 	if (yb_fetch_size_limit == 0 &&
 		yb_fetch_row_limit == 0)
@@ -6085,7 +6100,7 @@ yb_get_relation_data_width(RelOptInfo *relinfo, Oid reloid)
  *   columns in each SST file. We assume that each SST file must be searched.
  */
 static Cost
-yb_get_lsm_seek_cost(double num_tuples, int num_key_value_pairs_per_tuple,
+yb_get_lsm_seek_cost(Cardinality num_tuples, int num_key_value_pairs_per_tuple,
 					 int num_sst_files)
 {
 	Cost 		seek_cost;
@@ -6282,15 +6297,15 @@ yb_get_ybctid_width(Oid baserel_oid, RelOptInfo *baserel,
  * When columns are being projected, either in select list or in local
  * filters then these columns are returned from DocDB.
  */
-static uint32_t
-yb_get_docdb_result_width(Path *path, PlannerInfo* root, bool is_index_path,
+static int32
+yb_get_docdb_result_width(Path *path, PlannerInfo *root, bool is_index_path,
 						  bool is_primary_index, bool is_index_only,
 						  List *index_conditions, List *local_clauses,
 						  RelOptInfo* baserel, Oid baserel_oid)
 {
 	ListCell* lc;
 	Bitmapset *attrs = NULL;
-	uint32_t result_width = 0;
+	int32 result_width = 0;
 	IndexPath* index_path = NULL;
 
 	if (is_index_path)
@@ -6516,7 +6531,7 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	Cost		run_cost = 0;
 	int32		tuple_width = 0;
 	Oid			reloid = planner_rt_fetch(baserel->relid, root)->relid;
-	int32		num_blocks;
+	Cardinality	num_blocks;
 	QualCost	qual_cost;
 	/* TODO: Plug here the actual number of key-value pairs per tuple */
 	int			num_key_value_pairs_per_tuple =
@@ -6530,12 +6545,12 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	List	   *pushed_down_clauses = NIL;
 	List	   *local_clauses = NIL;
 	ListCell   *lc;
-	double		remote_filtered_rows;
-	double		num_result_pages;
-	double		num_nexts;
-	double		num_seeks;
-	int			docdb_result_width;
-	double		adjusted_baserel_tuples = baserel->tuples;
+	Cardinality	remote_filtered_rows;
+	Cardinality	num_result_pages;
+	Cardinality	num_nexts;
+	Cardinality	num_seeks;
+	int32		docdb_result_width;
+	Cardinality	adjusted_baserel_tuples = baserel->tuples;
 	Cost		roundtrip_cost;
 	Cost		transfer_cost;
 
@@ -6880,10 +6895,10 @@ yb_estimate_seeks_nexts_in_index_scan(PlannerInfo *root,
 									  Oid baserel_oid,
 									  Selectivity index_conditions_selectivity,
 									  List **index_conditions_on_each_column,
-									  double *num_seeks,
-									  double *num_nexts)
+									  Cardinality *num_seeks,
+									  Cardinality *num_nexts)
 {
-	double	   *num_groups_of_index_key_prefixes;
+	Cardinality *num_groups_of_index_key_prefixes;
 	List	   *index_key_list = NIL;
 
 	Assert(*num_seeks == 0);
@@ -6966,7 +6981,8 @@ yb_estimate_seeks_nexts_in_index_scan(PlannerInfo *root,
 			 * key, including the current key, divided by the distinct count
 			 * of the group of preceding keys.
 			 */
-			int out_rows_per_prefix_key_group;
+			Cardinality	out_rows_per_prefix_key_group;
+
 			if (index_col > 0)
 			{
 				out_rows_per_prefix_key_group =
@@ -6993,7 +7009,7 @@ yb_estimate_seeks_nexts_in_index_scan(PlannerInfo *root,
 				 */
 				if (index_col > 0)
 				{
-					int num_unique_values_per_prefix_group =
+					Cardinality	num_unique_values_per_prefix_group =
 						num_groups_of_index_key_prefixes[index_col] /
 						num_groups_of_index_key_prefixes[index_col - 1];
 					if (num_unique_values_per_prefix_group <
@@ -7062,7 +7078,8 @@ yb_estimate_seeks_nexts_in_index_scan(PlannerInfo *root,
 			 * current key, for each unique group of preceding keys.
 			 *
 			 */
-			int num_unique_values_per_prefix_key_group;
+			Cardinality	num_unique_values_per_prefix_key_group;
+
 			if (index_col > 0)
 			{
 				num_unique_values_per_prefix_key_group =
@@ -7206,7 +7223,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	Selectivity index_conditions_selectivity;
 	Selectivity index_selectivity;
 	Selectivity all_conditions_and_remote_filters_selectivity;
-	double		num_index_tuples_matched;
+	Cardinality	num_index_tuples_matched;
 	List	   *index_conditions;
 	int			index_col;
 	ListCell   *lc;
@@ -7226,18 +7243,18 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	/* TODO: Plug here the actual number of SST files for this index */
 	int			num_sst_files_baserel = YB_DEFAULT_NUM_SST_FILES_PER_TABLE;
 	Cost		per_next_cost;
-	double		num_seeks;
-	double		num_nexts_prevs;
+	Cardinality	num_seeks;
+	Cardinality	num_nexts_prevs;
 	QualCost	qual_cost;
 	List	   *base_table_pushed_down_filters = NIL;
 	List	   *base_table_colrefs = NIL;
 	List	   *index_pushed_down_filters = NIL;
 	List	   *index_colrefs = NIL;
 	List	   *local_clauses = NIL;
-	double		index_total_pages;
-	double		index_pages_fetched;
-	double		index_random_pages_fetched;
-	double		index_sequential_pages_fetched;
+	Cardinality	index_total_pages;
+	Cardinality	index_pages_fetched;
+	Cardinality	index_random_pages_fetched;
+	Cardinality	index_sequential_pages_fetched;
 	List	  **index_conditions_on_each_column;
 	int			docdb_result_width;
 	int32		baserel_tuple_width = 0;
@@ -7246,7 +7263,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	double		parallel_divisor = 1.0;
 	Cost		index_roundtrip_cost;
 	Cost		index_transfer_cost;
-	double		adjusted_index_tuples = index->tuples;
+	Cardinality	adjusted_index_tuples = index->tuples;
 	bool is_primary_index;
 	
 	if (index->hypothetical)
@@ -7560,7 +7577,8 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	 * If we multiply the selectivity with the number of tuples in base table,
 	 * we may not prefer the partial index anymore.
 	 */
-	double		num_baserel_result_rows;
+	Cardinality	num_baserel_result_rows;
+
 	num_baserel_result_rows =
 		clamp_row_est(adjusted_index_tuples *
 					  all_conditions_and_remote_filters_selectivity);
@@ -7608,9 +7626,10 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 		/* Compute the cost of fetching the base table from disk to memory */
 		baserel_tuple_width =
 			yb_get_relation_data_width(baserel, baserel_oid);
-		int	num_docdb_blocks_fetched =
-			ceil(num_index_tuples_matched * baserel_tuple_width /
-					YB_DEFAULT_DOCDB_BLOCK_SIZE);
+		Cardinality	num_docdb_blocks_fetched = ceil(num_index_tuples_matched *
+													baserel_tuple_width /
+													YB_DEFAULT_DOCDB_BLOCK_SIZE);
+
 		/*
 		 * If this is a primary index scan, pages from the disk will likely be
 		 * fetched in sequential order as they are sorted by the primary key.
@@ -7638,11 +7657,11 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 																				 index_roundtrip_cost,
 																				 index_transfer_cost);
 
-		double		index_ybctid_num_result_pages = yb_get_num_result_pages(num_index_tuples_matched,
+		Cardinality	index_ybctid_num_result_pages = yb_get_num_result_pages(num_index_tuples_matched,
 																			index_ybctid_width);
 
 		/* Add seeks and nexts for result pages */
-		double		index_ybctid_num_paging_seeks = index_ybctid_num_result_pages - 1;
+		Cardinality	index_ybctid_num_paging_seeks = index_ybctid_num_result_pages - 1;
 		Cost		index_ybctid_paging_seek_next_costs = (index_ybctid_num_paging_seeks *
 														   index_per_seek_cost);
 
@@ -7748,7 +7767,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 					  (1 - 1 / index_result_num_pages)));
 	}
 
-	double		num_baserel_result_pages = 0;
+	Cardinality	num_baserel_result_pages = 0;
 
 	if (!is_primary_index && !index_only)
 	{
@@ -7827,8 +7846,8 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 			 * can be optimized with nexts, but we assume half lookups will be
 			 * seeks and remaining will be nexts.
 			 */
-			double		baserel_num_seeks = ceil(num_index_tuples_matched / 2.0);
-			double		baserel_num_nexts = (ceil(num_index_tuples_matched / 2.0) *
+			Cardinality	baserel_num_seeks = ceil(num_index_tuples_matched / 2.0);
+			Cardinality	baserel_num_nexts = (ceil(num_index_tuples_matched / 2.0) *
 											 (MAX_NEXTS_TO_AVOID_SEEK + 1));
 
 			num_seeks += baserel_num_seeks;
@@ -7993,7 +8012,7 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	Cost		indexTotalCost;
 	int32		tuple_width = 0;
 	Oid			reloid = planner_rt_fetch(baserel->relid, root)->relid;
-	int32		num_blocks;
+	Cardinality	num_blocks;
 	int			max_nexts_to_avoid_seek = 2;
 	/* TODO: Plug here the actual number of key-value pairs per tuple */
 	int			num_key_value_pairs_per_tuple =
@@ -8005,15 +8024,15 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	Cost		per_next_cost = 0.0;
 	List	   *local_clauses = NIL;
 	List	   *non_index_clauses = NIL;
-	double		num_nexts;
-	double		num_seeks;
+	Cardinality	num_nexts;
+	Cardinality	num_seeks;
 	int			docdb_result_width;
-	double		tuples_fetched;
-	double		tuples_scanned;
+	Cardinality	tuples_fetched;
+	Cardinality	tuples_scanned;
 	QualCost	qual_cost;
 	List	   *indexquals;
 	ListCell   *l;
-	double		adjusted_baserel_tuples = baserel->tuples;
+	Cardinality	adjusted_baserel_tuples = baserel->tuples;
 	Cost		baserel_roundtrip_cost;
 	Cost		baserel_transfer_cost;
 	Relation	base_rel = RelationIdGetRelation(reloid);
