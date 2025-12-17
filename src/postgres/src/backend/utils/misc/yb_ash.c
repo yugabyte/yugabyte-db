@@ -65,6 +65,9 @@
 #define ACTIVE_SESSION_HISTORY_COLS_V5 16
 #define ACTIVE_SESSION_HISTORY_COLS_V6 17
 
+#define ACTIVE_SESSION_HISTORY_IN_PARAMS_V1 0
+#define ACTIVE_SESSION_HISTORY_IN_PARAMS_V2 2
+
 #define MAX_NESTED_QUERY_LEVEL 64
 
 #define set_query_id() (nested_level == 0 || \
@@ -966,10 +969,141 @@ YbAshGetNextCircularBufferSlot(void)
 	return slot;
 }
 
+/*
+ * If available, reads input from the user. Input parameters:
+ *
+ * start_time: Out of all the rows returned, the lowest sample_time should not
+ * be less than start_time. If this is NULL, rows will be returned from the
+ * earliest available time in the circular buffer
+ *
+ * end_time: Out of all the rows returned, the highest sample_time should not
+ * be more than or equal to end_time. If this is NULL, rows will be returned
+ * till the most recent available time in the circular buffer
+ *
+ * The start index is always inclusive and the end index is always exclusive.
+ */
+static void
+GetAshIndexesFromInput(FunctionCallInfo fcinfo, int *start_idx, int *end_idx)
+{
+	int			index = yb_ash->index;
+	static int	nargs = -1;
+	bool		is_start_time_null = true;
+	bool		is_end_time_null = true;
+	TimestampTz start_time = 0;
+	TimestampTz end_time = 0;
+
+	*start_idx = -1;
+	*end_idx = -1;
+
+	if (nargs == -1)
+		nargs = YbGetNumberOfFunctionInputParameters(F_YB_ACTIVE_SESSION_HISTORY);
+
+	if (nargs == ACTIVE_SESSION_HISTORY_IN_PARAMS_V2)
+	{
+		is_start_time_null = PG_ARGISNULL(0);
+		is_end_time_null = PG_ARGISNULL(1);
+
+		if (!is_start_time_null)
+			start_time = PG_GETARG_TIMESTAMPTZ(0);
+
+		if (!is_end_time_null)
+			end_time = PG_GETARG_TIMESTAMPTZ(1);
+
+		/* only return error if user gave start_time > end_time */
+		if (start_time > end_time && !is_start_time_null && !is_end_time_null)
+		{
+			YbAshReleaseBufferLock();
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("yb_active_session_history: start time is greater "
+							"than end time "),
+					 errdetail("Start time: %s vs End time: %s",
+							   timestamptz_to_str(start_time),
+							   timestamptz_to_str(end_time))));
+		}
+	}
+
+	/*
+	 * Either the schema is of older version, or the input
+	 * parameters were not given.
+	 */
+	if (is_start_time_null)
+	{
+		if (yb_ash->circular_buffer[index].sample_time != 0)
+			*start_idx = index;
+		else /* buffer has not wrapped around */
+			*start_idx = 0;
+	}
+
+	if (is_end_time_null)
+		*end_idx = index; /* always return exclusive index */
+
+	/*
+	 * Find the indices that were not set in the above step
+	 * for the given time range.
+	 */
+	GetAshRangeIndexes(start_time, end_time, start_idx, end_idx,
+					   !is_end_time_null);
+}
+
+static void
+yb_active_session_history_init(FunctionCallInfo fcinfo,
+							   FuncCallContext *funcctx)
+{
+	MemoryContext oldcontext;
+	TupleDesc	tupdesc;
+	int			start_index;
+	int			end_index;
+	int		   *cur_index;
+
+	funcctx = SRF_FIRSTCALL_INIT();
+	oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+
+	/* Build a tuple descriptor for our result type */
+	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+		ereport(ERROR,
+				(errmsg_internal("return type must be a row type")));
+
+	funcctx->tuple_desc = BlessTupleDesc(tupdesc);
+
+	/* Acquire buffer lock (will be released when iteration completes) */
+	YbAshAcquireBufferLock(false /* exclusive */ );
+
+	GetAshIndexesFromInput(fcinfo, &start_index, &end_index);
+
+	if (start_index == -1 || end_index == -1)	/* No data */
+		funcctx->max_calls = 0;
+	else if (start_index > end_index)	/* Range wraps around */
+		funcctx->max_calls = (yb_ash->max_entries - start_index) + end_index;
+	else						/* Simple sequential range */
+	{
+		if (start_index != end_index)
+			funcctx->max_calls = end_index - start_index;
+		else
+		{
+			/*
+			 * If start index and end index are same, either the buffer is
+			 * empty, or the buffer has wrapped around and we need to scan
+			 * the entire buffer.
+			 */
+			if (yb_ash->circular_buffer[start_index].sample_time != 0)
+				funcctx->max_calls = yb_ash->max_entries;
+			else
+				funcctx->max_calls = 0;
+		}
+	}
+
+	cur_index = (int *) palloc(sizeof(int));
+	*cur_index = start_index;
+	funcctx->user_fctx = cur_index;
+
+	MemoryContextSwitchTo(oldcontext);
+}
+
 Datum
 yb_active_session_history(PG_FUNCTION_ARGS)
 {
-	FuncCallContext *funcctx;
+	FuncCallContext *funcctx = NULL;
 	static int	ncols = 0;
 
 	/* ASH must be loaded first */
@@ -983,25 +1117,7 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 
 	/* Stuff done only on the first call of the function */
 	if (SRF_IS_FIRSTCALL())
-	{
-		MemoryContext oldcontext;
-		TupleDesc	tupdesc;
-
-		funcctx = SRF_FIRSTCALL_INIT();
-		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
-
-		/* Build a tuple descriptor for our result type */
-		if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
-			ereport(ERROR,
-					(errmsg_internal("return type must be a row type")));
-
-		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
-		funcctx->max_calls = yb_ash->max_entries;
-
-		/* Acquire buffer lock (will be released when iteration completes) */
-		YbAshAcquireBufferLock(false /* exclusive */ );
-		MemoryContextSwitchTo(oldcontext);
-	}
+		yb_active_session_history_init(fcinfo, funcctx);
 
 	funcctx = SRF_PERCALL_SETUP();
 	if (funcctx->call_cntr < funcctx->max_calls)
@@ -1009,10 +1125,11 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 		Datum		values[ncols];
 		bool		nulls[ncols];
 		HeapTuple	tuple;
+		int		   *cur_index = funcctx->user_fctx;
 
 		int			j = 0;
 
-		YbcAshSample *sample = &yb_ash->circular_buffer[funcctx->call_cntr];
+		YbcAshSample *sample = &yb_ash->circular_buffer[*cur_index];
 		YbcAshMetadata *metadata = &sample->metadata;
 
 		pg_uuid_t	root_request_id;
@@ -1104,6 +1221,10 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 			values[j++] = ObjectIdGetDatum(metadata->user_id);
 
 		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
+
+		if (++(*cur_index) == yb_ash->max_entries)
+			*cur_index = 0;
+
 		SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tuple));
 	}
 	else
@@ -1194,7 +1315,7 @@ BinarySearchAshIndex(TimestampTz target_time, int left, int right,
  * is_end_time_exclusive controls whether the range is for
  * [start_time, end_time] or [start_time, end_time)
  */
-static void pg_attribute_unused() /* Will be used for #28810 */
+static void
 GetAshRangeIndexes(TimestampTz start_time, TimestampTz end_time,
 				   int *start_index, int *end_index,
 				   bool is_end_time_exclusive)
@@ -1210,28 +1331,36 @@ GetAshRangeIndexes(TimestampTz start_time, TimestampTz end_time,
 	TimestampTz buffer_first_entry_time = cb[0].sample_time;
 
 	/* Time range is not there in the buffer */
-	if (start_time > buffer_max_time || end_time < buffer_min_time)
+	if ((start_time > 0 && start_time > buffer_max_time) ||
+		(end_time > 0 && end_time < buffer_min_time))
 		return;
 
-	/* Find the start_index */
-	if (start_time <= buffer_min_time)
-		*start_index = min_time_index;
-	else if (start_time < buffer_first_entry_time)
-		*start_index = BinarySearchAshIndex(start_time, index, max_entries - 1,
-											true /* is_lower_bound */ );
-	else
-		*start_index = BinarySearchAshIndex(start_time, 0, max_time_index,
-											true /* is_lower_bound */ );
+	/* Find the start_index, if not already set */
+	if (*start_index == -1)
+	{
+		if (start_time <= buffer_min_time)
+			*start_index = min_time_index;
+		else if (start_time < buffer_first_entry_time)
+			*start_index = BinarySearchAshIndex(start_time, index,
+												max_entries - 1,
+												true /* is_lower_bound */ );
+		else
+			*start_index = BinarySearchAshIndex(start_time, 0, max_time_index,
+												true /* is_lower_bound */ );
+	}
 
-	/* Find the end_index */
-	if (end_time > buffer_max_time)
-		*end_index = max_time_index + 1;
-	else if (end_time < buffer_first_entry_time)
-		*end_index = BinarySearchAshIndex(end_time, index, max_entries - 1,
-										  is_end_time_exclusive);
-	else
-		*end_index = BinarySearchAshIndex(end_time, 0, max_time_index,
-										  is_end_time_exclusive);
+	/* Find the end_index, if not already set */
+	if (*end_index == -1)
+	{
+		if (end_time > buffer_max_time)
+			*end_index = max_time_index + 1;
+		else if (end_time < buffer_first_entry_time)
+			*end_index = BinarySearchAshIndex(end_time, index, max_entries - 1,
+											  is_end_time_exclusive);
+		else
+			*end_index = BinarySearchAshIndex(end_time, 0, max_time_index,
+											  is_end_time_exclusive);
+	}
 
 	/* if upper bound is used, end index can go out of bounds */
 	if (*end_index == max_entries)

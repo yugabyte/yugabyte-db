@@ -978,6 +978,7 @@ extern void YbTestGucBlockWhileIntNotEqual(int *actual, int expected,
 extern void YbTestGucFailIfStrEqual(char *actual, const char *expected);
 
 extern int	YbGetNumberOfFunctionOutputColumns(Oid func_oid);
+extern int  YbGetNumberOfFunctionInputParameters(Oid func_oid);
 
 char	   *YBDetailSorted(char *input);
 

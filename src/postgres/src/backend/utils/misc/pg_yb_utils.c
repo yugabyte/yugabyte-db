@@ -4561,6 +4561,29 @@ YbGetNumberOfFunctionOutputColumns(Oid func_oid)
 	return ncols;
 }
 
+int
+YbGetNumberOfFunctionInputParameters(Oid func_oid)
+{
+	int			nargs = 0;		/* Equals to the number of IN parameters. */
+
+	HeapTuple	proctup = SearchSysCache1(PROCOID, ObjectIdGetDatum(func_oid));
+
+	if (!HeapTupleIsValid(proctup))
+		elog(ERROR, "cache lookup failed for function %u", func_oid);
+
+	bool		is_null = false;
+	Datum		pronargs = SysCacheGetAttr(PROCOID, proctup,
+											  Anum_pg_proc_pronargs,
+											  &is_null);
+
+	Assert(!is_null);
+	nargs = DatumGetInt16(pronargs);
+
+	ReleaseSysCache(proctup);
+
+	return nargs;
+}
+
 /*
  * For backward compatibility, this function dynamically adapts to the number
  * of output columns defined in pg_proc.
