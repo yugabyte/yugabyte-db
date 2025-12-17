@@ -173,3 +173,4 @@ When using YSQL Connection Manager, sticky connections can form in the following
 - Currently, [auth-method](../../../secure/authentication/host-based-authentication/#auth-method) `cert` is not supported for host-based authentication. {{<issue 20658>}}
 - Although the use of auth-backends (`ysql_conn_mgr_use_auth_backend=true`) to authenticate client connections can result in higher connection acquisition latencies, using auth-passthrough (`ysql_conn_mgr_use_auth_backend=false`) may not be suitable depending on your workload. Contact {{% support-general %}} before setting `ysql_conn_mgr_use_auth_backend` to false. {{<issue 25313>}}
 - Unix socket connections to YSQL Connection Manager are not supported. {{<issue 20048>}}
+- Connection manager is not supported or present in the MacOS YugabyteDB releases and there are no plans to support it in near future.
