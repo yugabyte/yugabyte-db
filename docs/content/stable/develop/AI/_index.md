@@ -11,20 +11,22 @@ cascade:
   unversioned: true
 ---
 
-YugabyteDB combines the power of the [pgvector](../../additional-features/pg-extensions/extension-pgvector/) PostgreSQL extension with an inherently distributed architecture. Using this foundation, you can build AI-powered, data-driven applications, including RAG and Agentic AI, that demand high-performance vector search.
+YugabyteDB offers the familiarity and extensibility of PostgreSQL, while also delivering scale and resilience. Its distributed nature combines enterprise-grade vector search with ACID transactions. YugabyteDB enables you to store embeddings alongside transactional data, perform vector similarity searches with full SQL capabilities, and scale to billions of vectors across multiple regions, all with PostgreSQL compatibility and zero-downtime operations.
+
+Using the [pgvector](../../additional-features/pg-extensions/extension-pgvector/) PostgreSQL extension, YugabyteDB functions as a highly performant vector database, with enterprise scale and resilience. This means you can use YugabyteDB to support Retrieval-augmented generation (RAG) workloads, providing AI agents with knowledge of your unstructured data, while its scalability allows it to store and search billions of vectors.
 
 Learn more about developing GenAI and RAG applications with YugabyteDB:
 
 - [Introducing New YugabyteDB Functionality for Ultra-Resilient AI Apps](https://www.yugabyte.com/blog/new-yugabytedb-functionality-for-ultra-resilient-ai-apps/)
 - [Introducing the YugabyteDB MCP Server](https://www.yugabyte.com/blog/yugabytedb-mcp-server/)
 - [How to Build a RAG Workflow for Agentic AI without Code](https://www.yugabyte.com/blog/build-a-rag-workflow-for-agentic-ai-without-codev/)
-- 
+- [From RAG to Riches: AI That Knows Your Support Stack](https://www.yugabyte.com/blog/rag-ai-that-knows-your-support-stack/)
 
-Explore the following examples to get started building scalable gen AI applications that scale and never fail.
+Explore the following examples to get started building scalable gen AI applications with YugabyteDB.
 
 ## Retrieval-augmented generation
 
-RAG combines large language models (LLM) with external knowledge sources to produce more accurate and context-aware responses. YugabyteDB serves as the retrieval layer for RAG applications, combining vector similarity search with transactional data access. Unlike standalone vector databases, YugabyteDB enables you to join embeddings with user data, metadata, and business logic in a single query, delivering faster and more contextually rich responses.
+Build a Retrieval-Augmented Generation pipeline with YugabyteDB.
 
 {{<index/block>}}
 {{<index/item
@@ -52,7 +54,7 @@ RAG combines large language models (LLM) with external knowledge sources to prod
 
 ## Vector basics
 
-Vector databases enable semantic search, which allows you to find content with a similar meaning even if it doesn't include the same text.
+Use YugabyteDB as the database backend for LLM applications.
 
 {{<index/block>}}
 {{<index/item
