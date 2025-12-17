@@ -287,13 +287,15 @@ YugabyteDB uses [PostgreSQL server configuration parameters](https://www.postgre
 
 ### How to modify configuration parameters
 
-You can modify these parameters in the following ways. 
+The methods for setting configurations are listed in order of precedence, from lowest to highest. That is, explicitly setting values for a configuration parameter using methods further down the following list have higher precedence than earlier methods.
 
-These methods are listed in order of precedence, so that explicitly set values for a configuration parameter through later methods have higher precedence than earlier methods. For example, if a GUC is explicitly set through both the `ysql_<GUC>` flag and the ysql_pg_conf_csv flag, the `ysql_<GUC>` flag takes precedence.
+For example, if you set a parameter explicitly using both the YSQL flag (`ysql_<parameter>`), and in the PostgreSQL server configuration flag (`ysql_pg_conf_csv`), the YSQL flag takes precedence.
 
-- Use the [ysql_pg_conf_csv](#ysql-pg-conf-csv) flag. For example `--ysql_pg_conf_csv=yb_bnl_batch_size=512`. 
+#### Methods
 
-- If a flag is available with the same name and `ysql_` prefix, then set the flag directly. For example, `--ysql_yb_bnl_batch_size=512`.
+- Use the PostgreSQL server configuration flag [ysql_pg_conf_csv](#ysql-pg-conf-csv). For example, `--ysql_pg_conf_csv=yb_bnl_batch_size=512`.
+
+- If a flag is available with the same parameter name and the `ysql_` prefix, then set the flag directly. For example, `--ysql_yb_bnl_batch_size=512`.
 
 - Set the option per-database:
 
@@ -338,7 +340,6 @@ These methods are listed in order of precedence, so that explicitly set values f
     ```sql
     ALTER FUNCTION add_new SET yb_bnl_batch_size=512;
     ```
-   
 
 For information on available PostgreSQL server configuration parameters, refer to [Server Configuration](https://www.postgresql.org/docs/15/runtime-config.html) in the PostgreSQL documentation.
 
