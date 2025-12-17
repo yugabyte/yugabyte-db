@@ -287,22 +287,30 @@ YugabyteDB uses [PostgreSQL server configuration parameters](https://www.postgre
 
 ### How to modify configuration parameters
 
-You can modify these parameters in the following ways:
+You can modify these parameters in the following ways. 
 
-- If a flag is available with the same name and `ysql_` prefix, then set the flag directly.
+These methods are listed in order of precedence, so that explicitly set values for a configuration parameter through later methods have higher precedence than earlier methods. So for example, if a GUC is explicitly set through both the `ysql_<GUC>` flag and the ysql_pg_conf_csv flag, the `ysql_<GUC>` flag takes precedence.
 
-- Use the [ysql_pg_conf_csv](#ysql-pg-conf-csv) flag.
+- Use the [ysql_pg_conf_csv](#ysql-pg-conf-csv) flag. For example `--ysql_pg_conf_csv=yb_bnl_batch_size=512`. 
+
+- If a flag is available with the same name and `ysql_` prefix, then set the flag directly. For example, `--ysql_yb_bnl_batch_size=512`.
 
 - Set the option per-database:
 
     ```sql
-    ALTER DATABASE database_name SET temp_file_limit=-1;
+    ALTER DATABASE database_name SET yb_bnl_batch_size=512;
     ```
 
 - Set the option per-role:
 
     ```sql
-    ALTER ROLE yugabyte SET temp_file_limit=-1;
+    ALTER ROLE yugabyte SET yb_bnl_batch_size=512;
+    ```
+
+- Set the option for a specific database and role:
+
+    ```sql
+    ALTER ROLE yugabyte IN DATABASE yugabyte SET yb_bnl_batch_size=512;
     ```
 
     Parameters set at the role or database level only take effect on new sessions.
@@ -310,9 +318,9 @@ You can modify these parameters in the following ways:
 - Set the option for the current session:
 
     ```sql
-    SET temp_file_limit=-1;
+    SET yb_bnl_batch_size=512;
     --- alternative way
-    SET SESSION temp_file_limit=-1;
+    SET SESSION yb_bnl_batch_size=512;
     ```
 
     If `SET` is issued in a transaction that is aborted later, the effects of the SET command are reverted when the transaction is rolled back.
@@ -322,8 +330,15 @@ You can modify these parameters in the following ways:
 - Set the option for the current transaction:
 
     ```sql
-    SET LOCAL temp_file_limit=-1;
+    SET LOCAL yb_bnl_batch_size=512;
     ```
+
+- Set the option within the scope of a function or procedure:
+
+    ```sql
+    ALTER FUNCTION add_new SET yb_bnl_batch_size=512;
+    ```
+   
 
 For information on available PostgreSQL server configuration parameters, refer to [Server Configuration](https://www.postgresql.org/docs/15/runtime-config.html) in the PostgreSQL documentation.
 
