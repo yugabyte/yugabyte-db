@@ -24,7 +24,7 @@ However, support content typically resides across many spaces, including public 
 
 To have support documents on premises and supply the LLM with needed context from the documents, you do the following:
 
-1. Transform all the support content into vector embeddings and store them in a PostgreSQL-compatible vector database like YugabyteDB, which supports hybrid transactional and vector workloads. Embeddings are stored in YugabyteDB using the [pgvector extension./../../additional-features/pg-extensions/extension-pgvector/).
+1. Transform all the support content into vector embeddings and store them in a PostgreSQL-compatible vector database like YugabyteDB, which supports hybrid transactional and vector workloads. Embeddings are stored in YugabyteDB using the [pgvector extension](../../../additional-features/pg-extensions/extension-pgvector/).
 1. When a user asks a question, generate an embedding for that question, search the internal vector store for semantically similar content, and pass those results as context to the LLM to generate accurate, relevant responses.
 
 The following basic example does the following:

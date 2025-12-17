@@ -850,7 +850,7 @@
 # AI was in tutorials now in develop/ai
 
 [[redirects]]
-  from = "/preview/develop/tutorials/ai/*"
+  from = "/:version/develop/tutorials/ai/*"
   to = "/stable/develop/ai/:splat"
   force = true
 

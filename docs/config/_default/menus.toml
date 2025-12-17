@@ -744,7 +744,7 @@
     classes = "separator"
     showSection = true
 
-### AI Submenus
+### AI submenus
 [[stable_develop]]
   name = "RAG"
   weight = 10
