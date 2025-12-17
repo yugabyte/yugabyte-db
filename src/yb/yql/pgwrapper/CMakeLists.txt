@@ -23,7 +23,8 @@ set(PGWRAPPER_LIBS
     yb_util)
 ADD_YB_LIBRARY(yb_pgwrapper
                SRCS ${PGWRAPPER_SRCS}
-               DEPS ${PGWRAPPER_LIBS})
+               DEPS ${PGWRAPPER_LIBS}
+               NONLINK_DEPS postgres)
 
 include_directories(${YB_BUILD_ROOT}/postgres_build/src/include)
 
