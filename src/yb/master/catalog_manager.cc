@@ -3886,9 +3886,9 @@ Status CatalogManager::GetYsqlCatalogConfig(const GetYsqlCatalogConfigRequestPB*
   // Use new API with YSQL DB Name only with ysql_enable_db_catalog_version_mode = true.
   // Use old API without YSQL DB Name only with ysql_enable_db_catalog_version_mode = false.
   SCHECK_EQ(
-      FLAGS_ysql_enable_db_catalog_version_mode, req->has_namespace_(), IllegalState,
+      catalog_version_table_in_perdb_mode_, req->has_namespace_(), IllegalState,
       Format("Invalid per-database catalog version mode = $0",
-             FLAGS_ysql_enable_db_catalog_version_mode));
+             catalog_version_table_in_perdb_mode_));
 
   if (!req->has_namespace_()) {
     LOG(WARNING) << "Called deprecated version of " << __func__
