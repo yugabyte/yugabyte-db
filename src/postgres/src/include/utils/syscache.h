@@ -177,7 +177,7 @@ extern long YbNumCatalogCacheTableMisses[];
 /* Used in IsYugaByteEnabled() mode only */
 extern void YbSetSysCacheTuple(Relation rel, HeapTuple tup);
 extern void YbPreloadCatalogCache(int cache_id, int idx_cache_id);
-extern void YbInitPinnedCacheIfNeeded(bool shared_only);
+extern void YbInitPinnedCacheIfNeeded(bool reset_snapshot);
 extern void YbResetPinnedCache();
 extern bool YbIsObjectPinned(Oid classId, Oid objectId, bool shared_dependency);
 extern void YbPinObjectIfNeeded(Oid classId, Oid objectId, bool shared_dependency);
