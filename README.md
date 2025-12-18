@@ -15,7 +15,7 @@ YugabyteDB is a PostgreSQL-compatible, [high-performance](https://docs.yugabyte.
 
 * [Core Features](#core-features)
 * [Get Started](#get-started)
-* [Build Apps](#build-apps)
+* [Build Applications](#build-applications)
 * [Current Roadmap](#current-roadmap)
 * [Recent features](#recently-released-features)
 * [Architecture](#architecture)
@@ -47,13 +47,13 @@ YugabyteDB was created with several key design goals in mind, aiming to address 
 * [Quick Start](https://docs.yugabyte.com/stable/quick-start/)
 * Try running a real-world demo application:
   * [Microservices-oriented e-commerce app](https://github.com/yugabyte/yugastore-java)
-  * [Streaming IoT app with Kafka and Spark Streaming](https://docs.yugabyte.com/stable/develop/realworld-apps/iot-spark-kafka-ksql/)
+  * [Lodging Recommendation Service With OpenAI and pgvector](https://github.com/YugabyteDB-Samples/openai-pgvector-lodging-service/)
 
 Can't find what you're looking for? Have a question? Post your questions or comments on our Community [Slack](https://communityinviter.com/apps/yugabyte-db/register) or [Forum](https://forum.yugabyte.com).
 
 # Build Applications
 
-YugabyteDB supports many languages and client drivers, including Java, Go, NodeJS, Python, and more. For a complete list, including examples, see [Drivers and ORMs](https://docs.yugabyte.com/stable/drivers-orms/).
+YugabyteDB supports many languages and client drivers, including Java, Go, NodeJS, Python, and more. For a complete list, including examples, see [Drivers and ORMs](https://docs.yugabyte.com/stable/develop/drivers-orms/).
 
 # Current Roadmap
 
