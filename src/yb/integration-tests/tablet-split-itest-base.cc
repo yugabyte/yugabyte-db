@@ -522,21 +522,26 @@ Status TabletSplitITest::WaitForTabletSplitCompletion(
   return Status::OK();
 }
 
-Result<TabletId> TabletSplitITest::SplitSingleTablet(docdb::DocKeyHash split_hash_code) {
+Result<TabletId> TabletSplitITest::SplitSingleTablet(
+    const std::vector<docdb::DocKeyHash>& split_hash_codes) {
   auto* catalog_mgr = VERIFY_RESULT(catalog_manager());
 
   auto source_tablet_info = VERIFY_RESULT(GetSingleTestTabletInfo(catalog_mgr));
   const auto source_tablet_id = source_tablet_info->id();
 
-  RETURN_NOT_OK(catalog_mgr->TEST_SplitTablet(source_tablet_info, split_hash_code));
+  RETURN_NOT_OK(catalog_mgr->TEST_SplitTablet(source_tablet_info, split_hash_codes));
   return source_tablet_id;
 }
 
+Result<TabletId> TabletSplitITest::SplitSingleTablet(docdb::DocKeyHash split_hash_code) {
+  return SplitSingleTablet(std::vector<docdb::DocKeyHash>{split_hash_code});
+}
+
 Result<TabletId> TabletSplitITest::SplitTabletAndValidate(
-    docdb::DocKeyHash split_hash_code,
+    const std::vector<docdb::DocKeyHash>& split_hash_codes,
     size_t num_rows,
     bool parent_tablet_protected_from_deletion) {
-  auto source_tablet_id = VERIFY_RESULT(SplitSingleTablet(split_hash_code));
+  auto source_tablet_id = VERIFY_RESULT(SplitSingleTablet(split_hash_codes));
   RETURN_NOT_OK(this->cluster_->WaitForLoadBalancerToStabilize(
       RegularBuildVsDebugVsSanitizers(10s, 20s, 30s)));
 
@@ -545,16 +550,26 @@ Result<TabletId> TabletSplitITest::SplitTabletAndValidate(
       ANNOTATE_UNPROTECTED_READ(FLAGS_TEST_skip_deleting_split_tablets) ||
       parent_tablet_protected_from_deletion;
 
-  RETURN_NOT_OK(WaitForTabletSplitCompletion(
-      /* expected_non_split_tablets =*/ kDefaultNumSplitParts, expected_split_tablets));
+  const auto expected_non_split_tablets = split_hash_codes.size() + 1;
+  RETURN_NOT_OK(
+      WaitForTabletSplitCompletion(expected_non_split_tablets, expected_split_tablets));
 
-  RETURN_NOT_OK(CheckPostSplitTabletReplicasData(num_rows));
+  RETURN_NOT_OK(CheckPostSplitTabletReplicasData(num_rows, expected_non_split_tablets));
 
   if (expected_split_tablets > 0) {
     RETURN_NOT_OK(CheckSourceTabletAfterSplit(source_tablet_id));
   }
 
   return source_tablet_id;
+}
+
+Result<TabletId> TabletSplitITest::SplitTabletAndValidate(
+    docdb::DocKeyHash split_hash_code,
+    size_t num_rows,
+    bool parent_tablet_protected_from_deletion) {
+  return SplitTabletAndValidate(
+      std::vector<docdb::DocKeyHash>{split_hash_code}, num_rows,
+      parent_tablet_protected_from_deletion);
 }
 
 Status TabletSplitITest::CheckSourceTabletAfterSplit(const TabletId& source_tablet_id) {
@@ -709,7 +724,7 @@ Result<uint64_t> TabletSplitITest::GetMinSstFileSizeAmongAllReplicas(const std::
 }
 
 Status TabletSplitITest::CheckPostSplitTabletReplicasData(
-    size_t num_rows, size_t num_replicas_online, size_t num_active_tablets) {
+    size_t num_rows, size_t num_active_tablets, size_t num_replicas_online) {
   LOG(INFO) << "Checking post-split tablet replicas data...";
 
   if (num_replicas_online == 0) {

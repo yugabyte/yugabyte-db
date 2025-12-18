@@ -272,6 +272,10 @@ class CatalogManagerIf : public tserver::TabletPeerLookupIf {
       const TabletInfoPtr& source_tablet_info, docdb::DocKeyHash split_hash_code) = 0;
 
   virtual Status TEST_SplitTablet(
+      const TabletInfoPtr& source_tablet_info,
+      const std::vector<docdb::DocKeyHash>& split_hash_codes) = 0;
+
+  virtual Status TEST_SplitTablet(
       const TabletId& tablet_id, const std::string& split_encoded_key,
       const std::string& split_partition_key) = 0;
 

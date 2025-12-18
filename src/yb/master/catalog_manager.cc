@@ -2812,14 +2812,20 @@ Status CatalogManager::TEST_SplitTablet(
     const std::string& split_partition_key) {
   auto source_tablet_info = VERIFY_RESULT(GetTabletInfo(tablet_id));
   return DoSplitTablet(
-      source_tablet_info, split_encoded_key, split_partition_key, ManualSplit::kTrue,
+      source_tablet_info, {split_encoded_key}, {split_partition_key}, ManualSplit::kTrue,
       GetLeaderEpochInternal());
 }
 
 Status CatalogManager::TEST_SplitTablet(
-    const TabletInfoPtr& source_tablet_info, docdb::DocKeyHash split_hash_code) {
+    const TabletInfoPtr& source_tablet_info,
+    const std::vector<docdb::DocKeyHash>& split_hash_codes) {
   return DoSplitTablet(
-      source_tablet_info, split_hash_code, ManualSplit::kTrue, GetLeaderEpochInternal());
+      source_tablet_info, split_hash_codes, ManualSplit::kTrue, GetLeaderEpochInternal());
+}
+
+Status CatalogManager::TEST_SplitTablet(
+    const TabletInfoPtr& source_tablet_info, docdb::DocKeyHash split_hash_code) {
+  return TEST_SplitTablet(source_tablet_info, std::vector<docdb::DocKeyHash>{split_hash_code});
 }
 
 Status CatalogManager::TEST_IncrementTablePartitionListVersion(const TableId& table_id) {
@@ -3127,8 +3133,19 @@ class SplitScope {
 } // namespace
 
 Status CatalogManager::DoSplitTablet(
-    const TabletInfoPtr& source_tablet_info, std::string split_encoded_key,
-    std::string split_partition_key, const ManualSplit is_manual_split, const LeaderEpoch& epoch) {
+    const TabletInfoPtr& source_tablet_info, const std::vector<std::string>& split_encoded_keys,
+    const std::vector<std::string>& split_partition_keys, const ManualSplit is_manual_split,
+    const LeaderEpoch& epoch) {
+  // TODO(tsplit): implement N-way tablet split.
+  if (split_encoded_keys.size() != 1 || split_partition_keys.size() != 1) {
+    return STATUS_FORMAT(
+      InvalidArgument,
+      "Unsupported number of split keys: $0, $1",
+      split_encoded_keys.size(),
+      split_partition_keys.size());
+  }
+  std::string split_encoded_key = split_encoded_keys.front();
+  std::string split_partition_key = split_partition_keys.front();
   std::vector<TabletInfoPtr> new_tablets;
   std::array<TabletId, kDefaultNumSplitParts> child_tablet_ids_sorted;
 
@@ -3272,15 +3289,23 @@ Status CatalogManager::DoSplitTablet(
 }
 
 Status CatalogManager::DoSplitTablet(
-    const TabletInfoPtr& source_tablet_info, const docdb::DocKeyHash split_hash_code,
+    const TabletInfoPtr& source_tablet_info, const vector<docdb::DocKeyHash>& split_hash_codes,
     const ManualSplit is_manual_split, const LeaderEpoch& epoch) {
-  dockv::KeyBytes split_encoded_key;
-  dockv::DocKeyEncoderAfterTableIdStep(&split_encoded_key)
-      .Hash(split_hash_code, dockv::KeyEntryValues());
-  const auto split_partition_key = PartitionSchema::EncodeMultiColumnHashValue(split_hash_code);
+  const auto num_keys = split_hash_codes.size();
+  std::vector<std::string> split_encoded_keys;
+  std::vector<std::string> split_partition_keys;
+  split_encoded_keys.reserve(num_keys);
+  split_partition_keys.reserve(num_keys);
+  for (size_t i = 0; i < num_keys; ++i) {
+    dockv::KeyBytes split_encoded_key;
+    dockv::DocKeyEncoderAfterTableIdStep(&split_encoded_key).Hash(
+        split_hash_codes[i], dockv::KeyEntryValues());
+    split_encoded_keys.push_back(split_encoded_key.ToStringBuffer());
+    split_partition_keys.push_back(PartitionSchema::EncodeMultiColumnHashValue(
+        split_hash_codes[i]));
+  }
   return DoSplitTablet(
-      source_tablet_info, split_encoded_key.ToStringBuffer(), split_partition_key, is_manual_split,
-      epoch);
+      source_tablet_info, split_encoded_keys, split_partition_keys, is_manual_split, epoch);
 }
 
 Result<TabletInfoPtr> CatalogManager::GetTabletInfo(TabletIdView tablet_id)
@@ -3323,7 +3348,8 @@ void CatalogManager::SplitTabletWithKey(
   // Note that DoSplitTablet() will trigger an async SplitTablet task, and will only return not OK()
   // if it failed to submit that task. In other words, any failures here are not retriable, and
   // success indicates that an async and automatically retrying task was submitted.
-  auto s = DoSplitTablet(tablet, split_encoded_key, split_partition_key, is_manual_split, epoch);
+  auto s = DoSplitTablet(
+      tablet, {split_encoded_key}, {split_partition_key}, is_manual_split, epoch);
   WARN_NOT_OK(
       s,
       Format("Failed to split tablet with GetSplitKey result for tablet: $0", tablet->tablet_id()));

@@ -227,6 +227,29 @@ TEST_P(TabletSplitITestWithIsolationLevel, SplitSingleTablet) {
   ASSERT_OK(CheckPostSplitTabletReplicasData(kNumRows * 2));
 }
 
+TEST_F(TabletSplitITest, SplitHashTabletNWays) {
+  // TODO(nway-tsplit): Parameterize test to test several kNumWays.
+  constexpr auto kNumWays = kDefaultNumSplitParts;
+  constexpr auto kNumRows = kDefaultNumRows;
+
+  CreateSingleTablet();
+
+  // Write rows and compute N - 1 split points.
+  auto hash_interval = ASSERT_RESULT(WriteRowsAndFlush(kNumRows));
+  const auto interval_size = hash_interval.second - hash_interval.first + 1;
+  ASSERT_GE(interval_size, kNumWays);
+  const auto step_size = interval_size / kNumWays;
+  std::vector<docdb::DocKeyHash> split_hash_codes;
+  for (auto i = 1; i < kNumWays; ++i) {
+    auto split_hash = hash_interval.first + i * step_size;
+    ASSERT_LT(split_hash, hash_interval.second);
+    split_hash_codes.push_back(split_hash);
+  }
+
+  ASSERT_EQ(kNumWays - 1, split_hash_codes.size());
+  ASSERT_OK(SplitTabletAndValidate(split_hash_codes, kNumRows));
+}
+
 TEST_F(TabletSplitITest, SplitTabletIsAsync) {
   constexpr auto kNumRows = kDefaultNumRows;
 
@@ -878,10 +901,10 @@ TEST_F(TabletSplitITest, SplitDuringReplicaOffline) {
   ASSERT_OK(catalog_mgr->TEST_SplitTablet(source_tablet_info, split_hash_code));
 
   ASSERT_OK(WaitForTabletSplitCompletion(
-      /* expected_non_split_tablets =*/ 2, /* expected_split_tablets =*/ 1,
+      /* expected_non_split_tablets =*/ kDefaultNumSplitParts, /* expected_split_tablets =*/ 1,
       /* num_replicas_online =*/ 2));
 
-  ASSERT_OK(CheckPostSplitTabletReplicasData(kNumRows, 2));
+  ASSERT_OK(CheckPostSplitTabletReplicasData(kNumRows, kDefaultNumSplitParts, 2));
 
   ASSERT_OK(CheckSourceTabletAfterSplit(source_tablet_id));
 
@@ -898,7 +921,7 @@ TEST_F(TabletSplitITest, SplitDuringReplicaOffline) {
 
   // This time we expect all replicas to be online.
   ASSERT_OK(WaitForTabletSplitCompletion(
-      /* expected_non_split_tablets =*/ 2, /* expected_split_tablets =*/ 0));
+      /* expected_non_split_tablets =*/ kDefaultNumSplitParts, /* expected_split_tablets =*/ 0));
 
   Status s;
   ASSERT_OK_PREPEND(LoggedWaitFor([&] {

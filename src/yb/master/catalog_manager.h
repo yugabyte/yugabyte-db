@@ -1215,6 +1215,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Test wrapper around protected DoSplitTablet method.
   Status TEST_SplitTablet(
       const TabletInfoPtr& source_tablet_info,
+    const std::vector<docdb::DocKeyHash>& split_hash_codes) override;
+
+  Status TEST_SplitTablet(
+      const TabletInfoPtr& source_tablet_info,
       docdb::DocKeyHash split_hash_code) override;
 
   Status TEST_SplitTablet(
@@ -2218,13 +2222,15 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Result<TabletInfoPtr> GetTabletInfoUnlocked(TabletIdView tablet_id) REQUIRES_SHARED(mutex_);
 
   Status DoSplitTablet(
-      const TabletInfoPtr& source_tablet_info, std::string split_encoded_key,
-      std::string split_partition_key, ManualSplit is_manual_split, const LeaderEpoch& epoch);
+      const TabletInfoPtr& source_tablet_info, const std::vector<std::string>& split_encoded_keys,
+      const std::vector<std::string>& split_partition_keys, ManualSplit is_manual_split,
+      const LeaderEpoch& epoch);
 
   // Splits tablet using specified split_hash_code as a split point.
   Status DoSplitTablet(
-      const TabletInfoPtr& source_tablet_info, docdb::DocKeyHash split_hash_code,
-      ManualSplit is_manual_split, const LeaderEpoch& epoch);
+      const TabletInfoPtr& source_tablet_info,
+      const std::vector<docdb::DocKeyHash>& split_hash_codes, ManualSplit is_manual_split,
+      const LeaderEpoch& epoch);
 
   int64_t leader_ready_term() const override {
     return leader_ready_term_.load();
