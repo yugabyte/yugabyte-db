@@ -5,9 +5,11 @@ linkTitle: Gen-AI apps
 headcontent: Build a virtual assistant for YugabyteDB
 menu:
   stable:
-    identifier: gen-ai-apps
-    parent: going-beyond-sql
-    weight: 700
+    identifier: explore-gen-ai
+    parent: explore
+    weight: 110
+aliases:
+  - /stable/explore/going-beyond-sql/gen-ai-apps/
 rightNav:
   hideH3: true
 type: docs

@@ -46,6 +46,20 @@ Whether you're setting up your first YugabyteDB cluster, evaluating YugabyteDB f
   >}}
 
   {{< sections/3-box-card
+    title="Gen-AI applications"
+    description="Explore how to build Generative AI applications using YugabyteDB."
+    linkText1="Langchain"
+    linkUrl1="/stable/develop/ai/ai-langchain-openai/"
+    linkText2="LlamaIndex"
+    linkUrl2="/stable/develop/ai/ai-llamaindex-openai/"
+    linkText3="Local LLMs"
+    linkUrl3="/stable/develop/ai/ai-localai/"
+    linkText4="Explore more"
+    linkClass4="more"
+    linkUrl4="gen-ai-apps/"
+  >}}
+
+  {{< sections/3-box-card
     title="Cassandra-compatible API"
     description="Explore YCQL, YugabyteDB's semi-relational, Cassandra-compatible query language."
     linkText1="Keyspaces and tables"
