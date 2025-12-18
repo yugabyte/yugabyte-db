@@ -105,10 +105,6 @@ Added Table-level locks to support concurrent DDL and DML operations across sess
 
 Time synchronization across nodes has been enhanced through the use of the [ClockBound](https://github.com/aws/clock-bound) library, which is an open source daemon that allows you to compare timestamps to determine order for events and transactions, independent of an instance's geographic location; it improves clock accuracy by several orders of magnitude.
 
-### [Support DDL operations within a transaction](https://docs.yugabyte.com/stable/explore/transactions/transactional-ddl/)
-
-Added support to align YSQL DDL semantics with PostgreSQL by allowing DDL statements to execute within the main transaction block instead of an autonomous transaction.
-
 ## v2025.1 (Stable) - July 2025
 
 For the full list of features and improvements in this release, see [Release notes - v2025.1](https://docs.yugabyte.com/stable/releases/ybdb-releases/v2025.1/). Here are some of the prominent features.
