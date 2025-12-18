@@ -847,6 +847,13 @@
   to = "/stable/integrations/spring-framework/sdyb/"
   force = true
 
+# AI was in tutorials now in develop/ai
+
+[[redirects]]
+  from = "/:version/develop/tutorials/ai/*"
+  to = "/stable/develop/ai/:splat"
+  force = true
+
 # Build an app was in quick-start, then develop, now in tutorials
 
 [[redirects]]

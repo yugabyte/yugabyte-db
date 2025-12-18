@@ -4,19 +4,29 @@ headerTitle: Develop applications with AI and YugabyteDB
 linkTitle: AI
 description: How to Develop Applications with AI and YugabyteDB
 image:
-headcontent: Add a scalable and highly-available database to your AI projects
-menu:
-  stable_develop:
-    parent: tutorials
-    identifier: tutorials-ai
-    weight: 30
+headcontent: Build AI applications with YugabyteDB - support RAG, semantic search, and AI agents at enterprise scale
 type: indexpage
 showRightNav: true
 cascade:
   unversioned: true
 ---
 
+YugabyteDB offers the familiarity and extensibility of PostgreSQL, while also delivering scale and resilience. Its distributed nature combines enterprise-grade vector search with ACID transactions. YugabyteDB enables you to store embeddings alongside transactional data, perform vector similarity searches with full SQL capabilities, and scale to billions of vectors across multiple regions, all with PostgreSQL compatibility and zero-downtime operations.
+
+Using the [pgvector](../../additional-features/pg-extensions/extension-pgvector/) PostgreSQL extension, YugabyteDB functions as a highly performant vector database, with enterprise scale and resilience. This means you can use YugabyteDB to support Retrieval-augmented generation (RAG) workloads, providing AI agents with knowledge of your unstructured data, while its scalability allows it to store and search billions of vectors.
+
+Learn more about developing GenAI and RAG applications with YugabyteDB:
+
+- [Introducing New YugabyteDB Functionality for Ultra-Resilient AI Apps](https://www.yugabyte.com/blog/new-yugabytedb-functionality-for-ultra-resilient-ai-apps/)
+- [Introducing the YugabyteDB MCP Server](https://www.yugabyte.com/blog/yugabytedb-mcp-server/)
+- [How to Build a RAG Workflow for Agentic AI without Code](https://www.yugabyte.com/blog/build-a-rag-workflow-for-agentic-ai-without-codev/)
+- [From RAG to Riches: AI That Knows Your Support Stack](https://www.yugabyte.com/blog/rag-ai-that-knows-your-support-stack/)
+
+Explore the following examples to get started building scalable gen AI applications with YugabyteDB.
+
 ## Retrieval-augmented generation
+
+Build a Retrieval-Augmented Generation pipeline with YugabyteDB.
 
 {{<index/block>}}
 {{<index/item
@@ -44,6 +54,8 @@ cascade:
 
 ## Vector basics
 
+Use YugabyteDB as the database backend for LLM applications.
+
 {{<index/block>}}
 {{<index/item
     title="Similarity search using LocalAI"
@@ -59,6 +71,8 @@ cascade:
 {{</index/block>}}
 
 ## Agentic, multiple data sources, and multi-step reasoning
+
+Learn how you can use YugabyteDB as the foundation for your next AI agent application.
 
 {{<index/block>}}
 

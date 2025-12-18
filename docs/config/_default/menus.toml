@@ -662,6 +662,16 @@
     showSection = true
 
 [[stable_develop]]
+  name = "Tutorials"
+  weight = 3
+  identifier = "tutorials"
+  url = "/stable/develop/tutorials/"
+  [stable_develop.params]
+    classes = "separator"
+    showSection = true
+
+
+[[stable_develop]]
   name = "Learn app development"
   weight = 5
   identifier = "learn"
@@ -678,8 +688,16 @@
     showSection = true
 
 [[stable_develop]]
-  name = "Data modeling"
+  name = "AI"
   weight = 7
+  identifier = "tutorials-ai"
+  url = "/stable/develop/ai/"
+  [stable_develop.params]
+    showSection = true
+
+[[stable_develop]]
+  name = "Data modeling"
+  weight = 8
   identifier = "data-modeling"
   url = "/stable/develop/data-modeling/"
   [stable_develop.params]
@@ -687,7 +705,7 @@
 
 [[stable_develop]]
   name = "Build global applications"
-  weight = 8
+  weight = 9
   identifier = "build-global-apps"
   url = "/stable/develop/build-global-apps/"
   [stable_develop.params]
@@ -695,7 +713,7 @@
 
 [[stable_develop]]
   name = "Build Multi-cloud Applications"
-  weight = 9
+  weight = 10
   identifier = "build-multicloud-apps"
   url = "/stable/develop/multi-cloud/"
   [stable_develop.params]
@@ -703,7 +721,7 @@
 
 [[stable_develop]]
   name = "Best practices"
-  weight = 10
+  weight = 11
   identifier = "best-practices-develop"
   url = "/stable/develop/best-practices-develop/"
   [stable_develop.params]
@@ -711,7 +729,7 @@
 
 [[stable_develop]]
   name = "Quality of service"
-  weight = 11
+  weight = 12
   identifier = "develop-quality-of-service"
   url = "/stable/develop/quality-of-service/"
   [stable_develop.params]
@@ -719,23 +737,14 @@
 
 [[stable_develop]]
   name = "Cloud-native development"
-  weight = 12
+  weight = 13
   identifier = "gitdev"
   url = "/stable/develop/gitdev/"
   [stable_develop.params]
     classes = "separator"
     showSection = true
 
-
-[[stable_develop]]
-  name = "Tutorials"
-  weight = 3
-  identifier = "tutorials"
-  url = "/stable/develop/tutorials/"
-  [stable_develop.params]
-    classes = "separator"
-    showSection = true
-
+### AI submenus
 [[stable_develop]]
   name = "RAG"
   weight = 10
@@ -760,6 +769,7 @@
   [stable_develop.params]
     showSection = true
 
+#### Tutorials submenus
 [[stable_develop]]
   name = "Cloud"
   weight = 40

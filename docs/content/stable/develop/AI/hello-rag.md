@@ -24,7 +24,7 @@ However, support content typically resides across many spaces, including public 
 
 To have support documents on premises and supply the LLM with needed context from the documents, you do the following:
 
-1. Transform all the support content into vector embeddings and store them in a PostgreSQL-compatible vector database like YugabyteDB, which supports hybrid transactional and vector workloads. Embeddings are stored in YugabyteDB using the [pgvector extension](../../../../additional-features/pg-extensions/extension-pgvector/).
+1. Transform all the support content into vector embeddings and store them in a PostgreSQL-compatible vector database like YugabyteDB, which supports hybrid transactional and vector workloads. Embeddings are stored in YugabyteDB using the [pgvector extension](../../../additional-features/pg-extensions/extension-pgvector/).
 1. When a user asks a question, generate an embedding for that question, search the internal vector store for semantically similar content, and pass those results as context to the LLM to generate accurate, relevant responses.
 
 The following basic example does the following:
@@ -86,13 +86,13 @@ If you have issues with `pip install psycopg2`, check the [installation instruct
 
 1. [Download and install](https://download.yugabyte.com) YugabyteDB v2.25.1 or later.
 
-1. Start a single-node cluster using [yugabyted](../../../../reference/configuration/yugabyted/).
+1. Start a single-node cluster using [yugabyted](../../../reference/configuration/yugabyted/).
 
     ```sh
     ./bin/yugabyted start --advertise_address=127.0.0.1
     ```
 
-1. Connect to the cluster using [ysqlsh](../../../../api/ysqlsh/).
+1. Connect to the cluster using [ysqlsh](../../../api/ysqlsh/).
 
     ```sh
     ./bin/ysqlsh -U yugabyte
@@ -280,4 +280,4 @@ if __name__ == "__main__":
 ## Read more
 
 - [Architecting GenAI and RAG Apps with YugabyteDB](https://www.yugabyte.com/ai/)
-- [pgvector extension](../../../../additional-features/pg-extensions/extension-pgvector/)
+- [pgvector extension](../../../additional-features/pg-extensions/extension-pgvector/)

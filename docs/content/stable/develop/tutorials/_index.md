@@ -57,7 +57,7 @@ Develop cloud-native applications using YugabyteDB and your preferred cloud envi
     title="Artificial intelligence"
     description="Add a scalable and highly-available database to your AI projects."
     buttonText="Explore"
-    buttonUrl="ai/"
+    buttonUrl="../ai/"
     imageAlt="AI"
     imageUrl="/icons/openai-logomark.svg"
   >}}
