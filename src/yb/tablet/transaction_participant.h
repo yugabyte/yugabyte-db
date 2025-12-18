@@ -128,7 +128,7 @@ class TransactionParticipant : public TransactionStatusManager {
 
   // Adds new running transaction.
   // Returns true if transaction was added, false if transaction already present.
-  Result<bool> Add(const TransactionMetadata& metadata);
+  Result<bool> Add(const TransactionMetadata& metadata, HybridTime batch_write_ht);
 
   Result<TransactionMetadata> PrepareMetadata(const LWTransactionMetadataPB& pb) override;
   Result<TransactionMetadata> PrepareMetadata(const TransactionMetadataPB& pb);
@@ -189,9 +189,9 @@ class TransactionParticipant : public TransactionStatusManager {
 
   TransactionParticipantContext* context() const;
 
-  void SetMinReplayTxnStartTimeLowerBound(HybridTime start_ht);
+  void SetMinReplayTxnFirstWriteTimeLowerBound(HybridTime hybrid_time);
 
-  HybridTime MinReplayTxnStartTime() const;
+  HybridTime MinReplayTxnFirstWriteTime() const;
 
   HybridTime MinRunningHybridTime() const override;
 
@@ -249,7 +249,7 @@ class TransactionParticipant : public TransactionStatusManager {
 
   size_t GetNumRunningTransactions() const;
 
-  void SetMinReplayTxnStartTimeUpdateCallback(std::function<void(HybridTime)> callback);
+  void SetMinReplayTxnFirstWriteTimeUpdateCallback(std::function<void(HybridTime)> callback);
 
   struct CountIntentsResult {
     size_t num_intents;

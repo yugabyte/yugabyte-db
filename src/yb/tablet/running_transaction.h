@@ -39,6 +39,7 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
                      const TransactionalBatchData& last_batch_data,
                      OneWayBitmap&& replicated_batches,
                      HybridTime base_time_for_abort_check_ht_calculation,
+                     HybridTime first_write_ht,
                      RunningTransactionContext* context,
                      const AtomicGaugePtr<uint64_t>& metric_aborted_transactions_pending_cleanup);
 
@@ -54,6 +55,10 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
 
   HybridTime abort_check_ht() const {
     return abort_check_ht_;
+  }
+
+  HybridTime first_write_ht() const {
+    return first_write_ht_;
   }
 
   MUST_USE_RESULT bool UpdateStatus(
@@ -130,7 +135,7 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
 
   void SetApplyOpId(const OpId& id);
 
-  const OpId& GetApplyOpId() {
+  const OpId& GetApplyOpId() const {
     return apply_record_op_id_;
   }
 
@@ -235,6 +240,9 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
   // rpc to the transaction coordinator is in progress. Gets set in RunningTransaction::Abort and
   // reset in RunningTransaction::AbortReceived.
   bool abort_request_in_progress_ = false;
+
+  // Hybrid time of first write batch to this particular tablet.
+  HybridTime first_write_ht_;
 
   // Number of outstanding status request rpcs.
   std::atomic<int64_t> outstanding_status_requests_{0};
