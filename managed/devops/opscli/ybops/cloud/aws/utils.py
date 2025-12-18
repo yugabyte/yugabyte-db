@@ -1284,25 +1284,11 @@ def update_disk(args, instance_id):
         _wait_for_disk_modifications(ec2_client, vol_ids)
 
 
-def change_instance_type(region, instance_id, instance_type, capacity_reservation=None):
+def change_instance_type(region, instance_id, instance_type):
     instance = get_client(region).Instance(instance_id)
     try:
         # Change instance type
         instance.modify_attribute(Attribute='instanceType', Value=instance_type)
-        # Handle capacity reservation if provided
-        if capacity_reservation is not None:
-            logging.info("using capacity reservation {}".format(capacity_reservation))
-            # Need to use the EC2 client for capacity reservation modification
-            ec2_client = boto3.client('ec2', region_name=region)
-            ec2_client.modify_instance_capacity_reservation_attributes(
-                InstanceId=instance_id,
-                CapacityReservationSpecification={
-                    'CapacityReservationPreference': 'capacity-reservations-only',
-                    'CapacityReservationTarget': {
-                        'CapacityReservationId': capacity_reservation
-                    }
-                }
-            )
     except Exception as e:
         raise YBOpsRuntimeError('error executing \"instance.modify_attribute\": {}'.format(repr(e)))
 
