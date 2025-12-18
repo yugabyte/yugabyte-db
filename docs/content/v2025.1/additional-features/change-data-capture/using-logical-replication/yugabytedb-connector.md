@@ -1549,11 +1549,7 @@ The following table lists the streaming metrics that are available.
 
 {{<tags/feature/tp idea="1549">}}YugabyteDB also supports parallel streaming of a single table using logical replication. This means that you can start the replication for the table using parallel tasks, where each task polls on specific tablets.
 
-{{< note title="Important" >}}
-
-Parallel streaming is {{<tags/feature/tp idea="1549">}}. To enable the feature, set the `ysql_enable_pg_export_snapshot` and `ysql_yb_enable_consistent_replication_from_hash_range` flags to true.
-
-{{< /note >}}
+To enable the feature, set the `ysql_enable_pg_export_snapshot` and `ysql_yb_enable_consistent_replication_from_hash_range` flags to true.
 
 Use the following steps to configure parallel streaming using the YugabyteDB Connector.
 
