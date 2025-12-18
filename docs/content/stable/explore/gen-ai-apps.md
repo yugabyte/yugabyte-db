@@ -2,7 +2,7 @@
 title: Building Gen-AI applications on top of YugabyteDB
 headerTitle: Gen-AI applications
 linkTitle: Gen-AI apps
-headcontent: Build a virtual assistant for YugabyteDB
+headcontent: Build scalable and resilient AI applications with YugabyteDB
 menu:
   stable:
     identifier: explore-gen-ai
@@ -15,57 +15,73 @@ rightNav:
 type: docs
 ---
 
-As [Generative AI (Gen-AI)](https://generativeai.net/) technologies continue to advance, their potential applications are becoming increasingly widespread. Databases have long been the backbone of structured data storage and querying for organizations, and integrating them with Gen-AI capabilities can unlock new possibilities for data-driven decision making, automation, and user experiences.
+Generative AI has transformed how applications interact with data. While early adoption focused on text-based chatbots, modern AI applications have evolved into multi-modal systems capable of processing text, audio, and video to deliver actionable insights.
 
-While databases are efficient for storing and querying data, it can be challenging for non-technical users to interact with them directly. This is where chatbots come into play, providing a natural language interface for users to access and manipulate data stored in databases. Because YugabyteDB is fully compatible with PostgreSQL, it can be quickly adapted to provide interaction using Retrieval Augmented Generation (RAG)-based technologies.
+YugabyteDB provides the scalable, distributed data foundation required to run modern AI workloads, from simple chatbots to complex agentic workflows. By combining the familiarity of PostgreSQL with distributed scalability, you can store and query billions of vector embeddings without managing complex, separate infrastructure.
 
-## Terminology
+## Key concepts: RAG and Vectors
 
-This section uses the following terms:
+### Retrieval-augmented generation
 
-- _Natural Language Processing_ (NLP) enables computers to understand, interpret, and generate human language in a way that is both meaningful and beneficial.
-- _Large Language Models_ (LLM) are advanced NLP models that have been trained on massive amounts of text data. These models are capable of understanding and generating human-like text with remarkable fluency and coherence.
+RAG is the framework used to provide large language models (LLMs) with access to your private, real-time data. Instead of relying solely on the LLM's pre-trained knowledge, a RAG-based application:
 
-## Retrieval-Augmented Generation
+1. Retrieves relevant context from a vector database (like YugabyteDB).
+1. Passes that context to the LLM along with the user's prompt.
+1. Generates a response that's accurate, up-to-date, and grounded in your specific data.
 
-One approach to building chatbots for database interaction is the Retrieval-Augmented Generation (RAG) framework. RAG combines two powerful components: a retrieval system that can fetch relevant information from a knowledge base (in this case, the database schema and data), and a language generation model that can produce natural language responses based on the retrieved information.
+### Vectors and embeddings
 
-The RAG approach is particularly well-suited for building chatbots that interact with YugabyteDB for several reasons.
+In AI, data is often represented as vectors (or embeddings)—long lists of numbers that capture the "meaning" of a piece of data. To make your data "understandable" to an AI:
 
-YugabyteDB stores data in a structured format, making it easier for the retrieval component to find relevant information based on the user's query. In addition to the data itself, the database schema (tables, columns, relationships) provides a rich knowledge base for the retrieval component to understand the context and semantics of the data.
+1. Embed: Data (text, audio, or video) is converted into high-dimensional vectors (lists of numbers) using an embedding model.
+1. Store: These vectors are stored in YugabyteDB using the standard pgvector extension.
+1. Search: When you ask a question, the application converts the query into a vector and performs a similarity search to find the most relevant "neighbors" in your database.
 
-## Typical workflow of a chatbot
+Because vectors are mathematical representations of meaning, they work across all data types—allowing you to search for a video clip using a text description, or find similar songs based on audio features.
 
-The primary purpose of the LLM is to convert a question in a natural language to a SQL statement. It does so as follows:
+## Understand AI use cases
 
-1. The database schema is sent to a LLM.
-1. For better query creation, it is normal to send example questions and the respective query for fine-tuning the LLM.
-1. If the LLM is internally deployed, then data from the database could also be sent to the LLM.
-1. The chatbot takes in a user question or text in a natural language.
-1. The chatbot then sends the text to the LLM.
-1. The LLM responds with a SQL query.
-1. The chatbot executes the SQL query against the database.
-1. The chatbot returns the result as-is to the user or it may transform the result to a natural language using a NLP system and return that response.
+You aren't limited to building chatbots. AI on YugabyteDB is used for a wide range of enterprise use cases:
 
-{{<warning>}}Typically the data stored in the database is not sent to external systems due to privacy concerns, but some information about the data could be sent.{{</warning>}}
+* Summarization: Condense long documents or call transcripts into actionable summaries.
+* Recommendation: Use vector similarity to suggest products, content, or services based on user behavior.
+* Analysis: Detect patterns and anomalies in large datasets, such as fraud detection or sentiment analysis.
+* Personalization: Tailor user experiences by matching real-time activity with historical preferences.
 
-## Sample chatbot with YugabyteDB
+## YugabyteDB for AI
 
-Several tutorials on the different ways of setting up Gen-AI-based interfaces for your database are available:
+YugabyteDB is uniquely positioned for AI workloads due to its distributed architecture:
 
-- [Using Langchain and OpenAI](/stable/develop/ai/ai-langchain-openai/)
-- [Using LlamaIndex and OpenAI](/stable/develop/ai/ai-llamaindex-openai/)
-- [Using local LLMs](/stable/develop/ai/ai-localai/)
+* Native PostgreSQL compatibility: Support for the [pgvector extension](../../additional-features/pg-extensions/extension-pgvector/) to store and query vectors using standard SQL.
+* Massive scalability: Seamlessly scale your vector search to billions of embeddings across multiple nodes and regions.
+* Resilience: Ensure your AI applications stay online even during node or region failures, with zero-downtime operations.
+* Hybrid search: Combine vector similarity search with standard relational filtering (for example, "Find videos similar to this clip, but only from the 'Sports' category uploaded in 2023") in a single, efficient query.
 
-## Choice of LLM
+## Get started
 
-There are [hundreds of LLMs](https://huggingface.co/spaces/HuggingFaceH4/open_llm_leaderboard) to choose from. The following are a few that we have tried out.
+You can get started with the "Hello RAG" example to build your first AI application.
 
-|   Type   |                                     LLM                                      |
-| -------- | ---------------------------------------------------------------------------- |
-| External | [GPT-4](https://openai.com/research/gpt-4) from [OpenAI](https://openai.com) |
-| External | [Claude-3](https://claude.ai/) from [Anthropic](https://www.anthropic.com/)  |
-| External | [Vertex AI](https://cloud.google.com/vertex-ai?hl=en) from Google            |
-| Local    | [Solar](https://www.upstage.ai/solar-llm)                                    |
-| Local    | [Mistral AI](https://mistral.ai/)                                            |
-{.sno-1}
+{{<lead link="../../develop/ai/hello-rag/">}}
+Build your first AI app with [Hello RAG](../../develop/ai/hello-rag/).
+{{</lead>}}
+
+### AI tutorials matrix
+
+Explore the following tutorials to see how YugabyteDB integrates with different LLMs and frameworks.
+
+| Tutorial | Use case | LLM / framework | Deployment |
+| :--- | :--- | :--- | :--- |
+| [Hello RAG](../../develop/ai/hello-rag/) | Build a basic Retrieval-Augmented Generation (RAG) pipeline for document-based question answering. | OpenAI | External |
+| [Azure AI](../../develop/ai/azure-openai/) | Use Azure OpenAI to build a scalable RAG application with vector search. | Azure OpenAI | External |
+| [Google Vertex AI](../../develop/ai/google-vertex-ai/) | Use Google Vertex AI for similarity search and generative AI workflows. | Vertex AI | External |
+| [LocalAI](../../develop/ai/ai-localai/) | Build and run an LLM application entirely on-premises for privacy and security. | LocalAI | Local / on-premises |
+| [Ollama](../../develop/ai/ai-ollama/) | Host and run embedding models locally for vector-based similarity search. | Ollama | Local / on-premises |
+| [YugabyteDB MCP server](../../develop/ai/mcp-server/) | Enable LLMs to interact directly with YugabyteDB using natural language. | Claude / Cursor | External |
+| [LlamaIndex](../../develop/ai/ai-llamaindex-openai/) | Connect LLMs to structured and unstructured data using LlamaIndex. | OpenAI / LlamaIndex | External |
+| [LangChain](../../develop/ai/ai-langchain-openai/) | Build a natural language interface to query your database without writing SQL. | OpenAI / LangChain | External |
+
+### Learn more
+
+* [pgvector extension](../../additional-features/pg-extensions/extension-pgvector/) reference.
+* [YugabyteDB AI blogs](https://www.yugabyte.com/blog/category/ai/)
+* [Architecting GenAI and RAG Apps with YugabyteDB](https://www.yugabyte.com/ai/)
