@@ -32,6 +32,7 @@
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
@@ -133,14 +134,14 @@ class TSLocalLockManagerTest : public TabletServerTestBase {
       const ObjectLockOwner& owner, CoarseTimePoint deadline = CoarseTimePoint::max()) {
     tserver::ReleaseObjectLockRequestPB req;
     owner.PopulateReleaseRequest(&req, false /* release all locks */);
-    return lm_->ReleaseObjectLocks(req, deadline);
+    return ResultToStatus(lm_->ReleaseObjectLocks(req, deadline));
   }
 
   Status ReleaseLocksForOwner(
       const ObjectLockOwner& owner, CoarseTimePoint deadline = CoarseTimePoint::max()) {
     tserver::ReleaseObjectLockRequestPB req;
     owner.PopulateReleaseRequest(&req);
-    return lm_->ReleaseObjectLocks(req, deadline);
+    return ResultToStatus(lm_->ReleaseObjectLocks(req, deadline));
   }
 
   Result<bool> LockRelationPgFastpath(
@@ -589,6 +590,102 @@ TEST_F(TSLocalLockManagerTest, TestWaiterResetsStateDuringShutdown) {
   auto status = status_future.get();
   ASSERT_NOK(status);
   ASSERT_STR_CONTAINS(status.ToString(), "Object Lock Manager shutting down");
+}
+
+// Below test asserts that waiters are resumed despite other active waiters being amidst resumption
+// when they aren't conflicting with the in progress set.
+// - txn1 holds ACCESS_EXCLUSIVE lock
+// - txn2, txn3 & txn4 wait for EXCLUSIVE, ROW_EXCLUSIVE & ACCESS_SHARE respectively on the same key
+// - txn1 finishes, releasing just txn2, the EXCLUSIVE waiter
+// - txn2 acquires EXCLUSIVE lock on the same key for another subtxn, and then releases it
+//   signaling the wait-queue
+// - Both txn3 & txn4 are resumed from the queue, txn4 (ACCESS_SHARE) is purposefully held back from
+//   acquiring the locks for asserting the signaling mechanism.
+// - Now txn3 re-enters the wait-queue since it conflicts with EXCLUSIVE
+// - txn2 finishes, signaling the wait-queue.
+// - txn3 is now resumed despite non-zero waiters_in_resuming_state because it is non-conflicting
+TEST_F(TSLocalLockManagerTest, TestWaiterResumptionStateLogic) {
+  ASSERT_OK(LockRelation(kTxn1, kDatabase1, kObject1, TableLockType::ACCESS_EXCLUSIVE));
+  google::SetVLOGLevel("object_lock_manager*", 1);
+
+  const size_t kTotalNumWaiters = 3;
+  const size_t kNumExclusiveWaiters = 1;
+  const size_t kNumRowExclusiveWaiters = 1;
+  const size_t kNumAccessShareWaiters = 1;
+  ASSERT_EQ(kTotalNumWaiters,
+            kNumExclusiveWaiters + kNumRowExclusiveWaiters + kNumAccessShareWaiters);
+
+  std::atomic<bool> hold_waiter_being_resumed{false};
+  std::atomic<uint32_t> resumed_waiters{0};
+  std::vector<std::future<Status>> status_futures;
+  status_futures.reserve(kTotalNumWaiters);
+  std::vector<ObjectLockOwner> lock_owners;
+  lock_owners.reserve(kTotalNumWaiters);
+  for (size_t i = 0 ; i < kTotalNumWaiters; i++) {
+    lock_owners.push_back(ObjectLockOwner{TransactionId::GenerateRandom(), 1});
+  }
+  auto add_waiter_fn = [&](TableLockType lock_type, size_t idx) {
+    auto log_waiter = StringWaiterLogSink("added to wait-queue on");
+    status_futures.push_back(std::async(std::launch::async, [&]() {
+      return LockRelation(
+          lock_owners[idx], kDatabase1, kObject1,
+          lock_type, CoarseMonoClock::Now() + 60s);
+    }));
+    ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromMilliseconds(5 * kTimeMultiplier)));
+  };
+
+  yb::SyncPoint::GetInstance()->SetCallBack(
+      "WaiterEntry::Resume", [&](void* arg) {
+        ++resumed_waiters;
+        auto txn_id = *(static_cast<TransactionId*>(arg));
+        while (hold_waiter_being_resumed && txn_id == lock_owners[2].txn_id) {
+          SleepFor(100ms);
+          LOG(INFO) << "Waiting for hold_waiter_being_resumed to be set to false";
+        }
+      });
+  SyncPoint::GetInstance()->ClearTrace();
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  add_waiter_fn(TableLockType::EXCLUSIVE, 0);
+  add_waiter_fn(TableLockType::ROW_EXCLUSIVE, 1);
+  add_waiter_fn(TableLockType::ACCESS_SHARE, 2);
+
+  ASSERT_OK(ReleaseLocksForOwner(kTxn1, CoarseTimePoint::max()));
+  ASSERT_OK(WaitFor([&]() {
+    return resumed_waiters >= kNumExclusiveWaiters;
+  }, 5s * kTimeMultiplier, "Expected 1 waiter to be scheduled for resumption"));
+  ASSERT_OK(status_futures[0].get());
+  ASSERT_OK(LockRelation(
+      ObjectLockOwner{lock_owners[0].txn_id, 2}, kDatabase1, kObject1,
+      TableLockType::EXCLUSIVE, CoarseMonoClock::Now() + 60s));
+
+  hold_waiter_being_resumed = true;
+  {
+    auto log_waiter = StringWaiterLogSink("added to wait-queue on");
+    ASSERT_OK(ReleaseLocksForSubtxn(lock_owners[0], CoarseTimePoint::max()));
+    ASSERT_OK(WaitFor([&]() {
+      return resumed_waiters >= kTotalNumWaiters;
+    }, 5s * kTimeMultiplier, "Expected 2 more waiters to be scheduled for resumption"));
+    ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(5 * kTimeMultiplier)));
+  }
+
+  auto log_waiter =
+      StringWaiterLogSink("Resuming waiter despite active waiters since they don't conflict");
+  const auto old_resumed_waiters_count = resumed_waiters.load();
+  ASSERT_OK(ReleaseLocksForOwner(lock_owners[0], CoarseTimePoint::max()));
+  ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(5 * kTimeMultiplier)));
+  ASSERT_OK(WaitFor([&]() {
+    return resumed_waiters >= old_resumed_waiters_count + 1;
+  }, 5s * kTimeMultiplier, "Expected another waiter to be scheduled for resumption"));
+  ASSERT_OK(WaitFor([&]() {
+    return status_futures[1].wait_for(0s) == std::future_status::ready;
+  }, 5s * kTimeMultiplier, "Expected ROW_EXCLUSIVE waiter to have been resumed"));
+
+  hold_waiter_being_resumed = false;
+  ASSERT_OK(status_futures[2].get());
+  ASSERT_OK(status_futures[1].get());
+  ASSERT_OK(ReleaseLocksForOwner(lock_owners[1], CoarseTimePoint::max()));
+  ASSERT_OK(ReleaseLocksForOwner(lock_owners[2], CoarseTimePoint::max()));
 }
 #endif
 

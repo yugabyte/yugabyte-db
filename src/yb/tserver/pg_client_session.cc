@@ -1249,12 +1249,42 @@ class ReadPointHistory {
   std::unordered_map<uint64_t, ConsistentReadPoint::Momento> read_points_;
 };
 
+class ObjectLockOwnerInfo {
+ public:
+  ObjectLockOwnerInfo(
+      PgSessionLockOwnerTagShared& shared, docdb::ObjectLockOwnerRegistry& registry,
+      const TransactionId& txn_id, const TabletId& tablet_id)
+      : shared_(shared), guard_(registry.Register(txn_id, tablet_id)), txn_id_(txn_id) {
+    UpdateShared(guard_.tag());
+  }
+
+  ~ObjectLockOwnerInfo() {
+    UpdateShared({});
+  }
+
+  const TransactionId& txn_id() const {
+    return txn_id_;
+  }
+
+ private:
+  void UpdateShared(docdb::SessionLockOwnerTag tag) {
+    ParentProcessGuard g;
+    shared_.Get() = tag;
+  }
+
+  PgSessionLockOwnerTagShared& shared_;
+  docdb::ObjectLockOwnerRegistry::RegistrationGuard guard_;
+  TransactionId txn_id_;
+};
+
 class TransactionProvider {
  public:
   YB_STRONGLY_TYPED_BOOL(EnsureGlobal);
 
-  explicit TransactionProvider(PgClientSession::TransactionBuilder&& builder)
-      : builder_(std::move(builder)) {}
+  TransactionProvider(
+      PgClientSession::TransactionBuilder&& builder,
+      docdb::ObjectLockOwnerRegistry* lock_owner_registry)
+      : builder_(std::move(builder)), lock_owner_registry_(lock_owner_registry) {}
 
   template<PgClientSessionKind kind, class... Args>
   requires(
@@ -1271,11 +1301,7 @@ class TransactionProvider {
     }
   }
 
-  struct TxnMetaAndConsumeInfo {
-    TransactionMetadata txn_meta;
-    bool was_txn_consumed;
-  };
-  Result<TxnMetaAndConsumeInfo> CheckTxnMetaForPlainFinish() {
+  Result<TransactionMetadata> CheckTxnMetaForPlainFinish() {
     RSTATUS_DCHECK(
         next_plain_, IllegalState,
         "Attempt to access next_plain_ transaction where there isn't one");
@@ -1283,24 +1309,29 @@ class TransactionProvider {
     auto txn_meta_res = next_plain_->metadata();
     if (txn_meta_res.ok()) {
       next_plain_->SetStartTimeIfNecessary();
-      return TxnMetaAndConsumeInfo {
-        .txn_meta = std::move(*txn_meta_res),
-        .was_txn_consumed = false
-      };
+      return *txn_meta_res;
     }
     VLOG_WITH_FUNC(1) << "transaction already failed";
     // If the transaction has already failed due to some reason, we should release the locks.
     // And also reset next_plain_, so the subsequent ysql transaction would use a new docdb txn.
     TransactionMetadata txn_meta_for_release;
     txn_meta_for_release.transaction_id = next_plain_->id();
-    next_plain_ = nullptr;
-    VLOG_WITH_FUNC(1)
-        << "Consuming re-usable kPlain txn " << txn_meta_for_release.transaction_id
-        << ", next_plain_ transaction reset";
-    return TxnMetaAndConsumeInfo {
-      .txn_meta = std::move(txn_meta_for_release),
-      .was_txn_consumed = true
-    };
+    ConsumePlainTxn();
+    return txn_meta_for_release;
+  }
+
+  void ConsumePlainTxn() {
+    if (next_plain_) {
+      VLOG_WITH_FUNC(1)
+          << "Consuming re-usable kPlain txn " << next_plain_->id()
+          << ", next_plain_ transaction reset";
+      next_plain_ = nullptr;
+    }
+    ResetObjectLockOwner();
+  }
+
+  void ResetObjectLockOwner() {
+    object_lock_owner_.reset();
   }
 
   Result<TransactionMetadata> NextTxnMetaForPlain(
@@ -1325,11 +1356,22 @@ class TransactionProvider {
     // next_plain_ would be ready at this point i.e status tablet picked.
     auto metadata = VERIFY_RESULT(next_plain_->metadata());
     next_plain_->SetStartTimeIfNecessary();
+    if (object_lock_shared_ &&
+        (!object_lock_owner_ || object_lock_owner_->txn_id() != metadata.transaction_id)) {
+      object_lock_owner_.emplace(
+          *object_lock_shared_, *DCHECK_NOTNULL(lock_owner_registry_), metadata.transaction_id,
+          metadata.status_tablet);
+    }
     return metadata;
   }
 
   bool HasNextTxnForPlain() const {
     return next_plain_ != nullptr;
+  }
+
+  void SetupSharedObjectLocking(PgSessionLockOwnerTagShared& object_lock_shared) {
+    DCHECK(!object_lock_shared_);
+    object_lock_shared_ = &object_lock_shared;
   }
 
  private:
@@ -1366,6 +1408,9 @@ class TransactionProvider {
   }
 
   const PgClientSession::TransactionBuilder builder_;
+  PgSessionLockOwnerTagShared* object_lock_shared_ = nullptr;
+  std::optional<ObjectLockOwnerInfo> object_lock_owner_;
+  docdb::ObjectLockOwnerRegistry* lock_owner_registry_ = nullptr;
   client::YBTransactionPtr next_plain_;
 };
 
@@ -1569,34 +1614,6 @@ bool IsReadPointResetRequested(const PgPerformOptionsPB& options) {
   return options.has_read_time() && !options.read_time().has_read_ht();
 }
 
-class ObjectLockOwnerInfo {
- public:
-  ObjectLockOwnerInfo(
-      PgSessionLockOwnerTagShared& shared, docdb::ObjectLockOwnerRegistry& registry,
-      const TransactionId& txn_id, const TabletId& tablet_id)
-      : shared_(shared), guard_(registry.Register(txn_id, tablet_id)), txn_id_(txn_id) {
-    UpdateShared(guard_.tag());
-  }
-
-  ~ObjectLockOwnerInfo() {
-    UpdateShared({});
-  }
-
-  const TransactionId& txn_id() const {
-    return txn_id_;
-  }
-
- private:
-  void UpdateShared(docdb::SessionLockOwnerTag tag) {
-    ParentProcessGuard g;
-    shared_.Get() = tag;
-  }
-
-  PgSessionLockOwnerTagShared& shared_;
-  docdb::ObjectLockOwnerRegistry::RegistrationGuard guard_;
-  TransactionId txn_id_;
-};
-
 [[nodiscard]] auto DoTrackSharedMemoryPgMethodExecution(
     const std::shared_ptr<yb::ash::WaitStateInfo>& wait_state, const AshMetadataPB& metadata,
     const char* method_name) {
@@ -1645,15 +1662,14 @@ class PgClientSession::Impl {
         id_(id),
         lease_epoch_(lease_epoch),
         ts_lock_manager_(std::move(lock_manager)),
-        transaction_provider_(std::move(transaction_builder)),
+        transaction_provider_(std::move(transaction_builder), context_.lock_owner_registry),
         big_shared_mem_expiration_task_("big_shared_mem_expiration_task", &scheduler),
         read_point_history_(PrefixLogger(id_)) {}
 
   [[nodiscard]] auto id() const {return id_; }
 
   void SetupSharedObjectLocking(PgSessionLockOwnerTagShared& object_lock_shared) {
-    DCHECK(!object_lock_shared_);
-    object_lock_shared_ = &object_lock_shared;
+    transaction_provider_.SetupSharedObjectLocking(object_lock_shared);
   }
 
   Status CreateTable(
@@ -2896,10 +2912,6 @@ class PgClientSession::Impl {
     return context_.instance_uuid;
   }
 
-  docdb::ObjectLockOwnerRegistry& lock_owner_registry() const {
-    return *DCHECK_NOTNULL(context_.lock_owner_registry);
-  }
-
   PrefixLogger LogPrefix() const { return PrefixLogger{id_}; }
 
   Status DdlAtomicityFinishTransaction(
@@ -3797,7 +3809,8 @@ class PgClientSession::Impl {
 
     const bool is_final_release = !subtxn_id;
     auto unregister_scope = is_final_release && txn
-        ? MakeOptionalScopeExit([this] { object_lock_owner_.reset(); }) : std::nullopt;
+        ? MakeOptionalScopeExit([this] { transaction_provider_.ResetObjectLockOwner(); })
+        : std::nullopt;
 
     const auto has_exclusive_locks =
         kind == PgClientSessionKind::kDdl || plain_session_has_exclusive_object_locks_.load();
@@ -3806,22 +3819,25 @@ class PgClientSession::Impl {
       DEBUG_ONLY_TEST_SYNC_POINT("PlainTxnStateReset");
     }
     if (txn) {
-      return DoReleaseObjectLocks(txn->id(), subtxn_id, deadline, has_exclusive_locks);
+      return ResultToStatus(
+          DoReleaseObjectLocks(txn->id(), subtxn_id, deadline, has_exclusive_locks));
     }
     // It could happen that transaction_provider_.next_plain_ is null when txn finish
     // calls are redundant. If so, treat it as a no-op instead of setting next_plain_.
     if (!transaction_provider_.HasNextTxnForPlain()) {
       return Status::OK();
     }
-    auto txn_meta_info = VERIFY_RESULT(transaction_provider_.CheckTxnMetaForPlainFinish());
-    if (txn_meta_info.was_txn_consumed) {
-      object_lock_owner_.reset();
+    auto txn_meta = VERIFY_RESULT(transaction_provider_.CheckTxnMetaForPlainFinish());
+    if (VERIFY_RESULT((DoReleaseObjectLocks(
+            txn_meta.transaction_id, subtxn_id, deadline, has_exclusive_locks)))) {
+      // This re-usable transaction was a blocker for some other transaction. Consume it to
+      // prevent re-use so in order to avoid false deadlock issues.
+      transaction_provider_.ConsumePlainTxn();
     }
-    return DoReleaseObjectLocks(
-        txn_meta_info.txn_meta.transaction_id, subtxn_id, deadline, has_exclusive_locks);
+    return Status::OK();
   }
 
-  Status DoReleaseObjectLocks(
+  Result<docdb::TxnBlockedTableLockRequests> DoReleaseObjectLocks(
       const TransactionId& txn_id, std::optional<SubTransactionId> subtxn_id,
       CoarseTimePoint deadline, bool has_exclusive_locks) {
     VLOG_WITH_PREFIX_AND_FUNC(1) << "Requesting release of "
@@ -3837,7 +3853,7 @@ class PgClientSession::Impl {
         ReleaseRequestFor<master::ReleaseObjectLocksGlobalRequestPB>(
             instance_uuid(), txn_id, subtxn_id, lease_epoch_, context_.clock.get()));
     ReleaseWithRetriesGlobal(client_, ts_lock_manager(), txn_id, subtxn_id, release_req);
-    return Status::OK();
+    return docdb::TxnBlockedTableLockRequests::kTrue;
   }
 
   UsedReadTimeApplier MakeUsedReadTimeApplier(const SetupSessionResult& result) {
@@ -3862,16 +3878,7 @@ class PgClientSession::Impl {
 
   Result<TransactionMetadata> NextObjectLockingTxnMeta(
       TransactionFullLocality locality, CoarseTimePoint deadline) {
-    auto txn_meta = VERIFY_RESULT(transaction_provider_.NextTxnMetaForPlain(locality, deadline));
-    RegisterLockOwner(txn_meta.transaction_id, txn_meta.status_tablet);
-    return txn_meta;
-  }
-
-  void RegisterLockOwner(const TransactionId& txn_id, const TabletId& status_tablet) {
-    if (object_lock_shared_ && (!object_lock_owner_ || object_lock_owner_->txn_id() != txn_id)) {
-      object_lock_owner_.emplace(
-          *object_lock_shared_, lock_owner_registry(), txn_id, status_tablet);
-    }
+    return transaction_provider_.NextTxnMetaForPlain(locality, deadline);
   }
 
   TransactionFullLocality GetTargetTransactionLocality(const PgPerformRequestPB& request) const {
@@ -3972,9 +3979,6 @@ class PgClientSession::Impl {
 
   std::atomic<bool> plain_session_has_exclusive_object_locks_{false};
   VectorIndexQueryPtr vector_index_query_data_;
-
-  std::optional<ObjectLockOwnerInfo> object_lock_owner_;
-  PgSessionLockOwnerTagShared* object_lock_shared_ = nullptr;
 };
 
 PgClientSession::PgClientSession(

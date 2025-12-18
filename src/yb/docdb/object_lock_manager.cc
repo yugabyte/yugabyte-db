@@ -171,6 +171,7 @@ struct TrackedTransactionLockEntry {
   std::unordered_set<SubTransactionId> released_subtxns GUARDED_BY(mutex);
   bool released_all_locks GUARDED_BY(mutex) = false;
   TabletId status_tablet GUARDED_BY(mutex);
+  TxnBlockedTableLockRequests was_a_blocker GUARDED_BY(mutex) = TxnBlockedTableLockRequests::kFalse;
 };
 
 using TrackedTxnLockEntryPtr = std::shared_ptr<TrackedTransactionLockEntry>;
@@ -216,7 +217,7 @@ struct WaiterEntry {
   }
 
   std::string ToString() const {
-    return YB_STRUCT_TO_STRING(lock_data);
+    return YB_STRUCT_TO_STRING(lock_data, resume_it_offset);
   }
 
   TrackedTxnLockEntryPtr transaction_entry;
@@ -225,6 +226,7 @@ struct WaiterEntry {
   // Below fields are operated under corresponding ObjectLockedBatchEntry::mutex.
   std::unique_ptr<ScopedWaitingTxnRegistration> waiter_registration;
   std::shared_ptr<ConflictDataManager> blockers;
+  TxnBlockedTableLockRequests was_a_blocker = TxnBlockedTableLockRequests::kFalse;
 };
 
 inline bool operator<(const WaiterEntry& lhs, const WaiterEntry& rhs) {
@@ -274,6 +276,8 @@ struct ObjectLockedBatchEntry {
 
   std::atomic<uint32_t> version{0};
 
+  std::atomic<LockState> waiters_in_resuming_state{0};
+
   std::string ToString() const {
     return Format("{ ref_count: $0 lock_state: $1 num_waiters: $2 }",
                   ref_count,
@@ -299,7 +303,7 @@ class ObjectLockManagerImpl {
 
   void Lock(LockData&& data);
 
-  void Unlock(const ObjectLockOwner& object_lock_owner);
+  TxnBlockedTableLockRequests Unlock(const ObjectLockOwner& object_lock_owner);
 
   void Poll() EXCLUDES(global_mutex_);
 
@@ -351,8 +355,8 @@ class ObjectLockManagerImpl {
   // Performs necessary cleanup and checks whether the locks request needs to be processed.
   Status PrepareAcquire(
       std::unique_lock<std::mutex>& txn_lock, TrackedTxnLockEntryPtr& transaction_entry,
-      const LockData& data, size_t resume_it_offset, Status resume_with_status)
-      REQUIRES(transaction_entry->mutex) EXCLUDES(global_mutex_);
+      const LockData& data, size_t resume_it_offset, Status resume_with_status,
+      IsLockRetry is_retry) REQUIRES(transaction_entry->mutex) EXCLUDES(global_mutex_);
 
   void DoLock(
       TrackedTxnLockEntryPtr transaction_entry, LockData&& data, IsLockRetry is_retry,
@@ -434,10 +438,13 @@ class ObjectLockManagerImpl {
 void WaiterEntry::Resume(ObjectLockManagerImpl* lock_manager, Status resume_with_status) {
   {
     UniqueLock txn_lock(transaction_entry->mutex);
+    transaction_entry->was_a_blocker =
+        TxnBlockedTableLockRequests(transaction_entry->was_a_blocker || was_a_blocker);
     resume_it()->locked->num_waiters.fetch_sub(1);
     transaction_entry->AddReleasedLockUnlocked(
         *resume_it(), lock_data.object_lock_owner, LocksMapType::kWaiting);
   }
+  DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("WaiterEntry::Resume", &lock_data.object_lock_owner.txn_id);
   lock_manager->DoLock(
       transaction_entry, std::move(lock_data), IsLockRetry::kTrue, resume_it_offset,
       resume_with_status);
@@ -448,7 +455,8 @@ void TrackedTransactionLockEntry::AddAcquiredLockUnlocked(
     LocksMapType locks_map) {
   TRACE_FUNC();
   VLOG_WITH_FUNC(1) << "lock_entry: " << lock_entry.ToString()
-                    << ", object_lock_owner: " << AsString(object_lock_owner);
+                    << ", object_lock_owner: " << AsString(object_lock_owner)
+                    << ", " << AsString(locks_map);
   auto delta = IntentTypeSetAdd(lock_entry.intent_types);
 
   auto& locks = locks_map == LocksMapType::kGranted ? granted_locks : waiting_locks;
@@ -469,7 +477,8 @@ void TrackedTransactionLockEntry::AddReleasedLockUnlocked(
     LocksMapType locks_map) {
   TRACE_FUNC();
   VLOG_WITH_FUNC(1) << "lock_entry: " << lock_entry.ToString()
-                    << ", object_lock_owner: " << AsString(object_lock_owner);
+                    << ", object_lock_owner: " << AsString(object_lock_owner)
+                    << ", " << AsString(locks_map);
   auto delta = IntentTypeSetAdd(lock_entry.intent_types);
 
   auto& locks = locks_map == LocksMapType::kGranted ? granted_locks : waiting_locks;
@@ -612,6 +621,8 @@ void ObjectLockManagerImpl::DoCleanup(
     if (--item.locked->ref_count == 0) {
       LOG_IF(DFATAL, item.locked->num_waiters)
           << "Local Object lock manager state corrupted, non zero waiter but object being GC'ed";
+      LOG_IF(DFATAL, item.locked->waiters_in_resuming_state.load())
+          << "Local Object lock manager state corrupted, non-zero waiters_in_resuming_state";
       locks_.erase(item.key);
       item.locked->version++;
       free_lock_entries_.push_back(item.locked);
@@ -642,12 +653,16 @@ Status ObjectLockManagerImpl::MakePrepareAcquireResult(
 
 Status ObjectLockManagerImpl::PrepareAcquire(
     std::unique_lock<std::mutex>& txn_lock, TrackedTxnLockEntryPtr& transaction_entry,
-    const LockData& data, size_t resume_it_offset, Status resume_with_status) {
+    const LockData& data, size_t resume_it_offset, Status resume_with_status,
+    IsLockRetry is_retry) {
   auto it = data.key_to_lock.lock_batch.begin() + resume_it_offset;
   const auto& key_to_lock = data.key_to_lock;
   const auto& object_lock_owner = data.object_lock_owner;
   if (transaction_entry->ShouldSkipAcquireUnlocked(object_lock_owner.subtxn_id)) {
     // Release corresponding to this acquire has already been processed.
+    if (is_retry) {
+      it->locked->waiters_in_resuming_state.fetch_sub(IntentTypeSetAdd(it->intent_types));
+    }
     DoSignal(it->locked);
     txn_lock.unlock();
     DoCleanup(std::span<const LockBatchEntry<ObjectLockManager>>(it, key_to_lock.lock_batch.end()));
@@ -657,6 +672,9 @@ Status ObjectLockManagerImpl::PrepareAcquire(
   auto status = MakePrepareAcquireResult(data, resume_with_status);
   if (status.ok()) {
     return Status::OK();
+  }
+  if (is_retry) {
+    it->locked->waiters_in_resuming_state.fetch_sub(IntentTypeSetAdd(it->intent_types));
   }
   LockIntentCounts lock_intents;
   while (it != key_to_lock.lock_batch.begin()) {
@@ -681,7 +699,7 @@ void ObjectLockManagerImpl::DoLock(
     auto it = data.key_to_lock.lock_batch.begin() + resume_it_offset;
     auto prepare_status = PrepareAcquire(
         GetLockForCondition(txn_lock), transaction_entry, data, resume_it_offset,
-        resume_with_status);
+        resume_with_status, is_retry);
     if (!prepare_status.ok()) {
       ReleaseExclusiveLockIntents(data);
       data.callback(prepare_status);
@@ -707,6 +725,7 @@ void ObjectLockManagerImpl::DoLock(
         return;
       }
       ++it;
+      is_retry = IsLockRetry::kFalse;
     }
   }
   TRACE("Acquired a lock batch of $0 keys", data.key_to_lock.lock_batch.size());
@@ -719,8 +738,13 @@ bool ObjectLockManagerImpl::DoLockSingleEntry(
   TRACE_FUNC();
   auto& lock_entry = *lock_entry_it;
   auto& entry = lock_entry.locked;
+  auto decrement_waiters_in_resuming_state = [is_retry, &entry](LockState delta) {
+    if (is_retry) {
+      entry->waiters_in_resuming_state.fetch_sub(delta);
+    }
+  };
   auto& object_lock_owner = data.object_lock_owner;
-  auto old_value = entry->num_holding.load(std::memory_order_acquire);
+  auto old_value = entry->num_holding.load();
   auto add = IntentTypeSetAdd(lock_entry.intent_types);
   auto conflicting_lock_state = IntentTypeSetConflict(lock_entry.intent_types);
   for (;;) {
@@ -734,6 +758,7 @@ bool ObjectLockManagerImpl::DoLockSingleEntry(
         transaction_entry->AddAcquiredLockUnlocked(
             lock_entry, object_lock_owner, LocksMapType::kGranted);
         IncrementCounter(metric_num_acquires_);
+        decrement_waiters_in_resuming_state(add);
         return true;
       }
       continue;
@@ -742,14 +767,15 @@ bool ObjectLockManagerImpl::DoLockSingleEntry(
     // the wait-queue under a mutex. Increment num_waiters under mutex to avoid the race where
     // num_waiters > 0 but wait-queue is empty.
     std::lock_guard l(entry->mutex);
-    entry->num_waiters.fetch_add(1, std::memory_order_release);
-    old_value = entry->num_holding.load(std::memory_order_acquire);
+    entry->num_waiters.fetch_add(1);
+    old_value = entry->num_holding.load();
     if (should_check_wq || ((old_value ^ existing_state) & conflicting_lock_state) != 0) {
       DEBUG_ONLY_TEST_SYNC_POINT("ObjectLockManagerImpl::DoLockSingleEntry");
       SCOPED_WAIT_STATUS(LockedBatchEntry_Lock);
       VLOG(1) << AsString(object_lock_owner) << " added to wait-queue on " << AsString(lock_entry);
       transaction_entry->AddAcquiredLockUnlocked(
           lock_entry, object_lock_owner, LocksMapType::kWaiting);
+      decrement_waiters_in_resuming_state(add);
       entry->waiting_state += add;
       // TODO(bkolagani): Reuse WaiterDataPtr as opposed to creating multiple shared_ptrs for single
       // lock request. Refer https://github.com/yugabyte/yugabyte-db/issues/27107 for details.
@@ -758,7 +784,7 @@ bool ObjectLockManagerImpl::DoLockSingleEntry(
           lock_entry_it - data.key_to_lock.lock_batch.begin()));
       return false;
     }
-    entry->num_waiters.fetch_sub(1, std::memory_order_release);
+    entry->num_waiters.fetch_sub(1);
   }
 }
 
@@ -775,7 +801,8 @@ void ObjectLockManagerImpl::DoLockSingleEntryWithoutConflictCheck(
   transaction_entry->AddAcquiredLockUnlocked(lock_entry, owner, LocksMapType::kGranted);
 }
 
-void ObjectLockManagerImpl::Unlock(const ObjectLockOwner& object_lock_owner) {
+TxnBlockedTableLockRequests ObjectLockManagerImpl::Unlock(
+    const ObjectLockOwner& object_lock_owner) {
   TRACE("Unlocking all keys for owner $0", AsString(object_lock_owner));
 
   TrackedTxnLockEntryPtr txn_entry;
@@ -784,13 +811,14 @@ void ObjectLockManagerImpl::Unlock(const ObjectLockOwner& object_lock_owner) {
     ConsumePendingSharedLockRequestsUnlocked();
     auto txn_itr = txn_locks_.find(object_lock_owner.txn_id);
     if (txn_itr == txn_locks_.end()) {
-      return;
+      return TxnBlockedTableLockRequests::kFalse;
     }
     txn_entry = txn_itr->second;
     if (!object_lock_owner.subtxn_id) {
       txn_locks_.erase(txn_itr);
     }
   }
+  TxnBlockedTableLockRequests was_a_blocker(false);
   {
     UniqueLock txn_lock(txn_entry->mutex);
     if (object_lock_owner.subtxn_id) {
@@ -798,6 +826,7 @@ void ObjectLockManagerImpl::Unlock(const ObjectLockOwner& object_lock_owner) {
     } else {
       txn_entry->released_all_locks = true;
     }
+    was_a_blocker = txn_entry->was_a_blocker;
   }
 
   LockIntentCounts lock_intents;
@@ -818,6 +847,7 @@ void ObjectLockManagerImpl::Unlock(const ObjectLockOwner& object_lock_owner) {
   //
   // If there's any requirement to early terminate obsolete waiters based on txn id, then we should
   // signal appropriately here.
+  return was_a_blocker;
 }
 
 void ObjectLockManagerImpl::DoUnlock(
@@ -859,7 +889,7 @@ bool ObjectLockManagerImpl::DoUnlockSingleEntry(
       write_intent_count) {
     lock_intents[object_id] += write_intent_count;
   }
-  return entry.num_waiters.load(std::memory_order_acquire);
+  return entry.num_waiters.load();
 }
 
 void ObjectLockManagerImpl::Poll() {
@@ -873,7 +903,9 @@ void ObjectLockManagerImpl::Poll() {
       while (!index.empty() && (*index.begin())->deadline() <= now) {
         auto waiter_entry = *index.begin();
         index.erase(index.begin());
-        entry->waiting_state -= IntentTypeSetAdd(waiter_entry->resume_it()->intent_types);
+        const auto delta = IntentTypeSetAdd(waiter_entry->resume_it()->intent_types);
+        entry->waiters_in_resuming_state.fetch_add(delta);
+        entry->waiting_state.fetch_sub(delta);
         timed_out_waiters.push_back(std::move(waiter_entry));
       }
     }
@@ -901,7 +933,9 @@ void ObjectLockManagerImpl::Shutdown() {
       while (!index.empty()) {
         auto waiter_entry = *index.begin();
         index.erase(index.begin());
-        entry->waiting_state -= IntentTypeSetAdd(waiter_entry->resume_it()->intent_types);
+        const auto delta = IntentTypeSetAdd(waiter_entry->resume_it()->intent_types);
+        entry->waiters_in_resuming_state.fetch_add(delta);
+        entry->waiting_state.fetch_sub(delta);
         waiters.push_back(std::move(waiter_entry));
       }
     }
@@ -929,6 +963,8 @@ void ObjectLockManagerImpl::DoSignal(ObjectLockedBatchEntry* entry) {
       "Failure submitting task ObjectLockManagerImpl::UnblockPotentialWaiters");
 }
 
+// TODO(#29684): Can possibly enhance this to take current num_holding lockstate so
+// as to resume even more waiters to achieve greater throughout whenever possible.
 void ObjectLockManagerImpl::UnblockPotentialWaiters(ObjectLockedBatchEntry* entry) {
   const auto now = CoarseMonoClock::Now();
   std::vector<WaiterEntryPtr> waiters_failed_to_schedule;
@@ -947,21 +983,32 @@ void ObjectLockManagerImpl::UnblockPotentialWaiters(ObjectLockedBatchEntry* entr
     auto* messenger = server_.messenger();
     do {
       auto waiter_entry = *index.begin();
+      const auto intent_types = waiter_entry->resume_it()->intent_types;
+      const auto delta = IntentTypeSetAdd(intent_types);
+      const auto waiters_in_resuming_state = entry->waiters_in_resuming_state.load();
+      if ((waiters_in_resuming_state & IntentTypeSetConflict(intent_types)) != 0) {
+        VLOG_WITH_FUNC(1)
+            << "Skipping resuming additional waiters: " << AsString(entry->wait_queue) << ", as "
+            << LockStateDebugString(waiters_in_resuming_state) << " are amidst resumption.";
+        break;
+      }
+      VLOG_IF(1, waiters_in_resuming_state)
+          << "Resuming waiter despite active waiters since they don't conflict";
       index.erase(index.begin());
-      auto delta = IntentTypeSetAdd(waiter_entry->resume_it()->intent_types);
       if (waiter_entry->deadline() > now) {
         unblock_state += delta;
       }
       waiter_entry->waiter_registration.reset();
-      entry->waiting_state -= IntentTypeSetAdd(waiter_entry->resume_it()->intent_types);
+      entry->waiters_in_resuming_state.fetch_add(delta);
+      entry->waiting_state.fetch_sub(delta);
       VLOG(1) << "Resuming " << AsString(waiter_entry->object_lock_owner());
       prev_txn = waiter_entry->txn_id();
       if (PREDICT_TRUE(messenger)) {
         ScopedOperation resuming_waiter_op(&waiters_amidst_resumption_on_messenger_);
         messenger->ThreadPool().EnqueueFunctor(
-            [operation = std::move(resuming_waiter_op), entry = std::move(waiter_entry),
+            [operation = std::move(resuming_waiter_op), waiter = std::move(waiter_entry),
              lock_manager = this]() {
-          entry->Resume(lock_manager, Status::OK());
+          waiter->Resume(lock_manager, Status::OK());
         });
       } else {
         // Don't schedule anything here on thread_pool_token_ as a shutdown could destroy tasks.
@@ -995,7 +1042,9 @@ void ObjectLockManagerImpl::DoReleaseTrackedLock(
   entry.locked_batch_entry.ref_count -= entry.ref_count;
   if (entry.locked_batch_entry.ref_count == 0) {
     LOG_IF(DFATAL, entry.locked_batch_entry.num_waiters)
-        << "Local Object lock manager state. Non zero waiters, but object geing GC'ed";
+        << "Local Object lock manager state corrupted. Non zero waiters, but object geing GC'ed";
+    LOG_IF(DFATAL, entry.locked_batch_entry.waiters_in_resuming_state.load())
+        << "Local Object lock manager state corrupted, non-zero waiters_in_resuming_state";
     locks_.erase(object_id);
     entry.locked_batch_entry.version++;
     free_lock_entries_.push_back(&entry.locked_batch_entry);
@@ -1038,6 +1087,7 @@ void ObjectLockManagerImpl::DoComputeBlockersWithinQueue(
               other->object_lock_owner().subtxn_id, SubTransactionConflictInfo());
           item->blockers->AddTransaction(
               other->txn_id(), conflict_info, other->status_tablet());
+          other->was_a_blocker = TxnBlockedTableLockRequests::kTrue;
         }
       }
     });
@@ -1074,6 +1124,7 @@ void ObjectLockManagerImpl::DoPopulateLockStateBlockersMap(
           state_it->second = std::make_shared<ConflictDataManager>(1 /* capacity */);
         }
         state_it->second->AddTransaction(id, conflict_info, txn_entry->status_tablet);
+        txn_entry->was_a_blocker = TxnBlockedTableLockRequests::kTrue;
       }
     }
   }
@@ -1131,6 +1182,10 @@ void ObjectLockManagerImpl::RegisterWaiters(ObjectLockedBatchEntry* locked_batch
         }
       }
       if (item->blockers->NumActiveTransactions()) {
+        VLOG_WITH_FUNC(2)
+              << AsString(item->object_lock_owner())
+              << " waiting on " << AsString(*item->blockers)
+              << " for key " << AsString(key);
         item->waiter_registration = waiting_txn_registry_->Create();
         WARN_NOT_OK(
             item->waiter_registration->Register(
@@ -1244,8 +1299,8 @@ void ObjectLockManager::Lock(LockData&& data) {
   impl_->Lock(std::move(data));
 }
 
-void ObjectLockManager::Unlock(const ObjectLockOwner& object_lock_owner) {
-  impl_->Unlock(object_lock_owner);
+TxnBlockedTableLockRequests ObjectLockManager::Unlock(const ObjectLockOwner& object_lock_owner) {
+  return impl_->Unlock(object_lock_owner);
 }
 
 void ObjectLockManager::Poll() {
