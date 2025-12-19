@@ -958,8 +958,10 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       masterDiskSpecs.put("storageClass", storageClass);
     }
 
-    if (isMultiAz) {
+    if (taskParams().masterAddresses != null && !taskParams().masterAddresses.isEmpty()) {
       overrides.put("masterAddresses", taskParams().masterAddresses);
+    }
+    if (isMultiAz) {
       // Don't want to use the AZ tag on minikube since there are no AZ tags
       if (!environment.isDev()) {
         overrides.put("AZ", placementZone);
