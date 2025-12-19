@@ -536,6 +536,67 @@ TEST_F(XClusterDDLReplicationTest, CreateTableWithEnum) {
   }
 }
 
+TEST_F(XClusterDDLReplicationTest, CreateTableWithPartitions) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = true;
+
+  ASSERT_OK(producer_conn_->Execute(R"(
+    CREATE TABLE table_name (
+        emp_id INT,
+        hire_date DATE,
+        region TEXT,
+        dept_id INT,
+        PRIMARY KEY (emp_id, hire_date, region),
+        UNIQUE (dept_id, emp_id, hire_date, region)
+    ) PARTITION BY HASH (emp_id);
+    CREATE TABLE table_name_p0 PARTITION OF table_name
+        FOR VALUES WITH (modulus 2, remainder 0);
+    CREATE TABLE table_name_p1 PARTITION OF table_name
+        FOR VALUES WITH (modulus 2, remainder 1);
+
+    DROP TABLE table_name CASCADE;
+  )"));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = false;
+
+  // Allow extra time for the DDLs to replicate now.
+  propagation_timeout_ += MonoDelta::FromSeconds(60 * kTimeMultiplier);
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow({namespace_name}));
+}
+
+TEST_F(XClusterDDLReplicationTest, CreateIndexWithPartitions) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = true;
+
+  ASSERT_OK(producer_conn_->Execute(R"(
+    CREATE TABLE table_name (
+        emp_id INT,
+        hire_date DATE,
+        region TEXT,
+        dept_id INT,
+        PRIMARY KEY (emp_id, hire_date, region)
+    ) PARTITION BY HASH (emp_id);
+    CREATE TABLE table_name_p0 PARTITION OF table_name
+        FOR VALUES WITH (modulus 2, remainder 0);
+    CREATE TABLE table_name_p1 PARTITION OF table_name
+        FOR VALUES WITH (modulus 2, remainder 1);
+
+    CREATE INDEX table_name_emp_hire_region_idx
+        ON table_name (emp_id, hire_date, region);
+
+    DROP INDEX table_name_emp_hire_region_idx;
+    DROP TABLE table_name CASCADE;
+  )"));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = false;
+
+  // Allow extra time for the DDLs to replicate now.
+  propagation_timeout_ += MonoDelta::FromSeconds(60 * kTimeMultiplier);
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow({namespace_name}));
+}
+
 TEST_F(XClusterDDLReplicationTest, MultistatementQuery) {
   ASSERT_OK(SetUpClustersAndReplication());
 
