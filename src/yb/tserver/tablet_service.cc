@@ -913,6 +913,7 @@ void TabletServiceAdminImpl::BackfillIndex(
   std::string backfilled_until;
   std::unordered_set<TableId> failed_indexes;
   uint64_t num_rows_read_from_table_for_backfill = 0;
+  std::unordered_map<TableId, double> num_rows_backfilled_in_index;
   if (is_pg_table) {
     if (!req->has_namespace_name()) {
       SetupErrorAndRespond(
@@ -948,6 +949,7 @@ void TabletServiceAdminImpl::BackfillIndex(
         server_->GetSharedMemoryPostgresAuthKey(),
         is_xcluster_automatic_mode_target,
         &num_rows_read_from_table_for_backfill,
+        num_rows_backfilled_in_index,
         &backfilled_until);
     if (backfill_status.IsIllegalState()) {
       DCHECK_EQ(failed_indexes.size(), 0) << "We don't support batching in YSQL yet";
@@ -980,6 +982,11 @@ void TabletServiceAdminImpl::BackfillIndex(
   resp->set_backfilled_until(backfilled_until);
   resp->set_propagated_hybrid_time(server_->Clock()->Now().ToUint64());
   resp->set_num_rows_read_from_table_for_backfill(num_rows_read_from_table_for_backfill);
+  if (is_pg_table) {
+    for (const auto& [index_id, num_rows_backfilled] : num_rows_backfilled_in_index) {
+      resp->mutable_num_rows_backfilled_in_index()->insert({index_id, num_rows_backfilled});
+    }
+  }
 
   if (!backfill_status.ok()) {
     VLOG(2) << " Failed indexes are " << yb::ToString(failed_indexes);

@@ -159,12 +159,14 @@ SELECT i FROM tmp WHERE j = -5;
 /*+SeqScan(tmp) */
 SELECT i FROM tmp WHERE j = -5;
 -- Somehow, IndexScan hint plan fails to work at this point.  Force usage of
--- the index with enable_seqscan.
+-- the index by setting enable_seqscan and enable_bitmapscan to off.
 SET enable_seqscan TO off;
+SET enable_bitmapscan TO off;
 EXPLAIN (costs off)
 SELECT i FROM tmp WHERE j = -5;
 SELECT i FROM tmp WHERE j = -5;
 RESET enable_seqscan;
+RESET enable_bitmapscan;
 
 -- 5. corruption (for YB indexes)
 --

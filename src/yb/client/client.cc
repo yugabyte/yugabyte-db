@@ -632,7 +632,8 @@ Status YBClient::BackfillIndex(const TableId& table_id, bool wait, CoarseTimePoi
 
 Status YBClient::GetIndexBackfillProgress(
     const std::vector<TableId>& index_ids,
-    RepeatedField<google::protobuf::uint64>* num_rows_read_from_table_for_backfill) {
+    RepeatedField<google::protobuf::uint64>* num_rows_read_from_table_for_backfill,
+    RepeatedField<double>* num_rows_backfilled_in_index) {
   GetIndexBackfillProgressRequestPB req;
   GetIndexBackfillProgressResponsePB resp;
   for (auto &index_id : index_ids) {
@@ -643,6 +644,7 @@ Status YBClient::GetIndexBackfillProgress(
     return StatusFromPB(resp.error().status());
   }
   *num_rows_read_from_table_for_backfill = std::move(resp.num_rows_read_from_table_for_backfill());
+  *num_rows_backfilled_in_index = std::move(resp.num_rows_backfilled_in_index());
   return Status::OK();
 }
 

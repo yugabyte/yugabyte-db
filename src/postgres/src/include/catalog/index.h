@@ -153,12 +153,12 @@ extern void index_build(Relation heapRelation,
 						bool isreindex,
 						bool parallel);
 
-extern void index_backfill(Relation heapRelation,
-						   Relation indexRelation,
-						   IndexInfo *indexInfo,
-						   bool isprimary,
-						   YbBackfillInfo *bfinfo,
-						   YbPgExecOutParam *bfresult);
+extern double yb_index_backfill(Relation heapRelation,
+								Relation indexRelation,
+								IndexInfo *indexInfo,
+								bool isprimary,
+								YbBackfillInfo *bfinfo,
+								YbPgExecOutParam *bfresult);
 
 /* TODO: add Yb prefix. */
 extern double IndexBackfillHeapRangeScan(Relation heapRelation,
@@ -260,5 +260,9 @@ typedef enum
 } YBIndexPermissions;
 
 extern bool YBRelationHasPrimaryKey(Relation rel);
+
+extern void yb_index_update_stats(Relation rel,
+	bool hasindex,
+	double reltuples);
 
 #endif							/* INDEX_H */

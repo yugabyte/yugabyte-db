@@ -1867,7 +1867,8 @@ class PgClientServiceImpl::Impl : public SessionProvider {
       index_ids.emplace_back(PgObjectId::GetYbTableIdFromPB(index_id));
     }
     return client().GetIndexBackfillProgress(index_ids,
-                                             resp->mutable_num_rows_read_from_table_for_backfill());
+                                             resp->mutable_num_rows_read_from_table_for_backfill(),
+                                             resp->mutable_num_rows_backfilled_in_index());
   }
 
   Status ValidatePlacement(
