@@ -120,7 +120,7 @@ message BackfillIndexResponsePB {
   repeated bytes failed_index_ids = 4;
 
   // Returns the number of rows backfilled in the request.
-  optional uint64 number_rows_processed = 5;
+  optional uint64 num_rows_read_from_table_for_backfill = 5;
 }
 
 // A create tablet request.

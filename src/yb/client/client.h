@@ -350,7 +350,8 @@ class YBClient {
 
   Status GetIndexBackfillProgress(
       const std::vector<TableId>& index_ids,
-      google::protobuf::RepeatedField<google::protobuf::uint64>* rows_processed_entries);
+      google::protobuf::RepeatedField<google::protobuf::uint64>*
+          num_rows_read_from_table_for_backfill);
 
   Result<master::GetBackfillStatusResponsePB> GetBackfillStatus(
       const std::vector<std::string_view>& table_ids);

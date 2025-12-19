@@ -622,7 +622,7 @@ message PgGetIndexBackfillProgressResponsePB {
   AppStatusPB status = 1;
   // The ordering of the indexes' results here is expected to be the same as the ordering in the
   // corresponding request PB (PgGetIndexBackfillProgressRequestPB).
-  repeated uint64 rows_processed_entries = 2;
+  repeated uint64 num_rows_read_from_table_for_backfill = 2;
 }
 
 message PgListLiveTabletServersResponsePB {
