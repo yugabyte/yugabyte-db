@@ -45,6 +45,9 @@ if ! id -u prometheus >/dev/null 2>&1; then
         rhel|centos|fedora|rocky|almalinux|amzn|ol)
             useradd --shell /bin/bash --no-create-home -g {{ yb_user }} prometheus
             ;;
+        sles)
+            useradd --shell /bin/bash --no-create-home -g {{ yb_user }} prometheus
+            ;;
         *)
             echo "Unsupported OS: $os_type"
             exit 1
