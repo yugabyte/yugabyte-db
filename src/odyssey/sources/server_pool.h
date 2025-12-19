@@ -75,7 +75,8 @@ OD_SERVER_POOL_FREE_DECLARE(ldap, od_ldap_server_t, od_ldap_server_free)
 		od_list_t *target = NULL;                                      \
 		switch (state) {                                               \
 		case OD_SERVER_UNDEF:                                          \
-			if (server->yb_sticky_connection) {                     \
+			if (server->yb_sticky_connection ||					\
+					server->yb_replication_connection) {                     \
 				pool->yb_count_sticky--;                       \
 			}													  \
 			break;                                                 \

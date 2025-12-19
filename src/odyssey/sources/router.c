@@ -11,7 +11,7 @@
 #include <time.h>
 
 static void clear_stats(struct ConnectionStats *yb_stats, const int yb_max_pools) {
-    for (int i = 1; i < yb_max_pools; i++) {
+    for (int i = YB_TXN_POOL_STATS_START_INDEX; i < yb_max_pools; i++) {
         yb_stats[i].active_clients = 0;
 		yb_stats[i].queued_clients = 0;
 		yb_stats[i].waiting_clients = 0;
@@ -379,7 +379,7 @@ clean:
 	pool->count--;
 	od_list_unlink(&route->link);
 
-	if (index > 0) {
+	if (index >= YB_TXN_POOL_STATS_START_INDEX) {
 		instance->yb_stats[index].database_oid = -1;
 		instance->yb_stats[index].user_oid = -1;
 	}
@@ -1098,6 +1098,14 @@ attach:
 	server->client = client_for_router;
 	server->idle_time = 0;
 	server->key_client = client_for_router->key;
+
+	if (route->id.logical_rep) {
+		// Replication connections are never detached after txn is committed similar to sticky
+		// connections. Attach phase is called once for a replication connection. So only once
+		// the sticky count is incremented to reflect on stats.
+		server->yb_replication_connection = true;
+		route->server_pool.yb_count_sticky++;
+	}
 
 	od_route_unlock(route);
 
