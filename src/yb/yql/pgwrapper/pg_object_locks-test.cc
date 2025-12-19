@@ -1196,9 +1196,8 @@ class PgObjectLocksFastpathTest : public PgObjectLocksTestRF1 {
 
   void SetUp() override {
     PgObjectLocksTestRF1::SetUp();
-    ASSERT_OK(WaitFor([&] {
-      return TServerSharedObject()->object_lock_state() != nullptr;
-    }, 5s * kTimeMultiplier, "tserver shared memory initialization"));
+    auto& shared_object = *TServerSharedObject().get();
+    ASSERT_OK(shared_object.WaitAllocatorsInitialized());
   }
 
   TransactionId LastOwner() {
