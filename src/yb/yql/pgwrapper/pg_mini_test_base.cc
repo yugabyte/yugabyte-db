@@ -36,7 +36,6 @@ DECLARE_bool(master_auto_run_initdb);
 DECLARE_bool(ysql_disable_index_backfill);
 DECLARE_int32(client_read_write_timeout_ms);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
-DECLARE_int32(pggate_rpc_timeout_secs);
 DECLARE_string(pgsql_proxy_bind_address);
 DECLARE_int32(pgsql_proxy_webserver_port);
 DECLARE_int32(timestamp_history_retention_interval_sec);
@@ -59,7 +58,6 @@ void PgMiniTestBase::SetUp() {
   EnableYSQLFlags();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_read_write_timeout_ms) = 120000 * kTimeMultiplier;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_hide_pg_catalog_table_creation_logs) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_pggate_rpc_timeout_secs) = 120;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_disable_index_backfill) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_num_shards_per_tserver) = 1;
 

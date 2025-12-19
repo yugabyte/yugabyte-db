@@ -1204,7 +1204,9 @@ YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *ini
 			.ConstructArrayDatum = &YbConstructArrayDatum,
 			.CheckUserMap = &check_usermap,
 			.PgstatReportWaitStart = &yb_pgstat_report_wait_start,
-			.GetSessionReplicationOriginId = &YbGetSessionReplicationOriginId};
+			.GetSessionReplicationOriginId = &YbGetSessionReplicationOriginId,
+			.CheckForInterrupts = &YBCheckForInterrupts,
+		};
 
 		ash_config.metadata = &MyProc->yb_ash_metadata;
 
@@ -1239,7 +1241,6 @@ YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *ini
 		 */
 		HandleYBStatus(YBCPgInitSession(&yb_session_stats.current_state,
 										IsBinaryUpgrade));
-		YBCSetTimeout(StatementTimeout, NULL);
 
 		/*
 		 * Upon completion of the first heartbeat to the local tserver, retrieve

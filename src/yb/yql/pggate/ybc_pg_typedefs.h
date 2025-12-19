@@ -385,6 +385,8 @@ typedef struct {
   YbcWaitEventInfo (*PgstatReportWaitStart)(YbcWaitEventInfo);
   /* replication origin */
   uint16_t (*GetSessionReplicationOriginId)();
+  /* CHECK_FOR_INTERRUPTS */
+  void (*CheckForInterrupts)();
 } YbcPgCallbacks;
 
 typedef struct {

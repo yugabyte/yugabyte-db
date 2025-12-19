@@ -17,6 +17,7 @@
 
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/client/client-internal.h"
+#include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/table_info.h"
 #include "yb/client/tablet_server.h"
@@ -50,10 +51,10 @@
 #include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/util/ybc_guc.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 DECLARE_bool(enable_object_lock_fastpath);
 DECLARE_bool(use_node_hostname_for_local_tserver);
-DECLARE_int32(backfill_index_client_rpc_timeout_ms);
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
 DECLARE_uint32(ddl_verification_timeout_multiplier);
 
@@ -84,6 +85,133 @@ using yb::cdc::CDCServiceProxy;
 using yb::ash::PggateRPC;
 
 namespace yb::pggate {
+
+namespace {
+// The following two terms are used to express how long an operation can take to complete:
+// - Timeout: the maximum duration of time that an operation is allowed to run for.
+//            For example: '30s'. Timeouts are relative.
+// - Deadline: the fixed point in time by which an operation must complete.
+//            For example: '13450s since epoch'. Deadlines are absolute.
+//
+// Pggate encounters the following classes of timeouts/deadlines:
+// 1. Global timeout/deadline (from postgres): GUCs such as 'statement_timeout',
+//    'transaction_timeout' (PG 17+) represent a timeout for a group of RPCs. These timeouts are
+//    expressed as deadlines in pggate. These deadlines are enforced by postgres' timer mechanism
+//    since pggate does not know how many RPCs the given statement/query will generate.
+// 2. RPC timeout (from pggate): This represents how long a specific RPC is allowed to take. If the
+//    deadline for the RPC exceeds the global deadline, the RPC timeout is clamped to the global
+//    deadline.
+// 3. Operation timeout (from postgres): GUCs such as 'lock_timeout', 'deadlock_timeout' represent
+//    timeouts for specific operations. Each RPC may be composed of multiple operations. While
+//    global and RPC timeouts are client-side timeouts (ie. enforced by pggate::PgClient), operation
+//    timeouts must be implemented on the server side (ie. enforced by the tservers). Consequently,
+//    operation timeouts must be communicated to the server as part of the RPC.
+//
+// There exists another class of timeouts, which does not affect pggate:
+// 4. Idle timeout (from postgres): GUCs such as 'idle_in_transaction_session_timeout',
+//    'idle_session_timeout' represent how long a session can be idle. These timeouts are enforced
+//    in postgres and are not propagated to pggate.
+class PgTimeout {
+ public:
+  void SetPGTimeoutAsGlobalDeadline(int timeout_ms) {
+    const MonoDelta adjusted_timeout =
+        MonoDelta::FromMilliseconds(timeout_ms) +
+        MonoDelta::FromMilliseconds(FLAGS_pg_client_extra_timeout_ms);
+
+    global_deadline_ = CoarseMonoClock::now() + adjusted_timeout;
+  }
+
+  void ClearGlobalDeadline() {
+    global_deadline_ = CoarseTimePoint();
+  }
+
+  void SetLockTimeout(int timeout_ms) {
+    if (timeout_ms <= 0) {
+      // TODO(kramanathan): When disabled by PG, evaluate whether the lock timeout should be set to
+      // a default value.
+      lock_timeout_ = GetDefaultRpcTimeout();
+      return;
+    }
+
+    lock_timeout_ =
+        MonoDelta::FromMilliseconds(timeout_ms) +
+        MonoDelta::FromMilliseconds(FLAGS_pg_client_extra_timeout_ms);
+  }
+
+  // TODO: Lock timeouts are the only operation timeouts currently supported and are implemented as
+  // both client-side (RPC timeout) and server-side timeouts (tserver RPC timeout). They instead
+  // need to be a part of the RPC message (since each RPC may have multiple operations, each of
+  // which may have its own timeout).
+  template<typename T>
+  std::pair<CoarseTimePoint, MonoDelta> GetDeadlineAndTimeoutForRPC(
+      CoarseTimePoint rpc_deadline = CoarseTimePoint()) const {
+
+    const CoarseTimePoint now = CoarseMonoClock::now();
+    const MonoDelta operation_timeout = GetOperationTimeout<T>();
+
+    // Prioritize the minimum of RPC and global deadline, if supplied.
+    CoarseTimePoint deadline = MinDeadline(rpc_deadline, global_deadline_);
+
+    // If an RPC is being scheduled while we're in the grace period, it is likely that the
+    // statement timer has already fired in postgres. Therefore check for interrupts.
+    if (PREDICT_FALSE(
+        global_deadline_ != CoarseTimePoint() &&
+        global_deadline_ - MonoDelta::FromMilliseconds(FLAGS_pg_client_extra_timeout_ms) < now)) {
+      YBCCheckForInterrupts();
+    }
+
+    // Assert that the global deadline is not in the past.
+    DCHECK(deadline == CoarseTimePoint() || now < deadline);
+
+    // If an operation timeout is applicable, apply it to further clamp the deadline.
+    if (operation_timeout.Initialized()) {
+      deadline = MinDeadline(deadline, now + operation_timeout);
+    }
+
+    // If none of the timeouts/deadlines are applicable, set it to a default value.
+    if (deadline == CoarseTimePoint()) {
+      deadline = now + GetDefaultRpcTimeout();
+    }
+
+    return std::make_pair(deadline, deadline - now);
+  }
+
+ private:
+  template<typename T>
+  MonoDelta GetOperationTimeout() const {
+    if constexpr (std::is_same_v<T, tserver::PgAcquireAdvisoryLockRequestPB> ||
+                  std::is_same_v<T, tserver::LWPgAcquireObjectLockRequestPB>) {
+      return lock_timeout_;
+    }
+
+    return MonoDelta();
+  }
+
+  static MonoDelta GetDefaultRpcTimeout() {
+    return MonoDelta::FromMilliseconds(client::YsqlClientReadWriteTimeoutMs()) +
+        MonoDelta::FromMilliseconds(FLAGS_pg_client_extra_timeout_ms);
+  }
+
+  const CoarseTimePoint& MinDeadline(const CoarseTimePoint& a, const CoarseTimePoint& b) const {
+    if (a == CoarseTimePoint()) {
+      return b;
+    }
+    if (b == CoarseTimePoint()) {
+      return a;
+    }
+
+    return a < b ? a : b;
+  }
+
+  // The deadline representing statement timeout in postgres.
+  // Unset if statement_timeout is set to 0 (ie. no timeout).
+  // This deadline is not applicable to heartbeats.
+  CoarseTimePoint global_deadline_;
+  // The timeout representing lock_timeout in postgres.
+  MonoDelta lock_timeout_ = FLAGS_yb_client_admin_operation_timeout_sec * 1s;
+};
+} // namespace
+
 namespace {
 
 class FetchBigDataCallback {
@@ -248,10 +376,11 @@ struct PgClientData : public FetchBigDataCallback {
   PgClientData(const LWReqPB& req_, ThreadSafeArena* arena_) : req(req_), resp(arena_) {}
 
   void SetupExchange(
-      tserver::SharedExchange* exchange_, BigDataFetcher* big_data_fetcher_, MonoDelta timeout) {
+      tserver::SharedExchange* exchange_, BigDataFetcher* big_data_fetcher_,
+      CoarseTimePoint deadline_) {
     exchange = exchange_;
     big_data_fetcher = big_data_fetcher_;
-    deadline = CoarseMonoClock::now() + timeout;
+    deadline = deadline_;
   }
 
   bool BigDataReady() const REQUIRES(exchange_mutex) {
@@ -602,12 +731,16 @@ class PgClient::Impl : public BigDataFetcher {
     });
   }
 
-  void SetTimeout(MonoDelta timeout) {
-    timeout_ = timeout + MonoDelta::FromMilliseconds(FLAGS_pg_client_extra_timeout_ms);
+  void SetTimeout(int timeout_ms) {
+    timeouts_.SetPGTimeoutAsGlobalDeadline(timeout_ms);
   }
 
-  void SetLockTimeout(MonoDelta lock_timeout) {
-    lock_timeout_ = lock_timeout + MonoDelta::FromMilliseconds(FLAGS_pg_client_extra_timeout_ms);
+  void ClearTimeout() {
+    timeouts_.ClearGlobalDeadline();
+  }
+
+  void SetLockTimeout(int timeout_ms) {
+    timeouts_.SetLockTimeout(timeout_ms);
   }
 
   Result<PgTableDescPtr> OpenTable(
@@ -885,10 +1018,11 @@ class PgClient::Impl : public BigDataFetcher {
       auto& exchange = session_shared_mem_->exchange();
       auto out = exchange.Obtain(kHeaderSize + kMetadataSize + data->req.SerializedSize());
       if (out) {
-        auto timeout = GetTimeout<typename Data::RequestType>();
+        const auto [rpc_deadline, rpc_timeout] =
+            timeouts_.GetDeadlineAndTimeoutForRPC<typename Data::RequestType>();
         *reinterpret_cast<uint8_t *>(out) = Data::kSharedExchangeRequestType;
         out += sizeof(uint8_t);
-        LittleEndian::Store64(out, timeout.ToMilliseconds());
+        LittleEndian::Store64(out, rpc_timeout.ToMilliseconds());
         out += sizeof(uint64_t);
         out = pointer_cast<std::byte*>(metadata.SerializeToArray(to_uchar_ptr(out)));
         const auto size = data->req.SerializedSize();
@@ -905,7 +1039,7 @@ class PgClient::Impl : public BigDataFetcher {
           data->promise.set_value(MakeExchangeResult(*data, status));
           return data->promise.get_future();
         }
-        data->SetupExchange(&exchange, this, timeout);
+        data->SetupExchange(&exchange, this, rpc_deadline);
         return ExchangeFuture<Data>(std::move(data));
       }
     }
@@ -1658,31 +1792,23 @@ class PgClient::Impl : public BigDataFetcher {
   }
 
   template <typename T = void>
-  MonoDelta GetTimeout() {
-    if constexpr (std::is_same_v<T, tserver::PgAcquireAdvisoryLockRequestPB> ||
-                  std::is_same_v<T, tserver::LWPgAcquireObjectLockRequestPB>) {
-      return std::min(timeout_, lock_timeout_);
-    }
-    return timeout_;
-  }
-
-  template <typename T = void>
   rpc::RpcController* SetupController(
       rpc::RpcController* controller,
-      CoarseTimePoint deadline = CoarseTimePoint()) {
-    if (deadline != CoarseTimePoint()) {
-      controller->set_deadline(deadline);
-    } else {
-      controller->set_timeout(GetTimeout<T>());
-    }
+      CoarseTimePoint rpc_deadline = CoarseTimePoint()) {
+    const auto [_, timeout] = timeouts_.GetDeadlineAndTimeoutForRPC<T>(rpc_deadline);
+    controller->set_timeout(timeout);
     return controller;
   }
 
   template <typename T = void>
-  rpc::RpcController* PrepareController(
-      CoarseTimePoint deadline = CoarseTimePoint()) {
+  rpc::RpcController* PrepareController(CoarseTimePoint rpc_deadline = CoarseTimePoint()) {
     controller_.Reset();
-    return SetupController<T>(&controller_, deadline);
+    return SetupController<T>(&controller_, rpc_deadline);
+  }
+
+  template <typename T = void>
+  rpc::RpcController* PrepareController(rpc::RpcController* controller) {
+    return controller;
   }
 
   rpc::RpcController* PrepareHeartbeatController() {
@@ -1717,16 +1843,11 @@ class PgClient::Impl : public BigDataFetcher {
                 << "status " << s << "\n" << resp.DebugString();
     }
 
+    // Check for interrupts are executing sync RPC.
+    YBCCheckForInterrupts();
+
     return s;
   }
-
-  template <class T>
-  auto* GetRpcController(CoarseTimePoint deadline = CoarseTimePoint()) {
-    return PrepareController<T>(deadline);
-  }
-
-  template <class T>
-  auto* GetRpcController(rpc::RpcController* controller) { return controller; }
 
   auto* GetProxy(PgClientServiceProxy*) const { return proxy_.get(); }
   auto* GetProxy(CDCServiceProxy*) const { return local_cdc_service_proxy_.get(); }
@@ -1737,7 +1858,7 @@ class PgClient::Impl : public BigDataFetcher {
       Req& req, Resp& resp, PggateRPC rpc_enum, Args&&... args) {
     return DoSyncRPCImpl(
         *DCHECK_NOTNULL(GetProxy(static_cast<Proxy*>(nullptr))), func, req, resp, rpc_enum,
-        GetRpcController<Req>(std::forward<Args>(args)...), ash::WaitStateCode::kWaitingOnTServer);
+        PrepareController<Req>(std::forward<Args>(args)...), ash::WaitStateCode::kWaitingOnTServer);
   }
 
   // Overload for when wait_event is specific enough and RPC name is not needed.
@@ -1747,7 +1868,7 @@ class PgClient::Impl : public BigDataFetcher {
       Req& req, Resp& resp, ash::WaitStateCode wait_event, Args&&... args) {
     return DoSyncRPCImpl(
         *DCHECK_NOTNULL(GetProxy(static_cast<Proxy*>(nullptr))), func, req, resp, PggateRPC::kNoRPC,
-        GetRpcController<Req>(std::forward<Args>(args)...), wait_event);
+        PrepareController<Req>(std::forward<Args>(args)...), wait_event);
   }
 
   std::unique_ptr<PgClientServiceProxy> proxy_;
@@ -1763,10 +1884,7 @@ class PgClient::Impl : public BigDataFetcher {
   std::optional<tserver::PgSessionSharedMemoryManager> session_shared_mem_;
   std::promise<Result<uint64_t>> create_session_promise_;
   std::array<int, 2> tablet_server_count_cache_;
-  MonoDelta timeout_ = FLAGS_yb_client_admin_operation_timeout_sec * 1s;
-  // When making a request to acquire an advisory lock or object lock, the RPC timeout
-  // should be the minimum of timeout_ and lock_timeout_.
-  MonoDelta lock_timeout_ = FLAGS_yb_client_admin_operation_timeout_sec * 1s;
+  PgTimeout timeouts_;
 
   const WaitEventWatcher& wait_event_watcher_;
 
@@ -1811,12 +1929,16 @@ void PgClient::Shutdown() {
   impl_->Shutdown();
 }
 
-void PgClient::SetTimeout(MonoDelta timeout) {
-  impl_->SetTimeout(timeout);
+void PgClient::SetTimeout(int timeout_ms) {
+  impl_->SetTimeout(timeout_ms);
 }
 
-void PgClient::SetLockTimeout(MonoDelta lock_timeout) {
-  impl_->SetLockTimeout(lock_timeout);
+void PgClient::ClearTimeout() {
+  impl_->ClearTimeout();
+}
+
+void PgClient::SetLockTimeout(int lock_timeout_ms) {
+  impl_->SetLockTimeout(lock_timeout_ms);
 }
 
 uint64_t PgClient::SessionID() const { return impl_->SessionID(); }
