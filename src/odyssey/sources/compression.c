@@ -42,7 +42,7 @@ int od_compression_frontend_setup(od_client_t *client,
 	if (msg == NULL)
 		return -1;
 
-	int rc = od_write(&client->io, msg);
+	int rc = od_write(&client->io, &msg);
 	if (rc == -1) {
 		od_error(logger, "compression", client, NULL, "write error: %s",
 			 od_io_error(&client->io));
