@@ -2705,8 +2705,7 @@ public class TestIndex extends BaseCQLTest {
     session.execute("create index i1 on test_create_index (s1)");
   }
 
-  @Test
-  public void testDropCreateTable() throws Exception {
+  public int doCreateDropCreateTable() throws Exception {
     // We need >3 tservers for the test.
     int expectedTServers = miniCluster.getTabletServers().size() + 2;
     miniCluster.startTServer(getTServerFlags());
@@ -2728,11 +2727,28 @@ public class TestIndex extends BaseCQLTest {
                     "with transactions = { 'enabled' : true }");
     session.execute("create index on test_tbl(a) ");
     Thread.sleep(1000); // Let index backfilling finish.
+    return expectedTServers;
+  }
 
+  @Test
+  public void testDropCreateTable() throws Exception {
+    int numTServers = doCreateDropCreateTable();
     // Test the index 'test_tbl_a_idx' against all TSes twice.
-    for (int i = 1; i <= 2*expectedTServers; ++i) {
+    for (int i = 1; i <= 2*numTServers; ++i) {
       // This SELECT statement returns expected empty result. It should not fail.
       assertQuery("select a from " + DEFAULT_TEST_KEYSPACE + ".test_tbl where a=1", "");
+    }
+  }
+
+  @Test
+  public void testDropCreateTableWithOrderBy() throws Exception {
+    int numTServers = doCreateDropCreateTable();
+    // Test the index 'test_tbl_a_idx' against all TSes twice.
+    for (int i = 1; i <= 2*numTServers; ++i) {
+      // This SELECT statement should return the error. It should not crash.
+      runInvalidStmt(
+          "select a from " + DEFAULT_TEST_KEYSPACE + ".test_tbl where a=1 ORDER BY a ASC",
+          "Order by clause should only contain clustering columns");
     }
   }
 }
