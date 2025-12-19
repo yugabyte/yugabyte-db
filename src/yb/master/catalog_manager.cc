@@ -2355,22 +2355,31 @@ Result<boost::optional<TablespaceId>> CatalogManager::GetTablespaceForTable(
 Result<boost::optional<ReplicationInfoPB>> CatalogManager::GetTablespaceReplicationInfoWithRetry(
   const TablespaceId& tablespace_id) {
 
-  auto tablespace_manager = GetTablespaceManager();
-  auto replication_info_result = tablespace_manager->GetTablespaceReplicationInfo(tablespace_id);
-
-  if (replication_info_result) {
-    return replication_info_result;
+  // Try to get tablespace info from cached manager first.
+  {
+    auto tablespace_manager = GetTablespaceManager();
+    auto replication_info_result = tablespace_manager->GetTablespaceReplicationInfo(tablespace_id);
+    if (replication_info_result) {
+      return replication_info_result;
+    }
   }
+  // Lock is released here, allowing other threads (including background refresh) to proceed.
 
   // We failed to find the tablespace placement policy. Refresh the tablespace info and try again.
+  // This is a potentially slow operation (reads from sys catalog), so we do it without holding
+  // any locks to avoid blocking other threads.
   auto tablespace_map = VERIFY_RESULT(GetYsqlTablespaceInfo());
 
-  // We clone the tablespace_manager and update the clone with the new tablespace_map that we
-  // fetched above. We do this instead of updating the tablespace_manager object in-place because
-  // other clients may have a shared_ptr to it through 'GetTablespaceManager()'.
-  tablespace_manager = tablespace_manager->CreateCloneWithTablespaceMap(tablespace_map);
+  // Now acquire the manager again and update it with the fresh data.
+  std::shared_ptr<YsqlTablespaceManager> tablespace_manager;
   {
     LockGuard lock(tablespace_mutex_);
+    // Get the current manager (might have been updated by background task)
+    tablespace_manager = tablespace_manager_;
+    // Clone it with the new tablespace_map. We do this instead of updating the
+    // tablespace_manager object in-place because other clients may have a shared_ptr
+    // to it through 'GetTablespaceManager()'.
+    tablespace_manager = tablespace_manager->CreateCloneWithTablespaceMap(tablespace_map);
     tablespace_manager_ = tablespace_manager;
   }
 

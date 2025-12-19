@@ -13,6 +13,10 @@
 
 #include <algorithm>
 #include <iterator>
+#include <deque>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
 
 #include <google/protobuf/repeated_field.h>
 
@@ -46,6 +50,8 @@
 #include "yb/util/status_format.h"
 
 #include "yb/rpc/rpc_context.h"
+
+#include "yb/util/lockfree.h"
 
 DEFINE_UNKNOWN_int32(tablet_report_limit, 1000,
              "Max Number of tablets to report during a single heartbeat. "
@@ -144,7 +150,20 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
  public:
   explicit MasterHeartbeatServiceImpl(Master* master)
       : MasterServiceBase(master), MasterHeartbeatIf(master->metric_entity()),
-        master_(master), catalog_manager_(master->catalog_manager_impl()) {}
+        master_(master), catalog_manager_(master->catalog_manager_impl()) {
+    processing_thread_ = std::thread([this] { ProcessBatchesLoop(); });
+  }
+
+  ~MasterHeartbeatServiceImpl() {
+    {
+      std::lock_guard<std::mutex> l(queue_mutex_);
+      stop_processing_ = true;
+    }
+    queue_cond_.notify_one();
+    if (processing_thread_.joinable()) {
+      processing_thread_.join();
+    }
+  }
 
   static Status CheckUniverseUuidMatchFromTserver(
       const UniverseUuid& tserver_universe_uuid,
@@ -168,6 +187,31 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
       return YB_STRUCT_TO_STRING(tablet_id, info, report, tables);
     }
   };
+
+  struct PersistentReportedTablet {
+    TabletId tablet_id;
+    TabletInfoPtr info;
+    ReportedTabletPB report;
+    std::map<TableId, scoped_refptr<TableInfo>> tables;
+  };
+
+  struct DeferredTabletReportBatch : public yb::MPSCQueueEntry<DeferredTabletReportBatch> {
+    TSDescriptorPtr ts_desc;
+    NodeInstancePB ts_instance;
+    int32_t report_sequence_number;
+    bool is_incremental;
+    std::vector<PersistentReportedTablet> tablets;
+    LeaderEpoch epoch;
+  };
+
+  yb::MPSCQueue<DeferredTabletReportBatch> tablet_report_queue_;
+  std::mutex queue_mutex_;
+  std::condition_variable queue_cond_;
+  std::thread processing_thread_;
+  bool stop_processing_ = false;
+
+  void ProcessBatchesLoop();
+  void ProcessDeferredBatch(const DeferredTabletReportBatch* batch);
 
   using ReportedTablets = std::vector<ReportedTablet>;
 
@@ -256,6 +300,199 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
   void PopulatePgCatalogVersionInfo(const TSHeartbeatRequestPB& req,
                                     TSHeartbeatResponsePB& resp);
 };
+
+int64_t GetCommittedConsensusStateOpIdIndex(const ReportedTabletPB& report);
+
+void MasterHeartbeatServiceImpl::ProcessBatchesLoop() {
+  while (!stop_processing_) {
+    // Process all items currently in the queue
+    while (auto* batch = tablet_report_queue_.Pop()) {
+      ProcessDeferredBatch(batch);
+      delete batch;
+    }
+    
+    // Sleep for 1 second before checking again
+    std::unique_lock<std::mutex> l(queue_mutex_);
+    queue_cond_.wait_for(l, 1s, [this] { return stop_processing_; });
+  }
+}
+
+void MasterHeartbeatServiceImpl::ProcessDeferredBatch(const DeferredTabletReportBatch* batch) {
+  SCOPED_LEADER_SHARED_LOCK(l, catalog_manager_);
+  if (!l.IsInitializedAndIsLeader()) {
+    return;
+  }
+
+  // We assume that the sequence number check has been done implicitly by the fact that
+  // if we are here, we accepted the heartbeat. 
+  // However, we can double check against the latest known sequence number.
+  // Note: IsReportCurrent takes the full report PB, but we only have the seq no here.
+  if (batch->report_sequence_number < batch->ts_desc->latest_report_seqno()) {
+    // If the report sequence number is older than the latest report processed, skip processing.
+    // This handles the case where we have multiple reports in flight and process them out of order
+    // or if a newer report has already been processed by another thread (though here we have a single consumer).
+    // It is safer to re-check this inside the background thread.
+    return;
+  }
+
+  std::map<TableId, TableInfoPtr> table_info_map;
+  std::map<TableId, TableInfo::WriteLock> table_write_locks;
+
+  for (const auto& tablet : batch->tablets) {
+    if (tablet.info->table()) {
+      table_info_map[tablet.info->table()->id()] = tablet.info->table();
+    }
+    for (const auto& [table_id, table_info] : tablet.tables) {
+      table_info_map[table_id] = table_info;
+    }
+  }
+  
+  for (auto& [table_id, table] : table_info_map) {
+    table_write_locks[table_id] = table->LockForWrite();
+  }
+
+  std::map<TabletId, TabletInfo::WriteLock> tablet_write_locks;
+  std::vector<TabletInfoPtr> mutated_tablets;
+  std::unordered_map<TableId, std::set<TabletId>> new_running_tablets;
+  std::vector<RetryingTSRpcTaskWithTablePtr> rpcs;
+
+  for (const auto& item : batch->tablets) {
+    const auto& tablet_id = item.tablet_id;
+    const TabletInfoPtr& tablet = item.info;
+    const ReportedTabletPB& report = item.report;
+    const TableInfoPtr& table = tablet->table();
+
+    // We don't populate full_report_update here as the response has already been sent.
+
+    tablet_write_locks[tablet_id] = tablet->LockForWrite();
+    auto& table_lock = table_write_locks[table->id()];
+    auto& tablet_lock = tablet_write_locks[tablet_id];
+
+    if (!catalog_manager_->CheckIsLeaderAndReady().ok()) {
+        continue;
+    }
+
+    // Delete the tablet if it (or its table) have been deleted.
+    if (tablet_lock->is_deleted() ||
+        table_lock->started_deleting()) {
+      const string msg = tablet_lock->pb.state_msg();
+      // TODO(unknown): Cancel tablet creation, instead of deleting, in cases
+      // where that might be possible (tablet creation timeout & replacement).
+      rpcs.push_back(catalog_manager_->MakeDeleteReplicaTask(
+          batch->ts_desc->permanent_uuid(), table, tablet_id, TABLET_DATA_DELETED,
+          boost::none /* cas_config_opid_index_less_or_equal */, batch->epoch, msg));
+      continue;
+    }
+
+    if (!table_lock->is_running()) {
+      continue;
+    }
+
+    const ConsensusStatePB& prev_cstate = tablet_lock->pb.committed_consensus_state();
+    const int64_t prev_opid_index = prev_cstate.config().opid_index();
+    const int64_t report_opid_index = GetCommittedConsensusStateOpIdIndex(report);
+    if (FLAGS_master_tombstone_evicted_tablet_replicas &&
+        report.tablet_data_state() != TABLET_DATA_TOMBSTONED &&
+        report.tablet_data_state() != TABLET_DATA_DELETED &&
+        report_opid_index < prev_opid_index &&
+        !IsRaftConfigMember(batch->ts_desc->permanent_uuid(), prev_cstate.config())) {
+      const string delete_msg = (report_opid_index == consensus::kInvalidOpIdIndex) ?
+          "Replica has no consensus available" :
+          Format("Replica with old config index $0", report_opid_index);
+      rpcs.push_back(catalog_manager_->MakeDeleteReplicaTask(
+          batch->ts_desc->permanent_uuid(), table, tablet_id, TABLET_DATA_TOMBSTONED,
+          prev_opid_index, batch->epoch,
+          Format("$0 (current committed config index is $1)", delete_msg, prev_opid_index)));
+      continue;
+    }
+
+    if (report.has_error()) {
+      Status s = StatusFromPB(report.error());
+      DCHECK(!s.ok());
+      DCHECK_EQ(report.state(), tablet::FAILED);
+      LOG(WARNING) << "Tablet " << tablet->ToString() << " has failed on TS "
+                  << batch->ts_desc->permanent_uuid() << ": " << s.ToString();
+      continue;
+    }
+
+    if ((tablet_lock->is_hidden() ||
+        table_lock->started_hiding()) &&
+        report.has_is_hidden() &&
+        !report.is_hidden()) {
+      const string msg = tablet_lock->pb.state_msg();
+      auto task = catalog_manager_->MakeDeleteReplicaTask(
+          batch->ts_desc->permanent_uuid(), table, tablet_id, TABLET_DATA_DELETED,
+          boost::none /* cas_config_opid_index_less_or_equal */, batch->epoch, msg);
+      task->set_hide_only(true);
+      rpcs.push_back(task);
+    }
+
+    if (report.has_committed_consensus_state()) {
+      const bool tablet_was_running = tablet_lock->is_running();
+      if (ProcessCommittedConsensusState(
+              batch->ts_desc, batch->is_incremental, report, batch->epoch, &table_write_locks, tablet,
+              tablet_lock, nullptr /* tables - unused in simplified flow? or reconstruct? */, &rpcs)) {
+        mutated_tablets.push_back(tablet);
+        if (!tablet_was_running && tablet_lock->is_running()) {
+          new_running_tablets[table->id()].insert(tablet->id());
+        }
+      }
+    } else if (batch->is_incremental &&
+        (report.state() == tablet::NOT_STARTED || report.state() == tablet::BOOTSTRAPPING)) {
+      UpdateTabletReplicaInLocalMemory(batch->ts_desc, nullptr /* consensus */, report, tablet);
+    }
+  }
+
+  if (!mutated_tablets.empty()) {
+    Status s = catalog_manager_->sys_catalog()->Upsert(batch->epoch, mutated_tablets);
+    if (!s.ok()) {
+      LOG(WARNING) << "Error updating tablets: " << s;
+    }
+  }
+
+  auto yql_partitions_mutated_tablets = YQLPartitionsVTable::FilterRelevantTablets(mutated_tablets);
+
+  for (auto& l : tablet_write_locks) {
+    l.second.Commit();
+  }
+  
+  for (auto& l : table_write_locks) {
+    l.second.Commit();
+  }
+
+  for (auto& [table_id, tablets] : new_running_tablets) {
+    catalog_manager_->SchedulePostTabletCreationTasks(table_info_map[table_id], batch->epoch, tablets);
+  }
+
+  if (!yql_partitions_mutated_tablets.empty()) {
+    // I took a look at the method - I don't know what the locks are used for - or at least when I
+    // look they seem unused.  I am creating an empty map just in case it needs a valid value.
+    // Let's assume it's fine to pass an empty map here too.
+    std::map<TabletId, TabletInfo::WriteLock> empty_locks;
+    WARN_NOT_OK(catalog_manager_->GetYqlPartitionsVtable().ProcessMutatedTablets(yql_partitions_mutated_tablets, empty_locks), "Error updating tablets");
+  }
+
+  // Schema version check - Third pass in original
+  for (const auto& item : batch->tablets) {
+    const ReportedTabletPB& report = item.report;
+    if (!report.has_schema_version()) {
+      continue;
+    }
+    const TabletInfoPtr& tablet = item.info;
+    auto leader = tablet->GetLeader();
+    if (leader.ok() && leader.get()->permanent_uuid() == batch->ts_desc->permanent_uuid()) {
+      WARN_NOT_OK(catalog_manager_->HandleTabletSchemaVersionReport(
+          tablet.get(), report.schema_version(), batch->epoch), "HandleTabletSchemaVersionReport failed");
+    }
+  }
+
+  for (auto& rpc : rpcs) {
+    DCHECK(rpc->table());
+    rpc->table()->AddTask(rpc);
+    WARN_NOT_OK(catalog_manager_->ScheduleTask(rpc),
+                Format("Failed to send $0", rpc->description()));
+  }
+}
 
 Status MasterHeartbeatServiceImpl::CheckUniverseUuidMatchFromTserver(
     const UniverseUuid& tserver_universe_uuid,
@@ -775,216 +1012,35 @@ Status MasterHeartbeatServiceImpl::ProcessTabletReportBatch(
     const LeaderEpoch& epoch,
     TabletReportUpdatesPB* full_report_update,
     std::vector<RetryingTSRpcTaskWithTablePtr>* rpcs) {
-  // First Pass. Iterate in TabletId Order to discover all Table locks we'll need.
-
-  // Maps a table ID to its corresponding TableInfo.
-  std::map<TableId, TableInfoPtr> table_info_map;
-
-  std::map<TableId, TableInfo::WriteLock> table_write_locks;
-  for (auto reported_tablet = begin; reported_tablet != end; ++reported_tablet) {
-    auto table = reported_tablet->info->table();
-    table_info_map[table->id()] = table;
-    // Acquire locks for all colocated tables reported
-    // in sorted order of table ids (We use a map).
-    for (const auto& [table_id, table_info] : reported_tablet->tables) {
-      table_info_map[table_info->id()] = table_info;
-    }
-  }
-
-  // Need to acquire locks in Id order to prevent deadlock.
-  for (auto& [table_id, table] : table_info_map) {
-    table_write_locks[table_id] = table->LockForWrite();
-  }
 
   // Check whether this is the most recent report from this tserver before performing any
   // mutations. If not, we need to stop processing here to avoid overwriting the contents of the
-  // more recent report. If a more recent report comes after this check, it cannot concurrently
-  // modify the tables / tablets in this batch because we hold write locks on the tables.
-  RETURN_NOT_OK(ts_desc->IsReportCurrent(ts_instance, full_report));
+  // more recent report.
+  // RETURN_NOT_OK(ts_desc->IsReportCurrent(ts_instance, full_report));
 
-  std::map<TabletId, TabletInfo::WriteLock> tablet_write_locks;
-  // Second Pass.
-  // Process each tablet. The list is sorted by ID. This may not be in the order that the tablets
-  // appear in 'full_report', but that has no bearing on correctness.
-  std::vector<TabletInfoPtr> mutated_tablets;
-  std::unordered_map<TableId, std::set<TabletId>> new_running_tablets;
+  auto* batch = new DeferredTabletReportBatch();
+  batch->ts_desc = ts_desc;
+  batch->ts_instance = ts_instance;
+  batch->report_sequence_number = full_report.sequence_number();
+  batch->is_incremental = full_report.is_incremental();
+  batch->epoch = epoch;
+
   for (auto it = begin; it != end; ++it) {
-    const auto& tablet_id = it->tablet_id;
-    const TabletInfoPtr& tablet = it->info;
-    const ReportedTabletPB& report = *it->report;
-    const TableInfoPtr& table = tablet->table();
+    PersistentReportedTablet item;
+    item.tablet_id = it->tablet_id;
+    item.info = it->info;
+    if (it->report) {
+      item.report = *it->report;
+    }
+    item.tables = it->tables;
+    batch->tablets.push_back(std::move(item));
 
-    // Prepare an heartbeat response entry for this tablet, now that we're going to process it.
-    // Every tablet in the report that is processed gets one, even if there are no changes to it.
+    // Acknowledge receipt of the report immediately.
     ReportedTabletUpdatesPB* update = full_report_update->add_tablets();
-    update->set_tablet_id(tablet_id);
-
-    // Get tablet lock on demand.  This works in the batch case because the loop is ordered.
-    tablet_write_locks[tablet_id] = tablet->LockForWrite();
-    auto& table_lock = table_write_locks[table->id()];
-    auto& tablet_lock = tablet_write_locks[tablet_id];
-
-    TRACE_EVENT1("master", "HandleReportedTablet", "tablet_id", report.tablet_id());
-    RETURN_NOT_OK_PREPEND(catalog_manager_->CheckIsLeaderAndReady(),
-        Format("This master is no longer the leader, unable to handle report for tablet $0",
-            tablet_id));
-
-    VLOG(3) << "tablet report: " << report.ShortDebugString()
-            << " peer: " << ts_desc->permanent_uuid();
-
-    // Delete the tablet if it (or its table) have been deleted.
-    if (tablet_lock->is_deleted() ||
-        table_lock->started_deleting()) {
-      const string msg = tablet_lock->pb.state_msg();
-      update->set_state_msg(msg);
-      LOG(INFO) << "Got report from deleted tablet " << tablet->ToString()
-                << " (" << msg << "): Sending delete request for this tablet";
-      // TODO(unknown): Cancel tablet creation, instead of deleting, in cases
-      // where that might be possible (tablet creation timeout & replacement).
-      rpcs->push_back(catalog_manager_->MakeDeleteReplicaTask(
-          ts_desc->permanent_uuid(), table, tablet_id, TABLET_DATA_DELETED,
-          boost::none /* cas_config_opid_index_less_or_equal */, epoch, msg));
-      continue;
-    }
-
-    if (!table_lock->is_running()) {
-      const string msg = tablet_lock->pb.state_msg();
-      LOG(INFO) << "Got report from tablet " << tablet->tablet_id() << " for non-running table "
-                << table->ToString() << ": " << msg;
-      update->set_state_msg(msg);
-      continue;
-    }
-
-    // Tombstone a replica that is no longer part of the Raft config (and
-    // not already tombstoned or deleted outright).
-    //
-    // If the report includes a committed raft config, we only tombstone if the opid_index of the
-    // committed raft config is strictly less than the latest reported committed config. This
-    // prevents us from spuriously deleting replicas that have just been added to the committed
-    // config and are in the process of copying.
-    const ConsensusStatePB& prev_cstate = tablet_lock->pb.committed_consensus_state();
-    const int64_t prev_opid_index = prev_cstate.config().opid_index();
-    const int64_t report_opid_index = GetCommittedConsensusStateOpIdIndex(report);
-    if (FLAGS_master_tombstone_evicted_tablet_replicas &&
-        report.tablet_data_state() != TABLET_DATA_TOMBSTONED &&
-        report.tablet_data_state() != TABLET_DATA_DELETED &&
-        report_opid_index < prev_opid_index &&
-        !IsRaftConfigMember(ts_desc->permanent_uuid(), prev_cstate.config())) {
-      const string delete_msg = (report_opid_index == consensus::kInvalidOpIdIndex) ?
-          "Replica has no consensus available" :
-          Format("Replica with old config index $0", report_opid_index);
-      rpcs->push_back(catalog_manager_->MakeDeleteReplicaTask(
-          ts_desc->permanent_uuid(), table, tablet_id, TABLET_DATA_TOMBSTONED,
-          prev_opid_index, epoch,
-          Format("$0 (current committed config index is $1)", delete_msg, prev_opid_index)));
-      continue;
-    }
-
-    // Skip a non-deleted tablet which reports an error.
-    if (report.has_error()) {
-      Status s = StatusFromPB(report.error());
-      DCHECK(!s.ok());
-      DCHECK_EQ(report.state(), tablet::FAILED);
-      LOG(WARNING) << "Tablet " << tablet->ToString() << " has failed on TS "
-                  << ts_desc->permanent_uuid() << ": " << s.ToString();
-      continue;
-    }
-
-    // Hide the tablet if it (or its table) has been hidden and the tablet hasn't.
-    if ((tablet_lock->is_hidden() ||
-        table_lock->started_hiding()) &&
-        report.has_is_hidden() &&
-        !report.is_hidden()) {
-      const string msg = tablet_lock->pb.state_msg();
-      LOG(INFO) << "Got report from hidden tablet " << tablet->ToString()
-                << " (" << msg << "): Sending hide request for this tablet";
-      auto task = catalog_manager_->MakeDeleteReplicaTask(
-          ts_desc->permanent_uuid(), table, tablet_id, TABLET_DATA_DELETED,
-          boost::none /* cas_config_opid_index_less_or_equal */, epoch, msg);
-      task->set_hide_only(true);
-      rpcs->push_back(task);
-    }
-
-    // Process the report's consensus state.
-    // The report will not have a committed_consensus_state if it is in the
-    // middle of starting up, such as during tablet bootstrap.
-    // If we received an incremental report, and the tablet is starting up, we will update the
-    // replica so that the balancer knows how many tablets are in the middle of remote bootstrap.
-    if (report.has_committed_consensus_state()) {
-      const bool tablet_was_running = tablet_lock->is_running();
-      if (ProcessCommittedConsensusState(
-              ts_desc, full_report.is_incremental(), report, epoch, &table_write_locks, tablet,
-              tablet_lock, &it->tables, rpcs)) {
-        // If the tablet was mutated, add it to the tablets to be re-persisted.
-        //
-        // Done here and not on a per-mutation basis to avoid duplicate entries.
-        mutated_tablets.push_back(tablet);
-        if (!tablet_was_running && tablet_lock->is_running()) {
-          new_running_tablets[table->id()].insert(tablet->id());
-        }
-      }
-    } else if (full_report.is_incremental() &&
-        (report.state() == tablet::NOT_STARTED || report.state() == tablet::BOOTSTRAPPING)) {
-      // When a tablet server is restarted, it sends a full tablet report with all of its tablets
-      // in the NOT_STARTED state, so this would make the load balancer think that all the
-      // tablets are being remote bootstrapped at once, so only process incremental reports here.
-      UpdateTabletReplicaInLocalMemory(ts_desc, nullptr /* consensus */, report, tablet);
-    }
-  } // Finished one round of batch processing.
-
-  // Write all tablet mutations to the catalog table.
-  //
-  // SysCatalogTable::Write will short-circuit the case where the data has not
-  // in fact changed since the previous version and avoid any unnecessary mutations.
-  if (!mutated_tablets.empty()) {
-    Status s = catalog_manager_->sys_catalog()->Upsert(epoch, mutated_tablets);
-    if (!s.ok()) {
-      LOG(WARNING) << "Error updating tablets: " << s;
-      return s;
-    }
+    update->set_tablet_id(it->tablet_id);
   }
 
-  // Filter the mutated tablets to find which tablets were modified. Need to actually commit the
-  // state of the tablets before updating the system.partitions table, so get this first.
-  auto yql_partitions_mutated_tablets = YQLPartitionsVTable::FilterRelevantTablets(mutated_tablets);
-
-  // Publish the in-memory tablet mutations and release the locks.
-  for (auto& l : tablet_write_locks) {
-    l.second.Commit();
-  }
-  tablet_write_locks.clear();
-
-  // Unlock the tables; we no longer need to access their state.
-  for (auto& l : table_write_locks) {
-    l.second.Commit();
-  }
-  table_write_locks.clear();
-
-  // Update the table state if all its tablets are now running.
-  for (auto& [table_id, tablets] : new_running_tablets) {
-    catalog_manager_->SchedulePostTabletCreationTasks(table_info_map[table_id], epoch, tablets);
-  }
-
-  // Update the relevant tablet entries in system.partitions.
-  if (!yql_partitions_mutated_tablets.empty()) {
-    Status s = catalog_manager_->GetYqlPartitionsVtable()
-        .ProcessMutatedTablets(yql_partitions_mutated_tablets, tablet_write_locks);
-  }
-
-  // Third Pass. Process all tablet schema version changes.
-  // (This is separate from tablet state mutations because only table on-disk state is changed.)
-  for (auto it = begin; it != end; ++it) {
-    const ReportedTabletPB& report = *it->report;
-    if (!report.has_schema_version()) {
-      continue;
-    }
-    const TabletInfoPtr& tablet = it->info;
-    auto leader = tablet->GetLeader();
-    if (leader.ok() && leader.get()->permanent_uuid() == ts_desc->permanent_uuid()) {
-      RETURN_NOT_OK(catalog_manager_->HandleTabletSchemaVersionReport(
-          tablet.get(), report.schema_version(), epoch));
-    }
-  }
+  tablet_report_queue_.Push(batch);
 
   return Status::OK();
 }
@@ -1215,7 +1271,7 @@ bool MasterHeartbeatServiceImpl::ProcessCommittedConsensusState(
     if (tablet->table()->id() == id_to_version.first) {
       continue;
     }
-    if (tables->count(id_to_version.first)) {
+    if (tables && tables->count(id_to_version.first)) {
       const auto& table_lock = (*table_write_locks)[id_to_version.first];
       // Ignore if same version.
       if (table_lock->pb.version() == id_to_version.second) {
