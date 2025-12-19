@@ -39,7 +39,7 @@ int od_frontend_info(od_client_t *client, char *fmt, ...)
 	if (msg == NULL) {
 		return -1;
 	}
-	return od_write(&client->io, msg);
+	return od_write(&client->io, &msg);
 }
 
 int od_frontend_error(od_client_t *client, char *code, char *fmt, ...)
@@ -52,7 +52,7 @@ int od_frontend_error(od_client_t *client, char *code, char *fmt, ...)
 	if (msg == NULL) {
 		return -1;
 	}
-	return od_write(&client->io, msg);
+	return od_write(&client->io, &msg);
 }
 
 int od_frontend_fatal(od_client_t *client, char *code, char *fmt, ...)
@@ -64,7 +64,7 @@ int od_frontend_fatal(od_client_t *client, char *code, char *fmt, ...)
 	va_end(args);
 	if (msg == NULL)
 		return -1;
-	return od_write(&client->io, msg);
+	return od_write(&client->io, &msg);
 }
 
 int od_frontend_fatal_forward(od_client_t *client, char *code, char *fmt, ...)
@@ -76,7 +76,7 @@ int od_frontend_fatal_forward(od_client_t *client, char *code, char *fmt, ...)
 	va_end(args);
 	if (msg == NULL)
 		return -1;
-	return od_write(&client->io, msg);
+	return od_write(&client->io, &msg);
 }
 
 static inline int od_frontend_error_fwd(od_client_t *client)
@@ -106,7 +106,7 @@ static inline int od_frontend_error_fwd(od_client_t *client)
 				     hint_len, text, text_len);
 	if (msg == NULL)
 		return -1;
-	return od_write(&client->io, msg);
+	return od_write(&client->io, &msg);
 }
 
 static inline bool
@@ -196,7 +196,7 @@ static int od_frontend_startup(od_client_t *client)
 			return -1;
 		uint8_t *type = machine_msg_data(msg);
 		*type = 'N';
-		rc = od_write(&client->io, msg);
+		rc = od_write(&client->io, &msg);
 		if (rc == -1) {
 			od_error(&instance->logger,
 				 "unsupported protocol (gssapi)", client, NULL,
@@ -495,7 +495,7 @@ static inline od_frontend_status_t od_frontend_setup_params(od_client_t *client)
 		}
 	}
 
-	rc = od_write(&client->io, stream);
+	rc = od_write(&client->io, &stream);
 	if (rc == -1)
 		return OD_ECLIENT_WRITE;
 
@@ -538,7 +538,7 @@ static inline od_frontend_status_t od_frontend_setup(od_client_t *client)
 	}
 
 	int rc;
-	rc = od_write(&client->io, stream);
+	rc = od_write(&client->io, &stream);
 	if (rc == -1)
 		return OD_ECLIENT_WRITE;
 
@@ -588,7 +588,7 @@ static inline od_frontend_status_t od_frontend_local_setup(od_client_t *client)
 	if (msg == NULL)
 		goto error;
 	int rc;
-	rc = od_write(&client->io, stream);
+	rc = od_write(&client->io, &stream);
 	if (rc == -1)
 		return OD_ECLIENT_WRITE;
 	return OD_OK;
@@ -852,7 +852,7 @@ static od_frontend_status_t od_frontend_local(od_client_t *client)
 			return OD_EOOM;
 		}
 
-		rc = od_write(&client->io, stream);
+		rc = od_write(&client->io, &stream);
 		if (rc == -1) {
 			return OD_ECLIENT_WRITE;
 		}
@@ -1489,7 +1489,7 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 					if (msg == NULL) {
 						return OD_ESERVER_WRITE;
 					}
-					rc = od_write(&server->io, msg);
+					rc = od_write(&server->io, &msg);
 					if (rc == -1) {
 						od_error(&instance->logger,
 							 "parse", NULL, server,
@@ -1646,7 +1646,7 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 			if (pmsg == NULL) {
 				return OD_ESERVER_WRITE;
 			}
-			rc = od_write(&client->io, pmsg);
+			rc = od_write(&client->io, &pmsg);
 			forwarded = 1;
 
 			if (rc == -1) {
@@ -1876,7 +1876,7 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				pmsg = kiwi_be_write_close_complete(NULL);
 
 				/* TODO(#29442): Replace with async write to avoid TCP deadlock */
-				rc = od_write(&client->io, pmsg);
+				rc = od_write(&client->io, &pmsg);
 				if (rc == -1) {
 					od_error(&instance->logger,
 						 "close report", NULL, server,
@@ -2476,7 +2476,7 @@ int yb_clean_shmem(od_client_t *client, od_server_t *server)
 	msg = kiwi_fe_write_set_client_id(NULL, -client->client_id);
 
 	/* Send `SET SESSION PARAMETER` packet. */
-	rc = od_write(&server->io, msg);
+	rc = od_write(&server->io, &msg);
 	if (rc == -1) {
 		od_debug(&instance->logger, "clean shared memory", client, server,
 			 "Unable to send `SET SESSION PARAMETER` packet");
@@ -3023,7 +3023,7 @@ static inline int yb_od_frontend_error_fwd(od_client_t *client)
 				     hint_len, error.message, strlen(error.message));
 	if (msg == NULL)
 		return -1;
-	return od_write(&client->io, msg);
+	return od_write(&client->io, &msg);
 }
 
 int yb_auth_via_auth_backend(od_client_t *client)

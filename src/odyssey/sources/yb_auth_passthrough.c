@@ -96,7 +96,7 @@ static int yb_server_write_auth_passthroug_request_pkt(od_client_t *client,
 					   client->tls ? YB_LOGICAL_ENCRYPTED_CONN : YB_LOGICAL_UNENCRYPTED_CONN);
 
 	/* Send `Auth Passthrough Request` packet. */
-	rc = od_write(&server->io, msg);
+	rc = od_write(&server->io, &msg);
 	if (rc == -1) {
 		yb_control_connection_failed(server, instance);
 		od_frontend_fatal(
@@ -147,7 +147,7 @@ static void yb_client_exit_mid_passthrough(od_server_t *server,
 					   od_instance_t *instance)
 {
 	machine_msg_t *msg = kiwi_fe_write_password(NULL, "", 1);
-	if (od_write(&server->io, msg) == -1) {
+	if (od_write(&server->io, &msg) == -1) {
 		od_error(&instance->logger, CONTEXT_AUTH_PASSTHROUGH, NULL,
 			 server, "write error in sever: %s",
 			 od_io_error(&server->io));
@@ -187,7 +187,7 @@ static int yb_forward_auth_pkt_client_to_server(od_client_t *client,
 	}
 
 	/* Forward the password response packet to the database. */
-	rc = od_write(&server->io, msg);
+	rc = od_write(&server->io, &msg);
 	if (rc == -1) {
 		od_error(
 			&instance->logger, CONTEXT_AUTH_PASSTHROUGH, client,
@@ -206,7 +206,7 @@ static int yb_client_write_pkt(od_client_t *client, od_server_t *server,
 			       od_instance_t *instance, machine_msg_t *msg,
 			       enum YB_CLI_AUTH_STATUS progress)
 {
-	int rc = od_write(&client->io, msg);
+	int rc = od_write(&client->io, &msg);
 	if (rc == -1) {
 		od_error(&instance->logger, CONTEXT_AUTH_PASSTHROUGH, client,
 			 NULL, "write error in middleware: %s",
@@ -483,7 +483,7 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 				 * The notice packet does not contains any client id and
 				 * thus it is required to forward this notice packet to the client
 				 */
-				rc = od_write(&client->io, msg);
+				rc = od_write(&client->io, &msg);
 				if (rc < 0)
 					rc_auth = -1;
 				continue;
