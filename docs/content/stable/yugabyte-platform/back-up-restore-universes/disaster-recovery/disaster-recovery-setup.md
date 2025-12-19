@@ -57,7 +57,7 @@ During DR setup in semi-automatic mode, create objects on the DR replica as well
 
 DR performs a full copy of the data to be replicated on the DR primary, and restores data on the DR replica from the DR primary.
 
-After DR is configured, the DR replica is only be available for reads.
+After DR is configured, the DR replica is only available for reads.
 
 To set up disaster recovery for a universe, do the following:
 

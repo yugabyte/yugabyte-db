@@ -58,7 +58,7 @@ Transparent hugepages (THP) should be enabled on nodes for optimal performance. 
 
   After [finalizing](../upgrade-software-install/#finalize-an-upgrade) or [rolling back](../upgrade-software-install/#roll-back-an-upgrade) the upgrade, PITR-based actions become available again. However, keep in mind the following:
 
-  - After finalizing, you cannot perform a PITR-based action targeting a time before finalization.
+  - After finalizing, you cannot perform a PITR-based action targeting a time before the upgrade was started.
   - After rollback, you cannot perform a PITR-based action targeting a time before the upgrade was started.
 
 ## Review major changes in previous YugabyteDB releases

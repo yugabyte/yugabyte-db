@@ -69,7 +69,7 @@ To upgrade YugabyteDB to a version based on a different version of PostgreSQL (f
 
   After [finalizing](#a-finalize-phase) or [rolling back](#b-rollback-phase) the upgrade, PITR-based actions become available again. However, keep in mind the following:
 
-  - After finalizing, you cannot perform a PITR-based action targeting a time before finalization.
+  - After finalizing, you cannot perform a PITR-based action targeting a time before the upgrade was started.
   - After rollback, you cannot perform a PITR-based action targeting a time before the upgrade was started.
 
   If PITR has been enabled on the YSQL database `yugabyte`, disable it before starting the upgrade.
