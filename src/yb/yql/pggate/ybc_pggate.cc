@@ -2248,6 +2248,11 @@ void YBCCheckForInterrupts() {
   LOG_IF(FATAL, !is_main_thread())
       << __PRETTY_FUNCTION__ << " should only be invoked from the main thread";
 
+  // If we're in the midst of shutting down, do not bother checking for interrupts.
+  if (!pgapi) {
+    return;
+  }
+
   pgapi->pg_callbacks()->CheckForInterrupts();
 }
 

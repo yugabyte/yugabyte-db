@@ -2929,6 +2929,15 @@ Status MockAbortFailure(
   LOG(FATAL) << "Unexpected session id: " << req->session_id();
 }
 
+Status MockRollbackToSubtransactionFailure(
+    const yb::tserver::PgRollbackToSubTransactionRequestPB* req,
+    yb::tserver::PgRollbackToSubTransactionResponsePB* resp,
+    rpc::RpcContext* context) {
+
+  LOG(INFO) << Format("Requested rollback to subtransaction: $0", req->sub_transaction_id());
+  return STATUS(NetworkError, "Mocking network failure on RollbackToSubtransaction");
+}
+
 class PgRecursiveAbortTest : public PgMiniTestSingleNode,
                              public ::testing::WithParamInterface<bool> {
  public:
@@ -2946,6 +2955,12 @@ class PgRecursiveAbortTest : public PgMiniTestSingleNode,
   tserver::PgClientServiceMockImpl::Handle MockFinishTransaction(const F& mock) {
     auto* client = cluster_->mini_tablet_server(0)->server()->TEST_GetPgClientServiceMock();
     return client->MockFinishTransaction(mock);
+  }
+
+  template <class F>
+  tserver::PgClientServiceMockImpl::Handle MockRollbackToSubtransaction(const F& mock) {
+    auto* client = cluster_->mini_tablet_server(0)->server()->TEST_GetPgClientServiceMock();
+    return client->MockRollbackToSubTransaction(mock);
   }
 };
 
@@ -2989,6 +3004,18 @@ TEST_P(PgRecursiveAbortTest, MockAbortFailure) {
   // Validate that aborting a transaction does not produce a PANIC.
   auto handle = MockFinishTransaction(MockAbortFailure);
   auto status = conn.Execute("ABORT");
+  ASSERT_TRUE(status.IsNetworkError());
+  ASSERT_EQ(conn.ConnStatus(), CONNECTION_BAD);
+}
+
+TEST_P(PgRecursiveAbortTest, MockRollbackToSubtransactionFailure) {
+  PGConn conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (k INT)"));
+  ASSERT_OK(conn.StartTransaction(READ_COMMITTED));
+  ASSERT_OK(conn.Execute("SAVEPOINT s1"));
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (1)"));
+  auto _ = MockRollbackToSubtransaction(MockRollbackToSubtransactionFailure);
+  auto status = conn.Execute("ROLLBACK TO s1");
   ASSERT_TRUE(status.IsNetworkError());
   ASSERT_EQ(conn.ConnStatus(), CONNECTION_BAD);
 }
