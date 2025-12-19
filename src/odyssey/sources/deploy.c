@@ -84,7 +84,8 @@ int od_deploy(od_client_t *client, char *context)
 	 */
 	if (instance->config.yb_optimized_session_parameters &&
 	    yb_check_reset_needed(
-		    &client->vars, &server->vars,
+		    &client->yb_vars_startup, &client->yb_vars_session,
+		    &server->vars,
 		    yb_od_instance_should_lowercase_guc_name(instance))) {
 		od_debug(&instance->logger, context, client, server,
 			 "deploy: RESET ALL");
@@ -109,7 +110,8 @@ int od_deploy(od_client_t *client, char *context)
 	query[yb_max_query_size] = '\0';
 	int query_size;
 	query_size = kiwi_vars_cas(
-		&client->vars, &server->vars, query, yb_max_query_size,
+		&client->yb_vars_startup, &client->yb_vars_session,
+		&server->vars, query, yb_max_query_size,
 		yb_od_instance_should_lowercase_guc_name(instance));
 
 	if (query_size > 0) {
