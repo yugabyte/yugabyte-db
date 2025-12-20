@@ -295,7 +295,7 @@ static void assign_yb_enable_cbo(int new_value, void *extra);
 static void assign_yb_enable_optimizer_statistics(bool new_value, void *extra);
 static void assign_yb_enable_base_scans_cost_model(bool new_value, void *extra);
 
-
+static bool check_yb_disable_pg_snapshot_mgmt_in_repeatable_read(bool *newval, void **extra, GucSource source);
 static bool check_yb_enable_advisory_locks(bool *newval, void **extra, GucSource source);
 
 static void assign_yb_silence_advisory_locks_not_supported_error(bool newval, void *extra);
@@ -3751,6 +3751,18 @@ static struct config_bool ConfigureNamesBool[] =
 		&yb_ignore_bool_cond_for_legacy_estimate,
 		false,
 		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_disable_pg_snapshot_mgmt_in_repeatable_read", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("[Deprecated - This GUC is valid only in older releases. It is present here"
+						 "just to avoid a failure in case you forgot to remove it from your configuration.]"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_disable_pg_snapshot_mgmt_in_repeatable_read,
+		false,
+		check_yb_disable_pg_snapshot_mgmt_in_repeatable_read, NULL, NULL
 	},
 
 	/* End-of-list marker */
@@ -16545,6 +16557,15 @@ yb_set_neg_catcache_ids(const char *newval, void *extra)
 		YbSetAdditionalNegCacheIds(neg_cache_ids_list);
 		list_free(neg_cache_ids_list);
 	}
+}
+
+static bool
+check_yb_disable_pg_snapshot_mgmt_in_repeatable_read(bool *newval, void **extra, GucSource source)
+{
+	ereport(WARNING,
+			(errmsg("the parameter \"yb_disable_pg_snapshot_mgmt_in_repeatable_read\" is deprecated, "
+					"remove it from your configuration.")));
+	return true;				/* still allow usage, but warn */
 }
 
 static bool

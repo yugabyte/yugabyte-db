@@ -148,6 +148,8 @@ bool yb_xcluster_target_ddl_bypass = false;
 
 bool yb_ignore_read_time_in_walsender = false;
 
+bool yb_disable_pg_snapshot_mgmt_in_repeatable_read = false;
+
 bool enable_object_locking_infra = true;
 
 bool yb_fallback_to_legacy_catalog_read_time = true;
