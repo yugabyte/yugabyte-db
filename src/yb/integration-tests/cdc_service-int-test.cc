@@ -500,7 +500,7 @@ TEST_F(CDCServiceTest, TestCompoundKey) {
   // Now apply two ops with same hash key but different range key in a batch.
   auto session = client_->NewSession(15s);
   for (int i = 0; i < 2; i++) {
-    const auto op = table.NewUpdateOp();
+    const auto op = table.NewUpdateOp(session->arena());
     auto* const req = op->mutable_request();
     QLAddStringHashValue(req, "hk");
     QLAddStringRangeValue(req, Format("rk_$0", i));

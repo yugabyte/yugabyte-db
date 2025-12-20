@@ -251,7 +251,7 @@ class DnsResolver::Impl {
   Resolver resolver_;
   scoped_refptr<EventStats> metric_;
   std::shared_timed_mutex mutex_;
-  UnorderedStringMap<CacheEntry> cache_;
+  UnorderedStringMap<std::string, CacheEntry> cache_;
 };
 
 DnsResolver::DnsResolver(IoService* io_service, const scoped_refptr<MetricEntity>& metric_entity)

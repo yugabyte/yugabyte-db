@@ -16,6 +16,7 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/pg_types.h"
+#include "yb/common/ql_protocol.messages.h"
 
 #include "yb/qlexpr/index.h"
 
@@ -56,7 +57,7 @@ namespace {
 Status ApplyWriteRequest(
     const docdb::DocReadContextPtr& doc_read_context,
     docdb::SchemaPackingProvider* schema_packing_provider,
-    const QLWriteRequestPB& write_request,
+    const QLWriteRequestMsg& write_request,
     docdb::DocWriteBatch* write_batch) {
   const std::string kLogPrefix = "restored tablet: ";
   dockv::SchemaPackingRegistry schema_packing_registry(kLogPrefix);

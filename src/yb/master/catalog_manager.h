@@ -614,7 +614,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   // Lookup tablet by ID, then call GetTabletLocations below.
   Status GetTabletLocations(
-      const TabletId& tablet_id,
+      TabletIdView tablet_id,
       TabletLocationsPB* locs_pb,
       IncludeHidden include_hidden) override;
 
@@ -630,7 +630,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       IncludeHidden include_hidden) override;
 
   // Returns the system tablet in catalog manager by the id.
-  Result<std::shared_ptr<tablet::AbstractTablet>> GetSystemTablet(const TabletId& id) override;
+  Result<std::shared_ptr<tablet::AbstractTablet>> GetSystemTablet(TabletIdView id) override;
 
   // Send the "delete tablet request" to the specified TS/tablet.
   // The specified 'reason' will be logged on the TS.
@@ -1703,7 +1703,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Status BackfillMetadataForXRepl(const TableInfoPtr& table_info, const LeaderEpoch& epoch);
 
-  Result<TabletInfoPtr> GetTabletInfo(const TabletId& tablet_id) override EXCLUDES(mutex_);
+  Result<TabletInfoPtr> GetTabletInfo(TabletIdView tablet_id) override EXCLUDES(mutex_);
 
   // Gets the tablet info for each tablet id, or nullptr if the tablet was not found.
   TabletInfos GetTabletInfos(const std::vector<TabletId>& ids) override;
@@ -2203,8 +2203,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // partitions_vtable_cache_refresh_secs seconds.
   void RebuildYQLSystemPartitions();
 
-  Result<TabletInfoPtr> GetTabletInfoUnlocked(const TabletId& tablet_id)
-      REQUIRES_SHARED(mutex_);
+  Result<TabletInfoPtr> GetTabletInfoUnlocked(TabletIdView tablet_id) REQUIRES_SHARED(mutex_);
 
   Status DoSplitTablet(
       const TabletInfoPtr& source_tablet_info, std::string split_encoded_key,
@@ -2331,7 +2330,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // issuing a DeleteTablet call to tservers. It is possible in the case of corrupted sys catalog or
   // tservers heartbeating into wrong clusters that live data is considered to be orphaned. So make
   // sure that the tablet was explicitly deleted before deleting any on-disk data from tservers.
-  std::unordered_set<TabletId> deleted_tablets_ GUARDED_BY(mutex_);
+  UnorderedStringSet<TabletId> deleted_tablets_ GUARDED_BY(mutex_);
 
   // Split parent tablets that are now hidden and still being replicated by some CDC stream. Keep
   // track of these tablets until their children tablets start being polled, at which point they
@@ -2472,7 +2471,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status UpdateMastersListInMemoryAndDisk();
 
   // Tablets of system tables on the master indexed by the tablet id.
-  std::unordered_map<std::string, std::shared_ptr<tablet::AbstractTablet>> system_tablets_;
+  using SystemTablets = UnorderedStringMap<TabletId, std::shared_ptr<tablet::AbstractTablet>>;
+  SystemTablets system_tablets_;
 
   // Tablet of colocated databases indexed by the namespace id.
   std::unordered_map<NamespaceId, TabletInfoPtr> colocated_db_tablets_map_

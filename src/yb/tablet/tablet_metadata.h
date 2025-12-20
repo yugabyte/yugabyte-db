@@ -64,7 +64,7 @@
 
 namespace yb::tablet {
 
-using TableInfoMap = std::unordered_map<TableId, TableInfoPtr>;
+using TableInfoMap = UnorderedStringMap<TableId, TableInfoPtr>;
 
 extern const int64 kNoDurableMemStore;
 
@@ -326,8 +326,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   // This is mostly useful for tests which instantiate Raft groups directly.
   static Result<RaftGroupMetadataPtr> TEST_LoadOrCreate(const RaftGroupMetadataData& data);
 
-  Result<TableInfoPtr> GetTableInfo(const TableId& table_id) const;
-  Result<TableInfoPtr> GetTableInfoUnlocked(const TableId& table_id) const REQUIRES(data_mutex_);
+  Result<TableInfoPtr> GetTableInfo(TableIdView table_id) const;
+  Result<TableInfoPtr> GetTableInfoUnlocked(TableIdView table_id) const REQUIRES(data_mutex_);
 
   Result<TableInfoPtr> GetTableInfo(ColocationId colocation_id) const;
   Result<TableInfoPtr> GetTableInfoUnlocked(ColocationId colocation_id) const REQUIRES(data_mutex_);

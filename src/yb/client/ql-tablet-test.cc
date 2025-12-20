@@ -193,7 +193,7 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
   }
 
   std::shared_ptr<YBqlReadOp> CreateReadOp(int32_t key, const TableHandle& table) {
-    return client::CreateReadOp(key, table, kValueColumn);
+    return client::CreateReadOp(SharedThreadSafeArena(), key, table, kValueColumn);
   }
 
   void CreateTable(

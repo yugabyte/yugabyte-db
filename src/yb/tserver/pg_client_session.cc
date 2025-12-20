@@ -367,7 +367,7 @@ Status CombineErrorsToStatus(
 
 Status ProcessUsedReadTime(uint64_t session_id,
                            const client::YBPgsqlOp& op,
-                           PgPerformResponsePB* resp,
+                           PgPerformResponseMsg* resp,
                            TabletReadTime* used_read_time) {
   if (op.type() != client::YBOperation::PGSQL_READ) {
     return Status::OK();
@@ -407,7 +407,7 @@ Status ProcessUsedReadTime(uint64_t session_id,
 
 Status HandleOperationResponse(uint64_t session_id,
                                const client::YBPgsqlOp& op,
-                               PgPerformResponsePB* resp,
+                               PgPerformResponseMsg* resp,
                                TabletReadTime* used_read_time) {
   const auto& response = op.response();
   if (response.status() == PgsqlResponsePB::PGSQL_STATUS_OK) {
@@ -441,7 +441,7 @@ Status HandleOperationResponse(uint64_t session_id,
 }
 
 template <class TableProvider>
-Status GetTable(const TableId& table_id, TableProvider& provider, client::YBTablePtr* table) {
+Status GetTable(TableIdView table_id, TableProvider& provider, client::YBTablePtr* table) {
   if (*table && (**table).id() == table_id) {
     return Status::OK();
   }
@@ -479,7 +479,7 @@ class VectorIndexQuery {
     return active_;
   }
 
-  bool IsContinuation(const PgsqlPagingStatePB& paging_state) const {
+  bool IsContinuation(const PgsqlPagingStateMsg& paging_state) const {
     return paging_state.main_key() == id_.ToString();
   }
 
@@ -526,7 +526,7 @@ class VectorIndexQuery {
 
   Status ProcessResponse(
       const PgClientSessionOperations& ops, TabletReadTime* used_read_time,
-      PgPerformResponsePB& resp, rpc::Sidecars& sidecars) {
+      PgPerformResponseMsg& resp, rpc::Sidecars& sidecars) {
     VLOG_WITH_FUNC(4) << "Resp: " << resp.ShortDebugString();
     active_ = false;
     auto dump_stats = fetch_start_ != MonoTime();
@@ -717,7 +717,7 @@ class VectorIndexQuery {
 using VectorIndexQueryPtr = std::shared_ptr<VectorIndexQuery>;
 
 [[nodiscard]] std::vector<RefCntSlice> ExtractRowsSidecar(
-    const PgPerformResponsePB& resp, const rpc::Sidecars& sidecars) {
+    const PgPerformResponseMsg& resp, const rpc::Sidecars& sidecars) {
   std::vector<RefCntSlice> result;
   result.reserve(resp.responses_size());
   for (const auto& r : resp.responses()) {
@@ -747,9 +747,9 @@ struct QueryTraits {
 template <class T>
 concept QueryTraitsType = std::is_same_v<QueryTraits<typename T::ReqPB, typename T::RespPB>, T>;
 
-using PerformQueryTraits = QueryTraits<PgPerformRequestPB, PgPerformResponsePB>;
+using PerformQueryTraits = QueryTraits<PgPerformRequestMsg, PgPerformResponseMsg>;
 using ObjectLockQueryTraits =
-    QueryTraits<const PgAcquireObjectLockRequestPB, PgAcquireObjectLockResponsePB>;
+    QueryTraits<const PgAcquireObjectLockRequestMsg, PgAcquireObjectLockResponseMsg>;
 
 using ResponseSender = std::function<void()>;
 
@@ -2176,7 +2176,7 @@ class PgClientSession::Impl {
   }
 
   void Perform(
-      PgPerformRequestPB& req, PgPerformResponsePB& resp, rpc::RpcContext&& context,
+      PgPerformRequestMsg& req, PgPerformResponseMsg& resp, rpc::RpcContext&& context,
       const PgTablesQueryResult& tables) {
     auto query = RpcQuery<PerformQueryTraits>::MakeShared(
         id_, req, resp, std::move(context), table_cache());
@@ -2188,7 +2188,7 @@ class PgClientSession::Impl {
   }
 
   Status InsertSequenceTuple(
-      const PgInsertSequenceTupleRequestPB& req, PgInsertSequenceTupleResponsePB* resp,
+      const PgInsertSequenceTupleRequestMsg& req, PgInsertSequenceTupleResponseMsg* resp,
       rpc::RpcContext* context) {
     PgObjectId table_oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
     auto result = table_cache().Get(table_oid.GetYbTableId());
@@ -2206,7 +2206,7 @@ class PgClientSession::Impl {
     write_request->add_partition_column_values()->mutable_value()->set_int64_value(req.db_oid());
     write_request->add_partition_column_values()->mutable_value()->set_int64_value(req.seq_oid());
 
-    PgsqlColumnValuePB* column_value = write_request->add_column_values();
+    auto* column_value = write_request->add_column_values();
     column_value->set_column_id(table->schema().ColumnId(kPgSequenceLastValueColIdx));
     column_value->mutable_expr()->mutable_value()->set_int64_value(req.last_val());
 
@@ -2214,7 +2214,8 @@ class PgClientSession::Impl {
     column_value->set_column_id(table->schema().ColumnId(kPgSequenceIsCalledColIdx));
     column_value->mutable_expr()->mutable_value()->set_bool_value(req.is_called());
 
-    auto& session = EnsureSession(PgClientSessionKind::kSequence, context->GetClientDeadline());
+    auto& session = EnsureSession(
+        PgClientSessionKind::kSequence, context->GetClientDeadline());
     // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
     auto s = session->TEST_ApplyAndFlush(psql_write);
     if (!s.ok() || psql_write->response().status() ==
@@ -2227,7 +2228,7 @@ class PgClientSession::Impl {
   }
 
   Status UpdateSequenceTuple(
-      const PgUpdateSequenceTupleRequestPB& req, PgUpdateSequenceTupleResponsePB* resp,
+      const PgUpdateSequenceTupleRequestMsg& req, PgUpdateSequenceTupleResponseMsg* resp,
       rpc::RpcContext* context) {
     RETURN_NOT_OK(ValidateSequenceModificationFunctionForXCluster(req.db_oid()));
 
@@ -2241,7 +2242,7 @@ class PgClientSession::Impl {
     write_request->add_partition_column_values()->mutable_value()->set_int64_value(req.db_oid());
     write_request->add_partition_column_values()->mutable_value()->set_int64_value(req.seq_oid());
 
-    PgsqlColumnValuePB* column_value = write_request->add_column_new_values();
+    auto* column_value = write_request->add_column_new_values();
     column_value->set_column_id(table->schema().ColumnId(kPgSequenceLastValueColIdx));
     column_value->mutable_expr()->mutable_value()->set_int64_value(req.last_val());
 
@@ -2314,7 +2315,7 @@ class PgClientSession::Impl {
   }
 
   Status FetchSequenceTuple(
-      const PgFetchSequenceTupleRequestPB& req, PgFetchSequenceTupleResponsePB* resp,
+      const PgFetchSequenceTupleRequestMsg& req, PgFetchSequenceTupleResponseMsg* resp,
       rpc::RpcContext* context) {
     using pggate::PgDocData;
     using pggate::PgWireDataHeader;
@@ -2417,7 +2418,7 @@ class PgClientSession::Impl {
   }
 
   Status ReadSequenceTuple(
-      const PgReadSequenceTupleRequestPB& req, PgReadSequenceTupleResponsePB* resp,
+      const PgReadSequenceTupleRequestMsg& req, PgReadSequenceTupleResponseMsg* resp,
       rpc::RpcContext* context) {
     using pggate::PgDocData;
     using pggate::PgWireDataHeader;
@@ -2480,7 +2481,7 @@ class PgClientSession::Impl {
   }
 
   Status DeleteSequenceTuple(
-      const PgDeleteSequenceTupleRequestPB& req, PgDeleteSequenceTupleResponsePB* resp,
+      const PgDeleteSequenceTupleRequestMsg& req, PgDeleteSequenceTupleResponseMsg* resp,
       rpc::RpcContext* context) {
     PgObjectId table_oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
     auto table = VERIFY_RESULT(table_cache().Get(table_oid.GetYbTableId()));
@@ -2497,7 +2498,7 @@ class PgClientSession::Impl {
   }
 
   Status DeleteDBSequences(
-      const PgDeleteDBSequencesRequestPB& req, PgDeleteDBSequencesResponsePB* resp,
+      const PgDeleteDBSequencesRequestMsg& req, PgDeleteDBSequencesResponseMsg* resp,
       rpc::RpcContext* context) {
     PgObjectId table_oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
     auto table_res = table_cache().Get(table_oid.GetYbTableId());
@@ -2522,8 +2523,8 @@ class PgClientSession::Impl {
   }
 
   void GetTableKeyRanges(
-      PgGetTableKeyRangesRequestPB const& req,
-      PgGetTableKeyRangesResponsePB* resp, rpc::RpcContext&& context) {
+      PgGetTableKeyRangesRequestMsg const& req,
+      PgGetTableKeyRangesResponseMsg* resp, rpc::RpcContext&& context) {
     const auto table = table_cache().Get(PgObjectId::GetYbTableIdFromPB(req.table_id()));
     resp->set_current_ht(clock()->Now().ToUint64());
     if (!table.ok()) {
@@ -2829,7 +2830,7 @@ class PgClientSession::Impl {
   }
 
   void AcquireObjectLock(
-      const PgAcquireObjectLockRequestPB& req, PgAcquireObjectLockResponsePB* resp,
+      const PgAcquireObjectLockRequestMsg& req, PgAcquireObjectLockResponseMsg* resp,
       yb::rpc::RpcContext&& context) {
     auto query = RpcQuery<ObjectLockQueryTraits>::MakeShared(
         id_, req, *resp, std::move(context));
@@ -3895,7 +3896,7 @@ class PgClientSession::Impl {
   }
 
   TransactionFullLocality GetTargetTransactionLocality(
-      const PgAcquireObjectLockRequestPB& request) const {
+      const PgAcquireObjectLockRequestMsg& request) const {
     return GetTargetTransactionLocality(
         request.options(), std::views::single(request.lock_oid().tablespace_oid()));
   }
@@ -4009,7 +4010,7 @@ void PgClientSession::SetupSharedObjectLocking(PgSessionLockOwnerTagShared& obje
 }
 
 void PgClientSession::Perform(
-    PgPerformRequestPB& req, PgPerformResponsePB& resp, rpc::RpcContext&& context,
+    PgPerformRequestMsg& req, PgPerformResponseMsg& resp, rpc::RpcContext&& context,
     const PgTablesQueryResult& tables) {
   impl_->Perform(req, resp, std::move(context), tables);
 }

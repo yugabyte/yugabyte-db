@@ -912,7 +912,7 @@ class YBClient {
       master::GetTableSchemaResponsePB* resp = nullptr);
 
   void OpenTableAsync(const YBTableName& table_name, const OpenTableAsyncCallback& callback);
-  void OpenTableAsync(const TableId& table_id, const OpenTableAsyncCallback& callback,
+  void OpenTableAsync(TableIdView table_id, const OpenTableAsyncCallback& callback,
                       master::IncludeHidden include_hidden = master::IncludeHidden::kFalse,
                       master::GetTableSchemaResponsePB* resp = nullptr);
 

@@ -39,7 +39,7 @@ Result<HybridTime> AbstractTablet::SafeTime(RequireLease require_lease,
 
 Status AbstractTablet::HandleQLReadRequest(
     const docdb::ReadOperationData& read_operation_data,
-    const QLReadRequestPB& ql_read_request,
+    const QLReadRequestMsg& ql_read_request,
     const TransactionOperationContext& txn_op_context,
     const docdb::YQLStorageIf& ql_storage,
     std::reference_wrapper<const ScopedRWOperation> pending_op,

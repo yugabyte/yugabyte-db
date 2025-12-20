@@ -78,7 +78,7 @@ class CatalogManagerIf : public tserver::TabletPeerLookupIf {
 
   virtual std::string GenerateId() = 0;
 
-  virtual Result<std::shared_ptr<tablet::AbstractTablet>> GetSystemTablet(const TabletId& id) = 0;
+  virtual Result<std::shared_ptr<tablet::AbstractTablet>> GetSystemTablet(TabletIdView id) = 0;
 
   virtual Status WaitForWorkerPoolTests(
       const MonoDelta& timeout = MonoDelta::FromSeconds(10)) const = 0;
@@ -177,7 +177,7 @@ class CatalogManagerIf : public tserver::TabletPeerLookupIf {
   virtual void GetAllUDTypes(std::vector<scoped_refptr<UDTypeInfo>>* types) = 0;
 
   virtual Status GetTabletLocations(
-      const TabletId& tablet_id,
+      TabletIdView tablet_id,
       TabletLocationsPB* locs_pb,
       IncludeHidden include_hidden = IncludeHidden::kFalse) = 0;
 
@@ -237,7 +237,7 @@ class CatalogManagerIf : public tserver::TabletPeerLookupIf {
 
   virtual LeaderEpoch GetLeaderEpochInternal() const = 0;
 
-  virtual Result<TabletInfoPtr> GetTabletInfo(const TabletId& tablet_id) = 0;
+  virtual Result<TabletInfoPtr> GetTabletInfo(TabletIdView tablet_id) = 0;
 
   virtual bool AreTablesDeletingOrHiding() = 0;
 

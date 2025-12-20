@@ -28,6 +28,8 @@
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 
+#include "yb/tserver/tserver.messages.h"
+
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
@@ -740,7 +742,7 @@ class PgAnalyzeTest : public PgTabletSplitTestBase {
       const auto num_total_data_blocks = VERIFY_RESULT(GetNumDataBlocks(table_id));
 
       auto read_rpc_call_remote_method_cb = [this, &table_id](void* arg) {
-        const auto* read_req = CHECK_NOTNULL(pointer_cast<tserver::ReadRequestPB*>(arg));
+        const auto* read_req = CHECK_NOTNULL(pointer_cast<tserver::ReadRequestMsg*>(arg));
         // Skip non-sampling requests.
         if (read_req->pgsql_batch().empty() || !read_req->pgsql_batch(0).has_sampling_state()) {
           return;
@@ -775,7 +777,7 @@ class PgAnalyzeTest : public PgTabletSplitTestBase {
       };
 
       auto read_rpc_notify_batchr_cb = [this, &table_id, num_total_data_blocks](void* arg) {
-        const auto* read_resp = CHECK_NOTNULL(pointer_cast<tserver::ReadResponsePB*>(arg));
+        const auto* read_resp = CHECK_NOTNULL(pointer_cast<tserver::ReadResponseMsg*>(arg));
         // Skip non-sampling responses.
         if (read_resp->pgsql_batch().empty() || !read_resp->pgsql_batch(0).has_sampling_state()) {
           return;

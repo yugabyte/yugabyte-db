@@ -136,14 +136,15 @@ auto SetupRequest(const T& op, const YBSchema& schema) {
 
 } // namespace
 
-std::shared_ptr<YBqlWriteOp> TableHandle::NewWriteOp(QLWriteRequestPB::QLStmtType type) const {
+std::shared_ptr<YBqlWriteOp> TableHandle::NewWriteOp(
+    const ThreadSafeArenaPtr& arena, QLWriteRequestPB::QLStmtType type) const {
   auto op = std::make_shared<YBqlWriteOp>(table_);
   auto* req = SetupRequest(op, table_->schema());
   req->set_type(type);
   return op;
 }
 
-std::shared_ptr<YBqlReadOp> TableHandle::NewReadOp() const {
+std::shared_ptr<YBqlReadOp> TableHandle::NewReadOp(const ThreadSafeArenaPtr& arena) const {
   std::shared_ptr<YBqlReadOp> op(table_->NewQLRead());
   SetupRequest(op, table_->schema());
   return op;

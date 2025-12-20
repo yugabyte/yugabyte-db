@@ -605,7 +605,8 @@ class XClusterTestNoParam : public XClusterYcqlTestBase {
     LOG(INFO) << (delete_op ? "Deleting" : "Inserting") << " transactional batch of key range ["
               << start << ", " << end << ") into" << table->name().ToString();
     for (uint32_t i = start; i < end; i++) {
-      auto op = delete_op ? table_handle.NewDeleteOp() : table_handle.NewInsertOp();
+      auto op = delete_op ? table_handle.NewDeleteOp(session->arena())
+                          : table_handle.NewInsertOp(session->arena());
       int32_t key = i;
       auto req = op->mutable_request();
       QLAddInt32HashValue(req, key);
@@ -1541,7 +1542,7 @@ TEST_F(XClusterTestTransactionalOnly, UpdateWithinTransaction) {
   session->SetTransaction(nullptr);
   client::TableHandle table_handle;
   ASSERT_OK(table_handle.Open(producer_table_->name(), producer_client()));
-  auto op = table_handle.NewInsertOp();
+  auto op = table_handle.NewInsertOp(session->arena());
   auto req = op->mutable_request();
   QLAddInt32HashValue(req, 0);
   ASSERT_OK(session->TEST_ApplyAndFlush(op));
@@ -2247,7 +2248,7 @@ TEST_P(XClusterTest, TestAlterDDLBasic) {
 
     LOG(INFO) << "Writing " << end - start << " inserts";
     for (uint32_t i = start; i < end; i++) {
-      auto op = table_handle.NewInsertOp();
+      auto op = table_handle.NewInsertOp(session->arena());
       auto req = op->mutable_request();
       QLAddInt32HashValue(req, i);
       table_handle.AddStringColumnValue(req, "contact_name", "YugaByte");
@@ -2320,7 +2321,7 @@ TEST_P(XClusterTest, TestAlterDDLWithRestarts) {
 
     LOG(INFO) << "Writing " << end - start << " inserts";
     for (uint32_t i = start; i < end; i++) {
-      auto op = table_handle.NewInsertOp();
+      auto op = table_handle.NewInsertOp(session->arena());
       auto req = op->mutable_request();
       QLAddInt32HashValue(req, i);
       table_handle.AddStringColumnValue(req, "contact_name", "YugaByte");

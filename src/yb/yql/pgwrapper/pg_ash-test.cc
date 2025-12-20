@@ -849,7 +849,9 @@ TEST_F(PgBgWorkersTest, TestBgWorkersQueryId) {
 TEST_F(PgAshTest, TestTServerMetadataSerializer) {
   static constexpr auto kTableName = "test_table";
 
+  LOG_WITH_FUNC(INFO) << "create table";
   ASSERT_OK(conn_->Execute(Format("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", kTableName)));
+  LOG_WITH_FUNC(INFO) << "insert";
   ASSERT_OK(conn_->Execute(Format("INSERT INTO $0 SELECT i, i FROM generate_series($1, $2) AS i",
       kTableName, 1, (kIsDebug ? 100000 : 10000000))));
 
@@ -859,10 +861,12 @@ TEST_F(PgAshTest, TestTServerMetadataSerializer) {
   // Test that each tserver has the query id in ASH samples
   for (auto* ts : cluster_->tserver_daemons()) {
     auto conn = ASSERT_RESULT(ConnectToTs(*ts));
+    LOG_WITH_FUNC(INFO) << "query " << ts->uuid();
     const auto count = ASSERT_RESULT((conn.FetchRow<int64_t>(
         Format("SELECT COUNT(*) FROM yb_active_session_history WHERE query_id = $0", query_id))));
     ASSERT_GT(count, 0);
   }
+  LOG_WITH_FUNC(INFO) << "done";
 }
 
 TEST_F(PgAshMasterMetadataSerializerTest, TestMasterMetadataSerializer) {

@@ -29,6 +29,7 @@
 #include "yb/common/common_types.pb.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/pgsql_error.h"
+#include "yb/common/ql_protocol.messages.h"
 #include "yb/common/ysql_utils.h"
 
 #include "yb/master/master_ddl.pb.h"
@@ -176,12 +177,12 @@ Status PgAutoAnalyzeService::FlushMutationsToServiceTable() {
     auto* const update_req = add_op->mutable_request();
     QLAddStringHashValue(update_req, table_id);
     update_req->mutable_column_refs()->add_ids(mutations_col_id);
-    QLColumnValuePB *col_pb = update_req->add_column_values();
+    auto *col_pb = update_req->add_column_values();
     col_pb->set_column_id(mutations_col_id);
-    QLBCallPB* bfcall_expr_pb = col_pb->mutable_expr()->mutable_bfcall();
+    auto* bfcall_expr_pb = col_pb->mutable_expr()->mutable_bfcall();
     bfcall_expr_pb->set_opcode(std::to_underlying(bfql::BFOpcode::OPCODE_AddI64I64_80));
-    QLExpressionPB* operand1 = bfcall_expr_pb->add_operands();
-    QLExpressionPB* operand2 = bfcall_expr_pb->add_operands();
+    auto* operand1 = bfcall_expr_pb->add_operands();
+    auto* operand2 = bfcall_expr_pb->add_operands();
     operand1->set_column_id(mutations_col_id);
     operand2->mutable_value()->set_int64_value(mutation_count);
     update_req->mutable_if_expr()->mutable_condition()->set_op(::yb::QLOperator::QL_OP_EXISTS);
@@ -671,12 +672,12 @@ Status PgAutoAnalyzeService::UpdateTableMutationsAfterAnalyze(
     auto* const update_req = update_op->mutable_request();
     QLAddStringHashValue(update_req, table_id);
     update_req->mutable_column_refs()->add_ids(mutations_col_id);
-    QLColumnValuePB *col_pb = update_req->add_column_values();
+    auto *col_pb = update_req->add_column_values();
     col_pb->set_column_id(mutations_col_id);
-    QLBCallPB* bfcall_expr_pb = col_pb->mutable_expr()->mutable_bfcall();
+    auto* bfcall_expr_pb = col_pb->mutable_expr()->mutable_bfcall();
     bfcall_expr_pb->set_opcode(std::to_underlying(bfql::BFOpcode::OPCODE_SubI64I64_85));
-    QLExpressionPB* operand1 = bfcall_expr_pb->add_operands();
-    QLExpressionPB* operand2 = bfcall_expr_pb->add_operands();
+    auto* operand1 = bfcall_expr_pb->add_operands();
+    auto* operand2 = bfcall_expr_pb->add_operands();
     operand1->set_column_id(mutations_col_id);
     auto it = table_id_to_info_maps.find(table_id);
     operand2->mutable_value()->set_int64_value(
@@ -726,6 +727,9 @@ Status PgAutoAnalyzeService::CleanUpDeletedTablesFromServiceTable(
   VLOG_IF_WITH_FUNC(2, !tables_absent_in_name_cache.empty())
       << "Tables that are absent in the name cache: " << AsString(tables_absent_in_name_cache);
 
+  auto session = VERIFY_RESULT(GetYBSession(
+      GetAtomicFlag(&FLAGS_ysql_cluster_level_mutation_persist_rpc_timeout_ms) * 1ms));
+
   auto* table = VERIFY_RESULT(GetServiceTable());
   std::vector<client::YBOperationPtr> ops;
   for (auto& table_id : deleted_tables) {
@@ -747,8 +751,6 @@ Status PgAutoAnalyzeService::CleanUpDeletedTablesFromServiceTable(
     ops.push_back(delete_op);
   }
 
-  auto session = VERIFY_RESULT(GetYBSession(
-      GetAtomicFlag(&FLAGS_ysql_cluster_level_mutation_persist_rpc_timeout_ms) * 1ms));
   // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
   RETURN_NOT_OK_PREPEND(session->TEST_ApplyAndFlush(ops),
       "Failed to clean up deleted entries from auto analyze table");

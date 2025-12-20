@@ -88,7 +88,7 @@ class GlobalStackTraceTracker {
 
   std::mutex mutex_;
   MonoTime last_reset_ GUARDED_BY(mutex_);
-  UnorderedStringMap<StackTraceEntry> traces_ GUARDED_BY(mutex_);
+  UnorderedStringMap<std::string, StackTraceEntry> traces_ GUARDED_BY(mutex_);
   std::unordered_map<std::thread::id, ThreadStackTraceTracker*> thread_trackers_ GUARDED_BY(mutex_);
 };
 
@@ -151,7 +151,7 @@ class ThreadStackTraceTracker {
   };
 
   std::mutex mutex_;
-  UnorderedStringMap<LocalCounts> counts_ GUARDED_BY(mutex_);
+  UnorderedStringMap<std::string, LocalCounts> counts_ GUARDED_BY(mutex_);
 };
 
 thread_local ThreadStackTraceTracker thread_tracker;

@@ -33,12 +33,12 @@ class TserverXClusterContextIf {
   TserverXClusterContextIf() = default;
   virtual ~TserverXClusterContextIf() = default;
 
-  virtual Result<std::optional<HybridTime>> GetSafeTime(const NamespaceId& namespace_id) const = 0;
+  virtual Result<std::optional<HybridTime>> GetSafeTime(NamespaceIdView namespace_id) const = 0;
 
   virtual XClusterNamespaceInfoPB_XClusterRole GetXClusterRole(
-      const NamespaceId& namespace_id) const = 0;
+      NamespaceIdView namespace_id) const = 0;
 
-  virtual bool IsReadOnlyMode(const NamespaceId& namespace_id) const = 0;
+  virtual bool IsReadOnlyMode(NamespaceIdView namespace_id) const = 0;
   virtual bool IsTargetAndInAutomaticMode(const NamespaceId& namespace_id) const = 0;
 
   virtual bool SafeTimeComputationRequired() const = 0;

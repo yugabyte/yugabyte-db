@@ -169,8 +169,9 @@ void TabletSplitITestBase<MiniClusterType>::SetUp() {
 template <class MiniClusterType>
 Result<tserver::ReadRequestPB> TabletSplitITestBase<MiniClusterType>::CreateReadRequest(
     const TabletId& tablet_id, int32_t key) {
+  auto arena = SharedThreadSafeArena();
   tserver::ReadRequestPB req;
-  auto op = client::CreateReadOp(key, this->table_, this->kValueColumn);
+  auto op = client::CreateReadOp(arena, key, this->table_, this->kValueColumn);
   auto* ql_batch = req.add_ql_batch();
   *ql_batch = op->request();
 

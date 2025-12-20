@@ -111,12 +111,12 @@ class PgAutoAnalyzeTest : public PgMiniTestBase {
     client::TableHandle table;
     CHECK_OK(table.Open(kAutoAnalyzeFullyQualifiedTableName, client_.get()));
 
-    const client::YBqlReadOpPtr op = table.NewReadOp();
+    auto session = NewSession();
+    const client::YBqlReadOpPtr op = table.NewReadOp(session->arena());
     auto* const req = op->mutable_request();
     table.AddColumns(
         {yb::master::kPgAutoAnalyzeTableId, yb::master::kPgAutoAnalyzeMutations}, req);
 
-    auto session = NewSession();
     CHECK_OK(session->TEST_ApplyAndFlush(op));
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
     auto rowblock = ql::RowsResult(op.get()).GetRowBlock();
@@ -129,12 +129,12 @@ class PgAutoAnalyzeTest : public PgMiniTestBase {
     client::TableHandle table;
     CHECK_OK(table.Open(kAutoAnalyzeFullyQualifiedTableName, client_.get()));
 
-    const client::YBqlReadOpPtr op = table.NewReadOp();
+    auto session = NewSession();
+    const client::YBqlReadOpPtr op = table.NewReadOp(session->arena());
     auto* const req = op->mutable_request();
     table.AddColumns(
         {yb::master::kPgAutoAnalyzeTableId, yb::master::kPgAutoAnalyzeMutations,
          yb::master::kPgAutoAnalyzeLastAnalyzeInfo}, req);
-    auto session = NewSession();
     CHECK_OK(session->TEST_ApplyAndFlush(op));
     SCHECK_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK, IllegalState,
               "Failed to get auto analyze info from CQL table");

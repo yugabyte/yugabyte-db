@@ -112,7 +112,7 @@ void QLAddColumns(const Schema& schema, const std::vector<ColumnId>& columns,
   }
 }
 
-bool RequireReadForExpressions(const QLWriteRequestPB& request) {
+bool RequireReadForExpressions(const QLWriteRequestMsg& request) {
   // A QLWriteOperation requires a read if it contains an IF clause or an UPDATE assignment that
   // involves an expresion with a column reference. If the IF clause contains a condition that
   // involves a column reference, the column will be included in "column_refs". However, we cannot
@@ -127,13 +127,13 @@ bool RequireReadForExpressions(const QLWriteRequestPB& request) {
 // (e.g. range delete) -- it affects all rows within a hash key that match the where clause.
 // Note: If target columns are given this could just be e.g. a delete targeting a static column
 // which can also omit the range portion -- Analyzer will check these restrictions.
-bool IsRangeOperation(const QLWriteRequestPB& request, const Schema& schema) {
+bool IsRangeOperation(const QLWriteRequestMsg& request, const Schema& schema) {
   return implicit_cast<size_t>(request.range_column_values().size()) <
              schema.num_range_key_columns() &&
          request.column_values().empty();
 }
 
-bool RequireRead(const QLWriteRequestPB& request, const Schema& schema) {
+bool RequireRead(const QLWriteRequestMsg& request, const Schema& schema) {
   // In case of a user supplied timestamp, we need a read (and hence appropriate locks for read
   // modify write) but it is at the docdb level on a per key basis instead of a QL read of the
   // latest row.

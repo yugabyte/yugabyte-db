@@ -663,7 +663,7 @@ class SessionProvider {
 class PerformQuery : public std::enable_shared_from_this<PerformQuery>, public rpc::ThreadPoolTask,
                      public PgTablesQueryListener {
  public:
-  using ContextHolder = rpc::TypedPBRpcContextHolder<PgPerformRequestPB, PgPerformResponsePB>;
+  using ContextHolder = rpc::TypedPBRpcContextHolder<PgPerformRequestMsg, PgPerformResponseMsg>;
 
   PerformQuery(
       SessionProvider& provider, ContextHolder&& context)
@@ -682,11 +682,11 @@ class PerformQuery : public std::enable_shared_from_this<PerformQuery>, public r
   }
 
  private:
-  PgPerformRequestPB& req() {
+  PgPerformRequestMsg& req() {
     return context_.req();
   }
 
-  PgPerformResponsePB& resp() {
+  PgPerformResponseMsg& resp() {
     return context_.resp();
   }
 
@@ -730,7 +730,7 @@ class PerformQuery : public std::enable_shared_from_this<PerformQuery>, public r
   }
 
   SessionProvider& provider_;
-  rpc::TypedPBRpcContextHolder<PgPerformRequestPB, PgPerformResponsePB> context_;
+  ContextHolder context_;
   const int64_t tid_;
   std::optional<PgTablesQueryResult> tables_;
   std::shared_ptr<PerformQuery> retained_self_;
@@ -2391,7 +2391,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     return Status::OK();
   }
 
-  void Perform(PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context) {
+  void Perform(PgPerformRequestMsg* req, PgPerformResponseMsg* resp, rpc::RpcContext* context) {
     boost::container::small_vector<TableId, 4> table_ids;
     PreparePgTablesQuery(*req, table_ids);
     auto query = std::make_shared<PerformQuery>(
@@ -2982,8 +2982,8 @@ PgClientServiceImpl::PgClientServiceImpl(
 PgClientServiceImpl::~PgClientServiceImpl() = default;
 
 void PgClientServiceImpl::Perform(
-    const PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext context) {
-  impl_->Perform(const_cast<PgPerformRequestPB*>(req), resp, &context);
+    const PgPerformRequestMsg* req, PgPerformResponseMsg* resp, rpc::RpcContext context) {
+  impl_->Perform(const_cast<PgPerformRequestMsg*>(req), resp, &context);
 }
 
 void PgClientServiceImpl::InvalidateTableCache() {

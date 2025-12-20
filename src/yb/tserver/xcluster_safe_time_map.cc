@@ -38,7 +38,7 @@
 namespace yb {
 XClusterSafeTimeMap::XClusterSafeTimeMap() : map_initialized_(false) {}
 
-bool XClusterSafeTimeMap::HasNamespace(const NamespaceId& namespace_id) const {
+bool XClusterSafeTimeMap::HasNamespace(NamespaceIdView namespace_id) const {
   if (empty()) {
     return false;
   }
@@ -48,7 +48,7 @@ bool XClusterSafeTimeMap::HasNamespace(const NamespaceId& namespace_id) const {
 }
 
 Result<std::optional<HybridTime>> XClusterSafeTimeMap::GetSafeTime(
-    const NamespaceId& namespace_id) const {
+    NamespaceIdView namespace_id) const {
   SharedLock l(xcluster_safe_time_map_mutex_);
   SCHECK(map_initialized_, TryAgain, "XCluster safe time not yet initialized");
   auto* safe_time = FindOrNull(xcluster_safe_time_map_, namespace_id);

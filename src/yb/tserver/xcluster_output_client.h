@@ -12,11 +12,15 @@
 
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/xcluster_types.h"
-#include "yb/consensus/opid_util.h"
-#include "yb/tserver/xcluster_async_executor.h"
 
 #include "yb/client/client_fwd.h"
+
+#include "yb/consensus/opid_util.h"
+
 #include "yb/rpc/rpc_fwd.h"
+
+#include "yb/tserver/tserver.fwd.h"
+#include "yb/tserver/xcluster_async_executor.h"
 #include "yb/tserver/xcluster_write_interface.h"
 
 #pragma once
@@ -105,10 +109,10 @@ class XClusterOutputClient : public XClusterAsyncExecutor {
 
   Status SendUserTableWrites();
 
-  void SendNextCDCWriteToTablet(std::unique_ptr<WriteRequestPB> write_request);
+  void SendNextCDCWriteToTablet(const std::shared_ptr<WriteRequestMsg>& request);
   void UpdateSchemaVersionMapping(tserver::GetCompatibleSchemaVersionRequestPB* req);
 
-  void DoWriteCDCRecordDone(const Status& status, const WriteResponsePB& response);
+  void DoWriteCDCRecordDone(const Status& status, std::shared_ptr<WriteResponseMsg> resp);
 
   void DoSchemaVersionCheckDone(
       const Status& status, const GetCompatibleSchemaVersionRequestPB& req,

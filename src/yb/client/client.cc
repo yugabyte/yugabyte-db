@@ -2912,7 +2912,7 @@ void YBClient::OpenTableAsync(
   DoOpenTableAsync(table_name, callback);
 }
 
-void YBClient::OpenTableAsync(const TableId& table_id, const OpenTableAsyncCallback& callback,
+void YBClient::OpenTableAsync(TableIdView table_id, const OpenTableAsyncCallback& callback,
                               master::IncludeHidden include_hidden,
                               master::GetTableSchemaResponsePB* resp) {
   DoOpenTableAsync(table_id, callback, include_hidden, resp);

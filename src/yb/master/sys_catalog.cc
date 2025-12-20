@@ -95,7 +95,7 @@
 
 #include "yb/tserver/tablet_memory_manager.h"
 #include "yb/tserver/ts_tablet_manager.h"
-#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver.messages.h"
 
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/format.h"
@@ -730,7 +730,7 @@ Status SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
     return STATUS(InternalError, "Injected random failure for testing.");
   }
 
-  auto resp = std::make_shared<tserver::WriteResponsePB>();
+  auto resp = std::make_shared<tserver::WriteResponseMsg>();
   // If this is a PG write, them the pgsql write batch is not empty.
   //
   // If this is a QL write, then it is a normal sys_catalog write, so ignore writes that might
@@ -774,7 +774,7 @@ Status SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
     return StatusFromPB(resp->error().status());
   }
   if (resp->per_row_errors_size() > 0) {
-    for (const WriteResponsePB::PerRowErrorPB& error : resp->per_row_errors()) {
+    for (const auto& error : resp->per_row_errors()) {
       LOG(WARNING) << "row " << error.row_index() << ": " << StatusFromPB(error.error()).ToString();
     }
     return STATUS(Corruption, "One or more rows failed to write");

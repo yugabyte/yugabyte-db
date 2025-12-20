@@ -26,7 +26,7 @@ namespace ql {
 using yb::bfql::BFOpcode;
 using yb::bfql::BFOPCODE_NOOP;
 
-Status Executor::PTExprToPB(const PTBcall *bcall_pt, QLExpressionPB *expr_pb) {
+Status Executor::PTExprToPB(const PTBcall *bcall_pt, QLExpressionMsg *expr_pb) {
   if (!bcall_pt->is_server_operator()) {
     // Regular builtin function call.
     return BFCallToPB(bcall_pt, expr_pb);
@@ -36,16 +36,16 @@ Status Executor::PTExprToPB(const PTBcall *bcall_pt, QLExpressionPB *expr_pb) {
   }
 }
 
-Status Executor::BFCallToPB(const PTBcall *bcall_pt, QLExpressionPB *expr_pb) {
+Status Executor::BFCallToPB(const PTBcall *bcall_pt, QLExpressionMsg *expr_pb) {
   if (bcall_pt->result_cast_op() != BFOPCODE_NOOP) {
-    QLBCallPB *cast_pb = expr_pb->mutable_bfcall();
+    auto *cast_pb = expr_pb->mutable_bfcall();
     cast_pb->set_opcode(static_cast<int32_t>(bcall_pt->result_cast_op()));
 
     // Result of the bcall_pt is the input of this CAST.
     expr_pb = cast_pb->add_operands();
   }
 
-  QLBCallPB *bcall_pb = expr_pb->mutable_bfcall();
+  auto *bcall_pb = expr_pb->mutable_bfcall();
   bcall_pb->set_opcode(bcall_pt->bfopcode());
 
   int pindex = 0;
@@ -54,11 +54,11 @@ Status Executor::BFCallToPB(const PTBcall *bcall_pt, QLExpressionPB *expr_pb) {
 
   for (const PTExpr::SharedPtr& arg : args) {
     // Create PB for the argument "arg".
-    QLExpressionPB *operand_pb = bcall_pb->add_operands();
+    QLExpressionMsg *operand_pb = bcall_pb->add_operands();
 
     if (cast_ops[pindex] != BFOPCODE_NOOP) {
       // Apply the cast operator. The return value of CAST is the operand of the actual BCALL.
-      QLBCallPB *cast_pb = operand_pb->mutable_bfcall();
+      auto *cast_pb = operand_pb->mutable_bfcall();
       cast_pb->set_opcode(static_cast<int32_t>(cast_ops[pindex]));
 
       // Result of the argument, operand_pb, is the input of CAST.
@@ -78,15 +78,15 @@ Status Executor::BFCallToPB(const PTBcall *bcall_pt, QLExpressionPB *expr_pb) {
   return Status::OK();
 }
 
-Status Executor::TSCallToPB(const PTBcall *bcall_pt, QLExpressionPB *expr_pb) {
+Status Executor::TSCallToPB(const PTBcall *bcall_pt, QLExpressionMsg *expr_pb) {
   if (bcall_pt->result_cast_op() != BFOPCODE_NOOP) {
-      QLBCallPB *cast_pb = expr_pb->mutable_bfcall();
+      auto *cast_pb = expr_pb->mutable_bfcall();
       cast_pb->set_opcode(static_cast<int32_t>(bcall_pt->result_cast_op()));
 
       // Result of the bcall_pt is the input of this CAST.
       expr_pb = cast_pb->add_operands();
   }
-  QLBCallPB *bcall_pb = expr_pb->mutable_tscall();
+  auto *bcall_pb = expr_pb->mutable_tscall();
   bcall_pb->set_opcode(bcall_pt->bfopcode());
   int pindex = 0;
   const MCVector<yb::bfql::BFOpcode>& cast_ops = bcall_pt->cast_ops();
@@ -94,11 +94,11 @@ Status Executor::TSCallToPB(const PTBcall *bcall_pt, QLExpressionPB *expr_pb) {
 
   for (const PTExpr::SharedPtr& arg : args) {
     // Create PB for the argument "arg".
-    QLExpressionPB *operand_pb = bcall_pb->add_operands();
+    QLExpressionMsg *operand_pb = bcall_pb->add_operands();
 
     if (cast_ops[pindex] != BFOPCODE_NOOP) {
       // Apply the cast operator. The return value of CAST is the operand of the actual BCALL.
-      QLBCallPB *cast_pb = operand_pb->mutable_bfcall();
+      auto *cast_pb = operand_pb->mutable_bfcall();
       cast_pb->set_opcode(static_cast<int32_t>(cast_ops[pindex]));
 
       // Result of the argument, operand_pb, is the input of CAST.
@@ -114,7 +114,7 @@ Status Executor::TSCallToPB(const PTBcall *bcall_pt, QLExpressionPB *expr_pb) {
 }
 
 // Forming constructor call for collection and user-defined types.
-Status Executor::PTExprToPB(const PTCollectionExpr *expr, QLExpressionPB *expr_pb) {
+Status Executor::PTExprToPB(const PTCollectionExpr *expr, QLExpressionMsg *expr_pb) {
   bool is_frozen = false;
   DataType data_type = expr->ql_type()->main();
   if (data_type == DataType::FROZEN) {
@@ -123,8 +123,8 @@ Status Executor::PTExprToPB(const PTCollectionExpr *expr, QLExpressionPB *expr_p
     data_type = expr->ql_type()->param_type(0)->main();
   }
 
-  QLExpressionPB *arg_pb;
-  QLBCallPB *bcall_pb = expr_pb->mutable_bfcall();
+  QLExpressionMsg *arg_pb;
+  auto *bcall_pb = expr_pb->mutable_bfcall();
   switch (data_type) {
     case DataType::MAP:
       if (is_frozen) {

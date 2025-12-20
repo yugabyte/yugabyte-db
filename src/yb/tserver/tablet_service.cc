@@ -427,7 +427,7 @@ Result<PgTxnSnapshot> GetLocalPgTxnSnapshotImpl(
 }
 
 Status PrintYSQLWriteRequest(
-    const WriteRequestPB& req, const RpcContext& context, const Tablet& tablet) {
+    const WriteRequestMsg& req, const RpcContext& context, const Tablet& tablet) {
   if (req.pgsql_write_batch_size() == 0) {
     return Status::OK();
   }
@@ -461,16 +461,16 @@ Status PrintYSQLWriteRequest(
       ss << ", ";
     }
     if (!entry.range_column_values().empty()) {
-      ss << "range [" << pb_util::JoinRepeatedPBs(entry.range_column_values()) << "]";
+      ss << "range " << AsString(entry.range_column_values());
     }
     ss << std::endl;
     if (!entry.column_new_values().empty() || !entry.column_values().empty()) {
       ss << "\tColumns: ";
-      ss << pb_util::JoinRepeatedPBs(entry.column_new_values());
+      ss << AsString(entry.column_new_values());
       if (!entry.column_new_values().empty() && !entry.column_values().empty()) {
         ss << ", ";
       }
-      ss << pb_util::JoinRepeatedPBs(entry.column_values());
+      ss << AsString(entry.column_values());
       ss << std::endl;
     }
   }
@@ -494,7 +494,7 @@ class WriteQueryCompletionCallback {
   WriteQueryCompletionCallback(
       tablet::TabletPeerPtr tablet_peer,
       std::shared_ptr<rpc::RpcContext> context,
-      WriteResponsePB* response,
+      WriteResponseMsg* response,
       tablet::WriteQuery* query,
       const server::ClockPtr& clock,
       bool trace,
@@ -558,7 +558,7 @@ class WriteQueryCompletionCallback {
   }
 
  private:
-  TabletServerErrorPB* get_error() const {
+  TabletServerErrorMsg* get_error() const {
     return response_->mutable_error();
   }
 
@@ -585,7 +585,7 @@ class WriteQueryCompletionCallback {
 
   tablet::TabletPeerPtr tablet_peer_;
   const std::shared_ptr<rpc::RpcContext> context_;
-  WriteResponsePB* const response_;
+  WriteResponseMsg* const response_;
   tablet::WriteQuery* const query_;
   server::ClockPtr clock_;
   const bool include_trace_;
@@ -630,9 +630,9 @@ class ScanResultChecksummer {
 };
 
 Result<std::shared_ptr<tablet::AbstractTablet>> TabletServiceImpl::GetTabletForRead(
-  const TabletId& tablet_id, tablet::TabletPeerPtr tablet_peer,
+  TabletIdView tablet_id, tablet::TabletPeerPtr tablet_peer,
   YBConsistencyLevel consistency_level, tserver::AllowSplitTablet allow_split_tablet,
-  tserver::ReadResponsePB* resp) {
+  tserver::ReadResponseMsg* resp) {
   return GetTablet(server_->tablet_peer_lookup(), tablet_id, std::move(tablet_peer),
                    consistency_level, allow_split_tablet, resp);
 }
@@ -2590,12 +2590,12 @@ void TabletServiceAdminImpl::GetPgSocketDir(
   context.RespondSuccess();
 }
 
-bool EmptyWriteBatch(const docdb::KeyValueWriteBatchPB& write_batch) {
+bool EmptyWriteBatch(const docdb::KeyValueWriteBatchMsg& write_batch) {
   return write_batch.write_pairs().empty() && write_batch.apply_external_transactions().empty();
 }
 
 Status TabletServiceImpl::PerformWrite(
-    const WriteRequestPB* req, WriteResponsePB* resp, rpc::RpcContext* context) {
+    const WriteRequestMsg* req, WriteResponseMsg* resp, rpc::RpcContext* context) {
   if (req->include_trace()) {
     context->EnsureTraceCreated();
   }
@@ -2606,7 +2606,7 @@ Status TabletServiceImpl::PerformWrite(
   VLOG(2) << "Received Write RPC: " << req->DebugString();
 
   UpdateClock(*req, server_->Clock());
-  TEST_SYNC_POINT_CALLBACK("TabletServiceImpl::PerformWrite", const_cast<WriteRequestPB*>(req));
+  TEST_SYNC_POINT_CALLBACK("TabletServiceImpl::PerformWrite", const_cast<WriteRequestMsg*>(req));
 
   auto tablet =
       VERIFY_RESULT(LookupLeaderTablet(server_->tablet_peer_lookup(), req->tablet_id(), resp));
@@ -2679,7 +2679,7 @@ Status TabletServiceImpl::PerformWrite(
   query->set_client_request(*req);
 
   if (RandomActWithProbability(GetAtomicFlag(&FLAGS_TEST_respond_write_failed_probability))) {
-    LOG(INFO) << "Responding with a failure to " << req->DebugString();
+    LOG(INFO) << "Responding with a failure to " << req->ShortDebugString();
     tablet.peer->WriteAsync(std::move(query));
     auto status = STATUS(LeaderHasNoLease, "TEST: Random failure");
     SetupErrorAndRespond(resp->mutable_error(), std::move(status), context_ptr.get());
@@ -2687,7 +2687,7 @@ Status TabletServiceImpl::PerformWrite(
   }
 
   if (RandomActWithProbability(GetAtomicFlag(&FLAGS_TEST_respond_write_with_abort_probability))) {
-    LOG(INFO) << "Responding with transaction aborted failure to " << req->DebugString();
+    LOG(INFO) << "Responding with transaction aborted failure to " << req->ShortDebugString();
     SetupErrorAndRespond(resp->mutable_error(), STATUS_EC_FORMAT(
         Expired, PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_ABORTED),
         "Transaction expired or aborted by a conflict"), context_ptr.get());
@@ -2706,8 +2706,8 @@ Status TabletServiceImpl::PerformWrite(
   return Status::OK();
 }
 
-void TabletServiceImpl::Write(const WriteRequestPB* req,
-                              WriteResponsePB* resp,
+void TabletServiceImpl::Write(const WriteRequestMsg* req,
+                              WriteResponseMsg* resp,
                               rpc::RpcContext context) {
   if (FLAGS_TEST_tserver_noop_read_write) {
     for ([[maybe_unused]] const auto& batch : req->ql_write_batch()) {
@@ -2747,8 +2747,8 @@ void TabletServiceImpl::WaitForAsyncWrite(
       OpId::FromPB(req->op_id()), std::move(callback));
 }
 
-void TabletServiceImpl::Read(const ReadRequestPB* req,
-                             ReadResponsePB* resp,
+void TabletServiceImpl::Read(const ReadRequestMsg* req,
+                             ReadResponseMsg* resp,
                              rpc::RpcContext context) {
 #ifndef NDEBUG
   if (PREDICT_FALSE(FLAGS_TEST_wait_row_mark_exclusive_count > 0)) {

@@ -1448,7 +1448,7 @@ class GetTableSchemaRpc
                     master::IncludeHidden include_hidden = master::IncludeHidden::kFalse);
   GetTableSchemaRpc(YBClient* client,
                     StatusCallback user_cb,
-                    const TableId& table_id,
+                    TableIdView table_id,
                     YBTableInfo* info,
                     CoarseTimePoint deadline,
                     master::IncludeHidden include_hidden,
@@ -1513,9 +1513,9 @@ master::TableIdentifierPB ToTableIdentifierPB(const YBTableName& table_name) {
   return id;
 }
 
-master::TableIdentifierPB ToTableIdentifierPB(const TableId& table_id) {
+master::TableIdentifierPB ToTableIdentifierPB(TableIdView table_id) {
   master::TableIdentifierPB id;
-  id.set_table_id(table_id);
+  id.set_table_id(table_id.data(), table_id.size());
   return id;
 }
 
@@ -1581,7 +1581,7 @@ GetTableSchemaRpc::GetTableSchemaRpc(YBClient* client,
 
 GetTableSchemaRpc::GetTableSchemaRpc(YBClient* client,
                                      StatusCallback user_cb,
-                                     const TableId& table_id,
+                                     TableIdView table_id,
                                      YBTableInfo* info,
                                      CoarseTimePoint deadline,
                                      master::IncludeHidden include_hidden,
@@ -2446,7 +2446,7 @@ Status YBClient::Data::GetTableSchema(YBClient* client,
 }
 
 Status YBClient::Data::GetTableSchema(YBClient* client,
-                                      const TableId& table_id,
+                                      TableIdView table_id,
                                       CoarseTimePoint deadline,
                                       YBTableInfo* info,
                                       master::IncludeHidden include_hidden,
@@ -2481,7 +2481,7 @@ Status YBClient::Data::GetTableSchema(YBClient* client,
 }
 
 Status YBClient::Data::GetTableSchema(YBClient* client,
-                                      const TableId& table_id,
+                                      TableIdView table_id,
                                       CoarseTimePoint deadline,
                                       std::shared_ptr<YBTableInfo> info,
                                       StatusCallback callback,

@@ -39,9 +39,12 @@
 
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/rpc_fwd.h"
+
+#include "yb/tserver/tserver.messages.h"
 #include "yb/tserver/xcluster_consumer.h"
 #include "yb/tserver/xcluster_poller.h"
 #include "yb/tserver/xcluster_write_interface.h"
+
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
@@ -371,7 +374,7 @@ Result<cdc::CDCRecordPB> XClusterOutputClient::TransformSequencesDataRecord(
 
 Status XClusterOutputClient::SendUserTableWrites() {
   // Send out the buffered writes.
-  std::unique_ptr<WriteRequestPB> write_request;
+  std::shared_ptr<WriteRequestMsg> write_request;
   {
     ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN_STATUS;
     write_request = write_strategy_->FetchNextRequest();
@@ -586,7 +589,8 @@ Result<bool> XClusterOutputClient::ProcessMetaOp(const cdc::CDCRecordPB& record)
   return done;
 }
 
-void XClusterOutputClient::SendNextCDCWriteToTablet(std::unique_ptr<WriteRequestPB> write_request) {
+void XClusterOutputClient::SendNextCDCWriteToTablet(
+    const std::shared_ptr<WriteRequestMsg>& write_request) {
   LOG_SLOW_EXECUTION_EVERY_N_SECS(INFO, 1 /* n_secs */, 100 /* max_expected_millis */,
       Format("Rate limiting write request for tablet $0", write_request->tablet_id())) {
     rate_limiter_->Request(write_request->ByteSizeLong(), IOPriority::kHigh);
@@ -606,9 +610,9 @@ void XClusterOutputClient::SendNextCDCWriteToTablet(std::unique_ptr<WriteRequest
 
   // Send in nullptr for RemoteTablet since cdc rpc now gets the tablet_id from the write request.
   *handle = rpc::xcluster::CreateXClusterWriteRpc(
-      deadline, nullptr /* RemoteTablet */, table_, &local_client_, write_request.get(),
-      [weak_ptr = weak_from_this(), this, handle, rpcs = rpcs_](
-          const Status& status, WriteResponsePB&& resp) {
+      deadline, nullptr /* RemoteTablet */, table_, &local_client_, write_request,
+      [weak_ptr = weak_from_this(), this, handle, rpcs = rpcs_, write_request](
+          const Status& status, std::shared_ptr<WriteResponseMsg> resp) {
         RpcCallback(
             weak_ptr, handle, rpcs,
             BIND_FUNCTION_AND_ARGS(
@@ -828,7 +832,7 @@ void XClusterOutputClient::HandleNewSchemaPacking(
 }
 
 void XClusterOutputClient::DoWriteCDCRecordDone(
-    const Status& status, const WriteResponsePB& response) {
+    const Status& status, std::shared_ptr<WriteResponseMsg> response) {
   ash::WaitStateInfoPtr wait_state;
   {
     std::lock_guard l(lock_);
@@ -839,13 +843,13 @@ void XClusterOutputClient::DoWriteCDCRecordDone(
   if (!status.ok()) {
     HandleError(status);
     return;
-  } else if (response.has_error()) {
-    HandleError(StatusFromPB(response.error().status()));
+  } else if (response->has_error()) {
+    HandleError(StatusFromPB(response->error().status()));
     return;
   }
 
   // See if we need to handle any more writes.
-  std::unique_ptr<WriteRequestPB> write_request;
+  std::shared_ptr<WriteRequestMsg> write_request;
   {
     ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN;
     if (FLAGS_TEST_running_test) {

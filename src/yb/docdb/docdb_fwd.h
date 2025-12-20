@@ -93,7 +93,7 @@ using LockState = uint64_t;
 using ScanChoicesPtr = std::unique_ptr<ScanChoices>;
 
 using ConsensusFrontierPtr = clone_ptr<ConsensusFrontier>;
-using IndexRequests = std::vector<std::pair<const qlexpr::IndexInfo*, QLWriteRequestPB>>;
+using IndexRequests = std::vector<std::pair<const qlexpr::IndexInfo*, QLWriteRequestMsg>>;
 using DocVectorIndexPtr = std::shared_ptr<DocVectorIndex>;
 using DocVectorIndexes = std::vector<DocVectorIndexPtr>;
 using DocVectorIndexesPtr = std::shared_ptr<DocVectorIndexes>;
@@ -105,5 +105,9 @@ YB_STRONGLY_TYPED_BOOL(AllowVariableBloomFilter);
 YB_STRONGLY_TYPED_BOOL(IncludeIntents);
 YB_STRONGLY_TYPED_BOOL(SkipFlush);
 YB_STRONGLY_TYPED_BOOL(SkipSeek);
+
+// Temporary typedef for lightweight protobuf migration
+using KeyValueWriteBatchMsg = KeyValueWriteBatchPB;
+using KeyValuePairMsg = KeyValuePairPB;
 
 }  // namespace yb::docdb

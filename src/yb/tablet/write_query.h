@@ -27,7 +27,7 @@
 #include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/transaction_participant.h"
 
-#include "yb/tserver/tserver.fwd.h"
+#include "yb/tserver/tserver_fwd.h"
 
 #include "yb/util/operation_counter.h"
 
@@ -43,7 +43,7 @@ class WriteQuery {
              WriteQueryContext* context,
              TabletPtr tablet,
              rpc::RpcContext* rpc_context,
-             tserver::WriteResponsePB* response = nullptr);
+             tserver::WriteResponseMsg* response = nullptr);
 
   ~WriteQuery();
 
@@ -55,7 +55,7 @@ class WriteQuery {
 
   // Returns the prepared response to the client that will be sent when this
   // transaction is completed, if this transaction was started by a client.
-  tserver::WriteResponsePB* response() {
+  tserver::WriteResponseMsg* response() {
     return response_;
   }
 
@@ -96,9 +96,9 @@ class WriteQuery {
     submit_token_ = std::move(token);
   }
 
-  void set_client_request(std::reference_wrapper<const tserver::WriteRequestPB> req);
+  void set_client_request(std::reference_wrapper<const tserver::WriteRequestMsg> req);
 
-  void set_client_request(std::unique_ptr<tserver::WriteRequestPB> req);
+  void set_client_request(std::unique_ptr<tserver::WriteRequestMsg> req);
 
   void set_read_time(const ReadHybridTime& read_time) {
     read_time_ = read_time;
@@ -112,7 +112,7 @@ class WriteQuery {
   // Cancel query even before sending underlying operation to the Raft.
   void Cancel(const Status& status);
 
-  const tserver::WriteRequestPB* client_request() {
+  const tserver::WriteRequestMsg* client_request() {
     return client_request_;
   }
 
@@ -123,7 +123,7 @@ class WriteQuery {
   uint64_t request_start_us() const { return request_start_us_; }
 
   // Returns response and metrics_capture type if metrics capture is enabled, nullptr otherwise.
-  std::pair<PgsqlResponsePB*, PgsqlMetricsCaptureType> GetPgsqlResponseAndMetricsCapture() const;
+  std::pair<PgsqlResponseMsg*, PgsqlMetricsCaptureType> GetPgsqlResponseAndMetricsCapture() const;
 
   ScopedTabletMetrics scoped_tablet_metrics() { return scoped_tablet_metrics_; }
   docdb::DocDBStatistics scoped_statistics() { return scoped_statistics_; }
@@ -227,12 +227,12 @@ class WriteQuery {
   // Pointers to the rpc context, request and response, lifecycle
   // is managed by the rpc subsystem. These pointers maybe nullptr if the
   // operation was not initiated by an RPC call.
-  const tserver::WriteRequestPB* client_request_ = nullptr;
+  const tserver::WriteRequestMsg* client_request_ = nullptr;
   RequestScope request_scope_;
   ReadHybridTime read_time_;
   bool allow_immediate_read_restart_ = false;
-  std::unique_ptr<tserver::WriteRequestPB> client_request_holder_;
-  tserver::WriteResponsePB* response_;
+  std::unique_ptr<tserver::WriteRequestMsg> client_request_holder_;
+  tserver::WriteResponseMsg* response_;
 
   // this transaction's start time
   MonoTime start_time_;

@@ -904,10 +904,11 @@ struct PointerHash {
   }
 };
 
-template <class Value>
-using UnorderedStringMap = std::unordered_map<std::string, Value, StringHash, std::equal_to<void>>;
+template <class Key, class Value>
+using UnorderedStringMap = std::unordered_map<Key, Value, StringHash, std::equal_to<void>>;
 
-using UnorderedStringSet = std::unordered_set<std::string, StringHash, std::equal_to<void>>;
+template <class Key>
+using UnorderedStringSet = std::unordered_set<Key, StringHash, std::equal_to<void>>;
 
 template <class Map, class K>
 auto& MappedValue(Map& map, K&& key) {

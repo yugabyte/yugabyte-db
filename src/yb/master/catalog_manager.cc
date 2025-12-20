@@ -3283,13 +3283,13 @@ Status CatalogManager::DoSplitTablet(
       epoch);
 }
 
-Result<TabletInfoPtr> CatalogManager::GetTabletInfo(const TabletId& tablet_id)
+Result<TabletInfoPtr> CatalogManager::GetTabletInfo(TabletIdView tablet_id)
     EXCLUDES(mutex_) {
   SharedLock lock(mutex_);
   return GetTabletInfoUnlocked(tablet_id);
 }
 
-Result<TabletInfoPtr> CatalogManager::GetTabletInfoUnlocked(const TabletId& tablet_id)
+Result<TabletInfoPtr> CatalogManager::GetTabletInfoUnlocked(TabletIdView tablet_id)
     REQUIRES_SHARED(mutex_) {
   const auto tablet_info = FindPtrOrNull(*tablet_map_, tablet_id);
   if (tablet_info == nullptr) {
@@ -12214,16 +12214,16 @@ Status CatalogManager::BuildLocationsForTablet(
   return Status::OK();
 }
 
-Result<shared_ptr<tablet::AbstractTablet>> CatalogManager::GetSystemTablet(const TabletId& id) {
+Result<shared_ptr<tablet::AbstractTablet>> CatalogManager::GetSystemTablet(TabletIdView id) {
   const auto iter = system_tablets_.find(id);
   if (iter == system_tablets_.end()) {
-    return STATUS_SUBSTITUTE(InvalidArgument, "$0 is not a valid system tablet id", id);
+    return STATUS_FORMAT(InvalidArgument, "$0 is not a valid system tablet id", id);
   }
   return iter->second;
 }
 
 Status CatalogManager::GetTabletLocations(
-    const TabletId& tablet_id, TabletLocationsPB* locs_pb, IncludeHidden include_hidden) {
+    TabletIdView tablet_id, TabletLocationsPB* locs_pb, IncludeHidden include_hidden) {
   auto tablet_info_result = GetTabletInfo(tablet_id);
   if (!tablet_info_result.ok()) {
     // Some clients expect non-ok statuses to have a certain form.
