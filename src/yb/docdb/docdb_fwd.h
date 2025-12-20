@@ -43,7 +43,7 @@ class DocVectorIndex;
 class DocWriteBatch;
 class HistoryRetentionPolicy;
 class IntentAwareIterator;
-class IntentIterator;
+class IntentAwareIteratorBoundsScope;
 class LocalWaitingTxnRegistry;
 class LockBatch;
 class ManualHistoryRetentionPolicy;
@@ -81,6 +81,10 @@ struct ReadOperationData;
 using DocKeyHash = uint16_t;
 using DocReadContextPtr = std::shared_ptr<const DocReadContext>;
 using DocRowwiseIteratorPtr = std::unique_ptr<DocRowwiseIterator>;
+using IntentAwareIteratorPtr = std::unique_ptr<IntentAwareIterator>;
+using IntentAwareIteratorBoundsScopePtr = std::unique_ptr<IntentAwareIteratorBoundsScope>;
+using IntentAwareIteratorWithBounds =
+    std::tuple<IntentAwareIteratorPtr, IntentAwareIteratorBoundsScopePtr>;
 
 template <typename LockManager>
 using LockBatchEntries = std::vector<LockBatchEntry<LockManager>>;

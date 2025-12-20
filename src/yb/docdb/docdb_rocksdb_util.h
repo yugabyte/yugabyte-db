@@ -92,7 +92,7 @@ BoundedRocksDbIterator CreateRocksDBIterator(
 // for re-requesting pending transaction status if we already know it wasn't committed at high_ht.
 // Set `use_fast_backward_scan` to true only if an iterator will be used for a backward scan. In
 // this case the iterator would use an optimized version of backward scan. Tested for YSQL only.
-std::unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
+IntentAwareIteratorPtr CreateIntentAwareIterator(
     const DocDB& doc_db,
     const BloomFilterOptions& bloom_filter,
     const rocksdb::QueryId query_id,

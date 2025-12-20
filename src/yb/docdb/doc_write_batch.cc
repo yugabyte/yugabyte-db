@@ -65,7 +65,7 @@ using dockv::ValueEntryType;
 // Lazily creates iterator on demand.
 struct DocWriteBatch::LazyIterator {
  public:
-  std::unique_ptr<IntentAwareIterator> iterator;
+  IntentAwareIteratorPtr iterator;
   const DocDB* doc_db;
   const DocPath* doc_path;
   const ReadOperationData* read_operation_data;
@@ -484,7 +484,7 @@ Status DocWriteBatch::SetPrimitive(
     const DocPath& doc_path,
     const ValueControlFields& control_fields,
     const ValueRef& value,
-    std::unique_ptr<IntentAwareIterator> intent_iter) {
+    IntentAwareIteratorPtr intent_iter) {
   LazyIterator iter = {
     .iterator = std::move(intent_iter),
     .doc_db = nullptr,
