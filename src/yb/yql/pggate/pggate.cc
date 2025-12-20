@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#undef EV_ERROR // On mac is it defined as some number, but ev++.h uses it in enum
 #include <ev++.h>
 
 #include "yb/client/client_utils.h"

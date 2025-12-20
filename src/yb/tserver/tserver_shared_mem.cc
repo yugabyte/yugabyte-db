@@ -26,6 +26,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
+#include "yb/util/shared_mem.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/thread.h"
 
@@ -147,6 +148,14 @@ class Semaphore {
 YB_DEFINE_ENUM(SharedExchangeState,
                (kIdle)(kRequestSent)(kProcessingRequest)(kResponseSent)(kShutdown));
 
+std::string MakeSharedMemoryPrefix(std::string_view instance_id) {
+  return Format("yb_pg_$0_", instance_id);
+}
+
+std::string MakeSharedMemoryName(std::string_view instance_id, uint64_t session_id) {
+  return MakeSharedMemoryPrefix(instance_id) + std::to_string(session_id);
+}
+
 class SharedExchangeHeader {
  public:
   SharedExchangeHeader() = default;
@@ -261,14 +270,6 @@ class SharedExchangeHeader {
   std::byte data_[0];
 };
 
-std::string MakeSharedMemoryPrefix(const std::string& instance_id) {
-  return Format("yb_pg_$0_", instance_id);
-}
-
-std::string MakeSharedMemoryName(const std::string& instance_id, uint64_t session_id) {
-  return MakeSharedMemoryPrefix(instance_id) + std::to_string(session_id);
-}
-
 } // namespace
 
 class SharedExchange::Impl {
@@ -277,26 +278,20 @@ class SharedExchange::Impl {
   Impl(T type, const std::string& instance_id, uint64_t session_id)
       : instance_id_(instance_id),
         session_id_(session_id),
-        owner_(std::is_same_v<T, boost::interprocess::create_only_t>),
-        shared_memory_object_(type, MakeSharedMemoryName(instance_id, session_id).c_str(),
-                              boost::interprocess::read_write) {
-    if (owner_) {
-      shared_memory_object_.truncate(boost::interprocess::mapped_region::get_page_size());
-    }
-    mapped_region_ = boost::interprocess::mapped_region(
-        shared_memory_object_, boost::interprocess::read_write);
-    if (owner_) {
-      new (mapped_region_.get_address()) SharedExchangeHeader();
-    }
+        owner_(std::is_same_v<T, boost::interprocess::create_only_t>) {}
+
+  Status Init() {
+    shared_memory_object_ = VERIFY_RESULT(
+        MakeSharedMemoryObject(owner_, instance_id_, session_id_));
+    mapped_region_ = VERIFY_RESULT(MakeMappedRegion(owner_, shared_memory_object_));
+    return Status::OK();
   }
 
   ~Impl() {
     if (!owner_ || FLAGS_TEST_skip_remove_tserver_shared_memory_object) {
       return;
     }
-    std::string shared_memory_object_name(shared_memory_object_.get_name());
-    shared_memory_object_ = boost::interprocess::shared_memory_object();
-    boost::interprocess::shared_memory_object::remove(shared_memory_object_name.c_str());
+    shared_memory_object_.DestroyAndRemove();
   }
 
   std::byte* Obtain(size_t required_size) {
@@ -357,6 +352,26 @@ class SharedExchange::Impl {
   }
 
  private:
+  static Result<InterprocessSharedMemoryObject> MakeSharedMemoryObject(
+      bool owner, std::string_view instance_id, uint64_t session_id) {
+    auto name = MakeSharedMemoryName(instance_id, session_id);
+    if (owner) {
+      return InterprocessSharedMemoryObject::Create(
+          name, boost::interprocess::mapped_region::get_page_size());
+    } else {
+      return InterprocessSharedMemoryObject::Open(name);
+    }
+  }
+
+  static Result<InterprocessMappedRegion> MakeMappedRegion(
+      bool owner, const InterprocessSharedMemoryObject& shared_memory_object) {
+    auto region = VERIFY_RESULT(shared_memory_object.Map());
+    if (owner) {
+      new (region.get_address()) SharedExchangeHeader();
+    }
+    return region;
+  }
+
   SharedExchangeHeader& header() {
     return *static_cast<SharedExchangeHeader*>(mapped_region_.get_address());
   }
@@ -368,8 +383,8 @@ class SharedExchange::Impl {
   const std::string instance_id_;
   const uint64_t session_id_;
   const bool owner_;
-  boost::interprocess::shared_memory_object shared_memory_object_;
-  boost::interprocess::mapped_region mapped_region_;
+  InterprocessSharedMemoryObject shared_memory_object_;
+  InterprocessMappedRegion mapped_region_;
   size_t last_size_;
   bool failed_previous_request_ = false;
 };
@@ -383,6 +398,7 @@ Result<SharedExchange> SharedExchange::Make(
     } else {
       impl = std::make_unique<Impl>(boost::interprocess::open_only, instance_id, session_id);
     }
+    RETURN_NOT_OK(impl->Init());
     return SharedExchange(std::move(impl));
   } catch (boost::interprocess::interprocess_exception& exc) {
     auto result = STATUS_FORMAT(
