@@ -560,7 +560,7 @@ class Tablet : public AbstractTablet,
   // request in state. Due to acquiring locks it can block the thread.
   void AcquireLocksAndPerformDocOperations(std::unique_ptr<WriteQuery> query);
 
-  // Given a propopsed "history cutoff" timestamp, returns either that value, if possible, or a
+  // Given a proposed "history cutoff" timestamp, returns either that value, if possible, or a
   // smaller value corresponding to the oldest active reader, whichever is smaller. This ensures
   // that data needed by active read operations is not compacted away.
   //
@@ -751,6 +751,10 @@ class Tablet : public AbstractTablet,
   }
 
   TabletVectorIndexes& vector_indexes() {
+    return *vector_indexes_;
+  }
+
+  const TabletVectorIndexes& vector_indexes() const {
     return *vector_indexes_;
   }
 
@@ -998,6 +1002,17 @@ class Tablet : public AbstractTablet,
   void SetCompactFlushRateLimitBytesPerSec(int64_t bytes_per_sec);
 
   void SetAllowCompactionFailures(rocksdb::AllowCompactionFailures allow_compaction_failures);
+
+  Status GetSafeTimeReadOperationData(
+      const ReadHybridTime& read_hybrid_time, CoarseTimePoint deadline,
+      docdb::ReadOperationData& read_operation_data) const;
+
+  Status GetSafeTimeReadOperationData(
+      const ReadHybridTime& read_hybrid_time,
+      docdb::ReadOperationData& read_operation_data) const {
+    return GetSafeTimeReadOperationData(
+        read_hybrid_time, CoarseTimePoint::max(), read_operation_data);
+  }
 
  private:
   friend class Iterator;

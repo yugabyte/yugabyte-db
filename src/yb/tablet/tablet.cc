@@ -1756,12 +1756,10 @@ Result<docdb::DocRowwiseIteratorPtr> Tablet::NewUninitializedDocRowIterator(
   auto txn_op_ctx = VERIFY_RESULT(CreateTransactionOperationContext(
       /* transaction_id */ std::nullopt,
       table_info->schema().table_properties().is_ysql_catalog_table()));
-  docdb::ReadOperationData read_operation_data = {
-      .deadline = deadline,
-      .read_time = read_hybrid_time
-                       ? read_hybrid_time
-                       : ReadHybridTime::SingleTime(VERIFY_RESULT(SafeTime(RequireLease::kFalse))),
-  };
+
+  docdb::ReadOperationData read_operation_data;
+  RETURN_NOT_OK(GetSafeTimeReadOperationData(read_hybrid_time, deadline, read_operation_data));
+
   return std::make_unique<DocRowwiseIterator>(
       projection, table_info->doc_read_context, txn_op_ctx, doc_db(), read_operation_data,
       std::move(scoped_read_operation));
@@ -5819,6 +5817,18 @@ void Tablet::SetAllowCompactionFailures(
     }
     db->SetAllowCompactionFailures(allow_compaction_failures);
   }
+}
+
+Status Tablet::GetSafeTimeReadOperationData(
+    const ReadHybridTime& read_hybrid_time, CoarseTimePoint deadline,
+    docdb::ReadOperationData& read_operation_data) const {
+  read_operation_data = {
+      .deadline = deadline,
+      .read_time = read_hybrid_time
+          ? read_hybrid_time
+          : ReadHybridTime::SingleTime(VERIFY_RESULT(SafeTime(RequireLease::kFalse))),
+  };
+  return Status::OK();
 }
 
 // ------------------------------------------------------------------------------------------------

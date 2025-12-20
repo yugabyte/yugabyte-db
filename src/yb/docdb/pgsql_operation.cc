@@ -1018,6 +1018,11 @@ class PgsqlVectorFilter {
     projection_.Init(data.doc_read_context.schema(), columns);
     row_.emplace(projection_);
     RETURN_NOT_OK(iter_.InitForYbctid(data, projection_, data.doc_read_context, {}));
+
+    reverse_mapping_reader_ = VERIFY_RESULT(
+        data.vector_index->context().CreateReverseMappingReader(
+            data.read_operation_data.read_time));
+
     return true;
   }
 
@@ -1026,10 +1031,10 @@ class PgsqlVectorFilter {
       return true;
     }
     ++num_checked_entries_;
-    auto key = dockv::DocVectorKey(vector_id);
+
     // TODO(vector_index) handle failure
-    auto ybctid = CHECK_RESULT(iter_.impl().FetchDirect(key));
-    if (ybctid.empty() || ybctid[0] == dockv::ValueEntryTypeAsChar::kTombstone) {
+    auto ybctid = CHECK_RESULT(reverse_mapping_reader_->FetchYbctid(vector_id));
+    if (ybctid.empty()) {
       ++num_removed_;
       return false;
     }
@@ -1067,6 +1072,7 @@ class PgsqlVectorFilter {
  private:
   FilteringIterator iter_;
   dockv::ReaderProjection projection_;
+  docdb::DocVectorIndexReverseMappingReaderPtr reverse_mapping_reader_;
   size_t index_column_index_ = std::numeric_limits<size_t>::max();
   std::optional<dockv::PgTableRow> row_;
   bool need_refresh_ = false;
@@ -2789,6 +2795,7 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(const PgVectorReadOpti
       },
       could_have_missing_entries
   ));
+  VLOG_WITH_FUNC(2) << "Search results: " << result.ToString();
 
   // TODO(vector_index) Order keys by ybctid for fetching.
   auto dump_stats = FLAGS_vector_index_dump_stats;

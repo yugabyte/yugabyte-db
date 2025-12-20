@@ -889,16 +889,4 @@ bool DocRowwiseIterator::LivenessColumnExists() const {
   return subdoc != nullptr && subdoc->value_type() != dockv::ValueEntryType::kInvalid;
 }
 
-Result<Slice> DocRowwiseIterator::FetchDirect(Slice key) {
-  db_iter_->UpdateFilterKey(key);
-  db_iter_->Seek(key, SeekFilter::kAll, Full::kTrue);
-  auto fetch_result = VERIFY_RESULT_REF(db_iter_->Fetch());
-
-  // TODO(vector_index): as opposite to compare the key, the better approach would be to
-  // set db_iter_ upper bound (and restore it on leaving the scope, refer to
-  // IntentAwareIteratorUpperboundScope) to return from Seek prematurely, avoiding unnecessary
-  // nexts and seeks in some edge cases.
-  return fetch_result.key == key ? fetch_result.value : Slice();
-}
-
 }  // namespace yb::docdb

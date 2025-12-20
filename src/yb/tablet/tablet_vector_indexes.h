@@ -103,6 +103,9 @@ class TabletVectorIndexes : public TabletComponent {
 
   Status Verify();
 
+  Result<docdb::IntentAwareIteratorWithBounds> CreateReverseMappingIterator(
+      const ReadHybridTime& read_ht) const;
+
   void SetHasVectorDeletion() {
     has_vector_deletion_.store(true);
   }

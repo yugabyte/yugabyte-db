@@ -250,11 +250,6 @@ DEFINE_validator(compression_type,
 DEFINE_validator(regular_tablets_data_block_key_value_encoding,
     FLAG_OK_VALIDATOR(yb::docdb::GetConfiguredKeyValueEncodingFormat(_value)));
 
-using std::shared_ptr;
-using std::string;
-using std::unique_ptr;
-using strings::Substitute;
-
 namespace yb {
 namespace docdb {
 
@@ -292,7 +287,6 @@ void SetupBloomFilter(rocksdb::ReadOptions& read_options, const BloomFilterOptio
 }
 
 rocksdb::ReadOptions PrepareReadOptions(
-    rocksdb::DB* rocksdb,
     const BloomFilterOptions& bloom_filter,
     const rocksdb::QueryId query_id,
     std::shared_ptr<rocksdb::ReadFileFilter> file_filter,
@@ -325,12 +319,12 @@ BoundedRocksDbIterator CreateRocksDBIterator(
     const rocksdb::CacheRestartBlockKeys cache_restart_block_keys,
     rocksdb::Statistics* statistics) {
   rocksdb::ReadOptions read_opts = PrepareReadOptions(
-      rocksdb, bloom_filter, query_id, std::move(file_filter), iterate_upper_bound,
+      bloom_filter, query_id, std::move(file_filter), iterate_upper_bound,
       cache_restart_block_keys, statistics);
   return BoundedRocksDbIterator(rocksdb, read_opts, docdb_key_bounds);
 }
 
-unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
+IntentAwareIteratorPtr CreateIntentAwareIterator(
     const DocDB& doc_db,
     const BloomFilterOptions& bloom_filter,
     const rocksdb::QueryId query_id,
@@ -345,7 +339,7 @@ unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
 
   // TODO(dtxn) do we need separate options for intents db?
   rocksdb::ReadOptions read_opts = PrepareReadOptions(
-      doc_db.regular, bloom_filter, query_id, std::move(file_filter), iterate_upper_bound,
+      bloom_filter, query_id, std::move(file_filter), iterate_upper_bound,
       cache_restart_block_keys, GetRegularDBStatistics(read_operation_data.statistics));
   return std::make_unique<IntentAwareIterator>(
       doc_db, read_opts, read_operation_data, txn_op_context,
@@ -654,7 +648,7 @@ PriorityThreadPool* GetGlobalPriorityThreadPool() {
 }
 
 void InitRocksDBBaseOptions(
-    rocksdb::Options* options, const string& log_prefix, const TabletId& tablet_id,
+    rocksdb::Options* options, const std::string& log_prefix, const TabletId& tablet_id,
     const tablet::TabletOptions& tablet_options, const uint64_t group_no) {
   AutoInitFromRocksDBFlags(options);
   options->tablet_id = tablet_id;
@@ -778,9 +772,9 @@ void InitRocksDBOptionsTableFactory(
 }
 
 void InitRocksDBOptions(
-    rocksdb::Options* options, const string& log_prefix,
+    rocksdb::Options* options, const std::string& log_prefix,
     const TabletId& tablet_id,
-    const shared_ptr<rocksdb::Statistics>& statistics,
+    const std::shared_ptr<rocksdb::Statistics>& statistics,
     const tablet::TabletOptions& tablet_options,
     rocksdb::BlockBasedTableOptions table_options,
     const uint64_t group_no) {

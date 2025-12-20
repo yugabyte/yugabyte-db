@@ -104,10 +104,6 @@ inline Slice StrongWriteSuffix(Slice key) {
   return key.empty() ? kEmptyKeyStrongWriteTailSlice : kStrongWriteTailSlice;
 }
 
-inline Slice StrongWriteSuffix(const dockv::KeyBytes& key) {
-  return StrongWriteSuffix(key.AsSlice());
-}
-
 inline Slice MaxIntentTypeSuffix(const dockv::KeyBytes& key) {
   return key.empty() ? kEmptyKeyMaxIntentTypeTailSlice : kMaxIntentTypeTailSlice;
 }
@@ -777,6 +773,14 @@ Result<const FetchedEntry&> IntentAwareIterator::Fetch() {
   }
 
   return result;
+}
+
+Result<Slice> IntentAwareIterator::FetchValue(Slice key) {
+  UpdateFilterKey(key);
+  Seek(key, SeekFilter::kAll, Full::kTrue);
+  auto fetch_result = VERIFY_RESULT_REF(Fetch());
+
+  return fetch_result.key == key ? fetch_result.value : Slice{};
 }
 
 template <bool kDescending>
@@ -1466,10 +1470,6 @@ void IntentAwareIterator::UpdateMaxSeenHt(EncodedDocHybridTime seen_ht, Slice ke
       && max_seen_ht_data_.max_seen_ht_key.empty()) {
     max_seen_ht_data_.max_seen_ht_key = SubDocKey::DebugSliceToString(key);
   }
-}
-
-void AppendStrongWrite(KeyBytes* out) {
-  out->AppendRawBytes(StrongWriteSuffix(*out));
 }
 
 }  // namespace yb::docdb

@@ -201,7 +201,7 @@ class DocWriteBatch {
       const dockv::DocPath& doc_path,
       const dockv::ValueControlFields& control_fields,
       const ValueRef& value,
-      std::unique_ptr<IntentAwareIterator> intent_iter);
+      IntentAwareIteratorPtr intent_iter);
 
   Status SetPrimitive(
       const dockv::DocPath& doc_path,

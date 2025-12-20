@@ -79,7 +79,7 @@ class RedisWriteOperation :
   RedisResponsePB response_;
   // TODO: Currently we have a separate iterator per operation, but in future, we leave the option
   // open for operations to share iterators.
-  std::unique_ptr<IntentAwareIterator> iterator_;
+  IntentAwareIteratorPtr iterator_;
 
   rocksdb::QueryId redis_query_id() { return reinterpret_cast<rocksdb::QueryId > (&request_); }
 };
@@ -136,7 +136,7 @@ class RedisReadOperation {
   // Make these two classes similar in terms of how rocksdb state is passed to them.
   // Currently ReadOperations get the state during construction, but Write operations get them when
   // calling Apply(). Apply() and Execute() should be more similar() in definition.
-  std::unique_ptr<IntentAwareIterator> iterator_;
+  IntentAwareIteratorPtr iterator_;
 
   std::optional<DeadlineInfo> deadline_info_;
 };
