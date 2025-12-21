@@ -3709,7 +3709,7 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&yb_test_make_all_ddl_statements_incrementing,
-		false,
+		true,
 		NULL, NULL, NULL
 	},
 

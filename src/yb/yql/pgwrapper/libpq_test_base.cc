@@ -19,6 +19,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/tsan_util.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
 
@@ -419,7 +420,7 @@ void LibPqTestBase::WaitForCatalogVersionToPropagate() {
   // actually propagated.
   constexpr int kSleepSeconds = 2;
   LOG(INFO) << "Wait " << kSleepSeconds << " seconds for heartbeat to propagate catalog versions";
-  std::this_thread::sleep_for(kSleepSeconds * 1s);
+  std::this_thread::sleep_for(kSleepSeconds * kTimeMultiplier * 1s);
 }
 
 } // namespace pgwrapper

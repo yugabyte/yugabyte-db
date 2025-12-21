@@ -304,6 +304,11 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(
     "If true, allow lower_bound/upper_bound fields of PgsqlReadRequestPB to be DocKeys. Only "
     "applicable for hash-sharded tables.");
 
+DEFINE_RUNTIME_AUTO_PG_FLAG(
+    bool, yb_test_make_all_ddl_statements_incrementing, kLocalVolatile, false, true,
+    "When set, all DDL statements will cause the catalog version to increment. This mainly "
+    "affects CREATE commands such as CREATE TABLE, CREATE VIEW, and CREATE SEQUENCE.");
+
 DEFINE_RUNTIME_PG_FLAG(
     string, yb_default_replica_identity, "CHANGE",
     "The default replica identity to be assigned to user defined tables at the time of creation. "

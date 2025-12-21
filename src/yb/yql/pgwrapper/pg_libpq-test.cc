@@ -82,6 +82,7 @@ METRIC_DECLARE_counter(transaction_not_found);
 METRIC_DECLARE_entity(server);
 METRIC_DECLARE_counter(rpc_inbound_calls_created);
 METRIC_DECLARE_counter(rpc_inbound_calls_failed);
+METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
 
 namespace yb::pgwrapper {
 
@@ -4290,6 +4291,12 @@ TEST_F(PgLibPqTest, CatalogCacheIdMissMetricsTest) {
 }
 
 class PgLibPqAmopNegCacheTest : public PgLibPqTest {
+ public:
+  enum class NegCacheTestType {
+    kPreload,
+    kNoPreload,
+    kNegCache
+  };
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_tserver_flags.emplace_back(
@@ -4297,7 +4304,7 @@ class PgLibPqAmopNegCacheTest : public PgLibPqTest {
     PgLibPqTest::UpdateMiniClusterOptions(options);
   }
 
-  void TestAmopNegCacheMiss(bool preloaded) {
+  void TestAmopNegCacheMiss(NegCacheTestType test_type) {
     auto conn = ASSERT_RESULT(Connect());
     ASSERT_OK(conn.Execute("CREATE TABLE test(k TEXT PRIMARY KEY)"));
 
@@ -4316,7 +4323,18 @@ class PgLibPqAmopNegCacheTest : public PgLibPqTest {
     int64_t value1 = ASSERT_RESULT(runQueryAndGetMetricLambda());
     int64_t value2 = ASSERT_RESULT(runQueryAndGetMetricLambda());
 
-    ASSERT_GT(value2, value1);
+    switch (test_type) {
+      case NegCacheTestType::kNegCache:
+        // Negative caching enabled: there shouldn't be any further
+        // cache misses since the negative cache entry should be present.
+        ASSERT_EQ(value2, value1);
+      break;
+      case NegCacheTestType::kPreload: FALLTHROUGH_INTENDED;
+      case NegCacheTestType::kNoPreload:
+        // Without negative caching, we should see a cache miss here.
+        ASSERT_GT(value2, value1);
+        break;
+    }
 
     LOG(INFO) << "Testing invalid values for yb_neg_catcache_ids";
     ASSERT_NOK_PG_ERROR_CODE(conn2.Execute("SET yb_neg_catcache_ids='52252'"),
@@ -4330,18 +4348,35 @@ class PgLibPqAmopNegCacheTest : public PgLibPqTest {
     ASSERT_OK(conn2.Execute("SET yb_neg_catcache_ids='3'"));
     int64_t value3 = ASSERT_RESULT(runQueryAndGetMetricLambda());
 
-    if (preloaded) {
-      // When preloaded, allowing neg caching already returns a neg cache hit
-      // so we should see no further misses on pg_amop at this point.
-      ASSERT_EQ(value3, value2);
-    } else {
-      // When not preloaded, we need one additional query to create the neg
-      // cache entry, after which we should see no further misses.
-      ASSERT_GT(value3, value2);
+    switch (test_type) {
+      case NegCacheTestType::kNegCache:
+        // Negative caching enabled: there shouldn't be any further
+        // cache misses since the negative cache entry should be present.
+        ASSERT_EQ(value2, value1);
+      break;
+      case NegCacheTestType::kPreload:
+        // When preloaded, allowing neg caching already returns a neg cache hit
+        // so we should see no further misses on pg_amop at this point.
+        ASSERT_EQ(value3, value2);
+        break;
+      case NegCacheTestType::kNoPreload:
+        // When not preloaded, we need one additional query to create the neg
+        // cache entry, after which we should see no further misses.
+        ASSERT_GT(value3, value2);
 
-      int64_t value4 = ASSERT_RESULT(runQueryAndGetMetricLambda());
-      ASSERT_EQ(value4, value3);
+        int64_t value4 = ASSERT_RESULT(runQueryAndGetMetricLambda());
+        ASSERT_EQ(value4, value3);
+        break;
     }
+  }
+};
+
+class PgLibPqAmopNoPreloadNegCacheTest : public PgLibPqAmopNegCacheTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.emplace_back(
+        "--ysql_pg_conf_csv=yb_test_make_all_ddl_statements_incrementing=false");
+    PgLibPqTest::UpdateMiniClusterOptions(options);
   }
 };
 
@@ -4349,18 +4384,28 @@ class PgLibPqAmopPreloadNegCacheTest : public PgLibPqAmopNegCacheTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_tserver_flags.emplace_back(
+        "--ysql_pg_conf_csv=yb_test_make_all_ddl_statements_incrementing=false");
+    options->extra_tserver_flags.emplace_back(
         "--ysql_catalog_preload_additional_table_list=pg_amop");
-    PgLibPqAmopNegCacheTest::UpdateMiniClusterOptions(options);
+    PgLibPqTest::UpdateMiniClusterOptions(options);
   }
 };
 
+// Default behavior: negative caching is enabled.
 TEST_F_EX(PgLibPqTest, PgAmopNegCacheTest, PgLibPqAmopNegCacheTest) {
-  TestAmopNegCacheMiss(false);
+  TestAmopNegCacheMiss(NegCacheTestType::kNegCache);
 }
 
-TEST_F_EX(PgLibPqTest, PgAmopPreloadNegCacheTest, PgLibPqAmopPreloadNegCacheTest) {
-  TestAmopNegCacheMiss(true);
+// Disable negative caching.
+TEST_F_EX(PgLibPqTest, PgAmopNoPreloadCacheTest, PgLibPqAmopNoPreloadNegCacheTest) {
+  TestAmopNegCacheMiss(NegCacheTestType::kNoPreload);
 }
+
+// Disable negative caching and preload pg_amop.
+TEST_F_EX(PgLibPqTest, PgAmopPreloadCacheTest, PgLibPqAmopPreloadNegCacheTest) {
+  TestAmopNegCacheMiss(NegCacheTestType::kPreload);
+}
+
 
 class PgLibPqPgInheritsNegCacheTest : public PgLibPqTest {
  protected:
@@ -4575,11 +4620,21 @@ TEST_F(PgLibPqCreateSequenceNamespaceRaceTest, CreateSequenceNamespaceRaceTest) 
   auto conn2 = ASSERT_RESULT(Connect());
   TestThreadHolder thread_holder;
   thread_holder.AddThreadFunctor([&conn1]() -> void {
-    ASSERT_OK(conn1.Execute("CREATE TABLE t1(k SERIAL, v INT)"));
+    // Retry on 40001 (serialization failure) which can occur due to
+    // running CREATE TABLE concurrently with the other thread.
+    Status s;
+    do {
+      s = conn1.Execute("CREATE TABLE t1(k SERIAL, v INT)");
+    } while (!s.ok() && HasTransactionError(s));
+    ASSERT_OK(s);
     ASSERT_OK(conn1.Execute("INSERT INTO t1(v) VALUES(1)"));
   });
   thread_holder.AddThreadFunctor([&conn2]() -> void {
-    ASSERT_OK(conn2.Execute("CREATE TABLE t2(k SERIAL, v INT)"));
+    Status s;
+    do {
+      s = conn2.Execute("CREATE TABLE t2(k SERIAL, v INT)");
+    } while (!s.ok() && HasTransactionError(s));
+    ASSERT_OK(s);
     ASSERT_OK(conn2.Execute("INSERT INTO t2(v) VALUES(2)"));
   });
   thread_holder.WaitAndStop(10s * kTimeMultiplier);

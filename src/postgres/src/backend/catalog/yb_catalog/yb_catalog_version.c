@@ -749,17 +749,19 @@ YbCreateMasterDBCatalogVersionTableEntry(Oid db_oid)
 	HandleYBStatus(YBCPgDmlBindColumn(insert_stmt, YBTupleIdAttributeNumber,
 									  ybctid_expr));
 
+
+
 	AttrNumber	attnum = Anum_pg_yb_catalog_version_current_version;
 	Datum		initial_version = 1;
 	YbcPgExpr	initial_version_expr = YBCNewConstant(insert_stmt, INT8OID,
-													  InvalidOid,
-													  initial_version,
-													  false /* is_null */ );
+													InvalidOid,
+													initial_version,
+													false /* is_null */ );
 
 	HandleYBStatus(YBCPgDmlBindColumn(insert_stmt, attnum,
-									  initial_version_expr));
+									initial_version_expr));
 	HandleYBStatus(YBCPgDmlBindColumn(insert_stmt, attnum + 1,
-									  initial_version_expr));
+									initial_version_expr));
 
 	int			rows_affected_count = 0;
 

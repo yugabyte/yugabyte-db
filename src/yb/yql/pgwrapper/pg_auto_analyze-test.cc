@@ -1333,22 +1333,6 @@ class PgConcurrentDDLAnalyzeTest : public LibPqTestBase {
     ASSERT_OK(conn2.Execute("SET yb_use_internal_auto_analyze_service_conn=false"));
     thread_holder.JoinAll();
 
-    // Case: Two CREATE TABLEs can still run concurrently
-    thread_holder.AddThreadFunctor([&conn1]() -> void {
-      ASSERT_OK(conn1.Execute("CREATE TABLE test5(k INT PRIMARY KEY, v INT) split into 1 tablets"));
-    });
-    ASSERT_OK(LogWaiter(ts1, wait_string).WaitFor(30s));
-    ASSERT_OK(conn2.Execute("CREATE TABLE test6(k INT PRIMARY KEY, v INT) split into 1 tablets"));
-    thread_holder.JoinAll();
-
-    // Case: A CREATE TABLE can still run concurrently with an ALTER
-    thread_holder.AddThreadFunctor([&conn1]() -> void {
-      ASSERT_OK(conn1.Execute("CREATE TABLE test7(k INT PRIMARY KEY, v INT) split into 1 tablets"));
-    });
-    ASSERT_OK(LogWaiter(ts1, wait_string).WaitFor(30s));
-    ASSERT_OK(conn2.Execute("ALTER TABLE test4 ADD COLUMN v1 INT"));
-    thread_holder.JoinAll();
-
     auto another_db_conn = ASSERT_RESULT(
         pgwrapper::PGConnBuilder(
             {.host = ts3->bind_host(), .port = ts3->ysql_port(), .dbname = another_db_name})

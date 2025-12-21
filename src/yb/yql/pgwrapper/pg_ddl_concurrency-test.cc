@@ -42,15 +42,28 @@ Status SuppressAllowedErrors(const Status& s) {
 }
 
 Status RunIndexCreationQueries(PGConn* conn, const std::string& table_name) {
-  static const std::initializer_list<std::string> queries = {
+  constexpr const char* kQueries[] = {
       "DROP TABLE IF EXISTS $0",
       "CREATE TABLE IF NOT EXISTS $0(k int PRIMARY KEY, v int)",
-      "CREATE INDEX IF NOT EXISTS $0_v ON $0(v)"
+      "CREATE INDEX IF NOT EXISTS $0_v ON $0(v)",
   };
-  for (const auto& query : queries) {
-    RETURN_NOT_OK(SuppressAllowedErrors(conn->ExecuteFormat(query, table_name)));
+  while (true) {
+    RETURN_NOT_OK(SuppressAllowedErrors(conn->ExecuteFormat(kQueries[0], table_name)));
+
+    // CREATE TABLE may fail due to catalog version mismatch.
+    // If it fails, skip creating the index on it.
+    auto create_status = conn->ExecuteFormat(kQueries[1], table_name);
+    RETURN_NOT_OK(SuppressAllowedErrors(create_status));
+    if (!create_status.ok()) {
+      continue;
+    }
+
+    auto index_status = conn->ExecuteFormat(kQueries[2], table_name);
+    RETURN_NOT_OK(SuppressAllowedErrors(index_status));
+    if (index_status.ok()) {
+      return Status::OK();
+    }
   }
-  return Status::OK();
 }
 
 } // namespace
