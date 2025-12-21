@@ -59,6 +59,10 @@
 #include "yb/tserver/tserver_admin.service.h"
 #include "yb/tserver/tserver_service.service.h"
 
+namespace rocksdb {
+class DB;
+}
+
 namespace yb {
 class Schema;
 class Status;
@@ -381,6 +385,10 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
       const GetPgSocketDirRequestPB* req, GetPgSocketDirResponsePB* resp,
       rpc::RpcContext context) override;
 
+  void ClearCache(const ClearCacheRequestPB* req,
+                  ClearCacheResponsePB* resp,
+                  rpc::RpcContext context) override;
+
  private:
   TabletServer* const server_;
 
@@ -393,6 +401,8 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
 
   Status DoEnableDbConns(
       const EnableDbConnsRequestPB* req, EnableDbConnsResponsePB* resp);
+
+  uint64_t ClearRocksDbBlockCache(rocksdb::DB* db, const std::string& db_type, const std::string& tablet_id);
 
   Status SetupCDCSDKRetention(
       const tablet::ChangeMetadataRequestPB* req, ChangeMetadataResponsePB* resp,

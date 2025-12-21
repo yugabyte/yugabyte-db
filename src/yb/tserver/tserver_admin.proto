@@ -416,6 +416,13 @@ message GetActiveRbsInfoResponsePB {
   repeated RbsInfo rbs_infos = 2;
 }
 
+message ClearCacheRequestPB {}
+
+message ClearCacheResponsePB {
+  optional TabletServerErrorPB error = 1;
+  optional uint64 cache_capacity_bytes = 2;
+}
+
 service TabletServerAdminService {
   // Create a new, empty tablet with the specified parameters. Only used for
   // brand-new tablets, not for "moves".
@@ -474,4 +481,6 @@ service TabletServerAdminService {
   rpc GetPgSocketDir(GetPgSocketDirRequestPB) returns (GetPgSocketDirResponsePB);
 
   rpc GetActiveRbsInfo(GetActiveRbsInfoRequestPB) returns (GetActiveRbsInfoResponsePB);
+
+  rpc ClearCache(ClearCacheRequestPB) returns (ClearCacheResponsePB);
 }

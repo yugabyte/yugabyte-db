@@ -110,6 +110,10 @@
 #include "yb/tserver/ysql_advisory_lock_table.h"
 #include "yb/tserver/ysql_lease.h"
 
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/table.h"
+#include "yb/rocksdb/table/block_based_table_factory.h"
+
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/callsite_profiling.h"
@@ -2587,6 +2591,89 @@ void TabletServiceAdminImpl::GetPgSocketDir(
     return;
   }
   HostPortToPB(*result, resp->mutable_pg_socket_dir());
+  context.RespondSuccess();
+}
+
+uint64_t TabletServiceAdminImpl::ClearRocksDbBlockCache(rocksdb::DB* db, const std::string& db_type, const std::string& tablet_id) {
+  if (!db) {
+    LOG(WARNING) << "Null " << db_type << " DB for tablet " << tablet_id;
+    return 0;
+  }
+
+  try {
+    const rocksdb::Options& options = db->GetOptions();
+    auto block_table_factory = std::dynamic_pointer_cast<rocksdb::BlockBasedTableFactory>(options.table_factory);
+
+    if (!block_table_factory) {
+      LOG(WARNING) << "No BlockBasedTableFactory found for " << db_type
+                   << " DB in tablet " << tablet_id;
+      return 0;
+    }
+
+    auto* block_cache = block_table_factory->table_options().block_cache.get();
+    if (!block_cache) {
+      LOG(WARNING) << "No block cache found for " << db_type
+                   << " DB in tablet " << tablet_id;
+      return 0;
+    }
+
+    // Setting the cache capacity to 0 forces the cache to evict all stored entries, effectively clearing its contents. 
+    // Immediately restoring the capacity to its original value allows the cache to resume normal operation 
+    // without permanently restricting its size.
+    auto original_capacity = block_cache->GetCapacity();
+    block_cache->SetCapacity(0);
+    block_cache->SetCapacity(original_capacity);
+
+    LOG(INFO) << "Purged " << db_type << " block cache for tablet " << tablet_id
+              << " (capacity: " << original_capacity << " bytes)";
+
+    return original_capacity;
+
+  } catch (const std::exception& e) {
+    LOG(ERROR) << "Exception while clearing " << db_type << " cache for tablet "
+               << tablet_id << ": " << e.what();
+    return 0;
+  }
+}
+
+void TabletServiceAdminImpl::ClearCache(
+    const ClearCacheRequestPB* req, ClearCacheResponsePB* resp, rpc::RpcContext context) {
+  LOG(INFO) << "Received ClearCache RPC request from " << context.requestor_string();
+
+  TabletPeers tablet_peers = server_->tablet_manager()->GetTabletPeers();
+  LOG(INFO) << "Found " << tablet_peers.size() << " tablet peers on this tserver";
+
+  uint64_t total_cache_capacity = 0;
+  int successful_clears = 0;
+
+  for (const auto& tablet_peer : tablet_peers) {
+    auto tablet_ptr = tablet_peer->shared_tablet();
+    if (!tablet_ptr) {
+      LOG(WARNING) << "Failed to get tablet " << tablet_peer->tablet_id();
+      continue;
+    }
+
+    auto tablet = *tablet_ptr;
+    if (!tablet) {
+      LOG(WARNING) << "Null tablet for " << tablet_peer->tablet_id();
+      continue;
+    }
+
+    if (tablet->regular_db()) {
+      auto capacity = ClearRocksDbBlockCache(tablet->regular_db(), "regular", tablet_peer->tablet_id());
+      total_cache_capacity += capacity;
+    }
+
+    if (tablet->intents_db()) {
+      auto capacity = ClearRocksDbBlockCache(tablet->intents_db(), "intents", tablet_peer->tablet_id());
+      total_cache_capacity += capacity;
+    }
+
+    successful_clears++;
+  }
+
+  LOG(INFO) << "Successfully cleared cache on " << successful_clears << " tablets";
+  resp->set_cache_capacity_bytes(total_cache_capacity);
   context.RespondSuccess();
 }
 
