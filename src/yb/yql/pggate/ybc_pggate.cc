@@ -171,7 +171,8 @@ inline std::optional<Bound> MakeBound(YbcPgBoundType type, uint16_t value) {
 
 Status InitPgGateImpl(
     YbcPgTypeEntities type_entities, const YbcPgCallbacks& pg_callbacks,
-    YbcPgAshConfig& ash_config, const YbcPgInitPostgresInfo& init_postgres_info) {
+    YbcPgAshConfig& ash_config, const YbcPgInitPostgresInfo& init_postgres_info,
+    YbcPgExecStatsState& session_stats, bool is_binary_upgrade) {
   // TODO: We should get rid of hybrid clock usage in YSQL backend processes (see #16034).
   // However, this is added to allow simulating and testing of some known bugs until we remove
   // HybridClock usage.
@@ -189,18 +190,12 @@ Status InitPgGateImpl(
 #endif
 
   pgapi_shutdown_done.exchange(false);
-  pgapi = new PgApiImpl(type_entities, pg_callbacks, init_postgres_info, ash_config);
-  RETURN_NOT_OK(pgapi->StartPgApi(init_postgres_info));
+  pgapi = VERIFY_RESULT(PgApiImpl::Make(
+      type_entities, pg_callbacks, init_postgres_info, ash_config, session_stats,
+      is_binary_upgrade)).release();
 
   VLOG(1) << "PgGate open";
   return Status::OK();
-}
-
-Status PgInitSessionImpl(YbcPgExecStatsState& session_stats, bool is_binary_upgrade) {
-  return WithMaskedYsqlSignals([&session_stats, is_binary_upgrade] {
-    pgapi->InitSession(session_stats, is_binary_upgrade);
-    return static_cast<Status>(Status::OK());
-  });
 }
 
 // ql_value is modified in-place.
@@ -499,10 +494,14 @@ extern "C" {
 
 YbcStatus YBCInitPgGate(
     YbcPgTypeEntities type_entities, const YbcPgCallbacks *pg_callbacks,
-    const YbcPgInitPostgresInfo *init_postgres_info, YbcPgAshConfig *ash_config) {
+    const YbcPgInitPostgresInfo *init_postgres_info, YbcPgAshConfig *ash_config,
+    YbcPgExecStatsState *session_stats, bool is_binary_upgrade) {
   return ToYBCStatus(WithMaskedYsqlSignals(
-      [&type_entities, pg_callbacks, init_postgres_info, ash_config]() -> Status {
-        return InitPgGateImpl(type_entities, *pg_callbacks, *ash_config, *init_postgres_info);
+      [&type_entities, pg_callbacks, init_postgres_info, ash_config, session_stats,
+       is_binary_upgrade] {
+        return InitPgGateImpl(
+            type_entities, *pg_callbacks, *ash_config, *init_postgres_info, *session_stats,
+            is_binary_upgrade);
   }));
 }
 
@@ -585,10 +584,6 @@ void YBCDumpCurrentPgSessionState(YbcPgSessionState* session_data) {
 void YBCRestorePgSessionState(const YbcPgSessionState* session_data) {
   CHECK_NOTNULL(pgapi);
   pgapi->RestoreSessionState(*session_data);
-}
-
-YbcStatus YBCPgInitSession(YbcPgExecStatsState* session_stats, bool is_binary_upgrade) {
-  return ToYBCStatus(PgInitSessionImpl(*session_stats, is_binary_upgrade));
 }
 
 void YBCPgIncrementIndexRecheckCount() {
