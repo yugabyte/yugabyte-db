@@ -684,10 +684,41 @@ bool AsyncInsertPackedSchemaForXClusterTarget::SendRequest(int attempt) {
                             << tablet_id()
                             << " due to FLAGS_TEST_skip_async_insert_packed_schema_for_tablet_id";
       TransitionToCompleteState();
+      // Need to unregister the task here since we don't follow the regular RetryingTSRpcTask flow.
+      UnregisterAsyncTask();
       return true;
     }
   }
   return AsyncAlterTable::SendRequest(attempt);
+}
+
+void AsyncGetLatestCompatibleSchemaVersion::HandleResponse(int attempt) {
+  if (resp_.has_error()) {
+    callback_(StatusFromPB(resp_.error().status()), 0);
+    TransitionToFailedState(
+        server::MonitoredTaskState::kRunning, StatusFromPB(resp_.error().status()));
+    return;
+  }
+
+  if (resp_.has_compatible_schema_version()) {
+    callback_(Status::OK(), resp_.compatible_schema_version());
+    TransitionToCompleteState();
+  } else {
+    auto status = STATUS(IllegalState, "Missing compatible_schema_version in response");
+    callback_(status, 0);
+    TransitionToFailedState(server::MonitoredTaskState::kRunning, status);
+  }
+}
+
+bool AsyncGetLatestCompatibleSchemaVersion::SendRequest(int attempt) {
+  req_.set_tablet_id(tablet_id());
+  req_.mutable_schema()->CopyFrom(schema_);
+
+  ts_proxy_->GetCompatibleSchemaVersionAsync(req_, &resp_, &rpc_, BindRpcCallback());
+  VLOG_WITH_PREFIX(1) << "Sent get compatible schema version request to " << permanent_uuid()
+                      << " (attempt " << attempt << "):\n"
+                      << req_.DebugString();
+  return true;
 }
 
 // ============================================================================

@@ -132,6 +132,9 @@ class CatalogEntityWithTasks {
   std::unordered_set<server::MonitoredTaskPtr> GetTasks() const EXCLUDES(mutex_);
 
   void AddTask(server::MonitoredTaskPtr task) EXCLUDES(mutex_);
+  // Adds a task only if there are no other tasks with the same task type.
+  // Returns true if the task was added successfully.
+  bool AddTaskIfNotPresent(server::MonitoredTaskPtr task) EXCLUDES(mutex_);
 
   // Returns true if no running tasks left.
   bool RemoveTask(const server::MonitoredTaskPtr& task) EXCLUDES(mutex_);
@@ -160,6 +163,9 @@ class CatalogEntityWithTasks {
   }
 
  private:
+  bool AddTaskInternal(server::MonitoredTaskPtr task, bool allow_multiple_of_same_type)
+      EXCLUDES(mutex_);
+
   void AbortTasksAndCloseIfRequested(
       bool close, bool call_task_finisher,
       const std::unordered_set<server::MonitoredTaskType>& tasks_to_ignore = {}) EXCLUDES(mutex_);

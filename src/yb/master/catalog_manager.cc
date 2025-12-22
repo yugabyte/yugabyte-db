@@ -5964,6 +5964,14 @@ Result<scoped_refptr<TableInfo>> CatalogManager::FindTableByIdUnlocked(
   return table;
 }
 
+Result<bool> CatalogManager::HasTableWithColocationId(
+    const TablegroupId& tablegroup_id, ColocationId colocation_id) const {
+  SharedLock lock(mutex_);
+  const auto* tablegroup = tablegroup_manager_->Find(tablegroup_id);
+  SCHECK(tablegroup, NotFound, Substitute("Tablegroup with ID $0 not found", tablegroup_id));
+  return tablegroup->HasChildTable(colocation_id);
+}
+
 Result<TableId> CatalogManager::GetColocatedTableId(
     const TablegroupId& tablegroup_id, ColocationId colocation_id) const {
   SharedLock lock(mutex_);

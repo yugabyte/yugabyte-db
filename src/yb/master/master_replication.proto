@@ -521,11 +521,23 @@ message InsertPackedSchemaForXClusterTargetRequestPB {
   // and we also need to specify the colocation_id.
   optional bytes table_id = 1;
   optional SchemaPB packed_schema = 2;
-  optional uint32 current_schema_version = 3;
+  optional uint32 current_consumer_schema_version = 3;
   optional uint32 colocation_id = 4;
 }
 
 message InsertPackedSchemaForXClusterTargetResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message HandleNewSchemaForAutomaticXClusterTargetRequestPB {
+  optional bytes table_id = 1;
+  optional string replication_group_id = 2;
+  optional string stream_id = 3;
+  optional uint32 producer_schema_version = 4;
+  optional SchemaPB schema = 5;
+}
+
+message HandleNewSchemaForAutomaticXClusterTargetResponsePB {
   optional MasterErrorPB error = 1;
 }
 
@@ -908,6 +920,9 @@ service MasterReplication {
       returns (InsertHistoricalColocatedSchemaPackingResponsePB);
   rpc InsertPackedSchemaForXClusterTarget(InsertPackedSchemaForXClusterTargetRequestPB)
       returns (InsertPackedSchemaForXClusterTargetResponsePB);
+  rpc HandleNewSchemaForAutomaticXClusterTarget(
+      HandleNewSchemaForAutomaticXClusterTargetRequestPB)
+      returns (HandleNewSchemaForAutomaticXClusterTargetResponsePB);
 
   rpc GetUniverseReplications(GetUniverseReplicationsRequestPB)
       returns (GetUniverseReplicationsResponsePB);
