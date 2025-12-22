@@ -899,9 +899,9 @@
             "THP_RSS_ISSUE",
             "THP_INCORRECT_SETTINGS",
             "CDCSDK_FLUSH_LAG",
-            "CDCSDK_EXPIRY_EXPIRED",
-            "CDCSDK_EXPIRY_NEAR",
-            "CDCSDK_IDLE_STREAM"
+            "CDCSDK_EXPIRY",
+            "CDCSDK_IDLE_STREAM",
+            "OTEL_LOG_EXPORT_FAILURE"
           ],
           "type" : "string"
         },
@@ -1081,9 +1081,9 @@
             "THP_RSS_ISSUE",
             "THP_INCORRECT_SETTINGS",
             "CDCSDK_FLUSH_LAG",
-            "CDCSDK_EXPIRY_EXPIRED",
-            "CDCSDK_EXPIRY_NEAR",
-            "CDCSDK_IDLE_STREAM"
+            "CDCSDK_EXPIRY",
+            "CDCSDK_IDLE_STREAM",
+            "OTEL_LOG_EXPORT_FAILURE"
           ],
           "type" : "string"
         },
@@ -1359,9 +1359,9 @@
             "THP_RSS_ISSUE",
             "THP_INCORRECT_SETTINGS",
             "CDCSDK_FLUSH_LAG",
-            "CDCSDK_EXPIRY_EXPIRED",
-            "CDCSDK_EXPIRY_NEAR",
-            "CDCSDK_IDLE_STREAM"
+            "CDCSDK_EXPIRY",
+            "CDCSDK_IDLE_STREAM",
+            "OTEL_LOG_EXPORT_FAILURE"
           ],
           "type" : "string"
         },
