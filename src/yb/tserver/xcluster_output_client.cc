@@ -58,6 +58,11 @@ DEFINE_RUNTIME_bool(xcluster_enable_packed_rows_support, true,
     "Enables rewriting of packed rows with xcluster consumer schema version");
 TAG_FLAG(xcluster_enable_packed_rows_support, advanced);
 
+DEFINE_RUNTIME_AUTO_bool(xcluster_automatic_mode_schema_handling_v2, kExternal, false, true,
+    "When enabled, xCluster pollers will notify master about all new schema versions instead of "
+    "checking their local tablet for compatible schema versions.  Master will ensure that all "
+    "tablets have a compatible schema before updating the schema mappings.");
+
 DECLARE_int32(cdc_read_rpc_timeout_ms);
 
 DEFINE_test_flag(bool, xcluster_consumer_fail_after_process_split_op, false,
@@ -512,6 +517,7 @@ Result<bool> XClusterOutputClient::ProcessChangeMetadataOp(const cdc::CDCRecordP
   auto schema = record.change_metadata_request().has_add_table() ?
                 record.change_metadata_request().add_table().schema() :
                 record.change_metadata_request().schema();
+  SchemaVersion producer_schema_version;
   {
     ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN_STATUS;
 
@@ -528,7 +534,7 @@ Result<bool> XClusterOutputClient::ProcessChangeMetadataOp(const cdc::CDCRecordP
       if (cached_schema_versions &&
           cached_schema_versions->contains(record.change_metadata_request().schema_version())) {
         LOG_WITH_PREFIX(INFO) << Format(
-            "Ignoring change metadata request with schema $0 for tablet $1 as mapping from"
+            "Ignoring change metadata request with schema $0 for tablet $1 as mapping from "
             "producer-consumer schema version already exists",
             schema.DebugString(), producer_tablet_info_.tablet_id);
         return true;
@@ -537,12 +543,37 @@ Result<bool> XClusterOutputClient::ProcessChangeMetadataOp(const cdc::CDCRecordP
 
     // Cache the producer schema version and colocation id if present
     producer_schema_version_ = record.change_metadata_request().schema_version();
+    producer_schema_version = producer_schema_version_;
     if (schema.has_colocated_table_id()) {
       colocation_id_ = schema.colocated_table_id().colocation_id();
     }
   }
 
-  // Find the compatible consumer schema version for the incoming change metadata record.
+  // For automatic mode, we need to ensure all tablets have the same compatible schema version.
+  if (is_automatic_mode_ && FLAGS_xcluster_automatic_mode_schema_handling_v2) {
+    // Check if we have this producer schema version in our cache already (that means the master has
+    // already processed this schema version and we can use it).
+    auto compatible_schema_version =
+        VERIFY_RESULT(GetCompatibleSchemaVersionForProducerSchemaVersion(producer_schema_version));
+    if (compatible_schema_version == cdc::kInvalidSchemaVersion) {
+      // No compatible schema version found, so go tell the master about the new schema.
+      // Master will update the producer->consumer schema versions mapping, this will get sent to us
+      // via UpdateSchemaVersionMappings, which we can then use to continue processing records.
+      RETURN_NOT_OK(HandleNewSchemaForAutomaticMode(schema, producer_schema_version));
+      // Return a failure to stop processing and to reprocess from this ChangeMetadataOp again.
+      return STATUS_FORMAT(
+          TryAgain, "No compatible schema version found for producer schema version: $0",
+          producer_schema_version);
+    }
+
+    // Found a compatible schema version in our cache, so we can continue.
+    LOG_WITH_PREFIX(INFO) << Format(
+        "Found compatible schema version: $0 for producer schema version: $1",
+        compatible_schema_version, producer_schema_version);
+    return true;
+  }
+
+  // Non-automatic mode / old automatic mode: Check the local tablet for a compatible schema.
   tserver::GetCompatibleSchemaVersionRequestPB req;
   req.set_tablet_id(consumer_tablet_info_.tablet_id);
   req.mutable_schema()->CopyFrom(schema);
@@ -551,6 +582,22 @@ Result<bool> XClusterOutputClient::ProcessChangeMetadataOp(const cdc::CDCRecordP
   // Since we started an Rpc, do not complete the processing of the record
   // as we need to wait for the response.
   return false;
+}
+
+Result<SchemaVersion> XClusterOutputClient::GetCompatibleSchemaVersionForProducerSchemaVersion(
+    SchemaVersion producer_schema_version) {
+  ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN_STATUS;
+  cdc::XClusterSchemaVersionMap* schema_version_map;
+  if (colocation_id_ != kColocationIdNotSet) {
+    schema_version_map = &colocated_schema_version_map_[colocation_id_];
+  } else {
+    schema_version_map = &schema_versions_;
+  }
+  auto it = schema_version_map->find(producer_schema_version);
+  if (it == schema_version_map->end()) {
+    return cdc::kInvalidSchemaVersion;
+  }
+  return it->second;
 }
 
 Result<bool> XClusterOutputClient::ProcessMetaOp(const cdc::CDCRecordPB& record) {
@@ -604,7 +651,7 @@ void XClusterOutputClient::SendNextCDCWriteToTablet(std::unique_ptr<WriteRequest
     return;
   }
 
-  // Send in nullptr for RemoteTablet since cdc rpc now gets the tablet_id from the write request.
+  // Send in nullptr for RemoteTablet since CDC RPC now gets the tablet_id from the write request.
   *handle = rpc::xcluster::CreateXClusterWriteRpc(
       deadline, nullptr /* RemoteTablet */, table_, &local_client_, write_request.get(),
       [weak_ptr = weak_from_this(), this, handle, rpcs = rpcs_](
@@ -640,8 +687,7 @@ void XClusterOutputClient::UpdateSchemaVersionMapping(
     return;
   }
 
-  // Send in nullptr for RemoteTablet since cdc rpc now gets the tablet_id from the write
-  // request.
+  // Send in nullptr for RemoteTablet since cdc rpc now gets the tablet_id from the write request.
   *handle = rpc::xcluster::CreateGetCompatibleSchemaVersionRpc(
       deadline, nullptr, &local_client_, req,
       [weak_ptr = weak_from_this(), this, handle, rpcs = rpcs_](
@@ -811,8 +857,7 @@ void XClusterOutputClient::HandleNewSchemaPacking(
                .InsertPackedSchemaForXClusterTarget(
                    consumer_tablet_info_.table_id, req.schema(), resp.latest_schema_version(),
                    colocation_id_opt);
-  // TODO(#28326): We could pass the producer schema version here to check if a matching schema
-  // version already exists.
+
   if (s.ok()) {
     VLOG_WITH_PREFIX(2) << "Inserted schema for automatic DDL replication: "
                         << req.schema().ShortDebugString();
@@ -825,6 +870,15 @@ void XClusterOutputClient::HandleNewSchemaPacking(
   LOG_WITH_PREFIX(WARNING) << "Failed to insert schema for automatic DDL replication: " << s;
   STORE_REPLICATION_ERROR_AND_HANDLE_ERROR(ReplicationErrorPb::REPLICATION_SYSTEM_ERROR, s);
   return;
+}
+
+Status XClusterOutputClient::HandleNewSchemaForAutomaticMode(
+    const SchemaPB& schema, SchemaVersion producer_schema_version) {
+  DCHECK(is_automatic_mode_);
+  return client::XClusterClient(local_client_)
+      .HandleNewSchemaForAutomaticXClusterTarget(
+          consumer_tablet_info_.table_id, producer_tablet_info_.replication_group_id.ToString(),
+          producer_tablet_info_.stream_id.ToString(), producer_schema_version, schema);
 }
 
 void XClusterOutputClient::DoWriteCDCRecordDone(

@@ -4099,7 +4099,7 @@ Status CatalogManager::UpdateConsumerOnProducerMetadata(
       "Current producer schema version:$3, current consumer schema version:$4, "
       "last old producer schema version:$5, last old consumer schema version:$6, "
       "replication group:$7",
-      replication_group_id, stream_id, req->colocation_id(), current_producer_schema_version,
+      consumer_table_id, stream_id, req->colocation_id(), current_producer_schema_version,
       current_consumer_schema_version, last_old_producer_schema_version,
       last_old_consumer_schema_version, replication_group_id);
   return Status::OK();
