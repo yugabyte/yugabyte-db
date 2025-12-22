@@ -470,8 +470,8 @@ PgApiImpl::MessengerHolder::~MessengerHolder() = default;
 // non-async-signal-safe messenger shutdown.
 class PgApiImpl::Interrupter {
  public:
-  explicit Interrupter(rpc::Messenger* messenger)
-      : messenger_(*messenger) {
+  Interrupter(rpc::Messenger& messenger, PgClient& pg_client)
+      : messenger_(messenger), pg_client_(pg_client) {
   }
 
   ~Interrupter() {
@@ -495,8 +495,9 @@ class PgApiImpl::Interrupter {
   }
 
  private:
-  void AsyncHandler(ev::async& async, int events) { // NOLINT
+  void AsyncHandler(ev::async& async, int events) {
     messenger_.Shutdown();
+    pg_client_.Interrupt();
     loop_.break_loop();
   }
 
@@ -505,6 +506,7 @@ class PgApiImpl::Interrupter {
   }
 
   rpc::Messenger& messenger_;
+  PgClient& pg_client_;
   ev::dynamic_loop loop_;
   ev::async async_;
   scoped_refptr<yb::Thread> thread_;
@@ -661,7 +663,6 @@ PgApiImpl::PgApiImpl(
       mem_tracker_(MemTracker::CreateTracker("PostgreSQL")),
       messenger_holder_(CHECK_RESULT(BuildMessenger(
           "pggate_ybclient", FLAGS_pggate_ybclient_reactor_threads, metric_entity_, mem_tracker_))),
-      interrupter_(new Interrupter(messenger_holder_.messenger.get())),
       proxy_cache_(std::make_unique<rpc::ProxyCache>(messenger_holder_.messenger.get())),
       pg_callbacks_(callbacks),
       wait_event_watcher_(
@@ -673,6 +674,7 @@ PgApiImpl::PgApiImpl(
           *init_postgres_info.shared_data, !init_postgres_info.parallel_leader_session_id),
       pg_client_(
           wait_event_watcher_, pg_shared_data_->next_perform_op_serial_no),
+      interrupter_(new Interrupter(*messenger_holder_.messenger, pg_client_)),
       clock_(new server::HybridClock()),
       // For parallel query, multiple PgTxnManager(s) make parallel requests to pg_client_session
       // projecting as a single ysql backend. When object locking is enabled, only the leader worker

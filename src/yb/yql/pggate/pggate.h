@@ -951,7 +951,6 @@ class PgApiImpl {
   std::shared_ptr<MemTracker> mem_tracker_;
 
   MessengerHolder messenger_holder_;
-  std::unique_ptr<Interrupter> interrupter_;
 
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
 
@@ -963,6 +962,7 @@ class PgApiImpl {
 
   // TODO Rename to client_ when YBClient is removed.
   PgClient pg_client_;
+  std::unique_ptr<Interrupter> interrupter_;
 
   scoped_refptr<server::HybridClock> clock_;
 

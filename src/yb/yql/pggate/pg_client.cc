@@ -66,6 +66,9 @@ DEFINE_NON_RUNTIME_int32(pg_client_extra_timeout_ms, 2000,
    "Adding this value to RPC call timeout, so postgres could detect timeout by it's own mechanism "
    "and report it.");
 
+DEFINE_test_flag(bool, emulate_op_lost_on_write, false,
+    "Emulate lost of operation with serial_no by incrementing counter twice.");
+
 DECLARE_bool(TEST_index_read_multiple_partitions);
 DECLARE_bool(TEST_ash_fetch_wait_states_for_raft_log);
 DECLARE_bool(TEST_ash_fetch_wait_states_for_rocksdb_flush_and_compaction);
@@ -663,6 +666,12 @@ class PgClient::Impl : public BigDataFetcher {
     return Status::OK();
   }
 
+  void Interrupt() {
+    if (session_shared_mem_) {
+      session_shared_mem_->exchange().SignalStop();
+    }
+  }
+
   void Shutdown() {
     heartbeat_poller_.Shutdown();
     proxy_ = nullptr;
@@ -1054,11 +1063,23 @@ class PgClient::Impl : public BigDataFetcher {
 
   PerformResultFuture PerformAsync(
       tserver::PgPerformOptionsPB* options, PgsqlOps&& operations, PgDocMetrics& metrics) {
+    auto get_next_serial_no =
+        [this] { return next_perform_op_serial_no_.fetch_add(1, std::memory_order_acq_rel); };
+
+    if (PREDICT_FALSE(
+        FLAGS_TEST_emulate_op_lost_on_write &&
+        !options->ddl_mode() &&
+        operations.size() == 1 &&
+        operations.front()->is_write())) {
+      const auto serial_no = get_next_serial_no();
+      LOG(INFO) << "Emulating lost of operation with serial_no=" << serial_no;
+    }
+
     auto& arena = operations.front()->arena();
     tserver::LWPgPerformRequestPB req(&arena);
     req.set_session_id(session_id_);
     *req.mutable_options() = std::move(*options);
-    req.set_serial_no(next_perform_op_serial_no_.fetch_add(1, std::memory_order_acq_rel));
+    req.set_serial_no(get_next_serial_no());
     PrepareOperations(&req, operations);
     auto method = [](auto* proxy, const auto& req, auto* resp, auto* controller, auto callback) {
       proxy->PerformAsync(req, resp, controller, std::move(callback));
@@ -1916,6 +1937,10 @@ Status PgClient::Start(
     const tserver::TServerSharedData& tserver_shared_object,
     std::optional<uint64_t> session_id) {
   return impl_->Start(proxy_cache, scheduler, tserver_shared_object, session_id);
+}
+
+void PgClient::Interrupt() {
+  impl_->Interrupt();
 }
 
 void PgClient::Shutdown() {
