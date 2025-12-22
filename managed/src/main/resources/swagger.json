@@ -2378,10 +2378,6 @@
           "format" : "uuid",
           "type" : "string"
         },
-        "rawClientRootCA" : {
-          "format" : "uuid",
-          "type" : "string"
-        },
         "remotePackagePath" : {
           "type" : "string"
         },
@@ -2879,7 +2875,6 @@
         "installOtelCollector",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "rawClientRootCA",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "upgradeOption"
@@ -5118,10 +5113,6 @@
           "format" : "uuid",
           "type" : "string"
         },
-        "rawClientRootCA" : {
-          "format" : "uuid",
-          "type" : "string"
-        },
         "remotePackagePath" : {
           "type" : "string"
         },
@@ -5623,7 +5614,6 @@
         "creatingUser",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "rawClientRootCA",
         "selfSignedClientCertRotate",
         "selfSignedServerCertRotate",
         "sleepAfterMasterRestartMillis",
@@ -8207,10 +8197,6 @@
           "format" : "uuid",
           "type" : "string"
         },
-        "rawClientRootCA" : {
-          "format" : "uuid",
-          "type" : "string"
-        },
         "remotePackagePath" : {
           "type" : "string"
         },
@@ -8709,7 +8695,6 @@
         "creatingUser",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "rawClientRootCA",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "upgradeOption",
@@ -9007,10 +8992,6 @@
         },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
-          "format" : "uuid",
-          "type" : "string"
-        },
-        "rawClientRootCA" : {
           "format" : "uuid",
           "type" : "string"
         },
@@ -9516,7 +9497,6 @@
         "kubernetesUpgradeSupported",
         "masterGFlags",
         "platformUrl",
-        "rawClientRootCA",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "tserverGFlags",
@@ -10536,10 +10516,6 @@
           "format" : "uuid",
           "type" : "string"
         },
-        "rawClientRootCA" : {
-          "format" : "uuid",
-          "type" : "string"
-        },
         "remotePackagePath" : {
           "type" : "string"
         },
@@ -11039,7 +11015,6 @@
         "creatingUser",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "rawClientRootCA",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "universeOverrides",
@@ -11274,10 +11249,6 @@
         },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
-          "format" : "uuid",
-          "type" : "string"
-        },
-        "rawClientRootCA" : {
           "format" : "uuid",
           "type" : "string"
         },
@@ -11780,7 +11751,6 @@
         "creatingUser",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "rawClientRootCA",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "upgradeOption",
@@ -15623,10 +15593,6 @@
           "format" : "uuid",
           "type" : "string"
         },
-        "rawClientRootCA" : {
-          "format" : "uuid",
-          "type" : "string"
-        },
         "remotePackagePath" : {
           "type" : "string"
         },
@@ -16122,7 +16088,6 @@
         "creatingUser",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "rawClientRootCA",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "upgradeOption"
@@ -16666,10 +16631,6 @@
           "format" : "uuid",
           "type" : "string"
         },
-        "rawClientRootCA" : {
-          "format" : "uuid",
-          "type" : "string"
-        },
         "remotePackagePath" : {
           "type" : "string"
         },
@@ -17173,7 +17134,6 @@
         "kubernetesUpgradeSupported",
         "masterGFlags",
         "platformUrl",
-        "rawClientRootCA",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "tserverGFlags",
@@ -17505,10 +17465,6 @@
         },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
-          "format" : "uuid",
-          "type" : "string"
-        },
-        "rawClientRootCA" : {
           "format" : "uuid",
           "type" : "string"
         },
@@ -18007,7 +17963,6 @@
         "creatingUser",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "rawClientRootCA",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "upgradeOption"
@@ -19044,10 +18999,6 @@
           "format" : "uuid",
           "type" : "string"
         },
-        "rawClientRootCA" : {
-          "format" : "uuid",
-          "type" : "string"
-        },
         "remotePackagePath" : {
           "type" : "string"
         },
@@ -19543,7 +19494,6 @@
         "creatingUser",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "rawClientRootCA",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "upgradeOption"
@@ -20924,10 +20874,6 @@
           "format" : "uuid",
           "type" : "string"
         },
-        "rawClientRootCA" : {
-          "format" : "uuid",
-          "type" : "string"
-        },
         "remotePackagePath" : {
           "type" : "string"
         },
@@ -21429,7 +21375,6 @@
         "creatingUser",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "rawClientRootCA",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "upgradeOption",
@@ -22025,10 +21970,6 @@
           "format" : "uuid",
           "type" : "string"
         },
-        "rawClientRootCA" : {
-          "format" : "uuid",
-          "type" : "string"
-        },
         "remotePackagePath" : {
           "type" : "string"
         },
@@ -22524,7 +22465,6 @@
         "creatingUser",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "rawClientRootCA",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "upgradeOption"
@@ -23350,10 +23290,6 @@
           "format" : "uuid",
           "type" : "string"
         },
-        "rawClientRootCA" : {
-          "format" : "uuid",
-          "type" : "string"
-        },
         "remotePackagePath" : {
           "type" : "string"
         },
@@ -23850,7 +23786,6 @@
         "forceAll",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "rawClientRootCA",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "upgradeOption"
@@ -24026,10 +23961,6 @@
         },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
-          "format" : "uuid",
-          "type" : "string"
-        },
-        "rawClientRootCA" : {
           "format" : "uuid",
           "type" : "string"
         },
@@ -24531,7 +24462,6 @@
         "enableNodeToNodeEncrypt",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "rawClientRootCA",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "upgradeOption"
@@ -24957,10 +24887,6 @@
         },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
-          "format" : "uuid",
-          "type" : "string"
-        },
-        "rawClientRootCA" : {
           "format" : "uuid",
           "type" : "string"
         },
@@ -25453,7 +25379,6 @@
         "clusters",
         "creatingUser",
         "platformUrl",
-        "rawClientRootCA",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis"
       ],
@@ -25606,10 +25531,6 @@
           "format" : "uuid",
           "type" : "string"
         },
-        "rawClientRootCA" : {
-          "format" : "uuid",
-          "type" : "string"
-        },
         "remotePackagePath" : {
           "type" : "string"
         },
@@ -26096,7 +26017,6 @@
         "clusters",
         "creatingUser",
         "platformUrl",
-        "rawClientRootCA",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis"
       ],
@@ -26249,10 +26169,6 @@
           "format" : "uuid",
           "type" : "string"
         },
-        "rawClientRootCA" : {
-          "format" : "uuid",
-          "type" : "string"
-        },
         "remotePackagePath" : {
           "type" : "string"
         },
@@ -26739,7 +26655,6 @@
         "clusters",
         "creatingUser",
         "platformUrl",
-        "rawClientRootCA",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis"
       ],
@@ -27402,10 +27317,6 @@
           "format" : "uuid",
           "type" : "string"
         },
-        "rawClientRootCA" : {
-          "format" : "uuid",
-          "type" : "string"
-        },
         "remotePackagePath" : {
           "type" : "string"
         },
@@ -27901,7 +27812,6 @@
         "creatingUser",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "rawClientRootCA",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "upgradeOption"
@@ -28599,10 +28509,6 @@
           "format" : "uuid",
           "type" : "string"
         },
-        "rawClientRootCA" : {
-          "format" : "uuid",
-          "type" : "string"
-        },
         "remotePackagePath" : {
           "type" : "string"
         },
@@ -29110,7 +29016,6 @@
         "forceVMImageUpgrade",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "rawClientRootCA",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "upgradeOption",
