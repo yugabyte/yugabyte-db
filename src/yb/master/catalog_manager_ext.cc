@@ -784,7 +784,7 @@ Status CatalogManager::RestoreSnapshot(
   }
   LOG(INFO)
       << "Servicing RestoreSnapshot request: " << txn_snapshot_id
-      << (ht ? Format(" to restore to time ", ht) : "");
+      << (ht ? Format(" to restore to time $0 ", ht) : "");
   TxnSnapshotRestorationId id = VERIFY_RESULT(
       master_->snapshot_coordinator().Restore(txn_snapshot_id, ht, epoch.leader_term));
   resp->set_restoration_id(id.data(), id.size());
@@ -3337,7 +3337,9 @@ Status CatalogManager::RestoreSnapshotSchedule(
   auto deadline = rpc->GetClientDeadline();
 
   RETURN_NOT_OK(master_->tablet_split_manager().PrepareForPitr(deadline));
-
+  LOG(INFO)
+      << "Servicing RestoreSnapshotSchedule request. id: " << id
+      << " restore_ht: " << ht;
   return master_->snapshot_coordinator().RestoreSnapshotSchedule(
       id, ht, resp, epoch.leader_term, deadline);
 }
