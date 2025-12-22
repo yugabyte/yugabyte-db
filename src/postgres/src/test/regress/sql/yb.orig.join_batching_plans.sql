@@ -278,3 +278,29 @@ ANALYZE t_nopart;
   Set(yb_prefer_bnl on)
 */
 EXPLAIN (COSTS OFF)SELECT * FROM t_nopart np JOIN t_part p ON np.a = p.b and np.b < 1000 and p.i <= 201;
+
+-- Test BNL with temporary tables
+-- BNL should not be used when inner relation is temp
+-- BNL should work fine when outer relation is temp
+
+CREATE TABLE reg_bnl (a int, b int, PRIMARY KEY(a ASC));
+INSERT INTO reg_bnl SELECT i, i % 25 FROM generate_series(1, 100) i;
+CREATE INDEX reg_bnl_b_idx ON reg_bnl(b ASC);
+
+CREATE TEMP TABLE tmp_bnl (a int, b int);
+INSERT INTO tmp_bnl SELECT i, i % 25 FROM generate_series(1, 100) i;
+CREATE INDEX tmp_bnl_b_idx ON tmp_bnl(b ASC);
+
+ANALYZE reg_bnl;
+ANALYZE tmp_bnl;
+
+-- Case 1: Inner is temp table - should NOT use BNL
+/*+YbBatchedNL(reg_bnl tmp_bnl) Leading((reg_bnl tmp_bnl))*/
+EXPLAIN (COSTS OFF) SELECT * FROM reg_bnl JOIN tmp_bnl ON reg_bnl.b = tmp_bnl.b WHERE reg_bnl.a <= 50;
+
+-- Case 2: Outer is temp table - BNL should work fine
+/*+YbBatchedNL(tmp_bnl reg_bnl) Leading((tmp_bnl reg_bnl))*/
+EXPLAIN (COSTS OFF) SELECT * FROM tmp_bnl JOIN reg_bnl ON tmp_bnl.b = reg_bnl.b WHERE tmp_bnl.a <= 50;
+
+DROP TABLE tmp_bnl;
+DROP TABLE reg_bnl;

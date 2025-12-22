@@ -2809,9 +2809,17 @@ check_batchable(PlannerInfo *root, RestrictInfo *restrictinfo)
 	{
 		inner = args[i];
 		outer = args[1 - i];
-		if (!IsA(inner, Var) &&
-			!(IsA(inner, RelabelType) &&
-			  IsA(((RelabelType *) inner)->arg, Var)))
+		Node	   *inner_var = inner;
+
+		if (IsA(inner_var, RelabelType))
+			inner_var = (Node *) ((RelabelType *) inner_var)->arg;
+		if (!IsA(inner_var, Var))
+			continue;
+
+		RangeTblEntry *rte = root->simple_rte_array[((Var *) inner_var)->varno];
+
+		/* Skip batching if inner relation is not a YB relation */
+		if (rte->rtekind == RTE_RELATION && !IsYBRelationById(rte->relid))
 			continue;
 
 		Oid			outerType = exprType(outer);
