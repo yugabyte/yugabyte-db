@@ -83,7 +83,7 @@ class ProvisionCommand(Command):
             for key in all_templates:
                 temp_file.write(f"\n######## BEGIN {key} #########\n")
                 template = all_templates[key][phase]
-                if template:
+                if template is not None and template.strip():
                     if create_subshell:
                         temp_file.write("(\n")
                         temp_file.write(template)
