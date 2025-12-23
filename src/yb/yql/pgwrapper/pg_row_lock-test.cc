@@ -21,6 +21,7 @@
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
 
+DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(yb_enable_read_committed_isolation);
 DECLARE_bool(ysql_skip_row_lock_for_update);
@@ -255,7 +256,16 @@ TEST_F(PgRowLockTest, AdvisoryLocksNotSupported) {
   });
 }
 
-TEST_F(PgRowLockTest, ObjectLocksNotSupported) {
+class PgRowLockTestDisableObjectLock : public PgRowLockTest {
+ protected:
+  void SetUp() override {
+    // Test verifies "<lock mode> not supported yet" errors when object locking is disabled.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
+    PgRowLockTest::SetUp();
+  }
+};
+
+TEST_F_EX(PgRowLockTest, ObjectLocksNotSupported, PgRowLockTestDisableObjectLock) {
   RunTestTwice([this]() {
     auto conn = ASSERT_RESULT(Connect());
     ASSERT_OK(conn.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
