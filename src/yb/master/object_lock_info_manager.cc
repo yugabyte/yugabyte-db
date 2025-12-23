@@ -1604,10 +1604,10 @@ Status UpdateAllTServers<ReleaseObjectLockRequestPB>::AfterRpcs() {
   RETURN_NOT_OK(DoPersistRequestUnlocked(l));
   // Update Local State.
   auto local_lock_manager = object_lock_info_manager_.ts_local_lock_manager();
-  auto s = local_lock_manager->ReleaseObjectLocks(req_, GetClientDeadline());
-  if (!s.ok()) {
-    LOG(WARNING) << "Failed to release object lock locally." << s;
-    return s.CloneAndReplaceCode(Status::kRemoteError);
+  auto res = local_lock_manager->ReleaseObjectLocks(req_, GetClientDeadline());
+  if (!res.ok()) {
+    LOG(WARNING) << "Failed to release object lock locally." << res.status();
+    return res.status().CloneAndReplaceCode(Status::kRemoteError);
   }
   return Status::OK();
 }

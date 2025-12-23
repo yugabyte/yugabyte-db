@@ -1179,6 +1179,41 @@ TEST_F(PgObjectLocksTestRF1, TestDisableReuseOfFailedTxn) {
 }
 #endif
 
+TEST_F(PgObjectLocksTestRF1, TestDisableReuseOfBlockerTxn) {
+  google::SetVLOGLevel("object_lock_manager*", 1);
+  google::SetVLOGLevel("pg_client_session*", 1);
+  auto conn1 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn1.Execute("INSERT INTO test SELECT generate_series(1, 10), 0"));
+
+  ASSERT_OK(conn1.Execute("BEGIN"));
+  ASSERT_OK(conn1.Fetch("SELECT * FROM test"));
+
+  auto conn2 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn2.Execute("BEGIN"));
+  auto log_waiter1 = StringWaiterLogSink("added to wait-queue on");
+  auto status_future1 = std::async(std::launch::async, [&] -> Status {
+    return conn2.Execute("ALTER TABLE test ADD COLUMN v1 INT DEFAULT 0");
+  });
+  ASSERT_OK(log_waiter1.WaitFor(MonoDelta::FromSeconds(10 * kTimeMultiplier)));
+
+  auto log_waiter2 = StringWaiterLogSink("Consuming re-usable kPlain txn");
+  ASSERT_OK(conn1.Execute("COMMIT"));
+  ASSERT_OK(log_waiter2.WaitFor(MonoDelta::FromSeconds(10 * kTimeMultiplier)));
+  ASSERT_OK(status_future1.get());
+
+  auto log_waiter3 = StringWaiterLogSink("added to wait-queue on");
+  auto status_future2 = std::async(std::launch::async, [&] -> Status {
+    return ResultToStatus(conn1.Fetch("SELECT * FROM test"));
+  });
+  ASSERT_OK(log_waiter3.WaitFor(MonoDelta::FromSeconds(10 * kTimeMultiplier)));
+  SleepFor(2s * kTimeMultiplier);
+
+  ASSERT_OK(conn2.Execute("COMMIT"));
+  ASSERT_OK(status_future2.get());
+  ASSERT_OK(AssertNumLocks(0, 0));
+}
+
 class PgObjectLocksFastpathTest : public PgObjectLocksTestRF1 {
  protected:
   auto TServerSharedObject() {
