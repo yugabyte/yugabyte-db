@@ -1666,9 +1666,9 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
             files = os.listdir(args.local_gflag_files_path)
             remote_shell = RemoteShell(self.extra_vars)
             # Delete the gFlag file directory in case already present in remote
-            remote_shell.exec_command("rm -rf {}".format(args.remote_gflag_files_path))
+            remote_shell.check_exec_command("rm -rf {}".format(args.remote_gflag_files_path))
             # Create the gFlag file directory before copying the file.
-            remote_shell.exec_command("mkdir -p {}".format(args.remote_gflag_files_path))
+            remote_shell.check_exec_command("mkdir -p {}".format(args.remote_gflag_files_path))
             for file in files:
                 src_file = os.path.join(args.local_gflag_files_path, file)
                 dest_file = os.path.join(args.remote_gflag_files_path, file)

@@ -50,11 +50,11 @@ class KubernetesClient:
         cmd = self.wrap_command(cmd)
         return subprocess.call(cmd, stdout=stdout, env=self.env_config)
 
-    def exec_command(self, cmd):
+    def check_exec_command(self, cmd):
         cmd = self.wrap_command(cmd)
         return subprocess.check_output(cmd, env=self.env_config).decode()
 
-    def exec_script(self, local_script_name, params):
+    def check_exec_script(self, local_script_name, params):
         '''
         Function to execute a local bash script on the k8s cluster.
         Parameters:

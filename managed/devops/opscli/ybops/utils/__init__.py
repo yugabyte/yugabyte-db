@@ -312,12 +312,12 @@ def validate_instance(connect_options, mount_paths, **kwargs):
         remote_shell = RemoteShell(connect_options)
         for path in [mount_path.strip() for mount_path in mount_paths]:
             path = '"' + re.sub('[`"]', '', path) + '"'
-            stdout = remote_shell.exec_command("ls -a " + path + "", output_only=True)
+            stdout = remote_shell.check_exec_command("ls -a " + path + "")
             if len(stdout) == 0:
                 return ValidationResult.INVALID_MOUNT_POINTS
 
         os_check_cmd = "source /etc/os-release && echo \"$NAME $VERSION_ID\""
-        _, output, _ = remote_shell.exec_command(os_check_cmd)
+        output = remote_shell.check_exec_command(os_check_cmd)
         if len(output) == 0 or output[0].strip().lower() != "centos linux 7":
             return ValidationResult.INVALID_OS
 
@@ -343,7 +343,7 @@ def validate_cron_status(connect_options, **kwargs):
     remote_shell = None
     try:
         remote_shell = RemoteShell(connect_options)
-        stdout = remote_shell.exec_command("crontab -l", output_only=True)
+        stdout = remote_shell.check_exec_command("crontab -l")
         cronjobs = ["clean_cores.sh", "zip_purge_yb_logs.sh", "yb-server-ctl.sh tserver"]
         return all(c in stdout for c in cronjobs)
     except YBOpsRuntimeError as ex:
@@ -451,7 +451,7 @@ def get_mount_roots(connect_options, paths):
         # /bar
         # /storage
 
-        mount_roots = remote_shell.run_command(remote_cmd).stdout.split('\n')[1:]
+        mount_roots = remote_shell.check_exec_command(remote_cmd).split('\n')[1:]
         return ",".join(
             [mroot.strip() for mroot in mount_roots if mroot.strip()]
         )
