@@ -105,6 +105,7 @@ const preparePayload = (
   } = formValues;
 
   const isKeyspaceRenamed = target.renameKeyspace;
+  const useRoles = target.useRoles;
 
   if (!currentCommonBackupInfo) return null;
 
@@ -133,7 +134,8 @@ const preparePayload = (
         keyspace: keyspacename,
         sse: currentCommonBackupInfo.sse,
         storageLocation: keyspaceinfo?.storageLocation ?? keyspaceinfo?.defaultLocation,
-        useTablespaces: target.useTablespaces
+        useTablespaces: target.useTablespaces,
+        useRoles: useRoles
       } as any;
 
       if (target?.useTablespaces && ( conflictingTablespaces || unSupportedTablespaces )) {

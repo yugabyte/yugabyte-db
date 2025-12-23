@@ -3118,10 +3118,13 @@
           },
           "backupObjects": {
             "advancedConfig": "Advanced Configuration",
+            "rolesConfig": "Roles Configuration",
             "selectDBTitle": "Select the Keyspaces/Databases you want to backup",
             "selectDB": "Databases/Keyspaces",
             "backupTablespace": "Backup tablespaces information",
+            "backupRoles": "Backup global roles",
             "backupTablespaceSubText": "In Universes using tablespaces, this allows restoring while preserving source universe tablespaces. (Given both source and target have the same topology.)",
+            "backupRolesSubText": "In Universes using roles, this allows restoring while preserving source universe roles.",
             "allTables": "Select all tables in this Keyspace",
             "subSetOfTables": "Select a subset of tables",
             "selectTables": "Select Tables",
@@ -3286,6 +3289,7 @@
           "kmsConfigHelpText": "<b>Note!</b> For a successful restore, the KMS configuration used for restore should be the same KMS configuration used during backup creation.",
           "activeKMS": "Active",
           "usedDuringBackup": "Used during backup",
+          "restoreRoles": "Restore global roles",
           "parallelThreads": "Parallel threads (Optional)",
           "tablespacePlacementConflict": "<b>Tablespace Placement Conflict.</b> Some tablespaces in the backup have a placement policy that conflicts with the target universe. <a>View logs for details.</a><br/>If you proceed, the restore may fail. if it does, you can retry the restore without tablespaces. <a2>Learn more about restoring tablespaces.</a2>",
           "tablespaceNameConflict": "<b>Tablespace Name Conflict.</b> The target universe has tablespaces with the same name as tablespaces in the backup. In cases where the placement policy differs between the target and backup tablespaces, <b>the target policy will be used.</b> <a>View logs for details</a>"
