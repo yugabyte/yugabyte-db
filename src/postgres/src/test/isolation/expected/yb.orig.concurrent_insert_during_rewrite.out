@@ -1,0 +1,23 @@
+Parsed test spec with 3 sessions
+
+starting permutation: s1_begin_rr s1_select_tbl s2_begin_rr s2_insert_into_tbl s1_rewrite_tbl s2_commit s1_commit s3_select_tbl
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_select_tbl: select c1, c2 from tbl order by c1 asc;
+c1|c2
+--+--
+ 1| 2
+(1 row)
+
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_insert_into_tbl: insert into tbl values (2, 3);
+step s1_rewrite_tbl: alter table tbl alter column c2 type bigint; <waiting ...>
+step s2_commit: COMMIT;
+step s1_rewrite_tbl: <... completed>
+step s1_commit: COMMIT;
+step s3_select_tbl: select c1, c2 from tbl order by c1 asc;
+c1|c2
+--+--
+ 1| 2
+ 2| 3
+(2 rows)
+

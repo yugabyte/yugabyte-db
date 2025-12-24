@@ -7915,7 +7915,7 @@ YbRegisterSnapshotReadTime(uint64_t read_time)
 }
 
 YbOptionalReadPointHandle
-YbResetTransactionReadPoint()
+YbResetTransactionReadPoint(bool is_catalog_snapshot)
 {
 	if (YbSkipPgSnapshotManagement())
 		return (YbOptionalReadPointHandle)
@@ -7934,13 +7934,13 @@ YbResetTransactionReadPoint()
 		 * Flush all earlier operations so that they complete on the previous snapshot.
 		 */
 		YBFlushBufferedOperations(YBCMakeFlushDebugContextGetTxnSnapshot());
-		HandleYBStatus(YBCPgResetTransactionReadPoint());
+		HandleYBStatus(YBCPgResetTransactionReadPoint(is_catalog_snapshot));
 	}
 
-	if (YBCIsLegacyModeForCatalogOps())
+	if (!YBCIsLegacyModeForCatalogOps() && is_catalog_snapshot)
+		return YbMakeReadPointHandle(YBCPgGetMaxReadPoint());
+	else
 		return YbMakeReadPointHandle(YBCPgGetCurrentReadPoint());
-
-	return YbMakeReadPointHandle(YBCPgGetMaxReadPoint());
 }
 
 /*

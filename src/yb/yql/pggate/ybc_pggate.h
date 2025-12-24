@@ -732,7 +732,7 @@ YbcStatus YBCFinalizeFunctionTargets(YbcPgFunction handle);
 YbcStatus YBCPgBeginTransaction(int64_t start_time);
 YbcStatus YBCPgRecreateTransaction();
 YbcStatus YBCPgRestartTransaction();
-YbcStatus YBCPgResetTransactionReadPoint();
+YbcStatus YBCPgResetTransactionReadPoint(bool is_catalog_snapshot);
 YbcStatus YBCPgEnsureReadPoint();
 YbcStatus YBCPgRestartReadPoint();
 bool YBCIsRestartReadPointRequested();
