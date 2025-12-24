@@ -677,9 +677,10 @@ PgApiImpl::PgApiImpl(
       enable_table_locking_(
           ShouldEnableTableLocks() && !init_postgres_info.parallel_leader_session_id),
       pg_txn_manager_(new PgTxnManager(&pg_client_, clock_, pg_callbacks_, enable_table_locking_)),
-      ybctid_reader_provider_(pg_session_),
-      fk_reference_cache_(ybctid_reader_provider_, buffering_settings_, tablespace_map_),
-      explicit_row_lock_buffer_(ybctid_reader_provider_, tablespace_map_) {
+      ybctid_reader_providers_{YbctidReaderProvider{pg_session_},
+                               YbctidReaderProvider{pg_session_}},
+      fk_reference_cache_(ybctid_reader_providers_[0], buffering_settings_, tablespace_map_),
+      explicit_row_lock_buffer_(ybctid_reader_providers_[1], tablespace_map_) {
   PgBackendSetupSharedMemory();
   // This is an RCU object, but there are no concurrent updates on PG side, only on tserver, so
   // it's safe to just save the pointer.
