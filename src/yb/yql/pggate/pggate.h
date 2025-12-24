@@ -51,13 +51,13 @@
 #include "yb/yql/pggate/pg_fk_reference_cache.h"
 #include "yb/yql/pggate/pg_function.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
+#include "yb/yql/pggate/pg_session_fwd.h"
 #include "yb/yql/pggate/pg_setup_perform_options_accessor_tag.h"
 #include "yb/yql/pggate/pg_statement.h"
 #include "yb/yql/pggate/pg_sys_table_prefetcher.h"
 #include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/pg_type.h"
 #include "yb/yql/pggate/pg_txn_manager.h"
-#include "yb/yql/pggate/pg_ybctid_reader_provider.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
@@ -65,7 +65,6 @@ namespace yb::pggate {
 
 class PgDmlRead;
 class PgFlushDebugContext;
-class PgSession;
 
 struct PgMemctxComparator {
   using is_transparent = void;
@@ -978,8 +977,7 @@ class PgApiImpl {
   std::unique_ptr<tserver::PgGetTserverCatalogVersionInfoResponsePB> catalog_version_info_;
   TupleIdBuilder tuple_id_builder_;
   BufferingSettings buffering_settings_;
-  scoped_refptr<PgSession> pg_session_;
-  YbctidReaderProvider ybctid_reader_provider_;
+  PgSessionPtr pg_session_;
   PgFKReferenceCache fk_reference_cache_;
   ExplicitRowLockBuffer explicit_row_lock_buffer_;
 

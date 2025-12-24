@@ -39,6 +39,7 @@
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_operation_buffer.h"
 #include "yb/yql/pggate/pg_perform_future.h"
+#include "yb/yql/pggate/pg_session_fwd.h"
 #include "yb/yql/pggate/pg_setup_perform_options_accessor_tag.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/yql/pggate/pg_tools.h"
@@ -58,7 +59,7 @@ YB_STRONGLY_TYPED_BOOL(ForceNonBufferable);
 class PgSession final : public RefCountedThreadSafe<PgSession> {
  public:
   // Public types.
-  using ScopedRefPtr = scoped_refptr<PgSession>;
+  using ScopedRefPtr = PgSessionPtr;
 
   // Constructors.
   PgSession(

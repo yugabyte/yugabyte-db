@@ -11,7 +11,9 @@
 // under the License.
 //
 
-#include "yb/yql/pggate/pg_ybctid_reader_provider.h"
+#include "yb/yql/pggate/pg_ybctid_reader.h"
+
+#include <algorithm>
 
 #include "yb/common/pg_system_attr.h"
 
@@ -123,13 +125,16 @@ class PrecastRequestSender {
 
 } // namespace
 
-Result<std::span<LightweightTableYbctid>> YbctidReaderProvider::Reader::DoRead(
+YbctidReader::YbctidReader(const PgSessionPtr& session)
+    : session_(session) {}
+
+YbctidReader::~YbctidReader() = default;
+
+Result<std::span<LightweightTableYbctid>> YbctidReader::Read(
     PgOid database_id, const TableLocalityMap& tables_locality,
     const ExecParametersMutator& exec_params_mutator) {
   // Group the items by the table ID.
-  std::sort(ybctids_.begin(), ybctids_.end(), [](const auto& a, const auto& b) {
-    return a.table_id < b.table_id;
-  });
+  std::ranges::sort(ybctids_, [](const auto& a, const auto& b) { return a.table_id < b.table_id; });
 
   auto arena = std::make_shared<ThreadSafeArena>();
 

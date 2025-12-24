@@ -685,9 +685,8 @@ PgApiImpl::PgApiImpl(
       pg_session_(make_scoped_refptr<PgSession>(
           pg_client_, pg_txn_manager_, pg_callbacks_, session_stats, is_binary_upgrade,
           wait_event_watcher_, buffering_settings_)),
-      ybctid_reader_provider_(pg_session_),
-      fk_reference_cache_(ybctid_reader_provider_, buffering_settings_),
-      explicit_row_lock_buffer_(ybctid_reader_provider_) {
+      fk_reference_cache_(pg_session_, buffering_settings_),
+      explicit_row_lock_buffer_(pg_session_) {
   PgBackendSetupSharedMemory();
   // This is an RCU object, but there are no concurrent updates on PG side, only on tserver, so
   // it's safe to just save the pointer.

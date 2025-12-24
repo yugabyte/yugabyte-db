@@ -20,10 +20,9 @@
 #include "yb/util/status.h"
 
 #include "yb/yql/pggate/pg_tools.h"
+#include "yb/yql/pggate/pg_ybctid_reader.h"
 
 namespace yb::pggate {
-
-class YbctidReaderProvider;
 
 class ExplicitRowLockBuffer {
  public:
@@ -44,7 +43,7 @@ class ExplicitRowLockBuffer {
     PgOid conflicting_table_id;
   };
 
-  explicit ExplicitRowLockBuffer(YbctidReaderProvider& reader_provider);
+  explicit ExplicitRowLockBuffer(const PgSessionPtr& pg_session) : ybctid_reader_(pg_session) {}
 
   Status Add(
       const Info& info, const LightweightTableYbctid& key,
@@ -58,7 +57,7 @@ class ExplicitRowLockBuffer {
   Status DoFlush(std::optional<ErrorStatusAdditionalInfo>& error_info);
   Status DoFlushImpl();
 
-  YbctidReaderProvider& reader_provider_;
+  YbctidReader ybctid_reader_;
   MemoryOptimizedTableYbctidSet intents_;
   TableLocalityMap table_locality_map_;
   std::optional<Info> info_;

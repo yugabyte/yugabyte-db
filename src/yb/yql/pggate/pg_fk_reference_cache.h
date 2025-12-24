@@ -19,12 +19,13 @@
 #include "yb/common/pg_types.h"
 
 #include "yb/util/result.h"
+
+#include "yb/yql/pggate/pg_session_fwd.h"
 #include "yb/yql/pggate/pg_tools.h"
 
 namespace yb::pggate {
 
 struct LightweightTableYbctid;
-class YbctidReaderProvider;
 struct BufferingSettings;
 
 class PgFKReferenceCache {
@@ -34,7 +35,7 @@ class PgFKReferenceCache {
     bool is_deferred;
   };
 
-  PgFKReferenceCache(YbctidReaderProvider& reader_provider,
+  PgFKReferenceCache(const PgSessionPtr& pg_session,
                      std::reference_wrapper<const BufferingSettings> buffering_settings);
   ~PgFKReferenceCache();
 
