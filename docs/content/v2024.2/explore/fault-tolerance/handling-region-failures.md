@@ -39,7 +39,7 @@ Consider a scenario where you have deployed your database across three regions -
 All illustrations adhere to the legend outlined in [Legend for illustrations](../../../contribute/docs/docs-layout#legend-for-illustrations)
 {{</note>}}
 
-In the following illustration, the leaders are in us-east (the preferred region), which is also where the applications are active. The standby application is in us-central and will be the failover. This has been set as the second preferred region for the database
+In the following illustration, the leaders are in us-east (the preferred region), which is also where the applications are active. The standby application is in us-central and will be the failover. This has been set as the second preferred region for the database.
 
 ![Sync replication setup - Handling region outage](/images/explore/fault-tolerance/region-failure-setup.png)
 
