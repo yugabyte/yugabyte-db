@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <array>
 #include <memory>
 #include <optional>
 #include <string>
@@ -966,7 +967,7 @@ class PgApiImpl {
   std::unique_ptr<tserver::PgGetTserverCatalogVersionInfoResponsePB> catalog_version_info_;
   TupleIdBuilder tuple_id_builder_;
   BufferingSettings buffering_settings_;
-  YbctidReaderProvider ybctid_reader_provider_;
+  std::array<YbctidReaderProvider, 2> ybctid_reader_providers_;
   TablespaceMap tablespace_map_;
   PgFKReferenceCache fk_reference_cache_;
   ExplicitRowLockBuffer explicit_row_lock_buffer_;
