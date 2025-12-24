@@ -590,7 +590,6 @@ pullRpczEntries(void)
 			PGPROC	   *proc = NULL;
 
 			if (beentry->st_backendType == B_BACKEND ||
-				beentry->st_backendType == B_BG_WORKER ||
 				beentry->st_backendType == YB_AUTO_ANALYZE_BACKEND)
 				proc = BackendPidGetProc(rpcz[i].proc_id);
 			else if (beentry->st_backendType != YB_YSQL_CONN_MGR)
@@ -606,11 +605,7 @@ pullRpczEntries(void)
 			{
 				PGPROC	   *leader = proc->lockGroupLeader;
 
-				/*
-				 * Show the leader only for active parallel workers.  This leaves
-				 * the field as -1 (NULL equivalent) for the leader of a parallel group.
-				 */
-				if (leader != NULL && leader->pid != beentry->st_procpid)
+				if (leader != NULL)
 				{
 					rpcz[i].leader_pid = leader->pid;
 				}
@@ -685,11 +680,6 @@ pullRpczEntries(void)
 				rpcz[i].host = NULL;
 				rpcz[i].port = NULL;
 			}
-
-			int64_t rss_bytes, pss_bytes;
-			YbPgGetCurRssPssMemUsage(rpcz[i].proc_id, &rss_bytes, &pss_bytes);
-			rpcz[i].pss_mem_bytes = pss_bytes;
-
 			after_changecount = beentry->st_changecount;
 
 			if (before_changecount == after_changecount &&
