@@ -86,10 +86,12 @@ class ProvisionCommand(Command):
                 if template is not None and template.strip():
                     if create_subshell:
                         temp_file.write("(\n")
+                        temp_file.write(f"echo \"Executing module {key}\"\n")
                         temp_file.write(template)
                         temp_file.write("\n)\n")
                         self.add_exit_code_check(temp_file)
                     else:
+                        temp_file.write(f"echo \"Executing module {key}\"\n")
                         temp_file.write(template)
                 temp_file.write(f"\n######## END {key} #########\n")
             if create_subshell:
