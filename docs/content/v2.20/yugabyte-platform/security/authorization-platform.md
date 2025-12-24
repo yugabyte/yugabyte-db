@@ -28,7 +28,7 @@ YugabyteDB uses [role-based access control](../../../secure/authorization/) (RBA
 
 {{< note title="Use YugabyteDB Anywhere to make changes" >}}
 
-For universes deployed using YugabyteDB Anywhere, you can't exclusively [enable authentication using flags](../../../secure/enable-authentication/authentication-ysql/). You must enable and disable authentication using the YugabyteDB Anywhere UI.
+For universes deployed using YugabyteDB Anywhere, you can't exclusively [enable authentication using flags](../../../secure/enable-authentication/ysql/). You must enable and disable authentication using the YugabyteDB Anywhere UI.
 
 {{< /note >}}
 
