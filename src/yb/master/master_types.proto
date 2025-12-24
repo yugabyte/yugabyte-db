@@ -161,6 +161,10 @@ message MasterErrorPB {
     TABLET_SERVER_NOT_FOUND = 42;
 
     DOCDB_TABLE_NOT_COMMITTED = 43;
+
+    // The xCluster consumer schema version provided is older than the minimum consumer version in
+    // the producer->consumer schema versions map.
+    XCLUSTER_CONSUMER_SCHEMA_VERSION_TOO_OLD = 44;
   }
 
   // The error code.

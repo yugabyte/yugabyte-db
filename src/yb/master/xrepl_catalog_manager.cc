@@ -3955,8 +3955,7 @@ Status CatalogManager::UpdateConsumerOnProducerSplit(
 // Related function: PlayChangeMetadataRequest() in tablet_bootstrap.cc.
 Status CatalogManager::UpdateConsumerOnProducerMetadata(
     const UpdateConsumerOnProducerMetadataRequestPB* req,
-    UpdateConsumerOnProducerMetadataResponsePB* resp,
-    rpc::RpcContext* rpc) {
+    UpdateConsumerOnProducerMetadataResponsePB* resp, rpc::RpcContext* rpc) {
   LOG_WITH_FUNC(INFO) << " from " << RequestorString(rpc) << ": " << req->DebugString();
 
   if (PREDICT_FALSE(GetAtomicFlag(&FLAGS_xcluster_skip_schema_compatibility_checks_on_alter))) {
@@ -3967,6 +3966,17 @@ Status CatalogManager::UpdateConsumerOnProducerMetadata(
   const xcluster::ReplicationGroupId replication_group_id(req->replication_group_id());
   const auto stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(req->stream_id()));
 
+  return DoUpdateConsumerOnProducerMetadata(
+      replication_group_id, stream_id, req->producer_schema_version(),
+      req->consumer_schema_version(), req->colocation_id(),
+      /*check_min_consumer_schema_version=*/false, resp);
+}
+
+Status CatalogManager::DoUpdateConsumerOnProducerMetadata(
+    const xcluster::ReplicationGroupId& replication_group_id, const xrepl::StreamId& stream_id,
+    SchemaVersion producer_schema_version, SchemaVersion consumer_schema_version,
+    ColocationId colocation_id, bool check_min_consumer_schema_version,
+    UpdateConsumerOnProducerMetadataResponsePB* resp) {
   // Get corresponding local data for this stream.
   TableId consumer_table_id = VERIFY_RESULT(
       xcluster_manager_->GetConsumerTableIdForStreamId(replication_group_id, stream_id));
@@ -3996,14 +4006,14 @@ Status CatalogManager::UpdateConsumerOnProducerMetadata(
   bool schema_versions_updated = false;
 
   // TODO (#16557): Support remove_table_id() for colocated tables / tablegroups.
-  if (IsColocationParentTableId(consumer_table_id) && req->colocation_id() != kColocationIdNotSet) {
+  if (IsColocationParentTableId(consumer_table_id) && colocation_id != kColocationIdNotSet) {
     auto map = stream_entry->mutable_colocated_schema_versions();
-    schema_versions_pb = FindOrNull(*map, req->colocation_id());
+    schema_versions_pb = FindOrNull(*map, colocation_id);
     if (nullptr == schema_versions_pb) {
       // If the colocation_id itself does not exist, it needs to be recorded in clusterconfig.
       // This is to handle the case where source-target schema version mapping is 0:0.
       schema_versions_updated = true;
-      schema_versions_pb = &((*map)[req->colocation_id()]);
+      schema_versions_pb = &((*map)[colocation_id]);
     }
   } else {
     schema_versions_pb = stream_entry->mutable_schema_versions();
@@ -4021,30 +4031,47 @@ Status CatalogManager::UpdateConsumerOnProducerMetadata(
         old_consumer_schema_versions->Get(i);
   }
 
-  if (req->producer_schema_version() == current_producer_schema_version ||
-      old_schema_versions_map.contains(req->producer_schema_version())) {
+  if (check_min_consumer_schema_version) {
+    // Verify that the consumer schema version is greater than all values in the mapping
+    // (otherwise it could have been gc-ed).
+    auto min_consumer_schema_version = current_consumer_schema_version;
+    for (const auto& old_consumer_schema_version : *old_consumer_schema_versions) {
+      min_consumer_schema_version =
+          std::min(min_consumer_schema_version, old_consumer_schema_version);
+    }
+    SCHECK_EC_FORMAT(
+        consumer_schema_version >= min_consumer_schema_version, InvalidArgument,
+        MasterError(MasterErrorPB::XCLUSTER_CONSUMER_SCHEMA_VERSION_TOO_OLD),
+        "Received too old consumer schema version for replication group $0, consumer table $1. "
+        "Min consumer schema version in map: $2, received consumer schema version: $3",
+        replication_group_id, consumer_table_id, min_consumer_schema_version,
+        consumer_schema_version);
+  }
+
+  if (producer_schema_version == current_producer_schema_version ||
+      old_schema_versions_map.contains(producer_schema_version)) {
     // If we have already seen this producer schema version, then verify that the consumer schema
     // version matches what we saw from other tablets or we received a new one.
     // If we get an older schema version from the consumer, that's an indication that it
     // has not yet performed the ALTER and caught up to the latest schema version so fail the
     // request until it catches up to the latest schema version.
     auto prev_consumer_schema_version = FindWithDefault(
-        old_schema_versions_map, req->producer_schema_version(), current_consumer_schema_version);
+        old_schema_versions_map, producer_schema_version, current_consumer_schema_version);
     SCHECK_GE(
-        req->consumer_schema_version(), prev_consumer_schema_version, InternalError,
+        consumer_schema_version, prev_consumer_schema_version, InternalError,
         Format(
             "Received older consumer schema version for replication group $1, consumer table $2",
             replication_group_id, consumer_table_id));
-  } else if (req->producer_schema_version() > current_producer_schema_version) {
+  } else if (producer_schema_version > current_producer_schema_version) {
     // Incoming producer version is greater than anything we've seen before, update stored versions.
     old_schema_versions_map[current_producer_schema_version] = current_consumer_schema_version;
-    current_producer_schema_version = req->producer_schema_version();
-    current_consumer_schema_version = req->consumer_schema_version();
+    current_producer_schema_version = producer_schema_version;
+    current_consumer_schema_version = consumer_schema_version;
     schema_versions_updated = true;
   } else {
     // This is an older producer schema version that we haven't seen before, need to keep track of
     // it to handle old rows.
-    old_schema_versions_map[req->producer_schema_version()] = req->consumer_schema_version();
+    old_schema_versions_map[producer_schema_version] = consumer_schema_version;
     schema_versions_updated = true;
   }
 
@@ -4103,7 +4130,7 @@ Status CatalogManager::UpdateConsumerOnProducerMetadata(
       "Current producer schema version:$3, current consumer schema version:$4, "
       "last old producer schema version:$5, last old consumer schema version:$6, "
       "replication group:$7",
-      consumer_table_id, stream_id, req->colocation_id(), current_producer_schema_version,
+      consumer_table_id, stream_id, colocation_id, current_producer_schema_version,
       current_consumer_schema_version, last_old_producer_schema_version,
       last_old_consumer_schema_version, replication_group_id);
   return Status::OK();

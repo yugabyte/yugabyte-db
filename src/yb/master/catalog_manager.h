@@ -1529,6 +1529,15 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const UpdateConsumerOnProducerMetadataRequestPB* req,
       UpdateConsumerOnProducerMetadataResponsePB* resp, rpc::RpcContext* rpc);
 
+  // If check_min_consumer_schema_version istrue, will also validate that the provided consumer
+  // schema version is >= to the minimum consumer schema version in the mapping (to ensure it hasn't
+  // been GC-ed).
+  Status DoUpdateConsumerOnProducerMetadata(
+      const xcluster::ReplicationGroupId& replication_group_id, const xrepl::StreamId& stream_id,
+      SchemaVersion producer_schema_version, SchemaVersion consumer_schema_version,
+      ColocationId colocation_id, bool check_min_consumer_schema_version,
+      UpdateConsumerOnProducerMetadataResponsePB* resp);
+
   // Store packing schemas for upcoming colocated tables on an xCluster automatic mode target,
   // since their rows are replicated before the corresponding table is created.
   Status InsertHistoricalColocatedSchemaPacking(
