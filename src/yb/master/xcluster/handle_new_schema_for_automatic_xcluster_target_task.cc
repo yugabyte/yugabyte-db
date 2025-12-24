@@ -16,6 +16,7 @@
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager.h"
+#include "yb/master/master_error.h"
 #include "yb/master/master_replication.pb.h"
 #include "yb/util/status.h"
 
@@ -122,9 +123,6 @@ Status HandleNewSchemaForAutomaticXClusterTargetTask::CheckResponses() {
 
   if (all_succeeded) {
     // All tablets have the same latest compatible schema version, update mapping.
-
-    // TODO(#29760): verify this common_schema_version - ensure that it is greater than values in
-    // the mapping (otherwise it could have been gc-ed).
     return UpdateSchemaVersionMapping(*common_schema_version);
   }
 
@@ -176,18 +174,28 @@ Status HandleNewSchemaForAutomaticXClusterTargetTask::UpdateSchemaVersionMapping
   // compatible schema version.
   // Pollers are blocked until this mapping gets updated, so will be able to continue replicating
   // after this.
-  UpdateConsumerOnProducerMetadataRequestPB req;
   UpdateConsumerOnProducerMetadataResponsePB resp;
-  req.set_replication_group_id(replication_group_id_.ToString());
-  req.set_stream_id(stream_id_.ToString());
-  req.set_producer_schema_version(producer_schema_version_);
-  req.set_consumer_schema_version(compatible_schema_version);
+  uint32_t colocation_id = kColocationIdNotSet;
   if (schema_.has_colocated_table_id() && schema_.colocated_table_id().has_colocation_id()) {
-    req.set_colocation_id(schema_.colocated_table_id().colocation_id());
+    colocation_id = schema_.colocated_table_id().colocation_id();
   }
-
-  RETURN_NOT_OK(catalog_manager_.UpdateConsumerOnProducerMetadata(&req, &resp, /*rpc=*/nullptr));
-
+  // Set check_min_consumer_schema_version = true to verify that the compatible schema version is >=
+  // to the minimum consumer schema version in the mapping (to ensure it hasn't been GC-ed).
+  auto s = catalog_manager_.DoUpdateConsumerOnProducerMetadata(
+      replication_group_id_, stream_id_, producer_schema_version_, compatible_schema_version,
+      colocation_id, /*check_min_consumer_schema_version=*/true, &resp);
+  if (!s.ok()) {
+    if (MasterError(s) == MasterErrorPB::XCLUSTER_CONSUMER_SCHEMA_VERSION_TOO_OLD) {
+      // Consumer schema version is older than the minimum consumer schema version in the mapping.
+      // Since we use the min consumer schema version for preventing schema GC, it is possible that
+      // this consumer schema version could get GC-ed as we complete this task.
+      // Therefore we can't use this old schema version, and need to reinsert this schema.
+      LOG_WITH_PREFIX(INFO) << "Consumer schema version is older than the minimum consumer "
+                            << "schema version in the mapping. Reinserting schema. " << s;
+      return InsertPackedSchema();
+    }
+    return s;
+  }
   Complete();
   return Status::OK();
 }
