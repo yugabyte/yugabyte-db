@@ -630,7 +630,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
   bool FlushBootstrapStateEnabled() const;
 
-  void MinReplayTxnStartTimeUpdated(HybridTime start_ht);
+  void MinReplayTxnFirstWriteTimeUpdated(HybridTime first_write_ht);
 
   MetricRegistry* metric_registry_;
 

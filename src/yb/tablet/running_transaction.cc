@@ -51,6 +51,7 @@ RunningTransaction::RunningTransaction(TransactionMetadata metadata,
                                        const TransactionalBatchData& last_batch_data,
                                        OneWayBitmap&& replicated_batches,
                                        HybridTime base_time_for_abort_check_ht_calculation,
+                                       HybridTime first_write_ht,
                                        RunningTransactionContext* context)
     : metadata_(std::move(metadata)),
       last_batch_data_(last_batch_data),
@@ -62,7 +63,8 @@ RunningTransaction::RunningTransaction(TransactionMetadata metadata,
       abort_handle_(context->rpcs_.InvalidHandle()),
       apply_intents_task_(&context->applier_, context, &apply_data_),
       abort_check_ht_(base_time_for_abort_check_ht_calculation.AddDelta(
-                          1ms * FLAGS_transaction_abort_check_interval_ms)) {
+                          1ms * FLAGS_transaction_abort_check_interval_ms)),
+      first_write_ht_(first_write_ht) {
 }
 
 RunningTransaction::~RunningTransaction() {

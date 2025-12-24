@@ -30,28 +30,15 @@
 
 namespace yb::tablet {
 
-TabletBootstrapState::TabletBootstrapState(const TabletBootstrapState& rhs):
-    min_replay_txn_start_ht_(rhs.min_replay_txn_start_ht_.load()) {}
-
-TabletBootstrapState::TabletBootstrapState(TabletBootstrapState&& rhs):
-    min_replay_txn_start_ht_(rhs.min_replay_txn_start_ht_.load()) {}
-
-void TabletBootstrapState::operator=(TabletBootstrapState&& rhs) {
-  min_replay_txn_start_ht_.store(rhs.min_replay_txn_start_ht_.load());
-}
-
-void TabletBootstrapState::CopyFrom(const TabletBootstrapState& rhs) {
-  min_replay_txn_start_ht_.store(rhs.min_replay_txn_start_ht_.load());
-}
+TabletBootstrapState::TabletBootstrapState(const TabletBootstrapState& rhs)
+    : min_replay_txn_first_write_ht_(rhs.min_replay_txn_first_write_ht_.load()) {}
 
 void TabletBootstrapState::ToPB(consensus::TabletBootstrapStatePB* pb) const {
-  pb->set_min_replay_txn_start_ht(min_replay_txn_start_ht_.load().ToUint64());
+  pb->set_min_replay_txn_first_write_ht(min_replay_txn_first_write_ht_.load().ToUint64());
 }
 
 void TabletBootstrapState::FromPB(const consensus::TabletBootstrapStatePB& pb) {
-  min_replay_txn_start_ht_.store(
-      pb.has_min_replay_txn_start_ht() ? HybridTime(pb.min_replay_txn_start_ht())
-                                       : HybridTime::kInvalid);
+  min_replay_txn_first_write_ht_.store(HybridTime::FromPB(pb.min_replay_txn_first_write_ht()));
 }
 
 TabletBootstrapStateManager::TabletBootstrapStateManager() { }
@@ -97,10 +84,10 @@ Status TabletBootstrapStateManager::SaveToDisk(
   if (tablet) {
     participant = tablet->transaction_participant();
     if (participant) {
-      auto start_ht = VERIFY_RESULT(participant->SimulateProcessRecentlyAppliedTransactions(
+      auto first_write_ht = VERIFY_RESULT(participant->SimulateProcessRecentlyAppliedTransactions(
           max_replicated_op_id));
-      VLOG_WITH_PREFIX(1) << "Using min_replay_txn_start_ht = " << start_ht;
-      bootstrap_state.SetMinReplayTxnStartTime(start_ht);
+      VLOG_WITH_PREFIX(1) << "Using min_replay_txn_first_write_ht = " << first_write_ht;
+      bootstrap_state.SetMinReplayTxnFirstWriteTime(first_write_ht);
     }
   }
 
