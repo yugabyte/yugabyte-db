@@ -54,14 +54,11 @@ For example, to create a single-node cluster with YSQL Connection Manager using 
 ./bin/yugabyted start --tserver_flags "enable_ysql_conn_mgr=true,allowed_preview_flags_csv={enable_ysql_conn_mgr}" --ui false
 ```
 
-{{< note >}}
-
 To create a large number of client connections, ensure that "SHMMNI" (the maximum number of concurrent shared memory segments an OS allows) as well as [ulimit](../../../deploy/manual-deployment/system-config/#ulimits) is set correctly as follows:
 
 1. Open the file `/etc/sysctl.conf`.
 1. Add `kernel.shmmni = 32768` (support for 30000 clients) at the end of the file.
 1. To refresh the settings, use `sudo sysctl -p`.
-{{< /note >}}
 
 ## Learn more
 
