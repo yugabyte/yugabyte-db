@@ -40,7 +40,7 @@ YSQL Connection Manager has the following key features:
 
 - Support for prepared statements. Odyssey supports protocol-level prepared statements and YSQL Connection Manager inherits this feature.
 
-## Use YSQL Connection Manager
+## How to use
 
 To start a YugabyteDB cluster with YSQL Connection Manager, set the [yb-tserver](../../../reference/configuration/yb-tserver/) flag `enable_ysql_conn_mgr` to true.
 
@@ -62,3 +62,8 @@ To create a large number of client connections, ensure that "SHMMNI" (the maximu
 1. Add `kernel.shmmni = 32768` (support for 30000 clients) at the end of the file.
 1. To refresh the settings, use `sudo sysctl -p`.
 {{< /note >}}
+
+## Learn more
+
+- [YSQL Connection Manager documentation](../../../additional-features/connection-manager-ysql/)
+- Blog: [Built-in Connection Manager Turns Key PostgreSQL Weakness into a Strength](https://www.yugabyte.com/blog/connection-pooling-management/)
