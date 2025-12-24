@@ -802,8 +802,10 @@ Status PgDocOp::SendRequestImpl(ForceNonBufferable force_non_bufferable) {
     // Switch to catalog snapshot's read time serial no.
     catalog_read_time_serial_no = pg_session_->GetCatalogSnapshotReadPoint(
         table_->pg_table_id().object_oid, true /* create_if_not_exists */);
-    VLOG(2) << "Using catalog snapshot read time serial number: " << catalog_read_time_serial_no
-            << " and saving current read time serial number: " << current_read_time_serial_no;
+    if (VLOG_IS_ON(2) || yb_debug_log_snapshot_mgmt) {
+      LOG(INFO) << "Using catalog snapshot read time serial number: " << catalog_read_time_serial_no
+                << " and saving current read time serial number: " << current_read_time_serial_no;
+    }
     RSTATUS_DCHECK(
         catalog_read_time_serial_no != 0, IllegalState, "Catalog snapshot read time is 0");
     RETURN_NOT_OK(pg_session_->RestoreReadPoint(catalog_read_time_serial_no));
@@ -824,7 +826,10 @@ Status PgDocOp::SendRequestImpl(ForceNonBufferable force_non_bufferable) {
       table_->schema().table_properties().is_ysql_catalog_table() &&
       current_read_time_serial_no != catalog_read_time_serial_no) {
     // Switch back to earlier read time serial no.
-    VLOG(2) << "Restoring current read time serial number: " << current_read_time_serial_no;
+    if (VLOG_IS_ON(2) || yb_debug_log_snapshot_mgmt) {
+      LOG(INFO) << "Restoring current read time serial number after catalog operation "
+                << current_read_time_serial_no;
+    }
     RETURN_NOT_OK(pg_session_->RestoreReadPoint(current_read_time_serial_no));
   }
   return Status::OK();

@@ -2022,8 +2022,8 @@ Status PgApiImpl::RestartTransaction() {
   return pg_txn_manager_->RestartTransaction();
 }
 
-Status PgApiImpl::ResetTransactionReadPoint() {
-  return pg_txn_manager_->ResetTransactionReadPoint();
+Status PgApiImpl::ResetTransactionReadPoint(bool is_catalog_snapshot) {
+  return pg_txn_manager_->ResetTransactionReadPoint(is_catalog_snapshot);
 }
 
 Status PgApiImpl::EnsureReadPoint() {

@@ -210,11 +210,9 @@ void PgTxnManager::SerialNo::IncMaxReadTime() {
 
 Status PgTxnManager::SerialNo::RestoreReadTime(uint64_t read_time_serial_no) {
   RSTATUS_DCHECK(
-      read_time_serial_no <= max_read_time_ && read_time_serial_no >= min_read_time_,
-      IllegalState, "Bad read time serial no $0 while [$1, $2] is expected",
-      read_time_serial_no, min_read_time_, max_read_time_);
-  VLOG(4) << "RestoreReadTime to read_time_serial_no: " << read_time_serial_no
-          << ", current read time serial number: " << read_time_;
+      read_time_serial_no <= max_read_time_ && read_time_serial_no >= min_read_time_, IllegalState,
+      "Bad read time serial no $0 while [$1, $2] is expected", read_time_serial_no, min_read_time_,
+      max_read_time_);
   read_time_ = read_time_serial_no;
   return Status::OK();
 }
@@ -498,23 +496,21 @@ Status PgTxnManager::RestartTransaction() {
 }
 
 // Reset to a new read point. This corresponds to a new latest snapshot.
-Status PgTxnManager::ResetTransactionReadPoint() {
+Status PgTxnManager::ResetTransactionReadPoint(bool is_catalog_snapshot) {
   VLOG_WITH_FUNC(4);
-  if (!YBCIsLegacyModeForCatalogOps()) {
-    // Create a new read time serial no. But it is upto the caller to switch to this new read time
-    // serial no by calling RestoreReadPoint().
+  if (!YBCIsLegacyModeForCatalogOps() && is_catalog_snapshot) {
+    // When a new catalog snapshot is created in concurrent DDL mode, create a new read time serial
+    // no but do not switch to it yet. Switching to it will happen via RestoreReadPoint() when the
+    // catalog op is made in pg_doc_op.cc.
     //
     // TODO: For autnomous DDLs such as CREATE INDEX which don't use read time serial numbers, reset
     // the transaction read point. Or, merge the kDDL and kPlain session on PgClientSession since
     // with object locking enabled, only one session is going to be active at any point in time.
     serial_no_.IncMaxReadTime();
   } else {
-    // In the legacy pre-object locking mode, create and switch to the new read time serial number.
+    // In all other cases, create and switch to the new read time serial number.
     // Leaving it upto the caller would have worked too, but this is how it has been, so not
     // changing it now.
-    RSTATUS_DCHECK(
-        !IsDdlMode() || IsDdlModeWithRegularTransactionBlock(), IllegalState,
-        "DDL statements aren't expected to request a new read point.");
     serial_no_.IncReadTime();
   }
 
@@ -877,6 +873,11 @@ YbcReadPointHandle PgTxnManager::GetMaxReadPoint() const {
 }
 
 Status PgTxnManager::RestoreReadPoint(YbcReadPointHandle read_point) {
+  if (VLOG_IS_ON(2) || yb_debug_log_snapshot_mgmt) {
+    LOG(INFO) << "Setting read time serial_no to : " << read_point
+              << ", current read time serial number: " << serial_no_.read_time()
+              << " for txn serial number: " << serial_no_.txn();
+  }
   return serial_no_.RestoreReadTime(read_point);
 }
 

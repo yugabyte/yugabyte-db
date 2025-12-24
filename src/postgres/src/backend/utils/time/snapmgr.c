@@ -331,8 +331,9 @@ void
 YbLogSnapshotData(const char *msg, const SnapshotData *snap, bool log_stack_trace)
 {
 	elog(YbSnapshotMgmtLogLevel(),
-		 "%s read point: %" PRIu64 ", effective isolation level: %d. %s",
+		 "%s %s read point: %" PRIu64 ", effective isolation level: %d. %s",
 		 msg,
+		 snap->yb_is_catalog_snapshot ? "(catalog)" : "(regular)",
 		 snap->yb_read_point_handle.has_value ? snap->yb_read_point_handle.value : 0,
 		 YBGetEffectivePggateIsolationLevel(),
 		 log_stack_trace ? YBCGetStackTrace() : "");
@@ -414,6 +415,9 @@ GetTransactionSnapshot(void)
 		}
 		else
 			CurrentSnapshot = GetSnapshotData(&CurrentSnapshotData);
+		elog(YbSnapshotMgmtLogLevel(),
+			"Creating first snapshot in txn (snapshot read point: %" PRIu64 ", catalog read point: %" PRIu64 ")",
+			CurrentSnapshot->yb_read_point_handle.value, CatalogSnapshotData.yb_read_point_handle.value);
 
 		FirstSnapshotSet = true;
 		return CurrentSnapshot;
@@ -426,6 +430,9 @@ GetTransactionSnapshot(void)
 	InvalidateCatalogSnapshot();
 
 	CurrentSnapshot = GetSnapshotData(&CurrentSnapshotData);
+	elog(YbSnapshotMgmtLogLevel(),
+		"Recreating snapshot for next statement in txn (snapshot read point: %" PRIu64 ", catalog read point: %" PRIu64 ")",
+		CurrentSnapshot->yb_read_point_handle.value, CatalogSnapshotData.yb_read_point_handle.value);
 
 	return CurrentSnapshot;
 }
@@ -537,6 +544,7 @@ GetNonHistoricCatalogSnapshot(Oid relid)
 	if (CatalogSnapshot == NULL)
 	{
 		/* Get new snapshot. */
+		CatalogSnapshotData.yb_is_catalog_snapshot = true;
 		CatalogSnapshot = GetSnapshotData(&CatalogSnapshotData);
 
 		/*

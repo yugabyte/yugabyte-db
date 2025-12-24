@@ -1443,7 +1443,7 @@ extern bool YbSkipPgSnapshotManagement();
 extern YbOptionalReadPointHandle YbBuildCurrentReadPointHandle();
 extern void YbUseSnapshotReadTime(uint64_t read_time);
 extern YbOptionalReadPointHandle YbRegisterSnapshotReadTime(uint64_t read_time);
-extern YbOptionalReadPointHandle YbResetTransactionReadPoint();
+extern YbOptionalReadPointHandle YbResetTransactionReadPoint(bool is_catalog_snapshot);
 
 extern bool YbUseFastBackwardScan();
 

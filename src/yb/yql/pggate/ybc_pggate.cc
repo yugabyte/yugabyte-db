@@ -1896,8 +1896,8 @@ YbcStatus YBCPgRestartTransaction() {
   return ToYBCStatus(pgapi->RestartTransaction());
 }
 
-YbcStatus YBCPgResetTransactionReadPoint() {
-  return ToYBCStatus(pgapi->ResetTransactionReadPoint());
+YbcStatus YBCPgResetTransactionReadPoint(bool is_catalog_snapshot) {
+  return ToYBCStatus(pgapi->ResetTransactionReadPoint(is_catalog_snapshot));
 }
 
 double YBCGetTransactionPriority() {

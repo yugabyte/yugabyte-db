@@ -70,7 +70,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
       IsLocalObjectLockOp is_local_object_lock_op = IsLocalObjectLockOp::kFalse);
   Status RecreateTransaction();
   Status RestartTransaction();
-  Status ResetTransactionReadPoint();
+  Status ResetTransactionReadPoint(bool is_catalog_snapshot);
   Status EnsureReadPoint();
   Status RestartReadPoint();
   bool IsRestartReadPointRequested();

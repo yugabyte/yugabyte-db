@@ -5584,7 +5584,7 @@ yb_restart_current_stmt(int attempt, bool is_read_restart)
 	}
 	else
 	{
-		HandleYBStatus(YBCPgResetTransactionReadPoint());
+		HandleYBStatus(YBCPgResetTransactionReadPoint(false));
 		yb_maybe_sleep_on_txn_conflict(attempt);
 	}
 }

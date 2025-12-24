@@ -664,8 +664,8 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     auto session_info = SessionInfo::Make(
         txns_assignment_mutexes_[session_id % txns_assignment_mutexes_.size()],
         FLAGS_pg_client_session_expiration_ms * 1ms, transaction_builder_, client(),
-        session_context_, session_id, lease_epoch(), tablet_server_.ts_local_lock_manager(),
-        messenger_.scheduler());
+        session_context_, session_id, req.pid(), lease_epoch(),
+        tablet_server_.ts_local_lock_manager(), messenger_.scheduler());
     resp->set_session_id(session_id);
     if (FLAGS_pg_client_use_shared_memory) {
       std::call_once(exchange_thread_pool_once_flag_, [this] {
