@@ -331,8 +331,8 @@ Status TabletPeer::InitTabletPeer(
 
     auto txn_participant = tablet_->transaction_participant();
     if (txn_participant) {
-      txn_participant->SetMinReplayTxnStartTimeUpdateCallback(
-          std::bind_front(&TabletPeer::MinReplayTxnStartTimeUpdated, this));
+      txn_participant->SetMinReplayTxnFirstWriteTimeUpdateCallback(
+          std::bind_front(&TabletPeer::MinReplayTxnFirstWriteTimeUpdated, this));
     }
 
     // "Publish" the tablet object right before releasing the lock.
@@ -1879,10 +1879,10 @@ TabletBootstrapFlushState TabletPeer::TEST_TabletBootstrapStateFlusherState() co
       : TabletBootstrapFlushState::kFlushIdle;
 }
 
-void TabletPeer::MinReplayTxnStartTimeUpdated(HybridTime start_ht) {
-  if (start_ht && start_ht != HybridTime::kMax) {
-    VLOG_WITH_PREFIX(2) << "min_replay_txn_start_ht updated: " << start_ht;
-    bootstrap_state_manager_->bootstrap_state().SetMinReplayTxnStartTime(start_ht);
+void TabletPeer::MinReplayTxnFirstWriteTimeUpdated(HybridTime first_write_ht) {
+  if (first_write_ht && first_write_ht != HybridTime::kMax) {
+    VLOG_WITH_PREFIX(2) << "min_replay_txn_first_write_ht updated: " << first_write_ht;
+    bootstrap_state_manager_->bootstrap_state().SetMinReplayTxnFirstWriteTime(first_write_ht);
   }
 }
 

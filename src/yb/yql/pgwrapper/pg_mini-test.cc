@@ -2581,6 +2581,69 @@ TEST_F(PgMiniTestSingleNode, TestBootstrapOnAppliedTransactionWithIntents) {
   ASSERT_EQ(res, 1);
 }
 
+TEST_F(PgMiniTestSingleNode, TestBootstrapFilterOldTransactionNewWrite) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_delete_intents_sst_files) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_bootstrap_intent_ht_filter) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_no_schedule_remove_intents) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_flush_on_shutdown) = true;
+
+  auto conn1 = ASSERT_RESULT(Connect());
+  auto conn2 = ASSERT_RESULT(Connect());
+
+  LOG(INFO) << "Creating tables";
+  ASSERT_OK(conn1.Execute("CREATE TABLE test1(a int) SPLIT INTO 1 TABLETS"));
+
+  const auto& peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
+  tablet::TabletPeerPtr tablet_peer = nullptr;
+  for (auto peer : peers) {
+    if (peer->shared_tablet()->regular_db()) {
+      tablet_peer = peer;
+      break;
+    }
+  }
+  ASSERT_NE(tablet_peer, nullptr);
+
+  ASSERT_OK(conn1.Execute("CREATE TABLE test2(a int) SPLIT INTO 1 TABLETS"));
+
+  // This tests the case where a very old transaction writes to a tablet for the first time,
+  // after bootstrap state has been flushed, to ensure it is not filtered out. More context: #29642.
+  LOG(INFO) << "T1 - BEGIN";
+  ASSERT_OK(conn1.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  LOG(INFO) << "T1 - INSERT (test2)";
+  ASSERT_OK(conn1.Execute("INSERT INTO test2(a) VALUES (0)"));
+
+  LOG(INFO) << "T2 - BEGIN";
+  ASSERT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  LOG(INFO) << "T2 - INSERT (test1)";
+  ASSERT_OK(conn2.Execute("INSERT INTO test1(a) VALUES (10)"));
+  ASSERT_OK(conn2.Execute("INSERT INTO test1(a) VALUES (11)"));
+
+  LOG(INFO) << "T2 - Commit";
+  ASSERT_OK(conn2.CommitTransaction());
+
+  LOG(INFO) << "Flush bootstrap state";
+  ASSERT_OK(tablet_peer->FlushBootstrapState());
+
+  LOG(INFO) << "T1 - INSERT (test1)";
+  ASSERT_OK(conn1.Execute("INSERT INTO test1(a) VALUES(20)"));
+  ASSERT_OK(conn1.Execute("INSERT INTO test1(a) VALUES(21)"));
+
+  LOG(INFO) << "Flush";
+  ASSERT_OK(tablet_peer->shared_tablet()->Flush(tablet::FlushMode::kSync));
+
+  LOG(INFO) << "T1 - Commit";
+  ASSERT_OK(conn1.CommitTransaction());
+
+  LOG(INFO) << "Restarting cluster";
+  ASSERT_OK(RestartCluster());
+
+  conn1 = ASSERT_RESULT(Connect());
+  auto res = ASSERT_RESULT(conn1.FetchRow<PGUint64>("SELECT COUNT(*) FROM test1"));
+  ASSERT_EQ(res, 4);
+  res = ASSERT_RESULT(conn1.FetchRow<PGUint64>("SELECT COUNT(*) FROM test2"));
+  ASSERT_EQ(res, 1);
+}
+
 TEST_F(PgMiniTestSingleNode, TestAppliedTransactionsStateReadOnly) {
   constexpr size_t kIters = 100;
 

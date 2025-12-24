@@ -243,6 +243,7 @@ Status TransactionalWriter::Apply(rocksdb::DirectWriteHandler* handler) {
     yb::LWTransactionMetadataPB data_copy(&metadata_to_store_->arena(), *metadata_to_store_);
     // We use hybrid time only for backward compatibility, actually wall time is required.
     data_copy.set_metadata_write_time(GetCurrentTimeMicros());
+    data_copy.set_first_write_ht(hybrid_time_.ToUint64());
     auto value = data_copy.SerializeAsString();
     Slice value_slice(value);
     handler->Put(key, SliceParts(&value_slice, 1));
