@@ -101,6 +101,8 @@ public class YNPProvisioning extends NodeTaskBase {
       ynpNode.put("is_yb_prebuilt_image", taskParams().isYbPrebuiltImage);
       ynpNode.put("is_ybcontroller_disabled", !universe.getUniverseDetails().isEnableYbc());
       ynpNode.put(
+          "node_exporter_port", universe.getUniverseDetails().communicationPorts.nodeExporterPort);
+      ynpNode.put(
           "tmp_directory",
           confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory));
       ynpNode.put("is_configure_clockbound", userIntent.isUseClockbound());
