@@ -353,9 +353,10 @@ PgApiImpl::PgApiImpl(
       clock_(new server::HybridClock()),
       tserver_shared_object_(BuildTServerSharedObject()),
       pg_txn_manager_(new PgTxnManager(&pg_client_, clock_, pg_callbacks_)),
-      ybctid_reader_provider_(pg_session_),
-      fk_reference_cache_(ybctid_reader_provider_, buffering_settings_),
-      explicit_row_lock_buffer_(ybctid_reader_provider_) {
+      ybctid_reader_providers_{YbctidReaderProvider{pg_session_},
+                               YbctidReaderProvider{pg_session_}},
+      fk_reference_cache_(ybctid_reader_providers_[0], buffering_settings_),
+      explicit_row_lock_buffer_(ybctid_reader_providers_[1]) {
 }
 
 Status PgApiImpl::StartPgApi(const YBCPgTypeEntity *YBCDataTypeArray, int count,
