@@ -15,6 +15,12 @@ type: indexpage
 {{<index/block>}}
 
   {{<index/item
+    title="YSQL Connection Manager"
+    body="Built-in connection pooling for YSQL."
+    href="connection-manager-ysql/"
+    icon="fa-thin fa-phone">}}
+
+  {{<index/item
     title="Change Data Capture"
     body="Capture changes made to data in the database."
     href="change-data-capture/"
