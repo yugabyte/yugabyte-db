@@ -94,6 +94,8 @@ public class YNPProvisioning extends AbstractTaskBase {
       ynpNode.put("is_airgap", provider.getDetails().airGapInstall);
       ynpNode.put("is_yb_prebuilt_image", taskParams().isYbPrebuiltImage);
       ynpNode.put(
+          "node_exporter_port", universe.getUniverseDetails().communicationPorts.nodeExporterPort);
+      ynpNode.put(
           "tmp_directory",
           confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory));
       ynpNode.put("is_configure_clockbound", userIntent.isUseClockbound());
