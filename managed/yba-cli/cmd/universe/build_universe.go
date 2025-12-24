@@ -584,6 +584,16 @@ func buildClusters(
 		}
 	}
 
+	// If user provided only primary tserver gflags (no async), read replica should inherit from primary
+	if noOfClusters == 2 && len(tserverGflagsMapOfMaps) == 1 {
+		for k := range tserverGflagsMapOfMaps {
+			if strings.EqualFold(k, util.PrimaryClusterType) {
+				tserverGFlagsList[1] = tserverGFlagsList[0]
+				specificGFlagsList[1].SetInheritFromPrimary(true)
+			}
+		}
+	}
+
 	for i := 0; i < noOfClusters; i++ {
 		var clusterType string
 		if i == 0 {
