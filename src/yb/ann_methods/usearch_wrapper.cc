@@ -168,6 +168,10 @@ class UsearchIndex :
     this->ReserveBlockCacheSpace(
         block_cache_ ? &block_cache_->cache() : nullptr,
         index_.estimate_bytes_for_num_vectors(num_vectors));
+    static std::once_flag log_once;
+    std::call_once(log_once, [index = &index_]() {
+      LOG(INFO) << "Usearch metric: " << index->metric().isa_name();
+    });
     return Status::OK();
   }
 
