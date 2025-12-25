@@ -9,12 +9,16 @@ menu:
     identifier: migrate-live
     parent: migration-types
     weight: 103
-tags:
-  feature: tech-preview
 type: docs
 ---
 
 The following instructions describe the steps to perform and verify a successful live migration to YugabyteDB, including changes that continuously occur on the source.
+
+{{< note title="Feature availability" >}}
+**PostgreSQL source**: Live migration is {{<tags/feature/ga>}} for PostgreSQL source databases (when not using the YugabyteDB gRPC Connector).
+
+**Oracle source**: Live migration is {{<tags/feature/tp>}} for Oracle source databases.
+{{< /note >}}
 
 ## Live migration workflow
 
@@ -79,6 +83,8 @@ Create a new database user, and assign the necessary user permissions.
 </ul>
 <div class="tab-content">
   <div id="oracle" class="tab-pane fade show active" role="tabpanel" aria-labelledby="oracle-tab">
+
+Live migration is {{<tags/feature/tp>}} for Oracle source databases.
 
 {{< tabpane text=true >}}
 
@@ -365,6 +371,8 @@ You can use only one of the following arguments in the `source` parameter (confi
 
   </div>
   <div id="pg" class="tab-pane fade" role="tabpanel" aria-labelledby="pg-tab">
+
+Live migration is {{<tags/feature/ga>}} for PostgreSQL source database (when not using the YugabyteDB gRPC Connector).
 
 {{< tabpane text=true >}}
 

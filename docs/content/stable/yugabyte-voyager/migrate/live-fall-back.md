@@ -9,14 +9,19 @@ menu:
     identifier: live-fall-back
     parent: migration-types
     weight: 104
-tags:
-  feature: tech-preview
 type: docs
 ---
 
 When migrating a database, it's prudent to have a backup strategy in case the new database doesn't work as expected. A fall-back approach involves streaming changes from the YugabyteDB (target) database back to the source database after the cutover operation, enabling you to cutover to the source database at any point.
 
 A fall-back approach allows you to test the system end-to-end. This workflow is especially important in heterogeneous migration scenarios, in which source and target databases are using different engines.
+
+## Feature availability
+
+| Source database | Status | Notes |
+| :--- | :--- | :--- |
+| PostgreSQL | {{<tags/feature/ga>}} | GA when not using YugabyteDB gRPC Connector |
+| Oracle | {{<tags/feature/tp>}} | Tech Preview |
 
 {{< warning title="Important" >}}
 This workflow has the potential to alter your source database. Make sure you fully understand the implications of these changes before proceeding.
@@ -94,6 +99,8 @@ Create a new database user, and assign the necessary user permissions.
 </ul>
 <div class="tab-content">
   <div id="oracle" class="tab-pane fade show active" role="tabpanel" aria-labelledby="oracle-tab">
+
+Live migration is {{<tags/feature/tp>}} for Oracle source databases.
 
 {{< tabpane text=true >}}
 
@@ -502,6 +509,8 @@ You can use only one of the following arguments in the `source` parameter (confi
 
   </div>
   <div id="pg" class="tab-pane fade" role="tabpanel" aria-labelledby="pg-tab">
+
+Live migration is {{<tags/feature/ga>}} for PostgreSQL source database (when not using the YugabyteDB gRPC Connector).
 
 {{< tabpane text=true >}}
 

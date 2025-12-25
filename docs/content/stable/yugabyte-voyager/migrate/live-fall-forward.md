@@ -9,14 +9,18 @@ menu:
     identifier: live-fall-forward
     parent: migration-types
     weight: 103
-tags:
-  feature: tech-preview
 type: docs
 ---
 
 When migrating using YugabyteDB Voyager, it is prudent to have a backup strategy if the new database doesn't work as expected. A fall-forward approach consists of creating a third database (the source-replica database) that is a replica of your original source database.
 
 A fall-forward approach allows you to test the system end-to-end. This workflow is especially important in heterogeneous migration scenarios, in which source and target databases are using different engines.
+
+{{< warning title="Feature availability" >}}
+Live migration availability varies by source database type:
+- **PostgreSQL source**: {{<tags/feature/ga>}} (when not using YugabyteDB gRPC Connector)
+- **Oracle source**: {{<tags/feature/tp>}}
+{{< /warning >}}
 
 ## Fall-forward workflow
 
@@ -93,6 +97,8 @@ Create a new database user, and assign the necessary user permissions.
 </ul>
 <div class="tab-content">
   <div id="oracle" class="tab-pane fade show active" role="tabpanel" aria-labelledby="oracle-tab">
+
+Live migration is {{<tags/feature/tp>}} for Oracle source databases.
 
 {{< tabpane text=true >}}
 
@@ -379,6 +385,8 @@ You can use only one of the following arguments in the `source` parameter (confi
 
   </div>
   <div id="pg" class="tab-pane fade" role="tabpanel" aria-labelledby="pg-tab">
+
+Live migration is {{<tags/feature/ga>}} for PostgreSQL source database (when not using the YugabyteDB gRPC Connector).
 
 {{< tabpane text=true >}}
 
