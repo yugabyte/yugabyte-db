@@ -60,7 +60,7 @@ jobs:
           - name: "Clang 19, debug, Ubuntu 22.04"
             os: ubuntu-24.04
             yb_build_args: --clang19 debug --no-linuxbrew
-            docker_image: yugabyteci/yb_build_infra_ubuntu2204_x86_64:v2025-12-26T22_00_23
+            docker_image: yugabyteci/yb_build_infra_ubuntu2204_x86_64:latest
     if: >
       (github.event_name == 'push' &&
        !contains(github.event.head_commit.message, 'skip ci') &&
