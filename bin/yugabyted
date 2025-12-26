@@ -3,6 +3,7 @@ from __future__ import unicode_literals
 
 import argparse
 import atexit
+import base64
 from dataclasses import dataclass
 import json
 import logging
@@ -3172,6 +3173,26 @@ class ControlScript(object):
 
         return failed_processes
 
+    # Clean up shared memory segments left behind by tserver after SIGKILL
+    def cleanup_shared_memory(self):
+        try:
+            from _posixshmem import shm_unlink
+
+            tserver_uuid = self.configs.saved_data.get("tserver_uuid")
+            if not tserver_uuid:
+                return
+
+            # Convert UUID to base64 URL-safe encoding (no padding)
+            # Format: /yb_shm-{base64_encoded_uuid}
+            uuid_bytes = bytes.fromhex(tserver_uuid)
+            b64_prefix = base64.urlsafe_b64encode(uuid_bytes).decode().rstrip('=')
+            main_segment_name = "/yb_shm-{}".format(b64_prefix)
+
+            shm_unlink(main_segment_name)
+
+        except Exception as e:
+            Output.log("Unable to clean up shared memory: {}".format(str(e)), logging.WARNING)
+
     # Called after receiving certain signals or on exit. Kills all subprocesses.
     def kill_children(self, signum=None, frame=None):
         if signum:
@@ -3190,6 +3211,17 @@ class ControlScript(object):
                 "PGID could not be found for PID {}. Is {} running?".format(cur_pid, SCRIPT_NAME))
             os._exit(os.EX_OK)
         self.set_signals(SIG_DFL)
+
+        # Kill tserver first to clean up its shared memory segments
+        if "tserver" in self.processes:
+            tserver_process = self.processes["tserver"].process
+            if tserver_process:
+                try:
+                    os.kill(tserver_process.pid, SIGKILL)
+                    time.sleep(0.5)
+                    self.cleanup_shared_memory()
+                except (OSError, ProcessLookupError) as e:
+                    Output.log("Failed to kill tserver: {}".format(str(e)), logging.WARNING)
 
         for p in self.processes.values():
             p.delete_pidfile()
