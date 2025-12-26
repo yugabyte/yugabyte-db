@@ -14,11 +14,18 @@ type: docs
 
 The following instructions describe the steps to perform and verify a successful live migration to YugabyteDB, including changes that continuously occur on the source.
 
-{{< note title="Feature availability" >}}
-**PostgreSQL source**: Live migration is {{<tags/feature/ga>}} for PostgreSQL source databases (when not using the YugabyteDB gRPC Connector).
+## Feature availability
 
-**Oracle source**: Live migration is {{<tags/feature/tp>}} for Oracle source databases.
-{{< /note >}}
+Live migration availability varies by the source database type as described in the following table:
+
+| Source database | Notes |
+| :--- | :--- |
+| PostgreSQL | {{<tags/feature/ga>}} when using [YugabyteDB Connector](/stable/additional-features/change-data-capture/using-logical-replication/). <br> {{<tags/feature/tp>}} when using [YugabyteDB gRPC Connector](/stable/additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/).|
+| Oracle | {{<tags/feature/tp>}} |
+
+{{< warning title="Important" >}}
+This workflow has the potential to alter your source database. Make sure you fully understand the implications of these changes before proceeding.
+{{< /warning >}}
 
 ## Live migration workflow
 
@@ -372,7 +379,7 @@ You can use only one of the following arguments in the `source` parameter (confi
   </div>
   <div id="pg" class="tab-pane fade" role="tabpanel" aria-labelledby="pg-tab">
 
-Live migration is {{<tags/feature/ga>}} for PostgreSQL source database (when not using the YugabyteDB gRPC Connector).
+Live migration for PostgreSQL source database (using YugabyteDB Connector) is {{<tags/feature/ga>}}.
 
 {{< tabpane text=true >}}
 
@@ -396,7 +403,12 @@ Live migration is {{<tags/feature/ga>}} for PostgreSQL source database (when not
 
 1. Grant permissions for migration. Use the [yb-voyager-pg-grant-migration-permissions.sql](../../reference/yb-voyager-pg-grant-migration-permissions/) script (in `/opt/yb-voyager/guardrails-scripts/` or, for brew, check in `$(brew --cellar)/yb-voyager@<voyagerversion>/<voyagerversion>`) to grant the required permissions as follows:
 
-    _Warning_: This script transfers ownership of all tables in the specified schemas to the specified replication group. The migration user and the original owner of the tables will be added to the replication group.
+    _Warning_: This script provides two options for granting permissions:
+
+      - Transfer ownership: Transfers ownership of all tables in the specified schemas to the specified replication group, and adds the original table owners and the migration user to that group.
+      - Grant owner role: Grants the original table owner the role of each table to the migration user, without transferring table ownership.
+
+    In addition, this script sets [Replica identity](/stable/additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/#replica-identity) FULL on all tables in the specified schemas.
 
     ```sql
     psql -h <host> \
@@ -434,7 +446,12 @@ Live migration is {{<tags/feature/ga>}} for PostgreSQL source database (when not
 
 1. Grant permissions for migration. Use the [yb-voyager-pg-grant-migration-permissions.sql](../../reference/yb-voyager-pg-grant-migration-permissions/) script (in `/opt/yb-voyager/guardrails-scripts/` or, for brew, check in `$(brew --cellar)/yb-voyager@<voyagerversion>/<voyagerversion>`) to grant the required permissions as follows:
 
-    _Warning_: This script transfers ownership of all tables in the specified schemas to the specified replication group. The migration user and the original owner of the tables will be added to the replication group.
+    _Warning_: This script provides two options for granting permissions:
+
+      - Transfer ownership: Transfers ownership of all tables in the specified schemas to the specified replication group, and adds the original table owners and the migration user to that group.
+      - Grant owner role: Grants the original table owner the role of each table to the migration user, without transferring table ownership.
+
+    In addition, this script sets [Replica identity](/stable/additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/#replica-identity) FULL on all tables in the specified schemas.
 
     ```sql
     psql -h <host> \
@@ -1371,3 +1388,4 @@ DROP USER ybvoyager;
 - For Oracle source databases, schema, table, and column names with more than 30 characters are not supported.
 - Sequences that are not associated with any column or are attached to columns of non-integer types are not supported for resuming value generation. These sequences must be manually resumed during the cutover phase.
 - For Oracle, only the values of identity columns on the migrating tables will be restored. The user will have to resume other sequences manually.
+

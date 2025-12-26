@@ -16,10 +16,17 @@ When migrating using YugabyteDB Voyager, it is prudent to have a backup strategy
 
 A fall-forward approach allows you to test the system end-to-end. This workflow is especially important in heterogeneous migration scenarios, in which source and target databases are using different engines.
 
-{{< warning title="Feature availability" >}}
-Live migration availability varies by source database type:
-- **PostgreSQL source**: {{<tags/feature/ga>}} (when not using YugabyteDB gRPC Connector)
-- **Oracle source**: {{<tags/feature/tp>}}
+## Feature availability
+
+Live migration availability varies by the source database type as described in the following table:
+
+| Source database | Notes |
+| :--- | :--- |
+| PostgreSQL | {{<tags/feature/ga>}} when using [YugabyteDB Connector](/stable/additional-features/change-data-capture/using-logical-replication/). <br> {{<tags/feature/tp>}} when using [YugabyteDB gRPC Connector](/stable/additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/).|
+| Oracle | {{<tags/feature/tp>}} |
+
+{{< warning title="Important" >}}
+This workflow has the potential to alter your source database. Make sure you fully understand the implications of these changes before proceeding.
 {{< /warning >}}
 
 ## Fall-forward workflow
@@ -386,7 +393,7 @@ You can use only one of the following arguments in the `source` parameter (confi
   </div>
   <div id="pg" class="tab-pane fade" role="tabpanel" aria-labelledby="pg-tab">
 
-Live migration is {{<tags/feature/ga>}} for PostgreSQL source database (when not using the YugabyteDB gRPC Connector).
+Live migration for PostgreSQL source database (using YugabyteDB Connector) is {{<tags/feature/ga>}}.
 
 {{< tabpane text=true >}}
 
@@ -410,7 +417,12 @@ Live migration is {{<tags/feature/ga>}} for PostgreSQL source database (when not
 
 1. Grant permissions for migration. Use the [yb-voyager-pg-grant-migration-permissions.sql](../../reference/yb-voyager-pg-grant-migration-permissions/) script (in `/opt/yb-voyager/guardrails-scripts/` or, for brew, check in `$(brew --cellar)/yb-voyager@<voyagerversion>/<voyagerversion>`) to grant the required permissions as follows:
 
-    _Warning_: This script transfers ownership of all tables in the specified schemas to the specified replication group. The migration user and the original owner of the tables will be added to the replication group.
+    _Warning_: This script provides two options for granting permissions:
+
+      - Transfer ownership: Transfers ownership of all tables in the specified schemas to the specified replication group, and adds the original table owners and the migration user to that group.
+      - Grant owner role: Grants the original table owner the role of each table to the migration user, without transferring table ownership.
+
+    In addition, this script sets [Replica identity](/stable/additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/#replica-identity) FULL on all tables in the specified schemas.
 
     ```sql
     psql -h <host> \
@@ -448,7 +460,12 @@ Live migration is {{<tags/feature/ga>}} for PostgreSQL source database (when not
 
 1. Grant permissions for migration. Use the [yb-voyager-pg-grant-migration-permissions.sql](../../reference/yb-voyager-pg-grant-migration-permissions/) script (which can be found at `/opt/yb-voyager/guardrails-scripts`. For brew, check in `$(brew --cellar)/yb-voyager@<voyagerversion>/<voyagerversion>`) to grant the required permissions as follows:
 
-    _Warning_: This script transfers ownership of all tables in the specified schemas to the specified replication group. The migration user and the original owner of the tables will be added to the replication group.
+    _Warning_: This script provides two options for granting permissions:
+
+      - Transfer ownership: Transfers ownership of all tables in the specified schemas to the specified replication group, and adds the original table owners and the migration user to that group.
+      - Grant owner role: Grants the original table owner the role of each table to the migration user, without transferring table ownership.
+
+    In addition, this script sets [Replica identity](/stable/additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/#replica-identity) FULL on all tables in the specified schemas.
 
     ```sql
     psql -h <host> \
@@ -1648,5 +1665,7 @@ In addition to the Live migration [limitations](../live-migrate/#limitations), t
 - For [YugabyteDB gRPC Connector](../../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/), fall-forward is unsupported with a YugabyteDB cluster running on YugabyteDB Aeon.
 - For YugabyteDB gRPC Connector, [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity) is partially supported for export or streaming events from YugabyteDB during `export data from target`. Basic SSL and server authentication via root certificate is supported. Client authentication is not supported.
 - For YugabyteDB gRPC Connector, the following data types are unsupported when exporting from the target YugabyteDB: BOX, CIRCLE, LINE, LSEG, PATH, PG_LSN, POINT, POLYGON, TSQUERY, TSVECTOR, TXID_SNAPSHOT, GEOMETRY, GEOGRAPHY, RASTER, HSTORE.
-- Currently, the [YugabyteDB connector](../../../additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/) has a known limitation. Refer to GitHub issue [27248](https://github.com/yugabyte/yugabyte-db/issues/27248) for more details.
 - [Export data from target](../../reference/data-migration/export-data/#export-data-from-target) supports DECIMAL/NUMERIC datatypes for YugabyteDB versions 2.20.1.1 and later.
+- [Savepoint](/stable/explore/ysql-language-features/advanced-features/savepoints/) statements within transactions on the target database are not supported. Transactions rolling back to some savepoint may cause data inconsistency between the databases.
+- Rows larger than 4MB in the target database can cause consistency issues during migration. Refer to [TA-29060](/stable/releases/techadvisories/ta-29060/) for more details.
+- Workloads with [Read Committed isolation level](/stable/architecture/transactions/read-committed/) are not fully supported. It is recommended to use [Repeatable Read or Serializable isolation levels](/stable/architecture/transactions/isolation-levels/) for the duration of the migration.

@@ -42,6 +42,8 @@ During the `export data from target` phase, after `cutover to target` in the fal
 
 Use the argument `--use-yb-grpc-connector` to select the YugabyteDB gRPC connector for the migration as described in the following table.
 
+Live migration for PostgreSQL source database (with fall-forward or fall-back using YugabyteDB Connector) is {{<tags/feature/ga>}}. Refer to [feature availability](../../../migrate/live-migrate/#feature-availability) for more details.
+
 ### Arguments
 
 The following table lists the valid CLI flags and parameters for `cutover to target` command.
