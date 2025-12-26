@@ -102,6 +102,8 @@ class ObjectLockSharedStateManager {
 
   [[nodiscard]] TransactionId TEST_last_owner() const;
 
+  [[nodiscard]] bool TEST_has_exclusive_intents() const;
+
  private:
   template<typename ConsumeMethod>
   size_t CallWithRequestConsumer(

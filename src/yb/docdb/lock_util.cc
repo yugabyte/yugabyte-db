@@ -142,6 +142,13 @@ std::string LockStateDebugString(LockState state) {
       LockStateIntentCount(state, dockv::IntentType::kStrongWrite));
 }
 
+bool LockStateContains(LockState existing, LockState add) {
+  auto intent_list = dockv::IntentTypeList();
+  return std::all_of(intent_list.begin(), intent_list.end(), [&](const dockv::IntentType intent) {
+    return LockStateIntentCount(existing, intent) >= LockStateIntentCount(add, intent);
+  });
+}
+
 // We associate a list of <KeyEntryType, IntentTypeSet> to each table lock type such that the
 // table lock conflict matrix of postgres is preserved.
 //

@@ -136,6 +136,10 @@ struct TrackedTransactionLockEntry {
       : granted_locks(std::move(other.granted_locks)),
         waiting_locks(std::move(other.waiting_locks)) {}
 
+  bool HandleRedundantLock(
+      LockBatchEntrySpan key_to_intent_type,
+      const ObjectLockOwner& object_lock_owner) EXCLUDES(mutex);
+
   void AddAcquiredLockUnlocked(
       const LockBatchEntry<ObjectLockManager>& lock_entry,
       const ObjectLockOwner& object_lock_owner, LocksMapType type) REQUIRES(mutex);
@@ -473,6 +477,31 @@ void TrackedTransactionLockEntry::AddAcquiredLockUnlocked(
   }
 }
 
+bool TrackedTransactionLockEntry::HandleRedundantLock(
+    LockBatchEntrySpan key_to_intent_type,
+    const ObjectLockOwner& object_lock_owner) {
+  TRACE_FUNC();
+  std::lock_guard lock(mutex);
+  const bool is_lock_redundant =
+      std::ranges::all_of(key_to_intent_type, [&](auto key_and_intent) REQUIRES (mutex) {
+        return LockStateContains(GetLockStateForKeyUnlocked(key_and_intent.key),
+                                 IntentTypeSetAdd(key_and_intent.intent_types));
+      });
+  if (!is_lock_redundant) {
+    return false;
+  }
+  for (auto& lock_entry : key_to_intent_type) {
+    VLOG_WITH_FUNC(1)
+        << "Ignoring redundant acquire for lock_entry: " << lock_entry.ToString()
+        << ", object_lock_owner: " << AsString(object_lock_owner)
+        << ", with state: " << LockStateDebugString(GetLockStateForKeyUnlocked(lock_entry.key));
+    auto& subtxn_locks = granted_locks[object_lock_owner.subtxn_id];
+    auto [it, _] = subtxn_locks.try_emplace(lock_entry.key, TrackedLockEntry(*lock_entry.locked));
+    ++it->second.ref_count;
+  }
+  return true;
+}
+
 void TrackedTransactionLockEntry::AddReleasedLockUnlocked(
     const LockBatchEntry<ObjectLockManager>& lock_entry, const ObjectLockOwner& object_lock_owner,
     LocksMapType locks_map) {
@@ -534,6 +563,9 @@ void ObjectLockManagerImpl::ConsumePendingSharedLockRequestUnlocked(
     ObjectSharedLockRequest& request) {
   auto& lock_entry = request.entry;
   auto transaction_entry = DoReserve({&lock_entry, 1}, request.owner);
+  if (transaction_entry->HandleRedundantLock({&lock_entry, 1}, request.owner)) {
+    return;
+  }
   std::lock_guard lock(transaction_entry->mutex);
   transaction_entry->status_tablet = std::move(request.status_tablet);
   DoLockSingleEntryWithoutConflictCheck(lock_entry, transaction_entry, request.owner);
@@ -635,10 +667,14 @@ void ObjectLockManagerImpl::DoCleanup(
 
 void ObjectLockManagerImpl::Lock(LockData&& data) {
   TRACE("Locking a batch of $0 keys", data.key_to_lock.lock_batch.size());
+  auto transaction_entry = Reserve(data.key_to_lock.lock_batch, data.object_lock_owner);
+  if (transaction_entry->HandleRedundantLock(data.key_to_lock.lock_batch, data.object_lock_owner)) {
+    data.callback(Status::OK());
+    return;
+  }
   if (shared_manager_) {
     AcquireExclusiveLockIntents(data);
   }
-  auto transaction_entry = Reserve(data.key_to_lock.lock_batch, data.object_lock_owner);
   DoLock(transaction_entry, std::move(data), IsLockRetry::kFalse);
 }
 
@@ -946,6 +982,10 @@ void ObjectLockManagerImpl::Shutdown() {
     waiter->Resume(this, kShuttingDownError);
   }
   if (FLAGS_TEST_assert_olm_empty_locks_map) {
+    if (shared_manager_) {
+      LOG_IF(DFATAL, shared_manager_->TEST_has_exclusive_intents())
+          << "Unexpected exclusive intents in Object Lock Manager shared state.";
+    }
     std::lock_guard l(global_mutex_);
     LOG_IF(DFATAL, !locks_.empty())
         << "ref_count of some lock structures is non-zero on shutdown, implies either some "
@@ -1242,7 +1282,10 @@ void ObjectLockManagerImpl::DumpStoredObjectLocksMap(
         out << "<tr>"
             << "<td>" << Format("{txn: $0 subtxn_id: $1}", txn, subtxn_id) << "</td>"
             << "<td>" << AsString(object_id) << "</td>"
-            << "<td>" << LockStateDebugString(entry.state) << "</td>"
+            << "<td>"
+                << Format("{ ref_count: $0, lock_state: $1 }",
+                          entry.ref_count, LockStateDebugString(entry.state))
+            << "</td>"
             << "</tr>\n";
       }
     }

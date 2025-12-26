@@ -89,6 +89,8 @@ class ObjectLockSharedState {
 
   [[nodiscard]] SessionLockOwnerTag TEST_last_owner() PARENT_PROCESS_ONLY;
 
+  [[nodiscard]] bool TEST_has_exclusive_intents() PARENT_PROCESS_ONLY;
+
  private:
   const SharedMemoryUniquePtr<Impl> impl_;
 };
