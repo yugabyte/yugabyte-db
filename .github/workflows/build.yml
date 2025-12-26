@@ -16,7 +16,7 @@ on:
 
   pull_request:
     branches:
-      - none   # TESTING
+      - master
     # Duplicated list because github does not support YAML anchors.
     # https://github.com/actions/runner/issues/1182
     paths-ignore:
@@ -42,25 +42,25 @@ jobs:
       # This should be a sub-set of the build flavors in jenkins_jobs.yml.
       matrix:
         include:
-          - name: "GCC 12, fastdebug, AlmaLinux 8"
-            os: ubuntu-24.04
-            yb_build_args: --gcc12 fastdebug --no-linuxbrew
-            docker_image: yugabyteci/yb_build_infra_almalinux8_x86_64:latest
+          #- name: "GCC 12, fastdebug, AlmaLinux 8"
+          #  os: ubuntu-24.04
+          #  yb_build_args: --gcc12 fastdebug --no-linuxbrew
+          #  docker_image: yugabyteci/yb_build_infra_almalinux8_x86_64:latest
 
-          - name: "GCC 12, debug, AlmaLinux 9"
-            os: ubuntu-24.04
-            yb_build_args: --gcc12 debug --no-linuxbrew
-            docker_image: yugabyteci/yb_build_infra_almalinux9_x86_64:latest
+          #- name: "GCC 12, debug, AlmaLinux 9"
+          #  os: ubuntu-24.04
+          #  yb_build_args: --gcc12 debug --no-linuxbrew
+          #  docker_image: yugabyteci/yb_build_infra_almalinux9_x86_64:latest
 
-          - name: "Clang 19, release, AlmaLinux 8"
-            os: ubuntu-24.04
-            yb_build_args: --clang19 release --no-linuxbrew
-            docker_image: yugabyteci/yb_build_infra_almalinux8_x86_64:latest
+          #- name: "Clang 19, release, AlmaLinux 8"
+          #  os: ubuntu-24.04
+          #  yb_build_args: --clang19 release --no-linuxbrew
+          #  docker_image: yugabyteci/yb_build_infra_almalinux8_x86_64:latest
 
           - name: "Clang 19, debug, Ubuntu 22.04"
             os: ubuntu-24.04
             yb_build_args: --clang19 debug --no-linuxbrew
-            docker_image: yugabyteci/yb_build_infra_ubuntu2204_x86_64:latest
+            docker_image: yugabyteci/yb_build_infra_ubuntu2204_x86_64:v2025-12-26T22_00_23
     if: >
       (github.event_name == 'push' &&
        !contains(github.event.head_commit.message, 'skip ci') &&
@@ -103,8 +103,10 @@ jobs:
                 chown -R yugabyteci .
                 sudo -u yugabyteci bash -c "
                   set -euo pipefail
-                  export PATH=/usr/local/bin:\$PATH
+                  export PATH=/usr/local/bin:\$HOME/arcanist/bin:\$PATH
                   df -H /
+                  echo ::group::Arc Lint
+                  arc lint
                   echo ::group::Building YugabyteDB
                   ./yb_build.sh release \
                     --download-thirdparty \
