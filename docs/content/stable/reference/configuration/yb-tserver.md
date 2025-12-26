@@ -587,6 +587,11 @@ Default: `read committed`
 
 Specifies the default isolation level of each new transaction. Every transaction has an isolation level of `read uncommitted`, `read committed`, `repeatable read`, or `serializable`.
 
+For example,
+```
+SET default_transaction_isolation='repeatable read';
+```
+
 See [transaction isolation levels](../../../architecture/transactions/isolation-levels) for reference.
 
 See also the [--ysql_default_transaction_isolation](#ysql-default-transaction-isolation) flag.
@@ -2701,12 +2706,12 @@ Some connections are reserved for superusers. The total number of superuser conn
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
-Default: `READ COMMITTED`
+Default: `'read committed'`
 {{% /tags/wrap %}}
 
 Specifies the default transaction isolation level.
 
-Valid values: `SERIALIZABLE`, `REPEATABLE READ`, `READ COMMITTED`, and `READ UNCOMMITTED`.
+Valid values: `serializable`, `'repeatable read'`, `'read committed'`, and `'read uncommitted'`.
 
 [Read Committed Isolation](../../../explore/transactions/isolation-levels/) is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`.
 
