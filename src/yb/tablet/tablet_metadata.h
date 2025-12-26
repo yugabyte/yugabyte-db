@@ -229,7 +229,7 @@ struct KvStoreInfo {
       const KvStoreInfoPB& snapshot_kvstoreinfo, const TableId& primary_table_id, bool colocated,
       dockv::OverwriteSchemaPacking overwrite);
 
-  Status RestoreMissingValuesAndMergeTableSchemaPackings(
+  Status MergeTableSchemaPackings(
       const KvStoreInfoPB& snapshot_kvstoreinfo, const TableId& primary_table_id, bool colocated,
       dockv::OverwriteSchemaPacking overwrite);
 
