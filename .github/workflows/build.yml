@@ -96,6 +96,8 @@ jobs:
                 echo "PATH: $PATH"
                 export PATH=/usr/local/bin:$PATH
                 ( set -x; ls -l /usr/local/bin )
+                ( set -x; ls -l /home/yugabyteci )
+                ( set -x; ls -l /home/yugabyte-ci )
                 set +e
                 ( set -x; which ninja )
                 ( set -x; which cmake )
