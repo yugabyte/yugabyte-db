@@ -322,9 +322,6 @@ execute_go() {
 
 # Main function for Go execution.
 main_go() {
-    if [[ "$is_csp" == true && "$is_airgap" == false ]]; then
-        import_gpg_key_if_required
-    fi
     execute_go "${filtered_args[@]}"
 }
 

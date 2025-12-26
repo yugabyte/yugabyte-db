@@ -119,7 +119,7 @@ type Command interface {
 func NewBaseModule(name, basePath string) *BaseModule {
 	return &BaseModule{
 		basePath: basePath,
-		name:     name,
+		name:     name, // Name of the module for resources e.g jinja files folder.
 	}
 }
 
