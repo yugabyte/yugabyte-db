@@ -15,9 +15,19 @@ int od_compression_frontend_setup(od_client_t *client,
 {
 	od_instance_t *instance = client->global->instance;
 #ifndef YB_GUC_SUPPORT_VIA_SHMEM
-	kiwi_var_t *compression_var = yb_kiwi_vars_get(
-		&client->vars, "compression",
-		yb_od_instance_should_lowercase_guc_name(instance));
+	kiwi_var_t *compression_var;
+	/*
+	 * YB: Since we forward the startup packet to auth backend and "compression" isn't
+	 * a valid PG GUC, this compression setting doesn't work with auth backend
+	 */
+	if (instance->config.yb_use_auth_backend)
+		compression_var = yb_kiwi_vars_get(
+			&client->yb_vars_startup, "compression",
+			yb_od_instance_should_lowercase_guc_name(instance));
+	else
+		compression_var = yb_kiwi_vars_get(
+			&client->yb_vars_session, "compression",
+			yb_od_instance_should_lowercase_guc_name(instance));
 #else
 	kiwi_var_t *compression_var =
 		kiwi_vars_get(&client->vars, KIWI_VAR_COMPRESSION);

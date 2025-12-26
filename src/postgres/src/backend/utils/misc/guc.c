@@ -8720,9 +8720,17 @@ SelectConfigFiles(const char *userDoption, const char *progname)
 static bool
 yb_should_report_guc(struct config_generic *record)
 {
-	/* TODO(arpit.saxena): Use narrower sending criteria for correctness */
-	return ((record->flags & GUC_REPORT) && !YbIsClientYsqlConnMgr()) ||
-		(YbIsClientYsqlConnMgr() && record->context > PGC_BACKEND);
+	bool		shouldReportGUC = record->flags & GUC_REPORT;
+
+	if (YbIsClientYsqlConnMgr())
+	{
+		shouldReportGUC = shouldReportGUC ||
+			(record->status & GUC_VALUE_RESET) ||
+			(record->context >= PGC_SU_BACKEND &&
+			 (record->source == PGC_S_CLIENT ||
+			  record->source == PGC_S_SESSION));
+	}
+	return shouldReportGUC;
 }
 
 /*
@@ -8830,6 +8838,9 @@ ResetAllOptions(void)
 		gconf->source = gconf->reset_source;
 		gconf->scontext = gconf->reset_scontext;
 		gconf->srole = gconf->reset_srole;
+		/* YB: Add GUC_VALUE_RESET for relaying back to Connection Manager */
+		if (YbIsClientYsqlConnMgr())
+			gconf->status |= GUC_VALUE_RESET;
 
 		if (yb_should_report_guc(gconf))
 		{
@@ -9003,6 +9014,7 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 			bool		restorePrior = false;
 			bool		restoreMasked = false;
 			bool		changed;
+			bool		yb_needs_report;
 
 			/*
 			 * In this next bit, if we don't set either restorePrior or
@@ -9085,6 +9097,7 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 			}
 
 			changed = false;
+			yb_needs_report = false;
 
 			if (restorePrior || restoreMasked)
 			{
@@ -9242,6 +9255,18 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 				set_extra_field(gconf, &(stack->prior.extra), NULL);
 				set_extra_field(gconf, &(stack->masked.extra), NULL);
 
+				/*
+				 * YB: Connection manager needs to be informed if any variable
+				 * set by the user is rolled back
+				 */
+				if (YbIsClientYsqlConnMgr() && changed &&
+					(gconf->context == PGC_SUSET ||
+					 gconf->context == PGC_USERSET) &&
+					gconf->source == PGC_S_SESSION)
+				{
+					yb_needs_report = true;
+				}
+
 				/* And restore source information */
 				gconf->source = newsource;
 				gconf->scontext = newscontext;
@@ -9253,7 +9278,7 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 			pfree(stack);
 
 			/* Report new value if we changed it */
-			if (changed && yb_should_report_guc(gconf))
+			if (changed && (yb_needs_report || yb_should_report_guc(gconf)))
 			{
 				gconf->status |= GUC_NEEDS_REPORT;
 				report_needed = true;
@@ -9306,13 +9331,7 @@ BeginReportingGUCOptions(void)
 	{
 		struct config_generic *conf = guc_variables[i];
 
-		/*
-		 * YB_TODO(#27725): Replace with a tighter reporting that is needed for
-		 * connection manager
-		 */
-		if ((conf->flags & GUC_REPORT) ||
-			(conf->context >= PGC_SU_BACKEND &&
-			 (conf->source == PGC_S_CLIENT || conf->source == PGC_S_SESSION)))
+		if (yb_should_report_guc(conf))
 			ReportGUCOption(conf);
 	}
 
@@ -9358,7 +9377,8 @@ ReportChangedGUCOptions(void)
 	{
 		struct config_generic *conf = guc_variables[i];
 
-		if (((conf->flags & GUC_REPORT) || YbIsClientYsqlConnMgr()) && (conf->status & GUC_NEEDS_REPORT))
+		if (((conf->flags & GUC_REPORT) || YbIsClientYsqlConnMgr()) &&
+			(conf->status & GUC_NEEDS_REPORT))
 			ReportGUCOption(conf);
 	}
 
@@ -9381,6 +9401,11 @@ ReportGUCOption(struct config_generic *record)
 {
 	char	   *val = _ShowOption(record, false);
 
+	/*
+	 * YB: record->last_reported doesn't make sense for connection manager
+	 * since the backend can be attached to another client which would need
+	 * ParameterStatus of a variable it sets
+	 */
 	if (YbIsClientYsqlConnMgr() ||
 		record->last_reported == NULL ||
 		strcmp(val, record->last_reported) != 0)
@@ -9423,11 +9448,6 @@ ReportGUCOption(struct config_generic *record)
 					else if (record->source == PGC_S_SESSION)
 						flags |=
 							YB_PARAM_STATUS_USERSET_OR_SUSET_SOURCE_SESSION;
-
-					/*
-					 * TODO(#28445): Populate
-					 * YB_PARAM_STATUS_USERSET_SOURCE_RESET
-					 */
 					break;
 			}
 
@@ -9458,6 +9478,9 @@ ReportGUCOption(struct config_generic *record)
 	pfree(val);
 
 	record->status &= ~GUC_NEEDS_REPORT;
+	/* YB: Reset flag that was set for Connection Manager */
+	if (YbIsClientYsqlConnMgr())
+		record->status &= ~GUC_VALUE_RESET;
 }
 
 /*
@@ -10257,6 +10280,7 @@ set_config_option_ext(const char *name, const char *value,
 	void	   *newextra = NULL;
 	bool		prohibitValueChange = false;
 	bool		makeDefault;
+	bool		gucReset = value == NULL && source == PGC_S_SESSION;
 
 	if (source == YSQL_CONN_MGR)
 		Assert(YbIsClientYsqlConnMgr());
@@ -10605,6 +10629,9 @@ set_config_option_ext(const char *name, const char *value,
 					conf->gen.source = source;
 					conf->gen.scontext = context;
 					conf->gen.srole = srole;
+					/* YB: Mark value as been reset for connection manager */
+					if (gucReset)
+						conf->gen.status |= GUC_VALUE_RESET;
 				}
 				if (makeDefault)
 				{
@@ -10703,6 +10730,9 @@ set_config_option_ext(const char *name, const char *value,
 					conf->gen.source = source;
 					conf->gen.scontext = context;
 					conf->gen.srole = srole;
+					/* YB: Mark value as been reset for connection manager */
+					if (gucReset)
+						conf->gen.status |= GUC_VALUE_RESET;
 				}
 				if (makeDefault)
 				{
@@ -10796,6 +10826,9 @@ set_config_option_ext(const char *name, const char *value,
 									newextra);
 					conf->gen.source = source;
 					conf->gen.scontext = context;
+					/* YB: Mark value as been reset for connection manager */
+					if (gucReset)
+						conf->gen.status |= GUC_VALUE_RESET;
 				}
 				if (makeDefault)
 				{
@@ -10892,6 +10925,9 @@ set_config_option_ext(const char *name, const char *value,
 					conf->gen.source = source;
 					conf->gen.scontext = context;
 					conf->gen.srole = srole;
+					/* YB: Mark value as been reset for connection manager */
+					if (gucReset)
+						conf->gen.status |= GUC_VALUE_RESET;
 				}
 				if (makeDefault)
 				{
@@ -11019,6 +11055,9 @@ set_config_option_ext(const char *name, const char *value,
 					conf->gen.source = source;
 					conf->gen.scontext = context;
 					conf->gen.srole = srole;
+					/* YB: Mark value as been reset for connection manager */
+					if (gucReset)
+						conf->gen.status |= GUC_VALUE_RESET;
 
 					/*
 					 * Ugly hack: during SET session_authorization, forcibly
@@ -11166,6 +11205,9 @@ set_config_option_ext(const char *name, const char *value,
 					conf->gen.source = source;
 					conf->gen.scontext = context;
 					conf->gen.srole = srole;
+					/* YB: Mark value as been reset for connection manager */
+					if (gucReset)
+						conf->gen.status |= GUC_VALUE_RESET;
 				}
 				if (makeDefault)
 				{

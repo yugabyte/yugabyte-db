@@ -528,7 +528,7 @@ static inline int od_backend_startup(od_server_t *server,
 					 */
 					kiwi_vars_update(
 						&client->yb_external_client
-							 ->vars,
+							 ->yb_vars_startup,
 						name, name_len, value,
 						value_len,
 						yb_od_instance_should_lowercase_guc_name(
@@ -1019,6 +1019,8 @@ int od_backend_update_parameter(od_server_t *server, char *context, char *data,
 	char *value;
 	uint32_t value_len;
 	char flags = 0;
+	bool should_lowercase_name =
+		yb_od_instance_should_lowercase_guc_name(instance);
 
 	int rc;
 	rc = kiwi_fe_read_yb_parameter(data, size, &name, &name_len, &value,
@@ -1045,18 +1047,35 @@ int od_backend_update_parameter(od_server_t *server, char *context, char *data,
 		return 0;
 
 	/* update server only or client and server parameter */
-	od_debug(&instance->logger, context, client, server, "%.*s = %.*s",
-		 name_len, name, value_len, value);
+	od_debug(&instance->logger, context, client, server,
+		 "%.*s = %.*s, flags: 0x%X", name_len, name, value_len, value,
+		 flags);
 
-	if (server_only) {
-		kiwi_vars_update(
-			&server->vars, name, name_len, value, value_len,
-			yb_od_instance_should_lowercase_guc_name(instance));
+	/*
+	 * YB: It is possible that an earlier set variable becomes unset due
+	 * to transaction rollback or RESET statement. In that case, it needs
+	 * to be removed from server and client variable lists
+	 */
+
+	if (flags & (YB_PARAM_STATUS_USERSET_OR_SUSET_SOURCE_SESSION |
+		     YB_PARAM_STATUS_USERSET_OR_SUSET_SOURCE_STARTUP)) {
+		kiwi_vars_update(&server->vars, name, name_len, value,
+				 value_len, should_lowercase_name);
 	} else {
-		kiwi_vars_update_both(
-			&client->vars, &server->vars, name, name_len, value,
-			value_len,
-			yb_od_instance_should_lowercase_guc_name(instance));
+		yb_kiwi_vars_remove_if_exists(&server->vars, name, name_len,
+					      should_lowercase_name);
+	}
+
+	if (!server_only) {
+		if (flags & YB_PARAM_STATUS_USERSET_OR_SUSET_SOURCE_SESSION) {
+			kiwi_vars_update(&client->yb_vars_session, name,
+					 name_len, value, value_len,
+					 should_lowercase_name);
+		} else {
+			yb_kiwi_vars_remove_if_exists(&client->yb_vars_session,
+						      name, name_len,
+						      should_lowercase_name);
+		}
 	}
 
 	return 0;

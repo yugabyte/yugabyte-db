@@ -186,7 +186,7 @@ static int od_frontend_startup(od_client_t *client)
 			&client->startup,
 			instance->config.yb_use_auth_backend ?
 				&client->yb_startup_settings :
-				&client->vars,
+				&client->yb_vars_session,
 			yb_od_instance_should_parse_startup_options(instance));
 		machine_msg_free(msg);
 		if (rc == -1)
@@ -236,7 +236,7 @@ static int od_frontend_startup(od_client_t *client)
 		machine_msg_data(msg), machine_msg_size(msg), &client->startup,
 		instance->config.yb_use_auth_backend ?
 			&client->yb_startup_settings :
-			&client->vars,
+			&client->yb_vars_session,
 		yb_od_instance_should_parse_startup_options(instance));
 	machine_msg_free(msg);
 	if (rc == -1)
@@ -452,7 +452,8 @@ static inline od_frontend_status_t od_frontend_setup_params(od_client_t *client)
 #ifndef YB_GUC_SUPPORT_VIA_SHMEM
 			kiwi_var_t *var;
 			var = yb_kiwi_vars_get(
-				&client->vars, kiwi_param_name(param),
+				&client->yb_vars_session,
+				kiwi_param_name(param),
 				yb_od_instance_should_lowercase_guc_name(
 					instance));
 #else
@@ -2083,8 +2084,10 @@ static od_frontend_status_t od_frontend_remote(od_client_t *client)
 		if (status == OD_ATTACH) {
 			uint32_t catchup_timeout = route->rule->catchup_timeout;
 #ifndef YB_GUC_SUPPORT_VIA_SHMEM
+			/* YB: This is never expected to get a variable */
 			kiwi_var_t *timeout_var = yb_kiwi_vars_get(
-				&client->vars, "odyssey_catchup_timeout",
+				&client->yb_vars_session,
+				"odyssey_catchup_timeout",
 				yb_od_instance_should_lowercase_guc_name(
 					instance));
 #else
@@ -2427,6 +2430,7 @@ static void od_frontend_cleanup(od_client_t *client, char *context,
 
 static void od_application_name_add_host(od_client_t *client)
 {
+	/* YB: This is expected to never get executed */
 	if (client == NULL || client->io.io == NULL)
 		return;
 	od_instance_t *instance = client->global->instance;
@@ -2437,7 +2441,7 @@ static void od_application_name_add_host(od_client_t *client)
 	char *app_name = "unknown";
 #ifndef YB_GUC_SUPPORT_VIA_SHMEM
 	kiwi_var_t *app_name_var = yb_kiwi_vars_get(
-		&client->vars, "application_name",
+		&client->yb_vars_session, "application_name",
 		yb_od_instance_should_lowercase_guc_name(instance));
 #else
 	kiwi_var_t *app_name_var =
@@ -2454,7 +2458,7 @@ static void od_application_name_add_host(od_client_t *client)
 		od_snprintf(app_name_with_host, KIWI_MAX_VAR_SIZE, "%.*s - %s",
 			    app_name_len, app_name, peer_name);
 #ifndef YB_GUC_SUPPORT_VIA_SHMEM
-	kiwi_vars_update(&client->vars, "application_name", 17,
+	kiwi_vars_update(&client->yb_vars_session, "application_name", 17,
 			 app_name_with_host, length + 1,
 			 yb_od_instance_should_lowercase_guc_name(
 				 instance)); // return code ignored
@@ -2731,11 +2735,16 @@ void od_frontend(void *arg)
 			od_application_name_add_host(client);
 		}
 
+		/*
+		 * YB: We never specify any variable in route->rule->vars,
+		 * so this code is not needed and is hence commented out
 		//override clients pg options if configured
-		rc = kiwi_vars_override(&client->vars, &route->rule->vars);
+		rc = kiwi_vars_override(&client->yb_vars_session,
+					&route->rule->vars);
 		if (rc == -1) {
 			goto cleanup;
 		}
+		 */
 
 		if (instance->config.log_session) {
 			od_log(&instance->logger, "startup", client, NULL,

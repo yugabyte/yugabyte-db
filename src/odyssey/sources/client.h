@@ -49,7 +49,15 @@ struct od_client {
 	 * user, database & replication
 	 */
 	kiwi_vars_t yb_startup_settings;
-	kiwi_vars_t vars;
+
+	/*
+	 * YB: For auth passthrough, only yb_vars_session is used
+	 * and it stores all vars
+	 */
+	/* vars set through startup packet */
+	kiwi_vars_t yb_vars_startup;
+	/* vars set through SET statements */
+	kiwi_vars_t yb_vars_session;
 	kiwi_key_t key;
 
 	od_server_t *server;
@@ -141,7 +149,8 @@ static inline void od_client_init(od_client_t *client)
 
 	kiwi_be_startup_init(&client->startup);
 	kiwi_vars_init(&client->yb_startup_settings, false);
-	kiwi_vars_init(&client->vars, true);
+	kiwi_vars_init(&client->yb_vars_startup, false);
+	kiwi_vars_init(&client->yb_vars_session, true);
 	kiwi_key_init(&client->key);
 
 	od_io_init(&client->io);
@@ -185,7 +194,8 @@ static inline void od_client_free(od_client_t *client)
 	if (client->prep_stmt_ids) {
 		od_hashmap_free(client->prep_stmt_ids);
 	}
-	yb_kiwi_vars_free(&client->vars);
+	yb_kiwi_vars_free(&client->yb_vars_startup);
+	yb_kiwi_vars_free(&client->yb_vars_session);
 	yb_kiwi_vars_free(&client->yb_startup_settings);
 	if (client->deploy_err) {
 		free(client->deploy_err);
