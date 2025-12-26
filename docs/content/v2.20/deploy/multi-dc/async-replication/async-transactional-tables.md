@@ -39,7 +39,7 @@ Add tables to replication in the following sequence:
 1. Create the table on the Standby.
 1. Add the table to the replication.
 
-    For instructions on adding tables to replication, refer to [Adding tables (or partitions)](../async-deployment/#adding-tables-or-partitions).
+    For instructions on adding tables to replication, refer to [Add tables (or partitions)](../async-deployment/#add-tables-or-partitions).
 
 ### Drop table
 
@@ -47,7 +47,7 @@ Remove tables from replication in the following sequence:
 
 1. Remove the table from replication.
 
-    For instructions on removing tables from replication, refer to [Removing objects](../async-deployment/#removing-objects).
+    For instructions on removing tables from replication, refer to [Remove objects](../async-deployment/#remove-objects).
 
 1. Drop the table from both Primary and Standby databases separately.
 
