@@ -26,7 +26,7 @@ You can install YugabyteDB Voyager on the following:
 
 ### Hardware requirements
 
-- Disk space of at least 1.5 times the estimated size of the source database
+- Disk space of at least 2 times the estimated size of the source database
 - 2 cores minimum (recommended)
 
 ### Software requirement
