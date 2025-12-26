@@ -1,0 +1,12 @@
+name: Lint
+
+on: push
+
+jobs:
+    arclint:
+        name: Arcanist lint
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - name: Check for lint
+              uses: srolel/arc-lint-action@v1
