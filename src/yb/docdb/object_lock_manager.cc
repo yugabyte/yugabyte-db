@@ -331,7 +331,8 @@ class ObjectLockManagerImpl {
       ObjectSharedLockRequest& request) REQUIRES(global_mutex_);
   void AcquireExclusiveLockIntents(const LockData& data) EXCLUDES(global_mutex_);
   void ReleaseExclusiveLockIntents(const LockIntentCounts& lock_intents);
-  void ReleaseExclusiveLockIntents(const LockData& data);
+  void ReleaseExclusiveLockIntents(
+      std::span<const LockBatchEntry<ObjectLockManager>> key_to_intent_type);
 
   TrackedTxnLockEntryPtr GetTransactionEntryUnlocked(const ObjectLockOwner& object_lock_owner)
       REQUIRES(global_mutex_);
@@ -568,13 +569,14 @@ void ObjectLockManagerImpl::ReleaseExclusiveLockIntents(const LockIntentCounts& 
   }
 }
 
-void ObjectLockManagerImpl::ReleaseExclusiveLockIntents(const LockData& data) {
+void ObjectLockManagerImpl::ReleaseExclusiveLockIntents(
+    std::span<const LockBatchEntry<ObjectLockManager>> key_to_intent_type) {
   if (!shared_manager_) {
     return;
   }
-  for (const auto& entry : data.key_to_lock.lock_batch) {
-    if (!IntentTypeReadOnly(entry.intent_types)) {
-      shared_manager_->ReleaseExclusiveLockIntent(entry.key);
+  for (const auto& item : key_to_intent_type) {
+    if (!IntentTypeReadOnly(item.intent_types)) {
+      shared_manager_->ReleaseExclusiveLockIntent(item.key);
     }
   }
 }
@@ -615,6 +617,7 @@ TrackedTxnLockEntryPtr ObjectLockManagerImpl::DoReserve(
 
 void ObjectLockManagerImpl::DoCleanup(
     std::span<const LockBatchEntry<ObjectLockManager>> key_to_intent_type) {
+  ReleaseExclusiveLockIntents(key_to_intent_type);
   std::lock_guard lock(global_mutex_);
   for (const auto& item : key_to_intent_type) {
     LOG_IF(DFATAL, item.locked->ref_count == 0) << "Local Object lock manager state corrupted";
@@ -685,7 +688,6 @@ Status ObjectLockManagerImpl::PrepareAcquire(
     transaction_entry->AddReleasedLockUnlocked(*it, object_lock_owner, LocksMapType::kGranted);
   }
   txn_lock.unlock();
-  ReleaseExclusiveLockIntents(lock_intents);
   DoCleanup(key_to_lock.lock_batch);
   TRACE("Acquire timed out or lock manager being shut down.");
   return status;
@@ -701,7 +703,6 @@ void ObjectLockManagerImpl::DoLock(
         GetLockForCondition(txn_lock), transaction_entry, data, resume_it_offset,
         resume_with_status, is_retry);
     if (!prepare_status.ok()) {
-      ReleaseExclusiveLockIntents(data);
       data.callback(prepare_status);
       return;
     }
