@@ -231,6 +231,7 @@ Result<ApplyTransactionState> GetIntentsBatch(
     const TransactionId& transaction_id,
     const KeyBounds* key_bounds,
     const ApplyTransactionState* stream_state,
+    const SubtxnSet& aborted,
     rocksdb::DB* intents_db,
     std::vector<IntentKeyValueForCDC>* keyValueIntents);
 
