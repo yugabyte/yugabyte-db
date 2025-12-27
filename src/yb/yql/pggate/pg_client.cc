@@ -646,7 +646,7 @@ class PgClient::Impl : public BigDataFetcher {
                            tserver_shared_data.endpoint().port());
       resolve_cache_timeout = MonoDelta::kMax;
     }
-    LOG(INFO) << "Using TServer host_port: " << host_port;
+    VLOG(1) << "Using TServer host_port: " << host_port;
     proxy_ = std::make_unique<PgClientServiceProxy>(
         proxy_cache, host_port, nullptr /* protocol */, resolve_cache_timeout);
     local_cdc_service_proxy_ = std::make_unique<CDCServiceProxy>(
