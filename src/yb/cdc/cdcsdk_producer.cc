@@ -101,6 +101,12 @@ DEFINE_RUNTIME_bool(cdc_send_null_before_image_if_not_exists,
                     "When this flag is set to true, GetChanges will return a null before image if "
                     "it is not able to find one.");
 
+DEFINE_RUNTIME_bool(cdc_enable_savepoint_rollback_filtering, false,
+                    "If 'true', CDC streaming will filter out intents from aborted "
+                    "subtransactions (rolled-back savepoints). This prevents CDC consumers "
+                    "from receiving data that was never actually committed. This flag is only "
+                    "used for YSQL tables.");
+
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_yb_enable_replica_identity);
 
@@ -2776,8 +2782,11 @@ Status GetChangesForCDCSDK(
     RETURN_NOT_OK(reverse_index_key_slice.consume_byte(dockv::KeyEntryTypeAsChar::kTransactionId));
     auto transaction_id = VERIFY_RESULT(DecodeTransactionId(&reverse_index_key_slice));
 
-    auto aborted_subtxns = VERIFY_RESULT(SubtxnSet::FromPB(
-      wal_records[wal_segment_index]->transaction_state().aborted().set()));
+    auto aborted_subtxns =
+        FLAGS_cdc_enable_savepoint_rollback_filtering
+            ? VERIFY_RESULT(SubtxnSet::FromPB(
+                  wal_records[wal_segment_index]->transaction_state().aborted().set()))
+            : SubtxnSet();
 
     RETURN_NOT_OK(ProcessIntentsWithInvalidSchemaRetry(
         op_id, transaction_id, aborted_subtxns, stream_metadata, enum_oid_label_map,
@@ -2936,8 +2945,10 @@ Status GetChangesForCDCSDK(
               auto txn_id = VERIFY_RESULT(
                   FullyDecodeTransactionId(msg->transaction_state().transaction_id()));
 
-              auto aborted_subtxns = VERIFY_RESULT(
-                SubtxnSet::FromPB(msg->transaction_state().aborted().set()));
+              auto aborted_subtxns =
+                  FLAGS_cdc_enable_savepoint_rollback_filtering
+                      ? VERIFY_RESULT(SubtxnSet::FromPB(msg->transaction_state().aborted().set()))
+                      : SubtxnSet();
 
               // It is possible for a transaction to have two APPLYs in WAL. This check
               // prevents us from streaming the same transaction twice in the same GetChanges
@@ -3275,7 +3286,7 @@ Status GetChangesForCDCSDK(
           << ", tablet_id: " << tablet_id;
 
   return Status::OK();
-}
+}  // NOLINT(readability/fn_size)
 
 }  // namespace cdc
 }  // namespace yb
