@@ -209,6 +209,9 @@ class YBThreadPool : public TaskRecipient<ThreadPoolTask> {
   size_t NumWorkers() const;
   bool Idle() const;
 
+  // Used to disable detailed logging in pggate thread pools.
+  static void DisableDetailedLogging();
+
  private:
   class Impl;
 

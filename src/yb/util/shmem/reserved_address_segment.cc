@@ -388,8 +388,8 @@ Result<ReservedAddressSegment> AddressSegmentNegotiator::ReserveWithoutNegotiati
 ReservedAddressSegment::ReservedAddressSegment(void* base_addr, size_t region_size)
     : base_addr_{pointer_cast<std::byte*>(base_addr)}, next_addr_{base_addr_},
       region_size_{region_size} {
-  LOG(INFO) << "Managing address segment from " << base_addr_
-            << " to " << (base_addr_ + region_size_);
+  VLOG(1) << "Managing address segment from " << base_addr_ << " to "
+          << (base_addr_ + region_size_);
 }
 
 ReservedAddressSegment::ReservedAddressSegment(ReservedAddressSegment&& other)
@@ -418,8 +418,8 @@ void ReservedAddressSegment::Destroy() {
     LOG(DFATAL) << "Failed to unmap reserved address segment: " << strerror(errno);
   }
 
-  LOG(INFO) << "Released address segment from " << base_addr_
-            << " to " << (base_addr_ + region_size_);
+  VLOG(1) << "Released address segment from " << base_addr_ << " to "
+          << (base_addr_ + region_size_);
 
   base_addr_ = nullptr;
   next_addr_ = nullptr;

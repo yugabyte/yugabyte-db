@@ -87,8 +87,8 @@ void Poller::Poll(const Status& status) {
   {
     std::lock_guard lock(mutex_);
     if (!status.ok() || closing_ || paused_) {
-      LOG_WITH_PREFIX(INFO)
-          << "Poll stopped: " << status << ", closing: " << closing_ << ", paused: " << paused_;
+      VLOG_WITH_PREFIX(1) << "Poll stopped: " << status << ", closing: " << closing_
+                          << ", paused: " << paused_;
       poll_task_id_ = rpc::kUninitializedScheduledTaskId;
       YB_PROFILE(cond_.notify_one());
       return;
