@@ -86,6 +86,7 @@ struct TableInfo {
   // transaction path.  In some cases this may be empty due to lack of backfilling.
   NamespaceId namespace_id;
   std::string table_name;
+  std::string schema_name;  // PostgreSQL schema name (e.g., "public", "shop", "bloodhound")
   TableType table_type;
   Uuid cotable_id; // table_id as Uuid
 
@@ -142,7 +143,8 @@ struct TableInfo {
             const OpId& op_id,
             HybridTime ht,
             TableId pg_table_id,
-            SkipTableTombstoneCheck skip_table_tombstone_check);
+            SkipTableTombstoneCheck skip_table_tombstone_check,
+            std::string schema_name = "");
   TableInfo(const TableInfo& other,
             const Schema& schema,
             const qlexpr::IndexMap& index_map,

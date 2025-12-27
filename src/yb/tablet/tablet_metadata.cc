@@ -187,10 +187,12 @@ TableInfo::TableInfo(const std::string& tablet_log_prefix,
                      const OpId& op_id_,
                      HybridTime ht,
                      TableId pg_table_id_,
-                     SkipTableTombstoneCheck skip_table_tombstone_check_)
+                     SkipTableTombstoneCheck skip_table_tombstone_check_,
+                     std::string schema_name_)
     : table_id(std::move(table_id_)),
       namespace_name(std::move(namespace_name)),
       table_name(std::move(table_name)),
+      schema_name(std::move(schema_name_)),
       table_type(table_type),
       cotable_id(CHECK_RESULT(ParseCotableId(primary, table_id))),
       log_prefix(MakeTableInfoLogPrefix(tablet_log_prefix, primary, table_id)),
@@ -217,6 +219,7 @@ TableInfo::TableInfo(const TableInfo& other,
       namespace_name(other.namespace_name),
       namespace_id(other.namespace_id),
       table_name(other.table_name),
+      schema_name(other.schema_name),
       table_type(other.table_type),
       cotable_id(other.cotable_id),
       log_prefix(other.log_prefix),
@@ -245,6 +248,7 @@ TableInfo::TableInfo(const TableInfo& other,
       namespace_name(other.namespace_name),
       namespace_id(other.namespace_id),
       table_name(other.table_name),
+      schema_name(other.schema_name),
       table_type(other.table_type),
       cotable_id(other.cotable_id),
       log_prefix(other.log_prefix),
@@ -266,6 +270,7 @@ TableInfo::TableInfo(const TableInfo& other, SchemaVersion min_schema_version)
       namespace_name(other.namespace_name),
       namespace_id(other.namespace_id),
       table_name(other.table_name),
+      schema_name(other.schema_name),
       table_type(other.table_type),
       cotable_id(other.cotable_id),
       log_prefix(other.log_prefix),
@@ -313,6 +318,7 @@ Status TableInfo::DoLoadFromPB(Primary primary, const TableInfoPB& pb) {
   namespace_name = pb.namespace_name();
   namespace_id = pb.namespace_id();
   table_name = pb.table_name();
+  schema_name = pb.has_schema_name() ? pb.schema_name() : "";
   table_type = pb.table_type();
   cotable_id = VERIFY_RESULT(ParseCotableId(primary, table_id));
   op_id = OpId::FromPB(pb.op_id());
@@ -384,6 +390,7 @@ void TableInfo::ToPB(TableInfoPB* pb) const {
   pb->set_namespace_name(namespace_name);
   pb->set_namespace_id(namespace_id);
   pb->set_table_name(table_name);
+  pb->set_schema_name(schema_name);
   pb->set_table_type(table_type);
 
   doc_read_context->ToPB(schema_version, pb);
