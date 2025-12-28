@@ -45,7 +45,7 @@ In versions of YugabyteDB prior to v2025.2, or for manually deployed universes, 
 
 {{< tip title="Tip" >}}
 
-To avoid serializable errors (that is, to run applications with no retry logic), keep the default `READ COMMITTED` isolation (`--ysql_default_transaction_isolation`), and set the YB-TServer `--yb_enable_read_committed_isolation` flag to true. This enables read committed isolation.
+To avoid serializable errors (that is, to run applications with no retry logic), keep the default Read Committed isolation (`--ysql_default_transaction_isolation`), and set the YB-TServer `--yb_enable_read_committed_isolation` flag to true. This enables read committed isolation.
 
 {{< /tip >}}
 
