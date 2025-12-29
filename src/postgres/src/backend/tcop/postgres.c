@@ -5038,8 +5038,13 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 		return false;
 	}
 
-	edata->detail = psprintf("%s [%s]", edata->detail,
-							 yb_fetch_effective_transaction_isolation_level());
+	/* Only one of detail_log or detail can be set */
+	if (edata->detail_log)
+		edata->detail_log = psprintf("%s [%s]", edata->detail_log,
+									 yb_fetch_effective_transaction_isolation_level());
+	else if (edata->detail)
+		edata->detail = psprintf("%s [%s]", edata->detail,
+								 yb_fetch_effective_transaction_isolation_level());
 
 	if (yb_is_multi_statement_query)
 	{
