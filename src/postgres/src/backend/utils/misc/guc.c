@@ -8767,6 +8767,18 @@ yb_should_report_guc(struct config_generic *record)
 			(record->context >= PGC_SU_BACKEND &&
 			 (record->source == PGC_S_CLIENT ||
 			  record->source == PGC_S_SESSION));
+		/*
+		 * A special case has been added here for auth passthrough mode where we do
+		 * not want to report GUC variables to connection manager in case auth
+		 * passthrough has failed.
+		 * Specifically, we do not want to send back ParameterStatus packets for
+		 * GUCs like session_authorization, client_encoding that are set during the
+		 * authentication phase of Auth Passthrough as this causes certain
+		 * sync issues due to the final RFQ sent by the server to conn mgr.
+		 */
+		shouldReportGUC =
+			shouldReportGUC &&
+			(MyProcPort == NULL || !MyProcPort->yb_has_auth_passthrough_failed);
 	}
 	return shouldReportGUC;
 }
@@ -10352,6 +10364,18 @@ set_config_option_ext(const char *name, const char *value,
 				 source == PGC_S_USER ||
 				 source == PGC_S_DATABASE_USER)
 			elevel = WARNING;
+		else if (MyProcPort != NULL && MyProcPort->yb_is_auth_passthrough_req)
+			/*
+			 * YB: In the Auth Passthrough mode of Connection Manager, we want
+			 * to abort auth in case of error while setting GUC values. Ideally,
+			 * we should forward a FatalForLogicalConnection Packet, but
+			 * forwarding a FATAL would also stop auth.
+			 *
+			 * TODO (vikram.damle): Add a mechanism to forward a
+			 * FatalForLogicalConection to preserve this backend instead of
+			 * forwarding a FATAL directly and terminating the backend.
+			 */
+			elevel = FATAL;
 		else
 			elevel = ERROR;
 	}
@@ -10576,6 +10600,24 @@ set_config_option_ext(const char *name, const char *value,
 	 */
 	makeDefault = changeVal && (source <= PGC_S_OVERRIDE) &&
 		((value != NULL) || source == PGC_S_DEFAULT);
+
+	/*
+	 * YB: When in Auth Passthrough mode of conn mgr, avoid setting defaults on
+	 * the control backend (auth_passthrough_req == true) when parsing startup
+	 * packet GUC opts (source == PGC_S_CLIENT).
+	 * We do not wish to set defaults in this case as GUCs on the control
+	 * backend need to be reverted to their original defaults in preparation for
+	 * the next authentication attempt. Changes made via makeDefault are
+	 * non-transactional in nature and cannot be uniformly reverted. The setting
+	 * of defaults serves no purpose during authentication either as conn mgr is
+	 * responsible for tracking client session defaults during the deploy phase
+	 * on txn backends.
+	 */
+	if (MyProcPort != NULL && MyProcPort->yb_is_auth_passthrough_req &&
+		source >= PGC_S_CLIENT)
+	{
+		makeDefault = false;
+	}
 
 	/*
 	 * Ignore attempted set if overridden by previously processed setting.
