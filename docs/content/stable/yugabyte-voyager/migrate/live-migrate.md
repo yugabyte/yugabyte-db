@@ -18,9 +18,9 @@ The following instructions describe the steps to perform and verify a successful
 
 Live migration availability varies by the source database type as described in the following table:
 
-| Source database | Notes |
+| Source database | Feature Maturity |
 | :--- | :--- |
-| PostgreSQL | {{<tags/feature/ga>}} when using [YugabyteDB Connector](/stable/additional-features/change-data-capture/using-logical-replication/). <br> {{<tags/feature/tp>}} when using [YugabyteDB gRPC Connector](/stable/additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/).|
+| PostgreSQL | {{<tags/feature/ga>}} |
 | Oracle | {{<tags/feature/tp>}} |
 
 {{< warning title="Important" >}}
@@ -401,14 +401,18 @@ Live migration for PostgreSQL source database (using YugabyteDB Connector) is {{
     CREATE USER ybvoyager PASSWORD 'password';
     ```
 
-1. Grant permissions for migration. Use the [yb-voyager-pg-grant-migration-permissions.sql](../../reference/yb-voyager-pg-grant-migration-permissions/) script (in `/opt/yb-voyager/guardrails-scripts/` or, for brew, check in `$(brew --cellar)/yb-voyager@<voyagerversion>/<voyagerversion>`) to grant the required permissions as follows:
+1. Grant permissions for migration. Use the [yb-voyager-pg-grant-migration-permissions.sql](../../reference/yb-voyager-pg-grant-migration-permissions/) script (in `/opt/yb-voyager/guardrails-scripts/` or, for brew, check in `$(brew --cellar)/yb-voyager@<voyagerversion>/<voyagerversion>`).
 
-    _Warning_: This script provides two options for granting permissions:
+    The script does the following:
 
-      - Transfer ownership: Transfers ownership of all tables in the specified schemas to the specified replication group, and adds the original table owners and the migration user to that group.
-      - Grant owner role: Grants the original table owner the role of each table to the migration user, without transferring table ownership.
+    - Grants permissions to the migration user (`ybvoyager`). This script provides two options for granting permissions:
 
-    In addition, this script sets [Replica identity](/stable/additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/#replica-identity) FULL on all tables in the specified schemas.
+        - Transfer ownership: Transfers ownership of all tables in the specified schemas to the specified replication group, and adds the original table owners and the migration user to that group.
+        - Grant owner role: Grants the original table owner the role of each table to the migration user, without transferring table ownership.
+
+    - Sets [Replica identity](/stable/additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/#replica-identity) FULL on all tables in the specified schemas.
+
+    Use the script to grant the required permissions as follows:
 
     ```sql
     psql -h <host> \

@@ -20,7 +20,7 @@ A fall-forward approach allows you to test the system end-to-end. This workflow 
 
 Live migration availability varies by the source database type as described in the following table:
 
-| Source database | Notes |
+| Source database | Feature Maturity |
 | :--- | :--- |
 | PostgreSQL | {{<tags/feature/ga>}} when using [YugabyteDB Connector](/stable/additional-features/change-data-capture/using-logical-replication/). <br> {{<tags/feature/tp>}} when using [YugabyteDB gRPC Connector](/stable/additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/).|
 | Oracle | {{<tags/feature/tp>}} |
