@@ -66,7 +66,7 @@ YugabyteDB serves as a **modern and flexible platform for AI** by providing a co
 
 ### Open standards, flexible foundation
 
-YugabyteDB is built on open standards, ensuring you are never locked into a specific model, vendor, or indexing algorithm.
+YugabyteDB uses PostgreSQL's `pgvector` extension for vector storage and search, so you can work with embeddings from any model or source.
 
 - Architected for LLM and SLM flexibility: You can choose between large language models (LLMs) or small language models (SLMs) based on your needs. Some applications require non-LLM models optimized for perception, decision-making, or control. YugabyteDB's flexible architecture supports all of these approaches.
 
@@ -74,45 +74,81 @@ YugabyteDB is built on open standards, ensuring you are never locked into a spec
 
 - No lock-in: YugabyteDB is 100% open source, so you can run it anywhere and leverage the massive ecosystem of PostgreSQL tools. YugabyteDB has a flexible vector indexing framework that supports the latest algorithms, including FAISS, HNSW_lib, USearch, ScANN, DiskAnn, and virtually any index.
 
+### Open standards, flexible foundation
+
+- Use any embedding model: Generate embeddings from OpenAI, Cohere, local models, or custom models and then store them in standard `VECTOR` columns. The database treats them as numeric vectors, so you can switch embedding models by regenerating embeddings and updating your table without any schema changes.
+
+- Reduce LLM calls with vector search: Pre-compute and store answers, document chunks, or structured responses with their embeddings. Use vector similarity search to find relevant content. For example,
+
+  ```sql
+  SELECT * FROM documents ORDER BY embedding <=> $1 LIMIT 5;
+  ```
+
+Return results directly for simple queries, and only call LLMs when you need generation. This pattern reduces API costs while maintaining accuracy for retrieval-based use cases.
+
+- Flexible vector indexing: Run YugabyteDB on any infrastructure (self-hosted or cloud) with full PostgreSQL tool compatibility (for example, pg_dump, ORMs like SQLAlchemy). The vector indexing framework plugs in algorithms via backends: currently USearch (HNSW-based) and Hnswlib for ANN search. Create indexes with SQL:
+
+```sql
+CREATE INDEX ON table USING hnsw (embedding vector_cosine_ops) WITH (m=16, ef_construction=64);
+```
+
 ### Unified data sources
 
-Effective RAG applications require more than just text; they need access to structured data, images, and logs to provide accurate context. YugabyteDB pulls in disparate data sources to optimize RAG architectures, enabling your applications to access different types of data from a single platform.
+Effective RAG applications require more than just text; they need access to structured data, images, and logs to provide accurate context. YugabyteDB unifies data via PostgreSQL foreign data wrappers (FDWs) and vector columns, allowing queries across structured, unstructured, and external sources from one endpoint.
 
-- Enhanced contextual understanding (multimodal): Store and query embeddings for text documents, tables and spreadsheets, images, audio transcripts, and video metadata in a single system. This cross-referencing reduces hallucinations and enables complex queries (for example, combining market reports with historical price tables).
+- Multimodal embedding storage: Store and query embeddings for diverse data types (text documents, tables and spreadsheets, images, audio transcripts, and video metadata) in a single table using pgvector. Query across modalities and join vector search results with structured tables for hybrid queries. (for example, combining market reports with historical price tables).
 
-- Simplified data access: YugabyteDB supports many different data sources through rich PostgreSQL extensions that allow easy importing or stay-in-place access to data on S3, Iceberg, Parquet formats, logs, Salesforce, and more. This unified approach saves time, simplifies access control, and reduces costs.
+- Access external data sources: Use pre-bundled or installable PostgreSQL extensions like PostgreSQL Foreign Data Wrappers (FDW) to query remote databases as if they were local tables. Import data with YSQL:
+
+```sql
+CREATE FOREIGN TABLE s3_data (...) SERVER s3_server OPTIONS (bucket 'my-bucket', filekey 'path/to/file.parquet');
+```
+
+This provides unified access, with built-in RBAC for controls and cost savings by avoiding data movement.
 
 ### Simplified data preprocessing
 
-YugabyteDB offers a turnkey system to manage the preprocessing pipeline—parsing, chunking, and generating embeddings.
+YugabyteDB handles vector indexing automatically after your data is loaded. You still need application code for parsing, chunking, and embedding generation, but the database manages vector storage and search.
 
-- Automated pipelines: Eliminate the need to write custom application code to glue together tools like LangChain or Unstructured.io. YugabyteDB orchestrates the entire flow from ingestion to vector storage, ensuring your vector indexes stay in sync with your source data automatically.
+- Automatic vector index management: After you insert vectors into a table, YugabyteDB's Vector LSM automatically maintains indexes. Indexes stay in sync with table data—inserts, updates, and deletes are reflected automatically. No manual index rebuilding or maintenance required. Background compaction merges index files and removes deleted vectors.
 
-- Comprehensive tooling: YugabyteDB supports standardizing the tool stack to handle complex tasks (parsing, chunking, and embedding). This means you don't need to spend time writing custom application code and integrating multiple separate ecosystem tools, which is often complex and error-prone.
+- Your application handles preprocessing: Parse documents using libraries like Unstructured.io, PyPDF2, or custom parsers. Chunk text appropriately for your use case (sentence, paragraph, or semantic chunking). Generate embeddings using your chosen model (OpenAI, local models, and so on), and then insert into YugabyteDB.
+
 
 ### Elastic scale for AI needs
 
-YugabyteDB is built for the elastic scale that AI applications require, ensuring performance does not degrade as your data grows and helping you manage costs across the AI pipeline.
+YugabyteDB distributes vector indexes across nodes automatically using the same sharding strategy as your tables.
 
-- Infinite horizontal scalability: Vector indexes are automatically distributed across the cluster. To scale storage or throughput, simply add nodes. This linear scaling supports billions of vectors without manual rebalancing.
+- Horizontal scalability: Vector indexes are automatically distributed across the cluster. To scale storage or throughput, simply add nodes. This linear scaling supports billions of vectors without manual rebalancing.
 
 - High performance: Low-latency distributed architecture ensures fast inference even as your dataset grows to billions of vectors.
 
-- Zero downtime: Perform upgrades, scale-outs, and maintenance without taking your AI application offline.
+- Zero downtime: Perform upgrades, scale-outs, and maintenance without taking your AI application offline. Online scaling lets you add or remove nodes without stopping the database. Vector indexes rebuild automatically during tablet splitting and rebalancing.
 
-- Manage costs: Deploy anywhere—on-premises, hybrid, or multi-cloud—to take advantage of the best infrastructure unit economics. You can easily swap LLMs or cloud providers to optimize ROI without changing your database layer.
+- Manage costs: Deploy on-premises, in a single cloud, or across multiple clouds. You can move or replace model inference infrastructure (where AI models are executed) without changing your YugabyteDB schemas, queries, or retrieval logic.
 
 ### Secure by design
 
-YugabyteDB provides enterprise-grade security at every layer for AI applications, including tenant isolation, data and LLM compliance, and protection against AI-specific threats.
+YugabyteDB secures AI apps with PostgreSQL RBAC, encryption, and distributed features like geo-partitioning.
 
-- Data sovereignty and LLM compliance: With Row-Level Geo-Partitioning, you can pin specific user data to specific geographic regions to comply with General Data Protection Regulation (GDPR) and data residency laws.
+- Data sovereignty and LLM compliance: Use Row-Level Geo-Partitioning to pin specific user data to specific geographic regions to comply with General Data Protection Regulation (GDPR) and data residency laws. For example,
 
-- Tenant isolation: Securely isolate data for different tenants or applications within the same cluster, ensuring that multi-tenant applications maintain strict data boundaries.
+  ```sql
+  ALTER TABLE users ADD PARTITION BY LIST (region);
+  CREATE TABLESPACE eu_ts LOCATION '/path/eu';
+  ALTER TABLE users PARTITION eu SET TABLESPACE eu_ts;
+  ```
 
-- Built-in protection: Features include encryption at rest and in motion, audit logging, and native integration with OIDC and LDAP identity providers.
+- Tenant isolation: Securely isolate data for different tenants or applications within the same cluster, ensuring that multi-tenant applications maintain strict data boundaries. For example, to physically isolate via tablespaces per tenant:
 
-- Granular control: Leverage standard PostgreSQL Role-Based Access Control (RBAC) to secure data at the tenant, table, row, and column levels.
+  ```sql
+  CREATE TABLESPACE tenant1_ts LOCATION '/path/tenant1';
+  ALTER TABLE shared SET TABLESPACE tenant1_ts;
+  ```
+
+- Built-in protection: Enable encryption at rest or in motion, audit logging with pgaudit extension, and native integration with OIDC and LDAP identity providers (configure in yugabyted with `--security.oidc-config`).
+
+- Granular control: Use PostgreSQL Role-Based Access Control (RBAC) to secure data at the tenant, table, row, and column levels. For example, you acn create a role per tenant, grant table access, and use RLS to ensure tenants only see their rows.
 
 ## Get started
 
