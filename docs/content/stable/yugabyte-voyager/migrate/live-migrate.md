@@ -20,7 +20,7 @@ Live migration availability varies by the source database type as described in t
 
 | Source database | Feature Maturity |
 | :--- | :--- |
-| PostgreSQL | {{<tags/feature/ga>}} when using [YugabyteDB Connector](/stable/additional-features/change-data-capture/using-logical-replication/). <br> {{<tags/feature/tp>}} when using [YugabyteDB gRPC Connector](/stable/additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/).|
+| PostgreSQL | {{<tags/feature/ga>}} |
 | Oracle | {{<tags/feature/tp>}} |
 
 {{< warning title="Important" >}}
