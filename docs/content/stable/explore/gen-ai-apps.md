@@ -84,13 +84,13 @@ YugabyteDB uses PostgreSQL's `pgvector` extension for vector storage and search,
   SELECT * FROM documents ORDER BY embedding <=> $1 LIMIT 5;
   ```
 
-Return results directly for simple queries, and only call LLMs when you need generation. This pattern reduces API costs while maintaining accuracy for retrieval-based use cases.
+  Return results directly for simple queries, and only call LLMs when you need generation. This pattern reduces API costs while maintaining accuracy for retrieval-based use cases.
 
 - Flexible vector indexing: Run YugabyteDB on any infrastructure (self-hosted or cloud) with full PostgreSQL tool compatibility (for example, pg_dump, ORMs like SQLAlchemy). The vector indexing framework plugs in algorithms via backends: currently USearch (HNSW-based) and Hnswlib for ANN search. Create indexes with SQL:
 
-```sql
-CREATE INDEX ON table USING hnsw (embedding vector_cosine_ops) WITH (m=16, ef_construction=64);
-```
+  ```sql
+  CREATE INDEX ON table USING hnsw (embedding vector_cosine_ops) WITH (m=16, ef_construction=64);
+  ```
 
 ### Unified data sources
 
@@ -100,11 +100,9 @@ Effective RAG applications require more than just text; they need access to stru
 
 - Access external data sources: Use pre-bundled or installable PostgreSQL extensions like PostgreSQL Foreign Data Wrappers (FDW) to query remote databases as if they were local tables. Import data with YSQL:
 
-```sql
-CREATE FOREIGN TABLE s3_data (...) SERVER s3_server OPTIONS (bucket 'my-bucket', filekey 'path/to/file.parquet');
-```
-
-This provides unified access, with built-in RBAC for controls and cost savings by avoiding data movement.
+  ```sql
+  CREATE FOREIGN TABLE s3_data (...) SERVER s3_server OPTIONS (bucket 'my-bucket', filekey 'path/to/file.parquet');
+  ```
 
 ### Simplified data preprocessing
 
@@ -113,7 +111,6 @@ YugabyteDB handles vector indexing automatically after your data is loaded. You 
 - Automatic vector index management: After you insert vectors into a table, YugabyteDB's Vector LSM automatically maintains indexes. Indexes stay in sync with table data—inserts, updates, and deletes are reflected automatically. No manual index rebuilding or maintenance required. Background compaction merges index files and removes deleted vectors.
 
 - Your application handles preprocessing: Parse documents using libraries like Unstructured.io, PyPDF2, or custom parsers. Chunk text appropriately for your use case (sentence, paragraph, or semantic chunking). Generate embeddings using your chosen model (OpenAI, local models, and so on), and then insert into YugabyteDB.
-
 
 ### Elastic scale for AI needs
 
