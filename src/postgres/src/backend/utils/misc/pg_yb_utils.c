@@ -1176,7 +1176,9 @@ YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *ini
 		HandleYBStatusAtErrorLevel(YBCInitPgGate(YbGetTypeTable(),
 												 &callbacks,
 												 init_info ? init_info : &default_init_info,
-												 &ash_config), FATAL);
+												 &ash_config,
+												 &yb_session_stats.current_state,
+												 IsBinaryUpgrade), FATAL);
 		YBCInstallTxnDdlHook();
 
 		/*
@@ -1191,13 +1193,6 @@ YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *ini
 			if (yb_enable_query_diagnostics)
 				YbQueryDiagnosticsInstallHook();
 		}
-
-		/*
-		 * For each process, we create one YBC session for PostgreSQL to use
-		 * when accessing YugaByte storage.
-		 */
-		HandleYBStatus(YBCPgInitSession(&yb_session_stats.current_state,
-										IsBinaryUpgrade));
 
 		/*
 		 * Upon completion of the first heartbeat to the local tserver, retrieve

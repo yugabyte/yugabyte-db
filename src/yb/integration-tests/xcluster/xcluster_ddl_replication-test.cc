@@ -78,6 +78,12 @@ const MonoDelta kTimeout = 60s * kTimeMultiplier;
 
 class XClusterDDLReplicationTest : public XClusterDDLReplicationTestBase {
  public:
+  void SetUp() override {
+    TEST_SETUP_SUPER(XClusterDDLReplicationTestBase);
+    // DDLs need to to be processed sequentially, so increase the timeout.
+    propagation_timeout_ *= 2;
+  }
+
   Status SetUpClustersAndCheckpointReplicationGroup(
       const SetupParams& params = XClusterDDLReplicationTestBase::kDefaultParams) {
     RETURN_NOT_OK(SetUpClusters(params));
@@ -942,14 +948,11 @@ TEST_F(XClusterDDLReplicationTest, FailAsyncInsertPackedSchema) {
   }
   // After the stepdown, the first tablet should try to rerun InsertPackedSchemaForXClusterTarget.
 
-  // Ensure that we don't get a FATAL.
-  ASSERT_NOK(WaitForSafeTimeToAdvanceToNow());
+  // We should still be able to eventually make progress.
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
   LOG(INFO) << "SELECT result: "
             << ASSERT_RESULT(consumer_conn_->FetchAllAsString("SELECT * FROM test_table_1"));
-
-  // TODO(#28326): replace this with VerifyWrittenRecords.
-  // ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
-  // ASSERT_OK(VerifyWrittenRecords({"test_table_1"}));
+  ASSERT_OK(VerifyWrittenRecords(std::vector<TableName>{"test_table_1"}));
 }
 
 TEST_F(XClusterDDLReplicationTest, PauseTargetOnRepeatedFailures) {
@@ -1052,7 +1055,6 @@ TEST_F(XClusterDDLReplicationTest, RepeatedCreateAndDropTable) {
   // Resume replication.
   ASSERT_OK(ToggleUniverseReplication(
       consumer_cluster(), consumer_client(), kReplicationGroupId, true /* is_enabled */));
-  propagation_timeout_ = propagation_timeout_ * 2;
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
 
   // Ensure table has the correct row at the end.
@@ -1541,7 +1543,6 @@ TEST_F(XClusterDDLReplicationTest, IncrementalSafeTimeBumpWithDdlQueueStepdowns)
 
   // Unpause replication.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = false;
-  propagation_timeout_ = propagation_timeout_ * 2;  // Give time to process the batch of DDLs.
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
 
   // Verify row counts.
@@ -3206,8 +3207,6 @@ TEST_F(XClusterDDLReplicationTest, AlterColumnTypePartitioned) {
       "INSERT INTO $0 ($1, $2) SELECT i, random() FROM generate_series(11, 20) as i",
       kPartitionedTableName, kKeyColumnName, kDataColumn));
 
-  // Double the timeout as partitioned table rewrite involved multiple rewrites.
-  propagation_timeout_ = propagation_timeout_ * 2;
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
 
   // Verify replication for parent table and all partitions

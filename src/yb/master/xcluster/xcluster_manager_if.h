@@ -112,6 +112,11 @@ class XClusterManagerIf {
   virtual bool ShouldAutoAddIndexesToBiDirectionalXCluster(
       const TableInfo& indexed_table) const = 0;
 
+  virtual Status InsertHistoricalColocatedSchemaPacking(
+      const InsertHistoricalColocatedSchemaPackingRequestPB* req,
+      InsertHistoricalColocatedSchemaPackingResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch) = 0;
+
  protected:
   virtual ~XClusterManagerIf() = default;
 };

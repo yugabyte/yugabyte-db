@@ -92,7 +92,8 @@ install_python3() {
 # Setup the correct python symlinks
 setup_symlinks() {
     echo "Setting up symbolic links..."
-    ln -sf /usr/bin/python3 /usr/bin/python
+    python3_path=$(command -v python3)
+    ln -sf "$python3_path" /usr/bin/python
     echo "Python symlinks updated."
 }
 

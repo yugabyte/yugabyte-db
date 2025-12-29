@@ -130,6 +130,12 @@ class XClusterOutputClient : public XClusterAsyncExecutor {
       const GetCompatibleSchemaVersionRequestPB& req,
       const GetCompatibleSchemaVersionResponsePB& resp, ColocationId colocation_id);
 
+  Result<SchemaVersion> GetCompatibleSchemaVersionForProducerSchemaVersion(
+      SchemaVersion producer_schema_version);
+
+  Status HandleNewSchemaForAutomaticMode(
+      const SchemaPB& schema, SchemaVersion producer_schema_version);
+
   // Increment processed record count.
   // Returns true if all records are processed, false if there are still some pending records.
   bool IncProcessedRecordCount() REQUIRES(lock_);
