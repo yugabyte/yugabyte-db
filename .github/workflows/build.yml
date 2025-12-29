@@ -105,7 +105,7 @@ jobs:
                 chown -R yugabyteci .
                 sudo -u yugabyteci bash -c "
                   set -euo pipefail
-                  export PATH=/usr/local/bin:\$HOME/arcanist/bin:\$PATH
+                  export PATH=/usr/local/bin:/arcanist/bin:\$PATH
                   df -H /
                   echo ::group::Arc Lint
                   arc lint
