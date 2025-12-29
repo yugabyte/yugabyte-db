@@ -1334,7 +1334,6 @@ Like other PostgreSQL role attributes, REPLICATION is not inheritable. Being a m
 
 {{< /tip >}}
 
-
 ### Setting privileges to enable the connector to create YugabyteDB publications when you use `pgoutput` or `yboutput`
 
 If you use `pgoutput` or `yboutput` as the logical decoding plugin, the connector must operate in the database as a user with specific privileges.
