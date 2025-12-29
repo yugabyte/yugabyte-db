@@ -539,7 +539,7 @@ Live migration for PostgreSQL source database (using YugabyteDB Connector) is {{
     _Warning_: This script provides two options for granting permissions:
 
       - Transfer ownership: Transfers ownership of all tables in the specified schemas to the specified replication group, and adds the original table owners and the migration user to that group.
-      - Grant owner role: Grants the original table owner the role of each table to the migration user, without transferring table ownership.
+      - Grant owner role: Grants the original table owner role of each table to the migration user, without transferring table ownership.
 
     In addition, this script sets [Replica identity](/stable/additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/#replica-identity) FULL on all tables in the specified schemas.
 
@@ -582,7 +582,7 @@ Live migration for PostgreSQL source database (using YugabyteDB Connector) is {{
     _Warning_: This script provides two options for granting permissions:
 
       - Transfer ownership: Transfers ownership of all tables in the specified schemas to the specified replication group, and adds the original table owners and the migration user to that group.
-      - Grant owner role: Grants the original table owner the role of each table to the migration user, without transferring table ownership.
+      - Grant owner role: Grants the original table owner role of each table to the migration user, without transferring table ownership.
 
     In addition, this script sets [Replica identity](/stable/additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/#replica-identity) FULL on all tables in the specified schemas.
 
