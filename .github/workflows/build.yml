@@ -102,9 +102,9 @@ jobs:
                 ( set -x; which arc )
                 set -e
                 chown -R yugabyteci .
-                sudo -u yugabyteci bash -c "
+                sudo -H -u yugabyteci bash -c "
                   set -euo pipefail
-                  export PATH=/usr/local/bin:/arcanist/bin:\$PATH
+                  export PATH=/usr/local/bin:\$HOME/arcanist/bin:\$PATH
                   df -H /
                   echo ::group::Arc Lint
                   arc lint
