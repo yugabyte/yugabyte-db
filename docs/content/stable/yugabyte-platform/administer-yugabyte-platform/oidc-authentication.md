@@ -34,7 +34,7 @@ OIDC is an authentication protocol that allows client applications to confirm th
 When OIDC is enabled, users are presented with the following options when signing in to YugabyteDB Anywhere:
 
 - **Login with SSO**: Redirects users to the appropriate identity provider sign in mechanism.
-- **Local User Login**: User signs in to YugabyteDB Anywhere as a local user. You can restrict local user login to Super Admin only by setting the **Restrict local user login to just the superAdmin** Global Runtime Configuration option (config key `yb.security.allow_local_login_with_sso`) to false. Refer to [Manage runtime configuration settings](../../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/).
+- **Local User Login**: User signs in to YugabyteDB Anywhere as a local user. You can restrict local user login to Super Admin only by setting the **Allow local login with SSO** Global Runtime Configuration option (config key `yb.security.allow_local_login_with_sso`) to false. Refer to [Manage runtime configuration settings](../../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/).
 
 Note that in versions earlier than v2025.2.1, only a Super Admin can sign in locally while OIDC is enabled.
 
