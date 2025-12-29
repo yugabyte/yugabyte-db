@@ -1,6 +1,7 @@
 type: object
 description: Telemetry Provider Type Information
-x-yba-api-visibility: internal
+x-yba-api-since: 2025.2.0.0
+x-yba-api-visibility: preview
 properties:
   provider_type:
     description: Provider type name

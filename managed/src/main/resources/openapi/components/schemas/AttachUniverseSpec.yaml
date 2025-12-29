@@ -7,4 +7,5 @@ properties:
     type: string
     format: binary
     x-java-type: Http.MultipartFormData.FilePart<TemporaryFile>
-x-yba-api-visibility: internal
+x-yba-api-since: 2025.2.0.0
+x-yba-api-visibility: preview

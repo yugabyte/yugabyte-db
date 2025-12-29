@@ -28,11 +28,11 @@ In the meantime, you can explicitly request sticky connections by using a role w
 
 ## Coordinate connection scaling using a smart driver
 
-YugabyteDB YSQL [Smart Drivers](/preview/develop/drivers-orms/smart-drivers/) and Connection Manager are designed to work together and complement each other for optimal scalability and performance.
+YugabyteDB YSQL [Smart Drivers](/stable/develop/drivers-orms/smart-drivers/) and Connection Manager are designed to work together and complement each other for optimal scalability and performance.
 
 A smart driver intelligently routes connections across nodes in a distributed YugabyteDB cluster, ensuring that application traffic is load-balanced efficiently, and can dynamically route queries to appropriate TServers.
 
-Connection Manager operates at the node level, handling pooling and management of server and client connections in each TServer. It ensures efficient usage of backend resources, reduces the cost of idle connections, and smoothes out connection spikes.
+Connection Manager operates at the node level, handling pooling and management of server and client connections in each TServer. It ensures efficient usage of backend resources, reduces the cost of idle connections, and smooths out connection spikes.
 
 By using a smart driver and Connection Manager together, you benefit from end-to-end optimization:
 

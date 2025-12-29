@@ -54,6 +54,12 @@ spec:
                   x-kubernetes-validations:
                   - message: Config type cannot be changed
                     rule: self == oldSelf
+                name:
+                  type: string
+                  description: Optional name of storage config for mapping to a YBA object.
+                  x-kubernetes-validations:
+                  - message: name cannot be changed
+                    rule: self == oldSelf
                 data:
                   type: object
                   description: Data object to create storage configuration.

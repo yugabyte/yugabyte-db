@@ -46,36 +46,40 @@ var describeXClusterCmd = &cobra.Command{
 
 		rXCluster, response, err := authAPI.GetXClusterConfig(uuid).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "xCluster", "Describe")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "xCluster", "Describe")
 		}
 
-		sourceUniverseUUID := rXCluster.GetSourceUniverseUUID()
-		targetUniverseUUID := rXCluster.GetTargetUniverseUUID()
+		xclusterConfig := util.CheckAndDereference(
+			rXCluster,
+			fmt.Sprintf("No xcluster found with uuid %s", uuid),
+		)
 
-		xcluster.SourceUniverse, response, err = authAPI.GetUniverse(sourceUniverseUUID).Execute()
+		sourceUniverseUUID := xclusterConfig.GetSourceUniverseUUID()
+		targetUniverseUUID := xclusterConfig.GetTargetUniverseUUID()
+
+		sourceUniverse, response, err := authAPI.GetUniverse(sourceUniverseUUID).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"xCluster",
-				"Describe - Get Source Universe")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "xCluster", "Describe - Get Source Universe")
 		}
 
-		xcluster.TargetUniverse, response, err = authAPI.GetUniverse(targetUniverseUUID).Execute()
+		xcluster.SourceUniverse = util.CheckAndDereference(
+			sourceUniverse,
+			fmt.Sprintf("No source universe found with uuid %s", sourceUniverseUUID),
+		)
+
+		targetUniverse, response, err := authAPI.GetUniverse(targetUniverseUUID).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"xCluster",
-				"Describe - Get Target Universe")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "xCluster", "Describe - Get Target Universe")
 		}
+
+		xcluster.TargetUniverse = util.CheckAndDereference(
+			targetUniverse,
+			fmt.Sprintf("No target universe found with uuid %s", targetUniverseUUID),
+		)
 
 		r := make([]ybaclient.XClusterConfigGetResp, 0)
 
-		r = append(r, rXCluster)
+		r = append(r, xclusterConfig)
 
 		if len(r) > 0 && util.IsOutputType(formatter.TableFormatKey) {
 			fullXClusterContext := *xcluster.NewFullXClusterContext()

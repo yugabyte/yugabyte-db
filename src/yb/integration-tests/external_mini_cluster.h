@@ -199,6 +199,19 @@ struct ExternalMiniClusterOptions {
   std::vector<std::string> extra_tserver_flags;
   std::vector<std::string> extra_master_flags;
 
+  void AddMasterFlag(const std::string& flag) {
+    extra_master_flags.push_back(flag);
+  }
+
+  void AddTServerFlag(const std::string& flag) {
+    extra_tserver_flags.push_back(flag);
+  }
+
+  void AddFlag(const std::string& flag) {
+    extra_master_flags.push_back(flag);
+    extra_tserver_flags.push_back(flag);
+  }
+
   // Default timeout for operations involving RPC's, when none provided in the API.
   // Default : 10sec
   MonoDelta timeout = MonoDelta::FromSeconds(10);
@@ -220,8 +233,7 @@ struct ExternalMiniClusterOptions {
   // set to a non-zero value, this value is used instead.
   int transaction_table_num_tablets = 0;
 
-  // Specifies the replication factor for the cluster. If this is not set, default to the number
-  // of masters in the cluster.
+  // Specifies the replication factor for the cluster.
   int replication_factor = 0;
 
   bool allow_crashes_during_init_db = false;

@@ -634,7 +634,9 @@ message PgGetIndexBackfillProgressResponsePB {
   AppStatusPB status = 1;
   // The ordering of the indexes' results here is expected to be the same as the ordering in the
   // corresponding request PB (PgGetIndexBackfillProgressRequestPB).
-  repeated uint64 rows_processed_entries = 2;
+  repeated uint64 num_rows_read_from_table_for_backfill = 2;
+
+  repeated double num_rows_backfilled_in_index = 3;
 }
 
 message PgListLiveTabletServersResponsePB {
@@ -781,6 +783,10 @@ message PgPerformOptionsPB {
   bool clamp_uncertainty_window = 24;
 
   bool xcluster_target_ddl_bypass = 26;
+
+  uint32 xrepl_origin_id = 31;
+
+  bool is_using_table_locks = 32;
 }
 
 message PgPerformRequestPB {

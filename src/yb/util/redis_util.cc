@@ -27,7 +27,7 @@ bool RedisPatternMatchWithLen(
   while (pattern_len > 0) {
     switch (pattern[0]) {
       case '*':
-        while (pattern[1] == '*') {
+        while (pattern_len > 1 && pattern[1] == '*') {
           pattern++;
           pattern_len--;
         }
@@ -43,7 +43,6 @@ bool RedisPatternMatchWithLen(
           str_len--;
         }
         return false; /* no match */
-        break;
       case '?':
         if (str_len == 0) {
           return 0; /* no match */
@@ -52,30 +51,28 @@ bool RedisPatternMatchWithLen(
         str_len--;
         break;
       case '[': {
-        bool not_match, match;
-
         pattern++;
         pattern_len--;
-        not_match = pattern[0] == '^';
+        bool not_match = pattern_len > 0 && pattern[0] == '^';
         if (not_match) {
           pattern++;
           pattern_len--;
         }
-        match = false;
+        bool match = false;
         while (true) {
-          if (pattern[0] == '\\' && pattern_len >= 2) {
+          if (pattern_len >= 2 && pattern[0] == '\\') {
             pattern++;
             pattern_len--;
             if (pattern[0] == string[0]) {
               match = true;
             }
-          } else if (pattern[0] == ']') {
-            break;
           } else if (pattern_len == 0) {
             pattern--;
             pattern_len++;
             break;
-          } else if (pattern[1] == '-' && pattern_len >= 3) {
+          } else if (pattern[0] == ']') {
+            break;
+          } else if (pattern_len >= 3 && pattern[1] == '-') {
             int start = pattern[0];
             int end = pattern[2];
             int c = string[0];
@@ -141,7 +138,7 @@ bool RedisPatternMatchWithLen(
     pattern++;
     pattern_len--;
     if (str_len == 0) {
-      while (*pattern == '*') {
+      while (pattern_len > 0 && *pattern == '*') {
         pattern++;
         pattern_len--;
       }
@@ -154,7 +151,7 @@ bool RedisPatternMatchWithLen(
 } // namespace
 
 bool RedisPatternMatch(
-    const std::string_view& pattern, const std::string_view& string, bool ignore_case) {
+    std::string_view pattern, std::string_view string, bool ignore_case) {
   return RedisPatternMatchWithLen(
       pattern.data(), pattern.length(), string.data(), string.length(), ignore_case);
 }

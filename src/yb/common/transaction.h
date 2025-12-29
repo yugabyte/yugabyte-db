@@ -332,6 +332,9 @@ struct SubTransactionMetadata {
   static Result<SubTransactionMetadata> FromPB(
       const SubTransactionMetadataPB& source);
 
+  static Result<SubTransactionMetadata> FromPB(
+      const LWSubTransactionMetadataPB& source);
+
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(subtransaction_id, aborted);
   }
@@ -347,6 +350,9 @@ struct SubTransactionMetadata {
   // TODO(savepoints) -- update behavior and comment to track default aborted subtransaction state
   // as well.
   bool IsDefaultState() const;
+ private:
+  template <class PB>
+  static Result<SubTransactionMetadata> DoFromPB(const PB& source);
 };
 
 std::ostream& operator<<(std::ostream& out, const SubTransactionMetadata& metadata);
@@ -435,6 +441,9 @@ struct TransactionMetadata {
   TabletId old_status_tablet;
 
   bool skip_prefix_locks = false;
+
+  // Indicates whether the transaction is using table locks.
+  bool using_table_locks = false;
 
   static Result<TransactionMetadata> FromPB(const LWTransactionMetadataPB& source);
   static Result<TransactionMetadata> FromPB(const TransactionMetadataPB& source);
@@ -533,6 +542,10 @@ inline bool IsFastMode(bool skip_prefix_locks, IsolationLevel isolation) {
 
 inline bool IsFastMode(const struct TransactionMetadata& metadata) {
   return IsFastMode(metadata.skip_prefix_locks, metadata.isolation);
+}
+
+inline bool SkipPrefixLocks(bool fast_mode, IsolationLevel isolation) {
+  return (isolation == IsolationLevel::SERIALIZABLE_ISOLATION) != fast_mode;
 }
 
 } // namespace yb

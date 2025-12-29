@@ -33,6 +33,7 @@ import { RegionOperation } from '../configureRegion/constants';
 import { YBButton } from '../../../../common/forms/fields';
 import { YBInputField, YBToggleField } from '../../../../../redesign/components';
 import {
+  useIsProviderValidationEnabled,
   addItem,
   constructAccessKeysCreatePayload,
   deleteItem,
@@ -45,6 +46,7 @@ import { SshPrivateKeyFormField } from '../../components/SshPrivateKeyField';
 import { OnPremRegionMutation, YBProviderMutation } from '../../types';
 import { RbacValidator } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { CloudType } from '../../../../../redesign/helpers/dtos';
 
 interface OnPremProviderCreateFormProps {
   createInfraProvider: CreateInfraProvider;
@@ -135,7 +137,15 @@ export const OnPremProviderCreateForm = ({
     resolver: yupResolver(VALIDATION_SCHEMA)
   });
 
-  const onFormSubmit: SubmitHandler<OnPremProviderCreateFormFieldValues> = async (formValues) => {
+  const { isRuntimeConfigLoading, isValidationEnabled } = useIsProviderValidationEnabled(
+    CloudType.onprem
+  );
+
+  const onFormSubmit = async (
+    formValues: OnPremProviderCreateFormFieldValues,
+    shouldValidate: boolean,
+    ignoreValidationErrors = false
+  ) => {
     if (formValues.ntpSetupType === NTPSetupType.SPECIFIED && !formValues.ntpServers.length) {
       formMethods.setError('ntpServers', {
         type: 'min',
@@ -146,7 +156,10 @@ export const OnPremProviderCreateForm = ({
     try {
       const providerPayload = await constructProviderPayload(formValues);
       try {
-        await createInfraProvider(providerPayload);
+        await createInfraProvider(providerPayload, {
+          shouldValidate: shouldValidate,
+          ignoreValidationErrors: ignoreValidationErrors
+        });
       } catch (_) {
         // Handled with `mutateOptions.onError`
       }
@@ -154,6 +167,10 @@ export const OnPremProviderCreateForm = ({
       toast.error(error.message ?? error);
     }
   };
+
+  const onFormValidateAndSubmit: SubmitHandler<OnPremProviderCreateFormFieldValues> = async (
+    formValues
+  ) => await onFormSubmit(formValues, isValidationEnabled);
 
   const showAddRegionFormModal = () => {
     setRegionSelection(undefined);
@@ -194,7 +211,10 @@ export const OnPremProviderCreateForm = ({
   return (
     <Box display="flex" justifyContent="center">
       <FormProvider {...formMethods}>
-        <FormContainer name={FORM_NAME} onSubmit={formMethods.handleSubmit(onFormSubmit)}>
+        <FormContainer
+          name={FORM_NAME}
+          onSubmit={formMethods.handleSubmit(onFormValidateAndSubmit)}
+        >
           <Typography variant="h3">OnPrem Provider Configuration</Typography>
           <FormField providerNameField={true}>
             <FieldLabel>Provider Name</FieldLabel>
@@ -354,10 +374,16 @@ export const OnPremProviderCreateForm = ({
           </Box>
           <Box marginTop="16px">
             <YBButton
-              btnText="Create Provider Configuration"
+              btnText={
+                isValidationEnabled
+                  ? 'Validate and Create Provider Configuration'
+                  : 'Create Provider Configuration'
+              }
               btnClass="btn btn-default save-btn"
               btnType="submit"
-              disabled={isFormDisabled || formMethods.formState.isValidating}
+              disabled={
+                isFormDisabled || formMethods.formState.isValidating || isRuntimeConfigLoading
+              }
               data-testid={`${FORM_NAME}-SubmitButton`}
             />
             <YBButton

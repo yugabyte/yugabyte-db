@@ -13,8 +13,9 @@
 
 #include "yb/docdb/redis_operation.h"
 
-#include "yb/common/value.pb.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/redis_protocol.messages.h"
+#include "yb/common/value.messages.h"
 
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_path.h"
@@ -101,7 +102,7 @@ bool EmulateRedisResponse(const RedisDataType& data_type) {
 static const string wrong_type_message =
     "WRONGTYPE Operation against a key holding the wrong kind of value";
 
-Status QLValueFromSubKey(const RedisKeyValueSubKeyPB &subkey_pb, QLValuePB *out) {
+Status QLValueFromSubKey(const RedisKeyValueSubKeyMsg& subkey_pb, QLValueMsg *out) {
   switch (subkey_pb.subkey_case()) {
     case RedisKeyValueSubKeyPB::kStringSubkey:
       out->set_string_value(subkey_pb.string_subkey());
@@ -121,8 +122,7 @@ Status QLValueFromSubKey(const RedisKeyValueSubKeyPB &subkey_pb, QLValuePB *out)
   return Status::OK();
 }
 
-Status KeyEntryValueFromSubKey(
-    const RedisKeyValueSubKeyPB &subkey_pb, KeyEntryValue *out) {
+Status KeyEntryValueFromSubKey(const RedisKeyValueSubKeyMsg& subkey_pb, KeyEntryValue *out) {
   QLValuePB value;
   RETURN_NOT_OK(QLValueFromSubKey(subkey_pb, &value));
   *out = KeyEntryValue::FromQLValuePB(
@@ -133,9 +133,9 @@ Status KeyEntryValueFromSubKey(
 }
 
 // Stricter version of the above when we know the exact datatype to expect.
-Status QLValueFromSubKeyStrict(const RedisKeyValueSubKeyPB& subkey_pb,
+Status QLValueFromSubKeyStrict(const RedisKeyValueSubKeyMsg& subkey_pb,
                                RedisDataType data_type,
-                               QLValuePB* out) {
+                               QLValueMsg* out) {
   switch (data_type) {
     case REDIS_TYPE_LIST: FALLTHROUGH_INTENDED;
     case REDIS_TYPE_SET: FALLTHROUGH_INTENDED;
@@ -163,9 +163,10 @@ Status QLValueFromSubKeyStrict(const RedisKeyValueSubKeyPB& subkey_pb,
   return QLValueFromSubKey(subkey_pb, out);
 }
 
+template <class KeyValuePB>
 Result<RedisDataType> GetRedisValueType(
     IntentAwareIterator* iterator,
-    const RedisKeyValuePB &key_value_pb,
+    const KeyValuePB& key_value_pb,
     DocWriteBatch* doc_write_batch = nullptr,
     int subkey_index = kNilSubkeyIndex,
     bool always_override = false) {
@@ -176,14 +177,16 @@ Result<RedisDataType> GetRedisValueType(
   if (subkey_index == kNilSubkeyIndex) {
     encoded_subdoc_key = DocKey::EncodedFromRedisKey(key_value_pb.hash_code(), key_value_pb.key());
   } else {
-    if (subkey_index >= key_value_pb.subkey_size()) {
+    if (subkey_index >= static_cast<int64_t>(key_value_pb.subkey_size())) {
       return STATUS_SUBSTITUTE(InvalidArgument,
                                "Size of subkeys ($0) must be larger than subkey_index ($1)",
                                key_value_pb.subkey_size(), subkey_index);
     }
 
     KeyEntryValue subkey_primitive;
-    RETURN_NOT_OK(KeyEntryValueFromSubKey(key_value_pb.subkey(subkey_index), &subkey_primitive));
+    auto it = key_value_pb.subkey().begin();
+    std::advance(it, subkey_index);
+    RETURN_NOT_OK(KeyEntryValueFromSubKey(*it, &subkey_primitive));
     encoded_subdoc_key = DocKey::EncodedFromRedisKey(key_value_pb.hash_code(), key_value_pb.key());
     subkey_primitive.AppendToKey(&encoded_subdoc_key);
   }
@@ -237,9 +240,10 @@ Result<RedisDataType> GetRedisValueType(
   }
 }
 
+template <class KeyValuePB>
 Result<RedisValue> GetRedisValue(
     IntentAwareIterator* iterator,
-    const RedisKeyValuePB &key_value_pb,
+    const KeyValuePB& key_value_pb,
     int subkey_index = kNilSubkeyIndex,
     bool always_override = false,
     Expiration* exp = nullptr) {
@@ -254,9 +258,11 @@ Result<RedisValue> GetRedisValue(
                                "Expected at most one subkey, got $0", key_value_pb.subkey().size());
     }
     KeyEntryValue subkey_primitive;
-    RETURN_NOT_OK(KeyEntryValueFromSubKey(
-        key_value_pb.subkey(subkey_index == kNilSubkeyIndex ? 0 : subkey_index),
-        &subkey_primitive));
+    auto it = key_value_pb.subkey().begin();
+    if (subkey_index != kNilSubkeyIndex) {
+      std::advance(it, subkey_index);
+    }
+    RETURN_NOT_OK(KeyEntryValueFromSubKey(*it, &subkey_primitive));
     subkey_primitive.AppendToKey(&encoded_doc_key);
   }
 
@@ -308,7 +314,7 @@ YB_STRONGLY_TYPED_BOOL(VerifySuccessIfMissing);
 bool VerifyTypeAndSetCode(
     const RedisDataType expected_type,
     const RedisDataType actual_type,
-    RedisResponsePB *response,
+    RedisResponseMsg *response,
     VerifySuccessIfMissing verify_success_if_missing = VerifySuccessIfMissing::kFalse) {
   if (actual_type == RedisDataType::REDIS_TYPE_NONE) {
     if (verify_success_if_missing) {
@@ -330,7 +336,7 @@ bool VerifyTypeAndSetCode(
 bool VerifyTypeAndSetCode(
     const dockv::ValueEntryType expected_type,
     const dockv::ValueEntryType actual_type,
-    RedisResponsePB *response) {
+    RedisResponseMsg *response) {
   if (actual_type != expected_type) {
     response->set_code(RedisResponsePB::WRONG_TYPE);
     response->set_error_message(wrong_type_message);
@@ -359,8 +365,7 @@ Status AddPrimitiveValueToResponseArray(const dockv::PrimitiveValue& value,
   }
 }
 
-Status AddPrimitiveValueToResponseArray(const KeyEntryValue& value,
-                                        RedisArrayPB* redis_array) {
+Status AddPrimitiveValueToResponseArray(const KeyEntryValue& value, RedisArrayMsg* redis_array) {
   switch (value.type()) {
     case KeyEntryType::kString: FALLTHROUGH_INTENDED;
     case KeyEntryType::kStringDescending:
@@ -383,7 +388,7 @@ struct AddResponseValuesGeneric {
   template <class Val1, class Val2>
   Status operator()(const Val1& first,
                             const Val2& second,
-                            RedisResponsePB* response,
+                            RedisResponseMsg* response,
                             bool add_keys,
                             bool add_values,
                             bool reverse = false) {
@@ -402,7 +407,7 @@ struct AddResponseValuesGeneric {
 // second refers to a subdocument where each key is a value with the given score.
 Status AddResponseValuesSortedSets(const KeyEntryValue& first,
                                    const SubDocument& second,
-                                   RedisResponsePB* response,
+                                   RedisResponseMsg* response,
                                    bool add_keys,
                                    bool add_values,
                                    bool reverse = false) {
@@ -427,11 +432,11 @@ template <typename T, typename AddResponseRow>
 Status PopulateRedisResponseFromInternal(T iter,
                                          AddResponseRow add_response_row,
                                          const T& iter_end,
-                                         RedisResponsePB *response,
+                                         RedisResponseMsg *response,
                                          bool add_keys,
                                          bool add_values,
                                          bool reverse = false) {
-  response->set_allocated_array_response(new RedisArrayPB());
+  response->mutable_array_response();
   for (; iter != iter_end; iter++) {
     RETURN_NOT_OK(add_response_row(
         iter->first, iter->second, response, add_keys, add_values, reverse));
@@ -442,7 +447,7 @@ Status PopulateRedisResponseFromInternal(T iter,
 template <typename AddResponseRow>
 Status PopulateResponseFrom(const SubDocument::ObjectContainer &key_values,
                             AddResponseRow add_response_row,
-                            RedisResponsePB *response,
+                            RedisResponseMsg *response,
                             bool add_keys,
                             bool add_values,
                             bool reverse = false) {
@@ -457,8 +462,9 @@ Status PopulateResponseFrom(const SubDocument::ObjectContainer &key_values,
   }
 }
 
+template <class ResponsePB>
 void SetOptionalInt(RedisDataType type, int64_t value, int64_t none_value,
-                    RedisResponsePB* response) {
+                    ResponsePB* response) {
   if (type == RedisDataType::REDIS_TYPE_NONE) {
     response->set_code(RedisResponsePB::NIL);
     response->set_int_response(none_value);
@@ -468,11 +474,13 @@ void SetOptionalInt(RedisDataType type, int64_t value, int64_t none_value,
   }
 }
 
-void SetOptionalInt(RedisDataType type, int64_t value, RedisResponsePB* response) {
+template <class ResponsePB>
+void SetOptionalInt(RedisDataType type, int64_t value, ResponsePB* response) {
   SetOptionalInt(type, value, 0, response);
 }
 
-Result<int64_t> GetCardinality(IntentAwareIterator* iterator, const RedisKeyValuePB& kv) {
+template <class KeyValuePB>
+Result<int64_t> GetCardinality(IntentAwareIterator* iterator, const KeyValuePB& kv) {
   auto encoded_key_card = DocKey::EncodedFromRedisKey(kv.hash_code(), kv.key());
   KeyEntryValue(KeyEntryType::kCounter).AppendToKey(&encoded_key_card);
   SubDocument subdoc_card;
@@ -492,15 +500,15 @@ Status GetAndPopulateResponseValues(
     AddResponseValues add_response_values,
     const GetRedisSubDocumentData& data,
     ValueEntryType expected_type,
-    const RedisReadRequestPB& request,
-    RedisResponsePB* response,
+    const RedisReadRequestMsg& request,
+    RedisResponseMsg* response,
     bool add_keys, bool add_values, bool reverse) {
 
   RETURN_NOT_OK(GetRedisSubDocument(
       iterator, data, /* projection */ nullptr, SeekFwdSuffices::kFalse));
 
   // Validate and populate response.
-  response->set_allocated_array_response(new RedisArrayPB());
+  response->mutable_array_response();
   if (!(*data.doc_found)) {
     response->set_code(RedisResponsePB::NIL);
     return Status::OK();
@@ -544,6 +552,10 @@ void GetNormalizedBounds(int64 low_idx, int64 high_idx, int64 card, bool reverse
 }
 
 } // anonymous namespace
+
+void RedisWriteOperation::ClearResponse() {
+  response_.Clear();
+}
 
 void RedisWriteOperation::InitializeIterator(const DocOperationApplyData& data) {
   auto subdoc_key = SubDocKey(DocKey::FromRedisKey(
@@ -610,7 +622,7 @@ Result<RedisValue> RedisWriteOperation::GetValue(
                        subkey_index, /* always_override */ false, ttl);
 }
 
-void EnsureMapEntry(QLVirtualValuePB type, QLValuePB* value, QLMapValuePB** cache) {
+void EnsureMapEntry(QLVirtualValuePB type, QLValueMsg* value, QLMapValueMsg** cache) {
   if (*cache) {
     return;
   }
@@ -619,7 +631,7 @@ void EnsureMapEntry(QLVirtualValuePB type, QLValuePB* value, QLMapValuePB** cach
 }
 
 Status RedisWriteOperation::ApplySet(const DocOperationApplyData& data) {
-  const RedisKeyValuePB& kv = request_.key_value();
+  const auto& kv = request_.key_value();
   const MonoDelta ttl = request_.set_request().has_ttl() ?
       MonoDelta::FromMilliseconds(request_.set_request().ttl()) : ValueControlFields::kMaxTtl;
   DocPath doc_path = DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key());
@@ -865,7 +877,7 @@ Status RedisWriteOperation::ApplySet(const DocOperationApplyData& data) {
 }
 
 Status RedisWriteOperation::ApplySetTtl(const DocOperationApplyData& data) {
-  const RedisKeyValuePB& kv = request_.key_value();
+  const auto& kv = request_.key_value();
 
   // We only support setting TTLs on top-level keys.
   if (!kv.subkey().empty()) {
@@ -931,7 +943,7 @@ Status RedisWriteOperation::ApplySetTtl(const DocOperationApplyData& data) {
 }
 
 Status RedisWriteOperation::ApplyGetSet(const DocOperationApplyData& data) {
-  const RedisKeyValuePB& kv = request_.key_value();
+  const auto& kv = request_.key_value();
 
   if (kv.value_size() != 1) {
     return STATUS_SUBSTITUTE(Corruption,
@@ -958,7 +970,7 @@ Status RedisWriteOperation::ApplyGetSet(const DocOperationApplyData& data) {
 }
 
 Status RedisWriteOperation::ApplyAppend(const DocOperationApplyData& data) {
-  const RedisKeyValuePB& kv = request_.key_value();
+  const auto& kv = request_.key_value();
 
   if (kv.value_size() != 1) {
     return STATUS_SUBSTITUTE(Corruption,
@@ -996,7 +1008,7 @@ Status RedisWriteOperation::ApplyAppend(const DocOperationApplyData& data) {
 // TODO (akashnil): Actually check if the value existed, return 0 if not. handle multidel in future.
 //                  See ENG-807
 Status RedisWriteOperation::ApplyDel(const DocOperationApplyData& data) {
-  const RedisKeyValuePB& kv = request_.key_value();
+  const auto& kv = request_.key_value();
   RedisDataType data_type = VERIFY_RESULT(GetValueType(data));
   if (data_type != REDIS_TYPE_NONE && data_type != kv.type() && kv.type() != REDIS_TYPE_NONE) {
     response_.set_code(RedisResponsePB::WRONG_TYPE);
@@ -1112,7 +1124,7 @@ Status RedisWriteOperation::ApplyDel(const DocOperationApplyData& data) {
 }
 
 Status RedisWriteOperation::ApplySetRange(const DocOperationApplyData& data) {
-  const RedisKeyValuePB& kv = request_.key_value();
+  const auto& kv = request_.key_value();
   if (kv.value_size() != 1) {
     return STATUS_SUBSTITUTE(Corruption,
         "SetRange kv should have 1 value, found $0", kv.value_size());
@@ -1149,7 +1161,7 @@ Status RedisWriteOperation::ApplySetRange(const DocOperationApplyData& data) {
 }
 
 Status RedisWriteOperation::ApplyIncr(const DocOperationApplyData& data) {
-  const RedisKeyValuePB& kv = request_.key_value();
+  const auto& kv = request_.key_value();
   const int64_t incr = request_.incr_request().increment_int();
 
   if (kv.type() != REDIS_TYPE_HASH && kv.type() != REDIS_TYPE_STRING) {
@@ -1225,7 +1237,7 @@ Status RedisWriteOperation::ApplyIncr(const DocOperationApplyData& data) {
 }
 
 Status RedisWriteOperation::ApplyPush(const DocOperationApplyData& data) {
-  const RedisKeyValuePB& kv = request_.key_value();
+  const auto& kv = request_.key_value();
   DocPath doc_path = DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key());
   RedisDataType data_type = VERIFY_RESULT(GetValueType(data));
   if (data_type != REDIS_TYPE_LIST && data_type != REDIS_TYPE_NONE) {
@@ -1271,7 +1283,7 @@ Status RedisWriteOperation::ApplyInsert(const DocOperationApplyData& data) {
 }
 
 Status RedisWriteOperation::ApplyPop(const DocOperationApplyData& data) {
-  const RedisKeyValuePB& kv = request_.key_value();
+  const auto& kv = request_.key_value();
   DocPath doc_path = DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key());
   RedisDataType data_type = VERIFY_RESULT(GetValueType(data));
 
@@ -1318,7 +1330,7 @@ Status RedisWriteOperation::ApplyPop(const DocOperationApplyData& data) {
 }
 
 Status RedisWriteOperation::ApplyAdd(const DocOperationApplyData& data) {
-  const RedisKeyValuePB& kv = request_.key_value();
+  const auto& kv = request_.key_value();
   RedisDataType data_type = VERIFY_RESULT(GetValueType(data));
 
   if (data_type != REDIS_TYPE_SET && data_type != REDIS_TYPE_NONE) {
@@ -1375,6 +1387,14 @@ Status RedisWriteOperation::ApplyAdd(const DocOperationApplyData& data) {
 Status RedisWriteOperation::ApplyRemove(const DocOperationApplyData& data) {
   return STATUS(NotSupported, "Redis operation has not been implemented");
 }
+
+RedisReadOperation::RedisReadOperation(
+    const RedisReadRequestMsg& request,
+    const DocDB& doc_db,
+    const ReadOperationData& read_operation_data)
+    : request_(request),
+      doc_db_(doc_db),
+      read_operation_data_(read_operation_data) {}
 
 Status RedisReadOperation::Execute() {
   SimulateTimeoutIfTesting(const_cast<CoarseTimePoint*>(&read_operation_data_.deadline));
@@ -1488,7 +1508,8 @@ Status RedisReadOperation::ExecuteCollectionGetRangeByBounds(
 
 Status RedisReadOperation::ExecuteCollectionGetRangeByBounds(
     RedisCollectionGetRangeRequestPB::GetRangeRequestType request_type,
-    const RedisSubKeyBoundPB& lower_bound, const RedisSubKeyBoundPB& upper_bound, bool add_keys) {
+    const RedisSubKeyBoundMsg& lower_bound, const RedisSubKeyBoundMsg& upper_bound,
+    bool add_keys) {
   if ((lower_bound.has_infinity_type() &&
        lower_bound.infinity_type() == RedisSubKeyBoundPB::POSITIVE) ||
       (upper_bound.has_infinity_type() &&
@@ -1606,7 +1627,7 @@ Status RedisReadOperation::ExecuteCollectionGetRangeByBounds(
 }
 
 Status RedisReadOperation::ExecuteCollectionGetRange() {
-  const RedisKeyValuePB& key_value = request_.key_value();
+  const auto& key_value = request_.key_value();
   if (!request_.has_key_value() || !key_value.has_key()) {
     return STATUS(InvalidArgument, "Need to specify the key");
   }
@@ -1621,8 +1642,8 @@ Status RedisReadOperation::ExecuteCollectionGetRange() {
           !request_.subkey_range().has_upper_bound()) {
         return STATUS(InvalidArgument, "Need to specify the subkey range");
       }
-      const RedisSubKeyBoundPB& lower_bound = request_.subkey_range().lower_bound();
-      const RedisSubKeyBoundPB& upper_bound = request_.subkey_range().upper_bound();
+      const auto& lower_bound = request_.subkey_range().lower_bound();
+      const auto& upper_bound = request_.subkey_range().upper_bound();
       const bool add_keys = request_.get_collection_range_request().with_scores();
       return ExecuteCollectionGetRangeByBounds(request_type, lower_bound, upper_bound, add_keys);
     }
@@ -1642,8 +1663,8 @@ Status RedisReadOperation::ExecuteCollectionGetRange() {
 
       int64_t card = VERIFY_RESULT(GetCardinality(iterator_.get(), request_.key_value()));
 
-      const RedisIndexBoundPB& low_index_bound = request_.index_range().lower_bound();
-      const RedisIndexBoundPB& high_index_bound = request_.index_range().upper_bound();
+      const auto& low_index_bound = request_.index_range().lower_bound();
+      const auto& high_index_bound = request_.index_range().upper_bound();
 
       int64 low_idx_normalized, high_idx_normalized;
 
@@ -1738,7 +1759,7 @@ Result<std::optional<Expiration>> GetTtl(
 }  // namespace
 
 Status RedisReadOperation::ExecuteGetTtl() {
-  const RedisKeyValuePB& kv = request_.key_value();
+  const auto& kv = request_.key_value();
   if (!kv.has_key()) {
     return STATUS(Corruption, "Expected KeyValuePB");
   }
@@ -1822,7 +1843,7 @@ Status RedisReadOperation::ExecuteGet(RedisGetRequestPB::GetRequestType type) {
 
 Status RedisReadOperation::ExecuteGet() { return ExecuteGet(request_.get_request()); }
 
-Status RedisReadOperation::ExecuteGet(const RedisGetRequestPB& get_request) {
+Status RedisReadOperation::ExecuteGet(const RedisGetRequestMsg& get_request) {
   auto request_type = get_request.request_type();
   RedisDataType expected_type = REDIS_TYPE_NONE;
   switch (request_type) {
@@ -2092,7 +2113,7 @@ Status RedisReadOperation::ExecuteKeys() {
   return Status::OK();
 }
 
-const RedisResponsePB& RedisReadOperation::response() {
+const RedisResponseMsg& RedisReadOperation::response() {
   return response_;
 }
 

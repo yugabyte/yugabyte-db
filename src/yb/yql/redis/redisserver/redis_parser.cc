@@ -20,7 +20,7 @@
 
 #include "yb/client/yb_op.h"
 
-#include "yb/common/redis_protocol.pb.h"
+#include "yb/common/redis_protocol.messages.h"
 
 #include "yb/gutil/casts.h"
 
@@ -51,19 +51,19 @@ string to_lower_case(Slice slice) {
   return boost::to_lower_copy(slice.ToBuffer());
 }
 
-Status add_string_subkey(string subkey, RedisKeyValuePB* kv_pb) {
-  kv_pb->add_subkey()->set_string_subkey(std::move(subkey));
+Status add_string_subkey(std::string_view subkey, RedisKeyValueMsg* kv_pb) {
+  kv_pb->add_subkey()->set_string_subkey(subkey.data(), subkey.size());
   return Status::OK();
 }
 
-Status add_timestamp_subkey(const string &subkey, RedisKeyValuePB *kv_pb) {
+Status add_timestamp_subkey(std::string_view subkey, RedisKeyValueMsg *kv_pb) {
   auto timestamp = CheckedStoll(subkey);
   RETURN_NOT_OK(timestamp);
   kv_pb->add_subkey()->set_timestamp_subkey(*timestamp);
   return Status::OK();
 }
 
-Status add_double_subkey(const string &subkey, RedisKeyValuePB *kv_pb) {
+Status add_double_subkey(std::string_view subkey, RedisKeyValueMsg *kv_pb) {
   auto double_key = CheckedStold(subkey);
   RETURN_NOT_OK(double_key);
   kv_pb->add_subkey()->set_double_subkey(*double_key);
@@ -200,7 +200,7 @@ Status ParseHIncrBy(YBRedisWriteOp *op, const RedisClientCommand& args) {
 }
 
 Status ParseZAddOptions(
-    SortedSetOptionsPB *options, const RedisClientCommand& args, size_t *idx) {
+    SortedSetOptionsMsg *options, const RedisClientCommand& args, size_t *idx) {
   // While we keep seeing flags, set the appropriate field in options and increment idx. When
   // we finally stop seeing flags, the idx will be set to that token for later parsing.
   // Note that we can see duplicate flags, and it should have the same behavior as seeing the
@@ -537,7 +537,7 @@ Status ParseHGet(YBRedisReadOp* op, const RedisClientCommand& args) {
   return ParseHGetLikeCommands(op, args, RedisGetRequestPB_GetRequestType_HGET);
 }
 
-Status ParseTsBoundArg(const Slice& slice, RedisSubKeyBoundPB* bound_pb,
+Status ParseTsBoundArg(const Slice& slice, RedisSubKeyBoundMsg* bound_pb,
                        RedisCollectionGetRangeRequestPB::GetRangeRequestType request_type,
                        bool exclusive) {
   string bound(slice.cdata(), slice.size());
@@ -571,16 +571,15 @@ Status ParseTsBoundArg(const Slice& slice, RedisSubKeyBoundPB* bound_pb,
 }
 
 Status
-ParseIndexBoundArg(const Slice& slice, RedisIndexBoundPB* bound_pb) {
+ParseIndexBoundArg(const Slice& slice, RedisIndexBoundMsg* bound_pb) {
   auto index_bound = CheckedStoll(slice);
   RETURN_NOT_OK(index_bound);
   bound_pb->set_index(*index_bound);
   return Status::OK();
 }
 
-Status
-ParseTsSubKeyBound(const Slice& slice, RedisSubKeyBoundPB* bound_pb,
-                   RedisCollectionGetRangeRequestPB::GetRangeRequestType request_type) {
+Status ParseTsSubKeyBound(const Slice& slice, RedisSubKeyBoundMsg* bound_pb,
+                          RedisCollectionGetRangeRequestPB::GetRangeRequestType request_type) {
   if (slice.empty()) {
     return STATUS(InvalidCommand, "range bound key cannot be empty");
   }
@@ -595,7 +594,7 @@ ParseTsSubKeyBound(const Slice& slice, RedisSubKeyBoundPB* bound_pb,
   return Status::OK();
 }
 
-Status ParseIndexBound(const Slice& slice, RedisIndexBoundPB* bound_pb) {
+Status ParseIndexBound(const Slice& slice, RedisIndexBoundMsg* bound_pb) {
   if (slice.empty()) {
     return STATUS(InvalidArgument, "range bound index cannot be empty");
   }
@@ -688,7 +687,7 @@ Status ParseTsRevRangeByTime(YBRedisReadOp* op, const RedisClientCommand& args) 
   return Status::OK();
 }
 
-Status ParseWithScores(const Slice& slice, RedisCollectionGetRangeRequestPB* request) {
+Status ParseWithScores(const Slice& slice, RedisCollectionGetRangeRequestMsg* request) {
   if(!boost::iequals(slice.ToBuffer(), kWithScores)) {
     return STATUS_SUBSTITUTE(InvalidArgument, "unexpected argument $0", slice.ToBuffer());
   }
@@ -754,8 +753,7 @@ Status ParseIndexBasedQuery(
     op->mutable_request()->mutable_key_value()->set_key(key.ToBuffer());
     if (args.size() == 5) {
       RETURN_NOT_OK(ParseWithScores(
-      args[4],
-      op->mutable_request()->mutable_get_collection_range_request()));
+          args[4], op->mutable_request()->mutable_get_collection_range_request()));
     }
     return Status::OK();
   }

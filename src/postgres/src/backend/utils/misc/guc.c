@@ -118,9 +118,11 @@
 /* YB includes */
 #include "access/heaptoast.h"
 #include "access/yb_scan.h"
+#include "catalog/index.h"
 #include "commands/copy.h"
 #include "common/pg_yb_param_status_flags.h"
 #include "executor/ybModifyTable.h"
+#include "optimizer/yb_saop_merge.h"
 #include "pg_yb_utils.h"
 #include "tcop/pquery.h"
 #include "utils/syscache.h"
@@ -1368,17 +1370,6 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 	{
-		{"yb_enable_parallel_append", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enables the planner's use of parallel append plans "
-						 "if YB is enabled."),
-			NULL,
-			GUC_EXPLAIN
-		},
-		&yb_enable_parallel_append,
-		false,
-		NULL, NULL, NULL
-	},
-	{
 		{"yb_enable_bitmapscan", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Enables the planner's use of YB bitmap-scan plans."),
 			gettext_noop("To use YB Bitmap Scans, both yb_enable_bitmapscan "
@@ -2418,6 +2409,17 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_debug_log_snapshot_mgmt_stack_trace", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Log stack traces as well for lines logged by yb_debug_log_snapshot_mgmt."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_debug_log_snapshot_mgmt_stack_trace,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_enable_create_with_table_oid", PGC_USERSET, CUSTOM_OPTIONS,
 			gettext_noop("Enables the ability to set table oids when creating tables or indexes."),
 			NULL,
@@ -2981,6 +2983,19 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_derived_saops", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("If true, derives additional scalar array operation "
+						 "conditions from table constraints and adds them to "
+						 "queries to improve performance."),
+			gettext_noop("Has no impact in case yb_max_saop_merge_streams is 0."),
+			GUC_EXPLAIN
+		},
+		&yb_enable_derived_saops,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_enable_upsert_mode", PGC_USERSET, CLIENT_CONN_STATEMENT,
 			gettext_noop("Sets the boolean flag to enable or disable upsert mode for writes."),
 			NULL
@@ -3084,6 +3099,18 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_derived_equalities", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enable derivation of additional equalities for"
+						 " generated columns and expression indexes"),
+			NULL,
+			GUC_EXPLAIN
+		},
+		&yb_enable_derived_equalities,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_enable_base_scans_cost_model", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Enables YB cost model for Sequential and Index scans. "
 						 "  DEPRECATED: This setting is deprecated and will "
@@ -3095,6 +3122,22 @@ static struct config_bool ConfigureNamesBool[] =
 		&yb_enable_base_scans_cost_model,
 		false,
 		NULL, assign_yb_enable_base_scans_cost_model, NULL
+	},
+
+	{
+		{"yb_enable_update_reltuples_after_create_index", PGC_USERSET,
+			QUERY_TUNING_OTHER,
+			gettext_noop("Enables update of reltuples in pg_class for the base "
+						 "table and index after creating the index. When "
+						 "disabled, reltuples are not updated during "
+						 "concurrent index creation and only index reltuples "
+						 "are updated during non-concurrent index creation."),
+			NULL,
+			GUC_EXPLAIN
+		},
+		&yb_enable_update_reltuples_after_create_index,
+		false,
+		NULL, NULL, NULL
 	},
 
 	{
@@ -3141,7 +3184,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_ddl_transaction_block_enabled,
-		false,
+		kEnableDdlTransactionBlocks,
 		NULL, NULL, NULL
 	},
 
@@ -3613,17 +3656,99 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
-
+	{
+		{"yb_enable_parallel_scan_colocated", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("When set, allows parallel scan of the colocated relations"),
+			NULL,
+			GUC_EXPLAIN
+		},
+		&yb_enable_parallel_scan_colocated,
+		true,
+		NULL, NULL, NULL
+	},
 
 	{
-		{"yb_make_all_ddl_statements_incrementing", PGC_SIGHUP, CUSTOM_OPTIONS,
+		{"yb_enable_parallel_scan_hash_sharded", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("When set, allows parallel scan of the hash sharded relations"),
+			NULL,
+			GUC_EXPLAIN
+		},
+		&yb_enable_parallel_scan_hash_sharded,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_parallel_scan_range_sharded", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("When set, allows parallel scan of the range sharded relations"),
+			NULL,
+			GUC_EXPLAIN
+		},
+		&yb_enable_parallel_scan_range_sharded,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_parallel_scan_system", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("When set, allows parallel scan of the system relations"),
+			NULL,
+			GUC_EXPLAIN
+		},
+		&yb_enable_parallel_scan_system,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_test_make_all_ddl_statements_incrementing", PGC_SIGHUP, DEVELOPER_OPTIONS,
 			gettext_noop("When set, all DDL statements will cause the "
 						 "catalog version to increment. This mainly affects "
 						 "CREATE commands such as CREATE TABLE, CREATE VIEW, "
 						 "and CREATE SEQUENCE."),
 			NULL
 		},
-		&yb_make_all_ddl_statements_incrementing,
+		&yb_test_make_all_ddl_statements_incrementing,
+		true,
+		NULL, NULL, NULL
+	},
+
+	/*
+	 * TODOs:
+	 *
+	 * (1) Flush the catalog cache when changing from legacy to the new mode since the legacy mode
+	 * could have stale catalog information but the new mode relies on the fact that no catalog
+	 * information in the cache is stale.
+	 *
+	 * (2) Disallow setting this GUC in the middle of a transaction.
+	 */
+	{
+		{"yb_fallback_to_legacy_catalog_read_time", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("[This is an advanced flag, avoid using it unless recommened by Yugabyte"
+				"support.] If object locking is enabled, concurrent DDLs are allowed. This is done by "
+				"using the new mode for catalog reads and writes using PG's catalog snapshot. Set this "
+				"flag to true for falling back to the legacy mode which involves using pggate's catalog "
+				"read time for catalog reads when running a DML transaction (and) the transaction snapshot "
+				"for catalog reads and writes when running a DDL transaction. Concurrent DDLs will not be "
+				"supported if this flag is set. If object locking is disabled, only the legacy mode is "
+				"used."),
+			NULL
+		},
+		&yb_fallback_to_legacy_catalog_read_time,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_ignore_bool_cond_for_legacy_estimate", PGC_USERSET, COMPAT_OPTIONS_PREVIOUS,
+			gettext_noop("Ignore boolean condition for row count estimate in legacy cost model."),
+			gettext_noop("Negates the side effect on legacy mode row count "
+						 "estimate introduced by the fix \"[#26266] YSQL: Add "
+						 "BOOL_LSM_FAM_OID to boolean family\" for backward "
+						 "compatibility"),
+			GUC_EXPLAIN
+		},
+		&yb_ignore_bool_cond_for_legacy_estimate,
 		false,
 		NULL, NULL, NULL
 	},
@@ -4208,7 +4333,7 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&StatementTimeout,
 		0, 0, INT_MAX,
-		NULL, YBCSetTimeout, NULL
+		NULL, NULL, NULL
 	},
 
 
@@ -5601,6 +5726,25 @@ static struct config_int ConfigureNamesInt[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		/* TODO(#29072): switch to PGC_USERSET when results become correct. */
+		{"yb_max_saop_merge_streams", PGC_SUSET, QUERY_TUNING_METHOD,
+			gettext_noop("Sets the maximum number of streams tolerated for "
+						 "scalar array operation merge."),
+			gettext_noop("For YB LSM index scans, when multiple "
+						 "SAOP-mergeable scalar array operations are "
+						 "involved, they are added to SAOP merge until their "
+						 "cartesian product's cardinality reaches this limit. "
+						 "Scalar array operation merge is per index scan, and "
+						 "the limit applies per index scan, not globally. Set "
+						 "to 0 to disable. WARNING(#29072): results are not "
+						 "sorted correctly."),
+		},
+		&yb_max_saop_merge_streams,
+		0, 0, 1024,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0, 0, 0, NULL, NULL, NULL
@@ -5691,7 +5835,7 @@ static struct config_real ConfigureNamesReal[] =
 			GUC_EXPLAIN
 		},
 		&parallel_tuple_cost,
-		DEFAULT_PARALLEL_TUPLE_COST, 0, DBL_MAX,
+		YB_DEFAULT_PARALLEL_TUPLE_COST, 0, DBL_MAX,	/* YB: change default */
 		NULL, NULL, NULL
 	},
 	{
@@ -5702,7 +5846,7 @@ static struct config_real ConfigureNamesReal[] =
 			GUC_EXPLAIN
 		},
 		&parallel_setup_cost,
-		DEFAULT_PARALLEL_SETUP_COST, 0, DBL_MAX,
+		YB_DEFAULT_PARALLEL_SETUP_COST, 0, DBL_MAX,	/* YB: change default */
 		NULL, NULL, NULL
 	},
 	{
@@ -7397,6 +7541,7 @@ static struct config_enum ConfigureNamesEnum[] =
 static const char *const map_old_guc_names[] = {
 	"sort_mem", "work_mem",
 	"vacuum_mem", "maintenance_work_mem",
+	"yb_enable_parallel_append", "enable_parallel_append",
 	NULL
 };
 
@@ -7413,7 +7558,7 @@ static const char *const YbDbAdminVariables[] = {
 	"yb_binary_restore",
 	"yb_speculatively_execute_pl_statements",
 	"yb_whitelist_extra_statements_for_pl_speculative_execution",
-	"yb_make_all_ddl_statements_incrementing",
+	"yb_test_make_all_ddl_statements_incrementing",
 };
 
 
@@ -8601,9 +8746,17 @@ SelectConfigFiles(const char *userDoption, const char *progname)
 static bool
 yb_should_report_guc(struct config_generic *record)
 {
-	/* TODO(arpit.saxena): Use narrower sending criteria for correctness */
-	return ((record->flags & GUC_REPORT) && !YbIsClientYsqlConnMgr()) ||
-		(YbIsClientYsqlConnMgr() && record->context > PGC_BACKEND);
+	bool		shouldReportGUC = record->flags & GUC_REPORT;
+
+	if (YbIsClientYsqlConnMgr())
+	{
+		shouldReportGUC = shouldReportGUC ||
+			(record->status & GUC_VALUE_RESET) ||
+			(record->context >= PGC_SU_BACKEND &&
+			 (record->source == PGC_S_CLIENT ||
+			  record->source == PGC_S_SESSION));
+	}
+	return shouldReportGUC;
 }
 
 /*
@@ -8711,6 +8864,9 @@ ResetAllOptions(void)
 		gconf->source = gconf->reset_source;
 		gconf->scontext = gconf->reset_scontext;
 		gconf->srole = gconf->reset_srole;
+		/* YB: Add GUC_VALUE_RESET for relaying back to Connection Manager */
+		if (YbIsClientYsqlConnMgr())
+			gconf->status |= GUC_VALUE_RESET;
 
 		if (yb_should_report_guc(gconf))
 		{
@@ -8884,6 +9040,7 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 			bool		restorePrior = false;
 			bool		restoreMasked = false;
 			bool		changed;
+			bool		yb_needs_report;
 
 			/*
 			 * In this next bit, if we don't set either restorePrior or
@@ -8966,6 +9123,7 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 			}
 
 			changed = false;
+			yb_needs_report = false;
 
 			if (restorePrior || restoreMasked)
 			{
@@ -9123,6 +9281,18 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 				set_extra_field(gconf, &(stack->prior.extra), NULL);
 				set_extra_field(gconf, &(stack->masked.extra), NULL);
 
+				/*
+				 * YB: Connection manager needs to be informed if any variable
+				 * set by the user is rolled back
+				 */
+				if (YbIsClientYsqlConnMgr() && changed &&
+					(gconf->context == PGC_SUSET ||
+					 gconf->context == PGC_USERSET) &&
+					gconf->source == PGC_S_SESSION)
+				{
+					yb_needs_report = true;
+				}
+
 				/* And restore source information */
 				gconf->source = newsource;
 				gconf->scontext = newscontext;
@@ -9134,7 +9304,7 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 			pfree(stack);
 
 			/* Report new value if we changed it */
-			if (changed && yb_should_report_guc(gconf))
+			if (changed && (yb_needs_report || yb_should_report_guc(gconf)))
 			{
 				gconf->status |= GUC_NEEDS_REPORT;
 				report_needed = true;
@@ -9187,7 +9357,7 @@ BeginReportingGUCOptions(void)
 	{
 		struct config_generic *conf = guc_variables[i];
 
-		if (conf->flags & GUC_REPORT)
+		if (yb_should_report_guc(conf))
 			ReportGUCOption(conf);
 	}
 
@@ -9233,7 +9403,8 @@ ReportChangedGUCOptions(void)
 	{
 		struct config_generic *conf = guc_variables[i];
 
-		if (((conf->flags & GUC_REPORT) || YbIsClientYsqlConnMgr()) && (conf->status & GUC_NEEDS_REPORT))
+		if (((conf->flags & GUC_REPORT) || YbIsClientYsqlConnMgr()) &&
+			(conf->status & GUC_NEEDS_REPORT))
 			ReportGUCOption(conf);
 	}
 
@@ -9256,6 +9427,11 @@ ReportGUCOption(struct config_generic *record)
 {
 	char	   *val = _ShowOption(record, false);
 
+	/*
+	 * YB: record->last_reported doesn't make sense for connection manager
+	 * since the backend can be attached to another client which would need
+	 * ParameterStatus of a variable it sets
+	 */
 	if (YbIsClientYsqlConnMgr() ||
 		record->last_reported == NULL ||
 		strcmp(val, record->last_reported) != 0)
@@ -9269,7 +9445,37 @@ ReportGUCOption(struct config_generic *record)
 			if (record->flags & GUC_REPORT)
 				flags |= YB_PARAM_STATUS_REPORT_ENABLED;
 
-			/* TODO(arpit.saxena): Populate other bits in flags */
+			switch (record->context)
+			{
+				case PGC_INTERNAL:
+				case PGC_POSTMASTER:
+				case PGC_SIGHUP:
+					/*
+					 * These can never be set by an external client, so
+					 * connection manager doesn't care about these
+					 */
+					break;
+				case PGC_SU_BACKEND:
+				case PGC_BACKEND:
+					/*
+					 * Connection Manager only cares if the external client set
+					 * this variable. That can only happen through the startup
+					 * packet i.e. PGC_S_CLIENT source
+					 */
+
+					if (record->source == PGC_S_CLIENT)
+						flags |= YB_PARAM_STATUS_CONTEXT_BACKEND;
+					break;
+				case PGC_SUSET:
+				case PGC_USERSET:
+					if (record->source == PGC_S_CLIENT)
+						flags |=
+							YB_PARAM_STATUS_USERSET_OR_SUSET_SOURCE_STARTUP;
+					else if (record->source == PGC_S_SESSION)
+						flags |=
+							YB_PARAM_STATUS_USERSET_OR_SUSET_SOURCE_SESSION;
+					break;
+			}
 
 			pq_beginmessage(&msgbuf, 'r');
 			pq_sendstring(&msgbuf, record->name);
@@ -9298,6 +9504,9 @@ ReportGUCOption(struct config_generic *record)
 	pfree(val);
 
 	record->status &= ~GUC_NEEDS_REPORT;
+	/* YB: Reset flag that was set for Connection Manager */
+	if (YbIsClientYsqlConnMgr())
+		record->status &= ~GUC_VALUE_RESET;
 }
 
 /*
@@ -10097,6 +10306,7 @@ set_config_option_ext(const char *name, const char *value,
 	void	   *newextra = NULL;
 	bool		prohibitValueChange = false;
 	bool		makeDefault;
+	bool		gucReset = value == NULL && source == PGC_S_SESSION;
 
 	if (source == YSQL_CONN_MGR)
 		Assert(YbIsClientYsqlConnMgr());
@@ -10445,6 +10655,9 @@ set_config_option_ext(const char *name, const char *value,
 					conf->gen.source = source;
 					conf->gen.scontext = context;
 					conf->gen.srole = srole;
+					/* YB: Mark value as been reset for connection manager */
+					if (gucReset)
+						conf->gen.status |= GUC_VALUE_RESET;
 				}
 				if (makeDefault)
 				{
@@ -10543,6 +10756,9 @@ set_config_option_ext(const char *name, const char *value,
 					conf->gen.source = source;
 					conf->gen.scontext = context;
 					conf->gen.srole = srole;
+					/* YB: Mark value as been reset for connection manager */
+					if (gucReset)
+						conf->gen.status |= GUC_VALUE_RESET;
 				}
 				if (makeDefault)
 				{
@@ -10636,6 +10852,9 @@ set_config_option_ext(const char *name, const char *value,
 									newextra);
 					conf->gen.source = source;
 					conf->gen.scontext = context;
+					/* YB: Mark value as been reset for connection manager */
+					if (gucReset)
+						conf->gen.status |= GUC_VALUE_RESET;
 				}
 				if (makeDefault)
 				{
@@ -10732,6 +10951,9 @@ set_config_option_ext(const char *name, const char *value,
 					conf->gen.source = source;
 					conf->gen.scontext = context;
 					conf->gen.srole = srole;
+					/* YB: Mark value as been reset for connection manager */
+					if (gucReset)
+						conf->gen.status |= GUC_VALUE_RESET;
 				}
 				if (makeDefault)
 				{
@@ -10859,6 +11081,9 @@ set_config_option_ext(const char *name, const char *value,
 					conf->gen.source = source;
 					conf->gen.scontext = context;
 					conf->gen.srole = srole;
+					/* YB: Mark value as been reset for connection manager */
+					if (gucReset)
+						conf->gen.status |= GUC_VALUE_RESET;
 
 					/*
 					 * Ugly hack: during SET session_authorization, forcibly
@@ -11006,6 +11231,9 @@ set_config_option_ext(const char *name, const char *value,
 					conf->gen.source = source;
 					conf->gen.scontext = context;
 					conf->gen.srole = srole;
+					/* YB: Mark value as been reset for connection manager */
+					if (gucReset)
+						conf->gen.status |= GUC_VALUE_RESET;
 				}
 				if (makeDefault)
 				{
@@ -16078,6 +16306,37 @@ assign_yb_enable_cbo(int new_value, void *extra)
 			yb_legacy_bnl_cost = true;
 			yb_ignore_stats = true;
 			break;
+	}
+
+	/*
+	 * When enabling CBO, also set:
+	 *  - yb_enable_bitmapscan to on
+	 *  - yb_parallel_range_rows to 10000
+	 *  - yb_enable_update_reltuples_after_create_index to on
+	 */
+	if (new_value == YB_COST_MODEL_ON)
+	{
+		SetConfigOption("yb_enable_bitmapscan", "on",
+						PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
+		SetConfigOption("yb_parallel_range_rows", "10000",
+						PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
+		SetConfigOption("yb_enable_update_reltuples_after_create_index", "on",
+						PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
+	}
+	/*
+	 * When disabling CBO, also reset:
+	 *  - yb_enable_bitmapscan
+	 *  - yb_parallel_range_rows
+	 *  - yb_enable_update_reltuples_after_create_index
+	 */
+	else
+	{
+		SetConfigOption("yb_enable_bitmapscan", "off",
+						PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
+		SetConfigOption("yb_parallel_range_rows", "0",
+						PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
+		SetConfigOption("yb_enable_update_reltuples_after_create_index", "off",
+						PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
 	}
 }
 

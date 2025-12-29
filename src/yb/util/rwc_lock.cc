@@ -32,27 +32,20 @@
 
 #include "yb/util/rwc_lock.h"
 
-#include <utility>
-
-#include "yb/gutil/walltime.h"
-
-#include "yb/util/callsite_profiling.h"
 #include "yb/util/debug-util.h"
-#include "yb/util/env.h"
-#include "yb/util/logging.h"
+#include "yb/util/flags.h"
 #include "yb/util/thread.h"
 #include "yb/util/thread_restrictions.h"
 #include "yb/util/tsan_util.h"
 
 DEFINE_RUNTIME_bool(enable_rwc_lock_debugging, false,
-    "Enable debug logging for RWC lock. This can hurt performance significantly since it causes us "
-    "to capture stack traces on each lock acquisition.");
+    "Enable additional debug logging for RWC lock.  This can hurt performance significantly since "
+    "it causes us to capture stack traces on each write lock acquisition.");
 TAG_FLAG(enable_rwc_lock_debugging, advanced);
 
 DEFINE_RUNTIME_int32(slow_rwc_lock_log_ms, 5000 * yb::kTimeMultiplier,
-    "How long to wait for a write or commit lock before logging that it took a long time (and "
-    "logging the stacks of the writer / reader threads if FLAGS_enable_rwc_lock_debugging is "
-    "true).");
+    "How long to wait for a write or commit lock before logging that acquiring it took a long "
+    "time.");
 TAG_FLAG(slow_rwc_lock_log_ms, advanced);
 
 using namespace std::literals;
@@ -64,9 +57,9 @@ namespace yb {
 namespace {
 
 const auto kMaxDebugWait = MonoDelta::FromMinutes(3);
-const size_t kWriteActive = 1ULL << 60;
-const size_t kWritePending = kWriteActive << 1;
-const size_t kReadersMask = kWriteActive - 1;
+const size_t kCommitActive = 1ULL << 60;
+const size_t kCommitPending = kCommitActive << 1;
+const size_t kReadersMask = kCommitActive - 1;
 
 #if RWC_LOCK_TRACK_EXTERNAL_DEADLOCK
 thread_local size_t rwc_read_lock_counter = 0;
@@ -83,6 +76,8 @@ RWCLock::~RWCLock() {
 }
 
 void RWCLock::ReadLock() {
+  // We assume committing is very fast so we do not call ThreadRestrictions::AssertWaitAllowed()
+  // here.
 #if RWC_LOCK_TRACK_EXTERNAL_DEADLOCK
   if (++rwc_read_lock_counter == 1) {
 #if RWC_LOCK_COLLECT_READ_LOCK_STACK_TRACE
@@ -91,19 +86,25 @@ void RWCLock::ReadLock() {
   }
 #endif
   for (;;) {
-    if (!(reader_counter_.fetch_add(1) & kWriteActive)) {
+    if (!(reader_counter_.fetch_add(1) & kCommitActive)) {
       return;
     }
-    if (!(reader_counter_.fetch_sub(1) & kWriteActive)) {
+    if (!(reader_counter_.fetch_sub(1) & kCommitActive)) {
       continue;
     }
     std::unique_lock lock(commit_mutex_);
     auto value = reader_counter_.load();
-    if (!(value & kWriteActive)) {
+    if (!(value & kCommitActive)) {
       continue;
     }
-    if (no_writers_.wait_for(lock, FLAGS_slow_rwc_lock_log_ms * 1ms) == std::cv_status::timeout) {
-      LOG(WARNING) << "Long time waiting no writers";
+    if (no_committer_.wait_for(lock, FLAGS_slow_rwc_lock_log_ms * 1ms) == std::cv_status::timeout) {
+      LOG(WARNING) << "Long time waiting for read lock due to committers holding lock";
+      // Is the blocking lock eventually released?  If so, log so the reader knows that lock was not
+      // held forever.
+      auto start = CoarseMonoClock::now();
+      no_committer_.wait(lock);
+      MonoDelta passed = CoarseMonoClock::now() - start;
+      LOG(INFO) << "Committers no longer holding lock after " << passed;
     }
   }
 }
@@ -129,7 +130,8 @@ void RWCLock::ReadUnlock() {
 #if RWC_LOCK_TRACK_EXTERNAL_DEADLOCK
   --rwc_read_lock_counter;
 #endif
-  if (reader_counter_.fetch_sub(1) - 1 == kWritePending) {
+  if (reader_counter_.fetch_sub(1) - 1 == kCommitPending) {
+    std::unique_lock lock(commit_mutex_);
     no_readers_.notify_one();
   }
 }
@@ -138,9 +140,12 @@ bool RWCLock::HasReaders() const {
   return (reader_counter_.load() & kReadersMask) != 0;
 }
 
-bool RWCLock::HasWriteLock() const {
-  std::unique_lock lock(write_mutex_, std::try_to_lock);
-  return !lock.owns_lock();
+bool RWCLock::DEBUG_HasWriteLock() const {
+#ifdef NDEBUG
+  LOG(FATAL) << "attempt to use DEBUG_HasWriteLock() when DEBUG is false";
+#endif
+  std::lock_guard lock(write_lock_holder_info_mutex_);
+  return write_lock_holder_thread_id_ == Thread::CurrentThreadId();
 }
 
 void RWCLock::WriteLock() NO_THREAD_SAFETY_ANALYSIS {
@@ -149,50 +154,93 @@ void RWCLock::WriteLock() NO_THREAD_SAFETY_ANALYSIS {
   write_mutex_.lock();
 #else
   if (!write_mutex_.try_lock_for(1ms * FLAGS_slow_rwc_lock_log_ms)) {
-    LOG(WARNING) << "Long time taking write lock";
+    {
+      std::lock_guard lock(write_lock_holder_info_mutex_);
+      std::string message =
+          "Long time trying to take write lock due to others holding write/commit lock; Current "
+          "write holder is ";
+      if (write_lock_holder_thread_id_ == -1) {
+        message += "unknown";
+      } else {
+        message += "thread ID " + AsString(write_lock_holder_thread_id_);
+        if (!write_lock_holder_stack_trace_.empty()) {
+          message += "; stack trace when acquiring write lock:\n" + write_lock_holder_stack_trace_;
+        }
+      }
+      LOG(WARNING) << message;
+    }
+    auto start = CoarseMonoClock::now();
     write_mutex_.lock();
+    // Do we eventually get the lock?  If so, log so the reader knows lock was not held forever.
+    MonoDelta passed = CoarseMonoClock::now() - start;
+    LOG(INFO) << "Finally got write lock after additional " << passed;
   }
 #endif
-#ifndef NDEBUG
-  write_start_ = CoarseMonoClock::now();
+
+  // Save information about us as we are now the last holder of the write lock.
+  write_acquire_time_ = CoarseMonoClock::now();
+#ifdef NDEBUG
+  if (FLAGS_enable_rwc_lock_debugging) {
+    std::lock_guard lock(write_lock_holder_info_mutex_);
+    write_lock_holder_thread_id_ = Thread::CurrentThreadId();
+    write_lock_holder_stack_trace_ = GetStackTrace();
+  }
+#else
+  {
+    std::lock_guard lock(write_lock_holder_info_mutex_);
+    write_lock_holder_thread_id_ = Thread::CurrentThreadId();
+    if (FLAGS_enable_rwc_lock_debugging) {
+      write_lock_holder_stack_trace_ = GetStackTrace();
+    }
+  }
 #endif
 }
 
 void RWCLock::WriteUnlock() NO_THREAD_SAFETY_ANALYSIS {
-  ThreadRestrictions::AssertWaitAllowed();
-#ifndef NDEBUG
-  auto write_start = write_start_;
-#endif
+  auto write_acquire_time = write_acquire_time_;
   write_mutex_.unlock();
-#ifndef NDEBUG
-  MonoDelta passed = CoarseMonoClock::now() - write_start;
+  MonoDelta passed = CoarseMonoClock::now() - write_acquire_time;
   if (passed > FLAGS_slow_rwc_lock_log_ms * 1ms) {
-    LOG(WARNING) << "Long time holding write lock " << passed << ":\n" << GetStackTrace();
+    LOG(WARNING) << "Long time holding write lock: " << passed
+                 << "; stack trace of release:\n"
+                 << GetStackTrace();
   }
-#endif
 }
 
 void RWCLock::UpgradeToCommitLock() {
   std::unique_lock lock(commit_mutex_);
-  reader_counter_ += kWritePending;
+  reader_counter_ += kCommitPending;
   for (;;) {
-    size_t expected = kWritePending;
-    if (reader_counter_.compare_exchange_strong(expected, kWriteActive)) {
+    size_t expected = kCommitPending;
+    if (reader_counter_.compare_exchange_strong(expected, kCommitActive)) {
       break;
     }
     if (no_readers_.wait_for(lock, FLAGS_slow_rwc_lock_log_ms * 1ms) == std::cv_status::timeout) {
-      LOG(WARNING) << "Long time waiting no readers";
+      LOG(WARNING) << "Long time waiting to acquire commit lock due to readers";
+      // Is the blocking lock eventually released?  If so, log so the reader knows that lock was not
+      // held forever.
+      auto start = CoarseMonoClock::now();
+      no_readers_.wait(lock);
+      MonoDelta passed = CoarseMonoClock::now() - start;
+      LOG(INFO) << "Readers no longer holding lock after " << passed;
     }
   }
 }
 
 void RWCLock::CommitUnlock() {
+  auto write_acquire_time = write_acquire_time_;
   {
     std::unique_lock lock(commit_mutex_);
-    reader_counter_ -= kWriteActive;
-    no_writers_.notify_all();
+    reader_counter_ -= kCommitActive;
+    no_committer_.notify_all();
   }
   write_mutex_.unlock();
+  MonoDelta passed = CoarseMonoClock::now() - write_acquire_time;
+  if (passed > FLAGS_slow_rwc_lock_log_ms * 1ms) {
+    LOG(WARNING) << "Long time holding write then commit lock: " << passed
+                 << "; stack trace of release:\n"
+                 << GetStackTrace();
+  }
 }
 
 } // namespace yb

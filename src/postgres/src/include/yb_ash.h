@@ -70,9 +70,6 @@ extern void YbAshUnsetMetadata(void);
 
 extern void YbAshSetOneTimeMetadata(void);
 extern void YbAshSetMetadataForBgworkers(void);
-
-extern void GetAshDataForQueryDiagnosticsBundle(TimestampTz start_time, TimestampTz end_time,
-												int64 query_id, StringInfo output_buffer,
-												char *description);
+extern uint64 YbAshGetConstQueryId(void);
 
 #endif							/* YB_ASH_H */

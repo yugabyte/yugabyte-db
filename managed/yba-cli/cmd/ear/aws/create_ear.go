@@ -6,7 +6,6 @@ package aws
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -83,7 +82,7 @@ var createAWSEARCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(region)) == 0 {
+		if util.IsEmptyString(region) {
 			region, err = util.AWSRegionFromEnv()
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -95,7 +94,7 @@ var createAWSEARCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(endpoint)) != 0 {
+		if !util.IsEmptyString(endpoint) {
 			requestBody[util.AWSEndpointEnv] = endpoint
 		}
 
@@ -103,14 +102,14 @@ var createAWSEARCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(cmkID)) != 0 {
+		if !util.IsEmptyString(cmkID) {
 			requestBody[util.AWSCMKIDField] = cmkID
 		} else {
 			cmkPolicyFile, err := cmd.Flags().GetString("cmk-policy-file-path")
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
-			if len(strings.TrimSpace(cmkPolicyFile)) != 0 {
+			if !util.IsEmptyString(cmkPolicyFile) {
 				cmkPolicy, err := util.ReadFileToString(cmkPolicyFile)
 				if err != nil {
 					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -122,8 +121,7 @@ var createAWSEARCmd = &cobra.Command{
 		rTask, response, err := authAPI.CreateKMSConfig(util.AWSEARType).
 			KMSConfig(requestBody).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "EAR: AWS", "Create")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "EAR: AWS", "Create")
 		}
 
 		earutil.WaitForCreateEARTask(authAPI,

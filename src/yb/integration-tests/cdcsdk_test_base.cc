@@ -112,7 +112,6 @@ Status CDCSDKTestBase::SetUpWithParams(
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_auto_run_initdb) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_hide_pg_catalog_table_creation_logs) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_pggate_rpc_timeout_secs) = 120;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_replication_factor) = replication_factor;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_pack_full_row_update) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_populate_safepoint_record) = cdc_populate_safepoint_record;
@@ -558,7 +557,7 @@ Result<std::string> CDCSDKTestBase::HybridTimeToReadableString(uint64_t hybrid_t
 }
 
 Result<GetChangesResponsePB> CDCSDKTestBase::GetChangesFromMaster(
-    const xrepl::StreamId& stream_id) {
+    const xrepl::StreamId& stream_id, const CDCSDKCheckpointPB* explicit_checkpoint) {
   GetChangesRequestPB change_req;
   GetChangesResponsePB change_resp;
   change_req.set_stream_id(stream_id.ToString());
@@ -569,6 +568,15 @@ Result<GetChangesResponsePB> CDCSDKTestBase::GetChangesFromMaster(
 
   rpc::RpcController change_rpc;
   change_rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
+
+  if (explicit_checkpoint != nullptr) {
+    change_req.mutable_explicit_cdc_sdk_checkpoint()->set_term(explicit_checkpoint->term());
+    change_req.mutable_explicit_cdc_sdk_checkpoint()->set_index(explicit_checkpoint->index());
+    change_req.mutable_explicit_cdc_sdk_checkpoint()->set_key(explicit_checkpoint->key());
+    change_req.mutable_explicit_cdc_sdk_checkpoint()->set_write_id(explicit_checkpoint->write_id());
+    change_req.mutable_explicit_cdc_sdk_checkpoint()->set_snapshot_time(
+        explicit_checkpoint->snapshot_time());
+  }
 
   // Create CDC service proxy to master.
   CDCServiceProxy master_proxy(

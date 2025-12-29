@@ -9,6 +9,8 @@ menu:
     parent: pg-extensions
     weight: 20
 type: docs
+aliases:
+  - /stable/explore/ysql-language-features/pg-extensions/extension-file-fdw
 ---
 
 The [file_fdw](https://www.postgresql.org/docs/15/file-fdw.html) module provides the foreign-data wrapper `file_fdw`, which can be used to access data files in the server's file system, or to execute programs on the server and read their output.

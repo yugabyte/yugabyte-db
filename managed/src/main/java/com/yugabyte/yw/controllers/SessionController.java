@@ -181,6 +181,7 @@ public class SessionController extends AbstractPlatformController {
   }
 
   @ApiOperation(
+      notes = "Available since YBA version 2.20.0.",
       nickname = "getSessionInfo",
       value =
           "Get current user and customer uuid. This will not generate or return the API token, use"
@@ -188,6 +189,7 @@ public class SessionController extends AbstractPlatformController {
       authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH),
       response = SessionInfo.class)
   @With(TokenAuthenticator.class)
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.20.0")
   @AuthzPath
   public Result getSessionInfo(Http.Request request) {
     Users user = CommonUtils.getUserFromContext();
@@ -402,10 +404,15 @@ public class SessionController extends AbstractPlatformController {
     boolean useOAuth = runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.use_oauth");
     boolean showJWTTokenInfo =
         runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.showJWTInfoOnLogin");
+    boolean allowLocalLoginWithSso =
+        runtimeConfigFactory
+            .globalRuntimeConf()
+            .getBoolean("yb.security.allow_local_login_with_sso");
     String platformConfig = "window.YB_Platform_Config = window.YB_Platform_Config || %s";
     ObjectNode responseJson = Json.newObject();
     responseJson.put("use_oauth", useOAuth);
     responseJson.put("show_jwt_token_info", showJWTTokenInfo);
+    responseJson.put("allow_local_login_with_sso", allowLocalLoginWithSso);
     platformConfig = String.format(platformConfig, responseJson.toString());
     return ok(platformConfig).as(MimeTypes.JSON);
   }

@@ -114,6 +114,9 @@ struct ArenaTraits {
 template <class Traits>
 class ArenaComponent;
 
+template <class Traits>
+class ArenaObjectFactory;
+
 // A helper class for storing variable-length blobs (e.g. strings). Once a blob
 // is added to the arena, its index stays fixed. No reallocation happens.
 // Instead, the arena keeps a list of buffers. When it needs to grow, it
@@ -179,6 +182,8 @@ class ArenaBase {
   T *NewArenaObject(Args&&... args) {
     return NewObject<T>(this, std::forward<Args>(args)...);
   }
+
+  internal::ArenaObjectFactory<Traits> ArenaObjectFactory();
 
   // Allocate shared_ptr object.
   template<class TObject, typename... TypeArgs>
@@ -500,10 +505,34 @@ class ArenaObjectDeleter {
 };
 
 template <class Traits>
-template<class TObject>
+template <class TObject>
 std::shared_ptr<TObject> ArenaBase<Traits>::ToShared(TObject *raw_ptr) {
   ArenaAllocatorBase<TObject, Traits> allocator(this);
   return std::shared_ptr<TObject>(raw_ptr, ArenaObjectDeleter(), allocator);
+}
+
+template <class Traits>
+class ArenaObjectFactory {
+ public:
+  explicit ArenaObjectFactory(ArenaBase<Traits>* arena) : arena_(arena) {}
+
+  template <class T>
+  operator T*() const {
+    return arena_->template NewArenaObject<T>();
+  }
+
+  template <class T>
+  operator T&() const {
+    return *arena_->template NewArenaObject<T>();
+  }
+
+ private:
+  ArenaBase<Traits>* arena_;
+};
+
+template <class Traits>
+ArenaObjectFactory<Traits> ArenaBase<Traits>::ArenaObjectFactory() {
+  return internal::ArenaObjectFactory<Traits>(this);
 }
 
 } // namespace internal
@@ -515,8 +544,12 @@ std::shared_ptr<Result> ArenaMakeShared(
   return std::shared_ptr<Result>(arena, result);
 }
 
-using ArenaPtr = std::shared_ptr<Arena>;
-using ThreadSafeArenaPtr = std::shared_ptr<ThreadSafeArena>;
+template <class Result, class Traits, class... Args>
+std::shared_ptr<Result> MakeSharedArenaObject(
+    const std::shared_ptr<internal::ArenaBase<Traits>>& arena, Args&&... args) {
+  auto result = arena->template NewArenaObject<Result>(std::forward<Args>(args)...);
+  return std::shared_ptr<Result>(arena, result);
+}
 
 ThreadSafeArenaPtr SharedThreadSafeArena();
 ArenaPtr SharedArena();

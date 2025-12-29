@@ -9,6 +9,8 @@ menu:
     parent: pg-extensions
     weight: 20
 type: docs
+aliases:
+  - /stable/explore/ysql-language-features/pg-extensions/extension-pgcron
 ---
 
 The [pg_cron](https://github.com/citusdata/pg_cron) extension provides a cron-based job scheduler that runs inside the database. It uses the same syntax as regular cron, and allows you to schedule YSQL commands directly from the database. You can also use '[1-59] seconds' to schedule a job based on an interval.

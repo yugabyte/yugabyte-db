@@ -589,7 +589,8 @@ pullRpczEntries(void)
 			rpcz[i].leader_pid = -1;
 			PGPROC	   *proc = NULL;
 
-			if (beentry->st_backendType == B_BACKEND)
+			if (beentry->st_backendType == B_BACKEND ||
+				beentry->st_backendType == YB_AUTO_ANALYZE_BACKEND)
 				proc = BackendPidGetProc(rpcz[i].proc_id);
 			else if (beentry->st_backendType != YB_YSQL_CONN_MGR)
 			{
@@ -734,7 +735,12 @@ webserver_worker_main(Datum unused)
 	/*
 	* We call YBCInit here so that HandleYBStatus can correctly report potential error.
 	*/
-	HandleYBStatus(YBCInit(NULL /* argv[0] */ , palloc, NULL /* cstring_to_text_with_len_fn */ ));
+	HandleYBStatus(YBCInit(NULL /* argv[0] */ ,
+						   palloc,
+						   NULL /* cstring_to_text_with_len_fn */ ,
+						   NULL /* YbSwitchPgGateMemoryContext */ ,
+						   NULL /* YbCreatePgGateMemoryContext */ ,
+						   NULL /* YbDeletePgGateMemoryContext */ ));
 
 	backendStatusArray = getBackendStatusArray();
 

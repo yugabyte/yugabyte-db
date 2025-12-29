@@ -19,6 +19,7 @@ import api.v2.models.DetachUniverseSpec;
 import api.v2.models.UniverseCreateSpec;
 import api.v2.models.UniverseDeleteSpec;
 import api.v2.models.UniverseEditSpec;
+import api.v2.models.UniverseOperatorImportReq;
 import api.v2.models.UniverseSpec;
 import api.v2.models.YBATask;
 import api.v2.utils.ApiControllerUtils;
@@ -28,9 +29,10 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.tasks.OperatorImportUniverse;
 import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.ConfigHelper;
-import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
@@ -44,7 +46,6 @@ import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.operator.utils.KubernetesEnvironmentVariables;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
-import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler.OpType;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
@@ -56,6 +57,7 @@ import com.yugabyte.yw.models.AttachDetachSpec.PlatformPaths;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.KmsConfig;
@@ -129,6 +131,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     // create universe with v1 spec
     v1Params.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.CREATE;
     v1Params.currentClusterType = ClusterType.PRIMARY;
+
     universeCRUDHandler.configure(customer, v1Params);
 
     if (v1Params.clusters.stream().anyMatch(cluster -> cluster.clusterType == ClusterType.ASYNC)) {
@@ -199,7 +202,6 @@ public class UniverseManagementHandler extends ApiControllerUtils {
       v1Params.currentClusterType = ClusterType.ASYNC;
       universeCRUDHandler.configure(customer, v1Params);
     }
-    universeCRUDHandler.checkGeoPartitioningParameters(customer, v1Params, OpType.UPDATE);
 
     Cluster primaryCluster = v1Params.getPrimaryCluster();
     for (Cluster readOnlyCluster : dbUniverse.getUniverseDetails().getReadOnlyClusters()) {
@@ -214,10 +216,6 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     } else {
       universeCRUDHandler.mergeNodeExporterInfo(dbUniverse, v1Params);
     }
-    for (Cluster cluster : v1Params.clusters) {
-      PlacementInfoUtil.updatePlacementInfo(
-          v1Params.getNodesInCluster(cluster.uuid), cluster.placementInfo);
-    }
     v1Params.rootCA = universeCRUDHandler.checkValidRootCA(dbUniverse.getUniverseDetails().rootCA);
     UUID taskUUID = commissioner.submit(taskType, v1Params);
     log.info(
@@ -226,6 +224,14 @@ public class UniverseManagementHandler extends ApiControllerUtils {
         uniUUID,
         dbUniverse.getName(),
         taskUUID);
+    CustomerTask.create(
+        customer,
+        dbUniverse.getUniverseUUID(),
+        taskUUID,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.Update,
+        dbUniverse.getName(),
+        CustomerTaskManager.getCustomTaskName(CustomerTask.TaskType.Update, v1Params, null));
     return new YBATask().resourceUuid(uniUUID).taskUuid(taskUUID);
   }
 
@@ -534,9 +540,78 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     }
   }
 
+  @Transactional
+  public void rollbackDetachUniverse(
+      Request request, UUID customerUUID, UUID universeUUID, Boolean isForceRollback)
+      throws IOException {
+    checkAttachDetachEnabled();
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
+
+    String dbVersion =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    validateUniverseVersionForAttachDetach(dbVersion);
+
+    UUID currentYwUuid = configHelper.getYugawareUUID();
+    if (currentYwUuid == null) {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Current YugabyteDB Anywhere UUID not found");
+    }
+
+    UUID storedYwUuid = Util.getStoredYwUuid(universe, ysqlQueryExecutor, confGetter);
+
+    boolean forceRollback = Boolean.TRUE.equals(isForceRollback);
+
+    if (!forceRollback) {
+      if (!universe.getUniverseDetails().universeDetached) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "Universe is not in detached state. Cannot rollback detach for a universe that is not"
+                + " detached. Use isForceRollback=true to override this check.");
+      }
+
+      if (storedYwUuid == null) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "Cannot determine universe owner (YSQL not available). Since ownership cannot be"
+                + " checked, this operation could allow multiple YBAs to control same universe."
+                + " Proceed with caution and use isForceRollback=true to rollback anyway.");
+      }
+
+      if (!storedYwUuid.equals(AttachDetachSpec.DETACHED_UNIVERSE_UUID)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format(
+                "Universe owner is not DETACHED_UNIVERSE_UUID (current owner: %s). "
+                    + "Cannot rollback detach for a universe that already has an owner. "
+                    + "Use isForceRollback=true to override this check.",
+                storedYwUuid));
+      }
+    }
+
+    log.info(
+        "Rolling back detach for universe {} (isForceRollback={}). Resetting universeDetached to"
+            + " false and updating owner to {}",
+        universe.getName(),
+        forceRollback,
+        currentYwUuid);
+
+    try {
+      universe = setUniverseDetachedState(universe, false);
+
+      if (storedYwUuid != null) {
+        updateYwUuidInConsistencyTable(universe, currentYwUuid, Util.getYwHostnameOrIP());
+      }
+
+      log.info("Successfully rolled back detach for universe {}", universe.getName());
+    } finally {
+      universe = Util.unlockUniverse(universe);
+    }
+  }
+
   private void validateProviderCompatibility(Provider sourceProvider) {
     if (sourceProvider.getCloudCode() == Common.CloudType.kubernetes) {
-      if (!isYBARunningOnKubernetes()) {
+      if (!KubernetesEnvironmentVariables.isYbaRunningInKubernetes()) {
         throw new PlatformServiceException(
             BAD_REQUEST,
             "Cannot attach Kubernetes universe to this YBA. Kubernetes universes can only be"
@@ -558,12 +633,6 @@ public class UniverseManagementHandler extends ApiControllerUtils {
         }
       }
     }
-  }
-
-  private boolean isYBARunningOnKubernetes() {
-    String kubernetesServiceHost = KubernetesEnvironmentVariables.getServiceHost();
-    String kubernetesServicePort = KubernetesEnvironmentVariables.getServicePort();
-    return (kubernetesServiceHost != null && kubernetesServicePort != null);
   }
 
   // Determine if provider is auto-configured (k8s only). Auto providers automatically inherit their
@@ -614,6 +683,12 @@ public class UniverseManagementHandler extends ApiControllerUtils {
   }
 
   private void detachDbFromYBA(Universe universe) {
+    updateYwUuidInConsistencyTable(
+        universe, AttachDetachSpec.DETACHED_UNIVERSE_UUID, AttachDetachSpec.DETACHED_HOST);
+  }
+
+  private void updateYwUuidInConsistencyTable(
+      Universe universe, UUID targetYwUuid, String targetYwHost) {
     try {
       NodeDetails node = CommonUtils.getServerToRunYsqlQuery(universe, true);
 
@@ -622,8 +697,8 @@ public class UniverseManagementHandler extends ApiControllerUtils {
               "UPDATE %s SET yw_uuid = '%s', yw_host = '%s' WHERE seq_num = (SELECT MAX(seq_num)"
                   + " FROM %s)",
               Util.CONSISTENCY_CHECK_TABLE_NAME,
-              AttachDetachSpec.DETACHED_UNIVERSE_UUID.toString(),
-              AttachDetachSpec.DETACHED_HOST,
+              targetYwUuid.toString(),
+              targetYwHost,
               Util.CONSISTENCY_CHECK_TABLE_NAME);
 
       RunQueryFormData runQueryFormData = new RunQueryFormData();
@@ -641,32 +716,30 @@ public class UniverseManagementHandler extends ApiControllerUtils {
         throw new PlatformServiceException(
             INTERNAL_SERVER_ERROR,
             String.format(
-                "Error while marking universe as detached in consistency check table: %s",
+                "Error while updating YW UUID in consistency check table: %s",
                 ysqlResponse.get("error").asText()));
       }
       log.info(
-          "Marked universe as detached (yw_uuid={}, yw_host='{}') in consistency check table for"
-              + " universe: {}",
-          AttachDetachSpec.DETACHED_UNIVERSE_UUID,
-          AttachDetachSpec.DETACHED_HOST,
+          "Updated YW UUID to {} and YW host to '{}' in consistency check table for universe: {}",
+          targetYwUuid,
+          targetYwHost,
           universe.getName());
     } catch (IllegalStateException e) {
       log.error(
-          "Failed to find valid tserver to mark universe as detached for universe {}: {}",
+          "Failed to find valid tserver to update YW UUID for universe {}: {}",
           universe.getName(),
           e);
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR,
           String.format(
-              "Could not find valid tserver to mark universe as detached for universe %s: %s",
+              "Failed to find valid tserver to update YW UUID for universe %s: %s",
               universe.getName(), e.getMessage()));
     } catch (Exception e) {
-      log.error("Failed to mark universe as detached for universe {}: {}", universe.getName(), e);
+      log.error("Error updating YW UUID for universe {}: {}", universe.getName(), e);
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR,
           String.format(
-              "Error marking universe as detached for universe %s: %s",
-              universe.getName(), e.getMessage()));
+              "Failed to update YW UUID for universe %s: %s", universe.getName(), e.getMessage()));
     }
   }
 
@@ -704,5 +777,87 @@ public class UniverseManagementHandler extends ApiControllerUtils {
       log.trace("Got Universe resource details {}", prettyPrint(v2Response));
     }
     return v2Response;
+  }
+
+  public void precheckOperatorImportUniverse(
+      Request request, UUID cUUID, UUID uniUUID, UniverseOperatorImportReq req) {
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    Universe universe = Universe.getOrBadRequest(uniUUID, customer);
+
+    // validate the universe is kubernetes
+    if (!Util.isKubernetesBasedUniverse(universe)) {
+      log.error(
+          "Universe {} is not a Kubernetes universe, cannot migrate to operator",
+          universe.getName());
+      throw new PlatformServiceException(BAD_REQUEST, "Universe is not a Kubernetes universe");
+    }
+    if (!confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorEnabled)) {
+      log.error("Operator is not enabled, cannot migrate universe {}", universe.getName());
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Operator is not enabled. Please enable the runtime config"
+              + " 'yb.kubernetes.operator.enabled' and restart YBA");
+    }
+
+    // Check if the namespace is the same as the operator namespace if it is set
+    boolean migrateNamespaceSet = req.getNamespace() != null && !req.getNamespace().isEmpty();
+    String operatorNamespace = confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorNamespace);
+    boolean operatorNamespaceSet = operatorNamespace != null && !operatorNamespace.isEmpty();
+    if (migrateNamespaceSet
+        && operatorNamespaceSet
+        && !req.getNamespace().equals(operatorNamespace)) {
+      log.error(
+          "Namespace {} is not the same as the operator namespace {}",
+          req.getNamespace(),
+          operatorNamespace);
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Namespace is not the same as the operator namespace. Please set the namespace to the"
+              + " same as the operator namespace");
+    }
+
+    // Read Replicas clusters are not supported
+    if (universe.getUniverseDetails().clusters.size() > 1) {
+      log.error(
+          "Universe {} has read-only clusters, cannot migrate to operator", universe.getName());
+      throw new PlatformServiceException(BAD_REQUEST, "Universe has read-only clusters");
+    }
+
+    // XCluster is not supported by operator
+    if (!XClusterConfig.getByUniverseUuid(universe.getUniverseUUID()).isEmpty()) {
+      log.error("Universe {} has xClusterInfo set, cannot migrate to operator", universe.getName());
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot migrate universes in an xcluster setup.");
+    }
+
+    // AZ Level overrides are not supported by operator
+    Map<String, String> azOverrides =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.azOverrides;
+    if (azOverrides != null && azOverrides.size() > 0) {
+      log.error(
+          "Universe {} has AZ level overrides set, cannot migrate to operator", universe.getName());
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot migrate universes with AZ level overrides.");
+    }
+    log.info("Universe {} precheck for operator import success", universe.getName());
+  }
+
+  public YBATask operatorImportUniverse(
+      Request request, UUID cUUID, UUID uniUUID, UniverseOperatorImportReq req) {
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    Universe universe = Universe.getOrBadRequest(uniUUID, customer);
+    OperatorImportUniverse.Params params = new OperatorImportUniverse.Params();
+    params.setUniverseUUID(uniUUID);
+    params.namespace = req.getNamespace();
+    UUID taskUuid = commissioner.submit(TaskType.OperatorImportUniverse, params);
+    CustomerTask.create(
+        customer,
+        uniUUID,
+        taskUuid,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.ImportUniverse,
+        universe.getName());
+    YBATask ybaTask = new YBATask().taskUuid(taskUuid).resourceUuid(universe.getUniverseUUID());
+    return ybaTask;
   }
 }

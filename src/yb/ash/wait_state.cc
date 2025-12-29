@@ -101,6 +101,14 @@ std::string GetWaitStateDescription(WaitStateCode code) {
       return "A YSQL backend is waiting for a table write from DocDB.";
     case WaitStateCode::kWaitingOnTServer:
       return "A YSQL backend is waiting on TServer, check wait_event_aux for the RPC.";
+    case WaitStateCode::kTransactionCommit:
+      return "A YSQL backend is committing a transaction.";
+    case WaitStateCode::kTransactionTerminate:
+      return "A YSQL backend is terminating/rolling back a transaction.";
+    case WaitStateCode::kTransactionRollbackToSavepoint:
+      return "A YSQL backend is rolling back to a savepoint.";
+    case WaitStateCode::kTransactionCancel:
+      return "A YSQL backend is canceling a transaction.";
     case WaitStateCode::kOnCpu_Active:
       return "A rpc/task is being actively processed on a thread.";
     case WaitStateCode::kOnCpu_Passive:
@@ -369,11 +377,11 @@ void WaitStateInfo::UpdateAuxInfo(const AshAuxInfo &aux) {
   aux_info_.UpdateFrom(aux);
 }
 
-void WaitStateInfo::UpdateTabletId(const TabletId& tablet_id) {
-  UpdateAuxInfo({.tablet_id = tablet_id});
+void WaitStateInfo::UpdateTabletId(TabletIdView tablet_id) {
+  UpdateAuxInfo({.tablet_id = TabletId(tablet_id)});
 }
 
-void WaitStateInfo::UpdateCurrentTabletId(const TabletId& tablet_id) {
+void WaitStateInfo::UpdateCurrentTabletId(TabletIdView tablet_id) {
   if (const auto& wait_state = CurrentWaitState()) {
     wait_state->UpdateTabletId(tablet_id);
   }
@@ -560,6 +568,10 @@ WaitStateType GetWaitStateType(WaitStateCode code) {
     case WaitStateCode::kIndexWrite:
     case WaitStateCode::kTableWrite:
     case WaitStateCode::kWaitingOnTServer:
+    case WaitStateCode::kTransactionCommit:
+    case WaitStateCode::kTransactionTerminate:
+    case WaitStateCode::kTransactionRollbackToSavepoint:
+    case WaitStateCode::kTransactionCancel:
       return WaitStateType::kRPCWait;
 
     case WaitStateCode::kOnCpu_Active:
@@ -730,6 +742,10 @@ const char* GetWaitStateAuxDescription(WaitStateCode code) {
     case WaitStateCode::kCatalogWrite:
     case WaitStateCode::kIndexWrite:
     case WaitStateCode::kTableWrite:
+    case WaitStateCode::kTransactionCommit:
+    case WaitStateCode::kTransactionTerminate:
+    case WaitStateCode::kTransactionRollbackToSavepoint:
+    case WaitStateCode::kTransactionCancel:
       return "";
   }
   FATAL_INVALID_ENUM_VALUE(WaitStateCode, code);

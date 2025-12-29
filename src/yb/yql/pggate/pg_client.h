@@ -55,6 +55,7 @@
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 namespace yb::pggate {
 
@@ -147,7 +148,11 @@ class ResultFuture {
   }
 
   Result Get() {
-    return std::visit([](auto& future) { return future.get(); }, variant_);
+    const auto& result = std::visit([](auto& future) { return future.get(); }, variant_);
+
+    // Check for interrupts are waiting on async RPC.
+    YBCCheckForInterrupts();
+    return result;
   }
 
  private:
@@ -174,12 +179,14 @@ class PgClient {
                rpc::Scheduler* scheduler,
                const tserver::TServerSharedData& tserver_shared_object,
                std::optional<uint64_t> session_id);
-
+  // TODO (dmitry): Consider joining of Interrupt and Shutdown into single method.
+  void Interrupt();
   void Shutdown();
 
-  void SetTimeout(MonoDelta timeout);
+  void SetTimeout(int timeout_ms);
+  void ClearTimeout();
 
-  void SetLockTimeout(MonoDelta lock_timeout);
+  void SetLockTimeout(int lock_timeout_ms);
 
   uint64_t SessionID() const;
 
@@ -217,7 +224,8 @@ class PgClient {
   Status BackfillIndex(tserver::PgBackfillIndexRequestPB* req, CoarseTimePoint deadline);
 
   Status GetIndexBackfillProgress(const std::vector<PgObjectId>& index_ids,
-                                  uint64_t** backfill_statuses);
+                                  uint64_t* num_rows_read_from_table,
+                                  double* num_rows_backfilled);
 
   Result<yb::tserver::PgGetLockStatusResponsePB> GetLockStatusData(
       const std::string& table_id, const std::string& transaction_id);

@@ -49,14 +49,15 @@ var describeScopeCmd = &cobra.Command{
 
 		r, response, err := authAPI.GetConfig(scopeName).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"Runtime Configuration Scope", "Describe")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Runtime Configuration Scope", "Describe")
 		}
 
-		scopes := []ybaclient.ScopedConfig{r}
+		scopeConfig := util.CheckAndDereference(
+			r,
+			fmt.Sprintf("No scope with uuid: %s found", scopeName),
+		)
+
+		scopes := []ybaclient.ScopedConfig{scopeConfig}
 
 		if len(scopes) > 0 && util.IsOutputType(formatter.TableFormatKey) {
 			fullScopeContext := *scope.NewFullScopeContext()

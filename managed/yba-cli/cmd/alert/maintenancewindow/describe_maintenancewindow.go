@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -31,7 +30,7 @@ var describeMaintenanceWindowCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(uuid)) == 0 {
+		if util.IsEmptyString(uuid) {
 			logrus.Fatal(
 				formatter.Colorize(
 					"No uuid specified to describe maintenance window\n",
@@ -46,13 +45,7 @@ var describeMaintenanceWindowCmd = &cobra.Command{
 
 		maintenancewindow.Universes, response, err = authAPI.ListUniverses().Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"Maintenance Window",
-				"Describe - List Universes",
-			)
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Maintenance Window", "Describe - List Universes")
 		}
 
 		maintenanceWindowUUID, err := cmd.Flags().GetString("uuid")
@@ -62,16 +55,18 @@ var describeMaintenanceWindowCmd = &cobra.Command{
 
 		mw, response, err := authAPI.GetMaintenanceWindow(maintenanceWindowUUID).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"Maintenance Window",
-				"Describe",
-			)
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Maintenance Window", "Describe")
 		}
 
-		r := []ybaclient.MaintenanceWindow{mw}
+		maintenanceWindow := util.CheckAndDereference(
+			mw,
+			fmt.Sprintf(
+				"An error occurred while getting maintenance window with uuid: %s",
+				maintenanceWindowUUID,
+			),
+		)
+
+		r := []ybaclient.MaintenanceWindow{maintenanceWindow}
 
 		if len(r) > 0 && util.IsOutputType(formatter.TableFormatKey) {
 			fullMaintenanceWindowContext := *maintenancewindow.NewFullMaintenanceWindowContext()

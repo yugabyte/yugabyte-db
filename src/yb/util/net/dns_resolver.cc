@@ -69,7 +69,7 @@ namespace {
 
 
 Result<IpAddress> PickResolvedAddress(
-    const std::string& host, const boost::system::error_code& error,
+    std::string_view host, const boost::system::error_code& error,
     const ResolverResults& entries) {
   if (error) {
     return STATUS_FORMAT(NetworkError, "Resolve failed $0: $1", host, error.message());
@@ -108,12 +108,12 @@ class DnsResolver::Impl {
     }
   }
 
-  std::shared_future<Result<IpAddress>> ResolveFuture(const std::string& host) {
+  std::shared_future<Result<IpAddress>> ResolveFuture(std::string_view host) {
     return ObtainEntry(host)->DoResolve(
         host, /* callback= */ nullptr, &io_service_, &resolver_, metric_);
   }
 
-  void AsyncResolve(const std::string& host, const AsyncResolveCallback& callback) {
+  void AsyncResolve(std::string_view host, const AsyncResolveCallback& callback) {
     ObtainEntry(host)->DoResolve(host, &callback, &io_service_, &resolver_, metric_);
   }
 
@@ -161,7 +161,7 @@ class DnsResolver::Impl {
     }
 
     std::shared_future<Result<IpAddress>> DoResolve(
-        const std::string& host, const AsyncResolveCallback* callback, IoService* io_service,
+        std::string_view host, const AsyncResolveCallback* callback, IoService* io_service,
         Resolver* resolver, const scoped_refptr<EventStats>& metric) {
       std::shared_ptr<std::promise<Result<IpAddress>>> promise;
       std::shared_future<Result<IpAddress>> result;
@@ -182,9 +182,10 @@ class DnsResolver::Impl {
 
       if (promise) {
         static const std::string kService = "";
+        std::string host_copy(host);
         resolver->async_resolve(
-            Resolver::query(host, kService),
-            [this, host, promise, metric, start_time = CoarseMonoClock::Now()](
+            Resolver::query(host_copy, kService),
+            [this, host_copy, promise, metric, start_time = CoarseMonoClock::Now()](
                 const boost::system::error_code& error,
                 const Resolver::results_type& entries) mutable {
           // Unfortunately there is no safe way to set promise value from 2 different threads, w/o
@@ -195,10 +196,10 @@ class DnsResolver::Impl {
           }
           if (start_time + 250ms < now) {
             YB_LOG_EVERY_N_SECS(WARNING, 5)
-                << "Long time to resolse DNS for " << host << ": " << MonoDelta(now - start_time)
-                << THROTTLE_MSG;
+                << "Long time to resolve DNS for " << host_copy << ": "
+                << MonoDelta(now - start_time);
           }
-          SetResult(PickResolvedAddress(host, error, entries), promise.get());
+          SetResult(PickResolvedAddress(host_copy, error, entries), promise.get());
         });
 
         if (io_service->stopped()) {
@@ -210,7 +211,7 @@ class DnsResolver::Impl {
     }
 
     std::shared_ptr<std::promise<Result<IpAddress>>> StartResolve(
-        const std::string& host) REQUIRES(mutex) {
+        std::string_view host) REQUIRES(mutex) {
       if (expiration >= CoarseMonoClock::now()) {
         return nullptr;
       }
@@ -220,7 +221,7 @@ class DnsResolver::Impl {
         future = promise->get_future().share();
       }
 
-      auto address = TryFastResolve(host);
+      auto address = TryFastResolve(std::string(host));
       if (address) {
         expiration = CoarseTimePoint::max() - 1ms;
         promise->set_value(*address);
@@ -233,7 +234,7 @@ class DnsResolver::Impl {
     }
   };
 
-  CacheEntry* ObtainEntry(const std::string& host) {
+  CacheEntry* ObtainEntry(std::string_view host) {
     {
       SharedLock lock(mutex_);
       auto it = cache_.find(host);
@@ -243,14 +244,14 @@ class DnsResolver::Impl {
     }
 
     std::lock_guard lock(mutex_);
-    return &cache_[host];
+    return &cache_[std::string(host)];
   }
 
   IoService& io_service_;
   Resolver resolver_;
   scoped_refptr<EventStats> metric_;
   std::shared_timed_mutex mutex_;
-  std::unordered_map<std::string, CacheEntry> cache_;
+  UnorderedStringMap<std::string, CacheEntry> cache_;
 };
 
 DnsResolver::DnsResolver(IoService* io_service, const scoped_refptr<MetricEntity>& metric_entity)
@@ -280,15 +281,15 @@ EventStats* ScopedDnsTracker::active_metric() {
   return active_metric_;
 }
 
-std::shared_future<Result<IpAddress>> DnsResolver::ResolveFuture(const std::string& host) {
+std::shared_future<Result<IpAddress>> DnsResolver::ResolveFuture(std::string_view host) {
   return impl_->ResolveFuture(host);
 }
 
-void DnsResolver::AsyncResolve(const std::string& host, const AsyncResolveCallback& callback) {
+void DnsResolver::AsyncResolve(std::string_view host, const AsyncResolveCallback& callback) {
   impl_->AsyncResolve(host, callback);
 }
 
-Result<IpAddress> DnsResolver::Resolve(const std::string& host) {
+Result<IpAddress> DnsResolver::Resolve(std::string_view host) {
   return ResolveFuture(host).get();
 }
 

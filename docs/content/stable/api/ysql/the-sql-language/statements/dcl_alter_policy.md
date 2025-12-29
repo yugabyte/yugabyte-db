@@ -7,6 +7,8 @@ menu:
   stable_api:
     identifier: dcl_alter_policy
     parent: statements
+aliases:
+  - /stable/api/ysql/commands/dcl_alter_policy/
 type: docs
 ---
 

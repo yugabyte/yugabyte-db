@@ -190,7 +190,7 @@ void TabletServerTestBase::UpdateTestRowRemote(int tid,
   AddTestRowUpdate(row_idx, new_val, new_string_val, &req);
   ASSERT_OK(proxy_->Write(req, &resp, &controller));
 
-  SCOPED_TRACE(resp.DebugString());
+  SCOPED_TRACE(resp.ShortDebugString());
   ASSERT_FALSE(resp.has_error())<< resp.ShortDebugString();
   ASSERT_EQ(0, resp.per_row_errors_size());
   if (ts) {
@@ -272,7 +272,7 @@ void TabletServerTestBase::InsertTestRowsRemote(int tid,
       if (r == 0) {
         LOG(FATAL) << "Failed to insert batch "
                    << first_row_in_batch << "-" << last_row_in_batch
-                   << ": " << resp.DebugString();
+                   << ": " << resp.ShortDebugString();
       } else {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
       }
@@ -309,9 +309,9 @@ void TabletServerTestBase::DeleteTestRowsRemote(int32_t first_row,
     AddTestRowDelete(rowid, &req);
   }
 
-  SCOPED_TRACE(req.DebugString());
+  SCOPED_TRACE(req.ShortDebugString());
   ASSERT_OK(proxy_->Write(req, &resp, &controller));
-  SCOPED_TRACE(resp.DebugString());
+  SCOPED_TRACE(resp.ShortDebugString());
   ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
 }
 

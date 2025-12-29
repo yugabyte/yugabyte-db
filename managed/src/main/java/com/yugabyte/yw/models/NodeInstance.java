@@ -7,6 +7,8 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.gdata.util.common.base.Preconditions;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -157,8 +159,17 @@ public class NodeInstance extends Model {
   private NodeInstanceData nodeDetails;
 
   public void setDetails(NodeInstanceData details) {
-    this.nodeDetails = details;
-    this.nodeDetailsJson = Json.stringify(Json.toJson(this.nodeDetails));
+    JsonNode nodeDetailsJsonNode = Json.toJson(details);
+    if (nodeDetailsJsonNode != null && nodeDetailsJsonNode.isObject()) {
+      // Remove nodeConfigs if it is present but keep the original method argument intact.
+      if (((ObjectNode) nodeDetailsJsonNode).remove("nodeConfigs") == null) {
+        // Field nodeConfigs is not present.
+        this.nodeDetails = details;
+      } else {
+        this.nodeDetails = Json.fromJson(nodeDetailsJsonNode, NodeInstanceData.class);
+      }
+    }
+    this.nodeDetailsJson = Json.stringify(nodeDetailsJsonNode);
   }
 
   public NodeInstanceData getDetails() {

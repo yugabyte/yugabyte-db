@@ -169,9 +169,16 @@ DEFINE_test_flag(bool, check_catalog_version_overflow, false,
 DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_invalidation_messages, true,
     "True to enable invalidation messages");
 
-DEFINE_NON_RUNTIME_PG_PREVIEW_FLAG(bool, yb_ddl_transaction_block_enabled, false,
+// Keep in sync with the same definition in ybc_guc.h
+#ifdef NDEBUG
+constexpr bool kEnableDdlTransactionBlocks = true;
+#else
+constexpr bool kEnableDdlTransactionBlocks = false;
+#endif
+DEFINE_NON_RUNTIME_PG_FLAG(bool, yb_ddl_transaction_block_enabled, kEnableDdlTransactionBlocks,
     "If true, DDL operations in YSQL will execute within the active transaction"
-    "block instead of their separate transactions.");
+    "block instead of their separate transactions. Ensure DDL atomicity is "
+    "enabled via ysql_yb_enable_ddl_atomicity_infra and ysql_yb_ddl_rollback_enabled flags.");
 
 DEFINE_NON_RUNTIME_PG_FLAG(bool, yb_disable_ddl_transaction_block_for_read_committed, false,
     "If true, DDL operations in READ COMMITTED mode will be executed in a separate DDL transaction "
@@ -208,7 +215,13 @@ DEFINE_RUNTIME_uint64(refresh_waiter_timeout_ms, 30000,
 TAG_FLAG(refresh_waiter_timeout_ms, advanced);
 TAG_FLAG(refresh_waiter_timeout_ms, hidden);
 
-DEFINE_NON_RUNTIME_PREVIEW_bool(enable_object_locking_for_table_locks, false,
+#ifdef NDEBUG
+constexpr bool kEnableObjectLockingForTableLocks = kEnableDdlTransactionBlocks;
+#else
+constexpr bool kEnableObjectLockingForTableLocks = false;
+#endif
+DEFINE_NON_RUNTIME_bool(enable_object_locking_for_table_locks,
+    kEnableObjectLockingForTableLocks,
     "This flag enables the object lock APIs provided by tservers and masters - "
     "AcquireObject(Global)Lock, ReleaseObject(Global)Lock. These APIs are used to "
     "implement pg table locks.");
@@ -224,6 +237,9 @@ DEFINE_validator(enable_object_locking_for_table_locks,
 DEFINE_validator(ysql_enable_db_catalog_version_mode,
     FLAG_REQUIRED_BY_FLAG_VALIDATOR(enable_object_locking_for_table_locks));
 DEFINE_validator(ysql_yb_ddl_transaction_block_enabled,
+    FLAG_DELAYED_COND_VALIDATOR(
+        (!_value || FLAGS_ysql_yb_ddl_rollback_enabled),
+        "ysql_yb_ddl_rollback_enabled must be enabled"),
     FLAG_REQUIRED_BY_FLAG_VALIDATOR(enable_object_locking_for_table_locks));
 DEFINE_validator(refresh_waiter_timeout_ms,
     FLAG_REQUIRED_NONZERO_BY_FLAG_VALIDATOR(enable_object_locking_for_table_locks));

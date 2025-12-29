@@ -3,6 +3,10 @@ title: Point-in-time recovery
 headerTitle: Point-in-time recovery
 linkTitle: Point-in-time recovery
 description: Restore data to a specific point in time in YugabyteDB
+aliases:
+  - /stable/manage/backup-restore/point-in-time-restore
+  - /stable/manage/backup-restore/point-in-time-restore-ycql
+  - /stable/yugabyte-platform/back-up-restore-universes/point-in-time
 menu:
   stable:
     identifier: point-in-time-recovery
@@ -10,6 +14,12 @@ menu:
     weight: 705
 type: docs
 ---
+
+{{< page-finder/head text="Point-in-time recovery" subtle="across different products">}}
+  {{< page-finder/list icon="/icons/database-hover.svg" text="YugabyteDB" current="" >}}
+  {{< page-finder/list icon="/icons/server-hover.svg" text="YugabyteDB Anywhere" url="../../../yugabyte-platform/back-up-restore-universes/pitr/" >}}
+  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/stable/yugabyte-cloud/cloud-clusters/aeon-pitr/" >}}
+{{< /page-finder/head >}}
 
 Point-in-time recovery (PITR) in YugabyteDB enables recovery from a user or software error, while minimizing recovery point objective (RPO), recovery time objective (RTO), and overall impact on the cluster.
 
@@ -69,7 +79,7 @@ Creating a snapshot schedule for a database or a keyspace effectively enables PI
 
 ### Create a schedule
 
-To create a schedule and enable PITR, use the [`create_snapshot_schedule`](../../../admin/yb-admin/#create-snapshot-schedule) command with the following parameters:
+To create a schedule and enable PITR, use the [create_snapshot_schedule](../../../admin/yb-admin/#create-snapshot-schedule) command with the following parameters:
 
 - Interval between snapshots (in minutes).
 - Total retention time (in minutes).
@@ -99,7 +109,7 @@ You can use this ID to [delete the schedule](#delete-a-schedule) or [restore to 
 
 ### Delete a schedule
 
-To delete a schedule and disable PITR, use the following [`delete_snapshot_schedule`](../../../admin/yb-admin/#delete-snapshot-schedule) command that takes the ID of the schedule to be deleted as a parameter:
+To delete a schedule and disable PITR, use the following [delete_snapshot_schedule](../../../admin/yb-admin/#delete-snapshot-schedule) command that takes the ID of the schedule to be deleted as a parameter:
 
 ```sh
 ./bin/yb-admin --master_addresses <ip1:7100,ip2:7100,ip3:7100> delete_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256
@@ -107,7 +117,7 @@ To delete a schedule and disable PITR, use the following [`delete_snapshot_sched
 
 ### List schedules
 
-To see a list of schedules that currently exist in the cluster, use the following [`list_snapshot_schedules`](../../../admin/yb-admin/#list-snapshot-schedules) command:
+To see a list of schedules that currently exist in the cluster, use the following [list_snapshot_schedules](../../../admin/yb-admin/#list-snapshot-schedules) command:
 
 ```sh
 ./bin/yb-admin --master_addresses <ip1:7100,ip2:7100,ip3:7100> list_snapshot_schedules
@@ -146,7 +156,7 @@ You can also use the same command to view the information about a particular sch
 
 ## Restore to a point in time
 
-If a database or a keyspace has an associated snapshot schedule, you can use that schedule to restore the database or keyspace to a particular point in time by using the [`restore_snapshot_schedule`](../../../admin/yb-admin/#restore-snapshot-schedule) command with the following parameters:
+If a database or a keyspace has an associated snapshot schedule, you can use that schedule to restore the database or keyspace to a particular point in time by using the [restore_snapshot_schedule](../../../admin/yb-admin/#restore-snapshot-schedule) command with the following parameters:
 
 - The ID of the schedule.
 
@@ -163,7 +173,7 @@ If a database or a keyspace has an associated snapshot schedule, you can use tha
     ```sh
     ./bin/yb-admin \
         --master_addresses <ip1:7100,ip2:7100,ip3:7100> \
-        restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 1651435200
+        restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 1681964544554620
     ```
 
     The following is an equivalent command that uses a YCQL timestamp:
@@ -192,7 +202,7 @@ If a database or a keyspace has an associated snapshot schedule, you can use tha
         restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 minus 1h
     ```
 
-    For detailed information on the relative time formatting, refer to the [`restore_snapshot_schedule` reference](../../../admin/yb-admin/#restore-snapshot-schedule).
+    For detailed information on the relative time formatting, refer to the [restore_snapshot_schedule reference](../../../admin/yb-admin/#restore-snapshot-schedule).
 
 {{< note title="YSQL index backfill" >}}
 
@@ -266,5 +276,4 @@ YugabyteDB Anywhere [supports PITR](../../../yugabyte-platform/back-up-restore-u
 ### Other limitations
 
 - PITR works only with _in-cluster_ distributed snapshots. PITR support for off-cluster backups is under consideration for the future. Tracking issue: [8847](https://github.com/yugabyte/yugabyte-db/issues/8847).
-- You can't modify a snapshot schedule once it's created. If you need to change the interval or the retention period, delete the snapshot and recreate it with the new parameters. Tracking issue: [8417](https://github.com/yugabyte/yugabyte-db/issues/8417).
 - Issuing DDLs against a database while it is being restored is not recommended.

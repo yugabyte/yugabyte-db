@@ -9,6 +9,8 @@ menu:
   stable_api:
     identifier: api-ysql-datatypes-json
     parent: api-ysql-datatypes
+aliases:
+  - /stable/api/ysql/datatypes/type_json
 type: indexpage
 showRightNav: true
 ---

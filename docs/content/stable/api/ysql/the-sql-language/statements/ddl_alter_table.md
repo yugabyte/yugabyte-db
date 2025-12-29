@@ -7,6 +7,8 @@ menu:
   stable_api:
     identifier: ddl_alter_table
     parent: statements
+aliases:
+  - /stable/api/ysql/commands/ddl_alter_table/
 type: docs
 ---
 
@@ -243,7 +245,7 @@ Add the specified [constraint](#constraints) to the table.
 
 Adding a `PRIMARY KEY` constraint results in a full table rewrite of the main table and all associated indexes, which can be a potentially expensive operation. For more details about table rewrites, see [Alter table operations that involve a table rewrite](#alter-table-operations-that-involve-a-table-rewrite).
 
-The table rewrite is needed because of how YugabyteDB stores rows and indexes. In YugabyteDB, data is distributed based on the primary key; when a table does not have an explicit primary key assigned, YugabyteDB automatically creates an internal row ID to use as the table's primary key. As a result, these rows need to be rewritten to use the newly added primary key column. For more information, refer to [Primary keys](/preview/develop/data-modeling/primary-keys-ysql).
+The table rewrite is needed because of how YugabyteDB stores rows and indexes. In YugabyteDB, data is distributed based on the primary key; when a table does not have an explicit primary key assigned, YugabyteDB automatically creates an internal row ID to use as the table's primary key. As a result, these rows need to be rewritten to use the newly added primary key column. For more information, refer to [Primary keys](/stable/develop/data-modeling/primary-keys-ysql).
 
 #### ALTER [ COLUMN ] *column_name* [ SET DATA ] TYPE *data_type* [ COLLATE *collation* ] [ USING *expression* ]
 

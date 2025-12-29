@@ -77,11 +77,6 @@ ADD_YB_LIBRARY(consensus_proto
   DEPS ${CONSENSUS_YRPC_LIBS}
   NONLINK_DEPS ${CONSENSUS_YRPC_TGTS})
 
-ADD_YB_LIBRARY(
-  consensus_error
-  SRCS consensus_error.cc
-  DEPS consensus_proto yb_ash yb_util)
-
 #########################################
 # log_proto
 #########################################
@@ -141,10 +136,10 @@ add_dependencies(consensus gen_src_yb_rpc_any_proto)
 add_dependencies(consensus cdc_service_proto)
 add_dependencies(consensus gen_src_yb_master_master_client_proto)
 add_dependencies(consensus gen_src_yb_master_master_types_proto)
+add_dependencies(consensus gen_src_yb_tserver_pg_client_proto)
 add_dependencies(consensus gen_src_yb_tserver_tserver_service_proto)
 
 target_link_libraries(consensus
-  consensus_error
   consensus_proto
   yb_common
   log
@@ -155,7 +150,6 @@ set(YB_TEST_LINK_LIBS
   log
   rpc_test_util
   tserver
-  tablet_error
   yb_common_test_util
   yb_util
   yb_common_test_util
@@ -185,5 +179,7 @@ add_executable(log-dump log-dump.cc)
 target_link_libraries(log-dump
   log
   yb_docdb
+  encryption
+  yb_tools_util
   ${YB_BASE_LIBS})
 add_dependencies(log-dump gen_src_yb_rpc_any_proto)

@@ -7,6 +7,8 @@ menu:
   stable_api:
     identifier: ddl_create_operator
     parent: statements
+aliases:
+  - /stable/api/ysql/commands/ddl_create_operator/
 type: docs
 ---
 

@@ -30,7 +30,7 @@
 #include "yb/dockv/packed_row.h"
 
 #include "yb/tserver/xcluster_write_interface.h"
-#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver.messages.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/size_literals.h"
@@ -106,14 +106,14 @@ Status UpdatePackedRow(
 Status CombineExternalIntents(
     const tablet::TransactionStatePB& transaction_state, SubTransactionId subtransaction_id,
     const google::protobuf::RepeatedPtrField<cdc::KeyValuePairPB>& pairs,
-    docdb::KeyValuePairPB* out, std::unordered_set<SchemaVersion>& used_packed_schema_versions,
+    docdb::KeyValuePairMsg* out, std::unordered_set<SchemaVersion>& used_packed_schema_versions,
     const cdc::XClusterSchemaVersionMap& schema_versions_map) {
   class Provider : public docdb::ExternalIntentsProvider {
    public:
     Provider(
         const Uuid& involved_tablet,
         const google::protobuf::RepeatedPtrField<cdc::KeyValuePairPB>* pairs,
-        const cdc::XClusterSchemaVersionMap& schema_versions_map, docdb::KeyValuePairPB* out,
+        const cdc::XClusterSchemaVersionMap& schema_versions_map, docdb::KeyValuePairMsg* out,
         std::unordered_set<SchemaVersion>& used_packed_schema_versions)
         : involved_tablet_(involved_tablet),
           pairs_(*pairs),
@@ -165,7 +165,7 @@ Status CombineExternalIntents(
     const google::protobuf::RepeatedPtrField<cdc::KeyValuePairPB>& pairs_;
     const cdc::XClusterSchemaVersionMap& schema_versions_map_;
     std::unordered_set<SchemaVersion>& used_packed_schema_versions_;
-    docdb::KeyValuePairPB* out_;
+    docdb::KeyValuePairMsg* out_;
     int next_idx_ = 0;
     ValueBuffer updated_value;
     Status status = Status::OK();
@@ -183,7 +183,7 @@ Status CombineExternalIntents(
 Status AddRecord(
     const ProcessRecordInfo& process_record_info, const cdc::CDCRecordPB& record,
     std::unordered_set<SchemaVersion>& used_packed_schema_versions,
-    docdb::KeyValueWriteBatchPB* write_batch) {
+    docdb::KeyValueWriteBatchMsg* write_batch) {
   if (record.operation() == cdc::CDCRecordPB::APPLY) {
     auto* apply_txn = write_batch->mutable_apply_external_transactions()->Add();
     apply_txn->set_transaction_id(record.transaction_state().transaction_id());
@@ -262,7 +262,7 @@ class XClusterWriteImplementation : public XClusterWriteInterface {
   Status ProcessRecord(
       const ProcessRecordInfo& process_record_info, const cdc::CDCRecordPB& record) override {
     const auto& tablet_id = process_record_info.tablet_id;
-    docdb::KeyValueWriteBatchPB* write_batch = nullptr;
+    docdb::KeyValueWriteBatchMsg* write_batch = nullptr;
     // Finally, handle records to be applied to both regular and intents db.
     auto it = records_.find(tablet_id);
     if (it == records_.end()) {
@@ -282,12 +282,13 @@ class XClusterWriteImplementation : public XClusterWriteInterface {
         used_packed_schema_versions_[process_record_info.colocation_id], write_batch);
   }
 
-  std::unique_ptr<WriteRequestPB> FetchNextRequest() override {
+  std::shared_ptr<WriteRequestMsg> FetchNextRequest() override {
     if (records_.empty()) {
       return nullptr;
     }
-    auto next_req = std::move(records_.begin()->second);
-    records_.erase(next_req->tablet_id());
+    auto it = records_.begin();
+    auto next_req = std::move(it->second);
+    records_.erase(it);
 
     for (const auto& [colocation_id, used_packed_schema_versions] : used_packed_schema_versions_) {
       if (used_packed_schema_versions.empty()) {
@@ -305,7 +306,7 @@ class XClusterWriteImplementation : public XClusterWriteInterface {
  private:
   // Contains key value pairs to apply to regular and intents db. The key of this map is the
   // tablet to send to.
-  std::unordered_map<TabletId, std::unique_ptr<WriteRequestPB>> records_;
+  UnorderedStringMap<TabletId, std::shared_ptr<WriteRequestMsg>> records_;
 
   // Keep track of the packed schema versions used.
   // kColocationIdNotSet is used for non-colocated tables.

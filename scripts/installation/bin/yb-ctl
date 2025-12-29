@@ -1732,7 +1732,7 @@ class ClusterControl:
         print("-" * 100)
         print("| {:<96} |".format(title))
         print("-" * 100)
-        for k, v in body_kv_list:
+        for k, v in body_kv_list.items():
             print("| {:20}: {:<74} |".format(k, v))
         print("-" * 100)
 
@@ -1743,14 +1743,11 @@ class ClusterControl:
         title = "Node Count: {} | Replication Factor: {}".format(
             num_servers, self.get_replication_factor())
         info_kv_list = self.gen_status_tserver_connectivity(DaemonId(DAEMON_TYPE_TSERVER, 1))
-        info_kv_list.extend([
-            # TODO: this might cause issues if the first master is down...
-            ("Web UI", "http://{}/".format(
-                self.options.get_client_advertise_host_port(
-                    DaemonId(DAEMON_TYPE_MASTER, 1),
-                    "http"))),
-            ("Cluster Data", self.options.cluster_base_dir)
-        ])
+        # TODO: this might cause issues if the first master is down...
+        info_kv_list["Web UI"] = "http://{}/".format(self.options.get_client_advertise_host_port(
+            DaemonId(DAEMON_TYPE_MASTER, 1),
+            "http"))
+        info_kv_list["Cluster Data"] = self.options.cluster_base_dir
         self.print_status_box(title, info_kv_list)
         if more_info:
             status_cmd = "yb-ctl"
@@ -1761,7 +1758,7 @@ class ClusterControl:
             print("For more info, please use: {}".format(status_cmd))
 
     def gen_status_tserver_connectivity(self, tserver_daemon_id):
-        info_kv_list = []
+        info_kv_list = dict()
         if not tserver_daemon_id:
             return info_kv_list
 
@@ -1777,11 +1774,8 @@ class ClusterControl:
                 self.options.get_client_tool_path('ysqlsh'), ip_address, ysql_port,
                 YSQL_DEFAULT_PORT)
 
-            info_kv_list.extend([
-                ("JDBC", "jdbc:postgresql://{}:{}/yugabyte".format(
-                    ip_address, ysql_port)),
-                ("YSQL Shell", ysqlsh_cmd_line)
-            ])
+            info_kv_list["JDBC"] = "jdbc:postgresql://{}:{}/yugabyte".format(ip_address, ysql_port)
+            info_kv_list["YSQL Shell"] = ysqlsh_cmd_line
 
         # -----------------------------------------------------------------------------------------
         # cqlsh command line
@@ -1794,8 +1788,7 @@ class ClusterControl:
             if ycql_port != YCQL_DEFAULT_PORT:
                 cqlsh_cmd_line += ' %s' % ycql_port
 
-        info_kv_list.append(
-            ("YCQL Shell", cqlsh_cmd_line))
+        info_kv_list["YCQL Shell"] = cqlsh_cmd_line
 
         # -----------------------------------------------------------------------------------------
         # redis-cli command line
@@ -1806,7 +1799,7 @@ class ClusterControl:
         redis_cli_cmd_line = format_cmd_line_with_host_port(
             self.options.get_client_tool_path('redis-cli'), ip_address, yedis_port,
             YEDIS_DEFAULT_PORT)
-        info_kv_list.append(("YEDIS Shell", redis_cli_cmd_line))
+        info_kv_list["YEDIS Shell"] = redis_cli_cmd_line
         return info_kv_list
 
     def show_node_status(self, daemon_index, server_counts=None):
@@ -1818,19 +1811,18 @@ class ClusterControl:
         master_daemon_id = DaemonId(DAEMON_TYPE_MASTER, daemon_index) if is_master else None
 
         info_kv_list = self.gen_status_tserver_connectivity(tserver_daemon_id)
-        log_kv_list = []
+        log_kv_list = dict()
         for idx, node_dir in enumerate(self.get_base_node_dirs(daemon_index)):
             data_path = os.path.join(node_dir, "yb-data")
             if idx == 0:
                 if is_tserver:
-                    log_kv_list.append(
-                        ("yb-tserver Logs", os.path.join(data_path, DAEMON_TYPE_TSERVER, "logs")))
+                    log_kv_list["yb-tserver Logs"] = os.path.join(data_path, DAEMON_TYPE_TSERVER,
+                                                                  "logs")
                 if is_master:
-                    log_kv_list.append(
-                        ("yb-master Logs", os.path.join(data_path, DAEMON_TYPE_MASTER, "logs")))
-            info_kv_list.append(
-                ("data-dir[{}]".format(idx), data_path))
-        info_kv_list.extend(log_kv_list)
+                    log_kv_list["yb-master Logs"] = os.path.join(data_path, DAEMON_TYPE_MASTER,
+                                                                 "logs")
+            info_kv_list["data-dir[{}]".format(idx)] = data_path
+        info_kv_list |= log_kv_list
 
         master_pid = self.get_pid(master_daemon_id) if master_daemon_id else None
         process_list = []

@@ -57,11 +57,7 @@ var describeTableCmd = &cobra.Command{
 
 		rUniverse, response, err := universeListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"Table", "Describe - Fetch Universe")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Table", "Describe - Fetch Universe")
 		}
 
 		if len(rUniverse) < 1 {
@@ -81,13 +77,18 @@ var describeTableCmd = &cobra.Command{
 
 		rTable, response, err := authAPI.DescribeTable(universeUUID, tableUUID).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err,
-				"Table", "Describe")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Table", "Describe")
 		}
 
-		r := make([]ybaclient.TableDefinitionTaskParams, 0)
-		r = append(r, rTable)
+		r := util.CheckAndAppend(
+			make([]ybaclient.TableDefinitionTaskParams, 0),
+			rTable,
+			fmt.Sprintf("Table %s for universe %s (%s) not found",
+				tableUUID,
+				universeName,
+				universeUUID,
+			),
+		)
 
 		if len(r) > 0 && util.IsOutputType(formatter.TableFormatKey) {
 			fullTableContext := *table.NewFullDefinitionContext()

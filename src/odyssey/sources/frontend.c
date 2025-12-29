@@ -39,7 +39,7 @@ int od_frontend_info(od_client_t *client, char *fmt, ...)
 	if (msg == NULL) {
 		return -1;
 	}
-	return od_write(&client->io, msg);
+	return od_write(&client->io, &msg);
 }
 
 int od_frontend_error(od_client_t *client, char *code, char *fmt, ...)
@@ -52,7 +52,7 @@ int od_frontend_error(od_client_t *client, char *code, char *fmt, ...)
 	if (msg == NULL) {
 		return -1;
 	}
-	return od_write(&client->io, msg);
+	return od_write(&client->io, &msg);
 }
 
 int od_frontend_fatal(od_client_t *client, char *code, char *fmt, ...)
@@ -64,7 +64,7 @@ int od_frontend_fatal(od_client_t *client, char *code, char *fmt, ...)
 	va_end(args);
 	if (msg == NULL)
 		return -1;
-	return od_write(&client->io, msg);
+	return od_write(&client->io, &msg);
 }
 
 int od_frontend_fatal_forward(od_client_t *client, char *code, char *fmt, ...)
@@ -76,7 +76,7 @@ int od_frontend_fatal_forward(od_client_t *client, char *code, char *fmt, ...)
 	va_end(args);
 	if (msg == NULL)
 		return -1;
-	return od_write(&client->io, msg);
+	return od_write(&client->io, &msg);
 }
 
 static inline int od_frontend_error_fwd(od_client_t *client)
@@ -106,7 +106,7 @@ static inline int od_frontend_error_fwd(od_client_t *client)
 				     hint_len, text, text_len);
 	if (msg == NULL)
 		return -1;
-	return od_write(&client->io, msg);
+	return od_write(&client->io, &msg);
 }
 
 static inline bool
@@ -181,9 +181,13 @@ static int od_frontend_startup(od_client_t *client)
 		if (msg == NULL)
 			goto error;
 
-		int rc = kiwi_be_read_startup(machine_msg_data(msg),
-					      machine_msg_size(msg),
-					      &client->startup, &client->vars);
+		int rc = kiwi_be_read_startup(
+			machine_msg_data(msg), machine_msg_size(msg),
+			&client->startup,
+			instance->config.yb_use_auth_backend ?
+				&client->yb_startup_settings :
+				&client->yb_vars_session,
+			yb_od_instance_should_parse_startup_options(instance));
 		machine_msg_free(msg);
 		if (rc == -1)
 			goto error;
@@ -196,7 +200,7 @@ static int od_frontend_startup(od_client_t *client)
 			return -1;
 		uint8_t *type = machine_msg_data(msg);
 		*type = 'N';
-		rc = od_write(&client->io, msg);
+		rc = od_write(&client->io, &msg);
 		if (rc == -1) {
 			od_error(&instance->logger,
 				 "unsupported protocol (gssapi)", client, NULL,
@@ -228,8 +232,12 @@ static int od_frontend_startup(od_client_t *client)
 			      client->config_listen->client_login_timeout);
 	if (msg == NULL)
 		return -1;
-	rc = kiwi_be_read_startup(machine_msg_data(msg), machine_msg_size(msg),
-				  &client->startup, &client->vars);
+	rc = kiwi_be_read_startup(
+		machine_msg_data(msg), machine_msg_size(msg), &client->startup,
+		instance->config.yb_use_auth_backend ?
+			&client->yb_startup_settings :
+			&client->yb_vars_session,
+		yb_od_instance_should_parse_startup_options(instance));
 	machine_msg_free(msg);
 	if (rc == -1)
 		goto error;
@@ -428,20 +436,26 @@ static inline od_frontend_status_t od_frontend_setup_params(od_client_t *client)
 		}
 	}
 
-	od_debug(&instance->logger, "setup", client, NULL, "sending params:");
-
-	/* send parameters set by client or cached by the route */
-	kiwi_param_t *param = route->params.params.list;
-
-	machine_msg_t *stream = machine_msg_create(0);
-	if (stream == NULL)
-		return OD_EOOM;
-
+	/* YB: ParameterStatus messages are sent in od_backend_startup() in case of auth backend */
 	if (!instance->config.yb_use_auth_backend) {
+		od_debug(&instance->logger, "setup", client, NULL,
+			 "sending params:");
+
+		/* send parameters set by client or cached by the route */
+		kiwi_param_t *param = route->params.params.list;
+
+		machine_msg_t *stream = machine_msg_create(0);
+		if (stream == NULL)
+			return OD_EOOM;
+
 		while (param) {
 #ifndef YB_GUC_SUPPORT_VIA_SHMEM
 			kiwi_var_t *var;
-			var = yb_kiwi_vars_get(&client->vars, kiwi_param_name(param));
+			var = yb_kiwi_vars_get(
+				&client->yb_vars_session,
+				kiwi_param_name(param),
+				yb_od_instance_should_lowercase_guc_name(
+					instance));
 #else
 			kiwi_var_type_t type;
 			type = kiwi_vars_find(&client->vars, kiwi_param_name(param),
@@ -477,45 +491,11 @@ static inline od_frontend_status_t od_frontend_setup_params(od_client_t *client)
 
 			param = param->next;
 		}
-	} else {
-		/*
-		 * Send the client vars which also includes the values received from the
-		 * auth-backend to the client.
-		 */
-		kiwi_var_t *var = NULL;
-		size_t num_vars = client->vars.size, i = 0;
-		while (i < num_vars)
-		{
-			machine_msg_t *msg;
 
-			var = &client->vars.vars[i];
-			if (var == NULL) {
-				od_debug(&instance->logger, "setup", client, NULL,
-					"unexpected NULL value in client->vars");
-
-				i++;
-				continue;
-			}
-
-			msg = kiwi_be_write_parameter_status(stream, var->name,
-								var->name_len, var->value,
-								var->value_len);
-			if (msg == NULL) {
-				machine_msg_free(stream);
-				return OD_EOOM;
-			}
-
-			od_debug(&instance->logger, "setup", client, NULL,
-				" %.*s = %.*s", var->name_len, var->name,
-				var->value_len, var->value);
-
-			i++;
-		}
+		rc = od_write(&client->io, &stream);
+		if (rc == -1)
+			return OD_ECLIENT_WRITE;
 	}
-
-	rc = od_write(&client->io, stream);
-	if (rc == -1)
-		return OD_ECLIENT_WRITE;
 
 	return OD_OK;
 }
@@ -556,7 +536,7 @@ static inline od_frontend_status_t od_frontend_setup(od_client_t *client)
 	}
 
 	int rc;
-	rc = od_write(&client->io, stream);
+	rc = od_write(&client->io, &stream);
 	if (rc == -1)
 		return OD_ECLIENT_WRITE;
 
@@ -606,7 +586,7 @@ static inline od_frontend_status_t od_frontend_local_setup(od_client_t *client)
 	if (msg == NULL)
 		goto error;
 	int rc;
-	rc = od_write(&client->io, stream);
+	rc = od_write(&client->io, &stream);
 	if (rc == -1)
 		return OD_ECLIENT_WRITE;
 	return OD_OK;
@@ -730,6 +710,7 @@ static inline bool od_should_drop_connection(od_client_t *client,
 		}
 	}
 		/* fall through */
+		yb_od_attribute_fallthrough;
 	case OD_RULE_POOL_STATEMENT:
 	case OD_RULE_POOL_TRANSACTION: {
 		//TODO:: drop no more than X connection per sec/min/whatever
@@ -869,7 +850,7 @@ static od_frontend_status_t od_frontend_local(od_client_t *client)
 			return OD_EOOM;
 		}
 
-		rc = od_write(&client->io, stream);
+		rc = od_write(&client->io, &stream);
 		if (rc == -1) {
 			return OD_ECLIENT_WRITE;
 		}
@@ -1192,6 +1173,11 @@ static char *yb_prepare_server_key(char *stmt_name, int stmt_name_len, char *que
 static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 						      char *data, int size)
 {
+	/*
+	 * YB: This is called during relay processing, so any message to be forwarded
+	 * needs to be added to the relay->iov buffer and not written using od_write.
+	 * The latter can cause a TCP deadlock in case the TCP write buffer is full
+	 */
 	od_client_t *client = relay->on_packet_arg;
 	od_instance_t *instance = client->global->instance;
 	(void)size;
@@ -1212,8 +1198,6 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 			 "%s", kiwi_fe_type_to_string(type));
 
 	od_frontend_status_t retstatus = OD_OK;
-	machine_msg_t *msg = NULL;
-	bool forwarded = 0;
 	switch (type) {
 	case KIWI_FE_COPY_DONE:
 	case KIWI_FE_COPY_FAIL:
@@ -1274,19 +1258,18 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				}
 
 				od_stat_parse(&route->stats);
-				rc = od_write(&server->io, msg_new);
+
+				rc = machine_iov_add(relay->iov, msg_new);
 				if (rc == -1) {
 					od_error(&instance->logger,
-						"rewrite parse", NULL, server,
-						"write error: %s",
-						od_io_error(&server->io));
-					return OD_ESERVER_WRITE;
+						 "rewrite parse", NULL, server,
+						 "out of memory");
+					return OD_EOOM;
 				}
 				break;
 			}
 
 			assert(client->prep_stmt_ids);
-			retstatus = OD_SKIP;
 			int opname_start_offset =
 				kiwi_be_describe_opname_offset(data, size);
 			if (opname_start_offset < 0) {
@@ -1361,9 +1344,11 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				// rewrite msg
 				// allocate prepered statement under name equal to yb_stmt_hash
 
+				machine_msg_t *msg;
 				msg = kiwi_fe_write_parse_description(
 					NULL, opname, OD_HASH_LEN, desc->data,
-					desc->len, YB_KIWI_FE_PARSE_NO_PARSE_COMPLETE);
+					desc->len,
+					YB_KIWI_FE_PARSE_NO_PARSE_COMPLETE);
 				if (msg == NULL) {
 					return OD_ESERVER_WRITE;
 				}
@@ -1378,13 +1363,12 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				}
 
 				od_stat_parse(&route->stats);
-				rc = od_write(&server->io, msg);
+				rc = machine_iov_add(relay->iov, msg);
+				retstatus = OD_SKIP;
 				if (rc == -1) {
 					od_error(&instance->logger, "describe",
-						 NULL, server,
-						 "write error: %s",
-						 od_io_error(&server->io));
-					return OD_ESERVER_WRITE;
+						 NULL, server, "out of memory");
+					return OD_EOOM;
 				}
 			} else {
 				int *refcnt;
@@ -1393,6 +1377,7 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				free(server_key_desc.data);
 			}
 
+			machine_msg_t *msg;
 			msg = kiwi_fe_write_describe(NULL, 'S', opname,
 						     OD_HASH_LEN);
 
@@ -1408,13 +1393,12 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 			}
 
 			// msg if deallocated automaictly
-			rc = od_write(&server->io, msg);
-			forwarded = 1;
+			rc = machine_iov_add(relay->iov, msg);
+			retstatus = OD_SKIP;
 			if (rc == -1) {
 				od_error(&instance->logger, "describe", NULL,
-					 server, "write error: %s",
-					 od_io_error(&server->io));
-				return OD_ESERVER_WRITE;
+					 server, "out of memory");
+				return OD_EOOM;
 			}
 		}
 		break;
@@ -1425,7 +1409,6 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 
 		if (route->rule->pool->reserve_prepared_statement) {
 			/* skip client parse msg */
-			retstatus = OD_SKIP;
 			kiwi_prepared_statement_t desc;
 			int rc;
 			rc = kiwi_be_read_parse_dest(data, size, &desc);
@@ -1504,7 +1487,7 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 					if (msg == NULL) {
 						return OD_ESERVER_WRITE;
 					}
-					rc = od_write(&server->io, msg);
+					rc = od_write(&server->io, &msg);
 					if (rc == -1) {
 						od_error(&instance->logger,
 							 "parse", NULL, server,
@@ -1597,6 +1580,7 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				// rewrite msg
 				// allocate prepered statement under name equal to yb_stmt_hash
 
+				machine_msg_t *msg;
 				msg = kiwi_fe_write_parse_description(NULL, buf, OD_HASH_LEN,
 					desc.description, desc.description_len, KIWI_FE_PARSE);
 				if (msg == NULL) {
@@ -1615,19 +1599,19 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				// stat backend parse msg
 				od_stat_parse(&route->stats);
 
-				rc = od_write(&server->io, msg);
+				rc = machine_iov_add(relay->iov, msg);
+				retstatus = OD_SKIP;
 				if (rc == -1) {
 					od_error(&instance->logger, "parse",
-						 NULL, server,
-						 "write error: %s",
-						 od_io_error(&server->io));
-					return OD_ESERVER_WRITE;
+						 NULL, server, "out of memory");
+					return OD_EOOM;
 				}
 			} else {
 				int *refcnt = value_ptr->data;
 				*refcnt = 1 + *refcnt;
 				free(server_key_desc.data);
 
+				machine_msg_t *msg;
 				if (!instance->config.yb_optimized_extended_query_protocol) {
 					od_debug(&instance->logger, "parse",
 						 client, server,
@@ -1646,13 +1630,12 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 					return OD_ESERVER_WRITE;
 				}
 
-				rc = od_write(&server->io, msg);
+				rc = machine_iov_add(relay->iov, msg);
+				retstatus = OD_SKIP;
 				if (rc == -1) {
 					od_error(&instance->logger, "parse",
-						 NULL, server,
-						 "write error: %s",
-						 od_io_error(&server->io));
-					return OD_ESERVER_WRITE;
+						 NULL, server, "out of memory");
+					return OD_EOOM;
 				}
 			}
 #ifndef YB_SUPPORT_FOUND
@@ -1661,7 +1644,7 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 			if (pmsg == NULL) {
 				return OD_ESERVER_WRITE;
 			}
-			rc = od_write(&client->io, pmsg);
+			rc = od_write(&client->io, &pmsg);
 			forwarded = 1;
 
 			if (rc == -1) {
@@ -1671,7 +1654,6 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				return OD_ESERVER_WRITE;
 			}
 #endif
-			forwarded = 1;
 		}
 		break;
 	case KIWI_FE_BIND:
@@ -1680,7 +1662,6 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 					     size);
 
 		if (route->rule->pool->reserve_prepared_statement) {
-			retstatus = OD_SKIP;
 			uint32_t operator_name_len;
 			char *operator_name;
 
@@ -1717,12 +1698,13 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				}
 
 				od_stat_parse(&route->stats);
-				rc = od_write(&server->io, msg_new);
+				rc = machine_iov_add(relay->iov, msg_new);
+				retstatus = OD_SKIP;
 				if (rc == -1) {
 					od_error(&instance->logger,
-						"rewrite parse", NULL, server,
-						"write error: %s",
-						od_io_error(&server->io));
+						 "rewrite parse", NULL, server,
+						 "out of memory",
+						 od_io_error(&server->io));
 					return OD_ESERVER_WRITE;
 				}
 				break;
@@ -1801,6 +1783,7 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				// rewrite msg
 				// allocate prepered statement under name equal to yb_stmt_hash
 
+				machine_msg_t *msg;
 				msg = kiwi_fe_write_parse_description(
 					NULL, opname, OD_HASH_LEN, desc->data,
 					desc->len, YB_KIWI_FE_PARSE_NO_PARSE_COMPLETE);
@@ -1819,13 +1802,13 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				}
 
 				od_stat_parse(&route->stats);
-				rc = od_write(&server->io, msg);
+				rc = machine_iov_add(relay->iov, msg);
+				retstatus = OD_SKIP;
 				if (rc == -1) {
 					od_error(&instance->logger,
 						 "rewrite parse", NULL, server,
-						 "write error: %s",
-						 od_io_error(&server->io));
-					return OD_ESERVER_WRITE;
+						 "out of memory");
+					return OD_EOOM;
 				}
 			} else {
 				int *refcnt = value_ptr->data;
@@ -1833,6 +1816,7 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				free(server_key_desc.data);
 			}
 
+			machine_msg_t *msg;
 			msg = od_frontend_rewrite_msg(data, size,
 						      opname_start_offset,
 						      operator_name_len,
@@ -1850,14 +1834,13 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 						     machine_msg_size(msg));
 			}
 
-			rc = od_write(&server->io, msg);
-			forwarded = 1;
+			rc = machine_iov_add(relay->iov, msg);
+			retstatus = OD_SKIP;
 
 			if (rc == -1) {
 				od_error(&instance->logger, "rewrite bind",
-					 NULL, server, "write error: %s",
-					 od_io_error(&server->io));
-				return OD_ESERVER_WRITE;
+					 NULL, server, "out of memory");
+				return OD_EOOM;
 			}
 		}
 		break;
@@ -1871,7 +1854,6 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 			uint32_t name_len;
 			kiwi_fe_close_type_t type;
 			int rc;
-			forwarded = 1;
 
 			if (od_frontend_parse_close(data, size, &name,
 						    &name_len,
@@ -1881,16 +1863,18 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 
 			if (type == KIWI_FE_CLOSE_PREPARED_STATEMENT) {
 				retstatus = OD_SKIP;
-				od_debug(
+				od_log(
 					&instance->logger,
-					"ingore closing prepared statement, report its closed",
-					client, server, "statement: %.*s",
+					"close prepared statement",
+					client, server, "ignore closing prepared statement: %.*s, report it as closed "
+					"by returning a close complete message from connection manager",
 					name_len, name);
 
 				machine_msg_t *pmsg;
 				pmsg = kiwi_be_write_close_complete(NULL);
 
-				rc = od_write(&client->io, pmsg);
+				/* TODO(#29442): Replace with async write to avoid TCP deadlock */
+				rc = od_write(&client->io, &pmsg);
 				if (rc == -1) {
 					od_error(&instance->logger,
 						 "close report", NULL, server,
@@ -1924,19 +1908,6 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 		break;
 	default:
 		break;
-	}
-
-	/* If the retstatus is not SKIP */
-	if (route->rule->pool->reserve_prepared_statement && forwarded != 1) {
-		msg = kiwi_fe_copy_msg(msg, data, size);
-		int rc = od_write(&server->io, msg);
-		if (rc == -1) {
-			od_error(&instance->logger, "error while forwarding",
-				client, server, "Got error while forwarding the packet");
-			return OD_ESERVER_WRITE;
-		}
-
-		retstatus = OD_SKIP;
 	}
 
 	/* update server stats */
@@ -2113,8 +2084,12 @@ static od_frontend_status_t od_frontend_remote(od_client_t *client)
 		if (status == OD_ATTACH) {
 			uint32_t catchup_timeout = route->rule->catchup_timeout;
 #ifndef YB_GUC_SUPPORT_VIA_SHMEM
-			kiwi_var_t *timeout_var =
-				yb_kiwi_vars_get(&client->vars, "odyssey_catchup_timeout");
+			/* YB: This is never expected to get a variable */
+			kiwi_var_t *timeout_var = yb_kiwi_vars_get(
+				&client->yb_vars_session,
+				"odyssey_catchup_timeout",
+				yb_od_instance_should_lowercase_guc_name(
+					instance));
 #else
 			kiwi_var_t *timeout_var =
 				kiwi_vars_get(&client->vars,
@@ -2347,13 +2322,36 @@ static void od_frontend_cleanup(od_client_t *client, char *context,
 		       od_frontend_status_to_str(status));
 		if (!client->server)
 			break;
-		rc = od_reset(server);
-		if (rc != 1) {
-			/* close backend connection */
-			od_log(&instance->logger, context, client, server,
-			       "reset unsuccessful, closing server connection");
-			od_router_close(router, client);
-			break;
+		/*
+		 * Since client has been disconnected, if IOV buffer has pending data, that means
+		 * write socket buffer got full at some point. So we want to avoid writing any new packet
+		 * on the server socket whether from od_reset or terminate packet to avoid TCP deadlock.
+		 * TODO(mkumar): GH#29417: Make conn mgr consume results from server socket even when
+		 * server is synchronized. Currently od_reset consumes the results but until only server is
+		 * not synchronized.
+		 */
+		if (server->relay.iov != NULL && machine_iov_pending(server->relay.iov)) {
+			od_debug(&instance->logger, context, client, server,
+					 "Client disconnected and server's IOV buffer has pending data on it. "
+					 "Directly closing the server socket without sending terminate packet.");
+			/*
+			 * TODO(mkumar): GH#29459: Sending 'terminate' packet causes deadlock. Sending 'Sync'
+			 * in order to reuse the connection can also cause deadlock. Need to investigate more.
+			 * Therefore directly closing the socket and marking the server offline will cleanup
+			 * the server in od_router_detach and thus killing the backend connection as well.
+			 */
+			od_io_close(&server->io);
+			server->offline = true;
+		}
+		else {
+			rc = od_reset(server);
+			if (rc != 1) {
+				/* close backend connection */
+				od_log(&instance->logger, context, client, server,
+					   "reset unsuccessful, closing server connection");
+				od_router_close(router, client);
+				break;
+			}
 		}
 		/* push server to router server pool */
 		od_router_detach(router, client);
@@ -2432,15 +2430,19 @@ static void od_frontend_cleanup(od_client_t *client, char *context,
 
 static void od_application_name_add_host(od_client_t *client)
 {
+	/* YB: This is expected to never get executed */
 	if (client == NULL || client->io.io == NULL)
 		return;
+	od_instance_t *instance = client->global->instance;
+
 	char app_name_with_host[KIWI_MAX_VAR_SIZE];
 	char peer_name[KIWI_MAX_VAR_SIZE];
 	int app_name_len = 7;
 	char *app_name = "unknown";
 #ifndef YB_GUC_SUPPORT_VIA_SHMEM
-	kiwi_var_t *app_name_var =
-		yb_kiwi_vars_get(&client->vars, "application_name");
+	kiwi_var_t *app_name_var = yb_kiwi_vars_get(
+		&client->yb_vars_session, "application_name",
+		yb_od_instance_should_lowercase_guc_name(instance));
 #else
 	kiwi_var_t *app_name_var =
 		kiwi_vars_get(&client->vars, KIWI_VAR_APPLICATION_NAME);
@@ -2456,8 +2458,10 @@ static void od_application_name_add_host(od_client_t *client)
 		od_snprintf(app_name_with_host, KIWI_MAX_VAR_SIZE, "%.*s - %s",
 			    app_name_len, app_name, peer_name);
 #ifndef YB_GUC_SUPPORT_VIA_SHMEM
-	kiwi_vars_update(&client->vars, "application_name", 17,
-		      app_name_with_host, length + 1); // return code ignored
+	kiwi_vars_update(&client->yb_vars_session, "application_name", 17,
+			 app_name_with_host, length + 1,
+			 yb_od_instance_should_lowercase_guc_name(
+				 instance)); // return code ignored
 #else
 	kiwi_vars_set(&client->vars, KIWI_VAR_APPLICATION_NAME,
 		      app_name_with_host,
@@ -2480,7 +2484,7 @@ int yb_clean_shmem(od_client_t *client, od_server_t *server)
 	msg = kiwi_fe_write_set_client_id(NULL, -client->client_id);
 
 	/* Send `SET SESSION PARAMETER` packet. */
-	rc = od_write(&server->io, msg);
+	rc = od_write(&server->io, &msg);
 	if (rc == -1) {
 		od_debug(&instance->logger, "clean shared memory", client, server,
 			 "Unable to send `SET SESSION PARAMETER` packet");
@@ -2731,11 +2735,16 @@ void od_frontend(void *arg)
 			od_application_name_add_host(client);
 		}
 
+		/*
+		 * YB: We never specify any variable in route->rule->vars,
+		 * so this code is not needed and is hence commented out
 		//override clients pg options if configured
-		rc = kiwi_vars_override(&client->vars, &route->rule->vars);
+		rc = kiwi_vars_override(&client->yb_vars_session,
+					&route->rule->vars);
 		if (rc == -1) {
 			goto cleanup;
 		}
+		 */
 
 		if (instance->config.log_session) {
 			od_log(&instance->logger, "startup", client, NULL,
@@ -3027,7 +3036,7 @@ static inline int yb_od_frontend_error_fwd(od_client_t *client)
 				     hint_len, error.message, strlen(error.message));
 	if (msg == NULL)
 		return -1;
-	return od_write(&client->io, msg);
+	return od_write(&client->io, &msg);
 }
 
 int yb_auth_via_auth_backend(od_client_t *client)
@@ -3054,6 +3063,12 @@ int yb_auth_via_auth_backend(od_client_t *client)
 			client, NULL,
 			"failed to allocate internal client for the auth backend");
 		goto failed_to_acquire_auth_backend;
+	}
+
+	if (client->startup.replication.value_len != 0) {
+		yb_kiwi_var_set(&control_conn_client->startup.replication,
+			client->startup.replication.value,
+			client->startup.replication.value_len);
 	}
 
 	/*

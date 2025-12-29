@@ -65,7 +65,7 @@ func editClusterUtil(
 		}
 	}
 
-	if cluster == (ybaclient.Cluster{}) {
+	if universeutil.IsClusterEmpty(cluster) {
 		err := fmt.Errorf(
 			"No cluster found with type " + clusterType + " in universe " +
 				universeName + " (" + universeUUID + ")")
@@ -77,10 +77,7 @@ func editClusterUtil(
 	providerUUID := userIntent.GetProvider()
 	providerUsed, response, err := authAPI.GetProvider(providerUUID).Execute()
 	if err != nil {
-		errMessage := util.ErrorFromHTTPResponse(
-			response, err,
-			"Universe", "Edit Cluster - Fetch Provider")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		util.FatalHTTPError(response, err, "Universe", "Edit Cluster - Fetch Provider")
 	}
 	regionsInProvider := providerUsed.GetRegions()
 
@@ -88,7 +85,7 @@ func editClusterUtil(
 	if err != nil {
 		return nil, ybaclient.UniverseResp{}, ybaclient.UniverseConfigureTaskParams{}, err
 	}
-	if len(strings.TrimSpace(removeRegionsInput)) != 0 {
+	if !util.IsEmptyString(removeRegionsInput) {
 		regions, err := universeutil.FetchRegionUUIDFromName(
 			regionsInProvider,
 			removeRegionsInput,
@@ -112,7 +109,7 @@ func editClusterUtil(
 		return nil, ybaclient.UniverseResp{}, ybaclient.UniverseConfigureTaskParams{}, err
 	}
 
-	if len(strings.TrimSpace(addRegionsInput)) != 0 {
+	if !util.IsEmptyString(addRegionsInput) {
 		regions, err := universeutil.FetchRegionUUIDFromName(
 			regionsInProvider,
 			addRegionsInput,
@@ -190,7 +187,7 @@ func editClusterUtil(
 		if dedicatedNodes {
 			masterDeviceInfo := userIntent.GetMasterDeviceInfo()
 			// check if empty, set to userIntent deviceInfo
-			if masterDeviceInfo == (ybaclient.DeviceInfo{}) {
+			if universeutil.IsDeviceInfoEmpty(masterDeviceInfo) {
 				masterDeviceInfo = userIntent.GetDeviceInfo()
 			}
 			masterInstanceType, err := cmd.Flags().GetString("dedicated-master-instance-type")
@@ -199,7 +196,7 @@ func editClusterUtil(
 					ybaclient.UniverseResp{}, ybaclient.UniverseConfigureTaskParams{}, err
 			}
 
-			if len(strings.TrimSpace(masterInstanceType)) != 0 {
+			if !util.IsEmptyString(masterInstanceType) {
 				if strings.Compare(masterInstanceType, userIntent.GetMasterInstanceType()) != 0 {
 					userIntent.SetMasterInstanceType(masterInstanceType)
 				}
@@ -228,7 +225,7 @@ func editClusterUtil(
 				return nil,
 					ybaclient.UniverseResp{}, ybaclient.UniverseConfigureTaskParams{}, err
 			}
-			if len(strings.TrimSpace(masterStorageType)) != 0 {
+			if !util.IsEmptyString(masterStorageType) {
 				masterDeviceInfo.SetStorageType(masterStorageType)
 			}
 
@@ -237,7 +234,7 @@ func editClusterUtil(
 				return nil,
 					ybaclient.UniverseResp{}, ybaclient.UniverseConfigureTaskParams{}, err
 			}
-			if len(strings.TrimSpace(masterStorageClass)) != 0 {
+			if !util.IsEmptyString(masterStorageClass) {
 				masterDeviceInfo.SetStorageClass(masterStorageClass)
 			}
 			userIntent.SetMasterDeviceInfo(masterDeviceInfo)
@@ -308,7 +305,7 @@ func editUserTags(cmd *cobra.Command, userTags map[string]string) (map[string]st
 	if err != nil {
 		return nil, err
 	}
-	if len(strings.TrimSpace(removeUserTags)) != 0 {
+	if !util.IsEmptyString(removeUserTags) {
 		for _, k := range strings.Split(removeUserTags, ",") {
 			if _, exists := userTags[k]; !exists {
 				logrus.Debug(
@@ -330,7 +327,7 @@ func deviceInfoChanges(
 	if err != nil {
 		return ybaclient.DeviceInfo{}, err
 	}
-	if len(strings.TrimSpace(instanceType)) != 0 {
+	if !util.IsEmptyString(instanceType) {
 		if strings.Compare(instanceType, userIntent.GetInstanceType()) != 0 {
 			userIntent.SetInstanceType(instanceType)
 		}
@@ -349,7 +346,7 @@ func deviceInfoChanges(
 		return ybaclient.DeviceInfo{}, err
 	}
 
-	if len(strings.TrimSpace(storageType)) != 0 {
+	if !util.IsEmptyString(storageType) {
 		deviceInfo.SetStorageType(storageType)
 	}
 
@@ -357,7 +354,7 @@ func deviceInfoChanges(
 	if err != nil {
 		return ybaclient.DeviceInfo{}, err
 	}
-	if len(strings.TrimSpace(storageClass)) != 0 {
+	if !util.IsEmptyString(storageClass) {
 		deviceInfo.SetStorageClass(storageClass)
 	}
 
@@ -373,11 +370,14 @@ func deviceInfoChanges(
 
 func waitForEditClusterTask(
 	authAPI *ybaAuthClient.AuthAPIClient, universeName, universeUUID string,
-	task ybaclient.YBPTask,
+	task *ybaclient.YBPTask,
 ) {
 	var universeData []ybaclient.UniverseResp
 	var response *http.Response
 	var err error
+
+	util.CheckTaskAfterCreation(task)
+
 	taskUUID := task.GetTaskUUID()
 	msg := fmt.Sprintf("The universe %s (%s) cluster is being edited",
 		formatter.Colorize(universeName, formatter.GreenColor), universeUUID)
@@ -395,10 +395,7 @@ func waitForEditClusterTask(
 			formatter.Colorize(universeName, formatter.GreenColor), universeUUID)
 		universeData, response, err = authAPI.ListUniverses().Name(universeName).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response, err,
-				"Universe", "Upgrade - Fetch Universe")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Universe", "Upgrade - Fetch Universe")
 		}
 		universesCtx := formatter.Context{
 			Output: os.Stdout,
@@ -414,5 +411,5 @@ func waitForEditClusterTask(
 		Output:  os.Stdout,
 		Format:  ybatask.NewTaskFormat(viper.GetString("output")),
 	}
-	ybatask.Write(taskCtx, []ybaclient.YBPTask{task})
+	ybatask.Write(taskCtx, []ybaclient.YBPTask{*task})
 }

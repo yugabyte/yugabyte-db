@@ -176,6 +176,12 @@ extern char* yb_default_replica_identity;
 extern bool yb_enable_consistent_replication_from_hash_range;
 
 extern bool enable_object_locking_infra;
+
+/*
+ * Refer YBCIsLegacyModeForCatalogOps() for details.
+ */
+extern bool yb_fallback_to_legacy_catalog_read_time;
+
 /*
  * xcluster consistency level
  */
@@ -285,6 +291,8 @@ extern bool yb_debug_log_catcache_events;
 
 extern bool yb_debug_log_snapshot_mgmt;
 
+extern bool yb_debug_log_snapshot_mgmt_stack_trace;
+
 extern bool yb_extension_upgrade;
 
 extern bool yb_mixed_mode_expression_pushdown;
@@ -293,6 +301,12 @@ extern bool yb_mixed_mode_saop_pushdown;
 
 extern bool yb_use_internal_auto_analyze_service_conn;
 
+// Keep in sync with the same definition in common_flags.cc
+#ifdef NDEBUG
+#define kEnableDdlTransactionBlocks true
+#else
+#define kEnableDdlTransactionBlocks false
+#endif
 extern bool yb_ddl_transaction_block_enabled;
 
 extern bool yb_disable_ddl_transaction_block_for_read_committed;

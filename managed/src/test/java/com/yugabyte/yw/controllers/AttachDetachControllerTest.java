@@ -363,7 +363,7 @@ public class AttachDetachControllerTest extends FakeDBApplication {
           UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
           userIntent.provider = defaultProvider.getUuid().toString();
           userIntent.providerType = Common.CloudType.aws;
-          universe.getUniverseDetails().upsertPrimaryCluster(userIntent, null);
+          universe.getUniverseDetails().upsertPrimaryCluster(userIntent, null, null);
           universe.setUniverseDetails(universeDetails);
           universe.updateConfig(config);
         };

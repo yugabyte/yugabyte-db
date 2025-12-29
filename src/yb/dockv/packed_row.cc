@@ -16,7 +16,6 @@
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 
-#include "yb/dockv/doc_vector_id.h"
 #include "yb/dockv/packed_value.h"
 #include "yb/dockv/primitive_value.h"
 #include "yb/dockv/schema_packing.h"
@@ -45,7 +44,8 @@ namespace {
 
 using PackedValueWithPrefixV1 = std::pair<Slice, PackedValueV1>;
 using PackedValueWithPrefixV2 = std::pair<Slice, PackedValueV2>;
-using ValuePair = std::pair<Slice, const QLValuePB&>;
+template <class Value>
+using ValuePair = std::pair<Slice, const Value&>;
 
 std::string ValueToString(const QLValuePB& value) {
   return value.ShortDebugString();
@@ -55,7 +55,8 @@ std::string ValueToString(const LWQLValuePB& value) {
   return value.ShortDebugString();
 }
 
-std::string ValueToString(const ValuePair& value) {
+template <class Value>
+std::string ValueToString(const ValuePair<Value>& value) {
   auto result = value.second.ShortDebugString();
   if (!value.first.empty()) {
     Slice control_fields_slice = value.first;
@@ -82,10 +83,6 @@ std::string ValueToString(const PackedValueWithPrefixV1& value) {
     return value.second->ToDebugHexString();
   }
   return value.first.ToDebugHexString() + "+" + value.second->ToDebugHexString();
-}
-
-std::string ValueToString(const DocVectorValue& value) {
-  return value.ToString();
 }
 
 bool IsNull(PackedValueV1 value) {
@@ -161,10 +158,6 @@ class ColumnPackerV1 {
     return PackValue(VERIFY_RESULT(UnpackQLValue(value, column_data_.data_type)), limit);
   }
 
-  bool PackValue(const DocVectorValue& value, size_t limit) {
-    return DoPackValue(/* prefix= */ nullptr, value, limit);
-  }
-
   template <class Prefix, class Value>
   auto PackValue(const std::pair<Prefix, Value>& value, size_t limit) {
     return DoPackValue(value.first, value.second, limit);
@@ -201,14 +194,6 @@ class ColumnPackerV1 {
 
   void DoPackValueImpl(const PackableValue& value) {
     value.PackToV1(&buffer_);
-  }
-
-  size_t PackedValueSize(const DocVectorValue& value) {
-    return value.EncodedSize();
-  }
-
-  void DoPackValueImpl(const DocVectorValue& value) {
-    value.EncodeTo(&buffer_);
   }
 
   template <class Prefix, class Value>
@@ -266,10 +251,6 @@ class ColumnPackerV2 {
     return PackValue(VERIFY_RESULT(UnpackQLValue(value, data_type_)), limit);
   }
 
-  bool PackValue(const DocVectorValue& value, size_t limit) {
-    return DoPackValue(value, limit);
-  }
-
   template <class Value>
   auto PackValue(const std::pair<Slice, Value>& value, size_t limit) {
     // Drop control flags when present.
@@ -307,14 +288,6 @@ class ColumnPackerV2 {
 
   void DoPackValueImpl(const PackableValue& value) {
     value.PackToV2(&buffer_);
-  }
-
-  size_t PackedValueSize(const DocVectorValue& value) {
-    return value.EncodedSize();
-  }
-
-  void DoPackValueImpl(const DocVectorValue& value) {
-    value.EncodeTo(&buffer_);
   }
 
   void MarkColumnNull(size_t var_header_start, size_t idx) {
@@ -373,17 +346,19 @@ size_t PackedSizeLimit(size_t value) {
 
 RowPackerBase::RowPackerBase(
     std::reference_wrapper<const SchemaPacking> packing, size_t packed_size_limit,
-    const ValueControlFields& control_fields)
+    const ValueControlFields& control_fields, bool is_update)
     : packing_(packing),
-      packed_size_limit_(PackedSizeLimit(packed_size_limit)) {
+      packed_size_limit_(PackedSizeLimit(packed_size_limit)),
+      is_update_(is_update) {
   control_fields.AppendEncoded(&result_);
 }
 
 RowPackerBase::RowPackerBase(
     std::reference_wrapper<const SchemaPacking> packing, size_t packed_size_limit,
-    Slice control_fields)
+    Slice control_fields, bool is_update)
     : packing_(packing),
-      packed_size_limit_(PackedSizeLimit(packed_size_limit)) {
+      packed_size_limit_(PackedSizeLimit(packed_size_limit)),
+      is_update_(is_update) {
   result_.Append(control_fields);
 }
 
@@ -466,7 +441,12 @@ Result<bool> RowPackerV1::AddValue(ColumnId column_id, const LWQLValuePB& value)
 
 Result<bool> RowPackerV1::AddValue(
     ColumnId column_id, Slice control_fields, const QLValuePB& value) {
-  return DoAddValue(column_id, ValuePair(control_fields, value), /* tail_size= */ 0);
+  return DoAddValue(column_id, ValuePair<QLValuePB>(control_fields, value), /* tail_size= */ 0);
+}
+
+Result<bool> RowPackerV1::AddValue(
+    ColumnId column_id, Slice control_fields, const LWQLValuePB& value) {
+  return DoAddValue(column_id, ValuePair<LWQLValuePB>(control_fields, value), /* tail_size= */ 0);
 }
 
 Result<bool> RowPackerV1::AddValue(ColumnId column_id, PackedValueV1 value, ssize_t tail_size) {
@@ -492,10 +472,6 @@ Result<bool> RowPackerV1::AddValue(
 }
 
 Result<bool> RowPackerV1::AddValue(ColumnId column_id, const PackableValue& value) {
-  return DoAddValue(column_id, value, /* tail_size= */ 0);
-}
-
-Result<bool> RowPackerV1::AddValue(ColumnId column_id, const DocVectorValue& value) {
   return DoAddValue(column_id, value, /* tail_size= */ 0);
 }
 
@@ -526,7 +502,11 @@ void RowPackerV2::Init(SchemaVersion version) {
   auto* data = pointer_cast<char*>(result_.mutable_data());
   *out++ = ValueEntryTypeAsChar::kPackedRowV2;
   out += FastEncodeUnsignedVarInt(version, out);
-  *out++ = 0; // flags
+  uint8_t flags = 0;
+  if (is_update_) {
+    flags |= kIsUpdateFlag;
+  }
+  *out++ = flags;
   var_header_start_ = out - data;
   memset(out, 0, null_mask_size);
   out += null_mask_size;
@@ -557,10 +537,6 @@ Result<bool> RowPackerV2::AddValue(ColumnId column_id, const LWQLValuePB& value)
 }
 
 Result<bool> RowPackerV2::AddValue(ColumnId column_id, const PackableValue& value) {
-  return DoAddValue(column_id, value, /* tail_size= */ 0);
-}
-
-Result<bool> RowPackerV2::AddValue(ColumnId column_id, const DocVectorValue& value) {
   return DoAddValue(column_id, value, /* tail_size= */ 0);
 }
 
@@ -620,6 +596,20 @@ RowPackerBase& PackerBase(RowPackerVariant* packer_variant) {
     RowPackerBase* base = &packer;
     return base;
   }, *packer_variant);
+}
+
+Result<PackedRowV2Header> ParsePackedRowV2Header(Slice packed_row) {
+  SCHECK(!packed_row.empty(), InvalidArgument, "Packed row is empty");
+
+  const auto version = VERIFY_RESULT(FastDecodeUnsignedVarInt(&packed_row));
+
+  SCHECK(!packed_row.empty(), InvalidArgument, "Packed row too short to contain flags");
+  const uint8_t flags = packed_row.consume_byte();
+
+  return PackedRowV2Header{
+    .schema_version = static_cast<SchemaVersion>(version),
+    .flags = flags
+  };
 }
 
 } // namespace yb::dockv

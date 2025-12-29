@@ -53,7 +53,7 @@ import {
   getIsFormDisabled,
   readFileAsText,
   handleFormSubmitServerError,
-  UseProviderValidationEnabled
+  useIsProviderValidationEnabled
 } from '../utils';
 import { EditProvider } from '../ProviderEditView';
 import {
@@ -166,10 +166,9 @@ export const K8sProviderEditForm = ({
     runtimeConfigQueryKey.customerScope(customerUUID),
     () => api.fetchRuntimeConfigs(customerUUID, true)
   );
-  const {
-    isLoading: isProviderValidationLoading,
-    isValidationEnabled
-  } = UseProviderValidationEnabled(CloudType.kubernetes);
+  const { isRuntimeConfigLoading, isValidationEnabled } = useIsProviderValidationEnabled(
+    CloudType.kubernetes
+  );
   if (customerRuntimeConfigQuery.isError) {
     return (
       <YBErrorIndicator
@@ -182,7 +181,7 @@ export const K8sProviderEditForm = ({
       (suggestedKubernetesConfigQuery.isLoading || suggestedKubernetesConfigQuery.isIdle)) ||
     customerRuntimeConfigQuery.isLoading ||
     customerRuntimeConfigQuery.isIdle ||
-    isProviderValidationLoading
+    isRuntimeConfigLoading
   ) {
     return <YBLoading />;
   }

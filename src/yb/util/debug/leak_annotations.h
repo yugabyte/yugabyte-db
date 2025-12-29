@@ -56,12 +56,8 @@ extern "C" {
   // are memory leaks and the exit_code flag is non-zero.
   void __lsan_do_leak_check();
 #elif defined(__cplusplus)
-  inline void __lsan_disable() {}
-  inline void __lsan_enable() {}
   inline void __lsan_ignore_object(const void *p) {}
 #else
-  static void __lsan_disable() {}
-  static void __lsan_enable() {}
   static void __lsan_ignore_object(const void *p) {}
 #endif
 
@@ -76,18 +72,14 @@ namespace yb::debug {
 class ScopedLSANDisabler {
  public:
   ScopedLSANDisabler() {
-#if defined(__has_feature)
-#if __has_feature(address_sanitizer)
+#if defined(ADDRESS_SANITIZER)
     __lsan_disable();
-#endif
 #endif
   }
 
   ~ScopedLSANDisabler() {
-#if defined(__has_feature)
-#if __has_feature(address_sanitizer)
+#if defined(ADDRESS_SANITIZER)
     __lsan_enable();
-#endif
 #endif
   }
 };

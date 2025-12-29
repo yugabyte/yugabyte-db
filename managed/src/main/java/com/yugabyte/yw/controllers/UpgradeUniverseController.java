@@ -425,9 +425,36 @@ public class UpgradeUniverseController extends AuthenticatedController {
   })
   @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
   public Result upgradeCerts(UUID customerUuid, UUID universeUuid, Http.Request request) {
+    // Check if rootCA or clientRootCA are explicitly set to null in the request
+    // This information is needed to preserve null values during binding
+    JsonNode requestBody = request.body().asJson();
+    boolean rootCAExplicitlyNull = false;
+    boolean clientRootCAExplicitlyNull = false;
+    if (requestBody != null) {
+      if (requestBody.has("rootCA") && requestBody.get("rootCA").isNull()) {
+        rootCAExplicitlyNull = true;
+      } else if (!requestBody.has("rootCA")) {
+        rootCAExplicitlyNull = true;
+      }
+      if (requestBody.has("clientRootCA") && requestBody.get("clientRootCA").isNull()) {
+        clientRootCAExplicitlyNull = true;
+      } else if (!requestBody.has("clientRootCA")) {
+        clientRootCAExplicitlyNull = true;
+      }
+    }
+
+    // Store the explicit null flags in a way that can be accessed after binding
+    final boolean finalRootCAExplicitlyNull = rootCAExplicitlyNull;
+    final boolean finalClientRootCAExplicitlyNull = clientRootCAExplicitlyNull;
+
     return requestHandler(
         request,
-        upgradeUniverseHandler::rotateCerts,
+        (CertsRotateParams params, Customer customer, Universe universe) -> {
+          // Restore explicit null values before processing
+          params.rootCAExplicitlyNull = finalRootCAExplicitlyNull;
+          params.clientRootCAExplicitlyNull = finalClientRootCAExplicitlyNull;
+          return upgradeUniverseHandler.rotateCerts(params, customer, universe);
+        },
         CertsRotateParams.class,
         Audit.ActionType.UpgradeCerts,
         customerUuid,
@@ -480,7 +507,9 @@ public class UpgradeUniverseController extends AuthenticatedController {
    * @return Result indicating the success of the modification operation
    */
   @ApiOperation(
-      notes = "YbaApi Internal. Modifies the audit logging configuration for a universe.",
+      notes =
+          "WARNING: This is a preview API that could change. Modifies the audit logging"
+              + " configuration for a universe.",
       value = "Modify Audit Logging Configuration",
       nickname = "modifyAuditLogging",
       response = YBPTask.class)
@@ -491,7 +520,7 @@ public class UpgradeUniverseController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.AuditLogConfigParams",
           required = true,
           paramType = "body"))
-  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.0.0")
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =

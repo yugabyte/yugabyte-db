@@ -39,6 +39,15 @@ void* YBCPAlloc(size_t size);
 void YBCSetCStringToTextWithLenFn(YbcCstringToTextWithLenFn fn);
 void* YBCCStringToTextWithLen(const char* c, int size);
 
+void YBCSetSwitchMemoryContextFn(YbcSwitchMemoryContextFn switch_mem_context_fn);
+void* YBCSwitchMemoryContext(void* context);
+
+void YBCSetCreateMemoryContextFn(YbcCreateMemoryContextFn create_mem_context_fn);
+void* YBCCreateMemoryContext(void* parent, const char* name);
+
+void YBCSetDeleteMemoryContextFn(YbcDeleteMemoryContextFn delete_mem_context_fn);
+void YBCDeleteMemoryContext(void* context);
+
 // Duplicate the given string in memory allocated using PostgreSQL's palloc.
 char* YBCPAllocStdString(const std::string& s);
 

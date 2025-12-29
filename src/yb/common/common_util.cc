@@ -105,6 +105,8 @@ int GetInitialNumTabletsPerTable(TableType table_type, size_t tserver_count) {
 }
 
 bool YsqlDdlRollbackEnabled() {
+  // Also change the validator for ysql_yb_ddl_transaction_block_enabled flag in common_flag.cc if
+  // changing this logic.
   return FLAGS_ysql_yb_enable_ddl_atomicity_infra && FLAGS_ysql_yb_ddl_rollback_enabled;
 }
 

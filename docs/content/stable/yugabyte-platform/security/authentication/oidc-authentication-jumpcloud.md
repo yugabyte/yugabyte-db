@@ -4,8 +4,6 @@ headerTitle: OIDC authentication with JumpCloud
 linkTitle: OIDC authentication
 description: Configuring YugabyteDB Anywhere universe to use OIDC with JumpCloud.
 headcontent: Use JumpCloud to authenticate accounts for database access
-tags:
-  feature: early-access
 menu:
   stable_yugabyte-platform:
     identifier: oidc-authentication-jumpcloud
@@ -195,4 +193,4 @@ curl -k --location --request PUT '<server-address>/api/v1/customers/<customerUUI
 
 ## Manage users and roles
 
-{{< readfile "/preview/yugabyte-platform/security/authentication/oidc-manage-users-include.md" >}}
+{{< readfile "/stable/yugabyte-platform/security/authentication/oidc-manage-users-include.md" >}}

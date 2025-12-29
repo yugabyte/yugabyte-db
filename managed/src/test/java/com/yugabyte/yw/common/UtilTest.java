@@ -684,7 +684,7 @@ public class UtilTest extends FakeDBApplication {
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
     userIntent.ybSoftwareVersion = "2024.2.0.0-b1"; // Valid version for attach/detach
-    taskParams.upsertPrimaryCluster(userIntent, null);
+    taskParams.upsertPrimaryCluster(userIntent, null, null);
 
     when(universe.getUniverseDetails()).thenReturn(taskParams);
     when(universe.getName()).thenReturn("test-universe");
@@ -719,7 +719,7 @@ public class UtilTest extends FakeDBApplication {
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
     userIntent.ybSoftwareVersion = "2024.2.0.0-b1"; // Valid version for attach/detach
-    taskParams.upsertPrimaryCluster(userIntent, null);
+    taskParams.upsertPrimaryCluster(userIntent, null, null);
 
     when(universe.getUniverseDetails()).thenReturn(taskParams);
     when(universe.getName()).thenReturn("test-universe");
@@ -764,7 +764,7 @@ public class UtilTest extends FakeDBApplication {
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
     userIntent.ybSoftwareVersion = "2024.2.0.0-b1"; // Valid version for attach/detach
-    taskParams.upsertPrimaryCluster(userIntent, null);
+    taskParams.upsertPrimaryCluster(userIntent, null, null);
 
     when(universe.getUniverseDetails()).thenReturn(taskParams);
     when(universe.getName()).thenReturn("test-universe");
@@ -830,7 +830,7 @@ public class UtilTest extends FakeDBApplication {
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
     userIntent.ybSoftwareVersion = "2.18.0.0-b1"; // Old version
-    taskParams.upsertPrimaryCluster(userIntent, null);
+    taskParams.upsertPrimaryCluster(userIntent, null, null);
 
     when(universe.getUniverseDetails()).thenReturn(taskParams);
     when(universe.getName()).thenReturn("test-universe");
@@ -857,7 +857,7 @@ public class UtilTest extends FakeDBApplication {
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
     userIntent.ybSoftwareVersion = null; // Null version
-    taskParams.upsertPrimaryCluster(userIntent, null);
+    taskParams.upsertPrimaryCluster(userIntent, null, null);
 
     when(universe.getUniverseDetails()).thenReturn(taskParams);
     when(universe.getName()).thenReturn("test-universe");
@@ -885,7 +885,7 @@ public class UtilTest extends FakeDBApplication {
         new UniverseDefinitionTaskParams.UserIntent();
     userIntent.ybSoftwareVersion = "2024.2.0.0-b1"; // Valid version
     userIntent.enableYSQL = false; // YCQL-only
-    taskParams.upsertPrimaryCluster(userIntent, null);
+    taskParams.upsertPrimaryCluster(userIntent, null, null);
 
     when(universe.getUniverseDetails()).thenReturn(taskParams);
     when(universe.getName()).thenReturn("test-universe");
@@ -915,7 +915,7 @@ public class UtilTest extends FakeDBApplication {
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
     userIntent.ybSoftwareVersion = "2024.2.0.0-b1";
-    taskParams.upsertPrimaryCluster(userIntent, null);
+    taskParams.upsertPrimaryCluster(userIntent, null, null);
 
     when(universe.getUniverseDetails()).thenReturn(taskParams);
     when(universe.getName()).thenReturn("test-universe");

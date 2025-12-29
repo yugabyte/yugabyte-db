@@ -135,6 +135,10 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     (kIndexWrite)
     (kTableWrite)
     (kWaitingOnTServer)
+    (kTransactionCommit)
+    (kTransactionTerminate)
+    (kTransactionRollbackToSavepoint)
+    (kTransactionCancel)
 
     // Common wait states
     ((kOnCpu_Active, YB_ASH_MAKE_EVENT(Common)))
@@ -499,8 +503,8 @@ class WaitStateInfo {
 
   void UpdateMetadata(const AshMetadata& meta) EXCLUDES(mutex_);
   void UpdateAuxInfo(const AshAuxInfo& aux) EXCLUDES(mutex_);
-  void UpdateTabletId(const TabletId& tablet_id);
-  static void UpdateCurrentTabletId(const TabletId& tablet_id);
+  void UpdateTabletId(TabletIdView tablet_id);
+  static void UpdateCurrentTabletId(TabletIdView tablet_id);
 
   template <class PB>
   static void UpdateCurrentMetadataFromPB(const PB& pb) {

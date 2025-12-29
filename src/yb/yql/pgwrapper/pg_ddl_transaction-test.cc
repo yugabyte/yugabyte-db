@@ -20,6 +20,8 @@
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/util/async_util.h"
+#include "yb/util/backoff_waiter.h"
+#include "yb/util/sync_point.h"
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
@@ -308,6 +310,20 @@ class PgDdlSavepointMiniClusterTest : public PgMiniTestBase,
         EXPECT_EQ(column_info->type()->main(), expected_column_type);
       }
     }
+  }
+
+  Status WaitForTableDeletionToFinish(client::YBClient* client, const std::string& table_id) {
+    return LoggedWaitFor([&]() -> Result<bool> {
+      bool table_found = false;
+      const auto tables = VERIFY_RESULT(client->ListTables());
+      for (const auto& t : tables) {
+        if (t.namespace_name() == "yugabyte" && t.table_id() == table_id) {
+          table_found = true;
+          break;
+        }
+      }
+      return !table_found;
+    }, MonoDelta::FromSeconds(60), "Wait for Table deletion to finish for table " + table_id);
   }
 };
 
@@ -621,6 +637,7 @@ TEST_P(PgDdlSavepointMiniClusterTest, TestRollbackToSavepointWithDropCreateTable
                  {.name = "e", .data_type = DataType::STRING},
                  {.name = "f", .data_type = DataType::STRING}});
   ASSERT_FALSE(table->LockForRead()->has_ysql_ddl_txn_verifier_state());
+  ASSERT_OK(WaitForTableDeletionToFinish(client.get(), table_id_after_drop));
   ASSERT_FALSE(table_after_drop->LockForRead()->has_ysql_ddl_txn_verifier_state());
 
   if (GetParam()) {
@@ -724,6 +741,7 @@ TEST_P(PgDdlSavepointMiniClusterTest, TestRollbackToSavepointWithReleaseSavepoin
   ASSERT_EQ(table_schema.columns()[2].name(), "b");
 
   ASSERT_FALSE(table_id_after_drop.empty());
+  ASSERT_OK(WaitForTableDeletionToFinish(client.get(), table_id_after_drop));
   auto table_after_drop = catalog_mgr.GetTableInfo(table_id_after_drop);
   ASSERT_FALSE(table_after_drop->LockForRead()->has_ysql_ddl_txn_verifier_state());
 
@@ -739,6 +757,41 @@ TEST_P(PgDdlSavepointMiniClusterTest, TestRollbackToSavepointWithReleaseSavepoin
     ASSERT_OK(conn.Execute("ROLLBACK"));
   }
   ASSERT_FALSE(table->LockForRead()->has_ysql_ddl_txn_verifier_state());
+}
+
+TEST_P(PgDdlSavepointMiniClusterTest, TestRollbackToSavepointSlowTableDeletion) {
+  // Skip in case of commit as the test case is redundant.
+  if (GetParam()) {
+    return;
+  }
+
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE IF EXISTS $0", kTableName));
+
+  SyncPoint::GetInstance()->LoadDependency({
+    {
+      "PgDdlSavepointMiniClusterTest::TestRollbackToSavepointSlowTableDeletion:WaitForDeleteTable",
+      "CatalogManager::CheckTableDeleted:BeforeRemoveDdlTransactionState"
+    }
+  });
+  SyncPoint::GetInstance()->ClearTrace();
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (a INT, b INT)", kTableName2));
+  ASSERT_OK(conn.Execute("SAVEPOINT a"));
+  ASSERT_OK(conn.Execute("SAVEPOINT b"));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (a INT, b INT)", kTableName));
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX idx ON $0 (a)", kTableName));
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT b"));
+  // The deletion of the table due to the above rollback to savepoint b will be delayed until the
+  // below sync point is hit. So it simulates the case when another rollback to savepoint arrives
+  // while the table deletion has started but not completed.
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT a"));
+  TEST_SYNC_POINT(
+      "PgDdlSavepointMiniClusterTest::TestRollbackToSavepointSlowTableDeletion:WaitForDeleteTable");
+  ASSERT_OK(conn.Execute("ROLLBACK"));
 }
 
 } // namespace yb::pgwrapper

@@ -42,8 +42,11 @@ export const EAR_FIELD = 'instanceConfig.enableEncryptionAtRest';
 export const KMS_CONFIG_FIELD = 'instanceConfig.kmsConfig';
 export const CPU_ARCHITECTURE_FIELD = 'instanceConfig.arch';
 export const LINUX_VERSION_FIELD = 'instanceConfig.imageBundleUUID';
-export const ENABLE_EBS_CONFIG_FIELD = 'instanceConfig.deviceInfo.cloudVolumeEncryption.enableVolumeEncryption';
+export const ENABLE_EBS_CONFIG_FIELD =
+  'instanceConfig.deviceInfo.cloudVolumeEncryption.enableVolumeEncryption';
 export const EBS_KMS_CONFIG_FIELD = 'instanceConfig.deviceInfo.cloudVolumeEncryption.kmsConfigUUID';
+export const K8S_ENCRYPTION_TYPE_FIELD = 'instanceConfig.k8sEncryptionType';
+export const ENABLE_TLS_FIELD = 'instanceConfig.enableTLS';
 
 //Advanced config
 export const SYSTEMD_FIELD = 'advancedConfig.useSystemd';

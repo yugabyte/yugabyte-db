@@ -24,6 +24,7 @@ properties:
     type: string
     enum:
       - IO1
+      - IO2
       - GP2
       - GP3
       - Scratch

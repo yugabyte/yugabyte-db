@@ -982,7 +982,14 @@ Status XClusterManager::InsertPackedSchemaForXClusterTarget(
   }
 
   return XClusterTargetManager::InsertPackedSchemaForXClusterTarget(
-      table_id, req->packed_schema(), req->current_schema_version(), epoch);
+      table_id, req->packed_schema(), req->current_consumer_schema_version(), epoch);
+}
+
+Status XClusterManager::HandleNewSchemaForAutomaticXClusterTarget(
+    const HandleNewSchemaForAutomaticXClusterTargetRequestPB* req,
+    HandleNewSchemaForAutomaticXClusterTargetResponsePB* resp, rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch) {
+  return XClusterTargetManager::HandleNewSchemaForAutomaticXClusterTarget(req, resp, epoch);
 }
 
 Status XClusterManager::InsertHistoricalColocatedSchemaPacking(

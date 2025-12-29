@@ -33,6 +33,7 @@ public class RuntimeConfigChangeNotifier {
 
   @Inject
   public RuntimeConfigChangeNotifier(
+      AccessLogExcludeListener accessLogExcludeListener,
       MetricCollectionLevelListener metricCollectionLevelListener,
       MonitoredMountRootsListener monitoredMountRootsListener,
       UseNewRbacAuthzListener useNewRbacAuthzListener,
@@ -43,6 +44,7 @@ public class RuntimeConfigChangeNotifier {
     for (String wsClientKey : refreshableClients) {
       addListener(new WSClientKeyListener(wsClientKey));
     }
+    addListener(accessLogExcludeListener);
     addListener(metricCollectionLevelListener);
     addListener(monitoredMountRootsListener);
     addListener(useNewRbacAuthzListener);

@@ -52,13 +52,7 @@ var addRoleBindingCmd = &cobra.Command{
 
 		rUsersResponse, response, err := userListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"RBAC: Role Binding",
-				"Add - List Users",
-			)
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "RBAC: Role Binding", "Add - List Users")
 		}
 
 		rUsers := make([]ybaclient.UserWithFeatures, 0)
@@ -114,8 +108,7 @@ var addRoleBindingCmd = &cobra.Command{
 
 		rAdd, response, err := authAPI.SetRoleBinding(userUUID).RoleBindingFormData(req).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "RBAC: Role Binding", "Add")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "RBAC: Role Binding", "Add")
 		}
 		roleBindingsCtx := formatter.Context{
 			Command: "list",

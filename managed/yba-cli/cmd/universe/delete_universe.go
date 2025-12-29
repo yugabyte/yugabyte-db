@@ -56,9 +56,7 @@ var deleteUniverseCmd = &cobra.Command{
 
 		r, response, err := universeListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err,
-				"Universe", "Delete - List Universes")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Universe", "Delete - List Universes")
 		}
 
 		if len(r) < 1 {
@@ -95,9 +93,10 @@ var deleteUniverseCmd = &cobra.Command{
 
 		rTask, response, err := deleteUniverseRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Universe", "Delete")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Universe", "Delete")
 		}
+
+		util.CheckTaskAfterCreation(rTask)
 
 		msg := fmt.Sprintf("The universe %s (%s) is being deleted",
 			formatter.Colorize(universeName, formatter.GreenColor), universeUUID)
@@ -121,7 +120,7 @@ var deleteUniverseCmd = &cobra.Command{
 			Output:  os.Stdout,
 			Format:  ybatask.NewTaskFormat(viper.GetString("output")),
 		}
-		ybatask.Write(taskCtx, []ybaclient.YBPTask{rTask})
+		ybatask.Write(taskCtx, []ybaclient.YBPTask{*rTask})
 	},
 }
 

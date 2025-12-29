@@ -1126,8 +1126,21 @@ public class AZUtil implements CloudUtil {
       }
 
       if (mostRecentBackup == null) {
-        log.warn("Could not find YB Anywhere backup in Azure container {}", container);
-        return null;
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Could not find YB Anywhere backup in Azure container");
+      }
+
+      // Validate backup file is less than 1 day old
+      if (!runtimeConfGetter.getGlobalConf(GlobalConfKeys.allowYbaRestoreWithOldBackup)) {
+        if (mostRecentBackup
+            .getProperties()
+            .getLastModified()
+            .isBefore(OffsetDateTime.now().minusDays(1))) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "YB Anywhere restore is not allowed when backup file is more than 1 day old, enable"
+                  + " runtime flag yb.yba_backup.allow_restore_with_old_backup to continue");
+        }
       }
 
       log.info("Downloading backup {}/{}", container, mostRecentBackup.getName());
@@ -1141,11 +1154,13 @@ public class AZUtil implements CloudUtil {
       return localFile;
 
     } catch (BlobStorageException e) {
-      log.error("Azure error downloading YB Anywhere backup: {}", e.getMessage(), e);
-    } catch (Exception e) {
-      log.error("Unexpected exception downloading YB Anywhere backup: {}", e.getMessage(), e);
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Azure error downloading YB Anywhere backup: " + e.getMessage());
+    } catch (IOException e) {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR,
+          "IO error occurred while downloading YB Anywhere backup: " + e.getMessage());
     }
-    return null;
   }
 
   @Override

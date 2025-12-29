@@ -7,6 +7,8 @@ menu:
   stable_api:
     identifier: ddl_refresh_matview
     parent: statements
+aliases:
+  - /stable/api/ysql/commands/ddl_refresh_matview/
 type: docs
 ---
 

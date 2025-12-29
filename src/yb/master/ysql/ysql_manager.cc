@@ -260,7 +260,7 @@ Status YsqlManager::CreateYbAdvisoryLocksTableIfNeeded(const LeaderEpoch& epoch)
 }
 
 Status YsqlManager::ValidateWriteToCatalogTableAllowed(
-    const TableId& table_id, bool is_forced_update) const {
+    TableIdView table_id, bool is_forced_update) const {
   SCHECK(
       ysql_initdb_and_major_upgrade_helper_->IsWriteToCatalogTableAllowed(
           table_id, is_forced_update),
@@ -326,6 +326,12 @@ Result<std::string> YsqlManager::GetPgSchemaName(
         MasterError(MasterErrorPB::DOCDB_TABLE_NOT_COMMITTED));
   }
   return sys_catalog_.ReadPgNamespaceNspname(oids.database_oid, relnamespace_oid, read_time);
+}
+
+Result<bool> YsqlManager::GetPgIndexStatus(
+    PgOid database_oid, PgOid index_oid, const std::string& status_col_name,
+    const ReadHybridTime& read_time) const {
+  return sys_catalog_.ReadPgIndexBoolColumn(database_oid, index_oid, status_col_name, read_time);
 }
 
 void YsqlManager::RunBgTasks(const LeaderEpoch& epoch) {

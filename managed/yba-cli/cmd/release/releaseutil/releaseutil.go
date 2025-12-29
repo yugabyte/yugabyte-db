@@ -43,7 +43,7 @@ func VersionValidation(cmd *cobra.Command, operation string) string {
 	if err != nil {
 		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 	}
-	if len(strings.TrimSpace(version)) == 0 {
+	if util.IsEmptyString(version) {
 		cmd.Help()
 		logrus.Fatalln(
 			formatter.Colorize(
@@ -63,7 +63,7 @@ func AddArchValidation(cmd *cobra.Command) {
 	if err != nil {
 		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 	}
-	if strings.TrimSpace(fileID) == "" && strings.TrimSpace(url) == "" {
+	if util.IsEmptyString(fileID) && util.IsEmptyString(url) {
 		cmd.Help()
 		logrus.Fatalln(
 			formatter.Colorize(
@@ -80,7 +80,7 @@ func AddArchValidation(cmd *cobra.Command) {
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(architecture)) == 0 {
+		if util.IsEmptyString(architecture) {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize(
@@ -101,7 +101,7 @@ func EditArchValidation(cmd *cobra.Command) {
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(architecture)) == 0 {
+		if util.IsEmptyString(architecture) {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize(

@@ -7,6 +7,8 @@ menu:
   stable_api:
     parent: api-cassandra
     weight: 1320
+aliases:
+  - /stable/api/ycql/explain/
 type: docs
 ---
 

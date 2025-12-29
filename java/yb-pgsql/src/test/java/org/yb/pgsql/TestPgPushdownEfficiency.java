@@ -22,8 +22,6 @@ public class TestPgPushdownEfficiency extends BasePgSQLTestWithRpcMetric {
     // table locks.
     flagMap.put("ysql_yb_ddl_transaction_block_enabled", "true");
     flagMap.put("enable_object_locking_for_table_locks", "false");
-    flagMap.put("allowed_preview_flags_csv",
-        "ysql_yb_ddl_transaction_block_enabled,enable_object_locking_for_table_locks");
     return flagMap;
   }
 

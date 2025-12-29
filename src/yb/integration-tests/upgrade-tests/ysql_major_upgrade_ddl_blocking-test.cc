@@ -72,27 +72,29 @@ class YsqlMajorUpgradeDdlBlockingTest : public YsqlMajorUpgradeTestBase {
   }
 
   Status RunTempTableDdls(std::optional<size_t> node_index) {
-    // Run twice to force drop of the temporary table.
-    for (int i = 0; i < 2; i++) {
-      auto conn = VERIFY_RESULT(CreateConnToTs(node_index));
-      // Needed to prevent read restart errors.
-      SleepFor(550ms);
+    const auto check_temp_tbl_stmts = {
+        "CREATE TEMP TABLE tmp_tbl (a int PRIMARY KEY)", "INSERT INTO tmp_tbl VALUES (1)",
+        "ALTER TABLE tmp_tbl ADD COLUMN b TEXT", "CREATE INDEX temp_idx ON tmp_tbl (b)",
+        "DROP INDEX temp_idx", "DROP TABLE tmp_tbl"};
 
-      RETURN_NOT_OK(conn.Execute("CREATE TEMP TABLE tmp_tbl (a int PRIMARY KEY)"));
+    // No DDLs allowed during the catalog upgrade and monitoring phases.
+    const bool expect_error = upgrade_state_ == UpgradeState::kDuringUpgrade;
 
-      RETURN_NOT_OK(conn.Execute("INSERT INTO tmp_tbl VALUES (1)"));
-      auto count = VERIFY_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM tmp_tbl"));
-      SCHECK_EQ(count, 1, IllegalState, "Unexpected count");
+    auto conn = VERIFY_RESULT(CreateConnToTs(node_index));
+    // Needed to prevent read restart errors.
+    SleepFor(550ms);
 
-      RETURN_NOT_OK(conn.Execute("ALTER TABLE tmp_tbl ADD COLUMN b TEXT"));
-      RETURN_NOT_OK(conn.Execute("CREATE INDEX temp_idx ON tmp_tbl (b)"));
-      RETURN_NOT_OK(conn.Execute("DROP INDEX temp_idx"));
-
-      if (i % 2) {
-        RETURN_NOT_OK(conn.Execute("DROP TABLE tmp_tbl"));
+    for (const auto& stmt : check_temp_tbl_stmts) {
+      auto status = conn.Execute(stmt);
+      if (!status.ok()) {
+        LOG(INFO) << "Statement: " << stmt << ", Status: " << status;
+        if (!expect_error ||
+            status.message().ToString().find(kExpectedDdlError) == std::string::npos) {
+          return status;
+        }
+        break;
       }
     }
-
     return Status::OK();
   }
 

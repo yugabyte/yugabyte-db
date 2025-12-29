@@ -30,6 +30,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.CheckClusterConsistency;
 import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.common.alerts.MaintenanceService;
 import com.yugabyte.yw.common.alerts.SmtpData;
+import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -98,7 +99,6 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.experimental.Accessors;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import play.Environment;
@@ -284,15 +284,13 @@ public class HealthChecker {
   private void processMetrics(Customer c, Universe u, Details report) {
 
     boolean hasErrors = false;
-    // This is hacky, but health check data items only make sense if you know order.
-    boolean isMaster = true;
-    boolean isInstanceUp = false;
     try {
       List<Metric> metrics = new ArrayList<>();
       Map<PlatformMetrics, Integer> platformMetrics = new HashMap<>();
       Set<String> nodesWithError = new HashSet<>();
       boolean shouldCollectNodeMetrics = false;
       for (NodeData nodeData : report.getData()) {
+        boolean isMaster = false;
         String node = nodeData.getNode();
         String checkName = nodeData.getMessage();
         boolean checkResult = nodeData.getHasError();
@@ -309,11 +307,6 @@ public class HealthChecker {
         List<Details.Metric> nodeMetrics = nodeData.getMetrics();
         List<Metric> nodeCustomMetrics =
             new ArrayList<>(getNodeMetrics(c, u, nodeData, nodeMetrics));
-        if (checkName.equals(UPTIME_CHECK)) {
-          // No boot time metric means the instance or the whole node is down
-          // and this node shouldn't be counted in other error node count metrics.
-          isInstanceUp = CollectionUtils.isNotEmpty(nodeCustomMetrics);
-        }
         if (checkName.equals(NODE_EXPORTER_CHECK)) {
           shouldCollectNodeMetrics =
               nodeCustomMetrics.stream()
@@ -326,14 +319,7 @@ public class HealthChecker {
         // Get per-check error nodes count metric name.
         PlatformMetrics countMetric = getCountMetricByCheckName(checkName, isMaster);
 
-        // Only increase error nodes metric value in case it's instance up check
-        // or instance is actually up. Otherwise - most probably node is just down
-        // and ssh connection to the node failed during check.
-        boolean increaseNodeCount =
-            isInstanceUp
-                || PlatformMetrics.HEALTH_CHECK_MASTER_DOWN == countMetric
-                || PlatformMetrics.HEALTH_CHECK_TSERVER_DOWN == countMetric;
-        if (countMetric != null && increaseNodeCount) {
+        if (countMetric != null) {
           // checkResult == true -> error -> 1
           int toAppend = checkResult ? 1 : 0;
           platformMetrics.compute(countMetric, (k, v) -> v != null ? v + toAppend : toAppend);
@@ -849,21 +835,16 @@ public class HealthChecker {
                           GFlagsUtil.getCustomTmpDirectory(nodeDetails, params.universe))
                       : nodeInfo.getYbHomeDir());
         }
-        nodeInfo.setOtelCollectorEnabled(params.universe.getUniverseDetails().otelCollectorEnabled);
-        // Check if audit log export was ever enabled and disabled.
-        AuditLogConfig auditLogConfig = cluster.userIntent.auditLogConfig;
-        if (auditLogConfig != null) {
-          nodeInfo.setOtelCollectorEnabled(auditLogConfig.isExportActive());
-        }
-        // Check if query log export was ever enabled and disabled.
-        QueryLogConfig queryLogConfig = cluster.userIntent.queryLogConfig;
-        if (queryLogConfig != null && !nodeInfo.isOtelCollectorEnabled()) {
-          nodeInfo.setOtelCollectorEnabled(queryLogConfig.isExportActive());
-        }
-        // Check if metrics export was ever enabled and disabled.
-        MetricsExportConfig metricsExportConfig = cluster.userIntent.metricsExportConfig;
-        if (metricsExportConfig != null && !nodeInfo.isOtelCollectorEnabled()) {
-          nodeInfo.setOtelCollectorEnabled(metricsExportConfig.isExportActive());
+        // Check if any export is currently enabled in the universe.
+        if (params.universe.getUniverseDetails().otelCollectorEnabled) {
+          AuditLogConfig auditLogConfig = cluster.userIntent.auditLogConfig;
+          QueryLogConfig queryLogConfig = cluster.userIntent.queryLogConfig;
+          MetricsExportConfig metricsExportConfig = cluster.userIntent.metricsExportConfig;
+          if (OtelCollectorUtil.isAuditLogExportEnabledInUniverse(auditLogConfig)
+              || OtelCollectorUtil.isQueryLogExportEnabledInUniverse(queryLogConfig)
+              || OtelCollectorUtil.isMetricsExportEnabledInUniverse(metricsExportConfig)) {
+            nodeInfo.setOtelCollectorEnabled(true);
+          }
         }
         nodeInfo.setClockboundEnabled(
             params.universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseClockbound());
@@ -1342,7 +1323,7 @@ public class HealthChecker {
     private boolean enableYbc = false;
     private int ybcPort = 18018;
     private UUID universeUuid;
-    private boolean otelCollectorEnabled;
+    private boolean otelCollectorEnabled = false;
     private boolean clockSyncServiceRequired = true;
     private boolean clockboundEnabled = false;
 

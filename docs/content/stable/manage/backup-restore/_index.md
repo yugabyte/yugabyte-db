@@ -4,6 +4,9 @@ headerTitle: Backup and restore
 linkTitle: Backup and restore
 description: Back up and restore YugabyteDB
 headcontent: Create backups and restore your data
+aliases:
+  - /manage/backup-restore/
+  - /stable/backup-restore/
 menu:
   stable:
     identifier: backup-restore
@@ -15,7 +18,7 @@ type: indexpage
 {{< page-finder/head text="Back Up and Restore" subtle="across different products">}}
   {{< page-finder/list icon="/icons/database-hover.svg" text="YugabyteDB" current="" >}}
   {{< page-finder/list icon="/icons/server-hover.svg" text="YugabyteDB Anywhere" url="../../yugabyte-platform/back-up-restore-universes/" >}}
-  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/preview/yugabyte-cloud/cloud-clusters/backup-clusters/" >}}
+  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/stable/yugabyte-cloud/cloud-clusters/backup-clusters/" >}}
 {{< /page-finder/head >}}
 
 Backup and restoration is the process of creating and storing copies of your data for protection against data loss. With a proper backup strategy, you can always restore your data to a most-recent known working state and minimize application downtime. This in turn guarantees business and application continuity.

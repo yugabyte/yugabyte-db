@@ -42,30 +42,45 @@ class YBSchemaBuilder;
 class TableIterator;
 class TableRange;
 
-#define TABLE_HANDLE_TYPE_DECLARATIONS_IMPL(name, lname, type) \
+#define TABLE_HANDLE_TYPE_DECLARATIONS_IMPL(name, lname, type, pb_set, lw_set) \
   void PP_CAT3(Add, name, ColumnValue)( \
-      QLWriteRequestPB * req, const std::string& column_name, type value) const; \
-\
+      QLWriteRequestPB * req, std::string_view column_name, type value) const; \
+  void PP_CAT3(Add, name, ColumnValue)( \
+      LWQLWriteRequestPB * req, std::string_view column_name, type value) const; \
+  \
   void PP_CAT3(Set, name, Condition)( \
-      QLConditionPB* const condition, const std::string& column_name, const QLOperator op, \
+      QLConditionPB* const condition, std::string_view column_name, const QLOperator op, \
       type value) const; \
   void PP_CAT3(Add, name, Condition)( \
-      QLConditionPB* const condition, const std::string& column_name, const QLOperator op, \
-      type value) const;
+      QLConditionPB* const condition, std::string_view column_name, const QLOperator op, \
+      type value) const; \
+  void PP_CAT3(Set, name, Condition)( \
+      LWQLConditionPB* const condition, std::string_view column_name, const QLOperator op, \
+      type value) const; \
+  void PP_CAT3(Add, name, Condition)( \
+      LWQLConditionPB* const condition, std::string_view column_name, const QLOperator op, \
+      type value) const; \
+  /**/
 
 #define TABLE_HANDLE_TYPE_DECLARATIONS(i, data, entry) TABLE_HANDLE_TYPE_DECLARATIONS_IMPL entry
 
 void UpdateMapUpsertKeyValue(
-    QLWriteRequestPB* req, const int32_t column_id, const std::string& entry_key,
-    const std::string& entry_value);
+    QLWriteRequestPB* req, int32_t column_id, std::string_view entry_key,
+    std::string_view entry_value);
+void UpdateMapUpsertKeyValue(
+    LWQLWriteRequestPB* req, int32_t column_id, std::string_view entry_key,
+    std::string_view entry_value);
 
 void UpdateMapRemoveKey(
-    QLWriteRequestPB* req, const int32_t column_id, const std::string& entry_key);
+    QLWriteRequestPB* req, int32_t column_id, std::string_view entry_key);
 
-QLMapValuePB* AddMapColumn(QLWriteRequestPB* req, const int32_t& column_id);
+QLMapValuePB* AddMapColumn(QLWriteRequestPB* req, int32_t column_id);
+LWQLMapValuePB* AddMapColumn(LWQLWriteRequestPB* req, int32_t column_id);
 
 void AddMapEntryToColumn(
-    QLMapValuePB* map_value_pb, const std::string& entry_key, const std::string& entry_value);
+    QLMapValuePB* map_value_pb, std::string_view entry_key, std::string_view entry_value);
+void AddMapEntryToColumn(
+    LWQLMapValuePB* map_value_pb, std::string_view entry_key, std::string_view entry_value);
 
 // Utility class for manually filling QL operations.
 class TableHandle {
@@ -86,28 +101,35 @@ class TableHandle {
 
   Status Reopen();
 
-  std::shared_ptr<YBqlWriteOp> NewWriteOp(QLWriteRequestPB::QLStmtType type) const;
-
-  std::shared_ptr<YBqlWriteOp> NewInsertOp() const {
-    return NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+  std::shared_ptr<YBqlWriteOp> NewWriteOp(QLWriteRequestPB::QLStmtType type) const {
+    return NewWriteOp(nullptr, type);
   }
 
-  std::shared_ptr<YBqlWriteOp> NewUpdateOp() const {
-    return NewWriteOp(QLWriteRequestPB::QL_STMT_UPDATE);
+  // Arena is not yet used, will be used in followup diffs after migration to lightweight protobufs.
+  // Also default value nullptr will be removed.
+  std::shared_ptr<YBqlWriteOp> NewWriteOp(
+      const ThreadSafeArenaPtr& arena, QLWriteRequestPB::QLStmtType type) const;
+
+  std::shared_ptr<YBqlWriteOp> NewInsertOp(const ThreadSafeArenaPtr& arena = nullptr) const {
+    return NewWriteOp(arena, QLWriteRequestPB::QL_STMT_INSERT);
   }
 
-  std::shared_ptr<YBqlWriteOp> NewDeleteOp() const {
-    return NewWriteOp(QLWriteRequestPB::QL_STMT_DELETE);
+  std::shared_ptr<YBqlWriteOp> NewUpdateOp(const ThreadSafeArenaPtr& arena = nullptr) const {
+    return NewWriteOp(arena, QLWriteRequestPB::QL_STMT_UPDATE);
   }
 
-  std::shared_ptr<YBqlReadOp> NewReadOp() const;
+  std::shared_ptr<YBqlWriteOp> NewDeleteOp(const ThreadSafeArenaPtr& arena = nullptr) const {
+    return NewWriteOp(arena, QLWriteRequestPB::QL_STMT_DELETE);
+  }
 
-  int32_t ColumnId(const std::string& column_name) const {
+  std::shared_ptr<YBqlReadOp> NewReadOp(const ThreadSafeArenaPtr& arena = nullptr) const;
+
+  int32_t ColumnId(std::string_view column_name) const {
     auto it = column_ids_.find(column_name);
     return it != column_ids_.end() ? it->second : -1;
   }
 
-  const std::shared_ptr<QLType>& ColumnType(const std::string& column_name) const {
+  const std::shared_ptr<QLType>& ColumnType(std::string_view column_name) const {
     static std::shared_ptr<QLType> not_found;
     auto it = column_types_.find(yb::ColumnId(ColumnId(column_name)));
     return it != column_types_.end() ? it->second : not_found;
@@ -116,11 +138,13 @@ class TableHandle {
   BOOST_PP_SEQ_FOR_EACH(TABLE_HANDLE_TYPE_DECLARATIONS, ~, QL_PROTOCOL_TYPES);
 
   // Set a column id without value - for DELETE
-  void SetColumn(QLColumnValuePB* column_value, const std::string& column_name) const;
+  void SetColumn(QLColumnValuePB* column_value, std::string_view column_name) const;
+  void SetColumn(LWQLColumnValuePB* column_value, std::string_view column_name) const;
 
   // Add a simple comparison operation under a logical comparison condition.
   // E.g. Add <EXISTS> under "... AND <EXISTS>".
   void AddCondition(QLConditionPB* const condition, const QLOperator op) const;
+  void AddCondition(LWQLConditionPB* const condition, const QLOperator op) const;
 
   void AddColumns(const std::vector<std::string>& columns, QLReadRequestPB* req) const;
 
@@ -138,12 +162,15 @@ class TableHandle {
 
   std::vector<std::string> AllColumnNames() const;
 
-  QLValuePB* PrepareColumn(QLWriteRequestPB* req, const std::string& column_name) const;
+  QLValuePB* PrepareColumn(QLWriteRequestPB* req, std::string_view column_name) const;
+  LWQLValuePB* PrepareColumn(LWQLWriteRequestPB* req, std::string_view column_name) const;
   QLValuePB* PrepareCondition(
-      QLConditionPB* const condition, const std::string& column_name, const QLOperator op) const;
+      QLConditionPB* const condition, std::string_view column_name, const QLOperator op) const;
+  LWQLValuePB* PrepareCondition(
+      LWQLConditionPB* const condition, std::string_view column_name, const QLOperator op) const;
 
  private:
-  using ColumnIdsMap = std::unordered_map<std::string, yb::ColumnId>;
+  using ColumnIdsMap = UnorderedStringMap<std::string, yb::ColumnId>;
   using ColumnTypesMap = std::unordered_map<yb::ColumnId, const std::shared_ptr<QLType>>;
 
   YBClient* client_;

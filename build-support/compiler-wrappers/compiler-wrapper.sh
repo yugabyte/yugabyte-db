@@ -313,7 +313,6 @@ compiling_pch=false
 yb_pch=false
 
 num_output_files_found=0
-has_yb_c_files=false
 
 compiler_args_no_output=()
 
@@ -346,11 +345,6 @@ while [[ $# -gt 0 ]]; do
       # even if they have plausible extensions.
       if [[ ! $1 =~ ^[-] ]]; then
         input_files+=( "$1" )
-        if [[ $1 =~ ^(.*/)?[a-zA-Z0-9_]*(yb|YB)[a-zA-Z0-9_]*[.]c$ ]]; then
-          # We will use this later to add custom compilation flags to PostgreSQL source files that
-          # we contributed, e.g. for stricter error checking.
-          has_yb_c_files=true
-        fi
       fi
     ;;
     c++-header)
@@ -741,11 +735,6 @@ if [[ ${#compiler_args[@]} -gt 0 ]]; then
   cmd+=( "${compiler_args[@]}" )
 fi
 
-if [[ $has_yb_c_files == "true" && $PWD == $BUILD_ROOT/postgres_build/* ]]; then
-  # Custom build flags for YB files inside of the PostgreSQL source tree. This re-enables some flags
-  # that we had to disable by default in build_postgres.py.
-  cmd+=( "-Werror=unused-function" )
-fi
 add_brew_bin_to_path
 
 if [[ $PWD == $BUILD_ROOT/postgres_build ||

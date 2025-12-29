@@ -1,8 +1,9 @@
 required: true
 content:
-  multipart/form-data:
+  application/json:
     schema:
       $ref: "../schemas/AttachUniverseSpec.yaml"
-x-yba-api-visibility: internal
+x-yba-api-since: 2025.2.0.0
+x-yba-api-visibility: preview
 x-yba-file-setter: DownloadedSpecFile
 x-yba-file-name: downloaded_spec_file

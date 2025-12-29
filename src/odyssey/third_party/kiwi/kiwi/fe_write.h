@@ -14,6 +14,13 @@ struct kiwi_fe_arg {
 	int len;
 };
 
+KIWI_API static inline void yb_kiwi_set_fe_arg(kiwi_fe_arg_t *arg, char *name,
+					       int len)
+{
+	arg->name = name;
+	arg->len = len;
+}
+
 KIWI_API static inline machine_msg_t *
 kiwi_fe_write_startup_message(machine_msg_t *msg, int argc, kiwi_fe_arg_t *argv)
 {

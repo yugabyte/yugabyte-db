@@ -34,16 +34,11 @@ public class TestDdlSavepoints extends BasePgRegressTest {
     builder.enablePgTransactions(true);
     builder.addCommonTServerFlag("ysql_log_statement", "all");
     builder.addCommonTServerFlag("ysql_yb_ddl_transaction_block_enabled", "true");
-    builder.addCommonTServerFlag("allowed_preview_flags_csv",
-        "enable_object_locking_for_table_locks,ysql_yb_ddl_transaction_block_enabled");
     builder.addCommonTServerFlag("enable_object_locking_for_table_locks", "true");
     builder.addCommonTServerFlag("TEST_ysql_yb_enable_ddl_savepoint_support", "true");
     builder.addMasterFlag("ysql_yb_ddl_transaction_block_enabled", "true");
-    builder.addMasterFlag("enable_object_locking_for_table_locks", "true");
     builder.addMasterFlag("TEST_ysql_yb_enable_ddl_savepoint_support", "true");
     builder.addMasterFlag("vmodule", "catalog_manager=3,ysql_ddl_handler=4");
-    builder.addMasterFlag("allowed_preview_flags_csv",
-        "enable_object_locking_for_table_locks,ysql_yb_ddl_transaction_block_enabled");
   }
 
   @Test

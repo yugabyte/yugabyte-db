@@ -41,7 +41,7 @@ var editYCQLUniverseCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(ycql)) > 0 {
+		if !util.IsEmptyString(ycql) {
 			ycql = strings.ToUpper(ycql)
 			if strings.Compare(ycql, util.EnableOpType) != 0 &&
 				strings.Compare(ycql, util.DisableOpType) != 0 {
@@ -54,7 +54,7 @@ var editYCQLUniverseCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(ycqlAuth)) > 0 {
+		if !util.IsEmptyString(ycqlAuth) {
 			ycqlAuth = strings.ToUpper(ycqlAuth)
 			if strings.Compare(ycqlAuth, util.EnableOpType) != 0 &&
 				strings.Compare(ycqlAuth, util.DisableOpType) != 0 {
@@ -67,7 +67,7 @@ var editYCQLUniverseCmd = &cobra.Command{
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
-			if len(strings.TrimSpace(ycqlPassword)) == 0 {
+			if util.IsEmptyString(ycqlPassword) {
 				logrus.Fatalf(
 					formatter.Colorize(
 						"YCQL password not found while enabling auth\n",
@@ -125,7 +125,7 @@ var editYCQLUniverseCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(ycql)) > 0 {
+		if !util.IsEmptyString(ycql) {
 			ycql = strings.ToUpper(ycql)
 			enableYCQL := false
 			if strings.Compare(ycql, util.EnableOpType) == 0 {
@@ -145,7 +145,7 @@ var editYCQLUniverseCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(ycqlAuth)) > 0 {
+		if !util.IsEmptyString(ycqlAuth) {
 			ycqlAuth = strings.ToUpper(ycqlAuth)
 			enableYCQLAuth := false
 			if strings.Compare(ycqlAuth, util.EnableOpType) == 0 {
@@ -154,7 +154,7 @@ var editYCQLUniverseCmd = &cobra.Command{
 				if err != nil {
 					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 				}
-				if len(strings.TrimSpace(ycqlPassword)) != 0 {
+				if !util.IsEmptyString(ycqlPassword) {
 					req.SetYcqlPassword(ycqlPassword)
 				}
 			}
@@ -193,8 +193,7 @@ var editYCQLUniverseCmd = &cobra.Command{
 		rEdit, response, err := authAPI.ConfigureYCQL(universeUUID).
 			ConfigureYcqlFormData(req).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Universe", "Edit YCQL")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Universe", "Edit YCQL")
 		}
 
 		logrus.Info(

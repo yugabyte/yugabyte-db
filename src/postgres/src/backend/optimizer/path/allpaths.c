@@ -70,7 +70,6 @@
 #include "access/yb_scan.h"
 #include "catalog/pg_database.h"
 #include "executor/ybExpr.h"
-#include "executor/yb_fdw.h"
 #include "miscadmin.h"
 #include "nodes/pg_list.h"
 #include "pg_yb_utils.h"
@@ -242,12 +241,7 @@ make_one_rel(PlannerInfo *root, List *joinlist)
 				{
 					ListCell   *lc;
 
-					/*
-					 * Set the YugaByte FDW routine because we will use the foreign
-					 * scan API below.
-					 */
 					relation->is_yb_relation = true;
-					relation->fdwroutine = (FdwRoutine *) yb_fdw_handler();
 					foreach(lc, relation->baserestrictinfo)
 					{
 						RestrictInfo *ri = lfirst_node(RestrictInfo, lc);
@@ -1043,7 +1037,11 @@ set_foreign_size(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 	set_foreign_size_estimates(root, rel);
 
 	/* Let FDW adjust the size estimates, if it can */
-	rel->fdwroutine->GetForeignRelSize(root, rel, rte->relid);
+	/* YB: for YB relations, use legacy code instead */
+	if (rel->is_yb_relation)
+		ybcGetForeignRelSize(root, rel, rte->relid);
+	else
+		rel->fdwroutine->GetForeignRelSize(root, rel, rte->relid);
 
 	/* ... but do not let it set the rows estimate to zero */
 	rel->rows = clamp_row_est(rel->rows);
@@ -1436,10 +1434,7 @@ add_paths_to_append_rel(PlannerInfo *root, RelOptInfo *rel,
 	double		partial_rows = -1;
 
 	/* If appropriate, consider parallel append */
-	if (IsYugaByteEnabled() && !yb_enable_parallel_append)
-		pa_subpaths_valid = false;
-	else
-		pa_subpaths_valid = enable_parallel_append && rel->consider_parallel;
+	pa_subpaths_valid = enable_parallel_append && rel->consider_parallel;
 
 	/*
 	 * For every non-dummy child, remember the cheapest path.  Also, identify
@@ -4575,12 +4570,15 @@ yb_compute_parallel_worker(RelOptInfo *rel,
 	else
 	{
 		/*
-		 * Due to a number of known issues with various distribution types
-		 * for the time being we focus on the colocated case only.
-		 * Later on we will enable other distribution types, with GUC controls.
+		 * Parallel query may be enabled or disabled for specific distribution types
 		 */
-		if (yb_dist == YB_COLOCATED)
+		if ((yb_dist == YB_COLOCATED && yb_enable_parallel_scan_colocated) ||
+			(yb_dist == YB_HASH_SHARDED && yb_enable_parallel_scan_hash_sharded) ||
+			(yb_dist == YB_RANGE_SHARDED && yb_enable_parallel_scan_range_sharded) ||
+			(yb_dist == YB_SYSTEM && yb_enable_parallel_scan_system))
+		{
 			parallel_workers = ybParallelWorkers(rel->tuples);
+		}
 	}
 
 	/* In no case use more than caller supplied maximum number of workers */

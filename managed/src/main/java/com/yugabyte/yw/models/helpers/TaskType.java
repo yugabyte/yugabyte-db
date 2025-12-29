@@ -1265,7 +1265,12 @@ public enum TaskType {
   EnablePitrConfig(com.yugabyte.yw.commissioner.tasks.subtasks.EnablePitrConfig.class),
 
   UpdateAndPersistKubernetesImmutableYbc(
-      com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistKubernetesImmutableYbc.class);
+      com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistKubernetesImmutableYbc.class),
+
+  TablespaceValidationOnRemove(
+      com.yugabyte.yw.commissioner.tasks.subtasks.TablespaceValidationOnRemove.class),
+
+  OperatorImportResource(com.yugabyte.yw.commissioner.tasks.subtasks.OperatorImportResource.class);
 
   private final Class<? extends ITask> taskClass;
 

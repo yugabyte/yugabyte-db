@@ -276,7 +276,7 @@ YsqlInitDBAndMajorUpgradeHandler::GetYsqlMajorCatalogUpgradeState() const {
 }
 
 bool YsqlInitDBAndMajorUpgradeHandler::IsWriteToCatalogTableAllowed(
-    const TableId& table_id, bool is_forced_update) const {
+    TableIdView table_id, bool is_forced_update) const {
   // During the upgrade only allow special updates to the catalog.
   if (IsMajorUpgradeInProgress()) {
     // Allow updates to the catalog version table only during the pg_upgrade step.

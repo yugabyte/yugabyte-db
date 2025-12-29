@@ -571,7 +571,7 @@ YbLogUpdateMatrix(const YbUpdateAffectedEntities *affected_entities)
 	headers[0] = '-';
 	headers[1] = '\t';
 	prev_len = 2;				/* for '-\t' chars */
-	for (int j = 0; j < nentities; j++)
+	for (int j = 0; j < nfields; j++)
 	{
 		AttrNumber	attnum = affected_entities->col_info_list[j].attnum;
 
@@ -858,9 +858,10 @@ YbUpdateComputeIndexColumnReferences(const Relation rel,
 								  skip_entities);
 	}
 
+	List *index_list = RelationGetIndexList(rel);
 	ListCell   *lc = NULL;
 
-	foreach(lc, rel->rd_indexlist)
+	foreach(lc, index_list)
 	{
 		Oid			index_oid = lfirst_oid(lc);
 
@@ -900,6 +901,13 @@ YbUpdateComputeIndexColumnReferences(const Relation rel,
 		 */
 		Bitmapset  *extraattrs = NULL;
 
+		/*
+		 * The index predicate and expressions, if any, are expected to be loaded
+		 * already at this point. We don't invoke RelationGetIndexPredicate() /
+		 * RelationGetIndexExpressions() here as these functions return a copy
+		 * of the expression tree which is overkill for the read-only
+		 * examination here.
+		 */
 		if (indexDesc->rd_indpred)
 		{
 			YbComputeIndexExprOrPredicateAttrs(&extraattrs, indexDesc,

@@ -4,6 +4,8 @@ headerTitle: Non-transactional xCluster
 linkTitle: Non-transactional
 description: Deploy using non-transactional unidirectional (master-follower) or bidirectional (multi-master) replication between universes
 headContent: Deploy non-transactional uni- (master-follower) and bi- (multi-master) directional replication
+aliases:
+  - /stable/deploy/multi-dc/2dc-deployment
 menu:
   stable:
     parent: async-replication
@@ -593,31 +595,31 @@ Alters involving adding/removing columns or modifying data types require replica
     ```
 #### Adding a column with a non-volatile default value
 
-When adding a new column with a (non-volatile) default expression, make sure to perform the schema modification on the target with the _computed_ default value. 
+When adding a new column with a (non-volatile) default expression, make sure to perform the schema modification on the target with the _computed_ default value.
 
 For example, say you have a replicated table `test_table`.
 
-1. Pause replication on both sides. 
+1. Pause replication on both sides.
 1. Execute add column command on the source:
    ```sql
    ALTER TABLE test_table ADD COLUMN test_column TIMESTAMP DEFAULT NOW()
    ```
 1. Run the preceding `ALTER TABLE` command with the computed default value on the target as follows:
-   
+
     - The computed default value can be retrieved from the `attmissingval` column in the `pg_attribute` catalog table.
 
       Example:
-   
+
       ```sql
       SELECT attmissingval FROM pg_attribute WHERE attrelid='test'::regclass AND attname='test_column';
       ```
       ```output
-                attmissingval         
+                attmissingval
        -------------------------------
         {"2024-01-09 12:29:11.88894"}
        (1 row)
       ```
-   
+
     - Execute the `ADD COLUMN` command on the target with the computed default value.
       ```sql
          ALTER TABLE test ADD COLUMN test_column TIMESTAMP DEFAULT "2024-01-09 12:29:11.88894"

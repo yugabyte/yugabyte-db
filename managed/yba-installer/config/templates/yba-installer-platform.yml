@@ -258,6 +258,8 @@ services:
       StandardOutput=null
       StandardError=null
 
+      LimitNOFILE={{ yamlPath "platform.fd_limit" }}
+
       [Install]
       WantedBy=multi-user.target
 

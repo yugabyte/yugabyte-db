@@ -747,7 +747,8 @@ index_create(Relation heapRelation,
 			 const bool skip_index_backfill,
 			 bool is_colocated,
 			 Oid tablegroupId,
-			 Oid colocationId)
+			 Oid colocationId,
+			 bool yb_skip_index_creation)
 {
 	Oid			heapRelationId = RelationGetRelid(heapRelation);
 	Relation	pg_class;
@@ -1031,7 +1032,7 @@ index_create(Relation heapRelation,
 	 * Create index in YugaByte only if it is a secondary index. Primary key is
 	 * an implicit part of the base table in YugaByte and doesn't need to be created.
 	 */
-	if (IsYBRelation(indexRelation) && !isprimary)
+	if (IsYBRelation(indexRelation) && !isprimary && !yb_skip_index_creation)
 	{
 		YBCCreateIndex(indexRelationName,
 					   indexInfo,
@@ -1570,9 +1571,10 @@ index_concurrently_create_copy(Relation heapRelation, Oid oldIndexId,
 							  InvalidOid,	/* tablegroupId, TODO: fill this
 											 * appropriately when adding
 											 * support for reindex */
-							  InvalidOid);	/* colocationId, TODO: fill this
+							  InvalidOid,	/* colocationId, TODO: fill this
 											 * appropriately when adding
 											 * support for reindex */
+							  false /* yb_skip_index_creation */ );
 
 	/* Close the relations used and clean up */
 	index_close(indexRelation, NoLock);
@@ -3317,17 +3319,26 @@ index_build(Relation heapRelation,
 	if (IsYugaByteEnabled())
 		Assert(!indexInfo->ii_Concurrent);
 
-	/*
-	 * Update heap and index pg_class rows
-	 *
-	 * YB TODO(fizaa): Properly update reltuples for the indexed table
-	 * (see GH #16506). Currently, we don't compute this statistic during a
-	 * non-concurrent index build so we should not update it here.
-	 */
 
+	/*
+	 * #25394 enabled update of base table and index table reltuples after
+	 * `CREATE INDEX [CONCURRENTLY]`. In case of non-concurrent index creation,
+	 * the index reltuples were already being set here, but the base table
+	 * reltuples were being left unchanged for YB tables.
+	 *
+	 * We must maintain this old behavior for non-concurrent index creation, but
+	 * when `yb_enable_update_reltuples_after_create_index` is enabled, we
+	 * should update the base table reltuples as well to achieve consistent
+	 * behavior across both forms of index creation.
+	 *
+	 * When reltuples is passed as -1.0 to index_update_stats, the stats are not
+	 * updated, only relhasindex is updated.
+	 */
 	index_update_stats(heapRelation,
 					   true,
-					   IsYBRelation(heapRelation) ? -1 : stats->heap_tuples);
+					   ((IsYBRelation(heapRelation) &&
+						 !yb_enable_update_reltuples_after_create_index) ?
+						-1.0 : stats->heap_tuples));
 
 	index_update_stats(indexRelation,
 					   false,
@@ -3353,23 +3364,24 @@ index_build(Relation heapRelation,
 }
 
 /*
- * index_backfill - invoke access-method-specific index backfill procedure
+ * yb_index_backfill - invoke access-method-specific index backfill procedure
  *
  * This is mainly a copy of index_build.  index_build is used for
- * non-multi-stage index creation; index_backfill is used for multi-stage index
+ * non-multi-stage index creation; yb_index_backfill is used for multi-stage index
  * creation.
  */
-void
-index_backfill(Relation heapRelation,
-			   Relation indexRelation,
-			   IndexInfo *indexInfo,
-			   bool isprimary,
-			   YbBackfillInfo *bfinfo,
-			   YbPgExecOutParam *bfresult)
+double
+yb_index_backfill(Relation heapRelation,
+				  Relation indexRelation,
+				  IndexInfo *indexInfo,
+				  bool isprimary,
+				  YbBackfillInfo *bfinfo,
+				  YbPgExecOutParam *bfresult)
 {
 	Oid			save_userid;
 	int			save_sec_context;
 	int			save_nestlevel;
+	IndexBuildResult *result;
 
 	/*
 	 * sanity checks
@@ -3396,11 +3408,11 @@ index_backfill(Relation heapRelation,
 	/*
 	 * Call the access method's build procedure
 	 */
-	indexRelation->rd_indam->yb_ambackfill(heapRelation,
-										   indexRelation,
-										   indexInfo,
-										   bfinfo,
-										   bfresult);
+	result = indexRelation->rd_indam->yb_ambackfill(heapRelation,
+													indexRelation,
+													indexInfo,
+													bfinfo,
+													bfresult);
 
 	/*
 	 * I don't think we should be backfilling unlogged indexes.
@@ -3430,6 +3442,8 @@ index_backfill(Relation heapRelation,
 
 	/* Restore userid and security context */
 	SetUserIdAndSecContext(save_userid, save_sec_context);
+
+	return result->index_tuples;
 }
 
 double
@@ -3877,11 +3891,18 @@ IndexGetRelation(Oid indexId, bool missing_ok)
 
 /*
  * reindex_index - This routine is used to recreate a single index
+ *
+ * preserved_index_split_options:
+ * During ALTER TYPE on columns with dependent indexes, indexes are rebuilt by
+ * dropping and recreating them. We skip DocDB index table creation during the rebuild
+ * phase and defer it to the reindex phase. Since DocDB tables don't exist during the
+ * reindex phase, split options must be retrieved beforehand and passed via these
+ * parallel lists to restore correct split options.
  */
 void
 reindex_index(Oid indexId, bool skip_constraint_checks, char persistence,
 			  ReindexParams *params, bool is_yb_table_rewrite,
-			  bool yb_copy_split_options)
+			  bool yb_copy_split_options, YbOptSplit *preserved_index_split_options)
 {
 	Relation	iRel,
 				heapRelation;
@@ -4125,7 +4146,8 @@ reindex_index(Oid indexId, bool skip_constraint_checks, char persistence,
 	else
 	{
 		/* Create a new physical relation for the index */
-		RelationSetNewRelfilenode(iRel, persistence, yb_copy_split_options);
+		RelationSetNewRelfilenode(iRel, persistence, yb_copy_split_options,
+								  preserved_index_split_options);
 	}
 
 	/* Initialize the index and rebuild */
@@ -4281,10 +4303,18 @@ reindex_index(Oid indexId, bool skip_constraint_checks, char persistence,
  * Returns true if any indexes were rebuilt (including toast table's index
  * when relevant).  Note that a CommandCounterIncrement will occur after each
  * index rebuild.
+ *
+ * changedIndexNames and changedIndexSplitOpts:
+ * During ALTER TYPE on columns with dependent indexes, the indexes are first rebuilt by
+ * dropping and recreating them. We skip DocDB index creation during the rebuild
+ * phase and defer it to the reindex phase. Since DocDB tables don't exist during the
+ * reindex phase, split options must be retrieved beforehand and passed via these
+ * parallel lists to restore correct split options.
  */
 bool
 reindex_relation(Oid relid, int flags, ReindexParams *params, bool is_yb_table_rewrite,
-				 bool yb_copy_split_options)
+				 bool yb_copy_split_options, List *changedIndexNames,
+				 List *changedIndexSplitOpts)
 {
 	Relation	rel;
 	Oid			toast_relid;
@@ -4362,6 +4392,8 @@ reindex_relation(Oid relid, int flags, ReindexParams *params, bool is_yb_table_r
 		/* TODO(fizaa): add YB prefix to iRel. */
 		Relation	iRel = index_open(indexOid, AccessExclusiveLock);
 
+		char *currentIndexName = RelationGetRelationName(iRel);
+
 		if (IsYBRelation(iRel))
 		{
 			if (!is_yb_table_rewrite && !iRel->rd_index->indisprimary)
@@ -4403,9 +4435,27 @@ reindex_relation(Oid relid, int flags, ReindexParams *params, bool is_yb_table_r
 			continue;
 		}
 
+		YbOptSplit *preserved_index_split_options = NULL;
+		if (changedIndexNames != NIL && changedIndexSplitOpts != NIL)
+		{
+			ListCell   *lc_name;
+			ListCell   *lc_split;
+
+			forboth(lc_name, changedIndexNames,
+					lc_split, changedIndexSplitOpts)
+			{
+				char *savedIndexName = (char *) lfirst(lc_name);
+				if (strcmp(savedIndexName, currentIndexName) == 0)
+				{
+					preserved_index_split_options = (YbOptSplit *) lfirst(lc_split);
+					break;
+				}
+			}
+		}
+
 		reindex_index(indexOid, !(flags & REINDEX_REL_CHECK_CONSTRAINTS),
 					  persistence, params, is_yb_table_rewrite,
-					  yb_copy_split_options);
+					  yb_copy_split_options, preserved_index_split_options);
 
 		CommandCounterIncrement();
 
@@ -4443,7 +4493,9 @@ reindex_relation(Oid relid, int flags, ReindexParams *params, bool is_yb_table_r
 		newparams.tablespaceOid = InvalidOid;
 		result |= reindex_relation(toast_relid, flags, &newparams,
 								   false /* is_yb_table_rewrite */ ,
-								   yb_copy_split_options);
+								   yb_copy_split_options,
+								   NIL /* changedIndexNames */ ,
+								   NIL /* changedIndexSplitOpts */ );
 	}
 
 	return result;
@@ -4642,4 +4694,15 @@ RestoreReindexState(void *reindexstate)
 
 	/* Note the worker has its own transaction nesting level */
 	reindexingNestLevel = GetCurrentTransactionNestLevel();
+}
+
+/*
+ * YB Wrapper on index_update_stats to expose this static function.
+ */
+void
+yb_index_update_stats(Relation rel,
+					  bool hasindex,
+					  double reltuples)
+{
+	index_update_stats(rel, hasindex, reltuples);
 }

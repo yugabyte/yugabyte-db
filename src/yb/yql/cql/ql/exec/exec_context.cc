@@ -22,10 +22,12 @@
 #include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
 
-#include "yb/qlexpr/ql_rowblock.h"
+#include "yb/common/ql_protocol.messages.h"
 #include "yb/common/schema.h"
 
 #include "yb/gutil/casts.h"
+
+#include "yb/qlexpr/ql_rowblock.h"
 
 #include "yb/rpc/thread_pool.h"
 
@@ -99,8 +101,8 @@ Status ExecContext::StartTransaction(
 }
 
 Status ExecContext::PrepareChildTransaction(
-    CoarseTimePoint deadline, ChildTransactionDataPB* data) {
-  auto future = DCHECK_NOTNULL(transaction_.get())->PrepareChildFuture(
+    CoarseTimePoint deadline, ChildTransactionDataMsg* data) {
+  auto future = DCHECK_NOTNULL(transaction_)->PrepareChildFuture(
       client::ForceConsistentRead::kTrue, deadline);
 
   // Set the deadline to be the earlier of the input deadline and the current timestamp
@@ -128,8 +130,8 @@ Status ExecContext::PrepareChildTransaction(
   return STATUS(TimedOut, message);
 }
 
-Status ExecContext::ApplyChildTransactionResult(const ChildTransactionResultPB& result) {
-  return DCHECK_NOTNULL(transaction_.get())->ApplyChildResult(result);
+Status ExecContext::ApplyChildTransactionResult(const ChildTransactionResultMsg& result) {
+  return DCHECK_NOTNULL(transaction_)->ApplyChildResult(result);
 }
 
 void ExecContext::CommitTransaction(CoarseTimePoint deadline, CommitCallback callback) {
@@ -286,7 +288,7 @@ Status TnodeContext::AppendRowsResult(RowsResult::SharedPtr&& rows_result) {
   return rows_result_->Append(std::move(*rows_result));
 }
 
-void TnodeContext::InitializePartition(QLReadRequestPB *req, bool continue_user_request) {
+void TnodeContext::InitializePartition(QLReadRequestMsg *req, bool continue_user_request) {
   uint64_t start_partition = continue_user_request ? query_state_->next_partition_index() : 0;
 
   current_partition_index_ = start_partition;
@@ -323,13 +325,13 @@ bool TnodeContext::FinishedReadingPartition() {
       (query_state_->next_partition_key().empty() && query_state_->next_row_key().empty());
 }
 
-void TnodeContext::AdvanceToNextPartition(QLReadRequestPB *req) {
+void TnodeContext::AdvanceToNextPartition(QLReadRequestMsg *req) {
   // E.g. for a query "h1 = 1 and h2 in (2,3) and h3 in (4,5) and h4 = 6" partition index 2:
   // this will do, index: 2 -> 3 and hashed_column_values(): [1, 3, 4, 6] -> [1, 3, 5, 6].
   current_partition_index_++;
   uint64_t partition_counter = current_partition_index_;
   // Hash_values_options_ vector starts from the first column with an 'IN' restriction.
-  const int hash_key_size = req->hashed_column_values().size();
+  const auto hash_key_size = req->hashed_column_values().size();
   const auto fixed_cols_size = hash_key_size - hash_values_options_->size();
 
   // Set the right values for the missing/unset columns by converting partition index into positions

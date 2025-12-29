@@ -7,6 +7,9 @@ menu:
   stable_api:
     parent: api-cassandra
     weight: 1283
+aliases:
+  - /stable/api/cassandra/ddl_revoke_permission
+  - /stable/api/ycql/ddl_revoke_permission
 type: docs
 ---
 

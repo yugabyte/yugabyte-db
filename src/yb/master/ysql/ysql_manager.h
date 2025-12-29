@@ -113,7 +113,7 @@ class YsqlManager : public YsqlManagerIf {
 
   Status CreateYbAdvisoryLocksTableIfNeeded(const LeaderEpoch& epoch);
 
-  Status ValidateWriteToCatalogTableAllowed(const TableId& table_id, bool is_forced_update) const;
+  Status ValidateWriteToCatalogTableAllowed(TableIdView table_id, bool is_forced_update) const;
 
   Status ValidateTServerVersion(const VersionInfoPB& version) const override;
 
@@ -133,6 +133,10 @@ class YsqlManager : public YsqlManagerIf {
   // Use GetPgSchemaName() if you need to get PgSchemaName for a single table.
   Result<std::string> GetPgSchemaName(
       const PgTableAllOids& oids,
+      const ReadHybridTime& read_time = ReadHybridTime()) const override;
+
+  Result<bool> GetPgIndexStatus(
+      PgOid database_oid, PgOid index_oid, const std::string& status_col_name,
       const ReadHybridTime& read_time = ReadHybridTime()) const override;
 
   void RunBgTasks(const LeaderEpoch& epoch);

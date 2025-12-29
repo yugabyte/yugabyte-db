@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.net.URI;
@@ -61,7 +62,11 @@ public class DynatraceConfig extends TelemetryProviderConfig {
   }
 
   @Override
-  public void validate(ApiHelper apiHelper) {
+  public void validate(ApiHelper apiHelper, RuntimeConfGetter confGetter) {
+    if (TelemetryProviderUtil.skipConnectivityValidation(confGetter)) {
+      log.info("Skipping validation of Dynatrace API Token and Endpoint.");
+      return;
+    }
     try {
       // Validate endpoint format
       URI endpointUri = URI.create(endpoint);
@@ -81,6 +86,11 @@ public class DynatraceConfig extends TelemetryProviderConfig {
           "Validation failed. Ensure your Dynatrace API Token and Endpoint are valid with all"
               + " required permissions.");
     }
+  }
+
+  @Override
+  public void validate(ApiHelper apiHelper) {
+    validate(apiHelper, null);
   }
 
   private void validateApiTokenScopes(ApiHelper apiHelper) {

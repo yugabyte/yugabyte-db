@@ -7,6 +7,8 @@ menu:
   stable_api:
     identifier: txn_lock
     parent: statements
+aliases:
+  - /stable/api/ysql/commands/txn_lock/
 type: docs
 ---
 

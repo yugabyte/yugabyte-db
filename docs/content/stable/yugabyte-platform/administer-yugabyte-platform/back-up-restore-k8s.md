@@ -6,7 +6,7 @@ headcontent: Back up your YugabyteDB Anywhere installation
 linkTitle: Back up YugabyteDB Anywhere
 menu:
   stable_yugabyte-platform:
-    identifier: back-up-restore-k8s
+    identifier: back-up-restore-3-k8s
     parent: administer-yugabyte-platform
     weight: 30
 type: docs
@@ -15,17 +15,17 @@ type: docs
 YugabyteDB Anywhere installations include configuration settings, certificates and keys, and other components required for creating and managing YugabyteDB universes.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="../back-up-restore-yba/" class="nav-link">
+      <i class="fa-solid fa-cloud"></i>
+      YugabyteDB Anywhere
+    </a>
+  </li>
+
   <li>
     <a href="../back-up-restore-installer/" class="nav-link">
       <i class="fa-solid fa-building"></i>
       YBA Installer</a>
-  </li>
-
-  <li >
-    <a href="../back-up-restore-yp/" class="nav-link">
-      <i class="fa-solid fa-cloud"></i>
-      Replicated
-    </a>
   </li>
 
   <li>

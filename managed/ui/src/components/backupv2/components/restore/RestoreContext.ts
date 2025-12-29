@@ -64,6 +64,8 @@ export const initialRestoreContextState: RestoreContext = {
             parallelThreads: 1,
             selectedKeyspace: null,
             useTablespaces: false,
+            useRoles: false,
+            errorIfRolesExists: false,
             incrementalBackupProps: {
 
             }

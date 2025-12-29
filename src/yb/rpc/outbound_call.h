@@ -38,6 +38,7 @@
 #include <deque>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <type_traits>
 #include <vector>
@@ -76,14 +77,15 @@
 #include "yb/util/status_fwd.h"
 #include "yb/util/trace.h"
 
+using namespace std::literals;
+
 namespace google {
 namespace protobuf {
 class Message;
 }  // namespace protobuf
 }  // namespace google
 
-namespace yb {
-namespace rpc {
+namespace yb::rpc {
 
 // Used to key on Connection information.
 // For use as a key in an unordered STL collection, use ConnectionIdHash and ConnectionIdEqual.
@@ -184,6 +186,10 @@ class CallResponse {
 
   size_t DynamicMemoryUsage() const {
     return DynamicMemoryUsageOf(header_, response_data_, sidecars_);
+  }
+
+  const RefCntBuffer& data_holder() const {
+    return response_data_.holder();
   }
 
  private:
@@ -595,14 +601,13 @@ class OutboundCall : public RpcCall {
 
 class RpcErrorTag : public IntegralErrorTag<ErrorStatusPB::RpcErrorCodePB> {
  public:
-  static constexpr uint8_t kCategory = 15;
+  static constexpr CategoryDescriptor kCategory{15, "rpc error"sv};
 
   static std::string ToMessage(Value value) {
     return ErrorStatusPB::RpcErrorCodePB_Name(value);
   }
 };
 
-typedef StatusErrorCodeImpl<RpcErrorTag> RpcError;
+using RpcError = StatusErrorCodeImpl<RpcErrorTag>;
 
-}  // namespace rpc
-}  // namespace yb
+}  // namespace yb::rpc

@@ -23,6 +23,9 @@ import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
+import com.yugabyte.yw.models.common.YbaApi;
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiOperation;
 import java.net.URL;
 import java.util.Date;
 import java.util.List;
@@ -39,6 +42,7 @@ import play.mvc.Http;
 import play.mvc.Result;
 import play.mvc.With;
 
+@Api(value = "Internal HA")
 @With(HAAuthenticator.class)
 @Slf4j
 public class InternalHAController extends Controller {
@@ -100,7 +104,7 @@ public class InternalHAController extends Controller {
                         BAD_REQUEST, "Cannot import instances for a leader");
                   }
                   return replicationManager.importPlatformInstances(
-                      config, newInstances, new Date(timestamp));
+                      c, newInstances, new Date(timestamp));
                 })
             .orElseThrow(
                 () -> new PlatformServiceException(529, "Server is busy with ongoing HA process"));
@@ -146,7 +150,7 @@ public class InternalHAController extends Controller {
     return HighAvailabilityConfig.doWithTryLock(
             config.getUuid(),
             c -> {
-              Optional<PlatformInstance> localInstance = config.getLocal();
+              Optional<PlatformInstance> localInstance = c.getLocal();
               if (localInstance.isPresent() && leader.equals(localInstance.get().getAddress())) {
                 throw new PlatformServiceException(
                     BAD_REQUEST, "Backup originated on the node itself. Leader: " + leader);
@@ -180,6 +184,12 @@ public class InternalHAController extends Controller {
   }
 
   /** This is invoked by the remote peer to demote this local leader. */
+  @ApiOperation(
+      notes = "Available since YBA version 2.20.0.",
+      value = "Demote local leader",
+      response = PlatformInstance.class,
+      nickname = "demoteLocalLeader")
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.20.0")
   public Result demoteLocalLeader(long timestamp, boolean promote, Http.Request request) {
     log.debug("Received request to demote local instance from {}", request.remoteAddress());
     String clusterKey = getClusterKey(request);

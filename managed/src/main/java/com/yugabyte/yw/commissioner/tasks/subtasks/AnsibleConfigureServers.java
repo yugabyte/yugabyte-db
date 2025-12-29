@@ -20,7 +20,6 @@ import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeManager.CertRotateAction;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
@@ -239,14 +238,11 @@ public class AnsibleConfigureServers extends NodeTaskBase {
             optional.get(), universe, nodeDetails, ServerType.CONTROLLER.toString(), taskParams());
       }
       if (taskParams().otelCollectorEnabled) {
-        if (OtelCollectorUtil.isAuditLogEnabledInUniverse(taskParams().auditLogConfig)
-            || OtelCollectorUtil.isQueryLogEnabledInUniverse(taskParams().queryLogConfig)) {
-          nodeAgentClient.runInstallOtelCollector(
-              optional.get(),
-              nodeAgentRpcPayload.setupInstallOtelCollectorBits(
-                  universe, nodeDetails, taskParams(), optional.get()),
-              NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
-        }
+        nodeAgentClient.runInstallOtelCollector(
+            optional.get(),
+            nodeAgentRpcPayload.setupInstallOtelCollectorBits(
+                universe, nodeDetails, taskParams(), optional.get()),
+            NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
       }
       if (taskParams().cgroupSize > 0) {
         nodeAgentClient.runSetupCGroupInput(

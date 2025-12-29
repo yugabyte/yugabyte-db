@@ -30,6 +30,7 @@
 
 /* YB includes */
 #include "access/sysattr.h"
+#include "optimizer/yb_saop_merge.h"
 
 
 static bool pathkey_is_redundant(PathKey *new_pathkey, List *pathkeys);
@@ -188,14 +189,14 @@ make_pathkey_from_sortinfo(PlannerInfo *root,
 						   Index sortref,
 						   Relids rel,
 						   bool create_it,
-						   bool is_hash_index)
+						   bool yb_is_hash)
 {
 	int16		strategy;
 	Oid			equality_op;
 	List	   *opfamilies;
 	EquivalenceClass *eclass;
 
-	if (is_hash_index)
+	if (yb_is_hash)
 	{
 		/*
 		 * We are picking a hash index. The strategy can only be
@@ -234,15 +235,6 @@ make_pathkey_from_sortinfo(PlannerInfo *root,
 	/* Fail if no EC and !create_it */
 	if (!eclass)
 		return NULL;
-
-	/*
-	 * YB: This "eclass" is either a "=" or "sort" operator, and for
-	 * hash_columns, we allow equality condition but not ASC or DESC sorting.
-	 */
-	if (is_hash_index && eclass->ec_sortref != 0)
-	{
-		return NULL;
-	}
 
 	/* And finally we can find or create a PathKey node */
 	return make_canonical_pathkey(root, eclass, opfamily,
@@ -561,28 +553,37 @@ get_cheapest_parallel_safe_total_inner(List *paths)
  * This field is eventually used in generating a UpperUniquePath node.
  * Returns -1 in 'yb_distinct_nkeys' if the pathkeys cannot span the prefix.
  * Returns 0 in 'yb_distinct_nkeys' when the prefix is empty.
+ *
+ * YB: 'yb_saop_merge_saop_cols' is an out-param.  List of
+ * YbSaopMergeSaopColInfo.  If NULL is passed, disallow SAOP merge.  Otherwise,
+ * an empty list should be passed.
  */
 List *
 build_index_pathkeys(PlannerInfo *root,
 					 IndexOptInfo *index,
 					 ScanDirection scandir,
-					 int *yb_distinct_nkeys)
+					 int *yb_distinct_nkeys,
+					 List **yb_saop_merge_saop_cols)
 {
 	List	   *retval = NIL;
 	ListCell   *lc;
 	int			i;
 	int			yb_distinct_prefixlen;
+	int			yb_saop_merge_cardinality = 1;
 
 	if (index->sortopfamily == NULL)
 		return NIL;				/* non-orderable index */
 
-	i = 0;
 	/*
 	 * YB: Compute the set of pathkeys corresponding to the distinct index scan
 	 * prefix. 0 when the prefix is empty.
 	 */
 	yb_distinct_prefixlen = *yb_distinct_nkeys;
 	*yb_distinct_nkeys = yb_distinct_prefixlen == 0 ? 0 : -1;
+
+	Assert(!yb_saop_merge_saop_cols || *yb_saop_merge_saop_cols == NIL);
+
+	i = 0;
 	foreach(lc, index->indextlist)
 	{
 		TargetEntry *indextle = (TargetEntry *) lfirst(lc);
@@ -590,6 +591,8 @@ build_index_pathkeys(PlannerInfo *root,
 		bool		reverse_sort;
 		bool		nulls_first;
 		PathKey    *cpathkey;
+
+		bool		yb_is_hash_column = i < index->nhashcolumns;
 
 		/*
 		 * INCLUDE columns are stored in index unordered, so they don't
@@ -627,9 +630,26 @@ build_index_pathkeys(PlannerInfo *root,
 											  0,
 											  index->rel->relids,
 											  false,
-											  i < index->nhashcolumns);
+											  yb_is_hash_column);
 
-		if (cpathkey)
+		/*
+		 * YB: Index keys part of scalar array operations may be eligible for
+		 * SAOP merge, in which case we can continue to examine lower-order
+		 * index columns.  Disqualify from consideration if the index key is
+		 * part of a redundant EC or a pure sort EC (i.e. a sort EC that is not
+		 * equivalent to another column).
+		 */
+		if (!(cpathkey && (EC_MUST_BE_REDUNDANT(cpathkey->pk_eclass) ||
+						   cpathkey->pk_eclass->ec_sortref != 0)) &&
+			yb_indexcol_can_saop_merge(root, index, indexkey, i,
+									   &yb_saop_merge_cardinality,
+									   yb_saop_merge_saop_cols))
+		{
+			/* Do nothing */
+		}
+		/* YB: For hash columns, sort pathkeys are invalid. */
+		else if (cpathkey && !(yb_is_hash_column &&
+							   cpathkey->pk_eclass->ec_sortref != 0))
 		{
 			/*
 			 * We found the sort key in an EquivalenceClass, so it's relevant
@@ -650,7 +670,8 @@ build_index_pathkeys(PlannerInfo *root,
 			 * should stop considering index columns; any lower-order sort
 			 * keys won't be useful either.
 			 */
-			if (!indexcol_is_bool_constant_for_query(root, index, i) || i < index->nhashcolumns)
+			if (!indexcol_is_bool_constant_for_query(root, index, i) ||
+				yb_is_hash_column)
 				break;
 		}
 

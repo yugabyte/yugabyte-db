@@ -4,6 +4,10 @@ headerTitle: PostgreSQL 15 features
 linkTitle: PG15 features
 description: Use PostgreSQL 15 features in your applications
 headContent: Use PostgreSQL 15 features in your applications
+tags:
+  feature: tech-preview
+aliases:
+  - /stable/develop/pg15-features/
 menu:
   stable_api:
     identifier: yb-postgresql-15
@@ -14,7 +18,7 @@ type: docs
 
 The YugabyteDB YSQL API reuses a fork of the PostgreSQL [query layer](../../../architecture/query-layer/). This architecture allows YSQL to support most PostgreSQL features, such as data types, queries, expressions, operators and functions, stored procedures, triggers, extensions, and so on - all of which are expected to work identically on both database systems.
 
-Initially based on PostgreSQL 11.2, YSQL has been continuously enhanced with features, improvements, and security fixes pulled from PostgreSQL 12+, in addition to our own improvements. YugabyteDB {{<release "2025.1">}} is based on PostgreSQL 15, which brings many new features and improvements.
+Initially based on PostgreSQL 11.2, YSQL has been continuously enhanced with features, improvements, and security fixes pulled from PostgreSQL 12+, in addition to our own improvements. Starting with {{<release "2025.1">}} (stable) and {{<release "2.25">}} (preview), YugabyteDB is based on PostgreSQL 15, which brings many new features and improvements.
 
 {{<lead link="https://www.yugabyte.com/blog/yugabytedb-moves-beyond-postgresql-11/">}}
 Learn more about the [journey to PostgreSQL 15](https://www.yugabyte.com/blog/yugabytedb-moves-beyond-postgresql-11/).
@@ -165,7 +169,7 @@ Currently, upgrades are only supported from v2024.2.2 or later to v2.25.1 or lat
 
 ### ysqlsh
 
-To ensure compatibility, make sure you are using the [latest ysqlsh client](/preview/releases/yugabyte-clients/) (v2.25) with YugabyteDB v2.25.
+To ensure compatibility, make sure you are using the [latest ysqlsh client](/stable/releases/yugabyte-clients/) (v2.25) with YugabyteDB v2.25.
 
 Due to the addition of the `--csv` option in psql (and hence [ysqlsh](../../ysqlsh/)), you can no longer use the `--c` (double-hyphen) flag in place of `--command`. Use either `-c` (single hyphen) or `--command` instead.
 

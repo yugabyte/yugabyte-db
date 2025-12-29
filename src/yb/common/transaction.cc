@@ -81,6 +81,7 @@ void DoToPB(const TransactionMetadata& source, PB* dest) {
   DupStatusTablet(source.status_tablet, dest);
   dest->set_priority(source.priority);
   dest->set_start_hybrid_time(source.start_time.ToUint64());
+  dest->set_using_table_locks(source.using_table_locks);
   dest->set_locality(source.locality.locality);
   if (source.locality.locality == TransactionLocality::TABLESPACE_LOCAL) {
     dest->set_locality_tablespace_oid(source.locality.tablespace_oid);
@@ -105,6 +106,7 @@ std::string TransactionMetadata::ToString() const {
       status_tablet,
       priority,
       start_time,
+      using_table_locks,
       locality,
       old_status_tablet,
       skip_prefix_locks);
@@ -122,6 +124,7 @@ Result<TransactionMetadata> TransactionMetadata::DoFromPB(const PB& source) {
     result.status_tablet.assign(string_view.data(), string_view.size());
     result.priority = source.priority();
     result.start_time = HybridTime(source.start_hybrid_time());
+    result.using_table_locks = source.using_table_locks();
     result.skip_prefix_locks = source.skip_prefix_locks();
   }
 
@@ -245,14 +248,24 @@ void SubTransactionMetadata::ToPB(SubTransactionMetadataPB* dest) const {
   aborted.ToPB(dest->mutable_aborted()->mutable_set());
 }
 
-Result<SubTransactionMetadata> SubTransactionMetadata::FromPB(
-    const SubTransactionMetadataPB& source) {
+template <class PB>
+Result<SubTransactionMetadata> SubTransactionMetadata::DoFromPB(const PB& source) {
   return SubTransactionMetadata {
     .subtransaction_id = source.has_subtransaction_id()
         ? source.subtransaction_id()
         : kMinSubTransactionId,
     .aborted = VERIFY_RESULT(SubtxnSet::FromPB(source.aborted().set())),
   };
+}
+
+Result<SubTransactionMetadata> SubTransactionMetadata::FromPB(
+    const SubTransactionMetadataPB& source) {
+  return DoFromPB(source);
+}
+
+Result<SubTransactionMetadata> SubTransactionMetadata::FromPB(
+    const LWSubTransactionMetadataPB& source) {
+  return DoFromPB(source);
 }
 
 bool SubTransactionMetadata::IsDefaultState() const {

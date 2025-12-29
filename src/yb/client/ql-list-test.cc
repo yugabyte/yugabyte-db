@@ -104,7 +104,7 @@ class QLListTest : public QLDmlTestBase<MiniCluster> {
   }
 
   std::unique_ptr<qlexpr::QLRowBlock> ReadRows(YBSession* session, int32_t hash_seed) {
-    auto op = table_.NewReadOp();
+    auto op = table_.NewReadOp(session->arena());
     auto* const req = op->mutable_request();
     AddHash(hash_seed, req);
     table_.AddColumns(table_.AllColumnNames(), req);

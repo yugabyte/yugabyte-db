@@ -37,6 +37,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.RetryTaskUntilCondition;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.TableSpaceStructures;
 import com.yugabyte.yw.common.UnrecoverableException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YcqlQueryExecutor;
@@ -674,7 +675,7 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
       throws InterruptedException {
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.nodePrefix = "univConfCreate";
-    taskParams.upsertPrimaryCluster(userIntent, null);
+    taskParams.upsertPrimaryCluster(userIntent, null, null);
     PlacementInfoUtil.updateUniverseDefinition(
         taskParams, customer.getId(), taskParams.getPrimaryCluster().uuid, CREATE);
     taskParams.expectedUniverseVersion = -1;
@@ -705,13 +706,19 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
   }
 
   protected void initYSQL(Universe universe, String tableName) {
+    initYSQL(universe, tableName, null);
+  }
+
+  protected void initYSQL(Universe universe, String tableName, String tablespace) {
     initYSQL(
         universe,
         tableName,
+        tablespace,
         universe.getUniverseDetails().getPrimaryCluster().userIntent.isYSQLAuthEnabled());
   }
 
-  protected void initYSQL(Universe universe, String tableName, boolean authEnabled) {
+  protected void initYSQL(
+      Universe universe, String tableName, String tablespace, boolean authEnabled) {
     NodeDetails nodeDetails =
         universe.getUniverseDetails().nodeDetailsSet.stream()
             .filter(n -> n.state.equals(NodeDetails.NodeState.Live))
@@ -720,15 +727,19 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
     if (StringUtils.isBlank(tableName)) {
       tableName = "some_table";
     }
+    String createCommand;
+    if (tablespace != null) {
+      createCommand =
+          String.format(
+              "CREATE TABLE %s (id int, name text, age int) tablespace %s", tableName, tablespace);
+    } else {
+      createCommand =
+          String.format(
+              "CREATE TABLE %s (id int, name text, age int, PRIMARY KEY(id, name))", tableName);
+    }
     ShellResponse response =
         localNodeUniverseManager.runYsqlCommand(
-            nodeDetails,
-            universe,
-            YUGABYTE_DB,
-            String.format(
-                "CREATE TABLE %s (id int, name text, age int, PRIMARY KEY(id, name))", tableName),
-            10,
-            authEnabled);
+            nodeDetails, universe, YUGABYTE_DB, createCommand, 10, authEnabled);
     assertTrue(response.isSuccess());
     response =
         localNodeUniverseManager.runYsqlCommand(
@@ -1295,6 +1306,13 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
     throw new RuntimeException("Timed-out waiting for next task to start");
   }
 
+  protected void moveAZ(PlacementInfo placementInfo, UUID sourceUUID, UUID targetUUID) {
+    placementInfo
+        .azStream()
+        .filter(az -> az.uuid.equals(sourceUUID))
+        .forEach(az -> az.uuid = targetUUID);
+  }
+
   protected void verifyNodeModifications(Universe universe, int added, int removed) {
     assertEquals(
         added,
@@ -1344,6 +1362,29 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
         metaMasterHandler.getMasterLBState(customer.getUuid(), universe.getUniverseUUID());
     assertEquals(resp.isEnabled, isEnabled);
     assertEquals(resp.isIdle, isLoadBalancerIdle);
+  }
+
+  protected TableSpaceStructures.TableSpaceInfo initTablespace(
+      String name, Object... zonesAndCounts) {
+    TableSpaceStructures.TableSpaceInfo tableSpaceInfo = new TableSpaceStructures.TableSpaceInfo();
+    tableSpaceInfo.name = name;
+    tableSpaceInfo.placementBlocks = new ArrayList<>();
+    int rf = 0;
+    for (int i = 0; i < zonesAndCounts.length / 2; i++) {
+      UUID zoneUUID = (UUID) zonesAndCounts[i * 2];
+      Integer replicas = (Integer) zonesAndCounts[i * 2 + 1];
+      AvailabilityZone zone = AvailabilityZone.getOrBadRequest(zoneUUID);
+      TableSpaceStructures.PlacementBlock placementBlock =
+          new TableSpaceStructures.PlacementBlock();
+      placementBlock.zone = zone.getCode();
+      placementBlock.region = zone.getRegion().getCode();
+      placementBlock.cloud = zone.getRegion().getProviderCloudCode().name();
+      placementBlock.minNumReplicas = replicas;
+      tableSpaceInfo.placementBlocks.add(placementBlock);
+      rf += replicas;
+    }
+    tableSpaceInfo.numReplicas = rf;
+    return tableSpaceInfo;
   }
 
   private void verifyDNS(Universe universe) {

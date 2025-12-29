@@ -138,7 +138,7 @@ class RemoteYsckTest : public YBTest {
     auto session = client_->NewSession(10s);
 
     for (uint64_t i = 0; continue_writing.Load(); i++) {
-      std::shared_ptr<client::YBqlWriteOp> insert(table->NewQLInsert());
+      std::shared_ptr<client::YBqlWriteOp> insert(table->NewQLInsert(session->arena()));
       GenerateDataForRow(table->schema(), i, &random_, insert->mutable_request());
       status = session->TEST_ApplyAndFlush(insert);
       if (!status.ok()) {
@@ -158,7 +158,7 @@ class RemoteYsckTest : public YBTest {
     auto session = client_->NewSession(10s);
     for (uint64_t i = 0; i < num_rows; i++) {
       VLOG(1) << "Generating write for row id " << i;
-      std::shared_ptr<client::YBqlWriteOp> insert(table->NewQLInsert());
+      std::shared_ptr<client::YBqlWriteOp> insert(table->NewQLInsert(session->arena()));
       GenerateDataForRow(table->schema(), i, &random_, insert->mutable_request());
       session->Apply(insert);
 

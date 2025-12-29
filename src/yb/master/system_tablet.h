@@ -46,33 +46,33 @@ class SystemTablet : public tablet::AbstractTablet {
   }
 
   Status HandleRedisReadRequest(const docdb::ReadOperationData& read_operation_data,
-                                const RedisReadRequestPB& redis_read_request,
-                                RedisResponsePB* response) override {
+                                const RedisReadRequestMsg& redis_read_request,
+                                RedisResponseMsg* response) override {
     return STATUS(NotSupported, "RedisReadRequest is not supported for system tablets!");
   }
 
   Status HandleQLReadRequest(const docdb::ReadOperationData& read_operation_data,
-                             const QLReadRequestPB& ql_read_request,
-                             const TransactionMetadataPB& transaction_metadata,
+                             const QLReadRequestMsg& ql_read_request,
+                             const TransactionMetadataMsg& transaction_metadata,
                              tablet::QLReadRequestResult* result,
                              WriteBuffer* rows_data) override;
 
-  Status CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,
+  Status CreatePagingStateForRead(const QLReadRequestMsg& ql_read_request,
                                   const size_t row_count,
-                                  QLResponsePB* response) const override;
+                                  QLResponseMsg* response) const override;
 
   Status HandlePgsqlReadRequest(const docdb::ReadOperationData& read_operation_data,
                                 bool is_explicit_request_read_time,
-                                const PgsqlReadRequestPB& pgsql_read_request,
-                                const TransactionMetadataPB& transaction_metadata,
-                                const SubTransactionMetadataPB& subtransaction_metadata,
+                                const PgsqlReadRequestMsg& pgsql_read_request,
+                                const TransactionMetadataMsg& transaction_metadata,
+                                const SubTransactionMetadataMsg& subtransaction_metadata,
                                 tablet::PgsqlReadRequestResult* result) override {
     return STATUS(NotSupported, "Postgres system table is not yet supported");
   }
 
-  Status CreatePagingStateForRead(const PgsqlReadRequestPB& pgsql_read_request,
+  Status CreatePagingStateForRead(const PgsqlReadRequestMsg& pgsql_read_request,
                                   const size_t row_count,
-                                  PgsqlResponsePB* response) const override {
+                                  PgsqlResponseMsg* response) const override {
     return STATUS(NotSupported, "Postgres system table is not yet supported");
   }
 

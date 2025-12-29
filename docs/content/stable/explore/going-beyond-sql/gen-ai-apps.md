@@ -51,9 +51,9 @@ The primary purpose of the LLM is to convert a question in a natural language to
 
 Several tutorials on the different ways of setting up Gen-AI-based interfaces for your database are available:
 
-- [Using Langchain and OpenAI](/preview/develop/tutorials/ai/ai-langchain-openai/)
-- [Using LlamaIndex and OpenAI](/preview/develop/tutorials/ai/ai-llamaindex-openai/)
-- [Using local LLMs](/preview/develop/tutorials/ai/ai-localai/)
+- [Using Langchain and OpenAI](/stable/develop/ai/ai-langchain-openai/)
+- [Using LlamaIndex and OpenAI](/stable/develop/ai/ai-llamaindex-openai/)
+- [Using local LLMs](/stable/develop/ai/ai-localai/)
 
 ## Choice of LLM
 

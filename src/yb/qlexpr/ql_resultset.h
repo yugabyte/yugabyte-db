@@ -31,7 +31,7 @@ class QLRSRowDesc {
  public:
   class RSColDesc {
    public:
-    explicit RSColDesc(const QLRSColDescPB& desc_pb);
+    explicit RSColDesc(const QLRSColDescMsg& desc_pb);
 
     const std::string& name() const {
       return name_;
@@ -44,7 +44,7 @@ class QLRSRowDesc {
     QLType::SharedPtr ql_type_;
   };
 
-  explicit QLRSRowDesc(const QLRSRowDescPB& desc_pb);
+  explicit QLRSRowDesc(const QLRSRowDescMsg& desc_pb);
   virtual ~QLRSRowDesc();
 
   size_t rscol_count() const {
@@ -75,6 +75,7 @@ class QLResultSet {
   // Append a column to the last row in the result set.
   void AppendColumn(size_t index, const QLValue& value);
   void AppendColumn(size_t index, const QLValuePB& value);
+  void AppendColumn(size_t index, const LWQLValuePB& value);
 
   // Row count
   size_t rsrow_count() const {

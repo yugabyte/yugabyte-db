@@ -9,6 +9,8 @@ menu:
     parent: pg-extensions
     weight: 20
 type: docs
+aliases:
+  - /stable/explore/ysql-language-features/pg-extensions/extension-fuzzystrmatch
 ---
 
 The [fuzzystrmatch](https://www.postgresql.org/docs/15/fuzzystrmatch.html) module provides several functions to determine similarities and distance between strings.

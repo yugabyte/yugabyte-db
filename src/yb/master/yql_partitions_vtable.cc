@@ -70,7 +70,7 @@ YQLPartitionsVTable::YQLPartitionsVTable(const TableName& table_name,
     : YQLVirtualTable(table_name, namespace_name, master, CreateSchema()) {
 }
 
-Result<VTableDataPtr> YQLPartitionsVTable::RetrieveData(const QLReadRequestPB& request) const {
+Result<VTableDataPtr> YQLPartitionsVTable::RetrieveData(const QLReadRequestMsg& request) const {
   // There are two main approaches for generating the system.partitions cache:
   // 1. ShouldGeneratePartitionsVTableWithBgTask
   //  This approach uses a background task that runs every partitions_vtable_cache_refresh_secs to

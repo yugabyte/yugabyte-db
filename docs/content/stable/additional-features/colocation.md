@@ -3,6 +3,10 @@ title: Colocating tables and databases
 headerTitle: Colocating tables
 linkTitle: Colocation
 description: Learn how colocated tables aggregate data into a single tablet.
+aliases:
+  - /stable/architecture/docdb/colocated_tables/
+  - /stable/architecture/docdb-sharding/colocated-tables/
+  - /stable/explore/colocation/
 menu:
   stable:
     identifier: colocation
@@ -247,9 +251,7 @@ For information on how to set up xCluster for non-colocated tables, refer to [xC
 
 ## Colocated tables with tablespaces
 
-{{<tags/feature/ea idea="1104">}}Colocated tables can be placed in [tablespaces](../../explore/going-beyond-sql/tablespaces/). When a colocated table is created in a tablespace, the colocation tablet is placed and replicated exclusively in the tablespace.
-
-During Early Access, by default colocation support for tablespaces is not enabled. To enable the feature, set the flag `ysql_enable_colocated_tables_with_tablespaces=true`.
+Colocated tables can be placed in [tablespaces](../../explore/going-beyond-sql/tablespaces/). When a colocated table is created in a tablespace, the colocation tablet is placed and replicated exclusively in the tablespace.
 
 ### Create a colocated table in a tablespace
 

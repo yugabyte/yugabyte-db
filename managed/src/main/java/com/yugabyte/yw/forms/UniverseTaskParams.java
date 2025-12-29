@@ -296,12 +296,15 @@ public class UniverseTaskParams extends AbstractTaskParams {
   @ApiModelProperty(value = "Previous software version")
   public String ybPrevSoftwareVersion;
 
+  // This returns true if YBC is enabled irrespective of the installation status.
+  // E.g a new universe which is yet to have YBC installed.
   @ApiModelProperty @Getter @Setter private boolean enableYbc = false;
 
   @ApiModelProperty @Getter @Setter private String ybcSoftwareVersion = null;
 
   @ApiModelProperty public boolean installYbc = false;
 
+  // This returns true for existing universes only when YBC is installed.
   @ApiModelProperty @Getter @Setter private boolean ybcInstalled = false;
 
   // Expected version of the universe for operation execution. Set to -1 if an operation should

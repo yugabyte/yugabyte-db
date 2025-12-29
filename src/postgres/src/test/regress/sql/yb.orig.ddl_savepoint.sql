@@ -69,3 +69,110 @@ ROLLBACK;
 -- #28955: CREATE INDEX (separate DDL transaction) works when savepoint is enabled.
 CREATE TABLE employees(id INT PRIMARY KEY, code VARCHAR(20) UNIQUE, department VARCHAR(50));
 CREATE INDEX idx_department ON employees(department);
+DROP TABLE employees;
+
+-- #28956: Transaction doesn't self abort
+CREATE TABLE projects (id INT PRIMARY KEY, project_name VARCHAR(100));
+INSERT INTO projects (id, project_name) VALUES (101, 'Project Alpha');
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+UPDATE projects SET project_name = 'Project Phoenix' WHERE id = 101;
+SAVEPOINT sp_mixed;
+CREATE TABLE project_logs (log_id INT, entry TEXT);
+INSERT INTO project_logs VALUES (1, 'Initial log');
+-- This will drop table project_logs but shouldn't abort the entire transaction.
+ROLLBACK TO SAVEPOINT sp_mixed;
+SELECT project_name FROM projects WHERE id = 101;
+
+-- #28957: Rollback to savepoint of ALTER TABLE should complete and not run forever
+CREATE TABLE departments (
+    dept_id INT PRIMARY KEY,
+    dept_name VARCHAR(50)
+);
+CREATE TABLE employees (
+    emp_id INT PRIMARY KEY,
+    emp_name VARCHAR(50),
+    department_id INT,
+    FOREIGN KEY (department_id) REFERENCES departments(dept_id)
+);
+INSERT INTO departments VALUES (1, 'Engineering'), (2, 'Sales');
+INSERT INTO employees VALUES (101, 'Alice', 1), (102, 'Bob', 2);
+BEGIN;
+SAVEPOINT sp_initial_state;
+UPDATE employees SET department_id = 2 WHERE emp_name = 'Alice';
+CREATE INDEX idx_emp_dept ON employees(department_id);
+SAVEPOINT sp_after_index;
+ALTER TABLE employees ADD COLUMN start_date DATE;
+INSERT INTO employees (emp_id, emp_name, department_id, start_date) VALUES (103, 'Charlie', 1, '2025-10-15');
+SAVEPOINT sp_after_alter;
+TRUNCATE TABLE departments; -- This will fail
+ROLLBACK TO SAVEPOINT sp_after_alter;
+ROLLBACK TO SAVEPOINT sp_after_index;
+ROLLBACK TO SAVEPOINT sp_initial_state;
+COMMIT;
+
+-- #29013: Savepoint rollback due to failure in first DDL statement of a
+-- transaction block doesn't lead to a crash.
+BEGIN;
+SAVEPOINT sp_before_constraint_change;
+ALTER TABLE employees DROP CONSTRAINT positive_salary;
+COMMIT;
+
+-- #29373: Transaction doesn't self abort when index deletion skipped due to base table deletion.
+CREATE TABLE txn_self_abort_base (id INT PRIMARY KEY, val INT, category TEXT);
+INSERT INTO txn_self_abort_base (id, val, category) SELECT i, i*10, 'A' FROM generate_series(1, 10) i;
+CREATE MATERIALIZED VIEW txn_self_abort_mv AS SELECT id, val, category FROM txn_self_abort_base;
+CREATE UNIQUE INDEX txn_self_abort_mv_idx ON txn_self_abort_mv (id);
+INSERT INTO txn_self_abort_base (id, val, category) SELECT i, i*10, 'B' FROM generate_series(11, 20) i;
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+SAVEPOINT s1_start;
+REFRESH MATERIALIZED VIEW CONCURRENTLY txn_self_abort_mv;
+SAVEPOINT s2_refreshed_concurrently;
+INSERT INTO txn_self_abort_base (id, val, category) SELECT i, i*10, 'C' FROM generate_series(21, 30) i;
+REFRESH MATERIALIZED VIEW txn_self_abort_mv;
+SAVEPOINT s3_refreshed_normal;
+DELETE FROM txn_self_abort_base WHERE category = 'A';
+REFRESH MATERIALIZED VIEW CONCURRENTLY txn_self_abort_mv;
+SAVEPOINT s4_refreshed_final;
+INSERT INTO txn_self_abort_base (id, val, category) SELECT i, i*10, 'D' FROM generate_series(31, 40) i;
+REFRESH MATERIALIZED VIEW txn_self_abort_mv;
+-- This will drop and recreate txn_self_abort_mv_idx as part of table rewrite
+-- but it shouldn't lead to self abort.
+ROLLBACK TO SAVEPOINT s4_refreshed_final;
+SELECT COUNT(*) FROM txn_self_abort_base;
+ROLLBACK;
+
+-- #29414
+CREATE TABLE test_table (id INT PRIMARY KEY, val TEXT);
+INSERT INTO test_table SELECT i, 'val' || i FROM generate_series(1, 1000) i;
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+SAVEPOINT s1_start;
+CREATE MATERIALIZED VIEW test_table_mv AS SELECT * FROM test_table;
+SAVEPOINT s2_created_mv;
+INSERT INTO test_table SELECT i, 'val' || i FROM generate_series(1001, 2000) i;
+REFRESH MATERIALIZED VIEW test_table_mv;
+SAVEPOINT s3_refreshed_mv;
+CREATE INDEX test_table_idx_mv ON test_table_mv (val);
+SELECT indexname FROM pg_indexes WHERE indexname = 'test_table_idx_mv';
+ROLLBACK TO SAVEPOINT s3_refreshed_mv;
+ROLLBACK;
+
+-- #29538: No Schema version mismatch in case of ALTER TABLE
+CREATE TABLE schema_version_mismatch_table (
+    id INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    val TEXT
+);
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+SAVEPOINT s1_start;
+ALTER TABLE schema_version_mismatch_table ALTER COLUMN id RESTART WITH 100;
+INSERT INTO schema_version_mismatch_table (val) VALUES ('c');
+SELECT id FROM schema_version_mismatch_table WHERE val = 'c';
+SAVEPOINT s2_restarted;
+ALTER TABLE schema_version_mismatch_table ALTER COLUMN id DROP IDENTITY;
+INSERT INTO schema_version_mismatch_table (id, val) VALUES (500, 'd');
+ROLLBACK TO SAVEPOINT s2_restarted;
+INSERT INTO schema_version_mismatch_table (val) VALUES ('e');
+SELECT id FROM schema_version_mismatch_table WHERE val = 'e';
+ROLLBACK TO SAVEPOINT s1_start;
+INSERT INTO schema_version_mismatch_table (val) VALUES ('f');
+SELECT id FROM schema_version_mismatch_table WHERE val = 'f';
+ROLLBACK;

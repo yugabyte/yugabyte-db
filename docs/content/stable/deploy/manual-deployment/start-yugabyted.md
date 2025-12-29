@@ -63,6 +63,16 @@ cd yugabyte-{{< yb-version version="stable" >}}
 mkdir ybc | tar -xvf share/ybc-2.0.0.0-b19-linux-x86_64.tar.gz -C ybc --strip-components=1
 ```
 
+## PostgreSQL compatibility
+
+For _new universes_ running v2025.2 or later, the following features are enabled by default when you deploy using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon:
+
+- [Read committed](../../../architecture/transactions/read-committed/) (yb_enable_read_committed_isolation=true)
+- [Cost-based optimizer](../../../best-practices-operations/ysql-yb-enable-cbo/) (yb_enable_cbo=on)
+- [Auto Analyze](../../../additional-features/auto-analyze/) (ysql_enable_auto_analyze=true)
+- [YugabyteDB bitmap scan](../../../reference/configuration/postgresql-compatibility/#yugabytedb-bitmap-scan) (yb_enable_bitmapscan=true)
+- [Parallel append](../../../additional-features/parallel-query/) (yb_enable_parallel_append=true)
+
 ## Deploy a multi-zone cluster
 
 Note that single zone configuration is a special case of multi-zone where all placement-related flags are set to the same value across every node.
@@ -101,6 +111,8 @@ To create a secure multi-zone cluster:
 
     Set the `--backup_daemon` flag to true if you want to perform backup and restore operations.
 
+    For the second node, use the IP address of the first node in the `--join` flag:
+
     Add flags to `--tserver_flags` as required.
 
     ```sh
@@ -111,6 +123,8 @@ To create a secure multi-zone cluster:
         --fault_tolerance=zone \
         --tserver_flags="enable_ysql_conn_mgr=true"
     ```
+
+    For the third node, you can use the IP address of any currently running node in the universe (for example, the first or the second node) in the `--join` flag:
 
     ```sh
     ./bin/yugabyted start --secure --advertise_address=<IP_of_VM_3> \

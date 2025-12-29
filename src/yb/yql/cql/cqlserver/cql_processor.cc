@@ -421,7 +421,7 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const PrepareRequest& req) 
   VLOG(1) << "PREPARE " << req.query();
   const CQLMessage::QueryId query_id = CQLStatement::GetQueryId(
       ql_env_.CurrentKeyspace(), req.query());
-  VLOG(1) << "Generated Query Id = " << query_id;
+  VLOG(1) << "Generated Query Id = " << b2a_hex(query_id);
   UpdateAshQueryId(query_id);
   // To prevent multiple clients from preparing the same new statement in parallel and trying to
   // cache the same statement (a typical "login storm" scenario), each caller will try to allocate
@@ -632,6 +632,9 @@ void CQLProcessor::StatementExecuted(const Status& s, const ExecutedResult::Shar
 
 unique_ptr<CQLResponse> CQLProcessor::ProcessError(
     const Status& s, std::optional<CQLMessage::QueryId> query_id) {
+  VLOG_WITH_FUNC(2)
+      << "status: " << s << ", query: " << (query_id ? b2a_hex(*query_id) : "<NONE>")
+      << ", retry count: " << retry_count_;
   if (s.IsQLError()) {
     ErrorCode ql_errcode = GetErrorCode(s);
     if (ql_errcode == ErrorCode::UNPREPARED_STATEMENT || ql_errcode == ErrorCode::STALE_METADATA) {

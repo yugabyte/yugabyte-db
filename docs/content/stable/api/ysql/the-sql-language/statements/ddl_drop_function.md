@@ -7,6 +7,8 @@ menu:
   stable_api:
     identifier: ddl_drop_function
     parent: statements
+aliases:
+  - /stable/api/ysql/commands/ddl_drop_function/
 type: docs
 ---
 

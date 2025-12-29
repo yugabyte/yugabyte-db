@@ -4,6 +4,8 @@ headerTitle: Create cloud provider configuration
 linkTitle: Cloud providers
 description: Configure the Microsoft Azure provider configuration
 headContent: For deploying universes on Azure
+aliases:
+  - /stable/deploy/enterprise-edition/configure-cloud-providers/azure
 menu:
   stable_yugabyte-platform:
     identifier: set-up-cloud-provider-3-azure

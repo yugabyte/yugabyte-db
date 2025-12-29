@@ -15,6 +15,7 @@
 #include <fstream>
 #include <optional>
 #include <thread>
+#include <string_view>
 
 #include <boost/preprocessor/seq/for_each.hpp>
 
@@ -73,6 +74,8 @@
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
+
+#include "yb/common/advisory_locks_error.h"
 
 using std::string;
 
@@ -1490,6 +1493,8 @@ TEST_F(PgMiniTest, CatalogVersionUpdateIfNeeded) {
 // Test that we don't sequential restart read on the same table if intents were written
 // after the first read. GH #6972.
 TEST_F(PgMiniTest, NoRestartSecondRead) {
+  // Create an initial first connection without max_clock_skew_usec set. Postgres crashes otherwise.
+  ASSERT_RESULT(Connect());
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_clock_skew_usec) = 1000000000LL * kTimeMultiplier;
   auto conn1 = ASSERT_RESULT(Connect());
   auto conn2 = ASSERT_RESULT(Connect());
@@ -2746,6 +2751,71 @@ TEST_F(PgMiniTestSingleNode, TestBootstrapOnAppliedTransactionWithIntents) {
   ASSERT_EQ(res, 1);
 }
 
+TEST_F(PgMiniTestSingleNode, TestBootstrapFilterOldTransactionNewWrite) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_delete_intents_sst_files) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_bootstrap_intent_ht_filter) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_no_schedule_remove_intents) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_flush_on_shutdown) = true;
+
+  auto conn1 = ASSERT_RESULT(Connect());
+  auto conn2 = ASSERT_RESULT(Connect());
+
+  LOG(INFO) << "Creating tables";
+  ASSERT_OK(conn1.Execute("CREATE TABLE test1(a int) SPLIT INTO 1 TABLETS"));
+
+  const auto& peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
+  tablet::TabletPeerPtr tablet_peer = nullptr;
+  tablet::TabletPtr tablet = nullptr;
+  for (auto peer : peers) {
+    tablet = ASSERT_RESULT(peer->shared_tablet());
+    if (tablet->regular_db()) {
+      tablet_peer = peer;
+      break;
+    }
+  }
+  ASSERT_NE(tablet_peer, nullptr);
+
+  ASSERT_OK(conn1.Execute("CREATE TABLE test2(a int) SPLIT INTO 1 TABLETS"));
+
+  // This tests the case where a very old transaction writes to a tablet for the first time,
+  // after bootstrap state has been flushed, to ensure it is not filtered out. More context: #29642.
+  LOG(INFO) << "T1 - BEGIN";
+  ASSERT_OK(conn1.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  LOG(INFO) << "T1 - INSERT (test2)";
+  ASSERT_OK(conn1.Execute("INSERT INTO test2(a) VALUES (0)"));
+
+  LOG(INFO) << "T2 - BEGIN";
+  ASSERT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  LOG(INFO) << "T2 - INSERT (test1)";
+  ASSERT_OK(conn2.Execute("INSERT INTO test1(a) VALUES (10)"));
+  ASSERT_OK(conn2.Execute("INSERT INTO test1(a) VALUES (11)"));
+
+  LOG(INFO) << "T2 - Commit";
+  ASSERT_OK(conn2.CommitTransaction());
+
+  LOG(INFO) << "Flush bootstrap state";
+  ASSERT_OK(tablet_peer->FlushBootstrapState());
+
+  LOG(INFO) << "T1 - INSERT (test1)";
+  ASSERT_OK(conn1.Execute("INSERT INTO test1(a) VALUES(20)"));
+  ASSERT_OK(conn1.Execute("INSERT INTO test1(a) VALUES(21)"));
+
+  LOG(INFO) << "Flush";
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
+
+  LOG(INFO) << "T1 - Commit";
+  ASSERT_OK(conn1.CommitTransaction());
+
+  LOG(INFO) << "Restarting cluster";
+  ASSERT_OK(RestartCluster());
+
+  conn1 = ASSERT_RESULT(Connect());
+  auto res = ASSERT_RESULT(conn1.FetchRow<PGUint64>("SELECT COUNT(*) FROM test1"));
+  ASSERT_EQ(res, 4);
+  res = ASSERT_RESULT(conn1.FetchRow<PGUint64>("SELECT COUNT(*) FROM test2"));
+  ASSERT_EQ(res, 1);
+}
+
 TEST_F(PgMiniTestSingleNode, TestAppliedTransactionsStateReadOnly) {
   constexpr size_t kIters = 100;
 
@@ -2904,14 +2974,14 @@ TEST_F(PgMiniTest, TestAppliedTransactionsStateInFlight) {
 Status MockAbortFailure(
     const yb::tserver::PgFinishTransactionRequestPB* req,
     yb::tserver::PgFinishTransactionResponsePB* resp, yb::rpc::RpcContext* context) {
-  LOG(INFO) << "FinishTransaction called for session: " << req->session_id();
-
   // ASH collector takes session id 1.
   // If --ysql_enable_relcache_init_optimization=false, then the subsequent connections
   // take 2 and 3.
   // If --ysql_enable_relcache_init_optimization=true, we will have an additional
   // internal relcache init connection as 2, so the subsequent connections take 3 and 4.
   uint64_t intended_session_id = FLAGS_ysql_enable_relcache_init_optimization ? 4 : 3;
+  LOG(INFO) << "FinishTransaction called for session: " << req->session_id()
+            << ", intended_session_id: " << intended_session_id;
   if (req->session_id() < intended_session_id) {
     context->CloseConnection();
     // The return status should not matter here.
@@ -2922,6 +2992,15 @@ Status MockAbortFailure(
   }
 
   LOG(FATAL) << "Unexpected session id: " << req->session_id();
+}
+
+Status MockRollbackToSubtransactionFailure(
+    const yb::tserver::PgRollbackToSubTransactionRequestPB* req,
+    yb::tserver::PgRollbackToSubTransactionResponsePB* resp,
+    rpc::RpcContext* context) {
+
+  LOG(INFO) << Format("Requested rollback to subtransaction: $0", req->sub_transaction_id());
+  return STATUS(NetworkError, "Mocking network failure on RollbackToSubtransaction");
 }
 
 class PgRecursiveAbortTest : public PgMiniTestSingleNode,
@@ -2942,6 +3021,12 @@ class PgRecursiveAbortTest : public PgMiniTestSingleNode,
     auto* client = cluster_->mini_tablet_server(0)->server()->TEST_GetPgClientServiceMock();
     return client->MockFinishTransaction(mock);
   }
+
+  template <class F>
+  tserver::PgClientServiceMockImpl::Handle MockRollbackToSubtransaction(const F& mock) {
+    auto* client = cluster_->mini_tablet_server(0)->server()->TEST_GetPgClientServiceMock();
+    return client->MockRollbackToSubTransaction(mock);
+  }
 };
 
 INSTANTIATE_TEST_CASE_P(, PgRecursiveAbortTest,
@@ -2955,19 +3040,21 @@ TEST_P(PgRecursiveAbortTest, AbortOnTserverFailure) {
   ASSERT_OK(conn.StartTransaction(SNAPSHOT_ISOLATION));
   // Run a command to ensure that the transaction is created in the backend.
   ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (1)"));
-  auto handle = MockFinishTransaction(MockAbortFailure);
-  auto status = conn.Execute("CREATE TABLE t2 (k INT)");
-  // With transactional DDL enabled, "CREATE TABLE t2" won't auto-commit. So we need to explicitly
-  // commit to trigger our expected failure.
-  // This also means that the connection `conn` remains as `CONNECTION_OK` as the transaction gets
-  // aborted due to the failure during COMMIT.
-  if (IsTransactionalDdlEnabled()) {
-    status = conn.Execute("COMMIT");
-    ASSERT_EQ(conn.ConnStatus(), CONNECTION_OK);
-  } else {
-    ASSERT_EQ(conn.ConnStatus(), CONNECTION_BAD);
+  {
+    auto handle = MockFinishTransaction(MockAbortFailure);
+    auto status = conn.Execute("CREATE TABLE t2 (k INT)");
+    // With transactional DDL enabled, "CREATE TABLE t2" won't auto-commit. So we need to explicitly
+    // commit to trigger our expected failure.
+    // This also means that the connection `conn` remains as `CONNECTION_OK` as the transaction gets
+    // aborted due to the failure during COMMIT.
+    if (IsTransactionalDdlEnabled()) {
+      status = conn.Execute("COMMIT");
+      ASSERT_EQ(conn.ConnStatus(), CONNECTION_OK);
+    } else {
+      ASSERT_EQ(conn.ConnStatus(), CONNECTION_BAD);
+    }
+    ASSERT_TRUE(status.IsNetworkError());
   }
-  ASSERT_TRUE(status.IsNetworkError());
 
   // Insert will fail since the table 't2' doesn't exist.
   conn = ASSERT_RESULT(Connect());
@@ -2984,6 +3071,98 @@ TEST_P(PgRecursiveAbortTest, MockAbortFailure) {
   auto status = conn.Execute("ABORT");
   ASSERT_TRUE(status.IsNetworkError());
   ASSERT_EQ(conn.ConnStatus(), CONNECTION_BAD);
+}
+
+TEST_P(PgRecursiveAbortTest, MockRollbackToSubtransactionFailure) {
+  PGConn conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (k INT)"));
+  ASSERT_OK(conn.StartTransaction(READ_COMMITTED));
+  ASSERT_OK(conn.Execute("SAVEPOINT s1"));
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (1)"));
+  auto _ = MockRollbackToSubtransaction(MockRollbackToSubtransactionFailure);
+  auto status = conn.Execute("ROLLBACK TO s1");
+  ASSERT_TRUE(status.IsNetworkError());
+  ASSERT_EQ(conn.ConnStatus(), CONNECTION_BAD);
+}
+
+class PgHeartbeatFailureTest : public PgMiniTestSingleNode {
+ public:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_pg_client_mock) = true;
+    PgMiniTest::SetUp();
+  }
+
+  template <class F>
+  tserver::PgClientServiceMockImpl::Handle MockHeartbeat(const F& mock) {
+    auto* client = cluster_->mini_tablet_server(0)->server()->TEST_GetPgClientServiceMock();
+    return client->MockHeartbeat(mock);
+  }
+
+  void UnsetHeartbeatMock() {
+    auto* client = cluster_->mini_tablet_server(0)->server()->TEST_GetPgClientServiceMock();
+    client->UnsetMock("Heartbeat");
+  }
+};
+
+static MonoDelta kHeartbeatFailureDuration = MonoDelta::FromSeconds(5);
+static CoarseTimePoint kFailureStart = CoarseTimePoint();
+
+Status MockHeartbeatFailure(
+    const yb::tserver::PgHeartbeatRequestPB* req,
+    yb::tserver::PgHeartbeatResponsePB* resp, yb::rpc::RpcContext* context) {
+  LOG(INFO) << "Heartbeat called for session: " << req->session_id();
+  if (kFailureStart == CoarseTimePoint()) {
+    kFailureStart = CoarseMonoClock::Now();
+  }
+
+  if (CoarseMonoClock::Now() - kFailureStart < kHeartbeatFailureDuration) {
+    return STATUS(NetworkError, "Mocking network failure on Heartbeat");
+  }
+
+  // Do not set the session ID. The client should create a new session.
+  return Status::OK();
+}
+
+TEST_F(PgHeartbeatFailureTest, MockTransientHeartbeatFailure) {
+  PGConn conn = ASSERT_RESULT(Connect());
+  auto _ = MockHeartbeat(MockHeartbeatFailure);
+
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([this] {
+    SleepFor(5s);
+    UnsetHeartbeatMock();
+  });
+
+  uint nfailures = 0;
+  ASSERT_OK(WaitFor([this, &nfailures]() {
+    auto result = ConnectToDB(std::string() /* dbname */, 1 /* timeout */ );
+    if (!result.ok()) {
+      nfailures++;
+      return false;
+    }
+
+    // Validate that once a heartbeat is successful, the connection can service
+    // queries.
+    PGConn conn2 = std::move(*result);
+    auto status = conn2.Execute("CREATE TABLE t1 (k INT)");
+    if (!status.ok()) {
+      nfailures++;
+      return false;
+    }
+
+    return true;
+  }, 10s, "Transient failure timeout", 1s));
+
+  thread_holder.JoinAll();
+  // Validate that at least one new connection experienced heartbeat failure.
+  ASSERT_GT(nfailures, 0);
+
+  // The old connection should still work as it received a valid session ID from
+  // the tserver before the mock was installed. Validate that it can service
+  // queries.
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (1)"));
+  auto nrows = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT COUNT(*) FROM t1"));
+  ASSERT_EQ(nrows, 1);
 }
 
 TEST_F(PgMiniTest, KillPGInTheMiddleOfBatcherOperation) {

@@ -181,8 +181,15 @@ TEST_P(PgPackedRowTest, AlterTable) {
           SetDefaultTransactionIsolation(Connect(), IsolationLevel::SNAPSHOT_ISOLATION));
       std::vector<int> columns;
       int column_idx = 0;
-      ASSERT_OK(conn.ExecuteFormat(
-          "CREATE TABLE $0 (key INT PRIMARY KEY) SPLIT INTO 1 TABLETS", table_name));
+      while (true) {
+        auto status = conn.ExecuteFormat(
+            "CREATE TABLE $0 (key INT PRIMARY KEY) SPLIT INTO 1 TABLETS", table_name);
+        if (status.ok()) {
+          break;
+        }
+        auto msg = status.ToString();
+        ASSERT_TRUE(msg.find("pgsql error 40001") != std::string::npos) << msg;
+      }
       while (!stop.load()) {
         if (columns.empty() || RandomUniformBool()) {
           auto status = conn.ExecuteFormat(

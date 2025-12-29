@@ -443,7 +443,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     RollMaxBatchSize result = new RollMaxBatchSize();
     for (UniverseDefinitionTaskParams.Cluster cluster : universe.getUniverseDetails().clusters) {
       Map<UUID, Integer> azUuidToNumNodes =
-          PlacementInfoUtil.getAzUuidToNumNodes(cluster.placementInfo);
+          PlacementInfoUtil.getAzUuidToNumNodes(cluster.getOverallPlacement());
       Integer resultPerCluster = Integer.MAX_VALUE;
 
       for (Map.Entry<UUID, Integer> entry : azUuidToNumNodes.entrySet()) {
@@ -549,10 +549,11 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       maxReplicasSafeToStop--;
     }
     maxReplicasSafeToStop = Math.max(1, maxReplicasSafeToStop);
-    int sumOfReplicas = cluster.placementInfo.azStream().mapToInt(az -> az.replicationFactor).sum();
+    int sumOfReplicas =
+        cluster.getOverallPlacement().azStream().mapToInt(az -> az.replicationFactor).sum();
     PlacementAZ placementAZ =
         cluster
-            .placementInfo
+            .getOverallPlacement()
             .azStream()
             .filter(az -> az.uuid.equals(azUUID))
             .findFirst()
@@ -1212,7 +1213,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
         .forEach(n -> indexByUUID.putIfAbsent(n.getAzUuid(), n.getNodeIdx()));
 
     cluster
-        .placementInfo
+        .getOverallPlacement()
         .azStream()
         .sorted(
             Comparator.<PlacementAZ, Boolean>comparing(az -> !az.isAffinitized)

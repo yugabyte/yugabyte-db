@@ -7,6 +7,8 @@ menu:
   stable_api:
     identifier: api-ysql-datatypes-character
     parent: api-ysql-datatypes
+aliases:
+  - /stable/api/ysql/type_text/
 type: docs
 ---
 

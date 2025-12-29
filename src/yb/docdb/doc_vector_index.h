@@ -22,6 +22,7 @@
 
 #include "yb/qlexpr/qlexpr_fwd.h"
 
+#include "yb/rocksdb/options.h"
 #include "yb/rocksdb/rocksdb_fwd.h"
 
 #include "yb/rpc/rpc_fwd.h"
@@ -29,6 +30,7 @@
 #include "yb/tablet/tablet_fwd.h"
 
 #include "yb/util/kv_util.h"
+#include "yb/util/metrics.h"
 
 #include "yb/vector_index/vector_index_fwd.h"
 
@@ -41,8 +43,6 @@ class PriorityThreadPool;
 namespace yb::docdb {
 
 using EncodedDistance = uint64_t;
-
-extern const std::string kVectorIndexDirPrefix;
 
 struct DocVectorIndexInsertEntry {
   ValueBuffer value;
@@ -77,6 +77,7 @@ class DocVectorIndex {
   virtual const TableId& table_id() const = 0;
   virtual Slice indexed_table_key_prefix() const = 0;
   virtual ColumnId column_id() const = 0;
+  virtual const PgVectorIdxOptionsPB& options() const = 0;
   virtual const std::string& path() const = 0;
   virtual HybridTime hybrid_time() const = 0;
   virtual const DocVectorIndexedTableContext& indexed_table_context() const = 0;
@@ -122,7 +123,7 @@ struct DocVectorIndexThreadPools {
   rpc::ThreadPool* insert_thread_pool;
 
   // Used for compactions.
-  PriorityThreadPool* compaction_thread_pool;
+  PriorityThreadPoolTokenPtr compaction_token;
 };
 using DocVectorIndexThreadPoolProvider = std::function<DocVectorIndexThreadPools()>;
 
@@ -130,13 +131,14 @@ using DocVectorIndexThreadPoolProvider = std::function<DocVectorIndexThreadPools
 // don't forget to call EnableAutoCompactions().
 Result<DocVectorIndexPtr> CreateDocVectorIndex(
     const std::string& log_prefix,
-    const std::string& data_root_dir,
+    const std::string& storage_dir,
     const DocVectorIndexThreadPoolProvider& thread_pool_provider,
     Slice indexed_table_key_prefix,
     HybridTime hybrid_time,
     const qlexpr::IndexInfo& index_info,
     DocVectorIndexedTableContextPtr indexed_table_context,
     const hnsw::BlockCachePtr& block_cache,
-    const MemTrackerPtr& mem_tracker);
+    const MemTrackerPtr& mem_tracker,
+    const MetricEntityPtr& metric_entity);
 
 }  // namespace yb::docdb

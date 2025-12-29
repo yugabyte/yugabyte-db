@@ -362,7 +362,6 @@ class PostgresBuilder(YbBuildToolBase):
         install_cmd_line_prefix = 'INSTALL = '
 
         new_makefile_lines = []
-        install_script_updated = False
 
         with open(makefile_global_path) as makefile_global_input_f:
             for line in makefile_global_input_f:
@@ -375,29 +374,10 @@ class PostgresBuilder(YbBuildToolBase):
                             new_cflags + ' $(YB_APPEND_CFLAGS)'
                         replaced_cflags = True
 
-                if line.startswith(install_cmd_line_prefix):
-                    new_makefile_lines.extend([
-                        '# The following line was modified by the build_postgres.py script to use',
-                        '# our install_wrapper.py script to customize installation path of',
-                        '# executables and libraries, needed in case of LTO.'
-                    ])
-                    line = ''.join([
-                        install_cmd_line_prefix,
-                        os.path.join('$(YB_SRC_ROOT)', 'python', 'yugabyte', 'install_wrapper.py'),
-                        ' ',
-                        line[len(install_cmd_line_prefix):]
-                    ])
-                    install_script_updated = True
-
                 new_makefile_lines.append(line)
 
         if not found_cflags:
             raise RuntimeError("Could not find a CFLAGS line in %s" % makefile_global_path)
-
-        if not install_script_updated:
-            raise RuntimeError(
-                f"Could not find and update a line starting with '{install_cmd_line_prefix}' in "
-                f"{makefile_global_path}.")
 
         if replaced_cflags:
             logging.info("Replaced cflags in %s", makefile_global_path)
@@ -456,7 +436,6 @@ class PostgresBuilder(YbBuildToolBase):
 
         additional_c_cxx_flags = [
             '-Wimplicit-function-declaration',
-            '-Wno-error=unused-function',
             '-DHAVE__BUILTIN_CONSTANT_P=1',
             '-Werror=implicit-function-declaration',
             '-Werror=int-conversion',
@@ -464,7 +443,6 @@ class PostgresBuilder(YbBuildToolBase):
 
         if self.is_clang():
             additional_c_cxx_flags += [
-                '-Wno-builtin-requires-header',
                 '-Wno-shorten-64-to-32',
             ]
 
@@ -472,17 +450,7 @@ class PostgresBuilder(YbBuildToolBase):
             additional_c_cxx_flags += [
                 '-Wall',
                 '-Werror',
-                '-Wno-error=unused-function'
             ]
-
-            if self.build_type in ['release', 'prof_gen', 'prof_use']:
-                if self.is_clang():
-                    additional_c_cxx_flags += [
-                        '-Wno-error=array-bounds',
-                        '-Wno-error=gnu-designator',
-                    ]
-                if self.is_gcc():
-                    additional_c_cxx_flags += ['-Wno-error=strict-overflow']
 
             if self.build_type in ['asan', 'asan_release']:
                 additional_c_cxx_flags += [
@@ -498,9 +466,6 @@ class PostgresBuilder(YbBuildToolBase):
             for build_path in get_absolute_path_aliases(self.pg_build_root)
             for source_path in get_absolute_path_aliases(self.postgres_src_dir)
         ]
-
-        if self.is_gcc():
-            additional_c_cxx_flags.append('-Wno-error=maybe-uninitialized')
 
         for var_name in COMPILER_AND_LINKER_FLAG_ENV_VAR_NAMES:
             os.environ[var_name] = adjust_compiler_or_linker_flags(

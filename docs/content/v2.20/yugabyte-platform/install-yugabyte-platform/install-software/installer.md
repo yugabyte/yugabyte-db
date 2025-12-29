@@ -80,7 +80,7 @@ To install YugabyteDB Anywhere using YBA Installer, do the following:
 
 After the installation succeeds, you can immediately start using YBA.
 
-If the installation fails due to permissions or lack of sudo privileges, you can retry after running `yba-ctl clean all` to remove all traces of the previous attempt.
+If the installation fails due to permissions or lack of sudo privileges, you can retry after running `yba-ctl clean --all` to remove all traces of the previous attempt.
 
 For more detailed installation instructions and information on how to use YBA Installer to manage your installation, refer to the following sections.
 

@@ -14,6 +14,12 @@ type: docs
 
 Monitor performance metrics for your universe to ensure the universe configuration matches its performance requirements using the universe **Metrics** page.
 
+{{< tip title="Export metrics" >}}
+
+You can export universe metrics to third-party tools for analysis and customization. Refer to [Export metrics](../anywhere-metrics-export/).
+
+{{< /tip >}}
+
 The **Metrics** page displays graphs representing information on operations, latency, and other parameters accumulated over time. By examining specific metrics, you can diagnose and troubleshoot issues.
 
 You access metrics by navigating to **Universes > Universe-Name > Metrics**, as shown in the following illustration:
@@ -153,7 +159,7 @@ Resource metrics should be considered on a per-node basis.
 | --------------------- | ------------------------------------------------------------ | ------------------------------------------------------------ | --------------------------------- |
 | Total YSQL Ops / sec  | The number of various transaction control operations, such as BEGIN, COMMIT, ROLLBACK, as well as other operations through the YSQL API. | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![Total YSQL Ops / sec](/images/yp/metrics101.png) |
 | YSQL Op Latency (Avg) | The average time taken by various transaction control operations, such as BEGIN, COMMIT, ROLLBACK, as well as other operations through the YSQL API. | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![YSQL Op Latency (Avg)](/images/yp/metrics102.png) |
-| Catalog Cache Misses | During YSQL query processing, system catalog (pg_catalog) tables that live on the YB-Master are cached on the local YSQL backend. This metric counts the number of YSQL catalog cache misses, where the data had to be fetched from the YB-Master. Also broken down by pg_catalog table that triggered the misses. | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![Catalog Cache Misses](/images/yp/metrics114.png)
+| Catalog Cache Misses | During YSQL query processing, system catalog (pg_catalog) tables that live on the YB-Master are cached on the local YSQL backend. This metric counts the number of YSQL catalog cache misses, where the data had to be fetched from the YB-Master. Also broken down by pg_catalog table that triggered the misses. | This metric is informational and should not be subject to alerting. You may consider this information while examining alerts on other metrics. | ![Catalog Cache Misses](/images/yp/metrics114.png) |
 
 ### YCQL advanced
 

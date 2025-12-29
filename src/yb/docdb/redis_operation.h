@@ -13,7 +13,7 @@
 
 #pragma once
 
-#include "yb/common/redis_protocol.pb.h"
+#include "yb/common/redis_protocol.messages.h"
 
 #include "yb/docdb/deadline_info.h"
 #include "yb/docdb/doc_operation.h"
@@ -36,10 +36,10 @@ struct RedisValue {
 };
 
 class RedisWriteOperation :
-    public DocOperationBase<DocOperationType::REDIS_WRITE_OPERATION, RedisWriteRequestPB> {
+    public DocOperationBase<DocOperationType::REDIS_WRITE_OPERATION, RedisWriteRequestMsg> {
  public:
   // Construct a RedisWriteOperation. Content of request will be swapped out by the constructor.
-  explicit RedisWriteOperation(std::reference_wrapper<const RedisWriteRequestPB> request)
+  explicit RedisWriteOperation(std::reference_wrapper<const RedisWriteRequestMsg> request)
       : DocOperationBase(request) {
   }
 
@@ -50,12 +50,10 @@ class RedisWriteOperation :
   Status GetDocPaths(
       GetDocPathsMode mode, DocPathsToLock *paths, IsolationLevel *level) const override;
 
-  RedisResponsePB &response() { return response_; }
+  RedisResponseMsg& response() { return response_; }
 
  private:
-  void ClearResponse() override {
-    response_.Clear();
-  }
+  void ClearResponse() override;
 
   void InitializeIterator(const DocOperationApplyData& data);
   Result<RedisDataType> GetValueType(const DocOperationApplyData& data,
@@ -81,19 +79,18 @@ class RedisWriteOperation :
   // open for operations to share iterators.
   std::unique_ptr<IntentAwareIterator> iterator_;
 
-  rocksdb::QueryId redis_query_id() { return reinterpret_cast<rocksdb::QueryId > (&request_); }
+  rocksdb::QueryId redis_query_id() { return reinterpret_cast<rocksdb::QueryId>(&request_); }
 };
 
 class RedisReadOperation {
  public:
-  explicit RedisReadOperation(const yb::RedisReadRequestPB& request,
-                              const DocDB& doc_db,
-                              const ReadOperationData& read_operation_data)
-      : request_(request), doc_db_(doc_db), read_operation_data_(read_operation_data) {}
+  RedisReadOperation(const RedisReadRequestMsg& request,
+                     const DocDB& doc_db,
+                     const ReadOperationData& read_operation_data);
 
   Status Execute();
 
-  const RedisResponsePB &response();
+  const RedisResponseMsg& response();
 
  private:
   Result<RedisDataType> GetValueType(int subkey_index = kNilSubkeyIndex);
@@ -103,12 +100,12 @@ class RedisReadOperation {
   // child TTLs override parent TTLs.
   // TODO: Once the timeseries bug is fixed, this function as well as the
   // corresponding field can be safely removed.
-  Result<RedisValue>GetOverrideValue(int subkey_index = kNilSubkeyIndex);
+  Result<RedisValue> GetOverrideValue(int subkey_index = kNilSubkeyIndex);
 
   Result<RedisValue> GetValue(int subkey_index = kNilSubkeyIndex);
 
   Status ExecuteGet();
-  Status ExecuteGet(const RedisGetRequestPB& get_request);
+  Status ExecuteGet(const RedisGetRequestMsg& get_request);
   Status ExecuteGet(RedisGetRequestPB::GetRequestType type);
   Status ExecuteGetForRename();
   Status ExecuteGetTtl();
@@ -123,13 +120,14 @@ class RedisReadOperation {
       RedisCollectionGetRangeRequestPB::GetRangeRequestType request_type, bool add_keys);
   Status ExecuteCollectionGetRangeByBounds(
       RedisCollectionGetRangeRequestPB::GetRangeRequestType request_type,
-      const RedisSubKeyBoundPB& lower_bound, const RedisSubKeyBoundPB& upper_bound, bool add_keys);
+      const RedisSubKeyBoundMsg& lower_bound, const RedisSubKeyBoundMsg& upper_bound,
+      bool add_keys);
   Status ExecuteKeys();
 
   rocksdb::QueryId redis_query_id() { return reinterpret_cast<rocksdb::QueryId> (&request_); }
 
-  const RedisReadRequestPB& request_;
-  RedisResponsePB response_;
+  const RedisReadRequestMsg& request_;
+  RedisResponseMsg response_;
   const DocDB doc_db_;
   const ReadOperationData read_operation_data_;
   // TODO: Move iterator_ to a superclass of RedisWriteOperation RedisReadOperation

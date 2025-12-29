@@ -9,7 +9,12 @@ import {
 } from './steps/resilence-regions/dtos';
 import { AvailabilityZone, ClusterType, Region } from '../../../helpers/dtos';
 import { OtherAdvancedProps } from './steps/advanced-settings/dtos';
-import { ClusterNodeSpec, CommunicationPortsSpec, PlacementRegion, UniverseCreateReqBody } from '../../../../v2/api/yugabyteDBAnywhereV2APIs.schemas';
+import {
+  ClusterNodeSpec,
+  CommunicationPortsSpec,
+  PlacementRegion,
+  UniverseCreateReqBody
+} from '../../../../v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { CloudType, DeviceInfo } from '@app/redesign/features/universe/universe-form/utils/dto';
 
 export function getCreateUniverseSteps(t: TFunction, resilienceType?: ResilienceType) {
@@ -140,7 +145,7 @@ export const assignRegionsAZNodeByReplicationFactor = (
           {
             ...singleZone,
             nodeCount: 1,
-            preffered: '0'
+            preffered: 0
           }
         ]
       };
@@ -164,7 +169,7 @@ export const assignRegionsAZNodeByReplicationFactor = (
       updatedRegions[region.code].push({
         ...region.zones[i % region.zones.length],
         nodeCount: 1,
-        preffered: i === 0 ? 'false' : i + ''
+        preffered: i
       });
     }
   });
@@ -190,7 +195,7 @@ export const rebalanceRegionNodes = (
     region.zones.forEach((zone) => {
       const existingZone = find(allZones, { zone: { uuid: zone.uuid } });
       if (!existingZone) {
-        allZones.push({ region: region.code, zone: { ...zone, nodeCount: 0, preffered: 'false' } });
+        allZones.push({ region: region.code, zone: { ...zone, nodeCount: 0, preffered: 0 } });
       }
     });
   });
@@ -207,7 +212,7 @@ export const rebalanceRegionNodes = (
 
   // Step 2: Distribute remaining nodes (round-robin, prefer preferred zones if needed)
   const sortedZones = allZones.sort((a, b) =>
-    b.zone.preffered === 'true' ? 1 : a.zone.name.localeCompare(b.zone.name) ? 1 : -1
+    a.zone.name.localeCompare(b.zone.name) ? 1 : -1
   );
 
   let index = 0;
@@ -283,7 +288,8 @@ export const mapCreateUniversePayload = (
           num_nodes_in_az: az.nodeCount,
           subnet: azFromRegion!.subnet,
           leader_affinity: true,
-          replication_factor: resilienceAndRegionsSettings.replicationFactor
+          replication_factor: resilienceAndRegionsSettings.replicationFactor,
+          leader_preference: az.preffered
         };
       })
     };

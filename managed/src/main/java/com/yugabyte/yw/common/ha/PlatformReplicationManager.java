@@ -33,8 +33,8 @@ import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
 import io.ebean.DB;
 import io.ebean.annotation.Transactional;
-import io.prometheus.client.CollectorRegistry;
-import io.prometheus.client.Gauge;
+import io.prometheus.metrics.core.metrics.Gauge;
+import io.prometheus.metrics.model.registry.PrometheusRegistry;
 import java.io.File;
 import java.io.IOException;
 import java.net.URL;
@@ -83,13 +83,17 @@ public class PlatformReplicationManager {
   private static final String INSTANCE_ADDRESS_LABEL = "instance_address";
 
   public static final Gauge HA_LAST_BACKUP_TIME =
-      Gauge.build("yba_ha_last_backup_seconds", "Last backup time for remote instances")
+      Gauge.builder()
+          .name("yba_ha_last_backup_seconds")
+          .help("Last backup time for remote instances")
           .labelNames(INSTANCE_ADDRESS_LABEL)
-          .register(CollectorRegistry.defaultRegistry);
+          .register(PrometheusRegistry.defaultRegistry);
 
   public static final Gauge HA_LAST_BACKUP_SIZE =
-      Gauge.build("yba_ha_last_backup_size_mb", "Last backup size for remote instances")
-          .register(CollectorRegistry.defaultRegistry);
+      Gauge.builder()
+          .name("yba_ha_last_backup_size_mb")
+          .help("Last backup size for remote instances")
+          .register(PrometheusRegistry.defaultRegistry);
 
   @Inject
   public PlatformReplicationManager(
@@ -585,7 +589,7 @@ public class PlatformReplicationManager {
                           instance -> {
                             if (instance.getLastBackup() != null) {
                               HA_LAST_BACKUP_TIME
-                                  .labels(instance.getAddress())
+                                  .labelValues(instance.getAddress())
                                   .set(instance.getLastBackup().toInstant().getEpochSecond());
                             }
                           });
@@ -758,10 +762,13 @@ public class PlatformReplicationManager {
     // Where to input a previously taken platform backup from.
     private final File input;
     private final boolean k8sRestoreYbaDbOnRestart;
+    private final boolean skipOldFiles;
 
-    public RestorePlatformBackupParams(File input, boolean k8sRestoreYbaDbOnRestart) {
+    public RestorePlatformBackupParams(
+        File input, boolean k8sRestoreYbaDbOnRestart, boolean skipOldFiles) {
       this.input = input;
       this.k8sRestoreYbaDbOnRestart = k8sRestoreYbaDbOnRestart;
+      this.skipOldFiles = skipOldFiles;
     }
 
     @Override
@@ -781,6 +788,9 @@ public class PlatformReplicationManager {
       } else if (k8sRestoreYbaDbOnRestart
           && confGetter.getGlobalConf(GlobalConfKeys.k8sYbaRestoreSkipDumpFileDelete)) {
         commandArgs.add("--skip_dump_file_delete");
+      }
+      if (skipOldFiles) {
+        commandArgs.add("--skip_old_files");
       }
 
       return commandArgs;
@@ -805,17 +815,23 @@ public class PlatformReplicationManager {
     return response.code == 0;
   }
 
+  public boolean restoreBackup(File input, boolean k8sRestoreYbaDbOnRestart) {
+    return restoreBackup(input, k8sRestoreYbaDbOnRestart, false);
+  }
+
   /**
    * Restore a backup of the YugabyteDB Anywhere
    *
    * @param input is the path to the backup to be restored
+   * @param k8sRestoreYbaDbOnRestart restore Yba DB on restart in k8s
+   * @param skipOldFiles skip restoring old files
    * @return the output/results of running the script
    */
-  public boolean restoreBackup(File input, boolean k8sRestoreYbaDbOnRestart) {
+  public boolean restoreBackup(File input, boolean k8sRestoreYbaDbOnRestart, boolean skipOldFiles) {
     log.info("Restoring platform backup...");
     ShellResponse response =
         replicationHelper.runCommand(
-            new RestorePlatformBackupParams(input, k8sRestoreYbaDbOnRestart));
+            new RestorePlatformBackupParams(input, k8sRestoreYbaDbOnRestart, skipOldFiles));
     if (response.code != 0) {
       log.error("Restore failed: {}", response.message);
     } else {

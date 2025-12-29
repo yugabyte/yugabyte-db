@@ -267,9 +267,7 @@ Status MiniCluster::StartAsync(
     }
   } else {
     for (const shared_ptr<MiniTabletServer>& tablet_server : mini_tablet_servers_) {
-      RETURN_NOT_OK(tablet_server->Start(
-          tserver::WaitTabletsBootstrapped::kTrue,
-          tserver::WaitToAcceptPgConnections(options_.wait_for_pg)));
+      RETURN_NOT_OK(tablet_server->Start(tserver::WaitTabletsBootstrapped::kTrue));
     }
   }
 
@@ -384,7 +382,7 @@ Status MiniCluster::RestartSync() {
 
   LOG(INFO) << "Restart tablet server(s)...";
   for (auto& tablet_server : mini_tablet_servers_) {
-    CHECK_OK(tablet_server->Restart(tserver::WaitToAcceptPgConnections(options_.wait_for_pg)));
+    CHECK_OK(tablet_server->Restart());
     CHECK_OK(tablet_server->WaitStarted());
   }
   LOG(INFO) << "Restart master server(s)...";

@@ -40,14 +40,13 @@ var listRoleCmd = &cobra.Command{
 		}
 		rList := make([]ybaclient.Role, 0)
 		var response *http.Response
-		if len(strings.TrimSpace(roleType)) > 0 {
+		if !util.IsEmptyString(roleType) {
 			roleListRequest = roleListRequest.RoleType(
 				strings.ToUpper(roleType),
 			)
 			rList, response, err = roleListRequest.Execute()
 			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(response, err, "RBAC: Role", "List")
-				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+				util.FatalHTTPError(response, err, "RBAC: Role", "List")
 			}
 		} else {
 			roleTypes := []string{
@@ -58,8 +57,7 @@ var listRoleCmd = &cobra.Command{
 				roleListRequest = roleListRequest.RoleType(c)
 				rCode, response, err := roleListRequest.Execute()
 				if err != nil {
-					errMessage := util.ErrorFromHTTPResponse(response, err, "RBAC: Role", "List")
-					logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+					util.FatalHTTPError(response, err, "RBAC: Role", "List")
 				}
 				rList = append(rList, rCode...)
 			}
@@ -71,7 +69,7 @@ var listRoleCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(name)) > 0 {
+		if !util.IsEmptyString(name) {
 			for _, p := range rList {
 				if strings.Contains(strings.ToLower(p.GetName()), strings.ToLower(name)) {
 					r = append(r, p)

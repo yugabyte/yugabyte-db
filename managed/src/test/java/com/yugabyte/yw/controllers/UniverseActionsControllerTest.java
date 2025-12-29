@@ -189,7 +189,7 @@ public class UniverseActionsControllerTest extends UniverseControllerTestBase {
               new UniverseDefinitionTaskParams.UserIntent();
           userIntent.providerType = Common.CloudType.aws;
           userIntent.ybSoftwareVersion = "2.20.0.0-b1";
-          universeDetails.upsertPrimaryCluster(userIntent, null);
+          universeDetails.upsertPrimaryCluster(userIntent, null, null);
           universe.setUniverseDetails(universeDetails);
         };
     // Save the updates to the universe.
@@ -223,7 +223,7 @@ public class UniverseActionsControllerTest extends UniverseControllerTestBase {
           UniverseDefinitionTaskParams.UserIntent userIntent =
               new UniverseDefinitionTaskParams.UserIntent();
           userIntent.providerType = Common.CloudType.aws;
-          universeDetails.upsertPrimaryCluster(userIntent, null);
+          universeDetails.upsertPrimaryCluster(userIntent, null, null);
           universe.setUniverseDetails(universeDetails);
         };
     // Save the updates to the universe.

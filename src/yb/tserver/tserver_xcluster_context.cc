@@ -24,12 +24,12 @@
 namespace yb::tserver {
 
 Result<std::optional<HybridTime>> TserverXClusterContext::GetSafeTime(
-    const NamespaceId& namespace_id) const {
+    NamespaceIdView namespace_id) const {
   return safe_time_map_.GetSafeTime(namespace_id);
 }
 
 XClusterNamespaceInfoPB_XClusterRole TserverXClusterContext::GetXClusterRole(
-    const NamespaceId& namespace_id) const {
+    NamespaceIdView namespace_id) const {
   SharedLock lock(mutex_);
   if (!have_received_a_heartbeat_) {
     return XClusterNamespaceInfoPB_XClusterRole_UNAVAILABLE;
@@ -41,7 +41,7 @@ XClusterNamespaceInfoPB_XClusterRole TserverXClusterContext::GetXClusterRole(
   }
 }
 
-bool TserverXClusterContext::IsReadOnlyMode(const NamespaceId& namespace_id) const {
+bool TserverXClusterContext::IsReadOnlyMode(NamespaceIdView namespace_id) const {
   // Namespaces that are part of the safe time belong to an inbound transactional xCluster
   // replication.
   return safe_time_map_.HasNamespace(namespace_id);
@@ -112,7 +112,8 @@ void TserverXClusterContext::PrepareCreateTableHelper(
     const PgCreateTableRequestPB& req, PgCreateTable& helper) const {
   SharedLock l(table_map_mutex_);
   auto create_table_info = FindOrNull(
-      create_table_info_map_, {req.database_name(), req.schema_name(), req.table_name()});
+      create_table_info_map_,
+      YsqlFullTableName{req.database_name(), req.schema_name(), req.table_name()});
   if (!create_table_info) {
     return;
   }

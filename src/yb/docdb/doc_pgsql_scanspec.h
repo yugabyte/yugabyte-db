@@ -30,6 +30,9 @@
 
 namespace yb::docdb {
 
+using PgsqlConditionPBPtr = rpc::AnyMessagePtrBase<
+    const PgsqlConditionPB*, const LWPgsqlConditionPB*>;
+
 // DocDB variant of scanspec.
 class DocPgsqlScanSpec : public qlexpr::YQLScanSpec {
  public:
@@ -54,7 +57,7 @@ class DocPgsqlScanSpec : public qlexpr::YQLScanSpec {
                    const ArenaPtr& arena,
                    const std::vector<Slice>& encoded_hashed_components,
                    std::reference_wrapper<const dockv::KeyEntryValues> range_components,
-                   const PgsqlConditionPB* condition,
+                   PgsqlConditionPBPtr condition,
                    std::optional<int32_t> hash_code,
                    std::optional<int32_t> max_hash_code,
                    const dockv::DocKey& start_doc_key = DefaultStartDocKey(),
@@ -97,7 +100,8 @@ class DocPgsqlScanSpec : public qlexpr::YQLScanSpec {
   // Initialize options_ if range columns have one or more options (i.e. using EQ/IN
   // conditions). Otherwise options_ will stay null and we will only use the range_bounds for
   // scanning.
-  void InitOptions(const PgsqlConditionPB& condition);
+  template <class ConditionPB>
+  void InitOptions(const ConditionPB& condition);
 
   // The range/hash value options if set (possibly more than one due to IN conditions).
   std::shared_ptr<std::vector<qlexpr::OptionList>> options_;

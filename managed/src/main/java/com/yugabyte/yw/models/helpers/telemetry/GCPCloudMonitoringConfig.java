@@ -14,6 +14,7 @@ import com.google.auth.http.HttpCredentialsAdapter;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.io.ByteArrayInputStream;
@@ -48,7 +49,7 @@ public class GCPCloudMonitoringConfig extends TelemetryProviderConfig {
   }
 
   @Override
-  public void validate(ApiHelper apiHelper) {
+  public void validate(ApiHelper apiHelper, RuntimeConfGetter confGetter) {
     // Check if project is given in atleast one of the param or creds.
     if (StringUtils.isBlank(project) && !credentials.hasNonNull("project_id")) {
       throw new PlatformServiceException(
@@ -59,6 +60,10 @@ public class GCPCloudMonitoringConfig extends TelemetryProviderConfig {
     String project_id =
         StringUtils.isBlank(project) ? credentials.get("project_id").asText() : project;
 
+    if (TelemetryProviderUtil.skipConnectivityValidation(confGetter)) {
+      log.info("Skipping GCP Cloud Monitoring validation as per config.");
+      return;
+    }
     CloudResourceManager service;
     TestIamPermissionsRequest requestBody =
         new TestIamPermissionsRequest().setPermissions(REQUIRED_LOGGING_PERMISSIONS);
@@ -105,6 +110,11 @@ public class GCPCloudMonitoringConfig extends TelemetryProviderConfig {
       throw new PlatformServiceException(
           BAD_REQUEST, "Validation failed. Got an error while trying to test GCP permissions");
     }
+  }
+
+  @Override
+  public void validate(ApiHelper apiHelper) {
+    validate(apiHelper, null);
   }
 
   public CloudResourceManager createCloudResourceManagerService(JsonNode credentials)

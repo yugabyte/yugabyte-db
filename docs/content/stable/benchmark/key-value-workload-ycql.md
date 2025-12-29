@@ -4,6 +4,8 @@ headerTitle: Key-value workload
 linkTitle: Key-value workload
 description: Benchmark YCQL performance with key-value workloads.
 headcontent: Benchmark YCQL performance with key-value workloads
+aliases:
+  - /stable/benchmark/key-value-workload
 menu:
   stable:
     identifier: key-value-workload-1-ycql

@@ -220,7 +220,8 @@ IntentAwareIterator::IntentAwareIterator(
         docdb::CreateIntentsIteratorWithHybridTimeFilter(
             doc_db.intents, txn_op_context.txn_status_manager, doc_db.key_bounds,
             &intent_upperbound_, read_opts.cache_restart_block_keys,
-            GetIntentsDBStatistics(read_operation_data.statistics)));
+            GetIntentsDBStatistics(read_operation_data.statistics),
+            read_operation_data.use_ht_file_filter));
   }
   // WARNING: It is important for regular DB iterator to be created after intents DB iterator,
   // otherwise consistency could break, for example in following scenario:
@@ -1053,13 +1054,12 @@ Result<EncodedDocHybridTime> IntentAwareIterator::FindMatchingIntentRecordDocHyb
 
 Result<EncodedDocHybridTime> IntentAwareIterator::GetMatchingRegularRecordDocHybridTime(
     Slice key_without_ht) {
-  size_t other_encoded_ht_size =
-      VERIFY_RESULT(dockv::CheckHybridTimeSizeAndValueType(iter_->key()));
-  Slice iter_key_without_ht = iter_->key();
-  iter_key_without_ht.remove_suffix(1 + other_encoded_ht_size);
+  auto iter_key = iter_->key();
+  size_t other_encoded_ht_size = VERIFY_RESULT(dockv::CheckHybridTimeSizeAndValueType(iter_key));
+  auto iter_key_without_ht = iter_key.WithoutSuffix(1 + other_encoded_ht_size);
   if (key_without_ht == iter_key_without_ht) {
     EncodedDocHybridTime result;
-    RETURN_NOT_OK(DocHybridTime::EncodedFromEnd(iter_->key(), &result));
+    RETURN_NOT_OK(DocHybridTime::EncodedFromEnd(iter_key, &result));
     UpdateMaxSeenHt(result, key_without_ht);
     return result;
   }
@@ -1106,16 +1106,18 @@ Result<HybridTime> IntentAwareIterator::FindOldestRecord(
   RETURN_NOT_OK(status_);
 
   if (iter_->Valid()) {
+    VLOG_WITH_FUNC(4) << "Find prev: " << DebugDumpKeyToStr(iter_->key());
     SkipFutureRecords<Direction::kForward>(iter_->Prev());
   } else {
     HandleStatus(iter_->status());
     RETURN_NOT_OK(status_);
+    VLOG_WITH_FUNC(4) << "Seek to last";
     SkipFutureRecords<Direction::kForward>(iter_->SeekToLast());
   }
 
   if (regular_entry_) {
     auto regular_dht = VERIFY_RESULT(GetMatchingRegularRecordDocHybridTime(key_without_ht));
-    VLOG(4) << "Looking for Matching Regular Record found   =  " << regular_dht.ToString();
+    VLOG_WITH_FUNC(4) << "Looking for Matching Regular Record found = " << regular_dht.ToString();
     if (!regular_dht.empty()) {
       auto ht = VERIFY_RESULT(regular_dht.Decode()).hybrid_time();
       if (ht > min_hybrid_time) {
@@ -1123,9 +1125,9 @@ Result<HybridTime> IntentAwareIterator::FindOldestRecord(
       }
     }
   } else {
-    VLOG(4) << "regular_value_ is empty";
+    VLOG_WITH_FUNC(4) << "regular_value_ is empty";
   }
-  VLOG(4) << "Returning " << result;
+  VLOG_WITH_FUNC(4) << "Returning " << result;
   return result;
 }
 

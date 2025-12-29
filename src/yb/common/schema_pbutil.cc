@@ -34,7 +34,7 @@
 #include <string>
 #include <vector>
 
-#include "yb/common/common.pb.h"
+#include "yb/common/common.messages.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
@@ -118,9 +118,14 @@ Status SchemaFromPB(const SchemaPB& pb, Schema *schema) {
   return Status::OK();
 }
 
-void ColumnSchemaToPB(const ColumnSchema& col_schema, ColumnSchemaPB *pb, int flags) {
+template <class PB>
+void DoColumnSchemaToPB(const ColumnSchema& col_schema, PB *pb, int flags) {
   pb->Clear();
-  pb->set_name(col_schema.name());
+  if constexpr (rpc::IsGoogleProtobuf<PB>) {
+    pb->set_name(col_schema.name());
+  } else {
+    pb->dup_name(col_schema.name());
+  }
   col_schema.type()->ToQLTypePB(pb->mutable_type());
   pb->set_is_nullable(col_schema.is_nullable());
   pb->set_is_static(col_schema.is_static());
@@ -142,19 +147,45 @@ void ColumnSchemaToPB(const ColumnSchema& col_schema, ColumnSchemaPB *pb, int fl
   }
 }
 
-ColumnSchema ColumnSchemaFromPB(const ColumnSchemaPB& pb) {
+void ColumnSchemaToPB(const ColumnSchema& col_schema, ColumnSchemaPB *pb, int flags) {
+  DoColumnSchemaToPB(col_schema, pb, flags);
+}
+
+void ColumnSchemaToPB(const ColumnSchema& col_schema, LWColumnSchemaPB *pb, int flags) {
+  DoColumnSchemaToPB(col_schema, pb, flags);
+}
+
+namespace {
+
+template <class PB>
+ColumnSchema DoColumnSchemaFromPB(const PB& pb) {
   auto kind = pb.is_hash_key()
       ? ColumnKind::HASH
       : pb.is_key() ? SortingTypeToColumnKind(SortingType(pb.sorting_type()))
                     : ColumnKind::VALUE;
+  QLValuePB missing_value;
+  if constexpr (rpc::IsGoogleProtobuf<PB>) {
+    missing_value = pb.missing_value();
+  } else {
+    pb.missing_value().ToGoogleProtobuf(&missing_value);
+  }
   return ColumnSchema(pb.name(), QLType::FromQLTypePB(pb.type()), kind, Nullable(pb.is_nullable()),
                       pb.is_static(), pb.is_counter(), pb.order(), pb.pg_type_oid(),
-                      pb.marked_for_deletion(), pb.missing_value());
+                      pb.marked_for_deletion(), std::move(missing_value));
+}
+
+} // namespace
+
+ColumnSchema ColumnSchemaFromPB(const ColumnSchemaPB& pb) {
+  return DoColumnSchemaFromPB(pb);
+}
+
+ColumnSchema ColumnSchemaFromPB(const LWColumnSchemaPB& pb) {
+  return DoColumnSchemaFromPB(pb);
 }
 
 Status ColumnPBsToSchema(const google::protobuf::RepeatedPtrField<ColumnSchemaPB>& column_pbs,
                          Schema* schema) {
-
   std::vector<ColumnSchema> columns;
   std::vector<ColumnId> column_ids;
   RETURN_NOT_OK(ColumnPBsToColumnTuple(column_pbs, &columns, &column_ids));
@@ -165,13 +196,14 @@ Status ColumnPBsToSchema(const google::protobuf::RepeatedPtrField<ColumnSchemaPB
   return schema->Reset(columns, column_ids);
 }
 
-void SchemaToColumnPBs(const Schema& schema,
-                       google::protobuf::RepeatedPtrField<ColumnSchemaPB>* cols,
-                       int flags) {
+template <class Cols>
+void DoSchemaToColumnPBs(const Schema& schema,
+                         Cols* cols,
+                         int flags) {
   cols->Clear();
   size_t idx = 0;
   for (const ColumnSchema& col : schema.columns()) {
-    ColumnSchemaPB* col_pb = cols->Add();
+    auto* col_pb = cols->Add();
     ColumnSchemaToPB(col, col_pb);
     col_pb->set_is_key(idx < schema.num_key_columns());
 
@@ -181,6 +213,18 @@ void SchemaToColumnPBs(const Schema& schema,
 
     idx++;
   }
+}
+
+void SchemaToColumnPBs(const Schema& schema,
+                       google::protobuf::RepeatedPtrField<ColumnSchemaPB>* cols,
+                       int flags) {
+  DoSchemaToColumnPBs(schema, cols, flags);
+}
+
+void SchemaToColumnPBs(const Schema& schema,
+                       ArenaList<LWColumnSchemaPB>* cols,
+                       int flags) {
+  DoSchemaToColumnPBs(schema, cols, flags);
 }
 
 } // namespace yb

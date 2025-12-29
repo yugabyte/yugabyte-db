@@ -22,7 +22,7 @@ static inline int od_auth_frontend_cleartext(od_client_t *client)
 	if (msg == NULL)
 		return -1;
 	int rc;
-	rc = od_write(&client->io, msg);
+	rc = od_write(&client->io, &msg);
 	if (rc == -1) {
 		od_error(&instance->logger, "auth", client, NULL,
 			 "write error: %s", od_io_error(&client->io));
@@ -192,7 +192,7 @@ static inline int od_auth_frontend_md5(od_client_t *client)
 	if (msg == NULL)
 		return -1;
 	int rc;
-	rc = od_write(&client->io, msg);
+	rc = od_write(&client->io, &msg);
 	if (rc == -1) {
 		od_error(&instance->logger, "auth", client, NULL,
 			 "write error: %s", od_io_error(&client->io));
@@ -343,7 +343,7 @@ static inline int od_auth_frontend_scram_sha_256(od_client_t *client)
 	if (msg == NULL)
 		return -1;
 
-	int rc = od_write(&client->io, msg);
+	int rc = od_write(&client->io, &msg);
 	if (rc == -1) {
 		od_error(&instance->logger, "auth", client, NULL,
 			 "write error: %s", od_io_error(&client->io));
@@ -494,7 +494,7 @@ static inline int od_auth_frontend_scram_sha_256(od_client_t *client)
 		return -1;
 	}
 
-	rc = od_write(&client->io, msg);
+	rc = od_write(&client->io, &msg);
 	if (rc == -1) {
 		od_error(&instance->logger, "auth", client, NULL,
 			 "write error: %s", od_io_error(&client->io));
@@ -587,7 +587,7 @@ static inline int od_auth_frontend_scram_sha_256(od_client_t *client)
 		return -1;
 	}
 
-	rc = od_write(&client->io, msg);
+	rc = od_write(&client->io, &msg);
 	if (rc == -1) {
 		od_error(&instance->logger, "auth", client, NULL,
 			 "write error: %s", od_io_error(&client->io));
@@ -722,7 +722,7 @@ int od_auth_frontend(od_client_t *client)
 	msg = kiwi_be_write_authentication_ok(NULL);
 	if (msg == NULL)
 		return -1;
-	rc = od_write(&client->io, msg);
+	rc = od_write(&client->io, &msg);
 	if (rc == -1) {
 		od_error(&instance->logger, "auth", client, NULL,
 			 "write error: %s", od_io_error(&client->io));
@@ -781,7 +781,7 @@ static inline int od_auth_backend_cleartext(od_server_t *server,
 		return -1;
 	}
 	int rc;
-	rc = od_write(&server->io, msg);
+	rc = od_write(&server->io, &msg);
 	if (rc == -1) {
 		od_error(&instance->logger, "auth", NULL, server,
 			 "write error: %s", od_io_error(&server->io));
@@ -864,7 +864,7 @@ static inline int od_auth_backend_md5(od_server_t *server, char salt[4],
 			 "memory allocation error");
 		return -1;
 	}
-	rc = od_write(&server->io, msg);
+	rc = od_write(&server->io, &msg);
 	if (rc == -1) {
 		od_error(&instance->logger, "auth", NULL, server,
 			 "write error: %s", od_io_error(&server->io));
@@ -913,7 +913,7 @@ static inline int od_auth_backend_sasl(od_server_t *server, od_client_t *client)
 		return -1;
 	}
 
-	int rc = od_write(&server->io, msg);
+	int rc = od_write(&server->io, &msg);
 	if (rc == -1) {
 		od_error(&instance->logger, "auth", NULL, server,
 			 "write error: %s", od_io_error(&server->io));
@@ -991,7 +991,7 @@ static inline int od_auth_backend_sasl_continue(od_server_t *server,
 		return -1;
 	}
 
-	int rc = od_write(&server->io, msg);
+	int rc = od_write(&server->io, &msg);
 	if (rc == -1) {
 		od_error(&instance->logger, "auth", NULL, server,
 			 "write error: %s", od_io_error(&server->io));
@@ -1074,7 +1074,7 @@ static inline int yb_od_relay_client_to_auth_server(od_server_t *server,
 		"Received the client response");
 
 	/* Forward the password response packet to the database. */
-	int rc = od_write(&server->io, msg);
+	int rc = od_write(&server->io, &msg);
 	if (rc == -1) {
 		od_error(
 			&instance->logger, context, client, server,
@@ -1096,31 +1096,17 @@ static inline int yb_od_relay_auth_server_to_client(od_server_t *server, machine
 	od_client_t *client, od_instance_t *instance, char *context)
 {
 	kiwi_be_type_t type;
-
-	if(msg == NULL) {
-		/* Waiting for server response */
-		msg = od_read(&server->io, UINT32_MAX);
-		if(msg == NULL) {
-			od_error(&instance->logger, context, NULL, server,
-				"read from server error: %s", od_io_error(&server->io));
-			machine_msg_free(msg);
-			return -1;
-
-		}
-	}
-
 	type = *(char *)machine_msg_data(msg);
 	od_debug(&instance->logger, context, NULL, server,
 		"received server packet type: %s",
 		kiwi_be_type_to_string(type));
 
-	int rc = od_write(&client->io, msg);
-		if (rc == -1) {
-			od_error(&instance->logger, context, client, NULL,
-				"write to client error: %s", od_io_error(&client->io));
-			machine_msg_free(msg);
-			return -1;
-		}
+	int rc = od_write(&client->io, &msg);
+	if (rc == -1) {
+		od_error(&instance->logger, context, client, NULL,
+			 "write to client error: %s", od_io_error(&client->io));
+		return -1;
+	}
 	od_debug(&instance->logger, context, client, server,
 		"Forwarded the server response to the client");
 	return 0;
@@ -1154,7 +1140,7 @@ int od_auth_backend(od_server_t *server, machine_msg_t *msg,
 
 		/* AuthenticationOk */
 		if (auth_type == OD_AUTH_OK) {
-			rc = od_write(&external_client->io, msg);
+			rc = od_write(&external_client->io, &msg);
 			if (rc == -1) {
 				od_error(
 					&instance->logger, "auth",

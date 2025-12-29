@@ -562,6 +562,9 @@ bool operator >=(const LWQLValuePB& lhs, const LWQLValuePB& rhs);
 bool operator ==(const LWQLValuePB& lhs, const LWQLValuePB& rhs);
 bool operator !=(const LWQLValuePB& lhs, const LWQLValuePB& rhs);
 
+bool operator ==(const QLValuePB& lhs, const LWQLValuePB& rhs);
+bool operator ==(const LWQLValuePB& lhs, const QLValuePB& rhs);
+
 InternalType type(const QLValuePB& v);
 
 bool IsNull(const QLValuePB& v);
@@ -573,20 +576,23 @@ inline bool IsNull(const QLValue& v) {
 void SetNull(QLValuePB* v);
 void SetNull(LWQLValuePB* v);
 
+inline void SetNull(QLValuePB& v) {
+  SetNull(&v);
+}
+
+inline void SetNull(LWQLValuePB& v) {
+  SetNull(&v);
+}
+
 inline void SetNull(QLValue* v) {
   SetNull(v->mutable_value());
 }
 
-bool EitherIsNull(const QLValuePB& lhs, const QLValuePB& rhs);
-bool BothNotNull(const QLValuePB& lhs, const QLValuePB& rhs);
-bool BothNull(const QLValuePB& lhs, const QLValuePB& rhs);
 bool Comparable(const QLValuePB& lhs, const QLValuePB& rhs);
 bool Comparable(const LWQLValuePB& lhs, const LWQLValuePB& rhs);
 int Compare(const QLValuePB& lhs, const QLValuePB& rhs);
-bool EitherIsNull(const QLValuePB& lhs, const QLValue& rhs);
+int Compare(const LWQLValuePB& lhs, const LWQLValuePB& rhs);
 bool Comparable(const QLValuePB& lhs, const QLValue& rhs);
-bool BothNotNull(const QLValuePB& lhs, const QLValue& rhs);
-bool BothNull(const QLValuePB& lhs, const QLValue& rhs);
 int Compare(const QLValuePB& lhs, const QLValue& rhs);
 int Compare(const QLSeqValuePB& lhs, const QLSeqValuePB& rhs);
 int Compare(const bool lhs, const bool rhs);
@@ -600,6 +606,9 @@ inline void AppendToKey(const QLValue &value_pb, std::string *bytes) {
 void ConcatStrings(const std::string& lhs, const std::string& rhs, QLValuePB* result);
 void ConcatStrings(const std::string& lhs, const std::string& rhs, QLValue* result);
 void ConcatStrings(const Slice& lhs, const Slice& rhs, LWQLValuePB* result);
+
+void SetStringValue(QLValuePB& key, std::string_view value);
+void SetStringValue(LWQLValuePB& key, std::string_view value);
 
 #define YB_SET_INT_VALUE(ql_valuepb, input, bits) \
   case DataType::BOOST_PP_CAT(INT, bits): { \

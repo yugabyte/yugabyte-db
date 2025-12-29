@@ -20,7 +20,12 @@
 
 #pragma once
 
+#include <string>
+#include <string_view>
+
 #include "yb/util/status_ec.h"
+
+using namespace std::literals;
 
 // Return an unauthorized error if authentication is not enabled through the flag
 // use_cassandra_authentication.
@@ -31,8 +36,7 @@
   }                                                                                               \
 } while (false);
 
-namespace yb {
-namespace ql {
+namespace yb::ql {
 
 enum class ErrorCode : int64_t {
   //------------------------------------------------------------------------------------------------
@@ -150,14 +154,13 @@ std::string FormatForComparisonFailureMessage(ErrorCode op, ErrorCode other);
 
 struct QLErrorTag : IntegralErrorTag<ErrorCode> {
   // This category id is part of the wire protocol and should not be changed once released.
-  static constexpr uint8_t kCategory = 4;
+  static constexpr CategoryDescriptor kCategory{4, "ql error"sv};
 
   static std::string ToMessage(Value code) {
     return ErrorText(code);
   }
 };
 
-typedef StatusErrorCodeImpl<QLErrorTag> QLError;
+using QLError = StatusErrorCodeImpl<QLErrorTag>;
 
-}  // namespace ql
-}  // namespace yb
+}  // namespace yb::ql

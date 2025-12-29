@@ -4,6 +4,8 @@ headerTitle: xCluster replication
 linkTitle: xCluster
 description: xCluster replication between multiple YugabyteDB universes.
 headContent: High-throughput asynchronous physical replication
+aliases:
+  - /stable/architecture/docdb/2dc-deployments/
 menu:
   stable:
     identifier: architecture-docdb-async-replication
@@ -80,7 +82,7 @@ For YSQL, transactions on the target universe can experience non-repeatable read
 If both target and source universes write to the primary key row, then the last writer wins. The deciding factor is the underlying hybrid time of the updates from each universe.
 Concurrent updates and deletes of the same primary key row can result in inconsistent data.
 
-For YSQL, if there are indexes involved then the write can result in corruption of the index. Concurrent updates, and deletes to the primary key row, or the same index row (including INCLUDED columns) can also result in corruption of the index. 
+For YSQL, if there are indexes involved then the write can result in corruption of the index. Concurrent updates, and deletes to the primary key row, or the same index row (including INCLUDED columns) can also result in corruption of the index.
 Foreign key, unique, and other user-defined constraints cannot be guaranteed for data that is written concurrently from both universes.
 
 If the source universe fails, the target universe may end up in an inconsistent state where some transactions from the source have only some of their writes applied in the target (these are called _torn transactions_). This inconsistency does not automatically heal over time and may need to be manually resolved.

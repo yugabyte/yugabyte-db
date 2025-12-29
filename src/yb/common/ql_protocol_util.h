@@ -18,7 +18,7 @@
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/common_types.pb.h"
-#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_protocol.messages.h"
 #include "yb/common/value.pb.h"
 
 #include "yb/util/status.h"
@@ -29,25 +29,26 @@
 namespace yb {
 
 #define QL_PROTOCOL_TYPES \
-    ((Int8, int8, int8_t)) \
-    ((Int16, int16, int16_t)) \
-    ((Int32, int32, int32_t)) \
-    ((Int64, int64, int64_t)) \
-    ((String, string, const std::string&)) \
-    ((Binary, binary, const std::string&)) \
-    ((Bool, bool, bool)) \
-    ((Float, float, float)) \
-    ((Double, double, double)) \
-    ((Jsonb, jsonb, const std::string&)) \
-    ((Timestamp, timestamp, int64_t)) \
+    ((Int8, int8, int8_t, set_, set_)) \
+    ((Int16, int16, int16_t, set_, set_)) \
+    ((Int32, int32, int32_t, set_, set_)) \
+    ((Int64, int64, int64_t, set_, set_)) \
+    ((String, string, const std::string&, set_, dup_)) \
+    ((Binary, binary, const std::string&, set_, dup_)) \
+    ((Bool, bool, bool, set_, set_)) \
+    ((Float, float, float, set_, set_)) \
+    ((Double, double, double, set_, set_)) \
+    ((Jsonb, jsonb, const std::string&, set_, dup_)) \
+    ((Timestamp, timestamp, int64_t, set_, set_)) \
 
 #define PP_CAT3(a, b, c) BOOST_PP_CAT(a, BOOST_PP_CAT(b, c))
 
-#define QL_PROTOCOL_TYPE_DECLARATIONS_IMPL(name, lname, type) \
+#define QL_PROTOCOL_TYPE_DECLARATIONS_IMPL(name, lname, type, pb_set, lw_set) \
 void PP_CAT3(QLAdd, name, ColumnValue)( \
     QLWriteRequestPB* req, int column_id, type value); \
 \
 void PP_CAT3(QLSet, name, Expression)(QLExpressionPB *expr, type value); \
+void PP_CAT3(QLSet, name, Expression)(LWQLExpressionPB *expr, type value); \
 \
 template <class RequestPB> \
 void PP_CAT3(QLAdd, name, HashValue)(RequestPB* req, type value) { \
@@ -59,9 +60,13 @@ void PP_CAT3(QLAdd, name, RangeValue)(RequestPB* req, type value) { \
 } \
 void PP_CAT3(QLSet, name, Condition)( \
     QLConditionPB* condition, int column_id, QLOperator op, type value); \
+void PP_CAT3(QLSet, name, Condition)( \
+    LWQLConditionPB* condition, int column_id, QLOperator op, type value); \
 \
 void PP_CAT3(QLAdd, name, Condition)( \
     QLConditionPB* condition, int column_id, QLOperator op, type value); \
+void PP_CAT3(QLAdd, name, Condition)( \
+    LWQLConditionPB* condition, int column_id, QLOperator op, type value); \
 
 #define QL_PROTOCOL_TYPE_DECLARATIONS(i, data, entry) QL_PROTOCOL_TYPE_DECLARATIONS_IMPL entry
 
@@ -79,19 +84,21 @@ void QLSetHashCode(RequestPB* req) {
 }
 
 QLValuePB* QLPrepareColumn(QLWriteRequestPB* req, int column_id);
+LWQLValuePB* QLPrepareColumn(LWQLWriteRequestPB* req, int column_id);
 QLValuePB* QLPrepareCondition(QLConditionPB* condition, int column_id, QLOperator op);
+LWQLValuePB* QLPrepareCondition(LWQLConditionPB* condition, int column_id, QLOperator op);
 
 void QLAddColumns(const Schema& schema, const std::vector<ColumnId>& columns,
                   QLReadRequestPB* req);
 
 // Does this write request require reading existing data for evaluating expressions before writing?
-bool RequireReadForExpressions(const QLWriteRequestPB& request);
+bool RequireReadForExpressions(const QLWriteRequestMsg& request);
 
 // Does this write request require reading existing data in general before writing?
-bool RequireRead(const QLWriteRequestPB& request, const Schema& schema);
+bool RequireRead(const QLWriteRequestMsg& request, const Schema& schema);
 
 // Does this write request perform a range operation (e.g. range delete)?
-bool IsRangeOperation(const QLWriteRequestPB& request, const Schema& schema);
+bool IsRangeOperation(const QLWriteRequestMsg& request, const Schema& schema);
 
 #define RETURN_NOT_ENOUGH(data, sz)                         \
   do {                                                      \
@@ -105,7 +112,7 @@ bool IsRangeOperation(const QLWriteRequestPB& request, const Schema& schema);
 // is the coverter's return type. The converter's return type <data_type> is unsigned while
 // <num_type> may be signed or unsigned.
 template<typename num_type, typename data_type>
-static inline Status CQLDecodeNum(
+inline Status CQLDecodeNum(
     const size_t len, data_type (*converter)(const void*), Slice* data, num_type* val) {
 
   static_assert(sizeof(data_type) == sizeof(num_type), "inconsistent num type size");
@@ -125,7 +132,7 @@ static inline Status CQLDecodeNum(
 // type. <converter> converts the number from network byte-order to machine order and <data_type>
 // is the coverter's return type. The converter's return type <data_type> is an integer type.
 template<typename float_type, typename data_type>
-static inline Status CQLDecodeFloat(
+inline Status CQLDecodeFloat(
     const size_t len, data_type (*converter)(const void*), Slice* data, float_type* val) {
   // Make sure float and double are exactly sizeof uint32_t and uint64_t.
   static_assert(sizeof(float_type) == sizeof(data_type), "inconsistent floating point type size");
@@ -135,7 +142,7 @@ static inline Status CQLDecodeFloat(
   return Status::OK();
 }
 
-static inline Status CQLDecodeBytes(size_t len, Slice* data, std::string* val) {
+inline Status CQLDecodeBytes(size_t len, Slice* data, std::string* val) {
   RETURN_NOT_ENOUGH(data, len);
   val->assign(data->cdata(), len);
   data->remove_prefix(len);
@@ -146,7 +153,7 @@ Result<int32_t> CQLDecodeLength(Slice* data);
 
 // Decode a 32-bit length from the buffer without consuming the buffer. Caller should ensure the
 // buffer size is at least 4 bytes.
-static inline int32_t CQLDecodeLength(const void* buffer) {
+inline int32_t CQLDecodeLength(const void* buffer) {
   return static_cast<int32_t>(NetworkByteOrder::Load32(buffer));
 }
 
@@ -182,7 +189,7 @@ inline void CQLEncodeFloat(
   CQLEncodeNum(converter, value, buffer);
 }
 
-inline void CQLEncodeBytes(const std::string& val, WriteBuffer* buffer) {
+inline void CQLEncodeBytes(std::string_view val, WriteBuffer* buffer) {
   CQLEncodeLength(val.size(), buffer);
   buffer->Append(Slice(val));
 }
@@ -205,12 +212,12 @@ inline WriteBufferPos CQLStartCollection(WriteBuffer* buffer) {
 // compute length and writing it at the right position in the buffer
 void CQLFinishCollection(const WriteBufferPos& start_pos, WriteBuffer* buffer);
 
-static inline void Store8(void* p, uint8_t v) {
+inline void Store8(void* p, uint8_t v) {
   *static_cast<uint8_t*>(p) = v;
 }
 
 //----------------------------------- CQL value decode functions ---------------------------------
-static inline uint8_t Load8(const void* p) {
+inline uint8_t Load8(const void* p) {
   return *static_cast<const uint8_t*>(p);
 }
 

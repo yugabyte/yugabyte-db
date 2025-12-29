@@ -381,22 +381,11 @@ void ShutdownLoggingSafe() {
   logging_initialized = false;
 }
 
-// Support for the special THROTTLE_MSG token in a log message stream.
-ostream& operator<<(ostream &os, const PRIVATE_ThrottleMsg&) {
-  using google::LogMessage;
-#ifdef DISABLE_RTTI
-  LogMessage::LogStream *log = static_cast<LogMessage::LogStream*>(&os);
-#else
-  LogMessage::LogStream *log = dynamic_cast<LogMessage::LogStream*>(&os);
-#endif
-  CHECK(log && log == log->self())
-      << "You must not use COUNTER with non-glog ostream";
-  int ctr = log->ctr();
-  if (ctr > 0) {
-    os << " [suppressed " << ctr << " similar messages]";
-  }
-  return os;
+namespace logging_internal {
+ThrottledLogWriter MakeThrottledLogWriter(google::LogMessage&& log_writer, const char* prefix) {
+  return ThrottledLogWriter(std::move(log_writer), prefix);
 }
+} // namespace logging_internal
 
 void DisableCoreDumps() {
   struct rlimit lim;

@@ -268,6 +268,11 @@ DEFINE_RUNTIME_PG_FLAG(string, yb_enable_cbo, "legacy_mode",
     "'legacy_bnl_mode', 'legacy_stats_bnl_mode', 'legacy_ignore_stats_bnl_mode', "
     "'off', and 'on'");
 
+DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_update_reltuples_after_create_index, false,
+    "Enables update of reltuples in pg_class for the base table and index after creating the "
+    "index. When disabled, reltuples of the base table will remain unchanged and index reltuples "
+    "will be set to 0 after the index is created.");
+
 DEFINE_RUNTIME_PG_FLAG(uint64, yb_fetch_row_limit, 1024,
     "Maximum number of rows to fetch per scan.");
 
@@ -298,6 +303,11 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(
     bool, yb_allow_dockey_bounds, kLocalVolatile, false, true,
     "If true, allow lower_bound/upper_bound fields of PgsqlReadRequestPB to be DocKeys. Only "
     "applicable for hash-sharded tables.");
+
+DEFINE_RUNTIME_AUTO_PG_FLAG(
+    bool, yb_test_make_all_ddl_statements_incrementing, kLocalVolatile, false, true,
+    "When set, all DDL statements will cause the catalog version to increment. This mainly "
+    "affects CREATE commands such as CREATE TABLE, CREATE VIEW, and CREATE SEQUENCE.");
 
 DEFINE_RUNTIME_PG_FLAG(
     string, yb_default_replica_identity, "CHANGE",
@@ -473,40 +483,6 @@ void MergeSharedPreloadLibraries(const string& src, vector<string>* defaults) {
       [](const std::string& s){return s.empty();}),
       new_items.end());
   defaults->insert(defaults->end(), new_items.begin(), new_items.end());
-}
-
-Status ReadCSVValues(const string& csv, vector<string>* lines) {
-  // Function reads CSV string in the following format:
-  // - fields are divided with comma (,)
-  // - fields with comma (,) or double-quote (") are quoted with double-quote (")
-  // - pair of double-quote ("") in quoted field represents single double-quote (")
-  //
-  // Examples:
-  // 1,"two, 2","three ""3""", four , -> ['1', 'two, 2', 'three "3"', ' four ', '']
-  // 1,"two                           -> Malformed CSV (quoted field 'two' is not closed)
-  // 1, "two"                         -> Malformed CSV (quoted field 'two' has leading spaces)
-  // 1,two "2"                        -> Malformed CSV (field with " must be quoted)
-  // 1,"tw"o"                         -> Malformed CSV (no separator after quoted field 'tw')
-
-  const std::regex exp(R"(^(?:([^,"]+)|(?:"((?:[^"]|(?:""))*)\"))(?:(?:,)|(?:$)))");
-  auto i = csv.begin();
-  const auto end = csv.end();
-  std::smatch match;
-  while (i != end && std::regex_search(i, end, match, exp)) {
-    // Replace pair of double-quote ("") with single double-quote (") in quoted field.
-    if (match[2].length() > 0) {
-      lines->emplace_back(match[2].first, match[2].second);
-      boost::algorithm::replace_all(lines->back(), "\"\"", "\"");
-    } else {
-      lines->emplace_back(match[1].first, match[1].second);
-    }
-    i += match.length();
-  }
-  SCHECK(i == end, InvalidArgument, Format("Malformed CSV '$0'", csv));
-  if (!csv.empty() && csv.back() == ',') {
-    lines->emplace_back();
-  }
-  return Status::OK();
 }
 
 // Make sure that the parameter values do not contain '\n' since each line is a separate parameter.
@@ -977,6 +953,12 @@ Status PgWrapper::UpdateAndReloadConfig() {
   return ReloadConfig();
 }
 
+void PgWrapper::Shutdown() {
+  // We use PG's fast shutdown mode for stopping PG when the tserver shuts down.
+  // See https://www.postgresql.org/docs/current/server-shutdown.html
+  Kill(SIGINT);
+}
+
 Status PgWrapper::InitDb(InitdbParams initdb_params) {
   const string initdb_program_path = GetInitDbExecutablePath();
   RETURN_NOT_OK(CheckExecutableValid(initdb_program_path));
@@ -1253,6 +1235,7 @@ void PgWrapper::SetCommonEnv(Subprocess* proc, bool yb_enabled) {
     // Solution is to specify it explicitly.
     proc->SetEnv("FLAGS_certs_dir", conf_.certs_dir);
     proc->SetEnv("FLAGS_certs_for_client_dir", conf_.certs_for_client_dir);
+    proc->SetEnv("FLAGS_pggate_cert_base_name", conf_.cert_base_name);
 
     proc->SetEnv("YB_PG_TRANSACTIONS_ENABLED", FLAGS_pg_transactions_enabled ? "1" : "0");
 
@@ -1272,6 +1255,7 @@ void PgWrapper::SetCommonEnv(Subprocess* proc, bool yb_enabled) {
     static const std::vector<string> explicit_flags{"pggate_master_addresses",
                                                     "certs_dir",
                                                     "certs_for_client_dir",
+                                                    "pggate_cert_base_name",
                                                     "mem_tracker_tcmalloc_gc_release_bytes",
                                                     "mem_tracker_update_consumption_interval_us"};
     std::vector<google::CommandLineFlagInfo> flag_infos;
@@ -1490,7 +1474,7 @@ std::shared_ptr<ProcessWrapper> PgSupervisor::CreateProcessWrapper() {
     if (FLAGS_enable_ysql_conn_mgr_stats)
       CHECK_OK(pgwrapper->SetYsqlConnManagerStatsShmKey(GetYsqlConnManagerStatsShmkey()));
   } else {
-    FLAGS_enable_ysql_conn_mgr_stats = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql_conn_mgr_stats) = false;
   }
 
   if (server_) {

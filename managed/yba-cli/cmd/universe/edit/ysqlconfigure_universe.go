@@ -41,7 +41,7 @@ var editYSQLUniverseCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(ysql)) > 0 {
+		if !util.IsEmptyString(ysql) {
 			ysql = strings.ToUpper(ysql)
 			if strings.Compare(ysql, util.EnableOpType) != 0 &&
 				strings.Compare(ysql, util.DisableOpType) != 0 {
@@ -54,7 +54,7 @@ var editYSQLUniverseCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(ysqlAuth)) > 0 {
+		if !util.IsEmptyString(ysqlAuth) {
 			ysqlAuth = strings.ToUpper(ysqlAuth)
 			if strings.Compare(ysqlAuth, util.EnableOpType) != 0 &&
 				strings.Compare(ysqlAuth, util.DisableOpType) != 0 {
@@ -67,7 +67,7 @@ var editYSQLUniverseCmd = &cobra.Command{
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
-			if len(strings.TrimSpace(ysqlPassword)) == 0 {
+			if util.IsEmptyString(ysqlPassword) {
 				logrus.Fatalf(
 					formatter.Colorize(
 						"YSQL password not found while enabling auth\n",
@@ -81,7 +81,7 @@ var editYSQLUniverseCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(connectionPooling)) > 0 {
+		if !util.IsEmptyString(connectionPooling) {
 			connectionPooling = strings.ToUpper(connectionPooling)
 			if strings.Compare(connectionPooling, util.EnableOpType) != 0 &&
 				strings.Compare(connectionPooling, util.DisableOpType) != 0 {
@@ -138,7 +138,7 @@ var editYSQLUniverseCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(ysql)) > 0 {
+		if !util.IsEmptyString(ysql) {
 			ysql = strings.ToUpper(ysql)
 			enableYSQL := false
 			if strings.Compare(ysql, util.EnableOpType) == 0 {
@@ -158,7 +158,7 @@ var editYSQLUniverseCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(ysqlAuth)) > 0 {
+		if !util.IsEmptyString(ysqlAuth) {
 			ysqlAuth = strings.ToUpper(ysqlAuth)
 			enableYSQLAuth := false
 			if strings.Compare(ysqlAuth, util.EnableOpType) == 0 {
@@ -167,7 +167,7 @@ var editYSQLUniverseCmd = &cobra.Command{
 				if err != nil {
 					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 				}
-				if len(strings.TrimSpace(ysqlPassword)) != 0 {
+				if !util.IsEmptyString(ysqlPassword) {
 					req.SetYsqlPassword(ysqlPassword)
 				}
 			}
@@ -185,7 +185,7 @@ var editYSQLUniverseCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(connectionPooling)) > 0 {
+		if !util.IsEmptyString(connectionPooling) {
 			connectionPooling = strings.ToUpper(connectionPooling)
 			enableConnectionPooling := false
 			if strings.Compare(connectionPooling, util.EnableOpType) == 0 {
@@ -209,7 +209,7 @@ var editYSQLUniverseCmd = &cobra.Command{
 		// 	logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		// }
 		// var connectionPoolingGFlags map[string]string
-		// if len(strings.TrimSpace(connectionPoolingGFlagsString)) > 0 {
+		// if !util.IsEmptyString(connectionPoolingGFlagsString) {
 		// 	if strings.HasPrefix(strings.TrimSpace(connectionPoolingGFlagsString), "{") {
 		// 		connectionPoolingGFlags = universeutil.ProcessGFlagsJSONString(
 		// 			connectionPoolingGFlagsString, "Connection Pooling")
@@ -258,8 +258,7 @@ var editYSQLUniverseCmd = &cobra.Command{
 		rEdit, response, err := authAPI.ConfigureYSQL(universeUUID).
 			ConfigureYsqlFormData(req).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Universe", "Edit YSQL")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Universe", "Edit YSQL")
 		}
 
 		logrus.Info(

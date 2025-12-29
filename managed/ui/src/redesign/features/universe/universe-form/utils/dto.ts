@@ -38,6 +38,12 @@ export enum MasterPlacementMode {
   DEDICATED = 'DEDICATED'
 }
 
+export enum K8sEncryptionOption {
+  ClienToNode = 'enableClientToNodeEncrypt',
+  NodeToNode = 'enableNodeToNodeEncrypt',
+  EnableBoth = 'EnableBoth'
+}
+
 export interface CommunicationPorts {
   masterHttpPort: number;
   masterRpcPort: number;
@@ -55,6 +61,7 @@ export interface CommunicationPorts {
 
 export enum StorageType {
   IO1 = 'IO1',
+  IO2 = 'IO2',
   GP2 = 'GP2',
   GP3 = 'GP3',
   Scratch = 'Scratch',
@@ -332,10 +339,10 @@ export interface DeviceInfo {
   storageClass: 'standard'; // hardcoded in DeviceInfo.java
   mountPoints: string | null;
   storageType: StorageType | null;
-  cloudVolumeEncryption? : {
+  cloudVolumeEncryption?: {
     enableVolumeEncryption: boolean;
     kmsConfigUUID: string;
-  }
+  };
 }
 
 export interface K8NodeSpec {
@@ -552,6 +559,8 @@ export interface InstanceConfigFormValue {
   kmsConfig: string | null;
   arch?: ArchitectureType | null;
   imageBundleUUID?: string | null;
+  k8sEncryptionType?: K8sEncryptionOption;
+  enableTLS?: boolean;
 }
 
 export interface AdvancedConfigFormValue {
@@ -655,7 +664,9 @@ export const DEFAULT_INSTANCE_CONFIG: InstanceConfigFormValue = {
   enableYEDIS: false,
   kmsConfig: null,
   arch: null,
-  imageBundleUUID: ''
+  imageBundleUUID: '',
+  k8sEncryptionType: K8sEncryptionOption.EnableBoth,
+  enableTLS: true
 };
 
 export const DEFAULT_ADVANCED_CONFIG: AdvancedConfigFormValue = {

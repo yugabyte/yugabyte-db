@@ -33,6 +33,9 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/tostring.h"
 
+DECLARE_bool(ysql_use_packed_row_v2);
+DECLARE_bool(ysql_mark_update_packed_row);
+
 namespace yb {
 
 using client::YBTableName;
@@ -12417,6 +12420,247 @@ TEST_F(CDCSDKYsqlTest, TestLargeTxnOnUnqualifiedColocatedTable) {
   ASSERT_FALSE(change_resp.has_error());
   ASSERT_FALSE(change_resp.cdc_sdk_checkpoint().key().empty());
   ASSERT_NE(change_resp.cdc_sdk_checkpoint().write_id(), 0);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestPackedRowUpdateFlag)) {
+  // Enable packed rows and the new update flag
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_use_packed_row_v2) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_pack_full_row_update) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_mark_update_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  xrepl::StreamId stream_id =
+      ASSERT_RESULT(CreateDBStream(CDCCheckpointType::IMPLICIT, CDCRecordType::PG_FULL));
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(set_resp.has_error());
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  // Test 1: INSERT a row (should show as INSERT in CDC)
+  LOG(INFO) << "Test 1: INSERT - should show as INSERT";
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0($1, $2) VALUES (1, 100)", kTableName, kKeyColumnName, kValueColumnName));
+
+  // Test 2: UPDATE all columns (should show as UPDATE with flag enabled)
+  LOG(INFO) << "Test 2: UPDATE all columns - should show as UPDATE with flag enabled";
+  ASSERT_OK(conn.ExecuteFormat(
+      "BEGIN; UPDATE $0 SET $1 = 200 WHERE $2 = 1; COMMIT;", kTableName, kValueColumnName,
+      kKeyColumnName));
+
+  // Get CDC changes and verify UPDATE operation
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+
+  uint32_t insert_count = 0;
+  uint32_t update_count = 0;
+
+  for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+    if (record.row_message().op() == RowMessage::BEGIN ||
+        record.row_message().op() == RowMessage::COMMIT ||
+        record.row_message().op() == RowMessage::DDL) {
+      continue;
+    }
+
+    if (record.row_message().op() == RowMessage::INSERT) {
+      insert_count++;
+      LOG(INFO) << "Found INSERT record";
+    } else if (record.row_message().op() == RowMessage::UPDATE) {
+      update_count++;
+      LOG(INFO) << "Found UPDATE record";
+    }
+  }
+
+  // With FLAGS_ysql_mark_update_packed_row enabled:
+  // - INSERT should be INSERT (1)
+  // - UPDATE should be UPDATE (1)
+  LOG(INFO) << "With update flag enabled: Inserts=" << insert_count << ", Updates=" << update_count;
+  ASSERT_EQ(insert_count, 1);
+  ASSERT_EQ(update_count, 1);
+}
+// This test verifies that we do not miss any records when LogCache::ReadOps() reads WAL Ops from
+// the active segment with combined size greater than FLAGS_consensus_max_batch_size_bytes (default
+// value 4 MB).
+TEST_F(CDCSDKYsqlTest, TestConsumptionFromActiveSegmentWithOpLargerThanBatchSize) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  // Set the flags to avoid WAL segment rollovers. This would ensure that we read from the active
+  // segment in this test.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_min_segment_size_bytes_to_rollover_at_flush) = 32_MB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_initial_log_segment_size_bytes) = 32_MB;
+
+  ASSERT_OK(SetUpWithParams(1 /* rf */, 1 /* num_masters*/));
+
+  // Create a table with single tablet.
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (a int primary key, b text) SPLIT INTO 1 TABLETS", kTableName));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  // Insert a row with 5 MB data (row size greater than FLAGS_consensus_max_batch_size_bytes).
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (1, repeat('a', 5242880))"));
+
+  // We should be able to correctly read the WAL Op and ship records corresponding to it.
+  // Response should contain BEGIN + DDL (synthetic) + INSERT + COMMIT.
+  auto change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 4);
+}
+
+// This test verifies that we do not miss any records when
+// PeerMessageQueue::ReadReplicatedMessagesForConsistentCDC() is called with an approaching
+// deadline.
+TEST_F(CDCSDKYsqlTest, TestNoLossFromActiveSegmentWithApproachingDeadline) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  // When this flag is set, ReadReplicatedMessagesForConsistentCDC() will behave as if deadline is
+  // approaching.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_hit_deadline_on_wal_read) = true;
+
+  ASSERT_OK(SetUpWithParams(1 /* rf */, 1 /* num_masters*/));
+
+  // Create a table with single tablet.
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (1,1)"));
+
+  // Wait for tablet leader safe time to move forward.
+  auto tablet_peer =
+      ASSERT_RESULT(test_cluster()->GetTabletManager(0)->GetServingTablet(tablets[0].tablet_id()));
+  auto leader_safe_time_before = ASSERT_RESULT(tablet_peer->LeaderSafeTime());
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto leader_safe_time = VERIFY_RESULT(tablet_peer->LeaderSafeTime());
+        return leader_safe_time.ToUint64() > leader_safe_time_before.ToUint64();
+      },
+      MonoDelta::FromSeconds(300), "Timed out waiting for leader safe time to increase"));
+
+  // Call GetChanges on the tablet after the safe time movement. Since
+  // FLAGS_TEST_cdc_hit_deadline_on_wal_read is set, we would receive an empty response. However, we
+  // should not move the safe_hybrid_time in this call to avoid missing records in the subsequent
+  // calls.
+  auto change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 0);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_hit_deadline_on_wal_read) = false;
+
+  // Since safe_hybrid_time is not moved when met with approaching deadline, we should successfully
+  // ship the record in the next GetChanges call.
+  // Response should contain BEGIN + DDL (synthetic) + INSERT + COMMIT.
+  change_resp = ASSERT_RESULT(
+      GetChangesFromCDC(stream_id, tablets, nullptr, 0, change_resp.safe_hybrid_time()));
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 4);
+}
+
+TEST_F(CDCSDKYsqlTest, TestUPAMMovesRetentionBarriersForCatalogTablet) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_master_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 5000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
+      true;
+
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, false /* colocated */,
+      true /* cdc_populate_safepoint_record */));
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, 1 /* num_tablets */));
+
+  // Call GetChanges on Master a few times to keep the stream active. The UpdatePeersAndMetrics
+  // running on master should not expire the tablet checkpoint.
+  GetChangesResponsePB change_resp;
+  const CDCSDKCheckpointPB* explicit_checkpoint = &CDCSDKCheckpointPB::default_instance();
+  for (int i = 0; i < 5; i++) {
+    change_resp = ASSERT_RESULT(GetChangesFromMaster(stream_id, explicit_checkpoint));
+    ASSERT_FALSE(change_resp.has_error());
+    explicit_checkpoint = &change_resp.cdc_sdk_checkpoint();
+
+    SleepFor(MonoDelta::FromSeconds(2));
+  }
+
+  auto tablet_peer_ptr = ASSERT_NOTNULL(test_cluster_.mini_cluster_->mini_master()->tablet_peer());
+  // Checking that UpdatePeersAndMetrics has not expired the tablet checkpoint.
+  ASSERT_NE(tablet_peer_ptr->GetLatestCheckPoint(), OpId::Max());
+}
+
+TEST_F(CDCSDKYsqlTest, TestOriginId) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ASSERT_OK(SetUpWithParams(1 /* rf */, 1 /* num_masters*/));
+  const auto kOrigin1 = "origin1";
+  const auto kOrigin2 = "origin2";
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  // Create 2 replication origins.
+  ASSERT_OK(conn.FetchFormat("SELECT pg_replication_origin_create('$0');", kOrigin1));
+  ASSERT_OK(conn.FetchFormat("SELECT pg_replication_origin_create('$0');", kOrigin2));
+
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  auto get_xrepl_origin_id = [](const GetChangesResponsePB& change_resp) -> int32_t {
+    for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+      if (record.row_message().has_xrepl_origin_id()) {
+        return record.row_message().xrepl_origin_id();
+      }
+    }
+    return 0;
+  };
+
+  // Local insert.
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 100)", kTableName));
+  auto change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  LOG(INFO) << "CDC response: " << change_resp.ShortDebugString();
+  // First response includes the DDL schema change record.
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 4);
+  ASSERT_EQ(get_xrepl_origin_id(change_resp), 0);
+  auto cdc_sdk_checkpoint = change_resp.cdc_sdk_checkpoint();
+
+  // Insert from origin1
+  ASSERT_OK(conn.FetchFormat("SELECT pg_replication_origin_session_setup('$0');", kOrigin1));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (2, 200)", kTableName));
+  ASSERT_OK(conn.Fetch("SELECT pg_replication_origin_session_reset()"));
+  change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &cdc_sdk_checkpoint));
+  LOG(INFO) << "CDC response: " << change_resp.ShortDebugString();
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 3);
+  ASSERT_EQ(get_xrepl_origin_id(change_resp), 1);
+  cdc_sdk_checkpoint = change_resp.cdc_sdk_checkpoint();
+
+  // Update from origin2
+  ASSERT_OK(conn.FetchFormat("SELECT pg_replication_origin_session_setup('$0');", kOrigin2));
+  ASSERT_OK(conn.ExecuteFormat(
+      "UPDATE $0 SET $1 = 300 WHERE $2 = 1", kTableName, kValueColumnName, kKeyColumnName));
+  ASSERT_OK(conn.Fetch("SELECT pg_replication_origin_session_reset()"));
+  change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &cdc_sdk_checkpoint));
+  LOG(INFO) << "CDC response: : " << change_resp.ShortDebugString();
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 3);
+  ASSERT_EQ(get_xrepl_origin_id(change_resp), 2);
+  cdc_sdk_checkpoint = change_resp.cdc_sdk_checkpoint();
+
+  // Delete from Local
+  ASSERT_OK(conn.ExecuteFormat("DELETE FROM $0 WHERE $1 = 1", kTableName, kKeyColumnName));
+  change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &cdc_sdk_checkpoint));
+  LOG(INFO) << "CDC response: " << change_resp.ShortDebugString();
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 3);
+  ASSERT_EQ(get_xrepl_origin_id(change_resp), 0);
+  cdc_sdk_checkpoint = change_resp.cdc_sdk_checkpoint();
 }
 
 }  // namespace cdc

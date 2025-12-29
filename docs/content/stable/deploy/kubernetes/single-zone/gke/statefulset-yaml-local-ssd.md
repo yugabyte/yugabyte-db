@@ -9,6 +9,8 @@ menu:
     name: Google Kubernetes Engine
     identifier: k8s-gke-3
     weight: 623
+aliases:
+  - /stable/deploy/kubernetes/gke/statefulset-yaml-local-ssd
 type: docs
 ---
 

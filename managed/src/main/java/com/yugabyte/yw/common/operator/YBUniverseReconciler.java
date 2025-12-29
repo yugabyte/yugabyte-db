@@ -19,6 +19,7 @@ import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
+import com.yugabyte.yw.common.operator.helpers.OperatorPlacementInfoHelper;
 import com.yugabyte.yw.common.operator.utils.KubernetesEnvironmentVariables;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.common.operator.utils.OperatorWorkQueue;
@@ -40,14 +41,12 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.K8SNodeResourceSpec;
 import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.forms.YbcThrottleParametersResponse.ThrottleParamValue;
-import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.CustomerTask.TargetType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Provider.UsabilityState;
-import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TaskInfo.State;
 import com.yugabyte.yw.models.Universe;
@@ -66,7 +65,6 @@ import io.yugabyte.operator.v1alpha1.ybuniversespec.KubernetesOverrides;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.YbcThrottleParameters;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.YcqlPassword;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.YsqlPassword;
-import io.yugabyte.operator.v1alpha1.ybuniversespec.placementinfo.*;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -87,7 +85,11 @@ import play.libs.Json;
 import play.mvc.Result;
 
 @Slf4j
+// This doesn't support geo partitions as of now.
 public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
+
+  public static final String YSQL_PASSWORD_SECRET_KEY = "ysqlPassword";
+  public static final String YCQL_PASSWORD_SECRET_KEY = "ycqlPassword";
 
   private static final String DELETE_FINALIZER_THREAD_NAME_PREFIX = "universe-delete-finalizer-";
 
@@ -185,7 +187,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       YBUniverse ybUniverse, Customer cust, OperatorWorkQueue.ResourceAction action)
       throws Exception {
     String mapKey = OperatorWorkQueue.getWorkQueueKey(ybUniverse.getMetadata());
-    String ybaUniverseName = OperatorUtils.getYbaResourceName(ybUniverse.getMetadata());
+    String ybaUniverseName = getUniverseName(ybUniverse);
     String resourceName = ybUniverse.getMetadata().getName();
     String resourceNamespace = ybUniverse.getMetadata().getNamespace();
     log.info("deleting universe {}", ybaUniverseName);
@@ -284,7 +286,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
   @Override
   protected void createActionReconcile(YBUniverse ybUniverse, Customer cust) throws Exception {
     String mapKey = OperatorWorkQueue.getWorkQueueKey(ybUniverse.getMetadata());
-    String ybaUniverseName = OperatorUtils.getYbaResourceName(ybUniverse.getMetadata());
+    String ybaUniverseName = getUniverseName(ybUniverse);
     String resourceName = ybUniverse.getMetadata().getName();
     String resourceNamespace = ybUniverse.getMetadata().getNamespace();
 
@@ -293,11 +295,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     if (!uOpt.isPresent()) {
       log.info("Creating new universe {}", ybaUniverseName);
       // Allowing us to update the status of the ybUniverse
-      // Setting finalizer to prevent out-of-operator deletes of custom resources
-      // Check if provider is available before proceeding
       Provider provider = getProvider(ybUniverse, cust.getUuid());
       if (provider == null) {
-        // Provider not found, try to create auto-provider
         createAutoProvider(ybUniverse, cust.getUuid());
         log.info(
             "Provider not ready, waiting for next NO_OP action for universe {}", ybaUniverseName);
@@ -340,7 +339,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
   @Override
   protected void updateActionReconcile(YBUniverse ybUniverse, Customer cust) {
     String mapKey = OperatorWorkQueue.getWorkQueueKey(ybUniverse.getMetadata());
-    String ybaUniverseName = OperatorUtils.getYbaResourceName(ybUniverse.getMetadata());
+    String ybaUniverseName = getUniverseName(ybUniverse);
     String resourceName = ybUniverse.getMetadata().getName();
     String resourceNamespace = ybUniverse.getMetadata().getNamespace();
     Optional<Universe> uOpt = Universe.maybeGetUniverseByName(cust.getId(), ybaUniverseName);
@@ -378,7 +377,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
   @Override
   protected void noOpActionReconcile(YBUniverse ybUniverse, Customer cust) {
     String mapKey = OperatorWorkQueue.getWorkQueueKey(ybUniverse.getMetadata());
-    String ybaUniverseName = OperatorUtils.getYbaResourceName(ybUniverse.getMetadata());
+    String ybaUniverseName = getUniverseName(ybUniverse);
     String resourceName = ybUniverse.getMetadata().getName();
     String resourceNamespace = ybUniverse.getMetadata().getNamespace();
     Optional<Universe> uOpt = Universe.maybeGetUniverseByName(cust.getId(), ybaUniverseName);
@@ -499,7 +498,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
   }
 
   private void retryOrRerunLastTask(UUID customerUUID, YBUniverse ybUniverse, TaskInfo taskInfo) {
-    String ybaUniverseName = OperatorUtils.getYbaResourceName(ybUniverse.getMetadata());
+    String ybaUniverseName = getUniverseName(ybUniverse);
     Customer cust = Customer.getOrBadRequest(customerUUID);
     UniverseState state =
         taskInfo.getTaskType().equals(TaskType.CreateKubernetesUniverse)
@@ -650,8 +649,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
                   createPlacementInfo(ybUniverse, cust.getUuid());
               universeDetails.userAZSelected = true;
             }
-            log.info("task params: {}", universeDetails.toString());
-            taskUUID = updateYBUniverse(universeDetails, cust, ybUniverse);
+            taskUUID = updateYBUniverse(universeDetails, cust, ybUniverse, ClusterType.PRIMARY);
             break;
           case KubernetesOverridesUpgrade:
             if (checkAndHandleUniverseLock(
@@ -781,13 +779,9 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
           taskUUID =
               upgradeYBUniverse(
                   universeDetails, cust, ybUniverse, incomingIntent.ybSoftwareVersion);
-        } else if (operatorUtils.shouldUpdateYbUniverse(
-                currentUserIntent,
-                incomingIntent.numNodes,
-                incomingIntent.deviceInfo,
-                incomingIntent.masterDeviceInfo)
-            || operatorUtils.checkIfPlacementInfoChanged(
-                universeDetails.getPrimaryCluster().placementInfo, ybUniverse)) {
+          // Handle primary cluster edits
+        } else if (operatorUtils.shouldUpdatePrimaryCluster(
+            universeDetails.getPrimaryCluster(), ybUniverse)) {
           log.info("Calling Edit Universe");
           currentUserIntent.numNodes = incomingIntent.numNodes;
           currentUserIntent.deviceInfo.volumeSize = incomingIntent.deviceInfo.volumeSize;
@@ -799,7 +793,6 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
                 createPlacementInfo(ybUniverse, cust.getUuid());
             universeDetails.userAZSelected = true;
           }
-
           kubernetesStatusUpdater.createYBUniverseEventStatus(
               universe, k8ResourceDetails, TaskType.EditKubernetesUniverse.name());
           if (checkAndHandleUniverseLock(
@@ -807,7 +800,42 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
             return;
           }
           kubernetesStatusUpdater.updateUniverseState(k8ResourceDetails, UniverseState.EDITING);
-          taskUUID = updateYBUniverse(universeDetails, cust, ybUniverse);
+          taskUUID = updateYBUniverse(universeDetails, cust, ybUniverse, ClusterType.PRIMARY);
+          // Handle read replica cluster edits
+        } else if (operatorUtils.shouldAddReadReplica(universe, ybUniverse)) {
+          log.info("Adding Read Replica");
+          addReadReplicaClusterToUniverseDetails(universeDetails, ybUniverse, cust.getUuid());
+          kubernetesStatusUpdater.createYBUniverseEventStatus(
+              universe, k8ResourceDetails, TaskType.ReadOnlyKubernetesClusterCreate.name());
+          if (checkAndHandleUniverseLock(
+              ybUniverse, universe, OperatorWorkQueue.ResourceAction.NO_OP)) {
+            return;
+          }
+          kubernetesStatusUpdater.updateUniverseState(k8ResourceDetails, UniverseState.EDITING);
+
+          taskUUID = addReadReplicaCluster(cust, universeDetails);
+        } else if (operatorUtils.shouldUpdateReadReplica(universe, ybUniverse)) {
+          log.info("Updating Read Replica");
+          updateReadReplicaClusterInUniverseDetails(universeDetails, ybUniverse, cust.getUuid());
+          kubernetesStatusUpdater.createYBUniverseEventStatus(
+              universe, k8ResourceDetails, TaskType.EditKubernetesUniverse.name());
+          if (checkAndHandleUniverseLock(
+              ybUniverse, universe, OperatorWorkQueue.ResourceAction.NO_OP)) {
+            return;
+          }
+          kubernetesStatusUpdater.updateUniverseState(k8ResourceDetails, UniverseState.EDITING);
+          taskUUID = updateYBUniverse(universeDetails, cust, ybUniverse, ClusterType.ASYNC);
+        } else if (operatorUtils.shouldRemoveReadReplica(universe, ybUniverse)) {
+          log.info("Removing Read Replica");
+          UUID clusterUUID = universe.getUniverseDetails().getReadOnlyClusters().get(0).uuid;
+          kubernetesStatusUpdater.createYBUniverseEventStatus(
+              universe, k8ResourceDetails, TaskType.ReadOnlyKubernetesClusterDelete.name());
+          if (checkAndHandleUniverseLock(
+              ybUniverse, universe, OperatorWorkQueue.ResourceAction.NO_OP)) {
+            return;
+          }
+          kubernetesStatusUpdater.updateUniverseState(k8ResourceDetails, UniverseState.EDITING);
+          taskUUID = universeCRUDHandler.clusterDelete(cust, universe, clusterUUID, true);
         } else {
           log.info("No update made");
         }
@@ -845,9 +873,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     requestParams.skipNodeChecks = isRerun;
 
     Universe oldUniverse =
-        Universe.maybeGetUniverseByName(
-                cust.getId(), OperatorUtils.getYbaResourceName(ybUniverse.getMetadata()))
-            .orElse(null);
+        Universe.maybeGetUniverseByName(cust.getId(), getUniverseName(ybUniverse)).orElse(null);
 
     log.info("Upgrade universe overrides with new overrides");
     return upgradeUniverseHandler.upgradeKubernetesOverrides(requestParams, cust, oldUniverse);
@@ -877,9 +903,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     requestParams.skipNodeChecks = isRerun;
 
     Universe oldUniverse =
-        Universe.maybeGetUniverseByName(
-                cust.getId(), OperatorUtils.getYbaResourceName(ybUniverse.getMetadata()))
-            .orElse(null);
+        Universe.maybeGetUniverseByName(cust.getId(), getUniverseName(ybUniverse)).orElse(null);
 
     log.info("Upgrade universe with new GFlags");
     return upgradeUniverseHandler.upgradeGFlags(requestParams, cust, oldUniverse);
@@ -905,9 +929,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     }
 
     Universe oldUniverse =
-        Universe.maybeGetUniverseByName(
-                cust.getId(), OperatorUtils.getYbaResourceName(ybUniverse.getMetadata()))
-            .orElse(null);
+        Universe.maybeGetUniverseByName(cust.getId(), getUniverseName(ybUniverse)).orElse(null);
 
     requestParams.setUniverseUUID(oldUniverse.getUniverseUUID());
     log.info("Upgrading universe with new info now");
@@ -915,7 +937,10 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
   }
 
   private UUID updateYBUniverse(
-      UniverseDefinitionTaskParams taskParams, Customer cust, YBUniverse ybUniverse) {
+      UniverseDefinitionTaskParams taskParams,
+      Customer cust,
+      YBUniverse ybUniverse,
+      ClusterType clusterType) {
     // Converting details to configure task params using JSON
     ObjectMapper mapper =
         Json.mapper()
@@ -932,11 +957,9 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     }
 
     taskConfigParams.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.EDIT;
-    taskConfigParams.currentClusterType = ClusterType.PRIMARY;
+    taskConfigParams.currentClusterType = clusterType;
     Universe oldUniverse =
-        Universe.maybeGetUniverseByName(
-                cust.getId(), OperatorUtils.getYbaResourceName(ybUniverse.getMetadata()))
-            .orElse(null);
+        Universe.maybeGetUniverseByName(cust.getId(), getUniverseName(ybUniverse)).orElse(null);
     log.info("Updating universe with new info now");
     universeCRUDHandler.configure(cust, taskConfigParams);
     return universeCRUDHandler.update(cust, oldUniverse, taskConfigParams);
@@ -957,9 +980,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       YBUniverse ybUniverse, UUID customerUUID, Provider provider) throws Exception {
     log.info("Creating task params");
     UniverseConfigureTaskParams taskParams = new UniverseConfigureTaskParams();
-    Cluster cluster =
-        new Cluster(
-            ClusterType.PRIMARY, createUserIntent(ybUniverse, customerUUID, true, provider));
+    UserIntent primaryUserIntent = createUserIntent(ybUniverse, customerUUID, true, provider);
+    Cluster cluster = new Cluster(ClusterType.PRIMARY, primaryUserIntent);
     if (ybUniverse.getSpec().getPlacementInfo() != null) {
       try {
         cluster.placementInfo = createPlacementInfo(ybUniverse, customerUUID);
@@ -970,6 +992,9 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       }
     }
     taskParams.clusters.add(cluster);
+    if (ybUniverse.getSpec().getReadReplica() != null) {
+      addReadReplicaClusterToUniverseDetails(taskParams, ybUniverse, customerUUID);
+    }
     List<Users> users = Users.getAll(customerUUID);
     if (users.isEmpty()) {
       log.error("Users list is of size 0!");
@@ -1024,7 +1049,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       UserIntent userIntent = new UserIntent();
       // Needed for the UI fix because all k8s universes have this now..
       userIntent.dedicatedNodes = true;
-      userIntent.universeName = OperatorUtils.getYbaResourceName(ybUniverse.getMetadata());
+      userIntent.universeName = getUniverseName(ybUniverse);
       if (ybUniverse.getSpec().getKubernetesOverrides() != null) {
         userIntent.universeOverrides =
             operatorUtils.getKubernetesOverridesString(
@@ -1074,7 +1099,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       YsqlPassword ysqlPassword = ybUniverse.getSpec().getYsqlPassword();
       if (ysqlPassword != null) {
         Secret ysqlSecret = getSecret(ysqlPassword.getSecretName());
-        String password = parseSecretForKey(ysqlSecret, "ysqlPassword");
+        String password = parseSecretForKey(ysqlSecret, YSQL_PASSWORD_SECRET_KEY);
         if (password == null) {
           log.error("could not find ysqlPassword in secret {}", ysqlPassword.getSecretName());
           throw new RuntimeException(
@@ -1086,7 +1111,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       YcqlPassword ycqlPassword = ybUniverse.getSpec().getYcqlPassword();
       if (ycqlPassword != null) {
         Secret ycqlSecret = getSecret(ycqlPassword.getSecretName());
-        String password = parseSecretForKey(ycqlSecret, "ycqlPassword");
+        String password = parseSecretForKey(ycqlSecret, YCQL_PASSWORD_SECRET_KEY);
         if (password == null) {
           log.error("could not find ycqlPassword in secret {}", ycqlPassword.getSecretName());
           throw new RuntimeException(
@@ -1106,222 +1131,29 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
   }
 
   private PlacementInfo createPlacementInfo(YBUniverse ybUniverse, UUID customerUUID) {
-    PlacementInfo placementInfo = new PlacementInfo();
+    return createPlacementInfo(ybUniverse, customerUUID, false);
+  }
 
-    try {
-      Provider provider = getProvider(ybUniverse, customerUUID);
+  private PlacementInfo createPlacementInfo(
+      YBUniverse ybUniverse, UUID customerUUID, boolean isReadOnlyCluster) {
+    Provider provider = getProvider(ybUniverse, customerUUID);
+    PlacementInfo placementInfo;
 
-      PlacementInfo.PlacementCloud placementCloud = new PlacementInfo.PlacementCloud();
-      placementCloud.uuid = provider.getUuid();
-      placementCloud.code = provider.getCode();
-
-      // Set default region if specified
-      if (ybUniverse.getSpec().getPlacementInfo().getDefaultRegion() != null) {
-        String defaultRegionCode = ybUniverse.getSpec().getPlacementInfo().getDefaultRegion();
-        // Find the region by code and set its UUID
-        boolean defaultRegionFound =
-            provider.getRegions().stream()
-                .filter(region -> region.getCode().equals(defaultRegionCode))
-                .findFirst()
-                .map(
-                    region -> {
-                      placementCloud.defaultRegion = region.getUuid();
-                      log.debug(
-                          "Set default region: {} -> {}", defaultRegionCode, region.getUuid());
-                      return true;
-                    })
-                .orElse(false);
-
-        if (!defaultRegionFound) {
-          String errorMsg =
-              String.format(
-                  "Default region '%s' specified in CR not found in provider %s",
-                  defaultRegionCode, provider.getName());
-          log.error(errorMsg);
-          throw new IllegalArgumentException(errorMsg);
-        }
-      }
-
-      // Process regions from the CR
-      if (ybUniverse.getSpec().getPlacementInfo().getRegions() != null) {
-        List<io.yugabyte.operator.v1alpha1.ybuniversespec.placementinfo.Regions> regions =
-            ybUniverse.getSpec().getPlacementInfo().getRegions();
-        if (regions.isEmpty()) {
-          String errorMsg = "Regions list in .spec.placementInfo cannot be empty";
-          log.error(errorMsg);
-          throw new IllegalArgumentException(errorMsg);
-        }
-        log.debug("Processing {} regions from CR", regions.size());
-
-        for (io.yugabyte.operator.v1alpha1.ybuniversespec.placementinfo.Regions crRegion :
-            regions) {
-          PlacementInfo.PlacementRegion placementRegion = new PlacementInfo.PlacementRegion();
-
-          try {
-            String regionCode = crRegion.getCode();
-            if (regionCode == null || regionCode.trim().isEmpty()) {
-              String errorMsg = "Region code cannot be null or empty";
-              log.error(errorMsg);
-              throw new IllegalArgumentException(errorMsg);
-            }
-
-            placementRegion.code = regionCode;
-            log.debug("Processing region: {}", regionCode);
-
-            // Find the actual region from the provider to get UUID and name
-            Region providerRegion =
-                provider.getRegions().stream()
-                    .filter(region -> region.getCode().equals(regionCode))
-                    .findFirst()
-                    .orElse(null);
-
-            if (providerRegion == null) {
-              String errorMsg =
-                  String.format(
-                      "Region '%s' specified in CR not found in provider %s",
-                      regionCode, provider.getName());
-              log.error(errorMsg);
-              throw new IllegalArgumentException(errorMsg);
-            }
-
-            placementRegion.uuid = providerRegion.getUuid();
-            placementRegion.name = providerRegion.getName();
-            log.debug(
-                "Found provider region: {} -> {} ({})",
-                regionCode,
-                providerRegion.getUuid(),
-                providerRegion.getName());
-
-            // Process zones for this region
-            List<io.yugabyte.operator.v1alpha1.ybuniversespec.placementinfo.regions.Zones> zones =
-                crRegion.getZones();
-            if (zones == null || zones.isEmpty()) {
-              String errorMsg =
-                  String.format("Zones list cannot be null or empty for region %s", regionCode);
-              log.error(errorMsg);
-              throw new IllegalArgumentException(errorMsg);
-            }
-
-            log.debug("Processing {} zones for region {}", zones.size(), regionCode);
-
-            for (io.yugabyte.operator.v1alpha1.ybuniversespec.placementinfo.regions.Zones crZone :
-                zones) {
-              PlacementInfo.PlacementAZ placementAZ = new PlacementInfo.PlacementAZ();
-
-              try {
-                String zoneCode = crZone.getCode();
-                if (zoneCode == null || zoneCode.trim().isEmpty()) {
-                  String errorMsg =
-                      String.format("Zone code cannot be null or empty in region %s", regionCode);
-                  log.error(errorMsg);
-                  throw new IllegalArgumentException(errorMsg);
-                }
-
-                placementAZ.name = zoneCode;
-                log.debug("Processing zone: {} in region: {}", zoneCode, regionCode);
-
-                // Find the actual zone from the provider to get UUID
-                AvailabilityZone providerZone =
-                    providerRegion.getZones().stream()
-                        .filter(zone -> zone.getCode().equals(zoneCode))
-                        .findFirst()
-                        .orElse(null);
-
-                if (providerZone == null) {
-                  String errorMsg =
-                      String.format(
-                          "Zone '%s' specified in CR not found in provider region %s",
-                          zoneCode, regionCode);
-                  log.error(errorMsg);
-                  throw new IllegalArgumentException(errorMsg);
-                }
-
-                placementAZ.uuid = providerZone.getUuid();
-                log.debug(
-                    "Found provider zone: {} -> {} in region {}",
-                    zoneCode,
-                    providerZone.getUuid(),
-                    regionCode);
-
-                // Set zone properties from CR
-                int nodeCount = crZone.getNumNodes().intValue();
-                if (nodeCount < 1) {
-                  String errorMsg =
-                      String.format(
-                          "Zone %s in region %s must have at least 1 node, got: %d",
-                          zoneCode, regionCode, nodeCount);
-                  log.error(errorMsg);
-                  throw new IllegalArgumentException(errorMsg);
-                }
-                placementAZ.numNodesInAZ = nodeCount;
-                placementAZ.replicationFactor =
-                    1; // Dummy value for now, will be updated in configure step
-                Boolean preferred = crZone.getPreferred();
-                placementAZ.isAffinitized = preferred;
-                placementAZ.leaderPreference = placementAZ.isAffinitized ? 1 : 0;
-                placementRegion.azList.add(placementAZ);
-                log.debug(
-                    "Added zone {} with {} nodes to region {}",
-                    zoneCode,
-                    placementAZ.numNodesInAZ,
-                    regionCode);
-              } catch (Exception e) {
-                String errorMsg =
-                    String.format(
-                        "Error processing zones in region %s: %s", regionCode, e.getMessage());
-                log.error(errorMsg, e);
-                throw new IllegalArgumentException(errorMsg, e);
-              }
-            }
-
-            // Only add regions that have valid zones
-            if (!placementRegion.azList.isEmpty()) {
-              placementCloud.regionList.add(placementRegion);
-              log.debug(
-                  "Added region {} with {} zones",
-                  placementRegion.code,
-                  placementRegion.azList.size());
-            } else {
-              String errorMsg = String.format("Region %s has no valid zones", placementRegion.code);
-              log.error(errorMsg);
-              throw new IllegalArgumentException(errorMsg);
-            }
-
-          } catch (Exception e) {
-            String errorMsg =
-                String.format(
-                    "Error processing region %s: %s",
-                    placementRegion.code != null ? placementRegion.code : "unknown",
-                    e.getMessage());
-            log.error(errorMsg, e);
-            throw new IllegalArgumentException(errorMsg, e);
-          }
-        }
-      }
-
-      placementInfo.cloudList.add(placementCloud);
-
-      // Validate total nodes across zones matches the CR specification
-      int totalNodesInPlacement =
-          placementCloud.regionList.stream()
-              .mapToInt(region -> region.azList.stream().mapToInt(zone -> zone.numNodesInAZ).sum())
-              .sum();
-
-      int crNumNodes = ybUniverse.getSpec().getNumNodes().intValue();
-      if (totalNodesInPlacement != crNumNodes) {
-        String errorMsg =
-            String.format(
-                "Total nodes in placementInfo (%d) does not match numNodes in CR (%d)",
-                totalNodesInPlacement, crNumNodes);
-        log.error(errorMsg);
-        throw new IllegalArgumentException(errorMsg);
-      }
-      return placementInfo;
-
-    } catch (Exception e) {
-      log.error("Error creating placement info from CR: {}", e.getMessage(), e);
-      throw e;
+    if (isReadOnlyCluster) {
+      placementInfo =
+          OperatorPlacementInfoHelper.createPlacementInfo(
+              ybUniverse.getSpec().getReadReplica().getPlacementInfo(), provider);
+      OperatorPlacementInfoHelper.verifyPlacementInfo(
+          placementInfo, ybUniverse.getSpec().getReadReplica().getNumNodes().intValue());
+    } else {
+      placementInfo =
+          OperatorPlacementInfoHelper.createPlacementInfo(
+              ybUniverse.getSpec().getPlacementInfo(), provider);
+      OperatorPlacementInfoHelper.verifyPlacementInfo(
+          placementInfo, ybUniverse.getSpec().getNumNodes().intValue());
     }
+
+    return placementInfo;
   }
 
   private void updateThrottleParams(Universe universe, YBUniverse ybUniverse) {
@@ -1595,7 +1427,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       }
     } else {
       // Case when provider name is not available in spec
-      providerName = getProviderName(OperatorUtils.getYbaResourceName(ybUniverse.getMetadata()));
+      providerName = getProviderName(getUniverseName(ybUniverse));
       Provider provider = Provider.get(customerUUID, providerName, CloudType.kubernetes);
       if (provider != null) {
         // If auto-provider with the same name found return it.
@@ -1617,7 +1449,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
   private void createAutoProvider(YBUniverse ybUniverse, UUID customerUUID) {
     // Only create auto-provider if running in Kubernetes and no provider name specified
     if (StringUtils.isNotBlank(ybUniverse.getSpec().getProviderName())
-        || !isRunningInKubernetes()) {
+        || !KubernetesEnvironmentVariables.isYbaRunningInKubernetes()) {
       return;
     }
     String providerName =
@@ -1638,13 +1470,6 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     }
   }
 
-  private boolean isRunningInKubernetes() {
-    String kubernetesServiceHost = KubernetesEnvironmentVariables.getServiceHost();
-    String kubernetesServicePort = KubernetesEnvironmentVariables.getServicePort();
-
-    return (kubernetesServiceHost != null && kubernetesServicePort != null);
-  }
-
   private String getProviderName(String universeName) {
     return ("prov-" + universeName);
   }
@@ -1655,8 +1480,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     // TODO: Is `universeIsLocked()` enough to check here?
     if (universe.universeIsLocked()) {
       log.warn(
-          "universe {} is locked, requeue update and try again later",
-          OperatorUtils.getYbaResourceName(ybUniverse.getMetadata()));
+          "universe {} is locked, requeue update and try again later", getUniverseName(ybUniverse));
       workqueue.requeue(OperatorWorkQueue.getWorkQueueKey(ybUniverse.getMetadata()), action, false);
       log.debug("scheduled universe update for requeue");
       return true;
@@ -1698,5 +1522,87 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       }
     }
     return null;
+  }
+
+  public static String getUniverseName(YBUniverse ybUniverse) {
+    if (ybUniverse.getSpec().getUniverseName() != null) {
+      return ybUniverse.getSpec().getUniverseName();
+    }
+    return OperatorUtils.getYbaResourceName(ybUniverse.getMetadata());
+  }
+
+  /**
+   * Adds a read replica cluster to the universe details based on the YBUniverse specification.
+   *
+   * @param universeDetails the universe details to modify
+   * @param ybUniverse the YBUniverse specification
+   * @param customerUUID the customer UUID for placement info creation
+   */
+  private void addReadReplicaClusterToUniverseDetails(
+      UniverseDefinitionTaskParams universeDetails, YBUniverse ybUniverse, UUID customerUUID) {
+    UserIntent readReplicaUserIntent = universeDetails.getPrimaryCluster().userIntent.clone();
+    readReplicaUserIntent.numNodes = ybUniverse.getSpec().getReadReplica().getNumNodes().intValue();
+    readReplicaUserIntent.replicationFactor =
+        ybUniverse.getSpec().getReadReplica().getReplicationFactor().intValue();
+    readReplicaUserIntent.deviceInfo.volumeSize =
+        ybUniverse.getSpec().getReadReplica().getDeviceInfo().getVolumeSize().intValue();
+    readReplicaUserIntent.deviceInfo.numVolumes =
+        ybUniverse.getSpec().getReadReplica().getDeviceInfo().getNumVolumes().intValue();
+    Cluster readReplicaCluster = new Cluster(ClusterType.ASYNC, readReplicaUserIntent);
+    if (ybUniverse.getSpec().getReadReplica().getPlacementInfo() != null) {
+      readReplicaCluster.placementInfo =
+          createPlacementInfo(ybUniverse, customerUUID, /*isReadOnlyCluster*/ true);
+      universeDetails.userAZSelected = true;
+    }
+    universeDetails.clusters.add(readReplicaCluster);
+  }
+
+  /**
+   * Updates the existing read replica cluster in the universe details based on the YBUniverse
+   * specification.
+   *
+   * @param universeDetails the universe details to modify
+   * @param ybUniverse the YBUniverse specification
+   * @param customerUUID the customer UUID for placement info creation
+   */
+  private void updateReadReplicaClusterInUniverseDetails(
+      UniverseDefinitionTaskParams universeDetails, YBUniverse ybUniverse, UUID customerUUID) {
+    Cluster existingReadReplicaCluster = universeDetails.getReadOnlyClusters().get(0);
+    existingReadReplicaCluster.userIntent.numNodes =
+        ybUniverse.getSpec().getReadReplica().getNumNodes().intValue();
+    existingReadReplicaCluster.userIntent.replicationFactor =
+        ybUniverse.getSpec().getReadReplica().getReplicationFactor().intValue();
+    existingReadReplicaCluster.userIntent.deviceInfo.volumeSize =
+        ybUniverse.getSpec().getReadReplica().getDeviceInfo().getVolumeSize().intValue();
+    if (ybUniverse.getSpec().getReadReplica().getPlacementInfo() != null) {
+      existingReadReplicaCluster.placementInfo =
+          createPlacementInfo(ybUniverse, customerUUID, /*isReadOnlyCluster*/ true);
+      universeDetails.userAZSelected = true;
+    }
+  }
+
+  private UUID addReadReplicaCluster(Customer cust, UniverseDefinitionTaskParams universeDetails) {
+    // Converting details to configure task params using JSON
+    ObjectMapper mapper =
+        Json.mapper()
+            .copy()
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+            .configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
+    UniverseConfigureTaskParams taskConfigParams = null;
+    try {
+      taskConfigParams =
+          mapper.readValue(
+              mapper.writeValueAsString(universeDetails), UniverseConfigureTaskParams.class);
+    } catch (Exception e) {
+      log.error("Failed at creating configure task params for edit", e);
+    }
+    taskConfigParams.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.CREATE;
+    taskConfigParams.currentClusterType = ClusterType.ASYNC;
+    log.info("Adding read replica cluster to universe now");
+    universeCRUDHandler.configure(cust, taskConfigParams);
+    taskConfigParams.clusters.remove(
+        0); // Remove primary cluster since the createCluster accepts only RR
+    Universe universe = Universe.getOrBadRequest(universeDetails.getUniverseUUID());
+    return universeCRUDHandler.createCluster(cust, universe, taskConfigParams);
   }
 }

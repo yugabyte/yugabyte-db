@@ -322,7 +322,8 @@ extern bool YbIsScanningEmbeddedIdx(Relation table, Relation index);
  * Used in Agg node init phase to determine whether YB preliminary check or PG
  * recheck may be needed.
  */
-extern bool YbPredetermineNeedsRecheck(Relation relation,
+extern bool YbPredetermineNeedsRecheck(Scan *scan,
+									   Relation relation,
 									   Relation index,
 									   bool xs_want_itup,
 									   ScanKey keys,
@@ -363,6 +364,8 @@ extern Oid	ybc_get_attcollation(TupleDesc bind_desc, AttrNumber attnum);
  */
 #define YBC_UNCOVERED_INDEX_COST_FACTOR 1.1
 
+extern void ybcGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel,
+								 Oid foreigntableid);
 extern void ybcCostEstimate(RelOptInfo *baserel, Selectivity selectivity,
 							bool is_backwards_scan, bool is_seq_scan,
 							bool is_uncovered_idx_scan, Cost *startup_cost,

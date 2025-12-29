@@ -22,6 +22,7 @@
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/ql_protocol.messages.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/xcluster_util.h"
 

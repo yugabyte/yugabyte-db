@@ -7,6 +7,8 @@ menu:
   stable_api:
     identifier: dml_delete
     parent: statements
+aliases:
+  - /stable/api/ysql/commands/dml_delete/
 type: docs
 ---
 
@@ -49,8 +51,8 @@ Specify the identifier of the target table within the DELETE statement. When an 
 
 ##### *from_item*
 
-A table expression that enables referencing columns from additional tables within the `WHERE` clause. 
-This follows the identical syntax conventions as the `FROM` clause in a `SELECT` statement, including the ability to define table aliases. 
+A table expression that enables referencing columns from additional tables within the `WHERE` clause.
+This follows the identical syntax conventions as the `FROM` clause in a `SELECT` statement, including the ability to define table aliases.
 The target table should not be included as a `from_item` unless performing a self-join operation, in which case the target table must appear with an alias in the `from_item` list.
 
 ### *returning_clause*

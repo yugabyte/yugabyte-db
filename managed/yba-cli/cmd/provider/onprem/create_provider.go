@@ -76,7 +76,7 @@ var createOnpremProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		var sshFileContent string
-		if len(strings.TrimSpace(keyPairName)) != 0 {
+		if !util.IsEmptyString(keyPairName) {
 
 			filePath, err := cmd.Flags().GetString("ssh-keypair-file-path")
 			if err != nil {
@@ -162,7 +162,7 @@ var createOnpremProviderCmd = &cobra.Command{
 		requestBody := ybaclient.Provider{
 			Code:          util.GetStringPointer(providerCode),
 			Name:          util.GetStringPointer(providerName),
-			AllAccessKeys: &allAccessKeys,
+			AllAccessKeys: allAccessKeys,
 			Regions:       buildOnpremRegions(regions, zones),
 			Details: &ybaclient.ProviderDetails{
 				AirGapInstall: util.GetBoolPointer(airgapInstall),
@@ -174,7 +174,7 @@ var createOnpremProviderCmd = &cobra.Command{
 				InstallNodeExporter:    util.GetBoolPointer(installNodeExporter),
 				NodeExporterPort:       util.GetInt32Pointer(int32(nodeExporterPort)),
 				NodeExporterUser:       util.GetStringPointer(nodeExporterUser),
-				NtpServers:             util.StringSliceFromString(ntpServers),
+				NtpServers:             ntpServers,
 				PasswordlessSudoAccess: util.GetBoolPointer(passwordlessSudoAccess),
 				SkipProvisioning:       util.GetBoolPointer(skipProvisioning),
 				SshPort:                util.GetInt32Pointer(int32(sshPort)),
@@ -184,9 +184,7 @@ var createOnpremProviderCmd = &cobra.Command{
 		rTask, response, err := authAPI.CreateProvider().
 			CreateProviderRequest(requestBody).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err,
-				"Provider: On-premises", "Create")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Provider: On-premises", "Create")
 		}
 
 		providerutil.WaitForCreateProviderTask(authAPI,

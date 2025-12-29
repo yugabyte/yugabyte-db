@@ -232,7 +232,10 @@
         "enableEITWarning": "Enable Node to Node encryption or Client to Node encryption to enable encryption in transit.",
         "disableEITWarning": "Note! Enabling/Disabling of “Encryption In Transit” or Enabling/Disabling of “Node to Node” or “Client to Node” encryption will be performed as non rolling upgrade.",
         "xClusterRotateCaWarning": "Note! Rotating node to node CA certs for universes participating in an xCluster configuration as the source universe will interrupt the replication and require a restart of the xCluster configuration to resume replication after TLS rotation is completed.",
-        "xClusterToggleEncryptionWarning": "Note! Toggling on/off encryption for universes participating in an xCluster configuration will interrupt the replication. To enable replication again, please ensure all participating universes have matching TLS encryption setting and restart the affected xCluster configurations."
+        "xClusterToggleEncryptionWarning": "Note! Toggling on/off encryption for universes participating in an xCluster configuration will interrupt the replication. To enable replication again, please ensure all participating universes have matching TLS encryption setting and restart the affected xCluster configurations.",
+        "upgradeOptions": "Upgrade Options",
+        "selectUpgradeoption": "Select Upgrade Option",
+        "selectAndApply": "Select Upgrade Option and Apply"
       },
       "masterFailover": {
         "warning": {
@@ -669,6 +672,7 @@
         "encryptionSettings": {
           "title": "Encryption Settings",
           "encryptionInTransit": "Encryption in Transit",
+          "enableEncryptionInTransit": "Enable encryption in transit",
           "encryptionAtRest": "Encryption at Rest",
           "enableClientToNodeTLS": "Enable Client-to-Node TLS",
           "enableClientToNodeTLSHelper": "Enable Client-to-Node encryption to use TLS enabled connection for communication between a client (ex: Database application, ysqlsh, ycqlsh) and the Universe YSQL -or- YCQL endpoint.",
@@ -1959,6 +1963,13 @@
         "numberOfKeyspace": "Number of Keyspaces",
         "numberOfDatabase": "Number of Databases"
       },
+      "rolesConfig": {
+        "title": " Restore Roles",
+        "checkboxTitle": "Restore global roles",
+        "checkboxHelpText": "<b>Note!</b> If selected, all the global roles in the target universe will be restored.",
+        "checkboxHelpText2": "<b>Note!</b> If selected, the restore will fail as the roleis already in the target database, else the role will not be restored.",
+        "checkboxTitle2": "Fail restore if role already exists in target database"
+      },
       "prefetch": {
         "loadingText": "Fetching Incremental Backups..."
       },
@@ -2670,6 +2681,11 @@
           "storageConfig": "Storage Config",
           "folderName": "Folder Name"
         },
+        "error": {
+          "backupFrequencyMustBePositiveInteger": "Please enter a positive integer.",
+          "backupFrequencyMustBeGreaterThanOrEqualTo2": "Minimum 2 minutes.",
+          "backupFrequencyMustBeLessThanOrEqualTo1440": "Maximum 1440 minutes (24 hours)."
+        },
         "tip": {
           "performanceImpact": "Platform backups don't significantly impact performance.",
           "copiesRetained": "Only the 3 most recent copies are retained, as older backups are more likely to be inconsistent with the current state of your universes."
@@ -2720,7 +2736,7 @@
           "universeMetrics": "Universe Metrics (Prometheus Data)"
         },
         "exportDestination": "Export Destination",
-        "exportDestinationPlaceholder": "Path to local directory. ex. /opt/yba_backups",
+        "exportDestinationPlaceholder": "Path to local directory. ex. /opt/yugabyte/yba_backups",
         "submitButton": "Export",
         "toast": {
           "createBackupRequestSuccess": "Exporting platform...",
@@ -2739,7 +2755,7 @@
         "localBackup": {
           "provideBackupFilePath": "Provide the backup file path",
           "filePath": "File Path",
-          "filePathPlaceholder": "/opt/yugabyte/oneTimeBackup"
+          "filePathPlaceholder": "ex. /opt/yugabyte/yba_backups/<backupFileName>"
         },
         "cloudBackup": {
           "configureBackupStorageConfigPrompt": {
@@ -2750,7 +2766,7 @@
           "selectStorageConfig": "Select the storage config that contains the backup",
           "storageConfig": "Storage config",
           "selectBackupFolder": "Specify the backup folder",
-          "folder": "Folder",
+          "folder": "Folder Name",
           "backupFolderHelperText": "The most recent backup from this folder will be used for the restore."
         },
         "ybaRestartWarning": "<bold>Note!</bold> As part of the restore process, YugabyteDB Anywhere will restart itself automatically.",
@@ -3101,10 +3117,13 @@
           },
           "backupObjects": {
             "advancedConfig": "Advanced Configuration",
+            "rolesConfig": "Roles Configuration",
             "selectDBTitle": "Select the Keyspaces/Databases you want to backup",
             "selectDB": "Databases/Keyspaces",
             "backupTablespace": "Backup tablespaces information",
+            "backupRoles": "Backup global roles",
             "backupTablespaceSubText": "In Universes using tablespaces, this allows restoring while preserving source universe tablespaces. (Given both source and target have the same topology.)",
+            "backupRolesSubText": "In Universes using roles, this allows restoring while preserving source universe roles.",
             "allTables": "Select all tables in this Keyspace",
             "subSetOfTables": "Select a subset of tables",
             "selectTables": "Select Tables",
@@ -3269,6 +3288,7 @@
           "kmsConfigHelpText": "<b>Note!</b> For a successful restore, the KMS configuration used for restore should be the same KMS configuration used during backup creation.",
           "activeKMS": "Active",
           "usedDuringBackup": "Used during backup",
+          "restoreRoles": "Restore global roles",
           "parallelThreads": "Parallel threads (Optional)",
           "tablespacePlacementConflict": "<b>Tablespace Placement Conflict.</b> Some tablespaces in the backup have a placement policy that conflicts with the target universe. <a>View logs for details.</a><br/>If you proceed, the restore may fail. if it does, you can retry the restore without tablespaces. <a2>Learn more about restoring tablespaces.</a2>",
           "tablespaceNameConflict": "<b>Tablespace Name Conflict.</b> The target universe has tablespaces with the same name as tablespaces in the backup. In cases where the placement policy differs between the target and backup tablespaces, <b>the target policy will be used.</b> <a>View logs for details</a>"
@@ -3462,7 +3482,8 @@
         },
         "errMsg": {
           "lessNodes": "<b>Invalid node count!</b>  You have selected <b>{{nodeCount}} nodes</b>. To support the chosen fault tolerance <b>{{faultToleranceNeeded}} nodes</b> are required. Update your selection to proceed. ",
-          "lessNodesDedicated": "<b>Invalid node count!</b>  You have selected <b>{{nodeCount}} T-server nodes</b>. To support the chosen fault tolerance <b>{{faultToleranceNeeded}} T-server nodes</b> are required. Update your selection to proceed. "
+          "lessNodesDedicated": "<b>Invalid node count!</b>  You have selected <b>{{nodeCount}} T-server nodes</b>. To support the chosen fault tolerance <b>{{faultToleranceNeeded}} T-server nodes</b> are required. Update your selection to proceed. ",
+          "missingPreferredValue": "Preferred rank should be continuous. Missing Rank {{missingValue}}."
         }
       },
       "instanceSettings": {
@@ -3474,7 +3495,8 @@
           "maxValue": "{{field}} must be at most {{max}}",
           "invalidStorageClass": "Invalid storage class",
           "invalidMountPoint": "Mount point must be a valid path starting with '/'",
-          "invalidStorageType": "Invalid storage type"
+          "invalidStorageType": "Invalid storage type",
+          "required": "field is required"
         }
       },
       "databaseSettings": {
@@ -3609,14 +3631,28 @@
         "title": "Before You Start...",
         "description": "The <b>existing regions</b> in your cluster,  will be designated as your  \"<b>primary</b>\"  Geo-partition.",
         "desc_ques": "What is a primary Geo-partition?",
-        "desc_ans": "A primary Geo-partition stores the tables that aren't assigned to a specific region or tablespace. <a>Learn more</a>"
+        "desc_ans": "A primary Geo-partition stores the tables that aren't assigned to a specific region or tablespace. <a>Learn more</a>",
+        "existingRegions": "Existing Regions",
+        "geoPartition1": "Geo Partition 1",
+        "primary": "Primary"
       },
       "geoPartitionGeneralSettings": {
         "title": "General Settings",
-        "displayName": "Display Name",
+        "displayName": "Geo partition display name",
         "addGeoPartition": "Add Geo Partition",
+        "addNewGeoPartition": "Next: Add New Geo Partition",
         "tablespaceName": "Tablespace Name",
-        "tablespaceNameHelpText": "Tablespace name <b>CANNOT</b> be modified after geo partition creation."
+        "tablespaceNameHelpText": "Tablespace name <b>CANNOT</b> be modified after geo partition creation.",
+        "existingRegions": "Existing Regions",
+        "helpText": "Use Geo-partitioning to optimize regional data placement for low-latency access or GDPR compliance. <a>Learn more</a>"
+      },
+      "geoPartitionNodesAndAvailability": {
+        "instanceType": "Instance Type",
+        "volume": "Volume",
+        "ebsType": "EBS Type",
+        "iops": "IOPS",
+        "throughput": "Throughput",
+        "nodes": "Node Size"
       }
     }
   }

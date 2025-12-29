@@ -73,11 +73,11 @@ TablegroupId GetPgsqlTablegroupId(uint32_t database_oid, uint32_t tablegroup_oid
 TablespaceId GetPgsqlTablespaceId(uint32_t tablespace_oid);
 
 // Is the namespace/table id a Postgres database or table id?
-bool IsPgsqlId(const std::string& id);
+bool IsPgsqlId(std::string_view id);
 
 // Get Postgres database and table oids from a YB namespace/table id.
-Result<uint32_t> GetPgsqlDatabaseOid(const NamespaceId& namespace_id);
-Result<uint32_t> GetPgsqlTableOid(const TableId& table_id);
+Result<uint32_t> GetPgsqlDatabaseOid(NamespaceIdView namespace_id);
+Result<uint32_t> GetPgsqlTableOid(TableIdView table_id);
 Result<uint32_t> GetPgsqlTablegroupOid(const TablegroupId& tablegroup_id);
 Result<uint32_t> GetPgsqlTablegroupOidByTableId(const TableId& table_id);
 Result<uint32_t> GetPgsqlDatabaseOidByTableId(const TableId& table_id);
@@ -101,6 +101,6 @@ bool IsPriorVersionYsqlCatalogTable(const TableId& table_id);
 
 // If this is a YSQL catalog table, then is it the current version?
 // Returns false for user tables.
-bool IsCurrentVersionYsqlCatalogTable(const TableId& table_id);
+bool IsCurrentVersionYsqlCatalogTable(TableIdView table_id);
 
 }  // namespace yb

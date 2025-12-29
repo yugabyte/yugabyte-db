@@ -276,8 +276,8 @@ Result<bool> XClusterOutboundReplicationGroup::MarkBootstrapTablesAsCheckpointed
       "Namespace in unexpected state");
 
   if (table_ids.empty()) {
-    auto table_designators = VERIFY_RESULT(helper_functions_.get_tables_func(
-        namespace_id, /*include_sequences_data=*/AutomaticDDLMode()));
+    auto table_designators =
+        VERIFY_RESULT(helper_functions_.get_tables_func(namespace_id, AutomaticDDLMode()));
     std::set<TableId> tables;
     std::transform(
         table_designators.begin(), table_designators.end(), std::inserter(tables, tables.begin()),
@@ -356,9 +356,8 @@ Result<NamespaceName> XClusterOutboundReplicationGroup::GetNamespaceName(
 Result<XClusterOutboundReplicationGroup::NamespaceInfoPB>
 XClusterOutboundReplicationGroup::CreateNamespaceInfo(
     const NamespaceId& namespace_id, const LeaderEpoch& epoch) {
-  auto table_designators = VERIFY_RESULT(helper_functions_.get_tables_func(
-      namespace_id, /*include_sequences_data=*/
-      AutomaticDDLMode()));
+  auto table_designators =
+      VERIFY_RESULT(helper_functions_.get_tables_func(namespace_id, AutomaticDDLMode()));
   VLOG_WITH_PREFIX_AND_FUNC(1) << "Tables: " << yb::ToString(table_designators);
 
   // In automatic DDL mode the DDL queue table and sequences tables will be created automatically.
@@ -415,8 +414,10 @@ Status XClusterOutboundReplicationGroup::AddTableToInitialBootstrapMapping(
 
 Status XClusterOutboundReplicationGroup::SetDDLQueueTableIsPartOfInitialBootstrap(
     const NamespaceId& namespace_id, const LeaderEpoch& epoch) {
+  // Just trying to find the ddl_queue table, so can set is_automatic_ddl_mode = false to avoid
+  // getting additional tables.
   auto table_designators = VERIFY_RESULT(
-      helper_functions_.get_tables_func(namespace_id, /*include_sequences_data=*/false));
+      helper_functions_.get_tables_func(namespace_id, /*is_automatic_ddl_mode=*/false));
 
   std::lock_guard mutex_lock(mutex_);
   auto l = VERIFY_RESULT(LockForWrite());
@@ -656,8 +657,8 @@ Result<std::optional<NamespaceCheckpointInfo>>
 XClusterOutboundReplicationGroup::GetNamespaceCheckpointInfo(
     const NamespaceId& namespace_id,
     const std::vector<std::pair<TableName, PgSchemaName>>& table_names) const {
-  auto all_tables = VERIFY_RESULT(helper_functions_.get_tables_func(
-      namespace_id, /*include_sequences_data=*/AutomaticDDLMode()));
+  auto all_tables =
+      VERIFY_RESULT(helper_functions_.get_tables_func(namespace_id, AutomaticDDLMode()));
 
   SharedLock mutex_lock(mutex_);
   auto l = VERIFY_RESULT(LockForRead());
@@ -994,7 +995,7 @@ XClusterOutboundReplicationGroup::GetNamespaceInfoSafe(
 
 Result<XClusterOutboundReplicationGroup::NamespaceInfoPB*>
 XClusterOutboundReplicationGroup::GetNamespaceInfo(const NamespaceId& namespace_id) {
-  CHECK(outbound_rg_info_->metadata().HasWriteLock());
+  DCHECK(outbound_rg_info_->metadata().DEBUG_HasWriteLock());
   SCHECK(
       HasNamespaceUnlocked(namespace_id), NotFound,
       Format("$0 Namespace $1 not found", LogPrefix(), namespace_id));

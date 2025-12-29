@@ -5,7 +5,8 @@ bin_path="/usr/local/bin"
 # Set system limits
 # Append limits to /etc/security/limits.conf if they don't already exist
 #
-{% for key, value in limits.items() %}
+{% for key in limits %}
+{% set value = limits[key] %}
 if ! grep -qP "^\*\s+-\s+{{ key }}\s+{{ value }}$" /etc/security/limits.conf; then
   echo "*                -       {{ key }}            {{ value }}" | \
   tee -a /etc/security/limits.conf
@@ -77,7 +78,7 @@ if [[ "$is_cloud" == "True" ]]; then
   DUMP_DIR="{{ yb_home_dir }}/cores"
 
   # Ensure the cores directory exists with proper permissions
-  if [[ "$is_yb_prebuilt_image" == "True" ]] && [[ -L "$DUMP_DIR" ]]; then
+  if [[ -L "$DUMP_DIR" ]]; then
     echo "YB Prebuilt AMI detected, skipping creation of cores directory"
   else
     mkdir -p "$DUMP_DIR"

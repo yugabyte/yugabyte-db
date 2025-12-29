@@ -224,7 +224,7 @@ func (h *ConfigureServerHandler) setupServerScript(
 	}
 
 	// Copy yb-server-ctl.sh script.
-	err := module.CopyFile(
+	_, err := module.CopyFile(
 		ctx,
 		serverScriptContext,
 		filepath.Join(ServerTemplateSubpath, "yb-server-ctl.sh.j2"),
@@ -237,7 +237,7 @@ func (h *ConfigureServerHandler) setupServerScript(
 	}
 
 	// Copy clock-sync.sh script.
-	err = module.CopyFile(
+	_, err = module.CopyFile(
 		ctx,
 		serverScriptContext,
 		filepath.Join(ServerTemplateSubpath, "clock-sync.sh.j2"),
@@ -250,7 +250,7 @@ func (h *ConfigureServerHandler) setupServerScript(
 	}
 
 	// Copy clean_cores.sh script.
-	err = module.CopyFile(
+	_, err = module.CopyFile(
 		ctx,
 		serverScriptContext,
 		filepath.Join(ServerTemplateSubpath, "clean_cores.sh.j2"),
@@ -263,7 +263,7 @@ func (h *ConfigureServerHandler) setupServerScript(
 	}
 
 	// Copy zip_purge_yb_logs.sh.sh script.
-	err = module.CopyFile(
+	_, err = module.CopyFile(
 		ctx,
 		serverScriptContext,
 		filepath.Join(ServerTemplateSubpath, "zip_purge_yb_logs.sh.j2"),
@@ -276,7 +276,7 @@ func (h *ConfigureServerHandler) setupServerScript(
 	}
 
 	// Copy collect_metrics_wrapper.sh script.
-	err = module.CopyFile(
+	_, err = module.CopyFile(
 		ctx,
 		serverScriptContext,
 		filepath.Join(ServerTemplateSubpath, "collect_metrics_wrapper.sh.j2"),

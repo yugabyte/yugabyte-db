@@ -33,6 +33,7 @@
 #include "nodes/makefuncs.h"
 #include "optimizer/cost.h"
 #include "pg_yb_utils.h"
+#include "storage/lmgr.h"
 #include "utils/catcache.h"
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
@@ -114,10 +115,9 @@ YbMaybeLockMasterCatalogVersion()
 	 * (2) We enable this feature only if the invalidation messages are used and per-database catalog
 	 *		 version mode is enabled.
 	 *
-	 * TODO(#27037): Re-enable table locks check when concurrent DDL is ready.
 	 */
 	if (yb_user_ddls_preempt_auto_analyze &&
-	/* !*YBCGetGFlags()->enable_object_locking_for_table_locks && */
+		YBCIsLegacyModeForCatalogOps() &&
 		YbIsInvalidationMessageEnabled() && YBIsDBCatalogVersionMode())
 	{
 		elog(DEBUG3, "Locking catalog version for db oid %d", MyDatabaseId);
@@ -212,6 +212,18 @@ YbCallSQLIncrementCatalogVersions(Oid functionId, bool is_breaking_change,
 	PG_END_TRY();
 }
 
+/*
+ * When transactional DDL is enabled, multiple DDLs could contribute to the
+ * catalog version increment. Hence, we need to be more explicit that we
+ * are only logging the last catalog version incrementing DDL and there may
+ * be more such DDLs that are not logged.
+ */
+static bool
+LastDdlInTransactionBlock()
+{
+	return YBIsDdlTransactionBlockEnabled() && IsTransactionBlock();
+}
+
 static void
 MaybeLogNewSQLIncrementCatalogVersion(bool success,
 									  Oid db_oid,
@@ -243,8 +255,10 @@ MaybeLogNewSQLIncrementCatalogVersion(bool success,
 						"(%sbreaking) with inval messages%s%s",
 						__func__, action, is_breaking_change ? "" : "non",
 						tmpbuf1, tmpbuf2),
-				 errdetail("Local version: %" PRIu64 ", node tag: %s.",
-						   YbGetCatalogCacheVersion(), command_tag ? command_tag : "n/a"),
+				 errdetail("Local version: %" PRIu64 ", %snode tag: %s.",
+						   YbGetCatalogCacheVersion(),
+						   LastDdlInTransactionBlock() ? "last ddl " : "",
+						   command_tag ? command_tag : "n/a"),
 				 errhidestmt(!log_ysql_catalog_versions),
 				 errhidecontext(!log_ysql_catalog_versions)));
 	}
@@ -431,6 +445,9 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(Oid db_oid,
 {
 	Assert(YbGetCatalogVersionType() == CATALOG_VERSION_CATALOG_TABLE);
 
+	if (!YBCIsLegacyModeForCatalogOps())
+		LockRelationOid(YBCatalogVersionRelationId, ExclusiveLock);
+
 	if (YbIsInvalidationMessageEnabled())
 	{
 		Oid			func_oid = is_global_ddl ? YbGetNewIncrementAllCatalogVersionsFunctionOid()
@@ -438,6 +455,9 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(Oid db_oid,
 
 		if (OidIsValid(func_oid) && YbInvalidationMessagesTableExists())
 		{
+			if (!YBCIsLegacyModeForCatalogOps())
+				LockRelationOid(YbInvalidationMessagesRelationId, ExclusiveLock);
+
 			bool		is_null = false;
 			Datum		messages = GetInvalidationMessages(invalMessages, nmsgs, &is_null);
 			int			expiration_secs = yb_invalidation_message_expiration_secs;
@@ -534,18 +554,12 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(Oid db_oid,
 		 */
 	}
 
-	YbcPgStatement update_stmt = NULL;
 	YbcPgTypeAttrs type_attrs = {0};
-	YbcPgExpr	yb_expr;
 
-	/* The table pg_yb_catalog_version is in template1. */
-	HandleYBStatus(YBCPgNewUpdate(Template1DbOid,
-								  YBCatalogVersionRelationId,
-								  false /* is_region_local */ ,
-								  &update_stmt,
-								  YB_TRANSACTIONAL));
+	Relation rel = RelationIdGetRelation(YBCatalogVersionRelationId);
 
-	Relation	rel = RelationIdGetRelation(YBCatalogVersionRelationId);
+	YbcPgStatement update_stmt = YbNewUpdate(rel, YB_TRANSACTIONAL);
+
 	Datum		ybctid = YbGetMasterCatalogVersionTableEntryYbctid(rel, db_oid);
 
 	/* Bind ybctid to identify the current row. */
@@ -585,8 +599,7 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(Oid db_oid,
 	YbcPgExpr	ybc_expr = YBCNewEvalExprCall(update_stmt, (Expr *) expr);
 
 	HandleYBStatus(YBCPgDmlAssignColumn(update_stmt, attnum, ybc_expr));
-	yb_expr = YBCNewColumnRef(update_stmt, attnum, INT8OID, InvalidOid,
-							  &type_attrs);
+	YbcPgExpr yb_expr = YBCNewColumnRef(update_stmt, attnum, INT8OID, InvalidOid, &type_attrs);
 	YbAppendPrimaryColumnRef(update_stmt, yb_expr);
 
 	/*
@@ -611,8 +624,10 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(Oid db_oid,
 		ereport(LOG,
 				(errmsg("%s: incrementing master catalog version (%sbreaking)%s",
 						__func__, is_breaking_change ? "" : "non", tmpbuf),
-				 errdetail("Local version: %" PRIu64 ", node tag: %s.",
-						   YbGetCatalogCacheVersion(), command_tag ? command_tag : "n/a"),
+				 errdetail("Local version: %" PRIu64 ", %snode tag: %s.",
+						   YbGetCatalogCacheVersion(),
+						   LastDdlInTransactionBlock() ? "last ddl " : "",
+						   command_tag ? command_tag : "n/a"),
 				 errhidestmt(!log_ysql_catalog_versions),
 				 errhidecontext(!log_ysql_catalog_versions)));
 	}
@@ -645,6 +660,7 @@ YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change,
 										  const SharedInvalidationMessage *invalMessages,
 										  int nmsgs)
 {
+	elog(DEBUG2, "YbIncrementMasterCatalogVersionTableEntry");
 	YbResetNewCatalogVersion();
 	if (YbGetCatalogVersionType() != CATALOG_VERSION_CATALOG_TABLE)
 		return false;
@@ -721,15 +737,10 @@ YbCreateMasterDBCatalogVersionTableEntry(Oid db_oid)
 	 * primary key and therefore only one insert statement is needed to insert
 	 * the row for db_oid.
 	 */
-	YbcPgStatement insert_stmt = NULL;
+	Relation rel = RelationIdGetRelation(YBCatalogVersionRelationId);
 
-	HandleYBStatus(YBCPgNewInsert(Template1DbOid,
-								  YBCatalogVersionRelationId,
-								  false /* is_region_local */ ,
-								  &insert_stmt,
-								  YB_SINGLE_SHARD_TRANSACTION));
+	YbcPgStatement insert_stmt = YbNewInsert(rel, YB_SINGLE_SHARD_TRANSACTION);
 
-	Relation	rel = RelationIdGetRelation(YBCatalogVersionRelationId);
 	Datum		ybctid = YbGetMasterCatalogVersionTableEntryYbctid(rel, db_oid);
 
 	YbcPgExpr	ybctid_expr = YBCNewConstant(insert_stmt, BYTEAOID, InvalidOid,
@@ -738,17 +749,19 @@ YbCreateMasterDBCatalogVersionTableEntry(Oid db_oid)
 	HandleYBStatus(YBCPgDmlBindColumn(insert_stmt, YBTupleIdAttributeNumber,
 									  ybctid_expr));
 
+
+
 	AttrNumber	attnum = Anum_pg_yb_catalog_version_current_version;
 	Datum		initial_version = 1;
 	YbcPgExpr	initial_version_expr = YBCNewConstant(insert_stmt, INT8OID,
-													  InvalidOid,
-													  initial_version,
-													  false /* is_null */ );
+													InvalidOid,
+													initial_version,
+													false /* is_null */ );
 
 	HandleYBStatus(YBCPgDmlBindColumn(insert_stmt, attnum,
-									  initial_version_expr));
+									initial_version_expr));
 	HandleYBStatus(YBCPgDmlBindColumn(insert_stmt, attnum + 1,
-									  initial_version_expr));
+									initial_version_expr));
 
 	int			rows_affected_count = 0;
 
@@ -827,15 +840,11 @@ YbDeleteMasterDBCatalogVersionTableEntry(Oid db_oid)
 	 * primary key and therefore only one delete statement is needed to delete
 	 * the row for db_oid.
 	 */
-	YbcPgStatement delete_stmt = NULL;
 
-	HandleYBStatus(YBCPgNewDelete(Template1DbOid,
-								  YBCatalogVersionRelationId,
-								  false /* is_region_local */ ,
-								  &delete_stmt,
-								  YB_SINGLE_SHARD_TRANSACTION));
+	Relation rel = RelationIdGetRelation(YBCatalogVersionRelationId);
 
-	Relation	rel = RelationIdGetRelation(YBCatalogVersionRelationId);
+	YbcPgStatement delete_stmt = YbNewDelete(rel, YB_SINGLE_SHARD_TRANSACTION);
+
 	Datum		ybctid = YbGetMasterCatalogVersionTableEntryYbctid(rel, db_oid);
 
 	YbcPgExpr	ybctid_expr = YBCNewConstant(delete_stmt, BYTEAOID, InvalidOid,
@@ -921,7 +930,7 @@ YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version,
 	HandleYBStatus(YBCPgNewSelect(Template1DbOid,
 								  YBCatalogVersionRelationId,
 								  NULL /* prepare_params */ ,
-								  false /* is_region_local */ ,
+								  YbBuildSystemTableLocalityInfo(YBCatalogVersionRelationId),
 								  &ybc_stmt));
 
 	if (!(acquire_lock && yb_use_internal_auto_analyze_service_conn))

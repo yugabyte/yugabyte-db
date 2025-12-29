@@ -207,7 +207,7 @@ export const SlotDetail: FC<RouteComponentProps<{}, SlotDetailProps>> = ({ locat
   };
 
   const renderHighlights = () => {
-    const currentLag = Number(_.last(metricsData?.[CDC_LAG_KEY]?.data[0]?.y));
+    const currentLag = Number(_.last(metricsData?.[CDC_LAG_KEY]?.data[0]?.y))*1000;
     const expiryTime = Number(_.last(metricsData?.[CDC_EXPIRY_TIME_KEY]?.data[0]?.y)) * 60 * 1000;
     return (
       <>

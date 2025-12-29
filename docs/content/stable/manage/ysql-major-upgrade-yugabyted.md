@@ -104,11 +104,11 @@ Stopped yugabyted using config /net/dev-server-hsunder/share/yugabyte-data/node1
 
 ```output
 Starting yugabyted...
-✅ Upgrade status successfully verified   
-✅ YugabyteDB Started                  
+✅ Upgrade status successfully verified
+✅ YugabyteDB Started
 ✅ Node joined a running cluster with UUID 5dd3bda3-43a9-48fd-9c16-8399378fed12
-✅ UI ready         
-✅ Data placement constraint successfully verified                 
+✅ UI ready
+✅ Data placement constraint successfully verified
 
 +---------------------------------------------------------------------------------------------------+
 |                                               yugabyted                                           |
@@ -136,7 +136,7 @@ Upgrade the YSQL catalog. You can run this command from any node.
 ```
 
 ```output
-✅ YSQL catalog upgrade successful.   
+✅ YSQL catalog upgrade successful.
 
 +----------------------------------------------------+
 |                     yugabyted                      |
@@ -171,11 +171,11 @@ Restart nodes with the flag `ysql_yb_major_version_upgrade_compatibility=11` so 
 
 ```output
 Starting yugabyted...
-✅ Upgrade status successfully verified   
-✅ YugabyteDB Started                  
+✅ Upgrade status successfully verified
+✅ YugabyteDB Started
 ✅ Node joined a running cluster with UUID 5dd3bda3-43a9-48fd-9c16-8399378fed12
-✅ UI ready         
-✅ Data placement constraint successfully verified                 
+✅ UI ready
+✅ Data placement constraint successfully verified
 
 +---------------------------------------------------------------------------------------------------+
 |                                               yugabyted                                           |

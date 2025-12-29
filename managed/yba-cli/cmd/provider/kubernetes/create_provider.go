@@ -140,12 +140,7 @@ var createK8sProviderCmd = &cobra.Command{
 		rTask, response, err := authAPI.CreateProvider().
 			CreateProviderRequest(requestBody).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"Provider: Kubernetes",
-				"Create")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Provider: Kubernetes", "Create")
 		}
 
 		providerutil.WaitForCreateProviderTask(
@@ -224,7 +219,7 @@ func buildK8sRegions(
 		region := providerutil.BuildRegionMapFromString(regionString, "")
 		var configContent string
 		if filePath, ok := region["config-file-path"]; ok {
-			if strings.TrimSpace(filePath) != "" {
+			if !util.IsEmptyString(filePath) {
 				logrus.Debug("Reading Region Kube Config\n")
 				configContent = util.YAMLtoString(filePath)
 			}
@@ -232,7 +227,7 @@ func buildK8sRegions(
 
 		var overrides string
 		if filePath, ok := region["overrides-file-path"]; ok {
-			if strings.TrimSpace(filePath) != "" {
+			if !util.IsEmptyString(filePath) {
 				logrus.Debug("Reading Region Kubernetes Overrides\n")
 				overrides = util.YAMLtoString(filePath)
 			}
@@ -277,7 +272,7 @@ func buildK8sZones(
 
 		var configContent string
 		if filePath, ok := zone["config-file-path"]; ok {
-			if strings.TrimSpace(filePath) != "" {
+			if !util.IsEmptyString(filePath) {
 				logrus.Debug("Reading Region Kube Config\n")
 				configContent = util.YAMLtoString(filePath)
 			}
@@ -285,7 +280,7 @@ func buildK8sZones(
 
 		var overrides string
 		if filePath, ok := zone["overrides-file-path"]; ok {
-			if strings.TrimSpace(filePath) != "" {
+			if !util.IsEmptyString(filePath) {
 				logrus.Debug("Reading Region Kubernetes Overrides\n")
 				overrides = util.YAMLtoString(filePath)
 			}

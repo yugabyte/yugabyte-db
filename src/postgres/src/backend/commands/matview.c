@@ -338,7 +338,7 @@ ExecRefreshMatView(RefreshMatViewStmt *stmt, const char *queryString,
 	dest = CreateTransientRelDestReceiver(OIDNewHeap);
 
 	/* Generate the data, if wanted. */
-	if (!stmt->skipData)
+	if (!stmt->skipData && !yb_xcluster_automatic_mode_target_ddl)
 		processed = refresh_matview_datafill(dest, dataQuery, queryString);
 
 	/* Make the matview match the newly generated data. */
@@ -1018,7 +1018,9 @@ refresh_by_heap_swap(Oid matviewOid, Oid OIDNewHeap, char relpersistence)
 {
 	finish_heap_swap(matviewOid, OIDNewHeap, false, false, true, true,
 					 RecentXmin, ReadNextMultiXactId(), relpersistence,
-					 false /* yb_copy_split_options */ );
+					 false /* yb_copy_split_options */ ,
+					 NIL /* changedIndexNames */ ,
+					 NIL /* changedIndexSplitOpts */ );
 }
 
 /*

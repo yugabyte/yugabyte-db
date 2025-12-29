@@ -81,6 +81,8 @@
 #include "yb/yql/pggate/ybc_gflags.h"
 #include <inttypes.h>
 
+/* Potentially set by pg_upgrade_support functions */
+Oid			yb_binary_upgrade_next_colocation_id = InvalidOid;
 
 /* non-export function prototypes */
 static bool CompareOpclassOptions(Datum *opts1, Datum *opts2, int natts);
@@ -597,6 +599,7 @@ DefineIndex(Oid relationId,
 	Oid			tablegroupId = InvalidOid;
 	Oid			colocation_id = InvalidOid;
 	bool		is_colocated = false;
+	bool		yb_skip_index_creation;
 
 	root_save_nestlevel = NewGUCNestLevel();
 
@@ -1134,10 +1137,26 @@ DefineIndex(Oid relationId,
 
 		colocation_id = YbGetColocationIdFromRelOptions(stmt->options);
 
-		if (OidIsValid(colocation_id) && !is_colocated)
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-					 errmsg("cannot set colocation_id for non-colocated index")));
+		if (OidIsValid(colocation_id))
+		{
+			if (!is_colocated)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						 errmsg("cannot set colocation_id for non-colocated index")));
+			if (OidIsValid(yb_binary_upgrade_next_colocation_id))
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						 errmsg("cannot set yb_binary_upgrade_next_colocation_id for colocated index")));
+		}
+		else if (OidIsValid(yb_binary_upgrade_next_colocation_id))
+		{
+			if (!is_colocated)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						 errmsg("cannot set colocation_id for non-colocated index")));
+			colocation_id = yb_binary_upgrade_next_colocation_id;
+			yb_binary_upgrade_next_colocation_id = InvalidOid;
+		}
 
 		/*
 		 * Fail if the index is colocated via tablegroup and tablespace
@@ -1628,6 +1647,8 @@ DefineIndex(Oid relationId,
 		rel->rd_rel->relpersistence == RELPERSISTENCE_TEMP)
 		YBCRecordTempRelationDDL();
 
+	yb_skip_index_creation = skip_build && is_alter_table;
+
 	indexRelationId =
 		index_create(rel, indexRelationName, indexRelationId, parentIndexId,
 					 parentConstraintId,
@@ -1638,7 +1659,8 @@ DefineIndex(Oid relationId,
 					 flags, constr_flags,
 					 allowSystemTableMods, !check_rights,
 					 &createdConstraintId, stmt->split_options,
-					 !concurrent, is_colocated, tablegroupId, colocation_id);
+					 !concurrent, is_colocated, tablegroupId, colocation_id,
+					 yb_skip_index_creation);
 
 	ObjectAddressSet(address, RelationRelationId, indexRelationId);
 
@@ -2261,6 +2283,40 @@ DefineIndex(Oid relationId,
 		 * table.
 		 */
 		HandleYBStatus(YBCPgBackfillIndex(databaseId, indexRelationId));
+
+		Relation	yb_baserel = table_open(relationId, NoLock);
+
+		if (yb_enable_update_reltuples_after_create_index)
+		{
+			Oid			index_oids[1] = {indexRelationId};
+			Oid			database_oids[1] = {databaseId};
+			uint64_t	num_rows_read_from_table;
+			double		num_rows_backfilled;
+
+			HandleYBStatus(YBCGetIndexBackfillProgress(index_oids, database_oids,
+													   &num_rows_read_from_table,
+													   &num_rows_backfilled,
+													   1));
+
+			/*
+			 * Ignore the update if there was an error getting backfill
+			 * progress.
+			 */
+			if (num_rows_backfilled != -1)
+			{
+				Relation	yb_indexrel = index_open(indexRelationId, NoLock);
+
+				yb_index_update_stats(yb_baserel,
+									  true,
+									  ((double) (num_rows_read_from_table)));
+				yb_index_update_stats(yb_indexrel,
+									  false,
+									  (num_rows_backfilled));
+				index_close(yb_indexrel, NoLock);
+			}
+		}
+
+		table_close(yb_baserel, NoLock);
 
 		YbTestGucFailIfStrEqual(yb_test_fail_index_state_change, "postbackfill");
 
@@ -3436,7 +3492,8 @@ ReindexIndex(RangeVar *indexRelation, ReindexParams *params, bool isTopLevel)
 		newparams.options |= REINDEXOPT_REPORT_PROGRESS;
 		reindex_index(indOid, false, persistence, &newparams,
 					  false /* is_yb_table_rewrite */ ,
-					  true /* yb_copy_split_options */ );
+					  true /* yb_copy_split_options */ ,
+					  NULL  /* preserved_index_split_options */ );
 	}
 }
 
@@ -3557,7 +3614,9 @@ ReindexTable(RangeVar *relation, ReindexParams *params, bool isTopLevel)
 								  REINDEX_REL_CHECK_CONSTRAINTS,
 								  &newparams,
 								  false /* is_yb_table_rewrite */ ,
-								  true /* yb_copy_split_options */ );
+								  true /* yb_copy_split_options */ ,
+								  NIL /* changedIndexNames */ ,
+								  NIL /* changedIndexSplitOpts */ );
 		if (!result)
 			ereport(NOTICE,
 					(errmsg("table \"%s\" has no indexes to reindex",
@@ -3902,8 +3961,16 @@ ReindexMultipleInternal(List *relids, ReindexParams *params)
 {
 	ListCell   *l;
 
-	PopActiveSnapshot();
-	CommitTransactionCommand();
+	/*
+	 * YB: Handle the commit later while starting the new transaction. See the
+	 * call to YbCommitTransactionCommandIntermediate at the start of the loop
+	 * below.
+	 */
+	if (!IsYugaByteEnabled())
+	{
+		PopActiveSnapshot();
+		CommitTransactionCommand();
+	}
 
 	foreach(l, relids)
 	{
@@ -3911,7 +3978,14 @@ ReindexMultipleInternal(List *relids, ReindexParams *params)
 		char		relkind;
 		char		relpersistence;
 
-		StartTransactionCommand();
+		/*
+		 * YB: Commit the earlier transaction remembering the ddl state, start a
+		 * new one and set the stored ddl state.
+		 */
+		if (IsYugaByteEnabled())
+			YbCommitTransactionCommandIntermediate();
+		else
+			StartTransactionCommand();
 
 		/* functions in indexes may want a snapshot set */
 		PushActiveSnapshot(GetTransactionSnapshot());
@@ -3919,8 +3993,15 @@ ReindexMultipleInternal(List *relids, ReindexParams *params)
 		/* check if the relation still exists */
 		if (!SearchSysCacheExists1(RELOID, ObjectIdGetDatum(relid)))
 		{
-			PopActiveSnapshot();
-			CommitTransactionCommand();
+			/*
+			 * YbCommitTransactionCommandIntermediate call in the next iteration
+			 * or after the loop will take care of the pop & commit.
+			 */
+			if (!IsYugaByteEnabled())
+			{
+				PopActiveSnapshot();
+				CommitTransactionCommand();
+			}
 			continue;
 		}
 
@@ -3968,8 +4049,15 @@ ReindexMultipleInternal(List *relids, ReindexParams *params)
 				REINDEXOPT_REPORT_PROGRESS | REINDEXOPT_MISSING_OK;
 			reindex_index(relid, false, relpersistence, &newparams,
 						  false /* is_yb_table_rewrite */ ,
-						  true /* yb_copy_split_options */ );
-			PopActiveSnapshot();
+						  true /* yb_copy_split_options */ ,
+						  NULL /* preserved_index_split_options */ );
+
+			/*
+			 * YbCommitTransactionCommandIntermediate call in the next iteration
+			 * or after the loop will take care of the pop.
+			 */
+			if (!IsYugaByteEnabled())
+				PopActiveSnapshot();
 			/* reindex_index() does the verbose output */
 		}
 		else
@@ -3984,7 +4072,9 @@ ReindexMultipleInternal(List *relids, ReindexParams *params)
 									  REINDEX_REL_CHECK_CONSTRAINTS,
 									  &newparams,
 									  false /* is_yb_table_rewrite */ ,
-									  true /* yb_copy_split_options */ );
+									  true /* yb_copy_split_options */ ,
+									  NIL /* changedIndexNames */ ,
+									  NIL /* changedIndexSplitOpts */ );
 
 			if (result && (params->options & REINDEXOPT_VERBOSE) != 0)
 				ereport(INFO,
@@ -3992,13 +4082,26 @@ ReindexMultipleInternal(List *relids, ReindexParams *params)
 								get_namespace_name(get_rel_namespace(relid)),
 								get_rel_name(relid))));
 
-			PopActiveSnapshot();
+			/*
+			 * YbCommitTransactionCommandIntermediate call in the next iteration
+			 * or after the loop will take care of the pop.
+			 */
+			if (!IsYugaByteEnabled())
+				PopActiveSnapshot();
 		}
 
-		CommitTransactionCommand();
+		/*
+		 * YbCommitTransactionCommandIntermediate call in the next iteration or
+		 * after the loop will take care of the commit.
+		 */
+		if (!IsYugaByteEnabled())
+			CommitTransactionCommand();
 	}
 
-	StartTransactionCommand();
+	if (IsYugaByteEnabled())
+		YbCommitTransactionCommandIntermediate();
+	else
+		StartTransactionCommand();
 }
 
 
@@ -5110,6 +5213,7 @@ YbWaitForBackendsCatalogVersion()
 								 " pg_stat_activity WHERE"
 								 " backend_type != 'walsender' AND"
 								 " backend_type != 'yb-conn-mgr walsender' AND"
+								 " backend_type != 'yb auto analyze backend' AND"
 								 " catalog_version < %" PRIu64
 								 " AND datid = %u;",
 								 catalog_version,

@@ -85,7 +85,7 @@ const PanelBody = ({
     selectedUniverse === MetricConsts.ALL ||
     metricMeasure === MetricMeasure.OVERALL
   ) {
-    invalidTabType.push(MetricTypes.OUTLIER_TABLES);
+    invalidTabType.push(MetricTypes.OUTLIER_TABLES, MetricTypes.OUTLIER_DATABASES);
   }
 
   if (!(selectedUniverse === MetricConsts.ALL)) {

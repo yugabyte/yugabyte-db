@@ -173,10 +173,9 @@ FindWithDefault(const Collection& collection,
 
 // Returns a pointer to the const value associated with the given key if it
 // exists, or NULL otherwise.
-template <class Collection>
+template <class Collection, class Key>
 const typename Collection::value_type::second_type*
-FindOrNull(const Collection& collection,
-           const typename Collection::value_type::first_type& key) {
+FindOrNull(const Collection& collection, const Key& key) {
   auto it = collection.find(key);
   if (it == collection.end()) {
     return 0;
@@ -185,10 +184,9 @@ FindOrNull(const Collection& collection,
 }
 
 // Same as above but returns a pointer to the non-const value.
-template <class Collection>
+template <class Collection, class Key>
 typename Collection::value_type::second_type*
-FindOrNull(Collection& collection,  // NOLINT
-           const typename Collection::value_type::first_type& key) {
+FindOrNull(Collection& collection, const Key& key) {
   auto it = collection.find(key);
   if (it == collection.end()) {
     return 0;
@@ -242,10 +240,9 @@ FindPtrOrNull(const Collection& collection,
 //
 // This function is needed for containers that propagate constness to the
 // pointee, such as boost::ptr_map.
-template <class Collection>
+template <class Collection, class Key>
 typename Collection::value_type::second_type
-FindPtrOrNull(Collection& collection,  // NOLINT
-              const typename Collection::value_type::first_type& key) {
+FindPtrOrNull(Collection& collection, const Key& key) {
   auto it = collection.find(key);
   if (it == collection.end()) {
     return typename Collection::value_type::second_type(0);

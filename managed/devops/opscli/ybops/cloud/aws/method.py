@@ -70,7 +70,8 @@ class AwsCreateInstancesMethod(CreateInstancesMethod):
                                  help="AWS Key Pair name")
         self.parser.add_argument("--security_group_id", default=None,
                                  help="AWS comma delimited security group IDs.")
-        self.parser.add_argument("--volume_type", choices=["gp3", "gp2", "io1"], default="gp2",
+        self.parser.add_argument("--volume_type", choices=["gp3", "gp2", "io1", "io2"],
+                                 default="gp2",
                                  help="Volume type for volumes on EBS-backed instances.")
         self.parser.add_argument("--spot_price", default=None,
                                  help="Spot price for each instance (if desired)")
@@ -560,7 +561,11 @@ class AwsChangeInstanceTypeMethod(ChangeInstanceTypeMethod):
                                  help="Capacity reservation to use.")
 
     def _change_instance_type(self, args, host_info):
-        self.cloud.change_instance_type(host_info, args.instance_type, args.capacity_reservation)
+        self.cloud.change_instance_type(host_info, args.instance_type)
+
+    def _start_instance(self, args, host_info):
+        server_ports = self.get_server_ports_to_check(args)
+        self.cloud.start_instance(host_info, server_ports, args.capacity_reservation)
 
     # We have to use this to uniform accessing host_info for AWS and GCP
     def _host_info(self, args, host_info):
@@ -585,7 +590,8 @@ class AwsUpdateMountedDisksMethod(UpdateMountedDisksMethod):
 
     def add_extra_args(self):
         super(AwsUpdateMountedDisksMethod, self).add_extra_args()
-        self.parser.add_argument("--volume_type", choices=["gp3", "gp2", "io1"], default="gp2",
+        self.parser.add_argument("--volume_type", choices=["gp3", "gp2", "io1", "io2"],
+                                 default="gp2",
                                  help="Volume type for volumes on EBS-backed instances.")
 
     def get_device_names(self, args, host_info=None):
@@ -598,7 +604,8 @@ class AwsQueryDeviceNames(AbstractMethod):
 
     def add_extra_args(self):
         super(AwsQueryDeviceNames, self).add_extra_args()
-        self.parser.add_argument("--volume_type", choices=["gp3", "gp2", "io1"], default="gp2",
+        self.parser.add_argument("--volume_type", choices=["gp3", "gp2", "io1", "io2"],
+                                 default="gp2",
                                  help="Volume type for volumes on EBS-backed instances.")
         self.parser.add_argument("--region", required=False, help="Region associated with the node")
         self.parser.add_argument("--instance_type",

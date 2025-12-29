@@ -350,7 +350,9 @@ class YBClient {
 
   Status GetIndexBackfillProgress(
       const TableIds& index_ids,
-      google::protobuf::RepeatedField<google::protobuf::uint64>* rows_processed_entries);
+      google::protobuf::RepeatedField<google::protobuf::uint64>*
+          num_rows_read_from_table_for_backfill,
+      google::protobuf::RepeatedField<double>* num_rows_backfilled_in_index);
 
   Result<google::protobuf::RepeatedPtrField<tablet::TabletStatusPB>> GetTabletsMetadata();
 
@@ -910,7 +912,7 @@ class YBClient {
       master::GetTableSchemaResponsePB* resp = nullptr);
 
   void OpenTableAsync(const YBTableName& table_name, const OpenTableAsyncCallback& callback);
-  void OpenTableAsync(const TableId& table_id, const OpenTableAsyncCallback& callback,
+  void OpenTableAsync(TableIdView table_id, const OpenTableAsyncCallback& callback,
                       master::IncludeHidden include_hidden = master::IncludeHidden::kFalse,
                       master::GetTableSchemaResponsePB* resp = nullptr);
 

@@ -20,6 +20,7 @@ import org.yb.util.MiscUtil;
 import org.yb.util.ThrowingRunnable;
 import org.yb.YBTestRunner;
 
+import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
@@ -48,7 +49,18 @@ public class TestTransactionStatusTable extends BasePgSQLTest {
           startSignal.countDown();
           startSignal.await();
           // Check table is created in spite of the fact transaction status table is not ready yet.
-          stmt.execute(String.format("CREATE TABLE t_%d(k INT, v INT)", idx));
+          // Retry on catalog mismatch error.
+          while (true) {
+            try {
+              stmt.execute(String.format("CREATE TABLE t_%d(k INT, v INT)", idx));
+              break;
+            } catch (SQLException e) {
+              if (e.getSQLState().equals("40001")) {
+                continue;
+              }
+              throw e;
+            }
+          }
           assertOneRow(stmt, String.format("SELECT COUNT(*) FROM t_%d", idx), 0L);
         }
       });

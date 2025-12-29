@@ -186,14 +186,6 @@ CREATE TABLE orders (
   customer_id INT
 ) PARTITION BY RANGE (order_date);
 
-CREATE EXTENSION pg_partman WITH SCHEMA partman;
-
-CREATE TABLE orders (
-  order_id SERIAL,
-  order_date DATE NOT NULL,
-  customer_id INT
-) PARTITION BY RANGE (order_date);
-
 SELECT partman.create_parent( p_parent_table => 'public.orders',
   p_control => 'order_date',
   p_type => 'partman',
@@ -212,7 +204,7 @@ The pg_partman `create_parent()` function requires an access exclusive lock on t
 
 ### Advisory locks
 
-Advisory locks, used in some pg_partman functions to create, drop/delete partitioned tables, are not supported in YugabyteDB. Attempts to acquire these locks are disabled.
+Advisory locks, used in some pg_partman functions to create, drop/delete partitioned tables, are not currently supported in YugabyteDB. Attempts to acquire these locks are disabled.
 
 ### Background worker process
 

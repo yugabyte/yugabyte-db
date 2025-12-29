@@ -866,11 +866,6 @@ Status CallResponse::ParseFrom(CallData* call_data) {
   return Status::OK();
 }
 
-const std::string kRpcErrorCategoryName = "rpc error";
-
-StatusCategoryRegisterer rpc_error_category_registerer(
-    StatusCategoryDescription::Make<RpcErrorTag>(&kRpcErrorCategoryName));
-
 std::string OutboundCall::InvalidStateTransition::ToString() const {
   return YB_STRUCT_TO_STRING(
       (old_state, RpcCallState_Name(static_cast<RpcCallState>(old_state))),

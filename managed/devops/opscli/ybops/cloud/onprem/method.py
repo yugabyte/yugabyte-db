@@ -512,8 +512,8 @@ class OnPremInstallNodeAgentMethod(AbstractInstancesMethod):
         cmd = ["uname", "-sm"]
         remote_shell = RemoteShell(self.extra_vars)
         try:
-            result = remote_shell.run_command(cmd)
-            parts = re.split("\\s+", result.stdout)
+            result = remote_shell.check_exec_command(cmd)
+            parts = re.split("\\s+", result)
             return parts[0], parts[1]
         finally:
             remote_shell.close()
@@ -555,7 +555,7 @@ class OnPremInstallNodeAgentMethod(AbstractInstancesMethod):
             uninstall_cmd_args += f" -t {args.api_token} --node_ip {args.node_agent_ip}"
             uninstall_cmd_args += " --skip_verify_cert"
             uninstall_cmd = ["bash", "-c", uninstall_cmd_args]
-            remote_shell.run_command(uninstall_cmd)
+            remote_shell.check_exec_command(uninstall_cmd)
         finally:
             remote_shell.close()
 
@@ -581,7 +581,7 @@ class OnPremInstallNodeAgentMethod(AbstractInstancesMethod):
             install_cmd_args += f" --zone_name {args.zone_name}"
             install_cmd = ["bash", "-c", install_cmd_args]
             # Run the installer script.
-            remote_shell.run_command(install_cmd)
+            remote_shell.check_exec_command(install_cmd)
             # Install service as root.
             service_cmd_args = f"cd {args.remote_tmp_dir} &&"
             if sudo_pass:
@@ -592,7 +592,7 @@ class OnPremInstallNodeAgentMethod(AbstractInstancesMethod):
             service_cmd_args += f" {self.remote_installer_path}"
             service_cmd_args += f" -c install_service --user {self.install_user}"
             service_cmd = ["bash", "-c", service_cmd_args]
-            remote_shell.run_command(service_cmd)
+            remote_shell.check_exec_command(service_cmd)
         finally:
             remote_shell.close()
 

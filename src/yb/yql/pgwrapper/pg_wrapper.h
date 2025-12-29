@@ -76,6 +76,7 @@ class PgWrapper : public ProcessWrapper {
 
   Status ReloadConfig() override;
   Status UpdateAndReloadConfig() override;
+  void Shutdown() override;
 
   // Calls initdb if the data directory does not exist, or if the tablet server is transitioning
   // from one major PG version to another. (The data directory's version must match the PG major

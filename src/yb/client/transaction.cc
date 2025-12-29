@@ -1020,7 +1020,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     return subtxn_metadata_pb;
   }
 
-  Status SetPgTxnStart(int64_t pg_txn_start_us) {
+  Status SetPgTxnStart(int64_t pg_txn_start_us, bool using_table_locks) {
     VLOG_WITH_PREFIX(4) << "set pg_txn_start_us_=" << pg_txn_start_us;
     RSTATUS_DCHECK(
         !metadata_.pg_txn_start_us,
@@ -1028,6 +1028,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         Format("Tried to set pg_txn_start_us (= $0) to new value (= $1)",
                metadata_.pg_txn_start_us, pg_txn_start_us));
     metadata_.pg_txn_start_us = pg_txn_start_us;
+    metadata_.using_table_locks = using_table_locks;
     return Status::OK();
   }
 
@@ -1051,7 +1052,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   }
 
   bool HasSubTransaction(SubTransactionId id) {
-    return subtransaction_.active() && subtransaction_.HasSubTransaction(id);
+    return subtransaction_.HasSubTransaction(id);
   }
 
   Status RollbackToSubTransaction(SubTransactionId id, CoarseTimePoint deadline) EXCLUDES(mutex_) {
@@ -1210,7 +1211,11 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     VLOG_WITH_PREFIX_AND_FUNC(4) << YB_STRUCT_TO_STRING(tablet_id, op_id);
 
     std::lock_guard l(async_write_query_mutex_);
-    return InsertIfNotPresent(&inflight_async_writes_[tablet_id].op_ids, op_id);
+    auto& write_query = inflight_async_writes_[tablet_id];
+    DCHECK(write_query.op_ids.empty() || write_query.op_ids.begin()->term == op_id.term)
+        << "Received async write op_id with different term. OpId: " << op_id
+        << ", expected term: " << write_query.op_ids.begin()->term;
+    return InsertIfNotPresent(&write_query.op_ids, op_id);
   }
 
   void RecordAsyncWriteCompletion(
@@ -1221,30 +1226,30 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     std::vector<StdStatusCallback> waiters;
     {
       std::lock_guard l(async_write_query_mutex_);
-      auto table_it = inflight_async_writes_.find(tablet_id);
-      if (table_it == inflight_async_writes_.end()) {
+      auto write_query = inflight_async_writes_.find(tablet_id);
+      if (write_query == inflight_async_writes_.end()) {
         // Maybe we got stale responses from multiple retries on the rpc. We dont care about the
         // status in such cases.
         return;
       }
 
-      auto& tablet_data = table_it->second;
+      auto& tablet_data = write_query->second;
 
       if (status.ok()) {
         // Partition key is not needed for searching.
         tablet_data.op_ids.erase(op_id);
         if (tablet_data.op_ids.empty()) {
           waiters = std::move(tablet_data.waiters_);
-          inflight_async_writes_.erase(table_it);
+          inflight_async_writes_.erase(write_query);
         }
       } else if (async_write_status_.ok()) {
         async_write_status_ = status;
       }
 
       if (!async_write_status_.ok() || inflight_async_writes_.empty()) {
-        for (auto& [_, tablet_data] : inflight_async_writes_) {
-          MoveCollection(&tablet_data.waiters_, &waiters);
-          tablet_data.waiters_.clear();
+        for (auto& [_, write_query] : inflight_async_writes_) {
+          MoveCollection(&write_query.waiters_, &waiters);
+          write_query.waiters_.clear();
         }
 
         if (async_write_commit_waiter_) {
@@ -1259,9 +1264,11 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     }
   }
 
-  bool HasPendingAsyncWrites(const TabletId& tablet_id) const EXCLUDES(async_write_query_mutex_) {
+  std::optional<int64_t> GetPendingAsyncWriteTerm(const TabletId& tablet_id) const
+      EXCLUDES(async_write_query_mutex_) {
     std::lock_guard l(async_write_query_mutex_);
-    return inflight_async_writes_.contains(tablet_id);
+    auto write_query = FindOrNull(inflight_async_writes_, tablet_id);
+    return write_query ? std::optional<int64_t>(write_query->op_ids.begin()->term) : std::nullopt;
   }
 
   void WaitForAsyncWrites(const TabletId& tablet_id, StdStatusCallback&& callback) {
@@ -1272,9 +1279,9 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       if (status.ok()) {
         // If the tablet has a pending write then we are guaranteed that its parent tablets do not
         // have pending writes, since new writes wait for the parent tablets writes to complete.
-        auto tablet_it = FindOrNull(inflight_async_writes_, tablet_id);
-        if (tablet_it) {
-          tablet_it->waiters_.emplace_back(std::move(callback));
+        auto write_query = FindOrNull(inflight_async_writes_, tablet_id);
+        if (write_query) {
+          write_query->waiters_.emplace_back(std::move(callback));
           VLOG_WITH_PREFIX_AND_FUNC(4)
               << "Waiting for async writes: " << YB_STRUCT_TO_STRING(tablet_id, status);
           return;
@@ -1283,6 +1290,11 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     }
 
     callback(status);
+  }
+
+  void SetOriginId(uint32_t origin_id) EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    origin_id_ = origin_id;
   }
 
  private:
@@ -1452,6 +1464,9 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     state.set_transaction_id(metadata_.transaction_id.data(), metadata_.transaction_id.size());
     state.set_status(seal_only ? TransactionStatus::SEALED : TransactionStatus::COMMITTED);
     state.mutable_tablets()->Reserve(narrow_cast<int>(tablets_.size()));
+    if (origin_id_) {
+      state.set_xrepl_origin_id(origin_id_);
+    }
     for (const auto& tablet : tablets_) {
       // If tablet does not have metadata it should not participate in commit.
       if (!seal_only && !tablet.second.has_metadata) {
@@ -2197,12 +2212,13 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         }
         return;
       }
-      if (status.IsTryAgain() && status.ErrorData(AdvisoryLocksErrorTag::kCategory)) {
-        auto new_pg_session_req_version = AdvisoryLocksError(status).value();
+      if (const auto new_pg_session_req_version =
+          status.IsTryAgain() ? AdvisoryLocksError::ValueFromStatus(status) : std::nullopt;
+        new_pg_session_req_version) {
         LOG_WITH_PREFIX(INFO)
             << "PgSessionRequestVersion changed from " << pg_session_req_version_
-            << " to " << new_pg_session_req_version;
-        pg_session_req_version_ = new_pg_session_req_version;
+            << " to " << *new_pg_session_req_version;
+        pg_session_req_version_ = *new_pg_session_req_version;
       }
       // Other errors could have different causes, but we should just retry sending heartbeat
       // in this case.
@@ -2622,6 +2638,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       GUARDED_BY(async_write_query_mutex_);
   StdStatusCallback async_write_commit_waiter_ GUARDED_BY(async_write_query_mutex_);
   Status async_write_status_ GUARDED_BY(async_write_query_mutex_);
+
+  uint32_t origin_id_ GUARDED_BY(mutex_) = 0;
 };
 
 CoarseTimePoint AdjustDeadline(CoarseTimePoint deadline) {
@@ -2798,8 +2816,8 @@ bool YBTransaction::HasSubTransaction(SubTransactionId id) {
   return impl_->HasSubTransaction(id);
 }
 
-Status YBTransaction::SetPgTxnStart(int64_t pg_txn_start_us) {
-  return impl_->SetPgTxnStart(pg_txn_start_us);
+Status YBTransaction::SetPgTxnStart(int64_t pg_txn_start_us, bool using_table_locks) {
+  return impl_->SetPgTxnStart(pg_txn_start_us, using_table_locks);
 }
 
 void YBTransaction::IncreaseMutationCounts(
@@ -2840,13 +2858,15 @@ void YBTransaction::RecordAsyncWriteCompletion(
   return impl_->RecordAsyncWriteCompletion(tablet_id, op_id, status);
 }
 
-bool YBTransaction::HasPendingAsyncWrites(const TabletId& tablet_id) const {
-  return impl_->HasPendingAsyncWrites(tablet_id);
+std::optional<int64_t> YBTransaction::GetPendingAsyncWriteTerm(const TabletId& tablet_id) const {
+  return impl_->GetPendingAsyncWriteTerm(tablet_id);
 }
 
 void YBTransaction::WaitForAsyncWrites(const TabletId& tablet_id, StdStatusCallback&& callback) {
   return impl_->WaitForAsyncWrites(tablet_id, std::move(callback));
 }
+
+void YBTransaction::SetOriginId(uint32_t origin_id) { impl_->SetOriginId(origin_id); }
 
 } // namespace client
 } // namespace yb

@@ -2588,7 +2588,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> ALTER [COLUMN] <colname> SET STORAGE <storagemode> */
 			| ALTER opt_column ColId SET STORAGE ColId
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER action ALTER COLUMN ... SET STORAGE", 1124);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
 					n->subtype = AT_SetStorage;
@@ -4349,11 +4348,7 @@ TableLikeOptionList:
 
 TableLikeOption:
 				COMMENTS			{ $$ = CREATE_TABLE_LIKE_COMMENTS; }
-				| COMPRESSION
-					{
-						parser_ybc_signal_unsupported(@1, "LIKE COMPRESSION", 1129);
-						$$ = CREATE_TABLE_LIKE_COMPRESSION;
-					}
+				| COMPRESSION		{ $$ = CREATE_TABLE_LIKE_COMPRESSION; }
 				| CONSTRAINTS		{ $$ = CREATE_TABLE_LIKE_CONSTRAINTS; }
 				| DEFAULTS			{ $$ = CREATE_TABLE_LIKE_DEFAULTS; }
 				| IDENTITY_P		{ $$ = CREATE_TABLE_LIKE_IDENTITY; }

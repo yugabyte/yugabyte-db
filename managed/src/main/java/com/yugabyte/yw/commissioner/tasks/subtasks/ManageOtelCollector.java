@@ -9,7 +9,6 @@ import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.NodeAgent;
@@ -65,7 +64,8 @@ public class ManageOtelCollector extends NodeTaskBase {
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     NodeDetails node = universe.getNodeOrBadRequest(taskParams().nodeName);
-    taskParams().useSudo = isTServerServiceSystemLevel(universe, node);
+    taskParams().useSudo =
+        isTServerServiceSystemLevel(universe, node) && taskParams().installOtelCollector;
 
     log.info(
         "Managing OpenTelemetry collector on instance {} with useSudo set to {}",
@@ -80,16 +80,11 @@ public class ManageOtelCollector extends NodeTaskBase {
     if (optional.isPresent()) {
       log.info("Configuring otel-collector using node-agent");
       if (taskParams().otelCollectorEnabled) {
-        if (OtelCollectorUtil.isAuditLogEnabledInUniverse(taskParams().auditLogConfig)
-            || OtelCollectorUtil.isQueryLogEnabledInUniverse(taskParams().queryLogConfig)
-            || OtelCollectorUtil.isMetricsExportEnabledInUniverse(
-                taskParams().metricsExportConfig)) {
-          nodeAgentClient.runInstallOtelCollector(
-              optional.get(),
-              nodeAgentRpcPayload.setupInstallOtelCollectorBits(
-                  universe, node, taskParams(), optional.get()),
-              NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
-        }
+        nodeAgentClient.runInstallOtelCollector(
+            optional.get(),
+            nodeAgentRpcPayload.setupInstallOtelCollectorBits(
+                universe, node, taskParams(), optional.get()),
+            NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
       }
     } else {
       log.info("Configuring otel-collector using ansible");

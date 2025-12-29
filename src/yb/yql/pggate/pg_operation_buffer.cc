@@ -40,12 +40,11 @@
 #include "yb/util/lw_function.h"
 #include "yb/util/status.h"
 
+#include "yb/yql/pggate/pg_flush_debug_context.h"
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_op.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/yql/pggate/pggate_flags.h"
-#include "yb/yql/pggate/util/ybc_guc.h"
-#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 DECLARE_uint64(rpc_max_message_size);
 DECLARE_double(max_buffer_size_to_rpc_limit_ratio);
@@ -239,12 +238,12 @@ class PgOperationBuffer::Impl {
     return ClearOnError(DoAdd(table, std::move(op), transactional));
   }
 
-  Status Flush(const YbcFlushDebugContext& debug_context) {
-    return ClearOnError(DoFlush(debug_context));
+  Status Flush(const PgFlushDebugContext& dbg_ctx) {
+    return ClearOnError(DoFlush(dbg_ctx));
   }
 
-  Result<BufferableOperations> Take(bool transactional, const YbcFlushDebugContext& debug_context) {
-    return ClearOnError(DoTake(transactional, debug_context));
+  Result<BufferableOperations> Take(bool transactional, const PgFlushDebugContext& dbg_ctx) {
+    return ClearOnError(DoTake(transactional, dbg_ctx));
   }
 
   size_t PendingOpsCount() const {
@@ -398,7 +397,6 @@ class PgOperationBuffer::Impl {
     const size_t payload = write_request.SerializedSize();
     const size_t max_size = GetAtomicFlag(&FLAGS_rpc_max_message_size) *
                             FLAGS_max_buffer_size_to_rpc_limit_ratio;
-    const bool need_flush_context = yb_debug_log_docdb_requests;
 
     if (PendingOpsCount() % buffering_settings_.multiple == 0 &&
         total_bytes_in_buffer_ + payload >= max_size) {
@@ -407,10 +405,7 @@ class PgOperationBuffer::Impl {
       // when the op comes from a row rather than an index. This makes the check very simple,
       // but it should be sufficient to catch common cases where the average row size is large,
       // causing the buffer size to exceed the RPC limit with the default batch size.
-      YbcFlushDebugContext internal_debug_context = {};
-      internal_debug_context.reason = YB_BUFFER_FULL;
-      internal_debug_context.uintarg = total_bytes_in_buffer_ + payload;
-      RETURN_NOT_OK(SendBuffer(internal_debug_context));
+      RETURN_NOT_OK(SendBuffer(PgFlushDebugContext::BufferFull(total_bytes_in_buffer_ + payload)));
     }
 
     if (!packed_rows.empty()) {
@@ -429,12 +424,8 @@ class PgOperationBuffer::Impl {
         }
       }
       if (has_conflict) {
-        YbcFlushDebugContext debug_context {};
-        debug_context.reason = YB_CONFLICTING_KEY_WRITE;
-        debug_context.oidarg = table.pg_table_id().object_oid;
-        debug_context.strarg1 =
-            need_flush_context ? table.table_name().table_name().c_str() : nullptr;
-        RETURN_NOT_OK(Flush(debug_context));
+        RETURN_NOT_OK(Flush(PgFlushDebugContext::ConflictingKeyWrite(
+            table.pg_table_id().object_oid, table.table_name().table_name())));
         for (auto it = packed_rows.begin(); it != packed_rows.end(); it += 2) {
           SCHECK(InsertKey(RowIdentifier(table_relfilenode_id, *it), write_request),
                  IllegalState, "Unable to insert key: $0", packed_rows);
@@ -444,17 +435,8 @@ class PgOperationBuffer::Impl {
       RowIdentifier row_id(table_relfilenode_id, table.schema(), write_request);
       if (PREDICT_FALSE(!InsertKey(row_id, write_request))) {
         RETURN_NOT_OK(CheckDuplicateInsertForFastPathCopy(table, stmt_type, need_transaction));
-
-        std::string ybctid_hex;
-        YbcFlushDebugContext debug_context {};
-        debug_context.reason = YB_CONFLICTING_KEY_WRITE;
-        debug_context.oidarg = table.pg_table_id().object_oid;
-        if (need_flush_context) {
-          debug_context.strarg1 = table.table_name().table_name().c_str();
-          ybctid_hex = row_id.ybctid().ToDebugHexString();
-          debug_context.strarg2 = ybctid_hex.c_str();
-        }
-        RETURN_NOT_OK(Flush(debug_context));
+        RETURN_NOT_OK(Flush(PgFlushDebugContext::ConflictingKeyWrite(
+            table.pg_table_id().object_oid, table.table_name().table_name(), row_id.ybctid())));
         InsertKey(row_id, write_request);
       } else {
         // Prevent conflicts on in-flight operations which use current row_id.
@@ -470,24 +452,20 @@ class PgOperationBuffer::Impl {
     total_bytes_in_buffer_ += write_request.SerializedSize();
 
     if (PendingOpsCount() >= buffering_settings_.max_batch_size) {
-      YbcFlushDebugContext internal_debug_context = {};
-      internal_debug_context.reason = YB_BUFFER_FULL;
-      internal_debug_context.uintarg = total_bytes_in_buffer_;
-      return SendBuffer(internal_debug_context);
+      return SendBuffer(PgFlushDebugContext::BufferFull(total_bytes_in_buffer_));
     }
 
     return Status::OK();
   }
 
-  Status DoFlush(const YbcFlushDebugContext& debug_context) {
-    RETURN_NOT_OK(SendBuffer(debug_context));
+  Status DoFlush(const PgFlushDebugContext& dbg_ctx) {
+    RETURN_NOT_OK(SendBuffer(dbg_ctx));
     return EnsureAllCompleted();
   }
 
-  Result<BufferableOperations> DoTake(bool transactional,
-                                      const YbcFlushDebugContext& debug_context) {
+  Result<BufferableOperations> DoTake(bool transactional, const PgFlushDebugContext& dbg_ctx) {
     BufferableOperations result;
-    RETURN_NOT_OK(SendBuffer(debug_context, make_lw_function(
+    RETURN_NOT_OK(SendBuffer(dbg_ctx, make_lw_function(
         [transactional, &result](BufferableOperations* ops, bool txn) {
           if (txn == transactional) {
             ops->Swap(&result);
@@ -521,16 +499,15 @@ class PgOperationBuffer::Impl {
 
   using SendInterceptor = LWFunction<bool(BufferableOperations*, bool)>;
 
-  Status SendBuffer(const YbcFlushDebugContext& debug_context) {
-    return SendBufferImpl(nullptr /* interceptor */, debug_context);
+  Status SendBuffer(const PgFlushDebugContext& dbg_ctx) {
+    return SendBufferImpl(nullptr /* interceptor */, dbg_ctx);
   }
 
-  Status SendBuffer(const YbcFlushDebugContext& debug_context, const SendInterceptor& interceptor) {
-    return SendBufferImpl(&interceptor, debug_context);
+  Status SendBuffer(const PgFlushDebugContext& dbg_ctx, const SendInterceptor& interceptor) {
+    return SendBufferImpl(&interceptor, dbg_ctx);
   }
 
-  Status SendBufferImpl(const SendInterceptor* interceptor,
-                        const YbcFlushDebugContext& debug_context) {
+  Status SendBufferImpl(const SendInterceptor* interceptor, const PgFlushDebugContext& dbg_ctx) {
     if (keys_.empty()) {
       return Status::OK();
     }
@@ -551,14 +528,12 @@ class PgOperationBuffer::Impl {
     total_bytes_in_buffer_ = 0;
 
     return SendOperations(
-        interceptor, std::move(ops), std::move(keys), is_transactional, debug_context);
+        interceptor, std::move(ops), std::move(keys), is_transactional, dbg_ctx);
   }
 
-  Status SendOperations(const SendInterceptor* interceptor,
-                              BufferableOperations ops,
-                              RowKeys&& keys,
-                              bool transactional,
-                              const YbcFlushDebugContext& debug_context) {
+  Status SendOperations(
+      const SendInterceptor* interceptor, BufferableOperations ops, RowKeys&& keys,
+      bool transactional, const PgFlushDebugContext& dbg_ctx) {
     const auto ops_count = ops.Size();
     if (!ops.Empty() && !(interceptor && (*interceptor)(&ops, transactional))) {
       EnsureCapacity(&in_flight_ops_, buffering_settings_);
@@ -574,9 +549,9 @@ class PgOperationBuffer::Impl {
         space_required -= in_flight_ops_.front().op_count;
         RETURN_NOT_OK(EnsureCompleted(1));
       }
-      in_flight_ops_.push_back(
-          InFlightOperation(std::move(keys), VERIFY_RESULT(flusher_(
-              std::move(ops), transactional, debug_context)), ops_count));
+      in_flight_ops_.push_back(InFlightOperation{
+          std::move(keys),
+          VERIFY_RESULT(flusher_(std::move(ops), transactional, dbg_ctx)), ops_count});
     }
 
     return Status::OK();
@@ -601,13 +576,13 @@ Status PgOperationBuffer::Add(const PgTableDesc& table, PgsqlWriteOpPtr op, bool
     return impl_->Add(table, std::move(op), transactional);
 }
 
-Status PgOperationBuffer::Flush(const YbcFlushDebugContext& debug_context) {
-    return impl_->Flush(debug_context);
+Status PgOperationBuffer::Flush(const PgFlushDebugContext& dbg_ctx) {
+    return impl_->Flush(dbg_ctx);
 }
 
 Result<BufferableOperations> PgOperationBuffer::Take(
-    bool transactional, const YbcFlushDebugContext& debug_context) {
-  return impl_->Take(transactional, debug_context);
+    bool transactional, const PgFlushDebugContext& dbg_ctx) {
+  return impl_->Take(transactional, dbg_ctx);
 }
 
 size_t PgOperationBuffer::Size() const {

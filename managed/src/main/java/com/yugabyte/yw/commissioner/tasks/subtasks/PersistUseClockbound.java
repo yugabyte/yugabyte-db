@@ -38,7 +38,8 @@ public class PersistUseClockbound extends UniverseTaskBase {
           useClockbound.set(
               useClockbound.get()
                   && provider.getDetails().getCloudInfo().getOnprem().isUseClockbound());
-        } else if (cluster.userIntent.providerType == CloudType.kubernetes) {
+        } else if (cluster.userIntent.providerType == CloudType.kubernetes
+            || cluster.userIntent.providerType == CloudType.azu) {
           useClockbound.set(false);
         } else {
           useClockbound.set(

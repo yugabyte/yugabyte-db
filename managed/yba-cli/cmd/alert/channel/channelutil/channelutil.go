@@ -23,7 +23,7 @@ func ListChannelUtil(cmd *cobra.Command, commandCall, channelType string) {
 	authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
 
 	callSite := "Alert Channel"
-	if len(strings.TrimSpace(commandCall)) != 0 {
+	if !util.IsEmptyString(commandCall) {
 		callSite = fmt.Sprintf("%s: %s", callSite, commandCall)
 	}
 	name, err := cmd.Flags().GetString("name")
@@ -53,7 +53,7 @@ func ListChannelUtil(cmd *cobra.Command, commandCall, channelType string) {
 // DeleteChannelUtil deletes an alert channel
 func DeleteChannelUtil(cmd *cobra.Command, commandCall, channelType string) {
 	callSite := "Alert Channel"
-	if len(strings.TrimSpace(commandCall)) != 0 {
+	if !util.IsEmptyString(commandCall) {
 		callSite = fmt.Sprintf("%s: %s", callSite, commandCall)
 	}
 	authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
@@ -85,8 +85,7 @@ func DeleteChannelUtil(cmd *cobra.Command, commandCall, channelType string) {
 
 	rDelete, response, err := alertRequest.Execute()
 	if err != nil {
-		errMessage := util.ErrorFromHTTPResponse(response, err, callSite, "Delete")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		util.FatalHTTPError(response, err, callSite, "Delete")
 	}
 
 	if rDelete.GetSuccess() {
@@ -106,7 +105,7 @@ func DeleteChannelUtil(cmd *cobra.Command, commandCall, channelType string) {
 // DescribeChannelUtil describes the alert channel
 func DescribeChannelUtil(cmd *cobra.Command, commandCall, channelType string) {
 	callSite := "Alert Channel"
-	if len(strings.TrimSpace(commandCall)) != 0 {
+	if !util.IsEmptyString(commandCall) {
 		callSite = fmt.Sprintf("%s: %s", callSite, commandCall)
 	}
 	authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
@@ -189,7 +188,7 @@ func ListAndFilterAlertChannels(
 		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 	}
 
-	if len(strings.TrimSpace(channelName)) > 0 {
+	if !util.IsEmptyString(channelName) {
 		rNameList := make([]util.AlertChannel, 0)
 		for _, alertChannel := range alerts {
 			if strings.EqualFold(alertChannel.GetName(), channelName) {
@@ -199,7 +198,7 @@ func ListAndFilterAlertChannels(
 		alerts = rNameList
 	}
 
-	if len(strings.TrimSpace(channelType)) > 0 {
+	if !util.IsEmptyString(channelType) {
 		rTypeList := make([]util.AlertChannel, 0)
 		for _, alertChannel := range alerts {
 			params := alertChannel.GetParams()
@@ -226,7 +225,7 @@ func CreateChannelUtil(
 
 	alertChannelUUID := r.GetUuid()
 
-	if len(strings.TrimSpace(alertChannelUUID)) == 0 {
+	if util.IsEmptyString(alertChannelUUID) {
 		logrus.Fatal(formatter.Colorize(
 			fmt.Sprintf(
 				"An error occurred while adding alert channel %s\n",
@@ -262,7 +261,7 @@ func UpdateChannelUtil(
 
 	alertChannelUUID := r.GetUuid()
 
-	if len(strings.TrimSpace(alertChannelUUID)) == 0 {
+	if util.IsEmptyString(alertChannelUUID) {
 		logrus.Fatal(formatter.Colorize(
 			fmt.Sprintf(
 				"An error occurred while updating alert channel %s\n",

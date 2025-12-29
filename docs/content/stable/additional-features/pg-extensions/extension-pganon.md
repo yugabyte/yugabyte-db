@@ -9,6 +9,8 @@ menu:
     parent: pg-extensions
     weight: 20
 type: docs
+aliases:
+  - /stable/explore/ysql-language-features/pg-extensions/extension-pganon
 ---
 
 The [PostgreSQL Anonymizer](https://postgresql-anonymizer.readthedocs.io/en/stable/) extension can be used for masking or replacing personally identifiable information (PII) or commercially sensitive data in a YSQL database.

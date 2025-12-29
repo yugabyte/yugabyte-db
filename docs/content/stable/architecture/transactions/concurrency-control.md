@@ -1276,7 +1276,7 @@ The `SKIP LOCKED` clause is supported in both concurrency control policies and p
 
 Advisory locks provide a cooperative, application-managed mechanism for controlling access to custom resources, offering a lighter-weight alternative to row or table locks. In YugabyteDB, all acquired advisory locks are globally visible across all nodes and sessions via the dedicated `pg_advisory_locks` system table, ensuring distributed coordination.
 
-Advisory locks available in v2025.1 or later, and enabled by default. You can configure advisory locks using the [Advisory lock flags](../../../reference/configuration/yb-tserver/#advisory-lock-flags).
+You configure advisory locks using the [Advisory lock flags](../../../reference/configuration/yb-tserver/#advisory-lock-flags).
 
 ### Using advisory locks
 
@@ -1344,7 +1344,7 @@ Finally, advisory locks can be blocking or non-blocking:
 
 ## Table-level locks
 
-{{<tags/feature/tp idea="1114">}} Table-level locks for YSQL, available in {{<release "2025.1.1.0">}} and later, provide a mechanism to coordinate concurrent DML and DDL operations. The feature provides serializable semantics between DMLs and DDLs by introducing distributed locks on YSQL objects. PostgreSQL clients acquire locks to prevent DMLs and DDLs from running concurrently.
+{{<tags/feature/ea idea="1114">}} Table-level locks for YSQL (available in {{<release "2025.1.1.0">}} and later) provide a mechanism to coordinate concurrent DML and DDL operations. The feature provides serializable semantics between DMLs and DDLs by introducing distributed locks on YSQL objects. PostgreSQL clients acquire locks to prevent DMLs and DDLs from running concurrently.
 
 Support for table-level locks is disabled by default, and to enable the feature, set the [yb-tserver](../../../reference/configuration/yb-tserver/) flag [enable_object_locking_for_table_locks](../../../explore/transactions/explicit-locking/#enable-table-level-locks) to true.
 
@@ -1399,7 +1399,7 @@ All object locks are tied to a DocDB transaction:
 - **DMLs**: Locks are released at commit or abort time.
 - **DDLs**: Lock release is delegated to the Master, which has a background task for observing DDL commits or aborts and finalizing schema changes.
 
-When a DDL finishes, all locks corresponding to the transaction are released and this release path enforces cache refresh on the the TServers ensuring that they have the latest catalog cache. This also ensures any new DMLs waiting on the same locks to see the latest schema after acquiring the object locks.
+When a DDL finishes, all locks corresponding to the transaction are released and this release path enforces cache refresh on the TServers ensuring that they have the latest catalog cache. This also ensures any new DMLs waiting on the same locks to see the latest schema after acquiring the object locks.
 
 To reduce overhead for read-only workloads, YugabyteDB reuses DocDB transactions wherever possible.
 

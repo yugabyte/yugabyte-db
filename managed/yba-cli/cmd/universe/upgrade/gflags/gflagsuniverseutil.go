@@ -45,8 +45,6 @@ func validateGFlags(
 			validate.SetMASTER(v)
 			if tserverValue, ok := tserverValues[k]; ok {
 				validate.SetTSERVER(tserverValue)
-			} else {
-				validate.SetTSERVER("")
 			}
 			visted = append(visted, k)
 			validateGFlags = append(validateGFlags, validate)
@@ -55,7 +53,6 @@ func validateGFlags(
 			if !slices.Contains(visted, k) {
 				validate := ybaclient.GFlagsValidationRequest{}
 				validate.SetName(k)
-				validate.SetMASTER("")
 				validate.SetTSERVER(v)
 				visted = append(visted, k)
 				validateGFlags = append(validateGFlags, validate)
@@ -72,14 +69,13 @@ func validateGFlags(
 	}
 
 	req := ybaclient.GFlagsValidationFormData{
-		Gflags: &validateGFlags,
+		Gflags: validateGFlags,
 	}
 
 	rValidate, response, err := authAPI.ValidateGFlags(version).
 		GflagValidationFormData(req).Execute()
 	if err != nil {
-		errMessage := util.ErrorFromHTTPResponse(response, err, "Universe", "Validate GFlags")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		util.FatalHTTPError(response, err, "Universe", "Validate GFlags")
 	}
 
 	logrus.Info(

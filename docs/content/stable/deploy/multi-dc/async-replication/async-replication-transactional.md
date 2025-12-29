@@ -4,6 +4,9 @@ headerTitle: Transactional xCluster
 linkTitle: Transactional
 description: Deploy using transactional xCluster replication between universes
 headContent: Deploy transactional xCluster replication
+aliases:
+  - /stable/deploy/multi-dc/async-replication-transactional/
+  - /stable/deploy/multi-dc/async-replication/async-transactional-setup/
 menu:
   stable:
     parent: async-replication

@@ -13,6 +13,8 @@
 
 #include "yb/docdb/docdb_util.h"
 
+#include <boost/algorithm/string.hpp>
+
 #include "yb/common/entity_ids.h"
 
 #include "yb/docdb/consensus_frontier.h"
@@ -50,6 +52,8 @@ namespace yb::docdb {
 using dockv::DocPath;
 
 const std::string kIntentsDirName = "intents";
+const std::string kSnapshotsDirName = "snapshots";
+const std::string kVectorIndexDirPrefix = "vi-";
 
 Status SetValueFromQLBinaryWrapper(
     QLValuePB ql_value, const int pg_data_type,
@@ -85,7 +89,7 @@ rocksdb::DB* DocDBRocksDBUtil::intents_db() {
 }
 
 std::string DocDBRocksDBUtil::IntentsDBDir() {
-  return GetStorageDir(rocksdb_dir_, "intents");
+  return GetStorageDir(rocksdb_dir_, kIntentsDirName);
 }
 
 Status DocDBRocksDBUtil::OpenRocksDB() {
@@ -357,6 +361,18 @@ Status DocDBRocksDBUtil::SetPrimitive(
 }
 
 Status DocDBRocksDBUtil::SetPrimitive(
+    const dockv::DocPath& doc_path,
+    const dockv::ValueControlFields& control_fields,
+    const QLValuePB& value,
+    HybridTime hybrid_time,
+    const ReadHybridTime& read_ht) {
+  return SetPrimitive(
+      doc_path, control_fields,
+      ValueRef(value),
+      hybrid_time, read_ht);
+}
+
+Status DocDBRocksDBUtil::SetPrimitive(
     const DocPath& doc_path,
     const QLValuePB& value,
     const HybridTime hybrid_time,
@@ -491,6 +507,21 @@ Status DocDBRocksDBUtil::ReplaceInList(
   return WriteToRocksDB(dwb, hybrid_time);
 }
 
+Status DocDBRocksDBUtil::ReplaceInList(
+    const DocPath &doc_path,
+    const int target_cql_index,
+    const QLValuePB& value,
+    const ReadHybridTime& read_ht,
+    const HybridTime& hybrid_time,
+    const rocksdb::QueryId query_id,
+    MonoDelta default_ttl,
+    MonoDelta ttl,
+    UserTimeMicros user_timestamp) {
+  return ReplaceInList(
+      doc_path, target_cql_index, ValueRef(value), read_ht, hybrid_time, query_id,
+      default_ttl, ttl, user_timestamp);
+}
+
 Status DocDBRocksDBUtil::DeleteSubDoc(
     const DocPath& doc_path,
     HybridTime hybrid_time,
@@ -591,6 +622,22 @@ std::string GetStorageCheckpointDir(const std::string& data_dir, const std::stri
   return JoinPathSegments(data_dir, storage);
 }
 
+std::string GetVectorIndexStorageName(const PgVectorIdxOptionsPB& options) {
+  return kVectorIndexDirPrefix + options.id();
+}
+
+std::string GetVectorIndexChunkFileExtension(const PgVectorIdxOptionsPB& options) {
+  switch (options.idx_type()) {
+    case PgVectorIndexType::HNSW:
+      return "." + boost::to_lower_copy(HnswBackend_Name(options.hnsw().backend()));
+    case PgVectorIndexType::DEPRECATED_DUMMY: [[fallthrough]];
+    case PgVectorIndexType::IVFFLAT: [[fallthrough]];
+    case PgVectorIndexType::UNKNOWN_IDX:
+      break;
+  }
+  FATAL_INVALID_PB_ENUM_VALUE(PgVectorIndexType, options.idx_type());
+}
+
 Status MoveChild(Env& env, const std::string& data_dir, const std::string& child) {
   auto source_dir = JoinPathSegments(data_dir, child);
   if (!env.DirExists(source_dir)) {
@@ -613,6 +660,12 @@ Status MoveChildren(Env& env, const std::string& db_dir, IncludeIntents include_
     }
   }
   return Status::OK();
+}
+
+std::shared_ptr<LWQLValuePB> DocDBRocksDBUtil::MakeLWValue(const QLValuePB& value) {
+  auto arena = SharedThreadSafeArena();
+  auto lw = arena->NewArenaObject<LWQLValuePB>(value);
+  return SharedField(std::move(arena), lw);
 }
 
 }  // namespace yb::docdb

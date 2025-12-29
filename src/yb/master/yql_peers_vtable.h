@@ -26,7 +26,7 @@ class PeersVTable : public YQLVirtualTable {
   explicit PeersVTable(const TableName& table_name,
                        const NamespaceName& namespace_name,
                        Master * const master);
-  Result<VTableDataPtr> RetrieveData(const QLReadRequestPB& request) const override;
+  Result<VTableDataPtr> RetrieveData(const QLReadRequestMsg& request) const override;
 
  private:
   Schema CreateSchema() const;

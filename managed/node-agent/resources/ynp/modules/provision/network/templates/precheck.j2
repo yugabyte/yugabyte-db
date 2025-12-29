@@ -9,6 +9,8 @@ ports=({{ports}})
 # IP address of the VM (assuming localhost)
 vm_ip="{{ ip_address }}"
 
+is_cloud={{ is_cloud | default(false) }}
+
 # Function to start a server on a specific port using Python
 start_server() {
     local port=$1
@@ -40,19 +42,36 @@ force_kill() {
     fi
 }
 
-# Iterate through the list of ports, start server, check port, and stop server
-for port in "${ports[@]}"; do
-    # Start the server and get its PID
-    server_pid=$(start_server $port)
-
-    # Give the server a moment to start
-    sleep 2
-
-    # Check if the port is open
-    check_port "$vm_ip" "$port"
-
-    # Stop the server if the PID exists
-    if ps -p $server_pid > /dev/null; then
-        force_kill $server_pid
+force_kill_on_exit() {
+    local pid=$1
+    # Check if the process is still running and kill it.
+    if ps -fp $pid | grep "http.server" > /dev/null; then
+        kill -9 $pid 2>/dev/null
     fi
-done
+}
+
+
+# Iterate through the list of ports, start server, check port, and stop server
+if [ "$is_cloud" == "False" ]; then
+    for port in "${ports[@]}"; do
+        # Start the server and get its PID
+        server_pid=$(start_server $port)
+        if [ -n "$server_pid" ]; then
+            trap "force_kill_on_exit $server_pid" EXIT
+        fi
+
+        # Give the server a moment to start
+        sleep 2
+
+        # Check if the port is open
+        check_port "$vm_ip" "$port"
+
+        # Stop the server if the PID exists
+        if ps -p $server_pid > /dev/null; then
+            force_kill $server_pid
+        fi
+    done
+fi
+
+
+

@@ -7,6 +7,8 @@ menu:
   stable_api:
     identifier: txn_commit
     parent: statements
+aliases:
+  - /stable/api/ysql/commands/txn_commit/
 type: docs
 ---
 

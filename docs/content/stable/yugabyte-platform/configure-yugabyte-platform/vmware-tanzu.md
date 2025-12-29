@@ -4,6 +4,9 @@ headerTitle: Create Kubernetes provider configuration
 linkTitle: Kubernetes
 description: Configure the VMware Tanzu provider configuration
 headContent: For deploying universes on Kubernetes
+aliases:
+  - /deploy/pivotal-cloud-foundry/
+  - /stable/deploy/pivotal-cloud-foundry/
 menu:
   stable_yugabyte-platform:
     identifier: set-up-kubernetes-provider-2

@@ -1,0 +1,33 @@
+# src/test/regress/yb_saop_merge_schedule
+#
+# Test pggate merge sorting of IN queries that are not part of the sort order.
+#
+# The main structure of the tests in this schedule is to compare running a
+# query with SAOP merge on and off.  The explain plan should have "Merge ..."
+# fields under index scan nodes to indicate that.  Keep in mind that some
+# negative tests expect SAOP merge to NOT be used: those should only explain
+# analyze and not run the queries because there's no point in running the
+# queries.
+#
+# SELECT targets generally follow a pattern of this order:
+# 1. Columns equal to constant
+# 1. Columns part of sorting, where non-key column "n" is always the last sort
+#    column (except for cases where it is absolutely not needed such as
+#    DISTINCT and GROUP BY) in order to provide consistently ordered results
+# 1. Columns part of SAOP
+# 1. Optionally, other columns
+
+# Setup is used by tests in later lines.
+test: yb.orig.saop_merge_setup
+
+# This test reads r5n.
+test: yb.orig.saop_merge_temp
+
+# These tests each touch different tables.
+test: yb.orig.saop_merge_range
+test: yb.orig.saop_merge_hash
+test: yb.orig.saop_merge_partition
+
+# These tests touch multiple tables.
+test: yb.orig.saop_merge_join
+test: yb.orig.saop_merge_derive

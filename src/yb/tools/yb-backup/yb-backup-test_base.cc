@@ -12,7 +12,7 @@
 // under the License.
 
 #include "yb/common/redis_constants_common.h"
-#include "yb/common/redis_protocol.pb.h"
+#include "yb/common/redis_protocol.messages.h"
 
 #include "yb/client/session.h"
 #include "yb/client/table.h"
@@ -135,12 +135,6 @@ void YBBackupTest::SetUp() {
 void YBBackupTest::UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) {
   pgwrapper::PgCommandTestBase::UpdateMiniClusterOptions(options);
   options->extra_master_flags.push_back("--ysql_legacy_colocated_database_creation=false");
-  options->extra_master_flags.push_back(
-      "--allowed_preview_flags_csv=enable_object_locking_for_table_locks,"
-                                  "ysql_yb_ddl_transaction_block_enabled");
-  options->extra_tserver_flags.push_back(
-      "--allowed_preview_flags_csv=enable_object_locking_for_table_locks,"
-                                  "ysql_yb_ddl_transaction_block_enabled");
 }
 
 Status YBBackupTest::RunBackupCommand(const vector<string>& args) {

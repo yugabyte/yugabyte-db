@@ -67,6 +67,9 @@
 #include "yb/gutil/strings/join.h"
 
 #include "yb/master/sys_catalog_constants.h"
+
+#include "yb/tserver/tserver.messages.h"
+
 #include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
@@ -86,9 +89,9 @@ DEFINE_test_flag(double, simulate_tablet_lookup_does_not_match_partition_key_pro
                  "range of the resolved tablet's partition.");
 DEFINE_test_flag(bool, fail_batcher_rpc, false, "Fail batcher RPCs for testing purposes.");
 
-DEFINE_RUNTIME_PREVIEW_bool(ysql_enable_async_writes, false,
-    "Enable asynchronous quorum commit for writes. When enabled, multiple write statements in a "
-    "transaction can execute concurrently, reducing overall latency.");
+DEFINE_RUNTIME_PREVIEW_bool(ysql_enable_write_pipelining, false,
+    "Enable pipelining of write statements within a transaction. When enabled, multiple read and "
+    "write statements in a transaction are executed concurrently, reducing overall latency.");
 
 using std::pair;
 using std::shared_ptr;
@@ -112,7 +115,7 @@ const auto kGeneralErrorStatus = STATUS(IOError, Batcher::kErrorReachingOutToTSe
 
 bool UseAsyncWrites(YBTableType table_type, TransactionId txn_id) {
   // Use async writes for transactional writes in YSQL, or if the test flag is enabled.
-  return FLAGS_ysql_enable_async_writes && table_type == YBTableType::PGSQL_TABLE_TYPE &&
+  return FLAGS_ysql_enable_write_pipelining && table_type == YBTableType::PGSQL_TABLE_TYPE &&
          !txn_id.IsNil();
 }
 
@@ -137,14 +140,16 @@ Batcher::Batcher(
     YBTransactionPtr transaction,
     ConsistentReadPoint* read_point,
     bool force_consistent_read,
-    int64_t leader_term)
+    int64_t leader_term,
+    ThreadSafeArenaPtr arena)
     : client_(client),
       weak_session_(session),
       async_rpc_metrics_(session->async_rpc_metrics()),
       transaction_(std::move(transaction)),
       read_point_(read_point),
       force_consistent_read_(force_consistent_read),
-      leader_term_(leader_term) {}
+      leader_term_(leader_term),
+      arena_(std::move(arena)) {}
 
 Batcher::~Batcher() {
   LOG_IF_WITH_PREFIX(DFATAL, outstanding_rpcs_ != 0)
@@ -343,7 +348,7 @@ void Batcher::LookupTabletFor(InFlightOp* op) {
 
 void Batcher::TabletLookupFinished(
     InFlightOp* op, Result<internal::RemoteTabletPtr> lookup_result) {
-  VLOG_WITH_PREFIX_AND_FUNC(lookup_result.ok() ? 4 : 3)
+  VLOG_WITH_PREFIX_AND_FUNC(3)
       << "Op: " << op->ToString() << ", result: " << AsString(lookup_result);
 
   if (lookup_result.ok()) {
@@ -581,8 +586,9 @@ void Batcher::ExecuteOperations(Initial initial) {
 
   // Now flush the ops for each group.
   // Consistent read is not required when whole batch fits into one command.
+  VLOG_WITH_PREFIX_AND_FUNC(3) << "force_consistent_read=" << force_consistent_read
+                               << ", ops_info_.groups.size()=" << ops_info_.groups.size();
   const auto need_consistent_read = force_consistent_read || ops_info_.groups.size() > 1;
-  VLOG_WITH_PREFIX_AND_FUNC(3) << "need_consistent_read=" << need_consistent_read;
 
   // Set batcher's 'rpcs_start_time_micros_' only when it is uninitialized, i.e, only for
   // a new batcher and not a retry_batcher.
@@ -675,8 +681,12 @@ std::shared_ptr<AsyncRpc> Batcher::CreateRpc(
 
   const auto& first_op = group.begin->yb_op;
   auto transaction = this->transaction();
-  if (!data.need_metadata && transaction && transaction->HasPendingAsyncWrites(tablet_id)) {
-    data.need_metadata = true;
+  if (transaction) {
+    auto term_opt = transaction->GetPendingAsyncWriteTerm(tablet_id);
+    if (term_opt) {
+      data.leader_term = *term_opt;
+      data.need_metadata = true;
+    }
   }
 
   const auto op_group = first_op->group();
@@ -807,7 +817,7 @@ void Batcher::ProcessWriteResponse(const WriteRpc &rpc, const Status &s) {
           << "Received a per_row_error for an out-of-bound op index " << row_index
           << " (sent only " << rpc.ops().size() << " ops)\n"
           << "Response from tablet " << rpc.tablet().tablet_id() << ":\n"
-          << rpc.resp().DebugString();
+          << rpc.resp().ShortDebugString();
       continue;
     }
     shared_ptr<YBOperation> yb_op = rpc.ops()[row_index].yb_op;

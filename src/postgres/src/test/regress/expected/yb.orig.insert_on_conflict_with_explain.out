@@ -141,19 +141,19 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_ios VALUES (100, 5, 100), (101,
  Insert on t_ios (actual rows=0 loops=1)
    Conflict Resolution: NOTHING
    Conflict Arbiter Indexes: t_ios_v1_v2
-   Tuples Inserted: 1
-   Conflicting Tuples: 1
+   Tuples Inserted: 2
+   Conflicting Tuples: 0
    ->  Values Scan on "*VALUES*" (actual rows=2 loops=1)
          Storage Index Read Requests: 2
          Storage Index Read Ops: 2
-         Storage Index Rows Scanned: 1
-         Storage Table Write Requests: 1
-         Storage Index Write Requests: 1
+         Storage Table Write Requests: 2
+         Storage Index Write Requests: 2
+         Storage Flush Requests: 1
  Storage Read Requests: 2
  Storage Read Ops: 2
- Storage Rows Scanned: 1
- Storage Write Requests: 2
- Storage Flush Requests: 1
+ Storage Rows Scanned: 0
+ Storage Write Requests: 4
+ Storage Flush Requests: 2
 (16 rows)
 
 -- Conflict with multi-column index.
@@ -198,24 +198,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_ios VALUES (102, 3, 7) ON CONFL
 
 -- Conflict with non-arbiter index
 EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_ios VALUES (1, 1, 100) ON CONFLICT (v1, v2) DO NOTHING;
-                  QUERY PLAN                   
------------------------------------------------
- Insert on t_ios (actual rows=0 loops=1)
-   Conflict Resolution: NOTHING
-   Conflict Arbiter Indexes: t_ios_v1_v2
-   Tuples Inserted: 0
-   Conflicting Tuples: 1
-   ->  Result *RESULT* (actual rows=1 loops=1)
-         Storage Index Read Requests: 1
-         Storage Index Read Ops: 1
-         Storage Index Rows Scanned: 1
- Storage Read Requests: 1
- Storage Read Ops: 1
- Storage Rows Scanned: 1
- Storage Write Requests: 0
- Storage Flush Requests: 0
-(14 rows)
-
+ERROR:  duplicate key value violates unique constraint "t_ios_pkey"
 EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_ios VALUES (1, 1, 100) ON CONFLICT DO NOTHING;
                   QUERY PLAN                   
 -----------------------------------------------
@@ -235,22 +218,23 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_ios VALUES (1, 1, 100) ON CONFL
 (13 rows)
 
 SELECT * FROM t_ios ORDER BY k;
-  k  | v1  | v2 
------+-----+----
-   1 |   9 |  1
-   2 |   8 |  2
-   3 |   7 |  3
-   4 |   6 |  4
-   5 |   5 |  5
-   6 |   4 |  6
-   7 |   3 |  7
-   8 |   2 |  8
-   9 |   1 |  9
-  10 |   0 | 10
-  11 |  11 | 11
-  12 |  12 | 12
- 101 | 100 |  5
-(13 rows)
+  k  | v1  | v2  
+-----+-----+-----
+   1 |   9 |   1
+   2 |   8 |   2
+   3 |   7 |   3
+   4 |   6 |   4
+   5 |   5 |   5
+   6 |   4 |   6
+   7 |   3 |   7
+   8 |   2 |   8
+   9 |   1 |   9
+  10 |   0 |  10
+  11 |  11 |  11
+  12 |  12 |  12
+ 100 |   5 | 100
+ 101 | 100 |   5
+(14 rows)
 
 -- IndexOnlyScan for INSERT ... ON CONFLICT ... DO NOTHING should also work
 -- with partitioned tables.

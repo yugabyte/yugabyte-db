@@ -20,16 +20,16 @@
 namespace yb {
 namespace ql {
 
-Status Executor::PTExprToPB(const PTLogic1 *logic_pt, QLExpressionPB *logic_pb) {
-  QLConditionPB *cond = logic_pb->mutable_condition();
+Status Executor::PTExprToPB(const PTLogic1 *logic_pt, QLExpressionMsg *logic_pb) {
+  auto *cond = logic_pb->mutable_condition();
   cond->set_op(logic_pt->ql_op());
 
   RETURN_NOT_OK(PTExprToPB(logic_pt->op1(), cond->add_operands()));
   return Status::OK();
 }
 
-Status Executor::PTExprToPB(const PTLogic2 *logic_pt, QLExpressionPB *logic_pb) {
-  QLConditionPB *cond = logic_pb->mutable_condition();
+Status Executor::PTExprToPB(const PTLogic2 *logic_pt, QLExpressionMsg *logic_pb) {
+  auto *cond = logic_pb->mutable_condition();
   cond->set_op(logic_pt->ql_op());
 
   RETURN_NOT_OK(PTExprToPB(logic_pt->op1(), cond->add_operands()));
@@ -37,22 +37,22 @@ Status Executor::PTExprToPB(const PTLogic2 *logic_pt, QLExpressionPB *logic_pb) 
   return Status::OK();
 }
 
-Status Executor::PTExprToPB(const PTRelation0 *relation_pt, QLExpressionPB *relation_pb) {
-  QLConditionPB *cond = relation_pb->mutable_condition();
+Status Executor::PTExprToPB(const PTRelation0 *relation_pt, QLExpressionMsg *relation_pb) {
+  auto *cond = relation_pb->mutable_condition();
   cond->set_op(relation_pt->ql_op());
   return Status::OK();
 }
 
-Status Executor::PTExprToPB(const PTRelation1 *relation_pt, QLExpressionPB *relation_pb) {
-  QLConditionPB *cond = relation_pb->mutable_condition();
+Status Executor::PTExprToPB(const PTRelation1 *relation_pt, QLExpressionMsg *relation_pb) {
+  auto *cond = relation_pb->mutable_condition();
   cond->set_op(relation_pt->ql_op());
 
   RETURN_NOT_OK(PTExprToPB(relation_pt->op1(), cond->add_operands()));
   return Status::OK();
 }
 
-Status Executor::PTExprToPB(const PTRelation2 *relation_pt, QLExpressionPB *relation_pb) {
-  QLConditionPB *cond = relation_pb->mutable_condition();
+Status Executor::PTExprToPB(const PTRelation2 *relation_pt, QLExpressionMsg *relation_pb) {
+  auto *cond = relation_pb->mutable_condition();
   cond->set_op(relation_pt->ql_op());
 
   RETURN_NOT_OK(PTExprToPB(relation_pt->op1(), cond->add_operands()));
@@ -60,8 +60,8 @@ Status Executor::PTExprToPB(const PTRelation2 *relation_pt, QLExpressionPB *rela
   return Status::OK();
 }
 
-Status Executor::PTExprToPB(const PTRelation3 *relation_pt, QLExpressionPB *relation_pb) {
-  QLConditionPB *cond = relation_pb->mutable_condition();
+Status Executor::PTExprToPB(const PTRelation3 *relation_pt, QLExpressionMsg *relation_pb) {
+  auto *cond = relation_pb->mutable_condition();
   cond->set_op(relation_pt->ql_op());
 
   RETURN_NOT_OK(PTExprToPB(relation_pt->op1(), cond->add_operands()));

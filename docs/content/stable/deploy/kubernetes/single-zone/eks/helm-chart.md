@@ -8,6 +8,10 @@ menu:
     name: Amazon EKS
     identifier: k8s-eks-1
     weight: 622
+aliases:
+  - /stable/deploy/kubernetes/eks/
+  - /stable/deploy/kubernetes/eks/helm-chart/
+  - /stable/deploy/kubernetes/single-zone/eks/
 type: docs
 ---
 

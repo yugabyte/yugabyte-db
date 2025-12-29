@@ -1,0 +1,8 @@
+test: yb.orig.concurrent_ddls_read_latest_cat_version
+test: yb.orig.concurrent_ddls
+test: yb.orig.avoid_stale_catalog_reads-1
+test: yb.orig.avoid_stale_catalog_reads-2
+test: yb.orig.avoid_stale_catalog_reads-3
+test: yb.orig.avoid_stale_catalog_reads-4
+test: yb.orig.snapshot_switch_dml_ddl_txn
+test: yb.orig.user_table_access_in_a_ddl

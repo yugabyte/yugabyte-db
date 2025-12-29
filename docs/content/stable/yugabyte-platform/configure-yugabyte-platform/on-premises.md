@@ -4,6 +4,8 @@ headerTitle: Create on-premises provider configuration
 linkTitle: On-premises
 description: Configure the on-premises provider configuration.
 headContent: For deploying universes on your private cloud
+aliases:
+  - /stable/deploy/enterprise-edition/configure-cloud-providers/onprem
 menu:
   stable_yugabyte-platform:
     identifier: set-up-on-premises
@@ -53,6 +55,12 @@ _If the on-premises provider wasn't created when provisioning the VMs_, you can 
 _If the instance type and instances weren't created when provisioning the VMs_, you can manually add the provisioned VMs to the provider. Obtain the IP addresses of the provisioned VMs from your system administrator. You need these to add the nodes to the provider. Refer to [Add nodes to the on-premises provider](../on-premises-nodes/).
 
 ## Legacy provisioning
+
+{{< warning title="Legacy provisioning deprecated" >}}
+
+Legacy provisioning of on-premises nodes is deprecated, and v2025.2 (available late 2025) will not support legacy node provisioning. Before you can upgrade YugabyteDB Anywhere to v2025.2, all universes must be updated to use node agent and provisioned using [automatic provisioning](#automatic-provisioning).
+
+{{< /warning >}}
 
 To create, provision, and add nodes to your on-premises provider using legacy provisioning, you will perform tasks in roughly three stages.
 

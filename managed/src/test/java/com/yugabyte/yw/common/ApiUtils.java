@@ -68,7 +68,7 @@ public class ApiUtils {
         userIntent.accessKeyCode = DEFAULT_ACCESS_KEY_CODE;
         // Add a desired number of nodes.
         userIntent.numNodes = userIntent.replicationFactor;
-        universeDetails.upsertPrimaryCluster(userIntent, null);
+        universeDetails.upsertPrimaryCluster(userIntent, null, null);
         universeDetails.nodeDetailsSet = new HashSet<>();
         for (int idx = 1; idx <= userIntent.numNodes; idx++) {
           // TODO: This state needs to be ToBeAdded as Create(k8s)Univ runtime sets it to Live
@@ -167,7 +167,7 @@ public class ApiUtils {
       @Override
       public void run(Universe universe) {
         UniverseDefinitionTaskParams universeDetails = new UniverseDefinitionTaskParams();
-        universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
+        universeDetails.upsertPrimaryCluster(userIntent, null, placementInfo);
         universeDetails.nodeDetailsSet = new HashSet<>();
         universeDetails.updateInProgress = updateInProgress;
         universeDetails.setEnableYbc(enableYbc);
@@ -256,7 +256,7 @@ public class ApiUtils {
       @Override
       public void run(Universe universe) {
         UniverseDefinitionTaskParams universeDetails = new UniverseDefinitionTaskParams();
-        universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
+        universeDetails.upsertPrimaryCluster(userIntent, null, placementInfo);
         universeDetails.nodeDetailsSet = new HashSet<>();
         universeDetails.updateInProgress = updateInProgress;
         PlacementCloud placementCloud = placementInfo.cloudList.get(0);
@@ -330,7 +330,7 @@ public class ApiUtils {
     return universe -> {
       UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
       UniverseDefinitionTaskParams.Cluster readReplica =
-          universeDetails.upsertCluster(userIntent, placementInfo, UUID.randomUUID());
+          universeDetails.upsertCluster(userIntent, null, placementInfo, UUID.randomUUID());
       int currentNodes = universeDetails.nodeDetailsSet.size();
       for (int idx = currentNodes + 1; idx <= currentNodes + userIntent.numNodes; idx++) {
         NodeDetails node = getDummyNodeDetails(idx, NodeState.Live, false);
@@ -381,7 +381,7 @@ public class ApiUtils {
           node.placementUuid = primaryCluster.uuid;
           universeDetails.nodeDetailsSet.add(node);
         }
-        universeDetails.upsertPrimaryCluster(userIntent, null);
+        universeDetails.upsertPrimaryCluster(userIntent, null, null);
 
         NodeDetails node =
             getDummyNodeDetails(userIntent.numNodes + 1, NodeDetails.NodeState.Removed);
@@ -408,7 +408,7 @@ public class ApiUtils {
           NodeDetails node = getDummyNodeDetails(idx, NodeDetails.NodeState.Live, true, enableYSQL);
           universeDetails.nodeDetailsSet.add(node);
         }
-        universeDetails.upsertPrimaryCluster(userIntent, null);
+        universeDetails.upsertPrimaryCluster(userIntent, null, null);
 
         NodeDetails node =
             getDummyNodeDetails(userIntent.numNodes + 1, NodeDetails.NodeState.Removed);
@@ -435,7 +435,7 @@ public class ApiUtils {
               });
       PlacementInfoUtil.SelectMastersResult selectMastersResult =
           PlacementInfoUtil.selectMasters(
-              null, universe.getNodes(), null, true, universe.getUniverseDetails().clusters);
+              null, universe.getNodes(), n -> true, true, universe.getUniverseDetails().clusters);
       AtomicInteger nodeIdx = new AtomicInteger(universe.getNodes().size());
       AtomicInteger cnt = new AtomicInteger();
       selectMastersResult.addedMasters.forEach(
@@ -463,7 +463,7 @@ public class ApiUtils {
             getDummyNodeDetailsWithPlacement(universeDetails.getPrimaryCluster().uuid);
         node.azUuid = azUUID;
         universeDetails.nodeDetailsSet.add(node);
-        universeDetails.upsertPrimaryCluster(userIntent, pi);
+        universeDetails.upsertPrimaryCluster(userIntent, null, pi);
         universe.setUniverseDetails(universeDetails);
       }
     };
@@ -483,7 +483,7 @@ public class ApiUtils {
         universeDetails.nodeDetailsSet.addAll(
             getDummyNodeDetailSet(
                 universeDetails.getPrimaryCluster().uuid, numMasters, numTservers));
-        universeDetails.upsertPrimaryCluster(userIntent, pi);
+        universeDetails.upsertPrimaryCluster(userIntent, null, pi);
         universe.setUniverseDetails(universeDetails);
       }
     };
@@ -509,7 +509,7 @@ public class ApiUtils {
           node.placementUuid = primaryClusterUUID;
           universeDetails.nodeDetailsSet.add(node);
         }
-        universeDetails.upsertPrimaryCluster(userIntent, null);
+        universeDetails.upsertPrimaryCluster(userIntent, null, null);
 
         NodeDetails node =
             getDummyNodeDetails(userIntent.numNodes + 1, NodeDetails.NodeState.Removed);
@@ -525,7 +525,7 @@ public class ApiUtils {
         }
 
         universeDetails.nodeDetailsSet.addAll(readReplicaNodesSet);
-        universeDetails.upsertCluster(userIntent, null, readonlyClusterUUID);
+        universeDetails.upsertCluster(userIntent, null, null, readonlyClusterUUID);
 
         universe.setUniverseDetails(universeDetails);
       }
@@ -551,7 +551,7 @@ public class ApiUtils {
           }
           universeDetails.nodeDetailsSet.add(node);
         }
-        universeDetails.upsertPrimaryCluster(userIntent, null);
+        universeDetails.upsertPrimaryCluster(userIntent, null, null);
         universeDetails.nodePrefix = "host";
         universe.setUniverseDetails(universeDetails);
       }

@@ -138,6 +138,9 @@ platform:
 
    support_origin_url: "/"
 
+   # Maximum open file descriptors
+   fd_limit: 16384
+
    # This section is for and additional data entries that you can
    # add to platform.conf if you desire. Please enter the text
    # exactly in the correct format starting from the lines below the

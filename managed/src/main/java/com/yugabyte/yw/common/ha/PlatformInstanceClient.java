@@ -20,10 +20,9 @@ import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.ConfigHelper.ConfigType;
 import com.yugabyte.yw.controllers.HAAuthenticator;
-import com.yugabyte.yw.controllers.ReverseInternalHAController;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
-import io.prometheus.client.CollectorRegistry;
-import io.prometheus.client.Gauge;
+import io.prometheus.metrics.core.metrics.Gauge;
+import io.prometheus.metrics.model.registry.PrometheusRegistry;
 import java.io.File;
 import java.util.List;
 import java.util.Map;
@@ -34,8 +33,8 @@ import org.apache.pekko.stream.javadsl.FileIO;
 import org.apache.pekko.stream.javadsl.Source;
 import org.apache.pekko.util.ByteString;
 import play.libs.Json;
-import play.mvc.Call;
 import play.mvc.Http;
+import play.mvc.Http.Request;
 import v1.RoutesPrefix;
 
 @Slf4j
@@ -53,15 +52,15 @@ public class PlatformInstanceClient implements AutoCloseable {
 
   private final Map<String, String> requestHeader;
 
-  private final ReverseInternalHAController controller;
-
   private final ConfigHelper configHelper;
 
   static {
     HA_YBA_VERSION_MISMATCH_GAUGE =
-        Gauge.build(HA_INSTANCE_VERSION_MISMATCH_NAME, "Has Instance version mismatched")
+        Gauge.builder()
+            .name(HA_INSTANCE_VERSION_MISMATCH_NAME)
+            .help("Has Instance version mismatched")
             .labelNames(HA_INSTANCE_ADDR_LABEL)
-            .register(CollectorRegistry.defaultRegistry);
+            .register(PrometheusRegistry.defaultRegistry);
   }
 
   public PlatformInstanceClient(
@@ -69,7 +68,6 @@ public class PlatformInstanceClient implements AutoCloseable {
     this.apiHelper = apiHelper;
     this.remoteAddress = remoteAddress;
     this.requestHeader = ImmutableMap.of(HAAuthenticator.HA_CLUSTER_KEY_TOKEN_HEADER, clusterKey);
-    this.controller = new ReverseInternalHAController(this::getPrefix);
     this.configHelper = configHelper;
   }
 
@@ -78,20 +76,20 @@ public class PlatformInstanceClient implements AutoCloseable {
   }
 
   // Map a Call object to a request.
-  private JsonNode makeRequest(Call call, JsonNode payload) {
+  private JsonNode makeRequest(String method, String url, JsonNode payload) {
     JsonNode response;
-    switch (call.method()) {
+    switch (method) {
       case "GET":
-        response = this.apiHelper.getRequest(call.url(), this.requestHeader);
+        response = this.apiHelper.getRequest(url, this.requestHeader);
         break;
       case "PUT":
-        response = this.apiHelper.putRequest(call.url(), payload, this.requestHeader);
+        response = this.apiHelper.putRequest(url, payload, this.requestHeader);
         break;
       case "POST":
-        response = this.apiHelper.postRequest(call.url(), payload, this.requestHeader);
+        response = this.apiHelper.postRequest(url, payload, this.requestHeader);
         break;
       default:
-        throw new RuntimeException("Unsupported operation: " + call.method());
+        throw new RuntimeException("Unsupported operation: " + method);
     }
 
     if (response == null || response.get("error") != null) {
@@ -103,42 +101,49 @@ public class PlatformInstanceClient implements AutoCloseable {
   }
 
   /**
-   * calls {@link com.yugabyte.yw.controllers.InternalHAController#getHAConfigByClusterKey()} on
-   * remote platform instance
+   * calls {@link com.yugabyte.yw.controllers.InternalHAController#getHAConfigByClusterKey(Request)}
+   * on remote platform instance
    *
    * @return a HighAvailabilityConfig model representing the remote platform instance's HA config
    */
   public HighAvailabilityConfig getRemoteConfig() {
-    JsonNode response = this.makeRequest(this.controller.getHAConfigByClusterKey(), null);
+    JsonNode response =
+        makeRequest("GET", remoteAddress + "/api/settings/ha/internal/config", null);
     return Json.fromJson(response, HighAvailabilityConfig.class);
   }
 
   /**
-   * calls {@link com.yugabyte.yw.controllers.InternalHAController#syncInstances(long timestamp)} on
+   * calls {@link com.yugabyte.yw.controllers.InternalHAController#syncInstances(long, Request)} on
    * remote platform instance
    *
    * @param payload the JSON platform instance data
    */
   public void syncInstances(long timestamp, JsonNode payload) {
-    this.makeRequest(this.controller.syncInstances(timestamp), payload);
+    makeRequest(
+        "PUT", remoteAddress + "/api/settings/ha/internal/config/sync/" + timestamp, payload);
   }
 
   /**
-   * calls {@link com.yugabyte.yw.controllers.InternalHAController#demoteLocalLeader(long timestamp,
-   * boolean promote)} on remote platform instance. Returns true if successful.
+   * calls {@link com.yugabyte.yw.controllers.InternalHAController#demoteLocalLeader(long, boolean,
+   * Request)} on remote platform instance. Returns true if successful.
    */
   public boolean demoteInstance(String localAddr, long timestamp, boolean promote) {
     boolean success = false;
     ObjectNode formData = Json.newObject().put("leader_address", localAddr);
-    Call call = controller.demoteLocalLeader(timestamp, promote);
-    log.info("Making a remote call to {} to demote the instance", call.url());
-    final JsonNode response = this.makeRequest(call, formData);
+    String url =
+        remoteAddress
+            + "/api/settings/ha/internal/config/demote/"
+            + timestamp
+            + "?promote="
+            + promote;
+    log.info("Making a remote call to {} to demote the instance", url);
+    final JsonNode response = makeRequest("PUT", url, formData);
     success = response != null && response.isObject();
     if (success) {
-      log.info("Successfully demoted remote instance at {}", call.url());
+      log.info("Successfully demoted remote instance at {}", url);
       maybeGenerateVersionMismatchEvent(response.get("ybaVersion"));
     } else {
-      log.warn("Failed to demote the remote instance at {}", call.url());
+      log.warn("Failed to demote the remote instance at {}", url);
     }
     return success;
   }
@@ -146,7 +151,7 @@ public class PlatformInstanceClient implements AutoCloseable {
   public boolean syncBackups(String leaderAddr, String senderAddr, File backupFile) {
     JsonNode response =
         this.apiHelper.multipartRequest(
-            this.controller.syncBackups().url(),
+            remoteAddress + "/api/settings/ha/internal/upload",
             this.requestHeader,
             buildPartsList(
                 backupFile,
@@ -163,7 +168,8 @@ public class PlatformInstanceClient implements AutoCloseable {
 
   public boolean testConnection() {
     try {
-      JsonNode response = this.makeRequest(this.controller.getHAConfigByClusterKey(), null);
+      JsonNode response =
+          makeRequest("GET", remoteAddress + "/api/settings/ha/internal/config", null);
     } catch (Exception e) {
       return false;
     }
@@ -180,9 +186,9 @@ public class PlatformInstanceClient implements AutoCloseable {
     String remoteVersionStripped = remoteVersion.toString().replaceAll("^['\"]|['\"]$", "");
 
     if (!localVersion.equals(remoteVersionStripped)) {
-      HA_YBA_VERSION_MISMATCH_GAUGE.labels(remoteAddress).set(1);
+      HA_YBA_VERSION_MISMATCH_GAUGE.labelValues(remoteAddress).set(1);
     } else {
-      HA_YBA_VERSION_MISMATCH_GAUGE.labels(remoteAddress).set(0);
+      HA_YBA_VERSION_MISMATCH_GAUGE.labelValues(remoteAddress).set(0);
     }
   }
 

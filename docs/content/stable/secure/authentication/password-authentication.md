@@ -28,10 +28,10 @@ YugabyteDB database passwords are separate from operating system passwords. The 
 
 Database passwords can be managed using the following:
 
-- YSQL API: [CREATE ROLE](../../../api/ysql/the-sql-language/statements/dcl_create_role) and [ALTER ROLE](../../../api/ysql/the-sql-language/statements/dcl_alter_role)
+- YSQL API: [CREATE ROLE](../../../api/ysql/the-sql-language/statements/dcl_create_role) and [ALTER ROLE](../../../api/ysql/the-sql-language/statements/dcl_alter_role/)
 - ysqlsh meta-command: [\password](../../../api/ysqlsh-meta-commands/#password-username)
 
-The [passwordcheck extension](../../../additional-features/pg-extensions/extension-passwordcheck) can be used to enforce strong passwords whenever they are set with `CREATE ROLE` or `ALTER ROLE`. passwordcheck only works for passwords that are provided in plain text. For more information, refer to the [PostgreSQL passwordcheck documentation](https://www.postgresql.org/docs/15/passwordcheck.html).
+The [passwordcheck extension](../../../additional-features/pg-extensions/extension-passwordcheck/) can be used to enforce strong passwords whenever they are set with `CREATE ROLE` or `ALTER ROLE`. passwordcheck only works for passwords that are provided in plain text. For more information, refer to the [PostgreSQL passwordcheck documentation](https://www.postgresql.org/docs/15/passwordcheck.html).
 
 ## Password authentication methods
 
@@ -48,7 +48,7 @@ The MD5 hash algorithm is not considered secure against determined attacks. Some
 
 ### SCRAM-SHA-256
 
-The SCRAM-SHA-256 method (`scram-sh-256`) performs SCRAM-SHA-256 authentication, as described in [RFC 7677](https://tools.ietf.org/html/rfc7677). This challenge-response scheme prevents password sniffing on untrusted connections and supports storing passwords on YugabyteDB clusters in the most secure cryptographically hashed form available. The SCRAM-SHA-256 method implemented here is explained in further detail in [SASL Authentication (PostgreSQL documentation)](https://www.postgresql.org/docs/15/sasl-authentication.html). This is the most secure password authentication available and is supported by most of the [client drivers for the YSQL API](/preview/develop/drivers-orms/).
+The SCRAM-SHA-256 method (`scram-sha-256`) performs SCRAM-SHA-256 authentication, as described in [RFC 7677](https://tools.ietf.org/html/rfc7677). This challenge-response scheme prevents password sniffing on untrusted connections and supports storing passwords on YugabyteDB clusters in the most secure cryptographically hashed form available. The SCRAM-SHA-256 method implemented here is explained in further detail in [SASL Authentication (PostgreSQL documentation)](https://www.postgresql.org/docs/15/sasl-authentication.html). This is the most secure password authentication available and is supported by most of the [client drivers for the YSQL API](/stable/develop/drivers-orms/).
 
 - Allows for two parties to verify they both know a secret without exchanging the secret.
 - SCRAM-SHA-256 encryption uses the [SASL authentication mechanism flow](https://www.postgresql.org/docs/15/sasl-authentication.html) to limit security risks from brute force attacks and sniffing.

@@ -63,9 +63,11 @@ cargo-pgrx-exists: cargo-exists
 		   CARGO_INCREMENTAL=1 \
 		   cargo build --package cargo-pgrx --release && \
 	   mkdir -p $$YB_BUILD_ROOT/.pgrx/data-15 && \
-	   LD_LIBRARY_PATH="$(YB_THIRDPARTY_DIR)/installed/common/lib:$$LD_LIBRARY_PATH" \
-	   PGRX_HOME=$(YB_BUILD_ROOT)/.pgrx \
-	   target/release/cargo-pgrx pgrx init --pg15 $(PG_CONFIG) && \
+	   if [ ! -f "$(YB_BUILD_ROOT)/.pgrx/config.toml" ] || ! grep -q "^pg15\s*=\s*\"$$PG_CONFIG\"" "$(YB_BUILD_ROOT)/.pgrx/config.toml" >/dev/null 2>&1; then \
+		   LD_LIBRARY_PATH="$(YB_THIRDPARTY_DIR)/installed/common/lib:$$LD_LIBRARY_PATH" \
+		   PGRX_HOME=$(YB_BUILD_ROOT)/.pgrx \
+		   target/release/cargo-pgrx pgrx init --pg15 $(PG_CONFIG); \
+	   fi && \
 	   cd ../pg_parquet
 
 pg_parquet: cargo-pgrx-exists

@@ -394,7 +394,7 @@ class TSLocalLockManager::Impl {
     Status status_;
   };
 
-  Status ReleaseObjectLocks(
+  Result<docdb::TxnBlockedTableLockRequests> ReleaseObjectLocks(
       const tserver::ReleaseObjectLockRequestPB& req, CoarseTimePoint deadline) {
     RETURN_NOT_OK(CheckShutdown());
     RETURN_NOT_OK(WaitUntilBootstrapped(deadline));
@@ -428,9 +428,9 @@ class TSLocalLockManager::Impl {
       }
     }
 
-    object_lock_manager_.Unlock(object_lock_owner);
+    auto was_a_blocker = object_lock_manager_.Unlock(object_lock_owner);
     lock_tracker_->UntrackAllLocks(txn, req.subtxn_id());
-    return Status::OK();
+    return was_a_blocker;
   }
 
   void Poll() {
@@ -448,6 +448,10 @@ class TSLocalLockManager::Impl {
     poller_.Shutdown();
     {
       yb::UniqueLock<LockType> lock(mutex_);
+      if (complete_shutdown_started_) {
+        return;
+      }
+      complete_shutdown_started_ = true;
       while (!txns_in_progress_.empty()) {
         WaitOnConditionVariableUntil(&cv_, &lock, CoarseMonoClock::Now() + 5s);
         LOG_WITH_FUNC(WARNING)
@@ -455,6 +459,11 @@ class TSLocalLockManager::Impl {
       }
     }
     object_lock_manager_.Shutdown();
+  }
+
+  void StartShutdown() {
+    shutdown_ = true;
+    poller_.Pause();
   }
 
   void UpdateLeaseEpochIfNecessary(const std::string& uuid, uint64_t lease_epoch) EXCLUDES(mutex_) {
@@ -582,6 +591,7 @@ class TSLocalLockManager::Impl {
   server::RpcServerBase& messenger_base_;
   docdb::ObjectLockManager object_lock_manager_;
   std::atomic<bool> shutdown_{false};
+  bool complete_shutdown_started_ GUARDED_BY(mutex_) {false};
   rpc::Poller poller_;
   std::shared_ptr<ObjectLockTracker> lock_tracker_;
 };
@@ -603,7 +613,7 @@ void TSLocalLockManager::AcquireObjectLocksAsync(
   impl_->DoAcquireObjectLocksAsync(req, deadline, std::move(callback), WaitForBootstrap::kTrue);
 }
 
-Status TSLocalLockManager::ReleaseObjectLocks(
+Result<docdb::TxnBlockedTableLockRequests> TSLocalLockManager::ReleaseObjectLocks(
     const tserver::ReleaseObjectLockRequestPB& req, CoarseTimePoint deadline) {
   DVLOG_WITH_FUNC(4) << "Dumping before release : " << impl_->DumpLocksToHtml();
   auto ret = impl_->ReleaseObjectLocks(req, deadline);
@@ -616,9 +626,9 @@ void TSLocalLockManager::Start(
   return impl_->Start(waiting_txn_registry);
 }
 
-void TSLocalLockManager::Shutdown() {
-  impl_->Shutdown();
-}
+void TSLocalLockManager::Shutdown() { impl_->Shutdown(); }
+
+void TSLocalLockManager::StartShutdown() { impl_->StartShutdown(); }
 
 bool TSLocalLockManager::IsShutdownInProgress() const {
   return !impl_->CheckShutdown().ok();

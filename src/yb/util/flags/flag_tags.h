@@ -227,7 +227,7 @@ namespace flags_internal {
 bool RegisterFlagNewInstallValue(const std::string& flag_name, const std::string& value);
 
 constexpr bool StringsNotEqual(char const* a, char const* b) {
-    return std::string_view(a) != b;
+    return std::string_view(a) != std::string_view(b);
 }
 
 template <typename T>

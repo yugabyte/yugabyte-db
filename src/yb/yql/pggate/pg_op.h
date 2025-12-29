@@ -22,14 +22,14 @@
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/yql/pggate/pg_gate_fwd.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
-namespace yb {
-namespace pggate {
+namespace yb::pggate {
 
 class PgsqlOp {
  public:
-  PgsqlOp(ThreadSafeArena* arena, bool is_region_local)
-      : arena_(arena), is_region_local_(is_region_local) {}
+  PgsqlOp(ThreadSafeArena* arena, const YbcPgTableLocalityInfo& locality_info)
+      : arena_(arena), locality_info_(locality_info) {}
   virtual ~PgsqlOp() = default;
 
   PgsqlOp(const PgsqlOp&) = delete;
@@ -67,8 +67,8 @@ class PgsqlOp {
     active_ = value;
   }
 
-  bool is_region_local() const {
-    return is_region_local_;
+  const YbcPgTableLocalityInfo& locality_info() const {
+    return locality_info_;
   }
 
   void set_read_time(const ReadHybridTime& value) {
@@ -77,6 +77,17 @@ class PgsqlOp {
 
   const ReadHybridTime& read_time() const {
     return read_time_;
+  }
+
+  // Merge streams produce ordered results whether tablet split took place or not.
+  // Therefore if the request paginates fetch routine can append the response pages
+  // to the same operation's stream.
+  void set_is_merge_stream(bool value) {
+    is_merge_stream_ = value;
+  }
+
+  bool is_merge_stream() const {
+    return is_merge_stream_;
   }
 
   std::string ToString() const;
@@ -92,16 +103,18 @@ class PgsqlOp {
   // allowed.
   ThreadSafeArena* arena_;
   bool active_ = false;
-  const bool is_region_local_;
+  const YbcPgTableLocalityInfo locality_info_;
   LWPgsqlResponsePB* response_ = nullptr;
   ReadHybridTime read_time_;
+  bool is_merge_stream_ = false;
 };
 
 class PgsqlReadOp : public PgsqlOp {
  public:
-  PgsqlReadOp(ThreadSafeArena* arena, bool is_region_local);
-  PgsqlReadOp(ThreadSafeArena* arena, const PgTableDesc& desc, bool is_region_local,
-              PgsqlMetricsCaptureType metrics_capture);
+  PgsqlReadOp(ThreadSafeArena* arena, const YbcPgTableLocalityInfo& locality_info);
+  PgsqlReadOp(
+      ThreadSafeArena* arena, const PgTableDesc& desc, const YbcPgTableLocalityInfo& locality_info,
+      PgsqlMetricsCaptureType metrics_capture);
 
   LWPgsqlReadRequestPB& read_request() {
     return read_request_;
@@ -138,7 +151,8 @@ std::shared_ptr<PgsqlReadRequestPB> InitSelect(
 
 class PgsqlWriteOp : public PgsqlOp {
  public:
-  PgsqlWriteOp(ThreadSafeArena* arena, bool need_transaction, bool is_region_local);
+  PgsqlWriteOp(
+      ThreadSafeArena* arena, bool need_transaction, const YbcPgTableLocalityInfo& locality_info);
 
   LWPgsqlWriteRequestPB& write_request() {
     return write_request_;
@@ -187,5 +201,4 @@ inline auto GetSharedArena(const PgsqlOpPtr& op) {
   return std::shared_ptr<ThreadSafeArena>(op, &op->arena());
 }
 
-}  // namespace pggate
-}  // namespace yb
+}  // namespace yb::pggate

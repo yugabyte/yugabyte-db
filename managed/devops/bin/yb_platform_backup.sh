@@ -411,6 +411,9 @@ create_backup() {
     if [[ "$exclude_releases" = true ]]; then
       exclude_flags="--exclude_releases"
     fi
+    if [[ "$exclude_prometheus" = true ]]; then
+      exclude_flags+=" --exclude_prometheus"
+    fi
     kubectl -n "${k8s_namespace}" exec -it "${k8s_pod}" -c yugaware -- /bin/bash -c \
       "${backup_script} create ${verbose_flag} ${exclude_flags} --output ${K8S_BACKUP_DIR}"
     # Determine backup archive filename.
@@ -510,8 +513,8 @@ create_backup() {
     run_sudo_cmd "rm -rf ${PROMETHEUS_DATA_DIR}/snapshots/${snapshot_dir}"
   FIND_OPTIONS+=( -o -path "**/${PROMETHEUS_SNAPSHOT_DIR}/**" )
   fi
-  # Close out paths in FIND_OPTIONS with a close-paren, and  add -exec
-  FIND_OPTIONS+=( \\\) -exec tar $TAR_OPTIONS \{} + )
+  # [PLAT-19026] exclude node-agent releases to prevent k8s overwrite
+  FIND_OPTIONS+=( \\\) -not -path \"**/node-agent/releases/**\" -exec tar $TAR_OPTIONS \{} + )
   echo "Creating platform backup package..."
   cd ${data_dir}
 

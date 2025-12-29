@@ -330,7 +330,7 @@ class LinkedListChainGenerator {
     int64_t this_key = (Rand64() << 8) | chain_idx_;
     int64_t ts = GetCurrentTimeMicros();
 
-    auto insert = table.NewInsertOp();
+    auto insert = table.NewInsertOp(session->arena());
     auto req = insert->mutable_request();
     QLAddInt64HashValue(req, this_key);
     table.AddInt64ColumnValue(req, kInsertTsColumnName, ts);
@@ -384,7 +384,7 @@ class ScopedRowUpdater {
     int64_t next_key;
     std::vector<client::YBqlOpPtr> ops;
     while (to_update_.BlockingGet(&next_key)) {
-      auto update = table_.NewUpdateOp();
+      auto update = table_.NewUpdateOp(session->arena());
       auto req = update->mutable_request();
       QLAddInt64HashValue(req, next_key);
       table_.AddBoolColumnValue(req, kUpdatedColumnName, true);

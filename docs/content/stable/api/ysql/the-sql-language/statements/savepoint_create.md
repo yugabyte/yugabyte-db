@@ -7,6 +7,8 @@ menu:
   stable_api:
     identifier: savepoint_create
     parent: statements
+aliases:
+  - /stable/api/ysql/commands/savepoint_create/
 type: docs
 ---
 

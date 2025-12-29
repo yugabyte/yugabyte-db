@@ -445,10 +445,10 @@ YbDmlAppendTargetImpl(YbcPgStatement handle, AttrNumber attnum, Oid typid, Oid c
 {
 	const YbcPgTypeAttrs type_attrs = {.typmod = typmod};
 
-	HandleYBStatus(YBCPgDmlAppendTarget(handle, YBCNewColumnRef(handle,
-																attnum, typid,
-																collation,
-																&type_attrs)));
+	HandleYBStatus(YBCPgDmlAppendTarget(handle,
+										YBCNewColumnRef(handle, attnum, typid,
+														collation, &type_attrs),
+										false /* is_for_secondary_index */ ));
 }
 
 /*
@@ -1780,6 +1780,18 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 	return needs_recheck;
 }
 
+static Datum
+YbGetArrayConst(ScanKey *keys)
+{
+	/*
+	 * Get array from keys.  See skey.h and ybExtractScanKeys for layout
+	 * details.
+	 */
+	if (YbIsRowHeader(*keys))
+		return (*(++keys))->sk_argument;
+	return (*keys)->sk_argument;
+}
+
 /*
  * Given an array, cull it by removing unsatisfiable and duplicate elements.
  *
@@ -1819,7 +1831,6 @@ YbCullArray(ArrayType *arrayval,
 					  elmlen, elmbyval, elmalign,
 					  &elem_values, &elem_nulls, &num_elems);
 	*culled_elem_values = elem_values;
-	Assert(ARR_NDIM(arrayval) <= 2);
 
 	int			num_valid = 0;
 	bool		retain_nulls = YbSearchArrayRetainNulls(key);
@@ -2012,16 +2023,7 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 	if (is_for_precheck)
 		return;
 
-	/*
-	 * Get array from keys.  See skey.h and ybExtractScanKeys for layout
-	 * details.
-	 */
-	if (is_row)
-		arrayval =
-			DatumGetArrayTypeP((ybScan->keys[skey_index + 1])->sk_argument);
-	else
-		arrayval = DatumGetArrayTypeP(key->sk_argument);
-
+	arrayval = DatumGetArrayTypeP(YbGetArrayConst(&ybScan->keys[skey_index]));
 	Assert(key->sk_subtype == ARR_ELEMTYPE(arrayval));
 	if (!YbCullArray(arrayval,
 					 key,
@@ -2062,7 +2064,8 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
  * TODO(jason): do a proper cleanup.
  */
 static bool
-YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, bool is_for_precheck)
+YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *scan,
+			   bool is_for_precheck)
 {
 	Relation	relation = scan_plan->target_relation;
 
@@ -2150,6 +2153,60 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, bool is_for_precheck)
 	{
 		length_of_key = YbGetLengthOfKey(&ybScan->keys[i]);
 		ScanKey		key = ybScan->keys[i];
+
+		/* Prioritize binding SAOPs that are pinned by SAOP merge. */
+		if (YbIsSearchArray(key))
+		{
+			Datum		this_array_const;
+			ListCell   *lc;
+			YbSaopMergeInfo *yb_saop_merge_info = NULL;
+
+			this_array_const = YbGetArrayConst(&ybScan->keys[i]);
+
+			if (scan)
+			{
+				if (IsA(scan, IndexScan))
+					yb_saop_merge_info =
+						((IndexScan *) scan)->yb_saop_merge_info;
+				else if (IsA(scan, IndexOnlyScan))
+					yb_saop_merge_info =
+						((IndexOnlyScan *) scan)->yb_saop_merge_info;
+			}
+
+			if (yb_saop_merge_info)
+			{
+				foreach(lc, yb_saop_merge_info->saop_cols)
+				{
+					ScalarArrayOpExpr *pinned_saop =
+						((YbSaopMergeSaopColInfo *) lfirst(lc))->saop;
+					Datum		pinned_array_const =
+						((Const *) lsecond(pinned_saop->args))->constvalue;
+
+					/*
+					 * Direct datum comparison (compared to datumIsEqual) is
+					 * safe because yb_match_in_index_clause and
+					 * ExecIndexBuildScanKeys set pinned_array_const and
+					 * this_array_const, respectively, to the same field in
+					 * memory.
+					 */
+					if (this_array_const == pinned_array_const)
+					{
+						bool		bail_out = false;
+
+						/* YbBindSearchArray updates is_column_bound. */
+						YbBindSearchArray(ybScan, scan_plan, i,
+										  is_for_precheck,
+										  is_column_bound,
+										  &bail_out);
+
+						if (bail_out)
+							return false;
+
+						continue;
+					}
+				}
+			}
+		}
 
 		/* Check if this is full key row comparison expression */
 		if (YbIsRowHeader(key) &&
@@ -2497,7 +2554,8 @@ YbMayFailPreliminaryCheck(YbScanDesc ybScan)
  * TODO(jason): there may be room for further cleanup/optimization.
  */
 bool
-YbPredetermineNeedsRecheck(Relation relation,
+YbPredetermineNeedsRecheck(Scan *scan,
+						   Relation relation,
 						   Relation index,
 						   bool xs_want_itup,
 						   ScanKey keys,
@@ -2525,7 +2583,7 @@ YbPredetermineNeedsRecheck(Relation relation,
 	ybcSetupScanPlan(xs_want_itup, &ybscan, &scan_plan);
 	ybcSetupScanKeys(&ybscan, &scan_plan);
 
-	YbBindScanKeys(&ybscan, &scan_plan, true /* is_for_precheck */ );
+	YbBindScanKeys(&ybscan, &scan_plan, scan, true /* is_for_precheck */ );
 
 	/*
 	 * Finally, ybscan has everything needed to determine recheck.  Do it now.
@@ -2914,9 +2972,6 @@ ybcBuildRequiredAttrs(YbScanDesc yb_scan, YbScanPlan scan_plan,
 				ybcAddNonDroppedAttr(target_desc, attnum, &result);
 	}
 
-	if (index && !index->rd_index->indisprimary && !is_index_only_scan)
-		ybcAttnumBmsAdd(&result, YBIdxBaseTupleIdAttributeNumber);
-
 	return result;
 }
 
@@ -3065,13 +3120,9 @@ YbDmlAppendTargetsAggregate(List *aggrefs, Scan *outer_plan,
 		}
 
 		/* Add aggregate operator as scan target. */
-		HandleYBStatus(YBCPgDmlAppendTarget(handle, op_handle));
+		HandleYBStatus(YBCPgDmlAppendTarget(handle, op_handle,
+											false /* is_for_secondary_index */ ));
 	}
-
-	/* Set ybbasectid in case of non-primary secondary index scan. */
-	if (index && !xs_want_itup && !index->rd_index->indisprimary)
-		YbDmlAppendTargetSystem(YBIdxBaseTupleIdAttributeNumber,
-								handle);
 }
 
 /*
@@ -3098,7 +3149,7 @@ YbDmlAppendTargets(List *colrefs, YbcPgStatement handle)
 							   colref->typid,
 							   colref->collid,
 							   &type_attrs);
-		HandleYBStatus(YBCPgDmlAppendTarget(handle, expr));
+		HandleYBStatus(YBCPgDmlAppendTarget(handle, expr, false /* is_for_secondary_index */ ));
 	}
 }
 
@@ -3178,6 +3229,118 @@ YbApplySecondaryIndexPushdown(YbcPgStatement dml, const YbPushdownExprs *pushdow
 }
 
 /*
+ * Allows to call ApplySortComparator from the PgGate, which does not know
+ * Datum, SortSupport data types.
+ */
+static inline int
+yb_sort_comparator_adapter(uint64_t datum1, bool isnull1,
+						   uint64_t datum2, bool isnull2, void *state)
+{
+	return ApplySortComparator((Datum) datum1, isnull1,
+							   (Datum) datum2, isnull2, (SortSupport) state);
+}
+
+/*
+ * YbAddSortTarget - add specified attribute to the secondary index scan as a target
+ *
+ * Typically the only target on the secondary index scan is the base table ybctid.
+ * However, if the secondary index scan performs merge sort of multiple streams,
+ * it also needs to fetch and parse values of the sort keys, hence they are added
+ * as the targets.
+ */
+static void
+YbAddSortTarget(YbcPgStatement stmt, TupleDesc tupdesc, AttrNumber attno)
+{
+	Form_pg_attribute attr = TupleDescAttr(tupdesc, attno - 1);
+	YbcPgTypeAttrs type_attrs = {attr->atttypmod};
+	Oid			attcollation = YBEncodingCollation(stmt, attno,
+												   ybc_get_attcollation(tupdesc, attno));
+	YbcPgExpr	colref = YBCNewColumnRef(stmt, attno, attr->atttypid, attcollation, &type_attrs);
+
+	HandleYBStatus(YBCPgDmlAppendTarget(stmt, colref, true /* is_for_secondary_index */ ));
+}
+
+/*
+ * YbApplyMergeSortKeys - set up planned merge sort in PgGate
+ *
+ * Apply merge sort info to the scan. merge stream conditions are expected to be applied separately.
+ * Merge sort assumes ordered data, so it is applicable to Index and IndexOnly scan with defined
+ * scan order.
+ */
+static void
+YbApplyMergeSortKeys(YbScanDesc ybScan, Scan *pg_scan_plan)
+{
+	YbSortInfo *sort_info = NULL;
+	bool		reverse = false;
+	bool		yb_add_sort_targets = false;
+	int16	   *indkey_values = NULL;
+
+	if (IsA(pg_scan_plan, IndexScan))
+	{
+		IndexScan  *plan = (IndexScan *) pg_scan_plan;
+
+		if (plan->yb_saop_merge_info)
+		{
+			sort_info = plan->yb_saop_merge_info->sort_cols;
+			Assert(!ScanDirectionIsNoMovement(plan->indexorderdir));
+			reverse = ScanDirectionIsBackward(plan->indexorderdir);
+			/*
+			 * Key columns of a primary or embedded index may have different attribute numbers than
+			 * the respective columns of the base table. So we need to provide their positions in
+			 * the DocDB tuple. On the other hand, when we make separate request to the secondary
+			 * index, we need to set up key column data retrieval, in addition to the ybctid.
+			 */
+			if (ybScan->index->rd_index->indisprimary || ybScan->prepare_params.embedded_idx)
+			{
+				indkey_values = ybScan->index->rd_index->indkey.values;
+			}
+			else
+			{
+				yb_add_sort_targets = true;
+			}
+		}
+	}
+	else if (IsA(pg_scan_plan, IndexOnlyScan))
+	{
+		IndexOnlyScan *plan = (IndexOnlyScan *) pg_scan_plan;
+
+		if (plan->yb_saop_merge_info)
+		{
+			sort_info = plan->yb_saop_merge_info->sort_cols;
+			Assert(!ScanDirectionIsNoMovement(plan->indexorderdir));
+			reverse = ScanDirectionIsBackward(plan->indexorderdir);
+		}
+	}
+	if (!sort_info)
+		return;
+
+	/* Create and apply sort keys */
+	YbcPgStatement stmt = ybScan->handle;
+	YbcSortKey *yb_sort_keys = (YbcSortKey *) palloc(sort_info->numCols * sizeof(YbcSortKey));
+
+	for (int i = 0; i < sort_info->numCols; ++i)
+	{
+		YbcSortKey *key = &yb_sort_keys[i];
+
+		key->att_idx = sort_info->sortColIdx[i] - 1;
+		key->value_idx = indkey_values ? indkey_values[key->att_idx] - 1 : key->att_idx;
+		key->comparator = yb_sort_comparator_adapter;
+		key->sortstate = palloc0(sizeof(SortSupportData));
+		SortSupport sort_support = (SortSupport) key->sortstate;
+
+		sort_support->ssup_cxt = CurrentMemoryContext;
+		sort_support->ssup_collation = sort_info->collations[i];
+		sort_support->ssup_nulls_first = sort_info->nullsFirst[i];
+		sort_support->ssup_reverse = reverse;
+		sort_support->abbreviate = false;
+		PrepareSortSupportFromOrderingOp(sort_info->sortOperators[i], sort_support);
+		if (yb_add_sort_targets)
+			YbAddSortTarget(stmt, RelationGetDescr(ybScan->index), sort_info->sortColIdx[i]);
+	}
+	HandleYBStatus(YBCPgDmlSetMergeSortKeys(stmt, sort_info->numCols, yb_sort_keys));
+}
+
+/*
  * Begin a scan for
  *   SELECT <Targets> FROM <relation> USING <index> WHERE <Binds>
  * NOTES:
@@ -3242,14 +3405,11 @@ ybcBeginScan(Relation relation,
 	ybcSetupScanPlan(xs_want_itup, ybScan, &scan_plan);
 	ybcSetupScanKeys(ybScan, &scan_plan);
 
-	/* Create handle */
-	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(relation),
-								  YbGetRelfileNodeId(relation),
-								  &ybScan->prepare_params,
-								  YBCIsRegionLocal(relation),
-								  &ybScan->handle));
+	ybScan->handle = YbNewSelect(relation, &ybScan->prepare_params);
+
 	/* Set up binds */
-	if (!YbBindScanKeys(ybScan, &scan_plan, false /* is_for_precheck */ ) ||
+	if (!YbBindScanKeys(ybScan, &scan_plan, pg_scan_plan,
+						false /* is_for_precheck */ ) ||
 		!YbBindHashKeys(ybScan))
 	{
 		ybScan->quit_scan = true;
@@ -3288,11 +3448,13 @@ ybcBeginScan(Relation relation,
 	if (!(is_internal_scan && IsSystemRelation(relation)))
 		YbSetCatalogCacheVersion(ybScan->handle,
 								 YbGetCatalogCacheVersion());
-	YbMaybeSetNonSystemTablespaceOid(ybScan->handle, relation);
 
 	/* Set distinct prefix length. */
 	if (distinct_prefixlen > 0)
 		YBCPgSetDistinctPrefixLength(ybScan->handle, distinct_prefixlen);
+
+	if (pg_scan_plan)
+		YbApplyMergeSortKeys(ybScan, pg_scan_plan);
 
 	bms_free(scan_plan.hash_key);
 	bms_free(scan_plan.primary_key);
@@ -3660,6 +3822,41 @@ ybc_heap_endscan(TableScanDesc tsdesc)
 
 /* --------------------------------------------------------------------------------------------- */
 
+/*
+ * ybcGetForeignRelSize
+ *		Obtain relation size estimates for a foreign table
+ */
+void
+ybcGetForeignRelSize(PlannerInfo *root,
+					 RelOptInfo *baserel,
+					 Oid foreigntableid)
+{
+	if (baserel->tuples < 0)
+		baserel->tuples = YBC_DEFAULT_NUM_ROWS;
+
+	/* Set the estimate for the total number of rows (tuples) in this table. */
+	if (yb_enable_base_scans_cost_model ||
+		yb_enable_optimizer_statistics)
+	{
+		set_baserel_size_estimates(root, baserel);
+	}
+	else
+	{
+		/*
+		 * Initialize the estimate for the number of rows returned by this
+		 * query.  This does not yet take into account the restriction clauses,
+		 * but it will be updated later by ybcIndexCostEstimate once it
+		 * inspects the clauses.
+		 */
+		baserel->rows = baserel->tuples;
+	}
+
+	/*
+	 * Test any indexes of rel for applicability also.
+	 */
+	check_index_predicates(root, baserel);
+}
+
 void
 ybcCostEstimate(RelOptInfo *baserel, Selectivity selectivity,
 				bool is_backwards_scan, bool is_seq_scan,
@@ -3880,7 +4077,15 @@ yb_is_hashed(Expr *clause, IndexOptInfo *index)
 	return is_hashed;
 }
 
-
+/*
+ * Compute index access portion of IndexScan/IndexOnlyScan node.
+ *   - Table row fetch costs are added by cost_index().
+ *   - When yb_enable_optimizer_statistics is false, this function also updates
+ *     baserel->rows if the current index qual is more selective than the ones
+ *     seen so far.  i.e.: the table cardinality is determined by the most
+ *     selective index qual regardless of the access path that is eventually
+ *     chosen.
+ */
 void
 ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 					 Selectivity *selectivity, Cost *startup_cost,
@@ -3979,8 +4184,18 @@ ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 				OpExpr	   *op = (OpExpr *) clause;
 				Oid			clause_op = op->opno;
 				Node	   *other_operand = (Node *) lsecond(op->args);
+				Oid			opfamily = path->indexinfo->opfamily[indexcol];
 
-				if (OidIsValid(clause_op))
+				/*
+				 * If specified, skip boolean index qual to avoid the row count
+				 * estimate change, a side effect introduced by the fix for
+				 * https://github.com/yugabyte/yugabyte-db/issues/26266
+				 * for backward compatibility.  See the function header
+				 * comment and around the lines updating baserel->rows, too.
+				 */
+				if (OidIsValid(clause_op) &&
+					(!yb_ignore_bool_cond_for_legacy_estimate ||
+					 !IsBooleanOpfamily(opfamily)))
 				{
 					ybcAddAttributeColumn(&scan_plan, attnum);
 					if (other_operand && IsA(other_operand, Const))
@@ -4036,6 +4251,9 @@ ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 					false /* is_seq_scan */ , is_uncovered_idx_scan,
 					startup_cost, total_cost,
 					path->indexinfo->reltablespace);
+
+	/* SAOP merge index scans should not be possible in non-CBO mode. */
+	Assert(!path->yb_index_path_info.saop_merge_saop_cols);
 
 	if (!yb_enable_optimizer_statistics)
 	{
@@ -4107,22 +4325,15 @@ YbFetchRowData(YbcPgStatement ybc_stmt, Relation relation, Datum ybctid,
 bool
 YbFetchHeapTuple(Relation relation, Datum ybctid, HeapTuple *tuple)
 {
-	bool		has_data = false;
-	YbcPgStatement ybc_stmt;
-
 	TupleDesc	tupdesc = RelationGetDescr(relation);
 	Datum	   *values = (Datum *) palloc0(tupdesc->natts * sizeof(Datum));
 	bool	   *nulls = (bool *) palloc(tupdesc->natts * sizeof(bool));
 	YbcPgSysColumns syscols;
 
 	/* Read data */
-	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(relation),
-								  YbGetRelfileNodeId(relation),
-								  NULL /* prepare_params */ ,
-								  YBCIsRegionLocal(relation),
-								  &ybc_stmt));
-	has_data = YbFetchRowData(ybc_stmt, relation, ybctid, values, nulls,
-							  &syscols);
+	YbcPgStatement ybc_stmt = YbNewSelect(relation, NULL /* prepare_params */ );
+
+	const bool has_data = YbFetchRowData(ybc_stmt, relation, ybctid, values, nulls, &syscols);
 
 	/* Write into the given tuple */
 	if (has_data)
@@ -4229,18 +4440,12 @@ YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode,
 		HandleExplicitRowLockStatus(YBCAddExplicitRowLockIntent(relfile_oid,
 																ybctid, db_oid,
 																&lock_params,
-																YBCIsRegionLocal(relation)));
+																YbBuildTableLocalityInfo(relation)));
 		YBCPgAddIntoForeignKeyReferenceCache(relfile_oid, ybctid);
 		return TM_Ok;
 	}
 
-	YbcPgStatement ybc_stmt;
-
-	HandleYBStatus(YBCPgNewSelect(db_oid,
-								  relfile_oid,
-								  NULL /* prepare_params */ ,
-								  YBCIsRegionLocal(relation),
-								  &ybc_stmt));
+	YbcPgStatement ybc_stmt = YbNewSelect(relation, NULL /* prepare_params */ );
 
 	/* Bind ybctid to identify the current row. */
 	YbcPgExpr	ybctid_expr = YBCNewConstant(ybc_stmt, BYTEAOID, InvalidOid, ybctid, false);
@@ -4322,7 +4527,6 @@ YbSample
 ybBeginSample(Relation rel, int targrows)
 {
 	ReservoirStateData rstate;
-	Oid			dboid = YBCGetDatabaseOid(rel);
 	TupleDesc	tupdesc = RelationGetDescr(rel);
 	YbSample	ybSample = (YbSample) palloc0(sizeof(YbSampleData));
 
@@ -4337,14 +4541,7 @@ ybBeginSample(Relation rel, int targrows)
 	/*
 	 * Create new sampler command
 	 */
-	HandleYBStatus(YBCPgNewSample(dboid,
-								  YbGetRelfileNodeId(rel),
-								  YBCIsRegionLocal(rel),
-								  targrows,
-								  rstate.W,
-								  rstate.randstate.s0,
-								  rstate.randstate.s1,
-								  &ybSample->handle));
+	ybSample->handle = YbNewSample(rel, targrows, rstate.W, rstate.randstate.s0, rstate.randstate.s1);
 	for (AttrNumber attnum = 1; attnum <= tupdesc->natts; attnum++)
 	{
 		if (!TupleDescAttr(tupdesc, attnum - 1)->attisdropped)

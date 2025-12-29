@@ -3,6 +3,9 @@ title: Deploy on Microsoft Azure using Azure Resource Manager (ARM)
 headerTitle: Microsoft Azure
 linkTitle: Microsoft Azure
 description: Deploy YugabyteDB on Microsoft Azure using Azure Resource Manager (ARM).
+aliases:
+  - /deploy/public-clouds/azure/
+  - /stable/deploy/public-clouds/azure
 menu:
   stable:
     identifier: deploy-on-azure-1-azure-arm

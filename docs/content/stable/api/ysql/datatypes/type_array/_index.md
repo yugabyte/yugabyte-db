@@ -8,6 +8,8 @@ menu:
   stable_api:
     identifier: api-ysql-datatypes-array
     parent: api-ysql-datatypes
+aliases:
+  - /stable/api/ysql/datatypes/type_array
 type: indexpage
 showRightNav: true
 ---

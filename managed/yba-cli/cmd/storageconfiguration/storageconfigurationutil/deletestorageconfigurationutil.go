@@ -57,15 +57,10 @@ func DeleteStorageConfigurationUtil(cmd *cobra.Command, commandCall string) {
 	r, response, err := storageConfigListRequest.Execute()
 	if err != nil {
 		callSite := "Storage Configuration"
-		if len(strings.TrimSpace(commandCall)) != 0 {
+		if !util.IsEmptyString(commandCall) {
 			callSite = fmt.Sprintf("%s: %s", callSite, commandCall)
 		}
-		errMessage := util.ErrorFromHTTPResponse(
-			response,
-			err,
-			callSite,
-			"Delete - List Customer Configurations")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		util.FatalHTTPError(response, err, callSite, "Delete - List Customer Configurations")
 	}
 
 	storageConfigs := make([]ybaclient.CustomerConfigUI, 0)
@@ -99,12 +94,13 @@ func DeleteStorageConfigurationUtil(cmd *cobra.Command, commandCall string) {
 	rTask, response, err := authAPI.DeleteCustomerConfig(storageUUID).Execute()
 	if err != nil {
 		callSite := "Storage Configuration"
-		if len(strings.TrimSpace(commandCall)) != 0 {
+		if !util.IsEmptyString(commandCall) {
 			callSite = fmt.Sprintf("%s: %s", callSite, commandCall)
 		}
-		errMessage := util.ErrorFromHTTPResponse(response, err, callSite, "Delete")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		util.FatalHTTPError(response, err, callSite, "Delete")
 	}
+
+	util.CheckTaskAfterCreation(rTask)
 
 	msg := fmt.Sprintf("The storage configuration %s is being deleted",
 		formatter.Colorize(storageName, formatter.GreenColor))
@@ -130,5 +126,5 @@ func DeleteStorageConfigurationUtil(cmd *cobra.Command, commandCall string) {
 		Output:  os.Stdout,
 		Format:  ybatask.NewTaskFormat(viper.GetString("output")),
 	}
-	ybatask.Write(taskCtx, []ybaclient.YBPTask{rTask})
+	ybatask.Write(taskCtx, []ybaclient.YBPTask{*rTask})
 }

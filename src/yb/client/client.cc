@@ -635,7 +635,8 @@ Status YBClient::BackfillIndex(const TableId& table_id, bool wait, CoarseTimePoi
 
 Status YBClient::GetIndexBackfillProgress(
     const TableIds& index_ids,
-    RepeatedField<google::protobuf::uint64>* rows_processed_entries) {
+    RepeatedField<google::protobuf::uint64>* num_rows_read_from_table_for_backfill,
+    RepeatedField<double>* num_rows_backfilled_in_index) {
   GetIndexBackfillProgressRequestPB req;
   GetIndexBackfillProgressResponsePB resp;
   for (auto &index_id : index_ids) {
@@ -645,7 +646,8 @@ Status YBClient::GetIndexBackfillProgress(
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
   }
-  *rows_processed_entries = std::move(resp.rows_processed_entries());
+  *num_rows_read_from_table_for_backfill = std::move(resp.num_rows_read_from_table_for_backfill());
+  *num_rows_backfilled_in_index = std::move(resp.num_rows_backfilled_in_index());
   return Status::OK();
 }
 
@@ -2910,7 +2912,7 @@ void YBClient::OpenTableAsync(
   DoOpenTableAsync(table_name, callback);
 }
 
-void YBClient::OpenTableAsync(const TableId& table_id, const OpenTableAsyncCallback& callback,
+void YBClient::OpenTableAsync(TableIdView table_id, const OpenTableAsyncCallback& callback,
                               master::IncludeHidden include_hidden,
                               master::GetTableSchemaResponsePB* resp) {
   DoOpenTableAsync(table_id, callback, include_hidden, resp);

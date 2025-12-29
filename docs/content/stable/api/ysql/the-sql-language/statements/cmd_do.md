@@ -7,6 +7,8 @@ menu:
   stable_api:
     identifier: cmd_do
     parent: statements
+aliases:
+  - /stable/api/ysql/commands/cmd_do/
 type: docs
 ---
 

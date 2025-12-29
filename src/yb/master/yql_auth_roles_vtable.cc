@@ -31,7 +31,7 @@ YQLAuthRolesVTable::YQLAuthRolesVTable(const TableName& table_name,
 }
 
 Result<VTableDataPtr> YQLAuthRolesVTable::RetrieveData(
-    const QLReadRequestPB& request) const {
+    const QLReadRequestMsg& request) const {
   auto vtable = std::make_shared<qlexpr::QLRowBlock>(schema());
   std::vector<scoped_refptr<RoleInfo>> roles;
   catalog_manager().permissions_manager()->GetAllRoles(&roles);

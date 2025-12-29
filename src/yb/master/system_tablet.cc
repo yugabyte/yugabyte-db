@@ -13,7 +13,7 @@
 
 #include "yb/master/system_tablet.h"
 
-#include "yb/common/common.pb.h"
+#include "yb/common/common.messages.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
 
@@ -65,8 +65,8 @@ Result<HybridTime> SystemTablet::DoGetSafeTime(
 }
 
 Status SystemTablet::HandleQLReadRequest(const docdb::ReadOperationData& read_operation_data,
-                                         const QLReadRequestPB& ql_read_request,
-                                         const TransactionMetadataPB& transaction_metadata,
+                                         const QLReadRequestMsg& ql_read_request,
+                                         const TransactionMetadataMsg& transaction_metadata,
                                          tablet::QLReadRequestResult* result,
                                          WriteBuffer* rows_data) {
   DCHECK(!transaction_metadata.has_transaction_id());
@@ -77,9 +77,9 @@ Status SystemTablet::HandleQLReadRequest(const docdb::ReadOperationData& read_op
       result, rows_data);
 }
 
-Status SystemTablet::CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,
+Status SystemTablet::CreatePagingStateForRead(const QLReadRequestMsg& ql_read_request,
                                               const size_t row_count,
-                                              QLResponsePB* response) const {
+                                              QLResponseMsg* response) const {
   // We don't support pagination for system tablets. Although we need to return an OK() status
   // here since we don't want to raise this as an error to the client, but just want to avoid
   // populating any paging state here for the client.

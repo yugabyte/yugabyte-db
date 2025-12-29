@@ -64,7 +64,7 @@ REVOKE CONNECT ON DATABASE cv_test_database from cv_test_role;
 REVOKE CONNECT ON DATABASE cv_test_database from cv_test_role;
 :display_catalog_version;
 
--- The next CREATE TABLE should not cause any catalog version change.
+-- The next CREATE TABLE should increment current_version.
 CREATE TABLE cv_test_table(id int);
 :display_catalog_version;
 
@@ -259,7 +259,7 @@ REVOKE USAGE ON TYPE cv_test_type from cv_test_role;
 REVOKE USAGE ON TYPE cv_test_type from cv_test_role;
 :display_catalog_version;
 
--- Tables with various constraint types should not increment catalog version.
+-- CREATE TABLE should increment current_version.
 CREATE TABLE t_check (col INT CHECK (col > 0));
 :display_catalog_version;
 CREATE TABLE t_not_null (col INT NOT NULL);
@@ -396,7 +396,7 @@ CREATE UNIQUE INDEX ON mv(t);
 -- nonconcurrent refreshes should bump catalog version.
 REFRESH MATERIALIZED VIEW mv;
 :display_catalog_version;
--- concurrent refreshes should not bump catalog version.
+-- concurrent refreshes should increment current_version.
 INSERT INTO base VALUES (1); -- TODO(#26677): remove this workaround.
 REFRESH MATERIALIZED VIEW CONCURRENTLY mv;
 :display_catalog_version;
@@ -412,10 +412,6 @@ ANALYZE analyze_table, analyze_table2;
 SELECT relname, reltuples FROM pg_class WHERE relname = 'analyze_table' OR relname = 'analyze_table2' ORDER BY relname;
 SELECT min(t), max(t) FROM analyze_table;
 SELECT min(t), max(t) FROM analyze_table2;
--- Without specifying tables, ANALYZE update statistics for all tables.
--- Verify catalog version bumps once for every table.
-ANALYZE;
-:display_catalog_version;
 
 -- Verify no-op ALTER ROLE
 CREATE ROLE test_role;
@@ -429,12 +425,10 @@ ALTER ROLE test_role CONNECTION LIMIT -1;
 -- The next ALTER ROLE should not increment current_version.
 ALTER ROLE test_role CONNECTION LIMIT -1;
 :display_catalog_version;
--- The next ALTER ROLE should not increment current_version.
--- Note that password change does not increment current_version because a new
--- password only affects new connections, not existing ones.
+-- The next ALTER ROLE should increment current_version.
 ALTER ROLE test_role PASSWORD '123';
 :display_catalog_version;
--- The next ALTER ROLE should not increment current_version.
+-- The next ALTER ROLE should increment current_version.
 ALTER ROLE test_role PASSWORD NULL;
 :display_catalog_version;
 -- The next ALTER ROLE should increment current_version.
@@ -505,3 +499,10 @@ SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, false, 
 :display_all;
 SELECT yb_increment_all_db_catalog_versions_with_inval_messages(:db_oid, true, '', 10);
 :display_all;
+
+-- Without specifying tables, ANALYZE update statistics for all tables.
+-- Verify catalog version bumps once for every table.
+ANALYZE;
+:display_catalog_version;
+-- It is best to add any new test before this block ('ANALYZE;'). This minimizes the
+-- changes required to the expected output when introducing a new catalog table.

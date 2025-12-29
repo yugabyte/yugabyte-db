@@ -90,6 +90,10 @@ struct ExternalTableSnapshotData {
   // tables' schemas and schema versions are added to the target tablet's superblock when applying
   // the clone_op.
   std::optional<int> new_table_schema_version = std::nullopt;
+  // When false, skip old DocDB vs new DocDB schema equality checks at import time for this table.
+  // This is set to false for YSQL tables that were undergoing DDL verification at backup time
+  // (i.e. the SysTablesEntryPB has ysql_ddl_txn_verifier_state).
+  bool validate_schema = true;
 };
 using ExternalTableSnapshotDataMap = std::unordered_map<TableId, ExternalTableSnapshotData>;
 
@@ -606,6 +610,10 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB> {
     return SysTablesEntryPB_State_Name(pb.state());
   }
 
+  const std::string& hide_state_name() const {
+    return SysTablesEntryPB_HideState_Name(pb.hide_state());
+  }
+
   // Helper to set the state of the tablet with a custom message.
   void set_state(SysTablesEntryPB::State state, const std::string& msg);
 
@@ -706,10 +714,10 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   bool is_matview() const;
 
   // Return the table's ID. Does not require synchronization.
-  virtual const std::string& id() const override { return table_id_; }
+  virtual const TableId& id() const override { return table_id_; }
 
   // Return the indexed table id if the table is an index table. Otherwise, return an empty string.
-  std::string indexed_table_id() const;
+  TableId indexed_table_id() const;
 
   bool is_index() const {
     return !indexed_table_id().empty();
@@ -819,7 +827,10 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // Get info of the specified index.
   qlexpr::IndexInfo GetIndexInfo(const TableId& index_id) const;
-  std::vector<qlexpr::IndexInfo> GetIndexInfos() const;
+
+  // Get TableIds of all or a specific type of indexes.
+  TableIds GetIndexIds() const;
+  TableIds GetVectorIndexIds() const;
 
   // Returns true if all tablets of the table are deleted.
   Result<bool> AreAllTabletsDeleted() const;
@@ -1630,6 +1641,12 @@ class SnapshotInfo : public RefCountedThreadSafe<SnapshotInfo>,
 };
 
 bool IsReplicationInfoSet(const ReplicationInfoPB& replication_info);
+
+// Instantiates a new tablet without any write locks or starting mutation.
+// If tablet_id is not specified, generates a new id via GenerateObjectId().
+TabletInfoPtr MakeUnlockedTabletInfo(
+    const TableInfoPtr& table,
+    const TabletId& tablet_id = TabletId());
 
 // Leaves the tablet "write locked" with the new info in the "dirty" state field.
 TabletInfoPtr MakeTabletInfo(

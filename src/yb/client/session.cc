@@ -49,23 +49,27 @@ DEFINE_RUNTIME_int32(retryable_request_timeout_secs, 660,
 
 namespace yb::client {
 
-YBSession::YBSession(YBClient* client, const scoped_refptr<ClockBase>& clock) {
+YBSession::YBSession(YBClient* client, const scoped_refptr<ClockBase>& clock,
+                     const ThreadSafeArenaPtr& arena) {
   batcher_config_.client = client;
   batcher_config_.non_transactional_read_point =
       clock ? std::make_unique<ConsistentReadPoint>(clock) : nullptr;
   const auto metric_entity = client->metric_entity();
   async_rpc_metrics_ =
       metric_entity ? std::make_shared<internal::AsyncRpcMetrics>(metric_entity) : nullptr;
+  batcher_config_.arena = arena;
 }
 
-YBSession::YBSession(YBClient* client, MonoDelta delta, const scoped_refptr<ClockBase>& clock)
-    : YBSession(client, clock) {
+YBSession::YBSession(YBClient* client, MonoDelta delta, const scoped_refptr<ClockBase>& clock,
+                     const ThreadSafeArenaPtr& arena)
+    : YBSession(client, clock, arena) {
   SetTimeout(delta);
 }
 
 YBSession::YBSession(
-    YBClient* client, CoarseTimePoint deadline, const scoped_refptr<ClockBase>& clock)
-    : YBSession(client, clock) {
+    YBClient* client, CoarseTimePoint deadline, const scoped_refptr<ClockBase>& clock,
+    const ThreadSafeArenaPtr& arena)
+    : YBSession(client, clock, arena) {
   SetDeadline(deadline);
 }
 
@@ -151,7 +155,7 @@ internal::BatcherPtr CreateBatcher(
 
   auto batcher = std::make_shared<internal::Batcher>(
       config.client, session, config.transaction, config.read_point(), config.force_consistent_read,
-      config.leader_term);
+      config.leader_term, config.arena);
   batcher->SetRejectionScoreSource(config.rejection_score_source);
   return batcher;
 }
@@ -304,6 +308,9 @@ internal::Batcher& YBSession::Batcher() {
   if (!batcher_) {
     auto shared_this = shared_from_this();
     batcher_config_.session = shared_this;
+    if (!batcher_config_.arena) {
+      batcher_config_.arena = SharedThreadSafeArena();
+    }
     batcher_ = CreateBatcher(shared_this, batcher_config_);
     if (deadline_ != CoarseTimePoint()) {
       batcher_->SetDeadline(deadline_);
@@ -430,6 +437,17 @@ void YBSession::SetBatcherBackgroundTransactionMeta(
 
 void YBSession::SetObjectLockingTxnMeta(const TransactionMetadata& object_locking_txn_meta) {
   Batcher().SetObjectLockingTxnMeta(object_locking_txn_meta);
+}
+
+const ThreadSafeArenaPtr& YBSession::arena() {
+  if (!batcher_config_.arena) {
+    // batcher_config_.arena = SharedThreadSafeArena();
+  }
+  return batcher_config_.arena;
+}
+
+void YBSession::ResetArena(const ThreadSafeArenaPtr& arena) {
+  batcher_config_.arena = arena;
 }
 
 bool ShouldSessionRetryError(const Status& status) {

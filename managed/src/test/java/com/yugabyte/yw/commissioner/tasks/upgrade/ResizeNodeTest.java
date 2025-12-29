@@ -1524,7 +1524,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
 
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.nodePrefix = "univConfCreate";
-    taskParams.upsertPrimaryCluster(userIntent, pi);
+    taskParams.upsertPrimaryCluster(userIntent, Collections.emptyList(), pi);
     taskParams.userAZSelected = true;
     PlacementInfoUtil.updateUniverseDefinition(
         taskParams, defaultCustomer.getId(), taskParams.getPrimaryCluster().uuid, CREATE);
@@ -1544,7 +1544,11 @@ public class ResizeNodeTest extends UpgradeTaskTest {
 
     UUID asyncUUID = UUID.randomUUID();
     taskParams.upsertCluster(
-        rrIntent, piRR, asyncUUID, UniverseDefinitionTaskParams.ClusterType.ASYNC);
+        rrIntent,
+        Collections.emptyList(),
+        piRR,
+        asyncUUID,
+        UniverseDefinitionTaskParams.ClusterType.ASYNC);
     taskParams.userAZSelected = true;
 
     PlacementInfoUtil.updateUniverseDefinition(
@@ -1613,22 +1617,22 @@ public class ResizeNodeTest extends UpgradeTaskTest {
 
     verifyCapacityReservationAZU(
         defaultUniverse.getUniverseUUID(),
-        region1,
-        Map.of(
-            newInstanceType, Map.of("1", Arrays.asList(nodesByAZ.get("1"), rrNodesByAZ.get("1")))));
-
-    verifyCapacityReservationAZU(
-        defaultUniverse.getUniverseUUID(),
-        region2,
-        Map.of(
-            newInstanceType,
+        AzureReservationGroup.of(
+            region1,
             Map.of(
-                "2",
-                Arrays.asList(nodesByAZ.get("2")),
-                "3",
-                Arrays.asList(nodesByAZ.get("3")),
-                "4",
-                Arrays.asList(rrNodesByAZ.get("4")))));
+                newInstanceType,
+                Map.of("1", Arrays.asList(nodesByAZ.get("1"), rrNodesByAZ.get("1"))))),
+        AzureReservationGroup.of(
+            region2,
+            Map.of(
+                newInstanceType,
+                Map.of(
+                    "2",
+                    Arrays.asList(nodesByAZ.get("2")),
+                    "3",
+                    Arrays.asList(nodesByAZ.get("3")),
+                    "4",
+                    Arrays.asList(rrNodesByAZ.get("4"))))));
 
     verifyNodeInteractionsCapacityReservation(
         21,
@@ -1636,10 +1640,14 @@ public class ResizeNodeTest extends UpgradeTaskTest {
         params -> ((ChangeInstanceType.Params) params).capacityReservation,
         Map.of(
             DoCapacityReservation.getCapacityReservationGroupName(
-                defaultUniverse.getUniverseUUID(), region1.getCode()),
+                defaultUniverse.getUniverseUUID(),
+                UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+                region1.getCode()),
             Arrays.asList(nodesByAZ.get("1"), rrNodesByAZ.get("1")),
             DoCapacityReservation.getCapacityReservationGroupName(
-                defaultUniverse.getUniverseUUID(), region2.getCode()),
+                defaultUniverse.getUniverseUUID(),
+                UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+                region2.getCode()),
             Arrays.asList(nodesByAZ.get("2"), nodesByAZ.get("3"), rrNodesByAZ.get("4"))));
   }
 
@@ -1672,7 +1680,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
 
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.nodePrefix = "univConfCreate";
-    taskParams.upsertPrimaryCluster(userIntent, pi);
+    taskParams.upsertPrimaryCluster(userIntent, Collections.emptyList(), pi);
     taskParams.userAZSelected = true;
     PlacementInfoUtil.updateUniverseDefinition(
         taskParams, defaultCustomer.getId(), taskParams.getPrimaryCluster().uuid, CREATE);
@@ -1694,7 +1702,11 @@ public class ResizeNodeTest extends UpgradeTaskTest {
 
     UUID asyncUUID = UUID.randomUUID();
     taskParams.upsertCluster(
-        rrIntent, piRR, asyncUUID, UniverseDefinitionTaskParams.ClusterType.ASYNC);
+        rrIntent,
+        Collections.emptyList(),
+        piRR,
+        asyncUUID,
+        UniverseDefinitionTaskParams.ClusterType.ASYNC);
     taskParams.userAZSelected = true;
 
     PlacementInfoUtil.updateUniverseDefinition(
@@ -1771,16 +1783,28 @@ public class ResizeNodeTest extends UpgradeTaskTest {
         params -> ((ChangeInstanceType.Params) params).capacityReservation,
         Map.of(
             DoCapacityReservation.getZoneInstanceCapacityReservationName(
-                defaultUniverse.getUniverseUUID(), "az-1", NEW_INSTANCE_TYPE),
+                defaultUniverse.getUniverseUUID(),
+                UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+                "az-1",
+                NEW_INSTANCE_TYPE),
             Arrays.asList(nodesByAZ.get("az-1"), rrNodesByAZ.get("az-1")),
             DoCapacityReservation.getZoneInstanceCapacityReservationName(
-                defaultUniverse.getUniverseUUID(), "az-4", NEW_INSTANCE_TYPE),
+                defaultUniverse.getUniverseUUID(),
+                UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+                "az-4",
+                NEW_INSTANCE_TYPE),
             Arrays.asList(nodesByAZ.get("az-4")),
             DoCapacityReservation.getZoneInstanceCapacityReservationName(
-                defaultUniverse.getUniverseUUID(), "az-5", NEW_INSTANCE_TYPE),
+                defaultUniverse.getUniverseUUID(),
+                UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+                "az-5",
+                NEW_INSTANCE_TYPE),
             Arrays.asList(nodesByAZ.get("az-5")),
             DoCapacityReservation.getZoneInstanceCapacityReservationName(
-                defaultUniverse.getUniverseUUID(), "az-6", NEW_INSTANCE_TYPE),
+                defaultUniverse.getUniverseUUID(),
+                UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+                "az-6",
+                NEW_INSTANCE_TYPE),
             Arrays.asList(rrNodesByAZ.get("az-6"))));
   }
 
@@ -1974,7 +1998,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
                   PlacementInfoUtil.selectMasters(
                       masterLeader,
                       universe.getNodes(),
-                      null,
+                      n -> true,
                       true,
                       universe.getUniverseDetails().clusters);
               AtomicInteger nodeIdx = new AtomicInteger(universe.getNodes().size());

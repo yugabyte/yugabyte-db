@@ -29,7 +29,7 @@ var listTablespaceCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(universeName)) == 0 {
+		if util.IsEmptyString(universeName) {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize("No universe name found to list tablespaces"+
@@ -49,12 +49,7 @@ var listTablespaceCmd = &cobra.Command{
 
 		universeList, response, err := universeListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"Tablespace",
-				"List - Fetch Universe")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Tablespace", "List - Fetch Universe")
 		}
 
 		if len(universeList) < 1 {
@@ -65,12 +60,7 @@ var listTablespaceCmd = &cobra.Command{
 
 		r, response, err := authAPI.GetAllTableSpaces(universeUUID).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"Tablespace",
-				"List")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Tablespace", "List")
 		}
 
 		tablespaceName, err := cmd.Flags().GetString("tablespace-name")
@@ -79,7 +69,7 @@ var listTablespaceCmd = &cobra.Command{
 		}
 
 		tablespaces := make([]ybaclient.TableSpaceInfo, 0)
-		if len(strings.TrimSpace(tablespaceName)) == 0 {
+		if util.IsEmptyString(tablespaceName) {
 			tablespaces = r
 		} else {
 			for _, tablespace := range r {

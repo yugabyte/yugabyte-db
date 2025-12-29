@@ -100,6 +100,8 @@ const preparePayload = (restoreContext: RestoreContextMethods): restoreBackupPro
           backupDetails?.commonBackupInfo.responseList[index].storageLocation ??
           backupDetails?.commonBackupInfo.responseList[index].defaultLocation,
         useTablespaces: generalSettings?.useTablespaces,
+        useRoles: generalSettings?.useRoles,
+        errorIfRolesExists: generalSettings?.errorIfRolesExists,
       };
 
       if (generalSettings?.useTablespaces && ( conflictingTablespaces || unSupportedTablespaces )) {

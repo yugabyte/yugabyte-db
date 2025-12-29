@@ -4,6 +4,8 @@ headerTitle: Create cloud provider configuration
 linkTitle: Cloud providers
 description: Configure the Google Cloud Platform (GCP) cloud provider.
 headContent: For deploying universes on GCP
+aliases:
+  - /stable/deploy/enterprise-edition/configure-cloud-providers/gcp
 menu:
   stable_yugabyte-platform:
     identifier: set-up-cloud-provider-2-gcp
@@ -189,6 +191,14 @@ You can customize the Network Time Protocol server, as follows:
     {{< warning title="Important" >}}
 Use this option with caution. Time synchronization is critical to database data consistency; failure to run NTP may cause data loss.
     {{< /warning >}}
+
+#### Configure ClockBound (optional)
+
+{{<tags/feature/ea idea="2133">}}[ClockBound](https://github.com/aws/clock-bound) improves clock accuracy by several orders of magnitude and significantly reduces read-restart errors in YSQL. To enable ClockBound for universes created using your provider, after you have created the provider, set the provider runtime configuration flag `yb.provider.configure_clockbound_cloud_provisioning` for the provider to `true`. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
+
+When enabled, ClockBound is automatically configured during node provisioning, and the universe creation task sets the [time_source](../../../reference/configuration/yb-master/#time-source) flag to `clockbound`.
+
+ClockBound is supported on AWS and GCP. (Azure and Kubernetes deployments are not supported.)
 
 ### GCP instance templates
 

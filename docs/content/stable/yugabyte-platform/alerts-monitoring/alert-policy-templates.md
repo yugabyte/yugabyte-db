@@ -3,6 +3,9 @@ title: Alert policy templates
 headerTitle: Alert policy templates
 linkTitle: Alert policy templates
 description: Alert policy template reference
+aliases:
+  - /stable/yugabyte-platform/configure-yugabyte-platform/alert-policy-templates
+  - /stable/yugabyteplatform/alerts-monitoring/alert-policy-templates/
 menu:
   stable_yugabyte-platform:
     identifier: alert-policy-templates
@@ -169,18 +172,6 @@ Universe `'$universe_name'` Master or TServer has restarted `$value` times durin
   )
 >
   0
-```
-
-#### DB queues overflow
-
-Database queues overflow has been detected for universe `'$universe_name'`.
-
-```promql
-    sum by (node_prefix) (increase(rpcs_queue_overflow{node_prefix="$node_prefix"}[10m]))
-  +
-    sum by (node_prefix) (increase(rpcs_timed_out_in_queue{node_prefix="$node_prefix"}[10m]))
->
-  1
 ```
 
 #### DB memory overload

@@ -198,6 +198,7 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
                     .metric(METRIC_NUM_DB_SEEK, expectedSeeksRange(expected_seeks))
                     .metric(METRIC_NUM_DB_NEXT, expectedNextsRange(expected_nexts))
                     .build())
+                  .totalCost(Checkers.greater(0))
                   .build())
               .build());
     }
@@ -288,6 +289,7 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
                   .estimatedSeeks(expectedSeeksRange(expected_seeks))
                   .estimatedNextsAndPrevs(expectedNextsRange(expected_nexts))
                   .estimatedDocdbResultWidth(Checkers.equal(expected_docdb_result_width))
+                  .totalCost(Checkers.greater(0))
                   .plans(bitmap_index_checker)
                   .build())
               .build());
@@ -320,6 +322,7 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
                   .estimatedIndexRoundtrips(expectedRoundtripsRange(expected_index_roundtrips))
                   .estimatedTableRoundtrips(expectedRoundtripsRange(expected_table_roundtrips))
                   .estimatedDocdbResultWidth(Checkers.equal(expected_docdb_result_width))
+                  .totalCost(Checkers.greater(0))
                   .build())
               .build());
     }
@@ -351,6 +354,7 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
                     .metric(METRIC_NUM_DB_NEXT, expectedNextsRange(expected_nexts))
                     .metric(METRIC_NUM_DB_SEEK, expectedSeeksRange(expected_seeks))
                     .build())
+                  .totalCost(Checkers.greater(0))
                   .build())
               .build());
     }
@@ -377,6 +381,7 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
                   .estimatedNextsAndPrevs(expectedNextsRange(expected_nexts))
                   .estimatedTableRoundtrips(expectedRoundtripsRange(expected_table_roundtrips))
                   .estimatedDocdbResultWidth(Checkers.equal(expected_docdb_result_width))
+                  .totalCost(Checkers.greater(0))
                   .build())
               .build());
     }
@@ -405,12 +410,14 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
                           .nodeType(outer_table_scan_type)
                           .estimatedSeeks(expectedSeeksRange(outer_expected_seeks))
                           .estimatedNextsAndPrevs(expectedNextsRange(outer_expected_nexts))
+                          .totalCost(Checkers.greater(0))
                           .build(),
                       makePlanBuilder()
                           .relationName(inner_table_name)
                           .nodeType(inner_table_scan_type)
                           .estimatedSeeks(expectedSeeksRange(inner_expected_seeks))
                           .estimatedNextsAndPrevs(expectedNextsRange(inner_expected_nexts))
+                          .totalCost(Checkers.greater(0))
                           .build())
                       .build())
               .build());

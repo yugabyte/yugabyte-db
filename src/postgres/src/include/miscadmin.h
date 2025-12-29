@@ -111,6 +111,7 @@ extern PGDLLIMPORT volatile uint32 CritSectionCount;
 
 /* in tcop/postgres.c */
 extern void ProcessInterrupts(void);
+extern void YBCheckForInterrupts(void);
 
 /* Test whether an interrupt is pending */
 #ifndef WIN32
@@ -361,6 +362,7 @@ typedef enum BackendType
 	B_LOGGER,
 	YB_YSQL_CONN_MGR,
 	YB_YSQL_CONN_MGR_WAL_SENDER,
+	YB_AUTO_ANALYZE_BACKEND,
 } BackendType;
 
 extern PGDLLIMPORT BackendType MyBackendType;

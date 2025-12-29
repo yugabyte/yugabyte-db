@@ -27,8 +27,8 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.YBTestRunner;
+import org.yb.client.TestUtils;
 import org.yb.minicluster.MiniYBClusterBuilder;
-import org.yb.pgsql.ConnectionBuilder;
 import com.yugabyte.util.PSQLException;
 
 /**
@@ -38,8 +38,6 @@ import com.yugabyte.util.PSQLException;
 @RunWith(value = YBTestRunner.class)
 public class TestSCRAMDefault extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestSCRAMDefault.class);
-  private static final String INCORRECT_PASSWORD_AUTH_MSG =
-      "password authentication failed for user";
 
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
@@ -70,6 +68,30 @@ public class TestSCRAMDefault extends BasePgSQLTest {
     initialConnection.close();
 
     return getConnectionBuilder().withPassword(TEST_PG_PASS).connect();
+  }
+
+  @Override
+  public void verifyClusterAcceptsPGConnections(long timeoutMs) throws Exception {
+    LOG.info("Waiting for cluster to accept pg connections");
+    TestUtils.waitFor(() -> {
+        try {
+          getConnectionBuilder().withUser(DEFAULT_PG_USER).connect().close();
+        } catch (PSQLException e) {
+          try {
+            getConnectionBuilder()
+              .withUser(DEFAULT_PG_USER)
+              .withPassword(DEFAULT_PG_PASS)
+              .connect()
+              .close();
+          } catch (Exception inner) {
+            return false;
+          }
+        } catch (Exception e) {
+          return false;
+        }
+        return true;
+      }, timeoutMs);
+    LOG.info("done Waiting for cluster to accept pg connections");
   }
 
   private void tryLogin(String username, String password, boolean expectFail, String scenario)

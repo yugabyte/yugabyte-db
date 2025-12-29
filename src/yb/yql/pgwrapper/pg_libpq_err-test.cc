@@ -14,6 +14,9 @@
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
 
+#include "yb/util/range.h"
+#include "yb/util/test_thread_holder.h"
+
 using std::string;
 
 namespace yb {
@@ -411,6 +414,53 @@ TEST_F(PgLibPqErrTest, InsertTransactionAborted) {
       continue;
     }
   }
+}
+
+TEST_F(PgLibPqErrTest, InsertPerf) {
+  const int kNumRowsPerBatch = 200;
+  const int kNumThreads = 200;
+  const int kNumBatches = RegularBuildVsDebugVsSanitizers(2000, 200, 20);
+  const int kPayloadSize = 200;
+
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v TEXT)"));
+  }
+
+  TestThreadHolder threads;
+  std::atomic<int> idx;
+  CountDownLatch start_latch(kNumThreads);
+  CountDownLatch finish_latch(kNumThreads);
+  CountDownLatch run_latch(1);
+  auto insert_fmt = Format(
+      "INSERT INTO t VALUES (generate_series($$0, $$1), CONCAT('$0', random()))",
+      RandomHumanReadableString(kPayloadSize));
+  for (int i = 0; i != kNumThreads; ++i) {
+    threads.AddThread([&]() {
+      auto conn = ASSERT_RESULT(Connect());
+      start_latch.CountDown();
+      run_latch.Wait();
+      for (;;) {
+        int batch_idx = idx++;
+        if (batch_idx >= kNumBatches) {
+          break;
+        }
+        ASSERT_OK(conn.ExecuteFormat(
+            insert_fmt, batch_idx * kNumRowsPerBatch + 1, (batch_idx + 1) * kNumRowsPerBatch));
+        if (batch_idx % 100 == 99) {
+          LOG_WITH_FUNC(INFO) << "Inserted " << batch_idx + 1 << " batches";
+        }
+      }
+      finish_latch.CountDown();
+    });
+  }
+  start_latch.Wait();
+  run_latch.CountDown();
+  auto start = MonoTime::Now();
+  finish_latch.Wait();
+  auto finish = MonoTime::Now();
+  LOG(INFO) << "Insert time: " << (finish - start);
+  threads.JoinAll();
 }
 
 } // namespace pgwrapper

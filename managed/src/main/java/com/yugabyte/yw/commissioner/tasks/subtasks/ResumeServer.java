@@ -15,8 +15,11 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.utils.CapacityReservationUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -51,10 +54,12 @@ public class ResumeServer extends NodeTaskBase {
   @Override
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(taskParams().placementUuid);
+    NodeDetails nodeDetails = universe.getNode(taskParams().nodeName);
+    UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(nodeDetails.placementUuid);
+    Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
     taskParams().capacityReservation =
         CapacityReservationUtil.getReservationIfPresent(
-            getTaskCache(), cluster.userIntent.providerType, taskParams().nodeName);
+            getTaskCache(), provider, taskParams().nodeName);
     getNodeManager().nodeCommand(NodeManager.NodeCommandType.Resume, taskParams()).processErrors();
     resumeUniverse(taskParams().nodeName);
   }

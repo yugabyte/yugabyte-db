@@ -109,9 +109,6 @@ struct MiniClusterOptions {
   // By default, we create max(2, num_tablet_servers) tablets per transaction table. If this is
   // set to a non-zero value, this value is used instead.
   int transaction_table_num_tablets = 0;
-
-  // Whether to wait for the cluster to accept pg connections in the Start and Restart methods.
-  bool wait_for_pg = true;
 };
 
 // An in-process cluster with a MiniMaster and a configurable

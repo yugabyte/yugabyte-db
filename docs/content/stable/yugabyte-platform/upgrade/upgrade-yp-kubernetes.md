@@ -3,6 +3,8 @@ title: Upgrade YugabyteDB Anywhere installation on Kubernetes
 headerTitle: Upgrade YugabyteDB Anywhere
 linkTitle: Upgrade installation
 description: Upgrade YugabyteDB Anywhere installation on Kubernetes
+aliases:
+  - /stable/yugabyte-platform/manage-deployments/migrate-to-helm3/
 menu:
   stable_yugabyte-platform:
     identifier: upgrade-yp-3-kubernetes
@@ -16,11 +18,6 @@ type: docs
   <li>
     <a href="../upgrade-yp-installer/" class="nav-link">
       <i class="fa-solid fa-building"></i>YBA Installer</a>
-  </li>
-
-  <li>
-    <a href="../upgrade-yp-replicated/" class="nav-link">
-      <i class="fa-solid fa-cloud"></i>Replicated</a>
   </li>
 
   <li>

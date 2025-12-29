@@ -4,6 +4,9 @@ headerTitle: Create cloud provider configuration
 linkTitle: Cloud providers
 description: Configure the Amazon Web Services (AWS) provider configuration.
 headContent: For deploying universes on AWS
+aliases:
+  - /stable/deploy/enterprise-edition/configure-cloud-providers/aws
+  - /stable/yugabyte-platform/deploy/configure-cloud-providers/aws
 menu:
   stable_yugabyte-platform:
     identifier: set-up-cloud-provider-1-aws
@@ -103,7 +106,7 @@ Enter a Provider name. The Provider name is an internal tag used for organizing 
 - **Specify Access ID and Secret Key** - Create an AWS Service Account with the required permissions (refer to [Cloud permissions](../../prepare/cloud-permissions/cloud-permissions-nodes-aws/)), and provide your AWS Access Key ID and Secret Access Key.
 - **Use IAM Role from this YBA host's instance** - Provision the YBA VM instance with an IAM role that has sufficient permissions by attaching an [IAM role](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/iam-roles-for-amazon-ec2.html) to the YBA VM in the **EC2** tab. This option is only available if YBA is installed on AWS.
 
-**Use AWS Route 53 DNS Server**. Choose whether to use the cloud DNS Server / load balancer for universes deployed using this provider. Generally, SQL clients should prefer to use [smart client drivers](/preview/develop/drivers-orms/smart-drivers/) to connect to cluster nodes, rather than load balancers. However, in some cases (for example, if no smart driver is available in the language), you may use a DNS Server or load-balancer. The DNS Server acts as a load-balancer that routes clients to various nodes in the database universe. YBA integrates with [Amazon Route53](https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/Welcome.html) to provide managed Canonical Name (CNAME) entries for your YugabyteDB universes, and automatically updates the DNS entry as nodes get created, removed, or undergo maintenance.
+**Use AWS Route 53 DNS Server**. Choose whether to use the cloud DNS Server / load balancer for universes deployed using this provider. Generally, SQL clients should prefer to use [smart client drivers](/stable/develop/drivers-orms/smart-drivers/) to connect to cluster nodes, rather than load balancers. However, in some cases (for example, if no smart driver is available in the language), you may use a DNS Server or load-balancer. The DNS Server acts as a load-balancer that routes clients to various nodes in the database universe. YBA integrates with [Amazon Route53](https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/Welcome.html) to provide managed Canonical Name (CNAME) entries for your YugabyteDB universes, and automatically updates the DNS entry as nodes get created, removed, or undergo maintenance.
 
 ### Regions
 
@@ -172,6 +175,14 @@ Use this option with caution. Time synchronization is critical to database data 
 
     {{< /warning >}}
 
+#### Configure ClockBound (optional)
+
+{{<tags/feature/ea idea="2133">}}[ClockBound](https://github.com/aws/clock-bound) improves clock accuracy by several orders of magnitude and significantly reduces read-restart errors in YSQL. To enable ClockBound for universes created using your provider, after you have created the provider, set the provider runtime configuration flag `yb.provider.configure_clockbound_cloud_provisioning` for the provider to `true`. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
+
+When enabled, ClockBound is automatically configured during node provisioning, and the universe creation task sets the [time_source](../../../reference/configuration/yb-master/#time-source) flag to `clockbound`.
+
+ClockBound is supported on AWS and GCP. (Azure and Kubernetes deployments are not supported.)
+
 ### Add regions
 
 For deployment, YBA aims to provide you with access to the many regions that AWS makes available globally. To that end, YBA allows you to select which regions to which you wish to deploy.
@@ -213,7 +224,7 @@ You have an option to provide the following:
 
   If you don't provide an AMI ID, a recent x86 CentOS image is used. For additional information, see [CentOS on AWS](https://wiki.centos.org/Cloud/AWS). See [Supported operating systems and architectures](../supported-os-and-arch/) for a complete list of supported operating systems.
 
-To use automatic provisioning to bring up a universe on [AWS Graviton](https://aws.amazon.com/ec2/graviton/), you need to pass in the Arch AMI ID of AlmaLinux or Ubuntu. Note that this requires a YugabyteDB release for Linux ARM, which is available through one of the release pages (for example, the [current preview release](/preview/releases/release-notes/preview-release/)). YBA enables you to import releases via S3 or HTTP, as described in [Upgrade the YugabyteDB software](../../manage-deployments/upgrade-software/).
+To use automatic provisioning to bring up a universe on [AWS Graviton](https://aws.amazon.com/ec2/graviton/), you need to pass in the Arch AMI ID of AlmaLinux or Ubuntu. Note that this requires a YugabyteDB release for Linux ARM, which is available through one of the release pages (for example, the [current preview release](/stable/releases/release-notes/preview-release/)). YBA enables you to import releases via S3 or HTTP, as described in [Upgrade the YugabyteDB software](../../manage-deployments/upgrade-software/).
 
 #### Limitations
 

@@ -73,9 +73,11 @@ YB_DEFINE_ENUM(MonitoredTaskType,
   (kDeleteReplica)
   (kEnableDbConns)
   (kFlushTablets)
+  (kGetCompatibleSchemaVersion)
   (kGetSafeTime)
   (kGetTabletSplitKey)
   (kGetActiveRbsInfo)
+  (kInsertPackedSchemaForXClusterTarget)
   (kPrepareDeleteTransactionTablet)
   (kRemoveServer)
   (kRemoveTableFromTablet)
@@ -95,6 +97,7 @@ YB_DEFINE_ENUM(MonitoredTaskType,
   (kNamespaceVerification)
   (TableSchemaVerification)
   (kObjectLock)
+  (kXClusterHandleNewSchema)
   (kXClusterInboundReplicationGroupSetup)
   (kXClusterTableSetup));
 

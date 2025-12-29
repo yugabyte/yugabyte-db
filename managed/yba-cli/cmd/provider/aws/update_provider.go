@@ -70,9 +70,7 @@ var updateAWSProviderCmd = &cobra.Command{
 
 		r, response, err := providerListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err,
-				"Provider: AWS", "Update - Fetch Providers")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Provider: AWS", "Update - Fetch Providers")
 		}
 
 		if len(r) < 1 {
@@ -91,7 +89,7 @@ var updateAWSProviderCmd = &cobra.Command{
 			}
 		}
 
-		if len(strings.TrimSpace(provider.GetName())) == 0 {
+		if util.IsEmptyString(provider.GetName()) {
 			errMessage := fmt.Sprintf(
 				"No provider %s in cloud type %s.",
 				providerName,
@@ -137,8 +135,8 @@ var updateAWSProviderCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(accessKeyID)) != 0 &&
-			len(strings.TrimSpace(secretAccessKey)) != 0 {
+		if !util.IsEmptyString(accessKeyID) &&
+			!util.IsEmptyString(secretAccessKey) {
 			logrus.Debug("Updating AWS credentials\n")
 			awsCloudInfo.SetAwsAccessKeyID(accessKeyID)
 			awsCloudInfo.SetAwsAccessKeySecret(secretAccessKey)
@@ -282,8 +280,7 @@ var updateAWSProviderCmd = &cobra.Command{
 		rTask, response, err := authAPI.EditProvider(provider.GetUuid()).
 			EditProviderRequest(provider).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Provider: AWS", "Update")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Provider: AWS", "Update")
 		}
 
 		providerutil.WaitForUpdateProviderTask(

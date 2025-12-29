@@ -1270,7 +1270,7 @@ TEST_F(ScheduledFullCompactionsTest, AutoCompactionsBasedOnStatsDelete) {
       RETURN_NOT_OK(table.Open(workload_->table_name(), client_.get()));
       std::vector<client::YBOperationPtr> ops;
       for (int32_t i = 0; i < rows_to_delete; i++) {
-        const client::YBqlWriteOpPtr op = table.NewWriteOp(QLWriteRequestPB::QL_STMT_DELETE);
+        const auto op = table.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_DELETE);
         auto* const req = op->mutable_request();
         QLAddInt32HashValue(req, i);
         ops.push_back(op);

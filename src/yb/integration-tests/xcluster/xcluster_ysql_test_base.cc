@@ -46,7 +46,6 @@
 DECLARE_bool(enable_ysql);
 DECLARE_bool(hide_pg_catalog_table_creation_logs);
 DECLARE_bool(master_auto_run_initdb);
-DECLARE_int32(pggate_rpc_timeout_secs);
 DECLARE_string(pgsql_proxy_bind_address);
 DECLARE_int32(pgsql_proxy_webserver_port);
 DECLARE_int32(replication_factor);
@@ -64,14 +63,15 @@ using OK = Status::OK;
 using client::YBTableName;
 
 void XClusterYsqlTestBase::SetUp() {
+  TEST_SETUP_SUPER(XClusterTestBase);
   YB_SKIP_TEST_IN_TSAN();
-  XClusterTestBase::SetUp();
 
   LOG(INFO) << "DB-scoped replication will use automatic mode: " << UseAutomaticMode();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_enable_ddl_replication) = UseAutomaticMode();
 }
 
-Status XClusterYsqlTestBase::Initialize(uint32_t replication_factor, uint32_t num_masters) {
+Status XClusterYsqlTestBase::Initialize(
+    uint32_t replication_factor, uint32_t num_masters) {
   MiniClusterOptions opts;
   opts.num_tablet_servers = replication_factor;
   opts.num_masters = num_masters;
@@ -96,7 +96,6 @@ void XClusterYsqlTestBase::InitFlags(const MiniClusterOptions& opts) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_hide_pg_catalog_table_creation_logs) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_auto_run_initdb) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_pggate_rpc_timeout_secs) = 120;
 
   // Init CDC flags.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_implicit_checkpointing) = true;

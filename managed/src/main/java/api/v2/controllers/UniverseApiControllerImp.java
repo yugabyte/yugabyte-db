@@ -18,6 +18,7 @@ import api.v2.models.UniverseEditEncryptionInTransit;
 import api.v2.models.UniverseEditGFlags;
 import api.v2.models.UniverseEditKubernetesOverrides;
 import api.v2.models.UniverseEditSpec;
+import api.v2.models.UniverseOperatorImportReq;
 import api.v2.models.UniverseQueryLogsExport;
 import api.v2.models.UniverseResourceDetails;
 import api.v2.models.UniverseRestart;
@@ -204,6 +205,12 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
   }
 
   @Override
+  public void rollbackDetachUniverse(
+      Request request, UUID cUUID, UUID uniUUID, Boolean isForceRollback) throws Exception {
+    universeHandler.rollbackDetachUniverse(request, cUUID, uniUUID, isForceRollback);
+  }
+
+  @Override
   public UniverseResourceDetails getUniverseResources(
       Request request, UUID cUUID, UniverseCreateSpec universeSpec) throws Exception {
     return universeHandler.getUniverseResources(request, cUUID, universeSpec);
@@ -219,5 +226,17 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
   public YBATask configureMetricsExport(
       Request request, UUID cUUID, UUID uniUUID, ConfigureMetricsExportSpec req) throws Exception {
     return universeUpgradeHandler.configureMetricsExport(request, cUUID, uniUUID, req);
+  }
+
+  @Override
+  public YBATask operatorImportUniverse(
+      Request request, UUID cUUID, UUID uniUUID, UniverseOperatorImportReq req) throws Exception {
+    return universeHandler.operatorImportUniverse(request, cUUID, uniUUID, req);
+  }
+
+  @Override
+  public void operatorImportUniversePrecheck(
+      Request request, UUID cUUID, UUID uniUUID, UniverseOperatorImportReq req) throws Exception {
+    universeHandler.precheckOperatorImportUniverse(request, cUUID, uniUUID, req);
   }
 }

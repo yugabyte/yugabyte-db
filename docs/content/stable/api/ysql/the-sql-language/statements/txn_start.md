@@ -7,6 +7,8 @@ menu:
   stable_api:
     identifier: txn_start
     parent: statements
+aliases:
+  - /stable/api/ysql/commands/txn_start/
 type: docs
 ---
 

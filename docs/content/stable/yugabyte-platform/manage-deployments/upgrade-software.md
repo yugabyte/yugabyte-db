@@ -15,7 +15,7 @@ type: docs
 {{< page-finder/head text="Upgrade YugabyteDB" subtle="across different products">}}
   {{< page-finder/list icon="/icons/database-hover.svg" text="YugabyteDB" url="../../../manage/upgrade-deployment/" >}}
   {{< page-finder/list icon="/icons/server-hover.svg" text="YugabyteDB Anywhere" current="" >}}
-  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/preview/yugabyte-cloud/cloud-clusters/cloud-maintenance/" >}}
+  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/stable/yugabyte-cloud/cloud-clusters/database-upgrade/" >}}
 {{< /page-finder/head >}}
 
 You can upgrade the YugabyteDB release that is powering a universe to get new features and fixes included in the release.
@@ -41,7 +41,7 @@ When performing a database upgrade, do the following:
 
 1. [Upgrade YugabyteDB Anywhere](../../upgrade/). You cannot upgrade a universe to a version of YugabyteDB that is later than the version of YugabyteDB Anywhere.
 
-    For information on which versions of YugabyteDB are compatible with your version of YugabyteDB Anywhere, refer to [Compatibility with YugabyteDB](/preview/releases/yba-releases/#compatibility-with-yugabytedb).
+    For information on which versions of YugabyteDB are compatible with your version of YugabyteDB Anywhere, refer to [Compatibility with YugabyteDB](/stable/releases/yba-releases/#compatibility-with-yugabytedb).
 
 1. [Prepare to upgrade a universe](../upgrade-software-prepare/). Depending on the upgrade you are planning, you may need to make changes to your automation or upgrade your Linux operating system.
 

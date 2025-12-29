@@ -7,7 +7,6 @@ package artifact
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -31,7 +30,7 @@ var urlArtifactReleaseCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(url)) == 0 {
+		if util.IsEmptyString(url) {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize(
@@ -55,12 +54,11 @@ var urlArtifactReleaseCmd = &cobra.Command{
 
 		rRelease, response, err := authAPI.ExtractMetadata().ReleaseURL(req).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Release", "URL")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Release", "URL")
 		}
 
 		resourceUUID := rRelease.GetResourceUUID()
-		if len(strings.TrimSpace(resourceUUID)) == 0 {
+		if util.IsEmptyString(resourceUUID) {
 			logrus.Fatalf(
 				formatter.Colorize(
 					"An error occurred while extracting metadata from URL.\n",

@@ -127,7 +127,8 @@ GetPgCatalogTableScanIterator(
   const dockv::KeyEntryValues empty_key_components;
   docdb::DocPgsqlScanSpec spec(
       read_data.schema(), rocksdb::kDefaultQueryId, nullptr, {}, empty_key_components,
-      &cond, std::nullopt /* hash_code */, std::nullopt /* max_hash_code */);
+      docdb::PgsqlConditionPBPtr(&cond), std::nullopt /* hash_code */,
+      std::nullopt /* max_hash_code */);
   // Grab a RequestScope to prevent intent clean up, before we Init the iterator.
   *request_scope = VERIFY_RESULT(VERIFY_RESULT(sys_catalog->Tablet())->CreateRequestScope());
   RETURN_NOT_OK(iter->Init(spec));
@@ -332,7 +333,10 @@ Status PgSchemaCheckerWithReadTime(SysCatalogTable* sys_catalog,
     CHECK(FLAGS_TEST_yb_test_table_rewrite_keep_old_table &&
           l->is_being_altered_by_ysql_ddl_txn() &&
           table_rewritten)
-        << table->ToString() << " " << l->pb.ysql_ddl_txn_verifier_state(0).ShortDebugString();
+        << table->ToString() << ", table_rewritten: " << table_rewritten
+        << ", FLAGS_TEST_yb_test_table_rewrite_keep_old_table: "
+        << FLAGS_TEST_yb_test_table_rewrite_keep_old_table
+        << CollectionToString(l->ysql_ddl_txn_verifier_state());
     *result = true;
     return Status::OK();
   }

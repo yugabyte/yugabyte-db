@@ -8,12 +8,13 @@ menu:
     identifier: immutable-function-examples
     parent: alterable-function-only-attributes
     weight: 10
+aliases:
 type: docs
 ---
 
 ## Expression-based index referencing immutable function
 
-Try this simple example to shows how the dishonesty might catch out out. First, the basic setup is straightforward:
+Try this simple example to show how the dishonesty might catch you out. First, the basic setup is straightforward:
 
 ```plpgsql
 deallocate all;

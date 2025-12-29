@@ -34,7 +34,7 @@ var resetPasswordUserCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if strings.TrimSpace(currentPassword) == "" {
+		if util.IsEmptyString(currentPassword) {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize(
@@ -42,7 +42,7 @@ var resetPasswordUserCmd = &cobra.Command{
 					formatter.RedColor))
 
 		}
-		if strings.TrimSpace(newPassword) == "" {
+		if util.IsEmptyString(newPassword) {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize(
@@ -79,8 +79,7 @@ var resetPasswordUserCmd = &cobra.Command{
 
 		rUpdate, response, err := authAPI.ResetUserPassword().Users(req).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "User", "Reset Password")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "User", "Reset Password")
 		}
 
 		if !rUpdate.GetSuccess() {
@@ -92,16 +91,16 @@ var resetPasswordUserCmd = &cobra.Command{
 
 		rGet, response, err := authAPI.GetUserDetails(viper.GetString("user-uuid")).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"User",
-				"Reset Password - Get User")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "User", "Reset Password - Get User")
 		}
 
+		userDetails := util.CheckAndDereference(
+			rGet,
+			"An error occurred while resetting password for current user",
+		)
+
 		r := make([]ybaclient.UserWithFeatures, 0)
-		r = append(r, rGet)
+		r = append(r, userDetails)
 
 		fetchRoleBindingsForListing(
 			r[0].GetUuid(),

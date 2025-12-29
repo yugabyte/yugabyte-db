@@ -3,6 +3,9 @@ title: YSQL data types
 headertitle: Data types
 linkTitle: Data types
 description: Data types in YSQL
+aliases:
+  - /stable/develop/learn/data-types-ysql/
+  - /stable/develop/learn/data-types/
 menu:
   stable:
     identifier: explore-ysql-language-features-data-types

@@ -490,6 +490,8 @@ public class UniverseMetricProvider implements MetricsProvider {
         .setKeyLabel(KnownAlertLabels.INSTANCE, nodeDetails.cloudInfo.private_ip)
         .setKeyLabel(KnownAlertLabels.NAMESPACE, nodeDetails.getK8sNamespace())
         .setKeyLabel(KnownAlertLabels.POD_NAME, nodeDetails.getK8sPodName())
+        .setLabel(KnownAlertLabels.NODE_NAME, nodeDetails.nodeName)
+        .setLabel("az_name", nodeDetails.cloudInfo.az)
         .setKeyLabel(
             KnownAlertLabels.CONTAINER_NAME, nodeDetails.isTserver ? "yb-tserver" : "yb-master")
         .setValue(value);

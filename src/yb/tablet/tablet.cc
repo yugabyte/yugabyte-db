@@ -264,6 +264,9 @@ DEFINE_RUNTIME_bool(tablet_exclusive_full_compaction, false,
        "scheduled and unscheduled compactions are run before the full compaction and no other "
        "compactions will get scheduled during a full compaction.");
 
+DEFINE_RUNTIME_bool(tablet_split_use_middle_user_key, true,
+       "Consider only user keys while determining middle key for tablet split");
+
 DEFINE_RUNTIME_uint32(cdcsdk_retention_barrier_no_revision_interval_secs, 120,
                      "Duration for which CDCSDK retention barriers cannot be revised from the "
                      "cdcsdk_block_barrier_revision_start_time");
@@ -313,6 +316,10 @@ DEFINE_test_flag(bool, skip_remove_intent, false,
 
 DEFINE_test_flag(bool, simulate_load_txn_for_cdc, false,
                  "If true GetMinStartHTRunningTxnsForCDCProducer returns kInvalid");
+
+DEFINE_RUNTIME_bool(advance_intents_flushed_op_id_to_match_regular, true,
+                    "If true, the flushed op id of intents db may be updated to match that of "
+                    "regular db during flushing regular db memtable");
 
 DECLARE_bool(cdc_immediate_transaction_cleanup);
 DECLARE_bool(consistent_restore);
@@ -438,7 +445,7 @@ class YSQLMetricsScope : public MetricsScope {
  public:
   YSQLMetricsScope(TabletMetrics& global_metrics, rocksdb::Statistics& regulardb_statistics,
                    rocksdb::Statistics& intentsdb_statistics,
-                   PgsqlMetricsCaptureType metrics_capture, PgsqlResponsePB& pgsql_response):
+                   PgsqlMetricsCaptureType metrics_capture, PgsqlResponseMsg& pgsql_response):
       MetricsScope(global_metrics, regulardb_statistics, intentsdb_statistics),
       metrics_capture_(metrics_capture), pgsql_response_(pgsql_response) { }
 
@@ -448,15 +455,15 @@ class YSQLMetricsScope : public MetricsScope {
     }
 
     if (GetAtomicFlag(&FLAGS_ysql_analyze_dump_metrics) &&
-        metrics_capture_ == PgsqlMetricsCaptureType::PGSQL_METRICS_CAPTURE_ALL) {
-      scoped_tablet_metrics_.CopyToPgsqlResponse(&pgsql_response_);
-      scoped_docdb_statistics_.CopyToPgsqlResponse(&pgsql_response_);
+        metrics_capture_ != PgsqlMetricsCaptureType::PGSQL_METRICS_CAPTURE_NONE) {
+      scoped_tablet_metrics_.CopyToPgsqlResponse(&pgsql_response_, metrics_capture_);
+      scoped_docdb_statistics_.CopyToPgsqlResponse(&pgsql_response_, metrics_capture_);
     }
   }
 
  private:
   PgsqlMetricsCaptureType metrics_capture_;
-  PgsqlResponsePB& pgsql_response_;
+  PgsqlResponseMsg& pgsql_response_;
 };
 
 thread_local docdb::DocDBStatistics MetricsScope::scoped_docdb_statistics_;
@@ -584,6 +591,11 @@ class Tablet::RegularRocksDbListener : public Tablet::RocksDbListener {
     if (FLAGS_enable_schema_packing_gc) {
       OldSchemaGC();
     }
+  }
+
+  void OnFlushCompleted(rocksdb::DB* db, const rocksdb::FlushJobInfo& flush_job_info) override {
+    RocksDbListener::OnFlushCompleted(db, flush_job_info);
+    ERROR_NOT_OK(tablet_.MayModifyIntentsDbFlushedOpId(), log_prefix_);
   }
 
  private:
@@ -777,8 +789,9 @@ Tablet::Tablet(const TabletInitData& data)
   vector_indexes_ = std::make_unique<TabletVectorIndexes>(
       this,
       data.vector_index_thread_pool_provider,
-      data.vector_index_priority_thread_pool_provider,
-      data.vector_index_block_cache);
+      data.vector_index_compaction_token_provider,
+      data.vector_index_block_cache,
+      data.metric_registry);
 
   snapshot_coordinator_ = data.snapshot_coordinator;
 
@@ -1790,6 +1803,10 @@ Status Tablet::ApplyOperation(
     const Operation& operation, int64_t batch_idx,
     const docdb::LWKeyValueWriteBatchPB& write_batch,
     const docdb::StorageSet& apply_to_storages) {
+  VLOG_WITH_FUNC(4)
+      << "operation: " << AsString(operation) << ", batch_idx: " << batch_idx << ", write_batch: "
+      << AsString(write_batch) << ", apply_to_storages: " << AsString(apply_to_storages);
+
   // The write_hybrid_time is MVCC timestamp to be applied to the records in the batch. This will be
   // different from batch_hybrid_time in cases like xcluster and index backfill.
   auto write_hybrid_time = operation.WriteHybridTime();
@@ -1828,7 +1845,7 @@ Status Tablet::WriteTransactionalBatch(
   if (put_batch.transaction().has_isolation()) {
     // Store transaction metadata (status tablet, isolation level etc.)
     auto metadata = VERIFY_RESULT(TransactionMetadata::FromPB(put_batch.transaction()));
-    auto add_result = transaction_participant()->Add(metadata);
+    auto add_result = transaction_participant()->Add(metadata, hybrid_time);
     if (!add_result.ok()) {
       return add_result.status();
     }
@@ -1897,7 +1914,6 @@ Status Tablet::ApplyKeyValueRowOperations(
     RETURN_NOT_OK(WriteTransactionalBatch(batch_idx, put_batch, write_hybrid_time, frontiers));
   } else {
     // See comments for PrepareExternalWriteBatch.
-
     rocksdb::WriteBatch intents_write_batch;
     docdb::NonTransactionalBatchWriter batcher(
         put_batch, write_hybrid_time, batch_hybrid_time, intents_db_.get(), &intents_write_batch,
@@ -1976,8 +1992,8 @@ void Tablet::WriteToRocksDB(
 //--------------------------------------------------------------------------------------------------
 // Redis Request Processing.
 Status Tablet::HandleRedisReadRequest(const docdb::ReadOperationData& read_operation_data,
-                                      const RedisReadRequestPB& redis_read_request,
-                                      RedisResponsePB* response) {
+                                      const RedisReadRequestMsg& redis_read_request,
+                                      RedisResponseMsg* response) {
   // TODO: move this locking to the top-level read request handler in TabletService.
   auto scoped_read_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart(
       read_operation_data.deadline);
@@ -2012,8 +2028,8 @@ bool IsSchemaVersionCompatible(
 // CQL Request Processing.
 Status Tablet::HandleQLReadRequest(
     const docdb::ReadOperationData& read_operation_data,
-    const QLReadRequestPB& ql_read_request,
-    const TransactionMetadataPB& transaction_metadata,
+    const QLReadRequestMsg& ql_read_request,
+    const TransactionMetadataMsg& transaction_metadata,
     QLReadRequestResult* result,
     WriteBuffer* rows_data) {
   auto scoped_read_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart(
@@ -2062,9 +2078,9 @@ Status Tablet::HandleQLReadRequest(
   return status;
 }
 
-Status Tablet::CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,
+Status Tablet::CreatePagingStateForRead(const QLReadRequestMsg& ql_read_request,
                                         const size_t row_count,
-                                        QLResponsePB* response) const {
+                                        QLResponseMsg* response) const {
 
   // If the response does not have a next partition key, it means we are done reading the current
   // tablet. But, if the request does not have the hash columns set, this must be a table-scan,
@@ -2112,9 +2128,9 @@ Status Tablet::CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,
 Status Tablet::HandlePgsqlReadRequest(
     const docdb::ReadOperationData& read_operation_data,
     bool is_explicit_request_read_time,
-    const PgsqlReadRequestPB& pgsql_read_request,
-    const TransactionMetadataPB& transaction_metadata,
-    const SubTransactionMetadataPB& subtransaction_metadata,
+    const PgsqlReadRequestMsg& pgsql_read_request,
+    const TransactionMetadataMsg& transaction_metadata,
+    const SubTransactionMetadataMsg& subtransaction_metadata,
     PgsqlReadRequestResult* result) {
 
   TRACE(LogPrefix());
@@ -2138,9 +2154,9 @@ Status Tablet::DoHandlePgsqlReadRequest(
     TabletMetrics* metrics,
     const docdb::ReadOperationData& read_operation_data,
     bool is_explicit_request_read_time,
-    const PgsqlReadRequestPB& pgsql_read_request,
-    const TransactionMetadataPB& transaction_metadata,
-    const SubTransactionMetadataPB& subtransaction_metadata,
+    const PgsqlReadRequestMsg& pgsql_read_request,
+    const TransactionMetadataMsg& transaction_metadata,
+    const SubTransactionMetadataMsg& subtransaction_metadata,
     PgsqlReadRequestResult* result) {
   ScopedTabletMetricsLatencyTracker metrics_tracker(
       metrics, TabletEventStats::kQlReadLatency);
@@ -2217,7 +2233,7 @@ Status Tablet::DoHandlePgsqlReadRequest(
 // That means, the request has already been fulfilled, or request is conditioned to
 // a "non-splittable" area of the tablet.
 bool Tablet::MayTargetMultipleTablets(
-    const PgsqlReadRequestPB& pgsql_read_request, size_t row_count) const {
+    const PgsqlReadRequestMsg& pgsql_read_request, size_t row_count) const {
   // Request is for ybctids and all they are processed
   size_t ybctid_count = pgsql_read_request.batch_arguments_size();
   // TODO The ybctid_column_value may be removed as well as this block
@@ -2257,7 +2273,7 @@ bool Tablet::MayTargetMultipleTablets(
 // Find if the next partition is in the read scope, so the scan should (eventually) switch
 // partitions. Return pointer to the partition key if it is, nullptr otherwise.
 const std::string* Tablet::NextReadPartitionKey(
-    const PgsqlReadRequestPB& pgsql_read_request) const {
+    const PgsqlReadRequestMsg& pgsql_read_request) const {
   const auto& partition_key =
       pgsql_read_request.is_forward_scan()
           ? metadata_->partition()->partition_key_end()
@@ -2305,9 +2321,9 @@ const std::string* Tablet::NextReadPartitionKey(
 namespace {
 
 void SetBackfillSpecForYsqlBackfill(
-    const PgsqlReadRequestPB& pgsql_read_request,
+    const PgsqlReadRequestMsg& pgsql_read_request,
     const size_t& row_count,
-    PgsqlResponsePB* response) {
+    PgsqlResponseMsg* response) {
   PgsqlBackfillSpecPB in_spec;
   in_spec.ParseFromString(a2b_hex(pgsql_read_request.backfill_spec()));
 
@@ -2335,9 +2351,9 @@ void SetBackfillSpecForYsqlBackfill(
 
 }  // namespace
 
-Status Tablet::CreatePagingStateForRead(const PgsqlReadRequestPB& pgsql_read_request,
+Status Tablet::CreatePagingStateForRead(const PgsqlReadRequestMsg& pgsql_read_request,
                                         const size_t row_count,
-                                        PgsqlResponsePB* response) const {
+                                        PgsqlResponseMsg* response) const {
   // Paging state may already be set by DocDB to resume scan of the local partition.
   // Here we check if the request needs to switch to other partition. If DocDB haven't set the
   // paging state the switch should happen now, so facilitate it.
@@ -2630,7 +2646,8 @@ Status Tablet::WritePostApplyMetadata(std::span<const PostApplyTransactionMetada
 
 // We batch this as some tx could be very large and may not fit in one batch
 Status Tablet::GetIntentsForCDC(
-    const TransactionId& id, std::vector<docdb::IntentKeyValueForCDC>* key_value_intents,
+    const TransactionId& id, const SubtxnSet& aborted,
+    std::vector<docdb::IntentKeyValueForCDC>* key_value_intents,
     docdb::ApplyTransactionState* stream_state) {
   auto scoped_read_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
   RETURN_NOT_OK(scoped_read_operation);
@@ -2638,7 +2655,7 @@ Status Tablet::GetIntentsForCDC(
   docdb::ApplyTransactionState new_stream_state;
 
   new_stream_state = VERIFY_RESULT(docdb::GetIntentsBatchForCDC(
-      id, &key_bounds_, stream_state, intents_db_.get(), key_value_intents));
+      id, &key_bounds_, stream_state, aborted, intents_db_.get(), key_value_intents));
   stream_state->key = new_stream_state.key;
   stream_state->write_id = new_stream_state.write_id;
 
@@ -3047,7 +3064,7 @@ string GenerateSerializedBackfillSpec(uint64_t batch_size, const string& next_ro
 }
 
 Result<PgsqlBackfillSpecPB> QueryPostgresToDoBackfill(
-    pgwrapper::PGConn* conn, const string& query) {
+    pgwrapper::PGConn* conn, const string& query, double* num_rows_backfilled_in_index) {
   auto result = conn->Fetch(query);
   if (!result.ok()) {
     const auto libpq_error_msg = AuxilaryMessage(result.status()).value();
@@ -3062,8 +3079,9 @@ Result<PgsqlBackfillSpecPB> QueryPostgresToDoBackfill(
   }
   auto& res = result.get();
   CHECK_EQ(PQntuples(res.get()), 1);
-  CHECK_EQ(PQnfields(res.get()), 1);
+  CHECK_EQ(PQnfields(res.get()), 2);
   const auto returned_spec = CHECK_RESULT(pgwrapper::GetValue<std::string>(res.get(), 0, 0));
+  *num_rows_backfilled_in_index = CHECK_RESULT(pgwrapper::GetValue<double>(res.get(), 0, 1));
   VLOG(4) << "Returned backfill spec (raw): " << returned_spec;
 
   PgsqlBackfillSpecPB spec;
@@ -3168,7 +3186,9 @@ Status Tablet::BackfillIndexesForYsql(
     const uint64_t postgres_auth_key,
     bool is_xcluster_target,
     uint64_t* number_of_rows_processed,
+    std::unordered_map<TableId, double>& num_rows_backfilled_in_index,
     std::string* backfilled_until) {
+  DCHECK_EQ(indexes.size(), 1) << "We don't support batching index backfill in YSQL yet";
   LOG(INFO) << "Begin " << __func__ << " of tablet " << tablet_id() << " at " << read_time
             << " from row \"" << strings::b2a_hex(backfill_from)
             << "\" for indexes " << AsString(indexes);
@@ -3221,18 +3241,28 @@ Status Tablet::BackfillIndexesForYsql(
       RETURN_NOT_OK(conn.Execute("SET yb_xcluster_consistency_level = tablet;"));
     }
 
-    const auto spec = VERIFY_RESULT(QueryPostgresToDoBackfill(&conn, query_str));
+    double num_rows_backfilled_in_index_in_batch = 0.0;
+    const auto spec = VERIFY_RESULT(QueryPostgresToDoBackfill(
+        &conn,
+        query_str,
+        &num_rows_backfilled_in_index_in_batch));
     *number_of_rows_processed += spec.count();
     *backfilled_until = spec.next_row_key();
+    if (num_rows_backfilled_in_index.find(indexes[0].table_id()) ==
+        num_rows_backfilled_in_index.end()) {
+      num_rows_backfilled_in_index.emplace(indexes[0].table_id(), 0);
+    }
+    num_rows_backfilled_in_index[indexes[0].table_id()] +=
+        num_rows_backfilled_in_index_in_batch;
 
-    VLOG(2) << "Backfilled " << *number_of_rows_processed << " rows so far in this chunk. "
-            << "Setting backfilled_until to \"" << b2a_hex(*backfilled_until) << "\"";
+    VLOG(2) << "Processed " << *number_of_rows_processed << " base table rows so far in this "
+            << "chunk. Setting backfilled_until to \"" << b2a_hex(*backfilled_until) << "\"";
 
     MaybeSleepToThrottleBackfill(backfill_params.start_time, *number_of_rows_processed);
   } while (CanProceedToBackfillMoreRows(
       backfill_params, *backfilled_until, *number_of_rows_processed));
 
-  VLOG(1) << "Backfilled " << *number_of_rows_processed << " rows in this chunk. "
+  VLOG(1) << "Processed " << *number_of_rows_processed << " base table rows in this chunk. "
           << "Set backfilled_until to \"" << b2a_hex(*backfilled_until) << "\"";
   return Status::OK();
 }
@@ -3417,12 +3447,13 @@ Status Tablet::UpdateIndexInBatches(
   qlexpr::QLExprExecutor expr_executor;
 
   for (const IndexInfo& index : indexes) {
-    QLWriteRequestPB* const index_request = VERIFY_RESULT(
+    auto* const index_request = VERIFY_RESULT(
         docdb::CreateAndSetupIndexInsertRequest(
             &expr_executor, /* index_has_write_permission */ true,
             kEmptyRow, row, &index, index_requests));
-    if (index_request)
+    if (index_request) {
       index_request->set_is_backfill(true);
+    }
   }
 
   // Update the index write op.
@@ -3616,7 +3647,7 @@ Status Tablet::VerifyTableConsistencyForCQL(
   CoarseTimePoint last_flushed_at;
 
   QLTableRow row;
-  std::vector<std::pair<const TableId, QLReadRequestPB>> requests;
+  std::vector<std::pair<const TableId, QLReadRequestMsg>> requests;
   std::unordered_set<TableId> failed_indexes;
   std::string resume_verified_from;
 
@@ -3643,12 +3674,12 @@ Status Tablet::VerifyTableConsistencyForCQL(
 
 namespace {
 
-QLConditionPB* InitWhereOp(QLReadRequestPB* req) {
+QLConditionMsg* InitWhereOp(QLReadRequestMsg* req) {
   // Add the hash column values
   DCHECK(req->hashed_column_values().empty());
 
   // Add the range column values to the where clause
-  QLConditionPB* where_pb = req->mutable_where_expr()->mutable_condition();
+  auto* where_pb = req->mutable_where_expr()->mutable_condition();
   if (!where_pb->has_op()) {
     where_pb->set_op(QL_OP_AND);
   }
@@ -3656,12 +3687,12 @@ QLConditionPB* InitWhereOp(QLReadRequestPB* req) {
   return where_pb;
 }
 
-void SetSelectedExprToTrue(QLReadRequestPB* req) {
+void SetSelectedExprToTrue(QLReadRequestMsg* req) {
   // Set TRUE as selected exprs helps reduce
   // the need for row retrieval in the index read request
   req->add_selected_exprs()->mutable_value()->set_bool_value(true);
-  QLRSRowDescPB* rsrow_desc = req->mutable_rsrow_desc();
-  QLRSColDescPB* rscol_desc = rsrow_desc->add_rscol_descs();
+  auto* rsrow_desc = req->mutable_rsrow_desc();
+  auto* rscol_desc = rsrow_desc->add_rscol_descs();
   rscol_desc->set_name("1");
   rscol_desc->mutable_ql_type()->set_main(PersistentDataType::BOOL);
 }
@@ -3670,14 +3701,14 @@ Status WhereMainTableToPB(
     const QLTableRow& key,
     const IndexInfo& index_info,
     const Schema& main_table_schema,
-    QLReadRequestPB* req) {
+    QLReadRequestMsg* req) {
   std::unordered_map<ColumnId, ColumnId> column_id_map;
   for (const auto& col : index_info.columns()) {
     column_id_map.insert({col.indexed_column_id, col.column_id});
   }
 
   auto column_refs = req->mutable_column_refs();
-  QLConditionPB* where_pb = InitWhereOp(req);
+  auto* where_pb = InitWhereOp(req);
 
   for (const auto& col_id : main_table_schema.column_ids()) {
     if (main_table_schema.is_hash_key_column(col_id)) {
@@ -3686,7 +3717,7 @@ Status WhereMainTableToPB(
     } else {
       auto it = column_id_map.find(col_id);
       if (it != column_id_map.end()) {
-        QLConditionPB* col_cond_pb = where_pb->add_operands()->mutable_condition();
+        auto* col_cond_pb = where_pb->add_operands()->mutable_condition();
         col_cond_pb->set_op(QL_OP_EQUAL);
         col_cond_pb->add_operands()->set_column_id(col_id);
         *col_cond_pb->add_operands()->mutable_value() = *key.GetValue(it->second);
@@ -3704,8 +3735,8 @@ Status WhereIndexToPB(
     const QLTableRow& key,
     const IndexInfo& index_info,
     const Schema& schema,
-    QLReadRequestPB* req) {
-  QLConditionPB* where_pb = InitWhereOp(req);
+    QLReadRequestMsg* req) {
+  auto* where_pb = InitWhereOp(req);
   auto column_refs = req->mutable_column_refs();
 
   for (size_t idx = 0; idx < index_info.columns().size(); idx++) {
@@ -3714,7 +3745,7 @@ Status WhereIndexToPB(
     if (schema.is_hash_key_column(column_id)) {
       *req->add_hashed_column_values()->mutable_value() = *key.GetValue(indexed_column_id);
     } else {
-      QLConditionPB* col_cond_pb = where_pb->add_operands()->mutable_condition();
+      auto* col_cond_pb = where_pb->add_operands()->mutable_condition();
       col_cond_pb->set_op(QL_OP_EQUAL);
       col_cond_pb->add_operands()->set_column_id(column_id);
       *col_cond_pb->add_operands()->mutable_value() = *key.GetValue(indexed_column_id);
@@ -3734,7 +3765,7 @@ Status Tablet::VerifyTableInBatches(
     const HybridTime read_time,
     const CoarseTimePoint deadline,
     const bool is_main_table,
-    std::vector<std::pair<const TableId, QLReadRequestPB>>* requests,
+    std::vector<std::pair<const TableId, QLReadRequestMsg>>* requests,
     CoarseTimePoint* last_flushed_at,
     std::unordered_set<TableId>* failed_indexes,
     std::unordered_map<TableId, uint64>* consistency_stats) {
@@ -3745,7 +3776,7 @@ Status Tablet::VerifyTableInBatches(
     RETURN_NOT_OK(client->OpenTable(table_id, &table));
     std::shared_ptr<client::YBqlReadOp> read_op(table->NewQLSelect());
 
-    QLReadRequestPB* req = read_op->mutable_request();
+    auto* req = read_op->mutable_request();
     if (is_main_table) {
       RETURN_NOT_OK(WhereMainTableToPB(row, *local_index_info, table->InternalSchema(), req));
     } else {
@@ -3762,7 +3793,7 @@ Status Tablet::VerifyTableInBatches(
 Status Tablet::FlushVerifyBatchIfRequired(
     const HybridTime read_time,
     const CoarseTimePoint deadline,
-    std::vector<std::pair<const TableId, QLReadRequestPB>>* requests,
+    std::vector<std::pair<const TableId, QLReadRequestMsg>>* requests,
     CoarseTimePoint* last_flushed_at,
     std::unordered_set<TableId>* failed_indexes,
     std::unordered_map<TableId, uint64>* consistency_stats) {
@@ -3776,7 +3807,7 @@ Status Tablet::FlushVerifyBatchIfRequired(
 Status Tablet::FlushVerifyBatch(
     const HybridTime read_time,
     const CoarseTimePoint deadline,
-    std::vector<std::pair<const TableId, QLReadRequestPB>>* requests,
+    std::vector<std::pair<const TableId, QLReadRequestMsg>>* requests,
     CoarseTimePoint* last_flushed_at,
     std::unordered_set<TableId>* failed_indexes,
     std::unordered_map<TableId, uint64>* consistency_stats) {
@@ -4023,6 +4054,38 @@ void Tablet::FlushIntentsDbIfNecessary(const yb::OpId& lastest_log_entry_op_id) 
       }
     }
   }
+}
+
+Status Tablet::MayModifyIntentsDbFlushedOpId() {
+  auto scoped_read_operation = CreateScopedRWOperationBlockingRocksDbShutdownStart();
+  RETURN_NOT_OK(scoped_read_operation);
+  if (!intents_db_ || !regular_db_) {
+    return Status::OK();
+  }
+
+  OpId regular_op_id = docdb::MaxPersistentOpIdForDb(regular_db_.get(),
+                                                     /*invalid_if_no_new_data*/ false);
+  OpId intents_op_id = docdb::MaxPersistentOpIdForDb(intents_db_.get(),
+                                                     /*invalid_if_no_new_data*/ false);
+
+  auto intents_flush_ability = intents_db_->GetFlushAbility();
+  VLOG_WITH_PREFIX(4) << "regular_op_id: " << regular_op_id << ", intents_op_id: " << intents_op_id
+                      << ", intents_flush_ability: " << intents_flush_ability;
+
+  // We take regular frontier and intents frontier first, and intents_flush_ability last. If
+  // intents_flush_ability is kNoNewData, it means intents flushed op id can be at least advanced
+  // to match regular db.
+  if (intents_flush_ability == rocksdb::FlushAbility::kNoNewData &&
+      FLAGS_advance_intents_flushed_op_id_to_match_regular) {
+    LOG_WITH_PREFIX(INFO)
+          << "Update intents DB flushed op id from " << intents_op_id << " to " << regular_op_id;
+    docdb::ConsensusFrontier frontier;
+    frontier.set_op_id(regular_op_id);
+    RETURN_NOT_OK(intents_db_->ModifyFlushedFrontier(
+        frontier.Clone(), rocksdb::FrontierModificationMode::kUpdateIgnoreBackwards));
+  }
+
+  return Status::OK();
 }
 
 bool Tablet::IsTransactionalRequest(bool is_ysql_request) const {
@@ -4443,10 +4506,10 @@ Result<TransactionOperationContext> Tablet::CreateTransactionOperationContext(
 
 Status Tablet::CreateReadIntents(
     IsolationLevel level,
-    const TransactionMetadataPB& transaction_metadata,
-    const SubTransactionMetadataPB& subtransaction_metadata,
-    const google::protobuf::RepeatedPtrField<QLReadRequestPB>& ql_batch,
-    const google::protobuf::RepeatedPtrField<PgsqlReadRequestPB>& pgsql_batch,
+    const TransactionMetadataMsg& transaction_metadata,
+    const SubTransactionMetadataMsg& subtransaction_metadata,
+    const QLReadRequestMsgs& ql_batch,
+    const PgsqlReadRequestMsgs& pgsql_batch,
     docdb::LWKeyValueWriteBatchPB* write_batch) {
   auto txn_op_ctx = VERIFY_RESULT(CreateTransactionOperationContext(
       transaction_metadata,
@@ -4509,7 +4572,7 @@ Result<RaftGroupMetadataPtr> Tablet::CreateSubtablet(
       tablet_id, partition, key_bounds.lower.ToStringBuffer(), key_bounds.upper.ToStringBuffer()));
 
   RETURN_NOT_OK(snapshots_->CreateCheckpoint(
-      metadata->rocksdb_dir(), CreateIntentsCheckpointIn::kSubDir));
+      metadata->rocksdb_dir(), CreateCheckpointIn::kUseSuffix));
 
   // We want flushed frontier to cover split_op_id, so during bootstrap of after-split tablets
   // we don't replay split operation.
@@ -4634,7 +4697,12 @@ Result<std::string> Tablet::GetEncodedMiddleSplitKey(std::string *partition_spli
   };
 
   // TODO(tsplit): should take key_bounds_ into account.
-  auto middle_key = VERIFY_RESULT(regular_db_->GetMiddleKey());
+  Slice lower_bound_key;
+  if (FLAGS_tablet_split_use_middle_user_key) {
+    lower_bound_key = Slice(&dockv::kMinRegularDbTableRowFirstByte, 1);
+    LOG_WITH_PREFIX(INFO) << "Middle split key lower bound: " << lower_bound_key.ToDebugHexString();
+  }
+  auto middle_key = VERIFY_RESULT(regular_db_->GetMiddleKey(lower_bound_key));
 
   // In some rare cases middle key can point to a special internal record which is not visible
   // for a user, but tablet splitting routines expect the specific structure for partition keys
@@ -5230,7 +5298,7 @@ Status Tablet::GetLockStatus(const std::map<TransactionId, SubtxnSet>& transacti
 }
 
 Status Tablet::ProcessPgsqlGetTableKeyRangesRequest(
-      const PgsqlReadRequestPB& req, PgsqlReadRequestResult* result) const {
+      const PgsqlReadRequestMsg& req, PgsqlReadRequestResult* result) const {
   const auto& get_key_ranges_req = req.get_tablet_key_ranges_request();
   result->num_rows_read = 0;
   bool has_reached_end = false;
@@ -5317,20 +5385,26 @@ std::string IncrementedCopy(Slice key) {
 
 } // namespace
 
-Status Tablet::AbortActiveTransactions(CoarseTimePoint deadline) const {
+Status Tablet::AbortActiveTransactions(
+    CoarseTimePoint deadline, std::optional<TransactionId>&& exclude_txn_id) const {
   if (transaction_participant() == nullptr) {
     return Status::OK();
   }
   HybridTime max_cutoff = HybridTime::kMax;
   LOG(INFO) << "Aborting transactions that started prior to " << max_cutoff << " for tablet id "
             << tablet_id();
-  return transaction_participant()->StopActiveTxnsPriorTo(max_cutoff, deadline);
+  // This codepath is generally called during tablet deletion and during initdb.
+  // We want to abort all active transactions (except the one requested to be excluded), regardless
+  // of whether they are using table locks or not.
+  return transaction_participant()->StopActiveTxnsPriorTo(
+      OnlyAbortTxnsNotUsingTableLocks::kFalse, max_cutoff, deadline,
+      exclude_txn_id.has_value() ? &*exclude_txn_id : nullptr);
 }
 
 Status Tablet::GetTabletKeyRanges(
     const Slice lower_bound_key, const Slice upper_bound_key, const uint64_t max_num_ranges,
     const uint64_t range_size_bytes, const Direction direction, const uint32_t max_key_length,
-    WriteBuffer* keys_buffer, const TableId& colocated_table_id) const {
+    WriteBuffer* keys_buffer, TableIdView colocated_table_id) const {
   if (table_type_ != PGSQL_TABLE_TYPE) {
     return STATUS_FORMAT(
         NotSupported, "GetTabletKeyRanges is only supported for YSQL, tablet_id: ", tablet_id());
@@ -5587,7 +5661,7 @@ Status DoGetTabletKeyRanges<Direction::kBackward>(
 Status Tablet::GetTabletKeyRanges(
     Slice lower_bound_key, Slice upper_bound_key, uint64_t max_num_ranges,
     const uint64_t range_size_bytes, const Direction direction, uint32_t max_key_length,
-    std::function<void(Slice key)> callback, const TableId& colocated_table_id) const {
+    std::function<void(Slice key)> callback, TableIdView colocated_table_id) const {
   VLOG_WITH_PREFIX_AND_FUNC(2) << "lower_bound_key: " << lower_bound_key.ToDebugHexString()
                                << " upper_bound_key: " << upper_bound_key.ToDebugHexString()
                                << " max_num_ranges: " << max_num_ranges

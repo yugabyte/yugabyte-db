@@ -111,6 +111,7 @@
 #include "pg_yb_utils.h"
 #include "pgstat.h"
 #include "postmaster/interrupt.h"
+#include "replication/origin.h"
 #ifndef HAVE_GETRUSAGE
 #include "rusagestub.h"
 #endif
@@ -124,6 +125,7 @@
 #include "utils/lsyscache.h"
 #include "utils/pg_locale.h"
 #include "utils/rel.h"
+#include "utils/snapmgr.h"
 #include "utils/snapshot.h"
 #include "utils/spccache.h"
 #include "utils/syscache.h"
@@ -142,15 +144,23 @@ static uint64_t yb_logical_client_cache_version = YB_CATCACHE_VERSION_UNINITIALI
 static bool yb_need_invalidate_all_table_cache = false;
 
 static bool YbHasDdlMadeChanges();
+static int YbGetNumCreateFunctionStmts();
+static bool YBIsCurrentStmtCreateFunction();
 
 uint64_t
 YBGetActiveCatalogCacheVersion()
 {
-	if (yb_catalog_version_type == CATALOG_VERSION_CATALOG_TABLE &&
-		(YBGetDdlNestingLevel() > 0 ||
-		 (YBIsDdlTransactionBlockEnabled() && YBIsCurrentStmtDdl())))
-		return yb_catalog_cache_version + 1;
-
+	if (yb_catalog_version_type == CATALOG_VERSION_CATALOG_TABLE)
+	{
+		/*
+		 * Note that YBIsCurrentStmtCreateFunction is for both CREATE (OR REPLACE)
+		 * FUNCTION and CREATE (OR REPLACE) PROCEDURE.
+		 */
+		if (YBGetDdlNestingLevel() > 0 && YBIsCurrentStmtCreateFunction())
+			return yb_catalog_cache_version + 1;
+		if (YBIsDdlTransactionBlockEnabled() && YBIsCurrentStmtCreateFunction())
+			return yb_catalog_cache_version + YbGetNumCreateFunctionStmts();
+	}
 	return yb_catalog_cache_version;
 }
 
@@ -192,15 +202,6 @@ YbCanTryInvalidateTableCacheEntry()
 		!yb_need_invalidate_all_table_cache;
 }
 
-uint64_t
-YbGetLastKnownCatalogCacheVersion()
-{
-	const uint64_t shared_catalog_version = YbGetSharedCatalogVersion();
-
-	return shared_catalog_version > yb_last_known_catalog_cache_version ?
-		shared_catalog_version : yb_last_known_catalog_cache_version;
-}
-
 YbcPgLastKnownCatalogVersionInfo
 YbGetCatalogCacheVersionForTablePrefetching()
 {
@@ -216,7 +217,7 @@ YbGetCatalogCacheVersionForTablePrefetching()
 
 	if (*YBCGetGFlags()->ysql_enable_read_request_caching)
 	{
-		YBCPgResetCatalogReadTime();
+		YbInvalidateCatalogSnapshot();
 		version = YbGetMasterCatalogVersion();
 		read_time = YBCGetPgCatalogReadTime();
 	}
@@ -322,14 +323,6 @@ IsYugaByteEnabled()
 {
 	/* We do not support Init/Bootstrap processing modes yet. */
 	return YBCPgIsYugaByteEnabled();
-}
-
-void
-CheckIsYBSupportedRelation(Relation relation)
-{
-	const char	relkind = relation->rd_rel->relkind;
-
-	CheckIsYBSupportedRelationByKind(relkind);
 }
 
 void
@@ -585,15 +578,6 @@ YBRelHasOldRowTriggers(Relation rel, CmdType operation)
 }
 
 bool
-YbRelHasBRUpdateTrigger(Relation rel)
-{
-	Assert(IsYBRelation(rel));
-	TriggerDesc *trigdesc = rel->trigdesc;
-
-	return trigdesc ? trigdesc->trig_update_before_row : false;
-}
-
-bool
 YbIsDatabaseColocated(Oid dbid, bool *legacy_colocated_database)
 {
 	bool		colocated;
@@ -647,9 +631,9 @@ YBIsReadCommittedSupported()
 	{
 
 #ifdef NDEBUG
-		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_yb_enable_read_committed_isolation", false);
-#else
 		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_yb_enable_read_committed_isolation", true);
+#else
+		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_yb_enable_read_committed_isolation", false);
 #endif
 	}
 	return cached_value;
@@ -724,11 +708,6 @@ YBIsDBCatalogVersionMode()
 	 */
 	if (YBCanEnableDBCatalogVersionMode())
 	{
-		YbcFlushDebugContext debug_context = {
-			.reason = YB_SWITCH_TO_DB_CATALOG_VERSION_MODE,
-			.oidarg = MyDatabaseId,
-		};
-
 		cached_is_db_catalog_version_mode = true;
 		/*
 		 * If MyDatabaseId is not resolved, the caller is going to set up the
@@ -777,7 +756,7 @@ YBIsDBCatalogVersionMode()
 		 * Mixing global and per-database catalog versions in a single RPC
 		 * triggers a tserver SCHECK failure.
 		 */
-		YBFlushBufferedOperations(&debug_context);
+		YBFlushBufferedOperations(YBCMakeFlushDebugContextSwithToDbCatalogVersionMode(MyDatabaseId));
 		return true;
 	}
 
@@ -862,14 +841,6 @@ YbNeedAdditionalCatalogTables()
 {
 	return (*YBCGetGFlags()->ysql_catalog_preload_additional_tables ||
 			IS_NON_EMPTY_STR_FLAG(YBCGetGFlags()->ysql_catalog_preload_additional_table_list));
-}
-
-void
-YBReportFeatureUnsupported(const char *msg)
-{
-	ereport(ERROR,
-			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			 errmsg("%s", msg)));
 }
 
 static const char *
@@ -1159,10 +1130,18 @@ IpAddressToBytes(YbcPgAshConfig *ash_config)
 	}
 }
 
+static uint16_t
+YbGetSessionReplicationOriginId(void)
+{
+	return replorigin_session_origin;
+}
+
 void
 YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *init_info)
 {
-	HandleYBStatus(YBCInit(program_name, palloc, cstring_to_text_with_len));
+	HandleYBStatus(YBCInit(program_name, palloc, cstring_to_text_with_len,
+						   YbSwitchPgGateMemoryContext, YbCreatePgGateMemoryContext,
+						   YbDeletePgGateMemoryContext));
 
 	/*
 	 * Enable "YB mode" for PostgreSQL so that we will initiate a connection
@@ -1180,7 +1159,10 @@ YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *ini
 			.UnixEpochToPostgresEpoch = &YbUnixEpochToPostgresEpoch,
 			.ConstructArrayDatum = &YbConstructArrayDatum,
 			.CheckUserMap = &check_usermap,
-			.PgstatReportWaitStart = &yb_pgstat_report_wait_start
+			.PgstatReportWaitStart = &yb_pgstat_report_wait_start,
+			.GetCatalogSnapshotReadPoint = &YbGetCatalogSnapshotReadPoint,
+			.GetSessionReplicationOriginId = &YbGetSessionReplicationOriginId,
+			.CheckForInterrupts = &YBCheckForInterrupts,
 		};
 
 		ash_config.metadata = &MyProc->yb_ash_metadata;
@@ -1191,8 +1173,12 @@ YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *ini
 			.shared_data = &MyProc->yb_shared_data
 		};
 
-		YBCInitPgGate(YbGetTypeTable(), &callbacks,
-					  init_info ? init_info : &default_init_info, &ash_config);
+		HandleYBStatusAtErrorLevel(YBCInitPgGate(YbGetTypeTable(),
+												 &callbacks,
+												 init_info ? init_info : &default_init_info,
+												 &ash_config,
+												 &yb_session_stats.current_state,
+												 IsBinaryUpgrade), FATAL);
 		YBCInstallTxnDdlHook();
 
 		/*
@@ -1207,14 +1193,6 @@ YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *ini
 			if (yb_enable_query_diagnostics)
 				YbQueryDiagnosticsInstallHook();
 		}
-
-		/*
-		 * For each process, we create one YBC session for PostgreSQL to use
-		 * when accessing YugaByte storage.
-		 */
-		HandleYBStatus(YBCPgInitSession(&yb_session_stats.current_state,
-										IsBinaryUpgrade));
-		YBCSetTimeout(StatementTimeout, NULL);
 
 		/*
 		 * Upon completion of the first heartbeat to the local tserver, retrieve
@@ -1352,9 +1330,15 @@ typedef struct
 	bool		is_top_level_ddl_active;
 	NodeTag		current_stmt_node_tag;
 	CommandTag	current_stmt_ddl_command_tag;
+	CommandTag	last_stmt_ddl_command_tag;
 	Oid			database_oid;
 	int			num_committed_pg_txns;
 
+	/*
+	 * Number of create function or procedure statements in the current ddl
+	 * transaction block. Only used when ddl transaction block is enabled.
+	 */
+	int			num_create_function_stmts;
 	/*
 	 * This indicates whether the current DDL transaction is running as part of
 	 * the regular transaction block.
@@ -1505,6 +1489,8 @@ YBCRollbackToSubTransaction(SubTransactionId id)
 	if (unlikely(status))
 		elog(FATAL, "Failed to rollback to subtransaction %" PRId32 ": %s",
 			 id, YBCMessageAsCString(status));
+
+	YbInvalidateTableCacheForAlteredTables();
 }
 
 bool
@@ -2053,40 +2039,6 @@ YBShouldRestartAllChildrenIfOneCrashes()
 }
 
 const char *
-YBPgErrorLevelToString(int elevel)
-{
-	switch (elevel)
-	{
-		case DEBUG5:
-			return "DEBUG5";
-		case DEBUG4:
-			return "DEBUG4";
-		case DEBUG3:
-			return "DEBUG3";
-		case DEBUG2:
-			return "DEBUG2";
-		case DEBUG1:
-			return "DEBUG1";
-		case LOG:
-			return "LOG";
-		case LOG_SERVER_ONLY:
-			return "LOG_SERVER_ONLY";
-		case INFO:
-			return "INFO";
-		case WARNING:
-			return "WARNING";
-		case ERROR:
-			return "ERROR";
-		case FATAL:
-			return "FATAL";
-		case PANIC:
-			return "PANIC";
-		default:
-			return "UNKNOWN";
-	}
-}
-
-const char *
 YBCGetDatabaseName(Oid relid)
 {
 	/*
@@ -2141,12 +2093,6 @@ Oid
 YBCGetDatabaseOidFromShared(bool relisshared)
 {
 	return relisshared ? Template1DbOid : MyDatabaseId;
-}
-
-void
-YBRaiseNotSupported(const char *msg, int issue_no)
-{
-	YBRaiseNotSupportedSignal(msg, issue_no, YBUnsupportedFeatureSignalLevel());
 }
 
 void
@@ -2231,6 +2177,7 @@ bool		yb_plpgsql_disable_prefetch_in_for_query = false;
 bool		yb_enable_sequence_pushdown = true;
 bool		yb_disable_wait_for_backends_catalog_version = false;
 bool		yb_enable_base_scans_cost_model = false;
+bool		yb_enable_update_reltuples_after_create_index = false;
 int			yb_wait_for_backends_catalog_version_timeout = 5 * 60 * 1000;	/* 5 min */
 bool		yb_prefer_bnl = false;
 bool		yb_explain_hide_non_deterministic_fields = false;
@@ -2247,7 +2194,11 @@ bool		yb_enable_invalidation_messages = true;
 bool		yb_enable_invalidate_table_cache_entry = true;
 int			yb_invalidation_message_expiration_secs = 10;
 int			yb_max_num_invalidation_messages = 4096;
-bool        yb_make_all_ddl_statements_incrementing = false;
+bool		yb_enable_parallel_scan_colocated = true;
+bool		yb_enable_parallel_scan_hash_sharded = false;
+bool		yb_enable_parallel_scan_range_sharded = false;
+bool		yb_enable_parallel_scan_system = false;
+bool        yb_test_make_all_ddl_statements_incrementing = false;
 
 /* DEPRECATED */
 bool		yb_enable_advisory_locks = true;
@@ -2336,12 +2287,6 @@ YBDatumToString(Datum datum, Oid typid)
 }
 
 const char *
-YbHeapTupleToString(HeapTuple tuple, TupleDesc tupleDesc)
-{
-	return YbHeapTupleToStringWithIsOmitted(tuple, tupleDesc, NULL);
-}
-
-const char *
 YbHeapTupleToStringWithIsOmitted(HeapTuple tuple, TupleDesc tupleDesc,
 								 bool *is_omitted)
 {
@@ -2410,15 +2355,6 @@ YbSlotToStringWithIsOmitted(TupleTableSlot *slot, bool *is_omitted)
 	}
 	appendStringInfoChar(&buf, ')');
 	return buf.data;
-}
-
-const char *
-YbBitmapsetToString(Bitmapset *bms)
-{
-	StringInfo	str = makeStringInfo();
-
-	outBitmapset(str, bms);
-	return str->data;
 }
 
 bool
@@ -2588,6 +2524,12 @@ YBIsCurrentStmtDdl()
 	return ddl_transaction_state.is_top_level_ddl_active;
 }
 
+static bool
+YBIsCurrentStmtCreateFunction()
+{
+	return ddl_transaction_state.current_stmt_node_tag == T_CreateFunctionStmt;
+}
+
 bool
 YBGetDdlUseRegularTransactionBlock()
 {
@@ -2643,6 +2585,12 @@ YbTrackAlteredTableId(Oid relid)
 void
 YBIncrementDdlNestingLevel(YbDdlMode mode)
 {
+	if (YBIsDdlTransactionBlockEnabled() && IsTransactionBlock())
+	{
+		elog(ERROR,
+				"YBIncrementDdlNestingLevel: autonomous DDL not exepcted inside a transaction block");
+	}
+
 	if (ddl_transaction_state.nesting_level == 0)
 	{
 		/*
@@ -2701,6 +2649,13 @@ YBAddDdlTxnState(YbDdlMode mode)
 		 *    ddl_transaction_state.use_regular_txn_block as true.
 		 */
 		ddl_transaction_state.catalog_modification_aspects.pending |= mode;
+
+		/*
+		 * Note that T_CreateFunctionStmt is for both CREATE (OR REPLACE) FUNCTION
+		 * and CREATE (OR REPLACE) PROCEDURE.
+		 */
+		ddl_transaction_state.num_create_function_stmts +=
+			ddl_transaction_state.current_stmt_node_tag == T_CreateFunctionStmt ? 1 : 0;
 		return;
 	}
 
@@ -2712,6 +2667,8 @@ YBAddDdlTxnState(YbDdlMode mode)
 	 * this YB DDL transaction.
 	 */
 	ddl_transaction_state.num_committed_pg_txns = 0;
+	ddl_transaction_state.num_create_function_stmts =
+		ddl_transaction_state.current_stmt_node_tag == T_CreateFunctionStmt ? 1 : 0;
 	ddl_transaction_state.mem_context =
 		AllocSetContextCreate(CurrentMemoryContext,
 							  "aux ddl memory context",
@@ -2875,6 +2832,12 @@ void
 YbIncrementPgTxnsCommitted()
 {
 	++ddl_transaction_state.num_committed_pg_txns;
+}
+
+static int
+YbGetNumCreateFunctionStmts()
+{
+	return ddl_transaction_state.num_create_function_stmts;
 }
 
 /*
@@ -3211,16 +3174,10 @@ YBCommitTransactionContainingDDL()
 		if (currentInvalMessages && log_min_messages <= DEBUG1)
 			YbLogInvalidationMessages(currentInvalMessages, nmsgs);
 
-		/*
-		 * Only log the command_tag_name if transactional DDL is disabled. When
-		 * transactional DDL is enabled, multiple DDLs could contribute to the
-		 * catalog version increment. Hence, it is misleading to only log the
-		 * last DDL as the contributing command.
-		 */
-		const char *command_tag_name =
-			(YBIsDdlTransactionBlockEnabled()) ?
-			NULL :
-			GetCommandTagName(ddl_transaction_state.current_stmt_ddl_command_tag);
+		CommandTag ddl_cmdtag = ddl_transaction_state.current_stmt_ddl_command_tag;
+		if (ddl_cmdtag == CMDTAG_UNKNOWN)
+			 ddl_cmdtag = ddl_transaction_state.last_stmt_ddl_command_tag;
+		const char *command_tag_name = GetCommandTagName(ddl_cmdtag);
 
 		is_breaking_change = mode & YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE;
 		bool		increment_for_conn_mgr_needed = false;
@@ -3445,7 +3402,8 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 			 bool *requires_autonomous_transaction)
 {
 	bool		is_ddl = true;
-	bool		is_version_increment = true;
+	bool		should_increment_version_by_default = yb_test_make_all_ddl_statements_incrementing;
+	bool		is_version_increment = should_increment_version_by_default;
 	bool		is_breaking_change = true;
 	bool		is_altering_existing_data = false;
 	bool		should_run_in_autonomous_transaction = false;
@@ -3489,6 +3447,9 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 		 * be incremented.
 		 */
 		ddl_transaction_state.current_stmt_node_tag = node_tag;
+		if (ddl_transaction_state.current_stmt_ddl_command_tag != CMDTAG_UNKNOWN)
+			ddl_transaction_state.last_stmt_ddl_command_tag =
+				ddl_transaction_state.current_stmt_ddl_command_tag;
 		ddl_transaction_state.current_stmt_ddl_command_tag =
 			CreateCommandTag(parsetree);
 		if (CheckIsAnalyzeDDL() && !ddl_transaction_state.userid_and_sec_context.is_set)
@@ -3533,7 +3494,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 			 * Simple add objects are not breaking changes, and they do not even require
 			 * a version increment because we do not do any negative caching for them.
 			 */
-			is_version_increment = false;
+			is_version_increment = should_increment_version_by_default;
 			is_breaking_change = false;
 			break;
 
@@ -3557,7 +3518,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 			 * increment.
 			 */
 			if (!yb_enable_alter_table_rewrite)
-				is_version_increment = false;
+				is_version_increment = should_increment_version_by_default;
 			is_breaking_change = false;
 			break;
 
@@ -3576,7 +3537,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 
 			/* Create or replace view needs to increment catalog version. */
 			if (!castNode(ViewStmt, parsetree)->replace)
-				is_version_increment = false;
+				is_version_increment = should_increment_version_by_default;
 			break;
 
 		case T_CompositeTypeStmt:	/* Create (composite) type */
@@ -3628,7 +3589,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 				int			nopts = list_length(stmt->options);
 
 				if (nopts == 0)
-					is_version_increment = false;
+					is_version_increment = should_increment_version_by_default;
 				else
 				{
 					bool		reference_other_role = false;
@@ -3647,7 +3608,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 						}
 					}
 					if (!reference_other_role)
-						is_version_increment = false;
+						is_version_increment = should_increment_version_by_default;
 				}
 				break;
 			}
@@ -3704,9 +3665,15 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 				}
 
 				if (stmt->relation->relpersistence == RELPERSISTENCE_TEMP)
+				{
+					is_version_increment = false;
+					is_altering_existing_data = true;
 					YBMarkTxnUsesTempRelAndSetTxnId();
-
-				is_version_increment = false;
+				}
+				else
+				{
+					is_version_increment = should_increment_version_by_default;
+				}
 				break;
 			}
 
@@ -3719,7 +3686,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 			 * Simple add objects are not breaking changes, and they do not even require
 			 * a version increment because we do not do any negative caching for them.
 			 */
-			is_version_increment = false;
+			is_version_increment = should_increment_version_by_default;
 			is_breaking_change = false;
 			break;
 
@@ -3731,7 +3698,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 			 * cache is updated.
 			 */
 			if (!OidIsValid(castNode(CreateSeqStmt, parsetree)->ownerId))
-				is_version_increment = false;
+				is_version_increment = should_increment_version_by_default;
 			break;
 
 		case T_CreateFunctionStmt:
@@ -3774,14 +3741,14 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 					 */
 					DropStmt   *stmt = castNode(DropStmt, parsetree);
 
-					if (stmt->removeType == OBJECT_INDEX ||
-						stmt->removeType == OBJECT_TABLE ||
-						stmt->removeType == OBJECT_VIEW)
-					{
-						ListCell   *cell;
+				if (stmt->removeType == OBJECT_INDEX ||
+					stmt->removeType == OBJECT_TABLE ||
+					stmt->removeType == OBJECT_VIEW)
+				{
+					ListCell   *cell;
 
-						is_version_increment = false;
-						bool		marked_temp = false;
+					is_version_increment = false;
+					bool		marked_temp = false;
 
 						foreach(cell, stmt->objects)
 						{
@@ -3825,7 +3792,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 			 * catalog version mode.
 			 */
 			if (YBIsDBCatalogVersionMode())
-				is_version_increment = false;
+				is_version_increment = should_increment_version_by_default;
 			break;
 
 			/* All T_Alter... tags from nodes.h: */
@@ -3883,7 +3850,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 					if (strcmp(def->defname, "password") == 0)
 					{
 						is_breaking_change = false;
-						is_version_increment = false;
+						is_version_increment = should_increment_version_by_default;
 					}
 				}
 				break;
@@ -3988,7 +3955,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 
 		case T_VacuumStmt:
 			/* Vacuum with analyze updates relation and attribute statistics */
-			is_version_increment = false;
+			is_version_increment = should_increment_version_by_default;
 			is_breaking_change = false;
 			VacuumStmt *vacuum_stmt = castNode(VacuumStmt, parsetree);
 
@@ -4062,7 +4029,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 			 * corruption, manual intervention is already needed, so might as
 			 * well let the user deal with refreshing clients.
 			 */
-			is_version_increment = false;
+			is_version_increment = should_increment_version_by_default;
 			is_breaking_change = false;
 			break;
 
@@ -4128,6 +4095,8 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 		if (ddl_transaction_state.nesting_level == 0 &&
 			!ddl_transaction_state.use_regular_txn_block)
 			YBClearDdlTransactionState();
+		else
+			ddl_transaction_state.current_stmt_ddl_command_tag = CMDTAG_UNKNOWN;
 		return (YbDdlModeOptional)
 		{
 		};
@@ -4139,12 +4108,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 	 */
 	if (yb_make_next_ddl_statement_nonbreaking)
 		is_breaking_change = false;
-	/*
-	 * If yb_make_all_ddl_statements_incrementing is true, we should be incrementing
-	 * the catalog version for all DDL statements.
-	 */
-	if (yb_make_all_ddl_statements_incrementing)
-		is_version_increment = true;
+
 	/*
 	 * If yb_make_next_ddl_statement_nonincrementing is true, then no DDL statement
 	 * will cause a catalog version to increment. Note that we also disable breaking
@@ -4189,6 +4153,9 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 
 	*requires_autonomous_transaction = YBIsDdlTransactionBlockEnabled() &&
 		should_run_in_autonomous_transaction;
+
+	if (!is_version_increment)
+		ddl_transaction_state.current_stmt_ddl_command_tag = CMDTAG_UNKNOWN;
 
 	return (YbDdlModeOptional)
 	{
@@ -4413,6 +4380,8 @@ YBCInstallTxnDdlHook()
  *    1. Phase 3 scan/rewrite tables.
  *    2. Any failures during the ALTER TABLE operation, if DDL + DML transaction
  *       support is disabled.
+ * c) ROLLBACK TO SAVEPOINT operation if DDL savepoint support is enabled and
+ *    transaction block included an ALTER TABLE operation.
  */
 void
 YbInvalidateTableCacheForAlteredTables()
@@ -4477,9 +4446,9 @@ YBResetOperationsBuffering()
 }
 
 void
-YBFlushBufferedOperations(YbcFlushDebugContext *debug_context)
+YBFlushBufferedOperations(YbcFlushDebugContext debug_context)
 {
-	HandleYBStatus(YBCPgFlushBufferedOperations(debug_context));
+	HandleYBStatus(YBCPgFlushBufferedOperations(&debug_context));
 }
 
 bool
@@ -4621,6 +4590,29 @@ YbGetNumberOfFunctionOutputColumns(Oid func_oid)
 	ReleaseSysCache(proctup);
 
 	return ncols;
+}
+
+int
+YbGetNumberOfFunctionInputParameters(Oid func_oid)
+{
+	int			nargs = 0;		/* Equals to the number of IN parameters. */
+
+	HeapTuple	proctup = SearchSysCache1(PROCOID, ObjectIdGetDatum(func_oid));
+
+	if (!HeapTupleIsValid(proctup))
+		elog(ERROR, "cache lookup failed for function %u", func_oid);
+
+	bool		is_null = false;
+	Datum		pronargs = SysCacheGetAttr(PROCOID, proctup,
+											  Anum_pg_proc_pronargs,
+											  &is_null);
+
+	Assert(!is_null);
+	nargs = DatumGetInt16(pronargs);
+
+	ReleaseSysCache(proctup);
+
+	return nargs;
 }
 
 /*
@@ -6654,7 +6646,7 @@ YbTryRegisterCatalogVersionTableForPrefetching()
 		YbRegisterSysTableForPrefetching(YBCatalogVersionRelationId);
 }
 
-bool
+static bool
 YBCIsRegionLocal(Relation rel)
 {
 	double		cost = 0.0;
@@ -6800,6 +6792,7 @@ assign_yb_read_time(const char *newval, void *extra)
 	unsigned long long value_ull;
 	bool		is_ht_unit;
 
+	elog(DEBUG1, "Setting yb_read_time to %s", newval);
 	parse_yb_read_time(newval, &value_ull, &is_ht_unit);
 	/*
 	 * Don't refresh the sys caches in case the read time value didn't change.
@@ -7093,6 +7086,13 @@ YbSetMetricsCaptureType(YbcPgMetricsCaptureType metrics_capture)
 }
 
 void
+YbSetMetricsCaptureTypeIfUnset(YbcPgMetricsCaptureType metrics_capture)
+{
+	if (yb_session_stats.current_state.metrics_capture == YB_YQL_METRICS_CAPTURE_NONE)
+		yb_session_stats.current_state.metrics_capture = metrics_capture;
+}
+
+void
 YbSetCatalogCacheVersion(YbcPgStatement handle, uint64_t version)
 {
 	/*
@@ -7120,18 +7120,20 @@ YbGetNonSystemTablespaceOid(Relation rel)
 	return rel->rd_rel->reltablespace;
 }
 
-void
-YbMaybeSetNonSystemTablespaceOid(YbcPgStatement handle, Relation rel)
+YbcPgTableLocalityInfo
+YbBuildTableLocalityInfo(Relation rel)
 {
-	Oid			tablespace_oid = YbGetNonSystemTablespaceOid(rel);
-
-	if (OidIsValid(tablespace_oid))
+	return (YbcPgTableLocalityInfo)
 	{
-		YBCPgSetTablespaceOid(handle, tablespace_oid);
-#ifndef NDEBUG
-		YBCPgCheckTablespaceOid(MyDatabaseId, rel->rd_id, tablespace_oid);
-#endif
-	}
+		.is_region_local = YBCIsRegionLocal(rel), .tablespace_oid = YbGetNonSystemTablespaceOid(rel)
+	};
+}
+
+YbcPgTableLocalityInfo
+YbBuildSystemTableLocalityInfo(Oid sys_rel_oid)
+{
+	Assert(IsCatalogRelationOid(sys_rel_oid));
+	return (YbcPgTableLocalityInfo){};
 }
 
 uint64_t
@@ -7279,25 +7281,6 @@ YbIsColumnPartOfKey(Relation rel, const char *column_name)
 		}
 	}
 	return false;
-}
-
-bool
-YbReturningListSubsetOfUpdatedCols(Relation rel, Bitmapset *updatedCols,
-								   List *returningList)
-{
-
-	ListCell   *lc;
-
-	foreach(lc, returningList)
-	{
-		TargetEntry *element = (TargetEntry *) lfirst(lc);
-
-		if (!bms_is_member(element->resorigcol -
-						   YBGetFirstLowInvalidAttributeNumber(rel),
-						   updatedCols))
-			return false;
-	}
-	return true;
 }
 
 /*
@@ -7581,7 +7564,8 @@ YbATCopyPrimaryKeyToCreateStmt(Relation rel, Relation pg_constraint,
  */
 void
 YbIndexSetNewRelfileNode(Relation indexRel, Oid newRelfileNodeId,
-						 bool yb_copy_split_options)
+						 bool yb_copy_split_options,
+						 YbOptSplit *preserved_index_split_options)
 {
 	bool		isNull;
 	HeapTuple	indexTuple;
@@ -7591,6 +7575,7 @@ YbIndexSetNewRelfileNode(Relation indexRel, Oid newRelfileNodeId,
 	IndexInfo  *indexInfo;
 	oidvector  *indclass = NULL;
 	Datum		indclassDatum;
+	YbOptSplit *splitOpt = NULL;
 
 	tuple = SearchSysCache1(RELOID,
 							ObjectIdGetDatum(RelationGetRelid(indexRel)));
@@ -7606,7 +7591,8 @@ YbIndexSetNewRelfileNode(Relation indexRel, Oid newRelfileNodeId,
 							ShareLock);
 	indexInfo = BuildIndexInfo(indexRel);
 
-	YbGetTableProperties(indexRel);
+	YbTryGetTableProperties(indexRel);
+	YbGetTableProperties(indexedRel);
 
 	indexTuple = SearchSysCache1(INDEXRELID,
 								 ObjectIdGetDatum(RelationGetRelid(indexRel)));
@@ -7620,6 +7606,13 @@ YbIndexSetNewRelfileNode(Relation indexRel, Oid newRelfileNodeId,
 		indclass = (oidvector *) DatumGetPointer(indclassDatum);
 	ReleaseSysCache(indexTuple);
 
+	if (yb_copy_split_options)
+	{
+		splitOpt = indexRel->yb_table_properties
+					? YbGetSplitOptions(indexRel)
+					: preserved_index_split_options;
+	}
+
 	YBCCreateIndex(RelationGetRelationName(indexRel),
 				   indexInfo,
 				   RelationGetDescr(indexRel),
@@ -7627,14 +7620,15 @@ YbIndexSetNewRelfileNode(Relation indexRel, Oid newRelfileNodeId,
 				   reloptions,
 				   RelationGetRelid(indexRel),
 				   indexedRel,
-				   yb_copy_split_options ? YbGetSplitOptions(indexRel) : NULL,
+				   splitOpt,
 				   true /* skip_index_backfill */ ,
-				   indexRel->yb_table_properties->is_colocated,
-				   indexRel->yb_table_properties->tablegroup_oid,
+				   indexedRel->yb_table_properties->is_colocated,
+				   indexedRel->yb_table_properties->tablegroup_oid,
 				   InvalidOid /* colocation ID */ ,
 				   indexRel->rd_rel->reltablespace,
 				   newRelfileNodeId,
-				   YbGetRelfileNodeId(indexRel),
+				   !indexRel->yb_table_properties ?
+					   InvalidOid : YbGetRelfileNodeId(indexRel) /* oldRelfileNodeId */ ,
 				   indclass ? indclass->values : NULL);
 
 	table_close(indexedRel, ShareLock);
@@ -7784,7 +7778,6 @@ YBCUpdateYbReadTimeAndInvalidateRelcache(uint64_t read_time_ht)
 	char		read_time[50];
 
 	sprintf(read_time, "%llu ht", (unsigned long long) read_time_ht);
-	elog(DEBUG1, "Setting yb_read_time to %s ", read_time);
 	assign_yb_read_time(read_time, NULL);
 	YbRelationCacheInvalidate();
 }
@@ -7792,7 +7785,6 @@ YBCUpdateYbReadTimeAndInvalidateRelcache(uint64_t read_time_ht)
 void
 YBCResetYbReadTimeAndInvalidateRelcache()
 {
-	elog(DEBUG1, "Setting yb_read_time to 0");
 	assign_yb_read_time("0", NULL);
 	YbRelationCacheInvalidate();
 }
@@ -7809,7 +7801,7 @@ YbCalculateTimeDifferenceInMicros(TimestampTz yb_start_time)
 }
 
 static bool
-YbIsDDLOrInitDBMode()
+YbIsSeparateDDLOrInitDBMode()
 {
 	return (YBCPgIsDdlMode() && !YBCPgIsDdlModeWithRegularTransactionBlock()) || YBCIsInitDbModeEnvVarSet();
 }
@@ -7817,20 +7809,37 @@ YbIsDDLOrInitDBMode()
 bool
 YbIsReadCommittedTxn()
 {
-	return IsYBReadCommitted() && !YbIsDDLOrInitDBMode();
+	return IsYBReadCommitted() && !YbIsSeparateDDLOrInitDBMode();
 }
 
 bool
 YbSkipPgSnapshotManagement()
 {
+	if (!YBCIsLegacyModeForCatalogOps())
+		return false;
+
 	/*
-	 * YSQL doesn't use Pg's snapshot management in DDL or initdb mode. Also, for SERIALIZABLE
-	 * isolation level, YSQL doesn't use SSI. Instead it uses 2 phase locking and reads the latest
-	 * data on DocDB always.
+	 * In legacy pre-object locking mode, YSQL was skipping Pg's snapshot management for:
 	 *
-	 * TODO: Integrate with Pg's snapshot management for DDLs.
+	 * (1) Separate DDL transactions (i.e., DDLs that are not part of a regular transaction block):
+	 *     This is because changing snapshots would affect the ongoing active DML transaction.
+	 * (2) Initdb mode. Actually, even if we didn't skip for initdb mode, it would be okay because the
+	 *     snapshot's read time serial number wouldn't be used anyway. This is because initdb uses
+	 *     the kRegular session type in PgSession.
+	 * (3) Serializable isolation level: since YSQL doesn't use SSI (and instead uses
+	 *     2 phase locking), it reads the latest data on DocDB always for this isolation level. So,
+	 *     we just skipped the snapshot management. However, allowing snapshot management wouldn't
+	 *     result in any issues because for serializable isolation, we anyway don't set a read time
+	 *     for a read time serial number in PgClientSession.
+	 *
+	 * For the new object locking mode, we can ignore (1) because separate DDL transactions can't
+	 * run in parallel with active DML transactions. This is because transactional DDL is enabled if
+	 * object locking is enabled. We can ignore (2) because that check isn't required anyway. For
+	 * (3), we need to enable snapshot management for catalog snapshots in serializable isolation.
+	 * So, the handling of still using the latest read time instead of using snapshots for DMLs is
+	 * done elsewhere.
 	 */
-	return YbIsDDLOrInitDBMode() || IsolationIsSerializable();
+	return YbIsSeparateDDLOrInitDBMode() || IsolationIsSerializable();
 }
 
 static YbOptionalReadPointHandle
@@ -7881,22 +7890,23 @@ YbResetTransactionReadPoint()
 
 	/*
 	 * If this is a query layer retry for a kReadRestart error, avoid resetting the read point.
+	 *
+	 * TODO(#29272): Ensure that this logic of not resetting the read point works fine even when there
+	 * are multiple snapshots being used by Pg.
 	 */
 	if (!YBCIsRestartReadPointRequested())
 	{
-		YbcFlushDebugContext debug_context = {
-			.reason = YB_GET_TRANSACTION_SNAPSHOT,
-			.uintarg = YBCPgGetCurrentReadPoint(),
-		};
-
 		/*
 		 * Flush all earlier operations so that they complete on the previous snapshot.
 		 */
-		HandleYBStatus(YBCPgFlushBufferedOperations(&debug_context));
+		YBFlushBufferedOperations(YBCMakeFlushDebugContextGetTxnSnapshot());
 		HandleYBStatus(YBCPgResetTransactionReadPoint());
 	}
 
-	return YbMakeReadPointHandle(YBCPgGetCurrentReadPoint());
+	if (YBCIsLegacyModeForCatalogOps())
+		return YbMakeReadPointHandle(YBCPgGetCurrentReadPoint());
+
+	return YbMakeReadPointHandle(YBCPgGetMaxReadPoint());
 }
 
 /*
@@ -8416,4 +8426,102 @@ yb_get_tablet_metadata(PG_FUNCTION_ARGS)
 
 	MemoryContextSwitchTo(oldcontext);
 	return (Datum) 0;
+}
+
+YbcPgStatement
+YbNewSample(Relation rel,
+			int targrows,
+			double rstate_w,
+			uint64_t rand_state_s0,
+			uint64_t rand_state_s1)
+{
+	YbcPgStatement result = NULL;
+	HandleYBStatus(YBCPgNewSample(YBCGetDatabaseOid(rel), YbGetRelfileNodeId(rel),
+								  YbBuildTableLocalityInfo(rel), targrows, rstate_w, rand_state_s0,
+								  rand_state_s1, &result));
+	return result;
+}
+
+YbcPgStatement
+YbNewSelect(Relation rel, const YbcPgPrepareParameters *prepare_params)
+{
+	YbcPgStatement result = NULL;
+	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(rel), YbGetRelfileNodeId(rel), prepare_params,
+								  YbBuildTableLocalityInfo(rel), &result));
+	return result;
+}
+
+YbcPgStatement
+YbNewUpdateForDb(Oid db_oid, Relation rel, YbcPgTransactionSetting transaction_setting)
+{
+	YbcPgStatement result = NULL;
+	HandleYBStatus(YBCPgNewUpdate(db_oid, YbGetRelfileNodeId(rel),
+								  YbBuildTableLocalityInfo(rel), &result, transaction_setting));
+	return result;
+}
+
+YbcPgStatement
+YbNewUpdate(Relation rel, YbcPgTransactionSetting transaction_setting)
+{
+	return YbNewUpdateForDb(YBCGetDatabaseOid(rel), rel, transaction_setting);
+}
+
+YbcPgStatement
+YbNewDelete(Relation rel, YbcPgTransactionSetting transaction_setting)
+{
+	YbcPgStatement result = NULL;
+	HandleYBStatus(YBCPgNewDelete(YBCGetDatabaseOid(rel), YbGetRelfileNodeId(rel),
+								  YbBuildTableLocalityInfo(rel), &result, transaction_setting));
+	return result;
+}
+
+YbcPgStatement
+YbNewInsertForDb(Oid db_oid, Relation rel, YbcPgTransactionSetting transaction_setting)
+{
+	YbcPgStatement result = NULL;
+	HandleYBStatus(YBCPgNewInsert(db_oid, YbGetRelfileNodeId(rel),
+								  YbBuildTableLocalityInfo(rel), &result, transaction_setting));
+	return result;
+}
+
+YbcPgStatement
+YbNewInsert(Relation rel, YbcPgTransactionSetting transaction_setting)
+{
+	return YbNewInsertForDb(YBCGetDatabaseOid(rel), rel, transaction_setting);
+}
+
+extern YbcPgStatement
+YbNewInsertBlock(Relation rel, YbcPgTransactionSetting transaction_setting)
+{
+	YbcPgStatement result = NULL;
+	HandleYBStatus(YBCPgNewInsertBlock(YBCGetDatabaseOid(rel), YbGetRelfileNodeId(rel),
+									   YbBuildTableLocalityInfo(rel), transaction_setting,
+									   &result));
+	return result;
+}
+
+static YbcStatus
+YbNewTruncateColocatedImpl(Relation rel, YbcPgTransactionSetting transaction_setting,
+						   YbcPgStatement *result)
+{
+	return YBCPgNewTruncateColocated(YBCGetDatabaseOid(rel), YbGetRelfileNodeId(rel),
+									 YbBuildTableLocalityInfo(rel), result, transaction_setting);
+}
+
+YbcPgStatement
+YbNewTruncateColocated(Relation rel, YbcPgTransactionSetting transaction_setting)
+{
+	YbcPgStatement result = NULL;
+	HandleYBStatus(YbNewTruncateColocatedImpl(rel, transaction_setting, &result));
+	return result;
+}
+
+YbcPgStatement
+YbNewTruncateColocatedIgnoreNotFound(Relation rel, YbcPgTransactionSetting transaction_setting)
+{
+	bool not_found = false;
+	YbcPgStatement result = NULL;
+	HandleYBStatusIgnoreNotFound(YbNewTruncateColocatedImpl(rel, transaction_setting, &result),
+								 &not_found);
+	return not_found ? NULL : result;
 }

@@ -8,6 +8,8 @@ menu:
     identifier: create-admin-user
     parent: install-yugabyte-platform
     weight: 20
+aliases:
+  - /stable/yugabyte-platform/configure-yugabyte-platform/create-admin-user/
 type: docs
 ---
 

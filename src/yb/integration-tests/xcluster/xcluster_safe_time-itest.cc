@@ -144,7 +144,7 @@ class XClusterSafeTimeTest : public XClusterTestBase {
 
     LOG(INFO) << "Writing " << end - start << " inserts";
     for (uint32_t i = start; i < end; i++) {
-      auto op = table_handle.NewInsertOp();
+      auto op = table_handle.NewInsertOp(session->arena());
       auto req = op->mutable_request();
       QLAddInt32HashValue(req, static_cast<int32_t>(i));
       ASSERT_OK(session->TEST_ApplyAndFlush(op));

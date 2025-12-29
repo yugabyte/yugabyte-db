@@ -9,6 +9,8 @@ menu:
     identifier: the-sql-language
     parent: api-ysql
     weight: 10
+aliases:
+  - /stable/api/ysql/with-clause/
 type: indexpage
 showRightNav: true
 ---

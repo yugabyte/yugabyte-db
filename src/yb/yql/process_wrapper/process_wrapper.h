@@ -33,6 +33,7 @@ class ProcessWrapper {
   virtual Status Start() = 0;
   void Kill();
   void Kill(int signal);
+  virtual void Shutdown();
 
   // Waits for the running process to complete. Returns the exit code or an error.
   // Non-zero exit codes are considered non-error cases for the purpose of this function.
@@ -102,7 +103,7 @@ class ProcessSupervisor {
   Status StartProcessUnlocked() REQUIRES(mtx_);
   Status InitializeProcessWrapperUnlocked() REQUIRES(mtx_);
 
-  Status KillAndChangeState(YbSubProcessState new_state) EXCLUDES(mtx_);
+  Status StopProcessAndChangeState(YbSubProcessState new_state) EXCLUDES(mtx_);
 
   // Current state of the process.
   YbSubProcessState state_ GUARDED_BY(mtx_) = YbSubProcessState::kNotStarted;

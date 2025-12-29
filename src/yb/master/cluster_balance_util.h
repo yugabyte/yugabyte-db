@@ -22,6 +22,8 @@
 
 #include "yb/gutil/casts.h"
 
+#include "yb/common/replica_type.h"
+
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/cluster_balance_activity_info.h"
 #include "yb/master/ts_descriptor.h"
@@ -43,10 +45,7 @@ DECLARE_int64(remote_bootstrap_rate_limit_bytes_per_sec);
 namespace yb {
 namespace master {
 
-// enum for replica type, either live (synchronous) or read only (timeline consistent)
-YB_DEFINE_ENUM(ReplicaType,
-  (kLive)
-  (kReadOnly));
+using ::yb::ReplicaType;
 
 struct CBTabletMetadata {
   bool is_missing_replicas() { return is_under_replicated || !under_replicated_placements.empty(); }
@@ -282,10 +281,12 @@ struct Options {
 // the live and read-only placements).
 class PerRunState {
  public:
+  explicit PerRunState(const TabletInfoMap& tablet_map);
   uint32_t tablets_in_wrong_placement_ = 0;
   uint32_t blacklisted_leaders_ = 0;
   uint32_t total_table_load_difference_ = 0;
   uint64_t estimated_data_to_balance_bytes_ = 0;
+  const TabletInfoMap& tablet_map_;
 };
 
 // Placement-wide state and metrics. This is cleared between processing each placement (between the

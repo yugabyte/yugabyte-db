@@ -44,8 +44,7 @@ var abortTaskCmd = &cobra.Command{
 
 		rTask, response, err := abortRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Task", "Abort")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Task", "Abort")
 		}
 
 		if rTask.GetSuccess() {

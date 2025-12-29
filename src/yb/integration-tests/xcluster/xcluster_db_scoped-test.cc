@@ -503,8 +503,8 @@ TEST_F(XClusterDBScopedTest, DisableAutoTableProcessing) {
 
 class XClusterDBScopedTestWithTwoDBs : public XClusterDBScopedTest {
  public:
-  Status SetUpClusters() {
-    RETURN_NOT_OK(XClusterYsqlTestBase::SetUpClusters());
+  Status SetUpClusters(SetupParams params = {}) {
+    RETURN_NOT_OK(XClusterYsqlTestBase::SetUpClusters(params));
 
     RETURN_NOT_OK(RunOnBothClusters([this](Cluster* cluster) -> Status {
       RETURN_NOT_OK(CreateDatabase(cluster, namespace_name2_));

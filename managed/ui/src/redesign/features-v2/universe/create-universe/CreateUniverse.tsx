@@ -35,7 +35,7 @@ const { Grid2: Grid, Typography } = mui;
 
 const CreateUniverseRoot = styled('div')(() => ({
   '& .full-height-container': {
-    backgroundColor: '#fff !important',
+    backgroundColor: '#fff !important'
   }
 }));
 
@@ -75,7 +75,7 @@ export const CreateUniverse = () => {
           </Grid>
           <Grid container spacing={2}>
             <Grid sx={{ borderRight: '1px solid #E9EEF2', height: '100vh' }}>
-              <YBMultiLevelStepper dataTestId='stepper' activeStep={activeStep} steps={steps} />
+              <YBMultiLevelStepper dataTestId="stepper" activeStep={activeStep} steps={steps} />
             </Grid>
             <Grid
               container
@@ -95,7 +95,11 @@ export const CreateUniverse = () => {
                 direction="row"
                 sx={{ marginTop: '32px' }}
               >
-                <YBButton variant="secondary" size="large" dataTestId="create-universe-cancel-button">
+                <YBButton
+                  variant="secondary"
+                  size="large"
+                  dataTestId="create-universe-cancel-button"
+                >
                   {t('cancel', { keyPrefix: 'common' })}
                 </YBButton>
                 <Grid container alignItems="center" justifyContent="flex-end" spacing={2}>

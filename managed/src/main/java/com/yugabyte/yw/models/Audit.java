@@ -608,6 +608,9 @@ public class Audit extends Model {
     @EnumValue("Detach")
     Detach,
 
+    @EnumValue("Rollback Detach")
+    RollbackDetach,
+
     @EnumValue("Delete Attach/Detach Metadata")
     DeleteAttachDetachMetadata,
 
@@ -627,7 +630,10 @@ public class Audit extends Model {
     UpdateAdditionalServicesState,
 
     @EnumValue("Set Immutable Ybc on Kubernetes Universe")
-    KubernetesToggleImmutableYbc
+    KubernetesToggleImmutableYbc,
+
+    @EnumValue("Import Universe to the Kubernetes Operator")
+    OperatorImportUniverse,
   }
 
   // An auto incrementing, user-friendly ID for the audit entry.

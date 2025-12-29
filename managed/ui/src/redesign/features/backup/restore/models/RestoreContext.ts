@@ -148,6 +148,9 @@ export const defaultRestoreFormValues: RestoreFormModel = {
       incBackupTime: ''
     },
 
+    useRoles: false,
+    errorIfRolesExists: false,
+
     timeToRestoreType: TimeToRestoreType.RECENT_BACKUP,
 
     tableBackupType: Backup_Options_Type.ALL,
@@ -165,6 +168,8 @@ export const defaultRestoreFormValues: RestoreFormModel = {
     kmsConfig: null as any,
 
     useTablespaces: false,
+    useRoles: false,
+    errorIfRolesExists: false,
 
     parallelThreads: 0
   },

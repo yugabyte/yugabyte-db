@@ -34,7 +34,7 @@
 
 #include <string>
 
-#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_protocol.messages.h"
 #include "yb/common/schema.h"
 
 #include "yb/docdb/docdb_fwd.h"
@@ -58,7 +58,7 @@ inline Schema GetSimpleTestSchema() {
 }
 
 template <class WriteRequestPB, class Type>
-QLWriteRequestPB* TestRow(int32_t key, Type type, WriteRequestPB* req) {
+auto TestRow(int32_t key, Type type, WriteRequestPB* req) {
   auto wb = req->add_ql_write_batch();
   wb->set_schema_version(0);
   wb->set_type(type);
@@ -71,17 +71,17 @@ QLWriteRequestPB* TestRow(int32_t key, Type type, WriteRequestPB* req) {
 }
 
 template <class WriteRequestPB>
-QLWriteRequestPB* AddTestRowDelete(int32_t key, WriteRequestPB* req) {
+auto AddTestRowDelete(int32_t key, WriteRequestPB* req) {
   return TestRow(key, QLWriteRequestPB::QL_STMT_DELETE, req);
 }
 
 template <class WriteRequestPB>
-QLWriteRequestPB* AddTestRowInsert(int32_t key, WriteRequestPB* req) {
+auto AddTestRowInsert(int32_t key, WriteRequestPB* req) {
   return TestRow(key, QLWriteRequestPB::QL_STMT_INSERT, req);
 }
 
 template <class Type, class WriteRequestPB>
-QLWriteRequestPB* AddTestRow(int32_t key,
+auto AddTestRow(int32_t key,
                              int32_t int_val,
                              Type type,
                              WriteRequestPB* req) {
@@ -101,7 +101,12 @@ void AddTestRow(int32_t key,
   auto wb = AddTestRow(key, int_val, type, req);
   auto column_value = wb->add_column_values();
   column_value->set_column_id(kFirstColumnId + 2);
-  column_value->mutable_expr()->mutable_value()->set_string_value(string_val);
+  auto value = column_value->mutable_expr()->mutable_value();
+  if constexpr (rpc::IsGoogleProtobuf<WriteRequestPB>) {
+    value->set_string_value(string_val);
+  } else {
+    value->dup_string_value(string_val);
+  }
 }
 
 template <class WriteRequestPB>

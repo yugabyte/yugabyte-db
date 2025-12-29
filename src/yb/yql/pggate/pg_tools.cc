@@ -31,8 +31,6 @@
 #include "yb/yql/pggate/pg_table.h"
 #include "yb/yql/pggate/pg_type.h"
 
-#include "yb/yql/pggate/ybc_pg_typedefs.h"
-
 DECLARE_uint32(TEST_yb_ash_sleep_at_wait_state_ms);
 DECLARE_uint32(TEST_yb_ash_wait_code_to_sleep_at);
 DECLARE_string(TEST_yb_test_wait_event_aux_to_sleep_at_csv);
@@ -76,6 +74,14 @@ inline bool MaybeSleepForTests(ash::WaitStateCode wait_event, ash::PggateRPC pgg
   return FLAGS_TEST_yb_ash_sleep_at_wait_state_ms > 0 && (
       FLAGS_TEST_yb_ash_wait_code_to_sleep_at == std::to_underlying(wait_event) ||
       IsSleepRequired(pggate_rpc));
+}
+
+bool IsEqual(const YbcPgTableLocalityInfo& lhs, const YbcPgTableLocalityInfo& rhs) {
+  return lhs.is_region_local == rhs.is_region_local && lhs.tablespace_oid == rhs.tablespace_oid;
+}
+
+bool IsEmpty(const YbcPgTableLocalityInfo& info) {
+  return IsEqual(info, {});
 }
 
 } // namespace
@@ -150,6 +156,25 @@ void TablespaceCache::Put(PgObjectId table_oid, PgTablespaceOid tablespace_oid) 
 
 void TablespaceCache::Clear() {
   impl_.clear();
+}
+
+void TableLocalityMap::Add(PgOid table_id, const YbcPgTableLocalityInfo& info) {
+  if (IsEmpty(info)) {
+    DCHECK(!map_.contains(table_id));
+    return;
+  }
+  [[maybe_unused]] const auto ipair = map_.emplace(table_id, info);
+  DCHECK(ipair.second || IsEqual(ipair.first->second, info));
+}
+
+const YbcPgTableLocalityInfo& TableLocalityMap::Get(PgOid table_id) const {
+  static const YbcPgTableLocalityInfo kEmpty{};
+  const auto i = map_.find(table_id);
+  return i == map_.end() ? kEmpty : i->second;
+}
+
+void TableLocalityMap::Clear() {
+  map_.clear();
 }
 
 } // namespace yb::pggate

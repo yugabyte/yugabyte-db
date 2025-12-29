@@ -187,6 +187,22 @@ class IntentsWriterContext {
   int64_t left_records_;
 };
 
+// Base class for IntentsWriterContext that provides an iterator for intents.
+class IntentsWriterContextBase : public IntentsWriterContext {
+ public:
+  IntentsWriterContextBase(
+      const TransactionId& transaction_id,
+      IgnoreMaxApplyLimit ignore_max_apply_limit,
+      rocksdb::DB* intents_db,
+      const KeyBounds* key_bounds,
+      HybridTime file_filter_ht);
+
+  virtual ~IntentsWriterContextBase() = default;
+
+ protected:
+  BoundedRocksDbIterator intent_iter_;
+};
+
 struct ExternalTxnApplyStateData;
 using ExternalTxnApplyState = std::map<TransactionId, ExternalTxnApplyStateData>;
 
@@ -245,7 +261,8 @@ class FrontierSchemaVersionUpdater {
 
 using ApplyIntentsContextCompleteListener = boost::function<void(const ConsensusFrontiers&)>;
 
-class ApplyIntentsContext : public IntentsWriterContext, public FrontierSchemaVersionUpdater {
+class ApplyIntentsContext : public IntentsWriterContextBase,
+                            public FrontierSchemaVersionUpdater {
  public:
   ApplyIntentsContext(
       const TabletId& tablet_id, const TransactionId& transaction_id,
@@ -291,7 +308,6 @@ class ApplyIntentsContext : public IntentsWriterContext, public FrontierSchemaVe
   const KeyBounds* key_bounds_;
   DocVectorIndexesPtr vector_indexes_;
   StorageSet apply_to_storages_;
-  BoundedRocksDbIterator intent_iter_;
   // TODO(vector_index) Optimize memory management
   std::vector<DocVectorIndexInsertEntries> vector_index_batches_;
 
@@ -299,6 +315,7 @@ class ApplyIntentsContext : public IntentsWriterContext, public FrontierSchemaVe
   SchemaVersion schema_packing_version_ = std::numeric_limits<SchemaVersion>::max();
   KeyBuffer schema_packing_table_prefix_;
   ApplyIntentsContextCompleteListener complete_listener_;
+  rocksdb::DB* intents_db_;
 };
 
 class RemoveIntentsContext : public IntentsWriterContext {
@@ -373,6 +390,29 @@ class NonTransactionalBatchWriter : public rocksdb::DirectWriter,
   BoundedRocksDbIterator intents_db_iter_;
   Slice intents_db_iter_upperbound_;
   rocksdb::WriteBatch* intents_write_batch_;
+};
+
+// Context class for dumping intents records for a transaction.
+class DumpIntentsContext : public IntentsWriterContextBase {
+ public:
+  DumpIntentsContext(
+      const TransactionId& transaction_id,
+      rocksdb::DB* intents_db,
+      SchemaPackingProvider* schema_packing_provider);
+
+  void Start(const std::optional<Slice>& first_key) override;
+
+  Result<bool> Entry(
+      const Slice& reverse_index_key, const Slice& reverse_index_value, bool metadata,
+      rocksdb::DirectWriteHandler& handler) override;
+
+  Status DeleteVectorIds(Slice key, Slice ids, rocksdb::DirectWriteHandler& handler) override;
+
+  Status Complete(rocksdb::DirectWriteHandler& handler, bool transaction_finished) override;
+
+ private:
+  SchemaPackingProvider* schema_packing_provider_;
+  int64_t intent_count_ = 0;
 };
 
 } // namespace docdb

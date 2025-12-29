@@ -34,7 +34,7 @@ var updateXClusterCmd = &cobra.Command{
 		if er != nil {
 			logrus.Fatalf(formatter.Colorize(er.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(uuid)) == 0 {
+		if util.IsEmptyString(uuid) {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize("No xcluster uuid found to update\n", formatter.RedColor))
@@ -50,12 +50,7 @@ var updateXClusterCmd = &cobra.Command{
 
 		rXCluster, response, err := authAPI.GetXClusterConfig(uuid).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"xCluster",
-				"Update - Get xCluster")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "xCluster", "Update - Get xCluster")
 		}
 		validStatesForConfig := util.TableStatesInXClusterConfig()
 		xClusterTables := make([]string, 0)
@@ -92,7 +87,7 @@ var updateXClusterCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(sourceRole)) > 0 {
+		if !util.IsEmptyString(sourceRole) {
 			logrus.Debugf("Updating source role\n")
 			req.SetSourceRole(strings.ToUpper(sourceRole))
 		}
@@ -101,7 +96,7 @@ var updateXClusterCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(targetRole)) > 0 {
+		if !util.IsEmptyString(targetRole) {
 			logrus.Debugf("Updating target role\n")
 			req.SetTargetRole(strings.ToUpper(targetRole))
 		}
@@ -169,7 +164,7 @@ var updateXClusterCmd = &cobra.Command{
 				if len(tableNeedBootstrapUUIDs) > 0 || allowBoostrap {
 					logrus.Debug("Updating tables needing bootstrap\n")
 					bootstrapParams := ybaclient.BootstrapParams{
-						Tables: util.StringSliceFromString(tableNeedBootstrapUUIDs),
+						Tables: tableNeedBootstrapUUIDs,
 					}
 
 					if allowBoostrap {
@@ -198,7 +193,7 @@ var updateXClusterCmd = &cobra.Command{
 						logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 					}
 
-					if len(strings.TrimSpace(storageConfigName)) == 0 {
+					if util.IsEmptyString(storageConfigName) {
 						logrus.Fatalf(
 							formatter.Colorize(
 								"Storage configuration must be provided since a tables need bootstrap\n",
@@ -259,9 +254,10 @@ var updateXClusterCmd = &cobra.Command{
 		rTask, response, err := authAPI.EditXClusterConfig(uuid).
 			XclusterReplicationEditFormData(req).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "xCluster", "Update")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "xCluster", "Update")
 		}
+
+		util.CheckTaskAfterCreation(rTask)
 
 		msg := fmt.Sprintf(
 			"The xcluster config %s (%s) is being updated",
@@ -284,20 +280,21 @@ var updateXClusterCmd = &cobra.Command{
 
 			rXCluster, response, err := authAPI.GetXClusterConfig(uuid).Execute()
 			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(
-					response,
-					err,
-					"xCluster",
-					"Update - Get xCluster")
-				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+				util.FatalHTTPError(response, err, "xCluster", "Update - Get xCluster")
 			}
+
+			xclusterConfig := util.CheckAndDereference(
+				rXCluster,
+				"No xcluster found with uuid "+uuid,
+			)
+
 			r := make([]ybaclient.XClusterConfigGetResp, 0)
-			r = append(r, rXCluster)
+			r = append(r, xclusterConfig)
 
 			sourceUniverse, targetUniverse := GetSourceAndTargetXClusterUniverse(
 				authAPI, "", "",
-				rXCluster.GetSourceUniverseUUID(),
-				rXCluster.GetTargetUniverseUUID(),
+				xclusterConfig.GetSourceUniverseUUID(),
+				xclusterConfig.GetTargetUniverseUUID(),
 				"Update")
 
 			xcluster.SourceUniverse = sourceUniverse
@@ -313,12 +310,13 @@ var updateXClusterCmd = &cobra.Command{
 			return
 		}
 		logrus.Infoln(msg + "\n")
+		task := util.CheckTaskAfterCreation(rTask)
 		taskCtx := formatter.Context{
 			Command: "update",
 			Output:  os.Stdout,
 			Format:  ybatask.NewTaskFormat(viper.GetString("output")),
 		}
-		ybatask.Write(taskCtx, []ybaclient.YBPTask{rTask})
+		ybatask.Write(taskCtx, []ybaclient.YBPTask{task})
 
 	},
 }

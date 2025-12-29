@@ -510,3 +510,13 @@ SELECT * from pk;
 (1 row)
 
 COMMIT;
+-- verify error message for alter primary key index change owner
+CREATE TABLE yb_foo(id INT, PRIMARY KEY(id));
+ALTER INDEX yb_foo_pkey OWNER TO postgres;
+ERROR:  cannot alter the primary key index "yb_foo_pkey" owner directly
+HINT:  Alter the table instead.
+-- for temp table we get same error as in PG
+CREATE TEMP TABLE pg_foo(id INT, PRIMARY KEY(id));
+ALTER INDEX pg_foo_pkey OWNER TO postgres;
+WARNING:  cannot change owner of index "pg_foo_pkey"
+HINT:  Change the ownership of the index's table, instead.

@@ -91,8 +91,7 @@ var RestartCmd = &cobra.Command{
 		rUpgrade, response, err := authAPI.RestartUniverse(universeUUID).
 			RestartTaskParams(req).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Universe", "Restart")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Universe", "Restart")
 		}
 
 		logrus.Info(

@@ -193,7 +193,7 @@ class PgTableCache::Impl {
   explicit Impl(std::shared_future<client::YBClient*> client_future)
       : client_future_(std::move(client_future)) {}
 
-  Result<client::YBTablePtr> Get(const TableId& table_id) {
+  Result<client::YBTablePtr> Get(TableIdView table_id) {
     return GetEntry(table_id)->Get();
   }
 
@@ -275,7 +275,7 @@ class PgTableCache::Impl {
   }
 
   CacheEntryPtr GetEntry(
-      const TableId& table_id,
+      TableIdView table_id,
       const PgTableCacheGetOptions& options = {}) {
     auto p = DoGetEntry(table_id, options);
     if (p.second) {
@@ -285,13 +285,13 @@ class PgTableCache::Impl {
   }
 
   std::pair<CacheEntryPtr, bool> DoGetEntry(
-      const TableId& table_id, const PgTableCacheGetOptions& options) {
+      TableIdView table_id, const PgTableCacheGetOptions& options) {
     std::lock_guard lock(mutex_);
     return DoGetEntryUnlocked(table_id, options);
   }
 
   std::pair<CacheEntryPtr, bool> DoGetEntryUnlocked(
-      const TableId& table_id, const PgTableCacheGetOptions& options) REQUIRES(mutex_) {
+      TableIdView table_id, const PgTableCacheGetOptions& options) REQUIRES(mutex_) {
     const auto db_oid = CHECK_RESULT(GetPgsqlDatabaseOid(table_id));
     const auto iter = caches_.find(db_oid);
 
@@ -324,7 +324,7 @@ class PgTableCache::Impl {
   }
 
   void LoadEntry(
-      const TableId& table_id, master::IncludeHidden include_hidden, const CacheEntryPtr& entry) {
+      TableIdView table_id, master::IncludeHidden include_hidden, const CacheEntryPtr& entry) {
     auto callback = [entry, table_id](const Result<client::YBTablePtr>& result) {
       VLOG(4)
           << "PG table cache entry response for " << table_id << ": "
@@ -339,7 +339,7 @@ class PgTableCache::Impl {
 
   std::shared_future<client::YBClient*> client_future_;
   std::mutex mutex_;
-  using PgTableMap = std::unordered_map<TableId, CacheEntryPtr>;
+  using PgTableMap = UnorderedStringMap<TableId, CacheEntryPtr>;
   // db_id -> (table_id -> table_cache_entry, catalog_version)
   std::unordered_map<uint32_t, std::pair<PgTableMap, uint64_t>> caches_ GUARDED_BY(mutex_);
   CoarseTimePoint last_cache_invalidation_ GUARDED_BY(mutex_);
@@ -351,7 +351,7 @@ PgTableCache::PgTableCache(std::shared_future<client::YBClient*> client_future)
 
 PgTableCache::~PgTableCache() = default;
 
-Result<client::YBTablePtr> PgTableCache::Get(const TableId& table_id) {
+Result<client::YBTablePtr> PgTableCache::Get(TableIdView table_id) {
   return impl_->Get(table_id);
 }
 
@@ -376,12 +376,12 @@ void PgTableCache::InvalidateDbTables(
   impl_->InvalidateDbTables(db_oids_updated, db_oids_deleted);
 }
 
-Result<const client::YBTablePtr&> PgTablesQueryResult::Get(const TableId& table_id) const {
+Result<const client::YBTablePtr&> PgTablesQueryResult::Get(TableIdView table_id) const {
   return VERIFY_RESULT_REF(GetInfo(table_id)).table;
 }
 
 Result<const PgTablesQueryResult::TableInfo&> PgTablesQueryResult::GetInfo(
-    const TableId& table_id) const {
+    TableIdView table_id) const {
   RETURN_NOT_OK(*tables_);
   const auto& tables = **tables_;
   const auto it = std::ranges::find_if(

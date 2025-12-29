@@ -1,44 +1,24 @@
 ---
-title: Manage tables and indexes for disaster recovery
-headerTitle: Manage tables and indexes
-linkTitle: Tables and indexes
-description: Manage tables and indexes in universes with disaster recovery
-headContent: Add and remove tables and indexes in universes with disaster recovery
+title: Manage tables and indexes for Manual DR mode
+headerTitle: Tables and indexes in Manual mode
+linkTitle: DDL changes (Manual only)
+description: Manage tables and indexes in universes with DR in manual mode
+headContent: Perform DDL operations on universes with DR in Manual mode
 menu:
   stable_yugabyte-platform:
-    parent: disaster-recovery
+    parent: disaster-recovery-setup
     identifier: disaster-recovery-tables
     weight: 50
 type: docs
 ---
 
-When DDL changes are made to databases in replication for xCluster disaster recovery (DR) (such as creating, altering, or dropping tables or partitions), the changes must be:
+{{< warning title="Warning" >}}
+Fully Manual xCluster replication is deprecated and not recommended due to the operational complexity involved.
 
-- Performed at the SQL level on both the DR primary and replica.
-- In [Manual mode](../#manual-mode), also updated at the YugabyteDB Anywhere level in the DR configuration.
+The following guidance is not required for Automatic or Semi-automatic modes. Refer to [Perform DDL operations](../disaster-recovery-setup/#perform-ddl-operations).
+{{< /warning >}}
 
-{{<tabpane text=true >}}
-
-  {{% tab header="Automatic mode" lang="automatic-mode" %}}
-
-DDL operations must only be performed on the Primary universe. All schema changes are automatically replicated to the Standby universe.
-
-  {{% /tab %}}
-
-  {{% tab header="Semi-automatic mode" lang="semi-automatic-mode" %}}
-
-For each DDL statement:
-
-1. Execute the DDL on the DR primary, waiting for it to complete.
-1. Execute the DDL on the DR replica, waiting for it to complete.
-
-After both steps are complete, the YugabyteDB Anywhere UI should reflect any added/removed tables in the Tables listing for this DR configuration.
-
-  {{% /tab %}}
-
-  {{% tab header="Manual mode" lang="manual-mode" %}}
-
-You should perform these actions in a specific order, depending on whether performing a CREATE, DROP, ALTER, and so forth, as indicated by the sequence number of the operation in the table below.
+In Manual mode, you must perform DDL changes on databases in replication for xCluster disaster recovery (DR) (such as creating, altering, or dropping tables or partitions) in a specific order (depending on whether performing a CREATE, DROP, ALTER, and so forth) as indicated by the sequence number of the operation in the following table.
 
 | DDL | Step 1 | Step 2 | Step 3 |
 | :-- | :----- | :----- | :----- |
@@ -51,17 +31,13 @@ You should perform these actions in a specific order, depending on whether perfo
 | ALTER TABLE<br>ADD CONSTRAINT UNIQUE | Execute on Primary | Execute on Replica | [Reconcile configuration](#reconcile-configuration) |
 | ALTER TABLE<br>DROP CONSTRAINT<br>(unique constraints only) | Execute on Replica | Execute on Primary | [Reconcile configuration](#reconcile-configuration) |
 
-  {{% /tab %}}
-
-{{</tabpane >}}
-
 In addition, keep in mind the following:
 
 - If you are using Colocated tables, you CREATE TABLE on DR primary, then CREATE TABLE on DR replica making sure that you force the Colocation ID to be identical to that on DR primary.
 - If you try to make a DDL change on DR primary and it fails, you must also make the same attempt on DR replica and get the same failure.
 - TRUNCATE TABLE is not supported. To truncate a table, pause replication, truncate the table on both primary and standby, and resume replication.
 
-Use the following guidance when managing tables and indexes in universes with DR configured.
+Use the following guidance when managing tables and indexes in universes when DR is configured in Manual mode.
 
 ## Tables
 

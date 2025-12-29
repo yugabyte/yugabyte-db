@@ -180,7 +180,7 @@ class CompactionJobTest : public RocksDBTest {
   void SetLastSequence(const SequenceNumber sequence_number) {
     versions_->SetLastSequence(sequence_number + 1);
     test::TestUserFrontier frontier(sequence_number + 1);
-    versions_->UpdateFlushedFrontier(frontier.Clone());
+    versions_->UpdateFlushedFrontier(frontier.Clone(), FrontierModificationMode::kUpdate);
   }
 
   // returns expected result after compaction

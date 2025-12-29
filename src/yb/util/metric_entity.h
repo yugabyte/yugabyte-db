@@ -33,6 +33,7 @@ namespace yb {
 
 static const char* const kXClusterMetricEntityName = "xcluster";
 static const char* const kCdcsdkMetricEntityName = "cdcsdk";
+static const char* const kVectorIndexMetricEntityName = "vector_index";
 
 static const char* const kServerLevelAggregationId = "server_level";
 

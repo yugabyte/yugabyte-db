@@ -4,6 +4,10 @@ headerTitle: ysqlsh
 linkTitle: ysqlsh
 description: Use the YSQL shell (ysqlsh) to interact with YugabyteDB.
 headcontent: Shell for interacting with the YugabyteDB YSQL API
+aliases:
+  - /develop/tools/ysqlsh/
+  - /stable/develop/tools/ysqlsh/
+  - /stable/admin/ysqlsh/
 type: docs
 ---
 
@@ -19,8 +23,8 @@ The YugabyteDB SQL shell (ysqlsh) provides a CLI for interacting with YugabyteDB
 
 ysqlsh is installed with YugabyteDB and located in the `bin` directory of the YugabyteDB home directory.
 
-{{<lead link="/preview/releases/yugabyte-clients/">}}
-To download and install a standalone version of ysqlsh, refer to [YugabyteDB clients](/preview/releases/yugabyte-clients/).
+{{<lead link="/stable/releases/yugabyte-clients/">}}
+To download and install a standalone version of ysqlsh, refer to [YugabyteDB clients](/stable/releases/yugabyte-clients/).
 {{</lead>}}
 
 ### Starting ysqlsh

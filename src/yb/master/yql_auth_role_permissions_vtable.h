@@ -25,7 +25,7 @@ class YQLAuthRolePermissionsVTable : public YQLVirtualTable {
                                         const NamespaceName& namespace_name,
                                         yb::master::Master * const master);
 
-  Result<VTableDataPtr> RetrieveData(const QLReadRequestPB& request) const override;
+  Result<VTableDataPtr> RetrieveData(const QLReadRequestMsg& request) const override;
 
  protected:
   Schema CreateSchema() const;

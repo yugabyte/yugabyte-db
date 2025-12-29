@@ -36,8 +36,7 @@ var listDestinationAlertCmd = &cobra.Command{
 
 		r, response, err := destinationListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Alert Destination", "List")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Alert Destination", "List")
 		}
 
 		if len(destinationName) > 0 {

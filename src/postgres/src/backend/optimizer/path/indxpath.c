@@ -41,8 +41,11 @@
 #include "executor/ybExpr.h"
 #include "optimizer/planmain.h"
 #include "optimizer/tlist.h"
+#include "optimizer/yb_saop_merge.h"
 #include "parser/parsetree.h"
 #include "pg_yb_utils.h"
+#include "rewrite/rewriteHandler.h"
+#include "rewrite/rewriteManip.h"
 #include "utils/fmgroids.h"
 #include "utils/guc.h"
 #include "utils/rel.h"
@@ -214,7 +217,10 @@ static Cost yb_bitmap_scan_cost_est(PlannerInfo *root, RelOptInfo *rel,
 									Path *ipath);
 static bool yb_can_pushdown_distinct(PlannerInfo *root, IndexOptInfo *index);
 static bool yb_can_pushdown_as_filter(PlannerInfo *root, IndexOptInfo *index, RestrictInfo *rinfo);
+static void yb_derive_equal_cond(PlannerInfo *root, RelOptInfo *rel, IndexOptInfo *index,
+								 Relids relids, IndexClauseSet *clauseset);
 
+bool yb_enable_derived_equalities;
 
 /*
  * create_index_paths()
@@ -667,6 +673,10 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 
 	Relids		total_relids = NULL;
 
+	/* Skip non-YB indexes */
+	if (!IsYBRelationById(index->indexoid))
+		return false;
+
 	for (size_t i = 0; i < INDEX_MAX_KEYS && clauses->nonempty; i++)
 	{
 		List	   *colclauses = clauses->indexclauses[i];
@@ -961,16 +971,31 @@ get_join_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	/* We should have found something, else caller passed silly relids */
 	Assert(clauseset.nonempty);
 
+	/* Build index path(s) using the collected set of clauses */
+
+	/*
+	 * YB: Add derived join clauses for these specific outer relations
+	 */
+	if (IsYugaByteEnabled() && yb_enable_derived_equalities)
+		yb_derive_equal_cond(root, rel, index, relids, &clauseset);
+
 	/*
 	 * YB: We collect batched paths first to prioritize them in the path queue.
+	 * In the legacy bnl mode, we even don't create unbatched paths.
 	 */
+	bool yb_batched_paths_exist = false;
 	if (yb_bnl_batch_size > 1)
-		yb_get_batched_index_paths(root, rel, index, &clauseset,
-								   bitindexpaths);
+	{
+		yb_batched_paths_exist = yb_get_batched_index_paths(root, rel, index,
+															&clauseset,
+															bitindexpaths);
+	}
 
-	/* Build index path(s) using the collected set of clauses */
-	get_index_paths(root, rel, index, &clauseset,
-					NIL /* yb_bitmap_idx_pushdowns */ , bitindexpaths);
+	if (!yb_legacy_bnl_cost || !yb_batched_paths_exist)
+	{
+		get_index_paths(root, rel, index, &clauseset,
+						NIL /* yb_bitmap_idx_pushdowns */ , bitindexpaths);
+	}
 
 	/*
 	 * Remember we considered paths for this set of relids.
@@ -1051,6 +1076,13 @@ get_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	bool		skip_nonnative_saop = false;
 	bool		skip_lower_saop = false;
 	ListCell   *lc;
+
+	/*
+	 * YB: Add derived clauses for indexed generated columns and
+	 * index expressions.
+	 */
+	if (IsYugaByteEnabled() && yb_enable_derived_equalities)
+		yb_derive_equal_cond(root, rel, index, NULL /* relids */ , clauses);
 
 	/*
 	 * Build simple index paths using the clauses.  Allow ScalarArrayOpExpr
@@ -1218,6 +1250,7 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	bool		yb_supports_distinct_pushdown;
 	int			yb_distinct_prefixlen;
 	int			yb_distinct_nkeys;
+	List	   *yb_saop_merge_saop_cols = NIL;
 
 	/*
 	 * Check that index supports the desired scan type(s)
@@ -1422,7 +1455,8 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 		yb_distinct_nkeys = index->nhashcolumns ? -1 : yb_distinct_prefixlen;
 		index_pathkeys = build_index_pathkeys(root, index,
 											  ForwardScanDirection,
-											  &yb_distinct_nkeys);
+											  &yb_distinct_nkeys,
+											  &yb_saop_merge_saop_cols);
 		useful_pathkeys = truncate_useless_pathkeys(root, rel,
 													index_pathkeys,
 													yb_distinct_nkeys);
@@ -1466,6 +1500,7 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	 * YB: We also generate distinct index paths if there is a valid distinct
 	 * prefix, i.e. 'yb_distinct_prefixlen' >= 0.
 	 */
+yb_step_4:
 	if (index_clauses != NIL || useful_pathkeys != NIL || useful_predicate ||
 		index_only_scan || yb_distinct_prefixlen >= 0)
 	{
@@ -1481,7 +1516,8 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 								  index_only_scan,
 								  outer_relids,
 								  loop_count,
-								  false);
+								  false,
+								  yb_saop_merge_saop_cols);
 
 		/*
 		 * YB: Generate a distinct index path.
@@ -1525,7 +1561,8 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 									  index_only_scan,
 									  outer_relids,
 									  loop_count,
-									  true);
+									  true,
+									  yb_saop_merge_saop_cols);
 
 			/*
 			 * if, after costing the path, we find that it's not worth using
@@ -1536,7 +1573,37 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 			else
 				pfree(ipath);
 		}
+
+		/*
+		 * 4.5. YB: In case SAOP merge index paths were created, try creating
+		 * them without.
+		 */
+		if (yb_saop_merge_saop_cols != NIL)
+		{
+			/* Get useful_pathkeys without SAOP merge. */
+			yb_distinct_nkeys =
+				index->nhashcolumns ? -1 : yb_distinct_prefixlen;
+			index_pathkeys = build_index_pathkeys(root, index,
+												  ForwardScanDirection,
+												  &yb_distinct_nkeys,
+												  NULL);	/* yb_saop_merge_saop_cols */
+			useful_pathkeys = truncate_useless_pathkeys(root, rel,
+														index_pathkeys,
+														yb_distinct_nkeys);
+			yb_saop_merge_saop_cols = NIL;
+
+			goto yb_step_4;
+		}
 	}
+
+	/*
+	 * YB: It is possible that there are no index clauses or useful pathkeys
+	 * but SAOP merge SAOP cols are derived for the above forward scan case.
+	 * Clear that state before attempting backwards scan.  Don't bother freeing
+	 * memory as it's negligible and will be cleaned up with the memory context
+	 * after the query.
+	 */
+	yb_saop_merge_saop_cols = NIL;
 
 	/*
 	 * 5. If the index is ordered, a backwards scan might be interesting.
@@ -1550,10 +1617,12 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 		yb_distinct_nkeys = index->nhashcolumns ? -1 : yb_distinct_prefixlen;
 		index_pathkeys = build_index_pathkeys(root, index,
 											  BackwardScanDirection,
-											  &yb_distinct_nkeys);
+											  &yb_distinct_nkeys,
+											  &yb_saop_merge_saop_cols);
 		useful_pathkeys = truncate_useless_pathkeys(root, rel,
 													index_pathkeys,
 													yb_distinct_nkeys);
+yb_step_5:
 		if (useful_pathkeys != NIL)
 		{
 			ipath = create_index_path(root, index,
@@ -1566,7 +1635,8 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 									  index_only_scan,
 									  outer_relids,
 									  loop_count,
-									  false);
+									  false,
+									  yb_saop_merge_saop_cols);
 
 			/*
 			 * YB: Generate a backwards scanning distinct index path.
@@ -1600,7 +1670,8 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 										  index_only_scan,
 										  outer_relids,
 										  loop_count,
-										  true);
+										  true,
+										  yb_saop_merge_saop_cols);
 
 				/*
 				 * if, after costing the path, we find that it's not worth
@@ -1611,6 +1682,27 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 				else
 					pfree(ipath);
 			}
+		}
+
+		/*
+		 * 5.5. YB: In case SAOP merge index paths were created, try creating
+		 * them without.
+		 */
+		if (yb_saop_merge_saop_cols != NIL)
+		{
+			/* Get useful_pathkeys without SAOP merge. */
+			yb_distinct_nkeys =
+				index->nhashcolumns ? -1 : yb_distinct_prefixlen;
+			index_pathkeys = build_index_pathkeys(root, index,
+												  BackwardScanDirection,
+												  &yb_distinct_nkeys,
+												  NULL);	/* yb_saop_merge_saop_cols */
+			useful_pathkeys = truncate_useless_pathkeys(root, rel,
+														index_pathkeys,
+														yb_distinct_nkeys);
+			yb_saop_merge_saop_cols = NIL;
+
+			goto yb_step_5;
 		}
 	}
 
@@ -2538,7 +2630,7 @@ get_loop_count(PlannerInfo *root, Index cur_relid, Relids outer_relids)
 	}
 
 	if (!bms_is_empty(root->yb_cur_batched_relids) &&
-		yb_enable_base_scans_cost_model)
+		(yb_enable_base_scans_cost_model || yb_legacy_bnl_cost))
 		result /= yb_bnl_batch_size;
 
 	/* Return 1.0 if we found no valid relations (shouldn't happen) */
@@ -4781,4 +4873,130 @@ yb_can_pushdown_distinct(PlannerInfo *root, IndexOptInfo *index)
 									 get_sortgrouplist_exprs(root->parse->distinctClause,
 															 root->processed_tlist)) &&
 		!yb_reject_distinct_pushdown((Node *) clause_list);
+}
+
+/*
+ * yb_derive_equal_cond
+ *   Add derived clauses for indexed generated columns and index expressions
+ */
+static void
+yb_derive_equal_cond(PlannerInfo *root, RelOptInfo *rel,
+					 IndexOptInfo *index, Relids relids,
+					 IndexClauseSet *clauseset)
+{
+	Relids		outer_relids = NULL;
+	Relation	index_rel;
+	Relation	base_rel;
+	RangeTblEntry *rte;
+	ListCell   *expr_lc;
+
+	/* skip non-YB and hypothetical indexes */
+	if (!index->rel->is_yb_relation || index->hypothetical)
+		return;
+
+	/* for joins, compute outer relations */
+	if (relids != NULL)
+	{
+		outer_relids = bms_difference(relids, rel->relids);
+		if (bms_is_empty(outer_relids))
+		{
+			bms_free(outer_relids);
+			return;
+		}
+	}
+
+	index_rel = index_open(index->indexoid, NoLock);
+	rte = root->simple_rte_array[rel->relid];
+	base_rel = table_open(rte->relid, NoLock);
+	expr_lc = list_head(index_rel->rd_indexprs);
+
+	/* process each index key */
+	for (int i = 0; i < index_rel->rd_index->indnatts; i++)
+	{
+		Expr	   *inferrable_expr = NULL;
+		Expr	   *generation_expr = NULL;
+		AttrNumber	attnum = index_rel->rd_index->indkey.values[i];
+		List	   *rinfos = NIL;
+
+		if (attnum == InvalidAttrNumber)
+		{
+			/* expression index */
+			Assert(expr_lc != NULL);
+			Node	   *index_expr = copyObject(lfirst(expr_lc));
+
+			ChangeVarNodes(index_expr, 1, rel->relid, 0);
+
+			inferrable_expr = (Expr *) index_expr;
+			generation_expr = (Expr *) index_expr;
+
+			expr_lc = lnext(index_rel->rd_indexprs, expr_lc);
+		}
+		else
+		{
+			/* regular column - check if generated */
+			TupleDesc	tupdesc = RelationGetDescr(base_rel);
+			Form_pg_attribute attr = TupleDescAttr(tupdesc, attnum - 1);
+
+			if (attr->attgenerated != ATTRIBUTE_GENERATED_STORED)
+				continue;
+
+			generation_expr = (Expr *) build_column_default(base_rel, attnum);
+			ChangeVarNodes((Node *) generation_expr, 1, rel->relid, 0);
+
+			inferrable_expr = (Expr *) makeVar(rel->relid, attnum, attr->atttypid,
+											   attr->atttypmod, attr->attcollation, 0);
+		}
+
+		if (outer_relids == NULL)
+		{
+			RestrictInfo *rinfo = yb_try_create_derived_clause(root, rel->relid, 0,
+															   inferrable_expr,
+															   generation_expr,
+															   index->opfamily[i]);
+
+			if (rinfo)
+				rinfos = list_make1(rinfo);
+		}
+		else
+		{
+			int			outer_relid = -1;
+
+			while ((outer_relid = bms_next_member(outer_relids, outer_relid)) >= 0)
+			{
+				RestrictInfo *rinfo = yb_try_create_derived_clause(root,
+																   rel->relid,
+																   (Index) outer_relid,
+																   inferrable_expr,
+																   generation_expr,
+																   index->opfamily[i]);
+
+				if (rinfo)
+					rinfos = lappend(rinfos, rinfo);
+			}
+		}
+
+		/* add IndexClauses for all generated RestrictInfos */
+		ListCell   *lc;
+
+		foreach(lc, rinfos)
+		{
+			RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
+			IndexClause *iclause = makeNode(IndexClause);
+
+			iclause->rinfo = rinfo;
+			iclause->indexquals = list_make1(rinfo);
+			iclause->lossy = false;
+			iclause->indexcol = i;
+			iclause->indexcols = NIL;
+
+			clauseset->indexclauses[i] =
+				lappend(clauseset->indexclauses[i], iclause);
+			clauseset->nonempty = true;
+		}
+	}
+
+	table_close(base_rel, NoLock);
+	index_close(index_rel, NoLock);
+	if (outer_relids)
+		bms_free(outer_relids);
 }

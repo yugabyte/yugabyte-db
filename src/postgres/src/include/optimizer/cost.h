@@ -34,6 +34,8 @@
 #define DEFAULT_EFFECTIVE_CACHE_SIZE  524288	/* measured in pages */
 
 /* YB */
+#define YB_DEFAULT_PARALLEL_TUPLE_COST  0.18
+#define YB_DEFAULT_PARALLEL_SETUP_COST  1700.0
 #define YB_DEFAULT_INTERCLOUD_COST 10.0
 #define	YB_DEFAULT_INTERREGION_COST 10.0
 #define	YB_DEFAULT_INTERZONE_COST 9.5
@@ -149,10 +151,10 @@ extern PGDLLIMPORT bool yb_enable_geolocation_costing;
  * nested loop join plans.
  */
 extern PGDLLIMPORT bool yb_enable_batchednl;
-extern PGDLLIMPORT bool yb_enable_parallel_append;
 extern PGDLLIMPORT YbCostModel yb_enable_cbo;
 extern PGDLLIMPORT bool yb_ignore_stats;
 extern PGDLLIMPORT bool yb_legacy_bnl_cost;
+extern PGDLLIMPORT bool yb_ignore_bool_cond_for_legacy_estimate;
 
 extern double index_pages_fetched(double tuples_fetched, BlockNumber pages,
 								  double index_pages, PlannerInfo *root);

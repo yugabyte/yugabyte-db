@@ -123,7 +123,6 @@ class DBIter final : public Iterator {
         user_merge_operator_(ioptions.merge_operator),
         iter_(iter),
         sequence_(s),
-        direction_(kForward),
         current_entry_is_merged_(false),
         statistics_(statistics ? statistics : ioptions.statistics),
         version_number_(version_number),
@@ -365,6 +364,18 @@ class DBIter final : public Iterator {
   bool ParseKey(ParsedInternalKey* key);
   void MergeValuesNewToOld();
 
+  inline void SetForwardDirection() {
+    direction_ = kForward;
+  }
+
+  inline void SetReverseDirection() {
+    direction_ = kReverse;
+
+    // TODO(scanperf) allow fast next after reverse scan.
+    // Fallback to regular Next if reverse scan was used.
+    fast_next_ = false;
+  }
+
   inline void ClearSavedValue() {
     if (saved_value_.capacity() > 1048576) {
       std::string empty;
@@ -407,7 +418,8 @@ class DBIter final : public Iterator {
   Status status_;
   yb::ByteBuffer<kKeyBufferSize> key_buffer_;
   std::string saved_value_;
-  Direction direction_;
+  // Should be controlled via SetForwardDirection/SetReverseDirection
+  Direction direction_ = Direction::kForward;
   KeyValueEntry entry_;
 
 #ifdef ROCKSDB_CATCH_MISSING_STATUS_CHECK
@@ -467,7 +479,7 @@ const KeyValueEntry& DBIter::Next() {
 
   if (direction_ == kReverse) {
     FindNextUserKey();
-    direction_ = kForward;
+    SetForwardDirection();
     if (!iter_->Valid()) {
       iter_->SeekToFirst();
     }
@@ -498,6 +510,7 @@ const KeyValueEntry& DBIter::Next() {
 
 const KeyValueEntry& DBIter::FastNext() {
   DCHECK(entry_);
+  DCHECK_EQ(direction_, Direction::kForward);
 
   ++num_fast_next_calls_;
   const auto& entry = iter_->Next();
@@ -530,8 +543,8 @@ inline void DBIter::FindNextUserEntry(bool skipping) {
 // Actual implementation of DBIter::FindNextUserEntry()
 void DBIter::FindNextUserEntryInternal(bool skipping) {
   // Loop until we hit an acceptable entry to yield
-  assert(iter_->Valid());
-  assert(direction_ == kForward);
+  DCHECK(iter_->Valid());
+  DCHECK_EQ(direction_, Direction::kForward);
   current_entry_is_merged_ = false;
   uint64_t num_skipped = 0;
   do {
@@ -634,12 +647,10 @@ void DBIter::MergeValuesNewToOld() {
       // ignore corruption if there is any.
       const Slice val = iter_->value();
       {
-        StopWatchNano timer(env_, statistics_ != nullptr);
+        StopWatchNano timer(env_, statistics_, MERGE_OPERATION_TOTAL_TIME);
         PERF_TIMER_GUARD(merge_operator_time_nanos);
         user_merge_operator_->FullMerge(ikey.user_key, &val, operands,
                                         &saved_value_, logger_);
-        RecordTick(statistics_, MERGE_OPERATION_TOTAL_TIME,
-                   timer.ElapsedNanos());
       }
       // iter_ is positioned after put
       iter_->Next();
@@ -655,7 +666,7 @@ void DBIter::MergeValuesNewToOld() {
   }
 
   {
-    StopWatchNano timer(env_, statistics_ != nullptr);
+    StopWatchNano timer(env_, statistics_, MERGE_OPERATION_TOTAL_TIME);
     PERF_TIMER_GUARD(merge_operator_time_nanos);
     // we either exhausted all internal keys under this user key, or hit
     // a deletion marker.
@@ -663,7 +674,6 @@ void DBIter::MergeValuesNewToOld() {
     // client can differentiate this scenario and do things accordingly.
     user_merge_operator_->FullMerge(entry_.key, nullptr, operands,
                                     &saved_value_, logger_);
-    RecordTick(statistics_, MERGE_OPERATION_TOTAL_TIME, timer.ElapsedNanos());
   }
 }
 
@@ -707,11 +717,7 @@ void DBIter::ReverseToBackward() {
 #endif
 
   FindPrevUserKey();
-  direction_ = kReverse;
-
-  // TODO(scanperf) allow fast next after reverse scan.
-  // Fallback to regular Next if reverse scan was used.
-  fast_next_ = false;
+  SetReverseDirection();
 }
 
 void DBIter::PrevInternal() {
@@ -812,25 +818,21 @@ bool DBIter::FindValueForCurrentKey() {
       return false;
     case kTypeMerge:
       if (last_not_merge_type == kTypeDeletion) {
-        StopWatchNano timer(env_, statistics_ != nullptr);
+        StopWatchNano timer(env_, statistics_, MERGE_OPERATION_TOTAL_TIME);
         PERF_TIMER_GUARD(merge_operator_time_nanos);
         user_merge_operator_->FullMerge(entry_.key, nullptr,
                                         merge_operands_, &saved_value_,
                                         logger_);
-        RecordTick(statistics_, MERGE_OPERATION_TOTAL_TIME,
-                   timer.ElapsedNanos());
       } else {
         assert(last_not_merge_type == kTypeValue);
         std::string last_put_value = saved_value_;
         Slice temp_slice(last_put_value);
         {
-          StopWatchNano timer(env_, statistics_ != nullptr);
+          StopWatchNano timer(env_, statistics_, MERGE_OPERATION_TOTAL_TIME);
           PERF_TIMER_GUARD(merge_operator_time_nanos);
           user_merge_operator_->FullMerge(entry_.key, &temp_slice,
                                           merge_operands_, &saved_value_,
                                           logger_);
-          RecordTick(statistics_, MERGE_OPERATION_TOTAL_TIME,
-                     timer.ElapsedNanos());
         }
       }
       break;
@@ -886,11 +888,10 @@ bool DBIter::FindValueForCurrentKeyUsingSeek() {
       !user_comparator_->Equal(ikey.user_key, entry_.key) ||
       ikey.type == kTypeDeletion || ikey.type == kTypeSingleDeletion) {
     {
-      StopWatchNano timer(env_, statistics_ != nullptr);
+      StopWatchNano timer(env_, statistics_, MERGE_OPERATION_TOTAL_TIME);
       PERF_TIMER_GUARD(merge_operator_time_nanos);
       user_merge_operator_->FullMerge(entry_.key, nullptr, operands,
                                       &saved_value_, logger_);
-      RecordTick(statistics_, MERGE_OPERATION_TOTAL_TIME, timer.ElapsedNanos());
     }
     // Make iter_ valid and point to saved_key_
     if (!iter_->Valid() ||
@@ -904,11 +905,9 @@ bool DBIter::FindValueForCurrentKeyUsingSeek() {
 
   const Slice& val = iter_->value();
   {
-    StopWatchNano timer(env_, statistics_ != nullptr);
+    StopWatchNano timer(env_, statistics_, MERGE_OPERATION_TOTAL_TIME);
     PERF_TIMER_GUARD(merge_operator_time_nanos);
-    user_merge_operator_->FullMerge(entry_.key, &val, operands,
-                                    &saved_value_, logger_);
-    RecordTick(statistics_, MERGE_OPERATION_TOTAL_TIME, timer.ElapsedNanos());
+    user_merge_operator_->FullMerge(entry_.key, &val, operands, &saved_value_, logger_);
   }
   SetValid();
   return true;
@@ -978,7 +977,7 @@ const KeyValueEntry& DBIter::Seek(Slice target) {
   }
 
   if (iter_->Valid()) {
-    direction_ = kForward;
+    SetForwardDirection();
     ClearSavedValue();
     FindNextUserEntry(false /* not skipping */);
     RecordStats(NUMBER_DB_SEEK, NUMBER_DB_SEEK_FOUND);
@@ -998,7 +997,7 @@ const KeyValueEntry& DBIter::SeekToFirst() {
   if (prefix_extractor_ != nullptr) {
     max_skip_ = std::numeric_limits<uint64_t>::max();
   }
-  direction_ = kForward;
+  SetForwardDirection();
   ClearSavedValue();
 
   {
@@ -1025,7 +1024,7 @@ const KeyValueEntry& DBIter::SeekToLast() {
   if (prefix_extractor_ != nullptr) {
     max_skip_ = std::numeric_limits<uint64_t>::max();
   }
-  direction_ = kReverse;
+  SetReverseDirection();
   ClearSavedValue();
 
   {

@@ -4,6 +4,8 @@ headerTitle: Modify universe
 linkTitle: Modify universe
 description: Use YugabyteDB Anywhere to modify a universe.
 headcontent: Scale universes horizontally and vertically
+aliases:
+  - /stable/manage/enterprise-edition/edit-universe/
 menu:
   stable_yugabyte-platform:
     identifier: edit-universe

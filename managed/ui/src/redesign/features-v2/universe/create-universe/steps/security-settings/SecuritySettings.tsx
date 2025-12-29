@@ -35,7 +35,7 @@ export const SecuritySettings = forwardRef<StepsRef>((_, forwardRef) => {
     forwardRef,
     () => ({
       onNext: () => {
-        methods.handleSubmit((data) => {
+        return methods.handleSubmit((data) => {
           saveSecuritySettings(data);
           moveToNextPage();
         })();
@@ -54,7 +54,7 @@ export const SecuritySettings = forwardRef<StepsRef>((_, forwardRef) => {
         <StyledContent>
           <AssignPublicIPField
             disabled={false}
-            providerCode={generalSettings?.providerConfiguration?.code || ''}
+            providerCode={generalSettings?.providerConfiguration?.code ?? ''}
           />
         </StyledContent>
       </StyledPanel>

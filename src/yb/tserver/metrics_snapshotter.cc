@@ -42,6 +42,7 @@
 #include <rapidjson/document.h>
 
 #include "yb/common/jsonb.h"
+#include "yb/common/ql_protocol.messages.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/client/client.h"

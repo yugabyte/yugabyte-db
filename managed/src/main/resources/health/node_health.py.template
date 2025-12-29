@@ -770,33 +770,43 @@ class NodeChecker():
                 # In case the runtime certs are different from the on-disk certs
                 # & they are about to expire <= 30 days, we will raise the alerts
                 # for users to restart the services.
-                try:
-                    cert_output = self.retrieve_host_certs(self.node, self.tserver_rpc_port)
-                except Exception as e:
-                    logging.info("Failed to retrieve tserver certs, trying with master")
-                    cert_output = self.retrieve_host_certs(self.node, self.master_rpc_port)
-                certs = self.parse_certs(cert_output)
-                if not self.are_certs_same(certs, cert_path):
-                    for cert in certs:
-                        output = self.get_certificate_expiration_date_from_string(cert)
-                        try:
-                            ssl_date_fmt = r'%b %d %H:%M:%S %Y %Z'
-                            date = output.replace('notAfter=', '')
-                            expiry_date = datetime.strptime(date, ssl_date_fmt)
-                        except Exception as ex:
-                            message = str(ex)
-                            return e.fill_and_return_entry([message], has_error=True)
+                failed_target = None
+                targets = []
+                if self.master_index >= 0:
+                    targets.append('master')
+                if self.tserver_index >= 0:
+                    targets.append('tserver')
+                for target in targets:
+                    try:
+                        port = self.tserver_rpc_port if target == 'tserver'\
+                            else self.master_rpc_port
+                        cert_output = self.retrieve_host_certs(self.node, port)
 
-                        delta = expiry_date - datetime.now()
-                        if delta.days < days_till_expiry:
-                            days_till_expiry = delta.days
+                        certs = self.parse_certs(cert_output)
+                        if not self.are_certs_same(certs, cert_path):
+                            for cert in certs:
+                                output = self.get_certificate_expiration_date_from_string(cert)
+                                try:
+                                    ssl_date_fmt = r'%b %d %H:%M:%S %Y %Z'
+                                    date = output.replace('notAfter=', '')
+                                    expiry_date = datetime.strptime(date, ssl_date_fmt)
+                                except Exception as ex:
+                                    message = str(ex)
+                                    return e.fill_and_return_entry([message], has_error=True)
 
-                    if days_till_expiry >=0 and days_till_expiry < 30:
-                        return e.fill_and_return_entry(
-                            ['{} certificate expires in {} days. Consider running rolling restart'
-                            .format(cert_name, days_till_expiry)],
-                            has_error=True,
-                            metrics=[metric])
+                                delta = expiry_date - datetime.now()
+                                if delta.days < days_till_expiry:
+                                    days_till_expiry = delta.days
+                                    failed_target = target
+                    except Exception as e:
+                        logging.info("Failed to retrieve {} certs".format(target))
+
+                if days_till_expiry >=0 and days_till_expiry < 30:
+                    return e.fill_and_return_entry(
+                        ['{} certificate for {} expires in {} days. Consider running rolling'
+                         ' restart'.format(cert_name, failed_target, days_till_expiry)],
+                        has_error=True,
+                        metrics=[metric])
 
             return e.fill_and_return_entry(
                 ['{} days'.format(days_till_expiry)],
@@ -2730,34 +2740,10 @@ def main():
         n.ybdb_inbuilt_ybc)
 
     coordinator.add_precheck(checker, "check_openssl_availability")
-    coordinator.add_check(checker, "check_earlyoom", n.enable_earlyoom)
-    if n.enable_earlyoom:
-        coordinator.add_check(checker, "count_earlyoom_kills")
+
+    # Node metrics collection check should always go first.
+    # Otherwise we'll not collect all the required metrics in HealthChecker.
     coordinator.add_check(checker, "check_node_metrics_collection")
-    coordinator.add_check(checker, "check_disk_utilization")
-    coordinator.add_check(checker, "check_for_core_files")
-    if n.enable_tls:
-        coordinator.add_check(checker, "check_node_to_node_ca_certificate_expiration")
-        coordinator.add_check(checker, "check_node_to_node_certificate_expiration")
-        coordinator.add_check(checker, "check_node_to_node_runtime_certificate_expiration")
-    if n.enable_tls_client:
-        coordinator.add_check(checker, "check_client_ca_certificate_expiration")
-        if not n.root_and_client_root_ca_same:
-            coordinator.add_check(checker, "check_client_to_node_ca_certificate_expiration")
-            coordinator.add_check(checker, "check_client_to_node_certificate_expiration")
-
-    if not args.metrics_only:
-        # These checks are not working properly when called from inside the service
-        # Will only call them as part of health checks for now
-        # And metrics will be exposed by Platform
-        if n.tserver_index >= 0:
-            coordinator.add_check(checker, "check_file_descriptors")
-        if n.check_clock:
-            coordinator.add_check(checker, "check_clock_skew")
-
-    if n.check_time_drift:
-        coordinator.add_check(checker, "check_yb_node_clock_drift")
-
     if n.master_index >= 0:
         coordinator.add_check(checker, "check_uptime_for_process", MASTER)
         if alert_enhancements_version:
@@ -2767,9 +2753,6 @@ def main():
         coordinator.add_check(checker, "check_leaderless_tablets")
         coordinator.add_check(checker, "check_underreplicated_tablets")
         coordinator.add_check(checker, "check_process_stats", MASTER)
-    else:
-        if not args.metrics_only:
-            coordinator.add_check(checker, "check_unexpected_process", MASTER)
 
     if n.tserver_index >= 0:
         coordinator.add_check(checker, "check_uptime_for_process", TSERVER)
@@ -2817,9 +2800,38 @@ def main():
             coordinator.add_check(checker, "check_process_stats", YB_CONTROLLER)
         coordinator.add_check(checker, "check_process_stats", POSTMASTER)
         coordinator.add_check(checker, "check_process_stats", TSERVER)
-    else:
-        if not args.metrics_only:
+
+    coordinator.add_check(checker, "check_disk_utilization")
+    coordinator.add_check(checker, "check_for_core_files")
+
+    if not args.metrics_only:
+        # These checks are not working properly when called from inside the service
+        # Will only call them as part of health checks for now
+        # And metrics will be exposed by Platform
+        if n.check_clock:
+            coordinator.add_check(checker, "check_clock_skew")
+        if n.tserver_index >= 0:
+            coordinator.add_check(checker, "check_file_descriptors")
+        else:
             coordinator.add_check(checker, "check_unexpected_process", TSERVER)
+        if n.master_index < 0:
+            coordinator.add_check(checker, "check_unexpected_process", MASTER)
+
+    if n.check_time_drift:
+        coordinator.add_check(checker, "check_yb_node_clock_drift")
+
+    coordinator.add_check(checker, "check_earlyoom", n.enable_earlyoom)
+    if n.enable_earlyoom:
+        coordinator.add_check(checker, "count_earlyoom_kills")
+    if n.enable_tls:
+        coordinator.add_check(checker, "check_node_to_node_ca_certificate_expiration")
+        coordinator.add_check(checker, "check_node_to_node_certificate_expiration")
+        coordinator.add_check(checker, "check_node_to_node_runtime_certificate_expiration")
+    if n.enable_tls_client:
+        coordinator.add_check(checker, "check_client_ca_certificate_expiration")
+        if not n.root_and_client_root_ca_same:
+            coordinator.add_check(checker, "check_client_to_node_ca_certificate_expiration")
+            coordinator.add_check(checker, "check_client_to_node_certificate_expiration")
 
     if not n.is_k8s:
         coordinator.add_check(checker, "check_oom_kills")

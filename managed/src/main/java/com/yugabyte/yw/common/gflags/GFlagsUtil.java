@@ -126,6 +126,7 @@ public class GFlagsUtil {
   public static final String USE_PRIVATE_IP = "use_private_ip";
   public static final String WEBSERVER_PORT = "webserver_port";
   public static final String WEBSERVER_INTERFACE = "webserver_interface";
+  public static final String OPENSSL_REQUIRE_FIPS = "openssl_require_fips";
   public static final String REDIS_PROXY_BIND_ADDRESS = "redis_proxy_bind_address";
   public static final String REDIS_PROXY_WEBSERVER_PORT = "redis_proxy_webserver_port";
   public static final String POSTMASTER_CGROUP = "postmaster_cgroup";
@@ -312,6 +313,10 @@ public class GFlagsUtil {
       extra_gflags.put(FS_DATA_DIRS, mountPoints);
     } else {
       throw new RuntimeException("mountpoints and numVolumes are missing from taskParam");
+    }
+
+    if (universe.getUniverseDetails().fipsEnabled) {
+      extra_gflags.put(OPENSSL_REQUIRE_FIPS, "true");
     }
 
     boolean isMultiRegion =
@@ -1259,7 +1264,12 @@ public class GFlagsUtil {
       mergeHostAndPort(userGFlags, PSQL_PROXY_BIND_ADDRESS, ysqlPort);
     }
     if (userGFlags.containsKey(CSQL_PROXY_BIND_ADDRESS)) {
-      mergeHostAndPort(userGFlags, CSQL_PROXY_BIND_ADDRESS, node.yqlServerRpcPort);
+      // If user is changing the port during configure YCQL upgrade, need to use the new port.
+      int yqlPort =
+          taskParams.overrideNodePorts
+              ? taskParams.communicationPorts.yqlServerRpcPort
+              : node.yqlServerRpcPort;
+      mergeHostAndPort(userGFlags, CSQL_PROXY_BIND_ADDRESS, yqlPort);
     }
     if (userGFlags.containsKey(REDIS_PROXY_BIND_ADDRESS)) {
       mergeHostAndPort(userGFlags, REDIS_PROXY_BIND_ADDRESS, node.redisServerRpcPort);
@@ -1568,6 +1578,24 @@ public class GFlagsUtil {
       userGFlags.put(
           key, mergeCSVs(userValue, platformGFlags.getOrDefault(key, ""), mergeKeyValues));
     }
+  }
+
+  // Extract out the flag names from the undefok gflag.
+  public static Set<String> extractUndefokFlags(Map<String, String> gflags) {
+    Set<String> undefokFlags = new HashSet<>();
+    String undefokValue = gflags.get(UNDEFOK);
+
+    if (StringUtils.isNotBlank(undefokValue)) {
+      String[] flagNames = undefokValue.split(",");
+      for (String flagName : flagNames) {
+        String trimmedFlagName = flagName.trim();
+        if (!trimmedFlagName.isEmpty()) {
+          undefokFlags.add(trimmedFlagName);
+        }
+      }
+    }
+
+    return undefokFlags;
   }
 
   private static void mergeHostAndPort(

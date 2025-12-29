@@ -828,13 +828,7 @@ PortalRun(Portal portal, long count, bool isTopLevel, bool run_once,
 		 * earlier execution).
 		 */
 		if (isTopLevel)
-		{
-			YbcFlushDebugContext yb_debug_context = {
-				.reason = YB_END_OF_TOP_LEVEL_STMT,
-			};
-
-			YBFlushBufferedOperations(&yb_debug_context);
-		}
+			YBFlushBufferedOperations(YBCMakeFlushDebugContextEndOfTopLevelStmt());
 	}
 	PG_CATCH();
 	{

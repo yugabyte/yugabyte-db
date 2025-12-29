@@ -9,6 +9,12 @@ menu:
     name: Open Source
     identifier: k8s-oss-2
     weight: 621
+aliases:
+  - /stable/deploy/kubernetes/yugabyte-operator/
+  - /stable/deploy/kubernetes/oss/yugabyte-operator/
+  - /stable/deploy/kubernetes/operator-hub/
+  - /stable/deploy/kubernetes/oss/operator-hub/
+  - /stable/deploy/kubernetes/single-zone/oss/operator-hub/
 type: docs
 ---
 

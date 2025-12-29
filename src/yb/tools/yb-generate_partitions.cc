@@ -20,7 +20,7 @@
 #include "yb/client/yb_op.h"
 
 #include "yb/common/common.pb.h"
-#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_protocol.messages.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 
@@ -96,7 +96,7 @@ Status YBPartitionGenerator::LookupTabletIdWithTokenizer(const CsvTokenizer& tok
   }
 
   std::unique_ptr<client::YBqlReadOp> yb_op(table_->NewQLRead());
-  QLReadRequestPB* ql_read = yb_op->mutable_request();
+  auto* ql_read = yb_op->mutable_request();
 
   // Set the hash column values to compute the partition key.
   auto it = tokenizer.begin();

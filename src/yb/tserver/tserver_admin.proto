@@ -71,6 +71,8 @@ message GetSafeTimeRequestPB {
   optional fixed64 propagated_hybrid_time = 4;
 
   optional fixed64 min_hybrid_time_for_backfill = 5;
+
+  optional bool only_abort_txns_not_using_table_locks = 6;
 }
 
 message GetSafeTimeResponsePB {
@@ -119,8 +121,11 @@ message BackfillIndexResponsePB {
   // In case of a partial error, list of indexes that failed.
   repeated bytes failed_index_ids = 4;
 
-  // Returns the number of rows backfilled in the request.
-  optional uint64 number_rows_processed = 5;
+  // Returns the number of base table rows processed during backfill in this batch.
+  optional uint64 num_rows_read_from_table_for_backfill = 5;
+
+  // Returns the number of rows inserted in the index in this batch.
+  map<string, double> num_rows_backfilled_in_index = 6;
 }
 
 // A create tablet request.
@@ -221,6 +226,9 @@ message DeleteTabletRequestPB {
 
   // Do not delete tablet data.
   optional bool keep_data = 8;
+
+  // Transactions will be aborted except the one with this id which triggered the DeleteTablet.
+  optional bytes transaction_id = 9; // 16 byte uuid
 }
 
 message DeleteTabletResponsePB {

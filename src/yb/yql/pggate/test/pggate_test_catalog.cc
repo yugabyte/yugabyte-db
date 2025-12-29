@@ -53,7 +53,7 @@ TEST_F(PggateTestCatalog, TestDml) {
                                        true /* is_colocated_via_database */,
                                        kInvalidOid /* tablegroup_id */,
                                        kColocationIdNotSet /* colocation_id */,
-                                       kInvalidOid /* tablespace_id */,
+                                       kDefaultTablespaceOid,
                                        false /* is_matview */,
                                        kInvalidOid /* pg_table_oid */,
                                        kInvalidOid /* old_relfilenode_oid */,
@@ -77,7 +77,7 @@ TEST_F(PggateTestCatalog, TestDml) {
   // INSERT ----------------------------------------------------------------------------------------
   // Allocate new insert.
   CHECK_YBC_STATUS(YBCPgNewInsert(
-      kDefaultDatabaseOid, tab_oid, false /* is_region_local */, &pg_stmt,
+      kDefaultDatabaseOid, tab_oid, kDefaultTableLocality, &pg_stmt,
       YbcPgTransactionSetting::YB_TRANSACTIONAL));
 
   // Allocate constant expressions.
@@ -131,23 +131,23 @@ TEST_F(PggateTestCatalog, TestDml) {
 
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from non-partitioned table WITH RANGE values";
-  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */,
-                                  false /* is_region_local */, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(
+      kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality, &pg_stmt));
 
   // Specify the selected expressions.
   YbcPgExpr colref;
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::INT64, &colref));
-  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 2, DataType::INT32, &colref));
-  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 3, DataType::INT16, &colref));
-  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 4, DataType::INT32, &colref));
-  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 5, DataType::FLOAT, &colref));
-  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 6, DataType::STRING, &colref));
-  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
 
   // Set partition and range columns for SELECT to select a specific row.
   // SELECT ... WHERE compid = 0 AND empid = 1.
@@ -199,22 +199,22 @@ TEST_F(PggateTestCatalog, TestDml) {
 
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from non-partitioned table WITHOUT RANGE values";
-  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */,
-                                  false /* is_region_local */, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(
+      kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality, &pg_stmt));
 
   // Specify the selected expressions.
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::INT64, &colref));
-  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 2, DataType::INT32, &colref));
-  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 3, DataType::INT16, &colref));
-  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 4, DataType::INT32, &colref));
-  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 5, DataType::FLOAT, &colref));
-  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 6, DataType::STRING, &colref));
-  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
 
   // Execute select statement.
   CHECK_YBC_STATUS(YBCPgExecSelect(pg_stmt, nullptr /* exec_params */));
@@ -258,7 +258,7 @@ TEST_F(PggateTestCatalog, TestDml) {
   // UPDATE ----------------------------------------------------------------------------------------
   // Allocate new update.
   CHECK_YBC_STATUS(YBCPgNewUpdate(
-      kDefaultDatabaseOid, tab_oid, false /* is_region_local */, &pg_stmt, YB_TRANSACTIONAL));
+      kDefaultDatabaseOid, tab_oid, kDefaultTableLocality, &pg_stmt, YB_TRANSACTIONAL));
 
   // Allocate constant expressions.
   // TODO(neil) We can also allocate expression with bind.
@@ -311,22 +311,22 @@ TEST_F(PggateTestCatalog, TestDml) {
 
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from non-partitioned table";
-  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */,
-                                  false /* is_region_local */, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(
+      kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality, &pg_stmt));
 
   // Specify the selected expressions.
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::INT64, &colref));
-  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 2, DataType::INT32, &colref));
-  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 3, DataType::INT16, &colref));
-  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 4, DataType::INT32, &colref));
-  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 5, DataType::FLOAT, &colref));
-  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 6, DataType::STRING, &colref));
-  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
 
   // Execute select statement.
   CHECK_YBC_STATUS(YBCPgExecSelect(pg_stmt, nullptr /* exec_params */));
@@ -421,7 +421,7 @@ TEST_F(PggateTestCatalog, TestCopydb) {
   pg_stmt = nullptr;
 
   CHECK_YBC_STATUS(YBCPgNewInsert(
-      kDefaultDatabaseOid, tab_oid, false /* is_region_local */, &pg_stmt,
+      kDefaultDatabaseOid, tab_oid, kDefaultTableLocality, &pg_stmt,
       YbcPgTransactionSetting::YB_TRANSACTIONAL));
 
   YbcPgExpr expr_key;
@@ -458,15 +458,15 @@ TEST_F(PggateTestCatalog, TestCopydb) {
 
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Select from from test table in the new database";
-  CHECK_YBC_STATUS(YBCPgNewSelect(copy_db_oid, tab_oid, NULL /* prepare_params */,
-                                  false /* is_region_local */, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(
+      copy_db_oid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality, &pg_stmt));
 
   // Specify the selected expressions.
   YbcPgExpr colref;
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::INT32, &colref));
-  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 2, DataType::INT32, &colref));
-  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
 
   // Execute select statement.
   CHECK_YBC_STATUS(YBCPgExecSelect(pg_stmt, nullptr /* exec_params */));

@@ -325,8 +325,8 @@ Status TabletPeer::InitTabletPeer(
 
     auto txn_participant = tablet_->transaction_participant();
     if (txn_participant) {
-      txn_participant->SetMinReplayTxnStartTimeUpdateCallback(
-          std::bind_front(&TabletPeer::MinReplayTxnStartTimeUpdated, this));
+      txn_participant->SetMinReplayTxnFirstWriteTimeUpdateCallback(
+          std::bind_front(&TabletPeer::MinReplayTxnFirstWriteTimeUpdated, this));
     }
 
     // "Publish" the tablet object right before releasing the lock.
@@ -614,14 +614,15 @@ void TabletPeer::WaitUntilShutdown() {
 
 Status TabletPeer::Shutdown(
     ShouldAbortActiveTransactions should_abort_active_txns,
-    DisableFlushOnShutdown disable_flush_on_shutdown) {
+    DisableFlushOnShutdown disable_flush_on_shutdown,
+    std::optional<TransactionId>&& exclude_aborting_txn_id) {
   auto is_shutdown_initiated = StartShutdown();
 
   if (should_abort_active_txns) {
     // Once raft group state enters QUIESCING state,
     // new queries cannot be processed from then onwards.
     // Aborting any remaining active transactions in the tablet.
-    AbortActiveTransactions();
+    AbortActiveTransactions(std::move(exclude_aborting_txn_id));
   }
 
   if (is_shutdown_initiated) {
@@ -632,14 +633,15 @@ Status TabletPeer::Shutdown(
   return Status::OK();
 }
 
-void TabletPeer::AbortActiveTransactions() const {
+void TabletPeer::AbortActiveTransactions(
+    std::optional<TransactionId>&& exclude_aborting_txn_id) const {
   if (!tablet_) {
     return;
   }
   auto deadline =
       CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(FLAGS_ysql_transaction_abort_timeout_ms);
   WARN_NOT_OK(
-      tablet_->AbortActiveTransactions(deadline),
+      tablet_->AbortActiveTransactions(deadline, std::move(exclude_aborting_txn_id)),
       "Cannot abort transactions for tablet " + tablet_->tablet_id());
 }
 
@@ -1367,6 +1369,10 @@ Result<bool> TabletPeer::MoveForwardAllCDCRetentionBarriers(
       require_history_cutoff, /*initial_retention_barrier=*/false);
 }
 
+std::string TabletPeer::AllCDCRetentionBarriersToString() const {
+  return tablet_metadata()->AllCDCRetentionBarriersToString();
+}
+
 std::unique_ptr<Operation> TabletPeer::CreateOperation(consensus::LWReplicateMsg* replicate_msg) {
   // TODO: handle cases where tablet is unset safely.
   auto tablet = CHECK_RESULT(shared_tablet());
@@ -1872,10 +1878,10 @@ TabletBootstrapFlushState TabletPeer::TEST_TabletBootstrapStateFlusherState() co
       : TabletBootstrapFlushState::kFlushIdle;
 }
 
-void TabletPeer::MinReplayTxnStartTimeUpdated(HybridTime start_ht) {
-  if (start_ht && start_ht != HybridTime::kMax) {
-    VLOG_WITH_PREFIX(2) << "min_replay_txn_start_ht updated: " << start_ht;
-    bootstrap_state_manager_->bootstrap_state().SetMinReplayTxnStartTime(start_ht);
+void TabletPeer::MinReplayTxnFirstWriteTimeUpdated(HybridTime first_write_ht) {
+  if (first_write_ht && first_write_ht != HybridTime::kMax) {
+    VLOG_WITH_PREFIX(2) << "min_replay_txn_first_write_ht updated: " << first_write_ht;
+    bootstrap_state_manager_->bootstrap_state().SetMinReplayTxnFirstWriteTime(first_write_ht);
   }
 }
 

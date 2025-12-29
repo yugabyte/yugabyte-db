@@ -44,8 +44,8 @@ groups:
 
       - record: container_cpu_usage
         expr:
-          "avg(irate(container_cpu_usage_seconds_total[{{ range }}])) by (container_name, pod_name, namespace) /
-          on (container_name, pod_name, namespace) ybp_container_resource_requests_cpu_cores"
+          "avg(irate(container_cpu_usage_seconds_total[{{ range }}])) by (container_name, pod_name, namespace, az_name) /
+          on (container_name, pod_name, namespace, az_name) ybp_container_resource_requests_cpu_cores"
         labels:
           saved_name: container_cpu_usage
 

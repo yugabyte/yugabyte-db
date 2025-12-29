@@ -297,7 +297,7 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
       auto last_row_in_batch = first_row_in_batch + count / num_batches;
 
       for (int j = first_row_in_batch; j < last_row_in_batch; j++) {
-        auto op = table.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+        auto op = table.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_INSERT);
         auto* const req = op->mutable_request();
         QLAddInt32HashValue(req, j);
         table.AddInt32ColumnValue(req, "int_val", j * 2);

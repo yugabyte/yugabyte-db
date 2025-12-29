@@ -606,7 +606,6 @@ TEST_F(CreateTableITest, TestTransactionStatusTableCreation) {
       // TODO(#27854): We get stuck with object locking when there is no system.transactions
       // table. Disabling it for now until we fix the underlying issue.
       "--enable_object_locking_for_table_locks=false",
-      "--allowed_preview_flags_csv=enable_object_locking_for_table_locks",
   };
   // We also need to enable ysql.
   ASSERT_NO_FATALS(StartCluster(tserver_flags, master_flags, 1, 1, true));
@@ -1022,9 +1021,9 @@ TEST_F(CreateTableITest, OnlyMajorityReplicasWithPlacement) {
   ReplicationInfoPB replication_info3;
   auto* placement_info3 = replication_info3.mutable_live_replicas();
   PreparePlacementInfo({ {"z0", 1}, {"z1", 1}, {"z2", 1} }, 5, placement_info3);
-  auto* read_placement_info = replication_info3.add_read_replicas();
-  read_placement_info->set_placement_uuid("read-replica");
-  PreparePlacementInfo({ {"z4", 1} }, 1, read_placement_info);
+  auto* read_replica_placement_info = replication_info3.add_read_replicas();
+  read_replica_placement_info->set_placement_uuid("read-replica");
+  PreparePlacementInfo({ {"z4", 1} }, 1, read_replica_placement_info);
   ASSERT_OK(client_->SetReplicationInfo(replication_info3));
   LOG(INFO) << "Set replication info to " << replication_info3.ShortDebugString();
 

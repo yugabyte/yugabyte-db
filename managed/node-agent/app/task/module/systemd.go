@@ -253,3 +253,34 @@ func IsProcessRunning(
 	logOut.WriteLine("Process %s state: %s", process, stdOut)
 	return strings.Contains(stdOut, process), nil
 }
+
+func IsProcessEnabled(
+	ctx context.Context,
+	username, process string,
+	logOut util.Buffer,
+) (bool, error) {
+	userOption, _, err := getUserOptionForUserLevel(ctx, username, process, logOut)
+	if err != nil {
+		return false, err
+	}
+	cmd := fmt.Sprintf("systemctl %sis-enabled %s 2>/dev/null || true", userOption, process)
+	cmdInfo, err := RunShellCmdWithRetry(
+		ctx,
+		SystemdBackOff,
+		username,
+		"CheckEnabledProcess",
+		cmd,
+		logOut,
+	)
+	if err != nil {
+		util.FileLogger().
+			Errorf(ctx, "Failed to check if process is enabled: %s - %s", process, err.Error())
+		logOut.WriteLine("Failed to check if process is enabled: %s - %s", process, err.Error())
+		return false, err
+	}
+	stdOut := strings.TrimSpace(cmdInfo.StdOut.String())
+	util.FileLogger().
+		Infof(ctx, "Process %s enabled state: %s", process, stdOut)
+	logOut.WriteLine("Process %s enabled state: %s", process, stdOut)
+	return stdOut == "enabled", nil
+}

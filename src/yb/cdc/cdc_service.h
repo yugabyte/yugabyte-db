@@ -14,13 +14,13 @@
 
 #include <memory>
 
-#include "yb/cdc/xrepl_types.h"
-#include "yb/cdc/xrepl_metrics.h"
 #include "yb/cdc/cdc_producer.h"
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/cdc/cdc_service.service.h"
 #include "yb/cdc/cdc_types.h"
 #include "yb/cdc/cdc_util.h"
+#include "yb/cdc/xrepl_metrics.h"
+#include "yb/cdc/xrepl_types.h"
 
 #include "yb/master/master_client.fwd.h"
 
@@ -67,8 +67,8 @@ namespace cdc {
 class CDCStateTable;
 struct CDCStateTableEntry;
 
-typedef std::unordered_map<HostPort, std::shared_ptr<CDCServiceProxy>, HostPortHash>
-    CDCServiceProxyMap;
+using CDCServiceProxyMap =
+    std::unordered_map<HostPort, std::shared_ptr<CDCServiceProxy>, HostPortHash>;
 
 YB_STRONGLY_TYPED_BOOL(CreateMetricsEntityIfNotFound);
 
@@ -124,7 +124,9 @@ using RollBackTabletIdCheckpointMap =
   TEST_SIMULATE_ERROR(PeerNotLeader, 2, NotFound, "Not leader for requested tablet id") \
   TEST_SIMULATE_ERROR( \
       PeerNotReadyToServe, 3, LeaderNotReadyToServe, "Not ready to serve requested tablet id") \
-  TEST_SIMULATE_ERROR(LogSegmentFooterNotFound, 4, NotFound, "Footer for segment not found")
+  TEST_SIMULATE_ERROR(LogSegmentFooterNotFound, 4, NotFound, "Footer for segment not found") \
+  TEST_SIMULATE_ERROR( \
+      LogIndexCacheEntryNotFound, 5, NotFound, "Log index cache entry for op index not found")
 
 enum TestSimulateErrorCode : int32_t {
 #define TEST_SIMULATE_ERROR(name, value, status_code, message) name = value,
@@ -150,7 +152,7 @@ class CDCServiceImpl : public CDCServiceIf {
   CDCServiceImpl(const CDCServiceImpl&) = delete;
   void operator=(const CDCServiceImpl&) = delete;
 
-  ~CDCServiceImpl();
+  ~CDCServiceImpl() override;
 
   void CreateCDCStream(
       const CreateCDCStreamRequestPB* req,
@@ -228,8 +230,8 @@ class CDCServiceImpl : public CDCServiceIf {
       const GetLatestEntryOpIdRequestPB& req, CoarseTimePoint deadline) override;
 
   void BootstrapProducer(
-      const BootstrapProducerRequestPB* req,
-      BootstrapProducerResponsePB* resp,
+      const cdc::BootstrapProducerRequestPB* req,
+      cdc::BootstrapProducerResponsePB* resp,
       rpc::RpcContext rpc) override;
 
   void GetCDCDBStreamInfo(
@@ -294,6 +296,16 @@ class CDCServiceImpl : public CDCServiceIf {
   static bool IsCDCSDKSnapshotRequest(const CDCSDKCheckpointPB& req_checkpoint);
 
   static bool IsCDCSDKSnapshotBootstrapRequest(const CDCSDKCheckpointPB& req_checkpoint);
+
+  // Returns a list of catalog tables which gets streamed. (Currently 'pg_publication_rel' &
+  // 'pg_class' are the only catalog tables which gets streamed).
+  // 'namespace_id' is the id of namespace on which stream was created.
+  static Result<std::vector<TableId>> GetStreamableCatalogTables(const NamespaceId& namespace_id);
+
+  // Returns true if the given table is one of the catalog table which gets streamed.
+  // 'namespace_id' is the id of namespace on which stream was created.
+  static Result<bool> IsStreamableCatalogTable(
+      const TableId& table_id, const NamespaceId& namespace_id);
 
   // Sets paused producer XCluster streams.
   void SetPausedXClusterProducerStreams(

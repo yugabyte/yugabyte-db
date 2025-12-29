@@ -9,6 +9,8 @@ menu:
     parent: pg-extensions
     weight: 20
 type: docs
+aliases:
+  - /stable/explore/ysql-language-features/pg-extensions/extension-postgres-fdw
 ---
 
 {{< warning title="Not currently compatible with v2.25" >}}

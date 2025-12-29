@@ -25,11 +25,17 @@ import com.yugabyte.yw.forms.RestorePlatformBackupFormData;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
+import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
 import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
 import com.yugabyte.yw.rbac.annotations.Resource;
 import com.yugabyte.yw.rbac.enums.SourceType;
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiImplicitParam;
+import io.swagger.annotations.ApiImplicitParams;
+import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.Authorization;
 import java.io.File;
 import java.net.URL;
 import java.util.Objects;
@@ -40,6 +46,9 @@ import org.apache.commons.lang3.StringUtils;
 import play.mvc.Http;
 import play.mvc.Result;
 
+@Api(
+    value = "Platform Instance",
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 @Slf4j
 public class PlatformInstanceController extends AuthenticatedController {
   @Inject private PlatformReplicationManager replicationManager;
@@ -48,6 +57,18 @@ public class PlatformInstanceController extends AuthenticatedController {
 
   @Inject CustomerTaskManager taskManager;
 
+  @ApiOperation(
+      notes = "Available since YBA version 2.20.0.",
+      value = "Create platform instance",
+      response = PlatformInstance.class,
+      nickname = "createInstance")
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "PlatformInstanceFormRequest",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.PlatformInstanceFormData",
+          required = true))
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.20.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -185,6 +206,17 @@ public class PlatformInstanceController extends AuthenticatedController {
     return PlatformResults.withData(localInstance.get());
   }
 
+  @ApiOperation(
+      notes = "Available since YBA version 2.20.0.",
+      value = "Promote platform instance",
+      nickname = "promoteInstance")
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "PlatformBackupRestoreRequest",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.RestorePlatformBackupFormData",
+          required = true))
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.20.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =

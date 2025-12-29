@@ -12,7 +12,6 @@
 //
 package org.yb.pgsql;
 
-import static org.junit.Assume.assumeFalse;
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertTrue;
 
@@ -20,6 +19,7 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.Collections;
+import java.util.Map;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -45,6 +45,15 @@ public class TestDropTableWithConcurrentTxn extends BasePgSQLTest {
   private static final boolean executeDmlAfterDrop = false;
   private enum Resource { TABLE, INDEX, VIEW }
   private enum Dml { INSERT, SELECT }
+
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    // TODO(29141): Fix the test with txn ddl and enable.
+    flagMap.put("ysql_yb_ddl_transaction_block_enabled", "false");
+    flagMap.put("enable_object_locking_for_table_locks", "false");
+    return flagMap;
+  }
 
   private void prepareResources(Resource resourceToDrop, String tableName) throws Exception {
     // Separate connection is used to create and load the table to avoid

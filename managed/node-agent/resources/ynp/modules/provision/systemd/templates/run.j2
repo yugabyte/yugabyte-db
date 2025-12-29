@@ -3,8 +3,11 @@ systemd_dir="/etc/systemd/system"
 {% if use_system_level_systemd == 'False' %}
     # Enable linger for yb_user
     loginctl enable-linger {{ yb_user }}
-    su - {{ yb_user }} -c "export XDG_RUNTIME_DIR=/run/user/$(id -u {{ yb_user }})"
-    grep -qxF "export XDG_RUNTIME_DIR=/run/user/$(id -u {{ yb_user }})" {{yb_home_dir}}/.bashrc || echo "export XDG_RUNTIME_DIR=/run/user/$(id -u {{ yb_user }})" >> {{yb_home_dir}}/.bashrc
+    xdg_runtime_env="export XDG_RUNTIME_DIR=/run/user/$(id -u {{ yb_user }})"
+    if ! grep -qxF "${xdg_runtime_env}" {{yb_home_dir}}/.bashrc >/dev/null 2>&1; then
+        su - {{ yb_user }} -c "echo ${xdg_runtime_env} >> {{yb_home_dir}}/.bashrc"
+    fi
+    su - {{ yb_user }} -c "${xdg_runtime_env}"
     # Configure the systemd_dir as path for user level systemd
     systemd_dir="{{ yb_home_dir }}/.config/systemd/user"
     # Ensure the systemd directory exists
@@ -12,10 +15,10 @@ systemd_dir="/etc/systemd/system"
 {% endif %}
 
 # Configure the systemd unit files
-{% for service_file in service_files | split_servers %}
+{% for service_file in service_files | split_string %}
    tmp_file=$(mktemp)
    echo '{% include service_file %}' > $tmp_file
    chown {{ yb_user }}:{{ yb_user }} $tmp_file
    su - {{ yb_user }} -c "mv $tmp_file ${systemd_dir}/{{ service_file }}"
-   su - {{ yb_user }} -c "chmod 755 ${systemd_dir}/{{ service_file }}"
+   su - {{ yb_user }} -c "chmod 644 ${systemd_dir}/{{ service_file }}"
 {% endfor %}

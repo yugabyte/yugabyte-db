@@ -4092,6 +4092,37 @@ _outYbUpdateAffectedEntities(StringInfo str, const YbUpdateAffectedEntities *nod
 	WRITE_BITMAPSET_FIELD(matrix.data);
 }
 
+static void
+_outYbSaopMergeInfo(StringInfo str, const YbSaopMergeInfo *node)
+{
+	WRITE_NODE_TYPE("YBSAOPMERGEINFO");
+
+	WRITE_NODE_FIELD(saop_cols);
+	WRITE_NODE_FIELD(sort_cols);
+}
+
+static void
+_outYbSaopMergeSaopColInfo(StringInfo str, const YbSaopMergeSaopColInfo *node)
+{
+	WRITE_NODE_TYPE("YBSAOPMERGESAOPCOLINFO");
+
+	WRITE_NODE_FIELD(saop);
+	WRITE_INT_FIELD(indexcol);
+	WRITE_INT_FIELD(num_elems);
+}
+
+static void
+_outYbSortInfo(StringInfo str, const YbSortInfo *node)
+{
+	WRITE_NODE_TYPE("YBSORTINFO");
+
+	WRITE_INT_FIELD(numCols);
+	WRITE_ATTRNUMBER_ARRAY(sortColIdx, node->numCols);
+	WRITE_OID_ARRAY(sortOperators, node->numCols);
+	WRITE_OID_ARRAY(collations, node->numCols);
+	WRITE_BOOL_ARRAY(nullsFirst, node->numCols);
+}
+
 /*
  * outNode -
  *	  converts a Node into ascii string and append it to 'str'
@@ -4818,6 +4849,9 @@ outNode(StringInfo str, const void *obj)
 			case T_PartitionRangeDatum:
 				_outPartitionRangeDatum(str, obj);
 				break;
+			case T_YbPartitionPruneStepFuncOp:
+				_outYbPartitionPruneStepFuncOp(str, obj);
+				break;
 			case T_YbExprColrefDesc:
 				_outYbExprColrefDesc(str, obj);
 				break;
@@ -4826,6 +4860,15 @@ outNode(StringInfo str, const void *obj)
 				break;
 			case T_YbUpdateAffectedEntities:
 				_outYbUpdateAffectedEntities(str, obj);
+				break;
+			case T_YbSaopMergeInfo:
+				_outYbSaopMergeInfo(str, obj);
+				break;
+			case T_YbSaopMergeSaopColInfo:
+				_outYbSaopMergeSaopColInfo(str, obj);
+				break;
+			case T_YbSortInfo:
+				_outYbSortInfo(str, obj);
 				break;
 
 			default:

@@ -74,22 +74,29 @@ DEFINE_RUNTIME_int32(vector_index_compaction_priority_step_size, -1,
 DEFINE_RUNTIME_int32(vector_index_files_number_compaction_trigger, 5,
     "Number of files to trigger Vector LSM background compaction.");
 
-DEFINE_RUNTIME_int32(vector_index_max_size_amplification_percent, 200,
+DEFINE_RUNTIME_int32(vector_index_compaction_size_amp_max_percent, 200,
     "The max size amplification for vector index background compaction. "
     "Set to -1 to disable compactions by size amplification.");
+
+DEFINE_RUNTIME_uint32(vector_index_compaction_size_amp_max_merge_width, 0,
+    "The maximum number of chunks in a single background compaction by size amplification. "
+    "0 - no limit.");
 
 DEFINE_RUNTIME_int32(vector_index_compaction_size_ratio_percent, 20,
     "The percentage upto which chunks that are larger are include in vector index "
     "background compaction. Set to -100 to disable compactions by size ratio.");
 
-DEFINE_RUNTIME_int32(vector_index_compaction_min_merge_width, 4,
+DEFINE_RUNTIME_int32(vector_index_compaction_size_ratio_min_merge_width, 4,
     "The minimum number of chunks in a single background compaction by size ratio.");
+
+DEFINE_RUNTIME_uint32(vector_index_compaction_size_ratio_max_merge_width, 0,
+    "The maximum number of chunks in a single background compaction by size ratio. 0 - no limit.");
 
 DEFINE_RUNTIME_bool(vector_index_dump_stats, false,
     "Whether to dump stats related to vector index search.");
 
-DEFINE_RUNTIME_bool(vector_index_disable_compactions, true,
-    "Disable Vector LSM background compactions.");
+DEFINE_RUNTIME_bool(vector_index_enable_compactions, true,
+    "Enable Vector LSM background compactions.");
 
 DEFINE_test_flag(bool, vector_index_skip_manifest_update_during_shutdown, false,
     "Whether VectorLSM manifest update should be skipped after shutdown has been initiated");
@@ -100,7 +107,6 @@ DEFINE_test_flag(uint64, vector_index_delay_saving_first_chunk_ms, 0,
 DECLARE_int32(compaction_priority_start_bound);
 DECLARE_int32(compaction_priority_step_size);
 
-
 namespace yb::vector_index {
 
 namespace bi = boost::intrusive;
@@ -108,6 +114,7 @@ namespace bi = boost::intrusive;
 namespace {
 
 YB_DEFINE_ENUM(ImmutableChunkState, (kInMemory)(kOnDisk)(kInManifest));
+YB_DEFINE_ENUM(CompactionState, (kNone)(kCompacting)(kCompacted));
 YB_DEFINE_ENUM(CompactionType, (kBackground)(kManual));
 YB_DEFINE_ENUM(ManifestUpdateType, (kFull)(kActual));
 
@@ -143,9 +150,33 @@ int32_t CompactionPriorityStepSize() {
   return step_size >= 0 ? step_size : FLAGS_compaction_priority_step_size;
 }
 
-size_t CompactionMinMergeWidth() {
-  const auto width = make_unsigned(FLAGS_vector_index_compaction_min_merge_width);
+size_t SizeRatioCompactionMinMergeWidth() {
+  const auto width = make_unsigned(FLAGS_vector_index_compaction_size_ratio_min_merge_width);
   return std::max<size_t>(width, 2); // Must be at least two chunks.
+}
+
+size_t SizeRatioCompactionMaxMergeWidth() {
+  auto width = FLAGS_vector_index_compaction_size_ratio_max_merge_width;
+  if (width == 0) {
+    width = std::numeric_limits<decltype(width)>::max();
+  }
+
+  // Should not be lower than min merge width.
+  return std::max<size_t>(width, SizeRatioCompactionMinMergeWidth());
+}
+
+size_t SizeAmpCompactionMinMergeWidth() {
+  return 2; // Must be at least two chunks.
+}
+
+size_t SizeAmpCompactionMaxMergeWidth() {
+  auto width = FLAGS_vector_index_compaction_size_amp_max_merge_width;
+  if (width == 0) {
+    width = std::numeric_limits<decltype(width)>::max();
+  }
+
+  // Should not be lower than min merge width.
+  return std::max<size_t>(width, SizeAmpCompactionMinMergeWidth());
 }
 
 size_t FilesNumberCompactionTrigger() {
@@ -306,12 +337,13 @@ class VectorLSMInsertRegistryBase {
   void Shutdown() {
     for (;;) {
       {
-        SharedLock lock(mutex_);
-        if (active_tasks_.empty()) {
+        std::lock_guard lock(mutex_);
+        stopping_ = true;
+        if (active_tasks_.empty() && allocated_tasks_ == 0) {
           break;
         }
       }
-      YB_LOG_EVERY_N_SECS(INFO, 1) << LogPrefix() << "Waiting for vector insertion tasks to finish";
+      YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 1) << "Waiting for vector insertion tasks to finish";
       std::this_thread::sleep_for(100ms);
     }
   }
@@ -356,9 +388,12 @@ class VectorLSMInsertRegistryBase {
     return log_prefix_;
   }
 
-  InsertTaskList DoAllocateTasks(
+  Result<InsertTaskList> DoAllocateTasks(
       size_t num_tasks, const VectorIndexPtr& index,
       InsertCallback&& insert_callback) REQUIRES(mutex_) {
+    if (stopping_) {
+      return STATUS_FORMAT(ShutdownInProgress, "VectorLSM registry is shutting down");
+    }
     InsertTaskList result;
     allocated_tasks_ += num_tasks;
     for (size_t left = num_tasks; left-- > 0;) {
@@ -385,6 +420,7 @@ class VectorLSMInsertRegistryBase {
   const std::string log_prefix_;
   rpc::ThreadPool& thread_pool_;
   std::shared_mutex mutex_;
+  bool stopping_ GUARDED_BY(mutex_) = false;
   size_t allocated_tasks_ GUARDED_BY(mutex_) = 0;
   InsertTaskList active_tasks_ GUARDED_BY(mutex_);
   std::vector<InsertTaskPtr> task_pool_ GUARDED_BY(mutex_);
@@ -402,7 +438,7 @@ class VectorLSMInsertRegistry : public VectorLSMInsertRegistryBase<Vector, Dista
       : Base(log_prefix, thread_pool) {}
 
   template <typename... Args>
-  InsertTaskList AllocateTasks(size_t num_tasks, Args&&... args) EXCLUDES(mutex_) {
+  Result<InsertTaskList> AllocateTasks(size_t num_tasks, Args&&... args) EXCLUDES(mutex_) {
     UniqueLock lock(mutex_);
     while (allocated_tasks_ &&
             allocated_tasks_ + num_tasks >= FLAGS_vector_index_max_insert_tasks) {
@@ -459,7 +495,7 @@ class VectorLSMMergeRegistry : public VectorLSMInsertRegistryBase<Vector, Distan
       : Base(log_prefix, thread_pool) {}
 
   template <typename... Args>
-  InsertTaskList AllocateTasks(size_t num_tasks, Args&&... args) EXCLUDES(mutex_) {
+  Result<InsertTaskList> AllocateTasks(size_t num_tasks, Args&&... args) EXCLUDES(mutex_) {
     // Sanity check for the case the flag has been set to 0 right before calling this method.
     size_t max_tasks = MaxCapacity();
     if (max_tasks == 0) {
@@ -470,7 +506,7 @@ class VectorLSMMergeRegistry : public VectorLSMInsertRegistryBase<Vector, Distan
     {
       UniqueLock lock(mutex_);
       if (allocated_tasks_ >= max_tasks) {
-        return {};
+        return InsertTaskList{};
       }
 
       num_tasks = std::min(num_tasks, max_tasks - allocated_tasks_);
@@ -570,7 +606,7 @@ struct VectorLSM<Vector, DistanceResult>::ImmutableChunk {
   // Must be accessed under LSM::mutex_ lock to guarantee thread-safety.
   std::promise<Status>* flush_promise = nullptr;
 
-  std::atomic<bool> under_compaction = { false };
+  std::atomic<CompactionState> compaction_state = { CompactionState::kNone };
 
  public:
   ImmutableChunk(
@@ -633,33 +669,38 @@ struct VectorLSM<Vector, DistanceResult>::ImmutableChunk {
   }
 
   void MarkObsolete() {
-    DCHECK(!IsUnderCompaction());
+    // Sanity check. The expectation is to obsolete only compacted chunks.
+    // However, obsoleting of non-compacted chunks could become a valid case in future.
+    CHECK_EQ(CompactionState::kCompacted, compaction_state.load(std::memory_order::acquire));
     if (file) {
       file->MarkObsolete();
     }
   }
 
-  bool IsUnderCompaction() const {
-    return under_compaction.load(std::memory_order::acquire);
-  }
-
   bool TryLockForCompaction() {
-    return TrySetUnderCompaction(true);
+    auto expected_state = CompactionState::kNone;
+    return compaction_state.compare_exchange_strong(expected_state, CompactionState::kCompacting);
   }
 
-  void UnlockForCompaction() {
-    [[maybe_unused]] bool success = TrySetUnderCompaction(false);
-    DCHECK(success);
+  bool UnlockForCompaction() {
+    // A chunk can be "unlocked for compaction" if it is being compacted now or still non-compacted.
+    auto expected_state = CompactionState::kCompacting;
+    return compaction_state.compare_exchange_strong(expected_state, CompactionState::kNone) ||
+           expected_state == CompactionState::kNone;
   }
 
   void Compacted() {
-    UnlockForCompaction();
+    // A chunk must fall into all stages before being marked as compacted:
+    // kNone => kCompaction => kCompacted.
+    auto expected_state = CompactionState::kCompacting;
+    CHECK(compaction_state.compare_exchange_strong(expected_state, CompactionState::kCompacted));
     MarkObsolete();
   }
 
   // Must be triggered under LSM::mutex_ lock to guarantee thread-safety.
   bool ReadyForCompaction() const {
-    return !IsUnderCompaction() && IsInManifest();
+    return compaction_state.load(std::memory_order::acquire) == CompactionState::kNone &&
+           IsInManifest();
   }
 
   std::string ToString() const {
@@ -667,18 +708,13 @@ struct VectorLSM<Vector, DistanceResult>::ImmutableChunk {
     return YB_STRUCT_TO_STRING(
         order_no, state, file, user_frontiers,
         (index, AsString(static_cast<void*>(index.get()))),
-        (under_compaction, std::to_string(IsUnderCompaction())));
+        compaction_state);
   }
 
   std::string ToShortString() const {
     return Format(
         "{order_no: $0, serial_no: $1, file_size: $2}",
         order_no, serial_no(), file_size());
-  }
-
- private:
-  bool TrySetUnderCompaction(bool value) {
-    return under_compaction.exchange(value) != value;
   }
 };
 
@@ -739,7 +775,8 @@ class VectorLSM<Vector, DistanceResult>::CompactionScope {
 
   void Unlock() {
     for (auto& chunk : chunks_) {
-      chunk->UnlockForCompaction();
+      // Something went wrong: compacted chunks must be excluded from chunks_ collection.
+      CHECK(chunk->UnlockForCompaction());
     }
   }
 
@@ -797,7 +834,8 @@ struct VectorLSM<Vector, DistanceResult>::CompactionContext {
 };
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-class VectorLSM<Vector, DistanceResult>::CompactionTask : public PriorityThreadPoolTask {
+class VectorLSM<Vector, DistanceResult>::CompactionTask : public PriorityThreadPoolTokenTask {
+  using Base = PriorityThreadPoolTokenTask;
   using LSM = VectorLSM<Vector, DistanceResult>;
 
  public:
@@ -806,7 +844,8 @@ class VectorLSM<Vector, DistanceResult>::CompactionTask : public PriorityThreadP
       CompactionType compaction_type = CompactionType::kBackground,
       CompactionScope&& compaction_scope = {},
       StdStatusCallback&& callback = {})
-      : lsm_(lsm),
+      : Base(lsm.options_.compaction_token->context()),
+        lsm_(lsm),
         log_prefix_(Format("$0[TASK $1] ", lsm.LogPrefix(), SerialNo())),
         compaction_type_(compaction_type),
         compaction_scope_(std::move(compaction_scope)),
@@ -818,7 +857,11 @@ class VectorLSM<Vector, DistanceResult>::CompactionTask : public PriorityThreadP
     return compaction_type_;
   }
 
-  int Priority() const {
+  uint64_t group_no() const override {
+    return kDefaultGroupNo;
+  }
+
+  int priority() const override {
     return priority_.load(std::memory_order::acquire);
   }
 
@@ -842,7 +885,11 @@ class VectorLSM<Vector, DistanceResult>::CompactionTask : public PriorityThreadP
 
     // TODO(vector_index): leverage the suspender.
     auto status = DoRun();
-    LOG_WITH_PREFIX(INFO) << "Done: " << status;
+    if (status.ok() || status.IsShutdownInProgress()) {
+      LOG_WITH_PREFIX(INFO) << "Done: " << status;
+    } else {
+      LOG_WITH_PREFIX(DFATAL) << "Failed: " << status;
+    }
     Completed(status);
 
     if (last_serial_no == lsm_.LastSerialNo()) {
@@ -956,6 +1003,8 @@ void VectorLSM<Vector, DistanceResult>::StartShutdown() {
     LOG_IF_WITH_PREFIX(DFATAL, !scope.status().IsShutdownInProgress()) << scope.status();
     return;
   }
+
+  LOG_WITH_PREFIX(INFO) << "VectorLSM shutdown started";
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -999,10 +1048,12 @@ void VectorLSM<Vector, DistanceResult>::CompleteShutdown() {
   }
 
   // Remove not started compaction tasks from the thread pool.
-  options_.compaction_thread_pool->Remove(this);
+  options_.compaction_token->Remove(this);
 
   // Prioritize remaining compaction tasks and wait for compactions to be completed.
   {
+    // TODO(vector_index): probably options_.compaction_token->PrioritizeTask() should
+    // be triggered here.
     UniqueLock lock(compaction_tasks_mutex_);
     for (auto* task : compaction_tasks_) {
       task->UpdatePriority();
@@ -1020,6 +1071,8 @@ void VectorLSM<Vector, DistanceResult>::CompleteShutdown() {
     std::lock_guard lock(cleanup_mutex_);
     obsolete_files_.clear();
   }
+
+  LOG_WITH_PREFIX(INFO) << "VectorLSM shutdown completed";
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -1036,8 +1089,8 @@ inline void VectorLSM<Vector, DistanceResult>::CheckFailure(const Status& status
     }
     existing_status = failed_status_;
   }
-  YB_LOG_EVERY_N_SECS(WARNING, 1)
-      << LogPrefix() << "Vector LSM already in failed state: " << existing_status
+  YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 1)
+      << "Vector LSM already in failed state: " << existing_status
       << ", while trying to set new failed state: " << status;
 }
 
@@ -1050,6 +1103,9 @@ Status VectorLSM<Vector, DistanceResult>::Open(Options options) {
   std::lock_guard lock(mutex_);
 
   options_ = std::move(options);
+  if (options_.metric_entity) {
+    metrics_ = std::make_unique<vector_index::VectorLSMMetrics>(options_.metric_entity);
+  }
   insert_registry_ = std::make_unique<InsertRegistry>(
       options_.log_prefix, *options_.insert_thread_pool);
   merge_registry_ = std::make_unique<MergeRegistry>(
@@ -1210,7 +1266,7 @@ Status VectorLSM<Vector, DistanceResult>::Insert(
 
   size_t entries_per_task = ceil_div(entries.size(), num_tasks);
 
-  auto tasks = insert_registry_->AllocateTasks(
+  auto tasks = VERIFY_RESULT(insert_registry_->AllocateTasks(
       num_tasks, chunk->index,
       [this, chunk](const Status& status) {
         if (!status.ok()) {
@@ -1220,7 +1276,7 @@ Status VectorLSM<Vector, DistanceResult>::Insert(
           chunk->insertion_failed.store(false, std::memory_order::release);
         }
         chunk->InsertTaskDone();
-      });
+      }));
   DCHECK_EQ(num_tasks, tasks.size());
 
   auto tasks_it = tasks.begin();
@@ -1807,6 +1863,15 @@ size_t VectorLSM<Vector, DistanceResult>::TEST_NextManifestFileNo() const {
   return next_manifest_file_no_;
 }
 
+// Get the file size of the chunk with the highest serial number.
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+uint64_t VectorLSM<Vector, DistanceResult>::TEST_LatestChunkSize() const {
+  SharedLock lock(mutex_);
+  CHECK(!immutable_chunks_.empty());
+  auto it_chunk = std::ranges::max_element(immutable_chunks_, {}, &ImmutableChunk::serial_no);
+  return (*it_chunk)->file_size();
+}
+
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 DistanceResult VectorLSM<Vector, DistanceResult>::Distance(
     const Vector& lhs, const Vector& rhs) const {
@@ -2007,7 +2072,7 @@ template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 typename VectorLSM<Vector, DistanceResult>::CompactionScope
 VectorLSM<Vector, DistanceResult>::PickChunksBySizeAmplification() const {
   // Percentage flexibility while reducing size amplification.
-  const auto ratio = FLAGS_vector_index_max_size_amplification_percent;
+  const auto ratio = FLAGS_vector_index_compaction_size_amp_max_percent;
   if (ratio < 0) {
     VLOG_WITH_PREFIX(2) << "Size amplification compactions disabled by gflag";
     return {};
@@ -2027,15 +2092,22 @@ VectorLSM<Vector, DistanceResult>::PickChunksBySizeAmplification() const {
 
     base_chunk_size = base_chunk->file_size();
     if (base_chunk_size) {
+      VLOG_WITH_PREFIX(3) << "Size amp base candidate " << base_chunk->ToShortString();
       break;
     }
   }
 
   // Get the longest span of the candidates ready for the compaction.
-  size_t num_candidates_on_disk = 0;
+  const auto max_width = SizeAmpCompactionMaxMergeWidth();
+  size_t num_candidates_on_disk = 1; // Account base chunk.
   uint64_t candidates_size = 0;
   auto candidate_end = base_chunk_it + 1;
   for (; candidate_end != immutable_chunks_.end(); ++candidate_end) {
+    if (num_candidates_on_disk >= max_width) {
+        VLOG_WITH_PREFIX(3) << Format("Size amp reached max number of candidates ($0)", max_width);
+        break;
+    }
+
     const auto& candidate = *candidate_end;
     if (!candidate->ReadyForCompaction()) {
       VLOG_WITH_PREFIX(3)
@@ -2049,7 +2121,7 @@ VectorLSM<Vector, DistanceResult>::PickChunksBySizeAmplification() const {
     VLOG_WITH_PREFIX(3) << "Size amp candidate " << candidate->ToShortString();
   }
 
-  if (num_candidates_on_disk == 0) {
+  if (num_candidates_on_disk < SizeAmpCompactionMinMergeWidth()) {
     VLOG_WITH_PREFIX(2) << Format("Size amp not needed due to not enough candidates on disk");
   }
 
@@ -2079,12 +2151,13 @@ VectorLSM<Vector, DistanceResult>::PickChunksBySizeRatio() const {
     return {};
   }
 
-  const auto min_width = CompactionMinMergeWidth();
+  const auto min_width = SizeRatioCompactionMinMergeWidth();
   if (immutable_chunks_.size() < min_width) {
     VLOG_WITH_PREFIX(2) << "Size ratio compactions not needed, not enough candidates";
     return {};
   }
 
+  const auto max_width = SizeRatioCompactionMaxMergeWidth();
   const uint64_t always_include_size_threshold =
       FLAGS_vector_index_compaction_always_include_size_threshold;
 
@@ -2106,6 +2179,12 @@ VectorLSM<Vector, DistanceResult>::PickChunksBySizeRatio() const {
     // Check if the succeeding chunks need compaction.
     auto succeeding_it = it + 1;
     for (; succeeding_it != immutable_chunks_.rend(); ++succeeding_it) {
+      if (num_candidates_on_disk >= max_width) {
+        VLOG_WITH_PREFIX(3)
+            << Format("Size ratio reached max number of candidates ($0)", max_width);
+        break;
+      }
+
       if (!(*succeeding_it)->ReadyForCompaction()) {
         VLOG_WITH_PREFIX(3)
             << "Size ratio stopping at candidate not ready for compaction "
@@ -2325,12 +2404,12 @@ class Merger {
     while (source_iterator.Valid()) {
       RETURN_NOT_OK(lsm_.RUNNING_STATUS());
 
-      auto tasks = merge_registry_.AllocateTasks(
+      auto tasks = VERIFY_RESULT(merge_registry_.AllocateTasks(
           num_total_tasks, target_index,
           [&num_completed_tasks](const Status&) {
             // TODO: Handle failure
             num_completed_tasks.fetch_add(1, std::memory_order::relaxed);
-          });
+          }));
 
       VLOG_WITH_PREFIX(3) << "Allocated " << tasks.size() << " merge tasks";
 
@@ -2411,18 +2490,24 @@ VectorLSM<Vector, DistanceResult>::DoCompactChunks(const ImmutableChunkPtrs& inp
 
     LOG_WITH_PREFIX(INFO) << "Chunks merge done [vectors: " << merged_index->Size() << "]";
 
-    // Save new index to disk.
-    VectorIndexPtr new_index;
-    std::tie(merged_index_file, new_index) = VERIFY_RESULT(SaveIndexToFile(
-        *merged_index, NextSerialNo()));
-    if (new_index) {
-      merged_index = new_index;
+    // All vectors could be filtered out. Make sure there's data for saving to disk.
+    if (!merged_index->Size()) {
+      LOG_WITH_PREFIX(INFO) << "Compaction done, no chunk to save";
+    } else {
+      // Save new index to disk.
+      VectorIndexPtr new_index;
+      std::tie(merged_index_file, new_index) = VERIFY_RESULT(SaveIndexToFile(
+          *merged_index, NextSerialNo()));
+      if (new_index) {
+        merged_index = new_index;
+      }
+      LOG_WITH_PREFIX(INFO)
+          << "Compaction done, new chunk " << merged_index_file->ToString() << " saved to disk";
     }
-    LOG_WITH_PREFIX(INFO)
-        << "Compaction done, new chunk " << merged_index_file->ToString() << " saved to disk";
   }
 
-  // Create new immutable chunk for further processing.
+  // Create new immutable chunk for further processing. If nothing got merged
+  // or merged chunk was empty, it would contain frontiers only.
   return std::make_shared<ImmutableChunk>(
       input_chunks.front()->order_no, std::move(merged_index_file), std::move(merged_index),
       std::move(merged_frontiers), ImmutableChunkState::kOnDisk);
@@ -2436,6 +2521,11 @@ Status VectorLSM<Vector, DistanceResult>::DoCompact(
   VLOG_WITH_PREFIX(2) << "Picked chunks: " << AsString(scope);
 
   auto merged_chunk = VERIFY_RESULT(DoCompactChunks(scope.chunks()));
+
+  if (metrics_) {
+    // TODO(vector_index): include metadata file update in write metrics.
+    metrics_->compact_write_bytes->IncrementBy(merged_chunk->file_size());
+  }
 
   // A new chunk must be in a manifested state to put into the immutable chunks collection to
   // keep the data consistence, as the old chunks are in manifested state. This means, manifest
@@ -2541,7 +2631,7 @@ VectorLSM<Vector, DistanceResult>::RegisterManualCompaction(StdStatusCallback ca
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 void VectorLSM<Vector, DistanceResult>::ScheduleBackgroundCompaction() {
-  if (FLAGS_vector_index_disable_compactions) {
+  if (!FLAGS_vector_index_enable_compactions) {
     VLOG_WITH_PREFIX(2) << "Background compactions disabled by gflag";
     return;
   }
@@ -2566,9 +2656,7 @@ void VectorLSM<Vector, DistanceResult>::ScheduleBackgroundCompaction() {
 
     num_manifested_chunks_on_disk = std::ranges::count_if(
         immutable_chunks_,
-        [](auto&& chunk) {
-          return !chunk->IsUnderCompaction() && chunk->IsInManifest() && chunk->file;
-        });
+        [](auto&& chunk) { return chunk->ReadyForCompaction() && chunk->file; });
   }
   if (num_manifested_chunks_on_disk < FilesNumberCompactionTrigger()) {
     VLOG_WITH_PREFIX(2) << Format(
@@ -2594,6 +2682,7 @@ void VectorLSM<Vector, DistanceResult>::ScheduleBackgroundCompaction() {
     // compaction and in case of success create and submit the task -- but it is better to not
     // setup picked chunks for the compaction task letting it pick large scope on execution.
     task = std::make_unique<CompactionTask>(*this);
+    VLOG_WITH_PREFIX(2) << "Created background compaction task: " << task->ToString();
     RegisterUnlocked(*task);
   }
 
@@ -2684,7 +2773,7 @@ void VectorLSM<Vector, DistanceResult>::Deregister(CompactionTask& task) {
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status VectorLSM<Vector, DistanceResult>::SubmitTask(CompactionTaskPtr task) {
   // TODO(vector-index): specify disk_group_no during submitting.
-  auto submitted = options_.compaction_thread_pool->Submit(task->Priority(), &task);
+  auto submitted = options_.compaction_token->Submit(&task);
   if (!submitted.ok()) {
     LOG_WITH_PREFIX(ERROR) << "Failed to submit task " << task->ToString()
                            << ", status: " << submitted;

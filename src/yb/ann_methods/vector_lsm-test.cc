@@ -36,13 +36,15 @@ using namespace std::literals;
 
 DECLARE_bool(TEST_usearch_exact);
 DECLARE_bool(TEST_vector_index_skip_manifest_update_during_shutdown);
-DECLARE_bool(vector_index_disable_compactions);
+DECLARE_bool(vector_index_enable_compactions);
 DECLARE_int32(vector_index_files_number_compaction_trigger);
-DECLARE_int32(vector_index_max_size_amplification_percent);
+DECLARE_int32(vector_index_compaction_size_amp_max_percent);
 DECLARE_int32(vector_index_compaction_size_ratio_percent);
-DECLARE_int32(vector_index_compaction_min_merge_width);
+DECLARE_int32(vector_index_compaction_size_ratio_min_merge_width);
 DECLARE_uint64(TEST_vector_index_delay_saving_first_chunk_ms);
 DECLARE_uint64(vector_index_compaction_always_include_size_threshold);
+
+METRIC_DEFINE_entity(vector_index);
 
 namespace yb::vector_index {
 
@@ -55,6 +57,9 @@ namespace yb::ann_methods {
 using vector_index::VectorId;
 
 using FloatVectorLSM = vector_index::VectorLSM<std::vector<float>, float>;
+using InsertEntries = typename FloatVectorLSM::InsertEntries;
+using MergeFilter = vector_index::VectorLSMMergeFilter;
+using MergeFilterPtr = vector_index::VectorLSMMergeFilterPtr;
 
 using TestUsearchIndexFactory = vector_index::MakeVectorIndexFactory<
     SimplifiedUsearchIndexFactory, FloatVectorLSM>;
@@ -171,7 +176,7 @@ class VectorLSMTest : public YBTest, public testing::WithParamInterface<ANNMetho
   }
 
   void SetUp() override {
-    FLAGS_vector_index_disable_compactions = false;
+    FLAGS_vector_index_enable_compactions = true;
     YBTest::SetUp();
   }
 
@@ -207,10 +212,43 @@ class VectorLSMTest : public YBTest, public testing::WithParamInterface<ANNMetho
 
   void TestBootstrap(bool flush);
 
+  void TestBackgroundCompactionSizeRatio(bool test_metrics);
+
+  MergeFilterPtr GetMergeFilter();
+
+  void SetMergeFilter(MergeFilterPtr&& filter);
+
+  void SetMergeFilter(rocksdb::FilterDecision decision) {
+    SetMergeFilter(CreateDummyMergeFilter(decision));
+  }
+
+  template <typename FilterImpl>
+  struct FilterProxy : public MergeFilter {
+    FilterImpl filter;
+    explicit FilterProxy(FilterImpl&& impl) : filter(std::move(impl)) {}
+    rocksdb::FilterDecision Filter(VectorId vector_id) override {
+      return filter(vector_id);
+    }
+  };
+
+  static MergeFilterPtr CreateDummyMergeFilter(rocksdb::FilterDecision decision) {
+    auto filter = [decision](VectorId vector_id) {
+      VLOG(1) << "DummyMergeFilter: " << vector_id << " => " << decision;
+      return decision;
+    };
+    return std::make_unique<FilterProxy<decltype(filter)>>(std::move(filter));
+  }
+
   rpc::ThreadPool thread_pool_;
   PriorityThreadPool priority_thread_pool_;
   SimpleVectorLSMKeyValueStorage key_value_storage_;
-  FloatVectorLSM::InsertEntries  inserted_entries_;
+  InsertEntries inserted_entries_;
+  simple_spinlock merge_filter_mutex_;
+  MergeFilterPtr merge_filter_;
+
+  std::unique_ptr<MetricRegistry> metric_registry_ = std::make_unique<MetricRegistry>();
+  MetricEntityPtr vector_index_metric_entity_ =
+      METRIC_ENTITY_vector_index.Instantiate(metric_registry_.get(), "test");
 };
 
 auto GetVectorIndexFactory(ANNMethodKind ann_method) {
@@ -362,17 +400,11 @@ Status VectorLSMTest::OpenVectorLSM(
     .vectors_per_chunk = vectors_per_chunk,
     .thread_pool = &thread_pool_,
     .insert_thread_pool = &thread_pool_,
-    .compaction_thread_pool = &priority_thread_pool_,
+    .compaction_token = std::make_shared<PriorityThreadPoolToken>(priority_thread_pool_),
     .frontiers_factory = [] { return std::make_unique<TestFrontiers>(); },
-    .vector_merge_filter_factory = [] {
-      struct DummyFilter : public vector_index::VectorLSMMergeFilter {
-        rocksdb::FilterDecision Filter(VectorId vector_id) override {
-          return rocksdb::FilterDecision::kKeep;
-        }
-      };
-      return std::make_unique<DummyFilter>();
-    },
+    .vector_merge_filter_factory = [this] { return GetMergeFilter(); },
     .file_extension = "",
+    .metric_entity = vector_index_metric_entity_,
   };
   auto status = lsm.Open(std::move(options));
   if (status.ok()) {
@@ -430,15 +462,23 @@ void VectorLSMTest::CheckQueryVector(
 }
 
 Result<std::vector<std::string>> VectorLSMTest::GetFiles(FloatVectorLSM& lsm) {
-  auto files = VERIFY_RESULT(lsm.TEST_GetEnv()->GetChildren(lsm.StorageDir()));
-  std::erase_if(files, [](const auto& file) {
-    return !boost::ends_with(file, ".meta") && !boost::contains(file, "vectorindex");
-  });
-  std::sort(files.begin(), files.end(), [](auto&& lhs, auto&& rhs){
-    // Refer to VectorLSMMetadataLoad().
-    return lhs.size() < rhs.size() || (lhs.size() == rhs.size() && lhs < rhs);
-  });
-  return files;
+  return path_utils::GetVectorIndexFiles(*lsm.TEST_GetEnv(), lsm.StorageDir());
+}
+
+MergeFilterPtr VectorLSMTest::GetMergeFilter() {
+  if (!merge_filter_) {
+    SetMergeFilter(rocksdb::FilterDecision::kKeep);
+  }
+  auto filter = [this](VectorId vector_id) {
+    std::lock_guard lock(merge_filter_mutex_);
+    return merge_filter_->Filter(vector_id);
+  };
+  return std::make_unique<FilterProxy<decltype(filter)>>(std::move(filter));
+}
+
+void VectorLSMTest::SetMergeFilter(MergeFilterPtr&& filter) {
+  std::lock_guard lock(merge_filter_mutex_);
+  merge_filter_ = std::move(filter);
 }
 
 TEST_P(VectorLSMTest, Simple) {
@@ -467,7 +507,7 @@ TEST_P(VectorLSMTest, SingleChunkSimpleCompaction) {
   constexpr size_t kNumEntries = GetNumEntriesByDimensions(kDimensions);
 
   // Turn off background compactions to not interfere with manual compaction.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_disable_compactions) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
 
   FloatVectorLSM lsm;
   ASSERT_OK(OpenVectorLSM(lsm, kDimensions, 2 * kNumEntries));
@@ -513,7 +553,7 @@ TEST_P(VectorLSMTest, MultipleChunksSimpleCompaction) {
   static_assert(kNumEntries > 2 * kDefaultChunkSize);
 
   // Turn off background compactions to not interfere with manual compaction.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_disable_compactions) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
 
   constexpr size_t kBlocksPerChunk = 5;
   constexpr size_t kBlockSize = kDefaultChunkSize / kBlocksPerChunk;
@@ -563,25 +603,87 @@ TEST_P(VectorLSMTest, MultipleChunksSimpleCompaction) {
   ASSERT_STR_EQ(files, Format("[0.meta, 1.meta, 2.meta, vectorindex_$0]", compacted_idx));
 }
 
+// The purpose of this test is to make sure compaction works fine if all chunks got
+// filtered out during the compaction, https://github.com/yugabyte/yugabyte-db/issues/29016.
+TEST_P(VectorLSMTest, AllVectorsRemovalCompaction) {
+  constexpr size_t kDimensions = 4;
+  constexpr size_t kNumEntries = GetNumEntriesByDimensions(kDimensions);
+
+  // Turn off background compactions to not interfere with manual compaction.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+
+  // Discard all vectors on compaction.
+  SetMergeFilter(rocksdb::FilterDecision::kDiscard);
+
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(lsm, kDimensions, 2 * kNumEntries));
+  ASSERT_OK(InsertCube(lsm, kDimensions, 2 * kNumEntries));
+  ASSERT_EQ(kNumEntries, inserted_entries_.size());
+  ASSERT_OK(WaitForBackgroundInsertsDone(lsm));
+  ASSERT_OK(lsm.Flush(/* wait = */ true));
+  ASSERT_EQ(1, lsm.TEST_NextManifestFileNo());
+  VerifyVectorLSM(lsm, kDimensions);
+
+  // Compact single file into a single file.
+  ASSERT_OK(lsm.Compact(/* wait = */ true));
+  ASSERT_EQ(1, lsm.NumImmutableChunks());
+  ASSERT_EQ(2, lsm.TEST_NextManifestFileNo());
+
+  // Wait for cleanup is completed and check files on disk.
+  while (lsm.TEST_ObsoleteFilesCleanupInProgress()) {
+    SleepFor(MonoDelta::FromSeconds(1));
+  }
+  auto files = AsString(ASSERT_RESULT(GetFiles(lsm)));
+  ASSERT_STR_EQ(files, "[0.meta, 1.meta]");
+
+  // Verify results.
+  inserted_entries_.clear();
+  VerifyVectorLSM(lsm, kDimensions);
+
+  // Make sure further writes work fine.
+  SetMergeFilter(rocksdb::FilterDecision::kKeep);
+  ASSERT_OK(InsertCube(lsm, kDimensions, 2 * kNumEntries));
+  ASSERT_EQ(kNumEntries, inserted_entries_.size());
+  ASSERT_OK(WaitForBackgroundInsertsDone(lsm));
+  ASSERT_OK(lsm.Flush(/* wait = */ true));
+  ASSERT_EQ(2, lsm.TEST_NextManifestFileNo());
+  VerifyVectorLSM(lsm, kDimensions);
+  files = AsString(ASSERT_RESULT(GetFiles(lsm)));
+  ASSERT_STR_EQ(files, "[0.meta, 1.meta, vectorindex_2]");
+
+  // Make sure further compaction works fine.
+  ASSERT_OK(lsm.Compact(/* wait = */ true));
+  ASSERT_EQ(1, lsm.NumImmutableChunks());
+  ASSERT_EQ(3, lsm.TEST_NextManifestFileNo());
+  VerifyVectorLSM(lsm, kDimensions);
+
+  // Wait for cleanup is completed and check files on disk.
+  while (lsm.TEST_ObsoleteFilesCleanupInProgress()) {
+    SleepFor(MonoDelta::FromSeconds(1));
+  }
+  files = AsString(ASSERT_RESULT(GetFiles(lsm)));
+  ASSERT_STR_EQ(files, "[0.meta, 1.meta, 2.meta, vectorindex_3]");
+}
+
 TEST_P(VectorLSMTest, BackgroundCompactionSizeAmp) {
   constexpr size_t kDimensions = 8;
   constexpr size_t kNumChunks  = 6;
 
   // Make sure background compaction are turned on.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_disable_compactions) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = true;
 
   // Turn off compactions by size ratio to not interfere with compactions by size amp.
   FLAGS_vector_index_compaction_size_ratio_percent = -100;
 
   // Ensure background compaction flags.
   FLAGS_vector_index_files_number_compaction_trigger = narrow_cast<int32_t>(kNumChunks / 2);
-  FLAGS_vector_index_max_size_amplification_percent  = narrow_cast<int32_t>((kNumChunks - 1) * 100);
+  FLAGS_vector_index_compaction_size_amp_max_percent = narrow_cast<int32_t>((kNumChunks - 1) * 100);
 
   FloatVectorLSM lsm;
   ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kDefaultChunkSize));
 
   for (size_t n = 0; n < kNumChunks; ++n) {
-    // Check files right before the backgorund compaction would trigger.
+    // Check files right before the background compaction would trigger.
     if (n == kNumChunks - 1) {
       std::stringstream expected_files;
       expected_files << "0.meta";
@@ -607,9 +709,9 @@ TEST_P(VectorLSMTest, BackgroundCompactionSizeAmp) {
   // Trigger background compaction on the same size. At this point there's one big chunk which
   // is approximately equal to the size of six random chunks. So, inserting six more chunks
   // should trigger next background compaction.
-  FLAGS_vector_index_max_size_amplification_percent = 100;
+  FLAGS_vector_index_compaction_size_amp_max_percent = 100;
   for (size_t n = 0; n < kNumChunks; ++n) {
-    // Check files right before the backgorund compaction would trigger.
+    // Check files right before the background compaction would trigger.
     if (n == kNumChunks - 1) {
       std::stringstream expected_files;
       expected_files << "0.meta, " << "vectorindex_" << last_chunk_id;
@@ -633,7 +735,7 @@ TEST_P(VectorLSMTest, BackgroundCompactionSizeAmp) {
   }
 }
 
-TEST_P(VectorLSMTest, BackgroundCompactionSizeRatio) {
+void VectorLSMTest::TestBackgroundCompactionSizeRatio(bool test_metrics) {
   constexpr size_t kDimensions = 8;
   constexpr size_t kNumLargeChunks = 2;
   constexpr size_t kNumSmallChunks = 6;
@@ -646,15 +748,15 @@ TEST_P(VectorLSMTest, BackgroundCompactionSizeRatio) {
   constexpr size_t kChunkSize = 1 + kLargeChunkNumVectors; // To trigger explicit flush.
 
   // Turn background compaction off to prepare files.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_disable_compactions) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
 
-  // Turn off compactions by size ratio to not interfere with compactions by size amp.
-  FLAGS_vector_index_compaction_size_ratio_percent = -1;
+  // Turn off compactions by size amp to not interfere with compactions by size ratio.
+  FLAGS_vector_index_compaction_size_amp_max_percent = -1;
 
   // Ensure background compaction flags.
   FLAGS_vector_index_compaction_always_include_size_threshold = 0;
   FLAGS_vector_index_files_number_compaction_trigger = narrow_cast<int32_t>(kNumChunks / 2);
-  FLAGS_vector_index_compaction_min_merge_width = kNumMinChunks + 1;
+  FLAGS_vector_index_compaction_size_ratio_min_merge_width = kNumMinChunks + 1;
 
   // Round up to the nearest tens (e.g. 1.33 => 40%).
   FLAGS_vector_index_compaction_size_ratio_percent = -100 + 10 * static_cast<int>(
@@ -685,27 +787,46 @@ TEST_P(VectorLSMTest, BackgroundCompactionSizeRatio) {
   auto files = AsString(ASSERT_RESULT(GetFiles(lsm)));
   ASSERT_STR_EQ(files, Format("[$0]", expected_files.str()));
 
+  if (test_metrics) {
+    ASSERT_EQ(lsm.metrics().compact_write_bytes->value(), 0);
+  }
+
   // Insert the last min chunk to trigger background compaction.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_disable_compactions) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = true;
   ASSERT_OK(InsertRandomAndFlush(lsm, kDimensions, num_vectors_by_file[kNumChunks - 1]));
   ASSERT_OK(WaitForCompactionsDone(lsm));
 
-  // Check expected files after the compaction. Background compaction won't consider min chunks
-  // because min merge width is greater than the number of min chunks. And the most earlist chunk
-  // doesn't meet the criteria of size ratio as it is too large. So, it is expected to end up
-  // with 1 large chunk, 2 min chunks and 1 new compacted chunk.
-  expected_files.str({});
-  expected_files << "0.meta, vectorindex_1";
-  for (size_t n = kNumChunks - kNumMinChunks + 1; n <= kNumChunks + 1; ++n) {
-    expected_files << ", vectorindex_" << n;
-  }
-  files = AsString(ASSERT_RESULT(GetFiles(lsm)));
-  ASSERT_STR_EQ(files, Format("[$0]", expected_files.str()));
+  // Background compaction won't consider min chunks because min merge width is greater than the
+  // number of min chunks. And the most earliest chunk doesn't meet the criteria of size ratio
+  // as it is too large. So, it is expected to end up with 1 large chunk, 2 min chunks and 1 new
+  // compacted chunk.
+  if (test_metrics) {
+    // The write metric should be incremented by the size of the new chunk created by compaction.
+    ASSERT_EQ(lsm.metrics().compact_write_bytes->value(), lsm.TEST_LatestChunkSize());
+  } else {
+    // Check expected files after the compaction.
+    expected_files.str({});
+    expected_files << "0.meta, vectorindex_1";
+    for (size_t n = kNumChunks - kNumMinChunks + 1; n <= kNumChunks + 1; ++n) {
+      expected_files << ", vectorindex_" << n;
+    }
+    files = AsString(ASSERT_RESULT(GetFiles(lsm)));
+    ASSERT_STR_EQ(files, Format("[$0]", expected_files.str()));
 
-  // Wait for cleanup is completed and check files on disk.
-  while (lsm.TEST_ObsoleteFilesCleanupInProgress()) {
-    SleepFor(MonoDelta::FromSeconds(1));
+    // Wait for cleanup is completed and check files on disk.
+    while (lsm.TEST_ObsoleteFilesCleanupInProgress()) {
+      SleepFor(MonoDelta::FromSeconds(1));
+    }
   }
+}
+
+TEST_P(VectorLSMTest, BackgroundCompactionSizeRatio) {
+  TestBackgroundCompactionSizeRatio(/* test_metrics= */ false);
+}
+
+// Verify metrics for background compaction leaving some chunks uncompacted.
+TEST_P(VectorLSMTest, BackgroundCompactionSizeRatioMetrics) {
+  TestBackgroundCompactionSizeRatio(/* test_metrics= */ true);
 }
 
 TEST_P(VectorLSMTest, CompactionCancelOnShutdown) {
@@ -733,6 +854,50 @@ TEST_P(VectorLSMTest, CompactionCancelOnShutdown) {
 
   auto status = lsm.Compact(/* wait = */ true);
   ASSERT_TRUE(status.IsShutdownInProgress()) << status;
+}
+
+// Verify metrics for manual compaction of empty, single and multiple chunk/s.
+TEST_P(VectorLSMTest, SimpleCompactionMetrics) {
+  constexpr size_t kDimensions = 8;
+  constexpr size_t kNumEntriesPerChunk = 32;
+  static_assert(kNumEntriesPerChunk <= kDefaultChunkSize);
+
+  // Turn off background compactions to not interfere with manual compaction.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kDefaultChunkSize));
+  ASSERT_EQ(0, lsm.TEST_NextManifestFileNo());
+  ASSERT_EQ(lsm.metrics().compact_write_bytes->value(), 0);
+
+  // Empty compaction, write metric remains unchanged.
+  ASSERT_OK(lsm.Compact(/* wait = */ true));
+  ASSERT_EQ(lsm.metrics().compact_write_bytes->value(), 0);
+
+  // Insert 1 batch of entries to create 1 chunk file.
+  ASSERT_OK(InsertRandomAndFlush(lsm, kDimensions, kNumEntriesPerChunk));
+  ASSERT_EQ(kNumEntriesPerChunk, inserted_entries_.size());
+  ASSERT_EQ(1, lsm.NumImmutableChunks());
+
+  // Compact single file into a single file, write metric increases by size of new chunk file.
+  ASSERT_OK(lsm.Compact(/* wait = */ true));
+  ASSERT_EQ(1, lsm.NumImmutableChunks());
+  auto compaction_writes = lsm.TEST_LatestChunkSize();
+  ASSERT_EQ(lsm.metrics().compact_write_bytes->value(), compaction_writes);
+
+  // Insert 5 more batches for a total of 6 chunk files.
+  constexpr size_t kNumChunks = 6;
+  for (size_t i = 1; i < kNumChunks; ++i) {
+    ASSERT_OK(InsertRandomAndFlush(lsm, kDimensions, kNumEntriesPerChunk));
+    ASSERT_EQ(kNumEntriesPerChunk, inserted_entries_.size());
+  }
+  ASSERT_EQ(kNumChunks, lsm.NumImmutableChunks());
+
+  // Compact all files into a single file.
+  ASSERT_OK(lsm.Compact(/* wait = */ true));
+  ASSERT_EQ(1, lsm.NumImmutableChunks());
+  compaction_writes += lsm.TEST_LatestChunkSize();
+  ASSERT_EQ(lsm.metrics().compact_write_bytes->value(), compaction_writes);
 }
 
 void VectorLSMTest::TestBootstrap(bool flush) {
