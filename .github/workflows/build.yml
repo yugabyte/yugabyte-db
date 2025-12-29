@@ -94,7 +94,7 @@ jobs:
                 set -euo pipefail -x
                 echo "OSTYPE (inside Docker): $OSTYPE"
                 echo "PATH: $PATH"
-                export PATH=/usr/local/bin:$PATH
+                export PATH=/usr/local/bin:\$HOME/arcanist/bin:$HOME/yb-cpplint/cpplint:\$PATH
                 ( set -x; ls -l /usr/local/bin )
                 set +e
                 ( set -x; which ninja )
@@ -104,9 +104,10 @@ jobs:
                 chown -R yugabyteci .
                 sudo -H -u yugabyteci bash -c "
                   set -euo pipefail
-                  export PATH=/usr/local/bin:\$HOME/arcanist/bin:\$PATH
+                  export PATH=/usr/local/bin:\$HOME/arcanist/bin:$HOME/yb-cpplint/cpplint:\$PATH
                   df -H /
                   echo ::group::Arc Lint
+                  # TODO: specify --rev $GITHUB_BASE_REF
                   arc lint
                   echo ::group::Building YugabyteDB
                   ./yb_build.sh release \
