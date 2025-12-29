@@ -19,7 +19,7 @@ The following instructions describe the steps to perform and verify a successful
 Live migration availability varies by the source database type as described in the following table:
 
 | Source database | Feature Maturity |
-| :--- | :--- |
+| :---- | :---- |
 | PostgreSQL | {{<tags/feature/ga>}} |
 | Oracle | {{<tags/feature/tp>}} |
 
