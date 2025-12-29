@@ -179,8 +179,8 @@ func (a *AuthAPIClient) UniverseYBAVersionCheck() (bool, string, error) {
 // It extracts universe metadata and locks universe.
 func (a *AuthAPIClient) DetachUniverse(
 	uUUID string,
-) ybav2client.UniverseApiApiDetachUniverseRequest {
-	return a.APIv2Client.UniverseApi.DetachUniverse(a.ctx, a.CustomerUUID, uUUID)
+) ybav2client.UniverseAPIDetachUniverseRequest {
+	return a.APIv2Client.UniverseAPI.DetachUniverse(a.ctx, a.CustomerUUID, uUUID)
 }
 
 // DeleteAttachDetachMetadata deletes the universe related metadata from
@@ -188,8 +188,8 @@ func (a *AuthAPIClient) DetachUniverse(
 // providers, etc. and associated backups are not deleted.
 func (a *AuthAPIClient) DeleteAttachDetachMetadata(
 	uUUID string,
-) ybav2client.UniverseApiApiDeleteAttachDetachMetadataRequest {
-	return a.APIv2Client.UniverseApi.DeleteAttachDetachMetadata(a.ctx, a.CustomerUUID, uUUID)
+) ybav2client.UniverseAPIDeleteAttachDetachMetadataRequest {
+	return a.APIv2Client.UniverseAPI.DeleteAttachDetachMetadata(a.ctx, a.CustomerUUID, uUUID)
 }
 
 // AttachUniverse attaches the universe into the destination platform.
@@ -197,8 +197,8 @@ func (a *AuthAPIClient) DeleteAttachDetachMetadata(
 // is imported.
 func (a *AuthAPIClient) AttachUniverse(
 	uUUID string,
-) ybav2client.UniverseApiApiAttachUniverseRequest {
-	return a.APIv2Client.UniverseApi.AttachUniverse(a.ctx, a.CustomerUUID, uUUID)
+) ybav2client.UniverseAPIAttachUniverseRequest {
+	return a.APIv2Client.UniverseAPI.AttachUniverse(a.ctx, a.CustomerUUID, uUUID)
 }
 
 // AttachUniverseRest uses REST API to call attach universe functionality

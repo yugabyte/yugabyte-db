@@ -281,7 +281,7 @@ func BuildResourceRoleDefinitionV2(
 		resourceDefinition := ybav2client.ResourceDefinition{
 			AllowAll:        roleResourceDefinition.AllowAll,
 			ResourceType:    roleResourceDefinition.ResourceType,
-			ResourceUuidSet: &roleResourceDefinition.ResourceUUIDs,
+			ResourceUuidSet: roleResourceDefinition.ResourceUUIDs,
 		}
 
 		exists := false
