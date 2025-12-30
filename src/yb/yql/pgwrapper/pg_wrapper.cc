@@ -355,6 +355,9 @@ DEFINE_RUNTIME_PG_FLAG(
     "approximate memory usage of each malloc call stack if its peak RSS "
     "is greater than or equal to this threshold in KB. Set to -1 to disable.");
 
+DEFINE_RUNTIME_PG_FLAG(bool, yb_ignore_bool_cond_for_legacy_estimate, false,
+    "Ignore boolean condition for row count estimate in legacy cost model.");
+
 using gflags::CommandLineFlagInfo;
 using std::string;
 using std::vector;
