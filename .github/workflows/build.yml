@@ -112,7 +112,7 @@ jobs:
                   if [[ -n \"${{ github.base_ref }}\" ]]; then
                     echo Base reference: ${{ github.base_ref }}
                     git fetch origin ${{ github.base_ref }}
-                    arc lint --trace --never-apply-patches --rev origin/${{ github.base_ref }}
+                    arc lint --never-apply-patches --rev origin/${{ github.base_ref }}
                   else
                     echo No base reference: Skipping Lint Step
                   fi
