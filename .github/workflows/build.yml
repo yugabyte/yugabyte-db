@@ -106,9 +106,9 @@ jobs:
                   df -H /
                   echo ::group::Arc Lint
                   # Base reference should not be set for non-PR actions.
-                  echo Base reference: ${{ github_base_ref }}
+                  echo Base reference: ${{ github.base_ref }}
                   if [[ -n \"${{ github.base_ref }}\" ]]; then
-                    arc lint --never-apply-patches --rev ${{ github_base_ref }}
+                    arc lint --never-apply-patches --rev ${{ github.base_ref }}
                   else
                     echo No base reference: Skipping Lint Step
                   fi
