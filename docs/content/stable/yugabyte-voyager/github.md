@@ -4,7 +4,7 @@ private=true
 +++
 -->
 
-Perform the following steps to install `yb_voyager` using an installer script:
+Perform the following steps to install yb-voyager using an installer script:
 
 1. Clone the yb-voyager repository.
 
@@ -24,7 +24,7 @@ Perform the following steps to install `yb_voyager` using an installer script:
     ./install-yb-voyager
     ```
 
-    To install a specific version of `yb-voyager` on your machine, use the following command:
+    To install a specific version of yb-voyager on your machine, use the following command:
 
     ```sh
     ./install-yb-voyager --version <VERSION>

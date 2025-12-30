@@ -399,7 +399,7 @@ Live migration for PostgreSQL source database (using YugabyteDB Connector) is {{
 
   {{% tab header="Standalone PostgreSQL" %}}
 
-1. yb_voyager requires `wal_level` to be logical. You can check this using following the steps:
+1. yb-voyager requires `wal_level` to be logical. You can check this using following the steps:
 
     1. Run the command `SHOW wal_level` on the database to check the value.
 
@@ -415,14 +415,18 @@ Live migration for PostgreSQL source database (using YugabyteDB Connector) is {{
     CREATE USER ybvoyager PASSWORD 'password';
     ```
 
-1. Grant permissions for migration. Use the [yb-voyager-pg-grant-migration-permissions.sql](../../reference/yb-voyager-pg-grant-migration-permissions/) script (in `/opt/yb-voyager/guardrails-scripts/` or, for brew, check in `$(brew --cellar)/yb-voyager@<voyagerversion>/<voyagerversion>`) to grant the required permissions as follows:
+1. Grant permissions for migration. Use the [yb-voyager-pg-grant-migration-permissions.sql](../../reference/yb-voyager-pg-grant-migration-permissions/) script (in `/opt/yb-voyager/guardrails-scripts/` or, for brew, check in `$(brew --cellar)/yb-voyager@<voyagerversion>/<voyagerversion>`).
 
-    _Warning_: This script provides two options for granting permissions:
+    The script does the following:
 
-      - Transfer ownership: Transfers ownership of all tables in the specified schemas to the specified replication group, and adds the original table owners and the migration user to that group.
-      - Grant owner role: Grants the original table owner role of each table to the migration user, without transferring table ownership.
+    - Grants permissions to the migration user (`ybvoyager`). This script provides two options for granting permissions:
 
-    In addition, this script sets [Replica identity](/stable/additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/#replica-identity) FULL on all tables in the specified schemas.
+        - Transfer ownership: Transfers ownership of all tables in the specified schemas to the specified replication group, and adds the original table owners and the migration user to that group.
+        - Grant owner role: Grants the original table owner role of each table to the migration user, without transferring table ownership.
+
+    - Sets [Replica identity](/stable/additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/#replica-identity) FULL on all tables in the specified schemas.
+
+    Use the script to grant the required permissions as follows:
 
     ```sql
     psql -h <host> \
@@ -442,7 +446,7 @@ Live migration for PostgreSQL source database (using YugabyteDB Connector) is {{
 
   {{% tab header="RDS PostgreSQL" %}}
 
-1. yb_voyager requires `wal_level` to be logical. This is controlled by a database parameter `rds.logical_replication` which needs to be set to 1. You can check this using following the steps:
+1. yb-voyager requires `wal_level` to be logical. This is controlled by a database parameter `rds.logical_replication` which needs to be set to 1. You can check this using following the steps:
 
     1. Run the command `SHOW rds.logical_replication` on the database to check whether the parameter is set.
 
@@ -458,14 +462,18 @@ Live migration for PostgreSQL source database (using YugabyteDB Connector) is {{
     CREATE USER ybvoyager PASSWORD 'password';
     ```
 
-1. Grant permissions for migration. Use the [yb-voyager-pg-grant-migration-permissions.sql](../../reference/yb-voyager-pg-grant-migration-permissions/) script (which can be found at `/opt/yb-voyager/guardrails-scripts`. For brew, check in `$(brew --cellar)/yb-voyager@<voyagerversion>/<voyagerversion>`) to grant the required permissions as follows:
+1. Grant permissions for migration. Use the [yb-voyager-pg-grant-migration-permissions.sql](../../reference/yb-voyager-pg-grant-migration-permissions/) script (in `/opt/yb-voyager/guardrails-scripts/` or, for brew, check in `$(brew --cellar)/yb-voyager@<voyagerversion>/<voyagerversion>`).
 
-    _Warning_: This script provides two options for granting permissions:
+    The script does the following:
 
-      - Transfer ownership: Transfers ownership of all tables in the specified schemas to the specified replication group, and adds the original table owners and the migration user to that group.
-      - Grant owner role: Grants the original table owner role of each table to the migration user, without transferring table ownership.
+    - Grants permissions to the migration user (`ybvoyager`). This script provides two options for granting permissions:
 
-    In addition, this script sets [Replica identity](/stable/additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/#replica-identity) FULL on all tables in the specified schemas.
+        - Transfer ownership: Transfers ownership of all tables in the specified schemas to the specified replication group, and adds the original table owners and the migration user to that group.
+        - Grant owner role: Grants the original table owner role of each table to the migration user, without transferring table ownership.
+
+    - Sets [Replica identity](/stable/additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/#replica-identity) FULL on all tables in the specified schemas.
+
+    Use the script to grant the required permissions as follows:
 
     ```sql
     psql -h <host> \
