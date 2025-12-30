@@ -5,13 +5,12 @@
 {% macro render_section(section, prefix="") -%}
 {%- for key in section -%}
     {%- set value = section[key] -%}
-    {%- if value == '' -%}
-        continue
-    {%- endif -%}
-    {%- if value is mapping -%}
-        {{ render_section(value, prefix + key + "_") -}}
-    {%- else -%}
-        {{- prefix + key }} = {{ value }}{{ "\n" -}}
+    {%- if value != '' -%}
+        {%- if value is mapping -%}
+            {{ render_section(value, prefix + key + "_") -}}
+        {%- else -%}
+            {{- prefix + key }} = {{ value }}{{ "\n" -}}
+        {%- endif -%}
     {%- endif -%}
 {%- endfor -%}
 {%- endmacro %}
