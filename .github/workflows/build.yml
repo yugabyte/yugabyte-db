@@ -110,7 +110,7 @@ jobs:
                   # Base reference should not be set for non-PR actions.
                   if [[ -n \"${{ github.base_ref }}\" ]]; then
                     echo Base reference: ${{ github.base_ref }}
-                    arc lint --never-apply-patches --rev ${{ github.base_ref }}
+                    arc lint --never-apply-patches --trace --rev ${{ github.base_ref }}
                   else
                     echo No base reference: Skipping Lint Step
                   fi
