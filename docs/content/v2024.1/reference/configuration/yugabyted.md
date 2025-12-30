@@ -39,11 +39,11 @@ After installing YugabyteDB, if you want to use [backup](#backup) and [restore](
     wget https://downloads.yugabyte.com/ybc/2.1.0.0-b9/ybc-2.1.0.0-b9-linux-x86_64.tar.gz
     ```
 
-1. Extract the `ybc-2.0.0.0-b19-linux-x86_64.tar.gz` file into the `yugabytedb/ybc` folder as follows:
+1. Extract the `ybc-2.1.0.0-b9-linux-x86_64.tar.gz` file into the `yugabytedb/ybc` folder as follows:
 
     ```sh
     cd yugabyte-{{< yb-version version="v2024.1" >}}
-    mkdir ybc | tar -xvf share/ybc-2.0.0.0-b19-linux-x86_64.tar.gz -C ybc --strip-components=1
+    mkdir ybc | tar -xvf share/ybc-2.1.0.0-b9-linux-x86_64.tar.gz -C ybc --strip-components=1
 
 To use the service, when creating nodes run the [yugabyted start](#start) command with `--backup_daemon=true`:
 
