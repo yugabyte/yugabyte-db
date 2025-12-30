@@ -87,14 +87,14 @@ jobs:
             docker run \
               --user root \
               -i \
-              -e GITHUB_BASE_REF=${GITHUB_BASE_REF:-} \
+              -e GITHUB_BASE_REF="${GITHUB_BASE_REF:-}" \
               "-w=$build_dir_in_container" \
               --mount type=bind,source="$PWD",target="$build_dir_in_container" \
               "${{ matrix.docker_image }}" \
               bash -c '
                 set -euo pipefail -x
-                echo "OSTYPE (inside Docker): $OSTYPE"
-                echo "PATH: $PATH"
+                echo "OSTYPE (inside Docker): \$OSTYPE"
+                echo "PATH: \$PATH"
                 chown -R yugabyteci .
                 sudo -H -u yugabyteci bash -c "
                   set -euo pipefail
@@ -107,9 +107,9 @@ jobs:
                   df -H /
                   echo ::group::Arc Lint
                   # Base reference should not be set for non-PR actions.
-                  if [[ -n "${GITHUB_BASE_REF:-}" ]]; then
-                    echo "Base reference: ${GITHUB_BASE_REF}"
-                    arc lint --never-apply-patches --rev "${GITHUB_BASE_REF}"
+                  if [[ -n "\${GITHUB_BASE_REF:-}" ]]; then
+                    echo "Base reference: \${GITHUB_BASE_REF}"
+                    arc lint --never-apply-patches --rev "\${GITHUB_BASE_REF}"
                   fi
                   echo ::group::Building YugabyteDB
                   ./yb_build.sh release \
