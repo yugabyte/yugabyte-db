@@ -23,10 +23,6 @@ Live migration availability varies by the source database type as described in t
 | PostgreSQL | {{<tags/feature/ga>}} |
 | Oracle | {{<tags/feature/tp>}} |
 
-{{< warning title="Important" >}}
-This workflow has the potential to alter your source database. Make sure you fully understand the implications of these changes before proceeding.
-{{< /warning >}}
-
 ## Live migration workflow
 
 The following workflows illustrate how you can perform data migration including changes happening on the source simultaneously. With the export data command, you can first export a snapshot and then start continuously capturing changes occurring on the source to an event queue on the disk. Using the import data command, you similarly import the snapshot first, and then continuously apply the exported change events on the target.
@@ -1392,6 +1388,7 @@ DROP USER ybvoyager;
 - Tables without primary key are not supported.
 - Truncating a table on the source database is not taken into account; you need to manually truncate tables on your YugabyteDB cluster.
 - Some Oracle data types are unsupported - User Defined Types (UDT), NCHAR, NVARCHAR, VARRAY, BLOB, CLOB, and NCLOB.
+- Some PostgreSQL data types are unsupported - POINT, LINE, LSEG, BOX, PATH, POLYGON, CIRCLE, GEOMETRY, GEOGRAPHY, BOX2D, BOX3D, TOPOGEOMETRY, RASTER, PG_LSN, TXID_SNAPSHOT, XML, LO, INT4MULTIRANGE, INT8MULTIRANGE, NUMMULTIRANGE, TSMULTIRANGE, TSTZMULTIRANGE, DATEMULTIRANGE.
 - Case-sensitive table names or column names are partially supported. YugabyteDB Voyager converts them to case-insensitive names. For example, an "Accounts" table in a source Oracle database is migrated as `accounts` (case-insensitive) to a YugabyteDB database.
 - For Oracle source databases, schema, table, and column names with more than 30 characters are not supported.
 - Sequences that are not associated with any column or are attached to columns of non-integer types are not supported for resuming value generation. These sequences must be manually resumed during the cutover phase.
