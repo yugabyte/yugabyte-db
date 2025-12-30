@@ -105,7 +105,7 @@ jobs:
                     which arc )
                   df -H /
                   echo ::group::Arc Lint
-                  # TODO: specify --rev $GITHUB_BASE_REF
+                  # TODO: specify --rev GITHUB_BASE_REF
                   arc lint
                   echo ::group::Building YugabyteDB
                   ./yb_build.sh release \
