@@ -87,6 +87,7 @@ jobs:
             docker run \
               --user root \
               -i \
+              -e GITHUB_BASE_REF=${GITHUB_BASE_REF:-} \
               "-w=$build_dir_in_container" \
               --mount type=bind,source="$PWD",target="$build_dir_in_container" \
               "${{ matrix.docker_image }}" \
@@ -105,8 +106,11 @@ jobs:
                     which arc )
                   df -H /
                   echo ::group::Arc Lint
-                  # TODO: specify --rev GITHUB_BASE_REF
-                  arc lint
+                  # Base reference should not be set for non-PR actions.
+                  if [[ -n "${GITHUB_BASE_REF:-}" ]]; then
+                    echo "Base reference: ${GITHUB_BASE_REF}"
+                    arc lint --never-apply-patches --rev "${GITHUB_BASE_REF}"
+                  fi
                   echo ::group::Building YugabyteDB
                   ./yb_build.sh release \
                     --download-thirdparty \
