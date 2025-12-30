@@ -77,7 +77,7 @@ jobs:
 
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 3
+          fetch-depth: 4
           fetch-tags: 'false'
 
       - name: Build YugabyteDB
@@ -111,16 +111,8 @@ jobs:
                   # Base reference should not be set for non-PR actions.
                   if [[ -n \"${{ github.base_ref }}\" ]]; then
                     echo Base reference: ${{ github.base_ref }}
-                    echo heads
-                    ls .git/refs/heads
-                    echo origin
-                    ls .git/refs/remotes/origin
-                    git fetch origin master
-                    echo heads
-                    ls .git/refs/heads
-                    echo origin
-                    ls .git/refs/remotes/origin
-                    arc lint --never-apply-patches --rev origin/${{ github.base_ref }}
+                    git fetch origin ${{ github.base_ref }}
+                    arc lint --trace --never-apply-patches --rev origin/${{ github.base_ref }}
                   else
                     echo No base reference: Skipping Lint Step
                   fi
