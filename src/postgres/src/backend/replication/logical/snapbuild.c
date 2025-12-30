@@ -533,8 +533,6 @@ SnapBuildBuildSnapshot(SnapBuild *builder)
 	snapshot->curcid = FirstCommandId;
 	snapshot->active_count = 0;
 	snapshot->regd_count = 0;
-	snapshot->yb_cdc_snapshot_read_time.has_value = false;
-	snapshot->yb_cdc_snapshot_read_time.value = 0;
 
 	return snapshot;
 }
@@ -636,12 +634,10 @@ SnapBuildInitialSnapshot(SnapBuild *builder)
  * importing side checks whether the source transaction is still open to make
  * sure the xmin horizon hasn't advanced since then.
  *
- * YB Note: yb_cdc_snapshot_read_time is the consistent snapshot read time
- * received cdc service. It is used as the read time while exporting the snapshot.
- * It is set to zero when Yugabyte is not enabled.
+ * YB Note: yb_read_time is used to build snapshot with associated read time.
  */
-const char *
-SnapBuildExportSnapshot(SnapBuild *builder, uint64_t yb_cdc_snapshot_read_time)
+static const char *
+SnapBuildExportSnapshotImpl(SnapBuild *builder, const uint64_t *yb_read_time)
 {
 	Snapshot	snap;
 	char	   *snapname;
@@ -663,14 +659,17 @@ SnapBuildExportSnapshot(SnapBuild *builder, uint64_t yb_cdc_snapshot_read_time)
 
 	SnapshotData yb_snap = {};
 
-	if (!IsYugaByteEnabled())
+	if (builder)
+	{
+		Assert(!yb_read_time);
 		snap = SnapBuildInitialSnapshot(builder);
+	}
 	else
 	{
+		Assert(yb_read_time);
 		snap = &yb_snap;
 		YbInitSnapshot(snap);
-		snap->yb_cdc_snapshot_read_time.has_value = true;
-		snap->yb_cdc_snapshot_read_time.value = yb_cdc_snapshot_read_time;
+		snap->yb_read_point_handle = YbRegisterSnapshotReadTime(*yb_read_time);
 	}
 
 	/*
@@ -685,6 +684,18 @@ SnapBuildExportSnapshot(SnapBuild *builder, uint64_t yb_cdc_snapshot_read_time)
 						   snap->xcnt,
 						   snapname, snap->xcnt)));
 	return snapname;
+}
+
+const char *
+SnapBuildExportSnapshot(SnapBuild *builder)
+{
+	return SnapBuildExportSnapshotImpl(builder, NULL /* yb_read_time */ );
+}
+
+const char *
+YbSnapBuildExportSnapshotWithReadTime(uint64_t read_time)
+{
+	return SnapBuildExportSnapshotImpl(NULL /* builder */ , &read_time);
 }
 
 /*

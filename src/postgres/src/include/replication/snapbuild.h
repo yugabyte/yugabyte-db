@@ -67,8 +67,9 @@ extern void FreeSnapshotBuilder(SnapBuild *cache);
 extern void SnapBuildSnapDecRefcount(Snapshot snap);
 
 extern Snapshot SnapBuildInitialSnapshot(SnapBuild *builder);
-extern const char *SnapBuildExportSnapshot(SnapBuild *snapstate,
-										   uint64_t yb_cdc_snapshot_read_time);
+extern const char *SnapBuildExportSnapshot(SnapBuild *snapstate);
+extern const char *YbSnapBuildExportSnapshotWithReadTime(uint64_t read_time);
+
 extern void SnapBuildClearExportedSnapshot(void);
 
 extern SnapBuildState SnapBuildCurrentState(SnapBuild *snapstate);

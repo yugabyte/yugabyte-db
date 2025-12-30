@@ -1827,9 +1827,7 @@ GetSnapshotData(Snapshot snapshot)
 		MaintainOldSnapshotTimeMapping(snapshot->whenTaken, xmin);
 	}
 
-	snapshot->yb_read_time_point_handle = YbBuildCurrentReadTimePointHandle();
-	snapshot->yb_cdc_snapshot_read_time.has_value = false;
-	snapshot->yb_cdc_snapshot_read_time.value = 0;
+	snapshot->yb_read_point_handle = YbBuildCurrentReadPointHandle();
 	return snapshot;
 }
 

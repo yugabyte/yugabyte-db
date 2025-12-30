@@ -130,8 +130,8 @@ service PgClientService {
   rpc ExportTxnSnapshot(PgExportTxnSnapshotRequestPB)
       returns (PgExportTxnSnapshotResponsePB);
 
-  rpc SetTxnSnapshot(PgSetTxnSnapshotRequestPB)
-      returns (PgSetTxnSnapshotResponsePB);
+  rpc ImportTxnSnapshot(PgImportTxnSnapshotRequestPB)
+      returns (PgImportTxnSnapshotResponsePB);
 
   rpc ClearExportedTxnSnapshots(PgClearExportedTxnSnapshotsRequestPB)
       returns (PgClearExportedTxnSnapshotsResponsePB);
@@ -1120,7 +1120,6 @@ message PgExportTxnSnapshotRequestPB {
   uint64 session_id = 1;
   PgTxnSnapshotPB snapshot = 2;
   PgPerformOptionsPB options = 3;
-  ReadHybridTimePB explicit_read_time = 5;
   AshMetadataPB ash_metadata = 4;
 }
 
@@ -1129,17 +1128,14 @@ message PgExportTxnSnapshotResponsePB {
   string snapshot_id = 2;
 }
 
-message PgSetTxnSnapshotRequestPB {
+message PgImportTxnSnapshotRequestPB {
   uint64 session_id = 1;
-  oneof source {
-    string snapshot_id = 2;
-    ReadHybridTimePB explicit_read_time = 5;
-  }
+  string snapshot_id = 2;
   PgPerformOptionsPB options = 3;
   AshMetadataPB ash_metadata = 4;
 }
 
-message PgSetTxnSnapshotResponsePB {
+message PgImportTxnSnapshotResponsePB {
   AppStatusPB status = 1;
   PgTxnSnapshotPB snapshot = 2;
 }

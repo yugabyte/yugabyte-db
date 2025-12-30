@@ -276,7 +276,7 @@ YB_DEFINE_TYPED_ENUM(PggateRPC, uint16_t,
   (kCronGetLastMinute)
   (kCronSetLastMinute)
   (kExportTxnSnapshot)
-  (kSetTxnSnapshot)
+  (kImportTxnSnapshot)
   (kClearExportedTxnSnapshots)
 );
 

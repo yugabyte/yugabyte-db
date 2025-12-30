@@ -31,6 +31,7 @@
 #include "yb/yql/pggate/pg_client.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_callbacks.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 namespace yb::pggate {
 
@@ -94,13 +95,14 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   void DumpSessionState(YBCPgSessionState* session_data);
   void RestoreSessionState(const YBCPgSessionState& session_data);
 
-  [[nodiscard]] uint64_t GetCurrentReadTimePoint() const;
-  Status RestoreReadTimePoint(uint64_t read_time_point_handle);
+  [[nodiscard]] YbcReadPointHandle GetCurrentReadPoint() const;
+  Status RestoreReadPoint(YbcReadPointHandle read_point);
+  Result<YbcReadPointHandle> RegisterSnapshotReadTime(uint64_t read_time, bool use_read_time);
+
   Result<std::string> ExportSnapshot(
-      const YbcPgTxnSnapshot& snapshot, std::optional<uint64_t> explicit_read_time);
-  Result<std::optional<YbcPgTxnSnapshot>> SetTxnSnapshot(
-      PgTxnSnapshotDescriptor snapshot_descriptor);
-  bool HasExportedSnapshots() const;
+      const YbcPgTxnSnapshot& snapshot, std::optional<YbcReadPointHandle> explicit_read_time);
+  Result<YbcPgTxnSnapshot> ImportSnapshot(std::string_view snapshot_id);
+  [[nodiscard]] bool has_exported_snapshots() const { return has_exported_snapshots_; }
   void ClearExportedTxnSnapshots();
 
  private:
@@ -149,8 +151,6 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   Status ExitSeparateDdlTxnMode(const std::optional<DdlCommitInfo>& commit_info);
 
   Status CheckSnapshotTimeConflict() const;
-  Status CheckTxnSnapshotOptions(const tserver::PgPerformOptionsPB& options) const;
-
   // ----------------------------------------------------------------------------------------------
 
   PgClient* client_;
@@ -183,7 +183,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   uint64_t priority_ = 0;
   SavePriority use_saved_priority_ = SavePriority::kFalse;
   int64_t pg_txn_start_us_ = 0;
-  bool snapshot_read_time_is_set_ = false;
+  bool snapshot_read_time_is_used_ = false;
   bool has_exported_snapshots_ = false;
 
   PgCallbacks pg_callbacks_;
@@ -202,6 +202,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   //                 have writes (before it was marked as read-only). So, no conclusion can be drawn
   //                 about the transaction's read-only status based on the has_writes_ flag.
   bool has_writes_ = false;
+
+  std::unordered_map<YbcReadPointHandle, uint64_t> explicit_snapshot_read_time_;
 
   DISALLOW_COPY_AND_ASSIGN(PgTxnManager);
 };

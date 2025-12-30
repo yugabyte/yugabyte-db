@@ -96,7 +96,7 @@ class TserverXClusterContextIf;
     (CronSetLastMinute) \
     (CronGetLastMinute) \
     (ExportTxnSnapshot) \
-    (SetTxnSnapshot) \
+    (ImportTxnSnapshot) \
     (ClearExportedTxnSnapshots) \
     /**/
 

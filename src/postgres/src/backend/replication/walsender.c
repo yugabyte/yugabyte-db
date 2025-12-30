@@ -926,7 +926,6 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 	TupleDesc	tupdesc;
 	Datum		values[4];
 	bool		nulls[4];
-	bool yb_is_pg_export_snapshot_enabled = *YBCGetGFlags()->ysql_enable_pg_export_snapshot;
 
 	Assert(!MyReplicationSlot);
 
@@ -981,6 +980,8 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 		}
 	}
 
+	const bool yb_is_pg_export_snapshot_enabled =
+		*YBCGetGFlags()->ysql_enable_pg_export_snapshot;
 	if (cmd->kind == REPLICATION_KIND_LOGICAL)
 	{
 		LogicalDecodingContext *ctx;
@@ -1002,7 +1003,8 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 
 			need_full_snapshot = true;
 		}
-		else if (snapshot_action == CRS_USE_SNAPSHOT && (!IsYugaByteEnabled() || yb_is_pg_export_snapshot_enabled))
+		else if (snapshot_action == CRS_USE_SNAPSHOT &&
+				 (!IsYugaByteEnabled() || yb_is_pg_export_snapshot_enabled))
 		{
 			if (IsYugaByteEnabled())
 			{
@@ -1064,37 +1066,28 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 
 			YBValidateOutputPlugin(cmd->plugin);
 
-			/*
-			 * 23 digits is an upper bound for the decimal representation of a uint64
-			 */
-			char consistent_snapshot_time_string[24];
-			uint64_t consistent_snapshot_time;
+			uint64_t yb_consistent_snapshot_time;
+
 			ReplicationSlotCreate(cmd->slotname, true, RS_PERSISTENT,
 								  cmd->plugin, snapshot_action,
-								  &consistent_snapshot_time, lsn_type);
+								  &yb_consistent_snapshot_time, lsn_type);
 
 			if (snapshot_action == CRS_EXPORT_SNAPSHOT)
-			{
-				snapshot_name = SnapBuildExportSnapshot(NULL,
-														consistent_snapshot_time
-														/* yb_cdc_snapshot_read_time */ );
-			}
+				snapshot_name = YbSnapBuildExportSnapshotWithReadTime(yb_consistent_snapshot_time);
 			else if (snapshot_action == CRS_USE_SNAPSHOT)
 			{
-				snprintf(consistent_snapshot_time_string,
-						 sizeof(consistent_snapshot_time_string), "%llu",
-						 (unsigned long long) consistent_snapshot_time);
-				snapshot_name = pstrdup(consistent_snapshot_time_string);
+				/*
+				 * 23 digits is an upper bound for the decimal representation of a uint64
+				 */
+				char yb_consistent_snapshot_time_string[24];
+
+				snprintf(yb_consistent_snapshot_time_string,
+						 sizeof(yb_consistent_snapshot_time_string), "%llu",
+						 (unsigned long long) yb_consistent_snapshot_time);
+				snapshot_name = pstrdup(yb_consistent_snapshot_time_string);
 
 				if (yb_is_pg_export_snapshot_enabled)
-				{
-					SnapshotData snapshot = {};
-					YbInitSnapshot(&snapshot);
-					snapshot.yb_cdc_snapshot_read_time.has_value = true;
-					snapshot.yb_cdc_snapshot_read_time.value = consistent_snapshot_time;
-
-					RestoreTransactionSnapshot(&snapshot, NULL);
-				}
+					YbUseSnapshotReadTime(yb_consistent_snapshot_time);
 			}
 
 			/*
@@ -1106,8 +1099,7 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 			 */
 			last_reply_timestamp = 0;
 		}
-
-		if (!IsYugaByteEnabled())
+		else
 		{
 			ctx = CreateInitDecodingContext(cmd->plugin, NIL, need_full_snapshot,
 								logical_read_xlog_page,
@@ -1133,10 +1125,7 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 			 * snapshot when doing this.
 			 */
 			if (snapshot_action == CRS_EXPORT_SNAPSHOT)
-			{
-				snapshot_name = SnapBuildExportSnapshot(ctx->snapshot_builder,
-														0 /* yb_cdc_snapshot_read_time */ );
-			}
+				snapshot_name = SnapBuildExportSnapshot(ctx->snapshot_builder);
 			else if (snapshot_action == CRS_USE_SNAPSHOT)
 			{
 				Snapshot	snap;

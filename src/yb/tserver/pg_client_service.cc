@@ -1486,12 +1486,10 @@ class PgClientServiceImpl::Impl : public SessionProvider {
       rpc::RpcContext* context) {
     VLOG(1) << "ExportTxnSnapshot from " << RequestorString(context) << ": " << req.DebugString();
     auto session = VERIFY_RESULT(GetSession(req.session_id()));
-    const auto read_time = req.has_explicit_read_time()
-        ? ReadHybridTime::FromPB(req.explicit_read_time())
-        : VERIFY_RESULT(session->GetTxnSnapshotReadTime(req.options(),
-                                                        context->GetClientDeadline()));
-    const auto snapshot = PgTxnSnapshot::Make(req.snapshot(), read_time);
-    resp->set_snapshot_id(VERIFY_RESULT(txn_snapshot_manager_.Register(session->id(), snapshot)));
+    const auto read_time = VERIFY_RESULT(session->GetTxnSnapshotReadTime(
+        req.options(), context->GetClientDeadline()));
+    resp->set_snapshot_id(VERIFY_RESULT(txn_snapshot_manager_.Register(
+        session->id(), PgTxnSnapshot::Make(req.snapshot(), read_time))));
     return Status::OK();
   }
 
@@ -1499,21 +1497,17 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     return txn_snapshot_manager_.Get(snapshot_id);
   }
 
-  Status SetTxnSnapshot(
-      const PgSetTxnSnapshotRequestPB& req, PgSetTxnSnapshotResponsePB* resp,
+  Status ImportTxnSnapshot(
+      const PgImportTxnSnapshotRequestPB& req, PgImportTxnSnapshotResponsePB* resp,
       rpc::RpcContext* context) {
-    VLOG(1) << "SetTxnSnapshot from " << RequestorString(context) << ": " << req.DebugString();
-    PgTxnSnapshot snapshot;
+    VLOG(1) << "ImportTxnSnapshot from " << RequestorString(context) << ": " << req.DebugString();
+    auto snapshot = VERIFY_RESULT(txn_snapshot_manager_.Get(req.snapshot_id()));
     auto options = req.options();
-    if (!req.has_explicit_read_time()) {
-      snapshot = VERIFY_RESULT(txn_snapshot_manager_.Get(req.snapshot_id()));
-      snapshot.read_time.ToPB(options.mutable_read_time());
-      snapshot.ToPBNoReadTime(*resp->mutable_snapshot());
-    } else {
-      *options.mutable_read_time() = req.explicit_read_time();
-    }
-    return VERIFY_RESULT(GetSession(req.session_id()))
-        ->SetTxnSnapshotReadTime(options, context->GetClientDeadline());
+    snapshot.read_time.ToPB(options.mutable_read_time());
+    RETURN_NOT_OK(VERIFY_RESULT(GetSession(req.session_id()))->SetTxnSnapshotReadTime(
+        options, context->GetClientDeadline()));
+    snapshot.ToPBNoReadTime(*resp->mutable_snapshot());
+    return Status::OK();
   }
 
   Status ClearExportedTxnSnapshots(

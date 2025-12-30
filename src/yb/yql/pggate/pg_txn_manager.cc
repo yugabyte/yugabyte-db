@@ -494,7 +494,7 @@ void PgTxnManager::ResetTxnAndSession() {
   has_writes_ = false;
   enable_tracing_ = false;
   read_time_for_follower_reads_ = HybridTime();
-  snapshot_read_time_is_set_ = false;
+  snapshot_read_time_is_used_ = false;
   read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
   read_only_stmt_ = false;
   need_defer_read_point_ = false;
@@ -573,12 +573,21 @@ Status PgTxnManager::SetupPerformOptions(
   if (!IsDdlMode() && !txn_in_progress_) {
     IncTxnSerialNo();
   }
+  const auto read_time_serial_no = serial_no_.read_time();
+  options->set_read_time_serial_no(read_time_serial_no);
+  if (snapshot_read_time_is_used_) {
+    if (auto i = explicit_snapshot_read_time_.find(read_time_serial_no);
+        i != explicit_snapshot_read_time_.end()) {
+      ReadHybridTime::FromUint64(i->second).ToPB(options->mutable_read_time());
+    }
+
+    RETURN_NOT_OK(CheckSnapshotTimeConflict());
+  }
   options->set_isolation(isolation_level_);
   options->set_ddl_mode(IsDdlMode());
   options->set_yb_non_ddl_txn_for_sys_tables_allowed(yb_non_ddl_txn_for_sys_tables_allowed);
   options->set_trace_requested(enable_tracing_);
   options->set_txn_serial_no(serial_no_.txn());
-  options->set_read_time_serial_no(serial_no_.read_time());
   options->set_active_sub_transaction_id(active_sub_transaction_id_);
 
   if (use_saved_priority_) {
@@ -621,10 +630,6 @@ Status PgTxnManager::SetupPerformOptions(
       //   i.e. no txn block and a pure SELECT stmt.
       options->set_clamp_uncertainty_window(
         read_only_ || (!in_txn_blk_ && read_only_stmt_));
-
-    if (snapshot_read_time_is_set_) {
-      RETURN_NOT_OK(CheckSnapshotTimeConflict());
-    }
   }
   if (read_time_for_follower_reads_) {
     ReadHybridTime::SingleTime(read_time_for_follower_reads_).ToPB(options->mutable_read_time());
@@ -658,6 +663,7 @@ TxnPriorityRequirement PgTxnManager::GetTransactionPriorityType() const {
 void PgTxnManager::IncTxnSerialNo() {
   serial_no_.IncTxn();
   active_sub_transaction_id_ = kMinSubTransactionId;
+  explicit_snapshot_read_time_.clear();
 }
 
 void PgTxnManager::DumpSessionState(YBCPgSessionState* session_data) {
@@ -674,26 +680,46 @@ void PgTxnManager::RestoreSessionState(const YBCPgSessionState& session_data) {
   VLOG_TXN_STATE(2);
 }
 
-uint64_t PgTxnManager::GetCurrentReadTimePoint() const {
+YbcReadPointHandle PgTxnManager::GetCurrentReadPoint() const {
   return serial_no_.read_time();
 }
 
-Status PgTxnManager::RestoreReadTimePoint(uint64_t read_time_point_handle) {
-  return serial_no_.RestoreReadTime(read_time_point_handle);
+Status PgTxnManager::RestoreReadPoint(YbcReadPointHandle read_point) {
+  return serial_no_.RestoreReadTime(read_point);
+}
+
+Result<YbcReadPointHandle> PgTxnManager::RegisterSnapshotReadTime(
+    uint64_t read_time, bool use_read_time) {
+  RETURN_NOT_OK(CheckSnapshotTimeConflict());
+  const auto read_time_serial_no = serial_no_.read_time();
+  auto [it, inserted] = explicit_snapshot_read_time_.emplace(read_time_serial_no, read_time);
+  RSTATUS_DCHECK(
+      inserted, IllegalState, "Current read point already has assigned snapshot read time");
+  if (use_read_time) {
+    snapshot_read_time_is_used_ = true;
+  }
+  return it->first;
 }
 
 Result<std::string> PgTxnManager::ExportSnapshot(
-    const YbcPgTxnSnapshot& snapshot, std::optional<uint64_t> explicit_read_time) {
+    const YbcPgTxnSnapshot& snapshot, std::optional<YbcReadPointHandle> explicit_read_time) {
+  RETURN_NOT_OK(CheckSnapshotTimeConflict());
   tserver::PgExportTxnSnapshotRequestPB req;
   auto& snapshot_pb = *req.mutable_snapshot();
   snapshot_pb.set_db_oid(snapshot.db_id);
   snapshot_pb.set_isolation_level(snapshot.iso_level);
   snapshot_pb.set_read_only(snapshot.read_only);
-  auto& options = *req.mutable_options();
-  RETURN_NOT_OK(SetupPerformOptions(&options, EnsureReadTimeIsSet::kTrue));
-  RETURN_NOT_OK(CheckTxnSnapshotOptions(options));
+  std::optional<uint64_t> explicit_read_time_value;
   if (explicit_read_time.has_value()) {
-    ReadHybridTime::FromUint64(explicit_read_time.value()).ToPB(req.mutable_explicit_read_time());
+    const auto i = explicit_snapshot_read_time_.find(*explicit_read_time);
+    RSTATUS_DCHECK(i != explicit_snapshot_read_time_.end(), IllegalState, "Bad read time handle");
+    explicit_read_time_value = i->second;
+  }
+  auto& options = *req.mutable_options();
+  RETURN_NOT_OK(SetupPerformOptions(&options, EnsureReadTimeIsSet{!explicit_read_time_value}));
+
+  if (explicit_read_time_value) {
+    ReadHybridTime::FromUint64(*explicit_read_time_value).ToPB(options.mutable_read_time());
   }
   auto res = client_->ExportTxnSnapshot(&req);
   if (res.ok()) {
@@ -702,19 +728,12 @@ Result<std::string> PgTxnManager::ExportSnapshot(
   return res;
 }
 
-Result<std::optional<YbcPgTxnSnapshot>> PgTxnManager::SetTxnSnapshot(
-    PgTxnSnapshotDescriptor snapshot_descriptor) {
+Result<YbcPgTxnSnapshot> PgTxnManager::ImportSnapshot(std::string_view snapshot_id) {
   RETURN_NOT_OK(CheckSnapshotTimeConflict());
   tserver::PgPerformOptionsPB options;
   RETURN_NOT_OK(SetupPerformOptions(&options));
-  RETURN_NOT_OK(CheckTxnSnapshotOptions(options));
-  const auto resp = VERIFY_RESULT(client_->SetTxnSnapshot(snapshot_descriptor, std::move(options)));
-  snapshot_read_time_is_set_ = true;
-  const auto& snapshot = resp.snapshot();
-
-  if (std::holds_alternative<PgTxnSnapshotReadTime>(snapshot_descriptor)) {
-    return std::nullopt;
-  }
+  const auto snapshot = VERIFY_RESULT(client_->ImportTxnSnapshot(snapshot_id, std::move(options)));
+  snapshot_read_time_is_used_ = true;
 
   return YbcPgTxnSnapshot{
       .db_id = snapshot.db_oid(),
@@ -727,28 +746,19 @@ Status PgTxnManager::CheckSnapshotTimeConflict() const {
       !read_time_for_follower_reads_, NotSupported,
       "Cannot set both 'transaction snapshot' and 'yb_read_from_followers' in the same "
       "transaction.");
-  SCHECK(
-      yb_read_time == 0, NotSupported,
+  SCHECK_EQ(
+      yb_read_time, 0, NotSupported,
       "Cannot set both 'transaction snapshot' and 'yb_read_time' in the same transaction.");
   SCHECK_EQ(
       yb_read_after_commit_visibility, YB_STRICT_READ_AFTER_COMMIT_VISIBILITY, NotSupported,
       "Cannot set both 'transaction snapshot' and 'yb_read_after_commit_visibility' in the same "
       "transaction.");
+  SCHECK(!IsDdlMode(), NotSupported, "Cannot run DDL with exported/imported snapshot.");
+  SCHECK(
+      !deferrable_,
+      NotSupported, "Deferred read point can't be used with exported/imported snapshot.");
   return Status::OK();
 }
-
-Status PgTxnManager::CheckTxnSnapshotOptions(const tserver::PgPerformOptionsPB& options) const {
-  RSTATUS_DCHECK(!options.ddl_mode(), NotSupported, "Cannot export/import snapshot in DDL mode.");
-  RSTATUS_DCHECK(
-      !options.use_catalog_session(), NotSupported,
-      "Cannot export/import snapshot in catalog session.");
-  RSTATUS_DCHECK(
-      !options.defer_read_point(), NotSupported,
-      "Cannot export/import snapshot with deferred read point.");
-  return Status::OK();
-}
-
-bool PgTxnManager::HasExportedSnapshots() const { return has_exported_snapshots_; }
 
 void PgTxnManager::ClearExportedTxnSnapshots() {
   if (!has_exported_snapshots_) {
