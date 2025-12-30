@@ -4,6 +4,7 @@ package com.yugabyte.yw.models;
 
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.NOT_FOUND;
 
 import com.fasterxml.jackson.annotation.JsonIdentityInfo;
 import com.fasterxml.jackson.annotation.ObjectIdGenerators;
@@ -186,7 +187,7 @@ public class HookScope extends Model {
     HookScope hookScope =
         find.query().where().eq("customer_uuid", customerUUID).eq("uuid", hookScopeUUID).findOne();
     if (hookScope == null) {
-      throw new PlatformServiceException(BAD_REQUEST, "Invalid HookScope UUID:" + hookScopeUUID);
+      throw new PlatformServiceException(NOT_FOUND, "Invalid HookScope UUID:" + hookScopeUUID);
     }
     return hookScope;
   }
