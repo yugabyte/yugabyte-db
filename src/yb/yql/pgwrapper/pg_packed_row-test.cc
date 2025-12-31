@@ -188,7 +188,13 @@ TEST_P(PgPackedRowTest, AlterTable) {
           break;
         }
         auto msg = status.ToString();
-        ASSERT_TRUE(msg.find("pgsql error 40001") != std::string::npos) << msg;
+        // Concurrent CREATE TABLE can fail with serialization error
+        static const auto kCreateTableErrors = {
+            "pgsql error 40001"sv,
+            SerializeAccessErrorMessageSubstring(),
+            "Restart read required"sv,
+        };
+        ASSERT_TRUE(HasSubstring(msg, kCreateTableErrors)) << msg;
       }
       while (!stop.load()) {
         if (columns.empty() || RandomUniformBool()) {
