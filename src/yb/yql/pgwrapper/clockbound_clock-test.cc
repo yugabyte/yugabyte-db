@@ -133,8 +133,7 @@ TEST_F(ClockboundClockTest, NoClockError) {
 }
 
 TEST_F(ClockboundClockTest, MixedClockMode) {
-  ANNOTATE_UNPROTECTED_WRITE(
-      FLAGS_clockbound_mixed_clock_mode) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_clockbound_mixed_clock_mode) = true;
   const auto maxskew = FLAGS_max_clock_skew_usec;
   fake_clock_->Set(PhysicalTime{ maxskew , 0 });
   auto time = ASSERT_RESULT(clockbound_clock_->Now());
@@ -165,10 +164,8 @@ TEST_F(ClockboundClockTest, ReadAfterWrite) {
 TEST_F(ClockboundClockTest, TwoWellSynchronizedClocks) {
   for (int i = 0; i < 10000; i++) {
     auto reference_time = GetCurrentTimeMicros();
-    auto window0 = ASSERT_RESULT(GetReadTime(
-        SampleWellSynchronizedClock(reference_time)));
-    auto window1 = ASSERT_RESULT(GetReadTime(
-        SampleWellSynchronizedClock(reference_time)));
+    auto window0 = ASSERT_RESULT(GetReadTime(SampleWellSynchronizedClock(reference_time)));
+    auto window1 = ASSERT_RESULT(GetReadTime(SampleWellSynchronizedClock(reference_time)));
     AssertOverlap(window0, window1);
   }
 }
