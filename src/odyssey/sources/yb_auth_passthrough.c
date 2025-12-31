@@ -86,6 +86,7 @@ static int yb_server_write_auth_passthrough_request_pkt(od_client_t *client,
 {
 	int rc = -1;
 	machine_msg_t *msg;
+	od_route_t *route = server->route;
 
 	char user_name[64], db_name[64];
 	int user_name_len, db_name_len;
@@ -142,36 +143,15 @@ static int yb_server_write_auth_passthrough_request_pkt(od_client_t *client,
 			   YB_NAME_AND_SIZEOF("yb_logical_conn_type"));
 	yb_kiwi_set_fe_arg(&argv[argc++], yb_logical_conn_type, 2);
 
-	/* 
-	 * TODO (vikram.damle) (#28113|#29176): Add/Merge forwarding for replication settings.
-	 * client->route is not populated yet as client is not routed.
-	 * Will need to use server->route.
-	 * We might want to have a separate pool for repl conn auth. 
-	 * Maybe this already happens? Needs further investigation.
-	 * 
-	 * char repl_arg[64];
-	 * int repl_len;
-	 * 
-	 * strcpy(repl_arg, (char *)client->startup.replication.value);
-	 * repl_len = client->startup.replication.value_len;
-	 * if (physical_rep) {
-	 *	 yb_kiwi_set_fe_arg(&argv[argc++],
-	 *				YB_NAME_AND_SIZEOF("replication"));
-	 *	 yb_kiwi_set_fe_arg(&argv[argc++], YB_NAME_AND_SIZEOF("on"));
-	 * } else if (logical_rep) {
-	 *	 yb_kiwi_set_fe_arg(&argv[argc++],
-	 *				YB_NAME_AND_SIZEOF("replication"));
-	 *	 yb_kiwi_set_fe_arg(&argv[argc++],
-	 *				YB_NAME_AND_SIZEOF("database"));
-	 * }
-	 * 
-	 */
-	if (client->startup.replication.value_len > 0) {
-		char *repl_arg = client->startup.replication.value;
-		int repl_len = client->startup.replication.value_len;
+	if (route->id.physical_rep) {
 		yb_kiwi_set_fe_arg(&argv[argc++],
 				   YB_NAME_AND_SIZEOF("replication"));
-		yb_kiwi_set_fe_arg(&argv[argc++], repl_arg, repl_len);
+		yb_kiwi_set_fe_arg(&argv[argc++], YB_NAME_AND_SIZEOF("on"));
+	} else if (route->id.logical_rep) {
+		yb_kiwi_set_fe_arg(&argv[argc++],
+				   YB_NAME_AND_SIZEOF("replication"));
+		yb_kiwi_set_fe_arg(&argv[argc++],
+				   YB_NAME_AND_SIZEOF("database"));
 	}
 
 	/* We only allocated max_default_args spaces for these variables, so assert that */
@@ -551,7 +531,7 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 
 	/*
 	 * Wait till the `READY_FOR_QUERY` packet is received.
-	 * TODO (vikram.damle): Need a `reset phase` for control backends in
+	 * TODO (vikram.damle) (#29176): Need a `reset phase` for control backends in
 	 * authentication. The backend may send extra information that is no longer
 	 * needed if auth fails as part of its internal state reset (eg. GUC reset
 	 * ParameterStatus packets). Need to clear the "buffer" of incoming messages
@@ -687,7 +667,7 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 			}
 
 			/*
-			 * TODO(arpit.saxena|vikram.damle): If flags & YB_GUC_CONTEXT_BACKEND, then we have to
+			 * TODO(arpit.saxena|vikram.damle) (#20603): If flags & YB_GUC_CONTEXT_BACKEND, then we have to
 			 * ensure that either the auth backend stays or we make a new sticky backend
 			 * and pass the external client's startup settings. This is because client
 			 * has set a variable through the startup packet which can't be set using

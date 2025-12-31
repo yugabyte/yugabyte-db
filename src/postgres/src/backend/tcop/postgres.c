@@ -7275,7 +7275,7 @@ PostgresMain(const char *dbname, const char *username)
 						/*
 						 * Done with authentication.  Disable the timeout, and
 						 * log if needed.
-						 * TODO (vikram.damle):
+						 * TODO (vikram.damle) (#29817):
 						 * Add connection logging (cf postinit.c:284) and update
 						 * YbGetAuthorizedConnections as done in
 						 * `PerformaAuthentication()`.

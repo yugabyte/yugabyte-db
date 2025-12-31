@@ -10371,7 +10371,7 @@ set_config_option_ext(const char *name, const char *value,
 			 * we should forward a FatalForLogicalConnection Packet, but
 			 * forwarding a FATAL would also stop auth.
 			 *
-			 * TODO (vikram.damle): Add a mechanism to forward a
+			 * TODO (vikram.damle) (#29818): Add a mechanism to forward a
 			 * FatalForLogicalConection to preserve this backend instead of
 			 * forwarding a FATAL directly and terminating the backend.
 			 */

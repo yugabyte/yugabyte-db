@@ -464,19 +464,9 @@ ClientAuthentication(Port *port)
 
 	bool		yb_auth_passthrough = YbIsAuthPassthroughInProgress(port);
 
+	/* Auth Passthrough can be enabled only for Ysql Connection Manager */
 	if (yb_auth_passthrough)
-	{
-		/* Auth Passthrough can be enabled only for Ysql Connection Manager */
 		Assert(YbIsClientYsqlConnMgr());
-
-		/*
-		 * Connections from Ysql Connection Manager will never be of type
-		 * replication.
-		 * TODO (vikram.damle) (#29113): Need to handle logical replication
-		 * connection request that might now be coming via conn mgr.
-		 */
-		Assert(am_walsender == false);
-	}
 
 	/*
 	 * Get the authentication method to use for this frontend/database
@@ -576,11 +566,6 @@ ClientAuthentication(Port *port)
 #endif
 					_("no encryption");
 
-				/*
-				 * YB TODO (vikram.damle) (#29113):
-				 * When adding support for replication auth in auth passthrough,
-				 * need to handle this fatal err. Here and in uaImplicitReject.
-				 */
 				if (am_walsender && !am_db_walsender)
 					ereport(FATAL,
 							(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),

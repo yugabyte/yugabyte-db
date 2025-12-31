@@ -2795,6 +2795,12 @@ int yb_execute_on_control_connection(od_client_t *client,
 		goto failed_to_acquire_control_connection;
 	}
 
+	if (client->startup.replication.value_len != 0) {
+		yb_kiwi_var_set(&control_conn_client->startup.replication,
+			client->startup.replication.value,
+			client->startup.replication.value_len);
+	}
+
 	/* set control connection route user and database */
 #ifndef YB_GUC_SUPPORT_VIA_SHMEM
 	yb_kiwi_var_set(&control_conn_client->startup.user,
