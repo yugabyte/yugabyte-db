@@ -14,7 +14,7 @@ type: docs
 
 Use the `ALTER ROLE` statement to change the attributes of a role (user or group).
 
-Superusers can change the attributes of any role. Roles with `CREATEROLE` privilege can change the attributes of any non-superuser role.
+Superusers can change the attributes of any role. Roles with `CREATEROLE` attribute can change the attributes of any non-superuser role.
 Other roles can only change their own password.
 
 ## Syntax

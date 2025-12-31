@@ -59,7 +59,7 @@ When creating a YugabyteDB cluster in YugabyteDB Aeon, you set up the credential
 
 Although not a superuser, `yb_superuser` includes sufficient privileges to perform all the required operations on a database, including creating other yb_superuser users, as follows:
 
-- Has the following role options: `INHERIT`, `CREATEROLE`, `CREATEDB`, and `BYPASSRLS`.
+- Has the following role attributes: `INHERIT`, `CREATEROLE`, `CREATEDB`, and `BYPASSRLS`.
 
 - Member of the following roles: `pg_read_all_stats`, `pg_signal_backend`, `yb_db_admin`, and [yb_extension](#yb-extension).
 

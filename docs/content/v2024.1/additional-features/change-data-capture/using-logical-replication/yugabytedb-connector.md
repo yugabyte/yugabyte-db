@@ -1320,7 +1320,7 @@ CREATE ROLE <name> REPLICATION LOGIN;
 
 {{< tip title="REPLICATION is non-inheritable" >}}
 
-Like other PostgreSQL role attributes, REPLICATION is not inheritable. Being a member of a role with REPLICATION will not allow the member to connect to the server in replication mode, even if the membership grant has the INHERIT option. You must actually [SET ROLE](../../../../api/ysql/the-sql-language/statements/dcl_set_role/) to a specific role having the REPLICATION attribute in order to make use of the attribute.
+Like other PostgreSQL role attributes, REPLICATION is not inheritable. Being a member of a role with REPLICATION will not allow the member to connect to the server in replication mode, even if the membership grant has the INHERIT attribute. You must actually [SET ROLE](../../../../api/ysql/the-sql-language/statements/dcl_set_role/) to a specific role having the REPLICATION attribute in order to make use of the attribute.
 
 {{< /tip >}}
 

@@ -16,7 +16,7 @@ Use the CREATE ROLE statement to add a role to a YugabyteDB database cluster. A 
 
 A role can be a user or a group, depending on how it is used. A role with attribute LOGIN can be considered as a "user".
 
-You must have CREATEROLE privilege or be a database superuser to use this command.
+You must have CREATEROLE attribute or be a database superuser to use this command.
 
 Note that roles are defined at the YSQL cluster level, and so are valid in all databases in the cluster.
 
