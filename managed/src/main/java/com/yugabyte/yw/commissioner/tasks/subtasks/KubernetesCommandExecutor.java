@@ -28,7 +28,6 @@ import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.audit.otel.OtelCollectorConfigGenerator;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
@@ -184,7 +183,6 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
   }
 
   private final KubernetesManagerFactory kubernetesManagerFactory;
-  private final ReleaseManager releaseManager;
   private final FileHelperService fileHelperService;
   private final YbcManager ybcManager;
   private final OtelCollectorConfigGenerator otelCollectorConfigGenerator;
@@ -193,13 +191,11 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
   protected KubernetesCommandExecutor(
       BaseTaskDependencies baseTaskDependencies,
       KubernetesManagerFactory kubernetesManagerFactory,
-      ReleaseManager releaseManager,
       FileHelperService fileHelperService,
       YbcManager ybcManager,
       OtelCollectorConfigGenerator otelCollectorConfigGenerator) {
     super(baseTaskDependencies);
     this.kubernetesManagerFactory = kubernetesManagerFactory;
-    this.releaseManager = releaseManager;
     this.fileHelperService = fileHelperService;
     this.ybcManager = ybcManager;
     this.otelCollectorConfigGenerator = otelCollectorConfigGenerator;

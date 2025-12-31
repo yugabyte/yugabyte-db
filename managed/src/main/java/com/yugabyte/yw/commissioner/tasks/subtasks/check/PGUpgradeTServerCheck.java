@@ -19,9 +19,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.ServerSubTaskBase;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.LocalNodeManager;
-import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeManager.NodeCommandType;
-import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
@@ -55,8 +53,6 @@ import org.apache.commons.lang3.StringUtils;
 @Slf4j
 public class PGUpgradeTServerCheck extends ServerSubTaskBase {
 
-  private final NodeUniverseManager nodeUniverseManager;
-  private final NodeManager nodeManager;
   private final KubernetesManagerFactory kubernetesManagerFactory;
   private final LocalNodeManager localNodeManager;
   private final AuditService auditService;
@@ -76,15 +72,11 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
   @Inject
   protected PGUpgradeTServerCheck(
       BaseTaskDependencies baseTaskDependencies,
-      NodeUniverseManager nodeUniverseManager,
-      NodeManager nodeManager,
       KubernetesManagerFactory kubernetesManagerFactory,
       LocalNodeManager localNodeManager,
       AuditService auditService,
       NodeAgentRpcPayload nodeAgentRpcPayload) {
     super(baseTaskDependencies);
-    this.nodeUniverseManager = nodeUniverseManager;
-    this.nodeManager = nodeManager;
     this.kubernetesManagerFactory = kubernetesManagerFactory;
     this.localNodeManager = localNodeManager;
     this.auditService = auditService;

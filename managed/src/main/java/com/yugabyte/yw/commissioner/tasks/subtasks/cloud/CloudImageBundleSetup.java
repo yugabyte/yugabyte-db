@@ -11,10 +11,8 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.CloudTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.CloudTaskParams;
 import com.yugabyte.yw.common.CloudQueryHelper;
-import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
-import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.controllers.handlers.ImageBundleHandler;
 import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.ImageBundle.ImageBundleType;
@@ -48,9 +46,7 @@ public class CloudImageBundleSetup extends CloudTaskBase {
   }
 
   private CloudQueryHelper cloudQueryHelper;
-  private RuntimeConfGetter confGetter;
   private ImageBundleHandler imageBundleHandler;
-  private ImageBundleUtil imageBundleUtil;
   public static final Map<String, CloudOS> CLOUD_OS_MAP =
       ImmutableMap.of(
           "aws", new CloudOS("9.5_20241122", "AlmaLinux"),
@@ -61,14 +57,10 @@ public class CloudImageBundleSetup extends CloudTaskBase {
   public CloudImageBundleSetup(
       BaseTaskDependencies baseTaskDependencies,
       CloudQueryHelper cloudQueryHelper,
-      RuntimeConfGetter confGetter,
-      ImageBundleUtil imageBundleUtil,
       ImageBundleHandler imageBundleHandler) {
     super(baseTaskDependencies);
     this.cloudQueryHelper = cloudQueryHelper;
-    this.confGetter = confGetter;
     this.imageBundleHandler = imageBundleHandler;
-    this.imageBundleUtil = imageBundleUtil;
   }
 
   public static class Params extends CloudTaskParams {

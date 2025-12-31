@@ -2,7 +2,6 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.models.Backup;
@@ -16,12 +15,9 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class DeleteBackupYb extends AbstractTaskBase {
 
-  private final BackupHelper backupHelper;
-
   @Inject
-  public DeleteBackupYb(BaseTaskDependencies baseTaskDependencies, BackupHelper backupHelper) {
+  public DeleteBackupYb(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
-    this.backupHelper = backupHelper;
   }
 
   public static class Params extends AbstractTaskParams {

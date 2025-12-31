@@ -9,6 +9,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -77,14 +78,9 @@ public class YNPProvisioningTest extends FakeDBApplication {
             mockCloudQueryHelper.getDeviceNames(
                 any(), any(), anyString(), any(), any(), anyString()))
         .thenReturn(List.of("/dev/sdb", "/dev/sdc"));
-
+    when(baseTaskDependencies.getConfGetter()).thenReturn(confGetter);
     ynpProvisioning =
-        new YNPProvisioning(
-            baseTaskDependencies,
-            nodeUniverseManager,
-            confGetter,
-            mockCloudQueryHelper,
-            mockFileHelperService);
+        new YNPProvisioning(baseTaskDependencies, mockCloudQueryHelper, mockFileHelperService);
   }
 
   private void setTaskParams(YNPProvisioning.Params params) throws Exception {

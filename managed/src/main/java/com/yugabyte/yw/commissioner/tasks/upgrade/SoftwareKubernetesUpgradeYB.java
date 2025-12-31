@@ -27,17 +27,14 @@ import org.yb.master.MasterAdminOuterClass.YsqlMajorCatalogUpgradeState;
 @Retryable
 public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
 
-  private final AutoFlagUtil autoFlagUtil;
   private final SoftwareUpgradeHelper softwareUpgradeHelper;
 
   @Inject
   protected SoftwareKubernetesUpgradeYB(
       BaseTaskDependencies baseTaskDependencies,
-      AutoFlagUtil autoFlagUtil,
       SoftwareUpgradeHelper softwareUpgradeHelper,
       OperatorStatusUpdaterFactory operatorStatusUpdaterFactory) {
     super(baseTaskDependencies, operatorStatusUpdaterFactory);
-    this.autoFlagUtil = autoFlagUtil;
     this.softwareUpgradeHelper = softwareUpgradeHelper;
   }
 

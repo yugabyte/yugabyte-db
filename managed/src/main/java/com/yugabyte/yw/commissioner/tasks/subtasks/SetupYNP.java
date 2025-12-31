@@ -27,11 +27,9 @@ import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
 public class SetupYNP extends NodeTaskBase {
-  private final NodeUniverseManager nodeUniverseManager;
   private final NodeAgentManager nodeAgentManager;
   private final ShellProcessContext defaultShellContext =
       ShellProcessContext.builder().useSshConnectionOnly(true).logCmdOutput(true).build();
-  private final RuntimeConfGetter confGetter;
 
   @Inject
   protected SetupYNP(
@@ -40,9 +38,7 @@ public class SetupYNP extends NodeTaskBase {
       NodeAgentManager nodeAgentManager,
       RuntimeConfGetter confGetter) {
     super(baseTaskDependencies);
-    this.nodeUniverseManager = nodeUniverseManager;
     this.nodeAgentManager = nodeAgentManager;
-    this.confGetter = confGetter;
   }
 
   public static class Params extends NodeTaskParams {

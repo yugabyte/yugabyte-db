@@ -109,13 +109,7 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
     setFollowerLagMock();
     this.gFlagsKubernetesUpgrade =
         new GFlagsKubernetesUpgrade(
-            mockBaseTaskDependencies,
-            mockGFlagsValidation,
-            null,
-            mockOperatorStatusUpdaterFactory,
-            null,
-            null,
-            null);
+            mockBaseTaskDependencies, null, mockOperatorStatusUpdaterFactory, null, null, null);
   }
 
   private TaskInfo submitTask(KubernetesGFlagsUpgradeParams taskParams) {

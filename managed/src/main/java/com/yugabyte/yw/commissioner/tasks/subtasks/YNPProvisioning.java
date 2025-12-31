@@ -13,13 +13,11 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.FileHelperService;
 import com.yugabyte.yw.common.NodeManager;
-import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
-import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.AdditionalServicesStateData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Customer;
@@ -41,8 +39,6 @@ import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class YNPProvisioning extends NodeTaskBase {
-  private final NodeUniverseManager nodeUniverseManager;
-  private final RuntimeConfGetter confGetter;
   private final CloudQueryHelper queryHelper;
   private final FileHelperService fileHelperService;
   private ShellProcessContext shellContext =
@@ -51,13 +47,9 @@ public class YNPProvisioning extends NodeTaskBase {
   @Inject
   protected YNPProvisioning(
       BaseTaskDependencies baseTaskDependencies,
-      NodeUniverseManager nodeUniverseManager,
-      RuntimeConfGetter confGetter,
       CloudQueryHelper queryHelper,
       FileHelperService fileHelperService) {
     super(baseTaskDependencies);
-    this.nodeUniverseManager = nodeUniverseManager;
-    this.confGetter = confGetter;
     this.queryHelper = queryHelper;
     this.fileHelperService = fileHelperService;
   }

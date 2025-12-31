@@ -41,7 +41,6 @@ public class BootstrapProducer extends XClusterConfigTaskBase {
   private static final long MAXIMUM_EXPONENTIAL_BACKOFF_DELAY_MS_FOR_BOOTSTRAP_PRODUCER =
       60000; // 1 minute
 
-  private final RuntimeConfGetter confGetter;
   private final YbClientConfigFactory ybcClientConfigFactory;
 
   @Inject
@@ -51,7 +50,6 @@ public class BootstrapProducer extends XClusterConfigTaskBase {
       YbClientConfigFactory ybcClientConfigFactory,
       XClusterUniverseService xClusterUniverseService) {
     super(baseTaskDependencies, xClusterUniverseService);
-    this.confGetter = confGetter;
     this.ybcClientConfigFactory = ybcClientConfigFactory;
   }
 

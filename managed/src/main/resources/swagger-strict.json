@@ -24279,7 +24279,6 @@
         }
       },
       "required" : [
-        "allowInsecure",
         "clusters",
         "creatingUser",
         "enableClientToNodeEncrypt",

@@ -6,7 +6,6 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.payload.NodeAgentRpcPayload;
 import com.yugabyte.yw.common.NodeManager;
-import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -31,18 +30,14 @@ public class ManageOtelCollector extends NodeTaskBase {
   public static String OtelCollectorVersion = "0.90.0";
   public static String OtelCollectorPlatform = "linux";
 
-  private final NodeUniverseManager nodeUniverseManager;
   private final NodeAgentRpcPayload nodeAgentRpcPayload;
   private ShellProcessContext shellContext =
       ShellProcessContext.builder().logCmdOutput(true).build();
 
   @Inject
   protected ManageOtelCollector(
-      BaseTaskDependencies baseTaskDependencies,
-      NodeUniverseManager nodeUniverseManager,
-      NodeAgentRpcPayload nodeAgentRpcPayload) {
+      BaseTaskDependencies baseTaskDependencies, NodeAgentRpcPayload nodeAgentRpcPayload) {
     super(baseTaskDependencies);
-    this.nodeUniverseManager = nodeUniverseManager;
     this.nodeAgentRpcPayload = nodeAgentRpcPayload;
   }
 

@@ -5,9 +5,7 @@ import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.NAME_NFS;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.controllers.handlers.UniverseTableHandler;
@@ -30,8 +28,6 @@ public class BackupPreflightValidate extends AbstractTaskBase {
 
   private final CustomerConfigService configService;
   private final UniverseTableHandler tableHandler;
-  private final NodeUniverseManager nodeUniverseManager;
-  private final RuntimeConfGetter confGetter;
   private final String FREE_SPACE_CMD = "df -P %s | tail -n1 ";
   private final String PRECHECK_FAILED_MSG = "NFS space precheck failed. ";
 
@@ -67,14 +63,10 @@ public class BackupPreflightValidate extends AbstractTaskBase {
   public BackupPreflightValidate(
       BaseTaskDependencies baseTaskDependencies,
       CustomerConfigService configService,
-      UniverseTableHandler tableHandler,
-      RuntimeConfGetter confGetter,
-      NodeUniverseManager nodeUniverseManager) {
+      UniverseTableHandler tableHandler) {
     super(baseTaskDependencies);
     this.configService = configService;
     this.tableHandler = tableHandler;
-    this.nodeUniverseManager = nodeUniverseManager;
-    this.confGetter = confGetter;
   }
 
   @Override

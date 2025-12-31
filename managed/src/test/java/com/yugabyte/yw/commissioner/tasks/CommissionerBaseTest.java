@@ -343,11 +343,13 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     when(mockBaseTaskDependencies.getNodeUIApiHelper()).thenReturn(mockNodeUIApiHelper);
     when(mockBaseTaskDependencies.getReleaseManager()).thenReturn(mockReleaseManager);
     when(mockBaseTaskDependencies.getYsqlQueryExecutor()).thenReturn(mockYsqlQueryExecutor);
+    when(mockBaseTaskDependencies.getYcqlQueryExecutor()).thenReturn(mockYcqlQueryExecutor);
     when(mockBaseTaskDependencies.getGFlagsValidation()).thenReturn(mockGFlagsValidation);
     when(mockBaseTaskDependencies.getNodeUniverseManager()).thenReturn(mockNodeUniverseManager);
     when(mockBaseTaskDependencies.getNodeAgentClient()).thenReturn(mockNodeAgentClient);
     when(mockBaseTaskDependencies.getImageBundleUtil()).thenReturn(imageBundleUtil);
     when(mockBaseTaskDependencies.getRestoreManagerYb()).thenReturn(restoreManagerYb);
+    when(mockBaseTaskDependencies.getAutoFlagUtil()).thenReturn(mockAutoFlagUtil);
     releaseMetadata = ReleaseManager.ReleaseMetadata.create("1.0.0.0-b1");
     releaseContainer =
         new ReleaseContainer(releaseMetadata, mockCloudUtilFactory, mockConfig, mockReleasesUtils);

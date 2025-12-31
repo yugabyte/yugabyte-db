@@ -16,7 +16,6 @@ import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
-import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
@@ -35,13 +34,9 @@ import org.yb.client.YBClient;
 @Slf4j
 public class WaitForServer extends ServerSubTaskBase {
 
-  private final YsqlQueryExecutor ysqlQueryExecutor;
-
   @Inject
-  protected WaitForServer(
-      BaseTaskDependencies baseTaskDependencies, YsqlQueryExecutor ysqlQueryExecutor) {
+  protected WaitForServer(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
-    this.ysqlQueryExecutor = ysqlQueryExecutor;
   }
 
   public static class Params extends ServerSubTaskParams {

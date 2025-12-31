@@ -7,7 +7,6 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.logging.LogUtil;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
@@ -36,8 +35,6 @@ import play.mvc.Result;
 public class LoggingConfigController extends AuthenticatedController {
 
   public static final org.slf4j.Logger LOG = LoggerFactory.getLogger(LoggingConfigController.class);
-
-  @Inject ValidatingFormFactory formFactory;
 
   @Inject BeanValidator validator;
 

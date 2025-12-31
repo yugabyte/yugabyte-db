@@ -7,7 +7,6 @@ import static java.util.stream.Collectors.toList;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.utils.Pair;
@@ -20,7 +19,6 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class InstallYbcSoftware extends UniverseDefinitionTaskBase {
 
-  @Inject private ReleaseManager releaseManager;
   @Inject private YbcManager ybcManager;
 
   @Inject

@@ -11,7 +11,6 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -19,13 +18,9 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class MarkUniverseForHealthScriptReUpload extends UniverseTaskBase {
 
-  private final HealthChecker healthChecker;
-
   @Inject
-  protected MarkUniverseForHealthScriptReUpload(
-      BaseTaskDependencies baseTaskDependencies, HealthChecker healthChecker) {
+  protected MarkUniverseForHealthScriptReUpload(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
-    this.healthChecker = healthChecker;
   }
 
   @Override

@@ -9,7 +9,6 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
-import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.Universe;
@@ -21,7 +20,6 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class CleanUpPGUpgradeDataDir extends ServerSubTaskBase {
 
-  private final NodeUniverseManager nodeUniverseManager;
   private final KubernetesManagerFactory kubernetesManagerFactory;
 
   public static class Params extends ServerSubTaskParams {}
@@ -31,10 +29,8 @@ public class CleanUpPGUpgradeDataDir extends ServerSubTaskBase {
   @Inject
   protected CleanUpPGUpgradeDataDir(
       BaseTaskDependencies baseTaskDependencies,
-      NodeUniverseManager nodeUniverseManager,
       KubernetesManagerFactory kubernetesManagerFactory) {
     super(baseTaskDependencies);
-    this.nodeUniverseManager = nodeUniverseManager;
     this.kubernetesManagerFactory = kubernetesManagerFactory;
   }
 

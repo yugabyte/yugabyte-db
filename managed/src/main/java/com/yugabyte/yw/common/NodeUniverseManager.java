@@ -11,7 +11,6 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.NodeAgentPoller;
 import com.yugabyte.yw.common.concurrent.KeyLock;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
-import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -64,7 +63,6 @@ public class NodeUniverseManager extends DevopsBase {
 
   @Inject ImageBundleUtil imageBundleUtil;
   @Inject NodeAgentPoller nodeAgentPoller;
-  @Inject RuntimeConfGetter confGetter;
   @Inject LocalNodeUniverseManager localNodeUniverseManager;
   @Inject NodeActionRunner nodeActionRunner;
 

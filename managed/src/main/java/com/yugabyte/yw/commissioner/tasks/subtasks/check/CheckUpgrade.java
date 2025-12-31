@@ -44,10 +44,7 @@ import play.mvc.Http.Status;
 @Slf4j
 public class CheckUpgrade extends ServerSubTaskBase {
 
-  private final GFlagsValidation gFlagsValidation;
-  private final ReleaseManager releaseManager;
   private final Config appConfig;
-  private final AutoFlagUtil autoFlagUtil;
   private final AuditService auditService;
   private final SoftwareUpgradeHelper softwareUpgradeHelper;
 
@@ -62,9 +59,6 @@ public class CheckUpgrade extends ServerSubTaskBase {
       AuditService auditService) {
     super(baseTaskDependencies);
     this.appConfig = appConfig;
-    this.gFlagsValidation = gFlagsValidation;
-    this.releaseManager = releaseManager;
-    this.autoFlagUtil = autoFlagUtil;
     this.softwareUpgradeHelper = softwareUpgradeHelper;
     this.auditService = auditService;
   }

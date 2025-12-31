@@ -15,7 +15,6 @@ import static play.mvc.Http.Status.SERVICE_UNAVAILABLE;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -30,8 +29,6 @@ import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
 
 @Slf4j
 public class DeleteKeyspace extends UniverseTaskBase {
-
-  @Inject private YsqlQueryExecutor ysqlQueryExecutor;
 
   private static final String MASTERS_UNAVAILABLE_ERR_MSG =
       "Expected error. Masters are not currently queryable.";

@@ -12,7 +12,6 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.Set;
@@ -21,14 +20,9 @@ import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class CheckNodeReachable extends NodeTaskBase {
-
-  private final NodeUniverseManager nodeUniverseManager;
-
   @Inject
-  protected CheckNodeReachable(
-      BaseTaskDependencies baseTaskDependencies, NodeUniverseManager nodeUniverseManager) {
+  protected CheckNodeReachable(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
-    this.nodeUniverseManager = nodeUniverseManager;
   }
 
   public static class Params extends NodeTaskParams {

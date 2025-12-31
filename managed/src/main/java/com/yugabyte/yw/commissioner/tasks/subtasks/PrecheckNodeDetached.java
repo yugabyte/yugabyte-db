@@ -26,16 +26,12 @@ import play.libs.Json;
 @Slf4j
 public class PrecheckNodeDetached extends AbstractTaskBase {
 
-  private final NodeManager nodeManager;
   private final NodeConfigValidator nodeConfigValidator;
 
   @Inject
   protected PrecheckNodeDetached(
-      BaseTaskDependencies baseTaskDependencies,
-      NodeManager nodeManager,
-      NodeConfigValidator nodeConfigValidator) {
+      BaseTaskDependencies baseTaskDependencies, NodeConfigValidator nodeConfigValidator) {
     super(baseTaskDependencies);
-    this.nodeManager = nodeManager;
     this.nodeConfigValidator = nodeConfigValidator;
   }
 
