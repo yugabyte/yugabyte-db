@@ -253,7 +253,7 @@ static void enable_statement_timeout(void);
 static void disable_statement_timeout(void);
 
 static void yb_start_xact_command_internal(bool yb_skip_read_committed_internal_savepoint);
-
+static void yb_abort_xact_command(void);
 
 /* ----------------------------------------------------------------
  *		routines to obtain user input
@@ -3037,6 +3037,35 @@ finish_xact_command(void)
 	}
 }
 
+/*
+ * YB: Use this function to cleanly abort a txn, similar to finish_xact_command.
+ * Used in the Authentication Passthrough mode of Connection Manager to reset
+ * control backend state.
+ */
+static void
+yb_abort_xact_command(void)
+{
+	/* cancel active statement timeout after each command */
+	disable_statement_timeout();
+
+	if (xact_started)
+	{
+		AbortCurrentTransaction();
+
+#ifdef MEMORY_CONTEXT_CHECKING
+		/* Check all memory contexts that weren't freed during commit */
+		/* (those that were, were checked before being deleted) */
+		MemoryContextCheck(TopMemoryContext);
+#endif
+
+#ifdef SHOW_MEMORY_STATS
+		/* Print mem stats after each commit for leak tracking */
+		MemoryContextStats(TopMemoryContext);
+#endif
+
+		xact_started = false;
+	}
+}
 
 /*
  * Convenience routines for checking whether a statement is one of the
@@ -7147,7 +7176,19 @@ PostgresMain(const char *dbname, const char *username)
 				 */
 				break;
 
-			case 'A':			/* YB: Auth Passthrough Request */
+			case 'A':
+				/*
+				 * YB: Auth Passthrough Request.
+				 * We should have a `startup packet` sent from Connection
+				 * manager queued up to be read in the socket buffer as well.
+				 * This is to mimic normal startup in order to allow reusing as
+				 * much of the original authentication code path as possible.
+				 * Authentication wire protocol after this should look exactly
+				 * like normal authentication, barring the values/existence of
+				 * certain fields in the startup (and subsequent) packets. The
+				 * packet types themselves should match the regular pg startup
+				 * wire protocol.
+				 */
 				if (YbIsClientYsqlConnMgr())
 				{
 					/*
@@ -7166,14 +7207,15 @@ PostgresMain(const char *dbname, const char *username)
 					char	   *host = MyProcPort->remote_host;
 					const char *authn_id = MyProcPort->authn_id;
 					sa_family_t conn_type = MyProcPort->raddr.addr.ss_family;
+					List	   *guc_options = MyProcPort->guc_options;
+					char	   *cmdline_options = MyProcPort->cmdline_options;
 
-					/* Update the Port details with the new context. */
-					MyProcPort->user_name =
-						(char *) pq_getmsgstring(&input_message);
-					MyProcPort->database_name =
-						(char *) pq_getmsgstring(&input_message);
-					MyProcPort->remote_host =
-						(char *) pq_getmsgstring(&input_message);
+					/*
+					 * Clear guc_options sent in startup packet for
+					 * control_connection_client/db
+					 */
+					MyProcPort->guc_options = NIL;
+					MyProcPort->cmdline_options = NULL;
 
 					/*
 					 * This will be set when authenticating and needs to be
@@ -7187,8 +7229,6 @@ PostgresMain(const char *dbname, const char *username)
 					 * authentication
 					 */
 					MyProcPort->raddr.addr.ss_family = AF_INET;
-					MyProcPort->yb_is_ssl_enabled_in_logical_conn =
-						pq_getmsgbyte(&input_message) == 'E' ? true : false;
 
 					/* Update the `remote_host` */
 					struct sockaddr_in *ip_address_1;
@@ -7198,19 +7238,69 @@ PostgresMain(const char *dbname, const char *username)
 					inet_pton(AF_INET, MyProcPort->remote_host,
 							  &(ip_address_1->sin_addr));
 					MyProcPort->yb_is_auth_passthrough_req = true;
+					MyProcPort->yb_has_auth_passthrough_failed = false;
 
 					/* Start authentication */
-					start_xact_command();
-					ClientAuthentication(MyProcPort);
-					finish_xact_command();
+					{
+						start_xact_command();
+						/*
+						 * Parse input to populate MyProcPort with new client
+						 * context. Also parse GUC vars. We pass true for the
+						 * ssl_done and gss_done args as this negotiation
+						 * between conn mgr and the control backend is already
+						 * done during control backend startup.
+						 */
+						YbProcessStartupPacket(MyProcPort,
+											   true /* ssl_done */ ,
+											   true /* gss_done */ );
+
+						/*
+						 * Set up a timeout in case a buggy or malicious client
+						 * fails to respond during authentication.  Since we're
+						 * inside a transaction and might do database access, we
+						 * have to use the statement_timeout infrastructure.
+						 */
+						enable_timeout_after(STATEMENT_TIMEOUT,
+											 AuthenticationTimeout * 1000);
+
+						ClientAuthentication(MyProcPort);
+
+						/*
+						 * Done with authentication.  Disable the timeout, and
+						 * log if needed.
+						 * TODO (vikram.damle):
+						 * Add connection logging (cf postinit.c:284) and update
+						 * YbGetAuthorizedConnections as done in
+						 * `PerformaAuthentication()`.
+						 */
+						disable_timeout(STATEMENT_TIMEOUT, false);
+
+						/*
+						 * Skip these steps if authentication failed. Normally,
+						 * the backend would just close by passing an ERROR
+						 * level log to ereport, but we pass a WARNING level log
+						 * instead, to avoid closing the control backend. Thus,
+						 * the subsequent steps need to be manually skipped.
+						 */
+						if (!MyProcPort->yb_has_auth_passthrough_failed)
+						{
+							if (YbCreateClientId() == 0)
+								YbAuthPassthroughSetupGUCAndReport();
+						}
+
+						yb_abort_xact_command();
+					}
 
 					/* Place back the old context */
 					MyProcPort->yb_is_auth_passthrough_req = false;
+					MyProcPort->yb_has_auth_passthrough_failed = false;
 					MyProcPort->yb_is_ssl_enabled_in_logical_conn = false;
 					MyProcPort->user_name = user_name;
 					MyProcPort->database_name = db_name;
 					MyProcPort->remote_host = host;
 					MyProcPort->raddr.addr.ss_family = conn_type;
+					MyProcPort->guc_options = guc_options;
+					MyProcPort->cmdline_options = cmdline_options;
 					inet_pton(AF_INET, MyProcPort->remote_host,
 							  &(ip_address_1->sin_addr));
 

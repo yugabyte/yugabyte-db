@@ -504,6 +504,10 @@ extern long YbGetAuthorizedConnections();
 
 extern void BaseInit(void);
 
+extern void YbCheckMyDatabase(const char *name, bool am_superuser,
+							  bool override_allow_connections, Oid db_oid);
+extern void YbAuthPassthroughSetupGUCAndReport(void);
+
 /* in utils/init/miscinit.c */
 extern PGDLLIMPORT bool IgnoreSystemIndexes;
 extern PGDLLIMPORT bool process_shared_preload_libraries_in_progress;

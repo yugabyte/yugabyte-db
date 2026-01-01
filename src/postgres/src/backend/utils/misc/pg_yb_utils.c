@@ -299,6 +299,12 @@ YbSetLogicalClientCacheVersion(uint64_t logical_client_cache_version)
 }
 
 void
+YbResetLogicalClientCacheVersion()
+{
+	yb_logical_client_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
+}
+
+void
 YbUpdateLastKnownCatalogCacheVersion(uint64_t catalog_cache_version)
 {
 	if (yb_last_known_catalog_cache_version < catalog_cache_version)

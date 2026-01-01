@@ -108,7 +108,7 @@ extern void YbHandleSetSessionParam(int yb_client_id);
  * The authentication can happen via the `AUTHENTICATION PASSTHROUGH REQUEST`
  * packet or the lightweight authentication backend.
  */
-extern void YbCreateClientId();
+extern int  YbCreateClientId();
 extern void YbCreateClientIdWithDatabaseOid(Oid database_oid);
 
 extern void YbSetUserContext(const Oid roleid, const bool is_superuser, const char *rname);
@@ -126,3 +126,16 @@ extern bool YbGetNumYsqlConnMgrConnections(const Oid db_oid,
 extern void yb_is_client_ysqlconnmgr_assign_hook(bool newval, void *extra);
 
 extern void YbSendParameterStatusForConnectionManager(const char *name, const char *value);
+
+extern int YbAuthFailedErrorLevel(const bool auth_passthrough);
+
+/*
+ * Check whether an Auth Passthrough authentication is in progress.
+ * Usually expects MyProcPort as the passed arg in Auth Passthrough code flow.
+ * Only returns true if all of the following are true:
+ * 1) Connection Manager is active
+ * 2) `port` is initialized
+ * 3) `port->yb_is_auth_passthrough_req` is `true` (authentication is in
+ *    progress)
+ */
+extern bool YbIsAuthPassthroughInProgress(struct Port *port);
