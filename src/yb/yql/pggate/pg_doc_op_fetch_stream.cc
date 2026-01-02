@@ -160,12 +160,21 @@ Status PgDocResult::NextPgTuple() {
 
 Status PgDocResult::ProcessYbctids(const YbctidProcessor& processor) {
   RETURN_NOT_OK(NextPgTuple());
-  processor(VERIFY_RESULT(ReadYbctid(row_iterator_)), data_.first);
+  processor(VERIFY_RESULT(ReadYbctid(row_iterator_)));
   pg_tuple_is_valid_ = false;
   return Status::OK();
 }
 
 //--------------------------------------------------------------------------------------------------
+template <class R>
+DocResultStream<R>::~DocResultStream() {
+  if (old_results_holder_) {
+    for (auto& result : results_queue_) {
+      old_results_holder_->push_back(result.DataBuffer());
+    }
+  }
+}
+
 template <class R>
 StreamFetchStatus DocResultStream<R>::FetchStatus() const {
   for (const auto& result : results_queue_) {
@@ -185,14 +194,17 @@ void DocResultStream<R>::Detach() {
 }
 
 template <class R>
+void DocResultStream<R>::HoldResults(BuffersPtr holder) {
+  old_results_holder_ = holder ? holder : std::make_shared<Buffers>();
+}
+
+template <class R>
 R* DocResultStream<R>::GetNextDocResult() {
   while (!results_queue_.empty() && results_queue_.front().is_eof()) {
     if (old_results_holder_) {
-      old_results_holder_->splice(
-          old_results_holder_->end(), results_queue_, results_queue_.begin());
-    } else {
-      results_queue_.pop_front();
+      old_results_holder_->push_back(results_queue_.front().DataBuffer());
     }
+    results_queue_.pop_front();
   }
   return results_queue_.empty() ? nullptr : &results_queue_.front();
 }
@@ -229,6 +241,13 @@ uint64_t PgDocOpFetchStream::EmplaceDocResult(DocResultStream<R>& stream, Args&&
   return stream.EmplaceDocResult(std::forward<Args>(args)...);
 }
 
+BuffersPtr PgDocOpFetchStream::HoldResults(BuffersPtr holder) {
+  auto previous = old_results_holder_;
+  old_results_holder_ = holder ? holder : std::make_shared<Buffers>();
+  DoHoldResults();
+  return previous;
+}
+
 ParallelPgDocOpFetchStream::ParallelPgDocOpFetchStream(
     PgDocFetchCallback fetch_func, const std::vector<PgsqlOpPtr>& ops)
     : PgDocOpFetchStream(fetch_func) {
@@ -244,6 +263,9 @@ void ParallelPgDocOpFetchStream::ResetOps() {
 void ParallelPgDocOpFetchStream::ResetOps(const std::vector<PgsqlOpPtr>& ops) {
   for (const auto& op : ops) {
     read_streams_.emplace_back(op);
+  }
+  if (old_results_holder_) {
+    DoHoldResults();
   }
 }
 
@@ -277,6 +299,12 @@ Result<DocResult*> ParallelPgDocOpFetchStream::NextDocResult() {
   }
 
   return STATUS(RuntimeError, "Unreachable statement");
+}
+
+void ParallelPgDocOpFetchStream::DoHoldResults() {
+  for (auto& read_stream : read_streams_) {
+    read_stream.HoldResults(old_results_holder_);
+  }
 }
 
 Result<DocResultStream<DocResult>&> ParallelPgDocOpFetchStream::FindReadStream(
@@ -335,6 +363,9 @@ void MergingPgDocOpFetchStream<R>::ResetOps(const std::vector<PgsqlOpPtr>& ops) 
   for (auto& op : ops) {
     read_streams_.emplace_back(op);
   }
+  if (old_results_holder_) {
+    DoHoldResults();
+  }
   started_ = false;
 }
 
@@ -382,7 +413,11 @@ Result<DocResultStream<R>&> MergingPgDocOpFetchStream<R>::FindReadStream(
     // Large part of such split is beyond the scope of the result stream management structures.
     VLOG_WITH_FUNC(2) << "Adding split stream for operation " << op;
     read_streams_.emplace_back(nullptr);
-    return read_streams_.back();
+    auto& new_stream = read_streams_.back();
+    if (old_results_holder_) {
+      new_stream.HoldResults(old_results_holder_);
+    }
+    return new_stream;
   }
   auto it = std::find(read_streams_.begin(), read_streams_.end(), op);
   if (it == read_streams_.end()) {
@@ -441,6 +476,13 @@ Result<DocResult*> MergingPgDocOpFetchStream<R>::NextDocResult() {
   current_stream_ = read_queue_.top();
   read_queue_.pop();
   return current_stream_->GetNextDocResult();
+}
+
+template <class R>
+void MergingPgDocOpFetchStream<R>::DoHoldResults() {
+  for (auto& read_stream : read_streams_) {
+    read_stream.HoldResults(old_results_holder_);
+  }
 }
 
 // Explicit template instantiations

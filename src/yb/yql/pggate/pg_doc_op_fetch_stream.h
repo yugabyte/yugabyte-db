@@ -42,7 +42,9 @@ using FetchedTargets = boost::container::small_vector<PgFetchedTarget*, 8>;
 using FetchedTargetsPtr = std::shared_ptr<FetchedTargets>;
 using MergeSortKeys = boost::container::small_vector<YbcSortKey, 8>;
 using MergeSortKeysPtr = std::shared_ptr<MergeSortKeys>;
-using YbctidProcessor = std::function<void(Slice, const RefCntBuffer&)>;
+using Buffers = boost::container::small_vector<RefCntBuffer, 8>;
+using BuffersPtr = std::shared_ptr<Buffers>;
+using YbctidProcessor = std::function<void(Slice)>;
 
 //--------------------------------------------------------------------------------------------------
 // DocResult represents data in ONE reply from tablet servers.
@@ -64,8 +66,8 @@ class DocResult {
   int CompareTo(DocResult& other);
 
   virtual Status ProcessYbctids(const YbctidProcessor& processor) {
-    return ProcessSysEntries([this, &processor](Slice& data) -> Status {
-      processor(VERIFY_RESULT(ReadYbctid(data)), data_.first);
+    return ProcessSysEntries([&processor](Slice& data) -> Status {
+      processor(VERIFY_RESULT(ReadYbctid(data)));
       return Status::OK();
     });
   }
@@ -160,6 +162,7 @@ class DocResultStream {
   // Static data is a predefined list of DocResult.
   explicit DocResultStream(PgsqlOpPtr op) : op_(op) {}
   explicit DocResultStream(std::list<R>&& results) : results_queue_(std::move(results)) {}
+  ~DocResultStream();
 
   bool operator==(const PgsqlOpPtr& op) const { return op_ == op; }
 
@@ -169,7 +172,7 @@ class DocResultStream {
 
   // Do not discard empty DocResults. The held DocResults are discarded when HoldResults() is
   // called again or when the DocResultStream instance is destroyed.
-  void HoldResults() { old_results_holder_.emplace(); }
+  void HoldResults(BuffersPtr holder = nullptr);
 
   // Returns nullptr if nothing is available. May invalidate previously returned data.
   R* GetNextDocResult();
@@ -183,7 +186,7 @@ class DocResultStream {
 
   PgsqlOpPtr op_;
   std::list<R> results_queue_;
-  std::optional<std::list<R>> old_results_holder_;
+  BuffersPtr old_results_holder_;
 
   DISALLOW_COPY_AND_ASSIGN(DocResultStream);
 };
@@ -247,12 +250,16 @@ class PgDocOpFetchStream {
   virtual Result<uint64_t> EmplaceOpDocResult(
       const PgsqlOpPtr& op, rpc::SidecarHolder&& data, const LWPgsqlResponsePB& response) = 0;
 
+  BuffersPtr HoldResults(BuffersPtr holder = nullptr);
+
  protected:
   template<class R, typename... Args>
   uint64_t EmplaceDocResult(DocResultStream<R>& stream, Args&&... args);
+  virtual void DoHoldResults() = 0;
   PgDocFetchCallback fetch_func_;
   FetchedTargetsPtr targets_;
   MergeSortKeysPtr merge_sort_keys_;
+  BuffersPtr old_results_holder_;
 
  private:
   DISALLOW_COPY_AND_ASSIGN(PgDocOpFetchStream);
@@ -276,6 +283,8 @@ class ParallelPgDocOpFetchStream : public PgDocOpFetchStream {
 
   virtual Result<DocResult*> NextDocResult() override;
 
+  virtual void DoHoldResults() override;
+
  private:
   Result<DocResultStream<DocResult>&> FindReadStream(const PgsqlOpPtr& op);
 
@@ -297,6 +306,8 @@ class CachedPgDocOpFetchStream : public PgDocOpFetchStream {
       const PgsqlOpPtr& op, rpc::SidecarHolder&& data, const LWPgsqlResponsePB& response) override;
 
   virtual Result<DocResult*> NextDocResult() override;
+
+  virtual void DoHoldResults() override {}
 
  private:
   DocResultStream<DocResult> read_stream_;
@@ -334,9 +345,7 @@ class MergingPgDocOpFetchStream : public PgDocOpFetchStream {
   virtual Result<bool> ProcessNextYbctids(const YbctidProcessor& processor) override {
     VLOG_WITH_FUNC(4) << "Start";
     size_t found = 0;
-    for (auto& stream : read_streams_) {
-      stream.HoldResults();
-    }
+    DoHoldResults();
     while (true) {
       auto* result = VERIFY_RESULT(NextDocResult());
       if (!result) {
@@ -351,6 +360,8 @@ class MergingPgDocOpFetchStream : public PgDocOpFetchStream {
       }
     }
   }
+
+  virtual void DoHoldResults() override;
 
  private:
   Result<DocResultStream<R>&> FindReadStream(

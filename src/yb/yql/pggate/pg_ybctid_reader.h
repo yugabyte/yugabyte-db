@@ -87,7 +87,7 @@ class YbctidReader {
   void Add(const LightweightTableYbctid& ybctid) { ybctids_.push_back(ybctid); }
   void Clear() {
     ybctids_.clear();
-    holders_.clear();
+    holders_->clear();
   }
 
   ReadResult Read(
@@ -95,7 +95,7 @@ class YbctidReader {
       const ExecParametersMutator& exec_params_mutator);
 
   const PgSessionPtr& session_;
-  boost::container::small_vector<RefCntBuffer, 4> holders_;
+  BuffersPtr holders_ = std::make_shared<Buffers>();
   boost::container::small_vector<LightweightTableYbctid, 8> ybctids_;
   size_t active_batch_accessor_signature_{0};
 };

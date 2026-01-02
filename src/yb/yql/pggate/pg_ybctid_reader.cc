@@ -181,13 +181,10 @@ Result<std::span<LightweightTableYbctid>> YbctidReader::Read(
   ybctids_.clear();
   for (auto& doc_op : doc_ops) {
     for(;;) {
+      doc_op->ResultStream().HoldResults(holders_);
       if (!VERIFY_RESULT(doc_op->ResultStream().ProcessNextYbctids(
-        [this, object_oid = doc_op->table()->relfilenode_id().object_oid](
-            Slice ybctid, const RefCntBuffer& holder) {
+        [this, object_oid = doc_op->table()->relfilenode_id().object_oid](Slice ybctid) {
           ybctids_.emplace_back(object_oid, ybctid);
-          if (holders_.empty() || holders_.back().data() != holder.data()) {
-            holders_.push_back(holder);
-          }
         }))) {
         break;
       }
