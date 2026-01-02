@@ -76,6 +76,9 @@ jobs:
           overprovision-lvm: 'true'
 
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: 'false'
 
       - name: Build YugabyteDB
         run: |
@@ -93,18 +96,26 @@ jobs:
               bash -c '
                 set -euo pipefail -x
                 echo "OSTYPE (inside Docker): $OSTYPE"
-                echo "PATH: $PATH"
-                export PATH=/usr/local/bin:$PATH
-                ( set -x; ls -l /usr/local/bin )
-                set +e
-                ( set -x; which ninja )
-                ( set -x; which cmake )
-                set -e
                 chown -R yugabyteci .
-                sudo -u yugabyteci bash -c "
+                sudo -H -u yugabyteci bash -c "
                   set -euo pipefail
-                  export PATH=/usr/local/bin:\$PATH
+                  export PATH=/usr/local/bin:\$HOME/arcanist/bin:\$HOME/yb-cpplint/cpplint:\$PATH
+                  echo PATH: \$PATH
+                  ( set +e; set -x
+                    ls -l /usr/local/bin
+                    which ninja
+                    which cmake
+                    which arc )
                   df -H /
+                  echo ::group::Arc Lint
+                  # Base reference should not be set for non-PR actions.
+                  if [[ -n \"${{ github.base_ref }}\" ]]; then
+                    echo Base reference: ${{ github.base_ref }}
+                    git fetch origin ${{ github.base_ref }}
+                    arc lint --never-apply-patches --rev origin/${{ github.base_ref }}
+                  else
+                    echo No base reference: Skipping Lint Step
+                  fi
                   echo ::group::Building YugabyteDB
                   ./yb_build.sh release \
                     --download-thirdparty \
