@@ -8,7 +8,6 @@ tags:
   feature: tech-preview
 menu:
   v2.20:
-    name: YSQL Connection Manager
     identifier: explore-conn-mgr-ysql
     parent: explore
     weight: 800
