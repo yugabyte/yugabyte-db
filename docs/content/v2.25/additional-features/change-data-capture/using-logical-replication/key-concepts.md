@@ -2,7 +2,7 @@
 title: Key concepts - logical replication
 headerTitle: Key concepts
 linkTitle: Key concepts
-description: Change Data Capture in YugabyteDB.
+description: Logical replication in YugabyteDB.
 headcontent: PostgreSQL logical replication concepts
 menu:
   v2.25:
