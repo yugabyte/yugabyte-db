@@ -187,6 +187,8 @@ YB_DEFINE_ENUM(
                              // ysql upgrade has been finalized.
 );
 
+YB_DEFINE_ENUM(CDCStreamType, (kNone)(kLogicalReplication)(kgRPC));
+
 struct YsqlTableDdlTxnState;
 using google::protobuf::RepeatedPtrField;
 using TabletIdWithEntry = std::pair<TabletId, SysTabletsEntryPB>;
@@ -1568,8 +1570,11 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // their metadata.
   Status FindCDCSDKStreamsForNonEligibleTables(TableStreamIdsMap* non_user_tables_to_streams_map);
 
+  // Returns true if the table is eligible for CDCSDK streams. 'allow_tables_without_primary_key' is
+  // used only when 'check_schema' is sent as 'true'.
   bool IsTableEligibleForCDCSDKStream(
-      const TableInfoPtr& table_info, const TableInfo::ReadLock& lock, bool check_schema) const;
+      const TableInfoPtr& table_info, const TableInfo::ReadLock& lock, bool check_schema,
+      const bool allow_tables_without_primary_key) const;
 
   // This method compares all tables in the namespace to all the tables added to a CDCSDK stream,
   // to find tables which are not yet processed by the CDCSDK streams.
@@ -2918,8 +2923,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Return all CDC streams.
   void GetAllCDCStreams(std::vector<CDCStreamInfoPtr>* streams);
 
-  // This method returns all tables in the namespace suitable for CDCSDK.
-  std::vector<TableInfoPtr> FindAllTablesForCDCSDK(const NamespaceId& ns_id)
+  // This method returns all tables in the namespace based on the criteria specified by
+  // 'allows_tables_without_primary_key'.
+  std::vector<TableInfoPtr> FindAllTablesForCDCSDK(
+      const NamespaceId& ns_id, const bool allow_tables_without_primary_key)
       REQUIRES_SHARED(mutex_);
 
   // Find CDC streams for a table.

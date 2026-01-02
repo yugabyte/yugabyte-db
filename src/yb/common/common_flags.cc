@@ -244,6 +244,10 @@ DEFINE_validator(ysql_yb_ddl_transaction_block_enabled,
 DEFINE_validator(refresh_waiter_timeout_ms,
     FLAG_REQUIRED_NONZERO_BY_FLAG_VALIDATOR(enable_object_locking_for_table_locks));
 
+DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_cdcsdk_stream_tables_without_primary_key, false,
+    "When set to true, allows streaming of tables without primary keys for CDCSDK logical "
+    "replication streams.");
+
 namespace {
 
 constexpr const auto kMinRpcThrottleThresholdBytes = 16;

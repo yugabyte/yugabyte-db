@@ -175,6 +175,12 @@ extern char* yb_default_replica_identity;
  */
 extern bool yb_enable_consistent_replication_from_hash_range;
 
+/*
+ * GUC variable that enables streaming tables without primary key to CDCSDK logical replication
+ * streams.
+ */
+extern bool yb_cdcsdk_stream_tables_without_primary_key;
+
 extern bool enable_object_locking_infra;
 
 /*

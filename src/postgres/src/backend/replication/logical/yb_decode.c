@@ -32,6 +32,7 @@
 #include "replication/walsender_private.h"
 #include "replication/yb_decode.h"
 #include "utils/rel.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 static void YBDecodeInsert(LogicalDecodingContext *ctx, XLogReaderState *record);
@@ -256,6 +257,14 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 		 */
 		Assert(col->column_name);
 
+		/*
+		 * 'ybrowid' is an internal primary key column added by DocDB for tables
+		 * without a primary key. Skip this column.
+		 */
+		if (YBGetTablePrimaryKeyBms(relation) == NULL &&
+			strcmp(col->column_name, "ybrowid") == 0)
+			continue;
+
 		int			attr_idx = YBFindAttributeIndexInDescriptor(tupdesc,
 																col->column_name);
 
@@ -469,6 +478,13 @@ YBGetHeapTuplesForRecord(const YbVirtualWalRecord *yb_record,
 	for (int col_idx = 0; col_idx < yb_record->col_count; col_idx++)
 	{
 		const YbcPgDatumMessage *col = &yb_record->cols[col_idx];
+		/*
+		 * 'ybrowid' is an internal primary key column added by DocDB for tables
+		 * without a primary key. Skip this column.
+		 */
+		if (YBGetTablePrimaryKeyBms(relation) == NULL &&
+			strcmp(col->column_name, "ybrowid") == 0)
+			continue;
 		int			attr_idx = YBFindAttributeIndexInDescriptor(tupdesc,
 																col->column_name);
 

@@ -2660,6 +2660,18 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_cdcsdk_stream_tables_without_primary_key", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enable streaming of tables without primary key in CDC logical "
+						 "replication streams."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_cdcsdk_stream_tables_without_primary_key,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"ysql_upgrade_mode", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Enter a special mode designed specifically for YSQL cluster upgrades. "
 						 "Allows creating new system tables with given relation and type OID. "
