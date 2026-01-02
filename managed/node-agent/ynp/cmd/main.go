@@ -173,6 +173,7 @@ func handleCommand(cmd *cobra.Command, args []string) {
 	}
 	ctx := context.Background()
 	cmdArgs := parseArguments(cmd)
+	// Setup logger first to use the custom logger.
 	config.SetupLogger(ctx, cmdArgs.YnpConfig)
 	iniConfig, err := config.GenerateConfigINI(ctx, cmdArgs)
 	if err != nil {

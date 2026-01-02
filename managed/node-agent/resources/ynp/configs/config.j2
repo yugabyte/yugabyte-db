@@ -136,6 +136,6 @@ earlyoom_args = {{ ynp_config['ynp']['earlyoom'].earlyoom_args | default('') }}
 [RebootNode]
 is_onprem_only_module = "True"
 
-{%- if 'extra' in ynp_config and ynp_config.extra.is_ybm %}
+{%- if 'extra' in ynp_config and ynp_config.extra.is_ybm is true %}
 [ConfigureYBMAMI]
 {%- endif %}

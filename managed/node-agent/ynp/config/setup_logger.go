@@ -25,19 +25,21 @@ func SetupLogger(ctx context.Context, config map[string]map[string]any) {
 	// Default values
 	logFile := DefaultLogFile
 	logDir := DefaultLogDir
-	setCount := 0
-	if len(config) > 0 {
-		for _, v := range config {
-			if lf, ok := v["logfile"].(string); ok && lf != "" {
-				logFile = lf
-				setCount++
-			}
-			if ld, ok := v["logdir"].(string); ok && ld != "" {
-				logDir = ld
-				setCount++
-			}
-			if setCount >= 2 {
-				break
+	logLevel := apex.DebugLevel
+	logging, ok := config["logging"]
+	if ok {
+		if lf, ok := logging["file"].(string); ok && lf != "" {
+			logFile = lf
+		}
+		if ld, ok := logging["directory"].(string); ok && ld != "" {
+			logDir = ld
+		}
+		if ll, ok := logging["level"].(string); ok && ll != "" {
+			level, err := apex.ParseLevel(ll)
+			if err == nil {
+				logLevel = level
+			} else {
+				log.Printf("Invalid log level '%s', defaulting to 'info'", ll)
 			}
 		}
 	}
@@ -52,7 +54,7 @@ func SetupLogger(ctx context.Context, config map[string]map[string]any) {
 		DefaultMaxSizeMB,
 		DefaultMaxBackups,
 		DefaultMaxAgeDays,
-		apex.DebugLevel,
+		logLevel,
 		true,
 	)
 	// Set file permissions
@@ -72,5 +74,6 @@ func SetupLogger(ctx context.Context, config map[string]map[string]any) {
 			}
 		}
 	}
-	util.FileLogger().Info(ctx, "Logging setup complete in UTC timezone")
+	util.FileLogger().Infof(ctx, "Logging setup complete in UTC timezone. Level: %s, path: %s",
+		logLevel.String(), logPath)
 }

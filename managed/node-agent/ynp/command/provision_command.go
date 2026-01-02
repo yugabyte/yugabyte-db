@@ -204,13 +204,6 @@ func (pc *ProvisionCommand) Execute(specificModules []string) error {
 	if err := pc.validateSpecificModules(specificModules); err != nil {
 		return err
 	}
-	sectionValue := pc.iniConfig.DefaultSectionValue()
-	if sectionValue["is_ybm"] == true {
-		if err := pc.copyTemplatesFilesForYBM(sectionValue); err != nil {
-			return err
-		}
-	}
-
 	runScript, precheckScript, err := pc.generateTemplate(specificModules)
 	if err != nil {
 		return err
@@ -255,7 +248,7 @@ func (pc *ProvisionCommand) validateRequiredPackages() error {
 			return err
 		}
 	}
-	if isCloud, ok := pc.iniConfig.DefaultSectionValue()["is_cloud"].(bool); ok && isCloud {
+	if config.GetBool(pc.iniConfig.DefaultSectionValue(), "is_cloud", false) {
 		for _, pkg := range pc.requiredCloudOnlyOSPkgs() {
 			if err := pc.checkPackage(pkg); err != nil {
 				return err
@@ -312,10 +305,24 @@ func (pc *ProvisionCommand) runScript(name, scriptPath string) error {
 	return nil
 }
 
+// prepareGenerateTemplate performs any preparation needed before generating templates.
+func (pc *ProvisionCommand) prepareGenerateTemplate() error {
+	if config.GetBool(pc.iniConfig.DefaultSectionValue(), "is_ybm", false) {
+		util.FileLogger().Infof(pc.ctx, "Copying template files for YBM")
+		if err := pc.copyTemplatesFilesForYBM(pc.iniConfig.DefaultSectionValue()); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // generateTemplate generates the install and precheck scripts. If the optional specificModules are
 // provided, only those modules are processed.
 func (pc *ProvisionCommand) generateTemplate(specificModules []string) (string, string, error) {
 	allTemplates := make([]*config.RenderedTemplates, 0)
+	if err := pc.prepareGenerateTemplate(); err != nil {
+		return "", "", err
+	}
 	// Process in the order of sections in the ini file.
 	for _, key := range pc.iniConfig.Sections() {
 		if key == config.DefaultINISection {
