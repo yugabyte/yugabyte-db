@@ -90,6 +90,10 @@ export const AWS_REGIONS = [
     zones: ['me-south-1a', 'me-south-1b', 'me-south-1c']
   },
   {
+    destVpcRegion: 'me-central-1',
+    zones: ['me-central-1a', 'me-central-1b', 'me-central-1c']
+  },
+  {
     destVpcRegion: 'ap-east-1',
     zones: ['ap-east-1a', 'ap-east-1b', 'ap-east-1c']
   },
