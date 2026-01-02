@@ -53,7 +53,7 @@ Maps to Snapshot Isolation of YugabyteDB.
 
 {{< note >}}
 
-Read Committed support is currently in [Early Access](/preview/releases/versioning/#feature-maturity).
+Read Committed support is currently in [Early Access](/stable/releases/versioning/#feature-maturity).
 
 {{</note >}}
 
