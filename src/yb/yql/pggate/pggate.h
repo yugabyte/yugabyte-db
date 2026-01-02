@@ -758,6 +758,7 @@ class PgApiImpl {
 
   // Sets the specified timeout in the rpc service.
   void SetTimeout(int timeout_ms);
+  void ClearTimeout();
 
   void SetLockTimeout(int lock_timeout_ms);
 

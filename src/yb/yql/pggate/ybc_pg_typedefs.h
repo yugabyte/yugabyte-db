@@ -383,6 +383,8 @@ typedef struct {
   int (*CheckUserMap)(const char *, const char *, const char *, bool case_insensitive);
   /* pgstat.h */
   YbcWaitEventInfo (*PgstatReportWaitStart)(YbcWaitEventInfo);
+  /* CHECK_FOR_INTERRUPTS */
+  void (*CheckForInterrupts)();
 } YbcPgCallbacks;
 
 typedef struct {

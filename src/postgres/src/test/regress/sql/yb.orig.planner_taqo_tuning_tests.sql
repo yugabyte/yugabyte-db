@@ -1,6 +1,9 @@
 CREATE DATABASE taqo_tuning_tests with colocation = true;
 \c taqo_tuning_tests
-SET statement_timeout = '7200s';
+-- A grace period of 2s is added to every RPC (controlled by gflag 'pg_client_extra_timeout_ms').
+-- To avoid crossing the max RPC timeout threshold (7200s), account for the above in setting
+-- the statement timeout.
+SET statement_timeout = '7198s';
 -- CREATE QUERIES
 CREATE TABLE t_range_100k (id INT, v1 INT, v2 INT, v3 INT, v4 INT, PRIMARY KEY (id ASC));
 CREATE INDEX tr100kv1 ON t_range_100k (v1 ASC);

@@ -29,7 +29,6 @@ class CDCSDKReplicaIdentityTest : public CDCSDKYsqlTest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_auto_run_initdb) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_hide_pg_catalog_table_creation_logs) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pggate_rpc_timeout_secs) = 120;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_replication_factor) = replication_factor;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_pack_full_row_update) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_populate_safepoint_record) = cdc_populate_safepoint_record;

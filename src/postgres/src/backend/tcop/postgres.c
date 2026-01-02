@@ -7485,6 +7485,12 @@ YbRedactPasswordIfExists(const char *queryStr, CommandTag commandTag)
 	return redactedStr;
 }
 
+void
+YBCheckForInterrupts()
+{
+	CHECK_FOR_INTERRUPTS();
+}
+
 long
 YbGetCatCacheRefreshes()
 {
