@@ -2566,9 +2566,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const TabletInfoPtr& tablet, ManualSplit is_manual_split,
       const LeaderEpoch& epoch);
 
-  void SplitTabletWithKey(
-      const TabletInfoPtr& tablet, const std::string& split_encoded_key,
-      const std::string& split_partition_key, ManualSplit is_manual_split,
+  void SplitTabletWithKeys(
+      const TabletInfoPtr& tablet, const std::vector<std::string>& split_encoded_keys,
+      const std::vector<std::string>& split_partition_keys, ManualSplit is_manual_split,
       const LeaderEpoch& epoch);
 
   Status XReplValidateSplitCandidateTableUnlocked(const TableId& table_id) const

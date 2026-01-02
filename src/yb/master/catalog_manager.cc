@@ -616,6 +616,9 @@ DEFINE_test_flag(bool, fail_yugabyte_namespace_creation_on_second_attempt, false
     "Fail CopyPgsqlSysTables for yugabyte database on the second creation attempt "
     "to simulate failure during pg_restore phase of YSQL major upgrade");
 
+DEFINE_test_flag(int32, tablet_split_factor, yb::kDefaultNumSplitParts,
+    "Number of tablets to split into during tablet split");
+
 DECLARE_bool(enable_pg_cron);
 DECLARE_bool(enable_truncate_cdcsdk_table);
 DECLARE_bool(ysql_yb_enable_replica_identity);
@@ -3341,15 +3344,15 @@ bool CatalogManager::IsColocatedNamespace(const NamespaceId& ns_id) const {
   return colocated_db_tablets_map_.contains(ns_id);
 }
 
-void CatalogManager::SplitTabletWithKey(
-    const TabletInfoPtr& tablet, const std::string& split_encoded_key,
-    const std::string& split_partition_key, const ManualSplit is_manual_split,
+void CatalogManager::SplitTabletWithKeys(
+    const TabletInfoPtr& tablet, const std::vector<std::string>& split_encoded_keys,
+    const std::vector<std::string>& split_partition_keys, const ManualSplit is_manual_split,
     const LeaderEpoch& epoch) {
   // Note that DoSplitTablet() will trigger an async SplitTablet task, and will only return not OK()
   // if it failed to submit that task. In other words, any failures here are not retriable, and
   // success indicates that an async and automatically retrying task was submitted.
   auto s = DoSplitTablet(
-      tablet, {split_encoded_key}, {split_partition_key}, is_manual_split, epoch);
+      tablet, split_encoded_keys, split_partition_keys, is_manual_split, epoch);
   WARN_NOT_OK(
       s,
       Format("Failed to split tablet with GetSplitKey result for tablet: $0", tablet->tablet_id()));
@@ -3369,11 +3372,11 @@ Status CatalogManager::SplitTablet(
   VLOG(2) << "Scheduling GetSplitKey request to leader tserver for source tablet ID: "
           << tablet->tablet_id();
   auto call = std::make_shared<AsyncGetTabletSplitKey>(
-      master_, AsyncTaskPool(), tablet, is_manual_split, epoch,
+      master_, AsyncTaskPool(), tablet, is_manual_split, FLAGS_TEST_tablet_split_factor, epoch,
       [this, tablet, is_manual_split, epoch](const Result<AsyncGetTabletSplitKey::Data>& result) {
         if (result.ok()) {
-          SplitTabletWithKey(
-              tablet, result->split_encoded_key, result->split_partition_key, is_manual_split,
+          SplitTabletWithKeys(
+              tablet, result->split_encoded_keys, result->split_partition_keys, is_manual_split,
               epoch);
         } else if (
             tserver::TabletServerError(result.status()) ==

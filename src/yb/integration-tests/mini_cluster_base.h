@@ -57,6 +57,10 @@ class MiniClusterBase {
 
   bool running() const { return running_.load(std::memory_order_acquire); }
 
+  int GetSplitFactor();
+
+  void SetSplitFactor(int split_factor);
+
   virtual bool WasUnsafeShutdown() const = 0;
 
   virtual std::vector<scoped_refptr<ExternalYbController>> yb_controller_daemons() const = 0;

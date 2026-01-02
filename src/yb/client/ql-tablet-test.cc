@@ -1500,7 +1500,8 @@ TEST_P(QLTabletRf1TestToggleEnablePackedRow, GetMiddleKey) {
 
   ASSERT_OK(cluster_->FlushTablets());
 
-  const auto encoded_split_key = ASSERT_RESULT(tablet.GetEncodedMiddleSplitKey());
+  const auto split_keys = ASSERT_RESULT(tablet.GetSplitKeys(kDefaultNumSplitParts));
+  const auto& encoded_split_key = split_keys.encoded_keys.front();
   LOG(INFO) << "Encoded split key: " << Slice(encoded_split_key).ToDebugString();
 
   if (tablet.metadata()->partition_schema()->IsHashPartitioning()) {

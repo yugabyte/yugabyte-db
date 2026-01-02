@@ -131,7 +131,8 @@ Status DoSplitTablet(master::CatalogManagerIf* catalog_mgr, const tablet::Tablet
       rocksdb::DB::Properties::kAggregatedTableProperties, &properties);
   LOG(INFO) << "DB properties: " << properties;
 
-  const auto encoded_split_key = VERIFY_RESULT(tablet.GetEncodedMiddleSplitKey());
+  const auto split_keys = VERIFY_RESULT(tablet.GetSplitKeys(kDefaultNumSplitParts));
+  const auto& encoded_split_key = split_keys.encoded_keys.front();
   std::string partition_split_key = encoded_split_key;
   if (tablet.metadata()->partition_schema()->IsHashPartitioning()) {
     const auto doc_key_hash = VERIFY_RESULT(dockv::DecodeDocKeyHash(encoded_split_key)).value();
@@ -414,6 +415,7 @@ Result<tserver::GetSplitKeyResponsePB> TabletSplitITest::SendTServerRpcSyncGetSp
       proxy_cache_.get(), HostPort::FromBoundEndpoint(tserver->bound_rpc_addr()));
   tserver::GetSplitKeyRequestPB req;
   req.set_tablet_id(tablet_id);
+  req.set_split_factor(cluster_->GetSplitFactor());
   rpc::RpcController controller;
   controller.set_timeout(kRpcTimeout);
   tserver::GetSplitKeyResponsePB resp;
@@ -1022,7 +1024,7 @@ Status TabletSplitExternalMiniClusterITest::SplitTabletCrashMaster(
   // Retrieve split key from a leader peer
   if (split_partition_key) {
     RETURN_NOT_OK(WaitForAnySstFiles(tablet_id));
-    *split_partition_key = VERIFY_RESULT(cluster_->GetSplitKey(tablet_id)).split_partition_key();
+    *split_partition_key = VERIFY_RESULT(cluster_->GetSplitKey(tablet_id)).split_partition_keys(0);
   }
 
   RETURN_NOT_OK(SplitTablet(tablet_id));

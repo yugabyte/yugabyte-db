@@ -4687,7 +4687,7 @@ const std::string& Tablet::tablet_id() const {
   return metadata_->raft_group_id();
 }
 
-Result<std::string> Tablet::GetEncodedMiddleSplitKey(std::string *partition_split_key) const {
+Result<std::string> Tablet::GetEncodedMiddleSplitKey(std::string* partition_split_key) const {
   auto error_prefix = [this]() {
     return Format(
         "Failed to detect middle key for tablet $0 (key_bounds: \"$1\" - \"$2\")",
@@ -4772,6 +4772,62 @@ Result<std::string> Tablet::GetEncodedMiddleSplitKey(std::string *partition_spli
   }
 
   return middle_key;
+}
+
+Result<Tablet::SplitKeysData> Tablet::GetSplitKeys(const int split_factor) const {
+  SCHECK_GE(
+      split_factor, kDefaultNumSplitParts, InvalidArgument, "Split factor must be at least 2");
+
+  if (split_factor > kDefaultNumSplitParts) {
+    // Use a naive transitional N-way partitioning algorithm for hash-partitioned tables.
+    if (metadata()->partition_schema()->IsHashPartitioning()) {
+      const auto partition_start = dockv::PartitionSchema::DecodeMultiColumnHashLeftBound(
+          metadata()->partition()->partition_key_start());
+      const auto partition_end = dockv::PartitionSchema::DecodeMultiColumnHashRightBound(
+          metadata()->partition()->partition_key_end());
+      SCHECK_LT(
+          partition_start, partition_end, IllegalState, "Invalid parent partition bounds");
+      const auto split_keys_result = dockv::PartitionSchema::CreateHashSplitKeys(
+          split_factor, partition_start, partition_end);
+      if (!split_keys_result.ok()) {
+        return STATUS_EC_FORMAT(
+            IllegalState,
+            tserver::TabletServerError(
+                tserver::TabletServerErrorPB::TABLET_SPLIT_KEY_RANGE_TOO_SMALL),
+            "Failed to detect split keys for tablet $0 using split factor $1: "
+            "partition [\"$2\" - \"$3\") is too small",
+            tablet_id(), split_factor,
+            Uint16ToHexString(partition_start), Uint16ToHexString(partition_end));
+      }
+
+      const auto num_keys = split_factor - 1;
+      SplitKeysData split_keys;
+      split_keys.partition_keys = std::move(*split_keys_result);
+      split_keys.encoded_keys.reserve(num_keys);
+      for (const auto& partition_key : split_keys.partition_keys) {
+        split_keys.encoded_keys.push_back(VERIFY_RESULT(
+            metadata()->partition_schema()->GetEncodedPartitionKey(partition_key)));
+      }
+
+      return split_keys;
+    }
+
+    return STATUS_FORMAT(
+        NotSupported,
+        "Split factor $0 (tablet $1) is supported only with hash-partitioning",
+        split_factor, tablet_id());
+  }
+
+  std::string partition_key;
+  auto encoded_key = VERIFY_RESULT(GetEncodedMiddleSplitKey(&partition_key));
+  if (partition_key.empty()) {
+    partition_key = encoded_key;
+  }
+
+  return SplitKeysData {
+    .encoded_keys = {encoded_key},
+    .partition_keys = {partition_key}
+  };
 }
 
 bool Tablet::HasActiveFullCompaction() {

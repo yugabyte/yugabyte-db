@@ -24,6 +24,7 @@
 
 DECLARE_bool(use_node_to_node_encryption);
 DECLARE_string(certs_dir);
+DECLARE_int32(TEST_tablet_split_factor);
 
 namespace yb {
 
@@ -80,6 +81,15 @@ Result<std::unique_ptr<client::YBClient>> MiniClusterBase::CreateSecureClient(
 
 Result<HostPort> MiniClusterBase::GetLeaderMasterBoundRpcAddr() {
   return DoGetLeaderMasterBoundRpcAddr();
+}
+
+int MiniClusterBase::GetSplitFactor() {
+  return ANNOTATE_UNPROTECTED_READ(FLAGS_TEST_tablet_split_factor);
+}
+
+void MiniClusterBase::SetSplitFactor(int split_factor) {
+  LOG(INFO) << "Setting split factor to " << split_factor;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tablet_split_factor) = split_factor;
 }
 
 rpc::MessengerBuilder CreateMiniClusterMessengerBuilder() {
