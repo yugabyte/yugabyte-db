@@ -508,7 +508,7 @@ static inline int od_backend_startup(od_server_t *server,
 			}
 
 			/*
-			 * TODO(arpit.saxena): If flags & YB_GUC_CONTEXT_BACKEND, then we have to
+			 * TODO(arpit.saxena) (#20603): If flags & YB_GUC_CONTEXT_BACKEND, then we have to
 			 * ensure that either the auth backend stays or we make a new sticky backend
 			 * and pass the external client's startup settings. This is because client
 			 * has set a variable through the startup packet which can't be set using
