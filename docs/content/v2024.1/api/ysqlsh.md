@@ -19,8 +19,8 @@ The YugabyteDB SQL shell ysqlsh provides a CLI for interacting with YugabyteDB u
 
 ysqlsh is installed with YugabyteDB and located in the `bin` directory of the YugabyteDB home directory.
 
-{{<lead link="/preview/releases/yugabyte-clients/">}}
-To download and install a standalone version of ysqlsh, refer to [YugabyteDB clients](/preview/releases/yugabyte-clients/).
+{{<lead link="/stable/releases/yugabyte-clients/">}}
+To download and install a standalone version of ysqlsh, refer to [YugabyteDB clients](/stable/releases/yugabyte-clients/).
 {{</lead>}}
 
 ### Starting ysqlsh
@@ -61,7 +61,7 @@ ysqlsh returns the following to the shell on exit:
 
 {{< note title="YugabyteDB Aeon" >}}
 
-For information on connecting to a YugabyteDB Aeon cluster using ysqlsh, refer to [Connect via client shells](../../yugabyte-cloud/cloud-connect/connect-client-shell/).
+For information on connecting to a YugabyteDB Aeon cluster using ysqlsh, refer to [Connect via client shells](/stable/yugabyte-cloud/cloud-connect/connect-client-shell/).
 
 {{< /note >}}
 

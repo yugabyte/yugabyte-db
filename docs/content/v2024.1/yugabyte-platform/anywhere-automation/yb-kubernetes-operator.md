@@ -84,7 +84,7 @@ FIELDS:
  kubernetesOverrides  <Object>
   Kubernetes overrides for the universe. Please refer to yugabyteDB
   documentation for more details.
-  https://docs.yugabyte.com/preview/yugabyte-platform/create-deployments/create-universe-multi-zone-kubernetes/#configure-helm-overrides
+  https://docs.yugabyte.com/stable/yugabyte-platform/create-deployments/create-universe-multi-zone-kubernetes/#configure-helm-overrides
 
  numNodes   <integer>
   Number of tservers in the universe to create.
