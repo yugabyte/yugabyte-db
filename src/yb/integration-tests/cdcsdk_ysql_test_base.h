@@ -495,6 +495,10 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const CDCSDKProtoRecordPB& record, CDCSDKYsqlTest::VaryingExpectedRecord expected_records,
       uint32_t* count, uint32_t num_cols);
 
+  void CheckRecordTuples(
+      const CDCSDKProtoRecordPB& record, const std::vector<std::string>& expected_new_tuples_cols,
+      const std::vector<std::string>& expected_old_tuples_cols);
+
   Result<GetChangesResponsePB> GetChangesFromCDC(
       const xrepl::StreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,

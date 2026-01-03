@@ -1000,6 +1000,80 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCDCSDKConsistentStreamWithFor
   CheckRecordCount(get_consistent_changes_resp, expected_dml_records);
 }
 
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCDCSDKConsistentStreamWithoutPrimaryKey) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_cdcsdk_stream_tables_without_primary_key) = true;
+  ASSERT_OK(SetUpWithParams(1, 1, false, true));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (key int, value_1 int) SPLIT INTO 1 TABLETS", kTableName));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, kTableName));
+
+  vector<string> replica_identities = {"CHANGE", "DEFAULT", "FULL", "NOTHING"};
+
+  // Expected tuples for replica identites "CHANGE", "DEFAULT", "FULL", "NOTHING" respectively.
+  vector<vector<string>> expected_new_tuples_for_insert = {
+      {"ybrowid", "key", "value_1"},
+      {"ybrowid", "key", "value_1"},
+      {"ybrowid", "key", "value_1"},
+      {"ybrowid", "key", "value_1"}};
+  vector<vector<string>> expected_old_tuples_for_insert = {{}, {}, {}, {}};
+
+  vector<vector<string>> expected_new_tuples_for_update = {
+      {"ybrowid", "value_1"},
+      {"ybrowid", "value_1", "key"},
+      {"ybrowid", "value_1", "key"},
+      {"ybrowid", "value_1", "key"}};
+  vector<vector<string>> expected_old_tuples_for_update = {
+      {}, {}, {"ybrowid", "key", "value_1"}, {}};
+
+  vector<vector<string>> expected_new_tuples_for_delete = {{}, {}, {}, {}};
+  vector<vector<string>> expected_old_tuples_for_delete = {
+      {"ybrowid"}, {"ybrowid"}, {"ybrowid", "key", "value_1"}, {"ybrowid"}};
+
+  for (int i = 0; i < static_cast<int>(replica_identities.size()); i++) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "ALTER TABLE $0 REPLICA IDENTITY $1", kTableName, replica_identities[i]));
+
+    auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+    ASSERT_OK(WriteRows(1, 2, &test_cluster_));
+    ASSERT_OK(UpdateRows(1, 100, &test_cluster_));
+    ASSERT_OK(DeleteRows(1, &test_cluster_));
+
+    ASSERT_OK(InitVirtualWAL(stream_id, {table.table_id()}));
+
+    auto resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+    ASSERT_EQ(resp.cdc_sdk_proto_records_size(), 9);
+
+    for (int i = 0; i < 3; i++) {
+      // Records with indices 0, 3, 6 are BEGIN records.
+      ASSERT_EQ(resp.cdc_sdk_proto_records(i * 3).row_message().op(), RowMessage_Op_BEGIN);
+      // Records with indices 2, 5, 8 are COMMIT records.
+      ASSERT_EQ(resp.cdc_sdk_proto_records(i * 3 + 2).row_message().op(), RowMessage_Op_COMMIT);
+    }
+
+    // Record with index 1 is an INSERT record.
+    ASSERT_EQ(resp.cdc_sdk_proto_records(1).row_message().op(), RowMessage_Op_INSERT);
+    CheckRecordTuples(
+        resp.cdc_sdk_proto_records(1), expected_new_tuples_for_insert[i],
+        expected_old_tuples_for_insert[i]);
+
+    // Record with index 4 is an UPDATE record.
+    ASSERT_EQ(resp.cdc_sdk_proto_records(4).row_message().op(), RowMessage_Op_UPDATE);
+    CheckRecordTuples(
+        resp.cdc_sdk_proto_records(4), expected_new_tuples_for_update[i],
+        expected_old_tuples_for_update[i]);
+
+    // Record with index 7 is a DELETE record.
+    ASSERT_EQ(resp.cdc_sdk_proto_records(7).row_message().op(), RowMessage_Op_DELETE);
+    CheckRecordTuples(
+        resp.cdc_sdk_proto_records(7), expected_new_tuples_for_delete[i],
+        expected_old_tuples_for_delete[i]);
+
+    ASSERT_OK(DestroyVirtualWAL());
+  }
+}
+
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCDCSDKConsistentStreamWithAbortedTransactions) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_max_stream_intent_records) = 10;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_consistent_records) = false;

@@ -2547,6 +2547,7 @@ YbcStatus YBCPgListReplicationSlots(
           .yb_lsn_type = YBCPAllocStdString(lsn_type_result.get()),
           .active_pid = info.active_pid(),
           .expired = info.expired(),
+          .allow_tables_without_primary_key = info.allow_tables_without_primary_key(),
       };
       ++dest;
     }
@@ -2603,6 +2604,7 @@ YbcStatus YBCPgGetReplicationSlot(
       .yb_lsn_type = YBCPAllocStdString(lsn_type_result.get()),
       .active_pid = slot_info.active_pid(),
       .expired = slot_info.expired(),
+      .allow_tables_without_primary_key = slot_info.allow_tables_without_primary_key(),
   };
 
   return YBCStatusOK();

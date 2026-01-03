@@ -64,6 +64,10 @@ message CDCStreamInfoPB {
 
   // Field to store all the metadata related to a CDC stream.
   optional CDCStreamInfoOptionsPB cdc_stream_info_options = 14;
+
+  // This field controls if tables without primary key will be polled by the CDC
+  // stream.
+  optional bool allow_tables_without_primary_key = 15 [ default = false ];
 }
 
 message ValidateReplicationInfoRequestPB {

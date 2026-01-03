@@ -161,6 +161,7 @@ DECLARE_uint64(cdc_intent_retention_ms);
 DECLARE_uint32(cdcsdk_tablet_not_of_interest_timeout_secs);
 DECLARE_bool(cdcsdk_enable_dynamic_table_addition_with_table_cleanup);
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
+DECLARE_bool(ysql_yb_cdcsdk_stream_tables_without_primary_key);
 
 #define RETURN_ACTION_NOT_OK(expr, action) \
   RETURN_NOT_OK_PREPEND((expr), Format("An error occurred while $0", action))
@@ -296,7 +297,8 @@ class CDCStreamLoader : public Visitor<PersistentCDCStreamInfo> {
     if ((metadata.state() == SysCDCStreamEntryPB::ACTIVE ||
          metadata.state() == SysCDCStreamEntryPB::DELETING_METADATA) &&
         ns && ns->state() == SysNamespaceEntryPB::RUNNING) {
-      auto eligible_tables_info = catalog_manager_->FindAllTablesForCDCSDK(metadata.namespace_id());
+      auto eligible_tables_info = catalog_manager_->FindAllTablesForCDCSDK(
+          metadata.namespace_id(), metadata.allow_tables_without_primary_key());
       catalog_manager_->FindAllTablesMissingInCDCSDKStream(
           stream_id, metadata.table_id(), eligible_tables_info, metadata.unqualified_table_id());
 
@@ -835,6 +837,12 @@ Status CatalogManager::CreateNewCDCStreamForNamespace(
     namespace_id = req.table_id();
   }
 
+  // We support streaming of tables without primary key only for logical replication streams
+  // (controlled via flag ysql_yb_cdcsdk_stream_tables_without_primary_key).
+  const bool allow_tables_without_primary_key =
+      req.has_cdcsdk_ysql_replication_slot_name() &&
+      FLAGS_ysql_yb_cdcsdk_stream_tables_without_primary_key;
+
   // TODO(#19211): Validate that if the ns type is PGSQL, it must have the replication slot name in
   // the request. This can only be done after we have ensured that YSQL is the only client
   // requesting to create CDC streams.
@@ -843,7 +851,7 @@ Status CatalogManager::CreateNewCDCStreamForNamespace(
     SharedLock lock(mutex_);
     // Sanity check this id corresponds to a namespace.
     VERIFY_RESULT(FindNamespaceByIdUnlocked(namespace_id));
-    tables = FindAllTablesForCDCSDK(namespace_id);
+    tables = FindAllTablesForCDCSDK(namespace_id, allow_tables_without_primary_key);
   }
 
   std::vector<TableId> table_ids;
@@ -1042,6 +1050,8 @@ Status CatalogManager::CreateNewCdcsdkStream(
 
   if (has_replication_slot_name) {
     metadata->set_cdcsdk_ysql_replication_slot_name(req.cdcsdk_ysql_replication_slot_name());
+    metadata->set_allow_tables_without_primary_key(
+        FLAGS_ysql_yb_cdcsdk_stream_tables_without_primary_key);
   }
 
   metadata->set_cdcsdk_disable_dynamic_table_addition(disable_dynamic_tables);
@@ -1821,8 +1831,9 @@ Status CatalogManager::FindCDCSDKStreamsForAddedTables(
           continue;
         }
 
-        if (!IsTableEligibleForCDCSDKStream(table, table->LockForRead(), /*check_schema=*/true)) {
-          RemoveTableFromCDCSDKUnprocessedMap(unprocessed_table_id, stream_info->namespace_id());
+        if (!IsTableEligibleForCDCSDKStream(
+                table, table->LockForRead(), /*check_schema=*/true,
+                stream_info->IsTablesWithoutPrimaryKeyAllowed())) {
           continue;
         }
 
@@ -1980,6 +1991,8 @@ void CatalogManager::FindAllNonEligibleTablesInCDCSDKStream(
     user_table_ids.insert(table_info->id());
   }
 
+  auto stream_info = FindPtrOrNull(cdc_stream_map_, stream_id);
+  DCHECK(stream_info);
   std::unordered_set<TableId> stream_table_ids;
   // Store all table_ids associated with the stream in 'stream_table_ids'.
   for (const auto& table_id : table_ids) {
@@ -1988,7 +2001,8 @@ void CatalogManager::FindAllNonEligibleTablesInCDCSDKStream(
       if (table_info) {
         // Re-confirm this table is not meant to be part of a CDC stream.
         if (!IsTableEligibleForCDCSDKStream(
-                table_info, table_info->LockForRead(), /*check_schema=*/true)) {
+                table_info, table_info->LockForRead(), /*check_schema=*/true,
+                stream_info->IsTablesWithoutPrimaryKeyAllowed())) {
           LOG(INFO) << "Found a non-eligible table: " << table_info->id()
                     << ", for stream: " << stream_id;
           LockGuard lock(cdcsdk_non_eligible_table_mutex_);
@@ -2162,7 +2176,8 @@ Status CatalogManager::ValidateCDCSDKRequestProperties(
   return Status::OK();
 }
 
-std::vector<TableInfoPtr> CatalogManager::FindAllTablesForCDCSDK(const NamespaceId& ns_id) {
+std::vector<TableInfoPtr> CatalogManager::FindAllTablesForCDCSDK(
+    const NamespaceId& ns_id, const bool allow_tables_without_primary_key) {
   std::vector<TableInfoPtr> tables;
 
   for (const auto& table_info : tables_->GetAllTables()) {
@@ -2171,7 +2186,8 @@ std::vector<TableInfoPtr> CatalogManager::FindAllTablesForCDCSDK(const Namespace
       continue;
     }
 
-    if (!IsTableEligibleForCDCSDKStream(table_info.get(), ltm, /*check_schema=*/true)) {
+    if (!IsTableEligibleForCDCSDKStream(
+            table_info.get(), ltm, /*check_schema=*/true, allow_tables_without_primary_key)) {
       continue;
     }
 
@@ -2182,30 +2198,12 @@ std::vector<TableInfoPtr> CatalogManager::FindAllTablesForCDCSDK(const Namespace
 }
 
 bool CatalogManager::IsTableEligibleForCDCSDKStream(
-    const TableInfoPtr& table_info, const TableInfo::ReadLock& lock,
-    bool check_schema) const {
+    const TableInfoPtr& table_info, const TableInfo::ReadLock& lock, bool check_schema,
+    const bool allow_tables_without_primary_key) const {
   if (check_schema) {
-    auto schema_result = lock->GetSchema();
-    if (!schema_result.ok()) {
-      LOG_WITH_FUNC(DFATAL)
-          << "Error while getting schema for table " << lock->name() << ": "
-          << schema_result.status();
-      return false;
-    }
-
-    const auto& schema = *schema_result;
-    bool has_pk = true;
-    for (const auto& col : schema.columns()) {
-      if (col.order() == static_cast<int32_t>(PgSystemAttrNum::kYBRowId)) {
-        // ybrowid column is added for tables that don't have user-specified primary key.
-        VLOG(1) << "Table: " << table_info->id()
-                << ", will not be added to CDCSDK stream, since it does not have a primary key";
-        has_pk = false;
-        break;
-      }
-    }
-
-    if (!has_pk) {
+    if (!allow_tables_without_primary_key && !table_info->HasUserSpecifiedPrimaryKey(lock)) {
+      VLOG(1) << "Table: " << table_info->id()
+              << ", will not be added to CDCSDK stream, since it does not have a primary key";
       return false;
     }
 
@@ -2434,7 +2432,8 @@ Status CatalogManager::ValidateTableForRemovalFromCDCSDKStream(
   }
 
   if (check_for_ineligibility) {
-    if (!IsTableEligibleForCDCSDKStream(table, lock, /*check_schema=*/true)) {
+    if (!IsTableEligibleForCDCSDKStream(
+            table, lock, /*check_schema=*/true, /*allow_tables_without_primary_key=*/false)) {
       return STATUS(InvalidArgument, "Only allowed to remove user tables from CDC streams");
     }
   }
@@ -2841,6 +2840,7 @@ Status CatalogManager::CleanUpCDCSDKStreamsMetadata(const LeaderEpoch& epoch) {
       auto table_ids = (*tablet_info_result)->GetTableIds();
       DCHECK_GT(table_ids.size(), 0);
       bool all_tables_on_tablet_dropped = true;
+      auto stream_info = VERIFY_RESULT(GetXReplStreamInfo(entry.stream_id));
       for (const auto& table_id : table_ids) {
         if (drop_stream_table_list[entry.stream_id].contains(table_id)) {
           continue;
@@ -2850,7 +2850,8 @@ Status CatalogManager::CleanUpCDCSDKStreamsMetadata(const LeaderEpoch& epoch) {
         // table metadata cleanup flow.
         auto table_info = GetTableInfo(table_id);
         if (table_info && !IsTableEligibleForCDCSDKStream(
-                              table_info, table_info->LockForRead(), /* check_schema */ true)) {
+                              table_info, table_info->LockForRead(), /* check_schema */ true,
+                              stream_info->IsTablesWithoutPrimaryKeyAllowed())) {
           continue;
         }
         all_tables_on_tablet_dropped = false;
@@ -3132,6 +3133,10 @@ Status CatalogManager::GetCDCStream(
   auto replica_identity_map = stream_lock->pb.replica_identity_map();
   stream_info->mutable_replica_identity_map()->swap(replica_identity_map);
 
+  stream_info->set_allow_tables_without_primary_key(
+      stream_lock->pb.has_allow_tables_without_primary_key() &&
+      stream_lock->pb.allow_tables_without_primary_key());
+
   return Status::OK();
 }
 
@@ -3304,6 +3309,10 @@ Status CatalogManager::ListCDCStreams(
 
     auto replica_identity_map = ltm->pb.replica_identity_map();
     stream->mutable_replica_identity_map()->swap(replica_identity_map);
+
+    stream->set_allow_tables_without_primary_key(
+        ltm->pb.has_allow_tables_without_primary_key() &&
+        ltm->pb.allow_tables_without_primary_key());
   }
   return Status::OK();
 }
@@ -3552,7 +3561,8 @@ Status CatalogManager::UpdateCDCProducerOnTabletSplit(
         // do not get added.
         {
           if (!IsTableEligibleForCDCSDKStream(
-                  table_info, table_info->LockForRead(), /*check_schema=*/false)) {
+                  table_info, table_info->LockForRead(), /*check_schema=*/false,
+                  /*allow_tables_without_primary_key=*/false)) {
             LOG(INFO) << "Skipping adding children tablets to cdc state for table "
                       << producer_table_id << " as it is not meant to part of a CDC stream";
             continue;
