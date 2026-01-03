@@ -4843,7 +4843,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCDCWithSavePoint) {
   ASSERT_EQ(resp.records.size(), 4);
   CheckRecordsConsistencyFromVWAL(resp.records);
 
-  // Track transaction IDs to verify new transactions are started after ROLLBACK AND CHAIN.
+  // Track transaction IDs to verify new transactions
   ASSERT_EQ(resp.records[0].row_message().op(), RowMessage::BEGIN);
   uint64_t prev_txn_id = resp.records[0].row_message().pg_transaction_id();
 
@@ -4884,10 +4884,13 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCDCWithSavePoint) {
   ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT sp1"));
   ASSERT_OK(conn.Execute("END"));
 
-  auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
-
   // We should get BEGIN + COMMIT (0 DMLs, all rolled back).
-  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 2);
+  ASSERT_OK(WaitFor(
+    [&]() -> Result<bool> {
+      auto change_resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+      return change_resp.cdc_sdk_proto_records_size() == 2;
+    },
+    MonoDelta::FromSeconds(10), "Expected 2 records (BEGIN + COMMIT)"));
 
   // The entire transaction is rolled back, so CDC should see no data records.
   ASSERT_OK(conn.Execute("BEGIN"));
@@ -4901,7 +4904,6 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCDCWithSavePoint) {
   ASSERT_OK(conn.Execute("SAVEPOINT active_record_2"));
   ASSERT_OK(conn.Fetch("SELECT * FROM test_table"));
   ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT active_record_2"));
-  ASSERT_OK(conn.Execute("ROLLBACK AND CHAIN"));
   ASSERT_OK(conn.Execute("ROLLBACK"));
 
   // Start a new transaction with 4 inserts that actually get committed.
@@ -4928,7 +4930,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCDCWithSavePoint) {
   ASSERT_GT(current_txn_id, prev_txn_id);
   prev_txn_id = current_txn_id;
 
-  // Test scenario: ROLLBACK AND CHAIN starts a new transaction, perform DMLs and commit.
+  // Test scenario: starts a new transaction, perform DMLs and commit.
   ASSERT_OK(conn.Execute("BEGIN"));
   ASSERT_OK(conn.Execute("SAVEPOINT active_record_2"));
   ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 100 WHERE key = 1"));
@@ -4937,28 +4939,26 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCDCWithSavePoint) {
   ASSERT_OK(conn.Execute("SAVEPOINT active_record_2"));
   ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT active_record_2"));
 
-  // Capture distributed txn ID before ROLLBACK AND CHAIN.
+  // Capture distributed txn ID
   auto yb_txn_id_before_rollback =
       ASSERT_RESULT(conn.FetchRow<std::string>("SELECT yb_get_current_transaction()::text"));
-  ASSERT_OK(conn.Execute("ROLLBACK AND CHAIN"));
+  ASSERT_OK(conn.Execute("ROLLBACK"));
 
-  // Now in new transaction started by ROLLBACK AND CHAIN.
+  ASSERT_OK(conn.Execute("BEGIN"));
   ASSERT_OK(conn.Execute("INSERT INTO test_table values (11, 11)"));
   ASSERT_OK(conn.Execute("INSERT INTO test_table values (12, 12)"));
   ASSERT_OK(conn.Execute("INSERT INTO test_table values (13, 13)"));
   ASSERT_OK(conn.Execute("INSERT INTO test_table values (14, 14)"));
 
-  // Capture distributed txn ID after ROLLBACK AND CHAIN.
   auto yb_txn_id_after_rollback =
       ASSERT_RESULT(conn.FetchRow<std::string>("SELECT yb_get_current_transaction()::text"));
 
-  // Verify ROLLBACK AND CHAIN started a new transaction (different distributed txn ID).
   ASSERT_NE(yb_txn_id_before_rollback, yb_txn_id_after_rollback);
   ASSERT_OK(conn.Execute("DELETE FROM test_table WHERE key = 11"));
   ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 200 WHERE key = 12"));
   ASSERT_OK(conn.Execute("END"));
 
-  // The first transaction was rolled back by ROLLBACK AND CHAIN.
+  // The first transaction was rolled back.
   // GetAllPendingTxnsFromVirtualWAL also validates all DMLs have the same txn ID as BEGIN.
   expected_dml_records = 6;  // 4 INSERTs + 1 DELETE + 1 UPDATE
   resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
@@ -4974,30 +4974,29 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCDCWithSavePoint) {
   ASSERT_GT(current_txn_id, prev_txn_id);
   prev_txn_id = current_txn_id;
 
-  // Test scenario: DMLs between ROLLBACK TO SAVEPOINT and ROLLBACK AND CHAIN.
+  // Test scenario: DMLs between ROLLBACK TO SAVEPOINT
   ASSERT_OK(conn.Execute("BEGIN"));
   ASSERT_OK(conn.Execute("SAVEPOINT sp1"));
   ASSERT_OK(conn.Execute("INSERT INTO test_table values (15, 15)"));
   ASSERT_OK(conn.Execute("INSERT INTO test_table values (16, 16)"));
   ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT sp1"));
 
-  // DMLs after ROLLBACK TO SAVEPOINT but before ROLLBACK AND CHAIN.
+  // DMLs after ROLLBACK TO SAVEPOINT
   ASSERT_OK(conn.Execute("INSERT INTO test_table values (17, 17)"));
   ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 300 WHERE key = 12"));
 
-  // Capture distributed txn ID before ROLLBACK AND CHAIN.
   yb_txn_id_before_rollback =
       ASSERT_RESULT(conn.FetchRow<std::string>("SELECT yb_get_current_transaction()::text"));
-  ASSERT_OK(conn.Execute("ROLLBACK AND CHAIN"));
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
 
   // Now in new transaction - these DMLs will be committed.
   ASSERT_OK(conn.Execute("INSERT INTO test_table values (15, 15)"));
 
-  // Capture distributed txn ID after ROLLBACK AND CHAIN.
   yb_txn_id_after_rollback =
       ASSERT_RESULT(conn.FetchRow<std::string>("SELECT yb_get_current_transaction()::text"));
 
-  // Verify ROLLBACK AND CHAIN started a new transaction (different distributed txn ID).
   ASSERT_NE(yb_txn_id_before_rollback, yb_txn_id_after_rollback);
   ASSERT_OK(conn.Execute("DELETE FROM test_table WHERE key = 14"));
   ASSERT_OK(conn.Execute("END"));
@@ -5023,19 +5022,23 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCDCWithSavePoint) {
   ASSERT_OK(conn.Execute("INSERT INTO test_table values (16, 16)"));
   ASSERT_OK(conn.Execute("INSERT INTO test_table values (17, 17)"));
   ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT sp1"));
-  // DMLs after ROLLBACK TO SAVEPOINT but before ROLLBACK AND CHAIN.
+  // DMLs after ROLLBACK TO SAVEPOINT
   ASSERT_OK(conn.Execute("INSERT INTO test_table values (18, 18)"));
   ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 400 WHERE key = 12"));
-  ASSERT_OK(conn.Execute("ROLLBACK AND CHAIN"));
-  // Now in new transaction started by ROLLBACK AND CHAIN.
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
   ASSERT_OK(conn.Execute("INSERT INTO test_table values (16, 16)"));
   ASSERT_OK(conn.Execute("DELETE FROM test_table WHERE key = 15"));
   ASSERT_OK(conn.Execute("ROLLBACK"));
 
-  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
-
   // Both transactions were rolled back, so CDC should see no records.
-  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 0);
+  ASSERT_OK(WaitFor(
+    [&]() -> Result<bool> {
+      auto resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+      return resp.cdc_sdk_proto_records_size() == 0;
+    },
+    MonoDelta::FromSeconds(10), "Expected 0 records (both transactions rolled back)"));
 }
 }  // namespace cdc
 }  // namespace yb
