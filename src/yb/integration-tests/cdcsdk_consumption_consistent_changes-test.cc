@@ -4971,10 +4971,13 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCDCWithSavePoint) {
   ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT sp1"));
   ASSERT_OK(conn.Execute("END"));
 
-  auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
-
   // We should get BEGIN + COMMIT (0 DMLs, all rolled back).
-  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 2);
+  ASSERT_OK(WaitFor(
+    [&]() -> Result<bool> {
+      auto change_resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+      return change_resp.cdc_sdk_proto_records_size() == 2;
+    },
+    MonoDelta::FromSeconds(10), "Expected 2 records (BEGIN + COMMIT)"));
 
   // The entire transaction is rolled back, so CDC should see no data records.
   ASSERT_OK(conn.Execute("BEGIN"));
@@ -5119,10 +5122,13 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCDCWithSavePoint) {
   ASSERT_OK(conn.Execute("DELETE FROM test_table WHERE key = 15"));
   ASSERT_OK(conn.Execute("ROLLBACK"));
 
-  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
-
   // Both transactions were rolled back, so CDC should see no records.
-  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 0);
+  ASSERT_OK(WaitFor(
+    [&]() -> Result<bool> {
+      auto resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+      return resp.cdc_sdk_proto_records_size() == 0;
+    },
+    MonoDelta::FromSeconds(10), "Expected 0 records (both transactions rolled back)"));
 }
 }  // namespace cdc
 }  // namespace yb
