@@ -215,7 +215,7 @@ public class YNPProvisioningTest extends FakeDBApplication {
     Path nodeAgentHome = Paths.get("/tmp/node-agent");
 
     // Call the method
-    ynpProvisioning.getProvisionArguments(
+    ynpProvisioning.generateProvisionConfig(
         universe, primaryNode, provider, outputPath, nodeAgentHome);
 
     // Verify the JSON file was created and contains expected data
@@ -330,7 +330,7 @@ public class YNPProvisioningTest extends FakeDBApplication {
     Path nodeAgentHome = Paths.get("/tmp/node-agent");
 
     // Call the method
-    ynpProvisioning.getProvisionArguments(universe, rrNode, provider, outputPath, nodeAgentHome);
+    ynpProvisioning.generateProvisionConfig(universe, rrNode, provider, outputPath, nodeAgentHome);
 
     // Verify the JSON file was created and contains expected data
     assertTrue(Files.exists(tempFile));
@@ -450,7 +450,7 @@ public class YNPProvisioningTest extends FakeDBApplication {
     Path tempFilePrimary = Files.createTempFile("ynp-test-primary-", ".json");
     Path nodeAgentHome = Paths.get("/tmp/node-agent");
 
-    ynpProvisioning.getProvisionArguments(
+    ynpProvisioning.generateProvisionConfig(
         universe, primaryNode, provider, tempFilePrimary.toString(), nodeAgentHome);
 
     JsonNode primaryRoot = objectMapper.readTree(Files.readAllBytes(tempFilePrimary));
@@ -479,7 +479,7 @@ public class YNPProvisioningTest extends FakeDBApplication {
 
     Path tempFileRR = Files.createTempFile("ynp-test-rr-", ".json");
 
-    ynpProvisioning.getProvisionArguments(
+    ynpProvisioning.generateProvisionConfig(
         universe, rrNode, provider, tempFileRR.toString(), nodeAgentHome);
 
     JsonNode rrRoot = objectMapper.readTree(Files.readAllBytes(tempFileRR));

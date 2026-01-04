@@ -310,7 +310,8 @@ package_for_platform() {
     chmod 755 "${script_dir}"/*.sh
     chmod 755 "${bin_dir}"/*.sh
     popd
-    tar -zcf "${staging_dir_name}.tar.gz" -C "$staging_dir_name" .
+    # Create the tar.gz package without ./ prefix.
+    tar -zcf "${staging_dir_name}.tar.gz" -C "$staging_dir_name" "$version"
     popd
 }
 

@@ -217,8 +217,8 @@ extract_package() {
     pushd "$NODE_AGENT_RELEASE_PATH"
     set +o pipefail
     # Look for the folder containing the version file.
-    VERSION=$(tar -tzf "$NODE_AGENT_PKG_TGZ" | grep "version_metadata.json" | awk -F '/' \
-    '$2{print $2;exit}')
+    VERSION=$(tar -tzf "$NODE_AGENT_PKG_TGZ" | grep "/version_metadata.json" | awk -F '/' \
+    '$2{print $(NF-1);exit}')
     set -o pipefail
     if [ -z "$VERSION" ]; then
       echo "Node agent version cannot be determined"
