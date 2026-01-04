@@ -49,7 +49,7 @@ Using the [YugabyteDB MCP Server](../../develop/ai/mcp-server/), you can:
 
 MCP complements RAG by providing direct access to structured relational data, while RAG excels at semantic search across unstructured content. Together, they enable comprehensive AI applications that can both find similar content (via vectors) and answer precise questions about your structured data (via MCP).
 
-## Understand AI use cases
+## AI use cases
 
 You aren't limited to building chatbots. AI on YugabyteDB is used for a wide range of enterprise use cases:
 
@@ -66,7 +66,7 @@ YugabyteDB serves as a **modern and flexible platform for AI** by providing a co
 
 YugabyteDB uses the PostgreSQL pgvector extension for vector storage and search, so you can work with embeddings from any model or source.
 
-- Architected for LLM and SLM flexibility: You can choose between large language models (LLMs) or small language models (SLMs) based on your needs. Some applications require non-LLM models optimized for perception, decision-making, or control. YugabyteDB's flexible architecture supports all of these approaches.
+- Architected for LLM and SLM flexibility: You can choose between LLMs or small language models (SLMs) based on your needs. Some applications require non-LLM models optimized for perception, decision-making, or control. YugabyteDB's flexible architecture supports all of these approaches.
 
 - Build for retrieval-optimized generation (ROG): YugabyteDB enables you to build applications that find answers without expensive LLM calls, moving beyond traditional RAG to retrieval-optimized generation (ROG) that reduces costs while maintaining accuracy.
 
@@ -139,7 +139,7 @@ YugabyteDB secures AI apps with PostgreSQL RBAC, encryption, and distributed fea
   ALTER TABLE shared SET TABLESPACE tenant1_ts;
   ```
 
-- Built-in protection: Enable encryption at rest or in motion, audit logging using the pgaudit extension, and native integration using OIDC and LDAP identity providers (configure in yugabyted with `--security.oidc-config`).
+- Built-in protection: Enable encryption at rest or in motion, audit logging using the pgaudit extension, and authentication with OIDC and LDAP identity providers (configure in yugabyted with `--security.oidc-config`).
 
 - Granular control: Use PostgreSQL Role-Based Access Control (RBAC) to secure data at the tenant, table, row, and column levels. For example, you can create a role per tenant, grant table access, and use RLS to ensure tenants only see their rows.
 
