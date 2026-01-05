@@ -770,12 +770,13 @@ Status CDCSDKYsqlTest::DeleteRows(
 Status CDCSDKYsqlTest::SplitTablet(const TabletId& tablet_id, PostgresMiniCluster* cluster) {
   yb::master::SplitTabletRequestPB req;
   req.set_tablet_id(tablet_id);
+  req.set_split_factor(cluster->mini_cluster_->GetSplitFactor());
   yb::master::SplitTabletResponsePB resp;
   rpc::RpcController rpc;
   rpc.set_timeout(MonoDelta::FromSeconds(30.0) * kTimeMultiplier);
   auto& cm = cluster->mini_cluster_->mini_master()->catalog_manager();
   RETURN_NOT_OK(cm.SplitTablet(
-      tablet_id, master::ManualSplit::kTrue,
+      tablet_id, master::ManualSplit::kTrue, cluster->mini_cluster_->GetSplitFactor(),
       cm.GetLeaderEpochInternal()));
 
   if (resp.has_error()) {

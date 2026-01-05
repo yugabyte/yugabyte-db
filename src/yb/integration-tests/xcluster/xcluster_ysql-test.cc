@@ -345,7 +345,8 @@ class XClusterYSqlTestConsistentTransactionsTest : public XClusterYsqlTest {
     auto catalog_manager =
         &CHECK_NOTNULL(VERIFY_RESULT(cluster->GetLeaderMiniMaster()))->catalog_manager();
     return catalog_manager->SplitTablet(
-        tablet_id, master::ManualSplit::kTrue, catalog_manager->GetLeaderEpochInternal());
+        tablet_id, master::ManualSplit::kTrue, cluster->GetSplitFactor(),
+        catalog_manager->GetLeaderEpochInternal());
   }
 
   Status SetupReplicationAndWaitForValidSafeTime() {

@@ -308,7 +308,7 @@ class ClusterAdminClient {
       const std::string& leader_uuid,
       const std::string& new_leader_uuid = std::string());
 
-  Status SplitTablet(const TabletId& tablet_id);
+  Status SplitTablet(const TabletId& tablet_id, int split_factor);
 
   Status DisableTabletSplitting(int64_t disable_duration_ms, const std::string& feature_name);
 

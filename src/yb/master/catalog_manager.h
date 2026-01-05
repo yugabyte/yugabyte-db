@@ -1189,7 +1189,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
                            rpc::RpcContext* rpc);
 
   Status SplitTablet(
-      const TabletId& tablet_id, ManualSplit is_manual_split, const LeaderEpoch& epoch) override;
+      const TabletId& tablet_id, ManualSplit is_manual_split, int split_factor,
+      const LeaderEpoch& epoch) override;
 
   // Splits tablet specified in the request using middle of the partition as a split point.
   Status SplitTablet(
@@ -2569,7 +2570,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Status SplitTablet(
       const TabletInfoPtr& tablet, ManualSplit is_manual_split,
-      const LeaderEpoch& epoch);
+      int split_factor, const LeaderEpoch& epoch);
 
   void SplitTabletWithKeys(
       const TabletInfoPtr& tablet, const std::vector<std::string>& split_encoded_keys,

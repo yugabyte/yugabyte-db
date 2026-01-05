@@ -169,7 +169,7 @@ add_library(admin-test-base admin-test-base.cc)
 target_link_libraries(admin-test-base cql_test_util integration-tests yb_test_util yb_util)
 
 add_library(tools_test_utils tools_test_utils.cc)
-target_link_libraries(tools_test_utils yb_util yb_test_util)
+target_link_libraries(tools_test_utils yb_util yb_test_util yb_common_proto)
 
 add_library(test_admin_client test_admin_client.cc)
 target_link_libraries(test_admin_client master_proto integration-tests)

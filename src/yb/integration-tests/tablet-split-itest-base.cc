@@ -119,7 +119,8 @@ Status SplitTablet(master::CatalogManagerIf* catalog_mgr, const tablet::Tablet& 
   LOG(INFO) << "DB properties: " << properties;
 
   return catalog_mgr->SplitTablet(
-      tablet_id, master::ManualSplit::kTrue, catalog_mgr->GetLeaderEpochInternal());
+      tablet_id, master::ManualSplit::kTrue, kDefaultNumSplitParts,
+      catalog_mgr->GetLeaderEpochInternal());
 }
 
 Status DoSplitTablet(master::CatalogManagerIf* catalog_mgr, const tablet::Tablet& tablet) {
@@ -430,6 +431,7 @@ Result<master::SplitTabletResponsePB> TabletSplitITest::SendMasterRpcSyncSplitTa
 
   master::SplitTabletRequestPB req;
   req.set_tablet_id(tablet_id);
+  req.set_split_factor(cluster_->GetSplitFactor());
 
   rpc::RpcController controller;
   controller.set_timeout(kRpcTimeout);
@@ -835,6 +837,7 @@ void TabletSplitExternalMiniClusterITest::SetFlags() {
 Status TabletSplitExternalMiniClusterITest::SplitTablet(const std::string& tablet_id) {
   master::SplitTabletRequestPB req;
   req.set_tablet_id(tablet_id);
+  req.set_split_factor(cluster_->GetSplitFactor());
   master::SplitTabletResponsePB resp;
   rpc::RpcController rpc;
   rpc.set_timeout(30s * kTimeMultiplier);

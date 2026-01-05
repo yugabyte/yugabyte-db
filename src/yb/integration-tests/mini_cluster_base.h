@@ -13,6 +13,8 @@
 
 #pragma once
 
+#include "yb/common/constants.h"
+
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/secure_stream.h"
 
@@ -90,6 +92,8 @@ class MiniClusterBase {
   virtual void ConfigureClientBuilder(client::YBClientBuilder* builder) = 0;
 
   virtual Result<HostPort> DoGetLeaderMasterBoundRpcAddr() = 0;
+
+  int split_factor_ = kDefaultNumSplitParts;
 };
 
 rpc::MessengerBuilder CreateMiniClusterMessengerBuilder();
