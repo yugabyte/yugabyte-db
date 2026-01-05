@@ -61,7 +61,7 @@ class IndexReverseMappingReader : public docdb::DocVectorIndexReverseMappingRead
     rocksdb_op_ = tablet.CreateScopedRWOperationBlockingRocksDbShutdownStart();
     RETURN_NOT_OK(rocksdb_op_);
 
-    iter_holder_ = VERIFY_RESULT(tablet.vector_indexes().CreateReverseMappingIterator(read_ht));
+    iter_holder_ = VERIFY_RESULT(tablet.vector_indexes().CreateVectorMetadataIterator(read_ht));
     return Status::OK();
   }
 
@@ -684,7 +684,7 @@ Status TabletVectorIndexes::Verify() {
   return Status::OK();
 }
 
-Result<docdb::IntentAwareIteratorWithBounds> TabletVectorIndexes::CreateReverseMappingIterator(
+Result<docdb::IntentAwareIteratorWithBounds> TabletVectorIndexes::CreateVectorMetadataIterator(
     const ReadHybridTime& read_ht) const {
   static std::array<char, 2> upper_bound {
       dockv::KeyEntryTypeAsChar::kVectorIndexMetadata,

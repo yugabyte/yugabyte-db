@@ -399,6 +399,10 @@ class DocVectorIndexImpl : public DocVectorIndex {
     return lsm_.TEST_HasBackgroundInserts();
   }
 
+  size_t TEST_NextManifestFileNo() const override {
+    return lsm_.TEST_NextManifestFileNo();
+  }
+
  private:
   using LSM = vector_index::VectorLSM<Vector, DistanceResult>;
 
