@@ -78,7 +78,7 @@ To get your customer UUID using the API, use the following command:
 ```sh
 curl \
   -H "X-AUTH-YW-API-TOKEN: myYBAnywhereApiToken" \
-    [http|https]://<yba-ip>/api/customers
+    [http|https]://<yba-ip>/api/v1/customers
 ```
 
 This returns the UUID. For example:
