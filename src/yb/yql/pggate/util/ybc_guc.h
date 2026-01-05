@@ -307,6 +307,8 @@ extern bool yb_allow_dockey_bounds;
 
 extern bool yb_ignore_read_time_in_walsender;
 
+extern bool yb_disable_pg_snapshot_mgmt_in_repeatable_read;
+
 // Should be in sync with YsqlSamplingAlgorithm protobuf.
 typedef enum {
   YB_SAMPLING_ALGORITHM_FULL_TABLE_SCAN = 0,
