@@ -48,6 +48,12 @@ spec:
                     "Either 'schedulingFrequency' must be non-zero or
                     'cronExpression' must be a non-empty string."
               properties:
+                name:
+                  type: string
+                  description: Optional name of backup schedule for mapping to a YBA object.
+                  x-kubernetes-validations:
+                  - message: name cannot be changed
+                    rule: self == oldSelf
                 backupType:
                   description: >
                     Type of backup to be taken.

@@ -14,13 +14,17 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.backuprestore.ScheduleTaskHelper;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.operator.utils.KubernetesClientFactory;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.common.operator.utils.OperatorWorkQueue;
+import com.yugabyte.yw.common.operator.utils.UniverseImporter;
+import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.backuprestore.BackupScheduleTaskParams;
 import com.yugabyte.yw.models.Customer;
@@ -54,10 +58,13 @@ public class ScheduledBackupReconcilerTest extends FakeDBApplication {
   private ValidatingFormFactory mockFormFactory;
   private RuntimeConfGetter mockConfGetter;
   private OperatorUtils mockOperatorUtils;
+  private YBClientService mockYbClientService;
   private KubernetesClient mockClient;
   private YBInformerFactory mockInformerFactory;
   private SharedIndexInformer<BackupSchedule> mockScheduleInformer;
   private SharedIndexInformer<StorageConfig> mockScInformer;
+  private KubernetesClientFactory mockKubernetesClientFactory;
+  private UniverseImporter mockUniverseImporter;
   private MixedOperation<
           BackupSchedule, KubernetesResourceList<BackupSchedule>, Resource<BackupSchedule>>
       mockResourceClient;
@@ -74,6 +81,7 @@ public class ScheduledBackupReconcilerTest extends FakeDBApplication {
   private Provider testProvider;
   private Universe testUniverse;
   private KubernetesResourceDetails universeResource;
+  private KubernetesManagerFactory mockKubernetesManagerFactory;
 
   private final String namespace = "test-namespace";
 
@@ -82,9 +90,23 @@ public class ScheduledBackupReconcilerTest extends FakeDBApplication {
     mockBackupHelper = Mockito.mock(BackupHelper.class);
     mockFormFactory = Mockito.mock(ValidatingFormFactory.class);
     mockConfGetter = Mockito.mock(RuntimeConfGetter.class);
+    mockYbClientService = Mockito.mock(YBClientService.class);
+    mockKubernetesClientFactory = Mockito.mock(KubernetesClientFactory.class);
+    mockUniverseImporter = Mockito.mock(UniverseImporter.class);
+    mockKubernetesManagerFactory = Mockito.mock(KubernetesManagerFactory.class);
     mockOperatorUtils =
-        spy(new OperatorUtils(mockConfGetter, mockReleaseManager, mockYbcManager, mockFormFactory));
+        spy(
+            new OperatorUtils(
+                mockConfGetter,
+                mockReleaseManager,
+                mockYbcManager,
+                mockFormFactory,
+                mockYbClientService,
+                mockKubernetesClientFactory,
+                mockUniverseImporter,
+                mockKubernetesManagerFactory));
     mockClient = Mockito.mock(KubernetesClient.class);
+    when(mockKubernetesClientFactory.getKubernetesClientWithConfig(any())).thenReturn(mockClient);
     mockInformerFactory = Mockito.mock(YBInformerFactory.class);
     mockScheduleTaskHelper = Mockito.mock(ScheduleTaskHelper.class);
     mockScheduleInformer = Mockito.mock(SharedIndexInformer.class);

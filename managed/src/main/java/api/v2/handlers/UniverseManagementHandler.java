@@ -19,6 +19,7 @@ import api.v2.models.DetachUniverseSpec;
 import api.v2.models.UniverseCreateSpec;
 import api.v2.models.UniverseDeleteSpec;
 import api.v2.models.UniverseEditSpec;
+import api.v2.models.UniverseOperatorImportReq;
 import api.v2.models.UniverseSpec;
 import api.v2.models.YBATask;
 import api.v2.utils.ApiControllerUtils;
@@ -28,6 +29,7 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.tasks.OperatorImportUniverse;
 import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -56,6 +58,7 @@ import com.yugabyte.yw.models.AttachDetachSpec.PlatformPaths;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.KmsConfig;
@@ -771,5 +774,88 @@ public class UniverseManagementHandler extends ApiControllerUtils {
       log.trace("Got Universe resource details {}", prettyPrint(v2Response));
     }
     return v2Response;
+  }
+
+  public void precheckOperatorImportUniverse(
+      Request request, UUID cUUID, UUID uniUUID, UniverseOperatorImportReq req) {
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    Universe universe = Universe.getOrBadRequest(uniUUID, customer);
+
+    // validate the universe is kubernetes
+    if (!Util.isKubernetesBasedUniverse(universe)) {
+      log.error(
+          "Universe {} is not a Kubernetes universe, cannot migrate to operator",
+          universe.getName());
+      throw new PlatformServiceException(BAD_REQUEST, "Universe is not a Kubernetes universe");
+    }
+    if (!confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorEnabled)) {
+      log.error("Operator is not enabled, cannot migrate universe {}", universe.getName());
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Operator is not enabled. Please enable the runtime config"
+              + " 'yb.kubernetes.operator.enabled' and restart YBA");
+    }
+
+    // Check if the namespace is the same as the operator namespace if it is set
+    boolean migrateNamespaceSet = req.getNamespace() != null && !req.getNamespace().isEmpty();
+    String operatorNamespace = confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorNamespace);
+    boolean operatorNamespaceSet = operatorNamespace != null && !operatorNamespace.isEmpty();
+    if (migrateNamespaceSet
+        && operatorNamespaceSet
+        && !req.getNamespace().equals(operatorNamespace)) {
+      log.error(
+          "Namespace {} is not the same as the operator namespace {}",
+          req.getNamespace(),
+          operatorNamespace);
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Namespace is not the same as the operator namespace. Please set the namespace to the"
+              + " same as the operator namespace");
+    }
+
+    // Read replicas are not supported by operator
+    if (universe.getUniverseDetails().clusters.size() > 1) {
+      log.error(
+          "Universe {} has read-only clusters, cannot migrate to operator", universe.getName());
+      throw new PlatformServiceException(BAD_REQUEST, "Universe has read-only clusters");
+    }
+
+    // XCluster is not supported by operator
+    if (!XClusterConfig.getByUniverseUuid(universe.getUniverseUUID()).isEmpty()) {
+      log.error("Universe {} has xClusterInfo set, cannot migrate to operator", universe.getName());
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot migrate universes in an xcluster setup.");
+    }
+
+    // AZ Level overrides are not supported by operator
+    Map<String, String> azOverrides =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.azOverrides;
+    if (azOverrides != null && azOverrides.size() > 0) {
+      log.error(
+          "Universe {} has AZ level overrides set, cannot migrate to operator", universe.getName());
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot migrate universes with AZ level overrides.");
+    }
+    log.info("Universe {} precheck for operator import success", universe.getName());
+  }
+
+  public YBATask operatorImportUniverse(
+      Request request, UUID cUUID, UUID uniUUID, UniverseOperatorImportReq req) {
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    Universe universe = Universe.getOrBadRequest(uniUUID, customer);
+    precheckOperatorImportUniverse(request, cUUID, uniUUID, req);
+    OperatorImportUniverse.Params params = new OperatorImportUniverse.Params();
+    params.setUniverseUUID(uniUUID);
+    params.namespace = req.getNamespace();
+    UUID taskUuid = commissioner.submit(TaskType.OperatorImportUniverse, params);
+    CustomerTask.create(
+        customer,
+        uniUUID,
+        taskUuid,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.OperatorImport,
+        universe.getName());
+    YBATask ybaTask = new YBATask().taskUuid(taskUuid).resourceUuid(universe.getUniverseUUID());
+    return ybaTask;
   }
 }

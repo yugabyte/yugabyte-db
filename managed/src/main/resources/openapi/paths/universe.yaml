@@ -1200,3 +1200,96 @@
         checkOnlyPermission: false
     x-yba-api-since: 2025.2.0.0
     x-yba-api-visibility: preview
+'/customers/{cUUID}/universes/{uniUUID}/operator-import':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      required: true
+  post:
+    operationId: operatorImportUniverse
+    summary: Import universe to operator
+    description: Import universe to operator
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/UniverseOperatorImportReq.yaml"
+    responses:
+      '202':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: OperatorImportUniverse
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: UPDATE
+        resourceLocation:
+          path: UNIVERSES
+          sourceType: ENDPOINT
+        checkOnlyPermission: false
+    x-yba-api-since: 2025.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/universes/{uniUUID}/operator-import/precheck':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      required: true
+  post:
+    operationId: operatorImportUniversePrecheck
+    summary: Precheck universe import to operator
+    description: Run precheck to ensure the universe can be imported to the operator
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/UniverseOperatorImportReq.yaml"
+    responses:
+      '200':
+        description: Successfully prechecked universe import to operator.
+      '400':
+        description: Universe and its related resources are not in a valid state to be imported to the operator
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: UPDATE
+        resourceLocation:
+          path: UNIVERSES
+          sourceType: ENDPOINT
+        checkOnlyPermission: false
+    x-yba-api-since: 2025.2.0.0
+    x-yba-api-visibility: preview

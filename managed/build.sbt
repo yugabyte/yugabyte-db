@@ -245,6 +245,7 @@ libraryDependencies ++= Seq(
   "io.fabric8" % "kubernetes-client" % "6.8.0",
   "io.fabric8" % "kubernetes-client-api" % "6.8.0",
   "io.fabric8" % "kubernetes-model" % "6.8.0",
+  "io.fabric8" % "kubernetes-server-mock" % "6.8.0",
   "org.modelmapper" % "modelmapper" % "2.4.4",
   "com.datadoghq" % "datadog-api-client" % "2.25.0" classifier "shaded-jar",
   "javax.xml.bind" % "jaxb-api" % "2.3.1",
@@ -484,10 +485,11 @@ generateCrdObjects / fileInputs += baseDirectory.value.toGlob /
     "src/main/java/com/yugabyte/yw/common/operator/resources/" / ** / "*.yaml"
 // Process and compile open api files
 generateCrdObjects := {
-  val generatedSourcesDirectory = baseDirectory.value / "target/operatorCRD/io"
+  val generatedSourcesDirectory = baseDirectory.value / "target/operatorCRD"
   if (generateCrdObjects.inputFileChanges.hasChanges ||
     !generatedSourcesDirectory.exists) {
     ybLog("Generating crd classes...")
+    val generatedSourcesDirectory = baseDirectory.value / "target/operatorCRD/"
     val command = s"mvn generate-sources -DoutputDirectory=$generatedSourcesDirectory"
     val status = Process(command, baseDirectory.value / "src/main/java/com/yugabyte/yw/common/operator/").!
     status
@@ -553,7 +555,7 @@ cleanOperatorConfig := {
 
 cleanCrd := {
   ybLog("Cleaning CRD generated code...")
-  val generatedSourcesDirectory = baseDirectory.value / "target/scala-2.13/operatorCRD"
+  val generatedSourcesDirectory = baseDirectory.value / "target/operatorCRD"
   val command = s"mvn clean -DoutputDirectory=$generatedSourcesDirectory"
   val status = Process(command, baseDirectory.value / "src/main/java/com/yugabyte/yw/common/operator/").!
   status

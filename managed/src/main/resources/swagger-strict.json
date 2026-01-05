@@ -2043,7 +2043,8 @@
             "UpdateProxyConfig",
             "CloneNamespace",
             "UpdateAdditionalServicesState",
-            "KubernetesToggleImmutableYbc"
+            "KubernetesToggleImmutableYbc",
+            "OperatorImportUniverse"
           ],
           "example" : "Create User",
           "readOnly" : true,
@@ -2811,7 +2812,8 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "OperatorImportResource"
           ],
           "type" : "string"
         },
@@ -3137,6 +3139,9 @@
         "incrementalBackup" : {
           "type" : "boolean"
         },
+        "kubernetesOperatorControlled" : {
+          "type" : "boolean"
+        },
         "parentBackup" : {
           "type" : "boolean"
         },
@@ -3205,6 +3210,7 @@
       },
       "required" : [
         "incrementalBackup",
+        "kubernetesOperatorControlled",
         "parentBackup"
       ],
       "type" : "object"
@@ -5514,7 +5520,8 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "OperatorImportResource"
           ],
           "type" : "string"
         },
@@ -6754,6 +6761,9 @@
           "example" : "{\"AWS_ACCESS_KEY_ID\": \"AK****************ZD\"}",
           "type" : "object"
         },
+        "kubernetesOperatorControlled" : {
+          "type" : "boolean"
+        },
         "name" : {
           "description" : "Name",
           "example" : "S3",
@@ -6786,6 +6796,7 @@
         "configName",
         "customerUUID",
         "data",
+        "kubernetesOperatorControlled",
         "name",
         "type"
       ],
@@ -6824,6 +6835,9 @@
         "inUse" : {
           "description" : "True if there is an in use reference to the object",
           "readOnly" : true,
+          "type" : "boolean"
+        },
+        "kubernetesOperatorControlled" : {
           "type" : "boolean"
         },
         "name" : {
@@ -6866,6 +6880,7 @@
         "configName",
         "customerUUID",
         "data",
+        "kubernetesOperatorControlled",
         "name",
         "type"
       ],
@@ -7288,6 +7303,7 @@
           "description" : "Storage type used for this instance",
           "enum" : [
             "IO1",
+            "IO2",
             "GP2",
             "GP3",
             "Scratch",
@@ -8573,7 +8589,8 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "OperatorImportResource"
           ],
           "type" : "string"
         },
@@ -9370,7 +9387,8 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "OperatorImportResource"
           ],
           "type" : "string"
         },
@@ -10881,7 +10899,8 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "OperatorImportResource"
           ],
           "type" : "string"
         },
@@ -11599,7 +11618,8 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "OperatorImportResource"
           ],
           "type" : "string"
         },
@@ -15792,7 +15812,8 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "OperatorImportResource"
           ],
           "type" : "string"
         },
@@ -16820,7 +16841,8 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "OperatorImportResource"
           ],
           "type" : "string"
         },
@@ -17648,7 +17670,8 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "OperatorImportResource"
           ],
           "type" : "string"
         },
@@ -19168,7 +19191,8 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "OperatorImportResource"
           ],
           "type" : "string"
         },
@@ -19309,6 +19333,9 @@
         "incrementBacklogStatus" : {
           "description" : "Backlog status of schedule of incremental backups arose due to conflicts",
           "readOnly" : true,
+          "type" : "boolean"
+        },
+        "kubernetesOperatorControlled" : {
           "type" : "boolean"
         },
         "nextIncrementScheduleTaskTime" : {
@@ -19725,7 +19752,8 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "OperatorImportResource"
           ],
           "type" : "string"
         },
@@ -19739,6 +19767,9 @@
           "type" : "string"
         }
       },
+      "required" : [
+        "kubernetesOperatorControlled"
+      ],
       "type" : "object"
     },
     "ScheduleApiFilter" : {
@@ -20124,7 +20155,8 @@
               "DeleteCapacityReservation",
               "DisablePitrConfig",
               "EnablePitrConfig",
-              "UpdateAndPersistKubernetesImmutableYbc"
+              "UpdateAndPersistKubernetesImmutableYbc",
+              "OperatorImportResource"
             ],
             "type" : "string"
           },
@@ -20947,7 +20979,8 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "OperatorImportResource"
           ],
           "type" : "string"
         },
@@ -22040,7 +22073,8 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "OperatorImportResource"
           ],
           "type" : "string"
         },
@@ -22589,7 +22623,7 @@
               "ImportUniverse",
               "MigrateUniverse",
               "KubernetesToggleImmutableYbc",
-              "OperatorImportUniverse"
+              "OperatorImport"
             ],
             "type" : "string"
           },
@@ -23356,7 +23390,8 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "OperatorImportResource"
           ],
           "type" : "string"
         },
@@ -24027,7 +24062,8 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "OperatorImportResource"
           ],
           "type" : "string"
         },
@@ -24953,7 +24989,8 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "OperatorImportResource"
           ],
           "type" : "string"
         },
@@ -25588,7 +25625,8 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "OperatorImportResource"
           ],
           "type" : "string"
         },
@@ -26223,7 +26261,8 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "OperatorImportResource"
           ],
           "type" : "string"
         },
@@ -27368,7 +27407,8 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "OperatorImportResource"
           ],
           "type" : "string"
         },
@@ -28490,7 +28530,8 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "OperatorImportResource"
           ],
           "type" : "string"
         },
@@ -39843,53 +39884,6 @@
         ]
       }
     },
-    "/api/v1/customers/{cUUID}/universes/{uUUID}/operator_import/precheck" : {
-      "post" : {
-        "description" : "WARNING: This is a preview API that could change: import operator universe",
-        "operationId" : "operatorImportUniverse",
-        "parameters" : [
-          {
-            "format" : "uuid",
-            "in" : "path",
-            "name" : "cUUID",
-            "required" : true,
-            "type" : "string"
-          },
-          {
-            "format" : "uuid",
-            "in" : "path",
-            "name" : "uUUID",
-            "required" : true,
-            "type" : "string"
-          }
-        ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YBPTask"
-            }
-          }
-        },
-        "responsesObject" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YBPTask"
-            }
-          }
-        },
-        "security" : [
-          {
-            "apiKeyAuth" : [ ]
-          }
-        ],
-        "summary" : "Import a universe and related resources to be managed by the kubernetes operator",
-        "tags" : [
-          "preview"
-        ]
-      }
-    },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}" : {
       "delete" : {
         "description" : "Available since YBA version 2.2.0.0.",
@@ -45978,6 +45972,7 @@
               "items" : {
                 "enum" : [
                   "IO1",
+                  "IO2",
                   "GP2",
                   "GP3",
                   "Scratch",
@@ -46003,6 +45998,7 @@
               "items" : {
                 "enum" : [
                   "IO1",
+                  "IO2",
                   "GP2",
                   "GP3",
                   "Scratch",
@@ -46044,6 +46040,7 @@
               "items" : {
                 "enum" : [
                   "IO1",
+                  "IO2",
                   "GP2",
                   "GP3",
                   "Scratch",
@@ -46069,6 +46066,7 @@
               "items" : {
                 "enum" : [
                   "IO1",
+                  "IO2",
                   "GP2",
                   "GP3",
                   "Scratch",
@@ -46110,6 +46108,7 @@
               "items" : {
                 "enum" : [
                   "IO1",
+                  "IO2",
                   "GP2",
                   "GP3",
                   "Scratch",
@@ -46135,6 +46134,7 @@
               "items" : {
                 "enum" : [
                   "IO1",
+                  "IO2",
                   "GP2",
                   "GP3",
                   "Scratch",

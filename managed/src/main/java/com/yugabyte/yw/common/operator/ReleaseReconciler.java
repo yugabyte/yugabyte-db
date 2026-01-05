@@ -8,6 +8,7 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
+import com.yugabyte.yw.common.operator.utils.ResourceAnnotationKeys;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.models.ReleaseArtifact;
 import com.yugabyte.yw.models.ReleaseArtifact.Platform;
@@ -27,6 +28,7 @@ import io.yugabyte.operator.v1alpha1.releasespec.config.downloadconfig.s3.Secret
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -69,12 +71,20 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
     log.info("Adding release {} ", releaseMetadata.getName());
     if (confGetter.getGlobalConf(GlobalConfKeys.enableReleasesRedesign)) {
       String version = release.getSpec().getConfig().getVersion();
-      com.yugabyte.yw.models.Release ybRelease =
-          com.yugabyte.yw.models.Release.getByVersion(version);
+      com.yugabyte.yw.models.Release ybRelease;
+      if (releaseMetadata.getAnnotations() != null
+          && releaseMetadata.getAnnotations().containsKey(ResourceAnnotationKeys.YBA_RESOURCE_ID)) {
+        ybRelease =
+            com.yugabyte.yw.models.Release.get(
+                UUID.fromString(
+                    releaseMetadata.getAnnotations().get(ResourceAnnotationKeys.YBA_RESOURCE_ID)));
+      } else {
+        ybRelease = com.yugabyte.yw.models.Release.getByVersion(version);
+      }
       if (ybRelease != null) {
-        log.error("release version already exists, cannot create: " + version);
+        log.info("release version already exists, cannot create: " + version);
         // If it already exists, we should just use it.
-        updateStatus(release, "Release version " + version + "already exists", true);
+        updateStatus(release, "Available", true);
         return;
       }
       try (Transaction transaction = DB.beginTransaction()) {
@@ -120,12 +130,42 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
     }
     if (confGetter.getGlobalConf(GlobalConfKeys.enableReleasesRedesign)) {
       String version = newRelease.getSpec().getConfig().getVersion();
-      com.yugabyte.yw.models.Release ybRelease =
-          com.yugabyte.yw.models.Release.getByVersion(version);
+      com.yugabyte.yw.models.Release ybRelease;
+      if (newRelease.getMetadata().getAnnotations() != null
+          && newRelease
+              .getMetadata()
+              .getAnnotations()
+              .containsKey(ResourceAnnotationKeys.YBA_RESOURCE_ID)) {
+        ybRelease =
+            com.yugabyte.yw.models.Release.get(
+                UUID.fromString(
+                    newRelease
+                        .getMetadata()
+                        .getAnnotations()
+                        .get(ResourceAnnotationKeys.YBA_RESOURCE_ID)));
+      } else {
+        ybRelease = com.yugabyte.yw.models.Release.getByVersion(version);
+      }
       if (ybRelease == null) {
         log.warn("no release found for version " + version + ". creating it");
         ybRelease = com.yugabyte.yw.models.Release.create(version, "LTS");
       }
+      boolean changes = false;
+      for (ReleaseArtifact artifact : ybRelease.getArtifacts()) {
+        if (artifact.getPackageFileID() != null) {
+          log.debug("skip reconcile for local file release artifact {}", artifact);
+          continue;
+        }
+        if (artifactHasChanges(artifact, newRelease)) {
+          changes = true;
+          break;
+        }
+      }
+      if (!changes) {
+        log.info("no changes found for release {}", version);
+        return;
+      }
+
       try (Transaction transaction = DB.beginTransaction()) {
         // Delete existing artifacts
         for (ReleaseArtifact artifact : ybRelease.getArtifacts()) {
@@ -330,5 +370,95 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
       throw new Exception("Error in adding release, no remote found");
     }
     return Arrays.asList(dbArtifact, helmArtifact);
+  }
+
+  // Validate if the artifact remotes have changed.
+  private boolean artifactHasChanges(ReleaseArtifact artifact, Release release) {
+    if (artifact.getPlatform() == Platform.LINUX) {
+      if (artifact.getPackageURL() != null
+          && !artifact
+              .getPackageURL()
+              .equals(
+                  release
+                      .getSpec()
+                      .getConfig()
+                      .getDownloadConfig()
+                      .getHttp()
+                      .getPaths()
+                      .getX86_64())) {
+        return true;
+      }
+      if (artifact.getS3File() != null
+          && !artifact
+              .getS3File()
+              .path
+              .equals(
+                  release
+                      .getSpec()
+                      .getConfig()
+                      .getDownloadConfig()
+                      .getS3()
+                      .getPaths()
+                      .getX86_64())) {
+        return true;
+      }
+      if (artifact.getGcsFile() != null
+          && !artifact
+              .getGcsFile()
+              .path
+              .equals(
+                  release
+                      .getSpec()
+                      .getConfig()
+                      .getDownloadConfig()
+                      .getGcs()
+                      .getPaths()
+                      .getX86_64())) {
+        return true;
+      }
+    } else {
+      if (artifact.getPackageURL() != null
+          && !artifact
+              .getPackageURL()
+              .equals(
+                  release
+                      .getSpec()
+                      .getConfig()
+                      .getDownloadConfig()
+                      .getHttp()
+                      .getPaths()
+                      .getHelmChart())) {
+        return true;
+      }
+      if (artifact.getS3File() != null
+          && !artifact
+              .getS3File()
+              .path
+              .equals(
+                  release
+                      .getSpec()
+                      .getConfig()
+                      .getDownloadConfig()
+                      .getS3()
+                      .getPaths()
+                      .getHelmChart())) {
+        return true;
+      }
+      if (artifact.getGcsFile() != null
+          && !artifact
+              .getGcsFile()
+              .path
+              .equals(
+                  release
+                      .getSpec()
+                      .getConfig()
+                      .getDownloadConfig()
+                      .getGcs()
+                      .getPaths()
+                      .getHelmChart())) {
+        return true;
+      }
+    }
+    return false;
   }
 }

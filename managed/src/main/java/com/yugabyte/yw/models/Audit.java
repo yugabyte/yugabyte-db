@@ -630,7 +630,10 @@ public class Audit extends Model {
     UpdateAdditionalServicesState,
 
     @EnumValue("Set Immutable Ybc on Kubernetes Universe")
-    KubernetesToggleImmutableYbc
+    KubernetesToggleImmutableYbc,
+
+    @EnumValue("Import Universe to the Kubernetes Operator")
+    OperatorImportUniverse,
   }
 
   // An auto incrementing, user-friendly ID for the audit entry.
