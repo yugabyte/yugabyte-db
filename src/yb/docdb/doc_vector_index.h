@@ -129,6 +129,7 @@ class DocVectorIndex {
   virtual void CompleteShutdown() = 0;
 
   virtual bool TEST_HasBackgroundInserts() const = 0;
+  virtual size_t TEST_NextManifestFileNo() const = 0;
 
   bool BackfillDone();
 

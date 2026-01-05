@@ -121,7 +121,8 @@ using AddTableListener = std::function<Status(const TableInfo&)>;
 YB_STRONGLY_TYPED_BOOL(AllowBootstrappingState);
 YB_STRONGLY_TYPED_BOOL(ResetSplit);
 
-struct AdminCompactionOptions {
+struct ManualCompactionOptions {
+  rocksdb::CompactionReason compaction_reason = rocksdb::CompactionReason::kUnknown;
   StdStatusCallback compaction_completion_callback;
   TableIdsPtr vector_index_ids;
   VectorIndexOnly vector_index_only = VectorIndexOnly::kTrue;
@@ -834,7 +835,7 @@ class Tablet : public AbstractTablet,
   Status TriggerManualCompactionIfNeeded(rocksdb::CompactionReason reason);
 
   // Triggers an admin full compaction on this tablet.
-  Status TriggerAdminFullCompactionIfNeeded(const AdminCompactionOptions& options);
+  Status TriggerAdminFullCompactionIfNeeded(const ManualCompactionOptions& options);
 
   bool HasActiveFullCompaction();
   bool HasActiveFullCompactionUnlocked() const REQUIRES(full_compaction_token_mutex_);
@@ -1068,9 +1069,9 @@ class Tablet : public AbstractTablet,
       rocksdb::CompactionReason reason,
       rocksdb::SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe);
 
-  Status TriggerManualCompactionSync(rocksdb::CompactionReason reason) {
-    return TriggerManualCompactionSyncUnsafe(reason, rocksdb::SkipCorruptDataBlocksUnsafe::kFalse);
-  }
+  Status TriggerManualCompactionSyncUnsafe(const ManualCompactionOptions& options);
+
+  Status TriggerManualCompactionSync(const ManualCompactionOptions& options);
 
   Status TriggerVectorIndexCompactionSync(const TableIds& vector_index_ids);
 
