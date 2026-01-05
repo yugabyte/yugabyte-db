@@ -2656,7 +2656,9 @@ DROP TABLE tempTable2;
   auto hostport = cluster_->ysql_hostport(ts_index);
   YsqlshRunner ysqlsh_runner = CHECK_RESULT(YsqlshRunner::GetYsqlshRunner(hostport));
   auto output = CHECK_RESULT(ysqlsh_runner.ExecuteSqlScript(
-      sample_ddl_script, "sample_ddl" /* tmp_file_prefix */));
+      sample_ddl_script, "sample_ddl" /* tmp_file_prefix */,
+      "postgres" /* connect_as_user */,
+      "postgres" /* connect_to_database */));
   LOG(INFO) << "output: " << output;
   auto query = "SELECT current_version, encode(messages, 'hex') "
                "FROM pg_yb_invalidation_messages"s;
@@ -2665,8 +2667,8 @@ DROP TABLE tempTable2;
   auto fingerprint = HashUtil::MurmurHash2_64(result.data(), result.size(), 0 /* seed */);
   LOG(INFO) << "result.size(): " << result.size();
   LOG(INFO) << "fingerprint: " << fingerprint;
-  ASSERT_EQ(result.size(), 54564U);
-  ASSERT_EQ(fingerprint, 11276843017411745442UL);
+  ASSERT_EQ(result.size(), 53892U);
+  ASSERT_EQ(fingerprint, 13018684413363894454UL);
 }
 
 TEST_F(PgCatalogVersionTest, InvalMessageAlterTableRefreshTest) {
