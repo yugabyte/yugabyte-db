@@ -387,16 +387,16 @@ func (pc *ProvisionCommand) generateTemplate(specificModules []string) (string, 
 	return runScript, precheckScript, nil
 }
 
-func (pc *ProvisionCommand) addExitCodeCheck(f *os.File) {
+func (pc *ProvisionCommand) addExitCodeCheck(f *os.File, moduleName string) {
 	fmt.Fprintf(f, `
 		exit_code=$?
         if [ $exit_code -ne 0 ]; then
             parent_exit_code=$exit_code
-            err="Module {{ key }} failed with code $exit_code"
+            err="Module %s failed with code $exit_code"
             errors+=("$err")
             echo "$err"
         fi
-       `)
+       `, moduleName)
 }
 
 func (pc *ProvisionCommand) printExitErrors(f *os.File) {
@@ -511,7 +511,7 @@ func (pc *ProvisionCommand) buildScript(
 			fmt.Fprint(f, rendered)
 			if createSubshell {
 				fmt.Fprint(f, "\n)\n")
-				pc.addExitCodeCheck(f)
+				pc.addExitCodeCheck(f, tmpl.Name())
 			}
 		}
 		fmt.Fprintf(f, "\n######## END %s #########\n", tmpl.Name())
