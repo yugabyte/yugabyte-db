@@ -64,7 +64,7 @@ To simulate the failure of the 2nd zone locally, you can just stop the second no
 <!-- end nav tabs -->
 
 {{<note>}}
-All illustrations adhere to the legend outlined in [Legend for illustrations](../../../contribute/docs/docs-layout#legend-for-illustrations)
+All illustrations adhere to the legend outlined in [Legend for illustrations](/stable/contribute/docs/docs-layout#legend-for-illustrations)
 {{</note>}}
 
 For example, in the following illustration, tablet B has lost its leader.

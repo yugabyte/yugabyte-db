@@ -1,7 +1,7 @@
 ---
 title: Kubernetes best practices
 linkTitle: Best practices
-description: Best practices
+description: Best practices for deploying YugabyteDB on Kubernetes
 menu:
   v2024.2:
     identifier: best-practices
