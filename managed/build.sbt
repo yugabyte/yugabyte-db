@@ -487,7 +487,7 @@ generateCrdObjects / fileInputs += baseDirectory.value.toGlob /
     "src/main/java/com/yugabyte/yw/common/operator/resources/" / ** / "*.yaml"
 // Process and compile open api files
 generateCrdObjects := {
-  val generatedSourcesDirectory = baseDirectory.value / "target/operatorCRD/io"
+  val generatedSourcesDirectory = baseDirectory.value / "target/operatorCRD"
   if (generateCrdObjects.inputFileChanges.hasChanges ||
     !generatedSourcesDirectory.exists) {
     ybLog("Generating crd classes...")
@@ -556,7 +556,7 @@ cleanOperatorConfig := {
 
 cleanCrd := {
   ybLog("Cleaning CRD generated code...")
-  val generatedSourcesDirectory = baseDirectory.value / "target/scala-2.13/operatorCRD"
+  val generatedSourcesDirectory = baseDirectory.value / "target/operatorCRD"
   val command = s"mvn clean -DoutputDirectory=$generatedSourcesDirectory"
   val status = Process(command, baseDirectory.value / "src/main/java/com/yugabyte/yw/common/operator/").!
   status

@@ -265,7 +265,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
               return null;
             })
         .when(operatorUtils)
-        .createProviderCrFromProviderEbean(providerData, namespace);
+        .createProviderCrFromProviderEbean(providerData, namespace, true);
     universe.getSpec().setProviderName("");
     ybUniverseReconciler.reconcile(universe, OperatorWorkQueue.ResourceAction.CREATE);
     ybUniverseReconciler.reconcile(universe, OperatorWorkQueue.ResourceAction.CREATE);
@@ -418,7 +418,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
               return null;
             })
         .when(operatorUtils)
-        .createProviderCrFromProviderEbean(providerData, namespace);
+        .createProviderCrFromProviderEbean(providerData, namespace, true);
     // First reconcile will create auto provider CR
     ybUniverseReconciler.reconcile(ybUniverse, OperatorWorkQueue.ResourceAction.CREATE);
     try {

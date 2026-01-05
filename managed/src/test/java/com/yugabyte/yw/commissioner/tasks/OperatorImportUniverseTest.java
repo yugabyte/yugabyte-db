@@ -13,9 +13,14 @@ import com.yugabyte.yw.common.ReleasesUtils;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.AvailabilityZoneDetails;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.ProviderDetails;
+import com.yugabyte.yw.models.ProviderDetails.CloudInfo;
+import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Release;
 import com.yugabyte.yw.models.ReleaseArtifact;
 import com.yugabyte.yw.models.ReleaseArtifact.Platform;
@@ -24,6 +29,12 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
+import com.yugabyte.yw.models.helpers.provider.region.KubernetesRegionInfo;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.UUID;
@@ -57,11 +68,38 @@ public class OperatorImportUniverseTest extends CommissionerBaseTest {
   }
 
   @Test
-  public void testImportUniverse() {
+  public void testImportUniverse() throws IOException {
     when(mockReleasesUtils.versionUniversesMap()).thenReturn(new HashMap<String, List<Universe>>());
     String version = "2025.2.0.0-b123";
     Customer customer = ModelFactory.testCustomer();
     Provider provider = ModelFactory.kubernetesProvider(customer);
+    File f = new File("/tmp/kubeconfig");
+    f.createNewFile();
+    FileWriter fw = new FileWriter(f);
+    fw.write("test");
+    fw.close();
+    ProviderDetails pd = provider.getDetails();
+    CloudInfo cloudInfo = new CloudInfo();
+    KubernetesInfo kubernetesInfo = new KubernetesInfo();
+    kubernetesInfo.setKubeConfig("/tmp/kubeconfig");
+    cloudInfo.setKubernetes(kubernetesInfo);
+    pd.setCloudInfo(cloudInfo);
+    provider.setDetails(pd);
+    provider.save();
+    Region region = Region.create(provider, "region1", "region1", "yb-image-1");
+    AvailabilityZone az = AvailabilityZone.createOrThrow(region, "az1", "az1", "subnet1");
+    AvailabilityZoneDetails azdetails = new AvailabilityZoneDetails();
+    KubernetesRegionInfo azki = new KubernetesRegionInfo();
+    azki.setKubeConfigContent("myContent");
+    AvailabilityZoneDetails.AZCloudInfo azcloudInfo = new AvailabilityZoneDetails.AZCloudInfo();
+    azcloudInfo.setKubernetes(azki);
+    azdetails.setCloudInfo(azcloudInfo);
+    az.setDetails(azdetails);
+    az.save();
+    region.setZones(Arrays.asList(az));
+    region.save();
+    provider.setRegions(Arrays.asList(region));
+    provider.save();
     Universe universe =
         ModelFactory.createUniverse("import-uni", customer.getId(), CloudType.kubernetes);
 
@@ -174,6 +212,6 @@ public class OperatorImportUniverseTest extends CommissionerBaseTest {
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
-    assertEquals(17, subTasks.size());
+    assertEquals(19, subTasks.size());
   }
 }

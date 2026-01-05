@@ -112,14 +112,8 @@ public class UniverseManagementHandlerOperatorImportTest extends FakeDBApplicati
         });
     UniverseOperatorImportReq req = new UniverseOperatorImportReq();
     req.setNamespace("namespace");
-    assertThrows(
-        PlatformServiceException.class,
-        () ->
-            handler.precheckOperatorImportUniverse(
-                createRequest(),
-                defaultCustomer.getUuid(),
-                defaultUniverse.getUniverseUUID(),
-                req));
+    handler.precheckOperatorImportUniverse(
+        createRequest(), defaultCustomer.getUuid(), defaultUniverse.getUniverseUUID(), req);
   }
 
   @Test

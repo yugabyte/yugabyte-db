@@ -816,13 +816,6 @@ public class UniverseManagementHandler extends ApiControllerUtils {
               + " same as the operator namespace");
     }
 
-    // Read Replicas clusters are not supported
-    if (universe.getUniverseDetails().clusters.size() > 1) {
-      log.error(
-          "Universe {} has read-only clusters, cannot migrate to operator", universe.getName());
-      throw new PlatformServiceException(BAD_REQUEST, "Universe has read-only clusters");
-    }
-
     // XCluster is not supported by operator
     if (!XClusterConfig.getByUniverseUuid(universe.getUniverseUUID()).isEmpty()) {
       log.error("Universe {} has xClusterInfo set, cannot migrate to operator", universe.getName());
@@ -846,6 +839,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
       Request request, UUID cUUID, UUID uniUUID, UniverseOperatorImportReq req) {
     Customer customer = Customer.getOrBadRequest(cUUID);
     Universe universe = Universe.getOrBadRequest(uniUUID, customer);
+    precheckOperatorImportUniverse(request, cUUID, uniUUID, req);
     OperatorImportUniverse.Params params = new OperatorImportUniverse.Params();
     params.setUniverseUUID(uniUUID);
     params.namespace = req.getNamespace();
@@ -855,7 +849,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
         uniUUID,
         taskUuid,
         CustomerTask.TargetType.Universe,
-        CustomerTask.TaskType.ImportUniverse,
+        CustomerTask.TaskType.OperatorImport,
         universe.getName());
     YBATask ybaTask = new YBATask().taskUuid(taskUuid).resourceUuid(universe.getUniverseUUID());
     return ybaTask;

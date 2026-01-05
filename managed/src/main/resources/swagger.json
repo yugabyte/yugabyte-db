@@ -23007,7 +23007,7 @@
               "ImportUniverse",
               "MigrateUniverse",
               "KubernetesToggleImmutableYbc",
-              "OperatorImportUniverse"
+              "OperatorImport"
             ],
             "type" : "string"
           },

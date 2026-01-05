@@ -713,7 +713,7 @@ public enum TaskType {
 
   OperatorImportUniverse(
       com.yugabyte.yw.commissioner.tasks.OperatorImportUniverse.class,
-      CustomerTask.TaskType.OperatorImportUniverse,
+      CustomerTask.TaskType.OperatorImport,
       CustomerTask.TargetType.Universe),
 
   /* Subtasks start here */

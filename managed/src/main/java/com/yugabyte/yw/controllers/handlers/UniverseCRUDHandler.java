@@ -1384,6 +1384,12 @@ public class UniverseCRUDHandler {
         .orElseGet(Collections::emptyList);
   }
 
+  public UniverseResp findByUUID(Customer customer, UUID universeUUID) {
+    return Universe.maybeGet(universeUUID)
+        .map(value -> UniverseResp.create(value, null, confGetter))
+        .orElse(null);
+  }
+
   public UUID destroy(
       Customer customer,
       Universe universe,
