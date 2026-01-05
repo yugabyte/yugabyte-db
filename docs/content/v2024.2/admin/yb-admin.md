@@ -19,7 +19,7 @@ It invokes the [yb-master](../../reference/configuration/yb-master/) and [yb-tse
 
 yb-admin is intended to be used to administer manually created and managed universes only.
 
-If you are using [YugabyteDB Anywhere](../../yugabyte-platform/) or [YugabyteDB Aeon](/preview/yugabyte-cloud/), administer your universes using the respective UI, or, to use automation, use the respective API or CLI. For more information, refer to [YugabyteDB Anywhere automation](../../yugabyte-platform/anywhere-automation/) and [YugabyteDB Aeon automation](/preview/yugabyte-cloud/managed-automation/).
+If you are using [YugabyteDB Anywhere](../../yugabyte-platform/) or [YugabyteDB Aeon](/stable/yugabyte-cloud/), administer your universes using the respective UI, or, to use automation, use the respective API or CLI. For more information, refer to [YugabyteDB Anywhere automation](../../yugabyte-platform/anywhere-automation/) and [YugabyteDB Aeon automation](/stable/yugabyte-cloud/managed-automation/).
 
 **If you perform tasks on a YugabyteDB Anywhere-managed universe using yb-admin, the changes may not be reflected in YugabyteDB Anywhere.**
 
@@ -1502,7 +1502,7 @@ Having all tablet leaders reside in a single region reduces the number of networ
 
 * Tablespaces don't inherit cluster-level placement information, leader preference, or read replica configurations.
 
-* If the client application uses a smart driver, set the [topology keys](/preview/develop/drivers-orms/smart-drivers/#topology-aware-load-balancing) to target the preferred zones.
+* If the client application uses a smart driver, set the [topology keys](/stable/develop/drivers-orms/smart-drivers/#topology-aware-load-balancing) to target the preferred zones.
 
 {{< /note >}}
 

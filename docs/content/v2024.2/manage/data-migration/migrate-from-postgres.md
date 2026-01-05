@@ -16,7 +16,7 @@ rightNav:
 The following guide is designed to help you smoothly transition your data and applications from a monolithic PostgreSQL database to YugabyteDB's distributed architecture. The guide walks you through the essential steps and best practices for migrating your data, including planning the migration, transforming your schema, migrating your data, and optimizing your applications for a distributed environment. By following these steps, you can minimize downtime, preserve data integrity, and leverage YugabyteDB's advanced features to meet your evolving business needs.
 
 {{<tip title="Migrate using YugabyteDB Voyager">}}
-Manage end-to-end database migration, including cluster preparation, schema migration, and data migration, using [YugabyteDB Voyager](/preview/yugabyte-voyager/). Voyager is designed to handle various corner cases correctly to minimize errors and achieve faster migration.
+Manage end-to-end database migration, including cluster preparation, schema migration, and data migration, using [YugabyteDB Voyager](/stable/yugabyte-voyager/). Voyager is designed to handle various corner cases correctly to minimize errors and achieve faster migration.
 {{</tip>}}
 
 ## PostgreSQL compatibility
@@ -79,8 +79,8 @@ Data modeling for distributed SQL databases differs from monolithic PostgreSQL d
 
 You must choose the primary key of the table wisely as the [distribution of table data](#data-distribution-schemes) across the various nodes in the system depends on the primary key.
 
-{{<lead link="/preview/develop/data-modeling/primary-keys-ysql/">}}
-Refer to [Designing optimal primary keys](/preview/develop/data-modeling/primary-keys-ysql/) for details on how to design primary keys for your tables.
+{{<lead link="/stable/develop/data-modeling/primary-keys-ysql/">}}
+Refer to [Designing optimal primary keys](/stable/develop/data-modeling/primary-keys-ysql/) for details on how to design primary keys for your tables.
 {{</lead>}}
 
 ### Secondary indexes
@@ -89,8 +89,8 @@ For improved performance of alternate query patterns that don't involve the prim
 
 In YugabyteDB, indexes are global and are implemented just like tables. They are split into tablets and distributed across the different nodes in the cluster. Unless the index is colocated or copartitioned, the sharding of indexes is based on the primary key of the index and is independent of how the main table is sharded and distributed.
 
-{{<lead link="/preview/develop/data-modeling/secondary-indexes-ysql/">}}
-Refer to [Designing secondary indexes](/preview/develop/data-modeling/secondary-indexes-ysql/) for details on how to design secondary indexes to speed up alternate query patterns.
+{{<lead link="/stable/develop/data-modeling/secondary-indexes-ysql/">}}
+Refer to [Designing secondary indexes](/stable/develop/data-modeling/secondary-indexes-ysql/) for details on how to design secondary indexes to speed up alternate query patterns.
 {{</lead>}}
 
 ### Hot shards
@@ -99,8 +99,8 @@ The "hot shard" problem in distributed databases refers to a situation where a p
 
 The hot shard problem arises when there is a skewed data distribution or when an specific value or data pattern becomes popular. You can solve this by choosing a different ordering of the primary key columns or distributing your data based on more columns.
 
-{{<lead link="/preview/develop/data-modeling/hot-shards-ysql/">}}
-To understand different ways to address the hot shards, see [Avoiding hotspots](/preview/develop/data-modeling/hot-shards-ysql/).
+{{<lead link="/stable/develop/data-modeling/hot-shards-ysql/">}}
+To understand different ways to address the hot shards, see [Avoiding hotspots](/stable/develop/data-modeling/hot-shards-ysql/).
 {{</lead>}}
 
 ### Colocated tables
@@ -125,11 +125,11 @@ You can use the [ysql_dump](../../../admin/ysql-dump/) utility to export a Yugab
 ysql_dump --schema-only -h source_host -U source_user source_db > schema.sql
 ```
 
-If you are using YubabyteDB Voyager, use the [yb-voyager export schema](/preview/yugabyte-voyager/reference/schema-migration/export-schema/) command.
+If you are using YubabyteDB Voyager, use the [yb-voyager export schema](/stable/yugabyte-voyager/reference/schema-migration/export-schema/) command.
 
 ### Changes to schema
 
-Depending on the use case, your schema may require the following changes. You can also use [yb-voyager analyze schema](/preview/yugabyte-voyager/reference/schema-migration/analyze-schema/) command to analyze the schema and get suggestions for modifications.
+Depending on the use case, your schema may require the following changes. You can also use [yb-voyager analyze schema](/stable/yugabyte-voyager/reference/schema-migration/analyze-schema/) command to analyze the schema and get suggestions for modifications.
 
 #### Specify `PRIMARY KEY` inline
 
@@ -173,8 +173,8 @@ You can set the cache size either during [CREATE SEQUENCE](../../../api/ysql/the
 
 UUIDs are globally unique identifiers that can be generated on any node without requiring any global inter-node coordination. While server-side caching improves the performance of sequences, there are scenarios like multi-region deployment where using UUIDs would be a better choice for performance.
 
-{{<lead link="/preview/develop/data-modeling/primary-keys-ysql/#automatically-generating-the-primary-key">}}
-To understand the differences between UUID, serial, and sequences, see [Automatically generating the primary key](/preview/develop/data-modeling/primary-keys-ysql/#automatically-generating-the-primary-key).
+{{<lead link="/stable/develop/data-modeling/primary-keys-ysql/#automatically-generating-the-primary-key">}}
+To understand the differences between UUID, serial, and sequences, see [Automatically generating the primary key](/stable/develop/data-modeling/primary-keys-ysql/#automatically-generating-the-primary-key).
 {{</lead>}}
 
 ### Importing schema
@@ -185,7 +185,7 @@ After completing your schema changes, you can use ysqlsh to import the modified 
 ysqlsh -h yugabyte_host -U yugabyte_user -d yugabyte_db -f schema.sql
 ```
 
-If you are using YubabyteDB Voyager, use the [yb-voyage import schema](/preview/yugabyte-voyager/reference/schema-migration/import-schema/) command.
+If you are using YubabyteDB Voyager, use the [yb-voyage import schema](/stable/yugabyte-voyager/reference/schema-migration/import-schema/) command.
 
 ## Data migration
 
@@ -195,7 +195,7 @@ The data from the source PostgreSQL database can be exported either using the [C
 ysql_dump --data-only --disable-triggers -h source_host -U source_user source_db > data.sql
 ```
 
-If you are using YubabyteDB Voyager, use the [yb-voyager export data](/preview/yugabyte-voyager/reference/data-migration/export-data/) command (recommended).
+If you are using YubabyteDB Voyager, use the [yb-voyager export data](/stable/yugabyte-voyager/reference/data-migration/export-data/) command (recommended).
 
 Import the exported data into YugabyteDB using [COPY FROM](../../../manage/data-migration/bulk-import-ysql/#import-data-from-csv-files) command or using ysqlsh as follows:
 
@@ -203,7 +203,7 @@ Import the exported data into YugabyteDB using [COPY FROM](../../../manage/data-
 ysqlsh -h yugabyte_host -U yugabyte_user -d yugabyte_db -f data.sql
 ```
 
-If you are using YubabyteDB Voyager, use the [yb-voyager import data](/preview/yugabyte-voyager/reference/data-migration/import-data/) command.
+If you are using YubabyteDB Voyager, use the [yb-voyager import data](/stable/yugabyte-voyager/reference/data-migration/import-data/) command.
 
 ### What to migrate
 
@@ -221,42 +221,42 @@ Regardless of how much data you decide to migrate, you can choose from the follo
 
 **Offline migration**: You can take down the system and import the exported data. This approach is typically used when downtime is acceptable or the system is not required to be available during the migration.
 
-{{<lead link="/preview/yugabyte-voyager/migrate/migrate-steps/">}}
-For more details, see [Offline migration](/preview/yugabyte-voyager/migrate/migrate-steps/).
+{{<lead link="/stable/yugabyte-voyager/migrate/migrate-steps/">}}
+For more details, see [Offline migration](/stable/yugabyte-voyager/migrate/migrate-steps/).
 {{</lead>}}
 
 **Live migration**: Live migration aims to minimize downtime by keeping the application running during the migration process. Data is copied from the source database to the new YugabyteDB cluster while the application is still live, and a final switchover is made after the migration is complete.
 
-{{<lead link="/preview/yugabyte-voyager/migrate/live-migrate/">}}
-For more details, see [Live migration](/preview/yugabyte-voyager/migrate/live-migrate/).
+{{<lead link="/stable/yugabyte-voyager/migrate/live-migrate/">}}
+For more details, see [Live migration](/stable/yugabyte-voyager/migrate/live-migrate/).
 {{</lead>}}
 
 **Live migration with fall-forward**: Live migration with fall-forward is a variant of live migration where, after the application has switched to the new database, there is no option to revert to the old database. This strategy is typically used when the new database is considered stable and there is confidence in the migration process.
 
-{{<lead link="/preview/yugabyte-voyager/migrate/live-fall-forward/">}}
-For more details, see [Live migration with fall-forward](/preview/yugabyte-voyager/migrate/live-fall-forward/).
+{{<lead link="/stable/yugabyte-voyager/migrate/live-fall-forward/">}}
+For more details, see [Live migration with fall-forward](/stable/yugabyte-voyager/migrate/live-fall-forward/).
 {{</lead>}}
 
 **Live migration with fall-back**: Live migration with fall-back provides a safety net by allowing a return to the original database if issues are encountered after the cutover to the new database. This strategy involves maintaining bidirectional synchronization between the source database and the new YugabyteDB cluster for a period after the migration.
 
 {{<lead link="">}}
-For more details, see [Live migration with fall-back](/preview/yugabyte-voyager/migrate/live-fall-back/).
+For more details, see [Live migration with fall-back](/stable/yugabyte-voyager/migrate/live-fall-back/).
 {{</lead>}}
 
 ## Application migration
 
 When porting an existing PostgreSQL application to YugabyteDB you can follow a set of best practices to get the best out of your new deployment.
 
-{{<lead link="/preview/develop/best-practices-develop/">}}
-For a full list of tips and tricks for high performance and availability, see [Best practices](/preview/develop/best-practices-develop/).
+{{<lead link="/stable/develop/best-practices-develop/">}}
+For a full list of tips and tricks for high performance and availability, see [Best practices](/stable/develop/best-practices-develop/).
 {{</lead>}}
 
 ### Retry transactions on conflicts
 
-YugabyteDB returns different [error codes](/preview/develop/learn/transactions/transactions-errorcodes-ysql/) for the various scenarios that go wrong during transaction processing. The error code [40001 (serialization_failure)](/preview/develop/learn/transactions/transactions-errorcodes-ysql/#40001-serialization-failure) for retryable transaction conflict errors. You should retry the transactions from the application when encountering these errors.
+YugabyteDB returns different [error codes](/stable/develop/learn/transactions/transactions-errorcodes-ysql/) for the various scenarios that go wrong during transaction processing. The error code [40001 (serialization_failure)](/stable/develop/learn/transactions/transactions-errorcodes-ysql/#40001-serialization-failure) for retryable transaction conflict errors. You should retry the transactions from the application when encountering these errors.
 
-{{<lead link="/preview/develop/learn/transactions/transactions-retries-ysql/#client-side-retry">}}
-For application-side retry logic, see [Client-side retry](/preview/develop/learn/transactions/transactions-retries-ysql/#client-side-retry).
+{{<lead link="/stable/develop/learn/transactions/transactions-retries-ysql/#client-side-retry">}}
+For application-side retry logic, see [Client-side retry](/stable/develop/learn/transactions/transactions-retries-ysql/#client-side-retry).
 {{</lead>}}
 
 ### Distribute load evenly across the cluster
@@ -265,7 +265,7 @@ All nodes (YB-TServers) in the cluster are identical and are capable of handling
 
 - **Load balancer**: Use a load balancer to front all the nodes of the cluster. The load balancer should be set to round-robin all requests across the nodes in the cluster.
 
-- **Smart driver**: YugabyteDB ships a [smart driver](/preview/develop/drivers-orms/smart-drivers/) in multiple languages that can automatically distribute connections to the various nodes in the cluster with minimum configuration.
+- **Smart driver**: YugabyteDB ships a [smart driver](/stable/develop/drivers-orms/smart-drivers/) in multiple languages that can automatically distribute connections to the various nodes in the cluster with minimum configuration.
 
 ### Increase throughput
 
@@ -304,16 +304,16 @@ To learn more about the various useful metrics that can be monitored, see [Metri
 
 Because of the distributed nature of YugabyteDB, queries are executed quite differently from Postgres. This is because the latency across the nodes are taken into account by the query planner. Adopting the following practices will help improve the performance of your applications.
 
-- **Single-row transactions**: YugabyteDB has optimizations to improve the performance of transactions in certain scenarios where transactions operate on a single row. Consider converting multi-statement transactions to single-statement ones to improve performace. {{<link dest="/preview/develop/learn/transactions/transactions-performance-ysql/#fast-single-row-transactions">}}
+- **Single-row transactions**: YugabyteDB has optimizations to improve the performance of transactions in certain scenarios where transactions operate on a single row. Consider converting multi-statement transactions to single-statement ones to improve performace. {{<link dest="/stable/develop/learn/transactions/transactions-performance-ysql/#fast-single-row-transactions">}}
 
-- **Use On Conflict clause**: Use the optional ON CONFLICT clause in the INSERT statement to circumvent certain errors and avoid multiple round trips. {{<link dest="/preview/develop/learn/transactions/transactions-performance-ysql/#minimize-conflict-errors">}}
+- **Use On Conflict clause**: Use the optional ON CONFLICT clause in the INSERT statement to circumvent certain errors and avoid multiple round trips. {{<link dest="/stable/develop/learn/transactions/transactions-performance-ysql/#minimize-conflict-errors">}}
 
-- **Set statement timeouts**: Avoid getting stuck in a wait loop because of starvation by using a reasonable timeout for the statements.  {{<link dest="/preview/develop/learn/transactions/transactions-performance-ysql/#avoid-long-waits">}}
+- **Set statement timeouts**: Avoid getting stuck in a wait loop because of starvation by using a reasonable timeout for the statements.  {{<link dest="/stable/develop/learn/transactions/transactions-performance-ysql/#avoid-long-waits">}}
 
-- **Stored procedures**: Use stored procedures to bundle a set of statements with error handling to be executed on the server and avoid multiple round trips. {{<link dest="/preview/develop/learn/transactions/transactions-performance-ysql/#stored-procedures-minimize-round-trips">}}
+- **Stored procedures**: Use stored procedures to bundle a set of statements with error handling to be executed on the server and avoid multiple round trips. {{<link dest="/stable/develop/learn/transactions/transactions-performance-ysql/#stored-procedures-minimize-round-trips">}}
 
-{{<lead link="/preview/develop/learn/transactions/transactions-performance-ysql/">}}
-For a full list of best practices to improve performance, see [Performance tuning in YSQL](/preview/develop/learn/transactions/transactions-performance-ysql/)
+{{<lead link="/stable/develop/learn/transactions/transactions-performance-ysql/">}}
+For a full list of best practices to improve performance, see [Performance tuning in YSQL](/stable/develop/learn/transactions/transactions-performance-ysql/)
 {{</lead>}}
 
 ### Backup and disaster recovery
