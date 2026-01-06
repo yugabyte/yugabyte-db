@@ -512,32 +512,25 @@ Result<CloneStateInfoPtr> CloneStateManager::CreateCloneState(
   }
 
   auto clone_state = std::make_shared<CloneStateInfo>(GenerateObjectId());
+  auto clone_state_lock = clone_state->LockForWrite();
   clone_state->SetEpoch(epoch);
-
-  if (clone_state->id() < source_namespace->id()) {
-    clone_state->mutable_metadata()->StartMutation();
-  }
 
   auto namespace_lock = source_namespace->LockForWrite();
   auto seq_no = namespace_lock->pb.clone_request_seq_no() + 1;
   namespace_lock.mutable_data()->pb.set_clone_request_seq_no(seq_no);
 
-  if (!clone_state->mutable_metadata()->HasWriteLock()) {
-    clone_state->mutable_metadata()->StartMutation();
-  }
-
-  auto* pb = &clone_state->mutable_metadata()->mutable_dirty()->pb;
-  pb->set_aggregate_state(SysCloneStatePB::CLONE_SCHEMA_STARTED);
-  pb->set_clone_request_seq_no(seq_no);
-  pb->set_source_namespace_id(source_namespace->id());
-  pb->set_source_namespace_name(source_namespace->name());
-  pb->set_restore_time(restore_time.ToUint64());
-  pb->set_target_namespace_name(target_namespace_name);
-  pb->set_database_type(database_type);
+  auto& pb = clone_state_lock.mutable_data()->pb;
+  pb.set_aggregate_state(SysCloneStatePB::CLONE_SCHEMA_STARTED);
+  pb.set_clone_request_seq_no(seq_no);
+  pb.set_source_namespace_id(source_namespace->id());
+  pb.set_source_namespace_name(source_namespace->name());
+  pb.set_restore_time(restore_time.ToUint64());
+  pb.set_target_namespace_name(target_namespace_name);
+  pb.set_database_type(database_type);
   RETURN_NOT_OK(external_funcs_->Upsert(
       clone_state->Epoch().leader_term, clone_state, source_namespace));
   namespace_lock.Commit();
-  clone_state->mutable_metadata()->CommitMutation();
+  clone_state_lock.Commit();
 
   // Add to the in-memory map.
   source_clone_state_map_[source_namespace->id()].insert(clone_state);
