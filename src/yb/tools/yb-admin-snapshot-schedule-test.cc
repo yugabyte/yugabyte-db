@@ -686,18 +686,6 @@ TEST_F(YbAdminSnapshotScheduleTest, Basic) {
   ASSERT_OK(RestoreSnapshotSchedule(schedule_id, last_snapshot_time));
 }
 
-TEST_F(YbAdminSnapshotScheduleTest, FailRestoreToBeforeMaximumRetention) {
-  // Set restore time to 1 hour before the schedule creation time.
-  Timestamp restore_time(
-      ASSERT_RESULT(WallClock()->Now()).time_point - MonoDelta::FromHours(1).ToMicroseconds());
-  auto schedule_id = ASSERT_RESULT(PrepareCql());
-  auto conn = ASSERT_RESULT(CqlConnect(client::kTableName.namespace_name()));
-  ASSERT_OK(conn.ExecuteQuery("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)"));
-  ASSERT_NOK_STR_CONTAINS(
-      StartRestoreSnapshotSchedule(schedule_id, restore_time),
-      "earlier than the minimum allowed restore");
-}
-
 // Poll interval set to 10 minutes to prevent early snapshot creation.
 class YbAdminSnapshotScheduleTestLongPoll : public YbAdminSnapshotScheduleTest {
  public:
@@ -1384,6 +1372,19 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, Pgsql) {
 
   auto res = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT value FROM test_table"));
   ASSERT_EQ(res, "before");
+}
+
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam,
+  FailRestoreToBeforeMaximumRetention) {
+  // Set restore time to 1 hour before the schedule creation time.
+  Timestamp restore_time(
+      ASSERT_RESULT(WallClock()->Now()).time_point - MonoDelta::FromHours(1).ToMicroseconds());
+  auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+  ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)"));
+  ASSERT_NOK_STR_CONTAINS(
+      RestoreSnapshotSchedule(schedule_id, restore_time),
+      "earlier than the minimum allowed restore");
 }
 
 TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationParam, PgsqlDropDatabaseAndSchedule) {
