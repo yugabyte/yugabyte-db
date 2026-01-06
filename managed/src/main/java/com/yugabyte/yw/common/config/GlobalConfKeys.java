@@ -1945,4 +1945,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " local credentials.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> nodeAgentServerRequestLogLevel =
+      new ConfKeyInfo<>(
+          "yb.node_agent.server.request_log_level",
+          ScopeType.GLOBAL,
+          "Node Agent Server Log Level Per Request",
+          "Log level for Node Agent server per request (0 for debug, -1 for default)",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
