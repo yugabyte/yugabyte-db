@@ -206,6 +206,10 @@ class ProvisionCommand(Command):
                     self.config[key].get('is_cloud', 'False') == 'False':
                 print(f"Skipping {key} because is_cloud is {self.config[key].get('is_cloud')}")
                 continue
+            if key in self.onprem_only_modules and \
+                    self.config[key].get('is_cloud', 'False') == 'True':
+                print(f"Skipping {key} because is_cloud is {self.config[key].get('is_cloud')}")
+                continue
             if key == 'InstallNodeAgent' and \
                     self.config[key].get('is_install_node_agent', 'True') == 'False':
                 print(f"Skipping {key} because is_install_node_agent is "
