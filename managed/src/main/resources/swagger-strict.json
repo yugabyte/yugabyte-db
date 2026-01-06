@@ -3416,6 +3416,10 @@
           ],
           "type" : "string"
         },
+        "backupStats" : {
+          "description" : "WARNING: This is a preview API that could change. Backup stats with YSQL dump.",
+          "type" : "boolean"
+        },
         "backupType" : {
           "description" : "Backup type",
           "enum" : [
