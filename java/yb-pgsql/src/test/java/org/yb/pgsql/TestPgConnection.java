@@ -45,6 +45,14 @@ public class TestPgConnection extends BasePgSQLTest {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("ysql_max_connections", String.valueOf(MAX_CONNECTIONS));
+    // By default 15 connections are reserved for direct PG connections when
+    // conn mgr is enabled. Although below tests are disabled for conn mgr,
+    // but initial setup before test starts, creates connections to conn mgr
+    // which causes tests to fail. Therefore, we disable reservation of internal
+    // connections for this test suite.
+    if (isTestRunningWithConnectionManager()) {
+      flagMap.put("ysql_conn_mgr_reserve_internal_conns", "0");
+    }
     return flagMap;
   }
 
