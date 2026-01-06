@@ -73,6 +73,8 @@ public class KubernetesUtil {
   public static String MIN_VERSION_OTEL_SUPPORT_PREVIEW = "2.25.1.0-b133";
   public static String MIN_VERSION_YBDB_INBUILT_YBC_SUPPORT_PREVIEW = "2.27.0.0-b999";
   public static String MIN_VERSION_YBDB_INBUILT_YBC_SUPPORT_STABLE = "2025.2.0.0-b1";
+  public static String MIN_VERSION_CERT_MANAGER_CERT_ROTATE_PREVIEW = "2.29.0.0-b386";
+  public static String MIN_VERSION_CERT_MANAGER_CERT_ROTATE_STABLE = "2026.1.0.0-b1";
 
   public static boolean isNonRestartGflagsUpgradeSupported(String universeSoftwareVersion) {
     return Util.compareYBVersions(
@@ -115,6 +117,15 @@ public class KubernetesUtil {
             universeSoftwareVersion,
             MIN_VERSION_YBDB_INBUILT_YBC_SUPPORT_STABLE,
             MIN_VERSION_YBDB_INBUILT_YBC_SUPPORT_PREVIEW,
+            true)
+        >= 0;
+  }
+
+  public static boolean isCertManagerCertRotateSupported(String universeSoftwareVersion) {
+    return Util.compareYBVersions(
+            universeSoftwareVersion,
+            MIN_VERSION_CERT_MANAGER_CERT_ROTATE_STABLE,
+            MIN_VERSION_CERT_MANAGER_CERT_ROTATE_PREVIEW,
             true)
         >= 0;
   }

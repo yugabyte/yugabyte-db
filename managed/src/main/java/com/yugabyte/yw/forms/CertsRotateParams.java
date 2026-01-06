@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
@@ -443,47 +444,20 @@ public class CertsRotateParams extends UpgradeTaskParams {
     UUID currentClientRootCA = universe.getUniverseDetails().clientRootCA;
 
     // Check if certs are managed through Kubernetes cert manager
-    if (currentRootCA != null) {
-      CertificateInfo certInfo = CertificateInfo.get(currentRootCA);
-      if (certInfo != null && certInfo.getCertType() == CertConfigType.K8SCertManager) {
-        throw new PlatformServiceException(
-            Status.BAD_REQUEST,
-            "Certificate rotation is not supported for Kubernetes cert manager managed"
-                + " certificates.");
+    UUID[] certsToCheck = {currentRootCA, currentClientRootCA, rootCA, clientRootCA};
+    for (UUID certUUID : certsToCheck) {
+      if (certUUID != null) {
+        CertificateInfo certInfo = CertificateInfo.get(certUUID);
+        if (certInfo != null
+            && certInfo.getCertType() == CertConfigType.K8SCertManager
+            && !KubernetesUtil.isCertManagerCertRotateSupported(userIntent.ybSoftwareVersion)) {
+          throw new PlatformServiceException(
+              Status.BAD_REQUEST,
+              "Certificate rotation cert manager managed certificates is not supported for this"
+                  + " version. Please upgrade to a supported version.");
+        }
       }
     }
-
-    if (currentClientRootCA != null) {
-      CertificateInfo certInfo = CertificateInfo.get(currentClientRootCA);
-      if (certInfo != null && certInfo.getCertType() == CertConfigType.K8SCertManager) {
-        throw new PlatformServiceException(
-            Status.BAD_REQUEST,
-            "Certificate rotation is not supported for Kubernetes cert manager managed"
-                + " certificates.");
-      }
-    }
-
-    if (rootCA != null) {
-      CertificateInfo newCertInfo = CertificateInfo.get(rootCA);
-      if (newCertInfo != null && newCertInfo.getCertType() == CertConfigType.K8SCertManager) {
-        throw new PlatformServiceException(
-            Status.BAD_REQUEST,
-            "Certificate rotation is not supported for Kubernetes cert manager managed"
-                + " certificates.");
-      }
-    }
-
-    if (clientRootCA != null) {
-      CertificateInfo newClientCertInfo = CertificateInfo.get(clientRootCA);
-      if (newClientCertInfo != null
-          && newClientCertInfo.getCertType() == CertConfigType.K8SCertManager) {
-        throw new PlatformServiceException(
-            Status.BAD_REQUEST,
-            "Certificate rotation is not supported for Kubernetes cert manager managed"
-                + " certificates.");
-      }
-    }
-
     // Allow non-restart upgrade for Kubernetes universes if cert reload is supported
     if (upgradeOption == UpgradeOption.NON_RESTART_UPGRADE) {
       String softwareVersion = userIntent.ybSoftwareVersion;
@@ -516,11 +490,11 @@ public class CertsRotateParams extends UpgradeTaskParams {
         throw new PlatformServiceException(
             Status.BAD_REQUEST, "Certificate not present: " + rootCA);
       }
-      if (!(rootCert.getCertType() == CertConfigType.SelfSigned
-          || rootCert.getCertType() == CertConfigType.HashicorpVault)) {
+      if (rootCert.getCertType() == CertConfigType.CustomCertHostPath) {
         throw new PlatformServiceException(
             Status.BAD_REQUEST,
-            "Kubernetes universes supports only SelfSigned or HashicorpVault certificates.");
+            "CustomCertHostPath certificates are not supported for Kubernetes certificate rotation."
+                + " Use CertManager instead.");
       }
     }
 
@@ -530,11 +504,11 @@ public class CertsRotateParams extends UpgradeTaskParams {
         throw new PlatformServiceException(
             Status.BAD_REQUEST, "Certificate not present: " + clientRootCA);
       }
-      if (!(clientRootCert.getCertType() == CertConfigType.SelfSigned
-          || clientRootCert.getCertType() == CertConfigType.HashicorpVault)) {
+      if (clientRootCert.getCertType() == CertConfigType.CustomCertHostPath) {
         throw new PlatformServiceException(
             Status.BAD_REQUEST,
-            "Kubernetes universes supports only SelfSigned or HashicorpVault certificates.");
+            "CustomCertHostPath certificates are not supported for Kubernetes certificate rotation."
+                + " Use CertManager instead.");
       }
     }
 
