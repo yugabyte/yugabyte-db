@@ -705,8 +705,7 @@ public class AZUtilTest {
     doReturn(cLInfo).when(mockAZUtil).getCloudLocationInfo(any(), any(), any());
     doReturn(mockBlobContainerClient)
         .when(mockAZUtil)
-        .createBlobContainerClient(
-            any(CustomerConfigStorageAzureData.class), anyString(), anyString());
+        .createBlobContainerClient(any(CustomerConfigStorageAzureData.class), anyString());
     UUID randomFile = UUID.randomUUID();
     when(mockAZUtil.getRandomUUID()).thenReturn(randomFile);
     mockAZUtil.validate(azData, new ArrayList<>());

@@ -309,12 +309,8 @@ public class AZUtil implements CloudUtil {
       CustomerConfigStorageAzureData configData, String region) throws BlobStorageException {
     CloudLocationInfoAzure cLInfo =
         (CloudLocationInfoAzure) getCloudLocationInfo(region, configData, null);
-    return createBlobContainerClient(configData, cLInfo.azureUrl, cLInfo.bucket);
-  }
-
-  public BlobContainerClient createBlobContainerClient(
-      CustomerConfigStorageAzureData configData, String azureUrl, String container)
-      throws BlobStorageException {
+    String azureUrl = cLInfo.azureUrl;
+    String container = cLInfo.bucket;
     if (configData.useAzureIam) {
       return createBlobContainerClientWithIam(azureUrl, container);
     } else {
@@ -325,6 +321,16 @@ public class AZUtil implements CloudUtil {
         sasToken = configData.azureSasToken;
       }
       return createBlobContainerClient(azureUrl, sasToken, container);
+    }
+  }
+
+  public BlobContainerClient createBlobContainerClient(
+      CustomerConfigStorageAzureData configData, String azureUrl, String container)
+      throws BlobStorageException {
+    if (configData.useAzureIam) {
+      return createBlobContainerClientWithIam(azureUrl, container);
+    } else {
+      return createBlobContainerClient(azureUrl, configData.azureSasToken, container);
     }
   }
 
