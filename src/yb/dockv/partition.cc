@@ -688,7 +688,7 @@ Result<std::vector<std::string>> PartitionSchema::CreateHashSplitKeys(
     // We don't cache parent_interval / num_tablets into additional variable, because
     // we want to avoid uneven distribution due to floating number truncation and still use integer
     // calculations.
-    uint16_t pend = partition_index * parent_interval / num_tablets;
+    uint16_t pend = min_partition_key + partition_index * parent_interval / num_tablets;
     split_points.push_back(EncodeMultiColumnHashValue(pend));
   }
 
