@@ -2696,10 +2696,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const Schema& schema, int num_tablets, bool colocated,
       CreateTableRequestPB* request, CreateTableResponsePB* resp);
 
-  Status RestoreEntry(
-      const SysRowEntry& entry, const SnapshotId& snapshot_id, const LeaderEpoch& epoch)
-      REQUIRES(mutex_);
-
   Status ImportSnapshotPreprocess(
       const SnapshotInfoPB& snapshot_pb,
       const LeaderEpoch& epoch,

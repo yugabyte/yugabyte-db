@@ -1904,6 +1904,10 @@ void RaftGroupMetadata::RegisterRestoration(const TxnSnapshotRestorationId& rest
     split_child_tablet_ids_[0] = std::string();
     split_child_tablet_ids_[1] = std::string();
   }
+  if (std::find(active_restorations_.begin(), active_restorations_.end(), restoration_id) !=
+      active_restorations_.end()) {
+    return;
+  }
   active_restorations_.push_back(restoration_id);
 }
 

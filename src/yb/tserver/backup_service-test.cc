@@ -40,6 +40,15 @@ class BackupServiceTest : public TabletServerTestBase {
  public:
   BackupServiceTest() : TabletServerTestBase(TableType::YQL_TABLE_TYPE) {}
 
+  Status WriteSingleRow(
+      const std::string& tablet_id, int32_t key, int32_t int_val, const std::string& string_val);
+
+  Status CreateSnapshot(const std::string& tablet_id, const TxnSnapshotId& snapshot_id);
+
+  Status RestoreSnapshot(
+      const std::string& tablet_id, const TxnSnapshotId& snapshot_id,
+      const TxnSnapshotRestorationId& restoration_id);
+
  protected:
   void SetUp() override {
     TabletServerTestBase::SetUp();
@@ -99,67 +108,20 @@ TEST_F(BackupServiceTest, TestSnapshotData) {
   // Verify that the tablet exists.
   ASSERT_OK(mini_server_->server()->tablet_manager()->GetTablet(kTabletId));
 
-  WriteRequestPB write_req;
-  WriteResponsePB write_resp;
-  write_req.set_tablet_id(kTabletId);
-
-  // Send an actual row insert.
-  {
-    AddTestRowInsert(1, 11, "key1", &write_req);
-
-    RpcController rpc;
-    SCOPED_TRACE(write_req.DebugString());
-    ASSERT_OK(proxy_->Write(write_req, &write_resp, &rpc));
-    SCOPED_TRACE(write_resp.DebugString());
-    ASSERT_FALSE(write_resp.has_error());
-  }
-
+  ASSERT_OK(WriteSingleRow(kTabletId, 1, 11, "key1"));
   VerifyRows(schema_, { KeyValue(1, 11) });
 
-  const string snapshot_id = "00000000000000000000000000000000";
-
-  TabletSnapshotOpRequestPB req;
-  TabletSnapshotOpResponsePB resp;
-
-  // Send the create snapshot request.
-  req.set_operation(TabletSnapshotOpRequestPB::CREATE_ON_TABLET);
-  req.set_dest_uuid(mini_server_->server()->fs_manager()->uuid());
-  req.set_snapshot_id(snapshot_id);
-  req.add_tablet_id(kTabletId);
-  {
-    RpcController rpc;
-    SCOPED_TRACE(req.DebugString());
-    ASSERT_OK(backup_proxy_->TabletSnapshotOp(req, &resp, &rpc));
-    SCOPED_TRACE(resp.DebugString());
-    ASSERT_FALSE(resp.has_error());
-  }
-
+  auto snapshot_id = TxnSnapshotId::GenerateRandom();
+  ASSERT_OK(CreateSnapshot(kTabletId, snapshot_id));
   SleepFor(MonoDelta::FromMilliseconds(500));
   LOG(INFO) << "CREATED SNAPSHOT. UPDATING THE TABLET DATA..";
 
-  // Send the second row.
-  {
-    AddTestRowInsert(2, 22, "key1", &write_req);
-
-    RpcController rpc;
-    SCOPED_TRACE(write_req.DebugString());
-    ASSERT_OK(proxy_->Write(write_req, &write_resp, &rpc));
-    SCOPED_TRACE(write_resp.DebugString());
-    ASSERT_FALSE(write_resp.has_error());
-  }
-
+  ASSERT_OK(WriteSingleRow(kTabletId, 2, 22, "key1"));
   VerifyRows(schema_, { KeyValue(1, 11), KeyValue(2, 22) });
 
   // Send the restore snapshot request.
-  req.set_operation(TabletSnapshotOpRequestPB::RESTORE_ON_TABLET);
-  {
-    RpcController rpc;
-    SCOPED_TRACE(req.DebugString());
-    ASSERT_OK(backup_proxy_->TabletSnapshotOp(req, &resp, &rpc));
-    SCOPED_TRACE(resp.DebugString());
-    ASSERT_FALSE(resp.has_error());
-  }
-
+  auto restoration_id = TxnSnapshotRestorationId::GenerateRandom();
+  ASSERT_OK(RestoreSnapshot(kTabletId, snapshot_id, restoration_id));
   SleepFor(MonoDelta::FromMilliseconds(500));
   LOG(INFO) << "RESTORED SNAPSHOT. CHECKING THE TABLET DATA..";
 
@@ -167,6 +129,90 @@ TEST_F(BackupServiceTest, TestSnapshotData) {
   VerifyRows(schema_, { KeyValue(1, 11) });
 
   LOG(INFO) << "THE TABLET DATA IS VALID. Test TestSnapshotData finished.";
+}
+
+TEST_F(BackupServiceTest, RepeatedRestoreRequest) {
+  // Verify that the tablet exists.
+  ASSERT_OK(mini_server_->server()->tablet_manager()->GetTablet(kTabletId));
+
+  ASSERT_OK(WriteSingleRow(kTabletId, 1, 11, "key1"));
+  VerifyRows(schema_, { KeyValue(1, 11) });
+
+  auto snapshot_id = TxnSnapshotId::GenerateRandom();
+  ASSERT_OK(CreateSnapshot(kTabletId, snapshot_id));
+  SleepFor(MonoDelta::FromMilliseconds(500));
+  LOG(INFO) << "CREATED SNAPSHOT. UPDATING THE TABLET DATA..";
+
+  ASSERT_OK(WriteSingleRow(kTabletId, 2, 22, "key1"));
+  VerifyRows(schema_, { KeyValue(1, 11), KeyValue(2, 22) });
+
+  // Send the restore snapshot request.
+  auto restoration_id = TxnSnapshotRestorationId::GenerateRandom();
+  ASSERT_OK(RestoreSnapshot(kTabletId, snapshot_id, restoration_id));
+  SleepFor(MonoDelta::FromMilliseconds(500));
+
+  // Repeat the restoration attempt with the same restoration_id.
+  ASSERT_OK(RestoreSnapshot(kTabletId, snapshot_id, restoration_id));
+  SleepFor(MonoDelta::FromMilliseconds(500));
+  LOG(INFO) << "SENT SNAPSHOT RESTORATION REQUEST TWICE. CHECKING TABLET METADATA..";
+
+  // Verify there is only a single active restoration id in the metadata.
+  tablet::RaftGroupReplicaSuperBlockPB super_block;
+  ASSERT_RESULT(mini_server_->server()->tablet_manager()->GetTablet(kTabletId))
+      ->tablet_metadata()
+      ->ToSuperBlock(&super_block);
+  ASSERT_EQ(super_block.active_restorations_size(), 1);
+  auto recorded_restoration_id =
+      ASSERT_RESULT(FullyDecodeTxnSnapshotRestorationId(super_block.active_restorations(0)));
+  ASSERT_EQ(recorded_restoration_id, restoration_id);
+
+  // Expected only the first row only from the snapshot.
+  VerifyRows(schema_, { KeyValue(1, 11) });
+}
+
+Status BackupServiceTest::WriteSingleRow(
+    const std::string& tablet_id, int32_t key, int32_t int_val, const std::string& string_val) {
+  WriteRequestPB req;
+  req.set_tablet_id(tablet_id);
+  AddTestRowInsert(key, int_val, string_val, &req);
+  RpcController rpc;
+  SCOPED_TRACE(req.DebugString());
+  WriteResponsePB resp;
+  RETURN_NOT_OK(proxy_->Write(req, &resp, &rpc));
+  SCOPED_TRACE(resp.DebugString());
+  return ResponseStatus(resp);
+}
+
+Status BackupServiceTest::CreateSnapshot(
+    const std::string& tablet_id, const TxnSnapshotId& snapshot_id) {
+  TabletSnapshotOpRequestPB req;
+  TabletSnapshotOpResponsePB resp;
+  req.set_operation(TabletSnapshotOpRequestPB::CREATE_ON_TABLET);
+  req.set_dest_uuid(mini_server_->server()->fs_manager()->uuid());
+  req.set_snapshot_id(snapshot_id.data(), snapshot_id.size());
+  req.add_tablet_id(tablet_id);
+  RpcController rpc;
+  SCOPED_TRACE(req.DebugString());
+  RETURN_NOT_OK(backup_proxy_->TabletSnapshotOp(req, &resp, &rpc));
+  SCOPED_TRACE(resp.DebugString());
+  return ResponseStatus(resp);
+}
+
+Status BackupServiceTest::RestoreSnapshot(
+    const std::string& tablet_id, const TxnSnapshotId& snapshot_id,
+    const TxnSnapshotRestorationId& restoration_id) {
+  TabletSnapshotOpRequestPB req;
+  TabletSnapshotOpResponsePB resp;
+  req.set_operation(TabletSnapshotOpRequestPB::RESTORE_ON_TABLET);
+  req.set_dest_uuid(mini_server_->server()->fs_manager()->uuid());
+  req.set_snapshot_id(snapshot_id.data(), snapshot_id.size());
+  req.add_tablet_id(tablet_id);
+  req.set_restoration_id(restoration_id.data(), restoration_id.size());
+  RpcController rpc;
+  SCOPED_TRACE(req.DebugString());
+  RETURN_NOT_OK(backup_proxy_->TabletSnapshotOp(req, &resp, &rpc));
+  SCOPED_TRACE(resp.DebugString());
+  return ResponseStatus(resp);
 }
 
 } // namespace tserver
