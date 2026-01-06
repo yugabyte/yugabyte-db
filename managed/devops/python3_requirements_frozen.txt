@@ -14,7 +14,7 @@ boto==2.49.0
 boto3==1.34.23
 botocore==1.34.23
 cachetools==4.2.4
-certifi==2025.11.12
+certifi==2026.1.4
 cffi==1.17.1
 charset-normalizer==3.4.4
 click==8.1.8
@@ -46,7 +46,7 @@ oauth2client==3.0.0
 oauthlib==3.3.1
 ordered-set==4.0.2
 paramiko==3.4.0
-pip==25.0.1
+pip==25.3;python_version >= '3.9'
 portalocker==2.10.1
 protobuf==5.29.5
 psycopg2==2.9.10
@@ -74,3 +74,4 @@ wheel==0.45.1
 yb-cassandra-driver==3.29.1.1
 setuptools==72.2.0;python_version < '3.9'
 deepdiff==5.5.0;python_version < '3.9'
+pip==25.0.1;python_version < '3.9'

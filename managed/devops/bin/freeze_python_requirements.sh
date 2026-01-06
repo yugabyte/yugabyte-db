@@ -14,6 +14,8 @@ set -euo pipefail
 
 SETUPTOOLS_PY38_VERSION="72.2.0"
 DEEPDIFF_PY38_VERSION="5.5.0"
+PIP_PY38_VERSION="25.0.1"
+PIP_VERSION="25.3"
 
 if [[ ! ${1:-} =~ ^(-y|--yes)$ ]]; then
   echo >&2 "This will remove and re-create the entire virtualenv from ${virtualenv_dir} in order"
@@ -59,6 +61,10 @@ echo "setuptools==${SETUPTOOLS_PY38_VERSION};python_version < '3.9'" >> $FROZEN_
 # Handle the different deepdiff version requirements (8.6.1 is only on 3.9 and up)
 sed -ie "s/\(deepdiff.*==.*\)/\1;python_version >= '3.9'/" $FROZEN_REQUIREMENTS_FILE
 echo "deepdiff==${DEEPDIFF_PY38_VERSION};python_version < '3.9'" >> $FROZEN_REQUIREMENTS_FILE
+
+# Handle the different pip version requirements (25.3 is only on 3.9 and up)
+sed -ie "s/\(pip.*==.*\)/pip==${PIP_VERSION};python_version >= '3.9'/" $FROZEN_REQUIREMENTS_FILE
+echo "pip==${PIP_PY38_VERSION};python_version < '3.9'" >> $FROZEN_REQUIREMENTS_FILE
 
 log_empty_line
 log "Contents of $FROZEN_REQUIREMENTS_FILE:"

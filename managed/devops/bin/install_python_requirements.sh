@@ -104,7 +104,9 @@ else
         "of $FROZEN_REQUIREMENTS_FILE"
     # We will skip grpcio in this check, as it has addition python version requirements included in
     # the requirements.txt, and this data is not stored by pip.
-    if grep -Fvf <(run_pip freeze --all | grep -v ybops) <(egrep -v 'grpcio|protobuf' \
+    # Also skipping pip and setuptools for the same reason
+    if grep -Fvf <(run_pip freeze --all | grep -v ybops) \
+        <(egrep -v 'grpcio|protobuf|pip|setuptools' \
         $FROZEN_REQUIREMENTS_FILE); then
       log_warn "WARNING: discrepancies found between the contents of '$FROZEN_REQUIREMENTS_FILE'" \
               "and what's installed in the virtualenv $virtualenv_dir."
