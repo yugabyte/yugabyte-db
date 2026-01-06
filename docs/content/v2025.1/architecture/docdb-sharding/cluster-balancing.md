@@ -181,11 +181,11 @@ If you upgrade YugabyteDB to a version later than {{<release "2025.1.1">}}, you 
 
 The following flags are recommended for use in {{<release "2025.1.1">}} and later.
 
-##### remote_bootstrap_rate_limit_bytes_per_sec
+#### remote_bootstrap_rate_limit_bytes_per_sec
 
 The maximum transmission rate during a remote bootstrap. This is the total limit across all remote bootstrap sessions for which this process is acting as a sender or receiver. The total limit is therefore 2 × `remote_bootstrap_rate_limit_bytes_per_sec` because a YB-TServer or YB-Master can act as both a sender and receiver at the same time.
 
-##### enable_load_balancing
+#### enable_load_balancing
 
 Enables cluster balancing. Default is true.
 
@@ -198,39 +198,39 @@ It's strongly recommended not to disable the cluster balancer. If the balancer i
 
 The following flags are available in releases prior to {{<release "2025.1.1">}} for fine-tuning cluster balancing performance. These flags are deprecated in favor of the automatic defaults in {{<release "2025.1.1">}} and later.
 
-##### load_balancer_max_concurrent_tablet_remote_bootstraps
+#### load_balancer_max_concurrent_tablet_remote_bootstraps
 
 The maximum number of tablets being remote bootstrapped across the cluster. If set to -1, there is no global limit on the number of concurrent remote bootstraps; per-table or per YB-TServer limits still apply.
 
-##### load_balancer_max_concurrent_tablet_remote_bootstraps_per_table
+#### load_balancer_max_concurrent_tablet_remote_bootstraps_per_table
 
 The maximum number of tablets being remote bootstrapped for any table. The maximum number of remote bootstraps _across the cluster_ is still limited by the flag `load_balancer_max_concurrent_tablet_remote_bootstraps`. This flag prevents a single table from using all the available remote bootstrap sessions and starving other tables.
 
-##### load_balancer_max_inbound_remote_bootstraps_per_tserver
+#### load_balancer_max_inbound_remote_bootstraps_per_tserver
 
 Maximum number of tablets simultaneously remote bootstrapping on a YB-TServer.
 
-##### load_balancer_min_inbound_remote_bootstraps_per_tserver
+#### load_balancer_min_inbound_remote_bootstraps_per_tserver
 
 Minimum number of tablets simultaneously remote bootstrapping on a YB-TServer (if any are required).
 
-##### load_balancer_max_over_replicated_tablets
+#### load_balancer_max_over_replicated_tablets
 
 Maximum number of running tablet replicas per table that are allowed to be over the configured replication factor. This controls the amount of space amplification in the cluster when tablet removal is slow. A value less than 0 means no limit.
 
-##### load_balancer_max_concurrent_adds
+#### load_balancer_max_concurrent_adds
 
 Maximum number of tablet peer replicas to add in any one run of the cluster balancer.
 
-##### load_balancer_max_concurrent_removals
+#### load_balancer_max_concurrent_removals
 
 Maximum number of over-replicated tablet peer removals to do in any one run of the cluster balancer. A value less than 0 means no limit.
 
-##### load_balancer_max_concurrent_moves
+#### load_balancer_max_concurrent_moves
 
 Maximum number of tablet leaders on tablet servers (across the cluster) to move in any one run of the cluster balancer.
 
-##### load_balancer_max_concurrent_moves_per_table
+#### load_balancer_max_concurrent_moves_per_table
 
 Maximum number of tablet leaders per table to move in any one run of the cluster balancer. The maximum number of tablet leader moves _across the cluster_ is still limited by the flag `load_balancer_max_concurrent_moves`. This flag is meant to prevent a single table from using all of the leader moves quota and starving other tables. If set to -1, the number of leader moves per table is set to the global number of leader moves (`load_balancer_max_concurrent_moves`).
 

@@ -52,6 +52,10 @@ In the previous illustration, `T1` and `T2` are in the same node (`node-2`). Yug
 
 ![Leader rebalancing](/images/explore/scalability/sharding-leader-rebalancing.png)
 
+{{<lead link="../../../architecture/docdb-sharding/cluster-balancing/">}}
+For more details on cluster balancing scenarios, see [Cluster balancing](../../../architecture/docdb-sharding/cluster-balancing/).
+{{</lead>}}
+
 {{<note>}}
 Rebalancing is done also for followers and not just for leaders.
 {{</note>}}
