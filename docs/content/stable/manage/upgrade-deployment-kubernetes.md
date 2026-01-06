@@ -149,7 +149,7 @@ To complete and finalise the software upgrade, execute the following yb-admin co
 
 ## YSQL major version upgrade
 
-Upgrades that include a major change in the PostgreSQL version, such as upgrading from 2024.2 (based on PostgreSQL 11) to 2025.1 or later (based on PostgreSQL 15), require additional steps.
+Upgrades that include a major change in the PostgreSQL version, such as upgrading from {{<release "2024.2">}} (based on PostgreSQL 11) to {{<release "2025.1">}} or later (based on PostgreSQL 15), require additional steps.
 
 The following steps assume you are initially deploying YugabyteDB on 2024.2.3.3-b4 and upgrading it to 2025.1.1.2-b3.
 
@@ -179,7 +179,7 @@ After successfully completing the prechecks, remove the new software from the TS
 
 1. Modify the override file in _each AZ_ as follows:
 
-    - Set the ysql_yb_major_version_upgrade_compatibility flag to a value of 11 on both the Master and TServer.
+    - Set the `ysql_yb_major_version_upgrade_compatibility` flag to a value of 11 on both the Master and TServer.
 
     - If authentication is enabled on the cluster, update the environment variable for the pgpassfile on the master pod.
 
@@ -336,7 +336,7 @@ After successfully completing the prechecks, remove the new software from the TS
       --wait
     ```
 
-1. Remove the `ysql_yb_major_version_upgrade_compatibility` gflag and environment variable from the override file. Then, perform a Helm upgrade to apply these changes and unset the previously set flag and variable.
+1. Remove the `ysql_yb_major_version_upgrade_compatibility` flag and environment variable from the override file. Then, perform a Helm upgrade to apply these changes and unset the previously set flag and variable.
 
     ```yaml
     isMultiAz: True
