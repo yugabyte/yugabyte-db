@@ -39,7 +39,6 @@ export interface ExportLogFormFields {
     organizationID?: string;
     basicAuth?: BasicAuth;
     // Dynatrace
-    endpointUrl?: string;
     apiToken?: string;
   };
 }
