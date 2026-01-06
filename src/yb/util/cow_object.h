@@ -101,14 +101,14 @@ class CowObject {
 
   // Return the current state, not reflecting any in-progress mutations.
   const State& state() const {
-    DCHECK(lock_.HasReaders() || lock_.HasWriteLock());
+    DCHECK(lock_.HasReaders() || lock_.DEBUG_HasWriteLock());
     return state_;
   }
 
   // Returns the current dirty state (i.e reflecting in-progress mutations).
   // Should only be called by a thread who previously called StartMutation().
   State* mutable_dirty() {
-    DCHECK(lock_.HasWriteLock());
+    DCHECK(lock_.DEBUG_HasWriteLock());
     is_dirty_ = true;
     return CHECK_NOTNULL(dirty_state_.get());
   }
@@ -116,20 +116,16 @@ class CowObject {
   const State& dirty() const { return *CHECK_NOTNULL(dirty_state_.get()); }
 
   bool is_dirty() const {
-    DCHECK(lock_.HasReaders() || lock_.HasWriteLock());
+    DCHECK(lock_.HasReaders() || lock_.DEBUG_HasWriteLock());
     return is_dirty_;
   }
 
-  // Return true if the current thread holds the write lock.
-  //
-  // If FLAGS_enable_rwc_lock_debugging is true this is accurate; we track the current holder's tid.
-  // Else, this may sometimes return true even if another thread is in fact the holder.
-  // Thus, this is only really useful in the context of a DCHECK assertion.
-  bool HasWriteLock() const { return lock_.HasWriteLock(); }
+  // [DEBUG mode only] Return true iff the current thread holds the write or commit lock.
+  bool DEBUG_HasWriteLock() const { return lock_.DEBUG_HasWriteLock(); }
 
   // Should be invoked only from ctor of appropriate object.
   State& DirectStateForInitialSetup() {
-    DCHECK(!lock_.HasReaders() && !lock_.HasWriteLock());
+    DCHECK(!lock_.HasReaders() && !lock_.DEBUG_HasWriteLock());
     return state_;
   }
 

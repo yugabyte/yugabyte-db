@@ -995,7 +995,7 @@ XClusterOutboundReplicationGroup::GetNamespaceInfoSafe(
 
 Result<XClusterOutboundReplicationGroup::NamespaceInfoPB*>
 XClusterOutboundReplicationGroup::GetNamespaceInfo(const NamespaceId& namespace_id) {
-  CHECK(outbound_rg_info_->metadata().HasWriteLock());
+  DCHECK(outbound_rg_info_->metadata().DEBUG_HasWriteLock());
   SCHECK(
       HasNamespaceUnlocked(namespace_id), NotFound,
       Format("$0 Namespace $1 not found", LogPrefix(), namespace_id));

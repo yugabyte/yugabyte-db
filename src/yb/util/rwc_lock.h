@@ -32,13 +32,10 @@
 #pragma once
 
 #include <condition_variable>
-#include <unordered_map>
 
 #include "yb/gutil/macros.h"
 
-#include "yb/util/condition_variable.h"
 #include "yb/util/mutex.h"
-#include "yb/util/stack_trace.h"
 
 // Enable mechanism to detect deadlocks with mutex that does not belong to RWCLock.
 // For instance it could detect the following scenario:
@@ -94,7 +91,7 @@ namespace yb {
 // in cow_object.h is more convenient than manual locking.
 //
 // NOTE: this implementation currently does not implement any starvation protection
-// or fairness. If the read lock is being constantly acquired (i.e reader count
+// or fairness. If the read lock is being constantly acquired (i.e., reader count
 // never drops to 0) then UpgradeToCommitLock() may block arbitrarily long.
 class RWCLock {
  public:
@@ -120,12 +117,8 @@ class RWCLock {
   // Useful for debug assertions.
   bool HasReaders() const;
 
-  // Return true if the current thread holds the write lock.
-  //
-  // If FLAGS_enable_rwc_lock_debugging is true this is accurate; we track the current holder's tid.
-  // Else, this may sometimes return true even if another thread is in fact the holder.
-  // Thus, this is only really useful in the context of a DCHECK assertion.
-  bool HasWriteLock() const;
+  // [DEBUG mode only] Return true iff the current thread holds the write or commit lock.
+  bool DEBUG_HasWriteLock() const;
 
   // Boost-like wrappers, so boost lock guards work
   void lock_shared() { ReadLock(); }
@@ -149,11 +142,9 @@ class RWCLock {
   void CommitUnlock() RELEASE();
 
  private:
-  // Lock which protects reader_count_ and write_locked_.
-  // Additionally, while the commit lock is held, the
-  // locking thread holds this mutex, which prevents any new
-  // threads from obtaining the lock in any mode.
-
+  // The thread (there can be only one) that holds this COW lock in write or commit mode holds this
+  // mutex.
+  //
   // Thread sanitizer does not understand timed_mutex and cannot catch related issues.
   // So use std::mutex with it.
 #if defined(THREAD_SANITIZER)
@@ -162,13 +153,26 @@ class RWCLock {
   mutable std::timed_mutex write_mutex_;
 #endif
 
-#ifndef NDEBUG
-  CoarseTimePoint write_start_;
-#endif
   std::mutex commit_mutex_;
+  // Lower bits hold number of readers;
+  // high bits (kCommitActive, kCommitPending) hold information about acquiring/holding commit mode.
+  // High bit changes require holding commit_mutex_.
   std::atomic<size_t> reader_counter_{0};
-  std::condition_variable no_readers_;
-  std::condition_variable no_writers_;
+  std::condition_variable no_readers_; // Always hold commit_mutex_ while using this.
+  std::condition_variable no_committer_; // Always hold commit_mutex_ while using this.
+
+  //------------------------------------------------------------------------------------------------
+  // Information stored about the last holder of the write lock.
+
+  mutable std::mutex write_lock_holder_info_mutex_;
+
+  // Always available.
+  CoarseTimePoint write_acquire_time_ GUARDED_BY(write_mutex_);
+  // Available only in DEBUG mode or if FLAGS_enable_rwc_lock_debugging is true..
+  int64_t write_lock_holder_thread_id_ GUARDED_BY(write_lock_holder_info_mutex_) {-1};
+  // Available only if FLAGS_enable_rwc_lock_debugging is true.
+  // This will be the stack trace at the time the write lock was taken.
+  std::string write_lock_holder_stack_trace_ GUARDED_BY(write_lock_holder_info_mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(RWCLock);
 };
