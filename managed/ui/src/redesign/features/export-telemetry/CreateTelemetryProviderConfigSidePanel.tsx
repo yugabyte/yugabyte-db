@@ -153,7 +153,7 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
         }
       }
       if (values.config.type === TelemetryProviderType.DYNATRACE) {
-        payload.config.endpoint = values.config?.endpointUrl;
+        payload.config.endpoint = values.config?.endpoint;
         payload.config.apiToken = values.config?.apiToken;
       }
       return await createTelemetryProvider.mutateAsync(payload);
@@ -559,7 +559,7 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
           </YBLabel>
           <YBInputField
             control={control}
-            name="config.endpointUrl"
+            name="config.endpoint"
             fullWidth
             disabled={isViewMode}
             inputProps={{
