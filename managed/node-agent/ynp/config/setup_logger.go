@@ -55,7 +55,8 @@ func SetupLogger(ctx context.Context, config map[string]map[string]any) {
 		DefaultMaxBackups,
 		DefaultMaxAgeDays,
 		logLevel,
-		true,
+		true,  /* enableConsole */
+		false, /* loadConfigFile */
 	)
 	// Set file permissions
 	_ = os.Chmod(logPath, 0644)

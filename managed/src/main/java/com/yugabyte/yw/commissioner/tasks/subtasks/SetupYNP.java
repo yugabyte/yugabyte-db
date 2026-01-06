@@ -142,7 +142,6 @@ public class SetupYNP extends NodeTaskBase {
     // Extract only the installer file.
     sb.append(" && tar --no-same-owner -zxf ").append(targetPackagePath);
     sb.append(" --strip-components=1 --exclude='*/devops' -C ").append(ynpStagingDir);
-    sb.append(" && tar --no-same-owner -zxf ").append(targetPackagePath);
     // Move the node-agent source folder to the right location.
     sb.append(" && mv -f ").append(ynpStagingDir);
     sb.append(" ").append(nodeAgentHomePath);

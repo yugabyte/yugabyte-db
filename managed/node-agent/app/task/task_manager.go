@@ -159,7 +159,7 @@ func (m *TaskManager) Submit(
 	}
 	util.FileLogger().
 		Infof(ctx, "Submitted task %s with timeout in %.2f secs", taskID, time.Until(deadline).Seconds())
-	parentCtx := util.InheritTracingIDs(ctx, context.Background())
+	parentCtx := util.InheritContextKeys(ctx, context.Background())
 	tInfoCtx, tInfoCancel := context.WithCancel(parentCtx)
 	deadlineCtx, deadlineCancel := context.WithDeadline(tInfoCtx, deadline)
 	cancelFnc := func() {
