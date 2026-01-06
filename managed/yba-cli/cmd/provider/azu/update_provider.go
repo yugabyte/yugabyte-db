@@ -389,6 +389,8 @@ func init() {
 				"Image bundle name, machine image and SSH user are required key-value pairs.",
 				formatter.GreenColor)+
 			" The default SSH Port is 22. Default marks the image bundle as default for the provider. "+
+			"If default is not specified, the bundle will automatically be set as default "+
+			"if no other default bundle exists for the same architecture. "+
 			"Each image bundle can be added using separate --add-image-bundle flag.")
 
 	updateAzureProviderCmd.Flags().StringArray("edit-image-bundle", []string{},
@@ -701,7 +703,6 @@ func addAzureImageBundles(
 	if len(imageBundles) == 0 {
 		return providerImageBundles
 	}
-	imageBundleLen := len(imageBundles)
 	for _, i := range imageBundles {
 		bundle := providerutil.BuildImageBundleMapFromString(i, "add")
 		bundle = providerutil.DefaultImageBundleValues(bundle)
@@ -738,8 +739,22 @@ func addAzureImageBundles(
 			)
 			defaultBundle = false
 		}
-		if imageBundleLen == 1 && !defaultBundle {
-			defaultBundle = true
+
+		// If default not explicitly set, check if there's already a default bundle
+		// for this architecture. If not, set this bundle as default.
+		if !defaultBundle {
+			arch := strings.ToLower(bundle["arch"])
+			hasDefaultForArch := false
+			for _, existingBundle := range providerImageBundles {
+				existingArch := strings.ToLower(existingBundle.Details.GetArch())
+				if existingArch == arch && existingBundle.GetUseAsDefault() {
+					hasDefaultForArch = true
+					break
+				}
+			}
+			if !hasDefaultForArch {
+				defaultBundle = true
+			}
 		}
 
 		imageBundle := ybaclient.ImageBundle{
