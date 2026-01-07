@@ -36,6 +36,7 @@ yba provider onprem update --name <provider-name> \
       --node-exporter-port int      [Optional] Node Exporter Port.
       --ntp-servers stringArray     [Optional] List of NTP Servers. Can be provided as separate flags or as comma-separated values.
       --yb-home-dir string          [Optional] YB Home directory.
+      --use-clockbound              [Optional] Configure and use ClockBound for clock synchronization. Requires ClockBound to be set up on the nodes.
   -h, --help                        help for update
 ```
 
