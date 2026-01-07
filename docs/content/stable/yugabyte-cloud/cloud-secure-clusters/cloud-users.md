@@ -65,6 +65,14 @@ Although not a superuser, `yb_superuser` includes sufficient privileges to perfo
 
 `yb_superuser` is the highest privileged role you have access to in YugabyteDB Aeon. You can't delete, change the passwords, or login using the `postgres` or `yugabyte` superuser roles.
 
+To create another database admin user, use GRANT and ALTER to grant the `yb_superuser` role and role attributes. For example:
+
+```sql
+CREATE ROLE my_dbadmin WITH LOGIN PASSWORD 'password';
+GRANT yb_superuser to my_dbadmin;
+ALTER ROLE my_dbadmin WITH CREATEROLE CREATEDB BYPASSRLS INHERIT;
+```
+
 ### yb_db_admin
 
 The `yb_db_admin` role is specific to YugabyteDB Aeon clusters and allows non-superuser roles to perform a number of privileged operations in a manner similar to a superuser, such as performing operations on objects it does not own.
