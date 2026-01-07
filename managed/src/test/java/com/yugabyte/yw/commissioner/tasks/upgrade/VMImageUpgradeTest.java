@@ -215,6 +215,8 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
+    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckServiceLiveness);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckNodeCommandExecution);
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckNodesAreSafeToTakeDown);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateConsistencyCheck);
     assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
@@ -406,6 +408,8 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
+    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckServiceLiveness);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckNodeCommandExecution);
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckNodesAreSafeToTakeDown);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateConsistencyCheck);
     assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);

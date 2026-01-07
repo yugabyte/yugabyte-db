@@ -1270,6 +1270,11 @@ public enum TaskType {
   TablespaceValidationOnRemove(
       com.yugabyte.yw.commissioner.tasks.subtasks.TablespaceValidationOnRemove.class),
 
+  CheckServiceLiveness(com.yugabyte.yw.commissioner.tasks.subtasks.CheckServiceLiveness.class),
+
+  CheckNodeCommandExecution(
+      com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodeCommandExecution.class),
+
   OperatorImportResource(com.yugabyte.yw.commissioner.tasks.subtasks.OperatorImportResource.class);
 
   private final Class<? extends ITask> taskClass;

@@ -12,6 +12,7 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -261,6 +262,12 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
               })
           .when(mockYsqlQueryExecutor)
           .executeQueryInNodeShell(any(), any(), any(), anyBoolean(), anyBoolean());
+      // Mock for CheckNodeCommandExecution - specific command only
+      lenient()
+          .when(
+              mockNodeUniverseManager.runCommand(
+                  any(), any(), eq(Arrays.asList("echo", "command-execution-test")), any()))
+          .thenReturn(ShellResponse.create(0, "Command output:\ncommand-execution-test"));
     } catch (Exception ignored) {
       fail();
     }
@@ -478,7 +485,16 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
   }
 
   protected TaskType[] getPrecheckTasks(boolean hasRollingRestarts) {
+    return getPrecheckTasks(hasRollingRestarts, hasRollingRestarts);
+  }
+
+  protected TaskType[] getPrecheckTasks(
+      boolean hasRollingRestarts, boolean includeNodeComprehensivePrechecks) {
     List<TaskType> types = new ArrayList<>();
+    if (includeNodeComprehensivePrechecks) {
+      types.add(TaskType.CheckServiceLiveness);
+      types.add(TaskType.CheckNodeCommandExecution);
+    }
     if (hasRollingRestarts) {
       types.add(TaskType.CheckNodesAreSafeToTakeDown);
     }
