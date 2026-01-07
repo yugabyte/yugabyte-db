@@ -32,7 +32,9 @@ To obtain your API token:
 
 1. Under **API Key management**, copy your API token. If the **API Token** field is blank, click **Generate Key**, and then copy the resulting API token.
 
-To obtain your API token using the REST API:
+To obtain your API token using the REST API, you can use the Auth token generated when you sign in. By default, Auth tokens expire after 12 hours (you can configure Auth token expiry using the `yb.authtoken.token_expiry` [runtime configuration](../administer-yugabyte-platform/manage-runtime-config/)).
+
+Do the following:
 
 1. Sign in to YugabyteDB Anywhere:
 
@@ -45,7 +47,7 @@ To obtain your API token using the REST API:
 
     This returns an Auth token. For example:
 
-    ```sh
+    ```yaml{.nocopy}
     {"authToken":"3efcf456aa78d912bfc3bd4ef5dcc678","customerUUID":"1e2c345d-e678-9fb1-b234-fcb56a78c9e0","userUUID":"234ec5e6-b7bd-8e90-1234-5bfe678d90d1"}%
     ```
 
@@ -59,7 +61,7 @@ To obtain your API token using the REST API:
     -k
     ```
 
-    ```sh
+    ```yaml{.nocopy}
     {"apiToken":"27011623-05b6-47cc-81a8-bce47ba911a4","apiTokenVersion":6,"customerUUID":"1e2c345d-e678-9fb1-b234-fcb56a78c9e0","userUUID":"234ec5e6-b7bd-8e90-1234-5bfe678d90d1"}%
     ```
 
@@ -81,7 +83,7 @@ curl \
 
 This returns the UUID. For example:
 
-```sh
+```yaml{.nocopy}
 ["1e2c345d-e678-9fb1-b234-fcb56a78c9e0"]
 ```
 
