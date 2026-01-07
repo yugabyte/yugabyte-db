@@ -273,6 +273,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " a support bundle.",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<String> supportBundleApplicationLogsRegexPattern =
+      new ConfKeyInfo<>(
+          "yb.support_bundle.application_logs_regex_pattern",
+          ScopeType.GLOBAL,
+          "Application Logs Regex Pattern",
+          "Regex pattern used to filter application log files when creating support bundles.",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> snapshotCreationMaxAttempts =
       new ConfKeyInfo<>(
           "yb.snapshot_creation.max_attempts",
