@@ -14,9 +14,13 @@
 #include <fstream>
 
 #include "yb/util/env.h"
+#include "yb/util/flags.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/ysql_binary_runner.h"
+
+DEFINE_RUNTIME_bool(ysql_clone_disable_connections, true,
+                    "Disable connections to the cloned database during the clone process.");
 
 namespace yb {
 
@@ -67,7 +71,9 @@ Result<std::string> YsqlDumpRunner::RunAndModifyForClone(
   std::string line;
   std::stringstream modified_dump;
   while (std::getline(input_script_stream, line)) {
-    modified_dump << ModifyLine(line, target_db_name, source_owner_re, alter_owner) << std::endl;
+    modified_dump << ModifyLine(
+        line, target_db_name, source_owner_re, alter_owner, FLAGS_ysql_clone_disable_connections)
+                  << std::endl;
   }
   return modified_dump.str();
 }
@@ -88,8 +94,12 @@ std::string MakeDisallowConnectionsString(const std::string& new_db) {
 
 std::string YsqlDumpRunner::ModifyLine(
     const std::string& line, const std::string& new_db, const boost::regex& owner_regex,
-    const std::string& alter_owner) {
+    const std::string& alter_owner, bool disallow_db_connections) {
   std::string modified_line = boost::regex_replace(line, owner_regex, alter_owner);
+  std::string disallow_db_connections_stmt = "";
+  if (disallow_db_connections) {
+    disallow_db_connections_stmt = MakeDisallowConnectionsString(new_db);
+  }
   std::vector<std::string> values;
   if (boost::regex_split(std::back_inserter(values), modified_line, QUOTED_DATABASE_RE)) {
     return values[0] + " DATABASE \"" + new_db + "\" " + values[2];
@@ -102,13 +112,13 @@ std::string YsqlDumpRunner::ModifyLine(
   if (boost::regex_split(std::back_inserter(values), modified_line, QUOTED_CONNECT_RE)) {
     std::string s = boost::replace_all_copy(new_db, "'", "\\'");
     return "\\connect -reuse-previous=on \"dbname='" + s + "'\"" + "\n" +
-           MakeDisallowConnectionsString(new_db);
+           disallow_db_connections_stmt;
   }
   values.clear();
   if (boost::regex_split(std::back_inserter(values), modified_line, UNQUOTED_CONNECT_RE)) {
     std::string s = boost::replace_all_copy(new_db, "'", "\\'");
     return "\\connect -reuse-previous=on \"dbname='" + s + "'\"" + "\n" +
-           MakeDisallowConnectionsString(new_db);
+           disallow_db_connections_stmt;
   }
   return modified_line;
 }

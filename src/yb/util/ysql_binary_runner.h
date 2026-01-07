@@ -57,7 +57,7 @@ class YsqlDumpRunner : public YsqlBinaryRunner {
 
   std::string ModifyLine(
       const std::string& line, const std::string& new_db, const boost::regex& source_owner_re,
-      const std::string& alter_owner);
+      const std::string& alter_owner, bool disallow_db_connections);
 };
 
 class YsqlshRunner : public YsqlBinaryRunner {
