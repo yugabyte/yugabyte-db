@@ -4,6 +4,28 @@
 --
 -- Logical test on small size table, using column-ref expression index.
 --
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set filename :abs_srcdir '/yb_commands/explainrun.sql'
+\i :filename
+-- A helper script to explain and run a query.  Use in regress tests by
+-- defining :explain, :query, and optionally :hint#.
+\set explain1 ':explain :hint1 :query;'
+\set explain2 ':explain1 :explain :hint2 :query;'
+\set explain3 ':explain2 :explain :hint3 :query;'
+\set explain4 ':explain3 :explain :hint4 :query;'
+\set explain5 ':explain4 :explain :hint5 :query;'
+\set explain1run1 ':explain1; :hint1 :query;'
+\set explain2run2 ':explain2; :hint1 :query; :hint2 :query;'
+\set explain3run3 ':explain3; :hint1 :query; :hint2 :query; :hint3 :query;'
+\set explain4run4 ':explain4; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query;'
+\set explain5run5 ':explain5; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query; :hint5 :query;'
+-- Default to no hints.
+\set hint1 ''
+\set hint2 ''
+\set hint3 ''
+\set hint4 ''
+\set hint5 ''
+\set explain 'EXPLAIN (COSTS OFF)'
 CREATE TABLE text_books ( id int PRIMARY KEY, author text, year int);
 CREATE INDEX text_books_author_first_name ON text_books (author);
 --
@@ -18,7 +40,10 @@ INSERT INTO text_books (id, author, year)
 INSERT INTO text_books (id, author, year)
   VALUES (5, '{ "first_name": "Stephen", "last_name": "Hawking" }', 1988);
 --
-EXPLAIN (COSTS OFF) SELECT id FROM text_books WHERE author = 'Hello World' ORDER BY year;
+SELECT $$
+SELECT id FROM text_books WHERE author = 'Hello World' ORDER BY year
+$$ AS query \gset
+:explain1run1
                             QUERY PLAN                             
 -------------------------------------------------------------------
  Sort
@@ -27,13 +52,15 @@ EXPLAIN (COSTS OFF) SELECT id FROM text_books WHERE author = 'Hello World' ORDER
          Index Cond: (author = 'Hello World'::text)
 (4 rows)
 
-SELECT id FROM text_books WHERE author = 'Hello World' ORDER BY year;
  id 
 ----
 (0 rows)
 
-EXPLAIN (COSTS OFF) SELECT id FROM text_books
-  WHERE author = '{ "first_name": "William", "last_name": "Shakespeare" }' ORDER BY year;
+SELECT $$
+SELECT id FROM text_books
+  WHERE author = '{ "first_name": "William", "last_name": "Shakespeare" }' ORDER BY year
+$$ AS query \gset
+:explain1run1
                                            QUERY PLAN                                           
 ------------------------------------------------------------------------------------------------
  Sort
@@ -42,8 +69,6 @@ EXPLAIN (COSTS OFF) SELECT id FROM text_books
          Index Cond: (author = '{ "first_name": "William", "last_name": "Shakespeare" }'::text)
 (4 rows)
 
-SELECT id FROM text_books
-  WHERE author = '{ "first_name": "William", "last_name": "Shakespeare" }' ORDER BY year;
  id 
 ----
   2
@@ -52,7 +77,10 @@ SELECT id FROM text_books
 
 -- Drop INDEX and run again.
 DROP index text_books_author_first_name;
-EXPLAIN (COSTS OFF) SELECT id FROM text_books WHERE author = 'Hello World' ORDER BY year;
+SELECT $$
+SELECT id FROM text_books WHERE author = 'Hello World' ORDER BY year
+$$ AS query \gset
+:explain1run1
                        QUERY PLAN                       
 --------------------------------------------------------
  Sort
@@ -61,13 +89,15 @@ EXPLAIN (COSTS OFF) SELECT id FROM text_books WHERE author = 'Hello World' ORDER
          Storage Filter: (author = 'Hello World'::text)
 (4 rows)
 
-SELECT id FROM text_books WHERE author = 'Hello World' ORDER BY year;
  id 
 ----
 (0 rows)
 
-EXPLAIN (COSTS OFF) SELECT id FROM text_books
-  WHERE author = '{ "first_name": "William", "last_name": "Shakespeare" }' ORDER BY year;
+SELECT $$
+SELECT id FROM text_books
+  WHERE author = '{ "first_name": "William", "last_name": "Shakespeare" }' ORDER BY year
+$$ AS query \gset
+:explain1run1
                                              QUERY PLAN                                             
 ----------------------------------------------------------------------------------------------------
  Sort
@@ -76,8 +106,6 @@ EXPLAIN (COSTS OFF) SELECT id FROM text_books
          Storage Filter: (author = '{ "first_name": "William", "last_name": "Shakespeare" }'::text)
 (4 rows)
 
-SELECT id FROM text_books
-  WHERE author = '{ "first_name": "William", "last_name": "Shakespeare" }' ORDER BY year;
  id 
 ----
   2
@@ -117,8 +145,11 @@ INSERT INTO books (id, details)
                 "year": 1988,
                 "genre": "science",
                 "editors": ["Melisa", "Mark", "John"] }');
-EXPLAIN (COSTS OFF) SELECT id FROM books WHERE details->'author'->>'first_name' = 'Hello World'
-  ORDER BY details->>'name';
+SELECT $$
+SELECT id FROM books WHERE details->'author'->>'first_name' = 'Hello World'
+  ORDER BY details->>'name'
+$$ AS query \gset
+:explain1run1
                                             QUERY PLAN                                            
 --------------------------------------------------------------------------------------------------
  Sort
@@ -127,14 +158,15 @@ EXPLAIN (COSTS OFF) SELECT id FROM books WHERE details->'author'->>'first_name' 
          Index Cond: (((details -> 'author'::text) ->> 'first_name'::text) = 'Hello World'::text)
 (4 rows)
 
-SELECT id FROM books WHERE details->'author'->>'first_name' = 'Hello World'
-  ORDER BY details->>'name';
  id 
 ----
 (0 rows)
 
-EXPLAIN (COSTS OFF) SELECT id FROM books WHERE details->'author'->>'first_name' = 'Charles'
-  ORDER BY details->>'name';
+SELECT $$
+SELECT id FROM books WHERE details->'author'->>'first_name' = 'Charles'
+  ORDER BY details->>'name'
+$$ AS query \gset
+:explain1run1
                                           QUERY PLAN                                          
 ----------------------------------------------------------------------------------------------
  Sort
@@ -143,8 +175,6 @@ EXPLAIN (COSTS OFF) SELECT id FROM books WHERE details->'author'->>'first_name' 
          Index Cond: (((details -> 'author'::text) ->> 'first_name'::text) = 'Charles'::text)
 (4 rows)
 
-SELECT id FROM books WHERE details->'author'->>'first_name' = 'Charles'
-  ORDER BY details->>'name';
  id 
 ----
   4
@@ -153,8 +183,11 @@ SELECT id FROM books WHERE details->'author'->>'first_name' = 'Charles'
 
 -- Drop INDEX and run again.
 DROP index books_author_first_name;
-EXPLAIN (COSTS OFF) SELECT id FROM books WHERE details->'author'->>'first_name' = 'Hello World'
-  ORDER BY details->>'name';
+SELECT $$
+SELECT id FROM books WHERE details->'author'->>'first_name' = 'Hello World'
+  ORDER BY details->>'name'
+$$ AS query \gset
+:explain1run1
                                               QUERY PLAN                                              
 ------------------------------------------------------------------------------------------------------
  Sort
@@ -163,14 +196,15 @@ EXPLAIN (COSTS OFF) SELECT id FROM books WHERE details->'author'->>'first_name' 
          Storage Filter: (((details -> 'author'::text) ->> 'first_name'::text) = 'Hello World'::text)
 (4 rows)
 
-SELECT id FROM books WHERE details->'author'->>'first_name' = 'Hello World'
-  ORDER BY details->>'name';
  id 
 ----
 (0 rows)
 
-EXPLAIN (COSTS OFF) SELECT id FROM books WHERE details->'author'->>'first_name' = 'Charles'
-  ORDER BY details->>'name';
+SELECT $$
+SELECT id FROM books WHERE details->'author'->>'first_name' = 'Charles'
+  ORDER BY details->>'name'
+$$ AS query \gset
+:explain1run1
                                             QUERY PLAN                                            
 --------------------------------------------------------------------------------------------------
  Sort
@@ -179,8 +213,6 @@ EXPLAIN (COSTS OFF) SELECT id FROM books WHERE details->'author'->>'first_name' 
          Storage Filter: (((details -> 'author'::text) ->> 'first_name'::text) = 'Charles'::text)
 (4 rows)
 
-SELECT id FROM books WHERE details->'author'->>'first_name' = 'Charles'
-  ORDER BY details->>'name';
  id 
 ----
   4

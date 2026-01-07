@@ -1,3 +1,25 @@
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set filename :abs_srcdir '/yb_commands/explainrun.sql'
+\i :filename
+-- A helper script to explain and run a query.  Use in regress tests by
+-- defining :explain, :query, and optionally :hint#.
+\set explain1 ':explain :hint1 :query;'
+\set explain2 ':explain1 :explain :hint2 :query;'
+\set explain3 ':explain2 :explain :hint3 :query;'
+\set explain4 ':explain3 :explain :hint4 :query;'
+\set explain5 ':explain4 :explain :hint5 :query;'
+\set explain1run1 ':explain1; :hint1 :query;'
+\set explain2run2 ':explain2; :hint1 :query; :hint2 :query;'
+\set explain3run3 ':explain3; :hint1 :query; :hint2 :query; :hint3 :query;'
+\set explain4run4 ':explain4; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query;'
+\set explain5run5 ':explain5; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query; :hint5 :query;'
+-- Default to no hints.
+\set hint1 ''
+\set hint2 ''
+\set hint3 ''
+\set hint4 ''
+\set hint5 ''
+\set explain 'EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE)'
 -- test yb_hash_code as a function
 SELECT yb_hash_code(1,2,3);
  yb_hash_code 
@@ -194,14 +216,14 @@ DROP TYPE mood;
 -- test basic pushdown on a table with one primary hash key column
 CREATE TABLE test_table_one_primary (x INT PRIMARY KEY, y INT);
 INSERT INTO test_table_one_primary SELECT i,i FROM generate_series(1, 10000) i;
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM test_table_one_primary WHERE yb_hash_code(x) = 10427;
+\set query 'SELECT * FROM test_table_one_primary WHERE yb_hash_code(x) = 10427'
+:explain1run1
                                            QUERY PLAN                                           
 ------------------------------------------------------------------------------------------------
  Index Scan using test_table_one_primary_pkey on test_table_one_primary (actual rows=1 loops=1)
    Index Cond: (yb_hash_code(x) = 10427)
 (2 rows)
 
-SELECT * FROM test_table_one_primary WHERE yb_hash_code(x) = 10427;
   x   |  y   
 ------+------
  3381 | 3381
@@ -224,7 +246,8 @@ SELECT * FROM test_table_one_primary WHERE yb_hash_code(x) < 512 LIMIT 5;
  7947 | 7947
 (5 rows)
 
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT x, yb_hash_code(x) FROM test_table_one_primary WHERE x IN (1, 2, 3, 4) AND yb_hash_code(x) < 50000 ORDER BY x;
+\set query 'SELECT x, yb_hash_code(x) FROM test_table_one_primary WHERE x IN (1, 2, 3, 4) AND yb_hash_code(x) < 50000 ORDER BY x'
+:explain1run1
                                               QUERY PLAN                                              
 ------------------------------------------------------------------------------------------------------
  Sort (actual rows=3 loops=1)
@@ -234,7 +257,6 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT x, yb_hash_code(x) 
          Index Cond: ((x = ANY ('{1,2,3,4}'::integer[])) AND (yb_hash_code(x) < 50000))
 (5 rows)
 
-SELECT x, yb_hash_code(x) FROM test_table_one_primary WHERE x IN (1, 2, 3, 4) AND yb_hash_code(x) < 50000 ORDER BY x;
  x | yb_hash_code 
 ---+--------------
  1 |         4624
@@ -242,27 +264,27 @@ SELECT x, yb_hash_code(x) FROM test_table_one_primary WHERE x IN (1, 2, 3, 4) AN
  4 |        40623
 (3 rows)
 
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(x) FROM test_table_one_primary WHERE yb_hash_code(x) <= 20 AND yb_hash_code(x) < 9;
+\set query 'SELECT yb_hash_code(x) FROM test_table_one_primary WHERE yb_hash_code(x) <= 20 AND yb_hash_code(x) < 9'
+:explain1run1
                                            QUERY PLAN                                           
 ------------------------------------------------------------------------------------------------
  Index Scan using test_table_one_primary_pkey on test_table_one_primary (actual rows=1 loops=1)
    Index Cond: ((yb_hash_code(x) <= 20) AND (yb_hash_code(x) < 9))
 (2 rows)
 
-SELECT yb_hash_code(x) FROM test_table_one_primary WHERE yb_hash_code(x) <= 20 AND yb_hash_code(x) < 9;
  yb_hash_code 
 --------------
             3
 (1 row)
 
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(x) FROM test_table_one_primary WHERE yb_hash_code(x) <= 20 AND yb_hash_code(x) > 90;
+\set query 'SELECT yb_hash_code(x) FROM test_table_one_primary WHERE yb_hash_code(x) <= 20 AND yb_hash_code(x) > 90'
+:explain1run1
                                            QUERY PLAN                                           
 ------------------------------------------------------------------------------------------------
  Index Scan using test_table_one_primary_pkey on test_table_one_primary (actual rows=0 loops=1)
    Index Cond: ((yb_hash_code(x) <= 20) AND (yb_hash_code(x) > 90))
 (2 rows)
 
-SELECT yb_hash_code(x) FROM test_table_one_primary WHERE yb_hash_code(x) <= 20 AND yb_hash_code(x) > 90;
  yb_hash_code 
 --------------
 (0 rows)
@@ -307,7 +329,8 @@ SELECT * FROM test_table_one_primary WHERE yb_hash_code(x, y) < 512 LIMIT 5;
  8546 | 8546
 (5 rows)
 
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM test_table_one_primary WHERE yb_hash_code(x, y) = 10;
+\set query 'SELECT * FROM test_table_one_primary WHERE yb_hash_code(x, y) = 10'
+:explain1run1
                                        QUERY PLAN                                       
 ----------------------------------------------------------------------------------------
  Index Only Scan using test_secondary on test_table_one_primary (actual rows=2 loops=1)
@@ -315,14 +338,14 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM test_table_o
    Heap Fetches: 0
 (3 rows)
 
-SELECT * FROM test_table_one_primary WHERE yb_hash_code(x, y) = 10;
   x   |  y   
 ------+------
  2430 | 2430
  8867 | 8867
 (2 rows)
 
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(x, y) FROM test_table_one_primary WHERE yb_hash_code(x, y) <= 20 AND yb_hash_code(x, y) < 11;
+\set query 'SELECT yb_hash_code(x, y) FROM test_table_one_primary WHERE yb_hash_code(x, y) <= 20 AND yb_hash_code(x, y) < 11'
+:explain1run1
                                        QUERY PLAN                                       
 ----------------------------------------------------------------------------------------
  Index Only Scan using test_secondary on test_table_one_primary (actual rows=2 loops=1)
@@ -330,14 +353,14 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(x, y) 
    Heap Fetches: 0
 (3 rows)
 
-SELECT yb_hash_code(x, y) FROM test_table_one_primary WHERE yb_hash_code(x, y) <= 20 AND yb_hash_code(x, y) < 11;
  yb_hash_code 
 --------------
            10
            10
 (2 rows)
 
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(x, y) FROM test_table_one_primary WHERE yb_hash_code(x, y) <= 20 AND yb_hash_code(x, y) > 110;
+\set query 'SELECT yb_hash_code(x, y) FROM test_table_one_primary WHERE yb_hash_code(x, y) <= 20 AND yb_hash_code(x, y) > 110'
+:explain1run1
                                        QUERY PLAN                                       
 ----------------------------------------------------------------------------------------
  Index Only Scan using test_secondary on test_table_one_primary (actual rows=0 loops=1)
@@ -345,13 +368,13 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(x, y) 
    Heap Fetches: 0
 (3 rows)
 
-SELECT yb_hash_code(x, y) FROM test_table_one_primary WHERE yb_hash_code(x, y) <= 20 AND yb_hash_code(x, y) > 110;
  yb_hash_code 
 --------------
 (0 rows)
 
 -- testing with a qualification on yb_hash_code(x) and x
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM test_table_one_primary WHERE yb_hash_code(x) < 512 AND x < 90;
+\set query 'SELECT * FROM test_table_one_primary WHERE yb_hash_code(x) < 512 AND x < 90'
+:explain1run1
                                            QUERY PLAN                                           
 ------------------------------------------------------------------------------------------------
  Index Scan using test_table_one_primary_pkey on test_table_one_primary (actual rows=1 loops=1)
@@ -359,7 +382,6 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM test_table_o
    Storage Filter: (x < 90)
 (3 rows)
 
-SELECT * FROM test_table_one_primary WHERE yb_hash_code(x) < 512 AND x < 90;
  x  | y  
 ----+----
  81 | 81
@@ -406,7 +428,8 @@ SELECT * FROM test_table_one_primary WHERE yb_hash_code(y,x) < 512 LIMIT 7;
 (7 rows)
 
 -- should not be pushed down as we don't support pushdown on IN filters yet
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE)  SELECT * FROM test_table_one_primary WHERE yb_hash_code(x, y) IN (1, 200, 326);
+\set query 'SELECT * FROM test_table_one_primary WHERE yb_hash_code(x, y) IN (1, 200, 326)'
+:explain1run1
                            QUERY PLAN                            
 -----------------------------------------------------------------
  Seq Scan on test_table_one_primary (actual rows=1 loops=1)
@@ -414,7 +437,6 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE)  SELECT * FROM test_table_
    Rows Removed by Filter: 9999
 (3 rows)
 
-SELECT * FROM test_table_one_primary WHERE yb_hash_code(x, y) IN (1, 200, 326);
   x   |  y   
 ------+------
  1862 | 1862
@@ -442,14 +464,14 @@ DROP TABLE test_table_one_primary;
 -- testing pushdown where the hash column is of type text
 CREATE TABLE text_table (hr text, ti text, tj text, i int, j int, primary key (hr));
 INSERT INTO text_table SELECT i::TEXT, i::TEXT, i::TEXT, i, i FROM generate_series(1,10000) i;
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM text_table WHERE yb_hash_code(hr) = 30;
+\set query 'SELECT * FROM text_table WHERE yb_hash_code(hr) = 30'
+:explain1run1
                                QUERY PLAN                               
 ------------------------------------------------------------------------
  Index Scan using text_table_pkey on text_table (actual rows=1 loops=1)
    Index Cond: (yb_hash_code(hr) = 30)
 (2 rows)
 
-SELECT * FROM text_table WHERE yb_hash_code(hr) = 30;
   hr  |  ti  |  tj  |  i   |  j   
 ------+------+------+------+------
  8646 | 8646 | 8646 | 8646 | 8646
@@ -457,27 +479,27 @@ SELECT * FROM text_table WHERE yb_hash_code(hr) = 30;
 
 -- testing pushdown on a secondary index with a text hash column
 CREATE INDEX textidx ON text_table (tj);
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM text_table WHERE yb_hash_code(tj) = 63;
+\set query 'SELECT * FROM text_table WHERE yb_hash_code(tj) = 63'
+:explain1run1
                            QUERY PLAN                           
 ----------------------------------------------------------------
  Index Scan using textidx on text_table (actual rows=1 loops=1)
    Index Cond: (yb_hash_code(tj) = 63)
 (2 rows)
 
-SELECT * FROM text_table WHERE yb_hash_code(tj) = 63;
   hr  |  ti  |  tj  |  i   |  j   
 ------+------+------+------+------
  1363 | 1363 | 1363 | 1363 | 1363
 (1 row)
 
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM text_table WHERE yb_hash_code(tj) <= 63;
+\set query 'SELECT * FROM text_table WHERE yb_hash_code(tj) <= 63'
+:explain1run1
                            QUERY PLAN                            
 -----------------------------------------------------------------
  Index Scan using textidx on text_table (actual rows=10 loops=1)
    Index Cond: (yb_hash_code(tj) <= 63)
 (2 rows)
 
-SELECT * FROM text_table WHERE yb_hash_code(tj) <= 63;
   hr  |  ti  |  tj  |  i   |  j   
 ------+------+------+------+------
  4999 | 4999 | 4999 | 4999 | 4999
@@ -492,7 +514,8 @@ SELECT * FROM text_table WHERE yb_hash_code(tj) <= 63;
  1363 | 1363 | 1363 | 1363 | 1363
 (10 rows)
 
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT tj FROM text_table WHERE yb_hash_code(tj) <= 63;
+\set query 'SELECT tj FROM text_table WHERE yb_hash_code(tj) <= 63'
+:explain1run1
                               QUERY PLAN                              
 ----------------------------------------------------------------------
  Index Only Scan using textidx on text_table (actual rows=10 loops=1)
@@ -500,7 +523,6 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT tj FROM text_table 
    Heap Fetches: 0
 (3 rows)
 
-SELECT tj FROM text_table WHERE yb_hash_code(tj) <= 63;
   tj  
 ------
  4999
@@ -515,14 +537,14 @@ SELECT tj FROM text_table WHERE yb_hash_code(tj) <= 63;
  1363
 (10 rows)
 
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT hr FROM text_table WHERE yb_hash_code(tj) < 63;
+\set query 'SELECT hr FROM text_table WHERE yb_hash_code(tj) < 63'
+:explain1run1
                            QUERY PLAN                           
 ----------------------------------------------------------------
  Index Scan using textidx on text_table (actual rows=9 loops=1)
    Index Cond: (yb_hash_code(tj) < 63)
 (2 rows)
 
-SELECT hr FROM text_table WHERE yb_hash_code(tj) < 63;
   hr  
 ------
  4999
@@ -536,7 +558,8 @@ SELECT hr FROM text_table WHERE yb_hash_code(tj) < 63;
  5659
 (9 rows)
 
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT tj FROM text_table WHERE 63 >= yb_hash_code(tj);
+\set query 'SELECT tj FROM text_table WHERE 63 >= yb_hash_code(tj)'
+:explain1run1
                               QUERY PLAN                              
 ----------------------------------------------------------------------
  Index Only Scan using textidx on text_table (actual rows=10 loops=1)
@@ -544,7 +567,6 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT tj FROM text_table 
    Heap Fetches: 0
 (3 rows)
 
-SELECT tj FROM text_table WHERE 63 >= yb_hash_code(tj);
   tj  
 ------
  4999
@@ -564,14 +586,14 @@ DROP TABLE text_table;
 -- multiple types
 CREATE TABLE test_table_multi_col_key(h1 BIGINT, h2 FLOAT, h3 TEXT, r1 TIMESTAMPTZ, r2 DOUBLE PRECISION, v1 INT, v2  DATE, v3 BOOLEAN, PRIMARY KEY ((h1, h2, h3) HASH, r1, r2));
 INSERT INTO test_table_multi_col_key SELECT i::BIGINT, i::FLOAT, i::TEXT, '2018-12-18 04:59:54-08'::TIMESTAMPTZ, i::DOUBLE PRECISION, i::INT, '2016-06-02'::DATE,(i%2)::BOOLEAN FROM generate_series(1, 10000) i;
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 60;
+\set query 'SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 60'
+:explain1run1
                                              QUERY PLAN                                             
 ----------------------------------------------------------------------------------------------------
  Index Scan using test_table_multi_col_key_pkey on test_table_multi_col_key (actual rows=8 loops=1)
    Index Cond: (yb_hash_code(h1, h2, h3) < 60)
 (2 rows)
 
-SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 60;
   h1  |  h2  |  h3  |              r1              |  r2  |  v1  |     v2     | v3 
 ------+------+------+------------------------------+------+------+------------+----
  5258 | 5258 | 5258 | Tue Dec 18 04:59:54 2018 PST | 5258 | 5258 | 06-02-2016 | f
@@ -585,7 +607,8 @@ SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 60;
 (8 rows)
 
 -- limit and order by
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 60 LIMIT 3;
+\set query 'SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 60 LIMIT 3'
+:explain1run1
                                                 QUERY PLAN                                                
 ----------------------------------------------------------------------------------------------------------
  Limit (actual rows=3 loops=1)
@@ -593,7 +616,6 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_m
          Index Cond: (yb_hash_code(h1, h2, h3) < 60)
 (3 rows)
 
-SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 60 LIMIT 3;
   h1  |  h2  |  h3  |              r1              |  r2  |  v1  |     v2     | v3 
 ------+------+------+------------------------------+------+------+------------+----
  5258 | 5258 | 5258 | Tue Dec 18 04:59:54 2018 PST | 5258 | 5258 | 06-02-2016 | f
@@ -601,7 +623,8 @@ SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 60 LIMIT 3
  8274 | 8274 | 8274 | Tue Dec 18 04:59:54 2018 PST | 8274 | 8274 | 06-02-2016 | f
 (3 rows)
 
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 60 ORDER BY h1;
+\set query 'SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 60 ORDER BY h1'
+:explain1run1
                                                 QUERY PLAN                                                
 ----------------------------------------------------------------------------------------------------------
  Sort (actual rows=8 loops=1)
@@ -611,7 +634,6 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_m
          Index Cond: (yb_hash_code(h1, h2, h3) < 60)
 (5 rows)
 
-SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 60 ORDER BY h1;
   h1  |  h2  |  h3  |              r1              |  r2  |  v1  |     v2     | v3 
 ------+------+------+------------------------------+------+------+------------+----
   314 |  314 | 314  | Tue Dec 18 04:59:54 2018 PST |  314 |  314 | 06-02-2016 | f
@@ -624,7 +646,8 @@ SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 60 ORDER B
  8274 | 8274 | 8274 | Tue Dec 18 04:59:54 2018 PST | 8274 | 8274 | 06-02-2016 | f
 (8 rows)
 
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 60 ORDER BY h1 LIMIT 3;
+\set query 'SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 60 ORDER BY h1 LIMIT 3'
+:explain1run1
                                                    QUERY PLAN                                                   
 ----------------------------------------------------------------------------------------------------------------
  Limit (actual rows=3 loops=1)
@@ -635,7 +658,6 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_m
                Index Cond: (yb_hash_code(h1, h2, h3) < 60)
 (6 rows)
 
-SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 60 ORDER BY h1 LIMIT 3;
   h1  |  h2  |  h3  |              r1              |  r2  |  v1  |     v2     | v3 
 ------+------+------+------------------------------+------+------+------------+----
   314 |  314 | 314  | Tue Dec 18 04:59:54 2018 PST |  314 |  314 | 06-02-2016 | f
@@ -651,7 +673,8 @@ CREATE INDEX multi_key_index_1 ON test_table_multi_col_key((h1,h2,h3) HASH, r1 A
 CREATE INDEX multi_key_index_2 ON test_table_multi_col_key((r1, r2, v1) HASH, v3, v2);
 CREATE INDEX multi_key_index_3 ON test_table_multi_col_key((r1, r2, v2, v3) HASH, v1);
 -- index only scan on multi_key_index
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT h1 from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 60;
+\set query 'SELECT h1 from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 60'
+:explain1run1
                                          QUERY PLAN                                          
 ---------------------------------------------------------------------------------------------
  Index Only Scan using multi_key_index_1 on test_table_multi_col_key (actual rows=8 loops=1)
@@ -659,7 +682,6 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT h1 from test_table_
    Heap Fetches: 0
 (3 rows)
 
-SELECT h1 from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 60;
   h1  
 ------
  5258
@@ -673,14 +695,14 @@ SELECT h1 from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 60;
 (8 rows)
 
 -- index scan on primary key index
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 60;
+\set query 'SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 60'
+:explain1run1
                                              QUERY PLAN                                             
 ----------------------------------------------------------------------------------------------------
  Index Scan using test_table_multi_col_key_pkey on test_table_multi_col_key (actual rows=8 loops=1)
    Index Cond: (yb_hash_code(h1, h2, h3) < 60)
 (2 rows)
 
-SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 60;
   h1  |  h2  |  h3  |              r1              |  r2  |  v1  |     v2     | v3 
 ------+------+------+------------------------------+------+------+------------+----
  5258 | 5258 | 5258 | Tue Dec 18 04:59:54 2018 PST | 5258 | 5258 | 06-02-2016 | f
@@ -695,7 +717,8 @@ SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 60;
 
 -- sequential scan as the selectivity of this filter is
 -- high
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 60000 LIMIT 10;
+\set query 'SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 60000 LIMIT 10'
+:explain1run1
                              QUERY PLAN                              
 ---------------------------------------------------------------------
  Limit (actual rows=10 loops=1)
@@ -703,7 +726,6 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_m
          Filter: (yb_hash_code(h1, h2, h3) < 60000)
 (3 rows)
 
-SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 60000 LIMIT 10;
   h1  |  h2  |  h3  |              r1              |  r2  |  v1  |     v2     | v3 
 ------+------+------+------------------------------+------+------+------------+----
  5258 | 5258 | 5258 | Tue Dec 18 04:59:54 2018 PST | 5258 | 5258 | 06-02-2016 | f
@@ -722,7 +744,8 @@ SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3) < 60000 LIMI
 -- does not match any index hash key
 -- sequential scan as no index has (h1,h2,h3,v1) as the
 -- hash key
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3,v1) < 60 LIMIT 10;
+\set query 'SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3,v1) < 60 LIMIT 10'
+:explain1run1
                              QUERY PLAN                              
 ---------------------------------------------------------------------
  Limit (actual rows=10 loops=1)
@@ -731,7 +754,6 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_m
          Rows Removed by Filter: 7832
 (4 rows)
 
-SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3,v1) < 60 LIMIT 10;
   h1  |  h2  |  h3  |              r1              |  r2  |  v1  |     v2     | v3 
 ------+------+------+------------------------------+------+------+------------+----
  6966 | 6966 | 6966 | Tue Dec 18 04:59:54 2018 PST | 6966 | 6966 | 06-02-2016 | f
@@ -748,7 +770,8 @@ SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h2,h3,v1) < 60 LIMI
 
 -- sequential scan as no index has (h1,h3,h2) as the
 -- hash key
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h3,h2) < 60 LIMIT 10;
+\set query 'SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h3,h2) < 60 LIMIT 10'
+:explain1run1
                              QUERY PLAN                              
 ---------------------------------------------------------------------
  Limit (actual rows=10 loops=1)
@@ -757,7 +780,6 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_m
          Rows Removed by Filter: 9338
 (4 rows)
 
-SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h3,h2) < 60 LIMIT 10;
   h1  |  h2  |  h3  |              r1              |  r2  |  v1  |     v2     | v3 
 ------+------+------+------------------------------+------+------+------------+----
  1076 | 1076 | 1076 | Tue Dec 18 04:59:54 2018 PST | 1076 | 1076 | 06-02-2016 | f
@@ -772,7 +794,8 @@ SELECT * from test_table_multi_col_key WHERE yb_hash_code(h1,h3,h2) < 60 LIMIT 1
   288 |  288 | 288  | Tue Dec 18 04:59:54 2018 PST |  288 |  288 | 06-02-2016 | f
 (10 rows)
 
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,v3,v2,r2) < 60 LIMIT 10;
+\set query 'SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,v3,v2,r2) < 60 LIMIT 10'
+:explain1run1
                              QUERY PLAN                              
 ---------------------------------------------------------------------
  Limit (actual rows=10 loops=1)
@@ -781,7 +804,6 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_m
          Rows Removed by Filter: 6623
 (4 rows)
 
-SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,v3,v2,r2) < 60 LIMIT 10;
   h1  |  h2  |  h3  |              r1              |  r2  |  v1  |     v2     | v3 
 ------+------+------+------------------------------+------+------+------------+----
  4847 | 4847 | 4847 | Tue Dec 18 04:59:54 2018 PST | 4847 | 4847 | 06-02-2016 | t
@@ -796,7 +818,8 @@ SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,v3,v2,r2) < 60 LIMI
  6694 | 6694 | 6694 | Tue Dec 18 04:59:54 2018 PST | 6694 | 6694 | 06-02-2016 | f
 (10 rows)
 
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_multi_col_key WHERE yb_hash_code(r2,r1,v1) < 60 LIMIT 10;
+\set query 'SELECT * from test_table_multi_col_key WHERE yb_hash_code(r2,r1,v1) < 60 LIMIT 10'
+:explain1run1
                              QUERY PLAN                              
 ---------------------------------------------------------------------
  Limit (actual rows=10 loops=1)
@@ -805,7 +828,6 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_m
          Rows Removed by Filter: 7831
 (4 rows)
 
-SELECT * from test_table_multi_col_key WHERE yb_hash_code(r2,r1,v1) < 60 LIMIT 10;
   h1  |  h2  |  h3  |              r1              |  r2  |  v1  |     v2     | v3 
 ------+------+------+------------------------------+------+------+------------+----
  4254 | 4254 | 4254 | Tue Dec 18 04:59:54 2018 PST | 4254 | 4254 | 06-02-2016 | f
@@ -821,7 +843,8 @@ SELECT * from test_table_multi_col_key WHERE yb_hash_code(r2,r1,v1) < 60 LIMIT 1
 (10 rows)
 
 -- pushdown for multi_key_index_2 and multi_key_index_3
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,r2,v1) < 60 LIMIT 10;
+\set query 'SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,r2,v1) < 60 LIMIT 10'
+:explain1run1
                                           QUERY PLAN                                           
 -----------------------------------------------------------------------------------------------
  Limit (actual rows=10 loops=1)
@@ -829,7 +852,6 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_m
          Index Cond: (yb_hash_code(r1, r2, v1) < 60)
 (3 rows)
 
-SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,r2,v1) < 60 LIMIT 10;
   h1  |  h2  |  h3  |              r1              |  r2  |  v1  |     v2     | v3 
 ------+------+------+------------------------------+------+------+------------+----
  5205 | 5205 | 5205 | Tue Dec 18 04:59:54 2018 PST | 5205 | 5205 | 06-02-2016 | t
@@ -844,7 +866,8 @@ SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,r2,v1) < 60 LIMIT 1
  6968 | 6968 | 6968 | Tue Dec 18 04:59:54 2018 PST | 6968 | 6968 | 06-02-2016 | f
 (10 rows)
 
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,r2,v2,v3) < 60 LIMIT 10;
+\set query 'SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,r2,v2,v3) < 60 LIMIT 10'
+:explain1run1
                                           QUERY PLAN                                           
 -----------------------------------------------------------------------------------------------
  Limit (actual rows=10 loops=1)
@@ -852,7 +875,6 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_m
          Index Cond: (yb_hash_code(r1, r2, v2, v3) < 60)
 (3 rows)
 
-SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,r2,v2,v3) < 60 LIMIT 10;
   h1  |  h2  |  h3  |              r1              |  r2  |  v1  |     v2     | v3 
 ------+------+------+------------------------------+------+------+------------+----
  5872 | 5872 | 5872 | Tue Dec 18 04:59:54 2018 PST | 5872 | 5872 | 06-02-2016 | f
@@ -893,7 +915,8 @@ SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,r2,v2,v3) < 600 AND
  2938 | 2938 | 2938 | Tue Dec 18 04:59:54 2018 PST | 2938 | 2938 | 06-02-2016 | f
 (10 rows)
 
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,r2,v2,v3) < 600 AND yb_hash_code(h1,h2,h3) > 65500 AND yb_hash_code(r1, r2, v1) > 5500;
+\set query 'SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,r2,v2,v3) < 600 AND yb_hash_code(h1,h2,h3) > 65500 AND yb_hash_code(r1, r2, v1) > 5500'
+:explain1run1
                                              QUERY PLAN                                             
 ----------------------------------------------------------------------------------------------------
  Index Scan using test_table_multi_col_key_pkey on test_table_multi_col_key (actual rows=1 loops=1)
@@ -902,7 +925,6 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * from test_table_m
    Rows Removed by Filter: 4
 (4 rows)
 
-SELECT * from test_table_multi_col_key WHERE yb_hash_code(r1,r2,v2,v3) < 600 AND yb_hash_code(h1,h2,h3) > 65500 AND yb_hash_code(r1, r2, v1) > 5500;
   h1  |  h2  |  h3  |              r1              |  r2  |  v1  |     v2     | v3 
 ------+------+------+------------------------------+------+------+------------+----
  6351 | 6351 | 6351 | Tue Dec 18 04:59:54 2018 PST | 6351 | 6351 | 06-02-2016 | t
@@ -938,7 +960,8 @@ DROP TABLE test_table_multi_col_key;
 CREATE TABLE test_index_only_scan_recheck(k INT PRIMARY KEY, v1 INT, v2 INT, v3 INT, v4 INT);
 CREATE INDEX ON test_index_only_scan_recheck(v4) INCLUDE (v1);
 INSERT INTO test_index_only_scan_recheck SELECT s, s, s, s, s FROM generate_series(1, 100) AS s;
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT v1, yb_hash_code(v4) FROM test_index_only_scan_recheck WHERE v4 IN (1, 2, 3) AND yb_hash_code(v4) < 50000;
+\set query 'SELECT v1, yb_hash_code(v4) FROM test_index_only_scan_recheck WHERE v4 IN (1, 2, 3) AND yb_hash_code(v4) < 50000'
+:explain1run1
                                                       QUERY PLAN                                                      
 ----------------------------------------------------------------------------------------------------------------------
  Index Only Scan using test_index_only_scan_recheck_v4_v1_idx on test_index_only_scan_recheck (actual rows=2 loops=1)
@@ -946,7 +969,6 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT v1, yb_hash_code(v4
    Heap Fetches: 0
 (3 rows)
 
-SELECT v1, yb_hash_code(v4) FROM test_index_only_scan_recheck WHERE v4 IN (1, 2, 3) AND yb_hash_code(v4) < 50000;
  v1 | yb_hash_code 
 ----+--------------
   1 |         4624
@@ -957,7 +979,8 @@ DROP TABLE test_index_only_scan_recheck;
 -- Issue #17043
 CREATE TABLE t as select x, x as y from generate_series(1, 10) x;
 CREATE INDEX t_x_hash_y_asc_idx ON t (x HASH, y ASC);
-EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT yb_hash_code(x), y FROM t WHERE yb_hash_code(x) = 2675 AND y IN (5, 6);
+\set query 'SELECT yb_hash_code(x), y FROM t WHERE yb_hash_code(x) = 2675 AND y IN (5, 6)'
+:explain1run1
                                  QUERY PLAN                                  
 -----------------------------------------------------------------------------
  Index Only Scan using t_x_hash_y_asc_idx on t (actual rows=1 loops=1)
@@ -965,7 +988,6 @@ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT yb_hash_code(x), y 
    Heap Fetches: 0
 (3 rows)
 
-SELECT yb_hash_code(x), y FROM t WHERE yb_hash_code(x) = 2675 AND y IN (5, 6);
  yb_hash_code | y 
 --------------+---
          2675 | 5
@@ -977,289 +999,291 @@ CREATE TABLE tt (i int, j int);
 CREATE INDEX ON tt (i, j);
 INSERT INTO tt VALUES (1, 2);
 -- Negative values
-EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) > -1;
+\set explain 'EXPLAIN (COSTS OFF)'
+\set hint1 '/*+IndexScan(tt)*/'
+\set query 'SELECT * FROM tt WHERE yb_hash_code(i) > -1'
+:explain1run1
                    QUERY PLAN                    
 -------------------------------------------------
  Index Scan using tt_i_j_idx on tt
    Index Cond: (yb_hash_code(i) > '-1'::integer)
 (2 rows)
 
-/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) > -1;
  i | j 
 ---+---
  1 | 2
 (1 row)
 
-EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) >= -2;
+\set query 'SELECT * FROM tt WHERE yb_hash_code(i) >= -2'
+:explain1run1
                     QUERY PLAN                    
 --------------------------------------------------
  Index Scan using tt_i_j_idx on tt
    Index Cond: (yb_hash_code(i) >= '-2'::integer)
 (2 rows)
 
-/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) >= -2;
  i | j 
 ---+---
  1 | 2
 (1 row)
 
-EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) = -3;
+\set query 'SELECT * FROM tt WHERE yb_hash_code(i) = -3'
+:explain1run1
                    QUERY PLAN                    
 -------------------------------------------------
  Index Scan using tt_i_j_idx on tt
    Index Cond: (yb_hash_code(i) = '-3'::integer)
 (2 rows)
 
-/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) = -3;
  i | j 
 ---+---
 (0 rows)
 
-EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) < -4;
+\set query 'SELECT * FROM tt WHERE yb_hash_code(i) < -4'
+:explain1run1
                    QUERY PLAN                    
 -------------------------------------------------
  Index Scan using tt_i_j_idx on tt
    Index Cond: (yb_hash_code(i) < '-4'::integer)
 (2 rows)
 
-/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) < -4;
  i | j 
 ---+---
 (0 rows)
 
-EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) <= -5;
+\set query 'SELECT * FROM tt WHERE yb_hash_code(i) <= -5'
+:explain1run1
                     QUERY PLAN                    
 --------------------------------------------------
  Index Scan using tt_i_j_idx on tt
    Index Cond: (yb_hash_code(i) <= '-5'::integer)
 (2 rows)
 
-/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) <= -5;
  i | j 
 ---+---
 (0 rows)
 
 -- Higher than upper bound values
-EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) > 65536;
+\set query 'SELECT * FROM tt WHERE yb_hash_code(i) > 65536'
+:explain1run1
                QUERY PLAN                
 -----------------------------------------
  Index Scan using tt_i_j_idx on tt
    Index Cond: (yb_hash_code(i) > 65536)
 (2 rows)
 
-/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) > 65536;
  i | j 
 ---+---
 (0 rows)
 
-EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) >= 65537;
+\set query 'SELECT * FROM tt WHERE yb_hash_code(i) >= 65537'
+:explain1run1
                 QUERY PLAN                
 ------------------------------------------
  Index Scan using tt_i_j_idx on tt
    Index Cond: (yb_hash_code(i) >= 65537)
 (2 rows)
 
-/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) >= 65537;
  i | j 
 ---+---
 (0 rows)
 
-EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) = 65538;
+\set query 'SELECT * FROM tt WHERE yb_hash_code(i) = 65538'
+:explain1run1
                QUERY PLAN                
 -----------------------------------------
  Index Scan using tt_i_j_idx on tt
    Index Cond: (yb_hash_code(i) = 65538)
 (2 rows)
 
-/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) = 65538;
  i | j 
 ---+---
 (0 rows)
 
-EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) < 65539;
+\set query 'SELECT * FROM tt WHERE yb_hash_code(i) < 65539'
+:explain1run1
                QUERY PLAN                
 -----------------------------------------
  Index Scan using tt_i_j_idx on tt
    Index Cond: (yb_hash_code(i) < 65539)
 (2 rows)
 
-/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) < 65539;
  i | j 
 ---+---
  1 | 2
 (1 row)
 
-EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) <= 65540;
+\set query 'SELECT * FROM tt WHERE yb_hash_code(i) <= 65540'
+:explain1run1
                 QUERY PLAN                
 ------------------------------------------
  Index Scan using tt_i_j_idx on tt
    Index Cond: (yb_hash_code(i) <= 65540)
 (2 rows)
 
-/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) <= 65540;
  i | j 
 ---+---
  1 | 2
 (1 row)
 
 -- Values other than int4
-EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) > -2147483649;
+\set query 'SELECT * FROM tt WHERE yb_hash_code(i) > -2147483649'
+:explain1run1
                        QUERY PLAN                        
 ---------------------------------------------------------
  Index Scan using tt_i_j_idx on tt
    Index Cond: (yb_hash_code(i) > '-2147483649'::bigint)
 (2 rows)
 
-/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) > -2147483649;
  i | j 
 ---+---
  1 | 2
 (1 row)
 
-EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) >= -2147483650;
+\set query 'SELECT * FROM tt WHERE yb_hash_code(i) >= -2147483650'
+:explain1run1
                         QUERY PLAN                        
 ----------------------------------------------------------
  Index Scan using tt_i_j_idx on tt
    Index Cond: (yb_hash_code(i) >= '-2147483650'::bigint)
 (2 rows)
 
-/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) >= -2147483650;
  i | j 
 ---+---
  1 | 2
 (1 row)
 
-EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) = -2147483651;
+\set query 'SELECT * FROM tt WHERE yb_hash_code(i) = -2147483651'
+:explain1run1
                        QUERY PLAN                        
 ---------------------------------------------------------
  Index Scan using tt_i_j_idx on tt
    Index Cond: (yb_hash_code(i) = '-2147483651'::bigint)
 (2 rows)
 
-/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) = -2147483651;
  i | j 
 ---+---
 (0 rows)
 
-EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) < -2147483652;
+\set query 'SELECT * FROM tt WHERE yb_hash_code(i) < -2147483652'
+:explain1run1
                        QUERY PLAN                        
 ---------------------------------------------------------
  Index Scan using tt_i_j_idx on tt
    Index Cond: (yb_hash_code(i) < '-2147483652'::bigint)
 (2 rows)
 
-/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) < -2147483652;
  i | j 
 ---+---
 (0 rows)
 
-EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) <= -2147483653;
+\set query 'SELECT * FROM tt WHERE yb_hash_code(i) <= -2147483653'
+:explain1run1
                         QUERY PLAN                        
 ----------------------------------------------------------
  Index Scan using tt_i_j_idx on tt
    Index Cond: (yb_hash_code(i) <= '-2147483653'::bigint)
 (2 rows)
 
-/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) <= -2147483653;
  i | j 
 ---+---
 (0 rows)
 
-EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) > 9223372036854775808;
+\set query 'SELECT * FROM tt WHERE yb_hash_code(i) > 9223372036854775808'
+:explain1run1
                                QUERY PLAN                                
 -------------------------------------------------------------------------
  Seq Scan on tt
    Filter: ((yb_hash_code(i))::numeric > '9223372036854775808'::numeric)
 (2 rows)
 
-/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) > 9223372036854775808;
  i | j 
 ---+---
 (0 rows)
 
-EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) >= 9223372036854775809;
+\set query 'SELECT * FROM tt WHERE yb_hash_code(i) >= 9223372036854775809'
+:explain1run1
                                 QUERY PLAN                                
 --------------------------------------------------------------------------
  Seq Scan on tt
    Filter: ((yb_hash_code(i))::numeric >= '9223372036854775809'::numeric)
 (2 rows)
 
-/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) >= 9223372036854775809;
  i | j 
 ---+---
 (0 rows)
 
-EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) = 9223372036854775810;
+\set query 'SELECT * FROM tt WHERE yb_hash_code(i) = 9223372036854775810'
+:explain1run1
                                QUERY PLAN                                
 -------------------------------------------------------------------------
  Seq Scan on tt
    Filter: ((yb_hash_code(i))::numeric = '9223372036854775810'::numeric)
 (2 rows)
 
-/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) = 9223372036854775810;
  i | j 
 ---+---
 (0 rows)
 
-EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) < 9223372036854775811;
+\set query 'SELECT * FROM tt WHERE yb_hash_code(i) < 9223372036854775811'
+:explain1run1
                                QUERY PLAN                                
 -------------------------------------------------------------------------
  Seq Scan on tt
    Filter: ((yb_hash_code(i))::numeric < '9223372036854775811'::numeric)
 (2 rows)
 
-/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) < 9223372036854775811;
  i | j 
 ---+---
  1 | 2
 (1 row)
 
-EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) <= 9223372036854775812;
+\set query 'SELECT * FROM tt WHERE yb_hash_code(i) <= 9223372036854775812'
+:explain1run1
                                 QUERY PLAN                                
 --------------------------------------------------------------------------
  Seq Scan on tt
    Filter: ((yb_hash_code(i))::numeric <= '9223372036854775812'::numeric)
 (2 rows)
 
-/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) <= 9223372036854775812;
  i | j 
 ---+---
  1 | 2
 (1 row)
 
-EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) > -0.01;
+\set query 'SELECT * FROM tt WHERE yb_hash_code(i) > -0.01'
+:explain1run1
                         QUERY PLAN                         
 -----------------------------------------------------------
  Seq Scan on tt
    Filter: ((yb_hash_code(i))::numeric > '-0.01'::numeric)
 (2 rows)
 
-/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) > -0.01;
  i | j 
 ---+---
  1 | 2
 (1 row)
 
-EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) >= 123456.78;
+\set query 'SELECT * FROM tt WHERE yb_hash_code(i) >= 123456.78'
+:explain1run1
                      QUERY PLAN                      
 -----------------------------------------------------
  Seq Scan on tt
    Filter: ((yb_hash_code(i))::numeric >= 123456.78)
 (2 rows)
 
-/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) >= 123456.78;
  i | j 
 ---+---
 (0 rows)
 
-EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) = 3.14;
+\set query 'SELECT * FROM tt WHERE yb_hash_code(i) = 3.14'
+:explain1run1
                   QUERY PLAN                   
 -----------------------------------------------
  Seq Scan on tt
    Filter: ((yb_hash_code(i))::numeric = 3.14)
 (2 rows)
 
-/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) = 3.14;
  i | j 
 ---+---
 (0 rows)
@@ -1288,7 +1312,9 @@ INSERT INTO GH18347 VALUES(-2147483648, 1);
 INSERT INTO GH18347 VALUES(-2147483648, 2);
 INSERT INTO GH18347 VALUES(-2147483648, 3);
 -- Failing query pattern.
-EXPLAIN (COSTS OFF) /*+IndexScan(GH18347)*/ SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(1) hash_code_1 FROM GH18347 WHERE row(j, yb_hash_code(i)) > row(1, yb_hash_code(1)) ORDER BY 1, 2;
+\set hint1 '/*+IndexScan(GH18347)*/'
+\set query 'SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(1) hash_code_1 FROM GH18347 WHERE row(j, yb_hash_code(i)) > row(1, yb_hash_code(1)) ORDER BY 1, 2'
+:explain1run1
                         QUERY PLAN                        
 ----------------------------------------------------------
  Sort
@@ -1297,7 +1323,6 @@ EXPLAIN (COSTS OFF) /*+IndexScan(GH18347)*/ SELECT i, j, yb_hash_code(i) hash_co
          Filter: (ROW(j, yb_hash_code(i)) > ROW(1, 4624))
 (4 rows)
 
-/*+IndexScan(GH18347)*/ SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(1) hash_code_1 FROM GH18347 WHERE row(j, yb_hash_code(i)) > row(1, yb_hash_code(1)) ORDER BY 1, 2;
       i      | j | hash_code_i | hash_code_j | hash_code_1 
 -------------+---+-------------+-------------+-------------
  -2147483648 | 2 |        4001 |       49348 |        4624
@@ -1313,12 +1338,15 @@ EXPLAIN (COSTS OFF) /*+IndexScan(GH18347)*/ SELECT i, j, yb_hash_code(i) hash_co
 (10 rows)
 
 -- Verify sequential and index scans give the same answer.
-EXPLAIN (COSTS OFF) /*+IndexScan(GH18347) SeqScan(GH18347_1) */
+\set hint1 '/*+IndexScan(GH18347) SeqScan(GH18347_1) */'
+SELECT $$
 with cte as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(1) hash_code_1 FROM GH18347 WHERE row(j, yb_hash_code(i)) > row(1, yb_hash_code(1)) ORDER BY 1, 2),
      cte1 as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(1) hash_code_1 FROM GH18347 GH18347_1 WHERE row(j, yb_hash_code(i)) > row(1, yb_hash_code(1)) ORDER BY 1, 2)
 SELECT * FROM cte EXCEPT ALL SELECT * FROM cte1
 UNION ALL
-SELECT * FROM cte1 EXCEPT ALL SELECT * FROM cte;
+SELECT * FROM cte1 EXCEPT ALL SELECT * FROM cte
+$$ AS query \gset
+:explain1run1
                                QUERY PLAN                                
 -------------------------------------------------------------------------
  HashSetOp Except All
@@ -1347,18 +1375,14 @@ SELECT * FROM cte1 EXCEPT ALL SELECT * FROM cte;
                ->  CTE Scan on cte cte_1
 (24 rows)
 
-/*+IndexScan(GH18347) SeqScan(GH18347_1) */
-with cte as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(1) hash_code_1 FROM GH18347 WHERE row(j, yb_hash_code(i)) > row(1, yb_hash_code(1)) ORDER BY 1, 2),
-     cte1 as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(1) hash_code_1 FROM GH18347 GH18347_1 WHERE row(j, yb_hash_code(i)) > row(1, yb_hash_code(1)) ORDER BY 1, 2)
-SELECT * FROM cte EXCEPT ALL SELECT * FROM cte1
-UNION ALL
-SELECT * FROM cte1 EXCEPT ALL SELECT * FROM cte;
  i | j | hash_code_i | hash_code_j | hash_code_1 
 ---+---+-------------+-------------+-------------
 (0 rows)
 
 -- Try variation.
-EXPLAIN (COSTS OFF) /*+IndexScan(GH18347)*/ SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(2) hash_code_2 FROM GH18347 WHERE row(j, yb_hash_code(i)) < row(1, yb_hash_code(2)) ORDER BY 1, 2;
+\set hint1 '/*+IndexScan(GH18347)*/'
+\set query 'SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(2) hash_code_2 FROM GH18347 WHERE row(j, yb_hash_code(i)) < row(1, yb_hash_code(2)) ORDER BY 1, 2'
+:explain1run1
                         QUERY PLAN                         
 -----------------------------------------------------------
  Sort
@@ -1367,7 +1391,6 @@ EXPLAIN (COSTS OFF) /*+IndexScan(GH18347)*/ SELECT i, j, yb_hash_code(i) hash_co
          Filter: (ROW(j, yb_hash_code(i)) < ROW(1, 49348))
 (4 rows)
 
-/*+IndexScan(GH18347)*/ SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(2) hash_code_2 FROM GH18347 WHERE row(j, yb_hash_code(i)) < row(1, yb_hash_code(2)) ORDER BY 1, 2;
       i      | j | hash_code_i | hash_code_j | hash_code_2 
 -------------+---+-------------+-------------+-------------
  -2147483648 | 0 |        4001 |       47650 |       49348
@@ -1381,12 +1404,15 @@ EXPLAIN (COSTS OFF) /*+IndexScan(GH18347)*/ SELECT i, j, yb_hash_code(i) hash_co
 (8 rows)
 
 -- Verify sequential and index scans give the same answer.
-EXPLAIN (COSTS OFF) /*+IndexScan(GH18347) SeqScan(GH18347_1) */
+\set hint1 '/*+IndexScan(GH18347) SeqScan(GH18347_1) */'
+SELECT $$
 with cte as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(2) hash_code_2 FROM GH18347 WHERE row(j, yb_hash_code(i)) < row(1, yb_hash_code(2)) ORDER BY 1, 2),
      cte1 as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(2) hash_code_2 FROM GH18347 GH18347_1 WHERE row(j, yb_hash_code(i)) < row(1, yb_hash_code(2)) ORDER BY 1, 2)
 SELECT * FROM cte EXCEPT ALL SELECT * FROM cte1
 UNION ALL
-SELECT * FROM cte1 EXCEPT ALL SELECT * FROM cte;
+SELECT * FROM cte1 EXCEPT ALL SELECT * FROM cte
+$$ AS query \gset
+:explain1run1
                                QUERY PLAN                                
 -------------------------------------------------------------------------
  HashSetOp Except All
@@ -1415,18 +1441,14 @@ SELECT * FROM cte1 EXCEPT ALL SELECT * FROM cte;
                ->  CTE Scan on cte cte_1
 (24 rows)
 
-/*+IndexScan(GH18347) SeqScan(GH18347_1) */
-with cte as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(2) hash_code_2 FROM GH18347 WHERE row(j, yb_hash_code(i)) < row(1, yb_hash_code(2)) ORDER BY 1, 2),
-     cte1 as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(2) hash_code_2 FROM GH18347 GH18347_1 WHERE row(j, yb_hash_code(i)) < row(1, yb_hash_code(2)) ORDER BY 1, 2)
-SELECT * FROM cte EXCEPT ALL SELECT * FROM cte1
-UNION ALL
-SELECT * FROM cte1 EXCEPT ALL SELECT * FROM cte;
  i | j | hash_code_i | hash_code_j | hash_code_2 
 ---+---+-------------+-------------+-------------
 (0 rows)
 
 -- Try a 1 element IN with row constructor. Should get an index scan since this turns into an equality.
-EXPLAIN (COSTS OFF) /*+IndexScan(GH18347)*/ SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(2) hash_code_2 FROM GH18347 WHERE row(j, yb_hash_code(i)) IN (row(1, yb_hash_code(1))) ORDER BY 1, 2;
+\set hint1 '/*+IndexScan(GH18347)*/'
+\set query 'SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(2) hash_code_2 FROM GH18347 WHERE row(j, yb_hash_code(i)) IN (row(1, yb_hash_code(1))) ORDER BY 1, 2'
+:explain1run1
                          QUERY PLAN                         
 ------------------------------------------------------------
  Sort
@@ -1435,19 +1457,21 @@ EXPLAIN (COSTS OFF) /*+IndexScan(GH18347)*/ SELECT i, j, yb_hash_code(i) hash_co
          Index Cond: ((yb_hash_code(i) = 4624) AND (j = 1))
 (4 rows)
 
-/*+IndexScan(GH18347)*/ SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(2) hash_code_2 FROM GH18347 WHERE row(j, yb_hash_code(i)) IN (row(1, yb_hash_code(1))) ORDER BY 1, 2;
  i | j | hash_code_i | hash_code_j | hash_code_2 
 ---+---+-------------+-------------+-------------
  1 | 1 |        4624 |        4624 |       49348
 (1 row)
 
 -- Verify sequential and index scans give the same answer.
-EXPLAIN (COSTS OFF) /*+IndexScan(GH18347) SeqScan(GH18347_1) */
+\set hint1 '/*+IndexScan(GH18347) SeqScan(GH18347_1) */'
+SELECT $$
 with cte as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(2) hash_code_2 FROM GH18347 WHERE row(j, yb_hash_code(i)) IN (row(1, yb_hash_code(1))) ORDER BY 1, 2),
      cte1 as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(2) hash_code_2 FROM GH18347 GH18347_1 WHERE row(j, yb_hash_code(i)) IN (row(1, yb_hash_code(1))) ORDER BY 1, 2)
 SELECT * FROM cte EXCEPT ALL SELECT * FROM cte1
 UNION ALL
-SELECT * FROM cte1 EXCEPT ALL SELECT * FROM cte;
+SELECT * FROM cte1 EXCEPT ALL SELECT * FROM cte
+$$ AS query \gset
+:explain1run1
                                 QUERY PLAN                                
 --------------------------------------------------------------------------
  HashSetOp Except All
@@ -1476,19 +1500,15 @@ SELECT * FROM cte1 EXCEPT ALL SELECT * FROM cte;
                ->  CTE Scan on cte cte_1
 (24 rows)
 
-/*+IndexScan(GH18347) SeqScan(GH18347_1) */
-with cte as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(2) hash_code_2 FROM GH18347 WHERE row(j, yb_hash_code(i)) IN (row(1, yb_hash_code(1))) ORDER BY 1, 2),
-     cte1 as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(2) hash_code_2 FROM GH18347 GH18347_1 WHERE row(j, yb_hash_code(i)) IN (row(1, yb_hash_code(1))) ORDER BY 1, 2)
-SELECT * FROM cte EXCEPT ALL SELECT * FROM cte1
-union all
-SELECT * FROM cte1 EXCEPT ALL SELECT * FROM cte;
  i | j | hash_code_i | hash_code_j | hash_code_2 
 ---+---+-------------+-------------+-------------
 (0 rows)
 
 -- Try an IN with yb_hash_code(). Cannot do an index scan since the query execution code does not support this
 -- so plan will have a sequantial scan. (This was hitting an assert before this issue was fixed.)
-EXPLAIN (COSTS OFF) /*+IndexScan(GH18347)*/ SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(1) hash_code_1, yb_hash_code(2) hash_code_2 FROM GH18347 WHERE yb_hash_code(i) IN (yb_hash_code(1), yb_hash_code(2)) ORDER BY 1, 2;
+\set hint1 '/*+IndexScan(GH18347)*/'
+\set query 'SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(1) hash_code_1, yb_hash_code(2) hash_code_2 FROM GH18347 WHERE yb_hash_code(i) IN (yb_hash_code(1), yb_hash_code(2)) ORDER BY 1, 2'
+:explain1run1
                              QUERY PLAN                              
 ---------------------------------------------------------------------
  Sort
@@ -1497,7 +1517,6 @@ EXPLAIN (COSTS OFF) /*+IndexScan(GH18347)*/ SELECT i, j, yb_hash_code(i) hash_co
          Filter: (yb_hash_code(i) = ANY ('{4624,49348}'::integer[]))
 (4 rows)
 
-/*+IndexScan(GH18347)*/ SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(1) hash_code_1, yb_hash_code(2) hash_code_2 FROM GH18347 WHERE yb_hash_code(i) IN (yb_hash_code(1), yb_hash_code(2)) ORDER BY 1, 2;
  i | j | hash_code_i | hash_code_j | hash_code_1 | hash_code_2 
 ---+---+-------------+-------------+-------------+-------------
  1 | 0 |        4624 |       47650 |        4624 |       49348

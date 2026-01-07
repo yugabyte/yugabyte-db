@@ -1,6 +1,31 @@
 --
 -- Yugabyte-owned test on ybgin index with expression pushdown
 --
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set filename :abs_srcdir '/yb_commands/explainrun_ybgin.sql'
+\i :filename
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set filename :abs_srcdir '/yb_commands/explainrun.sql'
+\i :filename
+-- A helper script to explain and run a query.  Use in regress tests by
+-- defining :explain, :query, and optionally :hint#.
+\set explain1 ':explain :hint1 :query;'
+\set explain2 ':explain1 :explain :hint2 :query;'
+\set explain3 ':explain2 :explain :hint3 :query;'
+\set explain4 ':explain3 :explain :hint4 :query;'
+\set explain5 ':explain4 :explain :hint5 :query;'
+\set explain1run1 ':explain1; :hint1 :query;'
+\set explain2run2 ':explain2; :hint1 :query; :hint2 :query;'
+\set explain3run3 ':explain3; :hint1 :query; :hint2 :query; :hint3 :query;'
+\set explain4run4 ':explain4; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query;'
+\set explain5run5 ':explain5; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query; :hint5 :query;'
+-- Default to no hints.
+\set hint1 ''
+\set hint2 ''
+\set hint3 ''
+\set hint4 ''
+\set hint5 ''
+\set explain 'EXPLAIN (costs off)'
 CREATE TABLE gin_pushdown(
     id varchar(64) not null,
     guid varchar(64) not null unique,
@@ -14,15 +39,16 @@ INSERT INTO gin_pushdown
   SELECT x::text, x::text, x::text, ('{"refs": [{"val":"'||x||'"}, {"val":"'||x+1||'"}]}')::jsonb
   FROM generate_series (1, 10) x;
 -- Find rows using gin index
-EXPLAIN (costs off)
-SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}';
+SELECT $$
+SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}'
+$$ AS query \gset
+:explain1run1
                             QUERY PLAN                             
 -------------------------------------------------------------------
  Index Scan using gin_pushdown_json_content_idx on gin_pushdown
    Index Cond: (json_content @> '{"refs": [{"val": "9"}]}'::jsonb)
 (2 rows)
 
-SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}';
  id | guid | status |              json_content               
 ----+------+--------+-----------------------------------------
  9  | 9    | 9      | {"refs": [{"val": "9"}, {"val": "10"}]}
@@ -30,8 +56,10 @@ SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}';
 (2 rows)
 
 -- Use pushdown filter
-EXPLAIN (costs off)
-SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND status <> '9';
+SELECT $$
+SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND status <> '9'
+$$ AS query \gset
+:explain1run1
                             QUERY PLAN                             
 -------------------------------------------------------------------
  Index Scan using gin_pushdown_json_content_idx on gin_pushdown
@@ -39,14 +67,15 @@ SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND s
    Storage Filter: ((status)::text <> '9'::text)
 (3 rows)
 
-SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND status <> '9';
  id | guid | status |              json_content              
 ----+------+--------+----------------------------------------
  8  | 8    | 8      | {"refs": [{"val": "8"}, {"val": "9"}]}
 (1 row)
 
-EXPLAIN (costs off)
-SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND status = '9';
+SELECT $$
+SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND status = '9'
+$$ AS query \gset
+:explain1run1
                             QUERY PLAN                             
 -------------------------------------------------------------------
  Index Scan using gin_pushdown_json_content_idx on gin_pushdown
@@ -54,7 +83,6 @@ SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND s
    Storage Filter: ((status)::text = '9'::text)
 (3 rows)
 
-SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND status = '9';
  id | guid | status |              json_content               
 ----+------+--------+-----------------------------------------
  9  | 9    | 9      | {"refs": [{"val": "9"}, {"val": "10"}]}
@@ -62,8 +90,10 @@ SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND s
 
 -- Pushdown filter that may seem to be pushed with the index scan, however ybgin index
 -- does not store the indexed value, hence filter goes to the main relation
-EXPLAIN (costs off)
-SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND json_content->'refs'->0->'val' <> '"9"';
+SELECT $$
+SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND json_content->'refs'->0->'val' <> '"9"'
+$$ AS query \gset
+:explain1run1
                                          QUERY PLAN                                         
 --------------------------------------------------------------------------------------------
  Index Scan using gin_pushdown_json_content_idx on gin_pushdown
@@ -71,14 +101,15 @@ SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND j
    Storage Filter: ((((json_content -> 'refs'::text) -> 0) -> 'val'::text) <> '"9"'::jsonb)
 (3 rows)
 
-SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND json_content->'refs'->0->'val' <> '"9"';
  id | guid | status |              json_content              
 ----+------+--------+----------------------------------------
  8  | 8    | 8      | {"refs": [{"val": "8"}, {"val": "9"}]}
 (1 row)
 
-EXPLAIN (costs off)
-SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND json_content->'refs'->0->'val' = '"9"';
+SELECT $$
+SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND json_content->'refs'->0->'val' = '"9"'
+$$ AS query \gset
+:explain1run1
                                         QUERY PLAN                                         
 -------------------------------------------------------------------------------------------
  Index Scan using gin_pushdown_json_content_idx on gin_pushdown
@@ -86,15 +117,16 @@ SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND j
    Storage Filter: ((((json_content -> 'refs'::text) -> 0) -> 'val'::text) = '"9"'::jsonb)
 (3 rows)
 
-SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND json_content->'refs'->0->'val' = '"9"';
  id | guid | status |              json_content               
 ----+------+--------+-----------------------------------------
  9  | 9    | 9      | {"refs": [{"val": "9"}, {"val": "10"}]}
 (1 row)
 
 -- Expression that does not refer any columns can go to the index.
-EXPLAIN (costs off)
-SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND random() > 2.0;
+SELECT $$
+SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND random() > 2.0
+$$ AS query \gset
+:explain1run1
                             QUERY PLAN                             
 -------------------------------------------------------------------
  Index Scan using gin_pushdown_json_content_idx on gin_pushdown
@@ -102,13 +134,14 @@ SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND r
    Storage Index Filter: (random() > '2'::double precision)
 (3 rows)
 
-SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND random() > 2.0;
  id | guid | status | json_content 
 ----+------+--------+--------------
 (0 rows)
 
-EXPLAIN (costs off)
-SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND random() < 2.0;
+SELECT $$
+SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND random() < 2.0
+$$ AS query \gset
+:explain1run1
                             QUERY PLAN                             
 -------------------------------------------------------------------
  Index Scan using gin_pushdown_json_content_idx on gin_pushdown
@@ -116,7 +149,6 @@ SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND r
    Storage Index Filter: (random() < '2'::double precision)
 (3 rows)
 
-SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND random() < 2.0;
  id | guid | status |              json_content               
 ----+------+--------+-----------------------------------------
  9  | 9    | 9      | {"refs": [{"val": "9"}, {"val": "10"}]}
@@ -124,23 +156,26 @@ SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND r
 (2 rows)
 
 -- Find row using regular index
-EXPLAIN (costs off)
-SELECT * FROM gin_pushdown WHERE guid = '9';
+SELECT $$
+SELECT * FROM gin_pushdown WHERE guid = '9'
+$$ AS query \gset
+:explain1run1
                        QUERY PLAN                       
 --------------------------------------------------------
  Index Scan using gin_pushdown_guid_key on gin_pushdown
    Index Cond: ((guid)::text = '9'::text)
 (2 rows)
 
-SELECT * FROM gin_pushdown WHERE guid = '9';
  id | guid | status |              json_content               
 ----+------+--------+-----------------------------------------
  9  | 9    | 9      | {"refs": [{"val": "9"}, {"val": "10"}]}
 (1 row)
 
 -- Use pushdown filter
-EXPLAIN (costs off)
-SELECT * FROM gin_pushdown WHERE guid = '9' AND status <> '9';
+SELECT $$
+SELECT * FROM gin_pushdown WHERE guid = '9' AND status <> '9'
+$$ AS query \gset
+:explain1run1
                        QUERY PLAN                       
 --------------------------------------------------------
  Index Scan using gin_pushdown_guid_key on gin_pushdown
@@ -148,13 +183,14 @@ SELECT * FROM gin_pushdown WHERE guid = '9' AND status <> '9';
    Storage Filter: ((status)::text <> '9'::text)
 (3 rows)
 
-SELECT * FROM gin_pushdown WHERE guid = '9' AND status <> '9';
  id | guid | status | json_content 
 ----+------+--------+--------------
 (0 rows)
 
-EXPLAIN (costs off)
-SELECT * FROM gin_pushdown WHERE guid = '9' AND status = '9';
+SELECT $$
+SELECT * FROM gin_pushdown WHERE guid = '9' AND status = '9'
+$$ AS query \gset
+:explain1run1
                        QUERY PLAN                       
 --------------------------------------------------------
  Index Scan using gin_pushdown_guid_key on gin_pushdown
@@ -162,15 +198,16 @@ SELECT * FROM gin_pushdown WHERE guid = '9' AND status = '9';
    Storage Filter: ((status)::text = '9'::text)
 (3 rows)
 
-SELECT * FROM gin_pushdown WHERE guid = '9' AND status = '9';
  id | guid | status |              json_content               
 ----+------+--------+-----------------------------------------
  9  | 9    | 9      | {"refs": [{"val": "9"}, {"val": "10"}]}
 (1 row)
 
 -- Pushdown filter that goes with the index scan, since json_content is included
-EXPLAIN (costs off)
-SELECT * FROM gin_pushdown WHERE guid = '9' AND json_content->'refs'->0->'val' <> '"9"';
+SELECT $$
+SELECT * FROM gin_pushdown WHERE guid = '9' AND json_content->'refs'->0->'val' <> '"9"'
+$$ AS query \gset
+:explain1run1
                                          QUERY PLAN                                         
 --------------------------------------------------------------------------------------------
  Index Scan using gin_pushdown_guid_key on gin_pushdown
@@ -178,13 +215,14 @@ SELECT * FROM gin_pushdown WHERE guid = '9' AND json_content->'refs'->0->'val' <
    Storage Filter: ((((json_content -> 'refs'::text) -> 0) -> 'val'::text) <> '"9"'::jsonb)
 (3 rows)
 
-SELECT * FROM gin_pushdown WHERE guid = '9' AND json_content->'refs'->0->'val' <> '"9"';
  id | guid | status | json_content 
 ----+------+--------+--------------
 (0 rows)
 
-EXPLAIN (costs off)
-SELECT * FROM gin_pushdown WHERE guid = '9' AND json_content->'refs'->0->'val' = '"9"';
+SELECT $$
+SELECT * FROM gin_pushdown WHERE guid = '9' AND json_content->'refs'->0->'val' = '"9"'
+$$ AS query \gset
+:explain1run1
                                         QUERY PLAN                                         
 -------------------------------------------------------------------------------------------
  Index Scan using gin_pushdown_guid_key on gin_pushdown
@@ -192,15 +230,16 @@ SELECT * FROM gin_pushdown WHERE guid = '9' AND json_content->'refs'->0->'val' =
    Storage Filter: ((((json_content -> 'refs'::text) -> 0) -> 'val'::text) = '"9"'::jsonb)
 (3 rows)
 
-SELECT * FROM gin_pushdown WHERE guid = '9' AND json_content->'refs'->0->'val' = '"9"';
  id | guid | status |              json_content               
 ----+------+--------+-----------------------------------------
  9  | 9    | 9      | {"refs": [{"val": "9"}, {"val": "10"}]}
 (1 row)
 
 -- Expression that does not refer any columns can go to the index.
-EXPLAIN (costs off)
-SELECT * FROM gin_pushdown WHERE guid = '9' AND random() > 2.0;
+SELECT $$
+SELECT * FROM gin_pushdown WHERE guid = '9' AND random() > 2.0
+$$ AS query \gset
+:explain1run1
                          QUERY PLAN                         
 ------------------------------------------------------------
  Index Scan using gin_pushdown_guid_key on gin_pushdown
@@ -208,13 +247,14 @@ SELECT * FROM gin_pushdown WHERE guid = '9' AND random() > 2.0;
    Storage Index Filter: (random() > '2'::double precision)
 (3 rows)
 
-SELECT * FROM gin_pushdown WHERE guid = '9' AND random() > 2.0;
  id | guid | status | json_content 
 ----+------+--------+--------------
 (0 rows)
 
-EXPLAIN (costs off)
-SELECT * FROM gin_pushdown WHERE guid = '9' AND random() < 2.0;
+SELECT $$
+SELECT * FROM gin_pushdown WHERE guid = '9' AND random() < 2.0
+$$ AS query \gset
+:explain1run1
                          QUERY PLAN                         
 ------------------------------------------------------------
  Index Scan using gin_pushdown_guid_key on gin_pushdown
@@ -222,7 +262,6 @@ SELECT * FROM gin_pushdown WHERE guid = '9' AND random() < 2.0;
    Storage Index Filter: (random() < '2'::double precision)
 (3 rows)
 
-SELECT * FROM gin_pushdown WHERE guid = '9' AND random() < 2.0;
  id | guid | status |              json_content               
 ----+------+--------+-----------------------------------------
  9  | 9    | 9      | {"refs": [{"val": "9"}, {"val": "10"}]}

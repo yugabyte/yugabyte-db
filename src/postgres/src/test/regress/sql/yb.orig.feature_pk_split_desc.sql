@@ -5,6 +5,13 @@
 --
 -- Testing basic SPLIT AT functionalities.
 --
+
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set filename :abs_srcdir '/yb_commands/explainrun.sql'
+\i :filename
+\set explain 'EXPLAIN (COSTS OFF)'
+
+--
 -- Table with RANGE primary key.
 --
 CREATE TABLE feature_pk_split_desc (
@@ -50,84 +57,93 @@ INSERT INTO feature_pk_split_desc
 --
 -- Full scan.
 --
-EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split_desc;
-SELECT * FROM feature_pk_split_desc;
+\set query 'SELECT * FROM feature_pk_split_desc'
+:explain1run1
 --
 -- Full scan with conditional operators.
 --
 -- Operator `=`
-EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split_desc WHERE col_text = 'partition 3';
-SELECT * FROM feature_pk_split_desc WHERE col_text = 'partition 3';
+SELECT $$
+SELECT * FROM feature_pk_split_desc WHERE col_text = 'partition 3'
+$$ AS query \gset
+:explain1run1
 -- Operator `IN`
-EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split_desc WHERE col_text IN ('partition 2', 'partition 5');
-SELECT * FROM feature_pk_split_desc WHERE col_text IN ('partition 2', 'partition 5');
+SELECT $$
+SELECT * FROM feature_pk_split_desc WHERE col_text IN ('partition 2', 'partition 5')
+$$ AS query \gset
+:explain1run1
 -- Operator `<=`
-EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split_desc WHERE col_double <= 10;
-SELECT * FROM feature_pk_split_desc WHERE col_double <= 10;
+\set query 'SELECT * FROM feature_pk_split_desc WHERE col_double <= 10'
+:explain1run1
 -- Operator `AND`
-EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split_desc WHERE col_text >= 'partition 3' AND col_double <= 10;
-SELECT * FROM feature_pk_split_desc WHERE col_text >= 'partition 3' AND col_double <= 10;
+SELECT $$
+SELECT * FROM feature_pk_split_desc WHERE col_text >= 'partition 3' AND col_double <= 10
+$$ AS query \gset
+:explain1run1
 --
 -- Full scan with aggregate functions.
 --
-EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM feature_pk_split_desc;
-SELECT COUNT(*) FROM feature_pk_split_desc;
-EXPLAIN (COSTS OFF) SELECT MAX(col_integer) FROM feature_pk_split_desc;
-SELECT MAX(col_integer) FROM feature_pk_split_desc;
-EXPLAIN (COSTS OFF) SELECT MIN(col_varchar) FROM feature_pk_split_desc;
-SELECT MIN(col_varchar) FROM feature_pk_split_desc;
-EXPLAIN (COSTS OFF) SELECT AVG(col_double) FROM feature_pk_split_desc;
-SELECT AVG(col_double) FROM feature_pk_split_desc;
+\set query 'SELECT COUNT(*) FROM feature_pk_split_desc'
+:explain1run1
+\set query 'SELECT MAX(col_integer) FROM feature_pk_split_desc'
+:explain1run1
+\set query 'SELECT MIN(col_varchar) FROM feature_pk_split_desc'
+:explain1run1
+\set query 'SELECT AVG(col_double) FROM feature_pk_split_desc'
+:explain1run1
 --
 -- Primary key scan.
 -- This work needs to be optimized.
 --
-EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split_desc WHERE col_integer = 50 AND col_varchar = 'a';
-SELECT * FROM feature_pk_split_desc WHERE col_integer = 50 AND col_varchar = 'a';
-EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split_desc
-	WHERE col_integer >= 500 AND col_integer <= 5000 AND
-		  col_varchar >= 'a' AND col_varchar <= 'n'
-	ORDER BY col_integer, col_varchar;
+SELECT $$
+SELECT * FROM feature_pk_split_desc WHERE col_integer = 50 AND col_varchar = 'a'
+$$ AS query \gset
+:explain1run1
+SELECT $$
 SELECT * FROM feature_pk_split_desc
 	WHERE col_integer >= 500 AND col_integer <= 5000 AND
 		  col_varchar >= 'a' AND col_varchar <= 'n'
-	ORDER BY col_integer, col_varchar;
-EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM feature_pk_split_desc WHERE col_integer = 50 AND col_varchar = 'a';
-SELECT COUNT(*) FROM feature_pk_split_desc WHERE col_integer = 50 AND col_varchar = 'a';
-EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM feature_pk_split_desc
-	WHERE col_integer >= 500 AND col_integer <= 5000 AND
-		  col_varchar >= 'a' AND col_varchar <= 'n';
+	ORDER BY col_integer, col_varchar
+$$ AS query \gset
+:explain1run1
+SELECT $$
+SELECT COUNT(*) FROM feature_pk_split_desc WHERE col_integer = 50 AND col_varchar = 'a'
+$$ AS query \gset
+:explain1run1
+SELECT $$
 SELECT COUNT(*) FROM feature_pk_split_desc
 	WHERE col_integer >= 500 AND col_integer <= 5000 AND
-		  col_varchar >= 'a' AND col_varchar <= 'n';
+		  col_varchar >= 'a' AND col_varchar <= 'n'
+$$ AS query \gset
+:explain1run1
 --
 -- Secondary key scan.
 -- This work needs to be optimized.
 --
 -- Scan one tablet.
-EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split_desc WHERE col_double < 2;
-SELECT * FROM feature_pk_split_desc WHERE col_double < 2;
+\set query 'SELECT * FROM feature_pk_split_desc WHERE col_double < 2'
+:explain1run1
 -- Scan two tablets.
-EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split_desc WHERE col_double <= 5;
-SELECT * FROM feature_pk_split_desc WHERE col_double <= 5;
+\set query 'SELECT * FROM feature_pk_split_desc WHERE col_double <= 5'
+:explain1run1
 -- Scan three tablets.
-EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split_desc WHERE col_double <= 8;
-SELECT * FROM feature_pk_split_desc WHERE col_double <= 8;
+\set query 'SELECT * FROM feature_pk_split_desc WHERE col_double <= 8'
+:explain1run1
 -- Scan four tablets.
-EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split_desc WHERE col_double <= 11;
-SELECT * FROM feature_pk_split_desc WHERE col_double <= 11;
+\set query 'SELECT * FROM feature_pk_split_desc WHERE col_double <= 11'
+:explain1run1
 -- Scan five tablets.
-EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split_desc WHERE col_double <= 14;
-SELECT * FROM feature_pk_split_desc WHERE col_double <= 14;
+\set query 'SELECT * FROM feature_pk_split_desc WHERE col_double <= 14'
+:explain1run1
 -- Scan six tablets.
-EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split_desc WHERE col_double <= 17;
-SELECT * FROM feature_pk_split_desc WHERE col_double <= 17;
+\set query 'SELECT * FROM feature_pk_split_desc WHERE col_double <= 17'
+:explain1run1
 -- Scan all tablets.
-EXPLAIN (COSTS OFF) SELECT * FROM feature_pk_split_desc WHERE col_double <= 100;
-SELECT * FROM feature_pk_split_desc WHERE col_double <= 100;
+\set query 'SELECT * FROM feature_pk_split_desc WHERE col_double <= 100'
+:explain1run1
 -- Index only scan.
-EXPLAIN (COSTS OFF) SELECT col_double FROM feature_pk_split_desc WHERE col_double <= 8;
-SELECT col_double FROM feature_pk_split_desc WHERE col_double <= 8;
+\set query 'SELECT col_double FROM feature_pk_split_desc WHERE col_double <= 8'
+:explain1run1
 --
 -- Table that has min & max split values.
 -- * Using 3 splits: (1, MAX), (10, MIN), and (100, MIN).
@@ -168,18 +184,15 @@ INSERT INTO feature_pk_split_desc_min_max
 -- each row. Currently, this is verified by tracking number rows per tablet during development.
 --
 -- All rows must be from partition 1: (nan) < PKey < (1, max)
-EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
-SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer <= 1 ORDER BY col_integer DESC;
-SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer <= 1 ORDER BY col_integer DESC;
+\set explain 'EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)'
+\set query 'SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer <= 1 ORDER BY col_integer DESC'
+:explain1run1
 -- All rows must be from partition 2: (1, max) <= PKey < (10, min)
-EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
-SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer > 1 AND col_integer < 10 ORDER BY col_integer DESC;
-SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer > 1 AND col_integer < 10 ORDER BY col_integer DESC;
+\set query 'SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer > 1 AND col_integer < 10 ORDER BY col_integer DESC'
+:explain1run1
 -- All rows must be from partition3: (10, min) <= PKey < (100, min)
-EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
-SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer >= 10 AND col_integer < 100 ORDER BY col_integer DESC;
-SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer >= 10 AND col_integer < 100 ORDER BY col_integer DESC;
+\set query 'SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer >= 10 AND col_integer < 100 ORDER BY col_integer DESC'
+:explain1run1
 -- All rows must be from partition 4: (100, min) <= PKey < (nan)
-EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)
-SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer >= 100 ORDER BY col_integer DESC;
-SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer >= 100 ORDER BY col_integer DESC;
+\set query 'SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer >= 100 ORDER BY col_integer DESC'
+:explain1run1

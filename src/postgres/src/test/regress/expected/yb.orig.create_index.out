@@ -1,3 +1,25 @@
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set filename :abs_srcdir '/yb_commands/explainrun.sql'
+\i :filename
+-- A helper script to explain and run a query.  Use in regress tests by
+-- defining :explain, :query, and optionally :hint#.
+\set explain1 ':explain :hint1 :query;'
+\set explain2 ':explain1 :explain :hint2 :query;'
+\set explain3 ':explain2 :explain :hint3 :query;'
+\set explain4 ':explain3 :explain :hint4 :query;'
+\set explain5 ':explain4 :explain :hint5 :query;'
+\set explain1run1 ':explain1; :hint1 :query;'
+\set explain2run2 ':explain2; :hint1 :query; :hint2 :query;'
+\set explain3run3 ':explain3; :hint1 :query; :hint2 :query; :hint3 :query;'
+\set explain4run4 ':explain4; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query;'
+\set explain5run5 ':explain5; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query; :hint5 :query;'
+-- Default to no hints.
+\set hint1 ''
+\set hint2 ''
+\set hint3 ''
+\set hint4 ''
+\set hint5 ''
+\set explain 'EXPLAIN (COSTS OFF)'
 --
 -- Create index on existing table with data
 --
@@ -56,40 +78,46 @@ SELECT * FROM test_index WHERE v1 IN (1, 2, 3);
 
 -- Verify indexes on system catalog tables are updated properly
 CREATE TABLE test_sys_catalog_update (k int primary key, v int);
-EXPLAIN (COSTS OFF) SELECT relname FROM pg_class WHERE relname = 'test_sys_catalog_update';
+SELECT $$
+SELECT relname FROM pg_class WHERE relname = 'test_sys_catalog_update'
+$$ AS query \gset
+:explain1run1
                           QUERY PLAN                          
 --------------------------------------------------------------
  Index Only Scan using pg_class_relname_nsp_index on pg_class
    Index Cond: (relname = 'test_sys_catalog_update'::name)
 (2 rows)
 
-SELECT relname  FROM pg_class WHERE relname = 'test_sys_catalog_update';
          relname         
 -------------------------
  test_sys_catalog_update
 (1 row)
 
-EXPLAIN (COSTS OFF) SELECT typname FROM pg_type WHERE typname = 'test_sys_catalog_update';
+SELECT $$
+SELECT typname FROM pg_type WHERE typname = 'test_sys_catalog_update'
+$$ AS query \gset
+:explain1run1
                          QUERY PLAN                         
 ------------------------------------------------------------
  Index Only Scan using pg_type_typname_nsp_index on pg_type
    Index Cond: (typname = 'test_sys_catalog_update'::name)
 (2 rows)
 
-SELECT typname FROM pg_type WHERE typname = 'test_sys_catalog_update';
          typname         
 -------------------------
  test_sys_catalog_update
 (1 row)
 
-EXPLAIN (COSTS OFF) SELECT attname, atttypid FROM pg_attribute WHERE attname = 'v';
+SELECT $$
+SELECT attname, atttypid FROM pg_attribute WHERE attname = 'v'
+$$ AS query \gset
+:explain1run1
                             QUERY PLAN                            
 ------------------------------------------------------------------
  Index Scan using pg_attribute_relid_attnam_index on pg_attribute
    Index Cond: (attname = 'v'::name)
 (2 rows)
 
-SELECT attname, atttypid FROM pg_attribute WHERE attname = 'v';
  attname | atttypid 
 ---------+----------
  v       |       23
@@ -167,7 +195,8 @@ ERROR:  duplicate key value violates unique constraint "t1_pkey"
 INSERT INTO t1 VALUES (1, 3, 11, 11);
 ERROR:  duplicate key value violates unique constraint "t1_v1_v2_idx"
 INSERT INTO t1 VALUES (1, 3, 11, 13), (2, 1, 12, 13), (2, 2, 12, 14);
-EXPLAIN (COSTS OFF) SELECT * FROM t1 ORDER BY h, r;
+\set query 'SELECT * FROM t1 ORDER BY h, r'
+:explain1run1
       QUERY PLAN      
 ----------------------
  Sort
@@ -175,7 +204,6 @@ EXPLAIN (COSTS OFF) SELECT * FROM t1 ORDER BY h, r;
    ->  Seq Scan on t1
 (3 rows)
 
-SELECT * FROM t1 ORDER BY h, r;
  h | r | v1 | v2 
 ---+---+----+----
  1 | 1 | 11 | 11
@@ -185,14 +213,14 @@ SELECT * FROM t1 ORDER BY h, r;
  2 | 2 | 12 | 14
 (5 rows)
 
-EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE h = 1 ORDER BY r;
+\set query 'SELECT * FROM t1 WHERE h = 1 ORDER BY r'
+:explain1run1
            QUERY PLAN           
 --------------------------------
  Index Scan using t1_pkey on t1
    Index Cond: (h = 1)
 (2 rows)
 
-SELECT * FROM t1 WHERE h = 1 ORDER BY r;
  h | r | v1 | v2 
 ---+---+----+----
  1 | 1 | 11 | 11
@@ -200,7 +228,8 @@ SELECT * FROM t1 WHERE h = 1 ORDER BY r;
  1 | 3 | 11 | 13
 (3 rows)
 
-EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE yb_hash_code(h) = yb_hash_code(1) ORDER BY r;
+\set query 'SELECT * FROM t1 WHERE yb_hash_code(h) = yb_hash_code(1) ORDER BY r'
+:explain1run1
                   QUERY PLAN                  
 ----------------------------------------------
  Sort
@@ -209,7 +238,6 @@ EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE yb_hash_code(h) = yb_hash_code(1) ORD
          Index Cond: (yb_hash_code(h) = 4624)
 (4 rows)
 
-SELECT * FROM t1 WHERE yb_hash_code(h) = yb_hash_code(1) ORDER BY r;
  h | r | v1 | v2 
 ---+---+----+----
  1 | 1 | 11 | 11
@@ -217,7 +245,8 @@ SELECT * FROM t1 WHERE yb_hash_code(h) = yb_hash_code(1) ORDER BY r;
  1 | 3 | 11 | 13
 (3 rows)
 
-EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE h > 1 ORDER BY h, r;
+\set query 'SELECT * FROM t1 WHERE h > 1 ORDER BY h, r'
+:explain1run1
            QUERY PLAN            
 ---------------------------------
  Sort
@@ -226,40 +255,40 @@ EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE h > 1 ORDER BY h, r;
          Storage Filter: (h > 1)
 (4 rows)
 
-SELECT * FROM t1 WHERE h > 1 ORDER BY h, r;
  h | r | v1 | v2 
 ---+---+----+----
  2 | 1 | 12 | 13
  2 | 2 | 12 | 14
 (2 rows)
 
-EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE h = 1 AND r = 1;
+\set query 'SELECT * FROM t1 WHERE h = 1 AND r = 1'
+:explain1run1
              QUERY PLAN              
 -------------------------------------
  Index Scan using t1_pkey on t1
    Index Cond: ((h = 1) AND (r = 1))
 (2 rows)
 
-SELECT * FROM t1 WHERE h = 1 AND r = 1;
  h | r | v1 | v2 
 ---+---+----+----
  1 | 1 | 11 | 11
 (1 row)
 
-EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE yb_hash_code(h) = yb_hash_code(1) AND r = 1;
+\set query 'SELECT * FROM t1 WHERE yb_hash_code(h) = yb_hash_code(1) AND r = 1'
+:explain1run1
                       QUERY PLAN                      
 ------------------------------------------------------
  Index Scan using t1_pkey on t1
    Index Cond: ((yb_hash_code(h) = 4624) AND (r = 1))
 (2 rows)
 
-SELECT * FROM t1 WHERE yb_hash_code(h) = yb_hash_code(1) AND r = 1;
  h | r | v1 | v2 
 ---+---+----+----
  1 | 1 | 11 | 11
 (1 row)
 
-EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE v1 = 11 ORDER BY h, r;
+\set query 'SELECT * FROM t1 WHERE v1 = 11 ORDER BY h, r'
+:explain1run1
                QUERY PLAN               
 ----------------------------------------
  Sort
@@ -268,7 +297,6 @@ EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE v1 = 11 ORDER BY h, r;
          Index Cond: (v1 = 11)
 (4 rows)
 
-SELECT * FROM t1 WHERE v1 = 11 ORDER BY h, r;
  h | r | v1 | v2 
 ---+---+----+----
  1 | 1 | 11 | 11
@@ -278,9 +306,10 @@ SELECT * FROM t1 WHERE v1 = 11 ORDER BY h, r;
 
 -- Disabled this test because we do not have proper stats. We return the same cost estimate
 -- for indexes t1_v1_idx and t1_v1_v2_idx and Postgres will be either of them at random.
--- EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE v1 = 11 AND v2 = 11;
--- SELECT * FROM t1 WHERE v1 = 11 AND v2 = 11;
-EXPLAIN (COSTS OFF) SELECT t1.h, t1.r, t1.v1, t2.v1 FROM t1, t2 WHERE t1.h = t2.h AND t1.r = t2.r;
+-- \set query 'SELECT * FROM t1 WHERE v1 = 11 AND v2 = 11'
+-- :explain1run1
+\set query 'SELECT t1.h, t1.r, t1.v1, t2.v1 FROM t1, t2 WHERE t1.h = t2.h AND t1.r = t2.r'
+:explain1run1
                                                        QUERY PLAN                                                       
 ------------------------------------------------------------------------------------------------------------------------
  YB Batched Nested Loop Join
@@ -290,7 +319,6 @@ EXPLAIN (COSTS OFF) SELECT t1.h, t1.r, t1.v1, t2.v1 FROM t1, t2 WHERE t1.h = t2.
          Index Cond: (ROW(h, r) = ANY (ARRAY[ROW(t1.h, t1.r), ROW($1, $1025), ROW($2, $1026), ..., ROW($1023, $2047)]))
 (5 rows)
 
-SELECT t1.h, t1.r, t1.v1, t2.v1 FROM t1, t2 WHERE t1.h = t2.h AND t1.r = t2.r;
  h | r | v1 | v1 
 ---+---+----+----
  1 | 1 | 11 | 21
@@ -393,7 +421,8 @@ SELECT * FROM null_unique_index WHERE k IS NOT NULL ORDER BY v;
  4 | 4
 (1 row)
 
-EXPLAIN(COSTS OFF) DELETE FROM null_unique_index WHERE k IS NULL;
+\set query 'DELETE FROM null_unique_index WHERE k IS NULL'
+:explain1run1
                              QUERY PLAN                              
 ---------------------------------------------------------------------
  Delete on null_unique_index
@@ -401,7 +430,6 @@ EXPLAIN(COSTS OFF) DELETE FROM null_unique_index WHERE k IS NULL;
          Index Cond: (k IS NULL)
 (3 rows)
 
-DELETE FROM null_unique_index WHERE k IS NULL;
 SELECT * FROM null_unique_index ORDER BY v;
  k | v 
 ---+---
@@ -409,7 +437,8 @@ SELECT * FROM null_unique_index ORDER BY v;
 (1 row)
 
 INSERT INTO null_unique_index values (NULL, 2), (3, 3), (NULL, 5);
-EXPLAIN(COSTS OFF) UPDATE null_unique_index SET k = NULL WHERE k IS NOT NULL;
+\set query 'UPDATE null_unique_index SET k = NULL WHERE k IS NOT NULL'
+:explain1run1
                QUERY PLAN                
 -----------------------------------------
  Update on null_unique_index
@@ -417,7 +446,6 @@ EXPLAIN(COSTS OFF) UPDATE null_unique_index SET k = NULL WHERE k IS NOT NULL;
          Storage Filter: (k IS NOT NULL)
 (3 rows)
 
-UPDATE null_unique_index SET k = NULL WHERE k IS NOT NULL;
 SELECT * FROM null_unique_index ORDER BY v;
  k | v 
 ---+---
@@ -482,14 +510,14 @@ CREATE UNIQUE INDEX test_truncate_index ON test_truncate (b);
 INSERT INTO test_truncate VALUES (1, 2);
 INSERT INTO test_truncate VALUES (2, 2);
 ERROR:  duplicate key value violates unique constraint "test_truncate_index"
-EXPLAIN (COSTS OFF) SELECT b FROM test_truncate WHERE b = 2;
+\set query 'SELECT b FROM test_truncate WHERE b = 2'
+:explain1run1
                          QUERY PLAN                         
 ------------------------------------------------------------
  Index Only Scan using test_truncate_index on test_truncate
    Index Cond: (b = 2)
 (2 rows)
 
-SELECT b FROM test_truncate WHERE b = 2;
  b 
 ---
  2
@@ -544,14 +572,14 @@ Indexes:
 DROP INDEX test_include_c1_c2_idx;
 DELETE FROM test_include WHERE c1 = 1 AND c2 = 2;
 CREATE UNIQUE INDEX ON test_include (c1) include (c2);
-EXPLAIN (COSTS OFF) SELECT c1, c2 FROM test_include WHERE c1 = 1;
+\set query 'SELECT c1, c2 FROM test_include WHERE c1 = 1'
+:explain1run1
                           QUERY PLAN                          
 --------------------------------------------------------------
  Index Only Scan using test_include_c1_c2_idx on test_include
    Index Cond: (c1 = 1)
 (2 rows)
 
-SELECT c1, c2 FROM test_include WHERE c1 = 1;
  c1 | c2 
 ----+----
   1 |  1
@@ -571,7 +599,8 @@ Indexes:
 -- on c1 below to force the scan on the index vs. base table. Select the non-included column c3 in
 -- the other case to force the use of sequential scan on the base table.
 UPDATE test_include SET c2 = 22 WHERE c1 = 2;
-EXPLAIN (COSTS OFF) SELECT c1, c2 FROM test_include WHERE c1 > 0 ORDER BY c2;
+\set query 'SELECT c1, c2 FROM test_include WHERE c1 > 0 ORDER BY c2'
+:explain1run1
             QUERY PLAN            
 ----------------------------------
  Sort
@@ -580,15 +609,6 @@ EXPLAIN (COSTS OFF) SELECT c1, c2 FROM test_include WHERE c1 > 0 ORDER BY c2;
          Storage Filter: (c1 > 0)
 (4 rows)
 
-EXPLAIN (COSTS OFF) SELECT * FROM test_include ORDER BY c2;
-           QUERY PLAN           
---------------------------------
- Sort
-   Sort Key: c2
-   ->  Seq Scan on test_include
-(3 rows)
-
-SELECT c1, c2 FROM test_include WHERE c1 > 0 ORDER BY c2;
  c1 | c2 
 ----+----
   1 |  1
@@ -596,7 +616,15 @@ SELECT c1, c2 FROM test_include WHERE c1 > 0 ORDER BY c2;
   2 | 22
 (3 rows)
 
-SELECT * FROM test_include ORDER BY c2;
+\set query 'SELECT * FROM test_include ORDER BY c2'
+:explain1run1
+           QUERY PLAN           
+--------------------------------
+ Sort
+   Sort Key: c2
+   ->  Seq Scan on test_include
+(3 rows)
+
  c1 | c2 | c3 
 ----+----+----
   1 |  1 |  1
@@ -877,7 +905,8 @@ INSERT INTO test_method VALUES
   (2, 0, 1, 1, 9, 19),
   (2, 1, 1, 2, 10, 20);
 -- Test scans using different indexes. Verify order by.
-EXPLAIN (COSTS OFF) SELECT * FROM test_method ORDER BY h1, h2;
+\set query 'SELECT * FROM test_method ORDER BY h1, h2'
+:explain1run1
           QUERY PLAN           
 -------------------------------
  Sort
@@ -885,7 +914,6 @@ EXPLAIN (COSTS OFF) SELECT * FROM test_method ORDER BY h1, h2;
    ->  Seq Scan on test_method
 (3 rows)
 
-SELECT * FROM test_method ORDER BY h1, h2;
  h1 | h2 | r1 | r2 | v1 | v2 
 ----+----+----+----+----+----
   1 |  1 |  2 |  1 |  3 | 13
@@ -900,14 +928,14 @@ SELECT * FROM test_method ORDER BY h1, h2;
   2 |  1 |  1 |  2 | 10 | 20
 (10 rows)
 
-EXPLAIN (COSTS OFF) SELECT * FROM test_method WHERE h1 = 1 AND h2 = 1 ORDER BY r1, r2;
+\set query 'SELECT * FROM test_method WHERE h1 = 1 AND h2 = 1 ORDER BY r1, r2'
+:explain1run1
                     QUERY PLAN                    
 --------------------------------------------------
  Index Scan using test_method_pkey on test_method
    Index Cond: ((h1 = 1) AND (h2 = 1))
 (2 rows)
 
-SELECT * FROM test_method WHERE h1 = 1 AND h2 = 1 ORDER BY r1, r2;
  h1 | h2 | r1 | r2 | v1 | v2 
 ----+----+----+----+----+----
   1 |  1 |  1 |  1 |  1 | 11
@@ -916,7 +944,8 @@ SELECT * FROM test_method WHERE h1 = 1 AND h2 = 1 ORDER BY r1, r2;
   1 |  1 |  2 |  2 |  4 | 14
 (4 rows)
 
-EXPLAIN (COSTS OFF) SELECT * FROM test_method ORDER BY r1, r2;
+\set query 'SELECT * FROM test_method ORDER BY r1, r2'
+:explain1run1
           QUERY PLAN           
 -------------------------------
  Sort
@@ -924,7 +953,6 @@ EXPLAIN (COSTS OFF) SELECT * FROM test_method ORDER BY r1, r2;
    ->  Seq Scan on test_method
 (3 rows)
 
-SELECT * FROM test_method ORDER BY r1, r2;
  h1 | h2 | r1 | r2 | v1 | v2 
 ----+----+----+----+----+----
   1 |  2 |  1 |  1 |  5 | 15
@@ -939,7 +967,8 @@ SELECT * FROM test_method ORDER BY r1, r2;
   1 |  1 |  2 |  2 |  4 | 14
 (10 rows)
 
-EXPLAIN (COSTS OFF) SELECT * FROM test_method WHERE v1 > 5 ORDER BY v1, v2;
+\set query 'SELECT * FROM test_method WHERE v1 > 5 ORDER BY v1, v2'
+:explain1run1
             QUERY PLAN            
 ----------------------------------
  Sort
@@ -948,7 +977,6 @@ EXPLAIN (COSTS OFF) SELECT * FROM test_method WHERE v1 > 5 ORDER BY v1, v2;
          Storage Filter: (v1 > 5)
 (4 rows)
 
-SELECT * FROM test_method WHERE v1 > 5 ORDER BY v1, v2;
  h1 | h2 | r1 | r2 | v1 | v2 
 ----+----+----+----+----+----
   1 |  2 |  1 |  2 |  6 | 16
@@ -958,7 +986,8 @@ SELECT * FROM test_method WHERE v1 > 5 ORDER BY v1, v2;
   2 |  1 |  1 |  2 | 10 | 20
 (5 rows)
 
-EXPLAIN (COSTS OFF) SELECT * FROM test_method WHERE h2 = 2 ORDER BY r1, r2;
+\set query 'SELECT * FROM test_method WHERE h2 = 2 ORDER BY r1, r2'
+:explain1run1
                            QUERY PLAN                           
 ----------------------------------------------------------------
  Sort
@@ -967,7 +996,6 @@ EXPLAIN (COSTS OFF) SELECT * FROM test_method WHERE h2 = 2 ORDER BY r1, r2;
          Index Cond: (h2 = 2)
 (4 rows)
 
-SELECT * FROM test_method WHERE h2 = 2 ORDER BY r1, r2;
  h1 | h2 | r1 | r2 | v1 | v2 
 ----+----+----+----+----+----
   1 |  2 |  1 |  1 |  5 | 15
@@ -976,14 +1004,14 @@ SELECT * FROM test_method WHERE h2 = 2 ORDER BY r1, r2;
   1 |  2 |  2 |  2 |  8 | 18
 (4 rows)
 
-EXPLAIN (COSTS OFF) SELECT * FROM test_method WHERE h2 = 1 AND h1 = 1 ORDER BY r2 DESC, r1;
+\set query 'SELECT * FROM test_method WHERE h2 = 1 AND h1 = 1 ORDER BY r2 DESC, r1'
+:explain1run1
                          QUERY PLAN                          
 -------------------------------------------------------------
  Index Scan using test_method_h2_h1_r2_r1_idx on test_method
    Index Cond: ((h2 = 1) AND (h1 = 1))
 (2 rows)
 
-SELECT * FROM test_method WHERE h2 = 1 AND h1 = 1 ORDER BY r2 DESC, r1;
  h1 | h2 | r1 | r2 | v1 | v2 
 ----+----+----+----+----+----
   1 |  1 |  1 |  2 |  2 | 12
@@ -992,14 +1020,14 @@ SELECT * FROM test_method WHERE h2 = 1 AND h1 = 1 ORDER BY r2 DESC, r1;
   1 |  1 |  2 |  1 |  3 | 13
 (4 rows)
 
-EXPLAIN (COSTS OFF) SELECT * FROM test_method WHERE h2 = 1 AND h1 = 1 ORDER BY r2, r1;
+\set query 'SELECT * FROM test_method WHERE h2 = 1 AND h1 = 1 ORDER BY r2, r1'
+:explain1run1
                          QUERY PLAN                          
 -------------------------------------------------------------
  Index Scan using test_method_h1_h2_r2_r1_idx on test_method
    Index Cond: ((h1 = 1) AND (h2 = 1))
 (2 rows)
 
-SELECT * FROM test_method WHERE h2 = 1 AND h1 = 1 ORDER BY r2, r1;
  h1 | h2 | r1 | r2 | v1 | v2 
 ----+----+----+----+----+----
   1 |  1 |  1 |  1 |  1 | 11
@@ -1008,14 +1036,14 @@ SELECT * FROM test_method WHERE h2 = 1 AND h1 = 1 ORDER BY r2, r1;
   1 |  1 |  2 |  2 |  4 | 14
 (4 rows)
 
-EXPLAIN (COSTS OFF) SELECT * FROM test_method WHERE h2 % 8 = 2 AND h1 = 1 ORDER BY r2, r1;
+\set query 'SELECT * FROM test_method WHERE h2 % 8 = 2 AND h1 = 1 ORDER BY r2, r1'
+:explain1run1
                           QUERY PLAN                           
 ---------------------------------------------------------------
  Index Scan using test_method_h1_expr_r2_r1_idx on test_method
    Index Cond: ((h1 = 1) AND ((h2 % 8) = 2))
 (2 rows)
 
-SELECT * FROM test_method WHERE h2 % 8 = 2 AND h1 = 1 ORDER BY r2, r1;
  h1 | h2 | r1 | r2 | v1 | v2 
 ----+----+----+----+----+----
   1 |  2 |  1 |  1 |  5 | 15
@@ -1025,7 +1053,8 @@ SELECT * FROM test_method WHERE h2 % 8 = 2 AND h1 = 1 ORDER BY r2, r1;
 (4 rows)
 
 -- Test update using a hash index
-EXPLAIN (COSTS OFF) UPDATE test_method SET v2 = v2 + 10 WHERE h2 = 2;
+\set query 'UPDATE test_method SET v2 = v2 + 10 WHERE h2 = 2'
+:explain1run1
                            QUERY PLAN                           
 ----------------------------------------------------------------
  Update on test_method
@@ -1033,7 +1062,6 @@ EXPLAIN (COSTS OFF) UPDATE test_method SET v2 = v2 + 10 WHERE h2 = 2;
          Index Cond: (h2 = 2)
 (3 rows)
 
-UPDATE test_method SET v2 = v2 + 10 WHERE h2 = 2;
 SELECT * FROM test_method ORDER BY h1, h2;
  h1 | h2 | r1 | r2 | v1 | v2 
 ----+----+----+----+----+----
@@ -1065,7 +1093,8 @@ SELECT * FROM test_method ORDER BY r1, r2;
 (10 rows)
 
 -- Test delete using a unique index
-EXPLAIN (COSTS OFF) DELETE FROM test_method WHERE v1 = 5 AND v2 = 25;
+\set query 'DELETE FROM test_method WHERE v1 = 5 AND v2 = 25'
+:explain1run1
                          QUERY PLAN                          
 -------------------------------------------------------------
  Delete on test_method
@@ -1073,9 +1102,9 @@ EXPLAIN (COSTS OFF) DELETE FROM test_method WHERE v1 = 5 AND v2 = 25;
          Index Cond: ((v1 = 5) AND (v2 = 25))
 (3 rows)
 
-DELETE FROM test_method WHERE v1 = 5 AND v2 = 25;
 -- Test delete using the primary key
-EXPLAIN (COSTS OFF) DELETE FROM test_method WHERE h1 = 2 AND h2 = 0;
+\set query 'DELETE FROM test_method WHERE h1 = 2 AND h2 = 0'
+:explain1run1
                        QUERY PLAN                       
 --------------------------------------------------------
  Delete on test_method
@@ -1083,7 +1112,6 @@ EXPLAIN (COSTS OFF) DELETE FROM test_method WHERE h1 = 2 AND h2 = 0;
          Index Cond: ((h1 = 2) AND (h2 = 0))
 (3 rows)
 
-DELETE FROM test_method WHERE h1 = 2 AND h2 = 0;
 SELECT * FROM test_method ORDER BY h1, h2;
  h1 | h2 | r1 | r2 | v1 | v2 
 ----+----+----+----+----+----
@@ -1143,14 +1171,14 @@ Indexes:
     "test_method_r1_r2_idx2" lsm (r1 DESC, r2 DESC NULLS LAST)
     "test_method_v1_v2_idx" UNIQUE, lsm (v1 HASH, v2 ASC)
 
-EXPLAIN (COSTS OFF) SELECT * FROM test_method WHERE h2 = 258;
+\set query 'SELECT * FROM test_method WHERE h2 = 258'
+:explain1run1
                      QUERY PLAN                     
 ----------------------------------------------------
  Index Scan using test_method_h2_idx on test_method
    Index Cond: (h2 = 258)
 (2 rows)
 
-SELECT * FROM test_method WHERE h2 = 258;
  h1 | h2  | r1 | r2 | v1 | v2 
 ----+-----+----+----+----+----
   2 | 258 |  1 |  2 | 10 | 20
@@ -1211,13 +1239,13 @@ CREATE TABLE tbl(k SERIAL PRIMARY KEY, v INT);
 CREATE INDEX ON tbl(v ASC) SPLIT AT VALUES((10), (20), (30));
 INSERT INTO tbl(v) VALUES
     (5), (6), (16), (15), (25), (26), (36), (35), (46), (10), (20), (30), (40), (6), (16), (26);
-EXPLAIN (COSTS OFF) SELECT * FROM tbl ORDER BY v ASC;
+\set query 'SELECT * FROM tbl ORDER BY v ASC'
+:explain1run1
             QUERY PLAN             
 -----------------------------------
  Index Scan using tbl_v_idx on tbl
 (1 row)
 
-SELECT * FROM tbl ORDER BY v ASC;
  k  | v  
 ----+----
   1 |  5
@@ -1238,13 +1266,13 @@ SELECT * FROM tbl ORDER BY v ASC;
   9 | 46
 (16 rows)
 
-EXPLAIN (COSTS OFF) SELECT * FROM tbl ORDER BY v DESC;
+\set query 'SELECT * FROM tbl ORDER BY v DESC'
+:explain1run1
                  QUERY PLAN                 
 --------------------------------------------
  Index Scan Backward using tbl_v_idx on tbl
 (1 row)
 
-SELECT * FROM tbl ORDER BY v DESC;
  k  | v  
 ----+----
   9 | 46
@@ -1265,14 +1293,14 @@ SELECT * FROM tbl ORDER BY v DESC;
   1 |  5
 (16 rows)
 
-EXPLAIN (COSTS OFF) SELECT v FROM tbl WHERE v > 10 and v <= 40 ORDER BY v DESC;
+\set query 'SELECT v FROM tbl WHERE v > 10 and v <= 40 ORDER BY v DESC'
+:explain1run1
                    QUERY PLAN                    
 -------------------------------------------------
  Index Only Scan Backward using tbl_v_idx on tbl
    Index Cond: ((v > 10) AND (v <= 40))
 (2 rows)
 
-SELECT v FROM tbl WHERE v > 10 and v <= 40 ORDER BY v DESC;
  v  
 ----
  40
@@ -1288,14 +1316,14 @@ SELECT v FROM tbl WHERE v > 10 and v <= 40 ORDER BY v DESC;
  15
 (11 rows)
 
-EXPLAIN (COSTS OFF) SELECT v FROM tbl WHERE v > 10 and v <= 40 ORDER BY v ASC;
+\set query 'SELECT v FROM tbl WHERE v > 10 and v <= 40 ORDER BY v ASC'
+:explain1run1
                QUERY PLAN               
 ----------------------------------------
  Index Only Scan using tbl_v_idx on tbl
    Index Cond: ((v > 10) AND (v <= 40))
 (2 rows)
 
-SELECT v FROM tbl WHERE v > 10 and v <= 40 ORDER BY v ASC;
  v  
 ----
  15
@@ -1316,13 +1344,13 @@ CREATE TABLE tbl(k SERIAL PRIMARY KEY, v INT);
 CREATE UNIQUE INDEX ON tbl(v DESC) SPLIT AT VALUES((30), (20), (10));
 INSERT INTO tbl(v) VALUES
     (5), (6), (16), (15), (25), (26), (36), (35), (46), (10), (20), (30), (40);
-EXPLAIN (COSTS OFF) SELECT * FROM tbl ORDER BY v ASC;
+\set query 'SELECT * FROM tbl ORDER BY v ASC'
+:explain1run1
                  QUERY PLAN                 
 --------------------------------------------
  Index Scan Backward using tbl_v_idx on tbl
 (1 row)
 
-SELECT * FROM tbl ORDER BY v ASC;
  k  | v  
 ----+----
   1 |  5
@@ -1340,13 +1368,13 @@ SELECT * FROM tbl ORDER BY v ASC;
   9 | 46
 (13 rows)
 
-EXPLAIN (COSTS OFF) SELECT * FROM tbl ORDER BY v DESC;
+\set query 'SELECT * FROM tbl ORDER BY v DESC'
+:explain1run1
             QUERY PLAN             
 -----------------------------------
  Index Scan using tbl_v_idx on tbl
 (1 row)
 
-SELECT * FROM tbl ORDER BY v DESC;
  k  | v  
 ----+----
   9 | 46
@@ -1364,14 +1392,14 @@ SELECT * FROM tbl ORDER BY v DESC;
   1 |  5
 (13 rows)
 
-EXPLAIN (COSTS OFF) SELECT v FROM tbl WHERE v >= 10 and v < 40 ORDER BY v ASC;
+\set query 'SELECT v FROM tbl WHERE v >= 10 and v < 40 ORDER BY v ASC'
+:explain1run1
                    QUERY PLAN                    
 -------------------------------------------------
  Index Only Scan Backward using tbl_v_idx on tbl
    Index Cond: ((v >= 10) AND (v < 40))
 (2 rows)
 
-SELECT v FROM tbl WHERE v >= 10 and v < 40 ORDER BY v ASC;
  v  
 ----
  10
@@ -1385,14 +1413,14 @@ SELECT v FROM tbl WHERE v >= 10 and v < 40 ORDER BY v ASC;
  36
 (9 rows)
 
-EXPLAIN (COSTS OFF) SELECT v FROM tbl WHERE v >= 10 and v < 40 ORDER BY v DESC;
+\set query 'SELECT v FROM tbl WHERE v >= 10 and v < 40 ORDER BY v DESC'
+:explain1run1
                QUERY PLAN               
 ----------------------------------------
  Index Only Scan using tbl_v_idx on tbl
    Index Cond: ((v >= 10) AND (v < 40))
 (2 rows)
 
-SELECT v FROM tbl WHERE v >= 10 and v < 40 ORDER BY v DESC;
  v  
 ----
  36

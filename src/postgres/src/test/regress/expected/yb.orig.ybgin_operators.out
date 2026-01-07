@@ -4,6 +4,31 @@
 -- jsonb.  Operators taken from
 -- <https://www.postgresql.org/docs/current/functions-json.html>.
 --
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set filename :abs_srcdir '/yb_commands/explainrun_ybgin.sql'
+\i :filename
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set filename :abs_srcdir '/yb_commands/explainrun.sql'
+\i :filename
+-- A helper script to explain and run a query.  Use in regress tests by
+-- defining :explain, :query, and optionally :hint#.
+\set explain1 ':explain :hint1 :query;'
+\set explain2 ':explain1 :explain :hint2 :query;'
+\set explain3 ':explain2 :explain :hint3 :query;'
+\set explain4 ':explain3 :explain :hint4 :query;'
+\set explain5 ':explain4 :explain :hint5 :query;'
+\set explain1run1 ':explain1; :hint1 :query;'
+\set explain2run2 ':explain2; :hint1 :query; :hint2 :query;'
+\set explain3run3 ':explain3; :hint1 :query; :hint2 :query; :hint3 :query;'
+\set explain4run4 ':explain4; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query;'
+\set explain5run5 ':explain5; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query; :hint5 :query;'
+-- Default to no hints.
+\set hint1 ''
+\set hint2 ''
+\set hint3 ''
+\set hint4 ''
+\set hint5 ''
+\set explain 'EXPLAIN (costs off)'
 -- Always choose index scan.
 SET enable_seqscan = off;
 SET yb_test_ybgin_disable_cost_factor = 0.5;
@@ -15,171 +40,185 @@ INSERT INTO jsonbs (j) VALUES ('{"aaa":[-1,2.5,"5"], "date":"2021-06-30"}');
 DROP INDEX jsonbs_j_idx;
 CREATE INDEX ON jsonbs USING ybgin (j);
 -- jsonpath: number + number
-EXPLAIN (costs off)
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ + 2 == 4)';
+SELECT $$
+SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ + 2 == 4)'
+$$ AS query \gset
+:explain1run1
                         QUERY PLAN                        
 ----------------------------------------------------------
  Index Scan using jsonbs_j_idx on jsonbs
    Index Cond: (j @? '$."aaa"[*]?(@ + 2 == 4)'::jsonpath)
 (2 rows)
 
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ + 2 == 4)';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
 -- jsonpath: + number
-EXPLAIN (costs off)
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (+@ == 5)';
+SELECT $$
+SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (+@ == 5)'
+$$ AS query \gset
+:explain1run1
                       QUERY PLAN                       
 -------------------------------------------------------
  Index Scan using jsonbs_j_idx on jsonbs
    Index Cond: (j @? '$."aaa"[*]?(+@ == 5)'::jsonpath)
 (2 rows)
 
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (+@ == 5)';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
 -- jsonpath: number - number
-EXPLAIN (costs off)
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ - 2 == 3)';
+SELECT $$
+SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ - 2 == 3)'
+$$ AS query \gset
+:explain1run1
                         QUERY PLAN                        
 ----------------------------------------------------------
  Index Scan using jsonbs_j_idx on jsonbs
    Index Cond: (j @? '$."aaa"[*]?(@ - 2 == 3)'::jsonpath)
 (2 rows)
 
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ - 2 == 3)';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
 -- jsonpath: - number
-EXPLAIN (costs off)
-SELECT * FROM jsonbs WHERE j @? '$.aaa.bbb[*] ? (-@ < -3)';
+SELECT $$
+SELECT * FROM jsonbs WHERE j @? '$.aaa.bbb[*] ? (-@ < -3)'
+$$ AS query \gset
+:explain1run1
                          QUERY PLAN                          
 -------------------------------------------------------------
  Index Scan using jsonbs_j_idx on jsonbs
    Index Cond: (j @? '$."aaa"."bbb"[*]?(-@ < -3)'::jsonpath)
 (2 rows)
 
-SELECT * FROM jsonbs WHERE j @? '$.aaa.bbb[*] ? (-@ < -3)';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
 -- jsonpath: number * number
-EXPLAIN (costs off)
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ * 2 == 4)';
+SELECT $$
+SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ * 2 == 4)'
+$$ AS query \gset
+:explain1run1
                         QUERY PLAN                        
 ----------------------------------------------------------
  Index Scan using jsonbs_j_idx on jsonbs
    Index Cond: (j @? '$."aaa"[*]?(@ * 2 == 4)'::jsonpath)
 (2 rows)
 
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ * 2 == 4)';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
 -- jsonpath: number / number
-EXPLAIN (costs off)
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ / 2 == 1)';
+SELECT $$
+SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ / 2 == 1)'
+$$ AS query \gset
+:explain1run1
                         QUERY PLAN                        
 ----------------------------------------------------------
  Index Scan using jsonbs_j_idx on jsonbs
    Index Cond: (j @? '$."aaa"[*]?(@ / 2 == 1)'::jsonpath)
 (2 rows)
 
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ / 2 == 1)';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
 -- jsonpath: number % number
-EXPLAIN (costs off)
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ % 2 == 1)';
+SELECT $$
+SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ % 2 == 1)'
+$$ AS query \gset
+:explain1run1
                         QUERY PLAN                        
 ----------------------------------------------------------
  Index Scan using jsonbs_j_idx on jsonbs
    Index Cond: (j @? '$."aaa"[*]?(@ % 2 == 1)'::jsonpath)
 (2 rows)
 
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ % 2 == 1)';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
 -- jsonpath: value . type()
-EXPLAIN (costs off)
-SELECT * FROM jsonbs WHERE j @? '$[*] ? (@.type() == "string")';
+SELECT $$
+SELECT * FROM jsonbs WHERE j @? '$[*] ? (@.type() == "string")'
+$$ AS query \gset
+:explain1run1
                           QUERY PLAN                          
 --------------------------------------------------------------
  Index Scan using jsonbs_j_idx on jsonbs
    Index Cond: (j @? '$[*]?(@.type() == "string")'::jsonpath)
 (2 rows)
 
-SELECT * FROM jsonbs WHERE j @? '$[*] ? (@.type() == "string")';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
 -- jsonpath: value . size()
-EXPLAIN (costs off)
-SELECT * FROM jsonbs WHERE j @@ '$.aaa.size() == 3';
+SELECT $$
+SELECT * FROM jsonbs WHERE j @@ '$.aaa.size() == 3'
+$$ AS query \gset
+:explain1run1
                        QUERY PLAN                       
 --------------------------------------------------------
  Index Scan using jsonbs_j_idx on jsonbs
    Index Cond: (j @@ '($."aaa".size() == 3)'::jsonpath)
 (2 rows)
 
-SELECT * FROM jsonbs WHERE j @@ '$.aaa.size() == 3';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
 -- jsonpath: value . double()
-EXPLAIN (costs off)
-SELECT * FROM jsonbs WHERE j @@ '$.double() * 3 == 9';
+SELECT $$
+SELECT * FROM jsonbs WHERE j @@ '$.double() * 3 == 9'
+$$ AS query \gset
+:explain1run1
                        QUERY PLAN                       
 --------------------------------------------------------
  Index Scan using jsonbs_j_idx on jsonbs
    Index Cond: (j @@ '($.double() * 3 == 9)'::jsonpath)
 (2 rows)
 
-SELECT * FROM jsonbs WHERE j @@ '$.double() * 3 == 9';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
 -- jsonpath: value . ceiling()
-EXPLAIN (costs off)
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@.ceiling() == 2)';
+SELECT $$
+SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@.ceiling() == 2)'
+$$ AS query \gset
+:explain1run1
                            QUERY PLAN                           
 ----------------------------------------------------------------
  Index Scan using jsonbs_j_idx on jsonbs
    Index Cond: (j @? '$."aaa"[*]?(@.ceiling() == 2)'::jsonpath)
 (2 rows)
 
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@.ceiling() == 2)';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
 -- jsonpath: value . floor()
-EXPLAIN (costs off)
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@.floor() == 2)';
+SELECT $$
+SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@.floor() == 2)'
+$$ AS query \gset
+:explain1run1
                           QUERY PLAN                          
 --------------------------------------------------------------
  Index Scan using jsonbs_j_idx on jsonbs
    Index Cond: (j @? '$."aaa"[*]?(@.floor() == 2)'::jsonpath)
 (2 rows)
 
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@.floor() == 2)';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
 -- jsonpath: value . abs()
-EXPLAIN (costs off)
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@.abs() == 1)';
+SELECT $$
+SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@.abs() == 1)'
+$$ AS query \gset
+:explain1run1
                          QUERY PLAN                         
 ------------------------------------------------------------
  Index Scan using jsonbs_j_idx on jsonbs
    Index Cond: (j @? '$."aaa"[*]?(@.abs() == 1)'::jsonpath)
 (2 rows)
 
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@.abs() == 1)';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
 -- jsonpath: value . datetime()
-EXPLAIN (costs off)
-SELECT * FROM jsonbs WHERE j @@ '$.date.datetime() < "2021-07-01".datetime()';
+SELECT $$
+SELECT * FROM jsonbs WHERE j @@ '$.date.datetime() < "2021-07-01".datetime()'
+$$ AS query \gset
+:explain1run1
                                     QUERY PLAN                                    
 ----------------------------------------------------------------------------------
  Index Scan using jsonbs_j_idx on jsonbs
    Index Cond: (j @@ '($."date".datetime() < "2021-07-01".datetime())'::jsonpath)
 (2 rows)
 
-SELECT * FROM jsonbs WHERE j @@ '$.date.datetime() < "2021-07-01".datetime()';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
 -- jsonpath: value . datetime(template)
@@ -189,15 +228,16 @@ DETAIL:  ybgin index method does not support non-default search mode: all.
 -- jsonpath: value == value
 -- (skip this)
 -- jsonpath: value != value
-EXPLAIN (costs off)
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ != 1)';
+SELECT $$
+SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ != 1)'
+$$ AS query \gset
+:explain1run1
                       QUERY PLAN                      
 ------------------------------------------------------
  Index Scan using jsonbs_j_idx on jsonbs
    Index Cond: (j @? '$."aaa"[*]?(@ != 1)'::jsonpath)
 (2 rows)
 
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ != 1)';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
 -- jsonpath: value < value
@@ -209,87 +249,94 @@ DETAIL:  ybgin index method does not support non-default search mode: all.
 -- jsonpath: value >= value
 -- (skip this)
 -- jsonpath: boolean && boolean
-EXPLAIN (costs off)
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ != -1 && @ != 2.5)';
+SELECT $$
+SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ != -1 && @ != 2.5)'
+$$ AS query \gset
+:explain1run1
                             QUERY PLAN                             
 -------------------------------------------------------------------
  Index Scan using jsonbs_j_idx on jsonbs
    Index Cond: (j @? '$."aaa"[*]?(@ != -1 && @ != 2.5)'::jsonpath)
 (2 rows)
 
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ != -1 && @ != 2.5)';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
 -- jsonpath: boolean || boolean
-EXPLAIN (costs off)
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ == -1 || @ == 1)';
+SELECT $$
+SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ == -1 || @ == 1)'
+$$ AS query \gset
+:explain1run1
                            QUERY PLAN                            
 -----------------------------------------------------------------
  Index Scan using jsonbs_j_idx on jsonbs
    Index Cond: (j @? '$."aaa"[*]?(@ == -1 || @ == 1)'::jsonpath)
 (2 rows)
 
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ == -1 || @ == 1)';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method cannot use more than one required scan entry: got 3.
 -- jsonpath: ! boolean
-EXPLAIN (costs off)
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (!(@ > 0))';
+SELECT $$
+SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (!(@ > 0))'
+$$ AS query \gset
+:explain1run1
                        QUERY PLAN                       
 --------------------------------------------------------
  Index Scan using jsonbs_j_idx on jsonbs
    Index Cond: (j @? '$."aaa"[*]?(!(@ > 0))'::jsonpath)
 (2 rows)
 
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (!(@ > 0))';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
 -- jsonpath: boolean is unknown
-EXPLAIN (costs off)
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? ((@ == "1") is unknown)';
+SELECT $$
+SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? ((@ == "1") is unknown)'
+$$ AS query \gset
+:explain1run1
                              QUERY PLAN                              
 ---------------------------------------------------------------------
  Index Scan using jsonbs_j_idx on jsonbs
    Index Cond: (j @? '$."aaa"[*]?((@ == "1") is unknown)'::jsonpath)
 (2 rows)
 
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? ((@ == "1") is unknown)';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
 -- jsonpath: string like_regex string
-EXPLAIN (costs off)
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ like_regex "^[4-7]+$")';
+SELECT $$
+SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ like_regex "^[4-7]+$")'
+$$ AS query \gset
+:explain1run1
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  Index Scan using jsonbs_j_idx on jsonbs
    Index Cond: (j @? '$."aaa"[*]?(@ like_regex "^[4-7]+$")'::jsonpath)
 (2 rows)
 
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ like_regex "^[4-7]+$")';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
 -- jsonpath: string starts with string
-EXPLAIN (costs off)
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ starts with "5")';
+SELECT $$
+SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ starts with "5")'
+$$ AS query \gset
+:explain1run1
                            QUERY PLAN                            
 -----------------------------------------------------------------
  Index Scan using jsonbs_j_idx on jsonbs
    Index Cond: (j @? '$."aaa"[*]?(@ starts with "5")'::jsonpath)
 (2 rows)
 
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ starts with "5")';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
 -- jsonpath: exists ( path_expression )
-EXPLAIN (costs off)
-SELECT * FROM jsonbs WHERE j @? '$.* ? (exists (@ ? (@[*] < 0 || @[*] > 5)))';
+SELECT $$
+SELECT * FROM jsonbs WHERE j @? '$.* ? (exists (@ ? (@[*] < 0 || @[*] > 5)))'
+$$ AS query \gset
+:explain1run1
                                 QUERY PLAN                                
 --------------------------------------------------------------------------
  Index Scan using jsonbs_j_idx on jsonbs
    Index Cond: (j @? '$.*?(exists (@?(@[*] < 0 || @[*] > 5)))'::jsonpath)
 (2 rows)
 
-SELECT * FROM jsonbs WHERE j @? '$.* ? (exists (@ ? (@[*] < 0 || @[*] > 5)))';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
 --
@@ -299,171 +346,185 @@ DETAIL:  ybgin index method does not support non-default search mode: all.
 DROP INDEX jsonbs_j_idx;
 CREATE INDEX ON jsonbs USING ybgin (j jsonb_path_ops);
 -- jsonpath: number + number
-EXPLAIN (costs off)
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ + 2 == 4)';
+SELECT $$
+SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ + 2 == 4)'
+$$ AS query \gset
+:explain1run1
                         QUERY PLAN                        
 ----------------------------------------------------------
  Index Scan using jsonbs_j_idx on jsonbs
    Index Cond: (j @? '$."aaa"[*]?(@ + 2 == 4)'::jsonpath)
 (2 rows)
 
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ + 2 == 4)';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
 -- jsonpath: + number
-EXPLAIN (costs off)
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (+@ == 5)';
+SELECT $$
+SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (+@ == 5)'
+$$ AS query \gset
+:explain1run1
                       QUERY PLAN                       
 -------------------------------------------------------
  Index Scan using jsonbs_j_idx on jsonbs
    Index Cond: (j @? '$."aaa"[*]?(+@ == 5)'::jsonpath)
 (2 rows)
 
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (+@ == 5)';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
 -- jsonpath: number - number
-EXPLAIN (costs off)
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ - 2 == 3)';
+SELECT $$
+SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ - 2 == 3)'
+$$ AS query \gset
+:explain1run1
                         QUERY PLAN                        
 ----------------------------------------------------------
  Index Scan using jsonbs_j_idx on jsonbs
    Index Cond: (j @? '$."aaa"[*]?(@ - 2 == 3)'::jsonpath)
 (2 rows)
 
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ - 2 == 3)';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
 -- jsonpath: - number
-EXPLAIN (costs off)
-SELECT * FROM jsonbs WHERE j @? '$.aaa.bbb[*] ? (-@ < -3)';
+SELECT $$
+SELECT * FROM jsonbs WHERE j @? '$.aaa.bbb[*] ? (-@ < -3)'
+$$ AS query \gset
+:explain1run1
                          QUERY PLAN                          
 -------------------------------------------------------------
  Index Scan using jsonbs_j_idx on jsonbs
    Index Cond: (j @? '$."aaa"."bbb"[*]?(-@ < -3)'::jsonpath)
 (2 rows)
 
-SELECT * FROM jsonbs WHERE j @? '$.aaa.bbb[*] ? (-@ < -3)';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
 -- jsonpath: number * number
-EXPLAIN (costs off)
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ * 2 == 4)';
+SELECT $$
+SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ * 2 == 4)'
+$$ AS query \gset
+:explain1run1
                         QUERY PLAN                        
 ----------------------------------------------------------
  Index Scan using jsonbs_j_idx on jsonbs
    Index Cond: (j @? '$."aaa"[*]?(@ * 2 == 4)'::jsonpath)
 (2 rows)
 
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ * 2 == 4)';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
 -- jsonpath: number / number
-EXPLAIN (costs off)
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ / 2 == 1)';
+SELECT $$
+SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ / 2 == 1)'
+$$ AS query \gset
+:explain1run1
                         QUERY PLAN                        
 ----------------------------------------------------------
  Index Scan using jsonbs_j_idx on jsonbs
    Index Cond: (j @? '$."aaa"[*]?(@ / 2 == 1)'::jsonpath)
 (2 rows)
 
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ / 2 == 1)';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
 -- jsonpath: number % number
-EXPLAIN (costs off)
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ % 2 == 1)';
+SELECT $$
+SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ % 2 == 1)'
+$$ AS query \gset
+:explain1run1
                         QUERY PLAN                        
 ----------------------------------------------------------
  Index Scan using jsonbs_j_idx on jsonbs
    Index Cond: (j @? '$."aaa"[*]?(@ % 2 == 1)'::jsonpath)
 (2 rows)
 
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ % 2 == 1)';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
 -- jsonpath: value . type()
-EXPLAIN (costs off)
-SELECT * FROM jsonbs WHERE j @? '$[*] ? (@.type() == "string")';
+SELECT $$
+SELECT * FROM jsonbs WHERE j @? '$[*] ? (@.type() == "string")'
+$$ AS query \gset
+:explain1run1
                           QUERY PLAN                          
 --------------------------------------------------------------
  Index Scan using jsonbs_j_idx on jsonbs
    Index Cond: (j @? '$[*]?(@.type() == "string")'::jsonpath)
 (2 rows)
 
-SELECT * FROM jsonbs WHERE j @? '$[*] ? (@.type() == "string")';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
 -- jsonpath: value . size()
-EXPLAIN (costs off)
-SELECT * FROM jsonbs WHERE j @@ '$.aaa.size() == 3';
+SELECT $$
+SELECT * FROM jsonbs WHERE j @@ '$.aaa.size() == 3'
+$$ AS query \gset
+:explain1run1
                        QUERY PLAN                       
 --------------------------------------------------------
  Index Scan using jsonbs_j_idx on jsonbs
    Index Cond: (j @@ '($."aaa".size() == 3)'::jsonpath)
 (2 rows)
 
-SELECT * FROM jsonbs WHERE j @@ '$.aaa.size() == 3';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
 -- jsonpath: value . double()
-EXPLAIN (costs off)
-SELECT * FROM jsonbs WHERE j @@ '$.double() * 3 == 9';
+SELECT $$
+SELECT * FROM jsonbs WHERE j @@ '$.double() * 3 == 9'
+$$ AS query \gset
+:explain1run1
                        QUERY PLAN                       
 --------------------------------------------------------
  Index Scan using jsonbs_j_idx on jsonbs
    Index Cond: (j @@ '($.double() * 3 == 9)'::jsonpath)
 (2 rows)
 
-SELECT * FROM jsonbs WHERE j @@ '$.double() * 3 == 9';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
 -- jsonpath: value . ceiling()
-EXPLAIN (costs off)
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@.ceiling() == 2)';
+SELECT $$
+SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@.ceiling() == 2)'
+$$ AS query \gset
+:explain1run1
                            QUERY PLAN                           
 ----------------------------------------------------------------
  Index Scan using jsonbs_j_idx on jsonbs
    Index Cond: (j @? '$."aaa"[*]?(@.ceiling() == 2)'::jsonpath)
 (2 rows)
 
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@.ceiling() == 2)';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
 -- jsonpath: value . floor()
-EXPLAIN (costs off)
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@.floor() == 2)';
+SELECT $$
+SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@.floor() == 2)'
+$$ AS query \gset
+:explain1run1
                           QUERY PLAN                          
 --------------------------------------------------------------
  Index Scan using jsonbs_j_idx on jsonbs
    Index Cond: (j @? '$."aaa"[*]?(@.floor() == 2)'::jsonpath)
 (2 rows)
 
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@.floor() == 2)';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
 -- jsonpath: value . abs()
-EXPLAIN (costs off)
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@.abs() == 1)';
+SELECT $$
+SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@.abs() == 1)'
+$$ AS query \gset
+:explain1run1
                          QUERY PLAN                         
 ------------------------------------------------------------
  Index Scan using jsonbs_j_idx on jsonbs
    Index Cond: (j @? '$."aaa"[*]?(@.abs() == 1)'::jsonpath)
 (2 rows)
 
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@.abs() == 1)';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
 -- jsonpath: value . datetime()
-EXPLAIN (costs off)
-SELECT * FROM jsonbs WHERE j @@ '$.date.datetime() < "2021-07-01".datetime()';
+SELECT $$
+SELECT * FROM jsonbs WHERE j @@ '$.date.datetime() < "2021-07-01".datetime()'
+$$ AS query \gset
+:explain1run1
                                     QUERY PLAN                                    
 ----------------------------------------------------------------------------------
  Index Scan using jsonbs_j_idx on jsonbs
    Index Cond: (j @@ '($."date".datetime() < "2021-07-01".datetime())'::jsonpath)
 (2 rows)
 
-SELECT * FROM jsonbs WHERE j @@ '$.date.datetime() < "2021-07-01".datetime()';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
 -- jsonpath: value . datetime(template)
@@ -473,15 +534,16 @@ DETAIL:  ybgin index method does not support non-default search mode: all.
 -- jsonpath: value == value
 -- (skip this)
 -- jsonpath: value != value
-EXPLAIN (costs off)
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ != 1)';
+SELECT $$
+SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ != 1)'
+$$ AS query \gset
+:explain1run1
                       QUERY PLAN                      
 ------------------------------------------------------
  Index Scan using jsonbs_j_idx on jsonbs
    Index Cond: (j @? '$."aaa"[*]?(@ != 1)'::jsonpath)
 (2 rows)
 
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ != 1)';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
 -- jsonpath: value < value
@@ -493,84 +555,91 @@ DETAIL:  ybgin index method does not support non-default search mode: all.
 -- jsonpath: value >= value
 -- (skip this)
 -- jsonpath: boolean && boolean
-EXPLAIN (costs off)
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ != -1 && @ != 2.5)';
+SELECT $$
+SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ != -1 && @ != 2.5)'
+$$ AS query \gset
+:explain1run1
                             QUERY PLAN                             
 -------------------------------------------------------------------
  Index Scan using jsonbs_j_idx on jsonbs
    Index Cond: (j @? '$."aaa"[*]?(@ != -1 && @ != 2.5)'::jsonpath)
 (2 rows)
 
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ != -1 && @ != 2.5)';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
 -- jsonpath: boolean || boolean
-EXPLAIN (costs off)
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ == -1 || @ == 1)';
+SELECT $$
+SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ == -1 || @ == 1)'
+$$ AS query \gset
+:explain1run1
                            QUERY PLAN                            
 -----------------------------------------------------------------
  Index Scan using jsonbs_j_idx on jsonbs
    Index Cond: (j @? '$."aaa"[*]?(@ == -1 || @ == 1)'::jsonpath)
 (2 rows)
 
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ == -1 || @ == 1)';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method cannot use more than one required scan entry: got 2.
 -- jsonpath: ! boolean
-EXPLAIN (costs off)
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (!(@ > 0))';
+SELECT $$
+SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (!(@ > 0))'
+$$ AS query \gset
+:explain1run1
                        QUERY PLAN                       
 --------------------------------------------------------
  Index Scan using jsonbs_j_idx on jsonbs
    Index Cond: (j @? '$."aaa"[*]?(!(@ > 0))'::jsonpath)
 (2 rows)
 
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (!(@ > 0))';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
 -- jsonpath: boolean is unknown
-EXPLAIN (costs off)
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ is unknown)';
+SELECT $$
+SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ is unknown)'
+$$ AS query \gset
+:explain1run1
 ERROR:  syntax error at or near " " of jsonpath input
-LINE 2: SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ is unknown)';
+LINE 2: SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ is unknown)'
                                         ^
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ is unknown)';
 ERROR:  syntax error at or near " " of jsonpath input
-LINE 1: SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ is unknown)';
+LINE 1: SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ is unknown)'
                                         ^
 -- jsonpath: string like_regex string
-EXPLAIN (costs off)
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ like_regex "^[4-7]+$")';
+SELECT $$
+SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ like_regex "^[4-7]+$")'
+$$ AS query \gset
+:explain1run1
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  Index Scan using jsonbs_j_idx on jsonbs
    Index Cond: (j @? '$."aaa"[*]?(@ like_regex "^[4-7]+$")'::jsonpath)
 (2 rows)
 
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ like_regex "^[4-7]+$")';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
 -- jsonpath: string starts with string
-EXPLAIN (costs off)
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ starts with "5")';
+SELECT $$
+SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ starts with "5")'
+$$ AS query \gset
+:explain1run1
                            QUERY PLAN                            
 -----------------------------------------------------------------
  Index Scan using jsonbs_j_idx on jsonbs
    Index Cond: (j @? '$."aaa"[*]?(@ starts with "5")'::jsonpath)
 (2 rows)
 
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ starts with "5")';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
 -- jsonpath: exists ( path_expression )
-EXPLAIN (costs off)
-SELECT * FROM jsonbs WHERE j @? '$.* ? (exists (@ ? (@[*] < 0 || @[*] > 5)))';
+SELECT $$
+SELECT * FROM jsonbs WHERE j @? '$.* ? (exists (@ ? (@[*] < 0 || @[*] > 5)))'
+$$ AS query \gset
+:explain1run1
                                 QUERY PLAN                                
 --------------------------------------------------------------------------
  Index Scan using jsonbs_j_idx on jsonbs
    Index Cond: (j @? '$.*?(exists (@?(@[*] < 0 || @[*] > 5)))'::jsonpath)
 (2 rows)
 
-SELECT * FROM jsonbs WHERE j @? '$.* ? (exists (@ ? (@[*] < 0 || @[*] > 5)))';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
