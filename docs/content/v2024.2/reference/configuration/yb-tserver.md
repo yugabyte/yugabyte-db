@@ -782,15 +782,15 @@ Default: If `ysql_max_connections` is not set, the database startup process will
 
 Specifies the default transaction isolation level.
 
-Valid values: `SERIALIZABLE`, `REPEATABLE READ`, `READ COMMITTED`, and `READ UNCOMMITTED`.
+Valid values: `serializable`, `'repeatable read'`, `'read committed'`, and `'read uncommitted'`.
 
-Default: `READ COMMITTED`
+Default: `'read committed'`
 
-[Read Committed Isolation](../../../explore/transactions/isolation-levels/) is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
+[Read Committed Isolation](../../../explore/transactions/isolation-levels/) is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot isolation (in which case Read Committed and Read Uncommitted of YSQL also in turn use Snapshot isolation).
 
 ##### --yb_enable_read_committed_isolation
 
-Enables Read Committed Isolation. By default this flag is false and in this case `READ COMMITTED` (and `READ UNCOMMITTED`) isolation level of YSQL fall back to the stricter [Snapshot Isolation](../../../explore/transactions/isolation-levels/). See [--ysql_default_transaction_isolation](#ysql-default-transaction-isolation) flag for more details.
+Enables Read Committed isolation. By default this flag is false and in this case the Read Committed and Read Uncommitted isolation level of YSQL fall back to the stricter [Snapshot isolation](../../../explore/transactions/isolation-levels/). See [--ysql_default_transaction_isolation](#ysql-default-transaction-isolation) flag for more details.
 
 Default: `false`
 
@@ -1942,11 +1942,19 @@ Default: false
 
 ##### default_transaction_isolation
 
-Specifies the default isolation level of each new transaction. Every transaction has an isolation level of `read uncommitted`, `read committed`, `repeatable read`, or `serializable`.
+Specifies the default isolation level of each new transaction. Every transaction has an isolation level of `'read uncommitted'`, `'read committed'`, `'repeatable read'`, or `serializable`.
+
+For example:
+
+```sql
+SET default_transaction_isolation='repeatable read';
+```
 
 See [transaction isolation levels](../../../architecture/transactions/isolation-levels) for reference.
 
-Default: `read committed`
+See also the [--ysql_default_transaction_isolation](#ysql-default-transaction-isolation) flag.
+
+Default: `'read committed'`
 
 ##### yb_skip_redundant_update_ops
 
