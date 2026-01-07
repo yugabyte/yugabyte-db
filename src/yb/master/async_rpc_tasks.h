@@ -633,9 +633,9 @@ class AsyncSplitTablet : public AsyncTabletLeaderTask {
  public:
   AsyncSplitTablet(
       Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
-      const std::array<TabletId, kDefaultNumSplitParts>& new_tablet_ids,
-      const std::string& split_encoded_key, const std::string& split_partition_key,
-      LeaderEpoch epoch);
+      const std::vector<TabletId>& new_tablet_ids,
+      const std::vector<std::string>& split_encoded_keys,
+      const std::vector<std::string>& split_partition_keys, LeaderEpoch epoch);
 
   server::MonitoredTaskType type() const override {
     return server::MonitoredTaskType::kSplitTablet;

@@ -21,6 +21,7 @@
 #include "yb/client/xcluster_client.h"
 
 #include "yb/common/colocated_util.h"
+#include "yb/common/common_util.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/common_flags.h"
 #include "yb/common/pg_system_attr.h"
@@ -372,11 +373,15 @@ void CatalogManager::RecordCDCSDKHiddenTablets(
   for (const auto& hidden_tablet : tablets) {
     auto tablet_lock = hidden_tablet->LockForRead();
     auto& tablet_pb = tablet_lock->pb;
+    // TODO(nway-tsplit): Verify support for multi-way split.
+    CHECK_EQ(tablet_pb.split_tablet_ids_size(), kDefaultNumSplitParts);
+    const std::vector<TabletId> split_tablets(
+        tablet_pb.split_tablet_ids().begin(), tablet_pb.split_tablet_ids().end());
     HiddenReplicationParentTabletInfo info{
         .table_id_ = hidden_tablet->table()->id(),
         .parent_tablet_id_ =
             tablet_pb.has_split_parent_tablet_id() ? tablet_pb.split_parent_tablet_id() : "",
-        .split_tablets_ = {tablet_pb.split_tablet_ids(0), tablet_pb.split_tablet_ids(1)},
+        .split_tablets_ = std::move(split_tablets),
         .hide_time_ = HybridTime(tablet_pb.hide_hybrid_time())};
 
     retained_by_cdcsdk_.emplace(hidden_tablet->id(), std::move(info));
@@ -3630,8 +3635,10 @@ Status CatalogManager::UpdateCDCProducerOnTabletSplit(
       // will be set. We use this information to know that the children has been polled for. Once
       // both children have been polled for, then we can delete the parent tablet via the bg task
       // DoProcessXClusterParentTabletDeletion.
-      for (const auto& child_tablet_id :
-           {split_tablet_ids.children.first, split_tablet_ids.children.second}) {
+      // TODO(nway-tsplit): verify support for N-way split.
+      SCHECK_EQ(kDefaultNumSplitParts, split_tablet_ids.children.size(), IllegalState, Format(
+          "Unexpected number of split children for parent tablet: $0", split_tablet_ids.source));
+      for (const auto& child_tablet_id : split_tablet_ids.children) {
         cdc::CDCStateTableEntry entry(child_tablet_id, stream->StreamId());
         if (!stream->GetCdcsdkYsqlReplicationSlotName().empty()) {
             DCHECK(parent_entry_opt->checkpoint);
@@ -3914,16 +3921,24 @@ Status CatalogManager::UpdateConsumerOnProducerSplit(
       stream_entry->consumer_table_id(), consumer_table_id, InvalidArgument,
       "Consumer table ID provided in request does not match the stream entry");
 
-  SplitTabletIds split_tablet_id{
-      .source = req->producer_split_tablet_info().tablet_id(),
-      .children = {
-          req->producer_split_tablet_info().new_tablet1_id(),
-          req->producer_split_tablet_info().new_tablet2_id()}};
+  const auto& split_info = req->producer_split_tablet_info();
+  const auto split_children = GetSplitChildTabletIds(split_info);
+  const auto split_keys = GetSplitPartitionKeys(split_info);
 
-  auto split_key = req->producer_split_tablet_info().split_partition_key();
+  // TODO(nway-tsplit): verify support for N-way split.
+  SCHECK_EQ(kDefaultNumSplitParts, split_children.size(), IllegalState, Format(
+      "Unexpected number of split children for parent tablet: $0", split_info.tablet_id()));
+  SCHECK_EQ(
+      split_children.size() - 1, split_keys.size(), IllegalState,
+      "Unexpected number of partition keys");
+  SplitTabletIds split_tablet_id {
+    .source = split_info.tablet_id(),
+    .children = split_children
+  };
+
   bool found_source = false, found_all_split_children = false;
   RETURN_NOT_OK(UpdateTabletMappingOnProducerSplit(
-      consumer_tablet_keys, split_tablet_id, split_key, &found_source, &found_all_split_children,
+      consumer_tablet_keys, split_tablet_id, split_keys, &found_source, &found_all_split_children,
       stream_entry));
 
   if (!found_source) {
@@ -3939,7 +3954,7 @@ Status CatalogManager::UpdateConsumerOnProducerSplit(
     // here (!found_source && !found_all_split_childs).
     // This is alright, we can log a warning, and then continue (to not block later records).
     LOG(WARNING) << "Unable to find matching source tablet "
-                 << req->producer_split_tablet_info().tablet_id() << " for universe "
+                 << split_info.tablet_id() << " for universe "
                  << req->replication_group_id() << " stream " << req->stream_id();
 
     return Status::OK();

@@ -1034,15 +1034,23 @@ SplitTabletsCreationMetaData PrepareTabletCreationMetaDataForSplit(
     const tablet::SplitTabletRequestPB& request, const tablet::Tablet& tablet) {
   SplitTabletsCreationMetaData metas;
 
-  const auto& split_partition_key = request.split_partition_key();
-  const auto& split_encoded_key = request.split_encoded_key();
+  const auto new_tablet_ids = GetSplitChildTabletIds(request);
+  const auto split_partition_keys = GetSplitPartitionKeys(request);
+  const auto split_encoded_keys = GetSplitEncodedKeys(request);
+
+  // TODO(nway-tsplit): support metadata generation for more than 2 child tablets.
+  CHECK_EQ(kDefaultNumSplitParts, new_tablet_ids.size());
+  CHECK_EQ(new_tablet_ids.size() - 1, split_partition_keys.size());
+  CHECK_EQ(new_tablet_ids.size() - 1, split_encoded_keys.size());
+  const auto& split_partition_key = split_partition_keys.front();
+  const auto& split_encoded_key = split_encoded_keys.front();
 
   auto source_partition = tablet.metadata()->partition();
   const auto& source_key_bounds = tablet.key_bounds();
 
   {
     TabletCreationMetaData meta;
-    meta.tablet_id = request.new_tablet1_id();
+    meta.tablet_id = new_tablet_ids[0];
     meta.partition = *source_partition;
     meta.key_bounds = source_key_bounds;
     meta.key_bounds.upper.Reset(split_encoded_key);
@@ -1052,7 +1060,7 @@ SplitTabletsCreationMetaData PrepareTabletCreationMetaDataForSplit(
 
   {
     TabletCreationMetaData meta;
-    meta.tablet_id = request.new_tablet2_id();
+    meta.tablet_id = new_tablet_ids[1];
     meta.partition = *source_partition;
     meta.key_bounds = source_key_bounds;
     meta.key_bounds.lower.Reset(split_encoded_key);
@@ -1163,17 +1171,24 @@ Status TSTabletManager::ApplyTabletSplit(
   auto tablet = VERIFY_RESULT(operation->tablet_safe());
   const auto tablet_id = tablet->tablet_id();
   const auto* request = operation->request();
+  const auto request_pb = request->ToGoogleProtobuf();
+  const auto new_tablet_ids = GetSplitChildTabletIds(*request);
+
+  // TODO(nway-tsplit): support N-way split.
+  SCHECK_EQ(kDefaultNumSplitParts, new_tablet_ids.size(), IllegalState, Format(
+      "Unexpected number of split children for parent tablet: $0", tablet_id));
+
   SCHECK_EQ(
       request->tablet_id(), tablet_id, IllegalState,
       Format(
           "Unexpected SPLIT_OP $0 designated for tablet $1 to be applied to tablet $2",
           split_op_id, request->tablet_id(), tablet_id));
   SCHECK(
-      tablet_id != request->new_tablet1_id() && tablet_id != request->new_tablet2_id(),
+      tablet_id != new_tablet_ids[0] && tablet_id != new_tablet_ids[1],
       IllegalState,
       Format(
           "One of SPLIT_OP $0 destination tablet IDs ($1, $2) is the same as source tablet ID $3",
-          split_op_id, request->new_tablet1_id(), request->new_tablet2_id(), tablet_id));
+          split_op_id, new_tablet_ids[0], new_tablet_ids[1], tablet_id));
 
   LOG_WITH_PREFIX(INFO) << "Tablet " << tablet_id << " split operation " << split_op_id
                         << " apply started";
@@ -1215,7 +1230,7 @@ Status TSTabletManager::ApplyTabletSplit(
     LOG(INFO) << "TEST: ApplyTabletSplit: delay finished";
   }
 
-  auto tcmetas = PrepareTabletCreationMetaDataForSplit(request->ToGoogleProtobuf(), *tablet);
+  auto tcmetas = PrepareTabletCreationMetaDataForSplit(request_pb, *tablet);
 
   RETURN_NOT_OK(StartSubtabletsSplit(meta, &tcmetas));
 
@@ -1269,8 +1284,7 @@ Status TSTabletManager::ApplyTabletSplit(
     LOG(FATAL) << "Crashing due to FLAGS_TEST_crash_before_source_tablet_mark_split_done";
   }
 
-  meta.SetSplitDone(
-      split_op_id, request->new_tablet1_id().ToBuffer(), request->new_tablet2_id().ToBuffer());
+  meta.SetSplitDone(split_op_id, new_tablet_ids);
   RETURN_NOT_OK(meta.Flush());
 
   tablet->SplitDone();

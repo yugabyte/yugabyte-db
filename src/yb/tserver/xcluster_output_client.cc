@@ -607,11 +607,25 @@ Result<bool> XClusterOutputClient::ProcessMetaOp(const cdc::CDCRecordPB& record)
   if (record.operation() == cdc::CDCRecordPB::SPLIT_OP) {
     // Construct and send the update request.
     master::ProducerSplitTabletInfoPB split_info;
-    split_info.set_tablet_id(record.split_tablet_request().tablet_id());
-    split_info.set_new_tablet1_id(record.split_tablet_request().new_tablet1_id());
-    split_info.set_new_tablet2_id(record.split_tablet_request().new_tablet2_id());
-    split_info.set_split_encoded_key(record.split_tablet_request().split_encoded_key());
-    split_info.set_split_partition_key(record.split_tablet_request().split_partition_key());
+    const auto& split_req = record.split_tablet_request();
+    split_info.set_tablet_id(split_req.tablet_id());
+    split_info.set_deprecated_new_tablet1_id(split_req.deprecated_new_tablet1_id());
+    split_info.set_deprecated_new_tablet2_id(split_req.deprecated_new_tablet2_id());
+    split_info.set_deprecated_split_encoded_key(split_req.deprecated_split_encoded_key());
+    split_info.set_deprecated_split_partition_key(split_req.deprecated_split_partition_key());
+    if (split_req.new_tablet_ids_size() > 0) {
+      SCHECK_EQ(kDefaultNumSplitParts, split_req.new_tablet_ids_size(), IllegalState, Format(
+          "Unexpected number of split children for parent tablet: $0", split_req.tablet_id()));
+      SCHECK_EQ(
+          split_req.new_tablet_ids_size() - 1, split_req.split_encoded_keys_size(), IllegalState,
+          "Unexpected number of encoded keys");
+      SCHECK_EQ(
+          split_req.new_tablet_ids_size() - 1, split_req.split_partition_keys_size(), IllegalState,
+          "Unexpected number of partition keys");
+      *split_info.mutable_new_tablet_ids() = split_req.new_tablet_ids();
+      *split_info.mutable_split_encoded_keys() = split_req.split_encoded_keys();
+      *split_info.mutable_split_partition_keys() = split_req.split_partition_keys();
+    }
 
     if (PREDICT_FALSE(FLAGS_TEST_xcluster_consumer_fail_after_process_split_op)) {
       return STATUS(

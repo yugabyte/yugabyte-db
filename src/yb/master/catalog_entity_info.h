@@ -1313,7 +1313,7 @@ auto AddInfoEntryToPB(Info* info, google::protobuf::RepeatedPtrField<SysRowEntry
 
 struct SplitTabletIds {
   const TabletId& source;
-  const std::pair<const TabletId&, const TabletId&> children;
+  const std::vector<TabletId>& children;
 
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(source, children);

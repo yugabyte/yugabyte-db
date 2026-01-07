@@ -5009,8 +5009,8 @@ void Tablet::SplitDone() {
             return Status::OK();
           }
 
-          auto children = metadata_->split_child_tablet_ids();
-          return SplitOperation::RejectionStatus(OpId(), op_id, op_type, children[0], children[1]);
+          return SplitOperation::RejectionStatus(
+              OpId(), op_id, op_type, metadata_->split_child_tablet_ids());
         });
     operation_filters_.push_back(*completed_split_operation_filter_);
 

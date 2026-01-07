@@ -176,13 +176,16 @@ message SplitTabletRequestPB {
 
   required bytes tablet_id = 3;
 
-  required bytes new_tablet1_id = 4;
+  // Fields describing a 2-way split.
+  required bytes DEPRECATED_new_tablet1_id = 4;
+  required bytes DEPRECATED_new_tablet2_id = 5;
+  required bytes DEPRECATED_split_partition_key = 6;
+  required bytes DEPRECATED_split_encoded_key = 7;
 
-  required bytes new_tablet2_id = 5;
-
-  required bytes split_partition_key = 6;
-
-  required bytes split_encoded_key = 7;
+  // Vectorized fields for an N-way split.
+  repeated bytes new_tablet_ids = 9;
+  repeated bytes split_partition_keys = 10;
+  repeated bytes split_encoded_keys = 11;
 
   // TODO(tsplit): after we support backward-compatibility conversion for protobufs, switch
   // SplitOperation class to use a new SplitOperationDataPB that contains both SplitTabletRequestPB

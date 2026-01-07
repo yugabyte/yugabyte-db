@@ -2614,10 +2614,14 @@ TEST_F(TabletSplitSingleServerITest, TabletServerSplitAlreadySplitTablet) {
     tablet::SplitTabletRequestPB req;
     req.set_dest_uuid(tserver_uuid);
     req.set_tablet_id(source_tablet_id);
-    req.set_new_tablet1_id(Format("$0$1", source_tablet_id, "1"));
-    req.set_new_tablet2_id(Format("$0$1", source_tablet_id, "2"));
-    req.set_split_partition_key("abc");
-    req.set_split_encoded_key("def");
+    req.set_deprecated_new_tablet1_id(Format("$0$1", source_tablet_id, "1"));
+    req.set_deprecated_new_tablet2_id(Format("$0$1", source_tablet_id, "2"));
+    req.set_deprecated_split_partition_key("abc");
+    req.set_deprecated_split_encoded_key("def");
+    req.add_new_tablet_ids(req.deprecated_new_tablet1_id());
+    req.add_new_tablet_ids(req.deprecated_new_tablet2_id());
+    req.add_split_partition_keys(req.deprecated_split_partition_key());
+    req.add_split_encoded_keys(req.deprecated_split_encoded_key());
     rpc::RpcController controller;
     controller.set_timeout(kRpcTimeout);
     tserver::SplitTabletResponsePB resp;

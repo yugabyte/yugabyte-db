@@ -129,7 +129,24 @@ endif()
 ADD_YB_LIBRARY(yb_common
   SRCS ${COMMON_SRCS}
   DEPS ${COMMON_LIBS})
-add_dependencies(yb_common yb_bfql yb_bfpg)
+
+add_dependencies(
+  yb_common
+  yb_bfql
+  yb_bfpg
+  gen_src_yb_docdb_docdb_proto
+  gen_src_yb_dockv_dockv_proto
+  gen_src_yb_tablet_metadata_proto
+  gen_src_yb_tablet_operations_proto
+  gen_src_yb_tablet_tablet_proto
+  gen_src_yb_tablet_tablet_types_proto
+  gen_src_yb_tserver_tserver_proto
+  gen_src_yb_tserver_tserver_types_proto
+  gen_src_yb_cdc_cdc_consumer_proto
+  gen_src_yb_master_master_replication_proto
+  gen_src_yb_master_catalog_entity_info_proto
+  gen_src_yb_master_master_types_proto
+  gen_src_yb_cdc_xcluster_producer_proto)
 
 ADD_YB_TEST_LIBRARY(yb_common_test_util
                     SRCS transaction-test-util.cc wire_protocol-test-util.cc

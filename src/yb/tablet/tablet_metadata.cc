@@ -1848,7 +1848,7 @@ TabletDataState RaftGroupMetadata::tablet_data_state() const {
   return tablet_data_state_;
 }
 
-std::array<TabletId, kDefaultNumSplitParts> RaftGroupMetadata::split_child_tablet_ids() const {
+std::vector<TabletId> RaftGroupMetadata::split_child_tablet_ids() const {
   std::lock_guard lock(data_mutex_);
   return split_child_tablet_ids_;
 }
@@ -1867,12 +1867,12 @@ OpId RaftGroupMetadata::GetOpIdToDeleteAfterAllApplied() const {
 }
 
 void RaftGroupMetadata::SetSplitDone(
-    const OpId& op_id, const TabletId& child1, const TabletId& child2) {
+    const OpId& op_id, const std::vector<TabletId>& children) {
   std::lock_guard lock(data_mutex_);
   tablet_data_state_ = TabletDataState::TABLET_DATA_SPLIT_COMPLETED;
   split_op_id_ = op_id;
-  split_child_tablet_ids_[0] = child1;
-  split_child_tablet_ids_[1] = child2;
+  CHECK_EQ(kDefaultNumSplitParts, children.size());
+  split_child_tablet_ids_ = children;
 }
 
 void RaftGroupMetadata::MarkClonesAttemptedUpTo(uint32_t clone_request_seq_no) {

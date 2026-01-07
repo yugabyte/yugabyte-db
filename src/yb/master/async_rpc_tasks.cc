@@ -1264,15 +1264,21 @@ void AsyncGetTabletSplitKey::Finished(const Status& status) {
 // ============================================================================
 AsyncSplitTablet::AsyncSplitTablet(
     Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
-    const std::array<TabletId, kDefaultNumSplitParts>& new_tablet_ids,
-    const std::string& split_encoded_key, const std::string& split_partition_key,
-                                   LeaderEpoch epoch)
+    const std::vector<TabletId>& new_tablet_ids,
+    const std::vector<std::string>& split_encoded_keys,
+    const std::vector<std::string>& split_partition_keys, LeaderEpoch epoch)
   : AsyncTabletLeaderTask(master, callback_pool, tablet, std::move(epoch)) {
   req_.set_tablet_id(tablet_id());
-  req_.set_new_tablet1_id(new_tablet_ids[0]);
-  req_.set_new_tablet2_id(new_tablet_ids[1]);
-  req_.set_split_encoded_key(split_encoded_key);
-  req_.set_split_partition_key(split_partition_key);
+  DCHECK_EQ(new_tablet_ids.size() - 1, split_encoded_keys.size());
+  DCHECK_EQ(new_tablet_ids.size() - 1, split_partition_keys.size());
+  req_.set_deprecated_new_tablet1_id(new_tablet_ids[0]);
+  req_.set_deprecated_new_tablet2_id(new_tablet_ids[1]);
+  req_.set_deprecated_split_encoded_key(split_encoded_keys.front());
+  req_.set_deprecated_split_partition_key(split_partition_keys.front());
+  req_.mutable_new_tablet_ids()->Add(new_tablet_ids.begin(), new_tablet_ids.end());
+  req_.mutable_split_encoded_keys()->Add(split_encoded_keys.begin(), split_encoded_keys.end());
+  req_.mutable_split_partition_keys()->Add(
+      split_partition_keys.begin(), split_partition_keys.end());
 }
 
 void AsyncSplitTablet::HandleResponse(int attempt) {
