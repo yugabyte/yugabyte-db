@@ -106,7 +106,7 @@ func (h *SetupCgroupHandler) Handle(ctx context.Context) (*pb.DescribeTaskRespon
 		_, err = module.CopyFile(
 			ctx,
 			cGroupServiceContext,
-			filepath.Join(ServerTemplateSubpath, YsqlCgroupService),
+			filepath.Join(module.ServerTemplateSubpath, YsqlCgroupService),
 			filepath.Join(h.param.GetYbHomeDir(), module.UserSystemdUnitPath, YsqlCgroupService),
 			fs.FileMode(0755),
 			h.username,

@@ -89,7 +89,7 @@ class ProvisionCommand(Command):
                         temp_file.write(f"echo \"Executing module {key}\"\n")
                         temp_file.write(template)
                         temp_file.write("\n)\n")
-                        self.add_exit_code_check(temp_file)
+                        self.add_exit_code_check(temp_file, key)
                     else:
                         temp_file.write(f"echo \"Executing module {key}\"\n")
                         temp_file.write(template)
@@ -112,13 +112,13 @@ class ProvisionCommand(Command):
         logger.info("Return Code: %s", result.returncode)
         return result
 
-    def add_exit_code_check(self, file):
+    def add_exit_code_check(self, file, key):
         file.write(
-            """
+            f"""
             exit_code=$?
             if [ $exit_code -ne 0 ]; then
                 parent_exit_code=$exit_code
-                err="Module {{ key }} failed with code $exit_code"
+                err="Module {key} failed with code $exit_code"
                 errors+=("$err")
                 echo "$err"
             fi
