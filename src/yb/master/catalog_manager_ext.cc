@@ -791,66 +791,6 @@ Status CatalogManager::RestoreSnapshot(
   return Status::OK();
 }
 
-Status CatalogManager::RestoreEntry(
-    const SysRowEntry& entry, const SnapshotId& snapshot_id, const LeaderEpoch& epoch) {
-  switch (entry.type()) {
-    case SysRowEntryType::NAMESPACE: { // Restore NAMESPACES.
-      TRACE("Looking up namespace");
-      scoped_refptr<NamespaceInfo> ns = FindPtrOrNull(namespace_ids_map_, entry.id());
-      if (ns == nullptr) {
-        // Restore Namespace.
-        // TODO: implement
-        LOG(INFO) << "Restoring: NAMESPACE id = " << entry.id();
-
-        return STATUS(NotSupported, Substitute(
-            "Not implemented: restoring namespace: id=$0", entry.type()));
-      }
-      break;
-    }
-    case SysRowEntryType::TABLE: { // Restore TABLES.
-      TRACE("Looking up table");
-      scoped_refptr<TableInfo> table = tables_->FindTableOrNull(entry.id());
-      if (table == nullptr) {
-        // Restore Table.
-        // TODO: implement
-        LOG(INFO) << "Restoring: TABLE id = " << entry.id();
-
-        return STATUS(NotSupported, Substitute(
-            "Not implemented: restoring table: id=$0", entry.type()));
-      }
-      break;
-    }
-    case SysRowEntryType::TABLET: { // Restore TABLETS.
-      TRACE("Looking up tablet");
-      TabletInfoPtr tablet = FindPtrOrNull(*tablet_map_, entry.id());
-      if (tablet == nullptr) {
-        // Restore Tablet.
-        // TODO: implement
-        LOG(INFO) << "Restoring: TABLET id = " << entry.id();
-
-        return STATUS(NotSupported, Substitute(
-            "Not implemented: restoring tablet: id=$0", entry.type()));
-      } else {
-        TRACE("Locking tablet");
-        auto l = tablet->LockForRead();
-
-        LOG(INFO) << "Sending RestoreTabletSnapshot to tablet: " << tablet->ToString();
-        // Send RestoreSnapshot requests to all TServers (one tablet - one request).
-        auto task = CreateAsyncTabletSnapshotOp(
-            tablet, snapshot_id, tserver::TabletSnapshotOpRequestPB::RESTORE_ON_TABLET,
-            epoch, TabletSnapshotOperationCallback());
-        ScheduleTabletSnapshotOp(task);
-      }
-      break;
-    }
-    default:
-      return STATUS_FORMAT(
-          InternalError, "Unexpected entry type in the snapshot: $0", entry.type());
-  }
-
-  return Status::OK();
-}
-
 Status CatalogManager::AbortSnapshotRestore(
     const AbortSnapshotRestoreRequestPB* req, AbortSnapshotRestoreResponsePB* resp,
     rpc::RpcContext* rpc) {
