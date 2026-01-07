@@ -144,6 +144,7 @@ static bool yb_need_invalidate_all_table_cache = false;
 
 static bool YbHasDdlMadeChanges();
 static int YbGetNumCreateFunctionStmts();
+static int YbGetNumRollbackToSavepointStmts();
 static bool YBIsCurrentStmtCreateFunction();
 
 uint64_t
@@ -157,8 +158,14 @@ YBGetActiveCatalogCacheVersion()
 		 */
 		if (YBGetDdlNestingLevel() > 0 && YBIsCurrentStmtCreateFunction())
 			return yb_catalog_cache_version + 1;
-		if (YBIsDdlTransactionBlockEnabled() && YBIsCurrentStmtCreateFunction())
-			return yb_catalog_cache_version + YbGetNumCreateFunctionStmts();
+		if (YBIsDdlTransactionBlockEnabled())
+		{
+			uint64_t active_catalog_version = yb_catalog_cache_version +
+											  YbGetNumRollbackToSavepointStmts();
+			if (YBIsCurrentStmtCreateFunction())
+				active_catalog_version += YbGetNumCreateFunctionStmts();
+			return active_catalog_version;
+		}
 	}
 	return yb_catalog_cache_version;
 }
@@ -1387,6 +1394,11 @@ typedef struct
 	 * transaction block. Only used when ddl transaction block is enabled.
 	 */
 	int			num_create_function_stmts;
+	/*
+	 * Number of rollback to savepoint statements in the current ddl
+	 * transaction block. Only used when ddl transaction block is enabled.
+	 */
+	int			num_rollback_to_savepoint_stmts;
 	/*
 	 * This indicates whether the current DDL transaction is running as part of
 	 * the regular transaction block.
@@ -2943,6 +2955,12 @@ YbGetNumCreateFunctionStmts()
 	return ddl_transaction_state.num_create_function_stmts;
 }
 
+static int
+YbGetNumRollbackToSavepointStmts()
+{
+	return ddl_transaction_state.num_rollback_to_savepoint_stmts;
+}
+
 /*
  * If local version is x and this DDL incremented catalog version to x + 1,
  * then we can do this optimization because the invalidation messages
@@ -4140,6 +4158,8 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 			{
 				TransactionStmt *stmt = castNode(TransactionStmt, parsetree);
 
+				if (YBIsDdlTransactionBlockEnabled() && stmt->kind == TRANS_STMT_ROLLBACK_TO)
+					++ddl_transaction_state.num_rollback_to_savepoint_stmts;
 				/*
 				 * We make a special case for YSQL upgrade, where we often use
 				 * DML statements writing to catalog tables directly under the GUC
