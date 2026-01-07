@@ -223,6 +223,12 @@ class ObjectLockSharedState::Impl {
     return shared_requests_.TEST_last_owner();
   }
 
+  [[nodiscard]] bool TEST_has_exclusive_intents() PARENT_PROCESS_ONLY {
+    return std::ranges::any_of(lock_states_.Get(), [](GroupLockState& lock_state) {
+      return lock_state.exclusive_intents > 0;
+    });
+  }
+
  private:
   void AcquireExclusiveLockIntent(const ObjectLockPrefix& object_id, size_t count = 1)
       PARENT_PROCESS_ONLY {
@@ -297,6 +303,10 @@ size_t ObjectLockSharedState::ConsumePendingLockRequests(const FastLockRequestCo
 
 SessionLockOwnerTag ObjectLockSharedState::TEST_last_owner() {
   return impl_->TEST_last_owner();
+}
+
+bool ObjectLockSharedState::TEST_has_exclusive_intents() {
+  return impl_->TEST_has_exclusive_intents();
 }
 
 } // namespace yb::docdb

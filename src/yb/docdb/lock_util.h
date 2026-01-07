@@ -97,6 +97,8 @@ bool IntentTypeSetsConflict(dockv::IntentTypeSet lhs, dockv::IntentTypeSet rhs);
 
 std::string LockStateDebugString(LockState state);
 
+bool LockStateContains(LockState existing_state, LockState add);
+
 template <typename LockManager>
 struct DetermineKeysToLockResult {
   LockBatchEntries<LockManager> lock_batch;

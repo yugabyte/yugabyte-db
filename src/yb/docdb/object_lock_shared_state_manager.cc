@@ -145,6 +145,12 @@ TransactionId ObjectLockSharedStateManager::TEST_last_owner() const {
       DCHECK_NOTNULL(shared_.load(std::memory_order_relaxed))->TEST_last_owner())->txn_id;
 }
 
+[[nodiscard]] bool ObjectLockSharedStateManager::TEST_has_exclusive_intents() const {
+  auto* shared = shared_.load(std::memory_order_relaxed);
+  ParentProcessGuard g;
+  return shared ? shared->TEST_has_exclusive_intents() : 0;
+}
+
 template<typename ConsumeMethod>
 size_t ObjectLockSharedStateManager::CallWithRequestConsumer(
     ObjectLockSharedState* shared, ConsumeMethod&& method, const LockRequestConsumer& consume) {

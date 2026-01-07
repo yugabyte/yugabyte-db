@@ -117,8 +117,14 @@ class TSLocalLockManagerTest : public TabletServerTestBase {
       return Status::OK();
     }
     auto res = VERIFY_RESULT(DetermineObjectsToLock(req.object_locks()));
-    for (auto& lock_batch_entry : res.lock_batch) {
-      (*state_map)[lock_batch_entry.key] += IntentTypeSetAdd(lock_batch_entry.intent_types);
+    bool is_lock_redundant = std::ranges::all_of(res.lock_batch, [&](auto lock_batch_entry) {
+      return docdb::LockStateContains(
+          (*state_map)[lock_batch_entry.key], IntentTypeSetAdd(lock_batch_entry.intent_types));
+    });
+    if (!is_lock_redundant) {
+      for (auto& lock_batch_entry : res.lock_batch) {
+        (*state_map)[lock_batch_entry.key] += IntentTypeSetAdd(lock_batch_entry.intent_types);
+      }
     }
     return Status::OK();
   }
@@ -163,6 +169,22 @@ class TSLocalLockManagerTest : public TabletServerTestBase {
 
   size_t WaitingLocksSize() {
     return lm_->TEST_WaitingLocksSize();
+  }
+
+  bool DoesLockTypeContainLock(TableLockType a, TableLockType b) {
+    auto entries1 = docdb::GetEntriesForLockType(a);
+    auto entries2 = docdb::GetEntriesForLockType(b);
+    for (auto& [key2, intent_type2] : entries2) {
+      bool contains = std::ranges::any_of(entries1, [&](auto key_and_intent) {
+        return key_and_intent.first == key2 &&
+               docdb::LockStateContains(IntentTypeSetAdd(key_and_intent.second),
+                                        IntentTypeSetAdd(intent_type2));
+      });
+      if (!contains) {
+        return false;
+      }
+    }
+    return true;
   }
 
   tserver::TSLocalLockManager* lm_;
@@ -662,7 +684,8 @@ TEST_F(TSLocalLockManagerTest, TestWaiterResumptionStateLogic) {
   hold_waiter_being_resumed = true;
   {
     auto log_waiter = StringWaiterLogSink("added to wait-queue on");
-    ASSERT_OK(ReleaseLocksForSubtxn(lock_owners[0], CoarseTimePoint::max()));
+    ASSERT_OK(ReleaseLocksForSubtxn(
+        ObjectLockOwner{lock_owners[0].txn_id, 2}, CoarseTimePoint::max()));
     ASSERT_OK(WaitFor([&]() {
       return resumed_waiters >= kTotalNumWaiters;
     }, 5s * kTimeMultiplier, "Expected 2 more waiters to be scheduled for resumption"));
@@ -718,6 +741,27 @@ TEST_F(TSLocalLockManagerTest, YB_LINUX_DEBUG_ONLY_TEST(TestFastpathCrash)) {
   ASSERT_EQ(WaitingLocksSize(), 0);
 
   ASSERT_OK(ReleaseLocksForOwner(kTxn1));
+}
+
+TEST_F(TSLocalLockManagerTest, RedundadntLockBecomesNoOp) {
+  google::SetVLOGLevel("object_lock_manager*", 4);
+  for (auto l1 = TableLockType_MIN + 1; l1 <= TableLockType_MAX; l1++) {
+    auto lock_type_1 = TableLockType(l1);
+    for (auto l2 = TableLockType_MIN + 1; l2 <= TableLockType_MAX; l2++) {
+      auto lock_type_2 = TableLockType(l2);
+      bool is_inner_lock_redundant = DoesLockTypeContainLock(lock_type_1, lock_type_2);
+      auto deadline = CoarseMonoClock::Now() + 60s;
+      LOG(INFO) << "Checking " << TableLockType_Name(lock_type_1)
+                << ", " << TableLockType_Name(lock_type_2);
+      ASSERT_OK(LockRelation(kTxn1, kDatabase1, kObject1, lock_type_1, deadline));
+      auto log_waiter = is_inner_lock_redundant
+          ? RegexWaiterLogSink(".*Ignoring redundant acquire.*")
+          : RegexWaiterLogSink(".*Locking key :.*with existing state:.*");
+      ASSERT_OK(LockRelation(kTxn1, kDatabase1, kObject1, lock_type_2, deadline));
+      ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(5 * kTimeMultiplier)));
+      ASSERT_OK(ReleaseLocksForOwner(kTxn1));
+    }
+  }
 }
 
 class TSLocalLockManagerBootstrappedLocksTest : public TSLocalLockManagerTest {
