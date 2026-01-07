@@ -1459,7 +1459,8 @@ create_join_clause(PlannerInfo *root,
 	 */
 	oldcontext = MemoryContextSwitchTo(root->planner_cxt);
 
-	rinfo = build_implied_join_equality(opno,
+	rinfo = build_implied_join_equality(root,
+										opno,
 										ec->ec_collation,
 										leftem->em_expr,
 										rightem->em_expr,
@@ -1773,7 +1774,8 @@ reconsider_outer_join_clause(PlannerInfo *root, RestrictInfo *rinfo,
 											 cur_em->em_datatype);
 			if (!OidIsValid(eq_op))
 				continue;		/* can't generate equality */
-			newrinfo = build_implied_join_equality(eq_op,
+			newrinfo = build_implied_join_equality(root,
+												   eq_op,
 												   cur_ec->ec_collation,
 												   innervar,
 												   cur_em->em_expr,
@@ -1916,7 +1918,8 @@ reconsider_full_join_clause(PlannerInfo *root, RestrictInfo *rinfo)
 											 cur_em->em_datatype);
 			if (OidIsValid(eq_op))
 			{
-				newrinfo = build_implied_join_equality(eq_op,
+				newrinfo = build_implied_join_equality(root,
+													   eq_op,
 													   cur_ec->ec_collation,
 													   leftvar,
 													   cur_em->em_expr,
@@ -1931,7 +1934,8 @@ reconsider_full_join_clause(PlannerInfo *root, RestrictInfo *rinfo)
 											 cur_em->em_datatype);
 			if (OidIsValid(eq_op))
 			{
-				newrinfo = build_implied_join_equality(eq_op,
+				newrinfo = build_implied_join_equality(root,
+													   eq_op,
 													   cur_ec->ec_collation,
 													   rightvar,
 													   cur_em->em_expr,

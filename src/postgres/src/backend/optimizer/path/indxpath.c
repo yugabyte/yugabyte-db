@@ -652,6 +652,10 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 
 	Relids total_relids = NULL;
 
+	/* Skip non-YB indexes */
+	if (!IsYBRelationById(index->indexoid))
+		return false;
+
 	for (size_t i = 0; i < INDEX_MAX_KEYS && clauses->nonempty; i++)
 	{
 		List *colclauses = clauses->indexclauses[i];

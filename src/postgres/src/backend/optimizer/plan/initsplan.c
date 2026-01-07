@@ -81,7 +81,7 @@ static bool check_equivalence_delay(PlannerInfo *root,
 static bool check_redundant_nullability_qual(PlannerInfo *root, Node *clause);
 static void check_mergejoinable(RestrictInfo *restrictinfo);
 static void check_hashjoinable(RestrictInfo *restrictinfo);
-static void check_batchable(RestrictInfo *restrictinfo);
+static void check_batchable(PlannerInfo *root, RestrictInfo *restrictinfo);
 
 
 /*****************************************************************************
@@ -1927,7 +1927,7 @@ distribute_qual_to_rels(PlannerInfo *root, Node *clause,
 	 * relation, or between vars and consts.
 	 */
 	check_mergejoinable(restrictinfo);
-	check_batchable(restrictinfo);
+	check_batchable(root, restrictinfo);
 
 	/*
 	 * If it is a true equivalence clause, send it to the EquivalenceClass
@@ -2375,7 +2375,8 @@ process_implied_equality(PlannerInfo *root,
  * caller's responsibility that left_ec/right_ec be set as necessary.
  */
 RestrictInfo *
-build_implied_join_equality(Oid opno,
+build_implied_join_equality(PlannerInfo *root,
+							Oid opno,
 							Oid collation,
 							Expr *item1,
 							Expr *item2,
@@ -2413,7 +2414,7 @@ build_implied_join_equality(Oid opno,
 	/* Set mergejoinability/hashjoinability flags */
 	check_mergejoinable(restrictinfo);
 	check_hashjoinable(restrictinfo);
-	check_batchable(restrictinfo);
+	check_batchable(root, restrictinfo);
 
 	return restrictinfo;
 }
@@ -2673,7 +2674,7 @@ check_hashjoinable(RestrictInfo *restrictinfo)
  *	  var_1 op YbBatchedExpr(var_2) and var_2 op YbBatchedExpr(var_1).
  */
 static void
-check_batchable(RestrictInfo *restrictinfo)
+check_batchable(PlannerInfo *root, RestrictInfo *restrictinfo)
 {
 	Expr	   *clause = restrictinfo->clause;
 	Node	   *leftarg;
@@ -2721,9 +2722,17 @@ check_batchable(RestrictInfo *restrictinfo)
 	{
 		inner = args[i];
 		outer = args[1 - i];
-		if (!IsA(inner, Var) &&
-			!(IsA(inner, RelabelType) &&
-			  IsA(((RelabelType *) inner)->arg, Var)))
+		Node	   *inner_var = inner;
+
+		if (IsA(inner_var, RelabelType))
+			inner_var = (Node *) ((RelabelType *) inner_var)->arg;
+		if (!IsA(inner_var, Var))
+			continue;
+
+		RangeTblEntry *rte = root->simple_rte_array[((Var *) inner_var)->varno];
+
+		/* Skip batching if inner relation is not a YB relation */
+		if (rte->rtekind == RTE_RELATION && !IsYBRelationById(rte->relid))
 			continue;
 
 		Oid outerType = exprType(outer);
