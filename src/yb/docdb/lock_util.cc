@@ -25,16 +25,6 @@ namespace yb::docdb {
 
 using dockv::IntentTypeSet;
 
-bool IntentTypesConflict(dockv::IntentType lhs, dockv::IntentType rhs) {
-  auto lhs_value = std::to_underlying(lhs);
-  auto rhs_value = std::to_underlying(rhs);
-  // The rules are the following:
-  // 1) At least one intent should be strong for conflict.
-  // 2) Read and write conflict only with opposite type.
-  return ((lhs_value & dockv::kStrongIntentFlag) || (rhs_value & dockv::kStrongIntentFlag)) &&
-         ((lhs_value & dockv::kWriteIntentFlag) != (rhs_value & dockv::kWriteIntentFlag));
-}
-
 LockState IntentTypeMask(dockv::IntentType intent_type, LockState single_intent_mask) {
   return single_intent_mask << (std::to_underlying(intent_type) * kIntentTypeBits);
 }

@@ -49,6 +49,7 @@ DECLARE_bool(enable_ysql);
 
 using namespace std::literals;
 
+using yb::docdb::DocDBTableLocksConflictMatrixTest;
 using yb::docdb::IntentTypeSetAdd;
 using yb::docdb::LockState;
 using yb::docdb::ObjectLockFastpathLockType;
@@ -224,6 +225,33 @@ TEST_F(TSLocalLockManagerTest, TestFastpathLockAndRelease) {
     ASSERT_EQ(WaitingLocksSize(), 0);
   }
   ASSERT_OK(ReleaseLocksForOwner(kTxn1));
+}
+
+TEST_F(TSLocalLockManagerTest, TestFastpathConflictMatrix) {
+  google::SetVLOGLevel("object_lock_shared*", 1);
+  auto inner_txn = lock_owner_registry_->Register(kTxn2.txn_id, TabletId());
+  for (auto l = TableLockType_MIN + 1; l <= TableLockType_MAX; l++) {
+    auto outer_lock = TableLockType(l);
+    auto outer_entries = docdb::GetEntriesForLockType(outer_lock);
+    ASSERT_OK(LockRelation(kTxn1, kDatabase1, kObject1, outer_lock));
+    for (auto fastpath_lock : docdb::ObjectLockFastpathLockTypeList()) {
+      auto inner_lock = FastpathLockTypeToTableLockType(fastpath_lock);
+      auto inner_entries = docdb::GetEntriesForLockType(inner_lock);
+      LOG(INFO) << "Checking fastpath for " << TableLockType_Name(inner_lock)
+                << " with existing lock " << TableLockType_Name(outer_lock);
+      auto is_conflicting = ASSERT_RESULT(
+          DocDBTableLocksConflictMatrixTest::ObjectLocksConflict(outer_entries, inner_entries));
+      auto lock_acquired = ASSERT_RESULT(LockRelationPgFastpath(
+          inner_txn.tag(), kTxn2.subtxn_id, kDatabase1, kObject1, fastpath_lock));
+      ASSERT_TRUE(is_conflicting ^ lock_acquired)
+          << "lock type " << TableLockType_Name(outer_lock)
+          << ", " << TableLockType_Name(inner_lock)
+          << " - is_conflicting: " << is_conflicting
+          << ", fastpath_lock_acquired: " << lock_acquired;
+      ASSERT_OK(ReleaseLocksForOwner(kTxn2));
+    }
+    ASSERT_OK(ReleaseLocksForOwner(kTxn1));
+  }
 }
 
 TEST_F(TSLocalLockManagerTest, TestFastpathConflictWithExisting) {
@@ -505,7 +533,7 @@ TEST_F(TSLocalLockManagerTest, TestDowngradeDespiteExclusiveLockWaiter) {
       auto lock_type_2 = TableLockType(l2);
       auto entries2 = docdb::GetEntriesForLockType(lock_type_2);
       const auto is_conflicting = ASSERT_RESULT(
-          docdb::DocDBTableLocksConflictMatrixTest::ObjectLocksConflict(entries1, entries2));
+          DocDBTableLocksConflictMatrixTest::ObjectLocksConflict(entries1, entries2));
 
       if (is_conflicting) {
         SyncPoint::GetInstance()->LoadDependency({
