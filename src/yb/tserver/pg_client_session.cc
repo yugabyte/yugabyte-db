@@ -1582,7 +1582,7 @@ Request AcquireRequestFor(
   req.set_subtxn_id(subtxn_id);
   req.set_session_host_uuid(session_host_uuid);
   req.set_lease_epoch(lease_epoch);
-  auto deadline_ht = now.AddSeconds(ToSeconds(deadline - ToCoarse(MonoTime::Now())));
+  auto deadline_ht = now.AddMicroseconds(ToMicroseconds(deadline - ToCoarse(MonoTime::Now())));
   req.set_ignore_after_hybrid_time(deadline_ht.ToUint64());
   if (clock) {
     req.set_propagated_hybrid_time(now.ToUint64());
