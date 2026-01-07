@@ -194,8 +194,7 @@ airgap_flag=""
 
 installer_dir="{{ yb_home_dir }}/.install"
 # Check if root systemd unit exists.
-root_unit_exists=$(systemctl list-units | grep -F yb-node-agent.service)
-if [ -n "$root_unit_exists" ]; then
+if systemctl list-units | grep -F yb-node-agent.service; then
     # Uninstall root unit as node-agent-installer.sh run as non-root cannot handle it.
     echo "Uninstalling root systemd unit of node agent service"
     $installer_dir/node-agent-installer.sh -c uninstall -u {{ url }} -t {{ api_key }} \

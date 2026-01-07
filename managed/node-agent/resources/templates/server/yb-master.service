@@ -1,21 +1,22 @@
 [Unit]
-Description=OpenTelemetry Collector
+Description=Yugabyte master service
+Requires=network-online.target
 After=network.target network-online.target multi-user.target
 # Disable restart limits, using RestartSec to rate limit restarts
 StartLimitInterval=0
 
 [Service]
+# Start
 {% set use_system_level_systemd = use_system_level_systemd | default(false) %}
 {% if use_system_level_systemd == 'True' %}
 User={{ user_name }}
 Group={{ user_name }}
 {% endif %}
-# Start
-ExecStart={{yb_home_dir}}/otel-collector/otelcol-contrib \
-    --config=file:{{yb_home_dir}}/otel-collector/config.yml
+ExecStartPre={{yb_home_dir}}/bin/clock-sync.sh
+ExecStart={{yb_home_dir}}/master/bin/yb-master --flagfile {{yb_home_dir}}/master/conf/server.conf
 Restart=always
 RestartSec=5
-# Stop -> SIGTERM - 10s - SIGKILL (if not stopped)
+# Stop -> SIGTERM - 10s - SIGKILL (if not stopped) [matches existing cron behavior]
 KillMode=process
 TimeoutStopFailureMode=terminate
 KillSignal=SIGTERM
@@ -28,12 +29,6 @@ StandardError=journal
 LimitCORE=infinity
 LimitNOFILE=1048576
 LimitNPROC=12000
-# Hard Memory limit
-MemoryMax={{otel_col_max_memory}}M
-
-Environment="AWS_PROFILE=otel-collector"
-Environment="GOOGLE_APPLICATION_CREDENTIALS={{yb_home_dir}}/otel-collector/gcp_creds"
-Environment="HOME={{yb_home_dir}}"
 
 [Install]
 WantedBy=default.target

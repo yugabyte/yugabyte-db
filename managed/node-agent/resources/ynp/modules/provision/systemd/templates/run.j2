@@ -20,5 +20,5 @@ systemd_dir="/etc/systemd/system"
    echo '{% include service_file %}' > $tmp_file
    chown {{ yb_user }}:{{ yb_user }} $tmp_file
    su - {{ yb_user }} -c "mv $tmp_file ${systemd_dir}/{{ service_file }}"
-   su - {{ yb_user }} -c "chmod 755 ${systemd_dir}/{{ service_file }}"
+   su - {{ yb_user }} -c "chmod 644 ${systemd_dir}/{{ service_file }}"
 {% endfor %}
