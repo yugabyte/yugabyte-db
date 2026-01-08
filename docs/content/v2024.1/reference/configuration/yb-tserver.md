@@ -796,7 +796,7 @@ Read Committed isolation {{<tags/feature/ea idea="1099">}} is supported only if 
 
 ##### --yb_enable_read_committed_isolation
 
-{{<tags/feature/ea>}} Enables Read Committed isolation. By default this flag is false and in this case the Read Committed and Read Uncommitted isolation level of YSQL fall back to the stricter [Snapshot isolation](../../../explore/transactions/isolation-levels/). See [--ysql_default_transaction_isolation](#ysql-default-transaction-isolation) flag for more details.
+{{<tags/feature/ea idea="1099">}} Enables Read Committed isolation. By default this flag is false and in this case the Read Committed and Read Uncommitted isolation level of YSQL fall back to the stricter [Snapshot isolation](../../../explore/transactions/isolation-levels/). See [--ysql_default_transaction_isolation](#ysql-default-transaction-isolation) flag for more details.
 
 Default: `false`
 
