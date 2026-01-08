@@ -17,6 +17,10 @@ Generative AI has transformed how applications interact with data. While early a
 
 YugabyteDB provides the scalable, distributed data foundation required to run modern AI workloads, from simple chatbots to complex agentic workflows. By combining the familiarity of PostgreSQL with distributed scalability, you can store and query billions of vector embeddings without managing complex, separate infrastructure.
 
+{{<lead link="(https://www.yugabyte.com/blog/benchmarking-1-billion-vectors-in-yugabytedb/)">}}
+Learn how to [power AI at scale using YugabyteDB](https://www.yugabyte.com/blog/benchmarking-1-billion-vectors-in-yugabytedb/).
+{{</lead>}}
+
 ## Key concepts
 
 ### Retrieval-augmented generation
@@ -29,17 +33,17 @@ Retrieval-augmented generation (RAG) is the framework used to provide large lang
 
 ### Vectors and embeddings
 
-In AI, data is often represented as vectors (or embeddings). These are long lists of numbers that capture the meaning of a piece of data. To make your data understandable to an AI:
+In AI, data is often represented as vectors (or embeddings). These are long lists of numbers that capture the semantic meaning of a piece of data. To make your data understandable to an AI:
 
 1. Embed: Data (text, audio, or video) is converted into high-dimensional vectors (lists of numbers) using an embedding model.
-1. Store: These vectors are stored in YugabyteDB using the standard pgvector extension.
+1. Store: These vectors are stored in YugabyteDB using the familiar pgvector extension API.
 1. Search: When you ask a question, the application converts the query into a vector and performs a similarity search to find the most relevant neighbors in your database.
 
 Because vectors are mathematical representations of meaning, they work across all data types, so that you can search for a video clip using a text description, or find similar songs based on audio features.
 
 ### Model Context Protocol (MCP)
 
-MCP is an industry standard that acts as a secure bridge between AI models and your structured data. While RAG focuses on retrieving unstructured context (like documents) via vectors, MCP enables LLMs to interact directly with your structured database.
+MCP is an industry standard that acts as a secure bridge between LLMs and your structured data. While RAG focuses on retrieving unstructured context (like documents) via vectors, MCP enables LLMs to interact directly with your structured database.
 
 Using the [YugabyteDB MCP Server](../../develop/ai/mcp-server/), you can:
 
@@ -64,7 +68,7 @@ YugabyteDB serves as a **modern and flexible platform for AI** by providing a co
 
 ### Open standards, flexible foundation
 
-YugabyteDB uses the PostgreSQL pgvector extension for vector storage and search, so you can work with embeddings from any model or source.
+YugabyteDB combines the PostgreSQL pgvector extension APIs with [Vector LSM](https://www.yugabyte.com/blog/yugabytedb-vector-indexing-architecture/), a scalable, distributed, high throughput vector store, so you can work with embeddings from any model or source.
 
 - Architected for LLM and SLM flexibility: You can choose between LLMs or small language models (SLMs) based on your needs. Some applications require non-LLM models optimized for perception, decision-making, or control. YugabyteDB's flexible architecture supports all of these approaches.
 
