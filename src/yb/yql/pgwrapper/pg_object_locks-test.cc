@@ -187,17 +187,13 @@ class PgObjectLocksTestRF1 : public PgMiniTestBase {
   void VerifyBlockingBehavior(
       PGConn& conn1, PGConn& conn2, const std::string& holder_lock_type,
       const std::string& waiter_lock_type, bool test_pg_locks) {
+    google::SetVLOGLevel("object_lock*", 1);
     LOG(INFO) << "Checking blocking behavior: " << holder_lock_type << " and " << waiter_lock_type;
     static const std::string lock_query = "LOCK TABLE test IN $0 MODE";
     ASSERT_OK(conn1.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
     ASSERT_OK(conn1.ExecuteFormat(lock_query, holder_lock_type));
 
-    // In sync point ObjectLockManagerImpl::DoLockSingleEntry, the lock is in waiting state.
-    SyncPoint::GetInstance()->LoadDependency(
-        {{"WaitingLock", "ObjectLockManagerImpl::DoLockSingleEntry"}});
-    SyncPoint::GetInstance()->ClearTrace();
-    SyncPoint::GetInstance()->EnableProcessing();
-
+    auto log_waiter = StringWaiterLogSink("added to wait-queue on");
     auto conn2_lock_future = std::async(std::launch::async, [&]() -> Status {
       RETURN_NOT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
       RETURN_NOT_OK(conn2.ExecuteFormat(lock_query, waiter_lock_type));
@@ -215,9 +211,7 @@ class PgObjectLocksTestRF1 : public PgMiniTestBase {
       RETURN_NOT_OK(conn2.CommitTransaction());
       return Status::OK();
     });
-
-    // Ensure lock is in waiting state.
-    DEBUG_ONLY_TEST_SYNC_POINT("WaitingLock");
+    ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(5 * kTimeMultiplier)));
 
     if (test_pg_locks) {
       SleepFor(500ms * kTimeMultiplier);
