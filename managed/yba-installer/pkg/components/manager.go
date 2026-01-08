@@ -99,10 +99,10 @@ func (m *Manager) serviceOrder() []string {
 		order = append(order, "postgres")
 	}
 	order = append(order, "prometheus")
+	order = append(order, "yb-platform")
+	// yb-perf-advisor is optional and can run alongside yb-platform if it is enabled
 	if viper.GetBool("perfAdvisor.enabled") {
 		order = append(order, "yb-perf-advisor")
-	} else {
-		order = append(order, "yb-platform")
 	}
 
 	// Logrotate should be last

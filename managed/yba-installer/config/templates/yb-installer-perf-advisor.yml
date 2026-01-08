@@ -1,4 +1,30 @@
 services:
+  - name: perfAdvisorConfig
+    fileName: "{{ .ConfFileLocation }}"
+    contents: |
+      # Copyright (c) YugabyteDB, Inc.
+      # Perf Advisor overrides configuration file
+      # This file is generated from pa-ctl.yml configuration
+
+      # Spring Boot Web Resources
+      spring.web.resources.static-locations=file://{{ installRoot }}/perf-advisor/ui
+
+      # Spring Boot DataSource Configuration
+      spring.datasource.username=postgres
+      spring.datasource.url=jdbc:postgresql://localhost:{{ yamlPath "postgres.install.port" }}/ts
+      spring.datasource.password={{ yamlPath "postgres.install.password" }}
+
+      # Perf Advisor Security Configuration
+      pa.security.api.token.secret=''
+      pa.security.cors.origin=*
+      pa.security.cors.origin.dev=*
+
+      # Perf Advisor Prometheus Configuration
+      pa.prometheus.url=http://localhost:{{ yamlPath "prometheus.port" }}
+
+      # Perf Advisor Web Port
+      server.port={{ yamlPath "perfAdvisor.port" }}
+
   - name: perfAdvisorService
     fileName: "{{ .SystemdFileLocation }}"
     contents: |
@@ -15,17 +41,10 @@ services:
       Type=simple
 
       Environment="JAVA_HOME={{ installVersionDir }}/jdk-17.0.7+7-jre/"
-      Environment="SPRING_WEB_RESOURCES_STATIC_LOCATIONS=file://{{ installRoot }}/perf-advisor/ui"
-      Environment="PA_SECURITY_API_TOKEN_SECRET="
-      Environment="SPRING_DATASOURCE_USERNAME=postgres"
-      Environment="PA_SECURITY_CORS_ORIGIN=*"
-      Environment="PA_SECURITY_CORS_ORIGIN_DEV=*"
-      Environment="PA_PROMETHEUS_URL=http://localhost:9090"
-      Environment="SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/ts"
-      Environment="SPRING_DATASOURCE_PASSWORD="
 
       ExecStart=/bin/sh -c "{{ .PABin }}/perf-advisor \
-      --web.listen-address=:{{ yamlPath "perfAdvisor.port" }} &>> {{ .PALogDir }}/perf-advisor.log"
+        --spring.config.additional-location=file:{{ .ConfFileLocation }} \
+        &>> {{ .PALogDir }}/perf-advisor.log"
 
       Restart=always
       RestartSec={{ yamlPath "perfAdvisor.restartSeconds"}}

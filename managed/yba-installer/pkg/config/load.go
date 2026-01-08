@@ -51,6 +51,11 @@ func loadLegacyConfig() (*viper.Viper, error) {
 	viper.SetDefault("installRoot", "/opt/yugabyte")
 	viper.SetDefault("as_root", common.HasSudoAccess())
 
+	viper.SetDefault("perfAdvisor.enabled", false)
+	viper.SetDefault("perfAdvisor.port", 8443)
+	viper.SetDefault("perfAdvisor.restartSeconds", 10)
+	viper.SetDefault("perfAdvisor.enableHttps", false)
+
 	viper.SetDefault("prometheus.remoteWrite.enabled", false)
 	viper.SetDefault("prometheus.scrapeConfig.node.scheme", "http")
 	viper.SetDefault("prometheus.scrapeConfig.node-agent.scheme", "http")
@@ -73,6 +78,9 @@ func legacyToRootConfig(legacy *viper.Viper) rootConfig {
 	services := []Service{ServicePlatform, ServicePrometheus}
 	if legacy.GetBool("postgres.install.enabled") {
 		services = append(services, ServicePostgres)
+	}
+	if legacy.GetBool("perfAdvisor.enabled") {
+		services = append(services, ServicePerformanceAdvisor)
 	}
 	var pgConfig postgresConfig
 	if legacy.GetBool("postgres.install.enabled") {
@@ -180,6 +188,12 @@ func legacyToRootConfig(legacy *viper.Viper) rootConfig {
 					Scheme: legacy.GetString("prometheus.scrapeConfig.yugabyte.scheme"),
 				},
 			},
+		},
+		PerfAdvisor: perfAdvisorConfig{
+			Enabled:        legacy.GetBool("perfAdvisor.enabled"),
+			Port:           legacy.GetInt("perfAdvisor.port"),
+			RestartSeconds: legacy.GetInt("perfAdvisor.restartSeconds"),
+			EnableHttps:    legacy.GetBool("perfAdvisor.enableHttps"),
 		},
 	}
 }

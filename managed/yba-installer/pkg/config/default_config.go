@@ -86,7 +86,9 @@ func addDefaults(v *viper.Viper) {
 	// PerfAdvisor (no documented fields)
 	// v.SetDefault("performance_advisor.<field>", <value>) // Not set, no info
 	v.SetDefault("perfAdvisor.enabled", false)
-	v.SetDefault("perfAdvisor.port", 8080)
+	v.SetDefault("perfAdvisor.port", 8443)
+	v.SetDefault("perfAdvisor.restart_seconds", 10)
+	v.SetDefault("perfAdvisor.enable_https", false)
 
 	// Services (installerConfig.Services)
 	v.SetDefault("installer.services", []string{"postgres", "prometheus", "platform"})

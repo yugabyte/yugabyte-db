@@ -12,7 +12,7 @@ type rootConfig struct {
 	Platform    platformConfig    `mapstructure:"platform"`
 	Prometheus  prometheusConfig  `mapstructure:"prometheus"`
 	Postgres    postgresConfig    `mapstructure:"postgres"`
-	PerfAdvisor perfAdvisorConfig `mapstructure:"performance_advisor"`
+	PerfAdvisor perfAdvisorConfig `mapstructure:"perfAdvisor"`
 }
 
 type Service string
@@ -21,7 +21,7 @@ const (
 	ServicePlatform           Service = "platform"
 	ServicePostgres           Service = "postgres"
 	ServicePrometheus         Service = "prometheus"
-	ServicePerformanceAdvisor Service = "performance_advisor"
+	ServicePerformanceAdvisor Service = "yb-perf-advisor"
 )
 
 func (s Service) String() string {
@@ -152,5 +152,8 @@ type ldapConfig struct {
 }
 
 type perfAdvisorConfig struct {
-	// Add Perf Advisor-specific configuration fields here
+	Enabled        bool `mapstructure:"enabled"`
+	Port           int  `mapstructure:"port"`
+	RestartSeconds int  `mapstructure:"restart_seconds"`
+	EnableHttps    bool `mapstructure:"enable_https"`
 }
