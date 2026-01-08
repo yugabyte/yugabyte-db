@@ -23,6 +23,8 @@
 #include <boost/multi_index/member.hpp>
 #include <boost/multi_index/ordered_index.hpp>
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/client/transaction_rpc.h"
 
 #include "yb/common/pgsql_error.h"
@@ -172,6 +174,16 @@ namespace tablet {
 namespace {
 
 YB_STRONGLY_TYPED_BOOL(PostApplyCleanup);
+
+ash::WaitStateInfoPtr InitMinRunningHybridTimeWaitState() {
+  auto bg_wait_state = ash::WaitStateInfo::CreateIfAshIsEnabled<ash::WaitStateInfo>();
+  if (bg_wait_state) {
+    bg_wait_state->set_root_request_id(yb::Uuid::Generate());
+    bg_wait_state->set_query_id(
+        to_underlying(yb::ash::FixedQueryId::kQueryIdForMinRunningHybridTime));
+  }
+  return bg_wait_state;
+}
 
 } // namespace
 
@@ -1173,6 +1185,10 @@ class TransactionParticipant::Impl
         static const std::string kRequestReason = "min running check"s;
         // Get transaction status
         auto now_ht = participant_context_.Now();
+        auto min_running_wait_state = InitMinRunningHybridTimeWaitState();
+        ash::MinRunningHybridTimeTracker().Track(min_running_wait_state);
+        ADOPT_WAIT_STATE(min_running_wait_state);
+        SET_WAIT_STATUS(TransactionStatusCache_DoGetCommitData);
         StatusRequest status_request = {
             .id = &first_txn.id(),
             .read_ht = now_ht,
@@ -1182,9 +1198,11 @@ class TransactionParticipant::Impl
             .serial_no = 0,
             .reason = &kRequestReason,
             .flags = TransactionLoadFlags{},
-            .callback = [this, id = first_txn.id()](Result<TransactionStatusResult> result) {
+            .callback = [this, id = first_txn.id(), min_running_wait_state]
+                (Result<TransactionStatusResult> result) {
               // Aborted status will result in cleanup of intents.
               VLOG_WITH_PREFIX(1) << "Min running status " << id << ": " << result;
+              ash::MinRunningHybridTimeTracker().Untrack(min_running_wait_state);
             }
         };
         first_txn.RequestStatusAt(status_request, &lock);

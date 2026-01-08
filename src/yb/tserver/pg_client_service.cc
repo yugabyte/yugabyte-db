@@ -1686,6 +1686,9 @@ class PgClientServiceImpl::Impl : public SessionProvider {
       GetRpcsWaitStates(req, ash::Component::kYCQL, resp->mutable_cql_wait_states(),
           sample_size, cql_samples_considered);
     }
+    AddWaitStatesToResponse(
+        ash::MinRunningHybridTimeTracker(), req.export_wait_state_code_as_string(),
+        resp->mutable_tserver_wait_states(), sample_size, tserver_samples_considered);
     float tserver_sample_weight =
         std::max(tserver_samples_considered, sample_size) * 1.0 / sample_size;
     float cql_sample_weight = std::max(cql_samples_considered, sample_size) * 1.0 / sample_size;
