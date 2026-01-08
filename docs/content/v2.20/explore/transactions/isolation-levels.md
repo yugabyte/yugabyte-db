@@ -39,7 +39,7 @@ YugabyteDB supports three isolation levels in the transactional layer:
 
 The default isolation level for the YSQL API is effectively Snapshot (that is, the same as PostgreSQL's REPEATABLE READ) because, by default, Read Committed, which is the YSQL API and PostgreSQL _syntactic_ default, maps to Snapshot isolation.
 
-To enable Read Committed (currently in [Early Access](/preview/releases/versioning/#feature-availability)), you must set the YB-TServer flag `yb_enable_read_committed_isolation` to `true`. By default this flag is `false` and the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot isolation (in which case Read Committed and Read Uncommitted of YSQL also in turn use Snapshot isolation).
+To enable Read Committed (currently in [Early Access](/preview/releases/versioning/#feature-maturity)), you must set the YB-TServer flag `yb_enable_read_committed_isolation` to `true`. By default this flag is `false` and the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot isolation (in which case Read Committed and Read Uncommitted of YSQL also in turn use Snapshot isolation).
 
 {{< tip title="Tip" >}}
 
