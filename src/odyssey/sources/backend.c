@@ -245,9 +245,25 @@ static int yb_read_client_id_from_notice_pkt(od_client_t *client,
 	return 0;
 }
 
-static inline int yb_send_parameter_status(od_io_t *io, char *name,
-					   int name_len, char *value,
-					   int value_len)
+static inline int yb_send_parameter_status_async(od_relay_t *relay, char *name,
+						 int name_len, char *value,
+						 int value_len)
+{
+	machine_msg_t *msg = kiwi_be_write_parameter_status(
+		NULL, name, name_len, value, value_len);
+	if (msg == NULL) {
+		return -1;
+	}
+	int rc = machine_iov_add(relay->iov, msg);
+	if (rc != 0) {
+		return -1;
+	}
+	return 0;
+}
+
+static inline int yb_send_parameter_status_sync(od_io_t *io, char *name,
+						int name_len, char *value,
+						int value_len)
 {
 	machine_msg_t *msg = kiwi_be_write_parameter_status(
 		NULL, name, name_len, value, value_len);
@@ -493,7 +509,7 @@ static inline int od_backend_startup(od_server_t *server,
 				 * We only care about reported variables when
 				 * auth backend starts
 				 */
-				int rc = yb_send_parameter_status(
+				int rc = yb_send_parameter_status_sync(
 					&client->yb_external_client->io, name,
 					name_len, value, value_len);
 				if (rc != 0) {
@@ -1033,8 +1049,8 @@ int od_backend_update_parameter(od_server_t *server, char *context, char *data,
 
 	if (!server_only && flags & YB_PARAM_STATUS_REPORT_ENABLED) {
 		/* Send ParameterStatus to client if GUC_REPORT is enabled */
-		int rc = yb_send_parameter_status(&client->io, name, name_len,
-						  value, value_len);
+		int rc = yb_send_parameter_status_async(
+			&server->relay, name, name_len, value, value_len);
 		if (rc != 0) {
 			od_error(&instance->logger, context, NULL, server,
 				 "Unable to send ParameterStatus to client");
