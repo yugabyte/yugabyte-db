@@ -665,11 +665,11 @@ Default: If `ysql_max_connections` is not set, the database startup process will
 
 Specifies the default transaction isolation level.
 
-Valid values: `SERIALIZABLE`, `REPEATABLE READ`, `READ COMMITTED`, and `READ UNCOMMITTED`.
+Valid values: `serializable`, `'repeatable read'`, `'read committed'`, and `'read uncommitted'`.
 
-Default: `READ COMMITTED`<sup>$</sup>
+Default: `'read committed'`
 
-<sup>$</sup> Read Committed support is currently in [Early Access](/stable/releases/versioning/#feature-availability). Read Committed Isolation is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
+Read Committed isolation {{<tags/feature/ea idea="1099">}} is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot isolation (in which case Read Committed and Read Uncommitted of YSQL also in turn use Snapshot isolation).
 
 ##### --ysql_sequence_cache_method
 
@@ -1502,11 +1502,19 @@ Default: false
 
 ##### default_transaction_isolation
 
-Specifies the default isolation level of each new transaction. Every transaction has an isolation level of `read uncommitted`, `read committed`, `repeatable read`, or `serializable`.
+Specifies the default isolation level of each new transaction. Every transaction has an isolation level of `'read uncommitted'`, `'read committed'`, `'repeatable read'`, or `serializable`.
+
+For example:
+
+```sql
+SET default_transaction_isolation='repeatable read';
+```
 
 See [transaction isolation levels](../../../architecture/transactions/isolation-levels) for reference.
 
-Default: `read committed`
+See also the [--ysql_default_transaction_isolation](#ysql-default-transaction-isolation) flag.
+
+Default: `'read committed'`
 
 ##### yb_locks_min_txn_age
 

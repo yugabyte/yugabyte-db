@@ -27,9 +27,9 @@ Use the `SET TRANSACTION` statement to set the current transaction isolation lev
 
 ## Semantics
 
-Supports Serializable, Snapshot and Read Committed Isolation<sup>$</sup> using the PostgreSQL isolation level syntax of `SERIALIZABLE`, `REPEATABLE READ` and `READ COMMITTED` respectively. PostgreSQL's `READ UNCOMMITTED` also maps to Read Committed Isolation.
+Supports Serializable, Snapshot, and Read Committed isolation using the PostgreSQL isolation level syntax of `SERIALIZABLE`, `REPEATABLE READ`, and `READ COMMITTED` respectively. PostgreSQL's `READ UNCOMMITTED` also maps to Read Committed isolation.
 
-<sup>$</sup> Read Committed Isolation is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of YugabyteDB's transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation). Read Committed support is currently in [Tech Preview](/preview/releases/versioning/#feature-availability).
+Read Committed isolation {{<tags/feature/ea ides="1099">}} is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot isolation (in which case Read Committed and Read Uncommitted of YSQL also in turn use Snapshot isolation).
 
 ### *transaction_mode*
 
@@ -51,7 +51,7 @@ Maps to Snapshot Isolation of YugabyteDB.
 
 #### READ COMMITTED
 
-Read Committed support is currently in [Early Access](/preview/releases/versioning/#feature-availability).
+Read Committed support is currently in [Early Access](/preview/releases/versioning/#feature-maturity).
 
 Default in PostgreSQL and YSQL.
 
