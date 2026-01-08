@@ -36,6 +36,9 @@ DECLARE_bool(ysql_yb_enable_ash);
 #define SET_WAIT_STATUS(code) \
   SET_WAIT_STATUS_TO(yb::ash::WaitStateInfo::CurrentWaitState(), code)
 
+#define SET_WAIT_STATUS_FROM_SNAPSHOT(snapshot) \
+  SET_WAIT_STATUS_TO_CODE(snapshot.wait_state, snapshot.code)
+
 #define ADOPT_WAIT_STATE(ptr) \
   yb::ash::ScopedAdoptWaitState _scoped_state { (ptr) }
 
@@ -209,6 +212,7 @@ YB_DEFINE_TYPED_ENUM(FixedQueryId, uint8_t,
   ((kQueryIdForYSQLBackgroundWorker, 7))
   ((kQueryIdForRemoteBootstrap, 8))
   ((kQueryIdForSnapshot, 9))
+  ((kQueryIdForMinRunningHybridTime, 13))
 );
 
 YB_DEFINE_TYPED_ENUM(WaitStateType, uint8_t,
@@ -592,9 +596,19 @@ class WaitStateTracker {
   std::unordered_set<yb::ash::WaitStateInfoPtr> entries_ GUARDED_BY(mutex_);
 };
 
+struct WaitStateSnapshot {
+  WaitStateSnapshot()
+      : wait_state(WaitStateInfo::CurrentWaitState()),
+        code(wait_state ? wait_state->code() : WaitStateCode::kIdle) {}
+
+  const WaitStateInfoPtr wait_state;
+  const WaitStateCode code;
+};
+
 WaitStateTracker& FlushAndCompactionWaitStatesTracker();
 WaitStateTracker& RaftLogWaitStatesTracker();
 WaitStateTracker& SharedMemoryPgPerformTracker();
 WaitStateTracker& SharedMemoryPgAcquireObjectLockTracker();
+WaitStateTracker& MinRunningHybridTimeTracker();
 
 }  // namespace yb::ash
