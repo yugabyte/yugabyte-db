@@ -758,6 +758,7 @@ WaitStateTracker raft_log_appender_wait_states_tracker;
 WaitStateTracker pg_shared_memory_perform_tracker;
 WaitStateTracker pg_shared_memory_acquire_object_lock_tracker;
 WaitStateTracker xcluster_poller_tracker;
+WaitStateTracker min_running_hybrid_time_tracker;
 
 }  // namespace
 
@@ -779,6 +780,10 @@ WaitStateTracker& SharedMemoryPgAcquireObjectLockTracker() {
 
 WaitStateTracker& XClusterPollerTracker() {
   return xcluster_poller_tracker;
+}
+
+WaitStateTracker& MinRunningHybridTimeTracker() {
+  return min_running_hybrid_time_tracker;
 }
 
 }  // namespace yb::ash
