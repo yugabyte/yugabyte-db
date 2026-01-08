@@ -215,9 +215,10 @@ CREATE INDEX t_x_hash_y_asc_idx ON t (x HASH, y ASC);
 :explain1run1
 DROP TABLE t;
 
--- Issue #18360 (yb_hash_code compared to constant out of the range [0..65535])
 CREATE TABLE tt (i int, j int);
 CREATE INDEX ON tt (i, j);
+
+-- Issue #18360 (yb_hash_code compared to constant out of the range [0..65535])
 INSERT INTO tt VALUES (1, 2);
 -- Negative values
 \set explain 'EXPLAIN (COSTS OFF)'
@@ -273,86 +274,42 @@ INSERT INTO tt VALUES (1, 2);
 \set query 'SELECT * FROM tt WHERE yb_hash_code(i) = 3.14'
 :explain1run1
 
-DROP TABLE tt;
-
 -- GH18347 : yb_hash_code() in row constructor in predicate with an inequality fails
-
-set client_min_messages = warning;
-drop table if exists GH18347;
-reset client_min_messages;
-
-CREATE TABLE GH18347 (i int, j int);
-CREATE INDEX ON GH18347 (i, j);
-
-INSERT INTO GH18347 VALUES(0, 0);
-INSERT INTO GH18347 VALUES(0, 1);
-INSERT INTO GH18347 VALUES(0, 2);
-INSERT INTO GH18347 VALUES(0, 3);
-INSERT INTO GH18347 VALUES(1, 0);
-INSERT INTO GH18347 VALUES(1, 1);
-INSERT INTO GH18347 VALUES(2, 2);
-INSERT INTO GH18347 VALUES(3, 3);
-INSERT INTO GH18347 VALUES(2147483647, 0);
-INSERT INTO GH18347 VALUES(2147483647, 1);
-INSERT INTO GH18347 VALUES(2147483647, 2);
-INSERT INTO GH18347 VALUES(2147483647, 3);
-INSERT INTO GH18347 VALUES(-2147483648, 0);
-INSERT INTO GH18347 VALUES(-2147483648, 1);
-INSERT INTO GH18347 VALUES(-2147483648, 2);
-INSERT INTO GH18347 VALUES(-2147483648, 3);
+TRUNCATE TABLE tt;
+INSERT INTO tt VALUES(0, 0);
+INSERT INTO tt VALUES(0, 1);
+INSERT INTO tt VALUES(0, 2);
+INSERT INTO tt VALUES(0, 3);
+INSERT INTO tt VALUES(1, 0);
+INSERT INTO tt VALUES(1, 1);
+INSERT INTO tt VALUES(2, 2);
+INSERT INTO tt VALUES(3, 3);
+INSERT INTO tt VALUES(2147483647, 0);
+INSERT INTO tt VALUES(2147483647, 1);
+INSERT INTO tt VALUES(2147483647, 2);
+INSERT INTO tt VALUES(2147483647, 3);
+INSERT INTO tt VALUES(-2147483648, 0);
+INSERT INTO tt VALUES(-2147483648, 1);
+INSERT INTO tt VALUES(-2147483648, 2);
+INSERT INTO tt VALUES(-2147483648, 3);
 
 -- Failing query pattern.
-\set hint1 '/*+IndexScan(GH18347)*/'
-\set query 'SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(1) hash_code_1 FROM GH18347 WHERE row(j, yb_hash_code(i)) > row(1, yb_hash_code(1)) ORDER BY 1, 2'
-:explain1run1
-
--- Verify sequential and index scans give the same answer.
-\set hint1 '/*+IndexScan(GH18347) SeqScan(GH18347_1) */'
-SELECT $$
-with cte as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(1) hash_code_1 FROM GH18347 WHERE row(j, yb_hash_code(i)) > row(1, yb_hash_code(1)) ORDER BY 1, 2),
-     cte1 as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(1) hash_code_1 FROM GH18347 GH18347_1 WHERE row(j, yb_hash_code(i)) > row(1, yb_hash_code(1)) ORDER BY 1, 2)
-SELECT * FROM cte EXCEPT ALL SELECT * FROM cte1
-UNION ALL
-SELECT * FROM cte1 EXCEPT ALL SELECT * FROM cte
-$$ AS query \gset
-:explain1run1
+\set hint1 '/*+IndexOnlyScan(tt)*/'
+\set hint2 '/*+SeqScan(tt)*/'
+\set query 'SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(1) hash_code_1 FROM tt WHERE row(j, yb_hash_code(i)) > row(1, yb_hash_code(1)) ORDER BY 1, 2'
+:explain2run2
 
 -- Try variation.
-\set hint1 '/*+IndexScan(GH18347)*/'
-\set query 'SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(2) hash_code_2 FROM GH18347 WHERE row(j, yb_hash_code(i)) < row(1, yb_hash_code(2)) ORDER BY 1, 2'
-:explain1run1
-
--- Verify sequential and index scans give the same answer.
-\set hint1 '/*+IndexScan(GH18347) SeqScan(GH18347_1) */'
-SELECT $$
-with cte as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(2) hash_code_2 FROM GH18347 WHERE row(j, yb_hash_code(i)) < row(1, yb_hash_code(2)) ORDER BY 1, 2),
-     cte1 as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(2) hash_code_2 FROM GH18347 GH18347_1 WHERE row(j, yb_hash_code(i)) < row(1, yb_hash_code(2)) ORDER BY 1, 2)
-SELECT * FROM cte EXCEPT ALL SELECT * FROM cte1
-UNION ALL
-SELECT * FROM cte1 EXCEPT ALL SELECT * FROM cte
-$$ AS query \gset
-:explain1run1
+\set query 'SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(2) hash_code_2 FROM tt WHERE row(j, yb_hash_code(i)) < row(1, yb_hash_code(2)) ORDER BY 1, 2'
+:explain2run2
 
 -- Try a 1 element IN with row constructor. Should get an index scan since this turns into an equality.
-\set hint1 '/*+IndexScan(GH18347)*/'
-\set query 'SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(2) hash_code_2 FROM GH18347 WHERE row(j, yb_hash_code(i)) IN (row(1, yb_hash_code(1))) ORDER BY 1, 2'
-:explain1run1
+\set query 'SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(1) hash_code_1 FROM tt WHERE row(j, yb_hash_code(i)) IN (row(1, yb_hash_code(1))) ORDER BY 1, 2'
+:explain2run2
 
--- Verify sequential and index scans give the same answer.
-\set hint1 '/*+IndexScan(GH18347) SeqScan(GH18347_1) */'
-SELECT $$
-with cte as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(2) hash_code_2 FROM GH18347 WHERE row(j, yb_hash_code(i)) IN (row(1, yb_hash_code(1))) ORDER BY 1, 2),
-     cte1 as (SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(2) hash_code_2 FROM GH18347 GH18347_1 WHERE row(j, yb_hash_code(i)) IN (row(1, yb_hash_code(1))) ORDER BY 1, 2)
-SELECT * FROM cte EXCEPT ALL SELECT * FROM cte1
-UNION ALL
-SELECT * FROM cte1 EXCEPT ALL SELECT * FROM cte
-$$ AS query \gset
-:explain1run1
+-- Try an IN with yb_hash_code().
+-- TODO(#23362): expect index condition to be pushed down rather than PG filter.
+\set query 'SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(1) hash_code_1, yb_hash_code(2) hash_code_2 FROM tt WHERE yb_hash_code(i) IN (yb_hash_code(1), yb_hash_code(2)) ORDER BY 1, 2'
+:explain2run2
 
--- Try an IN with yb_hash_code(). Cannot do an index scan since the query execution code does not support this
--- so plan will have a sequantial scan. (This was hitting an assert before this issue was fixed.)
-\set hint1 '/*+IndexScan(GH18347)*/'
-\set query 'SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(j) hash_code_j, yb_hash_code(1) hash_code_1, yb_hash_code(2) hash_code_2 FROM GH18347 WHERE yb_hash_code(i) IN (yb_hash_code(1), yb_hash_code(2)) ORDER BY 1, 2'
-:explain1run1
-
-drop table GH18347;
+drop table tt;
