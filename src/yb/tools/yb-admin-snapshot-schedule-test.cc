@@ -686,6 +686,41 @@ TEST_F(YbAdminSnapshotScheduleTest, Basic) {
   ASSERT_OK(RestoreSnapshotSchedule(schedule_id, last_snapshot_time));
 }
 
+// Poll interval set to 10 minutes to prevent early snapshot creation.
+class YbAdminSnapshotScheduleTestLongPoll : public YbAdminSnapshotScheduleTest {
+ public:
+  std::vector<std::string> ExtraMasterFlags() override {
+    auto flags = YbAdminSnapshotScheduleTest::ExtraMasterFlags();
+    for (auto& f : flags) {
+      if (f.rfind("--snapshot_coordinator_poll_interval_ms=", 0) == 0) {
+        f = "--snapshot_coordinator_poll_interval_ms=600000";  // 10 minutes
+        return flags;
+      }
+    }
+    flags.push_back("--snapshot_coordinator_poll_interval_ms=600000");
+    return flags;
+  }
+};
+
+TEST_F(YbAdminSnapshotScheduleTestLongPoll, FailRestoreWhenNoSnapshotCreated) {
+  ASSERT_OK(PrepareCommon());
+  auto conn = ASSERT_RESULT(CqlConnect());
+  ASSERT_OK(conn.ExecuteQuery(
+      Format("CREATE KEYSPACE IF NOT EXISTS $0", client::kTableName.namespace_name())));
+
+  // Create the schedule without waiting for a snapshot to be created.
+  auto schedule_id = ASSERT_RESULT(
+      CreateSnapshotSchedule(kInterval, kRetention, "ycql." + client::kTableName.namespace_name()));
+  auto ns_conn = ASSERT_RESULT(CqlConnect(client::kTableName.namespace_name()));
+  ASSERT_OK(ns_conn.ExecuteQuery("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)"));
+
+  // Try to restore to current time, which should fail because zero snapshots exist yet.
+  Timestamp restore_time(ASSERT_RESULT(WallClock()->Now()).time_point);
+  ASSERT_NOK_STR_CONTAINS(
+      StartRestoreSnapshotSchedule(schedule_id, restore_time),
+      "No snapshots have been created for schedule");
+}
+
 TEST_F(YbAdminSnapshotScheduleTest, TestTruncateDisallowedWithPitr) {
   auto schedule_id = ASSERT_RESULT(PrepareCql());
   auto conn = ASSERT_RESULT(CqlConnect(client::kTableName.namespace_name()));
@@ -1337,6 +1372,19 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam, Pgsql) {
 
   auto res = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT value FROM test_table"));
   ASSERT_EQ(res, "before");
+}
+
+TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationRestoreParam,
+  FailRestoreToBeforeMaximumRetention) {
+  // Set restore time to 1 hour before the schedule creation time.
+  Timestamp restore_time(
+      ASSERT_RESULT(WallClock()->Now()).time_point - MonoDelta::FromHours(1).ToMicroseconds());
+  auto schedule_id = ASSERT_RESULT(PreparePgWithColocatedParam());
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+  ASSERT_OK(conn.Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)"));
+  ASSERT_NOK_STR_CONTAINS(
+      RestoreSnapshotSchedule(schedule_id, restore_time),
+      "earlier than the minimum allowed restore");
 }
 
 TEST_P(YbAdminSnapshotScheduleTestWithYsqlColocationParam, PgsqlDropDatabaseAndSchedule) {

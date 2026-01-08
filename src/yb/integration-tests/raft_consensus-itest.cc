@@ -3483,8 +3483,10 @@ TEST_F(RaftConsensusITest, SplitOpId) {
   // Add SPLIT_OP to the leader.
   tablet::SplitTabletRequestPB req;
   req.set_tablet_id(tablet_id_);
-  req.set_new_tablet1_id(GenerateObjectId());
-  req.set_new_tablet2_id(GenerateObjectId());
+  req.set_deprecated_new_tablet1_id(GenerateObjectId());
+  req.set_deprecated_new_tablet2_id(GenerateObjectId());
+  req.add_new_tablet_ids(req.deprecated_new_tablet1_id());
+  req.add_new_tablet_ids(req.deprecated_new_tablet2_id());
   {
     const auto min_hash_code = std::numeric_limits<docdb::DocKeyHash>::max();
     const auto max_hash_code = std::numeric_limits<docdb::DocKeyHash>::min();
@@ -3493,8 +3495,10 @@ TEST_F(RaftConsensusITest, SplitOpId) {
     dockv::KeyBytes encoded_doc_key;
     dockv::DocKeyEncoderAfterTableIdStep(&encoded_doc_key).Hash(
         split_hash_code, dockv::KeyEntryValues());
-    req.set_split_encoded_key(encoded_doc_key.ToStringBuffer());
-    req.set_split_partition_key(partition_key);
+    req.set_deprecated_split_encoded_key(encoded_doc_key.ToStringBuffer());
+    req.set_deprecated_split_partition_key(partition_key);
+    req.add_split_encoded_keys(req.deprecated_split_encoded_key());
+    req.add_split_partition_keys(req.deprecated_split_partition_key());
   }
   req.set_dest_uuid(initial_leader->uuid());
   tserver::SplitTabletResponsePB resp;

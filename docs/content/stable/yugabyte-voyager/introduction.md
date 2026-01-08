@@ -37,16 +37,16 @@ YugabyteDB Voyager has the following features:
 - Parallelism of data across tables.
 - Support for direct data import from CSV or TEXT format files present on local disk or on any cloud storage.
 - Live migration of Oracle databases with fall-forward and fall-back. {{<tags/feature/tp>}}
-- Live migration of PostgreSQL databases with fall-forward and fall-back. {{<tags/feature/tp>}}
+- Live migration of PostgreSQL databases with fall-forward and fall-back. {{<tags/feature/ga>}}
 
 ## Migration types
 
 You can perform migration by choosing one of the following options:
 
 - [Offline migration](../migrate/migrate-steps/) - Take your applications offline to perform the migration.
-- [Live migration](../migrate/live-migrate/) {{<tags/feature/tp>}} - Migrate your data while your application is running (currently Oracle and PostgreSQL only).
-- [Live migration with fall-forward](../migrate/live-fall-forward/) {{<tags/feature/tp>}} - Fall forward to the source-replica database for your live migration (currently Oracle and PostgreSQL only).
-- [Live migration with fall-back](../migrate/live-fall-back/) {{<tags/feature/tp>}} - Fall back to the source database for your live migration (currently Oracle and PostgreSQL only).
+- [Live migration](../migrate/live-migrate/) - Migrate your data while your application is running (currently Oracle and PostgreSQL only).
+- [Live migration with fall-forward](../migrate/live-fall-forward/) - Fall forward to the source-replica database for your live migration (currently Oracle and PostgreSQL only).
+- [Live migration with fall-back](../migrate/live-fall-back/) - Fall back to the source database for your live migration (currently Oracle and PostgreSQL only).
 
 ## Source databases
 
@@ -64,10 +64,10 @@ The following table shows the target database support for each migration type.
 
 | Migration type | Supported YugabyteDB Versions | Supported products |
 | :------------- | :--------------------------- | ------------------ |
-| Offline | {{<release "2.20.1.0">}} or later <br> {{<release "2.21.0.0">}} or later <br> {{<release "2024.1.1.0">}} or later  <br> {{<release "2025.1.0.0">}} or later | [YugabyteDB](../../deploy/)<br>[YugabyteDB Anywhere](../../yugabyte-platform/create-deployments/)<br>[YugabyteDB Aeon](../../yugabyte-cloud/cloud-basics/) |
-| Live | {{<release "2.20.3.0">}} or later <br>{{<release "2.21.1.0">}} or later  <br> {{<release "2024.1.1.0">}} or later <br> {{<release "2025.1.0.0">}} or later | [YugabyteDB](../../deploy/)<br>[YugabyteDB Anywhere](../../yugabyte-platform/create-deployments/)<br>[YugabyteDB Aeon](../../yugabyte-cloud/cloud-basics/) |
-| Live with fall-forward/fall-back <br> with [YugabyteDB gRPC Connector](../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/)| {{<release "2.20.3.0">}} or later  <br> {{<release "2024.1.1.0">}} or later <br> {{<release "2025.1.0.0">}} or later | [YugabyteDB](../../deploy/)<br>[YugabyteDB Anywhere](../../yugabyte-platform/create-deployments/) |
-| Live with fall-forward/fall-back <br> with [YugabyteDB Connector](../../additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/)| {{<release "2024.1.1.0">}} or later <br> {{<release "2025.1.0.0">}} or later | [YugabyteDB](../../deploy/)<br>[YugabyteDB Anywhere](../../yugabyte-platform/create-deployments/)<br>[YugabyteDB Aeon](../../yugabyte-cloud/cloud-basics/) |
+| Offline | {{<release "2.20.1.0">}} or later <br> {{<release "2.21.0.0">}} or later <br> {{<release "2024.1.1.0">}} or later  <br> {{<release "2025.1.0.0">}} or later <br> {{<release "2025.2.0.0">}} or later| [YugabyteDB](../../deploy/)<br>[YugabyteDB Anywhere](../../yugabyte-platform/create-deployments/)<br>[YugabyteDB Aeon](../../yugabyte-cloud/cloud-basics/) |
+| Live | {{<release "2.20.3.0">}} or later <br>{{<release "2.21.1.0">}} or later  <br> {{<release "2024.1.1.0">}} or later <br> {{<release "2025.1.0.0">}} or later <br> {{<release "2025.2.0.0">}} or later | [YugabyteDB](../../deploy/)<br>[YugabyteDB Anywhere](../../yugabyte-platform/create-deployments/)<br>[YugabyteDB Aeon](../../yugabyte-cloud/cloud-basics/) |
+| Live with fall-forward/fall-back <br> with [YugabyteDB gRPC Connector](../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/)| {{<release "2.20.3.0">}} or later  <br> {{<release "2024.1.1.0">}} or later <br> {{<release "2025.1.0.0">}} or later <br> {{<release "2025.2.0.0">}} or later| [YugabyteDB](../../deploy/)<br>[YugabyteDB Anywhere](../../yugabyte-platform/create-deployments/) |
+| Live with fall-forward/fall-back <br> with [YugabyteDB Connector](../../additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/)| {{<release "2024.1.1.0">}} or later <br> {{<release "2025.1.0.0">}} or later <br> {{<release "2025.2.0.0">}} or later| [YugabyteDB](../../deploy/)<br>[YugabyteDB Anywhere](../../yugabyte-platform/create-deployments/)<br>[YugabyteDB Aeon](../../yugabyte-cloud/cloud-basics/) |
 
 ## Learn more
 

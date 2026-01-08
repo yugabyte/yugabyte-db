@@ -109,6 +109,13 @@ public class S3Config extends TelemetryProviderConfig {
       accessMode = READ_WRITE)
   private String endpoint;
 
+  @ApiModelProperty(
+      value =
+          "When true, appends universe UUID and node name to the S3 prefix."
+              + " Example: 'yb-logs/<universe-uuid>/<node-name>'",
+      accessMode = READ_WRITE)
+  private Boolean includeUniverseAndNodeInPrefix = false;
+
   public S3Config() {
     setType(ProviderType.S3);
   }

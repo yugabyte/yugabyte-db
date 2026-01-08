@@ -49,6 +49,7 @@ DECLARE_bool(enable_ysql);
 
 using namespace std::literals;
 
+using yb::docdb::DocDBTableLocksConflictMatrixTest;
 using yb::docdb::IntentTypeSetAdd;
 using yb::docdb::LockState;
 using yb::docdb::ObjectLockFastpathLockType;
@@ -117,8 +118,14 @@ class TSLocalLockManagerTest : public TabletServerTestBase {
       return Status::OK();
     }
     auto res = VERIFY_RESULT(DetermineObjectsToLock(req.object_locks()));
-    for (auto& lock_batch_entry : res.lock_batch) {
-      (*state_map)[lock_batch_entry.key] += IntentTypeSetAdd(lock_batch_entry.intent_types);
+    bool is_lock_redundant = std::ranges::all_of(res.lock_batch, [&](auto lock_batch_entry) {
+      return docdb::LockStateContains(
+          (*state_map)[lock_batch_entry.key], IntentTypeSetAdd(lock_batch_entry.intent_types));
+    });
+    if (!is_lock_redundant) {
+      for (auto& lock_batch_entry : res.lock_batch) {
+        (*state_map)[lock_batch_entry.key] += IntentTypeSetAdd(lock_batch_entry.intent_types);
+      }
     }
     return Status::OK();
   }
@@ -165,6 +172,22 @@ class TSLocalLockManagerTest : public TabletServerTestBase {
     return lm_->TEST_WaitingLocksSize();
   }
 
+  bool DoesLockTypeContainLock(TableLockType a, TableLockType b) {
+    auto entries1 = docdb::GetEntriesForLockType(a);
+    auto entries2 = docdb::GetEntriesForLockType(b);
+    for (auto& [key2, intent_type2] : entries2) {
+      bool contains = std::ranges::any_of(entries1, [&](auto key_and_intent) {
+        return key_and_intent.first == key2 &&
+               docdb::LockStateContains(IntentTypeSetAdd(key_and_intent.second),
+                                        IntentTypeSetAdd(intent_type2));
+      });
+      if (!contains) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   tserver::TSLocalLockManager* lm_;
   tserver::SharedMemoryManager* shared_mem_manager_;
   docdb::ObjectLockSharedState* shared_mem_state_;
@@ -202,6 +225,33 @@ TEST_F(TSLocalLockManagerTest, TestFastpathLockAndRelease) {
     ASSERT_EQ(WaitingLocksSize(), 0);
   }
   ASSERT_OK(ReleaseLocksForOwner(kTxn1));
+}
+
+TEST_F(TSLocalLockManagerTest, TestFastpathConflictMatrix) {
+  google::SetVLOGLevel("object_lock_shared*", 1);
+  auto inner_txn = lock_owner_registry_->Register(kTxn2.txn_id, TabletId());
+  for (auto l = TableLockType_MIN + 1; l <= TableLockType_MAX; l++) {
+    auto outer_lock = TableLockType(l);
+    auto outer_entries = docdb::GetEntriesForLockType(outer_lock);
+    ASSERT_OK(LockRelation(kTxn1, kDatabase1, kObject1, outer_lock));
+    for (auto fastpath_lock : docdb::ObjectLockFastpathLockTypeList()) {
+      auto inner_lock = FastpathLockTypeToTableLockType(fastpath_lock);
+      auto inner_entries = docdb::GetEntriesForLockType(inner_lock);
+      LOG(INFO) << "Checking fastpath for " << TableLockType_Name(inner_lock)
+                << " with existing lock " << TableLockType_Name(outer_lock);
+      auto is_conflicting = ASSERT_RESULT(
+          DocDBTableLocksConflictMatrixTest::ObjectLocksConflict(outer_entries, inner_entries));
+      auto lock_acquired = ASSERT_RESULT(LockRelationPgFastpath(
+          inner_txn.tag(), kTxn2.subtxn_id, kDatabase1, kObject1, fastpath_lock));
+      ASSERT_TRUE(is_conflicting ^ lock_acquired)
+          << "lock type " << TableLockType_Name(outer_lock)
+          << ", " << TableLockType_Name(inner_lock)
+          << " - is_conflicting: " << is_conflicting
+          << ", fastpath_lock_acquired: " << lock_acquired;
+      ASSERT_OK(ReleaseLocksForOwner(kTxn2));
+    }
+    ASSERT_OK(ReleaseLocksForOwner(kTxn1));
+  }
 }
 
 TEST_F(TSLocalLockManagerTest, TestFastpathConflictWithExisting) {
@@ -483,7 +533,7 @@ TEST_F(TSLocalLockManagerTest, TestDowngradeDespiteExclusiveLockWaiter) {
       auto lock_type_2 = TableLockType(l2);
       auto entries2 = docdb::GetEntriesForLockType(lock_type_2);
       const auto is_conflicting = ASSERT_RESULT(
-          docdb::DocDBTableLocksConflictMatrixTest::ObjectLocksConflict(entries1, entries2));
+          DocDBTableLocksConflictMatrixTest::ObjectLocksConflict(entries1, entries2));
 
       if (is_conflicting) {
         SyncPoint::GetInstance()->LoadDependency({
@@ -662,7 +712,8 @@ TEST_F(TSLocalLockManagerTest, TestWaiterResumptionStateLogic) {
   hold_waiter_being_resumed = true;
   {
     auto log_waiter = StringWaiterLogSink("added to wait-queue on");
-    ASSERT_OK(ReleaseLocksForSubtxn(lock_owners[0], CoarseTimePoint::max()));
+    ASSERT_OK(ReleaseLocksForSubtxn(
+        ObjectLockOwner{lock_owners[0].txn_id, 2}, CoarseTimePoint::max()));
     ASSERT_OK(WaitFor([&]() {
       return resumed_waiters >= kTotalNumWaiters;
     }, 5s * kTimeMultiplier, "Expected 2 more waiters to be scheduled for resumption"));
@@ -718,6 +769,27 @@ TEST_F(TSLocalLockManagerTest, YB_LINUX_DEBUG_ONLY_TEST(TestFastpathCrash)) {
   ASSERT_EQ(WaitingLocksSize(), 0);
 
   ASSERT_OK(ReleaseLocksForOwner(kTxn1));
+}
+
+TEST_F(TSLocalLockManagerTest, RedundadntLockBecomesNoOp) {
+  google::SetVLOGLevel("object_lock_manager*", 4);
+  for (auto l1 = TableLockType_MIN + 1; l1 <= TableLockType_MAX; l1++) {
+    auto lock_type_1 = TableLockType(l1);
+    for (auto l2 = TableLockType_MIN + 1; l2 <= TableLockType_MAX; l2++) {
+      auto lock_type_2 = TableLockType(l2);
+      bool is_inner_lock_redundant = DoesLockTypeContainLock(lock_type_1, lock_type_2);
+      auto deadline = CoarseMonoClock::Now() + 60s;
+      LOG(INFO) << "Checking " << TableLockType_Name(lock_type_1)
+                << ", " << TableLockType_Name(lock_type_2);
+      ASSERT_OK(LockRelation(kTxn1, kDatabase1, kObject1, lock_type_1, deadline));
+      auto log_waiter = is_inner_lock_redundant
+          ? RegexWaiterLogSink(".*Ignoring redundant acquire.*")
+          : RegexWaiterLogSink(".*Locking key :.*with existing state:.*");
+      ASSERT_OK(LockRelation(kTxn1, kDatabase1, kObject1, lock_type_2, deadline));
+      ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(5 * kTimeMultiplier)));
+      ASSERT_OK(ReleaseLocksForOwner(kTxn1));
+    }
+  }
 }
 
 class TSLocalLockManagerBootstrappedLocksTest : public TSLocalLockManagerTest {

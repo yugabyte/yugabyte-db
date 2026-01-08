@@ -3416,6 +3416,10 @@
           ],
           "type" : "string"
         },
+        "backupStats" : {
+          "description" : "WARNING: This is a preview API that could change. Backup stats with YSQL dump.",
+          "type" : "boolean"
+        },
         "backupType" : {
           "description" : "Backup type",
           "enum" : [
@@ -19412,6 +19416,10 @@
             },
             "forcePathStyle" : {
               "description" : "Force Path Style. Set this to true to force the request to use path-style addressing",
+              "type" : "boolean"
+            },
+            "includeUniverseAndNodeInPrefix" : {
+              "description" : "When true, appends universe UUID and node name to the S3 prefix. Example: 'yb-logs/<universe-uuid>/<node-name>'",
               "type" : "boolean"
             },
             "marshaler" : {

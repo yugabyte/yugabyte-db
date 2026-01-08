@@ -567,3 +567,174 @@ SELECT r.id, r.name FROM regtable r WHERE r.id IN
   2 | b
 (2 rows)
 
+-- Original test from insert.sql
+-- tuple larger than fillfactor - temp table
+--
+CREATE TEMP TABLE large_tuple_test (a int, b text) WITH (fillfactor = 10);
+WARNING:  storage parameter fillfactor is unsupported, ignoring
+ALTER TABLE large_tuple_test ALTER COLUMN b SET STORAGE plain;
+-- create page w/ free space in range [nearlyEmptyFreeSpace, MaxHeapTupleSize)
+INSERT INTO large_tuple_test (select 1, NULL);
+-- should still fit on the page
+INSERT INTO large_tuple_test (select 2, repeat('a', 1000));
+SELECT pg_size_pretty(pg_relation_size('large_tuple_test'::regclass, 'main'));
+ pg_size_pretty 
+----------------
+ 8192 bytes
+(1 row)
+
+-- add small record to the second page
+INSERT INTO large_tuple_test (select 3, NULL);
+-- now this tuple won't fit on the second page, but the insert should
+-- still succeed by extending the relation
+INSERT INTO large_tuple_test (select 4, repeat('a', 8126));
+DROP TABLE large_tuple_test;
+-- ported from strings.sql specifically for temp tables
+-- test substr with toasted text values
+--
+SET bytea_output TO escape;
+CREATE TEMP TABLE toasttest(f1 text);
+insert into toasttest values(repeat('1234567890',10000));
+insert into toasttest values(repeat('1234567890',10000));
+--
+-- Ensure that some values are uncompressed, to test the faster substring
+-- operation used in that case
+--
+alter table toasttest alter column f1 set storage external;
+insert into toasttest values(repeat('1234567890',10000));
+insert into toasttest values(repeat('1234567890',10000));
+-- If the starting position is zero or less, then return from the start of the string
+-- adjusting the length to be consistent with the "negative start" per SQL.
+SELECT substr(f1, -1, 5) from toasttest;
+ substr 
+--------
+ 123
+ 123
+ 123
+ 123
+(4 rows)
+
+-- If the length is less than zero, an ERROR is thrown.
+SELECT substr(f1, 5, -1) from toasttest;
+ERROR:  negative substring length not allowed
+-- If no third argument (length) is provided, the length to the end of the
+-- string is assumed.
+SELECT substr(f1, 99995) from toasttest;
+ substr 
+--------
+ 567890
+ 567890
+ 567890
+ 567890
+(4 rows)
+
+-- If start plus length is > string length, the result is truncated to
+-- string length
+SELECT substr(f1, 99995, 10) from toasttest;
+ substr 
+--------
+ 567890
+ 567890
+ 567890
+ 567890
+(4 rows)
+
+TRUNCATE TABLE toasttest;
+INSERT INTO toasttest values (repeat('1234567890',300));
+INSERT INTO toasttest values (repeat('1234567890',300));
+INSERT INTO toasttest values (repeat('1234567890',300));
+INSERT INTO toasttest values (repeat('1234567890',300));
+-- expect >0 blocks
+SELECT pg_relation_size(reltoastrelid) = 0 AS is_empty
+  FROM pg_class where relname = 'toasttest';
+ is_empty 
+----------
+ f
+(1 row)
+
+TRUNCATE TABLE toasttest;
+ALTER TABLE toasttest set (toast_tuple_target = 4080);
+INSERT INTO toasttest values (repeat('1234567890',300));
+INSERT INTO toasttest values (repeat('1234567890',300));
+INSERT INTO toasttest values (repeat('1234567890',300));
+INSERT INTO toasttest values (repeat('1234567890',300));
+-- expect 0 blocks
+SELECT pg_relation_size(reltoastrelid) = 0 AS is_empty
+  FROM pg_class where relname = 'toasttest';
+ is_empty 
+----------
+ t
+(1 row)
+
+DROP TABLE toasttest;
+--
+-- test substr with toasted bytea values
+--
+CREATE TEMP TABLE toasttest(f1 bytea);
+insert into toasttest values(decode(repeat('1234567890',10000),'escape'));
+insert into toasttest values(decode(repeat('1234567890',10000),'escape'));
+--
+-- Ensure that some values are uncompressed, to test the faster substring
+-- operation used in that case
+--
+alter table toasttest alter column f1 set storage external;
+insert into toasttest values(decode(repeat('1234567890',10000),'escape'));
+insert into toasttest values(decode(repeat('1234567890',10000),'escape'));
+-- If the starting position is zero or less, then return from the start of the string
+-- adjusting the length to be consistent with the "negative start" per SQL.
+SELECT substr(f1, -1, 5) from toasttest;
+ substr 
+--------
+ 123
+ 123
+ 123
+ 123
+(4 rows)
+
+-- If the length is less than zero, an ERROR is thrown.
+SELECT substr(f1, 5, -1) from toasttest;
+ERROR:  negative substring length not allowed
+-- If no third argument (length) is provided, the length to the end of the
+-- string is assumed.
+SELECT substr(f1, 99995) from toasttest;
+ substr 
+--------
+ 567890
+ 567890
+ 567890
+ 567890
+(4 rows)
+
+-- If start plus length is > string length, the result is truncated to
+-- string length
+SELECT substr(f1, 99995, 10) from toasttest;
+ substr 
+--------
+ 567890
+ 567890
+ 567890
+ 567890
+(4 rows)
+
+DROP TABLE toasttest;
+-- test internally compressing datums
+-- this tests compressing a datum to a very small size which exercises a
+-- corner case in packed-varlena handling: even though small, the compressed
+-- datum must be given a 4-byte header because there are no bits to indicate
+-- compression in a 1-byte header
+CREATE TEMP TABLE toasttest (c char(4096));
+INSERT INTO toasttest VALUES('x');
+SELECT length(c), c::text FROM toasttest;
+ length | c 
+--------+---
+      1 | x
+(1 row)
+
+SELECT c FROM toasttest;
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                c                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ x                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               
+(1 row)
+
+DROP TABLE toasttest;
+RESET bytea_output;

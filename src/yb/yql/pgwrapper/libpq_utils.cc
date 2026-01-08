@@ -17,6 +17,7 @@
 #include <string>
 #include <utility>
 
+#include <boost/algorithm/string/replace.hpp>
 #include <boost/preprocessor/seq/for_each.hpp>
 
 #include "yb/common/pgsql_error.h"
@@ -54,16 +55,6 @@ const MonoTime& PGPostgresEpoch() {
   // Jan 01 2000 00:00:00 GMT+0000
   static const auto result = MonoTime::FromDuration(946684800s);
   return result;
-}
-
-// Taken from <https://stackoverflow.com/a/24315631> by Gauthier Boaglio.
-void ReplaceAll(std::string* str, const std::string& from, const std::string& to) {
-  CHECK(str);
-  size_t start_pos = 0;
-  while ((start_pos = str->find(from, start_pos)) != std::string::npos) {
-    str->replace(start_pos, from.length(), to);
-    start_pos += to.length(); // Handles case where 'to' is a substring of 'from'
-  }
 }
 
 namespace {
@@ -761,8 +752,8 @@ Result<std::string> ToString(const PGresult* result, int row, int column) {
 std::string PqEscapeLiteral(const std::string& input) {
   std::string output = input;
   // Escape certain characters.
-  ReplaceAll(&output, "\\", "\\\\");
-  ReplaceAll(&output, "'", "\\'");
+  boost::algorithm::replace_all(output, "\\", "\\\\");
+  boost::algorithm::replace_all(output, "'", "\\'");
   // Quote.
   output.insert(0, 1, '\'');
   output.push_back('\'');
@@ -777,7 +768,7 @@ std::string PqEscapeLiteral(const std::string& input) {
 std::string PqEscapeIdentifier(const std::string& input) {
   std::string output = input;
   // Escape certain characters.
-  ReplaceAll(&output, "\"", "\"\"");
+  boost::algorithm::replace_all(output, "\"", "\"\"");
   // Quote.
   output.insert(0, 1, '"');
   output.push_back('"');

@@ -62,7 +62,8 @@ var editYSQLUniverseCmd = &cobra.Command{
 					formatter.Colorize("Invalid ysql-auth value\n", formatter.RedColor))
 			}
 		}
-		if strings.Compare(ysqlAuth, util.EnableOpType) == 0 {
+		if strings.Compare(ysqlAuth, util.EnableOpType) == 0 ||
+			strings.Compare(ysqlAuth, util.DisableOpType) == 0 {
 			ysqlPassword, err := cmd.Flags().GetString("ysql-password")
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -70,7 +71,7 @@ var editYSQLUniverseCmd = &cobra.Command{
 			if util.IsEmptyString(ysqlPassword) {
 				logrus.Fatalf(
 					formatter.Colorize(
-						"YSQL password not found while enabling auth\n",
+						"YSQL password is required when enabling or disabling auth\n",
 						formatter.RedColor,
 					),
 				)
@@ -163,13 +164,13 @@ var editYSQLUniverseCmd = &cobra.Command{
 			enableYSQLAuth := false
 			if strings.Compare(ysqlAuth, util.EnableOpType) == 0 {
 				enableYSQLAuth = true
-				ysqlPassword, err := cmd.Flags().GetString("ysql-password")
-				if err != nil {
-					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-				}
-				if !util.IsEmptyString(ysqlPassword) {
-					req.SetYsqlPassword(ysqlPassword)
-				}
+			}
+			ysqlPassword, err := cmd.Flags().GetString("ysql-password")
+			if err != nil {
+				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			}
+			if !util.IsEmptyString(ysqlPassword) {
+				req.SetYsqlPassword(ysqlPassword)
 			}
 			if enableYSQLAuth == userIntent.GetEnableYSQLAuth() {
 				logrus.Debugf("Enable YSQL auth is already set to %t\n", enableYSQLAuth)
@@ -282,7 +283,7 @@ func init() {
 			"[Optional] YSQL authentication password. Use single quotes ('') to provide "+
 				"values with special characters. %s",
 			formatter.Colorize(
-				"Required when YSQL authentication is enabled",
+				"Required when YSQL authentication is being enabled or disabled",
 				formatter.GreenColor,
 			),
 		))

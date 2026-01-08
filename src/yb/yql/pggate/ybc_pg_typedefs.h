@@ -648,6 +648,7 @@ typedef struct {
   const char *yb_lsn_type;
   uint64_t active_pid;
   bool expired;
+  bool allow_tables_without_primary_key;
 } YbcReplicationSlotDescriptor;
 
 // Upon adding any more palloc'd members in the below struct, add logic to free it in

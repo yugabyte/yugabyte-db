@@ -1378,7 +1378,7 @@ Procedure
 
 ### Supported YugabyteDB topologies
 
-As mentioned, YugabyteDB (for all versions > 2024.1.1) supports logical replication slots. The YugabyteDB connector can communicate with the server by connecting to any node using the [YugabyteDB Java driver](/preview/develop/drivers-orms/java/yugabyte-jdbc-reference/). Should any node fail, the connector receives an error and restarts. Upon restart, the connector connects to any available node and continues streaming from that node.
+As mentioned, YugabyteDB (for all versions > 2024.1.1) supports logical replication slots. The YugabyteDB connector can communicate with the server by connecting to any node using the [YugabyteDB Java driver](/stable/develop/drivers-orms/java/yugabyte-jdbc-reference/). Should any node fail, the connector receives an error and restarts. Upon restart, the connector connects to any available node and continues streaming from that node.
 
 ### Setting up multiple connectors for same database server
 
@@ -1655,7 +1655,7 @@ In these cases, the error message has details about the problem and possibly a s
 
 ### YB-TServer becomes unavailable
 
-When the connector is running, the YB-TServer that it is connected to could become unavailable for any number of reasons. If this happens, the connector fails with an error and retries to connect to the YugabyteDB server. Because the connector uses the [YugabyteDB Java driver](/preview/develop/drivers-orms/java/), the connection is handled internally and the connector restores the connection to another running node.
+When the connector is running, the YB-TServer that it is connected to could become unavailable for any number of reasons. If this happens, the connector fails with an error and retries to connect to the YugabyteDB server. Because the connector uses the [YugabyteDB Java driver](/stable/develop/drivers-orms/java/), the connection is handled internally and the connector restores the connection to another running node.
 
 The YugabyteDB connector externally stores the last processed offset in the form of a YugabyteDB LSN. After a connector restarts and connects to a server instance, the connector communicates with the server to continue streaming from that particular offset. This offset is available as long as the Debezium replication slot remains intact.
 

@@ -1135,8 +1135,11 @@ Status split_tablet_action(const ClusterAdminCli::CLIArguments& args, ClusterAdm
     return ClusterAdminCli::kInvalidArguments;
   }
   const string tablet_id = args[0];
+  // TODO(nway-tsplit): Retrieve split factor from CLI arguments.
+  int split_factor = kDefaultNumSplitParts;
   RETURN_NOT_OK_PREPEND(
-      client->SplitTablet(tablet_id), Format("Unable to start split of tablet $0", tablet_id));
+      client->SplitTablet(tablet_id, split_factor),
+      Format("Unable to start split of tablet $0", tablet_id));
   return Status::OK();
 }
 

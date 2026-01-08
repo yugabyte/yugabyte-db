@@ -119,6 +119,8 @@ public class YbcBackupUtil {
   // YBDB Version that implements https://github.com/yugabyte/yugabyte-db/issues/25877
   public static final String YBDB_STABLE_GRANT_SAFETY_VERSION = "2025.1.0.0-b1";
   public static final String YBDB_PREVIEW_GRANT_SAFETY_VERSION = "2.25.2.0-b275";
+  public static final String YBDB_STABLE_STATS_DUMP_VERSION = "2025.2.0.0-b1";
+  public static final String YBDB_PREVIEW_STATS_DUMP_VERSION = "2.29.0.0-b1";
 
   private final AutoFlagUtil autoFlagUtil;
   private final UniverseInfoHandler universeInfoHandler;
@@ -1115,6 +1117,20 @@ public class YbcBackupUtil {
       }
       // Set enable backups during DDL
       extendedArgsBuilder.setUseReadTimeYsqlDump(tableParams.getEnableBackupsDuringDDL());
+      // Set dump stats
+      if (Util.compareYBVersions(
+              ybdbSoftwareVersion,
+              YBDB_STABLE_STATS_DUMP_VERSION,
+              YBDB_PREVIEW_STATS_DUMP_VERSION,
+              true)
+          >= 0) {
+        extendedArgsBuilder.setDumpStatistics(tableParams.getBackupStats());
+      } else {
+        extendedArgsBuilder.setDumpStatistics(false);
+        log.debug(
+            "Setting dump_statistics to false as database version {} does not support it",
+            ybdbSoftwareVersion);
+      }
       return extendedArgsBuilder.build();
     } catch (Exception e) {
       log.error("Error while fetching extended args for backup: ", e);

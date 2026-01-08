@@ -1366,6 +1366,7 @@ TEST_F_EX(CppCassandraDriverTest, WaitForSplitsToComplete, CppCassandraDriverTes
   auto proxy = cluster_->GetLeaderMasterProxy<master::MasterAdminProxy>();
   master::SplitTabletRequestPB req;
   req.set_tablet_id(tablet_to_split);
+  req.set_split_factor(cluster_->GetSplitFactor());
   master::SplitTabletResponsePB resp;
   rpc::RpcController rpc;
   rpc::RpcController controller;

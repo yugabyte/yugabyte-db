@@ -99,6 +99,8 @@ static List *YBCGetTables(List *publication_names, bool *yb_is_pub_all_tables);
 static List *YBCGetTablesWithRetryIfNeeded(List *publication_names,
 										   bool *yb_is_pub_all_tables,
 										   bool *skip_setting_yb_read_time);
+static void YBCRemoveTablesWithoutPrimaryKeyIfNotAllowedBySlot(List **tables);
+
 static void InitVirtualWal(List *publication_names,
 						   const YbcReplicationSlotHashRange *slot_hash_range);
 
@@ -250,7 +252,34 @@ YBCGetTablesWithRetryIfNeeded(List *publication_names, bool *yb_is_pub_all_table
 	}
 	PG_END_TRY();
 
+	/*
+	 * Remove tables without primary key if replication slot does not allow them.
+	 */
+	YBCRemoveTablesWithoutPrimaryKeyIfNotAllowedBySlot(&tables);
+
 	return tables;
+}
+
+static void
+YBCRemoveTablesWithoutPrimaryKeyIfNotAllowedBySlot(List **tables)
+{
+	if (MyReplicationSlot->data.yb_allow_tables_without_primary_key)
+		return;
+
+	ListCell   *lc;
+
+	foreach (lc, *tables)
+	{
+		Oid table_oid = lfirst_oid(lc);
+		Relation rel = RelationIdGetRelation(table_oid);
+		bool has_pk = false;
+
+		Assert(RelationIsValid(rel));
+		has_pk = YBGetTablePrimaryKeyBms(rel) != NULL;
+		RelationClose(rel);
+		if (!has_pk)
+			*tables = foreach_delete_current(*tables, lc);
+	}
 }
 
 static void

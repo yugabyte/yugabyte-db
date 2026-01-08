@@ -115,6 +115,8 @@ func parseArguments(cmd *cobra.Command) config.Args {
 			ynpConfig[key] = value
 		}
 	}
+	// Fix the types in the parsed config after merging the extra_vars.
+	ynpConfig = config.FixParsedConfigMap(ynpConfig)
 	return config.Args{
 		Command:         command,
 		YnpBasePath:     ynpBasePath,
@@ -161,8 +163,7 @@ func loadYAMLConfig(filePath string) (map[string]map[string]any, error) {
 	if err := yaml.Unmarshal(configData, &ynpConfig); err != nil {
 		return nil, fmt.Errorf("Failed to parse YAML config: %v", err)
 	}
-	// Fix the types in the parsed config.
-	return config.FixParsedConfigMap(ynpConfig), nil
+	return ynpConfig, nil
 }
 
 func handleCommand(cmd *cobra.Command, args []string) {
@@ -172,6 +173,7 @@ func handleCommand(cmd *cobra.Command, args []string) {
 	}
 	ctx := context.Background()
 	cmdArgs := parseArguments(cmd)
+	// Setup logger first to use the custom logger.
 	config.SetupLogger(ctx, cmdArgs.YnpConfig)
 	iniConfig, err := config.GenerateConfigINI(ctx, cmdArgs)
 	if err != nil {

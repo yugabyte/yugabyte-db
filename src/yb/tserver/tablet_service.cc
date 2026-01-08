@@ -3418,12 +3418,17 @@ void TabletServiceImpl::GetSplitKey(
         if (tablet->MayHaveOrphanedPostSplitData()) {
           return STATUS(IllegalState, "Tablet has orphaned post-split data");
         }
-        std::string partition_split_hash_key;
-        const auto split_encoded_key =
-            VERIFY_RESULT(tablet->GetEncodedMiddleSplitKey(&partition_split_hash_key));
-        resp->set_split_encoded_key(split_encoded_key);
-        resp->set_split_partition_key(partition_split_hash_key.size() ? partition_split_hash_key
-                                                                      : split_encoded_key);
+
+        const auto split_factor =
+            req->has_split_factor() ? req->split_factor() : kDefaultNumSplitParts;
+        const auto split_keys = VERIFY_RESULT(tablet->GetSplitKeys(split_factor));
+        const auto& encoded_keys = split_keys.encoded_keys;
+        const auto& partition_keys = split_keys.partition_keys;
+
+        resp->set_deprecated_split_encoded_key(encoded_keys.front());
+        resp->set_deprecated_split_partition_key(partition_keys.front());
+        resp->mutable_split_encoded_keys()->Add(encoded_keys.begin(), encoded_keys.end());
+        resp->mutable_split_partition_keys()->Add(partition_keys.begin(), partition_keys.end());
         return Status::OK();
   });
 }

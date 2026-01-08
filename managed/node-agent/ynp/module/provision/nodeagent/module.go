@@ -336,7 +336,7 @@ func (m *InstallNodeAgent) RenderTemplates(
 	ctx context.Context,
 	values map[string]any,
 ) (*config.RenderedTemplates, error) {
-	if isCloud, ok := values["is_cloud"].(bool); ok && isCloud {
+	if config.GetBool(values, "is_cloud", false) {
 		// Not implemented: call base module's RenderTemplates
 		return nil, nil
 	}

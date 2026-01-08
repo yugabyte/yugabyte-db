@@ -641,13 +641,17 @@ class Tablet : public AbstractTablet,
         .metrics = metrics ? metrics : metrics_.get() };
   }
 
-  // Returns approximate middle key for tablet split:
-  // - for hash-based partitions: encoded hash code in order to split by hash code.
-  // - for range-based partitions: encoded doc key in order to split by row.
-  // If `partition_split_key` is specified it will be updated with partition middle key for
-  // hash-based partitions only (to prevent additional memory copying), as partition middle key for
-  // range-based partitions always matches the returned middle key.
-  Result<std::string> GetEncodedMiddleSplitKey(std::string *partition_split_key = nullptr) const;
+  struct SplitKeysData {
+    std::vector<std::string> encoded_keys;
+    std::vector<std::string> partition_keys;
+  };
+
+  // Returns a set of split keys that split the tablet data into split_factor number of
+  // approximately even partitions.
+  // - When the split_factor is 2, an approximate middle key is determined.
+  // - When the split_factor is greater than 2 and with hash-partitioning, a placeholder
+  //   logic returns a set of split keys.
+  Result<SplitKeysData> GetSplitKeys(const int split_factor) const;
 
   std::string TEST_DocDBDumpStr(
       docdb::IncludeIntents include_intents = docdb::IncludeIntents::kFalse);
@@ -1081,6 +1085,14 @@ class Tablet : public AbstractTablet,
       Slice lower_bound_key, Slice upper_bound_key, uint64_t max_num_ranges,
       uint64_t range_size_bytes, Direction direction, uint32_t max_key_length,
       std::function<void(Slice key)> callback, TableIdView colocated_table_id) const;
+
+  // Returns approximate middle key for tablet split:
+  // - for hash-based partitions: encoded hash code in order to split by hash code.
+  // - for range-based partitions: encoded doc key in order to split by row.
+  // If `partition_split_key` is specified it will be updated with partition middle key for
+  // hash-based partitions only (to prevent additional memory copying), as partition middle key for
+  // range-based partitions always matches the returned middle key.
+  Result<std::string> GetEncodedMiddleSplitKey(std::string* partition_split_key = nullptr) const;
 
   Status ProcessPgsqlGetTableKeyRangesRequest(
       const PgsqlReadRequestPB& req, PgsqlReadRequestResult* result) const;

@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	md "node-agent/app/task/module"
 	"node-agent/util"
 	"os"
@@ -119,7 +120,7 @@ type Command interface {
 func NewBaseModule(name, basePath string) *BaseModule {
 	return &BaseModule{
 		basePath: basePath,
-		name:     name,
+		name:     name, // Name of the module for resources e.g jinja files folder.
 	}
 }
 
@@ -308,6 +309,15 @@ func fixParsedConfig(input any) any {
 			fixedSlice = append(fixedSlice, fixParsedConfig(val.Index(i).Interface()))
 		}
 		return fixedSlice
+	}
+	if tp.Kind() == reflect.Float32 || tp.Kind() == reflect.Float64 {
+		// Correction for integers parsed as floats. An alternative is to use string for numbers.
+		fVal := val.Float()
+		truncated := math.Trunc(fVal)
+		if truncated == fVal {
+			return int(fVal)
+		}
+		return fVal
 	}
 	return input
 }

@@ -40,7 +40,7 @@ Consider a setup where YugabyteDB is deployed in a single region (us-east-1) acr
 The application typically connects to all the nodes in the cluster as shown in the following illustration.
 
 {{<note>}}
-All illustrations adhere to the legend outlined in [Legend for illustrations](../../../contribute/docs/docs-layout#legend-for-illustrations)
+All illustrations adhere to the legend outlined in [Legend for illustrations](/stable/contribute/docs/docs-layout#legend-for-illustrations)
 {{</note>}}
 
 ![Single region, 3 zones, 6 nodes](/images/explore/fault-tolerance/node-upgrades-setup.png)

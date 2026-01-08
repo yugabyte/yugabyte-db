@@ -1867,7 +1867,7 @@ Result<uint64_t> PgApiImpl::GetSharedCatalogVersion(std::optional<PgOid> db_oid)
     // memory. It can also be a race condition case where the database db_oid we are trying to
     // connect to is recently dropped from another node. Let's wait with 500ms interval until the
     // entry shows up or until a 30-second timeout.
-    auto status = LoggedWaitFor(
+    auto status = WaitFor(
         [this, &db_oid]() -> Result<bool> {
           auto info = VERIFY_RESULT(pg_client_.GetTserverCatalogVersionInfo(
               false /* size_only */, *db_oid));
@@ -1883,10 +1883,8 @@ Result<uint64_t> PgApiImpl::GetSharedCatalogVersion(std::optional<PgOid> db_oid)
           }
           return catalog_version_db_index_ ? true : false;
         },
-        30s /* timeout */,
-        Format("Database $0 is not ready in Yugabyte shared memory", *db_oid),
-        500ms /* initial_delay */,
-        1.0 /* delay_multiplier */);
+        30s /* timeout */, Format("Database $0 is not ready in Yugabyte shared memory", *db_oid),
+        500ms /* initial_delay */, 1.0 /* delay_multiplier */);
 
     RETURN_NOT_OK_PREPEND(
         status,

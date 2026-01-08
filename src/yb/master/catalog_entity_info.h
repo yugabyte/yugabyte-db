@@ -936,10 +936,12 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   bool IsUserCreated() const;
   bool IsUserTable() const;
   bool IsUserIndex() const;
+  bool HasUserSpecifiedPrimaryKey() const;
 
   bool IsUserCreated(const ReadLock& lock) const;
   bool IsUserTable(const ReadLock& lock) const;
   bool IsUserIndex(const ReadLock& lock) const;
+  bool HasUserSpecifiedPrimaryKey(const ReadLock& lock) const;
 
  private:
   friend class RefCountedThreadSafe<TableInfo>;
@@ -1311,7 +1313,7 @@ auto AddInfoEntryToPB(Info* info, google::protobuf::RepeatedPtrField<SysRowEntry
 
 struct SplitTabletIds {
   const TabletId& source;
-  const std::pair<const TabletId&, const TabletId&> children;
+  const std::vector<TabletId>& children;
 
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(source, children);
@@ -1379,6 +1381,8 @@ class CDCStreamInfo : public RefCountedThreadSafe<CDCStreamInfo>,
   const google::protobuf::Map<::std::string, ::yb::PgReplicaIdentity> GetReplicaIdentityMap() const;
 
   bool IsDynamicTableAdditionDisabled() const;
+
+  bool IsTablesWithoutPrimaryKeyAllowed() const;
 
   std::string ToString() const override;
 

@@ -13,7 +13,7 @@ rightNav:
 type: docs
 ---
 
-Topology-aware connections in YugabyteDB refer to a feature of the [smart client drivers](/preview/develop/drivers-orms/smart-drivers/) that enables them to dynamically adapt to the topology (structure and arrangement) of the database cluster. This capability allows the client drivers to make intelligent decisions about which nodes to connect to based on the current state of the cluster, such as node availability. In this section, we will explore the features and benefits of YugabyteDB's topology-aware [smart client drivers](/preview/develop/drivers-orms/smart-drivers/), highlighting their significance in distributed application development.
+Topology-aware connections in YugabyteDB refer to a feature of the [smart client drivers](/stable/develop/drivers-orms/smart-drivers/) that enables them to dynamically adapt to the topology (structure and arrangement) of the database cluster. This capability allows the client drivers to make intelligent decisions about which nodes to connect to based on the current state of the cluster, such as node availability. In this section, we will explore the features and benefits of YugabyteDB's topology-aware [smart client drivers](/stable/develop/drivers-orms/smart-drivers/), highlighting their significance in distributed application development.
 
 ## Specifying topology
 
@@ -47,4 +47,4 @@ This way, if the region `us-east` fails, your application will automatically con
 
 ## Learn more
 
-- [Develop with smart drivers](/preview/develop/drivers-orms/smart-drivers/)
+- [Develop with smart drivers](/stable/develop/drivers-orms/smart-drivers/)

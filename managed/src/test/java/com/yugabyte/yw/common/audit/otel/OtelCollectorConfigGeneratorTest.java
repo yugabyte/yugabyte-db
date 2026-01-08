@@ -436,6 +436,28 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
   }
 
   @Test
+  public void generateOtelColConfigAuditLogPlusS3WithUniverseNodePrefix() {
+    S3Config s3Config = new S3Config();
+    s3Config.setType(ProviderType.S3);
+    s3Config.setBucket("bucket");
+    s3Config.setAccessKey("access_key");
+    s3Config.setSecretKey("secret_key");
+    s3Config.setRegion("us-west2");
+    s3Config.setIncludeUniverseAndNodeInPrefix(true);
+
+    TelemetryProvider s3TelemetryProvider =
+        createTelemetryProvider(new UUID(0, 0), "S3", ImmutableMap.of("tag", "value"), s3Config);
+
+    // Create audit log config
+    AuditLogConfig auditLogConfig =
+        createAuditLogConfigWithYSQL(
+            s3TelemetryProvider.getUuid(), ImmutableMap.of("additionalTag", "auditValue"));
+
+    generateAndAssertConfig(
+        auditLogConfig, null, null, "audit/s3_audit_with_universe_node_prefix_config.yml");
+  }
+
+  @Test
   public void generateOtelColConfigYsqlQueryLogPlusDatadog() {
     DataDogConfig config = new DataDogConfig();
     config.setType(ProviderType.DATA_DOG);

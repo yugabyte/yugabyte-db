@@ -260,9 +260,11 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
         toast.success(
           <span>
             Backup is in progress. Click &nbsp;
-            {interceptBackupLink(<a href={`/tasks/${resp.data.taskUUID}`} target="_blank" rel="noopener noreferrer">
-              here
-            </a>)}
+            {interceptBackupLink(
+              <a href={`/tasks/${resp.data.taskUUID}`} target="_blank" rel="noopener noreferrer">
+                here
+              </a>
+            )}
             &nbsp; for task details
           </span>
         );
@@ -316,9 +318,11 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
         toast.success(
           <span>
             Creating schedule policy. Click &nbsp;
-            {interceptBackupLink(<a href={`/tasks/${resp.data.taskUUID}`} target="_blank" rel="noopener noreferrer">
-              here
-            </a>)}
+            {interceptBackupLink(
+              <a href={`/tasks/${resp.data.taskUUID}`} target="_blank" rel="noopener noreferrer">
+                here
+              </a>
+            )}
             &nbsp; for task details
           </span>
         );
@@ -891,7 +895,7 @@ function BackupConfigurationForm({
           </Col>
         )}
       </Row>
-      
+
       <Row>
         <Col lg={12} className="no-padding tablespaces">
           <div>Role backup options</div>
@@ -903,12 +907,12 @@ function BackupConfigurationForm({
                 disabled={isEditMode || isIncrementalBackup}
                 checkState={values['useRoles']}
               />
-              {"Backup global roles"}
+              {'Backup global roles'}
             </Col>
           </Row>
         </Col>
       </Row>
-      
+
       {isScheduledBackup && !isEditBackupMode && (
         <Row>
           <div>Set backup intervals</div>

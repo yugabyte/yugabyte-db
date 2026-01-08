@@ -40,6 +40,7 @@ import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import com.yugabyte.yw.models.XClusterNamespaceConfig;
 import com.yugabyte.yw.models.XClusterNamespaceConfig.Status;
 import com.yugabyte.yw.models.XClusterTableConfig;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.File;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -496,9 +497,11 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
             .filter(tableConfig -> Objects.isNull(tableConfig.getStreamId()))
             .map(XClusterTableConfig::getTableId)
             .collect(Collectors.toSet());
-    if (!tableIdsNotNeedBootstrapWithoutStream.isEmpty()) {
+    if (!tableIdsNotNeedBootstrapWithoutStream.isEmpty()
+        || taskParams().updatingTask == TaskType.SwitchoverDrConfig) {
       // Create checkpoints for the tables.
-      createBootstrapProducerTask(xClusterConfig, tableIdsNotNeedBootstrapWithoutStream)
+      createBootstrapProducerTask(
+              xClusterConfig, tableIdsNotNeedBootstrapWithoutStream, taskParams().updatingTask)
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingProducer);
     }
 
@@ -688,7 +691,8 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
         }
       } else {
         // Create checkpoints for the tables.
-        createBootstrapProducerTask(xClusterConfig, tableIdsNeedBootstrap)
+        createBootstrapProducerTask(
+                xClusterConfig, tableIdsNeedBootstrap, taskParams().updatingTask)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingProducer);
       }
 

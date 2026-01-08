@@ -1255,7 +1255,12 @@ public class OtelCollectorConfigGenerator {
 
     exporterName =
         appendExporterConfig(
-            telemetryProvider, collectorConfig, attributeActions, ExportType.AUDIT_LOGS);
+            telemetryProvider,
+            collectorConfig,
+            attributeActions,
+            ExportType.AUDIT_LOGS,
+            universe.getUniverseUUID(),
+            nodeName);
 
     // Add common log attributes, log prefix extraction, and tags
     AuditLogRegexGenerator.LogRegexResult regexResult =
@@ -1328,7 +1333,12 @@ public class OtelCollectorConfigGenerator {
 
     exporterName =
         appendExporterConfig(
-            telemetryProvider, collectorConfig, attributeActions, ExportType.QUERY_LOGS);
+            telemetryProvider,
+            collectorConfig,
+            attributeActions,
+            ExportType.QUERY_LOGS,
+            universe.getUniverseUUID(),
+            nodeName);
 
     // Add common log attributes, log prefix extraction, and tags
     AuditLogRegexGenerator.LogRegexResult regexResult =
@@ -1525,6 +1535,17 @@ public class OtelCollectorConfigGenerator {
       OtelCollectorConfigFormat collectorConfig,
       List<OtelCollectorConfigFormat.AttributeAction> attributeActions,
       ExportType exportType) {
+    return appendExporterConfig(
+        telemetryProvider, collectorConfig, attributeActions, exportType, null, null);
+  }
+
+  private String appendExporterConfig(
+      TelemetryProvider telemetryProvider,
+      OtelCollectorConfigFormat collectorConfig,
+      List<OtelCollectorConfigFormat.AttributeAction> attributeActions,
+      ExportType exportType,
+      UUID universeUUID,
+      String nodeName) {
     String exporterName;
     String exportTypeAndUUIDString = exportTypeAndUUID(telemetryProvider.getUuid(), exportType);
     Map<String, OtelCollectorConfigFormat.Exporter> exporters = collectorConfig.getExporters();
@@ -1610,7 +1631,20 @@ public class OtelCollectorConfigGenerator {
         OtelCollectorConfigFormat.S3UploaderConfig s3UploaderConfig =
             new OtelCollectorConfigFormat.S3UploaderConfig();
         s3UploaderConfig.setS3_bucket(s3Config.getBucket());
-        s3UploaderConfig.setS3_prefix(s3Config.getDirectoryPrefix());
+
+        // Build S3 prefix - include universe UUID and node name if enabled
+        String s3Prefix = s3Config.getDirectoryPrefix();
+        if (s3Config.getIncludeUniverseAndNodeInPrefix()
+            && universeUUID != null
+            && nodeName != null) {
+          // Ensure prefix ends with "/" before appending universe UUID and node name
+          if (!s3Prefix.endsWith("/")) {
+            s3Prefix = s3Prefix + "/";
+          }
+          s3Prefix = s3Prefix + universeUUID.toString() + "/" + nodeName;
+        }
+        s3UploaderConfig.setS3_prefix(s3Prefix);
+
         s3UploaderConfig.setS3_partition(s3Config.getPartition().getGranularity());
         s3UploaderConfig.setRole_arn(s3Config.getRoleArn());
         s3UploaderConfig.setFile_prefix(s3Config.getFilePrefix());

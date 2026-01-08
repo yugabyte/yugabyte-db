@@ -140,17 +140,8 @@ public class SetupYNP extends NodeTaskBase {
     // Create the node agent home directory.
     sb.append(" && mkdir -m 755 -p ").append(nodeAgentInstallPath);
     // Extract only the installer file.
-    sb.append(" && mkdir -m 755 -p ").append(ynpStagingDir).append("/thirdparty");
     sb.append(" && tar --no-same-owner -zxf ").append(targetPackagePath);
-    sb.append(" --strip-components=2 -C ")
-        .append(ynpStagingDir)
-        .append("/thirdparty/ ")
-        .append("--wildcards '*/thirdparty/*'");
-
-    sb.append(" && tar --no-same-owner -zxf ").append(targetPackagePath);
-    sb.append(" --exclude='*/node-agent' --exclude='*/preflight_check.sh' --exclude='*/devops'");
-    sb.append(" --strip-components=3 -C ").append(ynpStagingDir);
-
+    sb.append(" --strip-components=1 --exclude='*/devops' -C ").append(ynpStagingDir);
     // Move the node-agent source folder to the right location.
     sb.append(" && mv -f ").append(ynpStagingDir);
     sb.append(" ").append(nodeAgentHomePath);

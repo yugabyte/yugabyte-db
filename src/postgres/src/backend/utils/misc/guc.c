@@ -295,7 +295,7 @@ static void assign_yb_enable_cbo(int new_value, void *extra);
 static void assign_yb_enable_optimizer_statistics(bool new_value, void *extra);
 static void assign_yb_enable_base_scans_cost_model(bool new_value, void *extra);
 
-
+static bool check_yb_disable_pg_snapshot_mgmt_in_repeatable_read(bool *newval, void **extra, GucSource source);
 static bool check_yb_enable_advisory_locks(bool *newval, void **extra, GucSource source);
 
 static void assign_yb_silence_advisory_locks_not_supported_error(bool newval, void *extra);
@@ -2660,6 +2660,18 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_cdcsdk_stream_tables_without_primary_key", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enable streaming of tables without primary key in CDC logical "
+						 "replication streams."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_cdcsdk_stream_tables_without_primary_key,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"ysql_upgrade_mode", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Enter a special mode designed specifically for YSQL cluster upgrades. "
 						 "Allows creating new system tables with given relation and type OID. "
@@ -3751,6 +3763,18 @@ static struct config_bool ConfigureNamesBool[] =
 		&yb_ignore_bool_cond_for_legacy_estimate,
 		false,
 		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_disable_pg_snapshot_mgmt_in_repeatable_read", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("[Deprecated - This GUC is valid only in older releases. It is present here"
+						 "just to avoid a failure in case you forgot to remove it from your configuration.]"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_disable_pg_snapshot_mgmt_in_repeatable_read,
+		false,
+		check_yb_disable_pg_snapshot_mgmt_in_repeatable_read, NULL, NULL
 	},
 
 	/* End-of-list marker */
@@ -8755,6 +8779,18 @@ yb_should_report_guc(struct config_generic *record)
 			(record->context >= PGC_SU_BACKEND &&
 			 (record->source == PGC_S_CLIENT ||
 			  record->source == PGC_S_SESSION));
+		/*
+		 * A special case has been added here for auth passthrough mode where we do
+		 * not want to report GUC variables to connection manager in case auth
+		 * passthrough has failed.
+		 * Specifically, we do not want to send back ParameterStatus packets for
+		 * GUCs like session_authorization, client_encoding that are set during the
+		 * authentication phase of Auth Passthrough as this causes certain
+		 * sync issues due to the final RFQ sent by the server to conn mgr.
+		 */
+		shouldReportGUC =
+			shouldReportGUC &&
+			(MyProcPort == NULL || !MyProcPort->yb_has_auth_passthrough_failed);
 	}
 	return shouldReportGUC;
 }
@@ -10340,6 +10376,18 @@ set_config_option_ext(const char *name, const char *value,
 				 source == PGC_S_USER ||
 				 source == PGC_S_DATABASE_USER)
 			elevel = WARNING;
+		else if (MyProcPort != NULL && MyProcPort->yb_is_auth_passthrough_req)
+			/*
+			 * YB: In the Auth Passthrough mode of Connection Manager, we want
+			 * to abort auth in case of error while setting GUC values. Ideally,
+			 * we should forward a FatalForLogicalConnection Packet, but
+			 * forwarding a FATAL would also stop auth.
+			 *
+			 * TODO (vikram.damle) (#29818): Add a mechanism to forward a
+			 * FatalForLogicalConection to preserve this backend instead of
+			 * forwarding a FATAL directly and terminating the backend.
+			 */
+			elevel = FATAL;
 		else
 			elevel = ERROR;
 	}
@@ -10564,6 +10612,24 @@ set_config_option_ext(const char *name, const char *value,
 	 */
 	makeDefault = changeVal && (source <= PGC_S_OVERRIDE) &&
 		((value != NULL) || source == PGC_S_DEFAULT);
+
+	/*
+	 * YB: When in Auth Passthrough mode of conn mgr, avoid setting defaults on
+	 * the control backend (auth_passthrough_req == true) when parsing startup
+	 * packet GUC opts (source == PGC_S_CLIENT).
+	 * We do not wish to set defaults in this case as GUCs on the control
+	 * backend need to be reverted to their original defaults in preparation for
+	 * the next authentication attempt. Changes made via makeDefault are
+	 * non-transactional in nature and cannot be uniformly reverted. The setting
+	 * of defaults serves no purpose during authentication either as conn mgr is
+	 * responsible for tracking client session defaults during the deploy phase
+	 * on txn backends.
+	 */
+	if (MyProcPort != NULL && MyProcPort->yb_is_auth_passthrough_req &&
+		source >= PGC_S_CLIENT)
+	{
+		makeDefault = false;
+	}
 
 	/*
 	 * Ignore attempted set if overridden by previously processed setting.
@@ -16545,6 +16611,15 @@ yb_set_neg_catcache_ids(const char *newval, void *extra)
 		YbSetAdditionalNegCacheIds(neg_cache_ids_list);
 		list_free(neg_cache_ids_list);
 	}
+}
+
+static bool
+check_yb_disable_pg_snapshot_mgmt_in_repeatable_read(bool *newval, void **extra, GucSource source)
+{
+	ereport(WARNING,
+			(errmsg("the parameter \"yb_disable_pg_snapshot_mgmt_in_repeatable_read\" is deprecated, "
+					"remove it from your configuration.")));
+	return true;				/* still allow usage, but warn */
 }
 
 static bool

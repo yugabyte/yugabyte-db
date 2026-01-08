@@ -21,7 +21,7 @@ yba universe edit ysql --name <universe-name> --ysql-password <ysql-password>
 ```
       --ysql string                         [Optional] YSQL endpoint. Allowed values: enable, disable.
       --ysql-auth string                    [Optional] YSQL authentication. Allowed values: enable, disable.
-      --ysql-password string                [Optional] YSQL authentication password. Use single quotes ('') to provide values with special characters. Required when YSQL authentication is enabled
+      --ysql-password string                [Optional] YSQL authentication password. Use single quotes ('') to provide values with special characters. Required when YSQL authentication is being enabled or disabled
       --connection-pooling string           [Optional] Connection Pooling settings. Allowed values: enable, disable.
       --ysql-server-http-port int           [Optional] YSQL Server HTTP Port. (default 13000)
       --ysql-server-rpc-port int            [Optional] YSQL Server RPC Port. (default 5433)

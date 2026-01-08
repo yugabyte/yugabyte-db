@@ -770,12 +770,13 @@ Status CDCSDKYsqlTest::DeleteRows(
 Status CDCSDKYsqlTest::SplitTablet(const TabletId& tablet_id, PostgresMiniCluster* cluster) {
   yb::master::SplitTabletRequestPB req;
   req.set_tablet_id(tablet_id);
+  req.set_split_factor(cluster->mini_cluster_->GetSplitFactor());
   yb::master::SplitTabletResponsePB resp;
   rpc::RpcController rpc;
   rpc.set_timeout(MonoDelta::FromSeconds(30.0) * kTimeMultiplier);
   auto& cm = cluster->mini_cluster_->mini_master()->catalog_manager();
   RETURN_NOT_OK(cm.SplitTablet(
-      tablet_id, master::ManualSplit::kTrue,
+      tablet_id, master::ManualSplit::kTrue, cluster->mini_cluster_->GetSplitFactor(),
       cm.GetLeaderEpochInternal()));
 
   if (resp.has_error()) {
@@ -1468,6 +1469,48 @@ void CDCSDKYsqlTest::CheckRecord(
     default:
       ASSERT_FALSE(true);
       break;
+  }
+}
+
+void CDCSDKYsqlTest::CheckRecordTuples(
+    const CDCSDKProtoRecordPB& record, const std::vector<std::string>& expected_new_tuples_cols,
+    const std::vector<std::string>& expected_old_tuples_cols) {
+  // If 1st old tuple is empty, then all old tuples should be empty. This is because, in
+  // CDCSDKProtoRecordPB either all old tuples are populated empty or all of them are non-empty.
+  bool all_old_tuples_empty = !record.row_message().old_tuple(0).has_column_name();
+  // If all old tuples are empty, then expected_old_tuples_cols should also be empty, else their
+  // sizes should match.
+  if (all_old_tuples_empty) {
+    ASSERT_TRUE(expected_old_tuples_cols.empty());
+  } else {
+    ASSERT_EQ(record.row_message().old_tuple_size(), expected_old_tuples_cols.size());
+  }
+
+  for (int i = 0; i < record.row_message().old_tuple_size(); ++i) {
+    if (all_old_tuples_empty) {
+      ASSERT_FALSE(record.row_message().old_tuple(i).has_column_name());
+      continue;
+    }
+    ASSERT_EQ(record.row_message().old_tuple(i).column_name(), expected_old_tuples_cols[i]);
+  }
+
+  // If 1st new tuple is empty, then all new tuples should be empty. This is because, in
+  // CDCSDKProtoRecordPB either all new tuples are populated empty or all of them are non-empty.
+  bool all_new_tuples_empty = !record.row_message().new_tuple(0).has_column_name();
+  // If all new tuples are empty, then expected_new_tuples_cols should also be empty, else their
+  // sizes should match.
+  if (all_new_tuples_empty) {
+    ASSERT_TRUE(expected_new_tuples_cols.empty());
+  } else {
+    ASSERT_EQ(record.row_message().new_tuple_size(), expected_new_tuples_cols.size());
+  }
+
+  for (int i = 0; i < record.row_message().new_tuple_size(); ++i) {
+    if (all_new_tuples_empty) {
+      ASSERT_FALSE(record.row_message().new_tuple(i).has_column_name());
+      continue;
+    }
+    ASSERT_EQ(record.row_message().new_tuple(i).column_name(), expected_new_tuples_cols[i]);
   }
 }
 

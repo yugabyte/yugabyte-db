@@ -1,8 +1,8 @@
 ---
-title: CDC monitoring in YugabyteDB
+title: Monitor CDC (gRPC replication) in YugabyteDB
 headerTitle: Monitor
 linkTitle: Monitor
-description: Monitor Change Data Capture in YugabyteDB.
+description: Monitor CDC with gRPC replication in YugabyteDB.
 headcontent: Monitor deployed CDC connectors
 menu:
   v2025.1:

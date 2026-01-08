@@ -10,19 +10,29 @@ import (
 	backuputils "node-agent/ynp/module/provision/backup_utils"
 	"node-agent/ynp/module/provision/chrony"
 	"node-agent/ynp/module/provision/clockbound"
+	"node-agent/ynp/module/provision/configurecoredump"
 	"node-agent/ynp/module/provision/configureos"
 	"node-agent/ynp/module/provision/configuresudoers"
 	"node-agent/ynp/module/provision/configurethp"
+	"node-agent/ynp/module/provision/disablednfautomatic"
+	"node-agent/ynp/module/provision/disablefirewalld"
 	"node-agent/ynp/module/provision/installconfigureearlyoom"
 	"node-agent/ynp/module/provision/installpackages"
 	"node-agent/ynp/module/provision/mountephemeraldrives"
 	"node-agent/ynp/module/provision/network"
 	"node-agent/ynp/module/provision/nodeagent"
 	"node-agent/ynp/module/provision/nodeexporter"
+	"node-agent/ynp/module/provision/ospackageupdate"
+	"node-agent/ynp/module/provision/otelcol"
+	"node-agent/ynp/module/provision/pglogotelcol"
 	"node-agent/ynp/module/provision/rebootnode"
 	"node-agent/ynp/module/provision/sshd"
 	"node-agent/ynp/module/provision/systemd"
+	"node-agent/ynp/module/provision/tailscale"
+	"node-agent/ynp/module/provision/teleport"
+	"node-agent/ynp/module/provision/ulimitsalma8"
 	"node-agent/ynp/module/provision/updateos"
+	"node-agent/ynp/module/provision/wazuh"
 	"node-agent/ynp/module/provision/ybmami"
 	"node-agent/ynp/module/provision/yugabyte"
 	"os"
@@ -90,6 +100,19 @@ func NewProvisionCommand(
 // Register the modules after initializing their base paths.
 func (pc *ProvisionCommand) registerModules(args config.Args) error {
 	modulesPath := filepath.Join(args.YnpBasePath, "modules", "provision")
+	// Start of YBM specific modules.
+	pc.registerModule(configurecoredump.NewConfigureCoredump(modulesPath))
+	pc.registerModule(disablednfautomatic.NewDisabledDnfAutomatic(modulesPath))
+	pc.registerModule(disablefirewalld.NewDisableFirewalld(modulesPath))
+	pc.registerModule(ospackageupdate.NewConfigureOSPackageUpdate(modulesPath))
+	pc.registerModule(otelcol.NewConfigureOtelcol(modulesPath))
+	pc.registerModule(pglogotelcol.NewConfigurePgLogOtelcol(modulesPath))
+	pc.registerModule(tailscale.NewConfigureTailscale(modulesPath))
+	pc.registerModule(teleport.NewConfigureTeleport(modulesPath))
+	pc.registerModule(ulimitsalma8.NewConfigureUlimitsAlma8(modulesPath))
+	pc.registerModule(wazuh.NewConfigureWazuh(modulesPath))
+	// End of YBM specific modules.
+
 	pc.registerModule(backuputils.NewBackupUtils(modulesPath))
 	pc.registerModule(chrony.NewConfigureChrony(modulesPath))
 	pc.registerModule(clockbound.NewConfigureClockbound(modulesPath))
@@ -112,14 +135,12 @@ func (pc *ProvisionCommand) registerModules(args config.Args) error {
 	pc.registerModule(updateos.NewPreprovision(modulesPath))
 	pc.registerModule(ybmami.NewConfigureYBMAMI(modulesPath))
 	pc.registerModule(yugabyte.NewCreateYugabyteUser(modulesPath))
+
 	return nil
 }
 
 // Register a single module.
 func (pc *ProvisionCommand) registerModule(module config.Module) error {
-	if _, ok := pc.iniConfig.SectionValues()[module.Name()]; !ok {
-		return fmt.Errorf("Module %s is not found in INI config", module.Name())
-	}
 	pc.modules[module.Name()] = module
 	return nil
 }
@@ -183,13 +204,6 @@ func (pc *ProvisionCommand) Execute(specificModules []string) error {
 	if err := pc.validateSpecificModules(specificModules); err != nil {
 		return err
 	}
-	sectionValue := pc.iniConfig.DefaultSectionValue()
-	if sectionValue["is_ybm"] == true {
-		if err := pc.copyTemplatesFilesForYBM(sectionValue); err != nil {
-			return err
-		}
-	}
-
 	runScript, precheckScript, err := pc.generateTemplate(specificModules)
 	if err != nil {
 		return err
@@ -234,7 +248,7 @@ func (pc *ProvisionCommand) validateRequiredPackages() error {
 			return err
 		}
 	}
-	if isCloud, ok := pc.iniConfig.DefaultSectionValue()["is_cloud"].(bool); ok && isCloud {
+	if config.GetBool(pc.iniConfig.DefaultSectionValue(), "is_cloud", false) {
 		for _, pkg := range pc.requiredCloudOnlyOSPkgs() {
 			if err := pc.checkPackage(pkg); err != nil {
 				return err
@@ -260,20 +274,20 @@ func (pc *ProvisionCommand) discoverPackageManager() error {
 
 func (pc *ProvisionCommand) checkPackage(pkg string) error {
 	var cmd *exec.Cmd
-	if pc.packageManager == RPM {
+	switch pc.packageManager {
+	case RPM:
 		cmd = exec.Command("rpm", "-q", pkg)
-	} else if pc.packageManager == DPKG {
+	case DPKG:
 		cmd = exec.Command("dpkg", "-s", pkg)
+	default:
+		return nil
 	}
-	if cmd != nil {
-		err := cmd.Run()
-		if err != nil {
-			util.FileLogger().Infof(pc.ctx, "%s is not installed.", pkg)
-			return err
-		} else {
-			util.FileLogger().Infof(pc.ctx, "%s is installed.", pkg)
-		}
+	err := cmd.Run()
+	if err != nil {
+		util.FileLogger().Infof(pc.ctx, "%s is not installed.", pkg)
+		return err
 	}
+	util.FileLogger().Infof(pc.ctx, "%s is installed.", pkg)
 	return nil
 }
 
@@ -291,10 +305,24 @@ func (pc *ProvisionCommand) runScript(name, scriptPath string) error {
 	return nil
 }
 
+// prepareGenerateTemplate performs any preparation needed before generating templates.
+func (pc *ProvisionCommand) prepareGenerateTemplate() error {
+	if config.GetBool(pc.iniConfig.DefaultSectionValue(), "is_ybm", false) {
+		util.FileLogger().Infof(pc.ctx, "Copying template files for YBM")
+		if err := pc.copyTemplatesFilesForYBM(pc.iniConfig.DefaultSectionValue()); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // generateTemplate generates the install and precheck scripts. If the optional specificModules are
 // provided, only those modules are processed.
 func (pc *ProvisionCommand) generateTemplate(specificModules []string) (string, string, error) {
 	allTemplates := make([]*config.RenderedTemplates, 0)
+	if err := pc.prepareGenerateTemplate(); err != nil {
+		return "", "", err
+	}
 	// Process in the order of sections in the ini file.
 	for _, key := range pc.iniConfig.Sections() {
 		if key == config.DefaultINISection {
@@ -359,16 +387,16 @@ func (pc *ProvisionCommand) generateTemplate(specificModules []string) (string, 
 	return runScript, precheckScript, nil
 }
 
-func (pc *ProvisionCommand) addExitCodeCheck(f *os.File) {
+func (pc *ProvisionCommand) addExitCodeCheck(f *os.File, moduleName string) {
 	fmt.Fprintf(f, `
 		exit_code=$?
         if [ $exit_code -ne 0 ]; then
             parent_exit_code=$exit_code
-            err="Module {{ key }} failed with code $exit_code"
+            err="Module %s failed with code $exit_code"
             errors+=("$err")
             echo "$err"
         fi
-       `)
+       `, moduleName)
 }
 
 func (pc *ProvisionCommand) printExitErrors(f *os.File) {
@@ -483,7 +511,7 @@ func (pc *ProvisionCommand) buildScript(
 			fmt.Fprint(f, rendered)
 			if createSubshell {
 				fmt.Fprint(f, "\n)\n")
-				pc.addExitCodeCheck(f)
+				pc.addExitCodeCheck(f, tmpl.Name())
 			}
 		}
 		fmt.Fprintf(f, "\n######## END %s #########\n", tmpl.Name())

@@ -32,6 +32,7 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -194,6 +195,11 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
         Universe.saveDetails(
             defaultUniverse.getUniverseUUID(),
             ApiUtils.mockUniverseUpdater(userIntent, placementInfo, true));
+
+    // Speed up tests by removing the sleep time for auto flag updates.
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.autoFlagUpdateSleepTimeInMilliSeconds.getKey(), "0ms");
 
     CatalogEntityInfo.SysClusterConfigEntryPB.Builder configBuilder =
         CatalogEntityInfo.SysClusterConfigEntryPB.newBuilder().setVersion(1);

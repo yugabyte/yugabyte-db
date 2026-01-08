@@ -210,11 +210,11 @@ static inline int yb_kiwi_var_set(kiwi_var_t *var, char *value, int value_len)
 static inline kiwi_var_t *yb_kiwi_vars_get(kiwi_vars_t *vars, char *name,
 					   bool lowercase_name)
 {
+	if (vars->size == 0)
+		return NULL;
 	/* TODO(arpit.saxena): This looks ugly with lowercase_name branches, see if we can fix this */
 	const char *name_for_comp =
 		lowercase_name ? yb_lowercase_str(name) : name;
-	if (vars->size == 0)
-		return NULL;
 
 	for (int i = 0; i < vars->size; i++) {
 		const char *var_name_for_comp =

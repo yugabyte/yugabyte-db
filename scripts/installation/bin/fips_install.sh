@@ -20,6 +20,9 @@ if [[ $# -ne 1 ]]; then
   exit 1
 fi
 
+# Create passed in directory path before realpathing it.  realpath on mac gives an error when
+# the supplied path does not yet exist.  On linux realpath resolves non-existent paths no problem.
+mkdir -p "$1"
 out_dir=$(realpath "$1")
 
 bin_dir="${YB_BIN_DIR:=${BASH_SOURCE%/*}/../bin}"
@@ -35,8 +38,6 @@ fi
 
 echo "OpenSSL binary: $openssl_bin"
 echo "FIPS module: $fips_provider"
-
-mkdir -p "$out_dir"
 
 "$openssl_bin" fipsinstall \
     -out "$out_dir/fipsmodule.cnf" \

@@ -55,6 +55,14 @@ extern int	MaxLivePostmasterChildren(void);
 
 extern bool PostmasterMarkPIDForWorkerNotify(int);
 
+/*
+ * YB: This function is a wrapper around ProcessStartupPacket, lifting it from
+ * `static` to `extern` as it is required in postgres.c for the Authentication
+ * Passthrough mode of Connection Manager
+ */
+extern int YbProcessStartupPacket(struct Port *port, bool ssl_done,
+								  bool gss_done);
+
 #ifdef EXEC_BACKEND
 extern pid_t postmaster_forkexec(int argc, char *argv[]);
 extern void SubPostmasterMain(int argc, char *argv[]) pg_attribute_noreturn();

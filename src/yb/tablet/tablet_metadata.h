@@ -229,7 +229,7 @@ struct KvStoreInfo {
       const KvStoreInfoPB& snapshot_kvstoreinfo, const TableId& primary_table_id, bool colocated,
       dockv::OverwriteSchemaPacking overwrite);
 
-  Status RestoreMissingValuesAndMergeTableSchemaPackings(
+  Status MergeTableSchemaPackings(
       const KvStoreInfoPB& snapshot_kvstoreinfo, const TableId& primary_table_id, bool colocated,
       dockv::OverwriteSchemaPacking overwrite);
 
@@ -685,7 +685,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   // Return standard "T xxx P yyy" log prefix.
   const std::string& LogPrefix() const;
 
-  std::array<TabletId, kDefaultNumSplitParts> split_child_tablet_ids() const;
+  std::vector<TabletId> split_child_tablet_ids() const;
 
   OpId split_op_id() const;
 
@@ -693,7 +693,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   // before performing such deletion.
   OpId GetOpIdToDeleteAfterAllApplied() const;
 
-  void SetSplitDone(const OpId& op_id, const TabletId& child1, const TabletId& child2);
+  void SetSplitDone(const OpId& op_id, const std::vector<TabletId>& children);
 
   // Methods for handling clone requests that this tablet has applied.
   void MarkClonesAttemptedUpTo(uint32_t clone_request_seq_no);
@@ -876,7 +876,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   // SPLIT_OP ID designated for this tablet (so child tablets will have this unset until they've
   // been split themselves).
   OpId split_op_id_ GUARDED_BY(data_mutex_);
-  std::array<TabletId, kDefaultNumSplitParts> split_child_tablet_ids_ GUARDED_BY(data_mutex_);
+  std::vector<TabletId> split_child_tablet_ids_ GUARDED_BY(data_mutex_){kDefaultNumSplitParts};
 
   std::vector<TxnSnapshotRestorationId> active_restorations_;
 

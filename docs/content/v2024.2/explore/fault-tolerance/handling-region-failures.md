@@ -36,7 +36,7 @@ Consider a scenario where you have deployed your database across three regions -
 <!-- end: nav tabs -->
 
 {{<note>}}
-All illustrations adhere to the legend outlined in [Legend for illustrations](../../../contribute/docs/docs-layout#legend-for-illustrations)
+All illustrations adhere to the legend outlined in [Legend for illustrations](/stable/contribute/docs/docs-layout#legend-for-illustrations)
 {{</note>}}
 
 In the following illustration, the leaders are in us-east (the preferred region), which is also where the applications are active. The standby application is in us-central and will be the failover. This has been set as the second preferred region for the database.
@@ -156,6 +156,6 @@ The following illustration shows how the primary application (assuming it is sti
 
 Enterprises commonly have one data center as their primary and another data center just for failover. For scenarios where you want to deploy the database in one region, you can deploy YugabyteDB in your primary data center and set up another cluster in the second data center as a backup, updated from the primary cluster using asynchronous replication. This is also known as the 2DC or xCluster model.
 
-{{<lead link="/preview/develop/build-global-apps/active-active-single-master/">}}
-Explore the [Active-Active Single-Master](/preview/develop/build-global-apps/active-active-single-master/) pattern.
+{{<lead link="/stable/develop/build-global-apps/active-active-single-master/">}}
+Explore the [Active-Active Single-Master](/stable/develop/build-global-apps/active-active-single-master/) pattern.
 {{</lead>}}

@@ -187,6 +187,8 @@ YB_DEFINE_ENUM(
                              // ysql upgrade has been finalized.
 );
 
+YB_DEFINE_ENUM(CDCStreamType, (kNone)(kLogicalReplication)(kgRPC));
+
 struct YsqlTableDdlTxnState;
 using google::protobuf::RepeatedPtrField;
 using TabletIdWithEntry = std::pair<TabletId, SysTabletsEntryPB>;
@@ -1187,7 +1189,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
                            rpc::RpcContext* rpc);
 
   Status SplitTablet(
-      const TabletId& tablet_id, ManualSplit is_manual_split, const LeaderEpoch& epoch) override;
+      const TabletId& tablet_id, ManualSplit is_manual_split, int split_factor,
+      const LeaderEpoch& epoch) override;
 
   // Splits tablet specified in the request using middle of the partition as a split point.
   Status SplitTablet(
@@ -1568,8 +1571,11 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // their metadata.
   Status FindCDCSDKStreamsForNonEligibleTables(TableStreamIdsMap* non_user_tables_to_streams_map);
 
+  // Returns true if the table is eligible for CDCSDK streams. 'allow_tables_without_primary_key' is
+  // used only when 'check_schema' is sent as 'true'.
   bool IsTableEligibleForCDCSDKStream(
-      const TableInfoPtr& table_info, const TableInfo::ReadLock& lock, bool check_schema) const;
+      const TableInfoPtr& table_info, const TableInfo::ReadLock& lock, bool check_schema,
+      const bool allow_tables_without_primary_key) const;
 
   // This method compares all tables in the namespace to all the tables added to a CDCSDK stream,
   // to find tables which are not yet processed by the CDCSDK streams.
@@ -2089,9 +2095,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   // Starts the background task to send the SplitTablet RPC to the leader for the specified tablet.
   Status SendSplitTabletRequest(
-      const TabletInfoPtr& tablet, std::array<TabletId, kDefaultNumSplitParts> new_tablet_ids,
-      const std::string& split_encoded_key, const std::string& split_partition_key,
-      const LeaderEpoch& epoch);
+      const TabletInfoPtr& tablet, std::vector<TabletId>& new_tablet_ids,
+      const std::vector<std::string>& split_encoded_keys,
+      const std::vector<std::string>& split_partition_keys, const LeaderEpoch& epoch);
 
   // Send the "truncate table request" to all tablets of the specified table.
   void SendTruncateTableRequest(const scoped_refptr<TableInfo>& table, const LeaderEpoch& epoch);
@@ -2357,7 +2363,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   struct HiddenReplicationParentTabletInfo {
     TableId table_id_;
     std::string parent_tablet_id_;
-    std::array<TabletId, kDefaultNumSplitParts> split_tablets_;
+    std::vector<TabletId> split_tablets_;
     HybridTime hide_time_;
   };
   std::unordered_map<TabletId, HiddenReplicationParentTabletInfo> retained_by_cdcsdk_
@@ -2564,11 +2570,11 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Status SplitTablet(
       const TabletInfoPtr& tablet, ManualSplit is_manual_split,
-      const LeaderEpoch& epoch);
+      int split_factor, const LeaderEpoch& epoch);
 
-  void SplitTabletWithKey(
-      const TabletInfoPtr& tablet, const std::string& split_encoded_key,
-      const std::string& split_partition_key, ManualSplit is_manual_split,
+  void SplitTabletWithKeys(
+      const TabletInfoPtr& tablet, const std::vector<std::string>& split_encoded_keys,
+      const std::vector<std::string>& split_partition_keys, ManualSplit is_manual_split,
       const LeaderEpoch& epoch);
 
   Status XReplValidateSplitCandidateTableUnlocked(const TableId& table_id) const
@@ -2689,10 +2695,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Result<std::pair<dockv::PartitionSchema, std::vector<dockv::Partition>>> CreatePartitions(
       const Schema& schema, int num_tablets, bool colocated,
       CreateTableRequestPB* request, CreateTableResponsePB* resp);
-
-  Status RestoreEntry(
-      const SysRowEntry& entry, const SnapshotId& snapshot_id, const LeaderEpoch& epoch)
-      REQUIRES(mutex_);
 
   Status ImportSnapshotPreprocess(
       const SnapshotInfoPB& snapshot_pb,
@@ -2918,8 +2920,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Return all CDC streams.
   void GetAllCDCStreams(std::vector<CDCStreamInfoPtr>* streams);
 
-  // This method returns all tables in the namespace suitable for CDCSDK.
-  std::vector<TableInfoPtr> FindAllTablesForCDCSDK(const NamespaceId& ns_id)
+  // This method returns all tables in the namespace based on the criteria specified by
+  // 'allows_tables_without_primary_key'.
+  std::vector<TableInfoPtr> FindAllTablesForCDCSDK(
+      const NamespaceId& ns_id, const bool allow_tables_without_primary_key)
       REQUIRES_SHARED(mutex_);
 
   // Find CDC streams for a table.

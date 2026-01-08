@@ -419,6 +419,9 @@ DEFINE_NON_RUNTIME_string(ysql_auth_method, AUTH_METHOD_MD5,
 DEFINE_validator(ysql_auth_method, FLAG_IN_SET_VALIDATOR("scram-sha-256", "md5"));
 DEFINE_NEW_INSTALL_STRING_VALUE(ysql_auth_method, "scram-sha-256");
 
+DEFINE_RUNTIME_PG_FLAG(bool, yb_ignore_bool_cond_for_legacy_estimate, false,
+    "Ignore boolean condition for row count estimate in legacy cost model.");
+
 using gflags::CommandLineFlagInfo;
 using std::string;
 using std::vector;

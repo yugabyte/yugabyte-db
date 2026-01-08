@@ -846,7 +846,8 @@ public class XClusterConfig extends Model {
   }
 
   @Transactional
-  public void updateBootstrapCreateTimeForTables(Collection<String> tableIds, Date moment) {
+  public void updateBootstrapCreateTimeForTables(
+      Collection<String> tableIds, @Nullable Date moment) {
     ensureTableIdsExist(new HashSet<>(tableIds));
     this.getTableDetails().stream()
         .filter(tableConfig -> tableIds.contains(tableConfig.getTableId()))

@@ -2,7 +2,7 @@
 title: Get started with CDC logical replication in YugabyteDB
 headerTitle: Get started
 linkTitle: Get started
-description: Get started with Change Data Capture in YugabyteDB.
+description: Start using CDC with logical replication in YugabyteDB.
 headcontent: Start using CDC with logical replication
 menu:
   v2025.1:
