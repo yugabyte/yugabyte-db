@@ -115,7 +115,7 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
     return warmup_random_mode;
   }
 
-  private void restartClusterWithAdditionalFlags(
+  protected void restartClusterWithAdditionalFlags(
       Map<String, String> additionalMasterFlags,
       Map<String, String> additionalTserverFlags) throws Exception {
     Map<String, String> tserverFlags = getTServerFlags();
