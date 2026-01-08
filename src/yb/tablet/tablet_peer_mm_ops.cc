@@ -50,6 +50,15 @@ METRIC_DEFINE_event_stats(table, log_gc_duration,
                         yb::MetricUnit::kMilliseconds,
                         "Time (milliseconds) spent garbage collecting the logs.");
 
+METRIC_DEFINE_gauge_uint32(
+    table, cdcsdk_reset_retention_barriers_ops_running,
+    "CDCSDK Reset Retention Barrier Ops Running", yb::MetricUnit::kOperations,
+    "Number of operations currently running to reset retention barriers.");
+METRIC_DEFINE_event_stats(
+    table, cdcsdk_reset_retention_barriers_op_duration,
+    "CDCSDK Reset Retention Barrier Op Duration", yb::MetricUnit::kMilliseconds,
+    "Time spent resetting the retention barriers.");
+
 namespace yb::tablet {
 
 //
@@ -104,6 +113,69 @@ scoped_refptr<EventStats> LogGCOp::DurationHistogram() const {
 
 scoped_refptr<AtomicGauge<uint32_t> > LogGCOp::RunningGauge() const {
   return log_gc_running_;
+}
+
+//
+// ResetStaleRetentionBarriersOp.
+//
+
+ResetStaleRetentionBarriersOp::ResetStaleRetentionBarriersOp(
+    TabletPeer* tablet_peer, const TabletPtr& tablet)
+    : MaintenanceOp(
+          StringPrintf("ResetStaleRetentionBarriersOp(%s)", tablet->tablet_id().c_str()),
+          MaintenanceOp::LOW_IO_USAGE),
+      tablet_(tablet),
+      tablet_peer_(tablet_peer),
+      op_last_successful_run_time_(MonoTime::Min()),
+      cdcsdk_reset_retention_barriers_op_duration_(
+          METRIC_cdcsdk_reset_retention_barriers_op_duration.Instantiate(
+              tablet->GetTableMetricsEntity())),
+      cdcsdk_reset_retention_barriers_ops_running_(
+          METRIC_cdcsdk_reset_retention_barriers_ops_running.Instantiate(
+              tablet->GetTableMetricsEntity(), 0)),
+      sem_(1) {}
+
+void ResetStaleRetentionBarriersOp::UpdateStats(MaintenanceOpStats* stats) {
+  double seconds_since_last_refresh;
+  if (!tablet_peer_->is_cdc_min_replicated_index_stale(&seconds_since_last_refresh)) {
+    stats->set_cdcsdk_reset_stale_retention_barrier(false);
+    stats->set_runnable(false);
+    return;
+  }
+
+  // If the last successful execution of this op predates the tablet's most recent refresh of the
+  // cdc_min_replicated_index, mark the op runnable so it can reset any stale retention barriers.
+  auto cdc_min_replicated_index_last_refresh_time =
+      MonoTime::Now() - MonoDelta::FromSeconds(seconds_since_last_refresh);
+  if (op_last_successful_run_time_ <= cdc_min_replicated_index_last_refresh_time) {
+    stats->set_cdcsdk_reset_stale_retention_barrier(true);
+    stats->set_runnable(sem_.GetValue() == 1);
+  }
+}
+
+bool ResetStaleRetentionBarriersOp::Prepare() {
+  return sem_.try_lock();
+}
+
+void ResetStaleRetentionBarriersOp::Perform() {
+  CHECK(!sem_.try_lock());
+
+  Status s = tablet_peer_->reset_all_cdc_retention_barriers_if_stale();
+  if (!s.ok()) {
+    s = s.CloneAndPrepend("Unexpected error while resetting retention barriers from TabletPeer");
+    LOG(DFATAL) << s.ToString();
+  } else {
+    op_last_successful_run_time_ = MonoTime::Now();
+  }
+  sem_.unlock();
+}
+
+scoped_refptr<EventStats> ResetStaleRetentionBarriersOp::DurationHistogram() const {
+  return cdcsdk_reset_retention_barriers_op_duration_;
+}
+
+scoped_refptr<AtomicGauge<uint32_t> > ResetStaleRetentionBarriersOp::RunningGauge() const {
+  return cdcsdk_reset_retention_barriers_ops_running_;
 }
 
 } // namespace yb::tablet

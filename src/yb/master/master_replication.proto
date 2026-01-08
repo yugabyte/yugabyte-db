@@ -861,7 +861,8 @@ message ValidateAndSyncCDCStateEntriesForCDCSDKStreamRequestPB {
 
 message ValidateAndSyncCDCStateEntriesForCDCSDKStreamResponsePB {
   optional MasterErrorPB error = 1;
-  repeated string updated_tablet_entries = 2;
+  repeated string updated_tablet_entries = 2 [ deprecated = true ];
+  repeated string deleted_tablet_entries = 3;
 }
 
 message RemoveTablesFromCDCSDKStreamRequestPB {

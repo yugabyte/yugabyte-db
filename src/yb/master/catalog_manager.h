@@ -122,6 +122,7 @@ enum RaftGroupStatePB : int;
 namespace cdc {
 class CDCStateTable;
 struct CDCStateTableEntry;
+struct CDCStateTableKey;
 }  // namespace cdc
 
 namespace master {
@@ -808,10 +809,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status UpdateCDCProducerOnTabletSplit(
       const TableId& producer_table_id, const SplitTabletIds& split_tablet_ids) override;
 
-  // Re-fetch all CDCSDK streams for the table and confirm the inserted childrent tablet entries
-  // belong to one of these streams. If not, update such entries and set the checkpoint to max. This
-  // is to handle race condition where the table being removed from the stream splits
-  // simultaneously.
+  // Re-fetch all CDCSDK streams for the table and confirm the inserted children tablet entries
+  // belong to one of these streams. If not, delete such entries. This is to handle race condition
+  // where the table being removed from the stream splits simultaneously.
   Status ReVerifyChildrenEntriesOnTabletSplit(
       const TableId& producer_table_id, const std::vector<cdc::CDCStateTableEntry>& entries,
       const std::unordered_set<xrepl::StreamId>& cdcsdk_stream_ids);
@@ -3088,14 +3088,14 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const TabletInfo& tablet, const ScheduleMinRestoreTime& schedule_to_min_restore_time)
       EXCLUDES(mutex_);
 
-  Status UpdateCheckpointForTabletEntriesInCDCState(
+  Status RemoveTabletEntriesInCDCState(
       const xrepl::StreamId& stream_id,
       const std::unordered_set<TableId>& tables_in_stream_metadata,
       const TableInfoPtr& table_to_be_removed);
 
-  // Scans all the entries in cdc_state table. Updates the checkpoint to max if the table of the
-  // entry's tablet is not present in qualified table list of the stream.
-  Result<std::vector<cdc::CDCStateTableEntry>> SyncCDCStateTableEntries(
+  // Scans all the entries in cdc_state table. Deletes the entry if the table of the entry's tablet
+  // is not present in qualified table list of the stream.
+  Result<std::vector<cdc::CDCStateTableKey>> SyncCDCStateTableEntries(
       const xrepl::StreamId& stream_id,
       const std::unordered_set<TableId>& tables_in_stream_metadata);
 

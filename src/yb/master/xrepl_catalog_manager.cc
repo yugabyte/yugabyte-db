@@ -1773,10 +1773,23 @@ Status CatalogManager::DropXReplStreams(
   locks.reserve(streams.size());
   for (auto& stream : streams) {
     auto l = stream->LockForWrite();
-    l.mutable_data()->pb.set_state(delete_state);
+    if (l.data().is_deleting()) {
+      LOG(WARNING) << "Stream " << stream->ToString() << " is already in "
+                   << SysCDCStreamEntryPB::State_Name(l.data().pb.state())
+                   << " state. Cannot change it's state to "
+                   << SysCDCStreamEntryPB::State_Name(delete_state);
+      continue;
+    } else {
+      l.mutable_data()->pb.set_state(delete_state);
+    }
     locks.push_back(std::move(l));
     streams_to_mark.push_back(stream.get());
   }
+
+  if (streams_to_mark.empty()) {
+    return Status::OK();
+  }
+
   // The mutation will be aborted when 'l' exits the scope on early return.
   RETURN_NOT_OK(CheckStatus(
       sys_catalog_->Upsert(leader_ready_term(), streams_to_mark),
@@ -2506,13 +2519,13 @@ Status CatalogManager::ProcessTablesToBeRemovedFromCDCSDKStreams(
         // Explicitly remove the table from the set since we want to remove the tablet entries of
         // this table from the cdc state table.
         tables_in_stream_metadata.erase(table_id);
-        auto result = UpdateCheckpointForTabletEntriesInCDCState(
-            stream_id, tables_in_stream_metadata, *table_result);
+        auto result =
+            RemoveTabletEntriesInCDCState(stream_id, tables_in_stream_metadata, *table_result);
 
         if (!result.ok()) {
-          LOG(WARNING)
-              << "Encountered error while trying to update/delete tablets entries of table: "
-              << table_id << ", from cdc_state table for stream: " << stream_id << " - " << result;
+          LOG(WARNING) << "Encountered error while trying to delete tablets entries of table: "
+                       << table_id << ", from cdc_state table for stream: " << stream_id << " - "
+                       << result;
           continue;
         }
       }
@@ -2782,6 +2795,7 @@ Status CatalogManager::CleanUpCDCSDKStreamsMetadata(const LeaderEpoch& epoch) {
   for(const auto& stream : streams) {
     stream_ids_metadata_to_be_cleaned_up.insert(stream->StreamId());
   }
+
   // Step-1: Get entries from cdc_state table.
   std::vector<cdc::CDCStateTableKey> cdc_state_entries;
   Status iteration_status;
@@ -2818,7 +2832,7 @@ Status CatalogManager::CleanUpCDCSDKStreamsMetadata(const LeaderEpoch& epoch) {
   }
 
   std::vector<cdc::CDCStateTableKey> keys_to_delete;
-  for(const auto& entry : cdc_state_entries) {
+  for (const auto& entry : cdc_state_entries) {
     const auto tablets = FindOrNull(tablets_to_keep_per_stream, entry.stream_id);
 
     RSTATUS_DCHECK(tablets, IllegalState,
@@ -2903,7 +2917,6 @@ Status CatalogManager::CleanUpDeletedXReplStreams(const LeaderEpoch& epoch) {
   auto all_entry_keys = VERIFY_RESULT(
       cdc_state_table_->GetTableRangeAsync({} /* just key columns */, &iteration_status));
   std::vector<cdc::CDCStateTableKey> entries_to_delete;
-  std::vector<cdc::CDCStateTableEntry> entries_to_update;
 
   // Remove all entries from cdc_state with the given stream ids.
   for (const auto& entry_result : all_entry_keys) {
@@ -2914,23 +2927,10 @@ Status CatalogManager::CleanUpDeletedXReplStreams(const LeaderEpoch& epoch) {
       continue;
     }
 
-    if (!stream->namespace_id().empty()) {
-      // CDCSDK stream.
-      cdc::CDCStateTableEntry update_entry(entry.key);
-      update_entry.checkpoint = OpId::Max();
-      entries_to_update.emplace_back(std::move(update_entry));
-      LOG(INFO) << "Setting checkpoint to OpId::Max() for CDCSDK stream " << entry.key.ToString();
-    } else {
-      // XCluster stream.
-      entries_to_delete.emplace_back(entry.key);
-      LOG(INFO) << "Deleting xCluster stream " << entry.key.ToString();
-    }
+    entries_to_delete.emplace_back(entry.key);
+    LOG(INFO) << "Deleting stream " << entry.key.ToString();
   }
   RETURN_NOT_OK(iteration_status);
-
-  RETURN_NOT_OK_PREPEND(
-      cdc_state_table_->UpdateEntries(entries_to_update),
-      "Error setting checkpoint to OpId::Max() in cdc_state table");
 
   RETURN_NOT_OK_PREPEND(
       cdc_state_table_->DeleteEntries(entries_to_delete),
@@ -3698,22 +3698,20 @@ Status CatalogManager::ReVerifyChildrenEntriesOnTabletSplit(
     refetched_cdcsdk_stream_ids.insert(stream->StreamId());
   }
 
-  std::vector<cdc::CDCStateTableEntry> entries_to_update;
+  std::vector<cdc::CDCStateTableKey> entries_to_delete;
   for (const auto& entry : entries) {
     auto stream_id = entry.key.stream_id;
     // Update the entries whose streams were not received on re-fetch.
     if (cdcsdk_stream_ids.contains(stream_id) && !refetched_cdcsdk_stream_ids.contains(stream_id)) {
-      cdc::CDCStateTableEntry update_entry = entry;
-      update_entry.checkpoint = OpId::Max();
-      entries_to_update.emplace_back(std::move(update_entry));
+      entries_to_delete.emplace_back(entry.key);
     }
   }
 
-  if (!entries_to_update.empty()) {
-    LOG(INFO) << "Updating the following state table entries to max checkpoint as their table "
+  if (!entries_to_delete.empty()) {
+    LOG(INFO) << "Deleting the following state table entries as their table "
                  "is being/has been removed from the stream - "
-              << AsString(entries_to_update);
-    RETURN_NOT_OK(cdc_state_table_->UpdateEntries(entries_to_update));
+              << AsString(entries_to_delete);
+    RETURN_NOT_OK(cdc_state_table_->DeleteEntries(entries_to_delete));
   }
 
   return Status::OK();
@@ -4574,11 +4572,13 @@ Status CatalogManager::ValidateAndSyncCDCStateEntriesForCDCSDKStream(
     }
   }
 
-  auto updated_state_table_entries =
+  auto deleted_state_table_entries =
       VERIFY_RESULT(SyncCDCStateTableEntries(stream_id, tables_in_stream_metadata));
 
-  for (const auto& entry : updated_state_table_entries) {
-    resp->add_updated_tablet_entries(entry.key.tablet_id);
+  for (const auto& key : deleted_state_table_entries) {
+    if (key.colocated_table_id.empty()) {
+      resp->add_deleted_tablet_entries(key.tablet_id);
+    }
   }
 
   LOG_WITH_FUNC(INFO)
@@ -4812,6 +4812,8 @@ bool CatalogManager::IsCDCSDKTabletExpiredOrNotOfInterest(
 }
 
 void CatalogManager::RunXReplBgTasks(const LeaderEpoch& epoch) {
+  TEST_SYNC_POINT("RunXReplBgTasks::Start");
+
   if (!FLAGS_TEST_cdcsdk_disable_deleted_stream_cleanup) {
     WARN_NOT_OK(CleanUpDeletedXReplStreams(epoch), "Failed Cleaning Deleted XRepl Streams");
   }
@@ -5360,7 +5362,7 @@ void CatalogManager::CDCSDKPopulateDeleteRetainerInfoForTabletDrop(
   delete_retainer.active_cdcsdk = IsTablePartOfCDCSDK(tablet_info.table()->id());
 }
 
-Status CatalogManager::UpdateCheckpointForTabletEntriesInCDCState(
+Status CatalogManager::RemoveTabletEntriesInCDCState(
     const xrepl::StreamId& stream_id, const std::unordered_set<TableId>& tables_in_stream_metadata,
     const TableInfoPtr& table_to_be_removed) {
   bool is_colocated_table = table_to_be_removed->IsSecondaryTable();
@@ -5369,7 +5371,7 @@ Status CatalogManager::UpdateCheckpointForTabletEntriesInCDCState(
     return Status::OK();
   }
 
-  std::vector<cdc::CDCStateTableEntry> entries_to_update;
+  std::vector<cdc::CDCStateTableKey> entries_to_delete;
   if (is_colocated_table) {
     DCHECK_EQ(tablets.size(), 1);
     for (const auto& tablet : tablets) {
@@ -5377,66 +5379,56 @@ Status CatalogManager::UpdateCheckpointForTabletEntriesInCDCState(
         continue;
       }
 
-      bool should_update_streaming_entry = true;
+      bool should_delete_streaming_entry = true;
       for (const auto& table_id : tablet->GetTableIds()) {
         if (tables_in_stream_metadata.contains(table_id)) {
-          should_update_streaming_entry = false;
+          should_delete_streaming_entry = false;
           break;
         }
       }
 
-      if (should_update_streaming_entry) {
-        cdc::CDCStateTableEntry update_entry(tablet->tablet_id(), stream_id);
-        update_entry.checkpoint = OpId::Max();
-        entries_to_update.emplace_back(std::move(update_entry));
-        LOG_WITH_FUNC(INFO)
-            << "Setting checkpoint to OpId::Max() for cdc state table entry (tablet,stream) - "
-            << tablet->tablet_id() << ", " << stream_id;
+      if (should_delete_streaming_entry) {
+        entries_to_delete.emplace_back(tablet->tablet_id(), stream_id);
+        LOG_WITH_FUNC(INFO) << "Deleting cdc state table entry (tablet,stream) - "
+                            << tablet->tablet_id() << ", " << stream_id;
       }
 
-      // Snapshot entries for colocated tables (containing the colocated table id) are not processed
-      // by UpdatePeersAndMetrics, hence we delete them directly instead of setting the checkpoint
-      // to max.
-      cdc::CDCStateTableKey delete_entry(tablet->tablet_id(), stream_id, table_to_be_removed->id());
+      // Deleting snapshot entries for colocated tables (containing the colocated table id).
+      entries_to_delete.emplace_back(tablet->tablet_id(), stream_id, table_to_be_removed->id());
       LOG_WITH_FUNC(INFO) << "Deleting cdc state table entry (tablet, stream, table) - "
-                          << delete_entry.ToString();
-      RETURN_NOT_OK_PREPEND(
-          cdc_state_table_->DeleteEntries({delete_entry}),
-          "Error deleting entries from cdc_state table");
+                          << tablet->tablet_id() << ", " << stream_id << ", "
+                          << table_to_be_removed->id();
     }
   } else {
     for (const auto& tablet : tablets) {
       if (!tablet) {
         continue;
       }
-      cdc::CDCStateTableEntry update_entry(tablet->tablet_id(), stream_id);
-      update_entry.checkpoint = OpId::Max();
-      entries_to_update.emplace_back(std::move(update_entry));
-      LOG_WITH_FUNC(INFO)
-          << "Setting checkpoint to OpId::Max() for cdc state table entry (tablet,stream) - "
-          << tablet->tablet_id() << ", " << stream_id;
+      entries_to_delete.emplace_back(tablet->tablet_id(), stream_id);
+      LOG_WITH_FUNC(INFO) << "Deleting cdc state table entry (tablet,stream) - "
+                          << tablet->tablet_id() << ", " << stream_id;
     }
   }
 
-  if (!entries_to_update.empty()) {
-    LOG_WITH_FUNC(INFO) << "Setting checkpoint to max for " << entries_to_update.size()
+  if (!entries_to_delete.empty()) {
+    LOG_WITH_FUNC(INFO) << "Deleting " << entries_to_delete.size()
                         << " cdc state entries for CDC stream: " << stream_id;
     RETURN_NOT_OK_PREPEND(
-        cdc_state_table_->UpdateEntries(entries_to_update),
-        "Error setting checkpoint to OpId::Max() in cdc_state table");
+        cdc_state_table_->DeleteEntries(entries_to_delete),
+        "Error deleting cdc state entries from cdc_state table");
   }
 
   return Status::OK();
 }
 
-Result<std::vector<cdc::CDCStateTableEntry>> CatalogManager::SyncCDCStateTableEntries(
+Result<std::vector<cdc::CDCStateTableKey>> CatalogManager::SyncCDCStateTableEntries(
     const xrepl::StreamId& stream_id,
     const std::unordered_set<TableId>& tables_in_stream_metadata) {
   // Scan all the rows of state table and get the TabletInfo for each of them.
   Status iteration_status;
   auto all_entry_keys =
       VERIFY_RESULT(cdc_state_table_->GetTableRange({} /* just key columns */, &iteration_status));
-  std::vector<cdc::CDCStateTableEntry> entries_to_update;
+  std::vector<cdc::CDCStateTableKey> entries_to_delete;
   // Get all the tablet, stream pairs from cdc_state for the given stream.
   std::vector<TabletId> cdc_state_tablet_entries;
   for (const auto& entry_result : all_entry_keys) {
@@ -5444,9 +5436,16 @@ Result<std::vector<cdc::CDCStateTableEntry>> CatalogManager::SyncCDCStateTableEn
     const auto& entry = *entry_result;
 
     if (entry.key.stream_id == stream_id) {
-      // For updating the checkpoint, only consider entries that do not have a colocated table_id.
       if (entry.key.colocated_table_id.empty()) {
         cdc_state_tablet_entries.push_back(entry.key.tablet_id);
+      } else {
+        // If the colocated table is not present in the stream metadata, we can delete the entry.
+        if (!tables_in_stream_metadata.contains(entry.key.colocated_table_id)) {
+          entries_to_delete.emplace_back(entry.key);
+          LOG_WITH_FUNC(INFO) << "Deleting cdc state table entry (tablet, stream, table) - "
+                              << entry.key.tablet_id << ", " << entry.key.stream_id << ", "
+                              << entry.key.colocated_table_id;
+        }
       }
     }
   }
@@ -5456,43 +5455,38 @@ Result<std::vector<cdc::CDCStateTableEntry>> CatalogManager::SyncCDCStateTableEn
   auto tablet_infos = GetTabletInfos(cdc_state_tablet_entries);
 
   for (const auto& tablet_info : tablet_infos) {
-    // If the TabletInfo is not found for tablet_id of a particular state table entry, updating the
-    // checkpoint wont have any effect as the physical tablet has been deleted. Even
-    // UpdatePeersAndMetrics would not find this tablet while trying to move barriers. Therefore, we
-    // can ignore this entry.
+    // If the TabletInfo is not found for tablet_id of a particular state table entry, it means the
+    // physical tablet has been deleted. Ignore this entry.
     if (!tablet_info) {
       continue;
     }
 
-    bool should_update_entry = true;
-    // The state table entry can only be updated if it belongs to none of the tables present in
+    bool should_delete_entry = true;
+    // The state table entry can only be deleted if it belongs to none of the tables present in
     // stream metadata.
     for (const auto& table_id : tablet_info->GetTableIds()) {
       if (tables_in_stream_metadata.contains(table_id)) {
-        should_update_entry = false;
+        should_delete_entry = false;
         break;
       }
     }
 
-    if (should_update_entry) {
-      cdc::CDCStateTableEntry update_entry(tablet_info->tablet_id(), stream_id);
-      update_entry.checkpoint = OpId::Max();
-      entries_to_update.emplace_back(std::move(update_entry));
-      LOG_WITH_FUNC(INFO)
-          << "Setting checkpoint to OpId::Max() for cdc state table entry (tablet,stream) - "
-          << tablet_info->tablet_id() << ", " << stream_id;
+    if (should_delete_entry) {
+      entries_to_delete.emplace_back(tablet_info->tablet_id(), stream_id);
+      LOG_WITH_FUNC(INFO) << "Deleting cdc state table entry (tablet,stream) - "
+                          << tablet_info->tablet_id() << ", " << stream_id;
     }
   }
 
-  if (!entries_to_update.empty()) {
-    LOG_WITH_FUNC(INFO) << "Setting checkpoint to max for " << entries_to_update.size()
+  if (!entries_to_delete.empty()) {
+    LOG_WITH_FUNC(INFO) << "Deleting " << entries_to_delete.size()
                         << " cdc state entries for CDC stream: " << stream_id;
     RETURN_NOT_OK_PREPEND(
-        cdc_state_table_->UpdateEntries(entries_to_update),
-        "Error setting checkpoint to OpId::Max() in cdc_state table");
+        cdc_state_table_->DeleteEntries(entries_to_delete),
+        "Error deleting cdc state entries from cdc_state table");
   }
 
-  return entries_to_update;
+  return entries_to_delete;
 }
 
 Status CatalogManager::RemoveTableFromCDCStreamMetadataAndMaps(

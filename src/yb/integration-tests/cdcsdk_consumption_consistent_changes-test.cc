@@ -2799,58 +2799,40 @@ TEST_F(
   }
 }
 
-// Test for the possible race condition between create tablet and UpdatePeersAndMetrics thread. In
-// this test we verify that UpdatePeersAndMetrics does not remove the retention barrier on the
-// dynamically created tablets before their entries are added to the cdc_state table.
-TEST_F(CDCSDKConsumptionConsistentChangesTest, TestRetentionBarrierRaceWithUpdatePeersAndMetrics) {
+// Test that retention barriers on a tablet peer are removed only after they become stale, even if
+// the stream is deleted.
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestRetentionBarrierPreservedUntilStale) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 10;
-  google::SetVLOGLevel("tablet*", 1);
-  SyncPoint::GetInstance()->LoadDependency(
-      {{"SetupCDCSDKRetentionOnNewTablet::End", "UpdatePeersAndMetrics::Start"},
-       {"UpdateTabletPeersWithMaxCheckpoint::Done",
-        "PopulateCDCStateTableOnNewTableCreation::Start"},
-       {"ProcessNewTablesForCDCSDKStreams::Start",
-        "PopulateCDCStateTableOnNewTableCreation::End"}});
-  SyncPoint::GetInstance()->EnableProcessing();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs) = 6;
 
   auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
-  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
-
-  // Create another table after stream creation.
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "test_table2"));
-  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
-  ASSERT_EQ(tablets.size(), 1);
   auto tablet_peer =
       ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), tablets.begin()->tablet_id()));
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
 
-  // Verify that table has been added to the stream.
-  ASSERT_OK(WaitFor(
-                [&]() -> Result<bool> {
-                  auto stream_info = VERIFY_RESULT(GetDBStreamInfo(stream_id));
-                  for (auto table_info : stream_info.table_info()) {
-                    if (table_info.table_id() == table.table_id()) {
-                      return true;
-                    }
-                  }
-                  return false;
-                },
-                MonoDelta::FromSeconds(60),
-                "Timed out waiting for the table to get added to stream"));
-
-  // Check that UpdatePeersAndMetrics has not removed retention barriers.
+  // Sleep for around FLAGS_cdc_min_replicated_index_considered_stale_secs * 2 seconds. Then check
+  // that retention barrier are not lifted yet on this tablet as UdatePeersAndMetrics had kept
+  // refreshing the tablet peer's cdc_min_replicated_index_refresh_time_.
+  SleepFor(MonoDelta::FromSeconds(FLAGS_cdc_min_replicated_index_considered_stale_secs * 2));
   auto checkpoint_result =
       ASSERT_RESULT(GetCDCSnapshotCheckpoint(stream_id, tablet_peer->tablet_id()));
   LogRetentionBarrierAndRelatedDetails(checkpoint_result, tablet_peer);
-  // A dynamically added table in replication slot consumption will not be snapshotted and will have
-  // replica identity "CHANGE". Hence the cdc_sdk_safe_time in tablet peer will be invalid.
-  ASSERT_EQ(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
+  ASSERT_NE(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
   ASSERT_LT(tablet_peer->get_cdc_min_replicated_index(), OpId::Max().index);
   ASSERT_LT(tablet_peer->cdc_sdk_min_checkpoint_op_id(), OpId::Max());
 
-  // Now, drop the consistent snapshot stream and check that retention barriers are released.
+  // Drop the consistent snapshot stream.
   ASSERT_TRUE(DeleteCDCStream(stream_id));
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 1;
+
+  // Now sleep for FLAGS_cdc_min_replicated_index_considered_stale_secs / 2 seconds. The retention
+  // barriers should still be present as they have not yet become stale.
+  SleepFor(MonoDelta::FromSeconds(FLAGS_cdc_min_replicated_index_considered_stale_secs / 2));
+  ASSERT_NE(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
+  ASSERT_LT(tablet_peer->get_cdc_min_replicated_index(), OpId::Max().index);
+  ASSERT_LT(tablet_peer->cdc_sdk_min_checkpoint_op_id(), OpId::Max());
+
+  // Now after around FLAGS_cdc_min_replicated_index_considered_stale_secs / 2 seconds the
+  // retention barriers should become stale and be lifted.
   VerifyTransactionParticipant(tablet_peer->tablet_id(), OpId::Max());
   ASSERT_EQ(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
   ASSERT_EQ(tablet_peer->get_cdc_min_replicated_index(), OpId::Max().index);
@@ -3545,6 +3527,8 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestSlotRowDeletionWithMultipleSt
 void CDCSDKConsumptionConsistentChangesTest::TestSlotRowDeletion(bool multiple_streams) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs) =
+      15 * kTimeMultiplier;
 
   ASSERT_OK(SetUpWithParams(1, 1, false, true));
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
@@ -3585,9 +3569,20 @@ void CDCSDKConsumptionConsistentChangesTest::TestSlotRowDeletion(bool multiple_s
       MonoDelta::FromSeconds(10 * kTimeMultiplier),
       "Timed out waiting for slot entry deletion from state table"));
 
+  // Verify that the retention barriers are not lifted.
+  ASSERT_NE(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
+  ASSERT_NE(tablet_peer->cdc_sdk_min_checkpoint_op_id(), OpId::Max());
+  ASSERT_NE(tablet_peer->get_cdc_min_replicated_index(), OpId::Max().index);
+
+  // If there are no active streams for a tablet, its retention barriers will be lifted (as part of
+  // ResetStaleRetentionBarriersOp op) once the exising barriers become stale. So, waiting till
+  // ResetStaleRetentionBarriersOp op is eligible to lift off the retention barriers.
+  SleepFor(MonoDelta::FromSeconds(FLAGS_cdc_min_replicated_index_considered_stale_secs));
+
   if (multiple_streams) {
     // Since one stream still exists, the retention barriers will not be lifted.
     ASSERT_NE(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
+    ASSERT_NE(tablet_peer->cdc_sdk_min_checkpoint_op_id(), OpId::Max());
     ASSERT_NE(tablet_peer->get_cdc_min_replicated_index(), OpId::Max().index);
   } else {
     // Since the only stream that existed is now deleted, the retention barriers will be unset.
@@ -3595,6 +3590,49 @@ void CDCSDKConsumptionConsistentChangesTest::TestSlotRowDeletion(bool multiple_s
     ASSERT_EQ(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
     ASSERT_EQ(tablet_peer->get_cdc_min_replicated_index(), OpId::Max().index);
   }
+}
+
+// Test to verify that the replication slot row is deleted from cdc state table
+// when first the stream is deleted and subsequently a table associated with the stream is dropped.
+// This essentially tests that the stream's state doesn't get over-written incorrectly from
+// SysCDCStreamEntryPB::DELETING (marked as part of stream deletion) to
+// SysCDCStreamEntryPB::DELETING_METADATA (marked as part of table drop).
+// If the state gets incorrectly overwritten before the CatalogManager's background tasks
+// (corresponding for each state) run, the slot row won't be deleted.
+TEST_F(CDCSDKConsumptionConsistentChangesTest, CheckSlotRowDeletionForStreamAndTableDeletion) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+
+  ASSERT_OK(SetUpWithParams(1, 1, false, true));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  auto tablet_id = tablets[0].tablet_id();
+  auto stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+
+  ASSERT_OK(WriteRowsHelper(0 /* start */, 1 /* end */, &test_cluster_, true));
+
+  ASSERT_OK(InitVirtualWAL(stream_id, {table.table_id()}));
+  auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 3);
+
+  auto slot_row = ASSERT_RESULT(ReadSlotEntryFromStateTable(stream_id));
+  ASSERT_TRUE(slot_row.has_value());
+
+  SyncPoint::GetInstance()->LoadDependency(
+      {{"DeleteTableInternal::End", "RunXReplBgTasks::Start"}});
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  // Before the next iteration of catalog manager background tasks, we delete the stream and table.
+  ASSERT_TRUE(DeleteCDCStream(stream_id));
+  DropTable(&test_cluster_, kTableName);
+
+  // Waiting till catalog manager's background task deletes the cdc state table entries associated
+  // with the stream.
+  VerifyStreamDeletedFromCdcState(test_client(), stream_id, tablet_id, 30);
+  VerifyStreamDeletedFromCdcState(test_client(), stream_id, kCDCSDKSlotEntryTabletId, 30);
 }
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALConsumptionWhileUpdatingNonExistingRow) {

@@ -7104,6 +7104,9 @@ Status CatalogManager::DeleteTableInternal(
   LOG(INFO) << "Successfully initiated deletion of "
             << (req->is_index_table() ? "index" : "table") << " with "
             << req->table().DebugString() << " per request from " << RequestorString(rpc);
+
+  TEST_SYNC_POINT("DeleteTableInternal::End");
+
   // Asynchronously cleans up the final memory traces of the deleted database.
   background_tasks_->Wake();
   return Status::OK();

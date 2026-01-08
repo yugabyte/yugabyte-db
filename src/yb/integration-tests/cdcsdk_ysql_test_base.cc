@@ -2293,6 +2293,7 @@ void CDCSDKYsqlTest::TestIntentGarbageCollectionFlag(
   }
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_update_local_peer_min_index) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs) = 3;
 
   ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
 

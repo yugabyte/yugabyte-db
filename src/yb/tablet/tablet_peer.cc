@@ -103,7 +103,7 @@ using std::vector;
 DEFINE_test_flag(int32, delay_init_tablet_peer_ms, 0,
                  "Wait before executing init tablet peer for specified amount of milliseconds.");
 
-DEFINE_UNKNOWN_int32(cdc_min_replicated_index_considered_stale_secs, 900,
+DEFINE_UNKNOWN_int32(cdc_min_replicated_index_considered_stale_secs, 1800,
     "If cdc_min_replicated_index hasn't been replicated in this amount of time, we reset its"
     "value to max int64 to avoid retaining any logs");
 
@@ -1158,6 +1158,18 @@ yb::OpId TabletPeer::GetLatestLogEntryOpId() const {
   return yb::OpId();
 }
 
+bool TabletPeer::is_cdc_min_replicated_index_stale(double* seconds_since_last_refresh_ptr) const {
+  std::lock_guard l(cdc_min_replicated_index_lock_);
+  auto seconds_since_last_refresh =
+      MonoTime::Now().GetDeltaSince(cdc_min_replicated_index_refresh_time_).ToSeconds();
+  if (seconds_since_last_refresh_ptr) {
+    *seconds_since_last_refresh_ptr = seconds_since_last_refresh;
+  }
+  return (
+      seconds_since_last_refresh >
+      GetAtomicFlag(&FLAGS_cdc_min_replicated_index_considered_stale_secs));
+}
+
 Status TabletPeer::set_cdc_min_replicated_index_unlocked(int64_t cdc_min_replicated_index) {
   VLOG(1) << "Setting cdc min replicated index to " << cdc_min_replicated_index;
   RETURN_NOT_OK(meta_->set_cdc_min_replicated_index(cdc_min_replicated_index));
@@ -1175,14 +1187,11 @@ Status TabletPeer::set_cdc_min_replicated_index(int64_t cdc_min_replicated_index
 }
 
 Status TabletPeer::reset_cdc_min_replicated_index_if_stale() {
-  std::lock_guard l(cdc_min_replicated_index_lock_);
-  auto seconds_since_last_refresh =
-      MonoTime::Now().GetDeltaSince(cdc_min_replicated_index_refresh_time_).ToSeconds();
-  if (seconds_since_last_refresh >
-      GetAtomicFlag(&FLAGS_cdc_min_replicated_index_considered_stale_secs)) {
+  double seconds_since_last_refresh;
+  if (is_cdc_min_replicated_index_stale(&seconds_since_last_refresh)) {
     LOG_WITH_PREFIX(INFO) << "Resetting cdc min replicated index. Seconds since last update: "
                           << seconds_since_last_refresh;
-    RETURN_NOT_OK(set_cdc_min_replicated_index_unlocked(std::numeric_limits<int64_t>::max()));
+    RETURN_NOT_OK(set_cdc_min_replicated_index(std::numeric_limits<int64_t>::max()));
   }
   return Status::OK();
 }
@@ -1225,6 +1234,21 @@ CoarseTimePoint TabletPeer::cdc_sdk_min_checkpoint_op_id_expiration() {
 
 bool TabletPeer::is_under_cdc_sdk_replication() {
   return meta_->is_under_cdc_sdk_replication();
+}
+
+Status TabletPeer::reset_all_cdc_retention_barriers_if_stale() {
+  double seconds_since_last_refresh;
+  if (is_cdc_min_replicated_index_stale(&seconds_since_last_refresh)) {
+    VLOG_WITH_PREFIX(1) << "Trying to reset cdc retention barriers. Seconds since last update: "
+                        << seconds_since_last_refresh;
+    RETURN_NOT_OK(SetAllCDCRetentionBarriers(
+        std::numeric_limits<int64_t>::max() /* cdc_wal_index */,
+        OpId::Max() /* cdc_sdk_intents_op_id */, MonoDelta::kZero /* cdc_sdk_op_id_expiration */,
+        HybridTime::kInvalid /* cdc_sdk_history_cutoff */, true /* require_history_cutoff */,
+        false /* initial_retention_barrier */));
+    TEST_SYNC_POINT("TabletPeer::reset_all_cdc_retention_barriers_if_stale::End");
+  }
+  return Status::OK();
 }
 
 OpId TabletPeer::GetLatestCheckPoint() {
@@ -1562,6 +1586,12 @@ void TabletPeer::RegisterMaintenanceOps(MaintenanceManager* maint_mgr) {
   maint_mgr->RegisterOp(log_gc.get());
   maintenance_ops_.push_back(std::move(log_gc));
   LOG_WITH_PREFIX(INFO) << "Registered log gc";
+
+  auto reset_stale_retention_barriers_op =
+      std::make_unique<ResetStaleRetentionBarriersOp>(this, *tablet_result);
+  maint_mgr->RegisterOp(reset_stale_retention_barriers_op.get());
+  maintenance_ops_.push_back(std::move(reset_stale_retention_barriers_op));
+  LOG_WITH_PREFIX(INFO) << "Registered stale retention barrier resetter";
 }
 
 void TabletPeer::UnregisterMaintenanceOps() {

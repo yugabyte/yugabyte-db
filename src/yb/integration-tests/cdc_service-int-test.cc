@@ -686,6 +686,7 @@ TEST_F(CDCServiceTest, TestSafeTime) {
 TEST_F(CDCServiceTest, TestMetricsOnDeletedReplication) {
   stream_id_ = ASSERT_RESULT(CreateXClusterStream(*client_, table_.table()->id()));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_collect_cdc_metrics) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_metrics_interval_ms) = 0;
 
   std::string tablet_id = GetTablet();
 
@@ -729,20 +730,16 @@ TEST_F(CDCServiceTest, TestMetricsOnDeletedReplication) {
       },
       MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for Lag > 0"));
 
-  // Now, delete the replication stream and assert that lag is 0.
+  // Now, delete the replication stream.
   ASSERT_OK(DeleteXClusterStream(stream_id_));
+  // Now check that UpdateMetrics deletes the metric.
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
-        return metrics->async_replication_sent_lag_micros->value() == 0 &&
-               metrics->async_replication_committed_lag_micros->value() == 0;
+        auto metrics_result = GetXClusterTabletMetrics(
+            *cdc_service, tablet_id, stream_id_, CreateMetricsEntityIfNotFound::kFalse);
+        return !metrics_result.ok() && metrics_result.status().IsNotFound();
       },
-      MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for Lag = 0"));
-
-  // Now check that UpdateLagMetrics deletes the metric.
-  cdc_service->UpdateMetrics();
-  auto metrics_result = GetXClusterTabletMetrics(
-      *cdc_service, tablet_id, stream_id_, CreateMetricsEntityIfNotFound::kFalse);
-  ASSERT_NOK(metrics_result) << metrics_result;
+      MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for metrics to be deleted"));
 }
 
 TEST_F(CDCServiceTest, TestWALPrematureGCErrorCode) {

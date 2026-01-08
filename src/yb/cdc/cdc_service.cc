@@ -2281,7 +2281,7 @@ Result<StreamIdHybridTimeMap> CDCServiceImpl::GetStreamIdToRestartTimeMap(
 }
 
 void CDCServiceImpl::UpdateMetrics() {
-  auto tablet_checkpoints = impl_->TabletCheckpointsCopy();
+  std::unordered_set<TabletStreamInfo> latest_tablet_stream_entries;
   TabletInfoToLastReplicationTimeMap cdc_state_tablets_to_last_replication_time;
   std::unordered_set<TabletStreamInfo> expired_entries;
   EmptyChildrenTabletMap empty_children_tablets;
@@ -2323,6 +2323,7 @@ void CDCServiceImpl::UpdateMetrics() {
     // fill any empty split tablets later, as well as determine what metrics can be cleaned up.
     TabletStreamInfo tablet_info = {
         .stream_id = entry.key.stream_id, .tablet_id = entry.key.tablet_id};
+    latest_tablet_stream_entries.insert(tablet_info);
     cdc_state_tablets_to_last_replication_time.emplace(tablet_info, entry.last_replication_time);
 
     auto tablet_peer = context_->LookupTablet(entry.key.tablet_id);
@@ -2342,22 +2343,6 @@ void CDCServiceImpl::UpdateMetrics() {
       if (entry.active_time.has_value() &&
           CheckTabletExpiredOrNotOfInterest(tablet_info, *entry.active_time)) {
         expired_entries.insert(tablet_info);
-
-        if (!tablet_checkpoints.contains(tablet_info)) {
-          // For an unpolled tablet, there will be no entry in the tablet_checkpoints map.
-          // We need to add an entry to the map to ensure that when we iterate further down
-          // over the tablet_checkpoints to reset the metric entities, we do not miss the
-          // expired or not of interest tablets that were unpolled.
-          tablet_checkpoints.emplace(TabletCheckpointInfo{
-              .producer_tablet_info = tablet_info,
-              .cdc_state_checkpoint =
-                  TabletCheckpoint{.op_id = {}, .last_update_time = {}, .last_active_time = {}},
-              .sent_checkpoint =
-                  TabletCheckpoint{.op_id = {}, .last_update_time = {}, .last_active_time = {}},
-              .mem_tracker = nullptr,
-          });
-        }
-
         continue;
       }
       auto tablet_metric_result = GetCDCSDKTabletMetrics(
@@ -2486,40 +2471,28 @@ void CDCServiceImpl::UpdateMetrics() {
   ProcessMetricsForEmptyChildrenTablets(
       empty_children_tablets, &cdc_state_tablets_to_last_replication_time);
 
-  // Now, go through tablets in tablet_checkpoints_ and set lag to 0 for all tablets we're no
-  // longer replicating.
-  for (const auto& checkpoint : tablet_checkpoints) {
-    const TabletStreamInfo& tablet_info = checkpoint.producer_tablet_info;
-    if (!cdc_state_tablets_to_last_replication_time.contains(tablet_info) ||
-        expired_entries.contains(tablet_info)) {
-      // We're no longer replicating this tablet, so set lag to 0.
-      auto tablet_peer = context_->LookupTablet(checkpoint.tablet_id());
-      if (!tablet_peer) {
-        continue;
-      }
-      auto get_stream_metadata = GetStream(checkpoint.producer_tablet_info.stream_id);
-      if (!get_stream_metadata.ok()) {
-        continue;
-      }
-      StreamMetadata& record = **get_stream_metadata;
-
-      // Don't create new tablet metrics if they have already been deleted.
-      if (record.GetSourceType() == CDCSDK) {
-        auto tablet_metric_result = GetCDCSDKTabletMetrics(
-            *tablet_peer.get(), checkpoint.stream_id(), CreateMetricsEntityIfNotFound::kFalse);
-        if (tablet_metric_result) {
-          tablet_metric_result.get()->ClearMetrics();
+  // Now, go through tablet-stream entries in last_seen_tablet_stream_entries_ and remove metrics
+  // for all streams for a tablet that we're no longer replicating.
+  if (last_seen_tablet_stream_entries_) {
+    for (const auto& tablet_stream_info : *last_seen_tablet_stream_entries_) {
+      if (!latest_tablet_stream_entries.contains(tablet_stream_info) ||
+          expired_entries.contains(tablet_stream_info)) {
+        // We're no longer replicating this tablet for stream 'tablet_stream_info.stream_id', so
+        // remove the associated metrics.
+        auto tablet_peer = context_->LookupTablet(tablet_stream_info.tablet_id);
+        if (!tablet_peer) {
+          continue;
         }
-      } else {
-        auto tablet_metric_result = GetXClusterTabletMetrics(
-            *tablet_peer.get(), checkpoint.stream_id(), CreateMetricsEntityIfNotFound::kFalse);
-        if (tablet_metric_result) {
-          tablet_metric_result.get()->ClearMetrics();
-        }
+        RemoveXReplTabletMetrics(tablet_stream_info.stream_id, tablet_peer);
       }
-      RemoveXReplTabletMetrics(checkpoint.producer_tablet_info.stream_id, tablet_peer);
     }
+  } else {
+    // If last_seen_tablet_stream_entries_ is not set, create a new one.
+    last_seen_tablet_stream_entries_ = std::make_shared<std::unordered_set<TabletStreamInfo>>();
   }
+
+  // Update the last_seen_tablet_stream_entries_ with the latest tablet-stream entries.
+  *last_seen_tablet_stream_entries_ = std::move(latest_tablet_stream_entries);
 }
 
 bool CDCServiceImpl::ShouldUpdateMetrics(MonoTime time_of_last_update_metrics) {
@@ -2806,12 +2779,10 @@ Status CDCServiceImpl::SetInitialCheckPoint(
       tablet_id, tablet_op_id, /*ignore_failures=*/false, /*initial_retention_barrier=*/true);
 }
 
-void CDCServiceImpl::FilterOutTabletsToBeDeletedByAllStreams(
-    TabletIdCDCCheckpointMap* tablet_checkpoint_map,
-    std::unordered_set<TabletId>* tablet_ids_with_max_checkpoint) {
+void CDCServiceImpl::RemoveTabletEntriesToBeDeletedByAllStreams(
+    TabletIdCDCCheckpointMap* tablet_checkpoint_map) {
   for (auto iter = tablet_checkpoint_map->begin(); iter != tablet_checkpoint_map->end();) {
     if (iter->second.cdc_sdk_op_id == OpId::Max()) {
-      tablet_ids_with_max_checkpoint->insert(iter->first);
       iter = tablet_checkpoint_map->erase(iter);
     } else {
       ++iter;
@@ -3186,34 +3157,6 @@ Status CDCServiceImpl::PopulateTabletCheckPointInfo(
   return Status::OK();
 }
 
-void CDCServiceImpl::UpdateTabletPeersWithMaxCheckpoint(
-    const std::unordered_set<TabletId>& tablet_ids_with_max_checkpoint,
-    std::unordered_set<TabletId>* failed_tablet_ids) {
-  TabletCDCCheckpointInfo tablet_info;
-  tablet_info.cdc_sdk_op_id = OpId::Max();
-  tablet_info.cdc_op_id = OpId::Max();
-  tablet_info.cdc_sdk_latest_active_time = 0;
-
-  for (const auto& tablet_id : tablet_ids_with_max_checkpoint) {
-    // When a CDCSDK Stream is deleted the row will be marked for deletion with OpId::Max(). All
-    // such rows are collected here. We will try set the CDCSDK checkpoint as OpId::Max in all the
-    // tablet peers by sending RPCs , and only if they all succeeded we will delete the
-    // corresponding row from 'cdc_state' table. To ensure the OpId::Max() is set in all tablet
-    // peers before we delete the row from 'cdc_state' table, we are passing
-    // 'enable_update_local_peer_min_index' as false.
-    auto s = UpdateTabletPeerWithCheckpoint(
-        tablet_id, &tablet_info, /*enable_update_local_peer_min_index=*/false,
-        /*ignore_rpc_failures=*/false);
-
-    if (!s.ok()) {
-      failed_tablet_ids->insert(tablet_id);
-      YB_LOG_EVERY_N_SECS(INFO, 300)
-          << "Could not successfully update checkpoint as 'OpId::Max' for tablet: " << tablet_id
-          << ", on all tablet peers - " << s;
-    }
-  }
-}
-
 void CDCServiceImpl::UpdateTabletPeersWithMinReplicatedIndex(
     TabletIdCDCCheckpointMap* tablet_min_checkpoint_map) {
   auto enable_update_local_peer_min_index =
@@ -3494,26 +3437,20 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
 
     UpdateXClusterReplicationMaps(std::move(xcluster_tablet_min_opid_map), now);
 
-    // Collect and remove entries for the tablet_ids for which we will set the checkpoint as
-    // 'OpId::Max' from 'cdcsdk_min_checkpoint_map', into 'tablet_ids_with_max_checkpoint'.
-    std::unordered_set<TabletId> tablet_ids_with_max_checkpoint;
-    FilterOutTabletsToBeDeletedByAllStreams(
-        &cdcsdk_min_checkpoint_map, &tablet_ids_with_max_checkpoint);
+    // Remove entries for the tablet_ids for which we have set the checkpoint to 'OpId::Max' earlier
+    // in 'cdcsdk_min_checkpoint_map'.
+    RemoveTabletEntriesToBeDeletedByAllStreams(&cdcsdk_min_checkpoint_map);
 
     UpdateTabletPeersWithMinReplicatedIndex(&cdcsdk_min_checkpoint_map);
+    TEST_SYNC_POINT("UpdateTabletPeersWithMinReplicatedIndex::Done");
 
     {
       YB_LOG_EVERY_N_SECS(INFO, 300)
           << "Done reading all the indices for all tablets and updating peers";
     }
 
-    std::unordered_set<TabletId> failed_tablet_ids;
-    UpdateTabletPeersWithMaxCheckpoint(tablet_ids_with_max_checkpoint, &failed_tablet_ids);
-    TEST_SYNC_POINT("UpdateTabletPeersWithMaxCheckpoint::Done");
-
     WARN_NOT_OK(
-        DeleteCDCStateTableMetadata(
-            cdc_state_entries_to_delete, failed_tablet_ids, slot_entries_to_be_deleted),
+        DeleteCDCStateTableMetadata(cdc_state_entries_to_delete, slot_entries_to_be_deleted),
         "Unable to cleanup CDC State table metadata");
 
     if (GetAtomicFlag(&FLAGS_cdcsdk_enable_cleanup_of_expired_table_entries) &&
@@ -3542,20 +3479,13 @@ void CDCServiceImpl::UpdateXClusterReplicationMaps(
 
 Status CDCServiceImpl::DeleteCDCStateTableMetadata(
     const TabletIdStreamIdSet& cdc_state_entries_to_delete,
-    const std::unordered_set<TabletId>& failed_tablet_ids,
     const StreamIdSet& slot_entries_to_be_deleted) {
   // Iterating over set and deleting entries from the cdc_state table.
   for (const auto& [tablet_id, stream_id] : cdc_state_entries_to_delete) {
-    if (failed_tablet_ids.contains(tablet_id)) {
-      VLOG(2) << "We cannot delete the entry for the tablet: " << tablet_id
-              << ", from cdc_state table yet. Since we encounterted failures while "
-                 "propogating the checkpoint of OpId::Max to all the tablet peers";
-      continue;
-    }
     auto tablet_peer_result = GetServingTablet(tablet_id);
     if (!tablet_peer_result.ok()) {
-      VLOG(2) << "Could not delete the entry for stream" << stream_id << " and the tablet "
-              << tablet_id;
+      VLOG(2) << "Could not delete the metric object for CDC state table entry for stream "
+              << stream_id << " and the tablet " << tablet_id;
       continue;
     }
     if ((*tablet_peer_result)->IsLeaderAndReady()) {
