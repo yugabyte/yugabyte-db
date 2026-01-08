@@ -32,7 +32,7 @@ To obtain your API token:
 
 1. Under **API Key management**, copy your API token. If the **API Token** field is blank, click **Generate Key**, and then copy the resulting API token.
 
-To obtain your API token using the REST API, you can use the Auth token generated when you sign in. By default, Auth tokens expire after 12 hours (you can configure Auth token expiry using the `yb.authtoken.token_expiry` [runtime configuration](../administer-yugabyte-platform/manage-runtime-config/)).
+To obtain your API token using the REST API, you can use the Auth token generated when you sign in. (By default, Auth tokens expire after 12 hours.)
 
 Do the following:
 
