@@ -2484,11 +2484,11 @@ If specified, `des_ts_uuid` becomes the new leader. If the argument is empty (`"
 
 ### Cluster balancing commands
 
-For information on YB-Master cluster balancing, see [Cluster balancing](../../architecture/yb-master/#cluster-balancing).
+YugabyteDB automatically balances the cluster via the [YB-Master](../../architecture/yb-master/) service. The following manual commands are for advanced use cases.
+
+For detailed information on automatic cluster balancing scenarios, monitoring, and configuration, see [Cluster balancing](../../architecture/docdb-sharding/cluster-balancing/).
 
 For YB-Master cluster balancing flags, see [Cluster balancing flags](../../reference/configuration/yb-master/#cluster-balancing-flags).
-
-For detailed information on automatic cluster balancing scenarios, monitoring, and configuration, see [Cluster balancing](../../architecture/docdb-sharding/cluster-balancing/). Note that YugabyteDB automatically balances the cluster; these manual commands are for advanced use cases.
 
 #### set_load_balancer_enabled
 
