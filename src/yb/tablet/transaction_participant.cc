@@ -177,9 +177,11 @@ YB_STRONGLY_TYPED_BOOL(PostApplyCleanup);
 
 ash::WaitStateInfoPtr InitMinRunningHybridTimeWaitState() {
   auto bg_wait_state = ash::WaitStateInfo::CreateIfAshIsEnabled<ash::WaitStateInfo>();
-  bg_wait_state->set_root_request_id(yb::Uuid::Generate());
-  bg_wait_state->set_query_id(
-      std::to_underlying(yb::ash::FixedQueryId::kQueryIdForMinRunningHybridTime));
+  if (bg_wait_state) {
+    bg_wait_state->set_root_request_id(yb::Uuid::Generate());
+    bg_wait_state->set_query_id(
+        std::to_underlying(yb::ash::FixedQueryId::kQueryIdForMinRunningHybridTime));
+  }
   return bg_wait_state;
 }
 
