@@ -59,6 +59,7 @@ DECLARE_string(ysql_pg_conf_csv);
 DECLARE_int32(ysql_sequence_cache_minval);
 
 DECLARE_bool(TEST_force_get_checkpoint_from_cdc_state);
+DECLARE_int32(TEST_pause_at_start_of_setup_replication_group_ms);
 DECLARE_string(TEST_skip_async_insert_packed_schema_for_tablet_id);
 DECLARE_bool(TEST_skip_oid_advance_on_restore);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_cache_connection);
@@ -223,6 +224,51 @@ TEST_F(XClusterDDLReplicationTest, YB_NEVER_DEBUG_TEST(CheckpointMultipleDatabas
   google::SetVLOGLevel("async_rpc_tests", 1);
   google::SetVLOGLevel("async_rpc_tests_base", 4);
   ASSERT_OK(CheckpointReplicationGroupOnNamespaces(namespaces));
+}
+
+TEST_F(
+    XClusterDDLReplicationTest, ConcurrentCreateTablesWithMultipleDatabasesInSameReplicationGroup) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  // Create an extra database and add both databases to replication.
+  const auto namespace_name2 = namespace_name + "2";
+  auto [source_db2_id, target_db2_id] =
+      ASSERT_RESULT(CreateDatabaseOnBothClusters(namespace_name2));
+  ASSERT_OK(AddDatabaseToReplication(source_db2_id, target_db2_id));
+
+  // Pause replication so we can queue up concurrent create table commands.
+  ASSERT_OK(ToggleUniverseReplication(
+      consumer_cluster(), consumer_client(), kReplicationGroupId, false /* is_enabled */));
+
+  // Create a table with a unique constraint in each database.
+  // This will create a table plus an index in each db, which will require two alter replication
+  // requests per command.
+  const auto kTableName = "tbl_with_unique";
+  for (auto db_name : {namespace_name, namespace_name2}) {
+    auto pconn = ASSERT_RESULT(producer_cluster_.ConnectToDB(db_name));
+    ASSERT_OK(
+        pconn.ExecuteFormat("CREATE TABLE $0(key int PRIMARY KEY, value int unique)", kTableName));
+  }
+
+  // Add a 10s delay to setup creation. This will cause the two table creates to collide, as they
+  // will both attempt to alter the same replication group.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_at_start_of_setup_replication_group_ms) = 10000;
+
+  // Resume replication, ensure that we don't get stuck.
+  ASSERT_OK(ToggleUniverseReplication(
+      consumer_cluster(), consumer_client(), kReplicationGroupId, true /* is_enabled */));
+  ASSERT_OK(
+      WaitForSafeTimeToAdvanceToNow(std::vector<NamespaceName>{namespace_name, namespace_name2}));
+
+  // Verify replication is working.
+  for (auto db_name : {namespace_name, namespace_name2}) {
+    auto pconn = ASSERT_RESULT(producer_cluster_.ConnectToDB(db_name));
+    ASSERT_OK(pconn.ExecuteFormat(
+        "INSERT INTO $0 SELECT i FROM generate_series(1, 100) as i", kTableName));
+  }
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifyWrittenRecords(std::vector<TableName>{kTableName}, namespace_name));
+  ASSERT_OK(VerifyWrittenRecords(std::vector<TableName>{kTableName}, namespace_name2));
 }
 
 TEST_F(XClusterDDLReplicationTest, YB_DISABLE_TEST_ON_MACOS(SurviveRestarts)) {

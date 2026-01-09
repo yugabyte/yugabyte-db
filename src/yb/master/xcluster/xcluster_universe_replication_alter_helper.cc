@@ -22,6 +22,11 @@
 #include "yb/master/xcluster/xcluster_manager.h"
 #include "yb/master/xcluster/xcluster_replication_group.h"
 #include "yb/master/xcluster/xcluster_universe_replication_setup_helper.h"
+#include "yb/util/backoff_waiter.h"
+
+DEFINE_RUNTIME_uint32(xcluster_alter_universe_replication_setup_timeout_ms, 10 * 60 * 1000,
+    "Maximum time in milliseconds to wait for setup replication to complete when altering "
+    "universe replication.");
 
 namespace yb::master {
 
@@ -294,8 +299,33 @@ Status AlterUniverseReplicationHelper::AddTablesToReplication(
     }
   }
 
-  // 2. Run the 'setup_replication' pipeline on the ALTER Table.
-  return xcluster_manager_.SetupUniverseReplication(std::move(setup_data), epoch_);
+  return RunSetupUniverseReplication(std::move(setup_data));
+}
+
+Status AlterUniverseReplicationHelper::RunSetupUniverseReplication(
+    const XClusterSetupUniverseReplicationData& setup_data) {
+  // Run the 'setup_replication' pipeline on the ALTER replication group.
+  auto timeout =
+      MonoDelta::FromMilliseconds(FLAGS_xcluster_alter_universe_replication_setup_timeout_ms);
+  // TODO: This wait should be async.
+  return LoggedWaitFor(
+      [&]() -> Result<bool> {
+        auto s = xcluster_manager_.SetupUniverseReplication(
+            XClusterSetupUniverseReplicationData(setup_data), epoch_);
+        if (!s.ok()) {
+          if (s.IsTryAgain()) {
+            // There currently exists a task running for this replication group (eg from a different
+            // database). We can wait and try again.
+            YB_LOG_EVERY_N_SECS(INFO, 10)
+                << __func__ << " Found existing setup task for replication group "
+                << setup_data.replication_group_id << ". Waiting and trying again. " << s;
+            return false;
+          }
+          return s;
+        }
+        return true;
+      },
+      timeout, Format("Waiting for setup replication of $0", setup_data.replication_group_id));
 }
 
 }  // namespace yb::master
