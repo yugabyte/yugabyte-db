@@ -353,6 +353,7 @@ public class YbcBackupUtilTest extends FakeDBApplication {
     tableParams.backupType = TableType.PGSQL_TABLE_TYPE;
     tableParams.setBackupStats(true);
     tableParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    tableParams.setEnableBackupsDuringDDL(true);
     String backupKeys = TestUtils.readResource(filePath);
     ObjectMapper mapper = new ObjectMapper();
     ObjectNode keysNode = mapper.readValue(backupKeys, ObjectNode.class);
@@ -375,16 +376,17 @@ public class YbcBackupUtilTest extends FakeDBApplication {
     BackupServiceTaskExtendedArgs extArgs = ybcBackupUtil.getExtendedArgsForBackup(params);
     assertEquals(true, extArgs.getUseTablespaces());
     assertEquals(false, extArgs.getDumpStatistics()); // Version does not support stats dump
+    assertEquals(false, extArgs.getUseReadTimeYsqlDump()); // Version does not support read time
     assertEquals(mapper.writeValueAsString(backupConfig), extArgs.getBackupConfigData());
   }
 
   @Test
   @Parameters(value = {"backup/ybc_extended_args_backup_keys.json"})
-  public void testGetExtendedBackupArgsDumpStatsAllowed(String filePath) throws Exception {
+  public void testGetExtendedBackupStatsDumpReadTimeAllowed(String filePath) throws Exception {
     UniverseUpdater updater =
         u -> {
           UniverseDefinitionTaskParams params = u.getUniverseDetails();
-          params.getPrimaryCluster().userIntent.ybSoftwareVersion = "2025.2.0.0-b1";
+          params.getPrimaryCluster().userIntent.ybSoftwareVersion = "2025.2.1.0-b1";
         };
     defaultUniverse = Universe.saveDetails(defaultUniverse.getUniverseUUID(), updater);
     BackupTableParams tableParams = new BackupTableParams();
@@ -393,6 +395,7 @@ public class YbcBackupUtilTest extends FakeDBApplication {
     tableParams.backupUuid = UUID.randomUUID();
     tableParams.backupType = TableType.PGSQL_TABLE_TYPE;
     tableParams.setBackupStats(true);
+    tableParams.setEnableBackupsDuringDDL(true);
     tableParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     String backupKeys = TestUtils.readResource(filePath);
     ObjectMapper mapper = new ObjectMapper();
@@ -415,6 +418,7 @@ public class YbcBackupUtilTest extends FakeDBApplication {
     BackupTableYbc.Params params = new BackupTableYbc.Params(tableParams, null, defaultUniverse);
     BackupServiceTaskExtendedArgs extArgs = ybcBackupUtil.getExtendedArgsForBackup(params);
     assertEquals(true, extArgs.getUseTablespaces());
+    assertEquals(true, extArgs.getUseReadTimeYsqlDump());
     assertEquals(true, extArgs.getDumpStatistics());
   }
 

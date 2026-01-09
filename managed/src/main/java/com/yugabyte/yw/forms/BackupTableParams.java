@@ -357,6 +357,7 @@ public class BackupTableParams extends TableManagerParams {
     this.revertToPreRolesBehaviour = tableParams.getRevertToPreRolesBehaviour();
     this.dumpRoleChecks = tableParams.getDumpRoleChecks();
     this.backupStats = tableParams.getBackupStats();
+    this.enableBackupsDuringDDL = tableParams.getEnableBackupsDuringDDL();
   }
 
   @JsonIgnore
