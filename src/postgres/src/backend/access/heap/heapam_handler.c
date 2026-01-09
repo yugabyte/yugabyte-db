@@ -47,6 +47,7 @@
 
 /* YB includes */
 #include "access/yb_scan.h"
+#include "pg_yb_utils.h"
 
 static void reform_and_rewrite_tuple(HeapTuple tuple,
 									 Relation OldHeap, Relation NewHeap,
@@ -1261,15 +1262,27 @@ heapam_index_build_range_scan(Relation heapRelation,
 		else
 			snapshot = SnapshotAny;
 
-		scan = table_beginscan_strat(heapRelation,	/* relation */
-									 snapshot,	/* snapshot */
-									 0, /* number of keys */
-									 NULL,	/* scan key */
-									 true,	/* buffer access strategy OK */
-									 allow_sync);	/* syncscan OK? */
-		if (IsYBRelation(heapRelation))
+		if (IsYBRelation(heapRelation) &&
+			yb_enable_index_backfill_column_projection)
 		{
+			/*
+			 * For YB relations, use the optimized scan function that only
+			 * fetches columns needed by the index. This avoids reading the
+			 * entire row from DocDB during index build/backfill.
+			 */
+			uint32		flags = SO_TYPE_SEQSCAN | SO_ALLOW_PAGEMODE |
+								SO_ALLOW_STRAT;
 			YbcPgExecParameters *exec_params = &estate->yb_exec_params;
+
+			if (allow_sync)
+				flags |= SO_ALLOW_SYNC;
+
+			scan = ybc_heap_beginscan_for_index_build(heapRelation,
+													  snapshot,
+													  0, /* number of keys */
+													  NULL, /* scan key */
+													  flags,
+													  indexInfo);
 
 			if (bfinfo)
 			{
@@ -1283,6 +1296,15 @@ heapam_index_build_range_scan(Relation heapRelation,
 			}
 
 			((YbScanDesc) scan)->exec_params = exec_params;
+		}
+		else
+		{
+			scan = table_beginscan_strat(heapRelation,	/* relation */
+										 snapshot,	/* snapshot */
+										 0, /* number of keys */
+										 NULL,	/* scan key */
+										 true,	/* buffer access strategy OK */
+										 allow_sync);	/* syncscan OK? */
 		}
 	}
 	else
