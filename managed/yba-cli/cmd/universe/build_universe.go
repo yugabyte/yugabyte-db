@@ -415,18 +415,29 @@ func buildClusters(
 
 	accessKeyCode := v1.GetString("access-key-code")
 
+	// Check if provider is on-prem with skipProvisioning enabled
+	providerDetails := providerUsed.GetDetails()
+	isOnpremManualProvisioning := providerType == util.OnpremProviderType &&
+		providerDetails.GetSkipProvisioning()
+
 	if len(accessKeyCode) == 0 && providerType != util.K8sProviderType {
 		r, response, err := authAPI.List(providerUUID).Execute()
 		if err != nil {
 			util.FatalHTTPError(response, err, "Universe", "Create - Fetch Access Keys")
 		}
 		if len(r) < 1 {
-			return nil, fmt.Errorf("no Access keys found")
+			// Access keys are optional for on-prem providers with skipProvisioning enabled
+			if !isOnpremManualProvisioning {
+				return nil, fmt.Errorf("no Access keys found")
+			}
+			logrus.Info("No access keys found, continuing without access key " +
+				"(on-prem manual provisioning)\n")
+		} else {
+			idKey := r[0].GetIdKey()
+			accessKeyCode = idKey.GetKeyCode()
+			logrus.Info("Using access key: ",
+				formatter.Colorize(accessKeyCode, formatter.GreenColor), "\n")
 		}
-		idKey := r[0].GetIdKey()
-		accessKeyCode = idKey.GetKeyCode()
-		logrus.Info("Using access key: ",
-			formatter.Colorize(accessKeyCode, formatter.GreenColor), "\n")
 	} else if len(accessKeyCode) > 0 {
 		logrus.Info("Using access key: ",
 			formatter.Colorize(accessKeyCode, formatter.GreenColor), "\n")
