@@ -9,8 +9,11 @@ import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -77,8 +80,14 @@ public class NodeAgentPollerTest extends FakeDBApplication {
     customer = ModelFactory.testCustomer();
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.nodeAgentPollerInterval)))
         .thenReturn(Duration.ofSeconds(3));
+    when(mockFileHelperService.createTempFile(anyString(), anyString()))
+        .thenReturn(Paths.get("/tmp/tmpfile.sh"));
     certificateHelper = new CertificateHelper(mockConfGetter);
-    nodeAgentManager = new NodeAgentManager(mockAppConfig, mockConfigHelper, certificateHelper);
+    nodeAgentManager =
+        spy(
+            new NodeAgentManager(
+                mockAppConfig, mockConfigHelper, certificateHelper, mockFileHelperService));
+    doReturn(new byte[1]).when(nodeAgentManager).getInstallerScript();
     nodeAgentHandler =
         new NodeAgentHandler(mockCommissioner, nodeAgentManager, mockNodeAgentClient);
     nodeAgentPoller =
@@ -232,7 +241,7 @@ public class NodeAgentPollerTest extends FakeDBApplication {
     assertEquals(State.READY, nodeAgent.getState());
     assertFalse("Merged cert file still exists", mergedCertFile.toFile().exists());
     assertFalse("Cert dir is not updated", certDir.equals(newCertDirPath));
-    verify(mockNodeAgentClient, times(3)).uploadFile(any(), any(), any(), any(), anyInt(), any());
+    verify(mockNodeAgentClient, times(4)).uploadFile(any(), any(), any(), any(), anyInt(), any());
     verify(mockNodeAgentClient, times(1)).startUpgrade(any(), any());
     verify(mockNodeAgentClient, times(2)).finalizeUpgrade(any());
   }

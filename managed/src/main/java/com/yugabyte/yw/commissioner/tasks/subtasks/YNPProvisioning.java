@@ -73,7 +73,7 @@ public class YNPProvisioning extends AbstractTaskBase {
     return (Params) taskParams;
   }
 
-  public void getProvisionArguments(
+  public void generateProvisionConfig(
       Universe universe,
       NodeDetails node,
       Provider provider,
@@ -236,6 +236,8 @@ public class YNPProvisioning extends AbstractTaskBase {
       shellContext = shellContext.toBuilder().sshUser(taskParams().sshUser).build();
     }
     Path nodeAgentHomePath = Paths.get(taskParams().nodeAgentInstallDir, NodeAgent.NODE_AGENT_DIR);
+    Path nodeAgentScriptsPath = nodeAgentHomePath.resolve("scripts");
+
     Provider provider =
         Provider.getOrBadRequest(
             UUID.fromString(universe.getCluster(node.placementUuid).userIntent.provider));
@@ -247,11 +249,12 @@ public class YNPProvisioning extends AbstractTaskBase {
             .toString();
     String tmpDirectory =
         fileHelperService.createTempFile(node.cloudInfo.private_ip + "-", ".json").toString();
-    getProvisionArguments(universe, node, provider, tmpDirectory, nodeAgentHomePath);
+    generateProvisionConfig(universe, node, provider, tmpDirectory, nodeAgentHomePath);
     nodeUniverseManager.uploadFileToNode(
         node, universe, tmpDirectory, targetConfigPath, "755", shellContext);
+    // Copy the conf file to scripts folder and run the provisioning script as in manual onprem.
     StringBuilder sb = new StringBuilder();
-    sb.append("cd ").append(nodeAgentHomePath);
+    sb.append("cd ").append(nodeAgentScriptsPath);
     sb.append(" && mv -f ").append(targetConfigPath);
     sb.append(" config.json && chmod +x node-agent-provision.sh");
     sb.append(" && ./node-agent-provision.sh --extra_vars config.json");

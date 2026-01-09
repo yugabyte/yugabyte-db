@@ -200,7 +200,8 @@ public class InstallNodeAgent extends NodeTaskBase {
             });
 
     Path nodeAgentInstallPath = nodeAgentHomePath.getParent();
-    Path nodeAgentInstallerPath = nodeAgentHomePath.resolve("node-agent-installer.sh");
+    Path nodeAgentInstallerPath =
+        nodeAgentHomePath.resolve(Paths.get("bin", NodeAgentManager.NODE_AGENT_INSTALLER_FILE));
 
     sb.setLength(0);
     // Restore directory permissions.
