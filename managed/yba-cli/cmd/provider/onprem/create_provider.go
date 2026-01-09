@@ -135,6 +135,11 @@ var createOnpremProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
+		useClockbound, err := cmd.Flags().GetBool("use-clockbound")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
 		ntpServers, err := cmd.Flags().GetStringArray("ntp-servers")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -168,7 +173,8 @@ var createOnpremProviderCmd = &cobra.Command{
 				AirGapInstall: util.GetBoolPointer(airgapInstall),
 				CloudInfo: &ybaclient.CloudInfo{
 					Onprem: &ybaclient.OnPremCloudInfo{
-						YbHomeDir: util.GetStringPointer(ybHomeDir),
+						YbHomeDir:     util.GetStringPointer(ybHomeDir),
+						UseClockbound: util.GetBoolPointer(useClockbound),
 					},
 				},
 				InstallNodeExporter:    util.GetBoolPointer(installNodeExporter),
@@ -257,6 +263,9 @@ func init() {
 			"as comma-separated values.")
 	createOnpremProviderCmd.Flags().String("yb-home-dir", "",
 		"[Optional] YB Home directory.")
+	createOnpremProviderCmd.Flags().Bool("use-clockbound", false,
+		"[Optional] Configure and use ClockBound for clock synchronization. "+
+			"Requires ClockBound to be set up on the nodes. (default false)")
 
 }
 

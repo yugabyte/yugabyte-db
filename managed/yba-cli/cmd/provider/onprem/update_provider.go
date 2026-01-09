@@ -104,6 +104,15 @@ var updateOnpremProviderCmd = &cobra.Command{
 			onpremCloudInfo.SetYbHomeDir(ybHomeDir)
 		}
 
+		if cmd.Flags().Changed("use-clockbound") {
+			logrus.Debug("Updating use clockbound\n")
+			useClockbound, err := cmd.Flags().GetBool("use-clockbound")
+			if err != nil {
+				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			}
+			onpremCloudInfo.SetUseClockbound(useClockbound)
+		}
+
 		cloudInfo.SetOnprem(onpremCloudInfo)
 		details.SetCloudInfo(cloudInfo)
 
@@ -324,6 +333,9 @@ func init() {
 			"as comma-separated values.")
 	updateOnpremProviderCmd.Flags().String("yb-home-dir", "",
 		"[Optional] YB Home directory.")
+	updateOnpremProviderCmd.Flags().Bool("use-clockbound", false,
+		"[Optional] Configure and use ClockBound for clock synchronization. "+
+			"Requires ClockBound to be set up on the nodes.")
 
 }
 
