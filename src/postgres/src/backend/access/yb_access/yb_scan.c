@@ -3827,7 +3827,7 @@ ybc_heap_endscan(TableScanDesc tsdesc)
  *
  * Unlike the regular heap scan which fetches all columns, this function
  * only requests the columns needed for the index:
- *   - Columns referenced in ii_IndexAttrNumbers (direct index columns)
+ *   - Columns referenced in ii_IndexAttrNumbers (index key and non-key columns)
  *   - Columns referenced in ii_Expressions (expression index columns)
  *   - Columns referenced in ii_Predicate (partial index predicate)
  *   - ybctid (always needed for index entry construction)
