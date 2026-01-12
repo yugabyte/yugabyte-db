@@ -6652,6 +6652,8 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap, LOCKMODE lockmode)
 		ListCell   *lc;
 		Snapshot	snapshot;
 
+		bool		yb_rollback_tupledesc_refcount = false;
+
 		if (newrel)
 			ereport(DEBUG1,
 					(errmsg_internal("rewriting table \"%s\"",
@@ -6730,7 +6732,27 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap, LOCKMODE lockmode)
 		 * set up the YB scan using the old tuple desc.
 		 */
 		if (IsYBRelation(oldrel) && tab->rewrite & AT_REWRITE_COLUMN_REWRITE)
+		{
+			/*
+			 * If the oldTupDesc is not reference-counted, mark it as
+			 * reference-counted temporarily. This is because tuple descriptors
+			 * linked with the Relation object are meant to be
+			 * reference-counted. If we don't do that, then we get a crash while
+			 * invalidating relcache entries during the processing of
+			 * invalidation messages at the time of transaction abort in case of
+			 * failures in table rewrite below. The crash happens because of the
+			 * assumption that tupledesc stored in a Relation object are
+			 * reference-counted leading to a failed assert in
+			 * RelationDestroyRelation.
+			 */
+			if (oldTupDesc->tdrefcount == -1)
+			{
+				yb_rollback_tupledesc_refcount = true;
+				oldTupDesc->tdrefcount = 1;
+			}
+
 			oldrel->rd_att = oldTupDesc;
+		}
 		scan = table_beginscan(oldrel, snapshot, 0, NULL);
 
 		/*
@@ -6904,8 +6926,13 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap, LOCKMODE lockmode)
 		UnregisterSnapshot(snapshot);
 
 		if (IsYBRelation(oldrel) && tab->rewrite & AT_REWRITE_COLUMN_REWRITE)
+		{
+			if (yb_rollback_tupledesc_refcount)
+				oldrel->rd_att->tdrefcount = -1;
+
 			/* Revert back to the new tuple desc */
 			oldrel->rd_att = newTupDesc;
+		}
 
 		ExecDropSingleTupleTableSlot(oldslot);
 		if (newslot)
