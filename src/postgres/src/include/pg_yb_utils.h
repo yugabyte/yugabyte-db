@@ -551,7 +551,6 @@ extern bool yb_enable_update_reltuples_after_create_index;
  * Enables index backfill column projection optimization.
  * If true, index build/backfill only reads columns needed for the index,
  * rather than all columns from the base table.
- * Default is false (beta feature).
  */
 extern bool yb_enable_index_backfill_column_projection;
 

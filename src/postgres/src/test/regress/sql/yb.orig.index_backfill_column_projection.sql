@@ -5,7 +5,7 @@
 -- (GitHub issue: #29906)
 --
 
--- Enable the beta feature flag for this test
+-- Explicitly enable the feature flag for this test (default is already true)
 SET yb_enable_index_backfill_column_projection = true;
 
 -- Test 1: Simple index on a table with many columns
