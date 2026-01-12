@@ -37,7 +37,7 @@
 #include "yb/rpc/service_if.h"
 
 #include "yb/server/server_base.h"
-#include "yb/server/ycql_stat_provider.h"
+#include "yb/server/ycql_server_external_if.h"
 #include "yb/tserver/tserver_fwd.h"
 
 #include "yb/util/status_fwd.h"
@@ -61,7 +61,7 @@ namespace cqlserver {
 
 class CQLServiceImpl;
 
-class CQLServer : public server::RpcAndWebServerBase, public server::YCQLStatementStatsProvider {
+class CQLServer : public server::RpcAndWebServerBase, public server::YCQLServerExternalInterface {
  public:
   static const uint16_t kDefaultPort = 9042;
   static const uint16_t kDefaultWebPort = 12000;
@@ -80,6 +80,8 @@ class CQLServer : public server::RpcAndWebServerBase, public server::YCQLStateme
 
   Status YCQLStatementStats(const tserver::PgYCQLStatementStatsRequestPB& req,
       tserver::PgYCQLStatementStatsResponsePB* resp) const override;
+
+  void ClearMetaDataCache() const override;
 
   std::shared_ptr<CQLServiceImpl> TEST_cql_service() const { return cql_service_; }
 

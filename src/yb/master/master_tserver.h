@@ -101,7 +101,7 @@ class MasterTabletServer : public tserver::TabletServerIf,
   void SetPublisher(rpc::Publisher service) override;
 
   void SetCQLServer(yb::server::RpcAndWebServerBase* server,
-      server::YCQLStatementStatsProvider* stmt_provider) override {
+      server::YCQLServerExternalInterface* cql_server_if) override {
     LOG_WITH_FUNC(FATAL) << "should not be called on the master";
   }
 
@@ -125,6 +125,8 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
   Status YCQLStatementStats(const tserver::PgYCQLStatementStatsRequestPB& req,
       tserver::PgYCQLStatementStatsResponsePB* resp) const override;
+
+  Status ClearYCQLMetaDataCache() override;
 
   virtual Result<std::vector<tablet::TabletStatusPB>> GetLocalTabletsMetadata() const override;
 
