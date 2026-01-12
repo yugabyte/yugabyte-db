@@ -1567,11 +1567,13 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 			else if (!is_for_precheck)
 			{
 				ScanKey current = subkeys[subkey_index];
+				AttrNumber	attnum =
+					scan_plan->bind_key_attnums[skey_index + 1 + subkey_index];
 				col_values[j] =
 					YBCNewConstant(
 						ybScan->handle,
 						ybc_get_atttypid(scan_plan->bind_desc,
-										 scan_plan->bind_key_attnums[current->sk_attno]),
+										 attnum),
 						current->sk_collation,
 						current->sk_argument,
 						false);
