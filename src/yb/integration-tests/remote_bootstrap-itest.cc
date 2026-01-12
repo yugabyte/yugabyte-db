@@ -1818,6 +1818,27 @@ TEST_F(RemoteBootstrapITest, TestRemoteBootstrapFromClosestPeer) {
   crash_test_workload_->StopAndJoin();
 }
 
+TEST_F(RemoteBootstrapITest, TestFailedCheckpointsGetCleared) {
+  RemoteBootstrapITest::BootstrapFromClosestPeerSetUp();
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_rbs_fail_checkpoint",
+                                        "True"));
+  // Leader blacklist the Tablet Server in zone "z2".
+  ASSERT_OK(cluster_->AddTServerToLeaderBlacklist(
+      cluster_->GetLeaderMaster(), cluster_->tablet_server(2)));
+
+  LogWaiter log_waiter(cluster_->tablet_server(1), "FLAGS_TEST_rbs_fail_checkpoint set");
+  crash_test_workload_->Start();
+  AddTServerInZone("z1");
+  ASSERT_OK(cluster_->WaitForTabletServerCount(4, MonoDelta::FromSeconds(20)));
+  ASSERT_OK(cluster_->WaitForMasterToMarkTSAlive(3));
+  ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(10 * kTimeMultiplier)));
+  ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(3, crash_test_tablet_id_, TABLET_DATA_READY));
+  crash_test_workload_->StopAndJoin();
+  // This is redundant, yet set it to ensure tear down invokes the check to verify
+  // failed checkpoints get cleaned up.
+  check_checkpoints_cleared_ = true;
+}
+
 TEST_F(RemoteBootstrapITest, TestRejectRogueLeaderKeyValueType) {
   RejectRogueLeader(YBTableType::YQL_TABLE_TYPE);
 }
