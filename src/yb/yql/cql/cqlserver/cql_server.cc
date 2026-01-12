@@ -16,6 +16,7 @@
 #include <boost/bind.hpp>
 
 #include "yb/client/client.h"
+#include "yb/client/meta_data_cache.h"
 
 #include "yb/gutil/strings/substitute.h"
 
@@ -247,6 +248,10 @@ Status CQLServer::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
 Status CQLServer::YCQLStatementStats(const tserver::PgYCQLStatementStatsRequestPB& req,
       tserver::PgYCQLStatementStatsResponsePB* resp) const {
   return cql_service_->YCQLStatementStats(req, resp);
+}
+
+void CQLServer::ClearMetaDataCache() const {
+  cql_service_->metadata_cache()->Reset();
 }
 
 }  // namespace cqlserver

@@ -22,12 +22,14 @@ class PgYCQLStatementStatsResponsePB;
 
 namespace server {
 
-class YCQLStatementStatsProvider {
+class YCQLServerExternalInterface {
  public:
   virtual Status YCQLStatementStats(const tserver::PgYCQLStatementStatsRequestPB& req,
       tserver::PgYCQLStatementStatsResponsePB* resp) const = 0;
 
-  virtual ~YCQLStatementStatsProvider() = default;
+  virtual void ClearMetaDataCache() const = 0;
+
+  virtual ~YCQLServerExternalInterface() = default;
 };
 
 }  // namespace server
