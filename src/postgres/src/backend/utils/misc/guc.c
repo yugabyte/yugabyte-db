@@ -2592,6 +2592,17 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_pg_export_snapshot", PGC_SIGHUP, DEVELOPER_OPTIONS,
+			gettext_noop("Enable pg_export_snapshot and SET TRANSACTION SNAPSHOT for synchronizing snapshots across transactions."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_pg_export_snapshot,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_enable_replication_slot_consumption", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Enable consumption of changes via replication slots. "
 						 "This feature is currently in active development and "

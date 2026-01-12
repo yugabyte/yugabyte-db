@@ -8684,8 +8684,7 @@ TEST_F(CDCSDKYsqlTest, TestCDCStateEntryForReplicationSlot) {
   // cdc_state entry for the replication slot should only be seen when replication commands are
   // enabled and a consistent_snapshot stream is created.
   auto cdc_state_table = MakeCDCStateTable(test_client());
-  auto stream_id_1 = ASSERT_RESULT(
-      CreateConsistentSnapshotStreamWithReplicationSlot(CDCSDKSnapshotOption::USE_SNAPSHOT));
+  auto stream_id_1 = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
   auto checkpoint = ASSERT_RESULT(GetCDCSDKSnapshotCheckpoint(stream_id_1, tablets[0].tablet_id()));
   auto entry_1 = ASSERT_RESULT(cdc_state_table.TryFetchEntry(
       {kCDCSDKSlotEntryTabletId, stream_id_1}, CDCStateTableEntrySelector().IncludeAll()));
@@ -11585,10 +11584,10 @@ TEST_F(CDCSDKYsqlTest, TestSlotNameInCDCMetricsAttributes) {
   ASSERT_EQ(tablets_2.size(), 1);
 
   std::string slot_name = "test_slot";
-  auto stream_id_with_slot = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(
-      slot_name, CDCSDKSnapshotOption::USE_SNAPSHOT, false /*verify_snapshot_name*/,
-      kNamespaceName));
+  auto stream_id_with_slot =
+      ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(slot_name));
 
+  // USE_SNAPSHOT through RPC path works without transaction
   auto stream_id_without_slot = ASSERT_RESULT(CreateConsistentSnapshotStream(
       CDCSDKSnapshotOption::USE_SNAPSHOT, CDCCheckpointType::EXPLICIT, CDCRecordType::CHANGE,
       kNamespaceName_2));
@@ -12043,7 +12042,7 @@ TEST_F(CDCSDKYsqlTest, TestDropIndexWithColocatedTable) {
   ASSERT_EQ(tablets.size(), 1);
 
   auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream(
-      CDCSDKSnapshotOption::USE_SNAPSHOT, CDCCheckpointType::EXPLICIT, CDCRecordType::ALL));
+      CDCSDKSnapshotOption::EXPORT_SNAPSHOT, CDCCheckpointType::EXPLICIT, CDCRecordType::ALL));
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
 
   // Add a column and create index on that column.
@@ -12161,8 +12160,7 @@ TEST_F(CDCSDKYsqlTest, TestYbRestartCommitTimeInPgReplicationSlots) {
   ASSERT_EQ(tablets.size(), 3);
 
   auto cdc_state_table = MakeCDCStateTable(test_client());
-  auto stream_id = ASSERT_RESULT(
-      CreateConsistentSnapshotStreamWithReplicationSlot(CDCSDKSnapshotOption::USE_SNAPSHOT));
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
   auto checkpoint = ASSERT_RESULT(GetCDCSDKSnapshotCheckpoint(stream_id, tablets[0].tablet_id()));
 
   auto entry = ASSERT_RESULT(cdc_state_table.TryFetchEntry(

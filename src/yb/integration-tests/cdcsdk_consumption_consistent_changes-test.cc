@@ -407,8 +407,8 @@ void CDCSDKConsumptionConsistentChangesTest::TestConcurrentConsumptionFromMultip
 
 TEST_F(
     CDCSDKConsumptionConsistentChangesTest,
-    TestParallelConsumptionFromMultipleVWALWithUseSnapshot) {
-  TestConcurrentConsumptionFromMultipleVWAL(CDCSDKSnapshotOption::USE_SNAPSHOT);
+    TestParallelConsumptionFromMultipleVWALWithExportSnapshot) {
+  TestConcurrentConsumptionFromMultipleVWAL(CDCSDKSnapshotOption::EXPORT_SNAPSHOT);
 }
 
 TEST_F(
@@ -3701,7 +3701,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCreationOfSlotOnNewDBAfterUpg
   auto table_2 = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName_2, "t1"));
   auto conn_2 = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName_2));
   xrepl::StreamId stream_id_2 = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(
-      "test_slot", CDCSDKSnapshotOption::USE_SNAPSHOT, false, kNamespaceName_2));
+      "test_slot", CDCSDKSnapshotOption::EXPORT_SNAPSHOT, false, kNamespaceName_2));
 
   auto dynamic_table_1 = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "test_table_2"));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> dynamic_tablets_1;
@@ -3844,7 +3844,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestFailureCreatingStreamsOfDiffe
   ASSERT_EQ(tablets_2.size(), 1);
 
   ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(
-      "test_slot", CDCSDKSnapshotOption::USE_SNAPSHOT, false /*verify_snapshot_name*/,
+      "test_slot", CDCSDKSnapshotOption::EXPORT_SNAPSHOT, false /*verify_snapshot_name*/,
       kNamespaceName));
   // Since a replication slot is created on kNamespace, creation of old model stream should fail.
   ASSERT_NOK(CreateDBStream(CDCCheckpointType::EXPLICIT, CDCRecordType::CHANGE, kNamespaceName));
@@ -3853,7 +3853,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestFailureCreatingStreamsOfDiffe
       CreateDBStream(CDCCheckpointType::EXPLICIT, CDCRecordType::CHANGE, kNamespaceName_2));
   // Since a old model stream is created on kNamespace_2, creation of replication slot should fail.
   ASSERT_NOK(CreateConsistentSnapshotStreamWithReplicationSlot(
-      "test_slot_2", CDCSDKSnapshotOption::USE_SNAPSHOT, false /*verify_snapshot_name*/,
+      "test_slot_2", CDCSDKSnapshotOption::EXPORT_SNAPSHOT, false /*verify_snapshot_name*/,
       kNamespaceName_2));
 }
 
