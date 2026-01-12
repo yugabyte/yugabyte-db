@@ -10,9 +10,15 @@
 
 package com.yugabyte.yw.cloud;
 
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.JsonDeserializer;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.utils.Pair;
+import java.io.IOException;
+import java.util.EnumSet;
 import lombok.Getter;
+import lombok.extern.slf4j.Slf4j;
 
 public class PublicCloudConstants {
 
@@ -74,6 +80,29 @@ public class PublicCloudConstants {
 
     public String getYbcGlob() {
       return ybcGlob;
+    }
+
+    public static Architecture parse(String strType) {
+      for (Architecture arch : EnumSet.allOf(Architecture.class)) {
+        if (arch.name().equalsIgnoreCase(strType)) {
+          return arch;
+        }
+      }
+      throw new IllegalArgumentException("Unknown architecture: " + strType);
+    }
+
+    @Slf4j
+    public static class JSONDeserializer extends JsonDeserializer<Architecture> {
+      @Override
+      public Architecture deserialize(JsonParser p, DeserializationContext ctxt)
+          throws IOException {
+        String text = p.getText();
+        log.trace("Deserializing architecture: {}", text);
+        if (text == null || text.isEmpty()) {
+          return null;
+        }
+        return parse(text);
+      }
     }
   }
 
