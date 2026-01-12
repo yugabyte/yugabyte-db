@@ -1262,8 +1262,7 @@ heapam_index_build_range_scan(Relation heapRelation,
 		else
 			snapshot = SnapshotAny;
 
-		if (IsYBRelation(heapRelation) &&
-			yb_enable_index_backfill_column_projection)
+		if (IsYBRelation(heapRelation) && yb_enable_index_backfill_column_projection)
 		{
 			/*
 			 * For YB relations, use the optimized scan function that only
@@ -1272,7 +1271,6 @@ heapam_index_build_range_scan(Relation heapRelation,
 			 */
 			uint32		flags = SO_TYPE_SEQSCAN | SO_ALLOW_PAGEMODE |
 								SO_ALLOW_STRAT;
-			YbcPgExecParameters *exec_params = &estate->yb_exec_params;
 
 			if (allow_sync)
 				flags |= SO_ALLOW_SYNC;
@@ -1283,19 +1281,6 @@ heapam_index_build_range_scan(Relation heapRelation,
 													  NULL, /* scan key */
 													  flags,
 													  indexInfo);
-
-			if (bfinfo)
-			{
-				if (bfinfo->bfinstr)
-					exec_params->bfinstr = pstrdup(bfinfo->bfinstr);
-				exec_params->backfill_read_time = bfinfo->read_time;
-				exec_params->partition_key =
-					pstrdup(bfinfo->row_bounds->partition_key);
-				exec_params->out_param = bfresult;
-				exec_params->is_index_backfill = true;
-			}
-
-			((YbScanDesc) scan)->exec_params = exec_params;
 		}
 		else
 		{
@@ -1305,6 +1290,25 @@ heapam_index_build_range_scan(Relation heapRelation,
 										 NULL,	/* scan key */
 										 true,	/* buffer access strategy OK */
 										 allow_sync);	/* syncscan OK? */
+		}
+
+		if (IsYBRelation(heapRelation))
+		{
+			YbcPgExecParameters *exec_params = &estate->yb_exec_params;
+
+			if (bfinfo)
+			{
+				if (bfinfo->bfinstr)
+				{
+					exec_params->bfinstr = pstrdup(bfinfo->bfinstr);
+					exec_params->backfill_read_time = bfinfo->read_time;
+					exec_params->partition_key =
+						pstrdup(bfinfo->row_bounds->partition_key);
+					exec_params->out_param = bfresult;
+					exec_params->is_index_backfill = true;
+				}
+			}
+			((YbScanDesc) scan)->exec_params = exec_params;
 		}
 	}
 	else
