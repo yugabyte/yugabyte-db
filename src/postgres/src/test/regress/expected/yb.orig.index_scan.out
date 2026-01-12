@@ -4132,20 +4132,22 @@ select v2 from t1 where k1 = 1 and k2 > 0 and v1 IN (1, 2);
 (0 rows)
 
 drop table t1;
-create table t1(a uuid, b timestamptz, PRIMARY KEY(b asc, a asc));
-insert into t1 values ('00000000-0000-0000-0000-000000000000', '2021-01-01 00:00:00');
-insert into t1 values ('00000000-0000-0000-0000-000000000001', '2021-01-01 00:00:00');
-explain (costs off) select * from t1 where (b, a) >= ('2021-01-01 00:00:00', '00000000-0000-0000-0000-000000000001');
-                                                                QUERY PLAN                                                                
-------------------------------------------------------------------------------------------------------------------------------------------
+-- Test row compares with shuffled column orders (tests internal attnum handling).
+create table t1(y int, a uuid, z text, b timestamptz, PRIMARY KEY(b asc, y, a, z));
+insert into t1 (a, b, y, z) values ('00000000-0000-0000-0000-000000000000', '2021-01-01 00:00:00', 2, 'foo');
+insert into t1 (a, b, y, z) values ('00000000-0000-0000-0000-000000000001', '2021-01-01 00:00:00', 1, 'bar');
+insert into t1 (a, b, y, z) values ('00000000-0000-0000-0000-000000000001', '2021-01-01 00:00:00', 2, 'foo');
+explain (costs off) select * from t1 where (b, a) >= ('2021-01-01 00:00:00', '00000000-0000-0000-0000-000000000001') and (y, z) >= (2, 'baz');
+                                                                                    QUERY PLAN                                                                                     
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Index Scan using t1_pkey on t1
-   Index Cond: (ROW(b, a) >= ROW('Fri Jan 01 00:00:00 2021 PST'::timestamp with time zone, '00000000-0000-0000-0000-000000000001'::uuid))
+   Index Cond: ((ROW(b, a) >= ROW('Fri Jan 01 00:00:00 2021 PST'::timestamp with time zone, '00000000-0000-0000-0000-000000000001'::uuid)) AND (ROW(y, z) >= ROW(2, 'baz'::text)))
 (2 rows)
 
-select * from t1 where (b, a) >= ('2021-01-01 00:00:00', '00000000-0000-0000-0000-000000000001');
-                  a                   |              b               
---------------------------------------+------------------------------
- 00000000-0000-0000-0000-000000000001 | Fri Jan 01 00:00:00 2021 PST
+select * from t1 where (b, a) >= ('2021-01-01 00:00:00', '00000000-0000-0000-0000-000000000001') and (y, z) >= (2, 'baz');
+ y |                  a                   |  z  |              b               
+---+--------------------------------------+-----+------------------------------
+ 2 | 00000000-0000-0000-0000-000000000001 | foo | Fri Jan 01 00:00:00 2021 PST
 (1 row)
 
 drop table t1;
