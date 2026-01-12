@@ -3104,6 +3104,25 @@ TEST_F(XClusterDDLReplicationTableRewriteTest, AddColumnDefaultVolatile) {
   VerifyIndex(kColumn2Name_, /* expected_indexed */ true);
 }
 
+TEST_F(XClusterDDLReplicationTableRewriteTest, AddColumnGeneratedAlwaysAsIdentity) {
+  const std::string kColumn3Name = "new_id";
+
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT i, i%2 FROM generate_series(1, 100) as i;", kBaseTableName_));
+
+  // Ensure that this does not call any sequence functions (e.g. nextval) on the target.
+  // If those were to be called, then the DDL would fail with "Sequence manipulation
+  // functions are forbidden".
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "ALTER TABLE $0 ADD COLUMN $1 INT GENERATED ALWAYS AS IDENTITY;", kBaseTableName_,
+      kColumn3Name));
+
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT i, i%2 FROM generate_series(101, 200) as i;", kBaseTableName_));
+
+  VerifyTableRewrite();
+}
+
 TEST_F(XClusterDDLReplicationTableRewriteTest, AlterColumnType) {
   ASSERT_OK(producer_conn_->ExecuteFormat(
       "INSERT INTO $0 SELECT i, i%2 FROM generate_series(1, 100) as i;", kBaseTableName_));
