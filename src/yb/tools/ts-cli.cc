@@ -82,6 +82,8 @@ using yb::tserver::ClearAllMetaCachesOnServerRequestPB;
 using yb::tserver::ClearAllMetaCachesOnServerResponsePB;
 using yb::tserver::ClearUniverseUuidRequestPB;
 using yb::tserver::ClearUniverseUuidResponsePB;
+using yb::tserver::ClearYCQLMetaDataCacheOnServerRequestPB;
+using yb::tserver::ClearYCQLMetaDataCacheOnServerResponsePB;
 using yb::tserver::CountIntentsRequestPB;
 using yb::tserver::CountIntentsResponsePB;
 using yb::tserver::DeleteTabletRequestPB;
@@ -124,6 +126,7 @@ const char* const kRemoteBootstrapOp = "remote_bootstrap";
 const char* const kListMasterServersOp = "list_master_servers";
 const char* const kClearAllMetaCachesOnServerOp = "clear_server_metacache";
 const char* const kClearUniverseUuidOp = "clear_universe_uuid";
+const char* const kClearYCQLMetaDataCacheOnServerOp = "clear_ycql_metadatacache";
 const char* const kReleaseAllLocksForTxnOp = "unsafe_release_all_locks_for_txn";
 
 DEFINE_NON_RUNTIME_string(server_address,
@@ -275,6 +278,8 @@ class TsAdminClient {
   Status ListMasterServers();
 
   Status ClearAllMetaCachesOnServer();
+
+  Status ClearYCQLMetaDataCacheOnServer();
 
   // Clear Universe Uuid.
   Status ClearUniverseUuid();
@@ -763,6 +768,20 @@ Status TsAdminClient::ClearAllMetaCachesOnServer() {
   return Status::OK();
 }
 
+Status TsAdminClient::ClearYCQLMetaDataCacheOnServer() {
+  CHECK(initted_);
+  tserver::ClearYCQLMetaDataCacheOnServerRequestPB req;
+  tserver::ClearYCQLMetaDataCacheOnServerResponsePB resp;
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(ts_proxy_->ClearYCQLMetaDataCacheOnServer(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  return Status::OK();
+}
+
 Status TsAdminClient::ClearUniverseUuid() {
   CHECK(initted_);
   ClearUniverseUuidRequestPB req;
@@ -835,7 +854,9 @@ void SetUsage(const char* argv0) {
       << "  " << kReloadCertificatesOp << "\n"
       << "  " << kRemoteBootstrapOp << " <server address to bootstrap from> <tablet_id>\n"
       << "  " << kListMasterServersOp << "\n"
+      << "  " << kClearAllMetaCachesOnServerOp << "\n"
       << "  " << kClearUniverseUuidOp << "\n"
+      << "  " << kClearYCQLMetaDataCacheOnServerOp << "\n"
       << "  " << kReleaseAllLocksForTxnOp << " <txn id> [subtxn id]\n";
   google::SetUsageMessage(str.str());
 }
@@ -1073,6 +1094,11 @@ static int TsCliMain(int argc, char** argv) {
 
     RETURN_NOT_OK_PREPEND_FROM_MAIN(
         client.ClearUniverseUuid(), "Unable to clear universe uuid on " + addr);
+  } else if (op == kClearYCQLMetaDataCacheOnServerOp) {
+    CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 2);
+    RETURN_NOT_OK_PREPEND_FROM_MAIN(
+        client.ClearYCQLMetaDataCacheOnServer(),
+        "Unable to clear the YCQL metadata-cache on tablet server with address " + addr);
   } else if (op == kReleaseAllLocksForTxnOp) {
     if (argc < 3) {
       CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 3);

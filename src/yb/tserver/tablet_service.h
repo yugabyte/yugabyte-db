@@ -235,6 +235,11 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
       const ClearMetacacheRequestPB* req, ClearMetacacheResponsePB* resp,
       rpc::RpcContext context) override;
 
+  void ClearYCQLMetaDataCacheOnServer(
+      const ClearYCQLMetaDataCacheOnServerRequestPB* req,
+      ClearYCQLMetaDataCacheOnServerResponsePB* resp,
+      rpc::RpcContext context) override;
+
   void AcquireObjectLocks(
       const AcquireObjectLockRequestPB* req, AcquireObjectLockResponsePB* resp,
       rpc::RpcContext context) override;
