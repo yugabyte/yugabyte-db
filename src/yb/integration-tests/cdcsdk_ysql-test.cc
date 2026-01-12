@@ -7923,28 +7923,65 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetCheckpointOnSnapshotBootst
   ASSERT_EQ(change_resp.cdc_sdk_checkpoint().index(), checkpoint_resp.checkpoint().op_id().index());
 }
 
-TEST_F(CDCSDKYsqlTest, TestTableRewriteOperations) {
+TEST_F(CDCSDKYsqlTest, TestTableRewriteOperationsForLogicalReplicationStream) {
   ASSERT_OK(SetUpWithParams(3, 1, false));
   constexpr auto kColumnName = "c1";
-  const auto errstr = "Cannot rewrite a table that is a part of CDC.";
+  const auto errstr =
+      "Table rewrite is disallowed with CDC gRPC streams, and with logical replication streams "
+      "when FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table is false.";
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
   ASSERT_OK(conn.ExecuteFormat(
       "CREATE TABLE $0(id1 INT PRIMARY KEY, $1 varchar(10))", kTableName, kColumnName));
   ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
 
+  const vector<string> ddl_operations = {
+      Format("ALTER TABLE $0 DROP CONSTRAINT $0_pkey", kTableName),
+      Format("ALTER TABLE $0 ALTER $1 TYPE varchar(1)", kTableName, kColumnName),
+      Format("ALTER TABLE $0 ADD COLUMN c2 SERIAL", kTableName), Format("TRUNCATE $0", kTableName)};
+
   // Verify rewrite operations are disallowed on the table.
-  auto res = conn.ExecuteFormat("ALTER TABLE $0 DROP CONSTRAINT $0_pkey", kTableName);
-  ASSERT_NOK(res);
-  ASSERT_STR_CONTAINS(res.ToString(), errstr);
-  res = conn.ExecuteFormat("ALTER TABLE $0 ALTER $1 TYPE varchar(1)", kTableName, kColumnName);
-  ASSERT_NOK(res);
-  ASSERT_STR_CONTAINS(res.ToString(), errstr);
-  res = conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN c2 SERIAL", kTableName);
-  ASSERT_NOK(res);
-  ASSERT_STR_CONTAINS(res.ToString(), errstr);
-  res = conn.ExecuteFormat("TRUNCATE $0", kTableName);
-  ASSERT_NOK(res);
-  ASSERT_STR_CONTAINS(res.ToString(), errstr);
+  for (const auto& ddl : ddl_operations) {
+    auto res = conn.Execute(ddl);
+    ASSERT_NOK(res);
+    ASSERT_STR_CONTAINS(res.ToString(), errstr);
+  }
+  // Truncate should be allowed if enable_truncate_cdcsdk_table is set.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_truncate_cdcsdk_table) = true;
+  ASSERT_OK(conn.ExecuteFormat("TRUNCATE $0", kTableName));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_truncate_cdcsdk_table) = false;
+
+  // Verify rewrite operations are allowed if enable_table_rewrite_for_cdcsdk_table is set.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table) = true;
+  for (const auto& ddl : ddl_operations) {
+    ASSERT_OK(conn.Execute(ddl));
+  }
+}
+
+TEST_F(CDCSDKYsqlTest, TestTableRewriteOperationsForgRPCStream) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table) = true;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+  constexpr auto kColumnName = "c1";
+  const auto errstr =
+      "Table rewrite is disallowed with CDC gRPC streams, and with logical replication streams "
+      "when FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table is false.";
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0(id1 INT PRIMARY KEY, $1 varchar(10))", kTableName, kColumnName));
+  ASSERT_RESULT(CreateDBStream());
+
+  const vector<string> ddl_operations = {
+      Format("ALTER TABLE $0 DROP CONSTRAINT $0_pkey", kTableName),
+      Format("ALTER TABLE $0 ALTER $1 TYPE varchar(1)", kTableName, kColumnName),
+      Format("ALTER TABLE $0 ADD COLUMN c2 SERIAL", kTableName), Format("TRUNCATE $0", kTableName)};
+
+  // Verify rewrite operations are disallowed on the table even if
+  // enable_table_rewrite_for_cdcsdk_table is set.
+  for (const auto& ddl : ddl_operations) {
+    auto res = conn.Execute(ddl);
+    ASSERT_NOK(res);
+    ASSERT_STR_CONTAINS(res.ToString(), errstr);
+  }
+
   // Truncate should be allowed if enable_truncate_cdcsdk_table is set.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_truncate_cdcsdk_table) = true;
   ASSERT_OK(conn.ExecuteFormat("TRUNCATE $0", kTableName));

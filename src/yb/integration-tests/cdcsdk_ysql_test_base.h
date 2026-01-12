@@ -29,6 +29,7 @@
 #include "yb/client/transaction.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/raft_consensus.h"
+#include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/tablet/transaction_participant.h"
 
@@ -145,6 +146,7 @@ DECLARE_bool(TEST_fail_cdc_setting_retention_barriers_on_apply);
 DECLARE_int32(update_min_cdc_indices_master_interval_secs);
 DECLARE_bool(cdcsdk_update_restart_time_when_nothing_to_stream);
 DECLARE_string(TEST_cdc_tablet_id_to_stall_state_table_updates);
+DECLARE_bool(TEST_enable_table_rewrite_for_cdcsdk_table);
 
 namespace yb {
 
@@ -568,6 +570,10 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const CDCSDKCheckpointPB* explicit_checkpoint = nullptr,
       const TableId& colocated_table_id = "",
       int tablet_idx = 0);
+
+  Status PollTillRestartTimeExceedsTableHideTime(
+      const xrepl::StreamId& stream_id, const YBTableName& old_table,
+      const YBTableName& new_table = YBTableName());
 
   bool DeleteCDCStream(const xrepl::StreamId& db_stream_id);
 

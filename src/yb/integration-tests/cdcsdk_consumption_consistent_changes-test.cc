@@ -5242,5 +5242,382 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCDCWithSavePoint) {
     },
     MonoDelta::FromSeconds(10), "Expected 0 records (both transactions rolled back)"));
 }
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestHiddenTableDeletesAfterCompletelyPolled) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_update_restart_time_interval_secs) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_publication_list_refresh_interval_secs) = 1;
+
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, false /* colocated */,
+      true /* populate_safepoint_record */));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "test_table"));
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  ASSERT_OK(InitVirtualWAL(stream_id, {table.table_id()}));
+
+  vector<string> cmds = {
+      // Adding a column with volatile default value
+      "ALTER TABLE $0 ADD COLUMN value_2 INT DEFAULT random()",
+      // Adding a column with auto incrementing integer
+      "ALTER TABLE $0 ADD COLUMN value_3 SERIAL",
+      // Altering the column data type to non binary-compatible
+      "ALTER TABLE $0 ALTER COLUMN value_1 TYPE DOUBLE PRECISION",
+      // Altering the column using USING clause
+      "ALTER TABLE $0 ALTER COLUMN value_1 TYPE INTEGER USING (value_2 * 100)::INTEGER",
+      // Truncating the table
+      "TRUNCATE TABLE $0",
+      // Dropping the table
+      "DROP TABLE $0"};
+
+  for (int i = 0; i < static_cast<int>(cmds.size()); i++) {
+    auto old_table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test_table"));
+    google::protobuf::RepeatedPtrField<master::TabletLocationsPB> old_tablets;
+    ASSERT_OK(test_client()->GetTablets(old_table, 0, &old_tablets, nullptr));
+    ASSERT_EQ(old_tablets.size(), 1);
+
+    ASSERT_OK(WriteRowsHelper(i, i + 1, &test_cluster_, true, 2, old_table.table_name().c_str()));
+
+    ASSERT_OK(conn.ExecuteFormat(cmds[i], old_table.table_name()));
+
+    YBTableName new_table;
+    google::protobuf::RepeatedPtrField<master::TabletLocationsPB> new_tablets;
+    if (cmds[i].find("DROP TABLE") == string::npos) {
+      new_table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test_table"));
+      ASSERT_OK(test_client()->GetTablets(new_table, 0, &new_tablets, nullptr));
+      ASSERT_EQ(new_tablets.size(), 1);
+    }
+
+    ASSERT_OK(PollTillRestartTimeExceedsTableHideTime(stream_id, old_table, new_table));
+
+    ASSERT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          SleepFor(MonoDelta::FromSeconds(1));
+          return test_client()
+              ->GetTabletsFromTableId(old_table.table_id(), 0, &old_tablets)
+              .IsNotFound();
+        },
+        MonoDelta::FromSeconds(60),
+        Format("Timed out waiting for hidden table $0 to be deleted", old_table.table_name())));
+    auto expected_tablets_in_cdc_state_table =
+        new_table.empty()
+            ? std::unordered_set<TabletId>{kCDCSDKSlotEntryTabletId}
+            : std::unordered_set<TabletId>{new_tablets[0].tablet_id(), kCDCSDKSlotEntryTabletId};
+    CheckTabletsInCDCStateTable(expected_tablets_in_cdc_state_table, test_client(), stream_id);
+    auto expected_tables_in_stream_metadata =
+        new_table.empty() ? std::unordered_set<std::string>{}
+                          : std::unordered_set<std::string>{new_table.table_id()};
+    VerifyTablesInStreamMetadata(
+        stream_id, expected_tables_in_stream_metadata,
+        Format(
+            "Timed out waiting for hidden table $0 to be removed from stream metadata",
+            old_table.table_name()));
+
+    // Updating publication to only include new table.
+    if (!new_table.empty()) {
+      ASSERT_OK(UpdatePublicationTableList(stream_id, {new_table.table_id()}));
+    }
+  }
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestHiddenTableDeletesOnceExpired) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_update_restart_time_when_nothing_to_stream) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 5 * 1000;
+
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, false /* colocated */,
+      true /* populate_safepoint_record */));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "test_table"));
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  ASSERT_OK(InitVirtualWAL(stream_id, {table.table_id()}));
+
+  vector<string> cmds = {
+      // Adding a column with volatile default value
+      "ALTER TABLE $0 ADD COLUMN value_2 INT DEFAULT random()",
+      // Adding a column with auto incrementing integer
+      "ALTER TABLE $0 ADD COLUMN value_3 SERIAL",
+      // Altering the column data type to non binary-compatible
+      "ALTER TABLE $0 ALTER COLUMN value_1 TYPE DOUBLE PRECISION",
+      // Altering the column using USING clause
+      "ALTER TABLE $0 ALTER COLUMN value_1 TYPE INTEGER USING (value_2 * 100)::INTEGER",
+      // Truncating the table
+      "TRUNCATE TABLE $0",
+      // Dropping the table
+      "DROP TABLE $0"};
+
+  ASSERT_OK(WriteRowsHelper(0, 1, &test_cluster_, true, 2, table.table_name().c_str()));
+  // Poll this written row's records.
+  auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 3);  // BEGIN, INSERT, COMMIT
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records().Get(2).row_message().op(), RowMessage_Op_COMMIT);
+  uint64_t commit_lsn = change_resp.cdc_sdk_proto_records().Get(2).row_message().pg_lsn();
+  ASSERT_OK(UpdateAndPersistLSN(stream_id, commit_lsn, commit_lsn));
+
+  for (int i = 0; i < static_cast<int>(cmds.size()); i++) {
+    auto old_table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test_table"));
+    google::protobuf::RepeatedPtrField<master::TabletLocationsPB> old_tablets;
+    ASSERT_OK(test_client()->GetTablets(old_table, 0, &old_tablets, nullptr));
+    ASSERT_EQ(old_tablets.size(), 1);
+
+    ASSERT_OK(conn.ExecuteFormat(cmds[i], old_table.table_name()));
+
+    auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+    // For all commands other than TRUNCATE and DROP, we expect 1 DDL record to be present.
+    ASSERT_EQ(
+        change_resp.cdc_sdk_proto_records_size(), (cmds[i].find("TRUNCATE TABLE") == string::npos &&
+                                                   cmds[i].find("DROP TABLE") == string::npos));
+
+    // We won't poll old table anymore. Thus after FLAGS_cdc_intent_retention_ms
+    // milliseconds, the old table will be considered expired and so becomes elligible for deletion.
+    // In the next run of hidden tablet deletion task, the old table will then get deleted.
+    // Meanwhile, for all cases where new table gets created (i.e cmds other than 'DROP TABLE'), we
+    // will keep polling new table so that it doesn't get expired too.
+    YBTableName new_table;
+    google::protobuf::RepeatedPtrField<master::TabletLocationsPB> new_tablets;
+    if (cmds[i].find("DROP TABLE") == string::npos) {
+      // Updating publication to only include new table.
+      new_table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test_table"));
+      ASSERT_OK(test_client()->GetTablets(new_table, 0, &new_tablets, nullptr));
+      ASSERT_EQ(new_tablets.size(), 1);
+      ASSERT_OK(UpdatePublicationTableList(stream_id, {new_table.table_id()}));
+    }
+
+    ASSERT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          if (cmds[i].find("DROP TABLE") == string::npos) {
+            change_resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+            if (change_resp.cdc_sdk_proto_records_size() > 0) {
+              SCHECK_EQ(
+                  change_resp.cdc_sdk_proto_records_size(), 3, IllegalState,
+                  Format(
+                      "Expected BEGIN, INSERT, COMMIT, got $0",
+                      change_resp.cdc_sdk_proto_records_size()));
+              SCHECK_EQ(
+                  change_resp.cdc_sdk_proto_records().Get(2).row_message().op(),
+                  RowMessage_Op_COMMIT, IllegalState, "Expected COMMIT");
+              commit_lsn = change_resp.cdc_sdk_proto_records().Get(2).row_message().pg_lsn();
+              RETURN_NOT_OK(UpdateAndPersistLSN(stream_id, commit_lsn, commit_lsn));
+            }
+          }
+
+          SleepFor(MonoDelta::FromSeconds(1));
+          return test_client()
+              ->GetTabletsFromTableId(old_table.table_id(), 0, &old_tablets)
+              .IsNotFound();
+        },
+        MonoDelta::FromSeconds(60),
+        Format("Timed out waiting for hidden table $0 to be deleted", old_table.table_name())));
+    auto expected_tablets_in_cdc_state_table =
+        new_table.empty()
+            ? std::unordered_set<TabletId>{kCDCSDKSlotEntryTabletId}
+            : std::unordered_set<TabletId>{new_tablets[0].tablet_id(), kCDCSDKSlotEntryTabletId};
+    CheckTabletsInCDCStateTable(expected_tablets_in_cdc_state_table, test_client(), stream_id);
+    auto expected_tables_in_stream_metadata =
+        new_table.empty() ? std::unordered_set<std::string>{}
+                          : std::unordered_set<std::string>{new_table.table_id()};
+    VerifyTablesInStreamMetadata(
+        stream_id, expected_tables_in_stream_metadata,
+        Format(
+            "Timed out waiting for hidden table $0 to be removed from stream metadata",
+            old_table.table_name()));
+  }
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestDropSchemaHidesAssociatedTables) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_update_restart_time_when_nothing_to_stream) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 5 * 1000;
+
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, false /* colocated */,
+      true /* populate_safepoint_record */));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto schema_name = "test_schema";
+  ASSERT_OK(conn.ExecuteFormat("CREATE SCHEMA $0", schema_name));
+
+  int num_tables = 5;
+  vector<YBTableName> tables;
+  vector<TableId> table_ids;
+  vector<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> tablets(num_tables);
+  for (int i = 0; i < num_tables; i++) {
+    auto table = ASSERT_RESULT(CreateTable(
+        &test_cluster_, kNamespaceName, Format("test_table_$0", i), 1, true, false, 0, false, "",
+        schema_name));
+    tables.push_back(table);
+    table_ids.push_back(table.table_id());
+    ASSERT_OK(test_client()->GetTablets(table, 0, &tablets[i], nullptr));
+    ASSERT_EQ(tablets[i].size(), 1);
+  }
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  for (const auto& table : tables) {
+    ASSERT_OK(WriteRows(0, 1, &test_cluster_, 2, Format("$0.$1", schema_name, table.table_name())));
+  }
+
+  ASSERT_OK(InitVirtualWAL(stream_id, table_ids));
+
+  ASSERT_OK(conn.ExecuteFormat("DROP SCHEMA $0 CASCADE", schema_name));
+
+  for (int i = 0; i < num_tables; i++) {
+    auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+    ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 3);  // BEGIN, INSERT, COMMIT
+  }
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        SleepFor(MonoDelta::FromSeconds(1));
+        bool result = true;
+        for (int i = 0; i < num_tables; i++) {
+          result = result && test_client()
+                                 ->GetTabletsFromTableId(tables[i].table_id(), 0, &tablets[i])
+                                 .IsNotFound();
+        }
+        return result;
+      },
+      MonoDelta::FromSeconds(60), "Timed out waiting for hidden tables to be deleted"));
+  CheckTabletsInCDCStateTable({kCDCSDKSlotEntryTabletId}, test_client(), stream_id);
+  VerifyTablesInStreamMetadata(
+      stream_id, {}, "Timed out waiting for hidden tables to be removed from stream metadata");
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestUnackRecordsPolledFromHiddenTableOnVWALRestart) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_update_restart_time_interval_secs) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 2;
+
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, false /* colocated */,
+      true /* populate_safepoint_record */));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  auto table1 = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "test_table"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> table1_tablets;
+  ASSERT_OK(test_client()->GetTablets(table1, 0, &table1_tablets, nullptr));
+  ASSERT_EQ(table1_tablets.size(), 1);
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  ASSERT_OK(InitVirtualWAL(stream_id, {table1.table_id()}));
+
+  ASSERT_OK(WriteRowsHelper(0, 1, &test_cluster_, true, 2, table1.table_name().c_str()));
+
+  ASSERT_OK(conn.ExecuteFormat("TRUNCATE TABLE $0", table1.table_name()));
+  auto table2 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, table1.table_name()));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> table2_tablets;
+  ASSERT_OK(test_client()->GetTablets(table2, 0, &table2_tablets, nullptr));
+  ASSERT_EQ(table2_tablets.size(), 1);
+
+  auto slot_entry = ASSERT_RESULT(ReadSlotEntryFromStateTable(stream_id));
+  auto restart_time = slot_entry->record_id_commit_time;
+
+  // Do multiple GCC calls to ensure that all records from truncate are polled. Given that we are
+  // not ack'ing the records, the restart time should not move ahead.
+  for (int i = 0; i < 5; i++) {
+    auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+    slot_entry = ASSERT_RESULT(ReadSlotEntryFromStateTable(stream_id));
+    ASSERT_EQ(restart_time, slot_entry->record_id_commit_time);
+  }
+  // Sleep to allow parent tablet deletion task to run. The table shouldn't get deleted by
+  // background task as we have not acked the records yet.
+  SleepFor(MonoDelta::FromSeconds(FLAGS_cdc_parent_tablet_deletion_task_retry_secs * 4));
+  ASSERT_OK(test_client()->GetTabletsFromTableId(table1.table_id(), 0, &table1_tablets));
+
+  // Reinitializing VWAL
+  ASSERT_OK(DestroyVirtualWAL());
+  ASSERT_OK(InitVirtualWAL(stream_id, {table1.table_id(), table2.table_id()}));
+
+  ASSERT_OK(WriteRowsHelper(0, 1, &test_cluster_, true, 2, table2.table_name().c_str()));
+  ASSERT_OK(PollTillRestartTimeExceedsTableHideTime(stream_id, table1));
+
+  // Now, the old table should get deleted as we have acked all records including those from
+  // truncate.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        SleepFor(MonoDelta::FromSeconds(1));
+        return test_client()
+            ->GetTabletsFromTableId(table1.table_id(), 0, &table1_tablets)
+            .IsNotFound();
+      },
+      MonoDelta::FromSeconds(60),
+      Format("Timed out waiting for hidden table $0 to be deleted", table1.table_name())));
+  CheckTabletsInCDCStateTable(
+      {table2_tablets[0].tablet_id(), kCDCSDKSlotEntryTabletId}, test_client(), stream_id);
+  VerifyTablesInStreamMetadata(
+      stream_id, {table2.table_id()},
+      Format(
+          "Timed out waiting for hidden table $0 to be removed from stream metadata",
+          table1.table_name()));
+}
+
+TEST_F(
+    CDCSDKConsumptionConsistentChangesTest,
+    TestSplitParentTabletAndHiddenTableGetsPolledAndDeleted) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_update_restart_time_interval_secs) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 2;
+
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, false /* colocated */,
+      true /* populate_safepoint_record */));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  auto old_table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "test_table"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> old_tablets;
+  ASSERT_OK(test_client()->GetTablets(old_table, 0, &old_tablets, nullptr));
+  ASSERT_EQ(old_tablets.size(), 1);
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  ASSERT_OK(WriteRows(0, 10, &test_cluster_, 2, old_table.table_name().c_str()));
+
+  ASSERT_OK(WaitForFlushTables({old_table.table_id()}, false, 30, true));
+  WaitUntilSplitIsSuccesful(old_tablets[0].tablet_id(), old_table, 2);
+  // Get all the tablets including hidden tablets for old_table. We should get 3 tablets, i.e. 2
+  // children and 1 un-deleted hidden parent tablet.
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> old_tablets_after_split;
+  ASSERT_OK(
+      test_client()->GetTablets(
+          old_table, 0, &old_tablets_after_split, nullptr, RequireTabletsRunning::kFalse,
+          master::IncludeInactive::kTrue));
+  ASSERT_EQ(old_tablets_after_split.size(), 3);
+
+  ASSERT_OK(WriteRows(10, 15, &test_cluster_, 2, old_table.table_name().c_str()));
+
+  ASSERT_OK(conn.ExecuteFormat("TRUNCATE TABLE $0", old_table.table_name()));
+  auto new_table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, old_table.table_name()));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> new_tablets;
+  ASSERT_OK(test_client()->GetTablets(new_table, 0, &new_tablets, nullptr));
+  ASSERT_EQ(new_tablets.size(), 1);
+
+  ASSERT_OK(WriteRows(0, 5, &test_cluster_, 2, new_table.table_name().c_str()));
+
+  auto resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {old_table.table_id(), new_table.table_id()}, 20, true));
+  ASSERT_EQ(resp.records.size(), 60);
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        SleepFor(MonoDelta::FromSeconds(1));
+        return test_client()
+            ->GetTabletsFromTableId(old_table.table_id(), 0, &old_tablets)
+            .IsNotFound();
+      },
+      MonoDelta::FromSeconds(60),
+      Format("Timed out waiting for hidden table $0 to be deleted", old_table.table_name())));
+  CheckTabletsInCDCStateTable(
+      {new_tablets[0].tablet_id(), kCDCSDKSlotEntryTabletId}, test_client(), stream_id);
+  VerifyTablesInStreamMetadata(
+      stream_id, {new_table.table_id()},
+      Format(
+          "Timed out waiting for hidden table $0 to be removed from stream metadata",
+          old_table.table_name()));
+}
+
 }  // namespace cdc
 }  // namespace yb

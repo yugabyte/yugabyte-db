@@ -480,6 +480,10 @@ bool TableInfo::is_hidden() const {
   return LockForRead()->is_hidden();
 }
 
+bool TableInfo::started_hiding() const {
+  return LockForRead()->started_hiding();
+}
+
 HybridTime TableInfo::hide_hybrid_time() const {
   return LockForRead()->hide_hybrid_time();
 }

@@ -2207,6 +2207,57 @@ Result<GetChangesResponsePB> CDCSDKYsqlTest::GetChangesFromCDCWithExplictCheckpo
   return change_resp;
 }
 
+Status CDCSDKYsqlTest::PollTillRestartTimeExceedsTableHideTime(
+    const xrepl::StreamId& stream_id, const YBTableName& old_table, const YBTableName& new_table) {
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> old_tablets;
+  RETURN_NOT_OK(test_client()->GetTabletsFromTableId(old_table.table_id(), 0, &old_tablets));
+  if (old_tablets.empty()) {
+    return STATUS_FORMAT(NotFound, "No tablets found for table $0", old_table.table_name());
+  }
+
+  // Get the hide time of the old_table's tablet using CatalogManager::GetTabletHideTime().
+  auto& catalog_mgr = test_cluster_.mini_cluster_->mini_master()->catalog_manager_impl();
+  HybridTime hide_time = VERIFY_RESULT(catalog_mgr.GetTabletHideTime(old_tablets[0].tablet_id()));
+
+  return WaitFor(
+      [&]() -> Result<bool> {
+        auto change_resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+
+        if (change_resp.cdc_sdk_proto_records_size() > 0) {
+          bool found_commit = false;
+          uint64_t commit_lsn;
+          for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+            if (record.row_message().op() == RowMessage_Op_COMMIT) {
+              found_commit = true;
+              commit_lsn = record.row_message().pg_lsn();
+            }
+          }
+
+          if (found_commit) {
+            RETURN_NOT_OK(UpdateAndPersistLSN(stream_id, commit_lsn, commit_lsn));
+          }
+        }
+
+        if (change_resp.has_needs_publication_table_list_refresh() &&
+            change_resp.needs_publication_table_list_refresh() &&
+            change_resp.has_publication_refresh_time() &&
+            change_resp.publication_refresh_time() > 0) {
+          vector<string> table_ids = {old_table.table_id()};
+          if (!new_table.empty()) {
+            table_ids.push_back(new_table.table_id());
+          }
+          RETURN_NOT_OK(UpdatePublicationTableList(stream_id, table_ids));
+        }
+
+        auto slot_row = VERIFY_RESULT(ReadSlotEntryFromStateTable(stream_id));
+        return slot_row->record_id_commit_time > hide_time;
+      },
+      MonoDelta::FromSeconds(60),
+      Format(
+          "Timed out waiting for restart time to exceed the hide time $0 of hidden table $1",
+          hide_time, old_table.table_name()));
+}
+
 bool CDCSDKYsqlTest::DeleteCDCStream(const xrepl::StreamId& db_stream_id) {
   RpcController delete_rpc;
   delete_rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
