@@ -1570,7 +1570,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 					Relation	r = relation_openrv(partition_rv, AccessExclusiveLock);
 					char		relkind = r->rd_rel->relkind;
 
-					relation_close(r, AccessShareLock);
+					relation_close(r, AccessExclusiveLock);
 					/*
 					 * If alter is performed on an index as opposed to a table
 					 * skip schema version increment.

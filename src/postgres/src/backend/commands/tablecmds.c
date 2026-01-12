@@ -3790,8 +3790,8 @@ SetRelationTableSpace(Relation rel,
 
 			Relation	idx_pg_class = table_open(RelationRelationId,
 												  RowExclusiveLock);
-			HeapTuple	idx_tuple = SearchSysCacheCopy1(RELOID,
-														ObjectIdGetDatum(idxOid));
+			HeapTuple	idx_tuple = SearchSysCacheLockedCopy1(RELOID,
+															  ObjectIdGetDatum(idxOid));
 
 			if (!HeapTupleIsValid(idx_tuple))
 				elog(ERROR, "cache lookup failed for relation %u", idxOid);
