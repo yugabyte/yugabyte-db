@@ -2315,4 +2315,13 @@ TEST_F(YsqlMajorUpgradeTest, NamespaceMapConsistencyAfterFailedUpgrade) {
   ASSERT_OK(conn.Fetch("SELECT 1"));
 }
 
+TEST_F(YsqlMajorUpgradeTest, TestQuotationIndex) {
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t1(col int);"));
+  ASSERT_OK(conn.Execute("CREATE UNIQUE INDEX i1 on t1(col asc);"));
+  ASSERT_OK(conn.Execute("ALTER TABLE t1 ADD CONSTRAINT \"c1 new check\" UNIQUE USING INDEX i1;"));
+  ASSERT_OK(UpgradeClusterToMixedMode());
+}
+
 }  // namespace yb
