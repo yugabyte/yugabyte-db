@@ -210,8 +210,13 @@ Status MasterTabletServer::ClearMetacache(const std::string& namespace_id) {
 
 Status MasterTabletServer::YCQLStatementStats(const tserver::PgYCQLStatementStatsRequestPB& req,
     tserver::PgYCQLStatementStatsResponsePB* resp) const {
-  LOG(FATAL) << "Unexpected call of YCQLStatementStats()";
-  return Status::OK();
+  LOG(DFATAL) << "Unexpected call of YCQLStatementStats()";
+  return STATUS_FORMAT(NotSupported, "YCQLStatementStats not implemented for master_tserver");
+}
+
+Status MasterTabletServer::ClearYCQLMetaDataCache() {
+  LOG(DFATAL) << "Unexpected call of ClearYCQLMetaDataCache()";
+  return STATUS_FORMAT(NotSupported, "ClearYCQLMetaDataCache not implemented for master_tserver");
 }
 
 Result<std::vector<tablet::TabletStatusPB>> MasterTabletServer::GetLocalTabletsMetadata() const {

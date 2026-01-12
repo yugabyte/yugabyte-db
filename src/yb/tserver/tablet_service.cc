@@ -3468,6 +3468,18 @@ void TabletServiceImpl::ClearMetacache(
   }
 }
 
+void TabletServiceImpl::ClearYCQLMetaDataCacheOnServer(
+    const ClearYCQLMetaDataCacheOnServerRequestPB* req,
+    ClearYCQLMetaDataCacheOnServerResponsePB* resp,
+    rpc::RpcContext context) {
+  auto s = server_->ClearYCQLMetaDataCache();
+  if (!s.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), s, &context);
+  } else {
+    context.RespondSuccess();
+  }
+}
+
 void TabletServiceImpl::AcquireObjectLocks(
     const AcquireObjectLockRequestPB* req, AcquireObjectLockResponsePB* resp,
     rpc::RpcContext context) {

@@ -17,17 +17,23 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/client/meta_data_cache.h"
+
+#include "yb/integration-tests/cql_test_base.h"
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/external_mini_cluster_fs_inspector.h"
 #include "yb/integration-tests/yb_table_test_base.h"
 
+#include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/path_util.h"
 #include "yb/util/status_log.h"
 #include "yb/util/subprocess.h"
+
+#include "yb/yql/cql/cqlserver/cql_service.h"
 
 using std::string;
 using std::vector;
@@ -38,10 +44,20 @@ namespace {
 
 const auto kDefaultTimeout = 30000ms;
 const auto kServerIndex = 0;
+const char* const kTsCliToolName = "yb-ts-cli";
 
-string GetTsCliToolPath() {
-  static const char* const kTsCliToolName = "yb-ts-cli";
-  return GetToolPath(kTsCliToolName);
+template <class TabletServerType>
+void RunTsCliTool(const TabletServerType* ts, const vector<string>& argv) {
+  string exe_path = GetToolPath(kTsCliToolName);
+  vector<string> cmd_line = {exe_path, "--server_address", AsString(ts->bound_rpc_addr())};
+  cmd_line.insert(cmd_line.end(), argv.begin(), argv.end());
+
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    LOG(INFO) << "Run tool: " << ToString(cmd_line);
+    Status s = Subprocess::Call(cmd_line);
+    LOG(INFO) << "Tool result: " << s;
+    return s.ok();
+  }, kDefaultTimeout * 2, "CallTsCli"));
 }
 
 } // anonymous namespace
@@ -115,13 +131,7 @@ TEST_F(YBTsCliITest, MoveTablet) {
   ASSERT_FALSE(tablet_id.empty());
   WaitForTablet(tablet_id);
 
-  string exe_path = GetTsCliToolPath();
-  vector<string> argv = {exe_path, "--server_address", AsString(ts->bound_rpc_addr()),
-                         "delete_tablet", "-force", tablet_id, "Deleting for yb-ts-cli-itest"};
-  ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    Status s = Subprocess::Call(argv);
-    return s.ok();
-  }, kDefaultTimeout * 2, "CallTsCli"));
+  RunTsCliTool(ts, {"delete_tablet", "--force", tablet_id, "Deleting for yb-ts-cli-itest"});
 
   ts->Shutdown();
   ASSERT_OK(ts->Restart());
@@ -142,6 +152,45 @@ TEST_F(YBTsCliITest, MoveTablet) {
       }
       return false;
     }, kDefaultTimeout * 2, "WaitForTabletMovedFromTS"));
+}
+
+class  YBTsCliCqlITest : public CqlTestBase<MiniCluster> {
+ public:
+  virtual ~YBTsCliCqlITest() = default;
+
+  int num_tablet_servers() override {
+    return 1;
+  }
+};
+
+TEST_F(YBTsCliCqlITest, TestClearYCQLMetaDataCache) {
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  auto cql = [&](const std::string query) { ASSERT_OK(session.ExecuteQuery(query)); };
+  cql("CREATE TABLE test_tbl(h INT PRIMARY KEY, v INT) WITH transactions = {'enabled': 'true'}");
+  cql("CREATE INDEX ON test_tbl(v)");
+  cql("INSERT INTO test_tbl(h, v) VALUES(1, 2)");
+
+  auto select = [&]() -> Result<string> {
+    auto result = VERIFY_RESULT(session.ExecuteWithResult("SELECT h FROM test_tbl WHERE v=2"));
+    auto iter = result.CreateIterator();
+    DFATAL_OR_RETURN_ERROR_IF(!iter.Next(), STATUS(NotFound, "Did not find result in test table."));
+    auto row = iter.Row();
+    return row.Value(0).ToString();
+  };
+
+  EXPECT_EQ(ASSERT_RESULT(select()), "1");
+
+  const std::shared_ptr<client::YBMetaDataCache>& cache =
+      cql_server_->TEST_cql_service()->metadata_cache();
+  LOG(INFO) << "Number of cached YCQL table entries = " << cache->TEST_NumberOfCachedTableEntries();
+  ASSERT_GT(cache->TEST_NumberOfCachedTableEntries(), 0)
+      << "Expected not empty YCQL MetaData cache";
+
+  tserver::MiniTabletServer* ts = cluster_->mini_tablet_server(kServerIndex);
+  RunTsCliTool(ts, {"clear_ycql_metadatacache"});
+
+  LOG(INFO) << "Number of cached YCQL table entries = " << cache->TEST_NumberOfCachedTableEntries();
+  ASSERT_EQ(cache->TEST_NumberOfCachedTableEntries(), 0) << "Expected empty YCQL MetaData cache";
 }
 
 } // namespace integration_tests

@@ -283,7 +283,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   rpc::Messenger* GetMessenger(ash::Component component) const override;
 
   void SetCQLServer(yb::server::RpcAndWebServerBase* server,
-      server::YCQLStatementStatsProvider* stmt_provider) override;
+      server::YCQLServerExternalInterface* cql_server_if) override;
 
   virtual Env* GetEnv();
 
@@ -378,6 +378,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void ClearAllMetaCachesOnServer() override;
 
   Status ClearMetacache(const std::string& namespace_id) override;
+
+  Status ClearYCQLMetaDataCache() override;
 
   Result<std::vector<tablet::TabletStatusPB>> GetLocalTabletsMetadata() const override;
 
@@ -545,7 +547,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   std::unique_ptr<encryption::UniverseKeyManager> universe_key_manager_;
 
   std::atomic<yb::server::RpcAndWebServerBase*> cql_server_{nullptr};
-  std::atomic<yb::server::YCQLStatementStatsProvider*> cql_stmt_provider_{nullptr};
+  std::atomic<yb::server::YCQLServerExternalInterface*> cql_server_external_{nullptr};
 
   // Lock Manager to maintain table/object locking activity in memory.
   std::unique_ptr<tablet::TSLocalLockManager> ts_local_lock_manager_;

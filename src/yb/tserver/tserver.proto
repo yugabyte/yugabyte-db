@@ -406,6 +406,12 @@ message ClearMetacacheResponsePB {
   optional TabletServerErrorPB error = 1;
 }
 
+message ClearYCQLMetaDataCacheOnServerRequestPB {}
+
+message ClearYCQLMetaDataCacheOnServerResponsePB {
+  optional TabletServerErrorPB error = 1;
+}
+
 message ClearUniverseUuidRequestPB {
 }
 

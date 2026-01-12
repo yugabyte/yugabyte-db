@@ -71,7 +71,7 @@
 #include "yb/rpc/secure.h"
 #include "yb/server/webserver.h"
 #include "yb/server/hybrid_clock.h"
-#include "yb/server/ycql_stat_provider.h"
+#include "yb/server/ycql_server_external_if.h"
 
 #include "yb/tablet/maintenance_manager.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
@@ -1528,17 +1528,17 @@ TserverXClusterContextIf& TabletServer::GetXClusterContext() const {
 }
 
 void TabletServer::SetCQLServer(yb::server::RpcAndWebServerBase* server,
-      server::YCQLStatementStatsProvider* stmt_provider) {
+      server::YCQLServerExternalInterface* cql_server_if) {
   DCHECK_EQ(cql_server_.load(), nullptr);
-  DCHECK_EQ(cql_stmt_provider_.load(), nullptr);
+  DCHECK_EQ(cql_server_external_.load(), nullptr);
 
   cql_server_.store(server);
-  cql_stmt_provider_.store(stmt_provider);
+  cql_server_external_.store(cql_server_if);
 }
 
 Status TabletServer::YCQLStatementStats(const tserver::PgYCQLStatementStatsRequestPB& req,
       tserver::PgYCQLStatementStatsResponsePB* resp) const {
-    auto* cql_stmt_provider = cql_stmt_provider_.load();
+    auto* cql_stmt_provider = cql_server_external_.load();
     SCHECK_NOTNULL(cql_stmt_provider);
     RETURN_NOT_OK(cql_stmt_provider->YCQLStatementStats(req, resp));
     return Status::OK();
@@ -1567,6 +1567,13 @@ void TabletServer::ClearAllMetaCachesOnServer() {
 
 Status TabletServer::ClearMetacache(const std::string& namespace_id) {
   return client()->ClearMetacache(namespace_id);
+}
+
+Status TabletServer::ClearYCQLMetaDataCache() {
+  auto* cql_server_api = cql_server_external_.load();
+  SCHECK_NOTNULL(cql_server_api);
+  cql_server_api->ClearMetaDataCache();
+  return Status::OK();
 }
 
 Result<std::vector<tablet::TabletStatusPB>> TabletServer::GetLocalTabletsMetadata() const {

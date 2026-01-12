@@ -131,6 +131,9 @@ service TabletServerService {
   rpc ClearMetacache(ClearMetacacheRequestPB)
       returns (ClearMetacacheResponsePB);
 
+  rpc ClearYCQLMetaDataCacheOnServer(ClearYCQLMetaDataCacheOnServerRequestPB)
+      returns (ClearYCQLMetaDataCacheOnServerResponsePB);
+
   rpc ClearUniverseUuid(ClearUniverseUuidRequestPB) returns (ClearUniverseUuidResponsePB);
 
   rpc AcquireObjectLocks(AcquireObjectLockRequestPB)

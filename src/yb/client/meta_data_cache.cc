@@ -252,9 +252,20 @@ void YBMetaDataCache::RemoveFromCache(
 }
 
 void YBMetaDataCache::Reset() {
-  std::lock_guard<std::mutex> lock(cached_tables_mutex_);
-  cached_tables_by_id_.clear();
-  cached_tables_by_name_.clear();
+  {
+    std::lock_guard lock(cached_tables_mutex_);
+    cached_tables_by_id_.clear();
+    cached_tables_by_name_.clear();
+  }
+  {
+    std::lock_guard lock(cached_types_mutex_);
+    cached_types_.clear();
+  }
+}
+
+size_t YBMetaDataCache::TEST_NumberOfCachedTableEntries() {
+  std::lock_guard lock(cached_tables_mutex_);
+  return cached_tables_by_id_.size() + cached_tables_by_name_.size();
 }
 
 Result<std::pair<std::shared_ptr<QLType>, bool>> YBMetaDataCache::GetUDType(
