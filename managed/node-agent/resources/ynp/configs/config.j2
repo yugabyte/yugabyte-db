@@ -54,6 +54,7 @@ mount_paths = {{ ynp_config['yba'].instance_type.mount_points | join(' ') }}
 configure_clockbound = {{ ynp_config['ynp'].is_configure_clockbound | default(false)}}
 is_yb_prebuilt_image = {{ ynp_config['ynp'].is_yb_prebuilt_image | default(false) }}
 is_ybcontroller_disabled = {{ ynp_config['ynp'].is_ybcontroller_disabled | default(false) }}
+skip_tls_verify = {{ ynp_config['yba'].skip_tls_verify | default(false) }}
 
 [Preprovision]
 is_cloud_only_module = True

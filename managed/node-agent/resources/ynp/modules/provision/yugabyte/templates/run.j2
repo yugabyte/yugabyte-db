@@ -1,6 +1,20 @@
 # Check if the user already exists
 if id "{{ yb_user }}" &>/dev/null; then
     echo "User {{ yb_user }} already exists"
+    # Get the actual home directory of the yugabyte user
+    # Output looks like yugabyte:x:1001:1001::/home/yugabyte:/bin/bash
+    # Verify this early to exit before making changes to the incorrect location
+    set_yb_home_dir=$(getent passwd {{ yb_user }} | cut -d: -f6 2>&1)
+    if [ -z "$set_yb_home_dir" ]; then
+        echo "Home directory for user {{ yb_user }} is not set"
+        exit 1
+    fi
+    normalized_set_yb_home_dir=$(readlink -m "$set_yb_home_dir" 2>&1)
+    normalized_yb_home_dir=$(readlink -m "{{ yb_home_dir }}" 2>&1)
+    if [ "$normalized_set_yb_home_dir" != "$normalized_yb_home_dir" ]; then
+        echo "Yugabyte home directory for user {{ yb_user }} is already set to $set_yb_home_dir instead of {{ yb_home_dir }}"
+        exit 1
+    fi
 else
     # Creating the yb_user
     useradd -u {{ yb_user_id }} -s /bin/bash --create-home --home-dir {{ yb_home_dir }} -U {{ yb_user }}

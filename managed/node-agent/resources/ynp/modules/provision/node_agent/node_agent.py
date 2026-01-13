@@ -202,7 +202,8 @@ class InstallNodeAgent(BaseYnpModule):
     def _get_provider(self, context):
         provider_url = self._get_provider_url(context)
         yba_url = context.get('url')
-        skip_tls_verify = not yba_url.lower().startswith('https')
+        skip_tls_verify = not yba_url.lower().startswith('https') or \
+            context.get('skip_tls_verify', False)
         response = self._make_request(provider_url,
                                       headers=self._get_headers(context.get('api_key')),
                                       verify_ssl=skip_tls_verify)

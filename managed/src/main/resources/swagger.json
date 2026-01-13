@@ -13876,7 +13876,6 @@
         "instanceType",
         "ip",
         "region",
-        "sshUser",
         "zone"
       ],
       "type" : "object"

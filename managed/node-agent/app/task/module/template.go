@@ -18,6 +18,7 @@ import (
 // Custom filters for Gonja templating engine.
 var customFilterFunctions = map[string]exec.FilterFunction{
 	"split_string": splitString,
+	"bool":         convertBool,
 }
 
 // Custom tests for Gonja templating engine.
@@ -60,6 +61,24 @@ func splitString(e *exec.Evaluator, in *exec.Value, params *exec.VarArgs) *exec.
 		tokens[i] = strings.TrimSpace(tokens[i])
 	}
 	return exec.AsValue(tokens)
+}
+
+// Custom filter to convert a value to boolean with type coercion.
+func convertBool(e *exec.Evaluator, in *exec.Value, params *exec.VarArgs) *exec.Value {
+	if in.IsError() {
+		return in
+	}
+	if in.IsBool() {
+		return in
+	}
+	if in.IsString() {
+		b, err := strconv.ParseBool(strings.TrimSpace(in.String()))
+		if err == nil {
+			return exec.AsValue(b)
+		}
+	}
+	// Let the template engine handle the error.
+	return exec.AsValue(in.Bool())
 }
 
 // Custom test to match boolean values with type coercion.
