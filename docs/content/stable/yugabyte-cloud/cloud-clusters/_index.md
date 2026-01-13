@@ -23,6 +23,7 @@ YugabyteDB Aeon provides the following tools to manage clusters:
 | [Point in time recovery](aeon-pitr/) | Create a database clone at a point in time for recovery or testing. |
 | [Maintenance windows](cloud-maintenance/) | Yugabyte only performs cluster maintenance, including database upgrades, during a weekly maintenance window that you configure. |
 | [PostgreSQL&nbsp;extensions](add-extensions/) | Extend the functionality of your cluster using PostgreSQL extensions. |
+| [Change Data Capture](aeon-cdc/) | Capture and stream changes made to data in the database to external processes, applications, or other databases. |
 
 ### Pause, resume, and delete clusters
 
@@ -122,5 +123,11 @@ For Connection Pooling metrics, see [YSQL Ops metrics](../cloud-monitor/overview
     body="Create PostgreSQL extensions in YugabyteDB Aeon clusters."
     href="add-extensions/"
     icon="/images/section_icons/explore/administer.png">}}
+
+  {{<index/item
+    title="Change Data Capture"
+    body="Capture changes made to data in the database."
+    href="change-data-capture/"
+    icon="fa-thin fa-arrows-rotate">}}
 
 {{</index/block>}}
