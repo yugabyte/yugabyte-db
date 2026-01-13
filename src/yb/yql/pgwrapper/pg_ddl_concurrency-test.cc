@@ -131,4 +131,61 @@ TEST_F(PgDDLConcurrencyTest, TempTableCreation) {
   thread_holder.WaitAndStop(10s * kTimeMultiplier);
 }
 
+class PgDDLConcurrencyWithObjectLockingTest : public PgDDLConcurrencyTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back(
+        "--enable_object_locking_for_table_locks=true");
+    options->extra_tserver_flags.push_back(
+        "--ysql_yb_ddl_transaction_block_enabled=true");
+    options->extra_tserver_flags.push_back(
+        "--ysql_pg_conf_csv=yb_fallback_to_legacy_catalog_read_time=false");
+    PgDDLConcurrencyTest::UpdateMiniClusterOptions(options);
+  }
+};
+
+// https://github.com/yugabyte/yugabyte-db/issues/28532
+TEST_F(PgDDLConcurrencyWithObjectLockingTest, TableDrop) {
+  TestThreadHolder thread_holder;
+  auto conn1 = CHECK_RESULT(Connect());
+  ASSERT_OK(conn1.Execute("CREATE TABLE sample (i INT)"));
+  ASSERT_OK(conn1.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(conn1.Execute("DROP TABLE sample"));
+  thread_holder.AddThreadFunctor(
+      [this] {
+    auto conn2 = CHECK_RESULT(Connect());
+    ASSERT_OK(conn2.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+    // Verify that we get the same error message as native PG.
+    // Prior to the fix, we get "ERROR:  cache lookup failed for relation 16384"
+    ASSERT_NOK_STR_CONTAINS(conn2.Execute("DROP TABLE sample"), "table \"sample\" does not exist");
+  });
+  // With object locking, this sleep will block the DROP statement on conn2 for 5 seconds.
+  SleepFor(5s);
+  ASSERT_OK(conn1.Execute("COMMIT"));
+  thread_holder.Stop();
+}
+
+// https://github.com/yugabyte/yugabyte-db/issues/28563
+TEST_F(PgDDLConcurrencyWithObjectLockingTest, TableDropCascade) {
+  TestThreadHolder thread_holder;
+  auto conn1 = CHECK_RESULT(Connect());
+  ASSERT_OK(conn1.Execute("CREATE TABLE dd (i INT)"));
+  ASSERT_OK(conn1.Execute("CREATE MATERIALIZED VIEW mat AS SELECT * FROM dd"));
+  ASSERT_OK(conn1.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(conn1.Execute("DROP TABLE dd CASCADE"));
+  thread_holder.AddThreadFunctor(
+      [this] {
+    auto conn2 = CHECK_RESULT(Connect());
+    ASSERT_OK(conn2.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+    // Verify that we get the same error message as native PG.
+    // Prior to the fix, we get "ERROR:  could not open relation with OID 16387"
+    ASSERT_NOK_STR_CONTAINS(conn2.Execute("REFRESH MATERIALIZED VIEW mat"),
+                            "relation \"mat\" does not exist");
+  });
+  // With object locking, this sleep will block the REFRESH statement on conn2 for 5 seconds.
+  SleepFor(5s);
+  ASSERT_OK(conn1.Execute("COMMIT"));
+  thread_holder.Stop();
+}
+
 } // namespace yb::pgwrapper
