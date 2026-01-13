@@ -16,13 +16,7 @@
 #include "yb/client/client.h"
 #include "yb/client/table.h"
 #include "yb/client/yb_table_name.h"
-#include "yb/common/colocated_util.h"
-#include "yb/common/wire_protocol.h"
 #include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
-#include "yb/master/master_ddl.pb.h"
-#include "yb/master/master_ddl.proxy.h"
-#include "yb/master/master_replication.proxy.h"
-#include "yb/master/mini_master.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/util/backoff_waiter.h"
 
@@ -97,7 +91,7 @@ class XClusterYsqlColocatedTest : public XClusterYsqlTestBase {
 
     BumpUpSchemaVersionsWithAlters(consumer_tables_);
 
-    // 1. Write some data to all tables.
+    LOG(INFO) << "***** 1. Write some data to all tables.";
     for (const auto& producer_table : producer_tables_) {
       LOG(INFO) << "Writing records for table " << producer_table->name().ToString();
       RETURN_NOT_OK(
@@ -105,14 +99,14 @@ class XClusterYsqlColocatedTest : public XClusterYsqlTestBase {
     }
     count += kRecordBatch;
 
-    // 2. Setup replication for only the colocated tables.
+    LOG(INFO) << "***** 2. Setup replication for only the colocated tables.";
     // Get the producer colocated parent table id.
     auto colocated_parent_table_id = VERIFY_RESULT(GetColocatedDatabaseParentTableId());
 
     RETURN_NOT_OK(SetupUniverseReplication({colocated_parent_table_id}));
     RETURN_NOT_OK(CorrectlyPollingAllTablets(kNTabletsPerColocatedTable));
 
-    // 4. Check that colocated tables are being replicated.
+    LOG(INFO) << "***** 3. Check that colocated tables are being replicated.";
     auto data_replicated_correctly = [&](int num_results, bool onlyColocated) -> Result<bool> {
       auto& tables = onlyColocated ? colocated_consumer_tables : consumer_tables_;
       for (const auto& consumer_table : tables) {
@@ -132,7 +126,7 @@ class XClusterYsqlColocatedTest : public XClusterYsqlTestBase {
         0, PQntuples(non_coloc_results.get()), IllegalState,
         "Non colocated table should not be replicated.");
 
-    // 5. Add the regular table to replication.
+    LOG(INFO) << "***** 4. Add the regular table to replication.";
     // Prepare and send AlterUniverseReplication command.
     RETURN_NOT_OK(AlterUniverseReplication(
         kReplicationGroupId, {non_colocated_producer_table}, true /*add_tables*/));
@@ -151,7 +145,7 @@ class XClusterYsqlColocatedTest : public XClusterYsqlTestBase {
         [&]() -> Result<bool> { return data_replicated_correctly(count, false); },
         MonoDelta::FromSeconds(20 * kTimeMultiplier), "IsDataReplicatedCorrectly all tables"));
 
-    // 6. Add additional data to all tables
+    LOG(INFO) << "***** 5. Add additional data to all tables";
     for (const auto& producer_table : producer_tables_) {
       LOG(INFO) << "Writing records for table " << producer_table->name().ToString();
       RETURN_NOT_OK(
@@ -159,7 +153,7 @@ class XClusterYsqlColocatedTest : public XClusterYsqlTestBase {
     }
     count += kRecordBatch;
 
-    // 7. Verify all tables are properly replicated.
+    LOG(INFO) << "***** 6. Verify all tables are properly replicated.";
     RETURN_NOT_OK(WaitFor(
         [&]() -> Result<bool> { return data_replicated_correctly(count, false); },
         MonoDelta::FromSeconds(20 * kTimeMultiplier),
@@ -178,7 +172,7 @@ class XClusterYsqlColocatedTest : public XClusterYsqlTestBase {
       RETURN_NOT_OK(producer_client()->OpenTable(table, &new_colocated_producer_table));
     }
 
-    // 2. Write data so we have some entries on the new colocated table.
+    LOG(INFO) << "***** 7. Write data so we have some entries on the new colocated table.";
     RETURN_NOT_OK(
         InsertRowsInProducer(0, kRecordBatch, new_colocated_producer_table, use_transaction));
 
@@ -191,7 +185,7 @@ class XClusterYsqlColocatedTest : public XClusterYsqlTestBase {
       RETURN_NOT_OK(consumer_client()->OpenTable(table, &new_colocated_consumer_table));
     }
 
-    // 5. Verify the new schema Producer entries are added to Consumer.
+    LOG(INFO) << "***** 8. Verify the new schema Producer entries are added to Consumer.";
     RETURN_NOT_OK(WaitFor(
         [&]() -> Result<bool> {
           LOG(INFO) << "Checking records for table "
@@ -205,7 +199,8 @@ class XClusterYsqlColocatedTest : public XClusterYsqlTestBase {
         MonoDelta::FromSeconds(20 * kTimeMultiplier),
         "IsDataReplicatedCorrectly new colocated table"));
 
-    // 6. Shutdown the colocated tablet leader and verify that replication is still happening.
+    LOG(INFO) << "***** 9. Shutdown the colocated tablet leader and verify that replication is "
+                 "still happening.";
     {
       auto tablet_ids = ListTabletIdsForTable(consumer_cluster(), colocated_parent_table_id);
       auto old_ts = FindTabletLeader(consumer_cluster(), *tablet_ids.begin());
@@ -233,13 +228,13 @@ class XClusterYsqlColocatedTest : public XClusterYsqlTestBase {
           "IsDataReplicatedCorrectly new colocated table"));
     }
 
-    // 7. Drop the new table and ensure that data is getting replicated correctly for
-    // the other tables
+    LOG(INFO) << "***** 10. Drop the new table and ensure that data is getting replicated "
+                 "correctly for the other tables";
     RETURN_NOT_OK(
         DropYsqlTable(&producer_cluster_, namespace_name, "", Format("test_table_$0", idx)));
     LOG(INFO) << Format("Dropped test_table_$0 on Producer side", idx);
 
-    // 8. Add additional data to the original tables.
+    LOG(INFO) << "***** 11. Add additional data to the original tables.";
     for (const auto& producer_table : producer_tables_) {
       LOG(INFO) << "Writing records for table " << producer_table->name().ToString();
       RETURN_NOT_OK(
@@ -247,7 +242,7 @@ class XClusterYsqlColocatedTest : public XClusterYsqlTestBase {
     }
     count += kRecordBatch;
 
-    // 9. Verify all tables are properly replicated.
+    LOG(INFO) << "***** 12. Verify all tables are properly replicated.";
     RETURN_NOT_OK(WaitFor(
         [&]() -> Result<bool> { return data_replicated_correctly(count, false); },
         MonoDelta::FromSeconds(20 * kTimeMultiplier),
@@ -276,7 +271,7 @@ TEST_F(XClusterYsqlColocatedTest, ReplicationWithPackedColumnsAndSchemaVersionMi
   ASSERT_OK(SetUpWithParams(tables_vector, tables_vector, 1, 1));
 
   TestReplicationWithSchemaChanges(
-      ASSERT_RESULT(GetColocatedDatabaseParentTableId()), false /* boostrap */);
+      ASSERT_RESULT(GetColocatedDatabaseParentTableId()), /*bootstrap=*/false);
 }
 
 TEST_F(XClusterYsqlColocatedTest, ReplicationWithPackedColumnsAndBootstrap) {
@@ -286,7 +281,7 @@ TEST_F(XClusterYsqlColocatedTest, ReplicationWithPackedColumnsAndBootstrap) {
   ASSERT_OK(SetUpWithParams(tables_vector, tables_vector, 1, 1));
 
   TestReplicationWithSchemaChanges(
-      ASSERT_RESULT(GetColocatedDatabaseParentTableId()), true /* boostrap */);
+      ASSERT_RESULT(GetColocatedDatabaseParentTableId()), /*bootstrap=*/true);
 }
 
 TEST_F(XClusterYsqlColocatedTest, DatabaseReplication) { ASSERT_OK(TestDatabaseReplication()); }
