@@ -3,6 +3,7 @@ title: Building Gen-AI applications on top of YugabyteDB
 headerTitle: Gen-AI applications
 linkTitle: Gen-AI apps
 headcontent: Build scalable and resilient AI applications with YugabyteDB
+description: Learn how YugabyteDB supports building scalable and resilient AI applications
 menu:
   stable:
     identifier: explore-gen-ai
