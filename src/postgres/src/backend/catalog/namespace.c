@@ -253,6 +253,7 @@ RangeVarGetRelidExtended(const RangeVar *relation, LOCKMODE lockmode,
 	Oid			oldRelId = InvalidOid;
 	bool		retry = false;
 	bool		missing_ok = (flags & RVR_MISSING_OK) != 0;
+	uint64		yb_inval_count;
 
 	/* verify that flags do no conflict */
 	Assert(!((flags & RVR_NOWAIT) && (flags & RVR_SKIP_LOCKED)));
@@ -294,6 +295,7 @@ RangeVarGetRelidExtended(const RangeVar *relation, LOCKMODE lockmode,
 		 * have been processed that might require a do-over.
 		 */
 		inval_count = SharedInvalidMessageCounter;
+		yb_inval_count = YbGetCatCacheDeltaRefreshes();
 
 		/*
 		 * Some non-default relpersistence value may have been specified.  The
@@ -417,7 +419,8 @@ RangeVarGetRelidExtended(const RangeVar *relation, LOCKMODE lockmode,
 		/*
 		 * If no invalidation message were processed, we're done!
 		 */
-		if (inval_count == SharedInvalidMessageCounter)
+		if (inval_count == SharedInvalidMessageCounter &&
+			yb_inval_count == YbGetCatCacheDeltaRefreshes())
 			break;
 
 		/*
@@ -552,6 +555,7 @@ RangeVarGetAndCheckCreationNamespace(RangeVar *relation,
 	Oid			nspid;
 	Oid			oldnspid = InvalidOid;
 	bool		retry = false;
+	uint64		yb_inval_count;
 
 	/*
 	 * We check the catalog name and then ignore it.
@@ -577,6 +581,7 @@ RangeVarGetAndCheckCreationNamespace(RangeVar *relation,
 		AclResult	aclresult;
 
 		inval_count = SharedInvalidMessageCounter;
+		yb_inval_count = YbGetCatCacheDeltaRefreshes();
 
 		/* Look up creation namespace and check for existing relation. */
 		nspid = RangeVarGetCreationNamespace(relation);
@@ -629,7 +634,8 @@ RangeVarGetAndCheckCreationNamespace(RangeVar *relation,
 		}
 
 		/* If no invalidation message were processed, we're done! */
-		if (inval_count == SharedInvalidMessageCounter)
+		if (inval_count == SharedInvalidMessageCounter &&
+			yb_inval_count == YbGetCatCacheDeltaRefreshes())
 			break;
 
 		/* Something may have changed, so recheck our work. */
