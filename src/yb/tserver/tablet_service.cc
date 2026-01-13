@@ -2262,12 +2262,17 @@ Status TabletServiceAdminImpl::DoClonePgSchema(
   std::string dump_output = VERIFY_RESULT(ysql_dump_runner.RunAndModifyForClone(
       req->source_db_name(), target_db_name, req->source_owner(), req->target_owner(),
       HybridTime(req->restore_ht())));
-  VLOG(2) << "Dump output: " << dump_output;
+  VLOG(2) << "ysql_dump output: " << dump_output;
 
   // Execute the sql script to generate the PG database.
   YsqlshRunner ysqlsh_runner = VERIFY_RESULT(YsqlshRunner::GetYsqlshRunner(local_hostport));
-  RETURN_NOT_OK(
-      ysqlsh_runner.ExecuteSqlScript(dump_output, "clone_pg_schema" /* tmp_file_prefix */));
+  auto result =
+      ysqlsh_runner.ExecuteSqlScript(dump_output, "clone_pg_schema" /* tmp_file_prefix */);
+  if (!result.ok()) {
+    LOG(INFO) << "Failed executing ysql_dump output: " << dump_output;
+    return result.status();
+  }
+
   LOG(INFO) << Format(
       "Clone Pg Schema Objects for source database: $0 to clone database: $1 done successfully",
       req->source_db_name(), target_db_name);
