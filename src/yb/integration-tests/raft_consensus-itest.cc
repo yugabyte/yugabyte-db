@@ -1099,7 +1099,7 @@ void RaftConsensusITest::CauseFollowerToFallBehindLogGC(string* leader_uuid,
   *leader_uuid = leader->uuid();
   int leader_index = cluster_->tablet_server_index_by_uuid(*leader_uuid);
 
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.set_table_name(kTableName);
   workload.set_timeout_allowed(true);
   workload.set_payload_bytes(128 * 1024);  // Write ops of size 128KB.
@@ -1514,7 +1514,7 @@ TEST_F(RaftConsensusITest, InsertWithCrashyNodes) {
 
   CreateCluster("raft_consensus-itest-cluster", ts_flags, master_flags);
 
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.set_timeout_allowed(true);
   workload.set_write_timeout_millis(1000);
   workload.set_num_write_threads(10);
@@ -1589,7 +1589,7 @@ void RaftConsensusITest::DoTestChurnyElections(bool with_latency) {
 
   CreateCluster("raft_consensus-itest-cluster", ts_flags, master_flags);
 
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.set_timeout_allowed(true);
   workload.set_write_timeout_millis(100);
   workload.set_num_write_threads(2);
@@ -2839,7 +2839,7 @@ TEST_F(RaftConsensusITest, TestAutoCreateReplica) {
   ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(30), active_tablet_servers,
                                   tablet_id_, 1));
 
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.set_table_name(kTableName);
   workload.set_num_write_threads(10);
   workload.set_write_batch_size(100);
@@ -2917,7 +2917,7 @@ TEST_F(RaftConsensusITest, TestMemoryRemainsConstantDespiteTwoDeadFollowers) {
   // timeout behavior, more and more wedged transactions will accumulate in the
   // leader. To prevent memory usage from skyrocketing, the leader will
   // eventually reject new transactions. That's what we're testing for here.
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.set_table_name(kTableName);
   workload.set_timeout_allowed(true);
   workload.set_write_timeout_millis(50);
@@ -3001,7 +3001,7 @@ TEST_F(RaftConsensusITest, TestSlowLeader) {
   ASSERT_OK(GetLeaderReplicaWithRetries(tablet_id_, &leader));
   ASSERT_NO_FATALS(EnableLogLatency(leader->generic_proxy.get()));
 
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.set_table_name(kTableName);
   workload.Setup();
   workload.Start();
@@ -3029,7 +3029,7 @@ TEST_F(RaftConsensusITest, TestSlowFollower) {
   }
   ASSERT_EQ(1, num_reconfigured);
 
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.set_table_name(kTableName);
   workload.Setup();
   workload.Start();
@@ -3050,7 +3050,7 @@ TEST_F(RaftConsensusITest, TestHammerOneRow) {
     ASSERT_NO_FATALS(EnableLogLatency(follower->generic_proxy.get()));
   }
 
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.set_table_name(kTableName);
   workload.set_pathological_one_row_enabled(true);
   workload.set_num_write_threads(20);
@@ -3401,7 +3401,7 @@ TEST_F(RaftConsensusITest, DisruptiveServerAndSlowWAL) {
   ASSERT_OK(GetConsensusState(leader_tserver, tablet_id_,
                               consensus::CONSENSUS_CONFIG_COMMITTED, kTimeout, &cstate));
 
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.set_table_name(kTableName);
   workload.set_timeout_allowed(true);
   workload.set_num_write_threads(1);

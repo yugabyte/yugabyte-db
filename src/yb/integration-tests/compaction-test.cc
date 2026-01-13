@@ -24,12 +24,9 @@
 #include "yb/client/yb_op.h"
 
 #include "yb/common/common_fwd.h"
-#include "yb/common/read_hybrid_time.h"
 #include "yb/common/schema.h"
-#include "yb/common/snapshot.h"
 
 #include "yb/consensus/consensus.h"
-#include "yb/consensus/consensus.pb.h"
 
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
@@ -37,7 +34,6 @@
 #include "yb/dockv/doc_ttl_util.h"
 #include "yb/dockv/reader_projection.h"
 
-#include "yb/gutil/integral_types.h"
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/integration-tests/cluster_itest_util.h"
@@ -54,7 +50,6 @@
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/statistics.h"
-#include "yb/rocksdb/types.h"
 #include "yb/rocksdb/util/task_metrics.h"
 
 #include "yb/rpc/messenger.h"
@@ -72,15 +67,9 @@
 #include "yb/tserver/ts_tablet_manager.h"
 
 #include "yb/util/backoff_waiter.h"
-#include "yb/util/compare_util.h"
-#include "yb/util/enums.h"
 #include "yb/util/flags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
-#include "yb/util/net/net_fwd.h"
-#include "yb/util/operation_counter.h"
-#include "yb/util/result.h"
-#include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/sync_point.h"
@@ -187,7 +176,7 @@ class RocksDbListener : public rocksdb::EventListener {
   }
 
  private:
-  typedef std::unordered_map<const rocksdb::DB*, size_t> CountByDbMap;
+  using CountByDbMap = std::unordered_map<const rocksdb::DB *, size_t>;
 
   std::mutex mutex_;
   CountByDbMap num_compactions_completed_ GUARDED_BY(mutex_);
@@ -198,6 +187,7 @@ class RocksDbListener : public rocksdb::EventListener {
 
 } // namespace
 
+// This fixture supports YCQL only.
 class CompactionTest : public YBTest {
  public:
   CompactionTest() {}
@@ -254,7 +244,7 @@ class CompactionTest : public YBTest {
   }
 
   void SetupWorkload(IsolationLevel isolation_level, int num_tablets = kDefaultNumTablets) {
-    workload_.reset(new TestWorkload(cluster_.get()));
+    workload_.reset(new TestYcqlWorkload(cluster_.get()));
     workload_->set_timeout_allowed(true);
     workload_->set_payload_bytes(kPayloadBytes);
     workload_->set_write_batch_size(1);
@@ -406,7 +396,7 @@ class CompactionTest : public YBTest {
   server::ClockPtr clock_{new server::HybridClock()};
   std::unique_ptr<client::TransactionManager> transaction_manager_;
   std::unique_ptr<client::TransactionPool> transaction_pool_;
-  std::unique_ptr<TestWorkload> workload_;
+  std::unique_ptr<TestYcqlWorkload> workload_;
   TableId workload_table_id_;
   std::shared_ptr<RocksDbListener> rocksdb_listener_;
 };
@@ -687,10 +677,9 @@ TEST_F(CompactionTest, ManualCompactionTaskMetrics) {
 // Test uses sync points and can only run in debug mode.
 #ifndef NDEBUG
 TEST_F(CompactionTest, FilesOverMaxSizeWithTableTTLDoNotGetAutoCompacted) {
-  yb::SyncPoint::GetInstance()->LoadDependency({
-      {"UniversalCompactionPicker::PickCompaction:SkippingCompaction",
-          "CompactionTest::FilesOverMaxSizeDoNotGetAutoCompacted:WaitNoCompaction"}}
-  );
+  yb::SyncPoint::GetInstance()->LoadDependency(
+      {{.predecessor = "UniversalCompactionPicker::PickCompaction:SkippingCompaction",
+        .successor = "CompactionTest::FilesOverMaxSizeDoNotGetAutoCompacted:WaitNoCompaction"}});
   yb::SyncPoint::GetInstance()->EnableProcessing();
 
   const int kNumFilesToWrite = 10;
@@ -2309,7 +2298,7 @@ TEST_F(CompactionTest, RemoveCorruptDataBlocks) {
       size_t size;
     };
     for (auto corrupt_range :
-         {CorruptRange{0, static_cast<size_t>(FLAGS_db_block_size_bytes / 5)},
+         {CorruptRange{.offset = 0, .size = static_cast<size_t>(FLAGS_db_block_size_bytes / 5)},
           CorruptRange{kCorruptionOffset, kCorruptionSize}}) {
       ASSERT_OK(yb::CorruptFile(
           data_file_path, corrupt_range.offset, corrupt_range.size, CorruptionType::kZero));

@@ -75,7 +75,7 @@ TEST_F(ClientFailoverITest, TestDeleteLeaderWhileScanning) {
   ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, 4));
 
   // Create the test table.
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.set_write_timeout_millis(kTimeout.ToMilliseconds());
   workload.Setup();
 

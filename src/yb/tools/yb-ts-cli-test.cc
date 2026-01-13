@@ -160,7 +160,7 @@ TEST_F(YBTsCliTest, TestDeleteTablet) {
   };
   ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags));
 
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.Setup(); // Easy way to create a new tablet.
 
   vector<tserver::ListTabletsResponsePB::StatusAndSchemaPB> tablets;
@@ -195,7 +195,7 @@ TEST_F(YBTsCliTest, TestTabletServerReadiness) {
   MonoDelta timeout = MonoDelta::FromSeconds(kTabletTimeout);
   ASSERT_NO_FATALS(StartCluster({ "--TEST_tablet_bootstrap_delay_ms=2000"s }));
 
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.Setup(); // Easy way to create a new tablet.
 
   vector<tserver::ListTabletsResponsePB::StatusAndSchemaPB> tablets;
@@ -230,7 +230,7 @@ TEST_F(YBTsCliTest, TestManualRemoteBootstrap) {
   MonoDelta timeout = MonoDelta::FromSeconds(kTabletTimeout);
   ASSERT_NO_FATALS(StartCluster({}, {}, 3 /*num tservers*/, 1 /*num masters*/));
 
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.Setup();
   workload.Start();
 
