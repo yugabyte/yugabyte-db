@@ -28,7 +28,7 @@ Many of the flags and metrics on this page refer to the cluster balancer as the 
 
 A placement policy is a specification of how data and queries should be distributed across the cluster. For example, a typical [replication factor](../../key-concepts/#replication-factor-rf) of 3 (RF-3) placement might specify that there should be one replica of each tablet in three separate regions (for example, `us-west-1a`, `us-east-2a`, and `us-central-1a`), with leader preference towards `us-west-1a`.
 
-The default placement policy is automatically inferred when a cluster is created, but you can change it at the cluster-level using [yb-admin](../../../admin/yb-admin/), or override it on a per-table basis using [tablespaces](../../../explore/going-beyond-sql/tablespaces/) (for YSQL clusters).
+The default placement policy is automatically inferred when a cluster is created, but you can change it at the cluster-level using [yb-admin](../../../admin/yb-admin/), or override it on a per-table basis using [tablespaces](../../../explore/ysql-language-features/going-beyond-sql/tablespaces/) (for YSQL clusters).
 
 ### Remote bootstrap
 
