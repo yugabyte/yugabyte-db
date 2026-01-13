@@ -73,7 +73,7 @@ Any columns added to or dropped from the parent `accounts` table are propagated 
 However, there are certain caveats to keep in mind:
 
 1. The parent table `accounts` may have its own rows that are not part of any child tables.
-1. The primary key for `account_id` on the parent `accounts` table does not propagate to children and has to be redefined for each child table. This is also the behavior for foreign key constraints and non-primary key unique constaints. You need to take special care to maintain such constraints across parent-child hierarchies.
+1. The primary key for `account_id` on the parent `accounts` table does not propagate to children and has to be redefined for each child table. This is also the behavior for foreign key constraints and non-primary key unique constraints. You need to take special care to maintain such constraints across parent-child hierarchies.
 
 Table inheritance can lead to complex hierarchies similar to class inheritance in object-oriented programming because a specific table can inherit from multiple parent tables and can itself be a parent table for other child tables.
 
