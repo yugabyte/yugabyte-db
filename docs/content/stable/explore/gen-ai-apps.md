@@ -41,15 +41,21 @@ In AI, data is often represented as vectors (or embeddings). These are long list
 
 Because vectors are mathematical representations of meaning, they work across all data types, so that you can search for a video clip using a text description, or find similar songs based on audio features.
 
+Vector-based similarity searches are commonly used in step 1 of the [RAG](#retrieval-augmented-generation) workflow described in the preceding section. Specifically, they are used to generate an abbreviated context (consisting of only a handful of data excerpts). The alternative approach of using an un-abbreviated context – that is, using all data as context is typically avoided because it's inefficient, costly and often infeasible.
+
 ### Model Context Protocol (MCP)
 
-MCP is an industry standard that acts as a secure bridge between LLMs and your structured data. While RAG focuses on retrieving unstructured context (like documents) via vectors, MCP enables LLMs to interact directly with your structured database.
+MCP is an industry standard that acts as a secure bridge between AI applications and your data sources. Whereas RAG enhances the _input_ to an LLM by adding context to the prompt, MCP enhances an LLM's runtime capabilities. MCP allows an LLM, during the course of generating a response, to actively access enterprise services like YugabyteDB to fetch the specific data it needs.
+
+In short, MCP transforms YugabyteDB from a static data source into a dynamic tool that an LLM can use to generate accurate, real-time, data-driven responses.
 
 Using the [YugabyteDB MCP Server](../../develop/ai/mcp-server/), you can:
 
-1. Explore: Allow LLMs to automatically discover your database schema, table structures, and relationships.
+1. Explore: Enable LLMs to automatically discover your database schema, table structures, and relationships.
 1. Query: Ask questions in natural language. The LLM generates and executes safe, read-only SQL queries to fetch precise answers.
 1. Analyze: Generate insights, visualizations, and summaries directly from your data without writing custom code.
+
+#### MCP and RAG: Better together
 
 MCP complements RAG by providing direct access to structured relational data, while RAG excels at semantic search across unstructured content. Together, they enable comprehensive AI applications that can both find similar content (via vectors) and answer precise questions about your structured data (via MCP).
 
@@ -78,39 +84,41 @@ YugabyteDB combines the PostgreSQL pgvector extension APIs with [Vector LSM](htt
 
 - Use any embedding model: Generate embeddings from OpenAI, Cohere, local models, or custom models, and then store them in standard `VECTOR` columns. The database treats them as numeric vectors, so you can switch embedding models by regenerating embeddings and updating your table without any schema changes.
 
-- Reduce LLM calls with vector search: Pre-compute and store answers, document chunks, or structured responses with their embeddings. Use vector similarity search to find relevant content. For example:
-
-  ```sql
-  SELECT * FROM documents ORDER BY embedding <=> $1 LIMIT 5;
-  ```
-
-  Return results directly for basic queries, and only call LLMs when you need generation. This pattern reduces API costs while maintaining accuracy for retrieval-based use cases.
-
-- Flexible vector indexing: Run YugabyteDB on any infrastructure (self-hosted or cloud) with full PostgreSQL tool compatibility (for example, pg_dump, ORMs like SQLAlchemy). The vector indexing framework plugs in algorithms via backends (currently USearch (HNSW-based) and Hnswlib for ANN search). Create indexes with SQL:
-
-  ```sql
-  CREATE INDEX ON table USING hnsw (embedding vector_cosine_ops) WITH (m=16, ef_construction=64);
-  ```
+- Flexible vector indexing: Run YugabyteDB on any infrastructure (self-hosted or cloud) with full PostgreSQL tool compatibility (for example, pg_dump, ORMs like SQLAlchemy). Internally, YugabyteDB uses a pluggable and swappable vector indexing framework. While it currently leverages USearch for high-performance vector search, the architecture is designed to be "algorithm-agnostic." This allows other leading libraries (such as hnswlib or FAISS) to be seamlessly integrated as the AI landscape evolves.
 
 ### Unified data sources
 
-Effective RAG applications require more than just text; they need access to structured data, images, and logs to provide accurate context. YugabyteDB unifies data via PostgreSQL foreign data wrappers (FDWs) and vector columns, allowing queries across structured, unstructured, and external sources from one endpoint.
+AI applications require access to massive volumes of unstructured and diverse data (text, audio, video, and images) stored across fragmented locations like cloud buckets, local disks, and external applications. So it is a significant challenge to either get this diverse source data into YugabyteDB, or allowing YugabyteDB to access this data in its original location.
 
-- Multimodal embedding storage: Store and query embeddings for diverse data types (text documents, tables and spreadsheets, images, audio transcripts, and video metadata) in a single table using pgvector. Query across modalities and join vector search results with structured tables for hybrid queries. (for example, combining market reports with historical price tables).
+YugabyteDB unifies data access access by leveraging the PostgreSQL ecosystem:
 
-- Access external data sources: Use pre-bundled or installable PostgreSQL extensions like PostgreSQL Foreign Data Wrappers (FDW) to query remote databases as if they were local tables. Import data with YSQL:
+- Native data access: Using built-in PostgreSQL capabilities and extensions, YugabyteDB can access (and optionally import) data in its native format, ranging from unstructured files (PDF, DOCX, MPEG) to structured formats (CSV, Apache Iceberg), directly from local storage or cloud buckets (such as, S3, GCS).
+- Foreign Data Wrappers (FDW): YugabyteDB allows access to other databases via PostgreSQL Foreign Data Wrappers (FDW), using which you can query remote databases as if they were local tables. For example, you can query an S3 Bucket via FDW:
 
   ```sql
-  CREATE FOREIGN TABLE s3_data (...) SERVER s3_server OPTIONS (bucket 'my-bucket', filekey 'path/to/file.parquet');
+  CREATE FOREIGN TABLE s3_data (...)
+  SERVER s3_server
+  OPTIONS (bucket 'my-bucket', filekey 'path/to/file.parquet');
   ```
 
 ### Simplified data preprocessing
 
-YugabyteDB handles vector indexing automatically after your data is loaded. You still need application code for parsing, chunking, and embedding generation, but the database manages vector storage and search.
+Before unstructured data can be used for vector searches in YugabyteDB, it typically needs to be preprocessed. This traditionally involves a multi-stage pipeline:
 
-- Automatic vector index management: After you insert vectors into a table, YugabyteDB's Vector LSM automatically maintains indexes. Indexes stay in sync with table data—inserts, updates, and deletes are reflected automatically. No manual index rebuilding or maintenance required. Background compaction merges index files and removes deleted vectors.
+1. Parsing: Extracting usable content from raw files (PDF, Word, etc.).
+1. Chunking: Breaking data into semantically modular units (sentences, paragraphs, or sections).
+1. Embedding: Generating and storing vector representations of those chunks.
 
-- Your application handles preprocessing: Parse documents using libraries like Unstructured.io, PyPDF2, or custom parsers. Chunk text appropriately for your use case (sentence, paragraph, or semantic chunking). Generate embeddings using your chosen model (OpenAI, local models, and so on), and then insert into YugabyteDB.
+Building and maintaining this high-scale pipelined system often creates a significant operational burden for application teams.
+
+#### Built-in preprocessing
+
+YugabyteDB simplifies this by offering optional, turnkey tooling built directly into the YugabyteDB database cluster:
+
+- Automated preprocessing: YugabyteDB parses documents using integrated libraries (like Unstructured.io, PyPDF2, ), chunks the text appropriately for your use case, and generates embeddings using your chosen model (OpenAI, local models, and so on) before inserting them into your tables.
+- Automatic vector index management: After you insert vectors into a table, YugabyteDB's Vector LSM automatically maintains and synchronizes indexes. Indexes stay in sync with table data - inserts, updates, and deletes are reflected in real-time, and background compaction merges index files without requiring manual rebuilding.
+
+This capability is currently in [Tech Preview](/stable/releases/versioning/#feature-maturity). Contact {{% support-general %}} for more information.
 
 ### Elastic scale for AI needs
 
@@ -136,13 +144,6 @@ YugabyteDB secures AI apps with PostgreSQL RBAC, encryption, and distributed fea
   ALTER TABLE users PARTITION eu SET TABLESPACE eu_ts;
   ```
 
-- Tenant isolation: Securely isolate data for different tenants or applications within the same cluster, ensuring that multi-tenant applications maintain strict data boundaries. For example, to physically isolate via tablespaces per tenant:
-
-  ```sql
-  CREATE TABLESPACE tenant1_ts LOCATION '/path/tenant1';
-  ALTER TABLE shared SET TABLESPACE tenant1_ts;
-  ```
-
 - Built-in protection: Enable encryption at rest or in motion, audit logging using the pgaudit extension, and authentication with OIDC and LDAP identity providers (configure in yugabyted with `--security.oidc-config`).
 
 - Granular control: Use PostgreSQL Role-Based Access Control (RBAC) to secure data at the tenant, table, row, and column levels. For example, you can create a role per tenant, grant table access, and use RLS to ensure tenants only see their rows.
@@ -159,7 +160,7 @@ Build your first AI app with [Hello RAG](../../develop/ai/hello-rag/).
 
 Explore the following tutorials to see how YugabyteDB integrates with different LLMs and frameworks.
 
-| Tutorial | Use case | LLM / framework | Deployment |
+| Tutorial | Use case | LLM / framework | LLM location |
 | :--- | :--- | :--- | :--- |
 | [Hello RAG](../../develop/ai/hello-rag/) | Build a basic Retrieval-Augmented Generation (RAG) pipeline for document-based question answering. | OpenAI | External |
 | [Azure AI](../../develop/ai/azure-openai/) | Use Azure OpenAI to build a scalable RAG application with vector search. | Azure OpenAI | External |
