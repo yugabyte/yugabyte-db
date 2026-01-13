@@ -912,6 +912,11 @@ public class GFlagsUtil {
       if (queryLogConfig.getYsqlQueryLogConfig() != null
           && queryLogConfig.getYsqlQueryLogConfig().isEnabled()) {
         YSQLQueryLogConfig ysqlQueryLogConfig = queryLogConfig.getYsqlQueryLogConfig();
+        // Add log_line_prefix if specified in the API
+        if (StringUtils.isNotEmpty(ysqlQueryLogConfig.getLogLinePrefix())) {
+          ysqlPgConfCsvEntries.add(
+              "\"log_line_prefix='" + ysqlQueryLogConfig.getLogLinePrefix() + "'\"");
+        }
         ysqlPgConfCsvEntries.add(
             encodeBooleanPgAuditFlag("log_duration", ysqlQueryLogConfig.isLogDuration()));
         ysqlPgConfCsvEntries.add(
@@ -2009,7 +2014,23 @@ public class GFlagsUtil {
     return cluster.userIntent.specificGFlags.isInheritFromPrimary();
   }
 
-  public static String getLogLinePrefix(String pgConfCsv) {
+  public static String getLogLinePrefix(QueryLogConfig queryLogConfig, String ysqlPgConfCsv) {
+    // Priority 1: User specificGFlags take precedence when explicitly set
+    String userLogLinePrefix = extractLogLinePrefixFromCsv(ysqlPgConfCsv);
+    if (!DEFAULT_LOG_LINE_PREFIX.equals(userLogLinePrefix)) {
+      return userLogLinePrefix;
+    }
+    // Priority 2: Fall back to query log API's log_line_prefix if available
+    if (queryLogConfig != null
+        && queryLogConfig.getYsqlQueryLogConfig() != null
+        && StringUtils.isNotEmpty(queryLogConfig.getYsqlQueryLogConfig().getLogLinePrefix())) {
+      return queryLogConfig.getYsqlQueryLogConfig().getLogLinePrefix();
+    }
+    // Priority 3: Return default
+    return DEFAULT_LOG_LINE_PREFIX;
+  }
+
+  private static String extractLogLinePrefixFromCsv(String pgConfCsv) {
     if (StringUtils.isEmpty(pgConfCsv)) {
       return DEFAULT_LOG_LINE_PREFIX;
     }
