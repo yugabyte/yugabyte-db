@@ -1006,5 +1006,22 @@ COUNT(*) FROM employees_hash_age_changes_25;
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestQuotationIndex)) {
+  ASSERT_NO_FATALS(RunPsqlCommand("CREATE TABLE t1(col int)", "CREATE TABLE"));
+  ASSERT_NO_FATALS(RunPsqlCommand("CREATE UNIQUE INDEX i1 ON t1(col ASC)", "CREATE INDEX"));
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "ALTER TABLE t1 ADD CONSTRAINT \"c1 new check\" UNIQUE USING INDEX i1",
+      "ALTER TABLE"));
+
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte_new", "restore"}));
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
 }  // namespace tools
 }  // namespace yb

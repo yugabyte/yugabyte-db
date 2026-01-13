@@ -17397,7 +17397,7 @@ dumpConstraint(Archive *fout, ConstraintInfo *coninfo)
 			if (dump_index_for_constraint)
 			{
 				appendPQExpBuffer(q, "USING INDEX %s",
-								  indxinfo->dobj.name);
+								  fmtId(indxinfo->dobj.name));
 			}
 			/*
 			 * If a table has a non-unique constraint or does not have an
