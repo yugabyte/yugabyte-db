@@ -197,7 +197,7 @@ export const InstanceSettings = forwardRef<
                 !editMode && (
                   <>
                     <CPUArchField disabled={false} />
-                    <LinuxVersionField disabled={false} />
+                    <LinuxVersionField disabled={false} provider={provider} />
                   </>
                 )}
               {provider &&
@@ -208,46 +208,71 @@ export const InstanceSettings = forwardRef<
               {!isK8s &&
                 (!useDedicatedNodes ? (
                   <>
-                    <InstanceTypeField isMaster={false} disabled={false} />
+                    <InstanceTypeField
+                      isMaster={false}
+                      disabled={false}
+                      provider={provider}
+                      regions={resilienceAndRegionsSettings?.regions}
+                    />
                     <VolumeInfoField
                       isMaster={false}
                       maxVolumeCount={maxVolumeCount}
                       disabled={false}
+                      provider={provider}
+                      useDedicatedNodes={useDedicatedNodes}
+                      regions={resilienceAndRegionsSettings?.regions}
                     />
                   </>
                 ) : (
                   <>
-                    <InstanceTypeField isMaster={false} disabled={false} />
+                    <InstanceTypeField
+                      isMaster={false}
+                      disabled={false}
+                      provider={provider}
+                      regions={resilienceAndRegionsSettings?.regions}
+                    />
                     <VolumeInfoField
                       isMaster={false}
                       maxVolumeCount={maxVolumeCount}
                       disabled={false}
+                      provider={provider}
+                      useDedicatedNodes={useDedicatedNodes}
+                      regions={resilienceAndRegionsSettings?.regions}
                     />
                   </>
                 ))}
               {isK8s &&
                 (useK8CustomResources ? (
                   <>
-                    <K8NodeSpecField isMaster={false} disabled={false} />
+                    <K8NodeSpecField isMaster={false} disabled={false} provider={provider} />
                     <K8VolumeInfoField
                       isMaster={false}
                       maxVolumeCount={maxVolumeCount}
                       disableVolumeSize={false}
                       disabled={false}
+                      provider={provider}
                     />
                   </>
                 ) : (
                   <>
-                    <InstanceTypeField isMaster={false} disabled={false} />
+                    <InstanceTypeField
+                      isMaster={false}
+                      disabled={false}
+                      provider={provider}
+                      regions={resilienceAndRegionsSettings?.regions}
+                    />
                     <VolumeInfoField
                       isMaster={false}
                       maxVolumeCount={maxVolumeCount}
                       disabled={false}
+                      provider={provider}
+                      useDedicatedNodes={useDedicatedNodes}
+                      regions={resilienceAndRegionsSettings?.regions}
                     />
                   </>
                 ))}
               {deviceInfo && provider?.code === CloudType.gcp && useDedicatedNodes && (
-                <StorageTypeField disabled={false} />
+                <StorageTypeField disabled={false} provider={provider} />
               )}
             </InstanceBox>
           </PanelWrapper>
@@ -276,22 +301,35 @@ export const InstanceSettings = forwardRef<
               <InstanceBox>
                 {!isK8s && useDedicatedNodes && (
                   <>
-                    <InstanceTypeField isMaster={true} disabled={!!sameAsTserver} />
+                    <InstanceTypeField
+                      isMaster={true}
+                      disabled={!!sameAsTserver}
+                      provider={provider}
+                      regions={resilienceAndRegionsSettings?.regions}
+                    />
                     <VolumeInfoField
                       isMaster={true}
                       maxVolumeCount={maxVolumeCount}
                       disabled={!!sameAsTserver}
+                      provider={provider}
+                      useDedicatedNodes={useDedicatedNodes}
+                      regions={resilienceAndRegionsSettings?.regions}
                     />
                   </>
                 )}
                 {isK8s && useK8CustomResources && (
                   <>
-                    <K8NodeSpecField isMaster={true} disabled={!!sameAsTserver} />
+                    <K8NodeSpecField
+                      isMaster={true}
+                      disabled={!!sameAsTserver}
+                      provider={provider}
+                    />
                     <K8VolumeInfoField
                       isMaster={true}
                       disableVolumeSize={false}
                       maxVolumeCount={maxVolumeCount}
                       disabled={!!sameAsTserver}
+                      provider={provider}
                     />
                   </>
                 )}

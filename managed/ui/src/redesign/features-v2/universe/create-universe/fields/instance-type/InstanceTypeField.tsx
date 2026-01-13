@@ -1,4 +1,4 @@
-import { ChangeEvent, ReactElement, useContext } from 'react';
+import { ChangeEvent, ReactElement } from 'react';
 import pluralize from 'pluralize';
 import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
@@ -16,12 +16,10 @@ import {
   CloudType,
   InstanceType,
   InstanceTypeWithGroup,
-  Placement
+  Placement,
+  Region
 } from '@app/redesign/features/universe/universe-form/utils/dto';
-import {
-  CreateUniverseContext,
-  CreateUniverseContextMethods
-} from '@app/redesign/features-v2/universe/create-universe/CreateUniverseContext';
+import { ProviderType } from '@app/redesign/features-v2/universe/create-universe/steps/general-settings/dtos';
 import { InstanceSettingProps } from '@app/redesign/features-v2/universe/create-universe/steps/hardware-settings/dtos';
 import { getDeviceInfoFromInstance } from '@app/redesign/features-v2/universe/create-universe/fields/volume-info/VolumeInfoFieldHelper';
 import {
@@ -57,9 +55,16 @@ interface InstanceTypeFieldProps {
   isEditMode?: boolean;
   isMaster?: boolean;
   disabled: boolean;
+  provider?: ProviderType;
+  regions?: Region[];
 }
 
-export const InstanceTypeField = ({ isMaster, disabled }: InstanceTypeFieldProps): ReactElement => {
+export const InstanceTypeField = ({
+  isMaster,
+  disabled,
+  provider,
+  regions
+}: InstanceTypeFieldProps): ReactElement => {
   const { control, setValue, getValues, watch } = useFormContext<InstanceSettingProps>();
   const { t } = useTranslation();
   const nodeTypeTag = isMaster ? NodeType.Master : NodeType.TServer;
@@ -68,13 +73,8 @@ export const InstanceTypeField = ({ isMaster, disabled }: InstanceTypeFieldProps
   const UPDATE_FIELD = isMaster ? MASTER_INSTANCE_TYPE_FIELD : INSTANCE_TYPE_FIELD;
   const UPDATE_DEVICE_INFO_FIELD = isMaster ? MASTER_DEVICE_INFO_FIELD : DEVICE_INFO_FIELD;
 
-  const [{ generalSettings, resilienceAndRegionsSettings }] = (useContext(
-    CreateUniverseContext
-  ) as unknown) as CreateUniverseContextMethods;
-
   const cpuArch = watch(CPU_ARCH_FIELD);
-  const provider = generalSettings?.providerConfiguration;
-  const { zones, isLoadingZones } = useGetZones(provider, resilienceAndRegionsSettings?.regions);
+  const { zones, isLoadingZones } = useGetZones(provider, regions);
   const zoneNames = zones.map((zone: Placement) => zone.name);
 
   //fetch run time configs
