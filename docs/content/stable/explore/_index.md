@@ -48,8 +48,8 @@ Whether you're setting up your first YugabyteDB cluster, evaluating YugabyteDB f
   {{< sections/3-box-card
     title="Gen-AI applications"
     description="Explore how to build Generative AI applications using YugabyteDB."
-    linkText1="Langchain"
-    linkUrl1="/stable/develop/ai/ai-langchain-openai/"
+    linkText1="Get Started"
+    linkUrl1="/stable/develop/ai/hello-rag/"
     linkText2="LlamaIndex"
     linkUrl2="/stable/develop/ai/ai-llamaindex-openai/"
     linkText3="Local LLMs"

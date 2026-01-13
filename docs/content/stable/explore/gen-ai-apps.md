@@ -8,6 +8,8 @@ menu:
     identifier: explore-gen-ai
     parent: explore
     weight: 110
+rightNav:
+  hideH4: true
 aliases:
   - /stable/explore/going-beyond-sql/gen-ai-apps/
 type: docs
@@ -39,7 +41,7 @@ In AI, data is often represented as vectors (or embeddings). These are long list
 1. Store: These vectors are stored in YugabyteDB using the familiar pgvector extension API.
 1. Search: When you ask a question, the application converts the query into a vector and performs a similarity search to find the most relevant neighbors in your database.
 
-Because vectors are mathematical representations of meaning, they work across all data types, so that you can search for a video clip using a text description, or find similar songs based on audio features.
+Vector-based similarity searches are commonly used in step 1 of the [RAG](#retrieval-augmented-generation) workflow. Specifically, they are used to generate an abbreviated context (consisting of only a handful of data excerpts). The alternative, using *all* data as context, is typically avoided because it's inefficient, costly, and often infeasible.
 
 Vector-based similarity searches are commonly used in step 1 of the [RAG](#retrieval-augmented-generation) workflow described in the preceding section. Specifically, they are used to generate an abbreviated context (consisting of only a handful of data excerpts). The alternative approach of using an un-abbreviated context – that is, using all data as context is typically avoided because it's inefficient, costly and often infeasible.
 
@@ -86,14 +88,12 @@ YugabyteDB combines the PostgreSQL pgvector extension APIs with [Vector LSM](htt
 
 - Flexible vector indexing: Run YugabyteDB on any infrastructure (self-hosted or cloud) with full PostgreSQL tool compatibility (for example, pg_dump, ORMs like SQLAlchemy). Internally, YugabyteDB uses a pluggable and swappable vector indexing framework. While it currently leverages USearch for high-performance vector search, the architecture is designed to be "algorithm-agnostic." This allows other leading libraries (such as hnswlib or FAISS) to be seamlessly integrated as the AI landscape evolves.
 
-### Unified data sources
+AI applications require access to massive volumes of unstructured and diverse data (text, audio, video, and images) stored across fragmented locations like cloud buckets, local disks, and external applications. So it's a significant challenge to either get this diverse source data into YugabyteDB, or allow YugabyteDB to access this data in its original location.
 
-AI applications require access to massive volumes of unstructured and diverse data (text, audio, video, and images) stored across fragmented locations like cloud buckets, local disks, and external applications. So it is a significant challenge to either get this diverse source data into YugabyteDB, or allowing YugabyteDB to access this data in its original location.
+YugabyteDB unifies data access by leveraging the PostgreSQL ecosystem:
 
-YugabyteDB unifies data access access by leveraging the PostgreSQL ecosystem:
-
-- Native data access: Using built-in PostgreSQL capabilities and extensions, YugabyteDB can access (and optionally import) data in its native format, ranging from unstructured files (PDF, DOCX, MPEG) to structured formats (CSV, Apache Iceberg), directly from local storage or cloud buckets (such as, S3, GCS).
-- Foreign Data Wrappers (FDW): YugabyteDB allows access to other databases via PostgreSQL Foreign Data Wrappers (FDW), using which you can query remote databases as if they were local tables. For example, you can query an S3 Bucket via FDW:
+- Native data access: Using built-in PostgreSQL capabilities and extensions, YugabyteDB can access (and optionally import) data in its native format, ranging from unstructured files (PDF, DOCX, MPEG) to structured formats (CSV, Apache Iceberg), directly from local storage or cloud buckets (such as S3 or GCS).
+- Foreign Data Wrappers (FDW): YugabyteDB allows access to other databases via PostgreSQL FDWs, which you can use to query remote databases as if they were local tables. For example, you can query an S3 Bucket via FDW:
 
   ```sql
   CREATE FOREIGN TABLE s3_data (...)
@@ -115,7 +115,7 @@ Building and maintaining this high-scale pipelined system often creates a signif
 
 YugabyteDB simplifies this by offering optional, turnkey tooling built directly into the YugabyteDB database cluster:
 
-- Automated preprocessing: YugabyteDB parses documents using integrated libraries (like Unstructured.io, PyPDF2, ), chunks the text appropriately for your use case, and generates embeddings using your chosen model (OpenAI, local models, and so on) before inserting them into your tables.
+- Automated preprocessing: YugabyteDB parses documents using integrated libraries (like Unstructured.io, PyPDF2, custom parsers), chunks the text appropriately for your use case, and generates embeddings using your chosen model (OpenAI, local models, and so on) before inserting them into your tables.
 - Automatic vector index management: After you insert vectors into a table, YugabyteDB's Vector LSM automatically maintains and synchronizes indexes. Indexes stay in sync with table data - inserts, updates, and deletes are reflected in real-time, and background compaction merges index files without requiring manual rebuilding.
 
 This capability is currently in [Tech Preview](/stable/releases/versioning/#feature-maturity). Contact {{% support-general %}} for more information.
@@ -152,6 +152,6 @@ YugabyteDB secures AI apps with PostgreSQL RBAC, encryption, and distributed fea
 
 Ready to build your first AI application? Get started with tutorials, examples, and guides.
 
-{{<lead link="./get-started/">}}
-[Get started with Gen-AI applications](./get-started/).
+{{<lead link="/">}}
+[Get started with Gen-AI applications](../../develop/AI/#get-started).
 {{</lead>}}
