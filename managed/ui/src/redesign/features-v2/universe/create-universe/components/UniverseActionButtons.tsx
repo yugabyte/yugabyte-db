@@ -44,17 +44,19 @@ export const UniverseActionButtons: FC<UniverseActionButtonsProps> = ({
         {cancelButton?.text ?? t('cancel')}
       </YBButton>
       <Grid container alignItems="center" justifyContent="flex-end" spacing={2}>
-        <YBButton
-          onClick={() => {
-            prevButton?.onClick();
-          }}
-          disabled={prevButton?.disabled}
-          variant="secondary"
-          size="large"
-          dataTestId="create-universe-back-button"
-        >
-          {prevButton?.text ?? t('back')}
-        </YBButton>
+        {prevButton && (
+          <YBButton
+            onClick={() => {
+              prevButton?.onClick();
+            }}
+            disabled={prevButton?.disabled}
+            variant="secondary"
+            size="large"
+            dataTestId="create-universe-back-button"
+          >
+            {prevButton?.text ?? t('back')}
+          </YBButton>
+        )}
         {additionalButtons}
         <YBButton
           onClick={() => {

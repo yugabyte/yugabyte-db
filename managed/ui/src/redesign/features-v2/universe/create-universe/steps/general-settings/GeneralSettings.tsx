@@ -41,7 +41,6 @@ import {
   SINGLE_AVAILABILITY_ZONE
 } from '../../fields/FieldNames';
 import { ReactComponent as ShuffleIcon } from '../../../../../assets/shuffle.svg';
-import { Region } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { ResilienceType, ResilienceFormMode, FaultToleranceType } from '../resilence-regions/dtos';
 
 const CONTROL_WIDTH = '480px';

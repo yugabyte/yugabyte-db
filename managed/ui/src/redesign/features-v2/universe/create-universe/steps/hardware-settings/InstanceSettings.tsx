@@ -1,4 +1,4 @@
-import { forwardRef, useContext, useEffect, useImperativeHandle } from 'react';
+import { forwardRef, Fragment, useContext, useEffect, useImperativeHandle } from 'react';
 import { upperCase } from 'lodash';
 import { FormProvider, useForm } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
@@ -51,11 +51,17 @@ const InstanceBox = ({ children }: { children: React.ReactNode }) => (
   <Box sx={{ width: 480, display: 'flex', flexDirection: 'column', gap: 2 }}>{children}</Box>
 );
 
-const PanelWrapper = ({ children }: { children: React.ReactNode }) => (
+const PanelWrapper = ({
+  children,
+  editMode
+}: {
+  children: React.ReactNode;
+  editMode?: boolean;
+}) => (
   <Box
     sx={(theme) => ({
       display: 'flex',
-      width: '734px',
+      width: editMode ? 'auto' : '734px',
       flexDirection: 'column',
       backgroundColor: '#FBFCFD',
       border: `1px solid ${theme.palette.grey[300]}`,
@@ -67,7 +73,12 @@ const PanelWrapper = ({ children }: { children: React.ReactNode }) => (
   </Box>
 );
 
-export const InstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
+export const InstanceSettings = forwardRef<
+  StepsRef,
+  {
+    editMode?: boolean;
+  }
+>(({ editMode = false }, forwardRef) => {
   const [
     { instanceSettings, generalSettings, nodesAvailabilitySettings, resilienceAndRegionsSettings },
     { moveToNextPage, moveToPreviousPage, saveInstanceSettings, setActiveStep }
@@ -149,36 +160,46 @@ export const InstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
 
   const showDedicatedNodesSection = !!(useDedicatedNodes || (useK8CustomResources && isK8s));
 
+  // this file is also used in edit universe hardware tab. To match the design there we need to conditionally change Panel and Content components
+  const Panel = editMode ? Box : StyledPanel;
+  const Content = editMode ? Box : StyledContent;
+
   if (isRuntimeConfigLoading || isProviderRuntimeConfigLoading) {
     return (
-      <StyledPanel>
+      <Panel>
         <StyledHeader />
-        <StyledContent>
-          <PanelWrapper>
+        <Content>
+          <PanelWrapper editMode={editMode}>
             <Box display="flex" alignItems="center" justifyContent="center" width="100%">
               <CircularProgress />
             </Box>
           </PanelWrapper>
-        </StyledContent>
-      </StyledPanel>
+        </Content>
+      </Panel>
     );
   }
 
   return (
     <FormProvider {...methods}>
-      <StyledPanel>
-        <StyledHeader>
-          {showDedicatedNodesSection ? t('tserver') : t('clusterInstance')}
-        </StyledHeader>
-        <StyledContent>
-          <PanelWrapper>
+      <Panel>
+        {!editMode && (
+          <StyledHeader>
+            {showDedicatedNodesSection ? t('tserver') : t('clusterInstance')}
+          </StyledHeader>
+        )}
+
+        <Content>
+          <PanelWrapper editMode={editMode}>
             <InstanceBox>
-              {osPatchingEnabled && provider && isImgBundleSupportedByProvider(provider) && (
-                <>
-                  <CPUArchField disabled={false} />
-                  <LinuxVersionField disabled={false} />
-                </>
-              )}
+              {osPatchingEnabled &&
+                provider &&
+                isImgBundleSupportedByProvider(provider) &&
+                !editMode && (
+                  <>
+                    <CPUArchField disabled={false} />
+                    <LinuxVersionField disabled={false} />
+                  </>
+                )}
               {provider &&
                 [CloudType.aws, CloudType.gcp, CloudType.azu].includes(provider.code) &&
                 canUseSpotInstance && (
@@ -230,8 +251,8 @@ export const InstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
               )}
             </InstanceBox>
           </PanelWrapper>
-        </StyledContent>
-      </StyledPanel>
+        </Content>
+      </Panel>
 
       <Box mb={3} />
 
@@ -251,7 +272,7 @@ export const InstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
                 dataTestId="keep-master-tserver-same-field"
               />
             </Box>
-            <PanelWrapper>
+            <PanelWrapper editMode={editMode}>
               <InstanceBox>
                 {!isK8s && useDedicatedNodes && (
                   <>

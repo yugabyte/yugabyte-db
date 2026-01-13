@@ -94,7 +94,7 @@ export const GeoPartitionInfoModal = () => {
 
   const currentGeoPartition = geoPartitions[0];
 
-  if (alreadyViewed) return null;
+  if (alreadyViewed || !isNewGeoPartition) return null;
 
   return (
     <YBModal
@@ -137,10 +137,17 @@ export const GeoPartitionInfoModal = () => {
         <RegionPanel>
           <RegionCard>
             <span className="header">{t('existingRegions')}</span>
-            <Box>
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+                alignItems: 'flex-start'
+              }}
+            >
               {currentGeoPartition?.resilience?.regions.map((region) => (
                 <RegionItem key={region.uuid}>
-                  <Marker />
+                  <Marker style={{ minWidth: '16px', alignSelf: 'flex-start' }} />
                   <span>
                     {region.name} ({region.code})
                   </span>
@@ -156,14 +163,23 @@ export const GeoPartitionInfoModal = () => {
                 {t('primary')}
               </YBTag>
             </RegionItem>
-            {currentGeoPartition?.resilience?.regions.map((region) => (
-              <RegionItem key={region.uuid}>
-                <Marker />
-                <span>
-                  {region.name} ({region.code})
-                </span>
-              </RegionItem>
-            ))}
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+                alignItems: 'flex-start'
+              }}
+            >
+              {currentGeoPartition?.resilience?.regions.map((region) => (
+                <RegionItem key={region.uuid}>
+                  <Marker style={{ minWidth: '16px', alignSelf: 'flex-start' }} />
+                  <span>
+                    {region.name} ({region.code})
+                  </span>
+                </RegionItem>
+              ))}
+            </Box>
           </RegionCard>
         </RegionPanel>
         <Box

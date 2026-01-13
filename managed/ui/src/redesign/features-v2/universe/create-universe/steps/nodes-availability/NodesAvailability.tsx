@@ -224,6 +224,21 @@ export const NodesAvailability = forwardRef<
             <GuidedRequirementDetails />
           )}
           <AvailabilityZones />
+          {(errors as any)?.lesserNodes?.message && (
+            <YBAlert
+              open
+              variant={AlertVariant.Error}
+              text={
+                <Trans
+                  t={t}
+                  i18nKey={(errors as any)?.lesserNodes?.message}
+                  components={{ b: <b /> }}
+                >
+                  {(errors as any).lesserNodes.message}
+                </Trans>
+              }
+            />
+          )}
         </Box>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <YBMaps

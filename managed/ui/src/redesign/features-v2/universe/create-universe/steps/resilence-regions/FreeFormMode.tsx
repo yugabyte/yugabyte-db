@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useFormContext } from 'react-hook-form';
 import { Trans, useTranslation } from 'react-i18next';
 import { mui, YBTag } from '@yugabyte-ui-library/core';
@@ -5,7 +6,6 @@ import { Collapse, styled, Typography } from '@material-ui/core';
 import { ResilienceAndRegionsProps } from './dtos';
 import { ReplicationFactorField } from '../../fields/replication-factor/ReplicationFactorField';
 import { ResilienceTooltip } from './ResilienceTooltip';
-import { useState } from 'react';
 
 const { Box } = mui;
 

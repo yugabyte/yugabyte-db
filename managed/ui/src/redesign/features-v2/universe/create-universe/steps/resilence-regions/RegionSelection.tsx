@@ -97,19 +97,13 @@ export const RegionSelection = () => {
           placeholder: t('selectRegion'),
           error: !!errors[REGIONS_FIELD],
           helperText: errors[REGIONS_FIELD]?.message,
-          dataTestId: 'region-selection-autocomplete',
-          slotProps: {
-            input: {
-              style: {
-                paddingLeft: '8px'
-              }
-            }
-          }
+          dataTestId: 'region-selection-autocomplete'
         }}
         dataTestId="region-selection-autocomplete-parent"
         options={((regionsList as unknown) as Record<string, string>[]) ?? []}
         getOptionLabel={(r) => (typeof r === 'string' ? r : r.name ?? '')}
         sx={{ marginBottom: '24px', marginLeft: '24px', marginRight: '24px' }}
+        size="large"
         loading={isFetching}
         multiple={allowmultipleRegionsSelection}
         onChange={(_, option) => {
@@ -151,7 +145,7 @@ export const RegionSelection = () => {
             control={control}
             label={t('singleNode.node')}
             type="number"
-            sx={{ width: '100px', marginTop: '5px' }}
+            sx={{ width: '100px' }}
             disabled
           />
         </div>

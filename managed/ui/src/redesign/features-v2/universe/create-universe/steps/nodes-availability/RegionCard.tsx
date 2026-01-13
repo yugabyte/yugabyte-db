@@ -26,12 +26,6 @@ const StyledRegionCard = styled('div')(({ theme }) => ({
   borderRadius: '8px'
 }));
 
-const StyledRegionName = styled('div')(({ theme }) => ({
-  borderRadius: '6px',
-  background: theme.palette.primary[200],
-  padding: '10px 4px 10px 8px'
-}));
-
 export const RegionCard: FC<RegionCardProps> = ({ region, index }) => {
   const {
     control,
@@ -55,7 +49,7 @@ export const RegionCard: FC<RegionCardProps> = ({ region, index }) => {
 
     setValue(`availabilityZones.${region.code}`, [
       ...az,
-      { ...azToAdd, nodeCount: nodesPerAz, preffered: 0 }
+      { ...azToAdd, nodeCount: nodesPerAz ?? 1, preffered: 0 }
     ]);
   };
 

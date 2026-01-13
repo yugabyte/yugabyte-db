@@ -46,7 +46,7 @@ import {
   isRbacEnabled
 } from './redesign/features/rbac/common/RbacUtils';
 import { DrPanel } from './pages/DrPanel';
-import { CreateUniverse } from './redesign/features-v2/universe/create-universe';
+import { CreateUniverse } from "./redesign/features-v2/universe/create-universe/CreateUniverse";
 import { AddGeoPartition } from './redesign/features-v2/universe/geo-partition';
 
 /**
@@ -258,7 +258,7 @@ export default (store) => {
         component={(props) => <AddGeoPartition isNewGeoPartition {...props} />}
         onEnter={authenticatedSession}
         onChange={checkIfAuthenticated}
-        
+
       />
       <Route
         onEnter={authenticatedSession}

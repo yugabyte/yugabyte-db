@@ -109,9 +109,16 @@ export const ReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
     () => ({
       onNext: () => {
         return createUniverse
-          .mutateAsync({
-            data: payload
-          })
+          .mutateAsync(
+            {
+              data: payload
+            },
+            {
+              onError(error) {
+                toast.error((error.response?.data as any)?.error || 'Failed to create universe');
+              }
+            }
+          )
           .then((resp) => {
             if (resp.resource_uuid) {
               // Navigate to the universe details page after creation
