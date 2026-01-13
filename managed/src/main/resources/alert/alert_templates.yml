@@ -1357,6 +1357,84 @@ templates:
         Average replication lag for universe '{{ $labels.source_name }}' is above
         {{ $labels.threshold }} ms. Current value is {{ $value | printf "%.0f" }} ms
 
+  CDCSDK_FLUSH_LAG:
+    name: CDC SDK Flush Lag
+    description: Max CDC SDK replication slot flush lag for 10 minutes in ms is above threshold
+    queryTemplate: max by (universe_uuid) (max_over_time(cdcsdk_flush_lag{universe_uuid="__universeUuid__"}[10m]))
+      / 1000 {{ query_condition }} {{ query_threshold }}
+    createForNewCustomer: true
+    defaultThresholdMap:
+      SEVERE:
+        threshold: 21600000
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: MILLISECOND
+    thresholdUnitName: ms
+    labels:
+      affected_slot_names: >-
+        {{ range $index, $element := query "max by (universe_uuid, slot_name)
+        (max_over_time(cdcsdk_flush_lag{universe_uuid='{{ $labels.universe_uuid }}'}[10m]))
+        / 1000 {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.slot_name }}{{ end }}
+    annotations:
+      summary: >-
+        Max CDC SDK replication slot flush lag for universe '{{ $labels.source_name }}' is above
+        {{ $labels.threshold }} ms. Current value is {{ $value | printf "%.0f" }} ms
+        Affected replication slots: {{ $labels.affected_slot_names }}
+
+  CDCSDK_EXPIRY:
+    name: CDC SDK Replication Slot Expiry
+    description: CDC SDK replication slot expiry status (expired or near expiry)
+    queryTemplate: min by (universe_uuid) (min_over_time(cdcsdk_expiry_time_ms{universe_uuid="__universeUuid__"}[10m]))
+      {{ query_condition }} {{ query_threshold }}
+    createForNewCustomer: true
+    defaultThresholdMap:
+      SEVERE:
+        threshold: 1.0
+      WARNING:
+        threshold: 7200000.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: LESS_THAN
+    defaultThresholdUnit: MILLISECOND
+    thresholdUnitName: ms
+    thresholdReadOnly: true
+    labels:
+      affected_slot_names_severe: >-
+        {{ range $index, $element := query "min_over_time(cdcsdk_expiry_time_ms{universe_uuid='{{ $labels.universe_uuid }}'}[10m])
+        < 1" }}{{if $index}},{{end}}{{ $element.Labels.slot_name }}{{ end }}
+      affected_slot_names_warning: >-
+        {{ range $index, $element := query "min_over_time(cdcsdk_expiry_time_ms{universe_uuid='{{ $labels.universe_uuid }}'}[10m])
+        > 0 and min_over_time(cdcsdk_expiry_time_ms{universe_uuid='{{ $labels.universe_uuid }}'}[10m]) < 7200000" }}{{if $index}},{{end}}{{ $element.Labels.slot_name }}{{ end }}
+    annotations:
+      summary: >-
+        {{ if eq $labels.severity "SEVERE" }}CDC SDK replication slot(s) have expired for universe '{{ $labels.source_name }}'.
+        Expired replication slots: {{ $labels.affected_slot_names_severe }}{{ else }}CDC SDK replication slot(s) are near expiry for universe '{{ $labels.source_name }}'.
+        Minimum expiry time is {{ $value | printf "%.0f" }} ms (less than 2 hours remaining).
+        Affected replication slots: {{ $labels.affected_slot_names_warning }}{{ end }}
+
+  CDCSDK_IDLE_STREAM:
+    name: CDC SDK Idle Stream
+    description: CDC SDK replication slot is idle (no messages emitted, change event count rate is 0)
+    queryTemplate: count by (universe_uuid) (rate(cdcsdk_change_event_count{universe_uuid="__universeUuid__"}[10m])
+      == 0) {{ query_condition }} {{ query_threshold }}
+    createForNewCustomer: true
+    defaultThresholdMap:
+      WARNING:
+        threshold: 0.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: COUNT
+    thresholdUnitName: slot(s)
+    thresholdReadOnly: true
+    labels:
+      affected_slot_names: >-
+        {{ range $index, $element := query "rate(cdcsdk_change_event_count{universe_uuid='{{ $labels.universe_uuid }}'}[10m])
+        == 0" }}{{if $index}},{{end}}{{ $element.Labels.slot_name }}{{ end }}
+    annotations:
+      summary: >-
+        CDC SDK replication slot(s) are idle for universe '{{ $labels.source_name }}'.
+        No messages are being emitted (change event count rate is 0).
+        Idle replication slots: {{ $labels.affected_slot_names }}
+
   SSH_KEY_ROTATION_FAILURE:
     name: SSH Key Rotation Failure
     description: Last SSH Key Rotation task failed for universe
