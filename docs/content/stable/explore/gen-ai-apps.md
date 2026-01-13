@@ -150,29 +150,8 @@ YugabyteDB secures AI apps with PostgreSQL RBAC, encryption, and distributed fea
 
 ## Get started
 
-Get started with AI and YugabyteDB using the "Hello RAG" example to build your first AI application.
+Ready to build your first AI application? Get started with tutorials, examples, and guides.
 
-{{<lead link="../../develop/ai/hello-rag/">}}
-Build your first AI app with [Hello RAG](../../develop/ai/hello-rag/).
+{{<lead link="./get-started/">}}
+[Get started with Gen-AI applications](./get-started/).
 {{</lead>}}
-
-### AI tutorials
-
-Explore the following tutorials to see how YugabyteDB integrates with different LLMs and frameworks.
-
-| Tutorial | Use case | LLM / framework | LLM location |
-| :--- | :--- | :--- | :--- |
-| [Hello RAG](../../develop/ai/hello-rag/) | Build a basic Retrieval-Augmented Generation (RAG) pipeline for document-based question answering. | OpenAI | External |
-| [Azure AI](../../develop/ai/azure-openai/) | Use Azure OpenAI to build a scalable RAG application with vector search. | Azure OpenAI | External |
-| [Google Vertex AI](../../develop/ai/google-vertex-ai/) | Use Google Vertex AI for similarity search and generative AI workflows. | Vertex AI | External |
-| [LocalAI](../../develop/ai/ai-localai/) | Build and run an LLM application entirely on-premises for privacy and security. | LocalAI | Local / on-premises |
-| [Ollama](../../develop/ai/ai-ollama/) | Host and run embedding models locally for vector-based similarity search. | Ollama | Local / on-premises |
-| [YugabyteDB MCP server](../../develop/ai/mcp-server/) | Enable LLMs to interact directly with YugabyteDB using natural language. | Claude / Cursor | External |
-| [LlamaIndex](../../develop/ai/ai-llamaindex-openai/) | Connect LLMs to structured and unstructured data using LlamaIndex. | OpenAI / LlamaIndex | External |
-| [LangChain](../../develop/ai/ai-langchain-openai/) | Build a natural language interface to query your database without writing SQL. | OpenAI / LangChain | External |
-
-### Learn more
-
-- [pgvector extension](../../additional-features/pg-extensions/extension-pgvector/) reference.
-- [YugabyteDB AI blogs](https://www.yugabyte.com/blog/category/ai/)
-- [Architecting GenAI and RAG Apps with YugabyteDB](https://www.yugabyte.com/ai/)
