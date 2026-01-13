@@ -49,7 +49,7 @@ platform:
    custom_headers: []
 
    # Specifies the list of algorithms that will be disabled for TLS handshake
-   tlsDisabledAlgorithms: ["DHE keySize < 2048"]
+   tlsDisabledAlgorithms: ["DHE keySize < 2048", "EDCH keySize < 224"]
 
    # OAuth related settings
    # useOauth: The boolean that determine if OIDC SSO needs to be
