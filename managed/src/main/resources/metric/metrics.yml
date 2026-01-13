@@ -2576,7 +2576,7 @@ tserver_async_replication_lag_micros:
 
 cdcsdk_flush_lag:
   metric: "cdcsdk_flush_lag"
-  operator: "/ 1000000"
+  operator: "/ 1000"
   function: "max by (saved_name)"
   panel_group: "Tablet Server"
   layout:
@@ -2584,7 +2584,7 @@ cdcsdk_flush_lag:
     xaxis:
       type: "date"
     yaxis:
-      ticksuffix: "&nbsp;s"
+      ticksuffix: "&nbsp;ms"
       alias:
         "cdcsdk_flush_lag": "Current Lag"
 
