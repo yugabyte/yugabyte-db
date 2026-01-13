@@ -6550,6 +6550,16 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap, LOCKMODE lockmode)
 	ExprState  *partqualstate = NULL;
 
 	/*
+	 * YB: For xCluster targets in automatic mode, we skip rewrites / constraint
+	 * checking, since this data will be replicated from / verified on the
+	 * source. This is especially important to avoid any expression evaluations
+	 * that could cause side effects (e.g. calling nextval() for identity
+	 * columns).
+	 */
+	if (yb_xcluster_automatic_mode_target_ddl)
+		return;
+
+	/*
 	 * Open the relation(s).  We have surely already locked the existing
 	 * table.
 	 */
@@ -6905,7 +6915,7 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap, LOCKMODE lockmode)
 			}
 
 			/* Write the tuple out to the new relation */
-			if (newrel && !yb_xcluster_automatic_mode_target_ddl)
+			if (newrel)
 			{
 				if (IsYBRelation(newrel))
 					YBCExecuteInsert(newrel,
