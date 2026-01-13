@@ -16,7 +16,7 @@ Use the `CREATE ROLE` statement to add a role to a YugabyteDB database cluster. 
 
 A role can be a user or a group, depending on how it is used. A role with attribute `LOGIN` can be considered as a "user".
 
-You must have `CREATEROLE` privilege or be a database superuser to use this command.
+You must have `CREATEROLE` attribute or be a database superuser to use this command.
 
 Note that roles are defined at the YSQL cluster level, and so are valid in all databases in the cluster.
 
@@ -45,6 +45,10 @@ Where
 - `LOGIN`, `NOLOGIN` determine whether the new role is allowed to log in or not. Only roles with login privilege can be used during client connection.
 
   A role with LOGIN can be thought of as a user. If not specified, NOLOGIN is the default. Note that if `CREATE USER` statement is used instead of `CREATE ROLE`, then default is LOGIN.
+- `REPLICATION`, `NOREPLICATION` determine whether a role is a replication role. A role must have this attribute (or be a superuser) in order to be able to connect to the server in replication mode (physical or logical replication) and in order to be able to create or drop replication slots. A role having the REPLICATION attribute is a very highly privileged role, and should only be used on roles actually used for replication. If not specified, NOREPLICATION is the default. Only superuser roles or roles with REPLICATION can specify REPLICATION.
+- `BYPASSRLS`, `NOBYPASSRLS` determine whether a role bypasses every row-level security (RLS) policy. NOBYPASSRLS is the default. Only superuser roles or roles with BYPASSRLS can specify BYPASSRLS.
+
+  Note that pg_dump will set row_security to OFF by default, to ensure all contents of a table are dumped out. If the user running pg_dump does not have appropriate permissions, an error will be returned. However, superusers and the owner of the table being dumped always bypass RLS.
 - `CONNECTION LIMIT` specifies how many concurrent connections the role can make. Default is -1 which means unlimited. This only applies to roles that can log in.
 - `[ENCRYPTED] PASSWORD` sets the password for the new role. This only applies to roles that can log in.
 

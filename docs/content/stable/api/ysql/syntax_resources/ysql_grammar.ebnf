@@ -164,6 +164,10 @@ alter_role_option = 'SUPERUSER'
               | 'NOINHERIT'
               | 'LOGIN'
               | 'NOLOGIN'
+              | 'REPLICATION'
+              | 'NOREPLICATION'
+              | 'BYPASSRLS'
+              | 'NOBYPASSRLS'
               | 'CONNECTION' 'LIMIT' connlimit
               | [ 'ENCRYPTED' ] 'PASSWORD' ''' password '''
               | 'PASSWORD' 'NULL'
@@ -706,6 +710,10 @@ role_option = 'SUPERUSER'
               | 'NOINHERIT'
               | 'LOGIN'
               | 'NOLOGIN'
+              | 'REPLICATION'
+              | 'NOREPLICATION'
+              | 'BYPASSRLS'
+              | 'NOBYPASSRLS'
               | 'CONNECTION' 'LIMIT' connlimit
               | [ 'ENCRYPTED' ] 'PASSWORD' ''' password '''
               | 'PASSWORD' 'NULL'
@@ -767,11 +775,11 @@ create_table = 'CREATE' [ 'TEMPORARY' | 'TEMP' | 'UNLOGGED' ] 'TABLE'
                  [ 'PARTITION' 'BY' { 'RANGE' | 'LIST' | 'HASH' } '(' { column_name | ( expression ) } [ operator_class_name ] [, ...] ')' ] \
                  [ 'WITH' '(' ( 'COLOCATION' '=' ('true' | 'false') | 'COLOCATION_ID' '=' int_literal | storage_parameters ) ')'
                       | 'WITHOUT' 'OIDS' ] \
-                 [ 'TABLESPACE' tablespace_name ]
+                 [ 'TABLESPACE' tablespace_name ] \
                  [ 'SPLIT' ( 'INTO' positive_int_literal 'TABLETS'
                       | 'AT' 'VALUES' '(' split_row { ',' split_row } ')' ) ] ;
 
-split_row = '(' column_value { ',' column_value } ')';
+split_row = '(' column_value { ',' column_value } ')' ;
 
 table_elem = ( column_name data_type [ column_constraint { column_constraint } ] ) | table_constraint ;
 
@@ -839,7 +847,7 @@ create_type = ( create_composite_type |
                 create_enum_type  |
                 create_range_type |
                 create_shell_type |
-                create_base_type );
+                create_base_type ) ;
 
 create_composite_type = 'CREATE' 'TYPE' type_name 'AS'
                           '(' [ composite_type_elem { ',' composite_type_elem } ] ')' ;
@@ -1025,7 +1033,7 @@ drop_publication = 'DROP' 'PUBLICATION' [ 'IF' 'EXISTS' ] publication_name
                    [ 'CASCADE' | 'RESTRICT' ] ;
 
 (* DROP_REPLICATION_SLOT *)
-drop_replication_slot = DROP_REPLICATION_SLOT slot_name ;
+drop_replication_slot = 'DROP_REPLICATION_SLOT' slot_name ;
 
 (* 'DROP' 'ROLE' *)
 drop_role = 'DROP' 'ROLE' [ 'IF' 'EXISTS' ] role_name { ',' role_name } ;
@@ -1336,7 +1344,7 @@ start_transaction = 'START' 'TRANSACTION' { transaction_mode } ;
 
 (* 'TRUNCATE' *)
 
-truncate = 'TRUNCATE' [ 'TABLE' ] ( table_expr { ',' table_expr } ) [ 'CASCADE' | 'RESTRICT' ];
+truncate = 'TRUNCATE' [ 'TABLE' ] ( table_expr { ',' table_expr } ) [ 'CASCADE' | 'RESTRICT' ] ;
 
 table_expr = [ 'ONLY' ] table_name [ '*' ] ;
 
