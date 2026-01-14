@@ -154,7 +154,49 @@ class YsqlMajorUpgradeDdlBlockingTest : public YsqlMajorUpgradeTestBase {
     return Status::OK();
   }
 
+  static constexpr auto kMatviewTable = "matview_tbl";
+  static constexpr auto kNormalMatview = "mv_normal";
+  static constexpr auto kConcurrentMatview = "mv_concurrent";
+
+  Status RunRefreshMatviewDdls(std::optional<size_t> node_index) {
+    auto conn = VERIFY_RESULT(CreateConnToTs(node_index));
+
+    if (!matviews_created_) {
+      RETURN_NOT_OK(conn.ExecuteFormat("CREATE TABLE $0(a int, b int)", kMatviewTable));
+      RETURN_NOT_OK(conn.ExecuteFormat(
+          "INSERT INTO $0 VALUES (100, 100), (200, 200), (300, 300)", kMatviewTable));
+      RETURN_NOT_OK(conn.ExecuteFormat(
+          "CREATE MATERIALIZED VIEW $0 AS SELECT a FROM $1", kNormalMatview, kMatviewTable));
+      // CONCURRENTLY requires a unique index on the materialized view.
+      RETURN_NOT_OK(conn.ExecuteFormat(
+          "CREATE MATERIALIZED VIEW $0 AS SELECT a FROM $1", kConcurrentMatview, kMatviewTable));
+      RETURN_NOT_OK(conn.ExecuteFormat("CREATE UNIQUE INDEX ON $0(a)", kConcurrentMatview));
+      matviews_created_ = true;
+    }
+
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "INSERT INTO $0 VALUES ($1, $1)", kMatviewTable, ++matview_rows_));
+
+    RETURN_NOT_OK(conn.ExecuteFormat("REFRESH MATERIALIZED VIEW $0", kNormalMatview));
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "REFRESH MATERIALIZED VIEW CONCURRENTLY $0", kConcurrentMatview));
+
+    // Validate the data was refreshed correctly.
+    auto normal_count = VERIFY_RESULT(conn.FetchRow<pgwrapper::PGUint64>(
+        Format("SELECT COUNT(*) FROM $0", kNormalMatview)));
+    auto concurrent_count = VERIFY_RESULT(conn.FetchRow<pgwrapper::PGUint64>(
+        Format("SELECT COUNT(*) FROM $0", kConcurrentMatview)));
+    auto expected_count = 3 + matview_rows_;  // Initial 3 rows + inserted rows.
+    SCHECK_EQ(normal_count, expected_count, IllegalState, "Normal matview row count mismatch");
+    SCHECK_EQ(
+        concurrent_count, expected_count, IllegalState, "Concurrent matview row count mismatch");
+
+    return Status::OK();
+  }
+
   UpgradeState upgrade_state_ = UpgradeState::kBeforeUpgrade;
+  bool matviews_created_ = false;
+  int matview_rows_ = 0;
 };
 
 TEST_F(YsqlMajorUpgradeDdlBlockingTest, TestDdlsDuringUpgrade) {
@@ -256,6 +298,33 @@ TEST_F(YsqlMajorUpgradeDdlBlockingTest, CreateAndDropDBs) {
   ASSERT_OK(ExecuteStatement("DROP DATABASE new_db1"));
 
   ASSERT_OK(InsertRowInSimpleTableAndValidate());
+}
+
+// REFRESH MATERIALIZED VIEW (both normal and CONCURRENTLY) should be allowed during upgrade.
+TEST_F(YsqlMajorUpgradeDdlBlockingTest, RefreshMatviewDuringUpgrade) {
+  ASSERT_OK(RunRefreshMatviewDdls(std::nullopt));
+
+  // Start upgrade.
+  ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
+
+  // During catalog upgrade phase.
+  ASSERT_OK(RunRefreshMatviewDdls(std::nullopt));
+
+  ASSERT_OK(StartYsqlMajorCatalogUpgrade());
+
+  ASSERT_OK(RunRefreshMatviewDdls(std::nullopt));
+
+  ASSERT_OK(WaitForYsqlMajorCatalogUpgradeToFinish());
+
+  ASSERT_OK(RunRefreshMatviewDdls(std::nullopt));
+
+  ASSERT_OK(RestartAllTServersInCurrentVersion(kNoDelayBetweenNodes));
+
+  ASSERT_OK(RunRefreshMatviewDdls(std::nullopt));
+
+  ASSERT_OK(FinalizeUpgrade());
+
+  ASSERT_OK(RunRefreshMatviewDdls(std::nullopt));
 }
 
 // Make sure in-flight DDL transactions are killed by the upgrade.

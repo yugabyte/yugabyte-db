@@ -3988,34 +3988,54 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 			}
 
 		case T_VacuumStmt:
-			/* Vacuum with analyze updates relation and attribute statistics */
-			is_version_increment = should_increment_version_by_default;
-			is_breaking_change = false;
-			VacuumStmt *vacuum_stmt = castNode(VacuumStmt, parsetree);
-
-			/* ANALYZE */
-			is_ddl = !vacuum_stmt->is_vacuumcmd;
-			ListCell   *lc;
-
-			if (!is_ddl)
 			{
-				foreach(lc, vacuum_stmt->options)
-				{
-					DefElem    *def_elem = lfirst_node(DefElem, lc);
+				/*
+				 * Four cases:
+				 * 1. VACUUM: No-op in YugabyteDB, no catalog version increment.
+				 * 2. ANALYZE: Increment catalog version.
+				 * 3. VACUUM ANALYZE: Same as ANALYZE, increment catalog version.
+				 * 4. ANALYZE via SPI (as part of concurrent MV refresh): No catalog
+				 *    version increment.
+				 */
+				VacuumStmt *vacuum_stmt = castNode(VacuumStmt, parsetree);
+				bool		is_analyze = false;
+				bool		is_from_spi =
+					(ddl_transaction_state.current_stmt_node_tag != T_VacuumStmt);
 
-					/* VACUUM ANALYZE */
-					is_ddl |= (strcmp(def_elem->defname, "analyze") == 0);
-					if (is_ddl)
-						break;
+				is_breaking_change = false;
+				is_version_increment = false;
+
+				/* Case 2: ANALYZE */
+				if (!vacuum_stmt->is_vacuumcmd)
+					is_analyze = true;
+				else
+				{
+					ListCell   *lc;
+					foreach(lc, vacuum_stmt->options)
+					{
+						DefElem    *def_elem = lfirst_node(DefElem, lc);
+						if (strcmp(def_elem->defname, "analyze") == 0)
+						{
+							/* Case 3: VACUUM ANALYZE */
+							is_analyze = true;
+							break;
+						}
+					}
 				}
+
+				is_ddl = is_analyze;
+
+				/*
+				 * Cases 2 & 3: Increment catalog version for ANALYZE to force
+				 * catalog cache refresh for updated table statistics.
+				 * Case 4: Skip increment if ANALYZE is being executed as part of
+				 * concurrent MV refresh.
+				 */
+				if (is_analyze && !is_from_spi)
+					is_version_increment = true;
+
+				break;
 			}
-			/*
-			 * Increment catalog version for ANALYZE statement to force catalog cache refresh
-			 * to pick up latest table statistics.
-			 */
-			if (is_ddl && ddl_transaction_state.current_stmt_node_tag == T_VacuumStmt)
-				is_version_increment = true;
-			break;
 
 		case T_RefreshMatViewStmt:
 			{

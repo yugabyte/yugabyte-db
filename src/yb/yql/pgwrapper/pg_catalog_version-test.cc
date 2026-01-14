@@ -3812,5 +3812,56 @@ TEST_F(PgCatalogVersionTest, ConcurrentNonSuperuserNewConnectionsTest) {
   ASSERT_GT(authorized_connections, relcache_preloads);
 }
 
+// Test that REFRESH MATERIALIZED VIEW CONCURRENTLY does not increment the catalog version.
+TEST_F(PgCatalogVersionTest, RefreshMaterializedViewConcurrently) {
+  auto conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  ASSERT_OK(PrepareDBCatalogVersion(&conn_yugabyte));
+  RestartClusterWithDBCatalogVersionMode();
+  conn_yugabyte = ASSERT_RESULT(EnableCacheEventLog(ConnectToDB(kYugabyteDatabase)));
+
+  // Create the base table.
+  ASSERT_OK(conn_yugabyte.Execute(R"#(
+    CREATE TABLE sales_data (
+        order_id INT PRIMARY KEY,
+        product_name TEXT,
+        amount NUMERIC,
+        order_date TIMESTAMP DEFAULT now()
+    )
+  )#"));
+
+  // Create the materialized view. It should be empty when we create it.
+  ASSERT_OK(conn_yugabyte.Execute(R"#(
+    CREATE MATERIALIZED VIEW sales_summary AS
+    SELECT product_name, SUM(amount) as total_sales
+    FROM sales_data
+    GROUP BY product_name
+  )#"));
+
+  // REFRESH MATERIALIZED VIEW CONCURRENTLY requires a unique index.
+  ASSERT_OK(conn_yugabyte.Execute(
+      "CREATE UNIQUE INDEX idx_summary_product ON sales_summary (product_name)"));
+
+  // Update the base table by inserting some data.
+  ASSERT_OK(conn_yugabyte.Execute(
+    "INSERT INTO sales_data (order_id, product_name, amount) "
+    "VALUES (1, 'Laptop', 1200), (2, 'Mouse', 25), (3, 'Keyboard', 75)"));
+
+  // Get catalog version before refresh.
+  auto version_before = ASSERT_RESULT(GetCatalogVersion(&conn_yugabyte));
+
+  ASSERT_OK(conn_yugabyte.Execute("REFRESH MATERIALIZED VIEW CONCURRENTLY sales_summary"));
+
+  // REFRESH MATERIALIZED VIEW CONCURRENTLY should not increment the catalog version.
+  auto version_after = ASSERT_RESULT(GetCatalogVersion(&conn_yugabyte));
+  ASSERT_EQ(version_after, version_before);
+
+  // The materialized view should now contain the data from the base table.
+  auto result = ASSERT_RESULT(conn_yugabyte.FetchAllAsString(
+      "SELECT product_name, total_sales FROM sales_summary ORDER BY product_name"));
+  ASSERT_STR_CONTAINS(result, "Keyboard");
+  ASSERT_STR_CONTAINS(result, "Laptop");
+  ASSERT_STR_CONTAINS(result, "Mouse");
+}
+
 } // namespace pgwrapper
 } // namespace yb
