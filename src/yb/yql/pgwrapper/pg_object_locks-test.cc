@@ -495,7 +495,8 @@ class PgObjectLocksTest : public LibPqTestBase {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
     LibPqTestBase::UpdateMiniClusterOptions(opts);
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vmodule) = yb::Format("libpq_utils=1,$0", FLAGS_vmodule);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vmodule) =
+        yb::Format("libpq_utils=1,ts_local_lock_manager=2,$0", FLAGS_vmodule);
     opts->extra_tserver_flags.emplace_back(
         yb::Format("--enable_object_locking_for_table_locks=$0", EnableTableLocks()));
     opts->extra_tserver_flags.emplace_back(
@@ -966,6 +967,32 @@ TEST_F(PgObjectLocksTest, VerifyLockTimeout) {
 
   // Conn1 should still be able to commit
   ASSERT_OK(conn1.CommitTransaction());
+}
+
+TEST_F(PgObjectLocksTest, BootstrapLocksHasStatusTabetIdForTxns) {
+  const auto ts1_idx = 1;
+  const auto ts2_idx = 2;
+  auto* ts1 = cluster_->tablet_server(ts1_idx);
+  auto* ts2 = cluster_->tablet_server(ts2_idx);
+
+  auto conn1 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_OK(conn1.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn1.Execute("INSERT INTO test SELECT generate_series(1,11), 0"));
+
+  ASSERT_OK(conn1.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn1.Execute("ALTER TABLE test ADD COLUMN v1 INT DEFAULT 0"));
+
+  ts2->Shutdown();
+  {
+    LogWaiter log_waiter(ts2, "BootstrapDdlObjectLocks: success");
+    ASSERT_OK(ts2->Restart());
+    ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(kTimeMultiplier * 10)));
+  }
+
+  ASSERT_OK(conn1.CommitTransaction());
+
+  auto conn2 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  ASSERT_OK(conn2.FetchMatrix("SELECT * FROM test WHERE k=1", 1 /* rows */, 3 /* columns */));
 }
 
 YB_STRONGLY_TYPED_BOOL(DoMasterFailover);

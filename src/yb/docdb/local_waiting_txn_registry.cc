@@ -435,7 +435,8 @@ class LocalWaitingTxnRegistry::Impl {
       std::shared_ptr<ConflictDataManager> blockers, const TabletId& status_tablet_id,
       std::optional<PgSessionRequestVersion> pg_session_req_version,
       WaitingTransactionDataWrapper* wrapper) EXCLUDES(mutex_) {
-    DCHECK(!status_tablet_id.empty());
+    LOG_IF_WITH_FUNC(DFATAL, status_tablet_id.empty())
+        << "Expected non-emoty status tablet for registering wait-for probe";
     auto shared_tablet_data = VERIFY_RESULT(GetOrAdd(status_tablet_id));
 
     auto blocked_data = std::make_shared<WaitingTransactionData>(WaitingTransactionData{
