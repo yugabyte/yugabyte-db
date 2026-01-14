@@ -48,14 +48,14 @@ Explore the following tutorials to see how YugabyteDB integrates with different 
 
 | Tutorial | Use case | LLM / framework | LLM location |
 | :--- | :--- | :--- | :--- |
-| [Hello RAG](../../../develop/ai/hello-rag/) | Build a basic RAG pipeline for document-based question answering. | OpenAI | External |
-| [Azure AI](../../../develop/ai/azure-openai/) | Use Azure OpenAI to build a scalable RAG application with vector search. | Azure OpenAI | External |
-| [Google Vertex AI](../../../develop/ai/google-vertex-ai/) | Use Google Vertex AI for similarity search and generative AI workflows. | Vertex AI | External |
-| [LocalAI](../../../develop/ai/ai-localai/) | Build and run an LLM application entirely on-premises for privacy and security. | LocalAI | Local / on-premises |
-| [Ollama](../../../develop/ai/ai-ollama/) | Host and run embedding models locally for vector-based similarity search. | Ollama | Local / on-premises |
-| [YugabyteDB MCP server](../../../develop/ai/mcp-server/) | Enable LLMs to interact directly with YugabyteDB using natural language. | Claude / Cursor | External |
-| [LlamaIndex](../../../develop/ai/ai-llamaindex-openai/) | Connect LLMs to structured and unstructured data using LlamaIndex. | OpenAI / LlamaIndex | External |
-| [LangChain](../../../develop/ai/ai-langchain-openai/) | Build a natural language interface to query your database without writing SQL. | OpenAI / LangChain | External |
+| [Hello RAG](hello-rag/) | Build a basic RAG pipeline for document-based question answering. | OpenAI | External |
+| [Azure AI](azure-openai/) | Use Azure OpenAI to build a scalable RAG application with vector search. | Azure OpenAI | External |
+| [Google Vertex AI](google-vertex-ai/) | Use Google Vertex AI for similarity search and generative AI workflows. | Vertex AI | External |
+| [LocalAI](ai-localai/) | Build and run an LLM application entirely on-premises for privacy and security. | LocalAI | Local / on-premises |
+| [Ollama](ai-ollama/) | Host and run embedding models locally for vector-based similarity search. | Ollama | Local / on-premises |
+| [YugabyteDB MCP server](mcp-server/) | Enable LLMs to interact directly with YugabyteDB using natural language. | Claude / Cursor | External |
+| [LlamaIndex](ai-llamaindex-openai/) | Connect LLMs to structured and unstructured data using LlamaIndex. | OpenAI / LlamaIndex | External |
+| [LangChain](ai-langchain-openai/) | Build a natural language interface to query your database without writing SQL. | OpenAI / LangChain | External |
 
 <!--
 ## Retrieval-augmented generation
