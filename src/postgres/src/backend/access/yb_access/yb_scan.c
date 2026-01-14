@@ -50,6 +50,7 @@
 #include "commands/dbcommands.h"
 #include "commands/yb_tablegroup.h"
 #include "miscadmin.h"
+#include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
 #include "nodes/pathnodes.h"
 #include "optimizer/cost.h"
@@ -3820,85 +3821,27 @@ ybc_heap_endscan(TableScanDesc tsdesc)
 	ybc_free_ybscan(ybdesc);
 }
 
-
 /*
- * ybc_heap_beginscan_for_index_build
- *		Begin a heap scan specifically for index build/backfill operations.
- *
- * Unlike the regular heap scan which fetches all columns, this function
- * only requests the columns needed for the index:
- *   - Columns referenced in ii_IndexAttrNumbers (index key and non-key columns)
- *   - Columns referenced in ii_Expressions (expression index columns)
- *   - Columns referenced in ii_Predicate (partial index predicate)
- *   - ybctid (always needed for index entry construction)
- *
- * This optimization significantly reduces the amount of data read from
- * DocDB during concurrent index creation (backfill), especially for tables
- * with many columns where only a few are indexed.
+ * Build a Scan node with a targetlist containing the columns required for
+ * index backfill. This creates Var nodes for each column needed by the index,
+ * allowing ybcBeginScan to use its standard column projection logic.
  */
-TableScanDesc
-ybc_heap_beginscan_for_index_build(Relation relation,
-								   Snapshot snapshot,
-								   int nkeys,
-								   ScanKey key,
-								   uint32 flags,
-								   IndexInfo *indexInfo)
+static Scan *
+ybcBuildScanPlanForIndexBuild(Relation relation, IndexInfo *indexInfo)
 {
-	YbScanDesc	ybScan;
-	YbScanPlanData scan_plan;
-	TupleDesc	tupdesc;
+	Scan	   *scan_plan;
+	TupleDesc	tupdesc = RelationGetDescr(relation);
+	List	   *targetlist = NIL;
 	Bitmapset  *required_attrs = NULL;
 	int			i;
 	int			idx;
-
-	/* Allocate and initialize scan descriptor */
-	ybScan = (YbScanDesc) palloc0(sizeof(YbScanDescData));
-	TableScanDesc tsdesc = (TableScanDesc) ybScan;
-
-	tsdesc->rs_rd = relation;
-	tsdesc->rs_snapshot = snapshot;
-	tsdesc->rs_nkeys = nkeys;
-	tsdesc->rs_key = key;
-	tsdesc->rs_flags = flags;
-
-	/* Flatten keys and store the results in ybScan */
-	ybExtractScanKeys(key, nkeys, ybScan);
-
-	if (YbIsUnsatisfiableCondition(ybScan->nkeys, ybScan->keys))
-	{
-		ybScan->quit_scan = true;
-		return tsdesc;
-	}
-
-	ybScan->index = NULL;
-	ybScan->quit_scan = false;
-	ybScan->prepare_params.fetch_ybctids_only = false;
-
-	/* Set up the scan plan */
-	ybcSetupScanPlan(false /* xs_want_itup */, ybScan, &scan_plan);
-	ybcSetupScanKeys(ybScan, &scan_plan);
-
-	ybScan->handle = YbNewSelect(relation, &ybScan->prepare_params);
-
-	/* Bind scan keys */
-	if (!YbBindScanKeys(ybScan, &scan_plan, NULL /* pg_scan_plan */,
-						false /* is_for_precheck */) ||
-		!YbBindHashKeys(ybScan))
-	{
-		ybScan->quit_scan = true;
-		bms_free(scan_plan.hash_key);
-		bms_free(scan_plan.primary_key);
-		bms_free(scan_plan.sk_cols);
-		return tsdesc;
-	}
+	int			resno = 1;
 
 	/*
 	 * Build the set of required attribute numbers based on IndexInfo.
-	 * Use FirstLowInvalidHeapAttributeNumber as the offset for system columns.
-	 */
-	tupdesc = RelationGetDescr(relation);
-
-	/* Always need ybctid for index entry construction */
+	 * Use FirstLowInvalidHeapAttributeNumber as offset for bitmapset indexing.
+	 * Always need ybctid for index entry construction
+	*/
 	required_attrs = bms_add_member(required_attrs,
 									YBTupleIdAttributeNumber -
 									FirstLowInvalidHeapAttributeNumber);
@@ -3932,32 +3875,123 @@ ybc_heap_beginscan_for_index_build(Relation relation,
 		pull_varattnos((Node *) indexInfo->ii_Predicate, 1, &required_attrs);
 
 	/*
-	 * Now set up targets based on required_attrs.
-	 * Iterate through the bitmapset and add each required column.
+	 * Build targetlist with Var nodes for each required column.
 	 */
 	idx = -1;
 	while ((idx = bms_next_member(required_attrs, idx)) >= 0)
 	{
 		AttrNumber	attnum = idx + FirstLowInvalidHeapAttributeNumber;
+		Var		   *var;
+		TargetEntry *tle;
 
 		if (attnum > 0)
 		{
 			/* Regular column - verify it exists and is not dropped */
-			if (attnum <= tupdesc->natts &&
-				!TupleDescAttr(tupdesc, attnum - 1)->attisdropped)
-				YbDmlAppendTargetRegular(tupdesc, attnum, ybScan->handle);
+			if (attnum > tupdesc->natts ||
+				TupleDescAttr(tupdesc, attnum - 1)->attisdropped)
+				continue;
+
+			Form_pg_attribute attr = TupleDescAttr(tupdesc, attnum - 1);
+
+			var = makeVar(1,	/* varno = scanrelid */
+						  attnum,
+						  attr->atttypid,
+						  attr->atttypmod,
+						  attr->attcollation,
+						  0);	/* varlevelsup */
 		}
 		else
 		{
-			/* System column (like ybctid) */
-			YbDmlAppendTargetSystem(attnum, ybScan->handle);
+			/*
+			 * System columns (like ybctid).
+			 * The type doesn't matter for column projection - we only need
+			 * the attribute number. Use BYTEAOID as a placeholder since
+			 * ybctid is essentially a bytea. Avoids having to build the
+			 * type from the Var since this scan is used by ybcBuildRequiredAttrs
+			 * in ybcBeginScan which only needs the attr number.
+			 */
+			var = makeVar(1,	/* varno = scanrelid */
+						  attnum,
+						  BYTEAOID,
+						  -1,	/* typmod */
+						  InvalidOid,	/* collation */
+						  0);	/* varlevelsup */
 		}
+
+		tle = makeTargetEntry((Expr *) var,
+							  resno++,
+							  NULL,		/* resname */
+							  false);	/* resjunk */
+		targetlist = lappend(targetlist, tle);
 	}
 
 	bms_free(required_attrs);
-	bms_free(scan_plan.hash_key);
-	bms_free(scan_plan.primary_key);
-	bms_free(scan_plan.sk_cols);
+
+	/* Create the Scan node */
+	scan_plan = makeNode(Scan);
+	scan_plan->scanrelid = 1;	/* Always scanning the base relation */
+	scan_plan->plan.targetlist = targetlist;
+	scan_plan->plan.qual = NIL;	/* No quals for backfill scan */
+
+	return scan_plan;
+}
+
+/*
+ * ybc_heap_beginscan_for_index_build
+ *		Begin a heap scan specifically for index build/backfill operations.
+ *
+ * Unlike the regular heap scan which fetches all columns, this function
+ * only requests the columns needed for the index:
+ *   - Columns referenced in ii_IndexAttrNumbers (index key and non-key columns)
+ *   - Columns referenced in ii_Expressions (expression index columns)
+ *   - Columns referenced in ii_Predicate (partial index predicate)
+ *   - ybctid (always needed for index entry construction)
+ *
+ * This optimization significantly reduces the amount of data read from
+ * DocDB during concurrent index creation (backfill), especially for tables
+ * with many columns where only a few are indexed.
+ */
+TableScanDesc
+ybc_heap_beginscan_for_index_build(Relation relation,
+								   Snapshot snapshot,
+								   int nkeys,
+								   ScanKey key,
+								   uint32 flags,
+								   IndexInfo *indexInfo)
+{
+	YbScanDesc	ybScan;
+	Scan	   *pg_scan_plan;
+
+	/*
+	 * Build a Scan plan node with the columns required for this index.
+	 * This allows ybcBeginScan to use its standard column projection logic.
+	 */
+	pg_scan_plan = ybcBuildScanPlanForIndexBuild(relation, indexInfo);
+
+	/*
+	 * Call ybcBeginScan with the constructed plan.
+	 * Most parameters are NULL/false since this is a simple table scan
+	 * for index backfill - no index, no pushdowns, no aggregates.
+	 */
+	ybScan = ybcBeginScan(relation,
+						  NULL,		/* index */
+						  false,	/* xs_want_itup */
+						  nkeys,
+						  key,
+						  pg_scan_plan,
+						  NULL,		/* rel_pushdown */
+						  NULL,		/* idx_pushdown */
+						  NIL,		/* aggrefs */
+						  0,		  /* distinct_prefixlen */
+						  NULL,		/* exec_params */
+						  false,	/* is_internal_scan */
+						  false);	/* fetch_ybctids_only */
+
+	/* Set additional TableScanDesc fields not handled by ybcBeginScan */
+	TableScanDesc tsdesc = (TableScanDesc) ybScan;
+
+	tsdesc->rs_snapshot = snapshot;
+	tsdesc->rs_flags = flags;
 
 	return tsdesc;
 }

@@ -38,9 +38,9 @@ FROM generate_series(1, 100) AS i;
 CREATE INDEX CONCURRENTLY idx_wide_col1 ON wide_table(col1);
 -- Verify the index works correctly
 EXPLAIN (COSTS OFF) SELECT col1 FROM wide_table WHERE col1 = 50;
-                  QUERY PLAN
------------------------------------------------
- Index Scan using idx_wide_col1 on wide_table
+                    QUERY PLAN
+---------------------------------------------------
+ Index Only Scan using idx_wide_col1 on wide_table
    Index Cond: (col1 = 50)
 (2 rows)
 
@@ -56,9 +56,9 @@ DROP INDEX idx_wide_col1;
 CREATE INDEX CONCURRENTLY idx_wide_multi ON wide_table(col1, col2);
 -- Verify the index works correctly
 EXPLAIN (COSTS OFF) SELECT col1, col2 FROM wide_table WHERE col1 = 50 AND col2 = 100;
-                   QUERY PLAN
-------------------------------------------------
- Index Scan using idx_wide_multi on wide_table
+                     QUERY PLAN
+----------------------------------------------------
+ Index Only Scan using idx_wide_multi on wide_table
    Index Cond: ((col1 = 50) AND (col2 = 100))
 (2 rows)
 
@@ -92,9 +92,9 @@ DROP INDEX idx_wide_expr;
 CREATE INDEX CONCURRENTLY idx_wide_partial ON wide_table(col3) WHERE col1 > 50;
 -- Verify the index works correctly
 EXPLAIN (COSTS OFF) SELECT col3 FROM wide_table WHERE col3 = 'text_75' AND col1 > 50;
-                    QUERY PLAN
----------------------------------------------------
- Index Scan using idx_wide_partial on wide_table
+                      QUERY PLAN
+------------------------------------------------------
+ Index Only Scan using idx_wide_partial on wide_table
    Index Cond: (col3 = 'text_75'::text)
 (2 rows)
 
@@ -145,9 +145,9 @@ DROP INDEX idx_wide_include;
 CREATE INDEX idx_wide_nonconcurrent ON wide_table(col2);
 -- Verify the index works correctly
 EXPLAIN (COSTS OFF) SELECT col2 FROM wide_table WHERE col2 = 100;
-                       QUERY PLAN
---------------------------------------------------------
- Index Scan using idx_wide_nonconcurrent on wide_table
+                         QUERY PLAN
+------------------------------------------------------------
+ Index Only Scan using idx_wide_nonconcurrent on wide_table
    Index Cond: (col2 = 100)
 (2 rows)
 

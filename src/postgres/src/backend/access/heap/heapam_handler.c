@@ -1264,16 +1264,7 @@ heapam_index_build_range_scan(Relation heapRelation,
 
 		if (IsYBRelation(heapRelation) && yb_enable_index_backfill_column_projection)
 		{
-			/*
-			 * For YB relations, use the optimized scan function that only
-			 * fetches columns needed by the index. This avoids reading the
-			 * entire row from DocDB during index build/backfill.
-			 */
-			uint32		flags = SO_TYPE_SEQSCAN | SO_ALLOW_PAGEMODE |
-								SO_ALLOW_STRAT;
-
-			if (allow_sync)
-				flags |= SO_ALLOW_SYNC;
+			uint32 flags = SO_TYPE_SEQSCAN;
 
 			scan = ybc_heap_beginscan_for_index_build(heapRelation,
 													  snapshot,
