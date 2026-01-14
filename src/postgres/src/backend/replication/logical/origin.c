@@ -95,6 +95,9 @@
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+
 /*
  * Replay progress of a single remote node.
  */
@@ -1136,6 +1139,12 @@ replorigin_session_setup(RepOriginId node)
 		Assert(session_replication_state->remote_lsn == InvalidXLogRecPtr);
 		Assert(session_replication_state->local_lsn == InvalidXLogRecPtr);
 		session_replication_state->roident = node;
+	}
+
+	if (YbIsClientYsqlConnMgr())
+	{
+		elog(LOG, "Incrementing sticky object count for setting replication origin in session");
+		increment_sticky_object_count();
 	}
 
 
