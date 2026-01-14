@@ -5,7 +5,7 @@ linkTitle: Kubernetes
 description: Upgrade YugabyteDB running on Kubernetes
 headcontent: Upgrade Kubernetes deployments of YugabyteDB
 menu:
-  stable:
+  v2025.1:
     identifier: upgrade-deployment-kubernetes
     parent: manage-upgrade-deployment
     weight: 800
