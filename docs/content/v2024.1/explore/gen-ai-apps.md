@@ -5,14 +5,12 @@ linkTitle: Gen-AI apps
 headcontent: Build scalable and resilient AI applications with YugabyteDB
 description: Learn how YugabyteDB provides a modern and flexible platform for AI
 menu:
-  stable:
+  v2024.1:
     identifier: explore-gen-ai
     parent: explore
     weight: 205
 rightNav:
   hideH4: true
-aliases:
-  - /stable/explore/going-beyond-sql/gen-ai-apps/
 type: docs
 ---
 

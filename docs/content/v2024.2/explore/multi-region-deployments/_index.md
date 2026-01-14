@@ -3,7 +3,7 @@ title: Multi-Region Deployments
 headerTitle: Multi-Region Deployments
 linkTitle: Multi-region deployments
 description: Explore different Multi-Region deployment topologies in YugabyteDB.
-headcontent: Multi-Region Deployments in YugabyteDB.
+headcontent: Deployment and replication options in YugabyteDB
 menu:
   v2024.2:
     identifier: explore-multi-region-deployments
