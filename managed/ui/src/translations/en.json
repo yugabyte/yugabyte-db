@@ -3800,6 +3800,28 @@
         "subText": "You can change master server instance settings at any time by going to:",
         "settingsAndHardware": "Settings > Hardware"
       }
+    },
+    "readReplica": {
+      "addRR": {
+        "title": "Add Read Replica",
+        "placement": "Placement",
+        "regionsAndAZ": "Regions and Availability Zones",
+        "hardware": "Hardware",
+        "instanceSettings": "Instance Settings",
+        "database": "Database",
+        "databaseSettings": "Database Settings",
+        "review": "Review",
+        "summaryAndCost": "Summary and Cost",
+        "instanceOptional": "Instance Settings (Optional)",
+        "advancedFlags": "Advanced Config Flags",
+        "advancedFlagLabel": "Customize Database Config Flags for Read Replica",
+        "advancedFlagSubText": "By default, T-Server flags from the primary cluster are applied to Read Replicas.",
+        "advancedFlagNote": "<strong>Note:</strong> Read replicas do not include Master servers.",
+        "regionAZHelpText": "Enhance read scalability and availability with geographically distributed replicas. <a>Learn more</a>",
+        "rrInstance": "Read Replica Instance",
+        "primaryRRInstanceSame": "Keep read replica instance settings same as primary cluster instance settings.",
+        "primaryClusterInstSettings": "Primary Cluster Instance Settings"
+      }
     }
   }
 }

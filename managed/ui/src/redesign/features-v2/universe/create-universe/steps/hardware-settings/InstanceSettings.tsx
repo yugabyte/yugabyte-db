@@ -47,7 +47,7 @@ const { Box, Typography, CircularProgress } = mui;
 const isImgBundleSupportedByProvider = (provider: ProviderType) =>
   [CloudType.aws, CloudType.azu, CloudType.gcp].includes(provider?.code);
 
-const InstanceBox = ({ children }: { children: React.ReactNode }) => (
+export const InstanceBox = ({ children }: { children: React.ReactNode }) => (
   <Box sx={{ width: 480, display: 'flex', flexDirection: 'column', gap: 2 }}>{children}</Box>
 );
 

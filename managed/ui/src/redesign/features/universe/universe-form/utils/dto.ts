@@ -79,7 +79,7 @@ export interface DeviceInfo {
   diskIops: number | null;
   throughput: number | null;
   storageClass: 'standard'; // hardcoded in DeviceInfo.java
-  mountPoints: string | null;
+  mountPoints?: string | null;
   storageType: StorageType | null;
 }
 
@@ -337,7 +337,7 @@ export interface DeviceInfo {
   diskIops: number | null;
   throughput: number | null;
   storageClass: 'standard'; // hardcoded in DeviceInfo.java
-  mountPoints: string | null;
+  mountPoints?: string | null;
   storageType: StorageType | null;
   cloudVolumeEncryption?: {
     enableVolumeEncryption: boolean;

@@ -46,8 +46,9 @@ import {
   isRbacEnabled
 } from './redesign/features/rbac/common/RbacUtils';
 import { DrPanel } from './pages/DrPanel';
-import { CreateUniverse } from "./redesign/features-v2/universe/create-universe/CreateUniverse";
+import { CreateUniverse } from './redesign/features-v2/universe/create-universe/CreateUniverse';
 import { AddGeoPartition } from './redesign/features-v2/universe/geo-partition';
+import { AddReadReplica } from './redesign/features-v2/universe/read-replica';
 
 /**
  * Redirects to base url if no queryParmas is set else redirects to path set in queryParam
@@ -258,7 +259,12 @@ export default (store) => {
         component={(props) => <AddGeoPartition isNewGeoPartition {...props} />}
         onEnter={authenticatedSession}
         onChange={checkIfAuthenticated}
-
+      />
+      <Route
+        path="/universes/:uuid/add-read-replica"
+        component={(props) => <AddReadReplica {...props} />}
+        onEnter={authenticatedSession}
+        onChange={checkIfAuthenticated}
       />
       <Route
         onEnter={authenticatedSession}
