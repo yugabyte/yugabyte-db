@@ -95,22 +95,23 @@ enum TestMaintenanceOpState {
   OP_FINISHED,
 };
 
+enum TestOpCategory { TEST_LogGCOp, TEST_ResetStaleRetentionBarriersOp, Test_NumOpCategory };
+
 class TestMaintenanceOp : public MaintenanceOp {
  public:
-  TestMaintenanceOp(const std::string& name,
-                    IOUsage io_usage,
-                    TestMaintenanceOpState state,
-                    const shared_ptr<MemTracker>& tracker)
-    : MaintenanceOp(name, io_usage),
-      state_change_cond_(&lock_),
-      state_(state),
-      consumption_(tracker, 500),
-      logs_retained_bytes_(0),
-      perf_improvement_(0),
-      metric_entity_(METRIC_ENTITY_test.Instantiate(&metric_registry_, "test")),
-      maintenance_op_duration_(METRIC_maintenance_op_duration.Instantiate(metric_entity_)),
-      maintenance_ops_running_(METRIC_maintenance_ops_running.Instantiate(metric_entity_, 0)) {
-  }
+  TestMaintenanceOp(
+      const std::string& name, IOUsage io_usage, TestMaintenanceOpState state,
+      const shared_ptr<MemTracker>& tracker)
+      : MaintenanceOp(name, io_usage),
+        state_change_cond_(&lock_),
+        state_(state),
+        consumption_(tracker, 500),
+        logs_retained_bytes_(0),
+        perf_improvement_(0),
+        cdcsdk_reset_stale_retention_barrier_(false),
+        metric_entity_(METRIC_ENTITY_test.Instantiate(&metric_registry_, "test")),
+        maintenance_op_duration_(METRIC_maintenance_op_duration.Instantiate(metric_entity_)),
+        maintenance_ops_running_(METRIC_maintenance_ops_running.Instantiate(metric_entity_, 0)) {}
 
   virtual ~TestMaintenanceOp() {}
 
@@ -139,6 +140,7 @@ class TestMaintenanceOp : public MaintenanceOp {
     stats->set_ram_anchored(consumption_.consumption());
     stats->set_logs_retained_bytes(logs_retained_bytes_);
     stats->set_perf_improvement(perf_improvement_);
+    stats->set_cdcsdk_reset_stale_retention_barrier(cdcsdk_reset_stale_retention_barrier_);
   }
 
   void Enable() {
@@ -186,6 +188,11 @@ class TestMaintenanceOp : public MaintenanceOp {
     perf_improvement_ = perf_improvement;
   }
 
+  void set_cdcsdk_reset_stale_retention_barrier(bool cdcsdk_reset_stale_retention_barrier) {
+    std::lock_guard guard(lock_);
+    cdcsdk_reset_stale_retention_barrier_ = cdcsdk_reset_stale_retention_barrier;
+  }
+
   scoped_refptr<EventStats> DurationHistogram() const override {
     return maintenance_op_duration_;
   }
@@ -201,6 +208,7 @@ class TestMaintenanceOp : public MaintenanceOp {
   ScopedTrackedConsumption consumption_;
   uint64_t logs_retained_bytes_;
   uint64_t perf_improvement_;
+  bool cdcsdk_reset_stale_retention_barrier_;
   MetricRegistry metric_registry_;
   scoped_refptr<MetricEntity> metric_entity_;
   scoped_refptr<EventStats> maintenance_op_duration_;
@@ -211,8 +219,15 @@ class TestMaintenanceOp : public MaintenanceOp {
 // running and verify that UnregisterOp waits for it to finish before
 // proceeding.
 TEST_F(MaintenanceManagerTest, TestRegisterUnregister) {
+  unsigned int seed = SeedRandom();
+  auto op_category =
+      static_cast<TestOpCategory>(rand_r(&seed) % TestOpCategory::Test_NumOpCategory);
   TestMaintenanceOp op1("1", MaintenanceOp::HIGH_IO_USAGE, OP_DISABLED, test_tracker_);
-  op1.set_ram_anchored(1001);
+  if (op_category == TestOpCategory::TEST_ResetStaleRetentionBarriersOp) {
+    op1.set_cdcsdk_reset_stale_retention_barrier(true);
+  } else {
+    op1.set_ram_anchored(1001);
+  }
   manager_->RegisterOp(&op1);
   scoped_refptr<yb::Thread> thread;
   CHECK_OK(Thread::Create(
@@ -279,11 +294,18 @@ TEST_F(MaintenanceManagerTest, TestLogRetentionPrioritization) {
 // Test adding operations and make sure that the history of recently completed operations
 // is correct in that it wraps around and doesn't grow.
 TEST_F(MaintenanceManagerTest, TestCompletedOpsHistory) {
+  unsigned int seed = SeedRandom();
   for (int i = 0; i < 5; i++) {
     string name = Substitute("op$0", i);
     TestMaintenanceOp op(name, MaintenanceOp::HIGH_IO_USAGE, OP_RUNNABLE, test_tracker_);
-    op.set_perf_improvement(1);
-    op.set_ram_anchored(100);
+    auto op_category =
+        static_cast<TestOpCategory>(rand_r(&seed) % TestOpCategory::Test_NumOpCategory);
+    if (op_category == TestOpCategory::TEST_ResetStaleRetentionBarriersOp) {
+      op.set_cdcsdk_reset_stale_retention_barrier(true);
+    } else {
+      op.set_perf_improvement(1);
+      op.set_ram_anchored(100);
+    }
     manager_->RegisterOp(&op);
 
     ASSERT_TRUE(op.WaitForStateWithTimeout(OP_FINISHED, 200));

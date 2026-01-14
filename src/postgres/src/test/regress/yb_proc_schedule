@@ -3,7 +3,9 @@
 ####################################################################################################
 # This suite includes postgres proc tests.
 ####################################################################################################
-test: yb.orig.hash_code
+# This test should be first for consistent output.
+test: yb.orig.yb_hash_code
+
 test: yb.orig.function
 test: yb.orig.functional_indexes
 test: yb.orig.functional_index_multiple_column

@@ -32,13 +32,13 @@ TEST_P(DocDBTestWrapper, ExpiredValueCompactionTest) {
   KeyBytes encoded_doc_key(doc_key.Encode());
   ASSERT_OK(SetPrimitive(
       DocPath(encoded_doc_key, KeyEntryValue("s1")),
-      ValueControlFields {.ttl = one_ms}, ValueRef(QLValue::Primitive("v11")), t0));
+      ValueControlFields {.ttl = one_ms}, QLValue::Primitive("v11"), t0));
   ASSERT_OK(SetPrimitive(
       DocPath(encoded_doc_key, KeyEntryValue("s1")),
       QLValue::Primitive("v14"), t2));
   ASSERT_OK(SetPrimitive(
       DocPath(encoded_doc_key, KeyEntryValue("s2")),
-      ValueControlFields {.ttl = 3ms}, ValueRef(QLValue::Primitive("v21")), t0));
+      ValueControlFields {.ttl = 3ms}, QLValue::Primitive("v21"), t0));
   ASSERT_OK(SetPrimitive(
       DocPath(encoded_doc_key, KeyEntryValue("s2")),
       QLValue::Primitive("v24"), t2));
@@ -683,50 +683,50 @@ TEST_P(DocDBTestWrapper, RedisTTLCompactionTest) {
   }
   // Compact at t10
   ASSERT_OK(SetPrimitive(MakeDocKey(key_string).Encode(), // k0
-                         Ttl(4ms), ValueRef(QLValue::Primitive(val_string)), t[2]));
+                         Ttl(4ms), QLValue::Primitive(val_string), t[2]));
   val_string[1]++;
   ASSERT_OK(SetPrimitive(MakeDocKey(key_string).Encode(),
-                         Ttl(3ms), ValueRef(QLValue::Primitive(val_string)), t[0]));
+                         Ttl(3ms), QLValue::Primitive(val_string), t[0]));
   val_string[1]++;
   key_string[1]++;
   ASSERT_OK(SetPrimitive(MakeDocKey(key_string).Encode(), // k1
-                         Ttl(8ms), ValueRef(QLValue::Primitive(val_string)), t[3]));
+                         Ttl(8ms), QLValue::Primitive(val_string), t[3]));
   val_string[1]++;
   ASSERT_OK(SetPrimitive(MakeDocKey(key_string).Encode(),
-                         Ttl(1ms), ValueRef(QLValue::Primitive(val_string)), t[5]));
+                         Ttl(1ms), QLValue::Primitive(val_string), t[5]));
   val_string[1]++;
   key_string[1]++;
   ASSERT_OK(SetPrimitive(MakeDocKey(key_string).Encode(), // k2
-                         Ttl(3ms), ValueRef(QLValue::Primitive(val_string)), t[5]));
+                         Ttl(3ms), QLValue::Primitive(val_string), t[5]));
   val_string[1]++;
   ASSERT_OK(SetPrimitive(MakeDocKey(key_string).Encode(),
-                         Ttl(5ms), ValueRef(QLValue::Primitive(val_string)), t[7]));
+                         Ttl(5ms), QLValue::Primitive(val_string), t[7]));
   val_string[1]++;
   ASSERT_OK(SetPrimitive(MakeDocKey(key_string).Encode(),
-                         ValueRef(QLValue::Primitive(val_string)), t[11]));
+                         QLValue::Primitive(val_string), t[11]));
   key_string[1]++;
   val_string[1]++;
   ASSERT_OK(SetPrimitive(MakeDocKey(key_string).Encode(), // k3
-                         Ttl(4ms), ValueRef(QLValue::Primitive(val_string)), t[1]));
+                         Ttl(4ms), QLValue::Primitive(val_string), t[1]));
   val_string[1]++;
   ASSERT_OK(SetPrimitive(MakeDocKey(key_string).Encode(),
-                         ValueRef(QLValue::Primitive(val_string)), t[4]));
+                         QLValue::Primitive(val_string), t[4]));
   val_string[1]++;
   ASSERT_OK(SetPrimitive(MakeDocKey(key_string).Encode(),
-                         Ttl(1ms), ValueRef(QLValue::Primitive(val_string)), t[13]));
+                         Ttl(1ms), QLValue::Primitive(val_string), t[13]));
   val_string[1]++;
   key_string[1]++;
   ASSERT_OK(SetPrimitive(MakeDocKey(key_string).Encode(), // k4
                          ValueRef(ValueEntryType::kTombstone), t[12]));
   key_string[1]++;
   ASSERT_OK(SetPrimitive(MakeDocKey(key_string).Encode(), // k5
-                         Ttl(9ms), ValueRef(QLValue::Primitive(val_string)), t[8]));
+                         Ttl(9ms), QLValue::Primitive(val_string), t[8]));
   val_string[1]++;
   ASSERT_OK(SetPrimitive(MakeDocKey(key_string).Encode(),
                          ValueRef(ValueEntryType::kTombstone), t[9]));
   key_string[1]++;
   ASSERT_OK(SetPrimitive(MakeDocKey(key_string).Encode(), // k6
-                         Ttl(9ms), ValueRef(QLValue::Primitive(val_string)), t[8]));
+                         Ttl(9ms), QLValue::Primitive(val_string), t[8]));
   val_string[1]++;
   ASSERT_OK(SetPrimitive(MakeDocKey(key_string).Encode(),
                          ValueRef(ValueEntryType::kTombstone), t[6]));
@@ -782,64 +782,64 @@ SubDocKey(DocKey([], ["k2"]), [HT{ physical: 12000 }]) -> "v6"
   // Checking TTL rows now
   ASSERT_OK(SetPrimitive(
       MakeDocKey(key_string).Encode(), // k0
-      TtlWithMergeFlags(6ms), ValueRef(QLValue::Primitive("")),
+      TtlWithMergeFlags(6ms), QLValue::Primitive(""),
       t[5]));
   ASSERT_OK(SetPrimitive(
       MakeDocKey(key_string).Encode(),
-      TtlWithMergeFlags(4ms), ValueRef(QLValue::Primitive("")),
+      TtlWithMergeFlags(4ms), QLValue::Primitive(""),
       t[2]));
   ASSERT_OK(SetPrimitive(MakeDocKey(key_string).Encode(),
-                         Ttl(3ms), ValueRef(QLValue::Primitive(val_string)), t[0]));
+                         Ttl(3ms), QLValue::Primitive(val_string), t[0]));
   val_string[1]++;
   key_string[1]++;
   ASSERT_OK(SetPrimitive(MakeDocKey(key_string).Encode(), // k1
-                         Ttl(8ms), ValueRef(QLValue::Primitive(val_string)), t[3]));
+                         Ttl(8ms), QLValue::Primitive(val_string), t[3]));
   val_string[1]++;
   ASSERT_OK(SetPrimitive(
       MakeDocKey(key_string).Encode(),
-      TtlWithMergeFlags(3ms), ValueRef(QLValue::Primitive("")),
+      TtlWithMergeFlags(3ms), QLValue::Primitive(""),
       t[5]));
   key_string[1]++;
   ASSERT_OK(SetPrimitive(MakeDocKey(key_string).Encode(), // k2
-                         Ttl(3ms), ValueRef(QLValue::Primitive(val_string)), t[5]));
+                         Ttl(3ms), QLValue::Primitive(val_string), t[5]));
   val_string[1]++;
   ASSERT_OK(SetPrimitive(
       MakeDocKey(key_string).Encode(),
-      TtlWithMergeFlags(5ms), ValueRef(QLValue::Primitive("")),
+      TtlWithMergeFlags(5ms), QLValue::Primitive(""),
       t[7]));
   ASSERT_OK(SetPrimitive(
       MakeDocKey(key_string).Encode(),
-      TtlWithMergeFlags(ValueControlFields::kMaxTtl), ValueRef(QLValue::Primitive("")),
+      TtlWithMergeFlags(ValueControlFields::kMaxTtl), QLValue::Primitive(""),
       t[12]));
   key_string[1]++;
   ASSERT_OK(SetPrimitive( // k3
   MakeDocKey(key_string).Encode(),
-                         Ttl(4ms), ValueRef(QLValue::Primitive(val_string)), t[1]));
+                         Ttl(4ms), QLValue::Primitive(val_string), t[1]));
   val_string[1]++;
   ASSERT_OK(SetPrimitive(
       MakeDocKey(key_string).Encode(),
-      TtlWithMergeFlags(ValueControlFields::kMaxTtl), ValueRef(QLValue::Primitive("")),
+      TtlWithMergeFlags(ValueControlFields::kMaxTtl), QLValue::Primitive(""),
       t[4]));
   ASSERT_OK(SetPrimitive(MakeDocKey(key_string).Encode(),
-                         Ttl(1ms), ValueRef(QLValue::Primitive(val_string)), t[13]));
+                         Ttl(1ms), QLValue::Primitive(val_string), t[13]));
   val_string[1]++;
   key_string[1]++;
   ASSERT_OK(SetPrimitive(MakeDocKey(key_string).Encode(), // k4
                          ValueRef(ValueEntryType::kTombstone), t[12]));
   key_string[1]++;
   ASSERT_OK(SetPrimitive(MakeDocKey(key_string).Encode(), // k5
-                         Ttl(9ms), ValueRef(QLValue::Primitive(val_string)), t[8]));
+                         Ttl(9ms), QLValue::Primitive(val_string), t[8]));
   val_string[1]++;
   ASSERT_OK(SetPrimitive(MakeDocKey(key_string).Encode(),
                          ValueRef(ValueEntryType::kTombstone), t[9]));
   key_string[1]++;
   ASSERT_OK(SetPrimitive( // k6
       MakeDocKey(key_string).Encode(),
-      TtlWithMergeFlags(4ms), ValueRef(QLValue::Primitive("")),
+      TtlWithMergeFlags(4ms), QLValue::Primitive(""),
       t[10]));
 
   ASSERT_OK(SetPrimitive(MakeDocKey(key_string).Encode(),
-                         Ttl(9ms), ValueRef(QLValue::Primitive(val_string)), t[8]));
+                         Ttl(9ms), QLValue::Primitive(val_string), t[8]));
   val_string[1]++;
   ASSERT_OK(SetPrimitive(MakeDocKey(key_string).Encode(),
                          ValueRef(ValueEntryType::kTombstone), t[6]));
@@ -896,9 +896,9 @@ TEST_P(DocDBTestWrapper, TTLCompactionTest) {
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::kLivenessColumn),
                          Ttl(1ms), ValueRef(ValueEntryType::kNullLow), t0));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(0))),
-                         Ttl(2ms), ValueRef(QLValue::Primitive("v1")), t0));
+                         Ttl(2ms), QLValue::Primitive("v1"), t0));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(1))),
-                         Ttl(3ms), ValueRef(QLValue::Primitive("v2")), t0));
+                         Ttl(3ms), QLValue::Primitive("v2"), t0));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(2))),
                          QLValue::Primitive("v3"), t0));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(3))),
@@ -909,9 +909,9 @@ TEST_P(DocDBTestWrapper, TTLCompactionTest) {
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key_row2, KeyEntryValue::kLivenessColumn),
                          Ttl(3ms), ValueRef(ValueEntryType::kNullLow), t0));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key_row2, KeyEntryValue::MakeColumnId(ColumnId(0))),
-                         Ttl(2ms), ValueRef(QLValue::Primitive("v1")), t0));
+                         Ttl(2ms), QLValue::Primitive("v1"), t0));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key_row2, KeyEntryValue::MakeColumnId(ColumnId(1))),
-                         Ttl(1ms), ValueRef(QLValue::Primitive("v2")), t0));
+                         Ttl(1ms), QLValue::Primitive("v2"), t0));
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(
       R"#(
 SubDocKey(DocKey([], ["k1"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null; ttl: 0.001s
@@ -999,13 +999,13 @@ TEST_P(DocDBTestWrapper, TableTTLCompactionTest) {
   const HybridTime t5 = 5000_usec_ht;
   KeyBytes encoded_doc_key(doc_key.Encode());
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue("s1")),
-                         Ttl(1ms), ValueRef(QLValue::Primitive("v1")), t1));
+                         Ttl(1ms), QLValue::Primitive("v1"), t1));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue("s2")),
                          QLValue::Primitive("v2"), t1));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue("s3")),
-                         Ttl(0ms), ValueRef(QLValue::Primitive("v3")), t2));
+                         Ttl(0ms), QLValue::Primitive("v3"), t2));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue("s4")),
-                         Ttl(3ms), ValueRef(QLValue::Primitive("v4")), t1));
+                         Ttl(3ms), QLValue::Primitive("v4"), t1));
   // Note: HT{ physical: 1000 } + 1ms = HT{ physical: 4097000 }
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
       SubDocKey(DocKey([], ["k1"]), ["s1"; HT{ physical: 1000 }]) -> "v1"; ttl: 0.001s

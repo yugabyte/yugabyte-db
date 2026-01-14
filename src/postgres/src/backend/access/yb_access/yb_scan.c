@@ -1736,10 +1736,12 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 			else if (!is_for_precheck)
 			{
 				ScanKey		current = subkeys[subkey_index];
+				AttrNumber	attnum =
+					scan_plan->bind_key_attnums[skey_index + 1 + subkey_index];
 
 				col_values[j] = YBCNewConstant(ybScan->handle,
 											   ybc_get_atttypid(scan_plan->bind_desc,
-																scan_plan->bind_key_attnums[current->sk_attno]),
+																attnum),
 											   current->sk_collation,
 											   current->sk_argument,
 											   false);
@@ -3541,14 +3543,12 @@ YbNeedsPgRecheck(YbScanDesc yb_scan)
 }
 
 HeapTuple
-ybc_getnext_heaptuple(YbScanDesc ybScan, ScanDirection dir, bool *recheck)
+ybc_getnext_heaptuple(YbScanDesc ybScan, ScanDirection dir)
 {
 	HeapTuple	tup = NULL;
 
 	if (ybScan->quit_scan)
 		return NULL;
-
-	*recheck = YbNeedsPgRecheck(ybScan);
 
 	/* Loop over rows from pggate. */
 	while (HeapTupleIsValid(tup = ybcFetchNextHeapTuple(ybScan, dir)))
@@ -3566,11 +3566,10 @@ ybc_getnext_heaptuple(YbScanDesc ybScan, ScanDirection dir, bool *recheck)
 }
 
 IndexTuple
-ybc_getnext_indextuple(YbScanDesc ybScan, ScanDirection dir, bool *recheck)
+ybc_getnext_indextuple(YbScanDesc ybScan, ScanDirection dir)
 {
 	if (ybScan->quit_scan)
 		return NULL;
-	*recheck = YbNeedsPgRecheck(ybScan);
 	return ybcFetchNextIndexTuple(ybScan, dir);
 }
 
@@ -3670,15 +3669,10 @@ ybc_systable_getnext(YbSysScanBase default_scan)
 {
 	YbDefaultSysScan scan = (void *) default_scan;
 
-	bool		recheck = false;
-
 	Assert(PointerIsValid(scan->ybscan));
 
 	HeapTuple	tuple = ybc_getnext_heaptuple(scan->ybscan,
-											  true /* is_forward_scan */ ,
-											  &recheck);
-
-	Assert(!recheck);
+											  true);	/* is_forward_scan */
 
 	return tuple;
 }
@@ -3751,6 +3745,7 @@ ybc_systable_begin_default_scan(Relation relation,
 								NULL /* exec_params */ ,
 								true /* is_internal_scan */ ,
 								false /* fetch_ybctids_only */ );
+	Assert(!YbNeedsPgRecheck(scan->ybscan));
 
 	scan->base.vtable = &yb_default_scan;
 
@@ -3786,6 +3781,7 @@ ybc_heap_beginscan(Relation relation,
 									  NULL /* exec_params */ ,
 									  true /* is_internal_scan */ ,
 									  false /* fetch_ybctids_only */ );
+	Assert(!YbNeedsPgRecheck(ybScan));
 
 	/* Set up Postgres sys table scan description */
 	TableScanDesc tsdesc = (TableScanDesc) ybScan;
@@ -3799,13 +3795,11 @@ ybc_heap_beginscan(Relation relation,
 HeapTuple
 ybc_heap_getnext(TableScanDesc tsdesc)
 {
-	bool		recheck = false;
 	YbScanDesc	ybdesc = (YbScanDesc) tsdesc;
 	HeapTuple	tuple;
 
 	Assert(PointerIsValid(tsdesc));
-	tuple = ybc_getnext_heaptuple(ybdesc, true /* is_forward_scan */ , &recheck);
-	Assert(!recheck);
+	tuple = ybc_getnext_heaptuple(ybdesc, true /* is_forward_scan */ );
 
 	return tuple;
 }

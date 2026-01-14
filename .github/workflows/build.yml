@@ -52,14 +52,14 @@ jobs:
             yb_build_args: --gcc12 debug --no-linuxbrew
             docker_image: yugabyteci/yb_build_infra_almalinux9_x86_64:latest
 
-          - name: "Clang 19, release, AlmaLinux 8"
+          - name: "Clang 21, release, AlmaLinux 8"
             os: ubuntu-24.04
-            yb_build_args: --clang19 release --no-linuxbrew
+            yb_build_args: --clang21 release --no-linuxbrew
             docker_image: yugabyteci/yb_build_infra_almalinux8_x86_64:latest
 
-          - name: "Clang 19, debug, Ubuntu 22.04"
+          - name: "Clang 21, debug, Ubuntu 22.04"
             os: ubuntu-24.04
-            yb_build_args: --clang19 debug --no-linuxbrew
+            yb_build_args: --clang21 debug --no-linuxbrew
             docker_image: yugabyteci/yb_build_infra_ubuntu2204_x86_64:latest
     if: >
       (github.event_name == 'push' &&
@@ -76,6 +76,9 @@ jobs:
           overprovision-lvm: 'true'
 
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: 'false'
 
       - name: Build YugabyteDB
         run: |
@@ -93,18 +96,26 @@ jobs:
               bash -c '
                 set -euo pipefail -x
                 echo "OSTYPE (inside Docker): $OSTYPE"
-                echo "PATH: $PATH"
-                export PATH=/usr/local/bin:$PATH
-                ( set -x; ls -l /usr/local/bin )
-                set +e
-                ( set -x; which ninja )
-                ( set -x; which cmake )
-                set -e
                 chown -R yugabyteci .
-                sudo -u yugabyteci bash -c "
+                sudo -H -u yugabyteci bash -c "
                   set -euo pipefail
-                  export PATH=/usr/local/bin:\$PATH
+                  export PATH=/usr/local/bin:\$HOME/arcanist/bin:\$HOME/yb-cpplint/cpplint:\$PATH
+                  echo PATH: \$PATH
+                  ( set +e; set -x
+                    ls -l /usr/local/bin
+                    which ninja
+                    which cmake
+                    which arc )
                   df -H /
+                  echo ::group::Arc Lint
+                  # Base reference should not be set for non-PR actions.
+                  if [[ -n \"${{ github.base_ref }}\" ]]; then
+                    echo Base reference: ${{ github.base_ref }}
+                    git fetch origin ${{ github.base_ref }}
+                    arc lint --never-apply-patches --rev origin/${{ github.base_ref }}
+                  else
+                    echo No base reference: Skipping Lint Step
+                  fi
                   echo ::group::Building YugabyteDB
                   ./yb_build.sh release \
                     --download-thirdparty \

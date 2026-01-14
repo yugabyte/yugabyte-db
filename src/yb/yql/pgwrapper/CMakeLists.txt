@@ -23,7 +23,8 @@ set(PGWRAPPER_LIBS
     yb_util)
 ADD_YB_LIBRARY(yb_pgwrapper
                SRCS ${PGWRAPPER_SRCS}
-               DEPS ${PGWRAPPER_LIBS})
+               DEPS ${PGWRAPPER_LIBS}
+               NONLINK_DEPS postgres)
 
 include_directories(${YB_BUILD_ROOT}/postgres_build/src/include)
 
@@ -159,6 +160,7 @@ ADD_YB_TEST(pg_namespace_master_restart-test)
 ADD_YB_TEST(pg_object_locks-test)
 ADD_YB_TEST(pg_on_conflict-test)
 ADD_YB_TEST(pg_op_buffering-test)
+ADD_YB_TEST(pg_op_processing_order-test)
 ADD_YB_TEST(pg_packed_insert-test)
 ADD_YB_TEST(pg_packed_row-test)
 ADD_YB_TEST(pg_read_after_commit_visibility-test)
@@ -173,6 +175,7 @@ ADD_YB_TEST(pg_tablespaces-test)
 ADD_YB_TEST(pg_tablet_shutdown-test)
 ADD_YB_TEST(pg_tablet_split-test)
 ADD_YB_TEST(pg_temp_toast-test)
+ADD_YB_TEST(pg_terminate_backend-test)
 ADD_YB_TEST(pg_type-test)
 ADD_YB_TEST(pg_txn-test)
 ADD_YB_TEST(pg_txn_status-test)

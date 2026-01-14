@@ -62,8 +62,8 @@ To grant a role to a user, use the GRANT statement as follows:
 yugabyte=# GRANT <rolename> TO <username>;
 ```
 
-{{< note title="Note" >}}
-You can't create YSQL superusers in YugabyteDB Aeon. To create another database administrator, grant the `yb_superuser` role. Refer to [Database authorization in YugabyteDB Aeon clusters](../cloud-users/).
+{{< note title="Superuser in YugabyteDB Aeon" >}}
+You can't create YSQL superusers in YugabyteDB Aeon. To create another database administrator, grant the `yb_superuser` role, and alter the role to apply role attributes. Refer to [Database authorization in YugabyteDB Aeon clusters](../cloud-users/).
 {{< /note >}}
 
 #### YCQL

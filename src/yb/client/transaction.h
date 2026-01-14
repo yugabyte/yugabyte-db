@@ -185,7 +185,7 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
 
   std::optional<SubTransactionMetadataPB> GetSubTransactionMetadataPB() const;
 
-  Status SetPgTxnStart(int64_t pg_txn_start_us);
+  Status SetPgTxnStart(int64_t pg_txn_start_us, bool using_table_locks);
 
   Status RollbackToSubTransaction(SubTransactionId id, CoarseTimePoint deadline);
 

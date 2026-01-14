@@ -22,9 +22,12 @@
 
 #include "yb/bfpg/tserver_opcodes.h"
 
+#include "yb/common/json_util.h"
 #include "yb/common/jsonb.h"
+#include "yb/common/ql_protocol.messages.h"
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/value.messages.h"
 
 #include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/docdb/doc_read_context.h"
@@ -49,6 +52,7 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
+#include "yb/util/range.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
@@ -118,8 +122,9 @@ YB_DEFINE_ENUM(AddKeysMode, (kNone)(kHash)(kAll));
 // Create projection schemas of static and non-static columns from table schema.
 // Used to fetch only columns that were requested by the user.
 // add_keys_mode - what key columns should be added to all projections even they were not specified.
+template <class ColumnsPB>
 Status CreateProjections(
-    const Schema& schema, const QLReferencedColumnsPB& column_refs,
+    const Schema& schema, const ColumnsPB& column_refs,
     dockv::ReaderProjection* static_projection, dockv::ReaderProjection* non_static_projection,
     dockv::ReaderProjection* full_projection, AddKeysMode add_keys_mode) {
 
@@ -211,12 +216,12 @@ bool JoinNonStaticRow(
 }
 
 typedef rapidjson::SizeType RapidJsonMemberIndex;
-typedef std::unordered_map<uintptr_t, std::unordered_map<std::string, RapidJsonMemberIndex>>
-    RapidJsonMemberCache;
+using MembersMap = UnorderedStringMap<std::string, RapidJsonMemberIndex>;
+using RapidJsonMemberCache = std::unordered_map<uintptr_t, MembersMap>;
 
 uintptr_t MemberCacheValueHash(rapidjson::Value* p) { return reinterpret_cast<uintptr_t>(p); }
 
-Status FindMemberForIndex(const QLColumnValuePB& column_value,
+Status FindMemberForIndex(const QLColumnValueMsg& column_value,
                           int index,
                           rapidjson::Value* document,
                           rapidjson::Value::MemberIterator* memberit,
@@ -227,10 +232,10 @@ Status FindMemberForIndex(const QLColumnValuePB& column_value,
   *last_elem_object = false;
 
   int64_t array_index;
+  auto it = std::next(column_value.json_args().begin(), index);
   if (document->IsArray()) {
     VarInt varint;
-    RETURN_NOT_OK(varint.DecodeFromComparable(
-        column_value.json_args(index).operand().value().varint_value()));
+    RETURN_NOT_OK(varint.DecodeFromComparable(it->operand().value().varint_value()));
     array_index = VERIFY_RESULT(varint.ToInt64());
 
     if (array_index >= document->GetArray().Size() || array_index < 0) {
@@ -241,8 +246,7 @@ Status FindMemberForIndex(const QLColumnValuePB& column_value,
   } else if (document->IsObject()) {
     if (!is_insert) {
       VarInt varint;
-      auto status =
-        varint.DecodeFromComparable(column_value.json_args(index).operand().value().varint_value());
+      auto status = varint.DecodeFromComparable(it->operand().value().varint_value());
       if (status.ok()) {
         array_index = VERIFY_RESULT(varint.ToInt64());
         return STATUS_SUBSTITUTE(QLError, "Cannot use array index $0 to access object",
@@ -252,7 +256,7 @@ Status FindMemberForIndex(const QLColumnValuePB& column_value,
 
     *last_elem_object = true;
 
-    const auto& member = column_value.json_args(index).operand().value().string_value();
+    const auto& member = it->operand().value().string_value();
     *memberit = document->MemberEnd();
 
     if (FLAGS_ycql_jsonb_use_member_cache) {
@@ -267,7 +271,7 @@ Status FindMemberForIndex(const QLColumnValuePB& column_value,
         }
       } else {
         // Fetch and cache all the members of the document.
-        std::unordered_map<std::string, RapidJsonMemberIndex> members;
+        MembersMap members;
         RapidJsonMemberIndex member_idx = 0;
         for (auto m = document->MemberBegin(); m != document->MemberEnd(); m++, member_idx++) {
           auto curr_member_name = m->name.GetString();
@@ -285,7 +289,7 @@ Status FindMemberForIndex(const QLColumnValuePB& column_value,
     }
 
     if (memberit->operator==(document->MemberEnd())) {
-      return STATUS_SUBSTITUTE(QLError, "Could not find member: ", member);
+      return STATUS_FORMAT(QLError, "Could not find member: ", member);
     }
   } else {
     return STATUS_SUBSTITUTE(QLError, "JSON field is invalid", column_value.ShortDebugString());
@@ -311,7 +315,7 @@ struct QLWriteOperation::ApplyContext {
 };
 
 QLWriteOperation::QLWriteOperation(
-    std::reference_wrapper<const QLWriteRequestPB> request,
+    std::reference_wrapper<const QLWriteRequestMsg> request,
     SchemaVersion schema_version,
     DocReadContextPtr doc_read_context,
     std::shared_ptr<qlexpr::IndexMap> index_map,
@@ -327,7 +331,7 @@ QLWriteOperation::QLWriteOperation(
 {}
 
 QLWriteOperation::QLWriteOperation(
-    std::reference_wrapper<const QLWriteRequestPB> request,
+    std::reference_wrapper<const QLWriteRequestMsg> request,
     SchemaVersion schema_version,
     DocReadContextPtr doc_read_context,
     std::reference_wrapper<const qlexpr::IndexMap> index_map,
@@ -343,7 +347,7 @@ QLWriteOperation::QLWriteOperation(
 
 QLWriteOperation::~QLWriteOperation() = default;
 
-Status QLWriteOperation::Init(QLResponsePB* response) {
+Status QLWriteOperation::Init(QLResponseMsg* response) {
   response_ = response;
   insert_into_unique_index_ = request_.type() == QLWriteRequestPB::QL_STMT_INSERT &&
                               unique_index_key_projection_ != nullptr;
@@ -355,11 +359,11 @@ Status QLWriteOperation::Init(QLResponsePB* response) {
   bool write_static_columns = false;
   bool write_non_static_columns = false;
   // TODO(Amit): Remove the DVLOGS after backfill features stabilize.
-  DVLOG(4) << "Processing request " << yb::ToString(request_);
+  DVLOG(4) << "Processing request " << AsString(request_);
   for (const auto& column : request_.column_values()) {
-    DVLOG(4) << "Looking at column : " << yb::ToString(column);
+    DVLOG(4) << "Looking at column : " << AsString(column);
     auto schema_column = doc_read_context_->schema().column_by_id(ColumnId(column.column_id()));
-    DVLOG(4) << "schema column : " << yb::ToString(schema_column);
+    DVLOG(4) << "schema column : " << AsString(schema_column);
     RETURN_NOT_OK(schema_column);
     if (schema_column->is_static()) {
       write_static_columns = true;
@@ -380,6 +384,12 @@ Status QLWriteOperation::Init(QLResponsePB* response) {
       write_static_columns || is_range_operation,
       write_non_static_columns || !request_.range_column_values().empty() ||
       doc_read_context_->schema().num_range_key_columns() == 0);
+}
+
+void QLWriteOperation::ClearResponse() {
+  if (response_) {
+    response_->Clear();
+  }
 }
 
 Status QLWriteOperation::InitializeKeys(const bool hashed_key, const bool primary_key) {
@@ -685,7 +695,7 @@ Result<bool> QLWriteOperation::HasDuplicateUniqueIndexValue(
     if (key_column_ids.count(column_id) > 0) {
       std::optional<std::reference_wrapper<const QLValuePB>> existing_value =
           table_row.GetValue(column_id);
-      const QLValuePB& new_value = column_value.expr().value();
+      const auto& new_value = column_value.expr().value();
       if (existing_value && *existing_value != new_value) {
         VLOG(2) << "Found collision while checking at " << AsString(read_time)
                 << "\nExisting: " << AsString(*existing_value) << " vs New: " << AsString(new_value)
@@ -727,6 +737,10 @@ Status QLWriteOperation::ApplyForJsonOperators(
     const ApplyContext& context,
     IsInsert is_insert,
     QLTableRow* existing_row) {
+  VLOG_WITH_FUNC(3)
+      << "column_schema: " << AsString(column_schema) << ", col_id: " << col_id << ", col_map: "
+      << AsString(col_map) << ", is_insert: " << is_insert << ", existing row: "
+      << AsString(existing_row);
   using common::Jsonb;
   rapidjson::Document document;
   QLValue qlv;
@@ -754,6 +768,7 @@ Status QLWriteOperation::ApplyForJsonOperators(
         Jsonb jsonb(column.value.jsonb_value());
         RETURN_NOT_OK(jsonb.ToRapidJson(&document));
       }
+      VLOG_WITH_FUNC(4) << "input document: " << common::WriteRapidJsonToString(document);
     }
     read_needed = false;
 
@@ -761,6 +776,7 @@ Status QLWriteOperation::ApplyForJsonOperators(
     Jsonb rhs(column_value.expr().value().jsonb_value());
     rapidjson::Document rhs_doc(&document.GetAllocator());
     RETURN_NOT_OK(rhs.ToRapidJson(&rhs_doc));
+    VLOG_WITH_FUNC(4) << "rhs document: " << common::WriteRapidJsonToString(rhs_doc);
 
     // Update the json value.
     rapidjson::Value::MemberIterator memberit;
@@ -771,10 +787,11 @@ Status QLWriteOperation::ApplyForJsonOperators(
     int i = 0;
     auto status = FindMemberForIndex(column_value, i, node, &memberit, &valueit,
         &last_elem_object, is_insert, &member_cache);
-    for (i = 1; i < column_value.json_args_size() && status.ok(); i++) {
-      node = (last_elem_object) ? &(memberit->value) : &(*valueit);
-      status = FindMemberForIndex(column_value, i, node, &memberit, &valueit,
-          &last_elem_object, is_insert, &member_cache);
+    auto it = column_value.json_args().begin();
+    for (i = 1; ++it != column_value.json_args().end() && status.ok(); ++i) {
+      node = last_elem_object ? &memberit->value : &*valueit;
+      status = FindMemberForIndex(
+          column_value, i, node, &memberit, &valueit, &last_elem_object, is_insert, &member_cache);
     }
 
     bool update_missing = false;
@@ -805,6 +822,7 @@ Status QLWriteOperation::ApplyForJsonOperators(
     }
   } // end of column processing
   // Now write the new json value back.
+  VLOG_WITH_FUNC(3) << "output document: " << common::WriteRapidJsonToString(document);
   Jsonb jsonb_result;
   RETURN_NOT_OK(jsonb_result.FromRapidJson(document));
   // Update the current row as well so that we can accumulate the result of multiple json
@@ -821,7 +839,7 @@ Status QLWriteOperation::InsertScalar(
     const ApplyContext& context,
     const ColumnSchema& column_schema,
     ColumnId column_id,
-    const QLValuePB& value,
+    const QLValueMsg& value,
     bfql::TSOpcode op_code) {
   ValueRef value_ref(value, column_schema.sorting_type(), op_code);
   if (context.row_packer && value_ref.IsTombstoneOrPrimitive() && !column_schema.is_static() &&
@@ -835,7 +853,7 @@ Status QLWriteOperation::InsertScalar(
       request_.query_id(), context.control_fields.ttl, context.control_fields.timestamp);
 }
 
-Status QLWriteOperation::ApplyForSubscriptArgs(const QLColumnValuePB& column_value,
+Status QLWriteOperation::ApplyForSubscriptArgs(const QLColumnValueMsg& column_value,
                                                const QLTableRow& existing_row,
                                                const ApplyContext& context,
                                                const ColumnSchema& column,
@@ -882,7 +900,7 @@ Status QLWriteOperation::ApplyForSubscriptArgs(const QLColumnValuePB& column_val
   return Status::OK();
 }
 
-Status QLWriteOperation::ApplyForRegularColumns(const QLColumnValuePB& column_value,
+Status QLWriteOperation::ApplyForRegularColumns(const QLColumnValueMsg& column_value,
                                                 const QLTableRow& existing_row,
                                                 const ApplyContext& context,
                                                 const ColumnSchema& column,
@@ -993,11 +1011,11 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
     new_row = existing_row;
   } else {
     size_t idx = 0;
-    for (const QLExpressionPB& expr : request_.hashed_column_values()) {
+    for (const auto& expr : request_.hashed_column_values()) {
       new_row.AllocColumn(doc_read_context_->schema().column_id(idx), expr.value());
       idx++;
     }
-    for (const QLExpressionPB& expr : request_.range_column_values()) {
+    for (const auto& expr : request_.range_column_values()) {
       new_row.AllocColumn(doc_read_context_->schema().column_id(idx), expr.value());
       idx++;
     }
@@ -1048,6 +1066,10 @@ Status QLWriteOperation::ApplyUpsert(
   // ensure our write path is fast while complicating the read path a bit.
   IsInsert is_insert(request_.type() == QLWriteRequestPB::QL_STMT_INSERT);
 
+  VLOG_WITH_FUNC(4)
+      << "existing_row: " << AsString(existing_row) << ", new_row: " << AsString(new_row)
+      << ", is_insert: " << is_insert;
+
   std::optional<dockv::RowPackerV1> row_packer;
   std::optional<IntraTxnWriteId> packed_row_write_id;
 
@@ -1088,10 +1110,9 @@ Status QLWriteOperation::ApplyUpsert(
   }
 
   JsonColumnMap col_map;
-  auto process_column = [&](const QLColumnValuePB& column_value) -> Status {
+  auto process_column = [&](const QLColumnValueMsg& column_value) -> Status {
     if (!column_value.has_column_id()) {
-      return STATUS_FORMAT(InvalidArgument, "column id missing: $0",
-                           column_value.DebugString());
+      return STATUS_FORMAT(InvalidArgument, "column id missing: $0", column_value);
     }
     const ColumnId column_id(column_value.column_id());
     const ColumnSchema& column_schema = VERIFY_RESULT(
@@ -1112,7 +1133,7 @@ Status QLWriteOperation::ApplyUpsert(
   };
 
   const auto& column_values = request_.column_values();
-  auto cmp_column_id = [](const QLColumnValuePB& lhs, const QLColumnValuePB& rhs) {
+  auto cmp_column_id = [](const QLColumnValueMsg& lhs, const QLColumnValueMsg& rhs) {
     return lhs.column_id() < rhs.column_id();
   };
   if (!row_packer || std::is_sorted(column_values.begin(), column_values.end(), cmp_column_id)) {
@@ -1120,7 +1141,7 @@ Status QLWriteOperation::ApplyUpsert(
       RETURN_NOT_OK(process_column(column_value));
     }
   } else {
-    boost::container::small_vector<std::reference_wrapper<const QLColumnValuePB>, 0x10> refs(
+    boost::container::small_vector<std::reference_wrapper<const QLColumnValueMsg>, 0x10> refs(
         column_values.begin(), column_values.end());
     std::sort(refs.begin(), refs.end(), cmp_column_id);
     for (const auto& column_value : refs) {
@@ -1161,8 +1182,7 @@ Status QLWriteOperation::ApplyDelete(
   if (request_.column_values_size() > 0) {
     // Delete the referenced columns only.
     for (const auto& column_value : request_.column_values()) {
-      CHECK(column_value.has_column_id())
-          << "column id missing: " << column_value.DebugString();
+      CHECK(column_value.has_column_id()) << "column id missing: " << AsString(column_value);
       const ColumnId column_id(column_value.column_id());
       const auto& column = VERIFY_RESULT_REF(doc_read_context_->schema().column_by_id(column_id));
 
@@ -1249,7 +1269,7 @@ Status QLWriteOperation::ApplyDelete(
 
 Status QLWriteOperation::DeleteSubscriptedColumnElement(
     const DocOperationApplyData& data, const ColumnSchema& column_schema,
-    const QLColumnValuePB& column_value, ColumnId column_id) {
+    const QLColumnValueMsg& column_value, ColumnId column_id) {
   RETURN_NOT_OK(CheckUserTimestampForCollections(user_timestamp()));
 
   // Currently we only support two cases here: `DELETE map['key'] ..` and `DELETE list[index] ..`)
@@ -1400,19 +1420,19 @@ MonoDelta QLWriteOperation::request_ttl() const {
 
 namespace {
 
-QLExpressionPB* NewKeyColumn(
-    QLWriteRequestPB* request, const qlexpr::IndexInfo& index, const size_t idx) {
-  return (idx < index.hash_column_count()
+QLExpressionMsg* NewKeyColumn(
+    QLWriteRequestMsg* request, const qlexpr::IndexInfo& index, const size_t idx) {
+  return idx < index.hash_column_count()
           ? request->add_hashed_column_values()
-          : request->add_range_column_values());
+          : request->add_range_column_values();
 }
 
-QLWriteRequestPB* NewIndexRequest(
+QLWriteRequestMsg* NewIndexRequest(
     const qlexpr::IndexInfo& index,
     QLWriteRequestPB::QLStmtType type,
     IndexRequests* index_requests) {
-  index_requests->emplace_back(&index, QLWriteRequestPB());
-  QLWriteRequestPB* const request = &index_requests->back().second;
+  index_requests->emplace_back(&index, QLWriteRequestMsg());
+  auto* request = &index_requests->back().second;
   request->set_type(type);
   return request;
 }
@@ -1425,20 +1445,18 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& existing_row, const QLT
   VLOG(2) << "Updating indexes, existing: " << existing_row.ToString() << ", new: "
           << new_row.ToString();
   const auto& index_ids = request_.update_index_ids();
+  index_arena_ = SharedThreadSafeArena();
   index_requests_.reserve(index_ids.size() * 2);
-  for (const TableId& index_id : index_ids) {
+  for (const auto& index_id : index_ids) {
     const auto* index = VERIFY_RESULT(index_map_.FindIndex(index_id));
     bool index_key_changed = false;
-    bool index_pred_existing_row = true;
     bool index_pred_new_row = true;
     bool is_row_deleted = VERIFY_RESULT(IsRowDeleted(existing_row, new_row));
 
-    if (index->where_predicate_spec()) {
-      index_pred_existing_row = VERIFY_RESULT(EvalCondition(
-        index->where_predicate_spec()->where_expr().condition(), existing_row));
-    } else {
-      VLOG(3) << "No where predicate for index " << index->table_id();
-    }
+    bool index_pred_existing_row =
+        !index->where_predicate_spec() ||
+        VERIFY_RESULT(EvalCondition(
+            index->where_predicate_spec()->where_expr().condition(), existing_row));
 
     if (is_row_deleted) {
       // If it is a partial index and predicate wasn't satisfied for the existing row
@@ -1482,14 +1500,14 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& existing_row, const QLT
         continue;
       }
 
-      QLWriteRequestPB* const index_request =
+      auto* const index_request =
           NewIndexRequest(*index, QLWriteRequestPB::QL_STMT_DELETE, &index_requests_);
       VLOG(3) << "Issue index entry delete of existing row for index_id=" << index->table_id() <<
         " since predicate was satisfied earlier AND (isn't satisfied now (OR) the key has changed)";
 
       for (size_t idx = 0; idx < index->key_column_count(); idx++) {
         const auto& index_column = index->column(idx);
-        QLExpressionPB *key_column = NewKeyColumn(index_request, *index, idx);
+        auto *key_column = NewKeyColumn(index_request, *index, idx);
 
         // For old message expr_case() == NOT SET.
         // For new message expr_case == kColumnId when indexing expression is a column-ref.
@@ -1511,7 +1529,7 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& existing_row, const QLT
   return Status::OK();
 }
 
-Result<QLWriteRequestPB*> CreateAndSetupIndexInsertRequest(
+Result<QLWriteRequestMsg*> CreateAndSetupIndexInsertRequest(
     qlexpr::QLExprExecutor* expr_executor,
     bool index_has_write_permission,
     const QLTableRow& existing_row,
@@ -1652,12 +1670,12 @@ Result<QLWriteRequestPB*> CreateAndSetupIndexInsertRequest(
       return nullptr;
     }
 
-    QLWriteRequestPB* const index_request =
+    auto* const index_request =
         NewIndexRequest(*index, QLWriteRequestPB::QL_STMT_INSERT, index_requests);
 
     // Setup the key columns.
     for (size_t idx = 0; idx < index->key_column_count(); idx++) {
-      QLExpressionPB* const key_column = NewKeyColumn(index_request, *index, idx);
+      auto* const key_column = NewKeyColumn(index_request, *index, idx);
       auto it = values.find(idx);
       if (it != values.end()) {
         *key_column->mutable_value() = std::move(it->second);
@@ -1669,7 +1687,7 @@ Result<QLWriteRequestPB*> CreateAndSetupIndexInsertRequest(
       auto it = values.find(idx);
       if (it != values.end()) {
         const auto& index_column = index->column(idx);
-        QLColumnValuePB* const covering_column = index_request->add_column_values();
+        auto* const covering_column = index_request->add_column_values();
         covering_column->set_column_id(index_column.column_id);
         *covering_column->mutable_expr()->mutable_value() = std::move(it->second);
       }

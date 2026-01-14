@@ -1,3 +1,25 @@
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set filename :abs_srcdir '/yb_commands/explainrun.sql'
+\i :filename
+-- A helper script to explain and run a query.  Use in regress tests by
+-- defining :explain, :query, and optionally :hint#.
+\set explain1 ':explain :hint1 :query;'
+\set explain2 ':explain1 :explain :hint2 :query;'
+\set explain3 ':explain2 :explain :hint3 :query;'
+\set explain4 ':explain3 :explain :hint4 :query;'
+\set explain5 ':explain4 :explain :hint5 :query;'
+\set explain1run1 ':explain1; :hint1 :query;'
+\set explain2run2 ':explain2; :hint1 :query; :hint2 :query;'
+\set explain3run3 ':explain3; :hint1 :query; :hint2 :query; :hint3 :query;'
+\set explain4run4 ':explain4; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query;'
+\set explain5run5 ':explain5; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query; :hint5 :query;'
+-- Default to no hints.
+\set hint1 ''
+\set hint2 ''
+\set hint3 ''
+\set hint4 ''
+\set hint5 ''
+\set explain 'EXPLAIN (COSTS OFF)'
 --
 -- YB tests for locking
 --
@@ -9,88 +31,82 @@ CREATE TABLE yb_locks_tasc (k int, PRIMARY KEY (k ASC));
 INSERT INTO yb_locks_tasc VALUES (1),(2),(3);
 SET yb_lock_pk_single_rpc TO ON;
 -- Test plain (unlocked case).
-EXPLAIN (COSTS OFF)
-SELECT * FROM yb_locks_t WHERE k=5;
+\set query 'SELECT * FROM yb_locks_t WHERE k=5'
+:explain1run1
                    QUERY PLAN                   
 ------------------------------------------------
  Index Scan using yb_locks_t_pkey on yb_locks_t
    Index Cond: (k = 5)
 (2 rows)
 
-SELECT * FROM yb_locks_t WHERE k=5;
  k 
 ---
  5
 (1 row)
 
 -- Test single-RPC select+lock (no LockRows node).
-EXPLAIN (COSTS OFF)
-SELECT * FROM yb_locks_t WHERE k=5 FOR UPDATE;
+\set query 'SELECT * FROM yb_locks_t WHERE k=5 FOR UPDATE'
+:explain1run1
                              QUERY PLAN                             
 --------------------------------------------------------------------
  Index Scan (Locked FOR UPDATE) using yb_locks_t_pkey on yb_locks_t
    Index Cond: (k = 5)
 (2 rows)
 
-SELECT * FROM yb_locks_t WHERE k=5 FOR UPDATE;
  k 
 ---
  5
 (1 row)
 
 -- Test other types of locking.
-EXPLAIN (COSTS OFF)
-SELECT * FROM yb_locks_t WHERE k=5 FOR SHARE;
+\set query 'SELECT * FROM yb_locks_t WHERE k=5 FOR SHARE'
+:explain1run1
                             QUERY PLAN                             
 -------------------------------------------------------------------
  Index Scan (Locked FOR SHARE) using yb_locks_t_pkey on yb_locks_t
    Index Cond: (k = 5)
 (2 rows)
 
-SELECT * FROM yb_locks_t WHERE k=5 FOR SHARE;
  k 
 ---
  5
 (1 row)
 
-EXPLAIN (COSTS OFF)
-SELECT * FROM yb_locks_t WHERE k=5 FOR NO KEY UPDATE;
+\set query 'SELECT * FROM yb_locks_t WHERE k=5 FOR NO KEY UPDATE'
+:explain1run1
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
  Index Scan (Locked FOR NO KEY UPDATE) using yb_locks_t_pkey on yb_locks_t
    Index Cond: (k = 5)
 (2 rows)
 
-SELECT * FROM yb_locks_t WHERE k=5 FOR NO KEY UPDATE;
  k 
 ---
  5
 (1 row)
 
-EXPLAIN (COSTS OFF)
-SELECT * FROM yb_locks_t WHERE k=5 FOR KEY SHARE;
+\set query 'SELECT * FROM yb_locks_t WHERE k=5 FOR KEY SHARE'
+:explain1run1
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  Index Scan (Locked FOR KEY SHARE) using yb_locks_t_pkey on yb_locks_t
    Index Cond: (k = 5)
 (2 rows)
 
-SELECT * FROM yb_locks_t WHERE k=5 FOR KEY SHARE;
  k 
 ---
  5
 (1 row)
 
 -- Test LockRows node (more RPCs), and scan is unlocked.
-EXPLAIN (COSTS OFF)
-SELECT * FROM yb_locks_t FOR UPDATE;
+\set query 'SELECT * FROM yb_locks_t FOR UPDATE'
+:explain1run1
           QUERY PLAN          
 ------------------------------
  LockRows
    ->  Seq Scan on yb_locks_t
 (2 rows)
 
-SELECT * FROM yb_locks_t FOR UPDATE;
  k 
 ---
  5
@@ -101,23 +117,22 @@ SELECT * FROM yb_locks_t FOR UPDATE;
 (5 rows)
 
 -- Test with multi-column primary key.
-EXPLAIN (COSTS OFF)
-SELECT * FROM yb_locks_t2 WHERE k1=1 AND k2=2 AND k3=3 FOR UPDATE;
+\set query 'SELECT * FROM yb_locks_t2 WHERE k1=1 AND k2=2 AND k3=3 FOR UPDATE'
+:explain1run1
                               QUERY PLAN                              
 ----------------------------------------------------------------------
  Index Scan (Locked FOR UPDATE) using yb_locks_t2_pkey on yb_locks_t2
    Index Cond: ((k1 = 1) AND (k2 = 2) AND (k3 = 3))
 (2 rows)
 
-SELECT * FROM yb_locks_t2 WHERE k1=1 AND k2=2 AND k3=3 FOR UPDATE;
  k1 | k2 | k3 | v 
 ----+----+----+---
   1 |  2 |  3 | 4
 (1 row)
 
 -- Test with partial column set for primary key (should use LockRows).
-EXPLAIN (COSTS OFF)
-SELECT * FROM yb_locks_t2 WHERE k1=1 AND k2=2 FOR UPDATE;
+\set query 'SELECT * FROM yb_locks_t2 WHERE k1=1 AND k2=2 FOR UPDATE'
+:explain1run1
                        QUERY PLAN                       
 --------------------------------------------------------
  LockRows
@@ -125,15 +140,14 @@ SELECT * FROM yb_locks_t2 WHERE k1=1 AND k2=2 FOR UPDATE;
          Index Cond: ((k1 = 1) AND (k2 = 2))
 (3 rows)
 
-SELECT * FROM yb_locks_t2 WHERE k1=1 AND k2=2 FOR UPDATE;
  k1 | k2 | k3 | v 
 ----+----+----+---
   1 |  2 |  3 | 4
 (1 row)
 
 -- Test LockRows node is used for join.
-EXPLAIN (COSTS OFF)
-SELECT * FROM yb_locks_t2, yb_locks_t WHERE yb_locks_t2.k1 = yb_locks_t.k FOR UPDATE;
+\set query 'SELECT * FROM yb_locks_t2, yb_locks_t WHERE yb_locks_t2.k1 = yb_locks_t.k FOR UPDATE'
+:explain1run1
                                    QUERY PLAN                                    
 ---------------------------------------------------------------------------------
  LockRows
@@ -144,7 +158,6 @@ SELECT * FROM yb_locks_t2, yb_locks_t WHERE yb_locks_t2.k1 = yb_locks_t.k FOR UP
                Index Cond: (k = ANY (ARRAY[yb_locks_t2.k1, $2, $3, ..., $1024]))
 (6 rows)
 
-SELECT * FROM yb_locks_t2, yb_locks_t WHERE yb_locks_t2.k1 = yb_locks_t.k FOR UPDATE;
  k1 | k2 | k3 | v | k 
 ----+----+----+---+---
   5 |  6 |  7 | 8 | 5
@@ -152,8 +165,9 @@ SELECT * FROM yb_locks_t2, yb_locks_t WHERE yb_locks_t2.k1 = yb_locks_t.k FOR UP
 (2 rows)
 
 -- Test LockRows node is used with ASC table when YB Sequential Scan is used.
-/*+ SeqScan(yb_locks_tasc) */ EXPLAIN (COSTS OFF)
-SELECT * FROM yb_locks_tasc WHERE k=1 FOR UPDATE;
+\set hint1 '/*+ SeqScan(yb_locks_tasc) */'
+\set query 'SELECT * FROM yb_locks_tasc WHERE k=1 FOR UPDATE'
+:explain1run1
            QUERY PLAN            
 ---------------------------------
  LockRows
@@ -161,39 +175,37 @@ SELECT * FROM yb_locks_tasc WHERE k=1 FOR UPDATE;
          Storage Filter: (k = 1)
 (3 rows)
 
-/*+ SeqScan(yb_locks_tasc) */ SELECT * FROM yb_locks_tasc WHERE k=1 FOR UPDATE;
  k 
 ---
  1
 (1 row)
 
+\set hint1 ''
 -- In isolation level SERIALIZABLE, all locks are done during scans.
 BEGIN ISOLATION LEVEL SERIALIZABLE;
 -- Test same locking as for REPEATABLE READ (default isolation).
-EXPLAIN (COSTS OFF)
-SELECT * FROM yb_locks_t WHERE k=5 FOR UPDATE;
+\set query 'SELECT * FROM yb_locks_t WHERE k=5 FOR UPDATE'
+:explain1run1
                              QUERY PLAN                             
 --------------------------------------------------------------------
  Index Scan (Locked FOR UPDATE) using yb_locks_t_pkey on yb_locks_t
    Index Cond: (k = 5)
 (2 rows)
 
-SELECT * FROM yb_locks_t WHERE k=5 FOR UPDATE;
  k 
 ---
  5
 (1 row)
 
 -- Test no LockRows node for sequential scan.
-EXPLAIN (COSTS OFF)
-SELECT * FROM yb_locks_t FOR UPDATE;
+\set query 'SELECT * FROM yb_locks_t FOR UPDATE'
+:explain1run1
                     QUERY PLAN                    
 --------------------------------------------------
  LockRows (no-op)
    ->  Seq Scan (Locked FOR UPDATE) on yb_locks_t
 (2 rows)
 
-SELECT * FROM yb_locks_t FOR UPDATE;
  k 
 ---
  5
@@ -204,8 +216,8 @@ SELECT * FROM yb_locks_t FOR UPDATE;
 (5 rows)
 
 -- Test no LockRows node for join.
-EXPLAIN (COSTS OFF)
-SELECT * FROM yb_locks_t2, yb_locks_t WHERE yb_locks_t2.k1 = yb_locks_t.k FOR UPDATE;
+\set query 'SELECT * FROM yb_locks_t2, yb_locks_t WHERE yb_locks_t2.k1 = yb_locks_t.k FOR UPDATE'
+:explain1run1
                                    QUERY PLAN                                    
 ---------------------------------------------------------------------------------
  LockRows (no-op)
@@ -216,7 +228,6 @@ SELECT * FROM yb_locks_t2, yb_locks_t WHERE yb_locks_t2.k1 = yb_locks_t.k FOR UP
                Index Cond: (k = ANY (ARRAY[yb_locks_t2.k1, $2, $3, ..., $1024]))
 (6 rows)
 
-SELECT * FROM yb_locks_t2, yb_locks_t WHERE yb_locks_t2.k1 = yb_locks_t.k FOR UPDATE;
  k1 | k2 | k3 | v | k 
 ----+----+----+---+---
   1 |  2 |  3 | 4 | 1
@@ -225,15 +236,15 @@ SELECT * FROM yb_locks_t2, yb_locks_t WHERE yb_locks_t2.k1 = yb_locks_t.k FOR UP
 
 -- Test locking, and no LockRows node, when using an ASC table and YB Sequential Scan.
 -- (No WHERE clause.)
-/*+ SeqScan(yb_locks_tasc) */ EXPLAIN (COSTS OFF)
-SELECT * FROM yb_locks_tasc FOR UPDATE;
+\set hint1 '/*+ SeqScan(yb_locks_tasc) */'
+\set query 'SELECT * FROM yb_locks_tasc FOR UPDATE'
+:explain1run1
                      QUERY PLAN                      
 -----------------------------------------------------
  LockRows (no-op)
    ->  Seq Scan (Locked FOR UPDATE) on yb_locks_tasc
 (2 rows)
 
-/*+ SeqScan(yb_locks_tasc) */ SELECT * FROM yb_locks_tasc FOR UPDATE;
  k 
 ---
  1
@@ -241,16 +252,16 @@ SELECT * FROM yb_locks_tasc FOR UPDATE;
  3
 (3 rows)
 
+\set hint1 ''
 -- For an ASC table, should lock inline, with no LockRows node.
-EXPLAIN (COSTS OFF)
-SELECT * FROM yb_locks_tasc ORDER BY k FOR UPDATE;
+\set query 'SELECT * FROM yb_locks_tasc ORDER BY k FOR UPDATE'
+:explain1run1
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  LockRows (no-op)
    ->  Index Scan (Locked FOR UPDATE) using yb_locks_tasc_pkey on yb_locks_tasc
 (2 rows)
 
-SELECT * FROM yb_locks_tasc ORDER BY k FOR UPDATE;
  k 
 ---
  1
@@ -261,8 +272,8 @@ SELECT * FROM yb_locks_tasc ORDER BY k FOR UPDATE;
 COMMIT;
 -- Test with single-RPC select+lock turned off.
 SET yb_lock_pk_single_rpc TO OFF;
-EXPLAIN (COSTS OFF)
-SELECT * FROM yb_locks_t WHERE k=5 FOR UPDATE;
+\set query 'SELECT * FROM yb_locks_t WHERE k=5 FOR UPDATE'
+:explain1run1
                       QUERY PLAN                      
 ------------------------------------------------------
  LockRows
@@ -270,7 +281,6 @@ SELECT * FROM yb_locks_t WHERE k=5 FOR UPDATE;
          Index Cond: (k = 5)
 (3 rows)
 
-SELECT * FROM yb_locks_t WHERE k=5 FOR UPDATE;
  k 
 ---
  5
@@ -279,8 +289,8 @@ SELECT * FROM yb_locks_t WHERE k=5 FOR UPDATE;
 -- Test that with the yb_lock_pk_single_rpc off, SERIALIZABLE still locks during the scan
 -- (no LockRows).
 BEGIN ISOLATION LEVEL SERIALIZABLE;
-EXPLAIN (COSTS OFF)
-SELECT * FROM yb_locks_t WHERE k=5 FOR UPDATE;
+\set query 'SELECT * FROM yb_locks_t WHERE k=5 FOR UPDATE'
+:explain1run1
                                 QUERY PLAN                                
 --------------------------------------------------------------------------
  LockRows (no-op)
@@ -288,7 +298,6 @@ SELECT * FROM yb_locks_t WHERE k=5 FOR UPDATE;
          Index Cond: (k = 5)
 (3 rows)
 
-SELECT * FROM yb_locks_t WHERE k=5 FOR UPDATE;
  k 
 ---
  5
@@ -298,8 +307,8 @@ COMMIT;
 SET yb_lock_pk_single_rpc TO ON;
 CREATE INDEX ON yb_locks_t2 (v);
 -- Test with an index. We use a LockRows node for an index.
-EXPLAIN (COSTS OFF)
-SELECT * FROM yb_locks_t2 WHERE v=4 FOR UPDATE;
+\set query 'SELECT * FROM yb_locks_t2 WHERE v=4 FOR UPDATE'
+:explain1run1
                        QUERY PLAN                        
 ---------------------------------------------------------
  LockRows
@@ -307,15 +316,14 @@ SELECT * FROM yb_locks_t2 WHERE v=4 FOR UPDATE;
          Index Cond: (v = 4)
 (3 rows)
 
-SELECT * FROM yb_locks_t2 WHERE v=4 FOR UPDATE;
  k1 | k2 | k3 | v 
 ----+----+----+---
   1 |  2 |  3 | 4
 (1 row)
 
 -- Test only the indexed column.
-EXPLAIN (COSTS OFF)
-SELECT v FROM yb_locks_t2 WHERE v=4 FOR UPDATE;
+\set query 'SELECT v FROM yb_locks_t2 WHERE v=4 FOR UPDATE'
+:explain1run1
                        QUERY PLAN                        
 ---------------------------------------------------------
  LockRows
@@ -323,7 +331,6 @@ SELECT v FROM yb_locks_t2 WHERE v=4 FOR UPDATE;
          Index Cond: (v = 4)
 (3 rows)
 
-SELECT v FROM yb_locks_t2 WHERE v=4 FOR UPDATE;
  v 
 ---
  4
@@ -331,8 +338,8 @@ SELECT v FROM yb_locks_t2 WHERE v=4 FOR UPDATE;
 
 -- Isolation level SERIALIZABLE still locks with the scan though (no LockRows).
 BEGIN ISOLATION LEVEL SERIALIZABLE;
-EXPLAIN (COSTS OFF)
-SELECT * FROM yb_locks_t2 WHERE v=4 FOR UPDATE;
+\set query 'SELECT * FROM yb_locks_t2 WHERE v=4 FOR UPDATE'
+:explain1run1
                                  QUERY PLAN                                  
 -----------------------------------------------------------------------------
  LockRows (no-op)
@@ -340,7 +347,6 @@ SELECT * FROM yb_locks_t2 WHERE v=4 FOR UPDATE;
          Index Cond: (v = 4)
 (3 rows)
 
-SELECT * FROM yb_locks_t2 WHERE v=4 FOR UPDATE;
  k1 | k2 | k3 | v 
 ----+----+----+---
   1 |  2 |  3 | 4
@@ -405,15 +411,15 @@ SET yb_lock_pk_single_rpc TO OFF;
 -- Store prepared plans right away.
 SET yb_test_planner_custom_plan_threshold to 1;
 PREPARE yb_locks_plan_rr (int) AS SELECT * FROM yb_locks_t WHERE k=$1 FOR UPDATE;
-EXECUTE yb_locks_plan_rr(1);
+\set query 'EXECUTE yb_locks_plan_rr(1)'
+:query;
  k 
 ---
  1
 (1 row)
 
 -- The $1 in the EXPLAIN output tells you it's a stored plan.
-EXPLAIN (COSTS OFF)
-EXECUTE yb_locks_plan_rr(1);
+:explain1
                       QUERY PLAN                      
 ------------------------------------------------------
  LockRows
@@ -422,21 +428,19 @@ EXECUTE yb_locks_plan_rr(1);
 (3 rows)
 
 BEGIN ISOLATION LEVEL SERIALIZABLE;
-EXECUTE yb_locks_plan_rr(1);
- k 
----
- 1
-(1 row)
-
 -- The LockRows node has a "no-op" annotation.
-EXPLAIN (COSTS OFF)
-EXECUTE yb_locks_plan_rr(1);
+:explain1run1
                                 QUERY PLAN                                
 --------------------------------------------------------------------------
  LockRows (no-op)
    ->  Index Scan (Locked FOR UPDATE) using yb_locks_t_pkey on yb_locks_t
          Index Cond: (k = $1)
 (3 rows)
+
+ k 
+---
+ 1
+(1 row)
 
 -- In JSON mode, the LockRows node has an "Executes" field set to false.
 EXPLAIN (COSTS OFF, FORMAT JSON)
@@ -475,59 +479,45 @@ COMMIT;
 SET yb_lock_pk_single_rpc TO ON;
 BEGIN ISOLATION LEVEL SERIALIZABLE;
 PREPARE yb_locks_plan_ser (int) AS SELECT * FROM yb_locks_t WHERE k=$1 FOR UPDATE;
-EXECUTE yb_locks_plan_ser(1);
+\set query 'EXECUTE yb_locks_plan_ser(1)'
+:explain1run1
+                             QUERY PLAN                             
+--------------------------------------------------------------------
+ Index Scan (Locked FOR UPDATE) using yb_locks_t_pkey on yb_locks_t
+   Index Cond: (k = 1)
+(2 rows)
+
  k 
 ---
  1
 (1 row)
-
-EXPLAIN (COSTS OFF)
-EXECUTE yb_locks_plan_ser(1);
-                             QUERY PLAN                             
---------------------------------------------------------------------
- Index Scan (Locked FOR UPDATE) using yb_locks_t_pkey on yb_locks_t
-   Index Cond: (k = $1)
-(2 rows)
 
 COMMIT;
-EXECUTE yb_locks_plan_ser(1);
- k 
----
- 1
-(1 row)
-
-EXPLAIN (COSTS OFF)
-EXECUTE yb_locks_plan_ser(1);
+\set query 'EXECUTE yb_locks_plan_ser(1)'
+:explain1run1
                              QUERY PLAN                             
 --------------------------------------------------------------------
  Index Scan (Locked FOR UPDATE) using yb_locks_t_pkey on yb_locks_t
    Index Cond: (k = $1)
 (2 rows)
+
+ k 
+---
+ 1
+(1 row)
 
 -- Test that prepared statements made in isolation level SERIALIZABLE, for a non-PK, have
 -- a LockRows node that functions in RR and RC.
 BEGIN ISOLATION LEVEL SERIALIZABLE;
 PREPARE yb_locks_plan_ser_all (int) AS SELECT * FROM yb_locks_t FOR UPDATE;
-EXECUTE yb_locks_plan_ser_all(1);
- k 
----
- 5
- 1
- 4
- 2
- 3
-(5 rows)
-
-EXPLAIN (COSTS OFF)
-EXECUTE yb_locks_plan_ser_all(1);
+\set query 'EXECUTE yb_locks_plan_ser_all(1)'
+:explain1run1
                     QUERY PLAN                    
 --------------------------------------------------
  LockRows (no-op)
    ->  Seq Scan (Locked FOR UPDATE) on yb_locks_t
 (2 rows)
 
-COMMIT;
-EXECUTE yb_locks_plan_ser_all(1);
  k 
 ---
  5
@@ -537,13 +527,23 @@ EXECUTE yb_locks_plan_ser_all(1);
  3
 (5 rows)
 
-EXPLAIN (COSTS OFF)
-EXECUTE yb_locks_plan_ser_all(1);
+COMMIT;
+\set query 'EXECUTE yb_locks_plan_ser_all(1)'
+:explain1run1
           QUERY PLAN          
 ------------------------------
  LockRows
    ->  Seq Scan on yb_locks_t
 (2 rows)
+
+ k 
+---
+ 5
+ 1
+ 4
+ 2
+ 3
+(5 rows)
 
 -- Reset
 SET yb_lock_pk_single_rpc TO DEFAULT;

@@ -26,8 +26,8 @@ class MasterTabletServiceImpl : public tserver::TabletServiceImpl {
  public:
   MasterTabletServiceImpl(MasterTabletServer* server, Master* master);
 
-  void Write(const tserver::WriteRequestPB* req,
-             tserver::WriteResponsePB* resp,
+  void Write(const tserver::WriteRequestMsg* req,
+             tserver::WriteResponseMsg* resp,
              rpc::RpcContext context) override;
 
   void ListTablets(const tserver::ListTabletsRequestPB* req,
@@ -71,9 +71,9 @@ class MasterTabletServiceImpl : public tserver::TabletServiceImpl {
 
  private:
   Result<std::shared_ptr<tablet::AbstractTablet>> GetTabletForRead(
-    const TabletId& tablet_id, tablet::TabletPeerPtr tablet_peer,
+    TabletIdView tablet_id, tablet::TabletPeerPtr tablet_peer,
     YBConsistencyLevel consistency_level, tserver::AllowSplitTablet allow_split_tablet,
-    tserver::ReadResponsePB* resp) override;
+    tserver::ReadResponseMsg* resp) override;
 
   Master *const master_;
   DISALLOW_COPY_AND_ASSIGN(MasterTabletServiceImpl);

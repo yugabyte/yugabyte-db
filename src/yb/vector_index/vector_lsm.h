@@ -283,8 +283,8 @@ class VectorLSM {
   // modifications (e.g. due to merging of chunks).
   ImmutableChunkPtrs immutable_chunks_ GUARDED_BY(mutex_);
 
-  std::unique_ptr<InsertRegistry> insert_registry_;
-  std::unique_ptr<MergeRegistry> merge_registry_;
+  std::shared_ptr<InsertRegistry> insert_registry_;
+  std::shared_ptr<MergeRegistry> merge_registry_;
 
   // May be changed if new manifest file is created (due to absence or compaction).
   size_t next_manifest_file_no_ = 0;

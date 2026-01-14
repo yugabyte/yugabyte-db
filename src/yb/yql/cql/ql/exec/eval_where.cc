@@ -13,11 +13,12 @@
 //
 //--------------------------------------------------------------------------------------------------
 
-#include "yb/common/value.pb.h"
-#include "yb/qlexpr/ql_rowblock.h"
+#include "yb/common/ql_protocol.messages.h"
 #include "yb/common/ql_value.h"
-
 #include "yb/common/schema.h"
+#include "yb/common/value.pb.h"
+
+#include "yb/qlexpr/ql_rowblock.h"
 
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
@@ -35,15 +36,15 @@ namespace ql {
 
 //--------------------------------------------------------------------------------------------------
 
-Status Executor::WhereClauseToPB(QLWriteRequestPB *req,
+Status Executor::WhereClauseToPB(QLWriteRequestMsg *req,
                                  const MCVector<ColumnOp>& key_where_ops,
                                  const MCList<ColumnOp>& where_ops,
                                  const MCList<SubscriptedColumnOp>& subcol_where_ops) {
 
   // Setup the key columns.
   for (const auto& op : key_where_ops) {
-    const ColumnDesc *col_desc = op.desc();
-    QLExpressionPB *col_expr_pb;
+    const auto *col_desc = op.desc();
+    QLExpressionMsg *col_expr_pb;
     if (col_desc->is_hash()) {
       col_expr_pb = req->add_hashed_column_values();
     } else if (col_desc->is_primary()) {
@@ -64,7 +65,7 @@ Status Executor::WhereClauseToPB(QLWriteRequestPB *req,
 
   // Setup the where clause -- only allowed for deletes, should be checked before getting here.
   if (!where_ops.empty()) {
-    QLConditionPB *where_pb = req->mutable_where_expr()->mutable_condition();
+    auto *where_pb = req->mutable_where_expr()->mutable_condition();
     where_pb->set_op(QL_OP_AND);
     for (const auto &col_op : where_ops) {
       RETURN_NOT_OK(WhereColumnOpToPB(where_pb->add_operands()->mutable_condition(), col_op));
@@ -74,7 +75,7 @@ Status Executor::WhereClauseToPB(QLWriteRequestPB *req,
   return Status::OK();
 }
 
-Result<uint64_t> Executor::WhereClauseToPB(QLReadRequestPB* req,
+Result<uint64_t> Executor::WhereClauseToPB(QLReadRequestMsg* req,
                                            const MCVector<ColumnOp>& key_where_ops,
                                            const MCList<ColumnOp>& where_ops,
                                            const MCList<MultiColumnOp>& multi_col_where_ops,
@@ -166,7 +167,7 @@ Result<uint64_t> Executor::WhereClauseToPB(QLReadRequestPB* req,
     switch (op.yb_op()) {
       case QL_OP_EQUAL: {
         if (!is_multi_partition) {
-          QLExpressionPB *col_pb = req->add_hashed_column_values();
+          auto *col_pb = req->add_hashed_column_values();
           col_pb->set_column_id(col_desc->id());
           RETURN_NOT_OK(PTExprToPB(op.expr(), col_pb));
           RETURN_NOT_OK(EvalExpr(col_pb, qlexpr::QLTableRow::empty_row()));
@@ -240,10 +241,10 @@ Result<uint64_t> Executor::WhereClauseToPB(QLReadRequestPB* req,
       !jsoncol_where_ops.empty() || !multi_col_where_ops.empty()) {
 
     // Setup the where clause.
-    QLConditionPB *where_pb = req->mutable_where_expr()->mutable_condition();
+    auto *where_pb = req->mutable_where_expr()->mutable_condition();
     where_pb->set_op(QL_OP_AND);
     for (const auto& col_op : where_ops) {
-      QLConditionPB* cond = where_pb->add_operands()->mutable_condition();
+      auto* cond = where_pb->add_operands()->mutable_condition();
       RETURN_NOT_OK(WhereColumnOpToPB(cond, col_op));
       // Update the estimate for the number of selected rows if needed.
       if (col_op.desc()->is_primary()) {
@@ -266,7 +267,7 @@ Result<uint64_t> Executor::WhereClauseToPB(QLReadRequestPB* req,
     }
 
     for (const auto& col_op : multi_col_where_ops) {
-      QLConditionPB* cond = where_pb->add_operands()->mutable_condition();
+      auto* cond = where_pb->add_operands()->mutable_condition();
       RETURN_NOT_OK(WhereMultiColumnOpToPB(cond, col_op));
       DCHECK(cond->op() == QL_OP_IN);
       // Update the estimate for the number of selected rows if needed.
@@ -299,13 +300,13 @@ Result<uint64_t> Executor::WhereClauseToPB(QLReadRequestPB* req,
   return max_rows_estimate;
 }
 
-Status Executor::WhereColumnOpToPB(QLConditionPB* condition, const ColumnOp& col_op) {
+Status Executor::WhereColumnOpToPB(QLConditionMsg* condition, const ColumnOp& col_op) {
   // Set the operator.
   condition->set_op(col_op.yb_op());
 
   // Operand 1: The column.
   const ColumnDesc *col_desc = col_op.desc();
-  QLExpressionPB *expr_pb = condition->add_operands();
+  auto *expr_pb = condition->add_operands();
   VLOG(3) << "WHERE condition, column id = " << col_desc->id();
   expr_pb->set_column_id(col_desc->id());
 
@@ -345,14 +346,14 @@ Status Executor::WhereColumnOpToPB(QLConditionPB* condition, const ColumnOp& col
   return status;
 }
 
-Status Executor::WhereMultiColumnOpToPB(QLConditionPB* condition, const MultiColumnOp& col_op) {
+Status Executor::WhereMultiColumnOpToPB(QLConditionMsg* condition, const MultiColumnOp& col_op) {
   DCHECK(col_op.yb_op() == QL_OP_IN);
 
   // Set the operator.
   condition->set_op(col_op.yb_op());
 
   // Operand 1: The columns.
-  QLExpressionPB* expr_pb = condition->add_operands();
+  auto* expr_pb = condition->add_operands();
   auto cols = expr_pb->mutable_tuple();
   for (const auto& col_desc : col_op.descs()) {
     VLOG(3) << "WHERE condition, column id = " << col_desc->id();
@@ -381,7 +382,7 @@ Status Executor::WhereMultiColumnOpToPB(QLConditionPB* condition, const MultiCol
   return Status::OK();
 }
 
-Status Executor::WhereKeyToPB(QLReadRequestPB *req,
+Status Executor::WhereKeyToPB(QLReadRequestMsg *req,
                               const Schema& schema,
                               const qlexpr::QLRow& key) {
   // Add the hash column values
@@ -392,13 +393,13 @@ Status Executor::WhereKeyToPB(QLReadRequestPB *req,
 
   if (schema.num_key_columns() > schema.num_hash_key_columns()) {
     // Add the range column values to the where clause
-    QLConditionPB *where_pb = req->mutable_where_expr()->mutable_condition();
+    auto *where_pb = req->mutable_where_expr()->mutable_condition();
     if (!where_pb->has_op()) {
       where_pb->set_op(QL_OP_AND);
     }
     DCHECK_EQ(where_pb->op(), QL_OP_AND);
     for (size_t idx = schema.num_hash_key_columns(); idx < schema.num_key_columns(); idx++) {
-      QLConditionPB *col_cond_pb = where_pb->add_operands()->mutable_condition();
+      auto *col_cond_pb = where_pb->add_operands()->mutable_condition();
       col_cond_pb->set_op(QL_OP_EQUAL);
       col_cond_pb->add_operands()->set_column_id(schema.column_id(idx));
       *col_cond_pb->add_operands()->mutable_value() = key.column(idx).value();
@@ -410,13 +411,13 @@ Status Executor::WhereKeyToPB(QLReadRequestPB *req,
   return Status::OK();
 }
 
-Status Executor::WhereJsonColOpToPB(QLConditionPB *condition, const JsonColumnOp& col_op) {
+Status Executor::WhereJsonColOpToPB(QLConditionMsg *condition, const JsonColumnOp& col_op) {
   // Set the operator.
   condition->set_op(col_op.yb_op());
 
   // Operand 1: The column.
   const ColumnDesc *col_desc = col_op.desc();
-  QLExpressionPB *expr_pb = condition->add_operands();
+  auto *expr_pb = condition->add_operands();
   VLOG(3) << "WHERE condition, sub-column with id = " << col_desc->id();
   auto col_pb = expr_pb->mutable_json_column();
   col_pb->set_column_id(col_desc->id());
@@ -429,13 +430,13 @@ Status Executor::WhereJsonColOpToPB(QLConditionPB *condition, const JsonColumnOp
   return PTExprToPB(col_op.expr(), expr_pb);
 }
 
-Status Executor::WhereSubColOpToPB(QLConditionPB *condition, const SubscriptedColumnOp& col_op) {
+Status Executor::WhereSubColOpToPB(QLConditionMsg *condition, const SubscriptedColumnOp& col_op) {
   // Set the operator.
   condition->set_op(col_op.yb_op());
 
   // Operand 1: The column.
   const ColumnDesc *col_desc = col_op.desc();
-  QLExpressionPB *expr_pb = condition->add_operands();
+  auto *expr_pb = condition->add_operands();
   VLOG(3) << "WHERE condition, sub-column with id = " << col_desc->id();
   auto col_pb = expr_pb->mutable_subscripted_col();
   col_pb->set_column_id(col_desc->id());
@@ -447,13 +448,13 @@ Status Executor::WhereSubColOpToPB(QLConditionPB *condition, const SubscriptedCo
   return PTExprToPB(col_op.expr(), expr_pb);
 }
 
-Status Executor::FuncOpToPB(QLConditionPB *condition, const FuncOp& func_op) {
+Status Executor::FuncOpToPB(QLConditionMsg *condition, const FuncOp& func_op) {
   // Set the operator.
   condition->set_op(func_op.yb_op());
 
   // Operand 1: The function call.
   auto ptr = func_op.func_expr();
-  QLExpressionPB *expr_pb = condition->add_operands();
+  auto *expr_pb = condition->add_operands();
   RETURN_NOT_OK(PTExprToPB(ptr.get(), expr_pb));
 
   // Operand 2: The expression.

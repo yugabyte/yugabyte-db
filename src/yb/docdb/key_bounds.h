@@ -60,20 +60,25 @@ struct DocDB {
   HistoryRetentionPolicy* retention_policy = nullptr;
   tablet::TabletMetrics* metrics = nullptr;
 
-  static DocDB FromRegularUnbounded(rocksdb::DB* regular) {
+  DocDB WithoutIntents() const {
+    auto result = *this;
+    result.intents = nullptr;
+    return result;
+  }
+
+  DocDB FromRegularUnbounded() const {
+    return FromRegularUnbounded(regular, metrics);
+  }
+
+  static DocDB FromRegularUnbounded(
+      rocksdb::DB* regular, tablet::TabletMetrics* metrics = nullptr) {
     return {
       .regular = regular,
       .intents = nullptr,
       .key_bounds = &KeyBounds::kNoBounds,
       .retention_policy = nullptr,
-      .metrics = nullptr,
+      .metrics = metrics,
     };
-  }
-
-  DocDB WithoutIntents() {
-    auto result = *this;
-    result.intents = nullptr;
-    return result;
   }
 };
 

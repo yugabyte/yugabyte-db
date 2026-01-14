@@ -34,10 +34,10 @@ class XClusterSafeTimeMap {
   // Gets the xcluster safe time for the given namespace. If the namespace does not have a xcluster
   // safe time, either because it is not part of replication or because the cluster is in ACTIVE
   // role, then this will return nullopt. System namespace will always return nullopt.
-  Result<std::optional<HybridTime>> GetSafeTime(const NamespaceId& namespace_id) const
+  Result<std::optional<HybridTime>> GetSafeTime(NamespaceIdView namespace_id) const
       EXCLUDES(xcluster_safe_time_map_mutex_);
 
-  bool HasNamespace(const NamespaceId& namespace_id) const;
+  bool HasNamespace(NamespaceIdView namespace_id) const;
 
   void Update(const XClusterNamespaceToSafeTimePBMap& safe_time_map)
       EXCLUDES(xcluster_safe_time_map_mutex_);

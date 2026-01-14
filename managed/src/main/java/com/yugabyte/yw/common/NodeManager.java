@@ -167,13 +167,9 @@ public class NodeManager extends DevopsBase {
 
   @Inject RuntimeConfigFactory runtimeConfigFactory;
 
-  @Inject RuntimeConfGetter confGetter;
-
   @Inject ReleaseManager releaseManager;
 
   @Inject ImageBundleUtil imageBundleUtil;
-
-  @Inject NodeAgentClient nodeAgentClient;
 
   @Inject NodeAgentPoller nodeAgentPoller;
 

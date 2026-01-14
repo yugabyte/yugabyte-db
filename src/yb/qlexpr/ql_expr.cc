@@ -69,7 +69,7 @@ void LWExprResultWriter::SetNull() {
   yb::SetNull(&NewValue());
 }
 
-bfql::TSOpcode GetTSWriteInstruction(const QLExpressionPB& ql_expr) {
+bfql::TSOpcode GetTSWriteInstruction(const QLExpressionMsg& ql_expr) {
   // "kSubDocInsert" instructs the tablet server to insert a new value or replace an existing value.
   if (ql_expr.has_tscall()) {
     return static_cast<bfql::TSOpcode>(ql_expr.tscall().opcode());
@@ -544,7 +544,7 @@ Result<bool> QLExprExecutor::EvalQLCondition(const PB& condition, const QLTableR
 
 //--------------------------------------------------------------------------------------------------
 
-bfpg::TSOpcode GetTSWriteInstruction(const PgsqlExpressionPB& ql_expr) {
+bfpg::TSOpcode GetTSWriteInstruction(const PgsqlExpressionMsg& ql_expr) {
   // "kSubDocInsert" instructs the tablet server to insert a new value or replace an existing value.
   if (ql_expr.has_tscall()) {
     return static_cast<bfpg::TSOpcode>(ql_expr.tscall().opcode());

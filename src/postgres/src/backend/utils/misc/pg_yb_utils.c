@@ -144,15 +144,30 @@ static uint64_t yb_logical_client_cache_version = YB_CATCACHE_VERSION_UNINITIALI
 static bool yb_need_invalidate_all_table_cache = false;
 
 static bool YbHasDdlMadeChanges();
+static int YbGetNumCreateFunctionStmts();
+static int YbGetNumRollbackToSavepointStmts();
+static bool YBIsCurrentStmtCreateFunction();
 
 uint64_t
 YBGetActiveCatalogCacheVersion()
 {
-	if (yb_catalog_version_type == CATALOG_VERSION_CATALOG_TABLE &&
-		(YBGetDdlNestingLevel() > 0 ||
-		 (YBIsDdlTransactionBlockEnabled() && YBIsCurrentStmtDdl())))
-		return yb_catalog_cache_version + 1;
-
+	if (yb_catalog_version_type == CATALOG_VERSION_CATALOG_TABLE)
+	{
+		/*
+		 * Note that YBIsCurrentStmtCreateFunction is for both CREATE (OR REPLACE)
+		 * FUNCTION and CREATE (OR REPLACE) PROCEDURE.
+		 */
+		if (YBGetDdlNestingLevel() > 0 && YBIsCurrentStmtCreateFunction())
+			return yb_catalog_cache_version + 1;
+		if (YBIsDdlTransactionBlockEnabled())
+		{
+			uint64_t active_catalog_version = yb_catalog_cache_version +
+											  YbGetNumRollbackToSavepointStmts();
+			if (YBIsCurrentStmtCreateFunction())
+				active_catalog_version += YbGetNumCreateFunctionStmts();
+			return active_catalog_version;
+		}
+	}
 	return yb_catalog_cache_version;
 }
 
@@ -280,6 +295,12 @@ YbSetLogicalClientCacheVersion(uint64_t logical_client_cache_version)
 {
 	if (yb_logical_client_cache_version == YB_CATCACHE_VERSION_UNINITIALIZED)
 		yb_logical_client_cache_version = logical_client_cache_version;
+}
+
+void
+YbResetLogicalClientCacheVersion()
+{
+	yb_logical_client_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 }
 
 void
@@ -1168,7 +1189,9 @@ YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *ini
 		HandleYBStatusAtErrorLevel(YBCInitPgGate(YbGetTypeTable(),
 												 &callbacks,
 												 init_info ? init_info : &default_init_info,
-												 &ash_config), FATAL);
+												 &ash_config,
+												 &yb_session_stats.current_state,
+												 IsBinaryUpgrade), FATAL);
 		YBCInstallTxnDdlHook();
 
 		/*
@@ -1183,13 +1206,6 @@ YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *ini
 			if (yb_enable_query_diagnostics)
 				YbQueryDiagnosticsInstallHook();
 		}
-
-		/*
-		 * For each process, we create one YBC session for PostgreSQL to use
-		 * when accessing YugaByte storage.
-		 */
-		HandleYBStatus(YBCPgInitSession(&yb_session_stats.current_state,
-										IsBinaryUpgrade));
 
 		/*
 		 * Upon completion of the first heartbeat to the local tserver, retrieve
@@ -1331,6 +1347,16 @@ typedef struct
 	Oid			database_oid;
 	int			num_committed_pg_txns;
 
+	/*
+	 * Number of create function or procedure statements in the current ddl
+	 * transaction block. Only used when ddl transaction block is enabled.
+	 */
+	int			num_create_function_stmts;
+	/*
+	 * Number of rollback to savepoint statements in the current ddl
+	 * transaction block. Only used when ddl transaction block is enabled.
+	 */
+	int			num_rollback_to_savepoint_stmts;
 	/*
 	 * This indicates whether the current DDL transaction is running as part of
 	 * the regular transaction block.
@@ -2516,6 +2542,12 @@ YBIsCurrentStmtDdl()
 	return ddl_transaction_state.is_top_level_ddl_active;
 }
 
+static bool
+YBIsCurrentStmtCreateFunction()
+{
+	return ddl_transaction_state.current_stmt_node_tag == T_CreateFunctionStmt;
+}
+
 bool
 YBGetDdlUseRegularTransactionBlock()
 {
@@ -2635,6 +2667,13 @@ YBAddDdlTxnState(YbDdlMode mode)
 		 *    ddl_transaction_state.use_regular_txn_block as true.
 		 */
 		ddl_transaction_state.catalog_modification_aspects.pending |= mode;
+
+		/*
+		 * Note that T_CreateFunctionStmt is for both CREATE (OR REPLACE) FUNCTION
+		 * and CREATE (OR REPLACE) PROCEDURE.
+		 */
+		ddl_transaction_state.num_create_function_stmts +=
+			ddl_transaction_state.current_stmt_node_tag == T_CreateFunctionStmt ? 1 : 0;
 		return;
 	}
 
@@ -2646,6 +2685,8 @@ YBAddDdlTxnState(YbDdlMode mode)
 	 * this YB DDL transaction.
 	 */
 	ddl_transaction_state.num_committed_pg_txns = 0;
+	ddl_transaction_state.num_create_function_stmts =
+		ddl_transaction_state.current_stmt_node_tag == T_CreateFunctionStmt ? 1 : 0;
 	ddl_transaction_state.mem_context =
 		AllocSetContextCreate(CurrentMemoryContext,
 							  "aux ddl memory context",
@@ -2809,6 +2850,18 @@ void
 YbIncrementPgTxnsCommitted()
 {
 	++ddl_transaction_state.num_committed_pg_txns;
+}
+
+static int
+YbGetNumCreateFunctionStmts()
+{
+	return ddl_transaction_state.num_create_function_stmts;
+}
+
+static int
+YbGetNumRollbackToSavepointStmts()
+{
+	return ddl_transaction_state.num_rollback_to_savepoint_stmts;
 }
 
 /*
@@ -3373,7 +3426,8 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 			 bool *requires_autonomous_transaction)
 {
 	bool		is_ddl = true;
-	bool		is_version_increment = true;
+	bool		should_increment_version_by_default = yb_test_make_all_ddl_statements_incrementing;
+	bool		is_version_increment = should_increment_version_by_default;
 	bool		is_breaking_change = true;
 	bool		is_altering_existing_data = false;
 	bool		should_run_in_autonomous_transaction = false;
@@ -3464,7 +3518,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 			 * Simple add objects are not breaking changes, and they do not even require
 			 * a version increment because we do not do any negative caching for them.
 			 */
-			is_version_increment = false;
+			is_version_increment = should_increment_version_by_default;
 			is_breaking_change = false;
 			break;
 
@@ -3488,7 +3542,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 			 * increment.
 			 */
 			if (!yb_enable_alter_table_rewrite)
-				is_version_increment = false;
+				is_version_increment = should_increment_version_by_default;
 			is_breaking_change = false;
 			break;
 
@@ -3507,7 +3561,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 
 			/* Create or replace view needs to increment catalog version. */
 			if (!castNode(ViewStmt, parsetree)->replace)
-				is_version_increment = false;
+				is_version_increment = should_increment_version_by_default;
 			break;
 
 		case T_CompositeTypeStmt:	/* Create (composite) type */
@@ -3559,7 +3613,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 				int			nopts = list_length(stmt->options);
 
 				if (nopts == 0)
-					is_version_increment = false;
+					is_version_increment = should_increment_version_by_default;
 				else
 				{
 					bool		reference_other_role = false;
@@ -3578,7 +3632,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 						}
 					}
 					if (!reference_other_role)
-						is_version_increment = false;
+						is_version_increment = should_increment_version_by_default;
 				}
 				break;
 			}
@@ -3635,9 +3689,15 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 				}
 
 				if (stmt->relation->relpersistence == RELPERSISTENCE_TEMP)
+				{
+					is_version_increment = false;
+					is_altering_existing_data = true;
 					YBMarkTxnUsesTempRelAndSetTxnId();
-
-				is_version_increment = false;
+				}
+				else
+				{
+					is_version_increment = should_increment_version_by_default;
+				}
 				break;
 			}
 
@@ -3650,7 +3710,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 			 * Simple add objects are not breaking changes, and they do not even require
 			 * a version increment because we do not do any negative caching for them.
 			 */
-			is_version_increment = false;
+			is_version_increment = should_increment_version_by_default;
 			is_breaking_change = false;
 			break;
 
@@ -3662,7 +3722,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 			 * cache is updated.
 			 */
 			if (!OidIsValid(castNode(CreateSeqStmt, parsetree)->ownerId))
-				is_version_increment = false;
+				is_version_increment = should_increment_version_by_default;
 			break;
 
 		case T_CreateFunctionStmt:
@@ -3705,14 +3765,14 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 					 */
 					DropStmt   *stmt = castNode(DropStmt, parsetree);
 
-					if (stmt->removeType == OBJECT_INDEX ||
-						stmt->removeType == OBJECT_TABLE ||
-						stmt->removeType == OBJECT_VIEW)
-					{
-						ListCell   *cell;
+				if (stmt->removeType == OBJECT_INDEX ||
+					stmt->removeType == OBJECT_TABLE ||
+					stmt->removeType == OBJECT_VIEW)
+				{
+					ListCell   *cell;
 
-						is_version_increment = false;
-						bool		marked_temp = false;
+					is_version_increment = false;
+					bool		marked_temp = false;
 
 						foreach(cell, stmt->objects)
 						{
@@ -3756,7 +3816,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 			 * catalog version mode.
 			 */
 			if (YBIsDBCatalogVersionMode())
-				is_version_increment = false;
+				is_version_increment = should_increment_version_by_default;
 			break;
 
 			/* All T_Alter... tags from nodes.h: */
@@ -3814,7 +3874,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 					if (strcmp(def->defname, "password") == 0)
 					{
 						is_breaking_change = false;
-						is_version_increment = false;
+						is_version_increment = should_increment_version_by_default;
 					}
 				}
 				break;
@@ -3919,7 +3979,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 
 		case T_VacuumStmt:
 			/* Vacuum with analyze updates relation and attribute statistics */
-			is_version_increment = false;
+			is_version_increment = should_increment_version_by_default;
 			is_breaking_change = false;
 			VacuumStmt *vacuum_stmt = castNode(VacuumStmt, parsetree);
 
@@ -3993,7 +4053,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 			 * corruption, manual intervention is already needed, so might as
 			 * well let the user deal with refreshing clients.
 			 */
-			is_version_increment = false;
+			is_version_increment = should_increment_version_by_default;
 			is_breaking_change = false;
 			break;
 
@@ -4008,6 +4068,8 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 			{
 				TransactionStmt *stmt = castNode(TransactionStmt, parsetree);
 
+				if (YBIsDdlTransactionBlockEnabled() && stmt->kind == TRANS_STMT_ROLLBACK_TO)
+					++ddl_transaction_state.num_rollback_to_savepoint_stmts;
 				/*
 				 * We make a special case for YSQL upgrade, where we often use
 				 * DML statements writing to catalog tables directly under the GUC
@@ -4072,12 +4134,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 	 */
 	if (yb_make_next_ddl_statement_nonbreaking)
 		is_breaking_change = false;
-	/*
-	 * If yb_test_make_all_ddl_statements_incrementing is true, we should be incrementing
-	 * the catalog version for all DDL statements.
-	 */
-	if (yb_test_make_all_ddl_statements_incrementing)
-		is_version_increment = true;
+
 	/*
 	 * If yb_make_next_ddl_statement_nonincrementing is true, then no DDL statement
 	 * will cause a catalog version to increment. Note that we also disable breaking
@@ -7562,7 +7619,6 @@ YbIndexSetNewRelfileNode(Relation indexRel, Oid newRelfileNodeId,
 
 	YbTryGetTableProperties(indexRel);
 	YbGetTableProperties(indexedRel);
-
 
 	indexTuple = SearchSysCache1(INDEXRELID,
 								 ObjectIdGetDatum(RelationGetRelid(indexRel)));

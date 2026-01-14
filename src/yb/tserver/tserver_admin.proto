@@ -71,6 +71,8 @@ message GetSafeTimeRequestPB {
   optional fixed64 propagated_hybrid_time = 4;
 
   optional fixed64 min_hybrid_time_for_backfill = 5;
+
+  optional bool only_abort_txns_not_using_table_locks = 6;
 }
 
 message GetSafeTimeResponsePB {

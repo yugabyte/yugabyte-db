@@ -468,6 +468,11 @@ message TransactionMetadataPB {
 
   // Reserved for deprecated xcluster field external_transaction.
   reserved 8;
+
+  optional bool using_table_locks = 12;
+
+  // Stores hybrid time of first write batch of the transaction on a participating tablet.
+  optional fixed64 first_write_ht = 13;
 }
 
 // See ReadHybridTime for explation of this message.

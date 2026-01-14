@@ -4,7 +4,6 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
@@ -25,13 +24,10 @@ import play.mvc.Http;
 
 @Slf4j
 public class ConfigureOOMServiceOnNode extends NodeTaskBase {
-  private NodeAgentClient nodeAgentClient;
 
   @Inject
-  protected ConfigureOOMServiceOnNode(
-      BaseTaskDependencies baseTaskDependencies, NodeAgentClient nodeAgentClient) {
+  protected ConfigureOOMServiceOnNode(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
-    this.nodeAgentClient = nodeAgentClient;
   }
 
   public static class Params extends NodeTaskParams {

@@ -13,8 +13,8 @@
 
 #pragma once
 
-#include "yb/common/pgsql_protocol.pb.h"
-#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/pgsql_protocol.messages.h"
+#include "yb/common/ql_protocol.messages.h"
 
 namespace yb {
 namespace tablet {
@@ -27,7 +27,7 @@ struct QLReadRequestResult {
 struct PgsqlReadRequestResult {
   explicit PgsqlReadRequestResult(WriteBuffer* rows_data_) : rows_data(rows_data_) {}
 
-  PgsqlResponsePB response;
+  PgsqlResponseMsg response;
   ReadRestartData read_restart_data;
   size_t num_rows_read;
   WriteBuffer* rows_data;

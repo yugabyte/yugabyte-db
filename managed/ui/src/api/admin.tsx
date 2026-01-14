@@ -17,5 +17,5 @@ export function fetchGlobalRunTimeConfigs(includeInherited = false) {
 
 export function fetchProviderList() {
   const cUUID = localStorage.getItem('customerId');
-  return axios.get<Provider>(`${ROOT_URL}/customers/${cUUID}/providers`);
+  return axios.get<Provider[]>(`${ROOT_URL}/customers/${cUUID}/providers`);
 }

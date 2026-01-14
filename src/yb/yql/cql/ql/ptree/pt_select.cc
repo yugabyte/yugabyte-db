@@ -1063,7 +1063,15 @@ Status PTSelectStmt::AnalyzeOrderByClause(SemContext *sem_context,
     scan_column_map = &column_map_;
   } else {
     orderby_state.set_selecting_from_index(true);
+    VLOG(3) << "Loading table descriptor for index " << index_id;
     scan_index = sem_context->GetTableDesc(index_id);
+    if (!scan_index || !scan_index->IsIndex() ||
+        // Only looking for CQL Indexes.
+        (scan_index->table_type() != client::YBTableType::YQL_TABLE_TYPE)) {
+      return sem_context->Error(table_loc(), ErrorCode::OBJECT_NOT_FOUND);
+    }
+
+    VLOG(3) << "Found index. Name = " << scan_index->name().ToString() << ", id = " << index_id;
     LoadSchema(sem_context, scan_index, scan_column_map, true /* is_index */);
   }
 

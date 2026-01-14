@@ -47,7 +47,8 @@ typedef struct {
 // functions in this API are called.
 YbcStatus YBCInitPgGate(
     YbcPgTypeEntities type_entities, const YbcPgCallbacks* pg_callbacks,
-    const YbcPgInitPostgresInfo *init_postgres_info, YbcPgAshConfig* ash_config);
+    const YbcPgInitPostgresInfo *init_postgres_info, YbcPgAshConfig* ash_config,
+    YbcPgExecStatsState *session_stats, bool is_binary_upgrade);
 
 void YBCDestroyPgGate();
 void YBCInterruptPgGate();
@@ -57,8 +58,6 @@ void YBCInterruptPgGate();
 void YBCDumpCurrentPgSessionState(YbcPgSessionState* session_data);
 
 void YBCRestorePgSessionState(const YbcPgSessionState* session_data);
-
-YbcStatus YBCPgInitSession(YbcPgExecStatsState* session_stats, bool is_binary_upgrade);
 
 void YBCPgIncrementIndexRecheckCount();
 

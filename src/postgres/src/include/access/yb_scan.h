@@ -329,10 +329,8 @@ extern bool YbPredetermineNeedsRecheck(Scan *scan,
 									   ScanKey keys,
 									   int nkeys);
 
-extern HeapTuple ybc_getnext_heaptuple(YbScanDesc ybScan, ScanDirection dir,
-									   bool *recheck);
-extern IndexTuple ybc_getnext_indextuple(YbScanDesc ybScan, ScanDirection dir,
-										 bool *recheck);
+extern HeapTuple ybc_getnext_heaptuple(YbScanDesc ybScan, ScanDirection dir);
+extern IndexTuple ybc_getnext_indextuple(YbScanDesc ybScan, ScanDirection dir);
 extern bool ybc_getnext_aggslot(IndexScanDesc scan, YbcPgStatement handle,
 								bool index_only_scan);
 

@@ -7,7 +7,6 @@ package artifact
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -31,7 +30,7 @@ var fileArtifactReleaseCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(file)) == 0 {
+		if util.IsEmptyString(file) {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize(
@@ -55,7 +54,7 @@ var fileArtifactReleaseCmd = &cobra.Command{
 		}
 
 		resourceUUID := rRelease.GetResourceUUID()
-		if len(strings.TrimSpace(resourceUUID)) == 0 {
+		if util.IsEmptyString(resourceUUID) {
 			logrus.Fatalf(
 				formatter.Colorize(
 					"An error occurred while extracting metadata from tar gz file.\n",

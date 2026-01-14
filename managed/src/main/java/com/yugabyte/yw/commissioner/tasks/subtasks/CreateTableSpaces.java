@@ -6,7 +6,6 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableSpaceStructures.PlacementBlock;
@@ -36,13 +35,9 @@ public class CreateTableSpaces extends AbstractTaskBase {
   private static final Pattern YSQLSH_CREATE_TABLESPACE_SUCCESS =
       Pattern.compile("Command output:.*CREATE TABLESPACE", Pattern.DOTALL);
 
-  private final NodeUniverseManager nodeUniverseManager;
-
   @Inject
-  protected CreateTableSpaces(
-      BaseTaskDependencies baseTaskDependencies, NodeUniverseManager nodeUniverseManager) {
+  protected CreateTableSpaces(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
-    this.nodeUniverseManager = nodeUniverseManager;
   }
 
   public static class Params extends UniverseTaskParams {

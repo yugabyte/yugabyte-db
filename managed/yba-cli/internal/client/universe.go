@@ -21,144 +21,144 @@ import (
 )
 
 // ListUniverses fetches list of universes associated with the customer
-func (a *AuthAPIClient) ListUniverses() ybaclient.UniverseManagementApiApiListUniversesRequest {
-	return a.APIClient.UniverseManagementApi.ListUniverses(a.ctx, a.CustomerUUID)
+func (a *AuthAPIClient) ListUniverses() ybaclient.UniverseManagementAPIListUniversesRequest {
+	return a.APIClient.UniverseManagementAPI.ListUniverses(a.ctx, a.CustomerUUID)
 }
 
 // GetUniverse fetches of universe associated with the universeUUID
 func (a *AuthAPIClient) GetUniverse(
 	uUUID string,
-) ybaclient.UniverseManagementApiApiGetUniverseRequest {
-	return a.APIClient.UniverseManagementApi.GetUniverse(a.ctx, a.CustomerUUID, uUUID)
+) ybaclient.UniverseManagementAPIGetUniverseRequest {
+	return a.APIClient.UniverseManagementAPI.GetUniverse(a.ctx, a.CustomerUUID, uUUID)
 }
 
 // DeleteUniverse deletes universe associated with the universeUUID
 func (a *AuthAPIClient) DeleteUniverse(
 	uUUID string,
-) ybaclient.UniverseManagementApiApiDeleteUniverseRequest {
-	return a.APIClient.UniverseManagementApi.DeleteUniverse(a.ctx, a.CustomerUUID, uUUID)
+) ybaclient.UniverseManagementAPIDeleteUniverseRequest {
+	return a.APIClient.UniverseManagementAPI.DeleteUniverse(a.ctx, a.CustomerUUID, uUUID)
 }
 
 // CreateAllClusters creates a universe with a minimum of 1 cluster
-func (a *AuthAPIClient) CreateAllClusters() ybaclient.UniverseClusterMutationsApiApiCreateAllClustersRequest {
-	return a.APIClient.UniverseClusterMutationsApi.CreateAllClusters(a.ctx, a.CustomerUUID)
+func (a *AuthAPIClient) CreateAllClusters() ybaclient.UniverseClusterMutationsAPICreateAllClustersRequest {
+	return a.APIClient.UniverseClusterMutationsAPI.CreateAllClusters(a.ctx, a.CustomerUUID)
 }
 
 // DeleteReadonlyCluster to remove read replica cluster
 func (a *AuthAPIClient) DeleteReadonlyCluster(
 	uUUID, clusterUUID string,
-) ybaclient.UniverseClusterMutationsApiApiDeleteReadonlyClusterRequest {
-	return a.APIClient.UniverseClusterMutationsApi.DeleteReadonlyCluster(
+) ybaclient.UniverseClusterMutationsAPIDeleteReadonlyClusterRequest {
+	return a.APIClient.UniverseClusterMutationsAPI.DeleteReadonlyCluster(
 		a.ctx, a.CustomerUUID, uUUID, clusterUUID)
 }
 
 // CreateReadOnlyCluster to create a read replica cluster
 func (a *AuthAPIClient) CreateReadOnlyCluster(
 	uUUID string,
-) ybaclient.UniverseClusterMutationsApiApiCreateReadOnlyClusterRequest {
-	return a.APIClient.UniverseClusterMutationsApi.CreateReadOnlyCluster(
+) ybaclient.UniverseClusterMutationsAPICreateReadOnlyClusterRequest {
+	return a.APIClient.UniverseClusterMutationsAPI.CreateReadOnlyCluster(
 		a.ctx, a.CustomerUUID, uUUID)
 }
 
 // UpgradeSoftware upgrades the universe YugabyteDB version
 func (a *AuthAPIClient) UpgradeSoftware(
 	uUUID string,
-) ybaclient.UniverseUpgradesManagementApiApiUpgradeSoftwareRequest {
-	return a.APIClient.UniverseUpgradesManagementApi.UpgradeSoftware(a.ctx, a.CustomerUUID, uUUID)
+) ybaclient.UniverseUpgradesManagementAPIUpgradeSoftwareRequest {
+	return a.APIClient.UniverseUpgradesManagementAPI.UpgradeSoftware(a.ctx, a.CustomerUUID, uUUID)
 }
 
 // UpdatePrimaryCluster to edit primary cluster components
 func (a *AuthAPIClient) UpdatePrimaryCluster(
 	uUUID string,
-) ybaclient.UniverseClusterMutationsApiApiUpdatePrimaryClusterRequest {
-	return a.APIClient.UniverseClusterMutationsApi.UpdatePrimaryCluster(
+) ybaclient.UniverseClusterMutationsAPIUpdatePrimaryClusterRequest {
+	return a.APIClient.UniverseClusterMutationsAPI.UpdatePrimaryCluster(
 		a.ctx, a.CustomerUUID, uUUID)
 }
 
 // UpdateReadOnlyCluster to edit read replica cluster components
 func (a *AuthAPIClient) UpdateReadOnlyCluster(
 	uUUID string,
-) ybaclient.UniverseClusterMutationsApiApiUpdateReadOnlyClusterRequest {
-	return a.APIClient.UniverseClusterMutationsApi.UpdateReadOnlyCluster(
+) ybaclient.UniverseClusterMutationsAPIUpdateReadOnlyClusterRequest {
+	return a.APIClient.UniverseClusterMutationsAPI.UpdateReadOnlyCluster(
 		a.ctx, a.CustomerUUID, uUUID)
 }
 
 // UpgradeGFlags upgrades the universe gflags
 func (a *AuthAPIClient) UpgradeGFlags(
 	uUUID string,
-) ybaclient.UniverseUpgradesManagementApiApiUpgradeGFlagsRequest {
-	return a.APIClient.UniverseUpgradesManagementApi.UpgradeGFlags(a.ctx, a.CustomerUUID, uUUID)
+) ybaclient.UniverseUpgradesManagementAPIUpgradeGFlagsRequest {
+	return a.APIClient.UniverseUpgradesManagementAPI.UpgradeGFlags(a.ctx, a.CustomerUUID, uUUID)
 }
 
 // UpgradeVMImage upgrades the VM image of the universe
 func (a *AuthAPIClient) UpgradeVMImage(
 	uUUID string,
-) ybaclient.UniverseUpgradesManagementApiApiUpgradeVMImageRequest {
-	return a.APIClient.UniverseUpgradesManagementApi.UpgradeVMImage(a.ctx, a.CustomerUUID, uUUID)
+) ybaclient.UniverseUpgradesManagementAPIUpgradeVMImageRequest {
+	return a.APIClient.UniverseUpgradesManagementAPI.UpgradeVMImage(a.ctx, a.CustomerUUID, uUUID)
 }
 
 // UpgradeTLS upgrades the TLS settings of the universe
 func (a *AuthAPIClient) UpgradeTLS(
 	uUUID string,
-) ybaclient.UniverseUpgradesManagementApiApiUpgradeTlsRequest {
-	return a.APIClient.UniverseUpgradesManagementApi.UpgradeTls(a.ctx, a.CustomerUUID, uUUID)
+) ybaclient.UniverseUpgradesManagementAPIUpgradeTlsRequest {
+	return a.APIClient.UniverseUpgradesManagementAPI.UpgradeTls(a.ctx, a.CustomerUUID, uUUID)
 }
 
 // UpgradeCerts upgrades the TLS certs of the universe
 func (a *AuthAPIClient) UpgradeCerts(
 	uUUID string,
-) ybaclient.UniverseUpgradesManagementApiApiUpgradeCertsRequest {
-	return a.APIClient.UniverseUpgradesManagementApi.UpgradeCerts(a.ctx, a.CustomerUUID, uUUID)
+) ybaclient.UniverseUpgradesManagementAPIUpgradeCertsRequest {
+	return a.APIClient.UniverseUpgradesManagementAPI.UpgradeCerts(a.ctx, a.CustomerUUID, uUUID)
 }
 
 // RestartUniverse for restart operation
 func (a *AuthAPIClient) RestartUniverse(
 	uUUID string,
-) ybaclient.UniverseUpgradesManagementApiApiRestartUniverseRequest {
-	return a.APIClient.UniverseUpgradesManagementApi.RestartUniverse(a.ctx, a.CustomerUUID, uUUID)
+) ybaclient.UniverseUpgradesManagementAPIRestartUniverseRequest {
+	return a.APIClient.UniverseUpgradesManagementAPI.RestartUniverse(a.ctx, a.CustomerUUID, uUUID)
 }
 
 // SetUniverseKey to change universe EAR settings
 func (a *AuthAPIClient) SetUniverseKey(
 	uUUID string,
-) ybaclient.UniverseManagementApiApiSetUniverseKeyRequest {
+) ybaclient.UniverseManagementAPISetUniverseKeyRequest {
 
-	return a.APIClient.UniverseManagementApi.SetUniverseKey(a.ctx, a.CustomerUUID, uUUID)
+	return a.APIClient.UniverseManagementAPI.SetUniverseKey(a.ctx, a.CustomerUUID, uUUID)
 }
 
 // PauseUniverse for pausing the universe
 func (a *AuthAPIClient) PauseUniverse(
 	uUUID string,
-) ybaclient.UniverseManagementApiApiPauseUniverseRequest {
-	return a.APIClient.UniverseManagementApi.PauseUniverse(a.ctx, a.CustomerUUID, uUUID)
+) ybaclient.UniverseManagementAPIPauseUniverseRequest {
+	return a.APIClient.UniverseManagementAPI.PauseUniverse(a.ctx, a.CustomerUUID, uUUID)
 }
 
 // ResumeUniverse for resuming the universe
 func (a *AuthAPIClient) ResumeUniverse(
 	uUUID string,
-) ybaclient.UniverseManagementApiApiResumeUniverseRequest {
-	return a.APIClient.UniverseManagementApi.ResumeUniverse(a.ctx, a.CustomerUUID, uUUID)
+) ybaclient.UniverseManagementAPIResumeUniverseRequest {
+	return a.APIClient.UniverseManagementAPI.ResumeUniverse(a.ctx, a.CustomerUUID, uUUID)
 }
 
 // ResizeNode for resizing volumes of primary cluster nodes
 func (a *AuthAPIClient) ResizeNode(
 	uUUID string,
-) ybaclient.UniverseUpgradesManagementApiApiResizeNodeRequest {
-	return a.APIClient.UniverseUpgradesManagementApi.ResizeNode(a.ctx, a.CustomerUUID, uUUID)
+) ybaclient.UniverseUpgradesManagementAPIResizeNodeRequest {
+	return a.APIClient.UniverseUpgradesManagementAPI.ResizeNode(a.ctx, a.CustomerUUID, uUUID)
 }
 
 // ConfigureYSQL for YSQL configuration
 func (a *AuthAPIClient) ConfigureYSQL(
 	uUUID string,
-) ybaclient.UniverseDatabaseManagementApiApiConfigureYSQLRequest {
-	return a.APIClient.UniverseDatabaseManagementApi.ConfigureYSQL(a.ctx, a.CustomerUUID, uUUID)
+) ybaclient.UniverseDatabaseManagementAPIConfigureYSQLRequest {
+	return a.APIClient.UniverseDatabaseManagementAPI.ConfigureYSQL(a.ctx, a.CustomerUUID, uUUID)
 }
 
 // ConfigureYCQL for YCQL configuration
 func (a *AuthAPIClient) ConfigureYCQL(
 	uUUID string,
-) ybaclient.UniverseDatabaseManagementApiApiConfigureYCQLRequest {
-	return a.APIClient.UniverseDatabaseManagementApi.ConfigureYCQL(a.ctx, a.CustomerUUID, uUUID)
+) ybaclient.UniverseDatabaseManagementAPIConfigureYCQLRequest {
+	return a.APIClient.UniverseDatabaseManagementAPI.ConfigureYCQL(a.ctx, a.CustomerUUID, uUUID)
 }
 
 // UniverseYBAVersionCheck checks if the new API request body can be used for the Create
@@ -179,8 +179,8 @@ func (a *AuthAPIClient) UniverseYBAVersionCheck() (bool, string, error) {
 // It extracts universe metadata and locks universe.
 func (a *AuthAPIClient) DetachUniverse(
 	uUUID string,
-) ybav2client.UniverseApiApiDetachUniverseRequest {
-	return a.APIv2Client.UniverseApi.DetachUniverse(a.ctx, a.CustomerUUID, uUUID)
+) ybav2client.UniverseAPIDetachUniverseRequest {
+	return a.APIv2Client.UniverseAPI.DetachUniverse(a.ctx, a.CustomerUUID, uUUID)
 }
 
 // DeleteAttachDetachMetadata deletes the universe related metadata from
@@ -188,8 +188,8 @@ func (a *AuthAPIClient) DetachUniverse(
 // providers, etc. and associated backups are not deleted.
 func (a *AuthAPIClient) DeleteAttachDetachMetadata(
 	uUUID string,
-) ybav2client.UniverseApiApiDeleteAttachDetachMetadataRequest {
-	return a.APIv2Client.UniverseApi.DeleteAttachDetachMetadata(a.ctx, a.CustomerUUID, uUUID)
+) ybav2client.UniverseAPIDeleteAttachDetachMetadataRequest {
+	return a.APIv2Client.UniverseAPI.DeleteAttachDetachMetadata(a.ctx, a.CustomerUUID, uUUID)
 }
 
 // AttachUniverse attaches the universe into the destination platform.
@@ -197,8 +197,8 @@ func (a *AuthAPIClient) DeleteAttachDetachMetadata(
 // is imported.
 func (a *AuthAPIClient) AttachUniverse(
 	uUUID string,
-) ybav2client.UniverseApiApiAttachUniverseRequest {
-	return a.APIv2Client.UniverseApi.AttachUniverse(a.ctx, a.CustomerUUID, uUUID)
+) ybav2client.UniverseAPIAttachUniverseRequest {
+	return a.APIv2Client.UniverseAPI.AttachUniverse(a.ctx, a.CustomerUUID, uUUID)
 }
 
 // AttachUniverseRest uses REST API to call attach universe functionality

@@ -31,8 +31,7 @@ var listUserCmd = &cobra.Command{
 
 		rUsers, response, err := userListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "User", "List")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "User", "List")
 		}
 
 		email, err := cmd.Flags().GetString("email")
@@ -41,7 +40,7 @@ var listUserCmd = &cobra.Command{
 		}
 
 		r := make([]ybaclient.UserWithFeatures, 0)
-		if len(strings.TrimSpace(email)) != 0 {
+		if !util.IsEmptyString(email) {
 			for _, user := range rUsers {
 				if strings.EqualFold(user.GetEmail(), email) {
 					r = append(r, user)

@@ -769,6 +769,7 @@ lazy val gogen = project.in(file("client/go"))
     openApiGenerateApiTests := SettingDisabled,
     openApiValidateSpec := SettingDisabled,
     openApiConfigFile := "client/go/openapi-go-config.json",
+    openApiTemplateDir := "client/go/templates",
     target := file("client/go/target/v1"),
   )
 
@@ -782,6 +783,7 @@ lazy val goGenV2Client = project.in(file("client/go"))
     openApiGenerateApiTests := SettingDisabled,
     openApiValidateSpec := SettingDisabled,
     openApiConfigFile := "client/go/openapi-go-config-v2.json",
+    openApiTemplateDir := "client/go/templates",
     target := file("client/go/target/v2"),
     openApiGlobalProperties += ("skipFormModel" -> "false"),
   )
@@ -1000,7 +1002,7 @@ runPlatform := {
 }
 
 libraryDependencies += "org.yb" % "yb-client" % "0.8.109-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.3-b14"
+libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.4-b1"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b35"
 
 libraryDependencies ++= Seq(

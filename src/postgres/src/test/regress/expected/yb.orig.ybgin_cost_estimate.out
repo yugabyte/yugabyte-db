@@ -1,6 +1,31 @@
 --
 -- Yugabyte-owned test for ybgin index access method and cost estimates.
 --
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set filename :abs_srcdir '/yb_commands/explainrun_ybgin.sql'
+\i :filename
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set filename :abs_srcdir '/yb_commands/explainrun.sql'
+\i :filename
+-- A helper script to explain and run a query.  Use in regress tests by
+-- defining :explain, :query, and optionally :hint#.
+\set explain1 ':explain :hint1 :query;'
+\set explain2 ':explain1 :explain :hint2 :query;'
+\set explain3 ':explain2 :explain :hint3 :query;'
+\set explain4 ':explain3 :explain :hint4 :query;'
+\set explain5 ':explain4 :explain :hint5 :query;'
+\set explain1run1 ':explain1; :hint1 :query;'
+\set explain2run2 ':explain2; :hint1 :query; :hint2 :query;'
+\set explain3run3 ':explain3; :hint1 :query; :hint2 :query; :hint3 :query;'
+\set explain4run4 ':explain4; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query;'
+\set explain5run5 ':explain5; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query; :hint5 :query;'
+-- Default to no hints.
+\set hint1 ''
+\set hint2 ''
+\set hint3 ''
+\set hint4 ''
+\set hint5 ''
+\set explain 'EXPLAIN (costs off)'
 SET enable_seqscan = off;
 SHOW yb_test_ybgin_disable_cost_factor;
  yb_test_ybgin_disable_cost_factor 
@@ -8,12 +33,12 @@ SHOW yb_test_ybgin_disable_cost_factor;
  2
 (1 row)
 
-\set run 'EXPLAIN (costs off) :query; /*+SET(yb_test_ybgin_disable_cost_factor 0.5)*/ EXPLAIN (costs off) :query'
+\set hint2 '/*+SET(yb_test_ybgin_disable_cost_factor 0.5)*/'
 -- Given what is currently supported, these queries would fail, so they should
 -- use sequential scan.
 -- GIN_SEARCH_MODE_ALL
 \set query 'SELECT * FROM vectors WHERE v @@ to_tsquery(''simple'', ''!aa'')'
-:run;
+:explain2
                  QUERY PLAN                  
 ---------------------------------------------
  Seq Scan on vectors
@@ -28,7 +53,7 @@ SHOW yb_test_ybgin_disable_cost_factor;
 
 -- multiple scan keys
 \set query 'SELECT * FROM vectors WHERE v @@ ''a'' and v @@ ''bb'''
-:run;
+:explain2
                                 QUERY PLAN                                
 --------------------------------------------------------------------------
  Seq Scan on vectors
@@ -47,7 +72,7 @@ SHOW yb_test_ybgin_disable_cost_factor;
 -- probably better to spend the time supporting the query instead.  So it
 -- currently will suggest index scan, unfortunately.
 \set query 'SELECT * FROM vectors WHERE v @@ to_tsquery(''simple'', ''aa | bb'')'
-:run;
+:explain2
                    QUERY PLAN                    
 -------------------------------------------------
  Index Scan using vectors_v_idx on vectors
@@ -66,7 +91,7 @@ SHOW yb_test_ybgin_disable_cost_factor;
 -- probably better to spend the time supporting the query instead.  So it
 -- currently will suggest index scan, unfortunately.
 \set query 'SELECT * FROM arrays WHERE a @> ''{null}'''
-:run;
+:explain2
                 QUERY PLAN                
 ------------------------------------------
  Index Scan using arrays_a_idx on arrays
@@ -84,7 +109,7 @@ CREATE INDEX NONCONCURRENTLY idx_partial ON arrays
     WHERE a <@ '{1}' or a @> '{}' or a is null;
 -- GIN_SEARCH_MODE_INCLUDE_EMPTY
 \set query 'SELECT * FROM arrays WHERE a <@ ''{1}'''
-:run;
+:explain2
             QUERY PLAN             
 -----------------------------------
  Seq Scan on arrays
@@ -99,7 +124,7 @@ CREATE INDEX NONCONCURRENTLY idx_partial ON arrays
 
 -- GIN_SEARCH_MODE_ALL
 \set query 'SELECT * FROM arrays WHERE a @> ''{}'''
-:run;
+:explain2
             QUERY PLAN            
 ----------------------------------
  Seq Scan on arrays
@@ -114,7 +139,7 @@ CREATE INDEX NONCONCURRENTLY idx_partial ON arrays
 
 -- GIN_SEARCH_MODE_EVERYTHING, GIN_CAT_NULL_ITEM
 \set query 'SELECT * FROM arrays WHERE a is null'
-:run;
+:explain2
           QUERY PLAN           
 -------------------------------
  Seq Scan on arrays
@@ -135,7 +160,7 @@ DROP INDEX idx_partial;
 -- probably better to spend the time supporting the query instead.  So it
 -- currently will suggest index scan, unfortunately.
 \set query 'SELECT * FROM jsonbs WHERE j ?| ''{"ggg", "eee"}'''
-:run;
+:explain2
                 QUERY PLAN                
 ------------------------------------------
  Index Scan using jsonbs_j_idx on jsonbs
@@ -150,7 +175,7 @@ DROP INDEX idx_partial;
 
 -- GIN_SEARCH_MODE_ALL
 \set query 'SELECT * FROM jsonbs WHERE j @? ''$.aaa[*] ? (@ > 2)'''
-:run;
+:explain2
                        QUERY PLAN                        
 ---------------------------------------------------------
  Seq Scan on jsonbs
@@ -166,7 +191,7 @@ DROP INDEX idx_partial;
 -- On the other hand, these queries would succeed, so they should use index
 -- scan.
 \set query 'SELECT * FROM vectors WHERE v @@ to_tsquery(''simple'', ''(aa | bb) & (cc & dd)'')'
-:run;
+:explain2
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  Index Scan using vectors_v_idx on vectors

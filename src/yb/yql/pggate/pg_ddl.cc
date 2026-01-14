@@ -95,7 +95,11 @@ PgDropDatabase::PgDropDatabase(
 }
 
 Status PgDropDatabase::Exec() {
-  return pg_session_->DropDatabase(database_name_, database_oid_, DdlDeadline());
+  tserver::PgDropDatabaseRequestPB req;
+  req.set_database_name(database_name_);
+  req.set_database_oid(database_oid_);
+
+  return pg_session_->pg_client().DropDatabase(&req, DdlDeadline());
 }
 
 PgAlterDatabase::PgAlterDatabase(

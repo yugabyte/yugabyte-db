@@ -49,6 +49,9 @@
       "collapse": "Collapse",
       "formFieldRequired": "Required.",
       "every": "Every",
+      "actions": "Actions",
+      "enabled": "Enabled",
+      "disabled": "Disabled",
       "duration": {
         "seconds": "Seconds",
         "minutes": "Minutes",
@@ -3117,10 +3120,13 @@
           },
           "backupObjects": {
             "advancedConfig": "Advanced Configuration",
+            "rolesConfig": "Roles Configuration",
             "selectDBTitle": "Select the Keyspaces/Databases you want to backup",
             "selectDB": "Databases/Keyspaces",
             "backupTablespace": "Backup tablespaces information",
+            "backupRoles": "Backup global roles",
             "backupTablespaceSubText": "In Universes using tablespaces, this allows restoring while preserving source universe tablespaces. (Given both source and target have the same topology.)",
+            "backupRolesSubText": "In Universes using roles, this allows restoring while preserving source universe roles.",
             "allTables": "Select all tables in this Keyspace",
             "subSetOfTables": "Select a subset of tables",
             "selectTables": "Select Tables",
@@ -3285,6 +3291,7 @@
           "kmsConfigHelpText": "<b>Note!</b> For a successful restore, the KMS configuration used for restore should be the same KMS configuration used during backup creation.",
           "activeKMS": "Active",
           "usedDuringBackup": "Used during backup",
+          "restoreRoles": "Restore global roles",
           "parallelThreads": "Parallel threads (Optional)",
           "tablespacePlacementConflict": "<b>Tablespace Placement Conflict.</b> Some tablespaces in the backup have a placement policy that conflicts with the target universe. <a>View logs for details.</a><br/>If you proceed, the restore may fail. if it does, you can retry the restore without tablespaces. <a2>Learn more about restoring tablespaces.</a2>",
           "tablespaceNameConflict": "<b>Tablespace Name Conflict.</b> The target universe has tablespaces with the same name as tablespaces in the backup. In cases where the placement policy differs between the target and backup tablespaces, <b>the target policy will be used.</b> <a>View logs for details</a>"
@@ -3640,7 +3647,9 @@
         "tablespaceName": "Tablespace Name",
         "tablespaceNameHelpText": "Tablespace name <b>CANNOT</b> be modified after geo partition creation.",
         "existingRegions": "Existing Regions",
-        "helpText": "Use Geo-partitioning to optimize regional data placement for low-latency access or GDPR compliance. <a>Learn more</a>"
+        "helpText": "Use Geo-partitioning to optimize regional data placement for low-latency access or GDPR compliance. <a>Learn more</a>",
+        "tablespaceNameRequiredError": "Tablespace name is required",
+        "displayNameRequiredError": "Geo Partition Name is required"
       },
       "geoPartitionNodesAndAvailability": {
         "instanceType": "Instance Type",
@@ -3649,6 +3658,147 @@
         "iops": "IOPS",
         "throughput": "Throughput",
         "nodes": "Node Size"
+      }
+    },
+    "editUniverse": {
+      "totalNodes": "{{total}} Nodes",
+      "readReplica": "Read Replica",
+      "preferredRank": "Preferred Rank {{rank}}",
+      "tabs": {
+        "general": "General",
+        "placement": "Placement",
+        "hardware": "Hardware",
+        "security": "Security",
+        "database": "Database",
+        "advanced": "Advanced"
+      },
+      "general": {
+        "title": "General",
+        "databaseVersion": "Database Version",
+        "clusterId": "Cluster ID",
+        "provider": "Provider",
+        "providerConfig": "Provider Config",
+        "totalNodes": "Total Nodes",
+        "faultTolerance": "Fault Tolerance",
+        "encryption": "Encryption",
+        "dateCreated": "Date Created",
+        "inTransit": "In-Transit",
+        "atRest": "at-Rest",
+        "regionResilient": "Resilient to {{count}} Region outage",
+        "azResilient": "Resilient to {{count}} Availability Zone outage",
+        "nodeResilient": "Resilient to {{count}} Node outage",
+        "notResilient": "Not Resilient to outages",
+        "primaryCluster": "Primary Cluster",
+        "asyncCluster": "Async Cluster",
+        "cpuArch": "CPU Architecture",
+        "linuxVersion": "Linux Version",
+        "defaultInstanceType": "Default Instance Type",
+        "region": "Region",
+        "primary": "Primary",
+        "readReplica": "Read Replica",
+        "preferredRank1": "Preferred Rank 1",
+        "allLocation": "All Locations",
+        "geoPartition": "Geo Partition"
+      },
+      "placement": {
+        "actions": "Actions",
+        "editResilienceAndRegions": "Edit Resilience and Regions",
+        "editNodesAndAvailabilityZones": "Edit Nodes and Availability Zones",
+        "editMasterServerNodeAllocation": "Edit Master Server Node Allocation",
+        "clusterPlacement": "Cluster Placement",
+        "addReadReplica": "Add Read Replica",
+        "addReadReplicaHelpText": "Enhance read scalability and availability with Read Replicas.",
+        "addGeoPartition": "Add Geo Partition",
+        "geoPartitionHelpText": "Optimize regional data placement for low-latency access or GDPR compliance. <a>Learn more</a>",
+        "faultTolerance": "Fault Tolerance",
+        "replicationFactor": "Replication Factor",
+        "totalNodes": "Total Nodes",
+        "totalNodesTServerMaster": "{{total_nodes}} ({{tservers}} T-Servers | {{masters}} Masters)",
+        "tServers": "T-Servers",
+        "masters": "Masters",
+        "region": "Region",
+        "availabilityZone": "Availability Zone",
+        "noOfNodes": "No. of Nodes",
+        "reviewChanges": "Review Changes",
+        "editPlacementConfirmModal": {
+          "title": "Review Changes",
+          "summary": "Summary of instance configuration changes:",
+          "current": "Current",
+          "new": "New",
+          "faultTolerance": "Fault Tolerance:",
+          "totalNodes": "Total Nodes:",
+          "node": "node",
+          "rank": "Rank {{rank}}",
+          "notPreferred": "Not Preferred",
+          "confirmAndApply": "Confirm and Apply",
+          "faultToleranceTypes": {
+            "REGION_LEVEL": "{{count}} Region outage",
+            "AZ_LEVEL": "{{count}} Availability Zone outage",
+            "NODE_LEVEL": "{{count}} Node outage",
+            "NONE": "None"
+          }
+        },
+        "geoParitionPlacementView": {
+          "title": "Geo Partitions",
+          "addGeoPartition": "Add Geo Partition"
+        }
+      },
+      "editResilienceAndRegions": {
+        "title": "Edit Placement"
+      },
+      "hardware": {
+        "totalClusterNodes": "Total Cluster Nodes",
+        "clusterInstance": "Cluster Instance",
+        "instanceType": "Instance Type",
+        "volumeAndNode": "volume / node",
+        "volumeAndNodeValue": "{{nodeCount}} X {{volumeSize}} GB",
+        "ebsType": "ebs type",
+        "iops": "provisioned IOPS / Node",
+        "throughput": "provisioned throughput / Node",
+        "throughtputValue": "{{throughput}} MB/s",
+        "tServerInstance": "T-Server Instance",
+        "masterServerInstance": "Master Server Instance",
+        "editHardwareModal": {
+          "title": "Cluster Instance",
+          "submitLabel": "Review Changes"
+        }
+      },
+      "security": {
+        "publicIPAssignment": "Public IP Assignment",
+        "encryptionInTransit": "Encryption In Transit",
+        "encryptionAtRest": "Encryption At Rest",
+        "nodeToNode": "Node to Node Encryption",
+        "clientToNode": "Client to Node Encryption",
+        "encryption": "Encryption"
+      },
+      "database": {
+        "ysql": "YSQL",
+        "ycql": "YCQL",
+        "connectionPooling": "Connection Pooling",
+        "postgresCompatibility": "Postgres Compatibility",
+        "ysqlAuthentication": "YSQL Authentication",
+        "ycqlAuthentication": "YCQL Authentication",
+        "interface": "Interface",
+        "features": "Features",
+        "advancedConfigFlags": "Advanced Config Flags",
+        "editYSQLSettings": "Edit YSQL Settings",
+        "editYCQLSettings": "Edit YCQL Settings",
+        "editConnectionPooling": "Edit Connection Pooling Settings",
+        "editPostgresCompatibility": "Edit Postgres Compatibility Settings"
+      },
+      "advanced": {
+        "proxyConfiguration": "Proxy Configuration",
+        "proxyServer": "Proxy Server",
+        "secureWebProxy": "Secure Web Proxy (HTTPS)",
+        "webProxy": "Web Proxy (HTTP)",
+        "bypassProxyList": "Bypass Proxy List",
+        "editProxyConfiguration": "Edit Proxy Configuration"
+      },
+      "masterServerNodeAllocationModal": {
+        "title": "Master Server Node Allocation",
+        "editMasterServer": "Edit Master Server Instance  (Optional)",
+        "subText": "You can change master server instance settings at any time by going to:",
+        "settingsAndHardware": "Settings > Hardware"
       }
     }
   }

@@ -74,7 +74,7 @@ public class DbLdapSyncTest extends CommissionerBaseTest {
     params.userToGroup = userToGroup;
     params.ldapGroups = ldapGroups;
 
-    task = new DbLdapSync(mockBaseTaskDependencies, mockYsqlQueryExecutor, mockYcqlQueryExecutor);
+    task = new DbLdapSync(mockBaseTaskDependencies);
     task.initialize(params);
   }
 

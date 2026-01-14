@@ -433,7 +433,7 @@ Status PTBcall::CheckOperatorAfterArgAnalyze(SemContext *sem_context) {
   return Status::OK();
 }
 
-void PTBcall::rscol_type_PB(QLTypePB *pb_type) const {
+void PTBcall::rscol_type_PB(QLTypeMsg *pb_type) const {
   if (aggregate_opcode() == bfql::TSOpcode::kAvg) {
     // Tablets return a map of (count, sum),
     // so that the average can be calculated across all tablets.

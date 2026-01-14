@@ -144,6 +144,9 @@ DEFINE_RUNTIME_bool(
 DEFINE_RUNTIME_AUTO_bool(
     enable_export_snapshot_using_relfilenode, kExternal, false, true,
     "Enable exporting snapshots with the new format version = 3 that uses relfilenodes.");
+
+DECLARE_bool(TEST_enable_table_rewrite_for_cdcsdk_table);
+
 namespace yb {
 
 using google::protobuf::RepeatedPtrField;
@@ -784,70 +787,10 @@ Status CatalogManager::RestoreSnapshot(
   }
   LOG(INFO)
       << "Servicing RestoreSnapshot request: " << txn_snapshot_id
-      << (ht ? Format(" to restore to time ", ht) : "");
+      << (ht ? Format(" to restore to time $0 ", ht) : "");
   TxnSnapshotRestorationId id = VERIFY_RESULT(
       master_->snapshot_coordinator().Restore(txn_snapshot_id, ht, epoch.leader_term));
   resp->set_restoration_id(id.data(), id.size());
-  return Status::OK();
-}
-
-Status CatalogManager::RestoreEntry(
-    const SysRowEntry& entry, const SnapshotId& snapshot_id, const LeaderEpoch& epoch) {
-  switch (entry.type()) {
-    case SysRowEntryType::NAMESPACE: { // Restore NAMESPACES.
-      TRACE("Looking up namespace");
-      scoped_refptr<NamespaceInfo> ns = FindPtrOrNull(namespace_ids_map_, entry.id());
-      if (ns == nullptr) {
-        // Restore Namespace.
-        // TODO: implement
-        LOG(INFO) << "Restoring: NAMESPACE id = " << entry.id();
-
-        return STATUS(NotSupported, Substitute(
-            "Not implemented: restoring namespace: id=$0", entry.type()));
-      }
-      break;
-    }
-    case SysRowEntryType::TABLE: { // Restore TABLES.
-      TRACE("Looking up table");
-      scoped_refptr<TableInfo> table = tables_->FindTableOrNull(entry.id());
-      if (table == nullptr) {
-        // Restore Table.
-        // TODO: implement
-        LOG(INFO) << "Restoring: TABLE id = " << entry.id();
-
-        return STATUS(NotSupported, Substitute(
-            "Not implemented: restoring table: id=$0", entry.type()));
-      }
-      break;
-    }
-    case SysRowEntryType::TABLET: { // Restore TABLETS.
-      TRACE("Looking up tablet");
-      TabletInfoPtr tablet = FindPtrOrNull(*tablet_map_, entry.id());
-      if (tablet == nullptr) {
-        // Restore Tablet.
-        // TODO: implement
-        LOG(INFO) << "Restoring: TABLET id = " << entry.id();
-
-        return STATUS(NotSupported, Substitute(
-            "Not implemented: restoring tablet: id=$0", entry.type()));
-      } else {
-        TRACE("Locking tablet");
-        auto l = tablet->LockForRead();
-
-        LOG(INFO) << "Sending RestoreTabletSnapshot to tablet: " << tablet->ToString();
-        // Send RestoreSnapshot requests to all TServers (one tablet - one request).
-        auto task = CreateAsyncTabletSnapshotOp(
-            tablet, snapshot_id, tserver::TabletSnapshotOpRequestPB::RESTORE_ON_TABLET,
-            epoch, TabletSnapshotOperationCallback());
-        ScheduleTabletSnapshotOp(task);
-      }
-      break;
-    }
-    default:
-      return STATUS_FORMAT(
-          InternalError, "Unexpected entry type in the snapshot: $0", entry.type());
-  }
-
   return Status::OK();
 }
 
@@ -3200,6 +3143,7 @@ void CatalogManager::CleanupHiddenTables(
   }
 
   std::vector<TableInfoPtr> expired_tables;
+  std::unordered_set<TableId> expired_table_ids;
   for (auto& table : tables) {
     if (table->IsSecondaryTable()) {
       // Table is colocated or a vector index and still registered with its hosting tablet(s).
@@ -3210,10 +3154,12 @@ void CatalogManager::CleanupHiddenTables(
     if (table->IsHiddenButNotDeleting()) {
       auto tablets_deleted_result = table->AreAllTabletsDeleted();
       if (tablets_deleted_result.ok() && *tablets_deleted_result) {
+        expired_table_ids.insert(table->id());
         expired_tables.push_back(std::move(table));
       }
     }
   }
+
   // Sort the expired tables so we acquire write locks in id order. This is the required lock
   // acquisition order for tables.
   std::sort(
@@ -3247,6 +3193,19 @@ void CatalogManager::CleanupHiddenTables(
   }
   for (auto& lock : locks) {
     lock.Commit();
+  }
+
+  if (FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table) {
+    // A hidden table, with all the tablets deleted can be removed from the stream metadata of
+    // CDCSDK streams. Here we mark the streams as DELETING_METADATA, catalog manager's background
+    // task will remove the tables from such streams' metadata.
+    Status s = DropCDCSDKStreams(expired_table_ids);
+    if (!s.ok()) {
+      LOG_WITH_PREFIX(WARNING)
+          << "Failed to mark CDC streams as DELETING_METADATA for expired tables: "
+          << AsString(expired_table_ids) << ", Status: " << s;
+      return;
+    }
   }
 }
 
@@ -3337,7 +3296,9 @@ Status CatalogManager::RestoreSnapshotSchedule(
   auto deadline = rpc->GetClientDeadline();
 
   RETURN_NOT_OK(master_->tablet_split_manager().PrepareForPitr(deadline));
-
+  LOG(INFO)
+      << "Servicing RestoreSnapshotSchedule request. id: " << id
+      << " restore_ht: " << ht;
   return master_->snapshot_coordinator().RestoreSnapshotSchedule(
       id, ht, resp, epoch.leader_term, deadline);
 }

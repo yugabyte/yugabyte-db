@@ -24,30 +24,30 @@ import (
 // GetCustomerTaskStatus fetches the customer task status
 func (a *AuthAPIClient) GetCustomerTaskStatus(
 	taskUUID string,
-) ybaclient.CustomerTasksApiApiTaskStatusRequest {
-	return a.APIClient.CustomerTasksApi.TaskStatus(a.ctx, a.CustomerUUID, taskUUID)
+) ybaclient.CustomerTasksAPITaskStatusRequest {
+	return a.APIClient.CustomerTasksAPI.TaskStatus(a.ctx, a.CustomerUUID, taskUUID)
 }
 
 // ListFailedSubtasks fetches the customer failed task status
 func (a *AuthAPIClient) ListFailedSubtasks(
 	taskUUID string,
-) ybaclient.CustomerTasksApiApiListFailedSubtasksRequest {
-	return a.APIClient.CustomerTasksApi.ListFailedSubtasks(a.ctx, a.CustomerUUID, taskUUID)
+) ybaclient.CustomerTasksAPIListFailedSubtasksRequest {
+	return a.APIClient.CustomerTasksAPI.ListFailedSubtasks(a.ctx, a.CustomerUUID, taskUUID)
 }
 
 // RetryTask triggers retry universe/provider API
-func (a *AuthAPIClient) RetryTask(tUUID string) ybaclient.CustomerTasksApiApiRetryTaskRequest {
-	return a.APIClient.CustomerTasksApi.RetryTask(a.ctx, a.CustomerUUID, tUUID)
+func (a *AuthAPIClient) RetryTask(tUUID string) ybaclient.CustomerTasksAPIRetryTaskRequest {
+	return a.APIClient.CustomerTasksAPI.RetryTask(a.ctx, a.CustomerUUID, tUUID)
 }
 
 // AbortTask triggers abort task API
-func (a *AuthAPIClient) AbortTask(tUUID string) ybaclient.CustomerTasksApiApiAbortTaskRequest {
-	return a.APIClient.CustomerTasksApi.AbortTask(a.ctx, a.CustomerUUID, tUUID)
+func (a *AuthAPIClient) AbortTask(tUUID string) ybaclient.CustomerTasksAPIAbortTaskRequest {
+	return a.APIClient.CustomerTasksAPI.AbortTask(a.ctx, a.CustomerUUID, tUUID)
 }
 
 // TasksList triggers abort task API
-func (a *AuthAPIClient) TasksList() ybaclient.CustomerTasksApiApiTasksListRequest {
-	return a.APIClient.CustomerTasksApi.TasksList(a.ctx, a.CustomerUUID)
+func (a *AuthAPIClient) TasksList() ybaclient.CustomerTasksAPITasksListRequest {
+	return a.APIClient.CustomerTasksAPI.TasksList(a.ctx, a.CustomerUUID)
 }
 
 func (a *AuthAPIClient) failureSubTaskListYBAVersionCheck() (

@@ -21,15 +21,9 @@
 
 #include "yb/util/scope_exit.h"
 
-#include "yb/yql/pggate/pg_ybctid_reader_provider.h"
-
 #include "yb/yql/pggate/util/ybc_util.h"
 
 namespace yb::pggate {
-
-ExplicitRowLockBuffer::ExplicitRowLockBuffer(
-    YbctidReaderProvider& reader_provider)
-    : reader_provider_(reader_provider) {}
 
 Status ExplicitRowLockBuffer::Add(
     const Info& info, const LightweightTableYbctid& key,
@@ -69,15 +63,14 @@ Status ExplicitRowLockBuffer::DoFlush(std::optional<ErrorStatusAdditionalInfo>& 
 
 Status ExplicitRowLockBuffer::DoFlushImpl() {
   const auto intents_count = intents_.size();
-  auto reader = reader_provider_();
-  reader.Reserve(intents_count);
+  auto batch = ybctid_reader_.StartNewBatch(intents_count);
   // The reader accepts Slice. It is required to keep data alive.
   MemoryOptimizedTableYbctidSet intents;
   intents.swap(intents_);
   for (const auto& intent : intents) {
-    reader.Add(intent);
+    batch.Add(intent);
   }
-  const auto existing_ybctids_count = VERIFY_RESULT(reader.Read(
+  const auto existing_ybctids_count = VERIFY_RESULT(batch.Read(
       info_->database_id, table_locality_map_,
       make_lw_function(
           [&info = *info_](YbcPgExecParameters& params) {

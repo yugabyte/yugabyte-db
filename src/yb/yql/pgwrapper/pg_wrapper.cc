@@ -304,6 +304,11 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(
     "If true, allow lower_bound/upper_bound fields of PgsqlReadRequestPB to be DocKeys. Only "
     "applicable for hash-sharded tables.");
 
+DEFINE_RUNTIME_AUTO_PG_FLAG(
+    bool, yb_test_make_all_ddl_statements_incrementing, kLocalVolatile, false, true,
+    "When set, all DDL statements will cause the catalog version to increment. This mainly "
+    "affects CREATE commands such as CREATE TABLE, CREATE VIEW, and CREATE SEQUENCE.");
+
 DEFINE_RUNTIME_PG_FLAG(
     string, yb_default_replica_identity, "CHANGE",
     "The default replica identity to be assigned to user defined tables at the time of creation. "
@@ -413,6 +418,9 @@ DEFINE_NON_RUNTIME_string(ysql_auth_method, AUTH_METHOD_MD5,
     "Note: Explicit auth methods in ysql_hba_conf_csv take precedence over this flag.");
 DEFINE_validator(ysql_auth_method, FLAG_IN_SET_VALIDATOR("scram-sha-256", "md5"));
 DEFINE_NEW_INSTALL_STRING_VALUE(ysql_auth_method, "scram-sha-256");
+
+DEFINE_RUNTIME_PG_FLAG(bool, yb_ignore_bool_cond_for_legacy_estimate, false,
+    "Ignore boolean condition for row count estimate in legacy cost model.");
 
 using gflags::CommandLineFlagInfo;
 using std::string;

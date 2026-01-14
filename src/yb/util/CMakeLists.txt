@@ -187,6 +187,7 @@ set(UTIL_SRCS
   path_util.cc
   pb_util-internal.cc
   pb_util.cc
+  perf_util.cc
   pg_util.cc
   physical_time.cc
   port_picker.cc

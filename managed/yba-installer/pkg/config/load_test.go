@@ -110,6 +110,12 @@ prometheus:
       # Scraping yugabyteDB metrics
       yugabyte:
          scheme: http
+
+perfAdvisor:
+   enabled: false
+   port: 8443
+   restartSeconds: 10
+   enableHttps: false
 `
 	v := viper.New()
 	v.SetConfigType("yaml")

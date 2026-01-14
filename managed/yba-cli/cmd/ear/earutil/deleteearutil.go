@@ -26,7 +26,7 @@ func DeleteEARValidation(cmd *cobra.Command) {
 	if err != nil {
 		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 	}
-	if len(strings.TrimSpace(configNameFlag)) == 0 {
+	if util.IsEmptyString(configNameFlag) {
 		cmd.Help()
 		logrus.Fatalln(
 			formatter.Colorize(
@@ -63,20 +63,14 @@ func DeleteEARUtil(cmd *cobra.Command, commandCall, earCode string) {
 	kmsConfigsMap, response, err := authAPI.ListKMSConfigs().Execute()
 	if err != nil {
 		callSite := "EAR"
-		if len(strings.TrimSpace(commandCall)) != 0 {
+		if !util.IsEmptyString(commandCall) {
 			callSite = fmt.Sprintf("%s: %s", callSite, commandCall)
 		}
-		errMessage := util.ErrorFromHTTPResponse(
-			response,
-			err,
-			callSite,
-			"Delete - List KMS Configs",
-		)
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		util.FatalHTTPError(response, err, callSite, "Delete - List KMS Configs")
 	}
 
 	var r []util.KMSConfig
-	if strings.TrimSpace(earName) != "" {
+	if !util.IsEmptyString(earName) {
 		for _, kmsConfig := range kmsConfigsMap {
 			k, err := util.ConvertToKMSConfig(kmsConfig)
 			if err != nil {
@@ -97,7 +91,7 @@ func DeleteEARUtil(cmd *cobra.Command, commandCall, earCode string) {
 
 	if len(r) < 1 {
 		errMessage := ""
-		if len(strings.TrimSpace(earCode)) == 0 {
+		if util.IsEmptyString(earCode) {
 			errMessage = fmt.Sprintf("No configurations with name: %s found\n", earName)
 		} else {
 			errMessage = fmt.Sprintf(
@@ -114,12 +108,13 @@ func DeleteEARUtil(cmd *cobra.Command, commandCall, earCode string) {
 	rTask, response, err := authAPI.DeleteKMSConfig(earUUID).Execute()
 	if err != nil {
 		callSite := "EAR"
-		if len(strings.TrimSpace(commandCall)) != 0 {
+		if !util.IsEmptyString(commandCall) {
 			callSite = fmt.Sprintf("%s: %s", callSite, commandCall)
 		}
-		errMessage := util.ErrorFromHTTPResponse(response, err, callSite, "Delete")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		util.FatalHTTPError(response, err, callSite, "Delete")
 	}
+
+	util.CheckTaskAfterCreation(rTask)
 
 	msg := fmt.Sprintf("The encryption at rest configuration %s (%s) is being deleted",
 		formatter.Colorize(earName, formatter.GreenColor), earUUID)
@@ -144,6 +139,6 @@ func DeleteEARUtil(cmd *cobra.Command, commandCall, earCode string) {
 		Output:  os.Stdout,
 		Format:  ybatask.NewTaskFormat(viper.GetString("output")),
 	}
-	ybatask.Write(taskCtx, []ybaclient.YBPTask{rTask})
+	ybatask.Write(taskCtx, []ybaclient.YBPTask{*rTask})
 
 }

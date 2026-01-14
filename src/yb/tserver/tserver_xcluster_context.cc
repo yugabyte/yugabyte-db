@@ -24,12 +24,12 @@
 namespace yb::tserver {
 
 Result<std::optional<HybridTime>> TserverXClusterContext::GetSafeTime(
-    const NamespaceId& namespace_id) const {
+    NamespaceIdView namespace_id) const {
   return safe_time_map_.GetSafeTime(namespace_id);
 }
 
 XClusterNamespaceInfoPB_XClusterRole TserverXClusterContext::GetXClusterRole(
-    const NamespaceId& namespace_id) const {
+    NamespaceIdView namespace_id) const {
   SharedLock lock(mutex_);
   if (!have_received_a_heartbeat_) {
     return XClusterNamespaceInfoPB_XClusterRole_UNAVAILABLE;
@@ -41,7 +41,7 @@ XClusterNamespaceInfoPB_XClusterRole TserverXClusterContext::GetXClusterRole(
   }
 }
 
-bool TserverXClusterContext::IsReadOnlyMode(const NamespaceId& namespace_id) const {
+bool TserverXClusterContext::IsReadOnlyMode(NamespaceIdView namespace_id) const {
   // Namespaces that are part of the safe time belong to an inbound transactional xCluster
   // replication.
   return safe_time_map_.HasNamespace(namespace_id);

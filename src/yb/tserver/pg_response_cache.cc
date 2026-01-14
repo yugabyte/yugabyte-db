@@ -27,7 +27,10 @@
 #include "yb/gutil/casts.h"
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/rpc/lightweight_message.h"
 #include "yb/rpc/sidecars.h"
+
+#include "yb/tserver/pg_client.messages.h"
 
 #include "yb/util/async_util.h"
 #include "yb/util/flags.h"
@@ -98,7 +101,7 @@ namespace yb::tserver {
 namespace {
 
 void TEST_UpdateCatalogReadTime(
-    PgPerformResponsePB* resp, const ReadHybridTime& new_catalog_read_time) {
+    PgPerformResponseMsg* resp, const ReadHybridTime& new_catalog_read_time) {
   ReadHybridTime original_catalog_read_time;
   original_catalog_read_time.FromPB(resp->catalog_read_time());
   LOG(INFO) << "Substitute original catalog_read_time " << original_catalog_read_time
@@ -282,8 +285,9 @@ class Value {
 struct Key {
   PgResponseCache::KeyGroup group;
   std::string value;
-  Key(PgResponseCache::KeyGroup group, std::string&& key_value)
-      : group(group), value(std::move(key_value)) {}
+
+  Key(PgResponseCache::KeyGroup group, std::string_view key_value)
+      : group(group), value(key_value) {}
 
   friend bool operator==(const Key&, const Key&) = default;
 };
@@ -296,8 +300,8 @@ inline size_t hash_value(const Key& key) {
 }
 
 struct Entry {
-  Entry(PgResponseCache::KeyGroup group, std::string&& key_value)
-      : key(group, std::move(key_value)) {}
+  Entry(PgResponseCache::KeyGroup group, std::string_view key_value)
+      : key(group, key_value) {}
 
   Key key;
   Value value;
@@ -526,6 +530,13 @@ Result<PgResponseCache::Setter> PgResponseCache::Get(
 
 PgResponseCache::Disabler PgResponseCache::Disable(KeyGroup key_group) {
   return impl_->Disable(key_group);
+}
+
+PgResponseCache::Response::Response(
+    const PgPerformResponseMsg& response_, std::vector<RefCntSlice> rows_data_)
+    : response(response_),
+      rows_data(std::move(rows_data_)) {
+  DCHECK_EQ(response.responses().size(), rows_data.size());
 }
 
 } // namespace yb::tserver

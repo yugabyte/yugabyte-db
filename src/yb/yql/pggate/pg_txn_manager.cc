@@ -229,9 +229,9 @@ void PgTxnManager::DEBUG_CheckOptionsForPerform(
   // Functions like YBCheckSharedCatalogCacheVersion, being executed outside scope of a
   // transaction block seem to issue custom selects on pg_yb_catalog_version table using
   // YBCPgNewSelect, skipping object locks. Skip the assertion for such cases for now.
-  if (!IsTableLockingEnabled() || options.ddl_mode() || options.use_catalog_session() ||
-      options.yb_non_ddl_txn_for_sys_tables_allowed() || YBCIsInitDbModeEnvVarSet() ||
-      !YBCIsLegacyModeForCatalogOps()) {
+  if (!IsTableLockingEnabledForCurrentTxn() || options.ddl_mode() ||
+      options.use_catalog_session() || options.yb_non_ddl_txn_for_sys_tables_allowed() ||
+      YBCIsInitDbModeEnvVarSet() || !YBCIsLegacyModeForCatalogOps()) {
     return;
   }
   LOG_IF(DFATAL, debug_last_object_locking_txn_serial_ != serial_no_.txn())
@@ -247,10 +247,16 @@ PgTxnManager::PgTxnManager(
     : client_(client),
       clock_(std::move(clock)),
       pg_callbacks_(pg_callbacks),
-      enable_table_locking_(enable_table_locking && enable_object_locking_infra) {}
+      enable_table_locking_(enable_table_locking) {}
 
-bool PgTxnManager::IsTableLockingEnabled() const {
-  return enable_table_locking_;
+bool PgTxnManager::ShouldEnableTableLocking() const {
+  VLOG_WITH_FUNC(1) << "enable_table_locking_: " << enable_table_locking_
+                    << " enable_object_locking_infra: " << enable_object_locking_infra;
+  return enable_table_locking_ && enable_object_locking_infra;
+}
+
+bool PgTxnManager::IsTableLockingEnabledForCurrentTxn() const {
+  return using_table_locks_;
 }
 
 PgTxnManager::~PgTxnManager() {
@@ -272,6 +278,9 @@ Status PgTxnManager::BeginTransaction(int64_t start_time) {
   }
 
   pg_txn_start_us_ = start_time;
+  // Table Locking auto flag can only go from off -> on. Not the other way around.
+  using_table_locks_ = using_table_locks_ || ShouldEnableTableLocking();
+  VLOG_WITH_FUNC(1) << "using_table_locks_: " << using_table_locks_;
   // NOTE: Do not reset in_txn_blk_ when restarting txns internally
   // (i.e., via PgTxnManager::RecreateTransaction).
   in_txn_blk_ = false;
@@ -403,7 +412,7 @@ Status PgTxnManager::CalculateIsolation(
   //
   // TODO(table-locks): Need to explicitly handle READ_COMMITTED case since YSQL internally bumps up
   // subtxn id for every statement. Else, every RC read-only txn would burn a docdb txn.
-  if (PREDICT_FALSE(IsTableLockingEnabled()) &&
+  if (PREDICT_FALSE(IsTableLockingEnabledForCurrentTxn()) &&
       active_sub_transaction_id_ > kMinSubTransactionId &&
       pg_isolation_level_ != PgIsolationLevel::READ_COMMITTED) {
     read_only_op = false;
@@ -577,7 +586,7 @@ Status PgTxnManager::FinishPlainTransaction(
   }
 
   const auto is_read_only = isolation_level_ == IsolationLevel::NON_TRANSACTIONAL;
-  if (is_read_only && !PREDICT_FALSE(IsTableLockingEnabled())) {
+  if (is_read_only && !PREDICT_FALSE(IsTableLockingEnabledForCurrentTxn())) {
     VLOG_TXN_STATE(2) << "This was a read-only transaction, nothing to commit.";
     ResetTxnAndSession();
     return Status::OK();
@@ -754,6 +763,7 @@ Status PgTxnManager::SetupPerformOptions(
   options->set_active_sub_transaction_id(active_sub_transaction_id_);
   options->set_xcluster_target_ddl_bypass(yb_xcluster_target_ddl_bypass);
   options->set_pg_txn_start_us(pg_txn_start_us_);
+  options->set_is_using_table_locks(using_table_locks_);
 
   if (use_saved_priority_) {
     options->set_use_existing_priority(true);
@@ -962,7 +972,7 @@ Status PgTxnManager::RollbackToSubTransaction(
     return Status::OK();
   }
   if (isolation_level_ == IsolationLevel::NON_TRANSACTIONAL &&
-      !PREDICT_FALSE(IsTableLockingEnabled())) {
+      !PREDICT_FALSE(IsTableLockingEnabledForCurrentTxn())) {
     VLOG(4) << "This isn't a distributed transaction, so nothing to rollback.";
     return Status::OK();
   }

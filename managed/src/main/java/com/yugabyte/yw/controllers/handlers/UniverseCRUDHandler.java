@@ -224,6 +224,8 @@ public class UniverseCRUDHandler {
                 PlacementInfoUtil.getDefaultRegion(taskParams))
             || PlacementInfoUtil.didAffinitizedLeadersChange(
                 currentCluster.placementInfo, cluster.placementInfo)
+            || PlacementInfoUtil.areReplicasChanged(
+                currentCluster.placementInfo, cluster.placementInfo)
             || isRegionListUpdate(cluster, currentCluster)
             || cluster.userIntent.replicationFactor != currentCluster.userIntent.replicationFactor
             || isKubernetesVolumeUpdate(cluster, currentCluster)

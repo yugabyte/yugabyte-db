@@ -551,8 +551,10 @@ Status CheckLiveReplicasForSplit(
 void TabletSplitManager::ScheduleSplits(
     const SplitsToScheduleMap& splits_to_schedule, const LeaderEpoch& epoch) {
   VLOG_WITH_FUNC(2) << "Start";
+  // TODO(nway-tsplit): Determine split factor for scheduled splits.
   for (const auto& [tablet_id, size] : splits_to_schedule) {
-    auto s = catalog_manager_.SplitTablet(tablet_id, ManualSplit::kFalse, epoch);
+    auto s = catalog_manager_.SplitTablet(
+        tablet_id, ManualSplit::kFalse, kDefaultNumSplitParts, epoch);
     if (!s.ok()) {
       WARN_NOT_OK(s, Format("Failed to start/restart split for tablet_id: $0.", tablet_id));
     } else {

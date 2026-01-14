@@ -48,7 +48,7 @@ YB_DEFINE_ENUM(ValueRefType, (kPb)(kValueType));
 // Also it contains various options for this value.
 class ValueRef {
  public:
-  explicit ValueRef(const QLValuePB& value_pb,
+  explicit ValueRef(const QLValueMsg& value_pb,
                     SortingType sorting_type = SortingType::kNotSpecified,
                     bfql::TSOpcode write_instruction = bfql::TSOpcode::kScalarInsert)
       : value_pb_(&value_pb), sorting_type_(sorting_type), write_instruction_(write_instruction),
@@ -56,7 +56,7 @@ class ValueRef {
         value_type_(dockv::ValueEntryType::kInvalid) {
   }
 
-  explicit ValueRef(const QLValuePB& value_pb,
+  explicit ValueRef(const QLValueMsg& value_pb,
                     const ValueRef& value_ref)
       : value_pb_(&value_pb), sorting_type_(value_ref.sorting_type_),
         write_instruction_(value_ref.write_instruction_),
@@ -64,7 +64,7 @@ class ValueRef {
         value_type_(dockv::ValueEntryType::kInvalid) {
   }
 
-  explicit ValueRef(const QLValuePB& value_pb,
+  explicit ValueRef(const QLValueMsg& value_pb,
                     dockv::ListExtendOrder list_extend_order)
       : value_pb_(&value_pb), sorting_type_(SortingType::kNotSpecified),
         write_instruction_(bfql::TSOpcode::kScalarInsert),
@@ -78,14 +78,13 @@ class ValueRef {
 
   // TODO(AR) the following members are not initialized: value_pb_, value_type_, sorting_type_,
   //          write_instruction_, list_extend_order_.
-  explicit ValueRef(std::reference_wrapper<const Slice> encoded_value)
-      : encoded_value_(&encoded_value.get()) {}
+  explicit ValueRef(std::reference_wrapper<const Slice> encoded_value);
 
   // TODO(AR) the following members are not initialized: write_instruction_, list_extend_order_.
   explicit ValueRef(std::reference_wrapper<const dockv::DocVectorValue> vector_value,
                     SortingType sorting_type = SortingType::kNotSpecified);
 
-  const QLValuePB& value_pb() const {
+  const QLValueMsg& value_pb() const {
     return *value_pb_;
   }
 
@@ -142,7 +141,7 @@ class ValueRef {
   std::string ToString() const;
 
  private:
-  const QLValuePB* value_pb_;
+  const QLValueMsg* value_pb_;
   SortingType sorting_type_;
   bfql::TSOpcode write_instruction_;
   dockv::ListExtendOrder list_extend_order_;
@@ -201,7 +200,7 @@ class DocWriteBatch {
       const dockv::DocPath& doc_path,
       const dockv::ValueControlFields& control_fields,
       const ValueRef& value,
-      std::unique_ptr<IntentAwareIterator> intent_iter);
+      IntentAwareIteratorPtr intent_iter);
 
   Status SetPrimitive(
       const dockv::DocPath& doc_path,
@@ -330,6 +329,15 @@ class DocWriteBatch {
   void SetIncludesPk(bool pk_is_known) {
     pk_is_known_ = pk_is_known;
   }
+
+  Status TEST_SetPrimitive(
+      const dockv::DocPath& doc_path,
+      const QLValuePB& value);
+
+  Status TEST_SetPrimitive(
+      const dockv::DocPath& doc_path,
+      const dockv::ValueControlFields& control_fields,
+      const QLValuePB& value);
 
  private:
   struct LazyIterator;

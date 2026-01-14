@@ -113,7 +113,7 @@ class YsqlManager : public YsqlManagerIf {
 
   Status CreateYbAdvisoryLocksTableIfNeeded(const LeaderEpoch& epoch);
 
-  Status ValidateWriteToCatalogTableAllowed(const TableId& table_id, bool is_forced_update) const;
+  Status ValidateWriteToCatalogTableAllowed(TableIdView table_id, bool is_forced_update) const;
 
   Status ValidateTServerVersion(const VersionInfoPB& version) const override;
 

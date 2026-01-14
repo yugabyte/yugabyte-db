@@ -260,7 +260,7 @@ Status YsqlManager::CreateYbAdvisoryLocksTableIfNeeded(const LeaderEpoch& epoch)
 }
 
 Status YsqlManager::ValidateWriteToCatalogTableAllowed(
-    const TableId& table_id, bool is_forced_update) const {
+    TableIdView table_id, bool is_forced_update) const {
   SCHECK(
       ysql_initdb_and_major_upgrade_helper_->IsWriteToCatalogTableAllowed(
           table_id, is_forced_update),

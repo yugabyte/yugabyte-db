@@ -2378,10 +2378,6 @@
           "format" : "uuid",
           "type" : "string"
         },
-        "rawClientRootCA" : {
-          "format" : "uuid",
-          "type" : "string"
-        },
         "remotePackagePath" : {
           "type" : "string"
         },
@@ -2834,6 +2830,8 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -2879,7 +2877,6 @@
         "installOtelCollector",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "rawClientRootCA",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "upgradeOption"
@@ -3443,6 +3440,10 @@
             "YB_CONTROLLER"
           ],
           "type" : "string"
+        },
+        "backupStats" : {
+          "description" : "WARNING: This is a preview API that could change. Backup stats with YSQL dump.",
+          "type" : "boolean"
         },
         "backupType" : {
           "description" : "Backup type",
@@ -5118,10 +5119,6 @@
           "format" : "uuid",
           "type" : "string"
         },
-        "rawClientRootCA" : {
-          "format" : "uuid",
-          "type" : "string"
-        },
         "remotePackagePath" : {
           "type" : "string"
         },
@@ -5580,6 +5577,8 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -5623,7 +5622,6 @@
         "creatingUser",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "rawClientRootCA",
         "selfSignedClientCertRotate",
         "selfSignedServerCertRotate",
         "sleepAfterMasterRestartMillis",
@@ -8207,10 +8205,6 @@
           "format" : "uuid",
           "type" : "string"
         },
-        "rawClientRootCA" : {
-          "format" : "uuid",
-          "type" : "string"
-        },
         "remotePackagePath" : {
           "type" : "string"
         },
@@ -8663,6 +8657,8 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -8709,7 +8705,6 @@
         "creatingUser",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "rawClientRootCA",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "upgradeOption",
@@ -9007,10 +9002,6 @@
         },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
-          "format" : "uuid",
-          "type" : "string"
-        },
-        "rawClientRootCA" : {
           "format" : "uuid",
           "type" : "string"
         },
@@ -9472,6 +9463,8 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -9516,7 +9509,6 @@
         "kubernetesUpgradeSupported",
         "masterGFlags",
         "platformUrl",
-        "rawClientRootCA",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "tserverGFlags",
@@ -10536,10 +10528,6 @@
           "format" : "uuid",
           "type" : "string"
         },
-        "rawClientRootCA" : {
-          "format" : "uuid",
-          "type" : "string"
-        },
         "remotePackagePath" : {
           "type" : "string"
         },
@@ -10995,6 +10983,8 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -11039,7 +11029,6 @@
         "creatingUser",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "rawClientRootCA",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "universeOverrides",
@@ -11274,10 +11263,6 @@
         },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
-          "format" : "uuid",
-          "type" : "string"
-        },
-        "rawClientRootCA" : {
           "format" : "uuid",
           "type" : "string"
         },
@@ -11733,6 +11718,8 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -11780,7 +11767,6 @@
         "creatingUser",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "rawClientRootCA",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "upgradeOption",
@@ -15623,10 +15609,6 @@
           "format" : "uuid",
           "type" : "string"
         },
-        "rawClientRootCA" : {
-          "format" : "uuid",
-          "type" : "string"
-        },
         "remotePackagePath" : {
           "type" : "string"
         },
@@ -16079,6 +16061,8 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -16122,7 +16106,6 @@
         "creatingUser",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "rawClientRootCA",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "upgradeOption"
@@ -16666,10 +16649,6 @@
           "format" : "uuid",
           "type" : "string"
         },
-        "rawClientRootCA" : {
-          "format" : "uuid",
-          "type" : "string"
-        },
         "remotePackagePath" : {
           "type" : "string"
         },
@@ -17128,6 +17107,8 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -17173,7 +17154,6 @@
         "kubernetesUpgradeSupported",
         "masterGFlags",
         "platformUrl",
-        "rawClientRootCA",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "tserverGFlags",
@@ -17505,10 +17485,6 @@
         },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
-          "format" : "uuid",
-          "type" : "string"
-        },
-        "rawClientRootCA" : {
           "format" : "uuid",
           "type" : "string"
         },
@@ -17964,6 +17940,8 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -18007,7 +17985,6 @@
         "creatingUser",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "rawClientRootCA",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "upgradeOption"
@@ -19044,10 +19021,6 @@
           "format" : "uuid",
           "type" : "string"
         },
-        "rawClientRootCA" : {
-          "format" : "uuid",
-          "type" : "string"
-        },
         "remotePackagePath" : {
           "type" : "string"
         },
@@ -19500,6 +19473,8 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -19543,7 +19518,6 @@
         "creatingUser",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "rawClientRootCA",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "upgradeOption"
@@ -19630,6 +19604,10 @@
             },
             "forcePathStyle" : {
               "description" : "Force Path Style. Set this to true to force the request to use path-style addressing",
+              "type" : "boolean"
+            },
+            "includeUniverseAndNodeInPrefix" : {
+              "description" : "When true, appends universe UUID and node name to the S3 prefix. Example: 'yb-logs/<universe-uuid>/<node-name>'",
               "type" : "boolean"
             },
             "marshaler" : {
@@ -20146,6 +20124,8 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -20550,6 +20530,8 @@
               "EnablePitrConfig",
               "UpdateAndPersistKubernetesImmutableYbc",
               "TablespaceValidationOnRemove",
+              "CheckServiceLiveness",
+              "CheckNodeCommandExecution",
               "OperatorImportResource"
             ],
             "type" : "string"
@@ -20921,10 +20903,6 @@
         },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
-          "format" : "uuid",
-          "type" : "string"
-        },
-        "rawClientRootCA" : {
           "format" : "uuid",
           "type" : "string"
         },
@@ -21380,6 +21358,8 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -21429,7 +21409,6 @@
         "creatingUser",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "rawClientRootCA",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "upgradeOption",
@@ -22025,10 +22004,6 @@
           "format" : "uuid",
           "type" : "string"
         },
-        "rawClientRootCA" : {
-          "format" : "uuid",
-          "type" : "string"
-        },
         "remotePackagePath" : {
           "type" : "string"
         },
@@ -22481,6 +22456,8 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -22524,7 +22501,6 @@
         "creatingUser",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "rawClientRootCA",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "upgradeOption"
@@ -23350,10 +23326,6 @@
           "format" : "uuid",
           "type" : "string"
         },
-        "rawClientRootCA" : {
-          "format" : "uuid",
-          "type" : "string"
-        },
         "remotePackagePath" : {
           "type" : "string"
         },
@@ -23806,6 +23778,8 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -23850,7 +23824,6 @@
         "forceAll",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "rawClientRootCA",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "upgradeOption"
@@ -24029,10 +24002,6 @@
           "format" : "uuid",
           "type" : "string"
         },
-        "rawClientRootCA" : {
-          "format" : "uuid",
-          "type" : "string"
-        },
         "remotePackagePath" : {
           "type" : "string"
         },
@@ -24485,6 +24454,8 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -24524,14 +24495,12 @@
         }
       },
       "required" : [
-        "allowInsecure",
         "clusters",
         "creatingUser",
         "enableClientToNodeEncrypt",
         "enableNodeToNodeEncrypt",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "rawClientRootCA",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "upgradeOption"
@@ -24957,10 +24926,6 @@
         },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
-          "format" : "uuid",
-          "type" : "string"
-        },
-        "rawClientRootCA" : {
           "format" : "uuid",
           "type" : "string"
         },
@@ -25419,6 +25384,8 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -25453,7 +25420,6 @@
         "clusters",
         "creatingUser",
         "platformUrl",
-        "rawClientRootCA",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis"
       ],
@@ -25606,10 +25572,6 @@
           "format" : "uuid",
           "type" : "string"
         },
-        "rawClientRootCA" : {
-          "format" : "uuid",
-          "type" : "string"
-        },
         "remotePackagePath" : {
           "type" : "string"
         },
@@ -26062,6 +26024,8 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -26096,7 +26060,6 @@
         "clusters",
         "creatingUser",
         "platformUrl",
-        "rawClientRootCA",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis"
       ],
@@ -26249,10 +26212,6 @@
           "format" : "uuid",
           "type" : "string"
         },
-        "rawClientRootCA" : {
-          "format" : "uuid",
-          "type" : "string"
-        },
         "remotePackagePath" : {
           "type" : "string"
         },
@@ -26705,6 +26664,8 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -26739,7 +26700,6 @@
         "clusters",
         "creatingUser",
         "platformUrl",
-        "rawClientRootCA",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis"
       ],
@@ -27402,10 +27362,6 @@
           "format" : "uuid",
           "type" : "string"
         },
-        "rawClientRootCA" : {
-          "format" : "uuid",
-          "type" : "string"
-        },
         "remotePackagePath" : {
           "type" : "string"
         },
@@ -27858,6 +27814,8 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -27901,7 +27859,6 @@
         "creatingUser",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "rawClientRootCA",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "upgradeOption"
@@ -28599,10 +28556,6 @@
           "format" : "uuid",
           "type" : "string"
         },
-        "rawClientRootCA" : {
-          "format" : "uuid",
-          "type" : "string"
-        },
         "remotePackagePath" : {
           "type" : "string"
         },
@@ -29063,6 +29016,8 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -29110,7 +29065,6 @@
         "forceVMImageUpgrade",
         "kubernetesUpgradeSupported",
         "platformUrl",
-        "rawClientRootCA",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis",
         "upgradeOption",

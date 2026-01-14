@@ -2645,9 +2645,10 @@ Result<master::GetMasterXClusterConfigResponsePB> ClusterAdminClient::GetMasterX
                    "MasterServiceImpl::GetMasterXClusterConfig call failed.");
 }
 
-Status ClusterAdminClient::SplitTablet(const TabletId& tablet_id) {
+Status ClusterAdminClient::SplitTablet(const TabletId& tablet_id, int split_factor) {
   master::SplitTabletRequestPB req;
   req.set_tablet_id(tablet_id);
+  req.set_split_factor(split_factor);
   const auto resp = VERIFY_RESULT(InvokeRpc(
       &master::MasterAdminProxy::SplitTablet, *master_admin_proxy_, req));
   if (resp.has_error()) {
@@ -4148,11 +4149,11 @@ Status ClusterAdminClient::ValidateAndSyncCDCStateEntriesForCDCSDKStream(
 
   cout << "Successfully validated and synced CDC state table entries on CDC stream: " << stream_id
        << "\n";
-  if (resp.updated_tablet_entries().size() > 0) {
-    cout << "Updated checkpoint for the stream's cdc state table entries for following tablet_ids: "
-         << AsString(resp.updated_tablet_entries()) << "\n";
+  if (resp.deleted_tablet_entries().size() > 0) {
+    cout << "Deleted cdc state table entries for the stream for following tablet_ids: "
+         << AsString(resp.deleted_tablet_entries()) << "\n";
   } else {
-    cout << "No additional entries found in cdc state table that requires update. \n";
+    cout << "No additional entries found in cdc state table that requires deletion. \n";
   }
 
   return Status::OK();

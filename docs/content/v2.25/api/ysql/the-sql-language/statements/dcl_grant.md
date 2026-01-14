@@ -100,7 +100,7 @@ Possible privileges are
 
 ## Predefined roles
 
-YugabyteDB ships with built-in roles that grant access to frequently required administrative functions and data. Database administrators (and anyone with the CREATEROLE privilege) can assign these predefined roles to users or other roles, thereby giving them the necessary permissions to perform specific tasks and access certain information.
+YugabyteDB ships with built-in roles that grant access to frequently required administrative functions and data. Database administrators (and anyone with the CREATEROLE attribute) can assign these predefined roles to users or other roles, thereby giving them the necessary permissions to perform specific tasks and access certain information.
 
 Some of the predefined roles are as follows.
 

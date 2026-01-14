@@ -72,7 +72,12 @@ public class MultiTableBackup extends UniverseTaskBase {
   @ApiModel(value = "MultiTableBackupParams", description = "Multi-table backup parameters")
   public static class Params extends BackupTableParams {
     public UUID customerUUID;
-    public List<UUID> tableUUIDList = new ArrayList<>();
+
+    public Params() {
+      super();
+      // FIXME: Remove this once the references are fixed.
+      tableUUIDList = new ArrayList<>();
+    }
   }
 
   public Params params() {

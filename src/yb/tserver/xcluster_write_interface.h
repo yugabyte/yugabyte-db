@@ -17,6 +17,8 @@
 
 #include "yb/cdc/cdc_types.h"
 
+#include "yb/tserver/tserver_fwd.h"
+
 namespace yb {
 namespace cdc {
 
@@ -40,7 +42,7 @@ struct ProcessRecordInfo {
 class XClusterWriteInterface {
  public:
   virtual ~XClusterWriteInterface() {}
-  virtual std::unique_ptr<WriteRequestPB> FetchNextRequest() = 0;
+  virtual std::shared_ptr<WriteRequestMsg> FetchNextRequest() = 0;
   virtual Status ProcessRecord(
       const ProcessRecordInfo& process_record_info, const cdc::CDCRecordPB& record) = 0;
 };

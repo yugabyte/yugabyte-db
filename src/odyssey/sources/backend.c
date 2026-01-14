@@ -34,7 +34,7 @@ static inline int od_backend_terminate(od_server_t *server)
 	msg = kiwi_fe_write_terminate(NULL);
 	if (msg == NULL)
 		return -1;
-	return od_write(&server->io, msg);
+	return od_write(&server->io, &msg);
 }
 
 void od_backend_close_connection(od_server_t *server)
@@ -151,7 +151,7 @@ void od_backend_error(od_server_t *server, char *context, char *data,
 				/* YB: best-effort forward to client, already handling error */
 				if (msg == NULL)
 					return;
-				od_write(&yb_external_client->io, msg);
+				od_write(&yb_external_client->io, &msg);
 			}
 		}
 	}
@@ -171,7 +171,7 @@ void od_backend_error(od_server_t *server, char *context, char *data,
 				/* YB: best-effort forward to client, already handling error */
 				if (msg == NULL)
 					return;
-				od_write(&yb_external_client->io, msg);
+				od_write(&yb_external_client->io, &msg);
 			}	
 		}
 }
@@ -245,16 +245,32 @@ static int yb_read_client_id_from_notice_pkt(od_client_t *client,
 	return 0;
 }
 
-static inline int yb_send_parameter_status(od_io_t *io, char *name,
-					   int name_len, char *value,
-					   int value_len)
+static inline int yb_send_parameter_status_async(od_relay_t *relay, char *name,
+						 int name_len, char *value,
+						 int value_len)
 {
 	machine_msg_t *msg = kiwi_be_write_parameter_status(
 		NULL, name, name_len, value, value_len);
 	if (msg == NULL) {
 		return -1;
 	}
-	int rc = od_write(io, msg);
+	int rc = machine_iov_add(relay->iov, msg);
+	if (rc != 0) {
+		return -1;
+	}
+	return 0;
+}
+
+static inline int yb_send_parameter_status_sync(od_io_t *io, char *name,
+						int name_len, char *value,
+						int value_len)
+{
+	machine_msg_t *msg = kiwi_be_write_parameter_status(
+		NULL, name, name_len, value, value_len);
+	if (msg == NULL) {
+		return -1;
+	}
+	int rc = od_write(io, &msg);
 	if (rc != 0) {
 		return -1;
 	}
@@ -386,7 +402,7 @@ static inline int od_backend_startup(od_server_t *server,
 	if (msg == NULL)
 		return -1;
 	int rc;
-	rc = od_write(&server->io, msg);
+	rc = od_write(&server->io, &msg);
 	if (rc == -1) {
 		od_error(&instance->logger, "startup", NULL, server,
 			 "write error: %s", od_io_error(&server->io));
@@ -493,7 +509,7 @@ static inline int od_backend_startup(od_server_t *server,
 				 * We only care about reported variables when
 				 * auth backend starts
 				 */
-				int rc = yb_send_parameter_status(
+				int rc = yb_send_parameter_status_sync(
 					&client->yb_external_client->io, name,
 					name_len, value, value_len);
 				if (rc != 0) {
@@ -508,7 +524,7 @@ static inline int od_backend_startup(od_server_t *server,
 			}
 
 			/*
-			 * TODO(arpit.saxena): If flags & YB_GUC_CONTEXT_BACKEND, then we have to
+			 * TODO(arpit.saxena) (#20603): If flags & YB_GUC_CONTEXT_BACKEND, then we have to
 			 * ensure that either the auth backend stays or we make a new sticky backend
 			 * and pass the external client's startup settings. This is because client
 			 * has set a variable through the startup packet which can't be set using
@@ -528,7 +544,7 @@ static inline int od_backend_startup(od_server_t *server,
 					 */
 					kiwi_vars_update(
 						&client->yb_external_client
-							 ->vars,
+							 ->yb_vars_startup,
 						name, name_len, value,
 						value_len,
 						yb_od_instance_should_lowercase_guc_name(
@@ -998,7 +1014,7 @@ int od_backend_connect_cancel(od_server_t *server, od_rule_storage_t *storage,
 	if (msg == NULL)
 		return -1;
 
-	rc = od_write(&server->io, msg);
+	rc = od_write(&server->io, &msg);
 	if (rc == -1) {
 		od_error(&instance->logger, "cancel", NULL, NULL,
 			 "write error: %s", od_io_error(&server->io));
@@ -1019,6 +1035,8 @@ int od_backend_update_parameter(od_server_t *server, char *context, char *data,
 	char *value;
 	uint32_t value_len;
 	char flags = 0;
+	bool should_lowercase_name =
+		yb_od_instance_should_lowercase_guc_name(instance);
 
 	int rc;
 	rc = kiwi_fe_read_yb_parameter(data, size, &name, &name_len, &value,
@@ -1031,8 +1049,8 @@ int od_backend_update_parameter(od_server_t *server, char *context, char *data,
 
 	if (!server_only && flags & YB_PARAM_STATUS_REPORT_ENABLED) {
 		/* Send ParameterStatus to client if GUC_REPORT is enabled */
-		int rc = yb_send_parameter_status(&client->io, name, name_len,
-						  value, value_len);
+		int rc = yb_send_parameter_status_async(
+			&server->relay, name, name_len, value, value_len);
 		if (rc != 0) {
 			od_error(&instance->logger, context, NULL, server,
 				 "Unable to send ParameterStatus to client");
@@ -1045,18 +1063,35 @@ int od_backend_update_parameter(od_server_t *server, char *context, char *data,
 		return 0;
 
 	/* update server only or client and server parameter */
-	od_debug(&instance->logger, context, client, server, "%.*s = %.*s",
-		 name_len, name, value_len, value);
+	od_debug(&instance->logger, context, client, server,
+		 "%.*s = %.*s, flags: 0x%X", name_len, name, value_len, value,
+		 flags);
 
-	if (server_only) {
-		kiwi_vars_update(
-			&server->vars, name, name_len, value, value_len,
-			yb_od_instance_should_lowercase_guc_name(instance));
+	/*
+	 * YB: It is possible that an earlier set variable becomes unset due
+	 * to transaction rollback or RESET statement. In that case, it needs
+	 * to be removed from server and client variable lists
+	 */
+
+	if (flags & (YB_PARAM_STATUS_USERSET_OR_SUSET_SOURCE_SESSION |
+		     YB_PARAM_STATUS_USERSET_OR_SUSET_SOURCE_STARTUP)) {
+		kiwi_vars_update(&server->vars, name, name_len, value,
+				 value_len, should_lowercase_name);
 	} else {
-		kiwi_vars_update_both(
-			&client->vars, &server->vars, name, name_len, value,
-			value_len,
-			yb_od_instance_should_lowercase_guc_name(instance));
+		yb_kiwi_vars_remove_if_exists(&server->vars, name, name_len,
+					      should_lowercase_name);
+	}
+
+	if (!server_only) {
+		if (flags & YB_PARAM_STATUS_USERSET_OR_SUSET_SOURCE_SESSION) {
+			kiwi_vars_update(&client->yb_vars_session, name,
+					 name_len, value, value_len,
+					 should_lowercase_name);
+		} else {
+			yb_kiwi_vars_remove_if_exists(&client->yb_vars_session,
+						      name, name_len,
+						      should_lowercase_name);
+		}
 	}
 
 	return 0;
@@ -1142,7 +1177,7 @@ od_retcode_t od_backend_query_send(od_server_t *server, char *context,
 	}
 
 	int rc;
-	rc = od_write(&server->io, msg);
+	rc = od_write(&server->io, &msg);
 	if (rc == -1) {
 		od_error(&instance->logger, context, server->client, server,
 			 "write error: %s", od_io_error(&server->io));

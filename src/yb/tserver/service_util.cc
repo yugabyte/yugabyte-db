@@ -273,12 +273,10 @@ std::shared_ptr<TabletConsensusInfoPB> GetTabletConsensusInfoFromTabletPeer(
   return nullptr;
 }
 
-namespace {
-
-template <class Key>
-Result<TabletPeerTablet> DoLookupTabletPeer(
+Result<TabletPeerTablet> LookupTabletPeer(
     TabletPeerLookupIf* tablet_manager,
-    const Key& tablet_id) {
+    TabletIdView tablet_id) {
+  ash::WaitStateInfo::UpdateCurrentTabletId(tablet_id);
   TabletPeerTablet result;
   auto tablet_peer_result = tablet_manager->GetServingTablet(tablet_id);
   if (PREDICT_FALSE(!tablet_peer_result.ok())) {
@@ -306,26 +304,10 @@ Result<TabletPeerTablet> DoLookupTabletPeer(
   return result;
 }
 
-} // namespace
-
-Result<TabletPeerTablet> LookupTabletPeer(
-    TabletPeerLookupIf* tablet_manager,
-    const TabletId& tablet_id) {
-  ash::WaitStateInfo::UpdateCurrentTabletId(tablet_id);
-  return DoLookupTabletPeer(tablet_manager, tablet_id);
-}
-
-Result<TabletPeerTablet> LookupTabletPeer(
-    TabletPeerLookupIf* tablet_manager,
-    const Slice& tablet_id) {
-  ash::WaitStateInfo::UpdateCurrentTabletId(tablet_id.ToBuffer());
-  return DoLookupTabletPeer(tablet_manager, tablet_id);
-}
-
 Result<std::shared_ptr<tablet::AbstractTablet>> GetTablet(
-    TabletPeerLookupIf* tablet_manager, const TabletId& tablet_id,
+    TabletPeerLookupIf* tablet_manager, TabletIdView tablet_id,
     tablet::TabletPeerPtr tablet_peer, YBConsistencyLevel consistency_level,
-    AllowSplitTablet allow_split_tablet, ReadResponsePB* resp) {
+    AllowSplitTablet allow_split_tablet, ReadResponseMsg* resp) {
   tablet::TabletPtr tablet_ptr = nullptr;
   if (tablet_peer) {
     DCHECK_EQ(tablet_peer->tablet_id(), tablet_id);

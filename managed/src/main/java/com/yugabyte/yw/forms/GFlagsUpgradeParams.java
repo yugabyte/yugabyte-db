@@ -5,7 +5,6 @@ package com.yugabyte.yw.forms;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
@@ -34,8 +33,6 @@ import play.mvc.Http;
 @JsonDeserialize(converter = GFlagsUpgradeParams.Converter.class)
 @Slf4j
 public class GFlagsUpgradeParams extends UpgradeWithGFlags {
-
-  @JsonIgnore protected RuntimeConfGetter runtimeConfGetter;
 
   @Override
   public boolean isKubernetesUpgradeSupported() {

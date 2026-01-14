@@ -25,7 +25,7 @@ func CreateEITValidation(cmd *cobra.Command) {
 	if err != nil {
 		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 	}
-	if len(strings.TrimSpace(configNameFlag)) == 0 {
+	if util.IsEmptyString(configNameFlag) {
 		cmd.Help()
 		logrus.Fatalln(
 			formatter.Colorize(
@@ -43,11 +43,10 @@ func CreateEITUtil(
 
 	eitUUID, response, err := authAPI.Upload().Certificate(requestBody).Execute()
 	if err != nil {
-		errMessage := util.ErrorFromHTTPResponse(response, err, callSite, "Create")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		util.FatalHTTPError(response, err, callSite, "Create")
 	}
 
-	if len(strings.TrimSpace(eitUUID)) == 0 {
+	if util.IsEmptyString(eitUUID) {
 		logrus.Fatal(formatter.Colorize(
 			fmt.Sprintf(
 				"An error occurred while adding encryption in transit configration %s\n",
@@ -61,9 +60,7 @@ func CreateEITUtil(
 
 	certs, response, err := authAPI.GetListOfCertificates().Execute()
 	if err != nil {
-		errMessage := util.ErrorFromHTTPResponse(response, err,
-			"EIT", "List")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		util.FatalHTTPError(response, err, "EIT", "List")
 	}
 
 	var r []ybaclient.CertificateInfoExt

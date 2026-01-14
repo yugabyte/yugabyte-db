@@ -136,25 +136,19 @@ ALTER TABLE ctlt1 ALTER COLUMN a SET STORAGE MAIN;
 -- Uncomment the following when ALTER COLUMN is supported (#1200)
 
 CREATE TABLE ctlt2 (c text);
-/* YB: set STORAGE is not suported #1200
 ALTER TABLE ctlt2 ALTER COLUMN c SET STORAGE EXTERNAL;
-*/ -- YB
 COMMENT ON COLUMN ctlt2.c IS 'C';
 
 CREATE TABLE ctlt3 (a text CHECK (length(a) < 5), c text CHECK (length(c) < 7));
-/* YB: set STORAGE is not suported #1200
 ALTER TABLE ctlt3 ALTER COLUMN c SET STORAGE EXTERNAL;
 ALTER TABLE ctlt3 ALTER COLUMN a SET STORAGE MAIN;
-*/ -- YB
 CREATE INDEX ctlt3_fnidx ON ctlt3 ((a || c));
 COMMENT ON COLUMN ctlt3.a IS 'A3';
 COMMENT ON COLUMN ctlt3.c IS 'C';
 COMMENT ON CONSTRAINT ctlt3_a_check ON ctlt3 IS 't3_a_check';
 
 CREATE TABLE ctlt4 (a text, c text);
-/* YB: set STORAGE is not suported #1200
 ALTER TABLE ctlt4 ALTER COLUMN c SET STORAGE EXTERNAL;
-*/ -- YB
 
 CREATE TABLE ctlt12_storage (LIKE ctlt1 INCLUDING STORAGE, LIKE ctlt2 INCLUDING STORAGE);
 \d+ ctlt12_storage

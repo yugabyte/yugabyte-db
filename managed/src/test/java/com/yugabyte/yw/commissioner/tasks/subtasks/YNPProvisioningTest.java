@@ -9,6 +9,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -77,14 +78,9 @@ public class YNPProvisioningTest extends FakeDBApplication {
             mockCloudQueryHelper.getDeviceNames(
                 any(), any(), anyString(), any(), any(), anyString()))
         .thenReturn(List.of("/dev/sdb", "/dev/sdc"));
-
+    when(baseTaskDependencies.getConfGetter()).thenReturn(confGetter);
     ynpProvisioning =
-        new YNPProvisioning(
-            baseTaskDependencies,
-            nodeUniverseManager,
-            confGetter,
-            mockCloudQueryHelper,
-            mockFileHelperService);
+        new YNPProvisioning(baseTaskDependencies, mockCloudQueryHelper, mockFileHelperService);
   }
 
   private void setTaskParams(YNPProvisioning.Params params) throws Exception {
@@ -215,7 +211,7 @@ public class YNPProvisioningTest extends FakeDBApplication {
     Path nodeAgentHome = Paths.get("/tmp/node-agent");
 
     // Call the method
-    ynpProvisioning.getProvisionArguments(
+    ynpProvisioning.generateProvisionConfig(
         universe, primaryNode, provider, outputPath, nodeAgentHome);
 
     // Verify the JSON file was created and contains expected data
@@ -330,7 +326,7 @@ public class YNPProvisioningTest extends FakeDBApplication {
     Path nodeAgentHome = Paths.get("/tmp/node-agent");
 
     // Call the method
-    ynpProvisioning.getProvisionArguments(universe, rrNode, provider, outputPath, nodeAgentHome);
+    ynpProvisioning.generateProvisionConfig(universe, rrNode, provider, outputPath, nodeAgentHome);
 
     // Verify the JSON file was created and contains expected data
     assertTrue(Files.exists(tempFile));
@@ -450,7 +446,7 @@ public class YNPProvisioningTest extends FakeDBApplication {
     Path tempFilePrimary = Files.createTempFile("ynp-test-primary-", ".json");
     Path nodeAgentHome = Paths.get("/tmp/node-agent");
 
-    ynpProvisioning.getProvisionArguments(
+    ynpProvisioning.generateProvisionConfig(
         universe, primaryNode, provider, tempFilePrimary.toString(), nodeAgentHome);
 
     JsonNode primaryRoot = objectMapper.readTree(Files.readAllBytes(tempFilePrimary));
@@ -479,7 +475,7 @@ public class YNPProvisioningTest extends FakeDBApplication {
 
     Path tempFileRR = Files.createTempFile("ynp-test-rr-", ".json");
 
-    ynpProvisioning.getProvisionArguments(
+    ynpProvisioning.generateProvisionConfig(
         universe, rrNode, provider, tempFileRR.toString(), nodeAgentHome);
 
     JsonNode rrRoot = objectMapper.readTree(Files.readAllBytes(tempFileRR));

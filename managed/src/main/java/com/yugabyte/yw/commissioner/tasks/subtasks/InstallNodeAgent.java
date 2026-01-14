@@ -7,7 +7,6 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeAgentManager;
 import com.yugabyte.yw.common.NodeAgentManager.InstallerFiles;
-import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeAgent.ArchType;
@@ -33,18 +32,14 @@ import org.apache.commons.lang3.StringUtils;
 public class InstallNodeAgent extends NodeTaskBase {
   public static final int DEFAULT_NODE_AGENT_PORT = 9070;
 
-  private final NodeUniverseManager nodeUniverseManager;
   private final NodeAgentManager nodeAgentManager;
   private final ShellProcessContext defaultShellContext =
       ShellProcessContext.builder().useSshConnectionOnly(true).logCmdOutput(true).build();
 
   @Inject
   protected InstallNodeAgent(
-      BaseTaskDependencies baseTaskDependencies,
-      NodeUniverseManager nodeUniverseManager,
-      NodeAgentManager nodeAgentManager) {
+      BaseTaskDependencies baseTaskDependencies, NodeAgentManager nodeAgentManager) {
     super(baseTaskDependencies);
-    this.nodeUniverseManager = nodeUniverseManager;
     this.nodeAgentManager = nodeAgentManager;
   }
 
@@ -200,7 +195,8 @@ public class InstallNodeAgent extends NodeTaskBase {
             });
 
     Path nodeAgentInstallPath = nodeAgentHomePath.getParent();
-    Path nodeAgentInstallerPath = nodeAgentHomePath.resolve("node-agent-installer.sh");
+    Path nodeAgentInstallerPath =
+        nodeAgentHomePath.resolve(Paths.get("bin", NodeAgentManager.NODE_AGENT_INSTALLER_FILE));
 
     sb.setLength(0);
     // Restore directory permissions.

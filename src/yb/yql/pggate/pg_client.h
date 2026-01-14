@@ -179,7 +179,8 @@ class PgClient {
                rpc::Scheduler* scheduler,
                const tserver::TServerSharedData& tserver_shared_object,
                std::optional<uint64_t> session_id);
-
+  // TODO (dmitry): Consider joining of Interrupt and Shutdown into single method.
+  void Interrupt();
   void Shutdown();
 
   void SetTimeout(int timeout_ms);

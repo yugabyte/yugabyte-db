@@ -21,6 +21,7 @@ import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.RestoreManagerYb;
 import com.yugabyte.yw.common.TableManager;
 import com.yugabyte.yw.common.TableManagerYb;
+import com.yugabyte.yw.common.YcqlQueryExecutor;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
@@ -63,6 +64,7 @@ public class BaseTaskDependencies {
   private final ImageBundleUtil imageBundleUtil;
   private final ReleaseManager releaseManager;
   private final YsqlQueryExecutor ysqlQueryExecutor;
+  private final YcqlQueryExecutor ycqlQueryExecutor;
   private final GFlagsValidation gFlagsValidation;
   private final NodeUniverseManager nodeUniverseManager;
   private final NodeAgentClient nodeAgentClient;

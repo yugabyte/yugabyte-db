@@ -98,8 +98,7 @@ OperationDriver::OperationDriver(OperationTracker *operation_tracker,
       wait_state_(ash::WaitStateInfo::CurrentWaitState()),
       start_time_(MonoTime::Now()),
       replication_state_(NOT_REPLICATING),
-      prepare_state_(NOT_PREPARED),
-      table_type_(table_type) {
+      prepare_state_(NOT_PREPARED) {
   DCHECK(IsAcceptableAtomicImpl(op_id_copy_));
 }
 

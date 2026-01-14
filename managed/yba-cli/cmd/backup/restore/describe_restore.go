@@ -3,7 +3,6 @@ package restore
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -36,7 +35,7 @@ var describeRestoreCmd = &cobra.Command{
 		restoreAPISort := "createTime"
 
 		restoreUUIDList := make([]string, 0)
-		if len(strings.TrimSpace(restoreUUID)) > 0 {
+		if !util.IsEmptyString(restoreUUID) {
 			restoreUUIDList = append(restoreUUIDList, restoreUUID)
 		}
 
@@ -57,8 +56,7 @@ var describeRestoreCmd = &cobra.Command{
 		// Execute restore list request
 		r, response, err := restoreListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Restore", "Describe")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Restore", "Describe")
 		}
 
 		if len(r.GetEntities()) > 0 && util.IsOutputType(formatter.TableFormatKey) {

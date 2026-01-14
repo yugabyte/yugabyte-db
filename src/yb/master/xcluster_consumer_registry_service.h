@@ -52,8 +52,8 @@ Status UpdateTabletMappingOnConsumerSplit(
 
 Status UpdateTabletMappingOnProducerSplit(
     const std::map<std::string, KeyRange>& consumer_tablet_keys,
-    const SplitTabletIds& split_tablet_ids, const std::string& split_key, bool* found_source,
-    bool* found_all_split_childs, cdc::StreamEntryPB* stream_entry);
+    const SplitTabletIds& split_tablet_ids, const std::vector<std::string>& split_key,
+    bool* found_source, bool* found_all_split_childs, cdc::StreamEntryPB* stream_entry);
 
 }  // namespace master
 }  // namespace yb

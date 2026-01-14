@@ -273,6 +273,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " a support bundle.",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<String> supportBundleApplicationLogsRegexPattern =
+      new ConfKeyInfo<>(
+          "yb.support_bundle.application_logs_regex_pattern",
+          ScopeType.GLOBAL,
+          "Application Logs Regex Pattern",
+          "Regex pattern used to filter application log files when creating support bundles.",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> snapshotCreationMaxAttempts =
       new ConfKeyInfo<>(
           "yb.snapshot_creation.max_attempts",
@@ -1968,5 +1976,21 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Allow local user login with SSO enabled. when disabled, only superAdmin can login using"
               + " local credentials.",
           ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> disableGolangYnpDriver =
+      new ConfKeyInfo<>(
+          "yb.node_agent.disable_golang_ynp_driver",
+          ScopeType.GLOBAL,
+          "Disable Golang YNP Driver",
+          "Disable golang YNP driver to use python instead",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.FEATURE_FLAG));
+  public static final ConfKeyInfo<Integer> nodeAgentServerRequestLogLevel =
+      new ConfKeyInfo<>(
+          "yb.node_agent.server.request_log_level",
+          ScopeType.GLOBAL,
+          "Node Agent Server Log Level Per Request",
+          "Log level for Node Agent server per request (0 for debug, -1 for default)",
+          ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

@@ -146,7 +146,7 @@ For example, from your YugabyteDB home directory, run the following command:
 
 ### YugabyteDB Anywhere
 
-To enable EPCM in YugabyteDB Anywhere v2024.1, see the [Release notes](/preview/releases/yba-releases/v2024.1/#v2024.1.0.0).
+To enable EPCM in YugabyteDB Anywhere v2024.1, see the [Release notes](/stable/releases/yba-releases/v2024.1/#v2024.1.0.0).
 
 To enable EPCM in YugabyteDB Anywhere v2024.2 or later:
 

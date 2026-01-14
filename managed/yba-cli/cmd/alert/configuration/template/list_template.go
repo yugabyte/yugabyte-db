@@ -47,8 +47,7 @@ var listTemplateAlertCmd = &cobra.Command{
 
 		r, response, err := templateListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Alert Template", "List")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Alert Template", "List")
 		}
 
 		templateCtx := formatter.Context{

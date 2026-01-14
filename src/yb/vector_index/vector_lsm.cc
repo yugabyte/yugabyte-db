@@ -237,10 +237,8 @@ class VectorLSMInsertTask :
   using InsertCallback = boost::function<void(const Status&)>;
   using VectorIndexPtr = typename VectorLSM<Vector, DistanceResult>::VectorIndexPtr;
 
-  explicit VectorLSMInsertTask(InsertRegistry& registry) : registry_(registry) {
-  }
-
-  void Bind(const VectorIndexPtr& index, InsertCallback insert_callback) {
+  void Bind(const VectorIndexPtr& index, std::shared_ptr<InsertRegistry> registry,
+            InsertCallback insert_callback) {
     DCHECK(index);
     DCHECK(insert_callback);
     DCHECK(!index_);
@@ -248,6 +246,7 @@ class VectorLSMInsertTask :
     DCHECK(vectors_.empty());
 
     index_ = index;
+    registry_ = std::move(registry);
     insert_callback_ = std::move(insert_callback);
   }
 
@@ -261,19 +260,18 @@ class VectorLSMInsertTask :
   }
 
   void Done(const Status&) override {
+    std::shared_ptr<InsertRegistry> registry;
     {
       std::lock_guard lock(mutex_);
       index_ = nullptr;
+      registry = std::move(registry_);
       vectors_.clear();
     }
 
     // We are not really interested in the status as it could indicate shutting down
     // or abortion due to shutting down only. Make sure to unset done_callback_ before calling it.
-    registry_.TaskDone(this);
-  }
-
-  const InsertRegistry& registry() const {
-    return registry_;
+    DCHECK(registry);
+    registry->TaskDone(this);
   }
 
  protected:
@@ -286,7 +284,7 @@ class VectorLSMInsertTask :
   }
 
   mutable rw_spinlock mutex_;
-  InsertRegistry& registry_;
+  std::shared_ptr<InsertRegistry> registry_;
   VectorIndexPtr index_;
   InsertCallback insert_callback_;
   std::vector<std::pair<VectorId, Vector>> vectors_;
@@ -326,7 +324,8 @@ class VectorLSMInsertTaskSearchWrapper final : public VectorLSMInsertTask<Vector
 
 // Registry for all active Vector LSM insert subtasks.
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-class VectorLSMInsertRegistryBase {
+class VectorLSMInsertRegistryBase
+    : public std::enable_shared_from_this<VectorLSMInsertRegistryBase<Vector, DistanceResult>> {
  public:
   using InsertTask = VectorLSMInsertTask<Vector, DistanceResult>;
   using InsertTaskList = boost::intrusive::list<InsertTask>;
@@ -339,7 +338,7 @@ class VectorLSMInsertRegistryBase {
       {
         std::lock_guard lock(mutex_);
         stopping_ = true;
-        if (active_tasks_.empty() && allocated_tasks_ == 0) {
+        if (allocated_tasks_ == 0) {
           break;
         }
       }
@@ -358,7 +357,6 @@ class VectorLSMInsertRegistryBase {
 
   void TaskDone(InsertTask* raw_task) EXCLUDES(mutex_) {
     DCHECK_ONLY_NOTNULL(raw_task);
-    DCHECK_EQ(this, &raw_task->registry());
 
     InsertTaskPtr task(raw_task);
     {
@@ -399,14 +397,14 @@ class VectorLSMInsertRegistryBase {
     for (size_t left = num_tasks; left-- > 0;) {
       InsertTaskPtr task;
       if (task_pool_.empty()) {
-        task = std::make_unique<InsertTask>(*this);
+        task = std::make_unique<InsertTask>();
       } else {
         task = std::move(task_pool_.back());
         task_pool_.pop_back();
       }
 
       // Make sure insert_callback is not moved but copied as it is used in several tasks.
-      task->Bind(index, insert_callback);
+      task->Bind(index, this->shared_from_this(), insert_callback);
 
       result.push_back(*task.release());
     }
@@ -1106,9 +1104,9 @@ Status VectorLSM<Vector, DistanceResult>::Open(Options options) {
   if (options_.metric_entity) {
     metrics_ = std::make_unique<vector_index::VectorLSMMetrics>(options_.metric_entity);
   }
-  insert_registry_ = std::make_unique<InsertRegistry>(
+  insert_registry_ = std::make_shared<InsertRegistry>(
       options_.log_prefix, *options_.insert_thread_pool);
-  merge_registry_ = std::make_unique<MergeRegistry>(
+  merge_registry_ = std::make_shared<MergeRegistry>(
       options_.log_prefix, *options_.insert_thread_pool);
 
   RETURN_NOT_OK(env_->CreateDirs(options_.storage_dir));

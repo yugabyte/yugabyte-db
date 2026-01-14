@@ -15,7 +15,7 @@ systemd_dir="/etc/systemd/system"
 {% endif %}
 
 # Configure the systemd unit files
-{% for service_file in service_files | split_servers %}
+{% for service_file in service_files | split_string %}
    tmp_file=$(mktemp)
    echo '{% include service_file %}' > $tmp_file
    chown {{ yb_user }}:{{ yb_user }} $tmp_file

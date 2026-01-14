@@ -2751,6 +2751,71 @@ TEST_F(PgMiniTestSingleNode, TestBootstrapOnAppliedTransactionWithIntents) {
   ASSERT_EQ(res, 1);
 }
 
+TEST_F(PgMiniTestSingleNode, TestBootstrapFilterOldTransactionNewWrite) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_delete_intents_sst_files) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_bootstrap_intent_ht_filter) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_no_schedule_remove_intents) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_flush_on_shutdown) = true;
+
+  auto conn1 = ASSERT_RESULT(Connect());
+  auto conn2 = ASSERT_RESULT(Connect());
+
+  LOG(INFO) << "Creating tables";
+  ASSERT_OK(conn1.Execute("CREATE TABLE test1(a int) SPLIT INTO 1 TABLETS"));
+
+  const auto& peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
+  tablet::TabletPeerPtr tablet_peer = nullptr;
+  tablet::TabletPtr tablet = nullptr;
+  for (auto peer : peers) {
+    tablet = ASSERT_RESULT(peer->shared_tablet());
+    if (tablet->regular_db()) {
+      tablet_peer = peer;
+      break;
+    }
+  }
+  ASSERT_NE(tablet_peer, nullptr);
+
+  ASSERT_OK(conn1.Execute("CREATE TABLE test2(a int) SPLIT INTO 1 TABLETS"));
+
+  // This tests the case where a very old transaction writes to a tablet for the first time,
+  // after bootstrap state has been flushed, to ensure it is not filtered out. More context: #29642.
+  LOG(INFO) << "T1 - BEGIN";
+  ASSERT_OK(conn1.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  LOG(INFO) << "T1 - INSERT (test2)";
+  ASSERT_OK(conn1.Execute("INSERT INTO test2(a) VALUES (0)"));
+
+  LOG(INFO) << "T2 - BEGIN";
+  ASSERT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  LOG(INFO) << "T2 - INSERT (test1)";
+  ASSERT_OK(conn2.Execute("INSERT INTO test1(a) VALUES (10)"));
+  ASSERT_OK(conn2.Execute("INSERT INTO test1(a) VALUES (11)"));
+
+  LOG(INFO) << "T2 - Commit";
+  ASSERT_OK(conn2.CommitTransaction());
+
+  LOG(INFO) << "Flush bootstrap state";
+  ASSERT_OK(tablet_peer->FlushBootstrapState());
+
+  LOG(INFO) << "T1 - INSERT (test1)";
+  ASSERT_OK(conn1.Execute("INSERT INTO test1(a) VALUES(20)"));
+  ASSERT_OK(conn1.Execute("INSERT INTO test1(a) VALUES(21)"));
+
+  LOG(INFO) << "Flush";
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
+
+  LOG(INFO) << "T1 - Commit";
+  ASSERT_OK(conn1.CommitTransaction());
+
+  LOG(INFO) << "Restarting cluster";
+  ASSERT_OK(RestartCluster());
+
+  conn1 = ASSERT_RESULT(Connect());
+  auto res = ASSERT_RESULT(conn1.FetchRow<PGUint64>("SELECT COUNT(*) FROM test1"));
+  ASSERT_EQ(res, 4);
+  res = ASSERT_RESULT(conn1.FetchRow<PGUint64>("SELECT COUNT(*) FROM test2"));
+  ASSERT_EQ(res, 1);
+}
+
 TEST_F(PgMiniTestSingleNode, TestAppliedTransactionsStateReadOnly) {
   constexpr size_t kIters = 100;
 
@@ -2929,6 +2994,15 @@ Status MockAbortFailure(
   LOG(FATAL) << "Unexpected session id: " << req->session_id();
 }
 
+Status MockRollbackToSubtransactionFailure(
+    const yb::tserver::PgRollbackToSubTransactionRequestPB* req,
+    yb::tserver::PgRollbackToSubTransactionResponsePB* resp,
+    rpc::RpcContext* context) {
+
+  LOG(INFO) << Format("Requested rollback to subtransaction: $0", req->sub_transaction_id());
+  return STATUS(NetworkError, "Mocking network failure on RollbackToSubtransaction");
+}
+
 class PgRecursiveAbortTest : public PgMiniTestSingleNode,
                              public ::testing::WithParamInterface<bool> {
  public:
@@ -2946,6 +3020,12 @@ class PgRecursiveAbortTest : public PgMiniTestSingleNode,
   tserver::PgClientServiceMockImpl::Handle MockFinishTransaction(const F& mock) {
     auto* client = cluster_->mini_tablet_server(0)->server()->TEST_GetPgClientServiceMock();
     return client->MockFinishTransaction(mock);
+  }
+
+  template <class F>
+  tserver::PgClientServiceMockImpl::Handle MockRollbackToSubtransaction(const F& mock) {
+    auto* client = cluster_->mini_tablet_server(0)->server()->TEST_GetPgClientServiceMock();
+    return client->MockRollbackToSubTransaction(mock);
   }
 };
 
@@ -2989,6 +3069,18 @@ TEST_P(PgRecursiveAbortTest, MockAbortFailure) {
   // Validate that aborting a transaction does not produce a PANIC.
   auto handle = MockFinishTransaction(MockAbortFailure);
   auto status = conn.Execute("ABORT");
+  ASSERT_TRUE(status.IsNetworkError());
+  ASSERT_EQ(conn.ConnStatus(), CONNECTION_BAD);
+}
+
+TEST_P(PgRecursiveAbortTest, MockRollbackToSubtransactionFailure) {
+  PGConn conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (k INT)"));
+  ASSERT_OK(conn.StartTransaction(READ_COMMITTED));
+  ASSERT_OK(conn.Execute("SAVEPOINT s1"));
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (1)"));
+  auto _ = MockRollbackToSubtransaction(MockRollbackToSubtransactionFailure);
+  auto status = conn.Execute("ROLLBACK TO s1");
   ASSERT_TRUE(status.IsNetworkError());
   ASSERT_EQ(conn.ConnStatus(), CONNECTION_BAD);
 }

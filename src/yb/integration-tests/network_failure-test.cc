@@ -128,7 +128,7 @@ TEST_F(NetworkFailureTest, DisconnectMasterLeader) {
 
       int key = RandomUniformInt<int>(0, std::numeric_limits<int>::max() - 1);
       int value = RandomUniformInt<int>(0, std::numeric_limits<int>::max() - 1);
-      auto op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+      auto op = table_.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_INSERT);
       auto* const req = op->mutable_request();
       QLAddInt32HashValue(req, key);
       table_.AddInt32ColumnValue(req, kValueColumn, value);

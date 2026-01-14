@@ -62,13 +62,37 @@ using DocVectorIndexSearchResultEntries = std::vector<DocVectorIndexSearchResult
 struct DocVectorIndexSearchResult {
   bool could_have_more_data;
   DocVectorIndexSearchResultEntries entries;
+
+  std::string ToString() const {
+     return YB_STRUCT_TO_STRING((num_entries, AsString(entries.size())), could_have_more_data);
+  }
 };
 
-struct DocVectorIndexedTableContext {
-  virtual ~DocVectorIndexedTableContext() = default;
-  virtual Result<docdb::DocRowwiseIteratorPtr> CreateIterator(HybridTime read_ht) const = 0;
+class DocVectorIndexReverseMappingReader {
+ public:
+  virtual ~DocVectorIndexReverseMappingReader() = default;
+
+  // Returns the value which corresponds to the specified key without DocHybridTime.
+  virtual Result<Slice> Fetch(Slice key) = 0;
+
+  // Returns the value which corresponds to the specified vector_id.
+  Result<Slice> Fetch(const vector_index::VectorId& vector_id);
+
+  // Returns ybctid which corresponds to the specified vector_id. Returns empty value if
+  // no ybctid is found or kTombstone corresponds to the specified vector_id.
+  Result<Slice> FetchYbctid(const vector_index::VectorId& vector_id);
 };
-using DocVectorIndexedTableContextPtr = std::unique_ptr<DocVectorIndexedTableContext>;
+
+using DocVectorIndexReverseMappingReaderPtr = std::unique_ptr<DocVectorIndexReverseMappingReader>;
+
+class DocVectorIndexContext {
+ public:
+  virtual ~DocVectorIndexContext() = default;
+  virtual Result<DocVectorIndexReverseMappingReaderPtr> CreateReverseMappingReader(
+      const ReadHybridTime& read_ht) const = 0;
+};
+
+using DocVectorIndexContextPtr = std::unique_ptr<DocVectorIndexContext>;
 
 class DocVectorIndex {
  public:
@@ -80,7 +104,7 @@ class DocVectorIndex {
   virtual const PgVectorIdxOptionsPB& options() const = 0;
   virtual const std::string& path() const = 0;
   virtual HybridTime hybrid_time() const = 0;
-  virtual const DocVectorIndexedTableContext& indexed_table_context() const = 0;
+  virtual const DocVectorIndexContext& context() const = 0;
 
   virtual Status Insert(
       const DocVectorIndexInsertEntries& entries, const rocksdb::UserFrontiers& frontiers) = 0;
@@ -136,7 +160,7 @@ Result<DocVectorIndexPtr> CreateDocVectorIndex(
     Slice indexed_table_key_prefix,
     HybridTime hybrid_time,
     const qlexpr::IndexInfo& index_info,
-    DocVectorIndexedTableContextPtr indexed_table_context,
+    DocVectorIndexContextPtr vector_index_context,
     const hnsw::BlockCachePtr& block_cache,
     const MemTrackerPtr& mem_tracker,
     const MetricEntityPtr& metric_entity);

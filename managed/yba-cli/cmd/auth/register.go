@@ -119,21 +119,21 @@ var RegisterCmd = &cobra.Command{
 			}
 		}
 
-		if strings.TrimSpace(name) == "" {
+		if util.IsEmptyString(name) {
 			logrus.Fatalln(
 				formatter.Colorize(
 					"Name cannot be empty.\n",
 					formatter.RedColor))
 		}
 
-		if strings.TrimSpace(email) == "" {
+		if util.IsEmptyString(email) {
 			logrus.Fatalln(
 				formatter.Colorize(
 					"Email cannot be empty.\n",
 					formatter.RedColor))
 		}
 
-		if strings.TrimSpace(password) == "" {
+		if util.IsEmptyString(password) {
 			logrus.Fatalln(
 				formatter.Colorize(
 					"Password cannot be empty.\n",
@@ -159,9 +159,7 @@ var RegisterCmd = &cobra.Command{
 
 		r, response, err := authAPI.RegisterCustomer().CustomerRegisterFormData(req).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response, err, "Register", "Authentication")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Register", "Authentication")
 		}
 		logrus.Debugf("API Register response without errors\n")
 
@@ -172,9 +170,7 @@ var RegisterCmd = &cobra.Command{
 
 		r, response, err = authAPI.ApiLogin().CustomerLoginFormData(reqLogin).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response, err, "Register", "Login")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Register", "Login")
 		}
 		logrus.Debugf("API Login response without errors\n")
 

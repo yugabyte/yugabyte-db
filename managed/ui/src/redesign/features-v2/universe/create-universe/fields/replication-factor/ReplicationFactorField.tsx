@@ -38,7 +38,7 @@ export const ReplicationFactorField = ({
               setReplicationFactor(options);
             }
           }))}
-          active={replicationFactor + ''}
+          value={replicationFactorVal + ''}
           dataTestId="replication-factor-field"
         />
       }

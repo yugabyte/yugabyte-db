@@ -169,7 +169,7 @@ class PgClientSession final {
 };
 
 void PreparePgTablesQuery(
-    const PgPerformRequestPB& req, boost::container::small_vector_base<TableId>& table_ids);
+    const PgPerformRequestMsg& req, boost::container::small_vector_base<TableId>& table_ids);
 
 } // namespace tserver
 } // namespace yb

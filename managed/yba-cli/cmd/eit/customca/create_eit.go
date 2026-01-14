@@ -5,8 +5,6 @@
 package customca
 
 import (
-	"strings"
-
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	ybaclient "github.com/yugabyte/platform-go-client"
@@ -45,7 +43,7 @@ var createCustomCAEITCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		if len(strings.TrimSpace(rootCertFilePath)) == 0 {
+		if util.IsEmptyString(rootCertFilePath) {
 			logrus.Fatalf(
 				formatter.Colorize("Missing root certificate file path\n", formatter.RedColor),
 			)
@@ -72,17 +70,17 @@ var createCustomCAEITCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		if len(strings.TrimSpace(rootCAFilePathOnNode)) == 0 {
+		if util.IsEmptyString(rootCAFilePathOnNode) {
 			logrus.Fatalf(formatter.Colorize("Missing root CA certificate file path on node\n",
 				formatter.RedColor))
 		}
 
-		if len(strings.TrimSpace(nodeCertFilePathOnNode)) == 0 {
+		if util.IsEmptyString(nodeCertFilePathOnNode) {
 			logrus.Fatalf(formatter.Colorize("Missing node certificate file path on node\n",
 				formatter.RedColor))
 		}
 
-		if len(strings.TrimSpace(nodeKeyFilePathOnNode)) == 0 {
+		if util.IsEmptyString(nodeKeyFilePathOnNode) {
 			logrus.Fatalf(formatter.Colorize("Missing node key file path on node\n",
 				formatter.RedColor))
 		}

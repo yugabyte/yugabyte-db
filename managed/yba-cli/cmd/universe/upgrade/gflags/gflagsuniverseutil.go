@@ -69,14 +69,13 @@ func validateGFlags(
 	}
 
 	req := ybaclient.GFlagsValidationFormData{
-		Gflags: &validateGFlags,
+		Gflags: validateGFlags,
 	}
 
 	rValidate, response, err := authAPI.ValidateGFlags(version).
 		GflagValidationFormData(req).Execute()
 	if err != nil {
-		errMessage := util.ErrorFromHTTPResponse(response, err, "Universe", "Validate GFlags")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		util.FatalHTTPError(response, err, "Universe", "Validate GFlags")
 	}
 
 	logrus.Info(

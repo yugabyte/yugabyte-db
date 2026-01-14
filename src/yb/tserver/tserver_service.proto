@@ -550,13 +550,16 @@ message GetSplitKeyRequestPB {
   required bytes tablet_id = 1;
   optional fixed64 propagated_hybrid_time = 2;
   optional bool is_manual_split = 3;
+  optional int32 split_factor = 4;
 }
 
 message GetSplitKeyResponsePB {
   optional TabletServerErrorPB error = 1;
-  optional bytes split_partition_key = 2;
-  optional bytes split_encoded_key = 3;
+  optional bytes DEPRECATED_split_partition_key = 2;
+  optional bytes DEPRECATED_split_encoded_key = 3;
   optional fixed64 propagated_hybrid_time = 4;
+  repeated bytes split_partition_keys = 5;
+  repeated bytes split_encoded_keys = 6;
 }
 
 message GetTserverCatalogVersionInfoRequestPB {

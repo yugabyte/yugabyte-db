@@ -38,8 +38,8 @@ using namespace std::placeholders;
 using yb::ql::CQLMessage;
 using yb::ql::CQLRequest;
 using yb::ql::ErrorResponse;
-using yb::operator"" _KB;
-using yb::operator"" _MB;
+using yb::operator""_KB;
+using yb::operator""_MB;
 
 DECLARE_bool(rpc_dump_all_traces);
 DECLARE_int32(print_trace_every);

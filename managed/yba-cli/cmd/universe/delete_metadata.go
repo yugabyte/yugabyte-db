@@ -51,9 +51,12 @@ var deleteMetadataCmd = &cobra.Command{
 
 		rList, responseList, errList := universeListRequest.Execute()
 		if errList != nil {
-			errMessage := util.ErrorFromHTTPResponse(responseList, errList,
-				"Universe", "Delete metadata - List Universes")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(
+				responseList,
+				errList,
+				"Universe",
+				"Delete metadata - List Universes",
+			)
 		}
 
 		if len(rList) < 1 {
@@ -72,13 +75,7 @@ var deleteMetadataCmd = &cobra.Command{
 		deleteMetadataRequest := authAPI.DeleteAttachDetachMetadata(universeUUID)
 		resp, errDelete := deleteMetadataRequest.Execute()
 		if errDelete != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				resp,
-				errDelete,
-				"Universe",
-				"Delete metadata",
-			)
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(resp, errDelete, "Universe", "Delete metadata")
 		}
 
 		logrus.Infof("The metadata for universe %s (%s) has been deleted\n",

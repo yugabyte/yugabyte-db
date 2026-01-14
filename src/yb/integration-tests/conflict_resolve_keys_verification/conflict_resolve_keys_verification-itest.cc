@@ -73,6 +73,8 @@ class ConflictResolveKeysVerificationITest : public ExternalMiniClusterITestBase
       "--TEST_docdb_log_write_batches=true",
       "--TEST_no_schedule_remove_intents=true",
       "--ysql_enable_auto_analyze=false",
+      "--ysql_yb_ddl_transaction_block_enabled=true",
+      "--enable_object_locking_for_table_locks=true",
       "--allowed_preview_flags_csv=skip_prefix_locks"
     };
     // Start cluster with the specified flags

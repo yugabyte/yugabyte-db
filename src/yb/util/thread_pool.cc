@@ -35,9 +35,12 @@ using namespace std::literals;
 DEFINE_NON_RUNTIME_uint64(default_idle_timeout_ms, 15000,
     "Default RPC YBThreadPool idle timeout value in milliseconds");
 
+static bool detailed_logging = true;
 namespace yb {
 
 bool TEST_fail_to_create_second_thread_in_thread_pool_without_queue = false;
+
+void YBThreadPool::DisableDetailedLogging() { detailed_logging = false; }
 
 namespace {
 
@@ -281,7 +284,12 @@ class YBThreadPool::Impl {
  public:
   explicit Impl(ThreadPoolOptions options)
       : share_(std::move(options)) {
-    LOG(INFO) << "Starting thread pool " << share_.options.ToString();
+    if (detailed_logging) {
+      LOG(INFO) << "Starting thread pool " << share_.options.ToString();
+    } else {
+      VLOG(1) << "Starting thread pool " << share_.options.ToString();
+    }
+
     for (size_t index = 0; index != options.min_workers; ++index) {
       if (!TryStartNewWorker(nullptr, /* persistent = */ true).ok()) {
         break;

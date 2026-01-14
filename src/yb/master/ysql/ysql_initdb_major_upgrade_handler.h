@@ -73,7 +73,7 @@ class YsqlInitDBAndMajorUpgradeHandler {
   // catalog version.
   // The upgrade is completed after it has been finalized.
   // During the upgrade only is_forced_update operations are allowed.
-  bool IsWriteToCatalogTableAllowed(const TableId& table_id, bool is_forced_update) const;
+  bool IsWriteToCatalogTableAllowed(TableIdView table_id, bool is_forced_update) const;
 
   // Delete the previous ysql major version catalog after the upgrade to the new version has
   // completed.

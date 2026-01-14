@@ -18,6 +18,9 @@
 
 #include <boost/preprocessor/seq/for_each.hpp>
 
+#include "yb/util/memory/arena.h"
+#include "yb/util/slice.h"
+
 namespace google {
 namespace protobuf {
 template <typename Element> class RepeatedPtrField;
@@ -60,15 +63,17 @@ extern const std::string kInfoResponse;
 // For more info: http://redis.io/topics/protocol
 
 #define REDIS_PRIMITIVES \
-  ((Integer, const std::string&)) \
+  ((Integer, std::string_view)) \
   ((Integer, int64_t)) \
-  ((SimpleString, const std::string&)) \
-  ((BulkString, const std::string&)) \
-  ((Error, const std::string&)) \
+  ((SimpleString, std::string_view)) \
+  ((BulkString, std::string_view)) \
+  ((Error, std::string_view)) \
   ((Array, const google::protobuf::RepeatedPtrField<std::string>&)) \
   ((Array, const std::initializer_list<std::string>&)) \
-  ((Encoded, const std::string&)) \
+  ((Array, const ArenaVector<Slice>&)) \
+  ((Encoded, std::string_view)) \
   ((EncodedArray, const google::protobuf::RepeatedPtrField<std::string>&)) \
+  ((EncodedArray, const ArenaVector<Slice>&)) \
   /**/
 
 #define DO_REDIS_PRIMITIVES_FORWARD(name, type) \

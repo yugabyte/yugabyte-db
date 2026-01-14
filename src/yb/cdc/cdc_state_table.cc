@@ -20,6 +20,7 @@
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/ql_protocol.messages.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema_pbutil.h"
@@ -105,7 +106,7 @@ Result<std::optional<uint32_t>> GetUInt32ValueFromMap(
 }
 
 void SerializeEntry(
-    const CDCStateTableKey& key, client::TableHandle* cdc_table, QLWriteRequestPB* req,
+    const CDCStateTableKey& key, client::TableHandle* cdc_table, QLWriteRequestMsg* req,
     const bool replace_full_map = false) {
   DCHECK(key.stream_id && !key.tablet_id.empty());
 
@@ -114,7 +115,7 @@ void SerializeEntry(
 }
 
 void SerializeEntry(
-    const CDCStateTableEntry& entry, client::TableHandle* cdc_table, QLWriteRequestPB* req,
+    const CDCStateTableEntry& entry, client::TableHandle* cdc_table, QLWriteRequestMsg* req,
     const bool replace_full_map = false) {
   SerializeEntry(entry.key, cdc_table, req);
 
@@ -127,7 +128,7 @@ void SerializeEntry(
   }
 
   if (replace_full_map) {
-    QLMapValuePB* map_value_pb = nullptr;
+    QLMapValueMsg* map_value_pb = nullptr;
     auto get_map_value_pb = [&map_value_pb, &req, &cdc_table]() {
       if (!map_value_pb) {
         map_value_pb = client::AddMapColumn(req, cdc_table->ColumnId(kCdcData));

@@ -570,11 +570,10 @@ Status KvStoreInfo::MergeWithRestored(
     post_split_compaction_file_number_upper_bound.reset();
   }
 
-  return RestoreMissingValuesAndMergeTableSchemaPackings(
-      snapshot_kvstoreinfo, primary_table_id, colocated, overwrite);
+  return MergeTableSchemaPackings(snapshot_kvstoreinfo, primary_table_id, colocated, overwrite);
 }
 
-Status KvStoreInfo::RestoreMissingValuesAndMergeTableSchemaPackings(
+Status KvStoreInfo::MergeTableSchemaPackings(
     const KvStoreInfoPB& snapshot_kvstoreinfo, const TableId& primary_table_id, bool colocated,
     dockv::OverwriteSchemaPacking overwrite) {
   if (!colocated) {
@@ -602,20 +601,12 @@ Status KvStoreInfo::RestoreMissingValuesAndMergeTableSchemaPackings(
           "Only vector indexes could be colocated to the non colocated table: $0",
           table_info->ToString());
     }
-    if (overwrite) {
-      auto schema = tables.begin()->second->doc_read_context->mutable_schema();
-      schema->UpdateMissingValuesFrom(primary_table_info->schema().columns());
-    }
     return Status::OK();
   }
 
   for (const auto& snapshot_table_pb : snapshot_kvstoreinfo.tables()) {
     TableInfo* target_table = VERIFY_RESULT(FindMatchingTable(snapshot_table_pb, primary_table_id));
     if (target_table != nullptr) {
-      auto schema = target_table->doc_read_context->mutable_schema();
-      if (overwrite) {
-        schema->UpdateMissingValuesFrom(snapshot_table_pb.schema().columns());
-      }
       RETURN_NOT_OK(target_table->MergeSchemaPackings(snapshot_table_pb, overwrite));
     }
   }
@@ -801,7 +792,7 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::TEST_LoadOrCreate(
 }
 
 template <class TablesMap>
-Status MakeTableNotFound(const TableId& table_id, const RaftGroupId& raft_group_id,
+Status MakeTableNotFound(TableIdView table_id, const RaftGroupId& raft_group_id,
                          const TablesMap& tables, const char* file_name, int line_number) {
   std::string table_name = "<unknown_table_name>";
   if (!table_id.empty()) {
@@ -834,12 +825,12 @@ Status MakeColocatedTableNotFound(
   return STATUS(NotFound, msg);
 }
 
-Result<TableInfoPtr> RaftGroupMetadata::GetTableInfo(const TableId& table_id) const {
+Result<TableInfoPtr> RaftGroupMetadata::GetTableInfo(TableIdView table_id) const {
   std::lock_guard lock(data_mutex_);
   return GetTableInfoUnlocked(table_id);
 }
 
-Result<TableInfoPtr> RaftGroupMetadata::GetTableInfoUnlocked(const TableId& table_id) const {
+Result<TableInfoPtr> RaftGroupMetadata::GetTableInfoUnlocked(TableIdView table_id) const {
   const auto& tables = kv_store_.tables;
 
   const auto& id = !table_id.empty() ? table_id : primary_table_id_;
@@ -1249,6 +1240,9 @@ Status RaftGroupMetadata::MergeWithRestored(
   RETURN_NOT_OK(ReadSuperBlockFromDisk(&snapshot_superblock, path));
   LOG_WITH_FUNC(INFO) << "Snapshot superblock: " << AsString(snapshot_superblock);
   std::lock_guard lock(data_mutex_);
+  KvStoreInfoPB restore_side_kv_store_pb;
+  kv_store_.ToPB(primary_table_id_, &restore_side_kv_store_pb);
+  LOG_WITH_FUNC(INFO) << "Kv store at restore side: " << AsString(restore_side_kv_store_pb);
   return kv_store_.MergeWithRestored(
       snapshot_superblock.kv_store(), primary_table_id_, colocated_, overwrite);
 }
@@ -1854,7 +1848,7 @@ TabletDataState RaftGroupMetadata::tablet_data_state() const {
   return tablet_data_state_;
 }
 
-std::array<TabletId, kDefaultNumSplitParts> RaftGroupMetadata::split_child_tablet_ids() const {
+std::vector<TabletId> RaftGroupMetadata::split_child_tablet_ids() const {
   std::lock_guard lock(data_mutex_);
   return split_child_tablet_ids_;
 }
@@ -1873,12 +1867,12 @@ OpId RaftGroupMetadata::GetOpIdToDeleteAfterAllApplied() const {
 }
 
 void RaftGroupMetadata::SetSplitDone(
-    const OpId& op_id, const TabletId& child1, const TabletId& child2) {
+    const OpId& op_id, const std::vector<TabletId>& children) {
   std::lock_guard lock(data_mutex_);
   tablet_data_state_ = TabletDataState::TABLET_DATA_SPLIT_COMPLETED;
   split_op_id_ = op_id;
-  split_child_tablet_ids_[0] = child1;
-  split_child_tablet_ids_[1] = child2;
+  CHECK_EQ(kDefaultNumSplitParts, children.size());
+  split_child_tablet_ids_ = children;
 }
 
 void RaftGroupMetadata::MarkClonesAttemptedUpTo(uint32_t clone_request_seq_no) {
@@ -1909,6 +1903,10 @@ void RaftGroupMetadata::RegisterRestoration(const TxnSnapshotRestorationId& rest
     split_op_id_ = OpId();
     split_child_tablet_ids_[0] = std::string();
     split_child_tablet_ids_[1] = std::string();
+  }
+  if (std::find(active_restorations_.begin(), active_restorations_.end(), restoration_id) !=
+      active_restorations_.end()) {
+    return;
   }
   active_restorations_.push_back(restoration_id);
 }

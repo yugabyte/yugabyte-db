@@ -394,7 +394,7 @@ class TSLocalLockManager::Impl {
     Status status_;
   };
 
-  Status ReleaseObjectLocks(
+  Result<docdb::TxnBlockedTableLockRequests> ReleaseObjectLocks(
       const tserver::ReleaseObjectLockRequestPB& req, CoarseTimePoint deadline) {
     RETURN_NOT_OK(CheckShutdown());
     RETURN_NOT_OK(WaitUntilBootstrapped(deadline));
@@ -428,9 +428,9 @@ class TSLocalLockManager::Impl {
       }
     }
 
-    object_lock_manager_.Unlock(object_lock_owner);
+    auto was_a_blocker = object_lock_manager_.Unlock(object_lock_owner);
     lock_tracker_->UntrackAllLocks(txn, req.subtxn_id());
-    return Status::OK();
+    return was_a_blocker;
   }
 
   void Poll() {
@@ -613,7 +613,7 @@ void TSLocalLockManager::AcquireObjectLocksAsync(
   impl_->DoAcquireObjectLocksAsync(req, deadline, std::move(callback), WaitForBootstrap::kTrue);
 }
 
-Status TSLocalLockManager::ReleaseObjectLocks(
+Result<docdb::TxnBlockedTableLockRequests> TSLocalLockManager::ReleaseObjectLocks(
     const tserver::ReleaseObjectLockRequestPB& req, CoarseTimePoint deadline) {
   DVLOG_WITH_FUNC(4) << "Dumping before release : " << impl_->DumpLocksToHtml();
   auto ret = impl_->ReleaseObjectLocks(req, deadline);

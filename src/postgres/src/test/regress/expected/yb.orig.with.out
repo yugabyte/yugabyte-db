@@ -1,3 +1,25 @@
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set filename :abs_srcdir '/yb_commands/explainrun.sql'
+\i :filename
+-- A helper script to explain and run a query.  Use in regress tests by
+-- defining :explain, :query, and optionally :hint#.
+\set explain1 ':explain :hint1 :query;'
+\set explain2 ':explain1 :explain :hint2 :query;'
+\set explain3 ':explain2 :explain :hint3 :query;'
+\set explain4 ':explain3 :explain :hint4 :query;'
+\set explain5 ':explain4 :explain :hint5 :query;'
+\set explain1run1 ':explain1; :hint1 :query;'
+\set explain2run2 ':explain2; :hint1 :query; :hint2 :query;'
+\set explain3run3 ':explain3; :hint1 :query; :hint2 :query; :hint3 :query;'
+\set explain4run4 ':explain4; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query;'
+\set explain5run5 ':explain5; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query; :hint5 :query;'
+-- Default to no hints.
+\set hint1 ''
+\set hint2 ''
+\set hint3 ''
+\set hint4 ''
+\set hint5 ''
+\set explain 'EXPLAIN (COSTS OFF)'
 /* Test A */
 drop table if exists a;
 NOTICE:  table "a" does not exist, skipping
@@ -7,10 +29,11 @@ create table a (i int unique);
 create table b (i int unique);
 insert into a values (1);
 insert into b values (2);
-EXPLAIN (costs off)
-with w(i) as (
+SELECT 'with w(i) as (
     insert into a values (1) on conflict on constraint a_i_key do update set i = 10 returning i
-) insert into b values (2) on conflict on constraint b_i_key do update set i = (select 20 from w);
+) insert into b values (2) on conflict on constraint b_i_key do update set i = (select 20 from w)'
+AS query \gset
+:explain1run1
                  QUERY PLAN                  
 ---------------------------------------------
  Insert on b
@@ -26,17 +49,15 @@ with w(i) as (
    ->  Result *RESULT*_1
 (11 rows)
 
-with w(i) as (
-    insert into a values (1) on conflict on constraint a_i_key do update set i = 10 returning i
-) insert into b values (2) on conflict on constraint b_i_key do update set i = (select 20 from w);
 /* Test B */
 drop table if exists a;
 create table a (i int unique);
 insert into a values (1), (2);
-EXPLAIN (costs off)
-with w(i) as (
+SELECT 'with w(i) as (
     insert into a values (1) on conflict on constraint a_i_key do update set i = 10 returning i
-) insert into a values (2) on conflict on constraint a_i_key do update set i = (select 20 from w);
+) insert into a values (2) on conflict on constraint a_i_key do update set i = (select 20 from w)'
+AS query \gset
+:explain1run1
                  QUERY PLAN                  
 ---------------------------------------------
  Insert on a
@@ -52,19 +73,17 @@ with w(i) as (
    ->  Result *RESULT*_1
 (11 rows)
 
-with w(i) as (
-    insert into a values (1) on conflict on constraint a_i_key do update set i = 10 returning i
-) insert into a values (2) on conflict on constraint a_i_key do update set i = (select 20 from w);
 /* Test C */
 drop table if exists a;
 create table a (i int unique);
 insert into a values (1), (2), (3);
-EXPLAIN (costs off)
-with w(i) as (
+SELECT 'with w(i) as (
     insert into a values (1) on conflict on constraint a_i_key do update set i = 10 returning i
 ), x(i) as (
     insert into a values (2) on conflict on constraint a_i_key do update set i = 20 returning i
-) insert into a values (3) on conflict on constraint a_i_key do update set i = (select 30 from w);
+) insert into a values (3) on conflict on constraint a_i_key do update set i = (select 30 from w)'
+AS query \gset
+:explain1run1
                  QUERY PLAN                  
 ---------------------------------------------
  Insert on a
@@ -85,8 +104,3 @@ with w(i) as (
    ->  Result *RESULT*_2
 (16 rows)
 
-with w(i) as (
-    insert into a values (1) on conflict on constraint a_i_key do update set i = 10 returning i
-), x(i) as (
-    insert into a values (2) on conflict on constraint a_i_key do update set i = 20 returning i
-) insert into a values (3) on conflict on constraint a_i_key do update set i = (select 30 from w);

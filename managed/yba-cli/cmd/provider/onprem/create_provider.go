@@ -66,6 +66,21 @@ var createOnpremProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
+		skipProvisioning, err := cmd.Flags().GetBool("skip-provisioning")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
+		// SSH user is required only when skip-provisioning is false
+		if !skipProvisioning && util.IsEmptyString(sshUser) {
+			logrus.Fatalf(
+				formatter.Colorize(
+					"SSH user is required when skip-provisioning is false\n",
+					formatter.RedColor,
+				),
+			)
+		}
+
 		sshPort, err := cmd.Flags().GetInt("ssh-port")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -76,7 +91,7 @@ var createOnpremProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		var sshFileContent string
-		if len(strings.TrimSpace(keyPairName)) != 0 {
+		if !util.IsEmptyString(keyPairName) {
 
 			filePath, err := cmd.Flags().GetString("ssh-keypair-file-path")
 			if err != nil {
@@ -108,10 +123,6 @@ var createOnpremProviderCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		skipProvisioning, err := cmd.Flags().GetBool("skip-provisioning")
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
 
 		installNodeExporter, err := cmd.Flags().GetBool("install-node-exporter")
 		if err != nil {
@@ -131,6 +142,11 @@ var createOnpremProviderCmd = &cobra.Command{
 		}
 
 		ybHomeDir, err := cmd.Flags().GetString("yb-home-dir")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
+		useClockbound, err := cmd.Flags().GetBool("use-clockbound")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -162,19 +178,20 @@ var createOnpremProviderCmd = &cobra.Command{
 		requestBody := ybaclient.Provider{
 			Code:          util.GetStringPointer(providerCode),
 			Name:          util.GetStringPointer(providerName),
-			AllAccessKeys: &allAccessKeys,
+			AllAccessKeys: allAccessKeys,
 			Regions:       buildOnpremRegions(regions, zones),
 			Details: &ybaclient.ProviderDetails{
 				AirGapInstall: util.GetBoolPointer(airgapInstall),
 				CloudInfo: &ybaclient.CloudInfo{
 					Onprem: &ybaclient.OnPremCloudInfo{
-						YbHomeDir: util.GetStringPointer(ybHomeDir),
+						YbHomeDir:     util.GetStringPointer(ybHomeDir),
+						UseClockbound: util.GetBoolPointer(useClockbound),
 					},
 				},
 				InstallNodeExporter:    util.GetBoolPointer(installNodeExporter),
 				NodeExporterPort:       util.GetInt32Pointer(int32(nodeExporterPort)),
 				NodeExporterUser:       util.GetStringPointer(nodeExporterUser),
-				NtpServers:             util.StringSliceFromString(ntpServers),
+				NtpServers:             ntpServers,
 				PasswordlessSudoAccess: util.GetBoolPointer(passwordlessSudoAccess),
 				SkipProvisioning:       util.GetBoolPointer(skipProvisioning),
 				SshPort:                util.GetInt32Pointer(int32(sshPort)),
@@ -184,9 +201,7 @@ var createOnpremProviderCmd = &cobra.Command{
 		rTask, response, err := authAPI.CreateProvider().
 			CreateProviderRequest(requestBody).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err,
-				"Provider: On-premises", "Create")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Provider: On-premises", "Create")
 		}
 
 		providerutil.WaitForCreateProviderTask(authAPI,
@@ -209,8 +224,10 @@ func init() {
 			formatter.Colorize("One of ssh-keypair-file-path or ssh-keypair-file-contents "+
 				"is required if --ssh-keypair-name is provided.",
 				formatter.GreenColor)))
-	createOnpremProviderCmd.Flags().String("ssh-user", "", "[Required] SSH User.")
-	createOnpremProviderCmd.MarkFlagRequired("ssh-user")
+	createOnpremProviderCmd.Flags().String("ssh-user", "",
+		"[Optional] SSH User to access YugabyteDB nodes. "+
+			formatter.Colorize("Required when --skip-provisioning is false.",
+				formatter.GreenColor))
 
 	createOnpremProviderCmd.Flags().Int("ssh-port", 22,
 		"[Optional] SSH Port.")
@@ -257,6 +274,9 @@ func init() {
 			"as comma-separated values.")
 	createOnpremProviderCmd.Flags().String("yb-home-dir", "",
 		"[Optional] YB Home directory.")
+	createOnpremProviderCmd.Flags().Bool("use-clockbound", false,
+		"[Optional] Configure and use ClockBound for clock synchronization. "+
+			"Requires ClockBound to be set up on the nodes. (default false)")
 
 }
 

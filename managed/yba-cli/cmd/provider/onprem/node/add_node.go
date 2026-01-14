@@ -7,13 +7,11 @@ package node
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	ybaclient "github.com/yugabyte/platform-go-client"
-	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/provider/providerutil"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/universeutil"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
@@ -54,9 +52,7 @@ var addNodesCmd = &cobra.Command{
 			ProviderCode(util.OnpremProviderType)
 		r, response, err := providerListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response, err, "Node Instance", "Add - Fetch Provider")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Node Instance", "Add - Fetch Provider")
 		}
 		if len(r) < 1 {
 			logrus.Fatalf(
@@ -82,11 +78,7 @@ var addNodesCmd = &cobra.Command{
 			providerUUID,
 			instanceType).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response, err,
-				"Node Instance",
-				"Add - Fetch Instance Type")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Node Instance", "Add - Fetch Instance Type")
 		}
 
 		if !rInstanceType.GetActive() {
@@ -133,16 +125,10 @@ var addNodesCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		nodeConfigs, err := cmd.Flags().GetStringArray("node-configs")
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-
 		node := ybaclient.NodeInstanceData{
 			InstanceName: instanceName,
 			InstanceType: instanceType,
 			Ip:           nodeIP,
-			NodeConfigs:  buildNodeConfig(nodeConfigs),
 			Region:       region,
 			Zone:         zone,
 			SshUser:      sshUser,
@@ -157,9 +143,10 @@ var addNodesCmd = &cobra.Command{
 		rCreate, response, err := authAPI.CreateNodeInstance(azUUID).
 			NodeInstance(requestBody).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Node Instance", "Add")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Node Instance", "Add")
 		}
+
+		util.CheckAndDereference(rCreate, "Failed to add node instance to provider")
 
 		nodesCtx := formatter.Context{
 			Command: "add",
@@ -173,7 +160,7 @@ var addNodesCmd = &cobra.Command{
 			providerUUID)
 
 		var nodeInstance ybaclient.NodeInstance
-		for _, n := range rCreate {
+		for _, n := range *rCreate {
 			nodeInstance = n
 		}
 
@@ -186,7 +173,7 @@ var addNodesCmd = &cobra.Command{
 				details.GetClusters(),
 				util.PrimaryClusterType,
 			)
-			if primaryCluster == (ybaclient.Cluster{}) {
+			if universeutil.IsClusterEmpty(primaryCluster) {
 				logrus.Debug(
 					formatter.Colorize(
 						fmt.Sprintf(
@@ -204,13 +191,7 @@ var addNodesCmd = &cobra.Command{
 			}
 		}
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"Node Instance",
-				"Add - Fetch Universes",
-			)
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Node Instance", "Add - Fetch Universes")
 		}
 		onprem.Write(nodesCtx, nodeInstanceList)
 
@@ -236,13 +217,6 @@ func init() {
 		"[Optional] Node name given by the user.")
 	addNodesCmd.Flags().String("ssh-user", "",
 		"[Optional] SSH user to access the node instances.")
-	addNodesCmd.Flags().StringArray("node-configs", []string{},
-		"[Optional] Node configurations. Provide the following "+
-			"double colon (::) separated fields as key-value pairs: "+
-			"\"type=<type>::value=<value>\". Each config needs to be "+
-			"added using a separate --node-configs flag. "+
-			"Example: --node-configs type=S3CMD::value=<value> "+
-			"--node-configs type=CPU_CORES::value=<value>")
 
 	addNodesCmd.MarkFlagRequired("instance-type")
 	addNodesCmd.MarkFlagRequired("ip")
@@ -257,9 +231,12 @@ func fetchRegionUUIDFromRegionName(authAPI *ybaAuthClient.AuthAPIClient,
 	var err error
 	r, response, err := authAPI.GetRegion(providerUUID).Execute()
 	if err != nil {
-		errMessage := util.ErrorFromHTTPResponse(response, err, "Node Instance",
-			"Add - Fetch Regions")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		errMessage := util.ErrorFromHTTPResponse(
+			response,
+			err,
+			"Node Instance",
+			"Add - Fetch Regions",
+		)
 		return "", errMessage
 	}
 	for _, region := range r {
@@ -278,9 +255,7 @@ func fetchZoneUUIDFromZoneName(authAPI *ybaAuthClient.AuthAPIClient,
 	regionUUID, azName string) (string, error) {
 	r, response, err := authAPI.ListOfAZ(providerUUID, regionUUID).Execute()
 	if err != nil {
-		errMessage := util.ErrorFromHTTPResponse(response, err, "Node Instance",
-			"Add - Fetch AZs")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		errMessage := util.ErrorFromHTTPResponse(response, err, "Node Instance", "Add - Fetch AZs")
 		return "", errMessage
 	}
 	for _, az := range r {
@@ -291,56 +266,4 @@ func fetchZoneUUIDFromZoneName(authAPI *ybaAuthClient.AuthAPIClient,
 	return "", fmt.Errorf(
 		"No availability zone %s found in region %s (%s) of provider %s (%s)",
 		azName, regionName, regionUUID, providerName, providerUUID)
-}
-
-func buildNodeConfig(nodeConfigsStrings []string) *[]ybaclient.NodeConfig {
-	if len(nodeConfigsStrings) == 0 {
-		return nil
-	}
-	res := make([]ybaclient.NodeConfig, 0)
-	for _, nodeConfigString := range nodeConfigsStrings {
-		nodeConfig := map[string]string{}
-		for _, nInfo := range strings.Split(nodeConfigString, util.Separator) {
-			kvp := strings.Split(nInfo, "=")
-			if len(kvp) != 2 {
-				logrus.Fatalln(
-					formatter.Colorize("Incorrect format in node config description.\n",
-						formatter.RedColor))
-			}
-			key := kvp[0]
-			val := kvp[1]
-			switch key {
-			case "type":
-				if len(strings.TrimSpace(val)) != 0 {
-					nodeConfig["type"] = val
-				} else {
-					providerutil.ValueNotFoundForKeyError(key)
-				}
-			case "value":
-				if len(strings.TrimSpace(val)) != 0 {
-					nodeConfig["value"] = val
-				} else {
-					providerutil.ValueNotFoundForKeyError(key)
-				}
-			}
-		}
-		if _, ok := nodeConfig["type"]; !ok {
-			logrus.Fatalln(
-				formatter.Colorize("Type not specified in node config.\n",
-					formatter.RedColor))
-		}
-		if _, ok := nodeConfig["value"]; !ok {
-			logrus.Fatalln(
-				formatter.Colorize("Value not specified in node config.\n",
-					formatter.RedColor))
-		}
-
-		r := ybaclient.NodeConfig{
-			Type:  nodeConfig["type"],
-			Value: nodeConfig["value"],
-		}
-		res = append(res, r)
-
-	}
-	return &res
 }

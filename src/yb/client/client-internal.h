@@ -277,7 +277,7 @@ class YBClient::Data {
                         CoarseTimePoint deadline,
                         YBTableInfo* info);
   Status GetTableSchema(YBClient* client,
-                        const TableId& table_id,
+                        TableIdView table_id,
                         CoarseTimePoint deadline,
                         YBTableInfo* info,
                         master::IncludeHidden include_hidden = master::IncludeHidden::kFalse,
@@ -290,7 +290,7 @@ class YBClient::Data {
                         master::IncludeHidden include_hidden = master::IncludeHidden::kFalse,
                         master::GetTableSchemaResponsePB* resp_ignored = nullptr);
   Status GetTableSchema(YBClient* client,
-                        const TableId& table_id,
+                        TableIdView table_id,
                         CoarseTimePoint deadline,
                         std::shared_ptr<YBTableInfo> info,
                         StatusCallback callback,

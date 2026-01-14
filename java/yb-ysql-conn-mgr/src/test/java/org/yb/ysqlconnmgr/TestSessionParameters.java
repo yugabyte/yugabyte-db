@@ -133,7 +133,7 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
     new SessionParameter("transaction_isolation", "read committed",
       "read committed", "serializable",
       new ExceptionType[] { ExceptionType.YB_CACHE_MAPPING, ExceptionType.TRANSACTION_SKIP,
-        ExceptionType.SET_UNIQUE }),
+        ExceptionType.SET_UNIQUE, ExceptionType.INVALID_STARTUP }),
     new SessionParameter("geqo", "on", "off",
       new ExceptionType[] {}),
     new SessionParameter("statement_timeout", "0", "999",
@@ -142,7 +142,8 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
       new ExceptionType[] { ExceptionType.TIME_UNIT }),
     new SessionParameter("idle_in_transaction_session_timeout", "0", "999",
       new ExceptionType[] { ExceptionType.TIME_UNIT }),
-    new SessionParameter("extra_float_digits", "1", "2",
+    // JDBC sets this to be default value of 2 in startup packet
+    new SessionParameter("extra_float_digits", "2", "3",
       new ExceptionType[] { ExceptionType.EXTRA_FLOAT_DIGITS, ExceptionType.INVALID_STARTUP }),
     new SessionParameter("default_statistics_target", "100", "200",
       new ExceptionType[] {}),

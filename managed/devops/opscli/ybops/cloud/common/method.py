@@ -1225,12 +1225,15 @@ class ChangeInstanceTypeMethod(AbstractInstancesMethod):
         finally:
             if args.boot_script is not None:
                 self.cloud.update_user_data(args)
-            server_ports = self.get_server_ports_to_check(args)
-            self.cloud.start_instance(host_info, server_ports)
+            self._start_instance(args, host_info)
             logging.info('Instance {} is started'.format(args.search_pattern))
         # Make sure we are using the updated cgroup value if instance type is changing.
         if args.pg_max_mem_mb > 0:
             self.cloud.setup_ansible(args).run("setup-cgroup.yml", self.extra_vars, host_info)
+
+    def _start_instance(self, args, host_info):
+        server_ports = self.get_server_ports_to_check(args)
+        self.cloud.start_instance(host_info, server_ports)
 
 
 class CronCheckMethod(AbstractInstancesMethod):
@@ -1672,9 +1675,9 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
             files = os.listdir(args.local_gflag_files_path)
             remote_shell = RemoteShell(self.extra_vars)
             # Delete the gFlag file directory in case already present in remote
-            remote_shell.exec_command("rm -rf {}".format(args.remote_gflag_files_path))
+            remote_shell.check_exec_command("rm -rf {}".format(args.remote_gflag_files_path))
             # Create the gFlag file directory before copying the file.
-            remote_shell.exec_command("mkdir -p {}".format(args.remote_gflag_files_path))
+            remote_shell.check_exec_command("mkdir -p {}".format(args.remote_gflag_files_path))
             for file in files:
                 src_file = os.path.join(args.local_gflag_files_path, file)
                 dest_file = os.path.join(args.remote_gflag_files_path, file)

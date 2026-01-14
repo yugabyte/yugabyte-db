@@ -15,10 +15,8 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetNodeState;
-import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
-import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -61,21 +59,14 @@ public class VMImageUpgrade extends UpgradeTaskBase {
   private final Map<UUID, Map<String, String>> replacementRootVolumes = new ConcurrentHashMap<>();
   private final Map<UUID, String> replacementRootDevices = new ConcurrentHashMap<>();
 
-  private final RuntimeConfGetter confGetter;
-  private final ImageBundleUtil imageBundleUtil;
   private final XClusterUniverseService xClusterUniverseService;
 
   private volatile RuntimeInfo runtimeInfo;
 
   @Inject
   protected VMImageUpgrade(
-      BaseTaskDependencies baseTaskDependencies,
-      RuntimeConfGetter confGetter,
-      ImageBundleUtil imageBundleUtil,
-      XClusterUniverseService xClusterUniverseService) {
+      BaseTaskDependencies baseTaskDependencies, XClusterUniverseService xClusterUniverseService) {
     super(baseTaskDependencies);
-    this.confGetter = confGetter;
-    this.imageBundleUtil = imageBundleUtil;
     this.xClusterUniverseService = xClusterUniverseService;
   }
 

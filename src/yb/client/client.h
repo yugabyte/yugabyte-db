@@ -115,6 +115,7 @@ struct CDCSDKStreamInfo {
   ReplicationSlotName cdcsdk_ysql_replication_slot_name;
   std::string cdcsdk_ysql_replication_slot_plugin_name;
   tserver::PGReplicationSlotLsnType replication_slot_lsn_type;
+  bool allow_tables_without_primary_key;
   std::unordered_map<std::string, std::string> options;
 
   template <class PB>
@@ -130,6 +131,7 @@ struct CDCSDKStreamInfo {
     if (replication_slot_lsn_type) {
       pb->set_yb_lsn_type(replication_slot_lsn_type);
     }
+    pb->set_allow_tables_without_primary_key(allow_tables_without_primary_key);
   }
 
   template <class PB>
@@ -149,6 +151,7 @@ struct CDCSDKStreamInfo {
         .cdcsdk_ysql_replication_slot_plugin_name = pb.cdcsdk_ysql_replication_slot_plugin_name(),
         .replication_slot_lsn_type = GetPGReplicationSlotLsnType(
             pb.cdc_stream_info_options().cdcsdk_ysql_replication_slot_lsn_type()),
+        .allow_tables_without_primary_key = pb.allow_tables_without_primary_key(),
         .options = std::move(options)};
 
     return stream_info;
@@ -912,7 +915,7 @@ class YBClient {
       master::GetTableSchemaResponsePB* resp = nullptr);
 
   void OpenTableAsync(const YBTableName& table_name, const OpenTableAsyncCallback& callback);
-  void OpenTableAsync(const TableId& table_id, const OpenTableAsyncCallback& callback,
+  void OpenTableAsync(TableIdView table_id, const OpenTableAsyncCallback& callback,
                       master::IncludeHidden include_hidden = master::IncludeHidden::kFalse,
                       master::GetTableSchemaResponsePB* resp = nullptr);
 

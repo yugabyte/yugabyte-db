@@ -56,13 +56,7 @@ var downloadSupportBundleUniverseCmd = &cobra.Command{
 
 		bundle, response, err := authAPI.GetSupportBundle(universeUUID, uuid).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"Universe: Support Bundle",
-				"Download - Get Bundle",
-			)
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Universe: Support Bundle", "Download - Get Bundle")
 		}
 
 		if bundle.GetBundleUUID() == "" {
@@ -97,13 +91,7 @@ var downloadSupportBundleUniverseCmd = &cobra.Command{
 
 		rDownload, response, err := authAPI.DownloadSupportBundle(universeUUID, uuid).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"Universe: Support Bundle",
-				"Download",
-			)
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Universe: Support Bundle", "Download")
 		}
 
 		path, err := cmd.Flags().GetString("path")

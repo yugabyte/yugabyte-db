@@ -63,7 +63,7 @@ var createGCPEARCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(location)) != 0 {
+		if !util.IsEmptyString(location) {
 			requestBody[util.GCPLocationIDField] = location
 		}
 
@@ -71,7 +71,7 @@ var createGCPEARCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(endpoint)) != 0 {
+		if !util.IsEmptyString(endpoint) {
 			requestBody[util.GCPKmsEndpointField] = endpoint
 		}
 
@@ -79,7 +79,7 @@ var createGCPEARCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(keyRingName)) != 0 {
+		if !util.IsEmptyString(keyRingName) {
 			requestBody[util.GCPKeyRingIDField] = keyRingName
 		}
 
@@ -87,7 +87,7 @@ var createGCPEARCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(cryptoKeyName)) != 0 {
+		if !util.IsEmptyString(cryptoKeyName) {
 			requestBody[util.GCPCryptoKeyIDField] = cryptoKeyName
 		}
 
@@ -95,15 +95,14 @@ var createGCPEARCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(protectionLevel)) != 0 {
+		if !util.IsEmptyString(protectionLevel) {
 			requestBody[util.GCPProtectionLevelField] = strings.ToUpper(protectionLevel)
 		}
 
 		rTask, response, err := authAPI.CreateKMSConfig(util.GCPEARType).
 			KMSConfig(requestBody).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "EAR: GCP", "Create")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "EAR: GCP", "Create")
 		}
 
 		earutil.WaitForCreateEARTask(authAPI,

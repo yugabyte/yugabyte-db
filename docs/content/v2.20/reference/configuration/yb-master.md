@@ -359,15 +359,17 @@ When the server restarts from a previous crash, if the tablet's last WAL file si
 
 Default: The default value in `2.18.1` is `-1` - feature is disabled by default. The default value starting from `2.19.1` is `524288` (0.5 MB) - feature is enabled by default.
 
-## Load balancing flags
+## Cluster balancing flags
 
-For information on YB-Master load balancing, see [Data placement and load balancing](../../../architecture/yb-master/#data-placement-and-load-balancing).
+For information on YB-Master cluster balancing, see [Cluster balancing](../../../architecture/yb-master/#cluster-balancing).
 
-For load balancing commands in `yb-admin`, see [Rebalancing commands (yb-admin)](../../../admin/yb-admin/#rebalancing-commands).
+For cluster balancing commands in yb-admin, see [Cluster balancing commands (yb-admin)](../../../admin/yb-admin/#cluster-balancing-commands).
+
+For detailed information on cluster balancing scenarios, monitoring, and configuration, see [Cluster balancing](../../../architecture/docdb-sharding/cluster-balancing/).
 
 ##### --enable_load_balancing
 
-Enables or disables the load balancing algorithm, to move tablets around.
+Enables or disables the cluster balancing algorithm, to move tablets around.
 
 Default: `true`
 
@@ -385,25 +387,25 @@ Default: `3000` (3 seconds)
 
 ##### --load_balancer_max_concurrent_adds
 
-Specifies the maximum number of tablet peer replicas to add in a load balancer operations.
+Specifies the maximum number of tablet peer replicas to add in a cluster balancer operations.
 
 Default: `1`
 
 ##### --load_balancer_max_concurrent_moves
 
-Specifies the maximum number of tablet leaders on tablet servers (across the cluster) to move in a load balancer operation.
+Specifies the maximum number of tablet leaders on tablet servers (across the cluster) to move in any one run of the cluster balancer.
 
 Default: `2`
 
 ##### --load_balancer_max_concurrent_moves_per_table
 
-Specifies the maximum number of tablet leaders per table to move in any one run of the load balancer. The maximum number of tablet leader moves across the cluster is still limited by the flag `load_balancer_max_concurrent_moves`. This flag is meant to prevent a single table from using all of the leader moves quota and starving other tables.
+Specifies the maximum number of tablet leaders per table to move in any one run of the cluster balancer. The maximum number of tablet leader moves across the cluster is still limited by the flag `load_balancer_max_concurrent_moves`. This flag is meant to prevent a single table from using all of the leader moves quota and starving other tables. If set to -1, the number of leader moves per table is set to the global number of leader moves (`load_balancer_max_concurrent_moves`).
 
 Default: `1`
 
 ##### --load_balancer_max_concurrent_removals
 
-Specifies the maximum number of over-replicated tablet peer removals to do in a load balancer operation.
+Specifies the maximum number of over-replicated tablet peer removals to do in any one run of the cluster balancer. A value less than 0 means no limit.
 
 Default: `1`
 
@@ -883,7 +885,7 @@ expensive when the number of yb-tservers, or the number of databases goes up.
 
 ##### --allowed_preview_flags_csv
 
-Comma-separated values (CSV) formatted catalogue of [preview feature](/preview/releases/versioning/#tech-preview-tp) flag names. Preview flags represent experimental or in-development features that are not yet fully supported. Flags that are tagged as "preview" cannot be modified or configured unless they are included in this list.
+Comma-separated values (CSV) formatted catalogue of [preview feature](/stable/releases/versioning/#tech-preview-tp) flag names. Preview flags represent experimental or in-development features that are not yet fully supported. Flags that are tagged as "preview" cannot be modified or configured unless they are included in this list.
 
 By adding a flag to this list, you explicitly acknowledge and accept any potential risks or instability that may arise from modifying these preview features. This process serves as a safeguard, ensuring that you are fully aware of the experimental nature of the flags you are working with.
 

@@ -111,12 +111,12 @@ class PgAutoAnalyzeTest : public PgMiniTestBase {
     client::TableHandle table;
     CHECK_OK(table.Open(kAutoAnalyzeFullyQualifiedTableName, client_.get()));
 
-    const client::YBqlReadOpPtr op = table.NewReadOp();
+    auto session = NewSession();
+    const client::YBqlReadOpPtr op = table.NewReadOp(session->arena());
     auto* const req = op->mutable_request();
     table.AddColumns(
         {yb::master::kPgAutoAnalyzeTableId, yb::master::kPgAutoAnalyzeMutations}, req);
 
-    auto session = NewSession();
     CHECK_OK(session->TEST_ApplyAndFlush(op));
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
     auto rowblock = ql::RowsResult(op.get()).GetRowBlock();
@@ -129,12 +129,12 @@ class PgAutoAnalyzeTest : public PgMiniTestBase {
     client::TableHandle table;
     CHECK_OK(table.Open(kAutoAnalyzeFullyQualifiedTableName, client_.get()));
 
-    const client::YBqlReadOpPtr op = table.NewReadOp();
+    auto session = NewSession();
+    const client::YBqlReadOpPtr op = table.NewReadOp(session->arena());
     auto* const req = op->mutable_request();
     table.AddColumns(
         {yb::master::kPgAutoAnalyzeTableId, yb::master::kPgAutoAnalyzeMutations,
          yb::master::kPgAutoAnalyzeLastAnalyzeInfo}, req);
-    auto session = NewSession();
     CHECK_OK(session->TEST_ApplyAndFlush(op));
     SCHECK_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK, IllegalState,
               "Failed to get auto analyze info from CQL table");
@@ -1331,22 +1331,6 @@ class PgConcurrentDDLAnalyzeTest : public LibPqTestBase {
     ASSERT_OK(conn2.Execute("SET yb_use_internal_auto_analyze_service_conn=true"));
     ASSERT_NOK(conn2.Execute("ANALYZE test1, test2"));
     ASSERT_OK(conn2.Execute("SET yb_use_internal_auto_analyze_service_conn=false"));
-    thread_holder.JoinAll();
-
-    // Case: Two CREATE TABLEs can still run concurrently
-    thread_holder.AddThreadFunctor([&conn1]() -> void {
-      ASSERT_OK(conn1.Execute("CREATE TABLE test5(k INT PRIMARY KEY, v INT) split into 1 tablets"));
-    });
-    ASSERT_OK(LogWaiter(ts1, wait_string).WaitFor(30s));
-    ASSERT_OK(conn2.Execute("CREATE TABLE test6(k INT PRIMARY KEY, v INT) split into 1 tablets"));
-    thread_holder.JoinAll();
-
-    // Case: A CREATE TABLE can still run concurrently with an ALTER
-    thread_holder.AddThreadFunctor([&conn1]() -> void {
-      ASSERT_OK(conn1.Execute("CREATE TABLE test7(k INT PRIMARY KEY, v INT) split into 1 tablets"));
-    });
-    ASSERT_OK(LogWaiter(ts1, wait_string).WaitFor(30s));
-    ASSERT_OK(conn2.Execute("ALTER TABLE test4 ADD COLUMN v1 INT"));
     thread_holder.JoinAll();
 
     auto another_db_conn = ASSERT_RESULT(

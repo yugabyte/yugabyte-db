@@ -103,14 +103,19 @@ func (h *SetupCgroupHandler) Handle(ctx context.Context) (*pb.DescribeTaskRespon
 
 		h.logOut.WriteLine("Configuring cgroup systemd unit")
 		// Copy yb-ysql-cgroup.service.
-		_ = module.CopyFile(
+		_, err = module.CopyFile(
 			ctx,
 			cGroupServiceContext,
-			filepath.Join(ServerTemplateSubpath, YsqlCgroupService),
+			filepath.Join(module.ServerTemplateSubpath, YsqlCgroupService),
 			filepath.Join(h.param.GetYbHomeDir(), module.UserSystemdUnitPath, YsqlCgroupService),
 			fs.FileMode(0755),
 			h.username,
 		)
+		if err != nil {
+			util.FileLogger().
+				Errorf(ctx, "Server control failed for %s - %s", YsqlCgroupService, err.Error())
+			return nil, err
+		}
 
 		err := module.ControlSystemdService(
 			ctx,

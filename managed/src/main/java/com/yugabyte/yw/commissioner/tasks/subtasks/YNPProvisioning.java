@@ -13,12 +13,11 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.FileHelperService;
 import com.yugabyte.yw.common.NodeManager;
-import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
-import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.AdditionalServicesStateData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Customer;
@@ -40,8 +39,6 @@ import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class YNPProvisioning extends NodeTaskBase {
-  private final NodeUniverseManager nodeUniverseManager;
-  private final RuntimeConfGetter confGetter;
   private final CloudQueryHelper queryHelper;
   private final FileHelperService fileHelperService;
   private ShellProcessContext shellContext =
@@ -50,13 +47,9 @@ public class YNPProvisioning extends NodeTaskBase {
   @Inject
   protected YNPProvisioning(
       BaseTaskDependencies baseTaskDependencies,
-      NodeUniverseManager nodeUniverseManager,
-      RuntimeConfGetter confGetter,
       CloudQueryHelper queryHelper,
       FileHelperService fileHelperService) {
     super(baseTaskDependencies);
-    this.nodeUniverseManager = nodeUniverseManager;
-    this.confGetter = confGetter;
     this.queryHelper = queryHelper;
     this.fileHelperService = fileHelperService;
   }
@@ -78,7 +71,7 @@ public class YNPProvisioning extends NodeTaskBase {
     return 2;
   }
 
-  public void getProvisionArguments(
+  public void generateProvisionConfig(
       Universe universe,
       NodeDetails node,
       Provider provider,
@@ -98,6 +91,9 @@ public class YNPProvisioning extends NodeTaskBase {
       ynpNode.put("yb_user_id", "1994");
       ynpNode.put("is_airgap", provider.getDetails().airGapInstall);
       ynpNode.put("is_yb_prebuilt_image", taskParams().isYbPrebuiltImage);
+      ynpNode.put("is_ybcontroller_disabled", !universe.getUniverseDetails().isEnableYbc());
+      ynpNode.put(
+          "node_exporter_port", universe.getUniverseDetails().communicationPorts.nodeExporterPort);
       ynpNode.put(
           "tmp_directory",
           confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory));
@@ -235,6 +231,8 @@ public class YNPProvisioning extends NodeTaskBase {
       shellContext = shellContext.toBuilder().sshUser(taskParams().sshUser).build();
     }
     Path nodeAgentHomePath = Paths.get(taskParams().nodeAgentInstallDir, NodeAgent.NODE_AGENT_DIR);
+    Path nodeAgentScriptsPath = nodeAgentHomePath.resolve("scripts");
+
     Provider provider =
         Provider.getOrBadRequest(
             UUID.fromString(universe.getCluster(node.placementUuid).userIntent.provider));
@@ -248,7 +246,8 @@ public class YNPProvisioning extends NodeTaskBase {
     nodeManager
         .nodeCommand(NodeManager.NodeCommandType.Provision, ansibleParams)
         .processErrors("Dual NIC setup failed");
-
+    boolean disableGolangYnpDriver =
+        confGetter.getGlobalConf(GlobalConfKeys.disableGolangYnpDriver);
     String customTmpDirectory =
         confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory);
     String targetConfigPath =
@@ -257,14 +256,18 @@ public class YNPProvisioning extends NodeTaskBase {
             .toString();
     String tmpDirectory =
         fileHelperService.createTempFile(node.cloudInfo.private_ip + "-", ".json").toString();
-    getProvisionArguments(universe, node, provider, tmpDirectory, nodeAgentHomePath);
+    generateProvisionConfig(universe, node, provider, tmpDirectory, nodeAgentHomePath);
     nodeUniverseManager.uploadFileToNode(
         node, universe, tmpDirectory, targetConfigPath, "755", shellContext);
+    // Copy the conf file to scripts folder and run the provisioning script as in manual onprem.
     StringBuilder sb = new StringBuilder();
-    sb.append("cd ").append(nodeAgentHomePath);
+    sb.append("cd ").append(nodeAgentScriptsPath);
     sb.append(" && mv -f ").append(targetConfigPath);
     sb.append(" config.json && chmod +x node-agent-provision.sh");
     sb.append(" && ./node-agent-provision.sh --extra_vars config.json");
+    if (disableGolangYnpDriver) {
+      sb.append(" --use_python_driver");
+    }
     sb.append(" --cloud_type ").append(node.cloudInfo.cloud);
     if (provider.getDetails().airGapInstall) {
       sb.append(" --is_airgap");

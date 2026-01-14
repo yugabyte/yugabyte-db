@@ -25,6 +25,7 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/pg_types.h"
+#include "yb/common/ql_protocol.messages.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/common/xcluster_util.h"
 #include "yb/common/ysql_utils.h"

@@ -29,7 +29,7 @@ var listNamespaceCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(universeName)) == 0 {
+		if util.IsEmptyString(universeName) {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize("No universe name found to list table namespaces"+
@@ -49,12 +49,7 @@ var listNamespaceCmd = &cobra.Command{
 
 		universeList, response, err := universeListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"Namespace",
-				"List - Fetch Universe")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Namespace", "List - Fetch Universe")
 		}
 
 		if len(universeList) < 1 {
@@ -73,12 +68,7 @@ var listNamespaceCmd = &cobra.Command{
 				universeUUID,
 			).IncludeSystemNamespaces(includeSystemNamespaceInfo).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"Namespace",
-				"List")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Namespace", "List")
 		}
 
 		namespaceName, err := cmd.Flags().GetString("namespace-name")
@@ -87,7 +77,7 @@ var listNamespaceCmd = &cobra.Command{
 		}
 
 		namespaces := make([]ybaclient.NamespaceInfoResp, 0)
-		if len(strings.TrimSpace(namespaceName)) == 0 {
+		if util.IsEmptyString(namespaceName) {
 			namespaces = r
 		} else {
 			for _, namespace := range r {

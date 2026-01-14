@@ -19,7 +19,7 @@ Installing YugabyteDB involves completing prerequisites and downloading the Yuga
 
 ## Download YugabyteDB
 
-The following instructions are for downloading the stable release of YugabyteDB, which is recommended for production deployments. For other versions, see [Releases](/preview/releases/).
+The following instructions are for downloading the stable release of YugabyteDB, which is recommended for production deployments. For other versions, see [Releases](/stable/releases/).
 
 {{<note title="Which release should I use?">}}
 For production deployments, install a stable release.

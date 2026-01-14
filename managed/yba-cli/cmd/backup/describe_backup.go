@@ -71,16 +71,13 @@ var describeBackupCmd = &cobra.Command{
 		backupListRequest := authAPI.ListBackups().PageBackupsRequest(backupAPIQuery)
 		r, response, err := backupListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Backup", "Describe")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Backup", "Describe")
 		}
 
 		storageConfigListRequest := authAPI.GetListOfCustomerConfig()
 		rList, response, err := storageConfigListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response, err, "Backup", "Get - Get Storage Configuration")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Backup", "Get - Get Storage Configuration")
 		}
 
 		backup.StorageConfigs = make([]ybaclient.CustomerConfigUI, 0)

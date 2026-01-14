@@ -17,6 +17,34 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, where `YYYY` is the release year, `M` is the month, and `N` is the number of the release in that month.
 
+## v2025.12.2 - December 30, 2025
+
+### Highlight
+
+- Live migration for PostgreSQL source database (with fall-forward or fall-back using [YugabyteDB Connector](../../additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/)) is {{<tags/feature/ga>}}.
+
+### New features
+
+- The assess-migration command now collects metadata from PostgreSQL primary and replica nodes in parallel, significantly improving assessment performance for multi-node deployments.
+- Added support for User-Defined Types (UDTs) and Array types (including arrays of enums, hstore, and tsvector) with [YugabyteDB Connector](../../additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/) in live migration with fall-back or fall-forward workflows.
+
+### Enhancements
+
+- Enhanced guardrail checks to validate all required permissions in the source database before starting export data. Missing permissions are now clearly reported with specific details, preventing migration failures due to insufficient privileges.
+- Assessment topology in reports. The assessment report now includes topology information about primary and replica nodes assessed, providing better visibility into the scope of the assessment. This information is also sent with call-home diagnostics.
+- Added a new `--primary-only` flag to the assess-migration command for PostgreSQL sources. When specified, the assessment skips read replica discovery and assessment, allowing you to assess only the primary database.
+- Updated the default target YugabyteDB version to `2025.2.0.0`.
+- SAVEPOINT usage detection in migration assessment. The assess-migration command now detects and reports SAVEPOINT usage (SAVEPOINT, ROLLBACK TO SAVEPOINT, and RELEASE SAVEPOINT) in source database transactions. This is important because YugabyteDB CDC has a known limitation where DML operations rolled back via ROLLBACK TO SAVEPOINT are incorrectly emitted as CDC events, which can cause data inconsistencies during fall-forward or fall-back workflows.
+
+### Bug fixes
+
+- Fixed an issue where resumption of live migration could fail for events larger than 20MB with the error string length exceeds the maximum length. The object mapper limits have been increased to 500MB to handle large-sized events during resumption.
+- Fixed a performance issue with large BYTEA type columns during live migration streaming. The value converter now uses StringBuilder instead of string concatenation, improving performance when processing rows with large binary data.
+- Fixed an issue with expression-based unique indexes that are present only on partitions and not on the root table. These indexes are now properly detected and handled, with events for such tables being executed sequentially to prevent conflicts.
+- Fixed an issue with conflict detection cache for partitioned tables where a unique constraint or index is present on leaf partitions but not on the root table. The unique columns from all partitions are now correctly aggregated to the root table for proper conflict detection.
+- Fixed handling of LTREE datatype in live migration streaming changes for all workflows (live migration, fall-forward, and fall-back).
+- Fixed an issue where multi-range type columns (INT4MULTIRANGE, INT8MULTIRANGE, NUMMULTIRANGE, TSMULTIRANGE, TSTZMULTIRANGE, DATEMULTIRANGE) and custom range type columns caused errors during live migration. These column types are now appropriately skipped with a warning.
+
 ## v2025.12.1 - December 9, 2025
 
 {{< note title="Important: Breaking change" >}}

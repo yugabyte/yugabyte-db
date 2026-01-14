@@ -159,7 +159,7 @@ using TablespaceIdToReplicationInfoMap =
 using LeaderStepDownFailureTimes = std::unordered_map<TabletServerId, MonoTime>;
 using TabletReplicaMap = std::unordered_map<TabletServerId, TabletReplica>;
 using TabletToTabletServerMap = std::unordered_map<TabletId, TabletServerId>;
-using TabletInfoMap = std::map<TabletId, TabletInfoPtr>;
+using TabletInfoMap = std::map<TabletId, TabletInfoPtr, std::less<>>;
 struct cloud_hash;
 struct cloud_equal_to;
 using AffinitizedZonesSet = std::unordered_set<CloudInfoPB, cloud_hash, cloud_equal_to>;

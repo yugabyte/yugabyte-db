@@ -688,6 +688,7 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Promotes Auto flags while upgrading YB-DB",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  // FIXME: The milliSeconds suffix does not make sense since the type is Duration.
   public static final ConfKeyInfo<Duration> autoFlagUpdateSleepTimeInMilliSeconds =
       new ConfKeyInfo<>(
           "yb.upgrade.auto_flag_update_sleep_time_ms",

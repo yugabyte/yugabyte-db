@@ -616,9 +616,11 @@ message TabletBootstrapStatePB {
   optional OpIdPB last_op_id = 1;
   repeated ClientReplicatedRetryableRequestRangesPB client_requests = 2;
 
-  reserved 3;
+  // min_running_ht, min_replay_txn_start_ht: old values used for filters that are no longer set or
+  // used.
+  reserved 3, 4;
 
-  optional fixed64 min_replay_txn_start_ht = 4;
+  optional fixed64 min_replay_txn_first_write_ht = 5;
 }
 
 // A Raft implementation.

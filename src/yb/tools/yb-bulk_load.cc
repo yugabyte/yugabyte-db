@@ -22,15 +22,16 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/jsonb.h"
-#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_protocol.messages.h"
 #include "yb/common/ql_value.h"
-#include "yb/dockv/partition.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/docdb/cql_operation.h"
 #include "yb/docdb/doc_operation.h"
 #include "yb/docdb/doc_read_context.h"
+
+#include "yb/dockv/partition.h"
 
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_util.h"
@@ -70,7 +71,7 @@ using yb::client::YBTable;
 using yb::client::YBTableName;
 using yb::docdb::DocWriteBatch;
 using yb::docdb::InitMarkerBehavior;
-using yb::operator"" _GB;
+using yb::operator""_GB;
 
 DEFINE_NON_RUNTIME_string(master_addresses, "",
     "Comma-separated list of YB Master server addresses");
@@ -119,7 +120,7 @@ class BulkLoadTask : public Runnable {
  private:
   Status PopulateColumnValue(const string &column,
                              const DataType data_type,
-                             QLExpressionPB *column_value);
+                             QLExpressionMsg *column_value);
   Status InsertRow(const string &row,
                    const Schema &schema,
                    uint32_t schema_version,
@@ -216,7 +217,7 @@ void BulkLoadTask::Run() {
 
 Status BulkLoadTask::PopulateColumnValue(const string &column,
                                          const DataType data_type,
-                                         QLExpressionPB *column_value) {
+                                         QLExpressionMsg *column_value) {
   auto ql_valuepb = column_value->mutable_value();
   switch (data_type) {
     YB_SET_INT_VALUE(ql_valuepb, column, 8);
@@ -292,7 +293,7 @@ Status BulkLoadTask::InsertRow(const string &row,
       return STATUS_SUBSTITUTE(IllegalState, "Primary key cannot be null: $0", *it);
     }
 
-    QLExpressionPB *column_value = nullptr;
+    QLExpressionMsg *column_value = nullptr;
     if (schema.is_hash_key_column(i)) {
       column_value = req.add_hashed_column_values();
     } else {
@@ -308,7 +309,7 @@ Status BulkLoadTask::InsertRow(const string &row,
     if (skipped_cols_.find(col_id) != skipped_cols_.end()) {
       continue;
     }
-    QLColumnValuePB *column_value = req.add_column_values();
+    auto *column_value = req.add_column_values();
     column_value->set_column_id(narrow_cast<int32_t>(kFirstColumnId + i));
     if (IsNull(*it)) {
       // Use empty value for null.

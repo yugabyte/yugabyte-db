@@ -6,7 +6,6 @@ package hashicorp
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -29,7 +28,7 @@ var updateHashicorpVaultEARCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(configNameFlag)) == 0 {
+		if util.IsEmptyString(configNameFlag) {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize(
@@ -85,24 +84,24 @@ var updateHashicorpVaultEARCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		if len(strings.TrimSpace(roleID)) != 0 {
+		if !util.IsEmptyString(roleID) {
 			logrus.Debug("Updating Hashicorp Vault role ID\n")
 			hasUpdates = true
 			requestBody[util.HashicorpVaultRoleIDField] = roleID
-		} else if len(strings.TrimSpace(token)) != 0 {
+		} else if !util.IsEmptyString(token) {
 			logrus.Debug("Updating Hashicorp Vault token\n")
 			hasUpdates = true
 			requestBody[util.HashicorpVaultTokenField] = token
 		}
 
 		if (requestBody[util.HashicorpVaultRoleIDField] != nil &&
-			len(strings.TrimSpace(requestBody[util.HashicorpVaultRoleIDField].(string))) != 0) ||
+			!util.IsEmptyString(requestBody[util.HashicorpVaultRoleIDField].(string))) ||
 			hashicorp.HcVaultRoleID != "" {
 			namespace, err := cmd.Flags().GetString("auth-namespace")
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
-			if len(strings.TrimSpace(namespace)) != 0 {
+			if !util.IsEmptyString(namespace) {
 				logrus.Debug("Updating Hashicorp Vault auth namespace\n")
 				hasUpdates = true
 				requestBody[util.HashicorpVaultAuthNamespaceField] = namespace
@@ -111,7 +110,7 @@ var updateHashicorpVaultEARCmd = &cobra.Command{
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
-			if len(strings.TrimSpace(secretID)) != 0 {
+			if !util.IsEmptyString(secretID) {
 				logrus.Debug("Updating Hashicorp Vault secret ID\n")
 				hasUpdates = true
 				requestBody[util.HashicorpVaultSecretIDField] = secretID

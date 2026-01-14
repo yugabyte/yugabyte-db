@@ -65,7 +65,7 @@ using dockv::ValueEntryType;
 // Lazily creates iterator on demand.
 struct DocWriteBatch::LazyIterator {
  public:
-  std::unique_ptr<IntentAwareIterator> iterator;
+  IntentAwareIteratorPtr iterator;
   const DocDB* doc_db;
   const DocPath* doc_path;
   const ReadOperationData* read_operation_data;
@@ -484,7 +484,7 @@ Status DocWriteBatch::SetPrimitive(
     const DocPath& doc_path,
     const ValueControlFields& control_fields,
     const ValueRef& value,
-    std::unique_ptr<IntentAwareIterator> intent_iter) {
+    IntentAwareIteratorPtr intent_iter) {
   LazyIterator iter = {
     .iterator = std::move(intent_iter),
     .doc_db = nullptr,
@@ -501,6 +501,10 @@ Status DocWriteBatch::DoSetPrimitive(
     const ValueRef& value,
     LazyIterator* iter,
     std::optional<IntraTxnWriteId> write_id) {
+  VLOG_WITH_FUNC(4)
+      << "doc_path: " << AsString(doc_path) << ", control_fields: " << AsString(control_fields)
+      << ", value: " << AsString(value) << ", write_id: " << AsString(write_id);
+
   DOCDB_DEBUG_LOG("Called SetPrimitive with doc_path=$0, value=$1",
                   doc_path.ToString(), value.ToString());
   current_entry_.doc_hybrid_time.Assign(EncodedDocHybridTime::kMin);
@@ -555,6 +559,10 @@ Status DocWriteBatch::ExtendSubDocument(
     rocksdb::QueryId query_id,
     MonoDelta ttl,
     UserTimeMicros user_timestamp) {
+  VLOG_WITH_FUNC(4)
+      << "doc_path: " << AsString(doc_path) << ", value: " << AsString(value) << ", query_id: "
+      << query_id << ", ttl: " << ttl << ", user_timestamp: " << user_timestamp;
+
   if (value.is_array()) {
     return ExtendList(doc_path, value, read_operation_data, query_id, ttl, user_timestamp);
   }
@@ -573,10 +581,9 @@ Status DocWriteBatch::ExtendSubDocument(
   }
   if (value.is_map()) {
     const auto& map_value = value.value_pb().map_value();
-    int size = map_value.keys().size();
-    for (int i = 0; i != size; ++i) {
+    auto value_it = map_value.values().begin();
+    for (const auto& key : map_value.keys()) {
       DocPath child_doc_path = doc_path;
-      const auto& key = map_value.keys(i);
       if (key.value_case() != QLValuePB::kVirtualValue ||
           key.virtual_value() != QLVirtualValuePB::ARRAY) {
         auto sorting_type =
@@ -591,7 +598,7 @@ Status DocWriteBatch::ExtendSubDocument(
       }
       RETURN_NOT_OK(ExtendSubDocument(
           child_doc_path,
-          ValueRef(map_value.values(i), value),
+          ValueRef(*value_it++, value),
           read_operation_data, query_id, ttl, user_timestamp));
     }
     return Status::OK();
@@ -643,12 +650,12 @@ Status DocWriteBatch::ExtendList(
   int64_t index = std::atomic_fetch_add(monotonic_counter_, static_cast<int64_t>(array.size()));
   // PREPEND - adding in reverse order with negated index
   if (value.list_extend_order() == dockv::ListExtendOrder::PREPEND_BLOCK) {
-    for (auto i = array.size(); i-- > 0;) {
+    for (const auto& elem : std::views::reverse(array)) {
       DocPath child_doc_path = doc_path;
       index++;
       child_doc_path.AddSubKey(KeyEntryValue::ArrayIndex(-index));
       RETURN_NOT_OK(ExtendSubDocument(
-          child_doc_path, ValueRef(array.Get(i), value), read_operation_data, query_id,
+          child_doc_path, ValueRef(elem, value), read_operation_data, query_id,
           ttl, user_timestamp));
     }
   } else {
@@ -924,6 +931,22 @@ void DocWriteBatch::RollbackReservedWriteId(IntraTxnWriteId write_id) {
   put_batch_.pop_back();
 }
 
+Status DocWriteBatch::TEST_SetPrimitive(
+    const dockv::DocPath& doc_path,
+    const QLValuePB& value) {
+  auto arena = SharedThreadSafeArena();
+  return SetPrimitive(doc_path, ValueRef(value));
+}
+
+Status DocWriteBatch::TEST_SetPrimitive(
+    const dockv::DocPath& doc_path,
+    const dockv::ValueControlFields& control_fields,
+    const QLValuePB& value) {
+  auto arena = SharedThreadSafeArena();
+  return SetPrimitive(
+      doc_path, control_fields, ValueRef(value));
+}
+
 // ------------------------------------------------------------------------------------------------
 // Converting a RocksDB write batch to a string.
 // ------------------------------------------------------------------------------------------------
@@ -984,12 +1007,15 @@ const QLValuePB kNullValuePB;
 ValueRef::ValueRef(ValueEntryType value_type) : value_pb_(&kNullValuePB), value_type_(value_type) {
 }
 
+ValueRef::ValueRef(std::reference_wrapper<const Slice> encoded_value)
+    : value_pb_(&kNullValuePB), encoded_value_(&encoded_value.get()) {}
+
 ValueRef::ValueRef(std::reference_wrapper<const dockv::DocVectorValue> vector_value,
                    SortingType sorting_type)
-      : value_pb_(&(vector_value.get().value())),
-        sorting_type_(sorting_type),
-        value_type_(dockv::ValueEntryType::kInvalid),
-        vector_value_(&vector_value.get()) {
+    : value_pb_(&vector_value.get().value()),
+      sorting_type_(sorting_type),
+      value_type_(dockv::ValueEntryType::kInvalid),
+      vector_value_(&vector_value.get()) {
 }
 
 std::string ValueRef::ToString() const {

@@ -41,9 +41,35 @@ using std::string;
 namespace yb {
 namespace ql {
 
+template <class Col, class KeyExtractor>
+void CleanupDuplicates(Col& col, KeyExtractor key_extractor) {
+  std::stable_sort(col.begin(), col.end(), [&key_extractor](const auto& lhs, const auto& rhs) {
+    return *key_extractor(lhs) < *key_extractor(rhs);
+  });
+  auto w = col.begin();
+  if (w == col.end()) {
+    return;
+  }
+  auto p = w;
+  auto first_eq = key_extractor(*w);
+  for (auto it = w; ++it != col.end(); p = it) {
+    auto current = key_extractor(*it);
+    if (*first_eq != *current) {
+      if (p != w) {
+        *w = std::move(*p);
+      }
+      ++w;
+      first_eq = current;
+    }
+  }
+  if (p != w) {
+    *w = std::move(*p);
+  }
+  col.erase(++w, col.end());
+}
 
 Status Executor::PTConstToPB(const PTExpr::SharedPtr& expr,
-                             QLValuePB *const_pb,
+                             QLValueMsg *const_pb,
                              bool negate) {
   if (expr->internal_type() == InternalType::VALUE_NOT_SET) {
     SetNull(const_pb);
@@ -121,7 +147,7 @@ Status Executor::PTConstToPB(const PTExpr::SharedPtr& expr,
   return Status::OK();
 }
 
-Status Executor::PTExprToPB(const PTConstVarInt *const_pt, QLValuePB *const_pb,
+Status Executor::PTExprToPB(const PTConstVarInt *const_pt, QLValueMsg *const_pb,
                             bool negate) {
   switch (const_pt->expected_internal_type()) {
     case InternalType::kInt8Value: {
@@ -227,7 +253,7 @@ Status Executor::PTExprToPB(const PTConstVarInt *const_pt, QLValuePB *const_pb,
   return Status::OK();
 }
 
-Status Executor::PTExprToPB(const PTConstDecimal *const_pt, QLValuePB *const_pb,
+Status Executor::PTExprToPB(const PTConstDecimal *const_pt, QLValueMsg *const_pb,
                             bool negate) {
   switch (const_pt->expected_internal_type()) {
     case InternalType::kDecimalValue: {
@@ -255,7 +281,7 @@ Status Executor::PTExprToPB(const PTConstDecimal *const_pt, QLValuePB *const_pb,
 
 // The following numeric functions might be needed if we fold constant at compile time.
 // Leave them here for now.
-Status Executor::PTExprToPB(const PTConstInt *const_pt, QLValuePB *const_pb,
+Status Executor::PTExprToPB(const PTConstInt *const_pt, QLValueMsg *const_pb,
                             bool negate) {
   int64_t value = const_pt->value();
   if (negate) {
@@ -292,7 +318,7 @@ Status Executor::PTExprToPB(const PTConstInt *const_pt, QLValuePB *const_pb,
   return Status::OK();
 }
 
-Status Executor::PTExprToPB(const PTConstDouble *const_pt, QLValuePB *const_pb,
+Status Executor::PTExprToPB(const PTConstDouble *const_pt, QLValueMsg *const_pb,
                             bool negate) {
   long double value = const_pt->value();
   if (negate) {
@@ -314,7 +340,7 @@ Status Executor::PTExprToPB(const PTConstDouble *const_pt, QLValuePB *const_pb,
   return Status::OK();
 }
 
-Status Executor::PTExprToPB(const PTConstText *const_pt, QLValuePB *const_pb) {
+Status Executor::PTExprToPB(const PTConstText *const_pt, QLValueMsg *const_pb) {
   switch (const_pt->expected_internal_type()) {
     case InternalType::kStringValue:
       return const_pt->ToString(const_pb->mutable_string_value());
@@ -365,7 +391,7 @@ Status Executor::PTExprToPB(const PTConstText *const_pt, QLValuePB *const_pb) {
   return Status::OK();
 }
 
-Status Executor::PTExprToPB(const PTConstBool *const_pt, QLValuePB *const_pb) {
+Status Executor::PTExprToPB(const PTConstBool *const_pt, QLValueMsg *const_pb) {
   switch (const_pt->expected_internal_type()) {
     case InternalType::kBoolValue:
       const_pb->set_bool_value(const_pt->value());
@@ -378,7 +404,7 @@ Status Executor::PTExprToPB(const PTConstBool *const_pt, QLValuePB *const_pb) {
   return Status::OK();
 }
 
-Status Executor::PTExprToPB(const PTConstBinary *const_pt, QLValuePB *const_pb) {
+Status Executor::PTExprToPB(const PTConstBinary *const_pt, QLValueMsg *const_pb) {
   const auto& value = const_pt->value();
   switch (const_pt->expected_internal_type()) {
     case InternalType::kBinaryValue: {
@@ -400,7 +426,7 @@ Status Executor::PTExprToPB(const PTConstBinary *const_pt, QLValuePB *const_pb) 
   return Status::OK();
 }
 
-Status Executor::PTExprToPB(const PTConstUuid *const_pt, QLValuePB *const_pb) {
+Status Executor::PTExprToPB(const PTConstUuid *const_pt, QLValueMsg *const_pb) {
   const auto& value = const_pt->value();
   switch (const_pt->expected_internal_type()) {
     case InternalType::kUuidValue: {
@@ -428,49 +454,49 @@ Status Executor::PTExprToPB(const PTConstUuid *const_pt, QLValuePB *const_pb) {
   return Status::OK();
 }
 
-Status Executor::PTExprToPB(const PTCollectionExpr *const_pt, QLValuePB *const_pb) {
+Status Executor::PTExprToPB(const PTCollectionExpr *const_pt, QLValueMsg *const_pb) {
   switch (const_pt->ql_type()->main()) {
     case DataType::MAP: {
-      QLMapValuePB *map_value = const_pb->mutable_map_value();
+      auto *map_value = const_pb->mutable_map_value();
       for (auto &key : const_pt->keys()) {
         // Expect key to be constant because CQL only allows collection of constants.
-        QLValuePB *key_pb = map_value->add_keys();
+        QLValueMsg *key_pb = map_value->add_keys();
         RETURN_NOT_OK(PTConstToPB(key, key_pb));
       }
 
       for (auto &value : const_pt->values()) {
         // Expect value to be constant because CQL only allows collection of constants.
-        QLValuePB *value_pb = map_value->add_values();
+        QLValueMsg *value_pb = map_value->add_values();
         RETURN_NOT_OK(PTConstToPB(value, value_pb));
       }
       break;
     }
 
     case DataType::SET: {
-      QLSeqValuePB *set_value = const_pb->mutable_set_value();
+      auto *set_value = const_pb->mutable_set_value();
       for (auto &elem : const_pt->values()) {
         // Expected elem to be constant because CQL only allows collection of constants.
-        QLValuePB *elem_pb = set_value->add_elems();
+        QLValueMsg *elem_pb = set_value->add_elems();
         RETURN_NOT_OK(PTConstToPB(elem, elem_pb));
       }
       break;
     }
 
     case DataType::LIST: {
-      QLSeqValuePB *list_value = const_pb->mutable_list_value();
+      auto *list_value = const_pb->mutable_list_value();
       for (auto &elem : const_pt->values()) {
         // Expected elem to be constant because CQL only allows collection of constants.
-        QLValuePB *elem_pb = list_value->add_elems();
+        QLValueMsg *elem_pb = list_value->add_elems();
         RETURN_NOT_OK(PTConstToPB(elem, elem_pb));
       }
       break;
     }
 
     case DataType::TUPLE: {
-      QLSeqValuePB *tuple_value = const_pb->mutable_tuple_value();
+      auto *tuple_value = const_pb->mutable_tuple_value();
       for (auto &elem : const_pt->values()) {
         // Expected elem to be constant because CQL only allows collection of constants.
-        QLValuePB *elem_pb = tuple_value->add_elems();
+        QLValueMsg *elem_pb = tuple_value->add_elems();
         RETURN_NOT_OK(PTConstToPB(elem, elem_pb));
       }
       break;
@@ -478,15 +504,15 @@ Status Executor::PTExprToPB(const PTCollectionExpr *const_pt, QLValuePB *const_p
 
     case DataType::USER_DEFINED_TYPE: {
       // Internally UDTs are maps with field names as keys
-      QLMapValuePB *map_value = const_pb->mutable_map_value();
+      auto *map_value = const_pb->mutable_map_value();
       auto field_values = const_pt->udtype_field_values();
       for (size_t i = 0; i < field_values.size(); i++) {
         // Skipping unset fields.
         if (field_values[i] != nullptr) {
-          QLValuePB *key_pb = map_value->add_keys();
+          QLValueMsg *key_pb = map_value->add_keys();
           key_pb->set_int16_value(narrow_cast<int16_t>(i));
           // Expect value to be constant because CQL only allows collection of constants.
-          QLValuePB *value_pb = map_value->add_values();
+          QLValueMsg *value_pb = map_value->add_values();
           RETURN_NOT_OK(PTConstToPB(field_values[i], value_pb));
         }
       }
@@ -496,7 +522,7 @@ Status Executor::PTExprToPB(const PTCollectionExpr *const_pt, QLValuePB *const_p
     case DataType::FROZEN: {
       // For frozen types we need to do the de-duplication and ordering at the QL level since we
       // serialize it here already.
-      QLSeqValuePB *frozen_value = const_pb->mutable_frozen_value();
+      auto *frozen_value = const_pb->mutable_frozen_value();
 
       switch (const_pt->ql_type()->param_type(0)->main()) {
         case DataType::MAP: {
@@ -535,7 +561,7 @@ Status Executor::PTExprToPB(const PTCollectionExpr *const_pt, QLValuePB *const_p
         case DataType::LIST: {
           for (auto &elem : const_pt->values()) {
             // Expected elem to be constant because CQL only allows collection of constants.
-            QLValuePB *elem_pb = frozen_value->add_elems();
+            QLValueMsg *elem_pb = frozen_value->add_elems();
             RETURN_NOT_OK(PTConstToPB(elem, elem_pb));
           }
           break;
@@ -545,7 +571,7 @@ Status Executor::PTExprToPB(const PTCollectionExpr *const_pt, QLValuePB *const_p
           // Internally UDTs are maps with field names as keys
           auto field_values = const_pt->udtype_field_values();
           for (size_t i = 0; i < field_values.size(); i++) {
-            QLValuePB *value_pb = frozen_value->add_elems();
+            QLValueMsg *value_pb = frozen_value->add_elems();
             if (field_values[i] != nullptr) {
               // Expect value to be constant because CQL only allows collection of constants.
               RETURN_NOT_OK(PTConstToPB(field_values[i], value_pb));

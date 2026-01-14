@@ -106,9 +106,9 @@ To update the timestamp on row modification, you would use [Triggers](../advance
 
 ## Auto-Increment
 
-Using [Sequences](/preview/develop/data-modeling/primary-keys-ysql/#sequence), you can generate unique identifiers by auto-incrementing the numeric identifier of each preceding row. In most cases, you would use sequences to auto-generate primary keys.
+Using [Sequences](/stable/develop/data-modeling/primary-keys-ysql/#sequence), you can generate unique identifiers by auto-incrementing the numeric identifier of each preceding row. In most cases, you would use sequences to auto-generate primary keys.
 
-Although you can assign a default value to a column via a sequence, typically you add sequences using the [serial](/preview/develop/data-modeling/primary-keys-ysql/#serial) pseudotype that creates a new sequence object and sets the default value for the column to the next value produced by the sequence. For example:
+Although you can assign a default value to a column via a sequence, typically you add sequences using the [serial](/stable/develop/data-modeling/primary-keys-ysql/#serial) pseudotype that creates a new sequence object and sets the default value for the column to the next value produced by the sequence. For example:
 
 ```sql
 CREATE TABLE employees2 (

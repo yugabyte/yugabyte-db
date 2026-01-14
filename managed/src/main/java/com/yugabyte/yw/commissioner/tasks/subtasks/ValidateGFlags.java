@@ -40,16 +40,12 @@ import org.yb.client.YBClient;
 public class ValidateGFlags extends UniverseDefinitionTaskBase {
 
   private final YBClientService ybClientService;
-  private final GFlagsValidation gFlagsValidation;
 
   @Inject
   protected ValidateGFlags(
-      BaseTaskDependencies baseTaskDependencies,
-      YBClientService ybClientService,
-      GFlagsValidation gFlagsValidation) {
+      BaseTaskDependencies baseTaskDependencies, YBClientService ybClientService) {
     super(baseTaskDependencies);
     this.ybClientService = ybClientService;
-    this.gFlagsValidation = gFlagsValidation;
   }
 
   public static class Params extends UniverseDefinitionTaskParams {

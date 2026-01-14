@@ -872,10 +872,6 @@ LINE 1: ALTER FOREIGN TABLE ft1 ALTER COLUMN c1 SET (n_distinct = 10...
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 ALTER FOREIGN TABLE ft1 ALTER COLUMN c8 SET STATISTICS -1;
 ALTER FOREIGN TABLE ft1 ALTER COLUMN c8 SET STORAGE PLAIN;
-ERROR:  ALTER action ALTER COLUMN ... SET STORAGE not supported yet
-LINE 1: ALTER FOREIGN TABLE ft1 ALTER COLUMN c8 SET STORAGE PLAIN;
-                                ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 \d+ ft1
                                                  Foreign table "public.ft1"
  Column |  Type   | Collation | Nullable | Default |          FDW options           | Storage  | Stats target | Description 
@@ -887,7 +883,7 @@ HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumb
  c5     | integer |           |          |         |                                | plain    |              | 
  c6     | integer |           | not null |         |                                | plain    |              | 
  c7     | integer |           |          |         | (p1 'v1', p2 'v2')             | plain    |              | 
- c8     | text    |           |          |         | (p2 'V2')                      | extended |              | 
+ c8     | text    |           |          |         | (p2 'V2')                      | plain    |              | 
  c9     | integer |           |          |         |                                | plain    |              | 
  c10    | integer |           |          |         | (p1 'v1')                      | plain    |              | 
 Check constraints:
@@ -1633,10 +1629,8 @@ LINE 1: ALTER TABLE fd_pt1 ALTER COLUMN c1 SET (n_distinct = 100);
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
 ALTER TABLE fd_pt1 ALTER COLUMN c8 SET STATISTICS -1;
 ALTER TABLE fd_pt1 ALTER COLUMN c8 SET STORAGE EXTERNAL;
-ERROR:  ALTER action ALTER COLUMN ... SET STORAGE not supported yet
-LINE 1: ALTER TABLE fd_pt1 ALTER COLUMN c8 SET STORAGE EXTERNAL;
-                           ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumbs up to raise its priority
+NOTICE:  ALTER action ALTER COLUMN ... SET STORAGE has no effect on YB tables
+NOTICE:  ALTER action ALTER COLUMN ... SET STORAGE has no effect on YB tables
 \d+ fd_pt1
                                    Table "public.fd_pt1"
  Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
@@ -1648,7 +1642,7 @@ HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1124. React with thumb
  c5     | integer |           |          |         | plain    |              | 
  c6     | integer |           | not null |         | plain    |              | 
  c7     | integer |           |          |         | plain    |              | 
- c8     | text    |           |          |         | extended |              | 
+ c8     | text    |           |          |         | external |              | 
 Child tables: ft2
 
 \d+ ft2
@@ -1662,7 +1656,7 @@ Child tables: ft2
  c5     | integer |           |          |         |             | plain    |              | 
  c6     | integer |           | not null |         |             | plain    |              | 
  c7     | integer |           |          |         |             | plain    |              | 
- c8     | text    |           |          |         |             | extended |              | 
+ c8     | text    |           |          |         |             | external |              | 
 Server: s0
 FDW options: (delimiter ',', quote '"', "be quoted" 'value')
 Inherits: fd_pt1

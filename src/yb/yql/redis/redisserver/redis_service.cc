@@ -59,7 +59,7 @@
 using std::string;
 using std::vector;
 
-using yb::operator"" _MB;
+using yb::operator""_MB;
 using namespace std::literals;
 using namespace std::placeholders;
 using yb::client::YBMetaDataCache;
@@ -216,7 +216,7 @@ class Operation {
     return operation_ ? operation_->space_used_by_request() : 0;
   }
 
-  RedisResponsePB& response() {
+  RedisResponseMsg& response() {
     switch (type_) {
       case OperationType::kRead:
         return *down_cast<YBRedisReadOp*>(operation_.get())->mutable_response();
@@ -261,7 +261,7 @@ class Operation {
 
   void GetKeys(RedisKeyList* keys) const {
     if (FLAGS_redis_safe_batch) {
-      keys->emplace_back(operation_ ? operation_->GetKey() : Slice());
+      keys->emplace_back(operation_ ? operation_->GetKey() : std::string_view());
     }
   }
 
@@ -978,6 +978,7 @@ class BatchContextImpl : public BatchContext {
   std::atomic<bool> retry_lookups_;
   std::atomic<size_t> lookups_left_;
   MCUnorderedMap<Slice, TabletOperations, Slice::Hash> tablets_;
+  ThreadSafeArenaPtr thread_safe_arena_ = SharedThreadSafeArena();
 };
 
 } // namespace

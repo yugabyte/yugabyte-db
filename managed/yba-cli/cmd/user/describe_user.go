@@ -47,8 +47,7 @@ var describeUserCmd = &cobra.Command{
 
 		rUsers, response, err := userListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "User", "Describe")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "User", "Describe")
 		}
 
 		r := make([]ybaclient.UserWithFeatures, 0)

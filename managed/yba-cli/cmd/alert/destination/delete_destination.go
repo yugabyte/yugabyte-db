@@ -53,16 +53,15 @@ var deleteDestinationAlertCmd = &cobra.Command{
 
 		alerts, response, err := authAPI.ListAlertDestinations().Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
+			util.FatalHTTPError(
 				response,
 				err,
 				"Alert Destination",
 				"Delete - List Alert Destinations",
 			)
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
-		if len(strings.TrimSpace(destinationName)) > 0 {
+		if !util.IsEmptyString(destinationName) {
 			rNameList := make([]ybaclient.AlertDestination, 0)
 			for _, alertDestination := range alerts {
 				if strings.EqualFold(alertDestination.GetName(), destinationName) {
@@ -86,8 +85,7 @@ var deleteDestinationAlertCmd = &cobra.Command{
 
 		rDelete, response, err := alertRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Alert Destination", "Delete")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Alert Destination", "Delete")
 		}
 
 		if rDelete.GetSuccess() {

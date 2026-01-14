@@ -82,7 +82,7 @@ export const GeoPartitionResilience = () => {
           subTitle={<>Resilience And Regions</>}
         />
 
-        <ResilienceAndRegions isGeoPartition ref={resilienceRef} />
+        <ResilienceAndRegions isGeoPartition hideHelpText ref={resilienceRef} />
         <UniverseActionButtons
           cancelButton={{
             text: 'Cancel',

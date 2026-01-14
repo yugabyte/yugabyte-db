@@ -15,18 +15,26 @@ import (
 	"strings"
 )
 
-const (
-	SystemdUnitPath       = ".config/systemd/user"
-	ServerTemplateSubpath = "server/"
-)
-
-var SystemdUnits = []string{
+// EnabledSystemdUnits lists the systemd units to be enabled by default.
+var EnabledSystemdUnits = []string{
 	"yb-zip_purge_yb_logs.service",
 	"yb-clean_cores.service",
 	"yb-collect_metrics.service",
 	"yb-zip_purge_yb_logs.timer",
 	"yb-clean_cores.timer",
 	"yb-collect_metrics.timer",
+}
+
+// ScriptFilesToCopy lists the files to be copied for server configuration.
+var ScriptFilesToCopy = []struct {
+	Src  string
+	Dest string
+}{
+	{"yb-server-ctl.sh.j2", "bin/yb-server-ctl.sh"},
+	{"clock-sync.sh.j2", "bin/clock-sync.sh"},
+	{"clean_cores.sh.j2", "bin/clean_cores.sh"},
+	{"zip_purge_yb_logs.sh.j2", "bin/zip_purge_yb_logs.sh"},
+	{"collect_metrics_wrapper.sh.j2", "bin/collect_metrics_wrapper.sh"},
 }
 
 type ConfigureServerHandler struct {
@@ -164,7 +172,7 @@ func (h *ConfigureServerHandler) configureProcess(ctx context.Context, home, pro
 }
 
 func (h *ConfigureServerHandler) enableSystemdServices(ctx context.Context) error {
-	for _, unit := range SystemdUnits {
+	for _, unit := range EnabledSystemdUnits {
 		err := module.EnableSystemdService(ctx, h.username, unit, h.logOut)
 		if err != nil {
 			util.FileLogger().Errorf(ctx, "Configure server failed - %s", err.Error())
@@ -223,71 +231,32 @@ func (h *ConfigureServerHandler) setupServerScript(
 		"yb_metrics_dir":    yb_metrics_dir,
 	}
 
-	// Copy yb-server-ctl.sh script.
-	err := module.CopyFile(
-		ctx,
-		serverScriptContext,
-		filepath.Join(ServerTemplateSubpath, "yb-server-ctl.sh.j2"),
-		filepath.Join(home, "bin", "yb-server-ctl.sh"),
-		fs.FileMode(0755),
-		h.username,
-	)
-	if err != nil {
-		return err
+	for _, fileInfo := range ScriptFilesToCopy {
+		// Copy the script.
+		_, err := module.CopyFile(
+			ctx,
+			serverScriptContext,
+			filepath.Join(module.ServerTemplateSubpath, fileInfo.Src),
+			filepath.Join(home, fileInfo.Dest),
+			fs.FileMode(0755),
+			h.username,
+		)
+		if err != nil {
+			return err
+		}
 	}
-
-	// Copy clock-sync.sh script.
-	err = module.CopyFile(
-		ctx,
-		serverScriptContext,
-		filepath.Join(ServerTemplateSubpath, "clock-sync.sh.j2"),
-		filepath.Join(home, "bin", "clock-sync.sh"),
-		fs.FileMode(0755),
-		h.username,
-	)
-	if err != nil {
-		return err
+	for _, process := range h.param.GetProcesses() {
+		err := module.UpdateUserSystemdUnits(
+			ctx,
+			h.username,
+			process,
+			serverScriptContext,
+			h.logOut,
+		)
+		if err != nil {
+			return err
+		}
 	}
-
-	// Copy clean_cores.sh script.
-	err = module.CopyFile(
-		ctx,
-		serverScriptContext,
-		filepath.Join(ServerTemplateSubpath, "clean_cores.sh.j2"),
-		filepath.Join(home, "bin", "clean_cores.sh"),
-		fs.FileMode(0755),
-		h.username,
-	)
-	if err != nil {
-		return err
-	}
-
-	// Copy zip_purge_yb_logs.sh.sh script.
-	err = module.CopyFile(
-		ctx,
-		serverScriptContext,
-		filepath.Join(ServerTemplateSubpath, "zip_purge_yb_logs.sh.j2"),
-		filepath.Join(home, "bin", "zip_purge_yb_logs.sh"),
-		fs.FileMode(0755),
-		h.username,
-	)
-	if err != nil {
-		return err
-	}
-
-	// Copy collect_metrics_wrapper.sh script.
-	err = module.CopyFile(
-		ctx,
-		serverScriptContext,
-		filepath.Join(ServerTemplateSubpath, "collect_metrics_wrapper.sh.j2"),
-		filepath.Join(home, "bin", "collect_metrics_wrapper.sh"),
-		fs.FileMode(0755),
-		h.username,
-	)
-	if err != nil {
-		return err
-	}
-
 	return nil
 }
 

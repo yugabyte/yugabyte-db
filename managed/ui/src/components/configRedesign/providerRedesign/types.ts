@@ -96,7 +96,7 @@ interface ProviderMutationBase extends ProviderBase {
   allAccessKeys?: AccessKeyMutation[];
   version?: number; // Only used for edit provider operations
 }
-interface Provider extends ProviderBase {
+export interface Provider extends ProviderBase {
   active: boolean;
   allAccessKeys: AccessKey[];
   customerUUID: string;

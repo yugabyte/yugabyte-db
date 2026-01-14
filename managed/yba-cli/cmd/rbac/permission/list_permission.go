@@ -40,14 +40,13 @@ var listPermissionCmd = &cobra.Command{
 
 		rList := make([]ybaclient.PermissionInfo, 0)
 		var response *http.Response
-		if len(strings.TrimSpace(resourceType)) > 0 {
+		if !util.IsEmptyString(resourceType) {
 			permissionListRequest = permissionListRequest.ResourceType(
 				strings.ToUpper(resourceType),
 			)
 			rList, response, err = permissionListRequest.Execute()
 			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(response, err, "RBAC: Permission", "List")
-				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+				util.FatalHTTPError(response, err, "RBAC: Permission", "List")
 			}
 		} else {
 			resourceTypes := []string{
@@ -60,8 +59,7 @@ var listPermissionCmd = &cobra.Command{
 				permissionListRequest = permissionListRequest.ResourceType(c)
 				rCode, response, err := permissionListRequest.Execute()
 				if err != nil {
-					errMessage := util.ErrorFromHTTPResponse(response, err, "RBAC: Permission", "List")
-					logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+					util.FatalHTTPError(response, err, "RBAC: Permission", "List")
 				}
 				rList = append(rList, rCode...)
 			}
@@ -73,7 +71,7 @@ var listPermissionCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(name)) > 0 {
+		if !util.IsEmptyString(name) {
 			for _, p := range rList {
 				if strings.Contains(strings.ToLower(p.GetName()), strings.ToLower(name)) {
 					r = append(r, p)

@@ -14,6 +14,11 @@
 #pragma once
 
 #include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+
+#include "yb/master/master_replication.pb.h"
+
+#include "yb/tablet/operations.messages.h"
 
 namespace yb {
 
@@ -27,5 +32,27 @@ int GetInitialNumTabletsPerTable(TableType table_type, size_t tserver_count);
 
 // Returns true if YSQL DDL rollback is enabled.
 bool YsqlDdlRollbackEnabled();
+
+// These functions help extract the tablet split parameters from the split request uniformly across
+// the singular and repeated variants of the parameter fields.
+template <typename RequestType>
+std::vector<TabletId> GetSplitChildTabletIds(const RequestType& req);
+
+extern template std::vector<TabletId> GetSplitChildTabletIds(
+    const tablet::SplitTabletRequestPB& req);
+extern template std::vector<TabletId> GetSplitChildTabletIds(
+    const master::ProducerSplitTabletInfoPB& req);
+
+std::vector<TabletId> GetSplitChildTabletIds(const tablet::LWSplitTabletRequestPB& req);
+
+template <typename RequestType>
+std::vector<std::string> GetSplitPartitionKeys(const RequestType& req);
+
+extern template std::vector<std::string> GetSplitPartitionKeys(
+    const tablet::SplitTabletRequestPB& req);
+extern template std::vector<std::string> GetSplitPartitionKeys(
+    const master::ProducerSplitTabletInfoPB& req);
+
+std::vector<std::string> GetSplitEncodedKeys(const tablet::SplitTabletRequestPB& req);
 
 } // namespace yb

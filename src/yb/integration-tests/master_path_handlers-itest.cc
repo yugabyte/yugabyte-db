@@ -680,7 +680,7 @@ class TabletSplitMasterPathHandlersItest : public MasterPathHandlersItest {
   void InsertRows(const client::TableHandle& table, int num_rows_to_insert) {
     auto session = client_->NewSession(60s);
     for (int i = 0; i < num_rows_to_insert; i++) {
-      auto insert = table.NewInsertOp();
+      auto insert = table.NewInsertOp(session->arena());
       auto req = insert->mutable_request();
       QLAddInt32HashValue(req, i);
       ASSERT_OK(session->TEST_ApplyAndFlush(insert));

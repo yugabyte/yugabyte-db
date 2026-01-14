@@ -6,7 +6,6 @@ package maintenancewindow
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -28,7 +27,7 @@ var deleteMaintenanceWindowCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(uuid)) == 0 {
+		if util.IsEmptyString(uuid) {
 			logrus.Fatal(
 				formatter.Colorize(
 					"No uuid specified to delete maintenance window\n",
@@ -50,13 +49,12 @@ var deleteMaintenanceWindowCmd = &cobra.Command{
 
 		mw, response, err := authAPI.GetMaintenanceWindow(maintenanceWindowUUID).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
+			util.FatalHTTPError(
 				response,
 				err,
 				"Maintenance Window",
 				"Delete - Get Maintenance Window",
 			)
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
 		if len(mw.GetCustomerUUID()) == 0 {
@@ -72,8 +70,7 @@ var deleteMaintenanceWindowCmd = &cobra.Command{
 
 		rDelete, response, err := authAPI.DeleteMaintenanceWindow(maintenanceWindowUUID).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Maintenance Window", "Delete")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Maintenance Window", "Delete")
 		}
 
 		if rDelete.GetSuccess() {

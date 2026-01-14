@@ -17,6 +17,7 @@
 #include "yb/master/leader_epoch.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_types.pb.h"
+#include "yb/master/xcluster/xcluster_universe_replication_setup_helper.h"
 
 namespace yb {
 
@@ -73,7 +74,8 @@ class AlterUniverseReplicationHelper {
       scoped_refptr<UniverseReplicationInfo> universe,
       const AddTablesToReplicationData& add_table_data);
 
-  Master& master_;
+  Status RunSetupUniverseReplication(const XClusterSetupUniverseReplicationData& setup_data);
+
   CatalogManager& catalog_manager_;
   SysCatalogTable& sys_catalog_;
   XClusterManager& xcluster_manager_;

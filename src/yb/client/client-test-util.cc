@@ -179,8 +179,9 @@ YBSchema YBSchemaFromSchema(const Schema& schema) {
 }
 
 std::shared_ptr<YBqlReadOp> CreateReadOp(
-    int32_t key, const TableHandle& table, const std::string& value_column) {
-  auto op = table.NewReadOp();
+    const ThreadSafeArenaPtr& arena, int32_t key, const TableHandle& table,
+    const std::string& value_column) {
+  auto op = table.NewReadOp(arena);
   auto req = op->mutable_request();
   QLAddInt32HashValue(req, key);
   auto value_column_id = table.ColumnId(value_column);

@@ -39,6 +39,7 @@
 #include "yb/common/colocated_util.h"
 #include "yb/common/common_consensus_util.h"
 #include "yb/common/doc_hybrid_time.h"
+#include "yb/common/pg_system_attr.h"
 #include "yb/common/schema.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/wire_protocol.h"
@@ -477,6 +478,10 @@ bool TableInfo::is_deleted() const {
 
 bool TableInfo::is_hidden() const {
   return LockForRead()->is_hidden();
+}
+
+bool TableInfo::started_hiding() const {
+  return LockForRead()->started_hiding();
 }
 
 HybridTime TableInfo::hide_hybrid_time() const {
@@ -1212,6 +1217,10 @@ bool TableInfo::IsUserIndex() const {
   return IsUserIndex(LockForRead());
 }
 
+bool TableInfo::HasUserSpecifiedPrimaryKey() const {
+  return HasUserSpecifiedPrimaryKey(LockForRead());
+}
+
 bool TableInfo::IsUserCreated(const ReadLock& lock) const {
   if (lock->pb.table_type() != PGSQL_TABLE_TYPE && lock->pb.table_type() != YQL_TABLE_TYPE) {
     return false;
@@ -1227,6 +1236,23 @@ bool TableInfo::IsUserTable(const ReadLock& lock) const {
 
 bool TableInfo::IsUserIndex(const ReadLock& lock) const {
   return IsUserCreated(lock) && !lock->indexed_table_id().empty();
+}
+
+bool TableInfo::HasUserSpecifiedPrimaryKey(const ReadLock& lock) const {
+  auto schema_result = lock->GetSchema();
+  if (!schema_result.ok()) {
+    LOG_WITH_FUNC(DFATAL) << "Error while getting schema for table " << lock->name() << ": "
+                          << schema_result.status();
+    return false;
+  }
+  const auto& schema = *schema_result;
+  for (const auto& col : schema.columns()) {
+    if (col.order() == static_cast<int32_t>(PgSystemAttrNum::kYBRowId)) {
+      // ybrowid column is added for tables that don't have user-specified primary key.
+      return false;
+    }
+  }
+  return true;
 }
 
 void PersistentTableInfo::set_state(SysTablesEntryPB::State state, const string& msg) {
@@ -1510,6 +1536,11 @@ bool CDCStreamInfo::IsDynamicTableAdditionDisabled() const {
   auto l = LockForRead();
   return l->pb.has_cdcsdk_disable_dynamic_table_addition() &&
          l->pb.cdcsdk_disable_dynamic_table_addition();
+}
+
+bool CDCStreamInfo::IsTablesWithoutPrimaryKeyAllowed() const {
+  auto l = LockForRead();
+  return l->pb.has_allow_tables_without_primary_key() && l->pb.allow_tables_without_primary_key();
 }
 
 std::string CDCStreamInfo::ToString() const {

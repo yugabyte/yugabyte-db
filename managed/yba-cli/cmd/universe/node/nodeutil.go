@@ -64,7 +64,7 @@ func nodeOperationsUtil(cmd *cobra.Command, operation, command string) {
 
 	primaryCluster := universeutil.FindClusterByType(clusters, util.PrimaryClusterType)
 
-	if primaryCluster == (ybaclient.Cluster{}) {
+	if universeutil.IsClusterEmpty(primaryCluster) {
 		err := fmt.Errorf(
 			"No primary cluster found in universe " + universeName + " (" + universeUUID + ")")
 		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -79,7 +79,7 @@ func nodeOperationsUtil(cmd *cobra.Command, operation, command string) {
 	if err != nil {
 		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 	}
-	if len(strings.TrimSpace(nodeName)) == 0 {
+	if util.IsEmptyString(nodeName) {
 		cmd.Help()
 		logrus.Fatalln(
 			formatter.Colorize("No node name found to perform operation"+
@@ -93,9 +93,9 @@ func nodeOperationsUtil(cmd *cobra.Command, operation, command string) {
 	)
 	rTask, response, err := nodeActionAPI.Execute()
 	if err != nil {
-		errMessage := util.ErrorFromHTTPResponse(response, err, "Node", operation)
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		util.FatalHTTPError(response, err, "Node", operation)
 	}
+	util.CheckTaskAfterCreation(rTask)
 	taskUUID := rTask.GetTaskUUID()
 
 	msg := fmt.Sprintf("The node %s operation - %s is being performed in universe %s (%s)",
@@ -130,8 +130,11 @@ func nodeOperationsUtil(cmd *cobra.Command, operation, command string) {
 				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 			}
 
-			nodeInstanceList := make([]ybaclient.NodeDetailsResp, 0)
-			nodeInstanceList = append(nodeInstanceList, nodeInstance)
+			nodeInstanceList := util.CheckAndAppend(
+				make([]ybaclient.NodeDetailsResp, 0),
+				nodeInstance,
+				fmt.Sprintf("Node %s not found", nodeName),
+			)
 
 			universe.NodeWrite(nodesCtx, nodeInstanceList)
 			return
@@ -162,7 +165,7 @@ func nodeOperationsUtil(cmd *cobra.Command, operation, command string) {
 		Output:  os.Stdout,
 		Format:  ybatask.NewTaskFormat(viper.GetString("output")),
 	}
-	ybatask.Write(taskCtx, []ybaclient.YBPTask{rTask})
+	ybatask.Write(taskCtx, []ybaclient.YBPTask{*rTask})
 
 }
 

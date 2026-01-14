@@ -85,3 +85,19 @@ INSERT INTO temp_table_rewrite_test VALUES(1), (2), (3);
 ALTER TABLE temp_table_rewrite_test ADD PRIMARY KEY (a ASC);
 
 SELECT * FROM temp_table_rewrite_test ORDER BY a;
+
+
+-- Test 8: Table rewrite operations on a table using legacy inheritance.
+CREATE TABLE rewrite_test_inherited_parent(a int, b text);
+CREATE TABLE rewrite_test_inherited_child1(PRIMARY KEY (a ASC)) 
+    INHERITS (rewrite_test_inherited_parent);
+CREATE INDEX idx_child1_b ON rewrite_test_inherited_child1(b);
+
+INSERT INTO rewrite_test_inherited_child1 VALUES(1, '100');
+INSERT INTO rewrite_test_inherited_child1 VALUES(2, '20');
+INSERT INTO rewrite_test_inherited_child1 VALUES(3, '5');
+
+ALTER TABLE rewrite_test_inherited_parent 
+  ALTER COLUMN b TYPE int USING b::integer;
+
+SELECT * FROM rewrite_test_inherited_child1 WHERE b > 10 ORDER BY b;

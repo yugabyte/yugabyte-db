@@ -58,7 +58,7 @@ var tlsEncryptionInTransitCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(clientToNodeEncryption)) > 0 {
+		if !util.IsEmptyString(clientToNodeEncryption) {
 			clientToNodeEncryption = strings.ToUpper(clientToNodeEncryption)
 			if strings.Compare(clientToNodeEncryption, util.EnableOpType) != 0 &&
 				strings.Compare(clientToNodeEncryption, util.DisableOpType) != 0 {
@@ -75,7 +75,7 @@ var tlsEncryptionInTransitCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(nodeToNodeEncryption)) > 0 {
+		if !util.IsEmptyString(nodeToNodeEncryption) {
 			nodeToNodeEncryption = strings.ToUpper(nodeToNodeEncryption)
 			if strings.Compare(nodeToNodeEncryption, util.EnableOpType) != 0 &&
 				strings.Compare(nodeToNodeEncryption, util.DisableOpType) != 0 {
@@ -130,7 +130,7 @@ var tlsEncryptionInTransitCmd = &cobra.Command{
 		}
 
 		primaryCluster := universeutil.FindClusterByType(clusters, util.PrimaryClusterType)
-		if primaryCluster == (ybaclient.Cluster{}) {
+		if universeutil.IsClusterEmpty(primaryCluster) {
 			logrus.Fatalf(
 				formatter.Colorize(
 					fmt.Sprintf(
@@ -153,7 +153,7 @@ var tlsEncryptionInTransitCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(clientToNodeEncryption)) > 0 {
+		if !util.IsEmptyString(clientToNodeEncryption) {
 			clientToNodeEncryption = strings.ToUpper(clientToNodeEncryption)
 			enableClientToNodeEncryption := false
 			if strings.Compare(clientToNodeEncryption, util.EnableOpType) == 0 {
@@ -179,7 +179,7 @@ var tlsEncryptionInTransitCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(nodeToNodeEncryption)) > 0 {
+		if !util.IsEmptyString(nodeToNodeEncryption) {
 			nodeToNodeEncryption = strings.ToUpper(nodeToNodeEncryption)
 			enableNodeToNodeEncryption := false
 			if strings.Compare(nodeToNodeEncryption, util.EnableOpType) == 0 {
@@ -207,9 +207,7 @@ var tlsEncryptionInTransitCmd = &cobra.Command{
 
 		r, response, err := authAPI.UpgradeTLS(universeUUID).TlsToggleParams(requestBody).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response, err, "Universe", "Upgrade TLS")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Universe", "Upgrade TLS")
 		}
 
 		logrus.Info(
@@ -218,7 +216,7 @@ var tlsEncryptionInTransitCmd = &cobra.Command{
 				universeUUID,
 			))
 
-		universeutil.WaitForUpgradeUniverseTask(authAPI, universeName, ybaclient.YBPTask{
+		universeutil.WaitForUpgradeUniverseTask(authAPI, universeName, &ybaclient.YBPTask{
 			TaskUUID:     util.GetStringPointer(r.GetTaskUUID()),
 			ResourceUUID: util.GetStringPointer(universeUUID),
 		})

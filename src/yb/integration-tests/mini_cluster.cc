@@ -1603,6 +1603,7 @@ Status InvokeSplitTabletRpc(MiniCluster* cluster, const TabletId& tablet_id, Mon
 
   master::SplitTabletRequestPB req;
   req.set_tablet_id(tablet_id);
+  req.set_split_factor(cluster->GetSplitFactor());
 
   rpc::RpcController controller;
   controller.set_timeout(timeout);

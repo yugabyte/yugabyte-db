@@ -385,6 +385,11 @@ TEST_P(XClusterPgRegressDDLReplicationParamTest, PgRegressTableRewrite) {
   ASSERT_OK(TestPgRegress({"table_rewrite.sql", "table_rewrite2.sql"}));
 }
 
+TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressMultipleInheritance) {
+  // Tests use of multiple levels of inheritance.
+  ASSERT_OK(TestPgRegress({"inheritance.sql"}));
+}
+
 TEST_F(XClusterPgRegressDDLReplicationTest, PgRegressCreateDropExtensions) {
   // Tests create and drops of the extensions supported by YB
   ASSERT_OK(TestPgRegress({"pgonly_extensions_create.sql", "pgonly_extensions_drop.sql"}));

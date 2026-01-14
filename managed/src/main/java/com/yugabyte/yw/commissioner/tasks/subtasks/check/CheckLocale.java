@@ -28,15 +28,12 @@ import org.apache.commons.collections4.CollectionUtils;
 @Slf4j
 public class CheckLocale extends UniverseTaskBase {
 
-  private final NodeUniverseManager nodeUniverseManager;
-
   private final int TIMEOUT = 30;
 
   @Inject
   protected CheckLocale(
       BaseTaskDependencies baseTaskDependencies, NodeUniverseManager nodeUniverseManager) {
     super(baseTaskDependencies);
-    this.nodeUniverseManager = nodeUniverseManager;
   }
 
   public static class Params extends UniverseTaskParams {

@@ -268,7 +268,8 @@ TEST_F(PgTabletSplitTest, TestConflictResolutionChecksConflictsAgainstEmptyKey) 
 
   ASSERT_OK(WaitForAnySstFiles(parent_peer));
   auto tablet = ASSERT_RESULT(parent_peer->shared_tablet());
-  const auto encoded_split_key = ASSERT_RESULT(tablet->GetEncodedMiddleSplitKey());
+  const auto split_keys = ASSERT_RESULT(tablet->GetSplitKeys(kDefaultNumSplitParts));
+  const auto& encoded_split_key = split_keys.encoded_keys.front();
   const auto doc_key_hash = ASSERT_RESULT(dockv::DecodeDocKeyHash(encoded_split_key)).value();
 
   ASSERT_OK(SplitSingleTablet(table_id));
@@ -582,7 +583,7 @@ TEST_F(PgTabletSplitTest, SplitKeyMatchesPartitionBound) {
 
   // Have to make a low-level direct call of split middle key to verify an error.
   auto tablet = ASSERT_RESULT(peer->shared_tablet());
-  auto result = tablet->GetEncodedMiddleSplitKey();
+  auto result = tablet->GetSplitKeys(kDefaultNumSplitParts);
   ASSERT_NOK(result);
   ASSERT_EQ(
       tserver::TabletServerError(result.status()),
@@ -1152,7 +1153,8 @@ TEST_P(PgPartitioningVersionTest, IndexRowsPersistenceAfterManualSplit) {
       ASSERT_OK(WaitForAnySstFiles(parent_peer));
 
       // Keep split key to check future writes are done to the correct tablet for unique index idx1.
-      const auto encoded_split_key = ASSERT_RESULT(tablet->GetEncodedMiddleSplitKey());
+      const auto split_keys = ASSERT_RESULT(tablet->GetSplitKeys(kDefaultNumSplitParts));
+      const auto& encoded_split_key = split_keys.encoded_keys.front();
       ASSERT_TRUE(tablet->metadata()->partition_schema()->IsRangePartitioning());
       dockv::SubDocKey split_key;
       ASSERT_OK(split_key.FullyDecodeFrom(encoded_split_key, dockv::HybridTimeRequired::kFalse));
@@ -1256,7 +1258,8 @@ TEST_P(PgPartitioningVersionTest, UniqueIndexRowsPersistenceAfterManualSplit) {
     ASSERT_OK(WaitForAnySstFiles(parent_peer));
 
     // Keep split key to check future writes are done to the correct tablet for unique index idx1.
-    auto encoded_split_key = ASSERT_RESULT(tablet->GetEncodedMiddleSplitKey());
+    const auto split_keys = ASSERT_RESULT(tablet->GetSplitKeys(kDefaultNumSplitParts));
+    const auto& encoded_split_key = split_keys.encoded_keys.front();
     ASSERT_TRUE(tablet->metadata()->partition_schema()->IsRangePartitioning());
     dockv::SubDocKey split_key;
     ASSERT_OK(split_key.FullyDecodeFrom(encoded_split_key, dockv::HybridTimeRequired::kFalse));

@@ -749,11 +749,13 @@ TEST_F_EX(
   {
     auto conn = ASSERT_RESULT(Connect());
     ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDBName));
+    // CREATE DATABASE increments the catalog version for all databases.
+    const auto create_db_rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
+    ASSERT_EQ(create_db_rpc_count, kFirstConnectionRPCCountWithAdditionalTables);
     auto conn_with_temp_table = ASSERT_RESULT(ConnectToDB(kDBName));
     ASSERT_OK(conn_with_temp_table.Execute("CREATE TEMP TABLE t(k INT PRIMARY KEY)"));
   }
   ASSERT_OK(WaitForAllClientConnectionsClosure(pg_host_port()));
-
   const auto default_db_connect_rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
   ASSERT_EQ(default_db_connect_rpc_count, kSubsequentConnectionRPCCount);
 
@@ -772,6 +774,10 @@ TEST_F_EX(PgCatalogPerfTest,
   constexpr auto* kDBName = "aux_db";
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDBName));
+  // CREATE DATABASE increments the catalog version for all databases.
+  const auto create_db_rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
+  ASSERT_EQ(create_db_rpc_count, kFirstConnectionRPCCountWithAdditionalTables);
+
   auto aux_conn = ASSERT_RESULT(ConnectToDB(kDBName));
   ASSERT_OK(aux_conn.Execute("CREATE TEMP TABLE t(k INT PRIMARY KEY)"));
 

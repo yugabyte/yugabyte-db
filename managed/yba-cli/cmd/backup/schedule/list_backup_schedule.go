@@ -7,7 +7,6 @@ package schedule
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -35,14 +34,12 @@ var listBackupScheduleCmd = &cobra.Command{
 
 		universeUUIDs := make([]string, 0)
 
-		if len(strings.TrimSpace(universeName)) != 0 {
+		if !util.IsEmptyString(universeName) {
 			universeListRequest := authAPI.ListUniverses()
 			universeListRequest = universeListRequest.Name(universeName)
 			r, response, err := universeListRequest.Execute()
 			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(
-					response, err, "Backup Schedule", "List - List Universes")
-				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+				util.FatalHTTPError(response, err, "Backup Schedule", "List - List Universes")
 			}
 			if len(r) < 1 {
 				logrus.Fatalf(

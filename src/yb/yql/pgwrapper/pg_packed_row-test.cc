@@ -181,8 +181,21 @@ TEST_P(PgPackedRowTest, AlterTable) {
           SetDefaultTransactionIsolation(Connect(), IsolationLevel::SNAPSHOT_ISOLATION));
       std::vector<int> columns;
       int column_idx = 0;
-      ASSERT_OK(conn.ExecuteFormat(
-          "CREATE TABLE $0 (key INT PRIMARY KEY) SPLIT INTO 1 TABLETS", table_name));
+      while (true) {
+        auto status = conn.ExecuteFormat(
+            "CREATE TABLE $0 (key INT PRIMARY KEY) SPLIT INTO 1 TABLETS", table_name);
+        if (status.ok()) {
+          break;
+        }
+        auto msg = status.ToString();
+        // Concurrent CREATE TABLE can fail with serialization error
+        static const auto kCreateTableErrors = {
+            "pgsql error 40001"sv,
+            SerializeAccessErrorMessageSubstring(),
+            "Restart read required"sv,
+        };
+        ASSERT_TRUE(HasSubstring(msg, kCreateTableErrors)) << msg;
+      }
       while (!stop.load()) {
         if (columns.empty() || RandomUniformBool()) {
           auto status = conn.ExecuteFormat(

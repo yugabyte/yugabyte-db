@@ -44,12 +44,12 @@ var setGflagsUniverseCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(specificGFlagsString)) == 0 {
+		if util.IsEmptyString(specificGFlagsString) {
 			filePath, err := cmd.Flags().GetString("specific-gflags-file-path")
 			if err != nil {
 				logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
-			if len(strings.TrimSpace(filePath)) == 0 {
+			if util.IsEmptyString(filePath) {
 				logrus.Fatalln(
 					formatter.Colorize(
 						"No specific gflags found to upgrade. "+
@@ -105,7 +105,7 @@ var setGflagsUniverseCmd = &cobra.Command{
 		}
 
 		primaryCluster := universeutil.FindClusterByType(clusters, util.PrimaryClusterType)
-		if primaryCluster == (ybaclient.Cluster{}) {
+		if universeutil.IsClusterEmpty(primaryCluster) {
 			err := fmt.Errorf(
 				"No primary cluster found in universe " + universeName + " (" + universeUUID + ")\n",
 			)
@@ -121,12 +121,12 @@ var setGflagsUniverseCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(specificGFlagsString)) == 0 {
+		if util.IsEmptyString(specificGFlagsString) {
 			filePath, err := cmd.Flags().GetString("specific-gflags-file-path")
 			if err != nil {
 				logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
-			if len(strings.TrimSpace(filePath)) != 0 {
+			if !util.IsEmptyString(filePath) {
 				fileByte, err := os.ReadFile(filePath)
 				if err != nil {
 					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -261,8 +261,7 @@ var setGflagsUniverseCmd = &cobra.Command{
 		rUpgrade, response, err := authAPI.UpgradeGFlags(universeUUID).
 			GflagsUpgradeParams(req).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Universe", "Upgrade GFlags")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Universe", "Upgrade GFlags")
 		}
 
 		logrus.Info(

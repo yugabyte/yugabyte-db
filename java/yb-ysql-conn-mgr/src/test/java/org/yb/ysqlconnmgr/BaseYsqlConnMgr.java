@@ -113,7 +113,7 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
     return warmup_random_mode;
   }
 
-  private void restartClusterWithAdditionalFlags(
+  protected void restartClusterWithAdditionalFlags(
       Map<String, String> additionalMasterFlags,
       Map<String, String> additionalTserverFlags) throws Exception {
     Map<String, String> tserverFlags = getTServerFlags();
@@ -216,18 +216,39 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   }
 
   protected JsonObject getPool(String db_name, String user_name) throws Exception {
+    // Specifically fetches a non logical replication pool. Use `getRepPool()` for replication pool.
     JsonObject obj = getConnectionStats();
-    assertNotNull("Got a null response from the connections endpoint",
-        obj);
+    assertNotNull("Got a null response from the connections endpoint", obj);
     JsonArray pools = obj.getAsJsonArray("pools");
     assertNotNull("Got empty pool", pools);
     for (int i = 0; i < pools.size(); ++i) {
       JsonObject pool = pools.get(i).getAsJsonObject();
       String databaseName = pool.get("database_name").getAsString();
       String userName = pool.get("user_name").getAsString();
+      Boolean logicalRep = pool.get("logical_rep").getAsBoolean();
 
-      if (db_name.equals(databaseName) && user_name.equals(userName)) {
-          return pool;
+      if (db_name.equals(databaseName) && user_name.equals(userName) && !logicalRep) {
+        return pool;
+      }
+    }
+
+    return null;
+  }
+
+  protected JsonObject getRepPool(String db_name, String user_name) throws Exception {
+    // Specifically fetches a logical replication pool. Use `getPool()` for non-rep pool.
+    JsonObject obj = getConnectionStats();
+    assertNotNull("Got a null response from the connections endpoint", obj);
+    JsonArray pools = obj.getAsJsonArray("pools");
+    assertNotNull("Got empty pool", pools);
+    for (int i = 0; i < pools.size(); ++i) {
+      JsonObject pool = pools.get(i).getAsJsonObject();
+      String databaseName = pool.get("database_name").getAsString();
+      String userName = pool.get("user_name").getAsString();
+      Boolean logicalRep = pool.get("logical_rep").getAsBoolean();
+
+      if (db_name.equals(databaseName) && user_name.equals(userName) && logicalRep) {
+        return pool;
       }
     }
 

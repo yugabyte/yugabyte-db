@@ -174,13 +174,13 @@ var createAWSProviderCmd = &cobra.Command{
 
 		requestBody := ybaclient.Provider{
 			Code:          util.GetStringPointer(providerCode),
-			AllAccessKeys: &allAccessKeys,
+			AllAccessKeys: allAccessKeys,
 			ImageBundles:  awsImageBundles,
 			Name:          util.GetStringPointer(providerName),
 			Regions:       awsRegions,
 			Details: &ybaclient.ProviderDetails{
 				AirGapInstall: util.GetBoolPointer(airgapInstall),
-				NtpServers:    util.StringSliceFromString(ntpServers),
+				NtpServers:    ntpServers,
 				CloudInfo: &ybaclient.CloudInfo{
 					Aws: &awsCloudInfo,
 				},
@@ -190,8 +190,7 @@ var createAWSProviderCmd = &cobra.Command{
 		rTask, response, err := authAPI.CreateProvider().
 			CreateProviderRequest(requestBody).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Provider: AWS", "Create")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Provider: AWS", "Create")
 		}
 
 		providerutil.WaitForCreateProviderTask(

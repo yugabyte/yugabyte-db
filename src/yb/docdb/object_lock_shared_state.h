@@ -75,19 +75,21 @@ class ObjectLockSharedState {
 
   [[nodiscard]] bool Lock(const ObjectLockFastpathRequest& request);
 
-  ActivationGuard Activate(const std::unordered_map<ObjectLockPrefix, size_t>& initial_intents)
+  ActivationGuard Activate(const std::unordered_map<ObjectLockPrefix, LockState>& initial_intents)
       PARENT_PROCESS_ONLY;
 
   size_t ConsumePendingLockRequests(const FastLockRequestConsumer& consume) PARENT_PROCESS_ONLY;
 
   size_t ConsumeAndAcquireExclusiveLockIntents(
       const FastLockRequestConsumer& consume,
-      std::span<const ObjectLockPrefix*> object_ids) PARENT_PROCESS_ONLY;
+      std::span<const LockBatchEntry<ObjectLockManager>*> lock_entries) PARENT_PROCESS_ONLY;
 
-  void ReleaseExclusiveLockIntent(const ObjectLockPrefix& object_id, size_t count = 1)
+  void ReleaseExclusiveLockIntent(const ObjectLockPrefix& object_id, LockState lock_state)
       PARENT_PROCESS_ONLY;
 
   [[nodiscard]] SessionLockOwnerTag TEST_last_owner() PARENT_PROCESS_ONLY;
+
+  [[nodiscard]] bool TEST_has_exclusive_intents() PARENT_PROCESS_ONLY;
 
  private:
   const SharedMemoryUniquePtr<Impl> impl_;

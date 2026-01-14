@@ -850,8 +850,8 @@ void DocRowwiseIteratorTest::TestClusteredFilterEmptyIn() {
   auto arena = SharedSmallArena();
   DocQLScanSpec spec(
       population_schema, kFixedHashCode, kFixedHashCode, arena,
-      dockv::TEST_KeyEntryValuesToSlices(*arena, hashed_components), QLConditionPBPtr(&cond),
-      nullptr, rocksdb::kDefaultQueryId);
+      dockv::TEST_KeyEntryValuesToSlices(*arena, hashed_components),
+      QLConditionPBPtr(&cond), nullptr, rocksdb::kDefaultQueryId);
 
   // No rows match the index scan => no rows should be seen by max_seen_ht.
   CreateIteratorAndValidate(
@@ -971,21 +971,21 @@ void DocRowwiseIteratorTest::TestDocRowwiseIteratorDeletedDocument() {
 void DocRowwiseIteratorTest::TestDocRowwiseIteratorWithRowDeletes() {
   auto dwb = MakeDocWriteBatch();
 
-  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, KeyEntryValue::MakeColumnId(30_ColId)),
-                             ValueRef(QLValue::Primitive("row1_c"))));
+  ASSERT_OK(dwb.TEST_SetPrimitive(DocPath(kEncodedDocKey1, KeyEntryValue::MakeColumnId(30_ColId)),
+                                  QLValue::Primitive("row1_c")));
 
-  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, KeyEntryValue::MakeColumnId(40_ColId)),
-                             ValueRef(QLValue::PrimitiveInt64(10000))));
+  ASSERT_OK(dwb.TEST_SetPrimitive(DocPath(kEncodedDocKey1, KeyEntryValue::MakeColumnId(40_ColId)),
+                                  QLValue::PrimitiveInt64(10000)));
   ASSERT_OK(WriteToRocksDBAndClear(&dwb, HybridTime::FromMicros(1000)));
 
   ASSERT_OK(dwb.DeleteSubDoc(DocPath(kEncodedDocKey1)));
   ASSERT_OK(WriteToRocksDBAndClear(&dwb, HybridTime::FromMicros(2500)));
 
-  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, KeyEntryValue::MakeColumnId(50_ColId)),
-                             ValueRef(QLValue::Primitive("row1_e"))));
+  ASSERT_OK(dwb.TEST_SetPrimitive(DocPath(kEncodedDocKey1, KeyEntryValue::MakeColumnId(50_ColId)),
+                                  QLValue::Primitive("row1_e")));
 
-  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey2, KeyEntryValue::MakeColumnId(40_ColId)),
-                             ValueRef(QLValue::PrimitiveInt64(20000))));
+  ASSERT_OK(dwb.TEST_SetPrimitive(DocPath(kEncodedDocKey2, KeyEntryValue::MakeColumnId(40_ColId)),
+                                  QLValue::PrimitiveInt64(20000)));
   ASSERT_OK(WriteToRocksDB(dwb, HybridTime::FromMicros(2800)));
 
   ASSERT_DOCDB_DEBUG_DUMP_STR_EQ(R"#(
@@ -1205,12 +1205,12 @@ SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 2800 }]) -> 
 void DocRowwiseIteratorTest::TestDocRowwiseIteratorIncompleteProjection() {
   auto dwb = MakeDocWriteBatch();
 
-  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, KeyEntryValue::MakeColumnId(40_ColId)),
-                             ValueRef(QLValue::PrimitiveInt64(10000))));
-  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, KeyEntryValue::MakeColumnId(50_ColId)),
-                             ValueRef(QLValue::Primitive("row1_e"))));
-  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey2, KeyEntryValue::MakeColumnId(40_ColId)),
-                             ValueRef(QLValue::PrimitiveInt64(20000))));
+  ASSERT_OK(dwb.TEST_SetPrimitive(DocPath(kEncodedDocKey1, KeyEntryValue::MakeColumnId(40_ColId)),
+                                  QLValue::PrimitiveInt64(10000)));
+  ASSERT_OK(dwb.TEST_SetPrimitive(DocPath(kEncodedDocKey1, KeyEntryValue::MakeColumnId(50_ColId)),
+                                  QLValue::Primitive("row1_e")));
+  ASSERT_OK(dwb.TEST_SetPrimitive(DocPath(kEncodedDocKey2, KeyEntryValue::MakeColumnId(40_ColId)),
+                                  QLValue::PrimitiveInt64(20000)));
 
   ASSERT_OK(WriteToRocksDB(dwb, HybridTime::FromMicros(1000)));
 
@@ -1286,10 +1286,10 @@ void DocRowwiseIteratorTest::TestDocRowwiseIteratorMultipleDeletes() {
   MonoDelta ttl_expiry = MonoDelta::FromMilliseconds(2);
   auto read_time = ReadHybridTime::SingleTime(HybridTime::FromMicros(2800).AddDelta(ttl_expiry));
 
-  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, KeyEntryValue::MakeColumnId(30_ColId)),
-                             ValueRef(QLValue::Primitive("row1_c"))));
-  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, KeyEntryValue::MakeColumnId(40_ColId)),
-                             ValueRef(QLValue::PrimitiveInt64(10000))));
+  ASSERT_OK(dwb.TEST_SetPrimitive(DocPath(kEncodedDocKey1, KeyEntryValue::MakeColumnId(30_ColId)),
+                                  QLValue::Primitive("row1_c")));
+  ASSERT_OK(dwb.TEST_SetPrimitive(DocPath(kEncodedDocKey1, KeyEntryValue::MakeColumnId(40_ColId)),
+                                  QLValue::PrimitiveInt64(10000)));
   ASSERT_OK(WriteToRocksDBAndClear(&dwb, HybridTime::FromMicros(1000)));
 
   // Deletes.
@@ -1298,18 +1298,18 @@ void DocRowwiseIteratorTest::TestDocRowwiseIteratorMultipleDeletes() {
   ASSERT_OK(WriteToRocksDBAndClear(&dwb, HybridTime::FromMicros(2500)));
   dwb.Clear();
 
-  ASSERT_OK(dwb.SetPrimitive(
+  ASSERT_OK(dwb.TEST_SetPrimitive(
       DocPath(kEncodedDocKey1, KeyEntryValue::MakeColumnId(50_ColId)),
-      dockv::ValueControlFields {.ttl = ttl}, ValueRef(QLValue::Primitive("row1_e"))));
+      dockv::ValueControlFields {.ttl = ttl}, QLValue::Primitive("row1_e")));
 
   ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey2, KeyEntryValue::MakeColumnId(30_ColId)),
                              ValueRef(dockv::ValueEntryType::kTombstone)));
-  ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey2, KeyEntryValue::MakeColumnId(40_ColId)),
-                             ValueRef(QLValue::PrimitiveInt64(20000))));
-  ASSERT_OK(dwb.SetPrimitive(
+  ASSERT_OK(dwb.TEST_SetPrimitive(DocPath(kEncodedDocKey2, KeyEntryValue::MakeColumnId(40_ColId)),
+                                  QLValue::PrimitiveInt64(20000)));
+  ASSERT_OK(dwb.TEST_SetPrimitive(
       DocPath(kEncodedDocKey2, KeyEntryValue::MakeColumnId(50_ColId)),
       dockv::ValueControlFields {.ttl = MonoDelta::FromMilliseconds(3)},
-      ValueRef(QLValue::Primitive("row2_e"))));
+      QLValue::Primitive("row2_e")));
   ASSERT_OK(WriteToRocksDBAndClear(&dwb, HybridTime::FromMicros(2800)));
 
   ASSERT_OK(WriteToRocksDB(dwb, HybridTime::FromMicros(1000)));
@@ -1344,28 +1344,28 @@ SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT{ physical: 2800 w: 3 }]
 void DocRowwiseIteratorTest::TestDocRowwiseIteratorValidColumnNotInProjection() {
   auto dwb = MakeDocWriteBatch();
 
-  ASSERT_OK(dwb.SetPrimitive(
+  ASSERT_OK(dwb.TEST_SetPrimitive(
       DocPath(kEncodedDocKey1, KeyEntryValue::MakeColumnId(40_ColId)),
-      ValueRef(QLValue::PrimitiveInt64(10000))));
-  ASSERT_OK(dwb.SetPrimitive(
+      QLValue::PrimitiveInt64(10000)));
+  ASSERT_OK(dwb.TEST_SetPrimitive(
       DocPath(kEncodedDocKey2, KeyEntryValue::MakeColumnId(40_ColId)),
-      ValueRef(QLValue::PrimitiveInt64(20000))));
+      QLValue::PrimitiveInt64(20000)));
   ASSERT_OK(WriteToRocksDBAndClear(&dwb, HybridTime::FromMicros(1000)));
 
-  ASSERT_OK(dwb.SetPrimitive(
+  ASSERT_OK(dwb.TEST_SetPrimitive(
       DocPath(kEncodedDocKey2, KeyEntryValue::MakeColumnId(50_ColId)),
-      ValueRef(QLValue::Primitive("row2_e"))));
-  ASSERT_OK(dwb.SetPrimitive(
+      QLValue::Primitive("row2_e")));
+  ASSERT_OK(dwb.TEST_SetPrimitive(
       DocPath(kEncodedDocKey2, KeyEntryValue::MakeColumnId(30_ColId)),
-      ValueRef(QLValue::Primitive("row2_c"))));
+      QLValue::Primitive("row2_c")));
   ASSERT_OK(WriteToRocksDBAndClear(&dwb, HybridTime::FromMicros(2000)));
 
   ASSERT_OK(dwb.DeleteSubDoc(DocPath(kEncodedDocKey1)));
   ASSERT_OK(WriteToRocksDBAndClear(&dwb, HybridTime::FromMicros(2500)));
 
-  ASSERT_OK(dwb.SetPrimitive(
+  ASSERT_OK(dwb.TEST_SetPrimitive(
       DocPath(kEncodedDocKey1, KeyEntryValue::MakeColumnId(50_ColId)),
-      ValueRef(QLValue::Primitive("row1_e"))));
+      QLValue::Primitive("row1_e")));
   ASSERT_OK(WriteToRocksDBAndClear(&dwb, HybridTime::FromMicros(2800)));
 
 
@@ -1400,12 +1400,12 @@ void DocRowwiseIteratorTest::TestDocRowwiseIteratorKeyProjection() {
   ASSERT_OK(dwb.SetPrimitive(
       DocPath(kEncodedDocKey1, KeyEntryValue::kLivenessColumn),
       ValueRef(dockv::ValueEntryType::kNullLow)));
-  ASSERT_OK(dwb.SetPrimitive(
+  ASSERT_OK(dwb.TEST_SetPrimitive(
       DocPath(kEncodedDocKey1, KeyEntryValue::MakeColumnId(40_ColId)),
-      ValueRef(QLValue::PrimitiveInt64(10000))));
-  ASSERT_OK(dwb.SetPrimitive(
+      QLValue::PrimitiveInt64(10000)));
+  ASSERT_OK(dwb.TEST_SetPrimitive(
       DocPath(kEncodedDocKey1, KeyEntryValue::MakeColumnId(50_ColId)),
-      ValueRef(QLValue::Primitive("row1_e"))));
+      QLValue::Primitive("row1_e")));
 
   ASSERT_OK(WriteToRocksDB(dwb, HybridTime::FromMicros(1000)));
 

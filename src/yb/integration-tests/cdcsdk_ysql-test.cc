@@ -1243,6 +1243,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCheckPointPersistencyNodeRest
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCleanupSingleStreamSingleTserver)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs) = 3;
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
   const uint32_t num_tablets = 1;
@@ -1271,6 +1272,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCleanupSingleStreamSingleTser
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCleanupSingleStreamMultiTserver)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs) = 3;
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
   const uint32_t num_tablets = 1;
@@ -1367,6 +1369,7 @@ TEST_F(
     CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCleanupMultiStreamDeleteAllStreamsSingleTserver)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs) = 3;
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
   const uint32_t num_tablets = 1;
@@ -1402,6 +1405,7 @@ TEST_F(
     CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCleanupMultiStreamDeleteAllStreamsMultiTserver)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs) = 3;
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
   const uint32_t num_tablets = 1;
@@ -3262,7 +3266,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestStreamMetaCleanUpAndDeleteStr
       MonoDelta::FromSeconds(60), "Waiting for stream metadata cleanup."));
 }
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestDeletedStreamRowRemovedEvenAfterGetChanges)) {
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestDeletedStreamRowsRemoved)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 60;
 
@@ -3294,24 +3298,10 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestDeletedStreamRowRemovedEvenAf
       /* is_compaction = */ false));
 
   ASSERT_EQ(DeleteCDCStream(stream_id), true);
-  VerifyStreamCheckpointInCdcState(
-      test_client(), stream_id, tablets[0].tablet_id(), OpIdExpectedValue::MaxOpId);
-  LOG(INFO) << "The stream's checkpoint has been marked as OpId::Max()";
 
-  ASSERT_OK(WaitForGetChangesToFetchRecords(
-      &change_resp_1, stream_id, tablets, 100, /* is_explicit_checkpoint */false,
-      &change_resp_1.cdc_sdk_checkpoint()));
-
-  VerifyStreamCheckpointInCdcState(
-      test_client(), stream_id, tablets[0].tablet_id(), OpIdExpectedValue::ValidNonMaxOpId);
-  LOG(INFO) << "Verified that GetChanges() overwrote checkpoint from OpId::Max().";
-
-  // We shutdown the TServer so that the stream cache is cleared.
-  test_cluster()->mini_tablet_server(0)->Shutdown();
-  ASSERT_OK(test_cluster()->mini_tablet_server(0)->Start());
-
-  // We verify that the row is deleted even after GetChanges() overwrote the OpId from Max.
-  VerifyStreamDeletedFromCdcState(test_client(), stream_id, tablets[0].tablet_id());
+  // We verify that the rows associated with the stream are deleted from the cdc_state table.
+  VerifyStreamDeletedFromCdcState(test_client(), stream_id, tablets[0].tablet_id(), 30);
+  VerifyStreamDeletedFromCdcState(test_client(), stream_id, kCDCSDKSlotEntryTabletId, 30);
 }
 
 // Here we are creating a table test_table_1 and a CDC stream ex:- stream-id-1.
@@ -4602,14 +4592,15 @@ TEST_F(CDCSDKYsqlTest, TestLagMetricForUnconsumedSlot) {
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_tablet_not_of_interest_timeout_secs) = 0;
 
-  // As the table has become not of interest, the lag will come down to 0.
+  // As the table has become not of interest, its metrics will be cleared.
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
-        auto metrics =
-            VERIFY_RESULT(GetCDCSDKTabletMetrics(*cdc_service, tablets[0].tablet_id(), stream_id));
-        return metrics->cdcsdk_sent_lag_micros->value() == 0;
+        auto result = GetCDCSDKTabletMetrics(
+            *cdc_service, tablets[0].tablet_id(), stream_id,
+            cdc::CreateMetricsEntityIfNotFound::kFalse);
+        return !result.ok() && result.status().IsNotFound();
       },
-      MonoDelta::FromSeconds(10) * kTimeMultiplier, "Timed out waiting for lag to be = 0"));
+      MonoDelta::FromSeconds(10) * kTimeMultiplier, "Timed out waiting for metrics to be cleared"));
 }
 
 void CDCSDKYsqlTest::TestLagMetricWithConsistentSnapshotStream(bool expire_table) {
@@ -4688,14 +4679,15 @@ void CDCSDKYsqlTest::TestLagMetricWithConsistentSnapshotStream(bool expire_table
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_tablet_not_of_interest_timeout_secs) = 0;
   }
 
-  // As the table has expired / become not of interest, its lag should go down to zero.
+  // As the table has expired / become not of interest, its metrics will be cleared.
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
-        auto metrics = VERIFY_RESULT(
-            GetCDCSDKTabletMetrics(*cdc_service, tablets[1][0].tablet_id(), stream_id));
-        return metrics->cdcsdk_sent_lag_micros->value() == 0;
+        auto result = GetCDCSDKTabletMetrics(
+            *cdc_service, tablets[1][0].tablet_id(), stream_id,
+            cdc::CreateMetricsEntityIfNotFound::kFalse);
+        return !result.ok() && result.status().IsNotFound();
       },
-      MonoDelta::FromSeconds(10) * kTimeMultiplier, "Timed out waiting for lag to be = 0"));
+      MonoDelta::FromSeconds(10) * kTimeMultiplier, "Timed out waiting for metrics to be cleared"));
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLagMetricWithNotOfInterestTableAndCSStream)) {
@@ -5866,6 +5858,47 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMetricObjectRemovalAfterStrea
       MonoDelta::FromSeconds(60), "Metric object is not removed."));
 }
 
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMetricObjectRemovalAfterNamespaceDeletion)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_metrics_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+
+  const uint32_t num_tablets = 1;
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  const auto& tserver = test_cluster()->mini_tablet_server(0)->server();
+  auto cdc_service = CDCService(tserver);
+
+  // Retrieve the metrics object, a successful retrieval will proceed without any errors here.
+  auto metrics = ASSERT_RESULT(GetCDCSDKTabletMetrics(
+      *cdc_service, tablets[0].tablet_id(), stream_id, CreateMetricsEntityIfNotFound::kFalse));
+
+  // Dropping the namespace. This will delete the associated tables.
+  ASSERT_OK(DropDB(&test_cluster_));
+
+  ASSERT_OK(WaitFor(
+      [&]() {
+        auto result = GetCDCSDKTabletMetrics(
+            *cdc_service, tablets[0].tablet_id(), stream_id, CreateMetricsEntityIfNotFound::kFalse);
+        // Once the namespace is deleted, the tablets will be deleted too, and hence the metric
+        // object will not be found.
+        const string expected_error_msg = Format("Tablet $0 not found", tablets[0].tablet_id());
+        if (!result.ok() && result.status().ToString().find(expected_error_msg) != string::npos) {
+          return true;
+        }
+        return false;
+      },
+      MonoDelta::FromSeconds(60), "Metric object is not removed."));
+}
+
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestExpiredStreamWithCompaction)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
@@ -6254,6 +6287,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCheckPointWithNoCDCStream)) {
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIsUnderCDCSDKReplicationField)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_metrics_interval_ms) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs) = 3;
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
   const uint32_t num_tablets = 1;
@@ -6295,6 +6329,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIsUnderCDCSDKReplicationField
   check_is_under_cdc_sdk_replication(true);
 
   ASSERT_EQ(DeleteCDCStream(stream_id), true);
+  SleepFor(MonoDelta::FromSeconds(FLAGS_cdc_min_replicated_index_considered_stale_secs * 5));
   VerifyStreamDeletedFromCdcState(test_client(), stream_id, tablets.Get(0).tablet_id());
   VerifyTransactionParticipant(tablets.Get(0).tablet_id(), OpId::Max());
 
@@ -7888,28 +7923,65 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetCheckpointOnSnapshotBootst
   ASSERT_EQ(change_resp.cdc_sdk_checkpoint().index(), checkpoint_resp.checkpoint().op_id().index());
 }
 
-TEST_F(CDCSDKYsqlTest, TestTableRewriteOperations) {
+TEST_F(CDCSDKYsqlTest, TestTableRewriteOperationsForLogicalReplicationStream) {
   ASSERT_OK(SetUpWithParams(3, 1, false));
   constexpr auto kColumnName = "c1";
-  const auto errstr = "Cannot rewrite a table that is a part of CDC.";
+  const auto errstr =
+      "Table rewrite is disallowed with CDC gRPC streams, and with logical replication streams "
+      "when FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table is false.";
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
   ASSERT_OK(conn.ExecuteFormat(
       "CREATE TABLE $0(id1 INT PRIMARY KEY, $1 varchar(10))", kTableName, kColumnName));
   ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
 
+  const vector<string> ddl_operations = {
+      Format("ALTER TABLE $0 DROP CONSTRAINT $0_pkey", kTableName),
+      Format("ALTER TABLE $0 ALTER $1 TYPE varchar(1)", kTableName, kColumnName),
+      Format("ALTER TABLE $0 ADD COLUMN c2 SERIAL", kTableName), Format("TRUNCATE $0", kTableName)};
+
   // Verify rewrite operations are disallowed on the table.
-  auto res = conn.ExecuteFormat("ALTER TABLE $0 DROP CONSTRAINT $0_pkey", kTableName);
-  ASSERT_NOK(res);
-  ASSERT_STR_CONTAINS(res.ToString(), errstr);
-  res = conn.ExecuteFormat("ALTER TABLE $0 ALTER $1 TYPE varchar(1)", kTableName, kColumnName);
-  ASSERT_NOK(res);
-  ASSERT_STR_CONTAINS(res.ToString(), errstr);
-  res = conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN c2 SERIAL", kTableName);
-  ASSERT_NOK(res);
-  ASSERT_STR_CONTAINS(res.ToString(), errstr);
-  res = conn.ExecuteFormat("TRUNCATE $0", kTableName);
-  ASSERT_NOK(res);
-  ASSERT_STR_CONTAINS(res.ToString(), errstr);
+  for (const auto& ddl : ddl_operations) {
+    auto res = conn.Execute(ddl);
+    ASSERT_NOK(res);
+    ASSERT_STR_CONTAINS(res.ToString(), errstr);
+  }
+  // Truncate should be allowed if enable_truncate_cdcsdk_table is set.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_truncate_cdcsdk_table) = true;
+  ASSERT_OK(conn.ExecuteFormat("TRUNCATE $0", kTableName));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_truncate_cdcsdk_table) = false;
+
+  // Verify rewrite operations are allowed if enable_table_rewrite_for_cdcsdk_table is set.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table) = true;
+  for (const auto& ddl : ddl_operations) {
+    ASSERT_OK(conn.Execute(ddl));
+  }
+}
+
+TEST_F(CDCSDKYsqlTest, TestTableRewriteOperationsForgRPCStream) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table) = true;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+  constexpr auto kColumnName = "c1";
+  const auto errstr =
+      "Table rewrite is disallowed with CDC gRPC streams, and with logical replication streams "
+      "when FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table is false.";
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0(id1 INT PRIMARY KEY, $1 varchar(10))", kTableName, kColumnName));
+  ASSERT_RESULT(CreateDBStream());
+
+  const vector<string> ddl_operations = {
+      Format("ALTER TABLE $0 DROP CONSTRAINT $0_pkey", kTableName),
+      Format("ALTER TABLE $0 ALTER $1 TYPE varchar(1)", kTableName, kColumnName),
+      Format("ALTER TABLE $0 ADD COLUMN c2 SERIAL", kTableName), Format("TRUNCATE $0", kTableName)};
+
+  // Verify rewrite operations are disallowed on the table even if
+  // enable_table_rewrite_for_cdcsdk_table is set.
+  for (const auto& ddl : ddl_operations) {
+    auto res = conn.Execute(ddl);
+    ASSERT_NOK(res);
+    ASSERT_STR_CONTAINS(res.ToString(), errstr);
+  }
+
   // Truncate should be allowed if enable_truncate_cdcsdk_table is set.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_truncate_cdcsdk_table) = true;
   ASSERT_OK(conn.ExecuteFormat("TRUNCATE $0", kTableName));
@@ -9540,12 +9612,8 @@ void CDCSDKYsqlTest::TestValidationAndSyncOfCDCStateEntriesAfterUserTableRemoval
 
   // Now, validate the cdc state entries using the yb-admin command
   // 'validate_cdc_state_table_entries_on_change_data_stream'. It will find state table entries for
-  // table_1 and update their checkpoints to max.
+  // table_1 and remove them from cdc state table.
   ASSERT_OK(ValidateAndSyncCDCStateEntriesForCDCSDKStream(stream_id));
-
-  // Since checkpoint will be set to max for table_1's tablet entries, wait for
-  // UpdatePeersAndMetrics to delete those entries.
-  SleepFor(MonoDelta::FromSeconds(5 * kTimeMultiplier));
 
   // Verify tablets of table_1 are removed from cdc_state table.
   expected_tablets.clear();
@@ -11664,6 +11732,7 @@ TEST_F(CDCSDKYsqlTest, TestIntentsAreDeletedOnStreamDeletion) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs) = 3;
   int num_tservers = 3;
   ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
 
@@ -11736,6 +11805,7 @@ TEST_F(CDCSDKYsqlTest, TestIntentsAreDeletedOnTableRemovalFromCDCStream) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs) = 3;
   int num_tservers = 3;
   ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
 

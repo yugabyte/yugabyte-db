@@ -4,8 +4,6 @@ headerTitle: PostgreSQL 15 features
 linkTitle: PG15 features
 description: Use PostgreSQL 15 features in your applications
 headContent: Use PostgreSQL 15 features in your applications
-tags:
-  feature: tech-preview
 menu:
   v2025.1_api:
     identifier: yb-postgresql-15
@@ -150,7 +148,7 @@ The following PG15 features are not yet implemented but are planned for the futu
 
 ### Features not yet implemented
 
-The following features supported in v2024.2 and earlier are not yet available in v2.25:
+The following features supported in v2024.2 and earlier are not yet available in PostgreSQL 15-based versions:
 
 - [View terminated queries with yb_terminated_queries](../../../explore/observability/yb-pg-stat-get-queries/)
 - [PostgreSQL_FDW extension](../../../additional-features/pg-extensions/extension-postgres-fdw/)
@@ -161,13 +159,9 @@ The following features have different behaviors as compared to previous versions
 
 When upgrading a YugabyteDB cluster from PostgreSQL 11-compatible versions (v2024.2 and earlier) to a PostgreSQL 15-compatible version (v2.25 and later), review the following to understand how they may affect your upgrade.
 
-{{< warning title="Upgrading to v2.25" >}}
-Currently, upgrades are only supported from v2024.2.2 or later to v2.25.1 or later. Refer to [YSQL major upgrade](../../../manage/ysql-major-upgrade-yugabyted/).
-{{< /warning >}}
-
 ### ysqlsh
 
-To ensure compatibility, make sure you are using the [latest ysqlsh client](/stable/releases/yugabyte-clients/) (v2.25) with YugabyteDB v2.25.
+To ensure compatibility, make sure you are using the [latest ysqlsh client](/stable/releases/yugabyte-clients/).
 
 Due to the addition of the `--csv` option in psql (and hence [ysqlsh](../../ysqlsh/)), you can no longer use the `--c` (double-hyphen) flag in place of `--command`. Use either `-c` (single hyphen) or `--command` instead.
 

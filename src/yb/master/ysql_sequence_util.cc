@@ -97,14 +97,14 @@ Result<std::vector<YsqlSequenceInfo>> ScanSequencesDataTable(
       read_request->set_allocated_paging_state(paging_state);
       paging_state = nullptr;
     }
-    VLOG(3) << "read request: " << read_request->DebugString();
+    VLOG(3) << "read request: " << read_request->ShortDebugString();
 
     // Execute the operation synchronously.  Some but not all ways psql_read fails will cause
     // TEST_ApplyAndFlush to fail.
     // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
     RETURN_NOT_OK(session->TEST_ApplyAndFlush(psql_read));
     const auto& response = psql_read.get()->response();
-    VLOG(3) << "read response: " << response.DebugString();
+    VLOG(3) << "read response: " << response.ShortDebugString();
     if (response.status() != PgsqlResponsePB::PGSQL_STATUS_OK) {
       if (response.error_status().size() > 0) {
         // TODO(14814, 18387):  We do not currently expect more than one status, when we do, we need
@@ -176,7 +176,7 @@ Result<int> EnsureSequenceUpdatesAreInWal(
         sequence.sequence_oid);
 
     // The SET part.
-    PgsqlColumnValuePB* column_value = write_request->add_column_new_values();
+    auto* column_value = write_request->add_column_new_values();
     column_value->set_column_id(table->schema().ColumnId(kPgSequenceLastValueColIdx));
     column_value->mutable_expr()->mutable_value()->set_int64_value(sequence.last_value);
     column_value = write_request->add_column_new_values();
@@ -207,7 +207,7 @@ Result<int> EnsureSequenceUpdatesAreInWal(
         table->schema().ColumnId(kPgSequenceIsCalledColIdx));
 
     // Add the operation to the operations the session should do once a flush is submitted.
-    VLOG(3) << "write request: " << write_request->DebugString();
+    VLOG(3) << "write request: " << write_request->ShortDebugString();
     operations.push_back(psql_write);
     session->Apply(std::move(psql_write));
   }
@@ -219,7 +219,7 @@ Result<int> EnsureSequenceUpdatesAreInWal(
   int updates = 0;
   for (const auto& operation : operations) {
     const auto& response = operation.get()->response();
-    VLOG(3) << "write response: " << response.DebugString();
+    VLOG(3) << "write response: " << response.ShortDebugString();
 
     if (!operation->response().skipped()) {
       updates++;

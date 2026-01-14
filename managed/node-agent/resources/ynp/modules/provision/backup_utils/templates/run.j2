@@ -1,5 +1,5 @@
+{% if is_ybcontroller_disabled == 'True' %}
 export PATH="/usr/local/bin:/usr/bin:$PATH"
-
 # Define necessary variables
 setuptools_package_path="/usr/local/setuptools-59.6.0"
 python_magic_package_path="/usr/local/python-magic-0.4.18"
@@ -36,7 +36,7 @@ py_version_major=$(echo "$py_version" | cut -d. -f1)
 py_version_minor=$(echo "$py_version" | cut -d. -f2)
 
 # Download python3-distutils if required (only for Python < 3.12)
-{% if is_airgap is not true and os_family == 'Debian' %}
+{% if is_airgap == 'False' and os_family == 'Debian' %}
   if [[ "$py_version_major" -eq 3 && "$py_version_minor" -lt 12 ]]; then
       apt-get update
       apt-get install -y python3-distutils
@@ -100,3 +100,4 @@ if [[ -f "$package_path/$gsutil_package.tar.gz" ]]; then
 else
   echo "Warning: gsutil package $gsutil_package.tar.gz not found in $package_path, skipping..."
 fi
+{% endif %}

@@ -561,7 +561,11 @@ class AwsChangeInstanceTypeMethod(ChangeInstanceTypeMethod):
                                  help="Capacity reservation to use.")
 
     def _change_instance_type(self, args, host_info):
-        self.cloud.change_instance_type(host_info, args.instance_type, args.capacity_reservation)
+        self.cloud.change_instance_type(host_info, args.instance_type)
+
+    def _start_instance(self, args, host_info):
+        server_ports = self.get_server_ports_to_check(args)
+        self.cloud.start_instance(host_info, server_ports, args.capacity_reservation)
 
     # We have to use this to uniform accessing host_info for AWS and GCP
     def _host_info(self, args, host_info):

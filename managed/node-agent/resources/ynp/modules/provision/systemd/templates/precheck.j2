@@ -31,7 +31,7 @@ systemd_dir="/etc/systemd/system"
     fi
 {% endif %}
 
-{% for service_file in service_files | split_servers %}
+{% for service_file in service_files | split_string %}
     if [ ! -f "$systemd_dir"/{{ service_file }} ]; then
         echo "Systemd unit {{ service_file }} is not configured."
         add_result "Systemd Unit File Check - {{ service_file }}" "FAIL" \

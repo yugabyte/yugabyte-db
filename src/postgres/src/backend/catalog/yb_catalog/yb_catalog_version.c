@@ -455,9 +455,6 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(Oid db_oid,
 
 		if (OidIsValid(func_oid) && YbInvalidationMessagesTableExists())
 		{
-			if (!YBCIsLegacyModeForCatalogOps())
-				LockRelationOid(YbInvalidationMessagesRelationId, ExclusiveLock);
-
 			bool		is_null = false;
 			Datum		messages = GetInvalidationMessages(invalMessages, nmsgs, &is_null);
 			int			expiration_secs = yb_invalidation_message_expiration_secs;
@@ -556,7 +553,7 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(Oid db_oid,
 
 	YbcPgTypeAttrs type_attrs = {0};
 
-	Relation rel = RelationIdGetRelation(YBCatalogVersionRelationId);
+	Relation	rel = RelationIdGetRelation(YBCatalogVersionRelationId);
 
 	YbcPgStatement update_stmt = YbNewUpdate(rel, YB_TRANSACTIONAL);
 
@@ -599,7 +596,8 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(Oid db_oid,
 	YbcPgExpr	ybc_expr = YBCNewEvalExprCall(update_stmt, (Expr *) expr);
 
 	HandleYBStatus(YBCPgDmlAssignColumn(update_stmt, attnum, ybc_expr));
-	YbcPgExpr yb_expr = YBCNewColumnRef(update_stmt, attnum, INT8OID, InvalidOid, &type_attrs);
+	YbcPgExpr	yb_expr = YBCNewColumnRef(update_stmt, attnum, INT8OID, InvalidOid, &type_attrs);
+
 	YbAppendPrimaryColumnRef(update_stmt, yb_expr);
 
 	/*
@@ -737,7 +735,7 @@ YbCreateMasterDBCatalogVersionTableEntry(Oid db_oid)
 	 * primary key and therefore only one insert statement is needed to insert
 	 * the row for db_oid.
 	 */
-	Relation rel = RelationIdGetRelation(YBCatalogVersionRelationId);
+	Relation	rel = RelationIdGetRelation(YBCatalogVersionRelationId);
 
 	YbcPgStatement insert_stmt = YbNewInsert(rel, YB_SINGLE_SHARD_TRANSACTION);
 
@@ -748,6 +746,8 @@ YbCreateMasterDBCatalogVersionTableEntry(Oid db_oid)
 
 	HandleYBStatus(YBCPgDmlBindColumn(insert_stmt, YBTupleIdAttributeNumber,
 									  ybctid_expr));
+
+
 
 	AttrNumber	attnum = Anum_pg_yb_catalog_version_current_version;
 	Datum		initial_version = 1;
@@ -839,7 +839,7 @@ YbDeleteMasterDBCatalogVersionTableEntry(Oid db_oid)
 	 * the row for db_oid.
 	 */
 
-	Relation rel = RelationIdGetRelation(YBCatalogVersionRelationId);
+	Relation	rel = RelationIdGetRelation(YBCatalogVersionRelationId);
 
 	YbcPgStatement delete_stmt = YbNewDelete(rel, YB_SINGLE_SHARD_TRANSACTION);
 

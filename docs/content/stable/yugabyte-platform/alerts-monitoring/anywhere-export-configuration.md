@@ -137,7 +137,12 @@ To create an export configuration, do the following:
 
 The [Dynatrace](https://www.dynatrace.com) integration requires the following:
 
-- Publically-accessible endpoint URL of your Dynatrace instance. The endpoint URL is the URL of your Dynatrace instance.
+- Publically-accessible [OTLP endpoint URL](https://docs.dynatrace.com/docs/ingest-from/opentelemetry/otlp-api#export-to-dynatrace) of your Dynatrace instance. The endpoint URL is the URL of your Dynatrace instance. For example:
+
+  `https://{your-environment-id}.live.dynatrace.com/api/v2/otlp`
+
+  Note that if you copy your Dynatrace environment ID from the browser address bar, make sure to remove `.apps`.
+
 - [Dynatrace Access Token](https://docs.dynatrace.com/docs/manage/identity-access-management/access-tokens-and-oauth-clients/access-tokens#create-api-token). The access token needs to have ingest metrics, ingest logs, ingest OpenTelemetry traces, and read API tokens [scope](https://docs.dynatrace.com/docs/manage/identity-access-management/access-tokens-and-oauth-clients/access-tokens#scopes).
 
 To create an export configuration, do the following:

@@ -55,6 +55,7 @@
 #include "yb/util/path_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
@@ -81,6 +82,7 @@ METRIC_DECLARE_counter(transaction_not_found);
 METRIC_DECLARE_entity(server);
 METRIC_DECLARE_counter(rpc_inbound_calls_created);
 METRIC_DECLARE_counter(rpc_inbound_calls_failed);
+METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
 
 namespace yb::pgwrapper {
 
@@ -154,6 +156,9 @@ class PgLibPqTest : public LibPqTestBase {
   void TestSecondaryIndexInsertSelect();
 
   Status TestEmbeddedIndexScanOptimization(bool is_colocated_with_tablespaces);
+
+  Status TestPagingReadRestart(
+      size_t alter_count, size_t reader_count, bool expect_retryable_errors);
 
   void KillPostmasterProcessOnTservers();
 
@@ -3278,36 +3283,44 @@ class CoordinatedRunner {
 
 } // namespace
 
-TEST_F(PgLibPqTest, PagingReadRestart) {
-  // TODO(#28042): Enable deadlock detection once the false deadlock issue (with object locking
-  // enabled) is addressed.
-  cluster_->AddExtraFlagOnTServers("disable_deadlock_detection", "true");
-  cluster_->Shutdown(ExternalMiniCluster::NodeSelectionMode::TS_ONLY);
-  ASSERT_OK(cluster_->Restart());
-
-  auto conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY)"));
-  ASSERT_OK(conn.Execute("INSERT INTO t SELECT generate_series(1, 5000)"));
-  const size_t reader_count = 20;
+Status PgLibPqTest::TestPagingReadRestart(
+    size_t alter_count, size_t reader_count, bool expect_retryable_errors) {
+  auto conn = VERIFY_RESULT(Connect());
+  RETURN_NOT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY)"));
+  RETURN_NOT_OK(conn.Execute("INSERT INTO t SELECT generate_series(1, 5000)"));
   std::vector<CoordinatedRunner::RepeatableCommand> commands;
-  commands.reserve(reader_count + 1);
-  commands.emplace_back(
-      [connection = std::make_shared<PGConn>(ASSERT_RESULT(Connect()))] () -> Status {
-        RETURN_NOT_OK(connection->Execute("ALTER TABLE t ADD COLUMN v INT DEFAULT 100"));
-        RETURN_NOT_OK(connection->Execute("ALTER TABLE t DROP COLUMN v"));
-        return Status::OK();
-  });
+  commands.reserve(reader_count + alter_count);
+  for (size_t i = 0; i < alter_count; ++i) {
+    commands.emplace_back(
+        [connection = std::make_shared<PGConn>(VERIFY_RESULT(Connect())), i] -> Status {
+          RETURN_NOT_OK(connection->ExecuteFormat(
+              "ALTER TABLE t ADD COLUMN v$0 INT DEFAULT 100", i));
+          return connection->ExecuteFormat("ALTER TABLE t DROP COLUMN v$0", i);
+    });
+  }
   for (size_t i = 0; i < reader_count; ++i) {
     commands.emplace_back(
-        [connection = std::make_shared<PGConn>(ASSERT_RESULT(Connect()))] () -> Status {
+        [connection = std::make_shared<PGConn>(VERIFY_RESULT(Connect())),
+         expect_retryable_errors] -> Status {
           const auto res = connection->Fetch("SELECT key FROM t");
+          if (!expect_retryable_errors) {
+            return ResultToStatus(res);
+          }
           return (res.ok() || IsRetryable(res.status())) ? Status::OK() : res.status();
     });
   }
   CoordinatedRunner runner(std::move(commands));
   std::this_thread::sleep_for(10s);
   runner.Stop();
-  ASSERT_FALSE(runner.HasError());
+  SCHECK(!runner.HasError(), IllegalState, "Expected to not see any error");
+  return Status::OK();
+}
+
+TEST_F(PgLibPqTest, PagingReadRestart) {
+  const auto is_object_locking_enabled = ASSERT_RESULT(
+      cluster_->tablet_server(0)->GetFlag("enable_object_locking_for_table_locks")) == "true";
+  ASSERT_OK(TestPagingReadRestart(
+      1 /* alter_count */, 20 /* reader_count */, !is_object_locking_enabled));
 }
 
 TEST_F(PgLibPqTest, CollationRangePresplit) {
@@ -3353,6 +3366,22 @@ Result<string> PgLibPqTest::GetPostmasterPidViaShell(pid_t backend_pid) {
 Result<string> PgLibPqTest::GetPostmasterPidViaShell(PGConn* conn) {
   auto backend_pid = VERIFY_RESULT(conn->FetchRow<int32_t>("SELECT pg_backend_pid()"));
   return GetPostmasterPidViaShell(static_cast<pid_t>(backend_pid));
+}
+
+class PgLibPqConcurrentDdlDml : public PgLibPqTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back(Format("--enable_object_locking_for_table_locks=true"));
+    options->extra_tserver_flags.push_back(Format("--ysql_yb_ddl_transaction_block_enabled=true"));
+    options->extra_tserver_flags.push_back(
+        Format("--ysql_pg_conf_csv=yb_fallback_to_legacy_catalog_read_time=false"));
+    PgLibPqTest::UpdateMiniClusterOptions(options);
+  }
+};
+
+TEST_F(PgLibPqConcurrentDdlDml, YB_DISABLE_TEST_IN_TSAN(Simple)) {
+  ASSERT_OK(TestPagingReadRestart(
+      5 /* alter_count */, 15 /* reader_count */, false /* expect_retryable_errors */));
 }
 
 // The motive of this test is to prove that when a postgres backend crashes
@@ -4262,6 +4291,12 @@ TEST_F(PgLibPqTest, CatalogCacheIdMissMetricsTest) {
 }
 
 class PgLibPqAmopNegCacheTest : public PgLibPqTest {
+ public:
+  enum class NegCacheTestType {
+    kPreload,
+    kNoPreload,
+    kNegCache
+  };
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_tserver_flags.emplace_back(
@@ -4269,7 +4304,7 @@ class PgLibPqAmopNegCacheTest : public PgLibPqTest {
     PgLibPqTest::UpdateMiniClusterOptions(options);
   }
 
-  void TestAmopNegCacheMiss(bool preloaded) {
+  void TestAmopNegCacheMiss(NegCacheTestType test_type) {
     auto conn = ASSERT_RESULT(Connect());
     ASSERT_OK(conn.Execute("CREATE TABLE test(k TEXT PRIMARY KEY)"));
 
@@ -4288,7 +4323,18 @@ class PgLibPqAmopNegCacheTest : public PgLibPqTest {
     int64_t value1 = ASSERT_RESULT(runQueryAndGetMetricLambda());
     int64_t value2 = ASSERT_RESULT(runQueryAndGetMetricLambda());
 
-    ASSERT_GT(value2, value1);
+    switch (test_type) {
+      case NegCacheTestType::kNegCache:
+        // Negative caching enabled: there shouldn't be any further
+        // cache misses since the negative cache entry should be present.
+        ASSERT_EQ(value2, value1);
+      break;
+      case NegCacheTestType::kPreload: FALLTHROUGH_INTENDED;
+      case NegCacheTestType::kNoPreload:
+        // Without negative caching, we should see a cache miss here.
+        ASSERT_GT(value2, value1);
+        break;
+    }
 
     LOG(INFO) << "Testing invalid values for yb_neg_catcache_ids";
     ASSERT_NOK_PG_ERROR_CODE(conn2.Execute("SET yb_neg_catcache_ids='52252'"),
@@ -4302,18 +4348,35 @@ class PgLibPqAmopNegCacheTest : public PgLibPqTest {
     ASSERT_OK(conn2.Execute("SET yb_neg_catcache_ids='3'"));
     int64_t value3 = ASSERT_RESULT(runQueryAndGetMetricLambda());
 
-    if (preloaded) {
-      // When preloaded, allowing neg caching already returns a neg cache hit
-      // so we should see no further misses on pg_amop at this point.
-      ASSERT_EQ(value3, value2);
-    } else {
-      // When not preloaded, we need one additional query to create the neg
-      // cache entry, after which we should see no further misses.
-      ASSERT_GT(value3, value2);
+    switch (test_type) {
+      case NegCacheTestType::kNegCache:
+        // Negative caching enabled: there shouldn't be any further
+        // cache misses since the negative cache entry should be present.
+        ASSERT_EQ(value2, value1);
+      break;
+      case NegCacheTestType::kPreload:
+        // When preloaded, allowing neg caching already returns a neg cache hit
+        // so we should see no further misses on pg_amop at this point.
+        ASSERT_EQ(value3, value2);
+        break;
+      case NegCacheTestType::kNoPreload:
+        // When not preloaded, we need one additional query to create the neg
+        // cache entry, after which we should see no further misses.
+        ASSERT_GT(value3, value2);
 
-      int64_t value4 = ASSERT_RESULT(runQueryAndGetMetricLambda());
-      ASSERT_EQ(value4, value3);
+        int64_t value4 = ASSERT_RESULT(runQueryAndGetMetricLambda());
+        ASSERT_EQ(value4, value3);
+        break;
     }
+  }
+};
+
+class PgLibPqAmopNoPreloadNegCacheTest : public PgLibPqAmopNegCacheTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.emplace_back(
+        "--ysql_pg_conf_csv=yb_test_make_all_ddl_statements_incrementing=false");
+    PgLibPqTest::UpdateMiniClusterOptions(options);
   }
 };
 
@@ -4321,18 +4384,28 @@ class PgLibPqAmopPreloadNegCacheTest : public PgLibPqAmopNegCacheTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_tserver_flags.emplace_back(
+        "--ysql_pg_conf_csv=yb_test_make_all_ddl_statements_incrementing=false");
+    options->extra_tserver_flags.emplace_back(
         "--ysql_catalog_preload_additional_table_list=pg_amop");
-    PgLibPqAmopNegCacheTest::UpdateMiniClusterOptions(options);
+    PgLibPqTest::UpdateMiniClusterOptions(options);
   }
 };
 
+// Default behavior: negative caching is enabled.
 TEST_F_EX(PgLibPqTest, PgAmopNegCacheTest, PgLibPqAmopNegCacheTest) {
-  TestAmopNegCacheMiss(false);
+  TestAmopNegCacheMiss(NegCacheTestType::kNegCache);
 }
 
-TEST_F_EX(PgLibPqTest, PgAmopPreloadNegCacheTest, PgLibPqAmopPreloadNegCacheTest) {
-  TestAmopNegCacheMiss(true);
+// Disable negative caching.
+TEST_F_EX(PgLibPqTest, PgAmopNoPreloadCacheTest, PgLibPqAmopNoPreloadNegCacheTest) {
+  TestAmopNegCacheMiss(NegCacheTestType::kNoPreload);
 }
+
+// Disable negative caching and preload pg_amop.
+TEST_F_EX(PgLibPqTest, PgAmopPreloadCacheTest, PgLibPqAmopPreloadNegCacheTest) {
+  TestAmopNegCacheMiss(NegCacheTestType::kPreload);
+}
+
 
 class PgLibPqPgInheritsNegCacheTest : public PgLibPqTest {
  protected:
@@ -4547,11 +4620,21 @@ TEST_F(PgLibPqCreateSequenceNamespaceRaceTest, CreateSequenceNamespaceRaceTest) 
   auto conn2 = ASSERT_RESULT(Connect());
   TestThreadHolder thread_holder;
   thread_holder.AddThreadFunctor([&conn1]() -> void {
-    ASSERT_OK(conn1.Execute("CREATE TABLE t1(k SERIAL, v INT)"));
+    // Retry on 40001 (serialization failure) which can occur due to
+    // running CREATE TABLE concurrently with the other thread.
+    Status s;
+    do {
+      s = conn1.Execute("CREATE TABLE t1(k SERIAL, v INT)");
+    } while (!s.ok() && HasTransactionError(s));
+    ASSERT_OK(s);
     ASSERT_OK(conn1.Execute("INSERT INTO t1(v) VALUES(1)"));
   });
   thread_holder.AddThreadFunctor([&conn2]() -> void {
-    ASSERT_OK(conn2.Execute("CREATE TABLE t2(k SERIAL, v INT)"));
+    Status s;
+    do {
+      s = conn2.Execute("CREATE TABLE t2(k SERIAL, v INT)");
+    } while (!s.ok() && HasTransactionError(s));
+    ASSERT_OK(s);
     ASSERT_OK(conn2.Execute("INSERT INTO t2(v) VALUES(2)"));
   });
   thread_holder.WaitAndStop(10s * kTimeMultiplier);

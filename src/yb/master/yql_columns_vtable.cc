@@ -83,7 +83,7 @@ Status YQLColumnsVTable::PopulateColumnInformation(const Schema& schema,
 }
 
 Result<VTableDataPtr> YQLColumnsVTable::RetrieveData(
-    const QLReadRequestPB& request) const {
+    const QLReadRequestMsg& request) const {
   auto vtable = std::make_shared<qlexpr::QLRowBlock>(schema());
   auto tables = catalog_manager().GetTables(GetTablesMode::kVisibleToClient);
   for (scoped_refptr<TableInfo> table : tables) {

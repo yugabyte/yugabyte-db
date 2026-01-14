@@ -85,9 +85,21 @@ int od_reset(od_server_t *server)
 			if (rc < 0)
 				break;
 		}
-		if (rc == -1) {
+		if (rc < 0) {
 			if (!machine_timedout())
 				goto error;
+
+			/*
+			 * YB: Control should only reach here when server is not
+			 * responding/has timed out.
+			 * While the solution for #22849 involves not sending an
+			 * error to the client in case the reset query times out,
+			 * here we allow forwarding an error to the client in case
+			 * we timeout waiting for a sync AND the cancel also fails.
+			 * However, the client would have already disconnected
+			 * (hence the call to od_reset), and the error message will
+			 * not really be going anywhere.
+			 */
 
 			/* support route cancel off */
 			if (!route->rule->pool->cancel) {

@@ -19,7 +19,6 @@ import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseContainer;
-import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.StorageUtil;
 import com.yugabyte.yw.common.StorageUtilFactory;
 import com.yugabyte.yw.common.Util;
@@ -46,7 +45,6 @@ public class RestoreContinuousBackup extends AbstractTaskBase {
   private final PlatformReplicationHelper replicationHelper;
   private final PlatformReplicationManager replicationManager;
   private final Config appConfig;
-  private final ReleaseManager releaseManager;
   private final RuntimeConfGetter runtimeConfGetter;
 
   @Inject
@@ -56,14 +54,12 @@ public class RestoreContinuousBackup extends AbstractTaskBase {
       PlatformReplicationManager replicationManager,
       StorageUtilFactory storageUtilFactory,
       Config appConfig,
-      ReleaseManager releaseManager,
       RuntimeConfGetter runtimeConfGetter) {
     super(baseTaskDependencies);
     this.replicationHelper = replicationHelper;
     this.replicationManager = replicationManager;
     this.storageUtilFactory = storageUtilFactory;
     this.appConfig = appConfig;
-    this.releaseManager = releaseManager;
     this.runtimeConfGetter = runtimeConfGetter;
   }
 

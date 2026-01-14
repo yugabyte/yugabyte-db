@@ -13,7 +13,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
-import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.webhook.DrConfigWebhookCall;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.AddExistingPitrToXClusterConfig;
@@ -741,17 +741,19 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
    * @param tableIds The ids of the tables to be bootstrapped
    */
   protected SubTaskGroup createBootstrapProducerTask(
-      XClusterConfig xClusterConfig, Collection<String> tableIds) {
-    SubTaskGroup subTaskGroup = createSubTaskGroup("BootstrapProducer");
+      XClusterConfig xClusterConfig, Collection<String> tableIds, TaskType updatingTask) {
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup(
+            "BootstrapProducer", UserTaskDetails.SubTaskGroupType.BootstrappingProducer);
     BootstrapProducer.Params bootstrapProducerParams = new BootstrapProducer.Params();
     bootstrapProducerParams.setUniverseUUID(xClusterConfig.getSourceUniverseUUID());
     bootstrapProducerParams.xClusterConfig = xClusterConfig;
     bootstrapProducerParams.tableIds = new ArrayList<>(tableIds);
+    bootstrapProducerParams.updatingTask = updatingTask;
 
     BootstrapProducer task = createTask(BootstrapProducer.class);
     task.initialize(bootstrapProducerParams);
     subTaskGroup.addSubTask(task);
-    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.BootstrappingProducer);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }

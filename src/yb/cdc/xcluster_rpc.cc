@@ -97,8 +97,8 @@ class GetCompatibleSchemaVersionRpc : public rpc::Rpc, public client::internal::
 
   void Failed(const Status &status) override {}
 
-  const TabletServerErrorPB *response_error() const override {
-    return resp_.has_error() ? &resp_.error() : nullptr;
+  client::TabletServerErrorPtr response_error() const override {
+    return client::TabletServerErrorPtr(resp_.has_error() ? &resp_.error() : nullptr);
   }
 
  private:
@@ -140,16 +140,18 @@ class XClusterWriteRpc : public rpc::Rpc, public client::internal::TabletRpc {
  public:
   XClusterWriteRpc(
       CoarseTimePoint deadline, client::internal::RemoteTablet *tablet,
-      const std::shared_ptr<client::YBTable> &table, client::YBClient *client, WriteRequestPB *req,
+      const std::shared_ptr<client::YBTable> &table, client::YBClient *client,
+      std::shared_ptr<tserver::WriteRequestMsg> req,
       XClusterWriteCallback callback, bool use_local_tserver)
       : rpc::Rpc(deadline, client->messenger(), &client->proxy_cache()),
         trace_(new Trace),
         invoker_(
             use_local_tserver /* local_tserver_only */, false /* consistent_prefix */, client, this,
             this, tablet, table, mutable_retrier(), trace_.get()),
+        req_(std::move(req)),
+        resp_(std::make_shared<tserver::WriteResponseMsg>()),
         callback_(std::move(callback)),
         table_(table) {
-    req_.Swap(req);
   }
 
   virtual ~XClusterWriteRpc() { CHECK(called_); }
@@ -176,23 +178,23 @@ class XClusterWriteRpc : public rpc::Rpc, public client::internal::TabletRpc {
 
   void Abort() override { rpc::Rpc::Abort(); }
 
-  const TabletServerErrorPB *response_error() const override {
-    return resp_.has_error() ? &resp_.error() : nullptr;
+  client::TabletServerErrorPtr response_error() const override {
+    return client::TabletServerErrorPtr(resp_->has_error() ? &resp_->error() : nullptr);
   }
 
   bool RefreshMetaCacheWithResponse() override {
-    DCHECK(client::internal::CheckIfConsensusInfoUnexpectedlyMissing(req_, resp_));
-    if (!resp_.has_tablet_consensus_info()) {
+    DCHECK(client::internal::CheckIfConsensusInfoUnexpectedlyMissing(*req_, resp_));
+    if (!resp_->has_tablet_consensus_info()) {
       VLOG(1) << "Partial refresh of tablet for XClusterWrite RPC failed because the response did "
                  "not have a tablet_consensus_info";
       return false;
     }
 
-    return invoker_.RefreshTabletInfoWithConsensusInfo(resp_.tablet_consensus_info());
+    return invoker_.RefreshTabletInfoWithConsensusInfo(resp_->tablet_consensus_info());
   }
 
   void SetRequestRaftConfigOpidIndex(int64_t opid_index) override {
-    req_.set_raft_config_opid_index(opid_index);
+    req_->set_raft_config_opid_index(opid_index);
   }
 
  private:
@@ -202,10 +204,10 @@ class XClusterWriteRpc : public rpc::Rpc, public client::internal::TabletRpc {
         std::bind(&XClusterWriteRpc::Finished, this, Status::OK()));
   }
 
-  const std::string &tablet_id() const { return req_.tablet_id(); }
+  std::string_view tablet_id() const { return req_->tablet_id(); }
 
   std::string ToString() const override {
-    return Format("XClusterWriteRpc: $0, retrier: $1", WriteRequestPBToString(req_), retrier());
+    return Format("XClusterWriteRpc: $0, retrier: $1", WriteRequestPBToString(*req_), retrier());
   }
 
   void InvokeCallback(const Status &status) {
@@ -214,20 +216,20 @@ class XClusterWriteRpc : public rpc::Rpc, public client::internal::TabletRpc {
       callback_(status, std::move(resp_));
     } else {
       LOG(WARNING) << "Multiple invocation of XClusterWriteRpc: " << status.ToString() << " : "
-                   << WriteRequestPBToString(req_);
+                   << WriteRequestPBToString(*req_);
     }
   }
 
   void InvokeAsync(
       TabletServerServiceProxy *proxy, rpc::RpcController *controller,
       rpc::ResponseCallback callback) {
-    proxy->WriteAsync(req_, &resp_, controller, std::move(callback));
+    proxy->WriteAsync(*req_, resp_.get(), controller, std::move(callback));
   }
 
   TracePtr trace_;
   client::internal::TabletInvoker invoker_;
-  WriteRequestPB req_;
-  WriteResponsePB resp_;
+  std::shared_ptr<tserver::WriteRequestMsg> req_;
+  std::shared_ptr<tserver::WriteResponseMsg> resp_;
   XClusterWriteCallback callback_;
   bool called_ = false;
   const std::shared_ptr<client::YBTable> table_;
@@ -235,7 +237,8 @@ class XClusterWriteRpc : public rpc::Rpc, public client::internal::TabletRpc {
 
 rpc::RpcCommandPtr CreateXClusterWriteRpc(
     CoarseTimePoint deadline, client::internal::RemoteTablet *tablet,
-    const std::shared_ptr<client::YBTable> &table, client::YBClient *client, WriteRequestPB *req,
+    const std::shared_ptr<client::YBTable> &table, client::YBClient *client,
+    std::shared_ptr<tserver::WriteRequestMsg> req,
     XClusterWriteCallback callback, bool use_local_tserver) {
   return std::make_shared<XClusterWriteRpc>(
       deadline, tablet, table, client, req, std::move(callback), use_local_tserver);
@@ -276,7 +279,7 @@ class GetChangesRpc : public rpc::Rpc, public client::internal::TabletRpc {
 
   void Abort() override { rpc::Rpc::Abort(); }
 
-  const tserver::TabletServerErrorPB *response_error() const override {
+  client::TabletServerErrorPtr response_error() const override {
     // Clear the contents of last_error_, since this function is invoked again on retry.
     last_error_.Clear();
 
@@ -303,13 +306,13 @@ class GetChangesRpc : public rpc::Rpc, public client::internal::TabletRpc {
             if (resp_.error().has_status()) {
               last_error_.mutable_status()->CopyFrom(resp_.error().status());
             }
-            return &last_error_;
+            return client::TabletServerErrorPtr(&last_error_);
           case cdc::CDCErrorPB::LEADER_NOT_READY:
             last_error_.set_code(tserver::TabletServerErrorPB::LEADER_NOT_READY_TO_SERVE);
             if (resp_.error().has_status()) {
               last_error_.mutable_status()->CopyFrom(resp_.error().status());
             }
-            return &last_error_;
+            return client::TabletServerErrorPtr(&last_error_);
           // TS.STALE_FOLLOWER => pattern not used.
           default:
             break;

@@ -175,6 +175,12 @@ extern char* yb_default_replica_identity;
  */
 extern bool yb_enable_consistent_replication_from_hash_range;
 
+/*
+ * GUC variable that enables streaming tables without primary key to CDCSDK logical replication
+ * streams.
+ */
+extern bool yb_cdcsdk_stream_tables_without_primary_key;
+
 extern bool enable_object_locking_infra;
 
 /*
@@ -314,6 +320,8 @@ extern bool yb_disable_ddl_transaction_block_for_read_committed;
 extern bool yb_allow_dockey_bounds;
 
 extern bool yb_ignore_read_time_in_walsender;
+
+extern bool yb_disable_pg_snapshot_mgmt_in_repeatable_read;
 
 // Should be in sync with YsqlSamplingAlgorithm protobuf.
 typedef enum {

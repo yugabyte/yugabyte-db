@@ -120,6 +120,12 @@ typedef struct ReplicationSlotPersistentData
 
 	/* YB: The last time at which a publication's table list was refreshed */
 	uint64_t	yb_last_pub_refresh_time;
+
+	/*
+	 * YB: Whether tables without primary key are allowed to be polled by
+	 * replication slot.
+	 */
+	bool		yb_allow_tables_without_primary_key;
 } ReplicationSlotPersistentData;
 
 /*

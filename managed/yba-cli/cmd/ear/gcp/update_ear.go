@@ -5,8 +5,6 @@
 package gcp
 
 import (
-	"strings"
-
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/ear/earutil"
@@ -28,7 +26,7 @@ var updateGCPEARCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(configNameFlag)) == 0 {
+		if util.IsEmptyString(configNameFlag) {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize(

@@ -178,13 +178,13 @@ var createAzureProviderCmd = &cobra.Command{
 
 		requestBody := ybaclient.Provider{
 			Code:          util.GetStringPointer(providerCode),
-			AllAccessKeys: &allAccessKeys,
+			AllAccessKeys: allAccessKeys,
 			ImageBundles:  buildAzureImageBundles(imageBundles),
 			Name:          util.GetStringPointer(providerName),
 			Regions:       buildAzureRegions(regions, zones),
 			Details: &ybaclient.ProviderDetails{
 				AirGapInstall: util.GetBoolPointer(airgapInstall),
-				NtpServers:    util.StringSliceFromString(ntpServers),
+				NtpServers:    ntpServers,
 				CloudInfo: &ybaclient.CloudInfo{
 					Azu: &azureCloudInfo,
 				},
@@ -194,8 +194,7 @@ var createAzureProviderCmd = &cobra.Command{
 		rTask, response, err := authAPI.CreateProvider().
 			CreateProviderRequest(requestBody).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Provider: Azure", "Create")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Provider: Azure", "Create")
 		}
 
 		providerutil.WaitForCreateProviderTask(

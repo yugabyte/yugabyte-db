@@ -1,3 +1,25 @@
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set filename :abs_srcdir '/yb_commands/explainrun.sql'
+\i :filename
+-- A helper script to explain and run a query.  Use in regress tests by
+-- defining :explain, :query, and optionally :hint#.
+\set explain1 ':explain :hint1 :query;'
+\set explain2 ':explain1 :explain :hint2 :query;'
+\set explain3 ':explain2 :explain :hint3 :query;'
+\set explain4 ':explain3 :explain :hint4 :query;'
+\set explain5 ':explain4 :explain :hint5 :query;'
+\set explain1run1 ':explain1; :hint1 :query;'
+\set explain2run2 ':explain2; :hint1 :query; :hint2 :query;'
+\set explain3run3 ':explain3; :hint1 :query; :hint2 :query; :hint3 :query;'
+\set explain4run4 ':explain4; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query;'
+\set explain5run5 ':explain5; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query; :hint5 :query;'
+-- Default to no hints.
+\set hint1 ''
+\set hint2 ''
+\set hint3 ''
+\set hint4 ''
+\set hint5 ''
+\set explain 'EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE)'
 CREATE TABLE test_with_pk (a INT PRIMARY KEY, h INT);
 INSERT INTO test_with_pk SELECT x, x FROM generate_series(1, 10) x;
 -- This test verifies:
@@ -22,54 +44,54 @@ INSERT INTO test_with_pk SELECT x, x FROM generate_series(1, 10) x;
 ---- PRIMARY KEY ----
 SET enable_seqscan = false;
 -- we can pushdown the yb_hash_code call to the pk index
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(a) FROM test_with_pk WHERE yb_hash_code(a) < 4000;
+\set query 'SELECT yb_hash_code(a) FROM test_with_pk WHERE yb_hash_code(a) < 4000'
+:explain1run1
                                  QUERY PLAN                                 
 ----------------------------------------------------------------------------
  Index Scan using test_with_pk_pkey on test_with_pk (actual rows=1 loops=1)
    Index Cond: (yb_hash_code(a) < 4000)
 (2 rows)
 
-SELECT yb_hash_code(a) FROM test_with_pk WHERE yb_hash_code(a) < 4000;
  yb_hash_code 
 --------------
          2675
 (1 row)
 
 -- we can pushdown the yb_hash_code call to the pk index
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(a) FROM test_with_pk WHERE yb_hash_code(a) = 2675;
+\set query 'SELECT yb_hash_code(a) FROM test_with_pk WHERE yb_hash_code(a) = 2675'
+:explain1run1
                                  QUERY PLAN                                 
 ----------------------------------------------------------------------------
  Index Scan using test_with_pk_pkey on test_with_pk (actual rows=1 loops=1)
    Index Cond: (yb_hash_code(a) = 2675)
 (2 rows)
 
-SELECT yb_hash_code(a) FROM test_with_pk WHERE yb_hash_code(a) = 2675;
  yb_hash_code 
 --------------
          2675
 (1 row)
 
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(a) FROM test_with_pk WHERE cbrt(a) < 1.2;
+\set query 'SELECT cbrt(a) FROM test_with_pk WHERE cbrt(a) < 1.2'
+:explain1run1
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
  Seq Scan on test_with_pk (actual rows=1 loops=1)
    Storage Filter: (cbrt((a)::double precision) < '1.2'::double precision)
 (2 rows)
 
-SELECT cbrt(a) FROM test_with_pk WHERE cbrt(a) < 1.2;
  cbrt 
 ------
     1
 (1 row)
 
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(a) FROM test_with_pk WHERE cbrt(a) = 1;
+\set query 'SELECT cbrt(a) FROM test_with_pk WHERE cbrt(a) = 1'
+:explain1run1
                                QUERY PLAN                                
 -------------------------------------------------------------------------
  Seq Scan on test_with_pk (actual rows=1 loops=1)
    Storage Filter: (cbrt((a)::double precision) = '1'::double precision)
 (2 rows)
 
-SELECT cbrt(a) FROM test_with_pk WHERE cbrt(a) = 1;
  cbrt 
 ------
     1
@@ -77,54 +99,54 @@ SELECT cbrt(a) FROM test_with_pk WHERE cbrt(a) = 1;
 
 SET enable_seqscan = true;
 -- we can pushdown the yb_hash_code call to the pk index
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(a) FROM test_with_pk WHERE yb_hash_code(a) < 4000;
+\set query 'SELECT yb_hash_code(a) FROM test_with_pk WHERE yb_hash_code(a) < 4000'
+:explain1run1
                                  QUERY PLAN                                 
 ----------------------------------------------------------------------------
  Index Scan using test_with_pk_pkey on test_with_pk (actual rows=1 loops=1)
    Index Cond: (yb_hash_code(a) < 4000)
 (2 rows)
 
-SELECT yb_hash_code(a) FROM test_with_pk WHERE yb_hash_code(a) < 4000;
  yb_hash_code 
 --------------
          2675
 (1 row)
 
 -- we can pushdown the yb_hash_code call to the pk index
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(a) FROM test_with_pk WHERE yb_hash_code(a) = 2675;
+\set query 'SELECT yb_hash_code(a) FROM test_with_pk WHERE yb_hash_code(a) = 2675'
+:explain1run1
                                  QUERY PLAN                                 
 ----------------------------------------------------------------------------
  Index Scan using test_with_pk_pkey on test_with_pk (actual rows=1 loops=1)
    Index Cond: (yb_hash_code(a) = 2675)
 (2 rows)
 
-SELECT yb_hash_code(a) FROM test_with_pk WHERE yb_hash_code(a) = 2675;
  yb_hash_code 
 --------------
          2675
 (1 row)
 
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(a) FROM test_with_pk WHERE cbrt(a) < 1.2;
+\set query 'SELECT cbrt(a) FROM test_with_pk WHERE cbrt(a) < 1.2'
+:explain1run1
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
  Seq Scan on test_with_pk (actual rows=1 loops=1)
    Storage Filter: (cbrt((a)::double precision) < '1.2'::double precision)
 (2 rows)
 
-SELECT cbrt(a) FROM test_with_pk WHERE cbrt(a) < 1.2;
  cbrt 
 ------
     1
 (1 row)
 
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(a) FROM test_with_pk WHERE cbrt(a) = 1;
+\set query 'SELECT cbrt(a) FROM test_with_pk WHERE cbrt(a) = 1'
+:explain1run1
                                QUERY PLAN                                
 -------------------------------------------------------------------------
  Seq Scan on test_with_pk (actual rows=1 loops=1)
    Storage Filter: (cbrt((a)::double precision) = '1'::double precision)
 (2 rows)
 
-SELECT cbrt(a) FROM test_with_pk WHERE cbrt(a) = 1;
  cbrt 
 ------
     1
@@ -134,7 +156,8 @@ SELECT cbrt(a) FROM test_with_pk WHERE cbrt(a) = 1;
 SET enable_seqscan = false;
 -- for these queries, we use seqscan (even when disabled)
 -- because there is no other option
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000;
+\set query 'SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000'
+:explain1run1
                     QUERY PLAN                    
 --------------------------------------------------
  Seq Scan on test_with_pk (actual rows=1 loops=1)
@@ -142,13 +165,13 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(h) FRO
    Rows Removed by Filter: 9
 (3 rows)
 
-SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000;
  yb_hash_code 
 --------------
          2675
 (1 row)
 
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675;
+\set query 'SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675'
+:explain1run1
                     QUERY PLAN                    
 --------------------------------------------------
  Seq Scan on test_with_pk (actual rows=1 loops=1)
@@ -156,33 +179,32 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(h) FRO
    Rows Removed by Filter: 9
 (3 rows)
 
-SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675;
  yb_hash_code 
 --------------
          2675
 (1 row)
 
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;
+\set query 'SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2'
+:explain1run1
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
  Seq Scan on test_with_pk (actual rows=1 loops=1)
    Storage Filter: (cbrt((h)::double precision) < '1.2'::double precision)
 (2 rows)
 
-SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;
  cbrt 
 ------
     1
 (1 row)
 
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1;
+\set query 'SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1'
+:explain1run1
                                QUERY PLAN                                
 -------------------------------------------------------------------------
  Seq Scan on test_with_pk (actual rows=1 loops=1)
    Storage Filter: (cbrt((h)::double precision) = '1'::double precision)
 (2 rows)
 
-SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1;
  cbrt 
 ------
     1
@@ -192,7 +214,8 @@ SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1;
 CREATE INDEX t_b_hash_idx ON test_with_pk(h);
 SET enable_seqscan = false;
 -- we can pushdown yb_hash_code(h) on a hash index on h because the index is ordered by hash code
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000;
+\set query 'SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000'
+:explain1run1
                                  QUERY PLAN                                 
 ----------------------------------------------------------------------------
  Index Only Scan using t_b_hash_idx on test_with_pk (actual rows=1 loops=1)
@@ -200,14 +223,14 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(h) FRO
    Heap Fetches: 0
 (3 rows)
 
-SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000;
  yb_hash_code 
 --------------
          2675
 (1 row)
 
 -- we can pushdown yb_hash_code(h) on a hash index on h because the index is ordered by hash code
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675;
+\set query 'SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675'
+:explain1run1
                                  QUERY PLAN                                 
 ----------------------------------------------------------------------------
  Index Only Scan using t_b_hash_idx on test_with_pk (actual rows=1 loops=1)
@@ -215,13 +238,13 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(h) FRO
    Heap Fetches: 0
 (3 rows)
 
-SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675;
  yb_hash_code 
 --------------
          2675
 (1 row)
 
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;
+\set query 'SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2'
+:explain1run1
                                  QUERY PLAN                                 
 ----------------------------------------------------------------------------
  Index Only Scan using t_b_hash_idx on test_with_pk (actual rows=1 loops=1)
@@ -229,13 +252,13 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_w
    Heap Fetches: 0
 (3 rows)
 
-SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;
  cbrt 
 ------
     1
 (1 row)
 
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1;
+\set query 'SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1'
+:explain1run1
                                  QUERY PLAN                                 
 ----------------------------------------------------------------------------
  Index Only Scan using t_b_hash_idx on test_with_pk (actual rows=1 loops=1)
@@ -243,7 +266,6 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_w
    Heap Fetches: 0
 (3 rows)
 
-SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1;
  cbrt 
 ------
     1
@@ -251,7 +273,8 @@ SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1;
 
 SET enable_seqscan = true;
 -- we prefer using the index over a seq scan
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000;
+\set query 'SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000'
+:explain1run1
                                  QUERY PLAN                                 
 ----------------------------------------------------------------------------
  Index Only Scan using t_b_hash_idx on test_with_pk (actual rows=1 loops=1)
@@ -259,14 +282,14 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(h) FRO
    Heap Fetches: 0
 (3 rows)
 
-SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000;
  yb_hash_code 
 --------------
          2675
 (1 row)
 
 -- we prefer using the index over a seq scan
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675;
+\set query 'SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675'
+:explain1run1
                                  QUERY PLAN                                 
 ----------------------------------------------------------------------------
  Index Only Scan using t_b_hash_idx on test_with_pk (actual rows=1 loops=1)
@@ -274,33 +297,32 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(h) FRO
    Heap Fetches: 0
 (3 rows)
 
-SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675;
  yb_hash_code 
 --------------
          2675
 (1 row)
 
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;
+\set query 'SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2'
+:explain1run1
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
  Seq Scan on test_with_pk (actual rows=1 loops=1)
    Storage Filter: (cbrt((h)::double precision) < '1.2'::double precision)
 (2 rows)
 
-SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;
  cbrt 
 ------
     1
 (1 row)
 
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1;
+\set query 'SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1'
+:explain1run1
                                QUERY PLAN                                
 -------------------------------------------------------------------------
  Seq Scan on test_with_pk (actual rows=1 loops=1)
    Storage Filter: (cbrt((h)::double precision) = '1'::double precision)
 (2 rows)
 
-SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1;
  cbrt 
 ------
     1
@@ -311,7 +333,8 @@ DROP INDEX t_b_hash_idx;
 CREATE INDEX t_b_asc_idx ON test_with_pk(h ASC);
 SET enable_seqscan = false;
 -- cannot pushdown a range yb_hash_code(h) clause on a ascending index on h because the index is not ordered by hash code
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000;
+\set query 'SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000'
+:explain1run1
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
  Index Only Scan using t_b_asc_idx on test_with_pk (actual rows=1 loops=1)
@@ -320,14 +343,14 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(h) FRO
    Heap Fetches: 0
 (4 rows)
 
-SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000;
  yb_hash_code 
 --------------
          2675
 (1 row)
 
 -- cannot pushdown an equality yb_hash_code(h) clause on a ascending index on h because the index is not ordered by hash code
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675;
+\set query 'SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675'
+:explain1run1
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
  Index Only Scan using t_b_asc_idx on test_with_pk (actual rows=1 loops=1)
@@ -336,13 +359,13 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(h) FRO
    Heap Fetches: 0
 (4 rows)
 
-SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675;
  yb_hash_code 
 --------------
          2675
 (1 row)
 
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;
+\set query 'SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2'
+:explain1run1
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
  Index Only Scan using t_b_asc_idx on test_with_pk (actual rows=1 loops=1)
@@ -350,13 +373,13 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_w
    Heap Fetches: 0
 (3 rows)
 
-SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;
  cbrt 
 ------
     1
 (1 row)
 
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1;
+\set query 'SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1'
+:explain1run1
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
  Index Only Scan using t_b_asc_idx on test_with_pk (actual rows=1 loops=1)
@@ -364,7 +387,6 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_w
    Heap Fetches: 0
 (3 rows)
 
-SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1;
  cbrt 
 ------
     1
@@ -372,7 +394,8 @@ SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1;
 
 SET enable_seqscan = true;
 -- we prefer filtering rows from the seq scan instead of the index scan
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000;
+\set query 'SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000'
+:explain1run1
                     QUERY PLAN                    
 --------------------------------------------------
  Seq Scan on test_with_pk (actual rows=1 loops=1)
@@ -380,14 +403,14 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(h) FRO
    Rows Removed by Filter: 9
 (3 rows)
 
-SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000;
  yb_hash_code 
 --------------
          2675
 (1 row)
 
 -- we prefer filtering rows from the seq scan instead of the index scan
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675;
+\set query 'SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675'
+:explain1run1
                     QUERY PLAN                    
 --------------------------------------------------
  Seq Scan on test_with_pk (actual rows=1 loops=1)
@@ -395,33 +418,32 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(h) FRO
    Rows Removed by Filter: 9
 (3 rows)
 
-SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675;
  yb_hash_code 
 --------------
          2675
 (1 row)
 
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;
+\set query 'SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2'
+:explain1run1
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
  Seq Scan on test_with_pk (actual rows=1 loops=1)
    Storage Filter: (cbrt((h)::double precision) < '1.2'::double precision)
 (2 rows)
 
-SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;
  cbrt 
 ------
     1
 (1 row)
 
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1;
+\set query 'SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1'
+:explain1run1
                                QUERY PLAN                                
 -------------------------------------------------------------------------
  Seq Scan on test_with_pk (actual rows=1 loops=1)
    Storage Filter: (cbrt((h)::double precision) = '1'::double precision)
 (2 rows)
 
-SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1;
  cbrt 
 ------
     1
@@ -433,7 +455,8 @@ CREATE INDEX t_b_hash_code_idx ON test_with_pk(yb_hash_code(h));
 CREATE INDEX t_b_cbrt_idx ON test_with_pk(cbrt(h));
 SET enable_seqscan = false;
 -- cannot use a hash index for a range clause on yb_hash_code(h) because it's ordered by yb_hash_code(yb_hash_code(h))
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000;
+\set query 'SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000'
+:explain1run1
                     QUERY PLAN                    
 --------------------------------------------------
  Seq Scan on test_with_pk (actual rows=1 loops=1)
@@ -441,49 +464,48 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(h) FRO
    Rows Removed by Filter: 9
 (3 rows)
 
-SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000;
  yb_hash_code 
 --------------
          2675
 (1 row)
 
 -- can use a hash index on yb_hash_code for a yb_hash_code equality clause
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675;
+\set query 'SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675'
+:explain1run1
                                  QUERY PLAN                                 
 ----------------------------------------------------------------------------
  Index Scan using t_b_hash_code_idx on test_with_pk (actual rows=1 loops=1)
    Index Cond: (yb_hash_code(h) = 2675)
 (2 rows)
 
-SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675;
  yb_hash_code 
 --------------
          2675
 (1 row)
 
 -- cannot use a hash index on cbrt for a cbrt range clause
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;
+\set query 'SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2'
+:explain1run1
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
  Seq Scan on test_with_pk (actual rows=1 loops=1)
    Storage Filter: (cbrt((h)::double precision) < '1.2'::double precision)
 (2 rows)
 
-SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;
  cbrt 
 ------
     1
 (1 row)
 
 -- can use a hash index on cbrt for a cbrt equality clause
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1;
+\set query 'SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1'
+:explain1run1
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  Index Scan using t_b_cbrt_idx on test_with_pk (actual rows=1 loops=1)
    Index Cond: (cbrt((h)::double precision) = '1'::double precision)
 (2 rows)
 
-SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1;
  cbrt 
 ------
     1
@@ -491,7 +513,8 @@ SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1;
 
 SET enable_seqscan = true;
 -- cannot use a hash index for a range clause on yb_hash_code(h) because it's ordered by yb_hash_code(yb_hash_code(h))
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000;
+\set query 'SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000'
+:explain1run1
                     QUERY PLAN                    
 --------------------------------------------------
  Seq Scan on test_with_pk (actual rows=1 loops=1)
@@ -499,49 +522,48 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(h) FRO
    Rows Removed by Filter: 9
 (3 rows)
 
-SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000;
  yb_hash_code 
 --------------
          2675
 (1 row)
 
 -- can use a hash index on yb_hash_code for a yb_hash_code equality clause
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675;
+\set query 'SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675'
+:explain1run1
                                  QUERY PLAN                                 
 ----------------------------------------------------------------------------
  Index Scan using t_b_hash_code_idx on test_with_pk (actual rows=1 loops=1)
    Index Cond: (yb_hash_code(h) = 2675)
 (2 rows)
 
-SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675;
  yb_hash_code 
 --------------
          2675
 (1 row)
 
 -- cannot use a hash index on cbrt for a cbrt range clause
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;
+\set query 'SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2'
+:explain1run1
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
  Seq Scan on test_with_pk (actual rows=1 loops=1)
    Storage Filter: (cbrt((h)::double precision) < '1.2'::double precision)
 (2 rows)
 
-SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;
  cbrt 
 ------
     1
 (1 row)
 
 -- can use a hash index on cbrt for a cbrt equality clause
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1;
+\set query 'SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1'
+:explain1run1
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  Index Scan using t_b_cbrt_idx on test_with_pk (actual rows=1 loops=1)
    Index Cond: (cbrt((h)::double precision) = '1'::double precision)
 (2 rows)
 
-SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1;
  cbrt 
 ------
     1
@@ -554,56 +576,56 @@ CREATE INDEX t_b_hash_code_asc_idx ON test_with_pk(yb_hash_code(h) ASC);
 CREATE INDEX t_b_cbrt_asc_idx ON test_with_pk(cbrt(h) ASC);
 SET enable_seqscan = false;
 -- can use the ascending index on yb_hash_code for an equality clause
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000;
+\set query 'SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000'
+:explain1run1
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Index Scan using t_b_hash_code_asc_idx on test_with_pk (actual rows=1 loops=1)
    Index Cond: (yb_hash_code(h) < 4000)
 (2 rows)
 
-SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000;
  yb_hash_code 
 --------------
          2675
 (1 row)
 
 -- can use the ascending index on yb_hash_code for an equality clause
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675;
+\set query 'SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675'
+:explain1run1
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Index Scan using t_b_hash_code_asc_idx on test_with_pk (actual rows=1 loops=1)
    Index Cond: (yb_hash_code(h) = 2675)
 (2 rows)
 
-SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675;
  yb_hash_code 
 --------------
          2675
 (1 row)
 
 -- can use the ascending index on cbrt for an equality clause
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;
+\set query 'SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2'
+:explain1run1
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
  Index Scan using t_b_cbrt_asc_idx on test_with_pk (actual rows=1 loops=1)
    Index Cond: (cbrt((h)::double precision) < '1.2'::double precision)
 (2 rows)
 
-SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;
  cbrt 
 ------
     1
 (1 row)
 
 -- can use the ascending index on cbrt for an equality clause
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1;
+\set query 'SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1'
+:explain1run1
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
  Index Scan using t_b_cbrt_asc_idx on test_with_pk (actual rows=1 loops=1)
    Index Cond: (cbrt((h)::double precision) = '1'::double precision)
 (2 rows)
 
-SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1;
  cbrt 
 ------
     1
@@ -611,53 +633,53 @@ SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1;
 
 SET enable_seqscan = true;
 -- for each case, we prefer to use the indexes instead of a seq scan
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000;
+\set query 'SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000'
+:explain1run1
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Index Scan using t_b_hash_code_asc_idx on test_with_pk (actual rows=1 loops=1)
    Index Cond: (yb_hash_code(h) < 4000)
 (2 rows)
 
-SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) < 4000;
  yb_hash_code 
 --------------
          2675
 (1 row)
 
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675;
+\set query 'SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675'
+:explain1run1
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Index Scan using t_b_hash_code_asc_idx on test_with_pk (actual rows=1 loops=1)
    Index Cond: (yb_hash_code(h) = 2675)
 (2 rows)
 
-SELECT yb_hash_code(h) FROM test_with_pk WHERE yb_hash_code(h) = 2675;
  yb_hash_code 
 --------------
          2675
 (1 row)
 
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;
+\set query 'SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2'
+:explain1run1
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
  Index Scan using t_b_cbrt_asc_idx on test_with_pk (actual rows=1 loops=1)
    Index Cond: (cbrt((h)::double precision) < '1.2'::double precision)
 (2 rows)
 
-SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) < 1.2;
  cbrt 
 ------
     1
 (1 row)
 
-EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1;
+\set query 'SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1'
+:explain1run1
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
  Index Scan using t_b_cbrt_asc_idx on test_with_pk (actual rows=1 loops=1)
    Index Cond: (cbrt((h)::double precision) = '1'::double precision)
 (2 rows)
 
-SELECT cbrt(h) FROM test_with_pk WHERE cbrt(h) = 1;
  cbrt 
 ------
     1

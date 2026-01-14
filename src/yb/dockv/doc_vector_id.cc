@@ -15,6 +15,7 @@
 
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/value.messages.h"
 
 #include "yb/dockv/primitive_value.h"
 #include "yb/dockv/value_packing_v2.h"

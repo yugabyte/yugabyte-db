@@ -49,13 +49,7 @@ var listSupportBundleUniverseCmd = &cobra.Command{
 
 		r, response, err := authAPI.ListSupportBundle(universeUUID).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"Universe: Support Bundle",
-				"List",
-			)
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Universe: Support Bundle", "List")
 		}
 
 		supportbundle.Universe = universe

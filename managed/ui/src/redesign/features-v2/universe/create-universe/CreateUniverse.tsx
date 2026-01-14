@@ -39,7 +39,7 @@ const CreateUniverseRoot = styled('div')(() => ({
   }
 }));
 
-export const CreateUniverse = () => {
+export function CreateUniverse() {
   const { t } = useTranslation('translation', { keyPrefix: 'createUniverseV2.steps' });
   const restoreContextData = useMethods(createUniverseFormMethods, initialCreateUniverseFormState);
   const [{ activeStep, resilienceType }] = restoreContextData;
@@ -132,4 +132,4 @@ export const CreateUniverse = () => {
       </AuthenticatedArea>
     </CreateUniverseRoot>
   );
-};
+}

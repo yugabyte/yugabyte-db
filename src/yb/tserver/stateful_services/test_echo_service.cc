@@ -15,6 +15,7 @@
 #include "yb/client/client.h"
 #include "yb/client/session.h"
 #include "yb/client/yb_op.h"
+#include "yb/common/ql_protocol.messages.h"
 #include "yb/common/ql_value.h"
 #include "yb/gutil/walltime.h"
 #include "yb/master/master_defaults.h"
@@ -50,13 +51,12 @@ Result<bool> TestEchoService::RunPeriodicTask() {
 Status TestEchoService::RecordRequestInTable(const std::string& message) {
   auto* table = VERIFY_RESULT(GetServiceTable());
 
+  auto session = VERIFY_RESULT(GetYBSession(30s));
   const auto op = table->NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
   auto* const req = op->mutable_request();
   QLAddTimestampHashValue(req, GetCurrentTimeMicros());
   table->AddStringColumnValue(req, master::kTestEchoNodeId, node_uuid_);
   table->AddStringColumnValue(req, master::kTestEchoMessage, message);
-
-  auto session = VERIFY_RESULT(GetYBSession(30s));
 
   TEST_SYNC_POINT("TestEchoService::RecordRequestInTable::BeforeApply1");
   TEST_SYNC_POINT("TestEchoService::RecordRequestInTable::BeforeApply2");

@@ -5,8 +5,6 @@
 package selfsigned
 
 import (
-	"strings"
-
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	ybaclient "github.com/yugabyte/platform-go-client"
@@ -40,7 +38,7 @@ var createSelfSignedEITCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		if len(strings.TrimSpace(rootCertFilePath)) == 0 {
+		if util.IsEmptyString(rootCertFilePath) {
 			logrus.Fatalf(
 				formatter.Colorize("Missing root certificate file path\n", formatter.RedColor),
 			)
@@ -57,7 +55,7 @@ var createSelfSignedEITCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		if len(strings.TrimSpace(keyFilePath)) == 0 {
+		if util.IsEmptyString(keyFilePath) {
 			logrus.Fatalf(formatter.Colorize("Missing key file path\n", formatter.RedColor))
 		}
 

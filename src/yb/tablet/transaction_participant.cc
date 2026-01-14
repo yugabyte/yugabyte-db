@@ -23,6 +23,8 @@
 #include <boost/multi_index/member.hpp>
 #include <boost/multi_index/ordered_index.hpp>
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/client/client.h"
 #include "yb/client/transaction_rpc.h"
 
@@ -211,6 +213,16 @@ YB_STRONGLY_TYPED_BOOL(PostApplyCleanup);
 constexpr size_t kSIModeIdx = 0;
 constexpr size_t kRRRCModeIdx = 1;
 
+ash::WaitStateInfoPtr InitMinRunningHybridTimeWaitState() {
+  auto bg_wait_state = ash::WaitStateInfo::CreateIfAshIsEnabled<ash::WaitStateInfo>();
+  if (bg_wait_state) {
+    bg_wait_state->set_root_request_id(yb::Uuid::Generate());
+    bg_wait_state->set_query_id(
+        std::to_underlying(yb::ash::FixedQueryId::kQueryIdForMinRunningHybridTime));
+  }
+  return bg_wait_state;
+}
+
 } // namespace
 
 using DeadlockInfo = std::pair<Status, CoarseTimePoint>;
@@ -368,7 +380,7 @@ class TransactionParticipant::Impl
   }
 
   // Adds new running transaction.
-  Result<bool> Add(const TransactionMetadata& metadata) {
+  Result<bool> Add(const TransactionMetadata& metadata, HybridTime batch_write_ht) {
     RETURN_NOT_OK(loader_.WaitLoaded(metadata.transaction_id));
 
     MinRunningNotifier min_running_notifier(&applier_);
@@ -388,11 +400,12 @@ class TransactionParticipant::Impl
     VLOG_WITH_PREFIX(4) << "Create new transaction: " << metadata.transaction_id;
 
     VLOG_WITH_PREFIX(3) << "Adding a new transaction txn_id: " << metadata.transaction_id
-                        << " with begin_time: " << metadata.start_time.ToUint64();
+                        << " with begin_time: " << metadata.start_time.ToUint64()
+                        << " (" << metadata.start_time << ")";
 
     auto txn = std::make_shared<RunningTransaction>(
-        metadata, TransactionalBatchData(), OneWayBitmap(), metadata.start_time, this,
-        metric_aborted_transactions_pending_cleanup_);
+        metadata, TransactionalBatchData(), OneWayBitmap(), metadata.start_time, batch_write_ht,
+        this, metric_aborted_transactions_pending_cleanup_);
 
     {
       // Some transactions might not have metadata flushed into intents DB, but may have apply state
@@ -1170,20 +1183,20 @@ class TransactionParticipant::Impl
     return &participant_context_;
   }
 
-  void SetMinReplayTxnStartTimeLowerBound(HybridTime start_ht) {
-    if (start_ht == HybridTime::kMax || start_ht == HybridTime::kInvalid ||
+  void SetMinReplayTxnFirstWriteTimeLowerBound(HybridTime hybrid_time) {
+    if (hybrid_time == HybridTime::kMax || hybrid_time == HybridTime::kInvalid ||
         !FLAGS_use_bootstrap_intent_ht_filter) {
       return;
     }
-    HybridTime current_ht = min_replay_txn_start_ht_.load(std::memory_order_acquire);
-    while ((!current_ht || current_ht < start_ht)
-        && !min_replay_txn_start_ht_.compare_exchange_weak(current_ht, start_ht)) {}
-    VLOG_WITH_PREFIX(1) << "Set min replay txn start time to at least " << start_ht
+    HybridTime current_ht = min_replay_txn_first_write_ht_.load(std::memory_order_acquire);
+    while ((!current_ht || current_ht < hybrid_time)
+        && !min_replay_txn_first_write_ht_.compare_exchange_weak(current_ht, hybrid_time)) {}
+    VLOG_WITH_PREFIX(1) << "Set min replay txn start time to at least " << hybrid_time
                         << ", was " << current_ht;
   }
 
-  HybridTime MinReplayTxnStartTime() override {
-    return min_replay_txn_start_ht_.load(std::memory_order_acquire);
+  HybridTime MinReplayTxnFirstWriteTime() override {
+    return min_replay_txn_first_write_ht_.load(std::memory_order_acquire);
   }
 
   // Returns the minimum start time among all running transactions.
@@ -1212,6 +1225,10 @@ class TransactionParticipant::Impl
         static const std::string kRequestReason = "min running check"s;
         // Get transaction status
         auto now_ht = participant_context_.Now();
+        auto min_running_wait_state = InitMinRunningHybridTimeWaitState();
+        ash::MinRunningHybridTimeTracker().Track(min_running_wait_state);
+        ADOPT_WAIT_STATE(min_running_wait_state);
+        SET_WAIT_STATUS(TransactionStatusCache_DoGetCommitData);
         StatusRequest status_request = {
             .id = &first_txn.id(),
             .read_ht = now_ht,
@@ -1221,9 +1238,11 @@ class TransactionParticipant::Impl
             .serial_no = 0,
             .reason = &kRequestReason,
             .flags = TransactionLoadFlags{},
-            .callback = [this, id = first_txn.id()](Result<TransactionStatusResult> result) {
+            .callback = [this, id = first_txn.id(), min_running_wait_state]
+                (Result<TransactionStatusResult> result) {
               // Aborted status will result in cleanup of intents.
               VLOG_WITH_PREFIX(1) << "Min running status " << id << ": " << result;
+              ash::MinRunningHybridTimeTracker().Untrack(min_running_wait_state);
             }
         };
         first_txn.RequestStatusAt(status_request, &lock);
@@ -1355,9 +1374,9 @@ class TransactionParticipant::Impl
     return transactions_.size();
   }
 
-  void SetMinReplayTxnStartTimeUpdateCallback(std::function<void(HybridTime)> callback) {
+  void SetMinReplayTxnFirstWriteTimeUpdateCallback(std::function<void(HybridTime)> callback) {
     std::lock_guard lock(mutex_);
-    min_replay_txn_start_ht_callback_ = std::move(callback);
+    min_replay_txn_first_write_ht_callback_ = std::move(callback);
   }
 
   OneWayBitmap TEST_TransactionReplicatedBatches(const TransactionId& id) {
@@ -1389,7 +1408,8 @@ class TransactionParticipant::Impl
   }
 
   Status StopActiveTxnsPriorTo(
-      HybridTime cutoff, CoarseTimePoint deadline, TransactionId* exclude_txn_id) {
+      OnlyAbortTxnsNotUsingTableLocks only_abort_txns_not_using_table_locks, HybridTime cutoff,
+      CoarseTimePoint deadline, TransactionId* exclude_txn_id) {
     vector<TransactionId> ids_to_abort;
     {
       std::lock_guard lock(mutex_);
@@ -1397,6 +1417,12 @@ class TransactionParticipant::Impl
         if (txn->start_ht() > cutoff ||
             (exclude_txn_id != nullptr && txn->id() == *exclude_txn_id)) {
           break;
+        }
+        if (only_abort_txns_not_using_table_locks && txn->metadata().using_table_locks) {
+          VLOG_WITH_PREFIX(2) << "Skipping transaction " << txn->id()
+                              << " because it is using table locks and we are only aborting txns "
+                                 "that are not using table locks";
+          continue;
         }
         if (!txn->WasAborted()) {
           ids_to_abort.push_back(txn->id());
@@ -1675,6 +1701,7 @@ class TransactionParticipant::Impl
  private:
   class AbortCheckTimeTag;
   class StartTimeTag;
+  class FirstWriteTimeTag;
   class ApplyOpIdTag;
 
   typedef boost::multi_index_container<RunningTransactionPtr,
@@ -1698,7 +1725,7 @@ class TransactionParticipant::Impl
 
   struct AppliedTransactionState {
     OpId apply_op_id;
-    HybridTime start_ht;
+    HybridTime first_write_ht;
   };
 
   using RecentlyAppliedTransactions = boost::multi_index_container<AppliedTransactionState,
@@ -1709,9 +1736,9 @@ class TransactionParticipant::Impl
                   AppliedTransactionState, OpId, &AppliedTransactionState::apply_op_id>
           >,
           boost::multi_index::ordered_non_unique <
-              boost::multi_index::tag<StartTimeTag>,
+              boost::multi_index::tag<FirstWriteTimeTag>,
               boost::multi_index::member <
-                  AppliedTransactionState, HybridTime, &AppliedTransactionState::start_ht>
+                  AppliedTransactionState, HybridTime, &AppliedTransactionState::first_write_ht>
           >
       >,
       MemTrackerAllocator<AppliedTransactionState>
@@ -1800,7 +1827,7 @@ class TransactionParticipant::Impl
 
   void SetMinRunningHybridTime(HybridTime min_running_ht) REQUIRES(mutex_) {
     min_running_ht_.store(min_running_ht);
-    UpdateMinReplayTxnStartTimeIfNeeded();
+    UpdateMinReplayTxnFirstWriteTimeIfNeeded();
   }
 
   void TransactionsModifiedUnlocked(MinRunningNotifier* min_running_notifier) REQUIRES(mutex_) {
@@ -2085,10 +2112,13 @@ class TransactionParticipant::Impl
       TransactionMetadata&& metadata,
       TransactionalBatchData&& last_batch_data,
       OneWayBitmap&& replicated_batches,
-      const docdb::ApplyStateWithCommitInfo* pending_apply) override {
-    auto start_time = metadata.start_time;
-    auto replay_start_time = MinReplayTxnStartTime();
-    if (start_time && replay_start_time && start_time < replay_start_time) {
+      const docdb::ApplyStateWithCommitInfo* pending_apply,
+      HybridTime first_write_ht) override {
+    auto replay_write_time = MinReplayTxnFirstWriteTime();
+    if (first_write_ht && replay_write_time && first_write_ht < replay_write_time) {
+      VLOG_WITH_PREFIX(5) << "Skip load of transaction: " << metadata.transaction_id
+                          << " first_write_ht: " << first_write_ht
+                          << " min_replay_txn_first_write_ht: " << replay_write_time;
       return;
     }
 
@@ -2096,8 +2126,8 @@ class TransactionParticipant::Impl
     std::lock_guard lock(mutex_);
     auto txn = std::make_shared<RunningTransaction>(
         std::move(metadata), std::move(last_batch_data), std::move(replicated_batches),
-        participant_context_.Now().AddDelta(1ms * FLAGS_transaction_abort_check_timeout_ms), this,
-        metric_aborted_transactions_pending_cleanup_);
+        participant_context_.Now().AddDelta(1ms * FLAGS_transaction_abort_check_timeout_ms),
+        first_write_ht, this, metric_aborted_transactions_pending_cleanup_);
     if (pending_apply) {
       VLOG_WITH_PREFIX(4) << "Apply state found for " << txn->id() << ": "
                           << pending_apply->ToString();
@@ -2151,7 +2181,7 @@ class TransactionParticipant::Impl
     LOG_IF_WITH_PREFIX(DFATAL, !recently_removed_transactions_.insert(transaction.id()).second)
         << "Transaction removed twice: " << transaction.id();
     if (transaction.HasRetryableRequestsReplicated()) {
-      AddRecentlyAppliedTransaction(transaction.start_ht(), transaction.GetApplyOpId());
+      AddRecentlyAppliedTransaction(transaction);
     } else {
       VLOG_WITH_PREFIX(2)
           << "Transaction " << transaction.id() << " has no write pairs, not adding to recently "
@@ -2327,8 +2357,8 @@ class TransactionParticipant::Impl
         .old_status_tablet = {},
       };
       it = transactions_.insert(std::make_shared<RunningTransaction>(
-          metadata, TransactionalBatchData(), OneWayBitmap(), HybridTime::kMax, this,
-          metric_aborted_transactions_pending_cleanup_)).first;
+          metadata, TransactionalBatchData(), OneWayBitmap(), HybridTime::kMax, HybridTime::kMax,
+          this, metric_aborted_transactions_pending_cleanup_)).first;
       mem_tracker_->Consume(kRunningTransactionSize);
       TransactionsModifiedUnlocked(&min_running_notifier);
     }
@@ -2483,45 +2513,59 @@ class TransactionParticipant::Impl
     participant_context_.StrandEnqueue(write_metadata_task.get());
   }
 
-  void AddRecentlyAppliedTransaction(HybridTime start_ht, const OpId& apply_op_id)
-      REQUIRES(mutex_) {
+  void AddRecentlyAppliedTransaction(const RunningTransaction& transaction) REQUIRES(mutex_) {
     if (!FLAGS_use_bootstrap_intent_ht_filter) {
       return;
     }
 
-    // We only care about the min start_ht, while cleaning out all entries with apply_op_id less
-    // than progressively higher boundaries, so entries with apply_op_id lower and higher start_ht
-    // than the entry with the lowest start_ht are irrelevant. Likewise, if apply_op_id is higher
-    // and start_ht is lower than the lowest start_ht entry, the lowest start_ht entry is now
-    // irrelevant and can be cleaned up.
+    HybridTime first_write_ht = transaction.first_write_ht();
+    const OpId& apply_op_id = transaction.GetApplyOpId();
+
+    if (!first_write_ht) {
+      // This is possible for transactions that were written to intentsdb before upgrading to a
+      // version that writes this value. We use transaction start_ht in this case, since
+      // start_ht <= first_write_ht, and for this purpose (calculating threshold to use for
+      // bootstrap intent filtering), it's safe to use a lower value (filter fewer transactions).
+      VLOG_WITH_PREFIX(2)
+          << transaction.id() << ": using start_ht (" << transaction.start_ht() << ") instead of "
+          << "first_write_ht for calculating min_replay_txn_first_write_ht because first_write_ht "
+          << "is not set";
+      first_write_ht = transaction.start_ht();
+    }
+
+    // We only care about the min first_write_ht, while cleaning out all entries with apply_op_id
+    // less than progressively higher boundaries, so entries with apply_op_id lower and higher
+    // first_write_ht than the entry with the lowest first_write_ht are irrelevant. Likewise, if
+    // apply_op_id is higher and first_write_ht is lower than the lowest first_write_ht entry, the
+    // lowest first_write_ht entry is now irrelevant and can be cleaned up.
 
     int64_t cleaned = 0;
     if (!recently_applied_.empty()) {
-      auto& index = recently_applied_.get<StartTimeTag>();
+      auto& index = recently_applied_.get<FirstWriteTimeTag>();
 
       auto itr = index.begin();
-      if (start_ht >= itr->start_ht && apply_op_id <= itr->apply_op_id) {
+      if (first_write_ht >= itr->first_write_ht && apply_op_id <= itr->apply_op_id) {
         VLOG_WITH_PREFIX(2)
             << "Not adding recently applied transaction: "
-            << "start_ht=" << start_ht << " (min=" << itr->start_ht << "), "
+            << "first_write_ht=" << first_write_ht << " (min=" << itr->first_write_ht << "), "
             << "apply_op_id=" << apply_op_id << " (min=" << itr->apply_op_id << ")";
         return;
       }
 
       cleaned = EraseElementsUntil(
           index,
-          [start_ht, &apply_op_id](const AppliedTransactionState& state) {
-            return start_ht > state.start_ht || apply_op_id < state.apply_op_id;
+          [first_write_ht, &apply_op_id](const AppliedTransactionState& state) {
+            return first_write_ht > state.first_write_ht || apply_op_id < state.apply_op_id;
           });
     }
 
     VLOG_WITH_PREFIX(2)
         << "Adding recently applied transaction: "
-        << "start_ht=" << start_ht << " apply_op_id=" << apply_op_id
+        << "first_write_ht=" << first_write_ht << " apply_op_id=" << apply_op_id
         << " (cleaned " << cleaned << ")";
-    recently_applied_.insert(AppliedTransactionState{apply_op_id, start_ht});
+    recently_applied_.insert(AppliedTransactionState{apply_op_id, first_write_ht});
     metric_wal_replayable_applied_transactions_->IncrementBy(1 - static_cast<int64_t>(cleaned));
-    UpdateMinReplayTxnStartTimeIfNeeded();
+    UpdateMinReplayTxnFirstWriteTimeIfNeeded();
   }
 
   Result<HybridTime> DoProcessRecentlyAppliedTransactions(
@@ -2530,7 +2574,7 @@ class TransactionParticipant::Impl
     threshold = OpId::MinValid(threshold, retryable_requests_flushed_op_id);
 
     if (!threshold.valid()) {
-      return min_replay_txn_start_ht_.load(std::memory_order_acquire);
+      return min_replay_txn_first_write_ht_.load(std::memory_order_acquire);
     }
 
     auto recently_applied_copy =
@@ -2543,10 +2587,10 @@ class TransactionParticipant::Impl
       VLOG_WITH_PREFIX(1) << "Cleaned recently applied transactions with threshold: " << threshold
                           << ", cleaned " << cleaned
                           << ", remaining " << recently_applied_.size();
-      UpdateMinReplayTxnStartTimeIfNeeded();
+      UpdateMinReplayTxnFirstWriteTimeIfNeeded();
     }
 
-    return GetMinReplayTxnStartTime(recently_applied);
+    return GetMinReplayTxnFirstWriteTime(recently_applied);
   }
 
   int64_t CleanRecentlyAppliedTransactions(
@@ -2562,7 +2606,7 @@ class TransactionParticipant::Impl
         });
   }
 
-  HybridTime GetMinReplayTxnStartTime(RecentlyAppliedTransactions& recently_applied) {
+  HybridTime GetMinReplayTxnFirstWriteTime(RecentlyAppliedTransactions& recently_applied) {
     if (!FLAGS_use_bootstrap_intent_ht_filter) {
       return HybridTime::kInvalid;
     }
@@ -2570,21 +2614,29 @@ class TransactionParticipant::Impl
     auto min_running_ht = min_running_ht_.load(std::memory_order_acquire);
     auto applied_min_ht = recently_applied.empty()
         ? HybridTime::kMax
-        : (*recently_applied.get<StartTimeTag>().begin()).start_ht;
+        : (*recently_applied.get<FirstWriteTimeTag>().begin()).first_write_ht;
 
     applied_min_ht.MakeAtMost(min_running_ht);
+    // It is possible for the calculated value to be less than the current value, because we use
+    // min_running_ht to account for active transactions, and this can decrease after restart. But
+    // this is because min_running_ht is actually a conservative estimate for
+    // min(active txn first_write_ht) which does not decrease. So any previous value is also safe.
+    if (auto current_ht = min_replay_txn_first_write_ht_.load(std::memory_order_acquire);
+        current_ht && current_ht != HybridTime::kMax) {
+      applied_min_ht.MakeAtLeast(current_ht);
+    }
     return applied_min_ht;
   }
 
-  void UpdateMinReplayTxnStartTimeIfNeeded() REQUIRES(mutex_) {
+  void UpdateMinReplayTxnFirstWriteTimeIfNeeded() REQUIRES(mutex_) {
     if (!transactions_loaded_) {
       return;
     }
 
-    if (min_replay_txn_start_ht_callback_) {
-      auto ht = GetMinReplayTxnStartTime(recently_applied_);
-      if (min_replay_txn_start_ht_.exchange(ht, std::memory_order_acq_rel) != ht) {
-        min_replay_txn_start_ht_callback_(ht);
+    if (min_replay_txn_first_write_ht_callback_) {
+      auto ht = GetMinReplayTxnFirstWriteTime(recently_applied_);
+      if (min_replay_txn_first_write_ht_.exchange(ht, std::memory_order_acq_rel) != ht) {
+        min_replay_txn_first_write_ht_callback_(ht);
       }
     }
   }
@@ -2760,8 +2812,8 @@ class TransactionParticipant::Impl
   std::deque<GracefulCleanupQueueEntry> graceful_cleanup_queue_ GUARDED_BY(mutex_);
 
   // Information about recently applied transactions that are still needed at bootstrap time, used
-  // to calculate min_replay_txn_start_ht (lowest start_ht of any transaction which may be
-  // read during bootstrap log replay).
+  // to calculate min_replay_txn_first_write_ht (lowest first_write_ht of any transaction which may
+  // not be applied and flushed).
   RecentlyAppliedTransactions recently_applied_ GUARDED_BY(mutex_);
 
   // Retryable requests flushed_op_id, used to calculate bootstrap_start_op_id. A copy is held
@@ -2819,11 +2871,11 @@ class TransactionParticipant::Impl
   CountDownLatch shutdown_latch_{1};
 
   std::atomic<HybridTime> min_running_ht_{HybridTime::kInvalid};
-  std::atomic<HybridTime> min_replay_txn_start_ht_{HybridTime::kInvalid};
+  std::atomic<HybridTime> min_replay_txn_first_write_ht_{HybridTime::kInvalid};
   std::atomic<CoarseTimePoint> next_check_min_running_{CoarseTimePoint()};
   HybridTime waiting_for_min_running_ht_ = HybridTime::kMax;
   std::atomic<bool> shutdown_done_{false};
-  std::function<void(HybridTime)> min_replay_txn_start_ht_callback_ GUARDED_BY(mutex_);
+  std::function<void(HybridTime)> min_replay_txn_first_write_ht_callback_ GUARDED_BY(mutex_);
 
   LRUCache<TransactionId> cleanup_cache_{FLAGS_transactions_cleanup_cache_size};
 
@@ -2875,8 +2927,9 @@ void TransactionParticipant::Start() {
   impl_->Start();
 }
 
-Result<bool> TransactionParticipant::Add(const TransactionMetadata& metadata) {
-  return impl_->Add(metadata);
+Result<bool> TransactionParticipant::Add(
+    const TransactionMetadata& metadata, HybridTime batch_write_ht) {
+  return impl_->Add(metadata, batch_write_ht);
 }
 
 Result<FastModeTransactionScope> TransactionParticipant::ShouldUseFastMode(
@@ -2986,12 +3039,12 @@ TransactionParticipantContext* TransactionParticipant::context() const {
   return impl_->participant_context();
 }
 
-void TransactionParticipant::SetMinReplayTxnStartTimeLowerBound(HybridTime start_ht) {
-  impl_->SetMinReplayTxnStartTimeLowerBound(start_ht);
+void TransactionParticipant::SetMinReplayTxnFirstWriteTimeLowerBound(HybridTime hybrid_time) {
+  impl_->SetMinReplayTxnFirstWriteTimeLowerBound(hybrid_time);
 }
 
-HybridTime TransactionParticipant::MinReplayTxnStartTime() const {
-  return impl_->MinReplayTxnStartTime();
+HybridTime TransactionParticipant::MinReplayTxnFirstWriteTime() const {
+  return impl_->MinReplayTxnFirstWriteTime();
 }
 
 HybridTime TransactionParticipant::MinRunningHybridTime() const {
@@ -3040,8 +3093,10 @@ std::string TransactionParticipant::DumpTransactions() const {
 }
 
 Status TransactionParticipant::StopActiveTxnsPriorTo(
-    HybridTime cutoff, CoarseTimePoint deadline, TransactionId* exclude_txn_id) {
-  return impl_->StopActiveTxnsPriorTo(cutoff, deadline, exclude_txn_id);
+    OnlyAbortTxnsNotUsingTableLocks only_abort_txns_not_using_table_locks, HybridTime cutoff,
+    CoarseTimePoint deadline, TransactionId* exclude_txn_id) {
+  return impl_->StopActiveTxnsPriorTo(
+      only_abort_txns_not_using_table_locks, cutoff, deadline, exclude_txn_id);
 }
 
 Result<HybridTime> TransactionParticipant::WaitForSafeTime(
@@ -3105,9 +3160,9 @@ void TransactionParticipant::RecordConflictResolutionScanLatency(MonoDelta laten
   impl_->RecordConflictResolutionScanLatency(latency);
 }
 
-void TransactionParticipant::SetMinReplayTxnStartTimeUpdateCallback(
+void TransactionParticipant::SetMinReplayTxnFirstWriteTimeUpdateCallback(
     std::function<void(HybridTime)> callback) {
-  impl_->SetMinReplayTxnStartTimeUpdateCallback(std::move(callback));
+  impl_->SetMinReplayTxnFirstWriteTimeUpdateCallback(std::move(callback));
 }
 
 Result<HybridTime> TransactionParticipant::SimulateProcessRecentlyAppliedTransactions(
