@@ -59,6 +59,13 @@ Whether you're setting up your first YugabyteDB cluster, evaluating YugabyteDB f
     linkUrl4="ycql-language/"
   >}}
 
+  {{< sections/3-box-card
+    title="Gen-AI applications"
+    description="Explore how to build Generative AI applications using YugabyteDB."
+    buttonText="Gen-AI applications"
+    buttonUrl="gen-ai-apps/"
+  >}}
+
 {{< /sections/3-boxes >}}
 
 ## Core capabilities
