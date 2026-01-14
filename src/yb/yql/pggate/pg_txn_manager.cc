@@ -502,10 +502,6 @@ Status PgTxnManager::ResetTransactionReadPoint(bool is_catalog_snapshot) {
     // When a new catalog snapshot is created in concurrent DDL mode, create a new read time serial
     // no but do not switch to it yet. Switching to it will happen via RestoreReadPoint() when the
     // catalog op is made in pg_doc_op.cc.
-    //
-    // TODO: For autnomous DDLs such as CREATE INDEX which don't use read time serial numbers, reset
-    // the transaction read point. Or, merge the kDDL and kPlain session on PgClientSession since
-    // with object locking enabled, only one session is going to be active at any point in time.
     serial_no_.IncMaxReadTime();
   } else {
     // In all other cases, create and switch to the new read time serial number.

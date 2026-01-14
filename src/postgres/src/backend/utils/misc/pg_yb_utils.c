@@ -4105,7 +4105,8 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 					YBMarkTxnUsesTempRelAndSetTxnId();
 				}
 				is_breaking_change = false;
-				should_run_in_autonomous_transaction = !IsInTransactionBlock(is_top_level);
+				should_run_in_autonomous_transaction = !IsInTransactionBlock(is_top_level) &&
+						YBCIsLegacyModeForCatalogOps();
 				break;
 			}
 

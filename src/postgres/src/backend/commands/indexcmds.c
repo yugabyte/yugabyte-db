@@ -2193,6 +2193,8 @@ DefineIndex(Oid relationId,
 	}
 	else
 	{
+		bool yb_should_run_in_autonomous_transaction = YBCIsLegacyModeForCatalogOps();
+
 		elog(LOG, "committing pg_index tuple with indislive=true");
 		if (yb_test_block_index_phase[0] != '\0')
 			YbTestGucBlockWhileStrEqual(&yb_test_block_index_phase,
@@ -2204,7 +2206,9 @@ DefineIndex(Oid relationId,
 		 * TODO(jason): handle nested CREATE INDEX (this assumes we're at nest
 		 * level 1).
 		 */
-		YBDecrementDdlNestingLevel();
+		 if (yb_should_run_in_autonomous_transaction)
+			YBDecrementDdlNestingLevel();
+
 		CommitTransactionCommand();
 
 		/*
@@ -2222,7 +2226,10 @@ DefineIndex(Oid relationId,
 
 		StartTransactionCommand();
 
-		YBIncrementDdlNestingLevel(YB_DDL_MODE_VERSION_INCREMENT);
+		if (yb_should_run_in_autonomous_transaction)
+			YBIncrementDdlNestingLevel(YB_DDL_MODE_VERSION_INCREMENT);
+		else
+			YBAddDdlTxnState(YB_DDL_MODE_VERSION_INCREMENT);
 
 		/* Wait for all backends to have up-to-date version. */
 		YbWaitForBackendsCatalogVersion();
@@ -2241,7 +2248,9 @@ DefineIndex(Oid relationId,
 		 * TODO(jason): handle nested CREATE INDEX (this assumes we're at nest
 		 * level 1).
 		 */
-		YBDecrementDdlNestingLevel();
+		if (yb_should_run_in_autonomous_transaction)
+			YBDecrementDdlNestingLevel();
+
 		CommitTransactionCommand();
 
 		/* Delay after committing pg_index update. */
@@ -2252,7 +2261,11 @@ DefineIndex(Oid relationId,
 										"concurrent index backfill");
 
 		StartTransactionCommand();
-		YBIncrementDdlNestingLevel(YB_DDL_MODE_VERSION_INCREMENT);
+
+		if (yb_should_run_in_autonomous_transaction)
+			YBIncrementDdlNestingLevel(YB_DDL_MODE_VERSION_INCREMENT);
+		else
+			YBAddDdlTxnState(YB_DDL_MODE_VERSION_INCREMENT);
 
 		/* Wait for all backends to have up-to-date version. */
 		YbWaitForBackendsCatalogVersion();
