@@ -2794,6 +2794,9 @@ class PgClientSession::Impl {
 
   Status DoAcquireObjectLock(const ObjectLockQueryDataPtr& data, CoarseTimePoint deadline) {
     const auto& options = data->req.options();
+    VLOG_WITH_PREFIX(3) << "Object lock for relation " << AsString(data->req.lock_oid())
+              << " with lock type " << AsString(static_cast<TableLockType>(data->req.lock_type()));
+
     RSTATUS_DCHECK(
         options.is_using_table_locks(), IllegalState, "Table Locking feature not enabled.");
     auto setup_session_result = VERIFY_RESULT(SetupSession(
@@ -2811,7 +2814,7 @@ class PgClientSession::Impl {
         : NextObjectLockingTxnMeta(locality, deadline);
     RETURN_NOT_OK(txn_meta_res);
     const auto lock_type = static_cast<TableLockType>(data->req.lock_type());
-    VLOG_WITH_PREFIX_AND_FUNC(1) << "txn_id " << txn_meta_res->transaction_id << " subtxn_id "
+    VLOG_WITH_PREFIX_AND_FUNC(4) << "txn_id " << txn_meta_res->transaction_id << " subtxn_id "
                                  << options.active_sub_transaction_id()
                                  << " lock_type: " << AsString(lock_type)
                                  << " req: " << data->req.ShortDebugString();
@@ -3055,6 +3058,32 @@ class PgClientSession::Impl {
       const PgTablesQueryResult& tables, const PerformQueryDataPtr& data, CoarseTimePoint deadline,
       rpc::RpcContext* context = nullptr) {
     auto& options = *data->req.mutable_options();
+    if (VLOG_IS_ON(3)) {
+      std::stringstream ss;
+      bool is_ddl = options.ddl_mode();
+      bool is_regular_transaction_block = options.ddl_use_regular_transaction_block();
+      bool is_catalog = options.use_catalog_session();
+      ss << LogPrefix() << " ";
+      if (is_ddl && !is_regular_transaction_block) {
+        ss << "Autonomous DDL op: ";
+      } else if (is_catalog) {
+        ss << "Catalog op: ";
+      } else {
+        ss << "Regular DML/ DDL op: ";
+      }
+      ss << "txn_serial_no: " << options.txn_serial_no() << ", ";
+      ss << "read_time_serial_no: " << options.read_time_serial_no() << "; ";
+      for (const auto& op : data->req.ops()) {
+        if (op.has_read()) {
+          ss << "Read op: " << op.read().table_id();
+        } else {
+          ss << "Write op: " << op.write().table_id();
+        }
+        ss << ";";
+      }
+      LOG(INFO) << ss.str();
+    }
+
     VLOG(5) << "Perform request: " << data->req.ShortDebugString();
 
     RETURN_NOT_OK(ValidateRequestForXCluster(options, data));
@@ -3363,6 +3392,7 @@ class PgClientSession::Impl {
     const auto read_time_serial_no = options.read_time_serial_no();
 
     if (options.restart_transaction()) {
+      VLOG_WITH_PREFIX(3) << "Restarting transaction";
       if (options.ddl_mode()) {
         return STATUS(NotSupported, "Restarting a DDL transaction not supported");
       }
@@ -3376,6 +3406,8 @@ class PgClientSession::Impl {
           IllegalState, "read_time_manipulation and read_time fields can't be satisfied together");
 
       if (has_time_manipulation) {
+        VLOG_WITH_PREFIX(3) << "Processing read time manipulation"
+            << options.read_time_manipulation();
         RSTATUS_DCHECK(
             is_plain_session, IllegalState,
             "Read time manipulation can't be specified for non kPlain sessions");
@@ -3392,7 +3424,7 @@ class PgClientSession::Impl {
       } else if (IsReadPointResetRequested(options) ||
                 options.use_catalog_session() ||
                 (is_plain_session && (read_time_serial_no_ != read_time_serial_no))) {
-                  VLOG_WITH_PREFIX(3) << "Resetting read point for session kind " << kind
+          VLOG_WITH_PREFIX(3) << "Resetting read point for session kind " << kind
                   << " read point reset requested: " << IsReadPointResetRequested(options)
                   << " use catalog session: " << options.use_catalog_session()
                   << " change in read time serial number "
