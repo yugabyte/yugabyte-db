@@ -217,8 +217,7 @@ static int yb_client_write_pkt(od_client_t *client, od_server_t *server,
 			 * pg_backend will be expecting a packet,
 			 * send an empty password packet.
 			 */
-			yb_client_exit_mid_passthrough(client->server,
-						       instance);
+			yb_client_exit_mid_passthrough(server, instance);
 		}
 
 		/* Since the client socket is closed, we need not send any fatal packet */
