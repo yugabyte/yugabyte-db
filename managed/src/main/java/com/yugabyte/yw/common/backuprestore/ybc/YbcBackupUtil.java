@@ -119,7 +119,7 @@ public class YbcBackupUtil {
   // YBDB Version that implements https://github.com/yugabyte/yugabyte-db/issues/25877
   public static final String YBDB_STABLE_GRANT_SAFETY_VERSION = "2025.1.0.0-b1";
   public static final String YBDB_PREVIEW_GRANT_SAFETY_VERSION = "2.25.2.0-b275";
-  public static final String YBDB_STABLE_STATS_DUMP_VERSION = "2025.2.0.0-b1";
+  public static final String YBDB_STABLE_STATS_DUMP_VERSION = "2025.2.2.0-b1";
   public static final String YBDB_PREVIEW_STATS_DUMP_VERSION = "2.29.0.0-b1";
   public static final String YBDB_STABLE_DUMP_WITH_DDL_SUPPORT_VERSION = "2025.2.1.0-b1";
   public static final String YBDB_PREVIEW_DUMP_WITH_DDL_SUPPORT_VERSION = "2.29.0.0-b1";

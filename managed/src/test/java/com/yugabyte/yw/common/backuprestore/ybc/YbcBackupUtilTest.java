@@ -386,7 +386,7 @@ public class YbcBackupUtilTest extends FakeDBApplication {
     UniverseUpdater updater =
         u -> {
           UniverseDefinitionTaskParams params = u.getUniverseDetails();
-          params.getPrimaryCluster().userIntent.ybSoftwareVersion = "2025.2.1.0-b1";
+          params.getPrimaryCluster().userIntent.ybSoftwareVersion = "2025.2.2.0-b1";
         };
     defaultUniverse = Universe.saveDetails(defaultUniverse.getUniverseUUID(), updater);
     BackupTableParams tableParams = new BackupTableParams();

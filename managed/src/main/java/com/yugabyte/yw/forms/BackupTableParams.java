@@ -237,7 +237,7 @@ public class BackupTableParams extends TableManagerParams {
   @ApiModelProperty(hidden = true)
   @Getter
   @Setter
-  private Boolean backupStats = true;
+  private Boolean backupStats = false;
 
   @ToString
   public static class ParallelBackupState {
