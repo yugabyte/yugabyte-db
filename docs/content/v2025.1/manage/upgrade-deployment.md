@@ -189,10 +189,10 @@ New YugabyteDB features may require changes to the format of data that is sent o
     Current config version: 1
     ```
 
-    {{< note title="Note" >}}
+    {{< note title="Promoting AutoFlags" >}}
+`promote_auto_flags` is a cluster-level operation; you don't need to run it on every node.
 
-- `promote_auto_flags` is a cluster-level operation; you don't need to run it on every node.
-- Before promoting AutoFlags, ensure that all YugabyteDB processes in the cluster have been upgraded to the new version. Process running an old version may fail to connect to the cluster after the AutoFlags have been promoted.
+Before promoting AutoFlags, ensure that all YugabyteDB processes in the cluster have been upgraded to the new version. A process running an old version may fail to connect to the cluster after AutoFlags have been promoted.
     {{< /note >}}
 
 1. Wait at least 10 seconds (`FLAGS_auto_flags_apply_delay_ms`) for the new AutoFlags to be propagated and applied on all YugabyteDB processes.
