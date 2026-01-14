@@ -2842,4 +2842,103 @@ TEST_P(PgIndexBackfillIgnoreApplyTest, Backward) {
 
 INSTANTIATE_TEST_CASE_P(, PgIndexBackfillIgnoreApplyTest, ::testing::Bool());
 
+// Test class for index backfill column projection optimization.
+// This tests that when yb_enable_index_backfill_column_projection is enabled,
+// the backfill process fetches fewer bytes (and thus needs fewer RPCs) because
+// it only reads the columns needed for the index rather than the entire row.
+// 1. Creates a wide table with 5 large TEXT columns (~5KB per row)
+// 2. Inserts 500 rows
+// 3. Sets yb_fetch_size_limit = 50000 (50KB)
+// 4. Creates index with yb_enable_index_backfill_column_projection = false, counts RPCs
+// 5. Drops the index
+// 6. Creates index with yb_enable_index_backfill_column_projection = true, counts RPCs
+// 7. Asserts that with projection enabled, RPCs are reduced by at least 2x
+// 8. Verifies the index works correctly with a query
+class PgIndexBackfillColumnProjectionTest : public PgIndexBackfillTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillTest::UpdateMiniClusterOptions(options);
+    // Use small prefetch limit to make RPC count differences more pronounced
+    options->extra_tserver_flags.push_back(
+        Format("--ysql_prefetch_limit=$0", kPrefetchLimit));
+  }
+
+  // Small prefetch limit to force multiple RPCs
+  static constexpr int kPrefetchLimit = 100;
+  // Number of rows to insert
+  static constexpr int kNumRows = 500;
+  // Size of each large column in bytes
+  static constexpr int kLargeColSize = 1000;
+};
+
+INSTANTIATE_TEST_CASE_P(, PgIndexBackfillColumnProjectionTest, ::testing::Bool());
+
+// Test that column projection optimization reduces the number of backfill RPCs.
+// We create a wide table with large columns and index just one small column.
+// With column projection enabled, we should need fewer RPCs because each RPC
+// can fetch more rows (since we're only fetching the indexed column, not the
+// entire row).
+TEST_P(PgIndexBackfillColumnProjectionTest, ReducedRpcsWithProjection) {
+  // Create a wide table with multiple large TEXT columns
+  ASSERT_OK(conn_->Execute(
+      "CREATE TABLE wide_tbl ("
+      "  id SERIAL PRIMARY KEY,"
+      "  indexed_col INT,"
+      "  large_col1 TEXT,"
+      "  large_col2 TEXT,"
+      "  large_col3 TEXT,"
+      "  large_col4 TEXT,"
+      "  large_col5 TEXT"
+      ")"));
+
+  // Insert rows with large data in the non-indexed columns
+  // Each row will be approximately 5KB (5 columns * 1000 bytes each)
+  ASSERT_OK(conn_->ExecuteFormat(
+      "INSERT INTO wide_tbl (indexed_col, large_col1, large_col2, large_col3, "
+      "                      large_col4, large_col5) "
+      "SELECT i, repeat('a', $0), repeat('b', $0), repeat('c', $0), "
+      "       repeat('d', $0), repeat('e', $0) "
+      "FROM generate_series(1, $1) AS i",
+      kLargeColSize, kNumRows));
+
+  // Set a small fetch size limit to force multiple RPCs
+  // 50KB should fit about 10 full rows without projection, but many more
+  // with projection (since we only fetch ~25 bytes per row: INT + ybctid)
+  ASSERT_OK(conn_->Execute("SET yb_fetch_size_limit = 50000"));
+
+  // Test 1: Create index with optimization DISABLED
+  ASSERT_OK(conn_->Execute("SET yb_enable_index_backfill_column_projection = false"));
+  auto rpcs_before = ASSERT_RESULT(TotalBackfillRpcCalls(cluster_.get()));
+  ASSERT_OK(conn_->Execute("CREATE INDEX idx_no_projection ON wide_tbl(indexed_col)"));
+  auto rpcs_without_projection = ASSERT_RESULT(TotalBackfillRpcCalls(cluster_.get())) - rpcs_before;
+  LOG(INFO) << "Backfill RPCs without column projection: " << rpcs_without_projection;
+
+  // Drop the index
+  ASSERT_OK(conn_->Execute("DROP INDEX idx_no_projection"));
+
+  // Test 2: Create index with optimization ENABLED
+  ASSERT_OK(conn_->Execute("SET yb_enable_index_backfill_column_projection = true"));
+  rpcs_before = ASSERT_RESULT(TotalBackfillRpcCalls(cluster_.get()));
+  ASSERT_OK(conn_->Execute("CREATE INDEX idx_with_projection ON wide_tbl(indexed_col)"));
+  auto rpcs_with_projection = ASSERT_RESULT(TotalBackfillRpcCalls(cluster_.get())) - rpcs_before;
+  LOG(INFO) << "Backfill RPCs with column projection: " << rpcs_with_projection;
+
+  // With column projection enabled, we should need significantly fewer RPCs
+  // because each RPC can fetch more rows (we're fetching ~25 bytes per row
+  // instead of ~5000 bytes per row)
+  LOG(INFO) << "RPC reduction ratio: "
+            << static_cast<double>(rpcs_without_projection) / rpcs_with_projection;
+
+  // Assert that projection reduces RPCs by at least 2x
+  // (In practice, the reduction should be much larger given the row size difference)
+  ASSERT_LT(rpcs_with_projection, rpcs_without_projection);
+  ASSERT_LT(rpcs_with_projection * 2, rpcs_without_projection);
+
+  // Verify the index works correctly
+  const auto query = "SELECT indexed_col FROM wide_tbl WHERE indexed_col = 250";
+  ASSERT_TRUE(ASSERT_RESULT(conn_->HasIndexScan(query)));
+  auto result = ASSERT_RESULT(conn_->FetchRow<int32_t>(query));
+  ASSERT_EQ(result, 250);
+}
+
 } // namespace yb::pgwrapper
