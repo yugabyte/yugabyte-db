@@ -1457,6 +1457,10 @@ void TabletServer::SetYsqlDBCatalogVersionsUnlocked(
       }
       // update the newly inserted entry to have the allocated slot.
       inserted_entry.shm_index = shm_index;
+      LOG_WITH_FUNC(INFO) << "inserted new db " << db_oid << ", shm_index: " << shm_index
+                          << ", catalog version: " << new_version
+                          << ", breaking version: " << new_breaking_version
+                          << ", debug_id: " << debug_id;
     }
 
     if (row_inserted || row_updated) {
@@ -1521,10 +1525,9 @@ void TabletServer::SetYsqlDBCatalogVersionsUnlocked(
       // debugging the shared memory array db_catalog_versions_ (e.g., when we can dump
       // the shared memory file to examine its contents).
       shared_object()->SetYsqlDbCatalogVersion(static_cast<size_t>(shm_index), 0);
-      if (FLAGS_log_ysql_catalog_versions) {
-        LOG_WITH_FUNC(INFO) << "reset deleted db " << db_oid << " catalog version to 0"
-                            << ", debug_id: " << debug_id;
-      }
+      LOG_WITH_FUNC(INFO) << "reset deleted db " << db_oid << " catalog version to 0"
+                          << ", shm_index: " << shm_index
+                          << ", debug_id: " << debug_id;
     } else {
       ++it;
     }
