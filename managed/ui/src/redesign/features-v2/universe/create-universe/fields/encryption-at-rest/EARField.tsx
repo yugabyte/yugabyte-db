@@ -9,7 +9,7 @@ import { QUERY_KEY, api } from '../../../../../features/universe/universe-form/u
 
 import { SecuritySettingsProps } from '../../steps/security-settings/dtos';
 import { KmsConfig } from '../../../../../features/universe/universe-form/utils/dto';
-import { ReactComponent as NextLineIcon } from '../../../../../assets/next-line.svg';
+import NextLineIcon from '../../../../../assets/next-line.svg';
 
 const { Box } = mui;
 

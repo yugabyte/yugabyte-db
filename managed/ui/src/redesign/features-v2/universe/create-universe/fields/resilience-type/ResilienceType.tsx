@@ -4,8 +4,8 @@ import { Controller, FieldValues, Path, useFormContext } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { ResilienceType } from '../../steps/resilence-regions/dtos';
 
-import { ReactComponent as Empty } from '../../../../../assets/circle-unselected.svg';
-import { ReactComponent as Selected } from '../../../../../assets/circle-checked.svg';
+import Empty from '../../../../../assets/circle-unselected.svg';
+import Selected from '../../../../../assets/circle-checked.svg';
 
 const StyledContainer = styled('div')({
   display: 'flex',

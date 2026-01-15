@@ -3,7 +3,7 @@ import { styled, Typography } from '@material-ui/core';
 import { HelpOutline } from '@material-ui/icons';
 import { YBModal, mui } from '@yugabyte-ui-library/core';
 import { Trans, useTranslation } from 'react-i18next';
-import { ReactComponent as BookIcon } from '../../../../../assets/documentation.svg';
+import BookIcon from '../../../../../assets/documentation.svg';
 import RFHelpPng from '../../../../../assets/rfFactorHelp.png';
 
 const { Box } = mui;

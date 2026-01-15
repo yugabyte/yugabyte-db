@@ -15,8 +15,8 @@ import { getExistingGeoPartitions } from '../../geo-partition/add/AddGeoPartitio
 import { ResilienceAndRegionsProps } from '../../create-universe/steps/resilence-regions/dtos';
 import { getPlacementRegions } from '../../create-universe/CreateUniverseUtils';
 import { YBLoadingCircleIcon } from '@app/components/common/indicators';
-import { ReactComponent as AddIcon } from '@app/redesign/assets/add.svg';
-import { ReactComponent as EditIcon } from '@app/redesign/assets/edit2.svg';
+import AddIcon from '@app/redesign/assets/add.svg';
+import EditIcon from '@app/redesign/assets/edit2.svg';
 
 const EditPlacement = lazy(() =>
   import('../edit-placement/EditPlacement').then((module) => ({

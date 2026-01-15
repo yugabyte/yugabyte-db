@@ -8,8 +8,8 @@ import { ClusterInstanceCard } from './ClusterInstanceCard';
 import { Portal } from '@material-ui/core';
 import { YBLoadingCircleIcon } from '@app/components/common/indicators';
 import { EditPlacement } from './EditPlacement';
-import { ReactComponent as AddIcon } from '@app/redesign/assets/add.svg';
-import { ReactComponent as EditIcon } from '@app/redesign/assets/edit2.svg';
+import AddIcon from '@app/redesign/assets/add.svg';
+import EditIcon from '@app/redesign/assets/edit2.svg';
 
 const { Box, Typography, MenuItem, Divider, Link } = mui;
 

@@ -37,7 +37,7 @@ import { AlertPopover, GetInsertVariableButton, useComposerStyles } from '../Com
 import { IComposer, IComposerRef } from '../IComposer';
 import RollbackToTemplateModal from './RollbackToTemplateModal';
 
-import { ReactComponent as ClearTemplate } from '../icons/clearTemplate.svg';
+import ClearTemplate from '../icons/clearTemplate.svg';
 import WebhookPreviewModal from './WebhookPreviewModal';
 import { findInvalidVariables, loadTemplateIntoEditor } from '../ComposerUtils';
 import { HTMLSerializer } from '../../../../../components/YBEditor/serializers';

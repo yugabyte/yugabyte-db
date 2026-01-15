@@ -16,7 +16,7 @@ import {
 import { FormProvider, useForm } from 'react-hook-form';
 import { NodeAvailabilityProps } from '../../create-universe/steps/nodes-availability/dtos';
 import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
-import { ReactComponent as EditIcon } from '@app/redesign/assets/edit2.svg';
+import EditIcon from '@app/redesign/assets/edit2.svg';
 
 interface MasterServerNodeAllocationModalProps {
   visible: boolean;

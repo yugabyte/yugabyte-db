@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { styled, Typography } from '@material-ui/core';
 import { YBModal } from '@yugabyte-ui-library/core';
 import { HelpOutline } from '@material-ui/icons';
-import { ReactComponent as BookIcon } from '../../../../../assets/documentation.svg';
+import BookIcon from '../../../../../assets/documentation.svg';
 
 export interface ResilienceTooltipProps {
   onClose: () => void;

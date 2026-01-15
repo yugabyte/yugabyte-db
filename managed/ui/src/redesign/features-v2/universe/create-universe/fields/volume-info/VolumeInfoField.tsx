@@ -36,7 +36,7 @@ import {
   MASTER_DEVICE_INFO_FIELD,
   MASTER_INSTANCE_TYPE_FIELD
 } from '@app/redesign/features-v2/universe/create-universe/fields/FieldNames';
-import { ReactComponent as Close } from '@app/redesign/assets/close.svg';
+import Close from '@app/redesign/assets/close.svg';
 
 const { Box, MenuItem } = mui;
 

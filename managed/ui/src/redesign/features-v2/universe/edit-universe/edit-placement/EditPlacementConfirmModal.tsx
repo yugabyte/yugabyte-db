@@ -15,7 +15,7 @@ import { getFlagFromRegion } from '../../create-universe/helpers/RegionToFlagUti
 import pluralize from 'pluralize';
 import { keys } from 'lodash';
 import { ArrowDownward, ArrowUpward } from '@material-ui/icons';
-import { ReactComponent as NextLineIcon } from '@app/redesign/assets/next-line.svg';
+import NextLineIcon from '@app/redesign/assets/next-line.svg';
 
 interface EditPlacementConfirmModalProps {
   visible: boolean;

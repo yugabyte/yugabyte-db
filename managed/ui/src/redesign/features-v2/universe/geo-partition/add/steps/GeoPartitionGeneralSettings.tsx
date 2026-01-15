@@ -20,8 +20,9 @@ import {
 } from '../../../create-universe/components/DefaultComponents';
 import { getFlagFromRegion } from '../../../create-universe/helpers/RegionToFlagUtils';
 
-import { ReactComponent as InfoIcon } from '@app/redesign/assets/book_open_blue.svg';
 import { yupResolver } from '@hookform/resolvers/yup';
+import InfoIcon from '@app/redesign/assets/book_open_blue.svg';
+
 const { Box, styled, Typography, typographyClasses } = mui;
 
 const StyledDefaultRegionsInGeoPartition = styled('div')(({ theme }) => ({

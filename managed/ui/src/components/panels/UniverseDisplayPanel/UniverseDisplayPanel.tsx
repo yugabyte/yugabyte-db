@@ -104,7 +104,7 @@ export const UniverseDisplayPanel = ({
       globalRuntimeConfigQuery.data?.configEntries?.find(
         (configEntry: RunTimeConfigEntry) =>
           configEntry.key === RuntimeConfigKey.ENABLE_AUTO_NODE_AGENT_INSTALLATION
-      )?.value === 'true' ?? false;
+      )?.value === 'true';
 
     const showNodeAgentInstallReminderBanner = isNodeAgentEnabled && hasUniverseMissingNodeAgent;
     return (

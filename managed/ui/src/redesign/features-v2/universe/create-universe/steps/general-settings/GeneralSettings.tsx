@@ -40,7 +40,7 @@ import {
   NODE_COUNT,
   SINGLE_AVAILABILITY_ZONE
 } from '../../fields/FieldNames';
-import { ReactComponent as ShuffleIcon } from '../../../../../assets/shuffle.svg';
+import ShuffleIcon from '../../../../../assets/shuffle.svg';
 import { ResilienceType, ResilienceFormMode, FaultToleranceType } from '../resilence-regions/dtos';
 
 const CONTROL_WIDTH = '480px';

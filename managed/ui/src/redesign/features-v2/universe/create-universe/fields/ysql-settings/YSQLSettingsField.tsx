@@ -17,7 +17,7 @@ import { FieldContainer } from '../../components/DefaultComponents';
 
 const { Box } = mui;
 
-import { ReactComponent as NextLineIcon } from '../../../../../assets/next-line.svg';
+import NextLineIcon from '../../../../../assets/next-line.svg';
 
 interface YSQLProps {
   disabled?: boolean;

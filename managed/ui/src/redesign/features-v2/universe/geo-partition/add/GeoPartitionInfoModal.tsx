@@ -5,10 +5,10 @@ import { mui } from '@yugabyte-ui-library/core';
 import { Trans, useTranslation } from 'react-i18next';
 import { AddGeoPartitionContext, AddGeoPartitionContextMethods } from './AddGeoPartitionContext';
 
-import { ReactComponent as CloseIcon } from '@app/redesign/assets/close rounded inverted.svg';
-import { ReactComponent as BookIcon } from '@app/redesign/assets/book_open_blue.svg';
-import { ReactComponent as Marker } from '@app/redesign/assets/marker.svg';
-import { ReactComponent as Designated } from '@app/redesign/assets/geo_partition_designated.svg';
+import CloseIcon from '@app/redesign/assets/close rounded inverted.svg';
+import BookIcon from '@app/redesign/assets/book_open_blue.svg';
+import Marker from '@app/redesign/assets/marker.svg';
+import Designated from '@app/redesign/assets/geo_partition_designated.svg';
 
 const { styled, Box, Typography } = mui;
 

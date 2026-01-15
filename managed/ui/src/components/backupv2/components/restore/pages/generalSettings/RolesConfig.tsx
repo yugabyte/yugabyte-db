@@ -6,14 +6,14 @@
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
-
 import { useFormContext } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { YBCheckbox } from '../../../../../../redesign/components';
 import { Box, makeStyles, Typography } from '@material-ui/core';
 import { IGeneralSettings } from './GeneralSettings';
-import UnChecked from '../../../../../../redesign/assets/checkbox/UnChecked.svg';
-import Checked from '../../../../../../redesign/assets/checkbox/Checked.svg';
+
+import UnChecked from '../../../../../../redesign/assets/checkbox/UnChecked.svg?img';
+import Checked from '../../../../../../redesign/assets/checkbox/Checked.svg?img';
 
 const useStyles = makeStyles((theme) => ({
   warning: {

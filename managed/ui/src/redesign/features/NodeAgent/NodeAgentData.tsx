@@ -15,7 +15,7 @@ import { InstallNodeAgentModal } from '../universe/universe-actions/install-node
 
 import { YBProvider } from '../../../components/configRedesign/providerRedesign/types';
 import { NodeAgent } from '../../utils/dtos';
-import VersionMisatch from '../../assets/version-mismatch.svg';
+import VersionMisatch from '../../assets/version-mismatch.svg?img';
 import { api, universeQueryKey } from '../../helpers/api';
 import { AugmentedNodeAgent } from './types';
 import { SortOrder } from '../../helpers/constants';

@@ -24,8 +24,8 @@ import SwitchCreateUniverseSteps from './SwitchCreateUniverseSteps';
 import { CreateUniverseBreadCrumb } from './CreateUniverseBreadCrumb';
 import AuthenticatedArea from '@app/pages/AuthenticatedArea';
 
-import { ReactComponent as YBLogo } from '../../../assets/yb_logo.svg';
-import { ReactComponent as Close } from '../../../assets/close rounded.svg';
+import YBLogo from '../../../assets/yb_logo.svg';
+import Close from '../../../assets/close rounded.svg';
 
 import './styles/override.css';
 

@@ -43,7 +43,7 @@ import {
   MASTER_PLACEMENT_FIELD,
   PROVIDER_FIELD
 } from '../../../utils/constants';
-import WarningIcon from '../../../../../../assets/info-message.svg';
+import WarningIcon from '../../../../../../assets/info-message.svg?img';
 
 interface VolumeInfoFieldProps {
   isEditMode: boolean;

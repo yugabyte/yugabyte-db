@@ -15,8 +15,8 @@ import {
 import AuthenticatedArea from '@app/pages/AuthenticatedArea';
 import { getUniverse } from '@app/v2/api/universe/universe';
 
-import { ReactComponent as YBLogo } from '../../../../assets/yb_logo.svg';
-import { ReactComponent as Close } from '../../../../assets/close rounded inverted.svg';
+import YBLogo from '../../../../assets/yb_logo.svg';
+import Close from '../../../../assets/close rounded inverted.svg';
 import { SwitchRRSteps } from './SwitchRRSteps';
 import { getRRSteps, getInitialValues } from './AddReadReplicaUtils';
 

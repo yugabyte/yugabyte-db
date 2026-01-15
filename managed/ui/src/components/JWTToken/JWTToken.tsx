@@ -4,7 +4,7 @@ import Cookies from 'js-cookie';
 import { useTranslation } from 'react-i18next';
 import { YBLabel, YBTextarea } from '../../redesign/components';
 import { YBCopyButton } from '../common/descriptors';
-import YBLogoWithText from '../common/YBLogo/images/yb_yblogo_text.svg';
+import YBLogoWithText from '../common/YBLogo/images/yb_yblogo_text.svg?img';
 import { isEmptyString, isNonEmptyString } from '../../utils/ObjectUtils';
 import { useFormatDatetime } from '../../redesign/helpers/DateUtils';
 

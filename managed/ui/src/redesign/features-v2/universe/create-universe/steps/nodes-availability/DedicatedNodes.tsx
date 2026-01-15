@@ -8,7 +8,7 @@ import { NodeAvailabilityProps } from './dtos';
 import { getNodeCount } from '../../CreateUniverseUtils';
 import { CreateUniverseContext, CreateUniverseContextMethods } from '../../CreateUniverseContext';
 import { ArrowDropDown } from '@material-ui/icons';
-import { ReactComponent as Return } from '../../../../../assets/tree.svg';
+import Return from '../../../../../assets/tree.svg';
 
 const { styled } = mui;
 

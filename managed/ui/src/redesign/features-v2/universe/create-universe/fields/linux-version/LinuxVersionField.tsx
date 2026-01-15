@@ -10,9 +10,9 @@ import {
   LINUX_VERSION_FIELD,
   CPU_ARCH_FIELD
 } from '@app/redesign/features-v2/universe/create-universe/fields/FieldNames';
-import { ReactComponent as YBLogo } from '@app/redesign/assets/yb-logo-transparent.svg';
-import { ReactComponent as StarLogo } from '@app/redesign/assets/in-use-star.svg';
-import { ReactComponent as FlagIcon } from '@app/redesign/assets/flag-secondary.svg';
+import YBLogo from '@app/redesign/assets/yb-logo-transparent.svg';
+import StarLogo from '@app/redesign/assets/in-use-star.svg';
+import FlagIcon from '@app/redesign/assets/flag-secondary.svg';
 
 const { Box, MenuItem, Typography } = mui;
 

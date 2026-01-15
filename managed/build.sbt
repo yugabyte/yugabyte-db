@@ -1289,16 +1289,21 @@ grafanaGen := Def.taskDyn {
 // Execute `npm ci` command to install all node module dependencies. Return 0 if success.
 def runNpmInstall(implicit dir: File): Int =
 {
-  println("node version: " + Process("node" :: "--version" :: Nil).lineStream_!.head)
-  println("npm version: " + Process("npm" :: "--version" :: Nil).lineStream_!.head)
-  println("npm config get: " + Process("npm" :: "config" :: "get" :: Nil).lineStream_!.head)
-  println("npm cache verify: " + Process("npm" :: "cache" :: "verify" :: Nil).lineStream_!.head)
-  Process("npm" :: "ci" :: "--legacy-peer-deps" :: Nil, dir).!
+  val installScript = dir / "npm-install.sh"
+  if (!installScript.exists()) {
+    throw new Exception(s"npm-install.sh not found at ${installScript}")
+  }
+  Process(Seq("bash", installScript.getAbsolutePath), dir).!
 }
 
 // Execute `npm run build` command to build the production build of the UI code. Return 0 if success.
-def runNpmBuild(implicit dir: File): Int =
-  Process("npm run build-and-copy", dir)!
+def runNpmBuild(implicit dir: File): Int = {
+  val buildScript = dir / "npm-build.sh"
+  if (!buildScript.exists()) {
+    throw new Exception(s"npm-build.sh not found at ${buildScript}")
+  }
+  Process(Seq("bash", buildScript.getAbsolutePath), dir).!
+}
 
 lazy val uIInstallDependency = taskKey[Unit]("Install NPM dependencies")
 lazy val uIBuild = taskKey[Unit]("Build production version of UI code.")

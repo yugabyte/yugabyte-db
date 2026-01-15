@@ -7,9 +7,9 @@ import { getFaultToleranceNeededForAZ } from '../../CreateUniverseUtils';
 import { CreateUniverseContext, CreateUniverseContextMethods } from '../../CreateUniverseContext';
 import { FaultToleranceType } from '../resilence-regions/dtos';
 
-import { ReactComponent as Check } from '../../../../../assets/check-grey.svg';
-import { ReactComponent as NotAllowed } from '../../../../../assets/revoke.svg';
-import { ReactComponent as DocTick } from '../../../../../assets/doc_tick_purple.svg';
+import Check from '../../../../../assets/check-grey.svg';
+import NotAllowed from '../../../../../assets/revoke.svg';
+import DocTick from '../../../../../assets/doc_tick_purple.svg';
 import { HelpOutline } from '@material-ui/icons';
 import { ReplicationFactorInfoModal } from './ReplicationFactorInfoModal';
 

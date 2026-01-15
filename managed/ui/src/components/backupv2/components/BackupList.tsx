@@ -58,15 +58,12 @@ import {
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { Action, Resource } from '../../../redesign/features/rbac';
 import { TaskDetailSimpleComp } from '../../../redesign/features/tasks/components/TaskDetailSimpleComp';
+import { DateTimePicker } from 'react-widgets';
+import momentLocalizer from 'react-widgets-moment';
+
 import './BackupList.scss';
+import 'react-widgets/dist/css/react-widgets.css';
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const reactWidgets = require('react-widgets');
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const momentLocalizer = require('react-widgets-moment');
-require('react-widgets/dist/css/react-widgets.css');
-
-const { DateTimePicker } = reactWidgets;
 momentLocalizer(moment);
 
 const DEFAULT_SORT_COLUMN = 'createTime';

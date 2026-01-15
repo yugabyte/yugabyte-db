@@ -9,7 +9,7 @@ import { FaultToleranceType } from '../resilence-regions/dtos';
 import { NodeAvailabilityProps, Zone as ZoneType } from './dtos';
 import { Region } from '../../../../../features/universe/universe-form/utils/dto';
 import { canSelectMultipleRegions } from '../../CreateUniverseUtils';
-import { ReactComponent as AddIcon } from '../../../../../assets/add2.svg';
+import AddIcon from '../../../../../assets/add2.svg';
 import { getFlagFromRegion } from '../../helpers/RegionToFlagUtils';
 
 interface RegionCardProps {

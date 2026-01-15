@@ -7,32 +7,51 @@
     "prettier": "prettier --write src/redesign/**/*",
     "cleanup": "rimraf build && rimraf ../src/main/public",
     "fetch-map": "mkdir -p build/static && curl 'http://s3-us-west-2.amazonaws.com/map.yugabyte.com/map/yb_map.tar.gz' | tar -zx -C build/static",
-    "build": "npm run cleanup && CI=false REACT_APP_GIT_COMMIT=$(git rev-parse HEAD) craco build && npm run fetch-map",
-    "build:ci": "CI=true GENERATE_SOURCEMAP=false REACT_APP_GIT_COMMIT=$(git rev-parse HEAD) craco build && npm run fetch-map",
-    "build-and-copy": "NODE_OPTIONS=--max-old-space-size=8192 npm run build:ci && ncp build ../src/main/public",
+    "test": "echo TODO",
+    "test:ci": "echo TODO",
+    "build-core": "./build-core.sh",
+    "build": "npm run cleanup && CI=false npm run build-core",
+    "build:ci": "NODE_OPTIONS=--max-old-space-size=8192 CI=true npm run build-core",
+    "build-and-copy": "npm run build:ci && ncp build ../src/main/public",
     "analyze": "source-map-explorer 'build/static/js/*.js'",
-    "eject": "react-scripts eject",
-    "test": "craco test --env=jest-environment-jsdom-sixteen",
-    "test:ci": "CI=true craco test --env=jest-environment-jsdom-sixteen",
-    "test:debug": "react-scripts --inspect-brk test --runInBand --no-cache --env=jest-environment-jsdom-sixteen",
-    "start": "craco start",
+    "start": "vite",
+    "preview": "vite preview",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build -s public",
     "generateV2JSApiClient": "[ -f ../src/main/resources/openapi.yaml ] && orval --config ./v2Api.config.ts"
   },
-  "jest": {
-    "transformIgnorePatterns": [
-      "/node_modules/(?!(vis-timeline)/)"
-    ],
-    "moduleNameMapper": {
-      "\\.(css|less|scss)$": "<rootDir>/__mocks__/styleMock.js",
-      "\\.css\\?inline$": "<rootDir>/__mocks__/styleMock.js",
-      "^@app/(.*)$": "<rootDir>/src/$1"
-    }
-  },
   "engines": {
-    "node": ">=16.10.x",
-    "npm": ">=7.24.x"
+    "node": ">=22.18",
+    "npm": ">=10"
+  },
+  "overrides": {
+    "react-bootstrap-table": {
+      "react": "17.0.2",
+      "react-dom": "17.0.2"
+    },
+    "react-fa": {
+      "react": "17.0.2",
+      "react-dom": "17.0.2"
+    },
+    "react-leaflet": {
+      "react": "17.0.2",
+      "react-dom": "17.0.2"
+    },
+    "react-mousetrap": {
+      "react": "17.0.2",
+      "react-dom": "17.0.2"
+    },
+    "@storybook/react-vite": {
+      "vite": "^6.0.0"
+    },
+    "react-router": {
+      "react": "17.0.2",
+      "react-dom": "17.0.2"
+    },
+    "redux-form": {
+      "react": "17.0.2",
+      "react-dom": "17.0.2"
+    }
   },
   "prettier": {
     "printWidth": 100,
@@ -40,35 +59,33 @@
     "trailingComma": "none"
   },
   "devDependencies": {
-    "@craco/craco": "6.4.5",
-    "@storybook/react": "^7.0.27",
-    "@storybook/react-vite": "^7.0.27",
-    "@testing-library/dom": "7.29.6",
-    "@testing-library/jest-dom": "5.11.9",
-    "@testing-library/react": "11.2.5",
-    "@testing-library/user-event": "12.8.0",
+    "@storybook/react": "7.0.4",
+    "@storybook/react-vite": "7.0.4",
     "@types/js-yaml": "4.0.5",
+    "@types/plotly.js": "2.35.3",
     "@types/prismjs": "1.26.0",
     "@types/react-beautiful-dnd": "13.1.3",
     "@types/uuid": "9.0.0",
     "@typescript-eslint/eslint-plugin": "3.9.1",
     "@typescript-eslint/parser": "3.9.1",
-    "esbuild-loader": "^2.20.0",
+    "@vitejs/plugin-react": "^4.3.4",
     "eslint": "7.11.0",
     "eslint-config-prettier": "8.3.0",
     "eslint-plugin-import": "2.23.4",
     "eslint-plugin-react": "7.23.2",
     "eslint-plugin-react-hooks": "4.6.0",
-    "eslint-plugin-storybook": "^0.6.12",
-    "jest-environment-jsdom-sixteen": "1.0.3",
-    "jest-junit": "12.0.0",
+    "eslint-plugin-storybook": "0.6.11",
     "ncp": "2.0.0",
     "orval": "6.4.1",
     "prettier": "2.1.0",
     "rimraf": "2.7.1",
     "sass": "1.52.1",
     "source-map-explorer": "2.5.0",
-    "storybook": "^7.0.27"
+    "storybook": "7.0.4",
+    "vite": "6.0.0",
+    "vite-plugin-dynamic-import": "^1.4.1",
+    "vite-plugin-html": "3.2.0",
+    "vite-plugin-svgr": "4.3.0"
   },
   "dependencies": {
     "@hookform/resolvers": "2.9.10",
@@ -111,7 +128,7 @@
     "moment": "2.26.0",
     "moment-precise-range-plugin": "1.3.0",
     "moment-timezone": "0.5.43",
-    "plotly.js": "1.54.1",
+    "plotly.js-dist": "2.35.3",
     "pluralize": "8.0.0",
     "prismjs": "1.29.0",
     "progressbar.js": "1.1.0",
@@ -128,7 +145,7 @@
     "react-dropzone": "14.2.3",
     "react-dropzone3": "npm:react-dropzone@3.13.4",
     "react-fa": "5.0.0",
-    "react-hook-form": "^7.53.0",
+    "react-hook-form": "7.53.0",
     "react-i18next": "11.18.6",
     "react-infinite-scroll-component": "6.1.0",
     "react-leaflet": "^1.9.1",
@@ -140,7 +157,6 @@
     "react-router": "3.2.6",
     "react-router-bootstrap": "0.23.3",
     "react-router-dom": "5.3.3",
-    "react-scripts": "4.0.3",
     "react-select": "3.2.0",
     "react-toastify": "7.0.3",
     "react-toggle": "4.1.2",
@@ -159,8 +175,6 @@
     "typy": "3.3.0",
     "unique-names-generator": "4.7.1",
     "vis-timeline": "7.7.3",
-    "vite-plugin-dynamic-import": "^1.4.1",
-    "vite-plugin-svgr": "^3.2.0",
     "yup": "0.30.0"
   },
   "browserslist": [
@@ -179,5 +193,8 @@
         }
       }
     ]
+  },
+  "optionalDependencies": {
+    "@rollup/rollup-linux-x64-gnu": "^4.55.1"
   }
 }

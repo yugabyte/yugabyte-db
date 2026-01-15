@@ -17,9 +17,9 @@ import { INPUT_FIELD_WIDTH_PX } from './constants';
 import { getStorageConfigs } from './utils';
 import { fetchTaskUntilItCompletes } from '@app/actions/xClusterReplication';
 import { api, CUSTOMER_CONFIG_QUERY_KEY } from '@app/redesign/helpers/api';
-import { ReactComponent as SelectedIcon } from '@app/redesign/assets/circle-selected.svg';
-import { ReactComponent as UnselectedIcon } from '@app/redesign/assets/circle-empty.svg';
-import { ReactComponent as WarningIcon } from '@app/redesign/assets/alert.svg';
+import SelectedIcon from '@app/redesign/assets/circle-selected.svg';
+import UnselectedIcon from '@app/redesign/assets/circle-empty.svg';
+import WarningIcon from '@app/redesign/assets/alert.svg';
 import { RbacValidator } from '../rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../rbac/ApiAndUserPermMapping';
 

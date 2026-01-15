@@ -7,7 +7,7 @@ import { CreateUniverseContext, CreateUniverseContextMethods } from '../../Creat
 import { StyledContent, StyledHeader, StyledPanel } from '../../components/DefaultComponents';
 import { FaultToleranceType, ResilienceType } from '../resilence-regions/dtos';
 import { NodeAvailabilityProps } from './dtos';
-import { ReactComponent as Return } from '../../../../../assets/tree.svg';
+import Return from '../../../../../assets/tree.svg';
 
 const { styled } = mui;
 

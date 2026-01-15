@@ -5,7 +5,7 @@ import { Box } from '@material-ui/core';
 import { YBLabel, YBToggleField, YBTooltip } from '../../../../../../components';
 import { CloudType, UniverseFormData } from '../../../utils/dto';
 import { ASSIGN_PUBLIC_IP_FIELD } from '../../../utils/constants';
-import InfoMessageIcon from '../../../../../../assets/info-message.svg';
+import InfoMessageIcon from '../../../../../../assets/info-message.svg?img';
 
 interface AssignPublicIPFieldProps {
   disabled: boolean;

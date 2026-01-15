@@ -75,7 +75,7 @@ const RestoreSummary: FC = () => {
         value:
           source.keyspace?.isDefaultOption || source.tableBackupType === Backup_Options_Type.ALL
             ? t('allTables')
-            : t('tablesSelected', { count: source.selectedTables?.length }) + '' ?? '-'
+            : t('tablesSelected', { count: source.selectedTables?.length ?? '-' })
       },
       {
         key: t('restoreTo'),

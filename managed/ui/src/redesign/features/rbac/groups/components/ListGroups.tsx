@@ -47,8 +47,8 @@ import {
 import { Pages } from './GroupContext';
 import { YBTag, YBTag_Types } from '../../../../../components/common/YBTag';
 import { Add, ArrowDropDown } from '@material-ui/icons';
-import { ReactComponent as Create } from '../../../../assets/edit_pen.svg';
-import { ReactComponent as Delete } from '../../../../assets/trashbin.svg';
+import Create from '../../../../assets/edit_pen.svg';
+import Delete from '../../../../assets/trashbin.svg';
 
 const useStyles = makeStyles((theme) => ({
   root: {

@@ -1,12 +1,12 @@
 import axios from 'axios';
 import { AxiosError, AxiosRequestConfig } from 'axios';
 
-export const IN_DEVELOPMENT_MODE = process.env.NODE_ENV === 'development';
+export const IN_DEVELOPMENT_MODE = import.meta.env.DEV;
 
 // if we export the ROOT_URL from the config.js file, orval is trying to parse it and throwing an error.
 // so we are copy pasting it here
 export const ROOT_URL =
-  process.env.REACT_APP_YUGAWARE_API_URL ??
+  import.meta.env.VITE_YUGAWARE_API_URL ??
   (IN_DEVELOPMENT_MODE ? 'http://localhost:9000/api/v2' : '/api/v2');
 
 export const URLWithRemovedSubPath = ROOT_URL.replace('/api/v1', '/api/v2');

@@ -41,9 +41,9 @@ import {
   getFaultToleranceNeeded,
   getFaultToleranceNeededForAZ
 } from '../../CreateUniverseUtils';
-import { ReactComponent as DocTick } from '../../../../../assets/doc_tick.svg';
-import { ReactComponent as DocTickUnSelected } from '../../../../../assets/doc_tick_unselected.svg';
-import { ReactComponent as Flash } from '../../../../../assets/flash_transparent.svg';
+import DocTick from '../../../../../assets/doc_tick.svg';
+import DocTickUnSelected from '../../../../../assets/doc_tick_unselected.svg';
+import Flash from '../../../../../assets/flash_transparent.svg';
 
 const { Grid2: Grid, ButtonGroup } = mui;
 
@@ -70,7 +70,13 @@ export const ResilienceAndRegions = forwardRef<
 >(({ isGeoPartition = false, hideHelpText = false }, forwardRef) => {
   const [
     { generalSettings, resilienceAndRegionsSettings },
-    { moveToPreviousPage, saveResilienceAndRegionsSettings, saveNodesAvailabilitySettings, moveToNextPage, setResilienceType }
+    {
+      moveToPreviousPage,
+      saveResilienceAndRegionsSettings,
+      saveNodesAvailabilitySettings,
+      moveToNextPage,
+      setResilienceType
+    }
   ] = (useContext(CreateUniverseContext) as unknown) as CreateUniverseContextMethods;
 
   const { t } = useTranslation('translation', {
@@ -104,7 +110,7 @@ export const ResilienceAndRegions = forwardRef<
 
   useEffect(() => {
     setResilienceType(resilienceType);
-    
+
     //reset nodes availability settings when resilience type changes
     saveNodesAvailabilitySettings(initialCreateUniverseFormState.nodesAvailabilitySettings!);
   }, [resilienceType]);

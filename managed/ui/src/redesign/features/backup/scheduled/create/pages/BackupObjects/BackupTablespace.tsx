@@ -24,8 +24,8 @@ import { YBCheckboxField } from '../../../../../../components';
 import { BackupObjectsModel } from '../../models/IBackupObjects';
 
 import { ArrowDropDown } from '@material-ui/icons';
-import Checked from '../../../../../../assets/checkbox/Checked.svg';
-import UnChecked from '../../../../../../assets/checkbox/UnChecked.svg';
+import Checked from '../../../../../../assets/checkbox/Checked.svg?img';
+import UnChecked from '../../../../../../assets/checkbox/UnChecked.svg?img';
 
 const useStyles = makeStyles((theme) => ({
   root: {

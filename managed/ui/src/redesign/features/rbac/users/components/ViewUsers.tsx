@@ -33,8 +33,8 @@ import { UserContextMethods, UserPages, UserViewContext } from './UserContext';
 import { ForbiddenRoles, Role, RoleType } from '../../roles';
 import { RbacUser, UserTypes } from '../interface/Users';
 import { Add, ArrowDropDown } from '@material-ui/icons';
-import { ReactComponent as User } from '../../../../assets/user.svg';
-import { ReactComponent as Delete } from '../../../../assets/trashbin.svg';
+import User from '../../../../assets/user.svg';
+import Delete from '../../../../assets/trashbin.svg';
 
 const useStyles = makeStyles((theme) => ({
   root: {

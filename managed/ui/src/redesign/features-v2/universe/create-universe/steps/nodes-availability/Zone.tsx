@@ -9,8 +9,8 @@ import { FaultToleranceType, ResilienceFormMode } from '../resilence-regions/dto
 import { NodeAvailabilityProps } from './dtos';
 import { PreferredInfoModal } from './PrefferedInfoModal';
 import { HelpOutline } from '@material-ui/icons';
-import { ReactComponent as Return } from '../../../../../assets/tree.svg';
-import { ReactComponent as RemoveIcon } from '../../../../../assets/close-large.svg';
+import Return from '../../../../../assets/tree.svg';
+import RemoveIcon from '../../../../../assets/close-large.svg';
 const { MenuItem } = mui;
 
 interface ZoneProps {

@@ -32,7 +32,7 @@ import {
   YBSoftwareMetadata
 } from '../../../../../features/universe/universe-form/utils/dto';
 import { PROVIDER_CONFIGURATION } from '../FieldNames';
-import InfoMessageIcon from '../../../../../assets/info-message.svg';
+import InfoMessageIcon from '../../../../../assets/info-message.svg?img';
 
 const { Box } = mui;
 

@@ -24,8 +24,8 @@ import {
 import { mapCreateUniversePayload } from '../../CreateUniverseUtils';
 import { YBLoadingCircleIcon } from '@app/components/common/indicators';
 
-import { ReactComponent as UniverseIcon } from '../../../../../assets/clusters.svg';
-import { ReactComponent as Money } from '../../../../../assets/money.svg';
+import UniverseIcon from '../../../../../assets/clusters.svg';
+import Money from '../../../../../assets/money.svg';
 
 const StyledPanel = styled('div')(({ theme }) => ({
   borderRadius: '8px',

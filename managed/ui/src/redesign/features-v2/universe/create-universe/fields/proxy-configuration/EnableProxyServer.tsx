@@ -15,7 +15,7 @@ import {
   BYPASS_PROXY_LIST_FIELD,
   BYPASS_PROXY_LIST_VALUES_FIELD
 } from '@app/redesign/features-v2/universe/create-universe/fields/FieldNames';
-import { ReactComponent as NextLineIcon } from '@app/redesign/assets/next-line.svg';
+import NextLineIcon from '@app/redesign/assets/next-line.svg';
 
 const { Box, Typography, styled } = mui;
 

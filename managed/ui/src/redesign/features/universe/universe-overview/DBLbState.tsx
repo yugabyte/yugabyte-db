@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
 import { YBWidget } from '../../../../components/panels';
 import { isNonEmptyObject } from '../../../../utils/ObjectUtils';
-import { ReactComponent as LoadingIcon } from '../../../assets/default-loading-circles.svg';
+import LoadingIcon from '../../../assets/default-loading-circles.svg';
 
 export const useStyles = makeStyles((theme) => ({
   versionContainer: {

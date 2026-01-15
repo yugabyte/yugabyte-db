@@ -31,7 +31,7 @@ import {
 } from '../../../utils/ObjectUtils';
 import { getPrimaryCluster } from '../../../utils/UniverseUtils';
 import { useIsTaskNewUIEnabled } from '../../../redesign/features/tasks/TaskUtils';
-import Close from '../../universes/images/close.svg';
+import Close from '../../universes/images/close.svg?img';
 import './HelmOverrides.scss';
 
 interface HelmOverridesType {

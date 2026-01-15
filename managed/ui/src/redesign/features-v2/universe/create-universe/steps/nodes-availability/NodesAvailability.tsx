@@ -33,7 +33,7 @@ import { ArrowDropDown } from '@material-ui/icons';
 import { Fade, Grow } from '@material-ui/core';
 import { Universe } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 
-import { ReactComponent as NodesIcon } from '@app/redesign/assets/nodes.svg';
+import NodesIcon from '@app/redesign/assets/nodes.svg';
 
 const { Box, styled } = mui;
 

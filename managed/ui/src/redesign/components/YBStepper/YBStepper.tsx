@@ -12,8 +12,8 @@ import { FC } from 'react';
 import clsx from 'clsx';
 import { keys, size } from 'lodash';
 import { makeStyles } from '@material-ui/core';
-import LeftArrow from '../../assets/chevron-right.svg';
-import Check from '../../assets/check-white.svg';
+import LeftArrow from '../../assets/chevron-right.svg?img';
+import Check from '../../assets/check-white.svg?img';
 
 type YBStepperProps = {
     steps: Record<string, string>;

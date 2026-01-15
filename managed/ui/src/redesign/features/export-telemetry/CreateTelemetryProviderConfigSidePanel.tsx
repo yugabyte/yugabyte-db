@@ -27,6 +27,8 @@ import {
 } from './types';
 import { DATADOG_SITES, LOKI_AUTH_TYPES } from './constants';
 import { api, runtimeConfigQueryKey } from '../../helpers/api';
+import InfoIcon from '../../assets/info-message.svg?img';
+
 //RBAC
 import { RuntimeConfigKey } from '../../helpers/constants';
 import { hasNecessaryPerm } from '../rbac/common/RbacApiPermValidator';
@@ -35,7 +37,6 @@ import { RBAC_ERR_MSG_NO_PERM } from '../rbac/common/validator/ValidatorUtils';
 
 //styles
 import { useExportTelemetryStyles } from './styles';
-import InfoIcon from '../../assets/info-message.svg';
 import { usePillStyles } from '@app/redesign/styles/styles';
 
 interface CreateTelemetryProviderConfigSidePanelProps {
@@ -141,7 +142,7 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
         payload.config.roleARN = values.config?.roleARN;
         payload.config.endpoint = values.config?.endpoint;
       }
-      if (values.config.type == TelemetryProviderType.LOKI) {
+      if (values.config.type === TelemetryProviderType.LOKI) {
         payload.config.endpoint = values.config?.endpoint;
 
         payload.config.organizationID = values.config?.organizationID;
@@ -538,7 +539,7 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
    * component.
    * Given we are supporting more providers, we should refactor this so each provider
    * integration is a separate file.
-   * Opened a ticket to track this refactoring:
+   * Opened a ticket to track this refactoring: PLAT-18780
    */
   const renderDynatraceForm = () => {
     return (

@@ -13,7 +13,7 @@ import { FieldContainer } from '../../components/DefaultComponents';
 import { QUERY_KEY, api } from '../../../../../features/universe/universe-form/utils/api';
 
 import { SecuritySettingsProps } from '../../steps/security-settings/dtos';
-import { ReactComponent as NextLineIcon } from '../../../../../assets/next-line.svg';
+import NextLineIcon from '../../../../../assets/next-line.svg';
 import { useUpdateEffect } from 'react-use';
 
 const { Box, Typography } = mui;

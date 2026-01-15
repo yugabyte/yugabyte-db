@@ -30,10 +30,10 @@ import { ApiPermissionMap } from '../../ApiAndUserPermMapping';
 import { SortOrder } from '../../../../helpers/constants';
 
 import { Add, ArrowDropDown } from '@material-ui/icons';
-import { ReactComponent as Create } from '../../../../assets/edit_pen.svg';
-import { ReactComponent as Copy } from '../../../../assets/copy.svg';
-import { ReactComponent as Delete } from '../../../../assets/trashbin.svg';
-import { ReactComponent as User } from '../../../../assets/user.svg';
+import Create from '../../../../assets/edit_pen.svg';
+import Copy from '../../../../assets/copy.svg';
+import Delete from '../../../../assets/trashbin.svg';
+import User from '../../../../assets/user.svg';
 
 const useStyles = makeStyles((theme) => ({
   root: {

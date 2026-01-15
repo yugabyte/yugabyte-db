@@ -24,8 +24,8 @@ import { RoleType } from '../IRoles';
 import { RbacValidator, hasNecessaryPerm } from '../../common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../ApiAndUserPermMapping';
 
-import { ReactComponent as ArrowLeft } from '../../../../assets/arrow_left.svg';
-import { ReactComponent as Delete } from '../../../../assets/trashbin.svg';
+import ArrowLeft from '../../../../assets/arrow_left.svg';
+import Delete from '../../../../assets/trashbin.svg';
 
 const useStyles = makeStyles((theme) => ({
   root: {
