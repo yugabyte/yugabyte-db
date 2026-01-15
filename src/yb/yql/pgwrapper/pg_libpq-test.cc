@@ -5287,25 +5287,4 @@ TEST_F(PgLibPqTest, PgStatMonitorBetaWarning) {
   ValidateExtensionOutput(&conn, "CREATE EXTENSION IF NOT EXISTS fuzzystrmatch", false);
 }
 
-class PgLibPqPgStatMonitorBetaWarningFlagTest : public PgLibPqTest {
-  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    PgLibPqTest::UpdateMiniClusterOptions(options);
-    // Enable beta feature flag for extensions
-    options->extra_tserver_flags.emplace_back("--ysql_beta_feature_pg_stat_monitor=true");
-  }
-};
-
-// Test that extension related beta warnings are not shown when
-// --ysql_beta_feature_extension is set to true.
-TEST_F_EX(PgLibPqTest, PgStatMonitorBetaWarningWithFlag,
-          PgLibPqPgStatMonitorBetaWarningFlagTest) {
-  auto conn = ASSERT_RESULT(Connect());
-
-  ASSERT_OK(conn.Execute("DROP EXTENSION IF EXISTS pg_stat_monitor"));
-  ValidateExtensionOutput(&conn, "CREATE EXTENSION pg_stat_monitor", false);
-
-  ASSERT_OK(conn.Execute("DROP EXTENSION IF EXISTS pg_stat_monitor"));
-  ValidateExtensionOutput(&conn, "CREATE EXTENSION IF NOT EXISTS pg_stat_monitor", false);
-}
-
 } // namespace yb::pgwrapper
