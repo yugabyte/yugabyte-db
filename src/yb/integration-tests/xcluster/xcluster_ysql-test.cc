@@ -152,22 +152,12 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
     return Status::OK();
   }
 
-  Result<YBTableName> CreateMaterializedView(Cluster* cluster, const YBTableName& table) {
-    auto conn = EXPECT_RESULT(cluster->ConnectToDB(table.namespace_name()));
-    RETURN_NOT_OK(conn.ExecuteFormat(
-        "CREATE MATERIALIZED VIEW $0_mv AS SELECT COUNT(*) FROM $0", table.table_name()));
-    return GetYsqlTable(
-        cluster, table.namespace_name(), table.pgschema_name(), table.table_name() + "_mv");
-  }
-
   void TestDropTableOnConsumerThenProducer(bool restart_master);
   void TestDropTableOnProducerThenConsumer(bool restart_master);
 
   MonoDelta MaxAsyncTaskWaitDuration() {
     return 3s * FLAGS_cdc_parent_tablet_deletion_task_retry_secs * kTimeMultiplier;
   }
-
- private:
 };
 
 TEST_F(XClusterYsqlTest, GenerateSeries) {
@@ -2033,13 +2023,15 @@ TEST_F(XClusterYsqlTest, SetupReplicationWithMaterializedViews) {
   std::shared_ptr<client::YBTable> producer_mv;
   std::shared_ptr<client::YBTable> consumer_mv;
   ASSERT_OK(InsertRowsInProducer(0, 5));
-  ASSERT_OK(producer_client()->OpenTable(
-      ASSERT_RESULT(CreateMaterializedView(&producer_cluster_, producer_table_->name())),
-      &producer_mv));
+  ASSERT_OK(
+      producer_client()->OpenTable(
+          ASSERT_RESULT(CreateMaterializedView(producer_cluster_, producer_table_->name())),
+          &producer_mv));
   producer_tables.push_back(producer_mv);
-  ASSERT_OK(consumer_client()->OpenTable(
-      ASSERT_RESULT(CreateMaterializedView(&consumer_cluster_, consumer_table_->name())),
-      &consumer_mv));
+  ASSERT_OK(
+      consumer_client()->OpenTable(
+          ASSERT_RESULT(CreateMaterializedView(consumer_cluster_, consumer_table_->name())),
+          &consumer_mv));
 
   auto s = SetupUniverseReplication(producer_tables);
 

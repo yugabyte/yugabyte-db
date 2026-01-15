@@ -3564,6 +3564,50 @@ TEST_F(XClusterDDLReplicationTest, TempTableDDLs) {
   ASSERT_EQ(resp.entry().tables_size(), 2);
 }
 
+TEST_F(XClusterDDLReplicationTest, SetupReplicationWithMaterializedViews) {
+  auto params = XClusterDDLReplicationTestBase::kDefaultParams;
+  params.num_producer_tablets = {1};
+  params.num_consumer_tablets = {1};
+  ASSERT_OK(SetUpClusters(params));
+
+  // Create materialized views on both clusters before setting up replication.
+  std::shared_ptr<client::YBTable> producer_mv;
+  std::shared_ptr<client::YBTable> consumer_mv;
+  ASSERT_OK(RunOnBothClusters([&](Cluster* cluster) -> Status {
+    return WriteWorkload(0, 5, cluster, producer_table_->name());
+  }));
+  ASSERT_OK(
+      producer_client()->OpenTable(
+          ASSERT_RESULT(CreateMaterializedView(producer_cluster_, producer_table_->name())),
+          &producer_mv));
+  ASSERT_OK(
+      consumer_client()->OpenTable(
+          ASSERT_RESULT(CreateMaterializedView(consumer_cluster_, consumer_table_->name())),
+          &consumer_mv));
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  // Validate replication of the materialized view.
+  ASSERT_OK(InsertRowsInProducer(5, 15));  // Should not show up in the materialized view yet.
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  auto producer_rows = ASSERT_RESULT(producer_conn_->FetchRow<pgwrapper::PGUint64>(
+      Format("SELECT * FROM $0", producer_mv->name().table_name())));
+  auto consumer_rows = ASSERT_RESULT(consumer_conn_->FetchRow<pgwrapper::PGUint64>(
+      Format("SELECT * FROM $0", consumer_mv->name().table_name())));
+  ASSERT_EQ(producer_rows, consumer_rows);
+  ASSERT_EQ(producer_rows, 5);
+
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "REFRESH MATERIALIZED VIEW $0", producer_mv->name().table_name()));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  producer_rows = ASSERT_RESULT(producer_conn_->FetchRow<pgwrapper::PGUint64>(
+      Format("SELECT * FROM $0", producer_mv->name().table_name())));
+  consumer_rows = ASSERT_RESULT(consumer_conn_->FetchRow<pgwrapper::PGUint64>(
+      Format("SELECT * FROM $0", consumer_mv->name().table_name())));
+  ASSERT_EQ(producer_rows, consumer_rows);
+  ASSERT_EQ(producer_rows, 15);
+}
+
 TEST_F(XClusterDDLReplicationTest, MatViewWithIndex) {
   ASSERT_OK(SetUpClustersAndReplication());
 
