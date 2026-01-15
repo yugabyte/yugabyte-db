@@ -60,7 +60,7 @@ def setup_logger(config):
 
     # Set file permissions (644)
     os.chmod(log_path, 0o644)
-
+    current_user_id = os.getuid()
     # Set ownership to original user if script was run with sudo
     if 'SUDO_USER' in os.environ:
         original_user = os.environ['SUDO_USER']
@@ -69,7 +69,8 @@ def setup_logger(config):
     user_info = pwd.getpwnam(original_user)
     uid = user_info.pw_uid
     gid = user_info.pw_gid
-    if uid == 0:
+    if current_user_id == 0 and current_user_id != uid:
+        # Change ownership only if running as root and yb_user is different from current user.
         os.chown(log_dir, uid, gid)
         os.chown(log_path, uid, gid)
     logger = logging.getLogger()
