@@ -34,10 +34,10 @@ type: docs
 </ul>
 
 {{< note title="Note" >}}
-To use automatic-mode transactional xCluster replication, both the Primary and Standby universes must be running v2025.1, v2.25.1, or later.
+To use automatic-mode transactional xCluster replication, both the Primary and Standby universes must be running v2025.2 or later.
 {{< /note >}}
 
-{{<tags/feature/ea idea="153">}}Automatic transactional xCluster replication handles all aspects of replication for both data and schema changes.
+{{<tags/feature/ga idea="153">}}Automatic transactional xCluster replication handles all aspects of replication for both data and schema changes.
 
 In particular, DDL changes made to the Primary universe are automatically replicated to the Standby universe.
 
@@ -102,7 +102,7 @@ them.
 
 {{< warning title="Warning" >}}
 
-Not all DDLs can be automatically replicated yet; see [XCluster Limitations](../../../../architecture/docdb-replication/async-replication/#limitations).
+Most DDLs can be automatically replicated, however there are still some [Limitations](../../../../architecture/docdb-replication/async-replication/#limitations).
 
 {{< /warning >}}
 
