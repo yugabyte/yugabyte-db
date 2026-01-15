@@ -294,6 +294,18 @@ extern bool YBIsDBCatalogVersionMode();
  */
 extern bool YBIsDBLogicalClientVersionMode();
 
+typedef enum YbObjectLockMode
+{
+	PG_OBJECT_LOCK_MODE,
+	YB_OBJECT_LOCK_DISABLED,
+	YB_OBJECT_LOCK_ENABLED
+} YbObjectLockMode;
+/*
+ * Whether object locking is enabled for the cluster (via the TServer regular
+ * gflag enable_object_locking_for_table_locks).
+ */
+extern YbObjectLockMode YBGetObjectLockMode();
+
 /*
  * Whether we need to preload additional catalog tables.
  */
@@ -359,12 +371,6 @@ extern void YBCAbortTransaction();
 extern void YBCSetActiveSubTransaction(SubTransactionId id);
 
 extern void YBCRollbackToSubTransaction(SubTransactionId id);
-
-/*
- * Return true if we want to allow PostgreSQL's own locking. This is needed
- * while system tables are still managed by PostgreSQL.
- */
-extern bool YBIsPgLockingEnabled();
 
 /*
  * Get the type ID of a real or virtual attribute (column).

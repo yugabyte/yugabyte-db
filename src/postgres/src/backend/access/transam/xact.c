@@ -2832,7 +2832,7 @@ PrepareTransaction(void)
 	StartPrepare(gxact);
 
 	AtPrepare_Notify();
-	if (YBIsPgLockingEnabled())
+	if (YBGetObjectLockMode() == PG_OBJECT_LOCK_MODE)
 	{
 		AtPrepare_Locks();
 		AtPrepare_PredicateLocks();
@@ -2862,7 +2862,8 @@ PrepareTransaction(void)
 	 * ProcArrayClearTransaction().  Otherwise, a GetLockConflicts() would
 	 * conclude "xact already committed or aborted" for our locks.
 	 */
-	PostPrepare_Locks(xid);
+	if (YBGetObjectLockMode() == PG_OBJECT_LOCK_MODE)
+		PostPrepare_Locks(xid);
 
 	/*
 	 * Let others know about no transaction in progress by me.  This has to be
@@ -2903,7 +2904,7 @@ PrepareTransaction(void)
 
 	PostPrepare_MultiXact(xid);
 
-	if (YBIsPgLockingEnabled())
+	if (YBGetObjectLockMode() == PG_OBJECT_LOCK_MODE)
 		PostPrepare_PredicateLocks(xid);
 
 	ResourceOwnerRelease(TopTransactionResourceOwner,
@@ -3002,7 +3003,7 @@ AbortTransaction(void)
 	/* Cancel condition variable sleep */
 	ConditionVariableCancelSleep();
 
-	if (YBIsPgLockingEnabled())
+	if (YBGetObjectLockMode() == PG_OBJECT_LOCK_MODE)
 	{
 		/*
 		 * Also clean up any open wait for lock, since the lock manager will choke

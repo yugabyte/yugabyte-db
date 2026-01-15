@@ -833,6 +833,20 @@ YBIsDBLogicalClientVersionMode()
 	return true;
 }
 
+YbObjectLockMode
+YBGetObjectLockMode()
+{
+	if (!YBTransactionsEnabled())
+		return PG_OBJECT_LOCK_MODE;
+
+	static int	cached_value = -1;
+	if (cached_value == -1)
+	{
+		cached_value = *YBCGetGFlags()->enable_object_locking_for_table_locks;
+	}
+	return cached_value ? YB_OBJECT_LOCK_ENABLED : YB_OBJECT_LOCK_DISABLED;
+}
+
 static bool
 YBCanEnableDBCatalogVersionMode()
 {
@@ -1553,12 +1567,6 @@ YBCRollbackToSubTransaction(SubTransactionId id)
 			 id, YBCMessageAsCString(status));
 
 	YbInvalidateTableCacheForAlteredTables();
-}
-
-bool
-YBIsPgLockingEnabled()
-{
-	return !YBTransactionsEnabled();
 }
 
 static bool yb_connected_to_template_db = false;
