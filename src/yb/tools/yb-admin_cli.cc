@@ -2808,6 +2808,41 @@ Status write_sys_catalog_entry_action(
       operation, entry_type, /*entry_id=*/args[2], /*file_path=*/args[3], force);
 }
 
+const auto are_nodes_safe_to_take_down_args = "<server_uuids> [follower_lag_bound_ms]";
+Status are_nodes_safe_to_take_down_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.empty() || args.size() > 2) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  std::vector<std::string> server_uuids;
+  boost::split(server_uuids, args[0], boost::is_any_of(","));
+  int follower_lag_bound_ms = 1000;
+  if (args.size() == 2) {
+    follower_lag_bound_ms = VERIFY_RESULT(CheckedStoi(args[1]));
+  }
+
+  // Figure out which uuids are tservers and which are masters.
+  auto all_tserver_uuids = VERIFY_RESULT(client->ListAllKnownTabletServersUuids());
+  auto all_master_uuids = VERIFY_RESULT(client->ListAllKnownMasterUuids());
+  std::vector<std::string> tservers_to_take_down, masters_to_take_down;
+  for (auto& uuid : server_uuids) {
+    if (all_tserver_uuids.contains(uuid)) {
+      tservers_to_take_down.push_back(uuid);
+    } else if (all_master_uuids.contains(uuid)) {
+      masters_to_take_down.push_back(uuid);
+    } else {
+      return STATUS_FORMAT(InvalidArgument, "Unknown server UUID: $0", uuid);
+    }
+  }
+
+  RETURN_NOT_OK_PREPEND(
+      client->AreNodesSafeToTakeDown(
+          tservers_to_take_down, masters_to_take_down, follower_lag_bound_ms),
+      "Unable to check if nodes are safe to take down");
+  return Status::OK();
+}
+
 const auto unsafe_release_object_locks_global_args = "<txn_uuid> [subtxn_id]";
 Status unsafe_release_object_locks_global_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
@@ -2913,6 +2948,7 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(rotate_universe_key_in_memory);
   REGISTER_COMMAND(disable_encryption_in_memory);
   REGISTER_COMMAND(write_universe_key_to_file);
+  REGISTER_COMMAND(are_nodes_safe_to_take_down);
   REGISTER_COMMAND_HIDDEN(unsafe_release_object_locks_global);
   // CDCSDK commands
   REGISTER_COMMAND(create_change_data_stream);

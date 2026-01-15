@@ -318,7 +318,7 @@ Status AreNodesSafeToTakeDownDriver::StartCallAndWait(CoarseTimePoint deadline) 
 Status TabletHealthManager::AreNodesSafeToTakeDown(
     const AreNodesSafeToTakeDownRequestPB* req, AreNodesSafeToTakeDownResponsePB* resp,
     rpc::RpcContext* rpc) {
-  LOG(INFO) << "Processing AreNodesSafeToTakeDown call";
+  LOG(INFO) << "Processing AreNodesSafeToTakeDown call: " << req->ShortDebugString();
   AreNodesSafeToTakeDownDriver driver(*req, master_, catalog_manager_);
 
   // Exit a bit earlier than the actual deadline so we can provide the caller with a readable

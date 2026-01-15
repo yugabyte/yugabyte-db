@@ -1397,7 +1397,7 @@ Status ClusterAdminClient::RemoveTabletServer(const std::string& uuid) {
   return Status::OK();
 }
 
-Status ClusterAdminClient::ListAllMasters() {
+Result<ListMastersResponsePB> ClusterAdminClient::GetAllMasters() {
   const auto lresp = VERIFY_RESULT(InvokeRpc(
       &master::MasterClusterProxy::ListMasters, *master_cluster_proxy_,
       ListMastersRequestPB()));
@@ -1407,6 +1407,30 @@ Status ClusterAdminClient::ListAllMasters() {
                << lresp.error().DebugString() << endl;
     return STATUS(RemoteError, lresp.error().DebugString());
   }
+  return lresp;
+}
+
+Result<std::unordered_set<std::string>> ClusterAdminClient::ListAllKnownMasterUuids() {
+  const auto lresp = VERIFY_RESULT(GetAllMasters());
+  std::unordered_set<std::string> master_uuids;
+  for (const auto& master : lresp.masters()) {
+    master_uuids.insert(master.instance_id().permanent_uuid());
+  }
+  return master_uuids;
+}
+
+Result<std::unordered_set<std::string>> ClusterAdminClient::ListAllKnownTabletServersUuids() {
+  RepeatedPtrField<ListTabletServersResponsePB::Entry> servers;
+  RETURN_NOT_OK(ListTabletServers(&servers));
+  std::unordered_set<std::string> tserver_uuids;
+  for (const auto& server : servers) {
+    tserver_uuids.insert(server.instance_id().permanent_uuid());
+  }
+  return tserver_uuids;
+}
+
+Status ClusterAdminClient::ListAllMasters() {
+  const auto lresp = VERIFY_RESULT(GetAllMasters());
 
   cout << RightPadToUuidWidth("Master UUID") << kColumnSep
         << RightPadToWidth(kRpcHostPortHeading, kHostPortColWidth) << kColumnSep
@@ -4758,6 +4782,12 @@ Status ClusterAdminClient::WriteSysCatalogEntryAction(
 
   std::cout << std::endl << "Successfully updated the YugabyteDB system catalog." << std::endl;
   return Status::OK();
+}
+
+Status ClusterAdminClient::AreNodesSafeToTakeDown(
+    const std::vector<std::string>& tserver_uuids, const std::vector<std::string>& master_uuids,
+    int follower_lag_bound_ms) {
+  return yb_client_->AreNodesSafeToTakeDown(tserver_uuids, master_uuids, follower_lag_bound_ms);
 }
 
 client::XClusterClient ClusterAdminClient::XClusterClient() {
