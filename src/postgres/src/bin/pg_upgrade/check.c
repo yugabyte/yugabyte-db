@@ -1932,7 +1932,8 @@ yb_check_installed_extensions()
 								"'plpgsql',"
 								"'anon',"
 								"'cube',"
-								"'earthdistance')");
+								"'earthdistance',"
+								"'yb_ycql_utils')");
 		ntups = PQntuples(res);
 		i_name = PQfnumber(res, "extname");
 

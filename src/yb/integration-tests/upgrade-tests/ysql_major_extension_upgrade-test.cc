@@ -375,4 +375,21 @@ TEST_F(YsqlMajorExtensionUpgradeTest, PlPgsql) {
   ASSERT_OK(UpgradeClusterToMixedMode());
   ASSERT_OK(FinalizeUpgradeFromMixedMode());
 }
+
+TEST_F(YsqlMajorExtensionUpgradeTest, YbYcqlUtils) {
+  ASSERT_OK(ExecuteStatement(Format("CREATE EXTENSION yb_ycql_utils")));
+  auto check_query = [&](const std::optional<size_t> tserver_idx) {
+    const auto query = "SELECT COUNT(*) FROM ycql_stat_statements;";
+    auto conn = ASSERT_RESULT(CreateConnToTs(tserver_idx));
+    auto result = ASSERT_RESULT((conn.FetchRows<pgwrapper::PGUint64>(query)));
+    ASSERT_FALSE(result.empty());
+  };
+  ASSERT_NO_FATALS(check_query(kAnyTserver));
+  ASSERT_OK(UpgradeClusterToMixedMode());
+  ASSERT_NO_FATALS(check_query(kMixedModeTserverPg15));
+  ASSERT_NO_FATALS(check_query(kMixedModeTserverPg11));
+  ASSERT_OK(FinalizeUpgradeFromMixedMode());
+  ASSERT_NO_FATALS(check_query(kAnyTserver));
+}
+
 } // namespace yb
