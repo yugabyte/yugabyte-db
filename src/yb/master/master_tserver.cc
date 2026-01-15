@@ -25,6 +25,7 @@
 #include "yb/client/client.h"
 
 #include "yb/common/pg_types.h"
+#include "yb/common/wire_protocol.h"
 
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
@@ -89,6 +90,10 @@ class MasterCDCServiceContextImpl : public cdc::CDCServiceContext {
 
   Result<uint32> GetAutoFlagsConfigVersion() const override {
     return STATUS(InternalError, "Unexpected call to GetAutoFlagsConfigVersion in master_tserver.");
+  }
+
+  Result<HostPort> GetDesiredHostPortForLocal() const override {
+    return STATUS(NotSupported, "GetDesiredHostPortForLocal not supported on master");
   }
 
  private:

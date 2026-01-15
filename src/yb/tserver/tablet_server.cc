@@ -344,6 +344,12 @@ class CDCServiceContextImpl : public cdc::CDCServiceContext {
     return tablet_server_.ValidateAndGetAutoFlagsConfigVersion();
   }
 
+  Result<HostPort> GetDesiredHostPortForLocal() const override {
+    ServerRegistrationPB reg;
+    RETURN_NOT_OK(tablet_server_.GetRegistration(&reg, server::RpcOnly::kTrue));
+    return HostPortFromPB(DesiredHostPort(reg, tablet_server_.options().MakeCloudInfoPB()));
+  }
+
  private:
   TabletServer& tablet_server_;
 };
