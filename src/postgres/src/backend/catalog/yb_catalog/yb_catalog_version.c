@@ -455,9 +455,6 @@ YbIncrementMasterDBCatalogVersionTableEntryImpl(Oid db_oid,
 
 		if (OidIsValid(func_oid) && YbInvalidationMessagesTableExists())
 		{
-			if (!YBCIsLegacyModeForCatalogOps())
-				LockRelationOid(YbInvalidationMessagesRelationId, ExclusiveLock);
-
 			bool		is_null = false;
 			Datum		messages = GetInvalidationMessages(invalMessages, nmsgs, &is_null);
 			int			expiration_secs = yb_invalidation_message_expiration_secs;

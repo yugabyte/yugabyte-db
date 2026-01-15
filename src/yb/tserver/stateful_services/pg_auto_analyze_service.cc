@@ -102,6 +102,16 @@ DECLARE_bool(ysql_enable_auto_analyze);
 using namespace std::chrono_literals;
 using std::chrono::system_clock;
 
+namespace {
+
+const std::unordered_set<yb::PgOid> kSkipAnalyzeOids = {
+    yb::kPgYbInvalidationMessagesTableOid,
+    // Analyzing catalog version table can hold up DDLs that need an exclusive lock on this table.
+    yb::kPgYbCatalogVersionTableOid
+  };
+
+}  // namespace
+
 namespace yb {
 
 namespace stateful_service {
@@ -481,6 +491,11 @@ Result<PgAutoAnalyzeService::NamespaceTablesMap> PgAutoAnalyzeService::Determine
   VLOG_WITH_FUNC(3);
   NamespaceTablesMap namespace_id_to_analyze_target_tables;
   for (const auto& [table_id, table_info] : table_id_to_info_maps) {
+    auto table_oid = VERIFY_RESULT(GetPgsqlTableOid(table_id));
+    if (kSkipAnalyzeOids.contains(table_oid)) {
+      VLOG(1) << "Skipping table OID " << table_oid << " from auto-analyze";
+      continue;
+    }
     auto it = table_tuple_count_.find(table_id);
     if (it == table_tuple_count_.end()) {
       VLOG(1) << "Table not in table_tuple_count_, so skipping: " << table_id;
