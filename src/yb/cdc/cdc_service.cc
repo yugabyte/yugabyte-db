@@ -5046,7 +5046,9 @@ void CDCServiceImpl::InitVirtualWALForCDC(
     table_list.insert(table_id);
   }
 
-  HostPort hostport(context.local_address());
+  HostPort hostport = RPC_VERIFY_RESULT(
+      context_->GetDesiredHostPortForLocal(), resp->mutable_error(),
+      CDCErrorPB::INTERNAL_ERROR, context);
   Status s = virtual_wal->InitVirtualWALInternal(
       table_list, hostport, GetDeadline(context, client()), std::move(slot_hash_range));
   if (!s.ok()) {
@@ -5102,7 +5104,9 @@ void CDCServiceImpl::GetConsistentChanges(
   }
 
   auto stream_id = RPC_VERIFY_STRING_TO_STREAM_ID(req->stream_id());
-  HostPort hostport(context.local_address());
+  HostPort hostport = RPC_VERIFY_RESULT(
+      context_->GetDesiredHostPortForLocal(), resp->mutable_error(),
+      CDCErrorPB::INTERNAL_ERROR, context);
   Status s =
       virtual_wal->GetConsistentChangesInternal(resp, hostport, GetDeadline(context, client()));
   if (!s.ok()) {
@@ -5305,7 +5309,9 @@ void CDCServiceImpl::UpdatePublicationTableList(
   }
 
   auto stream_id = RPC_VERIFY_STRING_TO_STREAM_ID(req->stream_id());
-  HostPort hostport(context.local_address());
+  HostPort hostport = RPC_VERIFY_RESULT(
+      context_->GetDesiredHostPortForLocal(), resp->mutable_error(),
+      CDCErrorPB::INTERNAL_ERROR, context);
   std::unordered_set<TableId> new_table_list;
   for (const auto& table_id : req->table_id()) {
     new_table_list.insert(table_id);
