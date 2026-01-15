@@ -2751,32 +2751,6 @@ YbBindHashKeys(YbScanDesc ybScan)
 	return true;
 }
 
-static void
-YbCollectHashKeyComponents(YbScanDesc ybScan,
-						   YbScanPlan scan_plan,
-						   bool is_index_only_scan,
-						   YbAttnumBmsState *required_attrs)
-{
-	Relation	index = ybScan->index;
-	const int16 *secondary_index_indkey_values = ((index &&
-												   !is_index_only_scan &&
-												   !index->rd_index->indisprimary) ?
-												  index->rd_index->indkey.values :
-												  NULL);
-
-	int			idx = -1;
-
-	while ((idx = bms_next_member(scan_plan->hash_key, idx)) >= 0)
-	{
-		AttrNumber	attnum = YBBmsIndexToAttnum(scan_plan->target_relation, idx);
-
-		if (secondary_index_indkey_values)
-			attnum = secondary_index_indkey_values[attnum - 1];
-
-		ybcAttnumBmsAdd(required_attrs, attnum);
-	}
-}
-
 static inline void
 ybcPullVarattnosIntoAttnumBms(List *list, Index varno, YbAttnumBmsState *state)
 {
@@ -2800,54 +2774,6 @@ YbAddBitmapScanRecheckColumns(YbBitmapTableScan *plan, Index target_relid,
 								  required_attrs);
 	ybcPullVarattnosIntoAttnumBms(plan->recheck_local_quals, target_relid,
 								  required_attrs);
-}
-
-static bool
-YbHasOrdinaryColumnsNeedingPgRecheckImpl(YbScanDesc yb_scan,
-										 YbAttnumBmsState *dest)
-{
-	if (yb_scan->all_ordinary_keys_bound)
-		return false;
-
-	bool		result = false;
-	const ScanKey *keys = yb_scan->keys;
-	const bool	is_index_only_scan = yb_scan->prepare_params.index_only_scan;
-
-	for (int i = 0; i < yb_scan->nkeys; i += YbGetLengthOfKey(&keys[i]))
-	{
-		const AttrNumber attnum = yb_scan->target_key_attnums[i];
-
-		if (is_index_only_scan ||
-			attnum == InvalidAttrNumber ||
-			keys[i]->sk_flags & ~(SK_SEARCHNULL | SK_SEARCHNOTNULL))
-		{
-			result = true;
-			if (dest)
-				ybcAttnumBmsAdd(dest, attnum);
-			else
-				break;
-		}
-	}
-	return result;
-}
-
-/*
- * Adds all non-hashcode columns that may require a PG recheck.
- */
-static inline void
-YbAddOrdinaryColumnsNeedingPgRecheck(YbScanDesc yb_scan,
-									 YbAttnumBmsState *attnums)
-{
-	YbHasOrdinaryColumnsNeedingPgRecheckImpl(yb_scan, attnums);
-}
-
-/*
- * Checks the existence of non-hashcode columns that may require a PG recheck.
- */
-static inline bool
-YbHasOrdinaryColumnsNeedingPgRecheck(YbScanDesc yb_scan)
-{
-	return YbHasOrdinaryColumnsNeedingPgRecheckImpl(yb_scan, NULL);
 }
 
 static void
@@ -2898,14 +2824,15 @@ ybcBuildRequiredAttrs(YbScanDesc yb_scan, YbScanPlan scan_plan,
 		ybcPullVarattnosIntoAttnumBms(pg_scan_plan->plan.targetlist,
 									  target_relid, &result);
 
-		/* Collect table filtering attributes */
+		/* Collect local table filter attributes */
 		ybcPullVarattnosIntoAttnumBms(pg_scan_plan->plan.qual, target_relid,
 									  &result);
 
-		if (yb_scan->hash_code_keys != NIL)
-			YbCollectHashKeyComponents(yb_scan, scan_plan, is_index_only_scan,
-									   &result);
-
+		/*
+		 * Collect local recheck/precheck attributes
+		 *
+		 * TODO(jason): only do this if recheck/precheck is needed.
+		 */
 		if (IsA(pg_scan_plan, YbBitmapTableScan))
 			YbAddBitmapScanRecheckColumns((YbBitmapTableScan *) pg_scan_plan,
 										  target_relid,
@@ -2914,15 +2841,10 @@ ybcBuildRequiredAttrs(YbScanDesc yb_scan, YbScanPlan scan_plan,
 			ybcPullVarattnosIntoAttnumBms(((IndexOnlyScan *) pg_scan_plan)->recheckqual,
 										  target_relid,
 										  &result);
-
-		YbAddOrdinaryColumnsNeedingPgRecheck(yb_scan, &result);
-
-		/* Add any explicitly listed target keys */
-		AttrNumber *sk_attno = yb_scan->target_key_attnums;
-		AttrNumber *sk_attno_end = sk_attno + yb_scan->nkeys;
-
-		for (; sk_attno != sk_attno_end; ++sk_attno)
-			ybcAttnumBmsAdd(&result, *sk_attno);
+		else if (IsA(pg_scan_plan, IndexScan))
+			ybcPullVarattnosIntoAttnumBms(((IndexScan *) pg_scan_plan)->indexqualorig,
+										  target_relid,
+										  &result);
 
 		/* TableOidAttrNumber is a virtual column, do not send it */
 		if (ybcAttnumBmsDelIfExists(&result, TableOidAttributeNumber))
@@ -3533,13 +3455,45 @@ ybIsTupMismatch(HeapTuple tup, YbScanDesc ybScan)
 
 /*
  * Whether rows returned by DocDB need to be rechecked.  Currently, it can be
- * predetermined for the entire scan before tuples are fetched.
+ * predetermined for the entire scan before tuples are fetched.  This function
+ * is ready to be called after calling YbBindScanKeys, which sets some
+ * variables that are read here.
  */
 inline bool
 YbNeedsPgRecheck(YbScanDesc yb_scan)
 {
-	return (yb_scan->hash_code_keys ||
-			YbHasOrdinaryColumnsNeedingPgRecheck(yb_scan));
+	/*
+	 * Due to historical reasons, yb_hash_code pushdown always requires
+	 * recheck.
+	 */
+	if (yb_scan->hash_code_keys)
+		return true;
+
+	/* If all keys are bound, there is no need to recheck. */
+	if (yb_scan->all_ordinary_keys_bound)
+		return false;
+
+	/*
+	 * Precheck takes care of SK_SEARCHNULL and SK_SEARCHNOTNULL cases.  All
+	 * other cases need recheck.  Due to historical reasons, index only scan
+	 * and expressions (corresponding to InvalidAttrNumber) always require
+	 * recheck.
+	 */
+	const ScanKey *keys = yb_scan->keys;
+	const bool	is_index_only_scan = yb_scan->prepare_params.index_only_scan;
+
+	for (int i = 0; i < yb_scan->nkeys; i += YbGetLengthOfKey(&keys[i]))
+	{
+		const AttrNumber attnum = yb_scan->target_key_attnums[i];
+
+		if (is_index_only_scan ||
+			attnum == InvalidAttrNumber ||
+			keys[i]->sk_flags & ~(SK_SEARCHNULL | SK_SEARCHNOTNULL))
+		{
+			return true;
+		}
+	}
+	return false;
 }
 
 HeapTuple
