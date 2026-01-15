@@ -550,8 +550,9 @@ void TryRunChronycTracking(vector<string>* log) {
   TryRunCmd("chronyc tracking", log);
 }
 
-void TryRunChronycSourcestats(vector<string>* log) {
+void TryRunChronycSourceInfo(vector<string>* log) {
   TryRunCmd("chronyc sourcestats", log);
+  TryRunCmd("chronyc sources", log);
 }
 
 uint16_t GetFreePort(std::unique_ptr<FileLock>* file_lock) {
