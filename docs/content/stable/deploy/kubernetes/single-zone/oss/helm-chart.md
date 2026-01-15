@@ -314,6 +314,12 @@ Replica count can be changed using the following command. Note that only the YB-
 helm upgrade --set replicas.tserver=5 yb-demo ./yugabyte
 ```
 
+#### Memory configuration for Kubernetes deployments
+
+For Kubernetes deployments, memory limits are controlled via Kubernetes resource specifications in the Helm chart (the `resource.master.limits.memory` and `resource.tserver.limits.memory` values). The [--memory_limit_hard_bytes](../../../../../reference/configuration/yb-tserver/#memory-limit-hard-bytes) flag is automatically set from these Kubernetes pod memory limits using the command line argument. The [--default_memory_limit_to_ram_ratio](../../../../../reference/configuration/yb-tserver/#default-memory-limit-to-ram-ratio) flag does not apply to Kubernetes universes because memory resources are specified natively in the Kubernetes YAML rather than as a percentage of system RAM.
+
+For example, if you set `resource.tserver.limits.memory: 4Gi` in your Helm chart, the `--memory_limit_hard_bytes` flag will be automatically set to the corresponding byte value (approximately 4294967296 bytes) for the TServer pods.
+
 ### Readiness probes
 
 Readiness probes provide readiness checks for your Kubernetes deployment. Probes are compatible with both direct Helm deployments and [YugabyteDB Anywhere-managed deployments](../../../../../yugabyte-platform/create-deployments/create-universe-multi-zone-kubernetes/#helm-overrides), and work with TLS enabled or restricted authorization environments. Use the probes to ensure pods are ready before being marked as available. The probes verify connectivity using ysqlsh for YSQL and ycqlsh for YCQL.
