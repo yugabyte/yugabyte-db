@@ -174,7 +174,6 @@ To view metrics such as table size, use the name of the parent colocation table.
 - Metrics for table metrics such as table size are available for the colocation tablet, not for individual colocated tables that are part of the colocation.
 - Tablet splitting is disabled for colocated tables.
 - To avoid hotspots, do not colocate tables that receive disproportionately high loads.
-- xCluster replication automatic mode does not yet support colocated tables.
 
 ### Semantic differences between colocated and non-colocated tables
 
@@ -184,7 +183,13 @@ For a colocated table, a TRUNCATE / DROP operation may abort due to conflicts if
 
 ## xCluster and colocation
 
-xCluster replication currently only supports colocated tables for [semi-automatic and fully manual](../../deploy/multi-dc/async-replication/async-transactional-setup-semi-automatic/) modes.
+xCluster replication supports colocated tables for [all modes](../../deploy/multi-dc/async-replication/async-transactional-setup-automatic/).
+
+When setting up xCluster for colocated tables when using automatic
+mode, skip all of the steps below. Adding a colocated database to
+xCluster automatic mode will automatically replicate all of its tables
+(colocated and non-colocated), as well as any DDLs performed in that
+database. When creating tables or indexes, do not specify `colocation_id`s.
 
 When setting up xCluster for colocated tables when using manual or
 semi-automatic mode, the `colocation_id` for a given table or index
