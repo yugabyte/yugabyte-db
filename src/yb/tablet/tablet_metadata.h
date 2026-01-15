@@ -876,7 +876,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   // SPLIT_OP ID designated for this tablet (so child tablets will have this unset until they've
   // been split themselves).
   OpId split_op_id_ GUARDED_BY(data_mutex_);
-  std::vector<TabletId> split_child_tablet_ids_ GUARDED_BY(data_mutex_){kDefaultNumSplitParts};
+  std::vector<TabletId> split_child_tablet_ids_ GUARDED_BY(data_mutex_);
 
   std::vector<TxnSnapshotRestorationId> active_restorations_;
 

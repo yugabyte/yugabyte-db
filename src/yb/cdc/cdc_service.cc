@@ -4848,11 +4848,6 @@ Status CDCServiceImpl::UpdateChildrenTabletsOnSplitOpForXCluster(
     const TabletStreamInfo& producer_tablet, const consensus::ReplicateMsg& split_op_msg) {
   const auto children_tablets = GetSplitChildTabletIds(split_op_msg.split_request());
 
-  // TODO(nway-tsplit): verify support for N-way split.
-  SCHECK_EQ(kDefaultNumSplitParts, children_tablets.size(), IllegalState, Format(
-      "Unexpected number of split children for parent tablet: $0 and stream: $1",
-      producer_tablet.tablet_id, producer_tablet.stream_id));
-
   // First check if the children tablet entries exist yet in cdc_state.
   for (const auto& child_tablet_id : children_tablets) {
     auto entry_opt = VERIFY_RESULT(cdc_state_table_->TryFetchEntry(

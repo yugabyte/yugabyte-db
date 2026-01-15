@@ -228,9 +228,6 @@ Status UpdateTabletMappingOnConsumerSplit(
   DCHECK(producer_tablets.start_key_size() == 0 && producer_tablets.end_key_size() == 0);
   // Only process this tablet if it present, if not we have already processed it.
   if (mutable_map->erase(split_tablet_ids.source)) {
-    // TODO(nway-tsplit): verify support for N-way split.
-    SCHECK_EQ(kDefaultNumSplitParts, split_tablet_ids.children.size(), IllegalState, Format(
-        "Unexpected number of split children for parent tablet: $0", split_tablet_ids.source));
     for (int i = 0; i < producer_tablets.tablets().size(); ++i) {
       const auto& child = split_tablet_ids.children[i % split_tablet_ids.children.size()];
       *(*mutable_map)[child].add_tablets() = producer_tablets.tablets(i);
@@ -251,9 +248,6 @@ Status UpdateTabletMappingOnProducerSplit(
   auto mutable_map = stream_entry->mutable_consumer_producer_tablet_map();
   // Also keep track if we see the split children tablets.
   vector<string> split_child_tablet_ids(split_tablet_ids.children);
-  // TODO(nway-tsplit): verify support for N-way split.
-  SCHECK_EQ(kDefaultNumSplitParts, split_child_tablet_ids.size(), IllegalState, Format(
-      "Unexpected number of split children for parent tablet: $0", split_tablet_ids.source));
   for (auto& consumer_tablet_to_producer_tablets : *mutable_map) {
     auto& producer_tablet_infos = consumer_tablet_to_producer_tablets.second;
     bool has_key_range =
@@ -278,9 +272,6 @@ Status UpdateTabletMappingOnProducerSplit(
           producer_tablet_infos.mutable_start_key()->DeleteSubrange(i, 1);
           producer_tablet_infos.mutable_end_key()->DeleteSubrange(i, 1);
           producer_tablet_infos.add_start_key(old_start_key);
-
-          // TODO(nway-tsplit): verify support for N-way split.
-          SCHECK_EQ(split_keys.size(), 1, IllegalState, "Unexpected producer split keys count");
           for (const auto& split_key : split_keys) {
             producer_tablet_infos.add_end_key(split_key);
             producer_tablet_infos.add_start_key(split_key);

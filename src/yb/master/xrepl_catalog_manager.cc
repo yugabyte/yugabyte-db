@@ -380,21 +380,15 @@ void CatalogManager::RecordCDCSDKHiddenTablets(
   for (const auto& hidden_tablet : tablets) {
     auto tablet_lock = hidden_tablet->LockForRead();
     auto& tablet_pb = tablet_lock->pb;
-    // TODO(nway-tsplit): Verify support for multi-way split.
     const std::vector<TabletId> split_tablets(
         tablet_pb.split_tablet_ids().begin(), tablet_pb.split_tablet_ids().end());
     HiddenReplicationTabletInfo info{
         .table_id_ = hidden_tablet->table()->id(),
         .parent_tablet_id_ =
             tablet_pb.has_split_parent_tablet_id() ? tablet_pb.split_parent_tablet_id() : "",
-        .split_tablets_ = {},
+        .split_tablets_ = std::move(split_tablets),
         .hide_time_ = HybridTime(tablet_pb.hide_hybrid_time()),
         .hide_reason_ = HiddenReplicationTabletInfo::HideReason::kTabletSplit};
-
-    if (tablet_pb.split_tablet_ids_size() > 0) {
-      DCHECK_EQ(tablet_pb.split_tablet_ids_size(), kDefaultNumSplitParts);
-      info.split_tablets_ = std::move(split_tablets);
-    }
 
     if (hidden_tablet->table()->started_hiding()) {
       info.hide_reason_ = HiddenReplicationTabletInfo::HideReason::kTableDeleted;
@@ -3651,9 +3645,6 @@ Status CatalogManager::UpdateCDCProducerOnTabletSplit(
       // will be set. We use this information to know that the children has been polled for. Once
       // both children have been polled for, then we can delete the parent tablet via the bg task
       // DoProcessXClusterParentTabletDeletion.
-      // TODO(nway-tsplit): verify support for N-way split.
-      SCHECK_EQ(kDefaultNumSplitParts, split_tablet_ids.children.size(), IllegalState, Format(
-          "Unexpected number of split children for parent tablet: $0", split_tablet_ids.source));
       for (const auto& child_tablet_id : split_tablet_ids.children) {
         cdc::CDCStateTableEntry entry(child_tablet_id, stream->StreamId());
         if (!stream->GetCdcsdkYsqlReplicationSlotName().empty()) {
@@ -3939,9 +3930,6 @@ Status CatalogManager::UpdateConsumerOnProducerSplit(
   const auto split_children = GetSplitChildTabletIds(split_info);
   const auto split_keys = GetSplitPartitionKeys(split_info);
 
-  // TODO(nway-tsplit): verify support for N-way split.
-  SCHECK_EQ(kDefaultNumSplitParts, split_children.size(), IllegalState, Format(
-      "Unexpected number of split children for parent tablet: $0", split_info.tablet_id()));
   SCHECK_EQ(
       split_children.size() - 1, split_keys.size(), IllegalState,
       "Unexpected number of partition keys");

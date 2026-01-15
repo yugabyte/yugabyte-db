@@ -771,15 +771,10 @@ void XClusterSourceManager::RecordHiddenTablets(
       continue;
     }
 
-    std::vector<TabletId> split_tablets;
     auto tablet_lock = hidden_tablet->LockForRead();
     auto& tablet_pb = tablet_lock->pb;
-    if (tablet_pb.split_tablet_ids_size() > 0) {
-      // TODO(nway-tsplit): Verify support for multi-way split.
-      CHECK_EQ(tablet_pb.split_tablet_ids_size(), kDefaultNumSplitParts);
-      split_tablets.assign(
-          tablet_pb.split_tablet_ids().begin(), tablet_pb.split_tablet_ids().end());
-    }
+    std::vector<TabletId> split_tablets(
+        tablet_pb.split_tablet_ids().begin(), tablet_pb.split_tablet_ids().end());
 
     HiddenTabletInfo info{
         .table_id = hidden_tablet->table()->id(),

@@ -55,4 +55,16 @@ extern template std::vector<std::string> GetSplitPartitionKeys(
 
 std::vector<std::string> GetSplitEncodedKeys(const tablet::SplitTabletRequestPB& req);
 
+// Returns the vector item at the specified index if valid (i.e., in the range [0, size)),
+// otherwise returns the default value.
+inline const std::string& GetVectorItemOrDefault(
+    const std::vector<std::string>& vec, int idx, const std::string& default_val) {
+  return (idx >= 0 && static_cast<size_t>(idx) < vec.size()) ? vec[idx] : default_val;
+}
+
+inline const Slice GetVectorItemOrDefault(
+    const std::vector<std::string>& vec, int idx, const Slice default_val) {
+  return (idx >= 0 && static_cast<size_t>(idx) < vec.size()) ? vec[idx] : default_val;
+}
+
 } // namespace yb

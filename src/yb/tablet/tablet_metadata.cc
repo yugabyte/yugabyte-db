@@ -1116,13 +1116,8 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
 
     if (superblock.has_split_op_id()) {
       split_op_id_ = OpId::FromPB(superblock.split_op_id());
-
-      SCHECK_EQ(implicit_cast<size_t>(superblock.split_child_tablet_ids().size()),
-                split_child_tablet_ids_.size(),
-                Corruption, "Expected exact number of child tablet ids");
-      for (size_t i = 0; i != split_child_tablet_ids_.size(); ++i) {
-        split_child_tablet_ids_[i] = superblock.split_child_tablet_ids(narrow_cast<int>(i));
-      }
+      split_child_tablet_ids_.assign(
+          superblock.split_child_tablet_ids().begin(), superblock.split_child_tablet_ids().end());
     }
 
     last_attempted_clone_seq_no_ = superblock.last_attempted_clone_seq_no();
@@ -1871,7 +1866,6 @@ void RaftGroupMetadata::SetSplitDone(
   std::lock_guard lock(data_mutex_);
   tablet_data_state_ = TabletDataState::TABLET_DATA_SPLIT_COMPLETED;
   split_op_id_ = op_id;
-  CHECK_EQ(kDefaultNumSplitParts, children.size());
   split_child_tablet_ids_ = children;
 }
 
@@ -1901,8 +1895,7 @@ void RaftGroupMetadata::RegisterRestoration(const TxnSnapshotRestorationId& rest
   if (tablet_data_state_ == TabletDataState::TABLET_DATA_SPLIT_COMPLETED) {
     tablet_data_state_ = TabletDataState::TABLET_DATA_READY;
     split_op_id_ = OpId();
-    split_child_tablet_ids_[0] = std::string();
-    split_child_tablet_ids_[1] = std::string();
+    split_child_tablet_ids_.clear();
   }
   if (std::find(active_restorations_.begin(), active_restorations_.end(), restoration_id) !=
       active_restorations_.end()) {

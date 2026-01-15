@@ -2780,30 +2780,71 @@ Status CatalogManager::CompactSysCatalog(
 
 namespace {
 
-Result<std::vector<PartitionPB>> CreateNewTabletsPartition(
-    const TabletInfo& tablet_info, const std::string& split_partition_key) {
-  // Making a copy of PartitionPB to avoid holding a lock.
-  const auto source_partition = tablet_info.LockForRead()->pb.partition();
+std::string AsDebugHexString(const std::string& str) {
+  return Slice(str).ToDebugHexString();
+}
 
-  if (split_partition_key <= source_partition.partition_key_start() ||
-      (!source_partition.partition_key_end().empty() &&
-       split_partition_key >= source_partition.partition_key_end())) {
-    return STATUS_FORMAT(
-        InvalidArgument,
-        "Can't split tablet $0 (partition_key_start: $1 partition_key_end: $2) by partition "
-        "boundary (split_key: $3)",
-        tablet_info.tablet_id(),
-        FormatBytesAsStr(source_partition.partition_key_start()),
-        FormatBytesAsStr(source_partition.partition_key_end()),
-        FormatBytesAsStr(split_partition_key));
+std::string AsDebugHexString(const PartitionPB& partition) {
+  return Format(
+      "partition_key_start: $0, partition_key_end: $1",
+      Slice(partition.partition_key_start()).PrefixNoLongerThan(64).ToDebugHexString(),
+      Slice(partition.partition_key_end()).PrefixNoLongerThan(64).ToDebugHexString());
+}
+
+std::string AsDebugHexString(const std::vector<std::string>& strings) {
+  if (strings.size() == 0) {
+    return "";
   }
 
-  static_assert(
-      kDefaultNumSplitParts == 2, "We expect tablet to be split into 2 new tablets here");
-  std::vector<PartitionPB> new_tablets_partition(kDefaultNumSplitParts, source_partition);
-  new_tablets_partition[0].set_partition_key_end(split_partition_key);
-  new_tablets_partition[1].set_partition_key_start(split_partition_key);
-  return new_tablets_partition;
+  std::string result = Slice(strings.front()).ToDebugHexString();
+  for (size_t i = 1; i < strings.size(); ++i) {
+    result += ", ";
+    result += Slice(strings[i]).ToDebugHexString();
+  }
+
+  return result;
+}
+
+Result<std::vector<PartitionPB>> CreateNewTabletsPartition(
+    const TabletInfo& tablet_info, const std::vector<std::string>& split_partition_keys) {
+  // Making a copy of PartitionPB to avoid holding a lock.
+  const auto source_partition = tablet_info.LockForRead()->pb.partition();
+  const auto num_split_tablets = narrow_cast<int>(split_partition_keys.size() + 1);
+  std::vector<PartitionPB> new_tablets_partitions(num_split_tablets);
+  for (int i = 0; i < num_split_tablets; ++i) {
+    const auto& partition_start = GetVectorItemOrDefault(
+        split_partition_keys, i - 1, source_partition.partition_key_start());
+    const auto& partition_end = GetVectorItemOrDefault(
+        split_partition_keys, i, source_partition.partition_key_end());
+    // Validate that the partition start key is less than the partition end key. There are two
+    // boundary cases:
+    // - Leftmost table partition has an empty start key that is considered less than all other
+    //   keys. The base condition implicitly handles this scenario since the empty start string
+    //   compares less than any other key string.
+    // - Rightmost table partition has an empty end key that is considered greater than all other
+    //   keys. The start key string will not compare less than the empty end key string and
+    //   requires explicit handling.
+    if (partition_start < partition_end ||
+        (i == num_split_tablets - 1 &&
+         source_partition.partition_key_end().empty() && partition_end.empty())) {
+      // TODO(nway-tsplit): How does hash bucket population change with N-way split? For binary
+      // splits, we seemed to simply copy from source partition.
+      new_tablets_partitions[i].mutable_hash_buckets()->CopyFrom(source_partition.hash_buckets());
+      new_tablets_partitions[i].set_partition_key_start(partition_start);
+      new_tablets_partitions[i].set_partition_key_end(partition_end);
+    } else {
+      return STATUS_FORMAT(
+          InvalidArgument,
+          "Can't split tablet $0 [partition_key_start: $1 partition_key_end: $2) into $3 tablets "
+          "due to invalid sub-partition at index $4: "
+          "[partition_key_start: $5 partition_key_end: $6)",
+          tablet_info.tablet_id(), AsDebugHexString(source_partition.partition_key_start()),
+          AsDebugHexString(source_partition.partition_key_end()), num_split_tablets, i,
+          AsDebugHexString(partition_start), AsDebugHexString(partition_end));
+    }
+  }
+
+  return new_tablets_partitions;
 }
 
 }  // namespace
@@ -2923,13 +2964,6 @@ Status CatalogManager::ShouldSplitValidCandidate(
 }
 
 namespace {
-
-std::string AsDebugHexString(const PartitionPB& partition) {
-  return Format(
-      "partition_key_start: $0, partition_key_end: $1",
-      Slice(partition.partition_key_start()).PrefixNoLongerThan(64).ToDebugHexString(),
-      Slice(partition.partition_key_end()).PrefixNoLongerThan(64).ToDebugHexString());
-}
 
 class SplitScope {
  public:
@@ -3141,20 +3175,17 @@ Status CatalogManager::DoSplitTablet(
     const TabletInfoPtr& source_tablet_info, const std::vector<std::string>& split_encoded_keys,
     const std::vector<std::string>& split_partition_keys, const ManualSplit is_manual_split,
     const LeaderEpoch& epoch) {
-  // TODO(tsplit): implement N-way tablet split.
-  if (split_encoded_keys.size() != 1 || split_partition_keys.size() != 1) {
+  if (split_encoded_keys.size() != split_partition_keys.size() || split_encoded_keys.size() == 0) {
     return STATUS_FORMAT(
-      InvalidArgument,
-      "Unsupported number of split keys: $0, $1",
-      split_encoded_keys.size(),
-      split_partition_keys.size());
+        InvalidArgument, "Unsupported number of split keys: encoded keys: $0, partition keys: $1",
+        split_encoded_keys.size(), split_partition_keys.size());
   }
 
-  const auto num_split_parts = kDefaultNumSplitParts;
-  std::string split_encoded_key = split_encoded_keys.front();
-  std::string split_partition_key = split_partition_keys.front();
+  auto num_split_parts = narrow_cast<int>(1 + split_encoded_keys.size());
   std::vector<TabletInfoPtr> new_tablets;
   std::vector<TabletId> child_tablet_ids_sorted;
+  std::vector<std::string> registered_partition_keys;
+  std::vector<std::string> registered_encoded_keys;
 
   // Note that the tablet map update is deferred to avoid holding the catalog manager mutex during
   // the sys catalog upsert.
@@ -3200,49 +3231,51 @@ Status CatalogManager::DoSplitTablet(
     }
     // After this point, we expect to split the tablet.
 
-    // If child tablets are already registered, use the existing split key and tablets.
+    // If child tablets are already registered, use the existing split keys and tablets.
     if (scope.source_tablet_meta().split_tablet_ids().size() > 0) {
-      SCHECK_EQ(
-          num_split_parts,  scope.source_tablet_meta().split_tablet_ids().size(),
-          IllegalState, "Unexpected number of split tablets registered");
+      num_split_parts = scope.source_tablet_meta().split_tablet_ids().size();
+      for (auto i = 0; i < num_split_parts; ++i) {
+        const auto& split_tablet_id = scope.source_tablet_meta().split_tablet_ids(i);
 
-      const auto& parent_partition = scope.source_tablet_meta().partition();
-      child_tablet_ids_sorted.resize(num_split_parts);
-      for (const auto& split_tablet_id : scope.source_tablet_meta().split_tablet_ids()) {
         // This should only fail if there is a concurrent split on the same tablet that has not yet
         // inserted the child tablets into the tablets map.
         auto existing_child = VERIFY_RESULT(GetTabletInfoUnlocked(split_tablet_id));
-        const auto child_partition = existing_child->LockForRead()->pb.partition();
+        child_tablet_ids_sorted.push_back(existing_child->id());
 
-        if (parent_partition.partition_key_start() == child_partition.partition_key_start()) {
-          child_tablet_ids_sorted[0] = existing_child->id();
-          split_partition_key = child_partition.partition_key_end();
-        } else {
-          SCHECK_EQ(parent_partition.partition_key_end(), child_partition.partition_key_end(),
-              IllegalState, "Parent partition key end does not equal child partition key end");
-          child_tablet_ids_sorted[1] = existing_child->id();
-          split_partition_key = child_partition.partition_key_start();
+        // Use partition start keys of child tablets (except the first) as split keys.
+        if (i > 0) {
+          const auto child_partition = existing_child->LockForRead()->pb.partition();
+          registered_partition_keys.push_back(child_partition.partition_key_start());
+          registered_encoded_keys.push_back(VERIFY_RESULT(PartitionSchema::GetEncodedPartitionKey(
+              registered_partition_keys.back(),
+              scope.source_table_lock()->pb.partition_schema())));
         }
       }
 
-      // Re-compute the encoded key to ensure we use the same partition boundary for both child
-      // tablets.
-      split_encoded_key = VERIFY_RESULT(PartitionSchema::GetEncodedPartitionKey(
-          split_partition_key, scope.source_table_lock()->pb.partition_schema()));
-
       lock.unlock();
-      LOG(INFO) << "Retrying tablet split for tablet " << source_tablet_info->ToString()
-                << " by partition key: " << Slice(split_partition_key).ToDebugHexString();
+
+      // TODO(nway-tsplit): Introduce validation for ordering for registered keys.
+      for (size_t i = 0; i < registered_partition_keys.size(); ++i) {
+        SCHECK(
+            !registered_encoded_keys[i].empty(), IllegalState,
+            "Empty registered encoded key at index $0", i);
+        SCHECK(
+            !registered_partition_keys[i].empty(), IllegalState,
+            "Empty registered partition key at index $1", i);
+      }
+
+      LOG(INFO) << "Resuming tablet split: " << source_tablet_info->ToString()
+                << " by partition key(s): " << AsDebugHexString(registered_partition_keys);
     } else {
-      LOG(INFO) << "Starting tablet split for tablet " << source_tablet_info->ToString()
-                << " by partition key: " << Slice(split_partition_key).ToDebugHexString();
+      LOG(INFO) << "Starting tablet split: " << source_tablet_info->ToString()
+                << " by partition key(s): " << AsDebugHexString(split_partition_keys);
 
       // Get partitions for the split children.
       const auto tablet_partitions = VERIFY_RESULT(CreateNewTabletsPartition(
-          *source_tablet_info, split_partition_key));
+          *source_tablet_info, split_partition_keys));
 
       // Create in-memory (uncommitted) tablets for new split children.
-      for (size_t i = 0; i < num_split_parts; ++i) {
+      for (auto i = 0; i < num_split_parts; ++i) {
         auto new_child = scope.CreateChildTablet(i, tablet_partitions[i]);
         child_tablet_ids_sorted.push_back(new_child->id());
         new_tablets.push_back(std::move(new_child));
@@ -3290,9 +3323,19 @@ Status CatalogManager::DoSplitTablet(
 
   // TODO(tsplit): what if source tablet will be deleted before or during TS leader is processing
   // split? Add unit-test.
-  RETURN_NOT_OK(SendSplitTabletRequest(
-      source_tablet_info, child_tablet_ids_sorted, {split_encoded_key}, {split_partition_key},
-      epoch));
+
+  // If there are no child tablets registered in the catalog, perform a split with the split keys
+  // provided. Otherwise, reissue the split using the partition keys of the registered child
+  // tablets.
+  if (registered_encoded_keys.empty()) {
+    RETURN_NOT_OK(SendSplitTabletRequest(
+        source_tablet_info, child_tablet_ids_sorted, split_encoded_keys, split_partition_keys,
+        epoch));
+  } else {
+    RETURN_NOT_OK(SendSplitTabletRequest(
+        source_tablet_info, child_tablet_ids_sorted, registered_encoded_keys,
+        registered_partition_keys, epoch));
+  }
 
   return Status::OK();
 }

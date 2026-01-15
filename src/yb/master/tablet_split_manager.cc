@@ -551,8 +551,13 @@ Status CheckLiveReplicasForSplit(
 void TabletSplitManager::ScheduleSplits(
     const SplitsToScheduleMap& splits_to_schedule, const LeaderEpoch& epoch) {
   VLOG_WITH_FUNC(2) << "Start";
-  // TODO(nway-tsplit): Determine split factor for scheduled splits.
   for (const auto& [tablet_id, size] : splits_to_schedule) {
+    // TODO(nway-tsplit): A scheduled split is either a new automatic split or a past incomplete
+    // split needing a restart.
+    // 1. New Split: TODO a split factor policy for automatic tablet splitting.
+    // 2. Restart Split: Uses split keys (and implicitly split factor) of child tablets already
+    //    registered in `SysTabletsEntryPB`, and discards results of `GetSplitKey` RPC made below.
+    //    Setting a split factor is nonconsequential.
     auto s = catalog_manager_.SplitTablet(
         tablet_id, ManualSplit::kFalse, kDefaultNumSplitParts, epoch);
     if (!s.ok()) {
