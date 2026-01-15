@@ -2220,17 +2220,17 @@ Status TabletServer::SetPausedXClusterProducerStreams(
 }
 
 Status TabletServer::ReloadKeysAndCertificates() {
-  if (!secure_context_) {
-    return Status::OK();
+  if (secure_context_) {
+    RETURN_NOT_OK(rpc::ReloadSecureContextKeysAndCertificates(
+        secure_context_.get(), fs_manager_->GetDefaultRootDir(), rpc::SecureContextType::kInternal,
+        options_.HostsString()));
   }
 
-  RETURN_NOT_OK(rpc::ReloadSecureContextKeysAndCertificates(
-      secure_context_.get(), fs_manager_->GetDefaultRootDir(), rpc::SecureContextType::kInternal,
-      options_.HostsString()));
-
-  std::lock_guard l(xcluster_consumer_mutex_);
-  if (xcluster_consumer_) {
-    RETURN_NOT_OK(xcluster_consumer_->ReloadCertificates());
+  {
+    std::lock_guard l(xcluster_consumer_mutex_);
+    if (xcluster_consumer_) {
+      RETURN_NOT_OK(xcluster_consumer_->ReloadCertificates());
+    }
   }
 
   for (const auto& reloader : certificate_reloaders_) {
