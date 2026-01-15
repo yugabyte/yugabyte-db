@@ -280,6 +280,7 @@ constexpr uint64_t kDefaultObjectId = 0;
 constexpr uint64_t kDefaultObjectSubId = 0;
 constexpr uint64_t kLeaseEpoch = 1;
 const MonoDelta kTimeout = MonoDelta::FromSeconds(8);
+constexpr auto kDefaultTestStatusTabletId = "test_status_tablet";
 
 template <typename Request>
 Request AcquireRequestFor(
@@ -288,6 +289,7 @@ Request AcquireRequestFor(
     std::optional<HybridTime> deadline) {
   Request req;
   owner.PopulateLockRequest(&req);
+  req.set_status_tablet(kDefaultTestStatusTabletId);
   req.set_session_host_uuid(session_host_uuid);
   req.set_lease_epoch(lease_epoch);
   if (deadline) {

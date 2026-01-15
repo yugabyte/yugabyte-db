@@ -333,6 +333,9 @@ class TSLocalLockManager::Impl {
     }
     lock_tracker_->TrackLocks(lock_contexts, ObjectLockState::WAITING, clock_->Now());
 
+    LOG_IF_WITH_FUNC(DFATAL, req.status_tablet().empty())
+        << "Expected non-empty status tablet for lock req: " << req.ShortDebugString()
+        << ". Could lead to tserver crash if this lock blocks other requests.";
     object_lock_manager_.Lock(
       docdb::LockData{
           .key_to_lock = std::move(keys_to_lock),
@@ -562,6 +565,7 @@ class TSLocalLockManager::Impl {
           acquire_req, CoarseMonoClock::Now() + 1s, tserver::WaitForBootstrap::kFalse));
     }
     MarkBootstrapped();
+    VLOG_WITH_FUNC(2) << "success.";
     return Status::OK();
   }
 
