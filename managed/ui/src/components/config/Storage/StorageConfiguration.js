@@ -22,7 +22,27 @@ import gcsLogo from './images/gcs-logo.png';
 import nfsIcon from './images/nfs.svg';
 import { Formik } from 'formik';
 import { DEFAULT_RUNTIME_GLOBAL_SCOPE, fetchRunTimeConfigs, fetchRunTimeConfigsResponse } from '../../../actions/customers';
-import { isPathStyleAccess, isSigningRegionEnabled } from '../../backupv2/common/BackupUtils';
+import { isPathStyleAccess, isChunkedEncodingEnabled, isSigningRegionEnabled } from '../../backupv2/common/BackupUtils';
+
+const storageToggleTrue = (v) => v === true || v === 'true';
+
+const initialS3StorageBooleanFromRowData = (rowData, fieldKey, defaultWhenMissing) => {
+  const v = rowData?.[fieldKey];
+  if (v === undefined || v === null) {
+    return defaultWhenMissing;
+  }
+  return storageToggleTrue(v);
+};
+
+const coerceS3StorageBooleanFields = (dataPayload) => {
+  ['PATH_STYLE_ACCESS', 'USE_CHUNKED_ENCODING'].forEach((key) => {
+    if (!(key in dataPayload) || dataPayload[key] === undefined) return;
+    const v = dataPayload[key];
+    if (typeof v === 'boolean') return;
+    if (v === 'true') dataPayload[key] = true;
+    else if (v === 'false') dataPayload[key] = false;
+  });
+};
 
 const getTabTitle = (configName) => {
   switch (configName) {
@@ -180,6 +200,7 @@ class StorageConfiguration extends Component {
             'BACKUP_LOCATION',
             'AWS_HOST_BASE',
             'PATH_STYLE_ACCESS',
+            'USE_CHUNKED_ENCODING',
             'SIGNING_REGION'
           ];
         }
@@ -189,6 +210,9 @@ class StorageConfiguration extends Component {
           FIELDS.push('PROXY_SETTINGS.PROXY_USERNAME');
           if (dataPayload?.PROXY_SETTINGS?.PROXY_PASSWORD)
             FIELDS.push('PROXY_SETTINGS.PROXY_PASSWORD');
+        }
+        if (!values['IAM_INSTANCE_PROFILE']) {
+          coerceS3StorageBooleanFields(dataPayload);
         }
         dataPayload = _.pick(dataPayload, FIELDS);
 
@@ -319,8 +343,16 @@ class StorageConfiguration extends Component {
           [`${tab}_CONFIGURATION_NAME`]: row?.configName,
           AWS_HOST_BASE: row.data?.AWS_HOST_BASE
         };
-        if (row?.data?.PATH_STYLE_ACCESS)
-          initialVal['PATH_STYLE_ACCESS'] = row?.data?.PATH_STYLE_ACCESS;
+        initialVal['PATH_STYLE_ACCESS'] = initialS3StorageBooleanFromRowData(
+          row?.data,
+          'PATH_STYLE_ACCESS',
+          false /* defaultWhenMissing */
+        );
+        initialVal['USE_CHUNKED_ENCODING'] = initialS3StorageBooleanFromRowData(
+          row?.data,
+          'USE_CHUNKED_ENCODING',
+          true /* defaultWhenMissing */
+        );
         if (row?.data?.SIGNING_REGION)
           initialVal['SIGNING_REGION'] = row?.data?.SIGNING_REGION;
         if (row?.data?.PROXY_SETTINGS?.PROXY_HOST)
@@ -349,8 +381,16 @@ class StorageConfiguration extends Component {
    * @param {string} activeTab It's a respective active tab.
    */
   createBackupConfig = (activeTab) => {
-    if (this.props.enablePathStyleAccess)
-      this.props.setInitialValues({ PATH_STYLE_ACCESS: 'true' });
+    const initialValues = {};
+    if (this.props.enablePathStyleAccess) {
+      initialValues.PATH_STYLE_ACCESS = true;
+    }
+    if (this.props.enableChunkedEncoding) {
+      initialValues.USE_CHUNKED_ENCODING = true;
+    }
+    if (Object.keys(initialValues).length > 0) {
+      this.props.setInitialValues(initialValues);
+    }
     this.setState({
       listView: {
         ...this.state.listView,
@@ -405,6 +445,7 @@ class StorageConfiguration extends Component {
       customerConfigs,
       initialValues,
       enablePathStyleAccess,
+      enableChunkedEncoding,
       enableSigningRegion,
       enableS3BackupProxy
     } = this.props;
@@ -438,6 +479,7 @@ class StorageConfiguration extends Component {
               iamInstanceToggle={this.iamInstanceToggle}
               isEdited={editView[activeTab]}
               enablePathStyleAccess={enablePathStyleAccess}
+              enableChunkedEncoding={enableChunkedEncoding}
               enableSigningRegion={enableSigningRegion}
               enableS3BackupProxy={enableS3BackupProxy}
             />
@@ -537,9 +579,11 @@ function mapStateToProps(state) {
     customer: { runtimeConfigs }
   } = state;
   const enablePathStyleAccess = isPathStyleAccess(runtimeConfigs?.data);
+  const enableChunkedEncoding = isChunkedEncodingEnabled(runtimeConfigs?.data);
   const enableSigningRegion = isSigningRegionEnabled(runtimeConfigs?.data);
   return {
     enablePathStyleAccess: enablePathStyleAccess,
+    enableChunkedEncoding: enableChunkedEncoding,
     enableSigningRegion: enableSigningRegion,
     enableS3BackupProxy: test.enableS3BackupProxy || released.enableS3BackupProxy
   };

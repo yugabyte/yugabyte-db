@@ -41,6 +41,10 @@ public class CustomerConfigStorageS3Data extends CustomerConfigStorageData {
   @JsonProperty("PATH_STYLE_ACCESS")
   public boolean isPathStyleAccess = false;
 
+  @ApiModelProperty(value = "Use chunked encoding for S3 requests")
+  @JsonProperty("USE_CHUNKED_ENCODING")
+  public boolean useChunkedEncoding = true;
+
   @ApiModelProperty(value = "AWS signing region for S3 requests")
   @JsonProperty("SIGNING_REGION")
   public String fallbackRegion;
