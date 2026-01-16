@@ -560,8 +560,13 @@ class YBClient {
 
   // Get namespace information.
   Status GetNamespaceInfo(
-      const NamespaceId& namespace_id, const NamespaceName& namespace_name,
-      const std::optional<YQLDatabase>& database_type, master::GetNamespaceInfoResponsePB* ret);
+      const NamespaceName& namespace_name, const std::optional<YQLDatabase>& database_type,
+      master::GetNamespaceInfoResponsePB* ret);
+
+  Status GetNamespaceInfo(const NamespaceId& namespace_id, master::GetNamespaceInfoResponsePB* ret);
+
+  Status GetNamespaceInfoByTableId(
+      const TableId& table_id, master::GetNamespaceInfoResponsePB* ret);
 
   // Check if the namespace given by 'namespace_name' or 'namespace_id' exists.
   // Result value is set only on success.
@@ -1168,6 +1173,11 @@ class YBClient {
       std::shared_ptr<YBTableInfo> info, const OpenTableAsyncCallback& callback, const Status& s);
 
   CoarseTimePoint PatchAdminDeadline(CoarseTimePoint deadline) const;
+
+  Status GetNamespaceInfo(
+      const NamespaceId& namespace_id, const NamespaceName& namespace_name,
+      const std::optional<YQLDatabase>& database_type, const TableId& table_id,
+      master::GetNamespaceInfoResponsePB* ret);
 
   YBClient();
 

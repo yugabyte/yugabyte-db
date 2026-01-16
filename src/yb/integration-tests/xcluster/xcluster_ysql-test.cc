@@ -2541,11 +2541,9 @@ TEST_F(XClusterYsqlTest, DeletingDatabaseContainingReplicatedTable) {
 
   ASSERT_OK(DropDatabase(producer_cluster_, namespace_name));
   master::GetNamespaceInfoResponsePB ret;
-  ASSERT_NOK(producer_client()->GetNamespaceInfo(
-      /*namespace_id=*/"", namespace_name, YQL_DATABASE_PGSQL, &ret));
+  ASSERT_NOK(producer_client()->GetNamespaceInfo(namespace_name, YQL_DATABASE_PGSQL, &ret));
   ASSERT_OK(DropDatabase(consumer_cluster_, namespace_name));
-  ASSERT_NOK(consumer_client()->GetNamespaceInfo(
-      /*namespace_id=*/"", namespace_name, YQL_DATABASE_PGSQL, &ret));
+  ASSERT_NOK(consumer_client()->GetNamespaceInfo(namespace_name, YQL_DATABASE_PGSQL, &ret));
 }
 
 struct XClusterPgSchemaNameParams {

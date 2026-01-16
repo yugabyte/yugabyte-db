@@ -40,8 +40,7 @@ class SequencesUtilTest : public pgwrapper::PgMiniTestBase {
     RETURN_NOT_OK(conn.ExecuteFormat("CREATE DATABASE $0", namespace_name));
 
     master::GetNamespaceInfoResponsePB resp;
-    RETURN_NOT_OK(client_->GetNamespaceInfo(
-        {} /* namespace_id */, namespace_name, YQL_DATABASE_PGSQL, &resp));
+    RETURN_NOT_OK(client_->GetNamespaceInfo(namespace_name, YQL_DATABASE_PGSQL, &resp));
     return resp.namespace_().id();
   }
 

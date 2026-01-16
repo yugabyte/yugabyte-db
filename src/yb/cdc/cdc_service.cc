@@ -1055,8 +1055,7 @@ void CDCServiceImpl::InitNewTabletStreamEntry(
 Result<NamespaceId> CDCServiceImpl::GetNamespaceId(
     const std::string& ns_name, YQLDatabase db_type) {
   master::GetNamespaceInfoResponsePB namespace_info_resp;
-  RETURN_NOT_OK(
-      client()->GetNamespaceInfo(std::string(), ns_name, db_type, &namespace_info_resp));
+  RETURN_NOT_OK(client()->GetNamespaceInfo(ns_name, db_type, &namespace_info_resp));
 
   return namespace_info_resp.namespace_().id();
 }
@@ -4654,8 +4653,7 @@ Result<std::shared_ptr<xrepl::XClusterTabletMetrics>> CDCServiceImpl::GetXCluste
     attributes["table_id"] = table_id;
     const auto namespace_id = VERIFY_RESULT(xcluster::GetReplicationNamespaceBelongsTo(table_id));
     master::GetNamespaceInfoResponsePB namespace_info_resp;
-    RETURN_NOT_OK(client()->GetNamespaceInfo(
-        namespace_id, /*namespace_name=*/"", YQL_DATABASE_PGSQL, &namespace_info_resp));
+    RETURN_NOT_OK(client()->GetNamespaceInfo(namespace_id, &namespace_info_resp));
     attributes["namespace_name"] = namespace_info_resp.namespace_().name();
     return Status::OK();
   };

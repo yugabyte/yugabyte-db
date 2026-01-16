@@ -317,8 +317,8 @@ Status CDCSDKTestBase::RenameColumn(
 Result<std::string> CDCSDKTestBase::GetNamespaceId(const std::string& namespace_name) {
   master::GetNamespaceInfoResponsePB namespace_info_resp;
 
-  RETURN_NOT_OK(test_client()->GetNamespaceInfo(
-      std::string(), kNamespaceName, YQL_DATABASE_PGSQL, &namespace_info_resp));
+  RETURN_NOT_OK(
+      test_client()->GetNamespaceInfo(kNamespaceName, YQL_DATABASE_PGSQL, &namespace_info_resp));
 
   // Return namespace_id.
   return namespace_info_resp.namespace_().id();
