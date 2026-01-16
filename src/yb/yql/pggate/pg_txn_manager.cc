@@ -511,9 +511,6 @@ Status PgTxnManager::ResetTransactionReadPoint(bool is_catalog_snapshot) {
     // In all other cases, create and switch to the new read time serial number.
     // Leaving it upto the caller would have worked too, but this is how it has been, so not
     // changing it now.
-    RSTATUS_DCHECK(
-        !IsDdlMode() || IsDdlModeWithRegularTransactionBlock(), IllegalState,
-        "DDL statements aren't expected to request a new read point.");
     serial_no_.IncReadTime();
   }
 
