@@ -8,7 +8,6 @@ import com.datadog.api.client.v1.api.AuthenticationApi;
 import com.datadog.api.client.v1.model.AuthenticationValidationResponse;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Collections;
@@ -33,11 +32,7 @@ public class DataDogConfig extends TelemetryProviderConfig {
   }
 
   @Override
-  public void validate(ApiHelper apiHelper, RuntimeConfGetter confGetter) {
-    if (TelemetryProviderUtil.skipConnectivityValidation(confGetter)) {
-      log.info("Skipping Datadog API Key and Site URL validation as per config.");
-      return;
-    }
+  public void validateConnectivity(ApiHelper apiHelper) {
     ApiClient dataDogApiClient = new ApiClient();
     dataDogApiClient.setServerVariables(Collections.singletonMap("site", site));
     dataDogApiClient.configureApiKeys(Collections.singletonMap("apiKeyAuth", apiKey));
@@ -55,11 +50,5 @@ public class DataDogConfig extends TelemetryProviderConfig {
           BAD_REQUEST,
           "Validation failed. Ensure your Datadog API Key and Datadog Site URL are valid.");
     }
-    log.info("Successfully validated Datadog API Key and Site URL.");
-  }
-
-  @Override
-  public void validate(ApiHelper apiHelper) {
-    validate(apiHelper, null);
   }
 }
