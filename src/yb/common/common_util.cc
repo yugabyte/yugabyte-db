@@ -24,6 +24,8 @@
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(ysql_yb_ddl_rollback_enabled);
 DECLARE_bool(ysql_yb_enable_ddl_atomicity_infra);
+DECLARE_bool(ysql_yb_enable_ddl_savepoint_infra);
+DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 
 namespace yb {
 
@@ -108,6 +110,10 @@ bool YsqlDdlRollbackEnabled() {
   // Also change the validator for ysql_yb_ddl_transaction_block_enabled flag in common_flag.cc if
   // changing this logic.
   return FLAGS_ysql_yb_enable_ddl_atomicity_infra && FLAGS_ysql_yb_ddl_rollback_enabled;
+}
+
+bool YsqlDdlSavepointEnabled() {
+  return FLAGS_ysql_yb_enable_ddl_savepoint_infra && FLAGS_ysql_yb_enable_ddl_savepoint_support;
 }
 
 } // namespace yb
