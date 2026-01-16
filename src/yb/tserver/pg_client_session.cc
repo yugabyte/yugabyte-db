@@ -139,7 +139,7 @@ DECLARE_bool(ysql_yb_enable_advisory_locks);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_enable_object_locking_infra);
-DECLARE_bool(TEST_ysql_yb_enable_ddl_savepoint_support);
+DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 
 DECLARE_string(ysql_sequence_cache_method);
 
@@ -2110,7 +2110,7 @@ class PgClientSession::Impl {
     const auto deadline = context->GetClientDeadline();
     RETURN_NOT_OK(transaction->RollbackToSubTransaction(subtxn_id, deadline));
 
-    if (FLAGS_TEST_ysql_yb_enable_ddl_savepoint_support &&
+    if (YsqlDdlSavepointEnabled() &&
         req.has_options() && req.options().ddl_mode() &&
         req.options().ddl_use_regular_transaction_block() &&
         // Ensure that we have executed a DDL in this transaction block.
