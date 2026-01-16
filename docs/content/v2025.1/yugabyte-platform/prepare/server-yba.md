@@ -83,7 +83,7 @@ python3 -V
 
 ### Permissions
 
-You need sudo root permissions for installation for production use. (YBA Installer also supports [non-sudo installation](../../install-yugabyte-platform/install-software/installer/#non-sudo-installation){{<tags/feature/ea>}}.)
+You need sudo root permissions for installation for production use. (YBA Installer also supports {{<tags/feature/ea>}}[non-sudo installation](../../install-yugabyte-platform/install-software/installer/#non-sudo-installation).)
 
 If your sudo permissions are limited, add the following commands to the sudoers file:
 
