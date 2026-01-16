@@ -624,7 +624,7 @@ DECLARE_bool(enable_truncate_cdcsdk_table);
 DECLARE_bool(TEST_enable_table_rewrite_for_cdcsdk_table);
 DECLARE_bool(ysql_yb_enable_replica_identity);
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
-DECLARE_bool(TEST_ysql_yb_enable_ddl_savepoint_support);
+DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 namespace yb::master {
 
 using std::shared_ptr;
@@ -11517,7 +11517,7 @@ Status CatalogManager::HandleTabletSchemaVersionReport(
   // Clean up any DDL verification state that is waiting for this Alter to complete.
   RemoveDdlTransactionState(table->id(), table->EraseDdlTxnsWaitingForSchemaVersion(version));
 
-  if (FLAGS_TEST_ysql_yb_enable_ddl_savepoint_support) {
+  if (FLAGS_ysql_yb_enable_ddl_savepoint_support) {
     RemoveDdlRollbackToSubTxnState(
         table->id(), table->EraseDdlTxnForRollbackToSubTxnWaitingForSchemaVersion(version));
   }

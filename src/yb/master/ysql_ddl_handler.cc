@@ -53,7 +53,7 @@ DEFINE_test_flag(bool, disable_release_object_locks_on_ddl_verification, false,
     "When set, skip release object lock rpcs to tservers triggered at the end of DDL verification, "
     "that release object locks acquired by the DDL.");
 
-DECLARE_bool(TEST_ysql_yb_enable_ddl_savepoint_support);
+DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 
 using namespace std::placeholders;
 using std::shared_ptr;
@@ -573,7 +573,7 @@ Status CatalogManager::YsqlDdlTxnAlterTableHelper(const YsqlTableDdlTxnState txn
                                                   bool success,
                                                   int rollback_till_ddl_state_index) {
   RSTATUS_DCHECK(
-      rollback_till_ddl_state_index == 0 || FLAGS_TEST_ysql_yb_enable_ddl_savepoint_support,
+      rollback_till_ddl_state_index == 0 || FLAGS_ysql_yb_enable_ddl_savepoint_support,
       InternalError, "Unexpected value of rollback_till_ddl_state_index");
 
   auto& table_pb = txn_data.write_lock.mutable_data()->pb;
@@ -754,7 +754,7 @@ void CatalogManager::RemoveDdlTransactionStateUnlocked(
     // If savepoint support is enabled, also delete from the
     // ysql_ddl_txn_undergoing_subtransaction_rollback_map_ map since the entire
     // txn is going away for the table.
-    if (FLAGS_TEST_ysql_yb_enable_ddl_savepoint_support) {
+    if (FLAGS_ysql_yb_enable_ddl_savepoint_support) {
       RemoveDdlRollbackToSubTxnStateUnlocked(table_id, txn_id);
     }
 
@@ -1245,7 +1245,7 @@ Status CatalogManager::IsRollbackDocdbSchemaToSubtxnDone(
 
 bool CatalogManager::IsTableDeletionDueToRollbackToSubTxn(
     const scoped_refptr<TableInfo>& table, TransactionId& txn_id) {
-  if (!FLAGS_TEST_ysql_yb_enable_ddl_savepoint_support) {
+  if (!FLAGS_ysql_yb_enable_ddl_savepoint_support) {
     return false;
   }
 

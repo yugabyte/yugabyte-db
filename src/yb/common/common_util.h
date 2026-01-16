@@ -33,6 +33,9 @@ int GetInitialNumTabletsPerTable(TableType table_type, size_t tserver_count);
 // Returns true if YSQL DDL rollback is enabled.
 bool YsqlDdlRollbackEnabled();
 
+// Returns true if YSQL DDL savepoint support is enabled.
+bool YsqlDdlSavepointEnabled();
+
 // These functions help extract the tablet split parameters from the split request uniformly across
 // the singular and repeated variants of the parameter fields.
 template <typename RequestType>

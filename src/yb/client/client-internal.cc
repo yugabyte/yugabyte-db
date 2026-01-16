@@ -112,7 +112,7 @@ DECLARE_int64(reset_master_leader_timeout_ms);
 
 DECLARE_string(flagfile);
 
-DECLARE_bool(TEST_ysql_yb_enable_ddl_savepoint_support);
+DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 
 namespace yb {
 
@@ -674,7 +674,7 @@ Status YBClient::Data::DeleteTable(
     DCHECK(!wait);
     txn->ToPB(req.mutable_transaction());
     req.set_ysql_yb_ddl_rollback_enabled(true);
-    if (FLAGS_TEST_ysql_yb_enable_ddl_savepoint_support) {
+    if (YsqlDdlSavepointEnabled()) {
       req.set_sub_transaction_id(sub_transaction_id);
     }
   }
@@ -861,7 +861,7 @@ Status YBClient::Data::CreateTablegroup(
   if (txn) {
     txn->ToPB(req.mutable_transaction());
     req.set_ysql_yb_ddl_rollback_enabled(YsqlDdlRollbackEnabled());
-    if (FLAGS_TEST_ysql_yb_enable_ddl_savepoint_support) {
+    if (YsqlDdlSavepointEnabled()) {
       req.set_sub_transaction_id(sub_transaction_id);
     }
   }
@@ -947,7 +947,7 @@ Status YBClient::Data::DeleteTablegroup(
     txn->ToPB(req.mutable_transaction());
     req.set_ysql_yb_ddl_rollback_enabled(true);
     wait = false;
-    if (FLAGS_TEST_ysql_yb_enable_ddl_savepoint_support) {
+    if (YsqlDdlSavepointEnabled()) {
       req.set_sub_transaction_id(sub_transaction_id);
     }
   }

@@ -2626,6 +2626,17 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_ddl_savepoint_infra", PGC_SIGHUP, LOCK_MANAGEMENT,
+			gettext_noop("Allow enabling ddl savepoint support."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_ddl_savepoint_infra,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_allow_replication_slot_lsn_types", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Allow specifying LSN type while creating replication slot"),
 			NULL,

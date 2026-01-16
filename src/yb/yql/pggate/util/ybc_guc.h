@@ -183,6 +183,8 @@ extern bool yb_cdcsdk_stream_tables_without_primary_key;
 
 extern bool enable_object_locking_infra;
 
+extern bool yb_enable_ddl_savepoint_infra;
+
 /*
  * Refer YBCIsLegacyModeForCatalogOps() for details.
  */

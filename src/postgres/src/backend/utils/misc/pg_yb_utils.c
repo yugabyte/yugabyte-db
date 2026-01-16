@@ -4324,18 +4324,15 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 				 * Disallow DDL if savepoint for DDL support is disabled and
 				 * there is an active savepoint except the implicit ones created
 				 * for READ COMMITTED isolation.
-				 *
-				 * TODO(#26734): Change the error message to suggest enabling
-				 * the savepoint feature once it is no longer a test flag.
 				 */
-				if (!*YBCGetGFlags()->TEST_ysql_yb_enable_ddl_savepoint_support &&
+				if (!(yb_enable_ddl_savepoint_infra &&
+					  *YBCGetGFlags()->ysql_yb_enable_ddl_savepoint_support) &&
 					YBTransactionContainsNonReadCommittedSavepoint())
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 							 errmsg("interleaving SAVEPOINT & DDL in transaction"
-									" block not supported by YugaByte yet"),
-							 errhint("See https://github.com/yugabyte/yugabyte-db/issues/26734."
-									 " React with thumbs up to raise its priority.")));
+									" disallowed without DDL savepoint support"),
+							 errhint("Consider enabling ysql_yb_enable_ddl_savepoint_support.")));
 
 				YBAddDdlTxnState(ddl_mode.value);
 			}
