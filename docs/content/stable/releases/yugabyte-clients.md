@@ -81,8 +81,7 @@ cd yugabyte-client-{{< yb-version version="stable" >}}
 
 ```sh
 wget https://downloads.yugabyte.com/releases/{{< yb-version version="stable" >}}/yugabyte-client-{{< yb-version version="stable" format="build">}}-linux-aarch64.tar.gz
-echo "$(curl -L https://downloads.yugabyte.com/releases/{{< yb-version version="stable" >}}/yugabyte-client-{{< yb-version version="stable" format="build">}}-linux-aarch64.tar.gz.sha) *yugabyte-client-{{< yb-version version="stable" format="build">}}-linux-aarch64.tar.gz" | shasum --check
-
+echo "$(curl -L https://downloads.yugabyte.com/releases/{{< yb-version version="stable" >}}/yugabyte-client-{{< yb-version version="stable" format="build">}}-linux-aarch64.tar.gz.sha) *yugabyte-client-{{< yb-version version="stable" format="build">}}-linux-aarch64.tar.gz" | shasum --check && \
 tar xvfz yugabyte-client-{{< yb-version version="stable" format="build">}}-linux-aarch64.tar.gz
 cd yugabyte-client-{{< yb-version version="stable" >}}
 ./bin/post_install.sh
