@@ -53,8 +53,7 @@ tar xvfz yugabyte-{{< yb-version version="v2024.1" format="build">}}-linux-x86_6
 
 ```sh
 wget https://software.yugabyte.com/releases/{{< yb-version version="v2024.1">}}/yugabyte-{{< yb-version version="v2024.1" format="build">}}-el8-aarch64.tar.gz
-echo "$(curl -L https://software.yugabyte.com/releases/{{< yb-version version="v2024.1">}}/yugabyte-{{< yb-version version="v2024.1" format="build">}}-el8-aarch64.tar.gz.sha) *yugabyte-{{< yb-version version="v2024.1" format="build">}}-el8-aarch64.tar.gz" | shasum --check
-
+echo "$(curl -L https://software.yugabyte.com/releases/{{< yb-version version="v2024.1">}}/yugabyte-{{< yb-version version="v2024.1" format="build">}}-el8-aarch64.tar.gz.sha) *yugabyte-{{< yb-version version="v2024.1" format="build">}}-el8-aarch64.tar.gz" | shasum --check && \
 tar xvfz yugabyte-{{< yb-version version="v2024.1" format="build">}}-el8-aarch64.tar.gz && cd yugabyte-{{< yb-version version="v2024.1">}}/
 ```
 

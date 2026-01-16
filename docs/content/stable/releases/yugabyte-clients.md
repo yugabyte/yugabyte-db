@@ -59,8 +59,7 @@ You can also install a standalone version using any of the following methods:
 
 ```sh
 curl -O https://downloads.yugabyte.com/releases/{{< yb-version version="stable" >}}/yugabyte-client-{{< yb-version version="stable"  format="build">}}-darwin-x86_64.tar.gz
-echo "$(curl -L https://downloads.yugabyte.com/releases/{{< yb-version version="stable" >}}/yugabyte-client-{{< yb-version version="stable"  format="build">}}-darwin-x86_64.tar.gz.sha) *yugabyte-client-{{< yb-version version="stable"  format="build">}}-darwin-x86_64.tar.gz" | shasum --check
-
+echo "$(curl -L https://downloads.yugabyte.com/releases/{{< yb-version version="stable" >}}/yugabyte-client-{{< yb-version version="stable"  format="build">}}-darwin-x86_64.tar.gz.sha) *yugabyte-client-{{< yb-version version="stable"  format="build">}}-darwin-x86_64.tar.gz" | shasum --check && \
 tar xvfz yugabyte-client-{{< yb-version version="stable"  format="build">}}-darwin-x86_64.tar.gz && cd yugabyte-client-{{< yb-version version="stable" >}}/
 ```
 
@@ -69,8 +68,7 @@ tar xvfz yugabyte-client-{{< yb-version version="stable"  format="build">}}-darw
 
 ```sh
 wget https://downloads.yugabyte.com/releases/{{< yb-version version="stable" >}}/yugabyte-client-{{< yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
-echo "$(curl -L https://downloads.yugabyte.com/releases/{{< yb-version version="stable" >}}/yugabyte-client-{{< yb-version version="stable" format="build">}}-linux-x86_64.tar.gz.sha) *yugabyte-client-{{< yb-version version="stable"  format="build">}}-linux-x86_64.tar.gz" | shasum --check
-
+echo "$(curl -L https://downloads.yugabyte.com/releases/{{< yb-version version="stable" >}}/yugabyte-client-{{< yb-version version="stable" format="build">}}-linux-x86_64.tar.gz.sha) *yugabyte-client-{{< yb-version version="stable"  format="build">}}-linux-x86_64.tar.gz" | shasum --check && \
 tar xvfz yugabyte-client-{{< yb-version version="stable"  format="build">}}-linux-x86_64.tar.gz
 cd yugabyte-client-{{< yb-version version="stable" >}}
 ./bin/post_install.sh
