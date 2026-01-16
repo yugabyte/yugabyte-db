@@ -5166,6 +5166,26 @@ yb_database_clones(PG_FUNCTION_ARGS)
 	return (Datum) 0;
 }
 
+/* This function caches the local tserver's uuid locally */
+const unsigned char *
+YbGetLocalTServerUuid()
+{
+	static const unsigned char *local_tserver_uuid = NULL;
+
+	if (!local_tserver_uuid && IsYugaByteEnabled())
+		local_tserver_uuid = YBCGetLocalTserverUuid();
+
+	return local_tserver_uuid;
+}
+
+Datum
+yb_get_local_tserver_uuid(PG_FUNCTION_ARGS)
+{
+	pg_uuid_t *uuid = (pg_uuid_t *) palloc(UUID_LEN);
+	memcpy(uuid->data, YbGetLocalTServerUuid(), UUID_LEN);
+	return UUIDPGetDatum(uuid);
+}
+
 /*
  * This function is adapted from code of PQescapeLiteral() in fe-exec.c.
  * If use_quote_strategy_token is false, the string value will be converted

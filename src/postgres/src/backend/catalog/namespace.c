@@ -4744,7 +4744,7 @@ YbConvertToHex(const unsigned char *src, size_t len, char *dest)
 static char *
 YbBuildTempNameSuffix(YbTempNamespaceSuffixBuffer *buf)
 {
-	char	   *tail = YbConvertToHex(YBCGetLocalTserverUuid(), UUID_LEN, buf->data);
+	char	   *tail = YbConvertToHex(YbGetLocalTServerUuid(), UUID_LEN, buf->data);
 
 	*(tail++) = '_';
 	*tail = 0;

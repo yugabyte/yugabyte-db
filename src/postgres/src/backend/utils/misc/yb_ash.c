@@ -134,7 +134,6 @@ static void yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 								  QueryEnvironment *queryEnv, DestReceiver *dest,
 								  QueryCompletion *qc);
 
-static const unsigned char *get_top_level_node_id();
 static void YbAshMaybeReplaceSample(PGPROC *proc, int num_procs, TimestampTz sample_time,
 									int samples_considered);
 static YbcWaitEventInfo YbGetWaitEventInfo(const PGPROC *proc);
@@ -800,16 +799,6 @@ YbAshMain(Datum main_arg)
 	proc_exit(0);
 }
 
-static const unsigned char *
-get_top_level_node_id()
-{
-	static const unsigned char *local_tserver_uuid = NULL;
-
-	if (!local_tserver_uuid && IsYugaByteEnabled())
-		local_tserver_uuid = YBCGetLocalTserverUuid();
-	return local_tserver_uuid;
-}
-
 /*
  * Increments the index to insert in the circular buffer.
  */
@@ -918,10 +907,9 @@ copy_non_pgproc_sample_fields(TimestampTz sample_time, int index)
 	int64_t		pss_mem_bytes = 0;
 
 	/* top_level_node_id is constant for all PG samples */
-	if (get_top_level_node_id())
-		memcpy(cb_sample->top_level_node_id,
-			   get_top_level_node_id(),
-			   sizeof(cb_sample->top_level_node_id));
+	Assert(YbGetLocalTServerUuid() != NULL);
+	memcpy(cb_sample->top_level_node_id, YbGetLocalTServerUuid(),
+		   sizeof(cb_sample->top_level_node_id));
 
 	/* rpc_request_id is 0 for PG samples */
 	cb_sample->rpc_request_id = 0;

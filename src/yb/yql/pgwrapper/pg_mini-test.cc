@@ -3311,4 +3311,14 @@ TEST_F(PgMiniTest, TabletMetadataOidMatchesPgClass) {
       << " but yb_tablet_metadata returned " << tablet_metadata_oid;
 }
 
+TEST_F(PgMiniTest, TestYbGetLocalTserverUuid) {
+  auto pg_conn = ASSERT_RESULT(Connect());
+  auto local_tserver_uuid = ASSERT_RESULT(pg_conn.FetchRow<Uuid>(
+      "SELECT yb_get_local_tserver_uuid()"));
+  auto expected_uuid = ASSERT_RESULT(
+      Uuid::FromHexStringBigEndian(cluster_->mini_tablet_server(0)->server()->permanent_uuid()));
+  ASSERT_EQ(local_tserver_uuid, expected_uuid)
+      << "Local tserver UUID mismatch";
+}
+
 }  // namespace yb::pgwrapper
