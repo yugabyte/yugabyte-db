@@ -14,7 +14,7 @@ weight: 610
 type: indexpage
 ---
 
-For on-premises and public cloud deployment, you install YugabyteDB Anywhere using YBA Installer. YBA Installer is a standalone binary that you can use to perform online or airgapped installations, as well as manage and upgrade existing installations, and migrate Replicated installations.
+For on-premises and public cloud deployment, you install YugabyteDB Anywhere using YBA Installer. YBA Installer is a standalone binary that you can use to perform online or airgapped installations, as well as manage and upgrade existing installations.
 
 Kubernetes installations are performed and managed using the YugabyteDB Anywhere Helm chart.
 

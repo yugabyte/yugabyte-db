@@ -83,7 +83,7 @@ python3 -V
 
 ### Permissions
 
-You need sudo root permissions for installation for production use. (Without sudo root permissions, you can install YBA for non-production use.)
+You need sudo root permissions for installation for production use. (YBA Installer also supports [non-sudo installation](../../install-yugabyte-platform/install-software/installer/#non-sudo-installation){{<tags/feature/ea>}}.)
 
 If your sudo permissions are limited, add the following commands to the sudoers file:
 
@@ -119,6 +119,6 @@ If your sudo permissions are limited, add the following commands to the sudoers 
 
 Where path-to-yba-ctl is the location where you will [install YBA Installer](../../install-yugabyte-platform/install-software/installer/#download-yba-installer).
 
-### High availability deployments
+## High availability deployments
 
 If you plan to deploy YBA in active-passive [high-availability](../../administer-yugabyte-platform/high-availability/) mode, you need two VMs (identical in hardware and software); one for the active YBA instance, and another for the standby YBA instance.
