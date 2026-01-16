@@ -1533,7 +1533,7 @@ TEST_F(CqlTest, RetainSchemaPacking) {
 
   // Get the namespace ID for the "test" namespace
   master::GetNamespaceInfoResponsePB namespace_resp;
-  ASSERT_OK(client_->GetNamespaceInfo("", "test", YQL_DATABASE_CQL, &namespace_resp));
+  ASSERT_OK(client_->GetNamespaceInfo("test", YQL_DATABASE_CQL, &namespace_resp));
   auto namespace_id = namespace_resp.namespace_().id();
 
   auto snapshot_id = ASSERT_RESULT(snapshot_util.StartSnapshot(

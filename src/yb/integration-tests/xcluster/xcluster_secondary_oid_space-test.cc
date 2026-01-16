@@ -28,8 +28,7 @@ class OidAllocationTest : public pgwrapper::PgMiniTestBase {
     pgwrapper::PgMiniTestBase::SetUp();
 
     master::GetNamespaceInfoResponsePB resp;
-    ASSERT_OK(client_->GetNamespaceInfo(
-        std::string() /* namespace_id */, "yugabyte", YQL_DATABASE_PGSQL, &resp));
+    ASSERT_OK(client_->GetNamespaceInfo("yugabyte", YQL_DATABASE_PGSQL, &resp));
     namespace_id_ = resp.namespace_().id();
 
     google::SetVLOGLevel("catalog_manager*", 1);

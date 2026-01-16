@@ -1005,8 +1005,8 @@ Status XClusterYsqlTestBase::SetUpClusters(const SetupParams& params) {
 
   RETURN_NOT_OK(RunOnBothClusters([&](Cluster* cluster) -> Status {
     master::GetNamespaceInfoResponsePB resp;
-    auto namespace_status = cluster->client_->GetNamespaceInfo(
-        /*namespace_id=*/"", namespace_name, YQL_DATABASE_PGSQL, &resp);
+    auto namespace_status =
+        cluster->client_->GetNamespaceInfo(namespace_name, YQL_DATABASE_PGSQL, &resp);
     if (!namespace_status.ok()) {
       if (namespace_status.IsNotFound()) {
         RETURN_NOT_OK(CreateDatabase(cluster, namespace_name, params.is_colocated));

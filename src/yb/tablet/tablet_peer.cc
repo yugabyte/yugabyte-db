@@ -1238,7 +1238,9 @@ OpId TabletPeer::GetLatestCheckPoint() {
 
 Result<NamespaceId> TabletPeer::GetNamespaceId() {
   auto tablet = VERIFY_RESULT(shared_tablet_safe());
-  RETURN_NOT_OK(BackfillNamespaceIdIfNeeded(*tablet->metadata(), *client_future().get()));
+  auto& tablet_metadata = *tablet->metadata();
+  RETURN_NOT_OK(BackfillNamespaceIdIfNeeded(
+      tablet_metadata.table_id(), tablet_metadata, *client_future().get()));
   auto namespace_id = tablet->metadata()->namespace_id();
   RSTATUS_DCHECK(
       !namespace_id.empty(), IllegalState, "Namespace ID is empty for tablet $0",
@@ -2000,33 +2002,18 @@ void TabletPeer::RegisterAsyncWriteCompletion(const OpId& op_id, StdStatusCallba
 }
 
 Status BackfillNamespaceIdIfNeeded(
-    tablet::RaftGroupMetadata& metadata, client::YBClient& client) {
+    const TableId& table_id, tablet::RaftGroupMetadata& metadata, client::YBClient& client) {
   auto namespace_id = metadata.namespace_id();
   if (!namespace_id.empty()) {
     return Status::OK();
   }
-
   // If the namespace ID hasn't been backfilled yet, fetch it from master and populate the tablet
   // metadata.
   master::GetNamespaceInfoResponsePB resp;
-  auto namespace_name = metadata.namespace_name();
-  auto db_type = YQL_DATABASE_CQL;
-  switch (metadata.table_type()) {
-    case PGSQL_TABLE_TYPE:
-      db_type = YQL_DATABASE_PGSQL;
-      break;
-    case REDIS_TABLE_TYPE:
-      db_type = YQL_DATABASE_REDIS;
-      break;
-    default:
-      db_type = YQL_DATABASE_CQL;
-  }
-
-  RETURN_NOT_OK(client.GetNamespaceInfo(
-      /*namespace_id=*/{}, namespace_name, db_type, &resp));
+  RETURN_NOT_OK(client.GetNamespaceInfoByTableId(table_id, &resp));
   namespace_id = resp.namespace_().id();
   SCHECK_FORMAT(
-      !namespace_id.empty(), IllegalState, "Could not get namespace ID for $0", namespace_name);
+      !namespace_id.empty(), IllegalState, "Could not get namespace ID for table $0", table_id);
   return metadata.set_namespace_id(namespace_id);
 }
 

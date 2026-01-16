@@ -540,8 +540,8 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
 
   Result<NamespaceId> GetPGNamespaceId() {
     master::GetNamespaceInfoResponsePB namespace_info;
-    RETURN_NOT_OK(client_->GetNamespaceInfo(
-        "" /* namespace_id */, kPgsqlKeyspaceName, YQL_DATABASE_PGSQL, &namespace_info));
+    RETURN_NOT_OK(
+        client_->GetNamespaceInfo(kPgsqlKeyspaceName, YQL_DATABASE_PGSQL, &namespace_info));
     return namespace_info.namespace_().id();
   }
 
@@ -2671,22 +2671,19 @@ TEST_F(ClientTest, GetNamespaceInfo) {
       nullptr /* txn */, true /* colocated */));
 
   // CQL non-colocated.
-  ASSERT_OK(client_->GetNamespaceInfo(
-        "" /* namespace_id */, kKeyspaceName, YQL_DATABASE_CQL, &resp));
+  ASSERT_OK(client_->GetNamespaceInfo(kKeyspaceName, YQL_DATABASE_CQL, &resp));
   ASSERT_EQ(resp.namespace_().name(), kKeyspaceName);
   ASSERT_EQ(resp.namespace_().database_type(), YQL_DATABASE_CQL);
   ASSERT_FALSE(resp.colocated());
 
   // SQL colocated.
-  ASSERT_OK(client_->GetNamespaceInfo(
-      "" /* namespace_id */, kPgsqlKeyspaceName, YQL_DATABASE_PGSQL, &resp));
+  ASSERT_OK(client_->GetNamespaceInfo(kPgsqlKeyspaceName, YQL_DATABASE_PGSQL, &resp));
   ASSERT_EQ(resp.namespace_().name(), kPgsqlKeyspaceName);
   ASSERT_EQ(resp.namespace_().database_type(), YQL_DATABASE_PGSQL);
   ASSERT_TRUE(resp.colocated());
   auto namespace_id = resp.namespace_().id();
 
-  ASSERT_OK(
-      client_->GetNamespaceInfo(namespace_id, "" /* namespace_name */, YQL_DATABASE_PGSQL, &resp));
+  ASSERT_OK(client_->GetNamespaceInfo(namespace_id, &resp));
   ASSERT_EQ(resp.namespace_().id(), namespace_id);
   ASSERT_EQ(resp.namespace_().name(), kPgsqlKeyspaceName);
   ASSERT_EQ(resp.namespace_().database_type(), YQL_DATABASE_PGSQL);

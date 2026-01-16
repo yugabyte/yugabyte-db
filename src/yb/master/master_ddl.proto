@@ -618,7 +618,12 @@ message ListNamespacesResponsePB {
 }
 
 message GetNamespaceInfoRequestPB {
+  // These fields are used to specify the namespace to look up.
+  // Clients only need to specify one.
+  // If namespace is set, it is preferred.
   optional NamespaceIdentifierPB namespace = 1;
+  // When namespace is not set, table_id can be set to look up a namespace by a table it contains.
+  optional bytes table_id = 2;
 }
 
 message GetNamespaceInfoResponsePB {

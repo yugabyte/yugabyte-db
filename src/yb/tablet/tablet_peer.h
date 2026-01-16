@@ -667,7 +667,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 };
 
 Status BackfillNamespaceIdIfNeeded(
-    tablet::RaftGroupMetadata& metadata, client::YBClient& client);
+    const TableId& table_id, tablet::RaftGroupMetadata& metadata, client::YBClient& client);
 
 }  // namespace tablet
 }  // namespace yb

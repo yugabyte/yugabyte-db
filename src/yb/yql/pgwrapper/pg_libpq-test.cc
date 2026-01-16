@@ -1278,7 +1278,7 @@ Result<TableId> GetColocationOrTablegroupParentTableId(
     const std::string& database_name,
     const std::string& tablegroup_id) {
   master::GetNamespaceInfoResponsePB resp;
-  Status s = client->GetNamespaceInfo("", database_name, YQL_DATABASE_PGSQL, &resp);
+  Status s = client->GetNamespaceInfo(database_name, YQL_DATABASE_PGSQL, &resp);
   if (!s.ok()) {
     return s;
   }
@@ -3914,8 +3914,7 @@ TEST_F(PgOidCollisionReservedNormalOid, PgOidCollisionSystemPostgresTest) {
   ASSERT_TRUE(user_created_db_oids == expected) << yb::ToString(user_created_db_oids);
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   master::GetNamespaceInfoResponsePB namespace_info;
-  ASSERT_OK(client->GetNamespaceInfo(
-      "" /* namespace_id */, "system_postgres", YQL_DATABASE_PGSQL, &namespace_info));
+  ASSERT_OK(client->GetNamespaceInfo("system_postgres", YQL_DATABASE_PGSQL, &namespace_info));
 
   const auto db_oid = CHECK_RESULT(GetPgsqlDatabaseOid(
       namespace_info.namespace_().id()));

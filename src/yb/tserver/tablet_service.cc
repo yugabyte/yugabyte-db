@@ -1722,11 +1722,12 @@ Status TabletServiceAdminImpl::DoCreateTablet(const CreateTabletRequestPB* req,
   dockv::Partition::FromPB(req->partition(), &partition);
 
   LOG(INFO) << "Processing CreateTablet for T " << req->tablet_id() << " P " << req->dest_uuid()
-            << " (table=" << req->table_name()
-            << " [id=" << req->table_id() << "]), partition="
-            << partition_schema.PartitionDebugString(partition, schema);
+            << " (table=" << req->table_name() << " [id=" << req->table_id()
+            << "]), partition=" << partition_schema.PartitionDebugString(partition, schema);
   VLOG(1) << "Full request: " << req->DebugString();
 
+  // todo(GH29982): The request includes namespace_id. We should pass it to the TableInfo
+  // constructor.
   auto table_info = std::make_shared<tablet::TableInfo>(
       consensus::MakeTabletLogPrefix(req->tablet_id(), server_->permanent_uuid()),
       tablet::Primary::kTrue, req->table_id(), req->namespace_name(), req->table_name(),

@@ -1043,8 +1043,7 @@ Result<TableId> XClusterTestBase::GetColocatedDatabaseParentTableId(Cluster* clu
   if (FLAGS_ysql_legacy_colocated_database_creation) {
     // Legacy colocated database
     master::GetNamespaceInfoResponsePB ns_resp;
-    RETURN_NOT_OK(
-        cluster->client_->GetNamespaceInfo("", namespace_name, YQL_DATABASE_PGSQL, &ns_resp));
+    RETURN_NOT_OK(cluster->client_->GetNamespaceInfo(namespace_name, YQL_DATABASE_PGSQL, &ns_resp));
     return GetColocatedDbParentTableId(ns_resp.namespace_().id());
   }
   // Colocated database
