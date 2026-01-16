@@ -1,9 +1,8 @@
 # Set default system level systemd
 systemd_dir="/etc/systemd/system"
 {% if use_system_level_systemd == 'False' %}
-    # Enable linger for yb_user
-    loginctl enable-linger {{ yb_user }}
-    xdg_runtime_env="export XDG_RUNTIME_DIR=/run/user/$(id -u {{ yb_user }})"
+    runtime_dir="/run/user/$(id -u {{ yb_user }})"
+    xdg_runtime_env="export XDG_RUNTIME_DIR=$runtime_dir"
     if ! grep -qxF "${xdg_runtime_env}" {{yb_home_dir}}/.bashrc >/dev/null 2>&1; then
         su - {{ yb_user }} -c "echo ${xdg_runtime_env} >> {{yb_home_dir}}/.bashrc"
     fi
@@ -12,6 +11,39 @@ systemd_dir="/etc/systemd/system"
     systemd_dir="{{ yb_home_dir }}/.config/systemd/user"
     # Ensure the systemd directory exists
     su - {{ yb_user }} -c "mkdir -p ${systemd_dir}"
+    # Determine the PLATFORM_ID
+    platform_id=$(grep -oP '(?<=^PLATFORM_ID=).+' /etc/os-release | tr -d '"' || echo "unknown")
+    if [[ "$platform_id" == "platform:el8" ]] || [[ "$platform_id" == "platform:el9" ]]; then
+        # Stop user systemd service.
+        su - {{ yb_user }} -c "XDG_RUNTIME_DIR=$runtime_dir systemctl --user exit >/dev/null 2>&1"
+        status_cmd="XDG_RUNTIME_DIR=$runtime_dir systemctl --user status --no-pager >/dev/null 2>&1"
+        count=0
+        # Do in retries as there is a race between stopping and checking status.
+        while su - {{ yb_user }} -c "$status_cmd"; do
+            count=$((count + 1))
+            if [ $count -gt 10 ]; then
+                echo "User systemd service failed to stop after $count attempts."
+                exit 1
+            fi
+            echo "Waiting for user systemd service to stop..."
+            sleep 2
+        done
+        count=0
+        # Do in retries as there is a race between stopping and enabling linger.
+        until su - {{ yb_user }} -c "$status_cmd"; do
+            # Enable linger for yb_user
+            loginctl enable-linger {{ yb_user }}
+            count=$((count + 1))
+            if [ $count -gt 10 ]; then
+                echo "User systemd service failed to start after $count attempts."
+                exit 1
+            fi
+            echo "Waiting for user system service to become active..."
+            sleep 2
+        done
+    else
+      loginctl enable-linger {{ yb_user }}
+    fi
 {% endif %}
 
 # Configure the systemd unit files
