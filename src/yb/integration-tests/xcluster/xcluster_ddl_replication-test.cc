@@ -2508,8 +2508,7 @@ TEST_F(XClusterDDLReplicationSetupTest, CheckpointingSetUpBumpsOidCounters) {
   // secondary space OID.
   {
     master::GetNamespaceInfoResponsePB resp;
-    ASSERT_OK(producer_client()->GetNamespaceInfo(
-        /*namespace_id=*/std::string(), namespace_name, YQL_DATABASE_PGSQL, &resp));
+    ASSERT_OK(producer_client()->GetNamespaceInfo(namespace_name, YQL_DATABASE_PGSQL, &resp));
     NamespaceId namespace_id = resp.namespace_().id();
     uint32_t begin_oid, end_oid;
     ASSERT_OK(producer_client()->ReservePgsqlOids(

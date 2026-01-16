@@ -10129,7 +10129,19 @@ Status CatalogManager::GetNamespaceInfo(const GetNamespaceInfoRequestPB* req,
 
   // Look up the namespace and verify if it exists.
   TRACE("Looking up namespace");
-  auto ns = VERIFY_NAMESPACE_FOUND(FindNamespace(req->namespace_()), resp);
+  scoped_refptr<NamespaceInfo> ns;
+  if (req->has_namespace_()) {
+    ns = VERIFY_NAMESPACE_FOUND(FindNamespace(req->namespace_()), resp);
+  } else if (req->has_table_id()) {
+    auto table = VERIFY_NAMESPACE_FOUND(FindTableById(req->table_id()), resp);
+    ns = VERIFY_NAMESPACE_FOUND(FindNamespaceById(table->namespace_id()), resp);
+  } else {
+    return SetupError(
+        resp->mutable_error(),
+        STATUS(
+            InvalidArgument,
+            "Need either namespace identifier or table id set in GetNamespaceInfoRequest"));
+  }
 
   resp->mutable_namespace_()->set_id(ns->id());
   resp->mutable_namespace_()->set_name(ns->name());

@@ -756,9 +756,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
   Status GetDatabaseInfo(
       const PgGetDatabaseInfoRequestPB& req, PgGetDatabaseInfoResponsePB* resp,
       rpc::RpcContext* context) {
-    return client().GetNamespaceInfo(
-        GetPgsqlNamespaceId(req.oid()), "" /* namespace_name */, YQL_DATABASE_PGSQL,
-        resp->mutable_info());
+    return client().GetNamespaceInfo(GetPgsqlNamespaceId(req.oid()), resp->mutable_info());
   }
 
   Result<PgPollVectorIndexReadyResponsePB> PollVectorIndexReady(
