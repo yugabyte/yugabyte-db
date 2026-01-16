@@ -568,10 +568,10 @@ ConnectionPtr Reactor::AssignOutboundCall(const OutboundCallPtr& call) {
   }
 
   call->SetConnection(conn);
-  call->SetCompletedCallQueue(completed_call_queue_);
   conn->QueueOutboundCall(call);
 
   if (ShouldTrackOutboundCalls()) {
+    call->SetCompletedCallQueue(completed_call_queue_);
     auto expires_at = call->expires_at();
     tracked_outbound_calls_.insert(TrackedOutboundCall {
       .call_id = call->call_id(),
