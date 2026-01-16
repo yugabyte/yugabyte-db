@@ -2648,7 +2648,10 @@ Result<master::GetMasterXClusterConfigResponsePB> ClusterAdminClient::GetMasterX
 Status ClusterAdminClient::SplitTablet(const TabletId& tablet_id, int split_factor) {
   master::SplitTabletRequestPB req;
   req.set_tablet_id(tablet_id);
-  req.set_split_factor(split_factor);
+  if (split_factor > 1) {
+    req.set_split_factor(split_factor);
+  }
+
   const auto resp = VERIFY_RESULT(InvokeRpc(
       &master::MasterAdminProxy::SplitTablet, *master_admin_proxy_, req));
   if (resp.has_error()) {

@@ -3423,19 +3423,13 @@ Status CatalogManager::SplitTablet(
           << tablet->tablet_id();
 
   // TODO(nway-tsplit): Consider setting an upper bound to split factor using a gFlag or policy.
-  SCHECK_GE(
-      split_factor,
-      2,
-      InvalidArgument,
-      "Split factor must be at least 2");
+  SCHECK_GE(split_factor, 2, InvalidArgument, "Split factor must be at least 2");
 
-  if (split_factor != 2 && !FLAGS_TEST_enable_multi_way_tablet_split) {
-    LOG(WARNING) << Format(
-        "Split factor $0 requested for tablet $1, but multi-way tablet split is not enabled. "
-        "Falling back to binary split.",
-        split_factor, tablet->tablet_id());
-    split_factor = 2;
-  }
+  SCHECK_FORMAT(
+      split_factor == 2 || FLAGS_TEST_enable_multi_way_tablet_split, InvalidArgument,
+      "Split factor must be 2 when --TEST_enable_multi_way_tablet_split is disabled,"
+      " requested: $0",
+      split_factor);
 
   auto call = std::make_shared<AsyncGetTabletSplitKey>(
       master_, AsyncTaskPool(), tablet, is_manual_split, split_factor, epoch,

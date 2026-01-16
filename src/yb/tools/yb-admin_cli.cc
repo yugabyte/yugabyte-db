@@ -1129,14 +1129,17 @@ Status leader_stepdown_action(
   return LeaderStepDown(client, args);
 }
 
+// Optionally accepts [<split_factor>] as a test param when
+// FLAGS_TEST_enable_multi_way_tablet_split is enabled.
 const auto split_tablet_args = "<tablet_id>";
 Status split_tablet_action(const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
-  if (args.size() < 1) {
-    return ClusterAdminCli::kInvalidArguments;
-  }
+  RETURN_NOT_OK(CheckArgumentsCount(args.size(), 1, 2));
   const string tablet_id = args[0];
-  // TODO(nway-tsplit): Retrieve split factor from CLI arguments.
-  int split_factor = kDefaultNumSplitParts;
+  int split_factor = 0;
+  if (args.size() >= 2) {
+    split_factor = VERIFY_RESULT(CheckedStoi(args[1]));
+  }
+
   RETURN_NOT_OK_PREPEND(
       client->SplitTablet(tablet_id, split_factor),
       Format("Unable to start split of tablet $0", tablet_id));

@@ -1561,6 +1561,69 @@ TEST_F_EX(AdminCliTest, ListTabletDefaultTenTablets, AdminCliListTabletsTest) {
   ASSERT_EQ(count, 20);
 }
 
+TEST_F_EX(AdminCliTest, TestSplitTabletDefault, AdminCliListTabletsTest) {
+  BuildAndStart();
+  const auto& keyspace = kTableName.namespace_name();
+  const auto& table_name = kTableName.table_name();
+
+  // Insert some rows.
+  TestYcqlWorkload workload(cluster_.get());
+  workload.set_table_name(kTableName);
+  workload.set_timeout_allowed(true);
+  workload.Setup();
+  workload.Start();
+  workload.WaitInserted(100);
+  workload.StopAndJoin();
+  LOG(INFO) << "Number of rows inserted: " << workload.rows_inserted();
+
+  // Flush to SST. The middle key determination Tablet::GetEncodedMiddleSplitKey() works off SSTs.
+  ASSERT_OK(CallAdmin("flush_table", keyspace, table_name));
+
+  // Split tablet.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_enable_multi_way_tablet_split", "false"));
+  ASSERT_OK(CallAdmin("split_tablet", tablet_id_));
+
+  // Verify the default split creates 2 child tablets.
+  constexpr int kSplitFactor = 2;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return kSplitFactor == VERIFY_RESULT(GetListTabletsCount(keyspace, table_name));
+      }, 30s, "Wait for tablet split to complete"));
+}
+
+TEST_F_EX(AdminCliTest, TestSplitTabletMultiWay, AdminCliListTabletsTest) {
+  BuildAndStart();
+  const auto& keyspace = kTableName.namespace_name();
+  const auto& table_name = kTableName.table_name();
+
+  // Insert some rows.
+  TestYcqlWorkload workload(cluster_.get());
+  workload.set_table_name(kTableName);
+  workload.set_timeout_allowed(true);
+  workload.Setup();
+  workload.Start();
+  workload.WaitInserted(100);
+  workload.StopAndJoin();
+  LOG(INFO) << "Number of rows inserted: " << workload.rows_inserted();
+
+  // Verify multi-way split is disallowed when gFlag is disabled.
+  constexpr int kSplitFactor = 5;
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_enable_multi_way_tablet_split", "false"));
+  ASSERT_NOK_STR_CONTAINS(
+      CallAdmin("split_tablet", tablet_id_, kSplitFactor),
+      "Split factor must be 2");
+
+  // Verify multi-way split is allowed when gFlag is enabled.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_enable_multi_way_tablet_split", "true"));
+  ASSERT_OK(CallAdmin("split_tablet", tablet_id_, kSplitFactor));
+
+  // Verify the split creates 5 child tablets.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return kSplitFactor == VERIFY_RESULT(GetListTabletsCount(keyspace, table_name));
+      }, 30s, "Wait for tablet split to complete"));
+}
+
 TEST_F(AdminCliTest, GetAutoFlagsConfig) {
   BuildAndStart();
   auto message = ASSERT_RESULT(CallAdmin("get_auto_flags_config"));
