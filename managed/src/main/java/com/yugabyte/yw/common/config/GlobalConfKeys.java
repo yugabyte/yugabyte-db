@@ -1715,6 +1715,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " storage.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableChunkedEncoding =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.enable_chunked_encoding",
+          ScopeType.GLOBAL,
+          "Enable Chunked Encoding for Amazon S3",
+          "Enable Chunked Encoding for Amazon S3, mainly used when configuring S3 compatible"
+              + " storage.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> k8sYbaRestoreSkipDumpFileDelete =
       new ConfKeyInfo<>(
           "yb.ha.k8s_restore_skip_dump_file_delete",
