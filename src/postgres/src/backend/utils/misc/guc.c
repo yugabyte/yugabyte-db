@@ -3646,7 +3646,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_enable_pg_stat_statements_rpc_stats,
-		false,
+		true,
 		NULL, assign_yb_enable_pg_stat_statements_rpc_stats, NULL
 	},
 
@@ -3775,6 +3775,20 @@ static struct config_bool ConfigureNamesBool[] =
 		&yb_disable_pg_snapshot_mgmt_in_repeatable_read,
 		false,
 		check_yb_disable_pg_snapshot_mgmt_in_repeatable_read, NULL, NULL
+	},
+
+	{
+		{"yb_enable_pg_stat_statements_metrics", PGC_SUSET, STATS_MONITORING,
+			gettext_noop("If true, enable metrics collection for pg_stat_statements."),
+			gettext_noop("This enables collection of the following metrics: "
+									"docdb_seeks, docdb_nexts, docdb_prevs, "
+									"docdb_read_time, docdb_write_time and "
+									"docdb_obsolete_rows_scanned"),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_pg_stat_statements_metrics,
+		false,
+		NULL, NULL, NULL
 	},
 
 	/* End-of-list marker */

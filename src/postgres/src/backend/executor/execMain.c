@@ -82,6 +82,12 @@ ExecutorEnd_hook_type ExecutorEnd_hook = NULL;
 /* Hook for plugin to get control in ExecCheckRTPerms() */
 ExecutorCheckPerms_hook_type ExecutorCheckPerms_hook = NULL;
 
+/*
+ * YB: Flag to indicate if the session stats should be refreshed
+ * before the execution of the query
+ */
+bool		yb_refresh_stats_before_exec = true;
+
 /* decls for local routines only used within this module */
 static void InitPlan(QueryDesc *queryDesc, int eflags);
 static void CheckValidRowMarkRel(Relation rel, RowMarkType markType);
@@ -159,7 +165,7 @@ standard_ExecutorStart(QueryDesc *queryDesc, int eflags)
 	Assert(queryDesc != NULL);
 	Assert(queryDesc->estate == NULL);
 
-	if (yb_enable_pg_stat_statements_rpc_stats)
+	if (yb_enable_pg_stat_statements_metrics)
 		YbSetMetricsCaptureTypeIfUnset(YB_YQL_METRICS_CAPTURE_PGSS_METRICS);
 
 	/*
@@ -275,10 +281,6 @@ standard_ExecutorStart(QueryDesc *queryDesc, int eflags)
 	InitPlan(queryDesc, eflags);
 
 	MemoryContextSwitchTo(oldcontext);
-
-	/* YB: Refresh the session stats before the start of the query */
-	if (yb_enable_pg_stat_statements_rpc_stats)
-		YbRefreshSessionStatsBeforeExecution();
 }
 
 /* ----------------------------------------------------------------
@@ -318,6 +320,18 @@ ExecutorRun(QueryDesc *queryDesc,
 			ScanDirection direction, uint64 count,
 			bool execute_once)
 {
+	/*
+	 * YB: Refresh session stats only once per query.
+	 * Securing YbRefreshSessionStatsBeforeExecution() behind yb_refresh_stats_before_exec
+	 * to avoid redundant refreshes for queries with multiple ExecutorRun calls
+	 * in case of triggers, foreign key checks, etc.
+	 */
+	if (yb_refresh_stats_before_exec)
+	{
+		YbRefreshSessionStatsBeforeExecution();
+		yb_refresh_stats_before_exec = false;
+	}
+
 	if (ExecutorRun_hook)
 		(*ExecutorRun_hook) (queryDesc, direction, count, execute_once);
 	else
@@ -532,7 +546,7 @@ standard_ExecutorEnd(QueryDesc *queryDesc)
 	queryDesc->planstate = NULL;
 	queryDesc->totaltime = NULL;
 	queryDesc->yb_query_stats = NULL;
-	if (yb_enable_pg_stat_statements_rpc_stats)
+	if (yb_enable_pg_stat_statements_metrics)
 		YbSetMetricsCaptureType(YB_YQL_METRICS_CAPTURE_NONE);
 }
 

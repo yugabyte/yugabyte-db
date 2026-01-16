@@ -2300,7 +2300,9 @@ bool		yb_enable_extended_sql_codes = false;
 
 bool		yb_user_ddls_preempt_auto_analyze = true;
 
-bool		yb_enable_pg_stat_statements_rpc_stats = false;
+bool		yb_enable_pg_stat_statements_rpc_stats = true;
+
+bool		yb_enable_pg_stat_statements_metrics = false;
 
 const char *
 YBDatumToString(Datum datum, Oid typid)

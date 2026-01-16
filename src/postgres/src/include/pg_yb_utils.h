@@ -822,9 +822,14 @@ extern bool yb_xcluster_automatic_mode_target_ddl;
 extern bool yb_user_ddls_preempt_auto_analyze;
 
 /*
-* If true, enable RPC execution time stats for pg_stat_statements.
+ * If true, enable RPC execution time stats for pg_stat_statements.
  */
 extern bool yb_enable_pg_stat_statements_rpc_stats;
+
+/*
+ * If true, enable metrics collection for pg_stat_statements.
+ */
+extern bool yb_enable_pg_stat_statements_metrics;
 
 /*
  * See also ybc_util.h which contains additional such variable declarations for
