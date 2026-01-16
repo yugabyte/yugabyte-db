@@ -8,10 +8,13 @@
  */
 
 import { useMemo, useRef } from 'react';
-import { useTranslation } from 'react-i18next';
 import { useMethods } from 'react-use';
+import { useTranslation } from 'react-i18next';
 import { styled } from '@material-ui/core';
 import { YBMultiLevelStepper, mui, yba } from '@yugabyte-ui-library/core';
+import { CreateUniverseBreadCrumb } from './CreateUniverseBreadCrumb';
+import AuthenticatedArea from '@app/pages/AuthenticatedArea';
+import SwitchCreateUniverseSteps from './SwitchCreateUniverseSteps';
 import { getCreateUniverseSteps } from './CreateUniverseUtils';
 import {
   CreateUniverseContext,
@@ -20,23 +23,35 @@ import {
   initialCreateUniverseFormState,
   StepsRef
 } from './CreateUniverseContext';
-import SwitchCreateUniverseSteps from './SwitchCreateUniverseSteps';
-import { CreateUniverseBreadCrumb } from './CreateUniverseBreadCrumb';
-import AuthenticatedArea from '@app/pages/AuthenticatedArea';
+//style imports
+import './styles/override.css';
 
 import YBLogo from '../../../assets/yb_logo.svg';
 import Close from '../../../assets/close rounded.svg';
 
-import './styles/override.css';
-
 const { YBButton } = yba;
 
-const { Grid2: Grid, Typography } = mui;
+const { Grid2: Grid, Typography, Box } = mui;
 
 const CreateUniverseRoot = styled('div')(() => ({
   '& .full-height-container': {
-    backgroundColor: '#fff !important'
+    backgroundColor: '#fff !important',
+    display: 'flex',
+    height: '100vh',
+    width: '100vw',
+    flexDirection: 'column'
   }
+}));
+
+const CreateHeader = styled('div')(() => ({
+  display: 'flex',
+  flexDirection: 'row',
+  padding: '8px 24px 8px 20px',
+  height: '64px',
+  backgroundColor: '#1E154B',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  minWidth: '1200px'
 }));
 
 export function CreateUniverse() {
@@ -52,79 +67,81 @@ export function CreateUniverse() {
         <CreateUniverseContext.Provider
           value={([...restoreContextData, {}] as unknown) as createUniverseFormProps}
         >
-          <Grid
-            container
-            sx={{
-              backgroundColor: '#1E154B',
-              height: '64px',
-              padding: '8px 24px',
-              justifyContent: 'space-between',
-              alignItems: 'center'
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center' }}>
+          {/* Header component */}
+          <CreateHeader>
+            <Box sx={{ display: 'flex', flexDirection: 'row', gap: '16px', width: '100%' }}>
               <YBLogo />
               <Typography
                 variant="h4"
-                sx={{ color: '#FFFFFF', fontSize: '18px', fontWeight: 600, marginLeft: '16px' }}
+                sx={{ color: '#FFFFFF', fontSize: '18px', fontWeight: 600, lineHeight: '24px' }}
               >
                 {t('title', { keyPrefix: 'createUniverseV2' })}
               </Typography>
-            </div>
+            </Box>
             <Close style={{ cursor: 'pointer' }} />
-          </Grid>
-          <Grid container spacing={2}>
-            <Grid sx={{ borderRight: '1px solid #E9EEF2', height: '100vh' }}>
+          </CreateHeader>
+          {/* Body */}
+          <Grid container spacing={{ xs: 3, md: 3, lg: 3, xl: 6 }} minHeight={'100%'}>
+            <Grid sx={{ borderRight: '1px solid #E9EEF2', height: '100vh' }} size="auto">
               <YBMultiLevelStepper dataTestId="stepper" activeStep={activeStep} steps={steps} />
             </Grid>
-            <Grid
-              container
-              direction="column"
-              size="grow"
-              sx={{ padding: '16px', maxWidth: '1024px', minWidth: '856px', gap: 0 }}
-            >
-              <Grid container sx={{ padding: '20px 0px' }}>
+            <Grid container direction={'column'} size="grow" spacing={0}>
+              <Grid size="auto">
                 <CreateUniverseBreadCrumb />
               </Grid>
-              <Grid container sx={{ height: '32px' }}></Grid>
-              <SwitchCreateUniverseSteps ref={currentStepRef} />
-              <Grid
-                container
-                alignItems="center"
-                justifyContent="space-between"
-                direction="row"
-                sx={{ marginTop: '32px' }}
-              >
-                <YBButton
-                  variant="secondary"
-                  size="large"
-                  dataTestId="create-universe-cancel-button"
+              <Grid container>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    maxWidth: '1024px',
+                    minWidth: '856px',
+                    gap: 3,
+                    mr: 1
+                  }}
                 >
-                  {t('cancel', { keyPrefix: 'common' })}
-                </YBButton>
-                <Grid container alignItems="center" justifyContent="flex-end" spacing={2}>
-                  <YBButton
-                    onClick={() => {
-                      currentStepRef.current?.onPrev();
-                    }}
-                    disabled={activeStep === 1}
-                    variant="secondary"
-                    size="large"
-                    dataTestId="create-universe-back-button"
+                  <SwitchCreateUniverseSteps ref={currentStepRef} />
+                  {/* Footer */}
+                  <Grid
+                    container
+                    display="flex"
+                    alignItems="center"
+                    justifyContent="space-between"
+                    direction="row"
+                    sx={{ mb: 3 }}
                   >
-                    {t('back', { keyPrefix: 'common' })}
-                  </YBButton>
-                  <YBButton
-                    onClick={() => {
-                      currentStepRef.current?.onNext();
-                    }}
-                    variant="ybaPrimary"
-                    size="large"
-                    dataTestId="create-universe-next-button"
-                  >
-                    {t(activeStep === 9 ? 'create' : 'next', { keyPrefix: 'common' })}
-                  </YBButton>
-                </Grid>
+                    <YBButton
+                      variant="secondary"
+                      size="large"
+                      dataTestId="create-universe-cancel-button"
+                    >
+                      {t('cancel', { keyPrefix: 'common' })}
+                    </YBButton>
+                    <Grid container alignItems="center" justifyContent="flex-end" spacing={2}>
+                      <YBButton
+                        onClick={() => {
+                          currentStepRef.current?.onPrev();
+                        }}
+                        disabled={activeStep === 1}
+                        variant="secondary"
+                        size="large"
+                        dataTestId="create-universe-back-button"
+                      >
+                        {t('back', { keyPrefix: 'common' })}
+                      </YBButton>
+                      <YBButton
+                        onClick={() => {
+                          currentStepRef.current?.onNext();
+                        }}
+                        variant="ybaPrimary"
+                        size="large"
+                        dataTestId="create-universe-next-button"
+                      >
+                        {t(activeStep === 9 ? 'create' : 'next', { keyPrefix: 'common' })}
+                      </YBButton>
+                    </Grid>
+                  </Grid>
+                </Box>
               </Grid>
             </Grid>
           </Grid>

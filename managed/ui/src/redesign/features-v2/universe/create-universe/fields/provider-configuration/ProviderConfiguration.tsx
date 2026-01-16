@@ -9,23 +9,24 @@
 
 import { ChangeEvent } from 'react';
 import { sortBy } from 'lodash';
-import { YBAutoComplete, YBLabel, YBSelectProps } from '@yugabyte-ui-library/core';
-import { Controller, FieldValues, Path, PathValue, useFormContext } from 'react-hook-form';
-import { api, QUERY_KEY } from '../../../../../features/universe/universe-form/utils/api';
 import { useQuery } from 'react-query';
-import { Box } from '@material-ui/core';
+import { Controller, FieldValues, Path, PathValue, useFormContext } from 'react-hook-form';
+
+import { YBAutoComplete, YBLabel, YBSelectProps, mui } from '@yugabyte-ui-library/core';
+import { api, QUERY_KEY } from '../../../../../features/universe/universe-form/utils/api';
+import { YBProvider } from '../../../../../../components/configRedesign/providerRedesign/types';
+import { CloudType } from '../../../../../features/universe/universe-form/utils/dto';
 import {
   ProviderCode,
   ProviderStatus
 } from '../../../../../../components/configRedesign/providerRedesign/constants';
-import { YBProvider } from '../../../../../../components/configRedesign/providerRedesign/types';
-import { CloudType } from '../../../../../features/universe/universe-form/utils/dto';
 interface ProviderConfigurationFieldProps<T extends FieldValues>
   extends Omit<YBSelectProps, 'name' | 'control'> {
   name: Path<T>;
   label: string;
   placeholder?: string;
   filterByProvider?: string | null;
+  disabled?: boolean;
 }
 
 export interface Provider {
@@ -37,12 +38,15 @@ export interface Provider {
   details: Record<string, any>;
 }
 
+const { Box } = mui;
+
 export const ProviderConfigurationField = <T extends FieldValues>({
   name,
   label,
   placeholder,
   filterByProvider,
-  sx
+  sx,
+  disabled
 }: ProviderConfigurationFieldProps<T>) => {
   const { control, setValue } = useFormContext<T>();
   const { data, isLoading } = useQuery(QUERY_KEY.getProvidersList, api.getProvidersList, {
@@ -81,7 +85,7 @@ export const ProviderConfigurationField = <T extends FieldValues>({
         return (
           <div>
             <YBLabel error={!!fieldState.error}>{label}</YBLabel>
-            <Box flex={1}>
+            <Box sx={{ flex: 1 }}>
               <YBAutoComplete
                 loading={isLoading}
                 value={(value as unknown) as Record<string, string>}
@@ -98,6 +102,8 @@ export const ProviderConfigurationField = <T extends FieldValues>({
                 }}
                 sx={sx}
                 dataTestId="ProvidersField-AutoComplete-container"
+                size="large"
+                disabled={disabled}
               />
             </Box>
           </div>

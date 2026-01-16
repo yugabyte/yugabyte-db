@@ -8,7 +8,7 @@
  */
 
 import { ChangeEvent } from 'react';
-import { mui, YBAutoComplete, YBLabel, YBSelectProps, YBTooltip } from '@yugabyte-ui-library/core';
+import { useQuery } from 'react-query';
 import {
   Controller,
   FieldValues,
@@ -17,22 +17,24 @@ import {
   useFormContext,
   useWatch
 } from 'react-hook-form';
-import { useQuery } from 'react-query';
+import { mui, YBAutoComplete, YBLabel, YBSelectProps, YBTooltip } from '@yugabyte-ui-library/core';
+import { api, DBReleasesQueryKey } from '../../../../../features/universe/universe-form/utils/api';
 import { isNonEmptyString } from '../../../../../../utils/ObjectUtils';
 import { isVersionStable } from '../../../../../../utils/universeUtilsTyped';
-import { ReleaseState } from '../../../../../features/releases/components/dtos';
 import { MAX_RELEASE_TAG_CHAR } from '../../../../../features/releases/helpers/utils';
 import {
   getActiveDBVersions,
   sortVersionStrings
 } from '../../../../../features/universe/universe-form/form/fields/DBVersionField/DBVersionHelper';
-import { api, DBReleasesQueryKey } from '../../../../../features/universe/universe-form/utils/api';
+import { ReleaseState } from '../../../../../features/releases/components/dtos';
 import {
   DEFAULT_ADVANCED_CONFIG,
   YBSoftwareMetadata
 } from '../../../../../features/universe/universe-form/utils/dto';
 import { PROVIDER_CONFIGURATION } from '../FieldNames';
-import InfoMessageIcon from '../../../../../assets/info-message.svg?img';
+
+//icons
+import InfoMessageIcon from '../../../../../assets/info-message.svg';
 
 const { Box } = mui;
 
@@ -41,6 +43,7 @@ interface DatabaseVersionFieldProps<T extends FieldValues>
   name: Path<T>;
   label: string;
   placeholder?: string;
+  disabled?: boolean;
 }
 const getOptionLabel = (option: string | Record<string, string>): string =>
   typeof option === 'string' ? option : option.label ?? '';
@@ -116,7 +119,8 @@ export const DatabaseVersionField = <T extends FieldValues>({
   name,
   label,
   placeholder,
-  sx
+  sx,
+  disabled
 }: DatabaseVersionFieldProps<T>) => {
   const { control, getValues, setValue } = useFormContext<T>();
   const provider = useWatch({ name: PROVIDER_CONFIGURATION });
@@ -217,6 +221,8 @@ export const DatabaseVersionField = <T extends FieldValues>({
                   dataTestId: 'database-version-field'
                 }}
                 sx={sx}
+                size="large"
+                disabled={disabled}
               />
             </Box>
           </div>

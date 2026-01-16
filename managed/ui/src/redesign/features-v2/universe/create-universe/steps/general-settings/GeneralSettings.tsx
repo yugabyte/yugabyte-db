@@ -9,24 +9,24 @@
  */
 
 import { forwardRef, useContext, useEffect, useImperativeHandle } from 'react';
-
 import { FormProvider, useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { yupResolver } from '@hookform/resolvers/yup';
-import { ProviderConfigurationField } from '../../fields/provider-configuration/ProviderConfiguration';
-import { DatabaseVersionField } from '../../fields/database-version/DatabaseVersion';
-import { UniverseNameField } from '../../fields';
-import { CloudField } from '../../fields/provider/ProviderSelect';
-import { GeneralSettingsProps } from './dtos';
-import { GeneralSettingsValidationSchema } from './ValidationSchema';
-
+import {
+  UniverseNameField,
+  ProviderConfigurationField,
+  DatabaseVersionField,
+  CloudField
+} from '../../fields';
 import { generateUniqueName } from '../../../../../helpers/utils';
 import {
   CreateUniverseContext,
   CreateUniverseContextMethods,
   StepsRef
 } from '../../CreateUniverseContext';
-import { StyledContent, StyledHeader, StyledPanel } from '../../components/DefaultComponents';
+import { GeneralSettingsValidationSchema } from './ValidationSchema';
+import { GeneralSettingsProps } from './dtos';
+import { ResilienceType, ResilienceFormMode, FaultToleranceType } from '../resilence-regions/dtos';
 import {
   CLOUD,
   DATABASE_VERSION,
@@ -41,7 +41,7 @@ import {
   SINGLE_AVAILABILITY_ZONE
 } from '../../fields/FieldNames';
 import ShuffleIcon from '../../../../../assets/shuffle.svg';
-import { ResilienceType, ResilienceFormMode, FaultToleranceType } from '../resilence-regions/dtos';
+import { StyledPanel, StyledHeader, StyledContent } from '../../components/DefaultComponents';
 
 const CONTROL_WIDTH = '480px';
 
@@ -125,6 +125,7 @@ export const GeneralSettings = forwardRef<StepsRef>((_, forwardRef) => {
             }}
             filterByProvider={cloud}
             dataTestId="provider-configuration-field"
+            disabled={!cloud}
           />
           <DatabaseVersionField<GeneralSettingsProps>
             name={DATABASE_VERSION}
@@ -134,6 +135,7 @@ export const GeneralSettings = forwardRef<StepsRef>((_, forwardRef) => {
               width: CONTROL_WIDTH
             }}
             dataTestId="database-version-field"
+            disabled={!cloud}
           />
         </StyledContent>
       </StyledPanel>
