@@ -1528,16 +1528,13 @@ struct FollowerDetails {
     uuid(u), host_port(hp), peer_role(role) {}
 };
 
-Status ClusterAdminClient::ListTablets(
-    const YBTableName& table_name, int max_tablets, bool json, bool followers) {
-  std::vector<string> tablet_uuids, ranges;
-  std::vector<master::TabletLocationsPB> locations;
-  RETURN_NOT_OK(yb_client_->GetTablets(
-      table_name, max_tablets, &tablet_uuids, &ranges, &locations));
+namespace {
 
-  // Get table info (works for both regular tables and indexes) to access partition schema
-  const auto table_info = VERIFY_RESULT(yb_client_->GetYBTableInfo(table_name));
-
+Status DoListTablets(
+    const client::YBTableInfo& table_info,
+    const std::vector<TabletId>& tablet_uuids,
+    const std::vector<master::TabletLocationsPB>& locations,
+    bool json, bool followers) {
   rapidjson::Document document(rapidjson::kObjectType);
   rapidjson::Value json_tablets(rapidjson::kArrayType);
   CHECK(json_tablets.IsArray());
@@ -1553,8 +1550,7 @@ Status ClusterAdminClient::ListTablets(
   }
 
   const auto table_schema = client::internal::GetSchema(table_info.schema);
-  auto getPartitionDebugString = [&table_info, &table_schema](const PartitionPB& partition)
-      -> std::string {
+  auto stringify_partition = [&table_info, &table_schema](const PartitionPB& partition) {
     dockv::Partition dockv_partition;
     dockv::Partition::FromPB(partition, &dockv_partition);
     return table_info.partition_schema.PartitionDebugString(dockv_partition, table_schema);
@@ -1574,31 +1570,27 @@ Status ClusterAdminClient::ListTablets(
           leader_host_port = HostPortPBToString(replica.ts_info().private_rpc_addresses(0));
           leader_uuid = replica.ts_info().permanent_uuid();
         } else {
-          LOG(ERROR) << "Multiple leader replicas found for tablet " << tablet_uuid
-                     << ": " << locations_of_this_tablet.ShortDebugString();
+          LOG(DFATAL) << "Multiple leader replicas found for tablet " << tablet_uuid
+                      << ": " << locations_of_this_tablet.ShortDebugString();
         }
-      } else {
-        if (followers) {
-          std::string follower_host_port =
-            HostPortPBToString(replica.ts_info().private_rpc_addresses(0));
-          if (json) {
-            follower_list.push_back(
-                FollowerDetails(replica.ts_info().permanent_uuid(), follower_host_port,
-                  PeerRole_Name(replica.role())));
-          } else {
-            if (!follower_list_str.empty()) {
-              follower_list_str += ",";
-            }
-            follower_list_str += follower_host_port;
+      } else if (followers) {
+        auto follower_host_port = HostPortPBToString(replica.ts_info().private_rpc_addresses(0));
+        if (json) {
+          follower_list.push_back(
+              { replica.ts_info().permanent_uuid(),
+                follower_host_port, PeerRole_Name(replica.role()) });
+        } else {
+          if (!follower_list_str.empty()) {
+            follower_list_str += ",";
           }
+          follower_list_str += follower_host_port;
         }
       }
     }
 
     // Get partition debug string (common for both JSON and non-JSON output)
     const auto& partition = locations_of_this_tablet.partition();
-    const auto partition_debug_string = getPartitionDebugString(partition);
-
+    const auto partition_debug_string = stringify_partition(partition);
     if (json) {
       rapidjson::Value json_tablet(rapidjson::kObjectType);
       AddStringField("id", tablet_uuid, &json_tablet, &document.GetAllocator());
@@ -1607,8 +1599,8 @@ Status ClusterAdminClient::ListTablets(
       rapidjson::Value json_leader(rapidjson::kObjectType);
       AddStringField("uuid", leader_uuid, &json_leader, &document.GetAllocator());
       AddStringField("endpoint", leader_host_port, &json_leader, &document.GetAllocator());
-      AddStringField("role", PeerRole_Name(PeerRole::LEADER), &json_leader,
-          &document.GetAllocator());
+      AddStringField(
+          "role", PeerRole_Name(PeerRole::LEADER), &json_leader, &document.GetAllocator());
       json_tablet.AddMember(rapidjson::StringRef("leader"), json_leader, document.GetAllocator());
       if (followers) {
         rapidjson::Value json_followers(rapidjson::kArrayType);
@@ -1620,8 +1612,8 @@ Status ClusterAdminClient::ListTablets(
           AddStringField("role", follower.peer_role, &json_follower, &document.GetAllocator());
           json_followers.PushBack(json_follower, document.GetAllocator());
         }
-        json_tablet.AddMember(rapidjson::StringRef("followers"), json_followers,
-                              document.GetAllocator());
+        json_tablet.AddMember(
+            rapidjson::StringRef("followers"), json_followers, document.GetAllocator());
       }
       json_tablets.PushBack(json_tablet, document.GetAllocator());
     } else {
@@ -1642,6 +1634,79 @@ Status ClusterAdminClient::ListTablets(
   }
 
   return Status::OK();
+}
+
+template <typename TableIdentifier>
+struct TableTraits;
+
+template <>
+struct TableTraits<yb::client::YBTableName> {
+  using TableIdentifier = yb::client::YBTableName;
+
+  static Result<client::YBTableInfo> GetInfo(
+      client::YBClient& client, const TableIdentifier& table_name) {
+    return client.GetYBTableInfo(table_name);
+  }
+
+  static Status GetTablets(
+      client::YBClient& client,
+      const TableIdentifier& table_name,
+      const int32_t max_tablets,
+      std::vector<TabletId>& tablet_uuids,
+      std::vector<master::TabletLocationsPB>* locations) {
+    std::vector<std::string> ranges;
+    return client.GetTablets(table_name, max_tablets, &tablet_uuids, &ranges, locations);
+  }
+};
+
+template <>
+struct TableTraits<TableId> {
+  using TableIdentifier = TableId;
+
+  static Result<client::YBTableInfo> GetInfo(
+        client::YBClient& client, const TableIdentifier& table_id) {
+    return client.GetYBTableInfoById(table_id, /* include_hidden = */ false);
+  }
+
+  static Status GetTablets(
+      client::YBClient& client,
+      const TableIdentifier& table_id,
+      const int32_t max_tablets,
+      std::vector<TabletId>& tablet_uuids,
+      std::vector<master::TabletLocationsPB>* locations) {
+    std::vector<std::string> ranges;
+    return client.GetTabletsFromTableId(table_id, max_tablets, &tablet_uuids, &ranges, locations);
+  }
+};
+
+template <typename TableIdentifier>
+Status DoListTablets(
+    client::YBClient& client, const TableIdentifier& table_identifier,
+    int max_tablets, bool json, bool followers) {
+  // Get table info (works for both regular tables and indexes) to access partition schema.
+  const auto table_info = VERIFY_RESULT(
+      TableTraits<TableIdentifier>::GetInfo(client, table_identifier));
+
+  // Vector indexes are colocated on the indexed table tablets, so we need to list
+  // the tablets of the indexed table.
+  if (table_info.index_info && table_info.index_info->is_vector_index()) {
+    const auto indexed_table_id = table_info.index_info->indexed_table_id();
+    return DoListTablets(client, indexed_table_id, max_tablets, json, followers);
+  }
+
+  std::vector<TabletId> tablet_uuids;
+  std::vector<master::TabletLocationsPB> locations;
+  RETURN_NOT_OK(TableTraits<TableIdentifier>::GetTablets(
+      client, table_identifier, max_tablets, tablet_uuids, &locations));
+
+  return DoListTablets(table_info, tablet_uuids, locations, json, followers);
+}
+
+} // namespace
+
+Status ClusterAdminClient::ListTablets(
+    const YBTableName& table_name, int max_tablets, bool json, bool followers) {
+  return DoListTablets(*yb_client_, table_name, max_tablets, json, followers);
 }
 
 Status ClusterAdminClient::LaunchBackfillIndexForTable(const YBTableName& table_name) {
