@@ -165,7 +165,7 @@ You download YugabyteDB as follows:
 
     ```sh
     wget https://software.yugabyte.com/releases/{{< yb-version version="stable">}}/yugabyte-{{< yb-version version="stable" format="build">}}-darwin-x86_64.tar.gz
-    echo "$(curl -L https://software.yugabyte.com/releases/{{< yb-version version="stable">}}/yugabyte-{{< yb-version version="stable" format="build">}}-darwin-x86_64.tar.gz.sha) *yugabyte-{{< yb-version version="stable" format="build">}}-darwin-x86_64.tar.gz" | shasum --check && \
+    echo "$(curl -L https://software.yugabyte.com/releases/{{< yb-version version="stable">}}/yugabyte-{{< yb-version version="stable" format="build">}}-darwin-x86_64.tar.gz.sha) *yugabyte-{{< yb-version version="stable" format="build">}}-darwin-x86_64.tar.gz" | shasum --check
     ```
 
 1. Extract the package and then change directories to the YugabyteDB home, as follows:
@@ -182,7 +182,7 @@ You download YugabyteDB as follows:
 
     ```sh
     wget https://software.yugabyte.com/releases/{{< yb-version version="stable">}}/yugabyte-{{< yb-version version="stable" format="build">}}-darwin-arm64.tar.gz
-    echo "$(curl -L https://software.yugabyte.com/releases/{{< yb-version version="stable">}}/yugabyte-{{< yb-version version="stable" format="build">}}-darwin-arm64.tar.gz.sha) *yugabyte-{{< yb-version version="stable" format="build">}}-darwin-arm64.tar.gz" | shasum --check && \
+    echo "$(curl -L https://software.yugabyte.com/releases/{{< yb-version version="stable">}}/yugabyte-{{< yb-version version="stable" format="build">}}-darwin-arm64.tar.gz.sha) *yugabyte-{{< yb-version version="stable" format="build">}}-darwin-arm64.tar.gz" | shasum --check
     ```
 
 1. Extract the package and then change directories to the YugabyteDB home, as follows:
