@@ -720,7 +720,7 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_test VALUES (29, 29), (30, 30);
  Storage Read Requests: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 10
- Storage Flush Requests: 5
+ Storage Flush Requests: 3
 (8 rows)
 
 SELECT * FROM t_test ORDER BY k;
