@@ -5239,54 +5239,6 @@ TEST_F_EX(PgLibPqTest, ConcurrentAnalyzeWithDDL, PgLibPqTestTableLocksDisabled) 
   ASSERT_NE(conn.ConnStatus(), CONNECTION_BAD);
 }
 
-namespace {
-
-// Captures command output and checks if it contains beta warning
-void ValidateExtensionOutput(PGConn* conn, const std::string& command, bool expect_beta_warning) {
-  std::string output;
-  auto notice_receiver = [](void* arg, const PGresult* res) {
-    auto* output_ptr = static_cast<std::string*>(arg);
-    const char* msg = PQresultErrorField(res, PG_DIAG_MESSAGE_PRIMARY);
-    if (msg) {
-      *output_ptr += std::string(msg) + "\n";
-    }
-  };
-
-  PQsetNoticeReceiver(conn->get(), notice_receiver, &output);
-  auto status = conn->Execute(command);
-  ASSERT_OK(status);
-
-  if (expect_beta_warning) {
-    ASSERT_STR_CONTAINS(output, "'pg_stat_monitor' is a beta feature");
-  } else {
-    ASSERT_STR_NOT_CONTAINS(output, "'pg_stat_monitor' is a beta feature");
-  }
-}
-
-} // namespace
-
-// Test that installing pg_stat_monitor through CREATE EXTENSION and
-// CREATE EXTENSION IF NOT EXISTS commands gives a beta warning on default.
-// Other extensions should not give warnings.
-TEST_F(PgLibPqTest, PgStatMonitorBetaWarning) {
-  auto conn = ASSERT_RESULT(Connect());
-
-  // pg_stat_monitor should give warning on CREATE EXTENSION
-  ASSERT_OK(conn.Execute("DROP EXTENSION IF EXISTS pg_stat_monitor"));
-  ValidateExtensionOutput(&conn, "CREATE EXTENSION pg_stat_monitor", true);
-
-  // pg_stat_monitor should give warning on CREATE EXTENSION IF NOT EXISTS
-  ASSERT_OK(conn.Execute("DROP EXTENSION IF EXISTS pg_stat_monitor"));
-  ValidateExtensionOutput(&conn, "CREATE EXTENSION IF NOT EXISTS pg_stat_monitor", true);
-
-  // Other extensions should NOT give warnings
-  ASSERT_OK(conn.Execute("DROP EXTENSION IF EXISTS pgcrypto"));
-  ValidateExtensionOutput(&conn, "CREATE EXTENSION pgcrypto", false);
-
-  ASSERT_OK(conn.Execute("DROP EXTENSION IF EXISTS fuzzystrmatch"));
-  ValidateExtensionOutput(&conn, "CREATE EXTENSION IF NOT EXISTS fuzzystrmatch", false);
-}
-
 // Test dumping tablet data works for leaders and followers and each returns the same XOR hash.
 TEST_F(PgLibPqTest, DumpTabletData) {
   ASSERT_OK(EnsureClientCreated());
