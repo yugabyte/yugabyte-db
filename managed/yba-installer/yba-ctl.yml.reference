@@ -138,6 +138,11 @@ platform:
 
    support_origin_url: "/"
 
+   # Trusted proxy IPs/CIDRs for X-Forwarded-* header support.
+   # Required for OIDC/SSO when behind a reverse proxy with TLS termination.
+   # Example: [10.0.0.1, 172.16.0.0/16] or [0.0.0.0/0] to trust all proxies.
+   trusted_proxies: []
+
    # This section is for and additional data entries that you can
    # add to platform.conf if you desire. Please enter the text
    # exactly in the correct format starting from the lines below the
