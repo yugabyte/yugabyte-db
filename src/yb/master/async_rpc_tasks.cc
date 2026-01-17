@@ -90,6 +90,9 @@ AsyncCreateReplica::AsyncCreateReplica(Master *master,
   req_.mutable_partition()->CopyFrom(tablet_pb.partition());
   req_.set_namespace_id(table_pb.namespace_id());
   req_.set_namespace_name(table_pb.namespace_name());
+  if (table_pb.has_schema_name()) {
+    req_.set_schema_name(table_pb.schema_name());
+  }
   req_.set_pg_table_id(table_pb.pg_table_id());
   req_.set_table_name(table_pb.name());
   req_.mutable_schema()->CopyFrom(table_pb.schema());

@@ -738,6 +738,10 @@ Tablet::Tablet(const TabletInitData& data)
     attrs["table_name"] = metadata_->table_name();
     attrs["table_type"] = TableType_Name(metadata_->table_type());
     attrs["namespace_name"] = metadata_->namespace_name();
+    // Add schema_name for YSQL tables (will be empty for YCQL tables)
+    if (!metadata_->schema_name().empty()) {
+      attrs["schema_name"] = metadata_->schema_name();
+    }
     metric_mem_tracker_ = MemTracker::CreateTracker(
         "Metrics", mem_tracker_, AddToParent::kTrue, CreateMetrics::kFalse);
     table_metrics_entity_ =

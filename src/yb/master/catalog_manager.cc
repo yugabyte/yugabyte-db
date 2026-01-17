@@ -5938,6 +5938,17 @@ scoped_refptr<TableInfo> CatalogManager::CreateTableInfo(const CreateTableReques
     // Use empty string (default proto val) so that this passes has_pgschema_name() checks.
     metadata->mutable_schema()->set_deprecated_pgschema_name("");
   }
+
+  // Extract schema_name from the DEPRECATED field and store it in table metadata
+  // for propagation to tablets and metrics.
+  if (metadata->has_schema() && metadata->schema().has_deprecated_pgschema_name()) {
+    metadata->set_schema_name(metadata->schema().deprecated_pgschema_name());
+  } else if (req.table_type() == PGSQL_TABLE_TYPE) {
+    // Default to "public" for YSQL tables without explicit schema
+    metadata->set_schema_name("public");
+  }
+  // For YCQL tables, leave schema_name empty (no schema concept)
+
   partition_schema.ToPB(metadata->mutable_partition_schema());
   // For index table, set index details (indexed table id and whether the index is local).
   if (req.has_index_info()) {

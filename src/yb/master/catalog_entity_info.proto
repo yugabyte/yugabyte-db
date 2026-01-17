@@ -93,6 +93,8 @@ message SysTablesEntryPB {
   optional bytes namespace_id = 11;
   // The table namespace name.
   optional bytes namespace_name = 30;
+  // The PostgreSQL schema name.
+  optional string schema_name = 48;
 
   // sequence-id for the table metadata.
   // Used on tablet-report to avoid sending "alter-table" notifications.

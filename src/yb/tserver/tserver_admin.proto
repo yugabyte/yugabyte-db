@@ -144,6 +144,7 @@ message CreateTabletRequestPB {
 
   optional bytes namespace_id = 14;
   optional bytes namespace_name = 15;
+  optional string schema_name = 20;  // PostgreSQL schema name
   required string table_name = 5;
   optional TableType table_type = 11;
   required SchemaPB schema = 6;

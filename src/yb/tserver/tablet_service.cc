@@ -1751,7 +1751,8 @@ Status TabletServiceAdminImpl::DoCreateTablet(const CreateTabletRequestPB* req,
       req->table_type(), schema, qlexpr::IndexMap(),
       req->has_index_info() ? std::optional<qlexpr::IndexInfo>(req->index_info()) : std::nullopt,
       0 /* schema_version */, partition_schema, OpId{}, HybridTime{}, req->pg_table_id(),
-      tablet::SkipTableTombstoneCheck(FLAGS_ysql_yb_enable_alter_table_rewrite));
+      tablet::SkipTableTombstoneCheck(FLAGS_ysql_yb_enable_alter_table_rewrite),
+      req->has_schema_name() ? req->schema_name() : "");
 
   if (req->has_wal_retention_secs()) {
     table_info->wal_retention_secs = req->wal_retention_secs();
