@@ -82,6 +82,8 @@ using std::shared_ptr;
 const YBTableName TestWorkloadOptions::kDefaultTableName(
     YQL_DATABASE_CQL, "my_keyspace", "test-workload");
 
+const std::string TestWorkloadOptions::kDefaultPayload = "hello world";
+
 class TestYcqlWorkload::State {
  public:
   explicit State(MiniClusterBase* cluster) : cluster_(cluster) {}
@@ -246,7 +248,7 @@ void TestYcqlWorkload::State::WriteThread(const TestWorkloadOptions& options) {
 
   WaitAllThreads();
 
-  std::string test_payload("hello world");
+  std::string test_payload(TestWorkloadOptions::kDefaultPayload);
   if (options.payload_bytes != test_payload.size()) {
     test_payload = RandomHumanReadableString(options.payload_bytes);
   }

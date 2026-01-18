@@ -175,6 +175,10 @@ service TabletServerService {
 
   rpc TriggerRelcacheInitConnection(TriggerRelcacheInitConnectionRequestPB)
       returns (TriggerRelcacheInitConnectionResponsePB);
+
+  rpc DumpTabletData(DumpTabletDataRequestPB) returns (DumpTabletDataResponsePB) {
+    option (yb.rpc.trivial) = true;
+  }
 }
 
 // Note: Either among transactions_by_tablet or transaction_ids should be set. Both the fields
@@ -666,4 +670,16 @@ message VerifyVectorIndexesRequestPB {
 
 message VerifyVectorIndexesResponsePB {
   optional TabletServerErrorPB error = 1;
+}
+
+message DumpTabletDataRequestPB {
+  required bytes tablet_id = 1;
+  optional string dest_path = 2;
+  optional uint64 read_ht = 3;
+}
+
+message DumpTabletDataResponsePB {
+  optional TabletServerErrorPB error = 1;
+  optional uint64 row_count = 2;
+  optional uint64 xor_hash = 3;
 }

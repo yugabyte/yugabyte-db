@@ -438,6 +438,8 @@ Status ClusterAdminCli::Run(int argc, char** argv) {
   ParseCommandLineFlags(&argc, &argv, true);
   InitGoogleLoggingSafe(prog_name.c_str());
 
+  HybridTime::TEST_SetPrettyToString(true);
+
   const string addrs = FLAGS_master_addresses;
   if (!FLAGS_init_master_addrs.empty()) {
     std::vector<HostPort> init_master_addrs;
@@ -2883,6 +2885,21 @@ Status unsafe_release_object_locks_global_action(
   return client->ReleaseObjectLocksGlobal(txn_id, subtxn_id);
 }
 
+const auto get_table_hash_args = "<table_id> [read_ht]";
+Status get_table_hash_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() < 1 || args.size() > 2) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  const auto table_id = args[0];
+  uint64_t read_ht = 0;
+  if (args.size() == 2) {
+    read_ht = VERIFY_RESULT(CheckedStoll(args[1]));
+  }
+  return client->GetTableXorHash(table_id, read_ht);
+}
+
 }  // namespace
 
 void ClusterAdminCli::RegisterCommandHandlers() {
@@ -2974,6 +2991,8 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(write_universe_key_to_file);
   REGISTER_COMMAND(are_nodes_safe_to_take_down);
   REGISTER_COMMAND_HIDDEN(unsafe_release_object_locks_global);
+  REGISTER_COMMAND(get_table_hash);
+
   // CDCSDK commands
   REGISTER_COMMAND(create_change_data_stream);
   REGISTER_COMMAND(delete_change_data_stream);
