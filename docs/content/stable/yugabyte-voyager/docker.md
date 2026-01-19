@@ -4,26 +4,66 @@ private=true
 +++
 -->
 
-Before installing yb-voyager, ensure that you have the [Docker](https://docs.docker.com/get-docker/) runtime installed on your machine.
+### Prerequisites
 
-1. Pull the docker image from YugabyteDB's docker hub (Pull the version from docker.io) as follows:
+Before installing yb-voyager, ensure that you have the following:
+
+1. [Docker](https://docs.docker.com/get-docker/) runtime installed on your machine.
+1. Docker is configured to run without sudo (recommended). Refer to Manage Docker as a non-root user in the Docker documentation.
+
+### Install
+
+Perform the following steps to install yb-voyager:
+
+1. Pull the docker image from YugabyteDB's docker hub (pull the version from docker.io) as follows:
 
     ```sh
     docker pull software.yugabyte.com/yugabytedb/yb-voyager
     ```
 
-1. Download the script to run yb-voyager using the docker image from yb-voyager's GitHub repository, and move it to your machine's bin directory using the following commands:
+1. Run yb-voyager using one of the following methods:
 
-    ```sh
-    wget -O ./yb-voyager https://raw.githubusercontent.com/yugabyte/yb-voyager/main/docker/yb-voyager-docker && chmod +x ./yb-voyager && sudo mv yb-voyager /usr/local/bin/yb-voyager
-    ```
+    #### Method 1: Using the Wrapper script
 
-    {{< warning >}}
-Use yb-voyager docker script without `sudo` to run Voyager commands. To do this you need to reconfigure docker on your system to run without sudo. Refer to [Manage Docker as a non-root user](https://docs.docker.com/engine/install/linux-postinstall/#manage-docker-as-a-non-root-user) in the Docker documentation.
-    {{< /warning >}}
+    1. Download the script to run yb-voyager using the docker image from yb-voyager's GitHub repository, and move it to your machine's bin directory using the following commands:
 
-1. Check that yb-voyager is installed using the following command:
+        ```sh
+        wget -O ./yb-voyager https://raw.githubusercontent.com/yugabyte/yb-voyager/main/docker/yb-voyager-docker && chmod +x ./yb-voyager && sudo mv yb-voyager /usr/local/bin/yb-voyager
+        ```
 
-    ```sh
-    yb-voyager version
-    ```
+    1. Verify the installation:
+
+        ```sh
+        yb-voyager version
+        ```
+
+    **Limitations:**
+
+    - [Configuration file](../../reference/configuration-file/) is not supported in this method.
+    - When using [`import-data-file`](../../reference/bulk-data-load/import-data-file/), [`import data status`](../../reference/data-migration/import-data/#import-data-status) and [`end-migration`](../../reference/end-migration/) commands do not work.
+    - Certain shorthand flags (like `-e`) are not propagated properly to the docker container.
+
+    #### Method 2: Using the Container directly
+
+    Run the container directly with volume mounts.
+
+    1. Run the container with an interactive shell:
+
+        ```sh
+        docker run -it --rm \
+          --network=host \
+          -v /path/to/export-dir/on/host:/home/ubuntu/export-dir \
+          yugabytedb/yb-voyager bash
+        ```
+
+    1. Once inside the container, run any yb-voyager command. For example, to verify the installation:
+
+        ```sh
+        yb-voyager version
+        ```
+
+    {{< note title="Note" >}}
+
+  Mount all directories that yb-voyager needs to access (export directory, [configuration files](../../reference/configuration-file/), SSL certificates, and so on). On macOS, add `--platform=linux/amd64` to the `docker run` command.
+
+    {{< /note >}}

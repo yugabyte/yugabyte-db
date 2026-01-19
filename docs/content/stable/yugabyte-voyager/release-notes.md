@@ -17,6 +17,21 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, where `YYYY` is the release year, `M` is the month, and `N` is the number of the release in that month.
 
+## v2026.1.1 - January 20, 2026
+
+### Enhancements
+
+- Better validation in assessment: When replica endpoints are provided during assess-migration, Voyager now validates that they belong to the same cluster as the primary by comparing the system identifier. Misconfigurations are detected and flagged early in the migration process.
+
+- When importing snapshot data to target YugabyteDB, import-data now schedules sharded table imports in descending order of size(as opposed to a random order), ensuring that the import of larger tables starts earlier. This avoids scenarios wherein the largest tables are picked towards the end, causing an uneven load on the cluster and therefore becoming the bottleneck in the overall snapshot import.
+
+### Bug Fixes
+
+- Fixed an issue in live migration (fall-back/fall-forward streaming) where INTERVAL columns were not being handled correctly during value conversion, causing import-data to error out.
+
+- Fixed an issue in live migration where prepared statement name collisions occurred when schema/table identifiers exceeded PostgreSQL's 63-character limit. The fix ensures distinct statement names are generated for different tables and operations even with long identifiers.
+
+
 ## v2025.12.2 - December 30, 2025
 
 ### Highlight
