@@ -6,10 +6,10 @@ private=true
 
 ### Prerequisites
 
-Before installing yb-voyager, ensure that you have the following:
+Before installing yb-voyager in Docker, ensure that you have the following:
 
 1. [Docker](https://docs.docker.com/get-docker/) runtime installed on your machine.
-1. Docker is configured to run without sudo (recommended). Refer to Manage Docker as a non-root user in the Docker documentation.
+1. Docker is configured to run without sudo (recommended). Refer to [Manage Docker as a non-root user](https://docs.docker.com/engine/install/linux-postinstall/#manage-docker-as-a-non-root-user) in the Docker documentation.
 
 ### Install
 
@@ -39,8 +39,8 @@ Perform the following steps to install yb-voyager:
 
     **Limitations:**
 
-    - [Configuration file](../../reference/configuration-file/) is not supported in this method.
-    - When using [`import-data-file`](../../reference/bulk-data-load/import-data-file/), [`import data status`](../../reference/data-migration/import-data/#import-data-status) and [`end-migration`](../../reference/end-migration/) commands do not work.
+    - [Configuration file](/stable/yugabyte-voyager/reference/configuration-file/) is not supported in this method.
+    - When using [`import-data-file`](/stable/yugabyte-voyager/reference/bulk-data-load/import-data-file/), [`import data status`](/stable/yugabyte-voyager/reference/data-migration/import-data/#import-data-status) and [`end-migration`](/stable/yugabyte-voyager/reference/end-migration/) commands do not work.
     - Certain shorthand flags (like `-e`) are not propagated properly to the docker container.
 
     #### Method 2: Using the Container directly
@@ -64,6 +64,6 @@ Perform the following steps to install yb-voyager:
 
     {{< note title="Note" >}}
 
-  Mount all directories that yb-voyager needs to access (export directory, [configuration files](../../reference/configuration-file/), SSL certificates, and so on). On macOS, add `--platform=linux/amd64` to the `docker run` command.
+  Mount all directories that yb-voyager needs to access (export directory, [configuration files](/stable/yugabyte-voyager/reference/configuration-file/), SSL certificates, and so on). On macOS, add `--platform=linux/amd64` to the `docker run` command.
 
     {{< /note >}}
