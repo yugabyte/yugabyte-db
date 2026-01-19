@@ -262,6 +262,9 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
   Result<VerifyVectorIndexesResponsePB> VerifyVectorIndexes(
       const VerifyVectorIndexesRequestPB& req, CoarseTimePoint deadline) override;
 
+  Result<DumpTabletDataResponsePB> DumpTabletData(
+      const DumpTabletDataRequestPB& req, CoarseTimePoint deadline) override;
+
   void Shutdown() override;
 
  private:
