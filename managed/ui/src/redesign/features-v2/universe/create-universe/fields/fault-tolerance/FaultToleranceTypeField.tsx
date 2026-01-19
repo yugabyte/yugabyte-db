@@ -1,10 +1,9 @@
 import { Controller, FieldValues, Path, useFormContext } from 'react-hook-form';
-import { styled } from '@material-ui/core';
 import { TFunction } from 'i18next';
 import { YBSelect, mui } from '@yugabyte-ui-library/core';
 import { FaultToleranceType } from '../../steps/resilence-regions/dtos';
 
-const { MenuItem } = mui;
+const { MenuItem, styled } = mui;
 
 interface FaultToleranceTypeFieldProps<T extends FieldValues> {
   name: Path<T>;
@@ -13,7 +12,7 @@ interface FaultToleranceTypeFieldProps<T extends FieldValues> {
 }
 
 const StyledMenuItem = styled(MenuItem)(({ theme }) => ({
-  padding: '8px 16px',
+  padding: '8px 16px !important',
   display: 'flex',
   flexDirection: 'column',
   alignItems: 'flex-start !important',

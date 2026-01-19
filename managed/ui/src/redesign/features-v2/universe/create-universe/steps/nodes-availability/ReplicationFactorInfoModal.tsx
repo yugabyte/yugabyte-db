@@ -1,9 +1,11 @@
 import { FC } from 'react';
-import { styled, Typography } from '@material-ui/core';
-import { HelpOutline } from '@material-ui/icons';
-import { YBModal, mui } from '@yugabyte-ui-library/core';
 import { Trans, useTranslation } from 'react-i18next';
-import BookIcon from '../../../../../assets/documentation.svg';
+import { styled, Typography } from '@material-ui/core';
+import { YBModal, mui } from '@yugabyte-ui-library/core';
+
+//icons
+import { HelpOutline } from '@material-ui/icons';
+import BookIcon from '../../../../../assets/blue-book.svg';
 import RFHelpPng from '../../../../../assets/rfFactorHelp.png';
 
 const { Box } = mui;
@@ -30,7 +32,7 @@ const InfoPanel = styled(Box)(({ theme }) => ({
   padding: '16px',
   display: 'flex',
   flexDirection: 'column',
-  gap: '16px',
+  gap: '24px',
   border: `1px solid ${theme.palette.grey[300]}`,
   borderRadius: '8px',
   background: '#FBFCFD',
@@ -44,6 +46,10 @@ const Link = styled('a')(({ theme }) => ({
   '&:hover': {
     textDecoration: 'none'
   }
+}));
+
+const StyledTypography = styled(Typography)(({ theme }) => ({
+  lineHeight: '22px'
 }));
 
 const HelpImage = styled('img')(({ theme }) => ({
@@ -62,19 +68,26 @@ export const ReplicationFactorInfoModal: FC<ReplicationFactorInfoProps> = ({ ope
       title={t('title')}
       titleIcon={<HelpIcon />}
       titleSeparator
-      overrideHeight={540}
+      overrideHeight={'auto'}
       overrideWidth={600}
     >
-      <Box sx={{ padding: '16px 8px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+      <Box
+        sx={{
+          padding: '16px 8px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '24px'
+        }}
+      >
         <Box style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <Typography variant="body1">{t('rfFactor')}</Typography>
-          <Typography variant="body2">{t('rfFactorAns')}</Typography>
+          <StyledTypography variant="body1">{t('rfFactor')}</StyledTypography>
+          <StyledTypography variant="body2">{t('rfFactorAns')}</StyledTypography>
         </Box>
         <Box style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <Typography variant="body1">{t('FtAndRf')}</Typography>
-          <Typography variant="body2">
+          <StyledTypography variant="body1">{t('FtAndRf')}</StyledTypography>
+          <StyledTypography variant="body2">
             <Trans t={t} i18nKey="FtAndRfAns" components={{ highlight: <Highlight /> }} />
-          </Typography>
+          </StyledTypography>
         </Box>
         <InfoPanel>
           <Box>
@@ -82,11 +95,11 @@ export const ReplicationFactorInfoModal: FC<ReplicationFactorInfoProps> = ({ ope
           </Box>
           <HelpImage src={RFHelpPng} />
         </InfoPanel>
-        <Box sx={{ display: 'flex', gap: '4px', alignItems: 'center', marginLeft: '8px' }}>
+        <Box sx={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
           <BookIcon />
           <Trans
             t={t}
-            style={{ fontSize: '11.5px', fontWeight: 400 }}
+            style={{ fontSize: '11.5px', fontWeight: 400, lineHeight: '16px' }}
             i18nKey="learn"
             components={{
               a: <Link />,

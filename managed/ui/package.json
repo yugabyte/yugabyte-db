@@ -104,7 +104,7 @@
     "@types/react-select": "3.0.19",
     "@types/redux-form": "8.3.1",
     "@types/yup": "0.29.11",
-    "@yugabyte-ui-library/core": "2.0.15",
+    "@yugabyte-ui-library/core": "2.0.17",
     "@yugabytedb/perf-advisor-ui": "1.0.14",
     "ace-builds": "1.4.12",
     "axios": "0.21.3",

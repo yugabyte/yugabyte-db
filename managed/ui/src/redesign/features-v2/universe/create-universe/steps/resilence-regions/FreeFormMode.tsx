@@ -1,13 +1,12 @@
 import { useState } from 'react';
 import { useFormContext } from 'react-hook-form';
 import { Trans, useTranslation } from 'react-i18next';
-import { mui, YBTag } from '@yugabyte-ui-library/core';
-import { Collapse, styled, Typography } from '@material-ui/core';
-import { ResilienceAndRegionsProps } from './dtos';
-import { ReplicationFactorField } from '../../fields/replication-factor/ReplicationFactorField';
+import { mui, YBSmartStatus, StatusType, IconPosition } from '@yugabyte-ui-library/core';
 import { ResilienceTooltip } from './ResilienceTooltip';
+import { ReplicationFactorField } from '../../fields';
+import { ResilienceAndRegionsProps } from './dtos';
 
-const { Box } = mui;
+const { Box, Collapse, styled, Typography } = mui;
 
 const StyledLink = styled('a')(({ theme }) => ({
   color: `${theme.palette.primary[600]}`,
@@ -55,26 +54,27 @@ export const FreeFormMode = () => {
         />
       </Typography>
       <ReplicationFactorField />
-      <Collapse in={replicationFactor === 1}>
-        <Box
-          sx={{
-            display: 'flex',
-            flexDirection: 'row',
-            gap: '8px',
-            alignItems: 'center',
-            color: '#4E5F6D'
-          }}
-        >
-          <YBTag
-            size="medium"
-            customSx={{ color: '#9D6C00', background: '#FFEEC8' }}
-            color="warning"
+      {replicationFactor === 1 && (
+        <Collapse in={replicationFactor === 1}>
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: 'row',
+              gap: '8px',
+              alignItems: 'center',
+              color: '#4E5F6D',
+              marginTop: '-16px'
+            }}
           >
-            {t('guidedMode.faultToleranceNone.caution')}
-          </YBTag>
-          {t('freeFormFaultToleranceMinMsg')}
-        </Box>
-      </Collapse>
+            <YBSmartStatus
+              type={StatusType.WARNING}
+              label={t('guidedMode.faultToleranceNone.caution')}
+              iconPosition={IconPosition.NONE}
+            />
+            {t('freeFormFaultToleranceMinMsg')}
+          </Box>
+        </Collapse>
+      )}
       <ResilienceTooltip
         open={showResilienceTooltip}
         onClose={() => {

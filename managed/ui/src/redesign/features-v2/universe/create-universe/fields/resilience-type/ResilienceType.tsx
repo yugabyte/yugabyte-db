@@ -1,11 +1,14 @@
 import { useMemo } from 'react';
-import { styled, Typography } from '@material-ui/core';
-import { Controller, FieldValues, Path, useFormContext } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
+import { Controller, FieldValues, Path, useFormContext } from 'react-hook-form';
+import { mui } from '@yugabyte-ui-library/core';
 import { ResilienceType } from '../../steps/resilence-regions/dtos';
 
+//icons
 import Empty from '../../../../../assets/circle-unselected.svg';
 import Selected from '../../../../../assets/circle-checked.svg';
+
+const { styled, Typography } = mui;
 
 const StyledContainer = styled('div')({
   display: 'flex',
@@ -19,7 +22,7 @@ const StyledCard = styled('div')(({ theme }) => ({
   borderRadius: '8px',
   //
   border: `1px solid ${theme.palette.primary[300]}`,
-  width: '330px',
+  width: '336px',
   height: '56px',
   color: theme.palette.grey[900],
   fontSize: '13px',
@@ -39,8 +42,9 @@ interface ResilienceTypeProps<T> {
 const Info = styled('span')(({ theme }) => ({
   padding: '4px 6px',
   borderRadius: '6px',
-  background: 'transparent',
-  border: `1px solid ${theme.palette.grey[300]}`
+  background: '#FFF',
+  border: `1px solid ${theme.palette.grey[300]}`,
+  lineHeight: '16px'
 }));
 
 export const ResilienceTypeField = <T extends FieldValues>({ name }: ResilienceTypeProps<T>) => {

@@ -3366,7 +3366,9 @@
         "singleNode": {
           "availabilityZone": "Availability Zone",
           "chooseAvailabilityZone": "Choose Availability Zone",
-          "node": "Node"
+          "node": "Node",
+          "caution": "Caution!",
+          "cautionMsg": "Single node clusters are not resilient to outages and will be subject to downtime during operations that require a restart."
         },
         "helpText": "Advanced placement options such as  <a>Read Replicas</a>  and  <a>Geo Partitioning</a>  can be configured post cluster creation.",
         "freeFormHelpText": "Set the replication factor for your data.  <a>What is this?</a>",
@@ -3384,7 +3386,7 @@
           "nodeErr": "<b>Invalid region count!</b>  You have selected <b>{{selected_regions}} regions</b>. To support the chosen fault tolerance <b>1 region</b> is required. Update your selection to proceed."
         },
         "guidedMode": {
-          "instruction": "Set the resilience for your cluster",
+          "instruction": "Set the resilience for your cluster.",
           "helpText": "What is this?",
           "faultTolerance": "Fault Tolerance",
           "REGION_LEVEL": {

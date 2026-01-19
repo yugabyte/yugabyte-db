@@ -10,7 +10,6 @@
 import { useMemo, useRef } from 'react';
 import { useMethods } from 'react-use';
 import { useTranslation } from 'react-i18next';
-import { styled } from '@material-ui/core';
 import { YBMultiLevelStepper, mui, yba } from '@yugabyte-ui-library/core';
 import { CreateUniverseBreadCrumb } from './CreateUniverseBreadCrumb';
 import AuthenticatedArea from '@app/pages/AuthenticatedArea';
@@ -31,7 +30,7 @@ import Close from '../../../assets/close rounded.svg';
 
 const { YBButton } = yba;
 
-const { Grid2: Grid, Typography, Box } = mui;
+const { Grid2: Grid, Typography, Box, styled } = mui;
 
 const CreateUniverseRoot = styled('div')(() => ({
   '& .full-height-container': {
@@ -82,7 +81,7 @@ export function CreateUniverse() {
           </CreateHeader>
           {/* Body */}
           <Grid container spacing={{ xs: 3, md: 3, lg: 3, xl: 6 }} minHeight={'100%'}>
-            <Grid sx={{ borderRight: '1px solid #E9EEF2', height: '100vh' }} size="auto">
+            <Grid sx={{ borderRight: '1px solid #E9EEF2', minHeight: '100vh' }} size="auto">
               <YBMultiLevelStepper dataTestId="stepper" activeStep={activeStep} steps={steps} />
             </Grid>
             <Grid container direction={'column'} size="grow" spacing={0}>
@@ -96,6 +95,7 @@ export function CreateUniverse() {
                     flexDirection: 'column',
                     maxWidth: '1024px',
                     minWidth: '856px',
+                    width: '100%',
                     gap: 3,
                     mr: 1
                   }}

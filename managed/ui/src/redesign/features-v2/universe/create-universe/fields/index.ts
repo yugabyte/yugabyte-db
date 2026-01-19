@@ -24,3 +24,7 @@ export * from './k8-node-spec/K8NodeSpecField';
 export * from './provider-configuration/ProviderConfiguration';
 export * from './database-version/DatabaseVersion';
 export * from './provider/ProviderSelect';
+export * from './fault-tolerance/FaultToleranceTypeField';
+export * from './replication-factor/ReplicationFactorField';
+export * from './availability-zone/AvailabilityZoneField';
+export * from './resilience-type/ResilienceType';
