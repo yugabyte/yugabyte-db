@@ -3836,6 +3836,8 @@ ybcBuildScanPlanForIndexBuild(Relation relation, IndexInfo *indexInfo)
 	int			i;
 	int			idx;
 	int			resno = 1;
+	/* Use varno=1 since this is always scanning the base relation */
+	int varno = 1;
 
 	/*
 	 * Build the set of required attribute numbers based on IndexInfo.
@@ -3863,16 +3865,15 @@ ybcBuildScanPlanForIndexBuild(Relation relation, IndexInfo *indexInfo)
 
 	/*
 	 * Add columns referenced in index expressions.
-	 * Use varno=1 since this is always scanning the base relation.
 	 */
 	if (indexInfo->ii_Expressions != NIL)
-		pull_varattnos((Node *) indexInfo->ii_Expressions, 1, &required_attrs);
+		pull_varattnos((Node *) indexInfo->ii_Expressions, varno, &required_attrs);
 
 	/*
 	 * Add columns referenced in partial index predicate.
 	 */
 	if (indexInfo->ii_Predicate != NIL)
-		pull_varattnos((Node *) indexInfo->ii_Predicate, 1, &required_attrs);
+		pull_varattnos((Node *) indexInfo->ii_Predicate, varno, &required_attrs);
 
 	/*
 	 * Build targetlist with Var nodes for each required column.
