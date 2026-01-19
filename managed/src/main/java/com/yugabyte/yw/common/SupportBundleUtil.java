@@ -36,6 +36,7 @@ import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterNamespaceConfig;
 import com.yugabyte.yw.models.XClusterTableConfig;
+import com.yugabyte.yw.models.YugawareProperty;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.ebean.PagedList;
@@ -736,6 +737,16 @@ public class SupportBundleUtil {
     saveMetadata(customer, destDir, jsonData, "customer.json");
   }
 
+  public void getYugawarePropertyMetadata(Customer customer, String destDir) {
+    // Gather metadata.
+    List<YugawareProperty> yugawareProperties = YugawareProperty.getAll();
+    JsonNode jsonData =
+        RedactingService.filterSecretFields(Json.toJson(yugawareProperties), RedactionTarget.LOGS);
+
+    // Save the above collected metadata.
+    saveMetadata(customer, destDir, jsonData, "yugaware_property.json");
+  }
+
   public void getUniversesMetadata(Customer customer, String destDir) {
     // Gather metadata.
     List<UniverseResp> universes =
@@ -909,6 +920,7 @@ public class SupportBundleUtil {
     ignoreExceptions(() -> getHaMetadata(customer, destDir));
     ignoreExceptions(() -> getXclusterMetadata(customer, destDir));
     ignoreExceptions(() -> getAuditLogs(customer, universe, destDir, startDate, endDate));
+    ignoreExceptions(() -> getYugawarePropertyMetadata(customer, destDir));
   }
 
   /**
