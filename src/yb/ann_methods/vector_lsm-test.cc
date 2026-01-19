@@ -44,7 +44,7 @@ DECLARE_int32(vector_index_compaction_size_ratio_min_merge_width);
 DECLARE_uint64(TEST_vector_index_delay_saving_first_chunk_ms);
 DECLARE_uint64(vector_index_compaction_always_include_size_threshold);
 
-METRIC_DEFINE_entity(vector_index);
+METRIC_DEFINE_entity(table);
 
 namespace yb::vector_index {
 
@@ -248,7 +248,7 @@ class VectorLSMTest : public YBTest, public testing::WithParamInterface<ANNMetho
 
   std::unique_ptr<MetricRegistry> metric_registry_ = std::make_unique<MetricRegistry>();
   MetricEntityPtr vector_index_metric_entity_ =
-      METRIC_ENTITY_vector_index.Instantiate(metric_registry_.get(), "test");
+      METRIC_ENTITY_table.Instantiate(metric_registry_.get(), "test");
 };
 
 auto GetVectorIndexFactory(ANNMethodKind ann_method) {

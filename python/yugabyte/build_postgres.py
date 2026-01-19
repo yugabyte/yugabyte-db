@@ -444,6 +444,7 @@ class PostgresBuilder(YbBuildToolBase):
         if self.is_clang():
             additional_c_cxx_flags += [
                 '-Wno-shorten-64-to-32',
+                '-Wno-gnu-folding-constant',
             ]
 
         if is_make_step:
