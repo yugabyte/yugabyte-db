@@ -28,7 +28,9 @@ Perform the following steps to install yb-voyager:
     1. Download the script to run yb-voyager using the docker image from yb-voyager's GitHub repository, and move it to your machine's bin directory using the following commands:
 
         ```sh
-        wget -O ./yb-voyager https://raw.githubusercontent.com/yugabyte/yb-voyager/main/docker/yb-voyager-docker && chmod +x ./yb-voyager && sudo mv yb-voyager /usr/local/bin/yb-voyager
+        wget -O ./yb-voyager https://raw.githubusercontent.com/yugabyte/yb-voyager/main/docker/yb-voyager-docker && \
+        chmod +x ./yb-voyager && \
+        sudo mv yb-voyager /usr/local/bin/yb-voyager
         ```
 
     1. Verify the installation:
@@ -62,8 +64,8 @@ Perform the following steps to install yb-voyager:
         yb-voyager version
         ```
 
-    {{< note title="Mount directories" >}}
+        {{< note title="Mount directories" >}}
 
   Mount all directories that yb-voyager needs to access (export directory, [configuration files](/stable/yugabyte-voyager/reference/configuration-file/), SSL certificates, and so on). On macOS, add `--platform=linux/amd64` to the `docker run` command.
 
-    {{< /note >}}
+        {{< /note >}}
