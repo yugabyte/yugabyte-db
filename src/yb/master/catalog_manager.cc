@@ -602,7 +602,7 @@ DEFINE_NON_RUNTIME_bool(emergency_repair_mode, false,
 TAG_FLAG(emergency_repair_mode, advanced);
 TAG_FLAG(emergency_repair_mode, unsafe);
 
-DEFINE_RUNTIME_bool(vector_index_use_yb_hnsw, false,
+DEFINE_RUNTIME_bool(vector_index_use_yb_hnsw, true,
     "Whether to use YbHnsw for stored vector index");
 
 DEFINE_RUNTIME_bool(vector_index_use_hnswlib, false,
