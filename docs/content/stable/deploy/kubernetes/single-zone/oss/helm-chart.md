@@ -322,9 +322,9 @@ Note that only the YB-TServers need to be scaled in a replication factor 3 clust
 
 For Kubernetes deployments, memory limits are controlled via Kubernetes resource specifications in the Helm chart (the `resource.master.limits.memory` and `resource.tserver.limits.memory` values).
 
-The [--memory_limit_hard_bytes](../../../../../reference/configuration/yb-tserver/#memory-limit-hard-bytes) flag is automatically set from these Kubernetes pod memory limits using the command line argument. The [--default_memory_limit_to_ram_ratio](../../../../../reference/configuration/yb-tserver/#default-memory-limit-to-ram-ratio) flag does not apply to Kubernetes universes because memory resources are specified natively in the Kubernetes YAML rather than as a percentage of system RAM.
+The Helm chart automatically converts these Kubernetes pod memory limits to the `--memory_limit_hard_bytes` command-line flag, which is passed to the YugabyteDB processes (yb-tserver and yb-master) when the pods start. The [--default_memory_limit_to_ram_ratio](../../../../../reference/configuration/yb-tserver/#default-memory-limit-to-ram-ratio) flag does not apply to Kubernetes universes because memory resources are specified natively in the Kubernetes YAML rather than as a percentage of system RAM.
 
-For example, if you set `resource.tserver.limits.memory: 4Gi` in your Helm chart, the `--memory_limit_hard_bytes` flag is automatically set to the corresponding byte value (approximately 4294967296 bytes) for the TServer pods.
+For example, if you set `resource.tserver.limits.memory: 4Gi` in your Helm chart, the Helm chart automatically converts this to bytes and sets `--memory_limit_hard_bytes=4294967296` as a command-line argument when starting the TServer pods.
 
 ### Readiness probes
 
