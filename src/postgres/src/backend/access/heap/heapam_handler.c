@@ -1262,15 +1262,12 @@ heapam_index_build_range_scan(Relation heapRelation,
 		else
 			snapshot = SnapshotAny;
 
-		if (IsYBRelation(heapRelation) && yb_enable_index_backfill_column_projection)
+		if (IsYBRelation(heapRelation) && yb_enable_index_backfill_column_projection && !is_system_catalog)
 		{
-			uint32 flags = SO_TYPE_SEQSCAN;
-
 			scan = ybc_heap_beginscan_for_index_build(heapRelation,
 													  snapshot,
 													  0, /* number of keys */
 													  NULL, /* scan key */
-													  flags,
 													  indexInfo);
 		}
 		else

@@ -3957,11 +3957,12 @@ ybc_heap_beginscan_for_index_build(Relation relation,
 								   Snapshot snapshot,
 								   int nkeys,
 								   ScanKey key,
-								   uint32 flags,
 								   IndexInfo *indexInfo)
 {
 	YbScanDesc	ybScan;
 	Scan	   *pg_scan_plan;
+
+	uint32 flags = SO_TYPE_SEQSCAN;
 
 	/*
 	 * Build a Scan plan node with the columns required for this index.
