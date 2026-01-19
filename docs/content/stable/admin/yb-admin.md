@@ -2395,7 +2395,7 @@ yb-admin \
 * *source-master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
 * *replication-group-id*: The replication group identifier.
 * *namespace_names*: Comma-separated list of namespaces.
-* `automatic_ddl_mode`: Use [Automatic xCluster mode](../../deploy/multi-dc/async-replication/async-transactional-setup-automatic/).
+* `automatic_ddl_mode`: Use [xCluster automatic mode](../../deploy/multi-dc/async-replication/async-transactional-setup-automatic/).
 
 #### is_xcluster_bootstrap_required
 

@@ -110,11 +110,13 @@ Transactional replication comes in three modes:
 
 #### Automatic mode
 
-{{<tags/feature/ga idea="153">}}In this mode all aspects of replication are handled automatically, including schema changes.
+In this mode, all aspects of replication are handled automatically, including schema changes.
+
+This is the recommended mode for new deployments.
 
 #### Semi-automatic mode
 
-Provides operationally simpler setup and management of replication compared to manual mode, as well as fewer steps for performing DDL changes. This is the recommended mode for new deployments.
+Provides operationally simpler setup and management of replication compared to manual mode, as well as fewer steps for performing DDL changes.
 
 {{<lead link="https://www.youtube.com/live/vYyn2OUSZFE?si=i3ZkBh6QqHKukB_p">}}
 To learn more, watch [Simplified schema management with xCluster DB Scoped](https://www.youtube.com/live/vYyn2OUSZFE?si=i3ZkBh6QqHKukB_p)
