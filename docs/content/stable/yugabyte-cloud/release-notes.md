@@ -19,6 +19,21 @@ rightNav:
 
 ## Change log
 
+### 2026
+
+#### December 2, 2026
+
+##### Improvements
+
+- Improved robustness of cluster operations. By using capacity reservations, we've made it far less likely for tasks to fail due to capacity shortages on the cloud provider.
+- New regions
+  - AWS - Queretaro (mx-central-1), Dubai (me-central-1)
+  - GCP - Queretaro (northamerica-south1)
+
+##### Database
+
+- Early Access track updated to 2025.1.2.2
+
 ### 2025
 
 #### December 2, 2025
