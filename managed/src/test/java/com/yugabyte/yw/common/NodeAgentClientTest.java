@@ -190,6 +190,8 @@ public class NodeAgentClientTest extends FakeDBApplication {
     mockConfGetter = mock(RuntimeConfGetter.class);
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.nodeAgentConnectionCacheSize)))
         .thenReturn(100);
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.nodeAgentIgnoreConnectionCacheSize)))
+        .thenReturn(false);
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.nodeAgentDescribePollDeadline)))
         .thenReturn(Duration.ofSeconds(5));
 

@@ -23,6 +23,7 @@
 
 #include "yb/dockv/dockv_fwd.h"
 #include "yb/dockv/key_bytes.h"
+#include "yb/dockv/key_entry_value.h"
 #include "yb/dockv/primitive_value.h"
 
 #include "yb/util/ref_cnt_buffer.h"
@@ -290,8 +291,8 @@ class DocKey {
   }
 
   // Converts a redis string key to a doc key
-  static DocKey FromRedisKey(uint16_t hash, const std::string& key);
-  static KeyBytes EncodedFromRedisKey(uint16_t hash, const std::string &key);
+  static DocKey FromRedisKey(uint16_t hash, std::string_view key);
+  static KeyBytes EncodedFromRedisKey(uint16_t hash, std::string_view key);
 
  private:
   class DecodeFromCallback;
@@ -319,12 +320,20 @@ class DocKey {
   KeyEntryValues range_group_;
 };
 
+inline void AppendToKey(const KeyEntryValue& value, KeyBytes& key_bytes) {
+  value.AppendToKey(&key_bytes);
+}
+
+inline void AppendToKey(Slice value, KeyBytes& key_bytes) {
+  key_bytes.AppendRawBytes(value);
+}
+
 template <class Collection>
-void AppendDocKeyItems(const Collection& doc_key_items, KeyBytes* result) {
+void AppendDocKeyItems(const Collection& doc_key_items, KeyBytes& result) {
   for (const auto& item : doc_key_items) {
-    item.AppendToKey(result);
+    AppendToKey(item, result);
   }
-  result->AppendGroupEnd();
+  result.AppendGroupEnd();
 }
 
 class DocKeyEncoderAfterHashStep {
@@ -333,7 +342,7 @@ class DocKeyEncoderAfterHashStep {
 
   template <class Collection>
   void Range(const Collection& range_group) {
-    AppendDocKeyItems(range_group, out_);
+    AppendDocKeyItems(range_group, *out_);
   }
 
  private:
@@ -364,7 +373,17 @@ class DocKeyEncoderAfterTableIdStep {
     // We are not setting the "more items in group" bit on the hash field because it is not part
     // of "hashed" or "range" groups.
     AppendHash(hash, out_);
-    AppendDocKeyItems(hashed_group, out_);
+    AppendDocKeyItems(hashed_group, *out_);
+
+    return DocKeyEncoderAfterHashStep(out_);
+  }
+
+  template <class Collection>
+  DocKeyEncoderAfterHashStep Hash(Slice hash, const Collection& hashed_group) {
+    // We are not setting the "more items in group" bit on the hash field because it is not part
+    // of "hashed" or "range" groups.
+    out_->AppendRawBytes(hash);
+    AppendDocKeyItems(hashed_group, *out_);
 
     return DocKeyEncoderAfterHashStep(out_);
   }

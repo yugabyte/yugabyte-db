@@ -200,6 +200,70 @@ IsTempSchema(const char *schema_name)
 	return schema_name && !strcmp(schema_name, "pg_temp");
 }
 
+bool
+IsTemporaryHelper(char *thing_kind, Oid thing_oid, char *thing_table,
+				  char *relation_oid_column)
+{
+	StringInfoData query;
+	bool		isnull;
+	Datum		is_temp_datum;
+	HeapTuple	tuple;
+	TupleDesc	tupdesc;
+
+	/*
+	 * Each kind of "thing" has a dedicated table indexed by its OID.  We need
+	 * to move from that row to the relation it is associated with in order
+	 * to find that relation's temporary-ness.
+	 */
+
+	SPI_push();
+	initStringInfo(&query);
+	appendStringInfo(&query,
+					 "SELECT (c.relpersistence = 't') "
+					 "FROM pg_catalog.pg_class AS c "
+					 "JOIN pg_catalog.%s AS t ON c.oid = t.%s "
+					 "WHERE t.oid = %u",
+					 thing_table, relation_oid_column, thing_oid);
+
+	int exec_result = SPI_execute(query.data, /* read_only= */ true,
+								  /* tcount= */ 0);
+	if (exec_result != SPI_OK_SELECT)
+		elog(ERROR, "SPI_exec failed (error %d): %s", exec_result, query.data);
+	pfree(query.data);
+
+	if (SPI_processed == 0)
+		elog(ERROR, "could not find %s with OID %u", thing_kind, thing_oid);
+
+	tupdesc = SPI_tuptable->tupdesc;
+	tuple = SPI_tuptable->vals[0];
+	is_temp_datum = SPI_getbinval(tuple, tupdesc, 1, &isnull);
+	/* A null result here would indicate catalog corruption */
+	if (isnull)
+		elog(ERROR, "relpersistence check returned null for %s %u", thing_kind,
+			 thing_oid);
+
+	SPI_pop();
+	return DatumGetBool(is_temp_datum);
+}
+
+bool
+IsTemporaryPolicy(Oid policy_oid)
+{
+	return IsTemporaryHelper("policy", policy_oid, "pg_policy", "polrelid");
+}
+
+bool
+IsTemporaryTrigger(Oid trigger_oid)
+{
+	return IsTemporaryHelper("trigger", trigger_oid, "pg_trigger", "tgrelid");
+}
+
+bool
+IsTemporaryRule(Oid rule_oid)
+{
+	return IsTemporaryHelper("rule", rule_oid, "pg_rewrite", "ev_class");
+}
+
 Oid
 GetColocationIdForTableRewrite(Relation *rel)
 {
@@ -265,10 +329,14 @@ get_typname(Oid pg_type_oid)
 }
 
 bool
-IsMatViewCommand(CommandTag command_tag)
+IsExtensionDdl(CommandTag command_tag)
 {
-	return command_tag == CMDTAG_CREATE_MATERIALIZED_VIEW ||
-		command_tag == CMDTAG_ALTER_MATERIALIZED_VIEW ||
-		command_tag == CMDTAG_REFRESH_MATERIALIZED_VIEW ||
-		command_tag == CMDTAG_DROP_MATERIALIZED_VIEW;
+	if (command_tag == CMDTAG_CREATE_EXTENSION ||
+		command_tag == CMDTAG_DROP_EXTENSION ||
+		command_tag == CMDTAG_ALTER_EXTENSION)
+	{
+		return true;
+	}
+
+	return false;
 }

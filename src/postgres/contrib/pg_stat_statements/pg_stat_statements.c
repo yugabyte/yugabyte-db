@@ -140,7 +140,8 @@ typedef enum pgssVersion
 	PGSS_V1_9,
 	PGSS_V1_10,
 	YB_PGSS_V1_10,
-	YB_V2_0_PGSS_V1_10
+	YB_V2_0_PGSS_V1_10,
+	YB_V2_1_PGSS_V1_10,
 } pgssVersion;
 
 /*
@@ -199,6 +200,11 @@ typedef enum YbIntCounters
 	YB_INT_CONFLICT_RETRIES,
 	YB_INT_READ_RESTART_RETRIES,
 	YB_INT_TOTAL_RETRIES,
+	YB_INT_DOCDB_ROWS_RETURNED,
+	YB_INT_DOCDB_OBSOLETE_ROWS_SCANNED,
+	YB_INT_DOCDB_SEEKS,
+	YB_INT_DOCDB_NEXTS,
+	YB_INT_DOCDB_PREVS,
 
 	YB_INT_COUNTERS_LAST = YB_NUM_COUNTERS_INT
 } YbIntCounters;
@@ -210,6 +216,8 @@ typedef enum YbDoubleCounters
 {
 	YB_DBL_CATALOG_WAIT_TIME_MS,
 	YB_DBL_DOCDB_WAIT_TIME_MS,
+	YB_DBL_DOCDB_READ_TIME_MS,
+	YB_DBL_DOCDB_WRITE_TIME_MS,
 
 	YB_DBL_COUNTERS_LAST = YB_NUM_COUNTERS_DBL
 } YbDoubleCounters;
@@ -442,6 +450,7 @@ PG_FUNCTION_INFO_V1(pg_stat_statements_info);
 PG_FUNCTION_INFO_V1(yb_pg_stat_statements_1_4);
 PG_FUNCTION_INFO_V1(yb_pg_stat_statements_1_10);
 PG_FUNCTION_INFO_V1(yb_2_0_pg_stat_statements_1_10);
+PG_FUNCTION_INFO_V1(yb_2_1_pg_stat_statements_1_10);
 
 static void pgss_shmem_request(void);
 static void pgss_shmem_startup(void);
@@ -2024,6 +2033,8 @@ pgss_store(const char *query, uint64 queryId,
 				yb_instr.tbl_writes + yb_instr.index_writes;
 			e->counters.yb_counters.counters[YB_INT_DOCDB_ROWS_SCANNED] +=
 				yb_instr.tbl_reads.rows_scanned + yb_instr.index_reads.rows_scanned;
+			e->counters.yb_counters.counters[YB_INT_DOCDB_ROWS_RETURNED] +=
+				yb_instr.tbl_reads.rows_received + yb_instr.index_reads.rows_received;
 
 			e->counters.yb_counters.counters_dbl[YB_DBL_CATALOG_WAIT_TIME_MS] +=
 				(yb_instr.catalog_reads.wait_time) / 1000000.0;
@@ -2037,6 +2048,34 @@ pgss_store(const char *query, uint64 queryId,
 			e->counters.yb_counters.counters[YB_INT_READ_RESTART_RETRIES] +=
 				YbGetRetryCount(YB_TXN_RESTART_READ);
 			e->counters.yb_counters.counters[YB_INT_TOTAL_RETRIES] += YbGetTotalRetryCount();
+
+			if (yb_instr.read_metrics)
+			{
+				e->counters.yb_counters.counters[YB_INT_DOCDB_OBSOLETE_ROWS_SCANNED] +=
+					yb_instr.read_metrics->counters[YB_STORAGE_COUNTER_DOCDB_OBSOLETE_KEYS_FOUND];
+				e->counters.yb_counters.counters[YB_INT_DOCDB_SEEKS] +=
+					yb_instr.read_metrics->gauges[YB_STORAGE_GAUGE_REGULARDB_NUMBER_DB_SEEK];
+				e->counters.yb_counters.counters[YB_INT_DOCDB_NEXTS] +=
+					yb_instr.read_metrics->gauges[YB_STORAGE_GAUGE_REGULARDB_NUMBER_DB_NEXT];
+				e->counters.yb_counters.counters[YB_INT_DOCDB_PREVS] +=
+					yb_instr.read_metrics->gauges[YB_STORAGE_GAUGE_REGULARDB_NUMBER_DB_PREV];
+				e->counters.yb_counters.counters_dbl[YB_DBL_DOCDB_READ_TIME_MS] +=
+					yb_instr.read_metrics->events[YB_STORAGE_EVENT_QL_READ_LATENCY].sum / 1000.0;
+			}
+
+			if (yb_instr.write_metrics)
+			{
+				e->counters.yb_counters.counters[YB_INT_DOCDB_OBSOLETE_ROWS_SCANNED] +=
+					yb_instr.write_metrics->counters[YB_STORAGE_COUNTER_DOCDB_OBSOLETE_KEYS_FOUND];
+				e->counters.yb_counters.counters[YB_INT_DOCDB_SEEKS] +=
+					yb_instr.write_metrics->gauges[YB_STORAGE_GAUGE_REGULARDB_NUMBER_DB_SEEK];
+				e->counters.yb_counters.counters[YB_INT_DOCDB_NEXTS] +=
+					yb_instr.write_metrics->gauges[YB_STORAGE_GAUGE_REGULARDB_NUMBER_DB_NEXT];
+				e->counters.yb_counters.counters[YB_INT_DOCDB_PREVS] +=
+					yb_instr.write_metrics->gauges[YB_STORAGE_GAUGE_REGULARDB_NUMBER_DB_PREV];
+				e->counters.yb_counters.counters_dbl[YB_DBL_DOCDB_WRITE_TIME_MS] +=
+					yb_instr.write_metrics->events[YB_STORAGE_EVENT_QL_WRITE_LATENCY].sum / 1000.0;
+			}
 		}
 
 		SpinLockRelease(&e->mutex);
@@ -2097,7 +2136,8 @@ pg_stat_statements_reset(PG_FUNCTION_ARGS)
 #define PG_STAT_STATEMENTS_COLS_V1_10	43
 #define YB_PG_STAT_STATEMENTS_COLS_V1_10	44
 #define YB_V2_0_PG_STAT_STATEMENTS_COLS_V1_10	55
-#define PG_STAT_STATEMENTS_COLS			55	/* maximum of above */
+#define YB_V2_1_PG_STAT_STATEMENTS_COLS_V1_10	61
+#define PG_STAT_STATEMENTS_COLS			61	/* maximum of above */
 
 /*
  * Retrieve statement statistics.
@@ -2125,6 +2165,16 @@ yb_2_0_pg_stat_statements_1_10(PG_FUNCTION_ARGS)
 	bool		showtext = PG_GETARG_BOOL(0);
 
 	pg_stat_statements_internal(fcinfo, YB_V2_0_PGSS_V1_10, showtext);
+
+	return (Datum) 0;
+}
+
+Datum
+yb_2_1_pg_stat_statements_1_10(PG_FUNCTION_ARGS)
+{
+	bool		showtext = PG_GETARG_BOOL(0);
+
+	pg_stat_statements_internal(fcinfo, YB_V2_1_PGSS_V1_10, showtext);
 
 	return (Datum) 0;
 }
@@ -2279,6 +2329,10 @@ pg_stat_statements_internal(FunctionCallInfo fcinfo,
 			break;
 		case YB_V2_0_PG_STAT_STATEMENTS_COLS_V1_10:
 			if (api_version != YB_V2_0_PGSS_V1_10)
+				elog(ERROR, "incorrect number of output arguments");
+			break;
+		case YB_V2_1_PG_STAT_STATEMENTS_COLS_V1_10:
+			if (api_version != YB_V2_1_PGSS_V1_10)
 				elog(ERROR, "incorrect number of output arguments");
 			break;
 		default:
@@ -2516,7 +2570,7 @@ pg_stat_statements_internal(FunctionCallInfo fcinfo,
 		}
 
 		if (api_version == YB_PGSS_V1_4 || api_version == YB_PGSS_V1_10 ||
-			api_version == YB_V2_0_PGSS_V1_10)
+			api_version == YB_V2_0_PGSS_V1_10 || api_version == YB_V2_1_PGSS_V1_10)
 		{
 			values[i++] = yb_get_histogram_jsonb_args(queryid,
 													  entry->key.userid,
@@ -2532,14 +2586,21 @@ pg_stat_statements_internal(FunctionCallInfo fcinfo,
 			values[i++] = Int64GetDatumFast(tmp.yb_counters.counters[YB_INT_DOCDB_READ_OPS]);
 			values[i++] = Int64GetDatumFast(tmp.yb_counters.counters[YB_INT_DOCDB_WRITE_OPS]);
 			values[i++] = Int64GetDatumFast(tmp.yb_counters.counters[YB_INT_DOCDB_ROWS_SCANNED]);
-
-			/* TODO(#28505): Add docdb_rows_returned */
-			nulls[i++] = true;
-
+			values[i++] = Int64GetDatumFast(tmp.yb_counters.counters[YB_INT_DOCDB_ROWS_RETURNED]);
 			values[i++] = Float8GetDatumFast(tmp.yb_counters.counters_dbl[YB_DBL_DOCDB_WAIT_TIME_MS]);
 			values[i++] = Int64GetDatumFast(tmp.yb_counters.counters[YB_INT_CONFLICT_RETRIES]);
 			values[i++] = Int64GetDatumFast(tmp.yb_counters.counters[YB_INT_READ_RESTART_RETRIES]);
 			values[i++] = Int64GetDatumFast(tmp.yb_counters.counters[YB_INT_TOTAL_RETRIES]);
+		}
+
+		if (api_version >= YB_V2_1_PGSS_V1_10)
+		{
+			values[i++] = Int64GetDatumFast(tmp.yb_counters.counters[YB_INT_DOCDB_OBSOLETE_ROWS_SCANNED]);
+			values[i++] = Int64GetDatumFast(tmp.yb_counters.counters[YB_INT_DOCDB_SEEKS]);
+			values[i++] = Int64GetDatumFast(tmp.yb_counters.counters[YB_INT_DOCDB_NEXTS]);
+			values[i++] = Int64GetDatumFast(tmp.yb_counters.counters[YB_INT_DOCDB_PREVS]);
+			values[i++] = Float8GetDatumFast(tmp.yb_counters.counters_dbl[YB_DBL_DOCDB_READ_TIME_MS]);
+			values[i++] = Float8GetDatumFast(tmp.yb_counters.counters_dbl[YB_DBL_DOCDB_WRITE_TIME_MS]);
 		}
 
 		Assert(i == (api_version == PGSS_V1_0 ? PG_STAT_STATEMENTS_COLS_V1_0 :
@@ -2552,6 +2613,7 @@ pg_stat_statements_internal(FunctionCallInfo fcinfo,
 					 api_version == YB_PGSS_V1_4 ? YB_PG_STAT_STATEMENTS_COLS_V1_4 :
 					 api_version == YB_PGSS_V1_10 ? YB_PG_STAT_STATEMENTS_COLS_V1_10 :
 					 api_version == YB_V2_0_PGSS_V1_10 ? YB_V2_0_PG_STAT_STATEMENTS_COLS_V1_10 :
+					 api_version == YB_V2_1_PGSS_V1_10 ? YB_V2_1_PG_STAT_STATEMENTS_COLS_V1_10 :
 					 -1 /* fail if you forget to update this assert */ ));
 
 		tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc, values, nulls);

@@ -210,6 +210,7 @@ downvoted
 downvotes
 Dpl
 Dreamweaver
+Dynatrace
 Ebean
 Ecto
 Elasticsearch
@@ -341,6 +342,7 @@ kanban
 kanbans
 kaniko
 Karma
+keepalive
 Kerberos
 Keycloak
 keyset

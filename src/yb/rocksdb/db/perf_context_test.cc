@@ -103,10 +103,12 @@ TEST_F(PerfContextTest, SeekIntoDeletion) {
     std::string value;
 
     perf_context.Reset();
-    StopWatchNano timer(Env::Default());
-    timer.Start();
-    auto status = db->Get(read_options, key, &value);
-    auto elapsed_nanos = timer.ElapsedNanos();
+    uint64_t elapsed_nanos;
+    Status status;
+    {
+      StopWatchNano timer(Env::Default(), &elapsed_nanos);
+      status = db->Get(read_options, key, &value);
+    }
     ASSERT_TRUE(status.IsNotFound());
     hist_get.Add(perf_context.user_key_comparison_count);
     hist_get_time.Add(elapsed_nanos);
@@ -122,10 +124,12 @@ TEST_F(PerfContextTest, SeekIntoDeletion) {
     std::unique_ptr<Iterator> iter(db->NewIterator(read_options));
 
     perf_context.Reset();
-    StopWatchNano timer(Env::Default(), true);
-    iter->SeekToFirst();
+    uint64_t elapsed_nanos;
+    {
+      StopWatchNano timer(Env::Default(), &elapsed_nanos);
+      iter->SeekToFirst();
+    }
     hist_seek_to_first.Add(perf_context.user_key_comparison_count);
-    auto elapsed_nanos = timer.ElapsedNanos();
     ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
 
     if (FLAGS_verbose) {
@@ -145,9 +149,11 @@ TEST_F(PerfContextTest, SeekIntoDeletion) {
     std::string key = "k" + ToString(i);
 
     perf_context.Reset();
-    StopWatchNano timer(Env::Default(), true);
-    iter->Seek(key);
-    auto elapsed_nanos = timer.ElapsedNanos();
+    uint64_t elapsed_nanos;
+    {
+      StopWatchNano timer(Env::Default(), &elapsed_nanos);
+      iter->Seek(key);
+    }
     ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
     hist_seek.Add(perf_context.user_key_comparison_count);
     if (FLAGS_verbose) {
@@ -159,13 +165,14 @@ TEST_F(PerfContextTest, SeekIntoDeletion) {
     }
 
     perf_context.Reset();
-    StopWatchNano timer2(Env::Default(), true);
-    iter->Next();
-    auto elapsed_nanos2 = timer2.ElapsedNanos();
+    {
+      StopWatchNano timer(Env::Default(), &elapsed_nanos);
+      iter->Next();
+    }
     ASSERT_OK(ResultToStatus(iter->CheckedValid()));
     if (FLAGS_verbose) {
       std::cout << "next cmp: " << perf_context.user_key_comparison_count
-                << "elapsed: " << elapsed_nanos2 << "ns\n";
+                << "elapsed: " << elapsed_nanos << "ns\n";
     }
   }
 
@@ -174,42 +181,18 @@ TEST_F(PerfContextTest, SeekIntoDeletion) {
   }
 }
 
-TEST_F(PerfContextTest, StopWatchNanoOverhead) {
+TEST_F(PerfContextTest, StopWatchOverhead) {
   // profile the timer cost by itself!
   const int kTotalIterations = 1000000;
   std::vector<uint64_t> timings(kTotalIterations);
 
-  StopWatchNano timer(Env::Default(), true);
   for (auto& timing : timings) {
-    timing = timer.ElapsedNanos(true /* reset */);
+    StopWatchNano timer(Env::Default(), &timing);
   }
 
   HistogramImpl histogram;
   for (const auto timing : timings) {
     histogram.Add(timing);
-  }
-
-  if (FLAGS_verbose) {
-    std::cout << histogram.ToString();
-  }
-}
-
-TEST_F(PerfContextTest, StopWatchOverhead) {
-  // profile the timer cost by itself!
-  const int kTotalIterations = 1000000;
-  uint64_t elapsed = 0;
-  std::vector<uint64_t> timings(kTotalIterations);
-
-  StopWatch timer(Env::Default(), nullptr, 0, &elapsed);
-  for (auto& timing : timings) {
-    timing = elapsed;
-  }
-
-  HistogramImpl histogram;
-  uint64_t prev_timing = 0;
-  for (const auto timing : timings) {
-    histogram.Add(timing - prev_timing);
-    prev_timing = timing;
   }
 
   if (FLAGS_verbose) {
@@ -506,15 +489,16 @@ TEST_F(PerfContextTest, SeekKeyComparison) {
   HistogramImpl hist_time_diff;
 
   SetPerfLevel(PerfLevel::kEnableTime);
-  StopWatchNano timer(Env::Default());
   for (const int i : keys) {
     std::string key = "k" + ToString(i);
     std::string value = "v" + ToString(i);
 
     perf_context.Reset();
-    timer.Start();
-    ASSERT_OK(db->Put(write_options, key, value));
-    auto put_time = timer.ElapsedNanos();
+    uint64_t put_time;
+    {
+      StopWatchNano timer(Env::Default(), &put_time);
+      ASSERT_OK(db->Put(write_options, key, value));
+    }
     hist_put_time.Add(put_time);
     hist_wal_time.Add(perf_context.write_wal_time);
     hist_time_diff.Add(put_time - perf_context.write_wal_time);

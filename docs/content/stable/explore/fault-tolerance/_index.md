@@ -4,6 +4,9 @@ headerTitle: Resiliency, high availability, and fault tolerance
 linkTitle: Resiliency
 description: Simulate fault tolerance and resilience in a local YugabyteDB database universe.
 headcontent: Survive and recover from outages
+aliases:
+  - /stable/explore/postgresql/fault-tolerance/
+  - /stable/explore/fault-tolerance-macos/
 menu:
   stable:
     identifier: fault-tolerance
@@ -15,7 +18,7 @@ showRightNav: true
 
 Resiliency, in the context of cloud databases, refers to the ability to withstand and recover from various types of failures. These can range from hardware malfunctions and software bugs to network outages and natural disasters. A resilient database system is designed to maintain data integrity, accessibility, and continuity of operations, even in the face of adverse events. Achieving resilience in cloud databases requires a multi-faceted approach, involving robust architectural design, effective data replication and backup strategies, load balancing, failover mechanisms, and comprehensive monitoring and incident response procedures.
 
-YugabyteDB has been designed from the ground up to be resilient. YugabyteDB can continuously serve requests in the event of planned or unplanned outages, such as system upgrades and outages related to a node, availability zone, or region. YugabyteDB's high availability is achieved through a combination of distributed architecture, data replication, consensus algorithms, automatic rebalancing, and failure detection mechanisms, ensuring that the database remains available, consistent, and resilient to failures of fault domains.
+YugabyteDB has been designed from the ground up to be resilient. YugabyteDB can continuously serve requests in the event of planned or unplanned outages, such as system upgrades and outages related to a node, availability zone, or region. YugabyteDB's high availability is achieved through a combination of distributed architecture, data replication, consensus algorithms, [automatic rebalancing](../../architecture/docdb-sharding/cluster-balancing/), and failure detection mechanisms, ensuring that the database remains available, consistent, and resilient to failures of fault domains.
 
 The following sections explore the key strategies, technologies, and best practices for enhancing the resilience of cloud databases.
 

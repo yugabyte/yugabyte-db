@@ -76,11 +76,9 @@ struct MutableTabletOptions {
 using TransactionManagerProvider = std::function<client::TransactionManager&()>;
 
 YB_DEFINE_ENUM(VectorIndexThreadPoolType, (kBackground)(kBackfill)(kInsert));
-YB_DEFINE_ENUM(VectorIndexPriorityThreadPoolType, (kCompaction));
 
 using VectorIndexThreadPoolProvider = std::function<rpc::ThreadPool*(VectorIndexThreadPoolType)>;
-using VectorIndexPriorityThreadPoolProvider =
-    std::function<PriorityThreadPool*(VectorIndexPriorityThreadPoolType)>;
+using VectorIndexCompactionTokenProvider = std::function<PriorityThreadPoolTokenPtr()>;
 
 struct TabletInitData {
   RaftGroupMetadataPtr metadata;
@@ -114,7 +112,7 @@ struct TabletInitData {
       get_min_xcluster_schema_version = nullptr;
   rpc::Messenger* messenger = nullptr;
   VectorIndexThreadPoolProvider vector_index_thread_pool_provider = {};
-  VectorIndexPriorityThreadPoolProvider vector_index_priority_thread_pool_provider = {};
+  VectorIndexCompactionTokenProvider vector_index_compaction_token_provider = {};
   hnsw::BlockCachePtr vector_index_block_cache = {};
 };
 

@@ -90,6 +90,7 @@ export interface IBackup {
   kmsConfigUUID?: null | string;
   scheduleName: string;
   useTablespaces: boolean;
+  useRoles: boolean;
 }
 
 export interface IBackupEditParams {

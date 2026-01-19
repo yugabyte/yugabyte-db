@@ -193,6 +193,15 @@ airgap_flag=""
 {% endif %}
 
 installer_dir="{{ yb_home_dir }}/.install"
+# Check if root systemd unit exists.
+if systemctl list-units | grep -F yb-node-agent.service; then
+    # Uninstall root unit as node-agent-installer.sh run as non-root cannot handle it.
+    echo "Uninstalling root systemd unit of node agent service"
+    $installer_dir/node-agent-installer.sh -c uninstall -u {{ url }} -t {{ api_key }} \
+    --node_ip {{ node_ip }}
+fi
+
+# Install node agent as a systemd service.
 su - {{ yb_user }} -c "\"$installer_dir/node-agent-installer.sh\" -c install \
     -u {{ url }} -p {{ node_agent_port }} -t {{ api_key }} --provider_id $provider_id \
     --instance_type {{ instance_type_name }} --region_name {{ provider_region_name }} \
@@ -207,9 +216,6 @@ else
 fi
 
 loginctl enable-linger {{ yb_user }}
-# install node_agent service
-su - {{ yb_user }} -c "\"$installer_dir/node-agent-installer.sh\" -c install_service \
-    --user {{ yb_user }}"
 
 if [ $? -eq 0 ]; then
   echo "Node agent service installation successful"
@@ -289,11 +295,11 @@ if test -f "{{ tmp_directory }}/add_node_to_provider.json"; then
             if [ $http_status -ge 200 ] && [ $http_status -lt 300 ]; then
                 echo "Node added successfully"
             else
-                echo "Error: POST request failed with HTTP status $http_status"
+                echo "Error: POST request to add node failed with HTTP status $http_status"
                 exit 1
             fi
         else
-            echo "Error: POST request failed with HTTP status $http_status"
+            echo "Error: POST request to get provider failed with HTTP status $http_status"
             exit 1
         fi
     fi

@@ -49,17 +49,14 @@ var deleteReleaseCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(deploymentType)) != 0 {
+		if !util.IsEmptyString(deploymentType) {
 			releasesListRequest = releasesListRequest.DeploymentType(
 				strings.ToLower(deploymentType))
 		}
 
 		rList, response, err := releasesListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err, "Release", "Delete - List Releases")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Release", "Delete - List Releases")
 		}
 
 		requestedRelease := make([]ybaclient.ResponseRelease, 0)
@@ -83,10 +80,7 @@ var deleteReleaseCmd = &cobra.Command{
 
 		rDelete, response, err := authAPI.DeleteNewRelease(releaseUUID).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err, "Release", "Delete")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Release", "Delete")
 		}
 
 		if rDelete.GetSuccess() {

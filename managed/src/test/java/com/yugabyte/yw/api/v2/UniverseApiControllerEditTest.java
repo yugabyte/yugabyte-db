@@ -14,6 +14,7 @@ import com.yugabyte.yba.v2.client.api.UniverseApi;
 import com.yugabyte.yba.v2.client.models.ClusterAddSpec;
 import com.yugabyte.yba.v2.client.models.ClusterEditSpec;
 import com.yugabyte.yba.v2.client.models.ClusterNodeSpec;
+import com.yugabyte.yba.v2.client.models.ClusterPartitionSpec;
 import com.yugabyte.yba.v2.client.models.ClusterPlacementSpec;
 import com.yugabyte.yba.v2.client.models.ClusterProviderEditSpec;
 import com.yugabyte.yba.v2.client.models.ClusterSpec;
@@ -221,6 +222,26 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
         new ClusterEditSpec()
             .uuid(primaryClusterSpec.getUuid())
             .instanceTags(Map.of("tag1", "value1", "tag2", "value2"));
+    UniverseEditSpec universeEditSpec =
+        new UniverseEditSpec().expectedUniverseVersion(-1).clusters(List.of(clusterEditSpec));
+    // run the edit universe
+    runEditUniverseV2(universeEditSpec);
+  }
+
+  @Test
+  public void testEditUniverseV2GeoPartitions() throws ApiException {
+    UniverseApi api = new UniverseApi();
+    // payload for editing the Universe storage spec
+    UniverseSpec universeSpec = api.getUniverse(customer.getUuid(), universeUuid).getSpec();
+    ClusterSpec primaryClusterSpec =
+        universeSpec.getClusters().stream()
+            .filter(c -> c.getClusterType() == ClusterTypeEnum.PRIMARY)
+            .findAny()
+            .orElseThrow();
+    List<ClusterPartitionSpec> geoPartitionSpec =
+        getUniverseCreateSpecV2Geo().getSpec().getClusters().get(0).getPartitionsSpec();
+    ClusterEditSpec clusterEditSpec =
+        new ClusterEditSpec().uuid(primaryClusterSpec.getUuid()).partitionsSpec(geoPartitionSpec);
     UniverseEditSpec universeEditSpec =
         new UniverseEditSpec().expectedUniverseVersion(-1).clusters(List.of(clusterEditSpec));
     // run the edit universe

@@ -14,10 +14,12 @@ import static org.junit.Assert.assertTrue;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CreateTableSpaces;
 import com.yugabyte.yw.common.LocalNodeManager;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.TableSpaceStructures;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagGroup;
@@ -287,7 +289,7 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
     userIntent.numNodes = 6;
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.nodePrefix = "univConfCreate";
-    taskParams.upsertPrimaryCluster(userIntent, null);
+    taskParams.upsertPrimaryCluster(userIntent, null, null);
     PlacementInfoUtil.updateUniverseDefinition(
         taskParams, customer.getId(), taskParams.getPrimaryCluster().uuid, CREATE);
 
@@ -411,7 +413,7 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
     userIntent.numNodes = 6;
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.nodePrefix = "univConfCreate";
-    taskParams.upsertPrimaryCluster(userIntent, null);
+    taskParams.upsertPrimaryCluster(userIntent, null, null);
     PlacementInfoUtil.updateUniverseDefinition(
         taskParams, customer.getId(), taskParams.getPrimaryCluster().uuid, CREATE);
 
@@ -466,14 +468,10 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
 
     NodeDetails nodeDetails = universe.getNodes().iterator().next();
 
-    String createTblSpace =
-        "CREATE TABLESPACE two_zone_tablespace\n"
-            + "  WITH (replica_placement='{ \"num_replicas\": 3, \"placement_blocks\": [\n"
-            + "    {\"cloud\":\"local\",\"region\":\"region-1\","
-            + "\"zone\":\"az-1\",\"min_num_replicas\":1},\n"
-            + "    {\"cloud\":\"local\",\"region\":\"region-1\","
-            + "\"zone\":\"az-2\",\"min_num_replicas\":2}\n"
-            + "]}')";
+    TableSpaceStructures.TableSpaceInfo twoZoneTablespace =
+        initTablespace("two_zone_tablespace", az1.getUuid(), 1, az2.getUuid(), 2);
+
+    String createTblSpace = CreateTableSpaces.getTablespaceCreationQuery(twoZoneTablespace);
 
     ShellResponse response =
         localNodeUniverseManager.runYsqlCommand(
@@ -483,8 +481,7 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
             createTblSpace,
             20,
             userIntent.isYSQLAuthEnabled(),
-            false,
-            true);
+            false);
     assertTrue("Message is " + response.getMessage(), response.isSuccess());
 
     response =
@@ -647,7 +644,7 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
             new HashMap<>(), Collections.singletonMap("log_max_seconds_to_retain", "86333"));
     universe.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags = specificGFlags;
 
-    CommissionerBaseTest.setPausePosition(20);
+    CommissionerBaseTest.setPausePosition(21);
     GFlagsUpgradeParams gFlagsUpgradeParams =
         getUpgradeParams(
             universe, UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, GFlagsUpgradeParams.class);

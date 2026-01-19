@@ -169,7 +169,7 @@ public class TestHelper {
     UniverseDefinitionTaskParams details = universe.getUniverseDetails();
     UniverseDefinitionTaskParams.UserIntent userIntent = details.getPrimaryCluster().userIntent;
     userIntent.ybSoftwareVersion = version;
-    details.upsertPrimaryCluster(userIntent, null);
+    details.upsertPrimaryCluster(userIntent, null, null);
     universe.setUniverseDetails(details);
     universe.save();
   }
@@ -201,7 +201,7 @@ public class TestHelper {
     UniverseDefinitionTaskParams details = universe.getUniverseDetails();
     UniverseDefinitionTaskParams.UserIntent userIntent = details.getPrimaryCluster().userIntent;
     userIntent.useSystemd = true;
-    details.upsertPrimaryCluster(userIntent, null);
+    details.upsertPrimaryCluster(userIntent, null, null);
     universe.setUniverseDetails(details);
     universe.save();
   }

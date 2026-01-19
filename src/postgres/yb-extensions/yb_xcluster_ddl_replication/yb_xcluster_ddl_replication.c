@@ -20,13 +20,14 @@
 
 #include "catalog/pg_type_d.h"
 #include "commands/event_trigger.h"
+#include "commands/extension.h"
 #include "executor/spi.h"
 #include "extension_util.h"
 #include "json_util.h"
-#include "nodes/pg_list.h"
 #include "source_ddl_end_handler.h"
 #include "utils/builtins.h"
 #include "utils/fmgrprotos.h"
+#include "utils/queryjumble.h"
 
 PG_MODULE_MAGIC;
 
@@ -36,8 +37,8 @@ PG_MODULE_MAGIC;
  */
 
 static bool enable_manual_ddl_replication = false;
-char	   *ddl_queue_primary_key_ddl_end_time = NULL;
-char	   *ddl_queue_primary_key_queue_id = NULL;
+char		*ddl_queue_primary_key_ddl_end_time = NULL;
+char 		*ddl_queue_primary_key_queue_id = NULL;
 
 static const struct config_enum_entry replication_role_overrides[] = {
 	{"", XCLUSTER_ROLE_UNSPECIFIED, /* hidden */ false},
@@ -58,21 +59,25 @@ static const struct config_enum_entry replication_role_overrides[] = {
 static int	replication_role = XCLUSTER_ROLE_UNAVAILABLE;
 static int	replication_role_override = XCLUSTER_ROLE_UNSPECIFIED;
 
-/* Current nesting depth of ExecutorRun+ProcessUtility calls */
-static int	exec_nested_level = 0;
+/*
+ * Information about the current DDL.
+ * The query string, location and length represent the substring of the query
+ * that is currently being processed. This enables to capture only the DDL part
+ * of a multi-statement query, or a FUNCTION with multiple statements.
+ */
+const char *query_string = NULL;
+int query_location = 0;
+int query_len = 0;
+Node *parsetree = NULL;
 
-static bool captured_by_extension = false;
-
-/* Check if the top level statement is a extension DDL. */
-static bool is_extension_ddl = false;
-
-/* Check if this is a DDL related to our own extension. */
-static bool is_self_extension_ddl = false;
+/* Information about an extension that is being created. */
+bool is_in_extension_ddl = false;
+bool is_self_extension_ddl = false;
+char *current_extension_name = NULL;
 
 /*
  * Util functions.
  */
-static void EvaluateTopDdlCommand(CommandTag command_tag);
 static void RecordTempRelationDDL();
 static void XClusterProcessUtility(PlannedStmt *pstmt,
 								   const char *queryString,
@@ -200,10 +205,18 @@ FetchReplicationRole()
 }
 
 bool
-IsDisabled()
+IsDisabled(CommandTag command_tag)
 {
-	return !captured_by_extension || (replication_role != XCLUSTER_ROLE_AUTOMATIC_SOURCE &&
-									  replication_role != XCLUSTER_ROLE_AUTOMATIC_TARGET);
+	/*
+	 * Disabled if we are not in xCluster automatic mode.
+	 * Disabled for our own extension.
+	 * Disabled if we are in an extension DDL and not handling the top level
+	 * query.
+	 */
+	return (replication_role != XCLUSTER_ROLE_AUTOMATIC_SOURCE &&
+			replication_role != XCLUSTER_ROLE_AUTOMATIC_TARGET) ||
+		   is_self_extension_ddl ||
+		   (is_in_extension_ddl && !IsExtensionDdl(command_tag));
 }
 
 bool
@@ -295,106 +308,13 @@ InsertIntoReplicatedDDLs(int64 ddl_end_time, int64 query_id)
 	JsonbParseState *state = NULL;
 
 	(void) pushJsonbValue(&state, WJB_BEGIN_OBJECT, NULL);
-	(void) AddStringJsonEntry(state, "query", debug_query_string);
+	(void) AddNStringJsonEntry(state, "query", query_string, query_len);
 	JsonbValue *jsonb_val = pushJsonbValue(&state, WJB_END_OBJECT, NULL);
 	Jsonb	   *jsonb = JsonbValueToJsonb(jsonb_val);
 
 	InsertIntoTable(REPLICATED_DDLS_TABLE_NAME, ddl_end_time, query_id, jsonb);
 
 	CLOSE_MEM_CONTEXT_AND_SPI;
-}
-
-bool
-IsExtensionDdl(CommandTag command_tag)
-{
-	if (command_tag == CMDTAG_CREATE_EXTENSION ||
-		command_tag == CMDTAG_DROP_EXTENSION ||
-		command_tag == CMDTAG_ALTER_EXTENSION)
-	{
-		return true;
-	}
-
-	return false;
-}
-
-/*
- * Extensions DDLs result in multiple DDL statements being executed during
- * create/alter/drop of extensions. This function checks whether the current
- * DDL is being executed as part of an Extension DDL such as CREATE/ALTER/DROP
- * extension.
- */
-bool
-IsCurrentDdlPartOfExtensionDdlBatch()
-{
-	return is_extension_ddl && exec_nested_level > 1;
-}
-
-/*
- * Reports an error if the query string has multiple commands in it, or a
- * command tag that doesn't match up with the one captured from the event
- * trigger.
- *
- * Some clients can send multiple commands together as one single query string.
- * This can cause issues for this extension:
- * - If the query has a mix of DDL and DML commands, then we'd end up
- *   replicating those rows twice.
- * - Even if the query has multiple DDLs in it, it is simpler to handle these
- *   individually. Eg. we may need to add additional modifications for each
- *   individual DDL (eg setting oids).
- */
-void
-DisallowMultiStatementQueries(CommandTag command_tag)
-{
-	List	   *parse_tree = pg_parse_query(debug_query_string);
-	ListCell   *lc;
-	int			count = 0;
-
-	foreach(lc, parse_tree)
-	{
-		++count;
-		RawStmt    *stmt = (RawStmt *) lfirst(lc);
-		CommandTag	stmt_command_tag = CreateCommandTag(stmt->stmt);
-
-		/*
-		 * Exception for SELECT ... INTO: The parser tags this as a SELECT,
-		 * so we must check the parsed statement for an IntoClause.
-		 */
-		if (command_tag == CMDTAG_SELECT_INTO &&
-			stmt_command_tag == CMDTAG_SELECT &&
-			((SelectStmt *) stmt->stmt)->intoClause != NULL)
-		{
-			stmt_command_tag = CMDTAG_SELECT_INTO;
-		}
-
-		/*
-		 * Only Extension DDLs are allowed to be part of multi-statement as
-		 * they typically executes multiple DDLs under the covers.
-		 */
-		if (!IsExtensionDdl(stmt_command_tag))
-		{
-			if (count > 1 || command_tag != stmt_command_tag)
-				elog(ERROR,
-					 "Database is replicating DDLs for xCluster. In this mode only "
-					 "a single DDL command is allowed in the query string.\n"
-					 "Please run the commands one at a time.\n"
-					 "Full query string: %s. \n"
-					 "Statement 1: %s\n"
-					 "Statement 2: %s",
-					 debug_query_string,
-					 GetCommandTagName(command_tag),
-					 GetCommandTagName(stmt_command_tag));
-		}
-		else if (!IsPassThroughDdlCommandSupported(command_tag))
-		{
-			elog(ERROR,
-				 "Database is replicating DDLs for xCluster. Extension cannot be supported "
-				 "because it contains DDLs that are not yet supported by replication. \n"
-				 "Full query string: %s. \n"
-				 "Unsupported DDL within extension : %s\n",
-				 debug_query_string,
-				 GetCommandTagName(command_tag));
-		}
-	}
 }
 
 void
@@ -413,7 +333,7 @@ HandleSourceDDLEnd(EventTriggerData *trig_data)
 
 	(void) pushJsonbValue(&state, WJB_BEGIN_OBJECT, NULL);
 	(void) AddNumericJsonEntry(state, "version", 1);
-	(void) AddStringJsonEntry(state, "query", debug_query_string);
+	(void) AddNStringJsonEntry(state, "query", query_string, query_len);
 	(void) AddStringJsonEntry(state, "command_tag",
 							  GetCommandTagName(trig_data->tag));
 
@@ -545,9 +465,6 @@ HandleSourceTableRewrite(EventTriggerData *trig_data)
 void
 HandleSourceDDLStart(EventTriggerData *trig_data)
 {
-	if (is_self_extension_ddl)
-		return;
-
 	/* By default we don't replicate. */
 	yb_should_replicate_ddl = false;
 	if (enable_manual_ddl_replication)
@@ -560,187 +477,48 @@ HandleSourceDDLStart(EventTriggerData *trig_data)
 		return;
 	}
 
-	/*
-	 * Do some initial checks here before the source query runs.
-	 */
-	DisallowMultiStatementQueries(trig_data->tag);
 	ClearRewrittenTableOidList();
 }
 
 void
 HandleTargetDDLStart(EventTriggerData *trig_data)
 {
-	if (IsCurrentDdlPartOfExtensionDdlBatch())
-		return;
-
 	yb_xcluster_target_ddl_bypass = false;
 
 	/* Bypass DDLs executed in manual mode, or from the target poller. */
-	if (enable_manual_ddl_replication ||
-		yb_xcluster_automatic_mode_target_ddl || is_self_extension_ddl)
+	if (enable_manual_ddl_replication || yb_xcluster_automatic_mode_target_ddl)
 	{
 		yb_xcluster_target_ddl_bypass = true;
 		return;
 	}
 
-	DisallowMultiStatementQueries(trig_data->tag);
-
 	/*
-	 * Allow DDLs related to materialized views.
 	 * Temp relations are bypassed in RecordTempRelationDDL.
 	 * DDLs that are not caught by the trigger (ex CREATE DATABASE) are bypassed
 	 * in XClusterProcessUtility.
 	 */
-	yb_xcluster_target_ddl_bypass = IsMatViewCommand(trig_data->tag);
-}
-
-PG_FUNCTION_INFO_V1(handle_ddl_start);
-Datum
-handle_ddl_start(PG_FUNCTION_ARGS)
-{
-	if (!CALLED_AS_EVENT_TRIGGER(fcinfo))	/* internal error */
-		elog(ERROR, "not fired by event trigger manager");
-
-	/*
-	 * Only process statements that have been captured by the trigger at the top
-	 * level. This allows us to bypass creation of our own extension which we
-	 * won't capture until the trigger is created, which happens in a nested
-	 * level.
-	 */
-	if (exec_nested_level == 1)
-		captured_by_extension = true;
-
-	FetchReplicationRole();
-	if (IsDisabled())
-		PG_RETURN_NULL();
-
-	EventTriggerData *trig_data = (EventTriggerData *) fcinfo->context;
-
-	if (exec_nested_level == 1)
-		EvaluateTopDdlCommand(trig_data->tag);
-
-	if (IsReplicationSource())
-	{
-		HandleSourceDDLStart(trig_data);
-	}
-
-	if (IsReplicationTarget())
-	{
-		HandleTargetDDLStart(trig_data);
-	}
-
-	PG_RETURN_NULL();
-}
-
-PG_FUNCTION_INFO_V1(handle_ddl_end);
-Datum
-handle_ddl_end(PG_FUNCTION_ARGS)
-{
-	if (!CALLED_AS_EVENT_TRIGGER(fcinfo))	/* internal error */
-		elog(ERROR, "not fired by event trigger manager");
-
-	if (IsDisabled())
-		PG_RETURN_NULL();
-
-	EventTriggerData *trig_data = (EventTriggerData *) fcinfo->context;
-
-	if (is_self_extension_ddl)
-		PG_RETURN_NULL();
-
-	/*
-	 * Capture the DDL as long as its not a step within another Extension DDL
-	 * batch.
-	 */
-	if (!IsCurrentDdlPartOfExtensionDdlBatch())
-	{
-		if (IsReplicationSource())
-		{
-			HandleSourceDDLEnd(trig_data);
-		}
-		if (IsReplicationTarget())
-		{
-			HandleTargetDDLEnd(trig_data);
-		}
-	}
-
-	PG_RETURN_NULL();
-}
-
-PG_FUNCTION_INFO_V1(handle_sql_drop);
-Datum
-handle_sql_drop(PG_FUNCTION_ARGS)
-{
-	if (!CALLED_AS_EVENT_TRIGGER(fcinfo))	/* internal error */
-		elog(ERROR, "not fired by event trigger manager");
-
-	if (IsDisabled())
-		PG_RETURN_NULL();
-
-	EventTriggerData *trig_data = (EventTriggerData *) fcinfo->context;
-
-	if (is_self_extension_ddl)
-		PG_RETURN_NULL();
-
-	if (IsReplicationSource() && !IsCurrentDdlPartOfExtensionDdlBatch())
-	{
-		HandleSourceSQLDrop(trig_data);
-	}
-
-	PG_RETURN_NULL();
-}
-
-PG_FUNCTION_INFO_V1(handle_table_rewrite);
-Datum
-handle_table_rewrite(PG_FUNCTION_ARGS)
-{
-	if (!CALLED_AS_EVENT_TRIGGER(fcinfo))	/* internal error */
-		elog(ERROR, "not fired by event trigger manager");
-
-	if (IsDisabled())
-		PG_RETURN_NULL();
-
-	EventTriggerData *trig_data = (EventTriggerData *) fcinfo->context;
-
-	if (is_self_extension_ddl)
-		PG_RETURN_NULL();
-
-	if (IsReplicationSource())
-	{
-		HandleSourceTableRewrite(trig_data);
-	}
-
-	PG_RETURN_NULL();
 }
 
 static char *
-GetExtensionName(CommandTag tag, List *parse_tree)
+GetExtensionName(CommandTag tag)
 {
+	/*
+	 * In the case where we are creating our own extension, we only start
+	 * capturing DDLs mid way and miss the top level command tag. So rely instead
+	 * on the creating_extension global variable.
+	 */
+	if (creating_extension)
+		tag = CMDTAG_CREATE_EXTENSION;
+
 	switch (tag)
 	{
 		case CMDTAG_CREATE_EXTENSION:
-			{
-				CreateExtensionStmt *stmt;
-
-				stmt = (CreateExtensionStmt *)
-					linitial_node(RawStmt, parse_tree)->stmt;
-
-				return stmt->extname;
-			}
+				return ((CreateExtensionStmt *) parsetree)->extname;
 		case CMDTAG_ALTER_EXTENSION:
-			{
-				AlterExtensionStmt *stmt;
-
-				stmt = (AlterExtensionStmt *)
-					linitial_node(RawStmt, parse_tree)->stmt;
-
-				return stmt->extname;
-			}
+				return ((AlterExtensionStmt *) parsetree)->extname;
 		case CMDTAG_DROP_EXTENSION:
 			{
-				DropStmt   *stmt;
-
-				stmt = (DropStmt *)
-					linitial_node(RawStmt, parse_tree)->stmt;
+				DropStmt   *stmt = (DropStmt *) parsetree;
 
 				/* Ensure there is at least one object in the list. */
 				if (stmt->objects == NULL || list_length(stmt->objects) != 1)
@@ -764,22 +542,142 @@ GetExtensionName(CommandTag tag, List *parse_tree)
 	}
 }
 
-static void
-EvaluateTopDdlCommand(CommandTag command_tag)
+void
+EvaluateExtensionDDL(CommandTag command_tag)
 {
-	is_extension_ddl = false;
-	is_self_extension_ddl = false;
+	if (!is_in_extension_ddl)
+		return;
 
-	if (IsExtensionDdl(command_tag))
+	if (current_extension_name == NULL)
 	{
-		is_extension_ddl = true;
-		List	   *parse_tree = pg_parse_query(debug_query_string);
-		char	   *extname = GetExtensionName(command_tag, parse_tree);
+		current_extension_name = GetExtensionName(command_tag);
 
-		is_self_extension_ddl = extname != NULL &&
-			strcmp(extname, EXTENSION_NAME) == 0;
+		if (current_extension_name != NULL &&
+			strcmp(current_extension_name, EXTENSION_NAME) == 0)
+			is_self_extension_ddl = true;
 	}
 
+	if (is_self_extension_ddl)
+		return;
+
+	/* Disallow extensions that contain complex DDLs like CREATE TABLE. */
+	if (!IsPassThroughDdlCommandSupported(command_tag))
+	{
+		elog(ERROR,
+			 "Database is replicating DDLs for xCluster. Extension %s is not "
+			 "supported because it contains unsupported DDLs within the "
+			 "extension script. Create the extension before adding the "
+			 "database to xCluster.\n"
+			 "Unsupported DDL within extension : %s\n",
+			 current_extension_name, GetCommandTagName(command_tag));
+	}
+}
+
+PG_FUNCTION_INFO_V1(handle_ddl_start);
+Datum
+handle_ddl_start(PG_FUNCTION_ARGS)
+{
+	if (!CALLED_AS_EVENT_TRIGGER(fcinfo))	/* internal error */
+		elog(ERROR, "not fired by event trigger manager");
+
+	EventTriggerData *trig_data = (EventTriggerData *) fcinfo->context;
+
+	FetchReplicationRole();
+	EvaluateExtensionDDL(trig_data->tag);
+
+	if (IsDisabled(trig_data->tag))
+		PG_RETURN_NULL();
+
+	/*
+	 * Given a possibly multi-statement source string, confine our attention to
+	 * the relevant part of the string.
+	 */
+	query_string = CleanQuerytext(query_string, &query_location, &query_len);
+
+	if (IsReplicationSource())
+	{
+		HandleSourceDDLStart(trig_data);
+	}
+	if (IsReplicationTarget())
+	{
+		HandleTargetDDLStart(trig_data);
+	}
+
+	PG_RETURN_NULL();
+}
+
+PG_FUNCTION_INFO_V1(handle_ddl_end);
+Datum
+handle_ddl_end(PG_FUNCTION_ARGS)
+{
+	if (!CALLED_AS_EVENT_TRIGGER(fcinfo))	/* internal error */
+		elog(ERROR, "not fired by event trigger manager");
+
+	EventTriggerData *trig_data = (EventTriggerData *) fcinfo->context;
+
+	if (IsDisabled(trig_data->tag))
+		PG_RETURN_NULL();
+
+	Assert(query_string != NULL);
+	Assert(query_len > 0);
+
+	/*
+	 * Capture the DDL as long as its not a step within another Extension DDL
+	 * batch.
+	 */
+	if (IsReplicationSource())
+	{
+		HandleSourceDDLEnd(trig_data);
+	}
+	if (IsReplicationTarget())
+	{
+		HandleTargetDDLEnd(trig_data);
+	}
+
+	query_string = NULL;
+	query_len = 0;
+
+	PG_RETURN_NULL();
+}
+
+PG_FUNCTION_INFO_V1(handle_sql_drop);
+Datum
+handle_sql_drop(PG_FUNCTION_ARGS)
+{
+	if (!CALLED_AS_EVENT_TRIGGER(fcinfo))	/* internal error */
+		elog(ERROR, "not fired by event trigger manager");
+
+	EventTriggerData *trig_data = (EventTriggerData *) fcinfo->context;
+
+	if (IsDisabled(trig_data->tag))
+		PG_RETURN_NULL();
+
+	if (IsReplicationSource())
+	{
+		HandleSourceSQLDrop(trig_data);
+	}
+
+	PG_RETURN_NULL();
+}
+
+PG_FUNCTION_INFO_V1(handle_table_rewrite);
+Datum
+handle_table_rewrite(PG_FUNCTION_ARGS)
+{
+	if (!CALLED_AS_EVENT_TRIGGER(fcinfo))	/* internal error */
+		elog(ERROR, "not fired by event trigger manager");
+
+	EventTriggerData *trig_data = (EventTriggerData *) fcinfo->context;
+
+	if (IsDisabled(trig_data->tag))
+		PG_RETURN_NULL();
+
+	if (IsReplicationSource())
+	{
+		HandleSourceTableRewrite(trig_data);
+	}
+
+	PG_RETURN_NULL();
 }
 
 static void
@@ -796,10 +694,8 @@ RecordTempRelationDDL()
 }
 
 void
-HandleTopUtilityCommandStart()
+HandleQueryStart(PlannedStmt *pstmt, const char *queryString, bool is_top_level_query)
 {
-	captured_by_extension = false;
-
 	/*
 	 * For DDLs that are handled by the handle_ddl_start event trigger,
 	 * HandleTargetDDLStart will set yb_xcluster_target_ddl_bypass to false and
@@ -808,13 +704,43 @@ HandleTopUtilityCommandStart()
 	 * allow it to pass through.
 	 */
 	yb_xcluster_target_ddl_bypass = true;
+
+	/*
+	 * For extension DDLs, only capture the top level query.
+	 */
+	if (!is_in_extension_ddl)
+	{
+		query_location = pstmt->stmt_location;
+		query_len = pstmt->stmt_len;
+		query_string = queryString;
+		parsetree = pstmt->utilityStmt;
+	}
+
+	if (is_top_level_query && IsExtensionDdl(CreateCommandTag(parsetree)))
+	{
+		is_in_extension_ddl = true;
+	}
 }
 
 void
-HandleTopUtilityCommandEnd()
+HandleQueryEnd(bool is_top_level_query)
 {
-	captured_by_extension = false;
-	yb_xcluster_target_ddl_bypass = false;
+	if (is_top_level_query)
+	{
+		is_in_extension_ddl = false;
+		is_self_extension_ddl = false;
+		current_extension_name = NULL;
+	}
+
+	/*
+	 * For extension DDLs, retain the query string and length until the top
+	 * level query ends.
+	 */
+	if (!is_in_extension_ddl)
+	{
+		query_string = NULL;
+		query_len = 0;
+	}
 }
 
 static void
@@ -827,10 +753,11 @@ XClusterProcessUtility(PlannedStmt *pstmt,
 					   DestReceiver *dest,
 					   QueryCompletion *qc)
 {
-	exec_nested_level++;
+	bool is_top_level_query = (context == PROCESS_UTILITY_TOPLEVEL);
+	bool isCompleteQuery = (context != PROCESS_UTILITY_SUBCOMMAND);
 
-	if (exec_nested_level == 1)
-		HandleTopUtilityCommandStart();
+	if (isCompleteQuery)
+		HandleQueryStart(pstmt, queryString, is_top_level_query);
 
 	PG_TRY();
 	{
@@ -843,10 +770,8 @@ XClusterProcessUtility(PlannedStmt *pstmt,
 	}
 	PG_FINALLY();
 	{
-		if (exec_nested_level == 1)
-			HandleTopUtilityCommandEnd();
-
-		exec_nested_level--;
+		if (isCompleteQuery)
+			HandleQueryEnd(is_top_level_query);
 	}
 	PG_END_TRY();
 }

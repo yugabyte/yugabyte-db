@@ -63,41 +63,124 @@ void AppendUInt64ToKey(uint64_t val, Buffer* dest) {
   dest->append(buf, sizeof(buf));
 }
 
+namespace internal {
+
+// Finds a compile-time constant character in string.
+// Returns end if the character is not found.
+template <char kChar>
+const char* Find(const char* begin, const char* end) {
+  if (kChar == 0) {
+    return begin + strnlen(begin, end - begin);
+  }
+  auto result = static_cast<const char*>(memchr(begin, kChar, end - begin));
+  return result ? result : end;
+}
+
+template <char kChar, class Ch>
+void Xor(Ch* begin, Ch* end) {
+  if (kChar == 0) {
+    return;
+  }
+  for (; begin < end; ++begin) {
+    *begin ^= kChar;
+  }
+}
+
+template <char kChar, class Out>
+void Xor(Out* out, size_t start) {
+  DCHECK_LE(start, out->size());
+  Xor<kChar>(out->data() + start, out->data() + out->size());
+}
+
+template <char kChar>
+void Xor(ValueBuffer* out, size_t start) {
+  DCHECK_LE(start, out->size());
+  Xor<kChar>(out->mutable_data() + start, out->mutable_data() + out->size());
+}
+
+// Append encoded version of string to provided buffer.
+template <bool kDescending, class Buffer>
+void AppendEncodedStrToKey(Slice s, Buffer& dest) {
+  const auto* p = s.cdata();
+  const auto* end = s.cend();
+  size_t bytes_added = 0;
+  for (;;) {
+    const auto* stop = Find<'\0'>(p, end);
+    if (stop == end) {
+      dest.append(p, end);
+      bytes_added += end - p;
+      break;
+    }
+    // \0 is encoded as \0\1. So copy \0 from original string, then append \1.
+    dest.append(p, stop + 1);
+    dest.push_back(1);
+    bytes_added += stop - p + 2;
+    p = stop + 1;
+  }
+  if (kDescending) {
+    auto suffix = dest.SuffixStart(bytes_added);
+    // In case of descending order xor result with 0xff, to provide correct memcmp result.
+    internal::Xor<'\xff'>(suffix, suffix + bytes_added);
+  }
+}
+
+template <char A, class Buffer>
+inline void TerminateEncodedKeyStr(Buffer& dest) {
+  char buf[2] = {A, A};
+  dest.append(buf, buf + sizeof(buf));
+}
+
+} // namespace internal
+
 // Encodes the given string by replacing '\x00' with "\x00\x01" and appends it to the given
 // destination string.
-void AppendZeroEncodedStrToKey(const Slice& s, KeyBuffer *dest);
+template <class Buffer>
+void AppendZeroEncodedStrToKey(Slice s, Buffer& dest) {
+  internal::AppendEncodedStrToKey<false>(s, dest);
+}
 
 // Encodes the given string by replacing '\xff' with "\xff\xfe" and appends it to the given
 // destination string.
-void AppendComplementZeroEncodedStrToKey(const Slice& s, KeyBuffer *dest);
+template <class Buffer>
+void AppendComplementZeroEncodedStrToKey(Slice s, Buffer& dest) {
+  internal::AppendEncodedStrToKey<true>(s, dest);
+}
 
 // Appends two zero characters to the given string. We don't add final end-of-string characters in
 // this function.
-void TerminateZeroEncodedKeyStr(KeyBuffer *dest);
+template <class Buffer>
+void TerminateZeroEncodedKeyStr(Buffer& dest) {
+  internal::TerminateEncodedKeyStr<'\0'>(dest);
+}
 
 // Appends two '\0xff' characters to the given string. We don't add final end-of-string characters
 // in this function.
-void TerminateComplementZeroEncodedKeyStr(KeyBuffer *dest);
+template <class Buffer>
+void TerminateComplementZeroEncodedKeyStr(Buffer& dest) {
+  internal::TerminateEncodedKeyStr<'\xff'>(dest);
+}
 
-inline void ZeroEncodeAndAppendStrToKey(const Slice& s, KeyBuffer *dest) {
+template <class Buffer>
+inline void ZeroEncodeAndAppendStrToKey(Slice s, Buffer& dest) {
   AppendZeroEncodedStrToKey(s, dest);
   TerminateZeroEncodedKeyStr(dest);
 }
 
-inline void ComplementZeroEncodeAndAppendStrToKey(const Slice& s, KeyBuffer* dest) {
+template <class Buffer>
+inline void ComplementZeroEncodeAndAppendStrToKey(Slice s, Buffer& dest) {
   AppendComplementZeroEncodedStrToKey(s, dest);
   TerminateComplementZeroEncodedKeyStr(dest);
 }
 
-inline std::string ZeroEncodeStr(const Slice& s) {
+inline std::string ZeroEncodeStr(Slice s) {
   KeyBuffer result;
-  ZeroEncodeAndAppendStrToKey(s, &result);
+  ZeroEncodeAndAppendStrToKey(s, result);
   return result.ToStringBuffer();
 }
 
-inline std::string ComplementZeroEncodeStr(const Slice& s) {
+inline std::string ComplementZeroEncodeStr(Slice s) {
   KeyBuffer result;
-  ComplementZeroEncodeAndAppendStrToKey(s, &result);
+  ComplementZeroEncodeAndAppendStrToKey(s, result);
   return result.ToStringBuffer();
 }
 

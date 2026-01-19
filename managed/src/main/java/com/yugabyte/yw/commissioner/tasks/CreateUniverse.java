@@ -131,7 +131,8 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
     for (Cluster cluster : taskParams().clusters) {
       universe
           .getUniverseDetails()
-          .upsertCluster(cluster.userIntent, cluster.placementInfo, cluster.uuid);
+          .upsertCluster(
+              cluster.userIntent, cluster.getPartitions(), cluster.placementInfo, cluster.uuid);
     }
     // Create preflight node check tasks for on-prem nodes.
     createPreflightNodeCheckTasks(universe, taskParams().clusters);
@@ -150,7 +151,8 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
     for (Cluster cluster : taskParams().clusters) {
       universe
           .getUniverseDetails()
-          .upsertCluster(cluster.userIntent, cluster.placementInfo, cluster.uuid);
+          .upsertCluster(
+              cluster.userIntent, cluster.getPartitions(), cluster.placementInfo, cluster.uuid);
     }
     // Update task params.
     updateTaskDetailsInDB(taskParams());
@@ -241,6 +243,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
           universe,
           taskParams().nodeDetailsSet,
           false /* ignore node status check */,
+          true /* do validation of gflags */,
           setupServerParams -> {
             setupServerParams.rebootNodeAllowed = true;
           },
@@ -286,6 +289,10 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
 
       createConfigureUniverseTasks(
           primaryCluster, newMasters, newTservers, null /* gflagsUpgradeSubtasks */);
+
+      if (primaryCluster.isGeoPartitioned() && primaryCluster.userIntent.enableYSQL) {
+        createTablespacesTasks(primaryCluster.getPartitions(), false);
+      }
 
       // Create Load Balancer map to add nodes to load balancer
       Map<LoadBalancerPlacement, LoadBalancerConfig> loadBalancerMap =

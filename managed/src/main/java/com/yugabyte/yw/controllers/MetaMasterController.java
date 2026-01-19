@@ -2,9 +2,12 @@
 
 package com.yugabyte.yw.controllers;
 
+import static play.mvc.Http.Status.METHOD_NOT_ALLOWED;
+
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
@@ -94,6 +97,12 @@ public class MetaMasterController extends Controller {
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
   public Result getMasterLBState(UUID customerUUID, UUID universeUUID) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
+    if (universe.getUniverseDetails().universePaused) {
+      throw new PlatformServiceException(
+          METHOD_NOT_ALLOWED, "Can't get master LB state for a paused universe");
+    }
     MasterLBStateResponse resp = metaMasterHandler.getMasterLBState(customerUUID, universeUUID);
     return PlatformResults.withData(resp);
   }

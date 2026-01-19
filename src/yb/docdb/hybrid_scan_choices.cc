@@ -13,6 +13,8 @@
 
 #include "yb/docdb/hybrid_scan_choices.h"
 
+#include "yb/docdb/docdb_filter_policy.h"
+#include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/intent_aware_iterator.h"
 
 #include "yb/dockv/doc_key.h"
@@ -20,6 +22,9 @@
 #include "yb/dockv/value_type.h"
 
 #include "yb/qlexpr/doc_scanspec_util.h"
+
+DEFINE_RUNTIME_bool(enable_scan_choices_variable_bloom_filter, true,
+    "Whether to use variable bloom filter when possible in ScanChoices");
 
 namespace yb::docdb {
 
@@ -31,8 +36,8 @@ using dockv::DocKey;
 
 namespace {
 
-BoundComp CompareBound(const KeyEntryValue& lhs, const KeyEntryValue& rhs) {
-  int res = lhs.CompareTo(rhs);
+BoundComp CompareBound(Slice lhs, Slice rhs) {
+  int res = lhs.compare(rhs);
   return res < 0 ? BoundComp::kIn
                  : (res > 0 ? BoundComp::kOut : BoundComp::kAtBound);
 }
@@ -49,11 +54,23 @@ void AppendTarget(KeyBytes& value, Slice target) {
   value.AppendRawBytes(target);
 }
 
+bool BloomFilterAllowed(size_t num_options, const ScanOptions& options) {
+  if (options.size() < num_options) {
+    return false;
+  }
+  for (size_t i = 0; i != num_options; ++i) {
+    if (std::ranges::any_of(options[i], [](const auto& option) { return !option.Fixed(); })) {
+      return false;
+    }
+  }
+  return true;
+}
+
 } // namespace
 
-RangeMatch OptionRange::MatchEx(const dockv::KeyEntryValue& value) const {
+RangeMatch OptionRange::MatchEx(Slice value) const {
   if (fixed_point_) {
-    int cmp = lower_.CompareTo(value);
+    int cmp = lower_.compare(value);
     return cmp == 0 ? RangeMatch{BoundComp::kAtBound, BoundComp::kAtBound}
                     : (cmp < 0 ? RangeMatch{BoundComp::kIn, BoundComp::kOut}
                                : RangeMatch{BoundComp::kOut, BoundComp::kIn});
@@ -66,7 +83,7 @@ bool OptionRange::SatisfiesInclusivity(RangeMatch match) const {
          docdb::SatisfiesInclusivity(match.upper, upper_inclusive_);
 }
 
-bool OptionRange::Match(const dockv::KeyEntryValue& value) const {
+bool OptionRange::Match(Slice value) const {
   if (fixed_point_) {
     return lower_ == value;
   }
@@ -112,6 +129,12 @@ void ScanTarget::Reset() {
   value_.Truncate(table_key_prefix_size_);
   has_inf_ = false;
   columns_.clear();
+}
+
+Slice ScanTarget::SliceUpToColumn(size_t column_idx) const {
+  CHECK_LT(column_idx, columns_.size());
+  CHECK_LE(columns_[column_idx].end, value_.AsSlice().size());
+  return value_.AsSlice().Prefix(columns_[column_idx].end);
 }
 
 void ScanTarget::Truncate(size_t column_idx, bool add_inf) {
@@ -185,7 +208,7 @@ bool ScanTarget::IsExtremal(size_t column_idx) const {
 }
 
 bool HybridScanChoices::CurrentTargetMatchesKey(Slice curr, IntentAwareIterator* iter) {
-  VLOG_WITH_FUNC(3) << " checking if acceptable ? "
+  VLOG_WITH_FUNC(3) << "Checking if acceptable ? "
           << (scan_target_.Match(curr) ? "YEP" : "NOPE")
           << ": " << DocKey::DebugSliceToString(curr) << " vs "
           << scan_target_.ToString();
@@ -202,30 +225,41 @@ bool HybridScanChoices::CurrentTargetMatchesKey(Slice curr, IntentAwareIterator*
 
 HybridScanChoices::HybridScanChoices(
     const Schema& schema,
+    const qlexpr::YQLScanSpec& doc_spec,
     const KeyBytes& lower_doc_key,
     const KeyBytes& upper_doc_key,
-    bool is_forward_scan,
-    const std::vector<ColumnId>& options_col_ids,
-    const std::shared_ptr<std::vector<qlexpr::OptionList>>& options,
-    const qlexpr::QLScanRange* range_bounds,
-    const ColGroupHolder& col_groups,
-    const size_t prefix_length,
     Slice table_key_prefix)
-    : is_forward_scan_(is_forward_scan),
+    : is_forward_scan_(doc_spec.is_forward_scan()),
       scan_target_(
-          table_key_prefix, is_forward_scan,
+          table_key_prefix, is_forward_scan_,
           schema.has_yb_hash_code() ? schema.num_hash_key_columns() + 1
                                     : std::numeric_limits<size_t>::max(),
           schema.num_dockey_components()),
+      has_hash_columns_(schema.has_yb_hash_code()),
+      num_hash_cols_(schema.num_hash_key_columns()),
       lower_doc_key_(lower_doc_key),
       upper_doc_key_(upper_doc_key),
-      col_groups_(col_groups),
-      prefix_length_(prefix_length) {
-  size_t last_filtered_idx = static_cast<size_t>(-1);
-  has_hash_columns_ = schema.has_yb_hash_code();
-  num_hash_cols_ = schema.num_hash_key_columns();
+      col_groups_(doc_spec.options_groups()),
+      prefix_length_(doc_spec.prefix_length()),
+      schema_num_keys_(schema.num_dockey_components()),
+      bloom_filter_options_(BloomFilterOptions::Inactive()),
+      arena_(doc_spec.arena_ptr()) {
+  auto last_filtered_idx = std::numeric_limits<size_t>::max();
+
+  const auto& options_col_ids = doc_spec.options_indexes();
+  const auto& options = doc_spec.options();
+  const auto* range_bounds = doc_spec.range_bounds();
+  auto options_list_to_string = [](const auto& list) {
+    return CollectionToString(list, [](Slice option) { return option.ToDebugHexString(); });
+  };
+  VLOG_WITH_FUNC(4)
+      << "Options indexes: " << AsString(options_col_ids)
+      << ", options: "
+      << (options ? CollectionToString(*options, options_list_to_string) : "<NULL>")
+      << ", bounds: " << AsString(range_bounds);
 
   for (size_t idx = 0; idx < schema.num_dockey_components(); ++idx) {
+    DCHECK_EQ(scan_options_.size(), idx);
     const auto col_id = GetColumnId(schema, idx);
 
     std::vector<OptionRange> current_options;
@@ -237,6 +271,10 @@ HybridScanChoices::HybridScanChoices(
 
     if (col_has_range_option) {
       const auto& temp_options = (*options)[idx];
+      VLOG_WITH_FUNC(4)
+          << "Column: " << idx << "/" << col_id << " options: "
+          << options_list_to_string(temp_options);
+
       current_options.reserve(temp_options.size());
       if (temp_options.empty()) {
         // If there is nothing specified in the IN list like in
@@ -247,9 +285,9 @@ HybridScanChoices::HybridScanChoices(
         // As of D15647 we do not send empty options.
         // This is kept for backward compatibility during rolling upgrades.
         current_options.emplace_back(
-            KeyEntryValue(KeyEntryType::kHighest),
+            Slice(&dockv::KeyEntryTypeAsChar::kHighest, 1),
             true,
-            KeyEntryValue(KeyEntryType::kLowest),
+            Slice(&dockv::KeyEntryTypeAsChar::kLowest, 1),
             true,
             current_options.size(),
             current_options.size() + 1);
@@ -294,32 +332,43 @@ HybridScanChoices::HybridScanChoices(
       // list of the given range bound
       const auto col_sort_type =
           col_id.rep() == kYbHashCodeColId ? SortingType::kAscending
-              : schema.column(schema.find_column_by_id( col_id)).sorting_type();
+              : schema.column(schema.find_column_by_id(col_id)).sorting_type();
       const auto range = range_bounds->RangeFor(col_id);
-      const auto lower = GetQLRangeBoundAsPVal(range, col_sort_type, true /* lower_bound */);
-      const auto upper = GetQLRangeBoundAsPVal(range, col_sort_type, false /* upper_bound */);
+      auto lower = range.BoundAsSlice(doc_spec.arena(), col_sort_type, qlexpr::BoundType::kLower);
+      const auto lower_inclusive = range.BoundIsInclusive(col_sort_type, qlexpr::BoundType::kLower);
+      auto upper = range.BoundAsSlice(doc_spec.arena(), col_sort_type, qlexpr::BoundType::kUpper);
+      const auto upper_inclusive = range.BoundIsInclusive(col_sort_type, qlexpr::BoundType::kUpper);
+
+      VLOG_WITH_FUNC(4)
+          << "Column: " << idx << "/" << col_id << " range: "
+          << (lower_inclusive ? "[" : "(") << lower.ToString() << "-" << upper.ToString()
+          << (upper_inclusive ? "]" : ")");
       current_options.emplace_back(
           lower,
-          GetQLRangeBoundIsInclusive(range, col_sort_type, true),
+          lower_inclusive,
           upper,
-          GetQLRangeBoundIsInclusive(range, col_sort_type, false),
+          upper_inclusive,
           current_options.size(),
           current_options.size() + 1);
 
       col_groups_.BeginNewGroup();
       col_groups_.AddToLatestGroup(scan_options_.size());
-      if (!upper.IsInfinity() || !lower.IsInfinity()) {
+      if (!IsInfinity(dockv::DecodeKeyEntryType(upper)) ||
+          !IsInfinity(dockv::DecodeKeyEntryType(lower))) {
         last_filtered_idx = idx;
       }
     } else {
+      VLOG_WITH_FUNC(4)
+          << "Column: " << idx << "/" << col_id << " no filter";
+
       // If no filter is specified, we just impose an artificial range
       // filter [kLowest, kHighest]
       col_groups_.BeginNewGroup();
       col_groups_.AddToLatestGroup(scan_options_.size());
       current_options.emplace_back(
-          KeyEntryValue(KeyEntryType::kLowest),
+          Slice(&dockv::KeyEntryTypeAsChar::kLowest, 1),
           true,
-          KeyEntryValue(KeyEntryType::kHighest),
+          Slice(&dockv::KeyEntryTypeAsChar::kHighest, 1),
           true,
           current_options.size(),
           current_options.size() + 1);
@@ -331,7 +380,7 @@ HybridScanChoices::HybridScanChoices(
 
   // We add 1 to a valid prefix_length_ if there are hash columns
   // to account for the hash code column
-  prefix_length_ += (prefix_length_ && has_hash_columns_);
+  prefix_length_ += prefix_length_ && has_hash_columns_;
 
   size_t filter_length = std::max(last_filtered_idx + 1, prefix_length_);
   DCHECK_LE(filter_length, scan_options_.size());
@@ -345,20 +394,23 @@ HybridScanChoices::HybridScanChoices(
   for (size_t i = 0; i < scan_options_.size(); i++) {
     current_scan_target_ranges_[i] = scan_options_[i].begin();
   }
-
-  schema_num_keys_ = schema.num_dockey_components();
 }
 
-HybridScanChoices::HybridScanChoices(
-    const Schema& schema,
-    const qlexpr::YQLScanSpec& doc_spec,
-    const KeyBytes& lower_doc_key,
-    const KeyBytes& upper_doc_key,
-    Slice table_key_prefix)
-    : HybridScanChoices(
-          schema, lower_doc_key, upper_doc_key, doc_spec.is_forward_scan(),
-          doc_spec.options_indexes(), doc_spec.options(), doc_spec.range_bounds(),
-          doc_spec.options_groups(), doc_spec.prefix_length(), table_key_prefix) {}
+Status HybridScanChoices::Init(const DocReadContext& doc_read_context) {
+  num_bloom_filter_cols_ = doc_read_context.NumColumnsUsedByBloomFilterKey();
+  bloom_filter_options_ = VERIFY_RESULT(BloomFilterOptions::Make(
+      doc_read_context, lower_doc_key_, upper_doc_key_,
+      FLAGS_enable_scan_choices_variable_bloom_filter && is_forward_scan_ &&
+          BloomFilterAllowed(num_bloom_filter_cols_, scan_options_)));
+  VLOG_WITH_FUNC(3)
+      << "lower: " << DocKey::DebugSliceToString(lower_doc_key_)
+      << ", upper: " << DocKey::DebugSliceToString(upper_doc_key_)
+      << ", scan options: " << AsString(scan_options_)
+      << ", bloom filter: " << bloom_filter_options_.mode()
+      << ", schema_num_keys: " << schema_num_keys_ << ", scan_options: " << scan_options_.size()
+      << ", prefix_length: " << prefix_length_;
+  return Status::OK();
+}
 
 HybridScanChoices::OptionRangeIterator HybridScanChoices::GetOptAtIndex(
     size_t opt_list_idx, size_t opt_index) const {
@@ -421,7 +473,8 @@ void HybridScanChoices::SetGroup(size_t opt_list_idx, size_t opt_index) {
 
 Result<bool> HybridScanChoices::SkipTargetsUpTo(Slice new_target) {
   VLOG_WITH_FUNC(2)
-      << " Updating current target to be >= " << DocKey::DebugSliceToString(new_target);
+      << "Updating current target to be >= " << DocKey::DebugSliceToString(new_target)
+      << ", ranges size: " << current_scan_target_ranges_.size();
   DCHECK(!Finished());
   is_options_done_ = false;
 
@@ -500,12 +553,15 @@ Result<bool> HybridScanChoices::SkipTargetsUpTo(Slice new_target) {
     const auto& current_option = *current_scan_target_ranges_[option_list_idx];
 
     KeyEntryValue target_value;
-    auto target_value_start = decoder.left_input().data();
-    auto decode_status = decoder.DecodeKeyEntryValue(&target_value);
-    Slice target_value_slice(target_value_start, decoder.left_input().data());
-    if (decode_status.ok() && scan_target_.NeedGroupEnd(option_list_idx + 1)) {
+    Status decode_status;
+    if (scan_target_.NeedGroupEnd(option_list_idx)) {
       decode_status = decoder.ConsumeGroupEnd();
     }
+    auto target_value_start = decoder.left_input().data();
+    if (decode_status.ok()) {
+      decode_status = decoder.DecodeKeyEntryValue();
+    }
+    Slice target_value_slice(target_value_start, decoder.left_input().data());
     if (!decode_status.ok()) {
       LOG_WITH_FUNC(DFATAL) << "Failed to decode the key: " << decode_status;
       // We return false to give the caller a chance to validate and skip past any keys that scan
@@ -518,7 +574,7 @@ Result<bool> HybridScanChoices::SkipTargetsUpTo(Slice new_target) {
 
     // If it's in range then good, continue after appending the target value
     // column.
-    if (auto match = current_option.MatchEx(target_value);
+    if (auto match = current_option.MatchEx(target_value_slice);
         current_option.SatisfiesInclusivity(match)) {
       scan_target_.Append(target_value_slice, match.Last(is_forward_scan_));
       continue;
@@ -536,12 +592,12 @@ Result<bool> HybridScanChoices::SkipTargetsUpTo(Slice new_target) {
     auto [begin, end] = GetSearchSpaceBounds(option_list_idx);
 
     auto it = is_forward_scan_
-        ? std::lower_bound(begin, end, target_value,
-                           [](const OptionRange& lhs, const KeyEntryValue& value) {
+        ? std::lower_bound(begin, end, target_value_slice,
+                           [](const OptionRange& lhs, Slice value) {
                              return lhs.upper() < value;
                            })
-        : std::lower_bound(begin, end, target_value,
-                           [](const OptionRange& lhs, const KeyEntryValue& value) {
+        : std::lower_bound(begin, end, target_value_slice,
+                           [](const OptionRange& lhs, Slice value) {
                              return lhs.lower() > value;
                            });
 
@@ -561,7 +617,7 @@ Result<bool> HybridScanChoices::SkipTargetsUpTo(Slice new_target) {
 
     // If we are within a range then target_value itself should work
 
-    auto match = it->MatchEx(target_value);
+    auto match = it->MatchEx(target_value_slice);
     if (match.lower != BoundComp::kOut && match.upper != BoundComp::kOut) {
       if (it->SatisfiesInclusivity(match)) {
         scan_target_.Append(target_value_slice, match.Last(is_forward_scan_));
@@ -617,6 +673,10 @@ Result<bool> HybridScanChoices::SkipTargetsUpTo(Slice new_target) {
     << "scan_target_ validation failed: "
     << scan_target_.ToString();
   VLOG_WITH_FUNC(2) << "current_scan_target is " << scan_target_.ToString();
+  if (is_options_done_ && bloom_filter_options_.mode() == BloomFilterMode::kVariable) {
+    finished_ = true;
+  }
+  RETURN_NOT_OK(UpdateUpperBound(nullptr));
   return true;
 }
 
@@ -650,7 +710,9 @@ Result<bool> HybridScanChoices::SkipTargetsUpTo(Slice new_target) {
 // scan direction is also the next tuple in the filter space and start_col
 // is given as the last column
 Status HybridScanChoices::IncrementScanTargetAtOptionList(ssize_t start_option_list_idx) {
-  VLOG_WITH_FUNC(2) << "Incrementing at " << start_option_list_idx;
+  VLOG_WITH_FUNC(2)
+      << "Incrementing at " << start_option_list_idx
+      << ", current: " << scan_target_.ToString();
 
   // Increment start col, move backwards in case of overflow.
   ssize_t option_list_idx = start_option_list_idx;
@@ -700,6 +762,7 @@ Status HybridScanChoices::IncrementScanTargetAtOptionList(ssize_t start_option_l
 
   if (start_with_infinity) {
     // there's no point in appending anything after infinity
+    VLOG_WITH_FUNC(2) << "Key after increment is " << scan_target_.ToString();
     return Status::OK();
   }
 
@@ -755,13 +818,14 @@ std::vector<OptionRange> HybridScanChoices::TEST_GetCurrentOptions() {
 }
 
 // Method called when the scan target is done being used
-Result<bool> HybridScanChoices::DoneWithCurrentTarget(bool current_row_skipped) {
+Result<bool> HybridScanChoices::DoneWithCurrentTarget(bool current_row_skipped, bool not_found) {
   bool result = false;
   if (schema_num_keys_ == scan_options_.size() ||
-      (prefix_length_ > 0 && !current_row_skipped)) {
-
-    ssize_t incr_idx =
-        (prefix_length_ ? prefix_length_ : current_scan_target_ranges_.size()) - 1;
+      (prefix_length_ > 0 && !current_row_skipped) ||
+      (not_found && iterator_bound_scope_)) {
+    auto incr_idx = not_found
+        ? num_bloom_filter_cols_ - 1
+        : (prefix_length_ ? prefix_length_ : current_scan_target_ranges_.size()) - 1;
     RETURN_NOT_OK(IncrementScanTargetAtOptionList(incr_idx));
     result = true;
   }
@@ -777,24 +841,35 @@ Result<bool> HybridScanChoices::DoneWithCurrentTarget(bool current_row_skipped) 
   DCHECK(!finished_);
 
   if (is_options_done_) {
-    // It could be possible that we finished all our options but are not
-    // done because we haven't hit the bound key yet. This would usually be
-    // the case if we are moving onto the next hash key where we will
-    // restart our range options.
-    const KeyBytes& bound_key = is_forward_scan_ ? upper_doc_key_ : lower_doc_key_;
-    finished_ = !bound_key.empty() &&
-                (is_forward_scan_ == (scan_target_.AsSlice().compare(bound_key) >= 0));
-    VLOG(4) << "finished_ = " << finished_;
+    if (bloom_filter_options_.mode() == BloomFilterMode::kVariable) {
+      finished_ = true;
+    } else {
+      // It could be possible that we finished all our options but are not
+      // done because we haven't hit the bound key yet. This would usually be
+      // the case if we are moving onto the next hash key where we will
+      // restart our range options.
+      const KeyBytes& bound_key = is_forward_scan_ ? upper_doc_key_ : lower_doc_key_;
+      finished_ = !bound_key.empty() &&
+                  (is_forward_scan_ == (scan_target_.AsSlice().compare(bound_key) >= 0));
+    }
   }
 
-  VLOG_WITH_FUNC(4) << "scan_target_ is " << scan_target_.ToString();
+  if (result) {
+    RETURN_NOT_OK(UpdateUpperBound(nullptr));
+  }
+
+  VLOG_WITH_FUNC(3)
+      << "current_row_skipped: " << current_row_skipped
+      << ", scan_target_: " << scan_target_.ToString()
+      << ", is_options_done: " << is_options_done_ << ", finished: " << finished_
+      << ", result: " << result;
 
   return result;
 }
 
 // Seeks the given iterator to the current target as specified by scan_target_.
-void HybridScanChoices::SeekToCurrentTarget(IntentAwareIterator* db_iter) {
-  VLOG_WITH_FUNC(2) << "pos: " << db_iter->DebugPosToString();
+void HybridScanChoices::SeekToCurrentTarget(IntentAwareIterator& db_iter) {
+  VLOG_WITH_FUNC(2) << "pos: " << db_iter.DebugPosToString();
 
   if (finished_ || scan_target_.WithoutPrefix().empty()) {
     return;
@@ -802,7 +877,7 @@ void HybridScanChoices::SeekToCurrentTarget(IntentAwareIterator* db_iter) {
 
   if (is_forward_scan_) {
     VLOG_WITH_FUNC(3) << "Seeking to " << scan_target_.ToString();
-    db_iter->SeekForward(scan_target_.AsSlice());
+    db_iter.SeekForward(scan_target_.AsSlice());
   } else {
     // seek to the highest key <= scan_target_
     // seeking to the highest key < scan_target_ + kHighest
@@ -813,14 +888,45 @@ void HybridScanChoices::SeekToCurrentTarget(IntentAwareIterator* db_iter) {
     // Append kGroupEnd marker to avoid Corruption error when debugging the key.
     tmp.AppendGroupEnd();
     VLOG_WITH_FUNC(3) << "Going to SeekPrevDocKey " << tmp.AsSlice().ToDebugHexString();
-    db_iter->SeekPrevDocKey(tmp);
+    db_iter.SeekPrevDocKey(tmp);
   }
 }
 
+
+Result<bool> HybridScanChoices::PrepareIterator(IntentAwareIterator& iter, Slice table_key_prefix) {
+  VLOG_WITH_FUNC(3)
+      << "Bloom filter: " << bloom_filter_options_.mode()
+      << ", is_forward_scan: " << is_forward_scan_;
+  if (!is_forward_scan_) {
+    return false;
+  }
+  if (bloom_filter_options_.mode() != BloomFilterMode::kVariable) {
+    return false;
+  }
+  // When lower doc key is specified, use it for initial position.
+  // Otherwise, use min target provided by options.
+  if (!lower_doc_key_.empty()) {
+    RETURN_NOT_OK(SkipTargetsUpTo(lower_doc_key_.AsSlice()));
+  } else {
+    scan_target_.Reset();
+    for (size_t option_list_idx = 0; option_list_idx < current_scan_target_ranges_.size();
+         option_list_idx++) {
+      const auto& options = scan_options_[option_list_idx];
+      auto current_it = current_scan_target_ranges_[option_list_idx];
+      DCHECK(current_it != options.end());
+      scan_target_.Append(*current_it);
+    }
+  }
+
+  VLOG_WITH_FUNC(3) << "current_scan_target: " << scan_target_.ToString();
+  RETURN_NOT_OK(UpdateUpperBound(&iter));
+  return true;
+}
+
 Result<bool> HybridScanChoices::InterestedInRow(
-    dockv::KeyBytes* row_key, IntentAwareIterator* iter) {
+    dockv::KeyBytes* row_key, IntentAwareIterator& iter) {
   auto row = row_key->AsSlice();
-  if (CurrentTargetMatchesKey(row, iter)) {
+  if (CurrentTargetMatchesKey(row, &iter)) {
     return true;
   }
   // We must have seeked past the target key we are looking for (no result) so we can safely
@@ -832,9 +938,9 @@ Result<bool> HybridScanChoices::InterestedInRow(
         VERIFY_RESULT(dockv::IsColocatedTableTombstoneKey(row)), Corruption,
         "Key $0 is not table tombstone key.", row.ToDebugHexString());
     if (is_forward_scan_) {
-      iter->SeekOutOfSubDoc(SeekFilter::kAll, row_key);
+      iter.SeekOutOfSubDoc(SeekFilter::kAll, row_key);
     } else {
-      iter->SeekPrevDocKey(row);
+      iter.SeekPrevDocKey(row);
     }
     return false;
   }
@@ -845,31 +951,92 @@ Result<bool> HybridScanChoices::InterestedInRow(
 
   // We updated scan target above, if it goes past the row_key_ we will seek again, and
   // process the found key in the next loop.
-  if (CurrentTargetMatchesKey(row, iter)) {
+  if (CurrentTargetMatchesKey(row, &iter)) {
     return true;
   }
 
   // Not interested in the row => Rollback to last seen ht checkpoint.
-  iter->RollbackMaxSeenHt(max_seen_ht_checkpoint_);
+  iter.RollbackMaxSeenHt(max_seen_ht_checkpoint_);
 
   SeekToCurrentTarget(iter);
   return false;
 }
 
 Result<bool> HybridScanChoices::AdvanceToNextRow(
-    dockv::KeyBytes* row_key, IntentAwareIterator* iter, bool current_fetched_row_skipped) {
-
-  if (!VERIFY_RESULT(DoneWithCurrentTarget(current_fetched_row_skipped)) ||
-      CurrentTargetMatchesKey(row_key->AsSlice(), iter)) {
+    dockv::KeyBytes* row_key, IntentAwareIterator& iter, bool current_fetched_row_skipped) {
+  VLOG_WITH_FUNC(4)
+      << "row_key: " << (row_key ? DocKey::DebugSliceToString(*row_key) : "<NULL>")
+      << ", current_fetched_row_skipped: " << current_fetched_row_skipped
+      << ", is_options_done: " << is_options_done_
+      << ", iterator_bound_scope: " << iterator_bound_scope_.has_value()
+      << ", current: " << scan_target_.ToString();
+  if (!row_key) {
+    if (!iterator_bound_scope_) {
+      // Row was not found and we did not specify upper bound. It means that iteration finished.
+      return false;
+    }
+    if (!VERIFY_RESULT(DoneWithCurrentTarget(current_fetched_row_skipped, true)) ||
+        is_options_done_) {
+      return false;
+    }
+  } else if (!VERIFY_RESULT(DoneWithCurrentTarget(current_fetched_row_skipped, false)) ||
+             CurrentTargetMatchesKey(row_key->AsSlice(), &iter)) {
     return false;
   }
   SeekToCurrentTarget(iter);
   return true;
 }
 
+Status HybridScanChoices::UpdateUpperBound(IntentAwareIterator* iter) {
+  if (finished_) {
+    return Status::OK();
+  }
+  if (!iter) {
+    if (!iterator_bound_scope_) {
+      return Status::OK();
+    }
+    iter = &iterator_bound_scope_->iterator();
+  }
+
+  DCHECK_EQ(bloom_filter_options_.mode(), BloomFilterMode::kVariable);
+  RSTATUS_DCHECK_LE(
+      num_bloom_filter_cols_, scan_target_.num_columns(), IllegalState,
+      Format("Wrong number of columns in scan target $0, while at least $1 required",
+             scan_target_.num_columns(), num_bloom_filter_cols_));
+  auto bloom_filter_key = scan_target_.SliceUpToColumn(num_bloom_filter_cols_ - 1);
+
+  auto need_update =
+      !iterator_bound_scope_ || bloom_filter_key != upper_bound_.AsSlice().WithoutSuffix(1);
+
+  VLOG_WITH_FUNC(4)
+      << "has iter: " << (iter != nullptr) << ", current_scan_target: "
+      << scan_target_.ToString() << ", bloom_filter_key: "
+      << bloom_filter_key.ToDebugHexString() << ", need update: " << need_update;
+
+  if (!need_update) {
+    return Status::OK();
+  }
+
+  iter->UpdateFilterKey(scan_target_.AsSlice(), scan_target_.AsSlice());
+  upper_bound_.Reset(bloom_filter_key);
+  upper_bound_.AppendKeyEntryType(KeyEntryType::kHighest);
+  if (iterator_bound_scope_) {
+    iterator_bound_scope_->Update(upper_bound_);
+  } else {
+    iterator_bound_scope_.emplace(upper_bound_, iter);
+  }
+  return Status::OK();
+}
+
 std::string OptionRange::ToString() const {
   return Format(
-      "$0$1, $2$3", lower_inclusive_ ? "[" : "(", lower_, upper_, upper_inclusive_ ? "]" : ")");
+      "$0$1, $2$3", lower_inclusive_ ? "[" : "(", lower_.ToDebugHexString(),
+      upper_.ToDebugHexString(), upper_inclusive_ ? "]" : ")");
+}
+
+
+bool OptionRange::Fixed() const {
+  return lower_inclusive_ && upper_inclusive_ && lower_ == upper_;
 }
 
 } // namespace yb::docdb

@@ -1,6 +1,6 @@
-import { FC } from "react";
-import { yba, mui } from "@yugabyte-ui-library/core";
-import { useTranslation } from "react-i18next";
+import { FC } from 'react';
+import { yba, mui } from '@yugabyte-ui-library/core';
+import { useTranslation } from 'react-i18next';
 
 const { YBButton } = yba;
 
@@ -22,34 +22,41 @@ interface UniverseActionButtonsProps {
     onClick: () => void;
     disabled?: boolean;
   };
-  additionalButtons? : React.ReactElement
+  additionalButtons?: React.ReactElement;
 }
 
-export const UniverseActionButtons: FC<UniverseActionButtonsProps> = ({ cancelButton, nextButton, prevButton, additionalButtons }) => {
+export const UniverseActionButtons: FC<UniverseActionButtonsProps> = ({
+  cancelButton,
+  nextButton,
+  prevButton,
+  additionalButtons
+}) => {
   const { t } = useTranslation('translation', { keyPrefix: 'common' });
 
   return (
-    <Grid
-      container
-      alignItems="center"
-      justifyContent="space-between"
-      direction="row"
-    >
-      <YBButton variant="secondary" size="large" dataTestId="create-universe-cancel-button" onClick={cancelButton?.onClick}>
+    <Grid container alignItems="center" justifyContent="space-between" direction="row">
+      <YBButton
+        variant="secondary"
+        size="large"
+        dataTestId="create-universe-cancel-button"
+        onClick={cancelButton?.onClick}
+      >
         {cancelButton?.text ?? t('cancel')}
       </YBButton>
       <Grid container alignItems="center" justifyContent="flex-end" spacing={2}>
-        <YBButton
-          onClick={() => {
-            prevButton?.onClick();
-          }}
-          disabled={prevButton?.disabled}
-          variant="secondary"
-          size="large"
-          dataTestId="create-universe-back-button"
-        >
-          {prevButton?.text ?? t('back')}
-        </YBButton>
+        {prevButton && (
+          <YBButton
+            onClick={() => {
+              prevButton?.onClick();
+            }}
+            disabled={prevButton?.disabled}
+            variant="secondary"
+            size="large"
+            dataTestId="create-universe-back-button"
+          >
+            {prevButton?.text ?? t('back')}
+          </YBButton>
+        )}
         {additionalButtons}
         <YBButton
           onClick={() => {

@@ -31,8 +31,7 @@ var listCustomerCmd = &cobra.Command{
 
 		rCustomers, response, err := customerListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Customer", "List")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Customer", "List")
 		}
 
 		r := make([]ybaclient.CustomerDetailsData, 0)

@@ -1511,7 +1511,7 @@ class PosixEnv : public Env {
     if (sysinfo(&info) < 0) {
       return STATUS_IO_ERROR("sysinfo() failed", errno);
     }
-    LOG(INFO) << "Using memory limit from sysinfo(): " << info.totalram;
+    VLOG(1) << "Using memory limit from sysinfo(): " << info.totalram;
     *ram = info.totalram;
 
 #endif

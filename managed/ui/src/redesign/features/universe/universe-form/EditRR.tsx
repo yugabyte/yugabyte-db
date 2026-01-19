@@ -12,7 +12,6 @@ import {
   FullMoveModal,
   KubernetesPlacementModal,
   PlacementModal,
-  ResizeNodeModal,
   SmartResizeModal
 } from './action-modals';
 import { YBLoading } from '../../../../components/common/indicators';
@@ -51,8 +50,7 @@ export const EditReadReplica: FC<EditReadReplicaProps> = ({ uuid, isViewMode }) 
 
   //Local states
   const [showFMModal, setFMModal] = useState(false); //FM -> Full Move
-  const [showSRModal, setSRModal] = useState(false); //SR -> Smart Resize
-  const [showRNModal, setRNModal] = useState(false); //RN -> Resize Nodes
+  const [showSRModal, setSRModal] = useState(false); //SR -> Smart Resize or Resize Nodes
   const [showPlacementModal, setPlacementModal] = useState(false);
   const [showK8Modal, setK8Modal] = useState(false);
   const [showDeleteRRModal, setShowDeleteRRModal] = useState(false);
@@ -132,11 +130,10 @@ export const EditReadReplica: FC<EditReadReplicaProps> = ({ uuid, isViewMode }) 
 
     if (!isK8sUniverse) {
       if (
-        _.intersection(updateOptions, [UpdateActions.SMART_RESIZE, UpdateActions.FULL_MOVE])
-          .length > 1
+        updateOptions.includes(UpdateActions.SMART_RESIZE) ||
+        updateOptions.includes(UpdateActions.SMART_RESIZE_NON_RESTART)
       )
         setSRModal(true);
-      else if (updateOptions.includes(UpdateActions.SMART_RESIZE_NON_RESTART)) setRNModal(true);
       else if (updateOptions.includes(UpdateActions.FULL_MOVE)) setFMModal(true);
       else setPlacementModal(true);
     } else setK8Modal(true);
@@ -170,14 +167,6 @@ export const EditReadReplica: FC<EditReadReplicaProps> = ({ uuid, isViewMode }) 
       />
       {universePayload && (
         <>
-          {showRNModal && (
-            <ResizeNodeModal
-              open={showRNModal}
-              isPrimary={false}
-              universeData={universePayload}
-              onClose={() => setRNModal(false)}
-            />
-          )}
           {showSRModal && (
             <SmartResizeModal
               open={showSRModal}
@@ -185,11 +174,8 @@ export const EditReadReplica: FC<EditReadReplicaProps> = ({ uuid, isViewMode }) 
               oldConfigData={universe.universeDetails}
               newConfigData={universePayload}
               onClose={() => setSRModal(false)}
-              handleSmartResize={() => {
-                setSRModal(false);
-                setRNModal(true);
-              }}
-              handleFullMove={(runOnlyPrechecks: boolean) =>
+              handlePrechecks={(runOnlyPrechecks: boolean) =>
+                // Just runs prechecks, does not submit the form if prechecks is true
                 editReadReplica(universePayload, dispatch, isNewTaskUIEnabled, runOnlyPrechecks)
               }
             />

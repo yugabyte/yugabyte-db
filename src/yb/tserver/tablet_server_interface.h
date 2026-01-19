@@ -46,7 +46,7 @@ class PGConn;
 
 namespace server {
 class RpcAndWebServerBase;
-class YCQLStatementStatsProvider;
+class YCQLServerExternalInterface;
 }
 
 namespace tserver {
@@ -59,7 +59,7 @@ class TabletServerIf : public LocalTabletServer {
  public:
   virtual ~TabletServerIf() {}
 
-  virtual TSTabletManager* tablet_manager() = 0;
+  virtual TSTabletManager* tablet_manager() const = 0;
   virtual TabletPeerLookupIf* tablet_peer_lookup() = 0;
   virtual TSLocalLockManagerPtr ts_local_lock_manager() const = 0;
 
@@ -85,6 +85,10 @@ class TabletServerIf : public LocalTabletServer {
   virtual Status SetTserverCatalogMessageList(
       uint32_t db_oid, bool is_breaking_change, uint64_t new_catalog_version,
       const std::optional<std::string>& message_list) = 0;
+
+  virtual Status TriggerRelcacheInitConnection(
+      const tserver::TriggerRelcacheInitConnectionRequestPB& req,
+      tserver::TriggerRelcacheInitConnectionResponsePB *resp) = 0;
 
   virtual const scoped_refptr<MetricEntity>& MetricEnt() const = 0;
 
@@ -119,7 +123,7 @@ class TabletServerIf : public LocalTabletServer {
   }
 
   virtual void SetCQLServer(yb::server::RpcAndWebServerBase* server,
-      server::YCQLStatementStatsProvider* stmt_provider) = 0;
+      server::YCQLServerExternalInterface* cql_server_if) = 0;
 
   virtual rpc::Messenger* GetMessenger(ash::Component component) const = 0;
 
@@ -128,6 +132,8 @@ class TabletServerIf : public LocalTabletServer {
   virtual void ClearAllMetaCachesOnServer() = 0;
 
   virtual Status ClearMetacache(const std::string& namespace_id) = 0;
+
+  virtual Status ClearYCQLMetaDataCache() = 0;
 
   virtual Status YCQLStatementStats(const tserver::PgYCQLStatementStatsRequestPB& req,
     tserver::PgYCQLStatementStatsResponsePB* resp) const = 0;

@@ -95,7 +95,7 @@
 
 #include "yb/tserver/tablet_memory_manager.h"
 #include "yb/tserver/ts_tablet_manager.h"
-#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver.messages.h"
 
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/format.h"
@@ -730,7 +730,7 @@ Status SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
     return STATUS(InternalError, "Injected random failure for testing.");
   }
 
-  auto resp = std::make_shared<tserver::WriteResponsePB>();
+  auto resp = std::make_shared<tserver::WriteResponseMsg>();
   // If this is a PG write, them the pgsql write batch is not empty.
   //
   // If this is a QL write, then it is a normal sys_catalog write, so ignore writes that might
@@ -774,7 +774,7 @@ Status SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
     return StatusFromPB(resp->error().status());
   }
   if (resp->per_row_errors_size() > 0) {
-    for (const WriteResponsePB::PerRowErrorPB& error : resp->per_row_errors()) {
+    for (const auto& error : resp->per_row_errors()) {
       LOG(WARNING) << "row " << error.row_index() << ": " << StatusFromPB(error.error()).ToString();
     }
     return STATUS(Corruption, "One or more rows failed to write");
@@ -826,10 +826,7 @@ Status SysCatalogTable::GetTableSchema(
   QLConditionPB cond;
   cond.set_op(QL_OP_AND);
   QLAddInt8Condition(&cond, schema.column_id(type_col_idx), QL_OP_EQUAL, SysRowEntryType::TABLE);
-  const dockv::KeyEntryValues empty_hash_components;
-  docdb::DocQLScanSpec spec(
-      schema, /*hash_code=*/std::nullopt, /*max_hash_code=*/std::nullopt, empty_hash_components,
-      &cond, /*if_req=*/nullptr, rocksdb::kDefaultQueryId);
+  docdb::DocQLScanSpec spec(schema, &cond);
   auto request_scope = VERIFY_RESULT(tablet->CreateRequestScope());
   RETURN_NOT_OK(doc_iter->Init(spec));
 
@@ -1045,13 +1042,10 @@ Status SysCatalogTable::ReadYsqlDBCatalogVersionImplWithReadTime(
     cond.add_operands()->set_column_id(db_oid_id);
     cond.set_op(QL_OP_EQUAL);
     cond.add_operands()->mutable_value()->set_uint32_value(db_oid);
-    const dockv::KeyEntryValues empty_key_components;
-    docdb::DocPgsqlScanSpec spec(
-        schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
-        &cond, std::nullopt /* hash_code */, std::nullopt /* max_hash_code */);
+    docdb::DocPgsqlScanSpec spec(schema, &cond);
     RETURN_NOT_OK(iter->Init(spec));
   } else {
-    iter->InitForTableType(read_data.table_info->table_type);
+    RETURN_NOT_OK(iter->InitForTableType(read_data.table_info->table_type));
   }
 
   while (VERIFY_RESULT(iter->FetchNext(&source_row))) {
@@ -1292,10 +1286,7 @@ Status SysCatalogTable::ReadPgClassInfo(
     // catalog tables. They can be skipped, as tablespace information is relevant only for user
     // created tables.
     cond.add_operands()->mutable_value()->set_uint32_value(kPgFirstNormalObjectId);
-    const dockv::KeyEntryValues empty_key_components;
-    docdb::DocPgsqlScanSpec spec(
-        schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
-        &cond, std::nullopt /* hash_code */, std::nullopt /* max_hash_code */);
+    docdb::DocPgsqlScanSpec spec(schema, &cond);
     RETURN_NOT_OK(iter->Init(spec));
   }
 
@@ -1402,10 +1393,7 @@ Result<PgOidToOidMap> SysCatalogTable::ReadPgClassColumnWithOidValueMap(
   auto iter = VERIFY_RESULT(read_data.NewUninitializedIterator(projection));
   auto request_scope = VERIFY_RESULT(VERIFY_RESULT(Tablet())->CreateRequestScope());
   {
-    const dockv::KeyEntryValues empty_key_components;
-    docdb::DocPgsqlScanSpec spec(
-        schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
-        /*condition=*/nullptr, /*hash_code=*/std::nullopt, /*max_hash_code=*/std::nullopt);
+    docdb::DocPgsqlScanSpec spec(schema, nullptr);
 
     RETURN_NOT_OK(iter->Init(spec));
   }
@@ -1455,10 +1443,7 @@ Result<PgOid> SysCatalogTable::ReadPgClassColumnWithOidValue(
     cond.add_operands()->set_column_id(oid_col_id);
     cond.set_op(QL_OP_EQUAL);
     cond.add_operands()->mutable_value()->set_uint32_value(table_oid);
-    const dockv::KeyEntryValues empty_key_components;
-    docdb::DocPgsqlScanSpec spec(
-        schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
-        &cond, std::nullopt /* hash_code */, std::nullopt /* max_hash_code */);
+    docdb::DocPgsqlScanSpec spec(schema, &cond);
     RETURN_NOT_OK(iter->Init(spec));
   }
 
@@ -1479,6 +1464,41 @@ Result<PgOid> SysCatalogTable::ReadPgClassColumnWithOidValue(
   return oid;
 }
 
+Result<bool> SysCatalogTable::ReadPgIndexBoolColumn(
+    const PgOid database_oid, const PgOid index_oid, const string& column_name,
+    const ReadHybridTime& read_time) {
+  TRACE_EVENT0("master", "ReadPgIndexBoolColumn");
+
+  auto read_data = VERIFY_RESULT(TableReadData(database_oid, kPgIndexTableOid, read_time));
+  const auto& schema = read_data.schema();
+
+  const auto indexrelid_col_id = VERIFY_RESULT(schema.ColumnIdByName("indexrelid")).rep();
+  const auto result_col_idx = VERIFY_RESULT(schema.ColumnIndexByName(column_name));
+  const auto result_col_id = schema.column_id(result_col_idx).rep();
+
+  dockv::ReaderProjection projection(schema, {indexrelid_col_id, result_col_id});
+  auto iter = VERIFY_RESULT(read_data.NewUninitializedIterator(projection));
+  auto request_scope = VERIFY_RESULT(VERIFY_RESULT(Tablet())->CreateRequestScope());
+  {
+    PgsqlConditionPB cond;
+    cond.add_operands()->set_column_id(indexrelid_col_id);
+    cond.set_op(QL_OP_EQUAL);
+    cond.add_operands()->mutable_value()->set_uint32_value(index_oid);
+    docdb::DocPgsqlScanSpec spec(schema, &cond);
+    RETURN_NOT_OK(iter->Init(spec));
+  }
+
+  bool value = false;
+  qlexpr::QLTableRow row;
+  if (VERIFY_RESULT(iter->FetchNext(&row))) {
+    const auto& result_col = row.GetValue(result_col_id);
+    SCHECK(result_col, Corruption, "Could not read " + column_name + " column from pg_index");
+    value = result_col->get().bool_value();
+  }
+
+  return value;
+}
+
 Result<PgOidToStringMap> SysCatalogTable::ReadPgNamespaceNspnameMap(const PgOid database_oid) {
   TRACE_EVENT0("master", "ReadPgNamespaceNspnameMap");
 
@@ -1492,10 +1512,7 @@ Result<PgOidToStringMap> SysCatalogTable::ReadPgNamespaceNspnameMap(const PgOid 
   auto iter = VERIFY_RESULT(read_data.NewUninitializedIterator(projection));
   auto request_scope = VERIFY_RESULT(VERIFY_RESULT(Tablet())->CreateRequestScope());
   {
-    const dockv::KeyEntryValues empty_key_components;
-    docdb::DocPgsqlScanSpec spec(
-        schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
-        /*condition=*/nullptr, /*hash_code=*/std::nullopt, /*max_hash_code=*/std::nullopt);
+    docdb::DocPgsqlScanSpec spec(schema, /*condition=*/nullptr);
     RETURN_NOT_OK(iter->Init(spec));
   }
 
@@ -1540,10 +1557,7 @@ Result<string> SysCatalogTable::ReadPgNamespaceNspname(const PgOid database_oid,
     cond.add_operands()->set_column_id(oid_col_id);
     cond.set_op(QL_OP_EQUAL);
     cond.add_operands()->mutable_value()->set_uint32_value(relnamespace_oid);
-    const dockv::KeyEntryValues empty_key_components;
-    docdb::DocPgsqlScanSpec spec(
-        schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
-        &cond, std::nullopt /* hash_code */, std::nullopt /* max_hash_code */);
+    docdb::DocPgsqlScanSpec spec(schema, &cond);
     RETURN_NOT_OK(iter->Init(spec));
   }
 
@@ -1587,9 +1601,7 @@ Result<std::unordered_map<string, uint32_t>> SysCatalogTable::ReadPgAttNameTypid
     cond.set_op(QL_OP_EQUAL);
     cond.add_operands()->mutable_value()->set_uint32_value(table_oid);
     const dockv::KeyEntryValues empty_key_components;
-    docdb::DocPgsqlScanSpec spec(
-        schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components, &cond,
-        std::nullopt /* hash_code */, std::nullopt /* max_hash_code */);
+    docdb::DocPgsqlScanSpec spec(schema, &cond);
     RETURN_NOT_OK(iter->Init(spec));
   }
 
@@ -1651,10 +1663,7 @@ Result<std::unordered_map<uint32_t, string>> SysCatalogTable::ReadPgEnum(
   auto iter = VERIFY_RESULT(read_data.NewUninitializedIterator(projection));
   auto request_scope = VERIFY_RESULT(VERIFY_RESULT(Tablet())->CreateRequestScope());
   {
-    const dockv::KeyEntryValues empty_key_components;
-    docdb::DocPgsqlScanSpec spec(
-        schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
-        /*condition=*/nullptr, /*hash_code=*/std::nullopt, /*max_hash_code=*/std::nullopt);
+    docdb::DocPgsqlScanSpec spec(schema, /*condition=*/ nullptr);
     RETURN_NOT_OK(iter->Init(spec));
   }
 
@@ -1707,10 +1716,7 @@ Result<std::unordered_map<uint32_t, PgTypeInfo>> SysCatalogTable::ReadPgTypeInfo
       seq_value->add_elems()->set_uint32_value(type_oid);
     }
 
-    const dockv::KeyEntryValues empty_key_components;
-    docdb::DocPgsqlScanSpec spec(
-        schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components, &cond,
-        std::nullopt /* hash_code */, std::nullopt /* max_hash_code */);
+    docdb::DocPgsqlScanSpec spec(schema, &cond);
     RETURN_NOT_OK(iter->Init(spec));
   }
 
@@ -1811,13 +1817,9 @@ Result<MaxOidPerSpace> SysCatalogTable::ReadHighestPreservableOids(uint32_t data
 
     auto iter = VERIFY_RESULT(read_data.NewUninitializedIterator(projection));
     {
-      const dockv::KeyEntryValues empty_key_components;
       // We are doing a full table scan in the forward direction here because there is no index for
       // relfilenode.
-      docdb::DocPgsqlScanSpec spec(
-          schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
-          /*condition=*/nullptr, /*hash_code=*/std::nullopt,
-          /*max_hash_code=*/std::nullopt);
+      docdb::DocPgsqlScanSpec spec(schema, /*condition=*/ nullptr);
       RETURN_NOT_OK(iter->Init(spec));
     }
 
@@ -2105,10 +2107,7 @@ Result<RelIdToAttributesMap> SysCatalogTable::ReadPgAttributeInfo(
     for (auto const table_oid : table_oids) {
       list_values->add_elems()->set_uint32_value(table_oid);
     }
-    const dockv::KeyEntryValues empty_key_components;
-    docdb::DocPgsqlScanSpec spec(
-        schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components, &cond,
-        std::nullopt /* hash_code */, std::nullopt /* max_hash_code */);
+    docdb::DocPgsqlScanSpec spec(schema, &cond);
     RETURN_NOT_OK(iter->Init(spec));
   }
 
@@ -2215,10 +2214,7 @@ Result<RelTypeOIDMap> SysCatalogTable::ReadCompositeTypeFromPgClass(
   auto iter = VERIFY_RESULT(read_data.NewUninitializedIterator(projection));
   auto request_scope = VERIFY_RESULT(VERIFY_RESULT(Tablet())->CreateRequestScope());
   {
-    const dockv::KeyEntryValues empty_key_components;
-    docdb::DocPgsqlScanSpec spec(
-        schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
-        /*condition=*/nullptr, /*hash_code=*/std::nullopt, /*max_hash_code=*/std::nullopt);
+    docdb::DocPgsqlScanSpec spec(schema, /*condition=*/ nullptr);
     RETURN_NOT_OK(iter->Init(spec));
   }
 

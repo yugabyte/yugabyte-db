@@ -421,6 +421,7 @@ func (plat Platform) Status() (common.Status, error) {
 		Version:    plat.version,
 		ConfigLoc:  plat.ConfFileLocation,
 		LogFileLoc: common.GetBaseInstall() + "/data/logs/application.log",
+		BinaryLoc:  filepath.Join(common.GetSoftwareRoot(), "yb-platform", "yugaware", "bin"),
 	}
 
 	// Set the systemd service file location if one exists

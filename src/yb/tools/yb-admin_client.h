@@ -308,7 +308,7 @@ class ClusterAdminClient {
       const std::string& leader_uuid,
       const std::string& new_leader_uuid = std::string());
 
-  Status SplitTablet(const TabletId& tablet_id);
+  Status SplitTablet(const TabletId& tablet_id, int split_factor);
 
   Status DisableTabletSplitting(int64_t disable_duration_ms, const std::string& feature_name);
 
@@ -322,7 +322,7 @@ class ClusterAdminClient {
 
   Result<std::string> GetMasterLeaderUuid();
 
-  Status GetYsqlCatalogVersion();
+  Status GetYsqlCatalogVersion(const TypedNamespaceName& ns);
 
   Result<rapidjson::Document> DdlLog();
 
@@ -534,6 +534,7 @@ class ClusterAdminClient {
   // List the uuids of all masters/tservers known to the master leader.
   Result<std::unordered_set<std::string>> ListAllKnownMasterUuids();
   Result<std::unordered_set<std::string>> ListAllKnownTabletServersUuids();
+  Status GetTableXorHash(const TableId& table_id, uint64_t read_ht);
 
  protected:
   // Fetch the locations of the replicas for a given tablet from the Master.

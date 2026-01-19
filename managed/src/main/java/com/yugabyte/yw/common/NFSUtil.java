@@ -3,6 +3,7 @@
 package com.yugabyte.yw.common;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.mvc.Http.Status.PRECONDITION_FAILED;
 
 import com.google.inject.Inject;
@@ -511,10 +512,11 @@ public class NFSUtil implements StorageUtil {
 
       // Check if the backup directory exists and is valid
       if (!nfsBackupDir.exists() || !nfsBackupDir.isDirectory()) {
-        log.warn(
-            "Backup directory {} does not exist or is not a directory.",
-            nfsBackupDir.getAbsolutePath());
-        return null;
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "Backup directory "
+                + nfsBackupDir.getAbsolutePath()
+                + " does not exist or is not a directory");
       }
 
       // Define the backup file pattern
@@ -528,14 +530,24 @@ public class NFSUtil implements StorageUtil {
               .orElse(null);
 
       if (latestBackup == null) {
-        log.warn("No backup files found in directory {}.", nfsBackupDir.getAbsolutePath());
-        return null;
+        throw new PlatformServiceException(
+            BAD_REQUEST, "No backup files found in directory " + nfsBackupDir.getAbsolutePath());
+      }
+
+      if (!runtimeConfGetter.getGlobalConf(GlobalConfKeys.allowYbaRestoreWithOldBackup)) {
+        if (latestBackup.lastModified() < System.currentTimeMillis() - (1000 * 60 * 60 * 24)) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "YB Anywhere restore is not allowed when backup file is more than 1 day old, enable"
+                  + " runtime flag yb.yba_backup.allow_restore_with_old_backup to continue");
+        }
       }
 
       // Ensure the local directory exists
       if (!localDir.toFile().exists() && !localDir.toFile().mkdirs()) {
-        log.warn("Failed to create local directory: {}", localDir.toAbsolutePath());
-        return null;
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR,
+            "Failed to create local directory: " + localDir.toAbsolutePath());
       }
 
       // Copy the backup file to the local directory
@@ -550,12 +562,9 @@ public class NFSUtil implements StorageUtil {
       return localBackupFile;
 
     } catch (IOException e) {
-      log.warn("IO error occurred while copying backup: {}", e.getMessage(), e);
-    } catch (Exception e) {
-      log.warn("Unexpected exception while copying backup: {}", e.getMessage(), e);
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "IO error occurred while copying backup: " + e.getMessage());
     }
-
-    return null;
   }
 
   @Override

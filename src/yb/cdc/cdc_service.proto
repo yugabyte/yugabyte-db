@@ -553,6 +553,9 @@ message RowMessage {
   // DocKey for the row in a table. Only populated for DMLs in the streaming phase but not
   // for other ops such as DDL/BEGIN/COMMIT/SAFEPOINT. Not populated in the Snapshot phase.
   optional bytes primary_key = 18;
+
+  // Replication origin id associated with the transaction. Only set for COMMIT Ops.
+  optional uint32 xrepl_origin_id = 19;
 }
 
 message CDCSDKProtoRecordPB {

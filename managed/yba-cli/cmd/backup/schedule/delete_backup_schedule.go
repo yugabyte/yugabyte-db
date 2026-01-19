@@ -64,15 +64,13 @@ var deleteBackupScheduleCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if (len(strings.TrimSpace(universeName))) > 0 {
+		if !util.IsEmptyString(universeName) {
 			universeListRequest := authAPI.ListUniverses()
 			universeListRequest = universeListRequest.Name(universeName)
 
 			r, response, err := universeListRequest.Execute()
 			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(
-					response, err, "Backup Schedule", "Delete - Get Universe")
-				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+				util.FatalHTTPError(response, err, "Backup Schedule", "Delete - Get Universe")
 			}
 			if len(r) < 1 {
 				logrus.Fatalf(
@@ -100,9 +98,7 @@ var deleteBackupScheduleCmd = &cobra.Command{
 			// Execute backup list request
 			r, response, err := scheduleListRequest.Execute()
 			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(response, err,
-					"Backup Schedule", "Delete - List Schedules")
-				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+				util.FatalHTTPError(response, err, "Backup Schedule", "Delete - List Schedules")
 			}
 
 			// Check if backups found
@@ -148,8 +144,7 @@ var deleteBackupScheduleCmd = &cobra.Command{
 
 		rDelete, response, err := deleteScheduleRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Backup Schedule", "Delete")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Backup Schedule", "Delete")
 		}
 
 		if rDelete.GetSuccess() {

@@ -124,6 +124,42 @@ public class ReleasesControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCreateReleaseKubernetes_StringArchitecture() {
+    String url = String.format("/api/customers/%s/ybdb_release", defaultCustomer.getUuid());
+    ObjectNode jsonBody = Json.newObject();
+    UUID r1UUID = UUID.randomUUID();
+    jsonBody.put("release_uuid", r1UUID.toString());
+    jsonBody.put("version", "2.21.1.0");
+    jsonBody.put("yb_type", "YBDB");
+    jsonBody.put("release_type", "LTS");
+    ArrayNode jArtifacts = Json.newArray();
+    ObjectNode jArtifact = Json.newObject();
+    jArtifact.put("package_url", "http://download.yugabyte.com/my_release.tgz");
+    jArtifact.put("platform", ReleaseArtifact.Platform.KUBERNETES.toString());
+    jArtifact.put("architecture", "");
+    jArtifact.put("sha256", "1234asdf");
+    jArtifacts.add(jArtifact);
+    jsonBody.set("artifacts", jArtifacts);
+    Result result = doPostRequest(url, jsonBody);
+    assertOk(result);
+    JsonNode resultJson = Json.parse(contentAsString(result));
+    assertTrue(r1UUID.equals(UUID.fromString(resultJson.get("resourceUUID").asText())));
+
+    Release foundRelease = Release.get(r1UUID);
+    assertNotNull(foundRelease);
+    assertEquals("2.21.1.0", foundRelease.getVersion());
+    assertEquals("YBDB", foundRelease.getYb_type().toString());
+    assertEquals("LTS", foundRelease.getReleaseType());
+    List<ReleaseArtifact> artifacts = foundRelease.getArtifacts();
+    assertEquals(1, artifacts.size());
+    assertEquals("http://download.yugabyte.com/my_release.tgz", artifacts.get(0).getPackageURL());
+    assertEquals("1234asdf", artifacts.get(0).getSha256());
+    assertEquals("sha256:1234asdf", artifacts.get(0).getFormattedSha256());
+    assertEquals(ReleaseArtifact.Platform.KUBERNETES, artifacts.get(0).getPlatform());
+    assertNull(artifacts.get(0).getArchitecture());
+  }
+
+  @Test
   public void testListRelease() {
     when(mockReleasesUtils.versionUniversesMap()).thenReturn(new HashMap<String, List<Universe>>());
     Release r1 = Release.create("2.21.0.1", "STS");
@@ -250,6 +286,7 @@ public class ReleasesControllerTest extends FakeDBApplication {
     Result result = doGetRequest(url);
     assertOk(result);
     JsonNode resultJson = Json.parse(contentAsString(result));
+    System.out.println("resultJson: " + resultJson);
     assertEquals(r1.getVersion(), resultJson.get("version").asText());
     assertEquals(r1.getReleaseUUID().toString(), resultJson.get("release_uuid").asText());
     JsonNode artifacts = resultJson.get("artifacts");

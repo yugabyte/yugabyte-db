@@ -145,7 +145,7 @@ class FlushITest : public YBTest {
 
   void SetupWorkload(
       const client::YBTableName& table_name = TestWorkloadOptions::kDefaultTableName) {
-    workload_.reset(new TestWorkload(cluster_.get()));
+    workload_.reset(new TestYcqlWorkload(cluster_.get()));
     workload_->set_table_name(table_name);
     workload_->set_timeout_allowed(true);
     workload_->set_payload_bytes(kPayloadBytes);
@@ -260,7 +260,7 @@ class FlushITest : public YBTest {
   const int kNumTablets = 3;
   const size_t kPayloadBytes = 8_KB;
   std::unique_ptr<MiniCluster> cluster_;
-  std::unique_ptr<TestWorkload> workload_;
+  std::unique_ptr<TestYcqlWorkload> workload_;
   std::shared_ptr<RocksDbListener> rocksdb_listener_;
   std::shared_ptr<TabletManagerListener> tablet_manager_listener_;
 };

@@ -1,3 +1,4 @@
+import better.files.File.OpenOptions
 import jline.console.ConsoleReader
 import play.sbt.PlayImport.PlayKeys.{playInteractionMode, playMonitoredFiles}
 import play.sbt.PlayInteractionMode
@@ -7,14 +8,13 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.{FileSystems, Files, Paths}
 import sbt.complete.Parsers.spaceDelimited
 import sbt.Tests.*
+import sbt.nio.file.FileAttributes
 
+import java.util.stream.Collectors
 import scala.collection.JavaConverters.*
 import scala.sys.process.Process
 import scala.sys.process.*
 
-historyPath := Some(file(System.getenv("HOME") + "/.sbt/.yugaware-history"))
-
-useCoursier := false
 
 
 // ------------------------------------------------------------------------------------------------
@@ -109,15 +109,18 @@ lazy val cleanVenv = taskKey[Int]("Clean venv")
 lazy val cleanModules = taskKey[Int]("Clean modules")
 lazy val cleanCrd = taskKey[Int]("Clean CRD")
 lazy val cleanOperatorConfig = taskKey[Unit]("Clean OperatorConfig")
+lazy val cleanThirdParty = taskKey[Unit]("Clean ThirdParty Downloaded Marker")
 
 // ------------------------------------------------------------------------------------------------
 // Main build.sbt script
 // ------------------------------------------------------------------------------------------------
 
 name := "yugaware"
+generateReverseRouter := false
 
 def commonSettings = Seq(
-  scalaVersion := "2.13.12"
+  scalaVersion := "2.13.12",
+  useCoursier := false
 )
 
 lazy val TestLocalProviderSuite = config("testLocalSuite") extend(Test)
@@ -193,20 +196,20 @@ libraryDependencies ++= Seq(
   // Be careful when changing azure library versions.
   // Make sure all itests and existing functionality works as expected.
   // Used below azure versions from azure-sdk-bom:1.2.6
-  "com.azure" % "azure-core-http-netty" % "1.16.1",
-  "com.azure" % "azure-core" % "1.56.0",
-  "com.azure" % "azure-identity" % "1.17.0",
-  "com.azure" % "azure-security-keyvault-keys" % "4.10.2",
-  "com.azure" % "azure-storage-blob" % "12.31.2",
-  "com.azure" % "azure-storage-blob-batch" % "12.27.2",
-  "com.azure.resourcemanager" % "azure-resourcemanager" % "2.54.0",
+  "com.azure" % "azure-core-http-netty" % "1.16.2",
+  "com.azure" % "azure-core" % "1.57.0",
+  "com.azure" % "azure-identity" % "1.18.1",
+  "com.azure" % "azure-security-keyvault-keys" % "4.10.3",
+  "com.azure" % "azure-storage-blob" % "12.31.3",
+  "com.azure" % "azure-storage-blob-batch" % "12.27.3",
+  "com.azure.resourcemanager" % "azure-resourcemanager" % "2.55.0",
   "com.azure.resourcemanager" % "azure-resourcemanager-marketplaceordering" % "1.0.0",
+  "com.github.seancfoley" % "ipaddress" % "2.0.1",
   "jakarta.mail" % "jakarta.mail-api" % "2.1.2",
   "org.eclipse.angus" % "jakarta.mail" % "1.0.0",
   "javax.validation" % "validation-api" % "2.0.1.Final",
-  "io.prometheus" % "simpleclient" % "0.11.0",
-  "io.prometheus" % "simpleclient_hotspot" % "0.11.0",
-  "io.prometheus" % "simpleclient_servlet" % "0.11.0",
+  "io.prometheus" % "prometheus-metrics-core" % "1.4.3",
+  "io.prometheus" % "prometheus-metrics-exporter-httpserver" % "1.4.3",
   "org.glassfish.jaxb" % "jaxb-runtime" % "2.3.2",
   // pac4j and nimbusds libraries need to be upgraded together.
   "org.pac4j" %% "play-pac4j" % "11.0.0-PLAY2.8",
@@ -223,16 +226,18 @@ libraryDependencies ++= Seq(
   "commons-codec" % "commons-codec" % "1.16.0",
   "com.google.apis" % "google-api-services-compute" % "v1-rev20241008-2.0.0",
   "com.google.apis" % "google-api-services-iam" % "v1-rev20240918-2.0.0",
-  "com.google.cloud" % "google-cloud-compute" % "1.62.0",
-  "com.google.cloud" % "google-cloud-storage" % "2.43.2",
-  "com.google.cloud" % "google-cloud-kms" % "2.55.0",
-  "com.google.cloud" % "google-cloud-resourcemanager" % "1.54.0",
-  "com.google.cloud" % "google-cloud-logging" % "3.17.2",
+  "com.google.cloud" % "google-cloud-compute" % "1.88.0",
+  "com.google.cloud" % "google-cloud-storage" % "2.60.0",
+  "com.google.cloud" % "google-cloud-kms" % "2.81.0",
+  "com.google.cloud" % "google-cloud-resourcemanager" % "1.80.0",
+  "com.google.cloud" % "google-cloud-logging" % "3.23.7",
   "com.google.oauth-client" % "google-oauth-client" % "1.35.0",
   "org.projectlombok" % "lombok" % "1.18.26",
   "com.squareup.okhttp3" % "okhttp" % "4.12.0",
   "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.17.2",
-  "com.google.protobuf" % "protobuf-java-util" % "3.20.3",
+  // Compatible with protoc 33.0 https://protobuf.dev/support/version-support/
+  "com.google.protobuf" % "protobuf-java" % "4.33.0",
+  "com.google.protobuf" % "protobuf-java-util" % "4.33.0",
   "io.kamon" %% "kamon-bundle" % "2.7.5",
   "io.kamon" %% "kamon-prometheus" % "2.7.5",
   "org.unix4j" % "unix4j-command" % "0.6",
@@ -242,6 +247,7 @@ libraryDependencies ++= Seq(
   "io.fabric8" % "kubernetes-client" % "6.8.0",
   "io.fabric8" % "kubernetes-client-api" % "6.8.0",
   "io.fabric8" % "kubernetes-model" % "6.8.0",
+  "io.fabric8" % "kubernetes-server-mock" % "6.8.0",
   "org.modelmapper" % "modelmapper" % "2.4.4",
   "com.datadoghq" % "datadog-api-client" % "2.25.0" classifier "shaded-jar",
   "javax.xml.bind" % "jaxb-api" % "2.3.1",
@@ -355,13 +361,13 @@ externalResolvers := {
   validateResolver(ybPublicSnapshotResolver, ybPublicSnapshotResolverDescription)
 }
 
-(Compile / compile) := (Compile / compile).dependsOn(buildDependentArtifacts, testDependentArtifacts).value
+(Compile / compile) := (Compile / compile).dependsOn(buildDependentArtifacts).value
+(Test / test) := (Test / test).dependsOn(testDependentArtifacts).value
 
 (Compile / compilePlatform) := {
   Def.sequential(
     buildVenv,
-    (Compile / compile),
-    releaseModulesLocally
+    (Compile / compile)
   ).value
   uIInstallDependency.value
   versionGenerate.value
@@ -375,6 +381,7 @@ cleanPlatform := {
   clean.value
   (swagger / clean).value
   cleanOperatorConfig.value
+  cleanThirdParty.value
   cleanCrd.value
   cleanVenv.value
   cleanUI.value
@@ -410,7 +417,9 @@ ybLogTask := {
 buildVenv / fileInputs += baseDirectory.value.toGlob /
     "devops/python3_requirements*.txt"
 buildVenv := {
-  if (buildVenv.inputFileChanges.hasChanges) {
+  val venvDir: String = get_venv_dir()
+  if (buildVenv.inputFileChanges.hasChanges ||
+    !(baseDirectory.value / "devops" / venvDir).exists) {
     ybLog("Building virtual env...")
     Process("./bin/install_python_requirements.sh", baseDirectory.value / "devops") #&&
       Process("./bin/install_ansible_requirements.sh --force", baseDirectory.value / "devops") !
@@ -428,18 +437,30 @@ testDependentArtifacts := {
 
 releaseModulesLocally := {
   ybLog("Releasing modules...")
-  val status = Process("mvn install -DskipTests=true -P releaseLocally", baseDirectory.value / "parent-module").!
+  val status = Process("mvn install -DskipTests -P releaseLocally", baseDirectory.value / "parent-module").!
   status
 }
 
+buildDependentArtifacts / fileInputs += baseDirectory.value.toGlob /
+  "node-agent/**"
+buildDependentArtifacts / fileInputExcludeFilter :=
+  ((path: java.nio.file.Path, attributes: FileAttributes) => {
+    ".*(generated|target|third-party|pywheels|build|version_metadata).*".r.pattern.matcher(path.toString).matches
+   })
 buildDependentArtifacts := {
-  ybLog("Building dependencies...")
   (Compile / openApiProcessServer).value
   openApiProcessClients.value
   generateCrdObjects.value
   generateOssConfig.value
-  val status = Process("mvn install -P buildDependenciesOnly", baseDirectory.value / "parent-module").!
-  status
+  if (buildDependentArtifacts.inputFileChanges.hasChanges ||
+    !(baseDirectory.value / "node-agent" / "target").exists) {
+    ybLog("Building dependencies...")
+    val status = Process("mvn -DskipTests install", baseDirectory.value / "parent-module").!
+    status
+  } else {
+    ybLog("buildDependentArtifacts already done. Call 'cleanModules' to force build again.")
+    0
+  }
 }
 
 generateOssConfig := {
@@ -466,9 +487,10 @@ generateCrdObjects / fileInputs += baseDirectory.value.toGlob /
     "src/main/java/com/yugabyte/yw/common/operator/resources/" / ** / "*.yaml"
 // Process and compile open api files
 generateCrdObjects := {
-  if (generateCrdObjects.inputFileChanges.hasChanges) {
+  val generatedSourcesDirectory = baseDirectory.value / "target/operatorCRD"
+  if (generateCrdObjects.inputFileChanges.hasChanges ||
+    !generatedSourcesDirectory.exists) {
     ybLog("Generating crd classes...")
-    val generatedSourcesDirectory = baseDirectory.value / "target/scala-2.13/"
     val command = s"mvn generate-sources -DoutputDirectory=$generatedSourcesDirectory"
     val status = Process(command, baseDirectory.value / "src/main/java/com/yugabyte/yw/common/operator/").!
     status
@@ -477,11 +499,21 @@ generateCrdObjects := {
     0
   }
 }
+Compile / unmanagedSourceDirectories += baseDirectory.value / "target/operatorCRD/"
 
+downloadThirdPartyDeps / fileInputs += baseDirectory.value.toGlob /
+  "support/thirdparty-dependencies.txt"
 downloadThirdPartyDeps := {
-  ybLog("Downloading third-party dependencies...")
-  val status = Process("wget -Nqi thirdparty-dependencies.txt -P /opt/third-party -c", baseDirectory.value / "support").!
-  status
+  val downloadedMarkerPath = Paths.get("/opt/third-party/downloaded");
+  if (downloadThirdPartyDeps.inputFileChanges.hasChanges || !Files.exists(downloadedMarkerPath)) {
+    ybLog("Downloading third-party dependencies...")
+    val status = Process("wget -Nqi thirdparty-dependencies.txt -P /opt/third-party -c", baseDirectory.value / "support").!
+    Files.write(downloadedMarkerPath, "true".getBytes(StandardCharsets.UTF_8))
+    status
+  } else {
+    ybLog("Thirdparty dependencies already downloaded. Run 'cleanThirdParty' to force download.")
+    0
+  }
 }
 
 devSpaceReload := {
@@ -524,10 +556,19 @@ cleanOperatorConfig := {
 
 cleanCrd := {
   ybLog("Cleaning CRD generated code...")
-  val generatedSourcesDirectory = baseDirectory.value / "target/scala-2.13/"
+  val generatedSourcesDirectory = baseDirectory.value / "target/operatorCRD"
   val command = s"mvn clean -DoutputDirectory=$generatedSourcesDirectory"
   val status = Process(command, baseDirectory.value / "src/main/java/com/yugabyte/yw/common/operator/").!
   status
+}
+
+cleanThirdParty := {
+  ybLog("Cleaning ThirdParty downloaded marker...")
+  val filePath = "/opt/third-party/downloaded"
+  val file = sbt.file(filePath)
+  if (file.exists()) {
+    sbt.IO.delete(file)
+  }
 }
 
 lazy val cleanV2ServerStubs = taskKey[Int]("Clean v2 server stubs")
@@ -572,8 +613,7 @@ openApiFormat := {
   }
   val changes = openApiFormat.inputFileChanges
   val changedFiles = (changes.created ++ changes.modified).toSet
-  changedFiles.foreach(formatFile)
-
+  changedFiles.par.foreach(formatFile)
 }
 
 lazy val openApiLint = taskKey[Unit]("Running lint on openapi spec")
@@ -662,18 +702,35 @@ lazy val javaGenV2Client = project.in(file("client/java"))
 
 // Compile generated java v1 and v2 clients
 lazy val compileJavaGenV1Client = taskKey[Int]("Compile generated v1 Java client code")
+compileJavaGenV1Client / fileInputs += baseDirectory.value.toGlob /
+  "client/java/v1/" / ** / "*"
 compileJavaGenV1Client := {
-  val localMavenRepo = getEnvVar(ybMvnLocalRepoEnvVarName)
-  val cmdOpt = if (isDefined(localMavenRepo)) "-Dmaven.repo.local=" + localMavenRepo else ""
-  val status = Process("mvn clean install -pl v1 -am " + cmdOpt, new File(baseDirectory.value + "/client/java")).!
-  status
+  if (compileJavaGenV1Client.inputFileChanges.hasChanges) {
+    val localMavenRepo = getEnvVar(ybMvnLocalRepoEnvVarName)
+    val cmdOpt = if (isDefined(localMavenRepo)) "-Dmaven.repo.local=" + localMavenRepo else ""
+    val status = Process("mvn clean install -pl v1 -am " + cmdOpt, new File(baseDirectory.value + "/client/java")).!
+    status
+  } else {
+    ybLog("OpenApi java client stubs for v1 are already generated." +
+      " Run 'cleanClients' to force regeneration.")
+    0
+  }
 }
+
 lazy val compileJavaGenV2Client = taskKey[Int]("Compile generated v2 Java client code")
+compileJavaGenV2Client / fileInputs += baseDirectory.value.toGlob /
+  "client/java/v2/" / ** / "*"
 compileJavaGenV2Client := {
-  val localMavenRepo = getEnvVar(ybMvnLocalRepoEnvVarName)
-  val cmdOpt = if (isDefined(localMavenRepo)) "-Dmaven.repo.local=" + localMavenRepo else ""
-  val status = Process("mvn clean install -pl v2 -am " + cmdOpt, new File(baseDirectory.value + "/client/java")).!
-  status
+  if (compileJavaGenV2Client.inputFileChanges.hasChanges) {
+    val localMavenRepo = getEnvVar(ybMvnLocalRepoEnvVarName)
+    val cmdOpt = if (isDefined(localMavenRepo)) "-Dmaven.repo.local=" + localMavenRepo else ""
+    val status = Process("mvn clean install -pl v2 -am " + cmdOpt, new File(baseDirectory.value + "/client/java")).!
+    status
+  } else {
+    ybLog("OpenApi java client stubs for v2 are already generated." +
+      " Run 'cleanClients' to force regeneration.")
+    0
+  }
 }
 
 // Generate a Python API client.
@@ -712,6 +769,7 @@ lazy val gogen = project.in(file("client/go"))
     openApiGenerateApiTests := SettingDisabled,
     openApiValidateSpec := SettingDisabled,
     openApiConfigFile := "client/go/openapi-go-config.json",
+    openApiTemplateDir := "client/go/templates",
     target := file("client/go/target/v1"),
   )
 
@@ -725,6 +783,7 @@ lazy val goGenV2Client = project.in(file("client/go"))
     openApiGenerateApiTests := SettingDisabled,
     openApiValidateSpec := SettingDisabled,
     openApiConfigFile := "client/go/openapi-go-config-v2.json",
+    openApiTemplateDir := "client/go/templates",
     target := file("client/go/target/v2"),
     openApiGlobalProperties += ("skipFormModel" -> "false"),
   )
@@ -855,6 +914,8 @@ swaggerCompileClients := {
 val resDir = "../../src/main/resources"
 lazy val javaGenV2Server = project.in(file("target/openapi"))
   .enablePlugins(OpenApiGeneratorPlugin, OpenApiStylePlugin)
+  .dependsOn(root % "compile->compile;test->test")
+  .settings(commonSettings)
   .settings(
     openApiGeneratorName := "java-play-framework",
     openApiInputSpec := (baseDirectory.value / resDir / "openapi.yaml").absolutePath,
@@ -867,6 +928,9 @@ lazy val javaGenV2Server = project.in(file("target/openapi"))
     openApiStyleSpec := baseDirectory.value / resDir / "openapi.yaml",
     openApiStyleConfig := Some(baseDirectory.value / resDir / "openapi_style_validator.conf"),
     openApiGlobalProperties += ("skipFormModel" -> "false"),
+
+    excludeDependencies += "org.yb" % "yb-client",
+    excludeDependencies += "com.yugabyte" % "yba-client-v2"
   )
 
 // copy over the ignore file manually since openApiIgnoreFileOverride does not work
@@ -876,9 +940,7 @@ javaGenV2Server / openApiCopyIgnoreFile := {
   var tgt = (baseDirectory.value / "target/openapi/src/main/java/.openapi-generator-ignore").toPath
   ybLog("Copying " + src + " to " + tgt)
   Files.createDirectories((baseDirectory.value / "target/openapi/src/main/java/").toPath)
-  Files.copy((baseDirectory.value / "src/main/resources/.openapi-generator-ignore").toPath,
-      (baseDirectory.value / "target/openapi/src/main/java/.openapi-generator-ignore").toPath,
-      java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+  Files.copy(src, tgt, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
 }
 
 Universal / packageZipTarball := (Universal / packageZipTarball).dependsOn(versionGenerate, buildDependentArtifacts).value
@@ -939,8 +1001,8 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.108-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.3-b9"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.109-SNAPSHOT"
+libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.4-b1"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b35"
 
 libraryDependencies ++= Seq(
@@ -1010,6 +1072,7 @@ val jacksonLibs = Seq(
   "com.fasterxml.jackson.dataformat" % "jackson-dataformat-cbor",
   "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml",
   "com.fasterxml.jackson.dataformat" % "jackson-dataformat-yaml",
+  "com.fasterxml.jackson.dataformat" % "jackson-dataformat-toml",
   "com.fasterxml.jackson.module"     % "jackson-module-parameter-names",
   "com.fasterxml.jackson.module"     %% "jackson-module-scala",
 )
@@ -1162,8 +1225,14 @@ lazy val swagger = project
     excludeDependencies += "org.bouncycastle" % "bcpkix-jdk18on",
     excludeDependencies += "org.bouncycastle" % "bcprov-jdk18on",
 
+    // This is for Idea import - because otherwise it's not using any custom resolvers
+    // For regular SBT build externalResolvers list is used.
+    resolvers ++= validateResolver(mavenCacheServerResolver, mavenCacheServerResolverDescription),
+    resolvers ++= validateResolver(ybLocalResolver, ybLocalResolverDescription),
+    resolvers ++= validateResolver(ybClientSnapshotResolver, ybClientSnapshotResolverDescription),
+    resolvers ++= validateResolver(ybPublicSnapshotResolver, ybPublicSnapshotResolverDescription),
 
-swaggerGen := Def.taskDyn {
+    swaggerGen := Def.taskDyn {
       // Consider generating this only in managedResources
       val swaggerJson = (root / Compile / resourceDirectory).value / "swagger.json"
       val swaggerStrictJson = (root / Compile / resourceDirectory).value / "swagger-strict.json"
@@ -1217,29 +1286,43 @@ grafanaGen := Def.taskDyn {
   * UI Build Tasks like clean node modules, npm install and npm run build
   */
 
-// Delete node_modules directory in the given path. Return 0 if success.
-def cleanNodeModules(implicit dir: File): Int = Process("rm -rf node_modules", dir)!
-
 // Execute `npm ci` command to install all node module dependencies. Return 0 if success.
 def runNpmInstall(implicit dir: File): Int =
-  if (cleanNodeModules != 0) throw new Exception("node_modules not cleaned up")
-  else {
-    println("node version: " + Process("node" :: "--version" :: Nil).lineStream_!.head)
-    println("npm version: " + Process("npm" :: "--version" :: Nil).lineStream_!.head)
-    println("npm config get: " + Process("npm" :: "config" :: "get" :: Nil).lineStream_!.head)
-    println("npm cache verify: " + Process("npm" :: "cache" :: "verify" :: Nil).lineStream_!.head)
-    Process("npm" :: "ci" :: "--legacy-peer-deps" :: Nil, dir).!
+{
+  val installScript = dir / "npm-install.sh"
+  if (!installScript.exists()) {
+    throw new Exception(s"npm-install.sh not found at ${installScript}")
   }
+  Process(Seq("bash", installScript.getAbsolutePath), dir).!
+}
 
 // Execute `npm run build` command to build the production build of the UI code. Return 0 if success.
-def runNpmBuild(implicit dir: File): Int =
-  Process("npm run build-and-copy", dir)!
+def runNpmBuild(implicit dir: File): Int = {
+  val buildScript = dir / "npm-build.sh"
+  if (!buildScript.exists()) {
+    throw new Exception(s"npm-build.sh not found at ${buildScript}")
+  }
+  Process(Seq("bash", buildScript.getAbsolutePath), dir).!
+}
 
 lazy val uIInstallDependency = taskKey[Unit]("Install NPM dependencies")
 lazy val uIBuild = taskKey[Unit]("Build production version of UI code.")
+
+uIInstallDependency / fileInputs += baseDirectory.value.toGlob /
+  "ui/**"
+uIInstallDependency / fileInputExcludeFilter :=
+  ((path: java.nio.file.Path, attributes: FileAttributes) => {
+    ".*(node_modules).*".r.pattern.matcher(path.toString).matches
+  })
 uIInstallDependency := {
-  implicit val uiSource = baseDirectory.value / "ui"
-  if (runNpmInstall != 0) throw new Exception("npm install failed")
+  if (uIInstallDependency.inputFileChanges.hasChanges ||
+    !(baseDirectory.value / "ui/node_modules").exists) {
+    ybLog("Installing UI dependencies.")
+    implicit val uiSource = baseDirectory.value / "ui"
+    if (runNpmInstall != 0) throw new Exception("npm install failed")
+  } else {
+    ybLog("UI dependencies are up to date. Run 'cleanUI' to force rebuild.")
+  }
 }
 uIBuild := {
   implicit val uiSource = baseDirectory.value / "ui"

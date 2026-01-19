@@ -3,7 +3,9 @@
 package com.yugabyte.yw.models;
 
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.helpers.TimeUnit;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -69,6 +71,7 @@ public class ContinuousBackupConfig extends Model {
     cbConfig.frequencyTimeUnit = timeUnit;
     cbConfig.numBackupsToRetain = numBackups;
     cbConfig.backupDir = backupDir;
+    cbConfig.validate();
     cbConfig.save();
     return cbConfig;
   }
@@ -97,5 +100,39 @@ public class ContinuousBackupConfig extends Model {
   public void updateStorageLocation(String storageLocation) {
     this.storageLocation = storageLocation;
     this.update();
+  }
+
+  public void validate() {
+    long frequencyInMilliseconds = this.getFrequencyInMilliseconds();
+    if (frequencyInMilliseconds > 1000 * 60 * 60 * 24) {
+      throw new PlatformServiceException(BAD_REQUEST, "Frequency must be less than 1 day");
+    }
+    if (frequencyInMilliseconds < 1000 * 60 * 2) {
+      throw new PlatformServiceException(BAD_REQUEST, "Frequency must be at least 2 minutes");
+    }
+  }
+
+  public long getFrequencyInMilliseconds() {
+    switch (this.getFrequencyTimeUnit()) {
+      case NANOSECONDS:
+        return this.getFrequency() / 100000;
+      case MICROSECONDS:
+        return this.getFrequency() / 1000;
+      case MILLISECONDS:
+        return this.getFrequency();
+      case SECONDS:
+        return this.getFrequency() * 1000;
+      case MINUTES:
+        return this.getFrequency() * 1000 * 60;
+      case HOURS:
+        return this.getFrequency() * 1000 * 60 * 60;
+      case DAYS:
+        return this.getFrequency() * 1000 * 60 * 60 * 24;
+      case MONTHS:
+        return this.getFrequency() * 1000 * 60 * 60 * 24 * 30;
+      case YEARS:
+        return this.getFrequency() * 1000 * 60 * 60 * 24 * 365;
+    }
+    return this.getFrequency();
   }
 }

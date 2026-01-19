@@ -126,6 +126,11 @@ public class TlsToggle extends UpgradeTaskBase {
 
   private void createRound1GFlagUpdateTasks(MastersAndTservers nodes) {
     if (taskParams().nodeToNodeChange < 0) {
+      // Skip round1 for disableTls if user selects non-rolling upgrade.
+      if (taskParams().upgradeOption == UpgradeOption.NON_ROLLING_UPGRADE) {
+        log.debug("Skipping round1GflagUpdate because the upgrade option is non-rolling");
+        return;
+      }
       // Skip running round1 if Node2Node certs have expired because the DB call will fail.
       if (CertificateHelper.checkNode2NodeCertsExpiry(getUniverse())) {
         log.debug("Skipping round 1 because the cert has expired");

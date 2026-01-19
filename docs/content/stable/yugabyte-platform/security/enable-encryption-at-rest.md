@@ -15,7 +15,7 @@ type: docs
 {{< page-finder/head text="Encryption at rest" subtle="across different products">}}
   {{< page-finder/list icon="/icons/database-hover.svg" text="YugabyteDB" url="../../../secure/encryption-at-rest/" >}}
   {{< page-finder/list icon="/icons/server-hover.svg" text="YugabyteDB Anywhere" current="" >}}
-  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/preview/yugabyte-cloud/cloud-secure-clusters/managed-ear/" >}}
+  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/stable/yugabyte-cloud/cloud-secure-clusters/managed-ear/" >}}
 {{< /page-finder/head >}}
 
 Data at rest in a YugabyteDB universe should be protected from unauthorized users by encrypting it. You do this by enabling encryption at rest. When enabled, the data in your universe is secured using envelope encryption, whereby multiple encryption keys are used to encrypt data, and those keys are in turn encrypted by other keys in a key hierarchy.
@@ -118,7 +118,7 @@ You can change KMS configurations, and consequently the master keys used to encr
 
 {{< warning title="Deleting KMS configurations" >}}
 
-Without a KMS configuration, you would longer be able to decrypt universe keys that were encrypted using the master key in the KMS configuration. Even after a key is rotated out of service, it may still be needed to decrypt data in backups and snapshots that were created while it was active. For this reason, you can only delete a KMS configuration if it has never been used by any universes.
+Without a KMS configuration, you would no longer be able to decrypt universe keys that were encrypted using the master key in the KMS configuration. Even after a key is rotated out of service, it may still be needed to decrypt data in backups and snapshots that were created while it was active. For this reason, you can only delete a KMS configuration if it has never been used by any universes.
 
 {{< /warning >}}
 

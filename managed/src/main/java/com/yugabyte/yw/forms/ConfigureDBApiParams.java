@@ -46,8 +46,6 @@ public class ConfigureDBApiParams extends UpgradeTaskParams {
 
   public String ycqlPassword;
 
-  public CommunicationPorts communicationPorts = new CommunicationPorts();
-
   public ServerType configureServer;
 
   public Map<UUID, SpecificGFlags> connectionPoolingGflags = new HashMap<>();

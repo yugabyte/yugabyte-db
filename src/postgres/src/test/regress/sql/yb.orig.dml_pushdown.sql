@@ -944,10 +944,93 @@ SELECT * FROM crypto_hash_t1 WHERE sha4 = sha512(v1);
 CREATE TABLE x (t timestamptz);
 BEGIN;
 INSERT INTO x VALUES (now());
+INSERT INTO x VALUES (CURRENT_TIMESTAMP);
+-- both of these queries should return the same result
 SELECT COUNT(*) FROM x WHERE t = now();
+SELECT COUNT(*) FROM x WHERE t = CURRENT_TIMESTAMP;
+-- both of these filters should be pushed down
 EXPLAIN SELECT * FROM x WHERE t = now();
+EXPLAIN SELECT * FROM x WHERE t = CURRENT_TIMESTAMP;
 COMMIT;
 
+-- Test different SQL Value Functions.
+CREATE TABLE time_test (
+    ts timestamptz,
+    ts_prec timestamptz(3),
+    t timetz,
+    t_prec timetz(2),
+    local_ts timestamp,
+    local_ts_prec timestamp(3),
+    local_t time,
+    local_t_prec time(2),
+    d date
+);
+CREATE TABLE other_sql_value_functions (
+    current_user_val name,
+    session_user_val name,
+    user_val name,
+    current_role_val name,
+    current_catalog_val name,
+    current_schema_val name
+);
+BEGIN;
+-- Test time/date SQL value functions
+INSERT INTO time_test VALUES (
+    CURRENT_TIMESTAMP,
+    CURRENT_TIMESTAMP(3),
+    CURRENT_TIME,
+    CURRENT_TIME(2),
+    LOCALTIMESTAMP,
+    LOCALTIMESTAMP(3),
+    LOCALTIME,
+    LOCALTIME(2),
+    CURRENT_DATE
+);
+EXPLAIN (COSTS OFF) SELECT * FROM time_test WHERE ts = CURRENT_TIMESTAMP;
+EXPLAIN (COSTS OFF) SELECT * FROM time_test WHERE ts_prec = CURRENT_TIMESTAMP(3);
+EXPLAIN (COSTS OFF) SELECT * FROM time_test WHERE t = CURRENT_TIME;
+EXPLAIN (COSTS OFF) SELECT * FROM time_test WHERE t_prec = CURRENT_TIME(2);
+EXPLAIN (COSTS OFF) SELECT * FROM time_test WHERE d = CURRENT_DATE;
+EXPLAIN (COSTS OFF) SELECT * FROM time_test WHERE ts = CURRENT_TIMESTAMP AND d = CURRENT_DATE;
+SELECT COUNT(*) FROM time_test WHERE ts = CURRENT_TIMESTAMP;
+SELECT COUNT(*) FROM time_test WHERE ts_prec = CURRENT_TIMESTAMP(3);
+SELECT COUNT(*) FROM time_test WHERE t = CURRENT_TIME;
+SELECT COUNT(*) FROM time_test WHERE t_prec = CURRENT_TIME(2);
+SELECT COUNT(*) FROM time_test WHERE d = CURRENT_DATE;
+SELECT COUNT(*) FROM time_test WHERE ts = CURRENT_TIMESTAMP AND d = CURRENT_DATE;
+-- Test LOCALTIME variants (without timezone)
+EXPLAIN SELECT * FROM time_test WHERE local_t = LOCALTIME;
+EXPLAIN SELECT * FROM time_test WHERE local_t_prec = LOCALTIME(2);
+EXPLAIN SELECT * FROM time_test WHERE local_ts = LOCALTIMESTAMP;
+EXPLAIN SELECT * FROM time_test WHERE local_ts_prec = LOCALTIMESTAMP(3);
+SELECT COUNT(*) FROM time_test WHERE local_t = LOCALTIME;
+SELECT COUNT(*) FROM time_test WHERE local_t_prec = LOCALTIME(2);
+SELECT COUNT(*) FROM time_test WHERE local_ts = LOCALTIMESTAMP;
+SELECT COUNT(*) FROM time_test WHERE local_ts_prec = LOCALTIMESTAMP(3);
+-- Test user/role/schema SQL value functions
+INSERT INTO other_sql_value_functions VALUES (
+    CURRENT_USER,
+    SESSION_USER,
+    USER,
+    CURRENT_ROLE,
+    CURRENT_CATALOG,
+    CURRENT_SCHEMA
+);
+EXPLAIN (COSTS OFF) SELECT * FROM other_sql_value_functions WHERE current_user_val = CURRENT_USER;
+EXPLAIN (COSTS OFF) SELECT * FROM other_sql_value_functions WHERE session_user_val = SESSION_USER;
+EXPLAIN (COSTS OFF) SELECT * FROM other_sql_value_functions WHERE user_val = USER;
+EXPLAIN (COSTS OFF) SELECT * FROM other_sql_value_functions WHERE current_role_val = CURRENT_ROLE;
+EXPLAIN (COSTS OFF) SELECT * FROM other_sql_value_functions WHERE current_catalog_val = CURRENT_CATALOG;
+EXPLAIN (COSTS OFF) SELECT * FROM other_sql_value_functions WHERE current_schema_val = CURRENT_SCHEMA;
+EXPLAIN (COSTS OFF) SELECT * FROM other_sql_value_functions WHERE current_user_val = CURRENT_USER AND current_schema_val = CURRENT_SCHEMA;
+SELECT current_user_val FROM other_sql_value_functions WHERE current_user_val = CURRENT_USER;
+SELECT session_user_val FROM other_sql_value_functions WHERE session_user_val = SESSION_USER;
+SELECT user_val FROM other_sql_value_functions WHERE user_val = USER;
+SELECT current_role_val FROM other_sql_value_functions WHERE current_role_val = CURRENT_ROLE;
+SELECT current_catalog_val FROM other_sql_value_functions WHERE current_catalog_val = CURRENT_CATALOG;
+SELECT current_schema_val FROM other_sql_value_functions WHERE current_schema_val = CURRENT_SCHEMA;
+SELECT * FROM other_sql_value_functions WHERE current_user_val = CURRENT_USER AND current_schema_val = CURRENT_SCHEMA;
+COMMIT;
 -----------------------------------
 -- Cleanup.
 DROP FUNCTION next_v3;
@@ -980,3 +1063,5 @@ DROP TABLE crypto_hash_t1;
 DROP TYPE rt;
 DROP TYPE two_int;
 DROP TYPE two_text;
+DROP TABLE time_test;
+DROP TABLE other_sql_value_functions;

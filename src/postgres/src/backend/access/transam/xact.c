@@ -2124,19 +2124,11 @@ YBGetEffectivePggateIsolationLevel()
 	return mapped_pg_isolation_level;
 }
 
-static YbcPgInitTransactionData
-YBBuildInitTransactionData()
+static TimestampTz
+ToUnixEpochUs(TimestampTz pg_timestamp)
 {
-	return (YbcPgInitTransactionData)
-	{
-		.xact_start_timestamp = xactStartTimestamp,
-			.xact_read_only = XactReadOnly,
-			.xact_deferrable = XactDeferrable,
-			.enable_tracing = YBEnableTracing(),
-			.effective_pggate_isolation_level = YBGetEffectivePggateIsolationLevel(),
-			.read_from_followers_enabled = YBReadFromFollowersEnabled(),
-			.follower_read_staleness_ms = YBFollowerReadStalenessMs()
-	};
+	return pg_timestamp +
+		((POSTGRES_EPOCH_JDATE - UNIX_EPOCH_JDATE) * SECS_PER_DAY * USECS_PER_SEC);
 }
 
 static void
@@ -2146,7 +2138,7 @@ YBRunWithInitTransactionData(YbcStatus (*Callback) (const YbcPgInitTransactionDa
 	{
 		const YbcPgInitTransactionData data =
 		{
-			.xact_start_timestamp = xactStartTimestamp,
+			.xact_start_timestamp = ToUnixEpochUs(xactStartTimestamp),
 			.xact_read_only = XactReadOnly,
 			.xact_deferrable = XactDeferrable,
 			.enable_tracing = YBEnableTracing(),
@@ -2825,7 +2817,7 @@ PrepareTransaction(void)
 	StartPrepare(gxact);
 
 	AtPrepare_Notify();
-	if (YBIsPgLockingEnabled())
+	if (YBGetObjectLockMode() == PG_OBJECT_LOCK_MODE)
 	{
 		AtPrepare_Locks();
 		AtPrepare_PredicateLocks();
@@ -2855,7 +2847,8 @@ PrepareTransaction(void)
 	 * ProcArrayClearTransaction().  Otherwise, a GetLockConflicts() would
 	 * conclude "xact already committed or aborted" for our locks.
 	 */
-	PostPrepare_Locks(xid);
+	if (YBGetObjectLockMode() == PG_OBJECT_LOCK_MODE)
+		PostPrepare_Locks(xid);
 
 	/*
 	 * Let others know about no transaction in progress by me.  This has to be
@@ -2896,7 +2889,7 @@ PrepareTransaction(void)
 
 	PostPrepare_MultiXact(xid);
 
-	if (YBIsPgLockingEnabled())
+	if (YBGetObjectLockMode() == PG_OBJECT_LOCK_MODE)
 		PostPrepare_PredicateLocks(xid);
 
 	ResourceOwnerRelease(TopTransactionResourceOwner,
@@ -2995,7 +2988,7 @@ AbortTransaction(void)
 	/* Cancel condition variable sleep */
 	ConditionVariableCancelSleep();
 
-	if (YBIsPgLockingEnabled())
+	if (YBGetObjectLockMode() == PG_OBJECT_LOCK_MODE)
 	{
 		/*
 		 * Also clean up any open wait for lock, since the lock manager will choke
@@ -4999,19 +4992,13 @@ RollbackToSavepoint(const char *name)
 void
 BeginInternalSubTransaction(const char *name)
 {
-	YbcFlushDebugContext yb_debug_context = {
-		.reason = YB_BEGIN_SUBTRANSACTION,
-		.uintarg = CurrentTransactionState->subTransactionId,
-		.strarg1 = name,
-	};
-
 	/*
 	 * YB: The subtransaction corresponding to the buffered operations must be
 	 * current and in the INPROGRESS state for correct error handling.
 	 * An error thrown while/after switching over to a new subtransaction
 	 * would lead to a fatal error or unpredictable behavior.
 	 */
-	YBFlushBufferedOperations(&yb_debug_context);
+	YBFlushBufferedOperations(YBCMakeFlushDebugContextBeginSubTxn(CurrentTransactionState->subTransactionId, name));
 	TransactionState s = CurrentTransactionState;
 
 	/*
@@ -5088,13 +5075,7 @@ BeginInternalSubTransaction(const char *name)
 void
 YbBeginInternalSubTransactionForReadCommittedStatement()
 {
-	YbcFlushDebugContext debug_context = {
-		.reason = YB_BEGIN_SUBTRANSACTION,
-		.uintarg = CurrentTransactionState->subTransactionId,
-		.strarg1 = "read committed transaction",
-	};
-
-	YBFlushBufferedOperations(&debug_context);
+	YBFlushBufferedOperations(YBCMakeFlushDebugContextBeginSubTxn(CurrentTransactionState->subTransactionId, "read committed transaction"));
 	TransactionState s = CurrentTransactionState;
 
 	Assert(s->blockState == TBLOCK_SUBINPROGRESS ||
@@ -5150,18 +5131,13 @@ YBTransactionContainsNonReadCommittedSavepoint(void)
 void
 ReleaseCurrentSubTransaction(void)
 {
-	YbcFlushDebugContext yb_debug_context = {
-		.reason = YB_END_SUBTRANSACTION,
-		.uintarg = CurrentTransactionState->subTransactionId,
-	};
-
 	/*
 	 * YB: The subtransaction corresponding to the buffered operations must be
 	 * current and in the INPROGRESS state for correct error handling.
 	 * An error thrown while/after commiting/releasing it would lead to a
 	 * fatal error or unpredictable behavior.
 	 */
-	YBFlushBufferedOperations(&yb_debug_context);
+	YBFlushBufferedOperations(YBCMakeFlushDebugContextEndSubTxn(CurrentTransactionState->subTransactionId));
 	TransactionState s = CurrentTransactionState;
 
 	/*

@@ -39,6 +39,7 @@
 #include "yb/common/colocated_util.h"
 #include "yb/common/common_consensus_util.h"
 #include "yb/common/doc_hybrid_time.h"
+#include "yb/common/pg_system_attr.h"
 #include "yb/common/schema.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/wire_protocol.h"
@@ -231,11 +232,13 @@ Status TabletInfo::CheckRunning() const {
 void TabletInfo::SetTableIds(std::vector<TableId>&& table_ids) {
   std::lock_guard l(lock_);
   table_ids_ = std::move(table_ids);
+  VLOG_WITH_FUNC(2) << "Tablet " << tablet_id_ << " table ids: " << AsString(table_ids_);
 }
 
 void TabletInfo::AddTableId(const TableId& table_id) {
   std::lock_guard l(lock_);
   table_ids_.push_back(table_id);
+  VLOG_WITH_FUNC(2) << "Tablet " << tablet_id_ << " table ids: " << AsString(table_ids_);
 }
 
 std::vector<TableId> TabletInfo::GetTableIds() const {
@@ -475,6 +478,10 @@ bool TableInfo::is_deleted() const {
 
 bool TableInfo::is_hidden() const {
   return LockForRead()->is_hidden();
+}
+
+bool TableInfo::started_hiding() const {
+  return LockForRead()->started_hiding();
 }
 
 HybridTime TableInfo::hide_hybrid_time() const {
@@ -1014,16 +1021,6 @@ Result<bool> TableInfo::HasOutstandingSplits(bool wait_for_parent_deletion) cons
   return false;
 }
 
-std::vector<qlexpr::IndexInfo> TableInfo::GetIndexInfos() const {
-  std::vector<qlexpr::IndexInfo> result;
-  auto l = LockForRead();
-  result.reserve(l->pb.indexes().size());
-  for (const auto& index_info_pb : l->pb.indexes()) {
-    result.emplace_back(index_info_pb);
-  }
-  return result;
-}
-
 qlexpr::IndexInfo TableInfo::GetIndexInfo(const TableId& index_id) const {
   auto l = LockForRead();
   for (const auto& index_info_pb : l->pb.indexes()) {
@@ -1032,6 +1029,28 @@ qlexpr::IndexInfo TableInfo::GetIndexInfo(const TableId& index_id) const {
     }
   }
   return qlexpr::IndexInfo();
+}
+
+TableIds TableInfo::GetIndexIds() const {
+  TableIds result;
+  auto lock = LockForRead();
+  result.reserve(lock->pb.indexes().size());
+  for (const auto& index_info_pb : lock->pb.indexes()) {
+    result.emplace_back(index_info_pb.table_id());
+  }
+  return result;
+}
+
+TableIds TableInfo::GetVectorIndexIds() const {
+  TableIds result;
+  auto lock = LockForRead();
+  result.reserve(lock->pb.indexes().size());
+  for (const auto& index_info_pb : lock->pb.indexes()) {
+    if (index_info_pb.has_vector_idx_options()) {
+      result.emplace_back(index_info_pb.table_id());
+    }
+  }
+  return result;
 }
 
 bool TableInfo::UsesTablespacesForPlacement() const {
@@ -1198,6 +1217,10 @@ bool TableInfo::IsUserIndex() const {
   return IsUserIndex(LockForRead());
 }
 
+bool TableInfo::HasUserSpecifiedPrimaryKey() const {
+  return HasUserSpecifiedPrimaryKey(LockForRead());
+}
+
 bool TableInfo::IsUserCreated(const ReadLock& lock) const {
   if (lock->pb.table_type() != PGSQL_TABLE_TYPE && lock->pb.table_type() != YQL_TABLE_TYPE) {
     return false;
@@ -1213,6 +1236,23 @@ bool TableInfo::IsUserTable(const ReadLock& lock) const {
 
 bool TableInfo::IsUserIndex(const ReadLock& lock) const {
   return IsUserCreated(lock) && !lock->indexed_table_id().empty();
+}
+
+bool TableInfo::HasUserSpecifiedPrimaryKey(const ReadLock& lock) const {
+  auto schema_result = lock->GetSchema();
+  if (!schema_result.ok()) {
+    LOG_WITH_FUNC(DFATAL) << "Error while getting schema for table " << lock->name() << ": "
+                          << schema_result.status();
+    return false;
+  }
+  const auto& schema = *schema_result;
+  for (const auto& col : schema.columns()) {
+    if (col.order() == static_cast<int32_t>(PgSystemAttrNum::kYBRowId)) {
+      // ybrowid column is added for tables that don't have user-specified primary key.
+      return false;
+    }
+  }
+  return true;
 }
 
 void PersistentTableInfo::set_state(SysTablesEntryPB::State state, const string& msg) {
@@ -1498,6 +1538,11 @@ bool CDCStreamInfo::IsDynamicTableAdditionDisabled() const {
          l->pb.cdcsdk_disable_dynamic_table_addition();
 }
 
+bool CDCStreamInfo::IsTablesWithoutPrimaryKeyAllowed() const {
+  auto l = LockForRead();
+  return l->pb.has_allow_tables_without_primary_key() && l->pb.allow_tables_without_primary_key();
+}
+
 std::string CDCStreamInfo::ToString() const {
   auto l = LockForRead();
   if (l->pb.has_namespace_id()) {
@@ -1710,7 +1755,7 @@ bool SnapshotInfo::IsDeleteInProgress() const {
   return LockForRead()->is_deleting();
 }
 
-TabletInfoPtr MakeTabletInfo(
+TabletInfoPtr MakeUnlockedTabletInfo(
     const TableInfoPtr& table,
     const TabletId& tablet_id) {
   auto tablet = std::make_shared<TabletInfo>(
@@ -1719,8 +1764,14 @@ TabletInfoPtr MakeTabletInfo(
   VLOG_WITH_FUNC(2)
       << "Table: " << table->ToString() << ", tablet: " << tablet->ToString();
 
-  tablet->mutable_metadata()->StartMutation();
+  return tablet;
+}
 
+TabletInfoPtr MakeTabletInfo(
+    const TableInfoPtr& table,
+    const TabletId& tablet_id) {
+  auto tablet = MakeUnlockedTabletInfo(table, tablet_id);
+  tablet->mutable_metadata()->StartMutation();
   return tablet;
 }
 

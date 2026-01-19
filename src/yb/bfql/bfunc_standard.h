@@ -94,7 +94,8 @@ inline Result<BFRetValue> PartitionHash(const BFParams& params, BFFactory factor
   return result;
 }
 
-inline Result<BFRetValue> ToJson(const BFValue& col, BFFactory factory) {
+template <class Value>
+inline Result<BFRetValue> ToJson(const Value& col, BFFactory factory) {
   common::Jsonb jsonb;
   Status s = jsonb.FromQLValue(col);
 

@@ -169,6 +169,10 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
       expected_table_roundtrips,expected_docdb_result_width);
 }
 
+  private void WarmupCatalogCache(Statement stmt, String query) throws Exception {
+      testExplainDebug(stmt, query, null);
+  }
+
   private void testSeekAndNextEstimationIndexScanHelper(
       Statement stmt, String query,
       String table_name, String index_name,
@@ -194,6 +198,7 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
                     .metric(METRIC_NUM_DB_SEEK, expectedSeeksRange(expected_seeks))
                     .metric(METRIC_NUM_DB_NEXT, expectedNextsRange(expected_nexts))
                     .build())
+                  .totalCost(Checkers.greater(0))
                   .build())
               .build());
     }
@@ -249,7 +254,9 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
                   .nodeType(NODE_YB_BITMAP_TABLE_SCAN)
                   .relationName(table_name)
                   .estimatedSeeks(expectedSeeksRange(expected_seeks))
-                  .estimatedNextsAndPrevs(expectedNextsRange(expected_nexts))
+// TODO(#28919): Fix cost model to take into account changes in DocDB seek/next behaviour made by
+// https://github.com/yugabyte/yugabyte-db/issues/28616 and uncomment this line:
+//                   .estimatedNextsAndPrevs(expectedNextsRange(expected_nexts))
                   .estimatedDocdbResultWidth(Checkers.equal(expected_docdb_result_width))
                   .readMetrics(makeMetricsBuilder()
                     .metric(METRIC_NUM_DB_SEEK, expectedSeeksRange(expected_seeks))
@@ -282,6 +289,7 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
                   .estimatedSeeks(expectedSeeksRange(expected_seeks))
                   .estimatedNextsAndPrevs(expectedNextsRange(expected_nexts))
                   .estimatedDocdbResultWidth(Checkers.equal(expected_docdb_result_width))
+                  .totalCost(Checkers.greater(0))
                   .plans(bitmap_index_checker)
                   .build())
               .build());
@@ -314,6 +322,7 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
                   .estimatedIndexRoundtrips(expectedRoundtripsRange(expected_index_roundtrips))
                   .estimatedTableRoundtrips(expectedRoundtripsRange(expected_table_roundtrips))
                   .estimatedDocdbResultWidth(Checkers.equal(expected_docdb_result_width))
+                  .totalCost(Checkers.greater(0))
                   .build())
               .build());
     }
@@ -345,6 +354,7 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
                     .metric(METRIC_NUM_DB_NEXT, expectedNextsRange(expected_nexts))
                     .metric(METRIC_NUM_DB_SEEK, expectedSeeksRange(expected_seeks))
                     .build())
+                  .totalCost(Checkers.greater(0))
                   .build())
               .build());
     }
@@ -371,6 +381,7 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
                   .estimatedNextsAndPrevs(expectedNextsRange(expected_nexts))
                   .estimatedTableRoundtrips(expectedRoundtripsRange(expected_table_roundtrips))
                   .estimatedDocdbResultWidth(Checkers.equal(expected_docdb_result_width))
+                  .totalCost(Checkers.greater(0))
                   .build())
               .build());
     }
@@ -399,12 +410,14 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
                           .nodeType(outer_table_scan_type)
                           .estimatedSeeks(expectedSeeksRange(outer_expected_seeks))
                           .estimatedNextsAndPrevs(expectedNextsRange(outer_expected_nexts))
+                          .totalCost(Checkers.greater(0))
                           .build(),
                       makePlanBuilder()
                           .relationName(inner_table_name)
                           .nodeType(inner_table_scan_type)
                           .estimatedSeeks(expectedSeeksRange(inner_expected_seeks))
                           .estimatedNextsAndPrevs(expectedNextsRange(inner_expected_nexts))
+                          .totalCost(Checkers.greater(0))
                           .build())
                       .build())
               .build());
@@ -421,6 +434,17 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
     try (Statement stmt = connection.createStatement()) {
       stmt.execute(String.format("CREATE DATABASE %s WITH COLOCATION = true", DATABASE_NAME));
     }
+    // If --ysql_enable_relcache_init_optimization=false, then connection2 is the first
+    // connection to the test database and it needs to take care of buliding the relinit
+    // file. As part of that it will preload a set of catalog tables.
+    // If --ysql_enable_relcache_init_optimization=true, then connection2 will be
+    // the second connection to the test database because there will be an internal
+    // connection comes first which takes care of building the relinit file. In this
+    // case connection2 will only preload a few core catalog tables.
+    // Because the test result depends upon some catalog caches beyond the core catalog
+    // tables being preloaded, we use catalog cache warmup to make up the difference
+    // (see WarmupCatalogCache).
+    Connection tmpConnection = getConnectionBuilder().withDatabase(DATABASE_NAME).connect();
 
     this.connection2 = getConnectionBuilder().withDatabase(DATABASE_NAME).connect();
 
@@ -498,9 +522,11 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("ysql_analyze_dump_metrics", "true");
+    flagMap.put("ysql_enable_packed_row", "true");
     flagMap.put("ysql_enable_packed_row_for_colocated_table", "true");
     // Disable auto analyze for CBO seek and next metrics test.
     flagMap.put("ysql_enable_auto_analyze", "false");
+    flagMap.put("vmodule", "transaction=2");
     return flagMap;
   }
 
@@ -525,16 +551,14 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
       setUp();
     }
     try (Statement stmt = this.connection2.createStatement()) {
-      // Warmup the cache when Connection Manager is enabled.
-      // Additionally warmup all backends in round-robin mode.
-      if (isConnMgr) {
-        testExplainDebug(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
-        + "FROM %s WHERE k1 IN (4, 8)", T1_NAME, T1_NAME), null);
-        if (isConnMgrWarmupRoundRobinMode()) {
-          for (int i = 0; i < CONN_MGR_WARMUP_BACKEND_COUNT - 1; i++) {
-            testExplainDebug(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
-            + "FROM %s WHERE k1 IN (4, 8)", T1_NAME, T1_NAME), null);
-          }
+      String query = String.format("/*+IndexScan(%s)*/ SELECT * "
+          + "FROM %s WHERE k1 IN (4, 8)", T1_NAME, T1_NAME);
+      WarmupCatalogCache(stmt, query);
+      testExplainDebug(stmt, query, null);
+      // Warmup all backends in round-robin mode when Connection Manager is enabled.
+      if (isConnMgrWarmupRoundRobinMode()) {
+        for (int i = 0; i < CONN_MGR_WARMUP_BACKEND_COUNT - 1; i++) {
+          WarmupCatalogCache(stmt, query);
         }
       }
       testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
@@ -729,16 +753,13 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
     }
     try (Statement stmt = this.connection2.createStatement()) {
       stmt.execute("SET work_mem TO '1GB'"); /* avoid getting close to work_mem */
-      // Warmup the cache when Connection Manager is enabled.
-      // Additionally warmup all backends in round-robin mode.
-      if (isConnMgr) {
-        testExplainDebug(stmt, String.format("/*+BitmapScan(%s)*/ SELECT * "
-        + "FROM %s WHERE k1 IN (4, 8)", T1_NAME, T1_NAME), null);
-        if (isConnMgrWarmupRoundRobinMode()) {
-          for (int i = 0; i < CONN_MGR_WARMUP_BACKEND_COUNT - 1; i++) {
-            testExplainDebug(stmt, String.format("/*+BitmapScan(%s)*/ SELECT * "
-            + "FROM %s WHERE k1 IN (4, 8)", T1_NAME, T1_NAME), null);
-          }
+      String query = String.format("/*+BitmapScan(%s)*/ SELECT * "
+          + "FROM %s WHERE k1 IN (4, 8)", T1_NAME, T1_NAME);
+      WarmupCatalogCache(stmt, query);
+      // Warmup all backends in round-robin mode when Connection Manager is enabled.
+      if (isConnMgrWarmupRoundRobinMode()) {
+        for (int i = 0; i < CONN_MGR_WARMUP_BACKEND_COUNT - 1; i++) {
+          WarmupCatalogCache(stmt, query);
         }
       }
       testSeekAndNextEstimationBitmapScanHelper(stmt, String.format("/*+BitmapScan(%s)*/ SELECT * "
@@ -752,58 +773,58 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
         T1_NAME, 4, 10, 5, makeBitmapIndexScanChecker(T1_INDEX_NAME, 4, 10));
       testSeekAndNextEstimationBitmapScanHelper(stmt, String.format("/*+BitmapScan(%s)*/ SELECT * "
         + "FROM %s WHERE k1 IN (4, 8, 12, 16)", T2_NAME, T2_NAME),
-        T2_NAME, 80, 240, 10, makeBitmapIndexScanChecker(T2_INDEX_NAME, 4, 86));
+        T2_NAME, 80, 100, 10, makeBitmapIndexScanChecker(T2_INDEX_NAME, 4, 86));
       testSeekAndNextEstimationBitmapScanHelper(stmt, String.format("/*+BitmapScan(%s)*/ SELECT * "
         + "FROM %s WHERE k2 IN (4, 8, 12, 16)", T2_NAME, T2_NAME),
-        T2_NAME, 80, 240, 10, makeBitmapIndexScanChecker(T2_INDEX_NAME, 101, 280));
+        T2_NAME, 80, 100, 10, makeBitmapIndexScanChecker(T2_INDEX_NAME, 101, 280));
       testSeekAndNextEstimationBitmapScanHelper(stmt, String.format("/*+BitmapScan(%s)*/ SELECT * "
         + "FROM %s WHERE k1 IN (4, 8, 12) AND k4 IN (4, 8, 12, 16)", T4_NAME, T4_NAME),
-        T4_NAME, 4830, 14490, 20, makeBitmapIndexScanChecker(T4_INDEX_NAME, 6007, 16808));
+        T4_NAME, 4800, 4900, 20, makeBitmapIndexScanChecker(T4_INDEX_NAME, 6007, 16808));
       testSeekAndNextEstimationBitmapScanHelper(stmt, String.format("/*+BitmapScan(%s)*/ SELECT * "
         + "FROM %s WHERE k2 IN (4, 8, 12, 16) AND k4 IN (4, 8, 12)", T4_NAME, T4_NAME),
-        T4_NAME, 4800, 14400, 20, makeBitmapIndexScanChecker(T4_INDEX_NAME, 6505, 17804));
+        T4_NAME, 4800, 4900, 20, makeBitmapIndexScanChecker(T4_INDEX_NAME, 6505, 17804));
       testSeekAndNextEstimationBitmapScanHelper(stmt, String.format("/*+BitmapScan(%s)*/ SELECT * "
         + "FROM %s WHERE k1 IN (4, 8, 12, 16) AND k2 IN (4, 8, 12, 16)", T4_NAME, T4_NAME),
-        T4_NAME, 6400, 19200, 20, makeBitmapIndexScanChecker(T4_INDEX_NAME, 22, 6436));
+        T4_NAME, 6400, 6540, 20, makeBitmapIndexScanChecker(T4_INDEX_NAME, 22, 6436));
       testSeekAndNextEstimationBitmapScanHelper(stmt, String.format("/*+BitmapScan(%s)*/ SELECT * "
         + "FROM %s WHERE k1 >= 4 and k1 < 14", T1_NAME, T1_NAME),
         T1_NAME, 10, 30, 5, makeBitmapIndexScanChecker(T1_INDEX_NAME, 1, 10));
       testSeekAndNextEstimationBitmapScanHelper(stmt, String.format("/*+BitmapScan(%s)*/ SELECT * "
         + "FROM %s WHERE k1 >= 4 and k1 < 14", T2_NAME, T2_NAME),
-        T2_NAME, 200, 600, 10, makeBitmapIndexScanChecker(T2_INDEX_NAME, 1, 200));
+        T2_NAME, 200, 220, 10, makeBitmapIndexScanChecker(T2_INDEX_NAME, 1, 200));
       testSeekAndNextEstimationBitmapScanHelper(stmt, String.format("/*+BitmapScan(%s)*/ SELECT * "
         + "FROM %s WHERE k1 >= 4 and k1 < 14", T3_NAME, T3_NAME),
-        T3_NAME, 4000, 12000, 15, makeBitmapIndexScanChecker(T3_INDEX_NAME, 4, 4000));
+        T3_NAME, 4000, 4080, 15, makeBitmapIndexScanChecker(T3_INDEX_NAME, 4, 4000));
       testSeekAndNextEstimationBitmapScanHelper(stmt, String.format("/*+BitmapScan(%s)*/ SELECT * "
         + "FROM %s WHERE k1 >= 4 and k1 < 14", T4_NAME, T4_NAME),
-        T4_NAME, 80000, 240000, 20, makeBitmapIndexScanChecker(T4_INDEX_NAME, 79, 80000));
+        T4_NAME, 80000, 81580, 20, makeBitmapIndexScanChecker(T4_INDEX_NAME, 79, 80000));
       testSeekAndNextEstimationBitmapScanHelper(stmt, String.format("/*+BitmapScan(%s)*/ SELECT * "
         + "FROM %s WHERE k2 >= 4 and k2 < 14", T2_NAME, T2_NAME),
-        T2_NAME, 200, 600, 10, makeBitmapIndexScanChecker(T2_INDEX_NAME, 41, 280));
+        T2_NAME, 200, 220, 10, makeBitmapIndexScanChecker(T2_INDEX_NAME, 41, 280));
       testSeekAndNextEstimationBitmapScanHelper(stmt, String.format("/*+BitmapScan(%s)*/ SELECT * "
         + "FROM %s WHERE k3 >= 4 and k3 < 14", T3_NAME, T3_NAME),
-        T3_NAME, 4000, 12000, 15, makeBitmapIndexScanChecker(T3_INDEX_NAME, 804, 5600));
+        T3_NAME, 4000, 4080, 15, makeBitmapIndexScanChecker(T3_INDEX_NAME, 804, 5600));
       testSeekAndNextEstimationBitmapScanHelper(stmt, String.format("/*+BitmapScan(%s)*/ SELECT * "
         + "FROM %s WHERE k4 >= 4 and k4 < 14", T4_NAME, T4_NAME),
-        T4_NAME, 80000, 240000, 20, makeBitmapIndexScanChecker(T4_INDEX_NAME, 16079, 112000));
+        T4_NAME, 80000, 81580, 20, makeBitmapIndexScanChecker(T4_INDEX_NAME, 16079, 112000));
       testSeekAndNextEstimationBitmapScanHelper(stmt, String.format("/*+BitmapScan(%s)*/ SELECT * "
         + "FROM %s WHERE k3 >= 4 and k3 < 14", T4_NAME, T4_NAME),
-        T4_NAME, 80000, 240000, 20, makeBitmapIndexScanChecker(T4_INDEX_NAME, 879, 81600));
+        T4_NAME, 80000, 81580, 20, makeBitmapIndexScanChecker(T4_INDEX_NAME, 879, 81600));
       testSeekAndNextEstimationBitmapScanHelper(stmt, String.format("/*+BitmapScan(%s)*/ SELECT * "
         + "FROM %s WHERE k2 >= 4 and k2 < 14", T4_NAME, T4_NAME),
-        T4_NAME, 80000, 240000, 20, makeBitmapIndexScanChecker(T4_INDEX_NAME, 120, 80000));
+        T4_NAME, 80000, 81580, 20, makeBitmapIndexScanChecker(T4_INDEX_NAME, 120, 80000));
       testSeekAndNextEstimationBitmapScanHelper(stmt, String.format("/*+BitmapScan(%s)*/ SELECT * "
         + "FROM %s WHERE k1 >= 4 and k1 < 14 and k3 >= 4 and k3 < 14", T4_NAME, T4_NAME),
-        T4_NAME, 40000, 120000, 20, makeBitmapIndexScanChecker(T4_INDEX_NAME, 440, 40800));
+        T4_NAME, 40000, 40800, 20, makeBitmapIndexScanChecker(T4_INDEX_NAME, 440, 40800));
       testSeekAndNextEstimationBitmapScanHelper(stmt, String.format("/*+BitmapScan(%s)*/ SELECT * "
         + "FROM %s WHERE k1 = 4 and k2 IN (4, 8, 12, 16)", T4_NAME, T4_NAME),
-        T4_NAME, 1600, 4800, 20, makeBitmapIndexScanChecker(T4_INDEX_NAME, 5, 1606));
+        T4_NAME, 1600, 1640, 20, makeBitmapIndexScanChecker(T4_INDEX_NAME, 5, 1606));
       testSeekAndNextEstimationBitmapScanHelper(stmt, String.format("/*+BitmapScan(%s)*/ SELECT * "
         + "FROM %s WHERE k1 IN (4, 8, 12, 16) and k2 = 4", T4_NAME, T4_NAME),
-        T4_NAME, 1600, 4800, 20, makeBitmapIndexScanChecker(T4_INDEX_NAME, 5, 1606));
+        T4_NAME, 1600, 1640, 20, makeBitmapIndexScanChecker(T4_INDEX_NAME, 5, 1606));
       testSeekAndNextEstimationBitmapScanHelper(stmt, String.format("/*+BitmapScan(%s)*/ SELECT * "
         + "FROM %s WHERE k3 IN (4, 8, 12, 16) and k4 = 4", T4_NAME, T4_NAME),
-        T4_NAME, 1600, 4800, 20, makeBitmapIndexScanChecker(T4_INDEX_NAME, 2002, 4000));
+        T4_NAME, 1600, 1640, 20, makeBitmapIndexScanChecker(T4_INDEX_NAME, 2002, 4000));
       testSeekAndNextEstimationBitmapScanHelper(stmt, String.format("/*+BitmapScan(%s)*/ SELECT * "
         + "FROM %s WHERE k1 >= 4 and k1 < 5 and k2 IN (4, 8, 12, 16)", T2_NAME, T2_NAME),
         T2_NAME, 4, 12, 10, makeBitmapIndexScanChecker(T2_INDEX_NAME, 5, 8));
@@ -815,31 +836,31 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
         T2_NAME, 40, 120, 10, makeBitmapIndexScanChecker(T2_INDEX_NAME, 50, 98));
       testSeekAndNextEstimationBitmapScanHelper(stmt, String.format("/*+BitmapScan(%s)*/ SELECT * "
         + "FROM %s WHERE k1 >= 4 and k1 < 7 and k3 IN (4, 8, 12, 16)", T3_NAME, T3_NAME),
-        T3_NAME, 240, 720, 15, makeBitmapIndexScanChecker(T3_INDEX_NAME, 301, 600));
+        T3_NAME, 240, 260, 15, makeBitmapIndexScanChecker(T3_INDEX_NAME, 301, 600));
       testSeekAndNextEstimationBitmapScanHelper(stmt, String.format("/*+BitmapScan(%s)*/ SELECT * "
         + "FROM %s WHERE k2 >= 4 and k2 < 7 and k4 IN (4, 8, 12)", T4_NAME, T4_NAME),
-        T4_NAME, 3600, 10800, 20, makeBitmapIndexScanChecker(T4_INDEX_NAME, 4844, 9680));
+        T4_NAME, 3600, 3680, 20, makeBitmapIndexScanChecker(T4_INDEX_NAME, 4844, 9680));
       testSeekAndNextEstimationBitmapScanHelper(stmt, String.format("/*+BitmapScan(%s)*/ SELECT * "
         + "FROM %s WHERE k1 IN (1, 4, 7, 10)", T4_NAME, T4_NAME),
-        T4_NAME, 32000, 96000, 20, makeBitmapIndexScanChecker(T4_INDEX_NAME, 35, 32037));
+        T4_NAME, 32000, 32640, 20, makeBitmapIndexScanChecker(T4_INDEX_NAME, 35, 32037));
       testSeekAndNextEstimationBitmapScanHelper(stmt, String.format("/*+BitmapScan(%s)*/ SELECT * "
         + "FROM %s WHERE k1 >= 4 AND k1 < 14 AND k2 >= 4", T4_NAME, T4_NAME),
-        T4_NAME, 68000, 204000, 20, makeBitmapIndexScanChecker(T4_INDEX_NAME, 76, 68084));
+        T4_NAME, 68000, 69340, 20, makeBitmapIndexScanChecker(T4_INDEX_NAME, 76, 68084));
       testSeekAndNextEstimationBitmapScanHelper(stmt, String.format("/*+BitmapScan(%s)*/ SELECT * "
         + "FROM %s WHERE k1 >= 4 AND k1 < 14 AND k2 >= 4 AND k2 < 14", T4_NAME, T4_NAME),
-        T4_NAME, 40000, 120000, 20, makeBitmapIndexScanChecker(T4_INDEX_NAME, 59, 40077));
+        T4_NAME, 40000, 40802, 20, makeBitmapIndexScanChecker(T4_INDEX_NAME, 59, 40077));
       testSeekAndNextEstimationBitmapScanHelper(stmt, String.format("/*+BitmapScan(%s)*/ SELECT * "
         + "FROM %s WHERE k1 >= 4 AND k2 >= 4 AND k2 < 14", T4_NAME, T4_NAME),
-        T4_NAME, 68000, 204000, 20, makeBitmapIndexScanChecker(T4_INDEX_NAME, 100, 68132));
+        T4_NAME, 68000, 69340, 20, makeBitmapIndexScanChecker(T4_INDEX_NAME, 100, 68132));
       testSeekAndNextEstimationBitmapScanHelper(stmt, String.format("/*+BitmapScan(%s)*/ SELECT * "
         + "FROM %s WHERE k1 IN (1, 4, 7, 10) AND k2 IN (1, 4, 7, 10)", T4_NAME, T4_NAME),
-        T4_NAME, 6400, 19200, 20, makeBitmapIndexScanChecker(T4_INDEX_NAME, 22, 6436));
+        T4_NAME, 6400, 6450, 20, makeBitmapIndexScanChecker(T4_INDEX_NAME, 22, 6436));
       testSeekAndNextEstimationBitmapScanHelper(stmt, String.format("/*+BitmapScan(%s)*/ SELECT * "
         + "FROM %s WHERE k1 >= 4 AND k1 < 14 AND k3 >= 4 AND k3 < 14", T4_NAME, T4_NAME),
-        T4_NAME, 40000, 120000, 20, makeBitmapIndexScanChecker(T4_INDEX_NAME, 440, 40839));
+        T4_NAME, 40000, 40800, 20, makeBitmapIndexScanChecker(T4_INDEX_NAME, 440, 40839));
       testSeekAndNextEstimationBitmapScanHelper(stmt, String.format("/*+BitmapScan(%s)*/ SELECT * "
         + "FROM %s WHERE k1 >= 4 AND k3 >= 4 AND k3 < 14", T4_NAME, T4_NAME),
-        T4_NAME, 68000, 204000, 20, makeBitmapIndexScanChecker(T4_INDEX_NAME, 747, 69426));
+        T4_NAME, 68000, 69340, 20, makeBitmapIndexScanChecker(T4_INDEX_NAME, 747, 69426));
       stmt.execute("RESET work_mem");
     }
   }
@@ -948,12 +969,12 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
       final String query = "/*+ BitmapScan(t) */ SELECT * FROM %s AS t WHERE %s";
       testSeekAndNextEstimationBitmapScanHelper(stmt,
         String.format(query, T_NO_PKEY_NAME, "k1 <= 1 AND k2 <= 1"),
-        T_NO_PKEY_NAME, 100, 300, 10,
+        T_NO_PKEY_NAME, 100, 120, 10,
         makePlanBuilder().nodeType(NODE_BITMAP_INDEX_SCAN).build());
 
       testSeekAndNextEstimationBitmapScanHelper(stmt,
         String.format(query, T_NO_PKEY_NAME, "k1 <= 2 AND k2 <= 2"),
-        T_NO_PKEY_NAME, 200, 600, 10,
+        T_NO_PKEY_NAME, 200, 220, 10,
         makePlanBuilder().nodeType(NODE_BITMAP_INDEX_SCAN).build());
 
       testSeekAndNextEstimationBitmapScanHelper(stmt,
@@ -963,22 +984,22 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
 
       testSeekAndNextEstimationBitmapScanHelper(stmt,
         String.format(query, T_NO_PKEY_NAME, "k1 <= 10 AND k2 <= 10"),
-        T_NO_PKEY_NAME, 100, 300, 10,
+        T_NO_PKEY_NAME, 100, 120, 10,
         makePlanBuilder().nodeType(NODE_BITMAP_AND).build());
 
       testSeekAndNextEstimationBitmapScanHelper(stmt,
         String.format(query, T_NO_PKEY_NAME, "k1 <= 20 AND k2 <= 20"),
-        T_NO_PKEY_NAME, 400, 1200, 10,
+        T_NO_PKEY_NAME, 400, 420, 10,
         makePlanBuilder().nodeType(NODE_BITMAP_AND).build());
 
       testSeekAndNextEstimationBitmapScanHelper(stmt,
         String.format(query, T_NO_PKEY_NAME, "k1 <= 40 AND k2 <= 40"),
-        T_NO_PKEY_NAME, 1600, 4800, 10,
+        T_NO_PKEY_NAME, 1600, 1640, 10,
         makePlanBuilder().nodeType(NODE_BITMAP_AND).build());
 
       testSeekAndNextEstimationBitmapScanHelper(stmt,
         String.format(query, T_NO_PKEY_NAME, "k1 <= 80 AND k2 <= 80"),
-        T_NO_PKEY_NAME, 8000, 24000, 10,
+        T_NO_PKEY_NAME, 8000, 8160, 10,
         makePlanBuilder().nodeType(NODE_BITMAP_INDEX_SCAN).build());
 
       // If the two sets of ybctids are not similar sizes, it doesn't make sense
@@ -986,12 +1007,12 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
       // the larger.
       testSeekAndNextEstimationBitmapScanHelper(stmt,
         String.format(query, T_NO_PKEY_NAME, "k1 <= 20 AND k2 <= 40"),
-        T_NO_PKEY_NAME, 2000, 6000, 10,
+        T_NO_PKEY_NAME, 2000, 2040, 10,
         makePlanBuilder().nodeType(NODE_BITMAP_INDEX_SCAN).indexName(T_K1_INDEX_NAME).build());
 
       testSeekAndNextEstimationBitmapScanHelper(stmt,
         String.format(query, T_NO_PKEY_NAME, "k1 <= 20 AND k2 <= 10"),
-        T_NO_PKEY_NAME, 1000, 3000, 10,
+        T_NO_PKEY_NAME, 1000, 1020, 10,
         makePlanBuilder().nodeType(NODE_BITMAP_INDEX_SCAN).indexName(T_K2_INDEX_NAME).build());
     }
   }

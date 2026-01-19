@@ -403,11 +403,19 @@ func InitViper() {
 	viper.SetDefault("service_username", DefaultServiceUser)
 	viper.SetDefault("installRoot", "/opt/yugabyte")
 
+	viper.SetDefault("platform.fd_limit", 16384)
+
 	viper.SetDefault("prometheus.remoteWrite.enabled", false)
 	viper.SetDefault("prometheus.scrapeConfig.node.scheme", "http")
 	viper.SetDefault("prometheus.scrapeConfig.node-agent.scheme", "http")
 	viper.SetDefault("prometheus.scrapeConfig.otel-collector.scheme", "http")
 	viper.SetDefault("prometheus.scrapeConfig.yugabyte.scheme", "http")
+	// PerfAdvisor defaults (always set, will be overridden by config file if present)
+	// InitViper initializes the legacy config file, so we need to set the defaults here.
+	viper.SetDefault("perfAdvisor.enabled", false)
+	viper.SetDefault("perfAdvisor.port", 8443)
+	viper.SetDefault("perfAdvisor.restartSeconds", 10)
+	viper.SetDefault("perfAdvisor.enableHttps", false)
 	// Update the installRoot to home directory for non-root installs. Will honor custom install root.
 	if !HasSudoAccess() && viper.GetString("installRoot") == "/opt/yugabyte" {
 		viper.SetDefault("installRoot", filepath.Join(GetUserHomeDir(), "yugabyte"))

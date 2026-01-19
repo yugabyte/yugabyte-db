@@ -67,6 +67,14 @@ public class EditUniverse extends EditUniverseTaskBase {
     if (isFirstTry()) {
       configureTaskParams(universe);
     }
+    if (universe.getUniverseDetails().getPrimaryCluster().isGeoPartitioned()
+        && universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL) {
+      Cluster primaryCluster = taskParams().getPrimaryCluster();
+      createTablespaceValidationOnRemoveTask(
+          primaryCluster.uuid,
+          primaryCluster.getOverallPlacement(),
+          taskParams().getPrimaryCluster().getPartitions());
+    }
   }
 
   protected void freezeUniverseInTxn(Universe universe) {
@@ -84,13 +92,12 @@ public class EditUniverse extends EditUniverseTaskBase {
     boolean deleteCapacityReservation = false;
     String errorMessage = null;
     try {
-      Consumer<Universe> retryCallback = null;
-      if (Universe.getOrBadRequest(taskParams().getUniverseUUID())
-          .getUniverseDetails()
-          .autoRollbackPerformed) {
-        // Need to write nodes to universe since there was a rollback.
-        retryCallback = univ -> updateUniverseNodesAndSettings(univ, taskParams(), false);
-      }
+      Consumer<Universe> retryCallback =
+          (univ) -> {
+            if (univ.getUniverseDetails().autoRollbackPerformed) {
+              updateUniverseNodesAndSettings(univ, taskParams(), false);
+            }
+          };
       universe =
           lockAndFreezeUniverseForUpdate(
               taskParams().getUniverseUUID(),
@@ -131,7 +138,8 @@ public class EditUniverse extends EditUniverseTaskBase {
         // Updating cluster in memory
         universe
             .getUniverseDetails()
-            .upsertCluster(cluster.userIntent, cluster.placementInfo, cluster.uuid);
+            .upsertCluster(
+                cluster.userIntent, cluster.getPartitions(), cluster.placementInfo, cluster.uuid);
         if (cluster.clusterType == ClusterType.PRIMARY && dedicatedNodesChanged.get()) {
           updateGFlagsForTservers(cluster, universe);
         }
@@ -171,7 +179,7 @@ public class EditUniverse extends EditUniverseTaskBase {
     } catch (Throwable t) {
       errorMessage = t.getMessage();
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
-      clearCapacityReservationOnError(t, Universe.getOrBadRequest(universe.getUniverseUUID()));
+      clearCapacityReservationOnError(t, Universe.getOrBadRequest(taskParams().getUniverseUUID()));
       throw t;
     } finally {
       releaseReservedNodes();

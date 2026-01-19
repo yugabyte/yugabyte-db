@@ -53,7 +53,7 @@ The CLI is available for the following architectures:
 - Linux AMD64 and ARM64
 - Darwin AMD64 and ARM64
 
-Copy the appropriate binary to your local machine.
+Copy the appropriate binary to your local machine. Note that the CLI can only be used with the same or earlier version of YBA.
 
 ### Need Help?
 

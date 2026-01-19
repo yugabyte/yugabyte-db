@@ -16,7 +16,7 @@
 #include <algorithm>
 #include <functional>
 #include <limits>
-#include <queue>
+#include <ranges>
 #include <string>
 #include <unordered_set>
 #include <variant>
@@ -30,6 +30,7 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/pgsql_error.h"
+#include "yb/common/pgsql_protocol.messages.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/row_mark.h"
@@ -72,24 +73,19 @@
 #include "yb/util/enums.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
+#include "yb/util/range.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/trace.h"
 #include "yb/util/yb_pg_errcodes.h"
 
-#include "yb/vector_index/vectorann.h"
+#include "yb/vector_index/vector_index_if.h"
 
 #include "yb/yql/pggate/util/pg_doc_data.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
 using namespace std::literals;
-
-using yb::vector_index::ANNPagingState;
-using yb::vector_index::DocKeyWithDistance;
-using yb::vector_index::IndexableVectorType;
-using yb::vector_index::DummyANNFactory;
-using yb::vector_index::VectorANN;
 
 DECLARE_bool(ysql_disable_index_backfill);
 
@@ -130,6 +126,10 @@ DEFINE_UNKNOWN_uint64(
 DEFINE_RUNTIME_bool(ysql_enable_pack_full_row_update, false,
                     "Whether to enable packed row for full row update.");
 
+DEFINE_RUNTIME_bool(ysql_mark_update_packed_row, false,
+                    "Whether to mark packed rows created from UPDATE operations with a flag. "
+                    "This allows CDC to differentiate between INSERT and UPDATE packed rows."
+                    "Default is false.");
 DEFINE_RUNTIME_PREVIEW_bool(ysql_use_packed_row_v2, false,
                             "Whether to use packed row V2 when row packing is enabled.");
 
@@ -306,17 +306,17 @@ class DocKeyAccessor {
   explicit DocKeyAccessor(std::reference_wrapper<const Schema> schema)
       : schema_(schema.get()), source_(std::nullopt), result_holder_(std::nullopt) {}
 
-  Result<Slice> GetEncoded(std::reference_wrapper<const PgsqlExpressionPB> ybctid) {
+  Result<Slice> GetEncoded(std::reference_wrapper<const PgsqlExpressionMsg> ybctid) {
     RETURN_NOT_OK(Apply(ybctid.get()));
     return Encoded();
   }
 
-  Result<Slice> GetEncoded(std::reference_wrapper<const yb::PgsqlReadRequestPB> req) {
+  Result<Slice> GetEncoded(std::reference_wrapper<const PgsqlReadRequestMsg> req) {
     RETURN_NOT_OK(Apply(req.get()));
     return Encoded();
   }
 
-  Result<DocKey&> GetDecoded(std::reference_wrapper<const yb::PgsqlWriteRequestPB> req) {
+  Result<DocKey&> GetDecoded(std::reference_wrapper<const PgsqlWriteRequestMsg> req) {
     RETURN_NOT_OK(Apply(req.get()));
     return Decoded();
   }
@@ -357,9 +357,9 @@ class DocKeyAccessor {
       return Apply(req.ybctid_column_value());
     }
 
-    auto hashed_components = VERIFY_RESULT(qlexpr::InitKeyColumnPrimitiveValues(
+    auto hashed_components = VERIFY_RESULT(qlexpr::InitKeyColumnValues(
         req.partition_column_values(), schema_, 0 /* start_idx */));
-    auto range_components = VERIFY_RESULT(qlexpr::InitKeyColumnPrimitiveValues(
+    auto range_components = VERIFY_RESULT(qlexpr::InitKeyColumnValues(
         req.range_column_values(), schema_, schema_.num_hash_key_columns()));
     // A SELECT on the unique index column currently takes a strong lock on the top-level key at the
     // serializable isolation level. TODO: Optimize with weak lock.
@@ -374,7 +374,7 @@ class DocKeyAccessor {
     return Status::OK();
   }
 
-  Status Apply(const PgsqlExpressionPB& ybctid) {
+  Status Apply(const PgsqlExpressionMsg& ybctid) {
     const auto& value = ybctid.value().binary_value();
     SCHECK(!value.empty(), InternalError, "empty ybctid");
     source_.emplace<Slice>(value);
@@ -437,7 +437,7 @@ class DocKeyAccessor {
 
 Result<YQLRowwiseIteratorIf::UniPtr> CreateIterator(
     const PgsqlReadOperationData& data,
-    const PgsqlReadRequestPB& request,
+    const PgsqlReadRequestMsg& request,
     const dockv::ReaderProjection& projection,
     std::reference_wrapper<const DocReadContext> doc_read_context) {
   VLOG_IF(2, request.is_for_backfill()) << "Creating iterator for " << AsString(request);
@@ -486,9 +486,9 @@ Result<YQLRowwiseIteratorIf::UniPtr> CreateIterator(
 }
 
 template <class ColumnIds>
-Status VerifyNoColsMarkedForDeletion(const TableId& table_id,
+Status VerifyNoColsMarkedForDeletion(TableIdView table_id,
                                      const Schema& schema,
-                                     ColumnIds&& column_refs) {
+                                     const ColumnIds& column_refs) {
   for (const auto& col : column_refs) {
     const auto& id = dockv::GetColumnId(col);
     int idx = schema.find_column_by_id(id);
@@ -512,7 +512,7 @@ Status VerifyNoRefColsMarkedForDeletion(const Schema& schema, const PB& request)
   return VerifyNoColsMarkedForDeletion(request.table_id(), schema, request.column_refs().ids());
 }
 
-Status VerifyNoColsMarkedForDeletion(const Schema& schema, const PgsqlWriteRequestPB& request) {
+Status VerifyNoColsMarkedForDeletion(const Schema& schema, const PgsqlWriteRequestMsg& request) {
   // Verify that the request does not refer any columns marked for deletion.
   RETURN_NOT_OK(VerifyNoRefColsMarkedForDeletion(schema, request));
   // Verify columns being updated are not marked for deletion.
@@ -550,7 +550,7 @@ Result<std::unique_ptr<YQLRowwiseIteratorIf>> CreateYbctidIterator(
       SkipSeek skip_seek) {
   return data.ql_storage.GetIteratorForYbctid(
       data.request.stmt_id(), projection, read_context, data.txn_op_context,
-      data.read_operation_data, bounds, data.pending_op, skip_seek, UseVariableBloomFilter::kTrue);
+      data.read_operation_data, bounds, data.pending_op, skip_seek);
 }
 
 class FilteringIterator {
@@ -560,7 +560,7 @@ class FilteringIterator {
 
   Status Init(
       const PgsqlReadOperationData& data,
-      const PgsqlReadRequestPB& request,
+      const PgsqlReadRequestMsg& request,
       const dockv::ReaderProjection& projection,
       std::reference_wrapper<const DocReadContext> read_context) {
     RETURN_NOT_OK(InitCommon(request, read_context.get().schema(), projection));
@@ -623,13 +623,13 @@ class FilteringIterator {
     return filter_.has_value();
   }
 
-  static bool NeedFilter(const PgsqlReadRequestPB& request) {
+  static bool NeedFilter(const PgsqlReadRequestMsg& request) {
     return !request.where_clauses().empty();
   }
 
  private:
   Status InitCommon(
-      const PgsqlReadRequestPB& request, const Schema& schema,
+      const PgsqlReadRequestMsg& request, const Schema& schema,
       const dockv::ReaderProjection& projection) {
     if (!NeedFilter(request)) {
       return Status::OK();
@@ -680,7 +680,7 @@ YbctidBounds Bounds(const T& key_provider) {
 
 struct IndexState {
   IndexState(
-      const Schema& schema, const PgsqlReadRequestPB& request,
+      const Schema& schema, const PgsqlReadRequestMsg& request,
       std::unique_ptr<YQLRowwiseIteratorIf>* iterator_holder, ColumnId ybbasectid_id)
       : projection(CreateProjection(schema, request)), row(projection), iter(iterator_holder),
         ybbasectid_idx(projection.ColumnIdxById(ybbasectid_id)), scanned_rows(0) {
@@ -695,7 +695,7 @@ struct IndexState {
 };
 
 Result<FetchResult> FetchTableRow(
-    const std::string& table_id, FilteringIterator* table_iter,
+    TableIdView table_id, FilteringIterator* table_iter,
     IndexState* index, dockv::PgTableRow* row) {
   Slice tuple_id;
   if (index) {
@@ -746,7 +746,7 @@ struct RowPackerData {
   const dockv::SchemaPacking& packing;
 
   static Result<RowPackerData> Create(
-      const PgsqlWriteRequestPB& request, const DocReadContext& read_context) {
+      const PgsqlWriteRequestMsg& request, const DocReadContext& read_context) {
     auto schema_version = request.schema_version();
     return RowPackerData {
       .schema_version = schema_version,
@@ -754,23 +754,23 @@ struct RowPackerData {
     };
   }
 
-  dockv::RowPackerVariant MakePacker() const {
+  dockv::RowPackerVariant MakePacker(bool is_update = false) const {
     if (FLAGS_ysql_use_packed_row_v2) {
-      return MakePackerHelper<dockv::RowPackerV2>();
+      return MakePackerHelper<dockv::RowPackerV2>(is_update);
     }
-    return MakePackerHelper<dockv::RowPackerV1>();
+    return MakePackerHelper<dockv::RowPackerV1>(is_update);
   }
 
  private:
   template <class T>
-  dockv::RowPackerVariant MakePackerHelper() const {
+  dockv::RowPackerVariant MakePackerHelper(bool is_update) const {
     return dockv::RowPackerVariant(
         std::in_place_type_t<T>(), schema_version, packing, FLAGS_ysql_packed_row_size_limit,
-        Slice());
+        Slice(), is_update);
   }
 };
 
-bool IsExpression(const PgsqlColumnValuePB& column_value) {
+bool IsExpression(const PgsqlColumnValueMsg& column_value) {
   return qlexpr::GetTSWriteInstruction(column_value.expr()) == bfpg::TSOpcode::kPgEvalExprCall;
 }
 
@@ -778,7 +778,7 @@ class ExpressionHelper {
  public:
   Status Init(
       const Schema& schema, const dockv::ReaderProjection& projection,
-      const PgsqlWriteRequestPB& request, const dockv::PgTableRow& table_row) {
+      const PgsqlWriteRequestMsg& request, const dockv::PgTableRow& table_row) {
     DocPgExprExecutorBuilder builder(schema, projection);
     for (const auto& column_value : request.column_new_values()) {
       if (IsExpression(column_value)) {
@@ -789,7 +789,7 @@ class ExpressionHelper {
     return ResultToStatus(executor.Exec(table_row, &results_));
   }
 
-  QLExprResult* NextResult(const PgsqlColumnValuePB& column_value) {
+  QLExprResult* NextResult(const PgsqlColumnValueMsg& column_value) {
     if (!IsExpression(column_value)) {
       return nullptr;
     }
@@ -802,7 +802,7 @@ class ExpressionHelper {
   size_t next_result_idx_ = 0;
 };
 
-[[nodiscard]] inline bool NewValuesHaveExpression(const PgsqlWriteRequestPB& request) {
+[[nodiscard]] inline bool NewValuesHaveExpression(const PgsqlWriteRequestMsg& request) {
   // In case of UPDATE row need to be protected from removing. Weak intent is enough for
   // this purpose. To achieve this the path for row's SystemColumnIds::kLivenessColumn column
   // is returned. The caller code will create strong intent for returned path
@@ -834,11 +834,12 @@ template<class Container, class Functor>
 
 // Note: function return true in case request reads only key columns.
 // Such kind of request is used for explicit row locking via separate RPC from postgres.
-[[nodiscard]] bool IsOnlyKeyColumnsRequested(const Schema& schema, const PgsqlReadRequestPB& req) {
+[[nodiscard]] bool IsOnlyKeyColumnsRequested(
+    const Schema& schema, const PgsqlReadRequestMsg& req) {
   if (!req.col_refs().empty()) {
     return !Find(
         req.col_refs(),
-        [&schema](const PgsqlColRefPB& col) { return IsNonKeyColumn(schema, col.column_id()); });
+        [&schema](const PgsqlColRefMsg& col) { return IsNonKeyColumn(schema, col.column_id()); });
   }
 
   return !Find(
@@ -858,7 +859,7 @@ std::string DocDbStatsToString(const DocDBStatistics* doc_db_stats) {
 class VectorIndexKeyProvider {
  public:
   VectorIndexKeyProvider(
-      DocVectorIndexSearchResult& search_result, PgsqlResponsePB& response,
+      DocVectorIndexSearchResult& search_result, PgsqlResponseMsg& response,
       DocVectorIndex& vector_index, Slice vector_slice, size_t num_top_vectors_to_remove,
       size_t max_results, WriteBuffer& result_buffer)
       : could_have_more_data_(search_result.could_have_more_data),
@@ -958,7 +959,7 @@ class VectorIndexKeyProvider {
  private:
   bool could_have_more_data_;
   DocVectorIndexSearchResultEntries& result_entries_;
-  PgsqlResponsePB& response_;
+  PgsqlResponseMsg& response_;
   DocVectorIndex& vector_index_;
   Slice vector_slice_;
   const size_t num_top_vectors_to_remove_;
@@ -1018,6 +1019,11 @@ class PgsqlVectorFilter {
     projection_.Init(data.doc_read_context.schema(), columns);
     row_.emplace(projection_);
     RETURN_NOT_OK(iter_.InitForYbctid(data, projection_, data.doc_read_context, {}));
+
+    reverse_mapping_reader_ = VERIFY_RESULT(
+        data.vector_index->context().CreateReverseMappingReader(
+            data.read_operation_data.read_time));
+
     return true;
   }
 
@@ -1026,10 +1032,10 @@ class PgsqlVectorFilter {
       return true;
     }
     ++num_checked_entries_;
-    auto key = dockv::DocVectorKey(vector_id);
+
     // TODO(vector_index) handle failure
-    auto ybctid = CHECK_RESULT(iter_.impl().FetchDirect(key));
-    if (ybctid.empty() || ybctid[0] == dockv::ValueEntryTypeAsChar::kTombstone) {
+    auto ybctid = CHECK_RESULT(reverse_mapping_reader_->FetchYbctid(vector_id));
+    if (ybctid.empty()) {
       ++num_removed_;
       return false;
     }
@@ -1067,6 +1073,7 @@ class PgsqlVectorFilter {
  private:
   FilteringIterator iter_;
   dockv::ReaderProjection projection_;
+  docdb::DocVectorIndexReverseMappingReaderPtr reverse_mapping_reader_;
   size_t index_column_index_ = std::numeric_limits<size_t>::max();
   std::optional<dockv::PgTableRow> row_;
   bool need_refresh_ = false;
@@ -1088,14 +1095,15 @@ Result<size_t> WriteRowsReservoir(const T& reservoir, int num_rows, WriteBuffer*
   // So we hope to save by sending variable number of index/ybctid pairs vs exactly targrows of
   // nullable ybctids. It also helps in case of extremely small table or partition.
   size_t fetched_rows = 0;
+  QLValuePB index;
+  QLValuePB row;
   for (auto i = 0; i < num_rows; i++) {
-    QLValuePB index;
-    auto& row = reservoir[i];
-    if (!row.has_binary_value()) {
+    if (reservoir[i].empty()) {
       VLOG_WITH_FUNC(4) << "skipped empty ybctid at index: " << i;
       continue;
     }
     index.set_int32_value(i);
+    row.set_binary_value(reservoir[i]);
     RETURN_NOT_OK(pggate::WriteColumn(index, buffer));
     RETURN_NOT_OK(pggate::WriteColumn(row, buffer));
     VLOG_WITH_FUNC(4) << "picked ybctid: " << DebugKeySliceToString(row.binary_value())
@@ -1132,13 +1140,14 @@ Result<size_t> WriteBlocksReservoir(
 
 class PgsqlWriteOperation::RowPackContext {
  public:
-  RowPackContext(const PgsqlWriteRequestPB& request,
+  RowPackContext(const PgsqlWriteRequestMsg& request,
                  const DocOperationApplyData& data,
-                 const RowPackerData& packer_data)
+                 const RowPackerData& packer_data,
+                 bool is_update = false)
       : query_id_(request.stmt_id()),
         data_(data),
         write_id_(data.doc_write_batch->ReserveWriteId()),
-        packer_(packer_data.MakePacker()) {
+        packer_(packer_data.MakePacker(is_update)) {
   }
 
   template <class Value>
@@ -1171,7 +1180,7 @@ class PgsqlWriteOperation::RowPackContext {
 //--------------------------------------------------------------------------------------------------
 
 PgsqlWriteOperation::PgsqlWriteOperation(
-    std::reference_wrapper<const PgsqlWriteRequestPB> request, DocReadContextPtr doc_read_context,
+    std::reference_wrapper<const PgsqlWriteRequestMsg> request, DocReadContextPtr doc_read_context,
     const TransactionOperationContext& txn_op_context, rpc::Sidecars* sidecars)
     : DocOperationBase(request),
       doc_read_context_(std::move(doc_read_context)),
@@ -1179,7 +1188,7 @@ PgsqlWriteOperation::PgsqlWriteOperation(
       sidecars_(sidecars),
       ysql_skip_row_lock_for_update_(FLAGS_ysql_skip_row_lock_for_update) {}
 
-Status PgsqlWriteOperation::Init(PgsqlResponsePB* response) {
+Status PgsqlWriteOperation::Init(PgsqlResponseMsg* response) {
   // Initialize operation inputs.
   response_ = response;
 
@@ -1203,6 +1212,18 @@ Status PgsqlWriteOperation::Init(PgsqlResponsePB* response) {
   return Status::OK();
 }
 
+bool PgsqlWriteOperation::RequireReadSnapshot() const {
+  // For YSQL the the standard operations (INSERT/UPDATE/DELETE) will read/check the primary key.
+  // We use UPSERT stmt type for specific requests when we can guarantee we can skip the read.
+  return request_.stmt_type() != PgsqlWriteRequestPB::PGSQL_UPSERT;
+}
+
+void PgsqlWriteOperation::ClearResponse() {
+  if (response_) {
+    response_->Clear();
+  }
+}
+
 // Check if a duplicate value is inserted into a unique index.
 Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValue(const DocOperationApplyData& data) {
   VLOG(3) << "Looking for collisions in\n" << DocDBDebugDumpToStr(data);
@@ -1219,7 +1240,7 @@ Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValue(const DocOperatio
 
 Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValueBackward(
     const DocOperationApplyData& data) {
-  VLOG(2) << "Looking for collision while going backward. Trying to insert " << doc_key_;
+  VLOG_WITH_FUNC(2) << "doc key: " << doc_key_;
 
   auto iter = CreateIntentAwareIterator(
       data.doc_write_batch->doc_db(),
@@ -1228,8 +1249,10 @@ Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValueBackward(
       txn_op_context_,
       data.read_operation_data.WithAlteredReadTime(ReadHybridTime::Max()));
 
+  VLOG_WITH_FUNC(4) << "whole row: " << doc_key_;
   HybridTime oldest_past_min_ht = VERIFY_RESULT(FindOldestOverwrittenTimestamp(
       iter.get(), SubDocKey(doc_key_), data.read_time().read));
+  VLOG_WITH_FUNC(4) << "liveness column: " << SubDocKey(doc_key_, KeyEntryValue::kLivenessColumn);
   const HybridTime oldest_past_min_ht_liveness =
       VERIFY_RESULT(FindOldestOverwrittenTimestamp(
           iter.get(),
@@ -1271,7 +1294,7 @@ Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValue(
   for (const auto& column_value : request_.column_values()) {
     // Get the column.
     if (!column_value.has_column_id()) {
-      return STATUS(InternalError, "column id missing", column_value.DebugString());
+      return STATUS_FORMAT(InternalError, "column id missing: $0", column_value);
     }
     const ColumnId column_id(column_value.column_id());
 
@@ -1315,16 +1338,16 @@ Result<HybridTime> PgsqlWriteOperation::FindOldestOverwrittenTimestamp(
     const SubDocKey& sub_doc_key,
     HybridTime min_read_time) {
   HybridTime result;
-  VLOG(3) << "Doing iter->Seek " << doc_key_;
+  VLOG_WITH_FUNC(3) << doc_key_;
   iter->Seek(doc_key_);
   if (VERIFY_RESULT_REF(iter->Fetch())) {
     const auto bytes = sub_doc_key.EncodeWithoutHt();
     const Slice& sub_key_slice = bytes.AsSlice();
     result = VERIFY_RESULT(iter->FindOldestRecord(sub_key_slice, min_read_time));
-    VLOG(2) << "iter->FindOldestRecord returned " << result << " for "
-            << SubDocKey::DebugSliceToString(sub_key_slice);
+    VLOG_WITH_FUNC(2) << "iter->FindOldestRecord returned " << result << " for "
+                      << SubDocKey::DebugSliceToString(sub_key_slice);
   } else {
-    VLOG(3) << "iter->Seek " << doc_key_ << " turned out to be out of records";
+    VLOG_WITH_FUNC(3) << "iter->Seek " << doc_key_ << " turned out to be out of records";
   }
   return result;
 }
@@ -1376,7 +1399,7 @@ Status PgsqlWriteOperation::Apply(const DocOperationApplyData& data) {
 }
 
 Status PgsqlWriteOperation::InsertColumn(
-    const DocOperationApplyData& data, const PgsqlColumnValuePB& column_value,
+    const DocOperationApplyData& data, const PgsqlColumnValueMsg& column_value,
     RowPackContext* pack_context) {
   // Get the column.
   SCHECK(column_value.has_column_id(), InternalError, "Column id missing: $0", column_value);
@@ -1500,7 +1523,7 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
     RowPackContext pack_context(
         request_, data, VERIFY_RESULT(RowPackerData::Create(request_, *doc_read_context_)));
 
-    auto column_id_extractor = [](const PgsqlColumnValuePB& column_value) {
+    auto column_id_extractor = [](const PgsqlColumnValueMsg& column_value) {
       return column_value.column_id();
     };
 
@@ -1512,8 +1535,7 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
       auto column_order = StableSorted(request_.column_values(), column_id_extractor);
 
       for (const auto& key_and_index : column_order) {
-        RETURN_NOT_OK(InsertColumn(
-            data, request_.column_values()[key_and_index.original_index], &pack_context));
+        RETURN_NOT_OK(InsertColumn(data, *key_and_index.pointer, &pack_context));
       }
     }
 
@@ -1537,11 +1559,11 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
 
 Status PgsqlWriteOperation::UpdateColumn(
     const DocOperationApplyData& data, const dockv::PgTableRow& table_row,
-    const PgsqlColumnValuePB& column_value, dockv::PgTableRow* returning_table_row,
+    const PgsqlColumnValueMsg& column_value, dockv::PgTableRow* returning_table_row,
     QLExprResult* result, RowPackContext* pack_context) {
   // Get the column.
   if (!column_value.has_column_id()) {
-    return STATUS(InternalError, "column id missing", column_value.DebugString());
+    return STATUS_FORMAT(InternalError, "column id missing: $0", column_value);
   }
   const ColumnId column_id(column_value.column_id());
   const ColumnSchema& column = VERIFY_RESULT(doc_read_context_->schema().column_by_id(column_id));
@@ -1635,9 +1657,10 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
         ShouldYsqlPackRow(schema.is_colocated()) &&
         make_unsigned(request_.column_new_values().size()) == num_non_key_columns) {
       RowPackContext pack_context(
-          request_, data, VERIFY_RESULT(RowPackerData::Create(request_, *doc_read_context_)));
+          request_, data, VERIFY_RESULT(RowPackerData::Create(request_, *doc_read_context_)),
+          FLAGS_ysql_mark_update_packed_row /* is_update */);
 
-      auto column_id_extractor = [](const PgsqlColumnValuePB& column_value) {
+      auto column_id_extractor = [](const PgsqlColumnValueMsg& column_value) {
         return column_value.column_id();
       };
 
@@ -1649,7 +1672,7 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
         }
       } else {
         auto column_id_and_result_extractor =
-            [&expression_helper](const PgsqlColumnValuePB& column_value) {
+            [&expression_helper](const PgsqlColumnValueMsg& column_value) {
           return std::pair(column_value.column_id(), expression_helper.NextResult(column_value));
         };
         auto column_order = StableSorted(
@@ -1657,7 +1680,7 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
 
         for (const auto& entry : column_order) {
           RETURN_NOT_OK(UpdateColumn(
-              data, table_row, request_.column_values()[entry.original_index], &returning_table_row,
+              data, table_row, *entry.pointer, &returning_table_row,
               entry.key.second, &pack_context));
         }
       }
@@ -1678,7 +1701,7 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
     // table.
     bool is_match = true;
     if (request_.has_where_expr()) {
-      QLExprResult match;
+      QLExprResult match(&request_);
       RETURN_NOT_OK(EvalExpr(request_.where_expr(), table_row, match.Writer()));
       is_match = match.Value().bool_value();
     }
@@ -1699,7 +1722,7 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
             InternalError, "Illegal write instruction");
 
         // Evaluate column value.
-        QLExprResult expr_result;
+        QLExprResult expr_result(&request_);
         RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, expr_result.Writer()));
 
         // Inserting into specified column.
@@ -1803,8 +1826,9 @@ Status PgsqlWriteOperation::ApplyFetchSequence(const DocOperationApplyData& data
   }
 
   // Read last_value and is_called from the sequence record
-  ColumnId last_value_column_id(request_.col_refs()[0].column_id());
-  ColumnId is_called_column_id(request_.col_refs()[1].column_id());
+  auto it = request_.col_refs().begin();
+  ColumnId last_value_column_id(it->column_id());
+  ColumnId is_called_column_id(std::next(it)->column_id());
   const auto& last_value_column = VERIFY_RESULT_REF(
       doc_read_context_->schema().column_by_id(last_value_column_id));
   const auto& is_called_column = VERIFY_RESULT_REF(
@@ -1937,7 +1961,7 @@ Status PgsqlWriteOperation::PopulateResultSet(const dockv::PgTableRow* table_row
     pggate::PgWire::WriteInt64(0, write_buffer_);
   }
   ++result_rows_;
-  for (const PgsqlExpressionPB& expr : request_.targets()) {
+  for (const auto& expr : request_.targets()) {
     if (expr.has_column_id()) {
       QLExprResult value;
       if (expr.column_id() == static_cast<int>(PgSystemAttrNum::kYBTupleId)) {
@@ -2054,8 +2078,8 @@ Status PgsqlWriteOperation::FillRemovedVectorId(
 class PgsqlReadRequestYbctidProvider {
  public:
   explicit PgsqlReadRequestYbctidProvider(
-      const DocReadContext& doc_read_context, const PgsqlReadRequestPB& request,
-      PgsqlResponsePB& response)
+      const DocReadContext& doc_read_context, const PgsqlReadRequestMsg& request,
+      PgsqlResponseMsg& response)
       : request_(request), response_(response) {
     const auto& batch_args = request_.batch_arguments();
 
@@ -2070,7 +2094,7 @@ class PgsqlReadRequestYbctidProvider {
     }
 
     for (auto& batch_arg_it : batch_args) {
-      auto& val = batch_arg_it.ybctid().value().binary_value();
+      const auto& val = batch_arg_it.ybctid().value().binary_value();
       if (min_arg > val) {
         min_arg = val;
       }
@@ -2108,64 +2132,11 @@ class PgsqlReadRequestYbctidProvider {
 
  private:
   bool valid_ = true;
-  const PgsqlReadRequestPB& request_;
-  PgsqlResponsePB& response_;
-  google::protobuf::RepeatedPtrField<::yb::PgsqlBatchArgumentPB>::const_iterator batch_arg_it_;
+  const PgsqlReadRequestMsg& request_;
+  PgsqlResponseMsg& response_;
+  PgsqlBatchArgumentMsgs::const_iterator batch_arg_it_;
   YbctidBounds bounds_;
   std::optional<int64> current_order_;
-};
-
-template<IndexableVectorType Vector>
-class ANNKeyProvider {
- public:
-  explicit ANNKeyProvider(
-      const DocReadContext& doc_read_context, PgsqlResponsePB& response, size_t prefetch_size,
-      const Vector& query_vec, VectorANN<Vector>* ann, const ANNPagingState& paging_state)
-      : response_(response), prefetch_size_(prefetch_size), query_vec_(query_vec), ann_(ann) {
-    next_batch_paging_state_ = paging_state;
-    CHECK_GT(prefetch_size_, 0);
-  }
-
-  bool RefillBatch() {
-    CHECK(key_batch_.empty());
-    auto batch = ann_->GetTopKVectors(
-        query_vec_, prefetch_size_, next_batch_paging_state_.distance(),
-        next_batch_paging_state_.main_key(), false);
-
-    std::sort(batch.begin(), batch.end(), std::less<DocKeyWithDistance>());
-    key_batch_.insert(key_batch_.end(), batch.begin(), batch.end());
-    if (key_batch_.empty()) {
-      return false;
-    }
-    next_batch_paging_state_ =
-        ANNPagingState(key_batch_.back().distance_, key_batch_.back().dockey_);
-    return true;
-  }
-
-  Slice FetchKey() {
-    if (key_batch_.empty() && !RefillBatch()) {
-      return Slice();
-    }
-
-    auto ret = key_batch_.front();
-    current_entry_ = ret;
-    key_batch_.pop_front();
-    return ret.dockey_;
-  }
-
-  ANNPagingState GetNextBatchPagingState() const { return next_batch_paging_state_; }
-
-  void AddedKeyToResultSet() { response_.add_vector_index_distances(current_entry_->distance_); }
-
- private:
-  PgsqlResponsePB& response_;
-  size_t prefetch_size_;
-  const FloatVector& query_vec_;
-  VectorANN<Vector>* ann_;
-  std::deque<DocKeyWithDistance> key_batch_;
-  ANNPagingState next_batch_paging_state_;
-
-  std::optional<DocKeyWithDistance> current_entry_;
 };
 
 Result<size_t> PgsqlReadOperation::Execute() {
@@ -2205,9 +2176,6 @@ Result<size_t> PgsqlReadOperation::Execute() {
     } else {
       std::tie(fetched_rows, has_paging_state) = VERIFY_RESULT(ExecuteSample());
     }
-  } else if (request_.has_vector_idx_options()) {
-    std::tie(fetched_rows, has_paging_state) = VERIFY_RESULT(ExecuteVectorSearch(
-        data_.doc_read_context, request_.vector_idx_options()));
   } else if (request_.index_request().has_vector_idx_options()) {
     fetched_rows = VERIFY_RESULT(ExecuteVectorLSMSearch(
         request_.index_request().vector_idx_options()));
@@ -2247,7 +2215,7 @@ Result<size_t> PgsqlReadOperation::Execute() {
 
 namespace {
 
-void SamplerRandomStateToPb(YbgReservoirState rstate, PgsqlSamplingStatePB* sampling_state) {
+void SamplerRandomStateToPb(YbgReservoirState rstate, PgsqlSamplingStateMsg* sampling_state) {
   uint64_t randstate_s0 = 0;
   uint64_t randstate_s1 = 0;
   double rstate_w = 0;
@@ -2261,7 +2229,7 @@ void SamplerRandomStateToPb(YbgReservoirState rstate, PgsqlSamplingStatePB* samp
 } // namespace
 
 Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteSample() {
-  PgsqlSamplingStatePB sampling_state = request_.sampling_state();
+  const auto& sampling_state = request_.sampling_state();
   // Requested total number of rows to collect
   int targrows = sampling_state.targrows();
   // Number of rows collected so far
@@ -2279,7 +2247,7 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteSample() {
       sampling_state.rstate_w(), sampling_state.rand_state().s0(), sampling_state.rand_state().s1(),
       &rstate);
   // Buffer to hold selected row ids from the current page
-  std::unique_ptr<QLValuePB[]> reservoir = std::make_unique<QLValuePB[]>(targrows);
+  std::unique_ptr<std::string[]> reservoir = std::make_unique<std::string[]>(targrows);
   // Number of rows to scan for the current page.
   // Too low row count limit is inefficient since we have to allocate and initialize a reservoir
   // capable to hold potentially large (targrows) number of tuples. The row count has to be at least
@@ -2303,7 +2271,7 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteSample() {
       // the numrows, as well as other sampling state variables is returned and copied over to the
       // next sampling request
       Slice ybctid = table_iter_->GetTupleId();
-      reservoir[numrows++].set_binary_value(ybctid.data(), ybctid.size());
+      reservoir[numrows++] = ybctid;
     } else {
       // At least targrows tuples have already been collected, now algorithm skips increasing number
       // of row before taking next one into the reservoir
@@ -2316,7 +2284,7 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteSample() {
         YbgSamplerRandomFract(rstate, &rvalue);
         k = static_cast<int>(targrows * rvalue);
         // Overwrite previous value with new one
-        reservoir[k].set_binary_value(ybctid.data(), ybctid.size());
+        reservoir[k] = ybctid;
         // Choose next number of rows to skip
         YbgReservoirGetNextS(rstate, samplerows, targrows, &rowstoskip);
         VLOG(3) << "Next reservoir sampling rowstoskip=" << rowstoskip;
@@ -2363,8 +2331,8 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteSample() {
 
 namespace {
 
-std::pair<Slice, Slice> GetSampleBlockBounds(const PgsqlSampleBlockPB& sample_block) {
-  return {Slice(sample_block.lower_bound()), Slice(sample_block.upper_bound())};
+std::pair<Slice, Slice> GetSampleBlockBounds(const PgsqlSampleBlockMsg& sample_block) {
+  return {sample_block.lower_bound(), sample_block.upper_bound()};
 }
 
 std::pair<Slice, Slice> GetSampleBlockBounds(const std::pair<KeyBuffer, KeyBuffer>& sample_block) {
@@ -2378,8 +2346,8 @@ Status SampleRowsFromBlocks(
     YQLRowwiseIteratorIf* table_iter,
     const T& sample_blocks,
     Slice table_upperbound, const CoarseTimePoint& stop_scan_time,
-    PgsqlSamplingStatePB* sampling_state, YbgReservoirState rstate,
-    std::vector<QLValuePB>* reservoir) {
+    PgsqlSamplingStateMsg* sampling_state, YbgReservoirState rstate,
+    std::vector<std::string>* reservoir) {
   if (!VERIFY_RESULT(table_iter->PgFetchNext(nullptr))) {
     LOG(INFO) << "Nothing to sample";
     return Status::OK();
@@ -2434,7 +2402,7 @@ Status SampleRowsFromBlocks(
               << " row_key: " << DebugKeySliceToString(row_key);
       if (num_rows_collected < targrows) {
         const auto ybctid = table_iter->GetTupleId();
-        (*reservoir)[num_rows_collected++].set_binary_value(ybctid.data(), ybctid.size());
+        (*reservoir)[num_rows_collected++] = ybctid;
       } else if (rows_to_skip > 0) {
         // At least targrows tuples have already been collected, now algorithm skips increasing
         // number of rows before taking next one into the reservoir.
@@ -2446,7 +2414,7 @@ Status SampleRowsFromBlocks(
         YbgSamplerRandomFract(rstate, &rvalue);
         const auto k = static_cast<int>(targrows * rvalue);
         // Replace previous candidate with the new one.
-        (*reservoir)[k].set_binary_value(ybctid.data(), ybctid.size());
+        (*reservoir)[k] = ybctid;
         // Choose next number of rows to skip.
         YbgReservoirGetNextS(rstate, num_sample_rows, targrows, &rows_to_skip);
         VLOG(3) << "Next reservoir sampling rows_to_skip: " << rows_to_skip;
@@ -2556,9 +2524,7 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::DEPRECATED_ExecuteSampleBlo
       new_sampling_state.rstate_w(), new_sampling_state.rand_state().s0(),
       new_sampling_state.rand_state().s1(), &rstate);
 
-  std::vector<QLValuePB> reservoir;
-  reservoir.reserve(targrows);
-  reservoir.insert(reservoir.begin(), targrows, {});
+  std::vector<std::string> reservoir(targrows);
 
   LOG_WITH_FUNC(INFO) << "Start sampling tablet with sampling_state: "
                       << new_sampling_state.ShortDebugString();
@@ -2581,9 +2547,7 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::DEPRECATED_ExecuteSampleBlo
   // Having keys sorted helps with utilizing disk read-ahead mechanism and improve performance
   // for reading rows that are located nearby.
   VLOG_WITH_FUNC(1) << "Reservoir sort start";
-  std::sort(reservoir.begin(), reservoir.end(), [](const QLValuePB& v1, const QLValuePB& v2) {
-    return v1 < v2;
-  });
+  std::ranges::sort(reservoir);
   VLOG_WITH_FUNC(1) << "Reservoir sort completed";
 
   const auto fetched_rows =
@@ -2646,9 +2610,7 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteSampleBlockBased() {
         new_sampling_state.rstate_w(), new_sampling_state.rand_state().s0(),
         new_sampling_state.rand_state().s1(), &rstate);
 
-    std::vector<QLValuePB> reservoir;
-    reservoir.reserve(targrows);
-    reservoir.insert(reservoir.begin(), targrows, {});
+    std::vector<std::string> reservoir(targrows);
 
     auto projection = CreateProjection(data_.doc_read_context.schema(), request_);
 
@@ -2680,92 +2642,7 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteSampleBlockBased() {
   return std::tuple<size_t, bool>{fetched_items, false};
 }
 
-Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteVectorSearch(
-     const DocReadContext& doc_read_context, const PgVectorReadOptionsPB& options) {
-  // Build the vectorann and then make an index_doc_read_context on the vectorann
-  // to get the index iterator. Then do ExecuteBatchKeys on the index iterator.
-  RSTATUS_DCHECK(options.has_vector(), InvalidArgument, "Query vector not provided");
-
-  auto query_vec = options.vector().binary_value();
-
-  auto ysql_query_vec = pointer_cast<const vector_index::YSQLVector*>(query_vec.data());
-
-  auto query_vec_ref = VERIFY_RESULT(
-      VectorANN<FloatVector>::GetVectorFromYSQLWire(*ysql_query_vec, query_vec.size()));
-
-  DummyANNFactory<FloatVector> ann_factory;
-  auto ann_store = ann_factory.Create(ysql_query_vec->dim);
-
-  dockv::ReaderProjection index_doc_projection;
-
-  auto key_col_id = doc_read_context.schema().column_id(0);
-
-  // Building the schema to extract the vector and key from the main DocDB store.
-  // Vector should be the first value after the key.
-  auto vector_col_id =
-      doc_read_context.schema().column_id(doc_read_context.schema().num_key_columns());
-  index_doc_projection.Init(doc_read_context.schema(), {key_col_id, vector_col_id});
-
-  FilteringIterator table_iter(&table_iter_);
-  RETURN_NOT_OK(table_iter.Init(data_, request_, index_doc_projection, doc_read_context));
-  dockv::PgTableRow row(index_doc_projection);
-  const auto& table_id = request_.table_id();
-
-  // Build the VectorANN.
-  for (;;) {
-    const auto fetch_result =
-        VERIFY_RESULT(FetchTableRow(table_id, &table_iter, nullptr /* index */, &row));
-    // If changing this code, see also PgsqlReadOperation::ExecuteBatchKeys.
-    if (fetch_result == FetchResult::NotFound) {
-      break;
-    }
-    ++scanned_table_rows_;
-    if (fetch_result == FetchResult::Found) {
-      auto vec_value = row.GetValueByColumnId(vector_col_id);
-      if (!vec_value.has_value()) {
-        continue;
-      }
-
-      // Add the vector to the ANN store
-      auto encoded = dockv::EncodedDocVectorValue::FromSlice(vec_value->binary_value());
-      auto vec = VERIFY_RESULT(VectorANN<FloatVector>::GetVectorFromYSQLWire(encoded.data));
-      auto doc_iter = down_cast<DocRowwiseIterator*>(table_iter_.get());
-      ann_store->Add(VERIFY_RESULT(encoded.DecodeId()), std::move(vec), doc_iter->GetTupleId());
-    }
-  }
-
-  // Check for paging state.
-  ANNPagingState ann_paging_state;
-  if (request_.has_paging_state()) {
-    ann_paging_state =
-        ANNPagingState{request_.paging_state().distance(), request_.paging_state().main_key()};
-  }
-
-  // All rows have been added to the ANN store, now we can create the iterator.
-  auto initial_prefetch_size = request_.vector_idx_options().prefetch_size();
-  initial_prefetch_size = std::max(initial_prefetch_size, 25);
-
-  ANNKeyProvider key_provider(
-      doc_read_context, response_, initial_prefetch_size, query_vec_ref, ann_store.get(),
-      ann_paging_state);
-  auto fetched_rows = VERIFY_RESULT(ExecuteBatchKeys(key_provider));
-
-  auto next_paging_state = key_provider.GetNextBatchPagingState();
-
-  // Set paging state.
-  bool has_paging_state = !next_paging_state.valid();
-  if (has_paging_state) {
-    auto* paging_state = response_.mutable_paging_state();
-    paging_state->set_distance(next_paging_state.distance());
-    paging_state->set_main_key(next_paging_state.main_key().ToBuffer());
-
-    BindReadTimeToPagingState(data_.read_operation_data.read_time);
-  }
-
-  return std::tuple<size_t, bool>{fetched_rows, has_paging_state};
-}
-
-Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(const PgVectorReadOptionsPB& options) {
+Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(const PgVectorReadOptionsMsg& options) {
   RSTATUS_DCHECK(
       data_.vector_index, IllegalState, "Search vector when vector index is null: $0", request_);
 
@@ -2787,6 +2664,7 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(const PgVectorReadOpti
       },
       could_have_missing_entries
   ));
+  VLOG_WITH_FUNC(2) << "Search results: " << result.ToString();
 
   // TODO(vector_index) Order keys by ybctid for fetching.
   auto dump_stats = FLAGS_vector_index_dump_stats;
@@ -2842,10 +2720,11 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteScalar() {
   // columns and key columns.
   auto doc_projection = CreateProjection(data_.doc_read_context.schema(), request_);
   FilteringIterator table_iter(&table_iter_);
-  RETURN_NOT_OK(table_iter.Init(data_, request_, doc_projection, data_.doc_read_context));
 
   std::optional<IndexState> index_state;
   if (data_.index_doc_read_context) {
+    RETURN_NOT_OK(table_iter.InitForYbctid(data_, doc_projection, data_.doc_read_context, {}));
+
     const auto& index_schema = data_.index_doc_read_context->schema();
     const auto idx = index_schema.find_column("ybidxbasectid");
     SCHECK_NE(idx, Schema::kColumnNotFound, Corruption, "ybidxbasectid not found in index schema");
@@ -2853,6 +2732,8 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteScalar() {
         index_schema, request_.index_request(), &index_iter_, index_schema.column_id(idx));
     RETURN_NOT_OK(index_state->iter.Init(
         data_, request_.index_request(), index_state->projection, *data_.index_doc_read_context));
+  } else {
+    RETURN_NOT_OK(table_iter.Init(data_, request_, doc_projection, data_.doc_read_context));
   }
 
   // Set scan end time. We want to iterate as long as we can, but stop before client timeout.
@@ -3015,8 +2896,8 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchKeys(KeyProvider& key_provider) {
                     << ", response size limit: " << response_size_limit;
             RETURN_NOT_OK(result_buffer_->Truncate(row_start));
             // TODO GHI #25788, for now fail instead of returning incomplete results
-            RSTATUS_DCHECK_NE(request_.batch_arguments_size(), 0,
-                              IllegalState, "Pagination is required, but not supported");
+            RSTATUS_DCHECK(!request_.batch_arguments().empty(),
+                           IllegalState, "Pagination is required, but not supported");
             DCHECK(processed_keys < static_cast<size_t>(request_.batch_arguments_size()));
             response_.set_batch_arg_count(processed_keys);
             return fetched_rows;
@@ -3107,7 +2988,7 @@ void TupleIdEncoder(
 
 dockv::PgWireEncoderEntry GetEncoder(
     YQLRowwiseIteratorIf::UniPtr* table_iter, const dockv::PgTableRow& table_row,
-    const PgsqlExpressionPB& expr, bool last) {
+    const PgsqlExpressionMsg& expr, bool last) {
   if (expr.expr_case() == PgsqlExpressionPB::kColumnId) {
     if (expr.column_id() != std::to_underlying(PgSystemAttrNum::kYBTupleId)) {
       auto index = table_row.projection().ColumnIdxById(ColumnId(expr.column_id()));
@@ -3125,7 +3006,7 @@ dockv::PgWireEncoderEntry GetEncoder(
 }
 
 void PgsqlReadOperation::InitTargetEncoders(
-    const google::protobuf::RepeatedPtrField<PgsqlExpressionPB>& targets,
+    const PgsqlExpressionMsgs& targets,
     const dockv::PgTableRow& table_row) {
   const auto size = targets.size();
   if (size) {
@@ -3155,15 +3036,13 @@ Status PgsqlReadOperation::PopulateResultSet(const dockv::PgTableRow& table_row,
   return Status::OK();
 }
 
-Status PgsqlReadOperation::GetSpecialColumn(ColumnIdRep column_id, QLValuePB* result) {
+Result<Slice> PgsqlReadOperation::GetSpecialColumn(ColumnIdRep column_id) {
   // Get row key and save to QLValue.
   // TODO(neil) Check if we need to append a table_id and other info to TupleID. For example, we
   // might need info to make sure the TupleId by itself is a valid reference to a specific row of
   // a valid table.
   if (column_id == static_cast<int>(PgSystemAttrNum::kYBTupleId)) {
-    const Slice tuple_id = table_iter_->GetTupleId();
-    result->set_binary_value(tuple_id.data(), tuple_id.size());
-    return Status::OK();
+    return table_iter_->GetTupleId();
   }
 
   return STATUS_SUBSTITUTE(InvalidArgument, "Invalid column ID: $0", column_id);
@@ -3176,7 +3055,7 @@ Status PgsqlReadOperation::EvalAggregate(const dockv::PgTableRow& table_row) {
   }
 
   int aggr_index = 0;
-  for (const PgsqlExpressionPB& expr : request_.targets()) {
+  for (const auto& expr : request_.targets()) {
     RETURN_NOT_OK(EvalExpr(expr, table_row, aggr_result_[aggr_index++].Writer()));
   }
   return Status::OK();
@@ -3227,28 +3106,23 @@ Status GetIntents(
 }
 
 PgsqlLockOperation::PgsqlLockOperation(
-    std::reference_wrapper<const PgsqlLockRequestPB> request,
+    std::reference_wrapper<const PgsqlLockRequestMsg> request,
     const TransactionOperationContext& txn_op_context)
         : DocOperationBase(request), txn_op_context_(txn_op_context) {
 }
 
 Status PgsqlLockOperation::Init(
-    PgsqlResponsePB* response, const DocReadContextPtr& doc_read_context) {
+    PgsqlResponseMsg* response, const DocReadContextPtr& doc_read_context) {
   response_ = response;
 
   auto& schema = doc_read_context->schema();
 
-  dockv::KeyEntryValues hashed_components;
-  dockv::KeyEntryValues range_components;
-  RETURN_NOT_OK(QLKeyColumnValuesToPrimitiveValues(
+  auto hashed_components = VERIFY_RESULT(dockv::QLKeyColumnValuesToPrimitiveValues(
       request_.lock_id().lock_partition_column_values(), schema, 0,
-      schema.num_hash_key_columns(),
-      &hashed_components));
-  RETURN_NOT_OK(QLKeyColumnValuesToPrimitiveValues(
+      schema.num_hash_key_columns()));
+  auto range_components = VERIFY_RESULT(dockv::QLKeyColumnValuesToPrimitiveValues(
       request_.lock_id().lock_range_column_values(), schema,
-      schema.num_hash_key_columns(),
-      schema.num_range_key_columns(),
-      &range_components));
+      schema.num_hash_key_columns(), schema.num_range_key_columns()));
   SCHECK(!hashed_components.empty(), InvalidArgument, "No hashed column values provided");
   doc_key_ = DocKey(
       schema, request_.hash_code(), std::move(hashed_components), std::move(range_components));

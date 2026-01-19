@@ -339,8 +339,9 @@ Status SharedMemoryBackingAllocator::Impl::Init(
 
   void* addr = VERIFY_RESULT(address_segment.Reserve(segment_max_size));
 
-  LOG_WITH_PREFIX(INFO) << "Opening shared memory allocator "
-                        << "local process state: " << this << " " << "shared memory: " << addr;
+  VLOG_WITH_PREFIX(1) << "Opening shared memory allocator "
+                      << "local process state: " << this << " "
+                      << "shared memory: " << addr;
 
   if (shared_mem_segment) {
     shared_mem_segment_ = std::move(*shared_mem_segment);
@@ -376,7 +377,8 @@ SharedMemoryBackingAllocator::Impl::~Impl() {
     return;
   }
 
-  LOG_WITH_PREFIX(INFO) << "Closing shared memory allocator";
+  VLOG_WITH_PREFIX(1) << "Closing shared memory allocator";
+
   if (owner_) {
     header_->~HeaderSegment();
   }

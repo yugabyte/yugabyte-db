@@ -13,6 +13,7 @@
 
 #include "yb/master/yql_virtual_table.h"
 
+#include "yb/common/ql_protocol.messages.h"
 #include "yb/common/schema.h"
 
 #include "yb/docdb/doc_ql_scanspec.h"
@@ -55,7 +56,7 @@ YQLVirtualTable::YQLVirtualTable(const TableName& table_name,
 YQLVirtualTable::~YQLVirtualTable() = default;
 
 Status YQLVirtualTable::GetIterator(
-    const QLReadRequestPB& request,
+    const QLReadRequestMsg& request,
     const dockv::ReaderProjection& projection,
       std::reference_wrapper<const docdb::DocReadContext> doc_read_context,
     const TransactionOperationContext& txn_op_context,
@@ -76,7 +77,7 @@ Status YQLVirtualTable::GetIterator(
 }
 
 Status YQLVirtualTable::BuildYQLScanSpec(
-    const QLReadRequestPB& request,
+    const QLReadRequestMsg& request,
     const ReadHybridTime& read_time,
     const Schema& schema,
     const bool include_static_columns,
@@ -86,11 +87,12 @@ Status YQLVirtualTable::BuildYQLScanSpec(
   if (include_static_columns) {
     return STATUS(IllegalState, "system table contains no static columns");
   }
-  const dockv::KeyEntryValues empty_vec;
   spec->reset(new docdb::DocQLScanSpec(
-      schema, /* hash_code = */ std::nullopt, /* max_hash_code = */ std::nullopt, empty_vec,
-      request.has_where_expr() ? &request.where_expr().condition() : nullptr,
-      request.has_if_expr() ? &request.if_expr().condition() : nullptr, rocksdb::kDefaultQueryId,
+      schema, /* hash_code = */ std::nullopt, /* max_hash_code = */ std::nullopt, nullptr, {},
+      qlexpr::QLConditionPBPtr(
+          request.has_where_expr() ? &request.where_expr().condition() : nullptr),
+      qlexpr::QLConditionPBPtr(request.has_if_expr() ? &request.if_expr().condition() : nullptr),
+      rocksdb::kDefaultQueryId,
       request.is_forward_scan()));
   return Status::OK();
 }

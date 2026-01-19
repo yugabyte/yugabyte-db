@@ -75,6 +75,10 @@ DEFINE_RUNTIME_int32(rbs_init_max_number_of_retries, 5,
                      "when metadata before and after checkpoint does not match. "
                      "0 - to disable retry logic.");
 
+DEFINE_test_flag(bool, rbs_fail_checkpoint, false,
+                 "Fail all attempts to checkpoint data when retries still exist.");
+
+
 namespace yb {
 namespace tserver {
 
@@ -108,19 +112,7 @@ RemoteBootstrapSession::~RemoteBootstrapSession() {
 
   // No lock taken in the destructor, should only be 1 thread with access now.
   CHECK_OK(UnregisterAnchorIfNeededUnlocked());
-
-  // Delete checkpoint directory.
-  if (!checkpoint_dir_.empty()) {
-    auto s = env()->DeleteRecursively(checkpoint_dir_);
-    if (!s.ok()) {
-      LOG(WARNING) << "Unable to delete checkpoint directory " << checkpoint_dir_;
-    } else {
-      LOG(INFO) << "Successfully deleted checkpoint directory " << checkpoint_dir_;
-    }
-  } else {
-    LOG(INFO) << "No checkpoint directory was created for this session";
-  }
-
+  RemoveCheckpointDir();
 }
 
 Status RemoteBootstrapSession::ChangeRole() {
@@ -199,6 +191,9 @@ Result<OpId> RemoteBootstrapSession::CreateSnapshot(int retry) {
         LOG(INFO) << status;
         return status;
       }
+      if (PREDICT_FALSE(FLAGS_TEST_rbs_fail_checkpoint) && retry + 1 < max_retries) {
+        LOG_AND_RETURN(WARNING, STATUS_FORMAT(TryAgain, "FLAGS_TEST_rbs_fail_checkpoint set"));
+      }
     }
 
     *kv_store->mutable_rocksdb_files() = VERIFY_RESULT(tablet::ListFiles(checkpoint_dir_));
@@ -207,6 +202,20 @@ Result<OpId> RemoteBootstrapSession::CreateSnapshot(int retry) {
   }
 
   return last_logged_opid;
+}
+
+void RemoteBootstrapSession::RemoveCheckpointDir() {
+  // Delete checkpoint directory.
+  if (checkpoint_dir_.empty()) {
+    LOG(INFO) << "No checkpoint directory was created for this session";
+    return;
+  }
+  auto s = env()->DeleteRecursively(checkpoint_dir_);
+  if (!s.ok()) {
+    LOG(WARNING) << Format("Unable to delete checkpoint directory $0: $1", checkpoint_dir_, s);
+    return;
+  }
+  LOG(INFO) << "Successfully deleted checkpoint directory " << checkpoint_dir_;
 }
 
 Status RemoteBootstrapSession::InitBootstrapSession() {
@@ -226,6 +235,7 @@ Status RemoteBootstrapSession::InitBootstrapSession() {
       last_logged_opid = *res;
       break;
     }
+    RemoveCheckpointDir();
     if (!res.status().IsTryAgain()) {
       return res.status();
     }

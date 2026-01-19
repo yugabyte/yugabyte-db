@@ -20,12 +20,14 @@ import "yb/common/common.proto";
 import "yb/common/common_net.proto";
 import "yb/common/common_types.proto";
 
+import "yb/rpc/lightweight_message.proto";
+
 // A column value, optionally with subscripts, e.g. m['x'] or l[2]['x']
 message QLColumnValuePB {
   optional int32 column_id = 1;
   repeated QLExpressionPB subscript_args = 3;
   repeated QLJsonOperationPB json_args = 4;
-  optional QLExpressionPB expr = 2;
+  optional QLExpressionPB expr = 2 [(yb.rpc.lightweight_field).pointer = true];
 }
 
 // Paging state for continuing a read request.
@@ -277,7 +279,7 @@ message QLReadRequestPB {
 
   // The remote endpoint sending this request. This is filled in by the server and should not be
   // set.
-  optional HostPortPB remote_endpoint = 13;
+  optional HostPortPB remote_endpoint = 13 [(rpc.lightweight_field).pointer = true];
 
   // If this request comes from proxy, it should be filled with UUID of this proxy.
   optional string proxy_uuid = 20;

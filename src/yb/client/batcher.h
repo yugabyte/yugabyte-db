@@ -175,7 +175,8 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
       YBTransactionPtr transaction,
       ConsistentReadPoint* read_point,
       bool force_consistent_read,
-      int64_t leader_term_);
+      int64_t leader_term,
+      ThreadSafeArenaPtr arena);
   ~Batcher();
 
   // Set the timeout for this batcher.
@@ -422,6 +423,8 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
   MicrosTime rpcs_start_time_micros_ = 0;
 
   const int64_t leader_term_;
+
+  ThreadSafeArenaPtr arena_;
 
   // - For a session advisory lock request: the below points to
   //   the in-progress DocDB transaction, if any.

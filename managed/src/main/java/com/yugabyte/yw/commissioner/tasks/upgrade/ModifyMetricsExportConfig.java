@@ -8,6 +8,7 @@ import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistMetricsExportConfig;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.MetricsExportConfigParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
@@ -98,7 +99,12 @@ public class ModifyMetricsExportConfig extends UpgradeTaskBase {
         universe.getUniverseDetails().getPrimaryCluster().userIntent.auditLogConfig,
         universe.getUniverseDetails().getPrimaryCluster().userIntent.queryLogConfig,
         taskParams().metricsExportConfig,
-        nodeDetails -> Collections.emptyMap());
+        nodeDetails ->
+            GFlagsUtil.getGFlagsForNode(
+                nodeDetails,
+                ServerType.TSERVER,
+                universe.getCluster(nodeDetails.placementUuid),
+                universe.getUniverseDetails().clusters));
   }
 
   public void updateAndPersistMetricsExportConfigTask() {

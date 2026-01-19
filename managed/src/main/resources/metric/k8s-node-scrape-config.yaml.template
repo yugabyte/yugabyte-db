@@ -42,6 +42,10 @@
       regex: "(.*)"
       target_label: "container_name"
       replacement: "$1"
+    - source_labels: ["topology_kubernetes_io_zone"]
+      regex: "(.*)"
+      target_label: "az_name"
+      replacement: "$1"
 
 - job_name: 'yba-generated-${kubeconfig_uuid}-k8s-nodes-cadvisor'
 
@@ -81,6 +85,10 @@
     - source_labels: ["container"]
       regex: "(.*)"
       target_label: "container_name"
+      replacement: "$1"
+    - source_labels: ["topology_kubernetes_io_zone"]
+      regex: "(.*)"
+      target_label: "az_name"
       replacement: "$1"
     # Keep metrics from YugabyteDB pods, discard everything else
     - source_labels: ["pod_name"]

@@ -257,6 +257,23 @@ public class OtelCollectorConfigFormat {
 
   @Data
   @EqualsAndHashCode(callSuper = true)
+  public static class OTLPExporter extends Exporter {
+    private String endpoint;
+    private String compression;
+    private Map<String, String> headers;
+    private TlsSettings tls;
+    private String timeout;
+    private String logs_endpoint;
+    private AuthConfig auth;
+  }
+
+  @Data
+  public static class AuthConfig {
+    private String authenticator;
+  }
+
+  @Data
+  @EqualsAndHashCode(callSuper = true)
   public static class SplunkExporter extends Exporter {
     private String token;
     private String endpoint;
@@ -272,6 +289,26 @@ public class OtelCollectorConfigFormat {
     private String log_stream_name;
     private String region;
     private String endpoint;
+  }
+
+  @Data
+  @EqualsAndHashCode(callSuper = true)
+  public static class AWSS3Exporter extends Exporter {
+    private String marshaler;
+    private S3UploaderConfig s3uploader;
+  }
+
+  @Data
+  public static class S3UploaderConfig {
+    private String endpoint;
+    private String s3_bucket;
+    private String region;
+    private String s3_prefix;
+    private String s3_partition;
+    private String role_arn;
+    private String file_prefix;
+    private Boolean s3_force_path_style;
+    private Boolean disable_ssl;
   }
 
   @Data
@@ -304,6 +341,24 @@ public class OtelCollectorConfigFormat {
     private boolean on_rebound;
     private int rebound_needed_threshold_mib;
     private int rebound_trigger_threshold_mib;
+  }
+
+  @Data
+  @EqualsAndHashCode(callSuper = true)
+  public static class BasicAuthExtension extends Extension {
+    private ClientAuth client_auth;
+  }
+
+  @Data
+  public static class ClientAuth {
+    private String username;
+    private String password;
+  }
+
+  @Data
+  @EqualsAndHashCode(callSuper = true)
+  public static class BearerTokenAuthExtension extends Extension {
+    private String bearer_token;
   }
 
   @Data

@@ -5,6 +5,14 @@
 -- Note: to ensure plan stability, it's a good idea to make the partitions of
 -- any one partitioned table in this test all have different numbers of rows.
 --
+-- YB: Use colocated DB and enable parallel execution.
+SET client_min_messages TO 'warning';
+DROP DATABASE IF EXISTS px_colocated WITH (force);
+CREATE DATABASE px_colocated WITH colocation = on;
+ALTER DATABASE px_colocated SET yb_parallel_range_rows = 1000;
+ALTER DATABASE px_colocated SET yb_enable_parallel_append = on;
+ALTER DATABASE px_colocated SET yb_enable_cbo = on;
+\c px_colocated
 -- Enable partitionwise aggregate, which by default is disabled.
 SET enable_partitionwise_aggregate TO true;
 -- Enable partitionwise join, which by default is disabled.
@@ -682,10 +690,10 @@ SELECT a.x, sum(b.x) FROM pagg_tab1 a FULL OUTER JOIN pagg_tab2 b ON a.x = b.y G
                ->  Partial HashAggregate
                      Group Key: a.x
                      ->  Hash Full Join
-                           Hash Cond: (a.x = b.y)
-                           ->  Seq Scan on pagg_tab1_p1 a
+                           Hash Cond: (b.y = a.x)
+                           ->  Seq Scan on pagg_tab2_p1 b
                            ->  Hash
-                                 ->  Seq Scan on pagg_tab2_p1 b
+                                 ->  Seq Scan on pagg_tab1_p1 a
                ->  Partial HashAggregate
                      Group Key: a_1.x
                      ->  Hash Full Join
@@ -951,10 +959,39 @@ SET parallel_setup_cost = 0;
 -- for level 1 only. For subpartitions, GROUP BY clause does not match with
 -- PARTITION KEY, but still we do not see a partial aggregation as array_agg()
 -- is not partial agg safe.
-/* YB: cannot force parallelism
 EXPLAIN (COSTS OFF)
 SELECT a, sum(b), array_agg(distinct c), count(*) FROM pagg_tab_ml GROUP BY a HAVING avg(b) < 3 ORDER BY 1, 2, 3;
-*/ -- YB: cannot force parallelism
+                                      QUERY PLAN                                      
+--------------------------------------------------------------------------------------
+ Sort
+   Sort Key: pagg_tab_ml.a, (sum(pagg_tab_ml.b)), (array_agg(DISTINCT pagg_tab_ml.c))
+   ->  Gather
+         Workers Planned: 2
+         ->  Parallel Append
+               ->  GroupAggregate
+                     Group Key: pagg_tab_ml.a
+                     Filter: (avg(pagg_tab_ml.b) < '3'::numeric)
+                     ->  Sort
+                           Sort Key: pagg_tab_ml.a
+                           ->  Seq Scan on pagg_tab_ml_p1 pagg_tab_ml
+               ->  GroupAggregate
+                     Group Key: pagg_tab_ml_5.a
+                     Filter: (avg(pagg_tab_ml_5.b) < '3'::numeric)
+                     ->  Sort
+                           Sort Key: pagg_tab_ml_5.a
+                           ->  Append
+                                 ->  Seq Scan on pagg_tab_ml_p3_s1 pagg_tab_ml_5
+                                 ->  Seq Scan on pagg_tab_ml_p3_s2 pagg_tab_ml_6
+               ->  GroupAggregate
+                     Group Key: pagg_tab_ml_2.a
+                     Filter: (avg(pagg_tab_ml_2.b) < '3'::numeric)
+                     ->  Sort
+                           Sort Key: pagg_tab_ml_2.a
+                           ->  Append
+                                 ->  Seq Scan on pagg_tab_ml_p2_s1 pagg_tab_ml_2
+                                 ->  Seq Scan on pagg_tab_ml_p2_s2 pagg_tab_ml_3
+(27 rows)
+
 SELECT a, sum(b), array_agg(distinct c), count(*) FROM pagg_tab_ml GROUP BY a HAVING avg(b) < 3 ORDER BY 1, 2, 3;
  a  | sum  |  array_agg  | count 
 ----+------+-------------+-------
@@ -970,10 +1007,37 @@ SELECT a, sum(b), array_agg(distinct c), count(*) FROM pagg_tab_ml GROUP BY a HA
 (9 rows)
 
 -- Without ORDER BY clause, to test Gather at top-most path
-/* YB: cannot force parallelism
 EXPLAIN (COSTS OFF)
 SELECT a, sum(b), array_agg(distinct c), count(*) FROM pagg_tab_ml GROUP BY a HAVING avg(b) < 3;
-*/ -- YB: cannot force parallelism
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Gather
+   Workers Planned: 2
+   ->  Parallel Append
+         ->  GroupAggregate
+               Group Key: pagg_tab_ml.a
+               Filter: (avg(pagg_tab_ml.b) < '3'::numeric)
+               ->  Sort
+                     Sort Key: pagg_tab_ml.a
+                     ->  Seq Scan on pagg_tab_ml_p1 pagg_tab_ml
+         ->  GroupAggregate
+               Group Key: pagg_tab_ml_5.a
+               Filter: (avg(pagg_tab_ml_5.b) < '3'::numeric)
+               ->  Sort
+                     Sort Key: pagg_tab_ml_5.a
+                     ->  Append
+                           ->  Seq Scan on pagg_tab_ml_p3_s1 pagg_tab_ml_5
+                           ->  Seq Scan on pagg_tab_ml_p3_s2 pagg_tab_ml_6
+         ->  GroupAggregate
+               Group Key: pagg_tab_ml_2.a
+               Filter: (avg(pagg_tab_ml_2.b) < '3'::numeric)
+               ->  Sort
+                     Sort Key: pagg_tab_ml_2.a
+                     ->  Append
+                           ->  Seq Scan on pagg_tab_ml_p2_s1 pagg_tab_ml_2
+                           ->  Seq Scan on pagg_tab_ml_p2_s2 pagg_tab_ml_3
+(25 rows)
+
 RESET parallel_setup_cost;
 -- Full aggregation at level 1 as GROUP BY clause matches with PARTITION KEY
 -- for level 1 only. For subpartitions, GROUP BY clause does not match with
@@ -1122,10 +1186,53 @@ SET parallel_setup_cost TO 0;
 -- Full aggregation at level 1 as GROUP BY clause matches with PARTITION KEY
 -- for level 1 only. For subpartitions, GROUP BY clause does not match with
 -- PARTITION KEY, thus we will have a partial aggregation for them.
-/* YB: cannot force parallelism
 EXPLAIN (COSTS OFF)
 SELECT a, sum(b), count(*) FROM pagg_tab_ml GROUP BY a HAVING avg(b) < 3 ORDER BY 1, 2, 3;
-*/ -- YB: cannot force parallelism
+                                           QUERY PLAN                                           
+------------------------------------------------------------------------------------------------
+ Sort
+   Sort Key: pagg_tab_ml.a, (sum(pagg_tab_ml.b)), (count(*))
+   ->  Append
+         ->  Finalize GroupAggregate
+               Group Key: pagg_tab_ml.a
+               Filter: (avg(pagg_tab_ml.b) < '3'::numeric)
+               ->  Gather Merge
+                     Workers Planned: 2
+                     ->  Sort
+                           Sort Key: pagg_tab_ml.a
+                           ->  Partial HashAggregate
+                                 Group Key: pagg_tab_ml.a
+                                 ->  Parallel Seq Scan on pagg_tab_ml_p1 pagg_tab_ml
+         ->  Finalize GroupAggregate
+               Group Key: pagg_tab_ml_2.a
+               Filter: (avg(pagg_tab_ml_2.b) < '3'::numeric)
+               ->  Gather Merge
+                     Workers Planned: 2
+                     ->  Sort
+                           Sort Key: pagg_tab_ml_2.a
+                           ->  Parallel Append
+                                 ->  Partial HashAggregate
+                                       Group Key: pagg_tab_ml_2.a
+                                       ->  Parallel Seq Scan on pagg_tab_ml_p2_s1 pagg_tab_ml_2
+                                 ->  Partial HashAggregate
+                                       Group Key: pagg_tab_ml_3.a
+                                       ->  Parallel Seq Scan on pagg_tab_ml_p2_s2 pagg_tab_ml_3
+         ->  Finalize GroupAggregate
+               Group Key: pagg_tab_ml_5.a
+               Filter: (avg(pagg_tab_ml_5.b) < '3'::numeric)
+               ->  Gather Merge
+                     Workers Planned: 2
+                     ->  Sort
+                           Sort Key: pagg_tab_ml_5.a
+                           ->  Parallel Append
+                                 ->  Partial HashAggregate
+                                       Group Key: pagg_tab_ml_5.a
+                                       ->  Parallel Seq Scan on pagg_tab_ml_p3_s1 pagg_tab_ml_5
+                                 ->  Partial HashAggregate
+                                       Group Key: pagg_tab_ml_6.a
+                                       ->  Parallel Seq Scan on pagg_tab_ml_p3_s2 pagg_tab_ml_6
+(41 rows)
+
 SELECT a, sum(b), count(*) FROM pagg_tab_ml GROUP BY a HAVING avg(b) < 3 ORDER BY 1, 2, 3;
  a  | sum  | count 
 ----+------+-------
@@ -1142,10 +1249,36 @@ SELECT a, sum(b), count(*) FROM pagg_tab_ml GROUP BY a HAVING avg(b) < 3 ORDER B
 
 -- Partial aggregation at all levels as GROUP BY clause does not match with
 -- PARTITION KEY
-/* YB: cannot force parallelism
 EXPLAIN (COSTS OFF)
 SELECT b, sum(a), count(*) FROM pagg_tab_ml GROUP BY b ORDER BY 1, 2, 3;
-*/ -- YB: cannot force parallelism
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
+ Sort
+   Sort Key: pagg_tab_ml.b, (sum(pagg_tab_ml.a)), (count(*))
+   ->  Finalize GroupAggregate
+         Group Key: pagg_tab_ml.b
+         ->  Gather Merge
+               Workers Planned: 2
+               ->  Sort
+                     Sort Key: pagg_tab_ml.b
+                     ->  Parallel Append
+                           ->  Partial HashAggregate
+                                 Group Key: pagg_tab_ml.b
+                                 ->  Parallel Seq Scan on pagg_tab_ml_p1 pagg_tab_ml
+                           ->  Partial HashAggregate
+                                 Group Key: pagg_tab_ml_3.b
+                                 ->  Parallel Seq Scan on pagg_tab_ml_p3_s1 pagg_tab_ml_3
+                           ->  Partial HashAggregate
+                                 Group Key: pagg_tab_ml_1.b
+                                 ->  Parallel Seq Scan on pagg_tab_ml_p2_s1 pagg_tab_ml_1
+                           ->  Partial HashAggregate
+                                 Group Key: pagg_tab_ml_4.b
+                                 ->  Parallel Seq Scan on pagg_tab_ml_p3_s2 pagg_tab_ml_4
+                           ->  Partial HashAggregate
+                                 Group Key: pagg_tab_ml_2.b
+                                 ->  Parallel Seq Scan on pagg_tab_ml_p2_s2 pagg_tab_ml_2
+(24 rows)
+
 SELECT b, sum(a), count(*) FROM pagg_tab_ml GROUP BY b HAVING avg(a) < 15 ORDER BY 1, 2, 3;
  b |  sum  | count 
 ---+-------+-------
@@ -1157,10 +1290,37 @@ SELECT b, sum(a), count(*) FROM pagg_tab_ml GROUP BY b HAVING avg(a) < 15 ORDER 
 (5 rows)
 
 -- Full aggregation at all levels as GROUP BY clause matches with PARTITION KEY
-/* YB: cannot force parallelism
 EXPLAIN (COSTS OFF)
 SELECT a, sum(b), count(*) FROM pagg_tab_ml GROUP BY a, b, c HAVING avg(b) > 7 ORDER BY 1, 2, 3;
-*/ -- YB: cannot force parallelism
+                                    QUERY PLAN                                    
+----------------------------------------------------------------------------------
+ Gather Merge
+   Workers Planned: 2
+   ->  Sort
+         Sort Key: pagg_tab_ml.a, (sum(pagg_tab_ml.b)), (count(*))
+         ->  Parallel Append
+               ->  HashAggregate
+                     Group Key: pagg_tab_ml.a, pagg_tab_ml.b, pagg_tab_ml.c
+                     Filter: (avg(pagg_tab_ml.b) > '7'::numeric)
+                     ->  Seq Scan on pagg_tab_ml_p1 pagg_tab_ml
+               ->  HashAggregate
+                     Group Key: pagg_tab_ml_3.a, pagg_tab_ml_3.b, pagg_tab_ml_3.c
+                     Filter: (avg(pagg_tab_ml_3.b) > '7'::numeric)
+                     ->  Seq Scan on pagg_tab_ml_p3_s1 pagg_tab_ml_3
+               ->  HashAggregate
+                     Group Key: pagg_tab_ml_1.a, pagg_tab_ml_1.b, pagg_tab_ml_1.c
+                     Filter: (avg(pagg_tab_ml_1.b) > '7'::numeric)
+                     ->  Seq Scan on pagg_tab_ml_p2_s1 pagg_tab_ml_1
+               ->  HashAggregate
+                     Group Key: pagg_tab_ml_4.a, pagg_tab_ml_4.b, pagg_tab_ml_4.c
+                     Filter: (avg(pagg_tab_ml_4.b) > '7'::numeric)
+                     ->  Seq Scan on pagg_tab_ml_p3_s2 pagg_tab_ml_4
+               ->  HashAggregate
+                     Group Key: pagg_tab_ml_2.a, pagg_tab_ml_2.b, pagg_tab_ml_2.c
+                     Filter: (avg(pagg_tab_ml_2.b) > '7'::numeric)
+                     ->  Seq Scan on pagg_tab_ml_p2_s2 pagg_tab_ml_2
+(25 rows)
+
 SELECT a, sum(b), count(*) FROM pagg_tab_ml GROUP BY a, b, c HAVING avg(b) > 7 ORDER BY 1, 2, 3;
  a  | sum  | count 
 ----+------+-------
@@ -1194,10 +1354,31 @@ CREATE TABLE pagg_tab_para_p3 PARTITION OF pagg_tab_para FOR VALUES FROM (22) TO
 INSERT INTO pagg_tab_para SELECT i % 30, i % 20 FROM generate_series(0, 29999) i;
 ANALYZE pagg_tab_para;
 -- When GROUP BY clause matches; full aggregation is performed for each partition.
-/* YB: cannot force parallelism
 EXPLAIN (COSTS OFF)
 SELECT x, sum(y), avg(y), count(*) FROM pagg_tab_para GROUP BY x HAVING avg(y) < 7 ORDER BY 1, 2, 3;
-*/ -- YB: cannot force parallelism
+                                        QUERY PLAN                                         
+-------------------------------------------------------------------------------------------
+ Sort
+   Sort Key: pagg_tab_para.x, (sum(pagg_tab_para.y)), (avg(pagg_tab_para.y))
+   ->  Finalize GroupAggregate
+         Group Key: pagg_tab_para.x
+         Filter: (avg(pagg_tab_para.y) < '7'::numeric)
+         ->  Gather Merge
+               Workers Planned: 2
+               ->  Sort
+                     Sort Key: pagg_tab_para.x
+                     ->  Parallel Append
+                           ->  Partial HashAggregate
+                                 Group Key: pagg_tab_para.x
+                                 ->  Parallel Seq Scan on pagg_tab_para_p1 pagg_tab_para
+                           ->  Partial HashAggregate
+                                 Group Key: pagg_tab_para_1.x
+                                 ->  Parallel Seq Scan on pagg_tab_para_p2 pagg_tab_para_1
+                           ->  Partial HashAggregate
+                                 Group Key: pagg_tab_para_2.x
+                                 ->  Parallel Seq Scan on pagg_tab_para_p3 pagg_tab_para_2
+(19 rows)
+
 SELECT x, sum(y), avg(y), count(*) FROM pagg_tab_para GROUP BY x HAVING avg(y) < 7 ORDER BY 1, 2, 3;
  x  | sum  |        avg         | count 
 ----+------+--------------------+-------
@@ -1210,10 +1391,31 @@ SELECT x, sum(y), avg(y), count(*) FROM pagg_tab_para GROUP BY x HAVING avg(y) <
 (6 rows)
 
 -- When GROUP BY clause does not match; partial aggregation is performed for each partition.
-/* YB: cannot force parallelism
 EXPLAIN (COSTS OFF)
 SELECT y, sum(x), avg(x), count(*) FROM pagg_tab_para GROUP BY y HAVING avg(x) < 12 ORDER BY 1, 2, 3;
-*/ -- YB: cannot force parallelism
+                                        QUERY PLAN                                         
+-------------------------------------------------------------------------------------------
+ Sort
+   Sort Key: pagg_tab_para.y, (sum(pagg_tab_para.x)), (avg(pagg_tab_para.x))
+   ->  Finalize GroupAggregate
+         Group Key: pagg_tab_para.y
+         Filter: (avg(pagg_tab_para.x) < '12'::numeric)
+         ->  Gather Merge
+               Workers Planned: 2
+               ->  Sort
+                     Sort Key: pagg_tab_para.y
+                     ->  Parallel Append
+                           ->  Partial HashAggregate
+                                 Group Key: pagg_tab_para.y
+                                 ->  Parallel Seq Scan on pagg_tab_para_p1 pagg_tab_para
+                           ->  Partial HashAggregate
+                                 Group Key: pagg_tab_para_1.y
+                                 ->  Parallel Seq Scan on pagg_tab_para_p2 pagg_tab_para_1
+                           ->  Partial HashAggregate
+                                 Group Key: pagg_tab_para_2.y
+                                 ->  Parallel Seq Scan on pagg_tab_para_p3 pagg_tab_para_2
+(19 rows)
+
 SELECT y, sum(x), avg(x), count(*) FROM pagg_tab_para GROUP BY y HAVING avg(x) < 12 ORDER BY 1, 2, 3;
  y  |  sum  |         avg         | count 
 ----+-------+---------------------+-------
@@ -1230,10 +1432,27 @@ NOTICE:  storage parameters are currently ignored in YugabyteDB
 ALTER TABLE pagg_tab_para_p3 SET (parallel_workers = 0);
 NOTICE:  storage parameters are currently ignored in YugabyteDB
 ANALYZE pagg_tab_para;
-/* YB: cannot force parallelism
 EXPLAIN (COSTS OFF)
 SELECT x, sum(y), avg(y), sum(x+y), count(*) FROM pagg_tab_para GROUP BY x HAVING avg(y) < 7 ORDER BY 1, 2, 3;
-*/ -- YB: cannot force parallelism
+                                        QUERY PLAN                                         
+-------------------------------------------------------------------------------------------
+ Sort
+   Sort Key: pagg_tab_para.x, (sum(pagg_tab_para.y)), (avg(pagg_tab_para.y))
+   ->  Finalize GroupAggregate
+         Group Key: pagg_tab_para.x
+         Filter: (avg(pagg_tab_para.y) < '7'::numeric)
+         ->  Gather Merge
+               Workers Planned: 2
+               ->  Sort
+                     Sort Key: pagg_tab_para.x
+                     ->  Partial HashAggregate
+                           Group Key: pagg_tab_para.x
+                           ->  Parallel Append
+                                 ->  Seq Scan on pagg_tab_para_p1 pagg_tab_para_1
+                                 ->  Seq Scan on pagg_tab_para_p3 pagg_tab_para_3
+                                 ->  Parallel Seq Scan on pagg_tab_para_p2 pagg_tab_para_2
+(15 rows)
+
 SELECT x, sum(y), avg(y), sum(x+y), count(*) FROM pagg_tab_para GROUP BY x HAVING avg(y) < 7 ORDER BY 1, 2, 3;
  x  | sum  |        avg         |  sum  | count 
 ----+------+--------------------+-------+-------
@@ -1248,19 +1467,39 @@ SELECT x, sum(y), avg(y), sum(x+y), count(*) FROM pagg_tab_para GROUP BY x HAVIN
 ALTER TABLE pagg_tab_para_p2 SET (parallel_workers = 0);
 NOTICE:  storage parameters are currently ignored in YugabyteDB
 ANALYZE pagg_tab_para;
-/* YB: cannot force parallelism
+-- YB: yet another aggregate is required to "tilt the cost estimates" to get
+-- the desired plan.  Only one more aggregate is not enough because of higher
+-- scan costs relative to vanilla PG's execution nodes.
 EXPLAIN (COSTS OFF)
-SELECT x, sum(y), avg(y), sum(x+y), count(*) FROM pagg_tab_para GROUP BY x HAVING avg(y) < 7 ORDER BY 1, 2, 3;
-*/ -- YB: cannot force parallelism
-SELECT x, sum(y), avg(y), sum(x+y), count(*) FROM pagg_tab_para GROUP BY x HAVING avg(y) < 7 ORDER BY 1, 2, 3;
- x  | sum  |        avg         |  sum  | count 
-----+------+--------------------+-------+-------
-  0 | 5000 | 5.0000000000000000 |  5000 |  1000
-  1 | 6000 | 6.0000000000000000 |  7000 |  1000
- 10 | 5000 | 5.0000000000000000 | 15000 |  1000
- 11 | 6000 | 6.0000000000000000 | 17000 |  1000
- 20 | 5000 | 5.0000000000000000 | 25000 |  1000
- 21 | 6000 | 6.0000000000000000 | 27000 |  1000
+SELECT x, sum(y), avg(y), sum(x+y), count(*), avg(x+y) FROM pagg_tab_para GROUP BY x HAVING avg(y) < 7 ORDER BY 1, 2, 3; -- YB use one more agg
+                                    QUERY PLAN                                    
+----------------------------------------------------------------------------------
+ Sort
+   Sort Key: pagg_tab_para.x, (sum(pagg_tab_para.y)), (avg(pagg_tab_para.y))
+   ->  Finalize GroupAggregate
+         Group Key: pagg_tab_para.x
+         Filter: (avg(pagg_tab_para.y) < '7'::numeric)
+         ->  Gather Merge
+               Workers Planned: 2
+               ->  Sort
+                     Sort Key: pagg_tab_para.x
+                     ->  Partial HashAggregate
+                           Group Key: pagg_tab_para.x
+                           ->  Parallel Append
+                                 ->  Seq Scan on pagg_tab_para_p1 pagg_tab_para_1
+                                 ->  Seq Scan on pagg_tab_para_p2 pagg_tab_para_2
+                                 ->  Seq Scan on pagg_tab_para_p3 pagg_tab_para_3
+(15 rows)
+
+SELECT x, sum(y), avg(y), sum(x+y), count(*), avg(x+y) FROM pagg_tab_para GROUP BY x HAVING avg(y) < 7 ORDER BY 1, 2, 3; -- YB use one more agg
+ x  | sum  |        avg         |  sum  | count |         avg         
+----+------+--------------------+-------+-------+---------------------
+  0 | 5000 | 5.0000000000000000 |  5000 |  1000 |  5.0000000000000000
+  1 | 6000 | 6.0000000000000000 |  7000 |  1000 |  7.0000000000000000
+ 10 | 5000 | 5.0000000000000000 | 15000 |  1000 | 15.0000000000000000
+ 11 | 6000 | 6.0000000000000000 | 17000 |  1000 | 17.0000000000000000
+ 20 | 5000 | 5.0000000000000000 | 25000 |  1000 | 25.0000000000000000
+ 21 | 6000 | 6.0000000000000000 | 27000 |  1000 | 27.0000000000000000
 (6 rows)
 
 -- Reset parallelism parameters to get partitionwise aggregation plan.

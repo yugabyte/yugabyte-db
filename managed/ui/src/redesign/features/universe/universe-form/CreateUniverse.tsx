@@ -4,7 +4,7 @@ import { useSelector } from 'react-redux';
 import { browserHistory } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { useUpdateEffect, useEffectOnce } from 'react-use';
-import { set } from 'lodash';
+import { set, get } from 'lodash';
 import { UniverseFormContext } from './UniverseFormContainer';
 import { UniverseForm } from './form/UniverseForm';
 import { YBLoading } from '../../../../components/common/indicators';
@@ -29,6 +29,7 @@ import {
   DEFAULT_FORM_DATA,
   RunTimeConfigEntry
 } from './utils/dto';
+import { PROVIDER_FIELD } from './utils/constants';
 import { RuntimeConfigKey } from '../../../helpers/constants';
 
 export const CreateUniverse: FC = () => {
@@ -111,10 +112,18 @@ export const CreateUniverse: FC = () => {
       ...getUserIntent({ formData: primaryData }, ClusterType.PRIMARY, featureFlags)
     };
 
+    const isK8sUniverse = get(primaryData, PROVIDER_FIELD).code === CloudType.kubernetes;
+
     const configurePayload: UniverseConfigure = {
       clusterOperation: ClusterModes.CREATE,
       currentClusterType: contextState.clusterType,
       rootCA: primaryData.instanceConfig.rootCA,
+      clientRootCA: primaryData.instanceConfig.rootAndClientRootCASame
+        ? ''
+        : primaryData.instanceConfig.clientRootCA,
+      rootAndClientRootCASame: isK8sUniverse
+        ? true
+        : primaryData.instanceConfig.rootAndClientRootCASame,
       userAZSelected: false,
       resetAZConfig: false,
       enableYbc: featureFlags.released.enableYbc || featureFlags.test.enableYbc,

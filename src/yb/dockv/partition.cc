@@ -357,6 +357,16 @@ Status PartitionSchema::EncodeRedisKey(const Slice& slice, string* buf) const {
 
 Status PartitionSchema::EncodeKey(const RepeatedPtrField<QLExpressionPB>& hash_col_values,
                                   string* buf) const {
+  return DoEncodeKey(hash_col_values, buf);
+}
+
+Status PartitionSchema::EncodeKey(const ArenaList<LWQLExpressionPB>& hash_col_values,
+                                  string* buf) const {
+  return DoEncodeKey(hash_col_values, buf);
+}
+
+template <class Col>
+Status PartitionSchema::DoEncodeKey(const Col& hash_col_values, string* buf) const {
   if (!hash_schema_) {
     return Status::OK();
   }
@@ -642,46 +652,70 @@ std::optional<std::pair<Partition, Partition>> PartitionSchema::SplitHashPartiti
   return std::make_pair(left, right);
 }
 
+Result<std::vector<std::string>> PartitionSchema::CreateHashSplitKeys(
+    int32_t num_tablets, uint16_t min_partition_key, uint16_t max_partition_key) {
+  DCHECK_LE(max_partition_key, kMaxPartitionKey);
+  DCHECK_LT(min_partition_key, max_partition_key);
+
+  SCHECK_FORMAT(
+      min_partition_key < max_partition_key,
+      InvalidArgument,
+      "min_partition_key $0 should be in [$1, $2).",
+      min_partition_key, 0, max_partition_key);
+
+  SCHECK_FORMAT(
+      min_partition_key < max_partition_key && max_partition_key <= kMaxPartitionKey,
+      InvalidArgument,
+      "max_partition_key $0 should be in ($1, $2].",
+      max_partition_key, min_partition_key, kMaxPartitionKey);
+
+  // Note: This error message was preserved from CreateHashPartitions() for consistency.
+  SCHECK_GT(
+      num_tablets, 0, InvalidArgument,
+      "num_tablets should be greater than 0. "
+      "Client would need to wait for master leader get heartbeats from tserver.");
+
+  const auto parent_interval = max_partition_key + 1 - min_partition_key;
+  // TODO(tsplit): Can we allow num_tablets to be equal to parent_interval?
+  SCHECK_FORMAT(
+      num_tablets < parent_interval,
+      InvalidArgument, "Too many tablets requested: $0, expected fewer than $1 tablets.",
+      num_tablets, parent_interval);
+
+  std::vector<std::string> split_points;
+  split_points.reserve(num_tablets - 1);
+  for (int32_t partition_index = 1; partition_index < num_tablets; partition_index++) {
+    // We don't cache parent_interval / num_tablets into additional variable, because
+    // we want to avoid uneven distribution due to floating number truncation and still use integer
+    // calculations.
+    uint16_t pend = min_partition_key + partition_index * parent_interval / num_tablets;
+    split_points.push_back(EncodeMultiColumnHashValue(pend));
+  }
+
+  DCHECK_EQ(split_points.size(), num_tablets - 1);
+  return split_points;
+}
+
 Status PartitionSchema::CreateHashPartitions(int32_t num_tablets,
                                              vector<Partition> *partitions,
                                              uint16_t max_partition_key) const {
-  DCHECK_GT(max_partition_key, 0);
-  DCHECK_LE(max_partition_key, kMaxPartitionKey);
-
-  if (max_partition_key <= 0 || max_partition_key > kMaxPartitionKey) {
-    return STATUS_SUBSTITUTE(InvalidArgument, "max_partition_key $0 should be in ($1, $2].",
-                             0, kMaxPartitionKey);
-  }
-
+  // May be also add an upper bound to num_tablets? TODO.
   VLOG(1) << "Creating partitions with num_tablets: " << num_tablets;
-
-  // May be also add an upper bound? TODO.
-  if (num_tablets <= 0) {
-    return STATUS_SUBSTITUTE(InvalidArgument, "num_tablets should be greater than 0. Client "
-                             "would need to wait for master leader get heartbeats from tserver.");
-  }
-  if (num_tablets > 0xffff) {
-    return STATUS_SUBSTITUTE(InvalidArgument, "Too many tablets requested: $0", num_tablets);
-  }
 
   // Allocate the partitions.
   partitions->resize(num_tablets);
 
-  uint16_t pend = 0;
+  constexpr auto min_partition_key = 0;
+  auto pends =
+      VERIFY_RESULT(CreateHashSplitKeys(num_tablets, min_partition_key, max_partition_key));
   for (int32_t partition_index = 0; partition_index < num_tablets; partition_index++) {
-    const auto pstart = pend;
-    // We don't cache (max_partition_key + 1) / num_tablets into additional variable, because
-    // we want to avoid uneven distribution due to floating number truncation and still use integer
-    // calculations.
-    pend = (partition_index + 1) * (max_partition_key + 1) / num_tablets;
-
     // For the first tablet, start key is open-ended:
     if (partition_index != 0) {
-      (*partitions)[partition_index].partition_key_start_ = EncodeMultiColumnHashValue(pstart);
+      (*partitions)[partition_index].partition_key_start_ = std::move(pends[partition_index - 1]);
     }
 
     if (partition_index < num_tablets - 1) {
-      (*partitions)[partition_index].partition_key_end_ = EncodeMultiColumnHashValue(pend);
+      (*partitions)[partition_index].partition_key_end_ = pends[partition_index];
     }
   }
 

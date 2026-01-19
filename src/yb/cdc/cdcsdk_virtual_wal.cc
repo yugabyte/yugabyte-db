@@ -98,10 +98,6 @@ DEFINE_RUNTIME_bool(cdcsdk_update_restart_time_when_nothing_to_stream, true,
     "equal to the last shipped lsn");
 TAG_FLAG(cdcsdk_update_restart_time_when_nothing_to_stream, advanced);
 
-DEFINE_test_flag(bool, cdcsdk_fail_before_updating_cdc_state, false,
-    "Used in tests to simulate a failure where we end up truncating the local commit map "
-    "but fail to update the same entries in the cdc_state table.");
-
 DECLARE_uint64(cdc_stream_records_threshold_size_bytes);
 DECLARE_bool(ysql_yb_enable_consistent_replication_from_hash_range);
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
@@ -321,10 +317,16 @@ Status CDCSDKVirtualWAL::GetTabletListAndCheckpoint(
   // parent_tablet_id will be non-empty in case of tablet split. Hence, add children tablet entries
   // in all relevant maps & then remove parent tablet's entry from all relevant maps.
   if (!parent_tablet_id.empty()) {
-    std::vector<TabletId> children_tablets;
+    std::vector<std::pair<TabletId, GetChangesRequestInfo>> children_tablet_to_next_req_info;
     for (const auto& tablet_checkpoint_pair : resp.tablet_checkpoint_pairs()) {
       auto tablet_id = tablet_checkpoint_pair.tablet_locations().tablet_id();
-      children_tablets.push_back(tablet_id);
+      auto checkpoint = tablet_checkpoint_pair.cdc_sdk_checkpoint();
+      GetChangesRequestInfo info;
+      info.from_op_id = OpId::FromPB(checkpoint);
+      info.write_id = checkpoint.write_id();
+      info.safe_hybrid_time = checkpoint.snapshot_time();
+      info.wal_segment_index = 0;
+      children_tablet_to_next_req_info.emplace_back(tablet_id, info);
     }
 
     RSTATUS_DCHECK(
@@ -342,7 +344,7 @@ Status CDCSDKVirtualWAL::GetTabletListAndCheckpoint(
     // happen that on the 1st GetChanges call on the parent tablet, we might get the split error and
     // so, we might not even add an entry for the parent tablet in the last_sent_req_map.
 
-    RETURN_NOT_OK(UpdateTabletMapsOnSplit(parent_tablet_id, children_tablets));
+    RETURN_NOT_OK(UpdateTabletMapsOnSplit(parent_tablet_id, children_tablet_to_next_req_info));
     return Status::OK();
   }
 
@@ -383,7 +385,9 @@ Status CDCSDKVirtualWAL::GetTabletListAndCheckpoint(
 }
 
 Status CDCSDKVirtualWAL::UpdateTabletMapsOnSplit(
-    const TabletId& parent_tablet_id, const std::vector<TabletId> children_tablets) {
+    const TabletId& parent_tablet_id,
+    const std::vector<std::pair<TabletId, GetChangesRequestInfo>>
+        children_tablet_to_next_req_info) {
   // First add children tablet entries in all relevant maps and initialise them with the values of
   // the parent tablet, then erase parent tablet's entry from these maps.
   const auto parent_tablet_table_id = tablet_id_to_table_id_map_.at(parent_tablet_id);
@@ -403,7 +407,7 @@ Status CDCSDKVirtualWAL::UpdateTabletMapsOnSplit(
     parent_last_sent_req_info.safe_hybrid_time = parent_next_req_info.safe_hybrid_time;
   }
 
-  for (const auto& child_tablet_id : children_tablets) {
+  for (const auto& [child_tablet_id, next_req_info] : children_tablet_to_next_req_info) {
     DCHECK(!tablet_id_to_table_id_map_.contains(child_tablet_id));
     tablet_id_to_table_id_map_[child_tablet_id] = parent_tablet_table_id;
     tablet_id_to_table_id_map_.erase(parent_tablet_id);
@@ -416,11 +420,6 @@ Status CDCSDKVirtualWAL::UpdateTabletMapsOnSplit(
       VLOG_WITH_PREFIX(4) << "Removed tablet queue for parent tablet_id: " << parent_tablet_id;
     }
 
-    DCHECK(!tablet_last_sent_req_map_.contains(child_tablet_id));
-    tablet_last_sent_req_map_[child_tablet_id] = parent_last_sent_req_info;
-    VLOG_WITH_PREFIX(4) << "Added entry in tablet_last_sent_req_map_ for child tablet_id: "
-                        << child_tablet_id
-                        << " with last_sent_request_info: " << parent_last_sent_req_info.ToString();
     if (tablet_last_sent_req_map_.contains(parent_tablet_id)) {
       tablet_last_sent_req_map_.erase(parent_tablet_id);
       VLOG_WITH_PREFIX(4) << "Removed entry in tablet_last_sent_req_map_ for parent tablet_id: "
@@ -429,9 +428,15 @@ Status CDCSDKVirtualWAL::UpdateTabletMapsOnSplit(
 
     DCHECK(!tablet_next_req_map_.contains(child_tablet_id));
     tablet_next_req_map_[child_tablet_id] = parent_next_req_info;
+    if (next_req_info.from_op_id > parent_next_req_info.from_op_id) {
+      tablet_next_req_map_[child_tablet_id].from_op_id = next_req_info.from_op_id;
+    }
+    if (next_req_info.safe_hybrid_time > parent_next_req_info.safe_hybrid_time) {
+      tablet_next_req_map_[child_tablet_id].safe_hybrid_time = next_req_info.safe_hybrid_time;
+    }
     VLOG_WITH_PREFIX(4) << "Added entry in tablet_next_req_map_ for child tablet_id: "
                         << child_tablet_id << " with next getchanges_request_info: "
-                        << parent_next_req_info.ToString();
+                        << tablet_next_req_map_[child_tablet_id].ToString();
     if (tablet_next_req_map_.contains(parent_tablet_id)) {
       tablet_next_req_map_.erase(parent_tablet_id);
       VLOG_WITH_PREFIX(4) << "Removed entry in tablet_next_req_map_ for parent tablet_id: "
@@ -442,27 +447,20 @@ Status CDCSDKVirtualWAL::UpdateTabletMapsOnSplit(
   for (auto& entry : commit_meta_and_last_req_map_) {
     auto& last_req_map = entry.second.last_sent_req_for_begin_map;
     if (last_req_map.contains(parent_tablet_id)) {
-      auto parent_tablet_req_info = last_req_map.at(parent_tablet_id);
-      for (const auto& child_tablet_id : children_tablets) {
-        DCHECK(!last_req_map.contains(child_tablet_id));
-        last_req_map[child_tablet_id] = parent_tablet_req_info;
-      }
       // Delete parent's tablet entry
       last_req_map.erase(parent_tablet_id);
-      VLOG_WITH_PREFIX(4)
-          << "Succesfully added entries in last_sent_req_for_begin_map corresponding to "
-             "commit_lsn: "
-          << entry.first << " for child tablets: " << children_tablets[0] << " &  "
-          << children_tablets[1] << " and removed entry for parent tablet_id: " << parent_tablet_id;
+      VLOG_WITH_PREFIX(4) << "Succesfully removed entry for parent tablet_id: " << parent_tablet_id
+                          << "from last_sent_req_for_begin_map corresponding to commit_lsn: "
+                          << entry.first;
     }
   }
 
-  LOG_WITH_PREFIX(INFO) << "Succesfully replaced parent tablet " << parent_tablet_id
-                        << "with children tablets " << AsString(children_tablets)
-                        << "with last sent GetChanges req "
-                        << tablet_last_sent_req_map_[children_tablets[0]].ToString()
-                        << "and next Getchanges req "
-                        << tablet_next_req_map_[children_tablets[0]].ToString();
+  LOG_WITH_PREFIX(INFO)
+      << "Succesfully replaced parent tablet " << parent_tablet_id << " with children tablets "
+      << children_tablet_to_next_req_info[0].first << " [next Getchanges req: "
+      << tablet_next_req_map_[children_tablet_to_next_req_info[0].first].ToString() << "] & "
+      << children_tablet_to_next_req_info[1].first << " [next Getchanges req: "
+      << tablet_next_req_map_[children_tablet_to_next_req_info[1].first].ToString() << "]";
 
   return Status::OK();
 }
@@ -510,7 +508,7 @@ Status CDCSDKVirtualWAL::InitLSNAndTxnIDGenerators(
   last_decided_pub_refresh_time =
       ParseLastDecidedPubRefreshTime(*entry_opt.last_decided_pub_refresh_time);
 
-  last_persisted_record_id_commit_time_ = *entry_opt.record_id_commit_time;
+  last_persisted_record_id_commit_time_ = HybridTime(*entry_opt.record_id_commit_time);
   // Values from the slot's entry will be used to form a unique record ID corresponding to a COMMIT
   // record with commit_time set to the record_id_commit_time field of the state table.
   std::string commit_record_docdb_txn_id = "";
@@ -518,7 +516,7 @@ Status CDCSDKVirtualWAL::InitLSNAndTxnIDGenerators(
   std::string commit_record_primary_key = "";
   last_seen_unique_record_id_ = std::make_shared<CDCSDKUniqueRecordID>(CDCSDKUniqueRecordID(
       false /* publication_refresh_record*/, RowMessage::COMMIT,
-      last_persisted_record_id_commit_time_, commit_record_docdb_txn_id,
+      last_persisted_record_id_commit_time_.ToUint64(), commit_record_docdb_txn_id,
       std::numeric_limits<uint64_t>::max(), std::numeric_limits<uint32_t>::max(),
       commit_record_table_id, commit_record_primary_key));
 
@@ -527,7 +525,7 @@ Status CDCSDKVirtualWAL::InitLSNAndTxnIDGenerators(
   last_shipped_commit.commit_record_unique_id = last_seen_unique_record_id_;
   last_shipped_commit.last_pub_refresh_time = last_pub_refresh_time;
 
-  virtual_wal_safe_time_ = HybridTime(last_persisted_record_id_commit_time_);
+  virtual_wal_safe_time_ = last_persisted_record_id_commit_time_;
 
   return Status::OK();
 }
@@ -625,6 +623,7 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
     if (record->row_message().op() == RowMessage_Op_DDL) {
       auto records = resp->add_cdc_sdk_proto_records();
       VLOG_WITH_PREFIX(1) << "Shipping DDL record: " << record->ShortDebugString();
+      last_seen_ddl_commit_time_ = HybridTime(record->row_message().commit_time());
       records->CopyFrom(*record);
       metadata.ddl_records++;
       continue;
@@ -841,24 +840,14 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
 }
 
 bool IsRetryableError(const Status& status) {
-  // The following error cases are considered retryable:
-  // - when the tablet peer is not started yet, or
-  // - the tablet is not in available state.
-  // If any additional errors need to be made retryable in VWAL, add them to the list above.
-
   DCHECK(!status.ok()) << "Status is not expected to be OK when calling IsRetryableError, "
                        << "status: " << status.ToString();
 
-  // Tablet peer is not started yet
-  if (status.IsIllegalState() &&
-      status.message().ToBuffer().find("is not started yet") != std::string::npos) {
-    return true;
-  }
-
-  // Tablet is not in kAvailable state
-  if (status.IsIllegalState() &&
-      status.message().ToBuffer().find("Tablet not running") != std::string::npos) {
-    return true;
+  for (const auto& pattern : CDCSDKVirtualWAL::kRetryableErrorPatterns) {
+    if (status.code() == pattern.first &&
+        status.message().ToBuffer().find(pattern.second) != std::string::npos) {
+      return true;
+    }
   }
 
   return false;
@@ -928,28 +917,6 @@ Status CDCSDKVirtualWAL::GetChangesInternal(
   return Status::OK();
 }
 
-// We should not send explicit checkpoint to a tablet if its safe_hybrid_time is greater than
-// restart time. This can happen if write to cdc_state table fails during UpdateAndPersistLSN.
-bool CDCSDKVirtualWAL::ShouldPopulateExplicitCheckpoint(const TabletId& tablet_id) {
-  // When commit meta map is empty, the explicit checkpoint is sent from the tablet_next_req_map_
-  // and hence we compare the values from the same with persisted restart time.
-  if (commit_meta_and_last_req_map_.empty()) {
-    const GetChangesRequestInfo& next_req_info = tablet_next_req_map_[tablet_id];
-    return next_req_info.safe_hybrid_time <= last_persisted_record_id_commit_time_;
-  }
-
-  const auto& last_sent_req_for_begin_map =
-      commit_meta_and_last_req_map_.begin()->second.last_sent_req_for_begin_map;
-  if (last_sent_req_for_begin_map.contains(tablet_id)) {
-    const LastSentGetChangesRequestInfo& last_sent_req_info =
-        last_sent_req_for_begin_map.at(tablet_id);
-    return last_sent_req_info.safe_hybrid_time <= last_persisted_record_id_commit_time_;
-  } else {
-    VLOG_WITH_PREFIX(1) << "Couldnt find last_sent_from_op_id for tablet_id: " << tablet_id;
-    return false;
-  }
-}
-
 Status CDCSDKVirtualWAL::PopulateGetChangesRequest(
     const TabletId& tablet_id, GetChangesRequestPB* req) {
   RSTATUS_DCHECK(
@@ -961,7 +928,12 @@ Status CDCSDKVirtualWAL::PopulateGetChangesRequest(
   req->set_cdcsdk_request_source(CDCSDKRequestSource::WALSENDER);
   req->set_tablet_id(tablet_id);
   req->set_getchanges_resp_max_size_bytes(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes);
-  req->set_safe_hybrid_time(next_req_info.safe_hybrid_time);
+  // It is safe to set the safe_hybrid_time as the max of the next_req_info's safe_hybrid_time
+  // and last_persisted_record_id_commit_time_ because upon restart VWAL will always send records
+  // with commit time greater than restart time. When we have successive GetChanges calls (i.e VWAL
+  // running in steady state), next_req_info.safe_hybrid_time will always be >= restart_time.
+  req->set_safe_hybrid_time(
+      std::max(next_req_info.safe_hybrid_time, last_persisted_record_id_commit_time_.ToUint64()));
   req->set_wal_segment_index(next_req_info.wal_segment_index);
 
   // We dont set the snapshot_time in from_cdc_sdk_checkpoint object of GetChanges request since it
@@ -972,19 +944,20 @@ Status CDCSDKVirtualWAL::PopulateGetChangesRequest(
   req_checkpoint->set_key(next_req_info.key);
   req_checkpoint->set_write_id(next_req_info.write_id);
 
-  if (!ShouldPopulateExplicitCheckpoint(tablet_id)) {
+  if (!ShouldPopulateExplicitCheckpoint()) {
     VLOG_WITH_PREFIX(1) << "Will not be populating the explicit checkpoint with GetChanges "
-                        << "request. Sending request as " << req->ShortDebugString();
+                        << "request since we have unacknowledged DDL(s). Sending request as "
+                        << req->ShortDebugString();
     return Status::OK();
   }
 
-  auto explicit_checkpoint = req->mutable_explicit_cdc_sdk_checkpoint();
   if (!commit_meta_and_last_req_map_.empty()) {
     const auto& last_sent_req_for_begin_map =
         commit_meta_and_last_req_map_.begin()->second.last_sent_req_for_begin_map;
     if (last_sent_req_for_begin_map.contains(tablet_id)) {
       const LastSentGetChangesRequestInfo& last_sent_req_info =
           last_sent_req_for_begin_map.at(tablet_id);
+      auto explicit_checkpoint = req->mutable_explicit_cdc_sdk_checkpoint();
       explicit_checkpoint->set_term(last_sent_req_info.from_op_id.term);
       explicit_checkpoint->set_index(last_sent_req_info.from_op_id.index);
       explicit_checkpoint->set_snapshot_time(last_sent_req_info.safe_hybrid_time);
@@ -1005,6 +978,7 @@ Status CDCSDKVirtualWAL::PopulateGetChangesRequest(
     }
   } else {
     // Send the from_checkpoint as the explicit checkpoint.
+    auto explicit_checkpoint = req->mutable_explicit_cdc_sdk_checkpoint();
     explicit_checkpoint->set_term(next_req_info.from_op_id.term);
     explicit_checkpoint->set_index(next_req_info.from_op_id.index);
     explicit_checkpoint->set_snapshot_time(next_req_info.safe_hybrid_time);
@@ -1038,6 +1012,15 @@ Status CDCSDKVirtualWAL::AddRecordsToTabletQueue(
   }
 
   return Status::OK();
+}
+
+// We do not assign LSNs to DDL records. As a result we can only infer the acknowledgement of the
+// RELATION messages based on the acknowledgement of subsequent DMLs. Upon encountering DDLs, we
+// stop sending explicit checkpoint in the GetChanges requests until the restart time crosses the
+// last seen DDL's commit time, hence signifying its acknowledgement.
+bool CDCSDKVirtualWAL::ShouldPopulateExplicitCheckpoint() {
+  return !last_seen_ddl_commit_time_.is_valid() ||
+         (last_persisted_record_id_commit_time_ > last_seen_ddl_commit_time_);
 }
 
 Status CDCSDKVirtualWAL::UpdateTabletCheckpointForNextRequest(
@@ -1311,10 +1294,6 @@ Result<uint64_t> CDCSDKVirtualWAL::UpdateAndPersistLSNInternal(
   pub_refresh_times.erase(
       pub_refresh_times.begin(), pub_refresh_times.upper_bound(pub_refresh_trim_time));
 
-  if (PREDICT_FALSE(FLAGS_TEST_cdcsdk_fail_before_updating_cdc_state)) {
-    return STATUS(InternalError, "Returning artificial status for testing purposes.");
-  }
-
   RETURN_NOT_OK(UpdateSlotEntryInCDCState(
       confirmed_flush_lsn, record_metadata, use_vwal_safe_time, last_trimmed_pub_refresh_time));
   last_received_restart_lsn = restart_lsn_hint;
@@ -1386,8 +1365,8 @@ Status CDCSDKVirtualWAL::UpdateSlotEntryInCDCState(
 
   RETURN_NOT_OK(cdc_service_->cdc_state_table_->UpdateEntries({entry}));
 
-  // Update the local copy of slot restart time upon successfully updating the cdc_state entry.
-  last_persisted_record_id_commit_time_ = *entry.record_id_commit_time;
+  // Update the local copy of slot restart time after successfully updating the cdc_state entry.
+  last_persisted_record_id_commit_time_ = HybridTime(*entry.record_id_commit_time);
 
   return Status::OK();
 }

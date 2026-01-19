@@ -7,6 +7,10 @@ menu:
   stable_api:
     parent: api-cassandra
     weight: 1320
+aliases:
+  - /stable/api/cassandra/dml_update/
+  - /stable/api/ycql/dml_update/
+  - /stable/api/ysql/dml_update/
 type: docs
 ---
 

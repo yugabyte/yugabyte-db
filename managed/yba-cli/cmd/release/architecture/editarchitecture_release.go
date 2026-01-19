@@ -47,10 +47,7 @@ var editArchitectureReleaseCmd = &cobra.Command{
 
 		rList, response, err := releasesListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err, "Release Architecture", "Edit - List Releases")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Release Architecture", "Edit - List Releases")
 		}
 
 		requestedReleaseList := make([]ybaclient.ResponseRelease, 0)
@@ -112,7 +109,7 @@ var editArchitectureReleaseCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		if len(strings.TrimSpace(sha256)) != 0 {
+		if !util.IsEmptyString(sha256) {
 			logrus.Debug("Updating SHA256\n")
 			requestedArchitecture.SetSha256(sha256)
 			releaseExistingArch[requestedArchitectureIndex] = requestedArchitecture
@@ -129,12 +126,7 @@ var editArchitectureReleaseCmd = &cobra.Command{
 		rUpdate, response, err := authAPI.UpdateNewRelease(
 			requestedRelease.GetReleaseUuid()).Release(req).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"Release Architecture",
-				"Edit - Update Release")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Release Architecture", "Edit - Update Release")
 		}
 
 		if !rUpdate.GetSuccess() {
@@ -150,16 +142,16 @@ var editArchitectureReleaseCmd = &cobra.Command{
 
 		rGet, response, err := authAPI.GetNewRelease(requestedRelease.GetReleaseUuid()).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"Release Architecture",
-				"Edit - Get Release")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Release Architecture", "Edit - Get Release")
 		}
 
-		r := make([]ybaclient.ResponseRelease, 0)
-		r = append(r, rGet)
+		r := util.CheckAndAppend(
+			make([]ybaclient.ResponseRelease, 0),
+			rGet,
+			fmt.Sprintf("An error occurred while updating YugabyteDB version %s (%s)",
+				version,
+				requestedRelease.GetReleaseUuid()),
+		)
 
 		releaseCtx := formatter.Context{
 			Command: "update",

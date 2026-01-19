@@ -45,9 +45,8 @@ Status PgSelectIndex::PrepareSubquery(
 Result<std::optional<YbctidBatch>> PgSelectIndex::FetchYbctidBatch() {
   ybctids_.clear();
   if (!VERIFY_RESULT(doc_op_->ResultStream().ProcessNextYbctids(
-          [this](Slice ybctid, const RefCntBuffer&) {
+          [this](Slice ybctid) {
             ybctids_.push_back(ybctid);
-            return Status::OK();
           }))) {
     return std::nullopt;
   }
@@ -56,12 +55,13 @@ Result<std::optional<YbctidBatch>> PgSelectIndex::FetchYbctidBatch() {
 }
 
 Result<std::unique_ptr<PgSelectIndex>> PgSelectIndex::Make(
-    const PgSession::ScopedRefPtr& pg_session, const PgObjectId& index_id, bool is_region_local,
+    const PgSession::ScopedRefPtr& pg_session, const PgObjectId& index_id,
+    const YbcPgTableLocalityInfo& locality_info,
     std::shared_ptr<LWPgsqlReadRequestPB>&& read_req) {
   std::unique_ptr<PgSelectIndex> result{new PgSelectIndex{pg_session}};
   RETURN_NOT_OK(read_req
       ? result->PrepareSubquery(index_id, std::move(read_req))
-      : result->Prepare(index_id, is_region_local));
+      : result->Prepare(index_id, locality_info));
   return result;
 }
 

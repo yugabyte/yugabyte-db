@@ -179,7 +179,7 @@ struct config_generic
  */
 #define GUC_PENDING_RESTART 0x0002	/* changed value cannot be applied yet */
 #define GUC_NEEDS_REPORT	0x0004	/* new value must be reported to client */
-
+#define GUC_VALUE_RESET		0x0008	/* YB: GUC value was reset */
 
 /* GUC records for specific variable types */
 

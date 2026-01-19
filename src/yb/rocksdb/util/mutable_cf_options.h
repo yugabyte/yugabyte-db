@@ -158,7 +158,7 @@ struct MutableCFOptions {
   uint64_t max_sequential_skip_in_iterations;
   bool paranoid_file_checks;
   bool compaction_measure_io_stats;
-  std::shared_ptr<std::function<bool(const FileMetaData&)>> exclude_from_compaction;
+  std::shared_ptr<CompactionFileExcluder> exclude_from_compaction;
 
   // Derived options
   // Per-level target file size.

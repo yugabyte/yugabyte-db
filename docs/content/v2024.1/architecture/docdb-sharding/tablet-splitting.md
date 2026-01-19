@@ -387,6 +387,6 @@ The following known limitations are planned to be resolved in upcoming releases:
 * Colocated tables cannot be split. For details, see [#4463](https://github.com/yugabyte/yugabyte-db/issues/4463).
 * In YugabyteDB version 2.14.0, when tablet splitting is used with point in time recovery (PITR), restoring to arbitrary times in the past when a tablet is in the process of splitting is not supported. This was resolved in 2.14.1.
 * Tablet splitting is currently disabled during bootstrap for tables with cross-cluster replication. For details, see [#13170](https://github.com/yugabyte/yugabyte-db/issues/13170).
-* Tablet splitting is currently disabled for tables that are using the [TTL file expiration](/preview/develop/learn/ttl-data-expiration-ycql/#efficient-data-expiration-for-ttl) feature.
+* Tablet splitting is currently disabled for tables that are using the [TTL file expiration](/stable/develop/learn/ttl-data-expiration-ycql/#efficient-data-expiration-for-ttl) feature.
 
 To follow the tablet splitting work-in-progress, see [#1004](https://github.com/yugabyte/yugabyte-db/issues/1004).

@@ -14,6 +14,8 @@ SELECT * FROM test_method where h1 IN (1, 2, 3, 4);
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND a = 1;
 SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND a = 1;
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND yb_hash_code(h1) < 8192;
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND a = 1 AND yb_hash_code(h1) < 8192;
 
 set yb_enable_hash_batch_in = true;
 SELECT * FROM test_method where h1 = 1;
@@ -27,6 +29,8 @@ SELECT * FROM test_method where h1 IN (1, 2, 3, 4);
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND a = 1;
 SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND a = 1;
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND yb_hash_code(h1) < 8192;
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND a = 1 AND yb_hash_code(h1) < 8192;
 DROP TABLE test_method;
 
 -- Testing IN queries on range keys
@@ -72,6 +76,7 @@ SELECT * FROM test_method where h1 = 1 AND h2 = 2 AND a = 1 AND b = 2;
 SELECT * FROM test_method where h1 = 1 AND h2 = 1 AND a IN (1, 2, 3, 4) AND b IN (1, 2, 3, 4);
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND h2 IN (1, 2);
 SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND h2 IN (1, 2);
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND h2 IN (1, 2) AND yb_hash_code(h1, h2) < 8192;
 
 set yb_enable_hash_batch_in = true;
 SELECT * FROM test_method where h1 = 1 ;
@@ -81,6 +86,7 @@ SELECT * FROM test_method where h1 = 1 AND h2 = 2 AND a = 1 AND b = 2;
 SELECT * FROM test_method where h1 = 1 AND h2 = 1 AND a IN (1, 2, 3, 4) AND b IN (1, 2, 3, 4);
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND h2 IN (1, 2);
 SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND h2 IN (1, 2);
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND h2 IN (1, 2) AND yb_hash_code(h1, h2) < 8192;
 DROP TABLE test_method;
 
 -- Testing IN queries on multi column range keys
@@ -134,6 +140,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_m
 SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND h2 IN (1, 2) AND r1 = 1 AND r2 = 2;
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND h2 IN (1, 2) AND r1 IN (1, 2, 3, 4) AND r2 IN (1, 2, 3, 4);
 SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND h2 IN (1, 2) AND r1 IN (1, 2, 3, 4) AND r2 IN (1, 2, 3, 4);
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND h2 IN (1, 2) AND yb_hash_code(h1, h2) < 8192;
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND h2 IN (1, 2) AND r1 = 1 AND yb_hash_code(h1, h2) < 8192;
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND h2 IN (1, 2) AND r1 = 1 AND r2 = 2 AND yb_hash_code(h1, h2) < 8192;
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND h2 IN (1, 2) AND r1 IN (1, 2, 3, 4) AND r2 IN (1, 2, 3, 4) AND yb_hash_code(h1, h2) < 8192;
 
 set yb_enable_hash_batch_in = true;
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 = 1 ;
@@ -154,6 +164,10 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_m
 SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND h2 IN (1, 2) AND r1 = 1 AND r2 = 2;
 EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND h2 IN (1, 2) AND r1 IN (1, 2, 3, 4) AND r2 IN (1, 2, 3, 4);
 SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND h2 IN (1, 2) AND r1 IN (1, 2, 3, 4) AND r2 IN (1, 2, 3, 4);
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND h2 IN (1, 2) AND yb_hash_code(h1, h2) < 8192;
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND h2 IN (1, 2) AND r1 = 1 AND yb_hash_code(h1, h2) < 8192;
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND h2 IN (1, 2) AND r1 = 1 AND r2 = 2 AND yb_hash_code(h1, h2) < 8192;
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_method where h1 IN (1, 2, 3, 4) AND h2 IN (1, 2) AND r1 IN (1, 2, 3, 4) AND r2 IN (1, 2, 3, 4) AND yb_hash_code(h1, h2) < 8192;
 DROP TABLE test_method;
 
 CREATE TABLE test_method (h1 int, h2 int, h3 int, h4 int, v1 int, v2 int, PRIMARY KEY ((h1, h2, h3, h4) HASH));
@@ -171,7 +185,7 @@ DROP TABLE test_method;
 
 CREATE TABLE sample (h int primary key);
 INSERT INTO sample VALUES (24), (262095);
-SELECT * FROM sample WHERE h in (24, 262095) ORDER BY h;
+SELECT * FROM sample WHERE h = ANY('{{{24, 101}, {911, 262095}}}') ORDER BY h;
 DROP TABLE sample;
 
 CREATE TABLE in_with_single_asc_key (r INT, v INT, PRIMARY KEY(r ASC)) SPLIT AT VALUES((100));
@@ -201,3 +215,10 @@ SELECT * FROM in_with_compound_desc_key WHERE r1 = 1 AND r2 IN (1, 3, 2, 102, 10
 SELECT * FROM in_with_compound_desc_key WHERE r1 = 1 AND r2 IN (1, 3, 2, 102, 103, 101) ORDER BY r1 ASC, r2 DESC;
 SELECT * FROM in_with_compound_desc_key WHERE r1 = 1 AND r2 IN (1, 3, 2, 102, 103, 101) ORDER BY r1 ASC, r2 ASC;
 DROP TABLE in_with_compound_desc_key;
+
+-- GHI #29041
+create table test_29041(id varchar primary key, f1 varchar, f2 timestamptz, f3 timestamptz) split into 6 tablets;
+insert into test_29041 select 'first_col_filler' || i::varchar, 'second_col_filler' || i::varchar, now(), now() + '10 days'::interval from generate_series(1, 100000) i;
+SET work_mem = '256MB';
+explain (analyze, dist) select * from test_29041 where id = ANY (array(select 'first_col_filler' || i::varchar from generate_series(1, 10000) i)) and yb_hash_code(id) >= 0 and yb_hash_code(id) < 8192;
+drop table test_29041;

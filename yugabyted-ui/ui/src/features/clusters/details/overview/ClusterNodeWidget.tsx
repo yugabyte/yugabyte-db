@@ -88,56 +88,76 @@ export const ClusterNodeWidget: FC<ClusterNodeWidgetProps> = ({ health }) => {
           <Typography variant="body2" className={classes.title}>{t('clusterDetail.overview.nodes')}</Typography>
           <ChevronRight className={classes.arrow} />
         </Box>
-        <Grid container className={classes.container}>
-          <div className={classes.section}>
-            <Typography variant="h4" className={classes.value}>
-              {fetchingNodes ? <div className={classes.loadingCount} /> : numNodes}
-            </Typography>
+      </Link>
+      <Grid container className={classes.container}>
+        <div className={classes.section}>
+          <Typography variant="h4" className={classes.value}>
+            {fetchingNodes ? <div className={classes.loadingCount} /> : numNodes}
+          </Typography>
+          <Typography variant="body2" className={classes.label}>
+            {t('clusterDetail.nodes.total')}
+          </Typography>
+        </div>
+        <Link className={classes.link} component={RouterLink} to="?tab=tabNodes&filter=running">
+          <div className={clsx(classes.section, classes.sectionBorder)}>
+            <Box display="flex" gridGap={7}>
+              <Typography variant="h4" className={classes.value}>
+                {fetchingNodes ? <div className={classes.loadingCount} /> : numHealthyNodes}
+              </Typography>
+              <YBStatus
+                value={fetchingNodes ? 0 : numHealthyNodes}
+                type={STATUS_TYPES.SUCCESS}
+                tooltip
+              />
+            </Box>
             <Typography variant="body2" className={classes.label}>
-              {t('clusterDetail.nodes.total')}
+              {t('clusterDetail.nodes.running')}
             </Typography>
           </div>
-          <Link className={classes.link} component={RouterLink} to="?tab=tabNodes&filter=running">
-            <div className={clsx(classes.section, classes.sectionBorder)}>
-              <Box display="flex" gridGap={7}>
-                <Typography variant="h4" className={classes.value}>
-                  {fetchingNodes ? <div className={classes.loadingCount} /> : numHealthyNodes}
-                </Typography>
-                <YBStatus value={fetchingNodes ? 0 : numHealthyNodes} type={STATUS_TYPES.SUCCESS} tooltip />
-              </Box>
-              <Typography variant="body2" className={classes.label}>
-                {t('clusterDetail.nodes.running')}
+        </Link>
+        <Link className={classes.link} component={RouterLink} to="?tab=tabNodes&filter=down">
+          <div className={classes.section}>
+            <Box display="flex" gridGap={7}>
+              <Typography variant="h4" className={classes.value}>
+                {fetchingNodes ? <div className={classes.loadingCount} /> : deadNodes.length}
               </Typography>
-            </div>
-          </Link>
-          <Link className={classes.link} component={RouterLink} to="?tab=tabNodes&filter=down">
-            <div className={classes.section}>
-              <Box display="flex" gridGap={7}>
-                <Typography variant="h4" className={classes.value}>
-                  {fetchingNodes ? <div className={classes.loadingCount} /> : deadNodes.length}
-                </Typography>
-                <YBStatus value={fetchingNodes ? 0 : deadNodes.length} type={STATUS_TYPES.FAILED} tooltip />
-              </Box>
-              <Typography variant="body2" className={classes.label}>
-                {t('clusterDetail.nodes.down')}
+              <YBStatus
+                value={fetchingNodes ? 0 : deadNodes.length}
+                type={STATUS_TYPES.FAILED}
+                tooltip
+              />
+            </Box>
+            <Typography variant="body2" className={classes.label}>
+              {t('clusterDetail.nodes.down')}
+            </Typography>
+          </div>
+        </Link>
+        <Link
+          className={classes.link}
+          component={RouterLink}
+          to="?tab=tabNodes&filter=bootstrapping"
+        >
+          <div className={clsx(classes.section, classes.sectionBorder)}>
+            <Box display="flex" gridGap={7}>
+              <Typography variant="h4" className={classes.value}>
+                {fetchingNodes ? (
+                  <div className={classes.loadingCount} />
+                ) : (
+                  bootstrappingNodes.length
+                )}
               </Typography>
-            </div>
-          </Link>
-          <Link className={classes.link} component={RouterLink} to="?tab=tabNodes&filter=bootstrapping">
-            <div className={clsx(classes.section, classes.sectionBorder)}>
-              <Box display="flex" gridGap={7}>
-                <Typography variant="h4" className={classes.value}>
-                  {fetchingNodes ? <div className={classes.loadingCount} /> : bootstrappingNodes.length}
-                </Typography>
-                <YBStatus value={fetchingNodes ? 0 : bootstrappingNodes.length} type={STATUS_TYPES.IN_PROGRESS} tooltip />
-              </Box>
-              <Typography variant="body2" className={classes.label}>
-                {t('clusterDetail.nodes.bootstrapping')}
-              </Typography>
-            </div>
-          </Link>
-        </Grid>
-      </Link>
+              <YBStatus
+                value={fetchingNodes ? 0 : bootstrappingNodes.length}
+                type={STATUS_TYPES.IN_PROGRESS}
+                tooltip
+              />
+            </Box>
+            <Typography variant="body2" className={classes.label}>
+              {t('clusterDetail.nodes.bootstrapping')}
+            </Typography>
+          </div>
+        </Link>
+      </Grid>
       <Divider orientation="horizontal" variant="middle" className={classes.divider} />
       <Link className={classes.link} component={RouterLink} to="/databases/tabYsql">
         <ClusterTabletWidget health={health} />

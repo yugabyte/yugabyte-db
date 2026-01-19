@@ -73,7 +73,6 @@ public class ConfigureDBApis extends UpgradeTaskBase {
 
           createUpdateUniverseCommunicationPortsTask(taskParams().communicationPorts)
               .setSubTaskGroupType(getTaskSubGroupType());
-
           // Update user intent details regarding apis in universe details.
           createUpdateDBApiDetailsTask(
                   taskParams().enableYSQL,

@@ -429,37 +429,42 @@ SET parallel_setup_cost = 0;
 -- is not partial agg safe.
 \set query 'SELECT sum(b), count(*) FROM pagg_tab_ml'
 :run
-                       QUERY PLAN                        
----------------------------------------------------------
- Aggregate
-   ->  Append
-         ->  Seq Scan on pagg_tab_ml_p1 pagg_tab_ml_1
-         ->  Seq Scan on pagg_tab_ml_p2_s1 pagg_tab_ml_2
-         ->  Seq Scan on pagg_tab_ml_p2_s2 pagg_tab_ml_3
-         ->  Seq Scan on pagg_tab_ml_p3_s1 pagg_tab_ml_4
-         ->  Seq Scan on pagg_tab_ml_p3_s2 pagg_tab_ml_5
-(7 rows)
-
-                          QUERY PLAN                           
----------------------------------------------------------------
+                             QUERY PLAN                              
+---------------------------------------------------------------------
  Finalize Aggregate
-   ->  Append
-         ->  Noop Aggregate
-               ->  Seq Scan on pagg_tab_ml_p1 pagg_tab_ml
-                     Partial Aggregate: true
-         ->  Noop Aggregate
-               ->  Seq Scan on pagg_tab_ml_p2_s1 pagg_tab_ml_1
-                     Partial Aggregate: true
-         ->  Noop Aggregate
-               ->  Seq Scan on pagg_tab_ml_p2_s2 pagg_tab_ml_2
-                     Partial Aggregate: true
-         ->  Noop Aggregate
-               ->  Seq Scan on pagg_tab_ml_p3_s1 pagg_tab_ml_3
-                     Partial Aggregate: true
-         ->  Noop Aggregate
-               ->  Seq Scan on pagg_tab_ml_p3_s2 pagg_tab_ml_4
-                     Partial Aggregate: true
-(17 rows)
+   ->  Gather
+         Workers Planned: 2
+         ->  Partial Aggregate
+               ->  Parallel Append
+                     ->  Seq Scan on pagg_tab_ml_p1 pagg_tab_ml_1
+                     ->  Seq Scan on pagg_tab_ml_p3_s1 pagg_tab_ml_4
+                     ->  Seq Scan on pagg_tab_ml_p2_s1 pagg_tab_ml_2
+                     ->  Seq Scan on pagg_tab_ml_p3_s2 pagg_tab_ml_5
+                     ->  Seq Scan on pagg_tab_ml_p2_s2 pagg_tab_ml_3
+(10 rows)
+
+                             QUERY PLAN                              
+---------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Gather
+         Workers Planned: 2
+         ->  Parallel Append
+               ->  Noop Aggregate
+                     ->  Seq Scan on pagg_tab_ml_p1 pagg_tab_ml
+                           Partial Aggregate: true
+               ->  Noop Aggregate
+                     ->  Seq Scan on pagg_tab_ml_p3_s1 pagg_tab_ml_3
+                           Partial Aggregate: true
+               ->  Noop Aggregate
+                     ->  Seq Scan on pagg_tab_ml_p2_s1 pagg_tab_ml_1
+                           Partial Aggregate: true
+               ->  Noop Aggregate
+                     ->  Seq Scan on pagg_tab_ml_p3_s2 pagg_tab_ml_4
+                           Partial Aggregate: true
+               ->  Noop Aggregate
+                     ->  Seq Scan on pagg_tab_ml_p2_s2 pagg_tab_ml_2
+                           Partial Aggregate: true
+(19 rows)
 
   sum   | count 
 --------+-------

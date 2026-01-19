@@ -28,7 +28,6 @@ import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.audit.otel.OtelCollectorConfigGenerator;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
@@ -184,7 +183,6 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
   }
 
   private final KubernetesManagerFactory kubernetesManagerFactory;
-  private final ReleaseManager releaseManager;
   private final FileHelperService fileHelperService;
   private final YbcManager ybcManager;
   private final OtelCollectorConfigGenerator otelCollectorConfigGenerator;
@@ -193,13 +191,11 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
   protected KubernetesCommandExecutor(
       BaseTaskDependencies baseTaskDependencies,
       KubernetesManagerFactory kubernetesManagerFactory,
-      ReleaseManager releaseManager,
       FileHelperService fileHelperService,
       YbcManager ybcManager,
       OtelCollectorConfigGenerator otelCollectorConfigGenerator) {
     super(baseTaskDependencies);
     this.kubernetesManagerFactory = kubernetesManagerFactory;
-    this.releaseManager = releaseManager;
     this.fileHelperService = fileHelperService;
     this.ybcManager = ybcManager;
     this.otelCollectorConfigGenerator = otelCollectorConfigGenerator;
@@ -958,8 +954,10 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       masterDiskSpecs.put("storageClass", storageClass);
     }
 
-    if (isMultiAz) {
+    if (taskParams().masterAddresses != null && !taskParams().masterAddresses.isEmpty()) {
       overrides.put("masterAddresses", taskParams().masterAddresses);
+    }
+    if (isMultiAz) {
       // Don't want to use the AZ tag on minikube since there are no AZ tags
       if (!environment.isDev()) {
         overrides.put("AZ", placementZone);
@@ -1247,6 +1245,9 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     // Go over master flags.
     Map<String, String> masterGFlags =
         GFlagsUtil.getGFlagsForAZ(azUUID, ServerType.MASTER, cluster, taskUniverseDetails.clusters);
+    if (universeFromDBParams.fipsEnabled) {
+      masterGFlags.put(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "true");
+    }
     if (placementCloud != null && masterGFlags.get("placement_cloud") == null) {
       masterGFlags.put("placement_cloud", placementCloud);
     }
@@ -1309,7 +1310,9 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         .enableYSQL) { // In the UI, we can choose not to show these entries for read replica.
       tserverGFlags.put("enable_ysql", "false");
     }
-
+    if (universeFromDBParams.fipsEnabled) {
+      tserverGFlags.put(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "true");
+    }
     if (primaryClusterIntent.enableYSQL) {
       // For now, set a default value for the ysql server rpc port.
       // TO DO:

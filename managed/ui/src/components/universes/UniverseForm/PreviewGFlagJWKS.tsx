@@ -3,9 +3,9 @@ import { Button, Tooltip, OverlayTrigger } from 'react-bootstrap';
 import { Box, makeStyles } from '@material-ui/core';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
-import MoreIcon from '../../../redesign/assets/ellipsis.svg';
-import Close from '../../../redesign/assets/close.svg';
-import Edit from '../../../redesign/assets/edit_pen.svg';
+import MoreIcon from '../../../redesign/assets/ellipsis.svg?img';
+import CloseIcon from '../../../redesign/assets/close.svg?img';
+import EditIcon from '../../../redesign/assets/edit_pen.svg?img';
 import './UniverseForm.scss';
 
 interface PreviewGFlagJWKSProps {
@@ -52,7 +52,7 @@ export const PreviewGFlagJWKS: FC<PreviewGFlagJWKSProps> = ({
             }
           >
             <Button bsClass="flag-icon-button mr-10 mb-2" onClick={() => openJWKSDialog(rowIndex)}>
-              <img alt="Edit" src={Edit} width="20" />
+              <img alt="Edit" src={EditIcon} width="20" />
             </Button>
           </OverlayTrigger>
           &nbsp;
@@ -65,7 +65,7 @@ export const PreviewGFlagJWKS: FC<PreviewGFlagJWKSProps> = ({
             }
           >
             <Button bsClass="flag-icon-button mr-10 mb-2" onClick={() => removeJWKSToken(rowIndex)}>
-              <img alt="Close" src={Close} width="20" />
+              <img alt="Close" src={CloseIcon} width="20" />
             </Button>
           </OverlayTrigger>
         </Box>

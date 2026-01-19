@@ -27,12 +27,10 @@ func ListStorageConfigurationUtil(cmd *cobra.Command, commandCall, storageCode s
 	r, response, err := storageListRequest.Execute()
 	if err != nil {
 		callSite := "Storage Configuration"
-		if len(strings.TrimSpace(commandCall)) != 0 {
+		if !util.IsEmptyString(commandCall) {
 			callSite = fmt.Sprintf("%s: %s", callSite, commandCall)
 		}
-		errMessage := util.ErrorFromHTTPResponse(
-			response, err, callSite, "List")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		util.FatalHTTPError(response, err, callSite, "List")
 	}
 
 	storageConfigs := make([]ybaclient.CustomerConfigUI, 0)
@@ -57,9 +55,9 @@ func ListStorageConfigurationUtil(cmd *cobra.Command, commandCall, storageCode s
 		storageConfigs = storageConfigsName
 	}
 	var codes []string
-	if len(strings.TrimSpace(storageCode)) != 0 {
+	if !util.IsEmptyString(storageCode) {
 		codes = []string{strings.ToUpper(storageCode)}
-	} else if len(strings.TrimSpace(commandCall)) == 0 {
+	} else if util.IsEmptyString(commandCall) {
 		codes = []string{
 			util.S3StorageConfigType,
 			util.GCSStorageConfigType,

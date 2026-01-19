@@ -14,6 +14,12 @@ services:
           password = "{{ yamlPath "platform.keyStorePassword" }}"
       }
 
+      {{- $trustedProxies := yamlPathSlice "platform.trusted_proxies" }}
+      {{- if $trustedProxies }}
+      # Trusted proxies for X-Forwarded-* header processing (OIDC HTTPS redirect URIs)
+      play.http.forwarded.trustedProxies = [{{ range $index, $proxy := $trustedProxies }}{{if $index}}, {{end}}{{ removeQuotes $proxy }}{{end}}]
+      {{- end }}
+
       play.i18n.langs = [ "en" ]
       pidfile.path = "/dev/null"
 
@@ -257,6 +263,8 @@ services:
       # Prevent logging to journalctl and only use log.override.path
       StandardOutput=null
       StandardError=null
+
+      LimitNOFILE={{ yamlPath "platform.fd_limit" }}
 
       [Install]
       WantedBy=multi-user.target

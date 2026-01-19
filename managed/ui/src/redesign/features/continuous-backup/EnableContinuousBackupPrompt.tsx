@@ -2,9 +2,9 @@ import { Box, makeStyles, Typography, useTheme } from '@material-ui/core';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
 
-import { ReactComponent as ScheduleIcon } from '../../assets/schedule.svg';
-import { ReactComponent as DocumentationIcon } from '../../assets/documentation.svg';
-import { ReactComponent as TipIcon } from '../../assets/tip.svg';
+import ScheduleIcon from '../../assets/schedule.svg';
+import DocumentationIcon from '../../assets/documentation.svg';
+import TipIcon from '../../assets/tip.svg';
 
 import { YBButton } from '../../components';
 import { ApiPermissionMap } from '../rbac/ApiAndUserPermMapping';
@@ -79,7 +79,7 @@ export const EnableContinuousBackupPrompt = ({
         <Typography className={classes.promptPrimaryText} variant="body2">
           {t('featureDescription')}
         </Typography>
-        <RbacValidator accessRequiredOn={ApiPermissionMap.CREATE_CONTINUOUS_BACKUP} isControl>
+        <RbacValidator accessRequiredOn={ApiPermissionMap.CREATE_CONTINUOUS_YBA_BACKUP} isControl>
           <YBButton
             style={{ minWidth: '200px' }}
             variant="primary"

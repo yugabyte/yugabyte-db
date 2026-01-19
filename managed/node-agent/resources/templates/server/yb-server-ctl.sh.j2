@@ -15,9 +15,9 @@ exec 2> >(logger -t $(basename $0))
 readonly MOUNT_PATHS=({{ mount_paths }})
 readonly EXPECTED_USERNAME=({{ user_name }})
 readonly CORES_DIR=({{ yb_cores_dir }})
+readonly SYSTEMD_OPTION={{systemd_option}}
 {% raw %}
 readonly NUM_MOUNTS=${#MOUNT_PATHS[@]}
-readonly SYSTEMD_OPTION={{systemd_option}}
 {% endraw %}
 
 if ! [ -f /.dockerenv ] && [ "$(whoami)" != "$EXPECTED_USERNAME" ]; then
@@ -219,7 +219,7 @@ hard_kill_postgres() {
 }
 
 check_systemd_service_status() {
-  if [ "$SYSTEMD_OPTION" == "true" ]; then
+  if [ "$SYSTEMD_OPTION" == "True" ]; then
     return 1
   else
     return 0

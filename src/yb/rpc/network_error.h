@@ -13,9 +13,14 @@
 
 #pragma once
 
+#include <string>
+#include <string_view>
+
 #include "yb/util/enums.h"
-#include "yb/util/status_fwd.h"
 #include "yb/util/status_ec.h"
+#include "yb/util/tostring.h"
+
+using namespace std::literals;
 
 namespace yb {
 namespace rpc {
@@ -29,14 +34,14 @@ YB_DEFINE_ENUM(
 
 struct NetworkErrorTag : IntegralErrorTag<NetworkErrorCode> {
   // This category id is part of the wire protocol and should not be changed once released.
-  static constexpr uint8_t kCategory = 19;
+  static constexpr CategoryDescriptor kCategory{19, "network error"sv};
 
   static std::string ToMessage(Value value) {
     return ToString(value);
   }
 };
 
-typedef StatusErrorCodeImpl<NetworkErrorTag> NetworkError;
+using NetworkError = StatusErrorCodeImpl<NetworkErrorTag>;
 
 } // namespace rpc
 } // namespace yb

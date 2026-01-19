@@ -56,7 +56,6 @@ add_executable(yb-admin
   yb-admin_cli.cc)
 target_link_libraries(yb-admin
   yb-admin_lib
-  master_error
   master_util
   yb_tools_util
   ${LINK_LIBS})
@@ -170,7 +169,7 @@ add_library(admin-test-base admin-test-base.cc)
 target_link_libraries(admin-test-base cql_test_util integration-tests yb_test_util yb_util)
 
 add_library(tools_test_utils tools_test_utils.cc)
-target_link_libraries(tools_test_utils yb_util yb_test_util)
+target_link_libraries(tools_test_utils yb_util yb_test_util yb_common_proto)
 
 add_library(test_admin_client test_admin_client.cc)
 target_link_libraries(test_admin_client master_proto integration-tests)
@@ -247,3 +246,18 @@ target_link_libraries(hnsw_tool boost_program_options yb_util yb_docdb vector_in
 add_executable(clockbound_dump clockbound_dump.cc)
 target_link_libraries(clockbound_dump
   clockbound yb_common yb_util)
+
+macro(yb_add_script SCRIPT_NAME)
+  add_custom_command(
+    OUTPUT ${CMAKE_BINARY_DIR}/bin/${SCRIPT_NAME}
+    COMMAND ${CMAKE_COMMAND} -E copy
+      ${CMAKE_CURRENT_SOURCE_DIR}/${SCRIPT_NAME}
+      ${CMAKE_BINARY_DIR}/bin/${SCRIPT_NAME}
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${SCRIPT_NAME}
+    COMMENT "Copying ${SCRIPT_NAME} to bin"
+  )
+  add_custom_target(${SCRIPT_NAME} ALL DEPENDS ${CMAKE_BINARY_DIR}/bin/${SCRIPT_NAME})
+endmacro()
+
+yb_add_script(flamegraph.pl)
+yb_add_script(stackcollapse-perf.pl)

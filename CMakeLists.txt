@@ -710,11 +710,6 @@ set(CMAKE_PREFIX_PATH
 # command line, we have to be cautions when adding these same directories to RPATH.
 message("CMAKE_PREFIX_PATH: ${CMAKE_PREFIX_PATH}")
 
-if(APPLE AND IS_CLANG AND "${COMPILER_VERSION}" MATCHES "^1[567][.].*$")
-  # To avoid "warning: duplicate LC_RPATH are deprecated" messages.
-  # Suggestion from https://github.com/igraph/igraph/issues/2394#issuecomment-1732292483
-  ADD_LINKER_FLAGS("-ld_classic")
-endif()
 
 ADD_GLOBAL_RPATH_ENTRY_AND_LIB_DIR("${YB_THIRDPARTY_COMMON_DIR}/lib")
 
@@ -758,6 +753,9 @@ if ("${YB_TCMALLOC_ENABLED}" STREQUAL "1" OR IS_SANITIZER)
     #
     # See https://github.com/bazelbuild/bazel/issues/16413 for discussion.
     ADD_LINKER_FLAGS("-Wl,-no_fixup_chains")
+    # Suppress warnings about unwind information in non-code sections from tcmalloc/gperftools
+    # symbols (e.g., malloc_hook, google_malloc). These warnings are harmless but noisy.
+    ADD_LINKER_FLAGS("-Wl,-w")
   elseif(IS_GCC)
     # Without this, yb_util cannot get linked with GCC 11 because it references some undefined
     # symbols belonging to tcmalloc, e.g. HeapProfilerStart.

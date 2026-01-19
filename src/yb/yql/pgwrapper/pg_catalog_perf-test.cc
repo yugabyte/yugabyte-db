@@ -62,6 +62,7 @@ DECLARE_uint32(pg_cache_response_renew_soft_lifetime_limit_ms);
 DECLARE_uint64(pg_response_cache_size_bytes);
 DECLARE_uint32(pg_response_cache_size_percentage);
 DECLARE_int32(pgsql_proxy_webserver_port);
+DECLARE_bool(ysql_enable_relcache_init_optimization);
 
 using namespace std::literals;
 
@@ -162,6 +163,7 @@ class PgCatalogPerfTestBase : public PgMiniTestBase {
     // Auto-Analyze runs ANALYZEs and increments catalog version, causing more response cache
     // queires. Disable auto-analyze for more stable test results.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_relcache_init_optimization) = false;
     PgMiniTestBase::SetUp();
     metrics_.emplace(*cluster_->mini_master()->master()->metric_entity(),
                      *cluster_->mini_tablet_server(0)->server()->metric_entity());
@@ -169,10 +171,6 @@ class PgCatalogPerfTestBase : public PgMiniTestBase {
 
   size_t NumTabletServers() override {
     return 1;
-  }
-
-  void OverrideMiniClusterOptions(MiniClusterOptions* options) override {
-    options->wait_for_pg = false;
   }
 
   Result<uint64_t> CacheRefreshRPCCount() {
@@ -751,11 +749,13 @@ TEST_F_EX(
   {
     auto conn = ASSERT_RESULT(Connect());
     ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDBName));
+    // CREATE DATABASE increments the catalog version for all databases.
+    const auto create_db_rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
+    ASSERT_EQ(create_db_rpc_count, kFirstConnectionRPCCountWithAdditionalTables);
     auto conn_with_temp_table = ASSERT_RESULT(ConnectToDB(kDBName));
     ASSERT_OK(conn_with_temp_table.Execute("CREATE TEMP TABLE t(k INT PRIMARY KEY)"));
   }
   ASSERT_OK(WaitForAllClientConnectionsClosure(pg_host_port()));
-
   const auto default_db_connect_rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
   ASSERT_EQ(default_db_connect_rpc_count, kSubsequentConnectionRPCCount);
 
@@ -774,6 +774,10 @@ TEST_F_EX(PgCatalogPerfTest,
   constexpr auto* kDBName = "aux_db";
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDBName));
+  // CREATE DATABASE increments the catalog version for all databases.
+  const auto create_db_rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
+  ASSERT_EQ(create_db_rpc_count, kFirstConnectionRPCCountWithAdditionalTables);
+
   auto aux_conn = ASSERT_RESULT(ConnectToDB(kDBName));
   ASSERT_OK(aux_conn.Execute("CREATE TEMP TABLE t(k INT PRIMARY KEY)"));
 

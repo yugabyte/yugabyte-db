@@ -36,10 +36,14 @@
 #include "utils/typcache.h"
 
 /* YB includes */
+#include "access/table.h"
 #include "catalog/namespace.h"
+#include "catalog/pg_am_d.h"
 #include "catalog/pg_opfamily.h"
+#include "commands/defrem.h"
 #include "parser/parse_coerce.h"
 #include "pg_yb_utils.h"
+#include "rewrite/rewriteHandler.h"
 
 /* These parameters are set by GUC */
 int			from_collapse_limit;
@@ -2809,9 +2813,17 @@ check_batchable(PlannerInfo *root, RestrictInfo *restrictinfo)
 	{
 		inner = args[i];
 		outer = args[1 - i];
-		if (!IsA(inner, Var) &&
-			!(IsA(inner, RelabelType) &&
-			  IsA(((RelabelType *) inner)->arg, Var)))
+		Node	   *inner_var = inner;
+
+		if (IsA(inner_var, RelabelType))
+			inner_var = (Node *) ((RelabelType *) inner_var)->arg;
+		if (!IsA(inner_var, Var))
+			continue;
+
+		RangeTblEntry *rte = root->simple_rte_array[((Var *) inner_var)->varno];
+
+		/* Skip batching if inner relation is not a YB relation */
+		if (rte->rtekind == RTE_RELATION && !IsYBRelationById(rte->relid))
 			continue;
 
 		Oid			outerType = exprType(outer);
@@ -2979,5 +2991,144 @@ yb_find_wholerow_of_record_type(List *expr)
 		if (var->varattno == InvalidOid && var->vartype == RECORDOID)
 			return lc;
 	}
+	return NULL;
+}
+
+/* Context for expression substitution */
+typedef struct YbSubstituteContext
+{
+	PlannerInfo *root;
+	Index		rti;
+	Index		target_rti;
+	bool		failed;			/* Set to true if any Var couldn't be
+								 * substituted */
+	Relids		nullable_relids;
+} YbSubstituteContext;
+
+/*
+ * yb_substitute_ec_members_mutator
+ *   Recursively substitute Vars with their EC equivalents.
+ *   Sets context->failed if any Var can't be substituted.
+ */
+static Node *
+yb_substitute_ec_members_mutator(Node *node, void *context)
+{
+	YbSubstituteContext *ctx = (YbSubstituteContext *) context;
+
+	if (node == NULL || ctx->failed)
+		return NULL;
+
+	if (IsA(node, Var))
+	{
+		Var		   *var = (Var *) node;
+
+		/* only process Vars from our target relation */
+		if (var->varno == ctx->rti && var->varattno > 0)
+		{
+			EquivalenceMember *ec_member = yb_find_ec_member_for_var(ctx->root, var,
+																	 ctx->rti,
+																	 ctx->target_rti);
+
+			if (ec_member != NULL)
+			{
+				ctx->nullable_relids = bms_union(ctx->nullable_relids, ec_member->em_nullable_relids);
+				return (Node *) ec_member->em_expr;
+			}
+
+			/* can't substitute this Var - mark as failed */
+			ctx->failed = true;
+			return NULL;
+		}
+	}
+
+	return expression_tree_mutator(node, yb_substitute_ec_members_mutator, context);
+}
+
+/*
+ * yb_try_substitute_ec_members
+ *   Try to substitute all Vars in expression with EC equivalents.
+ *   Returns NULL if any Var couldn't be substituted.
+ */
+static Expr *
+yb_try_substitute_ec_members(PlannerInfo *root, Expr *expr, Index rti,
+							 Index target_rti, Relids *nullable_relids)
+{
+	YbSubstituteContext context;
+	Expr	   *result;
+
+	context.root = root;
+	context.rti = rti;
+	context.target_rti = target_rti;
+	context.failed = false;
+	context.nullable_relids = NULL;
+
+	result = (Expr *) yb_substitute_ec_members_mutator((Node *) expr, &context);
+	*nullable_relids = context.nullable_relids;
+
+	return context.failed ? NULL : result;
+}
+
+/*
+ * yb_create_derived_clause
+ *   Create inferrable_expr = substituted_expr clause
+ *   Returns NULL if can't create proper equality operator.
+ */
+static OpExpr *
+yb_create_derived_clause(Expr *inferrable_expr, Expr *substituted_expr,
+						 Oid opfamily)
+{
+	Oid			datatype = exprType((Node *) inferrable_expr);
+	Oid			collation = exprCollation((Node *) inferrable_expr);
+	Oid			eq_op = get_opfamily_member(opfamily, datatype, datatype,
+											BTEqualStrategyNumber);
+
+	if (!OidIsValid(eq_op))
+		return NULL;
+
+	return (OpExpr *) make_opclause(eq_op, BOOLOID, false,
+									inferrable_expr, substituted_expr,
+									InvalidOid, collation);
+}
+
+static RestrictInfo *
+yb_get_clause_restrictinfo(PlannerInfo *root, OpExpr *clause, Relids nullable_relids)
+{
+	Relids		clause_relids = pull_varnos(root, (Node *) clause);
+	bool		outerjoin_delayed = !bms_is_empty(nullable_relids);
+	bool		is_pushed_down = (bms_num_members(clause_relids) == 1 && !outerjoin_delayed);
+
+	RestrictInfo *rinfo = make_restrictinfo(root,
+											(Expr *) clause,
+											is_pushed_down,
+											outerjoin_delayed,
+											false,
+											root->qual_security_level,
+											clause_relids,
+											NULL,
+											nullable_relids);
+
+	check_mergejoinable(rinfo);
+	check_batchable(root, rinfo);
+	return rinfo;
+}
+
+RestrictInfo *
+yb_try_create_derived_clause(PlannerInfo *root, Index rti, Index target_rti,
+							 Expr *inferrable_expr, Expr *generation_expr,
+							 Oid opfamily)
+{
+	Expr	   *substituted = NULL;
+	Relids		nullable_relids = NULL;
+	OpExpr	   *clause = NULL;
+
+	substituted = yb_try_substitute_ec_members(root, generation_expr, rti,
+											   target_rti,
+											   &nullable_relids);
+	if (substituted)
+		clause = yb_create_derived_clause(inferrable_expr, substituted,
+										  opfamily);
+	if (clause)
+		return yb_get_clause_restrictinfo(root, clause, nullable_relids);
+	bms_free(nullable_relids);
 	return NULL;
 }

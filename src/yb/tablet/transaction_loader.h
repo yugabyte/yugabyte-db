@@ -47,9 +47,10 @@ class TransactionLoaderContext {
       TransactionMetadata&& metadata,
       TransactionalBatchData&& last_batch_data,
       OneWayBitmap&& replicated_batches,
-      const docdb::ApplyStateWithCommitInfo* pending_apply) = 0;
+      const docdb::ApplyStateWithCommitInfo* pending_apply,
+      HybridTime first_write_ht) = 0;
   virtual void LoadFinished(Status load_status) = 0;
-  virtual HybridTime MinReplayTxnStartTime() = 0;
+  virtual HybridTime MinReplayTxnFirstWriteTime() = 0;
 };
 
 YB_DEFINE_ENUM(TransactionLoaderState, (kNotStarted)(kLoading)(kCompleted)(kFailed));

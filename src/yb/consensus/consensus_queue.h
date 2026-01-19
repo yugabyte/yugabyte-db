@@ -33,8 +33,6 @@
 #pragma once
 
 #include <iosfwd>
-#include <map>
-#include <set>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -42,7 +40,6 @@
 
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/hybrid_time.h"
-#include "yb/common/tablespace_parser.h"
 
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus_types.h"
@@ -52,12 +49,12 @@
 
 #include "yb/gutil/ref_counted.h"
 
-#include "yb/server/clock.h"
-
 #include "yb/rpc/strand.h"
 
-#include "yb/util/status_fwd.h"
+#include "yb/server/clock.h"
+
 #include "yb/util/locks.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 template<class T>
@@ -392,6 +389,8 @@ class PeerMessageQueue {
     return local_peer_pb_.cloud_info();
   }
 
+  // If we are unable to read any WAL entries due to memory limits, returns no operations with
+  // have_more_messages true.
   Result<XClusterReadOpsResult> ReadReplicatedMessagesForXCluster(
       const yb::OpId& last_op_id, const CoarseTimePoint deadline, bool fetch_single_entry);
 
@@ -523,7 +522,7 @@ class PeerMessageQueue {
   template <class Func>
   void NotifyObservers(const char* title, Func&& func);
 
-  typedef std::unordered_map<std::string, TrackedPeer*> PeersMap;
+  using PeersMap = std::unordered_map<std::string, TrackedPeer *>;
 
   std::string ToStringUnlocked() const;
 
@@ -579,17 +578,19 @@ class PeerMessageQueue {
   // Reads operations from the log cache in the range (after_index, to_index].
   //
   // If 'to_index' is 0, then all operations after 'after_index' will be included.
+  //
+  // May return status Busy if obey_memory_limit is true and reading even one operation would exceed
+  // the log reader memory tracker limit.
   Result<ReadOpsResult> ReadFromLogCache(
-      int64_t after_index,
-      int64_t to_index,
-      size_t max_batch_size,
-      const std::string& peer_uuid,
-      const CoarseTimePoint deadline = CoarseTimePoint::max(),
-      const bool fetch_single_entry = false);
+      int64_t after_index, int64_t to_index, size_t max_batch_size, const std::string& peer_uuid,
+      log::ObeyMemoryLimit obey_memory_limit,
+      const CoarseTimePoint deadline = CoarseTimePoint::max(), bool fetch_single_entry = false);
 
+  // May return status Busy if obey_memory_limit is true and reading even one operation would exceed
+  // the log reader memory tracker limit.
   Result<ReadOpsResult> ReadFromLogCacheForXRepl(
-      int64_t last_op_id_index, int64_t to_index, CoarseTimePoint deadline = CoarseTimePoint::max(),
-      bool fetch_single_entry = false);
+      int64_t last_op_id_index, int64_t to_index, log::ObeyMemoryLimit obey_memory_limit,
+      CoarseTimePoint deadline = CoarseTimePoint::max(), bool fetch_single_entry = false);
 
   std::pair<int64_t, int64_t> GetCommittedAndMajorityReplicatedIndex();
 

@@ -50,9 +50,8 @@ def can_connect(connect_options):
     try:
         client = RemoteShell(connect_options)
         # The param timeout is used by node-agent.
-        stdout = client.exec_command("echo 'test'", output_only=True, timeout=CONNECT_TIMEOUT_SEC)
-        stdout = stdout.splitlines()
-        if len(stdout) == 1 and (stdout[0] == "test"):
+        lines = client.check_exec_command("echo 'test'", timeout=CONNECT_TIMEOUT_SEC).splitlines()
+        if len(lines) == 1 and (lines[0] == "test"):
             return True
         return False
     except Exception as e:
@@ -169,16 +168,32 @@ class RemoteShell(object):
         return self.delegate.get_host_port_user()
 
     def run_command_raw(self, command, **kwargs):
+        '''
+            Executes the command on the remote machine and returns RemoteShellOutput object
+            without raising exception.
+        '''
         return self.delegate.run_command_raw(command, **kwargs)
 
-    def run_command(self, command, **kwargs):
-        return self.delegate.run_command(command, **kwargs)
+    def check_exec_command(self, command, **kwargs):
+        '''
+            Executes the command on the remote machine and raises exception if it fails.
+            It returns the stdout of the command on success.
+        '''
+        return self.delegate.check_exec_command(command, **kwargs)
 
     def exec_command(self, command, **kwargs):
+        '''
+            Executes the command on the remote machine and returns rc, stdout, stderr without
+            raising exception.
+        '''
         return self.delegate.exec_command(command, **kwargs)
 
-    def exec_script(self, local_script_name, params):
-        return self.delegate.exec_script(local_script_name, params)
+    def check_exec_script(self, local_script_name, params):
+        '''
+            Executes the script on the remote machine and raises exception if it fails.
+            It returns the stdout of the command on success.
+        '''
+        return self.delegate.check_exec_script(local_script_name, params)
 
     def put_file(self, local_path, remote_path, **kwargs):
         self.delegate.put_file(local_path, remote_path, **kwargs)
@@ -222,48 +237,47 @@ class _SshRemoteShell(object):
     def run_command_raw(self, command, **kwargs):
         result = RemoteShellOutput()
         try:
-            kwargs.setdefault('output_only', True)
-            output = self.ssh_conn.exec_command(command, **kwargs)
-            result.stdout = output
-            result.exited = 0
+            rc, stdout, stderr = self.ssh_conn.exec_command(command, **kwargs)
+            result.stdout = stdout
+            result.exited = rc
+            result.stderr = stderr
         except Exception as e:
             result.stderr = str(e)
             result.exited = 1
 
         return result
 
-    def run_command(self, command, **kwargs):
+    def check_exec_command(self, command, **kwargs):
+        skip_cmd_logging = kwargs.get('skip_cmd_logging', False)
         result = self.run_command_raw(command, **kwargs)
-
         if result.exited:
+            if result.stdout:
+                # Log the stdout for debugging purposes.
+                logging.error(result.stdout)
             cmd = ' '.join(command).encode('utf-8') if isinstance(command, list) else command
-            raise YBOpsRecoverableError(
-                "Remote shell command '{}' failed with "
-                "return code '{}' and error '{}'".format(cmd,
-                                                         result.exited,
-                                                         result.stderr)
-            )
-        return result
+            raise YBOpsRuntimeError('Remote command \'{}\' failed with error code {}: {}'.format(
+                "" if skip_cmd_logging else cmd, result.exited, result.stderr))
+        return result.stdout
 
     def exec_command(self, command, **kwargs):
-        output_only = kwargs.get('output_only', False)
-        if output_only:
-            result = self.run_command(command, **kwargs)
-            return result.stdout
-        else:
-            # This returns rc, stdout, stderr.
-            return self.ssh_conn.exec_command(command, **kwargs)
+        # This returns rc, stdout, stderr.
+        return self.ssh_conn.exec_command(command, **kwargs)
 
-    def exec_script(self, local_script_name, params):
-        return self.ssh_conn.exec_script(local_script_name, params)
+    def check_exec_script(self, local_script_name, params):
+        rc, stdout, stderr = self.ssh_conn.exec_script(local_script_name, params)
+        if rc != 0:
+            raise YBOpsRuntimeError('Remote command failed with error code {}: {}'.format(
+                rc, stderr))
+        return stdout
 
     def put_file(self, local_path, remote_path, **kwargs):
         self.ssh_conn.upload_file_to_remote_server(local_path, remote_path, **kwargs)
 
     # Checks if the file exists on the remote, and if not, it puts it there.
     def put_file_if_not_exists(self, local_path, remote_path, file_name, **kwargs):
-        result = self.run_command('ls ' + remote_path, **kwargs)
-        if file_name not in result:
+        # Command fails if the file does not exist.
+        rc, stdout, _ = self.exec_command('ls ' + remote_path, **kwargs)
+        if rc != 0 or file_name not in stdout:
             self.put_file(local_path, os.path.join(remote_path, file_name), **kwargs)
 
     def fetch_file(self, remote_file_name, local_file_name, **kwargs):
@@ -310,30 +324,24 @@ class _RpcRemoteShell(object):
             result.exited = 1
         return result
 
-    def run_command(self, command, **kwargs):
+    def check_exec_command(self, command, **kwargs):
+        skip_cmd_logging = kwargs.get('skip_cmd_logging', False)
         result = self.run_command_raw(command, **kwargs)
-
         if result.exited:
+            if result.stdout:
+                # Log the stdout for debugging purposes.
+                logging.error(result.stdout)
             cmd = ' '.join(command).encode('utf-8') if isinstance(command, list) else command
-            raise YBOpsRecoverableError(
-                "Remote shell command '{}' failed with "
-                "return code '{}' and error '{}'".format(cmd,
-                                                         result.exited,
-                                                         result.stderr)
-            )
-        return result
+            raise YBOpsRuntimeError('Remote command \'{}\' failed with error code {}: {}'.format(
+                "" if skip_cmd_logging else cmd, result.exited, result.stderr))
+        return result.stdout
 
     def exec_command(self, command, **kwargs):
-        output_only = kwargs.get('output_only', False)
-        if output_only:
-            result = self.run_command(command, **kwargs)
-            return result.stdout
-        else:
-            kwargs.setdefault('bash', True)
-            result = self.client.exec_command(command, **kwargs)
-            return result.rc, result.stdout, result.stderr
+        kwargs.setdefault('bash', True)
+        result = self.client.exec_command(command, **kwargs)
+        return result.rc, result.stdout, result.stderr
 
-    def exec_script(self, local_script_name, params):
+    def check_exec_script(self, local_script_name, params):
         # Copied from exec_script of ssh.py to run a shell script.
         if not isinstance(params, str):
             params = ' '.join(params)
@@ -343,16 +351,16 @@ class _RpcRemoteShell(object):
 
         # Heredoc syntax for input redirection from a local shell script.
         command = f"/bin/bash -s {params} <<'EOF'\n{local_script}\nEOF"
-        kwargs = {"output_only": True}
-        return self.exec_command(command, **kwargs)
+        return self.check_exec_command(command)
 
     def put_file(self, local_path, remote_path, **kwargs):
         self.client.put_file(local_path, remote_path, **kwargs)
 
     # Checks if the file exists on the remote, and if not, it puts it there.
     def put_file_if_not_exists(self, local_path, remote_path, file_name, **kwargs):
-        result = self.run_command('ls ' + remote_path, kwargs)
-        if file_name not in result:
+        # Command fails if the file does not exist.
+        rc, stdout, _ = self.exec_command('ls ' + remote_path, **kwargs)
+        if rc != 0 or file_name not in stdout:
             self.put_file(local_path, os.path.join(remote_path, file_name), **kwargs)
 
     def fetch_file(self, remote_file_name, local_file_name, **kwargs):

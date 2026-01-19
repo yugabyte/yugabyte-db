@@ -502,7 +502,7 @@ class DBImpl : public DB {
   bool AreWritesStopped();
   bool NeedsDelay() override;
 
-  Result<std::string> GetMiddleKey() override;
+  Result<std::string> GetMiddleKey(Slice lower_bound_key) override;
 
   void SetAllowCompactionFailures(AllowCompactionFailures allow_compaction_failures) override;
 
@@ -511,6 +511,16 @@ class DBImpl : public DB {
 
   // Used in testing to make the old memtable immutable and start writing to a new one.
   void TEST_SwitchMemtable() override;
+
+  // Used in testing to replace current exclude_from_compaction functor. Returns current functor.
+  CompactionFileExcluderPtr TEST_SetExcludeFromCompaction(
+      ColumnFamilyHandle* column_family,
+      CompactionFileExcluderPtr exclude_from_compaction);
+
+  CompactionFileExcluderPtr TEST_SetExcludeFromCompaction(
+      CompactionFileExcluderPtr exclude_from_compaction) {
+    return TEST_SetExcludeFromCompaction(DefaultColumnFamily(), std::move(exclude_from_compaction));
+  }
 
  protected:
   Env* const env_;

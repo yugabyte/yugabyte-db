@@ -38,7 +38,7 @@ var createRestoreCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(universeNameFlag)) == 0 {
+		if util.IsEmptyString(universeNameFlag) {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize(
@@ -52,7 +52,7 @@ var createRestoreCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(storageConfigNameFlag)) == 0 {
+		if util.IsEmptyString(storageConfigNameFlag) {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize(
@@ -76,13 +76,7 @@ var createRestoreCmd = &cobra.Command{
 
 		r, response, err := universeListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"Restore",
-				"Create - Get Universe",
-			)
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Restore", "Create - Get Universe")
 		}
 
 		if len(r) < 1 {
@@ -105,9 +99,7 @@ var createRestoreCmd = &cobra.Command{
 		storageConfigListRequest := authAPI.GetListOfCustomerConfig()
 		rList, response, err := storageConfigListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response, err, "Restore", "Create - Get Storage Configuration")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Restore", "Create - Get Storage Configuration")
 		}
 
 		storageConfigs := make([]ybaclient.CustomerConfigUI, 0)
@@ -146,9 +138,7 @@ var createRestoreCmd = &cobra.Command{
 		// find kmsConfigUUID from the name
 		kmsConfigs, response, err := authAPI.ListKMSConfigs().Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err,
-				"Restore", "Create - Fetch KMS Configs")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Restore", "Create - Fetch KMS Configs")
 		}
 		for _, k := range kmsConfigs {
 			metadataInterface := k["metadata"]
@@ -163,8 +153,8 @@ var createRestoreCmd = &cobra.Command{
 				}
 			}
 		}
-		if len(strings.TrimSpace(kmsConfigName)) != 0 &&
-			len(strings.TrimSpace(kmsConfigUUID)) == 0 {
+		if !util.IsEmptyString(kmsConfigName) &&
+			util.IsEmptyString(kmsConfigUUID) {
 			logrus.Fatalf(
 				formatter.Colorize(
 					fmt.Sprintf("No KMS configuration with name: %s found\n",
@@ -193,7 +183,7 @@ var createRestoreCmd = &cobra.Command{
 			UniverseUUID:          universeUUID,
 			CustomerUUID:          util.GetStringPointer(authAPI.CustomerUUID),
 			StorageConfigUUID:     util.GetStringPointer(storageUUID),
-			BackupStorageInfoList: &result,
+			BackupStorageInfoList: result,
 			KmsConfigUUID:         util.GetStringPointer(kmsConfigUUID),
 			EnableVerboseLogs:     util.GetBoolPointer(enableVerboseLogs),
 			Parallelism:           util.GetInt32Pointer(int32(parallelism)),
@@ -201,11 +191,12 @@ var createRestoreCmd = &cobra.Command{
 
 		rTask, response, err := authAPI.RestoreBackup().Backup(requestBody).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Restore", "Create")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Restore", "Create")
 		}
 
-		taskUUID := rTask.GetTaskUUID()
+		task := util.CheckTaskAfterCreation(rTask)
+
+		taskUUID := task.GetTaskUUID()
 		msg := fmt.Sprintf("The restore task %s is in progress",
 			formatter.Colorize(taskUUID, formatter.GreenColor))
 
@@ -233,7 +224,7 @@ var createRestoreCmd = &cobra.Command{
 			restoreAPISort := "createTime"
 
 			universeUUIDList := make([]string, 0)
-			if len(strings.TrimSpace(universeUUID)) > 0 {
+			if !util.IsEmptyString(universeUUID) {
 				universeUUIDList = append(universeUUIDList, universeUUID)
 			}
 
@@ -254,9 +245,7 @@ var createRestoreCmd = &cobra.Command{
 			// Execute restore list request
 			r, response, err := restoreListRequest.Execute()
 			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(
-					response, err, "Restore", "Create - Get Restore")
-				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+				util.FatalHTTPError(response, err, "Restore", "Create - Get Restore")
 			}
 
 			restoreCtx := formatter.Context{
@@ -273,7 +262,7 @@ var createRestoreCmd = &cobra.Command{
 			Output:  os.Stdout,
 			Format:  ybatask.NewTaskFormat(viper.GetString("output")),
 		}
-		ybatask.Write(taskCtx, []ybaclient.YBPTask{rTask})
+		ybatask.Write(taskCtx, []ybaclient.YBPTask{task})
 
 	},
 }
@@ -293,11 +282,11 @@ func buildBackupInfoList(backupInfos []string) (res []ybaclient.BackupStorageInf
 			val := kvp[1]
 			switch key {
 			case "keyspace-name":
-				if len(strings.TrimSpace(val)) != 0 {
+				if !util.IsEmptyString(val) {
 					backupDetails["keyspace-name"] = val
 				}
 			case "storage-location":
-				if len(strings.TrimSpace(val)) != 0 {
+				if !util.IsEmptyString(val) {
 					backupDetails["storage-location"] = val
 				}
 			case "backup-type":
@@ -314,26 +303,26 @@ func buildBackupInfoList(backupInfos []string) (res []ybaclient.BackupStorageInf
 				} else {
 					backupType = util.RedisTableType
 				}
-				if len(strings.TrimSpace(val)) != 0 {
+				if !util.IsEmptyString(val) {
 					backupDetails["backup-type"] = backupType
 				}
 			case "use-tablespaces":
 				backupDetails["use-tablespaces"] = "false"
-				if len(strings.TrimSpace(val)) != 0 {
+				if !util.IsEmptyString(val) {
 					if strings.EqualFold(val, "true") {
 						backupDetails["use-tablespaces"] = "true"
 					}
 				}
 			case "selective-restore":
 				backupDetails["selective-restore"] = "false"
-				if len(strings.TrimSpace(val)) != 0 {
+				if !util.IsEmptyString(val) {
 					if strings.EqualFold(val, "true") {
 						backupDetails["selective-restore"] = "true"
 					}
 				}
 			case "table-name-list":
 				backupDetails["table-name-list"] = ""
-				if len(strings.TrimSpace(val)) != 0 {
+				if !util.IsEmptyString(val) {
 					backupDetails["table-name-list"] = val
 				}
 			}
@@ -370,7 +359,7 @@ func buildBackupInfoList(backupInfos []string) (res []ybaclient.BackupStorageInf
 			Sse:                   util.GetBoolPointer(true),
 			SelectiveTableRestore: util.GetBoolPointer(isSelectiveTableRestore),
 			UseTablespaces:        util.GetBoolPointer(useTablespaces),
-			TableNameList:         &tableNameList,
+			TableNameList:         tableNameList,
 		}
 		res = append(res, r)
 	}

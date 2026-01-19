@@ -208,7 +208,7 @@ tserver:
 
 #### ARM VMs
 
-{{<tags/feature/ea idea="1486">}}If you want to use ARM VMs, add the following overrides:
+If you want to use ARM VMs, add the following overrides:
 
 ```yaml
 # Point to the aarch64 image in case multi-arch is not available.
@@ -251,6 +251,70 @@ tserver:
       value: aarch64
       effect: NoSchedule
 ```
+
+## Deploy immutable YB Contoller (YBC)
+
+By default, YugabyteDB Anywhere deploys YBC on Kubernetes universes by copying the YBC package from YugabyteDB Anywhere to the database pods and extracting it. While this approach ensures a stable YBC version, it has some limitations:
+
+- Does not follow Kubernetes standards for container processes.
+- Performs package copy operations on running containers.
+- If a Persistent Volume Claim (PVC) gets deleted or replaced, YBC may not be available until YugabyteDB Anywhere detects the issue and re-uploads YBC (for example, before a backup operation if YBC ping failures are detected).
+
+For deployments following strict Kubernetes practices, or when you want YBC to be automatically available even after PVC replacement, you can enable **Immutable YBC**. With this feature, YBC is baked into the YugabyteDB image and runs as a native process alongside `yb-master` and `yb-tserver`, similar to other database processes.
+
+{{< note title="Important" >}}
+
+When immutable YBC is enabled, the YBC version is tied to the YugabyteDB version used by the universe, and is upgraded only when you [upgrade the universe](../../manage-deployments/upgrade-software/). YBC will not automatically update when upgrading YugabyteDB Anywhere.
+
+{{< /note >}}
+
+### Enable YBC immutability
+
+**For new universes:**
+
+Set the `useYbdbInbuiltYbc` field in the `userIntent` object of the primary cluster when sending the Create Universe API request. An example API request is as follows:
+
+```sh
+curl --request POST \
+  --url https://<yugabyte-platform-url>/api/v1/customers/<customer-uuid>/universes \
+  --header 'Accept: application/json' \
+  --header 'Content-Type: application/json' \
+  --header 'X-AUTH-YW-API-TOKEN: <api-token>' \
+  -d '{
+    "clusters": [{
+      "userIntent": {
+        "universeName": "my-k8s-universe",
+        "provider": "<provider-uuid>",
+        "providerType": "kubernetes",
+        "useYbdbInbuiltYbc": true,
+        // ... other required fields
+      }
+    }]
+  }'
+```
+
+For more information, refer to the [Create Universe API documentation](https://api-docs.yugabyte.com/docs/yugabyte-platform/4548b5e5061a8-create-universe-clusters).
+
+**For existing universes:**
+
+Use the Kubernetes Toggle Immutability API to switch Immutable YBC on or off. To enable the feature, an example API request is as follows:
+
+```sh
+curl --request POST \
+  --url https://<yugabyte-platform-url>/api/v1/customers/<customer-uuid>/universes/<universe-uuid>/upgrade/k8s_immutable_ybc \
+  --header 'Accept: application/json' \
+  --header 'Content-Type: application/json' \
+  --header 'X-AUTH-YW-API-TOKEN: <api-token>' \
+  -d '{"useYbdbInbuiltYbc": true}'  # Set to false to disable Immutable YBC
+```
+
+Replace:
+- `<yugabyte-platform-url>` with your YugabyteDB Anywhere URL
+- `<customer-uuid>` with your customer UUID
+- `<universe-uuid>` with your universe UUID
+- `<api-token>` with your API token
+
+Set `useYbdbInbuiltYbc` to `true` to enable Immutable YBC, or `false` to disable it and revert to the package copy approach.
 
 ## Examine the universe and connect to nodes
 
@@ -326,7 +390,7 @@ After the service YAML is applied, in this example you would access the universe
 
 ### Create a common load balancer service for YB-Masters/YB-TServers
 
-In v2.17 and later, newly created multi-zone universes are deployed in a single namespace by default. This can lead to duplication of load balancer services as a separate load balancer is created for each zone. To prevent creating extra load balancers, you can create a common load balancer service (currently {{<tags/feature/ea>}}) for YB-Masters and YB-TServers that spans all the zones in a namespace.
+In v2.17 and later, newly created multi-zone universes are deployed in a single namespace by default. This can lead to duplication of load balancer services as a separate load balancer is created for each zone. To prevent creating extra load balancers, you can create a common load balancer service for YB-Masters and YB-TServers that spans all the zones in a namespace.
 
 For scenarios involving multi-namespaces or clusters, a distinct service is created for each namespace, maintaining the flexibility needed for complex deployments while avoiding unnecessary resource allocation.
 
@@ -367,9 +431,7 @@ serviceEndpoints:
       tcp-ysql-port: "5433"
 ```
 
-For services without an explicitly defined scope in Helm overrides, the default service scope (Namespaced) is used, provided you set the **Default service scope for K8s universe** Global runtime configuration option (config key `yb.universe.default_service_scope_for_k8s`) to true. The configuration flag defines the default service scope for the universe if the scope is not explicitly defined in the service overrides.
-
-Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global runtime configuration settings, and you cannot modify this service scope during universe creation.
+For services without an explicitly defined scope in Helm overrides, the default service scope (Namespaced) is used.
 
 Keep in mind the following:
 
@@ -395,8 +457,6 @@ After creating a service scope, you can't change it directly. To migrate a servi
 ### Examples
 
 To create a universe with Namespaced scope services by default, do the following:
-
-1. Set the **Default service scope for K8s universe** Global runtime configuration option (config key `yb.universe.default_service_scope_for_k8s`) to true.
 
 1. When you [configure Helm overrides](#helm-overrides), use serviceEndpoint overrides without explicitly defining scope, or define scope as "Namespaced":
 

@@ -5,10 +5,13 @@ package com.yugabyte.yw.common.nodeui;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.net.HostAndPort;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import lombok.Data;
 
@@ -25,20 +28,39 @@ public class DumpEntitiesResponse extends NodeUIResponse {
   private List<Tablet> tablets;
 
   @JsonIgnore
-  public Set<String> getTabletsByTserverAddress(HostAndPort hp) {
-    Set<String> filteredTabletIds = new HashSet<>();
+  public Set<String> getTabletIdsByTserverAddress(HostAndPort hp) {
+    return getTabletsByTserverAddresses(hp).stream()
+        .map(t -> t.tabletId)
+        .collect(Collectors.toSet());
+  }
+
+  @JsonIgnore
+  public Set<Tablet> getTabletsByTserverAddresses(HostAndPort... hosts) {
+    Set<String> hostStrs = Arrays.stream(hosts).map(h -> h.toString()).collect(Collectors.toSet());
+    Set<Tablet> filteredTablets = new HashSet<>();
     for (Tablet tablet : tablets) {
       List<Replica> replicas = tablet.getReplicas();
       if (Objects.isNull(replicas)) {
         continue;
       }
       for (Replica replica : replicas) {
-        if (replica.getAddr().equals(hp.toString())) {
-          filteredTabletIds.add(tablet.getTabletId());
+        if (hostStrs.contains(replica.getAddr())) {
+          filteredTablets.add(tablet);
+          break;
         }
       }
     }
-    return filteredTabletIds;
+    return filteredTablets;
+  }
+
+  @JsonIgnore
+  public Set<Table> getTablesByTserverAddresses(HostAndPort... hp) {
+    Map<String, Table> tablesById =
+        tables.stream().collect(Collectors.toMap(t -> t.tableId, t -> t));
+
+    return getTabletsByTserverAddresses(hp).stream()
+        .map(tab -> tablesById.get(tab.tableId))
+        .collect(Collectors.toSet());
   }
 
   @Data

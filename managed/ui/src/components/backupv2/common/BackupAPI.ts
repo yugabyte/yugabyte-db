@@ -142,7 +142,8 @@ export const prepareBackupCreationPayload = (values: Record<string, any>, cUUID:
     storageConfigUUID: values['storage_config'].value,
     universeUUID: values['universeUUID'],
     tableByTableBackup: values['isTableByTableBackup'],
-    useTablespaces: values['useTablespaces']
+    useTablespaces: values['useTablespaces'],
+    useRoles: values['useRoles']
   };
 
   let dbMap: Dictionary<any> = [];
@@ -243,13 +244,13 @@ export const setThrottleParameters = (
     diskReadBytesPerSecond: values.disk_read_bytes_per_sec.currentValue,
     diskWriteBytesPerSecond: values.disk_write_bytes_per_sec.currentValue
   };
-  const requestUrl = `${ROOT_URL}/customers/${cUUID}/universes/${universeUUID}/ybc_throttle_params`;
+  const requestUrl = `${ROOT_URL}/customers/${cUUID}/universes/${universeUUID}/ybc_throttle_params_async`;
   return axios.post<ThrottleParameters>(requestUrl, payload);
 };
 
 export const resetThrottleParameterToDefaults = (universeUUID: string) => {
   const cUUID = localStorage.getItem('customerId');
-  const requestUrl = `${ROOT_URL}/customers/${cUUID}/universes/${universeUUID}/ybc_throttle_params`;
+  const requestUrl = `${ROOT_URL}/customers/${cUUID}/universes/${universeUUID}/ybc_throttle_params_async`;
   return axios.post(requestUrl, {
     resetDefaults: true
   });

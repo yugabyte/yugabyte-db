@@ -7,6 +7,8 @@ menu:
   stable_api:
     parent: api-cassandra
     weight: 1340
+aliases:
+  - /stable/api/cassandra/expr_subscript
 type: docs
 ---
 

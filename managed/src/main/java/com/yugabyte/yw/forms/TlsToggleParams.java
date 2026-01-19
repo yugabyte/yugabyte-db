@@ -23,7 +23,6 @@ public class TlsToggleParams extends UpgradeTaskParams {
 
   public boolean enableNodeToNodeEncrypt = false;
   public boolean enableClientToNodeEncrypt = false;
-  public boolean allowInsecure = true;
 
   // Do not include in swagger.
   @ApiModelProperty(hidden = true)

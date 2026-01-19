@@ -57,7 +57,7 @@ class PTInsertJsonClause: public PTCollection {
 
   // Initialize this clause with JSON string and parsed JSON document.
   // Note that you have to std::move the document here.
-  Status PreExecInit(const std::string& json_string,
+  Status PreExecInit(std::string_view json_string,
                      rapidjson::Document json_document) {
     DCHECK(!json_document_) << "Double call to PreExecInit!";
     DCHECK(json_document.IsObject()) << "Supplied JSON should be an object";

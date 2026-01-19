@@ -33,6 +33,7 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_admin.pb.h"
+#include "yb/master/master_backup.proxy.h"
 #include "yb/master/mini_master.h"
 
 #include "yb/rocksdb/db.h"
@@ -86,6 +87,7 @@ DECLARE_int32(TEST_fetch_next_delay_ms);
 DECLARE_int32(TEST_partitioning_version);
 DECLARE_uint64(TEST_delay_before_get_locks_status_ms);
 DECLARE_uint64(TEST_wait_row_mark_exclusive_count);
+DECLARE_uint32(ddl_verification_timeout_multiplier);
 
 using yb::test::Partitioning;
 using namespace std::literals;
@@ -266,7 +268,8 @@ TEST_F(PgTabletSplitTest, TestConflictResolutionChecksConflictsAgainstEmptyKey) 
 
   ASSERT_OK(WaitForAnySstFiles(parent_peer));
   auto tablet = ASSERT_RESULT(parent_peer->shared_tablet());
-  const auto encoded_split_key = ASSERT_RESULT(tablet->GetEncodedMiddleSplitKey());
+  const auto split_keys = ASSERT_RESULT(tablet->GetSplitKeys(kDefaultNumSplitParts));
+  const auto& encoded_split_key = split_keys.encoded_keys.front();
   const auto doc_key_hash = ASSERT_RESULT(dockv::DecodeDocKeyHash(encoded_split_key)).value();
 
   ASSERT_OK(SplitSingleTablet(table_id));
@@ -298,6 +301,66 @@ TEST_F(PgTabletSplitTest, TestConflictResolutionChecksConflictsAgainstEmptyKey) 
   ASSERT_OK(status_future.get());
 }
 #endif // NDEBUG
+
+TEST_F(PgTabletSplitTest, TestDisableSplitWhenTableIsBeingHidden) {
+  // Create snapshot to prevent deletion and force table into hidden state.
+  {
+    auto proxy = ASSERT_RESULT(cluster_->GetLeaderMasterProxy<master::MasterBackupProxy>());
+    master::CreateSnapshotScheduleRequestPB req;
+    auto table_identifier = req.mutable_options()->mutable_filter()->mutable_tables()->add_tables();
+    table_identifier->mutable_namespace_()->set_name("yugabyte");
+    table_identifier->mutable_namespace_()->set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
+    req.mutable_options()->set_interval_sec(2);
+    req.mutable_options()->set_retention_duration_sec(5);
+    rpc::RpcController rpc;
+    master::CreateSnapshotScheduleResponsePB resp;
+    ASSERT_OK(proxy.CreateSnapshotSchedule(req, &resp, &rpc));
+    ASSERT_OK(ResponseStatus(resp));
+  }
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t(k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO t SELECT i,i FROM generate_series(1, 10000) as i"));
+  ASSERT_OK(conn.Execute("CREATE INDEX idx on t(v) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto table_id = ASSERT_RESULT(GetTableIDFromTableName("idx"));
+  const auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+  ASSERT_EQ(1, peers.size());
+  const auto& parent_peer = peers[0];
+  ASSERT_OK(WaitForAnySstFiles(parent_peer));
+
+  // Synchronization to achieve the following order:
+  // 1. drop table computes all tablets the delete rpc needs to be sent to
+  // 2. attempt to split the tablet before the above delete rpcs get sent fails
+  // 3. delete rpcs get sent to the tservers, and the table gets hidden once they succeed
+  yb::SyncPoint::GetInstance()->LoadDependency({
+    {
+      "CatalogManager::DeleteOrHideTabletsAndSendRequests::Start",
+      "TestDDLAmidstSplitExitsGracefully::1"
+    },
+    {
+      "TestDDLAmidstSplitExitsGracefully::2",
+      "CatalogManager::DeleteOrHideTabletsAndSendRequests::AddToMaps"
+    }});
+  yb::SyncPoint::GetInstance()->ClearTrace();
+  yb::SyncPoint::GetInstance()->EnableProcessing();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ddl_verification_timeout_multiplier) = 0;
+
+  auto log_waiter = StringWaiterLogSink("Marking table as HIDDEN: idx");
+  auto status_future = std::async(std::launch::async, [&]() -> Status {
+    auto conn = VERIFY_RESULT(Connect());
+    return conn.Execute("DROP INDEX idx");
+  });
+  TEST_SYNC_POINT("TestDDLAmidstSplitExitsGracefully::1");
+  ASSERT_NOK_STR_CONTAINS(
+      InvokeSplitsAndWaitForDataCompacted(table_id, TabletSelector(1, SelectFirstTabletPolicy())),
+      "Table is in hide_state: HIDING; ignoring for splitting");
+  TEST_SYNC_POINT("TestDDLAmidstSplitExitsGracefully::2");
+  ASSERT_OK(status_future.get());
+
+  ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(5 * kTimeMultiplier)));
+}
 
 // Trigger a tablet split when a transaction has an outstanding statement in progress.
 // The split will cause ops to be retried at the YBSession level.
@@ -520,7 +583,7 @@ TEST_F(PgTabletSplitTest, SplitKeyMatchesPartitionBound) {
 
   // Have to make a low-level direct call of split middle key to verify an error.
   auto tablet = ASSERT_RESULT(peer->shared_tablet());
-  auto result = tablet->GetEncodedMiddleSplitKey();
+  auto result = tablet->GetSplitKeys(kDefaultNumSplitParts);
   ASSERT_NOK(result);
   ASSERT_EQ(
       tserver::TabletServerError(result.status()),
@@ -1090,7 +1153,8 @@ TEST_P(PgPartitioningVersionTest, IndexRowsPersistenceAfterManualSplit) {
       ASSERT_OK(WaitForAnySstFiles(parent_peer));
 
       // Keep split key to check future writes are done to the correct tablet for unique index idx1.
-      const auto encoded_split_key = ASSERT_RESULT(tablet->GetEncodedMiddleSplitKey());
+      const auto split_keys = ASSERT_RESULT(tablet->GetSplitKeys(kDefaultNumSplitParts));
+      const auto& encoded_split_key = split_keys.encoded_keys.front();
       ASSERT_TRUE(tablet->metadata()->partition_schema()->IsRangePartitioning());
       dockv::SubDocKey split_key;
       ASSERT_OK(split_key.FullyDecodeFrom(encoded_split_key, dockv::HybridTimeRequired::kFalse));
@@ -1194,7 +1258,8 @@ TEST_P(PgPartitioningVersionTest, UniqueIndexRowsPersistenceAfterManualSplit) {
     ASSERT_OK(WaitForAnySstFiles(parent_peer));
 
     // Keep split key to check future writes are done to the correct tablet for unique index idx1.
-    auto encoded_split_key = ASSERT_RESULT(tablet->GetEncodedMiddleSplitKey());
+    const auto split_keys = ASSERT_RESULT(tablet->GetSplitKeys(kDefaultNumSplitParts));
+    const auto& encoded_split_key = split_keys.encoded_keys.front();
     ASSERT_TRUE(tablet->metadata()->partition_schema()->IsRangePartitioning());
     dockv::SubDocKey split_key;
     ASSERT_OK(split_key.FullyDecodeFrom(encoded_split_key, dockv::HybridTimeRequired::kFalse));

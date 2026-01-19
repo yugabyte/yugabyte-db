@@ -73,12 +73,12 @@ class XClusterSafeTimeService {
   Result<std::unordered_map<NamespaceId, uint64_t>> GetEstimatedDataLossMicroSec(
       const LeaderEpoch& epoch);
 
-  Status GetXClusterSafeTimeInfoFromMap(
-      const LeaderEpoch& epoch, GetXClusterSafeTimeResponsePB* resp);
+  // Computes the safe time map and fills it in the response.
+  Status ComputeAndGetXClusterSafeTimeInfo(
+      const LeaderEpoch& epoch, GetXClusterSafeTimeResponsePB& resp);
 
   Result<HybridTime> GetXClusterSafeTimeForNamespace(
-      const int64_t leader_term, const NamespaceId& namespace_id,
-      const XClusterSafeTimeFilter& filter);
+      const NamespaceId& namespace_id, const XClusterSafeTimeFilter& filter) const;
 
   xcluster::XClusterConsumerClusterMetrics* TEST_GetMetricsForNamespace(
       const NamespaceId& namespace_id);
@@ -106,7 +106,7 @@ class XClusterSafeTimeService {
 
   virtual Result<bool> CreateTableRequired() REQUIRES(mutex_);
 
-  virtual XClusterNamespaceToSafeTimeMap GetXClusterNamespaceToSafeTimeMap();
+  virtual XClusterNamespaceToSafeTimeMap GetXClusterNamespaceToSafeTimeMap() const;
 
   virtual Status SetXClusterSafeTime(
       const int64_t leader_term, const XClusterNamespaceToSafeTimeMap& new_safe_time_map);
@@ -125,7 +125,7 @@ class XClusterSafeTimeService {
   void EnterIdleMode(const std::string& reason);
 
   Result<XClusterNamespaceToSafeTimeMap> GetFilteredXClusterSafeTimeMap(
-      const XClusterSafeTimeFilter& filter) REQUIRES_SHARED(mutex_);
+      const XClusterSafeTimeFilter& filter) const REQUIRES_SHARED(mutex_);
 
   Master* const master_;
   CatalogManager* const catalog_manager_;
@@ -133,7 +133,7 @@ class XClusterSafeTimeService {
   rpc::Poller poller_;
   std::optional<boost::asio::io_context::strand> poll_strand_;
 
-  std::shared_mutex mutex_;
+  mutable std::shared_mutex mutex_;
   bool safe_time_table_ready_ GUARDED_BY(mutex_) = false;
 
   std::unique_ptr<client::TableHandle> safe_time_table_;

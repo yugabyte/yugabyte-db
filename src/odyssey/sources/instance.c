@@ -374,3 +374,8 @@ void YbSetParentDeathSignal()
 		}
 	}
 }
+
+bool yb_od_instance_should_lowercase_guc_name(od_instance_t *instance)
+{
+	return !instance->config.yb_use_auth_backend;
+}

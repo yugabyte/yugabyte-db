@@ -14,6 +14,13 @@ struct kiwi_fe_arg {
 	int len;
 };
 
+KIWI_API static inline void yb_kiwi_set_fe_arg(kiwi_fe_arg_t *arg, char *name,
+					       int len)
+{
+	arg->name = name;
+	arg->len = len;
+}
+
 KIWI_API static inline machine_msg_t *
 kiwi_fe_write_startup_message(machine_msg_t *msg, int argc, kiwi_fe_arg_t *argv)
 {
@@ -362,12 +369,9 @@ typedef enum {
 } yb_logical_conn_type;
 
 KIWI_API static inline machine_msg_t *
-kiwi_fe_write_authentication(machine_msg_t *msg, char *username, char *database,
-			     char *peer, yb_logical_conn_type logical_conn_type )
+yb_kiwi_fe_write_authentication(machine_msg_t *msg)
 {
-	int size = sizeof(kiwi_header_t) +
-		   sizeof(char) * (strlen(username) + strlen(database) +
-				   strlen(peer) + 3) + sizeof(yb_logical_conn_type);
+	int size = sizeof(kiwi_header_t);
 
 	int offset = 0;
 	if (msg)
@@ -379,10 +383,6 @@ kiwi_fe_write_authentication(machine_msg_t *msg, char *username, char *database,
 	pos = (char *)machine_msg_data(msg) + offset;
 	kiwi_write8(&pos, KIWI_FE_AUTH);
 	kiwi_write32(&pos, size - sizeof(uint8_t));
-	kiwi_write(&pos, username, strlen(username) + 1); // username
-	kiwi_write(&pos, database, strlen(database) + 1); // database
-	kiwi_write(&pos, peer, strlen(peer) + 1); // host
-	kiwi_write8(&pos, logical_conn_type); // conn type
 	return msg;
 }
 

@@ -3,6 +3,8 @@ title: Advanced topics
 headerTitle: Advanced topics
 linkTitle: Advanced topics
 description: Advanced topics for Change Data Capture in YugabyteDB.
+aliases:
+  - /stable/explore/change-data-capture/using-logical-replication/advanced-topic/
 menu:
   stable:
     parent: explore-change-data-capture-logical-replication
@@ -230,7 +232,7 @@ END;
 $$
 SECURITY DEFINER;
 
-REVOKE EXECUTE ON PROCEDURE appuser.disable_catalog_version_check FROM PUBLIC; 
+REVOKE EXECUTE ON PROCEDURE appuser.disable_catalog_version_check FROM PUBLIC;
 GRANT EXECUTE ON PROCEDURE appuser.disable_catalog_version_check TO appuser;
 ```
 

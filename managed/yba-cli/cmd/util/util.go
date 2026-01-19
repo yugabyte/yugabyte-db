@@ -174,6 +174,23 @@ func IsEmptyString(s string) bool {
 	return strings.TrimSpace(s) == ""
 }
 
+// CheckAndDereference checks if a pointer is nil and returns the dereferenced value
+// or logs a fatal error with the provided message
+func CheckAndDereference[T any](ptr *T, errorMsg string) T {
+	if ptr == nil {
+		logrus.Fatalln(formatter.Colorize(errorMsg+"\n", formatter.RedColor))
+	}
+	return *ptr
+}
+
+// CheckAndAppend checks if a pointer is nil, and if not, dereferences and appends to slice
+func CheckAndAppend[T any](slice []T, ptr *T, errorMsg string) []T {
+	if ptr == nil {
+		logrus.Fatalln(formatter.Colorize(errorMsg+"\n", formatter.RedColor))
+	}
+	return append(slice, *ptr)
+}
+
 // PrintTime prints the time in RFC1123Z format
 func PrintTime(t time.Time) string {
 	if t.IsZero() {
@@ -241,6 +258,12 @@ func ErrorFromHTTPResponse(resp *http.Response, apiError error, entityName,
 	}
 	errorString := ErrorFromResponseBody(errorBlock)
 	return fmt.Errorf("%w: %s", errorTag, errorString)
+}
+
+// FatalHTTPError logs a fatal error with HTTP response details
+func FatalHTTPError(resp *http.Response, apiError error, entityName, operation string) {
+	errMessage := ErrorFromHTTPResponse(resp, apiError, entityName, operation)
+	logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 }
 
 // ErrorFromResponseBody is a function to extract error interfaces into string
@@ -539,7 +562,7 @@ func MustGetFlagString(cmd *cobra.Command, name string) string {
 		logrus.Fatal(formatter.Colorize(
 			fmt.Sprintf("Error getting flag '%s': %s\n", name, err), formatter.RedColor))
 	}
-	if len(strings.TrimSpace(value)) == 0 {
+	if IsEmptyString(value) {
 		logrus.Fatal(formatter.Colorize(
 			fmt.Sprintf("Flag '%s' is required\n", name), formatter.RedColor))
 	}

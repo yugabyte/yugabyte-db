@@ -17,6 +17,7 @@
 
 #include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/docdb/doc_pgsql_scanspec.h"
+#include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/hybrid_scan_choices.h"
 
 #include "yb/dockv/doc_key.h"
@@ -45,24 +46,41 @@ using dockv::KeyEntryTypeAsChar;
 
 class EmptyScanChoices : public ScanChoices {
  public:
+  explicit EmptyScanChoices(const docdb::BloomFilterOptions& bloom_filter_options)
+      : bloom_filter_options_(bloom_filter_options) {
+  }
+
   bool Finished() const override {
     return false;
   }
 
-  Result<bool> InterestedInRow(dockv::KeyBytes* row_key, IntentAwareIterator* iter) override {
+  Result<bool> InterestedInRow(dockv::KeyBytes* row_key, IntentAwareIterator& iter) override {
     return true;
   }
 
   Result<bool> AdvanceToNextRow(dockv::KeyBytes* row_key,
-                                IntentAwareIterator* iter,
+                                IntentAwareIterator& iter,
                                 bool current_fetched_row_skipped) override {
     return false;
   }
+
+  Result<bool> PrepareIterator(IntentAwareIterator& iter, Slice table_key_prefix) override {
+    return false;
+  }
+
+  docdb::BloomFilterOptions BloomFilterOptions() override {
+    return bloom_filter_options_;
+  }
+
+ private:
+  docdb::BloomFilterOptions bloom_filter_options_;
 };
 
-ScanChoicesPtr ScanChoices::Create(
-    const Schema& schema, const qlexpr::YQLScanSpec& doc_spec, const qlexpr::ScanBounds& bounds,
-    Slice table_key_prefix) {
+Result<ScanChoicesPtr> ScanChoices::Create(
+    const DocReadContext& doc_read_context, const qlexpr::YQLScanSpec& doc_spec,
+    const qlexpr::ScanBounds& bounds, Slice table_key_prefix,
+    AllowVariableBloomFilter allow_variable_bloom_filter) {
+  const auto& schema = doc_read_context.schema();
   auto prefixlen = doc_spec.prefix_length();
   auto num_hash_cols = schema.num_hash_key_columns();
   auto num_key_cols = schema.num_key_columns();
@@ -90,15 +108,18 @@ ScanChoicesPtr ScanChoices::Create(
   // bounds.trivial means that we just need lower and upper bounds for the scan.
   // So could use empty scan choices in case of the trivial range scan.
   if (doc_spec.options() || (doc_spec.range_bounds() && !bounds.trivial) || valid_prefixlen) {
-    return std::make_unique<HybridScanChoices>(
+    auto result = std::make_unique<HybridScanChoices>(
         schema, doc_spec, bounds.lower, bounds.upper, table_key_prefix);
+    RETURN_NOT_OK(result->Init(doc_read_context));
+    return result;
   }
 
-  return CreateEmpty();
+  return std::make_unique<EmptyScanChoices>(VERIFY_RESULT(BloomFilterOptions::Make(
+      doc_read_context, bounds.lower, bounds.upper, allow_variable_bloom_filter)));
 }
 
 ScanChoicesPtr ScanChoices::CreateEmpty() {
-  return std::make_unique<EmptyScanChoices>();
+  return std::make_unique<EmptyScanChoices>(BloomFilterOptions::Inactive());
 }
 
 }  // namespace docdb

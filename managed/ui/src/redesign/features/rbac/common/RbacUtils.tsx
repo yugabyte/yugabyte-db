@@ -50,11 +50,25 @@ export const setIsRbacEnabled = (flag: boolean) => {
 };
 
 export const isRbacEnabled = () => {
-  return localStorage.getItem(rbac_identifier) === 'true';
+  try {
+    if (typeof localStorage === 'undefined' || localStorage === null) {
+      return false;
+    }
+    return localStorage.getItem(rbac_identifier) === 'true';
+  } catch {
+    return false;
+  }
 };
 
 export const getRbacEnabledVal = () => {
-  return localStorage.getItem(rbac_identifier);
+  try {
+    if (typeof localStorage === 'undefined' || localStorage === null) {
+      return null;
+    }
+    return localStorage.getItem(rbac_identifier);
+  } catch {
+    return null;
+  }
 };
 
 export const clearRbacCreds = () => {

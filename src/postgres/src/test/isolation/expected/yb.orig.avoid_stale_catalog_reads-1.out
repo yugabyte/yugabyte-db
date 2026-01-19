@@ -1,0 +1,65 @@
+Parsed test spec with 3 sessions
+
+starting permutation: s1_begin_rr s2_begin_rr s1_alter_table_test_add_col_a s2_alter_table_test_alter_col_v s1_commit s2_commit s3_select_test_atts
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_alter_table_test_add_col_a: ALTER TABLE test ADD COLUMN a INT;
+step s2_alter_table_test_alter_col_v: ALTER TABLE test ALTER COLUMN v TYPE SMALLINT; <waiting ...>
+step s1_commit: COMMIT;
+step s2_alter_table_test_alter_col_v: <... completed>
+step s2_commit: COMMIT;
+step s3_select_test_atts: SELECT attname FROM pg_attribute WHERE attrelid = 'test'::regclass::oid and attnum > 0;
+attname
+-------
+k      
+v      
+a      
+(3 rows)
+
+
+starting permutation: s1_begin_rr s1_alter_table_test_add_col_a s2_alter_table_test_alter_col_v s1_commit s3_select_test_atts
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_alter_table_test_add_col_a: ALTER TABLE test ADD COLUMN a INT;
+step s2_alter_table_test_alter_col_v: ALTER TABLE test ALTER COLUMN v TYPE SMALLINT; <waiting ...>
+step s1_commit: COMMIT;
+step s2_alter_table_test_alter_col_v: <... completed>
+step s3_select_test_atts: SELECT attname FROM pg_attribute WHERE attrelid = 'test'::regclass::oid and attnum > 0;
+attname
+-------
+k      
+v      
+a      
+(3 rows)
+
+
+starting permutation: s1_begin_rr s2_begin_rr s1_alter_table_test_add_col_a s2_alter_table_test_alter_col_a s1_commit s2_commit s3_select_test_atts
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_alter_table_test_add_col_a: ALTER TABLE test ADD COLUMN a INT;
+step s2_alter_table_test_alter_col_a: ALTER TABLE test ALTER COLUMN a TYPE SMALLINT; <waiting ...>
+step s1_commit: COMMIT;
+step s2_alter_table_test_alter_col_a: <... completed>
+step s2_commit: COMMIT;
+step s3_select_test_atts: SELECT attname FROM pg_attribute WHERE attrelid = 'test'::regclass::oid and attnum > 0;
+attname
+-------
+k      
+v      
+a      
+(3 rows)
+
+
+starting permutation: s1_begin_rr s1_alter_table_test_add_col_a s2_alter_table_test_alter_col_a s1_commit s3_select_test_atts
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_alter_table_test_add_col_a: ALTER TABLE test ADD COLUMN a INT;
+step s2_alter_table_test_alter_col_a: ALTER TABLE test ALTER COLUMN a TYPE SMALLINT; <waiting ...>
+step s1_commit: COMMIT;
+step s2_alter_table_test_alter_col_a: <... completed>
+step s3_select_test_atts: SELECT attname FROM pg_attribute WHERE attrelid = 'test'::regclass::oid and attnum > 0;
+attname
+-------
+k      
+v      
+a      
+(3 rows)
+

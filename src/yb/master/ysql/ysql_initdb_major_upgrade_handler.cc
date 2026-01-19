@@ -276,7 +276,7 @@ YsqlInitDBAndMajorUpgradeHandler::GetYsqlMajorCatalogUpgradeState() const {
 }
 
 bool YsqlInitDBAndMajorUpgradeHandler::IsWriteToCatalogTableAllowed(
-    const TableId& table_id, bool is_forced_update) const {
+    TableIdView table_id, bool is_forced_update) const {
   // During the upgrade only allow special updates to the catalog.
   if (IsMajorUpgradeInProgress()) {
     // Allow updates to the catalog version table only during the pg_upgrade step.
@@ -572,6 +572,7 @@ Status YsqlInitDBAndMajorUpgradeHandler::RollbackMajorVersionCatalogImpl(const L
       metadata->set_state(SysNamespaceEntryPB::RUNNING);
       // NEXT_VER_RUNNING is the initial state for ysql_next_major_version_state.
       metadata->set_ysql_next_major_version_state(SysNamespaceEntryPB::NEXT_VER_RUNNING);
+      metadata->clear_transaction();
 
       RETURN_NOT_OK(sys_catalog_.Upsert(epoch, ns_info.get()));
       ns_l.Commit();

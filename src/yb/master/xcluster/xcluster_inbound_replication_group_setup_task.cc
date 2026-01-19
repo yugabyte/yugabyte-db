@@ -39,6 +39,7 @@
 #include "yb/tserver/pg_create_table.h"
 
 #include "yb/util/async_util.h"
+#include "yb/util/atomic.h"
 #include "yb/util/flag_validators.h"
 #include "yb/util/flags/auto_flags_util.h"
 #include "yb/util/status.h"
@@ -62,6 +63,9 @@ DEFINE_test_flag(bool, fail_universe_replication_merge, false,
 
 DEFINE_test_flag(bool, exit_unfinished_merging, false,
     "Whether to exit part way through the merging universe process.");
+
+DEFINE_test_flag(int32, pause_at_start_of_setup_replication_group_ms, 0,
+    "Delay in milliseconds before merging ALTER replication group into main replication group");
 
 DECLARE_bool(enable_xcluster_auto_flag_validation);
 
@@ -424,6 +428,7 @@ Status XClusterInboundReplicationGroupSetupTask::UpdateSourceStreamOptions() {
 
 Status XClusterInboundReplicationGroupSetupTask::SetupReplicationGroup() {
   std::lock_guard l(mutex_);
+  AtomicFlagSleepMs(&FLAGS_TEST_pause_at_start_of_setup_replication_group_ms);
 
   // Last minute validations.
   // TODO: Block DDLs and other xCluster setup/alter operations between this step till the end of
@@ -604,9 +609,7 @@ Status XClusterInboundReplicationGroupSetupTask::ValidateTableListForDbScoped() 
   std::set<TableId> validated_tables;
   for (const auto& namespace_id : data_.target_namespace_ids) {
     auto table_designators = VERIFY_RESULT(GetTablesEligibleForXClusterReplication(
-        catalog_manager_, namespace_id,
-        /*include_sequences_data=*/
-        data_.automatic_ddl_mode));
+        catalog_manager_, namespace_id, data_.automatic_ddl_mode));
 
     std::vector<TableId> missing_tables;
 
@@ -936,8 +939,8 @@ Result<GetTableSchemaResponsePB> XClusterTableSetupTask::ValidateSourceSchemaAnd
       }
     }
 
-    // Verify that the table on the target side supports replication.
-    if (is_ysql_table && t.has_relation_type() && t.relation_type() == MATVIEW_TABLE_RELATION) {
+    if (!parent_task_->data_.automatic_ddl_mode && is_ysql_table && t.has_relation_type() &&
+        t.relation_type() == MATVIEW_TABLE_RELATION) {
       return STATUS_FORMAT(
           NotSupported, "Replication is not supported for materialized view: $0",
           source_table_info.table_name.ToString());

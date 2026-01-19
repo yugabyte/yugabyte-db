@@ -33,10 +33,11 @@ class PgInsert final : public PgStatementLeafBase<PgDmlWrite, StmtOp::kInsert> {
   }
 
   static Result<std::unique_ptr<PgInsert>> Make(
-      const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id, bool is_region_local,
+      const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id,
+      const YbcPgTableLocalityInfo& locality_info,
       YbcPgTransactionSetting transaction_setting, bool packed) {
     std::unique_ptr<PgInsert> result{new PgInsert{pg_session, transaction_setting, packed}};
-    RETURN_NOT_OK(result->Prepare(table_id, is_region_local));
+    RETURN_NOT_OK(result->Prepare(table_id, locality_info));
     return result;
   }
 

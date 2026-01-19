@@ -134,6 +134,10 @@ properties:
     description: Whether OpenTelemetry Collector is enabled for universe
     type: boolean
     x-yba-api-visibility: internal
+  fips_enabled:
+    description: Whether FIPS compatibility is enabled for universe
+    type: boolean
+    x-yba-api-visibility: internal
   x_cluster_info:
     $ref: "./XClusterInfo.yaml"
   roll_max_batch_size:

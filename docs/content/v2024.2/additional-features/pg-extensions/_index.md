@@ -39,7 +39,7 @@ YugabyteDB supports the following [PostgreSQL modules](https://www.postgresql.or
 | [passwordcheck](extension-passwordcheck/) | Checks user passwords whenever they are set with CREATE ROLE or ALTER ROLE. If a password is considered too weak, it is rejected. |
 | [pgcrypto](extension-pgcrypto/) | Provides various cryptographic functions. |
 | [pg_stat_statements](extension-pgstatstatements/) | Provides a means for tracking execution statistics of all SQL statements executed by a server. |
-| [pg_trgm](/preview/develop/learn/text-search/similarity-matching/#trigrams) | Provides functions and operators for determining the similarity of alphanumeric text based on trigram matching, as well as index operator classes that support fast searching for similar strings.<br/>For more information, see [pg_trgm](https://www.postgresql.org/docs/11/pgtrgm.html) in the PostgreSQL documentation. |
+| [pg_trgm](/stable/develop/learn/text-search/similarity-matching/#trigrams) | Provides functions and operators for determining the similarity of alphanumeric text based on trigram matching, as well as index operator classes that support fast searching for similar strings.<br/>For more information, see [pg_trgm](https://www.postgresql.org/docs/11/pgtrgm.html) in the PostgreSQL documentation. |
 | [postgres_fdw](extension-postgres-fdw/) | Provides the foreign-data wrapper postgres_fdw, which can be used to access data stored in external PostgreSQL servers. |
 | [spi](extension-spi/) | Lets you use the Server Programming Interface (SPI) to create user-defined functions and stored procedures in C, and to run YSQL queries directly against YugabyteDB. |
 | sslinfo | Provides information about the SSL certificate that the current client provided when connecting to PostgreSQL.<br/>For more information, see [sslinfo](https://www.postgresql.org/docs/11/sslinfo.html) in the PostgreSQL documentation. |
@@ -59,6 +59,6 @@ YugabyteDB supports the following additional extensions, some of which you must 
 | [pg_cron](extension-pgcron/) | Pre-bundled | Provides a cron-based job scheduler that runs inside the database. |
 | [pg_hint_plan](../../launch-and-manage/monitor-and-alert/query-tuning/pg-hint-plan/) | Pre-bundled | Tweak execution plans using "hints", which are descriptions in the form of SQL comments.<br/>For more information, see the [pg_hint_plan](https://github.com/ossc-db/pg_hint_plan/tree/master/docs) documentation. |
 | [pg_partman](extension-pgpartman/) | Pre-bundled | Creates and manages time-based and serial-based table partition sets.|
-| pg_stat_monitor | Pre-bundled | A PostgreSQL query performance monitoring tool, based on the PostgreSQL pg_stat_statements module.<br/>For more information, see the [pg_stat_monitor](https://docs.percona.com/pg-stat-monitor/index.html) documentation. |
+| pg_stat_monitor {{<tags/feature/tp>}} | Pre-bundled | A PostgreSQL query performance monitoring tool, based on the PostgreSQL pg_stat_statements module.<br/>For more information, see the [pg_stat_monitor](https://docs.percona.com/pg-stat-monitor/index.html) documentation. |
 | [pgvector](extension-pgvector) | Pre-bundled | Allows you to store and query vectors, for use in vector similarity searching. |
 | [postgresql-hll](extension-postgresql-hll) | Pre-bundled | Adds the data type `hll`, which is a HyperLogLog data structure. |

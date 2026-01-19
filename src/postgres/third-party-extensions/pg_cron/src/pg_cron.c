@@ -2220,7 +2220,7 @@ CronBackgroundWorker(Datum main_arg)
 	/* YB Note: Always read the latest entries in the catalog */
 	if (IsYugaByteEnabled())
 	{
-		YBCPgResetCatalogReadTime();
+		YbInvalidateCatalogSnapshot();
 		YbUpdateCatalogCacheVersion(YbGetMasterCatalogVersion());
 	}
 	SetCurrentStatementStartTimestamp();

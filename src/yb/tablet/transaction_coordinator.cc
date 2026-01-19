@@ -76,13 +76,13 @@
 #include "yb/util/yb_pg_errcodes.h"
 
 DECLARE_uint64(transaction_heartbeat_usec);
-DEFINE_UNKNOWN_double(transaction_max_missed_heartbeat_periods, 10.0,
-              "Maximum heartbeat periods that a pending transaction can miss before the "
-              "transaction coordinator expires the transaction. The total expiration time in "
-              "microseconds is transaction_heartbeat_usec times "
-              "transaction_max_missed_heartbeat_periods. The value passed to this flag may be "
-              "fractional.");
-DEFINE_UNKNOWN_uint64(transaction_check_interval_usec, 500000,
+DEFINE_RUNTIME_double(transaction_max_missed_heartbeat_periods, 30.0,
+    "Maximum heartbeat periods that a pending transaction can miss before the "
+    "transaction coordinator expires the transaction. The total expiration time in "
+    "microseconds is transaction_heartbeat_usec times "
+    "transaction_max_missed_heartbeat_periods. The value passed to this flag may be "
+    "fractional.");
+DEFINE_NON_RUNTIME_uint64(transaction_check_interval_usec, 500000,
     "Transaction check interval in usec.");
 DEFINE_UNKNOWN_uint64(transaction_resend_applying_interval_usec, 5000000,
               "Transaction resend applying interval in usec.");
@@ -155,6 +155,7 @@ struct NotifyApplyingData {
   SubtxnSetPB aborted;
   HybridTime commit_time;
   bool sealed;
+  uint32_t xrepl_origin_id = 0;
   // Only for external/xcluster transactions. How long to wait before retrying a failed apply
   // transaction.
   std::string ToString() const {
@@ -959,6 +960,9 @@ class TransactionState {
     }
 
     status_ = TransactionStatus::COMMITTED;
+    if (data.state.has_xrepl_origin_id()) {
+      xrepl_origin_id_ = data.state.xrepl_origin_id();
+    }
     StartApply();
     return Status::OK();
   }
@@ -1026,12 +1030,14 @@ class TransactionState {
     tablets_with_not_applied_intents_ = involved_tablets_.size();
     if (context_.leader()) {
       for (const auto& tablet : involved_tablets_) {
-        context_.NotifyApplying(
-            {.tablet = tablet.first,
-             .transaction = id_,
-             .aborted = GetAbortedSubtxnInfo()->pb(),
-             .commit_time = commit_time_,
-             .sealed = status_ == TransactionStatus::SEALED});
+        context_.NotifyApplying({
+            .tablet = tablet.first,
+            .transaction = id_,
+            .aborted = GetAbortedSubtxnInfo()->pb(),
+            .commit_time = commit_time_,
+            .sealed = status_ == TransactionStatus::SEALED,
+            .xrepl_origin_id = xrepl_origin_id_,
+        });
       }
     }
     NotifyAbortWaiters(TransactionStatusResult(TransactionStatus::COMMITTED, commit_time_));
@@ -1121,6 +1127,7 @@ class TransactionState {
   // Indicates whether the wait-for dependency from session level txn to the regular txn has changed
   // based on which the coordinator forwards the wait-for probe to the deadlock detector.
   bool forward_probe_to_detector_ = false;
+  uint32_t xrepl_origin_id_ = 0;
 };
 
 struct CompleteWithStatusEntry {
@@ -1663,6 +1670,9 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
     state.add_tablets(context_.tablet_id());
     state.set_commit_hybrid_time(action.commit_time.ToUint64());
     state.set_sealed(action.sealed);
+    if (action.xrepl_origin_id) {
+      state.set_xrepl_origin_id(action.xrepl_origin_id);
+    }
     *state.mutable_aborted() = action.aborted;
 
     auto handle = rpcs_.Prepare();
@@ -1875,7 +1885,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
           if (leader) {
             metrics_.Increment(TabletCounters::kExpiredTransactions);
             bool modified = index.modify(it, [](TransactionState& state) {
-              VLOG(4) << state.LogPrefix() << "Cleanup expired transaction";
+              YB_LOG_EVERY_N_SECS(INFO, 1) << state.LogPrefix() << "Cleanup expired transaction";
               state.Abort();
             });
             DCHECK(modified);

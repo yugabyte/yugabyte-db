@@ -166,7 +166,7 @@ Status MiniMaster::StartOnPorts(uint16_t rpc_port, uint16_t web_port,
   if (!opts->has_placement_cloud()) {
     opts->SetPlacement(
         Format("cloud$0", (index_ + 1) / FLAGS_TEST_nodes_per_cloud),
-        Format("rack$0", index_), "zone");
+        Format("region$0", index_), "zone");
   }
 
   std::unique_ptr<Master> server(new Master(*opts));

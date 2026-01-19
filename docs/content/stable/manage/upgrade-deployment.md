@@ -15,7 +15,7 @@ type: docs
 {{< page-finder/head text="Upgrade YugabyteDB" subtle="across different products">}}
   {{< page-finder/list icon="/icons/database-hover.svg" text="YugabyteDB" current="" >}}
   {{< page-finder/list icon="/icons/server-hover.svg" text="YugabyteDB Anywhere" url="../../yugabyte-platform/manage-deployments/upgrade-software/" >}}
-  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/preview/yugabyte-cloud/cloud-clusters/cloud-maintenance/" >}}
+  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/stable/yugabyte-cloud/cloud-clusters/database-upgrade/" >}}
 {{< /page-finder/head >}}
 
 {{< tip title="Tip" >}}
@@ -32,7 +32,7 @@ The `data`, `log`, and `conf` directories are typically stored in a fixed locati
 Review the following information before starting an upgrade.
 {{< /warning >}}
 {{< warning title="YSQL major version upgrades" >}}
-To upgrade YugabyteDB to a version based on a different version of PostgreSQL (for example, from v2024.2 based on PG 11 to v2.25 or later based on PG 15), you need to perform additional steps. Refer to [YSQL major upgrade](../ysql-major-upgrade-yugabyted/).
+To upgrade YugabyteDB to a version based on a different version of PostgreSQL (for example, from v2024.2 based on PG 11 to v2025.1 or later based on PG 15), you need to perform additional steps. Refer to [YSQL major upgrade](../ysql-major-upgrade-yugabyted/).
 {{< /warning >}}
 
 - Make sure your operating system is up to date. If your universe is running on a [deprecated OS](../../reference/configuration/operating-systems/), you need to update your OS before you can upgrade to the next major YugabyteDB release.
@@ -41,7 +41,7 @@ To upgrade YugabyteDB to a version based on a different version of PostgreSQL (f
 
     For example, if you are upgrading from v2.18.3.0, and the latest release in the v2.20 release series is v2.20.2.0, then you must upgrade to v2.20.2.0 (and not v2.20.1.0 or v2.20.0.0).
 
-    To view and download releases, refer to [Releases](/preview/releases/).
+    To view and download releases, refer to [Releases](/stable/releases/).
 
 - Upgrades are not supported between preview and stable versions.
 
@@ -62,7 +62,19 @@ To upgrade YugabyteDB to a version based on a different version of PostgreSQL (f
   - If you have PITR enabled, you must disable it before performing an upgrade. Re-enable it only after the upgrade is either finalized or rolled back.
   - After the upgrade, PITR cannot be done to a time before the upgrade.
 
-- For more information, refer to [Upgrade FAQ](/preview/faq/operations-faq/#upgrade).
+- YSQL
+
+  - For additional information on upgrading universes that have Enhanced PostgreSQL Compatibility Mode, refer to [Enhanced PostgreSQL Compatibility Mode](../../reference/configuration/postgresql-compatibility/).
+
+  - For information on upgrading or enabling cost-based optimizer, refer to [Enable cost-based optimizer](../../best-practices-operations/ysql-yb-enable-cbo/).
+
+    If you upgrade to v2025.2 and the universe already has cost-based optimizer enabled, the following features are enabled by default:
+
+    - Auto Analyze (ysql_enable_auto_analyze=true)
+    - YugabyteDB bitmap scan (yb_enable_bitmapscan=true)
+    - Parallel query (yb_enable_parallel_append=true)
+
+For more information, refer to [Upgrade FAQ](/stable/faq/operations-faq/#upgrade).
 
 ## Upgrade YugabyteDB cluster
 
@@ -189,10 +201,10 @@ New YugabyteDB features may require changes to the format of data that is sent o
     Current config version: 1
     ```
 
-    {{< note title="Note" >}}
+    {{< note title="Promoting AutoFlags" >}}
+`promote_auto_flags` is a cluster-level operation; you don't need to run it on every node.
 
-- `promote_auto_flags` is a cluster-level operation; you don't need to run it on every node.
-- Before promoting AutoFlags, ensure that all YugabyteDB processes in the cluster have been upgraded to the new version. Process running an old version may fail to connect to the cluster after the AutoFlags have been promoted.
+Before promoting AutoFlags, ensure that all YugabyteDB processes in the cluster have been upgraded to the new version. A process running an old version may fail to connect to the cluster after AutoFlags have been promoted.
     {{< /note >}}
 
 1. Wait at least 10 seconds (`FLAGS_auto_flags_apply_delay_ms`) for the new AutoFlags to be propagated and applied on all YugabyteDB processes.

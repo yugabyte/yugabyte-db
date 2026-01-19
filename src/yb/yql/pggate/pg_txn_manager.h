@@ -70,7 +70,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
       IsLocalObjectLockOp is_local_object_lock_op = IsLocalObjectLockOp::kFalse);
   Status RecreateTransaction();
   Status RestartTransaction();
-  Status ResetTransactionReadPoint();
+  Status ResetTransactionReadPoint(bool is_catalog_snapshot);
   Status EnsureReadPoint();
   Status RestartReadPoint();
   bool IsRestartReadPointRequested();
@@ -118,6 +118,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   void RestoreSessionState(const YbcPgSessionState& session_data);
 
   [[nodiscard]] YbcReadPointHandle GetCurrentReadPoint() const;
+  [[nodiscard]] YbcReadPointHandle GetMaxReadPoint() const;
   Status RestoreReadPoint(YbcReadPointHandle read_point);
   Result<YbcReadPointHandle> RegisterSnapshotReadTime(uint64_t read_time, bool use_read_time);
 
@@ -133,7 +134,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
       const YbcObjectLockId& lock_id, docdb::ObjectLockFastpathLockType lock_type);
 
   Status AcquireObjectLock(
-      SetupPerformOptionsAccessorTag tag, const YbcObjectLockId& lock_id, YbcObjectLockMode mode);
+      SetupPerformOptionsAccessorTag tag, const YbcObjectLockId& lock_id, YbcObjectLockMode mode,
+      std::optional<PgTablespaceOid> tablespace_oid);
   struct DdlState {
     bool has_docdb_schema_changes = false;
     bool force_catalog_modification = false;
@@ -154,17 +156,25 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
         [this, original_value] { is_read_time_history_cutoff_disabled_ = original_value; });
   }
 
+  bool IsTableLockingEnabledForCurrentTxn() const;
+  bool ShouldEnableTableLocking() const;
+
  private:
   class SerialNo {
    public:
     SerialNo();
     SerialNo(uint64_t txn_serial_no, uint64_t read_time_serial_no);
-    void IncTxn(bool preserve_read_time_history);
+    void IncTxn(bool preserve_read_time_history, YbcReadPointHandle catalog_read_time_serial_no);
     void IncReadTime();
+    void IncMaxReadTime();
     Status RestoreReadTime(uint64_t read_time_serial_no);
     [[nodiscard]] uint64_t txn() const { return txn_; }
     [[nodiscard]] uint64_t read_time() const { return read_time_; }
     [[nodiscard]] uint64_t min_read_time() const { return min_read_time_; }
+    [[nodiscard]] uint64_t max_read_time() const { return max_read_time_; }
+    std::string ToString() const {
+      return YB_CLASS_TO_STRING(txn, read_time, min_read_time, max_read_time);
+    }
 
    private:
     uint64_t txn_;
@@ -233,6 +243,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   std::optional<uint64_t> priority_;
   SavePriority use_saved_priority_ = SavePriority::kFalse;
   int64_t pg_txn_start_us_ = 0;
+  bool using_table_locks_ = false;
   bool snapshot_read_time_is_used_ = false;
   bool has_exported_snapshots_ = false;
 
@@ -251,6 +262,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   //                 The reverse is also true: a transaction can be marked as read-only and still
   //                 have writes (before it was marked as read-only). So, no conclusion can be drawn
   //                 about the transaction's read-only status based on the has_writes_ flag.
+  //                 This flag does not include writes made for object locking.
   bool has_writes_ = false;
 
   const bool enable_table_locking_;
@@ -262,10 +274,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
  public:
   void DEBUG_CheckOptionsForPerform(const tserver::PgPerformOptionsPB& options) const;
  private:
-  struct DEBUG_TxnInfo;
-  friend DEBUG_TxnInfo;
   void DEBUG_UpdateLastObjectLockingInfo();
-  std::unique_ptr<DEBUG_TxnInfo> debug_last_object_locking_txn_info_;
+  uint64_t debug_last_object_locking_txn_serial_ = 0;
 #endif
 
   DISALLOW_COPY_AND_ASSIGN(PgTxnManager);

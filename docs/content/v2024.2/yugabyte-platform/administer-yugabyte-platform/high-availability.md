@@ -41,6 +41,12 @@ Before configuring a HA cluster for your YBA instances, ensure that you have the
 - All YBA instances are running the same version of YBA software. (The YBA instances in a HA cluster should always be upgraded at approximately the same time.)
 - The YBA instances have the same login credentials.
 
+{{< tip title="Getting the API key for the standby" >}}
+
+If you are using the API to configure HA, obtain your API key for the standby instance before setting up HA. After HA is configured, you can only obtain an API key using the API. For more information, see [Authentication](../../anywhere-automation/#authentication).
+
+{{< /tip >}}
+
 ## Configure active and standby instances
 
 To set up HA, you first configure the active instance by creating an active HA replication configuration and generating a shared authentication key.

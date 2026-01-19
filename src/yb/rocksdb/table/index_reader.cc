@@ -25,6 +25,8 @@ using namespace std::placeholders;
 
 namespace {
 
+using BlockIterWrapper = IteratorWrapperBase<BlockIter, /* kSkipLastEntry = */ false>;
+
 class DataBlockAwareIndexInternalIteratorBase : public DataBlockAwareIndexInternalIterator {
  public:
   virtual std::unique_ptr<InternalIterator> GetCurrentDataBlockIterator() const = 0;
@@ -57,7 +59,7 @@ class DataBlockAwareIndexInternalIteratorImpl : public DataBlockAwareIndexIntern
  public:
   DataBlockAwareIndexInternalIteratorImpl(
       std::unique_ptr<InternalIterator> index_internal_iterator,
-      std::unique_ptr<TwoLevelIteratorState> data_iterator_state)
+      std::unique_ptr<TwoLevelBlockIteratorState> data_iterator_state)
       : index_internal_iterator_(std::move(index_internal_iterator)),
         data_iterator_state_(std::move(data_iterator_state)) {}
 
@@ -84,7 +86,7 @@ class DataBlockAwareIndexInternalIteratorImpl : public DataBlockAwareIndexIntern
   }
 
   std::unique_ptr<InternalIterator> const index_internal_iterator_;
-  std::unique_ptr<TwoLevelIteratorState> const data_iterator_state_;
+  std::unique_ptr<TwoLevelBlockIteratorState> const data_iterator_state_;
 };
 
 } // namespace
@@ -107,8 +109,8 @@ Result<std::string> BinarySearchIndexReader::GetMiddleKey() const {
 }
 
 DataBlockAwareIndexInternalIterator* BinarySearchIndexReader::NewDataBlockAwareIterator(
-    BlockIter* iter, std::unique_ptr<TwoLevelIteratorState> index_iterator_state,
-    std::unique_ptr<TwoLevelIteratorState> data_iterator_state, bool) {
+    BlockIter* iter, std::unique_ptr<TwoLevelBlockIteratorState> index_iterator_state,
+    std::unique_ptr<TwoLevelBlockIteratorState> data_iterator_state, bool) {
   return new DataBlockAwareIndexInternalIteratorImpl(
       std::unique_ptr<InternalIterator>(
           NewIterator(iter, std::move(index_iterator_state), /* total_order_seek = */ true)),
@@ -206,24 +208,78 @@ Result<std::string> HashIndexReader::GetMiddleKey() const {
 }
 
 DataBlockAwareIndexInternalIterator* HashIndexReader::NewDataBlockAwareIterator(
-    BlockIter* iter, std::unique_ptr<TwoLevelIteratorState> index_iterator_state,
-    std::unique_ptr<TwoLevelIteratorState> data_iterator_state, bool) {
+    BlockIter* iter, std::unique_ptr<TwoLevelBlockIteratorState> index_iterator_state,
+    std::unique_ptr<TwoLevelBlockIteratorState> data_iterator_state, bool) {
   return new DataBlockAwareIndexInternalIteratorImpl(
       std::unique_ptr<InternalIterator>(
           NewIterator(iter, std::move(index_iterator_state), /* total_order_seek = */ true)),
       std::move(data_iterator_state));
 }
 
+// Helpers for MultiLevelIterator::GetMiddleKey()
+namespace {
+
+using BlockIteratorWrapper = IteratorWrapperBase<BlockIter, /* kSkipLastEntry = */ false>;
+using BlockBoundaryRestarts = std::pair<uint32_t, uint32_t>;
+
+// Get the bounding restarts of an index or data block.
+Result<BlockBoundaryRestarts> GetBlockBoundaryRestarts(
+    BlockIter* block_iter, Slice lower_bound_key) {
+  if (DCHECK_NOTNULL(block_iter)->GetNumRestarts() == 0) {
+    // Not possible to have less than 1 restart at all, refer to the BlockBuilder's constructor.
+    return STATUS(Corruption, "Restarts number cannot be zero, this might be a data corruption!");
+  }
+
+  if (VLOG_IS_ON(3)) {
+    for (uint i = 0; i < block_iter->GetNumRestarts(); ++i) {
+      block_iter->SeekToRestart(i);
+      VLOG_WITH_FUNC(3) << "Restart " << i << ": " << block_iter->key().ToDebugHexString();
+    }
+  }
+
+  // Seek to lowest key restart.
+  if (!lower_bound_key.empty()) {
+    VLOG_WITH_FUNC(3) << "Input low key: " << lower_bound_key.ToDebugHexString();
+    block_iter->Seek(lower_bound_key);
+  } else {
+    block_iter->SeekToFirst();
+  }
+
+  RETURN_NOT_OK_PREPEND(block_iter->status(), "Failed to seek to lower bound entry");
+  if (!block_iter->Valid()) {
+    return STATUS(InternalError, "Failed to seek to lower bound entry");
+  }
+
+  BlockBoundaryRestarts restarts;
+  restarts.first = block_iter->GetCurrentRestart();
+  restarts.second = block_iter->GetNumRestarts() - 1;
+  VLOG_WITH_FUNC(3) << yb::Format(
+      "Bound: [$0, $1], qualifying entries: $2, total entries: $3",
+      restarts.first, restarts.second, 1 + restarts.second - restarts.first, 1 + restarts.second);
+  return restarts;
+}
+
+Result<Slice> GetValueAtRestartIndex(BlockIter* block_iter, uint32_t restart_idx) {
+  DCHECK_NOTNULL(block_iter)->SeekToRestart(restart_idx);
+  RETURN_NOT_OK_PREPEND(block_iter->status(), "Failed to seek");
+  if (!block_iter->Valid()) {
+    return STATUS(InternalError, "Failed to seek");
+  }
+  return block_iter->value();
+}
+
+} // namespace
 
 class MultiLevelIterator final : public DataBlockAwareIndexInternalIteratorBase {
  public:
   static constexpr auto kIterChainInitialCapacity = 4;
 
   MultiLevelIterator(
-      std::unique_ptr<TwoLevelIteratorState> index_iterator_state,
-      std::unique_ptr<TwoLevelIteratorState> data_iterator_state, InternalIterator* top_level_iter,
+      std::unique_ptr<TwoLevelBlockIteratorState> index_iterator_state,
+      std::unique_ptr<TwoLevelBlockIteratorState> data_iterator_state, BlockIter* top_level_iter,
       uint32_t num_levels, bool need_free_top_level_iter)
-      : index_iterator_state_(std::move(index_iterator_state)),
+      : num_levels_(num_levels),
+        index_iterator_state_(std::move(index_iterator_state)),
         data_iterator_state_(std::move(data_iterator_state)),
         iter_(num_levels),
         index_block_handle_(num_levels - 1),
@@ -233,7 +289,7 @@ class MultiLevelIterator final : public DataBlockAwareIndexInternalIteratorBase 
   }
 
   ~MultiLevelIterator() {
-    IteratorWrapper* iter = iter_.data() + (need_free_top_level_iter_ ? 0 : 1);
+    auto* iter = iter_.data() + (need_free_top_level_iter_ ? 0 : 1);
     while (iter <= bottom_level_iter_) {
       iter->DeleteIter(false /* arena_mode */);
       ++iter;
@@ -247,28 +303,28 @@ class MultiLevelIterator final : public DataBlockAwareIndexInternalIteratorBase 
       return Entry();
     }
 
-    return DoSeek(std::bind(&IteratorWrapper::Seek, std::placeholders::_1, target));
+    return DoSeek(std::bind(&BlockIterWrapper::Seek, std::placeholders::_1, target));
   }
 
   const KeyValueEntry& SeekToFirst() override {
-    return DoSeek(std::bind(&IteratorWrapper::SeekToFirst, std::placeholders::_1));
+    return DoSeek(std::bind(&BlockIterWrapper::SeekToFirst, std::placeholders::_1));
   }
 
   const KeyValueEntry& SeekToLast() override {
-    return DoSeek(std::bind(&IteratorWrapper::SeekToLast, std::placeholders::_1));
+    return DoSeek(std::bind(&BlockIterWrapper::SeekToLast, std::placeholders::_1));
   }
 
   const KeyValueEntry& Next() override {
     return DoMove(
-        std::bind(&IteratorWrapper::Next, std::placeholders::_1),
-        std::bind(&IteratorWrapper::SeekToFirst, std::placeholders::_1)
+        std::bind(&BlockIterWrapper::Next, std::placeholders::_1),
+        std::bind(&BlockIterWrapper::SeekToFirst, std::placeholders::_1)
     );
   }
 
   const KeyValueEntry& Prev() override {
     return DoMove(
-        std::bind(&IteratorWrapper::Prev, std::placeholders::_1),
-        std::bind(&IteratorWrapper::SeekToLast, std::placeholders::_1)
+        std::bind(&BlockIterWrapper::Prev, std::placeholders::_1),
+        std::bind(&BlockIterWrapper::SeekToLast, std::placeholders::_1)
     );
   }
 
@@ -282,7 +338,7 @@ class MultiLevelIterator final : public DataBlockAwareIndexInternalIteratorBase 
 
   Status status() const override {
     if (bottommost_positioned_iter_) {
-      const IteratorWrapper* iter = iter_.data();
+      const auto* iter = iter_.data();
       while (iter <= bottommost_positioned_iter_ && iter->iter()) {
         if (!iter->status().ok()) {
           return iter->status();
@@ -293,11 +349,131 @@ class MultiLevelIterator final : public DataBlockAwareIndexInternalIteratorBase 
     return status_;
   }
 
-  void SetSubIterator(IteratorWrapper* iter_wrapper, InternalIterator* iter) {
+  void SetSubIterator(BlockIterWrapper* iter_wrapper, BlockIter* iter) {
     if (iter_wrapper->iter() != nullptr) {
       SaveError(iter_wrapper->status());
     }
     iter_wrapper->Set(iter);
+  }
+
+  // Find the approximate middle key starting from the given lower bound key.
+  // Algorithm:
+  //   1. Start with the sequence of entries from the top-level index block.
+  //   2. Repeat until a midpoint is found or no more levels remain:
+  //      - If the sequence has 3 or more entries, return the midpoint entry.
+  //      - If the sequence has exactly 2 entries, descend to their blocks (main and aux), replace
+  //        the sequence with entries from those blocks in order, and continue.
+  //      - If the sequence has exactly 1 entry, descend to its block, replace the sequence with
+  //        entries from that block, and continue.
+  //   3. If no midpoint was found, return a failed status.
+  yb::Result<std::string> GetMiddleKey(Slice lower_bound_key) const override {
+    VLOG_WITH_FUNC(3) << "Total levels: " << num_levels_;
+
+    // Owners for child block iterators that we may descend to.
+    std::unique_ptr<BlockIter> main_block_iter_holder;
+    std::unique_ptr<BlockIter> aux_block_iter_holder;
+
+    // This top-level block iterator should not be deallocated and hence is not referenced by the
+    // unique pointers above.
+    BlockIter* top_level_iter = iter_[0].iter();
+
+    // Iterate from index top-level (0) up to and including the data blocks level (num_levels_).
+    for (int64_t cur_level = 0; cur_level <= num_levels_; ++cur_level) {
+      VLOG_WITH_FUNC(3) << "Level: " << cur_level;
+      auto* main_block_iter = cur_level == 0 ? top_level_iter : main_block_iter_holder.get();
+      auto* aux_block_iter = aux_block_iter_holder.get();
+
+      // TODO(tsplit): This algorithm determines the middle key at the granularity of block
+      // restarts and not records. A restart may contain several records (restart interval). This
+      // may lead to a bad approximation of the middle record key when:
+      //   1. The index block restart interval is greater than the default of 1
+      //   2. The middle key is obtained from a data block, where the default interval is 16
+      // We should add checks for the index block restart interval and handle data blocks better.
+
+      // Find the bounding restarts for the main block.
+      auto main_bounds = VERIFY_RESULT(GetBlockBoundaryRestarts(main_block_iter, lower_bound_key));
+      // Number of entries in the main block.
+      auto num_main_entries = main_bounds.second - main_bounds.first + 1;
+      // Number of entries in the main block + aux block.
+      auto num_total_entries = num_main_entries;
+
+      // Find the bounding restarts for the aux block, if an aux block exists.
+      BlockBoundaryRestarts aux_bounds;
+      if (aux_block_iter) {
+        aux_bounds = VERIFY_RESULT(GetBlockBoundaryRestarts(aux_block_iter, Slice{}));
+        DCHECK_EQ(aux_bounds.first, 0);
+        num_total_entries += aux_bounds.second - aux_bounds.first + 1;
+      }
+
+      // If more than 2 restarts exist across the main and aux block, find the restart in the
+      // middle.
+      if (num_total_entries > 2) {
+        const auto policy = cur_level == num_levels_ ?
+            MiddlePointPolicy::kMiddleHigh : MiddlePointPolicy::kMiddleLow;
+        auto middle_idx = Block::GetMiddlePointIndex(num_total_entries, policy);
+        bool main_has_middle = middle_idx < num_main_entries;
+        BlockIter* block_iter;
+        uint32_t restart_idx;
+        Slice middle_key;
+        if (main_has_middle) {
+          block_iter = main_block_iter;
+          restart_idx = main_bounds.first + middle_idx;
+        } else {
+          block_iter = DCHECK_NOTNULL(aux_block_iter);
+          restart_idx = aux_bounds.first + middle_idx - num_main_entries;
+        }
+        block_iter->SeekToRestart(restart_idx);
+        middle_key = block_iter->key();
+        VLOG_WITH_FUNC(3) << yb::Format(
+            "Middle key found in $0 block: restart: $1, key: $2",
+            main_has_middle ? "main" : "aux", restart_idx, middle_key.ToDebugHexString());
+        return middle_key.ToBuffer();
+      }
+
+      // If at last level, we cannot descend further.
+      if (cur_level == num_levels_) {
+        break;
+      }
+
+      // Descend to the next level.
+      if (num_total_entries == 2) {
+        // If exactly two restarts exist across the main and aux block, descend to the two
+        // corresponding child blocks and load them as main and aux.
+        std::string main_handle;
+        std::string aux_handle;
+        if (num_main_entries == 2) {
+          main_handle = VERIFY_RESULT(GetValueAtRestartIndex(main_block_iter, main_bounds.first));
+          aux_handle = VERIFY_RESULT(GetValueAtRestartIndex(main_block_iter, main_bounds.second));
+        } else if (num_main_entries == 1) {
+          main_handle = VERIFY_RESULT(GetValueAtRestartIndex(main_block_iter, main_bounds.first));
+          aux_handle = VERIFY_RESULT(GetValueAtRestartIndex(aux_block_iter, aux_bounds.first));
+        } else {
+          main_handle = VERIFY_RESULT(GetValueAtRestartIndex(aux_block_iter, aux_bounds.first));
+          aux_handle = VERIFY_RESULT(GetValueAtRestartIndex(aux_block_iter, aux_bounds.second));
+        }
+        auto& iterator_state =
+            cur_level == num_levels_ - 1 ? data_iterator_state_ : index_iterator_state_;
+        main_block_iter_holder.reset(iterator_state->NewSecondaryIterator(main_handle));
+        aux_block_iter_holder.reset(iterator_state->NewSecondaryIterator(aux_handle));
+      } else if (num_total_entries == 1) {
+        // If exactly one restart exists, descend to the corresponding child block.
+        auto& iterator_state =
+            cur_level == num_levels_ - 1 ? data_iterator_state_ : index_iterator_state_;
+        std::string main_handle;
+        if (num_main_entries == 1) {
+          main_handle = VERIFY_RESULT(GetValueAtRestartIndex(main_block_iter, main_bounds.first));
+        } else {
+          main_handle = VERIFY_RESULT(GetValueAtRestartIndex(aux_block_iter, aux_bounds.first));
+        }
+        main_block_iter_holder.reset(iterator_state->NewSecondaryIterator(main_handle));
+        aux_block_iter_holder.reset();
+      } else {
+        break;
+      }
+    }
+
+    // Return Incomplete when there are less than 3 data block restarts in the SST with user keys.
+    return STATUS(Incomplete, "Insufficient entries in SST.");
   }
 
  private:
@@ -307,7 +483,7 @@ class MultiLevelIterator final : public DataBlockAwareIndexInternalIteratorBase 
 
   template <typename F>
   const KeyValueEntry& DoSeek(F seek_function) {
-    IteratorWrapper* iter = iter_.data();
+    auto* iter = iter_.data();
     seek_function(iter);
     bottommost_positioned_iter_ = iter;
     while (iter < bottom_level_iter_ && iter->Valid()) {
@@ -323,7 +499,7 @@ class MultiLevelIterator final : public DataBlockAwareIndexInternalIteratorBase 
   const KeyValueEntry& DoMove(F1 move_function, F2 lower_levels_init_function) {
     DCHECK(Valid());
     // First try to move iterator starting with bottom level.
-    IteratorWrapper* iter = bottom_level_iter_;
+    auto* iter = bottom_level_iter_;
     move_function(iter);
     while (!iter->Valid() && iter > iter_.data()) {
       --iter;
@@ -343,9 +519,9 @@ class MultiLevelIterator final : public DataBlockAwareIndexInternalIteratorBase 
     return Entry();
   }
 
-  void InitSubIterator(IteratorWrapper* parent_iter) {
+  void InitSubIterator(BlockIterWrapper* parent_iter) {
     DCHECK(parent_iter->Valid());
-    IteratorWrapper* sub_iter = parent_iter + 1;
+    auto* sub_iter = parent_iter + 1;
     std::string* child_index_block_handle =
         index_block_handle_.data() + (parent_iter - iter_.data());
     Slice handle = parent_iter->value();
@@ -355,7 +531,7 @@ class MultiLevelIterator final : public DataBlockAwareIndexInternalIteratorBase 
     } else {
       // TODO(index_iter): consider updating existing iterator rather than recreating, measure
       // potential perf impact.
-      InternalIterator* iter = index_iterator_state_->NewSecondaryIterator(handle);
+      auto* iter = index_iterator_state_->NewSecondaryIterator(handle);
       handle.CopyToBuffer(child_index_block_handle);
       SetSubIterator(sub_iter, iter);
     }
@@ -373,20 +549,21 @@ class MultiLevelIterator final : public DataBlockAwareIndexInternalIteratorBase 
     return std::unique_ptr<InternalIterator>(data_iterator_state_->NewSecondaryIterator(value()));
   }
 
+  uint32_t num_levels_;
   // We maintain separate states for data and index iterator in order to prevent data sequential
   // reads and index sequential reads resetting each other readahead state.
   // Such scenario happens when we sequentially read data and using Seek, for example during
   // sampling data for YSQL ANALYZE query execution.
-  std::unique_ptr<TwoLevelIteratorState> const index_iterator_state_;
-  std::unique_ptr<TwoLevelIteratorState> const data_iterator_state_;
-  boost::container::small_vector<IteratorWrapper, kIterChainInitialCapacity> iter_;
+  std::unique_ptr<TwoLevelBlockIteratorState> const index_iterator_state_;
+  std::unique_ptr<TwoLevelBlockIteratorState> const data_iterator_state_;
+  boost::container::small_vector<BlockIterWrapper, kIterChainInitialCapacity> iter_;
   // If iter_[level] holds non-nullptr, then "index_block_handle_[level-1]" holds the
   // handle passed to index_iterator_state_->NewSecondaryIterator to create iter_[level].
   boost::container::small_vector<std::string, kIterChainInitialCapacity - 1> index_block_handle_;
-  IteratorWrapper* const bottom_level_iter_;
+  BlockIterWrapper* const bottom_level_iter_;
   bool need_free_top_level_iter_;
   Status status_ = Status::OK();
-  IteratorWrapper* bottommost_positioned_iter_ = nullptr;
+  BlockIterWrapper* bottommost_positioned_iter_ = nullptr;
 };
 
 Result<std::unique_ptr<MultiLevelIndexReader>> MultiLevelIndexReader::Create(
@@ -402,7 +579,7 @@ Result<std::unique_ptr<MultiLevelIndexReader>> MultiLevelIndexReader::Create(
 }
 
 InternalIterator* MultiLevelIndexReader::NewIterator(
-    BlockIter* iter, std::unique_ptr<TwoLevelIteratorState> index_iterator_state,
+    BlockIter* iter, std::unique_ptr<TwoLevelBlockIteratorState> index_iterator_state,
     const bool) {
   return NewDataBlockAwareIterator(
       iter, std::move(index_iterator_state), /* data_iterator_state = */ nullptr,
@@ -410,9 +587,9 @@ InternalIterator* MultiLevelIndexReader::NewIterator(
 }
 
 DataBlockAwareIndexInternalIterator* MultiLevelIndexReader::NewDataBlockAwareIterator(
-    BlockIter* iter, std::unique_ptr<TwoLevelIteratorState> index_iterator_state,
-    std::unique_ptr<TwoLevelIteratorState> data_iterator_state, bool) {
-  InternalIterator* top_level_iter = top_level_index_block_->NewIndexBlockIterator(
+    BlockIter* iter, std::unique_ptr<TwoLevelBlockIteratorState> index_iterator_state,
+    std::unique_ptr<TwoLevelBlockIteratorState> data_iterator_state, bool) {
+  auto* top_level_iter = top_level_index_block_->NewIndexBlockIterator(
       comparator_.get(), iter, /* total_order_seek = */ true);
   return new MultiLevelIterator(
       std::move(index_iterator_state), std::move(data_iterator_state), top_level_iter, num_levels_,

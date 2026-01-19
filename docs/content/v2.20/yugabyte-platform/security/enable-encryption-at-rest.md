@@ -111,7 +111,7 @@ You can change KMS configurations, and consequently the master keys used to encr
 
 {{< warning title="Deleting KMS configurations" >}}
 
-When you delete a KMS configuration, you will no longer be able to decrypt universe keys that were encrypted using the master key in the KMS configuration. Before deleting a configuration, make sure that you no longer need the KMS configuration, master key, or any of the key versions. Retain all KMS configurations used to encrypt data in backups and snapshots.
+When you delete a KMS configuration, you will no longer be able to decrypt universe keys that were encrypted using the master key in the KMS configuration. Before deletiing a configuration, make sure that you no longer need the KMS configuration, master key, or any of the key versions. Retain all KMS configurations used to encrypt data in backups and snapshots.
 
 {{< /warning >}}
 

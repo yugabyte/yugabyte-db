@@ -13,17 +13,23 @@
 
 #pragma once
 
+#include <string>
+#include <string_view>
+
 #include "yb/common/pgsql_protocol.pb.h"
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/status_ec.h"
+#include "yb/util/tostring.h"
 #include "yb/util/yb_pg_errcodes.h"
+
+using namespace std::literals;
 
 namespace yb {
 
 struct PgsqlErrorTag : IntegralErrorTag<YBPgErrorCode> {
   // It is part of the wire protocol and should not be changed once released.
-  static constexpr uint8_t kCategory = 6;
+  static constexpr CategoryDescriptor kCategory{6, "pgsql error"sv};
 
   static std::string ToMessage(Value value) {
     return ToString(value);
@@ -32,14 +38,13 @@ struct PgsqlErrorTag : IntegralErrorTag<YBPgErrorCode> {
   static std::string DecodeToString(const uint8_t* source) {
     return ToMessage(Decode(source));
   }
-
 };
 
-typedef StatusErrorCodeImpl<PgsqlErrorTag> PgsqlError;
+using PgsqlError = StatusErrorCodeImpl<PgsqlErrorTag>;
 
 struct PgsqlRequestStatusTag : IntegralErrorTag<PgsqlResponsePB::RequestStatus> {
   // It is part of the wire protocol and should not be changed once released.
-  static constexpr uint8_t kCategory = 17;
+  static constexpr CategoryDescriptor kCategory{17, "pgsql request status"sv};
 
   static std::string ToMessage(Value value) {
     return PgsqlResponsePB::RequestStatus_Name(value);
@@ -48,14 +53,13 @@ struct PgsqlRequestStatusTag : IntegralErrorTag<PgsqlResponsePB::RequestStatus> 
   static std::string DecodeToString(const uint8_t* source) {
     return ToMessage(Decode(source));
   }
-
 };
 
-typedef StatusErrorCodeImpl<PgsqlRequestStatusTag> PgsqlRequestStatus;
+using PgsqlRequestStatus = StatusErrorCodeImpl<PgsqlRequestStatusTag>;
 
 struct OpIndexTag : IntegralErrorTag<size_t> {
   // It is part of the wire protocol and should not be changed once released.
-  static constexpr uint8_t kCategory = 18;
+  static constexpr CategoryDescriptor kCategory{18, "op index"sv};
 
   static std::string ToMessage(Value value) {
     return std::to_string(value);
@@ -64,14 +68,13 @@ struct OpIndexTag : IntegralErrorTag<size_t> {
   static std::string DecodeToString(const uint8_t* source) {
     return ToMessage(Decode(source));
   }
-
 };
 
-typedef StatusErrorCodeImpl<OpIndexTag> OpIndex;
+using OpIndex = StatusErrorCodeImpl<OpIndexTag>;
 
 struct RelationOidTag : IntegralErrorTag<unsigned int> {
   // It is part of the wire protocol and should not be changed once released.
-  static constexpr uint8_t kCategory = 20;
+  static constexpr CategoryDescriptor kCategory{20, "relation oid"sv};
 
   static std::string ToMessage(Value value) {
     return std::to_string(value);
@@ -82,11 +85,11 @@ struct RelationOidTag : IntegralErrorTag<unsigned int> {
   }
 };
 
-typedef StatusErrorCodeImpl<RelationOidTag> RelationOid;
+using RelationOid = StatusErrorCodeImpl<RelationOidTag>;
 
 struct AuxilaryMessageTag : StringBackedErrorTag {
   // It is part of the wire protocol and should not be changed once released.
-  static constexpr uint8_t kCategory = 21;
+  static constexpr CategoryDescriptor kCategory{21, "aux msg"sv};
 
   static std::string ToMessage(const Value& value) {
     return value;
@@ -97,28 +100,28 @@ struct AuxilaryMessageTag : StringBackedErrorTag {
   }
 };
 
-typedef StatusErrorCodeImpl<AuxilaryMessageTag> AuxilaryMessage;
+using AuxilaryMessage = StatusErrorCodeImpl<AuxilaryMessageTag>;
 
 struct PgsqlMessageArgsTag : StringVectorBackedErrorTag {
   // It is part of the wire protocol and should not be changed once released.
-  static constexpr uint8_t kCategory = 22;
+  static constexpr CategoryDescriptor kCategory{22, "pgsql msg args"sv};
 
   static std::string ToMessage(const Value& value) {
     return Format("Pgsql Message Arguments: $0", value);
   }
 };
 
-typedef yb::StatusErrorCodeImpl<PgsqlMessageArgsTag> PgsqlMessageArgs;
+using PgsqlMessageArgs = yb::StatusErrorCodeImpl<PgsqlMessageArgsTag>;
 
 struct FuncNameTag : StringBackedErrorTag {
   // It is part of the wire protocol and should not be changed once released.
-  static constexpr uint8_t kCategory = 23;
+  static constexpr CategoryDescriptor kCategory{23, "function name"sv};
 
   static std::string ToMessage(const Value& value) {
     return Format("Function: $0", value);
   }
 };
 
-typedef yb::StatusErrorCodeImpl<FuncNameTag> FuncName;
+using FuncName = yb::StatusErrorCodeImpl<FuncNameTag>;
 
 } // namespace yb

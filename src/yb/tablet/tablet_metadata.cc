@@ -120,10 +120,41 @@ std::string MakeTableInfoLogPrefix(
   return primary ? tablet_log_prefix : Format("TBL $0 $1", table_id, tablet_log_prefix);
 }
 
+std::string MakeTabletDirName(const TabletId& tablet_id) {
+  return Format("tablet-$0", tablet_id);
+}
+
+template <typename Filter, typename... Other>
+inline bool DoApplyFilter0(const TableInfoPtr& info, Filter&& filter, Other&&...) {
+  static_assert(sizeof...(Other) == 0);
+  return filter(info);
+}
+
+template <typename... Filter>
+inline bool DoApplyFilter(const TableInfoPtr& info, Filter&&... filter) {
+  if constexpr (sizeof...(Filter) == 0) {
+    return true;
+  } else {
+    return DoApplyFilter0(info, std::forward<Filter>(filter)...);
+  }
+}
+
+// Using variadic template args to be able to pass no filter at all.
+template <typename... Filter>
+std::vector<TableInfoPtr> DoCollectTableInfos(const TableInfoMap& tables, Filter&&... filter) {
+  std::vector<TableInfoPtr> result;
+  result.reserve(tables.size());
+  for (const auto& [_, info] : tables) {
+    if (DoApplyFilter(info, std::forward<Filter>(filter)...)) {
+      result.push_back(info);
+    }
+  }
+  return result;
+}
+
 } // namespace
 
 const int64 kNoDurableMemStore = -1;
-const std::string kSnapshotsDirName = "snapshots";
 
 // ============================================================================
 //  Raft group metadata
@@ -184,6 +215,7 @@ TableInfo::TableInfo(const TableInfo& other,
                      const SchemaVersion schema_version)
     : table_id(other.table_id),
       namespace_name(other.namespace_name),
+      namespace_id(other.namespace_id),
       table_name(other.table_name),
       table_type(other.table_type),
       cotable_id(other.cotable_id),
@@ -211,6 +243,7 @@ TableInfo::TableInfo(const TableInfo& other,
                      const Schema& schema)
     : table_id(other.table_id),
       namespace_name(other.namespace_name),
+      namespace_id(other.namespace_id),
       table_name(other.table_name),
       table_type(other.table_type),
       cotable_id(other.cotable_id),
@@ -231,6 +264,7 @@ TableInfo::TableInfo(const TableInfo& other,
 TableInfo::TableInfo(const TableInfo& other, SchemaVersion min_schema_version)
     : table_id(other.table_id),
       namespace_name(other.namespace_name),
+      namespace_id(other.namespace_id),
       table_name(other.table_name),
       table_type(other.table_type),
       cotable_id(other.cotable_id),
@@ -252,7 +286,7 @@ TableInfo::TableInfo(const TableInfo& other, SchemaVersion min_schema_version)
 TableInfo::~TableInfo() = default;
 
 void TableInfo::CompleteInit() {
-  if (index_info && index_info->is_vector_index()) {
+  if (IsVectorIndex()) {
     doc_read_context->vector_idx_options = index_info->vector_idx_options();
   }
 
@@ -335,11 +369,13 @@ Status TableInfo::MergeSchemaPackings(
   // the latest schema.
   const dockv::SchemaPacking& latest_packing = VERIFY_RESULT(
       doc_read_context->schema_packing_storage.GetPacking(schema_version));
-  LOG_IF_WITH_PREFIX(DFATAL,
-                     !latest_packing.SchemaContainsPacking(table_type, doc_read_context->schema()))
-      << "After merging schema packings during restore, latest schema does not"
-      << " have the same packing as the corresponding latest packing for table "
-      << table_id;
+  LOG_IF_WITH_PREFIX(
+      DFATAL, !latest_packing.SchemaContainsPacking(table_type, doc_read_context->schema()))
+      << Format(
+             "After merging schema packings during restore, latest schema does not have the same"
+             " packing as the corresponding latest packing for table $0, latest packing: $1, "
+             "current schema: $2",
+             table_id, latest_packing.ToString(), doc_read_context->schema().ToString());
   return Status::OK();
 }
 
@@ -461,9 +497,13 @@ TableInfoPtr TableInfo::TEST_CreateWithLogPrefix(
       "" /* pg_table_id */, tablet::SkipTableTombstoneCheck::kFalse);
 }
 
+bool TableInfo::IsVectorIndex() const {
+  return index_info && index_info->is_vector_index();
+}
+
 bool TableInfo::NeedVectorIndex() const {
-  return index_info && index_info->is_vector_index() &&
-         index_info->vector_idx_options().idx_type() != PgVectorIndexType::DUMMY;
+  return IsVectorIndex() &&
+         index_info->vector_idx_options().idx_type() != PgVectorIndexType::DEPRECATED_DUMMY;
 }
 
 Status KvStoreInfo::LoadTablesFromPB(
@@ -530,11 +570,10 @@ Status KvStoreInfo::MergeWithRestored(
     post_split_compaction_file_number_upper_bound.reset();
   }
 
-  return RestoreMissingValuesAndMergeTableSchemaPackings(
-      snapshot_kvstoreinfo, primary_table_id, colocated, overwrite);
+  return MergeTableSchemaPackings(snapshot_kvstoreinfo, primary_table_id, colocated, overwrite);
 }
 
-Status KvStoreInfo::RestoreMissingValuesAndMergeTableSchemaPackings(
+Status KvStoreInfo::MergeTableSchemaPackings(
     const KvStoreInfoPB& snapshot_kvstoreinfo, const TableId& primary_table_id, bool colocated,
     dockv::OverwriteSchemaPacking overwrite) {
   if (!colocated) {
@@ -558,13 +597,9 @@ Status KvStoreInfo::RestoreMissingValuesAndMergeTableSchemaPackings(
         continue;
       }
       RSTATUS_DCHECK(
-          table_info->index_info && table_info->index_info->is_vector_index(), Corruption,
+          table_info->IsVectorIndex(), Corruption,
           "Only vector indexes could be colocated to the non colocated table: $0",
           table_info->ToString());
-    }
-    if (overwrite) {
-      auto schema = tables.begin()->second->doc_read_context->mutable_schema();
-      schema->UpdateMissingValuesFrom(primary_table_info->schema().columns());
     }
     return Status::OK();
   }
@@ -572,10 +607,6 @@ Status KvStoreInfo::RestoreMissingValuesAndMergeTableSchemaPackings(
   for (const auto& snapshot_table_pb : snapshot_kvstoreinfo.tables()) {
     TableInfo* target_table = VERIFY_RESULT(FindMatchingTable(snapshot_table_pb, primary_table_id));
     if (target_table != nullptr) {
-      auto schema = target_table->doc_read_context->mutable_schema();
-      if (overwrite) {
-        schema->UpdateMissingValuesFrom(snapshot_table_pb.schema().columns());
-      }
       RETURN_NOT_OK(target_table->MergeSchemaPackings(snapshot_table_pb, overwrite));
     }
   }
@@ -689,14 +720,6 @@ bool KvStoreInfo::TEST_Equals(const KvStoreInfo& lhs, const KvStoreInfo& rhs) {
          MapsEqual(lhs.colocation_to_table, rhs.colocation_to_table, eq);
 }
 
-namespace {
-
-std::string MakeTabletDirName(const TabletId& tablet_id) {
-  return Format("tablet-$0", tablet_id);
-}
-
-} // namespace
-
 // ============================================================================
 
 Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateNew(
@@ -769,7 +792,7 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::TEST_LoadOrCreate(
 }
 
 template <class TablesMap>
-Status MakeTableNotFound(const TableId& table_id, const RaftGroupId& raft_group_id,
+Status MakeTableNotFound(TableIdView table_id, const RaftGroupId& raft_group_id,
                          const TablesMap& tables, const char* file_name, int line_number) {
   std::string table_name = "<unknown_table_name>";
   if (!table_id.empty()) {
@@ -802,12 +825,12 @@ Status MakeColocatedTableNotFound(
   return STATUS(NotFound, msg);
 }
 
-Result<TableInfoPtr> RaftGroupMetadata::GetTableInfo(const TableId& table_id) const {
+Result<TableInfoPtr> RaftGroupMetadata::GetTableInfo(TableIdView table_id) const {
   std::lock_guard lock(data_mutex_);
   return GetTableInfoUnlocked(table_id);
 }
 
-Result<TableInfoPtr> RaftGroupMetadata::GetTableInfoUnlocked(const TableId& table_id) const {
+Result<TableInfoPtr> RaftGroupMetadata::GetTableInfoUnlocked(TableIdView table_id) const {
   const auto& tables = kv_store_.tables;
 
   const auto& id = !table_id.empty() ? table_id : primary_table_id_;
@@ -906,6 +929,17 @@ Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
   if (fs_manager_->env()->FileExists(intents_dir)) {
     auto s = fs_manager_->env()->DeleteRecursively(intents_dir);
     LOG_IF_WITH_PREFIX(WARNING, !s.ok()) << "Unable to delete intents directory " << intents_dir;
+  }
+
+  for (const auto& info : GetAllColocatedVectorIndexes()) {
+    auto storage_dir = vector_index_dir(info->index_info->vector_idx_options());
+    auto status = fs_manager_->env()->DeleteRecursively(storage_dir);
+    if (status.ok()) {
+      LOG_WITH_PREFIX(INFO) << "Successfully destroyed vector index storage at: " << storage_dir;
+    } else {
+      LOG_WITH_PREFIX(DFATAL)
+          << "Failed to destroy vector index storage at: " << storage_dir  << ": " << status;
+    }
   }
 
   // TODO(tsplit): decide what to do with snapshots for split tablets that we delete after split.
@@ -1082,13 +1116,8 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
 
     if (superblock.has_split_op_id()) {
       split_op_id_ = OpId::FromPB(superblock.split_op_id());
-
-      SCHECK_EQ(implicit_cast<size_t>(superblock.split_child_tablet_ids().size()),
-                split_child_tablet_ids_.size(),
-                Corruption, "Expected exact number of child tablet ids");
-      for (size_t i = 0; i != split_child_tablet_ids_.size(); ++i) {
-        split_child_tablet_ids_[i] = superblock.split_child_tablet_ids(narrow_cast<int>(i));
-      }
+      split_child_tablet_ids_.assign(
+          superblock.split_child_tablet_ids().begin(), superblock.split_child_tablet_ids().end());
     }
 
     last_attempted_clone_seq_no_ = superblock.last_attempted_clone_seq_no();
@@ -1204,8 +1233,11 @@ Status RaftGroupMetadata::MergeWithRestored(
     const std::string& path, dockv::OverwriteSchemaPacking overwrite) {
   RaftGroupReplicaSuperBlockPB snapshot_superblock;
   RETURN_NOT_OK(ReadSuperBlockFromDisk(&snapshot_superblock, path));
-  LOG_WITH_FUNC(INFO) << "Superblock: " << AsString(snapshot_superblock);
+  LOG_WITH_FUNC(INFO) << "Snapshot superblock: " << AsString(snapshot_superblock);
   std::lock_guard lock(data_mutex_);
+  KvStoreInfoPB restore_side_kv_store_pb;
+  kv_store_.ToPB(primary_table_id_, &restore_side_kv_store_pb);
+  LOG_WITH_FUNC(INFO) << "Kv store at restore side: " << AsString(restore_side_kv_store_pb);
   return kv_store_.MergeWithRestored(
       snapshot_superblock.kv_store(), primary_table_id_, colocated_, overwrite);
 }
@@ -1724,6 +1756,18 @@ Result<bool> RaftGroupMetadata::SetAllCDCRetentionBarriers(
   return set_cdc_min_checkpoint_op_id_check;
 }
 
+std::string RaftGroupMetadata::AllCDCRetentionBarriersToString() const {
+  std::lock_guard lock(data_mutex_);
+
+  std::ostringstream oss;
+  oss << LogPrefix() << " CDC Retention Barriers: "
+      << "cdc_min_replicated_index: " << cdc_min_replicated_index_
+      << ", cdc_sdk_min_checkpoint_op_id: " << cdc_sdk_min_checkpoint_op_id_
+      << ", cdc_sdk_safe_time: " << cdc_sdk_safe_time_;
+
+  return oss.str();
+}
+
 Status RaftGroupMetadata::SetIsUnderXClusterReplicationAndFlush(
     bool is_under_xcluster_replication) {
   {
@@ -1799,7 +1843,7 @@ TabletDataState RaftGroupMetadata::tablet_data_state() const {
   return tablet_data_state_;
 }
 
-std::array<TabletId, kNumSplitParts> RaftGroupMetadata::split_child_tablet_ids() const {
+std::vector<TabletId> RaftGroupMetadata::split_child_tablet_ids() const {
   std::lock_guard lock(data_mutex_);
   return split_child_tablet_ids_;
 }
@@ -1818,12 +1862,11 @@ OpId RaftGroupMetadata::GetOpIdToDeleteAfterAllApplied() const {
 }
 
 void RaftGroupMetadata::SetSplitDone(
-    const OpId& op_id, const TabletId& child1, const TabletId& child2) {
+    const OpId& op_id, const std::vector<TabletId>& children) {
   std::lock_guard lock(data_mutex_);
   tablet_data_state_ = TabletDataState::TABLET_DATA_SPLIT_COMPLETED;
   split_op_id_ = op_id;
-  split_child_tablet_ids_[0] = child1;
-  split_child_tablet_ids_[1] = child2;
+  split_child_tablet_ids_ = children;
 }
 
 void RaftGroupMetadata::MarkClonesAttemptedUpTo(uint32_t clone_request_seq_no) {
@@ -1852,8 +1895,11 @@ void RaftGroupMetadata::RegisterRestoration(const TxnSnapshotRestorationId& rest
   if (tablet_data_state_ == TabletDataState::TABLET_DATA_SPLIT_COMPLETED) {
     tablet_data_state_ = TabletDataState::TABLET_DATA_READY;
     split_op_id_ = OpId();
-    split_child_tablet_ids_[0] = std::string();
-    split_child_tablet_ids_[1] = std::string();
+    split_child_tablet_ids_.clear();
+  }
+  if (std::find(active_restorations_.begin(), active_restorations_.end(), restoration_id) !=
+      active_restorations_.end()) {
+    return;
   }
   active_restorations_.push_back(restoration_id);
 }
@@ -2243,12 +2289,13 @@ RaftGroupMetadata::GetAllColocatedTablesWithColocationId() const {
 
 std::vector<TableInfoPtr> RaftGroupMetadata::GetAllColocatedTableInfos() const {
   std::lock_guard lock(data_mutex_);
-  std::vector<TableInfoPtr> result;
-  result.reserve(kv_store_.tables.size());
-  for (const auto& [id, info] : kv_store_.tables) {
-    result.push_back(info);
-  }
-  return result;
+  return DoCollectTableInfos(kv_store_.tables);
+}
+
+std::vector<TableInfoPtr> RaftGroupMetadata::GetAllColocatedVectorIndexes() const {
+  std::lock_guard lock(data_mutex_);
+  return DoCollectTableInfos(
+      kv_store_.tables, [](const auto& info) { return info->IsVectorIndex(); });
 }
 
 Status CheckCanServeTabletData(const RaftGroupMetadata& metadata) {
@@ -2394,7 +2441,13 @@ std::string RaftGroupMetadata::intents_rocksdb_dir() const {
 }
 
 std::string RaftGroupMetadata::snapshots_dir() const {
-  return docdb::GetStorageDir(kv_store_.rocksdb_dir, kSnapshotsDirName);
+  return docdb::GetStorageDir(kv_store_.rocksdb_dir, docdb::kSnapshotsDirName);
+}
+
+std::string RaftGroupMetadata::vector_index_dir(
+    const PgVectorIdxOptionsPB& vector_index_options) const {
+  return docdb::GetStorageDir(
+      kv_store_.rocksdb_dir, docdb::GetVectorIndexStorageName(vector_index_options));
 }
 
 docdb::KeyBounds RaftGroupMetadata::MakeKeyBounds() const {

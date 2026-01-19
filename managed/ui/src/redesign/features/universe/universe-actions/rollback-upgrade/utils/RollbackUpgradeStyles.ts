@@ -46,7 +46,7 @@ export const dbUpgradeFormStyles = makeStyles((theme) => ({
     padding: theme.spacing(2),
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: theme.spacing(1),
+    marginTop: theme.spacing(1)
   },
   releaseTypebadge: {
     marginLeft: theme.spacing(1),
@@ -62,6 +62,14 @@ export const dbUpgradeFormStyles = makeStyles((theme) => ({
       fontWeight: 400
     },
     marginBottom: theme.spacing(1)
+  },
+  warningBanner: {
+    display: 'flex',
+    flexDirection: 'row',
+    width: '100%',
+    padding: theme.spacing(1),
+    backgroundColor: '#FFEEC8',
+    borderRadius: '8px'
   }
 }));
 

@@ -17,6 +17,7 @@
 #include "yb/common/read_hybrid_time.h"
 
 #include "yb/docdb/bounded_rocksdb_iterator.h"
+#include "yb/docdb/iter_util.h"
 #include "yb/docdb/transaction_status_cache.h"
 
 #include "yb/dockv/key_bytes.h"
@@ -92,11 +93,12 @@ struct EncodedReadHybridTime {
 class IntentAwareIterator final {
  public:
   IntentAwareIterator(
-      const DocDB& doc_db,
-      const rocksdb::ReadOptions& read_opts,
+      const DocDB& doc_db, const rocksdb::ReadOptions& read_opts,
       const ReadOperationData& read_operation_data,
       const TransactionOperationContext& txn_op_context,
-      FastBackwardScan use_fast_backward_scan = FastBackwardScan::kFalse);
+      FastBackwardScan use_fast_backward_scan = FastBackwardScan::kFalse,
+      AvoidUselessNextInsteadOfSeek avoid_useless_next_instead_of_seek =
+          AvoidUselessNextInsteadOfSeek::kFalse);
 
   IntentAwareIterator(const IntentAwareIterator& other) = delete;
   void operator=(const IntentAwareIterator& other) = delete;
@@ -151,6 +153,10 @@ class IntentAwareIterator final {
   // Utility function to execute Next and retrieve result via Fetch in one call.
   Result<const FetchedEntry&> FetchNext();
 
+  // Directly fetch value from underlying iterator for specified key. Returns empty slice
+  // when entry not found.
+  Result<Slice> FetchValue(Slice key);
+
   const ReadHybridTime& read_time() const {
     return read_time_;
   }
@@ -187,7 +193,7 @@ class IntentAwareIterator final {
   // Returns HybridTime::kInvalid if no such record was found.
   Result<HybridTime> FindOldestRecord(Slice key_without_ht, HybridTime min_hybrid_time);
 
-  void UpdateFilterKey(Slice user_key_for_filter);
+  void UpdateFilterKey(Slice user_key_for_filter, Slice seek_key = Slice());
 
   void DebugDump();
 
@@ -363,8 +369,8 @@ class IntentAwareIterator final {
   const EncodedReadHybridTime encoded_read_time_;
 
   const TransactionOperationContext txn_op_context_;
-  BoundedRocksDbIterator intent_iter_;
-  BoundedRocksDbIterator iter_;
+  OptimizedRocksDbIterator<BoundedRocksDbIterator> intent_iter_;
+  OptimizedRocksDbIterator<BoundedRocksDbIterator> iter_;
 
   // regular_value_ contains value for the current entry from regular db.
   // Empty if there is no current value in regular db.
@@ -400,7 +406,7 @@ class IntentAwareIterator final {
   // Reusable buffer to prepare seek key to avoid reallocating temporary buffers in critical paths.
   KeyBuffer seek_buffer_;
   FetchedEntry entry_;
-  BoundedRocksDbIterator* entry_source_ = nullptr;
+  OptimizedRocksDbIterator<BoundedRocksDbIterator>* entry_source_ = nullptr;
 
 #ifndef NDEBUG
   void DebugSeekTriggered();
@@ -417,11 +423,23 @@ template <bool kLowerBound>
 class NODISCARD_CLASS IntentAwareIteratorBoundScope {
  public:
   IntentAwareIteratorBoundScope(Slice bound, IntentAwareIterator* iterator)
-      : iterator_(DCHECK_NOTNULL(iterator)), prev_bound_(SetBound(bound)) {
+      : iterator_(DCHECK_NOTNULL(iterator)), prev_bound_(Update(bound)) {
   }
 
   ~IntentAwareIteratorBoundScope() {
-    SetBound(prev_bound_);
+    Update(prev_bound_);
+  }
+
+  Slice Update(Slice bound) {
+    if constexpr (kLowerBound) {
+      return iterator_->SetLowerbound(bound);
+    } else {
+      return iterator_->SetUpperbound(bound);
+    }
+  }
+
+  IntentAwareIterator& iterator() const {
+    return *iterator_;
   }
 
   IntentAwareIteratorBoundScope(const IntentAwareIteratorBoundScope&) = delete;
@@ -430,14 +448,6 @@ class NODISCARD_CLASS IntentAwareIteratorBoundScope {
   IntentAwareIteratorBoundScope& operator=(IntentAwareIteratorBoundScope&&) = delete;
 
  private:
-  inline Slice SetBound(Slice bound) {
-    if constexpr (kLowerBound) {
-      return iterator_->SetLowerbound(bound);
-    } else {
-      return iterator_->SetUpperbound(bound);
-    }
-  }
-
   IntentAwareIterator* iterator_;
   Slice prev_bound_;
 };
@@ -445,9 +455,26 @@ class NODISCARD_CLASS IntentAwareIteratorBoundScope {
 using IntentAwareIteratorLowerboundScope = IntentAwareIteratorBoundScope<true>;
 using IntentAwareIteratorUpperboundScope = IntentAwareIteratorBoundScope<false>;
 
-std::string DebugDumpKeyToStr(Slice key);
+class NODISCARD_CLASS IntentAwareIteratorBoundsScope {
+ public:
+  IntentAwareIteratorBoundsScope(
+      Slice lower_bound, Slice upper_bound, IntentAwareIterator* iterator)
+      : lower_bound_scope_(lower_bound, iterator),
+        upper_bound_scope_(upper_bound, iterator) {
+  }
 
-// Used for IntentIterator only.
-void AppendStrongWrite(dockv::KeyBytes* out);
+  ~IntentAwareIteratorBoundsScope() = default;
+
+  IntentAwareIteratorBoundsScope(const IntentAwareIteratorBoundsScope&) = delete;
+  IntentAwareIteratorBoundsScope(IntentAwareIteratorBoundsScope&&) = delete;
+  IntentAwareIteratorBoundsScope& operator=(const IntentAwareIteratorBoundsScope&) = delete;
+  IntentAwareIteratorBoundsScope& operator=(IntentAwareIteratorBoundsScope&&) = delete;
+
+ private:
+  IntentAwareIteratorLowerboundScope lower_bound_scope_;
+  IntentAwareIteratorUpperboundScope upper_bound_scope_;
+};
+
+std::string DebugDumpKeyToStr(Slice key);
 
 } // namespace yb::docdb

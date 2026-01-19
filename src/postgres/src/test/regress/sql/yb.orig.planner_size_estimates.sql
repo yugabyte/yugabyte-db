@@ -10,7 +10,7 @@ SET yb_enable_optimizer_statistics = FALSE;
 
 ANALYZE;
 \getenv abs_srcdir PG_ABS_SRCDIR
-\set filename :abs_srcdir '/data/yb.orig.planner_size_estimates_cmds.sql'
+\set filename :abs_srcdir '/yb_commands/planner_size_estimates_cmds.sql'
 \i :filename
 
 -- When we have table statistics enabled, we use Postgres's selectivity functions to estimate how

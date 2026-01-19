@@ -67,13 +67,7 @@ var deleteSupportBundleUniverseCmd = &cobra.Command{
 
 		rDelete, response, err := authAPI.DeleteSupportBundle(universeUUID, uuid).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"Universe: Support Bundle",
-				"Delete",
-			)
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Universe: Support Bundle", "Delete")
 		}
 
 		if rDelete.GetSuccess() {

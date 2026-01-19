@@ -34,7 +34,7 @@ static inline int od_backend_terminate(od_server_t *server)
 	msg = kiwi_fe_write_terminate(NULL);
 	if (msg == NULL)
 		return -1;
-	return od_write(&server->io, msg);
+	return od_write(&server->io, &msg);
 }
 
 void od_backend_close_connection(od_server_t *server)
@@ -64,6 +64,31 @@ cleanup:
 	if (server->tls) {
 		machine_tls_free(server->tls);
 		server->tls = NULL;
+	}
+}
+
+void od_backend_evict_server_hashmap(od_server_t *server, char *context, char *data, 
+		uint32_t size)
+{
+	od_instance_t *instance = server->global->instance;
+	od_debug(&instance->logger, context, NULL, server, "evicting hashmap entry from server");
+
+	char *stmt_name;
+	uint32_t stmt_name_len;
+	int rc = kiwi_fe_read_parse_error_yb(data, size, &stmt_name, &stmt_name_len);
+	if (rc == -1) {
+		od_error(&instance->logger, context, NULL, server, 
+			"failed to parse error message from server");
+		return;
+	}
+	od_hash_t keyhash = strtoul(stmt_name, NULL, 16);
+	if (yb_od_hashmap_find_key_and_remove(server->prep_stmts, keyhash)) {
+		od_debug(&instance->logger, context, NULL, server, 
+			"Evicted %u hashmap entry from server", keyhash);
+	}
+	else {
+		od_error(&instance->logger, context, NULL, server, 
+			"failed to evict %u hashmap entry from server", keyhash);
 	}
 }
 
@@ -126,7 +151,7 @@ void od_backend_error(od_server_t *server, char *context, char *data,
 				/* YB: best-effort forward to client, already handling error */
 				if (msg == NULL)
 					return;
-				od_write(&yb_external_client->io, msg);
+				od_write(&yb_external_client->io, &msg);
 			}
 		}
 	}
@@ -146,7 +171,7 @@ void od_backend_error(od_server_t *server, char *context, char *data,
 				/* YB: best-effort forward to client, already handling error */
 				if (msg == NULL)
 					return;
-				od_write(&yb_external_client->io, msg);
+				od_write(&yb_external_client->io, &msg);
 			}	
 		}
 }
@@ -220,16 +245,32 @@ static int yb_read_client_id_from_notice_pkt(od_client_t *client,
 	return 0;
 }
 
-static inline int yb_send_parameter_status(od_io_t *io, char *name,
-					   int name_len, char *value,
-					   int value_len)
+static inline int yb_send_parameter_status_async(od_relay_t *relay, char *name,
+						 int name_len, char *value,
+						 int value_len)
 {
 	machine_msg_t *msg = kiwi_be_write_parameter_status(
 		NULL, name, name_len, value, value_len);
 	if (msg == NULL) {
 		return -1;
 	}
-	int rc = od_write(io, msg);
+	int rc = machine_iov_add(relay->iov, msg);
+	if (rc != 0) {
+		return -1;
+	}
+	return 0;
+}
+
+static inline int yb_send_parameter_status_sync(od_io_t *io, char *name,
+						int name_len, char *value,
+						int value_len)
+{
+	machine_msg_t *msg = kiwi_be_write_parameter_status(
+		NULL, name, name_len, value, value_len);
+	if (msg == NULL) {
+		return -1;
+	}
+	int rc = od_write(io, &msg);
 	if (rc != 0) {
 		return -1;
 	}
@@ -290,56 +331,78 @@ static inline int od_backend_startup(od_server_t *server,
 	}
 	yb_logical_conn_type[1] = '\0';
 
-	kiwi_fe_arg_t argv[] = { { "user", 5 },
-				 { user_name, user_name_len },
-				 { "database", 9 },
-				 { db_name, db_name_len },
-				 { "yb_use_tserver_key_auth", 24 },
-				 { is_authenticating ? "0" : "1", 2 },
-				 { "yb_is_client_ysqlconnmgr", 25 },
-				 { "1", 2 },
-				 { "yb_authonly", 12 },
-				 { is_authenticating ? "1" : "0", 2 },
-				 { "replication", 12 },
-				 { NULL, 0 },
-				 { "yb_auth_remote_host", 20 },
-				 { NULL, 0},
-				 { "yb_logical_conn_type", 21 },
-				 { NULL, 0 }, };
-	int argc = 10;
+	od_client_t *external_client = client->yb_external_client;
+	int argc = 0;
+	const int max_default_args = 16;
+	int num_startup_args =
+		external_client ? external_client->yb_startup_settings.size : 0;
+
+	kiwi_fe_arg_t *argv = malloc(sizeof(kiwi_fe_arg_t) *
+				     (max_default_args + 2 * num_startup_args));
+
+	yb_kiwi_set_fe_arg(&argv[argc++], YB_NAME_AND_SIZEOF("user"));
+	yb_kiwi_set_fe_arg(&argv[argc++], user_name, user_name_len);
+	yb_kiwi_set_fe_arg(&argv[argc++], YB_NAME_AND_SIZEOF("database"));
+	yb_kiwi_set_fe_arg(&argv[argc++], db_name, db_name_len);
+	yb_kiwi_set_fe_arg(&argv[argc++],
+			   YB_NAME_AND_SIZEOF("yb_use_tserver_key_auth"));
+	yb_kiwi_set_fe_arg(&argv[argc++], is_authenticating ? "0" : "1", 2);
+	yb_kiwi_set_fe_arg(&argv[argc++],
+			   YB_NAME_AND_SIZEOF("yb_is_client_ysqlconnmgr"));
+	yb_kiwi_set_fe_arg(&argv[argc++], "1", 2);
+	yb_kiwi_set_fe_arg(&argv[argc++], YB_NAME_AND_SIZEOF("yb_authonly"));
+	yb_kiwi_set_fe_arg(&argv[argc++], is_authenticating ? "1" : "0", 2);
+
 	if (route->id.physical_rep) {
-		argc = 12;
-		argv[11].name = "on";
-		argv[11].len = 3;
+		yb_kiwi_set_fe_arg(&argv[argc++],
+				   YB_NAME_AND_SIZEOF("replication"));
+		yb_kiwi_set_fe_arg(&argv[argc++], YB_NAME_AND_SIZEOF("on"));
 	} else if (route->id.logical_rep) {
-		argc = 12;
-		argv[11].name = "database";
-		argv[11].len = 9;
+		yb_kiwi_set_fe_arg(&argv[argc++],
+				   YB_NAME_AND_SIZEOF("replication"));
+		yb_kiwi_set_fe_arg(&argv[argc++],
+				   YB_NAME_AND_SIZEOF("database"));
 	}
 
 	/* write auth backend specific parameters. */
-	if (is_authenticating)
-	{
-		argc += 4;
+	if (is_authenticating) {
 		/* override the remote host sent to the auth backend. */
-		argv[argc - 4].name = "yb_auth_remote_host";
-		argv[argc - 4].len = 20;
-		argv[argc - 3].name = client->yb_client_address;
-		argv[argc - 3].len = strlen(client->yb_client_address) + 1;
+		yb_kiwi_set_fe_arg(&argv[argc++],
+				   YB_NAME_AND_SIZEOF("yb_auth_remote_host"));
+		yb_kiwi_set_fe_arg(&argv[argc++], client->yb_client_address,
+				   strlen(client->yb_client_address) + 1);
 
 		/* send the connection type to the auth backend. */
-		argv[argc - 2].name = "yb_logical_conn_type";
-		argv[argc - 2].len = 21;
-		argv[argc - 1].name = yb_logical_conn_type;
-		argv[argc - 1].len = 2;
+		yb_kiwi_set_fe_arg(&argv[argc++],
+				   YB_NAME_AND_SIZEOF("yb_logical_conn_type"));
+		yb_kiwi_set_fe_arg(&argv[argc++], yb_logical_conn_type, 2);
 	}
 
-	machine_msg_t *msg;
-	msg = kiwi_fe_write_startup_message(NULL, argc, argv);
+	/* We only allocated max_default_args spaces for these variables, so assert that */
+	assert(argc <= max_default_args);
+
+	if (is_authenticating) {
+		/*
+		 * Also send external client's startup packet settings in the startup packet
+		 * to auth backend
+		 */
+		kiwi_var_t *startup_vars =
+			external_client->yb_startup_settings.vars;
+		for (int i = 0; i < external_client->yb_startup_settings.size;
+		     ++i) {
+			yb_kiwi_set_fe_arg(&argv[argc++], startup_vars[i].name,
+					   startup_vars[i].name_len);
+			yb_kiwi_set_fe_arg(&argv[argc++], startup_vars[i].value,
+					   startup_vars[i].value_len);
+		}
+	}
+
+	machine_msg_t *msg = kiwi_fe_write_startup_message(NULL, argc, argv);
+	free(argv);
 	if (msg == NULL)
 		return -1;
 	int rc;
-	rc = od_write(&server->io, msg);
+	rc = od_write(&server->io, &msg);
 	if (rc == -1) {
 		od_error(&instance->logger, "startup", NULL, server,
 			 "write error: %s", od_io_error(&server->io));
@@ -430,51 +493,73 @@ static inline int od_backend_startup(od_server_t *server,
 				machine_msg_free(msg);
 				break;
 			}
-			/*
-			 * The parameters received during authentication are the initial set
-			 * of parameters that should be set on the transactional backend the
-			 * client is routed to. We achieve that by treating these values as
-			 * if they were set by the client. As a result, when the
-			 * transactional backend is assigned and setup, it is sent these
-			 * parameter values.
-			 * See od_frontend_setup_params() for more details.
-			 */
-			if (is_authenticating)
-			{
-				/*
-				 * Skip setting session_authorization because it is redundant
-				 * to do so. Both the auth-backend and the transactional backend
-				 * will be set with the same user.
-				 */
-				if (yb_od_streq(name, name_len,
-					     "session_authorization",
-					     sizeof("session_authorization"))) {
-					machine_msg_free(msg);
-					break;
-				}
 
+			/* Explicitly ignoring these variables. We don't want to replay these */
+			if ((name_len == sizeof("yb_is_client_ysqlconnmgr") &&
+			     strcmp(name, "yb_is_client_ysqlconnmgr") == 0) ||
+			    (name_len == sizeof("yb_use_tserver_key_auth") &&
+			     strcmp(name, "yb_use_tserver_key_auth") == 0)) {
+				machine_msg_free(msg);
+				break;
+			}
+
+			if (is_authenticating &&
+			    flags & YB_PARAM_STATUS_REPORT_ENABLED) {
 				/*
-				 * Set client parameters. There are variables such as
-				 * client_encoding, DateStyle etc. where the client's set value
-				 * should not be overridden by the value returned by the
-				 * auth-backend. Hence, we only set the variable if it doesn't
-				 * exist in the client vars.
+				 * We only care about reported variables when
+				 * auth backend starts
 				 */
-				yb_kiwi_vars_set_if_not_exists(
-					&client->yb_external_client->vars, name,
+				int rc = yb_send_parameter_status_sync(
+					&client->yb_external_client->io, name,
 					name_len, value, value_len);
+				if (rc != 0) {
+					od_error(
+						&instance->logger, "auth", NULL,
+						server,
+						"Unable to send ParameterStatus for GUC %.*s to client",
+						name_len, name);
+					machine_msg_free(msg);
+					return rc;
+				}
+			}
 
-				/*
-				 * TODO(arpit.saxena, #27723): Send ParameterStatus directly here after we
-				 * start forwarding startup packet to authentication backend
-				 */
+			/*
+			 * TODO(arpit.saxena) (#20603): If flags & YB_GUC_CONTEXT_BACKEND, then we have to
+			 * ensure that either the auth backend stays or we make a new sticky backend
+			 * and pass the external client's startup settings. This is because client
+			 * has set a variable through the startup packet which can't be set using
+			 * SET statements
+			 */
+
+			if (is_authenticating) {
+				if (flags &
+				    (YB_PARAM_STATUS_CONTEXT_BACKEND |
+				     YB_PARAM_STATUS_USERSET_OR_SUSET_SOURCE_STARTUP)) {
+					/*
+					 * The parameters here are the ones set by the startup packet in
+					 * the auth backend. These are the parameters that have to be replayed
+					 * in a transactional backend to get the same impact as the client's
+					 * startup packet.
+					 * See od_frontend_setup_params() for more details.
+					 */
+					kiwi_vars_update(
+						&client->yb_external_client
+							 ->yb_vars_startup,
+						name, name_len, value,
+						value_len,
+						yb_od_instance_should_lowercase_guc_name(
+							instance));
+				}
 			} else if ((name_len != sizeof("session_authorization") ||
 				strncmp(name, "session_authorization", name_len))) {
 				// set server parameters, ignore startup session_authorization
 				// session_authorization is sent by the server during startup,
 				// if not ignored, will make every connection sticky
-				kiwi_vars_update(&server->vars, name, name_len, value,
-						value_len);
+				kiwi_vars_update(
+					&server->vars, name, name_len, value,
+					value_len,
+					yb_od_instance_should_lowercase_guc_name(
+						instance));
 			}
 
 			if ((name_len != sizeof("session_authorization") ||
@@ -929,7 +1014,7 @@ int od_backend_connect_cancel(od_server_t *server, od_rule_storage_t *storage,
 	if (msg == NULL)
 		return -1;
 
-	rc = od_write(&server->io, msg);
+	rc = od_write(&server->io, &msg);
 	if (rc == -1) {
 		od_error(&instance->logger, "cancel", NULL, NULL,
 			 "write error: %s", od_io_error(&server->io));
@@ -950,6 +1035,8 @@ int od_backend_update_parameter(od_server_t *server, char *context, char *data,
 	char *value;
 	uint32_t value_len;
 	char flags = 0;
+	bool should_lowercase_name =
+		yb_od_instance_should_lowercase_guc_name(instance);
 
 	int rc;
 	rc = kiwi_fe_read_yb_parameter(data, size, &name, &name_len, &value,
@@ -962,8 +1049,8 @@ int od_backend_update_parameter(od_server_t *server, char *context, char *data,
 
 	if (!server_only && flags & YB_PARAM_STATUS_REPORT_ENABLED) {
 		/* Send ParameterStatus to client if GUC_REPORT is enabled */
-		int rc = yb_send_parameter_status(&client->io, name, name_len,
-						  value, value_len);
+		int rc = yb_send_parameter_status_async(
+			&server->relay, name, name_len, value, value_len);
 		if (rc != 0) {
 			od_error(&instance->logger, context, NULL, server,
 				 "Unable to send ParameterStatus to client");
@@ -976,15 +1063,35 @@ int od_backend_update_parameter(od_server_t *server, char *context, char *data,
 		return 0;
 
 	/* update server only or client and server parameter */
-	od_debug(&instance->logger, context, client, server, "%.*s = %.*s",
-		 name_len, name, value_len, value);
+	od_debug(&instance->logger, context, client, server,
+		 "%.*s = %.*s, flags: 0x%X", name_len, name, value_len, value,
+		 flags);
 
-	if (server_only) {
+	/*
+	 * YB: It is possible that an earlier set variable becomes unset due
+	 * to transaction rollback or RESET statement. In that case, it needs
+	 * to be removed from server and client variable lists
+	 */
+
+	if (flags & (YB_PARAM_STATUS_USERSET_OR_SUSET_SOURCE_SESSION |
+		     YB_PARAM_STATUS_USERSET_OR_SUSET_SOURCE_STARTUP)) {
 		kiwi_vars_update(&server->vars, name, name_len, value,
-				 value_len);
+				 value_len, should_lowercase_name);
 	} else {
-		kiwi_vars_update_both(&client->vars, &server->vars, name,
-				      name_len, value, value_len);
+		yb_kiwi_vars_remove_if_exists(&server->vars, name, name_len,
+					      should_lowercase_name);
+	}
+
+	if (!server_only) {
+		if (flags & YB_PARAM_STATUS_USERSET_OR_SUSET_SOURCE_SESSION) {
+			kiwi_vars_update(&client->yb_vars_session, name,
+					 name_len, value, value_len,
+					 should_lowercase_name);
+		} else {
+			yb_kiwi_vars_remove_if_exists(&client->yb_vars_session,
+						      name, name_len,
+						      should_lowercase_name);
+		}
 	}
 
 	return 0;
@@ -1034,6 +1141,11 @@ int od_backend_ready_wait(od_server_t *server, char *context, int count,
 					 machine_msg_size(msg));
 			machine_msg_free(msg);
 			continue;
+		} else if (type == YB_BE_PARSE_PREPARE_ERROR_RESPONSE) {
+			od_backend_evict_server_hashmap(server, context,
+				machine_msg_data(msg), machine_msg_size(msg));
+			machine_msg_free(msg);
+			continue;
 		} else if (type == KIWI_BE_READY_FOR_QUERY) {
 			od_backend_ready(server, machine_msg_data(msg),
 					 machine_msg_size(msg));
@@ -1065,7 +1177,7 @@ od_retcode_t od_backend_query_send(od_server_t *server, char *context,
 	}
 
 	int rc;
-	rc = od_write(&server->io, msg);
+	rc = od_write(&server->io, &msg);
 	if (rc == -1) {
 		od_error(&instance->logger, context, server->client, server,
 			 "write error: %s", od_io_error(&server->io));

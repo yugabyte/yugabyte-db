@@ -8,7 +8,7 @@
   <parent>
     <groupId>org.yb</groupId>
     <artifactId>yb-parent</artifactId>
-    <version>0.8.108-SNAPSHOT</version>
+    <version>0.8.109-SNAPSHOT</version>
   </parent>
   <artifactId>yb-pgsql</artifactId>
   <name>YB PostgreSQL Support</name>
@@ -28,7 +28,7 @@
     <dependency>
       <groupId>com.yugabyte</groupId>
       <artifactId>jdbc-yugabytedb</artifactId>
-      <version>42.3.3</version>
+      <version>42.7.3-yb-4</version>
     </dependency>
     <dependency>
       <groupId>org.json</groupId>

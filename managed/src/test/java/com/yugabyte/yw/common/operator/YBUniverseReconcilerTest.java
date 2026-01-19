@@ -10,6 +10,7 @@ import static org.mockito.ArgumentMatchers.isNull;
 
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ValidatingFormFactory;
@@ -18,9 +19,11 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
+import com.yugabyte.yw.common.operator.utils.KubernetesClientFactory;
 import com.yugabyte.yw.common.operator.utils.KubernetesEnvironmentVariables;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.common.operator.utils.OperatorWorkQueue;
+import com.yugabyte.yw.common.operator.utils.UniverseImporter;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
@@ -104,7 +107,9 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
   @Mock YbcManager ybcManager;
   @Mock ValidatingFormFactory validatingFormFactory;
   @Mock YBClientService ybClientService;
-
+  @Mock KubernetesClientFactory kubernetesClientFactory;
+  @Mock UniverseImporter universeImporter;
+  @Mock KubernetesManagerFactory mockKubernetesManagerFactory;
   MockedStatic<KubernetesEnvironmentVariables> envVars;
 
   YBUniverseReconciler ybUniverseReconciler;
@@ -132,8 +137,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     Mockito.when(ybcManager.getThrottleParams(any())).thenReturn(throttleResponse);
 
     envVars = Mockito.mockStatic(KubernetesEnvironmentVariables.class);
-    envVars.when(KubernetesEnvironmentVariables::getServiceHost).thenReturn("host");
-    envVars.when(KubernetesEnvironmentVariables::getServicePort).thenReturn("1234");
+    envVars.when(KubernetesEnvironmentVariables::isYbaRunningInKubernetes).thenReturn(true);
     operatorUtils =
         Mockito.spy(
             new OperatorUtils(
@@ -141,7 +145,10 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
                 releaseManager,
                 ybcManager,
                 validatingFormFactory,
-                ybClientService));
+                ybClientService,
+                kubernetesClientFactory,
+                universeImporter,
+                mockKubernetesManagerFactory));
     // Mockito.when(confGetter.getGlobalConf(any())).thenReturn(true);
     Mockito.when(
             confGetterForOperatorUtils.getGlobalConf(GlobalConfKeys.KubernetesOperatorCustomerUUID))
@@ -258,7 +265,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
               return null;
             })
         .when(operatorUtils)
-        .createProviderCrFromProviderEbean(providerData, namespace);
+        .createProviderCrFromProviderEbean(providerData, namespace, true);
     universe.getSpec().setProviderName("");
     ybUniverseReconciler.reconcile(universe, OperatorWorkQueue.ResourceAction.CREATE);
     ybUniverseReconciler.reconcile(universe, OperatorWorkQueue.ResourceAction.CREATE);
@@ -411,7 +418,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
               return null;
             })
         .when(operatorUtils)
-        .createProviderCrFromProviderEbean(providerData, namespace);
+        .createProviderCrFromProviderEbean(providerData, namespace, true);
     // First reconcile will create auto provider CR
     ybUniverseReconciler.reconcile(ybUniverse, OperatorWorkQueue.ResourceAction.CREATE);
     try {

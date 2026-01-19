@@ -10,6 +10,7 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.google.inject.Inject;
@@ -18,21 +19,24 @@ import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseContainer;
-import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.StorageUtil;
 import com.yugabyte.yw.common.StorageUtilFactory;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.ha.PlatformReplicationHelper;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import java.io.File;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 
 @Slf4j
 public class RestoreContinuousBackup extends AbstractTaskBase {
@@ -41,7 +45,7 @@ public class RestoreContinuousBackup extends AbstractTaskBase {
   private final PlatformReplicationHelper replicationHelper;
   private final PlatformReplicationManager replicationManager;
   private final Config appConfig;
-  private final ReleaseManager releaseManager;
+  private final RuntimeConfGetter runtimeConfGetter;
 
   @Inject
   protected RestoreContinuousBackup(
@@ -50,13 +54,13 @@ public class RestoreContinuousBackup extends AbstractTaskBase {
       PlatformReplicationManager replicationManager,
       StorageUtilFactory storageUtilFactory,
       Config appConfig,
-      ReleaseManager releaseManager) {
+      RuntimeConfGetter runtimeConfGetter) {
     super(baseTaskDependencies);
     this.replicationHelper = replicationHelper;
     this.replicationManager = replicationManager;
     this.storageUtilFactory = storageUtilFactory;
     this.appConfig = appConfig;
-    this.releaseManager = releaseManager;
+    this.runtimeConfGetter = runtimeConfGetter;
   }
 
   public static class Params extends AbstractTaskParams {
@@ -72,6 +76,15 @@ public class RestoreContinuousBackup extends AbstractTaskBase {
   @Override
   public void run() {
     log.info("Exeuction of RestoreContinuousBackup");
+    Set<UUID> universeUUIDs = Universe.getAllUUIDs();
+    if (CollectionUtils.isNotEmpty(universeUUIDs)) {
+      if (!runtimeConfGetter.getGlobalConf(GlobalConfKeys.allowYbaRestoreWithUniverses)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "YBA restore is not allowed when existing universes are present, please delete before"
+                + " restoring");
+      }
+    }
     TaskInfo taskInfo = getRunnableTask().getTaskInfo();
     UUID taskInfoUUID = taskInfo.getUuid();
     CustomerTask customerTask = CustomerTask.findByTaskUUID(taskInfoUUID);

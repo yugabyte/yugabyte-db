@@ -21,7 +21,7 @@ yba universe edit ycql --name <universe-name> --ycql-password <ycql-password>
 ```
       --ycql string                 [Optional] YCQL endpoint. Allowed values: enable, disable.
       --ycql-auth string            [Optional] YCQL authentication. Allowed values: enable, disable.
-      --ycql-password string        [Optional] YCQL authentication password. Use single quotes ('') to provide values with special characters. Required when YCQL authentication is enabled
+      --ycql-password string        [Optional] YCQL authentication password. Use single quotes ('') to provide values with special characters. Required when YCQL authentication is being enabled or disabled
       --ycql-server-http-port int   [Optional] YCQL Server HTTP Port. (default 13000)
       --ycql-server-rpc-port int    [Optional] YCQL Server RPC Port. (default 5433)
   -h, --help                        help for ycql

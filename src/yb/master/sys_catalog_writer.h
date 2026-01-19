@@ -84,7 +84,7 @@ class SysCatalogWriter {
                             const TableId& table_id,
                             const uint32_t schema_version);
 
-  tserver::WriteRequestPB& req() {
+  tserver::WriteRequestMsg& req() {
     return *req_;
   }
 
@@ -151,11 +151,11 @@ class SysCatalogWriter {
 
 Status FillSysCatalogWriteRequest(
     int8_t type, const std::string& item_id, const google::protobuf::Message& new_pb,
-    QLWriteRequestPB::QLStmtType op_type, const Schema& schema_with_ids, QLWriteRequestPB* req);
+    QLWriteRequestPB::QLStmtType op_type, const Schema& schema_with_ids, QLWriteRequestMsg* req);
 
 Status FillSysCatalogWriteRequest(
     int8_t type, const std::string& item_id, const Slice& data,
-    QLWriteRequestPB::QLStmtType op_type, const Schema& schema_with_ids, QLWriteRequestPB* req);
+    QLWriteRequestPB::QLStmtType op_type, const Schema& schema_with_ids, QLWriteRequestMsg* req);
 
 using EnumerationCallback = std::function<Status(const Slice& id, const Slice& data)>;
 

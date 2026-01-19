@@ -75,6 +75,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.CommonTypes;
+import org.yb.CommonTypes.YQLDatabase;
 import org.yb.Schema;
 import org.yb.WireProtocol.AppStatusPB;
 import org.yb.WireProtocol.AppStatusPB.ErrorCode;
@@ -190,6 +191,7 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
     mockClient = mock(YBClient.class);
     when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
     when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
+    when(mockOperatorStatusUpdaterFactory.create()).thenReturn(mockOperatorStatusUpdater);
 
     // Use reflection to access the package-private constructor.
     Constructor<ListCDCStreamsResponse> constructor =
@@ -455,10 +457,26 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
         new SnapshotInfo(snapshotUUID, 0L, 0L, CatalogEntityInfo.SysSnapshotEntryPB.State.COMPLETE);
     when(sourceListPITRResponse.getSnapshotScheduleInfoList())
         .thenReturn(
-            List.of(new SnapshotScheduleInfo(sourcePitrUUID, 0L, 0L, List.of(snapshotInfo))));
+            List.of(
+                new SnapshotScheduleInfo(
+                    sourcePitrUUID,
+                    0L,
+                    0L,
+                    List.of(snapshotInfo),
+                    null,
+                    null,
+                    YQLDatabase.YQL_DATABASE_PGSQL)));
     when(targetListPITRResponse.getSnapshotScheduleInfoList())
         .thenReturn(
-            List.of(new SnapshotScheduleInfo(targetPitrUUID, 0L, 0L, List.of(snapshotInfo))));
+            List.of(
+                new SnapshotScheduleInfo(
+                    targetPitrUUID,
+                    0L,
+                    0L,
+                    List.of(snapshotInfo),
+                    null,
+                    null,
+                    YQLDatabase.YQL_DATABASE_PGSQL)));
     ListSnapshotsResponse listSnapshotsResponse = mock(ListSnapshotsResponse.class);
     when(listSnapshotsResponse.getSnapshotInfoList()).thenReturn(List.of(snapshotInfo));
     IsCreateXClusterReplicationDoneResponse isDoneResponse =
@@ -484,6 +502,7 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
         .thenReturn(createPITRResponse);
     when(mockClient.listSnapshotSchedules(eq(sourcePitrUUID))).thenReturn(sourceListPITRResponse);
     when(mockClient.listSnapshotSchedules(eq(targetPitrUUID))).thenReturn(targetListPITRResponse);
+    when(mockClient.listSnapshotSchedules(null)).thenReturn(sourceListPITRResponse);
     when(mockClient.listSnapshots(snapshotUUID, true)).thenReturn(listSnapshotsResponse);
     when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
         .thenReturn(successShellResponse);

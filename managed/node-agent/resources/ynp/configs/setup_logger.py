@@ -9,10 +9,12 @@ def setup_logger(config):
     key = next(iter(config), None)
     log_file = "app.log"
     log_dir = "./logs"
+    log_level = "DEBUG"
     if key is not None:
         context = config[key]
-        log_file = context.get('logfile')
-        log_dir = context.get("logdir")
+        log_file = context.get('logfile', log_file)
+        log_dir = context.get("logdir", log_dir)
+        log_level = context.get('loglevel', log_level).upper()
 
     # Create log directory if it doesn't exist
     # Ensure the log directory has the correct permissions (755)
@@ -34,12 +36,12 @@ def setup_logger(config):
             'console': {
                 'class': 'logging.StreamHandler',
                 'formatter': 'standard',
-                'level': 'DEBUG',
+                'level': log_level,
             },
             'file': {
                 'class': 'logging.FileHandler',
                 'formatter': 'standard',
-                'level': 'DEBUG',
+                'level': log_level,
                 'filename': log_path,
                 'mode': 'a',
             },
@@ -47,7 +49,7 @@ def setup_logger(config):
         'loggers': {
             '': {  # root logger
                 'handlers': ['console', 'file'],
-                'level': 'DEBUG',
+                'level': log_level,
                 'propagate': True,
             }
         }
@@ -60,7 +62,7 @@ def setup_logger(config):
 
     # Set file permissions (644)
     os.chmod(log_path, 0o644)
-
+    current_user_id = os.getuid()
     # Set ownership to original user if script was run with sudo
     if 'SUDO_USER' in os.environ:
         original_user = os.environ['SUDO_USER']
@@ -69,8 +71,9 @@ def setup_logger(config):
     user_info = pwd.getpwnam(original_user)
     uid = user_info.pw_uid
     gid = user_info.pw_gid
-    os.chown(log_dir, uid, gid)
-    os.chown(log_path, uid, gid)
-
+    if current_user_id == 0 and current_user_id != uid:
+        # Change ownership only if running as root and yb_user is different from current user.
+        os.chown(log_dir, uid, gid)
+        os.chown(log_path, uid, gid)
     logger = logging.getLogger()
-    logger.info("Logging setup complete in UTC timezone")
+    logger.info(f"Logging setup complete in UTC timezone. Level: {log_level}, Log File: {log_path}")

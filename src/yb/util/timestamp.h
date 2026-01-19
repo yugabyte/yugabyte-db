@@ -67,8 +67,13 @@ class Timestamp {
   }
 
  private:
+  friend auto operator<=>(Timestamp lhs, Timestamp rhs) {
+    return lhs.value_ <=> rhs.value_;
+  }
+
   val_type value_;
 };
+
 
 inline int Timestamp::CompareTo(const Timestamp &other) const {
   if (value_ < other.value_) {

@@ -24,14 +24,12 @@ func ListEITUtil(cmd *cobra.Command, commandCall, eitCertType string) {
 
 	certs, response, err := authAPI.GetListOfCertificates().Execute()
 	if err != nil {
-		errMessage := util.ErrorFromHTTPResponse(response, err,
-			"EIT", "List")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		util.FatalHTTPError(response, err, "EIT", "List")
 	}
 
 	var rName []ybaclient.CertificateInfoExt
 	eitName, _ := cmd.Flags().GetString("name")
-	if strings.TrimSpace(eitName) != "" {
+	if !util.IsEmptyString(eitName) {
 		for _, c := range certs {
 			if strings.Compare(c.GetLabel(), eitName) == 0 {
 				rName = append(rName, c)
@@ -42,7 +40,7 @@ func ListEITUtil(cmd *cobra.Command, commandCall, eitCertType string) {
 	}
 
 	var r []ybaclient.CertificateInfoExt
-	if len(strings.TrimSpace(eitCertType)) != 0 {
+	if !util.IsEmptyString(eitCertType) {
 		for _, c := range rName {
 			if strings.Compare(c.GetCertType(), eitCertType) == 0 {
 				r = append(r, c)

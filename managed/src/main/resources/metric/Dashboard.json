@@ -163,7 +163,7 @@
       "x" : 0,
       "y" : 1
     },
-    "id" : 205,
+    "id" : 215,
     "interval" : null,
     "links" : [ ],
     "mappingType" : 2,
@@ -310,7 +310,7 @@
       "value" : "null"
     } ],
     "valueName" : "current",
-    "id" : 206
+    "id" : 216
   }, {
     "collapsed" : false,
     "datasource" : "$datasource",
@@ -323,7 +323,7 @@
     "panels" : [ ],
     "type" : "row",
     "title" : "Container",
-    "id" : 207
+    "id" : 217
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -796,7 +796,7 @@
     "panels" : [ ],
     "type" : "row",
     "title" : "Master",
-    "id" : 208
+    "id" : 218
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -2557,7 +2557,7 @@
       "alignLevel" : null
     },
     "title" : "RPC Queue Size",
-    "id" : 182,
+    "id" : 191,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "rpcs_in_queue_.*",
@@ -2582,7 +2582,7 @@
     "panels" : [ ],
     "type" : "row",
     "title" : "Master Advanced",
-    "id" : 209
+    "id" : 219
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -4306,7 +4306,7 @@
     "panels" : [ ],
     "type" : "row",
     "title" : "Misc",
-    "id" : 210
+    "id" : 220
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -5326,7 +5326,7 @@
       "alignLevel" : null
     },
     "title" : "WAL Bytes Written / Sec",
-    "id" : 143,
+    "id" : 144,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Written",
@@ -5418,7 +5418,7 @@
       "alignLevel" : null
     },
     "title" : "WAL Latency",
-    "id" : 144,
+    "id" : 145,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Sync",
@@ -5520,7 +5520,7 @@
       "alignLevel" : null
     },
     "title" : "WAL Ops / Sec",
-    "id" : 145,
+    "id" : 146,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Sync",
@@ -5622,7 +5622,7 @@
       "alignLevel" : null
     },
     "title" : "Memtable Size",
-    "id" : 146,
+    "id" : 147,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "IntentsDB",
@@ -5739,7 +5739,7 @@
       "alignLevel" : null
     },
     "title" : "Memory Pressure Rejections",
-    "id" : 147,
+    "id" : 148,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Leader",
@@ -5841,7 +5841,7 @@
       "alignLevel" : null
     },
     "title" : "Operations Inflight",
-    "id" : 148,
+    "id" : 149,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Write",
@@ -5938,7 +5938,7 @@
       "alignLevel" : null
     },
     "title" : "Read Op Latency (Avg)",
-    "id" : 149,
+    "id" : 150,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Read",
@@ -6030,7 +6030,7 @@
       "alignLevel" : null
     },
     "title" : "Read Ops / Sec",
-    "id" : 150,
+    "id" : 151,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Read",
@@ -6122,7 +6122,7 @@
       "alignLevel" : null
     },
     "title" : "LSM-DB Blooms usefulness",
-    "id" : 151,
+    "id" : 152,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Blooms Useful",
@@ -6219,7 +6219,7 @@
       "alignLevel" : null
     },
     "title" : "LSM-DB Seek/Next/Prev Ops / Sec",
-    "id" : 152,
+    "id" : 159,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Seek",
@@ -6321,7 +6321,7 @@
       "alignLevel" : null
     },
     "title" : "Write Op Latency (Avg)",
-    "id" : 153,
+    "id" : 161,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Write",
@@ -6413,7 +6413,7 @@
       "alignLevel" : null
     },
     "title" : "Write Lock Latency",
-    "id" : 154,
+    "id" : 162,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Write Lock",
@@ -6505,7 +6505,7 @@
       "alignLevel" : null
     },
     "title" : "Write Rejections",
-    "id" : 155,
+    "id" : 163,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Rejections",
@@ -6597,7 +6597,7 @@
       "alignLevel" : null
     },
     "title" : "Write Ops / Sec",
-    "id" : 156,
+    "id" : 164,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Write",
@@ -6689,7 +6689,7 @@
       "alignLevel" : null
     },
     "title" : "xcluster_consumer_replication_error_count",
-    "id" : 194,
+    "id" : 204,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "",
@@ -6781,7 +6781,7 @@
       "alignLevel" : null
     },
     "title" : "HA Backup Lag",
-    "id" : 195,
+    "id" : 205,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "HA Backup Lag (Seconds)",
@@ -6873,7 +6873,7 @@
       "alignLevel" : null
     },
     "title" : "HA Last Backup Size",
-    "id" : 196,
+    "id" : 206,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "HA Last Backup Size (MB)",
@@ -6898,7 +6898,7 @@
     "panels" : [ ],
     "type" : "row",
     "title" : "Node Metrics",
-    "id" : 211
+    "id" : 221
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -8734,7 +8734,7 @@
     "panels" : [ ],
     "type" : "row",
     "title" : "Otel Collector",
-    "id" : 212
+    "id" : 222
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -9207,7 +9207,7 @@
     "panels" : [ ],
     "type" : "row",
     "title" : "Per-process Metrics",
-    "id" : 213
+    "id" : 223
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -10236,7 +10236,7 @@
     "panels" : [ ],
     "type" : "row",
     "title" : "RocksDB",
-    "id" : 214
+    "id" : 224
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -11638,7 +11638,7 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Seek",
-      "expr" : "(avg(sum by (exported_instance)(rate(rocksdb_db_seek_micros_sum{node_prefix=~\"$dbcluster\"}[300s])))) / (avg(sum by (exported_instance)(rate(rocksdb_db_seek_micros_count{node_prefix=~\"$dbcluster\"}[300s]))))",
+      "expr" : "(avg(sum by (exported_instance)(rate(rocksdb_db_seek_micros_sum{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s])))) / (avg(sum by (exported_instance)(rate(rocksdb_db_seek_micros_count{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}[300s]))))",
       "refId" : "A"
     } ],
     "gridPos" : {
@@ -12414,28 +12414,13 @@
       "align" : false,
       "alignLevel" : null
     },
-    "title" : "Tablet Splitting Operations",
-    "id" : 157,
+    "title" : "Compaction num files",
+    "id" : 153,
     "targets" : [ {
       "hide" : false,
-      "legendFormat" : "Apply",
-      "expr" : "sum(rate({node_prefix=~\"$dbcluster\", saved_name=\"ts_split_op_apply\"}[300s])) by (saved_name)",
+      "legendFormat" : "Avg",
+      "expr" : "(avg(rate(rocksdb_numfiles_in_singlecompaction_sum{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", table_name=~\".+\"}[300s]))) / (avg(rate(rocksdb_numfiles_in_singlecompaction_count{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", table_name=~\".+\"}[300s])))",
       "refId" : "A"
-    }, {
-      "hide" : false,
-      "legendFormat" : "Add",
-      "expr" : "sum(rate({node_prefix=~\"$dbcluster\", saved_name=\"ts_split_op_added\"}[300s])) by (saved_name)",
-      "refId" : "B"
-    }, {
-      "hide" : false,
-      "legendFormat" : "Compaction",
-      "expr" : "sum(rate({node_prefix=~\"$dbcluster\", saved_name=\"ts_split_compaction_added\"}[300s])) by (saved_name)",
-      "refId" : "C"
-    }, {
-      "hide" : false,
-      "legendFormat" : "Compaction",
-      "expr" : "sum(rate({node_prefix=~\"$dbcluster\", saved_name=\"ts_post_split_compaction_added\"}[300s])) by (saved_name)",
-      "refId" : "D"
     } ],
     "gridPos" : {
       "w" : 12,
@@ -12444,18 +12429,465 @@
       "y" : 575
     }
   }, {
+    "aliasColors" : { },
+    "bars" : false,
     "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
     "datasource" : "$datasource",
-    "gridPos" : {
-      "w" : 24,
-      "h" : 1,
-      "x" : 0,
-      "y" : 576
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
     },
-    "panels" : [ ],
-    "type" : "row",
-    "title" : "Tablet Server",
-    "id" : 215
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : "us"
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "Compaction time",
+    "id" : 154,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : "Avg",
+      "expr" : "(avg(rate(rocksdb_compaction_times_micros_sum{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", table_name=~\".+\"}[300s]))) / (avg(rate(rocksdb_compaction_times_micros_count{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", table_name=~\".+\"}[300s])))",
+      "refId" : "A"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 0,
+      "y" : 584
+    }
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : "MB"
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "Flush write",
+    "id" : 155,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : "Flush",
+      "expr" : "avg(rate(rocksdb_flush_write_bytes{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", table_name=~\".+\"}[300s])) / 1048576",
+      "refId" : "A"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 12,
+      "y" : 584
+    }
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : "us"
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "LSM-DB Seek Latencies",
+    "id" : 156,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : "Seek",
+      "expr" : "(avg(rate(rocksdb_db_seek_micros_sum{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", table_name=~\".+\"}[300s]))) / (avg(rate(rocksdb_db_seek_micros_count{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", table_name=~\".+\"}[300s])))",
+      "refId" : "A"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 0,
+      "y" : 593
+    }
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : "us"
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "Stalls",
+    "id" : 157,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : "Stalls",
+      "expr" : "avg(rate(rocksdb_stall_micros{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", table_name=~\".+\"}[300s]))",
+      "refId" : "A"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 12,
+      "y" : 593
+    }
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : "GB"
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "SSTable size / Node",
+    "id" : 158,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : "Size",
+      "expr" : "avg(sum by (saved_name, namespace_name, table_id, table_name)(rocksdb_current_version_sst_files_size{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"})) / 1073741824",
+      "refId" : "A"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 0,
+      "y" : 602
+    }
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -12534,6 +12966,126 @@
       "align" : false,
       "alignLevel" : null
     },
+    "title" : "Tablet Splitting Operations",
+    "id" : 165,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : "Apply",
+      "expr" : "sum(rate({node_prefix=~\"$dbcluster\", saved_name=\"ts_split_op_apply\"}[300s])) by (saved_name)",
+      "refId" : "A"
+    }, {
+      "hide" : false,
+      "legendFormat" : "Add",
+      "expr" : "sum(rate({node_prefix=~\"$dbcluster\", saved_name=\"ts_split_op_added\"}[300s])) by (saved_name)",
+      "refId" : "B"
+    }, {
+      "hide" : false,
+      "legendFormat" : "Compaction",
+      "expr" : "sum(rate({node_prefix=~\"$dbcluster\", saved_name=\"ts_split_compaction_added\"}[300s])) by (saved_name)",
+      "refId" : "C"
+    }, {
+      "hide" : false,
+      "legendFormat" : "Compaction",
+      "expr" : "sum(rate({node_prefix=~\"$dbcluster\", saved_name=\"ts_post_split_compaction_added\"}[300s])) by (saved_name)",
+      "refId" : "D"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 12,
+      "y" : 602
+    }
+  }, {
+    "collapsed" : false,
+    "datasource" : "$datasource",
+    "gridPos" : {
+      "w" : 24,
+      "h" : 1,
+      "x" : 0,
+      "y" : 603
+    },
+    "panels" : [ ],
+    "type" : "row",
+    "title" : "Tablet Server",
+    "id" : 225
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : "ops/s"
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
     "title" : "Replication Slot Messages Emitted",
     "id" : 4,
     "targets" : [ {
@@ -12546,7 +13098,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 576
+      "y" : 603
     }
   }, {
     "aliasColors" : { },
@@ -12638,7 +13190,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 585
+      "y" : 612
     }
   }, {
     "aliasColors" : { },
@@ -12705,7 +13257,7 @@
       "max" : null,
       "min" : null,
       "show" : true,
-      "format" : "ms"
+      "format" : "s"
     }, {
       "format" : "short",
       "label" : null,
@@ -12730,7 +13282,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 585
+      "y" : 612
     }
   }, {
     "aliasColors" : { },
@@ -12797,7 +13349,7 @@
       "max" : null,
       "min" : null,
       "show" : true,
-      "format" : "MB"
+      "format" : "MB/s"
     }, {
       "format" : "short",
       "label" : null,
@@ -12822,7 +13374,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 594
+      "y" : 621
     }
   }, {
     "aliasColors" : { },
@@ -12919,7 +13471,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 594
+      "y" : 621
     }
   }, {
     "aliasColors" : { },
@@ -13011,7 +13563,196 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 603
+      "y" : 630
+    }
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : ""
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "Transaction",
+    "id" : 143,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : "Conflicts",
+      "expr" : "avg(rate({export_type=\"tserver_export\", node_prefix=~\"$dbcluster\", saved_name=\"transaction_conflicts\", table_name=~\".+\"}[300s])) by (saved_name)",
+      "refId" : "A"
+    }, {
+      "hide" : false,
+      "legendFormat" : "Expired",
+      "expr" : "avg(rate({export_type=\"tserver_export\", node_prefix=~\"$dbcluster\", saved_name=\"expired_transactions\", table_name=~\".+\"}[300s])) by (saved_name)",
+      "refId" : "B"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 12,
+      "y" : 630
+    }
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : "MB"
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "WAL size",
+    "id" : 160,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : "Size",
+      "expr" : "avg(log_wal_size{table_id=~\".+\", node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"}) / 1048576",
+      "refId" : "A"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 0,
+      "y" : 639
     }
   }, {
     "aliasColors" : { },
@@ -13092,7 +13833,7 @@
       "alignLevel" : null
     },
     "title" : "Total Ops / Sec",
-    "id" : 158,
+    "id" : 166,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Write",
@@ -13113,7 +13854,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 603
+      "y" : 639
     }
   }, {
     "aliasColors" : { },
@@ -13194,7 +13935,7 @@
       "alignLevel" : null
     },
     "title" : "Average Latency",
-    "id" : 159,
+    "id" : 167,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Delete",
@@ -13220,7 +13961,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 612
+      "y" : 648
     }
   }, {
     "aliasColors" : { },
@@ -13301,7 +14042,7 @@
       "alignLevel" : null
     },
     "title" : "Total Ops / Sec",
-    "id" : 160,
+    "id" : 168,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Insert",
@@ -13327,7 +14068,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 612
+      "y" : 648
     }
   }, {
     "aliasColors" : { },
@@ -13408,7 +14149,7 @@
       "alignLevel" : null
     },
     "title" : "Async Replication Lag",
-    "id" : 161,
+    "id" : 169,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : null,
@@ -13419,7 +14160,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 621
+      "y" : 657
     }
   }, {
     "aliasColors" : { },
@@ -13500,7 +14241,7 @@
       "alignLevel" : null
     },
     "title" : "WAL Cache Num Ops / Node",
-    "id" : 162,
+    "id" : 170,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Num Ops",
@@ -13511,7 +14252,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 621
+      "y" : 657
     }
   }, {
     "aliasColors" : { },
@@ -13592,7 +14333,7 @@
       "alignLevel" : null
     },
     "title" : "Total Consensus Change Config",
-    "id" : 163,
+    "id" : 171,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "ChangeConfig",
@@ -13618,7 +14359,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 630
+      "y" : 666
     }
   }, {
     "aliasColors" : { },
@@ -13699,7 +14440,7 @@
       "alignLevel" : null
     },
     "title" : "Change Config Latency",
-    "id" : 164,
+    "id" : 172,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "ChangeConfig",
@@ -13710,7 +14451,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 630
+      "y" : 666
     }
   }, {
     "aliasColors" : { },
@@ -13791,7 +14532,7 @@
       "alignLevel" : null
     },
     "title" : "Consensus Rpc Latencies",
-    "id" : 165,
+    "id" : 173,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "MultiRaftUpdateConsensus",
@@ -13812,7 +14553,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 639
+      "y" : 675
     }
   }, {
     "aliasColors" : { },
@@ -13893,7 +14634,7 @@
       "alignLevel" : null
     },
     "title" : "Consensus Ops / Sec",
-    "id" : 166,
+    "id" : 174,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "MultiRaftUpdateConsensus",
@@ -13914,7 +14655,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 639
+      "y" : 675
     }
   }, {
     "aliasColors" : { },
@@ -13995,7 +14736,7 @@
       "alignLevel" : null
     },
     "title" : "Context Switches",
-    "id" : 167,
+    "id" : 175,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Voluntary",
@@ -14011,7 +14752,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 648
+      "y" : 684
     }
   }, {
     "aliasColors" : { },
@@ -14092,7 +14833,7 @@
       "alignLevel" : null
     },
     "title" : "CPU Util Secs / Sec",
-    "id" : 168,
+    "id" : 176,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "System",
@@ -14108,7 +14849,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 648
+      "y" : 684
     }
   }, {
     "aliasColors" : { },
@@ -14189,7 +14930,7 @@
       "alignLevel" : null
     },
     "title" : "Glog messages",
-    "id" : 169,
+    "id" : 177,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Warning",
@@ -14210,7 +14951,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 657
+      "y" : 693
     }
   }, {
     "aliasColors" : { },
@@ -14291,7 +15032,7 @@
       "alignLevel" : null
     },
     "title" : "Reactor Delays",
-    "id" : 170,
+    "id" : 178,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Incoming Queue",
@@ -14312,7 +15053,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 657
+      "y" : 693
     }
   }, {
     "aliasColors" : { },
@@ -14393,7 +15134,7 @@
       "alignLevel" : null
     },
     "title" : "Live Tablet Peers",
-    "id" : 171,
+    "id" : 179,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Live Tablet Peers",
@@ -14404,7 +15145,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 666
+      "y" : 702
     }
   }, {
     "aliasColors" : { },
@@ -14485,7 +15226,7 @@
       "alignLevel" : null
     },
     "title" : "WAL Bytes Read / Sec / Node",
-    "id" : 172,
+    "id" : 180,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Read",
@@ -14496,7 +15237,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 666
+      "y" : 702
     }
   }, {
     "aliasColors" : { },
@@ -14577,7 +15318,7 @@
       "alignLevel" : null
     },
     "title" : "WAL Bytes Written / Sec / Node",
-    "id" : 173,
+    "id" : 181,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Written",
@@ -14588,7 +15329,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 675
+      "y" : 711
     }
   }, {
     "aliasColors" : { },
@@ -14669,7 +15410,7 @@
       "alignLevel" : null
     },
     "title" : "WAL Latency",
-    "id" : 174,
+    "id" : 182,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Sync",
@@ -14690,7 +15431,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 675
+      "y" : 711
     }
   }, {
     "aliasColors" : { },
@@ -14771,7 +15512,7 @@
       "alignLevel" : null
     },
     "title" : "WAL Ops / Sec / Node",
-    "id" : 175,
+    "id" : 183,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Sync",
@@ -14792,7 +15533,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 684
+      "y" : 720
     }
   }, {
     "aliasColors" : { },
@@ -14873,7 +15614,7 @@
       "alignLevel" : null
     },
     "title" : "WAL Stats / Node",
-    "id" : 176,
+    "id" : 184,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Bytes Read",
@@ -14889,7 +15630,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 684
+      "y" : 720
     }
   }, {
     "aliasColors" : { },
@@ -14970,7 +15711,7 @@
       "alignLevel" : null
     },
     "title" : "Max Follower Lag (ms)",
-    "id" : 177,
+    "id" : 185,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Max Follower Lag (ms)",
@@ -14981,7 +15722,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 693
+      "y" : 729
     }
   }, {
     "aliasColors" : { },
@@ -15062,7 +15803,7 @@
       "alignLevel" : null
     },
     "title" : "Average Latency",
-    "id" : 178,
+    "id" : 186,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Write",
@@ -15083,7 +15824,109 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 693
+      "y" : 729
+    }
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : "us"
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "Tserver Latency (P99)",
+    "id" : 187,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : "Write",
+      "expr" : "max(quantile_over_time(0.99, rpc_latency{export_type=\"tserver_export\", service_type=\"TabletServerService\", node_prefix=~\"$dbcluster\", server_type=\"yb_tserver\", service_method=\"Write\"}[300s])) by (service_method)",
+      "refId" : "A"
+    }, {
+      "hide" : false,
+      "legendFormat" : "Scan",
+      "expr" : "max(quantile_over_time(0.99, rpc_latency{export_type=\"tserver_export\", service_type=\"TabletServerService\", node_prefix=~\"$dbcluster\", server_type=\"yb_tserver\", service_method=\"Scan\"}[300s])) by (service_method)",
+      "refId" : "B"
+    }, {
+      "hide" : false,
+      "legendFormat" : "Read",
+      "expr" : "max(quantile_over_time(0.99, rpc_latency{export_type=\"tserver_export\", service_type=\"TabletServerService\", node_prefix=~\"$dbcluster\", server_type=\"yb_tserver\", service_method=\"Read\"}[300s])) by (service_method)",
+      "refId" : "C"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 0,
+      "y" : 738
     }
   }, {
     "aliasColors" : { },
@@ -15164,7 +16007,7 @@
       "alignLevel" : null
     },
     "title" : "Remote Bootstrap Bytes Transferred",
-    "id" : 179,
+    "id" : 188,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "RBS bytes received",
@@ -15179,8 +16022,8 @@
     "gridPos" : {
       "w" : 12,
       "h" : 9,
-      "x" : 0,
-      "y" : 702
+      "x" : 12,
+      "y" : 738
     }
   }, {
     "aliasColors" : { },
@@ -15261,7 +16104,7 @@
       "alignLevel" : null
     },
     "title" : "Remote Bootstrap Sessions",
-    "id" : 180,
+    "id" : 189,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "RBS server sessions",
@@ -15276,8 +16119,8 @@
     "gridPos" : {
       "w" : 12,
       "h" : 9,
-      "x" : 12,
-      "y" : 702
+      "x" : 0,
+      "y" : 747
     }
   }, {
     "aliasColors" : { },
@@ -15358,7 +16201,7 @@
       "alignLevel" : null
     },
     "title" : "RPC Queue Size",
-    "id" : 181,
+    "id" : 190,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "YCQL RPC",
@@ -15368,8 +16211,8 @@
     "gridPos" : {
       "w" : 12,
       "h" : 9,
-      "x" : 0,
-      "y" : 711
+      "x" : 12,
+      "y" : 747
     }
   }, {
     "aliasColors" : { },
@@ -15450,7 +16293,7 @@
       "alignLevel" : null
     },
     "title" : "RPC Queue Size",
-    "id" : 184,
+    "id" : 193,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "rpcs_in_queue_.*",
@@ -15460,8 +16303,8 @@
     "gridPos" : {
       "w" : 12,
       "h" : 9,
-      "x" : 12,
-      "y" : 711
+      "x" : 0,
+      "y" : 756
     }
   }, {
     "aliasColors" : { },
@@ -15542,7 +16385,7 @@
       "alignLevel" : null
     },
     "title" : "tserver_rpcs_per_sec_by_universe",
-    "id" : 185,
+    "id" : 194,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "",
@@ -15552,8 +16395,8 @@
     "gridPos" : {
       "w" : 12,
       "h" : 9,
-      "x" : 0,
-      "y" : 720
+      "x" : 12,
+      "y" : 756
     }
   }, {
     "aliasColors" : { },
@@ -15634,7 +16477,7 @@
       "alignLevel" : null
     },
     "title" : "Ops / Sec / Node",
-    "id" : 186,
+    "id" : 195,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Write",
@@ -15654,8 +16497,8 @@
     "gridPos" : {
       "w" : 12,
       "h" : 9,
-      "x" : 12,
-      "y" : 720
+      "x" : 0,
+      "y" : 765
     }
   }, {
     "aliasColors" : { },
@@ -15736,7 +16579,7 @@
       "alignLevel" : null
     },
     "title" : "SpinLock Time/Server",
-    "id" : 187,
+    "id" : 196,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "SpinLock",
@@ -15746,8 +16589,8 @@
     "gridPos" : {
       "w" : 12,
       "h" : 9,
-      "x" : 0,
-      "y" : 729
+      "x" : 12,
+      "y" : 765
     }
   }, {
     "aliasColors" : { },
@@ -15828,7 +16671,7 @@
       "alignLevel" : null
     },
     "title" : "TCMalloc Stats",
-    "id" : 188,
+    "id" : 197,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "In Use",
@@ -15843,8 +16686,8 @@
     "gridPos" : {
       "w" : 12,
       "h" : 9,
-      "x" : 12,
-      "y" : 729
+      "x" : 0,
+      "y" : 774
     }
   }, {
     "aliasColors" : { },
@@ -15925,7 +16768,7 @@
       "alignLevel" : null
     },
     "title" : "Threads Running",
-    "id" : 189,
+    "id" : 198,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Running",
@@ -15935,8 +16778,8 @@
     "gridPos" : {
       "w" : 12,
       "h" : 9,
-      "x" : 0,
-      "y" : 738
+      "x" : 12,
+      "y" : 774
     }
   }, {
     "aliasColors" : { },
@@ -16017,7 +16860,7 @@
       "alignLevel" : null
     },
     "title" : "Threads Started",
-    "id" : 190,
+    "id" : 199,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Started",
@@ -16027,8 +16870,8 @@
     "gridPos" : {
       "w" : 12,
       "h" : 9,
-      "x" : 12,
-      "y" : 738
+      "x" : 0,
+      "y" : 783
     }
   }, {
     "aliasColors" : { },
@@ -16109,7 +16952,7 @@
       "alignLevel" : null
     },
     "title" : "Uptime",
-    "id" : 191,
+    "id" : 200,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Uptime",
@@ -16119,8 +16962,8 @@
     "gridPos" : {
       "w" : 12,
       "h" : 9,
-      "x" : 0,
-      "y" : 747
+      "x" : 12,
+      "y" : 783
     }
   }, {
     "aliasColors" : { },
@@ -16201,7 +17044,7 @@
       "alignLevel" : null
     },
     "title" : "Write Lock Latency",
-    "id" : 192,
+    "id" : 201,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Write Lock",
@@ -16211,8 +17054,8 @@
     "gridPos" : {
       "w" : 12,
       "h" : 9,
-      "x" : 12,
-      "y" : 747
+      "x" : 0,
+      "y" : 792
     }
   }, {
     "aliasColors" : { },
@@ -16293,7 +17136,7 @@
       "alignLevel" : null
     },
     "title" : "Inbound RPC Connections Alive",
-    "id" : 193,
+    "id" : 202,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Connections",
@@ -16303,8 +17146,100 @@
     "gridPos" : {
       "w" : 12,
       "h" : 9,
+      "x" : 12,
+      "y" : 792
+    }
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : "MB"
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "WAL size / Node",
+    "id" : 203,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : "Size",
+      "expr" : "avg(sum by (exported_instance)(log_wal_size{node_prefix=~\"$dbcluster\", export_type=\"tserver_export\"})) / 1048576",
+      "refId" : "A"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
       "x" : 0,
-      "y" : 756
+      "y" : 801
     }
   }, {
     "collapsed" : false,
@@ -16313,12 +17248,12 @@
       "w" : 24,
       "h" : 1,
       "x" : 0,
-      "y" : 757
+      "y" : 802
     },
     "panels" : [ ],
     "type" : "row",
     "title" : "YCQL Ops & Latency",
-    "id" : 216
+    "id" : 226
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -16419,7 +17354,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 757
+      "y" : 802
     }
   }, {
     "aliasColors" : { },
@@ -16536,7 +17471,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 766
+      "y" : 811
     }
   }, {
     "aliasColors" : { },
@@ -16653,7 +17588,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 766
+      "y" : 811
     }
   }, {
     "aliasColors" : { },
@@ -16770,7 +17705,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 775
+      "y" : 820
     }
   }, {
     "aliasColors" : { },
@@ -16887,7 +17822,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 775
+      "y" : 820
     }
   }, {
     "aliasColors" : { },
@@ -16994,7 +17929,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 784
+      "y" : 829
     }
   }, {
     "aliasColors" : { },
@@ -17086,7 +18021,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 784
+      "y" : 829
     }
   }, {
     "aliasColors" : { },
@@ -17178,7 +18113,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 793
+      "y" : 838
     }
   }, {
     "aliasColors" : { },
@@ -17270,7 +18205,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 793
+      "y" : 838
     }
   }, {
     "aliasColors" : { },
@@ -17362,7 +18297,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 802
+      "y" : 847
     }
   }, {
     "aliasColors" : { },
@@ -17454,7 +18389,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 802
+      "y" : 847
     }
   }, {
     "collapsed" : false,
@@ -17463,12 +18398,12 @@
       "w" : 24,
       "h" : 1,
       "x" : 0,
-      "y" : 803
+      "y" : 848
     },
     "panels" : [ ],
     "type" : "row",
     "title" : "YEDIS Ops & Latency",
-    "id" : 217
+    "id" : 227
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -17559,7 +18494,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 803
+      "y" : 848
     }
   }, {
     "aliasColors" : { },
@@ -17706,7 +18641,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 812
+      "y" : 857
     }
   }, {
     "aliasColors" : { },
@@ -17838,7 +18773,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 812
+      "y" : 857
     }
   }, {
     "aliasColors" : { },
@@ -17955,7 +18890,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 821
+      "y" : 866
     }
   }, {
     "aliasColors" : { },
@@ -18067,7 +19002,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 821
+      "y" : 866
     }
   }, {
     "aliasColors" : { },
@@ -18214,7 +19149,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 830
+      "y" : 875
     }
   }, {
     "aliasColors" : { },
@@ -18321,7 +19256,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 830
+      "y" : 875
     }
   }, {
     "aliasColors" : { },
@@ -18423,7 +19358,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 839
+      "y" : 884
     }
   }, {
     "aliasColors" : { },
@@ -18515,7 +19450,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 839
+      "y" : 884
     }
   }, {
     "aliasColors" : { },
@@ -18662,7 +19597,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 848
+      "y" : 893
     }
   }, {
     "aliasColors" : { },
@@ -18794,7 +19729,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 848
+      "y" : 893
     }
   }, {
     "aliasColors" : { },
@@ -18911,7 +19846,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 857
+      "y" : 902
     }
   }, {
     "aliasColors" : { },
@@ -19023,7 +19958,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 857
+      "y" : 902
     }
   }, {
     "aliasColors" : { },
@@ -19170,7 +20105,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 866
+      "y" : 911
     }
   }, {
     "aliasColors" : { },
@@ -19277,7 +20212,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 866
+      "y" : 911
     }
   }, {
     "aliasColors" : { },
@@ -19369,7 +20304,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 875
+      "y" : 920
     }
   }, {
     "aliasColors" : { },
@@ -19461,7 +20396,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 875
+      "y" : 920
     }
   }, {
     "aliasColors" : { },
@@ -19553,7 +20488,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 884
+      "y" : 929
     }
   }, {
     "aliasColors" : { },
@@ -19645,7 +20580,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 884
+      "y" : 929
     }
   }, {
     "aliasColors" : { },
@@ -19737,7 +20672,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 893
+      "y" : 938
     }
   }, {
     "aliasColors" : { },
@@ -19818,7 +20753,7 @@
       "alignLevel" : null
     },
     "title" : "RPC Queue Size",
-    "id" : 183,
+    "id" : 192,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "YEDIS RPC",
@@ -19829,7 +20764,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 893
+      "y" : 938
     }
   }, {
     "collapsed" : false,
@@ -19838,12 +20773,12 @@
       "w" : 24,
       "h" : 1,
       "x" : 0,
-      "y" : 894
+      "y" : 939
     },
     "panels" : [ ],
     "type" : "row",
     "title" : "YSQL",
-    "id" : 218
+    "id" : 228
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -19923,7 +20858,7 @@
       "alignLevel" : null
     },
     "title" : "Catalog Cache Misses",
-    "id" : 197,
+    "id" : 207,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Catalog Cache Miss Count",
@@ -19934,7 +20869,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 894
+      "y" : 939
     }
   }, {
     "collapsed" : false,
@@ -19943,12 +20878,12 @@
       "w" : 24,
       "h" : 1,
       "x" : 0,
-      "y" : 895
+      "y" : 940
     },
     "panels" : [ ],
     "type" : "row",
     "title" : "YSQL Ops & Latency",
-    "id" : 219
+    "id" : 229
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -20028,7 +20963,7 @@
       "alignLevel" : null
     },
     "title" : "Connection Pooling - Client Connections",
-    "id" : 198,
+    "id" : 208,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Queued",
@@ -20054,7 +20989,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 895
+      "y" : 940
     }
   }, {
     "aliasColors" : { },
@@ -20135,7 +21070,7 @@
       "alignLevel" : null
     },
     "title" : "Total YSQL Connections",
-    "id" : 199,
+    "id" : 209,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Total",
@@ -20151,7 +21086,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 904
+      "y" : 949
     }
   }, {
     "aliasColors" : { },
@@ -20232,7 +21167,7 @@
       "alignLevel" : null
     },
     "title" : "Total YSQL Connections / Sec",
-    "id" : 200,
+    "id" : 210,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Rejected",
@@ -20248,7 +21183,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 904
+      "y" : 949
     }
   }, {
     "aliasColors" : { },
@@ -20329,7 +21264,7 @@
       "alignLevel" : null
     },
     "title" : "Total YSQL Ops / Sec",
-    "id" : 201,
+    "id" : 211,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Begin",
@@ -20360,7 +21295,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 913
+      "y" : 958
     }
   }, {
     "aliasColors" : { },
@@ -20441,7 +21376,7 @@
       "alignLevel" : null
     },
     "title" : "Total YSQL Ops / Sec",
-    "id" : 202,
+    "id" : 212,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Insert",
@@ -20467,7 +21402,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 913
+      "y" : 958
     }
   }, {
     "aliasColors" : { },
@@ -20548,7 +21483,7 @@
       "alignLevel" : null
     },
     "title" : "YSQL Advanced Op Latency (Avg)",
-    "id" : 203,
+    "id" : 213,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Rollback",
@@ -20579,7 +21514,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 922
+      "y" : 967
     }
   }, {
     "aliasColors" : { },
@@ -20660,7 +21595,7 @@
       "alignLevel" : null
     },
     "title" : "YSQL Op Latency (Avg)",
-    "id" : 204,
+    "id" : 214,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Delete",
@@ -20686,7 +21621,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 922
+      "y" : 967
     }
   } ]
 }

@@ -299,6 +299,18 @@ ExecCreateTableAs(ParseState *pstate, CreateTableAsStmt *stmt,
 		 * from running the planner before all dependencies are set up.
 		 */
 		address = create_ctas_nodata(query->targetList, into);
+		if (is_matview && yb_xcluster_automatic_mode_target_ddl)
+		{
+			/*
+			 * For automatic mode xCluster the data is replicated to the
+			 * target, so we need to mark the relation as populated.
+			 */
+			Relation intoRelationDesc =
+				table_open(address.objectId, AccessExclusiveLock);
+			SetMatViewPopulatedState(intoRelationDesc, true,
+									 /* yb_in_place_refresh= */ false);
+			table_close(intoRelationDesc, AccessExclusiveLock);
+		}
 	}
 	else
 	{

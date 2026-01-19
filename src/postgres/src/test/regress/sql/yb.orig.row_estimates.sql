@@ -62,12 +62,13 @@ $$;
 -- create and populate the test tables with uniformly distributed values
 -- to make the estimates predictable.
 drop table if exists r, s;
-create table r (pk int, a int, b int, c char(10), d int, e int, v char(666), primary key (pk asc));
+create table r (pk int, a int, b int, c char(10), d int, e int, bl bool, v char(666), primary key (pk asc));
 create table s (x int, y int, z char(10));
 create index i_r_a on r (a asc);
 create index i_r_a_ge_1k on r (a asc) where a >= 1000;
 create unique index i_r_b on r (b asc);
 create index i_r_c on r (c asc);
+create index i_r_bl on r (bl hash);
 
 insert into r
   select
@@ -77,6 +78,7 @@ insert into r
            chr((((i-1)/26) % 26) + ascii('a')),
            chr(((i-1) % 26) + ascii('a'))),
     i, i / 10,
+    i % 2 = 1,
     sha512(('x'||i)::bytea)::bpchar||lpad(sha512((i||'y')::bytea)::bpchar, 536, '#')
   from generate_series(1, 12345) i;
 
@@ -388,6 +390,37 @@ from cbo_estimates
 where abs(rows[1] - rows[2]) > 2
   and abs(rows[1] - rows[2])/least(rows[1], rows[2])::float > 0.005;
 
+
+--
+-- test yb_ignore_bool_cond_for_legacy_estimate
+--
+-- print the costs and row count estimates that should never change in
+-- legacy modes.
+--
+
+begin;
+set local yb_enable_cbo = off;
+
+set local yb_ignore_bool_cond_for_legacy_estimate = off;
+explain (costs on, summary off)
+select * from r where not bl;
+explain (costs on, summary off)
+select * from r where not bl and a = 1;
+explain (costs on, summary off)
+select * from r where not bl and b = 1;
+
+set local yb_ignore_bool_cond_for_legacy_estimate = on;
+explain (costs on, summary off)
+select * from r where not bl;
+explain (costs on, summary off)
+select * from r where not bl and a = 1;
+explain (costs on, summary off)
+select * from r where not bl and b = 1;
+
+set local enable_seqscan = off;
+explain (costs on, summary off)
+select * from r where not bl;
+rollback;
 
 --
 -- test selectivity estimates

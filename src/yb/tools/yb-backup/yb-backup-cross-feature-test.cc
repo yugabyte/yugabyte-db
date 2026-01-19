@@ -405,9 +405,9 @@ TEST_F_EX(
 // 3. backup
 // 4. restore, which will initially create [sic] 4 pre-split tablets then realize the partition
 //    boundaries differ
-TEST_F_EX(YBBackupTest,
-          YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLManualTabletSplit),
-          YBBackupTestNumTablets) {
+TEST_F_EX(
+    YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLManualTabletSplit),
+    YBBackupTestNumTablets) {
   const string table_name = "mytbl";
 
   // Create table.
@@ -984,9 +984,9 @@ TEST_F_EX(YBBackupTest,
 // 3. split the index on its hidden column into 3 tablets
 // 4. backup
 // 5. restore
-TEST_F_EX(YBBackupTest,
-          YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLTabletSplitRangeIndexOnHiddenColumn),
-          YBBackupTestNumTablets) {
+TEST_F_EX(
+    YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLTabletSplitRangeIndexOnHiddenColumn),
+    YBBackupTestNumTablets) {
   const string table_name = "mytbl";
   const string index_name = "myidx";
 
@@ -1344,6 +1344,253 @@ TEST_F(
    default                  | postgres    | t4   | table | yugabyte
   (5 rows)
   )#");
+}
+
+// Test backup/restore on a colocated database with tables having unique constraints.
+// Verify that unique indexes are properly restored and contain the expected data.
+TEST_F(
+    YBBackupTestColocatedTablesWithTablespaces,
+    YB_DISABLE_TEST_IN_SANITIZERS(TestBackupColocatedTablesWithUniqueConstraints)) {
+  const string& backup_db_name = "backup_db_unique";
+  const string& restore_db_name = "restore_db_unique";
+
+  SetupTablespaces();
+
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      Format("CREATE DATABASE $0 WITH COLOCATION=TRUE", backup_db_name), "CREATE DATABASE"));
+  SetDbName(backup_db_name);
+
+  // Create tables with unique constraints in different tablespaces
+  ASSERT_NO_FATALS(
+      CreateTable("CREATE TABLE t1 (a INT PRIMARY KEY, b INT UNIQUE, c TEXT) TABLESPACE tsp1"));
+  ASSERT_NO_FATALS(
+      CreateTable("CREATE TABLE t2 (a INT PRIMARY KEY, b INT, c TEXT UNIQUE) TABLESPACE tsp2"));
+  ASSERT_NO_FATALS(CreateTable(
+      "CREATE TABLE t3 (a INT PRIMARY KEY, b INT, c TEXT, UNIQUE(b, c)) TABLESPACE tsp3"));
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE t4 (a INT PRIMARY KEY, b INT UNIQUE, c TEXT)"));
+
+  // Insert data into tables
+  for (int i = 0; i < 5; ++i) {
+    ASSERT_NO_FATALS(
+        InsertOneRow(Format("INSERT INTO t1 VALUES ($0, $1, 'text$2')", i, i + 100, i)));
+  }
+
+  for (int i = 0; i < 5; ++i) {
+    ASSERT_NO_FATALS(
+        InsertOneRow(Format("INSERT INTO t2 VALUES ($0, $1, 'unique$2')", i, i + 200, i)));
+  }
+
+  for (int i = 0; i < 5; ++i) {
+    ASSERT_NO_FATALS(
+        InsertOneRow(Format("INSERT INTO t3 VALUES ($0, $1, 'combo$2')", i, i + 300, i)));
+  }
+
+  for (int i = 0; i < 5; ++i) {
+    ASSERT_NO_FATALS(
+        InsertOneRow(Format("INSERT INTO t4 VALUES ($0, $1, 'default$2')", i, i + 400, i)));
+  }
+
+  // Create table with partition and add a unique constraint.
+  const std::string main_script = R"(
+CREATE TABLE employees_hash(id text, name text, age int) PARTITION BY RANGE (age);
+CREATE TABLE employees_hash_age_changes_25 PARTITION OF employees_hash FOR VALUES FROM (0) TO (25);
+INSERT INTO employees_hash(id, name, age) VALUES (1, 'Hermione', 15);
+ALTER TABLE employees_hash ADD CONSTRAINT employees_hash_unique_id UNIQUE (id, age);
+  )";
+
+  ASSERT_RESULT(RunPsqlCommand(main_script));
+
+  const string backup_dir = GetTempDir("backup_unique");
+  const auto backup_keyspace = Format("ysql.$0", backup_db_name);
+  const auto restore_keyspace = Format("ysql.$0", restore_db_name);
+
+  // Backup using the --use_tablespaces flag
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", backup_keyspace, "--use_tablespaces",
+       "create"}));
+
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", restore_keyspace, "--use_tablespaces",
+       "restore"}));
+
+  SetDbName(restore_db_name);
+
+  // Verify data is restored correctly
+  RunPsqlCommand(
+      "SELECT * FROM t1 ORDER BY a;",
+      "a |  b  |   c\n"
+      "---+-----+-------\n"
+      " 0 | 100 | text0\n"
+      " 1 | 101 | text1\n"
+      " 2 | 102 | text2\n"
+      " 3 | 103 | text3\n"
+      " 4 | 104 | text4\n"
+      "(5 rows)");
+
+  RunPsqlCommand(
+      "SELECT * FROM t2 ORDER BY a;",
+      "a |  b  |    c\n"
+      "---+-----+---------\n"
+      " 0 | 200 | unique0\n"
+      " 1 | 201 | unique1\n"
+      " 2 | 202 | unique2\n"
+      " 3 | 203 | unique3\n"
+      " 4 | 204 | unique4\n"
+      "(5 rows)");
+
+  RunPsqlCommand(
+      "SELECT * FROM t3 ORDER BY a;",
+      "a |  b  |   c\n"
+      "---+-----+--------\n"
+      " 0 | 300 | combo0\n"
+      " 1 | 301 | combo1\n"
+      " 2 | 302 | combo2\n"
+      " 3 | 303 | combo3\n"
+      " 4 | 304 | combo4\n"
+      "(5 rows)");
+
+  RunPsqlCommand(
+      "SELECT * FROM t4 ORDER BY a;",
+      "a |  b  |    c\n"
+      "---+-----+----------\n"
+      " 0 | 400 | default0\n"
+      " 1 | 401 | default1\n"
+      " 2 | 402 | default2\n"
+      " 3 | 403 | default3\n"
+      " 4 | 404 | default4\n"
+      "(5 rows)");
+
+  // Verify table structures with unique indexes
+  RunPsqlCommand(
+      " \\d t1",
+      R"#(
+                    Table "public.t1"
+   Column |  Type   | Collation | Nullable | Default
+  --------+---------+-----------+----------+---------
+   a      | integer |           | not null |
+   b      | integer |           |          |
+   c      | text    |           |          |
+  Indexes:
+      "t1_pkey" PRIMARY KEY, lsm (a ASC), tablespace "tsp1", colocation: true
+      "t1_b_key" UNIQUE CONSTRAINT, lsm (b ASC), colocation: true
+  Tablespace: "tsp1"
+  Colocation: true
+  )#");
+
+  RunPsqlCommand(
+      " \\d t2",
+      R"#(
+                    Table "public.t2"
+   Column |  Type   | Collation | Nullable | Default
+  --------+---------+-----------+----------+---------
+   a      | integer |           | not null |
+   b      | integer |           |          |
+   c      | text    |           |          |
+  Indexes:
+      "t2_pkey" PRIMARY KEY, lsm (a ASC), tablespace "tsp2", colocation: true
+      "t2_c_key" UNIQUE CONSTRAINT, lsm (c ASC), colocation: true
+  Tablespace: "tsp2"
+  Colocation: true
+  )#");
+
+  RunPsqlCommand(
+      " \\d t3",
+      R"#(
+                    Table "public.t3"
+   Column |  Type   | Collation | Nullable | Default
+  --------+---------+-----------+----------+---------
+   a      | integer |           | not null |
+   b      | integer |           |          |
+   c      | text    |           |          |
+  Indexes:
+      "t3_pkey" PRIMARY KEY, lsm (a ASC), tablespace "tsp3", colocation: true
+      "t3_b_c_key" UNIQUE CONSTRAINT, lsm (b ASC, c ASC), colocation: true
+  Tablespace: "tsp3"
+  Colocation: true
+  )#");
+
+  RunPsqlCommand(
+      " \\d t4",
+      R"#(
+                    Table "public.t4"
+   Column |  Type   | Collation | Nullable | Default
+  --------+---------+-----------+----------+---------
+   a      | integer |           | not null |
+   b      | integer |           |          |
+   c      | text    |           |          |
+  Indexes:
+      "t4_pkey" PRIMARY KEY, lsm (a ASC), colocation: true
+      "t4_b_key" UNIQUE CONSTRAINT, lsm (b ASC), colocation: true
+  Colocation: true
+  )#");
+
+  // Validate unique constraint indexes using yb_index_check
+  RunPsqlCommand(
+      "SELECT yb_index_check('t1_b_key'::regclass);",
+      "yb_index_check\n"
+      "----------------\n"
+      "\n"
+      "(1 row)");
+
+  RunPsqlCommand(
+      "SELECT yb_index_check('t2_c_key'::regclass);",
+      "yb_index_check\n"
+      "----------------\n"
+      "\n"
+      "(1 row)");
+
+  RunPsqlCommand(
+      "SELECT yb_index_check('t3_b_c_key'::regclass);",
+      "yb_index_check\n"
+      "----------------\n"
+      "\n"
+      "(1 row)");
+
+  RunPsqlCommand(
+      "SELECT yb_index_check('t4_b_key'::regclass);",
+      "yb_index_check\n"
+      "----------------\n"
+      "\n"
+      "(1 row)");
+
+  // Validate indexes by performing index-only scans
+  RunPsqlCommand(
+      "/*+ IndexOnlyScan(t1 t1_b_key) */ SELECT * FROM t1 WHERE b = 102;",
+      "a |  b  |   c\n"
+      "---+-----+-------\n"
+      " 2 | 102 | text2\n"
+      "(1 row)");
+
+  RunPsqlCommand(
+      "/*+ IndexOnlyScan(t2 t2_c_key) */ SELECT * FROM t2 WHERE c = 'unique3';",
+      "a |  b  |    c\n"
+      "---+-----+---------\n"
+      " 3 | 203 | unique3\n"
+      "(1 row)");
+
+  RunPsqlCommand(
+      "/*+ IndexOnlyScan(t3 t3_b_c_key) */ SELECT * FROM t3 WHERE b = 301 AND c = 'combo1';",
+      "a |  b  |   c\n"
+      "---+-----+--------\n"
+      " 1 | 301 | combo1\n"
+      "(1 row)");
+
+  RunPsqlCommand(
+      "/*+ IndexOnlyScan(t4 t4_b_key) */ SELECT * FROM t4 WHERE b = 403;",
+      "a |  b  |    c\n"
+      "---+-----+----------\n"
+      " 3 | 403 | default3\n"
+      "(1 row)");
+
+  auto query = R"(
+SELECT /*+ IndexOnlyScan(employees_hash_age_changes_25 employees_hash_age_changes_25_id_age_key) */
+COUNT(*) FROM employees_hash_age_changes_25;
+  )";
+  RunPsqlCommand(query,
+      " count  \n"
+      "-------\n"
+      "     1  \n"
+      "(1 row)");
 }
 
 // Test backup/restore of geo-partitioned colocated tables with tablespace information.
@@ -2550,6 +2797,7 @@ INSTANTIATE_TEST_CASE_P(
 
 class YBBackupCrossColocation : public YBBackupTestWithPackedRowsAndColocation {};
 
+// TODO(Yamen): Enable test in sasnitizers tracked by GH-29039.
 TEST_P(YBBackupCrossColocation, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLRestoreWithInvalidIndex)) {
   ASSERT_NO_FATALS(CreateTable("CREATE TABLE t1 (id INT NOT NULL, c1 INT, PRIMARY KEY (id))"));
   for (int i = 0; i < 3; ++i) {
@@ -2698,8 +2946,6 @@ class YBDdlAtomicityBackupTest : public YBBackupTestBase, public pgwrapper::PgDd
     // Disable table locks to avoid issues during SuccessfulDdlAtomicityTest
     // Test enables TEST_pause_ddl_rollback which may block table locks for ddl from
     // being released. Hence blocking the following statements from failing to acquire locks.
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_tserver_flags, "enable_object_locking_for_table_locks");
     options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=false");
     pgwrapper::PgDdlAtomicityTestBase::UpdateMiniClusterOptions(options);
   }
@@ -2770,10 +3016,14 @@ Status YBDdlAtomicityBackupTest::RunDdlAtomicityTest(pgwrapper::DdlErrorInjectio
 }
 
 TEST_F(YBDdlAtomicityBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(SuccessfulDdlAtomicityTest)) {
+  // TODO(Yamen): Remove this skip once GH-28766 is fixed.
+  GTEST_SKIP() << "Temporarily disabled until GH-28766 is fixed";
   ASSERT_OK(RunDdlAtomicityTest(pgwrapper::DdlErrorInjection::kFalse));
 }
 
 TEST_F(YBDdlAtomicityBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(DdlRollbackAtomicityTest)) {
+  // TODO(Yamen): Remove this skip once GH-28766 is fixed.
+  GTEST_SKIP() << "Temporarily disabled until GH-28766 is fixed";
   ASSERT_OK(RunDdlAtomicityTest(pgwrapper::DdlErrorInjection::kTrue));
 }
 
@@ -3023,9 +3273,11 @@ TEST_P(YBBackupTestWithTableRewrite,
   ));
 }
 
+// TODO(Yamen): Enable test in sasnitizers tracked by GH-29039.
 // Test that backup and restore succeed after unsuccessful rewrite operations are executed
 // on tables, indexes and materialized views.
-TEST_P(YBBackupTestWithTableRewrite,
+TEST_P(
+    YBBackupTestWithTableRewrite,
     YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLBackupAndRestoreAfterFailedRewrite)) {
   ASSERT_OK(cluster_->SetFlagOnMasters("enable_transactional_ddl_gc", "false"));
   ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_ddl_rollback_enabled", "false"));

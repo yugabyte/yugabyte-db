@@ -70,9 +70,6 @@ import play.libs.Json;
 @Slf4j
 public class ShellKubernetesManager extends KubernetesManager {
 
-  private final ShellProcessHandler shellProcessHandler;
-  private final FileHelperService fileHelperService;
-
   @Inject
   public ShellKubernetesManager(
       ShellProcessHandler shellProcessHandler, FileHelperService fileHelperService) {
@@ -1356,7 +1353,7 @@ public class ShellKubernetesManager extends KubernetesManager {
             universe.getName(),
             cluster.clusterType.equals(ClusterType.PRIMARY) ? "primary" : "replica",
             serverType.name().toLowerCase());
-    PlacementInfo pi = cluster.placementInfo;
+    PlacementInfo pi = cluster.getOverallPlacement();
     boolean isReadOnlyCluster = cluster.clusterType == ClusterType.ASYNC;
     KubernetesPlacement placement = new KubernetesPlacement(pi, isReadOnlyCluster);
     Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
@@ -1405,7 +1402,9 @@ public class ShellKubernetesManager extends KubernetesManager {
           cluster.uuid);
       return;
     }
-    String pdbPolicyYaml = generatePDBPolicyYaml(universe, cluster, serverType);
+    // Get helm overrides to extract commonLabels
+    Map<String, Object> commonLabels = extractCommonLabelsFromHelmOverrides(cluster);
+    String pdbPolicyYaml = generatePDBPolicyYaml(universe, cluster, serverType, commonLabels);
     PlacementInfo pi = cluster.placementInfo;
     boolean isReadOnlyCluster = cluster.clusterType == ClusterType.ASYNC;
     KubernetesPlacement placement = new KubernetesPlacement(pi, isReadOnlyCluster);
@@ -1435,7 +1434,10 @@ public class ShellKubernetesManager extends KubernetesManager {
   }
 
   private String generatePDBPolicyYaml(
-      Universe universe, UniverseDefinitionTaskParams.Cluster cluster, ServerType serverType) {
+      Universe universe,
+      UniverseDefinitionTaskParams.Cluster cluster,
+      ServerType serverType,
+      Map<String, Object> commonLabels) {
     Map<String, Object> policy = new HashMap<String, Object>();
     policy.put("apiVersion", "policy/v1");
     policy.put("kind", "PodDisruptionBudget");
@@ -1445,7 +1447,13 @@ public class ShellKubernetesManager extends KubernetesManager {
             universe.getName(),
             cluster.clusterType.equals(ClusterType.PRIMARY) ? "primary" : "replica",
             serverType.name().toLowerCase());
-    policy.put("metadata", ImmutableMap.of("name", policyName));
+    Map<String, Object> metadata = new HashMap<>();
+    metadata.put("name", policyName);
+    // Add commonLabels to metadata if present
+    if (commonLabels != null && !commonLabels.isEmpty()) {
+      metadata.put("labels", commonLabels);
+    }
+    policy.put("metadata", metadata);
     policy.put("spec", createPDBSpec(cluster, universe, serverType));
     Yaml yaml = new Yaml();
     try {
@@ -1505,6 +1513,43 @@ public class ShellKubernetesManager extends KubernetesManager {
     } else {
       return Optional.empty();
     }
+  }
+
+  /**
+   * Extracts commonLabels from helm overrides. Similar to generateHelmOverride() in
+   * KubernetesCommandExecutor, this checks merged overrides which include provider, universe, and
+   * AZ-level overrides. Returns the first non-empty commonLabels found.
+   *
+   * @param cluster The cluster to extract commonLabels from
+   * @return Map of commonLabels, or empty map if not found
+   */
+  @SuppressWarnings("unchecked")
+  private Map<String, Object> extractCommonLabelsFromHelmOverrides(
+      UniverseDefinitionTaskParams.Cluster cluster) {
+    try {
+      // Get final overrides which merges provider, universe, and AZ overrides
+      // This follows the same precedence as generateHelmOverride() in KubernetesCommandExecutor:
+      // provider overrides -> universe overrides -> AZ overrides
+      Map<UUID, Map<String, Object>> finalOverrides =
+          KubernetesUtil.getFinalOverrides(
+              cluster, cluster.userIntent.universeOverrides, cluster.userIntent.azOverrides);
+
+      // Check merged overrides (which include provider, universe, and AZ overrides)
+      // The merged overrides follow the same precedence as generateHelmOverride()
+      if (finalOverrides != null && !finalOverrides.isEmpty()) {
+        for (Map<String, Object> mergedOverrides : finalOverrides.values()) {
+          if (mergedOverrides != null && mergedOverrides.containsKey("commonLabels")) {
+            Object commonLabelsObj = mergedOverrides.get("commonLabels");
+            if (commonLabelsObj instanceof Map) {
+              return (Map<String, Object>) commonLabelsObj;
+            }
+          }
+        }
+      }
+    } catch (Exception e) {
+      log.warn("Error extracting commonLabels from helm overrides: {}", e.getMessage());
+    }
+    return new HashMap<>();
   }
 
   public void checkOpentelemetryOperatorRunning() {

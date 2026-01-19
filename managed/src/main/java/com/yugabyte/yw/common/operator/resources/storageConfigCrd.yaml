@@ -54,6 +54,12 @@ spec:
                   x-kubernetes-validations:
                   - message: Config type cannot be changed
                     rule: self == oldSelf
+                name:
+                  type: string
+                  description: Optional name of storage config for mapping to a YBA object.
+                  x-kubernetes-validations:
+                  - message: name cannot be changed
+                    rule: self == oldSelf
                 data:
                   type: object
                   description: Data object to create storage configuration.
@@ -67,7 +73,7 @@ spec:
                         aws_secret_access_key_secret instead
                       type: string
                     USE_IAM:
-                      description: Use IAM for storage account access. Valid for S3/GCS.
+                      description: Use IAM for storage account access. Valid for S3/GCS/AZ.
                       type: boolean
                     BACKUP_LOCATION:
                       description: Backup location for the storage configuration.
@@ -94,6 +100,11 @@ spec:
                         Use path style access for S3 bucket configuration. Valid for S3 compatible
                         storages.
                       type: boolean
+                    SIGNING_REGION:
+                      description: |
+                        Signing region to be used for S3 clients when accessing storage bucket. Use
+                        for S3 compatible storages / private S3 endpoints.
+                      type: string
                   required:
                   - BACKUP_LOCATION
                 awsSecretAccessKeySecret:

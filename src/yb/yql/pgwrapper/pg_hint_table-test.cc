@@ -92,6 +92,11 @@ class PgHintTableTest : public LibPqTestBase {
     LOG(INFO) << "Completed " << num_queries << " queries";
     return std::make_pair(std::move(conn_query), std::move(conn_hint));
   }
+
+  bool IsTransactionalDdlEnabled(pgwrapper::PGConn& conn) const {
+    auto txn_ddl_enabled = conn.FetchRow<std::string>("SHOW yb_ddl_transaction_block_enabled;");
+    return txn_ddl_enabled.ok() && *txn_ddl_enabled == "on";
+  }
 };
 
 class PgHintTableTestWithoutHintCache : public PgHintTableTest {
@@ -273,12 +278,7 @@ class PgHintTableTestTableLocksDisabled : public PgHintTableTest {
     // "could not serialize access due to concurrent update" errors.
     PgHintTableTest::UpdateMiniClusterOptions(options);
     options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=false");
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_tserver_flags, "enable_object_locking_for_table_locks");
     options->extra_master_flags.push_back("--enable_object_locking_for_table_locks=false");
-    AppendFlagToAllowedPreviewFlagsCsv(
-        options->extra_master_flags, "enable_object_locking_for_table_locks");
-
     options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=false");
     AppendFlagToAllowedPreviewFlagsCsv(
         options->extra_tserver_flags, "ysql_yb_ddl_transaction_block_enabled");
@@ -458,11 +458,19 @@ TEST_F(PgHintTableTest, PreparedStatementHintCacheRefresh) {
   int64_t hint_insertion_hits = GetMetricValue(hint_insertion_metrics, "HintCacheHits");
   ASSERT_EQ(hint_insertion_hits - generic_plan_hits, 0);
 
-  // During hint insertion, we do 3 hint table lookups.
-  // One for the INSERT itself, and 2 for the 2 queries that are executed as part of the
-  // yb_increment_db_catalog_version_with_inval_messages function (one DELETE, one INSERT).
+  // During hint insertion, we do 1 hint table lookups when transactional ddl is enabled and 3
+  // otherwise.
+  //
+  // When transactional DDL is disabled, we get one for the INSERT itself, and 2 for the 2 queries
+  // that are executed as part of the yb_increment_db_catalog_version_with_inval_messages function
+  // (one DELETE, one INSERT).
+  //
+  // When transactional DDL is enabled, the insert and the 2 queries of
+  // yb_increment_db_catalog_version_with_inval_messages function are executed in a single
+  // transaction, leading to a single cache miss.
   int64_t hint_insertion_misses = GetMetricValue(hint_insertion_metrics, "HintCacheMisses");
-  ASSERT_EQ(hint_insertion_misses - generic_plan_misses, 3);
+  ASSERT_EQ(
+      hint_insertion_misses - generic_plan_misses, IsTransactionalDdlEnabled(conn_hint) ? 1 : 3);
 
   // ----------------------------------------------------------------------------------------------
   // 5. Re-execute the prepared statement and verify the cache gets refreshed and the new hint is

@@ -3,10 +3,16 @@ import { makeStyles } from '@material-ui/core/styles';
 import { Typography } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
+
 import { YBButton } from '../../../redesign/components/YBButton/YBButton';
-import { RestoreYbaBackupModal } from '../../../redesign/features/continuous-backup/RestoreYbaBackupModal';
-import { ReactComponent as BriefcaseIcon } from '@app/redesign/assets/briefcase.svg';
-import { ReactComponent as BulbIcon } from '@app/redesign/assets/bulb2.svg';
+import BriefcaseIcon from '@app/redesign/assets/briefcase.svg';
+import BulbIcon from '@app/redesign/assets/bulb2.svg';
+import { RestoreYbaBackupModal } from '@app/redesign/features/continuous-backup/RestoreYbaBackupModal';
+import {
+  hasNecessaryPerm,
+  RbacValidator
+} from '@app/redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '@app/redesign/features/rbac/ApiAndUserPermMapping';
 
 const useStyles = makeStyles((theme) => ({
   container: {
@@ -97,9 +103,17 @@ export const OnboardingPanel = () => {
         <div className={classes.card}>
           <BriefcaseIcon width={62} height={62} />
           <Typography className={classes.cardText}>{t('restoreBackupCard.title')}</Typography>
-          <YBButton variant="primary" onClick={openRestoreYbaBackupModal}>
-            {t('restoreBackupCard.buttonText')}
-          </YBButton>
+          <RbacValidator
+            customValidateFunction={() =>
+              hasNecessaryPerm(ApiPermissionMap.RESTORE_CONTINUOUS_YBA_BACKUP) ||
+              hasNecessaryPerm(ApiPermissionMap.RESTORE_ISOLATED_YBA_BACKUP)
+            }
+            isControl
+          >
+            <YBButton variant="primary" onClick={openRestoreYbaBackupModal}>
+              {t('restoreBackupCard.buttonText')}
+            </YBButton>
+          </RbacValidator>
         </div>
       </div>
 

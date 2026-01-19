@@ -1255,8 +1255,9 @@ void TestBackfillIndexTable(
         if (!backfill_job) {
           return backfill_job.status();
         }
-        const auto number_rows_processed = backfill_job->num_rows_processed();
-        return number_rows_processed >= kLowerBound;
+        const auto num_rows_read_from_table_for_backfill =
+            backfill_job->num_rows_read_from_table_for_backfill();
+        return num_rows_read_from_table_for_backfill >= kLowerBound;
       }, kMaxWait),
       "Could not get BackfillJobPB. May be OK, if the backfill is already done.");
 
@@ -1365,6 +1366,7 @@ TEST_F_EX(CppCassandraDriverTest, WaitForSplitsToComplete, CppCassandraDriverTes
   auto proxy = cluster_->GetLeaderMasterProxy<master::MasterAdminProxy>();
   master::SplitTabletRequestPB req;
   req.set_tablet_id(tablet_to_split);
+  req.set_split_factor(cluster_->GetSplitFactor());
   master::SplitTabletResponsePB resp;
   rpc::RpcController rpc;
   rpc::RpcController controller;

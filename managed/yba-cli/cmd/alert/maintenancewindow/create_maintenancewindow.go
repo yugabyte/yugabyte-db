@@ -65,7 +65,7 @@ var createMaintenanceWindowCmd = &cobra.Command{
 		}
 		alertTargetUUIDs := make([]string, 0)
 		alertUseAllTargets := false
-		if len(strings.TrimSpace(alertTargetUUIDsString)) > 0 {
+		if !util.IsEmptyString(alertTargetUUIDsString) {
 			alertTargetUUIDs = strings.Split(alertTargetUUIDsString, ",")
 			alertUseAllTargets = false
 		} else {
@@ -78,7 +78,7 @@ var createMaintenanceWindowCmd = &cobra.Command{
 		}
 		healthTargetUUIDs := make([]string, 0)
 		healthUseAllTargets := false
-		if len(strings.TrimSpace(healthTargetUUIDsString)) > 0 {
+		if !util.IsEmptyString(healthTargetUUIDsString) {
 			healthTargetUUIDs = strings.Split(healthTargetUUIDsString, ",")
 			healthUseAllTargets = false
 		} else {
@@ -93,12 +93,12 @@ var createMaintenanceWindowCmd = &cobra.Command{
 			CustomerUUID: authAPI.CustomerUUID,
 			AlertConfigurationFilter: ybaclient.AlertConfigurationApiFilter{
 				Target: &ybaclient.AlertConfigurationTarget{
-					Uuids: util.StringSliceFromString(alertTargetUUIDs),
+					Uuids: alertTargetUUIDs,
 					All:   util.GetBoolPointer(alertUseAllTargets),
 				},
 			},
 			SuppressHealthCheckNotificationsConfig: &ybaclient.SuppressHealthCheckNotificationsConfig{
-				UniverseUUIDSet:      util.StringSliceFromString(healthTargetUUIDs),
+				UniverseUUIDSet:      healthTargetUUIDs,
 				SuppressAllUniverses: util.GetBoolPointer(healthUseAllTargets),
 			},
 		}
@@ -107,14 +107,18 @@ var createMaintenanceWindowCmd = &cobra.Command{
 			CreateMaintenanceWindowRequest(req).
 			Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response, err, "Maintenance Window", "Create")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Maintenance Window", "Create")
 		}
-		r := []ybaclient.MaintenanceWindow{mw}
+
+		maintenanceWindow := util.CheckAndDereference(
+			mw,
+			"An error occurred while creating maintenance window",
+		)
+
+		r := []ybaclient.MaintenanceWindow{maintenanceWindow}
 
 		logrus.Infof("The maintenance window %s (%s) has been created\n",
-			formatter.Colorize(name, formatter.GreenColor), mw.GetUuid())
+			formatter.Colorize(name, formatter.GreenColor), maintenanceWindow.GetUuid())
 
 		if len(r) > 0 && util.IsOutputType(formatter.TableFormatKey) {
 			fullMaintenanceWindowContext := *maintenancewindow.NewFullMaintenanceWindowContext()

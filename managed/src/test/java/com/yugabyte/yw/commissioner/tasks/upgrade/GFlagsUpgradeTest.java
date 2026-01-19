@@ -500,7 +500,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
 
     initMockUpgrade()
         // Because only RR doesn't infer CheckNodesAreSafeToTakeDown.
-        .precheckTasks(getPrecheckTasks(false))
+        .precheckTasks(true, changedNodes.size(), getPrecheckTasks(false, true))
         .upgradeRound(UpgradeOption.ROLLING_UPGRADE)
         .task(TaskType.AnsibleConfigureServers)
         .applyToCluster(clusterId)
@@ -591,7 +591,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
 
       initMockUpgrade()
           // Because only RR doesn't infer CheckNodesAreSafeToTakeDown.
-          .precheckTasks(getPrecheckTasks(false))
+          .precheckTasks(true, changedNodes.size(), getPrecheckTasks(false, true))
           .upgradeRound(UpgradeOption.ROLLING_UPGRADE)
           .task(TaskType.AnsibleConfigureServers)
           .applyToCluster(clusterId)
@@ -871,7 +871,8 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     }
 
     initMockUpgrade()
-        .precheckTasks(getPrecheckTasks(true))
+        .precheckTasks(
+            true, az1PrimaryNodeNames.size() + az1RRNodeNames.size(), getPrecheckTasks(true))
         .upgradeRound(UpgradeOption.ROLLING_UPGRADE)
         .task(TaskType.AnsibleConfigureServers)
         .applyToNodes(az1PrimaryNodeNames, az1PrimaryNodeNames)
@@ -1158,10 +1159,31 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
 
     TaskType[] precheckTasks = getPrecheckTasks(true);
-    assertEquals(precheckTasks.length, subTasks.size());
-    int i = 0;
-    for (TaskType precheckTask : precheckTasks) {
-      assertEquals(precheckTask, subTasks.get(i++).getTaskType());
+    // Build expected task counts (when runOnlyPrechecks=true, all tasks are at position 0,
+    // so order may vary - we check counts instead)
+    Map<TaskType, Integer> expectedTaskCounts = new HashMap<>();
+    int nodeCount = defaultUniverse.getUniverseDetails().nodeDetailsSet.size();
+    for (TaskType task : precheckTasks) {
+      if (MockUpgrade.NODE_LEVEL_PRECHECK_TASKS.contains(task)) {
+        expectedTaskCounts.put(task, nodeCount);
+      } else {
+        expectedTaskCounts.put(task, 1);
+      }
+    }
+
+    // Count actual tasks
+    Map<TaskType, Integer> actualTaskCounts = new HashMap<>();
+    for (TaskInfo subTask : subTasks) {
+      actualTaskCounts.merge(subTask.getTaskType(), 1, Integer::sum);
+    }
+
+    // Verify counts match
+    assertEquals(expectedTaskCounts.size(), actualTaskCounts.size());
+    for (Map.Entry<TaskType, Integer> entry : expectedTaskCounts.entrySet()) {
+      assertEquals(
+          "Task count mismatch for " + entry.getKey(),
+          entry.getValue(),
+          actualTaskCounts.getOrDefault(entry.getKey(), 0));
     }
   }
 

@@ -35,18 +35,24 @@ public class NodeActionRunner {
     this.nodeAgentClient = nodeAgentClient;
   }
 
+  // Runs command in bash shell.
+  public ShellResponse runCommand(
+      NodeAgent nodeAgent, List<String> command, ShellProcessContext context) {
+    return runCommand(nodeAgent, command, context, true /* use bash */);
+  }
+
   /**
    * Runs command in bash shell.
    *
    * @param nodeAgent the node agent to connect.
    * @param command the command.
    * @param context the context.
+   * @param useBash whether or not to use bash.
    * @return shell response.
    */
   public ShellResponse runCommand(
-      NodeAgent nodeAgent, List<String> command, ShellProcessContext context) {
-    ShellResponse response =
-        nodeAgentClient.executeCommand(nodeAgent, command, context, true /* use bash */);
+      NodeAgent nodeAgent, List<String> command, ShellProcessContext context, boolean useBash) {
+    ShellResponse response = nodeAgentClient.executeCommand(nodeAgent, command, context, useBash);
     if (response.getCode() == 0) {
       // Prefix is added to make the output same as that of run_node_action.py.
       response.message = ShellResponse.RUN_COMMAND_OUTPUT_PREFIX + response.message;

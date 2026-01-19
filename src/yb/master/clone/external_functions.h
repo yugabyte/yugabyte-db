@@ -16,17 +16,22 @@
 #include <memory>
 #include <unordered_map>
 
+#include "yb/master/async_task_result_collector.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/clone/clone_state_entity.h"
+#include "yb/master/clone/clone_tasks.h"
 #include "yb/master/leader_epoch.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_types.pb.h"
 #include "yb/master/ts_descriptor.h"
+
 #include "yb/rpc/rpc_context.h"
+
+#include "yb/tserver/tserver_admin.pb.h"
 
 namespace yb {
 namespace master {
@@ -72,7 +77,7 @@ class CloneStateManagerExternalFunctionsBase {
       const CreateSnapshotRequestPB* req, CreateSnapshotResponsePB* resp,
       CoarseTimePoint deadline, const LeaderEpoch& epoch) = 0;
 
-  virtual Result<std::pair<SnapshotInfoPB, std::unordered_set<TabletId>>>
+  virtual Result<CatalogManagerIf::CloneSnapshotInfo>
       GenerateSnapshotInfoFromScheduleForClone(
       const SnapshotScheduleId& snapshot_schedule_id, HybridTime export_time,
       CoarseTimePoint deadline) = 0;
@@ -86,6 +91,8 @@ class CloneStateManagerExternalFunctionsBase {
   virtual Result<TSDescriptorPtr> GetClosestLiveTserver() = 0;
 
   virtual TSDescriptorVector GetTservers() = 0;
+
+  virtual Result<BlacklistSet> GetBlacklist() = 0;
 
   // Sys catalog.
   virtual Status Upsert(int64_t leader_term, const CloneStateInfoPtr&) = 0;

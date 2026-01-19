@@ -124,6 +124,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/pb_util.h"
+#include "yb/util/priority_thread_pool.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/status_format.h"
@@ -299,32 +300,33 @@ TAG_FLAG(allow_compaction_failures_for_tablet_ids, hidden);
 TAG_FLAG(allow_compaction_failures_for_tablet_ids, advanced);
 
 DEFINE_NON_RUNTIME_uint32(deleted_tablet_cache_max_size, 10000,
-                          "Maximum size for the cache of recently deleted tablet ids. Used to "
-                          "reject remote bootstrap requests for recently deleted tablets.");
+    "Maximum size for the cache of recently deleted tablet ids. Used to "
+    "reject remote bootstrap requests for recently deleted tablets.");
 
 DEFINE_RUNTIME_bool(
     reject_rbs_for_deleted_tablet, true,
     "Whether to reject a request to RBS a tablet that the receiving tserver has recently deleted.");
 
 DEFINE_UNKNOWN_int32(flush_bootstrap_state_pool_max_threads, -1,
-                     "The maximum number of threads used to flush retryable requests");
+    "The maximum number of threads used to flush retryable requests");
 
 DEFINE_test_flag(bool, disable_flush_on_shutdown, false,
-                 "Whether to disable flushing memtable on shutdown.");
+    "Whether to disable flushing memtable on shutdown.");
 
 DEFINE_test_flag(bool, pause_delete_tablet, false,
-                 "Make DeletTablet stuck.");
+    "Make DeleteTablet stuck.");
 
 DEFINE_test_flag(bool, crash_before_clone_target_marked_ready, false,
-                 "Whether to crash before marking the target tablet of a clone op as "
-                 "TABLET_DATA_READY.");
+    "Whether to crash before marking the target tablet of a clone op as TABLET_DATA_READY.");
 
 DEFINE_test_flag(bool, crash_before_mark_clone_attempted, false,
-                 "Whether to crash before marking a clone op as completed on the source tablet.");
+    "Whether to crash before marking a clone op as completed on the source tablet.");
 
 DEFINE_NON_RUNTIME_uint32(vector_index_concurrent_writes, 0,
-                          "Number of threads used by vector index thread pool. "
-                          "0 - use number of CPUs for it.");
+    "Number of threads used by vector index thread pool. 0 - use number of CPUs for it.");
+
+DEFINE_RUNTIME_uint32(vector_index_num_compactions_limit, 1,
+    "Number of vector index compaction per tserver. 0 - no limit per tserver.");
 
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(disable_deadlock_detection);
@@ -631,8 +633,12 @@ Status TSTabletManager::Init() {
       [this] { UpdateAllowCompactionFailures(); })));
   flag_callbacks_.emplace_back(VERIFY_RESULT(RegisterFlagUpdateCallback(
       &FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec,
-      "RocksDBCompactFlushRateLimiter",
+      "rocksdb_compact_flush_rate_limit_bytes_per_sec",
       [this] { UpdateCompactFlushRateLimitBytesPerSec(); })));
+  flag_callbacks_.emplace_back(VERIFY_RESULT(RegisterFlagUpdateCallback(
+      &FLAGS_vector_index_num_compactions_limit,
+      "vector_index_compactions_limit",
+      [this] { UpdateVectorIndexCompactionLimit(); })));
 
   // Start the threadpool we'll use to open tablets.
   // This has to be done in Init() instead of the constructor, since the
@@ -1013,7 +1019,7 @@ Result<TabletPeerPtr> TSTabletManager::CreateNewTablet(
   return new_peer;
 }
 
-struct TabletCreationMetaData {
+struct TabletCreationMetadata {
   TabletId tablet_id;
   scoped_refptr<TransitionInProgressDeleter> transition_deleter;
   dockv::Partition partition;
@@ -1023,35 +1029,35 @@ struct TabletCreationMetaData {
 
 namespace {
 
-// Creates SplitTabletsCreationMetaData for two new tablets for `tablet` splitting based on request.
-SplitTabletsCreationMetaData PrepareTabletCreationMetaDataForSplit(
+// Creates SplitTabletsCreationMetadata for N new tablets for `tablet` splitting based on request.
+SplitTabletsCreationMetadata PrepareTabletCreationMetadataForSplit(
     const tablet::SplitTabletRequestPB& request, const tablet::Tablet& tablet) {
-  SplitTabletsCreationMetaData metas;
+  const auto new_tablet_ids = GetSplitChildTabletIds(request);
+  const auto split_partition_keys = GetSplitPartitionKeys(request);
+  const auto split_encoded_keys = GetSplitEncodedKeys(request);
+  const int num_split_tablets = narrow_cast<int>(new_tablet_ids.size());
+  CHECK_EQ(num_split_tablets - 1, split_partition_keys.size());
+  CHECK_EQ(num_split_tablets - 1, split_encoded_keys.size());
 
-  const auto& split_partition_key = request.split_partition_key();
-  const auto& split_encoded_key = request.split_encoded_key();
-
-  auto source_partition = tablet.metadata()->partition();
+  const auto source_partition = tablet.metadata()->partition();
   const auto& source_key_bounds = tablet.key_bounds();
-
-  {
-    TabletCreationMetaData meta;
-    meta.tablet_id = request.new_tablet1_id();
+  SplitTabletsCreationMetadata metas;
+  metas.reserve(num_split_tablets);
+  for (int i = 0; i < num_split_tablets; ++i) {
+    TabletCreationMetadata meta;
+    meta.tablet_id = new_tablet_ids[i];
+    // TODO(nway-tsplit): How does hash bucket population change with N-way split? For binary
+    // splits, we seemed to simply copy from source partition.
     meta.partition = *source_partition;
-    meta.key_bounds = source_key_bounds;
-    meta.key_bounds.upper.Reset(split_encoded_key);
-    meta.partition.set_partition_key_end(split_partition_key);
-    metas.push_back(meta);
-  }
-
-  {
-    TabletCreationMetaData meta;
-    meta.tablet_id = request.new_tablet2_id();
-    meta.partition = *source_partition;
-    meta.key_bounds = source_key_bounds;
-    meta.key_bounds.lower.Reset(split_encoded_key);
-    meta.partition.set_partition_key_start(split_partition_key);
-    metas.push_back(meta);
+    meta.partition.set_partition_key_start(GetVectorItemOrDefault(
+        split_partition_keys, i - 1, source_partition->partition_key_start()));
+    meta.partition.set_partition_key_end(GetVectorItemOrDefault(
+        split_partition_keys, i, source_partition->partition_key_end()));
+    meta.key_bounds.lower.Reset(GetVectorItemOrDefault(
+        split_encoded_keys, i - 1, source_key_bounds.lower.AsSlice()));
+    meta.key_bounds.upper.Reset(GetVectorItemOrDefault(
+        split_encoded_keys, i, source_key_bounds.upper.AsSlice()));
+    metas.push_back(std::move(meta));
   }
 
   return metas;
@@ -1078,7 +1084,7 @@ Status TSTabletManager::CleanUpSubtabletIfExistsOnDisk(
 }
 
 Status TSTabletManager::StartSubtabletsSplit(
-    const RaftGroupMetadata& source_tablet_meta, SplitTabletsCreationMetaData* tcmetas) {
+    const RaftGroupMetadata& source_tablet_meta, SplitTabletsCreationMetadata* tcmetas) {
   auto* const env = fs_manager_->env();
 
   auto iter = tcmetas->begin();
@@ -1157,17 +1163,22 @@ Status TSTabletManager::ApplyTabletSplit(
   auto tablet = VERIFY_RESULT(operation->tablet_safe());
   const auto tablet_id = tablet->tablet_id();
   const auto* request = operation->request();
+  const auto request_pb = request->ToGoogleProtobuf();
+  const auto new_tablet_ids = GetSplitChildTabletIds(*request);
+
   SCHECK_EQ(
       request->tablet_id(), tablet_id, IllegalState,
       Format(
           "Unexpected SPLIT_OP $0 designated for tablet $1 to be applied to tablet $2",
           split_op_id, request->tablet_id(), tablet_id));
-  SCHECK(
-      tablet_id != request->new_tablet1_id() && tablet_id != request->new_tablet2_id(),
-      IllegalState,
+
+  for (size_t i = 0; i < new_tablet_ids.size(); ++i) {
+    SCHECK_NE(
+      tablet_id, new_tablet_ids[i], IllegalState,
       Format(
-          "One of SPLIT_OP $0 destination tablet IDs ($1, $2) is the same as source tablet ID $3",
-          split_op_id, request->new_tablet1_id(), request->new_tablet2_id(), tablet_id));
+          "The SPLIT_OP $0 destination tablet ID $1 (index $2) is the same as source tablet ID $3",
+          split_op_id, new_tablet_ids[i], i, tablet_id));
+  }
 
   LOG_WITH_PREFIX(INFO) << "Tablet " << tablet_id << " split operation " << split_op_id
                         << " apply started";
@@ -1209,7 +1220,7 @@ Status TSTabletManager::ApplyTabletSplit(
     LOG(INFO) << "TEST: ApplyTabletSplit: delay finished";
   }
 
-  auto tcmetas = PrepareTabletCreationMetaDataForSplit(request->ToGoogleProtobuf(), *tablet);
+  auto tcmetas = PrepareTabletCreationMetadataForSplit(request_pb, *tablet);
 
   RETURN_NOT_OK(StartSubtabletsSplit(meta, &tcmetas));
 
@@ -1263,8 +1274,7 @@ Status TSTabletManager::ApplyTabletSplit(
     LOG(FATAL) << "Crashing due to FLAGS_TEST_crash_before_source_tablet_mark_split_done";
   }
 
-  meta.SetSplitDone(
-      split_op_id, request->new_tablet1_id().ToBuffer(), request->new_tablet2_id().ToBuffer());
+  meta.SetSplitDone(split_op_id, new_tablet_ids);
   RETURN_NOT_OK(meta.Flush());
 
   tablet->SplitDone();
@@ -1821,7 +1831,8 @@ Status TSTabletManager::DeleteTablet(
     const string& tablet_id, TabletDataState delete_type,
     tablet::ShouldAbortActiveTransactions should_abort_active_txns,
     const std::optional<int64_t>& cas_config_opid_index_less_or_equal, bool hide_only,
-    bool keep_data, std::optional<TabletServerErrorPB::Code>* error_code) {
+    bool keep_data, std::optional<TabletServerErrorPB::Code>* error_code,
+    std::optional<TransactionId>&& exclude_aborting_txn_id) {
   TEST_PAUSE_IF_FLAG(TEST_pause_delete_tablet);
 
   if (delete_type != TABLET_DATA_DELETED && delete_type != TABLET_DATA_TOMBSTONED) {
@@ -1893,7 +1904,8 @@ Status TSTabletManager::DeleteTablet(
     return meta->Flush();
   }
   RETURN_NOT_OK(tablet_peer->Shutdown(
-      should_abort_active_txns, tablet::DisableFlushOnShutdown::kTrue));
+      should_abort_active_txns, tablet::DisableFlushOnShutdown::kTrue,
+      std::move(exclude_aborting_txn_id)));
 
   auto last_logged_opid = tablet_peer->GetLatestLogEntryOpId();
 
@@ -2106,8 +2118,8 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
         .vector_index_thread_pool_provider = [this](auto type) {
           return VectorIndexThreadPool(type);
         },
-        .vector_index_priority_thread_pool_provider = [this](auto type) {
-          return VectorIndexPriorityThreadPool(type);
+        .vector_index_compaction_token_provider = [this]() {
+          return VectorIndexCompactionToken();
         },
         .vector_index_block_cache = vector_index_block_cache_,
     };
@@ -2224,7 +2236,8 @@ Status TSTabletManager::TriggerAdminCompaction(
   auto start_time = CoarseMonoClock::Now();
   uint64_t total_size = 0U;
 
-  tablet::AdminCompactionOptions tablet_compaction_options {
+  tablet::ManualCompactionOptions tablet_compaction_options {
+      .compaction_reason = rocksdb::CompactionReason::kAdminCompaction,
       .compaction_completion_callback =
           options.should_wait ? [&latch, &first_compaction_error,
                                  &first_compaction_error_mutex](const Status& status) {
@@ -2942,9 +2955,12 @@ void TSTabletManager::HandleNonReadyTabletOnStartup(
     const RaftGroupMetadataPtr& meta,
     const scoped_refptr<TransitionInProgressDeleter>& deleter) {
   Status s = DoHandleNonReadyTabletOnStartup(meta.get(), deleter);
-  LOG_IF(FATAL, !s.ok())
-      << TabletLogPrefix(meta->raft_group_id())
-      << " Failed to handle non ready tablet on tserver startup: " << s;
+  if (s.IsShutdownInProgress()) {
+    LOG_WITH_PREFIX(WARNING) << s;
+  } else if (!s.ok()) {
+    LOG(FATAL) << TabletLogPrefix(meta->raft_group_id())
+               << " Failed to handle non ready tablet on tserver startup: " << s;
+  }
 }
 
 Status TSTabletManager::DoHandleNonReadyTabletOnStartup(
@@ -3340,7 +3356,7 @@ docdb::HistoryCutoff TSTabletManager::AllowedHistoryCutoff(tablet::RaftGroupMeta
     result = metadata->cdc_sdk_safe_time();
   }
 
-  Status s = BackfillNamespaceIdIfNeeded(*metadata, client());
+  Status s = BackfillNamespaceIdIfNeeded(metadata->table_id(), *metadata, client());
   if (!s.ok()) {
     YB_LOG_EVERY_N_SECS(ERROR, 30) << "Unable to backfill tablet metadata namespace_id for tablet: "
                                    << metadata->raft_group_id() << ": " << s;
@@ -3603,6 +3619,26 @@ void TSTabletManager::UpdateAllowCompactionFailures() {
   }
 }
 
+void TSTabletManager::UpdateVectorIndexCompactionLimit() {
+  PriorityThreadPoolToken* token = nullptr;
+  {
+    std::lock_guard lock(vector_index_thread_pool_mutex_);
+    token = vector_index_compaction_token_.get();
+  }
+
+  if (!token) {
+    LOG_WITH_PREFIX(WARNING) <<
+        "Vector index priority thread pool does not configured, "
+        "ignoring 'vector_index_compactions_limit' gflag update";
+    return;
+  }
+
+  const auto compactions_limit = FLAGS_vector_index_num_compactions_limit;
+  token->SetMaxConcurrency(compactions_limit);
+  LOG_WITH_PREFIX(INFO) <<
+      "Vector index priority thread pool max concurency is set to " << compactions_limit;
+}
+
 rpc::ThreadPool* TSTabletManager::VectorIndexThreadPool(tablet::VectorIndexThreadPoolType type) {
   auto& thread_pool_ptr = vector_index_thread_pools_[std::to_underlying(type)];
   auto result = thread_pool_ptr.get();
@@ -3627,11 +3663,13 @@ rpc::ThreadPool* TSTabletManager::VectorIndexThreadPool(tablet::VectorIndexThrea
   return result;
 }
 
-PriorityThreadPool* TSTabletManager::VectorIndexPriorityThreadPool(
-    tablet::VectorIndexPriorityThreadPoolType type) {
-  // Currently there's only one type of priority thread pool, which is used for compacitons.
-  DCHECK_EQ(type, tablet::VectorIndexPriorityThreadPoolType::kCompaction);
-  return docdb::GetGlobalPriorityThreadPool();
+PriorityThreadPoolTokenPtr TSTabletManager::VectorIndexCompactionToken() {
+  std::lock_guard lock(vector_index_thread_pool_mutex_);
+  if (!vector_index_compaction_token_) {
+    vector_index_compaction_token_ = std::make_shared<PriorityThreadPoolToken>(
+        *docdb::GetGlobalPriorityThreadPool(), FLAGS_vector_index_num_compactions_limit);
+  }
+  return vector_index_compaction_token_;
 }
 
 Status DeleteTabletData(const RaftGroupMetadataPtr& meta,

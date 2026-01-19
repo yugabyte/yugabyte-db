@@ -30,14 +30,14 @@ CREATE TABLE accounts (
 CREATE TABLE investment_accounts (
     investment_type TEXT NOT NULL CHECK (investment_type IN ('stocks', 'bonds', 'funds')),
     CHECK (balance >= 5000),
-    PRIMARY KEY (account_id, investment_type) 
+    PRIMARY KEY (account_id, investment_type)
 ) INHERITS (accounts);
 
 -- Child table for savings accounts
 CREATE TABLE savings_accounts (
     interest_rate NUMERIC NOT NULL CHECK (interest_rate >= 0 AND interest_rate <= 0.1),
     CHECK (balance >= 100),
-    PRIMARY KEY (account_id) 
+    PRIMARY KEY (account_id)
 ) INHERITS (accounts);
 ```
 

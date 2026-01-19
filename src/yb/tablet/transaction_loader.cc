@@ -80,11 +80,13 @@ class TransactionLoader::Executor {
     if (!scoped_pending_operation_.ok()) {
       return false;
     }
-    auto min_replay_txn_start_ht = context().MinReplayTxnStartTime();
-    VLOG_WITH_PREFIX(1) << "TransactionLoader min_replay_txn_start_ht: " << min_replay_txn_start_ht;
-    regular_iterator_ = CreateFullScanIterator(db.regular, nullptr /* filter */);
+    auto min_replay_txn_first_write_ht = context().MinReplayTxnFirstWriteTime();
+    VLOG_WITH_PREFIX(1) << "TransactionLoader min_replay_txn_first_write_ht: "
+                        << min_replay_txn_first_write_ht;
+    regular_iterator_ = docdb::OptimizedRocksDbIterator<docdb::BoundedRocksDbIterator>(
+        CreateFullScanIterator(db.regular, nullptr /* filter */));
     intents_iterator_ = CreateFullScanIterator(db.intents,
-        docdb::CreateIntentHybridTimeFileFilter(min_replay_txn_start_ht));
+        docdb::CreateIntentHybridTimeFileFilter(min_replay_txn_first_write_ht));
     loader_.state_.store(TransactionLoaderState::kLoading, std::memory_order_release);
     CHECK_OK(yb::Thread::Create(
         "transaction_loader", "loader", &Executor::Execute, this, &loader_.load_thread_))
@@ -98,7 +100,7 @@ class TransactionLoader::Executor {
     Status status;
 
     auto se = ScopeExit([this, &status] {
-      regular_iterator_.Reset();
+      regular_iterator_->Reset();
       intents_iterator_.Reset();
       scoped_pending_operation_.Reset();
 
@@ -192,27 +194,27 @@ class TransactionLoader::Executor {
     std::array<char, 1 + sizeof(TransactionId) + 1> seek_buffer;
     seek_buffer[0] = dockv::KeyEntryTypeAsChar::kTransactionApplyState;
     seek_buffer[seek_buffer.size() - 1] = dockv::KeyEntryTypeAsChar::kMaxByte;
-    regular_iterator_.Seek(Slice(seek_buffer.data(), 1));
+    regular_iterator_->Seek(Slice(seek_buffer.data(), 1));
 
-    while (regular_iterator_.Valid()) {
+    while (regular_iterator_->Valid()) {
       RETURN_NOT_OK(CheckForShutdown());
-      auto key = regular_iterator_.key();
+      auto key = regular_iterator_->key();
       if (!key.TryConsumeByte(dockv::KeyEntryTypeAsChar::kTransactionApplyState)) {
         break;
       }
       auto txn_id = DecodeTransactionId(&key);
       if (!txn_id.ok() || !key.TryConsumeByte(dockv::KeyEntryTypeAsChar::kGroupEnd)) {
-        LOG_WITH_PREFIX(DFATAL) << "Wrong txn id: " << regular_iterator_.key().ToDebugString();
-        regular_iterator_.Next();
+        LOG_WITH_PREFIX(DFATAL) << "Wrong txn id: " << regular_iterator_->key().ToDebugString();
+        regular_iterator_->Next();
         continue;
       }
-      Slice value = regular_iterator_.value();
+      Slice value = regular_iterator_->value();
       if (value.TryConsumeByte(dockv::ValueEntryTypeAsChar::kString)) {
         auto pb = pb_util::ParseFromSlice<docdb::ApplyTransactionStatePB>(value);
         if (!pb.ok()) {
           LOG_WITH_PREFIX(DFATAL) << "Failed to decode apply state pb from RocksDB"
                                   << key.ToDebugString() << ": " << pb.status();
-          regular_iterator_.Next();
+          regular_iterator_->Next();
           continue;
         }
 
@@ -220,7 +222,7 @@ class TransactionLoader::Executor {
         if (!state.ok()) {
           LOG_WITH_PREFIX(DFATAL) << "Failed to decode apply state from stored pb "
               << state.status();
-          regular_iterator_.Next();
+          regular_iterator_->Next();
           continue;
         }
 
@@ -236,9 +238,9 @@ class TransactionLoader::Executor {
       }
 
       memcpy(seek_buffer.data() + 1, txn_id->data(), txn_id->size());
-      ROCKSDB_SEEK(&regular_iterator_, Slice(seek_buffer));
+      ROCKSDB_SEEK(regular_iterator_, Slice(seek_buffer));
     }
-    return regular_iterator_.status();
+    return regular_iterator_->status();
   }
 
   // id - transaction id to load.
@@ -275,7 +277,8 @@ class TransactionLoader::Executor {
     auto pending_apply = loader_.GetPendingApply(id);
     context().LoadTransaction(
         std::move(*metadata), std::move(last_batch_data), std::move(replicated_batches),
-        pending_apply ? &*pending_apply : nullptr);
+        pending_apply ? &*pending_apply : nullptr,
+        HybridTime::FromPB(metadata_pb.first_write_ht()));
     {
       std::lock_guard lock(loader_.mutex_);
       loader_.last_loaded_ = id;
@@ -372,7 +375,7 @@ class TransactionLoader::Executor {
   TransactionLoader& loader_;
   ScopedRWOperation scoped_pending_operation_;
 
-  docdb::BoundedRocksDbIterator regular_iterator_;
+  docdb::OptimizedRocksDbIterator<docdb::BoundedRocksDbIterator> regular_iterator_;
   docdb::BoundedRocksDbIterator intents_iterator_;
 
   // Buffer that contains key of current record, i.e. value type + transaction id.

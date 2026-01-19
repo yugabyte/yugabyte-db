@@ -41,36 +41,66 @@
 namespace yb::qlexpr {
 
 using Option = dockv::KeyEntryValue;            // an option in an IN/EQ clause
-using OptionList = std::vector<Option>;  // all the options in an IN/EQ clause
+using OptionList = std::vector<Slice>;          // all the options in an IN/EQ clause
+
+using QLConditionPBPtr = rpc::AnyMessagePtrBase<const QLConditionPB*, const LWQLConditionPB*>;
+
+YB_DEFINE_ENUM(BoundType, (kLower)(kUpper));
+
+// Bound of a range specification
+// This class includes information about the value
+// and inclusiveness of a bound.
+class QLBound {
+ public:
+  const QLValuePB& GetValue() const { return value_; }
+  bool IsInclusive() const { return is_inclusive_; }
+  bool is_lower_bound() const { return is_lower_bound_; }
+
+  std::string ToString() const;
+
+ protected:
+  QLBound(const QLValuePB& value, bool is_inclusive, bool is_lower_bound);
+  QLBound(const LWQLValuePB& value, bool is_inclusive, bool is_lower_bound);
+
+  QLValuePB value_;
+  bool is_inclusive_ = true;
+  bool is_lower_bound_;
+
+  friend bool operator<(const QLBound& lhs, const QLBound& rhs);
+  friend bool operator==(const QLBound& lhs, const QLBound& rhs);
+};
+
+// Range filter specification on a column
+struct QLRange {
+  std::optional<QLBound> min_bound;
+  std::optional<QLBound> max_bound;
+  // Set to true only for an IS NOT NULL query, in which case the bounds (min_bound and max_bound)
+  // are not set.
+  bool is_not_null = false;
+
+  bool Active() const {
+    return min_bound || max_bound || is_not_null;
+  }
+
+  std::string ToString() const;
+
+  const std::optional<QLBound>& Bound(SortingType sorting_type, BoundType bound_type) const;
+
+  // Gets the lower/upper bound value
+  dockv::KeyEntryValue BoundAsPVal(SortingType sorting_type, BoundType bound_type) const;
+  Slice BoundAsSlice(Arena& arena, SortingType sorting_type, BoundType bound_type) const;
+
+  // Gets whether the lower/upper bound is inclusive
+  bool BoundIsInclusive(SortingType sorting_type, BoundType bound_type) const;
+ private:
+  template<class Factory>
+  auto BoundAsHelper(Factory& factory, SortingType sorting_type, BoundType bound_type) const;
+};
 
 // A class to determine the lower/upper-bound range components of a QL scan from its WHERE
 // condition.
 class QLScanRange {
  public:
-  // Bound of a range specification
-  // This class includes information about the value
-  // and inclusiveness of a bound.
-  class QLBound {
-   public:
-    const QLValuePB& GetValue() const { return value_; }
-    bool IsInclusive() const { return is_inclusive_; }
-    bool is_lower_bound() const { return is_lower_bound_; }
-
-    bool operator<(const QLBound& other) const;
-    bool operator>(const QLBound& other) const;
-    bool operator==(const QLBound& other) const;
-
-    std::string ToString() const;
-
-   protected:
-    QLBound(const QLValuePB& value, bool is_inclusive, bool is_lower_bound);
-    QLBound(const LWQLValuePB& value, bool is_inclusive, bool is_lower_bound);
-
-    QLValuePB value_;
-    bool is_inclusive_ = true;
-    bool is_lower_bound_;
-  };
-
   // Upper bound class
   class QLUpperBound : public QLBound {
    public:
@@ -91,24 +121,22 @@ class QLScanRange {
         : QLBound(value, is_inclusive, true) {}
   };
 
-  // Range filter specification on a column
-  struct QLRange {
-    std::optional<QLBound> min_bound;
-    std::optional<QLBound> max_bound;
-    // Set to true only for an IS NOT NULL query, in which case the bounds (min_bound and max_bound)
-    // are not set.
-    bool is_not_null = false;
-
-    bool Active() const {
-      return min_bound || max_bound || is_not_null;
-    }
-
-    std::string ToString() const;
-  };
-
   QLScanRange(const Schema& schema, const QLConditionPB& condition);
+  QLScanRange(const Schema& schema, const LWQLConditionPB& condition);
   QLScanRange(const Schema& schema, const PgsqlConditionPB& condition);
   QLScanRange(const Schema& schema, const LWPgsqlConditionPB& condition);
+
+  template <class ConditionPtr>
+  static std::unique_ptr<QLScanRange> Create(
+      const Schema& schema, ConditionPtr condition) {
+    if (!condition) {
+      return nullptr;
+    }
+    if (condition.is_lightweight()) {
+      return std::make_unique<QLScanRange>(schema, *condition.lightweight());
+    }
+    return std::make_unique<QLScanRange>(schema, *condition.protobuf());
+  }
 
   QLRange RangeFor(ColumnId col_id) const {
     const auto& iter = ranges_.find(col_id);
@@ -161,6 +189,8 @@ struct ScanBounds {
   dockv::KeyBytes lower;
   dockv::KeyBytes upper;
   bool trivial = false;
+
+  std::string ToString() const;
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -174,15 +204,16 @@ class YQLScanSpec {
       const Schema& schema,
       bool is_forward_scan,
       rocksdb::QueryId query_id,
-      std::unique_ptr<const QLScanRange>
-          range_bounds,
-      size_t prefix_length)
+      std::unique_ptr<const QLScanRange> range_bounds,
+      size_t prefix_length,
+      const ArenaPtr& arena = nullptr)
       : client_type_(client_type),
         schema_(schema),
         is_forward_scan_(is_forward_scan),
         query_id_(query_id),
         range_bounds_(std::move(range_bounds)),
-        prefix_length_(prefix_length) {}
+        prefix_length_(prefix_length),
+        arena_(arena ? arena : SharedSmallArena()) {}
 
   virtual ~YQLScanSpec() {}
 
@@ -234,8 +265,16 @@ class YQLScanSpec {
 
   // Returns the lower/upper range components of the key.
   virtual dockv::KeyEntryValues RangeComponents(
-      const bool lower_bound,
+      BoundType bound_type,
       std::vector<bool>* inclusivities = nullptr) const = 0;
+
+  Arena& arena() const {
+    return *arena_;
+  }
+
+  const ArenaPtr& arena_ptr() const {
+    return arena_;
+  }
 
  protected:
   // Lower and upper keys for range condition.
@@ -259,6 +298,8 @@ class YQLScanSpec {
 
   // Used by distinct query operator, default value is 0.
   const size_t prefix_length_;
+
+  ArenaPtr arena_;
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -273,22 +314,22 @@ class QLScanSpec : public YQLScanSpec {
       const Schema& schema,
       bool is_forward_scan,
       rocksdb::QueryId query_id,
-      std::unique_ptr<const QLScanRange>
-          range_bounds,
+      std::unique_ptr<const QLScanRange> range_bounds,
       size_t prefix_length,
-      QLExprExecutorPtr executor = nullptr);
+      QLExprExecutorPtr executor = nullptr,
+      const ArenaPtr& arena = nullptr);
 
   // Scan for the given hash key and a condition.
   QLScanSpec(
       const Schema& schema,
       bool is_forward_scan,
       rocksdb::QueryId query_id,
-      std::unique_ptr<const QLScanRange>
-          range_bounds,
+      std::unique_ptr<const QLScanRange> range_bounds,
       size_t prefix_length,
-      const QLConditionPB* condition,
-      const QLConditionPB* if_condition,
-      QLExprExecutorPtr executor = nullptr);
+      QLConditionPBPtr condition,
+      QLConditionPBPtr if_condition,
+      QLExprExecutorPtr executor = nullptr,
+      const ArenaPtr& arena = nullptr);
 
   virtual ~QLScanSpec() {}
 
@@ -297,28 +338,19 @@ class QLScanSpec : public YQLScanSpec {
   virtual Status Match(const QLTableRow& table_row, bool* match) const;
 
  protected:
-  const QLConditionPB* condition_;
-  const QLConditionPB* if_condition_;
+  QLConditionPBPtr condition_;
+  QLConditionPBPtr if_condition_;
   QLExprExecutorPtr executor_;
-};
-
-//--------------------------------------------------------------------------------------------------
-// PostgreSQL Support.
-//--------------------------------------------------------------------------------------------------
-class PgsqlScanSpec : public YQLScanSpec {
- public:
-  PgsqlScanSpec(
-      const Schema& schema,
-      bool is_forward_scan,
-      rocksdb::QueryId query_id,
-      std::unique_ptr<const QLScanRange> range_bounds,
-      size_t prefix_length);
 };
 
 using ColumnListVector = std::vector<int>;
 
 std::vector<const QLValuePB*> GetTuplesSortedByOrdering(
     const QLSeqValuePB& options, const Schema& schema, bool is_forward_scan,
+    const ColumnListVector& col_idxs);
+
+std::vector<const LWQLValuePB*> GetTuplesSortedByOrdering(
+    const LWQLSeqValuePB& options, const Schema& schema, bool is_forward_scan,
     const ColumnListVector& col_idxs);
 
 }  // namespace yb::qlexpr

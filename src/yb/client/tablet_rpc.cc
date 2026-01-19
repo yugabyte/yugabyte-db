@@ -28,6 +28,7 @@
 
 #include "yb/tserver/tserver_error.h"
 #include "yb/tserver/tserver_service.proxy.h"
+#include "yb/tserver/tserver_types.messages.h"
 
 #include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
@@ -171,7 +172,7 @@ void TabletInvoker::SelectTabletServer()  {
     } else {
       YB_LOG_EVERY_N_SECS(INFO, 1)
           << "Unable to pick leader for " << tablet_id_ << ", replicas: " << AsString(replicas)
-          << ", followers: " << AsString(followers_) << THROTTLE_MSG;
+          << ", followers: " << AsString(followers_);
     }
   } else {
     VLOG(4) << "Selected TServer " << current_ts_->ToString() << " as leader for " << tablet_id_;
@@ -179,7 +180,7 @@ void TabletInvoker::SelectTabletServer()  {
   VTRACE_TO(1, trace_, "Selected $0", (current_ts_ ? current_ts_->ToString() : "none"));
 }
 
-void TabletInvoker::Execute(const std::string& tablet_id, bool leader_only) {
+void TabletInvoker::Execute(TabletIdView tablet_id, bool leader_only) {
   if (tablet_id_.empty()) {
     if (!tablet_id.empty()) {
       tablet_id_ = tablet_id;
@@ -188,10 +189,13 @@ void TabletInvoker::Execute(const std::string& tablet_id, bool leader_only) {
     }
   }
 
+  ash::WaitStateSnapshot wait_state_snapshot;
+
   if (!tablet_) {
     client_->LookupTabletById(tablet_id_, table_, include_hidden_, include_deleted_,
                               retrier_->deadline(),
-                              std::bind(&TabletInvoker::InitialLookupTabletDone, this, _1),
+                              std::bind(&TabletInvoker::InitialLookupTabletDone, this,
+                                  wait_state_snapshot, _1),
                               UseCache::kTrue);
     return;
   }
@@ -228,7 +232,8 @@ void TabletInvoker::Execute(const std::string& tablet_id, bool leader_only) {
                                 include_hidden_,
                                 include_deleted_,
                                 retrier_->deadline(),
-                                std::bind(&TabletInvoker::LookupTabletCb, this, _1),
+                                std::bind(&TabletInvoker::LookupTabletCb, this,
+                                    wait_state_snapshot, _1),
                                 UseCache::kFalse);
       return;
     }
@@ -258,7 +263,8 @@ void TabletInvoker::Execute(const std::string& tablet_id, bool leader_only) {
                               include_hidden_,
                               include_deleted_,
                               retrier_->deadline(),
-                              std::bind(&TabletInvoker::LookupTabletCb, this, _1),
+                              std::bind(&TabletInvoker::LookupTabletCb, this,
+                                  wait_state_snapshot, _1),
                               UseCache::kTrue);
     return;
   }
@@ -290,12 +296,12 @@ void TabletInvoker::Execute(const std::string& tablet_id, bool leader_only) {
 }
 
 Status TabletInvoker::FailToNewReplica(const Status& reason,
-                                       const tserver::TabletServerErrorPB* error_code,
+                                       tserver::TabletServerErrorPB_Code error_code,
                                        bool consensus_info_refresh_succeeded) {
   TRACE_TO(trace_, "FailToNewReplica($0)", reason.ToString());
-  if (ErrorCode(error_code) == tserver::TabletServerErrorPB::STALE_FOLLOWER) {
+  if (error_code == tserver::TabletServerErrorPB::STALE_FOLLOWER) {
     VLOG(1) << "Stale follower for " << command_->ToString() << " just retry";
-  } else if (ErrorCode(error_code) == tserver::TabletServerErrorPB::NOT_THE_LEADER) {
+  } else if (error_code == tserver::TabletServerErrorPB::NOT_THE_LEADER) {
     VLOG(1) << "Not the leader for " << command_->ToString()
             << " retrying with a different replica";
     // In the past we were marking a replica as failed whenever an error was returned. The problem
@@ -394,7 +400,8 @@ bool TabletInvoker::Done(Status* status) {
   }
 
   // Prefer controller failures over response failures.
-  auto rsp_err = rpc_->response_error();
+  auto rsp_err = status->ok() ? rpc_->response_error() : nullptr;
+  auto error_code = ErrorCode(rsp_err);
   {
     Status resp_error_status = ErrorStatus(rsp_err);
     if (status->ok() && !resp_error_status.ok()) {
@@ -413,7 +420,7 @@ bool TabletInvoker::Done(Status* status) {
     }
   }
 
-  const bool is_tablet_split = ErrorCode(rsp_err) == tserver::TabletServerErrorPB::TABLET_SPLIT;
+  const bool is_tablet_split = error_code == tserver::TabletServerErrorPB::TABLET_SPLIT;
   if (is_tablet_split || ClientError(*status) == ClientErrorCode::kTablePartitionListIsStale) {
     // Replace status error with TryAgain, so upper layer retry request after refreshing
     // table partitioning metadata.
@@ -433,14 +440,13 @@ bool TabletInvoker::Done(Status* status) {
   // this case.
   if (status->IsIllegalState() || status->IsServiceUnavailable() || status->IsAborted() ||
       status->IsLeaderNotReadyToServe() || status->IsLeaderHasNoLease() ||
-      IsTabletConsideredNotFound(rsp_err, *status) ||
-      IsTabletConsideredNonLeader(rsp_err, *status) ||
+      IsTabletConsideredNotFound(error_code, *status) ||
+      IsTabletConsideredNonLeader(error_code, *status) ||
       (status->IsTimedOut() && CoarseMonoClock::Now() < retrier_->deadline())) {
     VLOG(4) << "Retryable failure: " << *status << ", response: " << AsString(rsp_err);
 
     const bool leader_is_not_ready =
-        ErrorCode(rsp_err) ==
-            tserver::TabletServerErrorPB::LEADER_NOT_READY_TO_SERVE ||
+        error_code == tserver::TabletServerErrorPB::LEADER_NOT_READY_TO_SERVE ||
         status->IsLeaderNotReadyToServe();
 
     // If the leader just is not ready - let's retry the same tserver.
@@ -468,15 +474,15 @@ bool TabletInvoker::Done(Status* status) {
       return true;
     }
 
-    if (fail_on_not_found_ && IsTabletConsideredNotFound(rsp_err, *status)) {
+    if (fail_on_not_found_ && IsTabletConsideredNotFound(error_code, *status)) {
       rpc_->Failed(*status);
       return true;
     }
 
-    if (status->IsIllegalState() || IsTabletConsideredNotFound(rsp_err, *status) ||
-        IsTabletConsideredNonLeader(rsp_err, *status)) {
+    if (status->IsIllegalState() || IsTabletConsideredNotFound(error_code, *status) ||
+        IsTabletConsideredNonLeader(error_code, *status)) {
       // The whole operation is completed if we can't schedule a retry.
-      return !FailToNewReplica(*status, rsp_err, consensus_info_refresh_succeeded).ok();
+      return !FailToNewReplica(*status, error_code, consensus_info_refresh_succeeded).ok();
     } else {
       tserver::TabletServerDelay delay(*status);
       auto retry_status = delay.value().Initialized()
@@ -527,8 +533,12 @@ bool TabletInvoker::Done(Status* status) {
   return true;
 }
 
-void TabletInvoker::InitialLookupTabletDone(const Result<RemoteTabletPtr>& result) {
+void TabletInvoker::InitialLookupTabletDone(
+    ash::WaitStateSnapshot snapshot, const Result<RemoteTabletPtr>& result) {
   VLOG(1) << "InitialLookupTabletDone(" << result << ")";
+
+  ADOPT_WAIT_STATE(snapshot.wait_state);
+  SET_WAIT_STATUS_FROM_SNAPSHOT(snapshot);
 
   if (result.ok()) {
     tablet_ = *result;
@@ -555,9 +565,13 @@ std::shared_ptr<tserver::TabletServerServiceProxy> TabletInvoker::proxy() const 
   return current_ts_->ProxyEndpoint();
 }
 
-void TabletInvoker::LookupTabletCb(const Result<RemoteTabletPtr>& result) {
+void TabletInvoker::LookupTabletCb(
+    ash::WaitStateSnapshot snapshot, const Result<RemoteTabletPtr>& result) {
   VLOG_WITH_FUNC(1) << AsString(result) << ", command: " << command_->ToString()
                     << ", retrier: " << retrier_->ToString();
+
+  ADOPT_WAIT_STATE(snapshot.wait_state);
+  SET_WAIT_STATUS_FROM_SNAPSHOT(snapshot);
 
   if (result.ok()) {
 #ifndef DEBUG
@@ -600,9 +614,33 @@ Status ErrorStatus(const tserver::TabletServerErrorPB* error) {
                           : StatusFromPB(error->status());
 }
 
+Status ErrorStatus(const tserver::LWTabletServerErrorPB* error) {
+  return error == nullptr ? Status::OK()
+                          : StatusFromPB(error->status());
+}
+
+Status ErrorStatus(TabletServerErrorPtr error) {
+  if (error.is_lightweight()) {
+    return ErrorStatus(error.lightweight());
+  }
+  return ErrorStatus(error.protobuf());
+}
+
 tserver::TabletServerErrorPB_Code ErrorCode(const tserver::TabletServerErrorPB* error) {
   return error == nullptr ? tserver::TabletServerErrorPB::UNKNOWN_ERROR
                           : error->code();
+}
+
+tserver::TabletServerErrorPB_Code ErrorCode(const tserver::LWTabletServerErrorPB* error) {
+  return error == nullptr ? tserver::TabletServerErrorPB::UNKNOWN_ERROR
+                          : error->code();
+}
+
+tserver::TabletServerErrorPB_Code ErrorCode(TabletServerErrorPtr error) {
+  if (error.is_lightweight()) {
+    return ErrorCode(error.lightweight());
+  }
+  return ErrorCode(error.protobuf());
 }
 
 } // namespace internal

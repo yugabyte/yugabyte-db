@@ -9,6 +9,8 @@ menu:
     parent: pg-extensions
     weight: 20
 type: docs
+aliases:
+  - /stable/explore/ysql-language-features/pg-extensions/extension-uuid-ossp
 ---
 
 The [uuid-ossp](https://www.postgresql.org/docs/15/uuid-ossp.html) module provides functions to generate universally unique identifiers (UUIDs) using one of several standard algorithms.

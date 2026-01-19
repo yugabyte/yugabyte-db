@@ -354,7 +354,8 @@ ExecInitYbBitmapIndexScan(YbBitmapIndexScan *node, EState *estate, int eflags)
 	 * any runtime (parametrized) keys at all.
 	 */
 	indexstate->biss_might_recheck = indexstate->biss_NumRuntimeKeys > 0 ||
-		yb_index_might_recheck(relation, index, true /* xs_want_itup */ ,
+		yb_index_might_recheck((Scan *) node, relation, index,
+							   true /* xs_want_itup */ ,
 							   indexstate->biss_ScanKeys,
 							   indexstate->biss_NumScanKeys);
 

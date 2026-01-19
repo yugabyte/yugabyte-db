@@ -53,19 +53,18 @@
 
 #include <boost/algorithm/string/predicate.hpp>
 
-#include "yb/consensus/log_util.h"
 #include "yb/consensus/log.messages.h"
+#include "yb/consensus/log_util.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
 
 #include "yb/util/atomic.h"
-#include "yb/util/scope_exit.h"
 #include "yb/util/env.h"
-#include "yb/util/file_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
+#include "yb/util/scope_exit.h"
 
 DEFINE_UNKNOWN_int32(
     entries_per_index_block, 10000, "Number of entries per index block stored in WAL segment file");
@@ -83,8 +82,7 @@ using std::vector;
   ret = expr; \
 } while ((ret == -1) && (errno == EINTR));
 
-namespace yb {
-namespace log {
+namespace yb::log {
 
 // The actual physical entry in the file.
 // This mirrors LogIndexEntry but uses simple primitives only so we can
@@ -385,7 +383,7 @@ Status LogIndex::GetEntry(int64_t index, LogIndexEntry* entry) {
         index, max_gced_op_index);
   }
   scoped_refptr<IndexChunk> chunk;
-  auto s = GetChunkForIndex(index, false /* do not create */, &chunk);
+  auto s = GetChunkForIndex(index, /*create=*/false, &chunk);
   if (s.IsNotFound()) {
     // Return Incomplete error, so upper layer can lazily load log index blocks from WAL segments
     // into LogIndex if they are not yet loaded.
@@ -661,5 +659,4 @@ string LogIndexEntry::ToString() const {
   return YB_STRUCT_TO_STRING(op_id, segment_sequence_number, offset_in_segment);
 }
 
-} // namespace log
-} // namespace yb
+} // namespace yb::log

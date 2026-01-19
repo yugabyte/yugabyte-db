@@ -11177,6 +11177,10 @@
   proname => 'yb_binary_upgrade_set_next_pg_enum_sortorder', provolatile => 'v',
   proparallel => 'r', prorettype => 'void', proargtypes => 'float4',
   prosrc => 'yb_binary_upgrade_set_next_pg_enum_sortorder' },
+{ oid => '8100', descr => 'for use by pg_upgrade',
+  proname => 'yb_binary_upgrade_set_next_colocation_id', provolatile => 'v',
+  proparallel => 'u', prorettype => 'void', proargtypes => 'oid',
+  prosrc => 'yb_binary_upgrade_set_next_colocation_id' },
 
 # conversion functions
 { oid => '4302',
@@ -12039,11 +12043,11 @@
 { oid => '8065',
   descr => 'Get all the samples from the Active Session History circular buffer',
   proname => 'yb_active_session_history', prorows => '100000',
-  proretset => 't', provolatile => 'v', proparallel => 'r',
-  prorettype => 'record', proargtypes => '',
-  proallargtypes => '{timestamptz,uuid,int8,text,text,text,uuid,int8,int4,text,text,float4,text,oid,int8,int8}',
-  proargmodes => '{o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o}',
-  proargnames => '{sample_time,root_request_id,rpc_request_id,wait_event_component,wait_event_class,wait_event,top_level_node_id,query_id,pid,client_node_ip,wait_event_aux,sample_weight,wait_event_type,ysql_dbid,wait_event_code,pss_mem_bytes}',
+  proretset => 't', provolatile => 'v', proparallel => 'r', proisstrict => 'f',
+  prorettype => 'record', proargtypes => 'timestamptz timestamptz',
+  proallargtypes => '{timestamptz,timestamptz,timestamptz,uuid,int8,text,text,text,uuid,int8,int4,text,text,float4,text,oid,int8,int8,oid}',
+  proargmodes => '{i,i,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o}',
+  proargnames => '{start_time,end_time,sample_time,root_request_id,rpc_request_id,wait_event_component,wait_event_class,wait_event,top_level_node_id,query_id,pid,client_node_ip,wait_event_aux,sample_weight,wait_event_type,ysql_dbid,wait_event_code,pss_mem_bytes,ysql_userid}',
   prosrc => 'yb_active_session_history'},
 
 { oid => '8066',
@@ -12224,7 +12228,7 @@
   prorettype => 'bytea', proargtypes => 'oid record bytea',
   proargnames => '{relid,key_atts,ybidxbasectid}',
   prosrc => 'yb_compute_row_ybctid', proisstrict => 'f'},
-  
+
 { oid => '8099',
   descr => 'Get metadata of all the tablets',
   proname => 'yb_get_tablet_metadata', prorows => '100',

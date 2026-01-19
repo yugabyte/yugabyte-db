@@ -2371,7 +2371,12 @@ eqjoinsel(PG_FUNCTION_ARGS)
 			 * use in eqjoinsel_semi, particularly in cases where it has to
 			 * punt entirely.
 			 */
-			selec = Min(selec, inner_rel->rows * selec_inner);
+			/*
+			 * YB: Disable the fix in the legacy mode to avoid arbitrary plan
+			 * changes with complex queries.
+			 */
+			if (yb_enable_base_scans_cost_model)
+				selec = Min(selec, inner_rel->rows * selec_inner);
 			break;
 		default:
 			/* other values not expected here */

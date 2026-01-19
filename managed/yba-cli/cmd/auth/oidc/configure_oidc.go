@@ -7,7 +7,6 @@ package oidc
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -24,12 +23,12 @@ var configureOIDCCmd = &cobra.Command{
 	Example: `yba oidc configure --client-id <client-id> --client-secret <client-secret> --discovery-url <discovery-url>`,
 	Run: func(cmd *cobra.Command, args []string) {
 		oidcProviderMetadataString := util.MaybeGetFlagString(cmd, "provider-configuration")
-		if strings.TrimSpace(oidcProviderMetadataString) == "" {
+		if util.IsEmptyString(oidcProviderMetadataString) {
 			oidcProviderMetadataFilePath := util.MaybeGetFlagString(
 				cmd,
 				"provider-configuration-file-path",
 			)
-			if strings.TrimSpace(oidcProviderMetadataFilePath) != "" {
+			if !util.IsEmptyString(oidcProviderMetadataFilePath) {
 				oidcProviderMetadataByte, err := os.ReadFile(oidcProviderMetadataFilePath)
 				if err != nil {
 					logrus.Fatal(
@@ -46,7 +45,7 @@ var configureOIDCCmd = &cobra.Command{
 				oidcProviderMetadataString = string(oidcProviderMetadataByte)
 			}
 		}
-		if strings.TrimSpace(oidcProviderMetadataString) != "" {
+		if !util.IsEmptyString(oidcProviderMetadataString) {
 			if err := util.IsValidJSON(oidcProviderMetadataString); err != nil {
 				logrus.Fatal(
 					formatter.Colorize(

@@ -261,3 +261,87 @@ INSERT INTO test_trigger_table(name, age, email) VALUES ('Charlie', 28, 'charlie
 ALTER TABLE test_trigger_table ENABLE TRIGGER trg_log_changes;
 SELECT id, name, age, email FROM test_trigger_table;
 SELECT action, row_id FROM trigger_log;
+
+-- #29058: REINDEX of partitioned table works.
+CREATE TABLE test_partitioned (i int, j int) PARTITION BY LIST (j);
+CREATE INDEX NONCONCURRENTLY ON test_partitioned (i);
+CREATE TABLE test_partitioned_odd PARTITION OF test_partitioned FOR VALUES IN (1, 3, 5, 7, 9);
+CREATE TABLE test_partitioned_even PARTITION OF test_partitioned FOR VALUES IN (2, 4, 6, 8);
+INSERT INTO test_partitioned SELECT (2 * g), g FROM generate_series(1, 9) g;
+-- Mark all partitions are invalid before REINDEX.
+UPDATE pg_index SET indisvalid = false
+    WHERE indexrelid = 'test_partitioned_i_idx'::regclass;
+UPDATE pg_index SET indisvalid = false
+    WHERE indexrelid = 'test_partitioned_odd_i_idx'::regclass;
+UPDATE pg_index SET indisvalid = false
+    WHERE indexrelid = 'test_partitioned_even_i_idx'::regclass;
+\c
+REINDEX INDEX test_partitioned_i_idx;
+
+\c
+-- #29424
+CREATE TABLE _33_s_1_data (id INT PRIMARY KEY);
+
+CREATE TABLE _33_s_1_audit (log_id SERIAL PRIMARY KEY, data_id INT, notes TEXT);
+
+CREATE FUNCTION _33_func_audit() RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO _33_s_1_audit (data_id, notes) VALUES (NEW.id, 'V1');
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER _33_trig_data
+AFTER INSERT ON _33_s_1_data
+FOR EACH ROW EXECUTE FUNCTION _33_func_audit();
+
+CREATE PROCEDURE _33_sp_insert(val INT) LANGUAGE SQL AS $$
+INSERT INTO _33_s_1_data (id) VALUES (val);
+$$;
+
+CALL _33_sp_insert(1);
+
+SELECT COUNT(*) FROM _33_s_1_audit WHERE notes = 'V1';
+
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+
+CREATE OR REPLACE FUNCTION _33_func_audit() RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO _33_s_1_audit (data_id, notes) VALUES (NEW.id, 'V2');
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE PROCEDURE _33_sp_insert(val INT) LANGUAGE SQL AS $$
+INSERT INTO _33_s_1_data (id) VALUES (val * 100);
+$$;
+
+CALL _33_sp_insert(2);
+
+SELECT COUNT(*) FROM _33_s_1_data WHERE id = 200;
+
+SELECT COUNT(*) FROM _33_s_1_audit WHERE notes = 'V2';
+
+SELECT * FROM _33_s_1_audit WHERE notes = 'V2';
+
+CREATE OR REPLACE PROCEDURE _33_sp_insert(val INT) LANGUAGE SQL AS $$
+INSERT INTO _33_s_1_data (id) VALUES (val * 200);
+$$;
+
+CREATE OR REPLACE FUNCTION _33_func_audit() RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO _33_s_1_audit (data_id, notes) VALUES (NEW.id, 'V3');
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CALL _33_sp_insert(3);
+
+SELECT * FROM _33_s_1_audit WHERE notes = 'V3';
+
+-- #29325: Failed ALTER TABLE ALTER TYPE should not lead to a crash in
+-- transaction abort.
+CREATE TABLE int4_table(id SERIAL, c1 int4, PRIMARY KEY (id ASC));
+ALTER TABLE int4_table ALTER c1 TYPE int8;
+INSERT INTO int4_table(c1) VALUES (2 ^ 40);
+ALTER TABLE int4_table ALTER c1 TYPE int4; -- should fail.

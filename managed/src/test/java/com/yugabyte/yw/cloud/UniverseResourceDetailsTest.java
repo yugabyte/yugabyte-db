@@ -113,7 +113,7 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
 
     // Set up TaskParams
     UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
-    params.upsertPrimaryCluster(userIntent, null);
+    params.upsertPrimaryCluster(userIntent, null, null);
     sampleNodeDetails.placementUuid = params.getPrimaryCluster().uuid;
     params.nodeDetailsSet = setUpNodeDetailsSet(numNodes, modifier);
     context = new Context(null, customer, params);
@@ -178,7 +178,7 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
 
     // Set up TaskParams
     UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
-    params.upsertPrimaryCluster(userIntent, null);
+    params.upsertPrimaryCluster(userIntent, null, null);
     sampleNodeDetails.placementUuid = params.getPrimaryCluster().uuid;
     params.nodeDetailsSet = setUpNodeDetailsSet();
 
@@ -212,7 +212,7 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
 
     // Set up TaskParams
     UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
-    params.upsertPrimaryCluster(userIntent, null);
+    params.upsertPrimaryCluster(userIntent, null, null);
     sampleNodeDetails.placementUuid = params.getPrimaryCluster().uuid;
     params.nodeDetailsSet = setUpNodeDetailsSet();
     context = new Context(null, customer, params);
@@ -241,7 +241,7 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
 
     // Set up TaskParams
     UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
-    params.upsertPrimaryCluster(userIntent, null);
+    params.upsertPrimaryCluster(userIntent, null, null);
     sampleNodeDetails.placementUuid = params.getPrimaryCluster().uuid;
     params.nodeDetailsSet = setUpNodeDetailsSet();
     context = new Context(null, customer, params);
@@ -535,10 +535,10 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
 
     // Set up TaskParams
     UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
-    params.upsertPrimaryCluster(userIntent, null);
+    params.upsertPrimaryCluster(userIntent, null, null);
     sampleNodeDetails.placementUuid = params.getPrimaryCluster().uuid;
     params.nodeDetailsSet = setUpNodeDetailsSet(2, null);
-    params.upsertCluster(rrIntent, null, UUID.randomUUID());
+    params.upsertCluster(rrIntent, null, null, UUID.randomUUID());
     NodeDetails nodeDetails = new NodeDetails();
     nodeDetails.cloudInfo = new CloudSpecificInfo();
     nodeDetails.cloudInfo.cloud = provider2.getCode();

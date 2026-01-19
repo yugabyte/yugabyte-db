@@ -39,6 +39,7 @@
 #include "pgstat.h"
 #include "postmaster/bgworker.h"
 #include "postmaster/interrupt.h"
+#include "replication/walsender.h"
 #include "storage/ipc.h"
 #include "storage/latch.h"
 #include "storage/lwlock.h"
@@ -62,6 +63,10 @@
 #define ACTIVE_SESSION_HISTORY_COLS_V3 14
 #define ACTIVE_SESSION_HISTORY_COLS_V4 15
 #define ACTIVE_SESSION_HISTORY_COLS_V5 16
+#define ACTIVE_SESSION_HISTORY_COLS_V6 17
+
+#define ACTIVE_SESSION_HISTORY_IN_PARAMS_V1 0
+#define ACTIVE_SESSION_HISTORY_IN_PARAMS_V2 2
 
 #define MAX_NESTED_QUERY_LEVEL 64
 
@@ -141,17 +146,9 @@ static YbcAshSample *YbAshGetNextCircularBufferSlot(void);
 static void uchar_to_uuid(unsigned char *in, pg_uuid_t *out);
 static void client_ip_to_string(unsigned char *client_addr, uint16 client_port,
 								uint8_t addr_family, char *client_ip);
-static void PrintUuidToBuffer(StringInfo buffer, unsigned char *uuid);
-static int	BinarySearchAshIndex(TimestampTz target_time, int left, int right);
-static void GetAshRangeIndexes(TimestampTz start_time, TimestampTz end_time, int64 query_id,
-							   int *start_index, int *end_index, char *description);
-static void FormatAshSampleAsCsv(YbcAshSample *ash_data_buffer, int total_elements_to_dump,
-								 StringInfo buffer);
-static YbcAshSample *ExtractAshDataFromRange(int start_index, int end_index,
-											 int *total_elements_to_dump);
-void		GetAshDataForQueryDiagnosticsBundle(TimestampTz start_time, TimestampTz end_time,
-												int64 query_id, StringInfo output_buffer,
-												char *description);
+static void GetAshRangeIndexes(TimestampTz start_time, TimestampTz end_time,
+							   int *start_index, int *end_index,
+							   bool is_end_time_exclusive);
 
 bool
 yb_ash_circular_buffer_size_check_hook(int *newval, void **extra, GucSource source)
@@ -188,9 +185,7 @@ YbAshInit(void)
 	YbAshInstallHooks();
 	/* Keep the default query id in the stack */
 	query_id_stack.top_index = 0;
-	query_id_stack.query_ids[0] = MyProc->isBackgroundWorker
-		? YBCGetConstQueryId(QUERY_ID_TYPE_BACKGROUND_WORKER)
-		: YBCGetConstQueryId(QUERY_ID_TYPE_DEFAULT);
+	query_id_stack.query_ids[0] = YbAshGetConstQueryId();
 	query_id_stack.num_query_ids_not_pushed = 0;
 
 	EnableQueryId();
@@ -496,12 +491,15 @@ yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 	PG_END_TRY();
 }
 
-static uint64
-GetDefaultQueryId()
+uint64
+YbAshGetConstQueryId()
 {
-	YbcAshConstQueryIdType type =
-		IsBackgroundWorker ? QUERY_ID_TYPE_BACKGROUND_WORKER
-		: QUERY_ID_TYPE_DEFAULT;
+	YbcAshConstQueryIdType type = QUERY_ID_TYPE_DEFAULT;
+
+	if (am_walsender)
+		type = QUERY_ID_TYPE_WALSENDER;
+	else if (IsBackgroundWorker)
+		type = QUERY_ID_TYPE_BACKGROUND_WORKER;
 
 	return YBCGetConstQueryId(type);
 }
@@ -535,7 +533,7 @@ YbAshResetQueryId(uint64 query_id)
 
 		if (prev_query_id != 0)
 		{
-			if (prev_query_id == GetDefaultQueryId())
+			if (prev_query_id == YbAshGetConstQueryId())
 			{
 				query_id_to_be_popped_before_push = query_id;
 				pop_query_id_before_push = true;
@@ -563,6 +561,9 @@ YbAshSetMetadata(void)
 	Assert(MyProc->yb_is_ash_metadata_set == false);
 
 	YBCGenerateAshRootRequestId(MyProc->yb_ash_metadata.root_request_id);
+
+	/* Populate current effective user id into ASH metadata */
+	MyProc->yb_ash_metadata.user_id = GetUserId();
 }
 
 void
@@ -968,19 +969,142 @@ YbAshGetNextCircularBufferSlot(void)
 	return slot;
 }
 
+/*
+ * If available, reads input from the user. Input parameters:
+ *
+ * start_time: Out of all the rows returned, the lowest sample_time should not
+ * be less than start_time. If this is NULL, rows will be returned from the
+ * earliest available time in the circular buffer
+ *
+ * end_time: Out of all the rows returned, the highest sample_time should not
+ * be more than or equal to end_time. If this is NULL, rows will be returned
+ * till the most recent available time in the circular buffer
+ *
+ * The start index is always inclusive and the end index is always exclusive.
+ */
+static void
+GetAshIndexesFromInput(FunctionCallInfo fcinfo, int *start_idx, int *end_idx)
+{
+	int			index = yb_ash->index;
+	static int	nargs = -1;
+	bool		is_start_time_null = true;
+	bool		is_end_time_null = true;
+	TimestampTz start_time = 0;
+	TimestampTz end_time = 0;
+
+	*start_idx = -1;
+	*end_idx = -1;
+
+	if (nargs == -1)
+		nargs = YbGetNumberOfFunctionInputParameters(F_YB_ACTIVE_SESSION_HISTORY);
+
+	if (nargs == ACTIVE_SESSION_HISTORY_IN_PARAMS_V2)
+	{
+		is_start_time_null = PG_ARGISNULL(0);
+		is_end_time_null = PG_ARGISNULL(1);
+
+		if (!is_start_time_null)
+			start_time = PG_GETARG_TIMESTAMPTZ(0);
+
+		if (!is_end_time_null)
+			end_time = PG_GETARG_TIMESTAMPTZ(1);
+
+		/* only return error if user gave start_time > end_time */
+		if (start_time > end_time && !is_start_time_null && !is_end_time_null)
+		{
+			YbAshReleaseBufferLock();
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("yb_active_session_history: start time is greater "
+							"than end time "),
+					 errdetail("Start time: %s vs End time: %s",
+							   timestamptz_to_str(start_time),
+							   timestamptz_to_str(end_time))));
+		}
+	}
+
+	/*
+	 * Either the schema is of older version, or the input
+	 * parameters were not given.
+	 */
+	if (is_start_time_null)
+	{
+		if (yb_ash->circular_buffer[index].sample_time != 0)
+			*start_idx = index;
+		else /* buffer has not wrapped around */
+			*start_idx = 0;
+	}
+
+	if (is_end_time_null)
+		*end_idx = index; /* always return exclusive index */
+
+	/*
+	 * Find the indices that were not set in the above step
+	 * for the given time range.
+	 */
+	GetAshRangeIndexes(start_time, end_time, start_idx, end_idx,
+					   !is_end_time_null);
+}
+
+static void
+yb_active_session_history_init(FunctionCallInfo fcinfo,
+							   FuncCallContext *funcctx)
+{
+	MemoryContext oldcontext;
+	TupleDesc	tupdesc;
+	int			start_index;
+	int			end_index;
+	int		   *cur_index;
+
+	funcctx = SRF_FIRSTCALL_INIT();
+	oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+
+	/* Build a tuple descriptor for our result type */
+	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+		ereport(ERROR,
+				(errmsg_internal("return type must be a row type")));
+
+	funcctx->tuple_desc = BlessTupleDesc(tupdesc);
+
+	/* Acquire buffer lock (will be released when iteration completes) */
+	YbAshAcquireBufferLock(false /* exclusive */ );
+
+	GetAshIndexesFromInput(fcinfo, &start_index, &end_index);
+
+	if (start_index == -1 || end_index == -1)	/* No data */
+		funcctx->max_calls = 0;
+	else if (start_index > end_index)	/* Range wraps around */
+		funcctx->max_calls = (yb_ash->max_entries - start_index) + end_index;
+	else						/* Simple sequential range */
+	{
+		if (start_index != end_index)
+			funcctx->max_calls = end_index - start_index;
+		else
+		{
+			/*
+			 * If start index and end index are same, either the buffer is
+			 * empty, or the buffer has wrapped around and we need to scan
+			 * the entire buffer.
+			 */
+			if (yb_ash->circular_buffer[start_index].sample_time != 0)
+				funcctx->max_calls = yb_ash->max_entries;
+			else
+				funcctx->max_calls = 0;
+		}
+	}
+
+	cur_index = (int *) palloc(sizeof(int));
+	*cur_index = start_index;
+	funcctx->user_fctx = cur_index;
+
+	MemoryContextSwitchTo(oldcontext);
+}
+
 Datum
 yb_active_session_history(PG_FUNCTION_ARGS)
 {
-	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
-	TupleDesc	tupdesc;
-	Tuplestorestate *tupstore;
-	MemoryContext per_query_ctx;
-	MemoryContext oldcontext;
-	int			i;
+	FuncCallContext *funcctx = NULL;
 	static int	ncols = 0;
-
-	if (ncols < ACTIVE_SESSION_HISTORY_COLS_V5)
-		ncols = YbGetNumberOfFunctionOutputColumns(F_YB_ACTIVE_SESSION_HISTORY);
 
 	/* ASH must be loaded first */
 	if (!yb_ash)
@@ -988,60 +1112,41 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("ysql_yb_enable_ash gflag must be enabled")));
 
-	/* check to see if caller supports us returning a tuplestore */
-	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("set-valued function called in context that cannot accept a set")));
+	if (ncols < ACTIVE_SESSION_HISTORY_COLS_V6)
+		ncols = YbGetNumberOfFunctionOutputColumns(F_YB_ACTIVE_SESSION_HISTORY);
 
-	if (!(rsinfo->allowedModes & SFRM_Materialize))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("materialize mode required, but it is not " \
-						"allowed in this context")));
+	/* Stuff done only on the first call of the function */
+	if (SRF_IS_FIRSTCALL())
+		yb_active_session_history_init(fcinfo, funcctx);
 
-	/* Switch context to construct returned data structures */
-	per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
-	oldcontext = MemoryContextSwitchTo(per_query_ctx);
-
-	/* Build a tuple descriptor */
-	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
-		ereport(ERROR,
-				(errmsg_internal("return type must be a row type")));
-
-	tupstore = tuplestore_begin_heap(true, false, work_mem);
-	rsinfo->returnMode = SFRM_Materialize;
-	rsinfo->setResult = tupstore;
-	rsinfo->setDesc = tupdesc;
-
-	MemoryContextSwitchTo(oldcontext);
-
-	YbAshAcquireBufferLock(false /* exclusive */ );
-
-	for (i = 0; i < yb_ash->max_entries; ++i)
+	funcctx = SRF_PERCALL_SETUP();
+	if (funcctx->call_cntr < funcctx->max_calls)
 	{
 		Datum		values[ncols];
 		bool		nulls[ncols];
+		HeapTuple	tuple;
+		int		   *cur_index = funcctx->user_fctx;
+
 		int			j = 0;
+
+		YbcAshSample *sample = &yb_ash->circular_buffer[*cur_index];
+		YbcAshMetadata *metadata = &sample->metadata;
+
 		pg_uuid_t	root_request_id;
 		pg_uuid_t	top_level_node_id;
 
-		/*
-		 * 22 bytes required for ipv4 and 48 for ipv6 (including null
-		 * character)
-		 */
-		char		client_node_ip[48];
+		if (sample->sample_time == 0)
+		{
+			/* The circular buffer is not fully filled yet */
+			YbAshReleaseBufferLock();
+			SRF_RETURN_DONE(funcctx);
+		}
 
 		memset(values, 0, sizeof(values));
 		memset(nulls, 0, sizeof(nulls));
 
-		YbcAshSample *sample = &yb_ash->circular_buffer[i];
-		YbcAshMetadata *metadata = &sample->metadata;
-
-		if (sample->sample_time != 0)
-			values[j++] = TimestampTzGetDatum(sample->sample_time);
-		else
-			break;				/* The circular buffer is not fully filled yet */
+		/* Build the output tuple values */
+		values[j++] = TimestampTzGetDatum(sample->sample_time);
 
 		uchar_to_uuid(metadata->root_request_id, &root_request_id);
 		values[j++] = UUIDPGetDatum(&root_request_id);
@@ -1066,15 +1171,17 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 
 		if (metadata->addr_family == AF_INET || metadata->addr_family == AF_INET6)
 		{
-			client_ip_to_string(metadata->client_addr, metadata->client_port, metadata->addr_family,
-								client_node_ip);
+			char		client_node_ip[48];	/* 22 bytes for ipv4, 48 for ipv6 */
+			client_ip_to_string(metadata->client_addr, metadata->client_port,
+								metadata->addr_family, client_node_ip);
 			values[j++] = CStringGetTextDatum(client_node_ip);
 		}
 		else
 		{
 			/*
-			 * internal operations such as flushes and compactions are not tied to any client
-			 * and they might have the addr_family as AF_UNSPEC
+			 * internal operations such as flushes and compactions are not
+			 * tied to any client and they might have the addr_family as
+			 * AF_UNSPEC
 			 */
 			Assert(metadata->addr_family == AF_UNIX || metadata->addr_family == AF_UNSPEC);
 			nulls[j++] = true;
@@ -1083,8 +1190,9 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 		if (sample->aux_info[0] != '\0')
 		{
 			/*
-			 * In PG samples, the wait event aux buffer will be [ash::PggateRPC, 0, ...],
-			 * the 0-th index contains the rpc enum value, the 1-st and subsequent indexes contains 0.
+			 * In PG samples, the wait event aux buffer will be
+			 * [ash::PggateRPC, 0, ...], the 0-th index contains the rpc enum
+			 * value, the 1-st and subsequent indexes contains 0.
 			 */
 			values[j++] = sample->aux_info[0] != 0 && sample->aux_info[1] == 0
 				? CStringGetTextDatum(YBCGetPggateRPCName(sample->aux_info[0]))
@@ -1109,15 +1217,21 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 		if (ncols >= ACTIVE_SESSION_HISTORY_COLS_V5)
 			values[j++] = Int64GetDatum(metadata->pss_mem_bytes);
 
-		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
+		if (ncols >= ACTIVE_SESSION_HISTORY_COLS_V6)
+			values[j++] = ObjectIdGetDatum(metadata->user_id);
+
+		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
+
+		if (++(*cur_index) == yb_ash->max_entries)
+			*cur_index = 0;
+
+		SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tuple));
 	}
-
-	YbAshReleaseBufferLock();
-
-	/* clean up and return the tuplestore */
-	tuplestore_donestoring(tupstore);
-
-	return (Datum) 0;
+	else
+	{
+		YbAshReleaseBufferLock();
+		SRF_RETURN_DONE(funcctx);
+	}
 }
 
 static void
@@ -1149,241 +1263,109 @@ client_ip_to_string(unsigned char *client_addr, uint16 client_port,
 }
 
 /*
- * Print UUID to buffer with hyphens at specific positions.
- */
-static void
-PrintUuidToBuffer(StringInfo buffer, unsigned char *uuid)
-{
-	for (int i = 0; i < UUID_LEN; ++i)
-	{
-		appendStringInfo(buffer, "%02x", uuid[i]);
-		/* Add hyphens to format the UUID in the standard pattern */
-		if (i == 3 || i == 5 || i == 7 || i == 9)
-			appendStringInfoChar(buffer, '-');
-	}
-}
-
-/*
- * GetAshDataForQueryDiagnosticsBundle
- * 		This function is a part of queryDiagnostics feature and is called
- * 		at the end of the diagnostics_interval to fetch ASH's data.
- * 		This function retrieves ASH's data for the specified time range and formats it in CSV format.
- */
-void
-GetAshDataForQueryDiagnosticsBundle(TimestampTz start_time, TimestampTz end_time,
-									int64 query_id, StringInfo output_buffer,
-									char *description)
-{
-	YbcAshSample *ash_data_buffer = NULL;
-	int			total_elements_to_dump = 0;
-	int			start_index = -1;
-	int			end_index = -1;
-
-	Assert(start_time < end_time);
-
-	YbAshAcquireBufferLock(false /* exclusive */ );
-
-	GetAshRangeIndexes(start_time, end_time, query_id, &start_index,
-					   &end_index, description);
-
-	if (start_index != -1 && end_index != -1)
-		ash_data_buffer = ExtractAshDataFromRange(start_index, end_index,
-												  &total_elements_to_dump);
-
-	YbAshReleaseBufferLock();
-
-	if (ash_data_buffer)
-	{
-		FormatAshSampleAsCsv(ash_data_buffer, total_elements_to_dump, output_buffer);
-		pfree(ash_data_buffer);
-	}
-}
-
-/*
- * BinarySearchAshIndex
- * 		Performs binary search on a range of the circular buffer to find an index.
+ * Performs binary search on a range of the circular buffer to find
+ * an index.
  *
- * Returns:
- * 		Index of the element within circular buffer
- *		whose sample_time is just less than or equal to target_time.
+ * Both left and right are inclusive bounds.
+ *
+ * If is_lower_bound is true, this function searches for the first
+ * element in the range [left, right] which is not ordered before target.
+ *
+ * If is_lower_bound is false, this function searches for the first
+ * element in the range [left, right] which is ordered after target.
+ *
+ * For example, consider this buffer of timestamps
+ * [1, 1, 3, 3, 5, 5]
+ * If target is 3 and is_lower_bound is true, this function would
+ * return 2 (the index of the first occurence of 3)
+ * If target is 3 and is_lower_bound is false, this function would
+ * return 4 (the index after the last occurence of 3)
  */
 static int
-BinarySearchAshIndex(TimestampTz target_time, int left, int right)
+BinarySearchAshIndex(TimestampTz target_time, int left, int right,
+					 bool is_lower_bound)
 {
-	Assert(left <= right);
-	Assert(left >= 0 && right < yb_ash->max_entries);
-	Assert(target_time >= yb_ash->circular_buffer[left].sample_time);
-	Assert(target_time < yb_ash->circular_buffer[right].sample_time);
+	YbcAshSample *cb = yb_ash->circular_buffer;
+	Assert(left <= right && left >= 0 && right < yb_ash->max_entries);
+	Assert(target_time >= cb[left].sample_time &&
+		   target_time <= cb[right].sample_time);
 
 	while (left <= right)
 	{
 		int			mid = left + (right - left) / 2;
-		TimestampTz mid_time = yb_ash->circular_buffer[mid].sample_time;
+		TimestampTz mid_time = cb[mid].sample_time;
+		bool		condition = is_lower_bound
+								? (mid_time < target_time)
+								: (mid_time <= target_time);
 
-		if (target_time < mid_time)
-			right = mid - 1;
-		else
+		if (condition)
 			left = mid + 1;
+		else
+			right = mid - 1;
 	}
 
-	return right;
+	return left;
 }
 
 /*
- * GetAshRangeIndexes
- * 		Gives [start_index, end_index] ASH circular buffer range for the given time range.
+ * Gets start_index and end_index of the ASH circular buffer range
+ * for the given time range. The start index is always inclusive
+ * and the end index is always exclusive.
  *
- * Parameters:
- * 		start_time - The start of the time range whose ASH data is to be fetched
- * 		end_time - The end of the time range whose ASH data is to be fetched
- * 		start_index - Pointer to store the start index corresponding to start_time
- * 		end_index - Pointer to store the end index corresponding to end_time
- *		query_id - Unique identifier for each query, required for logging errors
- *		description - Pointer to store error/warning descriptions
+ * is_end_time_exclusive controls whether the range is for
+ * [start_time, end_time] or [start_time, end_time)
  */
 static void
-GetAshRangeIndexes(TimestampTz start_time, TimestampTz end_time, int64 query_id,
-				   int *start_index, int *end_index, char *description)
+GetAshRangeIndexes(TimestampTz start_time, TimestampTz end_time,
+				   int *start_index, int *end_index,
+				   bool is_end_time_exclusive)
 {
-	int			max_time_index = (yb_ash->index - 1 + yb_ash->max_entries) % yb_ash->max_entries;
-	int			min_time_index = yb_ash->circular_buffer[yb_ash->index].sample_time ? yb_ash->index : 0;
-	TimestampTz buffer_min_time = yb_ash->circular_buffer[min_time_index].sample_time;
-	TimestampTz buffer_max_time = yb_ash->circular_buffer[max_time_index].sample_time;
-	TimestampTz buffer_first_entry_time = yb_ash->circular_buffer[0].sample_time;
+	YbcAshSample *cb = yb_ash->circular_buffer;
+	int			index = yb_ash->index;
+	int			max_entries = yb_ash->max_entries;
 
-	Assert(start_index != NULL);
-	Assert(end_index != NULL);
+	int			max_time_index = (index - 1 + max_entries) % max_entries;
+	int			min_time_index = cb[index].sample_time ? index : 0;
+	TimestampTz buffer_min_time = cb[min_time_index].sample_time;
+	TimestampTz buffer_max_time = cb[max_time_index].sample_time;
+	TimestampTz buffer_first_entry_time = cb[0].sample_time;
 
 	/* Time range is not there in the buffer */
-	if (start_time > buffer_max_time || end_time < buffer_min_time)
-	{
-		YbQueryDiagnosticsAppendToDescription(description,
-											  (end_time < buffer_min_time ?
-											   "ASH circular buffer has wrapped around, unable to fetch ASH data;" :
-											   "No data available in ASH for the given time range;"));
+	if ((start_time > 0 && start_time > buffer_max_time) ||
+		(end_time > 0 && end_time < buffer_min_time))
 		return;
-	}
 
-	/* Find the start_index */
-	if (start_time <= buffer_min_time)
-		*start_index = min_time_index;
-	else if (start_time < buffer_first_entry_time)
-		*start_index = BinarySearchAshIndex(start_time, yb_ash->index,
-											yb_ash->max_entries - 1);
-	else
-		*start_index = BinarySearchAshIndex(start_time, 0, max_time_index);
-
-	/* Find the end_index */
-	if (end_time >= buffer_max_time)
-		*end_index = max_time_index;
-	else if (end_time < buffer_first_entry_time)
-		*end_index = BinarySearchAshIndex(end_time, yb_ash->index,
-										  yb_ash->max_entries - 1);
-	else
-		*end_index = BinarySearchAshIndex(end_time, 0, max_time_index);
-
-	if (yb_ash->circular_buffer[*start_index].sample_time != start_time)
-		*start_index = (*start_index + 1) % yb_ash->max_entries;
-
-	Assert(*start_index >= 0 && *start_index < yb_ash->max_entries);
-	Assert(*end_index >= 0 && *end_index < yb_ash->max_entries);
-}
-
-/*
- * ExtractAshDataFromRange
- * 		Extract ASH data from the circular buffer for a given range.
- *
- * Returns:
- * 		Pointer to the extracted ASH data buffer
- */
-static YbcAshSample *
-ExtractAshDataFromRange(int start_index, int end_index, int *total_elements_to_dump)
-{
-	YbcAshSample *ash_data_buffer;
-
-	if (start_index > end_index)
+	/* Find the start_index, if not already set */
+	if (*start_index == -1)
 	{
-		/* Range wraps around the circular buffer */
-		int			tail_segment_size = yb_ash->max_entries - start_index;
-		int			head_segment_size = end_index + 1;
-
-		*total_elements_to_dump = head_segment_size + tail_segment_size;
-		Assert(*total_elements_to_dump > 0);
-
-		ash_data_buffer = (YbcAshSample *) palloc((*total_elements_to_dump) *
-												  sizeof(YbcAshSample));
-		Assert(ash_data_buffer != NULL);
-
-		memcpy(ash_data_buffer, &yb_ash->circular_buffer[start_index],
-			   tail_segment_size * sizeof(YbcAshSample));
-		memcpy(ash_data_buffer + tail_segment_size, yb_ash->circular_buffer,
-			   head_segment_size * sizeof(YbcAshSample));
-	}
-	else
-	{
-		*total_elements_to_dump = end_index - start_index + 1;
-		Assert(*total_elements_to_dump > 0);
-
-		ash_data_buffer = (YbcAshSample *) palloc((*total_elements_to_dump) *
-												  sizeof(YbcAshSample));
-		Assert(ash_data_buffer != NULL);
-
-		memcpy(ash_data_buffer, &yb_ash->circular_buffer[start_index],
-			   (*total_elements_to_dump) * sizeof(YbcAshSample));
-	}
-
-	return ash_data_buffer;
-}
-
-static void
-FormatAshSampleAsCsv(YbcAshSample *ash_data_buffer, int total_elements_to_dump,
-					 StringInfo output_buffer)
-{
-	Assert(output_buffer != NULL);
-	Assert(total_elements_to_dump > 0);
-
-	if (total_elements_to_dump)
-		appendStringInfoString(output_buffer,
-							   "sample_time,root_request_id,rpc_request_id,"
-							   "wait_event_component,wait_event_class,wait_event,"
-							   "top_level_node_id,query_id,pid,"
-							   "client_node_ip,wait_event_aux,sample_weight,"
-							   "wait_event_type,ysql_dbid,wait_event_code\n");
-
-	for (int i = 0; i < total_elements_to_dump; ++i)
-	{
-		char		client_node_ip[48];
-		YbcAshSample *sample = &ash_data_buffer[i];
-
-		if (sample->metadata.addr_family == AF_INET || sample->metadata.addr_family == AF_INET6)
-			client_ip_to_string(sample->metadata.client_addr,
-								sample->metadata.client_port,
-								sample->metadata.addr_family, client_node_ip);
+		if (start_time <= buffer_min_time)
+			*start_index = min_time_index;
+		else if (start_time < buffer_first_entry_time)
+			*start_index = BinarySearchAshIndex(start_time, index,
+												max_entries - 1,
+												true /* is_lower_bound */ );
 		else
-		{
-			Assert(sample->metadata.addr_family == AF_UNIX ||
-				   sample->metadata.addr_family == AF_UNSPEC);
-			client_node_ip[0] = '\0';
-		}
-
-		appendStringInfo(output_buffer, "%s,", timestamptz_to_str(sample->sample_time));
-		PrintUuidToBuffer(output_buffer, sample->metadata.root_request_id);
-		appendStringInfo(output_buffer, ",%ld,%s,%s,%s,",
-						 (int64) sample->rpc_request_id,
-						 YBCGetWaitEventComponent(sample->encoded_wait_event_code),
-						 YBCGetWaitEventClass(sample->encoded_wait_event_code),
-						 pgstat_get_wait_event(sample->encoded_wait_event_code));
-
-		/* Top level node id */
-		PrintUuidToBuffer(output_buffer, sample->top_level_node_id);
-		appendStringInfo(output_buffer, ",%ld,%d,%s,%s,%f,%s,%d,%d\n",
-						 (int64) sample->metadata.query_id,
-						 sample->metadata.pid,
-						 client_node_ip,
-						 sample->aux_info,
-						 sample->sample_weight,
-						 pgstat_get_wait_event_type(sample->encoded_wait_event_code),
-						 sample->metadata.database_id,
-						 YBCAshNormalizeComponentForTServerEvents(sample->encoded_wait_event_code, true));
+			*start_index = BinarySearchAshIndex(start_time, 0, max_time_index,
+												true /* is_lower_bound */ );
 	}
+
+	/* Find the end_index, if not already set */
+	if (*end_index == -1)
+	{
+		if (end_time > buffer_max_time)
+			*end_index = max_time_index + 1;
+		else if (end_time < buffer_first_entry_time)
+			*end_index = BinarySearchAshIndex(end_time, index, max_entries - 1,
+											  is_end_time_exclusive);
+		else
+			*end_index = BinarySearchAshIndex(end_time, 0, max_time_index,
+											  is_end_time_exclusive);
+	}
+
+	/* if upper bound is used, end index can go out of bounds */
+	if (*end_index == max_entries)
+		*end_index = 0;
+
+	Assert(*start_index >= 0 && *start_index < max_entries);
+	Assert(*end_index >= 0 && *end_index < max_entries);
 }

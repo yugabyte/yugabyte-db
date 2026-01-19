@@ -6,19 +6,18 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
-import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.FileHelperService;
-import com.yugabyte.yw.common.NodeUniverseManager;
+import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
-import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.AdditionalServicesStateData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Customer;
@@ -39,9 +38,7 @@ import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
-public class YNPProvisioning extends AbstractTaskBase {
-  private final NodeUniverseManager nodeUniverseManager;
-  private final RuntimeConfGetter confGetter;
+public class YNPProvisioning extends NodeTaskBase {
   private final CloudQueryHelper queryHelper;
   private final FileHelperService fileHelperService;
   private ShellProcessContext shellContext =
@@ -50,13 +47,9 @@ public class YNPProvisioning extends AbstractTaskBase {
   @Inject
   protected YNPProvisioning(
       BaseTaskDependencies baseTaskDependencies,
-      NodeUniverseManager nodeUniverseManager,
-      RuntimeConfGetter confGetter,
       CloudQueryHelper queryHelper,
       FileHelperService fileHelperService) {
     super(baseTaskDependencies);
-    this.nodeUniverseManager = nodeUniverseManager;
-    this.confGetter = confGetter;
     this.queryHelper = queryHelper;
     this.fileHelperService = fileHelperService;
   }
@@ -73,7 +66,12 @@ public class YNPProvisioning extends AbstractTaskBase {
     return (Params) taskParams;
   }
 
-  public void getProvisionArguments(
+  @Override
+  public int getRetryLimit() {
+    return 2;
+  }
+
+  public void generateProvisionConfig(
       Universe universe,
       NodeDetails node,
       Provider provider,
@@ -81,7 +79,7 @@ public class YNPProvisioning extends AbstractTaskBase {
       Path nodeAgentHome) {
 
     ObjectMapper mapper = new ObjectMapper();
-    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    UserIntent userIntent = universe.getCluster(node.placementUuid).userIntent;
 
     try {
       ObjectNode rootNode = mapper.createObjectNode();
@@ -93,6 +91,9 @@ public class YNPProvisioning extends AbstractTaskBase {
       ynpNode.put("yb_user_id", "1994");
       ynpNode.put("is_airgap", provider.getDetails().airGapInstall);
       ynpNode.put("is_yb_prebuilt_image", taskParams().isYbPrebuiltImage);
+      ynpNode.put("is_ybcontroller_disabled", !universe.getUniverseDetails().isEnableYbc());
+      ynpNode.put(
+          "node_exporter_port", universe.getUniverseDetails().communicationPorts.nodeExporterPort);
       ynpNode.put(
           "tmp_directory",
           confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory));
@@ -136,12 +137,7 @@ public class YNPProvisioning extends AbstractTaskBase {
       if (taskParams().deviceInfo.mountPoints != null) {
         extraNode.put("mount_paths", taskParams().deviceInfo.mountPoints);
       } else {
-        int numVolumes =
-            universe
-                .getCluster(node.placementUuid)
-                .userIntent
-                .getDeviceInfoForNode(node)
-                .numVolumes;
+        int numVolumes = userIntent.getDeviceInfoForNode(node).numVolumes;
         StringBuilder volumePaths = new StringBuilder();
         for (int i = 0; i < numVolumes; i++) {
           if (i > 0) {
@@ -207,6 +203,7 @@ public class YNPProvisioning extends AbstractTaskBase {
       // "logging" JSON Object
       ObjectNode loggingNode = mapper.createObjectNode();
       loggingNode.put("level", "INFO");
+      loggingNode.put("directory", nodeAgentHome.resolve("logs").toString());
       rootNode.set("logging", loggingNode);
 
       // Convert to JSON string
@@ -223,6 +220,7 @@ public class YNPProvisioning extends AbstractTaskBase {
           StandardOpenOption.TRUNCATE_EXISTING);
     } catch (Exception e) {
       log.error("Failed generating JSON file: ", e);
+      throw new RuntimeException(e);
     }
   }
 
@@ -234,9 +232,23 @@ public class YNPProvisioning extends AbstractTaskBase {
       shellContext = shellContext.toBuilder().sshUser(taskParams().sshUser).build();
     }
     Path nodeAgentHomePath = Paths.get(taskParams().nodeAgentInstallDir, NodeAgent.NODE_AGENT_DIR);
+    Path nodeAgentScriptsPath = nodeAgentHomePath.resolve("scripts");
+
     Provider provider =
         Provider.getOrBadRequest(
             UUID.fromString(universe.getCluster(node.placementUuid).userIntent.provider));
+
+    /*
+     *  But First, setup the dual NIC on YBM if needed. Let's do that even before we run
+     *  YNP based provisioning because dual NIC setup will require a reboot which might
+     *  clean up the tmp directory where the YNP config is created.
+     */
+    AnsibleSetupServer.Params ansibleParams = buildDualNicSetupParams(universe, node, provider);
+    nodeManager
+        .nodeCommand(NodeManager.NodeCommandType.Provision, ansibleParams)
+        .processErrors("Dual NIC setup failed");
+    boolean disableGolangYnpDriver =
+        confGetter.getGlobalConf(GlobalConfKeys.disableGolangYnpDriver);
     String customTmpDirectory =
         confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory);
     String targetConfigPath =
@@ -245,14 +257,18 @@ public class YNPProvisioning extends AbstractTaskBase {
             .toString();
     String tmpDirectory =
         fileHelperService.createTempFile(node.cloudInfo.private_ip + "-", ".json").toString();
-    getProvisionArguments(universe, node, provider, tmpDirectory, nodeAgentHomePath);
+    generateProvisionConfig(universe, node, provider, tmpDirectory, nodeAgentHomePath);
     nodeUniverseManager.uploadFileToNode(
         node, universe, tmpDirectory, targetConfigPath, "755", shellContext);
+    // Copy the conf file to scripts folder and run the provisioning script as in manual onprem.
     StringBuilder sb = new StringBuilder();
-    sb.append("cd ").append(nodeAgentHomePath);
+    sb.append("cd ").append(nodeAgentScriptsPath);
     sb.append(" && mv -f ").append(targetConfigPath);
     sb.append(" config.json && chmod +x node-agent-provision.sh");
     sb.append(" && ./node-agent-provision.sh --extra_vars config.json");
+    if (disableGolangYnpDriver) {
+      sb.append(" --use_python_driver");
+    }
     sb.append(" --cloud_type ").append(node.cloudInfo.cloud);
     if (provider.getDetails().airGapInstall) {
       sb.append(" --is_airgap");
@@ -260,9 +276,21 @@ public class YNPProvisioning extends AbstractTaskBase {
     sb.append(" && chown -R $(id -u):$(id -g) ").append(nodeAgentHomePath);
     List<String> command = getCommand("/bin/bash", "-c", sb.toString());
     log.debug("Running YNP installation command: {}", command);
+
     nodeUniverseManager
         .runCommand(node, universe, command, shellContext)
         .processErrors("Installation failed");
+  }
+
+  private AnsibleSetupServer.Params buildDualNicSetupParams(
+      Universe universe, NodeDetails node, Provider provider) {
+    UserIntent userIntent = universe.getCluster(node.placementUuid).userIntent;
+    AnsibleSetupServer.Params ansibleParams = new AnsibleSetupServer.Params();
+    fillSetupParamsForNode(ansibleParams, userIntent, node);
+    ansibleParams.skipAnsiblePlaybook = true;
+    ansibleParams.sshUserOverride = node.sshUserOverride;
+    ansibleParams.sshPortOverride = node.sshPortOverride;
+    return ansibleParams;
   }
 
   private List<String> getCommand(String... args) {

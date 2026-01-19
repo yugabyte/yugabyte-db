@@ -20,6 +20,7 @@
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/ql_protocol.messages.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema_pbutil.h"
@@ -105,7 +106,7 @@ Result<std::optional<uint32_t>> GetUInt32ValueFromMap(
 }
 
 void SerializeEntry(
-    const CDCStateTableKey& key, client::TableHandle* cdc_table, QLWriteRequestPB* req,
+    const CDCStateTableKey& key, client::TableHandle* cdc_table, QLWriteRequestMsg* req,
     const bool replace_full_map = false) {
   DCHECK(key.stream_id && !key.tablet_id.empty());
 
@@ -114,7 +115,7 @@ void SerializeEntry(
 }
 
 void SerializeEntry(
-    const CDCStateTableEntry& entry, client::TableHandle* cdc_table, QLWriteRequestPB* req,
+    const CDCStateTableEntry& entry, client::TableHandle* cdc_table, QLWriteRequestMsg* req,
     const bool replace_full_map = false) {
   SerializeEntry(entry.key, cdc_table, req);
 
@@ -127,7 +128,7 @@ void SerializeEntry(
   }
 
   if (replace_full_map) {
-    QLMapValuePB* map_value_pb = nullptr;
+    QLMapValueMsg* map_value_pb = nullptr;
     auto get_map_value_pb = [&map_value_pb, &req, &cdc_table]() {
       if (!map_value_pb) {
         map_value_pb = client::AddMapColumn(req, cdc_table->ColumnId(kCdcData));
@@ -369,10 +370,34 @@ Result<CDCStateTableEntry> DeserializeRow(
   }
   return entry;
 }
+
+class FlushCallbackState {
+ public:
+  FlushCallbackState() : callback_done(false) {}
+
+  static std::shared_ptr<FlushCallbackState> Create() {
+    return std::make_shared<FlushCallbackState>();
+  }
+
+  void CallbackDone(client::FlushStatus&& other, const ShutDownState& shutdown) {
+    flush_status = std::move(other);
+    shutdown.UpdateAndBroadcast(callback_done);
+  }
+
+  Status GetStatus() { return flush_status.status; }
+
+  Status WaitForCallbackOrShutdown(const ShutDownState& shutdown) {
+    return shutdown.WaitForShutdownOr(callback_done);
+  }
+
+ private:
+  bool callback_done;
+  client::FlushStatus flush_status;
+};
 }  // namespace
 
 CDCStateTable::CDCStateTable(std::shared_future<client::YBClient*> client_future)
-    : client_future_(std::move(client_future)) {
+    : client_future_(std::move(client_future)), shutdown_(std::make_shared<ShutDownState>()) {
   CHECK(client_future_.valid());
 }
 
@@ -695,8 +720,14 @@ Result<std::optional<CDCStateTableEntry>> CDCStateTable::TryFetchEntry(
   req_read->mutable_column_refs()->add_ids(kCdcStreamIdColumnId);
 
   cdc_table->AddColumns(columns, req_read);
-  // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
-  RETURN_NOT_OK(session->TEST_ApplyAndFlush(read_op));
+  session->Apply(read_op);
+  auto callback_state = FlushCallbackState::Create();
+  session->FlushAsync(
+      [callback_state, local_shutdown = shutdown_](client::FlushStatus* flush_status) {
+        callback_state->CallbackDone(std::move(*flush_status), *local_shutdown);
+      });
+  RETURN_NOT_OK(callback_state->WaitForCallbackOrShutdown(*shutdown_));
+  RETURN_NOT_OK(callback_state->GetStatus());
   auto row_block = ql::RowsResult(read_op.get()).GetRowBlock();
   if (row_block->row_count() == 0) {
     return std::nullopt;
@@ -712,6 +743,41 @@ Result<std::optional<CDCStateTableEntry>> CDCStateTable::TryFetchEntry(
 
   VLOG(1) << "TryFetchEntry row: " << entry.ToString();
   return entry;
+}
+
+void CDCStateTable::Shutdown() {
+  shutdown_->SetShuttingDown();
+}
+
+bool ShutDownState::SetShuttingDown() {
+  {
+    std::lock_guard lock(mutex_);
+    if (shutting_down_) {
+      return false;
+    }
+    shutting_down_ = true;
+  }
+  cv_.Broadcast();
+  return true;
+}
+
+Status ShutDownState::WaitForShutdownOr(bool& state) const {
+  UniqueLock lock(mutex_);
+  while (!shutting_down_ && !state) {
+    cv_.Wait();
+  }
+  if (shutting_down_) {
+    return STATUS(ShutdownInProgress, "Shutting down");
+  }
+  return Status::OK();
+}
+
+void ShutDownState::UpdateAndBroadcast(bool& var) const {
+  {
+    std::lock_guard lock(mutex_);
+    var = true;
+  }
+  cv_.Broadcast();
 }
 
 Result<CDCStateTableEntry> CdcStateTableIterator::operator*() const {

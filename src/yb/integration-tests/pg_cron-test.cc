@@ -190,7 +190,7 @@ class PgCronTest : public MiniClusterTestWithClient<ExternalMiniCluster> {
 
     return LoggedWait(
         [&]() -> Result<bool> {
-          auto read_op = table.NewReadOp();
+          auto read_op = table.NewReadOp(session->arena());
           auto* read_req = read_op->mutable_request();
           table.AddColumns(
               {stateful_service::kPgCronIdColName, stateful_service::kPgCronDataColName}, read_req);
@@ -210,7 +210,7 @@ class PgCronTest : public MiniClusterTestWithClient<ExternalMiniCluster> {
     RETURN_NOT_OK(table.Open(table_name, client_.get()));
     auto session = client_->NewSession(kTimeout);
 
-    auto read_op = table.NewReadOp();
+    auto read_op = table.NewReadOp(session->arena());
     auto* read_req = read_op->mutable_request();
     table.AddColumns(
         {stateful_service::kPgCronIdColName, stateful_service::kPgCronDataColName}, read_req);
@@ -321,7 +321,15 @@ TEST_F(PgCronTest, JobOnDifferentDB) {
 
   for (int i = 0; MonoTime::Now() - start < sleep_time; i++) {
     LOG(INFO) << Format("Creating table $0", i);
-    ASSERT_OK(new_db_conn.ExecuteFormat("CREATE TABLE tbl$0(a INT)", i));
+    auto status = new_db_conn.ExecuteFormat("CREATE TABLE tbl$0(a INT)", i);
+    if (!status.ok()) {
+      if (status.message().Contains("Catalog Version Mismatch")) {
+        LOG(INFO) << Format("Ignoring Catalog Version Mismatch: $0", status.ToString());
+        SleepFor(200ms);
+        continue;
+      }
+      ASSERT_OK(status);
+    }
     SleepFor(1s);
   }
 

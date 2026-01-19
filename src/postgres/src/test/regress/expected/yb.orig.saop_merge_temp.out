@@ -1,0 +1,75 @@
+--
+-- See yb_saop_merge_schedule for details about the test.
+--
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set filename :abs_srcdir '/yb_commands/explainrun_saop_merge.sql'
+\i :filename
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set filename :abs_srcdir '/yb_commands/explainrun.sql'
+\i :filename
+-- A helper script to explain and run a query.  Use in regress tests by
+-- defining :explain, :query, and optionally :hint#.
+\set explain1 ':explain :hint1 :query;'
+\set explain2 ':explain1 :explain :hint2 :query;'
+\set explain3 ':explain2 :explain :hint3 :query;'
+\set explain4 ':explain3 :explain :hint4 :query;'
+\set explain5 ':explain4 :explain :hint5 :query;'
+\set explain1run1 ':explain1; :hint1 :query;'
+\set explain2run2 ':explain2; :hint1 :query; :hint2 :query;'
+\set explain3run3 ':explain3; :hint1 :query; :hint2 :query; :hint3 :query;'
+\set explain4run4 ':explain4; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query;'
+\set explain5run5 ':explain5; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query; :hint5 :query;'
+-- Default to no hints.
+\set hint1 ''
+\set hint2 ''
+\set hint3 ''
+\set hint4 ''
+\set hint5 ''
+\set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
+\set off '/*+Set(yb_max_saop_merge_streams 0)*/'
+\set on '/*+Set(yb_max_saop_merge_streams 64)*/'
+\set hint1 ':off'
+\set hint2 ':on'
+CREATE TEMP TABLE tmp (
+    r1 int2,
+    r2 int8,
+    r3 int,
+    r4 numeric,
+    r5 float8,
+    n int GENERATED ALWAYS AS ((r1 + r2 * 10 + r3 * 100 + r4 * 1000 + r5 * 10000)::int) STORED,
+    PRIMARY KEY (r1, r2, r3, r4, r5));
+INSERT INTO tmp SELECT r1, r2, r3, r4, r5 FROM r5n;
+-- Temp table
+-- SAOP merge should not be used.
+SET enable_bitmapscan = off;
+\set query 'SELECT * FROM tmp WHERE r1 IN (0, 1, 2, 3) ORDER BY r2, r3, r4, n LIMIT 5'
+:explain2
+                           QUERY PLAN                           
+----------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: r1, r2, r3, r4, r5, n
+   ->  Sort (actual rows=5 loops=1)
+         Output: r1, r2, r3, r4, r5, n
+         Sort Key: tmp.r2, tmp.r3, tmp.r4, tmp.n
+         Sort Method: top-N heapsort
+         ->  Seq Scan on pg_temp.tmp (actual rows=1983 loops=1)
+               Output: r1, r2, r3, r4, r5, n
+               Filter: (tmp.r1 = ANY ('{0,1,2,3}'::integer[]))
+               Rows Removed by Filter: 3065
+(10 rows)
+
+                           QUERY PLAN                           
+----------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: r1, r2, r3, r4, r5, n
+   ->  Sort (actual rows=5 loops=1)
+         Output: r1, r2, r3, r4, r5, n
+         Sort Key: tmp.r2, tmp.r3, tmp.r4, tmp.n
+         Sort Method: top-N heapsort
+         ->  Seq Scan on pg_temp.tmp (actual rows=1983 loops=1)
+               Output: r1, r2, r3, r4, r5, n
+               Filter: (tmp.r1 = ANY ('{0,1,2,3}'::integer[]))
+               Rows Removed by Filter: 3065
+(10 rows)
+
+RESET enable_bitmapscan;

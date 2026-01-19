@@ -604,7 +604,7 @@ extern void od_logger_write_plain(od_logger_t *logger, od_logger_level_t level,
 
 	int len = strlen(string);
 	char output[len + OD_LOGLINE_MAXLEN];
-	va_list empty_va_list;
+	va_list empty_va_list = { 0 };
 	len = od_logger_format(logger, level, context, client, server, string,
 			       empty_va_list, output, len + 100);
 

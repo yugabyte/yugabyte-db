@@ -127,5 +127,10 @@ extern List *yb_get_bitmap_index_quals(PlannerInfo *root, Path *bitmapqual,
 									   List *scan_clauses);
 extern bool is_index_only_attribute_nums(List *colrefs, IndexOptInfo *indexinfo,
 										 bool bitmapindex);
+extern RestrictInfo *yb_try_create_derived_clause(PlannerInfo *root, Index rti,
+												  Index target_rti,
+												  Expr *inferrable_expr,
+												  Expr *generation_expr,
+												  Oid opfamily);
 
 #endif							/* PLANMAIN_H */

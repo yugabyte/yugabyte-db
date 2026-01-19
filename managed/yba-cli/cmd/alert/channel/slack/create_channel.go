@@ -5,8 +5,6 @@
 package slack
 
 import (
-	"strings"
-
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/alert/channel/channelutil"
@@ -30,7 +28,7 @@ var createSlackChannelAlertCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(username)) == 0 {
+		if util.IsEmptyString(username) {
 			logrus.Fatal(
 				formatter.Colorize(
 					"No username specified to create alert channel\n",
@@ -41,7 +39,7 @@ var createSlackChannelAlertCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(webhookURL)) == 0 {
+		if util.IsEmptyString(webhookURL) {
 			logrus.Fatal(
 				formatter.Colorize(
 					"No webhook URL specified to create alert channel\n",

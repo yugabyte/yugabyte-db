@@ -160,7 +160,7 @@ TEST_F(YBTsCliTest, TestDeleteTablet) {
   };
   ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags));
 
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.Setup(); // Easy way to create a new tablet.
 
   vector<tserver::ListTabletsResponsePB::StatusAndSchemaPB> tablets;
@@ -195,7 +195,7 @@ TEST_F(YBTsCliTest, TestTabletServerReadiness) {
   MonoDelta timeout = MonoDelta::FromSeconds(kTabletTimeout);
   ASSERT_NO_FATALS(StartCluster({ "--TEST_tablet_bootstrap_delay_ms=2000"s }));
 
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.Setup(); // Easy way to create a new tablet.
 
   vector<tserver::ListTabletsResponsePB::StatusAndSchemaPB> tablets;
@@ -230,7 +230,7 @@ TEST_F(YBTsCliTest, TestManualRemoteBootstrap) {
   MonoDelta timeout = MonoDelta::FromSeconds(kTabletTimeout);
   ASSERT_NO_FATALS(StartCluster({}, {}, 3 /*num tservers*/, 1 /*num masters*/));
 
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.Setup();
   workload.Start();
 
@@ -410,15 +410,13 @@ TEST_F(YBTsCliTest, TestRefreshFlags) {
   }, MonoDelta::FromSeconds(60), "Verify updated GFlag"));
 }
 
-class YBTsCliUnsafeChangeTest : public AdminTestBase {
+class YBTsCliIntegrationTest : public AdminTestBase {
  public:
   // Figure out where the admin tool is.
-  string GetTsCliToolPath() const;
+  string GetTsCliToolPath() const { return GetToolPath(kTsCliToolName); }
 };
 
-string YBTsCliUnsafeChangeTest::GetTsCliToolPath() const {
-  return GetToolPath(kTsCliToolName);
-}
+using YBTsCliUnsafeChangeTest = YBTsCliIntegrationTest;
 
 Status RunUnsafeChangeConfig(
     YBTsCliUnsafeChangeTest* test,
@@ -1208,6 +1206,51 @@ TEST_F(YBTsCliUnsafeChangeTest, TestUnsafeChangeConfigWithMultiplePendingConfigs
       ASSERT_NE(replica.ts_info().permanent_uuid(), old_follower->uuid());
     }
   }
+}
+
+TEST_F_EX(YBTsCliTest, TestDumpTabletData, YBTsCliIntegrationTest) {
+  ASSERT_NO_FATALS(BuildAndStart());
+
+  TestYcqlWorkload workload(cluster_.get());
+  workload.Setup();
+  workload.set_table_name(kTableName);
+  workload.set_num_write_threads(1);
+  workload.set_write_batch_size(1);
+  workload.Start();
+  workload.WaitInserted(10);
+  workload.StopAndJoin();
+
+  const auto file_path =
+      JoinPathSegments(GetTestDataDirectory(), Format("dump_$0.txt", tablet_id_));
+
+  std::vector<std::string> basic_argv = {
+      GetTsCliToolPath(), "--server_address",
+      yb::ToString(cluster_->tablet_server(0)->bound_rpc_addr()), "dump_tablet_data", tablet_id_};
+  auto argv = basic_argv;
+  argv.push_back(file_path);
+
+  std::string output;
+  ASSERT_OK(Subprocess::Call(argv, &output));
+  LOG(INFO) << "Output: " << output;
+
+  const auto row_count_prefix = "Row count: ";
+  auto row_count =
+      std::stoull(output.substr(output.find(row_count_prefix) + strlen(row_count_prefix)));
+
+  auto env = Env::Default();
+  faststring file_contents;
+  ASSERT_OK(ReadFileToString(env, file_path, &file_contents));
+  auto string_contents = file_contents.ToString();
+  LOG(INFO) << "File contents: " << string_contents;
+  uint64_t payload_count = 0;
+  size_t pos = string_contents.find(TestWorkloadOptions::kDefaultPayload, 0);
+
+  while (pos != std::string::npos) {
+    payload_count++;
+    pos = string_contents.find(
+        TestWorkloadOptions::kDefaultPayload, pos + TestWorkloadOptions::kDefaultPayload.length());
+  }
+  ASSERT_EQ(payload_count, row_count);
 }
 
 } // namespace tools

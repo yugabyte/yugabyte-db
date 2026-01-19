@@ -40,7 +40,11 @@ using yb::OpId;
 using yb::HybridTime;
 
 YB_DEFINE_ENUM(UpdateUserValueType, ((kSmallest, 1))((kLargest, -1)));
-YB_DEFINE_ENUM(FrontierModificationMode, (kForce)(kUpdate));
+// kUpdateIgnoreBackwards is similar to kUpdate but will not check whether a new frointier is less
+// when a new edit is applied to VersionSet. Just like kUpdate, a smaller FlushedFrontier will never
+// be flushed. This is just used to skip DFATAL in VersionSet::EnsureNonDecreasingFlushedFrontier in
+// some cases.
+YB_DEFINE_ENUM(FrontierModificationMode, (kForce)(kUpdate)(kUpdateIgnoreBackwards));
 
 // Specific how key value entries are encoded inside the block.
 // See Block and BlockBuilder for more details.

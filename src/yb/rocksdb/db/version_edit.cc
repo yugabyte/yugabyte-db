@@ -459,9 +459,14 @@ void VersionEdit::UpdateFlushedFrontier(UserFrontierPtr value) {
 }
 
 void VersionEdit::ModifyFlushedFrontier(UserFrontierPtr value, FrontierModificationMode mode) {
+  const bool allow_mode_change = frontier_modification_mode_ == FrontierModificationMode::kUpdate ||
+                                 frontier_modification_mode_ == mode;
+  LOG_IF(DFATAL, !allow_mode_change)
+      << "Incorrect change to flushed frontier modification mode from "
+      << frontier_modification_mode_ << " to " << mode;
+  frontier_modification_mode_ = mode;
   if (mode == FrontierModificationMode::kForce) {
     flushed_frontier_ = std::move(value);
-    force_flushed_frontier_ = true;
   } else {
     UpdateUserFrontier(&flushed_frontier_, std::move(value), UpdateUserValueType::kLargest);
   }

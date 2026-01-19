@@ -54,7 +54,7 @@ class YQLStorageIf {
   //------------------------------------------------------------------------------------------------
   // CQL Support.
   virtual Status GetIterator(
-      const QLReadRequestPB& request,
+      const QLReadRequestMsg& request,
       const dockv::ReaderProjection& projection,
       std::reference_wrapper<const DocReadContext> doc_read_context,
       const TransactionOperationContext& txn_op_context,
@@ -64,7 +64,7 @@ class YQLStorageIf {
       std::unique_ptr<YQLRowwiseIteratorIf>* iter) const = 0;
 
   virtual Status BuildYQLScanSpec(
-      const QLReadRequestPB& request,
+      const QLReadRequestMsg& request,
       const ReadHybridTime& read_time,
       const Schema& schema,
       bool include_static_columns,
@@ -99,7 +99,7 @@ class YQLStorageIf {
 
   // Create iterator for querying by partition and range key.
   virtual Status GetIterator(
-      const PgsqlReadRequestPB& request,
+      const PgsqlReadRequestMsg& request,
       const dockv::ReaderProjection& projection,
       std::reference_wrapper<const DocReadContext> doc_read_context,
       const TransactionOperationContext& txn_op_context,
@@ -117,8 +117,7 @@ class YQLStorageIf {
       const ReadOperationData& read_operation_data,
       const YbctidBounds& bounds,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
-      SkipSeek skip_seek = SkipSeek::kFalse,
-      UseVariableBloomFilter use_variable_bloom_filter = UseVariableBloomFilter::kFalse) const = 0;
+      SkipSeek skip_seek = SkipSeek::kFalse) const = 0;
 
   // Returns up to num_blocks_for_sample number of sample blocks boundaries.
   // Each boundary is an encoded doc key or its prefix.

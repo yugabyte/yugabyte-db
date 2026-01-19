@@ -116,9 +116,22 @@ DEFINE_NON_RUNTIME_bool(
     "as connection manager does not support SCRAM with channel binding and enabling it would "
     "cause different behaviour vis-a-vis direct connections to postgres.");
 
+DEFINE_NON_RUNTIME_bool(ysql_enable_relcache_init_optimization, true,
+    "If applicable, new connections that need to rebuild relcache init file will not "
+    "do it directly which can cause memory spike on such a new connection until it is "
+    "disconnected. Instead an internal super user connection is made to perform the "
+    "relcache init file rebuild.");
+
+DEFINE_test_flag(bool, ysql_bypass_auto_analyze_auth_check, false,
+    "Bypass the yb-tserver-key authentication method check when connecting using "
+    "yb_auto_analyze backend type.");
+
+DEFINE_test_flag(int64, delay_after_table_analyze_ms, 0,
+    "Add this delay after each table is analyzed.");
+
 DECLARE_bool(ysql_enable_colocated_tables_with_tablespaces);
 DECLARE_bool(TEST_ysql_enable_db_logical_client_version_mode);
-DECLARE_bool(TEST_ysql_yb_enable_ddl_savepoint_support);
+DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 
 DECLARE_bool(TEST_generate_ybrowid_sequentially);
 DECLARE_bool(TEST_ysql_log_perdb_allocated_new_objectid);
@@ -128,6 +141,9 @@ DECLARE_uint32(ysql_max_invalidation_message_queue_size);
 DECLARE_uint32(max_replication_slots);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
+DECLARE_string(placement_cloud);
+DECLARE_string(placement_region);
+DECLARE_string(placement_zone);
 
 namespace {
 
@@ -208,8 +224,8 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
         &FLAGS_ysql_enable_neghit_full_inheritscache,
       .enable_object_locking_for_table_locks =
           &FLAGS_enable_object_locking_for_table_locks,
-      .TEST_ysql_yb_enable_ddl_savepoint_support =
-          &FLAGS_TEST_ysql_yb_enable_ddl_savepoint_support,
+      .ysql_yb_enable_ddl_savepoint_support =
+          &FLAGS_ysql_yb_enable_ddl_savepoint_support,
       .ysql_max_invalidation_message_queue_size =
           &FLAGS_ysql_max_invalidation_message_queue_size,
       .ysql_max_replication_slots = &FLAGS_max_replication_slots,
@@ -224,6 +240,12 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
           &FLAGS_timestamp_history_retention_interval_sec,
       .ysql_enable_scram_channel_binding = &FLAGS_ysql_enable_scram_channel_binding,
       .TEST_ysql_conn_mgr_auth_delay_ms = &FLAGS_TEST_ysql_conn_mgr_auth_delay_ms,
+      .ysql_enable_relcache_init_optimization = &FLAGS_ysql_enable_relcache_init_optimization,
+      .placement_cloud = FLAGS_placement_cloud.c_str(),
+      .placement_region = FLAGS_placement_region.c_str(),
+      .placement_zone = FLAGS_placement_zone.c_str(),
+      .TEST_ysql_bypass_auto_analyze_auth_check = &FLAGS_TEST_ysql_bypass_auto_analyze_auth_check,
+      .TEST_delay_after_table_analyze_ms = &FLAGS_TEST_delay_after_table_analyze_ms,
   };
   // clang-format on
   return &accessor;

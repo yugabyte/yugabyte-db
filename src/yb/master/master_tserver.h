@@ -32,7 +32,7 @@ class MasterTabletServer : public tserver::TabletServerIf,
                            public tserver::TabletPeerLookupIf {
  public:
   MasterTabletServer(Master* master, scoped_refptr<MetricEntity> metric_entity);
-  tserver::TSTabletManager* tablet_manager() override;
+  tserver::TSTabletManager* tablet_manager() const override;
   tserver::TabletPeerLookupIf* tablet_peer_lookup() override;
   tserver::TSLocalLockManagerPtr ts_local_lock_manager() const override;
 
@@ -75,6 +75,10 @@ class MasterTabletServer : public tserver::TabletServerIf,
       uint32_t db_oid, bool is_breaking_change, uint64_t new_catalog_version,
       const std::optional<std::string>& message_list) override;
 
+  Status TriggerRelcacheInitConnection(
+      const tserver::TriggerRelcacheInitConnectionRequestPB& req,
+      tserver::TriggerRelcacheInitConnectionResponsePB *resp) override;
+
   client::TransactionPool& TransactionPool() override;
 
   ConcurrentPointerReference<tserver::TServerSharedData> SharedObject() override;
@@ -99,7 +103,7 @@ class MasterTabletServer : public tserver::TabletServerIf,
   void SetPublisher(rpc::Publisher service) override;
 
   void SetCQLServer(yb::server::RpcAndWebServerBase* server,
-      server::YCQLStatementStatsProvider* stmt_provider) override {
+      server::YCQLServerExternalInterface* cql_server_if) override {
     LOG_WITH_FUNC(FATAL) << "should not be called on the master";
   }
 
@@ -123,6 +127,8 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
   Status YCQLStatementStats(const tserver::PgYCQLStatementStatsRequestPB& req,
       tserver::PgYCQLStatementStatsResponsePB* resp) const override;
+
+  Status ClearYCQLMetaDataCache() override;
 
   virtual Result<std::vector<tablet::TabletStatusPB>> GetLocalTabletsMetadata() const override;
 

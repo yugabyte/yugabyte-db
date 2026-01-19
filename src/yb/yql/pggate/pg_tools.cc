@@ -31,8 +31,6 @@
 #include "yb/yql/pggate/pg_table.h"
 #include "yb/yql/pggate/pg_type.h"
 
-#include "yb/yql/pggate/ybc_pg_typedefs.h"
-
 DECLARE_uint32(TEST_yb_ash_sleep_at_wait_state_ms);
 DECLARE_uint32(TEST_yb_ash_wait_code_to_sleep_at);
 DECLARE_string(TEST_yb_test_wait_event_aux_to_sleep_at_csv);
@@ -76,6 +74,14 @@ inline bool MaybeSleepForTests(ash::WaitStateCode wait_event, ash::PggateRPC pgg
   return FLAGS_TEST_yb_ash_sleep_at_wait_state_ms > 0 && (
       FLAGS_TEST_yb_ash_wait_code_to_sleep_at == std::to_underlying(wait_event) ||
       IsSleepRequired(pggate_rpc));
+}
+
+bool IsEqual(const YbcPgTableLocalityInfo& lhs, const YbcPgTableLocalityInfo& rhs) {
+  return lhs.is_region_local == rhs.is_region_local && lhs.tablespace_oid == rhs.tablespace_oid;
+}
+
+bool IsEmpty(const YbcPgTableLocalityInfo& info) {
+  return IsEqual(info, {});
 }
 
 } // namespace
@@ -124,14 +130,51 @@ Slice YbctidAsSlice(const PgTypeInfo& pg_types, uint64_t ybctid) {
   return Slice(value, bytes);
 }
 
-const std::string ToString(const YbcObjectLockId& lock_id) {
-  return Format("object { db_oid: $0, table_oid: $1, object_id: $2, object_sub_oid: $3 }",
-                lock_id.db_oid, lock_id.relation_oid, lock_id.object_oid, lock_id.object_sub_oid);
+std::string ToString(const YbcObjectLockId& lock_id) {
+  return Format(
+      "object { db_oid: $0, table_oid: $1, object_id: $2, object_sub_oid: $3 }",
+      lock_id.db_oid, lock_id.relation_oid, lock_id.object_oid, lock_id.object_sub_oid);
 }
 
-const std::string ToString(const YbcAdvisoryLockId& lock_id) {
-  return Format("advisory lock { db_oid: $0, classid: $1, object_oid: $2, object_sub_oid: $3 } ",
-                lock_id.database_id, lock_id.classid, lock_id.objid, lock_id.objsubid);
+std::string ToString(const YbcAdvisoryLockId& lock_id) {
+  return Format(
+      "advisory lock { db_oid: $0, classid: $1, object_oid: $2, object_sub_oid: $3 } ",
+      lock_id.database_id, lock_id.classid, lock_id.objid, lock_id.objsubid);
+}
+
+TablespaceCache::TablespaceCache(size_t capacity) : impl_(capacity) {}
+
+std::optional<PgTablespaceOid> TablespaceCache::Get(PgObjectId table_oid) {
+  const auto i = impl_.find(table_oid);
+  return i != impl_.end() ? std::optional(i->tablespace_oid) : std::nullopt;
+}
+
+void TablespaceCache::Put(PgObjectId table_oid, PgTablespaceOid tablespace_oid) {
+  auto i = impl_.insert(Info{.key = table_oid, .tablespace_oid = tablespace_oid});
+  i->tablespace_oid = tablespace_oid;
+}
+
+void TablespaceCache::Clear() {
+  impl_.clear();
+}
+
+void TableLocalityMap::Add(PgOid table_id, const YbcPgTableLocalityInfo& info) {
+  if (IsEmpty(info)) {
+    DCHECK(!map_.contains(table_id));
+    return;
+  }
+  [[maybe_unused]] const auto ipair = map_.emplace(table_id, info);
+  DCHECK(ipair.second || IsEqual(ipair.first->second, info));
+}
+
+const YbcPgTableLocalityInfo& TableLocalityMap::Get(PgOid table_id) const {
+  static const YbcPgTableLocalityInfo kEmpty{};
+  const auto i = map_.find(table_id);
+  return i == map_.end() ? kEmpty : i->second;
+}
+
+void TableLocalityMap::Clear() {
+  map_.clear();
 }
 
 } // namespace yb::pggate

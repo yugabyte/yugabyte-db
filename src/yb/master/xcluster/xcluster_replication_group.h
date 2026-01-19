@@ -15,6 +15,7 @@
 
 #include "yb/gutil/integral_types.h"
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/xcluster_consumer_registry_service.h"
 #include "yb/util/status_fwd.h"
 
 namespace yb {
@@ -80,6 +81,26 @@ bool IncludesConsumerNamespace(
 
 Result<std::shared_ptr<client::XClusterRemoteClientHolder>> GetXClusterRemoteClientHolder(
     UniverseReplicationInfo& universe);
+
+Result<TableId> GetConsumerTableIdForStreamId(
+    CatalogManager& catalog_manager, const xcluster::ReplicationGroupId& replication_group_id,
+    const xrepl::StreamId& stream_id);
+
+struct LockedConfigAndTableKeyRanges {
+  std::shared_ptr<ClusterConfigInfo> cluster_config;
+  ClusterConfigInfo::WriteLock write_lock;
+  std::map<std::string, KeyRange> table_key_ranges;
+
+  LockedConfigAndTableKeyRanges(
+      std::shared_ptr<ClusterConfigInfo> cc, ClusterConfigInfo::WriteLock&& wl,
+      std::map<std::string, KeyRange>&& ranges)
+      : cluster_config(std::move(cc)),
+        write_lock(std::move(wl)),
+        table_key_ranges(std::move(ranges)) {}
+};
+
+Result<LockedConfigAndTableKeyRanges> LockClusterConfigAndGetTableKeyRanges(
+    CatalogManager& catalog_manager, const TableId& consumer_table_id);
 
 // Returns (false, Status::OK()) if the universe setup is still in progress.
 // Returns (true, status) if the setup completed. status is set to OK if it completed successfully,

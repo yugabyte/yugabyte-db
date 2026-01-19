@@ -30,6 +30,7 @@
 // under the License.
 //
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <thread>
@@ -61,6 +62,7 @@
 #include "yb/master/master.h"
 #include "yb/master/master_backup.proxy.h"
 #include "yb/master/master_client.proxy.h"
+#include "yb/master/master_cluster_client.h"
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_ddl_client.h"
 #include "yb/master/master_defaults.h"
@@ -69,14 +71,17 @@
 
 #include "yb/tablet/tablet.pb.h"
 
-#include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_admin.proxy.h"
+#include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/status_log.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/tsan_util.h"
+
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 using yb::client::YBSchema;
 using yb::client::YBTableCreator;
@@ -165,6 +170,9 @@ class DeleteTableTest : public ExternalMiniClusterITestBase {
                                                           vector<string>* ts_list);
 
   Result<bool> VerifyTableCompletelyDeleted(const YBTableName& table, const string& tablet_id);
+
+  Result<tserver::ListTabletsForTabletServerResponsePB> ListTabletsForTabletServer(
+      ExternalTabletServer* ts);
 };
 
 string DeleteTableTest::GetLeaderUUID(const string& ts_uuid, const string& tablet_id) {
@@ -354,6 +362,16 @@ Result<bool> DeleteTableTest::VerifyTableCompletelyDeleted(
   return true;
 }
 
+Result<tserver::ListTabletsForTabletServerResponsePB> DeleteTableTest::ListTabletsForTabletServer(
+    ExternalTabletServer* ts) {
+  tserver::ListTabletsForTabletServerResponsePB resp;
+  tserver::ListTabletsForTabletServerRequestPB req;
+  auto ts_proxy = cluster_->GetProxy<tserver::TabletServerServiceProxy>(ts);
+  rpc::RpcController rpc;
+  RETURN_NOT_OK(ts_proxy.ListTabletsForTabletServer(req, &resp, &rpc));
+  return resp;
+}
+
 TEST_F(DeleteTableTest, TestPendingDeleteStateClearedOnFailure) {
   vector<string> tserver_flags, master_flags;
   master_flags.push_back("--unresponsive_ts_rpc_timeout_ms=5000");
@@ -362,7 +380,7 @@ TEST_F(DeleteTableTest, TestPendingDeleteStateClearedOnFailure) {
   ASSERT_NO_FATALS(StartCluster(tserver_flags, master_flags, 3));
   // Create a table on the cluster. We're just using TestWorkload
   // as a convenient way to create it.
-  auto test_workload = TestWorkload(cluster_.get());
+  auto test_workload = TestYcqlWorkload(cluster_.get());
   test_workload.Setup();
 
   // The table should have replicas on all three tservers.
@@ -384,7 +402,7 @@ TEST_F(DeleteTableTest, TestDeleteEmptyTable) {
   ASSERT_NO_FATALS(StartCluster());
   // Create a table on the cluster. We're just using TestWorkload
   // as a convenient way to create it.
-  TestWorkload(cluster_.get()).Setup();
+  TestYcqlWorkload(cluster_.get()).Setup();
 
   // The table should have replicas on all three tservers.
   ASSERT_OK(inspect_->WaitForReplicaCount(3));
@@ -429,7 +447,11 @@ TEST_F(DeleteTableTest, TestDeleteEmptyTable) {
         req, &resp, &rpc));
     SCOPED_TRACE(resp.DebugString());
     ASSERT_EQ(1, resp.errors_size());
-    ASSERT_STR_CONTAINS(resp.errors(0).ShortDebugString(), "code: NOT_FOUND");
+    auto error_msg = resp.errors(0).ShortDebugString();
+    if (error_msg.find("code: NOT_FOUND") == error_msg.npos &&
+        error_msg.find("code: DELETED") == error_msg.npos) {
+      FAIL() << "Expected NOT_FOUND or DELETED, instead got: " << error_msg;
+    }
   }
 
   // 4) The master 'dump-entities' page should not list the deleted table or tablets.
@@ -447,7 +469,7 @@ TEST_F(DeleteTableTest, TestDeleteTableDestUuidValidation) {
   ASSERT_NO_FATALS(StartCluster());
   // Create a table on the cluster. We're just using TestWorkload
   // as a convenient way to create it.
-  TestWorkload(cluster_.get()).Setup();
+  TestYcqlWorkload(cluster_.get()).Setup();
   ASSERT_OK(inspect_->WaitForReplicaCount(3));
 
   vector<string> tablets = inspect_->ListTabletsOnTS(1);
@@ -478,7 +500,7 @@ TEST_F(DeleteTableTest, TestAtomicDeleteTablet) {
   ASSERT_NO_FATALS(StartCluster());
   // Create a table on the cluster. We're just using TestWorkload
   // as a convenient way to create it.
-  TestWorkload(cluster_.get()).Setup();
+  TestYcqlWorkload(cluster_.get()).Setup();
 
   // The table should have replicas on all three tservers.
   ASSERT_OK(inspect_->WaitForReplicaCount(3));
@@ -534,7 +556,7 @@ TEST_F(DeleteTableTest, TestDeleteTableWithConcurrentWrites) {
   ASSERT_NO_FATALS(StartCluster());
   int n_iters = AllowSlowTests() ? 20 : 1;
   for (int i = 0; i < n_iters; i++) {
-    TestWorkload workload(cluster_.get());
+    TestYcqlWorkload workload(cluster_.get());
     workload.set_table_name(YBTableName(YQL_DATABASE_CQL, "my_keyspace",
         Substitute("table-$0", i)));
 
@@ -577,7 +599,7 @@ TEST_F(DeleteTableTest, DeleteTableWithConcurrentWritesNoRestarts) {
   ASSERT_NO_FATALS(StartCluster());
   constexpr auto kNumIters = 10;
   for (int iter = 0; iter < kNumIters; iter++) {
-    TestWorkload workload(cluster_.get());
+    TestYcqlWorkload workload(cluster_.get());
     workload.set_table_name(YBTableName(YQL_DATABASE_CQL, "my_keyspace", Format("table-$0", iter)));
 
     // We'll delete the table underneath the writers, so we expect a NotFound error during the
@@ -620,7 +642,7 @@ TEST_F(DeleteTableTest, TestAutoTombstoneAfterCrashDuringRemoteBootstrap) {
       cluster_->tablet_server(kTsIndex)->uuid(), MonoTime::Now() + timeout));
 
   // Start a workload on the cluster, and run it for a little while.
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.Setup();
   ASSERT_OK(inspect_->WaitForReplicaCount(2));
 
@@ -668,7 +690,7 @@ TEST_F(DeleteTableTest, TestDeleteTabletFollowerFirst) {
   std::vector<std::string> ts_flags, master_flags;
   master_flags.push_back("--replication_factor=2");
   ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, 2));
-  TestWorkload(cluster_.get()).Setup();
+  TestYcqlWorkload(cluster_.get()).Setup();
 
   ASSERT_OK(inspect_->WaitForReplicaCount(2));
   std::vector<std::string> tablets = inspect_->ListTabletsOnTS(1);
@@ -727,7 +749,7 @@ TEST_F(DeleteTableTest, TestAutoTombstoneAfterRemoteBootstrapRemoteFails) {
       cluster_->tablet_server(kTsIndex)->uuid(), MonoTime::Now() + timeout));
 
   // Start a workload on the cluster, and run it for a little while.
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.set_sequential_write(true);
   workload.Setup();
   ASSERT_OK(inspect_->WaitForReplicaCount(2));
@@ -842,7 +864,7 @@ TEST_F(DeleteTableTest, TestMergeConsensusMetadata) {
   const MonoDelta timeout = MonoDelta::FromSeconds(10);
   const int kTsIndex = 0;
 
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.Setup();
   ASSERT_OK(inspect_->WaitForReplicaCount(3));
 
@@ -968,7 +990,7 @@ TEST_F(DeleteTableTest, TestDeleteFollowerWithReplicatingOperation) {
   TServerDetails* ts = ts_map_[cluster_->tablet_server(kTsIndex)->uuid()].get();
 
   // Create the table.
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.Setup();
 
   // Figure out the tablet ids of the created tablets.
@@ -1026,7 +1048,7 @@ TEST_F(DeleteTableTest, TestMemtableNoFlushOnTabletDelete) {
   TServerDetails* ts = ts_map_[cluster_->tablet_server(kTsIndex)->uuid()].get();
 
   // Create the table.
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.Setup();
 
   // Figure out the tablet ids of the created tablets.
@@ -1083,7 +1105,7 @@ TEST_F(DeleteTableTest, TestOrphanedBlocksClearedOnDelete) {
   TServerDetails* follower_ts = ts_map_[cluster_->tablet_server(kFollowerIndex)->uuid()].get();
 
   // Create the table.
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.Setup();
 
   // Figure out the tablet id of the created tablet.
@@ -1158,7 +1180,7 @@ TEST_F(DeleteTableTest, TestFDsNotLeakedOnTabletTombstone) {
   ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, 1));
 
   // Create the table.
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.Setup();
   workload.Start();
   while (workload.rows_inserted() < 1000) {
@@ -1212,7 +1234,7 @@ TEST_F(DeleteTableTest, TestRemoveUnknownTablets) {
 
   // Create a table on the cluster. We're just using TestWorkload
   // as a convenient way to create it.
-  TestWorkload(cluster_.get()).Setup();
+  TestYcqlWorkload(cluster_.get()).Setup();
   // The table should have replicas on all three tservers.
   ASSERT_OK(inspect_->WaitForReplicaCount(3));
   LOG(INFO) << "Table with 1 tablet and 3 replicas created successfully";
@@ -1276,7 +1298,7 @@ TEST_F(DeleteTableTest, DeleteWithDeadTS) {
 
   // Create a table on the cluster. We're just using TestWorkload
   // as a convenient way to create it.
-  TestWorkload(cluster_.get()).Setup();
+  TestYcqlWorkload(cluster_.get()).Setup();
   // The table should have replicas on all three tservers.
   ASSERT_OK(inspect_->WaitForReplicaCount(3));
   LOG(INFO) << "Table with 1 tablet and 3 replicas created successfully";
@@ -1318,6 +1340,75 @@ TEST_F(DeleteTableTest, DeleteWithDeadTS) {
   ASSERT_NO_FATALS(WaitForTabletDeletedOnTS(0, tablet_id, SUPERBLOCK_NOT_EXPECTED));
 }
 
+TEST_F(DeleteTableTest, DeleteTransactionTable) {
+  constexpr uint64_t kTSUnresponsiveTimeoutMs = 1000;
+  constexpr uint64_t kTSHeartbeatIntervalMs = 300;
+  std::vector<std::string> extra_master_flags = {
+      Format("--tserver_unresponsive_timeout_ms=$0", kTSUnresponsiveTimeoutMs)};
+  std::vector<std::string> extra_ts_flags = {
+      Format("--heartbeat_interval_ms=$0", kTSHeartbeatIntervalMs)};
+  StartCluster(extra_ts_flags, extra_master_flags, 3, 1, /* enable_ysql */ true);
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+  // We create an extra transaction table so we can delete it. Creating a table in a tablespace
+  // causes a new transaction table to be created. Transaction tables are created lazily, creating a
+  // new tablespace isn't enough.
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLESPACE my_tablespace WITH (replica_placement='{\"num_replicas\": 3}')"));
+  ASSERT_OK(conn.Execute("CREATE TABLE my_table (id INT PRIMARY KEY) TABLESPACE my_tablespace"));
+  auto ddl_client =
+      master::MasterDDLClient(cluster_->GetLeaderMasterProxy<master::MasterDdlProxy>());
+  auto result = ASSERT_RESULT(ddl_client.ListTables());
+  auto local_txn_table = std::ranges::find_if(
+      result.tables(), [](const auto& table) { return table.name().contains("transactions_"); });
+  ASSERT_NE(local_txn_table, result.tables().end()) << "Couldn't find local transaction table";
+  ASSERT_OK(conn.Execute("DROP TABLE my_table"));
+  auto ts = cluster_->tablet_server(0);
+  auto ts_uuid = ts->uuid();
+
+  // Save the list of transaction tablet ids to later verify they are removed from the absent TS
+  // after it restarts.
+  auto list_tablets_resp = ASSERT_RESULT(ListTabletsForTabletServer(ts));
+  std::unordered_set<TabletId> my_txn_tablet_ids;
+  for (const auto& tablet : list_tablets_resp.entries()) {
+    if (tablet.table_name() == local_txn_table->name()) {
+      my_txn_tablet_ids.insert(tablet.tablet_id());
+    }
+  }
+  ASSERT_GT(my_txn_tablet_ids.size(), 0);
+  ts->Shutdown();
+  auto cluster_client =
+      master::MasterClusterClient(cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>());
+  ASSERT_OK(WaitFor(
+      [&cluster_client, &ts_uuid]() -> Result<bool> {
+        auto tablet_servers = VERIFY_RESULT(cluster_client.ListTabletServers());
+        auto ts_info_it =
+            std::ranges::find_if(tablet_servers.servers(), [&ts_uuid](const auto& server) {
+              return server.instance_id().permanent_uuid() == ts_uuid;
+            });
+        if (ts_info_it == tablet_servers.servers().end()) {
+          return STATUS_FORMAT(NotFound, "Couldn't find ts we shut down with uuid $0", ts_uuid);
+        }
+        return !ts_info_it->alive();
+      },
+      5s, "Waiting for TS to be marked dead"));
+  ASSERT_OK(ddl_client.DeleteTable(local_txn_table->id(), 5s));
+  LOG(INFO) << "Restarting ts-1 and waiting for it to delete the transaction tablets";
+  ASSERT_OK(ts->Restart());
+  ASSERT_OK(WaitFor(
+      [this, ts, &my_txn_tablet_ids]() -> Result<bool> {
+        auto list_tablets_resp = VERIFY_RESULT(ListTabletsForTabletServer(ts));
+        for (const auto& tablet : list_tablets_resp.entries()) {
+          if (my_txn_tablet_ids.contains(tablet.tablet_id())) {
+            LOG(INFO) << "Restarted tablet server still has orphaned tablet: "
+                      << tablet.DebugString();
+            return false;
+          }
+        }
+        return true;
+      },
+      20s, "Waiting for restarted TS to delete oprhaned txn tablets"));
+}
+
 // Parameterized test case for TABLET_DATA_DELETED deletions.
 class DeleteTableDeletedParamTest : public DeleteTableTest,
                                     public ::testing::WithParamInterface<const char*> {
@@ -1339,7 +1430,7 @@ TEST_P(DeleteTableDeletedParamTest, TestRollForwardDelete) {
 
   // Create a table on the cluster. We're just using TestWorkload
   // as a convenient way to create it.
-  TestWorkload(cluster_.get()).Setup();
+  TestYcqlWorkload(cluster_.get()).Setup();
 
   // The table should have replicas on all three tservers.
   ASSERT_OK(inspect_->WaitForReplicaCount(3));
@@ -1412,7 +1503,7 @@ TEST_P(DeleteTableTombstonedParamTest, TestTabletTombstone) {
                           .Create());
 
   // Start a workload on the cluster, and run it until we find WALs on disk.
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.Setup();
 
   // The table should have 2 tablets (1 split) on all 3 tservers (for a total of 6).

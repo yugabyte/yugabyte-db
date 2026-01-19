@@ -58,7 +58,7 @@ class IndexIteratorBase : public IndexIteratorBaseType {
     LOG(FATAL) << "IndexIteratorBase::UseFastNext is not supported";
   }
 
-  void UpdateFilterKey(Slice user_key_for_filter) override {
+  void UpdateFilterKey(Slice user_key_for_filter, Slice seek_key) override {
     LOG(FATAL) << "IndexIteratorBase::UpdateFilterKey is not supported";
   }
 

@@ -72,7 +72,12 @@ public class MultiTableBackup extends UniverseTaskBase {
   @ApiModel(value = "MultiTableBackupParams", description = "Multi-table backup parameters")
   public static class Params extends BackupTableParams {
     public UUID customerUUID;
-    public List<UUID> tableUUIDList = new ArrayList<>();
+
+    public Params() {
+      super();
+      // FIXME: Remove this once the references are fixed.
+      tableUUIDList = new ArrayList<>();
+    }
   }
 
   public Params params() {
@@ -91,7 +96,7 @@ public class MultiTableBackup extends UniverseTaskBase {
     CloudType cloudType = universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
     MetricLabelsBuilder metricLabelsBuilder =
         MetricLabelsBuilder.create().fromUniverse(customer, universe);
-    BACKUP_ATTEMPT_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
+    BACKUP_ATTEMPT_COUNTER.labelValues(metricLabelsBuilder.getPrometheusValues()).inc();
     try {
       checkUniverseVersion();
 
@@ -330,7 +335,7 @@ public class MultiTableBackup extends UniverseTaskBase {
         getRunnableTask().runSubTasks();
 
         if (params().actionType == ActionType.CREATE) {
-          BACKUP_SUCCESS_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
+          BACKUP_SUCCESS_COUNTER.labelValues(metricLabelsBuilder.getPrometheusValues()).inc();
           metricService.setOkStatusMetric(
               buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe));
         }
@@ -349,7 +354,7 @@ public class MultiTableBackup extends UniverseTaskBase {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
 
       if (params().actionType == ActionType.CREATE) {
-        BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
+        BACKUP_FAILURE_COUNTER.labelValues(metricLabelsBuilder.getPrometheusValues()).inc();
         metricService.setFailureStatusMetric(
             buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe));
       }
@@ -446,7 +451,7 @@ public class MultiTableBackup extends UniverseTaskBase {
     }
     MetricLabelsBuilder metricLabelsBuilder =
         MetricLabelsBuilder.create().fromUniverse(customer, universe);
-    SCHEDULED_BACKUP_ATTEMPT_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
+    SCHEDULED_BACKUP_ATTEMPT_COUNTER.labelValues(metricLabelsBuilder.getPrometheusValues()).inc();
     Map<String, String> config = universe.getConfig();
     boolean shouldTakeBackup =
         !universe.getUniverseDetails().universePaused
@@ -456,7 +461,9 @@ public class MultiTableBackup extends UniverseTaskBase {
       if (shouldTakeBackup) {
         schedule.updateBacklogStatus(true);
         log.debug("Schedule {} backlog status is set to true", schedule.getScheduleUUID());
-        SCHEDULED_BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
+        SCHEDULED_BACKUP_FAILURE_COUNTER
+            .labelValues(metricLabelsBuilder.getPrometheusValues())
+            .inc();
         metricService.setFailureStatusMetric(
             buildMetricTemplate(PlatformMetrics.SCHEDULE_BACKUP_STATUS, universe));
       }
@@ -490,7 +497,7 @@ public class MultiTableBackup extends UniverseTaskBase {
         taskUUID,
         taskParams.getUniverseUUID(),
         universe.getName());
-    SCHEDULED_BACKUP_SUCCESS_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
+    SCHEDULED_BACKUP_SUCCESS_COUNTER.labelValues(metricLabelsBuilder.getPrometheusValues()).inc();
     metricService.setOkStatusMetric(
         buildMetricTemplate(PlatformMetrics.SCHEDULE_BACKUP_STATUS, universe));
   }

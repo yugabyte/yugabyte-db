@@ -112,13 +112,14 @@ public class ContinuousBackupHandler extends ApiControllerUtils {
 
     CreateContinuousBackup.Params taskParams = new CreateContinuousBackup.Params();
     taskParams.cbConfig = cbConfig;
+    // Schedule objects assume frequency is in milliseconds
     Schedule schedule =
         Schedule.create(
             cUUID,
             cbConfig.getUuid(),
             taskParams,
             TaskType.CreateContinuousBackup,
-            cbConfig.getFrequency(),
+            cbConfig.getFrequencyInMilliseconds(),
             null,
             false /* useLocalTimezone */,
             cbConfig.getFrequencyTimeUnit(),
@@ -194,6 +195,7 @@ public class ContinuousBackupHandler extends ApiControllerUtils {
         TimeUnit.valueOf(continuousBackupEditSpec.getFrequencyTimeUnit().name()));
     cbConfig.setNumBackupsToRetain(continuousBackupEditSpec.getNumBackups());
     cbConfig.setStorageLocation(storageLocation);
+    cbConfig.validate();
     cbConfig.update();
     CreateContinuousBackup.Params taskParams = new CreateContinuousBackup.Params();
     taskParams.cbConfig = cbConfig;
@@ -203,7 +205,7 @@ public class ContinuousBackupHandler extends ApiControllerUtils {
             cbConfig.getUuid(),
             taskParams,
             TaskType.CreateContinuousBackup,
-            cbConfig.getFrequency(),
+            cbConfig.getFrequencyInMilliseconds(),
             null,
             false /* useLocalTimezone */,
             cbConfig.getFrequencyTimeUnit(),

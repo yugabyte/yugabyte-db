@@ -4,6 +4,8 @@ headerTitle: Scaling reads
 linkTitle: Scaling reads
 description: Scaling reads in YugabyteDB.
 headcontent: Read performance when scaling horizontally
+aliases:
+  - /stable/architecture/core-functions/read-path
 menu:
   stable:
     identifier: scaling-reads

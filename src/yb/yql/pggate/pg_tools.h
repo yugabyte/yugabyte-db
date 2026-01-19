@@ -27,6 +27,8 @@
 #include <utility>
 #include <vector>
 
+#include <boost/multi_index/member.hpp>
+
 #include "yb/ash/wait_state.h"
 
 #include "yb/common/pg_types.h"
@@ -35,6 +37,7 @@
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/util/lru_cache.h"
 #include "yb/util/lw_function.h"
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
@@ -72,6 +75,7 @@ class PgWaitEventWatcher {
 };
 
 struct EstimatedRowCount {
+  int sampledrows;
   double live;
   double dead;
 };
@@ -139,7 +143,6 @@ struct TableYbctidHasher {
   size_t operator()(const LightweightTableYbctid& value) const;
 };
 
-using OidSet = std::unordered_set<PgOid>;
 template <class T>
 using TableYbctidSetHelper =
     std::unordered_set<T, TableYbctidHasher, TableYbctidComparator>;
@@ -179,9 +182,34 @@ struct YbctidGenerator {
   DISALLOW_COPY_AND_ASSIGN(YbctidGenerator);
 };
 
-const std::string ToString(const YbcAdvisoryLockId& lock_id);
-const std::string ToString(const YbcObjectLockId& lock_id);
+std::string ToString(const YbcAdvisoryLockId& lock_id);
+std::string ToString(const YbcObjectLockId& lock_id);
 
-using TablespaceMap = std::unordered_map<PgObjectId, PgOid, PgObjectIdHash>;
+class TablespaceCache {
+ public:
+  explicit TablespaceCache(size_t capacity);
+
+  std::optional<PgTablespaceOid> Get(PgObjectId table_oid);
+  void Put(PgObjectId table_oid, PgTablespaceOid tablespace_oid);
+  void Clear();
+
+ private:
+  struct Info {
+    PgObjectId key;
+    mutable PgTablespaceOid tablespace_oid;
+  };
+
+  LRUCache<Info, boost::multi_index::member<Info, PgObjectId, &Info::key>> impl_;
+};
+
+class TableLocalityMap {
+ public:
+  void Add(PgOid table_id, const YbcPgTableLocalityInfo& info);
+  const YbcPgTableLocalityInfo& Get(PgOid table_id) const;
+  void Clear();
+
+ private:
+  std::unordered_map<PgOid, YbcPgTableLocalityInfo> map_;
+};
 
 } // namespace yb::pggate

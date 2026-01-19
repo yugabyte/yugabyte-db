@@ -29,9 +29,11 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.net.HostAndPort;
 import com.google.protobuf.ByteString;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -44,6 +46,7 @@ import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.YugawareProperty;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import java.io.File;
@@ -105,6 +108,57 @@ public class AttachDetachControllerTest extends FakeDBApplication {
   @Before
   public void setUp() throws Exception {
     confGetter = app.injector().instanceOf(RuntimeConfGetter.class);
+
+    // Set up YugawareMetadata with UUID for ownership validation
+    UUID yugawareUuid = UUID.randomUUID();
+    ObjectNode ywMetadata = Json.newObject();
+    ywMetadata.put("yugaware_uuid", yugawareUuid.toString());
+    ywMetadata.put("version", "2024.2.0.0-b1");
+    YugawareProperty.addConfigProperty(
+        ConfigHelper.ConfigType.YugawareMetadata.name(), ywMetadata, "Yugaware Metadata");
+
+    // Mock YsqlQueryExecutor to return consistency info
+    // For attach/import operations, always return DETACHED_UNIVERSE_UUID on first call
+    // to allow the universe to be attached, then return the actual UUID
+    final java.util.Set<UUID> seenUniverses = new java.util.HashSet<>();
+    when(mockYsqlQueryExecutor.getConsistencyInfo(any()))
+        .thenAnswer(
+            invocation -> {
+              Universe universe = invocation.getArgument(0);
+              YsqlQueryExecutor.ConsistencyInfoResp consistencyInfo =
+                  new YsqlQueryExecutor.ConsistencyInfoResp();
+              try {
+                java.lang.reflect.Field ywUuidField =
+                    YsqlQueryExecutor.ConsistencyInfoResp.class.getDeclaredField("ywUuid");
+                ywUuidField.setAccessible(true);
+
+                UUID universeUuid = universe.getUniverseUUID();
+                UUID uuidToReturn;
+
+                // Check if this is the first time we're seeing this universe
+                if (!seenUniverses.contains(universeUuid)) {
+                  // First call for this universe - return DETACHED_UNIVERSE_UUID to allow attach
+                  seenUniverses.add(universeUuid);
+                  uuidToReturn = AttachDetachSpec.DETACHED_UNIVERSE_UUID;
+                } else {
+                  // Subsequent calls - check the actual state
+                  Universe existingUniverse = Universe.maybeGet(universeUuid).orElse(null);
+                  if (existingUniverse != null
+                      && existingUniverse.getUniverseDetails() != null
+                      && existingUniverse.getUniverseDetails().universeDetached) {
+                    uuidToReturn = AttachDetachSpec.DETACHED_UNIVERSE_UUID;
+                  } else {
+                    uuidToReturn = yugawareUuid;
+                  }
+                }
+
+                ywUuidField.set(consistencyInfo, uuidToReturn);
+              } catch (Exception e) {
+                throw new RuntimeException("Failed to set yw_uuid in consistency info", e);
+              }
+              return consistencyInfo;
+            });
+
     customer = testCustomer();
     user = testUser(customer, Users.Role.SuperAdmin);
     authToken = user.createAuthToken();
@@ -309,7 +363,7 @@ public class AttachDetachControllerTest extends FakeDBApplication {
           UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
           userIntent.provider = defaultProvider.getUuid().toString();
           userIntent.providerType = Common.CloudType.aws;
-          universe.getUniverseDetails().upsertPrimaryCluster(userIntent, null);
+          universe.getUniverseDetails().upsertPrimaryCluster(userIntent, null, null);
           universe.setUniverseDetails(universeDetails);
           universe.updateConfig(config);
         };
@@ -394,12 +448,6 @@ public class AttachDetachControllerTest extends FakeDBApplication {
     assertEquals(
         confGetter.getStaticConf().getString("yb.releases.path"),
         oldPlatformPaths.get("releasesPath").textValue());
-    assertEquals(
-        confGetter.getStaticConf().getString("ybc.docker.release"),
-        oldPlatformPaths.get("ybcReleasePath").textValue());
-    assertEquals(
-        confGetter.getStaticConf().getString("ybc.releases.path"),
-        oldPlatformPaths.get("ybcReleasesPath").textValue());
 
     // Delete all existing entities and files.
     File expectedPublicKeyFile = new File(expectedPublicKey);

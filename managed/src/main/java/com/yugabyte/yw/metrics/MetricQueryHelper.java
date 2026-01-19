@@ -57,24 +57,28 @@ public class MetricQueryHelper {
 
   public static final String METRICS_QUERY_PATH = "query";
   public static final String METRICS_QUERY_RANGE_PATH = "query_range";
+  public static final String METRICS_LABEL_VALUES_PATH_FORMAT = "label/%s/values";
   public static final String ALERTS_PATH = "alerts";
 
   public static final String MANAGEMENT_COMMAND_RELOAD = "reload";
   public static final String PROMETHEUS_MANAGEMENT_ENABLED = "yb.metrics.management.enabled";
   public static final String WS_CLIENT_KEY = "yb.metrics.ws";
 
-  private static final String CONTAINER_METRIC_PREFIX = "container";
+  public static final String CONTAINER_METRIC_PREFIX = "container";
+  public static final String KUBELET_VOLUME_METRIC_PREFIX = "kubelet_volume";
+  public static final String CONTAINER_VOLUME_METRIC_PREFIX = "container_volume";
   private static final String NODE_PREFIX = "node_prefix";
-  private static final String NAMESPACE = "namespace";
+  public static final String NAMESPACE = "namespace";
   public static final String EXPORTED_INSTANCE = "exported_instance";
   public static final String TABLE_ID = "table_id";
   public static final String TABLE_NAME = "table_name";
   public static final String NAMESPACE_NAME = "namespace_name";
   public static final String NAMESPACE_ID = "namespace_id";
   public static final String YBA_INSTANCE_ADDRESS = "instance_address";
-  private static final String POD_NAME = "pod_name";
+  public static final String POD_NAME = "pod_name";
   private static final String CONTAINER_NAME = "container_name";
-  private static final String PVC = "persistentvolumeclaim";
+  public static final String PVC = "persistentvolumeclaim";
+  public static final String AZ_NAME = "az_name";
 
   private static final String DEFAULT_MOUNT_POINTS = "/mnt/d[0-9]+";
 
@@ -716,5 +720,41 @@ public class MetricQueryHelper {
     final JsonNode responseJson =
         getApiHelper().getRequest(queryUrl, getAuthHeaders(), queryParams);
     return responseJson;
+  }
+
+  /** Response class for Prometheus label values API. */
+  public static class LabelValuesResponse {
+    public String status;
+    public List<String> data;
+    public String errorType;
+    public String error;
+  }
+
+  /*
+   * Query Prometheus for label values filtered by a match expression.
+   * GET /api/v1/label/{labelName}/values  & URL query parameters:
+   * start=<rfc3339 | unix_timestamp>: Start timestamp, inclusive.
+   * end=<rfc3339 | unix_timestamp>: End timestamp, inclusive.
+   * match[]=<string>: Series selector to filter the label values.
+   * Example:
+   * "{url}/api/v1/label/__name__/values?start=2025-12-01T06:12:34Z&end=2025-12-02T06:12:34Z" +
+   * "&match[]={table_id=\"sys.catalog.uuid\"}"
+   *
+   * @param labelName The label name to query values for (e.g., "__name__" for metric names).
+   * @param queryParams Query parameters including start, end, and match[] filter.
+   * @return A list of label values that match the given filter.
+   */
+  public List<String> queryLabelValues(String labelName, Map<String, String> queryParams) {
+    final String queryUrl =
+        getPrometheusQueryUrl(String.format(METRICS_LABEL_VALUES_PATH_FORMAT, labelName));
+    final JsonNode responseJson =
+        getApiHelper().getRequest(queryUrl, getAuthHeaders(), queryParams);
+    final LabelValuesResponse labelValuesResponse =
+        Json.fromJson(responseJson, LabelValuesResponse.class);
+    if (labelValuesResponse.error != null || labelValuesResponse.data == null) {
+      throw new RuntimeException(
+          "Error querying prometheus label values: " + responseJson.toString());
+    }
+    return labelValuesResponse.data;
   }
 }

@@ -36,9 +36,11 @@ set(PGGATE_SRCS
     pg_dml_write.cc
     pg_doc_metrics.cc
     pg_doc_op.cc
+    pg_doc_op_fetch_stream.cc
     pg_explicit_row_lock_buffer.cc
     pg_expr.cc
     pg_fk_reference_cache.cc
+    pg_flush_debug_context.cc
     pg_flush_future.cc
     pg_function.cc
     pg_function_helpers.cc
@@ -59,7 +61,7 @@ set(PGGATE_SRCS
     pg_tools.cc
     pg_txn_manager.cc
     pg_value.cc
-    pg_ybctid_reader_provider.cc
+    pg_ybctid_reader.cc
     ybc_gflags.cc
     ybc_pg_shared_mem.cc
     ybc_pggate.cc)
@@ -69,7 +71,6 @@ ADD_YB_LIBRARY(yb_pggate_flags
                DEPS yb_ash yb_util)
 
 set(PGGATE_LIBS
-    consensus_error
     cdc_service_proto
     server_common
     yb_ash
@@ -79,7 +80,6 @@ set(PGGATE_LIBS
     tserver_shared
     yb_pggate_util
     yb_pggate_flags
-    tablet_error
     pg_client_proto)
 
 ADD_YB_LIBRARY(yb_pggate

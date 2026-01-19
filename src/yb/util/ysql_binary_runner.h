@@ -77,7 +77,9 @@ class YsqlshRunner : public YsqlBinaryRunner {
   }
 
   Result<std::string> ExecuteSqlScript(
-      const std::string& sql_script, const std::string& tmp_file_prefix);
+      const std::string& sql_script, const std::string& tmp_file_prefix,
+      const std::string& connect_as_user = "",
+      const std::string& connect_to_database = "");
 
  private:
   YsqlshRunner(std::string tool_path, HostPort pg_host_port)

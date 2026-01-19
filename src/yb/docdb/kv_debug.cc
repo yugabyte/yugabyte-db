@@ -86,11 +86,7 @@ Result<std::string> DocDBKeyToDebugStr(
       RETURN_NOT_OK(key_slice.consume_byte(dockv::KeyEntryTypeAsChar::kTransactionApplyState));
       return Format("TXN APPLY STATE $0", VERIFY_RESULT(DecodeTransactionId(&key_slice)));
     case KeyType::kVectorIndexMetadata:
-      auto vector_id = VERIFY_RESULT(dockv::DecodeDocVectorKey(&key_slice));
-      auto doc_ht = VERIFY_RESULT_PREPEND(
-          DocHybridTime::DecodeFromEnd(key_slice),
-          dockv::DocVectorKeyToString(vector_id));
-      return dockv::DocVectorKeyToString(vector_id, doc_ht);
+      return dockv::DocVectorMetaKeyToString(key_slice);
   }
   return STATUS_FORMAT(Corruption, "Invalid KeyType: $0", yb::ToString(key_type));
 }

@@ -9,6 +9,8 @@ menu:
     identifier: ldap-authentication-platform
     parent: authentication
     weight: 10
+aliases:
+  - /stable/yugabyte-platform/security/ldap-authentication-platform/
 type: docs
 ---
 

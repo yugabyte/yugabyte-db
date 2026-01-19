@@ -17,9 +17,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 
 import org.yb.YBTestRunner;
-import org.yb.util.RegexMatcher;
 
-import java.sql.Connection;
 import java.sql.Statement;
 
 import java.util.HashSet;
@@ -69,8 +67,7 @@ public class TestPgRegressHashInQueries extends BasePgRegressTest {
       statement.execute("SET yb_enable_hash_batch_in = true");
       long batchingNumRequests = getNumStorageRoundtrips(statement, query);
       assertRowSet(statement, query, expectedRows);
-      // We send three requests as the number of tablets created are three.
-      assertEquals(3, batchingNumRequests);
+      assertEquals(1, batchingNumRequests);
     }
   }
 
@@ -125,7 +122,7 @@ public class TestPgRegressHashInQueries extends BasePgRegressTest {
       long batchingNumRequests = getNumStorageRoundtrips(statement, query);
       assertRowSet(statement, query, expectedRows);
       // We send three requests as the number of tablets created are three.
-      assertEquals(3, batchingNumRequests);
+      assertEquals(1, batchingNumRequests);
     }
   }
 
@@ -175,7 +172,7 @@ public class TestPgRegressHashInQueries extends BasePgRegressTest {
       statement.execute("SET yb_bnl_batch_size = 1024;");
       statement.execute("SET yb_enable_hash_batch_in = true");
       long batchingLargeBatchSizeNumRPCs = getNumStorageRoundtrips(statement, query);
-      assertEquals(8, batchingLargeBatchSizeNumRPCs);
+      assertEquals(6, batchingLargeBatchSizeNumRPCs);
       assertRowSet(statement, query, expectedRows);
     }
   }

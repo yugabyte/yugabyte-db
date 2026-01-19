@@ -30,9 +30,6 @@ public class NodeTaskParams extends UniverseDefinitionTaskParams implements INod
   public String instanceType;
 
   public boolean useSystemd;
-  // Using custom ssh user
-
-  public String sshUserOverride;
 
   public Integer sshPortOverride;
 

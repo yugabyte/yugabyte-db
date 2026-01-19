@@ -245,6 +245,24 @@ CreateThreadLocalCurrentMemoryContext(MemoryContext parent,
 	return AllocSetContextCreateInternal(parent, name, ALLOCSET_START_SMALL_SIZES);
 }
 
+void *
+YbSwitchPgGateMemoryContext(void *context)
+{
+	return MemoryContextSwitchTo(context);
+}
+
+void *
+YbCreatePgGateMemoryContext(void *parent, const char *name)
+{
+	return AllocSetContextCreateInternal((MemoryContext) parent, name, ALLOCSET_START_SMALL_SIZES);
+}
+
+void
+YbDeletePgGateMemoryContext(void *context)
+{
+	MemoryContextDelete((MemoryContext) context);
+}
+
 void
 PrepareThreadLocalCurrentMemoryContext()
 {

@@ -14,7 +14,7 @@
 
 #include <rapidjson/error/en.h>
 
-#include "yb/common/common.pb.h"
+#include "yb/common/common.messages.h"
 #include "yb/common/json_util.h"
 #include "yb/common/ql_value.h"
 
@@ -30,28 +30,68 @@ using std::string;
 namespace yb {
 namespace common {
 
-string prepareSerializedJsonb(const string& body) {
-     common::Jsonb jsonb;
-     auto s = jsonb.FromString(body);
-     LOG_IF(DFATAL, !s.ok()) << "Unable to parse " << body;
-     return s.ok() ? jsonb.SerializedJsonb() : "";
+namespace {
+
+// Values stored in the type bits.
+constexpr uint32_t kJEIsString = 0x00000000;
+constexpr uint32_t kJEIsObject = 0x10000000;
+constexpr uint32_t kJEIsBoolFalse = 0x20000000;
+constexpr uint32_t kJEIsBoolTrue = 0x30000000;
+constexpr uint32_t kJEIsNull = 0x40000000;
+constexpr uint32_t kJEIsArray = 0x50000000;
+constexpr uint32_t kJEIsInt = 0x60000000;
+constexpr uint32_t kJEIsUInt = 0x70000000;
+constexpr uint32_t kJEIsInt64 = 0x80000000;
+constexpr uint32_t kJEIsUInt64 = 0x90000000;
+constexpr uint32_t kJEIsFloat = 0xA0000000;
+constexpr uint32_t kJEIsDouble = 0xB0000000;
+
+// Bit masks for jsonb header fields.
+constexpr uint32_t kJBCountMask = 0x0FFFFFFF; // mask for number of kv pairs.
+constexpr uint32_t kJBScalar = 0x10000000; // indicates whether we have a scalar value.
+constexpr uint32_t kJBObject = 0x20000000; // indicates whether we have a json object.
+constexpr uint32_t kJBArray = 0x40000000; // indicates whether we have a json array.
+
+uint32_t GetJEType(JEntry metadata) {
+  static constexpr uint32_t kJETypeMask = 0xF0000000;
+  return metadata & kJETypeMask;
 }
 
-string Jsonb::kSerializedJsonbNull = prepareSerializedJsonb("null");
-string Jsonb::kSerializedJsonbEmpty = prepareSerializedJsonb("{}");
+uint32_t GetOffset(JEntry metadata) {
+constexpr uint32_t kJEOffsetMask = 0x0FFFFFFF;
+  return metadata & kJEOffsetMask;
+}
 
-bool Jsonb::IsScalar(const JEntry& jentry) {
+uint32_t GetCount(JsonbHeader jsonb_header) {
+  return jsonb_header & kJBCountMask;
+}
+
+std::string PrepareSerializedJsonb(const std::string& body) {
+  common::Jsonb jsonb;
+  auto s = jsonb.FromString(body);
+  LOG_IF(DFATAL, !s.ok()) << "Unable to parse " << body;
+  return s.ok() ? jsonb.SerializedJsonb() : "";
+}
+
+bool IsScalar(const JEntry& jentry) {
   uint32_t jentry_type = GetJEType(jentry);
   return ((jentry_type) != kJEIsArray && (jentry_type) != kJEIsObject);
 }
 
-size_t Jsonb::ComputeDataOffset(const size_t num_entries, const uint32_t container_type) {
+size_t ComputeDataOffset(const size_t num_entries, const uint32_t container_type) {
   const size_t num_jentries = (container_type & kJBArray) ? num_entries : 2 * num_entries;
   return sizeof(JsonbHeader) + num_jentries * sizeof(JEntry);
 }
 
+} // namespace
+
+string Jsonb::kSerializedJsonbNull = PrepareSerializedJsonb("null");
+string Jsonb::kSerializedJsonbEmpty = PrepareSerializedJsonb("{}");
+
 Jsonb::Jsonb() {
 }
+
+Jsonb::Jsonb(std::string_view jsonb) : serialized_jsonb_(jsonb) {}
 
 Jsonb::Jsonb(const std::string& jsonb)
     : serialized_jsonb_(jsonb) {
@@ -60,7 +100,6 @@ Jsonb::Jsonb(const std::string& jsonb)
 Jsonb::Jsonb(std::string&& jsonb)
     : serialized_jsonb_(std::move(jsonb)) {
 }
-
 
 void Jsonb::Assign(std::string&& jsonb) {
   serialized_jsonb_ = std::move(jsonb);
@@ -97,6 +136,10 @@ Status Jsonb::FromRapidJson(const rapidjson::Value& value) {
   rapidjson::Document document;
   document.CopyFrom(value, document.GetAllocator());
   return FromRapidJson(document);
+}
+
+Status Jsonb::FromQLValue(const LWQLValuePB& value_pb) {
+  return FromQLValue(value_pb.ToGoogleProtobuf());
 }
 
 Status Jsonb::FromQLValue(const QLValuePB& value_pb) {
@@ -294,55 +337,80 @@ void PushBackNumericMember(rapidjson::Document* document, T value) {
   document->PushBack(rapidjson::Value(value),
                      document->GetAllocator());
 }
-} // anonymous namespace
 
-Status Jsonb::ScalarToString(const JEntry& element_metadata, const Slice& json_value,
-                             string* result) {
+#define DEFINE_SETTERS(lower_name, upper_name) \
+  auto BOOST_PP_CAT(Set, upper_name)(QLValuePB* result) { \
+    struct BOOST_PP_CAT(BOOST_PP_CAT(Set, upper_name), Impl) { \
+      void operator()(std::string&& str) const { \
+        result->BOOST_PP_CAT(set_, lower_name)(std::move(str)); \
+      } \
+      void operator()(Slice str) const { \
+        result->BOOST_PP_CAT(set_, lower_name)(str.data(), str.size()); \
+      } \
+      void operator()(const char* str) const { \
+        result->BOOST_PP_CAT(set_, lower_name)(str); \
+      } \
+      QLValuePB* result; \
+    }; \
+    return BOOST_PP_CAT(BOOST_PP_CAT(Set, upper_name), Impl){result}; \
+  } \
+  auto BOOST_PP_CAT(Set, upper_name)(LWQLValuePB* result) { \
+    return [result](Slice value) { \
+      result->BOOST_PP_CAT(dup_, lower_name)(value); \
+    }; \
+  }
+
+DEFINE_SETTERS(string_value, StringValue);
+DEFINE_SETTERS(jsonb_value, JsonbValue);
+
+// Given a serialized json scalar and its metadata, return a string representation of it.
+template <class F>
+Status ScalarToString(const JEntry& element_metadata, Slice json_value, F f) {
   switch (GetJEType(element_metadata)) {
     case kJEIsString: {
-      *result = json_value.ToBuffer();
+      f(json_value);
       break;
     }
     case kJEIsInt: {
       int32_t value = util::DecodeInt32FromKey(json_value);
-      *result = std::to_string(value);
+      f(std::to_string(value));
       break;
     }
     case kJEIsUInt: {
       uint32_t value = BigEndian::Load32(json_value.data());
-      *result = std::to_string(value);
+      f(std::to_string(value));
       break;
     }
     case kJEIsInt64: {
       int64_t value = util::DecodeInt64FromKey(json_value);
-      *result = std::to_string(value);
+      f(std::to_string(value));
       break;
     }
     case kJEIsUInt64: {
       uint64_t value = BigEndian::Load64(json_value.data());
-      *result = std::to_string(value);
+      f(std::to_string(value));
       break;
     }
     case kJEIsDouble: {
       double value = util::DecodeDoubleFromKey(json_value);
-      *result = std::to_string(value);
+      f(std::to_string(value));
       break;
     }
     case kJEIsFloat: {
       float value = util::DecodeFloatFromKey(json_value);
-      *result = std::to_string(value);
+      f(std::to_string(value));
       break;
     }
     case kJEIsBoolFalse: {
-      *result = "false";
+      f("false");
       break;
     }
     case kJEIsBoolTrue: {
-      *result = "true";
+      f("true");
       break;
     }
     case kJEIsNull: {
-      *result = "null";
+      f("null");
       break;
     }
     case kJEIsObject: FALLTHROUGH_INTENDED;
@@ -351,6 +419,121 @@ Status Jsonb::ScalarToString(const JEntry& element_metadata, const Slice& json_v
   }
   return Status::OK();
 }
+
+// Given a scalar value retrieved from a serialized jsonb, this method creates a jsonb scalar
+// (which is a single element within an array). This is required for comparison purposes.
+Result<std::string> CreateScalar(const Slice& scalar, const JEntry& original_jentry) {
+  // Build the header.
+  size_t metadata_begin_offset = sizeof(JsonbHeader);
+  size_t metadata_size = metadata_begin_offset + sizeof(JEntry);
+  size_t data_begin_offset = metadata_size;
+
+  // Resize the result.
+  std::string scalar_jsonb;
+  scalar_jsonb.resize(metadata_size);
+  scalar_jsonb.append(scalar.cdata(), scalar.size());
+
+  JsonbHeader jsonb_header = (1 & kJBCountMask) | kJBArray | kJBScalar;
+  JEntry jentry = GetOffset(narrow_cast<JEntry>(scalar_jsonb.size() - data_begin_offset))
+                  | GetJEType(original_jentry);
+
+  // Store the header.
+  BigEndian::Store32(scalar_jsonb.data(), jsonb_header);
+  // Store the JEntry.
+  BigEndian::Store32(scalar_jsonb.data() + metadata_begin_offset, jentry);
+  return scalar_jsonb;
+}
+
+// Helper method to retrieve the (offset, length) of a key/value serialized in jsonb format.
+// element_metadata_offset denotes the offset for the JEntry of the key/value,
+// element_end_offset denotes the end of data portion of the key/value, data_begin_offset
+// denotes the offset from which the data portion of jsonb starts, metadata_begin_offset is the
+// offset from which all the JEntry fields begin.
+std::pair<size_t, size_t> GetOffsetAndLength(
+    size_t element_metadata_offset, Slice jsonb, size_t element_end_offset,
+    size_t data_begin_offset, size_t metadata_begin_offset) {
+  if (element_metadata_offset == metadata_begin_offset) {
+    // This is the first element.
+    return std::make_pair(data_begin_offset, element_end_offset);
+  }
+
+  DCHECK_GE(element_metadata_offset, sizeof(JsonbHeader));
+  JEntry prev_element =
+      BigEndian::Load32(jsonb.data() + element_metadata_offset - sizeof(JEntry));
+  size_t prev_element_offset = GetOffset(prev_element);
+  return std::make_pair(prev_element_offset + data_begin_offset,
+                        element_end_offset - prev_element_offset);
+}
+
+// Retrieves the value from a serialized jsonb object at the given index. The result is a
+// slice pointing to a section of the serialized jsonb string provided. The parameters
+// metdata_begin_offset and data_begin_offset indicate the starting positions of metadata and
+// data in the serialized jsonb. The parameter num_kv_pairs indicates the total number of kv
+// pairs in the json object. The method also returns a JEntry for the specified element, if
+// metadata information for that element is required.
+Status GetObjectValue(size_t index, Slice jsonb, size_t metadata_begin_offset,
+                      size_t data_begin_offset, size_t num_kv_pairs, Slice *result,
+                      JEntry* value_metadata) {
+  // Compute the value index.
+  size_t key_index = metadata_begin_offset + (index * sizeof(JEntry));
+  size_t value_index = key_index + num_kv_pairs * sizeof(JEntry);
+  if (value_index >= jsonb.size()) {
+    return STATUS(Corruption, "value index in jsonb out of bounds");
+  }
+
+  // Read the value metadata.
+  *value_metadata = BigEndian::Load32(jsonb.data() + value_index);
+
+  // Read the value.
+  size_t value_end_offset = GetOffset(*value_metadata);
+
+  // Process the value.
+  size_t value_offset;
+  size_t value_length;
+  std::tie(value_offset, value_length) = GetOffsetAndLength(value_index, jsonb, value_end_offset,
+                                                            data_begin_offset,
+                                                            metadata_begin_offset);
+  if (value_offset + value_length > jsonb.size()) {
+    return STATUS(Corruption, "json value data out of bounds in serialized jsonb");
+  }
+
+  *result = Slice(jsonb.data() + value_offset, value_length);
+  return Status::OK();
+}
+
+// Retrieves the key from a serialized jsonb object at the given index. The result is a
+// slice pointing to a section of the serialized jsonb string provided. The parameters
+// metdata_begin_offset and data_begin_offset indicate the starting positions of metadata and
+// data in the serialized jsonb.
+Status GetObjectKey(
+    size_t index, Slice jsonb, size_t metadata_begin_offset, size_t data_begin_offset,
+    Slice *result) {
+  // Compute the key index.
+  size_t key_index = metadata_begin_offset + (index * sizeof(JEntry));
+  if (key_index >= data_begin_offset) {
+    return STATUS(Corruption, "key index in jsonb out of bounds");
+  }
+
+  // Read the key metadata.
+  JEntry key_metadata = BigEndian::Load32(jsonb.data() + key_index);
+
+  // Read the key.
+  size_t key_end_offset = GetOffset(key_metadata);
+
+  // Process the key.
+  size_t key_offset;
+  size_t key_length;
+  std::tie(key_offset, key_length) = GetOffsetAndLength(key_index, jsonb, key_end_offset,
+                                                        data_begin_offset, metadata_begin_offset);
+  if (key_offset + key_length > jsonb.size()) {
+    return STATUS(Corruption, "json key data out of bounds in serialized jsonb");
+  }
+
+  *result = Slice(jsonb.data() + key_offset, key_length);
+  return Status::OK();
+}
+
+} // anonymous namespace
 
 Status Jsonb::FromJsonbProcessObject(const Slice& jsonb,
                                      const JsonbHeader& jsonb_header,
@@ -447,66 +630,14 @@ Status Jsonb::FromJsonbProcessObject(const Slice& jsonb,
   return Status::OK();
 }
 
-Status Jsonb::GetObjectValue(size_t index, const Slice& jsonb, size_t metadata_begin_offset,
-                             size_t data_begin_offset, size_t num_kv_pairs, Slice *result,
-                             JEntry* value_metadata) {
-  // Compute the value index.
-  size_t key_index = metadata_begin_offset + (index * sizeof(JEntry));
-  size_t value_index = key_index + num_kv_pairs * sizeof(JEntry);
-  if (value_index >= jsonb.size()) {
-    return STATUS(Corruption, "value index in jsonb out of bounds");
-  }
-
-  // Read the value metadata.
-  *value_metadata = BigEndian::Load32(jsonb.data() + value_index);
-
-  // Read the value.
-  size_t value_end_offset = GetOffset(*value_metadata);
-
-  // Process the value.
-  size_t value_offset;
-  size_t value_length;
-  std::tie(value_offset, value_length) = GetOffsetAndLength(value_index, jsonb, value_end_offset,
-                                                            data_begin_offset,
-                                                            metadata_begin_offset);
-  if (value_offset + value_length > jsonb.size()) {
-    return STATUS(Corruption, "json value data out of bounds in serialized jsonb");
-  }
-
-  *result = Slice(jsonb.data() + value_offset, value_length);
-  return Status::OK();
-}
-
-Status Jsonb::GetObjectKey(size_t index, const Slice& jsonb, size_t metadata_begin_offset,
-                           size_t data_begin_offset, Slice *result) {
-  // Compute the key index.
-  size_t key_index = metadata_begin_offset + (index * sizeof(JEntry));
-  if (key_index >= data_begin_offset) {
-    return STATUS(Corruption, "key index in jsonb out of bounds");
-  }
-
-  // Read the key metadata.
-  JEntry key_metadata = BigEndian::Load32(jsonb.data() + key_index);
-
-  // Read the key.
-  size_t key_end_offset = GetOffset(key_metadata);
-
-  // Process the key.
-  size_t key_offset;
-  size_t key_length;
-  std::tie(key_offset, key_length) = GetOffsetAndLength(key_index, jsonb, key_end_offset,
-                                                        data_begin_offset, metadata_begin_offset);
-  if (key_offset + key_length > jsonb.size()) {
-    return STATUS(Corruption, "json key data out of bounds in serialized jsonb");
-  }
-
-  *result = Slice(jsonb.data() + key_offset, key_length);
-  return Status::OK();
-}
-
-Status Jsonb::GetArrayElement(size_t index, const Slice& jsonb,
-                              size_t metadata_begin_offset, size_t data_begin_offset,
-                              Slice* result, JEntry* element_metadata) {
+// Retrieves an element in serialized jsonb array with the provided index. The result is a
+// slice pointing to a section of the serialized jsonb string provided. The parameters
+// metdata_begin_offset and data_begin_offset indicate the starting positions of metadata and
+// data in the serialized jsonb. The method also returns a JEntry for the specified element, if
+// metadata information for that element is required.
+Status GetArrayElement(
+    size_t index, Slice jsonb, size_t metadata_begin_offset, size_t data_begin_offset,
+    Slice* result, JEntry* element_metadata) {
   size_t value_index = metadata_begin_offset + (index * sizeof(JEntry));
   if (value_index >= jsonb.size()) {
     return STATUS(Corruption, "value index out of bounds");
@@ -637,25 +768,6 @@ Status Jsonb::FromJsonbInternal(const Slice& jsonb, rapidjson::Document* documen
   return Status::OK();
 }
 
-std::pair<size_t, size_t> Jsonb::GetOffsetAndLength(size_t element_metadata_offset,
-                                                    const Slice& jsonb,
-                                                    size_t element_end_offset,
-                                                    size_t data_begin_offset,
-                                                    size_t metadata_begin_offset) {
-  if (element_metadata_offset == metadata_begin_offset) {
-    // This is the first element.
-    return std::make_pair(data_begin_offset, element_end_offset);
-  }
-
-  DCHECK_GE(element_metadata_offset, sizeof(JsonbHeader));
-  JEntry prev_element =
-      BigEndian::Load32(jsonb.data() + element_metadata_offset - sizeof(JEntry));
-  size_t prev_element_offset = GetOffset(prev_element);
-  return std::make_pair(prev_element_offset + data_begin_offset,
-                        element_end_offset - prev_element_offset);
-
-}
-
 Status Jsonb::ToRapidJson(rapidjson::Document* document) const {
   return FromJsonbInternal(serialized_jsonb_, document);
 }
@@ -671,9 +783,10 @@ Status Jsonb::ToJsonStringInternal(const Slice& jsonb, std::string* json) {
   return Status::OK();
 }
 
-Status Jsonb::ApplyJsonbOperatorToArray(const Slice& jsonb, const QLJsonOperationPB& json_op,
-                                        const JsonbHeader& jsonb_header,
-                                        Slice* result, JEntry* element_metadata) {
+template <class Op>
+Status ApplyJsonbOperatorToArray(
+    Slice jsonb, const Op& json_op, const JsonbHeader& jsonb_header,
+    Slice* result, JEntry* element_metadata) {
   if(!json_op.operand().value().has_varint_value()) {
     return STATUS_SUBSTITUTE(NotFound, "Couldn't apply json operator");
   }
@@ -697,15 +810,16 @@ Status Jsonb::ApplyJsonbOperatorToArray(const Slice& jsonb, const QLJsonOperatio
   return Status::OK();
 }
 
-Status Jsonb::ApplyJsonbOperatorToObject(const Slice& jsonb, const QLJsonOperationPB& json_op,
-                                         const JsonbHeader& jsonb_header,
-                                         Slice* result, JEntry* element_metadata) {
+template <class Op>
+Status ApplyJsonbOperatorToObject(
+    Slice jsonb, const Op& json_op, const JsonbHeader& jsonb_header,
+    Slice* result, JEntry* element_metadata) {
   if (!json_op.operand().value().has_string_value()) {
     return STATUS_SUBSTITUTE(NotFound, "Couldn't apply json operator");
   }
 
   size_t num_kv_pairs = GetCount(jsonb_header);
-  const string& search_key = json_op.operand().value().string_value();
+  const auto& search_key = json_op.operand().value().string_value();
 
   size_t metadata_begin_offset = sizeof(jsonb_header);
   size_t data_begin_offset = ComputeDataOffset(num_kv_pairs, kJBObject);
@@ -729,21 +843,32 @@ Status Jsonb::ApplyJsonbOperatorToObject(const Slice& jsonb, const QLJsonOperati
       low = mid + 1;
     }
   }
-  return STATUS_SUBSTITUTE(NotFound, "Couldn't find key $0 in json document", search_key);
+  return STATUS_FORMAT(NotFound, "Couldn't find key $0 in json document", search_key);
 }
 
-Status Jsonb::ApplyJsonbOperators(const std::string &serialized_json,
+Status Jsonb::ApplyJsonbOperators(std::string_view serialized_json,
                                   const QLJsonColumnOperationsPB& json_ops,
                                   QLValuePB* result) {
-  const int num_ops = json_ops.json_operations().size();
+  return DoApplyJsonbOperators(serialized_json, json_ops, result);
+}
+
+Status Jsonb::ApplyJsonbOperators(std::string_view serialized_json,
+                                  const LWQLJsonColumnOperationsPB& json_ops,
+                                  LWQLValuePB* result) {
+  return DoApplyJsonbOperators(serialized_json, json_ops, result);
+}
+
+template <class Ops, class Value>
+Status Jsonb::DoApplyJsonbOperators(
+    std::string_view serialized_json, const Ops& json_ops, Value* result) {
 
   Slice jsonop_result;
   Slice operand(serialized_json);
   JEntry element_metadata;
-  for (int i = 0; i < num_ops; i++) {
-    const QLJsonOperationPB &op = json_ops.json_operations().Get(i);
-    const Status s = ApplyJsonbOperator(operand, op, &jsonop_result,
-                                        &element_metadata);
+
+  auto end_ops = json_ops.json_operations().end();
+  for (auto it = json_ops.json_operations().begin(); it != end_ops;) {
+    const Status s = ApplyJsonbOperator(operand, *it, &jsonop_result, &element_metadata);
     if (s.IsNotFound()) {
       // We couldn't apply the operator to the operand and hence return null as the result.
       SetNull(result);
@@ -751,7 +876,8 @@ Status Jsonb::ApplyJsonbOperators(const std::string &serialized_json,
     }
     RETURN_NOT_OK(s);
 
-    if (IsScalar(element_metadata) && i != num_ops - 1) {
+    ++it;
+    if (IsScalar(element_metadata) && it != end_ops) {
       // We have to apply another operation after this, but we received a scalar intermediate
       // result.
       SetNull(result);
@@ -761,32 +887,31 @@ Status Jsonb::ApplyJsonbOperators(const std::string &serialized_json,
   }
 
   // In case of '->>', we need to return a string result.
-  if (num_ops > 0 &&
-      json_ops.json_operations().Get(num_ops - 1).json_operator() == JsonOperatorPB::JSON_TEXT) {
+  if (!json_ops.json_operations().empty() &&
+      (--end_ops)->json_operator() == JsonOperatorPB::JSON_TEXT) {
     if (IsScalar(element_metadata)) {
-      RETURN_NOT_OK(ScalarToString(element_metadata, jsonop_result,
-                                   result->mutable_string_value()));
+      RETURN_NOT_OK(ScalarToString(element_metadata, jsonop_result, SetStringValue(result)));
     } else {
       string str_result;
       RETURN_NOT_OK(ToJsonStringInternal(jsonop_result, &str_result));
-      result->set_string_value(std::move(str_result));
+      SetStringValue(result)(std::move(str_result));
     }
     return Status::OK();
   }
 
-  string jsonb_result = jsonop_result.ToBuffer();
+  auto setter = SetJsonbValue(result);
   if (IsScalar(element_metadata)) {
     // In case of a scalar that is received from an operation, convert it to a jsonb scalar.
-    RETURN_NOT_OK(CreateScalar(jsonop_result,
-                               element_metadata,
-                               &jsonb_result));
+    setter(VERIFY_RESULT(CreateScalar(jsonop_result, element_metadata)));
+  } else {
+    setter(jsonop_result);
   }
-  result->set_jsonb_value(std::move(jsonb_result));
   return Status::OK();
 }
 
-Status Jsonb::ApplyJsonbOperator(const Slice& jsonb, const QLJsonOperationPB& json_op,
-                                 Slice* result, JEntry* element_metadata) {
+template <class Op>
+Status Jsonb::ApplyJsonbOperator(
+    Slice jsonb, const Op& json_op, Slice* result, JEntry* element_metadata) {
   // Currently, both these operators are considered the same since we only handle strings.
   DCHECK(json_op.json_operator() == JsonOperatorPB::JSON_OBJECT ||
          json_op.json_operator() == JsonOperatorPB::JSON_TEXT);
@@ -809,28 +934,6 @@ Status Jsonb::ApplyJsonbOperator(const Slice& jsonb, const QLJsonOperationPB& js
   }
 
   return STATUS(InvalidArgument, "Invalid json operation");
-}
-
-Status Jsonb::CreateScalar(const Slice& scalar, const JEntry& original_jentry,
-                           std::string* scalar_jsonb) {
-  // Build the header.
-  size_t metadata_begin_offset = sizeof(JsonbHeader);
-  size_t metadata_size = metadata_begin_offset + sizeof(JEntry);
-  size_t data_begin_offset = metadata_size;
-
-  // Resize the result.
-  scalar_jsonb->resize(metadata_size);
-  scalar_jsonb->append(scalar.cdata(), scalar.size());
-
-  JsonbHeader jsonb_header = (1 & kJBCountMask) | kJBArray | kJBScalar;
-  JEntry jentry = GetOffset(narrow_cast<JEntry>(scalar_jsonb->size() - data_begin_offset))
-                  | GetJEType(original_jentry);
-
-  // Store the header.
-  BigEndian::Store32(&((*scalar_jsonb)[0]), jsonb_header);
-  // Store the JEntry.
-  BigEndian::Store32(&((*scalar_jsonb)[metadata_begin_offset]), jentry);
-  return Status::OK();
 }
 
 } // namespace common

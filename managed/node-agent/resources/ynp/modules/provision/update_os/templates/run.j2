@@ -110,7 +110,7 @@ fi
 
 # Generate UTF-8 locales on RedHat family (excluding version 7)
 {% if install_locales is defined and install_locales != '' %}
-    if [[ {{ install_locales }} == 'True' && {{ os_family }} == Redhat && {{ os_version }} != 7 ]]; then
+    if [[ {{ install_locales }} == 'True' && {{ os_family }} == RedHat && {{ os_version }} != 7 ]]; then
     yum install -y glibc-locale-source glibc-langpack-en
     languages=("en_US" "de_DE" "es_ES" "fr_FR" "it_IT" "ja_JP" "ko_KR" "pl_PL" "ru_RU" "sv_SE" "tr_TR" "zh_CN")
     for lang in "${languages[@]}"; do

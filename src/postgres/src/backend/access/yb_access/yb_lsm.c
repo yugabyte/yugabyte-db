@@ -424,10 +424,10 @@ ybcincanreturn(Relation index, int attno)
 }
 
 static bool
-ybcinmightrecheck(Relation heap, Relation index, bool xs_want_itup,
+ybcinmightrecheck(Scan *scan, Relation heap, Relation index, bool xs_want_itup,
 				  ScanKey keys, int nkeys)
 {
-	return YbPredetermineNeedsRecheck(heap, index, xs_want_itup, keys, nkeys);
+	return YbPredetermineNeedsRecheck(scan, heap, index, xs_want_itup, keys, nkeys);
 }
 
 static int64
@@ -449,7 +449,6 @@ ybcgetbitmap(IndexScanDesc scan, YbTIDBitmap *ybtbm)
 	if (ybscan->quit_scan || ybtbm->work_mem_exceeded)
 		return 0;
 
-	scan->xs_recheck = YbNeedsPgRecheck(ybscan);
 	HandleYBStatus(YBCPgRetrieveYbctids(ybscan->handle, ybscan->exec_params,
 										ybscan->target_desc->natts, &ybctids, &new_tuples,
 										&exceeded_work_mem));
@@ -541,6 +540,9 @@ ybcinrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys, ScanKey orderbys
 									  false /* is_internal_scan */ ,
 									  scan->fetch_ybctids_only);
 
+	/* For LSM indexes, we either recheck all rows or no rows. */
+	scan->xs_recheck = YbNeedsPgRecheck(ybScan);
+
 	scan->opaque = ybScan;
 	if (scan->parallel_scan)
 	{
@@ -602,7 +604,6 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 		if (ybscan->quit_scan)
 			return false;
 
-		scan->xs_recheck = YbNeedsPgRecheck(ybscan);
 		/*
 		 * In the case of parallel scan we need to obtain boundaries from the
 		 * pscan before the scan is executed. Also empty row from parallel range
@@ -685,7 +686,7 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 
 	if (ybscan->prepare_params.index_only_scan)
 	{
-		IndexTuple	tuple = ybc_getnext_indextuple(ybscan, dir, &scan->xs_recheck);
+		IndexTuple	tuple = ybc_getnext_indextuple(ybscan, dir);
 
 		if (tuple)
 		{
@@ -696,7 +697,7 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 	}
 	else
 	{
-		HeapTuple	tuple = ybc_getnext_heaptuple(ybscan, dir, &scan->xs_recheck);
+		HeapTuple	tuple = ybc_getnext_heaptuple(ybscan, dir);
 
 		if (tuple)
 		{

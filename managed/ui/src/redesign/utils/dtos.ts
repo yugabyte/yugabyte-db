@@ -303,3 +303,7 @@ export interface UpdateMetadataFormFields {
   apiToken: string;
   metricsScrapePeriodSec: number;
 }
+
+export type SmartResizeFormValues = {
+  timeDelay: number;
+};

@@ -16,7 +16,7 @@ class Executor:
         command_instance = command_class(self.config)
 
         # Need to validate only in case of onprem nodes.
-        if self.args.extra_vars is None:
+        if not self.args.extra_vars:
             command_instance.validate()
 
         if self.args.dry_run:

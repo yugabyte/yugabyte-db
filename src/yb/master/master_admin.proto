@@ -124,6 +124,7 @@ message IsInitDbDoneResponsePB {
 
 message SplitTabletRequestPB {
   required bytes tablet_id = 1;
+  optional int32 split_factor = 2;
 }
 
 message SplitTabletResponsePB {

@@ -69,9 +69,11 @@ Result<std::unique_ptr<google::protobuf::Message>> CatalogEntityPBForType(SysRow
 Result<std::unique_ptr<google::protobuf::Message>> DebugStringToCatalogEntityPB(
     SysRowEntryType type, const std::string& debug_string) {
   auto new_pb = VERIFY_RESULT(CatalogEntityPBForType(type));
-  SCHECK_FORMAT(
-      google::protobuf::TextFormat::ParseFromString(debug_string, new_pb.get()), InvalidArgument,
-      "Failed to parse debug string into type $0", SysRowEntryType_Name(type));
+  if (!debug_string.empty()) {
+    SCHECK_FORMAT(
+        google::protobuf::TextFormat::ParseFromString(debug_string, new_pb.get()), InvalidArgument,
+        "Failed to parse debug string into type $0", SysRowEntryType_Name(type));
+  }
   return new_pb;
 }
 

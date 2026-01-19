@@ -48,9 +48,9 @@ namespace docdb {
 // Then Exec method should be called to evaluate expressions per relation row. After Exec was called
 // for the first time, column references or expressions can no longer be added to the executor.
 class DocPgExprExecutor {
-  class State;
-
  public:
+  using Results = std::vector<qlexpr::QLExprResult>;
+
   DocPgExprExecutor(DocPgExprExecutor&&);
   DocPgExprExecutor& operator=(DocPgExprExecutor&&);
   ~DocPgExprExecutor();
@@ -66,10 +66,11 @@ class DocPgExprExecutor {
   // Then target expressions are evaluated in the order they were added. Execution results are
   // converted to DocDB values and written into the next element of the results vector. This is a
   // caller's responsibility to track target expressions added to the executor.
-  Result<bool> Exec(
-      const dockv::PgTableRow& row, std::vector<qlexpr::QLExprResult>* results = nullptr);
+  Result<bool> Exec(const dockv::PgTableRow& row, Results* results = nullptr);
 
  private:
+  class State;
+
   explicit DocPgExprExecutor(std::unique_ptr<State> state);
 
   friend class DocPgExprExecutorBuilder;
@@ -90,6 +91,8 @@ class DocPgExprExecutorBuilder {
   // filtered out. Empty where clause means no rows filtered out.
   Status AddWhere(std::reference_wrapper<const PgsqlExpressionPB> expr,
                   const std::optional<int> version);
+  Status AddWhere(std::reference_wrapper<const LWPgsqlExpressionPB> expr,
+                  const std::optional<int> version);
 
   // Add a target expression to the executor.
   // Expression is deserialized and stored in the list of the target expressions. Function prepares
@@ -98,6 +101,7 @@ class DocPgExprExecutorBuilder {
   // DocDB table (like in UPDATE), or both (like in UPDATE with RETURNING clause). Target
   // expressions are evaluated unless where clause was evaluated to false.
   Status AddTarget(const PgsqlExpressionPB& expr, const std::optional<int> version);
+  Status AddTarget(const LWPgsqlExpressionPB& expr, const std::optional<int> version);
 
   template<class ColumnRefs>
   Result<DocPgExprExecutor> Build(const ColumnRefs& refs) {
@@ -111,7 +115,10 @@ class DocPgExprExecutorBuilder {
 
  private:
   bool IsColumnRefsRequired() const;
+
   Status AddColumnRef(const PgsqlColRefPB& column_ref);
+  Status AddColumnRef(const LWPgsqlColRefPB& column_ref);
+
   DocPgExprExecutor DoBuild();
 
   std::unique_ptr<DocPgExprExecutor::State> state_;

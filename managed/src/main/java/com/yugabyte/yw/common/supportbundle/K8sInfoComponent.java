@@ -326,7 +326,7 @@ class K8sInfoComponent implements SupportBundleComponent {
       //     Run the kubectl commands and get the output to a file.
       for (Cluster universeCluster : universeClusters) {
         Map<UUID, Map<String, String>> azToConfig =
-            KubernetesUtil.getConfigPerAZ(universeCluster.placementInfo);
+            KubernetesUtil.getConfigPerAZ(universeCluster.getOverallPlacement());
         Provider provider =
             Provider.getOrBadRequest(UUID.fromString(universeCluster.userIntent.provider));
         boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);

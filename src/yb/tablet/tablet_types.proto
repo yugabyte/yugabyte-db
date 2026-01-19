@@ -61,9 +61,18 @@ enum TabletDataState {
   // This tablet is in the process of being deleted.
   // The tablet server should "roll forward" the deletion during boot,
   // rather than trying to load the tablet.
+  // It is generally used for deleted tablet replicas when we remove a tablet
+  // from the table (either due to a table drop or because it was split and
+  // replaced by new tablets). Deletion in this state performs a complete cleanup,
+  // including removal from the internal in-memory maps.
   TABLET_DATA_DELETED = 2;
 
   // The tablet has been deleted, and now just consists of a "tombstone".
+  // It is generally used in cases where the tablet is still part of the table,
+  // but the replica on this particular node has been deleted (due to a failure
+  // or because the replica was moved to another node). Deletion in this state
+  // keeps the consensus metadata and superblock on disk, as well as the tablet
+  // info in the internal in-memory maps.
   TABLET_DATA_TOMBSTONED = 3;
 
   // This tablet split has been completed. In this state tablet could only be used as a remote

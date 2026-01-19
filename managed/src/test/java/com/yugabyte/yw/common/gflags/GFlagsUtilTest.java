@@ -42,7 +42,7 @@ public class GFlagsUtilTest extends FakeDBApplication {
             PlatformServiceException.class,
             () -> GFlagsUtil.checkGflagsAndIntentConsistency(userIntent));
     assertEquals(
-        "G-Flag value 'true' for 'use_node_to_node_encryption' is not"
+        "Tserver G-Flag value 'true' for 'use_node_to_node_encryption' is not"
             + " compatible with intent value 'false'",
         exception.getLocalizedMessage());
   }
@@ -106,10 +106,10 @@ public class GFlagsUtilTest extends FakeDBApplication {
             PlatformServiceException.class,
             () ->
                 GFlagsUtil.checkConsistency(
-                    ImmutableMap.of("gflag1", "1", GFlagsUtil.START_CQL_PROXY, "true"),
-                    ImmutableMap.of(GFlagsUtil.START_CQL_PROXY, "false")));
+                    ImmutableMap.of("gflag1", "1", GFlagsUtil.USE_NODE_TO_NODE_ENCRYPTION, "true"),
+                    ImmutableMap.of(GFlagsUtil.USE_NODE_TO_NODE_ENCRYPTION, "false")));
     assertEquals(
-        "G-Flag value for 'start_cql_proxy' is inconsistent between "
+        "G-Flag value for 'use_node_to_node_encryption' is inconsistent between "
             + "master and tserver ('true' vs 'false')",
         exception.getLocalizedMessage());
   }

@@ -224,6 +224,9 @@ class PartitionSchema {
   Status EncodeKey(const google::protobuf::RepeatedPtrField<QLExpressionPB>& hash_values,
                    std::string* buf) const;
 
+  Status EncodeKey(const ArenaList<LWQLExpressionPB>& hash_values,
+                   std::string* buf) const;
+
   template <class Collection>
   Result<uint16_t> PgsqlHashColumnCompoundValue(const Collection& hash_values) const {
     SCHECK(hash_schema_ && *hash_schema_ == YBHashSchema::kPgsqlHash,
@@ -402,8 +405,13 @@ class PartitionSchema {
     return size;
   }
 
- private:
+  // Creates the set of partition split keys using multi column hash schema. In this schema, we
+  // divide the [ hash(min_partition_key), hash(max_partition_key) ] range equally into the
+  // requested number of intervals.
+  static Result<std::vector<std::string>> CreateHashSplitKeys(
+      int32_t num_tablets, uint16_t min_partition_key, uint16_t max_partition_key);
 
+ private:
   struct HashBucketSchema {
     std::vector<ColumnId> column_ids;
     int32_t num_buckets;
@@ -500,6 +508,9 @@ class PartitionSchema {
   // Validates that this partition schema is valid. Returns OK, or an
   // appropriate error code for an invalid partition schema.
   Status Validate(const Schema& schema) const;
+
+  template <class Col>
+  Status DoEncodeKey(const Col& hash_values, std::string* buf) const;
 
   std::vector<HashBucketSchema> hash_bucket_schemas_;
   RangeSchema range_schema_;

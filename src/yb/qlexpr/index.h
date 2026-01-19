@@ -111,8 +111,12 @@ class IndexInfo {
     return backfill_error_message_;
   }
 
-  uint64_t num_rows_processed_by_backfill_job() const {
-    return num_rows_processed_by_backfill_job_;
+  uint64_t num_rows_read_from_table_for_backfill() const {
+    return num_rows_read_from_table_for_backfill_;
+  }
+
+  double num_rows_backfilled_in_index() const {
+    return num_rows_backfilled_in_index_;
   }
 
   std::string ToString() const;
@@ -153,10 +157,8 @@ class IndexInfo {
   const std::vector<ColumnId> indexed_range_column_ids_; // Range column ids in the indexed table.
   const IndexPermissions index_permissions_ = INDEX_PERM_READ_WRITE_AND_DELETE;
   const std::string backfill_error_message_;
-  // When the backfill job is cleared, this is set to the number of indexed table rows processed by
-  // the backfill job. The (default) value is zero, otherwise. For partial indexes, this includes
-  // non-matching rows of the indexed table.
-  const uint64_t num_rows_processed_by_backfill_job_ = 0;
+  const uint64_t num_rows_read_from_table_for_backfill_ = 0;
+  const double num_rows_backfilled_in_index_ = 0;
 
   // Column ids covered by the index (include indexed columns).
   std::unordered_set<ColumnId, boost::hash<ColumnIdRep>> covered_column_ids_;
@@ -172,7 +174,7 @@ class IndexInfo {
 
 // A map to look up an index by its index table id.
 // TODO: Rewrite IndexMap be std::unordered_map instead of extending it.
-class IndexMap : public std::unordered_map<TableId, IndexInfo> {
+class IndexMap : public UnorderedStringMap<TableId, IndexInfo> {
  public:
   explicit IndexMap(const google::protobuf::RepeatedPtrField<IndexInfoPB>& indexes);
   explicit IndexMap(const ArenaList<LWIndexInfoPB>& indexes);
@@ -181,7 +183,7 @@ class IndexMap : public std::unordered_map<TableId, IndexInfo> {
   void FromPB(const google::protobuf::RepeatedPtrField<IndexInfoPB>& indexes);
   void ToPB(google::protobuf::RepeatedPtrField<IndexInfoPB>* indexes) const;
 
-  Result<const IndexInfo*> FindIndex(const TableId& index_id) const;
+  Result<const IndexInfo*> FindIndex(TableIdView index_id) const;
 
   size_t DynamicMemoryUsage() const;
 

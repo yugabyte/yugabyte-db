@@ -13,9 +13,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.NodeTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RemoveAuthorizedKey;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseAccessKey;
 import com.yugabyte.yw.commissioner.tasks.subtasks.VerifyNodeSSHAccess;
-import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Provider;
@@ -28,9 +26,6 @@ import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class RotateAccessKey extends UniverseTaskBase {
-
-  @Inject NodeManager nodeManager;
-  @Inject MetricService metricService;
 
   @Inject
   protected RotateAccessKey(BaseTaskDependencies baseTaskDependencies) {

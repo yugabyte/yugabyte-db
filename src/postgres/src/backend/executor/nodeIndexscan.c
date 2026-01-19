@@ -1134,7 +1134,8 @@ ExecInitIndexScan(IndexScan *node, EState *estate, int eflags)
 		(eflags & EXEC_FLAG_YB_AGG_PARENT))
 	{
 		indexstate->yb_iss_might_recheck =
-			yb_index_might_recheck(currentRelation,
+			yb_index_might_recheck((Scan *) node,
+								   currentRelation,
 								   indexstate->iss_RelationDesc,
 								   false /* xs_want_itup */ ,
 								   indexstate->iss_ScanKeys,

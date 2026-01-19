@@ -86,9 +86,8 @@ Automatic mode is recommended for all new DR configurations. When possible, you 
 
 Automatic mode is used for any xCluster DR configuration when the following pre-requisites are met at setup time:
 
-- Both DR primary and replica are running YugabyteDB {{<release "2025.1.0">}} or later.
+- Both DR primary and replica are running YugabyteDB {{<release "2025.1.1">}} or later.
 - Automatic mode is enabled. While in {{<tags/feature/ea idea="2089">}}, the feature is not enabled by default. To enable it, set the **Automatic mode for xCluster** Global runtime configuration option (config key `yb.xcluster.db_scoped.automatic_ddl.creationEnabled`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global runtime configuration settings.
-- Semi-automatic mode is enabled. Semi-automatic mode is enabled by default, and set using the **DB scoped xCluster replication creation** Global Runtime Configuration option (config key `yb.xcluster.db_scoped.creationEnabled`).
 
 ### Semi-automatic mode
 
@@ -128,7 +127,7 @@ xCluster refers to all YugabyteDB deployments with two or more universes, and ha
 - _xCluster DR_. Provides turnkey workflow orchestration for applications using transactional SQL in an active-active single-master manner, with only unidirectional replication configured at any moment in time. xCluster DR uses xCluster Replication under the hood, and adds workflow automation and orchestration, including switchover, failover, resynchronization to make another full copy, and so on.
 - _xCluster Replication_. Moves the data from one universe to another. Can be used for CQL, non-transactional SQL, bi-directional replication, and other deployment models not supported by xCluster DR.
 
-xCluster DR targets one specific and common xCluster deployment model: [active-active single-master](/preview/develop/build-global-apps/active-active-single-master/), unidirectional replication configured at any moment in time, for transactional YSQL.
+xCluster DR targets one specific and common xCluster deployment model: [active-active single-master](/stable/develop/build-global-apps/active-active-single-master/), unidirectional replication configured at any moment in time, for transactional YSQL.
 
 - Active-active means that both universes are active - the primary universe for reads and writes, while the replica can handle reads only.
 

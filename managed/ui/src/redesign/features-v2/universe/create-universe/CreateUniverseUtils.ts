@@ -9,8 +9,15 @@ import {
 } from './steps/resilence-regions/dtos';
 import { AvailabilityZone, ClusterType, Region } from '../../../helpers/dtos';
 import { OtherAdvancedProps } from './steps/advanced-settings/dtos';
-import { ClusterNodeSpec, CommunicationPortsSpec, PlacementRegion, UniverseCreateReqBody } from '../../../../v2/api/yugabyteDBAnywhereV2APIs.schemas';
+import {
+  ClusterNodeSpec,
+  CommunicationPortsSpec,
+  PlacementRegion,
+  UniverseCreateReqBody
+} from '../../../../v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { CloudType, DeviceInfo } from '@app/redesign/features/universe/universe-form/utils/dto';
+import { Provider } from '@app/components/configRedesign/providerRedesign/types';
+import { FAULT_TOLERANCE_TYPE, REPLICATION_FACTOR } from './fields/FieldNames';
 
 export function getCreateUniverseSteps(t: TFunction, resilienceType?: ResilienceType) {
   return [
@@ -140,7 +147,7 @@ export const assignRegionsAZNodeByReplicationFactor = (
           {
             ...singleZone,
             nodeCount: 1,
-            preffered: '0'
+            preffered: 0
           }
         ]
       };
@@ -164,7 +171,7 @@ export const assignRegionsAZNodeByReplicationFactor = (
       updatedRegions[region.code].push({
         ...region.zones[i % region.zones.length],
         nodeCount: 1,
-        preffered: i === 0 ? 'false' : i + ''
+        preffered: i
       });
     }
   });
@@ -190,7 +197,7 @@ export const rebalanceRegionNodes = (
     region.zones.forEach((zone) => {
       const existingZone = find(allZones, { zone: { uuid: zone.uuid } });
       if (!existingZone) {
-        allZones.push({ region: region.code, zone: { ...zone, nodeCount: 0, preffered: 'false' } });
+        allZones.push({ region: region.code, zone: { ...zone, nodeCount: 0, preffered: 0 } });
       }
     });
   });
@@ -206,9 +213,7 @@ export const rebalanceRegionNodes = (
   }
 
   // Step 2: Distribute remaining nodes (round-robin, prefer preferred zones if needed)
-  const sortedZones = allZones.sort((a, b) =>
-    b.zone.preffered === 'true' ? 1 : a.zone.name.localeCompare(b.zone.name) ? 1 : -1
-  );
+  const sortedZones = allZones.sort((a, b) => (a.zone.name.localeCompare(b.zone.name) ? 1 : -1));
 
   let index = 0;
   while (newTotalNodes > 0) {
@@ -262,32 +267,7 @@ export const mapCreateUniversePayload = (
     throw new Error('Missing required form values to create universe payload');
   }
 
-  const azs = assignRegionsAZNodeByReplicationFactor(resilienceAndRegionsSettings);
-
-  const regionList: PlacementRegion[] = keys(azs).map((regionuuid) => {
-    const region = find(resilienceAndRegionsSettings.regions, { code: regionuuid });
-    if (!region) {
-      throw new Error(
-        `Region with code ${regionuuid} not found in resilience and regions settings`
-      );
-    }
-    return {
-      uuid: region.uuid,
-      name: region.code,
-      code: region.name,
-      az_list: azs[regionuuid].map((az) => {
-        const azFromRegion = find(region.zones, { uuid: az.uuid });
-        return {
-          uuid: az.uuid,
-          name: azFromRegion!.name,
-          num_nodes_in_az: az.nodeCount,
-          subnet: azFromRegion!.subnet,
-          leader_affinity: true,
-          replication_factor: resilienceAndRegionsSettings.replicationFactor
-        };
-      })
-    };
-  });
+  const regionList: PlacementRegion[] = getPlacementRegions(resilienceAndRegionsSettings);
 
   const gflags = mapGFlags(databaseSettings.gFlags);
 
@@ -396,6 +376,36 @@ export const mapCreateUniversePayload = (
   return payload;
 };
 
+export const getPlacementRegions = (resilienceAndRegionsSettings: ResilienceAndRegionsProps) => {
+  const azs = assignRegionsAZNodeByReplicationFactor(resilienceAndRegionsSettings);
+  const regionList: PlacementRegion[] = keys(azs).map((regionuuid) => {
+    const region = find(resilienceAndRegionsSettings.regions, { code: regionuuid });
+    if (!region) {
+      throw new Error(
+        `Region with code ${regionuuid} not found in resilience and regions settings`
+      );
+    }
+    return {
+      uuid: region.uuid,
+      name: region.code,
+      code: region.name,
+      az_list: azs[regionuuid].map((az) => {
+        const azFromRegion = find(region.zones, { uuid: az.uuid });
+        return {
+          uuid: az.uuid,
+          name: azFromRegion!.name,
+          num_nodes_in_az: az.nodeCount,
+          subnet: azFromRegion!.subnet,
+          leader_affinity: true,
+          replication_factor: resilienceAndRegionsSettings.replicationFactor,
+          ...(az.preffered !== undefined ? { leader_preference: az.preffered + 1 } : {})
+        };
+      })
+    };
+  });
+  return regionList;
+};
+
 const mapCommunicationPorts = (otherSettings: OtherAdvancedProps): CommunicationPortsSpec => {
   return {
     master_http_port: otherSettings.masterHttpPort,
@@ -484,5 +494,36 @@ export const getNodeSpec = (formContext: createUniverseFormProps): ClusterNodeSp
   return {
     master: fillNodeSpec(instanceSettings.masterInstanceType, instanceSettings.masterDeviceInfo),
     tserver: fillNodeSpec(instanceSettings.instanceType, instanceSettings.deviceInfo)
+  };
+};
+
+export const computeFaultToleranceTypeFromProvider = (
+  provider: Provider
+): {
+  [FAULT_TOLERANCE_TYPE]: FaultToleranceType;
+  [REPLICATION_FACTOR]: number;
+} => {
+  const numOfRegions = provider.regions.length;
+  const numOfAZs = ((provider.regions as unknown) as Region[]).reduce(
+    (acc, region) => acc + region.zones.length,
+    0
+  );
+  if (numOfRegions >= 3) {
+    return {
+      [FAULT_TOLERANCE_TYPE]: FaultToleranceType.REGION_LEVEL,
+      [REPLICATION_FACTOR]: numOfRegions >= 7 ? 3 : numOfRegions > 4 ? 2 : 1
+    };
+  }
+
+  if (numOfAZs >= 3) {
+    return {
+      [FAULT_TOLERANCE_TYPE]: FaultToleranceType.AZ_LEVEL,
+      [REPLICATION_FACTOR]: numOfAZs >= 7 ? 3 : numOfAZs > 5 ? 2 : 1
+    };
+  }
+
+  return {
+    [FAULT_TOLERANCE_TYPE]: FaultToleranceType.NODE_LEVEL,
+    [REPLICATION_FACTOR]: 3
   };
 };

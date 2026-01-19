@@ -40,6 +40,9 @@ DECLARE_bool(ysql_yb_enable_ash);
 #define SET_WAIT_STATUS(code) \
   SET_WAIT_STATUS_TO(yb::ash::WaitStateInfo::CurrentWaitState(), code)
 
+#define SET_WAIT_STATUS_FROM_SNAPSHOT(snapshot) \
+  SET_WAIT_STATUS_TO_CODE(snapshot.wait_state, snapshot.code)
+
 #define ADOPT_WAIT_STATE(ptr) \
   yb::ash::ScopedAdoptWaitState _scoped_state { (ptr) }
 
@@ -135,6 +138,10 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     (kIndexWrite)
     (kTableWrite)
     (kWaitingOnTServer)
+    (kTransactionCommit)
+    (kTransactionTerminate)
+    (kTransactionRollbackToSavepoint)
+    (kTransactionCancel)
 
     // Common wait states
     ((kOnCpu_Active, YB_ASH_MAKE_EVENT(Common)))
@@ -218,6 +225,7 @@ YB_DEFINE_TYPED_ENUM(FixedQueryId, uint8_t,
   ((kQueryIdForYcqlAuthResponseRequest, 10))
   ((kQueryIdForWalsender, 11))
   ((kQueryIdForXCluster, 12))
+  ((kQueryIdForMinRunningHybridTime, 13))
 );
 
 YB_DEFINE_TYPED_ENUM(WaitStateType, uint8_t,
@@ -270,6 +278,7 @@ YB_DEFINE_TYPED_ENUM(PggateRPC, uint16_t,
   (kGetTserverCatalogVersionInfo)
   (kGetTserverCatalogMessageLists)
   (kSetTserverCatalogMessageList)
+  (kTriggerRelcacheInitConnection)
   (kCancelTransaction)
   (kGetActiveTransactionList)
   (kGetTableKeyRanges)
@@ -316,6 +325,7 @@ struct AshMetadata {
   uint64_t query_id = 0;
   pid_t pid = 0;
   uint32_t database_id = 0;
+  uint32_t user_id = 0;
   int64_t rpc_request_id = 0;
   HostPort client_host_port{};
   uint8_t addr_family = AF_UNSPEC;
@@ -340,6 +350,9 @@ struct AshMetadata {
     }
     if (other.database_id != 0) {
       database_id = other.database_id;
+    }
+    if (other.user_id != 0) {
+      user_id = other.user_id;
     }
     if (other.rpc_request_id != 0) {
       rpc_request_id = other.rpc_request_id;
@@ -395,6 +408,11 @@ struct AshMetadata {
     } else {
       pb->clear_database_id();
     }
+    if (user_id != 0) {
+      pb->set_user_id(user_id);
+    } else {
+      pb->clear_user_id();
+    }
     if (rpc_request_id != 0) {
       pb->set_rpc_request_id(rpc_request_id);
     } else {
@@ -436,6 +454,7 @@ struct AshMetadata {
         pb.query_id(),                         // query_id
         pb.pid(),                              // pid
         pb.database_id(),                      // database_id
+        pb.user_id(),                          // user_id
         pb.rpc_request_id(),                   // rpc_request_id
         HostPortFromPB(pb.client_host_port()), // client_host_port
         static_cast<uint8_t>(pb.addr_family()) // addr_family
@@ -488,8 +507,8 @@ class WaitStateInfo {
 
   void UpdateMetadata(const AshMetadata& meta) EXCLUDES(mutex_);
   void UpdateAuxInfo(const AshAuxInfo& aux) EXCLUDES(mutex_);
-  void UpdateTabletId(const TabletId& tablet_id);
-  static void UpdateCurrentTabletId(const TabletId& tablet_id);
+  void UpdateTabletId(TabletIdView tablet_id);
+  static void UpdateCurrentTabletId(TabletIdView tablet_id);
 
   template <class PB>
   static void UpdateCurrentMetadataFromPB(const PB& pb) {
@@ -628,10 +647,20 @@ class WaitStateTracker {
   std::unordered_set<yb::ash::WaitStateInfoPtr> entries_ GUARDED_BY(mutex_);
 };
 
+struct WaitStateSnapshot {
+  WaitStateSnapshot()
+      : wait_state(WaitStateInfo::CurrentWaitState()),
+        code(wait_state ? wait_state->code() : WaitStateCode::kIdle) {}
+
+  const WaitStateInfoPtr wait_state;
+  const WaitStateCode code;
+};
+
 WaitStateTracker& FlushAndCompactionWaitStatesTracker();
 WaitStateTracker& RaftLogWaitStatesTracker();
 WaitStateTracker& SharedMemoryPgPerformTracker();
 WaitStateTracker& SharedMemoryPgAcquireObjectLockTracker();
 WaitStateTracker& XClusterPollerTracker();
+WaitStateTracker& MinRunningHybridTimeTracker();
 
 }  // namespace yb::ash

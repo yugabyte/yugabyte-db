@@ -36,12 +36,14 @@ import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.YSQLQueryLogConfig;
 import com.yugabyte.yw.models.helpers.telemetry.*;
+import com.yugabyte.yw.models.helpers.telemetry.AuthCredentials.AuthType;
 import com.yugabyte.yw.models.helpers.telemetry.TelemetryProviderConfig;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.charset.Charset;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import org.apache.commons.io.FileUtils;
@@ -251,7 +253,7 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
     LokiConfig config = new LokiConfig();
     config.setType(ProviderType.LOKI);
     config.setEndpoint("http://loki:3100");
-    config.setAuthType(LokiConfig.LokiAuthType.NoAuth);
+    config.setAuthType(AuthType.NoAuth);
 
     TelemetryProvider telemetryProvider =
         createTelemetryProvider(new UUID(0, 0), "Loki", ImmutableMap.of("tag", "value"), config);
@@ -268,7 +270,7 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
     LokiConfig config = new LokiConfig();
     config.setType(ProviderType.LOKI);
     config.setEndpoint("http://loki:3100");
-    config.setAuthType(LokiConfig.LokiAuthType.NoAuth);
+    config.setAuthType(AuthType.NoAuth);
 
     TelemetryProvider telemetryProvider =
         createTelemetryProvider(new UUID(0, 0), "Loki", ImmutableMap.of("tag", "value"), config);
@@ -287,6 +289,61 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
             1000);
 
     generateAndAssertConfig(null, queryLogConfig, null, "audit/loki_query_log_config.yml");
+  }
+
+  @Test
+  public void generateOtelColConfigYsqlPlusOTLP() {
+    OTLPConfig config = new OTLPConfig();
+    config.setType(ProviderType.OTLP);
+    config.setEndpoint("http://otlp:3100");
+    config.setAuthType(AuthType.BasicAuth);
+
+    AuthCredentials.BasicAuthCredentials authCredentials =
+        new AuthCredentials.BasicAuthCredentials();
+    authCredentials.setUsername("username");
+    authCredentials.setPassword("password");
+    config.setBasicAuth(authCredentials);
+
+    Map<String, String> headers = new HashMap<>();
+    headers.put("header1", "value1");
+    headers.put("header2", "value2");
+    config.setHeaders(headers);
+
+    TelemetryProvider telemetryProvider =
+        createTelemetryProvider(new UUID(0, 0), "OTLP", ImmutableMap.of("tag", "value"), config);
+
+    AuditLogConfig auditLogConfig =
+        createAuditLogConfigWithYSQL(
+            telemetryProvider.getUuid(), ImmutableMap.of("additionalTag", "otherValue"));
+
+    generateAndAssertConfig(auditLogConfig, null, null, "audit/otlp_config.yml");
+  }
+
+  @Test
+  public void generateOtelColConfigYsqlQueryLogPlusOTLP() {
+    OTLPConfig config = new OTLPConfig();
+    config.setType(ProviderType.OTLP);
+    config.setEndpoint("http://otlp:3100");
+    config.setAuthType(AuthType.NoAuth);
+    config.setTimeoutSeconds(10);
+
+    TelemetryProvider telemetryProvider =
+        createTelemetryProvider(new UUID(0, 0), "OTLP", ImmutableMap.of("tag", "value"), config);
+
+    QueryLogConfig queryLogConfig =
+        createQueryLogConfig(
+            telemetryProvider.getUuid(),
+            ImmutableMap.of("additionalTag", "otherValue"),
+            YSQLQueryLogConfig.YSQLLogStatement.ALL,
+            YSQLQueryLogConfig.YSQlLogMinErrorStatement.ERROR,
+            YSQLQueryLogConfig.YSQLLogErrorVerbosity.VERBOSE,
+            true,
+            true,
+            true,
+            true,
+            1000);
+
+    generateAndAssertConfig(null, queryLogConfig, null, "audit/otlp_query_log_config.yml");
   }
 
   @Test
@@ -341,6 +398,63 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
 
     generateAndAssertConfig(
         auditLogConfig, queryLogConfig, null, "audit/aws_audit_and_query_log_config.yml");
+  }
+
+  @Test
+  public void generateOtelColConfigAuditAndQueryLogPlusS3() {
+    S3Config s3Config = new S3Config();
+    s3Config.setType(ProviderType.S3);
+    s3Config.setBucket("bucket");
+    s3Config.setAccessKey("access_key");
+    s3Config.setSecretKey("secret_key");
+    s3Config.setRegion("us-west2");
+
+    TelemetryProvider s3TelemetryProvider =
+        createTelemetryProvider(new UUID(0, 0), "S3", ImmutableMap.of("tag", "value"), s3Config);
+
+    // Create audit log config
+    AuditLogConfig auditLogConfig =
+        createAuditLogConfigWithYSQL(
+            s3TelemetryProvider.getUuid(), ImmutableMap.of("additionalTag", "auditValue"));
+
+    // Create query log config
+    QueryLogConfig queryLogConfig =
+        createQueryLogConfig(
+            s3TelemetryProvider.getUuid(),
+            ImmutableMap.of("additionalTag", "queryValue"),
+            YSQLQueryLogConfig.YSQLLogStatement.MOD,
+            YSQLQueryLogConfig.YSQlLogMinErrorStatement.ERROR,
+            YSQLQueryLogConfig.YSQLLogErrorVerbosity.TERSE,
+            true,
+            false,
+            true,
+            false,
+            500);
+
+    generateAndAssertConfig(
+        auditLogConfig, queryLogConfig, null, "audit/s3_audit_and_query_log_config.yml");
+  }
+
+  @Test
+  public void generateOtelColConfigAuditLogPlusS3WithUniverseNodePrefix() {
+    S3Config s3Config = new S3Config();
+    s3Config.setType(ProviderType.S3);
+    s3Config.setBucket("bucket");
+    s3Config.setAccessKey("access_key");
+    s3Config.setSecretKey("secret_key");
+    s3Config.setRegion("us-west2");
+    s3Config.setIncludeUniverseAndNodeInPrefix(true);
+
+    TelemetryProvider s3TelemetryProvider =
+        createTelemetryProvider(new UUID(0, 0), "S3", ImmutableMap.of("tag", "value"), s3Config);
+
+    // Create audit log config
+    AuditLogConfig auditLogConfig =
+        createAuditLogConfigWithYSQL(
+            s3TelemetryProvider.getUuid(), ImmutableMap.of("additionalTag", "auditValue"));
+
+    generateAndAssertConfig(
+        auditLogConfig, null, null, "audit/s3_audit_with_universe_node_prefix_config.yml");
   }
 
   @Test

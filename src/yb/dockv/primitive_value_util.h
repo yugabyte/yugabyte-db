@@ -25,9 +25,22 @@ namespace yb::dockv {
 
 // Add primary key column values to the component group. Verify that they are in the same order
 // as in the table schema.
-Status QLKeyColumnValuesToPrimitiveValues(
+Result<KeyEntryValues> QLKeyColumnValuesToPrimitiveValues(
+    const google::protobuf::RepeatedPtrField<QLExpressionPB>& column_values,
+    const Schema& schema, size_t column_idx, size_t column_count);
+
+Result<KeyEntryValues> QLKeyColumnValuesToPrimitiveValues(
+    const ArenaList<LWQLExpressionPB>& column_values,
+    const Schema& schema, size_t column_idx, size_t column_count);
+
+Result<std::vector<Slice>> QLKeyColumnValuesToPrimitiveValues(
     const google::protobuf::RepeatedPtrField<QLExpressionPB> &column_values,
     const Schema &schema, size_t column_idx, const size_t column_count,
-    KeyEntryValues *components);
+    Arena& arena);
+
+Result<std::vector<Slice>> QLKeyColumnValuesToPrimitiveValues(
+    const ArenaList<LWQLExpressionPB>& column_values,
+    const Schema& schema, size_t column_idx, size_t column_count,
+    Arena& arena);
 
 }  // namespace yb::dockv

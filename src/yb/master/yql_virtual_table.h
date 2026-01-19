@@ -47,10 +47,10 @@ class YQLVirtualTable : public docdb::YQLStorageIf {
 
   // Retrieves all the data for the yql virtual table in form of a QLRowBlock. This data is then
   // used by the iterator.
-  virtual Result<VTableDataPtr> RetrieveData(const QLReadRequestPB& request) const = 0;
+  virtual Result<VTableDataPtr> RetrieveData(const QLReadRequestMsg& request) const = 0;
 
   Status GetIterator(
-      const QLReadRequestPB& request,
+      const QLReadRequestMsg& request,
       const dockv::ReaderProjection& projection,
       std::reference_wrapper<const docdb::DocReadContext> doc_read_context,
       const TransactionOperationContext& txn_op_context,
@@ -60,7 +60,7 @@ class YQLVirtualTable : public docdb::YQLStorageIf {
       std::unique_ptr<docdb::YQLRowwiseIteratorIf>* iter) const override;
 
   Status BuildYQLScanSpec(
-      const QLReadRequestPB& request,
+      const QLReadRequestMsg& request,
       const ReadHybridTime& read_time,
       const Schema& schema,
       bool include_static_columns,
@@ -91,7 +91,7 @@ class YQLVirtualTable : public docdb::YQLStorageIf {
   }
 
   Status GetIterator(
-      const PgsqlReadRequestPB& request,
+      const PgsqlReadRequestMsg& request,
       const dockv::ReaderProjection& projection,
       std::reference_wrapper<const docdb::DocReadContext> doc_read_context,
       const TransactionOperationContext& txn_op_context,
@@ -111,8 +111,7 @@ class YQLVirtualTable : public docdb::YQLStorageIf {
       const docdb::ReadOperationData& read_operation_data,
       const docdb::YbctidBounds& bounds,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
-      docdb::SkipSeek skip_seek,
-      docdb::UseVariableBloomFilter use_variable_bloom_filter) const override {
+      docdb::SkipSeek skip_seek) const override {
     LOG(FATAL) << "Postgresql virtual tables are not yet implemented";
     return nullptr;
   }

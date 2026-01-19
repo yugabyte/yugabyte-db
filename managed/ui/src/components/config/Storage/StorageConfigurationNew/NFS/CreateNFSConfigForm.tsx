@@ -15,7 +15,7 @@ import { OptionTypeBase } from 'react-select';
 import { YBControlledTextInput, YBFormInput, YBFormToggle } from '../../../../common/forms/fields';
 import { StorageConfigCreationForm, YBReduxFormSelect } from '../common/StorageConfigCreationForm';
 import { IStorageProviders } from '../IStorageConfigs';
-import Close from '../../../../universes/images/close.svg';
+import Close from '../../../../universes/images/close.svg?img';
 import { flatten, isEmpty, uniq, uniqBy } from 'lodash';
 import { CloudType } from '../../../../../redesign/helpers/dtos';
 import { useMutation } from 'react-query';

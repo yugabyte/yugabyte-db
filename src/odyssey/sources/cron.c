@@ -20,15 +20,19 @@
  * If the array is full and no matching stats are found, -1 is returned.
 */
 static int yb_get_stats_index(struct ConnectionStats *yb_stats,
-			      const int db_oid, const int user_oid, const int yb_max_pools)
+			      const int db_oid, const int user_oid,
+				  const bool logical_rep, const int yb_max_pools)
 {
 	int first_empty_index = -1;
 	if (db_oid <= 0 || user_oid <= 0)
 		return -1;
 
-	for (int i = 1; i < yb_max_pools; i++) {
+	for (int i = YB_TXN_POOL_STATS_START_INDEX; i < yb_max_pools; i++) {
+		// Each route is uniquely identified by db_oid, user_oid, logical_rep.
+		// Check od_route_id_compare.
 		if (yb_stats[i].database_oid == db_oid &&
-		    yb_stats[i].user_oid == user_oid)
+		    yb_stats[i].user_oid == user_oid &&
+			yb_stats[i].logical_rep == logical_rep)
 			return i;
 		
 		if (first_empty_index == -1 &&
@@ -54,7 +58,11 @@ static int od_cron_stat_cb(od_route_t *route, od_stat_t *current,
 		// OD_RULE_POOL_INTERVAL should be renamed to OD_RULE_POOL_INTENAL.
 		// OD_RULE_POOL_INTERVAL identifies the pool as a control connection.
 		if (route->rule->pool->routing == OD_RULE_POOL_INTERVAL) {
-			index = 0;
+			if (route->id.logical_rep) {
+				index = YB_CONTROL_CONN_REP_STATS_INDEX;
+			} else {
+				index = YB_CONTROL_CONN_NON_REP_STATS_INDEX;
+			}
 			strcpy(instance->yb_stats[index].database_name,
 			       "control_connection");
 			strcpy(instance->yb_stats[index].user_name,
@@ -67,12 +75,14 @@ static int od_cron_stat_cb(od_route_t *route, od_stat_t *current,
 					instance->yb_stats,
 					route->id.yb_db_oid,
 					route->id.yb_user_oid,
+					route->id.logical_rep,
 					instance->config.yb_max_pools);
 				if (route->id.yb_stats_index == -1) {
 					od_error(&instance->logger, "stats", NULL, NULL,
-						 "Unable to find the index for (%s, %s) pool",
+						 "Unable to find the index for (%s, %s, %d, %d) pool",
 						 (char *)route->yb_database_name,
-						 (char *)route->yb_user_name);
+						 (char *)route->yb_user_name,
+						 route->id.logical_rep);
 					return -1;
 				}
 			}
@@ -88,6 +98,7 @@ static int od_cron_stat_cb(od_route_t *route, od_stat_t *current,
 			instance->yb_stats[index].user_name[route->yb_user_name_len] = '\0';
 			instance->yb_stats[index].user_oid = route->id.yb_user_oid;
 		}
+		instance->yb_stats[index].logical_rep = route->id.logical_rep;
 
 		od_route_lock(route);
 		instance->yb_stats[index].active_clients =

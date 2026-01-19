@@ -61,19 +61,21 @@ public class DynatraceConfig extends TelemetryProviderConfig {
   }
 
   @Override
-  public void validate(ApiHelper apiHelper) {
-    try {
-      // Validate endpoint format
-      URI endpointUri = URI.create(endpoint);
-      if (endpointUri.getScheme() == null || endpointUri.getHost() == null) {
-        throw new PlatformServiceException(
-            BAD_REQUEST, "Invalid endpoint format. Must be a valid URL.");
-      }
+  public void validateConfigFields() {
+    // Validate endpoint format
+    URI endpointUri = URI.create(endpoint);
+    if (endpointUri.getScheme() == null || endpointUri.getHost() == null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Invalid endpoint format. Must be a valid URL.");
+    }
+  }
 
+  @Override
+  public void validateConnectivity(ApiHelper apiHelper) {
+    try {
       // Validate API token by checking its scopes
       validateApiTokenScopes(apiHelper);
 
-      log.info("Successfully validated Dynatrace API Token and Endpoint.");
     } catch (Exception e) {
       log.error("Encountered error while validating Dynatrace configuration: ", e);
       throw new PlatformServiceException(

@@ -1,4 +1,4 @@
-import { forwardRef, useContext, useEffect, useImperativeHandle } from 'react';
+import { forwardRef, Fragment, useContext, useEffect, useImperativeHandle } from 'react';
 import { upperCase } from 'lodash';
 import { FormProvider, useForm } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
@@ -47,15 +47,21 @@ const { Box, Typography, CircularProgress } = mui;
 const isImgBundleSupportedByProvider = (provider: ProviderType) =>
   [CloudType.aws, CloudType.azu, CloudType.gcp].includes(provider?.code);
 
-const InstanceBox = ({ children }: { children: React.ReactNode }) => (
+export const InstanceBox = ({ children }: { children: React.ReactNode }) => (
   <Box sx={{ width: 480, display: 'flex', flexDirection: 'column', gap: 2 }}>{children}</Box>
 );
 
-const PanelWrapper = ({ children }: { children: React.ReactNode }) => (
+const PanelWrapper = ({
+  children,
+  editMode
+}: {
+  children: React.ReactNode;
+  editMode?: boolean;
+}) => (
   <Box
     sx={(theme) => ({
       display: 'flex',
-      width: '734px',
+      width: editMode ? 'auto' : '734px',
       flexDirection: 'column',
       backgroundColor: '#FBFCFD',
       border: `1px solid ${theme.palette.grey[300]}`,
@@ -67,7 +73,12 @@ const PanelWrapper = ({ children }: { children: React.ReactNode }) => (
   </Box>
 );
 
-export const InstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
+export const InstanceSettings = forwardRef<
+  StepsRef,
+  {
+    editMode?: boolean;
+  }
+>(({ editMode = false }, forwardRef) => {
   const [
     { instanceSettings, generalSettings, nodesAvailabilitySettings, resilienceAndRegionsSettings },
     { moveToNextPage, moveToPreviousPage, saveInstanceSettings, setActiveStep }
@@ -149,36 +160,46 @@ export const InstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
 
   const showDedicatedNodesSection = !!(useDedicatedNodes || (useK8CustomResources && isK8s));
 
+  // this file is also used in edit universe hardware tab. To match the design there we need to conditionally change Panel and Content components
+  const Panel = editMode ? Box : StyledPanel;
+  const Content = editMode ? Box : StyledContent;
+
   if (isRuntimeConfigLoading || isProviderRuntimeConfigLoading) {
     return (
-      <StyledPanel>
+      <Panel>
         <StyledHeader />
-        <StyledContent>
-          <PanelWrapper>
+        <Content>
+          <PanelWrapper editMode={editMode}>
             <Box display="flex" alignItems="center" justifyContent="center" width="100%">
               <CircularProgress />
             </Box>
           </PanelWrapper>
-        </StyledContent>
-      </StyledPanel>
+        </Content>
+      </Panel>
     );
   }
 
   return (
     <FormProvider {...methods}>
-      <StyledPanel>
-        <StyledHeader>
-          {showDedicatedNodesSection ? t('tserver') : t('clusterInstance')}
-        </StyledHeader>
-        <StyledContent>
-          <PanelWrapper>
+      <Panel>
+        {!editMode && (
+          <StyledHeader>
+            {showDedicatedNodesSection ? t('tserver') : t('clusterInstance')}
+          </StyledHeader>
+        )}
+
+        <Content>
+          <PanelWrapper editMode={editMode}>
             <InstanceBox>
-              {osPatchingEnabled && provider && isImgBundleSupportedByProvider(provider) && (
-                <>
-                  <CPUArchField disabled={false} />
-                  <LinuxVersionField disabled={false} />
-                </>
-              )}
+              {osPatchingEnabled &&
+                provider &&
+                isImgBundleSupportedByProvider(provider) &&
+                !editMode && (
+                  <>
+                    <CPUArchField disabled={false} />
+                    <LinuxVersionField disabled={false} provider={provider} />
+                  </>
+                )}
               {provider &&
                 [CloudType.aws, CloudType.gcp, CloudType.azu].includes(provider.code) &&
                 canUseSpotInstance && (
@@ -187,51 +208,76 @@ export const InstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
               {!isK8s &&
                 (!useDedicatedNodes ? (
                   <>
-                    <InstanceTypeField isMaster={false} disabled={false} />
+                    <InstanceTypeField
+                      isMaster={false}
+                      disabled={false}
+                      provider={provider}
+                      regions={resilienceAndRegionsSettings?.regions}
+                    />
                     <VolumeInfoField
                       isMaster={false}
                       maxVolumeCount={maxVolumeCount}
                       disabled={false}
+                      provider={provider}
+                      useDedicatedNodes={useDedicatedNodes}
+                      regions={resilienceAndRegionsSettings?.regions}
                     />
                   </>
                 ) : (
                   <>
-                    <InstanceTypeField isMaster={false} disabled={false} />
+                    <InstanceTypeField
+                      isMaster={false}
+                      disabled={false}
+                      provider={provider}
+                      regions={resilienceAndRegionsSettings?.regions}
+                    />
                     <VolumeInfoField
                       isMaster={false}
                       maxVolumeCount={maxVolumeCount}
                       disabled={false}
+                      provider={provider}
+                      useDedicatedNodes={useDedicatedNodes}
+                      regions={resilienceAndRegionsSettings?.regions}
                     />
                   </>
                 ))}
               {isK8s &&
                 (useK8CustomResources ? (
                   <>
-                    <K8NodeSpecField isMaster={false} disabled={false} />
+                    <K8NodeSpecField isMaster={false} disabled={false} provider={provider} />
                     <K8VolumeInfoField
                       isMaster={false}
                       maxVolumeCount={maxVolumeCount}
                       disableVolumeSize={false}
                       disabled={false}
+                      provider={provider}
                     />
                   </>
                 ) : (
                   <>
-                    <InstanceTypeField isMaster={false} disabled={false} />
+                    <InstanceTypeField
+                      isMaster={false}
+                      disabled={false}
+                      provider={provider}
+                      regions={resilienceAndRegionsSettings?.regions}
+                    />
                     <VolumeInfoField
                       isMaster={false}
                       maxVolumeCount={maxVolumeCount}
                       disabled={false}
+                      provider={provider}
+                      useDedicatedNodes={useDedicatedNodes}
+                      regions={resilienceAndRegionsSettings?.regions}
                     />
                   </>
                 ))}
               {deviceInfo && provider?.code === CloudType.gcp && useDedicatedNodes && (
-                <StorageTypeField disabled={false} />
+                <StorageTypeField disabled={false} provider={provider} />
               )}
             </InstanceBox>
           </PanelWrapper>
-        </StyledContent>
-      </StyledPanel>
+        </Content>
+      </Panel>
 
       <Box mb={3} />
 
@@ -251,26 +297,39 @@ export const InstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
                 dataTestId="keep-master-tserver-same-field"
               />
             </Box>
-            <PanelWrapper>
+            <PanelWrapper editMode={editMode}>
               <InstanceBox>
                 {!isK8s && useDedicatedNodes && (
                   <>
-                    <InstanceTypeField isMaster={true} disabled={!!sameAsTserver} />
+                    <InstanceTypeField
+                      isMaster={true}
+                      disabled={!!sameAsTserver}
+                      provider={provider}
+                      regions={resilienceAndRegionsSettings?.regions}
+                    />
                     <VolumeInfoField
                       isMaster={true}
                       maxVolumeCount={maxVolumeCount}
                       disabled={!!sameAsTserver}
+                      provider={provider}
+                      useDedicatedNodes={useDedicatedNodes}
+                      regions={resilienceAndRegionsSettings?.regions}
                     />
                   </>
                 )}
                 {isK8s && useK8CustomResources && (
                   <>
-                    <K8NodeSpecField isMaster={true} disabled={!!sameAsTserver} />
+                    <K8NodeSpecField
+                      isMaster={true}
+                      disabled={!!sameAsTserver}
+                      provider={provider}
+                    />
                     <K8VolumeInfoField
                       isMaster={true}
                       disableVolumeSize={false}
                       maxVolumeCount={maxVolumeCount}
                       disabled={!!sameAsTserver}
+                      provider={provider}
                     />
                   </>
                 )}

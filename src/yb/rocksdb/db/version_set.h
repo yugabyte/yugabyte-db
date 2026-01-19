@@ -523,7 +523,7 @@ class Version {
   // Returns weighted middle key of the approximate middle keys of the SST files
   // (see TableReader::GetMiddleKey).
   // Returns Status(Incomplete) if there are no SST files for this version.
-  Result<std::string> GetMiddleKey();
+  Result<std::string> GetMiddleKey(Slice lower_bound_internal_key);
 
   // Returns a table reader for the largest SST file.
   Result<TableReader*> TEST_GetLargestSstTableReader();
@@ -577,7 +577,7 @@ class Version {
   void UpdateFilesByCompactionPri();
 
   Result<TableCache::TableReaderWithHandle> GetLargestSstTableReader();
-  Result<std::string> GetMiddleOfMiddleKeys();
+  Result<std::string> GetMiddleOfMiddleKeys(Slice lower_bound_internal_key);
 
   template <typename IteratorBuilder, typename CreateIteratorFunc>
   void AddLevel0Iterators(
@@ -708,7 +708,7 @@ class VersionSet {
   // supplied values for each dimension. This will DFATAL in case the supplied frontier regresses
   // relative to the current frontier in any of its dimensions which have non-default (defined)
   // values.
-  void UpdateFlushedFrontier(UserFrontierPtr values);
+  void UpdateFlushedFrontier(UserFrontierPtr values, FrontierModificationMode mode);
 
   // Mark the specified file number as used.
   // REQUIRED: this is only called during single-threaded recovery

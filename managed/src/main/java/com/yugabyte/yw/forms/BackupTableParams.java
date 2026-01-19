@@ -203,6 +203,18 @@ public class BackupTableParams extends TableManagerParams {
   @Setter
   private KubernetesResourceDetails kubernetesResourceDetails;
 
+  @ApiModelProperty(value = "Backup global ysql roles")
+  @Getter
+  @Setter
+  private Boolean useRoles = false;
+
+  @ApiModelProperty(
+      value = "Backup privileges for roles. If false, --no-privileges will be added",
+      hidden = true)
+  @Getter
+  @Setter
+  private Boolean usePrivileges = true;
+
   // When set, ybc backups will ignore all new flags that came with roles backup. Useful for taking
   // backups on older universes.
   // Default to True for backwards compatibility
@@ -221,6 +233,11 @@ public class BackupTableParams extends TableManagerParams {
   @Getter
   @Setter
   private Boolean enableBackupsDuringDDL = false;
+
+  @ApiModelProperty(hidden = true)
+  @Getter
+  @Setter
+  private Boolean backupStats = true;
 
   @ToString
   public static class ParallelBackupState {
@@ -278,8 +295,10 @@ public class BackupTableParams extends TableManagerParams {
     this.enableVerboseLogs = backupRequestParams.enableVerboseLogs;
     this.setPointInTimeRestoreEnabled(backupRequestParams.enablePointInTimeRestore);
     this.setKubernetesResourceDetails(backupRequestParams.getKubernetesResourceDetails());
-    // this.useRoles = backupRequestParams.getUseRoles();
+    this.useRoles = backupRequestParams.getUseRoles();
+    this.usePrivileges = backupRequestParams.getUsePrivileges();
     this.dumpRoleChecks = backupRequestParams.getDumpRoleChecks();
+    this.backupStats = backupRequestParams.getBackupStats();
   }
 
   @JsonIgnore
@@ -334,9 +353,11 @@ public class BackupTableParams extends TableManagerParams {
     this.backupParamsIdentifier = tableParams.backupParamsIdentifier;
     this.tableByTableBackup = tableParams.tableByTableBackup;
     this.setPointInTimeRestoreEnabled(tableParams.isPointInTimeRestoreEnabled());
-    // this.useRoles = tableParams.getUseRoles();
+    this.useRoles = tableParams.getUseRoles();
     this.revertToPreRolesBehaviour = tableParams.getRevertToPreRolesBehaviour();
     this.dumpRoleChecks = tableParams.getDumpRoleChecks();
+    this.backupStats = tableParams.getBackupStats();
+    this.enableBackupsDuringDDL = tableParams.getEnableBackupsDuringDDL();
   }
 
   @JsonIgnore

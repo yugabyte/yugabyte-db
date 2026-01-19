@@ -4,6 +4,10 @@ headerTitle: Key concepts
 linkTitle: Key concepts
 description: Learn about the Key concepts in YugabyteDB
 headcontent: Glossary of key concepts
+aliases:
+  - /stable/architecture/concepts/universe
+  - /stable/architecture/concepts/single-node/
+  - /stable/key-concepts/
 menu:
   stable:
     identifier: architecture-concepts-universe
@@ -64,12 +68,12 @@ Hybrid time/timestamp is a monotonically increasing timestamp derived using [Hyb
 [Transaction](#transaction) isolation levels define the degree to which transactions are isolated from each other. Isolation levels determine how changes made by one transaction become visible to other concurrent transactions. {{<link dest="../../explore/transactions/isolation-levels/">}}
 
 {{<tip>}}
-YugabyteDB offers 3 isolation levels - [Serializable](../../explore/transactions/isolation-levels/#serializable-isolation), [Snapshot](../../explore/transactions/isolation-levels/#snapshot-isolation) and [Read committed](../../explore/transactions/isolation-levels/#read-committed-isolation) - in the {{<product "ysql">}} API and one isolation level - [Snapshot](/preview/develop/learn/transactions/acid-transactions-ycql/) - in the {{<product "ycql">}} API.
+YugabyteDB offers 3 isolation levels - [Serializable](../../explore/transactions/isolation-levels/#serializable-isolation), [Snapshot](../../explore/transactions/isolation-levels/#snapshot-isolation) and [Read committed](../../explore/transactions/isolation-levels/#read-committed-isolation) - in the {{<product "ysql">}} API and one isolation level - [Snapshot](/stable/develop/learn/transactions/acid-transactions-ycql/) - in the {{<product "ycql">}} API.
 {{</tip>}}
 
 ## Leader balancing
 
-YugabyteDB tries to keep the number of leaders evenly distributed across the [nodes](#node) in a cluster to ensure an even distribution of load.
+YugabyteDB tries to keep the number of leaders evenly distributed across the [nodes](#node) in a cluster to ensure an even distribution of load. {{<link dest="../docdb-sharding/cluster-balancing/">}}
 
 ## Leader election
 
@@ -117,7 +121,7 @@ Designating one region as preferred can reduce the number of network hops needed
 
 Regardless of the preferred region setting, data is replicated across all the regions in the cluster to ensure region-level fault tolerance.
 
-You can enable [follower reads](#follower-reads) to serve reads from non-preferred regions. In cases where the cluster has [read replicas](#read-replica-cluster) and a client connects to a read replica, reads are served from the replica; writes continue to be handled by the preferred region. {{<link dest="/preview/develop/build-global-apps/global-database/">}}
+You can enable [follower reads](#follower-reads) to serve reads from non-preferred regions. In cases where the cluster has [read replicas](#read-replica-cluster) and a client connects to a read replica, reads are served from the replica; writes continue to be handled by the preferred region. {{<link dest="/stable/develop/build-global-apps/global-database/">}}
 
 ## Primary cluster
 
@@ -136,6 +140,8 @@ Data is brought into the read replica clusters through asynchronous replication 
 ## Rebalancing
 
 Rebalancing is the process of keeping an even distribution of tablets across the [nodes](#node) in a cluster. {{<link dest="../../explore/linear-scalability/data-distribution/#rebalancing">}}
+
+For detailed information on cluster balancing scenarios, monitoring, and configuration, see [Cluster balancing](../docdb-sharding/cluster-balancing/).
 
 ## Region
 
@@ -158,7 +164,7 @@ Sharding is the process of mapping a table row to a [tablet](#tablet). YugabyteD
 A smart driver in the context of YugabyteDB is essentially a PostgreSQL driver with additional "smart" features that leverage the distributed nature of YugabyteDB. These smart drivers intelligently distribute application connections across the nodes and regions of a YugabyteDB cluster, eliminating the need for external load balancers. This results in balanced connections that provide lower latencies and prevent hot nodes. For geographically-distributed applications, the driver can seamlessly connect to the geographically nearest regions and availability zones for lower latency.
 
 Smart drivers are optimized for use with a distributed SQL database, and are both cluster-aware and topology-aware. They keep track of the members of the cluster as well as their locations. As nodes are added or removed from clusters, the driver updates its membership and topology information. The drivers read the database cluster topology from the metadata table, and route new connections to individual instance endpoints without relying on high-level cluster endpoints. The smart drivers are also capable of load balancing read-only connections across the available YB-TServers.
-. {{<link dest="/preview/develop/drivers-orms/smart-drivers/">}}
+. {{<link dest="/stable/develop/drivers-orms/smart-drivers/">}}
 
 ## Tablet
 

@@ -192,6 +192,7 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
           universe,
           nodesToProvision,
           false /* ignore node status check */,
+          false /* do validation of gflags */,
           setupServerParams -> {
             setupServerParams.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig;
             setupServerParams.rebootNodeAllowed = true;
@@ -284,6 +285,12 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
     // Update placement info on master leader.
     createPlacementInfoTask(null /* additional blacklist */, taskParams().clusters)
         .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
+
+    if (cluster.isGeoPartitioned() && cluster.userIntent.enableYSQL) {
+      // Currently we rely on user to modify partitions correctly after doing edit.
+      // So we don't check tablespace placement, only the existence.
+      createTablespacesTasks(cluster.getPartitions(), true);
+    }
 
     if (!nodesToBeRemoved.isEmpty()) {
       // Wait for %age completion of the tablet move from master.

@@ -4,6 +4,8 @@ headerTitle: YB-Master service
 linkTitle: YB-Master
 description: Learn how the YB-Master service manages tablet metadata and coordinates cluster configuration changes.
 headcontent: Catalog information, tablet metadata, and cluster coordination
+aliases:
+  - /stable/architecture/concepts/yb-master/
 menu:
   stable:
     identifier: architecture-concepts-yb-master
@@ -14,7 +16,7 @@ type: docs
 
 The YB-Master service keeps the system metadata and records, such as tables and the location of their tablets, users and roles with their associated permissions, and so on.
 
-The YB-Master service is also responsible for coordinating background operations, such as load-balancing or initiating replication of under-replicated data, as well as performing a variety of administrative operations such as creating, altering, and dropping tables.
+The YB-Master service is also responsible for coordinating background operations, such as cluster balancing or initiating replication of under-replicated data, as well as performing a variety of administrative operations such as creating, altering, and dropping tables.
 
 The YB-Master is [highly available](#high-availability), as it forms a Raft group with its peers, and it is not in the critical path of I/O against user tables.
 
@@ -52,7 +54,7 @@ When clients, such as the YugabyteDB query layer or applications using the YCQL 
 
 By having the tablet-to-node mapping cached, the smart clients can communicate directly with the correct YB-TServer node that holds the required data, without needing to go through additional network hops or intermediate components. This direct communication allows for efficient data retrieval and query processing.
 
-## Load balancing
+## Cluster balancing
 
 The YB-Master leader places (at `CREATE TABLE` time) the tablets across YB-TServers to enforce any user-defined data placement constraints and ensure uniform load. In addition, during the lifetime of the universe, as nodes are added, fail, or become decommissioned, it continues to balance the load and enforce data placement constraints automatically.
 

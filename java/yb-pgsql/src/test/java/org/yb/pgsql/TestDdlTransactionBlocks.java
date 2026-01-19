@@ -12,6 +12,8 @@
 //
 package org.yb.pgsql;
 
+import java.util.Map;
+
 import org.yb.minicluster.MiniYBClusterBuilder;
 
 import org.junit.Test;
@@ -29,13 +31,18 @@ public class TestDdlTransactionBlocks extends BasePgRegressTest {
   }
 
   @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("TEST_hide_details_for_pg_regress", "false");
+    return flagMap;
+  }
+
+  @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
     builder.enablePgTransactions(true);
     builder.addCommonTServerFlag("ysql_log_statement", "all");
     builder.addCommonTServerFlag("ysql_yb_ddl_transaction_block_enabled", "true");
-    builder.addCommonTServerFlag("allowed_preview_flags_csv",
-        "enable_object_locking_for_table_locks,ysql_yb_ddl_transaction_block_enabled");
     builder.addCommonTServerFlag("enable_object_locking_for_table_locks", "true");
   }
 

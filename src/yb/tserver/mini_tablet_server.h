@@ -44,6 +44,7 @@
 
 #include "yb/gutil/macros.h"
 #include "yb/tablet/tablet_fwd.h"
+#include "yb/tablet/tablet_types.pb.h"
 #include "yb/tserver/tablet_server_options.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status_fwd.h"
@@ -65,7 +66,6 @@ namespace tserver {
 class TabletServer;
 
 YB_STRONGLY_TYPED_BOOL(WaitTabletsBootstrapped);
-YB_STRONGLY_TYPED_BOOL(WaitToAcceptPgConnections);
 
 // An in-process tablet server meant for use in test cases.
 class MiniTabletServer {
@@ -99,11 +99,9 @@ class MiniTabletServer {
   // server to be fully initialized, including
   // having all its tablets bootstrapped.
   Status Start(
-      WaitTabletsBootstrapped wait_tablets_bootstrapped = WaitTabletsBootstrapped::kTrue,
-      WaitToAcceptPgConnections wait_for_pg = WaitToAcceptPgConnections::kTrue);
+      WaitTabletsBootstrapped wait_tablets_bootstrapped = WaitTabletsBootstrapped::kTrue);
 
-  Status StartPgIfConfigured(
-      WaitToAcceptPgConnections wait_for_pg = WaitToAcceptPgConnections::kTrue);
+  Status StartPgIfConfigured();
 
   std::string ToString() const;
 
@@ -112,6 +110,13 @@ class MiniTabletServer {
   Status WaitStarted();
 
   void Shutdown();
+
+  // Deletes the specified tablet directly through the tablet manager.
+  // delete_state: should be either TABLET_DATA_DELETED or TABLET_DATA_TOMBSTONED.
+  // keep_on_disk: whether to keep data on disk.
+  Status DeleteTablet(
+      const TabletId& tablet_id, tablet::TabletDataState delete_state, bool keep_on_disk = false);
+
   Status FlushTablets(
       tablet::FlushMode mode = tablet::FlushMode::kSync,
       tablet::FlushFlags flags = tablet::FlushFlags::kAllDbs);
@@ -123,7 +128,7 @@ class MiniTabletServer {
 
   // Stop and start the tablet server on the same RPC and webserver ports. The tserver must be
   // running.
-  Status Restart(WaitToAcceptPgConnections wait_for_pg = WaitToAcceptPgConnections::kTrue);
+  Status Restart();
   Status RestartStoppedServer();
 
   // Add a new tablet to the test server, use the default consensus configuration.
@@ -175,6 +180,9 @@ class MiniTabletServer {
   void SetPgServerHandlers(
       std::function<Status(void)> start_pg, std::function<void(void)> shutdown_pg,
       std::function<pgwrapper::PGConnSettings(void)> get_pg_conn_settings);
+  void set_pgsql_proxy_bind_address(const std::string& pgsql_proxy_bind_address) {
+    pgsql_proxy_bind_address_ = pgsql_proxy_bind_address;
+  }
 
  private:
   bool started_;
@@ -187,6 +195,7 @@ class MiniTabletServer {
   std::function<Status(void)> start_pg_;
   std::function<void(void)> shutdown_pg_;
   std::function<pgwrapper::PGConnSettings(void)> get_pg_conn_settings_;
+  std::string pgsql_proxy_bind_address_;
 };
 
 }  // namespace tserver

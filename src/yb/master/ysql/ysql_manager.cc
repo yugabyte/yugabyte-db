@@ -260,7 +260,7 @@ Status YsqlManager::CreateYbAdvisoryLocksTableIfNeeded(const LeaderEpoch& epoch)
 }
 
 Status YsqlManager::ValidateWriteToCatalogTableAllowed(
-    const TableId& table_id, bool is_forced_update) const {
+    TableIdView table_id, bool is_forced_update) const {
   SCHECK(
       ysql_initdb_and_major_upgrade_helper_->IsWriteToCatalogTableAllowed(
           table_id, is_forced_update),
@@ -288,8 +288,6 @@ Result<PgOid> YsqlManager::GetPgTableOidIfCommitted(
 
 Result<std::string> YsqlManager::GetCachedPgSchemaName(
     const PgTableAllOids& oids, PgDbRelNamespaceMap& cache) const {
-  const auto pg_table_oid = VERIFY_RESULT(GetPgTableOidIfCommitted(oids));
-
   const PgRelNamespaceData* nsp_data_ptr = FindOrNull(cache, oids.database_oid);
   if (nsp_data_ptr == nullptr) {
     PgRelNamespaceData nsp_data;
@@ -303,10 +301,10 @@ Result<std::string> YsqlManager::GetCachedPgSchemaName(
   }
 
   const PgOid* const nsp_oid_ptr =
-      FindOrNull(DCHECK_NOTNULL(nsp_data_ptr)->rel_nsp_oid_map, pg_table_oid);
+      FindOrNull(DCHECK_NOTNULL(nsp_data_ptr)->rel_nsp_oid_map, oids.pg_table_oid);
   const PgOid relnamespace_oid = (nsp_oid_ptr ? *nsp_oid_ptr : kPgInvalidOid);
   SCHECK_NE(relnamespace_oid, kPgInvalidOid, NotFound,
-      Format("$0: $1", kRelnamespaceNotFoundErrorStr, pg_table_oid));
+      Format("$0: $1", kRelnamespaceNotFoundErrorStr, oids.pg_table_oid));
 
   const std::string* const pg_schema_name_ptr =
       FindOrNull(nsp_data_ptr->rel_nsp_name_map, relnamespace_oid);
@@ -318,7 +316,8 @@ Result<std::string> YsqlManager::GetCachedPgSchemaName(
 
 Result<std::string> YsqlManager::GetPgSchemaName(
     const PgTableAllOids& oids, const ReadHybridTime& read_time) const {
-  const auto pg_table_oid = VERIFY_RESULT(GetPgTableOidIfCommitted(oids, read_time));
+  const auto pg_table_oid =
+      (read_time ? VERIFY_RESULT(GetPgTableOidIfCommitted(oids, read_time)) : oids.pg_table_oid);
   const auto relnamespace_oid = VERIFY_RESULT(sys_catalog_.ReadPgClassColumnWithOidValue(
       oids.database_oid, pg_table_oid, kPgClassRelNamespaceColumnName, read_time));
   if (relnamespace_oid == kPgInvalidOid) {
@@ -327,6 +326,12 @@ Result<std::string> YsqlManager::GetPgSchemaName(
         MasterError(MasterErrorPB::DOCDB_TABLE_NOT_COMMITTED));
   }
   return sys_catalog_.ReadPgNamespaceNspname(oids.database_oid, relnamespace_oid, read_time);
+}
+
+Result<bool> YsqlManager::GetPgIndexStatus(
+    PgOid database_oid, PgOid index_oid, const std::string& status_col_name,
+    const ReadHybridTime& read_time) const {
+  return sys_catalog_.ReadPgIndexBoolColumn(database_oid, index_oid, status_col_name, read_time);
 }
 
 void YsqlManager::RunBgTasks(const LeaderEpoch& epoch) {

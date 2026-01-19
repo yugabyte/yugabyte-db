@@ -21,6 +21,7 @@ YSQL supports all PostgreSQL-compatible built-in functions and operators. The fo
 | [lastval()](func_lastval) | Returns the value returned by the most recent call to _nextval()_ for _any_ sequence in the current session |
 | {{<tags/feature/ea idea="2160">}}[yb_index_check()](func_yb_index_check) | Checks if the given index is consistent with its base relation |
 | [yb_hash_code()](func_yb_hash_code) | Returns the partition hash code for a given set of expressions |
+| [yb_servers()](func_yb_servers) | Returns a list of all the nodes in your cluster and their location |
 | [Geo-partitioning helper functions](./geo_partitioning_helper_functions/) | Detailed list of geo-partitioning helper functions |
 | [JSON functions and operators](../datatypes/type_json/functions-operators/) | Detailed list of JSON-specific functions and operators |
 | [Array functions and operators](../datatypes/type_array/functions-operators/) | Detailed list of array-specific functions and operators |

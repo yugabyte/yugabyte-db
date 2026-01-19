@@ -43,8 +43,8 @@ import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.YBAError;
 import com.yugabyte.yw.models.helpers.YBAError.Code;
-import io.prometheus.client.CollectorRegistry;
-import io.prometheus.client.Summary;
+import io.prometheus.metrics.core.metrics.Summary;
+import io.prometheus.metrics.model.registry.PrometheusRegistry;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -198,18 +198,20 @@ public class TaskExecutor {
           TASK_EXECUTION_SKIPPED_LABEL);
 
   private static Summary buildSummary(String name, String description, String... labelNames) {
-    return Summary.build(name, description)
+    return Summary.builder()
+        .name(name)
+        .help(description)
         .quantile(0.5, 0.05)
         .quantile(0.9, 0.01)
         .labelNames(labelNames)
-        .register(CollectorRegistry.defaultRegistry);
+        .register(PrometheusRegistry.defaultRegistry);
   }
 
   // This writes the waiting time metric.
   private static void writeTaskWaitMetric(
       Map<String, String> taskLabels, Instant scheduledTime, Instant startTime) {
     COMMISSIONER_TASK_WAITING_SEC
-        .labels(
+        .labelValues(
             taskLabels.get(KnownAlertLabels.TASK_TYPE.labelName()),
             taskLabels.get(KnownAlertLabels.PARENT_TASK_TYPE.labelName()))
         .observe(getElapsedTime(scheduledTime, startTime, ChronoUnit.SECONDS));
@@ -223,7 +225,7 @@ public class TaskExecutor {
       State state,
       boolean isTaskSkipped) {
     COMMISSIONER_TASK_EXECUTION_SEC
-        .labels(
+        .labelValues(
             taskLabels.get(KnownAlertLabels.TASK_TYPE.labelName()),
             state.name(),
             taskLabels.get(KnownAlertLabels.PARENT_TASK_TYPE.labelName()),

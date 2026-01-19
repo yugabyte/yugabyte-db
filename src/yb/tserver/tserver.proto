@@ -105,6 +105,8 @@ message WriteRequestPB {
   optional int64 raft_config_opid_index = 24;
 
   optional bool use_async_write = 26;
+
+  optional uint32 xrepl_origin_id = 27;
 }
 
 message WriteResponsePB {
@@ -264,6 +266,8 @@ message ReadRequestPB {
   reserved 17; // ASH metadata is now passed in RequestHeader PB
 
   optional int64 raft_config_opid_index = 18;
+
+  optional int64 leader_term = 19;
 }
 
 message ReadResponsePB {
@@ -425,6 +429,12 @@ message ClearMetacacheResponsePB {
   optional TabletServerErrorPB error = 1;
 }
 
+message ClearYCQLMetaDataCacheOnServerRequestPB {}
+
+message ClearYCQLMetaDataCacheOnServerResponsePB {
+  optional TabletServerErrorPB error = 1;
+}
+
 message ClearUniverseUuidRequestPB {
 }
 
@@ -445,6 +455,8 @@ message AcquireObjectLockRequestPB {
   optional fixed64 propagated_hybrid_time = 7;
   reserved 8; // ASH metadata is now passed in RequestHeader PB
   optional bytes status_tablet = 9;
+  // The expected lease epoch of the recipient tserver.
+  optional uint64 recipient_lease_epoch = 10;
 }
 
 message AcquireObjectLockResponsePB {
@@ -512,6 +524,8 @@ message ReleaseObjectLockRequestPB {
   reserved 9; // ASH metadata is now passed in RequestHeader PB
   optional DBCatalogInvalMessagesDataPB db_catalog_inval_messages_data = 10;
   optional bool populate_db_catalog_info = 11 [ default = true ];
+  // The expected lease epoch of the recipient tserver.
+  optional uint64 recipient_lease_epoch = 12;
 
   // If any new field is added here. Do not forget to update
   // ReleaseRequestToPersist accordingly.

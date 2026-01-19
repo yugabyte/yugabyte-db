@@ -18,6 +18,7 @@ import SelectKMS from './SelectKMS';
 import SelectUniverse from './SelectUniverse';
 import RenameKeyspaceOption from './RenameKeyspaceOption';
 import RestoreTablespacesOption from './RestoreTablespacesOption';
+import { RestoreRolesOption } from './RestoreRolesOption';
 import { RestoreFormModel } from '../../models/RestoreFormModel';
 import { getPreflightCheck } from '../../api/api';
 import { isDefinedNotNull, isNonEmptyString } from '../../../../../../utils/ObjectUtils';
@@ -97,7 +98,14 @@ const RestoreTarget = forwardRef<PageRef>((_, forwardRef) => {
   useQuery(['tables', targetUniverse?.value], () => fetchTablesInUniverse(targetUniverse?.value), {
     enabled: enableVerifyDuplicateTable,
     onSuccess: (resp) => {
-      if (isDuplicateKeyspaceExistsinUniverse(preflightRespData, resp.data, additionalBackupProps ?? undefined, getValues("source.keyspace.label"))) {
+      if (
+        isDuplicateKeyspaceExistsinUniverse(
+          preflightRespData,
+          resp.data,
+          additionalBackupProps ?? undefined,
+          getValues('source.keyspace.label')
+        )
+      ) {
         setValue('target.forceKeyspaceRename', true);
         setValue('target.renameKeyspace', true);
       }
@@ -155,6 +163,8 @@ const RestoreTarget = forwardRef<PageRef>((_, forwardRef) => {
       </Typography>
       <SelectUniverse />
       <RenameKeyspaceOption />
+      {/* Only if source universe had backed up roles, then show the restore roles option for the target universe */}
+      {backupDetails?.useRoles && <RestoreRolesOption />}
       <RestoreTablespacesOption />
       <Divider className={classes.divider} />
       <Typography className={classes.title} variant="body1">

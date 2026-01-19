@@ -32,8 +32,6 @@
 
 #include "yb/consensus/consensus_queue.h"
 
-#include <shared_mutex>
-
 #include <algorithm>
 #include <mutex>
 #include <string>
@@ -43,6 +41,7 @@
 
 #include "yb/cdc/cdc_error.h"
 
+#include "yb/common/tablespace_parser.h"
 #include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/consensus_context.h"
 #include "yb/consensus/log_util.h"
@@ -60,20 +59,17 @@
 #include "yb/util/enums.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/flags.h"
-#include "yb/util/flag_validators.h"
-#include "yb/util/locks.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
+#include "yb/util/shared_lock.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_log.h"
-#include "yb/util/threadpool.h"
 #include "yb/util/tostring.h"
 #include "yb/util/url-coding.h"
-#include "yb/util/shared_lock.h"
 
 using namespace std::literals;
 using namespace yb::size_literals;
@@ -137,8 +133,11 @@ DEFINE_RUNTIME_uint32(cdcsdk_wal_reads_deadline_buffer_secs, 5,
     "This flag determines the buffer time from the deadline at which we must stop reading the WAL "
     "messages and start processing the records we have read till now.");
 
-namespace yb {
-namespace consensus {
+DEFINE_test_flag(bool, cdc_hit_deadline_on_wal_read, false,
+    "When set, we will return from ReadReplicatedMessagesForConsistentCDC() without reading any "
+    "WAL message due to approaching deadline.");
+
+namespace yb::consensus {
 
 using log::Log;
 using std::unique_ptr;
@@ -229,7 +228,7 @@ void PeerMessageQueue::Init(const OpId& last_locally_replicated) {
   }  // Ensure that the queue_lock_ is released.
 
   if (context_) {
-    context_->ListenNumSSTFilesChanged(std::bind(&PeerMessageQueue::NumSSTFilesChanged, this));
+    context_->ListenNumSSTFilesChanged([this] { NumSSTFilesChanged(); });
     installed_num_sst_files_changed_listener_ = true;
   }
 
@@ -605,9 +604,11 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
   if (!is_new && num_log_ops_to_send > 0) {
     // The batch of messages to send to the peer.
     auto max_batch_size = FLAGS_consensus_max_batch_size_bytes - request->SerializedSize();
-    auto to_index = num_log_ops_to_send == kSendUnboundedLogOps ?
-        0 : previously_sent_index + num_log_ops_to_send;
-    auto result = ReadFromLogCache(previously_sent_index, to_index, max_batch_size, uuid);
+    auto to_index = num_log_ops_to_send == kSendUnboundedLogOps
+                        ? 0
+                        : previously_sent_index + num_log_ops_to_send;
+    auto result = ReadFromLogCache(
+        previously_sent_index, to_index, max_batch_size, uuid, log::ObeyMemoryLimit::kFalse);
 
     if (PREDICT_FALSE(!result.ok())) {
       if (PREDICT_TRUE(result.status().IsNotFound())) {
@@ -690,16 +691,21 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
 
 Result<ReadOpsResult> PeerMessageQueue::ReadFromLogCache(
     int64_t after_index, int64_t to_index, size_t max_batch_size, const std::string& peer_uuid,
-    const CoarseTimePoint deadline, const bool fetch_single_entry) {
+    log::ObeyMemoryLimit obey_memory_limit, const CoarseTimePoint deadline,
+    const bool fetch_single_entry) {
   DCHECK_LT(FLAGS_consensus_max_batch_size_bytes + 1_KB, FLAGS_rpc_max_message_size);
 
   // We try to get the follower's next_index from our log.
   // Note this is not using "term" and needs to change
-  auto result =
-      log_cache_.ReadOps(after_index, to_index, max_batch_size, deadline, fetch_single_entry);
+  auto result = log_cache_.ReadOps(
+      after_index, to_index, max_batch_size, obey_memory_limit, deadline, fetch_single_entry);
   if (PREDICT_FALSE(!result.ok())) {
     auto s = result.status();
     if (PREDICT_TRUE(s.IsNotFound())) {
+      return s;
+    } else if (s.IsBusy()) {
+      // We have insufficient memory to read any WAL entries at the moment; caller will need to
+      // retry.
       return s;
     } else if (s.IsIncomplete()) {
       // IsIncomplete() means that we tried to read beyond the head of the log (in the future). This
@@ -710,9 +716,9 @@ Result<ReadOpsResult> PeerMessageQueue::ReadFromLogCache(
           << ". Destination peer: " << peer_uuid;
       return s;
     } else {
-      LOG_WITH_PREFIX(FATAL) << "Error reading the log while preparing peer request: "
-                                      << s.ToString() << ". Destination peer: "
-                                      << peer_uuid;
+      LOG_WITH_PREFIX(FATAL)
+          << "Error reading the log while preparing peer request or GetChanges response: "
+          << s.ToString() << ". Destination peer: " << peer_uuid;
       return s;
     }
   }
@@ -730,13 +736,14 @@ int64_t PeerMessageQueue::GetStartOpIdIndex(int64_t start_index) {
 }
 
 Result<ReadOpsResult> PeerMessageQueue::ReadFromLogCacheForXRepl(
-    int64_t last_op_id_index, int64_t to_index, CoarseTimePoint deadline, bool fetch_single_entry) {
+    int64_t last_op_id_index, int64_t to_index, log::ObeyMemoryLimit obey_memory_limit,
+    CoarseTimePoint deadline, bool fetch_single_entry) {
   // If an empty OpID is only sent on the first read request, start at the earliest known entry.
   int64_t after_op_index = GetStartOpIdIndex(last_op_id_index);
 
   auto result = ReadFromLogCache(
-      after_op_index, to_index, FLAGS_consensus_max_batch_size_bytes, local_peer_uuid_, deadline,
-      fetch_single_entry);
+      after_op_index, to_index, FLAGS_consensus_max_batch_size_bytes, local_peer_uuid_,
+      obey_memory_limit, deadline, fetch_single_entry);
   if (PREDICT_FALSE(!result.ok()) && PREDICT_TRUE(result.status().IsNotFound())) {
     const std::string premature_gc_warning = Format(
         "The logs from index $0 have been garbage collected and cannot be read ", after_op_index);
@@ -766,8 +773,16 @@ Result<XClusterReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForXCluste
     return xcluster_result;
   }
 
-  xcluster_result.result = VERIFY_RESULT(
-      ReadFromLogCacheForXRepl(last_op_id.index, committed_index, deadline, fetch_single_entry));
+  auto read_result = ReadFromLogCacheForXRepl(
+      last_op_id.index, committed_index, log::ObeyMemoryLimit::kTrue, deadline, fetch_single_entry);
+  if (!read_result) {
+    if (read_result.status().IsBusy()) {
+      xcluster_result.result.have_more_messages = HaveMoreMessages(true);
+      return xcluster_result;
+    }
+    return read_result.status();
+  }
+  xcluster_result.result = *read_result;
 
   xcluster_result.result.have_more_messages =
       HaveMoreMessages(xcluster_result.result.have_more_messages.get() || pending_messages);
@@ -804,8 +819,9 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForCDC(
     };
   }
 
-  auto result = VERIFY_RESULT(
-      ReadFromLogCacheForXRepl(last_op_id.index, to_index, deadline, fetch_single_entry));
+  // TODO(#28779): Switch this to obeying the memory limit.
+  auto result = VERIFY_RESULT(ReadFromLogCacheForXRepl(
+      last_op_id.index, to_index, log::ObeyMemoryLimit::kFalse, deadline, fetch_single_entry));
 
   result.have_more_messages =
       HaveMoreMessages(result.have_more_messages.get() || pending_messages);
@@ -828,7 +844,9 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForConsistentCDC(
   do {
     // Return if we reach close to the deadline, providing time for cdc producer and virtual WAL
     // to process the records.
-    if (deadline - CoarseMonoClock::Now() <= FLAGS_cdcsdk_wal_reads_deadline_buffer_secs * 1s) {
+    if (deadline - CoarseMonoClock::Now() <= FLAGS_cdcsdk_wal_reads_deadline_buffer_secs * 1s ||
+        PREDICT_FALSE(FLAGS_TEST_cdc_hit_deadline_on_wal_read)) {
+      res.have_more_messages = HaveMoreMessages(true);
       return res;
     }
 
@@ -849,20 +867,18 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForConsistentCDC(
         continue;
       } else {
         // Nothing to read.
-        return ReadOpsResult{
-            .messages = ReplicateMsgs(),
-            .preceding_op = last_op_id,
-            .have_more_messages = HaveMoreMessages::kFalse};
+        return res;
       }
     }
 
+    // TODO(#28779): Switch this to obeying the memory limit.
     auto result = VERIFY_RESULT(ReadFromLogCacheForXRepl(
-        last_op_id.index, committed_op_id_index, deadline, fetch_single_entry));
+        last_op_id.index, committed_op_id_index, log::ObeyMemoryLimit::kFalse, deadline,
+        fetch_single_entry));
+    VLOG_WITH_FUNC(1) << "Read " << result.messages.size() << " messages from WAL";
 
     res.messages.insert(res.messages.end(), result.messages.begin(), result.messages.end());
     res.read_from_disk_size += result.read_from_disk_size;
-    pending_messages |= result.have_more_messages.get();
-    res.have_more_messages = HaveMoreMessages(pending_messages);
 
     if (res.messages.size() > 0) {
       auto msg = res.messages.back();
@@ -930,10 +946,10 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesInSegmentForCDC(
 
     start_op_id_index = GetStartOpIdIndex(from_op_id.index);
 
-    VLOG(1) << "Will read Ops from a WAL segment for tablet: " << tablet_id_
-            << " start_op_id_index = " << start_op_id_index
-            << " committed_op_id_index = " << committed_op_id_index
-            << " last_replicated_op_id_index = " << last_replicated_op_id_index;
+    VLOG_WITH_FUNC(1) << "Will read Ops from a WAL segment for tablet: " << tablet_id_
+                      << " start_op_id_index = " << start_op_id_index
+                      << " committed_op_id_index = " << committed_op_id_index
+                      << " last_replicated_op_id_index = " << last_replicated_op_id_index;
 
     auto current_segment_num_result = log_cache_.LookupOpWalSegmentNumber(start_op_id_index);
     if (!current_segment_num_result.ok() ||
@@ -970,19 +986,22 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesInSegmentForCDC(
     *consistent_stream_safe_time_footer = consistent_stream_safe_time;
   }
 
-  VLOG(1) << "Reading a new WAL segment for tablet: " << tablet_id_ << " Segment info:"
-          << " current_segment_num = " << current_segment_num
-          << " active_segment_num = " << log_cache_.GetActiveSegmentNumber()
-          << " segment_last_index = " << segment_last_index
-          << " consistent_stream_safe_time = " << consistent_stream_safe_time
-          << " start_op_id_index = " << start_op_id_index;
+  VLOG_WITH_FUNC(1) << "Reading a new WAL segment for tablet: " << tablet_id_ << " Segment info:"
+                    << " current_segment_num = " << current_segment_num
+                    << " active_segment_num = " << log_cache_.GetActiveSegmentNumber()
+                    << " segment_last_index = " << segment_last_index
+                    << " consistent_stream_safe_time = " << consistent_stream_safe_time
+                    << " start_op_id_index = " << start_op_id_index;
 
   auto current_index = start_op_id_index;
 
   // Read the ops from the segment starting from current_index + 1.
   while (current_index < segment_last_index) {
-    auto result = VERIFY_RESULT(
-        ReadFromLogCacheForXRepl(current_index, segment_last_index, deadline, fetch_single_entry));
+    // TODO(#28779): Switch this to obeying the memory limit.
+    auto result = VERIFY_RESULT(ReadFromLogCacheForXRepl(
+        current_index, segment_last_index, log::ObeyMemoryLimit::kFalse, deadline,
+        fetch_single_entry));
+    VLOG_WITH_FUNC(1) << "Read " << result.messages.size() << " messages from WAL";
 
     read_ops.read_from_disk_size += result.read_from_disk_size;
     read_ops.messages.insert(
@@ -1299,7 +1318,7 @@ typename Policy::result_type PeerMessageQueue::GetWatermark() {
 
 CoarseTimePoint PeerMessageQueue::LeaderLeaseExpirationWatermark() {
   struct Policy {
-    typedef CoarseTimePoint result_type;
+    using result_type = CoarseTimePoint;
     // Workaround for a gcc bug. That does not understand that Comparator is actually being used.
     __attribute__((unused)) typedef std::less<result_type> Comparator;
 
@@ -1326,7 +1345,7 @@ CoarseTimePoint PeerMessageQueue::LeaderLeaseExpirationWatermark() {
 
 MicrosTime PeerMessageQueue::HybridTimeLeaseExpirationWatermark() {
   struct Policy {
-    typedef MicrosTime result_type;
+    using result_type = MicrosTime;
     // Workaround for a gcc bug. That does not understand that Comparator is actually being used.
     __attribute__((unused)) typedef std::less<result_type> Comparator;
 
@@ -1352,7 +1371,7 @@ MicrosTime PeerMessageQueue::HybridTimeLeaseExpirationWatermark() {
 
 uint64_t PeerMessageQueue::NumSSTFilesWatermark() {
   struct Policy {
-    typedef uint64_t result_type;
+    using result_type = uint64_t;
     // Workaround for a gcc bug. That does not understand that Comparator is actually being used.
     __attribute__((unused)) typedef std::greater<result_type> Comparator;
 
@@ -1375,7 +1394,7 @@ uint64_t PeerMessageQueue::NumSSTFilesWatermark() {
 
 OpId PeerMessageQueue::OpIdWatermark() {
   struct Policy {
-    typedef OpId result_type;
+    using result_type = OpId;
 
     static result_type NotEnoughPeersValue() {
       return OpId::Min();
@@ -1919,7 +1938,7 @@ string PeerMessageQueue::FindBestNewLeader() const {
   }
 
   if (candidates.empty()) {
-    return string();
+    return {};
   }
   // Choose randomly among candidates at the same op id.
   return RandomElement(candidates);
@@ -1994,5 +2013,4 @@ void PeerMessageQueue::TEST_WaitForNotificationToFinish() {
   notifications_strand_->TEST_BusyWait();
 }
 
-}  // namespace consensus
-}  // namespace yb
+} // namespace yb::consensus

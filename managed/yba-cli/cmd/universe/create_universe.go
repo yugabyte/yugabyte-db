@@ -16,7 +16,6 @@ import (
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	ybaclient "github.com/yugabyte/platform-go-client"
-	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/ear/earutil"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
@@ -26,6 +25,7 @@ import (
 
 var tserverGflagsString string
 var cveKMSConfigUUID string
+var kmsConfigUUID string
 var providerType string
 var v1 = viper.New()
 
@@ -56,14 +56,14 @@ var createUniverseCmd = &cobra.Command{
 
 		universeName := v1.GetString("name")
 
-		if len(strings.TrimSpace(universeName)) == 0 {
+		if util.IsEmptyString(universeName) {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize("No universe name found to create\n", formatter.RedColor))
 		}
 
 		providerCode := v1.GetString("provider-code")
-		if len(strings.TrimSpace(providerCode)) == 0 {
+		if util.IsEmptyString(providerCode) {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize(
@@ -127,10 +127,10 @@ var createUniverseCmd = &cobra.Command{
 		communicationPorts := buildCommunicationPorts()
 		certs, response, err := authAPI.GetListOfCertificates().Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err,
-				"Universe", "Create - List Certificates")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Universe", "Create - List Certificates")
 		}
+
+		getProviderType()
 
 		clientRootCACertUUID := ""
 		clientRootCA := v1.GetString("client-root-ca")
@@ -177,115 +177,10 @@ var createUniverseCmd = &cobra.Command{
 			}
 		}
 
-		kmsConfigUUID := ""
-		var opType string
-
-		oldKMSUsed := true
-
-		kmsConfigs, err := authAPI.GetListOfKMSConfigs(
-			"Universe",
-			"Create - Get KMS Configurations",
-		)
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-
-		cveKMSConfigName := v1.GetString("cloud-volume-encryption-kms-config")
-		if !util.IsEmptyString(cveKMSConfigName) {
-			if !strings.EqualFold(providerType, util.AWSProviderType) {
-				logrus.Debug(
-					"cloud-volume-encryption-kms-config can only be set for AWS universes, ignoring value\n",
-				)
-				cveKMSConfigUUID = ""
-			} else {
-				oldKMSUsed = false
-				cveKMSConfigs := earutil.KMSConfigNameAndCodeFilter(cveKMSConfigName, "", kmsConfigs)
-				if len(cveKMSConfigs) == 1 {
-					cveKMSConfigUUID = cveKMSConfigs[0].ConfigUUID
-					logrus.Info("Using kms config: ", fmt.Sprintf("%s %s",
-						cveKMSConfigName,
-						formatter.Colorize(cveKMSConfigUUID, formatter.GreenColor)), "for cloud volume encryption\n")
-				} else if len(cveKMSConfigs) > 1 {
-					logrus.Fatalf(
-						formatter.Colorize(
-							fmt.Sprintf("Multiple kms configurations with same name %s found", cveKMSConfigName),
-							formatter.RedColor))
-				} else {
-					logrus.Fatalf(formatter.Colorize(
-						fmt.Sprintf("No kms configurations with name: %s found\n", cveKMSConfigName),
-						formatter.RedColor,
-					))
-				}
-			}
-		}
-
-		earKMSConfigName := v1.GetString("encryption-at-rest-kms-config")
-		if !util.IsEmptyString(earKMSConfigName) {
-			oldKMSUsed = false
-			earKMSConfigs := earutil.KMSConfigNameAndCodeFilter(earKMSConfigName, "", kmsConfigs)
-			if len(earKMSConfigs) == 1 {
-				kmsConfigUUID = earKMSConfigs[0].ConfigUUID
-				logrus.Info("Using kms config: ", fmt.Sprintf(
-					"%s %s",
-					earKMSConfigName,
-					formatter.Colorize(
-						kmsConfigUUID,
-						formatter.GreenColor,
-					),
-				), "for encryption at rest\n")
-			} else if len(earKMSConfigs) > 1 {
-				logrus.Fatalf(
-					formatter.Colorize(
-						fmt.Sprintf("Multiple kms configurations with same name %s found", earKMSConfigName),
-						formatter.RedColor))
-			} else {
-				logrus.Fatalf(formatter.Colorize(
-					fmt.Sprintf("No kms configurations with name: %s found\n", earKMSConfigName),
-					formatter.RedColor,
-				))
-			}
-		}
-
-		if oldKMSUsed {
-			enableVolumeEncryption := v1.GetBool("enable-volume-encryption")
-			if enableVolumeEncryption {
-				opType = util.EnableOpType
-				kmsConfigName := v1.GetString("kms-config")
-				// find kmsConfigUUID from the name
-				if len(strings.TrimSpace(kmsConfigName)) == 0 {
-					logrus.Fatalf(formatter.Colorize(
-						"No kms config name found to create universe, "+
-							"use --cloud-volume-encryption-kms-config or --encryption-at-rest-kms-config\n",
-						formatter.RedColor,
-					))
-				}
-				kmsConfigsName := earutil.KMSConfigNameAndCodeFilter(kmsConfigName, "", kmsConfigs)
-				if len(kmsConfigsName) == 1 {
-					kmsConfigUUID = kmsConfigsName[0].ConfigUUID
-					logrus.Info(
-						"Using kms config: ",
-						fmt.Sprintf(
-							"%s %s",
-							kmsConfigName,
-							formatter.Colorize(kmsConfigUUID, formatter.GreenColor),
-						),
-						"\n",
-					)
-				} else if len(kmsConfigsName) > 1 {
-					logrus.Fatalf(
-						formatter.Colorize(
-							fmt.Sprintf("Multiple kms configurations with same name %s found", kmsConfigName),
-							formatter.RedColor))
-				} else {
-					logrus.Fatalf(formatter.Colorize(
-						fmt.Sprintf("KMS config %s not found\n", kmsConfigName), formatter.RedColor,
-					))
-				}
-			}
-		}
+		opType := buildKMSConfigs(authAPI)
 
 		cpuArch := v1.GetString("cpu-architecture")
-		if len(strings.TrimSpace(cpuArch)) == 0 {
+		if util.IsEmptyString(cpuArch) {
 			cpuArch = util.X86_64
 		}
 
@@ -316,9 +211,10 @@ var createUniverseCmd = &cobra.Command{
 		rTask, response, err := authAPI.CreateAllClusters().
 			UniverseConfigureTaskParams(requestBody).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Universe", "Create")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Universe", "Create")
 		}
+
+		util.CheckTaskAfterCreation(rTask)
 
 		universeUUID := rTask.GetResourceUUID()
 		taskUUID := rTask.GetTaskUUID()
@@ -342,9 +238,7 @@ var createUniverseCmd = &cobra.Command{
 
 			universeData, response, err = authAPI.ListUniverses().Name(universeName).Execute()
 			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(response, err,
-					"Universe", "Create - Fetch Universe")
-				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+				util.FatalHTTPError(response, err, "Universe", "Create - Fetch Universe")
 			}
 
 			universesCtx := formatter.Context{
@@ -362,7 +256,7 @@ var createUniverseCmd = &cobra.Command{
 			Output:  os.Stdout,
 			Format:  ybatask.NewTaskFormat(viper.GetString("output")),
 		}
-		ybatask.Write(taskCtx, []ybaclient.YBPTask{rTask})
+		ybatask.Write(taskCtx, []ybaclient.YBPTask{*rTask})
 	},
 }
 
@@ -816,7 +710,7 @@ func init() {
 
 func initializeViper(config string) {
 	var err error
-	if len(strings.TrimSpace(config)) != 0 {
+	if !util.IsEmptyString(config) {
 		v1.SetConfigFile(config)
 		err = v1.ReadInConfig()
 		if err != nil {

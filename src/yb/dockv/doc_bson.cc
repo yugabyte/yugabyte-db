@@ -22,11 +22,11 @@ namespace yb::dockv {
 // need to be updated, so that it gets converted such that the binary representation matches the
 // BSON sort order.
 
-void BsonKeyToComparableBinary(const Slice& slice, KeyBuffer* dest) {
+void BsonKeyToComparableBinary(Slice slice, KeyBuffer& dest) {
   ZeroEncodeAndAppendStrToKey(slice, dest);
 }
 
-void BsonKeyToComparableBinaryDescending(const Slice& slice, KeyBuffer* dest) {
+void BsonKeyToComparableBinaryDescending(Slice slice, KeyBuffer& dest) {
   ComplementZeroEncodeAndAppendStrToKey(slice, dest);
 }
 

@@ -46,13 +46,14 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v = v + 1 WHERE h 
  Update on pkey_only_table (actual rows=0 loops=1)
    ->  Result pkey_only_table (actual rows=1 loops=1)
          Storage Table Write Requests: 1
+         Storage Flush Requests: 1
  Storage Read Requests: 0
  Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 1
- Storage Flush Requests: 0
+ Storage Flush Requests: 1
  Transaction: Fast Path
-(9 rows)
+(10 rows)
 
 -- Point updates that include the primary key in the targetlist
 -- These queries do not go through the distributed transaction path either
@@ -1052,13 +1053,14 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE a_test SET v1 = v1, v2 = v2 + 1 WHERE 
  Update on a_test (actual rows=0 loops=1)
    ->  Result a_test (actual rows=1 loops=1)
          Storage Table Write Requests: 1
+         Storage Flush Requests: 1
  Storage Read Requests: 0
  Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 1
- Storage Flush Requests: 0
+ Storage Flush Requests: 1
  Transaction: Fast Path
-(9 rows)
+(10 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE a_test SET v1 = v1, v2 = v2 + 1 WHERE v1 = 1;
                                QUERY PLAN                               
@@ -1158,13 +1160,14 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET v1 = v1 + 1 WHERE k = 
  Update on base_table1 (actual rows=0 loops=1)
    ->  Result base_table1 (actual rows=1 loops=1)
          Storage Table Write Requests: 1
+         Storage Flush Requests: 1
  Storage Read Requests: 0
  Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 1
- Storage Flush Requests: 0
+ Storage Flush Requests: 1
  Transaction: Fast Path
-(9 rows)
+(10 rows)
 
 -- The queries below should use the distributed transaction path.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET k = v1 - 1, v1 = v1 + 1 WHERE k = 1;
@@ -1177,13 +1180,12 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET k = v1 - 1, v1 = v1 + 
          Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 2
-         Storage Flush Requests: 1
  Storage Read Requests: 1
  Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 2
- Storage Flush Requests: 2
-(13 rows)
+ Storage Flush Requests: 1
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET k = 1, v2 = v2 + 1 WHERE k = 1;
                                    QUERY PLAN                                   
@@ -1195,13 +1197,12 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET k = 1, v2 = v2 + 1 WHE
          Storage Table Read Ops: 1
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 2
-         Storage Flush Requests: 1
  Storage Read Requests: 1
  Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 2
- Storage Flush Requests: 2
-(13 rows)
+ Storage Flush Requests: 1
+(12 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET k = k, v1 = v1 + 1 WHERE k > 5 AND k < 15;
                       QUERY PLAN                       
@@ -1213,13 +1214,12 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET k = k, v1 = v1 + 1 WHE
          Storage Table Read Ops: 3
          Storage Table Rows Scanned: 10
          Storage Table Write Requests: 10
-         Storage Flush Requests: 5
  Storage Read Requests: 1
  Storage Read Ops: 3
  Storage Rows Scanned: 10
  Storage Write Requests: 10
- Storage Flush Requests: 6
-(13 rows)
+ Storage Flush Requests: 1
+(12 rows)
 
 -- Adding a trigger should automatically make the table use the distributed
 -- transaction path.
@@ -1297,13 +1297,12 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET k = 1, v2 = v2 + 1 WHE
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 2
          Storage Index Write Requests: 2
-         Storage Flush Requests: 2
  Storage Read Requests: 1
  Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 4
- Storage Flush Requests: 3
-(14 rows)
+ Storage Flush Requests: 1
+(13 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET v1 = v1 + 1 WHERE k = 1;
                                    QUERY PLAN                                   
@@ -1334,13 +1333,12 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET v1 = v1 WHERE k = 1;
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
-         Storage Flush Requests: 1
  Storage Read Requests: 1
  Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
- Storage Flush Requests: 2
-(14 rows)
+ Storage Flush Requests: 1
+(13 rows)
 
 -- Validate that the values have indeed been updated.
 SELECT * FROM base_table1 WHERE k = 1;
@@ -1379,13 +1377,14 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET v1 = v1 + 1 WHERE k = 
  Update on base_table1 (actual rows=0 loops=1)
    ->  Result base_table1 (actual rows=1 loops=1)
          Storage Table Write Requests: 1
+         Storage Flush Requests: 1
  Storage Read Requests: 0
  Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 1
- Storage Flush Requests: 0
+ Storage Flush Requests: 1
  Transaction: Fast Path
-(9 rows)
+(10 rows)
 
 -- The queries below should use the distributed transaction path.
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE base_table1 SET k = v1 - 1, v1 = v1 + 1 WHERE k = 1;
@@ -1803,3 +1802,340 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO ioc_table VALUES ('user-id-1-1', 
 (19 rows)
 
 DROP TABLE IF EXISTS ioc_table;
+--
+-- GH-27948: Test that DELETE + (re)INSERT of the same row can be performed in a single flush
+--
+CREATE TABLE json_table (k INT PRIMARY KEY, v1 JSONB, v2 JSONB, v3 INT);
+INSERT INTO json_table (SELECT
+	i AS k,
+	('{"a": ' || i || ', "b": ' || 100 + i || ', "c": ' || 200 + i || ', "d": ' || 300 + i || '}')::jsonb AS v1,
+	('{"a": ' || i || ', "b": ' || 100 + i || ', "c": ' || 200 + i || ', "d": ' || 300 + i || '}')::jsonb AS v2,
+	i AS v3
+	FROM generate_series(1, 5) AS i);
+CREATE INDEX NONCONCURRENTLY json_table_v1 ON json_table (CAST((v1->>'a') AS INT));
+CREATE UNIQUE INDEX NONCONCURRENTLY json_table_v2 ON json_table (CAST((v2->>'a') AS INT));
+-- Updating the subkey having an index should allow the 'skip redundant update' optimization to kick in.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_table SET v1 = jsonb_set(v1, '{a}', to_jsonb(1)) WHERE k = 1;
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Update on json_table (actual rows=0 loops=1)
+   ->  Index Scan using json_table_pkey on json_table (actual rows=1 loops=1)
+         Index Cond: (k = 1)
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
+         Storage Table Rows Scanned: 1
+         Storage Table Write Requests: 1
+ Storage Read Requests: 1
+ Storage Read Ops: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 1
+ Storage Flush Requests: 1
+(12 rows)
+
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_table SET v2 = jsonb_set(v2, '{a}', to_jsonb(1)) WHERE k = 1;
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Update on json_table (actual rows=0 loops=1)
+   ->  Index Scan using json_table_pkey on json_table (actual rows=1 loops=1)
+         Index Cond: (k = 1)
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
+         Storage Table Rows Scanned: 1
+         Storage Table Write Requests: 1
+ Storage Read Requests: 1
+ Storage Read Ops: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 1
+ Storage Flush Requests: 1
+(12 rows)
+
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_table SET v1 = jsonb_set(v1, '{a}', to_jsonb(1)), v2 = jsonb_set(v2, '{a}', to_jsonb(1)) WHERE k = 2;
+ERROR:  duplicate key value violates unique constraint "json_table_v2"
+-- Updating a subkey not having an index should allow the optimization to push down the DELETE + INSERT in a single flush.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_table SET v1 = jsonb_set(v1, '{b}', to_jsonb(k + 110)) WHERE k = 1;
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Update on json_table (actual rows=0 loops=1)
+   ->  Index Scan using json_table_pkey on json_table (actual rows=1 loops=1)
+         Index Cond: (k = 1)
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
+         Storage Table Rows Scanned: 1
+         Storage Table Write Requests: 1
+         Storage Index Write Requests: 2
+ Storage Read Requests: 1
+ Storage Read Ops: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 3
+ Storage Flush Requests: 1
+(13 rows)
+
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_table SET v2 = jsonb_set(v2, '{b}', to_jsonb(k + 110)) WHERE k = 1;
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Update on json_table (actual rows=0 loops=1)
+   ->  Index Scan using json_table_pkey on json_table (actual rows=1 loops=1)
+         Index Cond: (k = 1)
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
+         Storage Table Rows Scanned: 1
+         Storage Table Write Requests: 1
+         Storage Index Write Requests: 2
+ Storage Read Requests: 1
+ Storage Read Ops: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 3
+ Storage Flush Requests: 1
+(13 rows)
+
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_table SET v1 = jsonb_set(v1, '{b}', to_jsonb(k + 120)), v2 = jsonb_set(v2, '{b}', to_jsonb(k + 120)) WHERE k = 2;
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Update on json_table (actual rows=0 loops=1)
+   ->  Index Scan using json_table_pkey on json_table (actual rows=1 loops=1)
+         Index Cond: (k = 2)
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
+         Storage Table Rows Scanned: 1
+         Storage Table Write Requests: 1
+         Storage Index Write Requests: 4
+ Storage Read Requests: 1
+ Storage Read Ops: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 5
+ Storage Flush Requests: 1
+(13 rows)
+
+SELECT * FROM json_table WHERE k IN (1, 2) ORDER BY k;
+ k |                   v1                   |                   v2                   | v3 
+---+----------------------------------------+----------------------------------------+----
+ 1 | {"a": 1, "b": 111, "c": 201, "d": 301} | {"a": 1, "b": 111, "c": 201, "d": 301} |  1
+ 2 | {"a": 2, "b": 122, "c": 202, "d": 302} | {"a": 2, "b": 122, "c": 202, "d": 302} |  2
+(2 rows)
+
+CREATE UNIQUE INDEX NONCONCURRENTLY ON json_table (CAST((v1->>'c') AS INT), CAST((v1->>'d') AS INT));
+CREATE INDEX NONCONCURRENTLY ON json_table (CAST((v1->>'c') AS INT), CAST((v2->>'c') AS INT));
+-- Updating any subkey of a multi-subkey index should allow the optimization to push down the DELETE + INSERT in a single flush.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_table SET v1 = jsonb_set(v1, '{d}', to_jsonb(k + 310)) WHERE k = 3;
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Update on json_table (actual rows=0 loops=1)
+   ->  Index Scan using json_table_pkey on json_table (actual rows=1 loops=1)
+         Index Cond: (k = 3)
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
+         Storage Table Rows Scanned: 1
+         Storage Table Write Requests: 1
+         Storage Index Write Requests: 6
+ Storage Read Requests: 1
+ Storage Read Ops: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 7
+ Storage Flush Requests: 1
+(13 rows)
+
+-- Updating any subkey should update the corresponding indexes.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_table SET v1 = jsonb_set(v1, '{c}', to_jsonb(k + 210)) WHERE k = 3;
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Update on json_table (actual rows=0 loops=1)
+   ->  Index Scan using json_table_pkey on json_table (actual rows=1 loops=1)
+         Index Cond: (k = 3)
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
+         Storage Table Rows Scanned: 1
+         Storage Table Write Requests: 1
+         Storage Index Write Requests: 6
+ Storage Read Requests: 1
+ Storage Read Ops: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 7
+ Storage Flush Requests: 1
+(13 rows)
+
+SELECT * FROM json_table WHERE k IN (3, 4) ORDER BY k;
+ k |                   v1                   |                   v2                   | v3 
+---+----------------------------------------+----------------------------------------+----
+ 3 | {"a": 3, "b": 103, "c": 213, "d": 313} | {"a": 3, "b": 103, "c": 203, "d": 303} |  3
+ 4 | {"a": 4, "b": 104, "c": 204, "d": 304} | {"a": 4, "b": 104, "c": 204, "d": 304} |  4
+(2 rows)
+
+-- Multi-row updates.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_table SET v1 = jsonb_set(v1, '{c}', to_jsonb(v1->>'c')) WHERE k < 10;
+                      QUERY PLAN                      
+------------------------------------------------------
+ Update on json_table (actual rows=0 loops=1)
+   ->  Seq Scan on json_table (actual rows=5 loops=1)
+         Storage Filter: (k < 10)
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
+         Storage Table Rows Scanned: 5
+         Storage Table Write Requests: 5
+         Storage Index Write Requests: 30
+ Storage Read Requests: 1
+ Storage Read Ops: 3
+ Storage Rows Scanned: 5
+ Storage Write Requests: 35
+ Storage Flush Requests: 1
+(13 rows)
+
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_table SET v2 = jsonb_set(v2, '{c}', to_jsonb((v2->>'c')::INT + 1)) WHERE k < 10;
+                      QUERY PLAN                      
+------------------------------------------------------
+ Update on json_table (actual rows=0 loops=1)
+   ->  Seq Scan on json_table (actual rows=5 loops=1)
+         Storage Filter: (k < 10)
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
+         Storage Table Rows Scanned: 5
+         Storage Table Write Requests: 5
+         Storage Index Write Requests: 20
+ Storage Read Requests: 1
+ Storage Read Ops: 3
+ Storage Rows Scanned: 5
+ Storage Write Requests: 25
+ Storage Flush Requests: 1
+(13 rows)
+
+SELECT * FROM json_table ORDER BY k;
+ k |                    v1                    |                   v2                   | v3 
+---+------------------------------------------+----------------------------------------+----
+ 1 | {"a": 1, "b": 111, "c": "201", "d": 301} | {"a": 1, "b": 111, "c": 202, "d": 301} |  1
+ 2 | {"a": 2, "b": 122, "c": "202", "d": 302} | {"a": 2, "b": 122, "c": 203, "d": 302} |  2
+ 3 | {"a": 3, "b": 103, "c": "213", "d": 313} | {"a": 3, "b": 103, "c": 204, "d": 303} |  3
+ 4 | {"a": 4, "b": 104, "c": "204", "d": 304} | {"a": 4, "b": 104, "c": 205, "d": 304} |  4
+ 5 | {"a": 5, "b": 105, "c": "205", "d": 305} | {"a": 5, "b": 105, "c": 206, "d": 305} |  5
+(5 rows)
+
+CREATE TABLE staircase (k INT, PRIMARY KEY (k ASC));
+INSERT INTO staircase (SELECT i FROM generate_series(1, 100) AS i);
+-- When not optimized, the following query converges to this pattern:
+-- Flush k: INSERT (n-2), DELETE (n), INSERT (n-1), DELETE (n+1),
+-- Flush k + 1: INSERT (n), DELETE (n+2), INSERT (n+1), DELETE (n+3)
+-- and so on.
+-- Unique constraint violations are not raised because every insert maps to a row that doesn't exist.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE staircase SET k = k - 1;
+                      QUERY PLAN                       
+-------------------------------------------------------
+ Update on staircase (actual rows=0 loops=1)
+   ->  Seq Scan on staircase (actual rows=100 loops=1)
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
+         Storage Table Rows Scanned: 100
+         Storage Table Write Requests: 200
+ Storage Read Requests: 1
+ Storage Read Ops: 1
+ Storage Rows Scanned: 100
+ Storage Write Requests: 200
+ Storage Flush Requests: 1
+(11 rows)
+
+-- UPDATEs on GIN indexes
+CREATE TABLE gin_table (k INT PRIMARY KEY, v INT[]);
+CREATE INDEX gin_table_idx ON gin_table USING gin (v);
+INSERT INTO gin_table (SELECT i, ARRAY[1, 3, 100+i] from generate_series(1, 10) AS i);
+-- Updating a single element in the array column will trigger updates to all other elements
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE gin_table SET v[3] = k + 100 + 1 WHERE k < 30;
+                      QUERY PLAN                      
+------------------------------------------------------
+ Update on gin_table (actual rows=0 loops=1)
+   ->  Seq Scan on gin_table (actual rows=10 loops=1)
+         Storage Filter: (k < 30)
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
+         Storage Table Rows Scanned: 10
+         Storage Table Write Requests: 10
+         Storage Index Write Requests: 60
+ Storage Read Requests: 1
+ Storage Read Ops: 3
+ Storage Rows Scanned: 10
+ Storage Write Requests: 70
+ Storage Flush Requests: 1
+(13 rows)
+
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE gin_table SET v[3] = v[3] + 1 WHERE v[1] = 1;
+                      QUERY PLAN                      
+------------------------------------------------------
+ Update on gin_table (actual rows=0 loops=1)
+   ->  Seq Scan on gin_table (actual rows=10 loops=1)
+         Filter: (v[1] = 1)
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
+         Storage Table Rows Scanned: 10
+         Storage Table Write Requests: 10
+         Storage Index Write Requests: 60
+ Storage Read Requests: 1
+ Storage Read Ops: 3
+ Storage Rows Scanned: 10
+ Storage Write Requests: 70
+ Storage Flush Requests: 1
+(13 rows)
+
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE gin_table SET v[1] = v[1] + 1, v[2] = v[1] + 3 WHERE v[1] = 1;
+                      QUERY PLAN                      
+------------------------------------------------------
+ Update on gin_table (actual rows=0 loops=1)
+   ->  Seq Scan on gin_table (actual rows=10 loops=1)
+         Filter: (v[1] = 1)
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
+         Storage Table Rows Scanned: 10
+         Storage Table Write Requests: 10
+         Storage Index Write Requests: 60
+ Storage Read Requests: 1
+ Storage Read Ops: 3
+ Storage Rows Scanned: 10
+ Storage Write Requests: 70
+ Storage Flush Requests: 1
+(13 rows)
+
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE gin_table SET k = k + 10;
+                      QUERY PLAN                      
+------------------------------------------------------
+ Update on gin_table (actual rows=0 loops=1)
+   ->  Seq Scan on gin_table (actual rows=10 loops=1)
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
+         Storage Table Rows Scanned: 10
+         Storage Table Write Requests: 20
+         Storage Index Write Requests: 60
+ Storage Read Requests: 1
+ Storage Read Ops: 3
+ Storage Rows Scanned: 10
+ Storage Write Requests: 80
+ Storage Flush Requests: 1
+(12 rows)
+
+-- Updates to unmodified elements should still be carried out; but in a single flush.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE gin_table SET v[3] = k + 90 + 2 WHERE k < 30;
+                      QUERY PLAN                      
+------------------------------------------------------
+ Update on gin_table (actual rows=0 loops=1)
+   ->  Seq Scan on gin_table (actual rows=10 loops=1)
+         Storage Filter: (k < 30)
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 3
+         Storage Table Rows Scanned: 10
+         Storage Table Write Requests: 10
+ Storage Read Requests: 1
+ Storage Read Ops: 3
+ Storage Rows Scanned: 10
+ Storage Write Requests: 10
+ Storage Flush Requests: 1
+(12 rows)
+
+SELECT * FROM gin_table ORDER BY k;
+ k  |     v     
+----+-----------
+ 11 | {2,4,103}
+ 12 | {2,4,104}
+ 13 | {2,4,105}
+ 14 | {2,4,106}
+ 15 | {2,4,107}
+ 16 | {2,4,108}
+ 17 | {2,4,109}
+ 18 | {2,4,110}
+ 19 | {2,4,111}
+ 20 | {2,4,112}
+(10 rows)
+

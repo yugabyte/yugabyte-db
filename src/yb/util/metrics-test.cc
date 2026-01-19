@@ -847,4 +847,50 @@ TEST_F(MetricsTest, SimulateMetricDeletionBeforeFlush) {
   }
 }
 
+TEST_F(MetricsTest, VerifyLabelValueEscaping) {
+  // Test escaping of quotes in table names
+  MetricEntity::AttributeMap entity_attr1;
+  entity_attr1["tablet_id"] = "tablet_id_52";
+  entity_attr1["table_name"] = "\"yo\".\"name_split\"";
+  entity_attr1["table_id"] = "table_id_53";
+  auto tablet_entity1 =
+      METRIC_ENTITY_tablet.Instantiate(&registry_, "tablet_entity_id_54", entity_attr1);
+  scoped_refptr<Counter> counter1 = METRIC_t_counter.Instantiate(tablet_entity1);
+
+  // Test escaping of backslashes
+  MetricEntity::AttributeMap entity_attr2;
+  entity_attr2["tablet_id"] = "tablet_id_55";
+  entity_attr2["table_name"] = "path\\to\\table";
+  entity_attr2["table_id"] = "table_id_56";
+  auto tablet_entity2 =
+      METRIC_ENTITY_tablet.Instantiate(&registry_, "tablet_entity_id_57", entity_attr2);
+  scoped_refptr<Counter> counter2 = METRIC_t_counter.Instantiate(tablet_entity2);
+
+  // Test escaping of newlines
+  MetricEntity::AttributeMap entity_attr3;
+  entity_attr3["tablet_id"] = "tablet_id_58";
+  entity_attr3["table_name"] = "line1\nline2";
+  entity_attr3["table_id"] = "table_id_59";
+  auto tablet_entity3 =
+      METRIC_ENTITY_tablet.Instantiate(&registry_, "tablet_entity_id_60", entity_attr3);
+  scoped_refptr<Counter> counter3 = METRIC_t_counter.Instantiate(tablet_entity3);
+
+  MetricPrometheusOptions opts;
+  std::stringstream output;
+  PrometheusWriter writer(&output, opts);
+  ASSERT_OK(registry_.WriteForPrometheus(&writer, opts));
+
+  string output_str = output.str();
+
+  // Quotes should be escaped
+  ASSERT_STR_CONTAINS(output_str, "table_name=\"\\\"yo\\\".\\\"name_split\\\"\"");
+  ASSERT_STR_NOT_CONTAINS(output_str, "table_name=\"\"yo\".\"name_split\"\"");
+
+  // Backslashes should be escaped
+  ASSERT_STR_CONTAINS(output_str, "table_name=\"path\\\\to\\\\table\"");
+
+  // Newlines should be escaped
+  ASSERT_STR_CONTAINS(output_str, "table_name=\"line1\\nline2\"");
+}
+
 } // namespace yb

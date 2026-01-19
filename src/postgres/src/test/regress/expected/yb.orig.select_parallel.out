@@ -14,6 +14,9 @@ set parallel_setup_cost=0;
 set parallel_tuple_cost=0;
 set min_parallel_table_scan_size=0;
 set max_parallel_workers_per_gather=4;
+-- Note: The test below was copied from upstream `select_parallel.sql`.
+-- Contrary to the original comment, it *does* show a Parallel Append.
+-- See: https://github.com/postgres/postgres/blob/e6dfd068ed453b8690551dac700d57fbf32ba187/src/test/regress/expected/select_parallel.out#L156
 -- Parallel Append is not to be used when the subpath depends on the outer param
 create table part_pa_test(a int, b int) partition by range(a);
 create table part_pa_test_p1 partition of part_pa_test for values from (minvalue) to (0);
@@ -21,22 +24,22 @@ create table part_pa_test_p2 partition of part_pa_test for values from (0) to (m
 explain (costs off)
 	select (select max((select pa1.b from part_pa_test pa1 where pa1.a = pa2.a)))
 	from part_pa_test pa2;
-                         QUERY PLAN                          
--------------------------------------------------------------
- Finalize Aggregate
-   ->  Append
-         ->  Partial Aggregate
-               ->  Seq Scan on part_pa_test_p1 pa2
-               SubPlan 1
-                 ->  Append
-                       ->  Seq Scan on part_pa_test_p1 pa1_1
-                             Storage Filter: (a = pa2.a)
-                       ->  Seq Scan on part_pa_test_p2 pa1_2
-                             Storage Filter: (a = pa2.a)
-         ->  Partial Aggregate
-               ->  Seq Scan on part_pa_test_p2 pa2_1
+                     QUERY PLAN                      
+-----------------------------------------------------
+ Aggregate
+   ->  Gather
+         Workers Planned: 2
+         ->  Parallel Append
+               ->  Seq Scan on part_pa_test_p1 pa2_1
+               ->  Seq Scan on part_pa_test_p2 pa2_2
    SubPlan 2
      ->  Result *RESULT*
+   SubPlan 1
+     ->  Append
+           ->  Seq Scan on part_pa_test_p1 pa1_1
+                 Storage Filter: (a = pa2.a)
+           ->  Seq Scan on part_pa_test_p2 pa1_2
+                 Storage Filter: (a = pa2.a)
 (14 rows)
 
 drop table part_pa_test;
@@ -715,14 +718,16 @@ EXPLAIN (COSTS OFF)
 SELECT unique1 FROM tenk1 WHERE fivethous = tenthous + 1
 UNION ALL
 SELECT unique1 FROM tenk1 WHERE fivethous = tenthous + 1;
-                      QUERY PLAN                      
-------------------------------------------------------
- Append
-   ->  Seq Scan on tenk1
-         Storage Filter: (fivethous = (tenthous + 1))
-   ->  Seq Scan on tenk1 tenk1_1
-         Storage Filter: (fivethous = (tenthous + 1))
-(5 rows)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Gather
+   Workers Planned: 2
+   ->  Parallel Append
+         ->  Seq Scan on tenk1 tenk1_1
+               Storage Filter: (fivethous = (tenthous + 1))
+         ->  Seq Scan on tenk1
+               Storage Filter: (fivethous = (tenthous + 1))
+(7 rows)
 
 ROLLBACK TO SAVEPOINT settings;
 -- can't use multiple subqueries under a single Gather node due to initPlans
@@ -831,11 +836,14 @@ WHERE
    Rows Removed by Join Filter: 1721
    ->  Nested Loop Semi Join (actual rows=89 loops=1)
          Join Filter: ((table2.col_varchar_nokey)::text <> ('j'::text))
-         Rows Removed by Join Filter: 23
+         Rows Removed by Join Filter: 24
          ->  Seq Scan on d table2 (actual rows=100 loops=1)
-         ->  Append (actual rows=1 loops=100)
-               ->  Seq Scan on dummy (actual rows=1 loops=100)
-               ->  Seq Scan on dummy dummy_1 (actual rows=1 loops=12)
+         ->  Gather (actual rows=1 loops=100)
+               Workers Planned: 2
+               Workers Launched: 2
+               ->  Parallel Append (actual rows=1 loops=300)
+                     ->  Seq Scan on dummy (actual rows=1 loops=100)
+                     ->  Seq Scan on dummy dummy_1 (actual rows=1 loops=100)
    ->  Seq Scan on c table3 (actual rows=20 loops=89)
-(11 rows)
+(14 rows)
 

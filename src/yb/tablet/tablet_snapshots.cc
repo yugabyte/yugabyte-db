@@ -54,24 +54,23 @@ using std::string;
 
 using namespace std::literals;
 
-DEFINE_test_flag(int32, delay_tablet_split_metadata_restore_secs, 0,
-                 "How much time in secs to delay restoring tablet split metadata after restoring "
-                 "checkpoint.");
-
-DEFINE_test_flag(int32, delay_tablet_export_metadata_ms, 0,
-                 "How much time in milliseconds to delay before exporting tablet metadata during "
-                 "snapshot creation.");
-
-DEFINE_test_flag(double, delay_create_snapshot_probability, 0.0,
-                 "The probability to delay creating snapshot by 1 second");
-
 DEFINE_RUNTIME_int32(max_wait_for_aborting_transactions_during_restore_ms, 200,
-                     "How much time in milliseconds to wait for tablet transactions to abort while "
-                     "applying the raft restore operation to a tablet.");
+    "How much time in milliseconds to wait for tablet transactions to abort while "
+    "applying the raft restore operation to a tablet.");
 TAG_FLAG(max_wait_for_aborting_transactions_during_restore_ms, advanced);
 
-namespace yb {
-namespace tablet {
+DEFINE_test_flag(int32, delay_tablet_split_metadata_restore_secs, 0,
+    "How much time in secs to delay restoring tablet split metadata after restoring "
+    "checkpoint.");
+
+DEFINE_test_flag(int32, delay_tablet_export_metadata_ms, 0,
+    "How much time in milliseconds to delay before exporting tablet metadata during "
+    "snapshot creation.");
+
+DEFINE_test_flag(double, delay_create_snapshot_probability, 0.0,
+    "The probability to delay creating snapshot by 1 second");
+
+namespace yb::tablet {
 
 namespace {
 
@@ -164,11 +163,15 @@ Status TabletSnapshots::Open() {
 }
 
 std::string TabletSnapshots::SnapshotsDirName(const std::string& rocksdb_dir) {
-  return docdb::GetStorageDir(rocksdb_dir, kSnapshotsDirName);
+  return docdb::GetStorageDir(rocksdb_dir, docdb::kSnapshotsDirName);
 }
 
 bool TabletSnapshots::IsTempSnapshotDir(const std::string& dir) {
-  return boost::ends_with(dir, kTempSnapshotDirSuffix);
+  return dir.ends_with(kTempSnapshotDirSuffix);
+}
+
+bool TabletSnapshots::IsLastSnapshotTimeFilePath(const std::string& dir) {
+  return dir.starts_with(kLastSnapshotPrefix);
 }
 
 Status TabletSnapshots::Prepare(SnapshotOperation* operation) {
@@ -680,7 +683,7 @@ Status TabletSnapshots::Delete(const SnapshotOperation& operation) {
 }
 
 Status TabletSnapshots::CreateCheckpoint(
-    const std::string& dir, const CreateIntentsCheckpointIn create_intents_checkpoint_in) {
+    const std::string& dir, const CreateCheckpointIn create_checkpoint_in) {
   ScopedRWOperation scoped_read_operation(&pending_op_counter_blocking_rocksdb_shutdown_start());
   RETURN_NOT_OK(scoped_read_operation);
 
@@ -699,7 +702,7 @@ Status TabletSnapshots::CreateCheckpoint(
                           Format("Unable to create checkpoints directory $0", parent_dir));
 
     // Order does not matter because we flush both DBs and does not have parallel writes.
-    status = DoCreateCheckpoint(dir, create_intents_checkpoint_in);
+    status = DoCreateCheckpoint(dir, create_checkpoint_in);
   }
   if (!status.ok()) {
     LOG_WITH_PREFIX(WARNING) << "Create checkpoint status: " << status;
@@ -713,24 +716,31 @@ Status TabletSnapshots::CreateCheckpoint(
 }
 
 Status TabletSnapshots::DoCreateCheckpoint(
-    const std::string& dir, CreateIntentsCheckpointIn create_intents_checkpoint_in) {
-  auto temp_intents_dir = docdb::GetStorageDir(dir, docdb::kIntentsDirName);
-  auto final_intents_dir = docdb::GetStorageCheckpointDir(dir, docdb::kIntentsDirName);
-
+    const std::string& dir, CreateCheckpointIn create_checkpoint_in) {
+  const auto temp_intents_dir = docdb::GetStorageDir(dir, docdb::kIntentsDirName);
   if (has_intents_db()) {
     RETURN_NOT_OK(rocksdb::checkpoint::CreateCheckpoint(&intents_db(), temp_intents_dir));
   }
   RETURN_NOT_OK(rocksdb::checkpoint::CreateCheckpoint(&regular_db(), dir));
-  auto vector_indexes = VectorIndexesList();
-  if (vector_indexes) {
+
+  // Vector indexes checkpoint must be created after rocksdb checkpoint
+  // to be in sync with the flushed data.
+  if (auto vector_indexes = VectorIndexesList(); vector_indexes != nullptr) {
     for (const auto& vector_index : *vector_indexes) {
-      RETURN_NOT_OK(vector_index->CreateCheckpoint(dir));
+      const auto storage_name = docdb::GetVectorIndexStorageName(vector_index->options());
+      const auto checkpoint_dir = create_checkpoint_in == CreateCheckpointIn::kSubDir
+          ? docdb::GetStorageCheckpointDir(dir, storage_name)
+          : docdb::GetStorageDir(dir, storage_name);
+      RETURN_NOT_OK(vector_index->CreateCheckpoint(checkpoint_dir));
     }
   }
-  if (has_intents_db() &&
-      create_intents_checkpoint_in == CreateIntentsCheckpointIn::kUseIntentsDbSuffix) {
+
+  // TODO: not clear why temp dir is used rather than direct creation by the corresponding path.
+  if (has_intents_db() && create_checkpoint_in == CreateCheckpointIn::kSubDir) {
+    const auto final_intents_dir = docdb::GetStorageCheckpointDir(dir, docdb::kIntentsDirName);
     RETURN_NOT_OK(Env::Default()->RenameFile(temp_intents_dir, final_intents_dir));
   }
+
   return Status::OK();
 }
 
@@ -881,5 +891,4 @@ std::ostream& operator<<(std::ostream& out, const SequencesDataInfo& value) {
   return out;
 }
 
-} // namespace tablet
-} // namespace yb
+} // namespace yb::tablet

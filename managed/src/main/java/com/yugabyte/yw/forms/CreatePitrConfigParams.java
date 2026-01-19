@@ -1,9 +1,11 @@
 package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.models.XClusterConfig;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import jakarta.persistence.Transient;
 import java.util.UUID;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -37,4 +39,10 @@ public class CreatePitrConfigParams extends UniverseTaskParams {
   @JsonIgnore public XClusterConfig xClusterConfig;
 
   @JsonIgnore public boolean createdForDr = false;
+
+  @ApiModelProperty(hidden = true)
+  @Getter
+  @Setter
+  @Transient
+  private KubernetesResourceDetails kubernetesResourceDetails;
 }

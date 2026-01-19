@@ -4,6 +4,7 @@ package com.yugabyte.yw.common;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
@@ -23,6 +24,7 @@ import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -67,6 +69,8 @@ public class AWSUtilTest extends FakeDBApplication {
         .thenReturn(2);
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.enforceCertVerificationBackupRestore)))
         .thenReturn(true);
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.allowYbaRestoreWithOldBackup)))
+        .thenReturn(false);
     doReturn(mockS3Client).when(mockAWSUtil).createS3Client(any());
   }
 
@@ -433,7 +437,7 @@ public class AWSUtilTest extends FakeDBApplication {
   }
 
   @Test
-  public void testDownloadYbaBackup() throws Exception {
+  public void testDownloadYbaBackupOldFailure() throws Exception {
     // Setup test data
     CustomerConfigStorageS3Data s3Data = new CustomerConfigStorageS3Data();
     s3Data.awsAccessKeyId = "test-key";
@@ -456,10 +460,112 @@ public class AWSUtilTest extends FakeDBApplication {
     when(backupObject.lastModified()).thenReturn(Instant.parse("2025-03-26T12:00:00Z"));
     mockObjects.add(backupObject);
 
+    when(mockListResult.contents()).thenReturn(mockObjects);
+    when(mockListResult.keyCount()).thenReturn(mockObjects.size());
+    when(mockListResult.isTruncated()).thenReturn(false);
+    when(mockListResult.nextContinuationToken()).thenReturn(null);
+
+    when(mockS3Client.listObjectsV2(any(ListObjectsV2Request.class))).thenReturn(mockListResult);
+
+    // Test backup download fails because the backup is more than 1 day old
+    Exception exception =
+        assertThrows(
+            "YB Anywhere restore is not allowed when backup file is more than 1 day old, enable"
+                + " runtime flag yb.yba_backup.allow_restore_with_old_backup to continue",
+            PlatformServiceException.class,
+            () -> {
+              mockAWSUtil.downloadYbaBackup(s3Data, "test-backup-dir", tempBackupPath);
+            });
+  }
+
+  @Test
+  public void testDownloadYbaBackupNoBackupsFound() throws Exception {
+    CustomerConfigStorageS3Data s3Data = new CustomerConfigStorageS3Data();
+    s3Data.awsAccessKeyId = "test-key";
+    s3Data.awsSecretAccessKey = "test-secret";
+    s3Data.backupLocation = "s3://test-bucket/backup/cloudPath";
+    s3Data.awsHostBase = "s3.amazonaws.com";
+
+    Path tempBackupPath = Files.createTempDirectory("test-backup");
+    tempBackupPath.toFile().deleteOnExit();
+
+    ListObjectsV2Response mockListResult = mock(ListObjectsV2Response.class);
+    when(mockListResult.contents()).thenReturn(Collections.emptyList());
+    when(mockListResult.keyCount()).thenReturn(0);
+    when(mockListResult.isTruncated()).thenReturn(false);
+    when(mockListResult.nextContinuationToken()).thenReturn(null);
+
+    when(mockS3Client.listObjectsV2(any(ListObjectsV2Request.class))).thenReturn(mockListResult);
+
+    PlatformServiceException exception =
+        assertThrows(
+            "Could not find YB Anywhere backup in S3 bucket",
+            PlatformServiceException.class,
+            () -> mockAWSUtil.downloadYbaBackup(s3Data, "test-backup-dir", tempBackupPath));
+  }
+
+  @Test
+  public void testDownloadYbaBackupNoMatchingBackup() throws Exception {
+    CustomerConfigStorageS3Data s3Data = new CustomerConfigStorageS3Data();
+    s3Data.awsAccessKeyId = "test-key";
+    s3Data.awsSecretAccessKey = "test-secret";
+    s3Data.backupLocation = "s3://test-bucket/backup/cloudPath";
+    s3Data.awsHostBase = "s3.amazonaws.com";
+
+    Path tempBackupPath = Files.createTempDirectory("test-backup");
+    tempBackupPath.toFile().deleteOnExit();
+
+    ListObjectsV2Response mockListResult = mock(ListObjectsV2Response.class);
+    List<S3Object> mockObjects = new ArrayList<>();
+
+    S3Object nonBackupObject = mock(S3Object.class);
+    when(nonBackupObject.key()).thenReturn("backup/cloudPath/test-backup-dir/notes.txt");
+    when(nonBackupObject.lastModified()).thenReturn(Instant.now());
+    mockObjects.add(nonBackupObject);
+
+    when(mockListResult.contents()).thenReturn(mockObjects);
+    when(mockListResult.keyCount()).thenReturn(mockObjects.size());
+    when(mockListResult.isTruncated()).thenReturn(false);
+    when(mockListResult.nextContinuationToken()).thenReturn(null);
+
+    when(mockS3Client.listObjectsV2(any(ListObjectsV2Request.class))).thenReturn(mockListResult);
+
+    PlatformServiceException exception =
+        assertThrows(
+            "Could not find matching YB Anywhere backup in S3 bucket",
+            PlatformServiceException.class,
+            () -> mockAWSUtil.downloadYbaBackup(s3Data, "test-backup-dir", tempBackupPath));
+  }
+
+  @Test
+  public void testDownloadYbaBackup() throws Exception {
+    // Setup test data
+    CustomerConfigStorageS3Data s3Data = new CustomerConfigStorageS3Data();
+    s3Data.awsAccessKeyId = "test-key";
+    s3Data.awsSecretAccessKey = "test-secret";
+    s3Data.backupLocation = "s3://test-bucket/backup/cloudPath";
+    s3Data.awsHostBase = "s3.amazonaws.com";
+
+    // Create a temporary directory for the backup
+    Path tempBackupPath = Files.createTempDirectory("test-backup");
+    tempBackupPath.toFile().deleteOnExit();
+
+    // Mock S3 client behavior
+    ListObjectsV2Response mockListResult = mock(ListObjectsV2Response.class);
+    List<S3Object> mockObjects = new ArrayList<>();
+
+    // Create a mock S3Object for the backup file
+    S3Object backupObject = mock(S3Object.class);
+    when(backupObject.key())
+        .thenReturn("backup/cloudPath/test-backup-dir/backup_2025-03-27_11-00-00.tgz");
+    when(backupObject.lastModified()).thenReturn(Instant.now().minus(2, ChronoUnit.HOURS));
+    mockObjects.add(backupObject);
+
     S3Object backupObject2 = mock(S3Object.class);
     when(backupObject2.key())
         .thenReturn("backup/cloudPath/test-backup-dir/backup_2025-03-27_12-00-00.tgz");
-    when(backupObject2.lastModified()).thenReturn(Instant.parse("2025-03-27T12:00:00Z"));
+    // Make the backup file less than 1 day old
+    when(backupObject2.lastModified()).thenReturn(Instant.now().minus(1, ChronoUnit.HOURS));
     mockObjects.add(backupObject2);
 
     S3Object backupObject3 = mock(S3Object.class);

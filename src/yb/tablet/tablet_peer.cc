@@ -103,7 +103,7 @@ using std::vector;
 DEFINE_test_flag(int32, delay_init_tablet_peer_ms, 0,
                  "Wait before executing init tablet peer for specified amount of milliseconds.");
 
-DEFINE_UNKNOWN_int32(cdc_min_replicated_index_considered_stale_secs, 900,
+DEFINE_UNKNOWN_int32(cdc_min_replicated_index_considered_stale_secs, 1800,
     "If cdc_min_replicated_index hasn't been replicated in this amount of time, we reset its"
     "value to max int64 to avoid retaining any logs");
 
@@ -325,8 +325,8 @@ Status TabletPeer::InitTabletPeer(
 
     auto txn_participant = tablet_->transaction_participant();
     if (txn_participant) {
-      txn_participant->SetMinReplayTxnStartTimeUpdateCallback(
-          std::bind_front(&TabletPeer::MinReplayTxnStartTimeUpdated, this));
+      txn_participant->SetMinReplayTxnFirstWriteTimeUpdateCallback(
+          std::bind_front(&TabletPeer::MinReplayTxnFirstWriteTimeUpdated, this));
     }
 
     // "Publish" the tablet object right before releasing the lock.
@@ -614,14 +614,15 @@ void TabletPeer::WaitUntilShutdown() {
 
 Status TabletPeer::Shutdown(
     ShouldAbortActiveTransactions should_abort_active_txns,
-    DisableFlushOnShutdown disable_flush_on_shutdown) {
+    DisableFlushOnShutdown disable_flush_on_shutdown,
+    std::optional<TransactionId>&& exclude_aborting_txn_id) {
   auto is_shutdown_initiated = StartShutdown();
 
   if (should_abort_active_txns) {
     // Once raft group state enters QUIESCING state,
     // new queries cannot be processed from then onwards.
     // Aborting any remaining active transactions in the tablet.
-    AbortActiveTransactions();
+    AbortActiveTransactions(std::move(exclude_aborting_txn_id));
   }
 
   if (is_shutdown_initiated) {
@@ -632,14 +633,15 @@ Status TabletPeer::Shutdown(
   return Status::OK();
 }
 
-void TabletPeer::AbortActiveTransactions() const {
+void TabletPeer::AbortActiveTransactions(
+    std::optional<TransactionId>&& exclude_aborting_txn_id) const {
   if (!tablet_) {
     return;
   }
   auto deadline =
       CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(FLAGS_ysql_transaction_abort_timeout_ms);
   WARN_NOT_OK(
-      tablet_->AbortActiveTransactions(deadline),
+      tablet_->AbortActiveTransactions(deadline, std::move(exclude_aborting_txn_id)),
       "Cannot abort transactions for tablet " + tablet_->tablet_id());
 }
 
@@ -1156,6 +1158,18 @@ yb::OpId TabletPeer::GetLatestLogEntryOpId() const {
   return yb::OpId();
 }
 
+bool TabletPeer::is_cdc_min_replicated_index_stale(double* seconds_since_last_refresh_ptr) const {
+  std::lock_guard l(cdc_min_replicated_index_lock_);
+  auto seconds_since_last_refresh =
+      MonoTime::Now().GetDeltaSince(cdc_min_replicated_index_refresh_time_).ToSeconds();
+  if (seconds_since_last_refresh_ptr) {
+    *seconds_since_last_refresh_ptr = seconds_since_last_refresh;
+  }
+  return (
+      seconds_since_last_refresh >
+      GetAtomicFlag(&FLAGS_cdc_min_replicated_index_considered_stale_secs));
+}
+
 Status TabletPeer::set_cdc_min_replicated_index_unlocked(int64_t cdc_min_replicated_index) {
   VLOG(1) << "Setting cdc min replicated index to " << cdc_min_replicated_index;
   RETURN_NOT_OK(meta_->set_cdc_min_replicated_index(cdc_min_replicated_index));
@@ -1173,14 +1187,11 @@ Status TabletPeer::set_cdc_min_replicated_index(int64_t cdc_min_replicated_index
 }
 
 Status TabletPeer::reset_cdc_min_replicated_index_if_stale() {
-  std::lock_guard l(cdc_min_replicated_index_lock_);
-  auto seconds_since_last_refresh =
-      MonoTime::Now().GetDeltaSince(cdc_min_replicated_index_refresh_time_).ToSeconds();
-  if (seconds_since_last_refresh >
-      GetAtomicFlag(&FLAGS_cdc_min_replicated_index_considered_stale_secs)) {
+  double seconds_since_last_refresh;
+  if (is_cdc_min_replicated_index_stale(&seconds_since_last_refresh)) {
     LOG_WITH_PREFIX(INFO) << "Resetting cdc min replicated index. Seconds since last update: "
                           << seconds_since_last_refresh;
-    RETURN_NOT_OK(set_cdc_min_replicated_index_unlocked(std::numeric_limits<int64_t>::max()));
+    RETURN_NOT_OK(set_cdc_min_replicated_index(std::numeric_limits<int64_t>::max()));
   }
   return Status::OK();
 }
@@ -1225,6 +1236,21 @@ bool TabletPeer::is_under_cdc_sdk_replication() {
   return meta_->is_under_cdc_sdk_replication();
 }
 
+Status TabletPeer::reset_all_cdc_retention_barriers_if_stale() {
+  double seconds_since_last_refresh;
+  if (is_cdc_min_replicated_index_stale(&seconds_since_last_refresh)) {
+    VLOG_WITH_PREFIX(1) << "Trying to reset cdc retention barriers. Seconds since last update: "
+                        << seconds_since_last_refresh;
+    RETURN_NOT_OK(SetAllCDCRetentionBarriers(
+        std::numeric_limits<int64_t>::max() /* cdc_wal_index */,
+        OpId::Max() /* cdc_sdk_intents_op_id */, MonoDelta::kZero /* cdc_sdk_op_id_expiration */,
+        HybridTime::kInvalid /* cdc_sdk_history_cutoff */, true /* require_history_cutoff */,
+        false /* initial_retention_barrier */));
+    TEST_SYNC_POINT("TabletPeer::reset_all_cdc_retention_barriers_if_stale::End");
+  }
+  return Status::OK();
+}
+
 OpId TabletPeer::GetLatestCheckPoint() {
   auto tablet = shared_tablet_maybe_null();
   if (tablet) {
@@ -1238,8 +1264,14 @@ OpId TabletPeer::GetLatestCheckPoint() {
 
 Result<NamespaceId> TabletPeer::GetNamespaceId() {
   auto tablet = VERIFY_RESULT(shared_tablet());
-  RETURN_NOT_OK(BackfillNamespaceIdIfNeeded(*tablet->metadata(), *client_future().get()));
-  return tablet->metadata()->namespace_id();
+  auto& tablet_metadata = *tablet->metadata();
+  RETURN_NOT_OK(BackfillNamespaceIdIfNeeded(
+      tablet_metadata.table_id(), tablet_metadata, *client_future().get()));
+  auto namespace_id = tablet->metadata()->namespace_id();
+  RSTATUS_DCHECK(
+      !namespace_id.empty(), IllegalState, "Namespace ID is empty for tablet $0",
+      tablet->tablet_id());
+  return namespace_id;
 }
 
 HybridTime TabletPeer::GetMinStartHTRunningTxnsOrLeaderSafeTime() {
@@ -1361,6 +1393,10 @@ Result<bool> TabletPeer::MoveForwardAllCDCRetentionBarriers(
   return SetAllCDCRetentionBarriers(
       cdc_wal_index, cdc_sdk_intents_op_id, cdc_sdk_op_id_expiration, cdc_sdk_history_cutoff,
       require_history_cutoff, /*initial_retention_barrier=*/false);
+}
+
+std::string TabletPeer::AllCDCRetentionBarriersToString() const {
+  return tablet_metadata()->AllCDCRetentionBarriersToString();
 }
 
 std::unique_ptr<Operation> TabletPeer::CreateOperation(consensus::LWReplicateMsg* replicate_msg) {
@@ -1552,6 +1588,12 @@ void TabletPeer::RegisterMaintenanceOps(MaintenanceManager* maint_mgr) {
   maint_mgr->RegisterOp(log_gc.get());
   maintenance_ops_.push_back(std::move(log_gc));
   LOG_WITH_PREFIX(INFO) << "Registered log gc";
+
+  auto reset_stale_retention_barriers_op =
+      std::make_unique<ResetStaleRetentionBarriersOp>(this, *tablet_result);
+  maint_mgr->RegisterOp(reset_stale_retention_barriers_op.get());
+  maintenance_ops_.push_back(std::move(reset_stale_retention_barriers_op));
+  LOG_WITH_PREFIX(INFO) << "Registered stale retention barrier resetter";
 }
 
 void TabletPeer::UnregisterMaintenanceOps() {
@@ -1868,10 +1910,10 @@ TabletBootstrapFlushState TabletPeer::TEST_TabletBootstrapStateFlusherState() co
       : TabletBootstrapFlushState::kFlushIdle;
 }
 
-void TabletPeer::MinReplayTxnStartTimeUpdated(HybridTime start_ht) {
-  if (start_ht && start_ht != HybridTime::kMax) {
-    VLOG_WITH_PREFIX(2) << "min_replay_txn_start_ht updated: " << start_ht;
-    bootstrap_state_manager_->bootstrap_state().SetMinReplayTxnStartTime(start_ht);
+void TabletPeer::MinReplayTxnFirstWriteTimeUpdated(HybridTime first_write_ht) {
+  if (first_write_ht && first_write_ht != HybridTime::kMax) {
+    VLOG_WITH_PREFIX(2) << "min_replay_txn_first_write_ht updated: " << first_write_ht;
+    bootstrap_state_manager_->bootstrap_state().SetMinReplayTxnFirstWriteTime(first_write_ht);
   }
 }
 
@@ -1989,33 +2031,18 @@ void TabletPeer::RegisterAsyncWriteCompletion(const OpId& op_id, StdStatusCallba
 }
 
 Status BackfillNamespaceIdIfNeeded(
-    tablet::RaftGroupMetadata& metadata, client::YBClient& client) {
+    const TableId& table_id, tablet::RaftGroupMetadata& metadata, client::YBClient& client) {
   auto namespace_id = metadata.namespace_id();
   if (!namespace_id.empty()) {
     return Status::OK();
   }
-
   // If the namespace ID hasn't been backfilled yet, fetch it from master and populate the tablet
   // metadata.
   master::GetNamespaceInfoResponsePB resp;
-  auto namespace_name = metadata.namespace_name();
-  auto db_type = YQL_DATABASE_CQL;
-  switch (metadata.table_type()) {
-    case PGSQL_TABLE_TYPE:
-      db_type = YQL_DATABASE_PGSQL;
-      break;
-    case REDIS_TABLE_TYPE:
-      db_type = YQL_DATABASE_REDIS;
-      break;
-    default:
-      db_type = YQL_DATABASE_CQL;
-  }
-
-  RETURN_NOT_OK(client.GetNamespaceInfo(
-      /*namespace_id=*/{}, namespace_name, db_type, &resp));
+  RETURN_NOT_OK(client.GetNamespaceInfoByTableId(table_id, &resp));
   namespace_id = resp.namespace_().id();
   SCHECK_FORMAT(
-      !namespace_id.empty(), IllegalState, "Could not get namespace ID for $0", namespace_name);
+      !namespace_id.empty(), IllegalState, "Could not get namespace ID for table $0", table_id);
   return metadata.set_namespace_id(namespace_id);
 }
 

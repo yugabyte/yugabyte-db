@@ -39,7 +39,9 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
                      const TransactionalBatchData& last_batch_data,
                      OneWayBitmap&& replicated_batches,
                      HybridTime base_time_for_abort_check_ht_calculation,
-                     RunningTransactionContext* context);
+                     HybridTime first_write_ht,
+                     RunningTransactionContext* context,
+                     const AtomicGaugePtr<uint64_t>& metric_aborted_transactions_pending_cleanup);
 
   ~RunningTransaction();
 
@@ -53,6 +55,10 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
 
   HybridTime abort_check_ht() const {
     return abort_check_ht_;
+  }
+
+  HybridTime first_write_ht() const {
+    return first_write_ht_;
   }
 
   MUST_USE_RESULT bool UpdateStatus(
@@ -129,7 +135,7 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
 
   void SetApplyOpId(const OpId& id);
 
-  const OpId& GetApplyOpId() {
+  const OpId& GetApplyOpId() const {
     return apply_record_op_id_;
   }
 
@@ -203,6 +209,7 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
   TransactionalBatchData last_batch_data_;
   OneWayBitmap replicated_batches_;
   RunningTransactionContext& context_;
+  std::weak_ptr<void> weak_context_;
   RemoveIntentsTask remove_intents_task_;
   HybridTime local_commit_time_ = HybridTime::kInvalid;
 
@@ -234,6 +241,9 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
   // reset in RunningTransaction::AbortReceived.
   bool abort_request_in_progress_ = false;
 
+  // Hybrid time of first write batch to this particular tablet.
+  HybridTime first_write_ht_;
+
   // Number of outstanding status request rpcs.
   std::atomic<int64_t> outstanding_status_requests_{0};
 
@@ -243,6 +253,10 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
 
   // Whether or not transaction has any batches replicated by retryable requests.
   bool has_retryable_requests_replicated_ = false;
+
+  FastModeTransactionScope fast_mode_scope_;
+
+  AtomicGaugePtr<uint64_t> metric_aborted_transactions_pending_cleanup_;
 };
 
 Status MakeAbortedStatus(const TransactionId& id);

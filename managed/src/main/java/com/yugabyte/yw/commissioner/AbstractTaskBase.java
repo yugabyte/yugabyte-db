@@ -27,6 +27,7 @@ import com.yugabyte.yw.common.TableManager;
 import com.yugabyte.yw.common.TableManagerYb;
 import com.yugabyte.yw.common.UnrecoverableException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.YcqlQueryExecutor;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
@@ -97,6 +98,7 @@ public abstract class AbstractTaskBase implements ITask {
   protected final ImageBundleUtil imageBundleUtil;
   protected final ReleaseManager releaseManager;
   protected final YsqlQueryExecutor ysqlQueryExecutor;
+  protected final YcqlQueryExecutor ycqlQueryExecutor;
   protected final GFlagsValidation gFlagsValidation;
   protected final NodeUniverseManager nodeUniverseManager;
   protected final NodeAgentClient nodeAgentClient;
@@ -126,6 +128,7 @@ public abstract class AbstractTaskBase implements ITask {
     this.imageBundleUtil = baseTaskDependencies.getImageBundleUtil();
     this.releaseManager = baseTaskDependencies.getReleaseManager();
     this.ysqlQueryExecutor = baseTaskDependencies.getYsqlQueryExecutor();
+    this.ycqlQueryExecutor = baseTaskDependencies.getYcqlQueryExecutor();
     this.gFlagsValidation = baseTaskDependencies.getGFlagsValidation();
     this.nodeUniverseManager = baseTaskDependencies.getNodeUniverseManager();
     this.nodeAgentClient = baseTaskDependencies.getNodeAgentClient();

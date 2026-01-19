@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { useFormContext } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
+import { useFormContext } from 'react-hook-form';
 import { YBFormControlLabel, YBButtonGroup } from '@yugabyte-ui-library/core';
-import { REPLICATION_FACTOR } from '../FieldNames';
 import { ResilienceAndRegionsProps } from '../../steps/resilence-regions/dtos';
+import { REPLICATION_FACTOR } from '../FieldNames';
 
 interface ReplicationFactorFieldProps {
   hideLabel?: boolean;
@@ -38,7 +38,7 @@ export const ReplicationFactorField = ({
               setReplicationFactor(options);
             }
           }))}
-          active={replicationFactor + ''}
+          value={replicationFactorVal + ''}
           dataTestId="replication-factor-field"
         />
       }

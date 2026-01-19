@@ -6,19 +6,13 @@ import static org.yb.AssertionWrappers.assertNotNull;
 import static org.yb.AssertionWrappers.assertTrue;
 
 import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
-import java.io.IOException;
-import java.net.URL;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
-import java.util.Scanner;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.minicluster.MiniYBClusterBuilder;
-import org.yb.minicluster.MiniYBDaemon;
 import org.yb.pgsql.ConnectionEndpoint;
 
 @RunWith(value = YBTestRunnerYsqlConnMgr.class)
@@ -36,12 +30,17 @@ public class TestStatsAndMetrics extends BaseYsqlConnMgr {
        "qps",
        "tps"};
 
+  private final Boolean USE_AUTH_BACKEND = true;
+  private final int NUM_CONTROL_BACKENDS_IDLE = USE_AUTH_BACKEND ? 0 : 1;
+
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
 
     builder.addCommonTServerFlag("ysql_conn_mgr_stats_interval",
         Integer.toString(STATS_UPDATE_INTERVAL));
+    builder.addCommonTServerFlag(
+        "ysql_conn_mgr_use_auth_backend", USE_AUTH_BACKEND ? "true" : "false");
   }
 
   private void testStatsFields() throws Exception {
@@ -139,7 +138,8 @@ public class TestStatsAndMetrics extends BaseYsqlConnMgr {
 
     // The physical connection is created only for authentication purposes and
     // closed after it.
-    testNumPhysicalConnections("control_connection", "control_connection", 0);
+    testNumPhysicalConnections(
+        "control_connection", "control_connection", NUM_CONTROL_BACKENDS_IDLE);
     testNumLogicalConnections("control_connection", "control_connection", 0);
 
     testNumPhysicalConnections("yugabyte", "yugabyte",
@@ -181,7 +181,8 @@ public class TestStatsAndMetrics extends BaseYsqlConnMgr {
 
         // The physical connection is created only for authentication purposes and
         // closed after it.
-        testNumPhysicalConnections("control_connection", "control_connection", 0);
+        testNumPhysicalConnections(
+            "control_connection", "control_connection", NUM_CONTROL_BACKENDS_IDLE);
         testNumLogicalConnections("control_connection", "control_connection", 0);
 
         testNumPhysicalConnections("yugabyte", "yugabyte",

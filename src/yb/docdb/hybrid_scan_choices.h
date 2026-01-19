@@ -13,9 +13,12 @@
 
 #pragma once
 
+#include "yb/common/doc_hybrid_time.h"
+
+#include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/scan_choices.h"
 
-#include "yb/dockv/key_entry_value.h"
 #include "yb/dockv/value_type.h"
 
 #include "yb/qlexpr/ql_scanspec.h"
@@ -102,8 +105,8 @@ struct RangeMatch {
 class OptionRange {
  public:
   OptionRange(
-      const dockv::KeyEntryValue& lower, bool lower_inclusive,
-      const dockv::KeyEntryValue& upper, bool upper_inclusive,
+      Slice lower, bool lower_inclusive,
+      Slice upper, bool upper_inclusive,
       size_t begin_idx, size_t end_idx)
       : lower_(lower),
         lower_inclusive_(lower_inclusive),
@@ -114,7 +117,7 @@ class OptionRange {
         fixed_point_(lower_inclusive && upper_inclusive && lower == upper) {}
 
   OptionRange(
-      const dockv::KeyEntryValue& single, size_t begin_idx, size_t end_idx)
+      Slice single, size_t begin_idx, size_t end_idx)
       : lower_(single),
         lower_inclusive_(true),
         upper_(single),
@@ -123,41 +126,16 @@ class OptionRange {
         end_idx_(end_idx),
         fixed_point_(true) {}
 
-  // Convenience constructors for testing
-  OptionRange(int begin, int end, SortOrder sort_order = SortOrder::kAscending)
-      : OptionRange(
-            {dockv::KeyEntryValue::Int32(begin, sort_order)}, true,
-            {dockv::KeyEntryValue::Int32(end, sort_order)}, true, 0, 0) {}
-
-  OptionRange(int value, SortOrder sort_order = SortOrder::kAscending) // NOLINT
-      : OptionRange(value, value, sort_order) {}
-
-  OptionRange(int bound, bool upper, SortOrder sort_order = SortOrder::kAscending)
-      : OptionRange(
-            {upper ? dockv::KeyEntryValue(dockv::KeyEntryType::kNullLow)
-                   : dockv::KeyEntryValue::Int32(bound, sort_order)},
-            !upper,
-            {upper ? dockv::KeyEntryValue::Int32(bound, sort_order)
-                   : dockv::KeyEntryValue(dockv::KeyEntryType::kNullHigh)},
-            upper, 0, 0) {}
-
-  OptionRange()
-      : OptionRange(
-            {dockv::KeyEntryValue(dockv::KeyEntryType::kLowest)},
-            false,
-            {dockv::KeyEntryValue(dockv::KeyEntryType::kHighest)},
-            false, 0, 0) {}
-
-  const dockv::KeyEntryValue& lower() const { return lower_; }
+  Slice lower() const { return lower_; }
   bool lower_inclusive() const { return lower_inclusive_; }
-  const dockv::KeyEntryValue& upper() const { return upper_; }
+  Slice upper() const { return upper_; }
   bool upper_inclusive() const { return upper_inclusive_; }
 
   bool fixed_point() const {
     return fixed_point_;
   }
 
-  const dockv::KeyEntryValue& first_bound(bool is_forward) const {
+  Slice first_bound(bool is_forward) const {
     return is_forward ? lower_ : upper_;
   }
 
@@ -165,7 +143,7 @@ class OptionRange {
     return is_forward ? lower_inclusive_ : upper_inclusive_;
   }
 
-  const dockv::KeyEntryValue& last_bound(bool is_forward) const {
+  Slice last_bound(bool is_forward) const {
     return is_forward ? upper_ : lower_;
   }
 
@@ -178,27 +156,22 @@ class OptionRange {
 
   bool HasIndex(size_t opt_index) const { return begin_idx_ <= opt_index && opt_index < end_idx_; }
 
-  bool Match(const dockv::KeyEntryValue& value) const;
-  RangeMatch MatchEx(const dockv::KeyEntryValue& value) const;
+  bool Match(Slice value) const;
+  RangeMatch MatchEx(Slice value) const;
   bool SatisfiesInclusivity(RangeMatch match) const;
+
+  bool Fixed() const;
 
   std::string ToString() const;
 
  private:
-  dockv::KeyEntryValue lower_;
+  Slice lower_;
   bool lower_inclusive_;
-  dockv::KeyEntryValue upper_;
+  Slice upper_;
   bool upper_inclusive_;
   size_t begin_idx_;
   size_t end_idx_;
   bool fixed_point_;
-
-  friend class ScanChoicesTest;
-  bool operator==(const OptionRange& other) const {
-    return lower_inclusive() == other.lower_inclusive() &&
-           upper_inclusive() == other.upper_inclusive() && lower() == other.lower() &&
-           upper() == other.upper();
-  }
 };
 
 inline std::ostream& operator<<(std::ostream& str, const OptionRange& opt) {
@@ -217,6 +190,7 @@ class ScanTarget {
   size_t PrefixSize() const;
   bool IsExtremal(size_t column_idx) const;
   bool NeedGroupEnd(size_t column_idx) const;
+  Slice SliceUpToColumn(size_t last_column_idx) const;
 
   std::string ToString() const;
 
@@ -230,6 +204,10 @@ class ScanTarget {
       AddInfinity add_infinity = AddInfinity::kFalse);
 
   void Append(const OptionRange& option);
+
+  size_t num_columns() const {
+    return columns_.size();
+  }
 
  private:
   void FixTail(bool add_inf);
@@ -247,10 +225,16 @@ class ScanTarget {
   struct ColumnInfo {
     size_t end;
     bool extremal;
+
+    std::string ToString() const {
+      return YB_STRUCT_TO_STRING(end, extremal);
+    }
   };
 
   boost::container::small_vector<ColumnInfo, 0x10> columns_;
 };
+
+using ScanOptions = std::vector<std::vector<OptionRange>>;
 
 class HybridScanChoices : public ScanChoices {
  public:
@@ -258,19 +242,6 @@ class HybridScanChoices : public ScanChoices {
   // A filter of the form col1 IN (1,2) is converted to col1 IN ([[1], [1]], [[2], [2]]).
   // And filter of the form (col2, col3) IN ((3,4), (5,6)) is converted to
   // (col2, col3) IN ([[3, 4], [3, 4]], [[5, 6], [5, 6]]).
-
-  HybridScanChoices(
-      const Schema& schema,
-      const dockv::KeyBytes& lower_doc_key,
-      const dockv::KeyBytes& upper_doc_key,
-      bool is_forward_scan,
-      const std::vector<ColumnId>& options_col_ids,
-      const std::shared_ptr<std::vector<qlexpr::OptionList>>& options,
-      const qlexpr::QLScanRange* range_bounds,
-      const ColGroupHolder& col_groups,
-      const size_t prefix_length,
-      Slice table_key_prefix);
-
   HybridScanChoices(
       const Schema& schema,
       const qlexpr::YQLScanSpec& doc_spec,
@@ -278,14 +249,21 @@ class HybridScanChoices : public ScanChoices {
       const dockv::KeyBytes& upper_doc_key,
       Slice table_key_prefix);
 
+  Status Init(const DocReadContext& doc_read_context);
+
   bool Finished() const override {
     return finished_;
   }
 
-  Result<bool> InterestedInRow(dockv::KeyBytes* row_key, IntentAwareIterator* iter) override;
+  Result<bool> InterestedInRow(dockv::KeyBytes* row_key, IntentAwareIterator& iter) override;
   Result<bool> AdvanceToNextRow(dockv::KeyBytes* row_key,
-                                IntentAwareIterator* iter,
+                                IntentAwareIterator& iter,
                                 bool current_fetched_row_skipped) override;
+  Result<bool> PrepareIterator(IntentAwareIterator& iter, Slice table_key_prefix) override;
+
+  docdb::BloomFilterOptions BloomFilterOptions() override {
+    return bloom_filter_options_;
+  }
 
  private:
   friend class ScanChoicesTest;
@@ -294,8 +272,11 @@ class HybridScanChoices : public ScanChoices {
 
   // Sets scan_target_ to the first tuple in the filter space that is >= new_target.
   Result<bool> SkipTargetsUpTo(Slice new_target);
-  Result<bool> DoneWithCurrentTarget(bool current_row_skipped = false);
-  void SeekToCurrentTarget(IntentAwareIterator* db_iter);
+  // not_found is true when the current scan choice is not found.
+  // This can happen when the iterator's upperbound is set in variable bloom filter mode.
+  // Moves to the next scan choice.
+  Result<bool> DoneWithCurrentTarget(bool current_row_skipped, bool not_found);
+  void SeekToCurrentTarget(IntentAwareIterator& db_iter);
 
   // Also updates the checkpoint to latest seen ht from iter.
   bool CurrentTargetMatchesKey(Slice curr, IntentAwareIterator* iter);
@@ -330,11 +311,16 @@ class HybridScanChoices : public ScanChoices {
   // Sets an entire group to a particular logical option index.
   void SetGroup(size_t opt_list_idx, size_t opt_index);
 
+  // Updates the bloom filter key and the upper bound to the current scan target when using
+  // variable bloom filter.
+  Status UpdateUpperBound(IntentAwareIterator* iterator);
+
   const bool is_forward_scan_;
   ScanTarget scan_target_;
   bool finished_ = false;
   bool has_hash_columns_ = false;
   size_t num_hash_cols_;
+  size_t num_bloom_filter_cols_;
 
   // True if CurrentTargetMatchesKey should return true all the time as
   // the filter this ScanChoices iterates over is trivial.
@@ -344,7 +330,7 @@ class HybridScanChoices : public ScanChoices {
   // scan key values based on given IN-lists and range filters.
 
   // The following encodes the list of option we are iterating over
-  std::vector<std::vector<OptionRange>> scan_options_;
+  ScanOptions scan_options_;
 
   // Vector of references to currently active elements being used in scan_options_.
   // current_scan_target_ranges_[i] gives us the current OptionRange
@@ -377,6 +363,13 @@ class HybridScanChoices : public ScanChoices {
   size_t schema_num_keys_;
 
   MaxSeenHtData max_seen_ht_checkpoint_ = {};
+
+  docdb::BloomFilterOptions bloom_filter_options_;
+
+  KeyBytes upper_bound_;
+  std::optional<IntentAwareIteratorUpperboundScope> iterator_bound_scope_;
+
+  ArenaPtr arena_;
 };
 
 } // namespace yb::docdb

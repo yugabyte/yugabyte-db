@@ -32,6 +32,8 @@ public class TestPgParallelReadIsolation extends BasePgSQLTest {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("yb_enable_read_committed_isolation", "true");
+    flagMap.put("enable_object_locking_for_table_locks", "true");
+    flagMap.put("ysql_yb_ddl_transaction_block_enabled", "true");
     return flagMap;
   }
 

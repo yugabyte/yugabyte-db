@@ -8,6 +8,8 @@ menu:
   stable_api:
     identifier: api-ysql-datatypes-binary
     parent: api-ysql-datatypes
+aliases:
+  - /stable/api/ysql/datatypes/type_binary
 type: docs
 ---
 

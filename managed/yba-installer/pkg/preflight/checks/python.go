@@ -17,7 +17,12 @@ import (
 // Python checks to ensure the correct version of python exists
 var Python = &pythonCheck{"python", false}
 
-var pythonBinaryNames = []string{"python3.11", "python3.10", "python3"}
+var pythonBinaryNames = []string{
+	"python3",
+	"python3.10",
+	"python3.11",
+	"python3.12",
+	"python3.13"}
 
 var pythonVersionRegex = regexp.MustCompile(`Python (\d+)\.(\d+)`)
 
@@ -58,14 +63,15 @@ func (p pythonCheck) Execute() Result {
 		majorVersion, _ := strconv.Atoi(match[1])
 		minorVersion, _ := strconv.Atoi(match[2])
 		// Allowing python 3.10 or 3.11, as defined by LINUX_PLATFORMS in common.sh
-		if majorVersion == 3 && minorVersion >= 10 && minorVersion <= 11 {
+		if majorVersion == 3 && minorVersion >= 10 && minorVersion <= 13 {
 			log.Info("System meets Python installation requirements with version " + outputTrimmed)
 			return res
 		}
 		log.Warn("Found " + outputTrimmed + " on system but is not allowed Python version.")
 	}
 
-	res.Error = fmt.Errorf("System does not meet Python requirements. Please install Python 3.10 or 3.11.")
+	res.Error = fmt.Errorf("System does not meet Python requirements. Please install Python " +
+		"3.10, 3.11, 3.12, or 3.13.")
 	res.Status = StatusCritical
 	return res
 }

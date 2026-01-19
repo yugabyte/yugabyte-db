@@ -252,9 +252,7 @@ YbPreloadPgInheritsCache()
 	table_close(relation, AccessShareLock);
 
 	if (*YBCGetGFlags()->ysql_enable_neghit_full_inheritscache &&
-		!*YBCGetGFlags()->ysql_minimal_catalog_caches_preload &&
-		(IS_NON_EMPTY_STR_FLAG(YBCGetGFlags()->ysql_catalog_preload_additional_table_list) ||
-		 *YBCGetGFlags()->ysql_catalog_preload_additional_tables))
+		YbNeedAdditionalCatalogTables() && !YbUseMinimalCatalogCachesPreload())
 	{
 		fully_loaded = true;
 	}

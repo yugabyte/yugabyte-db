@@ -19,3 +19,6 @@ DROP TABLE rewrite_test_alter_col_type;
 
 -- Drop table for Test 6: Table rewrite operations on a partitioned table.
 DROP TABLE rewrite_test_partitioned;
+
+-- Drop table for Test 8: Table rewrite operations on a table using legacy inheritance.
+DROP TABLE rewrite_test_inherited_parent CASCADE;

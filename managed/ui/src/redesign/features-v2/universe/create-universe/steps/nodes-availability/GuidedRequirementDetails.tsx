@@ -7,7 +7,7 @@ import { CreateUniverseContext, CreateUniverseContextMethods } from '../../Creat
 import { StyledContent, StyledHeader, StyledPanel } from '../../components/DefaultComponents';
 import { FaultToleranceType, ResilienceType } from '../resilence-regions/dtos';
 import { NodeAvailabilityProps } from './dtos';
-import { ReactComponent as Return } from '../../../../../assets/tree.svg';
+import Return from '../../../../../assets/tree.svg';
 
 const { styled } = mui;
 
@@ -15,7 +15,10 @@ const StyledNodesCount = styled('div')(({ theme }) => ({
   padding: theme.spacing(3),
   display: 'flex',
   flexDirection: 'column',
-  gap: theme.spacing(1)
+  gap: theme.spacing(1),
+  background: '#FBFCFD',
+  border: `1px solid ${theme.palette.grey[300]}`,
+  borderRadius: '8px'
 }));
 
 const NodesCount = styled(

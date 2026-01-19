@@ -15,6 +15,7 @@
 
 #include <string>
 
+#include "yb/common/ql_protocol.messages.h"
 #include "yb/common/ql_value.h"
 
 #include "yb/util/net/inetaddress.h"
@@ -31,9 +32,10 @@ namespace ql {
 
 //--------------------------------------------------------------------------------------------------
 
-Status Executor::PTExprToPB(const PTExpr::SharedPtr& expr, QLExpressionPB *expr_pb) {
-  if (expr == nullptr)
+Status Executor::PTExprToPB(const PTExpr::SharedPtr& expr, QLExpressionMsg *expr_pb) {
+  if (expr == nullptr) {
     return Status::OK();
+  }
 
   // When selecting from INDEX table, expression's value might be stored in a column.
   const ColumnDesc *index_desc = expr->index_desc();
@@ -46,15 +48,13 @@ Status Executor::PTExprToPB(const PTExpr::SharedPtr& expr, QLExpressionPB *expr_
     case ExprOperator::kNoOp:
       return Status::OK();
 
-    case ExprOperator::kConst: {
-      QLValuePB *const_pb = expr_pb->mutable_value();
-      return PTConstToPB(expr, const_pb);
-    }
+    case ExprOperator::kConst:
+      return PTConstToPB(expr, expr_pb->mutable_value());
 
     case ExprOperator::kCollection: {
       // First try to fold literals. Literal-folding is a bit faster than constant folding, so we
       // keep this process although constant-folding can also fold literals.
-      QLValuePB *const_pb = expr_pb->mutable_value();
+      QLValueMsg *const_pb = expr_pb->mutable_value();
       if (!PTConstToPB(expr, const_pb).ok()) {
         // Use constant folding because literal-folding cannot fold expressions.
         // Example: "List<BLOB>" with function calls.
@@ -112,7 +112,7 @@ Status Executor::PTExprToPB(const PTExpr::SharedPtr& expr, QLExpressionPB *expr_
 
 //--------------------------------------------------------------------------------------------------
 
-Status Executor::PTExprToPB(const PTBindVar *bind_pt, QLExpressionPB *expr_pb) {
+Status Executor::PTExprToPB(const PTBindVar *bind_pt, QLExpressionMsg *expr_pb) {
   if (!bind_pt->name()) {
     return STATUS(NotSupported, "Undefined bind variable name, please contact the support");
   }
@@ -144,7 +144,7 @@ Status Executor::PTExprToPB(const PTBindVar *bind_pt, QLExpressionPB *expr_pb) {
 
 //--------------------------------------------------------------------------------------------------
 
-Status Executor::PTExprToPB(const PTRef *ref_pt, QLExpressionPB *ref_pb) {
+Status Executor::PTExprToPB(const PTRef *ref_pt, QLExpressionMsg *ref_pb) {
   // When processing constant folding by client, all columns are not yet accessible, and "PTRef"
   // execution should returns an error to indicate that the folding effort failed.
   const ColumnDesc *col_desc = ref_pt->desc();
@@ -160,7 +160,7 @@ Status Executor::PTExprToPB(const PTRef *ref_pt, QLExpressionPB *ref_pb) {
   return Status::OK();
 }
 
-Status Executor::PTExprToPB(const PTSubscriptedColumn *ref_pt, QLExpressionPB *expr_pb) {
+Status Executor::PTExprToPB(const PTSubscriptedColumn *ref_pt, QLExpressionMsg *expr_pb) {
   const ColumnDesc *col_desc = ref_pt->desc();
   auto col_pb = expr_pb->mutable_subscripted_col();
   col_pb->set_column_id(col_desc->id());
@@ -172,7 +172,7 @@ Status Executor::PTExprToPB(const PTSubscriptedColumn *ref_pt, QLExpressionPB *e
 }
 
 Status Executor::PTExprToPB(const PTJsonColumnWithOperators *ref_pt,
-                            QLExpressionPB *expr_pb) {
+                            QLExpressionMsg *expr_pb) {
   const ColumnDesc *col_desc = ref_pt->desc();
   auto col_pb = expr_pb->mutable_json_column();
   col_pb->set_column_id(col_desc->id());
@@ -186,8 +186,8 @@ Status Executor::PTExprToPB(const PTJsonColumnWithOperators *ref_pt,
 
 //--------------------------------------------------------------------------------------------------
 
-Status Executor::PTExprToPB(const PTAllColumns *ref_pt, QLReadRequestPB *req) {
-  QLRSRowDescPB *rsrow_desc_pb = req->mutable_rsrow_desc();
+Status Executor::PTExprToPB(const PTAllColumns *ref_pt, QLReadRequestMsg *req) {
+  auto *rsrow_desc_pb = req->mutable_rsrow_desc();
   for (const auto& col_desc : ref_pt->columns()) {
     req->add_selected_exprs()->set_column_id(col_desc.id());
 

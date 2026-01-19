@@ -50,6 +50,9 @@ static const uint32_t kTemplate1Oid = 1;              // Hardcoded for template1
 // Hardcoded for pg_yb_invalidation_messages hardcoded (in pg_yb_invalidation_messages.h).
 static const uint32_t kPgYbInvalidationMessagesTableOid = 8080;
 
+// Hardcoded for pg_yb_catalog_version (in pg_yb_catalog_version.h).
+static const uint32_t kPgYbCatalogVersionTableOid = 8010;
+
 // Hardcoded for pg_publication_rel (in pg_publication_rel.h).
 static const uint32_t kPgPublicationRelOid = 6106;
 
@@ -73,11 +76,11 @@ TablegroupId GetPgsqlTablegroupId(uint32_t database_oid, uint32_t tablegroup_oid
 TablespaceId GetPgsqlTablespaceId(uint32_t tablespace_oid);
 
 // Is the namespace/table id a Postgres database or table id?
-bool IsPgsqlId(const std::string& id);
+bool IsPgsqlId(std::string_view id);
 
 // Get Postgres database and table oids from a YB namespace/table id.
-Result<uint32_t> GetPgsqlDatabaseOid(const NamespaceId& namespace_id);
-Result<uint32_t> GetPgsqlTableOid(const TableId& table_id);
+Result<uint32_t> GetPgsqlDatabaseOid(NamespaceIdView namespace_id);
+Result<uint32_t> GetPgsqlTableOid(TableIdView table_id);
 Result<uint32_t> GetPgsqlTablegroupOid(const TablegroupId& tablegroup_id);
 Result<uint32_t> GetPgsqlTablegroupOidByTableId(const TableId& table_id);
 Result<uint32_t> GetPgsqlDatabaseOidByTableId(const TableId& table_id);
@@ -101,6 +104,6 @@ bool IsPriorVersionYsqlCatalogTable(const TableId& table_id);
 
 // If this is a YSQL catalog table, then is it the current version?
 // Returns false for user tables.
-bool IsCurrentVersionYsqlCatalogTable(const TableId& table_id);
+bool IsCurrentVersionYsqlCatalogTable(TableIdView table_id);
 
 }  // namespace yb

@@ -7,6 +7,8 @@ menu:
   stable_api:
     identifier: dcl_reassign_owned
     parent: statements
+aliases:
+  - /stable/api/ysql/commands/dcl_reassign_owned/
 type: docs
 ---
 

@@ -76,7 +76,6 @@ ADD_YB_LIBRARY(yb_common_base
   DEPS ${COMMON_BASE_LIBS})
 
 set(COMMON_SRCS
-  advisory_locks_error.cc
   clock.cc
   colocated_util.cc
   common_consensus_util.cc
@@ -93,7 +92,6 @@ set(COMMON_SRCS
   key_encoder.cc
   object_lock_tracker.cc
   opid.cc
-  pgsql_error.cc
   pg_types.cc
   ql_protocol_util.cc
   retryable_request.cc
@@ -107,7 +105,6 @@ set(COMMON_SRCS
   tablespace_parser.cc
   termination_monitor.cc
   transaction.cc
-  transaction_error.cc
   wire_protocol.cc
   llvm_profile_dumper.cc
   version_info.cc
@@ -132,13 +129,31 @@ endif()
 ADD_YB_LIBRARY(yb_common
   SRCS ${COMMON_SRCS}
   DEPS ${COMMON_LIBS})
-add_dependencies(yb_common yb_bfql yb_bfpg)
+
+add_dependencies(
+  yb_common
+  yb_bfql
+  yb_bfpg
+  gen_src_yb_docdb_docdb_proto
+  gen_src_yb_dockv_dockv_proto
+  gen_src_yb_tablet_metadata_proto
+  gen_src_yb_tablet_operations_proto
+  gen_src_yb_tablet_tablet_proto
+  gen_src_yb_tablet_tablet_types_proto
+  gen_src_yb_tserver_tserver_proto
+  gen_src_yb_tserver_tserver_types_proto
+  gen_src_yb_cdc_cdc_consumer_proto
+  gen_src_yb_master_master_replication_proto
+  gen_src_yb_master_catalog_entity_info_proto
+  gen_src_yb_master_master_types_proto
+  gen_src_yb_cdc_xcluster_producer_proto)
 
 ADD_YB_TEST_LIBRARY(yb_common_test_util
                     SRCS transaction-test-util.cc wire_protocol-test-util.cc
                     DEPS yb_common yb_docdb)
 
 set(YB_TEST_LINK_LIBS yb_common yb_common_test_util ${YB_MIN_TEST_LIBS})
+ADD_YB_TEST(common_net-test)
 ADD_YB_TEST(id_mapping-test)
 ADD_YB_TEST(jsonb-test)
 ADD_YB_TEST(schema-test)

@@ -2,8 +2,11 @@
 title: Get started with CDC in YugabyteDB
 headerTitle: Get started
 linkTitle: Get started
-description: Get started with Change Data Capture in YugabyteDB.
+description: Start using CDC with gRPC replication in YugabyteDB.
 headcontent: Get set up for using CDC in YugabyteDB
+aliases:
+  - /stable/explore/change-data-capture/cdc-get-started/
+  - /stable/explore/change-data-capture/using-yugabytedb-grpc-replication/cdc-get-started/
 menu:
   stable:
     parent: explore-change-data-capture-grpc-replication
@@ -510,7 +513,7 @@ CDC record for UPDATE (using schema version 1):
 
 ## Colocated tables
 
-YugabyteDB supports streaming of changes from [colocated tables](../../../../additional-features/colocation). The connector can be configured with regular configuration properties and deployed for streaming.
+YugabyteDB supports streaming of changes from [colocated tables](../../../../additional-features/colocation/). The connector can be configured with regular configuration properties and deployed for streaming.
 
 {{< note title="Note" >}}
 
@@ -542,7 +545,7 @@ The following flags control the retention of data required by CDC:
 Starting from v2024.2.1, the default data retention for CDC is 8 hours, with support for maximum retention up to 24 hours. Prior to v2024.2.1, the default retention for CDC is 4 hours.
 
 {{< warning title="Important" >}}
-When using ALL, FULL_ROW_NEW_IMAGE, or MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES before image modes, CDC preserves previous row values for UPDATE and DELETE operations. This is done by retaining history for each row in the database through a suspension of the compaction process. Compaction is halted by setting retention barriers to prevent cleanup of history for those rows that are yet to be streamed to the CDC client. These retention barriers are dynamically managed and advanced only after the CDC events are streamed and explicitly acknowledged by the client, thus allowing compaction of streamed rows. 
+When using ALL, FULL_ROW_NEW_IMAGE, or MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES before image modes, CDC preserves previous row values for UPDATE and DELETE operations. This is done by retaining history for each row in the database through a suspension of the compaction process. Compaction is halted by setting retention barriers to prevent cleanup of history for those rows that are yet to be streamed to the CDC client. These retention barriers are dynamically managed and advanced only after the CDC events are streamed and explicitly acknowledged by the client, thus allowing compaction of streamed rows.
 
 The [cdc_intent_retention_ms](../../../../reference/configuration/yb-tserver/#cdc-intent-retention-ms) flag governs the maximum retention period (default 8 hours). Be aware that any interruption in CDC consumption for extended periods using these before image modes may degrade read performance. This happens because compaction activities are halted in the database when these before image modes are used, leading to inefficient key lookups as reads must traverse multiple SST files.
 {{< /warning >}}

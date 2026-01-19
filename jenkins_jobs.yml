@@ -2,12 +2,12 @@
 # Default architecture is x86_64
 jobs:
   - os: alma9
-    compiler: clang19
+    compiler: clang21
     build_type: asan
     release_artifact: false
 
   - os: alma8
-    compiler: clang19
+    compiler: clang21
     build_type: tsan
     release_artifact: false
 
@@ -18,25 +18,25 @@ jobs:
     release_artifact: false
 
   - os: alma8
-    compiler: clang19
+    compiler: clang21
     build_type: release
     build_opts: YB_LINKING_TYPE=full-lto
     release_artifact: true
 
   - os: alma8
-    compiler: clang19
+    compiler: clang21
     build_type: release
     architecture: aarch64
     release_artifact: true
 
-  - os: mac13
+  - os: mac14
     compiler: clang
     build_type: release
     architecture: arm64
     test_opts: YB_TEST_YB_CONTROLLER=0
     release_artifact: true
 
-  - os: mac13
+  - os: mac14
     compiler: clang
     build_type: release
     architecture: x86_64
@@ -44,7 +44,7 @@ jobs:
     release_artifact: true
 
   - os: ubuntu22.04
-    compiler: clang19
+    compiler: clang21
     build_type: debug
     release_artifact: false
     test_opts: YB_COMPILE_ONLY=1

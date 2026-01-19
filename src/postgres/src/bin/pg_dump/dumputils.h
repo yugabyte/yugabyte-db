@@ -35,6 +35,7 @@
 #define PGDUMP_STRFTIME_FMT  "%Y-%m-%d %H:%M:%S"
 #endif
 
+#define YB_SUPERUSER "yb_superuser"
 
 extern bool buildACLCommands(PGconn *yb_conn,
 							 const char *name, const char *subname, const char *nspname,

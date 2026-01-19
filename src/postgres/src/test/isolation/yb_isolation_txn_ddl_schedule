@@ -1,1 +1,2 @@
 test: yb.orig.read_committed_test_ddl_txn
+test: yb.orig.reset_txn_snapshot_after_ddl

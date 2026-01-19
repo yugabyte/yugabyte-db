@@ -2198,8 +2198,12 @@ static bool compareKeys(MiddleKeyWithSize f1,
 
 } // namespace
 
-Result<std::string> Version::GetMiddleOfMiddleKeys() {
+Result<std::string> Version::GetMiddleOfMiddleKeys(Slice lower_bound_internal_key) {
   const auto level = storage_info_.num_levels_ - 1;
+  if (storage_info_.files_[level].size() == 0) {
+    return STATUS_FORMAT(Incomplete, "No SST file at level $0", level);
+  }
+
   // Largest files are at lowest level.
   std::vector <MiddleKeyWithSize> sst_files;
   sst_files.reserve(storage_info_.files_[level].size());
@@ -2211,11 +2215,12 @@ Result<std::string> Version::GetMiddleOfMiddleKeys() {
         /* no_io = */ false, cfd_->internal_stats()->GetFileReadHist(level),
         IsFilterSkipped(level, /* is_file_last_in_level = */ true)));
 
-    const auto result_mkey = trwh.table_reader->GetMiddleKey();
+    const auto result_mkey = trwh.table_reader->GetMiddleKey(lower_bound_internal_key);
     if (!result_mkey.ok()) {
       if (result_mkey.status().IsIncomplete()) {
         continue;
       }
+      LOG_WITH_FUNC(WARNING) << "Getting a middle key failed for " << file->ToString();
       return result_mkey;
     }
 
@@ -2225,7 +2230,7 @@ Result<std::string> Version::GetMiddleOfMiddleKeys() {
   }
 
   if (sst_files.size() == 0) {
-    return STATUS(Incomplete, "Either no SST file or too small SST files.");
+    return STATUS(Incomplete, "SST files too small");
   }
 
   std::sort(sst_files.begin(), sst_files.end(), compareKeys);
@@ -2260,8 +2265,8 @@ Result<TableCache::TableReaderWithHandle> Version::GetLargestSstTableReader() {
       IsFilterSkipped(level, /* is_file_last_in_level = */ true));
 }
 
-Result<std::string> Version::GetMiddleKey() {
-  return GetMiddleOfMiddleKeys();
+Result<std::string> Version::GetMiddleKey(Slice lower_bound_internal_key) {
+  return GetMiddleOfMiddleKeys(lower_bound_internal_key);
 }
 
 Result<TableReader*> Version::TEST_GetLargestSstTableReader() {
@@ -2395,8 +2400,7 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
         // Also, group commits across column families are not supported.
         break;
       }
-      FrontierModificationMode frontier_mode = FrontierModificationMode::kUpdate;
-      const bool force_flushed_frontier = writer->edit->force_flushed_frontier_;
+      const bool force_flushed_frontier = writer->edit->IsForceFlushedFrontier();
       if (force_flushed_frontier) {
         if (writer != &w) {
           // No group commit for edits that force a particular value of flushed frontier, either.
@@ -2584,7 +2588,7 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
     if (flushed_frontier_override) {
       flushed_frontier_ = flushed_frontier_override;
     } else if (edit->flushed_frontier_) {
-      UpdateFlushedFrontier(edit->flushed_frontier_);
+      UpdateFlushedFrontier(edit->flushed_frontier_, edit->frontier_modification_mode_);
     }
   } else {
     RLOG(InfoLogLevel::ERROR_LEVEL, db_options_->info_log,
@@ -2652,8 +2656,8 @@ void VersionSet::LogAndApplyHelper(
   edit->SetNextFile(next_file_number_.load());
   edit->SetLastSequence(LastSequence());
 
-  if (flushed_frontier_ && !edit->force_flushed_frontier_) {
-    edit->UpdateFlushedFrontier(flushed_frontier_);
+  if (flushed_frontier_ && !edit->IsForceFlushedFrontier()) {
+    edit->ModifyFlushedFrontier(flushed_frontier_, edit->frontier_modification_mode_);
   }
 
   builder->Apply(edit);
@@ -3505,8 +3509,10 @@ void VersionSet::SetLastSequenceNoSanityChecking(SequenceNumber s) {
 }
 
 // Set the last flushed op id / hybrid time / history cutoff to the specified set of values.
-void VersionSet::UpdateFlushedFrontier(UserFrontierPtr values) {
-  EnsureNonDecreasingFlushedFrontier(FlushedFrontier(), *values);
+void VersionSet::UpdateFlushedFrontier(UserFrontierPtr values, FrontierModificationMode mode) {
+  if (mode != FrontierModificationMode::kUpdateIgnoreBackwards) {
+    EnsureNonDecreasingFlushedFrontier(FlushedFrontier(), *values);
+  }
   UpdateFlushedFrontierNoSanityChecking(std::move(values));
 }
 

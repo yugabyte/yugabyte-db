@@ -770,12 +770,13 @@ Status CDCSDKYsqlTest::DeleteRows(
 Status CDCSDKYsqlTest::SplitTablet(const TabletId& tablet_id, PostgresMiniCluster* cluster) {
   yb::master::SplitTabletRequestPB req;
   req.set_tablet_id(tablet_id);
+  req.set_split_factor(cluster->mini_cluster_->GetSplitFactor());
   yb::master::SplitTabletResponsePB resp;
   rpc::RpcController rpc;
   rpc.set_timeout(MonoDelta::FromSeconds(30.0) * kTimeMultiplier);
   auto& cm = cluster->mini_cluster_->mini_master()->catalog_manager();
   RETURN_NOT_OK(cm.SplitTablet(
-      tablet_id, master::ManualSplit::kTrue,
+      tablet_id, master::ManualSplit::kTrue, cluster->mini_cluster_->GetSplitFactor(),
       cm.GetLeaderEpochInternal()));
 
   if (resp.has_error()) {
@@ -1468,6 +1469,48 @@ void CDCSDKYsqlTest::CheckRecord(
     default:
       ASSERT_FALSE(true);
       break;
+  }
+}
+
+void CDCSDKYsqlTest::CheckRecordTuples(
+    const CDCSDKProtoRecordPB& record, const std::vector<std::string>& expected_new_tuples_cols,
+    const std::vector<std::string>& expected_old_tuples_cols) {
+  // If 1st old tuple is empty, then all old tuples should be empty. This is because, in
+  // CDCSDKProtoRecordPB either all old tuples are populated empty or all of them are non-empty.
+  bool all_old_tuples_empty = !record.row_message().old_tuple(0).has_column_name();
+  // If all old tuples are empty, then expected_old_tuples_cols should also be empty, else their
+  // sizes should match.
+  if (all_old_tuples_empty) {
+    ASSERT_TRUE(expected_old_tuples_cols.empty());
+  } else {
+    ASSERT_EQ(record.row_message().old_tuple_size(), expected_old_tuples_cols.size());
+  }
+
+  for (int i = 0; i < record.row_message().old_tuple_size(); ++i) {
+    if (all_old_tuples_empty) {
+      ASSERT_FALSE(record.row_message().old_tuple(i).has_column_name());
+      continue;
+    }
+    ASSERT_EQ(record.row_message().old_tuple(i).column_name(), expected_old_tuples_cols[i]);
+  }
+
+  // If 1st new tuple is empty, then all new tuples should be empty. This is because, in
+  // CDCSDKProtoRecordPB either all new tuples are populated empty or all of them are non-empty.
+  bool all_new_tuples_empty = !record.row_message().new_tuple(0).has_column_name();
+  // If all new tuples are empty, then expected_new_tuples_cols should also be empty, else their
+  // sizes should match.
+  if (all_new_tuples_empty) {
+    ASSERT_TRUE(expected_new_tuples_cols.empty());
+  } else {
+    ASSERT_EQ(record.row_message().new_tuple_size(), expected_new_tuples_cols.size());
+  }
+
+  for (int i = 0; i < record.row_message().new_tuple_size(); ++i) {
+    if (all_new_tuples_empty) {
+      ASSERT_FALSE(record.row_message().new_tuple(i).has_column_name());
+      continue;
+    }
+    ASSERT_EQ(record.row_message().new_tuple(i).column_name(), expected_new_tuples_cols[i]);
   }
 }
 
@@ -2164,6 +2207,57 @@ Result<GetChangesResponsePB> CDCSDKYsqlTest::GetChangesFromCDCWithExplictCheckpo
   return change_resp;
 }
 
+Status CDCSDKYsqlTest::PollTillRestartTimeExceedsTableHideTime(
+    const xrepl::StreamId& stream_id, const YBTableName& old_table, const YBTableName& new_table) {
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> old_tablets;
+  RETURN_NOT_OK(test_client()->GetTabletsFromTableId(old_table.table_id(), 0, &old_tablets));
+  if (old_tablets.empty()) {
+    return STATUS_FORMAT(NotFound, "No tablets found for table $0", old_table.table_name());
+  }
+
+  // Get the hide time of the old_table's tablet using CatalogManager::GetTabletHideTime().
+  auto& catalog_mgr = test_cluster_.mini_cluster_->mini_master()->catalog_manager_impl();
+  HybridTime hide_time = VERIFY_RESULT(catalog_mgr.GetTabletHideTime(old_tablets[0].tablet_id()));
+
+  return WaitFor(
+      [&]() -> Result<bool> {
+        auto change_resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+
+        if (change_resp.cdc_sdk_proto_records_size() > 0) {
+          bool found_commit = false;
+          uint64_t commit_lsn;
+          for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+            if (record.row_message().op() == RowMessage_Op_COMMIT) {
+              found_commit = true;
+              commit_lsn = record.row_message().pg_lsn();
+            }
+          }
+
+          if (found_commit) {
+            RETURN_NOT_OK(UpdateAndPersistLSN(stream_id, commit_lsn, commit_lsn));
+          }
+        }
+
+        if (change_resp.has_needs_publication_table_list_refresh() &&
+            change_resp.needs_publication_table_list_refresh() &&
+            change_resp.has_publication_refresh_time() &&
+            change_resp.publication_refresh_time() > 0) {
+          vector<string> table_ids = {old_table.table_id()};
+          if (!new_table.empty()) {
+            table_ids.push_back(new_table.table_id());
+          }
+          RETURN_NOT_OK(UpdatePublicationTableList(stream_id, table_ids));
+        }
+
+        auto slot_row = VERIFY_RESULT(ReadSlotEntryFromStateTable(stream_id));
+        return slot_row->record_id_commit_time > hide_time;
+      },
+      MonoDelta::FromSeconds(60),
+      Format(
+          "Timed out waiting for restart time to exceed the hide time $0 of hidden table $1",
+          hide_time, old_table.table_name()));
+}
+
 bool CDCSDKYsqlTest::DeleteCDCStream(const xrepl::StreamId& db_stream_id) {
   RpcController delete_rpc;
   delete_rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
@@ -2250,6 +2344,7 @@ void CDCSDKYsqlTest::TestIntentGarbageCollectionFlag(
   }
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_update_local_peer_min_index) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs) = 3;
 
   ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
 
@@ -2847,6 +2942,26 @@ Result<int> CDCSDKYsqlTest::GetStateTableRowCount() {
   }
 
   return num;
+}
+
+Result<OpId> CDCSDKYsqlTest::GetCheckpointFromStateTable(
+    const xrepl::StreamId& stream_id, const TabletId& tablet_id) {
+  auto cdc_state_table = MakeCDCStateTable(test_client());
+  Status s;
+  auto table_range = VERIFY_RESULT(
+      cdc_state_table.GetTableRange(CDCStateTableEntrySelector().IncludeCheckpoint(), &s));
+
+  for (auto row_result : table_range) {
+    RETURN_NOT_OK(row_result);
+    auto row = *row_result;
+    if (row.key.tablet_id == tablet_id && row.key.stream_id == stream_id) {
+      return *row.checkpoint;
+    }
+  }
+
+  return STATUS_FORMAT(
+      NotFound, "Checkpoint not found for tablet $0 stream $1 in state table", tablet_id,
+      stream_id);
 }
 
 Status CDCSDKYsqlTest::VerifyStateTableAndStreamMetadataEntriesCount(

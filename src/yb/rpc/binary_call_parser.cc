@@ -131,11 +131,15 @@ Result<ProcessCallsResult> BinaryCallParser::Parse(
         auto consumption = blocking_mem_tracker ? blocking_mem_tracker->consumption() : -1;
         auto limit = blocking_mem_tracker ? blocking_mem_tracker->limit() : -1;
         if (FLAGS_binary_call_parser_reject_on_mem_tracker_hard_limit) {
+          bool logged = false;
           YB_LOG_EVERY_N_SECS(WARNING, 3)
               << "Unable to allocate read buffer because of limit, required: " << call_data_size
               << ", blocked by: " << AsString(blocking_mem_tracker)
-              << ", consumption: " << consumption << " of " << limit << ". Call will be ignored.\n"
-              << DumpMemoryUsage();
+              << ", consumption: " << consumption << " of " << limit << ". Call will be ignored."
+              << [&logged] { logged = true; return ""; }();
+          if (logged) {
+            DumpMemoryUsage();
+          }
           call_data_ = CallData(call_data_size, CallData::ShouldRejectTag());
           return ProcessCallsResult{
             .consumed = full_input_size,
@@ -147,8 +151,8 @@ Result<ProcessCallsResult> BinaryCallParser::Parse(
           // https://github.com/yugabyte/yugabyte-db/issues/2563.
           LOG(WARNING) << "Unable to allocate read buffer because of limit, required: "
                        << call_data_size << ", blocked by: " << AsString(blocking_mem_tracker)
-                       << ", consumption: " << consumption << " of " << limit << "\n"
-                       << DumpMemoryUsage();
+                       << ", consumption: " << consumption << " of " << limit;
+          DumpMemoryUsage();
         }
       }
       break;

@@ -319,7 +319,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
       @Nullable UpgradeContext upgradeContext) {
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     Cluster primaryCluster = universeDetails.getPrimaryCluster();
-    PlacementInfo placementInfo = primaryCluster.placementInfo;
+    PlacementInfo placementInfo = primaryCluster.getOverallPlacement();
     createSingleKubernetesExecutorTask(
         universe.getName(), CommandType.POD_INFO, placementInfo, /*isReadOnlyCluster*/ false);
 
@@ -423,7 +423,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
       // Handle read cluster upgrade.
       if (universeDetails.getReadOnlyClusters().size() != 0) {
         Cluster asyncCluster = universeDetails.getReadOnlyClusters().get(0);
-        PlacementInfo readClusterPlacementInfo = asyncCluster.placementInfo;
+        PlacementInfo readClusterPlacementInfo = asyncCluster.getOverallPlacement();
         createSingleKubernetesExecutorTask(
             universe.getName(),
             CommandType.POD_INFO,
@@ -518,7 +518,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
       @Nullable UpgradeContext upgradeContext) {
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     Cluster primaryCluster = universeDetails.getPrimaryCluster();
-    PlacementInfo placementInfo = primaryCluster.placementInfo;
+    PlacementInfo placementInfo = primaryCluster.getOverallPlacement();
     createSingleKubernetesExecutorTask(
         universe.getName(), CommandType.POD_INFO, placementInfo, /*isReadOnlyCluster*/ false);
 
@@ -595,7 +595,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
       // Handle read cluster upgrade.
       if (universeDetails.getReadOnlyClusters().size() != 0) {
         PlacementInfo readClusterPlacementInfo =
-            universeDetails.getReadOnlyClusters().get(0).placementInfo;
+            universeDetails.getReadOnlyClusters().get(0).getOverallPlacement();
         createSingleKubernetesExecutorTask(
             universe.getName(),
             CommandType.POD_INFO,
@@ -664,7 +664,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
     createSingleKubernetesExecutorTask(
         universe.getName(),
         CommandType.POD_INFO,
-        primaryCluster.placementInfo,
+        primaryCluster.getOverallPlacement(),
         false /*isReadOnlyCluster*/);
 
     UUID rootCAUUID = upgradeContext != null ? upgradeContext.getRootCAUUID() : null;
@@ -693,7 +693,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
       Cluster readOnlyCluster = universeDetails.getReadOnlyClusters().get(0);
       KubernetesUpgradeCommonParams upgradeParamsReadOnly =
           new KubernetesUpgradeCommonParams(universe, readOnlyCluster, confGetter);
-      PlacementInfo readClusterPlacementInfo = readOnlyCluster.placementInfo;
+      PlacementInfo readClusterPlacementInfo = readOnlyCluster.getOverallPlacement();
       createSingleKubernetesExecutorTask(
           universe.getName(),
           CommandType.POD_INFO,
@@ -811,7 +811,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
       createSingleKubernetesExecutorTask(
           universe.getName(),
           CommandType.POD_INFO,
-          cluster.placementInfo,
+          cluster.getOverallPlacement(),
           false /*isReadOnlyCluster*/);
       // Helm upgrade
       upgradePodsNonRestart(

@@ -54,8 +54,7 @@ func DeleteTelemetryProviderUtil(
 
 	rDelete, response, err := authAPI.DeleteTelemetryProvider(telemetryProviderUUID).Execute()
 	if err != nil {
-		errMessage := util.ErrorFromHTTPResponse(response, err, callSite, "Delete")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		util.FatalHTTPError(response, err, callSite, "Delete")
 	}
 
 	if rDelete.GetSuccess() {

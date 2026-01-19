@@ -13,6 +13,7 @@
 #include "yb/ash/wait_state.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/debug.h"
 #include "yb/util/test_thread_holder.h"
 
 #include "yb/yql/pgwrapper/libpq_test_base.h"
@@ -63,6 +64,37 @@ class PgAshTest : public LibPqTestBase {
   }
 
  protected:
+  Status RunInsertsAndSelects(MonoDelta sleep_duration) {
+    RETURN_NOT_OK(conn_->Execute("CREATE TABLE t (key INT PRIMARY KEY, value TEXT)"));
+
+    thread_holder_.AddThreadFunctor([this, &stop = thread_holder_.stop_flag()] {
+      auto conn = ASSERT_RESULT(Connect());
+      for (int i = 0; !stop; i++) {
+        ASSERT_OK(conn.Execute(yb::Format("INSERT INTO t (key, value) VALUES ($0, 'v-$0')", i)));
+      }
+    });
+    thread_holder_.AddThreadFunctor([this, &stop = thread_holder_.stop_flag()] {
+      auto conn = ASSERT_RESULT(Connect());
+      for (int i = 0; !stop; i++) {
+        auto values = ASSERT_RESULT(
+            conn.FetchRows<std::string>(yb::Format("SELECT value FROM t where key = $0", i)));
+      }
+    });
+
+    SleepFor(sleep_duration);
+    thread_holder_.Stop();
+
+    return Status::OK();
+  }
+
+  Status StopAshSampling() {
+    // Set the sampling interval to 1 hour, should be enough time for tests to complete before
+    // the next sampling
+    RETURN_NOT_OK(cluster_->SetFlagOnTServers("ysql_yb_ash_sampling_interval_ms", "3600000"));
+    SleepFor(kSamplingIntervalMs * 2ms);
+    return Status::OK();
+  }
+
   std::optional<PGConn> conn_;
   TestThreadHolder thread_holder_;
   static constexpr int kTabletsPerServer = 1;
@@ -72,9 +104,6 @@ class PgAshTest : public LibPqTestBase {
 class PgAshMasterMetadataSerializerTest : public PgAshTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    options->extra_tserver_flags.push_back(
-        Format("--allowed_preview_flags_csv=$0,$1",
-               "enable_object_locking_for_table_locks", "ysql_yb_ddl_transaction_block_enabled"));
     options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=true");
     options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
     PgAshTest::UpdateMiniClusterOptions(options);
@@ -84,7 +113,7 @@ class PgAshMasterMetadataSerializerTest : public PgAshTest {
 class PgAshSingleNode : public PgAshTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    options->extra_master_flags.push_back("--replication_factor=1");
+    options->replication_factor = 1;
     PgAshTest::UpdateMiniClusterOptions(options);
   }
 
@@ -95,6 +124,29 @@ class PgAshSingleNode : public PgAshTest {
   int GetNumTabletServers() const override {
     return 1;
   }
+};
+
+class YbAshV2Test : public PgAshSingleNode {
+ public:
+  YbAshV2Test() : circular_buffer_size_kb_(16 * 1024) {}
+  explicit YbAshV2Test(int circular_buffer_size_kb)
+      : circular_buffer_size_kb_(circular_buffer_size_kb) {}
+
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back(Format(
+        "--ysql_yb_ash_circular_buffer_size=$0", circular_buffer_size_kb_));
+    PgAshSingleNode::UpdateMiniClusterOptions(options);
+  }
+
+ protected:
+  static constexpr auto kWorkloadRunningTimeSecs = 10;
+  const int circular_buffer_size_kb_;
+};
+
+class YbAshV2TestWithCircularBufferSize : public YbAshV2Test,
+                                          public ::testing::WithParamInterface<int> {
+ public:
+  YbAshV2TestWithCircularBufferSize() : YbAshV2Test(GetParam()) {}
 };
 
 class PgWaitEventAuxTest : public PgAshSingleNode {
@@ -137,8 +189,6 @@ class PgBgWorkersTest : public PgAshSingleNode {
     options->extra_tserver_flags.push_back("--enable_pg_cron=true");
     options->extra_tserver_flags.push_back(
         "--ysql_pg_conf_csv=cron.yb_job_list_refresh_interval=1");
-    options->extra_tserver_flags.push_back(
-    "--allowed_preview_flags_csv=ysql_yb_enable_query_diagnostics");
     options->extra_tserver_flags.push_back("--ysql_yb_enable_query_diagnostics=true");
     options->extra_tserver_flags.push_back(Format("--TEST_yb_ash_wait_code_to_sleep_at=$0",
         std::to_underlying(ash::WaitStateCode::kCatalogRead)));
@@ -229,14 +279,6 @@ const Configuration kProfileRPCs{
     ash::PggateRPC::kCheckIfPitrActive},
   .tserver_flags = {"--ysql_enable_profile=true"}};
 
-// Test for RPCs which are fired with queries related to transactions
-const Configuration kTransactionRPCs{
-  .rpc_list = {
-    ash::PggateRPC::kFinishTransaction,
-    ash::PggateRPC::kRollbackToSubTransaction,
-    ash::PggateRPC::kCancelTransaction,
-    ash::PggateRPC::kGetActiveTransactionList}};
-
 // Test for RPCs which are fired with misc queries, these are mostly callable PG functions
 const Configuration kMiscRPCs{
   .rpc_list = {
@@ -313,7 +355,6 @@ using PgTablegroupWaitEventAux = ConfigurableTest<kTablegroupRPCs>;
 using PgTablespaceWaitEventAux = ConfigurableTest<kTablespaceRPCs>;
 using PgSequenceWaitEventAux = ConfigurableTest<kSequenceRPCs>;
 using PgProfileWaitEventAux = ConfigurableTest<kProfileRPCs>;
-using PgTransactionWaitEventAux = ConfigurableTest<kTransactionRPCs>;
 using PgMiscWaitEventAux = ConfigurableTest<kMiscRPCs>;
 using PgParallelWaitEventAux = ConfigurableTest<kParallelRPCs>;
 using PgTabletSplitWaitEventAux = ConfigurableTest<kTabletSplitRPCs>;
@@ -323,32 +364,13 @@ using PgCDCWaitEventAux = ConfigurableTest<kPgCDCRPCs>;
 }  // namespace
 
 TEST_F(PgAshTest, NoMemoryLeaks) {
-  ASSERT_OK(conn_->Execute("CREATE TABLE t (key INT PRIMARY KEY, value TEXT)"));
+  ASSERT_OK(RunInsertsAndSelects(10s));
 
-  thread_holder_.AddThreadFunctor([this, &stop = thread_holder_.stop_flag()] {
-    auto conn = ASSERT_RESULT(Connect());
-    for (int i = 0; !stop; i++) {
-      ASSERT_OK(conn.Execute(yb::Format("INSERT INTO t (key, value) VALUES ($0, 'v-$0')", i)));
-    }
-  });
-  thread_holder_.AddThreadFunctor([this, &stop = thread_holder_.stop_flag()] {
-    auto conn = ASSERT_RESULT(Connect());
-    for (int i = 0; !stop; i++) {
-      auto values = ASSERT_RESULT(
-          conn.FetchRows<std::string>(yb::Format("SELECT value FROM t where key = $0", i)));
-    }
-  });
-
-  SleepFor(10s);
-  thread_holder_.Stop();
-
-  {
-    auto conn = ASSERT_RESULT(Connect());
-    for (int i = 0; i < 100; i++) {
-      auto values = ASSERT_RESULT(conn.FetchRows<std::string>(
-          yb::Format("SELECT wait_event FROM yb_active_session_history")));
-      SleepFor(10ms);
-    }
+  auto conn = ASSERT_RESULT(Connect());
+  for (int i = 0; i < 100; i++) {
+    auto values = ASSERT_RESULT(conn.FetchRows<std::string>(
+        yb::Format("SELECT wait_event FROM yb_active_session_history")));
+    SleepFor(10ms);
   }
 }
 
@@ -477,23 +499,6 @@ TEST_F_EX(PgWaitEventAuxTest, ProfileRPCs, PgProfileWaitEventAux) {
   ASSERT_OK(conn_->ExecuteFormat(
       "CREATE PROFILE $0 LIMIT FAILED_LOGIN_ATTEMPTS 1", kRoleName));
   ASSERT_OK(conn_->ExecuteFormat("DROP PROFILE $0", kRoleName));
-  ASSERT_OK(CheckWaitEventAux());
-}
-
-
-TEST_F_EX(PgWaitEventAuxTest, TransactionRPCs, PgTransactionWaitEventAux) {
-  static const std::string kTableName = "test";
-  static const std::string kSavepoint = "test_savepoint";
-  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (k INT)", kTableName));
-  ASSERT_OK(conn_->StartTransaction(IsolationLevel::READ_COMMITTED));
-  ASSERT_OK(conn_->ExecuteFormat("SAVEPOINT $0", kSavepoint));
-  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1)", kTableName));
-  ASSERT_OK(conn_->ExecuteFormat("ROLLBACK TO SAVEPOINT $0", kSavepoint));
-  // Call yb_cancel_transaction for a random txn id
-  ASSERT_OK(conn_->Fetch(
-      "SELECT yb_cancel_transaction('abcdabcd-abcd-abcd-abcd-abcd00000075')"));
-  ASSERT_OK(conn_->Fetch("SELECT yb_get_current_transaction()"));
-  ASSERT_OK(conn_->CommitTransaction());
   ASSERT_OK(CheckWaitEventAux());
 }
 
@@ -626,6 +631,10 @@ TEST_F_EX(PgWaitEventAuxTest, PgCDCServiceRPCs, PgCDCWaitEventAux) {
 
   // wait for DestroyVirtualWALForCDC RPC to be called
   SleepFor(2s * kTimeMultiplier);
+
+  const auto walsender_samples = ASSERT_RESULT(conn_->FetchRow<PGUint64>(
+      "SELECT COUNT(*) FROM yb_active_session_history WHERE query_id = 11"));
+  ASSERT_GT(walsender_samples, 0);
 
   ASSERT_OK(CheckWaitEventAux());
 }
@@ -837,31 +846,14 @@ TEST_F(PgBgWorkersTest, TestBgWorkersQueryId) {
   ASSERT_GE(bgworker_query_id_cnt, 1);
 }
 
-TEST_F(PgAshSingleNode, TestFinishTransactionRPCs) {
-  constexpr auto kTableName = "test_table";
-
-  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", kTableName));
-
-  for (int i = 0; i < 1000; ++i) {
-    ASSERT_OK(conn_->StartTransaction(IsolationLevel::READ_COMMITTED));
-    ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES ($1, $1)", kTableName, i));
-    ASSERT_OK(conn_->CommitTransaction());
-  }
-
-  const auto finish_txn_cnt = ASSERT_RESULT(
-      conn_->FetchRow<int64_t>(Format("SELECT COUNT(*) FROM yb_active_session_history "
-          "WHERE wait_event = 'WaitingOnTServer' AND wait_event_aux = 'FinishTransaction' "
-          "AND query_id = 5")));
-  ASSERT_EQ(finish_txn_cnt, 0);
-}
-
 TEST_F(PgAshTest, TestTServerMetadataSerializer) {
   static constexpr auto kTableName = "test_table";
 
+  LOG_WITH_FUNC(INFO) << "create table";
   ASSERT_OK(conn_->Execute(Format("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", kTableName)));
-  for (int i = 0; i < 1000; ++i) {
-    ASSERT_OK(conn_->Execute(Format("INSERT INTO $0 VALUES ($1, $1)", kTableName, i)));
-  }
+  LOG_WITH_FUNC(INFO) << "insert";
+  ASSERT_OK(conn_->Execute(Format("INSERT INTO $0 SELECT i, i FROM generate_series($1, $2) AS i",
+      kTableName, 1, (kIsDebug ? 100000 : 10000000))));
 
   auto query_id = ASSERT_RESULT(conn_->FetchRow<int64_t>(
       "SELECT queryid FROM pg_stat_statements WHERE query LIKE 'INSERT INTO%'"));
@@ -869,10 +861,12 @@ TEST_F(PgAshTest, TestTServerMetadataSerializer) {
   // Test that each tserver has the query id in ASH samples
   for (auto* ts : cluster_->tserver_daemons()) {
     auto conn = ASSERT_RESULT(ConnectToTs(*ts));
+    LOG_WITH_FUNC(INFO) << "query " << ts->uuid();
     const auto count = ASSERT_RESULT((conn.FetchRow<int64_t>(
         Format("SELECT COUNT(*) FROM yb_active_session_history WHERE query_id = $0", query_id))));
     ASSERT_GT(count, 0);
   }
+  LOG_WITH_FUNC(INFO) << "done";
 }
 
 TEST_F(PgAshMasterMetadataSerializerTest, TestMasterMetadataSerializer) {
@@ -905,4 +899,274 @@ TEST_F(PgAshMasterMetadataSerializerTest, TestMasterMetadataSerializer) {
   ASSERT_GT(count, 0);
 }
 
-}  // namespace yb::pgwrapper
+TEST_F(PgAshTest, TestUserIdConsistency) {
+  // Test: Check current userid and verify it matches between ASH and pg_user
+  static constexpr auto kTableName = "a";
+
+  // Create a table and insert data to generate ASH samples (following the blueprint)
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (k INT)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (generate_series(1, 100000))",
+                                 kTableName));
+
+  // Get current user ID from pg_authid (pg_user is a view on pg_authid)
+  auto current_user_id = ASSERT_RESULT(conn_->FetchRow<pgwrapper::PGOid>(
+      "SELECT oid FROM pg_authid WHERE rolname = current_user"));
+
+  // Query ASH to get distinct user IDs
+  auto user_ids = ASSERT_RESULT((conn_->FetchRows<pgwrapper::PGOid>(
+      "SELECT DISTINCT ysql_userid FROM yb_active_session_history "
+      "WHERE sample_time >= current_timestamp - interval '5 minutes' "
+      "ORDER BY ysql_userid")));
+
+  // Verify that we have some ASH samples
+  ASSERT_GT(user_ids.size(), 0) << "No ASH samples found";
+
+  // Verify that all user IDs in ASH match the current user ID
+  const auto non_zero_user_id = ASSERT_RESULT(conn_->FetchRow<pgwrapper::PGOid>(
+      "SELECT DISTINCT ysql_userid FROM yb_active_session_history "
+      "WHERE sample_time >= current_timestamp - interval '5 minutes' "
+      "AND ysql_userid != 0 ORDER BY ysql_userid"));
+
+  ASSERT_EQ(non_zero_user_id, current_user_id)
+      << "User ID in ASH does not match current user ID";
+}
+
+
+TEST_F(PgAshTest, TestUserIdChangeReflectedInAsh) {
+  const std::string kUser1 = "ash_user1";
+
+  ASSERT_OK(conn_->ExecuteFormat("CREATE ROLE $0", kUser1));
+
+  const auto orig_user_oid = ASSERT_RESULT(conn_->FetchRow<pgwrapper::PGOid>(
+      "SELECT oid FROM pg_authid WHERE rolname = current_user"));
+  const auto user1_oid = ASSERT_RESULT(conn_->FetchRow<pgwrapper::PGOid>(
+      Format("SELECT oid FROM pg_authid WHERE rolname = '$0'", kUser1)));
+
+  const std::string sleep_query = "SELECT pg_sleep(1)";
+
+  ASSERT_OK(conn_->Fetch(sleep_query));
+  const std::string ash_count_query =
+      "SELECT COUNT(*) FROM yb_active_session_history "
+      "WHERE ysql_userid = $0 AND sample_time >= current_timestamp - interval '5 minutes'";
+
+  const auto orig_user_ash_count = ASSERT_RESULT(
+      conn_->FetchRow<int64_t>(Format(ash_count_query, orig_user_oid)));
+  ASSERT_GT(orig_user_ash_count, 0);
+
+  ASSERT_OK(conn_->ExecuteFormat("SET SESSION AUTHORIZATION $0", kUser1));
+  ASSERT_OK(conn_->Fetch(sleep_query));
+  const auto user1_ash_count = ASSERT_RESULT(
+      conn_->FetchRow<int64_t>(Format(ash_count_query, user1_oid)));
+  ASSERT_GT(user1_ash_count, 0);
+
+  ASSERT_OK(conn_->Execute("RESET SESSION AUTHORIZATION"));
+  ASSERT_OK(conn_->Fetch(sleep_query));
+  const auto orig_user_ash_count_after_reset = ASSERT_RESULT(
+      conn_->FetchRow<int64_t>(Format(ash_count_query, orig_user_oid)));
+  ASSERT_GT(orig_user_ash_count_after_reset, 0);
+}
+
+// Template test class for transaction wait events - parameterized by wait code
+template <ash::WaitStateCode WaitEvent>
+class PgTransactionWaitEventTest : public PgAshSingleNode {
+ public:
+  void SetUp() override {
+    PgAshSingleNode::SetUp();
+    ASSERT_OK(conn_->Execute("CREATE TABLE test_table (k INT PRIMARY KEY, v INT)"));
+  }
+
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    // Sleep for 4 * kSamplingIntervalMs to ensure ASH captures the wait events
+    options->extra_tserver_flags.push_back(Format("--TEST_yb_ash_sleep_at_wait_state_ms=$0",
+        4 * kTimeMultiplier * kSamplingIntervalMs));
+    // Set the specific wait code to sleep at
+    options->extra_tserver_flags.push_back(Format("--TEST_yb_ash_wait_code_to_sleep_at=$0",
+        std::to_underlying(WaitEvent)));
+    PgAshSingleNode::UpdateMiniClusterOptions(options);
+  }
+
+ protected:
+  static constexpr const char* kTableName = "test_table";
+
+  // Verify that the specified wait event is captured in ASH
+  Status VerifyWaitEventInASH(const std::string& wait_event_name) {
+    const auto count = VERIFY_RESULT(
+        conn_->FetchRow<PGUint64>(
+            Format("SELECT COUNT(*) FROM yb_active_session_history "
+                   "WHERE wait_event = '$0' "
+                   "AND sample_time >= current_timestamp - interval '5 minutes'",
+                   wait_event_name)));
+    SCHECK_GT(count, 0, IllegalState, Format("$0 wait event not found in ASH", wait_event_name));
+    return Status::OK();
+  }
+};
+
+using PgTransactionCommitTest =
+    PgTransactionWaitEventTest<ash::WaitStateCode::kTransactionCommit>;
+using PgTransactionTerminateTest =
+    PgTransactionWaitEventTest<ash::WaitStateCode::kTransactionTerminate>;
+using PgTransactionRollbackToSavepointTest =
+    PgTransactionWaitEventTest<ash::WaitStateCode::kTransactionRollbackToSavepoint>;
+using PgTransactionCancelTest =
+    PgTransactionWaitEventTest<ash::WaitStateCode::kTransactionCancel>;
+
+TEST_F(PgTransactionCommitTest, TestTransactionCommit) {
+  // Transaction Commit - Start transaction and commit
+  ASSERT_OK(conn_->StartTransaction(IsolationLevel::READ_COMMITTED));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1, 1)", kTableName));
+  ASSERT_OK(conn_->CommitTransaction());
+  // Verify that transaction commit wait event is captured
+  ASSERT_OK(VerifyWaitEventInASH("TransactionCommit"));
+}
+
+TEST_F(PgTransactionTerminateTest, TestTransactionTerminate) {
+  // Transaction Terminate (Rollback) - Start transaction and rollback
+  ASSERT_OK(conn_->StartTransaction(IsolationLevel::READ_COMMITTED));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (2, 2)", kTableName));
+  ASSERT_OK(conn_->RollbackTransaction());
+  // Verify that transaction terminate wait event is captured
+  ASSERT_OK(VerifyWaitEventInASH("TransactionTerminate"));
+}
+
+TEST_F(PgTransactionRollbackToSavepointTest, TestTransactionRollbackToSavepoint) {
+  constexpr auto kSavepointName = "test_savepoint";
+  // Transaction RollbackToSavepoint - Create savepoint and rollback
+  ASSERT_OK(conn_->StartTransaction(IsolationLevel::READ_COMMITTED));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (3, 3)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("SAVEPOINT $0", kSavepointName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (4, 4)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("ROLLBACK TO SAVEPOINT $0", kSavepointName));
+  ASSERT_OK(conn_->CommitTransaction());
+  // Verify that rollbacktosavepoint wait event is captured
+  ASSERT_OK(VerifyWaitEventInASH("TransactionRollbackToSavepoint"));
+}
+
+TEST_F(PgTransactionCancelTest, TestTransactionCancel) {
+  // Transaction Cancel - Call yb_cancel_transaction with a dummy transaction ID
+  ASSERT_OK(conn_->Fetch(
+      "SELECT yb_cancel_transaction('aaaaaaaa-0000-4000-8000-000000000000'::uuid)"));
+  // Verify that cancel wait event is captured
+  ASSERT_OK(VerifyWaitEventInASH("TransactionCancel"));
+}
+
+TEST_F(YbAshV2Test, TestStartTimeGreaterThanEndTime) {
+  ASSERT_NOK(conn_->Fetch("SELECT * FROM yb_active_session_history("
+      "current_timestamp + interval '1 minute', current_timestamp)"));
+}
+
+TEST_F(YbAshV2Test, TestRowsAreInAscendingOrderOfSampleTime) {
+  ASSERT_OK(RunInsertsAndSelects(kWorkloadRunningTimeSecs * 1s));
+
+  const auto rows_in_ascending_order = [this](const std::string&& query) -> Status {
+    auto rows = VERIFY_RESULT(conn_->FetchRows<MonoDelta>(query));
+    SCHECK_GT(rows.size(), 0, IllegalState, Format("No rows found for query: $0", query));
+    for (size_t i = 1; i < rows.size(); ++i) {
+      SCHECK_GE(rows[i], rows[i - 1], IllegalState, Format(
+          "Rows are not in ascending order for query: $0", query));
+    }
+    return Status::OK();
+  };
+
+  ASSERT_OK(rows_in_ascending_order(Format(
+      "SELECT sample_time FROM yb_active_session_history("
+      "current_timestamp - interval '$0 seconds', current_timestamp)",
+      kWorkloadRunningTimeSecs)));
+
+  ASSERT_OK(rows_in_ascending_order(
+      "SELECT sample_time FROM yb_active_session_history"));
+}
+
+TEST_F(YbAshV2Test, TestStartTimeIsInclusive) {
+  ASSERT_OK(RunInsertsAndSelects(kWorkloadRunningTimeSecs * 1s));
+  ASSERT_OK(StopAshSampling());
+
+  auto min_time_str = ASSERT_RESULT(conn_->FetchRow<std::string>(Format(
+      "SELECT MIN(sample_time)::text FROM yb_active_session_history()")));
+
+  auto also_min_time_str = ASSERT_RESULT(conn_->FetchRow<std::string>(Format(
+      "SELECT MIN(sample_time)::text FROM yb_active_session_history('$0')",
+      min_time_str)));
+
+  ASSERT_EQ(min_time_str, also_min_time_str);
+}
+
+TEST_F(YbAshV2Test, TestEndTimeIsExclusive) {
+  ASSERT_OK(RunInsertsAndSelects(kWorkloadRunningTimeSecs * 1s));
+  ASSERT_OK(StopAshSampling());
+
+  auto max_time_str = ASSERT_RESULT(conn_->FetchRow<std::string>(Format(
+      "SELECT MAX(sample_time)::text FROM yb_active_session_history()")));
+
+  auto next_max_time_str = ASSERT_RESULT(conn_->FetchRow<std::string>(Format(
+      "SELECT MAX(sample_time)::text FROM yb_active_session_history(NULL, '$0')",
+      max_time_str)));
+
+  ASSERT_GT(max_time_str, next_max_time_str);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    , YbAshV2TestWithCircularBufferSize,
+    ::testing::Values(
+        1, // 1 KiB, so that the buffer wraps around
+        16 * 1024 // 16 MiB, so that the buffer doesn't wrap around
+    ));
+
+TEST_P(YbAshV2TestWithCircularBufferSize, TestYbAshFunctionAndViewReturnSameSamples) {
+  ASSERT_OK(RunInsertsAndSelects(kWorkloadRunningTimeSecs * 1s));
+  // so that we don't get additional samples between the ASH queries
+  ASSERT_OK(StopAshSampling());
+
+  auto start_time = ASSERT_RESULT(conn_->FetchRow<std::string>(Format(
+      "SELECT (current_timestamp - interval '$0 seconds')::text",
+      kWorkloadRunningTimeSecs)));
+
+  auto end_time = ASSERT_RESULT(conn_->FetchRow<std::string>(
+      "SELECT current_timestamp::text"));
+
+  const auto samples_are_equivalent = [this](
+      const std::vector<std::string>& queries) -> Status {
+    auto prev_rows = VERIFY_RESULT((conn_->FetchRows<MonoDelta, int64_t>(queries[0])));
+    SCHECK_EQ(!prev_rows.empty(), true, IllegalState, Format(
+        "No samples found for query: $0", queries[0]));
+    for (size_t i = 1; i < queries.size(); ++i) {
+      auto rows = VERIFY_RESULT((conn_->FetchRows<MonoDelta, int64_t>(queries[i])));
+      SCHECK_EQ(prev_rows, rows, IllegalState, Format(
+          "Rows are not equal for queries: $0 and $1", queries[i - 1], queries[i]));
+      std::swap(rows, prev_rows);
+    }
+    return Status::OK();
+  };
+
+  constexpr auto kView = "yb_active_session_history";
+
+  ASSERT_OK(samples_are_equivalent({
+      Format("SELECT sample_time, query_id FROM $0", kView),
+      Format("SELECT sample_time, query_id FROM $0()", kView),
+      Format("SELECT sample_time, query_id FROM $0(NULL)", kView),
+      Format("SELECT sample_time, query_id FROM $0(end_time => NULL)", kView),
+      Format("SELECT sample_time, query_id FROM $0(NULL, NULL)", kView)}));
+
+  ASSERT_OK(samples_are_equivalent({
+      Format("SELECT sample_time, query_id FROM $0 WHERE sample_time >= '$1'",
+             kView, start_time),
+      Format("SELECT sample_time, query_id FROM $0('$1')",
+             kView, start_time),
+      Format("SELECT sample_time, query_id FROM $0('$1', NULL)",
+             kView, start_time)}));
+
+  ASSERT_OK(samples_are_equivalent({
+      Format("SELECT sample_time, query_id FROM $0 WHERE sample_time < '$1'",
+             kView, end_time),
+      Format("SELECT sample_time, query_id FROM $0(end_time => '$1')",
+             kView, end_time),
+      Format("SELECT sample_time, query_id FROM $0(NULL, '$1')",
+             kView, end_time)}));
+
+  ASSERT_OK(samples_are_equivalent({
+      Format("SELECT sample_time, query_id FROM $0 WHERE sample_time >= '$1' "
+             "AND sample_time < '$2'", kView, start_time, end_time),
+      Format("SELECT sample_time, query_id FROM $0('$1', '$2')",
+             kView, start_time, end_time)}));
+}
+
+} // namespace yb::pgwrapper

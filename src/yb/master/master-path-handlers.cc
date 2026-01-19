@@ -118,8 +118,8 @@ DEFINE_RUNTIME_uint32(leaderless_tablet_alert_delay_secs, 2 * 60,
     "alert it as a leaderless tablet.");
 
 DEFINE_test_flag(int32, sleep_before_reporting_lb_ui_ms, 0,
-                 "Sleep before reporting tasks in the load balancer UI, to give tasks a chance to "
-                 "complete.");
+                 "Sleep before reporting tasks in the cluster balancer UI, to give tasks a chance "
+                 "to complete.");
 
 DECLARE_bool(enforce_tablet_replica_limits);
 DECLARE_int32(ysql_tablespace_info_refresh_secs);
@@ -848,15 +848,15 @@ void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
     if (master_->catalog_manager()->IsLoadBalancerEnabled()) {
       IsLoadBalancedRequestPB req;
       IsLoadBalancedResponsePB resp;
-      Status load_balanced = master_->catalog_manager()->IsLoadBalanced(&req, &resp);
-      if (load_balanced.ok()) {
+      Status cluster_balancer_idle = master_->catalog_manager()->IsLoadBalanced(&req, &resp);
+      if (cluster_balancer_idle.ok()) {
         *output << "<h4 style=\"color:Green\"><i class='fa fa-tasks yb-dashboard-icon' "
-                   "aria-hidden='true'></i>Cluster Load is Balanced</h4>\n";
+                   "aria-hidden='true'></i>Cluster Balancer is Idle</h4>\n";
       } else {
         *output
             << "<h4 style=\"color:" << kYBOrange
             << "\"><i class='fa fa-tasks yb-dashboard-icon' aria-hidden='true'></i>Cluster Load "
-               "is not Balanced</h4>\n";
+               "is not Idle</h4>\n";
       }
     }
   }
@@ -1141,7 +1141,7 @@ void MasterPathHandlers::HandleHealthCheck(
 
     // TODO: Add these health checks in a subsequent diff
     //
-    // 4. is the load balancer busy moving tablets/leaders around
+    // 4. is the cluster balancer busy moving tablets/leaders around
     /* Use: Status IsLoadBalancerIdle(const IsLoadBalancerIdleRequestPB* req,
                                               IsLoadBalancerIdleResponsePB* resp);
      */
@@ -1868,8 +1868,18 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
   }
 
   *output << "<table class='table table-striped'>\n";
-  *output << "  <tr><th>Tablet ID</th><th>Partition</th><th>SplitDepth</th><th>State</th>"
-             "<th>Hidden</th><th>Message</th><th>RaftConfig</th></tr>\n";
+  *output << "  <tr><th>Tablet ID</th><th>Partition</th><th>SplitDepth</th><th>RaftConfig / "
+             "Replica info</th><th>State</th><th>Hidden</th><th>Message</th></tr>\n";
+
+  std::sort(tablets.begin(), tablets.end(), [](const TabletInfoPtr& t1, const TabletInfoPtr& t2) {
+    auto l1 = t1->LockForRead();
+    auto l2 = t2->LockForRead();
+    auto res = Slice(l1->pb.partition().partition_key_start())
+                   .compare(l2->pb.partition().partition_key_start());
+    // Parent tablet goes first in case of partition_key_start equality.
+    return res == 0 ? (l1->pb.split_depth() < l2->pb.split_depth()) : res < 0;
+  });
+
   for (const auto& tablet : tablets) {
     if (!show_deleted_tablets && tablet->LockForRead()->is_deleted()) {
       continue;
@@ -1888,10 +1898,10 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
         tablet->tablet_id(),
         EscapeForHtmlToString(partition_schema.PartitionDebugString(partition, schema)),
         l->pb.split_depth(),
+        ReplicaInfoToHtml(sorted_locations, tablet->tablet_id()),
         state,
         l->is_hidden(),
-        EscapeForHtmlToString(l->pb.state_msg()),
-        RaftConfigToHtml(sorted_locations, tablet->tablet_id()));
+        EscapeForHtmlToString(l->pb.state_msg()));
   }
   *output << "</table>\n";
 
@@ -2611,12 +2621,12 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
                           "See all tables &raquo;");
   (*output) << "  </tr>\n";
 
-  // Load balancer status.
+  // Cluster balancer status.
   bool load_balancer_enabled = master_->catalog_manager()->IsLoadBalancerEnabled();
   (*output) << Format(" <tr><td>$0<span class='yb-overview'>$1</span></td>"
                           "<td><i class='fa $2' aria-hidden='true'> </i></td></tr>\n",
                           "<i class='fa fa-tasks yb-dashboard-icon' aria-hidden='true'></i>",
-                          "Load Balancer Enabled",
+                          "Cluster Balancer Enabled",
                           load_balancer_enabled ? "fa-check"
                                                 : "fa-times label label-danger");
   if (load_balancer_enabled) {
@@ -2627,7 +2637,7 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
     (*output) << Format(" <tr><td>$0<span class='yb-overview'>$1</span></td>"
                             "<td><i class='fa $2' aria-hidden='true'> </i></td></tr>\n",
                             "<i class='fa fa-tasks yb-dashboard-icon' aria-hidden='true'></i>",
-                            "Is Load Balanced?",
+                            "Is Cluster Load Balanced?",
                             load_balanced.ok() ? "fa-check"
                                                : "fa-times label label-danger");
   }
@@ -3130,8 +3140,7 @@ void MasterPathHandlers::HandleXCluster(
 
     output << "<pre class=\"prettyprint\">"
            << "state: " << inbound_replication_group.state
-           << "\ndisable_stream: " << BoolToString(inbound_replication_group.disable_stream)
-           << "\ntype: "
+           << (inbound_replication_group.disable_stream ? " (DISABLED)" : "") << "\ntype: "
            << xcluster::ShortReplicationType(inbound_replication_group.replication_type)
            << "\nmaster_addrs: " << inbound_replication_group.master_addrs;
     if (!inbound_replication_group.db_scoped_info.empty()) {
@@ -3220,7 +3229,7 @@ void MasterPathHandlers::HandleLoadBalancer(
   auto rbs_info = FetchRbsInfo(master_, 5s /* timeout */);
   RenderRbsInfo(master_->catalog_manager(), rbs_info, html_print_helper, output);
 
-  auto activity_info = master_->catalog_manager()->load_balancer()->GetLatestActivityInfo();
+  auto activity_info = master_->catalog_manager()->cluster_balancer()->GetLatestActivityInfo();
   if (FLAGS_TEST_sleep_before_reporting_lb_ui_ms > 0) {
     SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_sleep_before_reporting_lb_ui_ms));
   }
@@ -3389,8 +3398,8 @@ Status MasterPathHandlers::Register(Webserver* server) {
       &MasterPathHandlers::HandleTabletReplicasPage, is_styled);
 
   RegisterLeaderOrRedirect(
-      server, "/load-distribution", "Load balancer View", &MasterPathHandlers::HandleLoadBalancer,
-      is_styled);
+      server, "/load-distribution", "Cluster Balancer View",
+      &MasterPathHandlers::HandleLoadBalancer, is_styled);
 
   RegisterLeaderOrRedirect(
       server, "/stateful-services", "Stateful Services",
@@ -3457,7 +3466,7 @@ Status MasterPathHandlers::Register(Webserver* server) {
   return Status::OK();
 }
 
-string MasterPathHandlers::RaftConfigToHtml(
+string MasterPathHandlers::ReplicaInfoToHtml(
     const std::vector<TsUuidAndTabletReplica>& locations, const std::string& tablet_id) const {
   stringstream html;
 
@@ -3495,7 +3504,12 @@ string MasterPathHandlers::RaftConfigToHtml(
       html << Format("  <li>$0: $1</li>\n",
                          PeerRole_Name(replica.role), location_html);
     }
-    html << Format("UUID: $0\n", ts_uuid);
+    html << Format("UUID: $0<br/>", ts_uuid);
+    html << Format(
+        "Active SSTs size: $0<br/>",
+        HumanReadableNumBytes::ToString(replica.drive_info.sst_files_size));
+    html << Format(
+        "WALs size: $0\n", HumanReadableNumBytes::ToString(replica.drive_info.wal_files_size));
   }
   html << "</ul>\n";
   return html.str();

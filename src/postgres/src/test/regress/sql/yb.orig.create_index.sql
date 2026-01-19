@@ -1,3 +1,8 @@
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set filename :abs_srcdir '/yb_commands/explainrun.sql'
+\i :filename
+\set explain 'EXPLAIN (COSTS OFF)'
+
 --
 -- Create index on existing table with data
 --
@@ -34,14 +39,20 @@ SELECT * FROM test_index WHERE v1 IN (1, 2, 3);
 
 CREATE TABLE test_sys_catalog_update (k int primary key, v int);
 
-EXPLAIN (COSTS OFF) SELECT relname FROM pg_class WHERE relname = 'test_sys_catalog_update';
-SELECT relname  FROM pg_class WHERE relname = 'test_sys_catalog_update';
+SELECT $$
+SELECT relname FROM pg_class WHERE relname = 'test_sys_catalog_update'
+$$ AS query \gset
+:explain1run1
 
-EXPLAIN (COSTS OFF) SELECT typname FROM pg_type WHERE typname = 'test_sys_catalog_update';
-SELECT typname FROM pg_type WHERE typname = 'test_sys_catalog_update';
+SELECT $$
+SELECT typname FROM pg_type WHERE typname = 'test_sys_catalog_update'
+$$ AS query \gset
+:explain1run1
 
-EXPLAIN (COSTS OFF) SELECT attname, atttypid FROM pg_attribute WHERE attname = 'v';
-SELECT attname, atttypid FROM pg_attribute WHERE attname = 'v';
+SELECT $$
+SELECT attname, atttypid FROM pg_attribute WHERE attname = 'v'
+$$ AS query \gset
+:explain1run1
 
 ALTER TABLE test_sys_catalog_update RENAME TO test_sys_catalog_update_new;
 ALTER TABLE test_sys_catalog_update_new RENAME COLUMN v TO w;
@@ -72,34 +83,34 @@ INSERT INTO t1 VALUES (1, 3, 11, 11);
 
 INSERT INTO t1 VALUES (1, 3, 11, 13), (2, 1, 12, 13), (2, 2, 12, 14);
 
-EXPLAIN (COSTS OFF) SELECT * FROM t1 ORDER BY h, r;
-SELECT * FROM t1 ORDER BY h, r;
+\set query 'SELECT * FROM t1 ORDER BY h, r'
+:explain1run1
 
-EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE h = 1 ORDER BY r;
-SELECT * FROM t1 WHERE h = 1 ORDER BY r;
+\set query 'SELECT * FROM t1 WHERE h = 1 ORDER BY r'
+:explain1run1
 
-EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE yb_hash_code(h) = yb_hash_code(1) ORDER BY r;
-SELECT * FROM t1 WHERE yb_hash_code(h) = yb_hash_code(1) ORDER BY r;
+\set query 'SELECT * FROM t1 WHERE yb_hash_code(h) = yb_hash_code(1) ORDER BY r'
+:explain1run1
 
-EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE h > 1 ORDER BY h, r;
-SELECT * FROM t1 WHERE h > 1 ORDER BY h, r;
+\set query 'SELECT * FROM t1 WHERE h > 1 ORDER BY h, r'
+:explain1run1
 
-EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE h = 1 AND r = 1;
-SELECT * FROM t1 WHERE h = 1 AND r = 1;
+\set query 'SELECT * FROM t1 WHERE h = 1 AND r = 1'
+:explain1run1
 
-EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE yb_hash_code(h) = yb_hash_code(1) AND r = 1;
-SELECT * FROM t1 WHERE yb_hash_code(h) = yb_hash_code(1) AND r = 1;
+\set query 'SELECT * FROM t1 WHERE yb_hash_code(h) = yb_hash_code(1) AND r = 1'
+:explain1run1
 
-EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE v1 = 11 ORDER BY h, r;
-SELECT * FROM t1 WHERE v1 = 11 ORDER BY h, r;
+\set query 'SELECT * FROM t1 WHERE v1 = 11 ORDER BY h, r'
+:explain1run1
 
 -- Disabled this test because we do not have proper stats. We return the same cost estimate
 -- for indexes t1_v1_idx and t1_v1_v2_idx and Postgres will be either of them at random.
--- EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE v1 = 11 AND v2 = 11;
--- SELECT * FROM t1 WHERE v1 = 11 AND v2 = 11;
+-- \set query 'SELECT * FROM t1 WHERE v1 = 11 AND v2 = 11'
+-- :explain1run1
 
-EXPLAIN (COSTS OFF) SELECT t1.h, t1.r, t1.v1, t2.v1 FROM t1, t2 WHERE t1.h = t2.h AND t1.r = t2.r;
-SELECT t1.h, t1.r, t1.v1, t2.v1 FROM t1, t2 WHERE t1.h = t2.h AND t1.r = t2.r;
+\set query 'SELECT t1.h, t1.r, t1.v1, t2.v1 FROM t1, t2 WHERE t1.h = t2.h AND t1.r = t2.r'
+:explain1run1
 
 --
 -- NULL value in index
@@ -131,12 +142,12 @@ SELECT * FROM null_unique_index WHERE k IS NOT NULL ORDER BY v;
 DELETE FROM null_unique_index WHERE k = 3;
 SELECT * FROM null_unique_index WHERE k IS NULL ORDER BY v;
 SELECT * FROM null_unique_index WHERE k IS NOT NULL ORDER BY v;
-EXPLAIN(COSTS OFF) DELETE FROM null_unique_index WHERE k IS NULL;
-DELETE FROM null_unique_index WHERE k IS NULL;
+\set query 'DELETE FROM null_unique_index WHERE k IS NULL'
+:explain1run1
 SELECT * FROM null_unique_index ORDER BY v;
 INSERT INTO null_unique_index values (NULL, 2), (3, 3), (NULL, 5);
-EXPLAIN(COSTS OFF) UPDATE null_unique_index SET k = NULL WHERE k IS NOT NULL;
-UPDATE null_unique_index SET k = NULL WHERE k IS NOT NULL;
+\set query 'UPDATE null_unique_index SET k = NULL WHERE k IS NOT NULL'
+:explain1run1
 SELECT * FROM null_unique_index ORDER BY v;
 
 -- Test index update with UPDATE and DELETE
@@ -171,8 +182,8 @@ CREATE UNIQUE INDEX test_truncate_index ON test_truncate (b);
 INSERT INTO test_truncate VALUES (1, 2);
 INSERT INTO test_truncate VALUES (2, 2);
 
-EXPLAIN (COSTS OFF) SELECT b FROM test_truncate WHERE b = 2;
-SELECT b FROM test_truncate WHERE b = 2;
+\set query 'SELECT b FROM test_truncate WHERE b = 2'
+:explain1run1
 
 TRUNCATE test_truncate;
 SELECT b FROM test_truncate WHERE b = 2;
@@ -199,17 +210,17 @@ CREATE UNIQUE INDEX ON test_include (c1) include (c2);
 DROP INDEX test_include_c1_c2_idx;
 DELETE FROM test_include WHERE c1 = 1 AND c2 = 2;
 CREATE UNIQUE INDEX ON test_include (c1) include (c2);
-EXPLAIN (COSTS OFF) SELECT c1, c2 FROM test_include WHERE c1 = 1;
-SELECT c1, c2 FROM test_include WHERE c1 = 1;
+\set query 'SELECT c1, c2 FROM test_include WHERE c1 = 1'
+:explain1run1
 \d test_include
 -- Verify the included column is updated in both the base table and the index. Use WHERE condition
 -- on c1 below to force the scan on the index vs. base table. Select the non-included column c3 in
 -- the other case to force the use of sequential scan on the base table.
 UPDATE test_include SET c2 = 22 WHERE c1 = 2;
-EXPLAIN (COSTS OFF) SELECT c1, c2 FROM test_include WHERE c1 > 0 ORDER BY c2;
-EXPLAIN (COSTS OFF) SELECT * FROM test_include ORDER BY c2;
-SELECT c1, c2 FROM test_include WHERE c1 > 0 ORDER BY c2;
-SELECT * FROM test_include ORDER BY c2;
+\set query 'SELECT c1, c2 FROM test_include WHERE c1 > 0 ORDER BY c2'
+:explain1run1
+\set query 'SELECT * FROM test_include ORDER BY c2'
+:explain1run1
 UPDATE test_include SET c2 = NULL WHERE c1 = 1;
 -- TODO(mihnea) Disabled temporarily due to issue #1611
 -- UPDATE test_include SET c2 = 33 WHERE c2 = 3;
@@ -318,36 +329,36 @@ INSERT INTO test_method VALUES
   (2, 1, 1, 2, 10, 20);
 
 -- Test scans using different indexes. Verify order by.
-EXPLAIN (COSTS OFF) SELECT * FROM test_method ORDER BY h1, h2;
-SELECT * FROM test_method ORDER BY h1, h2;
-EXPLAIN (COSTS OFF) SELECT * FROM test_method WHERE h1 = 1 AND h2 = 1 ORDER BY r1, r2;
-SELECT * FROM test_method WHERE h1 = 1 AND h2 = 1 ORDER BY r1, r2;
-EXPLAIN (COSTS OFF) SELECT * FROM test_method ORDER BY r1, r2;
-SELECT * FROM test_method ORDER BY r1, r2;
-EXPLAIN (COSTS OFF) SELECT * FROM test_method WHERE v1 > 5 ORDER BY v1, v2;
-SELECT * FROM test_method WHERE v1 > 5 ORDER BY v1, v2;
-EXPLAIN (COSTS OFF) SELECT * FROM test_method WHERE h2 = 2 ORDER BY r1, r2;
-SELECT * FROM test_method WHERE h2 = 2 ORDER BY r1, r2;
-EXPLAIN (COSTS OFF) SELECT * FROM test_method WHERE h2 = 1 AND h1 = 1 ORDER BY r2 DESC, r1;
-SELECT * FROM test_method WHERE h2 = 1 AND h1 = 1 ORDER BY r2 DESC, r1;
-EXPLAIN (COSTS OFF) SELECT * FROM test_method WHERE h2 = 1 AND h1 = 1 ORDER BY r2, r1;
-SELECT * FROM test_method WHERE h2 = 1 AND h1 = 1 ORDER BY r2, r1;
-EXPLAIN (COSTS OFF) SELECT * FROM test_method WHERE h2 % 8 = 2 AND h1 = 1 ORDER BY r2, r1;
-SELECT * FROM test_method WHERE h2 % 8 = 2 AND h1 = 1 ORDER BY r2, r1;
+\set query 'SELECT * FROM test_method ORDER BY h1, h2'
+:explain1run1
+\set query 'SELECT * FROM test_method WHERE h1 = 1 AND h2 = 1 ORDER BY r1, r2'
+:explain1run1
+\set query 'SELECT * FROM test_method ORDER BY r1, r2'
+:explain1run1
+\set query 'SELECT * FROM test_method WHERE v1 > 5 ORDER BY v1, v2'
+:explain1run1
+\set query 'SELECT * FROM test_method WHERE h2 = 2 ORDER BY r1, r2'
+:explain1run1
+\set query 'SELECT * FROM test_method WHERE h2 = 1 AND h1 = 1 ORDER BY r2 DESC, r1'
+:explain1run1
+\set query 'SELECT * FROM test_method WHERE h2 = 1 AND h1 = 1 ORDER BY r2, r1'
+:explain1run1
+\set query 'SELECT * FROM test_method WHERE h2 % 8 = 2 AND h1 = 1 ORDER BY r2, r1'
+:explain1run1
 
 -- Test update using a hash index
-EXPLAIN (COSTS OFF) UPDATE test_method SET v2 = v2 + 10 WHERE h2 = 2;
-UPDATE test_method SET v2 = v2 + 10 WHERE h2 = 2;
+\set query 'UPDATE test_method SET v2 = v2 + 10 WHERE h2 = 2'
+:explain1run1
 SELECT * FROM test_method ORDER BY h1, h2;
 SELECT * FROM test_method ORDER BY r1, r2;
 
 -- Test delete using a unique index
-EXPLAIN (COSTS OFF) DELETE FROM test_method WHERE v1 = 5 AND v2 = 25;
-DELETE FROM test_method WHERE v1 = 5 AND v2 = 25;
+\set query 'DELETE FROM test_method WHERE v1 = 5 AND v2 = 25'
+:explain1run1
 
 -- Test delete using the primary key
-EXPLAIN (COSTS OFF) DELETE FROM test_method WHERE h1 = 2 AND h2 = 0;
-DELETE FROM test_method WHERE h1 = 2 AND h2 = 0;
+\set query 'DELETE FROM test_method WHERE h1 = 2 AND h2 = 0'
+:explain1run1
 
 SELECT * FROM test_method ORDER BY h1, h2;
 
@@ -365,8 +376,8 @@ INSERT INTO test_method VALUES (1, 10, 2, 2, 8, 100);
 -- Test hash with extra parenthesis on a single column
 CREATE INDEX ON test_method ((h2) HASH);
 \d test_method
-EXPLAIN (COSTS OFF) SELECT * FROM test_method WHERE h2 = 258;
-SELECT * FROM test_method WHERE h2 = 258;
+\set query 'SELECT * FROM test_method WHERE h2 = 258'
+:explain1run1
 DROP TABLE test_method;
 
 -- Test more HASH key cases in PRIMARY KEY
@@ -404,28 +415,28 @@ CREATE TABLE tbl(k SERIAL PRIMARY KEY, v INT);
 CREATE INDEX ON tbl(v ASC) SPLIT AT VALUES((10), (20), (30));
 INSERT INTO tbl(v) VALUES
     (5), (6), (16), (15), (25), (26), (36), (35), (46), (10), (20), (30), (40), (6), (16), (26);
-EXPLAIN (COSTS OFF) SELECT * FROM tbl ORDER BY v ASC;
-SELECT * FROM tbl ORDER BY v ASC;
-EXPLAIN (COSTS OFF) SELECT * FROM tbl ORDER BY v DESC;
-SELECT * FROM tbl ORDER BY v DESC;
-EXPLAIN (COSTS OFF) SELECT v FROM tbl WHERE v > 10 and v <= 40 ORDER BY v DESC;
-SELECT v FROM tbl WHERE v > 10 and v <= 40 ORDER BY v DESC;
-EXPLAIN (COSTS OFF) SELECT v FROM tbl WHERE v > 10 and v <= 40 ORDER BY v ASC;
-SELECT v FROM tbl WHERE v > 10 and v <= 40 ORDER BY v ASC;
+\set query 'SELECT * FROM tbl ORDER BY v ASC'
+:explain1run1
+\set query 'SELECT * FROM tbl ORDER BY v DESC'
+:explain1run1
+\set query 'SELECT v FROM tbl WHERE v > 10 and v <= 40 ORDER BY v DESC'
+:explain1run1
+\set query 'SELECT v FROM tbl WHERE v > 10 and v <= 40 ORDER BY v ASC'
+:explain1run1
 
 DROP TABLE tbl;
 CREATE TABLE tbl(k SERIAL PRIMARY KEY, v INT);
 CREATE UNIQUE INDEX ON tbl(v DESC) SPLIT AT VALUES((30), (20), (10));
 INSERT INTO tbl(v) VALUES
     (5), (6), (16), (15), (25), (26), (36), (35), (46), (10), (20), (30), (40);
-EXPLAIN (COSTS OFF) SELECT * FROM tbl ORDER BY v ASC;
-SELECT * FROM tbl ORDER BY v ASC;
-EXPLAIN (COSTS OFF) SELECT * FROM tbl ORDER BY v DESC;
-SELECT * FROM tbl ORDER BY v DESC;
-EXPLAIN (COSTS OFF) SELECT v FROM tbl WHERE v >= 10 and v < 40 ORDER BY v ASC;
-SELECT v FROM tbl WHERE v >= 10 and v < 40 ORDER BY v ASC;
-EXPLAIN (COSTS OFF) SELECT v FROM tbl WHERE v >= 10 and v < 40 ORDER BY v DESC;
-SELECT v FROM tbl WHERE v >= 10 and v < 40 ORDER BY v DESC;
+\set query 'SELECT * FROM tbl ORDER BY v ASC'
+:explain1run1
+\set query 'SELECT * FROM tbl ORDER BY v DESC'
+:explain1run1
+\set query 'SELECT v FROM tbl WHERE v >= 10 and v < 40 ORDER BY v ASC'
+:explain1run1
+\set query 'SELECT v FROM tbl WHERE v >= 10 and v < 40 ORDER BY v DESC'
+:explain1run1
 
 -- Test creating indexes with (table_oid = x)
 CREATE TABLE test_index_with_oids (v1 INT, v2 INT, v3 INT);

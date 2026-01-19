@@ -18,6 +18,7 @@
 #include "yb/common/schema.h"
 
 #include "yb/docdb/doc_pgsql_scanspec.h"
+#include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/hybrid_scan_choices.h"
 #include "yb/docdb/scan_choices.h"
 
@@ -63,6 +64,64 @@ const Schema test_range_schema_6col(
      ColumnSchema("payload", DataType::INT32, ColumnKind::VALUE, Nullable::kTrue)},
     {10_ColId, 11_ColId, 12_ColId, 13_ColId, 14_ColId, 15_ColId, 16_ColId});
 
+struct TestOptionRange {
+  TestOptionRange(std::optional<int> lower_, bool lower_inclusive_,
+                  std::optional<int> upper_, bool upper_inclusive_,
+                  SortOrder sort_order_)
+      : lower(lower_), lower_inclusive(lower_inclusive_),
+        upper(upper_), upper_inclusive(upper_inclusive_),
+        sort_order(sort_order_) {
+  }
+
+  TestOptionRange(int begin, int end, SortOrder sort_order = SortOrder::kAscending)
+      : TestOptionRange(begin, true, end, true, sort_order) {}
+
+  TestOptionRange(int value, SortOrder sort_order = SortOrder::kAscending) // NOLINT
+      : TestOptionRange(value, value, sort_order) {}
+
+  TestOptionRange(int bound, bool upper, SortOrder sort_order = SortOrder::kAscending)
+      : TestOptionRange(
+            upper ? std::optional<int>() : bound,
+            !upper,
+            upper ? bound : std::optional<int>(),
+            upper,
+            sort_order) {}
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(
+        lower, lower_inclusive, upper, upper_inclusive,
+        (sort_order, sort_order == SortOrder::kAscending ? "ASC" : "DSC"));
+  }
+
+  std::optional<int> lower;
+  bool lower_inclusive;
+  std::optional<int> upper;
+  bool upper_inclusive;
+  SortOrder sort_order;
+};
+
+bool BoundEquals(
+    std::optional<int> lhs, SortOrder sort_order, Slice rhs, qlexpr::BoundType bound_type) {
+  if (lhs) {
+    auto bytes = KeyEntryValue::Int32(*lhs, sort_order).ToKeyBytes();
+    return bytes.AsSlice() == rhs;
+  }
+  auto expected_entry_type = bound_type == qlexpr::BoundType::kLower
+      ? KeyEntryType::kNullLow : KeyEntryType::kNullHigh;
+  return dockv::DecodeKeyEntryType(rhs) == expected_entry_type;
+}
+
+bool operator==(const TestOptionRange& lhs, const OptionRange& rhs) {
+  return lhs.lower_inclusive == rhs.lower_inclusive() &&
+         lhs.upper_inclusive == rhs.upper_inclusive() &&
+         BoundEquals(lhs.lower, lhs.sort_order, rhs.lower(), qlexpr::BoundType::kLower) &&
+         BoundEquals(lhs.upper, lhs.sort_order, rhs.upper(), qlexpr::BoundType::kUpper);
+}
+
+std::ostream& operator<<(std::ostream& lhs, const TestOptionRange& rhs) {
+  return lhs << rhs.ToString();
+}
+
 class TestCondition {
  public:
   TestCondition(std::vector<ColumnId> &&lhs, yb::QLOperator op, std::vector<std::vector<int>> &&rhs)
@@ -75,13 +134,12 @@ class TestCondition {
 
 class ScanChoicesTest : public YBTest {
  protected:
-  void AssertChoicesEqual(const std::vector<OptionRange> &lhs, const std::vector<OptionRange> &rhs);
   void SetupCondition(PgsqlConditionPB *cond_ptr, const std::vector<TestCondition> &conds);
   void InitializeScanChoicesInstance(const Schema& schema, const PgsqlConditionPB& cond);
 
   bool IsScanChoicesFinished();
   void AdjustForRangeConstraints();
-  void CheckOptions(const std::vector<std::vector<OptionRange>> &expected);
+  void CheckOptions(const std::vector<std::vector<TestOptionRange>>& expected);
   void CheckSkipTargetsUpTo(
       const Schema &schema,
       const std::vector<TestCondition> &conds,
@@ -92,34 +150,20 @@ class ScanChoicesTest : public YBTest {
   Status TestSimplePartialFilterHybridScan();
   Status TestSimpleMixedFilterHybridScan();
   void TestOptionIteration(
-      const Schema &schema,
-      const std::vector<TestCondition> &conds,
-      std::vector<std::vector<OptionRange>> &&expected);
+      const Schema& schema,
+      const std::vector<TestCondition>& conds,
+      const std::vector<std::vector<TestOptionRange>>& expected);
 
  private:
   const Schema *current_schema_;
   std::unique_ptr<HybridScanChoices> choices_;
 };
 
-static std::ostream &operator<<(std::ostream &out, const std::vector<OptionRange> &vec) {
-  out << "{";
-
-  bool first_elem = true;
-  for (const auto &it : vec) {
-    if (!first_elem) out << ", ";
-    out << it;
-    first_elem = false;
-  }
-
-  out << "}";
-  return out;
-}
-
-void ScanChoicesTest::AssertChoicesEqual(
-    const std::vector<OptionRange> &lhs, const std::vector<OptionRange> &rhs) {
+void AssertChoicesEqual(
+    const std::vector<TestOptionRange>& lhs, const std::vector<OptionRange>& rhs) {
   EXPECT_EQ(lhs.size(), rhs.size());
   for (size_t i = 0; i < lhs.size(); i++) {
-    EXPECT_TRUE(lhs[i] == rhs[i]) << "Expected: " << lhs << " But got " << rhs;
+    EXPECT_TRUE(lhs[i] == rhs[i]) << "Expected: " << lhs[i] << " But got " << rhs[i];
   }
 }
 
@@ -175,13 +219,16 @@ void ScanChoicesTest::SetupCondition(
 // Initializes an instance of ScanChoices in choices_
 void ScanChoicesTest::InitializeScanChoicesInstance(
     const Schema& schema, const PgsqlConditionPB& cond) {
+  auto doc_read_context = DocReadContext::TEST_Create(schema);
   current_schema_ = &schema;
   dockv::KeyEntryValues empty_components;
   DocPgsqlScanSpec spec(
-      schema, rocksdb::kDefaultQueryId, empty_components, empty_components, &cond,
-      std::nullopt /* hash_code */, std::nullopt /* max_hash_code */, DocKey(), true);
+      schema, rocksdb::kDefaultQueryId, nullptr, {}, empty_components,
+      PgsqlConditionPBPtr(&cond), std::nullopt /* hash_code */, std::nullopt /* max_hash_code */,
+      DocKey(), true);
   const auto& bounds = spec.bounds();
-  choices_ = down_pointer_cast<HybridScanChoices>(ScanChoices::Create(schema, spec, bounds, {}));
+  choices_ = down_pointer_cast<HybridScanChoices>(CHECK_RESULT(ScanChoices::Create(
+      doc_read_context, spec, bounds, {}, AllowVariableBloomFilter::kFalse)));
 }
 
 bool ScanChoicesTest::IsScanChoicesFinished() {
@@ -231,23 +278,25 @@ void ScanChoicesTest::AdjustForRangeConstraints() {
 
       auto is_inclusive = cur_opts[i - 1].upper_inclusive();
       auto sorttype = current_schema_->column(i - 1).sorting_type();
-      auto sortorder = (sorttype == SortingType::kAscending ||
-          sorttype == SortingType::kAscendingNullsLast) ? SortOrder::kAscending :
-          SortOrder::kDescending;
+      auto sortorder =
+          sorttype == SortingType::kAscending || sorttype == SortingType::kAscendingNullsLast
+          ? SortOrder::kAscending : SortOrder::kDescending;
 
       auto j = i - 1;
       if (is_inclusive) {
         // If column i - 1 was inclusive, we move that column up by one to move
         // the previous OptionRange for column i - 1.
-        KeyEntryValue::Int32(cur_opts[j].upper().GetInt32() + 1,
-            sortorder).AppendToKey(&new_target);
+        auto upper = ASSERT_RESULT(KeyEntryValue::FullyDecodeFromKey(cur_opts[j].upper()));
+        KeyEntryValue::Int32(upper.GetInt32() + 1, sortorder).AppendToKey(&new_target);
         j++;
       }
 
       for (; j < current_schema_->num_range_key_columns(); j++) {
-        auto upper = j < cur_opts.size() ? cur_opts[j].upper()
-                                         : KeyEntryValue(dockv::KeyEntryType::kHighest);
-        upper.AppendToKey(&new_target);
+        if (j < cur_opts.size()) {
+          new_target.AppendRawBytes(cur_opts[j].upper());
+        } else {
+          new_target.AppendKeyEntryType(dockv::KeyEntryType::kHighest);
+        }
       }
 
       EXPECT_OK(choices_->SkipTargetsUpTo(new_target));
@@ -255,7 +304,7 @@ void ScanChoicesTest::AdjustForRangeConstraints() {
       // if the upper bound we adjusted to was non-inclusive. SkipTargetsUpTo should've shifted
       // the set of active options in this case.
       if (is_inclusive && !IsScanChoicesFinished()) {
-        EXPECT_OK(choices_->DoneWithCurrentTarget());
+        EXPECT_OK(choices_->DoneWithCurrentTarget(false, false));
       }
       return;
     }
@@ -265,7 +314,7 @@ void ScanChoicesTest::AdjustForRangeConstraints() {
 }
 
 // Validate the list of options that choices_ iterates over and the given expected list
-void ScanChoicesTest::CheckOptions(const std::vector<std::vector<OptionRange>> &expected) {
+void ScanChoicesTest::CheckOptions(const std::vector<std::vector<TestOptionRange>>& expected) {
   auto expected_it = expected.begin();
   dockv::KeyBytes target;
   // We don't test for backwards scan yet
@@ -279,17 +328,13 @@ void ScanChoicesTest::CheckOptions(const std::vector<std::vector<OptionRange>> &
       // We don't support testing for (a,b) options where a and b are finite
       // values as of now.
       ASSERT_TRUE((opt.lower_inclusive() || opt.upper_inclusive()) ||
-                  opt.upper().type() == dockv::KeyEntryType::kHighest);
-      if (opt.lower_inclusive()) {
-        opt.lower().AppendToKey(&target);
-      } else {
-        opt.upper().AppendToKey(&target);
-      }
+                   dockv::DecodeKeyEntryType(opt.upper()) == dockv::KeyEntryType::kHighest);
+      target.AppendRawBytes(opt.lower_inclusive() ? opt.lower() : opt.upper());
     }
     target.AppendGroupEnd();
     EXPECT_OK(choices_->SkipTargetsUpTo(target));
     if (!IsScanChoicesFinished()) {
-      EXPECT_OK(choices_->DoneWithCurrentTarget());
+      EXPECT_OK(choices_->DoneWithCurrentTarget(false, false));
     }
     AdjustForRangeConstraints();
     expected_it++;
@@ -298,9 +343,9 @@ void ScanChoicesTest::CheckOptions(const std::vector<std::vector<OptionRange>> &
 }
 
 void ScanChoicesTest::TestOptionIteration(
-    const Schema &schema,
-    const std::vector<TestCondition> &conds,
-    std::vector<std::vector<OptionRange>> &&expected) {
+    const Schema& schema,
+    const std::vector<TestCondition>& conds,
+    const std::vector<std::vector<TestOptionRange>>& expected) {
   PgsqlConditionPB cond;
   SetupCondition(&cond, conds);
   InitializeScanChoicesInstance(schema, cond);

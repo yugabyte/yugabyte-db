@@ -92,9 +92,9 @@ class LoadBalancerMockedBase : public YBTest {
     int adds = 0;
     int removes = 0;
     int stepdowns = 0;
-    RETURN_NOT_OK(CountPendingTasksUnlocked(table, &adds, &removes, &stepdowns));
+    RETURN_NOT_OK(cb_.CountPendingTasks(table, &adds, &removes, &stepdowns));
 
-    RETURN_NOT_OK(cb_.AnalyzeTabletsUnlocked(cur_table_uuid_));
+    RETURN_NOT_OK(cb_.AnalyzeTablets(table));
     return PendingTasks { adds, removes, stepdowns };
   }
 
@@ -132,14 +132,6 @@ class LoadBalancerMockedBase : public YBTest {
 
   size_t GetTotalRunningTablets() {
     return cb_.get_total_running_tablets();
-  }
-
-  Status CountPendingTasksUnlocked(
-      const TableInfoPtr& table, int* pending_add_replica_tasks, int* pending_remove_replica_tasks,
-      int* pending_stepdown_leader_tasks)
-      NO_THREAD_SAFETY_ANALYSIS /* disabling for controlled test */ {
-    return cb_.CountPendingTasksUnlocked(table, pending_add_replica_tasks,
-        pending_remove_replica_tasks, pending_stepdown_leader_tasks);
   }
 
   Result<bool> HandleOneAddIfMissingPlacement(TabletId& out_tablet_id, TabletServerId& out_to_ts)

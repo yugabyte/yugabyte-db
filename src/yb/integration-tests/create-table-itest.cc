@@ -600,10 +600,15 @@ TEST_F(CreateTableITest, TestTransactionStatusTableCreation) {
   // Tell the Master leader to wait for 3 TS to join before creating the
   // transaction status table.
   vector<string> master_flags = {
-        "--txn_table_wait_min_ts_count=3"
+      "--txn_table_wait_min_ts_count=3"
+  };
+  vector<string> tserver_flags = {
+      // TODO(#27854): We get stuck with object locking when there is no system.transactions
+      // table. Disabling it for now until we fix the underlying issue.
+      "--enable_object_locking_for_table_locks=false",
   };
   // We also need to enable ysql.
-  ASSERT_NO_FATALS(StartCluster({}, master_flags, 1, 1, true));
+  ASSERT_NO_FATALS(StartCluster(tserver_flags, master_flags, 1, 1, true));
 
   // Check that the transaction table hasn't been created yet.
   YQLDatabase db = YQL_DATABASE_CQL;
@@ -1016,9 +1021,9 @@ TEST_F(CreateTableITest, OnlyMajorityReplicasWithPlacement) {
   ReplicationInfoPB replication_info3;
   auto* placement_info3 = replication_info3.mutable_live_replicas();
   PreparePlacementInfo({ {"z0", 1}, {"z1", 1}, {"z2", 1} }, 5, placement_info3);
-  auto* read_placement_info = replication_info3.add_read_replicas();
-  read_placement_info->set_placement_uuid("read-replica");
-  PreparePlacementInfo({ {"z4", 1} }, 1, read_placement_info);
+  auto* read_replica_placement_info = replication_info3.add_read_replicas();
+  read_replica_placement_info->set_placement_uuid("read-replica");
+  PreparePlacementInfo({ {"z4", 1} }, 1, read_replica_placement_info);
   ASSERT_OK(client_->SetReplicationInfo(replication_info3));
   LOG(INFO) << "Set replication info to " << replication_info3.ShortDebugString();
 

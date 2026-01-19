@@ -44,6 +44,8 @@
 namespace yb {
 namespace tablet {
 
+using AsyncWriteCallback = boost::function<void(Result<OpId>)>;
+
 // An operation for a batch of inserts/mutates. This class holds and
 // owns most everything related to a transaction, including the Replicate and Commit PB messages
 //
@@ -69,7 +71,7 @@ class WriteOperation : public OperationBase<OperationType::kWrite, LWWritePB>  {
     return true;
   }
 
-  void SetAsyncWrite(boost::function<void(OpId)> callback);
+  void SetAsyncWrite(AsyncWriteCallback callback);
 
   void AddedAsPending(const TabletPtr& tablet) override;
 
@@ -106,7 +108,9 @@ class WriteOperation : public OperationBase<OperationType::kWrite, LWWritePB>  {
 
   HybridTime WriteHybridTime() const override;
 
-  boost::function<void(OpId)> added_to_leader_callback_;
+  AsyncWriteCallback added_to_leader_callback_;
+
+  bool do_replicated_completed_ = false;
 };
 
 }  // namespace tablet

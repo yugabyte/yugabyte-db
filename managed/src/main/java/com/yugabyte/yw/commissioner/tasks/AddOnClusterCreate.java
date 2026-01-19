@@ -50,7 +50,11 @@ public class AddOnClusterCreate extends UniverseDefinitionTaskBase {
                 // Set the prepared data to universe in-memory.
                 updateUniverseNodesAndSettings(u, taskParams(), true);
                 u.getUniverseDetails()
-                    .upsertCluster(cluster.userIntent, cluster.placementInfo, cluster.uuid);
+                    .upsertCluster(
+                        cluster.userIntent,
+                        cluster.getPartitions(),
+                        cluster.placementInfo,
+                        cluster.uuid);
                 // There is a rare possibility that this succeeds and
                 // saving the Universe fails. It is ok because the retry
                 // will just fail.

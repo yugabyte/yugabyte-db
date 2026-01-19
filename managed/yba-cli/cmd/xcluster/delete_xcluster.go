@@ -60,11 +60,10 @@ var deleteXClusterCmd = &cobra.Command{
 			IsForceDelete(forceDelete).
 			Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err, "xCluster", "Delete")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "xCluster", "Delete")
 		}
+
+		util.CheckTaskAfterCreation(rTask)
 
 		msg := fmt.Sprintf("The xcluster %s is being deleted",
 			formatter.Colorize(uuid, formatter.GreenColor))
@@ -88,7 +87,7 @@ var deleteXClusterCmd = &cobra.Command{
 			Output:  os.Stdout,
 			Format:  ybatask.NewTaskFormat(viper.GetString("output")),
 		}
-		ybatask.Write(taskCtx, []ybaclient.YBPTask{rTask})
+		ybatask.Write(taskCtx, []ybaclient.YBPTask{*rTask})
 
 	},
 }

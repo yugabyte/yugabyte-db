@@ -153,10 +153,6 @@ class PgAddColumnDefaultConcurrencyTest : public PgAddColumnDefaultTest {
     PgAddColumnDefaultTest::UpdateMiniClusterOptions(opts);
     // This test verifies behavior without table-level locking and transactional DDL.
     // Both features are disabled to concurrent inserts during ALTER TABLE.
-    AppendCsvFlagValue(opts->extra_tserver_flags, "allowed_preview_flags_csv",
-                       "ysql_yb_ddl_transaction_block_enabled");
-    AppendCsvFlagValue(opts->extra_tserver_flags, "allowed_preview_flags_csv",
-                       "enable_object_locking_for_table_locks");
     opts->extra_tserver_flags.emplace_back("--enable_object_locking_for_table_locks=false");
     opts->extra_tserver_flags.emplace_back("--ysql_yb_ddl_transaction_block_enabled=false");
   }

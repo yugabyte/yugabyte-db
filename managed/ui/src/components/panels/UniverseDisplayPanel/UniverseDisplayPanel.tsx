@@ -25,6 +25,7 @@ import { DEFAULT_RUNTIME_GLOBAL_SCOPE } from '../../../actions/customers';
 import { YBProvider } from '../../configRedesign/providerRedesign/types';
 import { getUniverseStatus, UniverseState } from '../../universes/helpers/universeHelpers';
 import { InstallNodeAgentReminderBanner } from '../../../redesign/features/NodeAgent/InstallNodeAgentReminderBanner';
+import { getIsKubernetesUniverse } from '@app/utils/UniverseUtils';
 
 import './UniverseDisplayPanel.scss';
 
@@ -90,7 +91,8 @@ export const UniverseDisplayPanel = ({
         });
     }
     const hasUniverseMissingNodeAgent = universeList.data.some(
-      (universe: Universe) => universe.universeDetails.nodeAgentMissing === true
+      (universe: Universe) =>
+        universe.universeDetails.nodeAgentMissing === true && !getIsKubernetesUniverse(universe)
     );
     const nodeAgentEnablerScanInterval =
       globalRuntimeConfigQuery.data?.configEntries?.find(
@@ -102,7 +104,7 @@ export const UniverseDisplayPanel = ({
       globalRuntimeConfigQuery.data?.configEntries?.find(
         (configEntry: RunTimeConfigEntry) =>
           configEntry.key === RuntimeConfigKey.ENABLE_AUTO_NODE_AGENT_INSTALLATION
-      )?.value === 'true' ?? false;
+      )?.value === 'true';
 
     const showNodeAgentInstallReminderBanner = isNodeAgentEnabled && hasUniverseMissingNodeAgent;
     return (

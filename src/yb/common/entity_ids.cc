@@ -22,6 +22,7 @@
 #include "yb/gutil/strings/escaping.h"
 #include "yb/util/cast.h"
 #include "yb/util/result.h"
+#include "yb/util/stol_utils.h"
 #include "yb/util/strongly_typed_bool.h"
 
 using std::string;
@@ -43,9 +44,6 @@ constexpr uint8_t kPgCurrentUuidVersion = 1;   // PG15
 static constexpr int kUuidVersion = 3; // Repurpose old name-based UUID v3 to embed Postgres oids.
 
 const uint32_t kPgProcTableOid = 1255;  // Hardcoded for pg_proc. (in pg_proc.h)
-
-// This should match the value for pg_yb_catalog_version hardcoded in pg_yb_catalog_version.h.
-const uint32_t kPgYbCatalogVersionTableOid = 8010;
 
 // This should match the value for pg_tablespace hardcoded in pg_tablespace.h
 const uint32_t kPgTablespaceTableOid = 1213;
@@ -106,7 +104,7 @@ inline void UuidSetPgVersion(uuid& id, bool is_current_version) {
   id.data[9] = is_current_version ? kPgCurrentUuidVersion : kPgPreviousUuidVersion;
 }
 
-inline bool IsCurrentPgVersion(const TableId& table_id) {
+inline bool IsCurrentPgVersion(TableIdView table_id) {
   const auto binary_id = a2b_hex(table_id);
   return binary_id[9] == kPgCurrentUuidVersion;
 }
@@ -141,7 +139,7 @@ TableId GetPgsqlTableIdInternal(
   return UuidToString(&id);
 }
 
-bool IsYsqlCatalogTable(const TableId& table_id) {
+bool IsYsqlCatalogTable(TableIdView table_id) {
   if (!IsPgsqlId(table_id)) {
     return false;
   }
@@ -178,46 +176,31 @@ TablespaceId GetPgsqlTablespaceId(const uint32_t tablespace_oid) {
   return UuidToString(&id);
 }
 
-bool IsPgsqlId(const string& id) {
+bool IsPgsqlId(std::string_view id) {
   if (id.size() != 32) return false; // Ignore non-UUID id like "sys.catalog.uuid"
-  try {
-    size_t pos = 0;
 #ifndef NDEBUG
-    const int variant = std::stoi(id.substr(8 * 2, 2), &pos, 16);
-    DCHECK((pos == 2) && (variant & 0xC0) == 0x80) << "Invalid Postgres id " << id;
+  const auto variant = CheckedStoul(id.substr(8 * 2, 2), 16);
+  DCHECK(variant.ok() && (*variant & 0xC0) == 0x80) << "Invalid Postgres id " << id;
 #endif
 
-    const int version = std::stoi(id.substr(6 * 2, 2), &pos, 16);
-    if ((pos == 2) && (version & 0xF0) >> 4 == kUuidVersion) return true;
-
-  } catch(const std::invalid_argument&) {
-  } catch(const std::out_of_range&) {
-  }
-
-  return false;
+  const auto version = CheckedStoul(id.substr(6 * 2, 2), 16);
+  return version.ok() && ((*version & 0xF0) >> 4) == kUuidVersion;
 }
 
-Result<uint32_t> GetPgsqlOid(const std::string& str, size_t offset, const char* name) {
+Result<uint32_t> GetPgsqlOid(std::string_view str, size_t offset, const char* name) {
   SCHECK(IsPgsqlId(str), InvalidArgument, Format("Not a YSQL ID string: $0", str));
-  try {
-    size_t pos = 0;
-    const uint32_t oid = static_cast<uint32_t>(
-        stoul(str.substr(offset, sizeof(uint32_t) * 2), &pos, 16));
-    if (pos == sizeof(uint32_t) * 2) {
-      return oid;
-    }
-  } catch(const std::invalid_argument&) {
-  } catch(const std::out_of_range&) {
+  auto result = CheckedStoul(str.substr(offset, sizeof(uint32_t) * 2), 16);
+  if (result.ok()) {
+    return *result;
   }
-
   return STATUS_FORMAT(InvalidArgument, "Invalid PostgreSQL $0: $1", name, str);
 }
 
-Result<uint32_t> GetPgsqlDatabaseOid(const NamespaceId& namespace_id) {
+Result<uint32_t> GetPgsqlDatabaseOid(NamespaceIdView namespace_id) {
   return GetPgsqlOid(namespace_id, 0, "namespace id");
 }
 
-Result<uint32_t> GetPgsqlTableOid(const TableId& table_id) {
+Result<uint32_t> GetPgsqlTableOid(TableIdView table_id) {
   return GetPgsqlOid(table_id, 12 * 2, "table id");
 }
 
@@ -258,7 +241,7 @@ bool IsPriorVersionYsqlCatalogTable(const TableId& table_id) {
   return !IsCurrentPgVersion(table_id);
 }
 
-bool IsCurrentVersionYsqlCatalogTable(const TableId& table_id) {
+bool IsCurrentVersionYsqlCatalogTable(TableIdView table_id) {
   if (!IsYsqlCatalogTable(table_id)) {
     return false;
   }

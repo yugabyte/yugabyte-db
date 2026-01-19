@@ -2665,9 +2665,9 @@ GetSnapshotData(Snapshot snapshot)
 
 	GetSnapshotDataInitOldSnapshot(snapshot);
 
-	snapshot->yb_read_point_handle = YbResetTransactionReadPoint();
+	snapshot->yb_read_point_handle = YbResetTransactionReadPoint(snapshot->yb_is_catalog_snapshot);
 	YbLogSnapshotData("Fetched new snapshot", snapshot,
-					  yb_debug_log_snapshot_mgmt /* log_stack_trace */ );
+					  yb_debug_log_snapshot_mgmt_stack_trace);
 	return snapshot;
 }
 

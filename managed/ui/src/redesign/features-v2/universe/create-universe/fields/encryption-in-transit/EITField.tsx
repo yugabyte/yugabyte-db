@@ -13,7 +13,7 @@ import { FieldContainer } from '../../components/DefaultComponents';
 import { QUERY_KEY, api } from '../../../../../features/universe/universe-form/utils/api';
 
 import { SecuritySettingsProps } from '../../steps/security-settings/dtos';
-import { ReactComponent as NextLineIcon } from '../../../../../assets/next-line.svg';
+import NextLineIcon from '../../../../../assets/next-line.svg';
 import { useUpdateEffect } from 'react-use';
 
 const { Box, Typography } = mui;
@@ -65,7 +65,12 @@ const CERTComponent: FC<CertCompProps> = ({
 
   return (
     <FieldContainer sx={{ padding: '16px 24px' }}>
-      <YBToggleField control={control} name={toggleFieldPath} label={t(toggleFieldPath)} dataTestId={`enable-encryption-in-transit-field`} />
+      <YBToggleField
+        control={control}
+        name={toggleFieldPath}
+        label={t(toggleFieldPath)}
+        dataTestId={`enable-encryption-in-transit-field`}
+      />
       {isOptionEnabled && (
         <Box sx={{ display: 'flex', flexDirection: 'row', width: '100%', mt: 4, gap: '16px' }}>
           <Box sx={{ mt: 4 }}>

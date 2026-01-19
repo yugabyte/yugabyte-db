@@ -109,11 +109,11 @@ uint8_t* CatOne(const char str[N], uint8_t* pos) {
   return pos + N - 1;
 }
 
-size_t CatOne(const std::string& str, size_t len) {
+size_t CatOne(std::string_view str, size_t len) {
   return len + str.size();
 }
 
-uint8_t* CatOne(const std::string& str, uint8_t* pos) {
+uint8_t* CatOne(std::string_view str, uint8_t* pos) {
   memcpy(pos, str.data(), str.size());
   return pos + str.size();
 }
@@ -161,7 +161,7 @@ Out ProcessEncodedArray(const Collection& collection, Out out) {
 }
 
 template <class Out>
-Out ProcessInteger(const std::string& input, Out out) {
+Out ProcessInteger(std::string_view input, Out out) {
   return DoCat(out, ':', input, kNewLine);
 }
 
@@ -171,23 +171,23 @@ Out ProcessInteger(int64_t input, Out out) {
 }
 
 template <class Out>
-Out ProcessSimpleString(const std::string& input, Out out) {
+Out ProcessSimpleString(std::string_view input, Out out) {
   return DoCat(out, '+', input, kNewLine);
 }
 
 template <class Out>
-Out ProcessError(const std::string& message, Out out) {
+Out ProcessError(std::string_view message, Out out) {
   return DoCat(out, '-', message, kNewLine);
 }
 
 template <class Out>
-Out ProcessBulkString(const std::string& input, Out out) {
+Out ProcessBulkString(std::string_view input, Out out) {
   size_t len = input.length();
   return DoCat(out, '$', len, kNewLine, input, kNewLine);
 }
 
 template <class Out>
-Out ProcessEncoded(const std::string& input, Out out) {
+Out ProcessEncoded(std::string_view input, Out out) {
   return DoCat(out, input);
 }
 

@@ -888,12 +888,10 @@ class MemTableInserter : public WriteBatch::Handler {
       std::string new_value;
       bool merge_success = false;
       {
-        StopWatchNano timer(Env::Default(), moptions->statistics != nullptr);
+        StopWatchNano timer(Env::Default(), moptions->statistics, MERGE_OPERATION_TOTAL_TIME);
         PERF_TIMER_GUARD(merge_operator_time_nanos);
         merge_success = merge_operator->FullMerge(
             key, &get_value_slice, operands, &new_value, moptions->info_log);
-        RecordTick(moptions->statistics, MERGE_OPERATION_TOTAL_TIME,
-                   timer.ElapsedNanos());
       }
 
       if (!merge_success) {

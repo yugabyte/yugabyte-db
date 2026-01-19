@@ -20,6 +20,8 @@ import { RuntimeConfigKey } from '@app/redesign/helpers/constants';
 
 export const IO1_DEFAULT_DISK_IOPS = 1000;
 export const IO1_MAX_DISK_IOPS = 64000;
+export const IO2_DEFAULT_DISK_IOPS = 1000;
+export const IO2_MAX_DISK_IOPS = 256000;
 
 export const GP3_DEFAULT_DISK_IOPS = 3000;
 export const GP3_MAX_IOPS = 16000;
@@ -67,6 +69,7 @@ export const DEFAULT_STORAGE_TYPES = {
 
 export const AWS_STORAGE_TYPE_OPTIONS: StorageTypeOption[] = [
   { value: StorageType.IO1, label: 'IO1' },
+  { value: StorageType.IO2, label: 'IO2' },
   { value: StorageType.GP2, label: 'GP2' },
   { value: StorageType.GP3, label: 'GP3' }
 ];
@@ -104,6 +107,8 @@ export const getMaxDiskIops = (storageType: StorageType, volumeSize: number) => 
   switch (storageType) {
     case StorageType.IO1:
       return IO1_MAX_DISK_IOPS;
+    case StorageType.IO2:
+      return IO2_MAX_DISK_IOPS;
     case StorageType.UltraSSD_LRS:
       return volumeSize * UltraSSD_DISK_IOPS_MAX_PER_GB;
     case StorageType.PremiumV2_LRS:
@@ -157,6 +162,8 @@ export const getStorageTypeOptions = (
 export const getIopsByStorageType = (storageType: StorageType) => {
   if (storageType === StorageType.IO1) {
     return IO1_DEFAULT_DISK_IOPS;
+  } else if (storageType === StorageType.IO2) {
+    return IO2_DEFAULT_DISK_IOPS;
   } else if (storageType === StorageType.GP3) {
     return GP3_DEFAULT_DISK_IOPS;
   } else if (storageType === StorageType.UltraSSD_LRS) {

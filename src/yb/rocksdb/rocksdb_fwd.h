@@ -22,6 +22,7 @@
 
 namespace rocksdb {
 
+class Arena;
 class CompactionContext;
 class CompactionFeed;
 class DataBlockAwareIndexInternalIterator;

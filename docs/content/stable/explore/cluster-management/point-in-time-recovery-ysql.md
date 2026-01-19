@@ -3,6 +3,10 @@ title: Point-in-Time Recovery for YSQL
 headerTitle: Point-in-time recovery
 linkTitle: Point-in-time recovery
 description: Restore data from a specific point in time in YugabyteDB for YSQL
+aliases:
+  - /stable/explore/backup-restore/point-in-time-recovery-ysql
+  - /stable/explore/backup-restore/point-in-time-recovery
+  - /stable/explore/backup-restore
 menu:
   stable:
     identifier: cluster-management-point-in-time-recovery
@@ -224,7 +228,7 @@ Refer to the yb-admin [_restore-snapshot-schedule_ command](../../../admin/yb-ad
 
 In addition to data changes, you can also use PITR to recover from metadata changes, such as creating, altering, and deleting tables and indexes.
 
-Before you begin, if a local universe is currently running, first [destroy it](../../../reference/configuration/yugabyted/#destroy-a-local-cluster), and create a local multi-node YugabyteDB universe as described in [Set up YugabyteDB universe](../../cluster-setup-local/).
+Before you begin, if a local universe is currently running, first [destroy it](../../../reference/configuration/yugabyted/#destroy-a-local-universe), and create a local multi-node YugabyteDB universe as described in [Set up YugabyteDB universe](../../cluster-setup-local/).
 
 ### Undo table creation
 

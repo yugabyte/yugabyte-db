@@ -121,12 +121,12 @@ class Slice {
 
   // GreaterOrEqual and Less compare this slice with concatenation of slices arg0 + args.
   template <class... Args>
-  bool GreaterOrEqual(const Slice& arg0, Args&&... args) const {
+  bool GreaterOrEqual(Slice arg0, Args&&... args) const {
     return !Less(arg0, std::forward<Args>(args)...);
   }
 
   template <class... Args>
-  bool Less(const Slice& arg0, Args&&... args) const {
+  bool Less(Slice arg0, Args&&... args) const {
     return DoLess(arg0, std::forward<Args>(args)...);
   }
 
@@ -212,7 +212,7 @@ class Slice {
   Status check_size(size_t expected_size) const;
 
   // Compare two slices and returns the offset of the first byte where they differ.
-  size_t difference_offset(const Slice& b) const;
+  size_t difference_offset(Slice b) const;
 
   void CopyToBuffer(std::string* buffer) const;
 
@@ -235,13 +235,13 @@ class Slice {
   //   <  0 iff "*this" <  "b",
   //   == 0 iff "*this" == "b",
   //   >  0 iff "*this" >  "b"
-  int compare(const Slice& b) const;
-  int compare_prefix(const Slice& b) const;
+  int compare(Slice b) const;
+  int compare_prefix(Slice b) const;
 
   size_t hash() const noexcept;
 
   // Return true iff "x" is a prefix of "*this"
-  bool starts_with(const Slice& x) const {
+  bool starts_with(Slice x) const {
     return starts_with(x.data(), x.size());
   }
 
@@ -253,11 +253,11 @@ class Slice {
     return (this->size() >= size) && MemEqual(begin_, data, size);
   }
 
-  bool starts_with(char c) const {
-    return (size() >= 1) && (*begin_ == c);
+  bool starts_with(uint8_t c) const {
+    return (begin_ != end_) && (*begin_ == c);
   }
 
-  bool ends_with(const Slice& x) const {
+  bool ends_with(Slice x) const {
     size_t xsize = x.size();
     return (size() >= xsize) && MemEqual(end_ - xsize, x.begin_, xsize);
   }
@@ -268,13 +268,13 @@ class Slice {
 
   // Comparator struct, useful for ordered collections (like STL maps).
   struct Comparator {
-    bool operator()(const Slice& a, const Slice& b) const {
+    bool operator()(Slice a, Slice b) const {
       return a.compare(b) < 0;
     }
   };
 
   struct Hash {
-    size_t operator()(const Slice& a) const noexcept {
+    size_t operator()(Slice a) const noexcept {
       return a.hash();
     }
   };
@@ -292,7 +292,7 @@ class Slice {
 
   size_t DynamicMemoryUsage() const { return 0; }
 
-  bool Contains(const Slice& rhs) const;
+  bool Contains(Slice rhs) const;
 
   // Return a Slice representing bytes for any type which is laid out contiguously in memory.
   template<class T, class = typename std::enable_if<std::is_pod<T>::value, void>::type>
@@ -301,10 +301,10 @@ class Slice {
   }
 
  private:
-  friend bool operator==(const Slice& x, const Slice& y);
+  friend bool operator==(Slice x, Slice y);
 
   template <class... Args>
-  bool DoLess(const Slice& arg0, Args&&... args) const {
+  bool DoLess(Slice arg0, Args&&... args) const {
     auto arg0_size = arg0.size();
     if (size() < arg0_size) {
       return compare(arg0) < 0;
@@ -337,20 +337,19 @@ class Slice {
   // Intentionally copyable
 };
 
-inline bool operator==(const Slice& x, const Slice& y) {
-  return ((x.size() == y.size()) &&
-          (Slice::MemEqual(x.data(), y.data(), x.size())));
+inline bool operator==(Slice x, Slice y) {
+  return x.size() == y.size() && Slice::MemEqual(x.data(), y.data(), x.size());
 }
 
-inline bool operator!=(const Slice& x, const Slice& y) {
+inline bool operator!=(Slice x, Slice y) {
   return !(x == y);
 }
 
-inline std::ostream& operator<<(std::ostream& o, const Slice& s) {
+inline std::ostream& operator<<(std::ostream& o, Slice s) {
   return o << s.ToDebugString(32); // should be enough for anyone...
 }
 
-inline int Slice::compare(const Slice& b) const {
+inline int Slice::compare(Slice b) const {
   auto my_size = size();
   auto b_size = b.size();
   const size_t min_len = std::min(my_size, b_size);
@@ -362,7 +361,7 @@ inline int Slice::compare(const Slice& b) const {
   return r;
 }
 
-inline int Slice::compare_prefix(const Slice& b) const {
+inline int Slice::compare_prefix(Slice b) const {
   return Slice(begin_, std::min(size(), b.size())).compare(b);
 }
 
@@ -377,11 +376,11 @@ inline size_t Slice::hash() const noexcept {
   return result;
 }
 
-inline size_t hash_value(const Slice& slice) {
+inline size_t hash_value(Slice slice) {
   return slice.hash();
 }
 
-inline size_t Slice::difference_offset(const Slice& b) const {
+inline size_t Slice::difference_offset(Slice b) const {
   size_t off = 0;
   const size_t len = std::min(size(), b.size());
   for (; off < len; off++) {
@@ -391,30 +390,30 @@ inline size_t Slice::difference_offset(const Slice& b) const {
 }
 
 // Can be used with source implicitly convertible to Slice, for example std::string.
-inline void CopyToBuffer(const Slice& source, std::string* dest) {
+inline void CopyToBuffer(Slice source, std::string* dest) {
   // operator= or assign(const std::string&) will shrink the capacity on at least CentOS gcc
   // build, so we have to use assign(const char*, size_t) to preserve buffer capacity and avoid
   // unnecessary memory reallocations.
   source.CopyToBuffer(dest);
 }
 
-inline bool operator<(const Slice& lhs, const Slice& rhs) {
+inline bool operator<(Slice lhs, Slice rhs) {
   return lhs.compare(rhs) < 0;
 }
 
-inline bool operator<=(const Slice& lhs, const Slice& rhs) {
+inline bool operator<=(Slice lhs, Slice rhs) {
   return lhs.compare(rhs) <= 0;
 }
 
-inline bool operator>(const Slice& lhs, const Slice& rhs) {
+inline bool operator>(Slice lhs, Slice rhs) {
   return lhs.compare(rhs) > 0;
 }
 
-inline bool operator>=(const Slice& lhs, const Slice& rhs) {
+inline bool operator>=(Slice lhs, Slice rhs) {
   return lhs.compare(rhs) >= 0;
 }
 
-inline std::strong_ordering operator<=>(const Slice& lhs, const Slice& rhs) {
+inline std::strong_ordering operator<=>(Slice lhs, Slice rhs) {
   return lhs.compare(rhs) <=> 0;
 }
 

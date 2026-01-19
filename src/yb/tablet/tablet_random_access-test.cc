@@ -39,6 +39,7 @@
 #include "yb/util/logging.h"
 #include <gtest/gtest.h>
 
+#include "yb/common/ql_protocol.messages.h"
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/schema.h"
 

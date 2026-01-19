@@ -8,6 +8,8 @@ menu:
   stable_api:
     parent: api-cassandra
     weight: 1225
+aliases:
+  - /stable/api/ycql/ddl_create_index
 type: docs
 ---
 

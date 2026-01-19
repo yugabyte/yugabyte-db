@@ -8,6 +8,8 @@ menu:
     identifier: yb-tserver
     parent: configuration
     weight: 2100
+rightNav:
+  hideH4: true
 type: docs
 body_class: configuration
 ---
@@ -52,10 +54,10 @@ yb-tserver [ flags ]
 
 ```sh
 ./bin/yb-tserver \
---tserver_master_addrs 172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 \
---rpc_bind_addresses 172.151.17.130 \
---enable_ysql \
---fs_data_dirs "/home/centos/disk1,/home/centos/disk2" &
+    --tserver_master_addrs 172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 \
+    --rpc_bind_addresses 172.151.17.130 \
+    --enable_ysql \
+    --fs_data_dirs "/home/centos/disk1,/home/centos/disk2" &
 ```
 
 **Online help**
@@ -66,7 +68,7 @@ To display the online help, run `yb-tserver --help` from the YugabyteDB home dir
 ./bin/yb-tserver --help
 ```
 
-Use `--helpon` to displays help on modules named by the specified flag value.
+Use `--helpon` to display help on modules named by the specified flag value.
 
 ## All flags
 
@@ -108,7 +110,7 @@ Specifies the queue size for the tablet server to serve reads and writes from ap
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
-{{<tags/feature/tp idea="1807">}}
+{{<tags/feature/ea idea="1807">}}
 Default: `""`
 {{% /tags/wrap %}}
 
@@ -272,28 +274,51 @@ Introduced in version 2.21.1.0, this flag limits the number of Prometheus metric
 
 To override this flag on a per-scrape basis, you can adjust the URL parameter `max_metric_entries`.
 
+##### --export_intentdb_metrics
+
+{{% tags/wrap %}}
+
+Default: `true`
+{{% /tags/wrap %}}
+
+Whether to dump IntentsDB statistics to Prometheus metrics.
+
 ## PostgreSQL configuration parameters
 
 YugabyteDB uses [PostgreSQL server configuration parameters](https://www.postgresql.org/docs/15/config-setting.html) to apply server configuration settings to new server instances.
 
 ### How to modify configuration parameters
 
-You can modify these parameters in the following ways:
+The methods for setting configurations are listed in order of precedence, from lowest to highest. That is, explicitly setting values for a configuration parameter using methods further down the following list have higher precedence than earlier methods.
 
-- If a flag is available with the same name and `ysql_` prefix, then set the flag directly.
+For example, if you set a parameter explicitly using both the YSQL flag (`ysql_<parameter>`), and in the PostgreSQL server configuration flag (`ysql_pg_conf_csv`), the YSQL flag takes precedence.
 
-- Use the [ysql_pg_conf_csv](#ysql-pg-conf-csv) flag.
+#### Methods
+
+- Use the PostgreSQL server configuration flag [ysql_pg_conf_csv](#ysql-pg-conf-csv).
+
+    For example, `--ysql_pg_conf_csv=yb_bnl_batch_size=512`.
+
+- If a flag is available with the same parameter name and the `ysql_` prefix, then set the flag directly.
+
+    For example, `--ysql_yb_bnl_batch_size=512`.
 
 - Set the option per-database:
 
     ```sql
-    ALTER DATABASE database_name SET temp_file_limit=-1;
+    ALTER DATABASE database_name SET yb_bnl_batch_size=512;
     ```
 
 - Set the option per-role:
 
     ```sql
-    ALTER ROLE yugabyte SET temp_file_limit=-1;
+    ALTER ROLE yugabyte SET yb_bnl_batch_size=512;
+    ```
+
+- Set the option for a specific database and role:
+
+    ```sql
+    ALTER ROLE yugabyte IN DATABASE yugabyte SET yb_bnl_batch_size=512;
     ```
 
     Parameters set at the role or database level only take effect on new sessions.
@@ -301,9 +326,9 @@ You can modify these parameters in the following ways:
 - Set the option for the current session:
 
     ```sql
-    SET temp_file_limit=-1;
+    SET yb_bnl_batch_size=512;
     --- alternative way
-    SET SESSION temp_file_limit=-1;
+    SET SESSION yb_bnl_batch_size=512;
     ```
 
     If `SET` is issued in a transaction that is aborted later, the effects of the SET command are reverted when the transaction is rolled back.
@@ -313,7 +338,13 @@ You can modify these parameters in the following ways:
 - Set the option for the current transaction:
 
     ```sql
-    SET LOCAL temp_file_limit=-1;
+    SET LOCAL yb_bnl_batch_size=512;
+    ```
+
+- Set the option within the scope of a function or procedure:
+
+    ```sql
+    ALTER FUNCTION add_new SET yb_bnl_batch_size=512;
     ```
 
 For information on available PostgreSQL server configuration parameters, refer to [Server Configuration](https://www.postgresql.org/docs/15/runtime-config.html) in the PostgreSQL documentation.
@@ -387,7 +418,13 @@ Default: `false`
 
 {{% /tags/wrap %}}
 
-Enables or disables the query planner's use of bitmap scans for YugabyteDB relations. Both [enable_bitmapscan](#enable-bitmapscan) and `yb_enable_bitmapscan` must be set to true for a YugabyteDB relation to use a bitmap scan. If `yb_enable_bitmapscan` is false, the planner never uses a YugabyteDB bitmap scan.
+Enables or disables the query planner's use of bitmap scans for YugabyteDB relations.
+
+In v2025.2 and later, bitmap scan is enabled by default in new universes when you deploy using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon.
+
+In addition, when upgrading a deployment to v2025.2 or later, if the universe has the cost-based optimizer enabled (`on`), YugabyteDB will enable bitmap scan.
+
+Both [enable_bitmapscan](#enable-bitmapscan) and `yb_enable_bitmapscan` must be set to true for a YugabyteDB relation to use a bitmap scan. If `yb_enable_bitmapscan` is false, the planner never uses a YugabyteDB bitmap scan.
 
 | enable_bitmapscan | yb_enable_bitmapscan | Result |
 | :--- | :---  | :--- |
@@ -426,6 +463,8 @@ Default: `legacy_mode`
 {{% /tags/wrap %}}
 
 Enables the YugabyteDB [cost-based optimizer](../../../architecture/query-layer/planner-optimizer/) (CBO). Options are `on`, `off`, `legacy_mode`, and `legacy_stats_mode`.
+
+In v2025.2 and later, CBO is enabled by default (`on`) in new universes when you deploy using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon.
 
 This parameter replaces the [yb_enable_base_scans_cost_model](#yb-enable-base-scans-cost-model) and [yb_enable_optimizer_statistics](#yb-enable-optimizer-statistics) parameters.
 
@@ -543,10 +582,16 @@ Turn this setting `ON/TRUE/1` to make all the transactions in the current sessio
 {{% tags/wrap %}}
 
 
-Default: `read committed`
+Default: `'read committed'`
 {{% /tags/wrap %}}
 
-Specifies the default isolation level of each new transaction. Every transaction has an isolation level of `read uncommitted`, `read committed`, `repeatable read`, or `serializable`.
+Specifies the default isolation level of each new transaction. Every transaction has an isolation level of `'read uncommitted'`, `'read committed'`, `'repeatable read'`, or `serializable`.
+
+For example:
+
+```sql
+SET default_transaction_isolation='repeatable read';
+```
 
 See [transaction isolation levels](../../../architecture/transactions/isolation-levels) for reference.
 
@@ -616,6 +661,15 @@ Default: `200`
 {{% /tags/wrap %}}
 
 Sets the maximum number of rows per transaction per tablet to return in [pg_locks](../../../explore/observability/pg-locks/). Set to 0 to return all results.
+
+##### yb_default_copy_from_rows_per_transaction
+
+{{% tags/wrap %}}
+
+Default: `20000`
+{{% /tags/wrap %}}
+
+Sets the maximum batch size per transaction when using [COPY FROM](../../../api/ysql/the-sql-language/statements/cmd_copy/).
 
 ## Networking
 
@@ -1094,7 +1148,7 @@ To learn about CDC, see [Change data capture (CDC)](../../../additional-features
 Default: `false`
 {{% /tags/wrap %}}
 
-Support for creating a stream for Transactional CDC is currently in [Tech Preview](/preview/releases/versioning/#feature-maturity).
+Support for creating a stream for Transactional CDC is currently in [Tech Preview](/stable/releases/versioning/#feature-maturity).
 
 Enable support for creating streams for transactional CDC.
 
@@ -1448,7 +1502,7 @@ Packed row size limit for YSQL. The default value is 0 (use block size as limit)
 Default: `false`
 {{% /tags/wrap %}}
 
-YCQL packed row support is currently in [Tech Preview](/preview/releases/versioning/#feature-maturity).
+YCQL packed row support is currently in [Tech Preview](/stable/releases/versioning/#feature-maturity).
 
 Whether packed row is enabled for YCQL.
 
@@ -1880,6 +1934,7 @@ Starting from version 2.18, the default is `-1`. Previously it was `4`.
 
 {{% tags/wrap %}}
 
+
 Default: `1`
 {{% /tags/wrap %}}
 
@@ -1888,6 +1943,7 @@ The maximum number of threads allowed for non-admin full compactions. This inclu
 ##### --full_compaction_pool_max_queue_size
 
 {{% tags/wrap %}}
+
 
 Default: `500`
 {{% /tags/wrap %}}
@@ -1898,6 +1954,7 @@ The maximum number of full compaction tasks that can be queued simultaneously. T
 
 {{% tags/wrap %}}
 
+
 Default: `60`
 {{% /tags/wrap %}}
 
@@ -1907,25 +1964,30 @@ The interval at which the full compaction task will check for tablets eligible f
 
 {{% tags/wrap %}}
 
+
 Default: `300`
 {{% /tags/wrap %}}
 
 Window of time in seconds over which DocDB read statistics are analyzed for the purpose of triggering full compactions to improve read performance. Both [auto_compact_percent_obsolete](#auto-compact-percent-obsolete) and [auto_compact_min_obsolete_keys_found](#auto-compact-min-obsolete-keys-found) are evaluated over this period of time.
+
 `auto_compact_stat_window_seconds` must be evaluated as a multiple of [auto_compact_check_interval_sec](#auto-compact-check-interval-sec), and will be rounded up to meet this constraint. For example, if `auto_compact_stat_window_seconds` is set to `100` and `auto_compact_check_interval_sec` is set to `60`, it will be rounded up to `120` at runtime.
 
 ##### --auto_compact_percent_obsolete
 
 {{% tags/wrap %}}
 
+
 Default: `99`
 {{% /tags/wrap %}}
 
 The percentage of obsolete keys (over total keys) read over the [auto_compact_stat_window_seconds](#auto-compact-stat-window-seconds) window of time required to trigger an automatic full compaction on a tablet. Only keys that are past their history retention (and thus can be garbage collected) are counted towards this threshold.
+
 For example, if the flag is set to `99` and 100000 keys are read over that window of time, and 99900 of those are obsolete and past their history retention, a full compaction will be triggered (subject to other conditions).
 
 ##### --auto_compact_min_obsolete_keys_found
 
 {{% tags/wrap %}}
+
 
 Default: `10000`
 {{% /tags/wrap %}}
@@ -1936,6 +1998,7 @@ Minimum number of keys that must be read over the last [auto_compact_stat_window
 
 {{% tags/wrap %}}
 
+
 Default: `0`
 {{% /tags/wrap %}}
 
@@ -1944,6 +2007,7 @@ Minimum wait time between statistics-based and scheduled full compactions. To be
 ##### --scheduled_full_compaction_frequency_hours
 
 {{% tags/wrap %}}
+
 
 Default: `0`
 {{% /tags/wrap %}}
@@ -1954,10 +2018,12 @@ The frequency with which full compactions should be scheduled on tablets. `0` in
 
 {{% tags/wrap %}}
 
+
 Default: `33`
 {{% /tags/wrap %}}
 
 Percentage of [scheduled_full_compaction_frequency_hours](#scheduled-full-compaction-frequency-hours) to be used as jitter when determining full compaction schedule per tablet. Must be a value between `0` and `100`. Jitter is introduced to prevent many tablets from being scheduled for full compactions at the same time.
+
 Jitter is deterministically computed when scheduling a compaction, between 0 and (frequency * jitter factor) hours. Once computed, the jitter is subtracted from the intended compaction frequency to determine the tablet's next compaction time.
 
 Example: If `scheduled_full_compaction_frequency_hours` is `720` hours (that is, 30 days), and `scheduled_full_compaction_jitter_factor_percentage` is `33` percent, each tablet will be scheduled for compaction every `482` hours to `720` hours.
@@ -1965,6 +2031,7 @@ Example: If `scheduled_full_compaction_frequency_hours` is `720` hours (that is,
 ##### --automatic_compaction_extra_priority
 
 {{% tags/wrap %}}
+
 
 Default: `50`
 {{% /tags/wrap %}}
@@ -2009,7 +2076,7 @@ If `enable_wait_queues=true`, this controls the rate at which each tablet's wait
 
 ### DDL concurrency flags
 
-##### ysql_enable_db_catalog_version_mode
+##### --ysql_enable_db_catalog_version_mode
 
 {{% tags/wrap %}}
 
@@ -2059,7 +2126,7 @@ To re-enable the per database catalog version mode using the following steps:
 1. Shut down the cluster.
 1. Start the cluster with `--ysql_enable_db_catalog_version_mode=true`.
 
-##### enable_heartbeat_pg_catalog_versions_cache
+##### --enable_heartbeat_pg_catalog_versions_cache
 
 {{% tags/wrap %}}
 
@@ -2091,7 +2158,7 @@ Configure the YugabyteDB [cost-based optimizer](../../../architecture/query-laye
 
 See also the [yb_enable_cbo](#yb-enable-cbo) configuration parameter. If this flag is set, the parameter takes precedence.
 
-##### ysql_yb_enable_cbo
+##### --ysql_yb_enable_cbo
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
@@ -2100,26 +2167,127 @@ Default: `legacy_mode`
 
 Enables the YugabyteDB [cost-based optimizer](../../../architecture/query-layer/planner-optimizer/) (CBO). Options are `on`, `off`, `legacy_mode`, and `legacy_stats_mode`.
 
-When enabling CBO, you must run ANALYZE on user tables to maintain up-to-date statistics.
+In v2025.2 and later, CBO is enabled ('on') by default in new universes when you deploy using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon.
+
+When CBO is enabled (set to `on`), [auto analyze](#auto-analyze-service-flags) is also enabled automatically. If you disable auto analyze explicitly, you are responsible for periodically running ANALYZE on user tables to maintain up-to-date statistics.
 
 For information on using this parameter to configure CBO, refer to [Enable cost-based optimizer](../../../best-practices-operations/ysql-yb-enable-cbo/).
 
 ### Auto Analyze service flags
 
-{{<tags/feature/ea idea="590">}}To learn about the Auto Analyze service, see [Auto Analyze service](../../../additional-features/auto-analyze).
+To learn about the Auto Analyze service, see [Auto Analyze service](../../../additional-features/auto-analyze).
 
-{{< note title="Note" >}}
+Auto analyze is automatically enabled when the [cost-based optimizer](../../../best-practices-operations/ysql-yb-enable-cbo/) (CBO) is enabled ([yb_enable_cbo](#yb_enable_cbo) is set to `on`).
 
-To fully enable the Auto Analyze service, you need to enable `ysql_enable_auto_analyze_service` on all YB-Masters and YB-TServers, and `ysql_enable_table_mutation_counter` on all YB-TServers.
+In v2025.2 and later, CBO and Auto Analyze are enabled by default in new universes when you deploy using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon. In addition, when upgrading a deployment to v2025.2 or later, if the universe has the cost-based optimizer enabled (`on`), YugabyteDB will enable Auto Analyze.
 
-{{< /note >}}
+To explicitly control the service, you can set the `ysql_enable_auto_analyze` flag.
 
-See also [Auto Analyze Service Master flags](../yb-master/#auto-analyze-service-flags).
-
-##### ysql_enable_auto_analyze_service
+##### --ysql_enable_auto_analyze
 
 {{% tags/wrap %}}
-{{<tags/feature/ea idea="590">}}
+
+Default: `false`
+{{% /tags/wrap %}}
+
+Enable the Auto Analyze service, which automatically runs ANALYZE to update table statistics for tables that have changed more than a configurable threshold.
+
+In v2025.2 and later, Auto Analyze is enabled by default in new universes when you deploy using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon.
+
+##### --ysql_auto_analyze_threshold
+
+{{% tags/wrap %}}
+
+Default: `50`
+{{% /tags/wrap %}}
+
+The minimum number of mutations needed to run ANALYZE on a table. For more details, see [Auto Analyze service](../../../additional-features/auto-analyze).
+
+##### --ysql_auto_analyze_scale_factor
+
+{{% tags/wrap %}}
+
+Default: `0.1`
+{{% /tags/wrap %}}
+
+The fraction defining when sufficient mutations have been accumulated to run ANALYZE for a table. For more details, see [Auto Analyze service](../../../additional-features/auto-analyze).
+
+##### --ysql_auto_analyze_min_cooldown_per_table
+
+{{% tags/wrap %}}
+
+Default: `10000` (10 seconds)
+{{% /tags/wrap %}}
+
+The minimum duration (in milliseconds) for the cooldown period between successive runs of ANALYZE on a specific table by the auto analyze service. For more details, see [Auto Analyze service](../../../additional-features/auto-analyze).
+
+##### --ysql_auto_analyze_max_cooldown_per_table
+
+{{% tags/wrap %}}
+
+Default: `86400000` (24 hours)
+{{% /tags/wrap %}}
+
+The maximum duration (in milliseconds) for the cooldown period between successive runs of ANALYZE on a specific table by the auto analyze service. For more details, see [Auto Analyze service](../../../additional-features/auto-analyze).
+
+##### --ysql_auto_analyze_cooldown_per_table_scale_factor
+
+{{% tags/wrap %}}
+
+Default: `2`
+{{% /tags/wrap %}}
+
+The exponential factor by which the per table cooldown period is scaled up each time from the value ysql_auto_analyze_min_cooldown_per_table to the value ysql_auto_analyze_max_cooldown_per_table. For more details, see [Auto Analyze service](../../../additional-features/auto-analyze). 
+
+##### --ysql_auto_analyze_batch_size
+
+{{% tags/wrap %}}
+
+Default: `10`
+{{% /tags/wrap %}}
+
+The maximum number of tables the Auto Analyze service tries to analyze in a single ANALYZE statement.
+
+##### --ysql_cluster_level_mutation_persist_interval_ms
+
+{{% tags/wrap %}}
+
+Default: `10000`
+{{% /tags/wrap %}}
+
+Interval at which the reported node level table mutation counts are persisted to the underlying auto-analyze mutations table.
+
+##### --ysql_cluster_level_mutation_persist_rpc_timeout_ms
+
+{{% tags/wrap %}}
+
+Default: `10000`
+{{% /tags/wrap %}}
+
+Timeout for the RPCs used to persist mutation counts in the auto-analyze mutations table.
+
+##### --ysql_node_level_mutation_reporting_interval_ms
+
+{{% tags/wrap %}}
+
+Default: `5000`
+{{% /tags/wrap %}}
+
+Interval, in milliseconds, at which the node-level table mutation counts are sent to the Auto Analyze service, which tracks table mutation counts at the cluster level.
+
+##### --ysql_node_level_mutation_reporting_timeout_ms
+
+{{% tags/wrap %}}
+
+Default: `5000`
+{{% /tags/wrap %}}
+
+Timeout, in milliseconds, for the node-level mutation reporting RPC to the Auto Analyze service.
+
+##### --ysql_enable_auto_analyze_service
+
+{{% tags/wrap %}}
+{{<tags/feature/deprecated>}}
 {{<tags/feature/t-server>}}
 {{<tags/feature/restart-needed>}}
 Default: `false`
@@ -2127,91 +2295,19 @@ Default: `false`
 
 Enable the Auto Analyze service, which automatically runs ANALYZE to update table statistics for tables that have changed more than a configurable threshold.
 
-##### ysql_enable_table_mutation_counter
+##### --ysql_enable_table_mutation_counter
 
 {{% tags/wrap %}}
-
+{{<tags/feature/deprecated>}}
 
 Default: `false`
 {{% /tags/wrap %}}
 
 Enable per table mutation (INSERT, UPDATE, DELETE) counting. The Auto Analyze service runs ANALYZE when the number of mutations of a table exceeds the threshold determined by the [ysql_auto_analyze_threshold](#ysql-auto-analyze-threshold) and [ysql_auto_analyze_scale_factor](#ysql-auto-analyze-scale-factor) settings.
 
-##### ysql_auto_analyze_threshold
-
-{{% tags/wrap %}}
-
-{{<tags/feature/restart-needed>}}
-Default: `50`
-{{% /tags/wrap %}}
-
-The minimum number of mutations needed to run ANALYZE on a table.
-
-##### ysql_auto_analyze_scale_factor
-
-{{% tags/wrap %}}
-
-{{<tags/feature/restart-needed>}}
-Default: `0.1`
-{{% /tags/wrap %}}
-
-The fraction defining when sufficient mutations have been accumulated to run ANALYZE for a table.
-
-ANALYZE runs when the mutation count exceeds `ysql_auto_analyze_scale_factor * <table_size> + ysql_auto_analyze_threshold`, where table_size is the value of the `reltuples` column in the `pg_class` catalog.
-
-##### ysql_auto_analyze_batch_size
-
-{{% tags/wrap %}}
-
-{{<tags/feature/restart-needed>}}
-Default: `10`
-{{% /tags/wrap %}}
-
-The maximum number of tables the Auto Analyze service tries to analyze in a single ANALYZE statement.
-
-##### ysql_cluster_level_mutation_persist_interval_ms
-
-{{% tags/wrap %}}
-
-{{<tags/feature/restart-needed>}}
-Default: `10000`
-{{% /tags/wrap %}}
-
-Interval at which the reported node level table mutation counts are persisted to the underlying auto-analyze mutations table.
-
-##### ysql_cluster_level_mutation_persist_rpc_timeout_ms
-
-{{% tags/wrap %}}
-
-{{<tags/feature/restart-needed>}}
-Default: `10000`
-{{% /tags/wrap %}}
-
-Timeout for the RPCs used to persist mutation counts in the auto-analyze mutations table.
-
-##### ysql_node_level_mutation_reporting_interval_ms
-
-{{% tags/wrap %}}
-
-{{<tags/feature/restart-needed>}}
-Default: `5000`
-{{% /tags/wrap %}}
-
-Interval, in milliseconds, at which the node-level table mutation counts are sent to the Auto Analyze service, which tracks table mutation counts at the cluster level.
-
-##### ysql_node_level_mutation_reporting_timeout_ms
-
-{{% tags/wrap %}}
-
-{{<tags/feature/restart-needed>}}
-Default: `5000`
-{{% /tags/wrap %}}
-
-Timeout, in milliseconds, for the node-level mutation reporting RPC to the Auto Analyze service.
-
 ### Advisory lock flags
 
-To learn about advisory locks, see [Advisory locks](../../../explore/transactions/explicit-locking/#advisory-locks).
+To learn about advisory locks, see [Advisory locks](../../../architecture/transactions/concurrency-control/#advisory-locks).
 
 ##### --ysql_yb_enable_advisory_locks
 
@@ -2273,7 +2369,7 @@ Default: `-1` (automatic setting)
 
 Increasing the number of backfill jobs can allow the index creation to complete faster, however setting it to a higher number can impact foreground workload operations and also increase the chance of failures and retries of backfill jobs if CPU usage becomes too high.
 
-##### backfill_index_client_rpc_timeout_ms
+##### --backfill_index_client_rpc_timeout_ms
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
@@ -2282,7 +2378,8 @@ Default: `86400000` (1 day)
 
 Timeout (in milliseconds) for the backfill stage of a concurrent CREATE INDEX.
 
-##### backfill_index_timeout_grace_margin_ms
+##### --backfill_index_timeout_grace_margin_ms
+
 {{% tags/wrap %}}
 
 
@@ -2291,7 +2388,7 @@ Default: `-1`, where the system automatically calculates the value to be approxi
 
 The time to exclude from the YB-Master flag [ysql_index_backfill_rpc_timeout_ms](../yb-master/#ysql-index-backfill-rpc-timeout-ms) in order to return results to YB-Master in the specified deadline. Should be set to at least the amount of time each batch would require, and less than `ysql_index_backfill_rpc_timeout_ms`.
 
-##### backfill_index_write_batch_size
+##### --backfill_index_write_batch_size
 
 {{% tags/wrap %}}
 
@@ -2307,7 +2404,7 @@ The number of table rows to backfill in a single backfill job. In case of [GIN i
 
 {{% tags/wrap %}}{{<tags/feature/restart-needed>}}{{% /tags/wrap %}}
 
-Comma-separated values (CSV) formatted catalogue of [preview feature](/preview/releases/versioning/#tech-preview-tp) flag names. Preview flags represent experimental or in-development features that are not yet fully supported. Flags that are tagged as "preview" cannot be modified or configured unless they are included in this list.
+Comma-separated values (CSV) formatted catalogue of [preview feature](/stable/releases/versioning/#tech-preview-tp) flag names. Preview flags represent experimental or in-development features that are not yet fully supported. Flags that are tagged as "preview" cannot be modified or configured unless they are included in this list.
 
 By adding a flag to this list, you explicitly acknowledge and accept any potential risks or instability that may arise from modifying these preview features. This process serves as a safeguard, ensuring that you are fully aware of the experimental nature of the flags you are working with.
 
@@ -2518,7 +2615,7 @@ Specifies the web server port for YSQL metrics monitoring.
 
 ##### --ysql_hba_conf
 
-{{% tags/wrap %}}{{<tags/feature/restart-needed>}}{{<tags/feature/deprecated>}}{{% /tags/wrap %}}
+{{% tags/wrap %}}{{<tags/feature/deprecated>}}{{<tags/feature/restart-needed>}}{{% /tags/wrap %}}
 
 Deprecated. Use `--ysql_hba_conf_csv` instead.
 
@@ -2551,7 +2648,7 @@ To set the flag, join the fields using a comma (`,`) and enclose the final flag 
 
 ##### --ysql_pg_conf
 
-{{% tags/wrap %}}{{<tags/feature/restart-needed>}}{{<tags/feature/deprecated>}}{{% /tags/wrap %}}
+{{% tags/wrap %}}{{<tags/feature/deprecated>}}{{<tags/feature/restart-needed>}}{{% /tags/wrap %}}
 
 Deprecated. Use `--ysql_pg_conf_csv` instead.
 
@@ -2586,7 +2683,7 @@ Specifies the time zone for displaying and interpreting timestamps.
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
-Default: Uses the YSQL display format.
+Default: Uses the ISO, MDY display format.
 {{% /tags/wrap %}}
 
 Specifies the display format for data and time values.
@@ -2610,14 +2707,18 @@ Some connections are reserved for superusers. The total number of superuser conn
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
-Default: `READ COMMITTED`
+Default: `'read committed'`
 {{% /tags/wrap %}}
 
 Specifies the default transaction isolation level.
 
-Valid values: `SERIALIZABLE`, `REPEATABLE READ`, `READ COMMITTED`, and `READ UNCOMMITTED`.
+Valid values: `serializable`, `'repeatable read'`, `'read committed'`, and `'read uncommitted'`.
 
-[Read Committed Isolation](../../../explore/transactions/isolation-levels/) is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
+[Read Committed isolation](../../../explore/transactions/isolation-levels/) is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`.
+
+For new universes running v2025.2 or later, `yb_enable_read_committed_isolation` is set to `true` by default when you deploy using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon.
+
+If `yb_enable_read_committed_isolation` is `false`, the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot isolation (in which case Read Committed and Read Uncommitted of YSQL also in turn use Snapshot isolation).
 
 ##### --yb_enable_read_committed_isolation
 
@@ -2626,7 +2727,11 @@ Valid values: `SERIALIZABLE`, `REPEATABLE READ`, `READ COMMITTED`, and `READ UNC
 Default: `false`
 {{% /tags/wrap %}}
 
-Enables Read Committed Isolation. By default this flag is false and in this case `READ COMMITTED` (and `READ UNCOMMITTED`) isolation level of YSQL fall back to the stricter [Snapshot Isolation](../../../explore/transactions/isolation-levels/). See [--ysql_default_transaction_isolation](#ysql-default-transaction-isolation) flag for more details.
+Enables Read Committed isolation.
+
+For new universes running v2025.2 or later, `yb_enable_read_committed_isolation` is set to `true` by default when you deploy using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon.
+
+When set to false, Read Committed (and Read Uncommitted) isolation level of YSQL fall back to the stricter [Snapshot isolation](../../../explore/transactions/isolation-levels/). See also the [--ysql_default_transaction_isolation](#ysql-default-transaction-isolation) flag.
 
 ##### --pg_client_use_shared_memory
 

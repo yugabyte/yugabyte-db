@@ -38,17 +38,21 @@
 #include <utility>
 #include <vector>
 
+#include "yb/gutil/strings/human_readable.h"
+
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/stopwatch.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/tcmalloc_util.h"
 
-DECLARE_int32(memory_limit_soft_percentage);
-DECLARE_int64(mem_tracker_update_consumption_interval_us);
-DECLARE_int64(mem_tracker_tcmalloc_gc_release_bytes);
 DECLARE_bool(mem_tracker_include_pageheap_free_in_root_consumption);
+DECLARE_double(mem_tracker_external_consumption_accuracy_percentage);
+DECLARE_int32(memory_limit_soft_percentage);
+DECLARE_int64(mem_tracker_tcmalloc_gc_release_bytes);
+DECLARE_int64(mem_tracker_update_consumption_interval_us);
 
 using namespace std::literals;
 
@@ -317,26 +321,22 @@ TEST(MemTrackerTest, TcMallocRootTracker) {
   shared_ptr<MemTracker> root = MemTracker::GetRootTracker();
 
   // The root tracker's consumption and tcmalloc should agree.
-  // Sleep to be sure that UpdateConsumption will take action.
+  // Sleep to be sure that MaybeUpdateConsumption will take action.
   int64_t value = 0;
   ASSERT_OK(WaitFor([root, &value] {
     value = GetTCMallocActualHeapSizeBytes();
     return root->GetUpdatedConsumption() == value;
   }, kWaitTimeout, "Consumption actualized"));
 
-  // Explicit Consume() and Release() have no effect.
-  // Wait for the consumption update interval between these calls, otherwise the consumption won't
-  // update when we call consumption().
+  // Explicit Consume() and Release() should have effect.
   root->Consume(100);
-  SleepFor(FLAGS_mem_tracker_update_consumption_interval_us * 1us);
-  ASSERT_EQ(value, root->consumption());
-  SleepFor(FLAGS_mem_tracker_update_consumption_interval_us * 1us);
+  ASSERT_EQ(value + 100, root->consumption());
   root->Release(3);
-  ASSERT_EQ(value, root->consumption());
+  ASSERT_EQ(value + 100 - 3, root->consumption());
 
   const int64_t alloc_size = 4_MB;
   {
-    // But if we allocate something really big, we should see a change.
+    // If we allocate something really big, we should see a change.
     std::unique_ptr<char[]> big_alloc(new char[alloc_size]);
     // clang in release mode can optimize out the above allocation unless
     // we do something with the pointer... so we just log it.
@@ -386,6 +386,91 @@ TEST(MemTrackerTest, TcMallocGC) {
   LOG(INFO) << "Final overhead " << overhead_final;
   ASSERT_GT(overhead_after, overhead_final);
 }
+
+namespace {
+
+Status CheckRootConsumptionAccuracy(bool dump_values = false) {
+  auto root = MemTracker::GetRootTracker();
+  const auto root_consumption = root->consumption();
+  const auto real_consumption = GetTCMallocActualHeapSizeBytes();
+  const auto delta = root_consumption - real_consumption;
+  const auto allowed_delta =
+      root->soft_limit() * FLAGS_mem_tracker_external_consumption_accuracy_percentage / 100;
+  if (dump_values) {
+    LOG(INFO) << "Root mem tracker consumption: "
+              << HumanReadableNumBytes::ToString(root_consumption);
+    LOG(INFO) << "Real consumption: " << HumanReadableNumBytes::ToString(real_consumption);
+    LOG(INFO) << "Delta: " << HumanReadableNumBytes::ToString(delta);
+    LOG(INFO) << "Allowed delta: " << HumanReadableNumBytes::ToString(allowed_delta);
+  }
+  if (abs(delta) <= allowed_delta) {
+    return Status::OK();
+  }
+  return STATUS_FORMAT(
+      InternalError,
+      "Root mem tracker consumption bias is too much, tracker consumption: $0, real consumption: "
+      "$1, delta: $2, allowed delta: $3",
+      root_consumption, real_consumption, delta, allowed_delta);
+}
+
+} // namespace
+
+// Tests that root memtracker consumption accuracy is within
+// mem_tracker_external_consumption_accuracy_percentage comparing to external source
+// (TCMalloc stats).
+TEST(MemTrackerTest, RootConsumptionAccuracy) {
+  constexpr auto kAllocationSize = 1_MB;
+
+  MemTracker::TEST_SetReleasedMemorySinceGC(0);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_mem_tracker_update_consumption_interval_us) =
+      MonoDelta(3600s).ToMicroseconds();
+
+  auto root = MemTracker::GetRootTracker();
+  auto child = MemTracker::CreateTracker("child", root);
+
+  ASSERT_OK(CheckRootConsumptionAccuracy());
+
+  const size_t kMaxNumAllocations = root->soft_limit() / kAllocationSize / 10;
+  EXPECT_GE(kMaxNumAllocations, 1);
+
+  for (size_t i = 0; i < kMaxNumAllocations; ++i) {
+    if (child->TryConsume(kAllocationSize)) {
+      ASSERT_OK(CheckRootConsumptionAccuracy());
+      child->Release(kAllocationSize);
+      ASSERT_OK(CheckRootConsumptionAccuracy());
+    }
+  }
+
+  // Make sure after both TryConsume and Consume, root memtracker still within required accuracy
+  // comparing to TCMalloc stats during mem_tracker_update_consumption_interval_us period.
+  for (bool use_try_consume : {false, true}) {
+    for (auto num_allocations : std::initializer_list<size_t>{ 1, 5, 10, kMaxNumAllocations }) {
+      LOG(INFO) << "use_try_consume: " << use_try_consume
+                << ", num_allocations: " << num_allocations
+                << ", child consumption: " << child->consumption();
+      std::vector<std::pair<std::unique_ptr<uint8_t[]>, ScopedTrackedConsumption>> allocations;
+      for (size_t i = 0; i < num_allocations; ++i) {
+        if (!use_try_consume || child->TryConsume(kAllocationSize)) {
+          ASSERT_OK(CheckRootConsumptionAccuracy());
+          allocations.emplace_back(
+              new uint8_t[kAllocationSize],
+              ScopedTrackedConsumption(child, kAllocationSize, AlreadyConsumed(use_try_consume)));
+          auto status = CheckRootConsumptionAccuracy();
+          ASSERT_TRUE(status.ok()) << "Failed at iteration: " << i
+                                   << " allocated: " << kAllocationSize * i << ": " << status;
+        }
+      }
+      ASSERT_OK(CheckRootConsumptionAccuracy(true));
+      // This will update consumption based on TCMalloc stats ignoring all flags.
+      root->MaybeUpdateConsumption(/* force = */ true);
+      ASSERT_OK(CheckRootConsumptionAccuracy(true));
+      // This will release memory from both TCMalloc and memtracker.
+      allocations.clear();
+      ASSERT_OK(CheckRootConsumptionAccuracy(true));
+    }
+  }
+}
+
 #endif
 
 TEST(MemTrackerTest, UnregisterFromParent) {
@@ -408,6 +493,103 @@ TEST(MemTrackerTest, UnregisterFromParent) {
   // We can also recreate the child with the same name without colliding
   // with the old one.
   shared_ptr<MemTracker> c2 = MemTracker::CreateTracker("child", p);
+}
+
+// Disabled by default since it only measures overhead but does not test anything.
+TEST(MemTrackerTest, DISABLED_Overhead) {
+  const size_t kAllocationSize = 100_KB;
+  const auto kNumCycles = 3;
+  const size_t kNumIters = 100000000;
+  const size_t kNumIters2 = kNumIters / 10;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_mem_tracker_update_consumption_interval_us) =
+      MonoDelta(3600s).ToMicroseconds();
+
+  auto root = MemTracker::GetRootTracker();
+  auto child = MemTracker::CreateTracker("child", root);
+
+  auto old_now = CoarseMonoClock::now();
+
+  for (auto k = 0; k < kNumCycles; ++k) {
+    const auto num_iters = kNumIters;
+    LOG(INFO) << "Doing " << num_iters << " calls of new[] + delete[]";
+
+    Stopwatch s(Stopwatch::ALL_THREADS);
+    s.start();
+
+    for (size_t i = 0; i < num_iters; ++i) {
+      auto* c = new char[100_KB];
+      if (c) {
+        delete[] c;
+      }
+    }
+
+    s.stop();
+    LOG(INFO) << "Elapsed: " << AsString(s.elapsed());
+    LOG(INFO) << "Nanos per iteration: " << s.elapsed().wall_millis() * 1000000 / num_iters;
+  }
+  LOG(INFO) << "";
+
+  for (auto k = 0; k < kNumCycles; ++k) {
+    const auto num_iters = kNumIters;
+    LOG(INFO) << "Doing " << num_iters << " calls of CoarseMonoClock::now()";
+
+    Stopwatch s(Stopwatch::ALL_THREADS);
+    s.start();
+
+    for (size_t i = 0; i < num_iters; ++i) {
+      ASSERT_GE(CoarseMonoClock::now(), old_now);
+    }
+
+    s.stop();
+    LOG(INFO) << "Elapsed: " << AsString(s.elapsed());
+    LOG(INFO) << "Nanos per iteration: " << s.elapsed().wall_millis() * 1000000 / num_iters;
+  }
+  LOG(INFO) << "";
+
+  for (auto k = 0; k < kNumCycles; ++k) {
+    const auto num_iters = kNumIters;
+    LOG(INFO) << "Doing " << num_iters << " calls of: CoarseMonoClock::now() + new[] + delete[]";
+
+    Stopwatch s(Stopwatch::ALL_THREADS);
+    s.start();
+
+    for (size_t i = 0; i < num_iters; ++i) {
+      auto now = CoarseMonoClock::now();
+      ASSERT_GE(now, old_now);
+      auto* c = new char[100_KB];
+      if (c) {
+        delete[] c;
+      }
+    }
+
+    s.stop();
+    LOG(INFO) << "Elapsed: " << AsString(s.elapsed());
+    LOG(INFO) << "Nanos per iteration: " << s.elapsed().wall_millis() * 1000000 / num_iters;
+  }
+  LOG(INFO) << "";
+
+  for (auto k = 0; k < kNumCycles; ++k) {
+    const auto num_iters = kNumIters2;
+    LOG(INFO) << "Doing " << num_iters
+              << " calls of: new[] + Consume + delete[] + Release";
+
+    Stopwatch s(Stopwatch::ALL_THREADS);
+    s.start();
+
+    for (size_t i = 0; i < num_iters; ++i) {
+      auto* c = new char[kAllocationSize];
+      if (c) {
+        child->Consume(kAllocationSize);
+        delete[] c;
+        child->Release(kAllocationSize);
+      }
+    }
+
+    s.stop();
+    LOG(INFO) << "Elapsed: " << AsString(s.elapsed());
+    LOG(INFO) << "Nanos per iteration: " << s.elapsed().wall_millis() * 1000000 / num_iters;
+  }
 }
 
 } // namespace yb

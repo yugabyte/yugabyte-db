@@ -44,6 +44,8 @@
 #include "yb/consensus/log.messages.h"
 #include "yb/consensus/log_index.h"
 
+#include "yb/encryption/header_manager_impl.h"
+
 #include "yb/fs/fs_manager.h"
 
 #include "yb/gutil/casts.h"
@@ -363,7 +365,7 @@ Status ReadableLogSegment::CopyTo(
       return STATUS(Corruption, Format("Truncated log entry at offset $0", offset));
     }
 
-    auto current_batch = VERIFY_RESULT(ReadEntryHeaderAndBatch(&offset));
+    auto current_batch = VERIFY_RESULT(ReadEntryHeaderAndBatch(ObeyMemoryLimit::kFalse, &offset));
 
     for (auto it = current_batch->entry().begin(); it != current_batch->entry().end(); ++it) {
       if (!it->has_replicate()) {
@@ -520,6 +522,11 @@ Status ReadableLogSegment::ParseHeaderMagicAndHeaderLength(const Slice &data,
       *parsed_len = 0;
       return Status::OK();
     }
+    // Check if file is encrypted
+    if (memcmp(yb::encryption::kEncryptionMagic, data.data(),
+               yb::encryption::kEncryptionMagicLen) == 0) {
+      return STATUS(IllegalState, Substitute("log segment file $0 is encrypted", path()));
+    }
     // If no magic and not uninitialized, the file is considered corrupt.
     return STATUS(Corruption, Substitute("Invalid log segment file $0: Bad magic. $1",
                                          path(), data.ToDebugString()));
@@ -661,7 +668,7 @@ ReadEntriesResult ReadableLogSegment::ReadEntries(
     Status s;
     std::shared_ptr<LWLogEntryBatchPB> current_batch;
     if (offset + implicit_cast<ssize_t>(kEntryHeaderSize) < read_up_to) {
-      auto batch_result = ReadEntryHeaderAndBatch(&offset);
+      auto batch_result = ReadEntryHeaderAndBatch(ObeyMemoryLimit::kFalse, &offset);
       if (batch_result.ok()) {
         current_batch = std::move(*batch_result);
       } else {
@@ -889,13 +896,12 @@ Status ReadableLogSegment::MakeCorruptionStatus(
 }
 
 Result<std::shared_ptr<LWLogEntryBatchPB>> ReadableLogSegment::ReadEntryHeaderAndBatch(
-    int64_t* offset) {
+    ObeyMemoryLimit obey_memory_limit, int64_t* offset) {
   EntryHeader header;
   SCOPED_WAIT_STATUS(WAL_Read);
   RETURN_NOT_OK(ReadEntryHeader(offset, &header));
-  return ReadEntryBatch(offset, header);
+  return ReadEntryBatch(obey_memory_limit, offset, header);
 }
-
 
 Status ReadableLogSegment::ReadEntryHeader(int64_t *offset, EntryHeader* header) {
   uint8_t scratch[kEntryHeaderSize];
@@ -925,13 +931,11 @@ Status ReadableLogSegment::DecodeEntryHeader(const Slice& data, EntryHeader* hea
   return Status::OK();
 }
 
-
 Result<std::shared_ptr<LWLogEntryBatchPB>> ReadableLogSegment::ReadEntryBatch(
-    int64_t *offset, const EntryHeader& header) {
-  TRACE_EVENT2("log", "ReadableLogSegment::ReadEntryBatch",
-               "path", path_,
-               "range", Substitute("offset=$0 entry_len=$1",
-                                   *offset, header.msg_length));
+    ObeyMemoryLimit obey_memory_limit, int64_t* offset, const EntryHeader& header) {
+  TRACE_EVENT2(
+      "log", "ReadableLogSegment::ReadEntryBatch", "path", path_, "range",
+      Format("offset=$0 entry_len=$1", *offset, header.msg_length));
 
   if (header.msg_length == 0) {
     return STATUS(Corruption, "Invalid 0 entry length");
@@ -939,10 +943,11 @@ Result<std::shared_ptr<LWLogEntryBatchPB>> ReadableLogSegment::ReadEntryBatch(
   int64_t limit = readable_to_offset();
   if (PREDICT_FALSE(header.msg_length + *offset > limit)) {
     // The log was likely truncated during writing.
-    return STATUS(Corruption,
-        Substitute("Could not read $0-byte log entry from offset $1 in $2: "
-                   "log only readable up to offset $3",
-                   header.msg_length, *offset, path_, limit));
+    return STATUS(
+        Corruption, Format(
+                        "Could not read $0-byte log entry from offset $1 in $2: "
+                        "log only readable up to offset $3",
+                        header.msg_length, *offset, path_, limit));
   }
 
   // Use standard arena starting size for now; this seems too big in many cases though.
@@ -966,9 +971,15 @@ Result<std::shared_ptr<LWLogEntryBatchPB>> ReadableLogSegment::ReadEntryBatch(
     }
   };
 
-  // Estimate that arena after deserializing message will take about the same space as the message
-  // unless that would be below the arena minimum size.
-  int64_t estimated_memory_needed = header.msg_length;
+  // Estimate based on experiments that arena after deserializing message will take about 6 times
+  // the space as the message unless that would be below the arena minimum size.  This should be
+  // reasonable if the message contains a lot of integers and the like and and an overcount if the
+  // message contains a lot of strings (those point back into the message).
+  //
+  // To calibrate the estimate, several database tables were created and populated.  After a system
+  // restart, the verbose logs were examined to see how accurate the parameter (e.g., 6) was.  This
+  // was repeated until a sufficiently accurate parameter was found.
+  int64_t estimated_memory_needed = header.msg_length * 6ll;
   if (estimated_memory_needed < kStartBlockSize) {
     estimated_memory_needed = kStartBlockSize;
   }
@@ -976,7 +987,19 @@ Result<std::shared_ptr<LWLogEntryBatchPB>> ReadableLogSegment::ReadEntryBatch(
   estimated_memory_needed += header.msg_length;
 
   if (read_wal_mem_tracker_) {
-    read_wal_mem_tracker_->Consume(estimated_memory_needed);
+    if (!read_wal_mem_tracker_->has_limit()) {
+      // Avoid use of TryConsume unnecessarily to avoid bug; see #29094.
+      read_wal_mem_tracker_->Consume(estimated_memory_needed);
+    } else {
+      if (!read_wal_mem_tracker_->TryConsume(estimated_memory_needed)) {
+        if (obey_memory_limit) {
+          YB_LOG_EVERY_N_SECS(WARNING, 5) << "Unable to read WAL batch due to insufficient memory";
+          return STATUS(Busy, "Unable to read WAL batch due to insufficient memory");
+        }
+        // No pre-consumption done; we will Consume once we know the actual memory usage.
+        estimated_memory_needed = 0;
+      }
+    }
   }
   RefCntBuffer buffer(header.msg_length);
   auto holder = std::make_shared<DataHolder>(buffer, read_wal_mem_tracker_);
@@ -1011,6 +1034,10 @@ Result<std::shared_ptr<LWLogEntryBatchPB>> ReadableLogSegment::ReadEntryBatch(
     int64_t actual_memory_used =
         header.msg_length + static_cast<int64_t>(holder->arena.memory_footprint());
     int64_t adjustment = actual_memory_used - holder->consumed;
+    if (holder->consumed > 0 && adjustment != 0) {
+      VLOG(2) << "memory adjustment is " << adjustment << "; it is off by "
+              << adjustment * 100.0 / (estimated_memory_needed - header.msg_length) << "%";
+    }
     read_wal_mem_tracker_->Consume(adjustment);  // This is a Release if adjustment is negative.
     holder->consumed = actual_memory_used;
   }

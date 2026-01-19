@@ -158,7 +158,7 @@ export const formatNumberToText = (inputNumber: number) => {
 };
 
 /**
- * 
+ *
  * @param sizeInBytes size in bytes
  * @returns size in bytes with units
  */
@@ -178,3 +178,14 @@ export const formatBytes = function (sizeInBytes: any) {
   }
 };
 
+/**
+ * Formats a number based on the given locale and options.
+ * Defaults to en-US locale.
+ */
+export const formatNumber = (
+  value: number,
+  options: { locale?: string; formatOptions?: Intl.NumberFormatOptions } = {}
+): string => {
+  const { locale = 'en-US', formatOptions = {} } = options;
+  return new Intl.NumberFormat(locale, formatOptions).format(value);
+};

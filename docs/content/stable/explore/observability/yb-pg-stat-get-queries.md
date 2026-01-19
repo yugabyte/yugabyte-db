@@ -4,6 +4,8 @@ linkTitle: Terminated queries
 description: View terminated queries for all SQL statements executed by a server.
 headerTitle: View terminated queries with yb_terminated_queries
 headcontent: See why a query failed
+aliases:
+  - /explore/query-1-performance/yb-pg-stat-get-queries/
 menu:
   stable:
     identifier: yb-terminated-queries
@@ -13,7 +15,7 @@ type: docs
 ---
 
 {{< warning title="Not currently compatible with PostgreSQL 15 versions of YugabyteDB" >}}
-The yb_terminated_queries view (supported in v2024.2 and earlier) is not yet available in v2025.1. For more information on PostgreSQL in YugabyteDB, refer to [PostgreSQL features](../../../api/ysql/pg15-features/).
+The yb_terminated_queries view (supported in v2024.2 and earlier) is not yet available in PostgreSQL 15 versions of YugabyteDB. For more information on PostgreSQL in YugabyteDB, refer to [PostgreSQL features](../../../api/ysql/pg15-features/).
 {{< /warning >}}
 
 Use the YugabyteDB `yb_terminated_queries` view to see terminated queries and the reason for their termination.

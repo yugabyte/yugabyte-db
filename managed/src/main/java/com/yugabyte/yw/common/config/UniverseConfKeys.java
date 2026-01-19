@@ -688,6 +688,7 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Promotes Auto flags while upgrading YB-DB",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  // FIXME: The milliSeconds suffix does not make sense since the type is Duration.
   public static final ConfKeyInfo<Duration> autoFlagUpdateSleepTimeInMilliSeconds =
       new ConfKeyInfo<>(
           "yb.upgrade.auto_flag_update_sleep_time_ms",
@@ -1531,6 +1532,15 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "If true, YBA will add commonName to the CertificateRequest sent to cert manager.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> skipTPsCredsConsistencyCheck =
+      new ConfKeyInfo<>(
+          "yb.universe.skip_tp_creds_consistency_check",
+          ScopeType.UNIVERSE,
+          "Skip Telemetry Provider Credential Consistency Check",
+          "If true, YBA will skip checking for telemetry provider credential consistency validation"
+              + " on the universe, currently only used for AWS and GCP telemetry providers.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> skipOpentelemetryOperatorCheck =
       new ConfKeyInfo<>(
           "yb.universe.skip_otel_operator_check",
@@ -1752,4 +1762,28 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + " upgrade operations",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Long> upgradeMasterStagePauseDurationMs =
+      new ConfKeyInfo<>(
+          "yb.upgrade.upgrade_master_stage_pause_duration_ms",
+          ScopeType.UNIVERSE,
+          "Upgrade Master Sleep Time Per AZ",
+          "Time to sleep after upgrading masters in each AZ",
+          ConfDataType.LongType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Long> upgradeTServerStagePauseDurationMs =
+      new ConfKeyInfo<>(
+          "yb.upgrade.upgrade_tserver_stage_pause_duration_ms",
+          ScopeType.UNIVERSE,
+          "Upgrade TServer Sleep Time Per AZ",
+          "Time to sleep after upgrading tservers in each AZ",
+          ConfDataType.LongType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> checkTablespacesBeforeEdit =
+      new ConfKeyInfo<>(
+          "yb.checks.tablespaces_before_edit.enabled",
+          ScopeType.UNIVERSE,
+          "Check if edit operation will affect existing tablespaces",
+          "Check if edit operation will affect existing tablespaces",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

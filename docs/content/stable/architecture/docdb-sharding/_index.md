@@ -29,3 +29,11 @@ As table data grows, the size of tablets increase. Once a tablet reaches a thres
 {{<lead link="tablet-splitting/">}}
 To understand how and when tablets split, see [Tablet splitting](tablet-splitting/).
 {{</lead>}}
+
+## Cluster balancing
+
+Cluster balancing is the process by which YugabyteDB automatically distributes data and queries across the nodes in a cluster to maintain fault tolerance and maximize performance. The cluster balancer continuously monitors the cluster configuration and moves tablet data and leaders to evenly distribute data and query load, thus distributing CPU, disk, and network load across the cluster. Cluster balancing automatically occurs when a cluster is scaled in or out, when there are node outages, and after creating or deleting tables and tablets.
+
+{{<lead link="cluster-balancing/">}}
+To learn about cluster balancing scenarios and how to monitor its progress, see [Cluster balancing](cluster-balancing/).
+{{</lead>}}

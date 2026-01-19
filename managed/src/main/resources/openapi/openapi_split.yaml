@@ -34,6 +34,8 @@ tags:
     description: Job Scheduler
   - name: Metrics
     description: CRUD operations for YBA metrics
+  - name: Telemetry Provider
+    description: Operations for Telemetry Providers
   - name: Universe
     description: CRUD operations for a Universe
   - name: YBA Instance

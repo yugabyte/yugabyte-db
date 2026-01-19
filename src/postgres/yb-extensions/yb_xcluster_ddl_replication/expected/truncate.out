@@ -1,0 +1,22 @@
+CALL TEST_reset();
+SELECT yb_xcluster_ddl_replication.get_replication_role();
+ get_replication_role 
+----------------------
+ source
+(1 row)
+
+CREATE TEMP TABLE temp_foo(i int PRIMARY KEY);
+CREATE TABLE foo(i int PRIMARY KEY);
+TRUNCATE foo, temp_foo;  -- should fail
+ERROR:  unsupported mix of temporary and permanent objects
+DETAIL:  This database is being replicated using xCluster automatic mode, which does not support DDLs that simultaneously use both temporary and permanent objects.
+HINT:  Using multiple commands, manipulate the temporary objects separately from the permanent ones.
+TRUNCATE foo;
+TRUNCATE temp_foo;
+SELECT yb_data FROM public.TEST_filtered_ddl_queue() ORDER BY ddl_end_time;
+                                                                                                           yb_data                                                                                                            
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"user": "yugabyte", "query": "CREATE TABLE foo(i int PRIMARY KEY)", "schema": "public", "version": 1, "command_tag": "CREATE TABLE", "new_rel_map": [{"rel_name": "foo", "relfile_oid": "***", "rel_namespace": "public"}]}
+ {"user": "yugabyte", "query": "TRUNCATE foo", "schema": "public", "version": 1, "command_tag": "TRUNCATE TABLE", "new_rel_map": [{"rel_name": "foo", "relfile_oid": "***", "rel_namespace": "public"}]}
+(2 rows)
+

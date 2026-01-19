@@ -20,7 +20,6 @@ import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeManager.CertRotateAction;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
@@ -66,7 +65,6 @@ public class AnsibleConfigureServers extends NodeTaskBase {
 
     // Optional params.
     public boolean isMasterInShellMode = false;
-    public boolean isMaster = false;
     public boolean enableYSQL = false;
     public boolean enableConnectionPooling = false;
     public boolean enableYCQL = false;
@@ -77,12 +75,9 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     public Set<String> gflagsToRemove = new HashSet<>();
     public boolean updateMasterAddrsOnly = false;
     public CollectionLevel callhomeLevel;
-    // Development params.
-    public String itestS3PackagePath = "";
     // ToggleTls params.
     public boolean enableNodeToNodeEncrypt = false;
     public boolean enableClientToNodeEncrypt = false;
-    public boolean allowInsecure = true;
     // 0 => No change in node-to-node encryption
     // > 0 => node-to-node encryption is enabled
     // < 0 => node-to-node encryption is disabled
@@ -239,14 +234,11 @@ public class AnsibleConfigureServers extends NodeTaskBase {
             optional.get(), universe, nodeDetails, ServerType.CONTROLLER.toString(), taskParams());
       }
       if (taskParams().otelCollectorEnabled) {
-        if (OtelCollectorUtil.isAuditLogEnabledInUniverse(taskParams().auditLogConfig)
-            || OtelCollectorUtil.isQueryLogEnabledInUniverse(taskParams().queryLogConfig)) {
-          nodeAgentClient.runInstallOtelCollector(
-              optional.get(),
-              nodeAgentRpcPayload.setupInstallOtelCollectorBits(
-                  universe, nodeDetails, taskParams(), optional.get()),
-              NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
-        }
+        nodeAgentClient.runInstallOtelCollector(
+            optional.get(),
+            nodeAgentRpcPayload.setupInstallOtelCollectorBits(
+                universe, nodeDetails, taskParams(), optional.get()),
+            NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
       }
       if (taskParams().cgroupSize > 0) {
         nodeAgentClient.runSetupCGroupInput(

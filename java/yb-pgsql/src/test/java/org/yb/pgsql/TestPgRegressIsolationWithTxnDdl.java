@@ -32,8 +32,6 @@ public class TestPgRegressIsolationWithTxnDdl extends BasePgRegressTest {
     // consider updating the expected output accordingly, to expect a
     // deadlock detection error. For now, disable table locks here.
     flagMap.put("enable_object_locking_for_table_locks", "false");
-    flagMap.put("allowed_preview_flags_csv",
-        "ysql_yb_ddl_transaction_block_enabled,enable_object_locking_for_table_locks");
     return flagMap;
   }
 

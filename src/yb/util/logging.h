@@ -97,17 +97,18 @@
   static yb::logging_internal::LogThrottler BOOST_PP_CAT(LOG_THROTTLER_, __LINE__); \
   if (int should_vlog = (verboselevel > -1 && VLOG_IS_ON(verboselevel)), cnt = 0; \
       should_vlog || (cnt = BOOST_PP_CAT(LOG_THROTTLER_, __LINE__).ShouldLog(n_secs)) >= 0) \
-  BOOST_PP_CAT(GOOGLE_LOG_, severity)(cnt).stream() \
-      << (should_vlog ? VERBOSITY_LEVEL_STR(verboselevel) : "")
+  yb::logging_internal::MakeThrottledLogWriter( \
+      BOOST_PP_CAT(GOOGLE_LOG_, severity)(cnt), \
+      (should_vlog ? VERBOSITY_LEVEL_STR(verboselevel) : "")).stream()
 
 // Logs a message throttled to appear at most once every 'n_secs' seconds to
 // the given severity.
 //
-// The log message may include the special token 'THROTTLE_MSG' which expands
-// to either an empty string or '[suppressed <n> similar messages]'.
+// The log message automatically appends the special token 'THROTTLE_MSG' which
+// expands to either an empty string or '[suppressed <n> similar messages]'.
 //
 // Example usage:
-//   YB_LOG_EVERY_N_SECS(WARNING, 1) << "server is low on memory" << THROTTLE_MSG;
+//   YB_LOG_EVERY_N_SECS(WARNING, 1) << "server is low on memory";
 #define YB_LOG_EVERY_N_SECS(severity, n_secs) \
     YB_LOG_EVERY_N_SECS_OR_VLOG(severity, n_secs, -1)
 
@@ -128,10 +129,6 @@
 
 #define YB_LOG_WITH_PREFIX_HIGHER_SEVERITY_WHEN_TOO_MANY(severity1, severity2, duration, count) \
     YB_LOG_HIGHER_SEVERITY_WHEN_TOO_MANY(severity1, severity2, duration, count) << LogPrefix()
-
-namespace yb {
-enum PRIVATE_ThrottleMsg {THROTTLE_MSG};
-} // namespace yb
 
 ////////////////////////////////////////////////////////////////////////////////
 // Versions of glog macros for "LOG_EVERY" and "LOG_FIRST" that annotate the
@@ -157,9 +154,11 @@ enum PRIVATE_ThrottleMsg {THROTTLE_MSG};
   ++LOG_OCCURRENCES; \
   if (++LOG_OCCURRENCES_MOD_N > n) LOG_OCCURRENCES_MOD_N -= n; \
   if (LOG_OCCURRENCES_MOD_N == 1) \
-    google::LogMessage( \
-        __FILE__, __LINE__, YB_GLOG_SEVERITY(severity), LOG_OCCURRENCES, \
-        &what_to_do).stream()
+    yb::logging_internal::MakeThrottledLogWriter( \
+        google::LogMessage( \
+            __FILE__, __LINE__, YB_GLOG_SEVERITY(severity), LOG_OCCURRENCES, \
+            &what_to_do), \
+        "").stream()
 
 #define YB_SOME_KIND_OF_LOG_IF_EVERY_N(severity, condition, n, what_to_do) \
   static int LOG_OCCURRENCES = 0, LOG_OCCURRENCES_MOD_N = 0; \
@@ -168,9 +167,11 @@ enum PRIVATE_ThrottleMsg {THROTTLE_MSG};
   ++LOG_OCCURRENCES; \
   if (condition && \
       ((LOG_OCCURRENCES_MOD_N=(LOG_OCCURRENCES_MOD_N + 1) % n) == (1 % n))) \
-    google::LogMessage( \
-        __FILE__, __LINE__, YB_GLOG_SEVERITY(severity), LOG_OCCURRENCES, \
-                 &what_to_do).stream()
+    yb::logging_internal::MakeThrottledLogWriter( \
+        google::LogMessage( \
+            __FILE__, __LINE__, YB_GLOG_SEVERITY(severity), LOG_OCCURRENCES, \
+            &what_to_do), \
+        "").stream()
 
 #define YB_SOME_KIND_OF_PLOG_EVERY_N(severity, n, what_to_do) \
   static int LOG_OCCURRENCES = 0, LOG_OCCURRENCES_MOD_N = 0; \
@@ -179,17 +180,21 @@ enum PRIVATE_ThrottleMsg {THROTTLE_MSG};
   ++LOG_OCCURRENCES; \
   if (++LOG_OCCURRENCES_MOD_N > n) LOG_OCCURRENCES_MOD_N -= n; \
   if (LOG_OCCURRENCES_MOD_N == 1) \
-    google::ErrnoLogMessage( \
-        __FILE__, __LINE__, YB_GLOG_SEVERITY(severity), LOG_OCCURRENCES, \
-        &what_to_do).stream()
+    yb::logging_internal::MakeThrottledLogWriter( \
+        google::ErrnoLogMessage( \
+            __FILE__, __LINE__, YB_GLOG_SEVERITY(severity), LOG_OCCURRENCES, \
+            &what_to_do), \
+        "").stream()
 
 #define YB_SOME_KIND_OF_LOG_FIRST_N(severity, n, what_to_do) \
   static uint64_t LOG_OCCURRENCES = 0; \
   ANNOTATE_BENIGN_RACE(&LOG_OCCURRENCES, "Logging the first N is approximate"); \
   if (LOG_OCCURRENCES++ < (n)) \
-    google::LogMessage( \
-      __FILE__, __LINE__, YB_GLOG_SEVERITY(severity), \
-      static_cast<int>(LOG_OCCURRENCES), &what_to_do).stream()
+    yb::logging_internal::MakeThrottledLogWriter( \
+        google::LogMessage( \
+            __FILE__, __LINE__, YB_GLOG_SEVERITY(severity), \
+            static_cast<int>(LOG_OCCURRENCES), &what_to_do), \
+        "").stream()
 
 // The direct user-facing macros.
 #define YB_LOG_EVERY_N(severity, n) \
@@ -322,9 +327,39 @@ class LogRateThrottler {
   size_t count_ = 0;
 };
 
-} // namespace logging_internal
+// Helper class to automatically append a throttle message to the log stream.
+class ThrottledLogWriter {
+ public:
+  ThrottledLogWriter(google::LogMessage&& log_writer, const char* prefix):
+      log_writer_(log_writer) {
+    log_writer_.stream() << prefix;
+  }
 
-std::ostream& operator<<(std::ostream &os, const PRIVATE_ThrottleMsg&);
+  ~ThrottledLogWriter() {
+    using google::LogMessage;
+#ifdef DISABLE_RTTI
+    LogMessage::LogStream *log = static_cast<LogMessage::LogStream*>(&log_writer_.stream());
+#else
+    LogMessage::LogStream *log = dynamic_cast<LogMessage::LogStream*>(&log_writer_.stream());
+#endif
+    CHECK(log && log == log->self())
+        << "You must not use COUNTER with non-glog ostream";
+    int ctr = log->ctr();
+    if (ctr > 0) {
+      *log << " [suppressed " << ctr << " similar messages]";
+    }
+  }
+
+  std::ostream& stream() {
+    return log_writer_.stream();
+  }
+
+ private:
+  google::LogMessage& log_writer_;
+};
+
+ThrottledLogWriter MakeThrottledLogWriter(google::LogMessage&& log_writer, const char* prefix);
+} // namespace logging_internal
 
 // Convenience macros to prefix log messages with some prefix, these are the unlocked
 // versions and should not obtain a lock (if one is required to obtain the prefix).
@@ -346,6 +381,7 @@ std::ostream& operator<<(std::ostream &os, const PRIVATE_ThrottleMsg&);
 
 #define DVLOG_WITH_PREFIX(verboselevel) DVLOG(verboselevel) << LogPrefix()
 #define LOG_IF_WITH_PREFIX(severity, condition) LOG_IF(severity, condition) << LogPrefix()
+#define LOG_IF_WITH_FUNC(severity, condition) LOG_IF(severity, condition) << __func__ << ": "
 #define VLOG_IF_WITH_PREFIX(verboselevel, condition) VLOG_IF(verboselevel, condition) << LogPrefix()
 #define VLOG_IF_WITH_FUNC(verboselevel, condition) VLOG_IF(verboselevel, condition) << __func__ \
   << ": "

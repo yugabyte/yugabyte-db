@@ -22,6 +22,7 @@
 #include "yb/common/constants.h"
 #include "yb/common/xcluster_util.h"
 
+#include "yb/gutil/algorithm.h"
 #include "yb/gutil/strings/util.h"
 
 #include "yb/master/async_rpc_tasks.h"
@@ -34,6 +35,7 @@
 #include "yb/master/master_replication.pb.h"
 #include "yb/master/xcluster/add_index_to_bidirectional_xcluster_target_task.h"
 #include "yb/master/xcluster/add_table_to_xcluster_target_task.h"
+#include "yb/master/xcluster/handle_new_schema_for_automatic_xcluster_target_task.h"
 #include "yb/master/xcluster/master_xcluster_util.h"
 #include "yb/master/xcluster/xcluster_bootstrap_helper.h"
 #include "yb/master/xcluster/xcluster_replication_group.h"
@@ -155,7 +157,7 @@ void XClusterTargetManager::CreateXClusterSafeTimeTableAndStartService() {
 Status XClusterTargetManager::GetXClusterSafeTime(
     GetXClusterSafeTimeResponsePB* resp, const LeaderEpoch& epoch) {
   RETURN_NOT_OK_SET_CODE(
-      safe_time_service_->GetXClusterSafeTimeInfoFromMap(epoch, resp),
+      safe_time_service_->ComputeAndGetXClusterSafeTimeInfo(epoch, *resp),
       MasterError(MasterErrorPB::INTERNAL_ERROR));
 
   // Also fill out the namespace_name for each entry.
@@ -199,16 +201,14 @@ Status XClusterTargetManager::GetXClusterSafeTimeForNamespace(
 
   RETURN_NOT_OK(safe_time_service_->ComputeSafeTime(epoch.leader_term));
   auto safe_time_ht =
-      VERIFY_RESULT(GetXClusterSafeTimeForNamespace(epoch, req->namespace_id(), req->filter()));
+      VERIFY_RESULT(GetXClusterSafeTimeForNamespace(req->namespace_id(), req->filter()));
   resp->set_safe_time_ht(safe_time_ht.ToUint64());
   return Status::OK();
 }
 
 Result<HybridTime> XClusterTargetManager::GetXClusterSafeTimeForNamespace(
-    const LeaderEpoch& epoch, const NamespaceId& namespace_id,
-    const XClusterSafeTimeFilter& filter) {
-  return safe_time_service_->GetXClusterSafeTimeForNamespace(
-      epoch.leader_term, namespace_id, filter);
+    const NamespaceId& namespace_id, const XClusterSafeTimeFilter& filter) const {
+  return safe_time_service_->GetXClusterSafeTimeForNamespace(namespace_id, filter);
 }
 
 Status XClusterTargetManager::RefreshXClusterSafeTimeMap(const LeaderEpoch& epoch) {
@@ -429,9 +429,11 @@ XClusterTargetManager::GetXClusterStatus() const {
   const auto cluster_config_pb = VERIFY_RESULT(catalog_manager_.GetClusterConfig());
   const auto replication_infos = catalog_manager_.GetAllXClusterUniverseReplicationInfos();
 
+  const auto namespace_safe_time = GetXClusterNamespaceToSafeTimeMap();
+
   for (const auto& replication_info : replication_infos) {
-    auto replication_group_status =
-        VERIFY_RESULT(GetUniverseReplicationInfo(replication_info, cluster_config_pb));
+    auto replication_group_status = VERIFY_RESULT(
+        GetUniverseReplicationInfo(replication_info, cluster_config_pb, namespace_safe_time));
 
     for (auto& [_, tables] : replication_group_status.table_statuses_by_namespace) {
       for (auto& table : tables) {
@@ -454,7 +456,8 @@ XClusterTargetManager::GetXClusterStatus() const {
 
 Result<XClusterInboundReplicationGroupStatus> XClusterTargetManager::GetUniverseReplicationInfo(
     const SysUniverseReplicationEntryPB& replication_info_pb,
-    const SysClusterConfigEntryPB& cluster_config_pb) const {
+    const SysClusterConfigEntryPB& cluster_config_pb,
+    const XClusterNamespaceToSafeTimeMap& namespace_safe_time) const {
   XClusterInboundReplicationGroupStatus result;
   result.replication_group_id =
       xcluster::ReplicationGroupId(replication_info_pb.replication_group_id());
@@ -475,10 +478,18 @@ Result<XClusterInboundReplicationGroupStatus> XClusterTargetManager::GetUniverse
     for (const auto& namespace_info : replication_info_pb.db_scoped_info().namespace_infos()) {
       result.db_scope_namespace_id_map[namespace_info.consumer_namespace_id()] =
           namespace_info.producer_namespace_id();
+
       result.db_scoped_info += Format(
           "\n  namespace: $0\n    consumer_namespace_id: $1\n    producer_namespace_id: $2",
           catalog_manager_.GetNamespaceName(namespace_info.consumer_namespace_id()),
           namespace_info.consumer_namespace_id(), namespace_info.producer_namespace_id());
+
+      auto safe_time_info = FindOrNull(namespace_safe_time, namespace_info.consumer_namespace_id());
+      if (safe_time_info) {
+        result.db_scoped_info += Format(
+            "\n    safe_time: $0",
+            Timestamp(safe_time_info->GetPhysicalValueMicros()).ToHumanReadableTime());
+      }
     }
   }
 
@@ -566,6 +577,23 @@ Status XClusterTargetManager::PopulateXClusterStatusJson(JsonWriter& jw) const {
   }
   jw.EndArray();
 
+  const auto safe_time_map = GetXClusterNamespaceToSafeTimeMap();
+  if (!safe_time_map.empty()) {
+    jw.String("safe_time_map");
+    jw.StartArray();
+    for (const auto& [namespace_id, safe_time] : safe_time_map) {
+      jw.StartObject();
+      jw.String("consumer_namespace_id");
+      jw.String(namespace_id);
+
+      jw.String("safe_time");
+      jw.String(safe_time.ToString());
+
+      jw.EndObject();
+    }
+    jw.EndArray();
+  }
+
   jw.String("consumer_registry");
   jw.Protobuf(cluster_config.consumer_registry());
 
@@ -602,10 +630,12 @@ Result<XClusterInboundReplicationGroupStatus> XClusterTargetManager::GetUniverse
   auto replication_info = catalog_manager_.GetUniverseReplication(replication_group_id);
   SCHECK_FORMAT(replication_info, NotFound, "Replication group $0 not found", replication_group_id);
 
+  static const XClusterNamespaceToSafeTimeMap empty_namespace_safe_time;
+
   const auto cluster_config = VERIFY_RESULT(catalog_manager_.GetClusterConfig());
   // Make pb copy to avoid potential deadlock while calling GetUniverseReplicationInfo.
   auto pb = replication_info->LockForRead()->pb;
-  return GetUniverseReplicationInfo(pb, cluster_config);
+  return GetUniverseReplicationInfo(pb, cluster_config, empty_namespace_safe_time);
 }
 
 Status XClusterTargetManager::ClearXClusterFieldsAfterYsqlDDL(
@@ -1035,9 +1065,12 @@ Status XClusterTargetManager::HandleTabletSplit(
     return Status::OK();
   }
 
-  auto consumer_tablet_keys = VERIFY_RESULT(catalog_manager_.GetTableKeyRanges(consumer_table_id));
-  auto cluster_config = catalog_manager_.ClusterConfig();
-  auto l = cluster_config->LockForWrite();
+  auto locked_config_and_ranges =
+      VERIFY_RESULT(LockClusterConfigAndGetTableKeyRanges(catalog_manager_, consumer_table_id));
+  auto& cluster_config = locked_config_and_ranges.cluster_config;
+  auto& l = locked_config_and_ranges.write_lock;
+  auto& consumer_tablet_keys = locked_config_and_ranges.table_key_ranges;
+
   for (const auto& [replication_group_id, stream_id] : stream_ids) {
     // Fetch the stream entry so we can update the mappings.
     auto replication_group_map =
@@ -1126,9 +1159,17 @@ Status XClusterTargetManager::SetupUniverseReplication(
 
   {
     std::lock_guard l(replication_setup_tasks_mutex_);
-    SCHECK(
-        !replication_setup_tasks_.contains(setup_replication_task->Id()), AlreadyPresent,
-        "Setup already running for xCluster ReplicationGroup $0", setup_replication_task->Id());
+    if (setup_replication_task->IsAlterReplication()) {
+      // For alter replication groups, we can retry so return TryAgain.
+      SCHECK_FORMAT(
+          !replication_setup_tasks_.contains(setup_replication_task->Id()), TryAgain,
+          "Alter replication group already running for xCluster ReplicationGroup $0",
+          setup_replication_task->Id());
+    } else {
+      SCHECK_FORMAT(
+          !replication_setup_tasks_.contains(setup_replication_task->Id()), AlreadyPresent,
+          "Setup already running for xCluster ReplicationGroup $0", setup_replication_task->Id());
+    }
     replication_setup_tasks_[setup_replication_task->Id()] = setup_replication_task;
   }
 
@@ -1487,7 +1528,8 @@ Result<HybridTime> XClusterTargetManager::PrepareAndGetBackfillTimeForBiDirectio
 
 Status XClusterTargetManager::InsertPackedSchemaForXClusterTarget(
     const TableId& table_id, const SchemaPB& packed_schema_to_insert,
-    uint32_t current_schema_version, const LeaderEpoch& epoch) {
+    uint32_t current_schema_version, const LeaderEpoch& epoch,
+    bool error_on_incorrect_schema_version) {
   // Lookup the table and verify if it exists.
   scoped_refptr<TableInfo> table = VERIFY_RESULT(catalog_manager_.FindTableById(table_id));
   {
@@ -1501,6 +1543,10 @@ Status XClusterTargetManager::InsertPackedSchemaForXClusterTarget(
           << __func__ << ": Table " << table->ToString() << " has schema version "
           << table_pb.version() << " but request has version " << current_schema_version
           << ". Skipping update of packed schema.";
+      SCHECK(
+          !error_on_incorrect_schema_version, InvalidArgument,
+          "Table $0 has schema version $1 but request has version $2.", table->ToString(),
+          table_pb.version(), current_schema_version);
       return Status::OK();
     }
 
@@ -1625,6 +1671,162 @@ Status XClusterTargetManager::SetReplicationGroupEnabled(
   CreateXClusterSafeTimeTableAndStartService();
 
   return Status::OK();
+}
+
+namespace {
+Result<ColocationId> ExtractColocationId(const TableId& table_id, const SchemaPB& table_schema) {
+  if (!IsColocationParentTableId(table_id)) {
+    return kColocationIdNotSet;
+  }
+  SCHECK(
+      table_schema.has_colocated_table_id() &&
+          table_schema.colocated_table_id().has_colocation_id(),
+      InvalidArgument, "Missing colocation id for given colocated table $0", table_id);
+  return table_schema.colocated_table_id().colocation_id();
+}
+
+Result<cdc::StreamEntryPB> GetStreamEntry(
+    CatalogManager& catalog_manager, const xcluster::ReplicationGroupId& replication_group_id,
+    const xrepl::StreamId& stream_id) {
+  auto cluster_config = catalog_manager.ClusterConfig();
+  auto cluster_config_lock = cluster_config->LockForRead();
+  auto replication_group_map = cluster_config_lock->pb.consumer_registry().producer_map();
+  auto producer_entry = FindOrNull(replication_group_map, replication_group_id.ToString());
+  SCHECK(producer_entry, NotFound, Format("Replication group $0 not found", replication_group_id));
+  auto stream_entry = FindOrNull(producer_entry->stream_map(), stream_id.ToString());
+  SCHECK(
+      stream_entry, NotFound,
+      Format("Stream $0 not found in replication group $1", stream_id, replication_group_id));
+  return *stream_entry;
+}
+
+const cdc::SchemaVersionsPB* FindSchemaVersionsMapping(
+    const cdc::StreamEntryPB& stream_entry, ColocationId colocation_id) {
+  if (colocation_id == kColocationIdNotSet) {
+    return &stream_entry.schema_versions();
+  }
+  const auto& colocated_schema_versions = stream_entry.colocated_schema_versions();
+  // Null is ok, just means that this is a new colocated table.
+  return FindOrNull(colocated_schema_versions, colocation_id);
+}
+
+bool MappingHasProducerSchemaVersion(
+    const cdc::SchemaVersionsPB* schema_versions_mapping, uint32_t producer_schema_version) {
+  if (!schema_versions_mapping) {
+    return false;  // New colocated table.
+  }
+  if (schema_versions_mapping->current_producer_schema_version() == producer_schema_version) {
+    return true;
+  }
+  const auto& old_schema_versions = schema_versions_mapping->old_producer_schema_versions();
+  return ::util::gtl::contains(
+      old_schema_versions.begin(), old_schema_versions.end(), producer_schema_version);
+}
+}  // namespace
+
+Status XClusterTargetManager::HandleNewSchemaForAutomaticXClusterTarget(
+    const HandleNewSchemaForAutomaticXClusterTargetRequestPB* req,
+    HandleNewSchemaForAutomaticXClusterTargetResponsePB* resp, const LeaderEpoch& epoch) {
+  SCHECK_PB_FIELDS_NOT_EMPTY(
+      *req, table_id, replication_group_id, stream_id, producer_schema_version, schema);
+
+  auto table_id = TableId(req->table_id());
+  const auto replication_group_id = xcluster::ReplicationGroupId(req->replication_group_id());
+  const auto stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(req->stream_id()));
+
+  const auto stream_entry =
+      VERIFY_RESULT(GetStreamEntry(catalog_manager_, replication_group_id, stream_id));
+  const auto colocation_id = VERIFY_RESULT(ExtractColocationId(table_id, req->schema()));
+
+  // Check if this producer schema version already exists in the mapping.
+  const auto* schema_versions_mapping = FindSchemaVersionsMapping(stream_entry, colocation_id);
+  if (MappingHasProducerSchemaVersion(schema_versions_mapping, req->producer_schema_version())) {
+    // Pollers will get the updated schema version mapping from a heartbeat response.
+    return Status::OK();
+  }
+
+  if (IsColocationParentTableId(table_id)) {
+    auto tablegroup_id = GetTablegroupIdFromParentTableId(table_id);
+    if (!VERIFY_RESULT(catalog_manager_.HasTableWithColocationId(tablegroup_id, colocation_id))) {
+      // Handle the case where a colocated table doesn't exist yet.
+      return HandleNewTableSchemaForUpcomingColocatedTable(
+          table_id, replication_group_id, stream_id, colocation_id, req->producer_schema_version(),
+          req->schema(), epoch);
+    }
+    table_id = VERIFY_RESULT(catalog_manager_.GetColocatedTableId(tablegroup_id, colocation_id));
+  }
+  const auto table = VERIFY_RESULT(catalog_manager_.FindTableById(table_id));
+
+  // Optimistic check to avoid creating duplicate tasks (task creation/deletion can be noisy).
+  if (table->HasTasks(server::MonitoredTaskType::kXClusterHandleNewSchema)) {
+    // Pollers will retry if they still don't have the updated schema version mapping.
+    return Status::OK();
+  }
+
+  auto create_async_insert_packed_schema_tasks_fn = [this, epoch](
+                                                        const TableId& table_id,
+                                                        const SchemaPB& schema,
+                                                        uint32_t current_schema_version) -> Status {
+    return InsertPackedSchemaForXClusterTarget(
+        table_id, schema, current_schema_version, epoch,
+        /*error_on_incorrect_schema_version=*/true);
+  };
+  // Create and start the multi-step task to handle the new schema.
+  // The poller will be blocked until this task adds an entry in the schema version mapping.
+  auto task = std::make_shared<HandleNewSchemaForAutomaticXClusterTargetTask>(
+      catalog_manager_, *catalog_manager_.AsyncTaskPool(), *master_.messenger(), table, epoch,
+      master_, replication_group_id, stream_id, req->producer_schema_version(), req->schema(),
+      std::move(create_async_insert_packed_schema_tasks_fn));
+  if (!table->AddTaskIfNotPresent(task)) {
+    VLOG(1) << "HandleNewSchemaForAutomaticXClusterTargetTask already running for table "
+            << table->ToString();
+    // Pollers will retry if they still don't have the updated schema version mapping.
+    return Status::OK();
+  }
+  task->Start();
+
+  LOG(INFO) << Format(
+      "Scheduled HandleNewSchemaForAutomaticXClusterTargetTask for table $0, "
+      "producer_schema_version $1, replication_group_id $2, stream_id $3",
+      table->ToString(), req->producer_schema_version(), replication_group_id.ToString(),
+      stream_id.ToString());
+
+  return Status::OK();
+}
+
+Status XClusterTargetManager::HandleNewTableSchemaForUpcomingColocatedTable(
+    const TableId& table_id, const xcluster::ReplicationGroupId& replication_group_id,
+    const xrepl::StreamId& stream_id, ColocationId colocation_id, uint32_t producer_schema_version,
+    const SchemaPB& schema, const LeaderEpoch& epoch) {
+  // Store the upcoming schema packings in the replication group.
+  InsertHistoricalColocatedSchemaPackingRequestPB insert_req;
+  InsertHistoricalColocatedSchemaPackingResponsePB insert_resp;
+  insert_req.set_replication_group_id(replication_group_id.ToString());
+  insert_req.set_target_parent_table_id(table_id);
+  insert_req.set_colocation_id(colocation_id);
+  insert_req.set_source_schema_version(producer_schema_version);
+  insert_req.mutable_schema()->CopyFrom(schema);
+
+  LOG(INFO) << Format(
+      "Inserting historical schema packing for table $0, colocation_id $1, schema $2", table_id,
+      colocation_id, schema);
+  RETURN_NOT_OK(master_.xcluster_manager()->InsertHistoricalColocatedSchemaPacking(
+      &insert_req, &insert_resp, /*rpc_context=*/nullptr, epoch));
+  SCHECK(
+      insert_resp.has_last_compatible_consumer_schema_version(), InvalidArgument,
+      "Missing last compatible consumer schema version in response");
+
+  // Also need to update the schema version mapping (this will then unblock the pollers).
+  UpdateConsumerOnProducerMetadataRequestPB update_req;
+  UpdateConsumerOnProducerMetadataResponsePB update_resp;
+  update_req.set_replication_group_id(replication_group_id.ToString());
+  update_req.set_stream_id(stream_id.ToString());
+  update_req.set_producer_schema_version(producer_schema_version);
+  update_req.set_consumer_schema_version(insert_resp.last_compatible_consumer_schema_version());
+  update_req.set_colocation_id(colocation_id);
+
+  return catalog_manager_.UpdateConsumerOnProducerMetadata(
+      &update_req, &update_resp, /*rpc_context=*/nullptr);
 }
 
 }  // namespace yb::master

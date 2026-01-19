@@ -30,7 +30,7 @@ var describeDestinationAlertCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(name)) == 0 {
+		if util.IsEmptyString(name) {
 			logrus.Fatal(
 				formatter.Colorize(
 					"No name specified to describe alert destination\n",
@@ -46,11 +46,10 @@ var describeDestinationAlertCmd = &cobra.Command{
 
 		r, response, err := authAPI.ListAlertDestinations().Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Alert Destination", "Describe")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Alert Destination", "Describe")
 		}
 
-		if len(strings.TrimSpace(destinationName)) > 0 {
+		if !util.IsEmptyString(destinationName) {
 			rNameList := make([]ybaclient.AlertDestination, 0)
 			for _, alertDestination := range r {
 				if strings.EqualFold(alertDestination.GetName(), destinationName) {

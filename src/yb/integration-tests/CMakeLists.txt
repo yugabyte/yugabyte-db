@@ -94,6 +94,7 @@ set(INTEGRATION_TESTS_SRCS
   mini_cluster_base.cc
   mini_cluster_utils.cc
   packed_row_test_base.cc
+  path_handlers_util.cc
   postgres-minicluster.cc
   redis_table_test_base.cc
   test_workload.cc
@@ -250,6 +251,7 @@ ADD_YB_TEST(cdc_state_table-test)
 ADD_YB_TEST(cdcsdk_stream-test)
 ADD_YB_TEST(cdcsdk_ysql-test)
 ADD_YB_TEST(cdcsdk_before_image-test)
+ADD_YB_TEST(cdc_intratx_before_image-test)
 ADD_YB_TEST(cdcsdk_replica_identity-test)
 ADD_YB_TEST(cdcsdk_consistent_stream-test)
 ADD_YB_TEST(cdcsdk_consumption_consistent_changes-test)
@@ -261,6 +263,7 @@ ADD_YB_TEST(encryption-test)
 ADD_YB_TEST(pg_cron-test)
 ADD_YB_TEST(pg_partman-test)
 ADD_YB_TEST(secure_connection_test)
+ADD_YB_TEST(skip_prefix_locks_enable_disable_test)
 ADD_YB_TEST(system_table_delete-test)
 YB_TEST_TARGET_LINK_LIBRARIES(system_table_delete-test pg_wrapper_test_base)
 ADD_YB_TEST(xcluster/xcluster_consistency-test)
@@ -287,6 +290,7 @@ ADD_YB_TEST(upgrade-tests/backup_upgrade-test)
 ADD_YB_TEST(upgrade-tests/basic_upgrade-test)
 ADD_YB_TEST(upgrade-tests/replication_info_upgrade-test)
 ADD_YB_TEST(upgrade-tests/pg_locks_v76_upgrade-test)
+ADD_YB_TEST(upgrade-tests/skip_prefix_locks_upgrade-itest)
 ADD_YB_TEST(upgrade-tests/xcluster_upgrade-itest)
 ADD_YB_TEST(upgrade-tests/ycql_only_upgrade-test)
 ADD_YB_TEST(upgrade-tests/ysql_major_extension_upgrade-test)

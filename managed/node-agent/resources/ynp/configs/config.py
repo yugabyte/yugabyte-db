@@ -37,7 +37,8 @@ def parse_config(ynp_config):
     # Render the template with the configuration data
     output = template.render(ynp_config=ynp_config,
                              ynp_dir=ynp_dir,
-                             start_time=start_time)
+                             start_time=start_time,
+                             ynp_driver="python")
 
     # Determine the absolute path of the config.ini file
     config_file = os.path.join(module_dir, 'config.ini')

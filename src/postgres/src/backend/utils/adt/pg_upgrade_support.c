@@ -183,6 +183,17 @@ binary_upgrade_set_next_pg_authid_oid(PG_FUNCTION_ARGS)
 }
 
 Datum
+yb_binary_upgrade_set_next_colocation_id(PG_FUNCTION_ARGS)
+{
+	Oid			colocation_id = PG_GETARG_OID(0);
+
+	CHECK_IS_BINARY_UPGRADE;
+	yb_binary_upgrade_next_colocation_id = colocation_id;
+
+	PG_RETURN_VOID();
+}
+
+Datum
 binary_upgrade_create_empty_extension(PG_FUNCTION_ARGS)
 {
 	text	   *extName;

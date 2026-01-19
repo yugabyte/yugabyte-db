@@ -16,7 +16,7 @@ This page explores keyspaces and tables in YCQL using the command line shell ycq
 
 ## YCQL shell
 
-Use the [ycqlsh shell](../../../api/ycqlsh/) to interact with a Yugabyte database cluster using the [YCQL API](../../../api/ycql/). Because ycqlsh is derived from the Apache Cassandra shell [cqlsh](https://cassandra.apache.org/doc/latest/cassandra/managing/tools/cqlsh.html), most cqlsh commands work as is in ycqlsh. Unsupported commands are [listed](#unsupported-cqlsh-commands) at the end of this page.
+Use the YCQL shell [ycqlsh](../../../api/ycqlsh/) to interact with a Yugabyte database cluster using the [YCQL API](../../../api/ycql/). Because ycqlsh is derived from the Apache Cassandra shell [cqlsh](https://cassandra.apache.org/doc/latest/cassandra/managing/tools/cqlsh.html), most cqlsh commands work as is in ycqlsh.
 
 Using ycqlsh, you can:
 
@@ -159,7 +159,7 @@ Due to architectural differences, YugabyteDB does _not_ support most of the Apac
 `default_time_to_live` is one of the supported properties and the `transactions` property is added by YugabyteDB. For more details, see [table properties](../../../api/ycql/ddl_create_table/#table-properties-1).
 {{< /note >}}
 `default_time_to_live` is one of the supported properties. YugabyteDB adds the
-`transactions` property. See [table properties](/preview/api/ycql/ddl_create_table/#table-properties-1) for more details.
+`transactions` property. See [table properties](/stable/api/ycql/ddl_create_table/#table-properties-1) for more details.
 
 ## Quit ycqlsh
 

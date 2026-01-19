@@ -23,6 +23,10 @@ type: docs
 
 </ul>
 
+Explicit locking in YugabyteDB gives you granular control over concurrency and data integrity within your transactions. While YugabyteDB automatically handles the ACID properties through its underlying distributed transaction protocol, explicit locking allows you to prevent conflicts that might otherwise occur, or to implement custom concurrency patterns that extend beyond the default isolation levels.
+
+By using explicit locks, you can guarantee exclusive or shared access to specific data, ensuring that subsequent transactions are appropriately blocked or permitted. This is particularly useful for complex business logic, long-running transactions, or scenarios where you require custom serializability guarantees.
+
 ## Row-level locks
 
 YugabyteDB's YSQL supports explicit row-level locking, similar to PostgreSQL. Explicit row-locks ensure that two transactions can never hold conflicting locks on the same row. When two transactions try to acquire conflicting lock modes, the semantics are dictated by YugabyteDB's [concurrency control](../../../architecture/transactions/concurrency-control/) policies.
@@ -108,81 +112,17 @@ YSQL also supports advisory locks, where the application manages concurrent acce
 
 In PostgreSQL, if an advisory lock is taken on one session, all sessions should be able to see the advisory locks acquired by any other session. Similarly, in YugabyteDB, if an advisory lock is acquired on one session, all the sessions should be able to see the advisory locks regardless of the node the session is connected to. This is achieved via the pg_advisory_locks system table, which is dedicated to hosting advisory locks. All advisory lock requests are stored in this system table.
 
-Advisory locks are enabled by default. You can configure advisory locks using the [Advisory lock flags](../../../reference/configuration/yb-tserver/#advisory-lock-flags).
+Advisory locks are available in v2025.1 or later, and enabled by default. You can configure advisory locks using the [Advisory lock flags](../../../reference/configuration/yb-tserver/#advisory-lock-flags).
 
-### Using advisory locks
-
-Advisory locks in YugabyteDB are semantically identical to PostgreSQL, and are managed using the same functions. Refer to [Advisory lock functions](https://www.postgresql.org/docs/15/functions-admin.html#FUNCTIONS-ADVISORY-LOCKS) in the PostgreSQL documentation.
-
-You can acquire an advisory lock in the following ways:
-
-- Session level
-
-    Once acquired at session level, the advisory lock is held until it is explicitly released or the session ends.
-
-    Unlike standard lock requests, session-level advisory lock requests do not honor transaction semantics: a lock acquired during a transaction that is later rolled back will still be held following the rollback, and likewise an unlock is effective even if the calling transaction fails later. A lock can be acquired multiple times by its owning process; for each completed lock request there must be a corresponding unlock request before the lock is actually released.
-
-    ```sql
-    SELECT pg_advisory_lock(10);
-    ```
-
-- Transaction level
-
-    Transaction-level lock requests, on the other hand, behave more like regular row-level lock requests: they are automatically released at the end of the transaction, and there is no explicit unlock operation. This behavior is often more convenient than the session-level behavior for short-term usage of an advisory lock.
-
-    ```sql
-    SELECT pg_advisory_xact_lock(10);
-    ```
-
-Advisory locks can also be exclusive or shared:
-
-- Exclusive Lock
-
-    Only one session/transaction can hold the lock at a time. Other sessions/transactions can't acquire the lock until the lock is released.
-
-    ```sql
-    select pg_advisory_lock(10);
-    select pg_advisory_xact_lock(10);
-    ```
-
-- Shared Lock
-
-    Multiple sessions/transactions can hold the lock simultaneously. However, no session/transaction can acquire an exclusive lock while shared locks are held.
-
-    ```sql
-    select pg_advisory_lock_shared(10);
-    select pg_advisory_xact_lock_shared(10);
-    ```
-
-Finally, advisory locks can be blocking or non-blocking:
-
-- Blocking lock
-
-    The process trying to acquire the lock waits until the lock is acquired.
-
-    ```sql
-    select pg_advisory_lock(10);
-    select pg_advisory_xact_lock(10);
-    ```
-
-- Non-blocking lock
-
-    The process immediately returns a boolean value stating if the lock is acquired or not.
-
-    ```sql
-    select pg_try_advisory_lock(10);
-    select pg_try_advisory_xact_lock(10);
-    ```
+For more information on using the locks, refer to [Advisory locks](../../../architecture/transactions/concurrency-control/#advisory-locks).
 
 ## Table-level locks
 
-{{<tags/feature/tp idea="1114">}} Table-level locks are available in {{<release "2025.1.1.0">}} and later.
-
-YugabyteDB's YSQL supports table-level locks (also known as object locks) to coordinate between DML and DDL operations. This feature ensures that DDLs wait for in-progress DMLs to finish before making schema changes, and gates new DMLs behind any waiting DDLs, providing concurrency handling that closely matches PostgreSQL behavior.
+{{<tags/feature/ea idea="1114">}}YSQL supports table-level locks (also known as object locks) to coordinate between DML and DDL operations. This ensures that DDLs wait for in-progress DMLs to finish before making schema changes, and gates new DMLs behind any waiting DDLs, providing concurrency handling that closely matches PostgreSQL behavior.
 
 Table-level locks depend on:
 
-- [Transactional DDL](../transactional-ddl/), controlled by [ysql_yb_ddl_transaction_block_enabled](../transactional-ddl/#enable-transactional-ddl) (preview flag).
+- [Transactional DDL](../transactional-ddl/), controlled by [ysql_yb_ddl_transaction_block_enabled](../transactional-ddl/#enable-transactional-ddl).
 - [YSQL lease](../../../architecture/transactions/concurrency-control/#ysql-lease-mechanism), lease period controlled by [master_ysql_operation_lease_ttl_ms](../../../reference/configuration/yb-master/#master-ysql-operation-lease-ttl-ms).
 - Per-database catalog caching, controlled by [ysql_enable_db_catalog_version_mode](../../../reference/configuration/yb-master/#ysql-enable-db-catalog-version-mode).
 
@@ -196,6 +136,7 @@ Table-level locks are disabled by default. To enable the feature, set the [yb-ts
 
 Because `enable_object_locking_for_table_locks` is a preview flag, to use it, add the flag to the [allowed_preview_flags_csv](../../../reference/configuration/yb-tserver/#allowed-preview-flags-csv) list (that is, `allowed_preview_flags_csv=enable_object_locking_for_table_locks`).
 
-As the table-level locks feature depends on Transactional DDL (currently not enabled by default), you need to enable the preview flag, [ysql_yb_ddl_transaction_block_enabled](../transactional-ddl/#enable-transactional-ddl).
+As the table-level locks feature depends on Transactional DDL (currently not enabled by default), you need to enable the flag [ysql_yb_ddl_transaction_block_enabled](../transactional-ddl/#enable-transactional-ddl).
 
 For more information on the lock scopes and lifecycle, see [Table-level locks](../../../architecture/transactions/concurrency-control/#table-level-locks).
+

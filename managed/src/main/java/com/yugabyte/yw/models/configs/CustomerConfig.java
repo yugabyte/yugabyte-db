@@ -151,6 +151,17 @@ public class CustomerConfig extends Model {
   @Enumerated(EnumType.STRING)
   private ConfigState state = ConfigState.Active;
 
+  // true iff created through a k8s CR and controlled by the
+  // Kubernetes Operator.
+  @Column(name = "is_kubernetes_operator_controlled")
+  @ApiModelProperty(hidden = true)
+  private boolean isKubernetesOperatorControlled = false;
+
+  public void setIsKubernetesOperatorControlled(boolean isKubernetesOperatorControlled) {
+    this.isKubernetesOperatorControlled = isKubernetesOperatorControlled;
+    this.save();
+  }
+
   public static final Finder<UUID, CustomerConfig> find =
       new Finder<UUID, CustomerConfig>(CustomerConfig.class) {};
 

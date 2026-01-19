@@ -29,6 +29,7 @@
 #include "yb/common/consistent_read_point.h"
 #include "yb/qlexpr/index.h"
 #include "yb/qlexpr/index_column.h"
+#include "yb/common/ql_protocol.messages.h"
 #include "yb/common/ql_protocol_util.h"
 #include "yb/qlexpr/ql_rowblock.h"
 #include "yb/common/ql_value.h"
@@ -935,7 +936,7 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode, TnodeContext* tnode_conte
 
   // Create the read request.
   YBqlReadOpPtr select_op(table->NewQLSelect());
-  QLReadRequestPB *req = select_op->mutable_request();
+  auto *req = select_op->mutable_request();
 
   // Where clause - Hash, range, and regular columns.
   req->set_is_aggregate(tnode->is_aggregate());
@@ -960,7 +961,7 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode, TnodeContext* tnode_conte
   req->set_is_forward_scan(tnode->is_forward_scan());
 
   // Specify selected list by adding the expressions to selected_exprs in read request.
-  QLRSRowDescPB *rsrow_desc_pb = req->mutable_rsrow_desc();
+  auto *rsrow_desc_pb = req->mutable_rsrow_desc();
   for (const auto& expr : tnode->selected_exprs()) {
     if (expr->opcode() == TreeNodeOpcode::kPTAllColumns) {
       const Status s = PTExprToPB(static_cast<const PTAllColumns*>(expr.get()), req);
@@ -974,7 +975,7 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode, TnodeContext* tnode_conte
       }
 
       // Add the expression metadata (rsrow descriptor).
-      QLRSColDescPB *rscol_desc_pb = rsrow_desc_pb->add_rscol_descs();
+      auto *rscol_desc_pb = rsrow_desc_pb->add_rscol_descs();
       rscol_desc_pb->set_name(expr->QLName());
       expr->rscol_type_PB(rscol_desc_pb->mutable_ql_type());
     }
@@ -1036,7 +1037,7 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode, TnodeContext* tnode_conte
   // If this is a continuation of a prior user's request, set the next partition key, row key,
   // and total number of rows read in the request's paging state.
   if (continue_user_request) {
-    QLPagingStatePB *paging_state = req->mutable_paging_state();
+    auto *paging_state = req->mutable_paging_state();
 
     paging_state->set_next_partition_key(query_state->next_partition_key());
     paging_state->set_next_row_key(query_state->next_row_key());
@@ -1248,7 +1249,7 @@ Result<bool> Executor::FetchMoreRows(const PTSelectStmt* tnode,
     op->mutable_request()->set_offset(offset);
   }
 
-  QLPagingStatePB *paging_state = op->mutable_request()->mutable_paging_state();
+  auto *paging_state = op->mutable_request()->mutable_paging_state();
   paging_state->set_next_partition_key(query_state->next_partition_key());
   paging_state->set_next_row_key(query_state->next_row_key());
   paging_state->set_total_num_rows_read(total_row_count);
@@ -1265,7 +1266,7 @@ Result<bool> Executor::FetchRowsByKeys(const PTSelectStmt* tnode,
   for (const auto& key : keys.rows()) {
     YBqlReadOpPtr op(tnode->table()->NewQLSelect());
     op->set_yb_consistency_level(select_op->yb_consistency_level());
-    QLReadRequestPB* req = op->mutable_request();
+    auto* req = op->mutable_request();
     req->CopyFrom(select_op->request());
     RETURN_NOT_OK(WhereKeyToPB(req, schema, key));
     AddOperation(op, tnode_context);
@@ -1279,7 +1280,7 @@ Status Executor::ExecPTNode(const PTInsertStmt *tnode, TnodeContext* tnode_conte
   // Create write request.
   const shared_ptr<client::YBTable>& table = tnode->table();
   YBqlWriteOpPtr insert_op(table->NewQLInsert());
-  QLWriteRequestPB *req = insert_op->mutable_request();
+  auto *req = insert_op->mutable_request();
 
   if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
     wait_state->UpdateAuxInfo({.table_id{table->id()}});
@@ -1353,7 +1354,7 @@ Status Executor::ExecPTNode(const PTDeleteStmt *tnode, TnodeContext* tnode_conte
   // Create write request.
   const shared_ptr<client::YBTable>& table = tnode->table();
   YBqlWriteOpPtr delete_op(table->NewQLDelete());
-  QLWriteRequestPB *req = delete_op->mutable_request();
+  auto *req = delete_op->mutable_request();
 
   if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
     wait_state->UpdateAuxInfo({.table_id{table->id()}});
@@ -1413,7 +1414,7 @@ Status Executor::ExecPTNode(const PTUpdateStmt *tnode, TnodeContext* tnode_conte
   // Create write request.
   const shared_ptr<client::YBTable>& table = tnode->table();
   YBqlWriteOpPtr update_op(table->NewQLUpdate());
-  QLWriteRequestPB *req = update_op->mutable_request();
+  auto *req = update_op->mutable_request();
 
   // Where clause - Hash, range, and regular columns.
   // NOTE: Currently, where clause for write op doesn't allow regular columns.
@@ -1711,8 +1712,8 @@ bool NeedsFlush(const client::YBSessionPtr& session) {
 
 } // namespace
 
-client::YBSessionPtr Executor::GetSession(ExecContext* exec_context) {
-  return exec_context->HasTransaction() ? exec_context->transactional_session() : session_;
+client::YBSessionPtr Executor::GetSession() {
+  return exec_context_->HasTransaction() ? exec_context_->transactional_session() : session_;
 }
 
 void Executor::FlushAsync(ResetAsyncCalls* reset_async_calls) {
@@ -1938,7 +1939,7 @@ void Executor::ProcessAsyncResults(const bool rescheduled, ResetAsyncCalls* rese
             reset_async_calls);
       }
 
-      YBSessionPtr session = GetSession(exec_context_);
+      YBSessionPtr session = GetSession();
       session->RestartNonTxnReadPoint(client::Restart::kTrue);
       RETURN_STMT_NOT_OK(ExecTreeNode(root), reset_async_calls);
       need_flush |= NeedsFlush(session);
@@ -2056,7 +2057,7 @@ Result<bool> Executor::ProcessTnodeResults(TnodeContext* tnode_context) {
       DCHECK_EQ(op->type(), YBOperation::Type::QL_WRITE);
       if (write_batch_.Add(
           std::static_pointer_cast<YBqlWriteOp>(op), tnode_context, exec_context_)) {
-        YBSessionPtr session = GetSession(exec_context_);
+        YBSessionPtr session = GetSession();
         TRACE("Apply");
         session->Apply(op);
         has_buffered_ops = true;
@@ -2100,7 +2101,7 @@ Result<bool> Executor::ProcessTnodeResults(TnodeContext* tnode_context) {
         op_itr++;
         continue;
       } else {
-        const QLResponsePB& response = op->response();
+        const auto& response = op->response();
         if (response.has_child_transaction_result()) {
           const auto& result = response.child_transaction_result();
           const Status s = exec_context_->ApplyChildTransactionResult(result);
@@ -2217,7 +2218,7 @@ namespace {
 
 // Check if index updates can be issued from CQL proxy directly when executing a DML. Only indexes
 // that index primary key columns only may be updated from CQL proxy.
-bool UpdateIndexesLocally(const PTDmlStmt *tnode, const QLWriteRequestPB& req) {
+bool UpdateIndexesLocally(const PTDmlStmt *tnode, const QLWriteRequestMsg& req) {
   if (req.has_if_expr() || req.returns_status()) {
     return false;
   }
@@ -2268,7 +2269,7 @@ bool UpdateIndexesLocally(const PTDmlStmt *tnode, const QLWriteRequestPB& req) {
 } // namespace
 
 Status Executor::UpdateIndexes(const PTDmlStmt *tnode,
-                               QLWriteRequestPB *req,
+                               QLWriteRequestMsg *req,
                                TnodeContext* tnode_context) {
   // DML with TTL is not allowed if indexes are present.
   if (req->has_ttl()) {
@@ -2303,7 +2304,7 @@ Status Executor::UpdateIndexes(const PTDmlStmt *tnode,
     bool all_null = true;
     std::set<int32> column_dels;
     const Schema& schema = tnode->table()->InternalSchema();
-    for (const QLColumnValuePB& column_value : req->column_values()) {
+    for (const auto& column_value : req->column_values()) {
       const ColumnSchema& col_desc = VERIFY_RESULT(
         schema.column_by_id(ColumnId(column_value.column_id())));
 
@@ -2355,7 +2356,7 @@ Status Executor::UpdateIndexes(const PTDmlStmt *tnode,
 
 // Add the write operations to update the pk-only indexes.
 Status Executor::AddIndexWriteOps(const PTDmlStmt *tnode,
-                                  const QLWriteRequestPB& req,
+                                  const QLWriteRequestMsg& req,
                                   TnodeContext* tnode_context) {
   const Schema& schema = tnode->table()->InternalSchema();
   const bool is_upsert = (req.type() == QLWriteRequestPB::QL_STMT_INSERT ||
@@ -2392,7 +2393,7 @@ Status Executor::AddIndexWriteOps(const PTDmlStmt *tnode,
     }
     YBqlWriteOpPtr index_op(is_upsert ? index_table->NewQLInsert() : index_table->NewQLDelete());
     index_op->set_writes_primary_row(true);
-    QLWriteRequestPB *index_req = index_op->mutable_request();
+    auto *index_req = index_op->mutable_request();
     index_req->set_request_id(req.request_id());
     index_req->set_query_id(req.query_id());
     for (size_t i = 0; i < index->columns().size(); i++) {
@@ -2498,7 +2499,7 @@ Status Executor::AddOperation(const YBqlWriteOpPtr& op, TnodeContext* tnode_cont
   // Apply it in the transactional session in exec_context for the current statement if there is
   // one. Otherwise, apply to the non-transactional session in the executor.
   if (write_batch_.Add(op, tnode_context, exec_context_)) {
-    YBSessionPtr session = GetSession(exec_context_);
+    YBSessionPtr session = GetSession();
     TRACE("Apply");
     session->Apply(op);
   }
@@ -2556,7 +2557,7 @@ Status Executor::ProcessStatementStatus(const ParseTree& parse_tree, const Statu
 Status Executor::ProcessOpStatus(const PTDmlStmt* stmt,
                                  const YBqlOpPtr& op,
                                  ExecContext* exec_context) {
-  const QLResponsePB &resp = op->response();
+  const auto &resp = op->response();
   // Returns if this op was deferred and has not been completed, or it has been completed okay.
   if (!resp.has_status() || resp.status() == QLResponsePB::YQL_STATUS_OK) {
     return Status::OK();
@@ -2699,13 +2700,13 @@ void Executor::Reset(ResetAsyncCalls* reset_async_calls) {
   reset_async_calls->Perform();
 }
 
-QLExpressionPB* CreateQLExpression(QLWriteRequestPB* req, const ColumnDesc& col_desc) {
+QLExpressionMsg* CreateQLExpression(QLWriteRequestMsg* req, const ColumnDesc& col_desc) {
   if (col_desc.is_hash()) {
     return req->add_hashed_column_values();
   } else if (col_desc.is_primary()) {
     return req->add_range_column_values();
   } else {
-    QLColumnValuePB *col_pb = req->add_column_values();
+    auto *col_pb = req->add_column_values();
     col_pb->set_column_id(col_desc.id());
     return col_pb->mutable_expr();
   }

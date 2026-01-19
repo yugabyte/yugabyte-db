@@ -10,8 +10,8 @@
 import { Controller, FieldValues, Path, PathValue, useFormContext } from 'react-hook-form';
 import { Box } from '@material-ui/core';
 import { YBAutoComplete, YBLabel, YBSelectProps } from '@yugabyte-ui-library/core';
-import { REGIONS_FIELD } from '../FieldNames';
 import { Region } from '../../../../../features/universe/universe-form/utils/dto';
+import { REGIONS_FIELD } from '../FieldNames';
 
 interface AvailabilityZoneFieldProps<T extends FieldValues>
   extends Omit<YBSelectProps, 'name' | 'control'> {

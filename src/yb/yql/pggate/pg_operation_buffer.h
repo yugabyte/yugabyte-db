@@ -31,6 +31,7 @@
 
 namespace yb::pggate {
 
+class PgFlushDebugContext;
 class PgTableDesc;
 
 class BufferableOperations {
@@ -56,13 +57,13 @@ class BufferableOperations {
 class PgOperationBuffer {
  public:
   using Flusher = std::function<Result<FlushFuture>(
-      BufferableOperations&&, bool, const YbcFlushDebugContext&)>;
+      BufferableOperations&&, bool, const PgFlushDebugContext&)>;
 
   PgOperationBuffer(Flusher&& flusher, const BufferingSettings& buffering_settings);
   ~PgOperationBuffer();
   Status Add(const PgTableDesc& table, PgsqlWriteOpPtr op, bool transactional);
-  Status Flush(const YbcFlushDebugContext& debug_context);
-  Result<BufferableOperations> Take(bool transactional, const YbcFlushDebugContext& debug_context);
+  Status Flush(const PgFlushDebugContext& dbg_ctx);
+  Result<BufferableOperations> Take(bool transactional, const PgFlushDebugContext& dbg_ctx);
   bool IsEmpty() const;
   size_t Size() const;
   void Clear();

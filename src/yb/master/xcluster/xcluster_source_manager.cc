@@ -239,9 +239,9 @@ XClusterSourceManager::InitOutboundReplicationGroup(
           },
       .get_tables_func =
           [&catalog_manager = catalog_manager_](
-              const NamespaceId& namespace_id, bool include_sequences_data) {
+              const NamespaceId& namespace_id, bool is_automatic_ddl_mode) {
             return GetTablesEligibleForXClusterReplication(
-                catalog_manager, namespace_id, include_sequences_data);
+                catalog_manager, namespace_id, is_automatic_ddl_mode);
           },
       .is_automatic_mode_switchover_func =
           [xcluster_manager = master_.xcluster_manager()](const NamespaceId& namespace_id) {
@@ -300,19 +300,21 @@ XClusterSourceManager::GetOutboundReplicationGroup(
 std::vector<std::shared_ptr<PostTabletCreateTaskBase>>
 XClusterSourceManager::GetPostTabletCreateTasks(
     const TableInfoPtr& table_info, const LeaderEpoch& epoch) {
-  if (!IsTableEligibleForXClusterReplication(*table_info)) {
-    return {};
-  }
-
   // Create a AddTableToXClusterSourceTask for each outbound replication group that has the
   // tables namespace.
   std::vector<std::shared_ptr<PostTabletCreateTaskBase>> tasks;
   const auto namespace_id = table_info->namespace_id();
   for (const auto& outbound_replication_group : GetAllOutboundGroups()) {
-    if (outbound_replication_group->HasNamespace(namespace_id)) {
-      tasks.emplace_back(std::make_shared<AddTableToXClusterSourceTask>(
-          outbound_replication_group, catalog_manager_, *master_.messenger(), table_info, epoch));
+    if (!outbound_replication_group->HasNamespace(namespace_id)) {
+      continue;
     }
+    if (!IsTableEligibleForXClusterReplication(
+            *table_info, outbound_replication_group->AutomaticDDLMode())) {
+      continue;
+    }
+    tasks.emplace_back(
+        std::make_shared<AddTableToXClusterSourceTask>(
+            outbound_replication_group, catalog_manager_, *master_.messenger(), table_info, epoch));
   }
 
   if (table_info->is_index() && !table_info->colocated()) {
@@ -769,12 +771,10 @@ void XClusterSourceManager::RecordHiddenTablets(
       continue;
     }
 
-    decltype(HiddenTabletInfo::split_tablets) split_tablets = {};
     auto tablet_lock = hidden_tablet->LockForRead();
     auto& tablet_pb = tablet_lock->pb;
-    if (tablet_pb.split_tablet_ids_size() == kNumSplitParts) {
-      split_tablets = {tablet_pb.split_tablet_ids(0), tablet_pb.split_tablet_ids(1)};
-    }
+    std::vector<TabletId> split_tablets(
+        tablet_pb.split_tablet_ids().begin(), tablet_pb.split_tablet_ids().end());
 
     HiddenTabletInfo info{
         .table_id = hidden_tablet->table()->id(),

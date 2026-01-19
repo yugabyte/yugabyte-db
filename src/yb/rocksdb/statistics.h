@@ -249,6 +249,9 @@ enum Histograms : uint32_t {
   BYTES_PER_READ,
   BYTES_PER_WRITE,
   BYTES_PER_MULTIGET,
+  BLOOM_FILTER_TIME_NANOS,
+  GET_FIXED_SIZE_FILTER_BLOCK_HANDLE_NANOS,
+  GET_FILTER_BLOCK_FROM_CACHE_NANOS,
   HISTOGRAM_ENUM_MAX,  // TODO(ldemailly): enforce HistogramsNameMap match
 };
 
@@ -298,9 +301,7 @@ class Statistics {
   }
 
   // Override this function to disable particular histogram collection
-  virtual bool HistEnabledForType(uint32_t type) const {
-    return type < HISTOGRAM_ENUM_MAX;
-  }
+  virtual bool HistEnabledForType(uint32_t type) const;
 
   StatsLevel stats_level_ = kExceptTimeForMutex;
 };

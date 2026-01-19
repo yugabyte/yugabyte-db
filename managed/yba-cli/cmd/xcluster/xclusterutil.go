@@ -6,7 +6,6 @@ package xcluster
 
 import (
 	"fmt"
-	"net/http"
 	"strings"
 
 	"github.com/sirupsen/logrus"
@@ -25,9 +24,7 @@ func GetSourceAndTargetXClusterUniverse(
 	universeListRequest := authAPI.ListUniverses()
 
 	var sourceUniverse, targetUniverse ybaclient.UniverseResp
-	var response *http.Response
-	var err error
-	if strings.TrimSpace(sourceUniverseName) != "" {
+	if !util.IsEmptyString(sourceUniverseName) {
 		sourceUniverseList, response, err := universeListRequest.Name(sourceUniverseName).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(
@@ -43,14 +40,20 @@ func GetSourceAndTargetXClusterUniverse(
 				))
 		}
 		sourceUniverse = sourceUniverseList[0]
-	} else if strings.TrimSpace(sourceUniverseUUID) != "" {
-		sourceUniverse, response, err = authAPI.GetUniverse(sourceUniverseUUID).Execute()
+	} else if !util.IsEmptyString(sourceUniverseUUID) {
+
+		rSourceUniverse, response, err := authAPI.GetUniverse(sourceUniverseUUID).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(
 				response, err, "xCluster",
 				fmt.Sprintf("%s - Get Source Universe", operation))
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
+
+		sourceUniverse = util.CheckAndDereference(
+			rSourceUniverse,
+			fmt.Sprintf("No source universe found with uuid %s", sourceUniverseUUID),
+		)
 	}
 
 	if strings.TrimSpace(sourceUniverse.GetName()) == "" {
@@ -61,7 +64,7 @@ func GetSourceAndTargetXClusterUniverse(
 			))
 	}
 
-	if strings.TrimSpace(targetUniverseName) != "" {
+	if !util.IsEmptyString(targetUniverseName) {
 
 		targetUniverseList, response, err := universeListRequest.Name(targetUniverseName).Execute()
 		if err != nil {
@@ -77,13 +80,18 @@ func GetSourceAndTargetXClusterUniverse(
 				))
 		}
 		targetUniverse = targetUniverseList[0]
-	} else if strings.TrimSpace(targetUniverseUUID) != "" {
-		targetUniverse, response, err = authAPI.GetUniverse(targetUniverseUUID).Execute()
+	} else if !util.IsEmptyString(targetUniverseUUID) {
+		rTargetUniverse, response, err := authAPI.GetUniverse(targetUniverseUUID).Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(
 				response, err, "xCluster", fmt.Sprintf("%s - Get Target Universe", operation))
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
+
+		targetUniverse = util.CheckAndDereference(
+			rTargetUniverse,
+			fmt.Sprintf("No target universe found with uuid %s", targetUniverseUUID),
+		)
 	}
 
 	if strings.TrimSpace(targetUniverse.GetName()) == "" && operation != "Full Copy Tables" {

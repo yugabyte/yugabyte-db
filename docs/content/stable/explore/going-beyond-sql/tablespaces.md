@@ -260,23 +260,23 @@ CREATE TABLE aws_wildcard_table (id INTEGER, field text)
 The example below expects the following servers to be added to the cluster:
 
 ```sh
-./bin/yugabyted start                           \
-  --base_dir=/home/yugabyte/<IP8>/yugabyte-data \
-  --advertise_address=<IP8>                     \
-  --join=<IP1>                                  \
-  --cloud_location=aws.us-east-1.us-east-1b     \
+./bin/yugabyted start                               \
+  --base_dir=/home/yugabyte/127.0.0.8/yugabyte-data \
+  --advertise_address=127.0.0.8                     \
+  --join=127.0.0.1                                  \
+  --cloud_location=aws.us-east-1.us-east-1b
 
-./bin/yugabyted start                           \
-  --base_dir=/home/yugabyte/<IP9>/yugabyte-data \
-  --advertise_address=<IP9>                     \
-  --join=<IP1>                                  \
-  --cloud_location=aws.us-east-2.us-east-2a     \
+./bin/yugabyted start                               \
+  --base_dir=/home/yugabyte/127.0.0.9/yugabyte-data \
+  --advertise_address=127.0.0.9                     \
+  --join=127.0.0.1                                  \
+  --cloud_location=aws.us-east-2.us-east-2a
 
-  ./bin/yugabyted start                           \
-  --base_dir=/home/yugabyte/<IP10>/yugabyte-data \
-  --advertise_address=<IP10>                     \
-  --join=<IP1>                                  \
-  --cloud_location=aws.us-west-1.us-west-1a      \
+  ./bin/yugabyted start                              \
+  --base_dir=/home/yugabyte/127.0.0.10/yugabyte-data \
+  --advertise_address=127.0.0.10                     \
+  --join=127.0.0.1                                   \
+  --cloud_location=aws.us-west-1.us-west-1a
 ```
 
 {{< /note >}}

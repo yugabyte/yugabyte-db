@@ -90,7 +90,14 @@ static const std::initializer_list<UpgradeIncompatibilityCheck> kCheckList{
           "\\c yugabyte",
           "DROP INDEX public.idx_invalid;"},
      .teardown_stmts =
-         {"DROP TABLE invalid_index_test"}}};
+         {"DROP TABLE invalid_index_test"}},
+
+    {// yb_check_yb_role_prefix
+     .setup_stmts = {"CREATE ROLE yb_test_role"},
+     .expected_errors =
+         {"yb_test_role",
+          "Your installation contains roles starting with \"yb_\"."},
+     .teardown_stmts = {"DROP ROLE yb_test_role"}}};
 
 // The following checks are not used in YugabyteDB:
 // check_for_prepared_transactions
@@ -369,6 +376,29 @@ TEST_F(YsqlMajorUpgradeCheckTest, InvalidIndexes) {
   ASSERT_OK(conn_db2.Execute("DROP INDEX otherschema.idx_db2_invalid"));
 
   // Verify that validation now succeeds (partitioned table invalid index should still be allowed)
+  ASSERT_OK(ValidateUpgradeCompatibility());
+}
+
+TEST_F(YsqlMajorUpgradeCheckTest, YbPrefixRoles) {
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+
+  // Create roles with "yb_" prefix
+  ASSERT_OK(conn.Execute("CREATE ROLE yb_test_role1"));
+  ASSERT_OK(conn.Execute("CREATE ROLE yb_test_role2 LOGIN"));
+
+  ASSERT_OK(conn.Execute("CREATE ROLE normal_role"));
+
+  // Check that upgrade validation fails with appropriate error message
+  ASSERT_OK(ValidateUpgradeCompatibilityFailure(std::vector<std::string>{
+      "yb_test_role1",
+      "yb_test_role2",
+      "Your installation contains roles starting with \"yb_\"."}));
+
+  // Drop the roles
+  ASSERT_OK(conn.Execute("DROP ROLE yb_test_role1"));
+  ASSERT_OK(conn.Execute("DROP ROLE yb_test_role2"));
+
+  // Verify that validation now succeeds
   ASSERT_OK(ValidateUpgradeCompatibility());
 }
 }  // namespace yb

@@ -646,13 +646,10 @@ static bool SaveValue(void* arg, const char* entry) {
           assert(merge_operator);
           bool merge_success = false;
           {
-            StopWatchNano timer(s->env_, s->statistics != nullptr);
+            StopWatchNano timer(s->env_, s->statistics, MERGE_OPERATION_TOTAL_TIME);
             PERF_TIMER_GUARD(merge_operator_time_nanos);
             merge_success = merge_operator->FullMerge(
-                s->key->user_key(), &v, merge_context->GetOperands(), s->value,
-                s->logger);
-            RecordTick(s->statistics, MERGE_OPERATION_TOTAL_TIME,
-                       timer.ElapsedNanos());
+                s->key->user_key(), &v, merge_context->GetOperands(), s->value, s->logger);
           }
           if (!merge_success) {
             RecordTick(s->statistics, NUMBER_MERGE_FAILURES);
@@ -675,13 +672,10 @@ static bool SaveValue(void* arg, const char* entry) {
           *(s->status) = Status::OK();
           bool merge_success = false;
           {
-            StopWatchNano timer(s->env_, s->statistics != nullptr);
+            StopWatchNano timer(s->env_, s->statistics, MERGE_OPERATION_TOTAL_TIME);
             PERF_TIMER_GUARD(merge_operator_time_nanos);
             merge_success = merge_operator->FullMerge(
-                s->key->user_key(), nullptr, merge_context->GetOperands(),
-                s->value, s->logger);
-            RecordTick(s->statistics, MERGE_OPERATION_TOTAL_TIME,
-                       timer.ElapsedNanos());
+                s->key->user_key(), nullptr, merge_context->GetOperands(), s->value, s->logger);
           }
           if (!merge_success) {
             RecordTick(s->statistics, NUMBER_MERGE_FAILURES);

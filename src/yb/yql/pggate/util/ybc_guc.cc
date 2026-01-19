@@ -25,6 +25,10 @@ bool yb_format_funcs_include_yb_metadata = false;
 
 bool yb_force_global_transaction = false;
 
+bool yb_force_tablespace_locality = false;
+
+uint32_t yb_force_tablespace_locality_oid = 0;
+
 bool suppress_nonpg_logs = false;
 
 bool yb_binary_restore = false;
@@ -58,6 +62,8 @@ bool yb_enable_alter_table_rewrite = true;
 bool yb_enable_replica_identity = true;
 
 bool yb_enable_consistent_replication_from_hash_range = false;
+
+bool yb_cdcsdk_stream_tables_without_primary_key = false;
 
 // If this is set in the user's session to a positive value, it will supersede the gflag
 // ysql_session_max_batch_size.
@@ -125,12 +131,14 @@ bool yb_debug_log_catcache_events = false;
 
 bool yb_debug_log_snapshot_mgmt = false;
 
+bool yb_debug_log_snapshot_mgmt_stack_trace = false;
+
 bool yb_mixed_mode_saop_pushdown = false;
 
 // Internal GUC to help a backend identify that the connection is from the Auto-Analyze service.
 bool yb_use_internal_auto_analyze_service_conn = false;
 
-bool yb_ddl_transaction_block_enabled = false;
+bool yb_ddl_transaction_block_enabled = kEnableDdlTransactionBlocks;
 
 bool yb_disable_ddl_transaction_block_for_read_committed = false;
 
@@ -141,3 +149,11 @@ bool yb_allow_dockey_bounds = true;
 bool yb_xcluster_target_ddl_bypass = false;
 
 bool yb_ignore_read_time_in_walsender = false;
+
+bool yb_disable_pg_snapshot_mgmt_in_repeatable_read = false;
+
+bool enable_object_locking_infra = true;
+
+bool yb_fallback_to_legacy_catalog_read_time = true;
+
+bool yb_enable_ddl_savepoint_infra = true;

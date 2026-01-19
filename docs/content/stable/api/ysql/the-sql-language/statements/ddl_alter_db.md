@@ -7,6 +7,8 @@ menu:
   stable_api:
     identifier: ddl_alter_db
     parent: statements
+aliases:
+  - /stable/api/ysql/commands/ddl_alter_db/
 type: docs
 ---
 

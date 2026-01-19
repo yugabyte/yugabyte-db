@@ -77,8 +77,8 @@ step c2: COMMIT;
 step partiallock: <... completed>
 accountid|balance|accountid|balance
 ---------+-------+---------+-------
-savings  |    600|savings  |    600
 checking |   1050|checking |   1050
+savings  |    600|savings  |    600
 (2 rows)
 
 step c1: COMMIT;

@@ -8,6 +8,8 @@ menu:
   stable_api:
     identifier: txn_set_constraints
     parent: statements
+aliases:
+  - /stable/api/ysql/commands/txn_set_constraints/
 type: docs
 ---
 

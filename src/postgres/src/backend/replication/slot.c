@@ -577,6 +577,9 @@ retry:
 		s->data.yb_initial_record_commit_time_ht =
 			yb_replication_slot->record_id_commit_time_ht;
 
+		s->data.yb_allow_tables_without_primary_key =
+			yb_replication_slot->allow_tables_without_primary_key;
+
 		MyReplicationSlot = s;
 
 		/* Setup the per-table replica identity table. */

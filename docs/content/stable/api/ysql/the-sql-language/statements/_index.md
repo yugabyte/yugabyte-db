@@ -9,6 +9,8 @@ menu:
     identifier: statements
     parent: the-sql-language
     weight: 100
+aliases:
+  - /stable/api/ysql/commands/
 type: indexpage
 showRightNav: true
 ---
@@ -78,6 +80,7 @@ The YSQL statements are compatible with the SQL dialect that PostgreSQL supports
 | [`DROP TABLESPACE`](ddl_drop_tablespace) | Delete a tablespace from the cluster |
 | [`DROP TYPE`](ddl_drop_type) | Delete a user-defined type |
 | [`DROP TRIGGER`](ddl_drop_trigger) | Delete a trigger |
+| [`DROP VIEW`](ddl_drop_view) | Drop a view |
 | [`IMPORT FOREIGN SCHEMA`](ddl_import_foreign_schema) | Import a foreign schema |
 | [`REFRESH MATERIALIZED VIEW`](ddl_refresh_matview) | Refresh a materialized view |
 | [`TRUNCATE`](ddl_truncate) | Clear all rows from a table |

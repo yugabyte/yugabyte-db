@@ -68,7 +68,7 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
                                        true /* is_colocated_via_database */,
                                        kInvalidOid /* tablegroup_id */,
                                        kColocationIdNotSet /* colocation_id */,
-                                       kInvalidOid /* tablespace_id */,
+                                       kDefaultTablespaceOid,
                                        false /* is_matview */,
                                        kInvalidOid /* pg_table_oid */,
                                        kInvalidOid /* old_relfilenode_oid */,
@@ -96,7 +96,7 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
   // INSERT ----------------------------------------------------------------------------------------
   // Allocate new insert.
   CHECK_YBC_STATUS(YBCPgNewInsert(
-      kDefaultDatabaseOid, tab_oid, false /* is_region_local */, &pg_stmt,
+      kDefaultDatabaseOid, tab_oid, kDefaultTableLocality, &pg_stmt,
       YbcPgTransactionSetting::YB_TRANSACTIONAL));
 
   // Allocate constant expressions.
@@ -153,25 +153,25 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
 
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from non-partitioned table WITH RANGE values";
-  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */,
-                                  false /* is_region_local */, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(
+      kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality, &pg_stmt));
 
   // Specify the selected expressions.
   YbcPgExpr colref;
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::INT64, &colref));
-  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 2, DataType::INT32, &colref));
-  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 3, DataType::INT16, &colref));
-  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 4, DataType::INT32, &colref));
-  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 5, DataType::FLOAT, &colref));
-  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 6, DataType::STRING, &colref));
-  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, -2, DataType::INT32, &colref));
-  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
 
   // Set partition and range columns for SELECT to select a specific row.
   // SELECT ... WHERE hash = 0 AND id = seed.
@@ -236,24 +236,24 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
 
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from non-partitioned table WITHOUT RANGE values";
-  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */,
-                                  false /* is_region_local */, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(
+      kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality, &pg_stmt));
 
   // Specify the selected expressions.
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::INT64, &colref));
-  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 2, DataType::INT32, &colref));
-  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 3, DataType::INT16, &colref));
-  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 4, DataType::INT32, &colref));
-  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 5, DataType::FLOAT, &colref));
-  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 6, DataType::STRING, &colref));
-  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, -2, DataType::INT32, &colref));
-  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
 
   // Set partition column for SELECT.
   CHECK_YBC_STATUS(YBCTestNewConstantInt8(pg_stmt, 0, false, &expr_hash));
@@ -455,17 +455,18 @@ Result<size_t> TestGetTableKeyRanges(
 }
 
 Result<std::unordered_set<int>> DockeyBoundsForHashPartitionedTablesHelper(
-    YbcPgOid db_oid, YbcPgOid table_oid, std::string bound, bool is_inclusive, bool is_lower) {
+    YbcPgOid db_oid, YbcPgOid table_oid, const std::string& bound, bool is_inclusive,
+    bool is_lower) {
   std::unordered_set<int> result;
   YbcPgStatement pg_stmt = nullptr;
 
   CHECK_YBC_STATUS(YBCPgNewSelect(
-      db_oid, table_oid, NULL /* prepare_params */, false /* is_region_local */, &pg_stmt));
+      db_oid, table_oid, NULL /* prepare_params */, PggateTest::kDefaultTableLocality, &pg_stmt));
   YbcPgExpr colref;
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::INT32, &colref));
-  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 2, DataType::INT32, &colref));
-  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
+  CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
 
   down_cast<PgDmlRead*>(pg_stmt)->BindBounds(
       is_lower ? bound : Slice(), is_inclusive, !is_lower ? bound : Slice(), is_inclusive);
@@ -677,6 +678,654 @@ TEST_F_EX(PggateTestSelect, DockeyBoundsForHashPartitionedTables, PggateTestSele
       db_oid, table_oid, lower_bound, false /* is_inclusive */, true /* is_lower */));
   expected_result = {63, 1632, 1723};
   ASSERT_EQ(expected_result, actual_result);
+}
+
+class PggateTestBucketizedSelect : public PggateTest {
+ public:
+  static constexpr const char *tab_name = "bkt_table";
+  static constexpr YbcPgOid tab_oid = 4;
+
+  void CreateBucketizedTable(bool bucket_hash, bool k1_desc, bool k2_desc) {
+    YbcPgStatement pg_stmt;
+    // Create table in the connected database.
+    CHECK_YBC_STATUS(YBCPgNewCreateTable(kDefaultDatabase, kDefaultSchema, tab_name,
+                                         kDefaultDatabaseOid, tab_oid,
+                                         false /* is_shared_table */,
+                                         false /* is_sys_catalog_table */,
+                                         true /* if_not_exist */,
+                                         PG_YBROWID_MODE_NONE,
+                                         true /* is_colocated_via_database */,
+                                         kInvalidOid /* tablegroup_id */,
+                                         kColocationIdNotSet /* colocation_id */,
+                                         kDefaultTablespaceOid,
+                                         false /* is_matview */,
+                                         kInvalidOid /* pg_table_oid */,
+                                         kInvalidOid /* old_relfilenode_oid */,
+                                         false /* is_truncate */,
+                                         &pg_stmt));
+    CHECK_YBC_STATUS(YBCPgCreateTableAddColumn(
+        pg_stmt, "bucket_id", 1 /* attr_num */, YBCPgFindTypeEntity(INT2OID),
+        bucket_hash, !bucket_hash /* is_range */, false /* is_desc */, false /* is_nulls_first */));
+    CHECK_YBC_STATUS(YBCPgCreateTableAddColumn(
+        pg_stmt, "k1", 2 /* attr_num */, YBCPgFindTypeEntity(INT4OID),
+        false /* is_hash */, true /* is_range */, k1_desc, false /* is_nulls_first */));
+    CHECK_YBC_STATUS(YBCPgCreateTableAddColumn(
+        pg_stmt, "k2", 3 /* attr_num */, YBCPgFindTypeEntity(INT4OID),
+        false /* is_hash */, true /* is_range */, k2_desc, false /* is_nulls_first */));
+    CHECK_YBC_STATUS(YBCPgCreateTableAddColumn(
+        pg_stmt, "description", 4 /* attr_num */, YBCPgFindTypeEntity(TEXTOID),
+        false /* is_hash */, false /* is_range */, false /* is_desc */,
+        false /* is_nulls_first */));
+    ExecCreateTableTransaction(pg_stmt);
+  }
+
+  void PopulateBucketizedTable(
+      int16_t num_buckets, int32_t num_k1s, int32_t num_k2s, size_t num_rows) {
+    YbcPgStatement pg_stmt;
+    CHECK_YBC_STATUS(YBCPgNewInsert(
+        kDefaultDatabaseOid, tab_oid, kDefaultTableLocality, &pg_stmt,
+        YbcPgTransactionSetting::YB_TRANSACTIONAL));
+
+    // Allocate constant expressions.
+    YbcPgExpr expr_bkt;
+    CHECK_YBC_STATUS(YBCPgNewConstant(
+        pg_stmt, YBCPgFindTypeEntity(INT2OID), false /* collate_is_valid_non_c */,
+        nullptr /* collation_sortkey */, 0 /* datum */, true /* is_null */, &expr_bkt));
+    CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, 1, expr_bkt));
+    YbcPgExpr expr_k1;
+    CHECK_YBC_STATUS(YBCPgNewConstant(
+        pg_stmt, YBCPgFindTypeEntity(INT4OID), false /* collate_is_valid_non_c */,
+        nullptr /* collation_sortkey */, 0 /* datum */, true /* is_null */, &expr_k1));
+    CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, 2, expr_k1));
+    YbcPgExpr expr_k2;
+    CHECK_YBC_STATUS(YBCPgNewConstant(
+        pg_stmt, YBCPgFindTypeEntity(INT4OID), false /* collate_is_valid_non_c */,
+        nullptr /* collation_sortkey */, 0 /* datum */, true /* is_null */, &expr_k2));
+    CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, 3, expr_k2));
+    YbcPgExpr expr_descr;
+    CHECK_YBC_STATUS(YBCPgNewConstant(
+        pg_stmt, YBCPgFindTypeEntity(TEXTOID), false /* collate_is_valid_non_c */,
+        nullptr /* collation_sortkey */, 0 /* datum */, true /* is_null */, &expr_descr));
+    CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, 4, expr_descr));
+
+    int16_t bucket_id = 0;
+    int32_t k1 = 1;
+    int32_t k2 = 2;
+    for (size_t row_no = 0; row_no < num_rows; ++row_no) {
+      if (++bucket_id == num_buckets) {
+        bucket_id = 0;
+      }
+      if (++k1 == num_k1s) {
+        k1 = 0;
+      }
+      if (++k2 == num_k2s) {
+        k2 = 0;
+      }
+      CHECK_YBC_STATUS(YBCPgUpdateConstInt2(expr_bkt, bucket_id, false));
+      CHECK_YBC_STATUS(YBCPgUpdateConstInt4(expr_k1, k1, false));
+      CHECK_YBC_STATUS(YBCPgUpdateConstInt4(expr_k2, k2, false));
+      auto description = strings::Substitute("Bucket: $0, k1: $1, k2: $2", bucket_id, k1, k2);
+      CHECK_YBC_STATUS(YBCPgUpdateConstText(expr_descr, description.c_str(), false));
+      BeginTransaction();
+      CHECK_YBC_STATUS(YBCPgExecInsert(pg_stmt));
+      CommitTransaction();
+    }
+  }
+
+  YbcPgStatement MakeSelect(
+      bool is_forward, const std::vector<int16_t>& buckets, const std::vector<int32_t>& k1s,
+      const std::vector<YbcSortKey>& sort_keys) {
+    YbcPgStatement pg_stmt;
+    CHECK_YBC_STATUS(YBCPgNewSelect(
+        kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality, &pg_stmt));
+
+    // Specify the selected expressions.
+    YbcPgExpr colref;
+    const YbcPgTypeAttrs type_attrs = { 0 };
+    CHECK_YBC_STATUS(YBCPgNewColumnRef(
+        pg_stmt, 1, YBCPgFindTypeEntity(INT2OID), false /* collate_is_valid_non_c */,
+        &type_attrs, &colref));
+    CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
+    CHECK_YBC_STATUS(YBCPgNewColumnRef(
+        pg_stmt, 2, YBCPgFindTypeEntity(INT4OID), false /* collate_is_valid_non_c */,
+        &type_attrs, &colref));
+    CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
+    CHECK_YBC_STATUS(YBCPgNewColumnRef(
+        pg_stmt, 3, YBCPgFindTypeEntity(INT4OID), false /* collate_is_valid_non_c */,
+        &type_attrs, &colref));
+    CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
+    CHECK_YBC_STATUS(YBCPgNewColumnRef(
+        pg_stmt, 4, YBCPgFindTypeEntity(TEXTOID), false /* collate_is_valid_non_c */,
+        &type_attrs, &colref));
+    CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref, false /* is_for_secondary_index */));
+
+    CHECK_YBC_STATUS(YBCPgSetForwardScan(pg_stmt, is_forward));
+    MakeBucketCondition(pg_stmt, 1, INT2OID, buckets);
+    if (!k1s.empty()) {
+      MakeBucketCondition(pg_stmt, 2, INT4OID, k1s);
+    }
+    CHECK_YBC_STATUS(YBCPgDmlSetMergeSortKeys(
+        pg_stmt, static_cast<int>(sort_keys.size()), sort_keys.data()));
+
+    return pg_stmt;
+  }
+
+  template <typename T>
+  void MakeBucketCondition(
+      YbcPgStatement pg_stmt, int attnum, YbcPgOid atttype, const std::vector<T>& buckets) {
+    if (buckets.size() == 1) {
+      YbcPgExpr bucket_val;
+      CHECK_YBC_STATUS(YBCPgNewConstant(
+          pg_stmt, YBCPgFindTypeEntity(atttype), false /* collate_is_valid_non_c */,
+          nullptr /* collation_sortkey */, buckets[0] /* datum */, false /* is_null */,
+          &bucket_val));
+      CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, attnum, bucket_val));
+    } else {
+      YbcPgExpr bucket_col;
+      const YbcPgTypeAttrs type_attrs = { 0 };
+      CHECK_YBC_STATUS(YBCPgNewColumnRef(
+          pg_stmt, attnum, YBCPgFindTypeEntity(atttype), false /* collate_is_valid_non_c */,
+          &type_attrs, &bucket_col));
+      std::vector<YbcPgExpr> bucket_in(buckets.size(), nullptr);
+      for (size_t idx = 0; idx < buckets.size(); ++idx) {
+        CHECK_YBC_STATUS(YBCPgNewConstant(
+            pg_stmt, YBCPgFindTypeEntity(atttype), false /* collate_is_valid_non_c */,
+            nullptr /* collation_sortkey */, buckets[idx] /* datum */, false /* is_null */,
+            &bucket_in[idx]));
+      }
+      CHECK_YBC_STATUS(YBCPgDmlBindColumnCondIn(
+          pg_stmt, bucket_col, static_cast<int>(bucket_in.size()), bucket_in.data()));
+    }
+  }
+
+  enum ExpectedOrder { None, Asc, Desc };
+  void CheckRowOrder(
+      YbcPgStatement pg_stmt, ExpectedOrder k1_order, ExpectedOrder k2_order, size_t num_rows) {
+    BeginTransaction();
+    CHECK_YBC_STATUS(YBCPgExecSelect(pg_stmt, nullptr /* exec_params */));
+
+    // Fetching rows and check their contents.
+    uint64_t values[4];
+    bool isnulls[4];
+    YbcPgSysColumns syscols;
+    int select_row_count = 0;
+    int32_t last_k1;
+    int32_t last_k2;
+    for (;;) {
+      bool has_data = false;
+      CHECK_YBC_STATUS(YBCPgDmlFetch(pg_stmt, 4, values, isnulls, &syscols, &has_data));
+      if (!has_data) {
+        break;
+      }
+      ++select_row_count;
+
+      // Print result
+      LOG(INFO) << "ROW " << select_row_count << ": "
+                << "bucket_it = " << values[0]
+                << ", k1 = " << values[1]
+                << ", k2 = " << values[2]
+                << ", description = (" << reinterpret_cast<char*>(values[3]) << ")";
+
+      if (select_row_count == 1) {
+        last_k1 = static_cast<int32_t>(values[1]);
+        last_k2 = static_cast<int32_t>(values[2]);
+        continue;
+      }
+      auto k1 = static_cast<int32_t>(values[1]);
+      auto k2 = static_cast<int32_t>(values[2]);
+      if (k1_order == None || k1 == last_k1) {
+        if (k2_order == Asc) {
+          CHECK_GE(k2, last_k2);
+        } else if (k2_order == Desc) {
+          CHECK_LE(k2, last_k2);
+        }
+      } else {
+        if (k1_order == Asc) {
+          CHECK_GT(k1, last_k1);
+        } else {
+          CHECK_LT(k1, last_k1);
+        }
+      }
+      last_k1 = k1;
+      last_k2 = k2;
+    }
+    CHECK_EQ(select_row_count, num_rows) << "Unexpected row count";
+    CommitTransaction();
+  }
+};
+
+namespace {
+
+static int dummy_state = 0;
+int cmp_int32_no_nulls(
+    uint64_t datum1, bool isnull1, uint64_t datum2, bool isnull2, void* state) {
+  CHECK_EQ(state, &dummy_state);
+  auto v1 = static_cast<int32_t>(datum1);
+  auto v2 = static_cast<int32_t>(datum2);
+  LOG(INFO) << "comparing " << v1 << " to " << v2;
+  return v1 - v2;
+}
+
+int cmp_int32_no_nulls_inverted(
+    uint64_t datum1, bool isnull1, uint64_t datum2, bool isnull2, void* state) {
+  auto cmp_result = cmp_int32_no_nulls(datum1, isnull1, datum2, isnull2, state);
+  return -cmp_result;
+}
+
+} // namespace
+
+TEST_F(PggateTestBucketizedSelect, TestRangeAscBucketized) {
+  CHECK_OK(Init("TestRangeAscBucketized"));
+
+  int16_t num_buckets = 2;
+  int32_t num_k1s = 13;
+  int32_t num_k2s = 3;
+  size_t num_rows = 25;
+
+  YbcSortKey sort_k1_asc = { 1, 1, cmp_int32_no_nulls, &dummy_state };
+  YbcSortKey sort_k2_asc = { 2, 2, cmp_int32_no_nulls, &dummy_state };
+  YbcSortKey sort_k1_desc = { 1, 1, cmp_int32_no_nulls_inverted, &dummy_state };
+  YbcSortKey sort_k2_desc = { 2, 2, cmp_int32_no_nulls_inverted, &dummy_state };
+
+  CreateBucketizedTable(false, false, false); /* ASC ASC ASC */
+  PopulateBucketizedTable(num_buckets, num_k1s, num_k2s, num_rows);
+
+  // SELECT forward ------------------------------------------------------------------------------
+  {
+    auto pg_stmt_fwd = MakeSelect(true, {0, 1}, {}, {sort_k1_asc, sort_k2_asc});
+    CheckRowOrder(pg_stmt_fwd, Asc, Asc, num_rows);
+  }
+
+  {
+    auto pg_stmt_fwd = MakeSelect(true, {0, 1}, {1, 2, 3}, {sort_k2_asc});
+    CheckRowOrder(pg_stmt_fwd, None, Asc, 5);
+  }
+
+  {
+    auto pg_stmt_fwd = MakeSelect(true, {0}, {1, 2, 3, 4, 5, 6}, {sort_k2_asc});
+    CheckRowOrder(pg_stmt_fwd, None, Asc, 5);
+  }
+
+  {
+    auto pg_stmt_fwd = MakeSelect(true, {0, 1}, {7}, {sort_k2_asc});
+    CheckRowOrder(pg_stmt_fwd, None, Asc, 2);
+  }
+
+  {
+    auto pg_stmt_fwd = MakeSelect(true, {0}, {}, {sort_k1_asc});
+    CheckRowOrder(pg_stmt_fwd, Asc, None, 12);
+  }
+
+  // SELECT backward ------------------------------------------------------------------------------
+  {
+    auto pg_stmt_bkw = MakeSelect(false, {0, 1}, {}, {sort_k1_desc, sort_k2_desc});
+    CheckRowOrder(pg_stmt_bkw, Desc, Desc, num_rows);
+  }
+
+  {
+    auto pg_stmt_bkw = MakeSelect(false, {0, 1}, {1, 2, 3}, {sort_k2_desc});
+    CheckRowOrder(pg_stmt_bkw, None, Desc, 5);
+  }
+
+  {
+    auto pg_stmt_bkw = MakeSelect(false, {0}, {1, 2, 3, 4, 5, 6}, {sort_k2_desc});
+    CheckRowOrder(pg_stmt_bkw, None, Desc, 5);
+  }
+
+  {
+    auto pg_stmt_bkw = MakeSelect(false, {0, 1}, {7}, {sort_k2_desc});
+    CheckRowOrder(pg_stmt_bkw, None, Desc, 2);
+  }
+
+  {
+    auto pg_stmt_bkw = MakeSelect(false, {0}, {}, {sort_k1_desc});
+    CheckRowOrder(pg_stmt_bkw, Desc, None, 12);
+  }
+}
+
+TEST_F(PggateTestBucketizedSelect, TestRangeDescBucketized) {
+  CHECK_OK(Init("TestRangeDescBucketized"));
+
+  int16_t num_buckets = 2;
+  int32_t num_k1s = 13;
+  int32_t num_k2s = 3;
+  size_t num_rows = 25;
+
+  YbcSortKey sort_k1_asc = { 1, 1, cmp_int32_no_nulls, &dummy_state };
+  YbcSortKey sort_k2_asc = { 2, 2, cmp_int32_no_nulls, &dummy_state };
+  YbcSortKey sort_k1_desc = { 1, 1, cmp_int32_no_nulls_inverted, &dummy_state };
+  YbcSortKey sort_k2_desc = { 2, 2, cmp_int32_no_nulls_inverted, &dummy_state };
+
+  CreateBucketizedTable(false, true, true); /* ASC DESC DESC */
+  PopulateBucketizedTable(num_buckets, num_k1s, num_k2s, num_rows);
+
+  // SELECT forward ------------------------------------------------------------------------------
+  {
+    auto pg_stmt_fwd = MakeSelect(true, {0, 1}, {}, {sort_k1_desc, sort_k2_desc});
+    CheckRowOrder(pg_stmt_fwd, Desc, Desc, num_rows);
+  }
+
+  {
+    auto pg_stmt_fwd = MakeSelect(true, {0, 1}, {1, 2, 3}, {sort_k2_desc});
+    CheckRowOrder(pg_stmt_fwd, None, Desc, 5);
+  }
+
+  {
+    auto pg_stmt_fwd = MakeSelect(true, {0}, {1, 2, 3, 4, 5, 6}, {sort_k2_desc});
+    CheckRowOrder(pg_stmt_fwd, None, Desc, 5);
+  }
+
+  {
+    auto pg_stmt_fwd = MakeSelect(true, {0, 1}, {7}, {sort_k2_desc});
+    CheckRowOrder(pg_stmt_fwd, None, Desc, 2);
+  }
+
+  {
+    auto pg_stmt_fwd = MakeSelect(true, {0}, {}, {sort_k1_desc});
+    CheckRowOrder(pg_stmt_fwd, Desc, None, 12);
+  }
+
+  // SELECT backward ------------------------------------------------------------------------------
+  {
+    auto pg_stmt_bkw = MakeSelect(false, {0, 1}, {}, {sort_k1_asc, sort_k2_asc});
+    CheckRowOrder(pg_stmt_bkw, Asc, Asc, num_rows);
+  }
+
+  {
+    auto pg_stmt_bkw = MakeSelect(false, {0, 1}, {1, 2, 3}, {sort_k2_asc});
+    CheckRowOrder(pg_stmt_bkw, None, Asc, 5);
+  }
+
+  {
+    auto pg_stmt_bkw = MakeSelect(false, {0}, {1, 2, 3, 4, 5, 6}, {sort_k2_asc});
+    CheckRowOrder(pg_stmt_bkw, None, Asc, 5);
+  }
+
+  {
+    auto pg_stmt_bkw = MakeSelect(false, {0, 1}, {7}, {sort_k2_asc});
+    CheckRowOrder(pg_stmt_bkw, None, Asc, 2);
+  }
+
+  {
+    auto pg_stmt_bkw = MakeSelect(false, {0}, {}, {sort_k1_asc});
+    CheckRowOrder(pg_stmt_bkw, Asc, None, 12);
+  }
+}
+
+TEST_F(PggateTestBucketizedSelect, TestRangeMixBucketized) {
+  CHECK_OK(Init("TestRangeMixBucketized"));
+
+  int16_t num_buckets = 2;
+  int32_t num_k1s = 13;
+  int32_t num_k2s = 3;
+  size_t num_rows = 25;
+
+  YbcSortKey sort_k1_asc = { 1, 1, cmp_int32_no_nulls, &dummy_state };
+  YbcSortKey sort_k2_asc = { 2, 2, cmp_int32_no_nulls, &dummy_state };
+  YbcSortKey sort_k1_desc = { 1, 1, cmp_int32_no_nulls_inverted, &dummy_state };
+  YbcSortKey sort_k2_desc = { 2, 2, cmp_int32_no_nulls_inverted, &dummy_state };
+
+  CreateBucketizedTable(false, false, true); /* ASC ASC DESC */
+  PopulateBucketizedTable(num_buckets, num_k1s, num_k2s, num_rows);
+
+  // SELECT forward ------------------------------------------------------------------------------
+  {
+    auto pg_stmt_fwd = MakeSelect(true, {0, 1}, {}, {sort_k1_asc, sort_k2_desc});
+    CheckRowOrder(pg_stmt_fwd, Asc, Desc, num_rows);
+  }
+
+  {
+    auto pg_stmt_fwd = MakeSelect(true, {0, 1}, {1, 2, 3}, {sort_k2_desc});
+    CheckRowOrder(pg_stmt_fwd, None, Desc, 5);
+  }
+
+  {
+    auto pg_stmt_fwd = MakeSelect(true, {0}, {1, 2, 3, 4, 5, 6}, {sort_k2_desc});
+    CheckRowOrder(pg_stmt_fwd, None, Desc, 5);
+  }
+
+  {
+    auto pg_stmt_fwd = MakeSelect(true, {0, 1}, {7}, {sort_k2_desc});
+    CheckRowOrder(pg_stmt_fwd, None, Desc, 2);
+  }
+
+  {
+    auto pg_stmt_fwd = MakeSelect(true, {0}, {}, {sort_k1_asc});
+    CheckRowOrder(pg_stmt_fwd, Asc, None, 12);
+  }
+
+  // SELECT backward ------------------------------------------------------------------------------
+  {
+    auto pg_stmt_bkw = MakeSelect(false, {0, 1}, {}, {sort_k1_desc, sort_k2_asc});
+    CheckRowOrder(pg_stmt_bkw, Desc, Asc, num_rows);
+  }
+
+  {
+    auto pg_stmt_bkw = MakeSelect(false, {0, 1}, {1, 2, 3}, {sort_k2_asc});
+    CheckRowOrder(pg_stmt_bkw, None, Asc, 5);
+  }
+
+  {
+    auto pg_stmt_bkw = MakeSelect(false, {0}, {1, 2, 3, 4, 5, 6}, {sort_k2_asc});
+    CheckRowOrder(pg_stmt_bkw, None, Asc, 5);
+  }
+
+  {
+    auto pg_stmt_bkw = MakeSelect(false, {0, 1}, {7}, {sort_k2_asc});
+    CheckRowOrder(pg_stmt_bkw, None, Asc, 2);
+  }
+
+  {
+    auto pg_stmt_bkw = MakeSelect(false, {0}, {}, {sort_k1_desc});
+    CheckRowOrder(pg_stmt_bkw, Desc, None, 12);
+  }
+}
+
+TEST_F(PggateTestBucketizedSelect, TestHashAscBucketized) {
+  CHECK_OK(Init("TestHashAscBucketized"));
+
+  int16_t num_buckets = 2;
+  int32_t num_k1s = 13;
+  int32_t num_k2s = 3;
+  size_t num_rows = 25;
+
+  YbcSortKey sort_k1_asc = { 1, 1, cmp_int32_no_nulls, &dummy_state };
+  YbcSortKey sort_k2_asc = { 2, 2, cmp_int32_no_nulls, &dummy_state };
+  YbcSortKey sort_k1_desc = { 1, 1, cmp_int32_no_nulls_inverted, &dummy_state };
+  YbcSortKey sort_k2_desc = { 2, 2, cmp_int32_no_nulls_inverted, &dummy_state };
+
+  CreateBucketizedTable(true, false, false); /* HASH ASC ASC */
+  PopulateBucketizedTable(num_buckets, num_k1s, num_k2s, num_rows);
+
+  // SELECT forward ------------------------------------------------------------------------------
+  {
+    auto pg_stmt_fwd = MakeSelect(true, {0, 1}, {}, {sort_k1_asc, sort_k2_asc});
+    CheckRowOrder(pg_stmt_fwd, Asc, Asc, num_rows);
+  }
+
+  {
+    auto pg_stmt_fwd = MakeSelect(true, {0, 1}, {1, 2, 3}, {sort_k2_asc});
+    CheckRowOrder(pg_stmt_fwd, None, Asc, 5);
+  }
+
+  {
+    auto pg_stmt_fwd = MakeSelect(true, {0}, {1, 2, 3, 4, 5, 6}, {sort_k2_asc});
+    CheckRowOrder(pg_stmt_fwd, None, Asc, 5);
+  }
+
+  {
+    auto pg_stmt_fwd = MakeSelect(true, {0, 1}, {7}, {sort_k2_asc});
+    CheckRowOrder(pg_stmt_fwd, None, Asc, 2);
+  }
+
+  {
+    auto pg_stmt_fwd = MakeSelect(true, {0}, {}, {sort_k1_asc});
+    CheckRowOrder(pg_stmt_fwd, Asc, None, 12);
+  }
+
+  // SELECT backward ------------------------------------------------------------------------------
+  {
+    auto pg_stmt_bkw = MakeSelect(false, {0, 1}, {}, {sort_k1_desc, sort_k2_desc});
+    CheckRowOrder(pg_stmt_bkw, Desc, Desc, num_rows);
+  }
+
+  {
+    auto pg_stmt_bkw = MakeSelect(false, {0, 1}, {1, 2, 3}, {sort_k2_desc});
+    CheckRowOrder(pg_stmt_bkw, None, Desc, 5);
+  }
+
+  {
+    auto pg_stmt_bkw = MakeSelect(false, {0}, {1, 2, 3, 4, 5, 6}, {sort_k2_desc});
+    CheckRowOrder(pg_stmt_bkw, None, Desc, 5);
+  }
+
+  {
+    auto pg_stmt_bkw = MakeSelect(false, {0, 1}, {7}, {sort_k2_desc});
+    CheckRowOrder(pg_stmt_bkw, None, Desc, 2);
+  }
+
+  {
+    auto pg_stmt_bkw = MakeSelect(false, {0}, {}, {sort_k1_desc});
+    CheckRowOrder(pg_stmt_bkw, Desc, None, 12);
+  }
+}
+
+TEST_F(PggateTestBucketizedSelect, TestHashDescBucketized) {
+  CHECK_OK(Init("TestHashDescBucketized"));
+
+  int16_t num_buckets = 2;
+  int32_t num_k1s = 13;
+  int32_t num_k2s = 3;
+  size_t num_rows = 25;
+
+  YbcSortKey sort_k1_asc = { 1, 1, cmp_int32_no_nulls, &dummy_state };
+  YbcSortKey sort_k2_asc = { 2, 2, cmp_int32_no_nulls, &dummy_state };
+  YbcSortKey sort_k1_desc = { 1, 1, cmp_int32_no_nulls_inverted, &dummy_state };
+  YbcSortKey sort_k2_desc = { 2, 2, cmp_int32_no_nulls_inverted, &dummy_state };
+
+  CreateBucketizedTable(true, true, true); /* HASH DESC DESC */
+  PopulateBucketizedTable(num_buckets, num_k1s, num_k2s, num_rows);
+
+  // SELECT forward ------------------------------------------------------------------------------
+  {
+    auto pg_stmt_fwd = MakeSelect(true, {0, 1}, {}, {sort_k1_desc, sort_k2_desc});
+    CheckRowOrder(pg_stmt_fwd, Desc, Desc, num_rows);
+  }
+
+  {
+    auto pg_stmt_fwd = MakeSelect(true, {0, 1}, {1, 2, 3}, {sort_k2_desc});
+    CheckRowOrder(pg_stmt_fwd, None, Desc, 5);
+  }
+
+  {
+    auto pg_stmt_fwd = MakeSelect(true, {0}, {1, 2, 3, 4, 5, 6}, {sort_k2_desc});
+    CheckRowOrder(pg_stmt_fwd, None, Desc, 5);
+  }
+
+  {
+    auto pg_stmt_fwd = MakeSelect(true, {0, 1}, {7}, {sort_k2_desc});
+    CheckRowOrder(pg_stmt_fwd, None, Desc, 2);
+  }
+
+  {
+    auto pg_stmt_fwd = MakeSelect(true, {0}, {}, {sort_k1_desc});
+    CheckRowOrder(pg_stmt_fwd, Desc, None, 12);
+  }
+
+  // SELECT backward ------------------------------------------------------------------------------
+  {
+    auto pg_stmt_bkw = MakeSelect(false, {0, 1}, {}, {sort_k1_asc, sort_k2_asc});
+    CheckRowOrder(pg_stmt_bkw, Asc, Asc, num_rows);
+  }
+
+  {
+    auto pg_stmt_bkw = MakeSelect(false, {0, 1}, {1, 2, 3}, {sort_k2_asc});
+    CheckRowOrder(pg_stmt_bkw, None, Asc, 5);
+  }
+
+  {
+    auto pg_stmt_bkw = MakeSelect(false, {0}, {1, 2, 3, 4, 5, 6}, {sort_k2_asc});
+    CheckRowOrder(pg_stmt_bkw, None, Asc, 5);
+  }
+
+  {
+    auto pg_stmt_bkw = MakeSelect(false, {0, 1}, {7}, {sort_k2_asc});
+    CheckRowOrder(pg_stmt_bkw, None, Asc, 2);
+  }
+
+  {
+    auto pg_stmt_bkw = MakeSelect(false, {0}, {}, {sort_k1_asc});
+    CheckRowOrder(pg_stmt_bkw, Asc, None, 12);
+  }
+}
+
+TEST_F(PggateTestBucketizedSelect, TestHashMixBucketized) {
+  CHECK_OK(Init("TestHashMixBucketized"));
+
+  int16_t num_buckets = 2;
+  int32_t num_k1s = 13;
+  int32_t num_k2s = 3;
+  size_t num_rows = 25;
+
+  YbcSortKey sort_k1_asc = { 1, 1, cmp_int32_no_nulls, &dummy_state };
+  YbcSortKey sort_k2_asc = { 2, 2, cmp_int32_no_nulls, &dummy_state };
+  YbcSortKey sort_k1_desc = { 1, 1, cmp_int32_no_nulls_inverted, &dummy_state };
+  YbcSortKey sort_k2_desc = { 2, 2, cmp_int32_no_nulls_inverted, &dummy_state };
+
+  CreateBucketizedTable(true, false, true); /* HASH ASC DESC */
+  PopulateBucketizedTable(num_buckets, num_k1s, num_k2s, num_rows);
+
+  // SELECT forward ------------------------------------------------------------------------------
+  {
+    auto pg_stmt_fwd = MakeSelect(true, {0, 1}, {}, {sort_k1_asc, sort_k2_desc});
+    CheckRowOrder(pg_stmt_fwd, Asc, Desc, num_rows);
+  }
+
+  {
+    auto pg_stmt_fwd = MakeSelect(true, {0, 1}, {1, 2, 3}, {sort_k2_desc});
+    CheckRowOrder(pg_stmt_fwd, None, Desc, 5);
+  }
+
+  {
+    auto pg_stmt_fwd = MakeSelect(true, {0}, {1, 2, 3, 4, 5, 6}, {sort_k2_desc});
+    CheckRowOrder(pg_stmt_fwd, None, Desc, 5);
+  }
+
+  {
+    auto pg_stmt_fwd = MakeSelect(true, {0, 1}, {7}, {sort_k2_desc});
+    CheckRowOrder(pg_stmt_fwd, None, Desc, 2);
+  }
+
+  {
+    auto pg_stmt_fwd = MakeSelect(true, {0}, {}, {sort_k1_asc});
+    CheckRowOrder(pg_stmt_fwd, Asc, None, 12);
+  }
+
+  // SELECT backward ------------------------------------------------------------------------------
+  {
+    auto pg_stmt_bkw = MakeSelect(false, {0, 1}, {}, {sort_k1_desc, sort_k2_asc});
+    CheckRowOrder(pg_stmt_bkw, Desc, Asc, num_rows);
+  }
+
+  {
+    auto pg_stmt_bkw = MakeSelect(false, {0, 1}, {1, 2, 3}, {sort_k2_asc});
+    CheckRowOrder(pg_stmt_bkw, None, Asc, 5);
+  }
+
+  {
+    auto pg_stmt_bkw = MakeSelect(false, {0}, {1, 2, 3, 4, 5, 6}, {sort_k2_asc});
+    CheckRowOrder(pg_stmt_bkw, None, Asc, 5);
+  }
+
+  {
+    auto pg_stmt_bkw = MakeSelect(false, {0, 1}, {7}, {sort_k2_asc});
+    CheckRowOrder(pg_stmt_bkw, None, Asc, 2);
+  }
+
+  {
+    auto pg_stmt_bkw = MakeSelect(false, {0}, {}, {sort_k1_desc});
+    CheckRowOrder(pg_stmt_bkw, Desc, None, 12);
+  }
 }
 
 } // namespace pggate

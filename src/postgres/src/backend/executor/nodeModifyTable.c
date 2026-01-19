@@ -4245,20 +4245,14 @@ ExecModifyTable(PlanState *pstate)
 	context.epqstate = &node->mt_epqstate;
 	context.estate = estate;
 
-	YbcPgStatement blockInsertStmt = NULL;
-	bool		hasInserts = false;
 	Relation	relation = resultRelInfo->ri_RelationDesc;
 
-	if (IsYBRelation(relation) && operation == CMD_INSERT)
-	{
-		HandleYBStatus(YBCPgNewInsertBlock(YBCGetDatabaseOid(relation),
-										   YbGetRelfileNodeId(relation),
-										   YBCIsRegionLocal(relation),
-										   (estate->yb_es_is_single_row_modify_txn ?
-											YB_SINGLE_SHARD_TRANSACTION :
-											YB_TRANSACTIONAL),
-										   &blockInsertStmt));
-	}
+	YbcPgStatement blockInsertStmt = (IsYBRelation(relation) && operation == CMD_INSERT)
+		? YbNewInsertBlock(relation,
+						   estate->yb_es_is_single_row_modify_txn
+							   ? YB_SINGLE_SHARD_TRANSACTION : YB_TRANSACTIONAL)
+		: NULL;
+	bool		hasInserts = false;
 
 	TupleTableSlot *ybReturnSlot = NULL;
 

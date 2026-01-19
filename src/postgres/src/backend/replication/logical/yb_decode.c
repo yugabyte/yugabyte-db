@@ -32,6 +32,7 @@
 #include "replication/walsender_private.h"
 #include "replication/yb_decode.h"
 #include "utils/rel.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 static void YBDecodeInsert(LogicalDecodingContext *ctx, XLogReaderState *record);
@@ -150,11 +151,7 @@ YBDecodeInsert(LogicalDecodingContext *ctx, XLogReaderState *record)
 	Assert(ctx->reader->ReadRecPtr == yb_record->lsn);
 
 	change->action = REORDER_BUFFER_CHANGE_INSERT;
-	/*
-	 * We do not send the replication origin information. So any dummy value is
-	 * sufficient here.
-	 */
-	change->origin_id = 1;
+	change->origin_id = yb_record->xrepl_origin_id;
 
 	ReorderBufferProcessXid(ctx->reorder, yb_record->xid,
 							ctx->reader->ReadRecPtr);
@@ -212,7 +209,7 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 
 	change->action = REORDER_BUFFER_CHANGE_UPDATE;
 	change->lsn = yb_record->lsn;
-	change->origin_id = yb_record->lsn;
+	change->origin_id = yb_record->xrepl_origin_id;
 
 	relation =
 		YbGetRelationWithOverwrittenReplicaIdentity(yb_record->table_oid,
@@ -259,6 +256,14 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 		 * ybc_pggate.
 		 */
 		Assert(col->column_name);
+
+		/*
+		 * 'ybrowid' is an internal primary key column added by DocDB for tables
+		 * without a primary key. Skip this column.
+		 */
+		if (YBGetTablePrimaryKeyBms(relation) == NULL &&
+			strcmp(col->column_name, "ybrowid") == 0)
+			continue;
 
 		int			attr_idx = YBFindAttributeIndexInDescriptor(tupdesc,
 																col->column_name);
@@ -375,11 +380,7 @@ YBDecodeDelete(LogicalDecodingContext *ctx, XLogReaderState *record)
 	Assert(ctx->reader->ReadRecPtr == yb_record->lsn);
 
 	change->action = REORDER_BUFFER_CHANGE_DELETE;
-	/*
-	 * We do not send the replication origin information. So any dummy value is
-	 * sufficient here.
-	 */
-	change->origin_id = 1;
+	change->origin_id = yb_record->xrepl_origin_id;
 
 	ReorderBufferProcessXid(ctx->reorder, yb_record->xid,
 							ctx->reader->ReadRecPtr);
@@ -412,12 +413,6 @@ YBDecodeCommit(LogicalDecodingContext *ctx, XLogReaderState *record)
 	XLogRecPtr	origin_lsn = yb_record->lsn;
 
 	/*
-	 * We do not send the replication origin information. So any dummy value is
-	 * sufficient here.
-	 */
-	RepOriginId origin_id = 1;
-
-	/*
 	 * Skip the records which the client hasn't asked for. Simpler version of a
 	 * similar check done in DecodeCommit in decode.c
 	 */
@@ -442,7 +437,8 @@ YBDecodeCommit(LogicalDecodingContext *ctx, XLogReaderState *record)
 		 yb_record->xid, commit_lsn, end_lsn);
 
 	ReorderBufferCommit(ctx->reorder, yb_record->xid, commit_lsn, end_lsn,
-						yb_record->commit_time, origin_id, origin_lsn);
+						yb_record->commit_time, yb_record->xrepl_origin_id,
+						origin_lsn);
 
 	elog(DEBUG1,
 		 "Successfully streamed transaction: %d with commit_lsn: %lu and "
@@ -482,6 +478,13 @@ YBGetHeapTuplesForRecord(const YbVirtualWalRecord *yb_record,
 	for (int col_idx = 0; col_idx < yb_record->col_count; col_idx++)
 	{
 		const YbcPgDatumMessage *col = &yb_record->cols[col_idx];
+		/*
+		 * 'ybrowid' is an internal primary key column added by DocDB for tables
+		 * without a primary key. Skip this column.
+		 */
+		if (YBGetTablePrimaryKeyBms(relation) == NULL &&
+			strcmp(col->column_name, "ybrowid") == 0)
+			continue;
 		int			attr_idx = YBFindAttributeIndexInDescriptor(tupdesc,
 																col->column_name);
 

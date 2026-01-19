@@ -52,6 +52,8 @@ public class RedactingService {
           .add("$..currentPassword")
           .add("$..['config.AWS_ACCESS_KEY_ID']")
           .add("$..['config.AWS_SECRET_ACCESS_KEY']")
+          .add("$..config.accessKey")
+          .add("$..config.secretKey")
           // Datadog API key
           .add("$..config.apiKey")
           // GCP private key

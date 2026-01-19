@@ -28,6 +28,7 @@ The columns of the `ycql_stat_statements` view are described in the following ta
 
 | Column | Type | Description |
 | :----- | :--- | :---------- |
+| keyspace | text | Keyspace where the statement was executed. |
 | queryid | int8 | Hash code to identify identical normalized queries. |
 | query | text | Text of a representative statement. |
 | is_prepared  | bool | Indicates whether the query is prepared or unprepared. |

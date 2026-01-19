@@ -21,6 +21,7 @@ import static org.yb.AssertionWrappers.fail;
 
 import java.sql.*;
 import java.util.HashMap;
+import java.util.Properties;
 import java.util.Map;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -34,6 +35,8 @@ public class TestPreparedStatements extends BaseYsqlConnMgr {
   // Thus the number of client connections should be significantly more than the pool size (20 in
   // this case). The pool size should not be further decreased.
   private static final int NUMBER_OF_CLIENTS = 100;
+  private static final String tableName = "TEST_TABLE_PROTO_PREP_STMT";
+  private static final String sqlProtocolPreparedStmt = "SELECT * from " + tableName;
 
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
@@ -41,6 +44,7 @@ public class TestPreparedStatements extends BaseYsqlConnMgr {
     Map<String, String> additionalTserverFlags = new HashMap<String, String>() {
       {
         put("ysql_conn_mgr_max_conns_per_db", Integer.toString(NUMBER_OF_CLIENTS / 5));
+        put("ysql_conn_mgr_stats_interval", Integer.toString(STATS_UPDATE_INTERVAL));
       }
     };
     builder.addCommonTServerFlags(additionalTserverFlags);
@@ -213,6 +217,152 @@ public class TestPreparedStatements extends BaseYsqlConnMgr {
       stmt.executeQuery("EXECUTE testPlan(1)");
 
     } catch (Exception e) {
+      fail("Got exception " + e.getMessage());
+    }
+  }
+
+  // This test verifies, if the protocol level prepared statement fails to parse on database
+  // connection manager should not record the prepared statement in the server hashmap.
+  @Test
+  public void testProtocolLevelPreparedFailParseStatements() throws Exception {
+    disableWarmupModeAndRestartCluster();
+
+    createOrDropTable(tableName, false);
+
+    Properties props = new Properties();
+    props.setProperty("prepareThreshold", "1");
+
+    try (Connection conn = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .connect(props)) {
+      PreparedStatement pstmt = conn.prepareStatement(sqlProtocolPreparedStmt);
+      pstmt.execute();
+      fail("Expected to fail as table is dropped");
+    } catch (Exception e) {
+      if (e.getMessage().contains("relation \"test_table_proto_prep_stmt\" does not exist")) {
+        LOG.info("Expected to fail with exception " + e.getMessage());
+      } else {
+        LOG.error("Got exception " + e.getMessage());
+        fail("Got exception " + e.getMessage());
+      }
+    }
+
+    // JDBC will do one retry on receiving the error "prepare statement does not exist" from
+    // server. Therefore this time if prev parse failed entry was not removed from server hashmap,
+    // then this connection attempt will fail with "prepare statement does not exist".
+    // Then JDBC will retry parsing with new statement name (S_2) again which will fail with
+    // "TEST_TABLE_PROTO_PREP_STMT does not exist".
+    // If the entry is not removed from server hashmap, then server hashmap will have two stale
+    // entries for the statement name (S_1 and S_2) i.e for which there is no cache plan on server.
+    try (Connection conn = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .connect(props)) {
+      // It should use already created physical backend.
+      assertEquals(1, getTotalPhysicalConnections("yugabyte", "yugabyte",
+                      STATS_UPDATE_INTERVAL + 2));
+      PreparedStatement pstmt = conn.prepareStatement(sqlProtocolPreparedStmt);
+      pstmt.execute();
+      fail("Expected to fail as table is dropped");
+    } catch (Exception e) {
+      if (e.getMessage().contains("relation \"test_table_proto_prep_stmt\" does not exist")) {
+        LOG.info("Expected to fail with exception " + e.getMessage());
+      } else {
+        LOG.error("Got exception " + e.getMessage());
+        fail("Got exception " + e.getMessage());
+      }
+    }
+
+    createOrDropTable(tableName, true);
+
+    try (Connection conn = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .connect(props)) {
+      // It should use already created physical backend.
+      assertEquals(1, getTotalPhysicalConnections("yugabyte", "yugabyte",
+                      STATS_UPDATE_INTERVAL + 2));
+      // It must generate same server key for server object in conn mgr with
+      // given sql stmt & driver given prepared statement name.
+      // The prev error must have removed the key entry from server hashmap.
+      PreparedStatement pstmt = conn.prepareStatement(sqlProtocolPreparedStmt);
+      // First time PARSE, BIND, EXECUTE will be send by driver.
+      pstmt.execute();
+      // From second time onwards, only BIND, EXECUTE will be send by driver.
+      pstmt.execute();
+      // LOG.info("Expected to execute successfully");
+
+      createOrDropTable(tableName, false);
+      // Close the existing backend by making it sticky and closing the connection.
+      // So that next BIND, EXECUTE will be send to a new backend where PARSE is not yet done.
+      makeBackendStickySoGetClosed();
+      assertEquals(0, getTotalPhysicalConnections("yugabyte", "yugabyte",
+                      STATS_UPDATE_INTERVAL + 2));
+
+      try {
+        // BIND, EXECUTE will be send by driver to a new BACKEND where PARSE is not yet done.
+        // So conn mgr will implicitly send PARSE to the new backend.
+        // We want to verify for implicit PARSE packet too, then false entry is removed
+        // from server hashmap on receiving the error response from the backend.
+        // The next try block will verify that the entry is removed from server hashmap.
+        pstmt.execute();
+        LOG.error("Expected to fail as table is dropped");
+        fail("Expected to fail as table is dropped");
+      } catch (Exception e) {
+        if (e.getMessage().contains("relation \"test_table_proto_prep_stmt\" does not exist")) {
+          LOG.info("Expected to fail with exception " + e.getMessage());
+        } else {
+          LOG.error("Got exception " + e.getMessage());
+          fail("Got exception " + e.getMessage());
+        }
+      }
+    }
+    catch (Exception e) {
+      LOG.error("Got exception " + e.getMessage());
+      fail("Got exception " + e.getMessage());
+    }
+
+    createOrDropTable(tableName, true);
+
+    try (Connection conn = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .connect(props)) {
+      assertEquals(1, getTotalPhysicalConnections("yugabyte", "yugabyte",
+                      STATS_UPDATE_INTERVAL + 2));
+      PreparedStatement pstmt = conn.prepareStatement(sqlProtocolPreparedStmt);
+      pstmt.execute();
+    } catch (Exception e) {
+      LOG.error("Got exception " + e.getMessage());
+      fail("Got exception " + e.getMessage());
+    }
+
+  }
+
+  private void createOrDropTable(String tableName, boolean create) throws Exception {
+    try (Connection conn = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .connect();
+        Statement stmt = conn.createStatement()) {
+      if (create) {
+        stmt.execute("CREATE TABLE " + tableName + " (id int)");
+      } else {
+        stmt.execute("DROP TABLE IF EXISTS " + tableName);
+      }
+    }
+    catch (Exception e) {
+      LOG.error("Got exception while creating the table " + e.getMessage());
+      fail("Got exception while creating the table " + e.getMessage());
+    }
+  }
+
+  // Purpose of this function is to make the backend sticky so that backend is terminated
+  // once the connection is closed.
+  private void makeBackendStickySoGetClosed() throws Exception {
+    try (Connection conn = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+            .connect();
+        Statement stmt = conn.createStatement()) {
+      stmt.execute("CREATE TEMPORARY TABLE random_temp_table (id int)");
+    } catch (Exception e) {
+      LOG.error("Got exception " + e.getMessage());
       fail("Got exception " + e.getMessage());
     }
   }

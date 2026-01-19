@@ -4,9 +4,9 @@ import Cookies from 'js-cookie';
 import { useTranslation } from 'react-i18next';
 import { YBLabel, YBTextarea } from '../../redesign/components';
 import { YBCopyButton } from '../common/descriptors';
-import YBLogoWithText from '../common/YBLogo/images/yb_yblogo_text.svg';
+import YBLogoWithText from '../common/YBLogo/images/yb_yblogo_text.svg?img';
 import { isEmptyString, isNonEmptyString } from '../../utils/ObjectUtils';
-import { formatDatetime } from '../../redesign/helpers/DateUtils';
+import { useFormatDatetime } from '../../redesign/helpers/DateUtils';
 
 const useStyles = makeStyles((theme: Theme) => ({
   oidcJWTInfo: {
@@ -48,6 +48,7 @@ const useStyles = makeStyles((theme: Theme) => ({
 
 export const JWTToken: FC<any> = () => {
   const { t } = useTranslation();
+  const formatDatetime = useFormatDatetime();
   const helperClasses = useStyles();
   const oidcJWTToken = Cookies.get('jwt_token');
   const expiryDate = Cookies.get('expiration');

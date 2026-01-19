@@ -58,7 +58,6 @@ class MergeHelper {
         level_(level),
         keys_(),
         operands_(),
-        filter_timer_(env_),
         stats_(stats) {
     assert(user_comparator_ != nullptr);
   }
@@ -149,8 +148,6 @@ class MergeHelper {
   // valid up to the next MergeUntil call
   std::deque<std::string> keys_;    // Keeps track of the sequence of keys seen
   std::deque<std::string> operands_;  // Parallel with keys_; stores the values
-
-  StopWatchNano filter_timer_;
   Statistics* stats_;
 };
 

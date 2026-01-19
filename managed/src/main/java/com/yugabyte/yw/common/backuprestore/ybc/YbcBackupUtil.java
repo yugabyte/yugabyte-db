@@ -119,6 +119,10 @@ public class YbcBackupUtil {
   // YBDB Version that implements https://github.com/yugabyte/yugabyte-db/issues/25877
   public static final String YBDB_STABLE_GRANT_SAFETY_VERSION = "2025.1.0.0-b1";
   public static final String YBDB_PREVIEW_GRANT_SAFETY_VERSION = "2.25.2.0-b275";
+  public static final String YBDB_STABLE_STATS_DUMP_VERSION = "2025.2.2.0-b1";
+  public static final String YBDB_PREVIEW_STATS_DUMP_VERSION = "2.29.0.0-b1";
+  public static final String YBDB_STABLE_DUMP_WITH_DDL_SUPPORT_VERSION = "2025.2.1.0-b1";
+  public static final String YBDB_PREVIEW_DUMP_WITH_DDL_SUPPORT_VERSION = "2.29.0.0-b1";
 
   private final AutoFlagUtil autoFlagUtil;
   private final UniverseInfoHandler universeInfoHandler;
@@ -1100,9 +1104,7 @@ public class YbcBackupUtil {
         extendedArgsBuilder.setUseTablespaces(true);
       }
       extendedArgsBuilder.setSaveRetentionWindow(true);
-      // Removing backup of roles temporarily. There are some issues we need to work out before
-      // fully implementing this.
-      // extendedArgsBuilder.setUseRoles(tableParams.getUseRoles());
+      extendedArgsBuilder.setUseRoles(tableParams.getUseRoles());
       extendedArgsBuilder.setRevertToPreRolesBehaviour(tableParams.getRevertToPreRolesBehaviour());
       if (Util.compareYBVersions(
               ybdbSoftwareVersion,
@@ -1116,7 +1118,33 @@ public class YbcBackupUtil {
         extendedArgsBuilder.setDumpRoleChecks(false); // DB does not support dump role checks flag.
       }
       // Set enable backups during DDL
-      extendedArgsBuilder.setUseReadTimeYsqlDump(tableParams.getEnableBackupsDuringDDL());
+      if (Util.compareYBVersions(
+              ybdbSoftwareVersion,
+              YBDB_STABLE_DUMP_WITH_DDL_SUPPORT_VERSION,
+              YBDB_PREVIEW_DUMP_WITH_DDL_SUPPORT_VERSION,
+              true)
+          >= 0) {
+        extendedArgsBuilder.setUseReadTimeYsqlDump(tableParams.getEnableBackupsDuringDDL());
+      } else {
+        extendedArgsBuilder.setUseReadTimeYsqlDump(false);
+        log.debug(
+            "Setting backups_during_ddl to false as database version {} does not support it",
+            ybdbSoftwareVersion);
+      }
+      // Set dump stats
+      if (Util.compareYBVersions(
+              ybdbSoftwareVersion,
+              YBDB_STABLE_STATS_DUMP_VERSION,
+              YBDB_PREVIEW_STATS_DUMP_VERSION,
+              true)
+          >= 0) {
+        extendedArgsBuilder.setDumpStatistics(tableParams.getBackupStats());
+      } else {
+        extendedArgsBuilder.setDumpStatistics(false);
+        log.debug(
+            "Setting dump_statistics to false as database version {} does not support it",
+            ybdbSoftwareVersion);
+      }
       return extendedArgsBuilder.build();
     } catch (Exception e) {
       log.error("Error while fetching extended args for backup: ", e);
@@ -1224,10 +1252,8 @@ public class YbcBackupUtil {
           backupStorageInfo.getRevertToPreRolesBehaviour());
       extendedArgsBuilder.setErrorIfTablespacesExists(
           backupStorageInfo.getErrorIfTablespacesExists());
-      /* Removing backup of roles temporarily. There are some issues we need to work out before
-      fully implementing this.
+      extendedArgsBuilder.setUsePrivileges(backupStorageInfo.getUsePrivileges());
       extendedArgsBuilder.setErrorIfRolesExists(backupStorageInfo.getErrorIfRolesExists());
-      */
     }
 
     // Only skip ignore errors if requested by the user AND the backup supports 'dump_role_checks'.

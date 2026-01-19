@@ -196,10 +196,10 @@ var createGCPProviderCmd = &cobra.Command{
 			Code:          util.GetStringPointer(providerCode),
 			Name:          util.GetStringPointer(providerName),
 			ImageBundles:  buildGCPImageBundles(imageBundles),
-			AllAccessKeys: &allAccessKeys,
+			AllAccessKeys: allAccessKeys,
 			Details: &ybaclient.ProviderDetails{
 				AirGapInstall: util.GetBoolPointer(airgapInstall),
-				NtpServers:    util.StringSliceFromString(ntpServers),
+				NtpServers:    ntpServers,
 				CloudInfo: &ybaclient.CloudInfo{
 					Gcp: &gcpCloudInfo,
 				},
@@ -209,8 +209,7 @@ var createGCPProviderCmd = &cobra.Command{
 		rTask, response, err := authAPI.CreateProvider().
 			CreateProviderRequest(requestBody).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Provider: GCP", "Create")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Provider: GCP", "Create")
 		}
 
 		providerutil.WaitForCreateProviderTask(

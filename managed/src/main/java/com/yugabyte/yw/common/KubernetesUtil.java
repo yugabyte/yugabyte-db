@@ -860,7 +860,7 @@ public class KubernetesUtil {
       throws IOException {
 
     Map<UUID, Map<String, Object>> result = new HashMap<>();
-    PlacementInfo placementInfo = cluster.placementInfo;
+    PlacementInfo placementInfo = cluster.getOverallPlacement();
     Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
 
     ObjectMapper mapper = new ObjectMapper();
@@ -975,7 +975,7 @@ public class KubernetesUtil {
           getFinalOverrides(cluster, universeOverridesStr, azsOverridesStr);
       // Safe to add all to map directly since read only clusters don't have independent overrides
       azUUIDFinalOverrides.putAll(finalOverrides);
-      PlacementInfo pi = cluster.placementInfo;
+      PlacementInfo pi = cluster.getOverallPlacement();
       boolean isReadOnlyCluster = cluster.clusterType == ClusterType.ASYNC;
       KubernetesPlacement placement = new KubernetesPlacement(pi, isReadOnlyCluster);
       Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));

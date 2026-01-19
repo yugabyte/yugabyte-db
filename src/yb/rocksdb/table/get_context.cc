@@ -122,13 +122,11 @@ bool GetContext::SaveValue(const ParsedInternalKey& parsed_key,
           if (value_ != nullptr) {
             bool merge_success = false;
             {
-              StopWatchNano timer(env_, statistics_ != nullptr);
+              StopWatchNano timer(env_, statistics_, MERGE_OPERATION_TOTAL_TIME);
               PERF_TIMER_GUARD(merge_operator_time_nanos);
               merge_success = merge_operator_->FullMerge(
                   user_key_, &value, merge_context_->GetOperands(), value_,
                   logger_);
-              RecordTick(statistics_, MERGE_OPERATION_TOTAL_TIME,
-                         timer.ElapsedNanosSafe());
             }
             if (!merge_success) {
               RecordTick(statistics_, NUMBER_MERGE_FAILURES);
@@ -150,13 +148,11 @@ bool GetContext::SaveValue(const ParsedInternalKey& parsed_key,
           if (value_ != nullptr) {
             bool merge_success = false;
             {
-              StopWatchNano timer(env_, statistics_ != nullptr);
+              StopWatchNano timer(env_, statistics_, MERGE_OPERATION_TOTAL_TIME);
               PERF_TIMER_GUARD(merge_operator_time_nanos);
               merge_success = merge_operator_->FullMerge(
                   user_key_, nullptr, merge_context_->GetOperands(), value_,
                   logger_);
-              RecordTick(statistics_, MERGE_OPERATION_TOTAL_TIME,
-                         timer.ElapsedNanosSafe());
             }
             if (!merge_success) {
               RecordTick(statistics_, NUMBER_MERGE_FAILURES);

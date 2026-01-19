@@ -87,6 +87,9 @@ YB_STRONGLY_TYPED_BOOL(TEST_SuppressVoteRequest);
 YB_STRONGLY_TYPED_BOOL(PreElection);
 YB_STRONGLY_TYPED_BOOL(HaveMoreMessages);
 
+// Temporary typedef for lightweight protobuf migration
+using RaftPeerMsg = RaftPeerPB;
+
 } // namespace consensus
 
 } // namespace yb

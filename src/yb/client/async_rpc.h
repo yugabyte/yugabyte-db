@@ -65,6 +65,7 @@ struct AsyncRpcData {
   InFlightOps ops;
   bool need_metadata = false;
   bool use_async_write = false;
+  int64_t leader_term = OpId::kUnknownTerm;
 };
 
 struct FlushExtraResult {
@@ -166,8 +167,8 @@ class AsyncRpcBase : public AsyncRpc {
   void ProcessResponseFromTserver(const Status& status) override;
 
  protected: // TODO replace with private
-  const tserver::TabletServerErrorPB* response_error() const override {
-    return resp_.has_error() ? &resp_.error() : nullptr;
+  TabletServerErrorPtr response_error() const override {
+    return TabletServerErrorPtr(resp_.has_error() ? &resp_.error() : nullptr);
   }
 
   FlushExtraResult MakeFlushExtraResult() override;
@@ -222,8 +223,8 @@ class WaitForAsyncWriteRpc : public rpc::Rpc, public TabletRpc {
   std::string ToString() const override;
 
  protected:
-  const tserver::TabletServerErrorPB* response_error() const override {
-    return resp_.has_error() ? &resp_.error() : nullptr;
+  TabletServerErrorPtr response_error() const override {
+    return TabletServerErrorPtr(resp_.has_error() ? &resp_.error() : nullptr);
   }
 
   void SendRpcToTserver(int attempt_num) override;

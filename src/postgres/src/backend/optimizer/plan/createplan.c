@@ -51,6 +51,7 @@
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_yb_catalog_version.h"
+#include "optimizer/yb_saop_merge.h"
 #include "optimizer/ybplan.h"
 #include "pg_yb_utils.h"
 #include "utils/fmgroids.h"
@@ -4482,6 +4483,15 @@ create_indexscan_plan(PlannerInfo *root,
 		}
 	}
 
+	YbSaopMergeInfo *yb_saop_merge_info = NULL;
+
+	if (best_path->yb_index_path_info.saop_merge_saop_cols)
+	{
+		yb_saop_merge_info = makeNode(YbSaopMergeInfo);
+		yb_saop_merge_info->saop_cols =
+			best_path->yb_index_path_info.saop_merge_saop_cols;
+	}
+
 	/* Finally ready to build the plan node */
 	if (indexonly)
 	{
@@ -4500,6 +4510,8 @@ create_indexscan_plan(PlannerInfo *root,
 
 		index_only_scan_plan->yb_distinct_prefixlen =
 			best_path->yb_index_path_info.yb_distinct_prefixlen;
+		if (yb_saop_merge_info)
+			index_only_scan_plan->yb_saop_merge_info = yb_saop_merge_info;
 
 		scan_plan = (Scan *) index_only_scan_plan;
 	}
@@ -4526,7 +4538,38 @@ create_indexscan_plan(PlannerInfo *root,
 										 best_path->yb_index_path_info);
 		index_scan_plan->yb_distinct_prefixlen =
 			best_path->yb_index_path_info.yb_distinct_prefixlen;
+		if (yb_saop_merge_info)
+			index_scan_plan->yb_saop_merge_info = yb_saop_merge_info;
+
 		scan_plan = (Scan *) index_scan_plan;
+	}
+
+	if (yb_saop_merge_info)
+	{
+		Bitmapset  *yb_saop_col_idxs = NULL;
+		ListCell   *yb_lc;
+		YbSortInfo *yb_sort_info = yb_saop_merge_info->sort_cols =
+			makeNode(YbSortInfo);
+
+		foreach(yb_lc, yb_saop_merge_info->saop_cols)
+		{
+			YbSaopMergeSaopColInfo *yb_saop_col_info =
+				lfirst_node(YbSaopMergeSaopColInfo, yb_lc);
+
+			yb_saop_col_idxs = bms_add_member(yb_saop_col_idxs,
+											  yb_saop_col_info->indexcol);
+		}
+
+		yb_sort_info->type = T_YbSortInfo;
+		yb_get_sort_info_from_pathkeys(indexinfo->indextlist,
+									   best_path->path.pathkeys,
+									   best_path->path.parent->relids,
+									   yb_saop_col_idxs,
+									   &yb_sort_info->numCols,
+									   &yb_sort_info->sortColIdx,
+									   &yb_sort_info->sortOperators,
+									   &yb_sort_info->collations,
+									   &yb_sort_info->nullsFirst);
 	}
 
 	copy_generic_path_info(&scan_plan->plan, &best_path->path);
@@ -5000,9 +5043,9 @@ create_bitmap_subplan(PlannerInfo *root, Path *bitmapqual,
 		/* then convert to a bitmap indexscan */
 		if (ipath->indexinfo->rel->is_yb_relation)
 		{
-			YbPlanInfo	bitmap_idx_info = iscan->yb_plan_info;
-
-			bitmap_idx_info.estimated_docdb_result_width = ipath->ybctid_width;
+			Assert(!iscan->yb_saop_merge_info);
+			iscan->yb_plan_info.estimated_docdb_result_width =
+				ipath->ybctid_width;
 
 			plan = (Plan *) make_yb_bitmap_indexscan(iscan->scan.scanrelid,
 													 iscan->indexid,
@@ -5010,7 +5053,7 @@ create_bitmap_subplan(PlannerInfo *root, Path *bitmapqual,
 													 iscan->indexqualorig,
 													 iscan->indextlist,
 													 iscan->yb_idx_pushdown,
-													 bitmap_idx_info);
+													 iscan->yb_plan_info);
 		}
 		else
 			plan = (Plan *) make_bitmap_indexscan(iscan->scan.scanrelid,
@@ -6889,6 +6932,28 @@ fix_indexqual_references(PlannerInfo *root, IndexPath *index_path,
 			stripped_indexquals = lappend(stripped_indexquals, clause);
 			clause = fix_indexqual_clause(root, index, iclause->indexcol,
 										  clause, iclause->indexcols);
+			fixed_indexquals = lappend(fixed_indexquals, clause);
+		}
+	}
+
+	/*
+	 * YB: Besides indexclauses, there could be derived clauses in
+	 * yb_index_path_info.saop_merge_saop_cols.  Add these to ..._indexquals as
+	 * well.
+	 */
+	foreach(lc, index_path->yb_index_path_info.saop_merge_saop_cols)
+	{
+		YbSaopMergeSaopColInfo *info = lfirst_node(YbSaopMergeSaopColInfo, lc);
+
+		if (info->derived)
+		{
+			Node	   *clause;
+
+			stripped_indexquals = lappend(stripped_indexquals, info->saop);
+			/* For now, row-array-compare SAOP merge is not supported. */
+			clause = fix_indexqual_clause(root, index, info->indexcol,
+										  (Node *) info->saop,
+										  list_make1_int(info->indexcol));
 			fixed_indexquals = lappend(fixed_indexquals, clause);
 		}
 	}

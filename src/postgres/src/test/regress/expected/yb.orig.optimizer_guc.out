@@ -486,6 +486,35 @@ show yb_enable_cbo;
 set yb_enable_cbo = oui;
 ERROR:  invalid value for parameter "yb_enable_cbo": "oui"
 HINT:  Available values: off, on, legacy_mode, legacy_stats_mode, legacy_bnl_mode, legacy_stats_bnl_mode, legacy_ignore_stats_bnl_mode.
+----------------------------------------------------------------
+-- yb_enable_parallel_append - enable_parallel_append mapping --
+----------------------------------------------------------------
+show yb_enable_parallel_append;
+ enable_parallel_append 
+------------------------
+ on
+(1 row)
+
+show enable_parallel_append;
+ enable_parallel_append 
+------------------------
+ on
+(1 row)
+
+set yb_enable_parallel_append = off;
+show enable_parallel_append;
+ enable_parallel_append 
+------------------------
+ off
+(1 row)
+
+set enable_parallel_append = on;
+show yb_enable_parallel_append;
+ enable_parallel_append 
+------------------------
+ on
+(1 row)
+
 ---------------------------
 -- test GUC_EXPLAIN flag --
 ---------------------------
@@ -500,10 +529,10 @@ select * from pg_class;
 set yb_enable_cbo = on;
 explain (settings, costs off)
 select * from pg_class;
-                               QUERY PLAN                               
-------------------------------------------------------------------------
+                                                                                         QUERY PLAN                                                                                          
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Seq Scan on pg_class
- Settings: yb_enable_base_scans_cost_model = 'on', yb_enable_cbo = 'on'
+ Settings: yb_enable_base_scans_cost_model = 'on', yb_enable_bitmapscan = 'on', yb_enable_cbo = 'on', yb_enable_update_reltuples_after_create_index = 'on', yb_parallel_range_rows = '10000'
 (2 rows)
 
 set yb_enable_cbo = legacy_stats_mode;
@@ -523,10 +552,7 @@ set yb_pushdown_strict_inequality = off;
 set yb_pushdown_is_not_null = off;
 set yb_enable_distinct_pushdown = off;
 set yb_bypass_cond_recheck = off;
-set yb_enable_parallel_append = on;
 set yb_enable_bitmapscan = on;
-set yb_enable_base_scans_cost_model = on;
-set yb_enable_optimizer_statistics = on;
 set yb_bnl_batch_size = 1;
 set yb_fetch_row_limit = 0;
 set yb_fetch_size_limit = '2kB';
@@ -535,10 +561,10 @@ set yb_parallel_range_size = '1kB';
 set yb_network_fetch_cost = 100;
 explain (settings, costs off)
 select * from pg_class;
-                                                                                                                                                                                                                                                                                                               QUERY PLAN                                                                                                                                                                                                                                                                                                                
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                                                                                                                                                                                                  QUERY PLAN                                                                                                                                                                                                                                                                                  
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Seq Scan on pg_class
- Settings: yb_bnl_batch_size = '1', yb_bnl_optimize_first_batch = 'off', yb_bypass_cond_recheck = 'off', yb_enable_base_scans_cost_model = 'on', yb_enable_batchednl = 'off', yb_enable_bitmapscan = 'on', yb_enable_cbo = 'on', yb_enable_distinct_pushdown = 'off', yb_enable_geolocation_costing = 'off', yb_enable_optimizer_statistics = 'on', yb_enable_parallel_append = 'on', yb_fetch_row_limit = '0', yb_fetch_size_limit = '2kB', yb_network_fetch_cost = '100', yb_parallel_range_rows = '10', yb_parallel_range_size = '1kB', yb_prefer_bnl = 'off', yb_pushdown_is_not_null = 'off', yb_pushdown_strict_inequality = 'off'
+ Settings: yb_bnl_batch_size = '1', yb_bnl_optimize_first_batch = 'off', yb_bypass_cond_recheck = 'off', yb_enable_batchednl = 'off', yb_enable_bitmapscan = 'on', yb_enable_cbo = 'legacy_stats_mode', yb_enable_distinct_pushdown = 'off', yb_enable_geolocation_costing = 'off', yb_enable_optimizer_statistics = 'on', yb_fetch_row_limit = '0', yb_fetch_size_limit = '2kB', yb_network_fetch_cost = '100', yb_parallel_range_rows = '10', yb_parallel_range_size = '1kB', yb_prefer_bnl = 'off', yb_pushdown_is_not_null = 'off', yb_pushdown_strict_inequality = 'off'
 (2 rows)
 
 ---------------------------------------------------------------------

@@ -1,0 +1,24 @@
+Parsed test spec with 3 sessions
+
+starting permutation: s1_create_table s2_select_table s1_begin_rr s2_begin_rr s1_create_default_partition s2_create_another_default_partition s1_commit s2_commit s3_select_part_info s1_drop_part1
+step s1_create_table: create table part1(id int) partition by range(id);
+step s2_select_table: select * from part1;
+id
+--
+(0 rows)
+
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_create_default_partition: create table part1def partition of part1 default;
+step s2_create_another_default_partition: create table part2def partition of part1 default; <waiting ...>
+step s1_commit: COMMIT;
+step s2_create_another_default_partition: <... completed>
+ERROR:  partition "part2def" conflicts with existing default partition "part1def"
+step s2_commit: COMMIT;
+step s3_select_part_info: SELECT partrelid::regclass, partdefid::regclass FROM pg_partitioned_table;
+partrelid|partdefid
+---------+---------
+part1    |part1def 
+(1 row)
+
+step s1_drop_part1: drop table part1;

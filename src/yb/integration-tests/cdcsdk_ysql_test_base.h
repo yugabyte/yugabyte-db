@@ -29,6 +29,7 @@
 #include "yb/client/transaction.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/raft_consensus.h"
+#include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/tablet/transaction_participant.h"
 
@@ -82,6 +83,7 @@ DECLARE_int32(cdc_min_replicated_index_considered_stale_secs);
 DECLARE_int32(log_min_seconds_to_retain);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(timestamp_history_retention_interval_sec);
+DECLARE_bool(cdc_enable_intra_transactional_before_image);
 DECLARE_bool(tablet_enable_ttl_file_filter);
 DECLARE_int32(timestamp_syscatalog_history_retention_interval_sec);
 DECLARE_uint64(cdc_max_stream_intent_records);
@@ -139,9 +141,12 @@ DECLARE_int32(retryable_request_timeout_secs);
 DECLARE_bool(save_index_into_wal_segments);
 DECLARE_bool(TEST_skip_process_apply);
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
-DECLARE_bool(TEST_mimic_tablet_not_in_available_state);
+DECLARE_int32(TEST_cdc_simulate_error_for_get_changes);
 DECLARE_bool(TEST_fail_cdc_setting_retention_barriers_on_apply);
 DECLARE_int32(update_min_cdc_indices_master_interval_secs);
+DECLARE_bool(cdcsdk_update_restart_time_when_nothing_to_stream);
+DECLARE_string(TEST_cdc_tablet_id_to_stall_state_table_updates);
+DECLARE_bool(TEST_enable_table_rewrite_for_cdcsdk_table);
 
 namespace yb {
 
@@ -493,6 +498,10 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const CDCSDKProtoRecordPB& record, CDCSDKYsqlTest::VaryingExpectedRecord expected_records,
       uint32_t* count, uint32_t num_cols);
 
+  void CheckRecordTuples(
+      const CDCSDKProtoRecordPB& record, const std::vector<std::string>& expected_new_tuples_cols,
+      const std::vector<std::string>& expected_old_tuples_cols);
+
   Result<GetChangesResponsePB> GetChangesFromCDC(
       const xrepl::StreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
@@ -561,6 +570,10 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const CDCSDKCheckpointPB* explicit_checkpoint = nullptr,
       const TableId& colocated_table_id = "",
       int tablet_idx = 0);
+
+  Status PollTillRestartTimeExceedsTableHideTime(
+      const xrepl::StreamId& stream_id, const YBTableName& old_table,
+      const YBTableName& new_table = YBTableName());
 
   bool DeleteCDCStream(const xrepl::StreamId& db_stream_id);
 
@@ -656,6 +669,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
           "Tablets in cdc_state for the stream doesnt match the expected set");
 
   Result<int> GetStateTableRowCount();
+
+  Result<OpId> GetCheckpointFromStateTable(
+      const xrepl::StreamId& stream_id, const TabletId& tablet_id);
 
   Status VerifyStateTableAndStreamMetadataEntriesCount(
       const xrepl::StreamId& stream_id, const size_t& state_table_entries,

@@ -4,7 +4,6 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeAgent.State;
 import com.yugabyte.yw.models.Universe;
@@ -13,13 +12,10 @@ import java.time.Duration;
 import javax.inject.Inject;
 
 public class WaitForNodeAgent extends NodeTaskBase {
-  private final NodeAgentClient nodeAgentClient;
 
   @Inject
-  protected WaitForNodeAgent(
-      BaseTaskDependencies baseTaskDependencies, NodeAgentClient nodeAgentClient) {
+  protected WaitForNodeAgent(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
-    this.nodeAgentClient = nodeAgentClient;
   }
 
   public static class Params extends NodeTaskParams {

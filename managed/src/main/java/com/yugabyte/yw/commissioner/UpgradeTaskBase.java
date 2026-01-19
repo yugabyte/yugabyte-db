@@ -8,6 +8,8 @@ import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodeCommandExecution;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CheckServiceLiveness;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DoCapacityReservation;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageOtelCollector;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetNodeState;
@@ -184,6 +186,8 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
               .filter(n -> n.state != NodeState.Live)
               .findFirst();
       if (nonLive.isEmpty()) {
+        createComprehensivePrecheckTasks(nodesToBeRestarted);
+
         RollMaxBatchSize rollMaxBatchSize = getCurrentRollBatchSize(universe);
         // Use only primary nodes
         MastersAndTservers forCluster =
@@ -196,6 +200,42 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
         }
       }
     }
+  }
+
+  // create comprehensive precheck tasks for all nodes to be restarted
+  private void createComprehensivePrecheckTasks(MastersAndTservers nodesToBeRestarted) {
+    // Check service liveness for all nodes
+    doInPrecheckSubTaskGroup(
+        "CheckServiceLiveness",
+        subTaskGroup -> {
+          for (NodeDetails node : nodesToBeRestarted.getAllNodes()) {
+            CheckServiceLiveness.Params params = new CheckServiceLiveness.Params();
+            params.setUniverseUUID(taskParams().getUniverseUUID());
+            params.nodeName = node.nodeName;
+            params.timeoutMs = 10000; // Default timeout
+
+            CheckServiceLiveness checkServiceLiveness = createTask(CheckServiceLiveness.class);
+            checkServiceLiveness.initialize(params);
+            subTaskGroup.addSubTask(checkServiceLiveness);
+          }
+        });
+
+    // Check command execution capability for all nodes
+    doInPrecheckSubTaskGroup(
+        "CheckNodeCommandExecution",
+        subTaskGroup -> {
+          for (NodeDetails node : nodesToBeRestarted.getAllNodes()) {
+            CheckNodeCommandExecution.Params params = new CheckNodeCommandExecution.Params();
+            params.setUniverseUUID(taskParams().getUniverseUUID());
+            params.nodeName = node.nodeName;
+            params.timeoutSecs = 10; // Default timeout
+
+            CheckNodeCommandExecution checkNodeCommandExecution =
+                createTask(CheckNodeCommandExecution.class);
+            checkNodeCommandExecution.initialize(params);
+            subTaskGroup.addSubTask(checkNodeCommandExecution);
+          }
+        });
   }
 
   protected boolean isSkipPrechecks() {
@@ -443,7 +483,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     RollMaxBatchSize result = new RollMaxBatchSize();
     for (UniverseDefinitionTaskParams.Cluster cluster : universe.getUniverseDetails().clusters) {
       Map<UUID, Integer> azUuidToNumNodes =
-          PlacementInfoUtil.getAzUuidToNumNodes(cluster.placementInfo);
+          PlacementInfoUtil.getAzUuidToNumNodes(cluster.getOverallPlacement());
       Integer resultPerCluster = Integer.MAX_VALUE;
 
       for (Map.Entry<UUID, Integer> entry : azUuidToNumNodes.entrySet()) {
@@ -549,10 +589,11 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       maxReplicasSafeToStop--;
     }
     maxReplicasSafeToStop = Math.max(1, maxReplicasSafeToStop);
-    int sumOfReplicas = cluster.placementInfo.azStream().mapToInt(az -> az.replicationFactor).sum();
+    int sumOfReplicas =
+        cluster.getOverallPlacement().azStream().mapToInt(az -> az.replicationFactor).sum();
     PlacementAZ placementAZ =
         cluster
-            .placementInfo
+            .getOverallPlacement()
             .azStream()
             .filter(az -> az.uuid.equals(azUUID))
             .findFirst()
@@ -1203,7 +1244,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
         .collect(Collectors.toList());
   }
 
-  private static List<UUID> sortAZs(
+  protected static List<UUID> sortAZs(
       UniverseDefinitionTaskParams.Cluster cluster, Universe universe) {
     List<UUID> result = new ArrayList<>();
     Map<UUID, Integer> indexByUUID = new HashMap<>();
@@ -1212,7 +1253,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
         .forEach(n -> indexByUUID.putIfAbsent(n.getAzUuid(), n.getNodeIdx()));
 
     cluster
-        .placementInfo
+        .getOverallPlacement()
         .azStream()
         .sorted(
             Comparator.<PlacementAZ, Boolean>comparing(az -> !az.isAffinitized)

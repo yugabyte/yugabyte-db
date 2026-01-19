@@ -1237,13 +1237,15 @@ index_opclass_options(Relation indrel, AttrNumber attnum, Datum attoptions,
 }
 
 bool
-yb_index_might_recheck(Relation heapRelation, Relation indexRelation,
+yb_index_might_recheck(Scan *scan,
+					   Relation heapRelation, Relation indexRelation,
 					   bool xs_want_itup, ScanKey keys, int nkeys)
 {
 	RELATION_CHECKS;
 	CHECK_REL_PROCEDURE(yb_ammightrecheck);
 
-	return indexRelation->rd_indam->yb_ammightrecheck(heapRelation,
+	return indexRelation->rd_indam->yb_ammightrecheck(scan,
+													  heapRelation,
 													  indexRelation,
 													  xs_want_itup, keys,
 													  nkeys);

@@ -239,8 +239,10 @@ struct Services {
   std::unique_ptr<LlvmProfileDumper> llvm_profile_dumper;
 };
 
-Result<Services> StartServices() {
-  Services services;
+// StartServices borrows its output as a reference so that the Services object is not allocated
+// locally inside StartServices. This way partially initialized services do not have their
+// destructors called if StartServices returns early due to an error.
+Status StartServices(Services& services) {
   services.termination_monitor = TerminationMonitor::Create();
 
   SetProxyAddresses();
@@ -391,8 +393,7 @@ Result<Services> StartServices() {
   }
 
   services.llvm_profile_dumper = std::make_unique<LlvmProfileDumper>();
-  RETURN_NOT_OK(services.llvm_profile_dumper->Start());
-  return services;
+  return services.llvm_profile_dumper->Start();
 }
 
 Status ShutdownServicesImpl(Services& services) {
@@ -475,9 +476,8 @@ int TabletServerMain(int argc, char** argv) {
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(MasterTServerParseFlagsAndInit(
       TabletServerOptions::kServerType, /*is_master=*/false, &argc, &argv));
 
-  auto services_result = StartServices();
-  LOG_AND_RETURN_FROM_MAIN_NOT_OK(services_result);
-  auto& services = *services_result;
+  Services services;
+  LOG_AND_RETURN_FROM_MAIN_NOT_OK(StartServices(services));
 
   services.termination_monitor->WaitForTermination();
 

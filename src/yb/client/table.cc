@@ -38,8 +38,7 @@ DEFINE_UNKNOWN_int32(
     max_num_tablets_for_table, 5000,
     "Max number of tablets that can be specified in a CREATE TABLE statement");
 
-namespace yb {
-namespace client {
+namespace yb::client {
 
 Result<YBTableType> PBToClientTableType(TableType table_type_from_pb) {
   switch (table_type_from_pb) {
@@ -188,27 +187,27 @@ PartitionListVersion YBTable::GetPartitionListVersion() const {
 
 //--------------------------------------------------------------------------------------------------
 
-std::unique_ptr<YBqlWriteOp> YBTable::NewQLWrite() {
+std::unique_ptr<YBqlWriteOp> YBTable::NewQLWrite(const ThreadSafeArenaPtr& arena) {
   return std::unique_ptr<YBqlWriteOp>(new YBqlWriteOp(shared_from_this()));
 }
 
-std::unique_ptr<YBqlWriteOp> YBTable::NewQLInsert() {
+std::unique_ptr<YBqlWriteOp> YBTable::NewQLInsert(const ThreadSafeArenaPtr& arena) {
   return YBqlWriteOp::NewInsert(shared_from_this());
 }
 
-std::unique_ptr<YBqlWriteOp> YBTable::NewQLUpdate() {
+std::unique_ptr<YBqlWriteOp> YBTable::NewQLUpdate(const ThreadSafeArenaPtr& arena) {
   return YBqlWriteOp::NewUpdate(shared_from_this());
 }
 
-std::unique_ptr<YBqlWriteOp> YBTable::NewQLDelete() {
+std::unique_ptr<YBqlWriteOp> YBTable::NewQLDelete(const ThreadSafeArenaPtr& arena) {
   return YBqlWriteOp::NewDelete(shared_from_this());
 }
 
-std::unique_ptr<YBqlReadOp> YBTable::NewQLSelect() {
+std::unique_ptr<YBqlReadOp> YBTable::NewQLSelect(const ThreadSafeArenaPtr& arena) {
   return YBqlReadOp::NewSelect(shared_from_this());
 }
 
-std::unique_ptr<YBqlReadOp> YBTable::NewQLRead() {
+std::unique_ptr<YBqlReadOp> YBTable::NewQLRead(const ThreadSafeArenaPtr& arena) {
   return std::unique_ptr<YBqlReadOp>(new YBqlReadOp(shared_from_this()));
 }
 
@@ -270,6 +269,7 @@ void YBTable::RefreshPartitions(YBClient* client, StdStatusCallback callback) {
       }
       partitions_ = partitions;
       partitions_are_stale_ = false;
+      VLOG_WITH_FUNC(1) << Format("Table $0 partitions updated: $1", info_->table_id, partitions_);
     }
     InvokeRefreshPartitionsCallbacks(Status::OK());
   });
@@ -288,6 +288,7 @@ void YBTable::FetchPartitions(
   // TODO: fetch the schema from the master here once catalog is available.
   // TODO(tsplit): consider optimizing this to not wait for all tablets to be running in case
   // of some tablet has been split and post-split tablets are not yet running.
+  VLOG_WITH_FUNC(1) << "Table: " << table_id;
   client->GetTableLocations(
       table_id, /* max_tablets = */ std::numeric_limits<int32_t>::max(),
       RequireTabletsRunning::kTrue, PartitionsOnly::kTrue,
@@ -361,5 +362,4 @@ std::string VersionedTablePartitionList::ToString() const {
   return Format("{ version: $0 keys: $1 }", version, CollectionToString(keys, key_transform));
 }
 
-} // namespace client
-} // namespace yb
+} // namespace yb::client

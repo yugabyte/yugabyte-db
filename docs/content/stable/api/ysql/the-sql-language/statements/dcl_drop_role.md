@@ -7,6 +7,8 @@ menu:
   stable_api:
     identifier: dcl_drop_role
     parent: statements
+aliases:
+  - /stable/api/ysql/commands/dcl_drop_role/
 type: docs
 ---
 
@@ -24,7 +26,7 @@ Where
 
 - `role_name` is the name of the role to be removed.
 
-To drop a superuser role, you must be a superuser yourself. To drop non-superuser roles, you must have CREATEROLE privilege.
+To drop a superuser role, you must be a superuser yourself. To drop non-superuser roles, you must have CREATEROLE attribute.
 
 Before dropping the role, you must drop all the objects it owns (or reassign their ownership) and revoke any privileges the role has been granted on other objects. The REASSIGN OWNED and DROP OWNED commands can be used for this purpose.
 

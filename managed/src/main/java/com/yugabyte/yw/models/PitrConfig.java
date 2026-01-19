@@ -9,6 +9,7 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.forms.CreatePitrConfigParams;
 import io.ebean.DB;
 import io.ebean.Finder;
@@ -31,6 +32,8 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+import lombok.Getter;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.CommonTypes.TableType;
 import org.yb.master.CatalogEntityInfo.SysSnapshotEntryPB.State;
@@ -115,6 +118,12 @@ public class PitrConfig extends Model {
   @ApiModelProperty(value = "Whether the PITR config is disabled", accessMode = READ_ONLY)
   @Column(nullable = false)
   private boolean disabled = false;
+
+  @ApiModelProperty(hidden = true)
+  @Getter
+  @Setter
+  @Transient
+  private KubernetesResourceDetails kubernetesResourceDetails;
 
   public static PitrConfig create(UUID scheduleUUID, CreatePitrConfigParams params) {
     PitrConfig pitrConfig = new PitrConfig();

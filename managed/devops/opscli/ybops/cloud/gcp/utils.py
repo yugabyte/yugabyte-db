@@ -964,6 +964,13 @@ class GoogleCloudAdmin():
         image = self.get_image(tokens[-1], image_project)
         return image["diskSizeGb"]
 
+    def _get_boot_disk_type(self, zone, instance_type):
+        # Create boot disk backed by a zonal persistent SSD by default.
+        boot_disk_type = "pd-ssd"
+        if instance_type.startswith(('c4', 'n4')):
+            boot_disk_type = "hyperdisk-balanced"
+        return "zones/{}/diskTypes/{}".format(zone, boot_disk_type)
+
     def create_instance(self, region, zone, cloud_subnet, instance_name, instance_type, server_type,
                         use_spot_instance, can_ip_forward, machine_image, num_volumes, volume_type,
                         volume_size, boot_disk_size_gb=None, assign_public_ip=True,
@@ -987,12 +994,9 @@ class GoogleCloudAdmin():
                                          and int(min_disk_size) > int(boot_disk_size_gb) \
                 else boot_disk_size_gb
             boot_disk_init_params["diskSizeGb"] = disk_size
-        # Create boot disk backed by a zonal persistent SSD
-        boot_disk_type = "pd-ssd"
-        if instance_type.startswith(('c4', 'n4')):
-            boot_disk_type = "hyperdisk-balanced"
 
-        boot_disk_init_params["diskType"] = "zones/{}/diskTypes/{}".format(zone, boot_disk_type)
+        disk_type = self._get_boot_disk_type(zone, instance_type)
+        boot_disk_init_params["diskType"] = disk_type
         boot_disk_json["initializeParams"] = boot_disk_init_params
 
         access_configs = [{"natIP": None}

@@ -50,15 +50,15 @@ Status MergeHelper::TimedFullMerge(const Slice& key, const Slice* value,
     return STATUS(NotSupported, "Provide a merge_operator when opening DB");
   }
 
-  // Setup to time the merge
-  StopWatchNano timer(env, statistics != nullptr);
-  PERF_TIMER_GUARD(merge_operator_time_nanos);
+  bool success;
+  {
+    // Setup to time the merge
+    StopWatchNano timer(env, statistics, MERGE_OPERATION_TOTAL_TIME);
+    PERF_TIMER_GUARD(merge_operator_time_nanos);
 
-  // Do the merge
-  bool success =
-      merge_operator->FullMerge(key, value, operands, result, logger);
-
-  RecordTick(statistics, MERGE_OPERATION_TOTAL_TIME, timer.ElapsedNanosSafe());
+    // Do the merge
+    success = merge_operator->FullMerge(key, value, operands, result, logger);
+  }
 
   if (!success) {
     RecordTick(statistics, NUMBER_MERGE_FAILURES);
@@ -269,14 +269,12 @@ Status MergeHelper::MergeUntil(InternalIterator* iter,
       bool merge_success = false;
       std::string merge_result;
       {
-        StopWatchNano timer(env_, stats_ != nullptr);
+        StopWatchNano timer(env_, stats_, MERGE_OPERATION_TOTAL_TIME);
         PERF_TIMER_GUARD(merge_operator_time_nanos);
         merge_success = user_merge_operator_->PartialMergeMulti(
             orig_ikey.user_key,
             std::deque<Slice>(operands_.begin(), operands_.end()),
             &merge_result, logger_);
-        RecordTick(stats_, MERGE_OPERATION_TOTAL_TIME,
-                   timer.ElapsedNanosSafe());
       }
       if (merge_success) {
         // Merging of operands (associative merge) was successful.
@@ -313,9 +311,6 @@ void MergeOutputIterator::Next() {
 bool MergeHelper::FilterMerge(const Slice& user_key, const Slice& value_slice) {
   if (compaction_filter_ == nullptr) {
     return false;
-  }
-  if (stats_ != nullptr) {
-    filter_timer_.Start();
   }
   bool to_delete =
       compaction_filter_->FilterMergeOperand(level_, user_key, value_slice);

@@ -33,9 +33,12 @@
 
 #include <cerrno>
 #include <string>
+#include <string_view>
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/status_ec.h"
+
+using namespace std::literals;
 
 DECLARE_bool(suicide_on_eio);
 
@@ -52,14 +55,14 @@ inline std::string ErrnoToString(int err) {
 
 struct ErrnoTag : IntegralErrorTag<int32_t> {
   // This category id is part of the wire protocol and should not be changed once released.
-  static constexpr uint8_t kCategory = 1;
+  static constexpr CategoryDescriptor kCategory{1, "system error"sv};
 
   static std::string ToMessage(Value value) {
     return ErrnoToString(value);
   }
 };
 
-typedef StatusErrorCodeImpl<ErrnoTag> Errno;
+using Errno = StatusErrorCodeImpl<ErrnoTag>;
 
 namespace internal {
 

@@ -20,8 +20,9 @@
 #include <boost/container/small_vector.hpp>
 
 #include "yb/common/schema.h"
-#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/common/pgsql_protocol.messages.h"
 
+#include "yb/docdb/doc_pgsql_scanspec.h"
 #include "yb/docdb/docdb_pgapi.h"
 
 #include "yb/dockv/reader_projection.h"
@@ -121,7 +122,8 @@ class TSCallExecutor {
     YbgSetCurrentMemoryContext(old_ctx);
   }
 
-  Status AddColumnRef(const PgsqlColRefPB& column_ref) {
+  template <class ColRefPB>
+  Status AddColumnRef(const ColRefPB& column_ref) {
     ColumnId col_id(column_ref.column_id());
     // Column references without Postgres type info are not used for expression evaluation
     // they may still be used for something else
@@ -141,13 +143,15 @@ class TSCallExecutor {
                           &var_map_);
   }
 
-  Status AddWhere(const PgsqlBCallPB& tscall, const std::optional<int> version) {
+  template <class CallPB>
+  Status AddWhere(const CallPB& tscall, const std::optional<int> version) {
     where_clause_.push_back(VERIFY_RESULT(PrepareExprCall(tscall, version)));
     VLOG(1) << "A condition has been added";
     return Status::OK();
   }
 
-  Status AddTarget(const PgsqlBCallPB& tscall, const std::optional<int> version) {
+  template <class CallPB>
+  Status AddTarget(const CallPB& tscall, const std::optional<int> version) {
     DocPgVarRef expr_type;
     auto* prepared_expr = VERIFY_RESULT(PrepareExprCall(tscall, version, &expr_type));
     targets_.emplace_back(prepared_expr, expr_type);
@@ -155,8 +159,7 @@ class TSCallExecutor {
     return Status::OK();
   }
 
-  Result<bool> Exec(
-      const dockv::PgTableRow& row, std::vector<qlexpr::QLExprResult>* results) {
+  Result<bool> Exec(const dockv::PgTableRow& row, DocPgExprExecutor::Results* results) {
     // early exit if there are no operations to process
     if(where_clause_.empty() && targets_.empty()) {
       return true;
@@ -185,33 +188,36 @@ class TSCallExecutor {
   }
 
  private:
+  template <class CallPB>
   Result<YbgPreparedExpr> PrepareExprCall(
-      const PgsqlBCallPB& tscall,
+      const CallPB& tscall,
       const std::optional<int> version,
       DocPgVarRef* expr_type = nullptr) {
     // Presence of row_ctx_ indicates that execution was started we do not allow to modify
     // the executor dynamically.
     RSTATUS_DCHECK(!row_ctx_, InternalError, "Can not add expression, execution has started");
+    DCHECK(!tscall.operands().empty());
     // Retrieve string representing the expression
-    const auto& expr_str = tscall.operands(0).value().string_value();
+    const auto& expr_str = AsString(tscall.operands().begin()->value().string_value());
     // Make sure expression is in the right memory context
     MemoryContextGuard mem_guard(YbgSetCurrentMemoryContext(mem_ctx_));
     // Perform deserialization and get result data type info
     YbgPreparedExpr prepared_expr = nullptr;
     RETURN_NOT_OK(DocPgPrepareExpr(expr_str, &prepared_expr, expr_type, version));
-    if (tscall.operands_size() > 1) {
+    if (tscall.operands().size() > 1) {
       // Pre-pushdown nodes e.g. v2.12 may create and send serialized PG expression when executing
       // statements like UPDATE table SET col = col + 1 WHERE pk = 1; during upgrade.
       // Those expressions have their column references bundled as operands (attno, typid, typmod)
       // triplets, one per reference.
       // That is sufficient information to execute such request. We need to discover the column id,
       // it is not super efficient, but good enough for a rare compatibility case.
-      const auto num_params = (tscall.operands_size() - 1) / 3;
+      const size_t num_params = (tscall.operands().size() - 1) / 3;
       LOG(INFO) << "Found old style expression with " << num_params << " bundled parameter(s)";
-      for (int i = 0; i < num_params; ++i) {
-        const auto attno = tscall.operands(3 * i + 1).value().int32_value();
-        const auto typid = tscall.operands(3 * i + 2).value().int32_value();
-        const auto typmod = tscall.operands(3 * i + 3).value().int32_value();
+      auto it = tscall.operands().begin();
+      for (size_t i = 0; i < num_params; ++i) {
+        const auto attno = (it++)->value().int32_value();
+        const auto typid = (it++)->value().int32_value();
+        const auto typmod = (it++)->value().int32_value();
         RETURN_NOT_OK(DocPgAddVarRef(VERIFY_RESULT(resolver_.GetColumnIdx(attno)),
                       attno, typid, typmod, 0 /*collid*/, &var_map_));
       }
@@ -249,7 +255,7 @@ class TSCallExecutor {
     return true;
   }
 
-  Status EvalTargetExprCalls(std::vector<qlexpr::QLExprResult>* results) {
+  Status EvalTargetExprCalls(DocPgExprExecutor::Results* results) {
     results->reserve(targets_.size());
     for (const auto& target : targets_) {
       auto [datum, is_null] = VERIFY_RESULT(DocPgEvalExpr(target.first, expr_ctx_));
@@ -283,14 +289,16 @@ class TSCallExecutor {
 class ConditionFilter {
  public:
   void Add(const PgsqlConditionPB& condition) {
-    conditions_.push_back(&condition);
+    conditions_.emplace_back(&condition);
+  }
+
+  void Add(const LWPgsqlConditionPB& condition) {
+    conditions_.emplace_back(&condition);
   }
 
   Result<bool> IsMatch(const dockv::PgTableRow& row) {
-    auto match = false;
-    for (const auto* condition : conditions_) {
-      RETURN_NOT_OK(executor_.EvalCondition(*condition, row, &match));
-      if (!match) {
+    for (const auto& condition : conditions_) {
+      if (!VERIFY_RESULT(executor_.EvalCondition(condition, row))) {
         return false;
       }
     }
@@ -299,7 +307,7 @@ class ConditionFilter {
 
  private:
   qlexpr::QLExprExecutor executor_;
-  boost::container::small_vector<const PgsqlConditionPB*, 8> conditions_;
+  boost::container::small_vector<PgsqlConditionPBPtr, 8> conditions_;
 };
 
 } // namespace
@@ -311,11 +319,13 @@ class DocPgExprExecutor::State {
       std::reference_wrapper<const dockv::ReaderProjection> projection)
       : resolver_(schema, projection) {}
 
-  Status AddColumnRef(const PgsqlColRefPB& column_ref) {
+  template <class ColRefPB>
+  Status AddColumnRef(const ColRefPB& column_ref) {
     return tscall_executor().AddColumnRef(column_ref);
   }
 
-  Status AddWhere(const PgsqlExpressionPB& expr, const std::optional<int> version) {
+  template <class ExprPB>
+  Status AddWhere(const ExprPB& expr, const std::optional<int> version) {
     if (expr.has_condition()) {
       condition_filter().Add(expr.condition());
       return Status::OK();
@@ -327,8 +337,12 @@ class DocPgExprExecutor::State {
     return tscall_executor().AddTarget(VERIFY_RESULT_REF(GetTSCall(expr)), version);
   }
 
+  Status AddTarget(const LWPgsqlExpressionPB& expr, const std::optional<int> version) {
+    return tscall_executor().AddTarget(VERIFY_RESULT_REF(GetTSCall(expr)), version);
+  }
+
   Result<bool> Exec(
-      const dockv::PgTableRow& row, std::vector<qlexpr::QLExprResult>* results) {
+      const dockv::PgTableRow& row, Results* results) {
     return (!condition_filter_ || VERIFY_RESULT(condition_filter_->IsMatch(row))) &&
            (!tscall_executor_ || VERIFY_RESULT(tscall_executor_->Exec(row, results)));
   }
@@ -338,7 +352,8 @@ class DocPgExprExecutor::State {
   }
 
  private:
-  Result<const PgsqlBCallPB&> GetTSCall(const PgsqlExpressionPB& expr) {
+  template <class ExpressionPB>
+  auto GetTSCall(const ExpressionPB& expr) -> Result<decltype(expr.tscall())> {
     RSTATUS_DCHECK(expr.has_tscall(),
                    InternalError,
                    Format("Unsupported expression type $0", expr.expr_case()));
@@ -374,8 +389,7 @@ DocPgExprExecutor::DocPgExprExecutor(std::unique_ptr<State> state)
 
 DocPgExprExecutor::~DocPgExprExecutor() = default;
 
-Result<bool> DocPgExprExecutor::Exec(
-    const dockv::PgTableRow& row, std::vector<qlexpr::QLExprResult>* results) {
+Result<bool> DocPgExprExecutor::Exec(const dockv::PgTableRow& row, Results* results) {
   return state_->Exec(row, results);
 }
 
@@ -391,10 +405,20 @@ DocPgExprExecutorBuilder::~DocPgExprExecutorBuilder() = default;
 
 Status DocPgExprExecutorBuilder::AddWhere(std::reference_wrapper<const PgsqlExpressionPB> expr,
                                           const std::optional<int> version) {
-  return state_->AddWhere(expr, version);
+  return state_->AddWhere(expr.get(), version);
+}
+
+Status DocPgExprExecutorBuilder::AddWhere(std::reference_wrapper<const LWPgsqlExpressionPB> expr,
+                                          const std::optional<int> version) {
+  return state_->AddWhere(expr.get(), version);
 }
 
 Status DocPgExprExecutorBuilder::AddTarget(const PgsqlExpressionPB& expr,
+                                           const std::optional<int> version) {
+  return state_->AddTarget(expr, version);
+}
+
+Status DocPgExprExecutorBuilder::AddTarget(const LWPgsqlExpressionPB& expr,
                                            const std::optional<int> version) {
   return state_->AddTarget(expr, version);
 }
@@ -404,6 +428,10 @@ bool DocPgExprExecutorBuilder::IsColumnRefsRequired() const {
 }
 
 Status DocPgExprExecutorBuilder::AddColumnRef(const PgsqlColRefPB& column_ref) {
+  return state_->AddColumnRef(column_ref);
+}
+
+Status DocPgExprExecutorBuilder::AddColumnRef(const LWPgsqlColRefPB& column_ref) {
   return state_->AddColumnRef(column_ref);
 }
 

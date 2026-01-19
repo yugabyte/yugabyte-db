@@ -224,7 +224,7 @@ void Slice::AppendTo(faststring* out) const {
   out->append(cdata(), size());
 }
 
-bool Slice::Contains(const Slice& rhs) const {
+bool Slice::Contains(Slice rhs) const {
   return std::string_view(*this).find(rhs) != std::string::npos;
 }
 

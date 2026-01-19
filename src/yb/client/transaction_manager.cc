@@ -17,6 +17,7 @@
 
 #include "yb/ash/wait_state.h"
 
+#include "yb/common/common_net.h"
 #include "yb/common/transaction.h"
 
 #include "yb/client/client.h"
@@ -30,6 +31,7 @@
 
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
+#include "yb/util/metrics.h"
 #include "yb/util/rw_mutex.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -46,6 +48,26 @@ DEFINE_test_flag(string, transaction_manager_preferred_tablet, "",
                  "For testing only. If non-empty, transaction manager will try to use the status "
                  "tablet with id matching this flag, if present in the list of status tablets.");
 
+METRIC_DEFINE_counter(server, transaction_promotions,
+                      "Number of transactions being promoted to global transactions",
+                      yb::MetricUnit::kTransactions,
+                      "Number of transactions being promoted to global transactions");
+
+METRIC_DEFINE_counter(server, initially_global_transactions,
+                      "Number of transactions that were started as global transactions",
+                      yb::MetricUnit::kTransactions,
+                      "Number of transactions that were started as global transactions");
+
+METRIC_DEFINE_counter(server, initially_region_local_transactions,
+                      "Number of transactions that were started as region-local transactions",
+                      yb::MetricUnit::kTransactions,
+                      "Number of transactions that were started as reigon-local transactions");
+
+METRIC_DEFINE_counter(server, initially_tablespace_local_transactions,
+                      "Number of transactions that were started as tablespace-local transactions",
+                      yb::MetricUnit::kTransactions,
+                      "Number of transactions that were started as tablespace-local transactions");
+
 DECLARE_string(placement_cloud);
 DECLARE_string(placement_region);
 DECLARE_string(placement_zone);
@@ -54,6 +76,20 @@ namespace yb {
 namespace client {
 
 namespace {
+
+const CloudInfoPB& GetPlacementFromGFlags() {
+  static GoogleOnceType once = GOOGLE_ONCE_INIT;
+  static CloudInfoPB cloud_info;
+  auto set_placement_from_gflags = [](CloudInfoPB* cloud_info) {
+    cloud_info->set_placement_cloud(FLAGS_placement_cloud);
+    cloud_info->set_placement_region(FLAGS_placement_region);
+    cloud_info->set_placement_zone(FLAGS_placement_zone);
+  };
+  GoogleOnceInitArg(
+      &once, static_cast<void (*)(CloudInfoPB*)>(set_placement_from_gflags), &cloud_info);
+
+  return cloud_info;
+}
 
 // Cache of tablet ids of the global transaction table and any transaction tables with
 // the same placement.
@@ -75,7 +111,7 @@ class TransactionTableState {
     if (PickStatusTabletId(tablets, callback)) {
       return;
     }
-    YB_LOG_EVERY_N_SECS(WARNING, 1) << "No local transaction status tablet found";
+    YB_LOG_EVERY_N_SECS(WARNING, 10) << "No local transaction status tablet found";
     callback(RandomElement(tablets));
   }
 
@@ -88,6 +124,8 @@ class TransactionTableState {
     std::lock_guard lock(mutex_);
     if (!initialized_.load() || status_tablets_version_ < new_version) {
       tablets_ = std::move(tablets);
+      tablespace_region_local_.clear();
+      tablespace_contains_tablespace_.clear();
       has_region_local_tablets_.store(!tablets_.region_local_tablets.empty());
       status_tablets_version_ = new_version;
       initialized_.store(true);
@@ -101,6 +139,50 @@ class TransactionTableState {
   bool HasAnyTransactionLocalStatusTablets(PgTablespaceOid tablespace_oid) {
     SharedLock lock(mutex_);
     return tablets_.tablespaces.contains(tablespace_oid);
+  }
+
+  bool TablespaceIsRegionLocal(PgTablespaceOid tablespace_oid) {
+    if (tablespace_oid == kPgInvalidOid) {
+      return false;
+    }
+
+    {
+      SharedLock lock(mutex_);
+      auto itr = tablespace_region_local_.find(tablespace_oid);
+      if (itr != tablespace_region_local_.end()) {
+        return itr->second;
+      }
+    }
+
+    std::lock_guard lock(mutex_);
+    auto itr = tablets_.tablespaces.find(tablespace_oid);
+    if (itr == tablets_.tablespaces.end()) {
+      return false;
+    }
+
+    auto& placement = itr->second.placement_info;
+    return tablespace_region_local_.try_emplace(
+        tablespace_oid,
+        PlacementInfoContainsCloudInfo(placement, GetPlacementFromGFlags()) &&
+            !PlacementInfoSpansMultipleRegions(placement)).first->second;
+  }
+
+  bool TablespaceContainsTablespace(PgTablespaceOid lhs, PgTablespaceOid rhs) {
+    if (lhs == rhs) {
+      return true;
+    }
+
+    {
+      SharedLock lock(mutex_);
+      auto itr = tablespace_contains_tablespace_.find({lhs, rhs});
+      if (PREDICT_TRUE(itr != tablespace_contains_tablespace_.end())) {
+        return itr->second;
+      }
+    }
+
+    std::lock_guard lock(mutex_);
+    return tablespace_contains_tablespace_.try_emplace(
+        {lhs, rhs}, CalculateTablespaceContainsTablespace(lhs, rhs)).first->second;
   }
 
   uint64_t GetStatusTabletsVersion() EXCLUDES(mutex_) {
@@ -163,6 +245,26 @@ class TransactionTableState {
     FATAL_INVALID_ENUM_VALUE(TransactionLocality, locality.locality);
   }
 
+  bool CalculateTablespaceContainsTablespace(PgTablespaceOid lhs, PgTablespaceOid rhs)
+      REQUIRES(mutex_) {
+    // If a tablespace oid is not in tablets_.tablespaces, that means that we have no status
+    // tablet information for the tablespace, and thus are not able to meaningfully process a
+    // tablespace-local(tablespace) locality. So we treat such a case as global, and thus:
+    // - LHS not found: LHS is global => contains everything
+    // - LHS found, RHS not found: RHS is global => does not contain LHS (which is not global)
+    auto lhs_itr = tablets_.tablespaces.find(lhs);
+    if (lhs_itr == tablets_.tablespaces.end()) {
+      return true;
+    }
+    auto rhs_itr = tablets_.tablespaces.find(rhs);
+    if (rhs_itr == tablets_.tablespaces.end()) {
+      return false;
+    }
+
+    return PlacementInfoContainsPlacementInfo(
+        lhs_itr->second.placement_info, rhs_itr->second.placement_info);
+  }
+
   LocalTabletFilter local_tablet_filter_;
 
   // Set to true once transaction tablets have been loaded at least once. global_tablets
@@ -179,21 +281,18 @@ class TransactionTableState {
   uint64_t status_tablets_version_ GUARDED_BY(mutex_) = 0;
 
   TransactionStatusTablets tablets_ GUARDED_BY(mutex_);
-};
 
-const CloudInfoPB& GetPlacementFromGFlags() {
-  static GoogleOnceType once = GOOGLE_ONCE_INIT;
-  static CloudInfoPB cloud_info;
-  auto set_placement_from_gflags = [](CloudInfoPB* cloud_info) {
-    cloud_info->set_placement_cloud(FLAGS_placement_cloud);
-    cloud_info->set_placement_region(FLAGS_placement_region);
-    cloud_info->set_placement_zone(FLAGS_placement_zone);
+  std::unordered_map<PgTablespaceOid, bool> tablespace_region_local_ GUARDED_BY(mutex_);
+
+  struct TablespaceOidPair {
+    PgTablespaceOid first;
+    PgTablespaceOid second;
+
+    bool operator==(const TablespaceOidPair&) const = default;
+    YB_STRUCT_DEFINE_HASH(TablespaceOidPair, first, second);
   };
-  GoogleOnceInitArg(
-      &once, static_cast<void (*)(CloudInfoPB*)>(set_placement_from_gflags), &cloud_info);
-
-  return cloud_info;
-}
+  std::unordered_map<TablespaceOidPair, bool> tablespace_contains_tablespace_ GUARDED_BY(mutex_);
+};
 
 // Loads transaction tablets list to cache.
 class LoadStatusTabletsTask {
@@ -286,6 +385,15 @@ class TransactionManager::Impl {
         tasks_pool_(FLAGS_transaction_manager_queue_limit),
         invoke_callback_tasks_(FLAGS_transaction_manager_queue_limit) {
     CHECK(clock);
+    if (auto metric_entity = client_->metric_entity()) {
+      transaction_promotions_ = METRIC_transaction_promotions.Instantiate(metric_entity);
+      initially_global_transactions_ =
+          METRIC_initially_global_transactions.Instantiate(metric_entity);
+      initially_region_local_transactions_ =
+          METRIC_initially_region_local_transactions.Instantiate(metric_entity);
+      initially_tablespace_local_transactions_ =
+          METRIC_initially_tablespace_local_transactions.Instantiate(metric_entity);
+    }
   }
 
   ~Impl() {
@@ -321,12 +429,13 @@ class TransactionManager::Impl {
 
   void PickStatusTablet(
       PickStatusTabletCallback callback, TransactionFullLocality locality) {
+    ASH_ENABLE_CONCURRENT_UPDATES();
+    SET_WAIT_STATUS(OnCpu_Passive);
     if (table_state_.IsInitialized()) {
       if (ThreadRestrictions::IsWaitAllowed()) {
+        SCOPED_WAIT_STATUS(OnCpu_Active);
         table_state_.InvokeCallback(callback, locality);
       } else {
-        ASH_ENABLE_CONCURRENT_UPDATES();
-        SET_WAIT_STATUS(OnCpu_Passive);
         if (!invoke_callback_tasks_.Enqueue(
           &thread_pool_, &table_state_, callback, locality)) {
           SCOPED_WAIT_STATUS(OnCpu_Active);
@@ -338,8 +447,6 @@ class TransactionManager::Impl {
       return;
     }
 
-    ASH_ENABLE_CONCURRENT_UPDATES();
-    SET_WAIT_STATUS(OnCpu_Passive);
     if (!tasks_pool_.Enqueue(
       &thread_pool_, client_, &table_state_, 0 /* version */, callback,
       locality)) {
@@ -381,8 +488,16 @@ class TransactionManager::Impl {
     return table_state_.HasAnyRegionLocalStatusTablets();
   }
 
+  bool TablespaceIsRegionLocal(PgTablespaceOid tablespace_oid) {
+    return table_state_.TablespaceIsRegionLocal(tablespace_oid);
+  }
+
   bool TablespaceLocalTransactionsPossible(PgTablespaceOid tablespace_oid) {
     return table_state_.HasAnyTransactionLocalStatusTablets(tablespace_oid);
+  }
+
+  bool TablespaceContainsTablespace(PgTablespaceOid lhs, PgTablespaceOid rhs) {
+    return table_state_.TablespaceContainsTablespace(lhs, rhs);
   }
 
   uint64_t GetLoadedStatusTabletsVersion() {
@@ -397,6 +512,22 @@ class TransactionManager::Impl {
     closed_.store(true);
   }
 
+  scoped_refptr<Counter> transaction_promotions_metric() const {
+    return transaction_promotions_;
+  }
+
+  scoped_refptr<Counter> initially_global_transactions_metric() const {
+    return initially_global_transactions_;
+  }
+
+  scoped_refptr<Counter> initially_region_local_transactions_metric() const {
+    return initially_region_local_transactions_;
+  }
+
+  scoped_refptr<Counter> initially_tablespace_local_transactions_metric() const {
+    return initially_tablespace_local_transactions_;
+  }
+
  private:
   YBClient* const client_;
   scoped_refptr<ClockBase> clock_;
@@ -407,6 +538,13 @@ class TransactionManager::Impl {
   yb::rpc::TasksPool<LoadStatusTabletsTask> tasks_pool_;
   yb::rpc::TasksPool<InvokeCallbackTask> invoke_callback_tasks_;
   yb::rpc::Rpcs rpcs_;
+
+  // These are incremented by YBTransaction, but we keep them here so that the counters are not
+  // deleted/recreated after a period of idleness.
+  scoped_refptr<Counter> transaction_promotions_;
+  scoped_refptr<Counter> initially_global_transactions_;
+  scoped_refptr<Counter> initially_region_local_transactions_;
+  scoped_refptr<Counter> initially_tablespace_local_transactions_;
 };
 
 TransactionManager::TransactionManager(
@@ -454,8 +592,16 @@ bool TransactionManager::RegionLocalTransactionsPossible() {
   return impl_->RegionLocalTransactionsPossible();
 }
 
+bool TransactionManager::TablespaceIsRegionLocal(PgTablespaceOid tablespace_oid) {
+  return impl_->TablespaceIsRegionLocal(tablespace_oid);
+}
+
 bool TransactionManager::TablespaceLocalTransactionsPossible(PgTablespaceOid tablespace_oid) {
   return impl_->TablespaceLocalTransactionsPossible(tablespace_oid);
+}
+
+bool TransactionManager::TablespaceContainsTablespace(PgTablespaceOid lhs, PgTablespaceOid rhs) {
+  return impl_->TablespaceContainsTablespace(lhs, rhs);
 }
 
 uint64_t TransactionManager::GetLoadedStatusTabletsVersion() {
@@ -472,6 +618,22 @@ bool TransactionManager::IsClosing() {
 
 void TransactionManager::SetClosing() {
   impl_->SetClosing();
+}
+
+scoped_refptr<Counter> TransactionManager::transaction_promotions_metric() const {
+  return impl_->transaction_promotions_metric();
+}
+
+scoped_refptr<Counter> TransactionManager::initially_global_transactions_metric() const {
+  return impl_->initially_global_transactions_metric();
+}
+
+scoped_refptr<Counter> TransactionManager::initially_region_local_transactions_metric() const {
+  return impl_->initially_region_local_transactions_metric();
+}
+
+scoped_refptr<Counter> TransactionManager::initially_tablespace_local_transactions_metric() const {
+  return impl_->initially_tablespace_local_transactions_metric();
 }
 
 TransactionManager::TransactionManager(TransactionManager&& rhs) = default;

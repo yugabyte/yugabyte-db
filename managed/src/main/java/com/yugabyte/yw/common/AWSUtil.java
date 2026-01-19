@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.common.Util.HTTPS_SCHEME;
 import static org.apache.commons.lang3.exception.ExceptionUtils.getStackTrace;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.EXPECTATION_FAILED;
@@ -24,19 +25,24 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data.RegionLocations;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.FilterInputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.KeyStore;
 import java.security.SecureRandom;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -233,6 +239,11 @@ public class AWSUtil implements CloudUtil {
     } finally {
       maybeEnableCertVerification();
     }
+  }
+
+  @Override
+  public boolean isIamEnabled(CustomerConfig config) {
+    return ((CustomerConfigStorageS3Data) config.getDataObject()).isIAMInstanceProfile;
   }
 
   @Override
@@ -667,8 +678,8 @@ public class AWSUtil implements CloudUtil {
               .sorted((o1, o2) -> o2.lastModified().compareTo(o1.lastModified()))
               .collect(Collectors.toList());
       if (sortedBackups.isEmpty()) {
-        log.error("Could not find any backups to restore");
-        return null;
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Could not find YB Anywhere backup in S3 bucket");
       }
       // Iterate through until we find a backup
       S3Object backup = null;
@@ -684,8 +695,18 @@ public class AWSUtil implements CloudUtil {
       }
 
       if (backup == null) {
-        log.error("Could not find matching backup, aborting restore.");
-        return null;
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Could not find matching YB Anywhere backup in S3 bucket");
+      }
+
+      // Validate backup file is less than 1 day old
+      if (!runtimeConfGetter.getGlobalConf(GlobalConfKeys.allowYbaRestoreWithOldBackup)) {
+        if (backup.lastModified().isBefore(Instant.now().minus(1, ChronoUnit.DAYS))) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "YB Anywhere restore is not allowed when backup file is more than 1 day old, enable"
+                  + " runtime flag yb.yba_backup.allow_restore_with_old_backup to continue");
+        }
       }
 
       // Construct full local filepath with same name as remote backup
@@ -707,29 +728,31 @@ public class AWSUtil implements CloudUtil {
         }
 
       } catch (Exception e) {
-        log.error("Error writing S3 object to file: {}", e.getMessage());
-        return null;
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR, "Error writing S3 object to file: " + e.getMessage());
       }
 
       if (!localFile.exists() || localFile.length() == 0) {
-        log.error("Local file does not exist or is empty, aborting restore.");
-        return null;
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR, "Local file does not exist or is empty, aborting restore.");
       }
 
       log.info("Downloaded file from S3 to {}", localFile.getCanonicalPath());
       return localFile;
     } catch (S3Exception e) {
-      log.error(
-          "Error occurred while getting object in S3: {}", e.awsErrorDetails().errorMessage());
-    } catch (Exception e) {
-      log.error("Unexpected exception while getting object in S3: {}", e.getMessage());
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR,
+          "AWS error downloading YB Anywhere backup: " + e.awsErrorDetails().errorMessage());
+    } catch (IOException e) {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR,
+          "IO error occurred while downloading object from S3: " + e.getMessage());
     } finally {
       maybeEnableCertVerification();
       if (client != null) {
         client.close();
       }
     }
-    return null;
   }
 
   @Override
@@ -903,24 +926,26 @@ public class AWSUtil implements CloudUtil {
     if (s3Data.isPathStyleAccess) {
       builder.forcePathStyle(true);
     }
-
-    //  Use region specific hostbase
-    AWSHostBase hostBase = getRegionHostBaseMap(s3Data).get(region);
-    String endpoint = hostBase.awsHostBase;
-    boolean globalFlag = hostBase.globalBucketAccess;
-    String clientRegion = getClientRegion(hostBase.signingRegion);
-    if (globalFlag && (StringUtils.isBlank(endpoint) || isHostBaseS3Standard(endpoint))) {
-      // Use global bucket access only for standard S3.
-      builder.crossRegionAccessEnabled(true);
-    }
-    if (StringUtils.isNotBlank(endpoint)) {
-      builder.endpointOverride(URI.create("https://" + endpoint));
-    }
-    // Need to set region because region-chaining may
-    // fail if correct environment variables not found.
-    builder.region(Region.of(clientRegion));
-
     try {
+      //  Use region specific hostbase
+      AWSHostBase hostBase = getRegionHostBaseMap(s3Data).get(region);
+      String endpoint = hostBase.awsHostBase;
+      boolean globalFlag = hostBase.globalBucketAccess;
+      String clientRegion = getClientRegion(hostBase.signingRegion);
+      if (globalFlag && (StringUtils.isBlank(endpoint) || isHostBaseS3Standard(endpoint))) {
+        // Use global bucket access only for standard S3.
+        builder.crossRegionAccessEnabled(true);
+      } else if (StringUtils.isNotBlank(endpoint)) {
+        URI uri = new URI(endpoint);
+        if (uri.getScheme() == null) {
+          uri = new URI(HTTPS_SCHEME + endpoint);
+        }
+        builder.endpointOverride(uri);
+      }
+      // Need to set region because region-chaining may
+      // fail if correct environment variables not found.
+      builder.region(Region.of(clientRegion));
+
       Boolean caStoreEnabled = customCAStoreManager.isEnabled();
       Boolean caCertUploaded = customCAStoreManager.areCustomCAsPresent();
       // Adding enforce certification check as well so customers don't fail scheduled backups
@@ -976,7 +1001,7 @@ public class AWSUtil implements CloudUtil {
         log.trace("Skipping first bucket region fetch error: {}", e.getMessage());
       }
       return client;
-    } catch (SdkClientException e) {
+    } catch (SdkClientException | URISyntaxException e) {
       throw new PlatformServiceException(
           BAD_REQUEST, String.format("Failed to create S3 client, error: %s", e.getMessage()));
     }
@@ -1131,15 +1156,68 @@ public class AWSUtil implements CloudUtil {
           GetObjectRequest.builder().bucket(bucketName).key(objectPrefix).build();
       ResponseInputStream<GetObjectResponse> objectStream = s3Client.getObject(getObjectRequest);
       if (objectStream == null) {
+        maybeEnableCertVerification();
+        s3Client.close();
+        s3Client = null; // Set to null to prevent double cleanup in catch block
         throw new PlatformServiceException(
             INTERNAL_SERVER_ERROR, "No object was found at the specified location: " + cloudPath);
       }
-      return objectStream;
-    } finally {
-      maybeEnableCertVerification();
+      // Capture s3Client in a final variable for use in the anonymous class
+      final S3Client finalS3Client = s3Client;
+      // Clear the reference so we don't close it in the catch block
+      s3Client = null;
+      // Wrap the stream to ensure S3Client is closed when the stream is closed.
+      // The S3Client must remain open while the stream is in use, otherwise the stream
+      // becomes unusable since it's tied to the client's HTTP connection.
+      return new FilterInputStream(objectStream) {
+        private volatile boolean closed = false;
+
+        @Override
+        public void close() throws IOException {
+          if (closed) {
+            return;
+          }
+          closed = true;
+          try {
+            // Close the ResponseInputStream first. If the stream has already reached EOF,
+            // the underlying HTTP connection may have been auto-closed, which can cause
+            // a SocketException. We catch and ignore this since it's harmless.
+            try {
+              super.close();
+            } catch (java.net.SocketException e) {
+              // Socket already closed - this is harmless and can happen when the stream
+              // reaches EOF before explicit close. Log at trace level for debugging.
+              log.trace("Socket already closed when closing ResponseInputStream", e);
+            }
+          } finally {
+            maybeEnableCertVerification();
+            try {
+              finalS3Client.close();
+            } catch (Exception e) {
+              // Log but don't propagate - client close failures shouldn't prevent cleanup
+              log.warn("Error closing S3Client", e);
+            }
+          }
+        }
+      };
+    } catch (PlatformServiceException e) {
+      // Re-throw PlatformServiceException as-is
+      // Clean up if client was created but stream wasn't returned
       if (s3Client != null) {
+        maybeEnableCertVerification();
         s3Client.close();
       }
+      throw e;
+    } catch (Exception e) {
+      // Handle any other exceptions and ensure cleanup
+      if (s3Client != null) {
+        maybeEnableCertVerification();
+        s3Client.close();
+      } else {
+        maybeEnableCertVerification();
+      }
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Failed to get cloud file input stream: " + e.getMessage());
     }
   }
 

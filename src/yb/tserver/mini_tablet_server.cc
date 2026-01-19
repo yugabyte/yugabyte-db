@@ -72,6 +72,7 @@ using yb::tablet::TabletPeer;
 DECLARE_bool(rpc_server_allow_ephemeral_ports);
 DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 DECLARE_int32(TEST_nodes_per_cloud);
+DECLARE_string(pgsql_proxy_bind_address);
 
 DEFINE_test_flag(bool, private_broadcast_address, false,
                  "Use private address for broadcast address in tests.");
@@ -99,7 +100,7 @@ MiniTabletServer::MiniTabletServer(const std::vector<std::string>& wal_paths,
   opts_.webserver_opts.bind_interface = rpc_host;
   if (!opts_.has_placement_cloud()) {
     opts_.SetPlacement(Format("cloud$0", (index_ + 1) / FLAGS_TEST_nodes_per_cloud),
-                       Format("rack$0", index_), "zone");
+                       Format("region$0", index_), "zone");
   }
   opts_.fs_opts.wal_paths = wal_paths;
   opts_.fs_opts.data_paths = data_paths;
@@ -128,12 +129,15 @@ Result<std::unique_ptr<MiniTabletServer>> MiniTabletServer::CreateMiniTabletServ
   return std::make_unique<MiniTabletServer>(fs_roots, fs_roots, rpc_port, *options_result, index);
 }
 
-Status MiniTabletServer::Start(
-    WaitTabletsBootstrapped wait_tablets_bootstrapped, WaitToAcceptPgConnections wait_for_pg) {
+Status MiniTabletServer::Start(WaitTabletsBootstrapped wait_tablets_bootstrapped) {
   CHECK(!started_);
+  if (!pgsql_proxy_bind_address_.empty()) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_bind_address) = pgsql_proxy_bind_address_;
+  }
+
   TEST_SetThreadPrefixScoped prefix_se(ToString());
 
-  std::unique_ptr<TabletServer> server(new TabletServer(opts_));
+  std::unique_ptr<TabletServer> server = std::make_unique<TabletServer>(opts_);
   RETURN_NOT_OK(server->Init());
 
   RETURN_NOT_OK(server->Start());
@@ -143,26 +147,19 @@ Status MiniTabletServer::Start(
   RETURN_NOT_OK(Reconnect());
 
   started_ = true;
+  LOG(INFO) << "Started tserver " << server_.get() << " at " << server_->pgsql_proxy_bind_address();
   if (wait_tablets_bootstrapped) {
     RETURN_NOT_OK(WaitStarted());
   }
-  return StartPgIfConfigured(wait_for_pg);
+  return StartPgIfConfigured();
 }
 
-Status MiniTabletServer::StartPgIfConfigured(WaitToAcceptPgConnections wait_for_pg) {
+Status MiniTabletServer::StartPgIfConfigured() {
   if (!start_pg_) {
     return Status::OK();
   }
   RETURN_NOT_OK(start_pg_());
   RETURN_NOT_OK(server_->StartYSQLLeaseRefresher());
-  if (!wait_for_pg) {
-    return Status::OK();
-  }
-  CHECK(get_pg_conn_settings_) << "Must set get_pg_conn_settings_ function when start_pg_ set";
-  auto settings = get_pg_conn_settings_();
-  settings.dbname = "yugabyte";
-  settings.connect_timeout = 20;
-  VERIFY_RESULT(pgwrapper::PGConnBuilder(settings).Connect());
   return Status::OK();
 }
 
@@ -235,6 +232,17 @@ Status ForAllTablets(
 
 }  // namespace
 
+Status MiniTabletServer::DeleteTablet(
+    const TabletId& tablet_id, tablet::TabletDataState delete_state, bool keep_on_disk) {
+  std::optional<int64_t> cas_config_opid_index_less_or_equal;
+  std::optional<tserver::TabletServerErrorPB::Code> error_code;
+  RETURN_NOT_OK(server()->tablet_manager()->DeleteTablet(
+      tablet_id, delete_state, tablet::ShouldAbortActiveTransactions::kFalse,
+      cas_config_opid_index_less_or_equal, /* hide_only = */ false, keep_on_disk, &error_code));
+  LOG(INFO) << "Tablet " << tablet_id << " deleted as " << TabletDataState_Name(delete_state);
+  return Status::OK();
+}
+
 Status MiniTabletServer::FlushTablets(tablet::FlushMode mode, tablet::FlushFlags flags) {
   if (!server_) {
     return Status::OK();
@@ -291,10 +299,10 @@ Status MiniTabletServer::CleanTabletLogs() {
   return ForAllTablets(this, [](TabletPeer* tablet_peer) { return tablet_peer->RunLogGC(); });
 }
 
-Status MiniTabletServer::Restart(WaitToAcceptPgConnections wait_for_pg) {
+Status MiniTabletServer::Restart() {
   CHECK(started_);
   Shutdown();
-  return Start(WaitTabletsBootstrapped::kFalse, wait_for_pg);
+  return Start(WaitTabletsBootstrapped::kFalse);
 }
 
 Status MiniTabletServer::RestartStoppedServer() {

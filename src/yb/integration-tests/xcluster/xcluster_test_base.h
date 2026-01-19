@@ -326,6 +326,9 @@ class XClusterTestBase : public YBTest {
     if (!status.ok()) {
       return status.CloneAndAppend(error);
     }
+    if (!error.empty()) {
+      LOG(ERROR) << "Error: " << error;
+    }
     return output;
   }
 

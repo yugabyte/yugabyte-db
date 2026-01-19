@@ -2,12 +2,12 @@
 {{- $tags := split (replaceRE ",+" "," $tags) "," -}}
 {{- /* map of tag to links + display */ -}}
 {{- $linkmap := dict
-  "ea" (slice "/preview/releases/versioning/#feature-maturity" "EA")
-  "early-access" (slice "/preview/releases/versioning/#feature-maturity" "EARLY ACCESS")
-  "ga" (slice "/preview/releases/versioning/#feature-maturity" "GA")
-  "general" (slice "/preview/releases/versioning/#feature-maturity" "GENERAL AVAILABILITY")
-  "tech-preview" (slice "/preview/releases/versioning/#feature-maturity" "TECH PREVIEW")
-  "tp" (slice "/preview/releases/versioning/#feature-maturity" "TP")
+  "ea" (slice "/stable/releases/versioning/#feature-maturity" "EA")
+  "early-access" (slice "/stable/releases/versioning/#feature-maturity" "EARLY ACCESS")
+  "ga" (slice "/stable/releases/versioning/#feature-maturity" "GA")
+  "general" (slice "/stable/releases/versioning/#feature-maturity" "GENERAL AVAILABILITY")
+  "tech-preview" (slice "/stable/releases/versioning/#feature-maturity" "TECH PREVIEW")
+  "tp" (slice "/stable/releases/versioning/#feature-maturity" "TP")
 -}}
 {{- $classmap := dict
   "ea" "early-access"

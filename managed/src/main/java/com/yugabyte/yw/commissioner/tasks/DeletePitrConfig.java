@@ -2,6 +2,8 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Universe;
@@ -15,6 +17,8 @@ import org.yb.client.SnapshotScheduleInfo;
 import org.yb.client.YBClient;
 
 @Slf4j
+@Retryable
+@Abortable
 public class DeletePitrConfig extends UniverseTaskBase {
 
   @Inject

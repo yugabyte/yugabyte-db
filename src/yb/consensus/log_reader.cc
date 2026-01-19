@@ -360,7 +360,7 @@ Result<scoped_refptr<ReadableLogSegment>> LogReader::GetSegmentBySequenceNumber(
 }
 
 Result<std::shared_ptr<LWLogEntryBatchPB>> LogReader::ReadBatchUsingIndexEntry(
-    const LogIndexEntry& index_entry) const {
+    const LogIndexEntry& index_entry, ObeyMemoryLimit obey_memory_limit) const {
   const int64_t index = index_entry.op_id.index;
 
   const auto segment = VERIFY_RESULT_PREPEND(
@@ -370,7 +370,7 @@ Result<std::shared_ptr<LWLogEntryBatchPB>> LogReader::ReadBatchUsingIndexEntry(
   CHECK_GT(index_entry.offset_in_segment, 0);
   int64_t offset = index_entry.offset_in_segment;
   ScopedLatencyMetric<EventStats> scoped(read_batch_latency_.get());
-  auto result = segment->ReadEntryHeaderAndBatch(&offset);
+  auto result = segment->ReadEntryHeaderAndBatch(obey_memory_limit, &offset);
   RETURN_NOT_OK_PREPEND(
       result,
       Format("Failed to read LogEntry for index $0 from log segment $1 offset $2",
@@ -388,6 +388,7 @@ Status LogReader::ReadReplicatesInRange(
     const int64_t starting_at,
     const int64_t up_to,
     int64_t max_bytes_to_read,
+    ObeyMemoryLimit obey_memory_limit,
     ReplicateMsgs* replicates,
     int64_t* starting_op_segment_seq_num,
     CoarseTimePoint deadline) const {
@@ -430,7 +431,14 @@ Status LogReader::ReadReplicatesInRange(
         index_entry.segment_sequence_number != prev_index_entry.segment_sequence_number ||
         index_entry.offset_in_segment != prev_index_entry.offset_in_segment) {
       // Make read operation.
-      batch = VERIFY_RESULT(ReadBatchUsingIndexEntry(index_entry));
+      auto batch_result = ReadBatchUsingIndexEntry(index_entry, obey_memory_limit);
+      if (!batch_result) {
+        if (batch_result.status().IsBusy() && !replicates_tmp.empty()) {
+          break;
+        }
+        return batch_result.status();
+      }
+      batch = *batch_result;
 
       // Sanity-check the property that a batch should only have increasing indexes.
       int64_t prev_index = 0;

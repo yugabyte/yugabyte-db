@@ -40,7 +40,7 @@ export function fetchRootSubTaskDetails(
     axios
       .get(requestUrl)
       .then((response) => {
-        const subTaskDetails = response.data[taskTargetUUID]?.[0]?.taskInfo.taskParams;
+        const subTaskDetails = response.data[taskTargetUUID]?.[0]?.subtaskInfos[0]?.taskParams;
         // A task is considered a parent task if it doesn't have a previousTaskUUID
         if (!subTaskDetails.previousTaskUUID) {
           resolve(response.data);

@@ -78,16 +78,16 @@ To optimize performance, you can set the [yb_insert_on_conflict_read_batch_size]
 
 ### *returning_clause*
 
-The optional `RETURNING` clause causes `INSERT` to compute and return values based on each row that's actually inserted or updated (when you use an `ON CONFLICT DO UPDATE` clause). 
-You'll primarily find this useful for getting values supplied by defaults, like a serial sequence number. 
-However, you can use any expression that uses the table's columns. 
+The optional `RETURNING` clause causes `INSERT` to compute and return values based on each row that's actually inserted or updated (when you use an `ON CONFLICT DO UPDATE` clause).
+You'll primarily find this useful for getting values supplied by defaults, like a serial sequence number.
+However, you can use any expression that uses the table's columns.
 The syntax for the `RETURNING` list is identical to the output list of `SELECT`.
 
 Only rows that are successfully inserted or updated are returned. For example, if a row is locked but not updated because an `ON CONFLICT DO UPDATE ... WHERE` clause condition wasn't satisfied, that row won't be returned.
 
 ### *column_values*
 
-The values you supply in the `VALUES` clause or query are matched with your column list from left to right. 
+The values you supply in the `VALUES` clause or query are matched with your column list from left to right.
 
 Any column not included in your explicit or implicit column list is filled with its default value. If there's no declared default value for that column, it is set to `NULL`.
 

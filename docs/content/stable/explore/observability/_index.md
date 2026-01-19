@@ -4,6 +4,10 @@ headerTitle: Observability
 linkTitle: Observability
 description: Observability in YugabyteDB.
 headcontent: Monitoring, alerting, and analyzing metrics
+aliases:
+  - /stable/explore/observability-docker/macos
+  - /stable/explore/observability-docker/linux
+  - /stable/explore/observability-docker/docker
 menu:
   stable:
     identifier: explore-observability
@@ -81,10 +85,18 @@ To understand how to view live queries, see [pg_stat_activity](./pg-stat-activit
 
 ## Tablet information
 
-The yb_local_tablets view provides information about the how your table data is distributed across the different tablets in your cluster.
+YugabyteDB provides two views for accessing tablet metadata:
+
+- **yb_local_tablets**: Provides information about tablets on a specific node/server. This view returns the same information that is available on `<yb-tserver-ip>:9000/tablets`.
+
+- **yb_tablet_metadata**: Provides cluster-wide tablet distribution and leadership information, including replica locations and leader nodes. This view serves as the YSQL equivalent of the YCQL `system.partitions` table.
 
 {{<lead link="./yb-local-tablets">}}
-To understand how to view and use tablet metadata, see [yb_local_tablets](./yb-local-tablets)
+To view tablet metadata for a specific node, see [yb_local_tablets](./yb-local-tablets)
+{{</lead>}}
+
+{{<lead link="./yb-tablet-metadata">}}
+To view cluster-wide tablet distribution and leadership, see [yb_tablet_metadata](./yb-tablet-metadata)
 {{</lead>}}
 
 ## Terminated queries

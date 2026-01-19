@@ -9,6 +9,8 @@ menu:
     parent: pg-extensions
     weight: 20
 type: docs
+aliases:
+  - /stable/explore/ysql-language-features/pg-extensions/extension-pgstatstatements
 ---
 
 The [pg_stat_statements](https://www.postgresql.org/docs/15/pgstatstatements.html) module provides a means for tracking execution statistics of all SQL statements executed by a server.

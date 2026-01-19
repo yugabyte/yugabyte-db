@@ -104,6 +104,10 @@ ybvectorrescan(IndexScanDesc scan, ScanKey scankeys, int nscankeys,
 									scan->yb_exec_params,
 									false /* is_internal_scan */,
 									scan->fetch_ybctids_only);
+
+	/* For vector indexes, we either recheck all rows or no rows. */
+	scan->xs_recheck = YbNeedsPgRecheck(ybScan);
+
 	so->yb_scan_desc = ybScan;
 	if (scan->yb_exec_params->limit_count > 0)
 		so->limit = scan->yb_exec_params->limit_count;
@@ -138,8 +142,7 @@ ybvectorgettuple(IndexScanDesc scan, ScanDirection dir)
 	bool has_tuple = false;
 	if (ybscan->prepare_params.index_only_scan)
 	{
-		IndexTuple tuple =
-			ybc_getnext_indextuple(ybscan, dir, &scan->xs_recheck);
+		IndexTuple tuple = ybc_getnext_indextuple(ybscan, dir);
 		if (tuple)
 		{
 			scan->xs_itup = tuple;
@@ -149,8 +152,7 @@ ybvectorgettuple(IndexScanDesc scan, ScanDirection dir)
 	}
 	else
 	{
-		HeapTuple tuple =
-			ybc_getnext_heaptuple(ybscan, dir, &scan->xs_recheck);
+		HeapTuple tuple = ybc_getnext_heaptuple(ybscan, dir);
 		if (tuple)
 		{
 			scan->xs_hitup = tuple;
@@ -181,7 +183,7 @@ ybvectorendscan(IndexScanDesc scan)
  *	 TODO(tanuj): Make sure this is false and correct.
  */
 bool
-ybvectormightrecheck(Relation heapRelation, Relation indexRelation,
+ybvectormightrecheck(Scan *scan, Relation heapRelation, Relation indexRelation,
 					 bool xs_want_itup, ScanKey keys, int nkeys)
 {
 	return true;

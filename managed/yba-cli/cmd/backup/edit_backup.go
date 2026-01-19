@@ -68,13 +68,11 @@ var editBackupCmd = &cobra.Command{
 		}
 
 		var storageUUID string
-		if len(strings.TrimSpace(storageConfigName)) != 0 {
+		if !util.IsEmptyString(storageConfigName) {
 			storageConfigListRequest := authAPI.GetListOfCustomerConfig()
 			r, response, err := storageConfigListRequest.Execute()
 			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(
-					response, err, "Backup", "Edit - Get Storage Configuration")
-				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+				util.FatalHTTPError(response, err, "Backup", "Edit - Get Storage Configuration")
 			}
 
 			storageConfigs := make([]ybaclient.CustomerConfigUI, 0)
@@ -113,8 +111,7 @@ var editBackupCmd = &cobra.Command{
 		editBackupRequest := authAPI.EditBackup(backupUUID).Backup(requestBody)
 		_, response, err := editBackupRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Backup", "Edit")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Backup", "Edit")
 		}
 
 		backupUUIDList := []string{backupUUID}
@@ -138,13 +135,7 @@ var editBackupCmd = &cobra.Command{
 		backupListRequest := authAPI.ListBackups().PageBackupsRequest(backupAPIQuery)
 		r, response, err := backupListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"Backup",
-				"Edit - Describe Backup",
-			)
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Backup", "Edit - Describe Backup")
 		}
 
 		fullBackupContext := *backup.NewFullBackupContext()

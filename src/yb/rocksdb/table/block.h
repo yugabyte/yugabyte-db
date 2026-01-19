@@ -91,13 +91,13 @@ class Block {
   // This option only applies for index block. For data block, hash_index_
   // and prefix_index_ are null, so this option does not matter.
   // key_value_encoding_format specifies what kind of algorithm to use for decoding entries.
-  InternalIterator* NewIterator(const Comparator* comparator,
+  BlockIter* NewIterator(const Comparator* comparator,
                                 KeyValueEncodingFormat key_value_encoding_format,
                                 BlockIter* iter = nullptr,
                                 bool total_order_seek = true,
                                 size_t restart_block_cache_capacity = 0) const;
 
-  inline InternalIterator* NewIndexBlockIterator(
+  inline BlockIter* NewIndexBlockIterator(
       const Comparator* comparator, BlockIter* iter = nullptr, bool total_order_seek = true) const {
     return NewIterator(
         comparator, kIndexBlockKeyValueEncodingFormat, iter, total_order_seek);
@@ -126,11 +126,16 @@ class Block {
       MiddlePointPolicy middle_entry_policy = MiddlePointPolicy::kMiddleLow
   ) const;
 
- private:
   // Returns key for corresponding restart block.
   yb::Result<Slice> GetRestartKey(
       uint32_t restart_idx, KeyValueEncodingFormat key_value_encoding_format) const;
 
+  static inline uint32_t GetMiddlePointIndex(
+      const uint32_t num_points, const MiddlePointPolicy middle_point_policy) {
+    return num_points ? (num_points - std::to_underlying(middle_point_policy)) / 2 : 0;
+  }
+
+ private:
   // Returns a key of a middle entry for the specificed restart point.
   yb::Result<std::string> GetRestartBlockMiddleEntryKey(
       uint32_t restart_idx, const Comparator* comparator,
@@ -149,8 +154,10 @@ class Block {
   void operator=(const Block&);
 };
 
-class BlockIter final : public InternalIterator {
+class BlockIter : public InternalIterator {
  public:
+  class Empty;
+
   BlockIter()
       : comparator_(nullptr),
         data_(nullptr),
@@ -226,6 +233,10 @@ class BlockIter final : public InternalIterator {
 
   inline uint32_t GetCurrentRestart() const {
     return restart_index_;
+  }
+
+  inline uint32_t GetNumRestarts() const {
+    return num_restarts_;
   }
 
  private:
@@ -317,5 +328,11 @@ class BlockIter final : public InternalIterator {
 
   bool PrefixSeek(const Slice& target, uint32_t* index);
 };
+
+// Return an empty iterator (yields nothing) allocated from arena if specified.
+BlockIter* NewEmptyBlockIterator(Arena* arena = nullptr);
+
+// Return an empty iterator with the specified status, allocated arena if specified.
+BlockIter* NewErrorBlockIterator(const Status& status, Arena* arena = nullptr);
 
 }  // namespace rocksdb

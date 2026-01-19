@@ -179,13 +179,16 @@ def can_ssh(host_name, port, username, ssh_key_file, **kwargs):
         ssh2_enabled = kwargs.get('ssh2_enabled', False)
         ssh_client = SSHClient(ssh2_enabled=ssh2_enabled)
         ssh_client.connect(host_name, username, ssh_key_file, port)
-        stdout = ssh_client.exec_command("echo 'test'", output_only=True)
+        rc, stdout, stderr = ssh_client.exec_command("echo 'test'", **kwargs)
+        if rc != 0:
+            logging.error("Error checking the instance, {}".format(stderr))
+            return False
         stdout = stdout.splitlines()
         if len(stdout) == 1 and (stdout[0] == "test"):
             return True
         return False
     except Exception as e:
-        logging.error("Error Checking the instance, {}".format(e))
+        logging.error("Error checking the instance, {}".format(e))
         return False
 
 
@@ -427,10 +430,7 @@ class SSHClient(object):
     def exec_command(self, cmd, **kwargs):
         '''
             Executes the command on the remote machine.
-            If `output_only` kwargs is passed, then only output
-            is returned to the client. Else we return stdin, stdout, stderr.
         '''
-        output_only = kwargs.get('output_only', False)
         skip_cmd_logging = kwargs.get('skip_cmd_logging', False)
         if isinstance(cmd, str):
             command = cmd
@@ -442,30 +442,19 @@ class SSHClient(object):
             if not skip_cmd_logging:
                 logging.info("Executing command {}".format(command))
             _, stdout, stderr = self.client.exec_command(command)
-            if not output_only:
-                output = stdout.readlines()
-                error = stderr.readlines()
-                return stdout.channel.recv_exit_status(), output, error
-            else:
-                output = self.read_output(stdout)
-                error = self.read_output(stderr)
-                # We should read output first before we call recv_exit_status()
-                # see https://github.com/paramiko/paramiko/issues/448
-                return_code = stdout.channel.recv_exit_status()
-                if return_code != 0:
-                    raise YBOpsRuntimeError('Command \'{}\' returned error code {}: {}'.format(
-                        "" if skip_cmd_logging else command, return_code, error))
-                return output
+            output = self.read_output(stdout)
+            error = self.read_output(stderr)
+            # We should read output first before we call recv_exit_status()
+            # see https://github.com/paramiko/paramiko/issues/448
+            rc = stdout.channel.recv_exit_status()
+            return rc, output, error
         else:
             cmd = self.__generate_shell_command(
                 self.hostname,
                 self.port, self.username,
                 self.key, command=command)
             output = run_command(cmd)
-            if not output_only:
-                return 0, output, None
-            else:
-                return output
+            return 0, output, None
 
     def close_connection(self):
         '''
@@ -506,9 +495,7 @@ class SSHClient(object):
 
         # Heredoc syntax for input redirection from a local shell script
         command = f"/bin/bash -s {params} <<'EOF'\n{local_script}\nEOF"
-        stdout = self.exec_command(command, output_only=True)
-
-        return stdout
+        return self.exec_command(command)
 
     @retry_ssh_errors
     def download_file_from_remote_server(self, remote_file_name, local_file_name):

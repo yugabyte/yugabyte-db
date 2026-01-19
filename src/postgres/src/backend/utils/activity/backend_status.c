@@ -377,6 +377,7 @@ pgstat_bestart(void)
 	/* YB: Increment the total connections counter */
 	if (lbeentry.st_procpid > 0 &&
 		(lbeentry.st_backendType == B_BACKEND ||
+		 lbeentry.st_backendType == YB_AUTO_ANALYZE_BACKEND ||
 		 lbeentry.st_backendType == YB_YSQL_CONN_MGR))
 		(*yb_new_conn)++;
 
@@ -399,6 +400,7 @@ pgstat_bestart(void)
 	if (lbeentry.st_backendType == B_BACKEND
 		|| lbeentry.st_backendType == B_WAL_SENDER
 		|| lbeentry.st_backendType == B_BG_WORKER
+		|| lbeentry.st_backendType == YB_AUTO_ANALYZE_BACKEND
 		|| lbeentry.st_backendType == YB_YSQL_CONN_MGR
 		|| lbeentry.st_backendType == YB_YSQL_CONN_MGR_WAL_SENDER)
 		lbeentry.st_userid = GetSessionUserId();

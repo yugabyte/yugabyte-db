@@ -78,12 +78,12 @@ TEST(DocKVUtilTest, EncodeAndDecodeHybridTimeInKey) {
 
 TEST(DocKVUtilTest, AppendZeroEncodedStrToKey) {
   KeyBuffer buf("a"s);
-  AppendZeroEncodedStrToKey("bc", &buf);
+  AppendZeroEncodedStrToKey("bc", buf);
   ASSERT_EQ("abc", buf.ToStringBuffer());
   string str_with_embedded_zeros = "f";
   str_with_embedded_zeros.push_back('\x0');
   str_with_embedded_zeros.push_back('g');
-  AppendZeroEncodedStrToKey(str_with_embedded_zeros, &buf);
+  AppendZeroEncodedStrToKey(str_with_embedded_zeros, buf);
   ASSERT_EQ(7, buf.size());
   ASSERT_EQ('f', buf[3]);
   ASSERT_EQ('\x00', buf[4]);
@@ -93,7 +93,7 @@ TEST(DocKVUtilTest, AppendZeroEncodedStrToKey) {
 
 TEST(DocKVUtilTest, TerminateZeroEncodedKeyStr) {
   KeyBuffer buf("a"s);
-  TerminateZeroEncodedKeyStr(&buf);
+  TerminateZeroEncodedKeyStr(buf);
   ASSERT_EQ(3, buf.size());
   ASSERT_EQ('a', buf[0]);
   ASSERT_EQ('\x0', buf[1]);
@@ -346,7 +346,7 @@ TEST(DocKVUtilTest, ZeroEncodingPerf) {
       },
       [&buffer](const Slice& str) {
         buffer.clear();
-        AppendZeroEncodedStrToKey(str, &buffer);
+        AppendZeroEncodedStrToKey(str, buffer);
       }
   );
 }
@@ -372,7 +372,7 @@ TEST(DocKVUtilTest, ComplementZeroEncodingPerf) {
       },
       [&buffer](const Slice& str) {
         buffer.clear();
-        AppendComplementZeroEncodedStrToKey(str, &buffer);
+        AppendComplementZeroEncodedStrToKey(str, buffer);
       }
   );
 }

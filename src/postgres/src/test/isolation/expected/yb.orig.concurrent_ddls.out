@@ -1,0 +1,76 @@
+unused step name: s1_begin_rc
+unused step name: s1_begin_sr
+unused step name: s2_begin_rc
+unused step name: s2_begin_sr
+unused step name: s2_drop_table_test
+unused step name: s2_drop_table_test_if_exists
+Parsed test spec with 2 sessions
+
+starting permutation: s1_begin_rr s2_begin_rr s1_drop_table_test s2_drop_table_test2 s1_commit s2_commit
+step s1_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s2_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_drop_table_test: DROP TABLE test;
+step s2_drop_table_test2: DROP TABLE test2;
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s2_begin_rr s1_alter_table_test_add_col_a s2_alter_table_test2_add_col_a s1_commit s2_commit
+step s1_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s2_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_alter_table_test_add_col_a: ALTER TABLE test ADD COLUMN a INT;
+step s2_alter_table_test2_add_col_a: ALTER TABLE test2 ADD COLUMN a INT;
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rr s2_begin_rr s1_alter_table_test_add_col_a s2_alter_table_test_add_col_b s1_commit s2_commit s2_select_test_atts
+step s1_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s2_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_alter_table_test_add_col_a: ALTER TABLE test ADD COLUMN a INT;
+step s2_alter_table_test_add_col_b: ALTER TABLE test ADD COLUMN b INT; <waiting ...>
+step s1_commit: COMMIT;
+step s2_alter_table_test_add_col_b: <... completed>
+step s2_commit: COMMIT;
+step s2_select_test_atts: SELECT attname FROM pg_attribute WHERE attrelid = 'test'::regclass::oid and attnum > 0;
+attname
+-------
+k      
+v      
+a      
+b      
+(4 rows)
+
+
+starting permutation: s1_begin_rr s2_begin_rr s1_alter_table_test_add_col_a s2_alter_table_test_add_col_a s1_commit s2_commit s2_select_test_atts
+step s1_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s2_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_alter_table_test_add_col_a: ALTER TABLE test ADD COLUMN a INT;
+step s2_alter_table_test_add_col_a: ALTER TABLE test ADD COLUMN a INT; <waiting ...>
+step s1_commit: COMMIT;
+step s2_alter_table_test_add_col_a: <... completed>
+ERROR:  column "a" of relation "test" already exists
+step s2_commit: COMMIT;
+step s2_select_test_atts: SELECT attname FROM pg_attribute WHERE attrelid = 'test'::regclass::oid and attnum > 0;
+attname
+-------
+k      
+v      
+a      
+(3 rows)
+
+
+starting permutation: s1_begin_rr s2_begin_rr s1_alter_table_test_add_col_a s2_alter_table_test_add_col_b s1_rollback s2_commit s2_select_test_atts
+step s1_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s2_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_alter_table_test_add_col_a: ALTER TABLE test ADD COLUMN a INT;
+step s2_alter_table_test_add_col_b: ALTER TABLE test ADD COLUMN b INT; <waiting ...>
+step s1_rollback: ROLLBACK;
+step s2_alter_table_test_add_col_b: <... completed>
+step s2_commit: COMMIT;
+step s2_select_test_atts: SELECT attname FROM pg_attribute WHERE attrelid = 'test'::regclass::oid and attnum > 0;
+attname
+-------
+k      
+v      
+b      
+(3 rows)
+

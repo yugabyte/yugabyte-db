@@ -9,6 +9,8 @@ menu:
     identifier: best-practices-ysql-administration
     parent: best-practices-operations
     weight: 10
+aliases:
+  - /stable/develop/best-practices/administration/
 type: docs
 ---
 

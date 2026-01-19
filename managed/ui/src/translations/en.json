@@ -49,6 +49,9 @@
       "collapse": "Collapse",
       "formFieldRequired": "Required.",
       "every": "Every",
+      "actions": "Actions",
+      "enabled": "Enabled",
+      "disabled": "Disabled",
       "duration": {
         "seconds": "Seconds",
         "minutes": "Minutes",
@@ -232,7 +235,10 @@
         "enableEITWarning": "Enable Node to Node encryption or Client to Node encryption to enable encryption in transit.",
         "disableEITWarning": "Note! Enabling/Disabling of “Encryption In Transit” or Enabling/Disabling of “Node to Node” or “Client to Node” encryption will be performed as non rolling upgrade.",
         "xClusterRotateCaWarning": "Note! Rotating node to node CA certs for universes participating in an xCluster configuration as the source universe will interrupt the replication and require a restart of the xCluster configuration to resume replication after TLS rotation is completed.",
-        "xClusterToggleEncryptionWarning": "Note! Toggling on/off encryption for universes participating in an xCluster configuration will interrupt the replication. To enable replication again, please ensure all participating universes have matching TLS encryption setting and restart the affected xCluster configurations."
+        "xClusterToggleEncryptionWarning": "Note! Toggling on/off encryption for universes participating in an xCluster configuration will interrupt the replication. To enable replication again, please ensure all participating universes have matching TLS encryption setting and restart the affected xCluster configurations.",
+        "upgradeOptions": "Upgrade Options",
+        "selectUpgradeoption": "Select Upgrade Option",
+        "selectAndApply": "Select Upgrade Option and Apply"
       },
       "masterFailover": {
         "warning": {
@@ -269,6 +275,7 @@
         "additionalStepInfo": "After the upgrade is completed, you'll need to manually finalize the upgrade to finish the process.",
         "configureUpgrade": "2. Configure upgrade details",
         "rolllingUpgradeLabel": "Rolling upgrade (upgrade nodes one at a time)",
+        "nonRollingWarning": "<strong>Non-rolling rollback will cause database downtime.</strong><br /> The database will be unavailable for the duration of the rollback.",
         "upgradeDelayLabel": "Upgrade delay between Nodes:",
         "numNodesToRollingUpgrade": "Max batch size: ",
         "rollingUpgradeMsg": "Refers to the number of nodes that can be unavailable during upgrade process across AZs. This can possibly affect the performance of the cluster till the upgrade is finished",
@@ -277,7 +284,7 @@
         "footerMsg3": "Before upgrading, perform a full backup of your universe.",
         "rollbackPrevious": "roll back to the previous version",
         "avoidDisruption": "Avoid disruption to xCluster configuration",
-        "pitrNotSupported":"If you have PITR configured, after the upgrade <b>you cannot restore</b> to a time prior to the upgrade",
+        "pitrNotSupported": "If you have PITR configured, after the upgrade <b>you cannot restore</b> to a time prior to the upgrade",
         "xClusterWarning2": "If you are using xCluster DR, you <b>cannot fail over</b> while upgrading the DR replica, <b>or switch over</b> while upgrading either the DR primary or replica.",
         "xclusterWarning": "This universe is part of one or more xCluster configurations. To minimize disruption, upgrade the target universe first.",
         "rollbackUpgradeTite": "Roll Back Upgrade",
@@ -668,6 +675,7 @@
         "encryptionSettings": {
           "title": "Encryption Settings",
           "encryptionInTransit": "Encryption in Transit",
+          "enableEncryptionInTransit": "Enable encryption in transit",
           "encryptionAtRest": "Encryption at Rest",
           "enableClientToNodeTLS": "Enable Client-to-Node TLS",
           "enableClientToNodeTLSHelper": "Enable Client-to-Node encryption to use TLS enabled connection for communication between a client (ex: Database application, ysqlsh, ycqlsh) and the Universe YSQL -or- YCQL endpoint.",
@@ -676,7 +684,10 @@
           "enableNodeToNodeTLS": "Enable Node-to-Node TLS",
           "enableNodeToNodeTLSHelper": "Enable Node-to-Node encryption to use TLS enabled connections for communication between different Universe nodes.",
           "rootCertificate": "Root Certificate",
-          "rootCertificatePlaceHolder": "Create New Certificate"
+          "clientToNodeCertificate": "Client-to-Node Certificate",
+          "rootCertificatePlaceHolder": "Create New Certificate",
+          "clientCAAndRootCASame": "Use the same certificate for “Node to Node” and “Client to Node” encryption",
+          "enableBothNodeAndClientTLS": "Enable “Node to Node” and “Client to Node” Encryption"
         },
         "placeholder": {
           "enterYSQLPassword": "Enter YSQL auth password",
@@ -691,17 +702,13 @@
         "tagName": "Tag Name",
         "tagValue": "Value"
       },
-      "resizeNodeModal": {
-        "confirmResizeCheckbox": "Confirm Resize Nodes",
-        "modalTitle": "Resize Nodes",
-        "cancelLabel": "Cancel",
-        "confirmLabel": "Confirm",
-        "modalDescription": "This operation will be performed without restart",
-        "timeDelayLabel": "Rolling Upgrade Delay Between Servers (secs)"
-      },
       "smartResizeModal": {
-        "modalDescription": "This operation will migrate this universe and all its data to a completely new set of nodes Or alternatively you could try smart resize (This will change VM image {{value}} for existing nodes)",
-        "buttonLabel": "Do Smart Resize"
+        "modalTitle": "Confirm Smart Resize Update",
+        "confirmResizeCheckbox": "Confirm Resize Nodes",
+        "timeDelayLabel": "Rolling Upgrade Delay Between Servers (secs)",
+        "modalDescription": "This operation {{value}} {{value2}} for existing nodes",
+        "modalDescriptionNonRestart": "This operation will be performed without restart",
+        "buttonLabel": "Proceed"
       },
       "placementModal": {
         "modalTitle": "Confirm Update",
@@ -1959,6 +1966,13 @@
         "numberOfKeyspace": "Number of Keyspaces",
         "numberOfDatabase": "Number of Databases"
       },
+      "rolesConfig": {
+        "title": " Restore Roles",
+        "checkboxTitle": "Restore global roles",
+        "checkboxHelpText": "<b>Note!</b> If selected, all the global roles in the target universe will be restored.",
+        "checkboxHelpText2": "<b>Note!</b> If selected, the restore will fail as the roleis already in the target database, else the role will not be restored.",
+        "checkboxTitle2": "Fail restore if role already exists in target database"
+      },
       "prefetch": {
         "loadingText": "Fetching Incremental Backups..."
       },
@@ -2670,6 +2684,11 @@
           "storageConfig": "Storage Config",
           "folderName": "Folder Name"
         },
+        "error": {
+          "backupFrequencyMustBePositiveInteger": "Please enter a positive integer.",
+          "backupFrequencyMustBeGreaterThanOrEqualTo2": "Minimum 2 minutes.",
+          "backupFrequencyMustBeLessThanOrEqualTo1440": "Maximum 1440 minutes (24 hours)."
+        },
         "tip": {
           "performanceImpact": "Platform backups don't significantly impact performance.",
           "copiesRetained": "Only the 3 most recent copies are retained, as older backups are more likely to be inconsistent with the current state of your universes."
@@ -2695,6 +2714,12 @@
           "editFailedLabel": "Failed to apply changes to automated platform backup"
         }
       },
+      "restoreOverExistingUniversesWarningModal": {
+        "title": "Are you sure?",
+        "restoreOverExistingUniversesWarning": "Restoring from a backup can cause serious issues for your existing universes, including <bold>data loss</bold>, as the backup may not be consistent with the current state of the universes.",
+        "confirmationInstructions": "Type “Accept Risk” to continue",
+        "submitButton": "Accept Risk and Continue"
+      },
       "deleteContinuousBackupModal": {
         "title": "Disable Automated Platform Backups",
         "deleteConfirmation": "Are you sure you want to disable automated platform backups? This will delete the automated platform backup configuration. To re-enable, you will need to to set up the confirguration again.",
@@ -2714,7 +2739,7 @@
           "universeMetrics": "Universe Metrics (Prometheus Data)"
         },
         "exportDestination": "Export Destination",
-        "exportDestinationPlaceholder": "Path to local directory. ex. /opt/yba_backups",
+        "exportDestinationPlaceholder": "Path to local directory. ex. /opt/yugabyte/yba_backups",
         "submitButton": "Export",
         "toast": {
           "createBackupRequestSuccess": "Exporting platform...",
@@ -2723,7 +2748,7 @@
           "createBackupTaskFailed": "One-time platform export failed."
         }
       },
-      "restoreYbaBackupModal": {
+      "restoreYbaBackupFormModal": {
         "title": "Restore Platform Backup",
         "instructions": "Choose how you want to restore your platform backup",
         "option": {
@@ -2733,7 +2758,7 @@
         "localBackup": {
           "provideBackupFilePath": "Provide the backup file path",
           "filePath": "File Path",
-          "filePathPlaceholder": "/opt/yugabyte/oneTimeBackup"
+          "filePathPlaceholder": "ex. /opt/yugabyte/yba_backups/<backupFileName>"
         },
         "cloudBackup": {
           "configureBackupStorageConfigPrompt": {
@@ -2744,9 +2769,10 @@
           "selectStorageConfig": "Select the storage config that contains the backup",
           "storageConfig": "Storage config",
           "selectBackupFolder": "Specify the backup folder",
-          "folder": "Folder",
+          "folder": "Folder Name",
           "backupFolderHelperText": "The most recent backup from this folder will be used for the restore."
         },
+        "ybaRestartWarning": "<bold>Note!</bold> As part of the restore process, YugabyteDB Anywhere will restart itself automatically.",
         "submitButton": "Restore",
         "error": {
           "backupTypeRequired": "Please select a backup type"
@@ -2849,7 +2875,9 @@
           "splunk": "Splunk",
           "awsCloudWatch": "AWS CloudWatch",
           "gcpCloudMonitoring": "GCP Cloud Logging",
-          "dynatrace": "Dynatrace"
+          "dynatrace": "Dynatrace",
+          "s3": "S3",
+          "otlp": "OTLP"
         },
         "exportSupport": {
           "metrics": "Metrics",
@@ -3092,10 +3120,13 @@
           },
           "backupObjects": {
             "advancedConfig": "Advanced Configuration",
+            "rolesConfig": "Roles Configuration",
             "selectDBTitle": "Select the Keyspaces/Databases you want to backup",
             "selectDB": "Databases/Keyspaces",
             "backupTablespace": "Backup tablespaces information",
+            "backupRoles": "Backup global roles",
             "backupTablespaceSubText": "In Universes using tablespaces, this allows restoring while preserving source universe tablespaces. (Given both source and target have the same topology.)",
+            "backupRolesSubText": "In Universes using roles, this allows restoring while preserving source universe roles.",
             "allTables": "Select all tables in this Keyspace",
             "subSetOfTables": "Select a subset of tables",
             "selectTables": "Select Tables",
@@ -3260,6 +3291,7 @@
           "kmsConfigHelpText": "<b>Note!</b> For a successful restore, the KMS configuration used for restore should be the same KMS configuration used during backup creation.",
           "activeKMS": "Active",
           "usedDuringBackup": "Used during backup",
+          "restoreRoles": "Restore global roles",
           "parallelThreads": "Parallel threads (Optional)",
           "tablespacePlacementConflict": "<b>Tablespace Placement Conflict.</b> Some tablespaces in the backup have a placement policy that conflicts with the target universe. <a>View logs for details.</a><br/>If you proceed, the restore may fail. if it does, you can retry the restore without tablespaces. <a2>Learn more about restoring tablespaces.</a2>",
           "tablespaceNameConflict": "<b>Tablespace Name Conflict.</b> The target universe has tablespaces with the same name as tablespaces in the backup. In cases where the placement policy differs between the target and backup tablespaces, <b>the target policy will be used.</b> <a>View logs for details</a>"
@@ -3306,7 +3338,7 @@
         "title": "General Settings",
         "universeName": "Universe Name",
         "universeNamePlaceholder": "Enter Universe Name",
-        "cloudProvider": "Cloud Provider",
+        "cloudProvider": "Provider",
         "providerconfiguration": "Provider Configuration",
         "providerConfigurationPlaceholder": "Select Provider Configuration",
         "databaseVersion": "Database Version",
@@ -3334,7 +3366,9 @@
         "singleNode": {
           "availabilityZone": "Availability Zone",
           "chooseAvailabilityZone": "Choose Availability Zone",
-          "node": "Node"
+          "node": "Node",
+          "caution": "Caution!",
+          "cautionMsg": "Single node clusters are not resilient to outages and will be subject to downtime during operations that require a restart."
         },
         "helpText": "Advanced placement options such as  <a>Read Replicas</a>  and  <a>Geo Partitioning</a>  can be configured post cluster creation.",
         "freeFormHelpText": "Set the replication factor for your data.  <a>What is this?</a>",
@@ -3352,7 +3386,7 @@
           "nodeErr": "<b>Invalid region count!</b>  You have selected <b>{{selected_regions}} regions</b>. To support the chosen fault tolerance <b>1 region</b> is required. Update your selection to proceed."
         },
         "guidedMode": {
-          "instruction": "Set the resilience for your cluster",
+          "instruction": "Set the resilience for your cluster.",
           "helpText": "What is this?",
           "faultTolerance": "Fault Tolerance",
           "REGION_LEVEL": {
@@ -3453,7 +3487,8 @@
         },
         "errMsg": {
           "lessNodes": "<b>Invalid node count!</b>  You have selected <b>{{nodeCount}} nodes</b>. To support the chosen fault tolerance <b>{{faultToleranceNeeded}} nodes</b> are required. Update your selection to proceed. ",
-          "lessNodesDedicated": "<b>Invalid node count!</b>  You have selected <b>{{nodeCount}} T-server nodes</b>. To support the chosen fault tolerance <b>{{faultToleranceNeeded}} T-server nodes</b> are required. Update your selection to proceed. "
+          "lessNodesDedicated": "<b>Invalid node count!</b>  You have selected <b>{{nodeCount}} T-server nodes</b>. To support the chosen fault tolerance <b>{{faultToleranceNeeded}} T-server nodes</b> are required. Update your selection to proceed. ",
+          "missingPreferredValue": "Preferred rank should be continuous. Missing Rank {{missingValue}}."
         }
       },
       "instanceSettings": {
@@ -3465,7 +3500,8 @@
           "maxValue": "{{field}} must be at most {{max}}",
           "invalidStorageClass": "Invalid storage class",
           "invalidMountPoint": "Mount point must be a valid path starting with '/'",
-          "invalidStorageType": "Invalid storage type"
+          "invalidStorageType": "Invalid storage type",
+          "required": "field is required"
         }
       },
       "databaseSettings": {
@@ -3600,14 +3636,193 @@
         "title": "Before You Start...",
         "description": "The <b>existing regions</b> in your cluster,  will be designated as your  \"<b>primary</b>\"  Geo-partition.",
         "desc_ques": "What is a primary Geo-partition?",
-        "desc_ans": "A primary Geo-partition stores the tables that aren't assigned to a specific region or tablespace. <a>Learn more</a>"
+        "desc_ans": "A primary Geo-partition stores the tables that aren't assigned to a specific region or tablespace. <a>Learn more</a>",
+        "existingRegions": "Existing Regions",
+        "geoPartition1": "Geo Partition 1",
+        "primary": "Primary"
       },
       "geoPartitionGeneralSettings": {
         "title": "General Settings",
-        "displayName": "Display Name",
+        "displayName": "Geo partition display name",
         "addGeoPartition": "Add Geo Partition",
+        "addNewGeoPartition": "Next: Add New Geo Partition",
         "tablespaceName": "Tablespace Name",
-        "tablespaceNameHelpText": "Tablespace name <b>CANNOT</b> be modified after geo partition creation."
+        "tablespaceNameHelpText": "Tablespace name <b>CANNOT</b> be modified after geo partition creation.",
+        "existingRegions": "Existing Regions",
+        "helpText": "Use Geo-partitioning to optimize regional data placement for low-latency access or GDPR compliance. <a>Learn more</a>",
+        "tablespaceNameRequiredError": "Tablespace name is required",
+        "displayNameRequiredError": "Geo Partition Name is required"
+      },
+      "geoPartitionNodesAndAvailability": {
+        "instanceType": "Instance Type",
+        "volume": "Volume",
+        "ebsType": "EBS Type",
+        "iops": "IOPS",
+        "throughput": "Throughput",
+        "nodes": "Node Size"
+      }
+    },
+    "editUniverse": {
+      "totalNodes": "{{total}} Nodes",
+      "readReplica": "Read Replica",
+      "preferredRank": "Preferred Rank {{rank}}",
+      "tabs": {
+        "general": "General",
+        "placement": "Placement",
+        "hardware": "Hardware",
+        "security": "Security",
+        "database": "Database",
+        "advanced": "Advanced"
+      },
+      "general": {
+        "title": "General",
+        "databaseVersion": "Database Version",
+        "clusterId": "Cluster ID",
+        "provider": "Provider",
+        "providerConfig": "Provider Config",
+        "totalNodes": "Total Nodes",
+        "faultTolerance": "Fault Tolerance",
+        "encryption": "Encryption",
+        "dateCreated": "Date Created",
+        "inTransit": "In-Transit",
+        "atRest": "at-Rest",
+        "regionResilient": "Resilient to {{count}} Region outage",
+        "azResilient": "Resilient to {{count}} Availability Zone outage",
+        "nodeResilient": "Resilient to {{count}} Node outage",
+        "notResilient": "Not Resilient to outages",
+        "primaryCluster": "Primary Cluster",
+        "asyncCluster": "Async Cluster",
+        "cpuArch": "CPU Architecture",
+        "linuxVersion": "Linux Version",
+        "defaultInstanceType": "Default Instance Type",
+        "region": "Region",
+        "primary": "Primary",
+        "readReplica": "Read Replica",
+        "preferredRank1": "Preferred Rank 1",
+        "allLocation": "All Locations",
+        "geoPartition": "Geo Partition"
+      },
+      "placement": {
+        "actions": "Actions",
+        "editResilienceAndRegions": "Edit Resilience and Regions",
+        "editNodesAndAvailabilityZones": "Edit Nodes and Availability Zones",
+        "editMasterServerNodeAllocation": "Edit Master Server Node Allocation",
+        "clusterPlacement": "Cluster Placement",
+        "addReadReplica": "Add Read Replica",
+        "addReadReplicaHelpText": "Enhance read scalability and availability with Read Replicas.",
+        "addGeoPartition": "Add Geo Partition",
+        "geoPartitionHelpText": "Optimize regional data placement for low-latency access or GDPR compliance. <a>Learn more</a>",
+        "faultTolerance": "Fault Tolerance",
+        "replicationFactor": "Replication Factor",
+        "totalNodes": "Total Nodes",
+        "totalNodesTServerMaster": "{{total_nodes}} ({{tservers}} T-Servers | {{masters}} Masters)",
+        "tServers": "T-Servers",
+        "masters": "Masters",
+        "region": "Region",
+        "availabilityZone": "Availability Zone",
+        "noOfNodes": "No. of Nodes",
+        "reviewChanges": "Review Changes",
+        "editPlacementConfirmModal": {
+          "title": "Review Changes",
+          "summary": "Summary of instance configuration changes:",
+          "current": "Current",
+          "new": "New",
+          "faultTolerance": "Fault Tolerance:",
+          "totalNodes": "Total Nodes:",
+          "node": "node",
+          "rank": "Rank {{rank}}",
+          "notPreferred": "Not Preferred",
+          "confirmAndApply": "Confirm and Apply",
+          "faultToleranceTypes": {
+            "REGION_LEVEL": "{{count}} Region outage",
+            "AZ_LEVEL": "{{count}} Availability Zone outage",
+            "NODE_LEVEL": "{{count}} Node outage",
+            "NONE": "None"
+          }
+        },
+        "geoParitionPlacementView": {
+          "title": "Geo Partitions",
+          "addGeoPartition": "Add Geo Partition"
+        }
+      },
+      "editResilienceAndRegions": {
+        "title": "Edit Placement"
+      },
+      "hardware": {
+        "totalClusterNodes": "Total Cluster Nodes",
+        "clusterInstance": "Cluster Instance",
+        "instanceType": "Instance Type",
+        "volumeAndNode": "volume / node",
+        "volumeAndNodeValue": "{{nodeCount}} X {{volumeSize}} GB",
+        "ebsType": "ebs type",
+        "iops": "provisioned IOPS / Node",
+        "throughput": "provisioned throughput / Node",
+        "throughtputValue": "{{throughput}} MB/s",
+        "tServerInstance": "T-Server Instance",
+        "masterServerInstance": "Master Server Instance",
+        "editHardwareModal": {
+          "title": "Cluster Instance",
+          "submitLabel": "Review Changes"
+        }
+      },
+      "security": {
+        "publicIPAssignment": "Public IP Assignment",
+        "encryptionInTransit": "Encryption In Transit",
+        "encryptionAtRest": "Encryption At Rest",
+        "nodeToNode": "Node to Node Encryption",
+        "clientToNode": "Client to Node Encryption",
+        "encryption": "Encryption"
+      },
+      "database": {
+        "ysql": "YSQL",
+        "ycql": "YCQL",
+        "connectionPooling": "Connection Pooling",
+        "postgresCompatibility": "Postgres Compatibility",
+        "ysqlAuthentication": "YSQL Authentication",
+        "ycqlAuthentication": "YCQL Authentication",
+        "interface": "Interface",
+        "features": "Features",
+        "advancedConfigFlags": "Advanced Config Flags",
+        "editYSQLSettings": "Edit YSQL Settings",
+        "editYCQLSettings": "Edit YCQL Settings",
+        "editConnectionPooling": "Edit Connection Pooling Settings",
+        "editPostgresCompatibility": "Edit Postgres Compatibility Settings"
+      },
+      "advanced": {
+        "proxyConfiguration": "Proxy Configuration",
+        "proxyServer": "Proxy Server",
+        "secureWebProxy": "Secure Web Proxy (HTTPS)",
+        "webProxy": "Web Proxy (HTTP)",
+        "bypassProxyList": "Bypass Proxy List",
+        "editProxyConfiguration": "Edit Proxy Configuration"
+      },
+      "masterServerNodeAllocationModal": {
+        "title": "Master Server Node Allocation",
+        "editMasterServer": "Edit Master Server Instance  (Optional)",
+        "subText": "You can change master server instance settings at any time by going to:",
+        "settingsAndHardware": "Settings > Hardware"
+      }
+    },
+    "readReplica": {
+      "addRR": {
+        "title": "Add Read Replica",
+        "placement": "Placement",
+        "regionsAndAZ": "Regions and Availability Zones",
+        "hardware": "Hardware",
+        "instanceSettings": "Instance Settings",
+        "database": "Database",
+        "databaseSettings": "Database Settings",
+        "review": "Review",
+        "summaryAndCost": "Summary and Cost",
+        "instanceOptional": "Instance Settings (Optional)",
+        "advancedFlags": "Advanced Config Flags",
+        "advancedFlagLabel": "Customize Database Config Flags for Read Replica",
+        "advancedFlagSubText": "By default, T-Server flags from the primary cluster are applied to Read Replicas.",
+        "advancedFlagNote": "<strong>Note:</strong> Read replicas do not include Master servers.",
+        "regionAZHelpText": "Enhance read scalability and availability with geographically distributed replicas. <a>Learn more</a>",
+        "rrInstance": "Read Replica Instance",
+        "primaryRRInstanceSame": "Keep read replica instance settings same as primary cluster instance settings.",
+        "primaryClusterInstSettings": "Primary Cluster Instance Settings"
       }
     }
   }

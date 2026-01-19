@@ -79,6 +79,11 @@ public interface OperatorStatusUpdater {
     // no-op implementation
   }
 
+  default void updatePitrConfigStatus(
+      com.yugabyte.yw.models.PitrConfig pitrConfig, String taskName, UUID taskUUID) {
+    // no-op implementation
+  }
+
   default void updateYBUniverseStatus(
       Universe universe,
       KubernetesResourceDetails universeName,

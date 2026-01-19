@@ -93,6 +93,13 @@ bool IsSerializeAccessError(const Status& status) {
       status.ToString().find(SerializeAccessErrorMessageSubstring()) != std::string::npos;
 }
 
+bool IsAbortError(const Status& status) {
+  return
+      !status.ok() &&
+      PgsqlError(status) == YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE &&
+      status.ToString().find("current transaction is expired or aborted") != std::string::npos;
+}
+
 std::string_view SerializeAccessErrorMessageSubstring() {
   return "could not serialize access due to concurrent update"sv;
 }

@@ -71,13 +71,22 @@ Status WriteOperation::DoAborted(const Status& status) {
   return status;
 }
 
-void WriteOperation::SetAsyncWrite(boost::function<void(OpId)> callback) {
+void WriteOperation::SetAsyncWrite(AsyncWriteCallback callback) {
   added_to_leader_callback_ = std::move(callback);
 }
 
 void WriteOperation::AddedAsPending(const TabletPtr& tablet) {
   if (added_to_leader_callback_) {
-    added_to_leader_callback_(op_id());
+    Status complete_status;
+    auto status = DoReplicated(op_id().term, &complete_status);
+    if (!status.ok()) {
+      complete_status = status;
+    }
+    if (complete_status.ok()) {
+      added_to_leader_callback_(op_id());
+    } else {
+      added_to_leader_callback_(complete_status);
+    }
     added_to_leader_callback_ = {};
   }
 }
@@ -85,6 +94,11 @@ void WriteOperation::AddedAsPending(const TabletPtr& tablet) {
 // FIXME: Since this is called as a void in a thread-pool callback,
 // it seems pointless to return a Status!
 Status WriteOperation::DoReplicated(int64_t leader_term, Status* complete_status) {
+  if (do_replicated_completed_) {
+    *complete_status = Status::OK();
+    return Status::OK();
+  }
+
   TRACE_EVENT0("txn", "WriteOperation::Complete");
   TRACE("APPLY: Starting");
 
@@ -105,6 +119,8 @@ Status WriteOperation::DoReplicated(int64_t leader_term, Status* complete_status
   // Now that all of the changes have been applied and the commit is durable
   // make the changes visible to readers.
   TRACE("FINISH: making edits visible");
+
+  do_replicated_completed_ = true;
 
   return Status::OK();
 }

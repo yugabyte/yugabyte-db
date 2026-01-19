@@ -19,30 +19,31 @@
 #include "yb/common/pg_types.h"
 
 #include "yb/util/result.h"
+
+#include "yb/yql/pggate/pg_session_fwd.h"
 #include "yb/yql/pggate/pg_tools.h"
 
 namespace yb::pggate {
 
 struct LightweightTableYbctid;
-class YbctidReaderProvider;
 struct BufferingSettings;
 
 class PgFKReferenceCache {
  public:
   struct IntentOptions {
-    bool is_region_local;
+    YbcPgTableLocalityInfo locality_info;
     bool is_deferred;
   };
 
-  PgFKReferenceCache(YbctidReaderProvider& reader_provider,
-                     std::reference_wrapper<const BufferingSettings> buffering_settings,
-                     std::reference_wrapper<const TablespaceMap> tablespace_map);
+  PgFKReferenceCache(const PgSessionPtr& pg_session,
+                     std::reference_wrapper<const BufferingSettings> buffering_settings);
   ~PgFKReferenceCache();
 
   void Clear();
   void DeleteReference(const LightweightTableYbctid& key);
   void AddReference(const LightweightTableYbctid& key);
-  Result<bool> IsReferenceExists(PgOid database_id, const LightweightTableYbctid& key);
+  Result<bool> IsReferenceExists(
+      PgOid database_id, const LightweightTableYbctid& key, YbcPgTableLocalityInfo locality_info);
   Status AddIntent(
       PgOid database_id, const LightweightTableYbctid& key, const IntentOptions& options);
   void OnDeferredTriggersProcessingStarted();

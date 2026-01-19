@@ -23,11 +23,13 @@ import (
 // WaitForUpdateProviderTask is a util function to monitor update tasks
 func WaitForUpdateProviderTask(
 	authAPI *ybaAuthClient.AuthAPIClient,
-	providerName string, rTask ybaclient.YBPTask, providerCode string) {
+	providerName string, rTask *ybaclient.YBPTask, providerCode string) {
 
 	var providerData []ybaclient.Provider
 	var response *http.Response
 	var err error
+
+	util.CheckTaskAfterCreation(rTask)
 
 	providerUUID := rTask.GetResourceUUID()
 	taskUUID := rTask.GetTaskUUID()
@@ -50,13 +52,7 @@ func WaitForUpdateProviderTask(
 		providerData, response, err = authAPI.GetListOfProviders().
 			Name(providerName).ProviderCode(providerCode).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"Provider",
-				"Update - Fetch Provider",
-			)
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Provider", "Update - Fetch Provider")
 		}
 		providersCtx := formatter.Context{
 			Command: "update",
@@ -73,7 +69,7 @@ func WaitForUpdateProviderTask(
 			Output:  os.Stdout,
 			Format:  ybatask.NewTaskFormat(viper.GetString("output")),
 		}
-		ybatask.Write(taskCtx, []ybaclient.YBPTask{rTask})
+		ybatask.Write(taskCtx, []ybaclient.YBPTask{*rTask})
 	}
 
 }
@@ -95,79 +91,79 @@ func BuildZoneMapFromString(
 		val := kvp[1]
 		switch key {
 		case "zone-name":
-			if len(strings.TrimSpace(val)) != 0 {
+			if !util.IsEmptyString(val) {
 				zone["name"] = val
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
 		case "region-name":
-			if len(strings.TrimSpace(val)) != 0 {
+			if !util.IsEmptyString(val) {
 				zone["region-name"] = val
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
 		case "subnet":
-			if len(strings.TrimSpace(val)) != 0 {
+			if !util.IsEmptyString(val) {
 				zone["subnet"] = val
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
 		case "secondary-subnet":
-			if len(strings.TrimSpace(val)) != 0 {
+			if !util.IsEmptyString(val) {
 				zone["secondary-subnet"] = val
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
 		case "config-file-path":
-			if len(strings.TrimSpace(val)) != 0 {
+			if !util.IsEmptyString(val) {
 				zone["config-file-path"] = val
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
 		case "storage-class":
-			if len(strings.TrimSpace(val)) != 0 {
+			if !util.IsEmptyString(val) {
 				zone["storage-class"] = val
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
 		case "cert-manager-cluster-issuer":
-			if len(strings.TrimSpace(val)) != 0 {
+			if !util.IsEmptyString(val) {
 				zone["cert-manager-cluster-issuer"] = val
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
 		case "cert-manager-issuer":
-			if len(strings.TrimSpace(val)) != 0 {
+			if !util.IsEmptyString(val) {
 				zone["cert-manager-issuer"] = val
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
 		case "domain":
-			if len(strings.TrimSpace(val)) != 0 {
+			if !util.IsEmptyString(val) {
 				zone["domain"] = val
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
 		case "namespace":
-			if len(strings.TrimSpace(val)) != 0 {
+			if !util.IsEmptyString(val) {
 				zone["namespace"] = val
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
 		case "overrides-file-path":
-			if len(strings.TrimSpace(val)) != 0 {
+			if !util.IsEmptyString(val) {
 				zone["overrides-file-path"] = val
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
 		case "pod-address-template":
-			if len(strings.TrimSpace(val)) != 0 {
+			if !util.IsEmptyString(val) {
 				zone["pod-address-template"] = val
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
 		case "num-nodes":
-			if len(strings.TrimSpace(val)) != 0 {
+			if !util.IsEmptyString(val) {
 				zone["num-nodes"] = val
 			} else {
 				ValueNotFoundForKeyError(key)
@@ -217,109 +213,109 @@ func BuildRegionMapFromString(
 		val := kvp[1]
 		switch key {
 		case "region-name":
-			if len(strings.TrimSpace(val)) != 0 {
+			if !util.IsEmptyString(val) {
 				region["name"] = val
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
 		case "vpc-id":
-			if len(strings.TrimSpace(val)) != 0 {
+			if !util.IsEmptyString(val) {
 				region["vpc-id"] = val
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
 		case "sg-id":
-			if len(strings.TrimSpace(val)) != 0 {
+			if !util.IsEmptyString(val) {
 				region["sg-id"] = val
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
 		case "arch":
-			if len(strings.TrimSpace(val)) != 0 {
+			if !util.IsEmptyString(val) {
 				region["arch"] = val
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
 		case "shared-subnet":
-			if len(strings.TrimSpace(val)) != 0 {
+			if !util.IsEmptyString(val) {
 				region["shared-subnet"] = val
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
 		case "instance-template":
-			if len(strings.TrimSpace(val)) != 0 {
+			if !util.IsEmptyString(val) {
 				region["instance-template"] = val
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
 		case "vnet":
-			if len(strings.TrimSpace(val)) != 0 {
+			if !util.IsEmptyString(val) {
 				region["vnet"] = val
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
 		case "network-rg":
-			if len(strings.TrimSpace(val)) != 0 {
+			if !util.IsEmptyString(val) {
 				region["network-rg"] = val
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
 		case "rg":
-			if len(strings.TrimSpace(val)) != 0 {
+			if !util.IsEmptyString(val) {
 				region["rg"] = val
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
 		case "latitude":
-			if len(strings.TrimSpace(val)) != 0 {
+			if !util.IsEmptyString(val) {
 				region["latitude"] = val
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
 		case "config-file-path":
-			if len(strings.TrimSpace(val)) != 0 {
+			if !util.IsEmptyString(val) {
 				region["config-file-path"] = val
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
 		case "storage-class":
-			if len(strings.TrimSpace(val)) != 0 {
+			if !util.IsEmptyString(val) {
 				region["storage-class"] = val
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
 		case "cert-manager-cluster-issuer":
-			if len(strings.TrimSpace(val)) != 0 {
+			if !util.IsEmptyString(val) {
 				region["cert-manager-cluster-issuer"] = val
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
 		case "cert-manager-issuer":
-			if len(strings.TrimSpace(val)) != 0 {
+			if !util.IsEmptyString(val) {
 				region["cert-manager-issuer"] = val
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
 		case "domain":
-			if len(strings.TrimSpace(val)) != 0 {
+			if !util.IsEmptyString(val) {
 				region["domain"] = val
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
 		case "namespace":
-			if len(strings.TrimSpace(val)) != 0 {
+			if !util.IsEmptyString(val) {
 				region["namespace"] = val
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
 		case "overrides-file-path":
-			if len(strings.TrimSpace(val)) != 0 {
+			if !util.IsEmptyString(val) {
 				region["overrides-file-path"] = val
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
 		case "pod-address-template":
-			if len(strings.TrimSpace(val)) != 0 {
+			if !util.IsEmptyString(val) {
 				region["pod-address-template"] = val
 			} else {
 				ValueNotFoundForKeyError(key)
@@ -357,49 +353,49 @@ func BuildImageBundleMapFromString(
 		val := kvp[1]
 		switch key {
 		case "image-bundle-name":
-			if len(strings.TrimSpace(val)) != 0 {
+			if !util.IsEmptyString(val) {
 				imageBundle["name"] = val
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
 		case "image-bundle-uuid":
-			if len(strings.TrimSpace(val)) != 0 {
+			if !util.IsEmptyString(val) {
 				imageBundle["uuid"] = val
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
 		case "machine-image":
-			if len(strings.TrimSpace(val)) != 0 {
+			if !util.IsEmptyString(val) {
 				imageBundle["machine-image"] = val
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
 		case "arch":
-			if len(strings.TrimSpace(val)) != 0 {
+			if !util.IsEmptyString(val) {
 				imageBundle["arch"] = val
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
 		case "ssh-user":
-			if len(strings.TrimSpace(val)) != 0 {
+			if !util.IsEmptyString(val) {
 				imageBundle["ssh-user"] = val
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
 		case "ssh-port":
-			if len(strings.TrimSpace(val)) != 0 {
+			if !util.IsEmptyString(val) {
 				imageBundle["ssh-port"] = val
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
 		case "imdsv2":
-			if len(strings.TrimSpace(val)) != 0 {
+			if !util.IsEmptyString(val) {
 				imageBundle["imdsv2"] = val
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
 		case "default":
-			if len(strings.TrimSpace(val)) != 0 {
+			if !util.IsEmptyString(val) {
 				imageBundle["default"] = val
 			} else {
 				ValueNotFoundForKeyError(key)
@@ -441,25 +437,25 @@ func BuildImageBundleRegionOverrideMapFromString(
 		val := kvp[1]
 		switch key {
 		case "image-bundle-name":
-			if len(strings.TrimSpace(val)) != 0 {
+			if !util.IsEmptyString(val) {
 				override["name"] = val
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
 		case "image-bundle-uuid":
-			if len(strings.TrimSpace(val)) != 0 {
+			if !util.IsEmptyString(val) {
 				override["uuid"] = val
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
 		case "machine-image":
-			if len(strings.TrimSpace(val)) != 0 {
+			if !util.IsEmptyString(val) {
 				override["machine-image"] = val
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
 		case "region-name":
-			if len(strings.TrimSpace(val)) != 0 {
+			if !util.IsEmptyString(val) {
 				override["region-name"] = val
 			} else {
 				ValueNotFoundForKeyError(key)

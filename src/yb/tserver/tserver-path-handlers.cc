@@ -505,6 +505,10 @@ Status TabletServerPathHandlers::Register(Webserver* server) {
   RegisterTabletPathHandler(server, tserver_, "/sharedlockmanager", &HandleInMemoryLocksPage);
   RegisterTabletPathHandler(server, tserver_, "/preparer", &HandlePreparerPage);
   server->RegisterPathHandler(
+      "/snapshots", "Snapshots",
+      std::bind(&TabletServerPathHandlers::HandleSnapshotsPage, this, _1, _2), true /* styled */,
+      true /* is_on_nav_bar */, "fa fa-camera");
+  server->RegisterPathHandler(
       "/", "Dashboards",
       std::bind(&TabletServerPathHandlers::HandleDashboardsPage, this, _1, _2), true /* styled */,
       true /* is_on_nav_bar */, "fa fa-dashboard");
@@ -1006,16 +1010,17 @@ void TabletServerPathHandlers::HandleMaintenanceManagerPage(const Webserver::Web
   *output << "<h3>Non-running operations</h3>\n";
   *output << "<table class='table table-striped'>\n";
   *output << "  <tr><th>Name</th><th>Runnable</th><th>RAM anchored</th>\n"
-          << "       <th>Logs retained</th><th>Perf</th></tr>\n";
+          << "       <th>Logs retained</th><th>Perf</th>\n"
+          << "       <th>CDCSDK reset stale retention barrier</th></tr>\n";
   for (int i = 0; i < ops_count; i++) {
     MaintenanceManagerStatusPB_MaintenanceOpPB op_pb = pb.registered_operations(i);
     if (op_pb.running() == 0) {
-      *output << Substitute("<tr><td>$0</td><td>$1</td><td>$2</td><td>$3</td><td>$4</td></tr>\n",
-                            EscapeForHtmlToString(op_pb.name()),
-                            op_pb.runnable(),
-                            HumanReadableNumBytes::ToString(op_pb.ram_anchored_bytes()),
-                            HumanReadableNumBytes::ToString(op_pb.logs_retained_bytes()),
-                            op_pb.perf_improvement());
+      *output << Substitute(
+          "<tr><td>$0</td><td>$1</td><td>$2</td><td>$3</td><td>$4</td><td>$5</td></tr>\n",
+          EscapeForHtmlToString(op_pb.name()), op_pb.runnable(),
+          HumanReadableNumBytes::ToString(op_pb.ram_anchored_bytes()),
+          HumanReadableNumBytes::ToString(op_pb.logs_retained_bytes()), op_pb.perf_improvement(),
+          op_pb.cdcsdk_reset_stale_retention_barrier() ? "Yes" : "No");
     }
   }
   *output << "</table>\n";

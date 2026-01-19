@@ -45,18 +45,21 @@
 
 #include <sys/stat.h>
 
+#include <chrono>
 #include <fstream>
 #include <functional>
 #include <memory>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <unordered_set>
 #include <vector>
 #include <set>
 
 #include <boost/algorithm/string.hpp>
-#include "yb/util/flags/auto_flags_util.h"
-#include "yb/util/string_case.h"
+#include <boost/regex.hpp>
+
+#include "yb/common/version_info.h"
 
 #if YB_TCMALLOC_ENABLED
 #include <gperftools/malloc_extension.h>
@@ -66,15 +69,20 @@
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/human_readable.h"
+#include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/rpc/secure.h"
 #include "yb/rpc/secure_stream.h"
+
 #include "yb/server/html_print_helper.h"
 #include "yb/server/pprof-path-handlers.h"
 #include "yb/server/server_base.h"
 #include "yb/server/webserver.h"
+
 #include "yb/util/flags.h"
+#include "yb/util/flags/auto_flags_util.h"
 #include "yb/util/format.h"
 #include "yb/util/histogram.pb.h"
 #include "yb/util/logging.h"
@@ -82,11 +90,16 @@
 #include "yb/util/memory/memory.h"
 #include "yb/util/metrics.h"
 #include "yb/util/jsonwriter.h"
+#include "yb/util/perf_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stack_trace_tracker.h"
+#include "yb/util/string_case.h"
+#include "yb/util/path_util.h"
+#include "yb/util/subprocess.h"
+#include "yb/util/slice.h"
+#include "yb/util/tostring.h"
 #include "yb/util/url-coding.h"
-#include "yb/common/version_info.h"
 
 DEFINE_RUNTIME_uint64(web_log_bytes, 1024 * 1024,
     "The maximum number of bytes to display on the debug webserver's log page");
@@ -320,9 +333,9 @@ static void JsonOutputMemTrackers(const std::vector<MemTrackerData>& trackers,
     jw.String("peak_consumption_bytes");
     jw.Int64(tracker->peak_consumption());
 
-    // UpdateConsumption returns true if consumption is taken from external source,
-    // for instance tcmalloc stats. So we should show only it in this case.
-    if (data.consumption_excluded_from_ancestors && !data.tracker->UpdateConsumption()) {
+    // Only show consumption_excluded_from_ancestors for mem trackers whose consumption is NOT taken
+    // from an external source (for instance tcmalloc stats).
+    if (data.consumption_excluded_from_ancestors && !data.tracker->HasExternalSource()) {
       jw.String("full_consumption_bytes");
       jw.Int64(tracker->consumption() + data.consumption_excluded_from_ancestors);
     }
@@ -392,14 +405,14 @@ static void HtmlOutputMemTrackers(const std::vector<MemTrackerData>& trackers,
       *output << "    <td>" << tracker_id << "</td>";
     }
 
-    // UpdateConsumption returns true if consumption is taken from external source,
-    // for instance tcmalloc stats. So we should show only it in this case.
-    if (!data.consumption_excluded_from_ancestors || data.tracker->UpdateConsumption()) {
-      *output << Format("<td>$0</td>", current_consumption_str);
-    } else {
+    // Only show consumption_excluded_from_ancestors for mem trackers whose consumption is NOT taken
+    // from an external source (for instance tcmalloc stats).
+    if (data.consumption_excluded_from_ancestors && !data.tracker->HasExternalSource()) {
       auto full_consumption_str = HumanReadableNumBytes::ToString(
           tracker->consumption() + data.consumption_excluded_from_ancestors);
       *output << Format("<td>$0 ($1)</td>", current_consumption_str, full_consumption_str);
+    } else {
+      *output << Format("<td>$0</td>", current_consumption_str);
     }
     *output << Format("<td>$0</td><td>$1</td>\n", peak_consumption_str, limit_str);
     *output << "  </tr>\n";
@@ -594,6 +607,48 @@ static void ResetStackTraceHandler(const Webserver::WebRequest& req, Webserver::
                << "<a href=\"javascript:window.location=document.referrer\">Back</a>";
 }
 
+static void PerfHandler(
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp,
+    const std::string& storage_dir) {
+  std::stringstream& output = resp->output;
+
+  const std::string seconds_str = FindWithDefault(req.parsed_args, "seconds", "1");
+  const std::string freq_str = FindWithDefault(req.parsed_args, "freq", "99");
+
+  int seconds, freq;
+  if (!safe_strto32(seconds_str, &seconds) || seconds <= 0) {
+    output << "Invalid 'seconds' value: " << seconds_str;
+    return;
+  }
+  if (!safe_strto32(freq_str, &freq) || freq <= 0) {
+    output << "Invalid 'freq' value: " << freq_str;
+    return;
+  }
+
+  PerfProfiler profiler;
+  auto s = profiler.Start(freq, storage_dir);
+  if (!s.ok()) {
+    output << s.ToString();
+    return;
+  }
+
+  std::this_thread::sleep_for(std::chrono::seconds(seconds));
+
+  auto stop_result = profiler.Stop();
+  if (!stop_result.ok()) {
+    output << stop_result.status().ToString();
+    return;
+  } else {
+    // Output a download link for the collapsed stacks file.
+    output << Format(
+        "<br><a href=\"/$0\" download>Download collapsed stacks</a> (to load into another viewer "
+        "like Speedscope, or for archiving)<br>",
+        stop_result->collapsed_stacks_name);
+    // Output flamegraph.
+    output << stop_result->flamegraph;
+  }
+}
+
 } // anonymous namespace
 
 void ParseRequestOptions(
@@ -724,6 +779,9 @@ void AddDefaultPathHandlers(Webserver* webserver) {
                                  DebugStackTraceHandler, true, false);
   webserver->RegisterPathHandler("/reset-stack-traces", "Reset Stack Traces",
                                  ResetStackTraceHandler, true, false);
+  webserver->RegisterPathHandler(
+      "/perf", "perf", std::bind(PerfHandler, _1, _2, webserver->DocRoot()), true /* styled */,
+      false /* is_on_nav_bar */);
 
   AddPprofPathHandlers(webserver);
 }

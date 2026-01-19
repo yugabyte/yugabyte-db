@@ -14,6 +14,7 @@ import org.yb.util.json.Checkers;
 import org.yb.util.json.JsonUtil;
 import org.yb.util.json.ObjectChecker;
 import org.yb.util.json.ObjectCheckerBuilder;
+import org.yb.util.json.PropertyName;
 import org.yb.util.json.ValueChecker;
 
 import com.google.gson.JsonArray;
@@ -89,6 +90,8 @@ public class ExplainAnalyzeUtils {
     PlanCheckerBuilder parentRelationship(String value);
     PlanCheckerBuilder actualLoops(ValueChecker<Long> checker);
     PlanCheckerBuilder actualRows(ValueChecker<Long> checker);
+    @PropertyName("Rows Removed by Filter")
+    PlanCheckerBuilder rowsRemovedByFilter(ValueChecker<Long> checker);
 
     // Table Reads
     // The type of param is Checker and not ValueChecker<> since

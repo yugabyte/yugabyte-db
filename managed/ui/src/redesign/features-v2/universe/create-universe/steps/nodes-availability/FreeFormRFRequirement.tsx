@@ -4,7 +4,7 @@ import { useFormContext } from 'react-hook-form';
 import { NodeAvailabilityProps } from './dtos';
 import { StyledContent, StyledHeader, StyledPanel } from '../../components/DefaultComponents';
 import { getNodeCount } from '../../CreateUniverseUtils';
-import { ReactComponent as Return } from '../../../../../assets/tree.svg';
+import Return from '../../../../../assets/tree.svg';
 
 const StyledContainer = styled('div')(({ theme }) => ({
   border: `1px solid ${theme.palette.grey[300]}`,

@@ -1115,6 +1115,25 @@ tserver_ops_latency:
       # ticksuffix: "&nbsp;ms"
       ticksuffix: "&nbsp;\u00B5s"
 
+tserver_ops_latency_p99:
+  metric: "rpc_latency"
+  function: "quantile_over_time.99|max"
+  range: true
+  filters:
+    export_type: "tserver_export"
+    server_type: "yb_tserver"
+    service_type: "TabletServerService"
+    service_method: "Read|Write|Scan"
+  group_by: "service_method"
+  panel_group: "Tablet Server"
+  layout:
+    title: "Tserver Latency (P99)"
+    xaxis:
+      type: "date"
+    yaxis:
+      # ticksuffix: "&nbsp;ms"
+      ticksuffix: "&nbsp;\u00B5s"
+
 tserver_handler_latency:
   metric: "rpc_incoming_queue_time.avg|handler_latency_outbound_call_queue_time.avg|handler_latency_outbound_transfer.avg"
   function: "rate|avg"
@@ -1703,7 +1722,26 @@ lsm_rocksdb_latencies_seek:
   metric: "rocksdb_db_seek_micros.avg"
   function: "rate|sum by (exported_instance)|avg"
   range: true
+  filters:
+    export_type: "tserver_export"
   panel_group: "RocksDB"
+  layout:
+    title: "LSM-DB Seek Latencies"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rocksdb_db_seek_micros.avg": "Seek"
+      ticksuffix: "&nbsp;\u00B5s"
+
+table_rocksdb_latencies_seek:
+  metric: "rocksdb_db_seek_micros.avg"
+  function: "rate|avg"
+  range: true
+  panel_group: "RocksDB"
+  filters:
+    export_type: "tserver_export"
+    table_name: ".+"
   layout:
     title: "LSM-DB Seek Latencies"
     xaxis:
@@ -1803,6 +1841,23 @@ lsm_rocksdb_stalls:
         "rocksdb_stall_micros": "Stalls"
       ticksuffix: "&nbsp;\u00B5s"
 
+table_rocksdb_stalls:
+  metric: "rocksdb_stall_micros"
+  function: "rate|avg"
+  range: true
+  filters:
+    export_type: "tserver_export"
+    table_name: ".+"
+  panel_group: "RocksDB"
+  layout:
+    title: "Stalls"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rocksdb_stall_micros": "Stalls"
+      ticksuffix: "&nbsp;\u00B5s"
+
 lsm_rocksdb_write_rejections:
   metric: "majority_sst_files_rejections"
   function: "rate|sum by (exported_instance)|avg"
@@ -1844,6 +1899,24 @@ lsm_rocksdb_flush_size:
   operator: "/ 1048576"
   filters:
     export_type: "tserver_export"
+  panel_group: "RocksDB"
+  layout:
+    title: "Flush write"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rocksdb_flush_write_bytes": "Flush"
+      ticksuffix: "&nbsp;MB"
+
+table_rocksdb_flush_size:
+  metric: "rocksdb_flush_write_bytes"
+  function: "rate|avg"
+  range: true
+  operator: "/ 1048576"
+  filters:
+    export_type: "tserver_export"
+    table_name: ".+"
   panel_group: "RocksDB"
   layout:
     title: "Flush write"
@@ -1902,6 +1975,22 @@ lsm_rocksdb_compaction_numfiles:
       alias:
         "rocksdb_numfiles_in_singlecompaction.avg": "Avg"
 
+table_rocksdb_compaction_numfiles:
+  metric: "rocksdb_numfiles_in_singlecompaction.avg"
+  function: "rate|avg"
+  range: true
+  filters:
+    export_type: "tserver_export"
+    table_name: ".+"
+  panel_group: "RocksDB"
+  layout:
+    title: "Compaction num files"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rocksdb_numfiles_in_singlecompaction.avg": "Avg"
+
 lsm_rocksdb_compaction_time:
   metric: "rocksdb_compaction_times_micros.avg"
   function: "rate|sum by (exported_instance)|avg"
@@ -1909,6 +1998,24 @@ lsm_rocksdb_compaction_time:
   #operator: "/ 1000000"
   filters:
     export_type: "tserver_export"
+  panel_group: "RocksDB"
+  layout:
+    title: "Compaction time"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rocksdb_compaction_times_micros.avg": "Avg"
+      ticksuffix: "&nbsp;\u00B5s"
+
+table_rocksdb_compaction_time:
+  metric: "rocksdb_compaction_times_micros.avg"
+  function: "rate|avg"
+  range: true
+  #operator: "/ 1000000"
+  filters:
+    export_type: "tserver_export"
+    table_name: ".+"
   panel_group: "RocksDB"
   layout:
     title: "Compaction time"
@@ -1953,6 +2060,24 @@ docdb_transaction:
         "transaction_conflicts": "Conflicts"
         "expired_transactions": "Expired"
 
+table_docdb_transaction:
+  metric: ""
+  function: "rate|avg"
+  range: true
+  filters:
+    saved_name: "transaction_conflicts|expired_transactions"
+    export_type: "tserver_export"
+    table_name: ".+"
+  group_by: "saved_name"
+  panel_group: "Tablet Server"
+  layout:
+    title: "Transaction"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "transaction_conflicts": "Conflicts"
+        "expired_transactions": "Expired"
 #Ysql Metrics
 ysql_server_rpc_per_second:
   metric: "rpc_irate_rps"
@@ -2487,6 +2612,7 @@ cdcsdk_change_event_count:
     xaxis:
       type: "date"
     yaxis:
+      ticksuffix: "&nbsp;ops/s"
       alias:
         "cdcsdk_change_event_count": "Messages Emitted"
 
@@ -2501,7 +2627,7 @@ cdcsdk_traffic_sent:
     xaxis:
       type: "date"
     yaxis:
-      ticksuffix: "&nbsp;MB"
+      ticksuffix: "&nbsp;MB/s"
       alias:
         "cdcsdk_traffic_sent": "Messages Emitted size"
 
@@ -3358,6 +3484,41 @@ table_log_latency:
         "log_group_commit_latency.avg": "Commit"
       ticksuffix: "&nbsp;\u00B5s"
 
+wal_size:
+  metric: "log_wal_size"
+  function: "sum by (exported_instance)|avg"
+  operator: "/ 1048576"
+  filters:
+    export_type: "tserver_export"
+  panel_group: "Tablet Server"
+  layout:
+    title: "WAL size / Node"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "log_wal_size": "Size"
+      ticksuffix: "&nbsp;MB"
+      tickformat: ".2f"
+
+table_wal_size:
+  metric: "log_wal_size"
+  function: "avg"
+  operator: "/ 1048576"
+  filters:
+    export_type: "tserver_export"
+    table_id: ".+"
+  panel_group: "Tablet Server"
+  layout:
+    title: "WAL size"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "log_wal_size": "Size"
+      ticksuffix: "&nbsp;MB"
+      tickformat: ".2f"
+
 table_log_ops_second:
   metric: ""
   function: "rate|sum by (saved_name, namespace_name, table_id, table_name)|sum"
@@ -3518,6 +3679,23 @@ table_rocksdb_blooms_checked_and_useful:
       alias:
         "rocksdb_bloom_filter_checked": "Blooms Checked"
         "rocksdb_bloom_filter_useful": "Blooms Useful"
+
+table_rocksdb_total_sst_per_node:
+  metric: "rocksdb_current_version_sst_files_size"
+  function: "sum by (saved_name, namespace_name, table_id, table_name)|avg"
+  operator: "/ 1073741824"
+  filters:
+    export_type: "tserver_export"
+  panel_group: "RocksDB"
+  layout:
+    title: "SSTable size / Node"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rocksdb_current_version_sst_files_size": "Size"
+      ticksuffix: "&nbsp;GB"
+      tickformat: ".2f"
 
 tablet_splitting_stats:
   metric: ""

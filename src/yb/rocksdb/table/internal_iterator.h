@@ -124,7 +124,8 @@ class InternalIterator : public Cleanable {
     return STATUS(NotSupported, "");
   }
 
-  virtual void UpdateFilterKey(Slice user_key_for_filter) {
+  virtual const KeyValueEntry& UpdateFilterKey(Slice user_key_for_filter, Slice seek_key) {
+    return Entry();
   }
 
   // Returns true if iterator matches file filter, meaning it may contain requested keys.
@@ -147,17 +148,25 @@ class DataBlockAwareIndexInternalIterator : public InternalIterator {
  public:
   class Empty;
   virtual yb::Result<std::pair<std::string, std::string>> GetCurrentDataBlockBounds() const = 0;
+
+  // Returns approximate middle key from the index, starting from the lower bound key if provided.
+  // Key from the index might not match any key actually written to SST file, because keys could be
+  // shortened and substituted before them are written into the index (see ShortenedIndexBuilder).
+  virtual yb::Result<std::string> GetMiddleKey(Slice lower_bound_key) const {
+    return STATUS(NotSupported, "GetMiddleKey(lower_bound_key) not supported for this iterator.");
+  }
 };
 
-class Arena;
-
-// Return an empty iterator (yields nothing) allocated from arena if specified.
-extern InternalIterator* NewEmptyInternalIterator(Arena* arena = nullptr);
-
-// Return an empty iterator with the specified status, allocated arena if specified.
-extern InternalIterator* NewErrorInternalIterator(const Status& status, Arena* arena = nullptr);
+template <class IteratorType>
+extern IteratorType* NewEmptyIterator(Arena* arena = nullptr);
 
 template <class IteratorType>
 extern IteratorType* NewErrorIterator(const Status& status, Arena* arena = nullptr);
+
+// Return an empty iterator (yields nothing) allocated from arena if specified.
+InternalIterator* NewEmptyInternalIterator(Arena* arena = nullptr);
+
+// Return an empty iterator with the specified status, allocated arena if specified.
+InternalIterator* NewErrorInternalIterator(const Status& status, Arena* arena = nullptr);
 
 }  // namespace rocksdb

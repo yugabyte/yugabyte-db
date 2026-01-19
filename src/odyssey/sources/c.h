@@ -75,4 +75,6 @@
 #define od_unreachable() abort()
 #endif
 
+#define yb_od_attribute_fallthrough __attribute__((fallthrough))
+
 #endif // ODYSSEY_C_H

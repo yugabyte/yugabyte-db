@@ -23,7 +23,7 @@
 
 #include "yb/rocksdb/iterator.h"
 #include "yb/rocksdb/table/internal_iterator.h"
-#include "yb/rocksdb/util/arena.h"
+#include "yb/rocksdb/table/iterator_helpers_internal.h"
 
 namespace rocksdb {
 
@@ -99,7 +99,7 @@ class Iterator::Empty : public Iterator {
     return Entry();
   }
 
-  void UpdateFilterKey(Slice user_key_for_filter) override {}
+  void UpdateFilterKey(Slice user_key_for_filter, Slice seek_key) override {}
 
   Status status() const override { return status_; }
 
@@ -142,7 +142,7 @@ class DataBlockAwareIndexIterator::Empty : public DataBlockAwareIndexIterator {
     return status_;
   };
 
-  void UpdateFilterKey(Slice user_key_for_filter) override {
+  void UpdateFilterKey(Slice user_key_for_filter, Slice seek_key) override {
     DCHECK(false) << "DataBlockAwareIndexIterator::Empty::UpdateFilterKey()";
   }
 
@@ -200,31 +200,16 @@ class DataBlockAwareIndexInternalIterator::Empty : public DataBlockAwareIndexInt
   Status status_;
 };
 
-Iterator* NewEmptyIterator() {
-  return new Iterator::Empty(Status::OK());
-}
-
 Iterator* NewErrorIterator(const Status& status) {
   return new Iterator::Empty(status);
 }
 
 InternalIterator* NewEmptyInternalIterator(Arena* arena) {
-  if (arena == nullptr) {
-    return new InternalIterator::Empty(Status::OK());
-  } else {
-    auto mem = arena->AllocateAligned(sizeof(InternalIterator::Empty));
-    return new (mem) InternalIterator::Empty(Status::OK());
-  }
+  return NewEmptyIterator<InternalIterator>(arena);
 }
 
-template <class IteratorType>
-IteratorType* NewErrorIterator(const Status& status, Arena* arena) {
-  if (arena == nullptr) {
-    return new typename IteratorType::Empty(status);
-  } else {
-    auto mem = arena->AllocateAligned(sizeof(typename IteratorType::Empty));
-    return new (mem) typename IteratorType::Empty(status);
-  }
+InternalIterator* NewErrorInternalIterator(const Status& status, Arena* arena) {
+  return NewErrorIterator<InternalIterator>(status, arena);
 }
 
 template Iterator* NewErrorIterator<Iterator>(const Status& status, Arena* arena);
@@ -233,9 +218,5 @@ template DataBlockAwareIndexIterator* NewErrorIterator<DataBlockAwareIndexIterat
 template InternalIterator* NewErrorIterator<InternalIterator>(const Status& status, Arena* arena);
 template DataBlockAwareIndexInternalIterator* NewErrorIterator<DataBlockAwareIndexInternalIterator>(
     const Status& status, Arena* arena);
-
-InternalIterator* NewErrorInternalIterator(const Status& status, Arena* arena) {
-  return NewErrorIterator<InternalIterator>(status, arena);
-}
 
 }  // namespace rocksdb

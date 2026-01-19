@@ -112,13 +112,12 @@ extern void YbBackfillIndex(YbBackfillIndexStmt *stmt, DestReceiver *dest);
 
 extern TupleDesc YbBackfillIndexResultDesc(YbBackfillIndexStmt *stmt);
 
-extern void YbDropAndRecreateIndex(Oid indexOid, Oid relId, Relation oldRel,
-								   AttrMap *newToOldAttmap);
-
 extern void YBCDropSequence(Oid sequence_oid);
 
 /*  System Validation -------------------------------------------------------------------------- */
-extern void YBCValidatePlacement(const char *placement_info, bool check_satisfiable);
+extern void YBCValidatePlacements(const char *live_placement_info,
+								  const char *read_placement_info,
+								  bool check_satisfiable);
 
 /*  Replication Slot Functions ------------------------------------------------------------------ */
 

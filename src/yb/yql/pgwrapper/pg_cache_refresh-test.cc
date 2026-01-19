@@ -32,8 +32,6 @@ class PgCacheRefreshTest : public LibPqTestBase {
     LibPqTestBase::UpdateMiniClusterOptions(opts);
     // Tests here run DDLs concurrently with DMLs. Such behavior will not be possible
     // with table locks enabled.
-    opts->extra_tserver_flags.emplace_back(
-        "--allowed_preview_flags_csv=enable_object_locking_for_table_locks");
     opts->extra_tserver_flags.emplace_back("--enable_object_locking_for_table_locks=false");
   }
 

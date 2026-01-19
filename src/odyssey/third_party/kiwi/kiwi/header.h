@@ -74,6 +74,7 @@ typedef enum {
 	YB_OID_DETAILS = 'O',
 	/* special ParameterStatus, do not forward to client */
 	YB_CONN_MGR_PARAMETER_STATUS = 'r',
+	YB_BE_PARSE_PREPARE_ERROR_RESPONSE = '4',
 } kiwi_be_type_t;
 
 struct kiwi_header {
@@ -178,6 +179,8 @@ static inline char *kiwi_be_type_to_string(int type)
 		return "OidDetails";
 	case YB_CONN_MGR_PARAMETER_STATUS:
 		return "ConnMgrParameterStatus";
+	case YB_BE_PARSE_PREPARE_ERROR_RESPONSE:
+		return "YBParsePrepareErrorResponse";
 	}
 	return "Unknown";
 }

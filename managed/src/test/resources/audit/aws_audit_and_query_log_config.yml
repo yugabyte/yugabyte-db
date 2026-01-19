@@ -7,7 +7,6 @@ exporters:
     region: us-west2
     retry_on_failure: {enabled: true, initial_interval: 1m, max_elapsed_time: 1800m,
       max_interval: 1800m}
-    sending_queue: {enabled: false, storage: file_storage/queue}
   awscloudwatchlogs/query_logs_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$AWSCloudWatchExporter
     endpoint: endpoint
     log_group_name: logGroup

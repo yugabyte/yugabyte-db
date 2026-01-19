@@ -77,8 +77,7 @@ class OrphanedTabletCleanupTest : public PgMiniTestBase {
 
   Status CreateSnapshotScheduleOnDatabase(const string& database_name) {
     master::GetNamespaceInfoResponsePB resp;
-    RETURN_NOT_OK(client_->GetNamespaceInfo(
-        "" /* namespace_id */, kDatabaseName, YQL_DATABASE_PGSQL, &resp));
+    RETURN_NOT_OK(client_->GetNamespaceInfo(kDatabaseName, YQL_DATABASE_PGSQL, &resp));
     auto namespace_id = resp.namespace_().id();
 
     auto keyspace = client::YBTableName();

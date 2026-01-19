@@ -899,19 +899,7 @@ function(enable_lto_if_needed)
 
   detect_lto_type_from_linking_type()
   if(YB_LTO_ENABLED)
-    if(YB_BUILD_TYPE STREQUAL "prof_gen")
-      # We need a "mostly static" build (one big binary and few libs)
-      # for tserver in order to dump all the counters. Our linking type "lto"
-      # does it, but it also turns on link-time optimizations (LTO) for clang.
-      # LTO and profile generation together produce incorrect counters for
-      # inlined functions in clang15. That's why we need to remove
-      # -lto=${YB_LTO_TYPE} from out "lto" linking type when building for prof_gen.
-      # TODO: remove after we switch to clang16 (the problem is fixed in current llvm main).
-      # https://github.com/yugabyte/yugabyte-db/issues/15093
-      ADD_CXX_FLAGS("-fuse-ld=lld")
-    else()
-      ADD_CXX_FLAGS("-flto=${YB_LTO_TYPE} -fuse-ld=lld")
-    endif()
+    ADD_CXX_FLAGS("-flto=${YB_LTO_TYPE} -fuse-ld=lld")
     # In LTO mode, yb-master / yb-tserver executables are generated with LTO, but we first generate
     # yb-master-dynamic and yb-tserver-dynamic binaries that are dynamically linked.
     set_in_current_and_parent_scope(YB_DYNAMICALLY_LINKED_EXE_SUFFIX "-dynamic" PARENT_SCOPE)
@@ -986,8 +974,9 @@ endfunction()
 
 macro(yb_setup_odyssey)
   # Flags common to C and C++.
+  # TODO: Add -Werror=strict-prototypes
   set(OD_EXTRA_COMPILER_FLAGS
-      -Wno-implicit-fallthrough
+      -Werror=enum-conversion
       -Wno-missing-field-initializers
       -Wno-unused-but-set-variable
       -Wno-unused-function
@@ -995,14 +984,9 @@ macro(yb_setup_odyssey)
       -Wno-unused-variable
       # This is needed to e.g. have access to pthread_setname_np when including pthread.h.
       -D_GNU_SOURCE
-      # This is needed so that compiler can throw warnings instead of errors
-      # for the uninitialized variables throughout the odyssey code base.
-      -Wno-uninitialized
      )
   set(OD_EXTRA_C_FLAGS
       -Wno-strict-prototypes
-      # https://gist.githubusercontent.com/mbautin/323dd6fe9c6685377288397d4adf826c/raw
-      -Wno-incompatible-pointer-types
      )
 
   if(IS_CLANG)
@@ -1012,6 +996,11 @@ macro(yb_setup_odyssey)
          -Wno-static-in-inline
          -Wno-pointer-bool-conversion
          -Wno-newline-eof
+        )
+  else()
+    # https://gist.githubusercontent.com/mbautin/323dd6fe9c6685377288397d4adf826c/raw
+    list(APPEND OD_EXTRA_C_FLAGS
+         -Wno-incompatible-pointer-types
         )
   endif()
   if(IS_GCC)

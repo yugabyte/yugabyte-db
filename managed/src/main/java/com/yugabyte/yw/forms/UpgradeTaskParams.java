@@ -23,7 +23,8 @@ import play.mvc.Http.Status;
 public class UpgradeTaskParams extends UniverseDefinitionTaskParams {
 
   public UpgradeOption upgradeOption = UpgradeOption.ROLLING_UPGRADE;
-  protected RuntimeConfGetter runtimeConfGetter;
+
+  @JsonIgnore protected RuntimeConfGetter runtimeConfGetter;
 
   @ApiModelProperty(
       value =

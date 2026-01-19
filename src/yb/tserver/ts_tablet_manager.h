@@ -106,9 +106,8 @@ using rocksdb::MemoryMonitor;
 typedef std::unordered_map<TabletId, std::string> TransitionInProgressMap;
 
 class TransitionInProgressDeleter;
-struct TabletCreationMetaData;
-typedef boost::container::static_vector<TabletCreationMetaData, kNumSplitParts>
-    SplitTabletsCreationMetaData;
+struct TabletCreationMetadata;
+typedef std::vector<TabletCreationMetadata> SplitTabletsCreationMetadata;
 
 typedef Callback<void(tablet::TabletPeerPtr)> ConsensusChangeCallback;
 
@@ -245,7 +244,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
       const TabletId& tablet_id, tablet::TabletDataState delete_type,
       tablet::ShouldAbortActiveTransactions should_abort_active_txns,
       const std::optional<int64_t>& cas_config_opid_index_less_or_equal, bool hide_only,
-      bool keep_data, std::optional<TabletServerErrorPB::Code>* error_code);
+      bool keep_data, std::optional<TabletServerErrorPB::Code>* error_code,
+      std::optional<TransactionId>&& exclude_aborting_txn_id = std::nullopt);
 
   // Lookup the given tablet peer by its ID. Returns nullptr if the tablet peer is not found.
   //
@@ -395,7 +395,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   bool IsTabletInTransition(const TabletId& tablet_id) const;
 
-  TabletServer* server() { return server_; }
+  TabletServer* server() const { return server_; }
 
   MemoryMonitor* memory_monitor() { return tablet_options_.memory_monitor.get(); }
 
@@ -564,7 +564,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
       const tablet::RaftGroupMetadata& source_tablet_meta, const TabletId& tablet_id, Env* env);
 
   Status StartSubtabletsSplit(
-      const tablet::RaftGroupMetadata& source_tablet_meta, SplitTabletsCreationMetaData* tcmetas);
+      const tablet::RaftGroupMetadata& source_tablet_meta, SplitTabletsCreationMetadata* tcmetas);
 
   Status DoApplyCloneTablet(
       tablet::CloneOperation* operation, log::Log* raft_log,
@@ -657,11 +657,11 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
       const std::string& source_addr, const std::string& debug_session_string);
 
   void UpdateCompactFlushRateLimitBytesPerSec();
-
   void UpdateAllowCompactionFailures();
+  void UpdateVectorIndexCompactionLimit();
 
   rpc::ThreadPool* VectorIndexThreadPool(tablet::VectorIndexThreadPoolType type);
-  PriorityThreadPool* VectorIndexPriorityThreadPool(tablet::VectorIndexPriorityThreadPoolType type);
+  PriorityThreadPoolTokenPtr VectorIndexCompactionToken();
 
   const CoarseTimePoint start_time_;
 
@@ -846,6 +846,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   std::array<AtomicUniquePtr<rpc::ThreadPool>, tablet::kVectorIndexThreadPoolTypeMapSize>
       vector_index_thread_pools_;
   hnsw::BlockCachePtr vector_index_block_cache_;
+  PriorityThreadPoolTokenPtr vector_index_compaction_token_
+      GUARDED_BY(vector_index_thread_pool_mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(TSTabletManager);
 };

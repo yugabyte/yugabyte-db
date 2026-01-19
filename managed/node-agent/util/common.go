@@ -48,6 +48,7 @@ const (
 	UpgradeScript           = "node-agent-installer.sh"
 	RequestIdHeader         = "x-request-id"
 	CorrelationIdHeader     = "x-correlation-id"
+	RequestLogLevelHeader   = "x-request-log-level"
 
 	// Cert names.
 	NodeAgentCertFile = "node_agent.crt"
@@ -105,6 +106,8 @@ const (
 	CorrelationId ContextKey = "correlation-id"
 	// RequestId is to track for a request on this server.
 	RequestId ContextKey = "request-id"
+	// RequestLogLevel is the log level for the request.
+	RequestLogLevel ContextKey = "request-log-level"
 )
 
 var (
@@ -121,10 +124,12 @@ type Handler func(context.Context) (any, error)
 
 // UserDetail is a placeholder for OS user.
 type UserDetail struct {
-	User      *user.User
-	UserID    uint32
-	GroupID   uint32
-	IsCurrent bool
+	User           *user.User
+	UserID         uint32
+	GroupID        uint32
+	CurrentUserID  uint32
+	CurrentGroupID uint32
+	IsCurrent      bool
 }
 
 func NewUUID() uuid.UUID {
@@ -331,33 +336,50 @@ func UserInfo(username string) (*UserDetail, error) {
 	if err != nil {
 		return nil, err
 	}
-	isCurrent := true
+	currUserID, err := strconv.Atoi(userAcc.Uid)
+	if err != nil {
+		return nil, err
+	}
+	currGroupID, err := strconv.Atoi(userAcc.Gid)
+	if err != nil {
+		return nil, err
+	}
+	detail := &UserDetail{
+		UserID:         uint32(currUserID),
+		GroupID:        uint32(currGroupID),
+		CurrentUserID:  uint32(currUserID),
+		CurrentGroupID: uint32(currGroupID),
+		User:           userAcc,
+		IsCurrent:      true,
+	}
 	if username != "" && userAcc.Username != username {
 		userAcc, err = user.Lookup(username)
 		if err != nil {
 			return nil, err
 		}
-		isCurrent = false
+		uid, err := strconv.Atoi(userAcc.Uid)
+		if err != nil {
+			return nil, err
+		}
+		gid, err := strconv.Atoi(userAcc.Gid)
+		if err != nil {
+			return nil, err
+		}
+		detail.UserID = uint32(uid)
+		detail.GroupID = uint32(gid)
+		detail.User = userAcc
+		detail.IsCurrent = false
 	}
-	uid, err := strconv.Atoi(userAcc.Uid)
-	if err != nil {
-		return nil, err
-	}
-	gid, err := strconv.Atoi(userAcc.Gid)
-	if err != nil {
-		return nil, err
-	}
-	return &UserDetail{
-		User: userAcc, UserID: uint32(uid), GroupID: uint32(gid), IsCurrent: isCurrent}, nil
+	return detail, nil
 }
 
-// InheritTracingIDs inherits the tracing related info from a context.
-func InheritTracingIDs(fromCtx context.Context, toCtx context.Context) context.Context {
+// InheritContextKeys inherits the context related info from a context.
+func InheritContextKeys(fromCtx context.Context, toCtx context.Context) context.Context {
 	resultCtx := toCtx
 	if md, ok := metadata.FromIncomingContext(fromCtx); ok {
 		resultCtx = metadata.NewOutgoingContext(resultCtx, md)
 	}
-	for _, val := range TracingIDs {
+	for _, val := range ContextKeys {
 		if v := fromCtx.Value(val); v != nil {
 			resultCtx = context.WithValue(resultCtx, val, v.(string))
 		}

@@ -4,6 +4,8 @@ headerTitle: Enable high availability
 description: Make YugabyteDB Anywhere highly available
 headcontent: Configure standby instances of YugabyteDB Anywhere
 linkTitle: Enable high availability
+aliases:
+  - /stable/yugabyte-platform/manage-deployments/platform-high-availability/
 menu:
   stable_yugabyte-platform:
     identifier: platform-high-availability
@@ -35,11 +37,17 @@ Before configuring a HA cluster for your YBA instances, ensure that you have the
 - [Two or more YBA instances](../../install-yugabyte-platform/) to be used in the HA cluster.
 - The YBA instances can connect to each other over the port where the YBA UI is reachable (443 by default).
 - Communication is open in both directions over port 443 and 9090 on all YBA instances.
-- The YBA instances were installed using the same installation method (YBA Installer, Replicated, or Helm (Kubernetes)).
+- The YBA instances were installed using the same installation method (YBA Installer or Helm (Kubernetes)).
 - The YBA instances are configured to use the same path for the installation root.
 - If you are using custom ports for Prometheus, all YBA instances are using the same custom port. (The default Prometheus port for YugabyteDB Anywhere is 9090.)
 - All YBA instances are running the same version of YBA software. (The YBA instances in a HA cluster should always be upgraded at approximately the same time.)
 - The YBA instances have the same login credentials.
+
+{{< tip title="Getting the API key for the standby" >}}
+
+If you are using the API to configure HA, obtain your API key for the standby instance before setting up HA. After HA is configured, you can only obtain an API key using the API. For more information, see [Authentication](../../anywhere-automation/#authentication).
+
+{{< /tip >}}
 
 ## Configure active and standby instances
 
@@ -152,7 +160,6 @@ After HA is operational, you should enable certificate validation to improve sec
     | Installation | Certificate Location |
     | :--- | :--- |
     | YBA Installer | `/opt/yugabyte/data/yba-installer/certs/ca_cert.pem` <br/>If you configured a [custom install root](../../install-yugabyte-platform/install-software/installer/#configuration-options), replace `/opt/yugabyte` with the path you configured. |
-    | Replicated | `/var/lib/replicated/secrets/ca.crt` |
     | Kubernetes | Locate the CA certificate by running the following command:<br/>`kubectl get secret -n <namespace> <helm-release-name>-yugaware-tls-pem -o jsonpath="{.data['ca\.pem']}" \| base64 -d`<br/>Replace `<namespace>` and `<helm_release_name>` with appropriate values. |
 
     **Custom CA certificates**
@@ -303,7 +310,6 @@ The following HA-related [alerts](../../alerts-monitoring/alert/) are automatica
 - When performing failover, the first time you sign in after failover, you must use your Super Admin account.
 - Promotion will fail when HA is configured with an active instance at YBA version earlier than 2024.1, and a standby instance at version 2024.1 or later. It is not recommended to run in this configuration for an extended period. Reach out to {{% support-platform %}} if this is required.
 - If you are making API calls to YBA through custom automation, note that the [API token](../../anywhere-automation/#authentication) is different on the YBA active and standby until the standby has been promoted at least once to be an active instance. If you are using YBA with an API token, either generate a new token before every request, or perform a switchover after generating the API token (this process will have to be repeated when the API token is regenerated).
-- If you have an older Replicated installation that uses HTTP, the default port is 80. Use `http` when specifying addresses.
 - If you have a reverse proxy in front of the standby or primary instance (such as a Kubernetes ingress or a load balancer), ensure that it does not limit large requests. For example, if you are using nginx ingress, you might need to set the following annotations in your ingress specification to raise the default limit to 100 MB:
 
     ```yaml

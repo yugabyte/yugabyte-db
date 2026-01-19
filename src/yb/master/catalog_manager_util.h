@@ -65,19 +65,6 @@ class CatalogManagerUtil {
   static Status GetPerZoneTSDesc(const TSDescriptorVector& ts_descs,
                                          ZoneToDescMap* zone_to_ts);
 
-  // Checks whether two given cloud infos are identical.
-  static bool IsCloudInfoEqual(const CloudInfoPB& lhs, const CloudInfoPB& rhs);
-
-  // Checks whether the first cloud info contains the second cloud info.
-  static bool DoesCloudInfoContainCloudInfo(const CloudInfoPB& lhs, const CloudInfoPB& rhs);
-
-  // For the given placement info, checks whether a given cloud info is contained within it.
-  static bool DoesPlacementInfoContainCloudInfo(const PlacementInfoPB& placement_info,
-                                                const CloudInfoPB& cloud_info);
-
-  // Checks whether the given placement info spans more than one region.
-  static bool DoesPlacementInfoSpanMultipleRegions(const PlacementInfoPB& placement_info);
-
   // Called when registering a ts from raft, deduce a tservers placement from the peer's role
   // and cloud info.
   static Result<std::string> GetPlacementUuidFromRaftPeer(

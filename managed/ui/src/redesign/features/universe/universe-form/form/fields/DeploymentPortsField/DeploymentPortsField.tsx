@@ -21,7 +21,7 @@ import {
 } from '../../../utils/constants';
 import { useFormFieldStyles } from '../../../universeMainStyle';
 //icons
-import InfoMessageIcon from '../../../../../../assets/info-message.svg';
+import InfoMessageIcon from '../../../../../../assets/info-message.svg?img';
 
 interface DeploymentPortsFieldids {
   disabled: boolean;

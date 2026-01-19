@@ -26,7 +26,9 @@ You configure CBO using the [yb_enable_cbo](../../reference/configuration/yb-tse
 
 ## New deployments
 
-For new YSQL deployments, or when migrating from another system, to enable CBO, add the parameter to [ysql_pg_conf_csv](../../reference/configuration/yb-tserver/#ysql-pg-conf-csv) as follows:
+For new universes running v2025.2 or later, CBO is enabled by default when you deploy using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon.
+
+For older YSQL deployments, or when deploying manually, to enable CBO, add the parameter to [ysql_pg_conf_csv](../../reference/configuration/yb-tserver/#ysql-pg-conf-csv) as follows:
 
 ```sh
 --ysql_pg_conf_csv=yb_enable_cbo=on
@@ -52,6 +54,12 @@ When upgrading a deployment to a version of YugabyteDB that supports the `yb_ena
 `legacy_mode` uses only reltuples for index scan nodes, and both reltuples and the column statistics for other operations such as joins, GROUP BY, and more. (`legacy_mode` is currently the default for new deployments.)
 
 You should migrate existing deployments from using `legacy_mode` or `legacy_stats_mode` to either `on` (recommended) or, if you do not want to use CBO, `off`.
+
+Note that when upgrading a deployment to v2025.2 or later, if the universe has the cost-based optimizer enabled (`on`), YugabyteDB will enable the following features:
+
+- [Auto Analyze](../../additional-features/auto-analyze/): ysql_enable_auto_analyze is set to true.
+- [YugabyteDB bitmap scan](../../reference/configuration/postgresql-compatibility/#yugabytedb-bitmap-scan): yb_enable_bitmapscan is set to true.
+- [Parallel append](../../additional-features/parallel-query/): yb_enable_parallel_append is set to true.
 
 <!--## Recommended settings
 

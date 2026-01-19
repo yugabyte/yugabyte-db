@@ -74,7 +74,7 @@
 #include "yb/server/async_client_initializer.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/server/rpc_server.h"
-#include "yb/server/ycql_stat_provider.h"
+#include "yb/server/ycql_server_external_if.h"
 
 #include "yb/tablet/maintenance_manager.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
@@ -92,7 +92,6 @@
 #include "yb/tserver/stateful_services/pg_cron_leader_service.h"
 #include "yb/tserver/stateful_services/test_echo_service.h"
 #include "yb/tserver/tablet_service.h"
-#include "yb/tserver/ts_local_lock_manager.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver-path-handlers.h"
 #include "yb/tserver/tserver_auto_flags_manager.h"
@@ -100,7 +99,6 @@
 #include "yb/tserver/tserver_shared_mem.h"
 #include "yb/tserver/tserver_xcluster_context.h"
 #include "yb/tserver/xcluster_consumer_if.h"
-#include "yb/tserver/ysql_lease_poller.h"
 
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
@@ -114,6 +112,7 @@
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
 
+#include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
@@ -236,8 +235,6 @@ DEFINE_RUNTIME_uint32(ysql_min_new_version_ignored_count, 10,
     "Minimum consecutive number of times that a tserver is allowed to ignore an older catalog "
     "version that is retrieved from a tserver-master heartbeat response.");
 
-DECLARE_bool(enable_object_locking_for_table_locks);
-
 DECLARE_uint32(ysql_max_invalidation_message_queue_size);
 
 DECLARE_bool(enable_pg_cron);
@@ -266,6 +263,7 @@ DEFINE_test_flag(int32, delay_set_catalog_version_table_mode_count, 0,
 
 DECLARE_bool(ysql_enable_auto_analyze_infra);
 DECLARE_int32(update_min_cdc_indices_interval_secs);
+DECLARE_uint64(ysql_lease_refresher_rpc_timeout_ms);
 
 namespace yb::tserver {
 
@@ -341,6 +339,12 @@ class CDCServiceContextImpl : public cdc::CDCServiceContext {
 
   Result<uint32> GetAutoFlagsConfigVersion() const override {
     return tablet_server_.ValidateAndGetAutoFlagsConfigVersion();
+  }
+
+  Result<HostPort> GetDesiredHostPortForLocal() const override {
+    ServerRegistrationPB reg;
+    RETURN_NOT_OK(tablet_server_.GetRegistration(&reg, server::RpcOnly::kTrue));
+    return HostPortFromPB(DesiredHostPort(reg, tablet_server_.options().MakeCloudInfoPB()));
   }
 
  private:
@@ -471,7 +475,7 @@ Status TabletServer::UpdateMasterAddresses(const consensus::RaftConfigPB& new_co
   opts_.SetMasterAddresses(new_master_addresses);
 
   heartbeater_->set_master_addresses(new_master_addresses);
-  ysql_lease_poller_->set_master_addresses(new_master_addresses);
+  ysql_lease_manager_->UpdateMasterAddresses(new_master_addresses);
 
   return Status::OK();
 }
@@ -493,7 +497,7 @@ Status TabletServer::Init() {
 
   heartbeater_ = CreateHeartbeater(opts_, this);
 
-  ysql_lease_poller_ = std::make_unique<YsqlLeaseClient>(*this, opts_.GetMasterAddresses());
+  ysql_lease_manager_ = std::make_unique<YSQLLeaseManager>(*this, opts_.GetMasterAddresses());
 
   if (GetAtomicFlag(&FLAGS_allow_encryption_at_rest)) {
     // Create the encrypted environment that will allow users to enable encryption.
@@ -679,6 +683,7 @@ Status TabletServer::RegisterServices() {
 
   auto pg_client_service_holder = std::make_shared<PgClientServiceHolder>(
         *this, tablet_manager_->client_future(), clock(),
+        std::bind(&TabletServer::TransactionManager, this),
         std::bind(&TabletServer::TransactionPool, this), mem_tracker(), metric_entity(),
         messenger(), permanent_uuid(), options(), xcluster_context_.get(),
         &pg_node_level_mutation_counter_);
@@ -708,10 +713,10 @@ Status TabletServer::RegisterServices() {
 
   if (FLAGS_ysql_enable_auto_analyze_infra) {
     auto connect_to_pg = [this](const std::string& database_name,
-                                const std::optional<CoarseTimePoint>& deadline) {
+                                const CoarseTimePoint& deadline) {
       return pgwrapper::CreateInternalPGConnBuilder(pgsql_proxy_bind_address(), database_name,
                                                     GetSharedMemoryPostgresAuthKey(),
-                                                    deadline).Connect();
+                                                    deadline, true).Connect();
     };
     auto pg_auto_analyze_service =
         std::make_shared<stateful_service::PgAutoAnalyzeService>(metric_entity(), client_future(),
@@ -748,8 +753,7 @@ Status TabletServer::Start() {
   RETURN_NOT_OK(tablet_manager_->Start());
 
   RETURN_NOT_OK(heartbeater_->Start());
-
-  StartTSLocalLockManager();
+  ysql_lease_manager_->StartTSLocalLockManager();
 
   if (FLAGS_tserver_enable_metrics_snapshotter) {
     RETURN_NOT_OK(metrics_snapshotter_->Start());
@@ -771,6 +775,10 @@ Status TabletServer::Start() {
 }
 
 void TabletServer::Shutdown() {
+  bool expected = true;
+  if (!initted_.compare_exchange_strong(expected, false, std::memory_order_acq_rel)) {
+    return;
+  }
   if (!shutting_down_.Set()) {
     return;
   }
@@ -780,16 +788,9 @@ void TabletServer::Shutdown() {
   // todo(zdrudi): there's lifetime issues trying to access the pg_supervisor here through
   // callbacks. Probably due to the way the MiniCluster sets up the PgSupervisor.
   // Fix them and ensure PG is stopped here.
-  std::optional<std::future<Status>> relinquish_lease_future;
-  if (ysql_lease_poller_) {
-    WARN_NOT_OK(ysql_lease_poller_->Stop(), "Failed to stop ysql lease poller");
-    relinquish_lease_future = ysql_lease_poller_->RelinquishLease();
-  }
-
-  bool expected = true;
-  if (!initted_.compare_exchange_strong(expected, false, std::memory_order_acq_rel)) {
-    return;
-  }
+  WARN_NOT_OK(ysql_lease_manager_->Stop(), "Failed to stop ysql lease poller");
+  auto relinquish_lease_future = ysql_lease_manager_->RelinquishLease(
+      MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_ysql_lease_refresher_rpc_timeout_ms)));
 
   auto xcluster_consumer = GetXClusterConsumer();
   if (xcluster_consumer) {
@@ -798,7 +799,6 @@ void TabletServer::Shutdown() {
 
   maintenance_manager_->Shutdown();
   WARN_NOT_OK(heartbeater_->Stop(), "Failed to stop TS Heartbeat thread");
-  WARN_NOT_OK(ysql_lease_poller_->Stop(), "Failed to stop ysql lease client thread");
 
   if (FLAGS_tserver_enable_metrics_snapshotter) {
     WARN_NOT_OK(metrics_snapshotter_->Stop(), "Failed to stop TS Metrics Snapshotter thread");
@@ -809,16 +809,10 @@ void TabletServer::Shutdown() {
         "Failed to stop table mutation count sender thread");
   }
 
-  if (auto local_lock_manager = ts_local_lock_manager(); local_lock_manager) {
-    local_lock_manager->Shutdown();
-  }
-
   client()->RequestAbortAllRpcs();
 
   tablet_manager_->StartShutdown();
-  if (relinquish_lease_future.has_value()) {
-    WARN_NOT_OK(relinquish_lease_future->get(), "Couldn't relinquish ysql lease");
-  }
+  WARN_NOT_OK(relinquish_lease_future.get(), "Couldn't relinquish ysql lease");
 
   DbServerBase::Shutdown();
   RpcAndWebServerBase::Shutdown();
@@ -827,65 +821,11 @@ void TabletServer::Shutdown() {
   LOG(INFO) << "TabletServer shut down complete. Bye!";
 }
 
-tserver::TSLocalLockManagerPtr TabletServer::ResetAndGetTSLocalLockManager() {
-  ts_local_lock_manager()->Shutdown();
-  std::lock_guard l(lock_);
-  StartTSLocalLockManagerUnlocked();
-  return ts_local_lock_manager_;
-}
-
-void TabletServer::StartTSLocalLockManager() {
-  std::lock_guard l(lock_);
-  StartTSLocalLockManagerUnlocked();
-}
-
-void TabletServer::StartTSLocalLockManagerUnlocked() {
-  if (opts_.server_type == TabletServerOptions::kServerType &&
-      PREDICT_FALSE(FLAGS_enable_object_locking_for_table_locks) &&
-      PREDICT_TRUE(FLAGS_enable_ysql)) {
-    ts_local_lock_manager_ = std::make_shared<tserver::TSLocalLockManager>(
-        clock_, this /* TabletServerIf* */, *this /* RpcServerBase& */,
-        tablet_manager_->waiting_txn_pool(), metric_entity(),
-        object_lock_tracker_, object_lock_shared_state_manager_.get());
-    ts_local_lock_manager_->Start(tablet_manager_->waiting_txn_registry());
-  }
-}
-
-bool TabletServer::HasBootstrappedLocalLockManager() const {
-  auto lock_manager = ts_local_lock_manager();
-  return lock_manager && lock_manager->IsBootstrapped();
-}
-
-Status TabletServer::ProcessLeaseUpdate(const master::RefreshYsqlLeaseInfoPB& lease_refresh_info) {
-  VLOG(2) << __func__;
-  auto lock_manager = ts_local_lock_manager();
-  if (lease_refresh_info.new_lease() && lock_manager) {
-    if (lock_manager->IsBootstrapped()) {
-      // Reset the local lock manager to bootstrap from the given DDL lock entries.
-      lock_manager = ResetAndGetTSLocalLockManager();
-    }
-    RETURN_NOT_OK(lock_manager->BootstrapDdlObjectLocks(lease_refresh_info.ddl_lock_entries()));
-  }
-  // It is safer to end the pg-sessions after resetting the local lock manager.
-  // This way, if a new session gets created it will also be reset. But that is better than
-  // having it the other way around, and having an old-session that is not reset.
-  auto pg_client_service = pg_client_service_.lock();
-  if (pg_client_service) {
-    pg_client_service->impl.ProcessLeaseUpdate(lease_refresh_info);
-  }
-  return Status::OK();
-}
-
-
 Result<YSQLLeaseInfo> TabletServer::GetYSQLLeaseInfo() const {
   if (!IsYsqlLeaseEnabled()) {
     return STATUS(NotSupported, "YSQL lease is not enabled");
   }
-  auto pg_client_service = pg_client_service_.lock();
-  if (!pg_client_service) {
-    RSTATUS_DCHECK(pg_client_service, InternalError, "Unable to get pg_client_service");
-  }
-  return pg_client_service->impl.GetYSQLLeaseInfo();
+  return ysql_lease_manager_->GetYSQLLeaseInfo();
 }
 
 Status TabletServer::RestartPG() const {
@@ -900,11 +840,6 @@ Status TabletServer::KillPg() const {
     return pg_killer_();
   }
   return STATUS(IllegalState, "Pg killer callback not registered, cannot restart PG");
-}
-
-bool TabletServer::IsYsqlLeaseEnabled() {
-  return GetAtomicFlag(&FLAGS_enable_object_locking_for_table_locks) ||
-         GetAtomicFlag(&FLAGS_enable_ysql_operation_lease);
 }
 
 Status TabletServer::PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp) {
@@ -1293,6 +1228,77 @@ Status TabletServer::SetTserverCatalogMessageList(
   return Status::OK();
 }
 
+Status TabletServer::TriggerRelcacheInitConnection(
+    const TriggerRelcacheInitConnectionRequestPB& req,
+    TriggerRelcacheInitConnectionResponsePB *resp) {
+  const std::string dbname = req.database_name();
+  std::shared_future<Status> future_for_this_request;
+
+  bool started_superuser_connection = false;
+  {
+    std::lock_guard l(lock_);
+    auto it = in_flight_superuser_connections_.find(dbname);
+
+    if (it != in_flight_superuser_connections_.end()) {
+      LOG(INFO) << "Relcache init connection request to database " << dbname << " in progress";
+      future_for_this_request = it->second;
+    } else {
+      // In case there are multiple concurrent racing threads, this thread is the winner.
+      started_superuser_connection = true;
+      LOG(INFO) << "Relcache init connection request to database " << dbname
+                << " starting from tserver " << this << " to " << pgsql_proxy_bind_address();
+
+      auto p = std::make_shared<std::promise<Status>>();
+      future_for_this_request = p->get_future().share();
+      in_flight_superuser_connections_[dbname] = future_for_this_request;
+
+      messenger()->scheduler().Schedule(
+        [this, p, dbname](const Status& status) {
+          if (!status.ok()) {
+            LOG(INFO) << status;
+            RelcacheInitConnectionDone(p.get(), dbname, status);
+            return;
+          }
+          MakeRelcacheInitConnection(p.get(), dbname);
+        }, std::chrono::steady_clock::duration(0));
+    }
+  }
+  auto timeout = default_client_timeout();
+  std::future_status status = future_for_this_request.wait_for(timeout.ToSteadyDuration());
+
+  if (started_superuser_connection) {
+    std::lock_guard l(lock_);
+    in_flight_superuser_connections_.erase(dbname);
+  }
+  if (status == std::future_status::ready) {
+    return future_for_this_request.get();
+  }
+  return STATUS_FORMAT(TimedOut, "Relcache init connection request to database $0 timed out",
+                       dbname);
+}
+
+void TabletServer::RelcacheInitConnectionDone(
+    std::promise<Status>* p, const std::string& dbname, const Status& status) {
+  // Do set_value and erase atomically.
+  std::lock_guard l(lock_);
+
+  // Fulfill the promise, unblocking all waiting threads for this task.
+  p->set_value(status);
+  // Clean up dbname from the map so that next winner can create superuser connection.
+  in_flight_superuser_connections_.erase(dbname);
+}
+
+void TabletServer::MakeRelcacheInitConnection(std::promise<Status>* p, const std::string& dbname) {
+  auto deadline = CoarseMonoClock::Now() + default_client_timeout();
+  auto status = ResultToStatus(CreateInternalPGConn(dbname, deadline));
+  if (status.ok()) {
+    LOG(INFO) << "Relcache init connection to database " << dbname << " succeeded";
+  } else {
+    LOG(INFO) << "Relcache init connection to database " << dbname << " failed: " << status;
+  }
+  RelcacheInitConnectionDone(p, dbname, status);
+}
+
 void TabletServer::SetYsqlCatalogVersion(uint64_t new_version, uint64_t new_breaking_version) {
   {
     std::lock_guard l(lock_);
@@ -1474,6 +1480,10 @@ void TabletServer::SetYsqlDBCatalogVersionsUnlocked(
       }
       // update the newly inserted entry to have the allocated slot.
       inserted_entry.shm_index = shm_index;
+      LOG_WITH_FUNC(INFO) << "inserted new db " << db_oid << ", shm_index: " << shm_index
+                          << ", catalog version: " << new_version
+                          << ", breaking version: " << new_breaking_version
+                          << ", debug_id: " << debug_id;
     }
 
     if (row_inserted || row_updated) {
@@ -1538,10 +1548,9 @@ void TabletServer::SetYsqlDBCatalogVersionsUnlocked(
       // debugging the shared memory array db_catalog_versions_ (e.g., when we can dump
       // the shared memory file to examine its contents).
       shared_object()->SetYsqlDbCatalogVersion(static_cast<size_t>(shm_index), 0);
-      if (FLAGS_log_ysql_catalog_versions) {
-        LOG_WITH_FUNC(INFO) << "reset deleted db " << db_oid << " catalog version to 0"
-                            << ", debug_id: " << debug_id;
-      }
+      LOG_WITH_FUNC(INFO) << "reset deleted db " << db_oid << " catalog version to 0"
+                          << ", shm_index: " << shm_index
+                          << ", debug_id: " << debug_id;
     } else {
       ++it;
     }
@@ -2217,17 +2226,17 @@ Status TabletServer::SetPausedXClusterProducerStreams(
 }
 
 Status TabletServer::ReloadKeysAndCertificates() {
-  if (!secure_context_) {
-    return Status::OK();
+  if (secure_context_) {
+    RETURN_NOT_OK(rpc::ReloadSecureContextKeysAndCertificates(
+        secure_context_.get(), fs_manager_->GetDefaultRootDir(), rpc::SecureContextType::kInternal,
+        options_.HostsString()));
   }
 
-  RETURN_NOT_OK(rpc::ReloadSecureContextKeysAndCertificates(
-      secure_context_.get(), fs_manager_->GetDefaultRootDir(), rpc::SecureContextType::kInternal,
-      options_.HostsString()));
-
-  std::lock_guard l(xcluster_consumer_mutex_);
-  if (xcluster_consumer_) {
-    RETURN_NOT_OK(xcluster_consumer_->ReloadCertificates());
+  {
+    std::lock_guard l(xcluster_consumer_mutex_);
+    if (xcluster_consumer_) {
+      RETURN_NOT_OK(xcluster_consumer_->ReloadCertificates());
+    }
   }
 
   for (const auto& reloader : certificate_reloaders_) {
@@ -2256,7 +2265,7 @@ void TabletServer::RegisterPgProcessKiller(std::function<Status(void)> killer) {
 }
 
 Status TabletServer::StartYSQLLeaseRefresher() {
-  return ysql_lease_poller_->Start();
+  return ysql_lease_manager_->StartYSQLLeaseRefresher();
 }
 
 Status TabletServer::SetCDCServiceEnabled() {
@@ -2290,17 +2299,17 @@ void TabletServer::ScheduleCheckLaggingCatalogVersions() {
 }
 
 void TabletServer::SetCQLServer(yb::server::RpcAndWebServerBase* server,
-      server::YCQLStatementStatsProvider* stmt_provider) {
+      server::YCQLServerExternalInterface* cql_server_if) {
   DCHECK_EQ(cql_server_.load(), nullptr);
-  DCHECK_EQ(cql_stmt_provider_.load(), nullptr);
+  DCHECK_EQ(cql_server_external_.load(), nullptr);
 
   cql_server_.store(server);
-  cql_stmt_provider_.store(stmt_provider);
+  cql_server_external_.store(cql_server_if);
 }
 
 Status TabletServer::YCQLStatementStats(const tserver::PgYCQLStatementStatsRequestPB& req,
       tserver::PgYCQLStatementStatsResponsePB* resp) const {
-    auto* cql_stmt_provider = cql_stmt_provider_.load();
+    auto* cql_stmt_provider = cql_server_external_.load();
     SCHECK_NOTNULL(cql_stmt_provider);
     RETURN_NOT_OK(cql_stmt_provider->YCQLStatementStats(req, resp));
     return Status::OK();
@@ -2331,14 +2340,50 @@ Status TabletServer::ClearMetacache(const std::string& namespace_id) {
   return client()->ClearMetacache(namespace_id);
 }
 
+Status TabletServer::ClearYCQLMetaDataCache() {
+  auto* cql_server_api = cql_server_external_.load();
+  SCHECK_NOTNULL(cql_server_api);
+  cql_server_api->ClearMetaDataCache();
+  return Status::OK();
+}
+
 Result<std::vector<tablet::TabletStatusPB>> TabletServer::GetLocalTabletsMetadata() const {
   std::vector<tablet::TabletStatusPB> result;
   auto peers = tablet_manager_.get()->GetTabletPeers();
+
+  std::unordered_map<std::string, std::unordered_map<std::string, std::vector<size_t>>>
+      db_to_table_to_indices;
+
   for (const std::shared_ptr<tablet::TabletPeer>& peer : peers) {
     tablet::TabletStatusPB status;
     peer->GetTabletStatusPB(&status);
-    status.set_pgschema_name(peer->status_listener()->schema()->SchemaName());
+
+    // Group tablets by database (namespace)
+    if (status.has_namespace_name() && !status.namespace_name().empty() &&
+      status.has_table_type() && status.table_type() == TableType::PGSQL_TABLE_TYPE) {
+      db_to_table_to_indices[status.namespace_name()][status.table_id()].push_back(result.size());
+    }
     result.emplace_back(std::move(status));
+  }
+
+  // For each database, finding current schema names
+  for (const auto& [db_name, table_map] : db_to_table_to_indices) {
+    // Call Master server using RPC call for current schema names
+    auto list_result = client()->ListTables("", db_name);
+    if (!list_result.ok()) {
+      VLOG(1) << "Skipping database " << db_name << "status " << list_result.status();
+      continue;
+    }
+
+    // Update schema names for matching tables
+    for (const auto& table : list_result->tables()) {
+      auto it = table_map.find(table.id());
+      if (it != table_map.end()) {
+        for (auto& idx : it->second) {
+          result[idx].set_pgschema_name(table.pgschema_name());
+        }
+      }
+    }
   }
   return result;
 }

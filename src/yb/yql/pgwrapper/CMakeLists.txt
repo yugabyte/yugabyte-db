@@ -23,7 +23,8 @@ set(PGWRAPPER_LIBS
     yb_util)
 ADD_YB_LIBRARY(yb_pgwrapper
                SRCS ${PGWRAPPER_SRCS}
-               DEPS ${PGWRAPPER_LIBS})
+               DEPS ${PGWRAPPER_LIBS}
+               NONLINK_DEPS postgres)
 
 include_directories(${YB_BUILD_ROOT}/postgres_build/src/include)
 
@@ -128,6 +129,7 @@ ADD_YB_TEST(pg_cancel_transaction-test)
 ADD_YB_TEST(pg_catalog_perf-test)
 ADD_YB_TEST(pg_catalog_snapshot_too_old-test)
 ADD_YB_TEST(pg_catalog_version-test)
+ADD_YB_TEST(pg_cbo_dependent_flags-test)
 ADD_YB_TEST(pg_clock_skew-test)
 ADD_YB_TEST(pg_conn-test)
 ADD_YB_TEST(pg_copy-test)
@@ -158,6 +160,7 @@ ADD_YB_TEST(pg_namespace_master_restart-test)
 ADD_YB_TEST(pg_object_locks-test)
 ADD_YB_TEST(pg_on_conflict-test)
 ADD_YB_TEST(pg_op_buffering-test)
+ADD_YB_TEST(pg_op_processing_order-test)
 ADD_YB_TEST(pg_packed_insert-test)
 ADD_YB_TEST(pg_packed_row-test)
 ADD_YB_TEST(pg_read_after_commit_visibility-test)
@@ -172,6 +175,7 @@ ADD_YB_TEST(pg_tablespaces-test)
 ADD_YB_TEST(pg_tablet_shutdown-test)
 ADD_YB_TEST(pg_tablet_split-test)
 ADD_YB_TEST(pg_temp_toast-test)
+ADD_YB_TEST(pg_terminate_backend-test)
 ADD_YB_TEST(pg_type-test)
 ADD_YB_TEST(pg_txn-test)
 ADD_YB_TEST(pg_txn_status-test)
@@ -183,6 +187,8 @@ ADD_YB_TEST(orphaned_tablet_cleanup-test)
 ADD_YB_TEST(pg_retryable_request-test)
 ADD_YB_TEST(pg_advisory_lock-test)
 ADD_YB_TEST(pg_yb_index_check-test)
+ADD_YB_TEST(pg_skip_prefix_lock-test)
+ADD_YB_TEST(pg_intents_flush_opid_modify-test)
 
 # This is really a tool, not a test, but uses a lot of existing test infrastructure.
 ADD_YB_TEST(create_initial_sys_catalog_snapshot)

@@ -12,6 +12,7 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -32,6 +33,7 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -195,6 +197,11 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
             defaultUniverse.getUniverseUUID(),
             ApiUtils.mockUniverseUpdater(userIntent, placementInfo, true));
 
+    // Speed up tests by removing the sleep time for auto flag updates.
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.autoFlagUpdateSleepTimeInMilliSeconds.getKey(), "0ms");
+
     CatalogEntityInfo.SysClusterConfigEntryPB.Builder configBuilder =
         CatalogEntityInfo.SysClusterConfigEntryPB.newBuilder().setVersion(1);
     GetMasterClusterConfigResponse mockConfigResponse =
@@ -255,6 +262,12 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
               })
           .when(mockYsqlQueryExecutor)
           .executeQueryInNodeShell(any(), any(), any(), anyBoolean(), anyBoolean());
+      // Mock for CheckNodeCommandExecution - specific command only
+      lenient()
+          .when(
+              mockNodeUniverseManager.runCommand(
+                  any(), any(), eq(Arrays.asList("echo", "command-execution-test")), any()))
+          .thenReturn(ShellResponse.create(0, "Command output:\ncommand-execution-test"));
     } catch (Exception ignored) {
       fail();
     }
@@ -472,7 +485,16 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
   }
 
   protected TaskType[] getPrecheckTasks(boolean hasRollingRestarts) {
+    return getPrecheckTasks(hasRollingRestarts, hasRollingRestarts);
+  }
+
+  protected TaskType[] getPrecheckTasks(
+      boolean hasRollingRestarts, boolean includeNodeComprehensivePrechecks) {
     List<TaskType> types = new ArrayList<>();
+    if (includeNodeComprehensivePrechecks) {
+      types.add(TaskType.CheckServiceLiveness);
+      types.add(TaskType.CheckNodeCommandExecution);
+    }
     if (hasRollingRestarts) {
       types.add(TaskType.CheckNodesAreSafeToTakeDown);
     }

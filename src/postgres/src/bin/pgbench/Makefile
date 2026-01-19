@@ -24,7 +24,7 @@ LIBS += $(PTHREAD_LIBS) -lyb_util $(YB_PG_EXE_LD_FLAGS_AFTER_YB_LIBS)
 all: ysql_bench
 
 ysql_bench: $(OBJS) | submake-libpq submake-libpgport submake-libpgfeutils
-	$(CC) $(CFLAGS) $^ $(LDFLAGS) $(LDFLAGS_EX) $(LIBS) -o $@$(X)
+	$(YB_CCLD) $(CFLAGS) $^ $(LDFLAGS) $(LDFLAGS_EX) $(LIBS) -o $@$(X)
 
 # exprscan is compiled as part of exprparse
 exprparse.o: exprscan.c

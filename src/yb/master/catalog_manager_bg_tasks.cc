@@ -56,8 +56,8 @@ using std::shared_ptr;
 using std::vector;
 
 METRIC_DEFINE_event_stats(
-    server, load_balancer_duration, "Load balancer duration",
-    yb::MetricUnit::kMilliseconds, "Duration of one load balancer run (in milliseconds)");
+    server, load_balancer_duration, "Cluster balancer duration",
+    yb::MetricUnit::kMilliseconds, "Duration of one cluster balancer run (in milliseconds)");
 
 DEFINE_RUNTIME_int32(catalog_manager_bg_task_wait_ms, 1000,
     "Amount of time the catalog manager background task thread waits between runs");
@@ -92,7 +92,7 @@ CatalogManagerBgTasks::CatalogManagerBgTasks(Master* master)
       thread_(nullptr),
       master_(master),
       catalog_manager_(master->catalog_manager_impl()),
-      load_balancer_duration_(METRIC_load_balancer_duration.Instantiate(
+      cluster_balancer_duration_(METRIC_load_balancer_duration.Instantiate(
           master_->metric_entity())) {
 }
 
@@ -242,23 +242,16 @@ void CatalogManagerBgTasks::RunOnceAsLeader(const LeaderEpoch& epoch) {
   }
   TryResumeBackfillForTables(epoch, &table_map);
 
-  // Do the LB enabling check
-  if (!processed_tablets) {
-    if (catalog_manager_->TimeSinceElectedLeader() >
-        MonoDelta::FromSeconds(FLAGS_load_balancer_initial_delay_secs)) {
-      auto start = CoarseMonoClock::Now();
-      catalog_manager_->load_balance_policy_->RunLoadBalancer(epoch);
-      load_balancer_duration_->Increment(ToMilliseconds(CoarseMonoClock::now() - start));
-    }
-  }
-
-  std::vector<scoped_refptr<TableInfo>> tables;
+  std::vector<TableInfoPtr> tables;
   TabletInfoMap tablet_info_map;
   {
     CatalogManager::SharedLock lock(catalog_manager_->mutex_);
     auto tables_it = catalog_manager_->tables_->GetPrimaryTables();
     tables = std::vector(std::begin(tables_it), std::end(tables_it));
     tablet_info_map = *catalog_manager_->tablet_map_;
+  }
+  if (!processed_tablets) {
+    MaybeRunClusterBalancer(epoch, tables, tablet_info_map);
   }
   master_->tablet_split_manager().MaybeDoSplitting(tables, tablet_info_map, epoch);
 
@@ -291,6 +284,18 @@ void CatalogManagerBgTasks::RunOnceAsLeader(const LeaderEpoch& epoch) {
   master_->ysql_backends_manager()->AbortInactiveJobs();
 }
 
+void CatalogManagerBgTasks::MaybeRunClusterBalancer(
+    const LeaderEpoch& epoch, const std::vector<TableInfoPtr>& tables,
+    const TabletInfoMap& tablets) {
+  if (catalog_manager_->TimeSinceElectedLeader() <=
+      MonoDelta::FromSeconds(FLAGS_load_balancer_initial_delay_secs)) {
+    return;
+  }
+  auto start = CoarseMonoClock::Now();
+  catalog_manager_->load_balance_policy_->RunClusterBalancer(epoch, tables, tablets);
+  cluster_balancer_duration_->Increment(ToMilliseconds(CoarseMonoClock::now() - start));
+}
+
 void CatalogManagerBgTasks::Run() {
   while (!closing_.load()) {
     TEST_PAUSE_IF_FLAG(TEST_pause_catalog_manager_bg_loop_start);
@@ -305,7 +310,7 @@ void CatalogManagerBgTasks::Run() {
       // leader_status is not ok.
       if (was_leader_) {
         LOG(INFO) << "Begin one-time cleanup on losing leadership";
-        load_balancer_duration_->Reset();
+        cluster_balancer_duration_->Reset();
         catalog_manager_->ResetMetrics();
         catalog_manager_->ResetTasksTrackers();
         master_->ysql_backends_manager()->AbortAllJobs();

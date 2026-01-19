@@ -142,6 +142,7 @@ struct ThreadPoolOptions {
   }
 
   static constexpr auto kUnlimitedWorkers = std::numeric_limits<decltype(max_workers)>::max();
+  static constexpr auto kUnlimitedWorkersWithoutQueue = kUnlimitedWorkers - 1;
 };
 
 // An object that can enqueue/submit tasks, e.g. a thread pool, a sub-pool, or a strand.
@@ -207,6 +208,9 @@ class YBThreadPool : public TaskRecipient<ThreadPoolTask> {
 
   size_t NumWorkers() const;
   bool Idle() const;
+
+  // Used to disable detailed logging in pggate thread pools.
+  static void DisableDetailedLogging();
 
  private:
   class Impl;

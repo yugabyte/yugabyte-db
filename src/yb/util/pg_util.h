@@ -14,13 +14,18 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 #include "yb/util/net/net_util.h"
 
 namespace yb {
 
+class Status;
+
 std::string PgDeriveSocketDir(const HostPort& host_port);
 
 std::string PgDeriveSocketLockFile(const HostPort& host_port);
+
+Status ReadCSVValues(const std::string& csv, std::vector<std::string>* lines);
 
 } // namespace yb

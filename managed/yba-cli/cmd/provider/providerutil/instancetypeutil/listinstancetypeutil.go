@@ -43,13 +43,7 @@ func ListInstanceTypeUtil(
 
 	r, response, err := providerListRequest.Execute()
 	if err != nil {
-		errMessage := util.ErrorFromHTTPResponse(
-			response,
-			err,
-			callSite,
-			"List - Get Provider",
-		)
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		util.FatalHTTPError(response, err, callSite, "List - Get Provider")
 	}
 	if len(r) < 1 {
 		logrus.Fatalf(
@@ -63,8 +57,7 @@ func ListInstanceTypeUtil(
 
 	rList, response, err := authAPI.ListOfInstanceType(providerUUID).Execute()
 	if err != nil {
-		errMessage := util.ErrorFromHTTPResponse(response, err, callSite, "List")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		util.FatalHTTPError(response, err, callSite, "List")
 	}
 
 	if len(rList) < 1 {

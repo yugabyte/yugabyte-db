@@ -24,9 +24,10 @@
  *-------------------------------------------------------------------------
  */
 
-#include "c.h"
+#include "postgres.h"
 
 #include "catalog/pg_operator_d.h"
+#include "nodes/primnodes.h"
 #include "utils/fmgroids.h"
 
 const uint32 yb_funcs_safe_for_pushdown[] = {
@@ -230,9 +231,22 @@ const uint32 yb_pushdown_funcs_to_constify[] = {
 	F_NOW
 };
 
+const SQLValueFunctionOp yb_pushdown_sqlvaluefunctions[] = {
+	SVFOP_CURRENT_TIMESTAMP,
+	SVFOP_CURRENT_TIMESTAMP_N,
+	SVFOP_CURRENT_TIME,
+	SVFOP_CURRENT_TIME_N,
+	SVFOP_CURRENT_DATE,
+	SVFOP_LOCALTIME,
+	SVFOP_LOCALTIME_N,
+	SVFOP_LOCALTIMESTAMP,
+	SVFOP_LOCALTIMESTAMP_N,
+};
+
 #define DEFINE_ARRAY_SIZE(array) const int array##_count = lengthof(array)
 
 DEFINE_ARRAY_SIZE(yb_funcs_safe_for_pushdown);
 DEFINE_ARRAY_SIZE(yb_funcs_unsafe_for_pushdown);
 DEFINE_ARRAY_SIZE(yb_funcs_safe_for_mixed_mode_pushdown);
 DEFINE_ARRAY_SIZE(yb_pushdown_funcs_to_constify);
+DEFINE_ARRAY_SIZE(yb_pushdown_sqlvaluefunctions);

@@ -121,7 +121,7 @@ public class TableManagerTest extends FakeDBApplication {
     if (enableTLS) {
       userIntent.enableNodeToNodeEncrypt = true;
     }
-    uniParams.upsertPrimaryCluster(userIntent, null);
+    uniParams.upsertPrimaryCluster(userIntent, null, null);
     testUniverse.setUniverseDetails(uniParams);
     testUniverse =
         Universe.saveDetails(

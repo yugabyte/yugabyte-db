@@ -38,6 +38,13 @@ DECLARE_int32(TEST_transactional_read_delay_ms);
 DECLARE_uint64(big_shared_memory_segment_expiration_time_ms);
 DECLARE_uint64(big_shared_memory_segment_session_expiration_time_ms);
 
+
+namespace yb {
+
+extern bool TEST_fail_to_create_second_thread_in_thread_pool_without_queue;
+
+}
+
 namespace yb::pgwrapper {
 
 class PgSharedMemTest : public PgMiniTestBase {
@@ -69,19 +76,28 @@ class PgSharedMemTest : public PgMiniTestBase {
     return result;
   }
 
-  void OverrideMiniClusterOptions(MiniClusterOptions* options) override {
-    options->wait_for_pg = false;
-  }
+  void TestSimple();
 };
 
-TEST_F(PgSharedMemTest, Simple) {
+void PgSharedMemTest::TestSimple() {
   auto conn = ASSERT_RESULT(Connect());
 
   ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, value TEXT)"));
   ASSERT_OK(conn.Execute("INSERT INTO t (key, value) VALUES (1, 'hello')"));
 
-  auto value = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT value FROM t WHERE key = 1"));
+  auto conn2 = ASSERT_RESULT(Connect());
+  auto value = ASSERT_RESULT(conn2.FetchRow<std::string>("SELECT value FROM t WHERE key = 1"));
   ASSERT_EQ(value, "hello");
+}
+
+TEST_F(PgSharedMemTest, Simple) {
+  TestSimple();
+}
+
+TEST_F(PgSharedMemTest, ThreadStartFailure) {
+  TEST_fail_to_create_second_thread_in_thread_pool_without_queue = true;
+
+  TestSimple();
 }
 
 TEST_F(PgSharedMemTest, Restart) {

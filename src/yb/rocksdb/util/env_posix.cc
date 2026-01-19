@@ -429,6 +429,10 @@ class PosixEnv : public Env {
 #endif
   }
 
+  uint64_t NowCpuCycles() override {
+    return CycleClock::Now();
+  }
+
   void SleepForMicroseconds(int micros) override { usleep(micros); }
 
   Status GetHostName(char* name, uint64_t len) override {

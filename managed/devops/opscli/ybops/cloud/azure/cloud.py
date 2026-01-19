@@ -281,17 +281,13 @@ class AzureCloud(AbstractCloud):
         for mount_point in mount_points:
             # need to rescan disks to see changes
             cmd1 = "df | awk '($6 == \"" + mount_point + "\") {print $1}' | grep -o 'sd\\w*$'"
-            resp = remote_shell.run_command(cmd1)
-            if resp.exited == 1:
-                raise YBOpsRuntimeError("Failed to get fs for mount point {}".format(mount_point))
-            fsname = resp.stdout.replace('\n', '')
+            resp = remote_shell.check_exec_command(cmd1)
+            fsname = resp.replace('\n', '')
             cmd2 = "sudo bash -c 'echo 1 > /sys/class/block/{}/device/rescan' " \
                 "&& sudo fdisk -l /dev/{}".format(fsname, fsname)
-            resp2 = remote_shell.run_command(cmd2)
-            if resp2.exited == 1:
-                raise YBOpsRuntimeError("Failed to do rescan for {}".format(mount_point))
+            remote_shell.check_exec_command(cmd2)
             logging.info("Expanding file system with mount point: {}".format(mount_point))
-            remote_shell.run_command('sudo xfs_growfs {}'.format(mount_point))
+            remote_shell.check_exec_command('sudo xfs_growfs {}'.format(mount_point))
 
     def normalize_instance_state(self, instance_state):
         if instance_state:

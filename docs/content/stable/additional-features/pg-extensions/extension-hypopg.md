@@ -9,6 +9,8 @@ menu:
     parent: pg-extensions
     weight: 20
 type: docs
+aliases:
+  - /stable/explore/ysql-language-features/pg-extensions/extension-hypopg
 ---
 
 The [HypoPG](https://github.com/HypoPG/hypopg) PostgreSQL extension adds support for hypothetical indexes. Use hypothetical indexes to test whether adding an index improves the performance of problematic queries, without expending resources to create them.

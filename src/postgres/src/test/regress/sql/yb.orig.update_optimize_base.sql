@@ -407,3 +407,69 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO ioc_table VALUES ('user-id-1-1', 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO ioc_table VALUES ('user-id-1-1', uuid_generate_v4(), 'Test Name 1')
   ON CONFLICT (id, name) DO UPDATE SET uuid_col = EXCLUDED.uuid_col;
 DROP TABLE IF EXISTS ioc_table;
+
+--
+-- GH-27948: Test that DELETE + (re)INSERT of the same row can be performed in a single flush
+--
+CREATE TABLE json_table (k INT PRIMARY KEY, v1 JSONB, v2 JSONB, v3 INT);
+INSERT INTO json_table (SELECT
+	i AS k,
+	('{"a": ' || i || ', "b": ' || 100 + i || ', "c": ' || 200 + i || ', "d": ' || 300 + i || '}')::jsonb AS v1,
+	('{"a": ' || i || ', "b": ' || 100 + i || ', "c": ' || 200 + i || ', "d": ' || 300 + i || '}')::jsonb AS v2,
+	i AS v3
+	FROM generate_series(1, 5) AS i);
+
+CREATE INDEX NONCONCURRENTLY json_table_v1 ON json_table (CAST((v1->>'a') AS INT));
+CREATE UNIQUE INDEX NONCONCURRENTLY json_table_v2 ON json_table (CAST((v2->>'a') AS INT));
+
+-- Updating the subkey having an index should allow the 'skip redundant update' optimization to kick in.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_table SET v1 = jsonb_set(v1, '{a}', to_jsonb(1)) WHERE k = 1;
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_table SET v2 = jsonb_set(v2, '{a}', to_jsonb(1)) WHERE k = 1;
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_table SET v1 = jsonb_set(v1, '{a}', to_jsonb(1)), v2 = jsonb_set(v2, '{a}', to_jsonb(1)) WHERE k = 2;
+-- Updating a subkey not having an index should allow the optimization to push down the DELETE + INSERT in a single flush.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_table SET v1 = jsonb_set(v1, '{b}', to_jsonb(k + 110)) WHERE k = 1;
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_table SET v2 = jsonb_set(v2, '{b}', to_jsonb(k + 110)) WHERE k = 1;
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_table SET v1 = jsonb_set(v1, '{b}', to_jsonb(k + 120)), v2 = jsonb_set(v2, '{b}', to_jsonb(k + 120)) WHERE k = 2;
+
+SELECT * FROM json_table WHERE k IN (1, 2) ORDER BY k;
+
+CREATE UNIQUE INDEX NONCONCURRENTLY ON json_table (CAST((v1->>'c') AS INT), CAST((v1->>'d') AS INT));
+CREATE INDEX NONCONCURRENTLY ON json_table (CAST((v1->>'c') AS INT), CAST((v2->>'c') AS INT));
+
+-- Updating any subkey of a multi-subkey index should allow the optimization to push down the DELETE + INSERT in a single flush.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_table SET v1 = jsonb_set(v1, '{d}', to_jsonb(k + 310)) WHERE k = 3;
+-- Updating any subkey should update the corresponding indexes.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_table SET v1 = jsonb_set(v1, '{c}', to_jsonb(k + 210)) WHERE k = 3;
+
+SELECT * FROM json_table WHERE k IN (3, 4) ORDER BY k;
+
+-- Multi-row updates.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_table SET v1 = jsonb_set(v1, '{c}', to_jsonb(v1->>'c')) WHERE k < 10;
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_table SET v2 = jsonb_set(v2, '{c}', to_jsonb((v2->>'c')::INT + 1)) WHERE k < 10;
+
+SELECT * FROM json_table ORDER BY k;
+
+CREATE TABLE staircase (k INT, PRIMARY KEY (k ASC));
+INSERT INTO staircase (SELECT i FROM generate_series(1, 100) AS i);
+-- When not optimized, the following query converges to this pattern:
+-- Flush k: INSERT (n-2), DELETE (n), INSERT (n-1), DELETE (n+1),
+-- Flush k + 1: INSERT (n), DELETE (n+2), INSERT (n+1), DELETE (n+3)
+-- and so on.
+-- Unique constraint violations are not raised because every insert maps to a row that doesn't exist.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE staircase SET k = k - 1;
+
+-- UPDATEs on GIN indexes
+CREATE TABLE gin_table (k INT PRIMARY KEY, v INT[]);
+CREATE INDEX gin_table_idx ON gin_table USING gin (v);
+INSERT INTO gin_table (SELECT i, ARRAY[1, 3, 100+i] from generate_series(1, 10) AS i);
+
+-- Updating a single element in the array column will trigger updates to all other elements
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE gin_table SET v[3] = k + 100 + 1 WHERE k < 30;
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE gin_table SET v[3] = v[3] + 1 WHERE v[1] = 1;
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE gin_table SET v[1] = v[1] + 1, v[2] = v[1] + 3 WHERE v[1] = 1;
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE gin_table SET k = k + 10;
+
+-- Updates to unmodified elements should still be carried out; but in a single flush.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE gin_table SET v[3] = k + 90 + 2 WHERE k < 30;
+
+SELECT * FROM gin_table ORDER BY k;

@@ -237,6 +237,7 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
           mastersToAdd,
           tServersToAdd,
           isNextFallThrough /* ignoreNodeStatus */,
+          false /* do validation of gflags */,
           installSoftwareParams -> installSoftwareParams.isMasterInShellMode = true,
           gFlagsParams -> {
             gFlagsParams.isMasterInShellMode = true;

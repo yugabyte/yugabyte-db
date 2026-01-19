@@ -26,12 +26,12 @@ func CreateStorageConfigurationUtil(
 
 	storageConfigData, response, err := authAPI.GetListOfCustomerConfig().Execute()
 	if err != nil {
-		errMessage := util.ErrorFromHTTPResponse(
+		util.FatalHTTPError(
 			response,
 			err,
 			"Storage Configuration",
-			"Create - List Storage Configuration")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			"Create - List Storage Configuration",
+		)
 	}
 	storageConfigsUUID := make([]ybaclient.CustomerConfigUI, 0)
 	for _, s := range storageConfigData {
@@ -55,12 +55,12 @@ func UpdateStorageConfigurationUtil(
 ) {
 	storageConfigData, response, err := authAPI.GetListOfCustomerConfig().Execute()
 	if err != nil {
-		errMessage := util.ErrorFromHTTPResponse(
+		util.FatalHTTPError(
 			response,
 			err,
 			"Storage Configuration",
-			"Update - List Storage Configuration")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			"Update - List Storage Configuration",
+		)
 	}
 	storageConfigsUUID := make([]ybaclient.CustomerConfigUI, 0)
 	for _, s := range storageConfigData {

@@ -30,10 +30,12 @@
 
 namespace yb::docdb {
 
-// DocDB variant of scanspec.
-class DocPgsqlScanSpec : public qlexpr::PgsqlScanSpec {
- public:
+using PgsqlConditionPBPtr = rpc::AnyMessagePtrBase<
+    const PgsqlConditionPB*, const LWPgsqlConditionPB*>;
 
+// DocDB variant of scanspec.
+class DocPgsqlScanSpec : public qlexpr::YQLScanSpec {
+ public:
   // Scan for the specified doc_key.
   DocPgsqlScanSpec(const Schema& schema,
                    const rocksdb::QueryId query_id,
@@ -52,9 +54,10 @@ class DocPgsqlScanSpec : public qlexpr::PgsqlScanSpec {
   // DocPgsqlScanSpec spec(...{} /* hashed_components */, {} /* range_components */...);
   DocPgsqlScanSpec(const Schema& schema,
                    const rocksdb::QueryId query_id,
-                   std::reference_wrapper<const dockv::KeyEntryValues> hashed_components,
+                   const ArenaPtr& arena,
+                   const std::vector<Slice>& encoded_hashed_components,
                    std::reference_wrapper<const dockv::KeyEntryValues> range_components,
-                   const PgsqlConditionPB* condition,
+                   PgsqlConditionPBPtr condition,
                    std::optional<int32_t> hash_code,
                    std::optional<int32_t> max_hash_code,
                    const dockv::DocKey& start_doc_key = DefaultStartDocKey(),
@@ -63,9 +66,12 @@ class DocPgsqlScanSpec : public qlexpr::PgsqlScanSpec {
                    const dockv::DocKey& upper_doc_key = DefaultStartDocKey(),
                    const size_t prefix_length = 0);
 
+  DocPgsqlScanSpec(const Schema& schema,
+                   const PgsqlConditionPB* condition);
+
   // Returns the lower/upper range components of the key.
   dockv::KeyEntryValues RangeComponents(
-      bool lower_bound,
+      qlexpr::BoundType bound_type,
       std::vector<bool>* inclusivities = nullptr) const override;
 
   const std::shared_ptr<std::vector<qlexpr::OptionList>>& options() const override {
@@ -80,19 +86,22 @@ class DocPgsqlScanSpec : public qlexpr::PgsqlScanSpec {
   static const dockv::DocKey& DefaultStartDocKey();
 
   dockv::KeyEntryValues DoRangeComponents(
-      bool lower_bound,
+      qlexpr::BoundType bound_type,
       std::vector<bool>* inclusivities = nullptr,
       bool* trivial = nullptr) const;
 
   void CompleteBounds();
 
-  // Returns the lower/upper doc key based on the range components.
-  qlexpr::ScanBounds CalculateBounds(const Schema& schema) const;
+  // Returns the lower/upper doc key based on the passed hashed components and range components
+  // field.
+  qlexpr::ScanBounds CalculateBounds(
+      const std::vector<Slice>& encoded_hashed_components, const Schema& schema) const;
 
   // Initialize options_ if range columns have one or more options (i.e. using EQ/IN
   // conditions). Otherwise options_ will stay null and we will only use the range_bounds for
   // scanning.
-  void InitOptions(const PgsqlConditionPB& condition);
+  template <class ConditionPB>
+  void InitOptions(const ConditionPB& condition);
 
   // The range/hash value options if set (possibly more than one due to IN conditions).
   std::shared_ptr<std::vector<qlexpr::OptionList>> options_;
@@ -100,10 +109,8 @@ class DocPgsqlScanSpec : public qlexpr::PgsqlScanSpec {
   // Ids of key columns that have filters such as h1 IN (1, 5, 6, 9) or r1 IN (5, 6, 7)
   std::vector<ColumnId> options_col_ids_;
 
-  // The hashed_components are owned by the caller of QLScanSpec.
-  const dockv::KeyEntryValues *hashed_components_;
   // The range_components are owned by the caller of QLScanSpec.
-  const dockv::KeyEntryValues *range_components_;
+  const dockv::KeyEntryValues* range_components_;
 
   // Groups of column indexes found from the filters.
   // Eg: If we had an incoming filter of the form (r1, r3, r4) IN ((1,2,5), (5,4,3), ...)
@@ -112,11 +119,11 @@ class DocPgsqlScanSpec : public qlexpr::PgsqlScanSpec {
   // options_groups_ would contain the groups {0,2,3} and {1}.
   ColGroupHolder options_groups_;
 
-  // Hash code is used if hashed_components_ vector is empty.
+  // Hash code is used if encoded_hashed_components vector is empty.
   // hash values are positive int16_t.
   const std::optional<int32_t> hash_code_;
 
-  // Max hash code is used if hashed_components_ vector is empty.
+  // Max hash code is used if encoded_hashed_components vector is empty.
   // hash values are positive int16_t.
   const std::optional<int32_t> max_hash_code_;
 

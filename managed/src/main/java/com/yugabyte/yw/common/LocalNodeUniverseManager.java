@@ -62,8 +62,7 @@ public class LocalNodeUniverseManager {
         ysqlCommand,
         timeoutSec,
         authEnabled,
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.enableConnectionPooling,
-        false);
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.enableConnectionPooling);
   }
 
   public ShellResponse runYsqlCommand(
@@ -74,19 +73,6 @@ public class LocalNodeUniverseManager {
       long timeoutSec,
       boolean authEnabled,
       boolean cpEnabled) {
-    return runYsqlCommand(
-        node, universe, dbName, ysqlCommand, timeoutSec, authEnabled, cpEnabled, false);
-  }
-
-  public ShellResponse runYsqlCommand(
-      NodeDetails node,
-      Universe universe,
-      String dbName,
-      String ysqlCommand,
-      long timeoutSec,
-      boolean authEnabled,
-      boolean cpEnabled,
-      boolean escaped) {
     UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(node.placementUuid);
     LocalCloudInfo cloudInfo = LocalNodeManager.getCloudInfo(node, universe);
     List<String> bashCommand = new ArrayList<>();
@@ -115,6 +101,10 @@ public class LocalNodeUniverseManager {
     bashCommand.add("-d");
     bashCommand.add(dbName);
     bashCommand.add("-c");
+    boolean escaped = false;
+    if (ysqlCommand.toLowerCase().contains("create tablespace")) {
+      escaped = true;
+    }
     if (!escaped) {
       ysqlCommand = ysqlCommand.replace("\"", "");
     }

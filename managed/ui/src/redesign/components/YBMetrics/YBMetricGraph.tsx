@@ -14,7 +14,7 @@ import {
 
 import { CHART_RESIZE_DEBOUNCE } from '../../helpers/constants';
 import { YBMetricGraphTitle } from './YBMetricGraphTitle';
-import { formatDatetime, YBTimeFormats } from '../../helpers/DateUtils';
+import { useFormatDatetime, YBTimeFormats } from '../../helpers/DateUtils';
 import { YBMetricGraphData } from './types';
 import { getUniqueTraceId, getUniqueTraceName } from './utils';
 
@@ -50,6 +50,7 @@ type YBMetricGraphProps =
 export const YBMetricGraph = (props: YBMetricGraphProps) => {
   const { graphHeaderAccessor, metric, metricSettings, referenceLines, title, unit } = props;
   const theme = useTheme();
+  const formatDatetime = useFormatDatetime();
   const traceStrokes = Object.values(theme.palette.chart.stroke);
   const unitSuffix = unit ? ` ${unit}` : '';
 

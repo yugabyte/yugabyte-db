@@ -46,7 +46,7 @@ import algoliasearch from 'algoliasearch';
         const style = document.createElement('style');
 
         // Original (Unminified) file located in `docs/assets/scss/_yb_kapa_modal_styling.scss`.
-        style.textContent = `.mantine-SegmentedControl-label{color:#4e5f6d;font-size:13px;font-style:normal;font-weight:400;line-height:16px;display:flex;padding:4px 12px 4px 8px;align-items:center;height:24px;gap: 4px}.mantine-Image-imageWrapper img{border-radius:0}.mantine-SegmentedControl-root span{display:none}.mantine-SegmentedControl-root{padding:0;overflow:visible}.mantine-SegmentedControl-controlActive{gap:4px;background:#fff;border-radius:8px;box-shadow:0 0 0 1px #7879f1}.mantine-SegmentedControl-control:not(:last-child) label:before{content:"";width:24px;height:24px;background:url(/icons/ai-icon.svg) center no-repeat;display:inline-block;filter:grayscale(1) brightness(1.2)}.mantine-SegmentedControl-control:not(:last-child).mantine-SegmentedControl-controlActive label:before{filter:none}.mantine-SegmentedControl-control:not(:last-child).mantine-SegmentedControl-controlActive label{background:linear-gradient(273deg,#ed35ec 5.14%,#ed35c5 38.93%,#7879f1 48.17%,#5e60f0 98.9%);background-clip:text;-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-weight:600}.mantine-SegmentedControl-control:last-child.mantine-SegmentedControl-controlActive label{color:#2b59c3;font-weight:600}.mantine-SegmentedControl-controlActive label{border-radius:8px;border:0;font-size:13px;font-style:normal;font-weight:600;line-height:16px;display:flex;gap:4px}.mantine-SegmentedControl-control:last-child label {padding: 4px 12px;}`;
+        style.textContent = `.mantine-Image-root{border-radius:0}`;
 
         shadowRoot.appendChild(style);
       }

@@ -344,9 +344,8 @@ Status XClusterManager::GetXClusterSafeTimeForNamespace(
 }
 
 Result<HybridTime> XClusterManager::GetXClusterSafeTimeForNamespace(
-    const LeaderEpoch& epoch, const NamespaceId& namespace_id,
-    const XClusterSafeTimeFilter& filter) {
-  return XClusterTargetManager::GetXClusterSafeTimeForNamespace(epoch, namespace_id, filter);
+    const NamespaceId& namespace_id, const XClusterSafeTimeFilter& filter) const {
+  return XClusterTargetManager::GetXClusterSafeTimeForNamespace(namespace_id, filter);
 }
 
 Status XClusterManager::RefreshXClusterSafeTimeMap(const LeaderEpoch& epoch) {
@@ -983,7 +982,14 @@ Status XClusterManager::InsertPackedSchemaForXClusterTarget(
   }
 
   return XClusterTargetManager::InsertPackedSchemaForXClusterTarget(
-      table_id, req->packed_schema(), req->current_schema_version(), epoch);
+      table_id, req->packed_schema(), req->current_consumer_schema_version(), epoch);
+}
+
+Status XClusterManager::HandleNewSchemaForAutomaticXClusterTarget(
+    const HandleNewSchemaForAutomaticXClusterTargetRequestPB* req,
+    HandleNewSchemaForAutomaticXClusterTargetResponsePB* resp, rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch) {
+  return XClusterTargetManager::HandleNewSchemaForAutomaticXClusterTarget(req, resp, epoch);
 }
 
 Status XClusterManager::InsertHistoricalColocatedSchemaPacking(

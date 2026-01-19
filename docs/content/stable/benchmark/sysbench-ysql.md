@@ -9,6 +9,8 @@ menu:
     identifier: sysbench-ysql
     parent: benchmark
     weight: 5
+aliases:
+  - /benchmark/sysbench/
 type: docs
 ---
 
@@ -28,8 +30,7 @@ $ export PATH=$PATH:/path/to/ysqlsh
 
 ### Install sysbench
 
-Install sysbench on a machine which satisfies the Prerequisites using one of
-the following options:
+Install sysbench on a machine which satisfies the Prerequisites using one of the following options:
 
 <ul class="nav nav-tabs nav-tabs-yb">
     <li>

@@ -34,7 +34,7 @@ YB_STRONGLY_TYPED_BOOL(HadReadTime);
 class ConsistentReadPoint {
  public:
   // A map of tablet id to local limits.
-  using HybridTimeMap = std::unordered_map<TabletId, HybridTime>;
+  using HybridTimeMap = UnorderedStringMap<TabletId, HybridTime>;
 
   explicit ConsistentReadPoint(const scoped_refptr<ClockBase>& clock);
 
@@ -55,12 +55,12 @@ class ConsistentReadPoint {
   [[nodiscard]] ReadHybridTime GetReadTime() const  EXCLUDES(mutex_);
 
   // Get the read time of this read point for a tablet.
-  [[nodiscard]] ReadHybridTime GetReadTime(const TabletId& tablet) const EXCLUDES(mutex_);
+  [[nodiscard]] ReadHybridTime GetReadTime(TabletIdView tablet) const EXCLUDES(mutex_);
 
   // Notify that a tablet requires restart. This method is thread-safe.
-  void RestartRequired(const TabletId& tablet, const ReadHybridTime& restart_time) EXCLUDES(mutex_);
+  void RestartRequired(TabletIdView tablet, const ReadHybridTime& restart_time) EXCLUDES(mutex_);
 
-  void UpdateLocalLimit(const TabletId& tablet, HybridTime local_limit) EXCLUDES(mutex_);
+  void UpdateLocalLimit(TabletIdView tablet, HybridTime local_limit) EXCLUDES(mutex_);
 
   // Does the current read require restart?
   [[nodiscard]] bool IsRestartRequired() const EXCLUDES(mutex_);
@@ -86,6 +86,7 @@ class ConsistentReadPoint {
 
   // Apply restart read times from a child transaction result. This method is thread-safe.
   void ApplyChildTransactionResult(const ChildTransactionResultPB& result) EXCLUDES(mutex_);
+  void ApplyChildTransactionResult(const LWChildTransactionResultPB& result) EXCLUDES(mutex_);
 
   // Sets in transaction limit.
   void SetInTxnLimit(HybridTime value) EXCLUDES(mutex_);
@@ -121,10 +122,13 @@ class ConsistentReadPoint {
   void SetCurrentReadTimeUnlocked(
       ClampUncertaintyWindow clamp = ClampUncertaintyWindow::kFalse) REQUIRES(mutex_);
   void UpdateLimitsMapUnlocked(
-      const TabletId& tablet, const HybridTime& local_limit, HybridTimeMap* map) REQUIRES(mutex_);
-  void RestartRequiredUnlocked(const TabletId& tablet, const ReadHybridTime& restart_time)
+      TabletIdView tablet, const HybridTime& local_limit, HybridTimeMap* map) REQUIRES(mutex_);
+  void RestartRequiredUnlocked(TabletIdView tablet, const ReadHybridTime& restart_time)
       REQUIRES(mutex_);
   [[nodiscard]] bool IsRestartRequiredUnlocked() const REQUIRES(mutex_);
+
+  template <class PB>
+  void DoApplyChildTransactionResult(const PB& result) EXCLUDES(mutex_);
 
   const scoped_refptr<ClockBase> clock_;
 

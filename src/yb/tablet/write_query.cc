@@ -64,11 +64,16 @@ DEFINE_RUNTIME_bool(disable_alter_vs_write_mutual_exclusion, false,
     "operation take an exclusive lock making all write operations wait for it.");
 TAG_FLAG(disable_alter_vs_write_mutual_exclusion, advanced);
 
-DEFINE_RUNTIME_bool(skip_prefix_locks, false,
+DEFINE_RUNTIME_bool(skip_prefix_locks, true,
     "Enable to skip writing weak intent locks on intermediate prefixes of the actual PK being "
     "written. This reduces the number of key-value pairs written to the intents db, resulting in "
     "better performance. However, it may lead to high contention when serializable isolation "
     "transactions are present in the workload.");
+
+DEFINE_RUNTIME_AUTO_bool(skip_prefix_locks_for_upgrade, kLocalPersisted, false, true,
+    "The gflag is for upgrade and should not be changed. skip prefix lock is enabled only if "
+    "both skip_prefix_locks and skip_prefix_locks_for_upgrade are true. To disable the feature, "
+    "just set skip_prefix_locks to false.");
 
 DEFINE_RUNTIME_bool(skip_prefix_locks_suppress_warning_for_serializable_op, false,
     "If false, logs a warning when a serializable transaction runs with skip prefix locks enabled."
@@ -93,7 +98,7 @@ namespace {
 // Separate Redis / QL / row operations write batches from write_request in preparation for the
 // write transaction. Leave just the tablet id behind. Return Redis / QL / row operations, etc.
 // in batch_request.
-void SetupKeyValueBatch(const tserver::WriteRequestPB& client_request, LWWritePB* out_request) {
+void SetupKeyValueBatch(const tserver::WriteRequestMsg& client_request, LWWritePB* out_request) {
   out_request->ref_unused_tablet_id(""); // Backward compatibility.
   auto& out_write_batch = *out_request->mutable_write_batch();
   if (client_request.has_write_batch()) {
@@ -108,6 +113,9 @@ void SetupKeyValueBatch(const tserver::WriteRequestPB& client_request, LWWritePB
   }
   if (client_request.has_start_time_micros()) {
     out_request->set_start_time_micros(client_request.start_time_micros());
+  }
+  if (client_request.has_xrepl_origin_id()) {
+    out_request->set_xrepl_origin_id(client_request.xrepl_origin_id());
   }
   out_request->set_batch_idx(client_request.batch_idx());
   // Actually, in production code, we could check for external hybrid time only when there are
@@ -176,8 +184,8 @@ void AddReadPairs(const DocPaths& paths, docdb::LWKeyValueWriteBatchPB* write_ba
 // When reset_ops is true, the operations in the provided 'doc_ops' are reset with the current
 // schema version.
 Status CqlPopulateDocOps(
-    const TabletPtr& tablet, const tserver::WriteRequestPB* client_request,
-    docdb::DocOperations* doc_ops, tserver::WriteResponsePB* resp, bool reset_ops = false) {
+    const TabletPtr& tablet, const tserver::WriteRequestMsg* client_request,
+    docdb::DocOperations* doc_ops, tserver::WriteResponseMsg* resp, bool reset_ops = false) {
   const auto& ql_write_batch = client_request->ql_write_batch();
   doc_ops->reserve(ql_write_batch.size());
 
@@ -218,7 +226,7 @@ WriteQuery::WriteQuery(
     WriteQueryContext* context,
     TabletPtr tablet,
     rpc::RpcContext* rpc_context,
-    tserver::WriteResponsePB* response)
+    tserver::WriteResponseMsg* response)
     : tablet_(tablet),
       operation_(std::make_unique<WriteOperation>(std::move(tablet))),
       term_(term),
@@ -298,15 +306,19 @@ void WriteQuery::DoStartSynchronization(const Status& status) {
   if (client_request_ && client_request_->use_async_write()) {
     VLOG(2) << "Performing Async write: " << client_request_->ShortDebugString();
     operation_->SetAsyncWrite(
-        [query = this](OpId opid) -> void {
+        [query = this](Result<OpId> opid) -> void {
           // TODO: Add metrics for async writes.
           // Query is still pending, but we are ready to invoke the callback.
 
-          query->context_->RegisterAsyncWrite(opid);
-          opid.ToPB(query->response_->mutable_async_write_op_id());
+          Status status;
+          if (opid.ok()) {
+            query->context_->RegisterAsyncWrite(*opid);
+            opid->ToPB(query->response_->mutable_async_write_op_id());
+          } else {
+            status = std::move(opid.status());
+          }
 
           TEST_SYNC_POINT("WriteQuery::BeforeCallbackInvoke");
-          Status status;
           TEST_SYNC_POINT_CALLBACK("WriteQuery::SetCallbackStatus", &status);
           query->InvokeCallback(status);
           TEST_SYNC_POINT("WriteQuery::AfterCallbackInvoke");
@@ -350,13 +362,13 @@ WriteQuery::~WriteQuery() {
   }
 }
 
-void WriteQuery::set_client_request(std::reference_wrapper<const tserver::WriteRequestPB> req) {
+void WriteQuery::set_client_request(std::reference_wrapper<const tserver::WriteRequestMsg> req) {
   client_request_ = &req.get();
   read_time_ = ReadHybridTime::FromReadTimePB(req.get());
   allow_immediate_read_restart_ = !read_time_;
 }
 
-void WriteQuery::set_client_request(std::unique_ptr<tserver::WriteRequestPB> req) {
+void WriteQuery::set_client_request(std::unique_ptr<tserver::WriteRequestMsg> req) {
   set_client_request(*req);
   client_request_holder_ = std::move(req);
 }
@@ -430,6 +442,8 @@ void WriteQuery::InvokeCallback(const Status& status) {
 }
 
 void WriteQuery::ExecuteDone(const Status& status) {
+  VLOG_WITH_FUNC(4) << "status: " << status;
+
   docdb_locks_ = std::move(prepare_result_.lock_batch);
   scoped_read_operation_.Reset();
   // Reset request_scope_ using RAII here to prevent it from blocking transaction cleanup.
@@ -532,7 +546,7 @@ Result<bool> WriteQuery::SimplePrepareExecute() {
 Result<bool> WriteQuery::CqlRePrepareExecuteIfNecessary() {
   auto tablet = VERIFY_RESULT(tablet_safe());
   auto& metadata = *tablet->metadata();
-  VLOG_WITH_FUNC(2) << "Schema version for  " << metadata.table_name() << ": "
+  VLOG_WITH_FUNC(2) << "Schema version for " << metadata.table_name() << ": "
                     << metadata.primary_table_schema_version();
   // Check if the schema version set in client_request_->ql_write_batch() is compatible with
   // the current schema pointed to by the tablet's metadata.
@@ -571,7 +585,7 @@ Result<bool> WriteQuery::CqlPrepareExecute() {
   RETURN_NOT_OK(InitExecute(ExecuteMode::kCql));
 
   auto& metadata = *tablet->metadata();
-  VLOG_WITH_FUNC(2) << "Schema version for  " << metadata.table_name() << ": "
+  VLOG_WITH_FUNC(2) << "Schema version for " << metadata.table_name() << ": "
                     << metadata.primary_table_schema_version();
 
   if (!VERIFY_RESULT(CqlCheckSchemaVersion())) {
@@ -603,7 +617,7 @@ Result<bool> WriteQuery::PgsqlPrepareExecute() {
   bool colocated = metadata.colocated() || tablet->is_sys_catalog();
 
   for (const auto& req : pgsql_write_batch) {
-    PgsqlResponsePB* resp = response_->add_pgsql_response_batch();
+    auto* resp = response_->add_pgsql_response_batch();
     // Table-level tombstones should not be requested for non-colocated tables.
     if ((req.stmt_type() == PgsqlWriteRequestPB::PGSQL_TRUNCATE_COLOCATED) && !colocated) {
       LOG(WARNING) << "cannot create table-level tombstone for a non-colocated table";
@@ -650,16 +664,16 @@ Result<bool> WriteQuery::PgsqlPrepareLock() {
   doc_ops_.reserve(pgsql_lock_batch.size());
 
   TransactionOperationContext txn_op_ctx;
-  VLOG_WITH_FUNC(2) << "transaction=" << write_batch.transaction().DebugString();
+  VLOG_WITH_FUNC(2) << "transaction=" << write_batch.transaction().ShortDebugString();
   for (const auto& req : pgsql_lock_batch) {
-    VLOG_WITH_FUNC(4) << req.DebugString();
+    VLOG_WITH_FUNC(4) << req.ShortDebugString();
     if (doc_ops_.empty()) {
       txn_op_ctx = VERIFY_RESULT(tablet->CreateTransactionOperationContext(
           write_batch.transaction(),
           /* is_ysql_catalog_table */ false,
           &write_batch.subtransaction()));
     }
-    PgsqlResponsePB* resp = response_->add_pgsql_response_batch();
+    auto* resp = response_->add_pgsql_response_batch();
     auto lock_op = std::make_unique<docdb::PgsqlLockOperation>(
         req,
         txn_op_ctx);
@@ -705,6 +719,8 @@ void WriteQuery::Execute(std::unique_ptr<WriteQuery> query) {
   query_ptr->self_ = std::move(query);
 
   auto prepare_result = query_ptr->PrepareExecute();
+  VLOG_WITH_FUNC(4)
+      << "Request: " << AsString(query_ptr->client_request_) << ", result: " << prepare_result;
 
   if (!prepare_result.ok()) {
     query_ptr->ExecuteDone(prepare_result.status());
@@ -830,10 +846,14 @@ Status WriteQuery::DoExecute() {
     auto transaction_id = VERIFY_RESULT(FullyDecodeTransactionId(
       write_batch.transaction().transaction_id()));
 
-    const bool should_skip_prefix_locks = FLAGS_skip_prefix_locks && FLAGS_ysql_enable_packed_row;
+    bool should_skip_prefix_locks = FLAGS_skip_prefix_locks &&
+        FLAGS_skip_prefix_locks_for_upgrade && FLAGS_ysql_enable_packed_row;
+    fast_mode_txn_scope_ = VERIFY_RESULT(transaction_participant->ShouldUseFastMode(
+        isolation_level_, should_skip_prefix_locks, transaction_id));
+    should_skip_prefix_locks = SkipPrefixLocks(fast_mode_txn_scope_.active(), isolation_level_);
+    write_batch.mutable_transaction()->set_skip_prefix_locks(should_skip_prefix_locks);
     skip_prefix_locks = should_skip_prefix_locks ?
         dockv::SkipPrefixLocks::kTrue : dockv::SkipPrefixLocks::kFalse;
-    write_batch.mutable_transaction()->set_skip_prefix_locks(should_skip_prefix_locks);
     VLOG_WITH_FUNC(4) << "Choose skip_prefix_locks:" << skip_prefix_locks << ", isolation_level:"
         << isolation_level_ << ", transaction id:" << transaction_id;
     if (skip_prefix_locks && isolation_level_ == IsolationLevel::SERIALIZABLE_ISOLATION &&
@@ -940,6 +960,8 @@ Status WriteQuery::DoExecute() {
       IllegalState, "background_transaction_id should only be set for advisory lock requests.");
 
   // TODO(wait-queues): Ensure that wait_queue respects deadline() during conflict resolution.
+  VLOG(5) << "Going to call ResolveTransactionConflicts with read_time: "
+          << (read_time_ ? read_time_.read : HybridTime::kMax);
   return docdb::ResolveTransactionConflicts(
       doc_ops_, conflict_management_policy, write_batch, request_scope_, tablet->clock()->Now(),
       read_time_ ? read_time_.read : HybridTime::kMax, write_batch.transaction().pg_txn_start_us(),
@@ -1090,6 +1112,8 @@ Status WriteQuery::DoCompleteExecute(HybridTime safe_time) {
       doc_op->ClearResponse();
     }
   }
+  VLOG_WITH_FUNC(4)
+      << "Write batch: " << AsString(write_batch) << ", doc ops: " << AsString(doc_ops_);
 
   if (isolation_level_ == IsolationLevel::NON_TRANSACTIONAL) {
     return Status::OK();
@@ -1177,6 +1201,7 @@ Result<bool> WriteQuery::CqlCheckSchemaVersion() {
     if (!CheckSchemaVersion(
             table_info.get(), req.schema_version(), req.is_compatible_with_previous_version(),
             error_code, index, &resp_batch)) {
+      VLOG_WITH_FUNC(4) << "Schema version mismatch for: " << AsString(req);
       ++num_mismatches;
     }
     ++index;
@@ -1295,7 +1320,7 @@ struct UpdateQLIndexesTask {
   client::YBClient* client = nullptr;
   client::YBTransactionPtr txn;
   client::YBSessionPtr session;
-  const ChildTransactionDataPB* child_transaction_data = nullptr;
+  const ChildTransactionDataMsg* child_transaction_data = nullptr;
   client::YBMetaDataCache* metadata_cache;
 
   std::mutex mutex;
@@ -1354,7 +1379,7 @@ struct UpdateQLIndexesTask {
   }
 
   void TableResolved(
-      QLWriteRequestPB* index_request, docdb::QLWriteOperation* write_op,
+      QLWriteRequestMsg* index_request, docdb::QLWriteOperation* write_op,
       const Result<client::GetTableResult>& index_table) {
     if (!index_table.ok()) {
       std::lock_guard lock(mutex);
@@ -1560,16 +1585,17 @@ void WriteQuery::IncrementActiveWriteQueryObjectsBy(int64_t value) {
   }
 }
 
-PgsqlResponsePB* WriteQuery::GetPgsqlResponseForMetricsCapture() const {
+std::pair<PgsqlResponseMsg*, PgsqlMetricsCaptureType>
+    WriteQuery::GetPgsqlResponseAndMetricsCapture() const {
   if (!pgsql_write_ops_.empty()) {
     auto& write_op = pgsql_write_ops_.at(0);
+    auto metrics_capture = write_op->request().metrics_capture();
     if (GetAtomicFlag(&FLAGS_ysql_analyze_dump_metrics) &&
-        write_op->request().metrics_capture() ==
-            PgsqlMetricsCaptureType::PGSQL_METRICS_CAPTURE_ALL) {
-      return write_op->response();
+        metrics_capture != PgsqlMetricsCaptureType::PGSQL_METRICS_CAPTURE_NONE) {
+      return {write_op->response(), metrics_capture};
     }
   }
-  return nullptr;
+  return {nullptr, PgsqlMetricsCaptureType::PGSQL_METRICS_CAPTURE_NONE};
 }
 
 }  // namespace tablet

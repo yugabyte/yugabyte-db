@@ -3,6 +3,8 @@ title: Best Practices for logical replication
 headerTitle: Best practices
 linkTitle: Best practices
 description: Best Practices for logical replication with Change Data Capture in YugabyteDB.
+aliases:
+  - /stable/explore/change-data-capture/using-logical-replication/best-practices/
 menu:
   stable:
     parent: explore-change-data-capture-logical-replication
@@ -25,4 +27,4 @@ Consider the requirement where there are multiple applications, all of them requ
 
 An application can connect to any of the YB-TServer nodes to consume from a replication slot. Furthermore, even in case of an interruption, a fresh connection can be made to a different node (different from the node from which consumption was previously happening) to continue consumption from the same replication slot.
 
-When there are multiple consuming applications each consuming from a different replication slot, it is best that the applications connect to different YB-TServer nodes in the cluster. This ensures better load balancing. The [YugabyteDB smart driver](/preview/develop/drivers-orms/smart-drivers/) does this automatically, so it is recommended that applications use this smart driver.
+When there are multiple consuming applications each consuming from a different replication slot, it is best that the applications connect to different YB-TServer nodes in the cluster. This ensures better load balancing. The [YugabyteDB smart driver](/stable/develop/drivers-orms/smart-drivers/) does this automatically, so it is recommended that applications use this smart driver.

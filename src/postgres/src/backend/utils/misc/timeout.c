@@ -21,6 +21,10 @@
 #include "utils/timeout.h"
 #include "utils/timestamp.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+#include "yb/yql/pggate/ybc_pggate.h"
+
 
 /* Data about any one timeout reason */
 typedef struct timeout_params
@@ -145,6 +149,10 @@ remove_timeout_index(int index)
 	Assert(active_timeouts[index]->active);
 	active_timeouts[index]->active = false;
 
+	/* YB note: Notify pggate that the statement timeout has been disabled. */
+	if (IsYugaByteEnabled() && active_timeouts[index]->index == STATEMENT_TIMEOUT)
+		YBCClearTimeout();
+
 	for (i = index + 1; i < num_active_timeouts; i++)
 		active_timeouts[i - 1] = active_timeouts[i];
 
@@ -194,6 +202,19 @@ enable_timeout(TimeoutId id, TimestampTz now, TimestampTz fin_time,
 	all_timeouts[id].interval_in_ms = interval_in_ms;
 
 	insert_timeout(id, i);
+
+	/*
+	 * YB note: Send the timeout to pggate so that it can be enforced for RPCs.
+	 * This is applicable only statement/transaction scoped timers. In PG 15,
+	 * statement timeout is the only such timer.
+	 * Operational timers such as lock timeout and deadlock timeout follow a
+	 * different code path in YB, and thus do not need to be propagated to
+	 * pggate here.
+	 * Since the fin_time was derived from a 32 bit millisecond timeout, there
+	 * is no risk of overflow in converting back to int32.
+	 */
+	if (IsYugaByteEnabled() && id == STATEMENT_TIMEOUT)
+		YBCSetTimeout(TimestampDifferenceMilliseconds(now, fin_time));
 }
 
 /*
@@ -772,6 +793,10 @@ disable_all_timeouts(bool keep_indicators)
 		if (!keep_indicators)
 			all_timeouts[i].indicator = false;
 	}
+
+	/* YB note: Notify pggate that the statement timeout has been disabled. */
+	if (IsYugaByteEnabled())
+		YBCClearTimeout();
 }
 
 /*

@@ -109,9 +109,6 @@ struct MiniClusterOptions {
   // By default, we create max(2, num_tablet_servers) tablets per transaction table. If this is
   // set to a non-zero value, this value is used instead.
   int transaction_table_num_tablets = 0;
-
-  // Whether to wait for the cluster to accept pg connections in the Start and Restart methods.
-  bool wait_for_pg = true;
 };
 
 // An in-process cluster with a MiniMaster and a configurable
@@ -302,6 +299,10 @@ class MiniCluster : public MiniClusterBase {
 
   rpc::ProxyCache& proxy_cache() override { return *proxy_cache_; }
 
+  void SetPgTServerSelected(size_t pg_ts_idx, const HostPort& pgsql_proxy_bind_address) {
+     pg_ts_selected_ = std::make_pair(pg_ts_idx, pgsql_proxy_bind_address);
+  }
+
  private:
 
   void ConfigureClientBuilder(client::YBClientBuilder* builder) override;
@@ -339,6 +340,7 @@ class MiniCluster : public MiniClusterBase {
   std::unique_ptr<rpc::Messenger> messenger_;
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
   HostPort ysql_hostport_;
+  std::optional<std::pair<size_t, HostPort>> pg_ts_selected_;
 };
 
 // Requires that skewed clock is registered as physical clock.

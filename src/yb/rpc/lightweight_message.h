@@ -32,7 +32,6 @@ class LightweightMessage {
 
   virtual Status ParseFromCodedStream(google::protobuf::io::CodedInputStream* cis) = 0;
   virtual size_t SerializedSize() const = 0;
-  virtual uint8_t* SerializeToArray(uint8_t* out) const = 0;
   virtual void AppendToDebugString(std::string* out) const = 0;
   virtual void Clear() = 0;
 
@@ -42,15 +41,33 @@ class LightweightMessage {
     return SerializedSize(); // TODO(LW)
   }
 
+  size_t DynamicMemoryUsage() const {
+    return SerializedSize();
+  }
+
+  size_t ObjectSize() const {
+    return sizeof(*this); // TODO(LW)
+  }
+
+  uint8_t* SerializeToArray(uint8_t* out) const {
+    return DoSerializeToArray(out);
+  }
+
   std::string ShortDebugString() const;
   std::string SerializeAsString() const;
   void AppendToString(std::string* out) const;
+  std::byte* SerializeToArray(std::byte* out) const;
+
+ private:
+  virtual uint8_t* DoSerializeToArray(uint8_t* out) const = 0;
 };
 
 template <class MsgPtr, class LWMsgPtr>
 class AnyMessagePtrBase {
  public:
   AnyMessagePtrBase() : message_(0) {}
+  AnyMessagePtrBase(std::nullptr_t) : message_(0) {} // NOLINT
+
   explicit AnyMessagePtrBase(MsgPtr message) : message_(reinterpret_cast<size_t>(message)) {}
   explicit AnyMessagePtrBase(LWMsgPtr message)
       : message_(message ? reinterpret_cast<size_t>(message) | 1 : 0) {
@@ -72,6 +89,20 @@ class AnyMessagePtrBase {
 
   size_t impl() const {
     return message_;
+  }
+
+  std::string ToString() const {
+    if (!message_) {
+      return AsString(nullptr);
+    }
+    if (is_lightweight()) {
+      return AsString(*lightweight());
+    }
+    return AsString(*protobuf());
+  }
+
+  bool operator!() const {
+    return message_ == 0;
   }
 
  protected:
@@ -247,7 +278,7 @@ const T& empty_message() {
 
 template <class T, class... Args>
 std::shared_ptr<T> SharedMessage(Args&&... args) {
-  auto arena = SharedArena();
+  auto arena = SharedThreadSafeArena();
   auto* t = arena->NewArenaObject<T>(std::forward<Args>(args)...);
   return std::shared_ptr<T>(std::move(arena), t);
 }
@@ -257,8 +288,14 @@ std::shared_ptr<T> MakeSharedMessage() {
   return SharedMessage<T>();
 }
 
+template <class PB>
+inline constexpr bool IsGoogleProtobuf = std::is_base_of_v<google::protobuf::Message, PB>;
+
+template <class PB>
+inline constexpr bool IsLightweightMessage = std::is_base_of_v<rpc::LightweightMessage, PB>;
+
 template <class LW>
-std::enable_if_t<std::is_base_of_v<LightweightMessage, LW>, LW*> LightweightMessageType(LW*);
+std::enable_if_t<IsLightweightMessage<LW>, LW*> LightweightMessageType(LW*);
 
 template <class PB>
 auto CopySharedMessage(const PB& rhs) {
@@ -297,5 +334,18 @@ auto ToRepeatedPtrField(const ArenaList<T>& list) {
   return result;
 }
 
+namespace map_util {
+
+template <class Key, class Value>
+const Key& ExtractKey(const google::protobuf::MapPair<Key, Value>& p) {
+  return p.first;
+}
+
+template <class Key, class Value>
+const Value& ExtractValue(const google::protobuf::MapPair<Key, Value>& p) {
+  return p.second;
+}
+
+} // namespace map_util
 
 } // namespace yb::rpc

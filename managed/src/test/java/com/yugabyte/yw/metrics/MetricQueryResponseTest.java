@@ -156,4 +156,26 @@ public class MetricQueryResponseTest {
       assertTrue(layout.getYaxis().getAlias().values().contains(data.get(i).name));
     }
   }
+
+  @Test
+  public void testContainerMetricsWithPodName() {
+    JsonNode responseJson =
+        Json.parse(
+            "{\"status\":\"success\",\"data\":{\"resultType\":\"vector\",\"result\":[{\"metric\":\n"
+                + " {\"pod_name\":\"yb-tserver-test-pod\",\"container_name\":\"yb-tserver\","
+                + "\"namespace\":\"test-namespace\"},\"value\":[1479278137,\"0.5\"]}]}}");
+
+    MetricQueryResponse queryResponse = Json.fromJson(responseJson, MetricQueryResponse.class);
+
+    List<MetricGraphData> data =
+        queryResponse.getGraphData(
+            "container_cpu_usage", new MetricConfigDefinition(), METRIC_SETTINGS);
+
+    assertEquals(data.size(), 1);
+    MetricGraphData metricData = data.get(0);
+    assertThat(metricData.instanceName, allOf(notNullValue(), equalTo("yb-tserver-test-pod")));
+    assertThat(metricData.type, allOf(notNullValue(), equalTo("scatter")));
+    assertThat(metricData.x, allOf(notNullValue(), instanceOf(ArrayNode.class)));
+    assertThat(metricData.y, allOf(notNullValue(), instanceOf(ArrayNode.class)));
+  }
 }

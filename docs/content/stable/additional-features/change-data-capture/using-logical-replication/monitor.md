@@ -1,8 +1,10 @@
 ---
-title: CDC monitoring in YugabyteDB
+title: Monitor CDC (logical replication) in YugabyteDB
 headerTitle: Monitor
 linkTitle: Monitor
-description: Monitor Change Data Capture in YugabyteDB.
+description: Monitor CDC with logical replication in YugabyteDB.
+aliases:
+  - /stable/explore/change-data-capture/using-logical-replication/monitor/
 menu:
   stable:
     parent: explore-change-data-capture-logical-replication

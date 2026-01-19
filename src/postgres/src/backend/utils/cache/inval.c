@@ -910,7 +910,7 @@ void
 AcceptInvalidationMessages(void)
 {
 	if (OidIsValid(MyDatabaseId) &&
-		*YBCGetGFlags()->enable_object_locking_for_table_locks &&
+		YBCIsObjectLockingEnabled() &&
 		YbIsInvalidationMessageEnabled())
 	{
 		uint64_t	shared_catalog_version = YbGetSharedCatalogVersion();

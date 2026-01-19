@@ -485,9 +485,8 @@ class CqlTabletSplitTestExt : public CqlTestBase<ExternalMiniCluster> {
     std::vector<std::string> common_flags;
     common_flags.push_back("--yb_num_shards_per_tserver=1");
 
+    mini_cluster_opt_.replication_factor = std::min(num_tablet_servers(), 3);
     auto& master_flags = mini_cluster_opt_.extra_master_flags;
-    master_flags.push_back(
-        Format("--replication_factor=$0", std::min(num_tablet_servers(), 3)));
     master_flags.push_back("--enable_automatic_tablet_splitting=true");
     master_flags.push_back("--tablet_split_low_phase_size_threshold_bytes=0");
     master_flags.push_back("--tablet_split_high_phase_size_threshold_bytes=0");

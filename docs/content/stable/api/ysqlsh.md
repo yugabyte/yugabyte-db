@@ -4,6 +4,10 @@ headerTitle: ysqlsh
 linkTitle: ysqlsh
 description: Use the YSQL shell (ysqlsh) to interact with YugabyteDB.
 headcontent: Shell for interacting with the YugabyteDB YSQL API
+aliases:
+  - /develop/tools/ysqlsh/
+  - /stable/develop/tools/ysqlsh/
+  - /stable/admin/ysqlsh/
 type: docs
 ---
 
@@ -19,8 +23,8 @@ The YugabyteDB SQL shell (ysqlsh) provides a CLI for interacting with YugabyteDB
 
 ysqlsh is installed with YugabyteDB and located in the `bin` directory of the YugabyteDB home directory.
 
-{{<lead link="/preview/releases/yugabyte-clients/">}}
-To download and install a standalone version of ysqlsh, refer to [YugabyteDB clients](/preview/releases/yugabyte-clients/).
+{{<lead link="/stable/releases/yugabyte-clients/">}}
+To download and install a standalone version of ysqlsh, refer to [YugabyteDB clients](/stable/releases/yugabyte-clients/).
 {{</lead>}}
 
 ### Starting ysqlsh
@@ -79,7 +83,15 @@ You can't just connect to any database under any user name. Your database admini
 
 {{< /note >}}
 
-When the defaults aren't quite right, you can save yourself some typing by setting the [environment variables](#environment-variables) `PGDATABASE`, `PGHOST`, `PGPORT`, and `PGUSER` to appropriate values. It is also convenient to have a `~/.pgpass` file to avoid regularly having to type in passwords.
+When the defaults aren't quite right, you can save yourself some typing by setting the [environment variables](#environment-variables) `PGDATABASE`, `PGHOST`, `PGPORT`, and `PGUSER` to appropriate values.
+
+It is also convenient to have a `~/.pgpass` file to avoid regularly having to type in passwords. This file should contain lines of the following format:
+
+```conf
+hostname:port:database:username:password
+```
+
+For more details, refer to [The Password File](https://www.postgresql.org/docs/current/libpq-pgpass.html) in the PostgreSQL documentation.
 
 An alternative way to specify connection parameters is in a *conninfo* string or a URI, which is used instead of a database name. This mechanism gives you wide control over the connection. For example:
 

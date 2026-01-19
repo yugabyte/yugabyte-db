@@ -68,6 +68,6 @@ Ensure that the threshold is high enough so that you don't flood the `postgres*l
 
 {{< /note >}}
 
-{{<lead link="/preview/troubleshoot/nodes/check-logs/#yb-tserver-logs">}}
-Learn more about [YB-TServer logs](/preview/troubleshoot/nodes/check-logs/#yb-tserver-logs).
+{{<lead link="/stable/explore/observability/logging/">}}
+Learn more about [YugabyteDB logging](/stable/explore/observability/logging/).
 {{</lead>}}

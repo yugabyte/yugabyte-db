@@ -34,10 +34,9 @@
 #include "yb/consensus/retryable_requests.h"
 
 #include "yb/docdb/consensus_frontier.h"
-#include "yb/dockv/doc_key.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/dockv/doc_key.h"
 
-#include "yb/rocksdb/metadata.h"
 #include "yb/rocksdb/utilities/checkpoint.h"
 
 #include "yb/rpc/messenger.h"
@@ -108,8 +107,7 @@ using yb::docdb::InitRocksDBOptions;
 
 DECLARE_bool(enable_ysql);
 
-namespace yb {
-namespace client {
+namespace yb::client {
 
 namespace {
 
@@ -940,14 +938,14 @@ void QLStressTest::TestWriteRejection() {
   }, 30s, "Waiting tablets to sync up"));
 }
 
-typedef QLStressTestDelayWrite<4, 10> QLStressTestDelayWrite_4_10;
+using QLStressTestDelayWrite_4_10 = QLStressTestDelayWrite<4, 10>;
 
 TEST_F_EX(QLStressTest, DelayWrite, QLStressTestDelayWrite_4_10) {
   TestWriteRejection();
 }
 
 // Soft limit == hard limit to test write stop and recover after it.
-typedef QLStressTestDelayWrite<6, 6> QLStressTestDelayWrite_6_6;
+using QLStressTestDelayWrite_6_6 = QLStressTestDelayWrite<6, 6>;
 
 TEST_F_EX(QLStressTest, WriteStop, QLStressTestDelayWrite_6_6) {
   TestWriteRejection();
@@ -985,22 +983,30 @@ TEST_F_EX(QLStressTest, LongRemoteBootstrap, QLStressTestLongRemoteBootstrap) {
 
   std::this_thread::sleep_for(20s); // Wait some time to have logs.
 
-  ASSERT_OK(WaitFor([this]() -> Result<bool> {
-    RETURN_NOT_OK(cluster_->CleanTabletLogs());
-    auto leaders = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
-    if (leaders.empty()) {
-      return false;
-    }
+  ASSERT_OK(WaitFor(
+      [this]() -> Result<bool> {
+        RETURN_NOT_OK(cluster_->CleanTabletLogs());
+        auto leaders = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
+        if (leaders.empty()) {
+          return false;
+        }
 
-    RETURN_NOT_OK(VERIFY_RESULT(leaders.front()->shared_tablet())->Flush(tablet::FlushMode::kSync));
-    RETURN_NOT_OK(leaders.front()->RunLogGC());
+        RETURN_NOT_OK(
+            VERIFY_RESULT(leaders.front()->shared_tablet())->Flush(tablet::FlushMode::kSync));
+        RETURN_NOT_OK(leaders.front()->RunLogGC());
 
-    // Check that first log was garbage collected, so remote bootstrap will be required.
-    consensus::ReplicateMsgs replicates;
-    int64_t starting_op_segment_seq_num;
-    return !leaders.front()->log()->GetLogReader()->ReadReplicatesInRange(
-        100, 101, 0, &replicates, &starting_op_segment_seq_num).ok();
-  }, 30s, "Logs cleaned"));
+        // Check that first log was garbage collected, so remote bootstrap will be required.
+        consensus::ReplicateMsgs replicates;
+        int64_t starting_op_segment_seq_num;
+        return !leaders.front()
+                    ->log()
+                    ->GetLogReader()
+                    ->ReadReplicatesInRange(
+                        100, 101, 0, log::ObeyMemoryLimit::kFalse, &replicates,
+                        &starting_op_segment_seq_num)
+                    .ok();
+      },
+      30s, "Logs cleaned"));
 
   LOG(INFO) << "Bring replica back, keys written: " << key.load(std::memory_order_acquire);
   ASSERT_OK(cluster_->mini_tablet_server(0)->Start(tserver::WaitTabletsBootstrapped::kFalse));
@@ -1203,5 +1209,4 @@ TEST_F_EX(QLStressTest, SyncOldLeader, QLStressTestSingleTablet) {
   thread_holder.Stop();
 }
 
-} // namespace client
-} // namespace yb
+} // namespace yb::client

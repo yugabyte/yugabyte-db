@@ -21,14 +21,13 @@ yba provider onprem add --name <provider-name> \
 ### Options
 
 ```
-      --instance-type string       [Required] Instance type of the node as described in the provider. Run "yba provider onprem instance-type list --name <provider-name>" for a list of instance types associated with the provider.
-      --ip string                  [Required] IP address of the node instance.
-      --region string              [Required] Region name of the node.
-      --zone string                [Required] Zone name of the node.
-      --node-name string           [Optional] Node name given by the user.
-      --ssh-user string            [Optional] SSH user to access the node instances.
-      --node-configs stringArray   [Optional] Node configurations. Provide the following double colon (::) separated fields as key-value pairs: "type=<type>::value=<value>". Each config needs to be added using a separate --node-configs flag. Example: --node-configs type=S3CMD::value=<value> --node-configs type=CPU_CORES::value=<value>
-  -h, --help                       help for add
+      --instance-type string   [Required] Instance type of the node as described in the provider. Run "yba provider onprem instance-type list --name <provider-name>" for a list of instance types associated with the provider.
+      --ip string              [Required] IP address of the node instance.
+      --region string          [Required] Region name of the node.
+      --zone string            [Required] Zone name of the node.
+      --node-name string       [Optional] Node name given by the user.
+      --ssh-user string        [Optional] SSH user to access the node instances.
+  -h, --help                   help for add
 ```
 
 ### Options inherited from parent commands

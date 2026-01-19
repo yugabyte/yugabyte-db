@@ -19,7 +19,7 @@ It invokes the [yb-master](../../reference/configuration/yb-master/) and [yb-tse
 
 yb-admin is intended to be used to administer manually created and managed universes only.
 
-If you are using [YugabyteDB Anywhere](../../yugabyte-platform/) or [YugabyteDB Aeon](/preview/yugabyte-cloud/), administer your universes using the respective UI, or, to use automation, use the respective API or CLI. For more information, refer to [YugabyteDB Anywhere automation](../../yugabyte-platform/anywhere-automation/) and [YugabyteDB Aeon automation](/preview/yugabyte-cloud/managed-automation/).
+If you are using [YugabyteDB Anywhere](../../yugabyte-platform/) or [YugabyteDB Aeon](/stable/yugabyte-cloud/), administer your universes using the respective UI, or, to use automation, use the respective API or CLI. For more information, refer to [YugabyteDB Anywhere automation](../../yugabyte-platform/anywhere-automation/) and [YugabyteDB Aeon automation](/stable/yugabyte-cloud/managed-automation/).
 
 **If you perform tasks on a YugabyteDB Anywhere-managed universe using yb-admin, the changes may not be reflected in YugabyteDB Anywhere.**
 
@@ -70,7 +70,7 @@ To display the online help, run `yb-admin --help` from the YugabyteDB home direc
 * [Change data capture (CDC)](#change-data-capture-cdc-commands)
 * [xCluster replication](#xcluster-replication-commands)
 * [Decommissioning](#decommissioning-commands)
-* [Rebalancing](#rebalancing-commands)
+* [Cluster balancing](#cluster-balancing-commands)
 * [Upgrade](#upgrade)
 
 ---
@@ -1211,12 +1211,12 @@ The filter expression is a list of acceptable objects, which can be either raw t
 
 **Example**
 
-Take a snapshot of the YSQL database `yugabyte` once per minute, and retain each snapshot for 10 minutes:
+Take a snapshot of the YSQL database `yugabyte` once an hour, and retain each snapshot for 2 hours:
 
 ```sh
 ./bin/yb-admin \
     --master_addresses ip1:7100,ip2:7100,ip3:7100 \
-    create_snapshot_schedule 1 10 ysql.yugabyte
+    create_snapshot_schedule 60 120 ysql.yugabyte
 ```
 
 The equivalent command for the YCQL keyspace `yugabyte` would be the following:
@@ -1224,7 +1224,7 @@ The equivalent command for the YCQL keyspace `yugabyte` would be the following:
 ```sh
 ./bin/yb-admin \
     --master_addresses ip1:7100,ip2:7100,ip3:7100 \
-    create_snapshot_schedule 1 10 yugabyte
+    create_snapshot_schedule 60 120 yugabyte
 ```
 
 ```output.json
@@ -1305,28 +1305,24 @@ Edits a snapshot schedule. A schedule consists of a list of objects to be includ
 yb-admin \
     --master_addresses <master-addresses> \
     edit_snapshot_schedule <schedule-id> \
-    <snapshot-interval> \
-    <retention-time> \
-    <filter-expression>
+    [ interval <snapshot-interval> ] \
+    [ retention <retention-time> ] \
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
 * *schedule-id*: The identifier (ID) of the schedule to be edited.
 * *snapshot-interval*: The frequency at which to take snapshots, in minutes.
 * *retention-time*: The number of minutes to keep a snapshot before deleting it.
-* *filter-expression*: The set of objects to include in the snapshot.
-
-The filter expression is a list of acceptable objects, which can be either raw tables, keyspaces (YCQL) in the format `keyspace_name`, or databases (YSQL) in the format `ysql.database_name`. For proper consistency guarantees, set this up _per-keyspace_ (YCQL) or _per-database_ (YSQL).
 
 **Example**
 
-Edit a snapshot schedule to take a snapshot of the YSQL database `yugabyte` once per minute, and retain each snapshot for 20 minutes:
+Edit a snapshot schedule to take a snapshot once every 90 minutes, and retain each snapshot for 3 hours:
 
 ```sh
 ./bin/yb-admin \
     --master_addresses ip1:7100,ip2:7100,ip3:7100 \
     edit_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
-    1 20 ysql.yugabyte
+    interval 90 retention 180
 ```
 
 #### restore_snapshot_schedule
@@ -1506,7 +1502,7 @@ Having all tablet leaders reside in a single region reduces the number of networ
 
 * Tablespaces don't inherit cluster-level placement information, leader preference, or read replica configurations.
 
-* If the client application uses a smart driver, set the [topology keys](/preview/develop/drivers-orms/smart-drivers/#topology-aware-load-balancing) to target the preferred zones.
+* If the client application uses a smart driver, set the [topology keys](/stable/develop/drivers-orms/smart-drivers/#topology-aware-load-balancing) to target the preferred zones.
 
 {{< /note >}}
 
@@ -2671,15 +2667,17 @@ If specified, *dest-ts-uuid* becomes the new leader. If the argument is empty (`
 
 ---
 
-### Rebalancing commands
+### Cluster balancing commands
 
-For information on YB-Master load balancing, see [Data placement and load balancing](../../architecture/yb-master/#tablet-assignments).
+YugabyteDB automatically balances the cluster via the [YB-Master](../../architecture/yb-master/) service. The following manual commands are for advanced use cases.
 
-For YB-Master load balancing flags, see [Load balancing flags](../../reference/configuration/yb-master/#load-balancing-flags).
+For detailed information on automatic cluster balancing scenarios, monitoring, and configuration, see [Cluster balancing](../../architecture/docdb-sharding/cluster-balancing/).
+
+For YB-Master cluster balancing flags, see [Cluster balancing flags](../../reference/configuration/yb-master/#cluster-balancing-flags).
 
 #### set_load_balancer_enabled
 
-Enables or disables the load balancer.
+Enables or disables the cluster balancer.
 
 **Syntax**
 
@@ -2760,7 +2758,7 @@ Returns the following percentage:
 
 #### get_is_load_balancer_idle
 
-Finds out if the load balancer is idle.
+Finds out if the cluster balancer is idle.
 
 **Syntax**
 
@@ -2930,7 +2928,9 @@ Concurrent operations in a cluster can lead to various transactional conflicts, 
 
 #### finalize_upgrade
 
-Finalizes an upgrade after a successful [YSQL major upgrade](../../manage/ysql-major-upgrade-local/). Note that `finalize_upgrade` is a cluster-level operation; you don't need to run it on every node.
+Finalizes an upgrade after a successful [YSQL major upgrade](../../manage/ysql-major-upgrade-local/). You can run this command from any node in the cluster.
+
+Note that `finalize_upgrade` is a cluster-level operation; you don't need to run it on every node.
 
 **Syntax**
 

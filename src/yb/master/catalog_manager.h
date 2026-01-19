@@ -122,6 +122,7 @@ enum RaftGroupStatePB : int;
 namespace cdc {
 class CDCStateTable;
 struct CDCStateTableEntry;
+struct CDCStateTableKey;
 }  // namespace cdc
 
 namespace master {
@@ -186,6 +187,8 @@ YB_DEFINE_ENUM(
     (kMajorUpgradeCleanup)   // Delete the previous version of the catalog tables after the major
                              // ysql upgrade has been finalized.
 );
+
+YB_DEFINE_ENUM(CDCStreamType, (kNone)(kLogicalReplication)(kgRPC));
 
 struct YsqlTableDdlTxnState;
 using google::protobuf::RepeatedPtrField;
@@ -531,6 +534,14 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
                                           const SubTransactionId sub_txn_id,
                                           const LeaderEpoch& epoch);
 
+  // Returns true if the table deletion is happening due to a rollback to sub-transaction operation.
+  // If returning true, the txn_id field is populated with the transaction that it undergoing the
+  // rollback to sub-transaction operation.
+  // NOTE: This function must only be called when we know that the table is being deleted i.e. it
+  // assumes that the table is being deleted.
+  bool IsTableDeletionDueToRollbackToSubTxn(
+      const scoped_refptr<TableInfo>& table, TransactionId& txn_id);
+
   // Rollback all the DDL state changes made by the YSQL transaction from the end till
   // rollback_till_ddl_state_index of ysql_ddl_txn_verifier_state i.e.
   // ysql_ddl_txn_verifier_state[rollback_till_ddl_state_index, end)
@@ -606,7 +617,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   // Lookup tablet by ID, then call GetTabletLocations below.
   Status GetTabletLocations(
-      const TabletId& tablet_id,
+      TabletIdView tablet_id,
       TabletLocationsPB* locs_pb,
       IncludeHidden include_hidden) override;
 
@@ -622,7 +633,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       IncludeHidden include_hidden) override;
 
   // Returns the system tablet in catalog manager by the id.
-  Result<std::shared_ptr<tablet::AbstractTablet>> GetSystemTablet(const TabletId& id) override;
+  Result<std::shared_ptr<tablet::AbstractTablet>> GetSystemTablet(TabletIdView id) override;
 
   // Send the "delete tablet request" to the specified TS/tablet.
   // The specified 'reason' will be logged on the TS.
@@ -798,10 +809,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status UpdateCDCProducerOnTabletSplit(
       const TableId& producer_table_id, const SplitTabletIds& split_tablet_ids) override;
 
-  // Re-fetch all CDCSDK streams for the table and confirm the inserted childrent tablet entries
-  // belong to one of these streams. If not, update such entries and set the checkpoint to max. This
-  // is to handle race condition where the table being removed from the stream splits
-  // simultaneously.
+  // Re-fetch all CDCSDK streams for the table and confirm the inserted children tablet entries
+  // belong to one of these streams. If not, delete such entries. This is to handle race condition
+  // where the table being removed from the stream splits simultaneously.
   Status ReVerifyChildrenEntriesOnTabletSplit(
       const TableId& producer_table_id, const std::vector<cdc::CDCStateTableEntry>& entries,
       const std::unordered_set<xrepl::StreamId>& cdcsdk_stream_ids);
@@ -855,7 +865,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Tablet peer for the sys catalog tablet's peer.
   std::shared_ptr<tablet::TabletPeer> tablet_peer() const override;
 
-  ClusterLoadBalancer* load_balancer() override { return load_balance_policy_.get(); }
+  ClusterLoadBalancer* cluster_balancer() override { return load_balance_policy_.get(); }
 
   // This never returns nullptr.
   XClusterManagerIf* GetXClusterManager() override;
@@ -943,6 +953,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Otherwise lock is default constructed, i.e. not locked.
   std::pair<TableInfo::WriteLock, TransactionId> PrepareTableDeletion(const TableInfoPtr& table);
   bool ShouldDeleteTable(const TableInfoPtr& table);
+
+  Result<HybridTime> GetTabletHideTime(const TabletId& tablet_id) const EXCLUDES(mutex_);
 
   // Used by ConsensusService to retrieve the TabletPeer for a system
   // table specified by 'tablet_id'.
@@ -1091,6 +1103,11 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Result<scoped_refptr<NamespaceInfo>> FindNamespaceByIdUnlocked(
       const NamespaceId& id) const REQUIRES_SHARED(mutex_);
 
+  Result<scoped_refptr<NamespaceInfo>> FindNamespaceByName(
+      YQLDatabase db_type, const std::string& name) const;
+  Result<scoped_refptr<NamespaceInfo>> FindNamespaceByNameUnlocked(
+      YQLDatabase db_type, const std::string& name) const REQUIRES_SHARED(mutex_);
+
   Result<scoped_refptr<TableInfo>> FindTableUnlocked(
       const TableIdentifierPB& table_identifier, bool include_deleted = true) const
       REQUIRES_SHARED(mutex_);
@@ -1104,6 +1121,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Result<scoped_refptr<TableInfo>> FindTableByIdUnlocked(
       const TableId& table_id, bool include_deleted = true) const REQUIRES_SHARED(mutex_);
+
+  Result<bool> HasTableWithColocationId(
+      const TablegroupId& tablegroup_id, ColocationId colocation_id) const EXCLUDES(mutex_);
 
   Result<TableId> GetColocatedTableId(
       const TablegroupId& tablegroup_id, ColocationId colocation_id) const EXCLUDES(mutex_);
@@ -1171,7 +1191,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
                            rpc::RpcContext* rpc);
 
   Status SplitTablet(
-      const TabletId& tablet_id, ManualSplit is_manual_split, const LeaderEpoch& epoch) override;
+      const TabletId& tablet_id, ManualSplit is_manual_split, int split_factor,
+      const LeaderEpoch& epoch) override;
 
   // Splits tablet specified in the request using middle of the partition as a split point.
   Status SplitTablet(
@@ -1197,6 +1218,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const DdlLogRequestPB* req, DdlLogResponsePB* resp, rpc::RpcContext* rpc);
 
   // Test wrapper around protected DoSplitTablet method.
+  Status TEST_SplitTablet(
+      const TabletInfoPtr& source_tablet_info,
+    const std::vector<docdb::DocKeyHash>& split_hash_codes) override;
+
   Status TEST_SplitTablet(
       const TabletInfoPtr& source_tablet_info,
       docdb::DocKeyHash split_hash_code) override;
@@ -1333,12 +1358,18 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // was taken).
   // The SnapshotInfoPB generated by export snapshot as of time should be identical to the
   // SnapshotInfoPB generated by the normal export_snapshot (even ordering of tables/tablets).
-  Result<std::pair<SnapshotInfoPB, std::unordered_set<TabletId>>>
+  Result<CloneSnapshotInfo>
   GenerateSnapshotInfoFromScheduleForClone(
       const SnapshotScheduleId& snapshot_schedule_id, HybridTime read_time,
       CoarseTimePoint deadline) override;
 
-  Result<google::protobuf::RepeatedPtrField<BackupRowEntryPB>> GetBackupEntriesAsOfTime(
+  struct BackupEntriesAndTabletLimitInfo {
+    google::protobuf::RepeatedPtrField<BackupRowEntryPB> backup_entries;
+    // List of replication info and the number of tablets we are going to clone for each table.
+    // Used for the tablet limits pre-check.
+    std::vector<std::pair<ReplicationInfoPB, int>> replication_info_and_num_tablets;
+  };
+  Result<BackupEntriesAndTabletLimitInfo> GetBackupEntriesAsOfTime(
       const TxnSnapshotId& snapshot_id, const NamespaceId& source_ns_id, HybridTime read_time);
 
   Status RestoreSnapshot(
@@ -1481,9 +1512,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       ChangeXClusterRoleResponsePB* resp,
       rpc::RpcContext* rpc);
 
-  Status BootstrapProducer(const BootstrapProducerRequestPB* req,
-                            BootstrapProducerResponsePB* resp,
-                            rpc::RpcContext* rpc);
+  Status BootstrapProducer(
+      const master::BootstrapProducerRequestPB* req, master::BootstrapProducerResponsePB* resp,
+      rpc::RpcContext* rpc);
 
   // Get Universe Replication.
   Status GetUniverseReplication(
@@ -1506,6 +1537,15 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status UpdateConsumerOnProducerMetadata(
       const UpdateConsumerOnProducerMetadataRequestPB* req,
       UpdateConsumerOnProducerMetadataResponsePB* resp, rpc::RpcContext* rpc);
+
+  // If check_min_consumer_schema_version istrue, will also validate that the provided consumer
+  // schema version is >= to the minimum consumer schema version in the mapping (to ensure it hasn't
+  // been GC-ed).
+  Status DoUpdateConsumerOnProducerMetadata(
+      const xcluster::ReplicationGroupId& replication_group_id, const xrepl::StreamId& stream_id,
+      SchemaVersion producer_schema_version, SchemaVersion consumer_schema_version,
+      ColocationId colocation_id, bool check_min_consumer_schema_version,
+      UpdateConsumerOnProducerMetadataResponsePB* resp);
 
   // Store packing schemas for upcoming colocated tables on an xCluster automatic mode target,
   // since their rows are replicated before the corresponding table is created.
@@ -1533,8 +1573,11 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // their metadata.
   Status FindCDCSDKStreamsForNonEligibleTables(TableStreamIdsMap* non_user_tables_to_streams_map);
 
+  // Returns true if the table is eligible for CDCSDK streams. 'allow_tables_without_primary_key' is
+  // used only when 'check_schema' is sent as 'true'.
   bool IsTableEligibleForCDCSDKStream(
-      const TableInfoPtr& table_info, const TableInfo::ReadLock& lock, bool check_schema) const;
+      const TableInfoPtr& table_info, const TableInfo::ReadLock& lock, bool check_schema,
+      const bool allow_tables_without_primary_key) const;
 
   // This method compares all tables in the namespace to all the tables added to a CDCSDK stream,
   // to find tables which are not yet processed by the CDCSDK streams.
@@ -1684,14 +1727,15 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Status BackfillMetadataForXRepl(const TableInfoPtr& table_info, const LeaderEpoch& epoch);
 
-  Result<TabletInfoPtr> GetTabletInfo(const TabletId& tablet_id) override
-      EXCLUDES(mutex_);
-
-  // Gets the set of table IDs that belong to the sys.catalog tablet.
-  std::unordered_set<TableId> GetSysCatalogTableIds() EXCLUDES(mutex_);
+  Result<TabletInfoPtr> GetTabletInfo(TabletIdView tablet_id) override EXCLUDES(mutex_);
 
   // Gets the tablet info for each tablet id, or nullptr if the tablet was not found.
   TabletInfos GetTabletInfos(const std::vector<TabletId>& ids) override;
+
+  bool IsColocatedNamespace(const NamespaceId& ns_id) const EXCLUDES(mutex_);
+
+  // Gets the set of table IDs that belong to the sys.catalog tablet.
+  std::unordered_set<TableId> GetSysCatalogTableIds() EXCLUDES(mutex_);
 
   // Mark specified CDC streams as DELETING/DELETING_METADATA so they can be removed later.
   Status DropXReplStreams(
@@ -2053,9 +2097,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   // Starts the background task to send the SplitTablet RPC to the leader for the specified tablet.
   Status SendSplitTabletRequest(
-      const TabletInfoPtr& tablet, std::array<TabletId, kNumSplitParts> new_tablet_ids,
-      const std::string& split_encoded_key, const std::string& split_partition_key,
-      const LeaderEpoch& epoch);
+      const TabletInfoPtr& tablet, std::vector<TabletId>& new_tablet_ids,
+      const std::vector<std::string>& split_encoded_keys,
+      const std::vector<std::string>& split_partition_keys, const LeaderEpoch& epoch);
 
   // Send the "truncate table request" to all tablets of the specified table.
   void SendTruncateTableRequest(const scoped_refptr<TableInfo>& table, const LeaderEpoch& epoch);
@@ -2183,24 +2227,18 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // partitions_vtable_cache_refresh_secs seconds.
   void RebuildYQLSystemPartitions();
 
-  // Registers `new_tablets` for the same table as `source_tablet_info` tablet.
-  // Does not change any other tablets and their partitions.
-  Status RegisterNewTabletsForSplit(
-      TabletInfo* source_tablet_info, const std::vector<TabletInfoPtr>& new_tablets,
-      const LeaderEpoch& epoch, TableInfo::WriteLock* table_write_lock,
-      TabletInfo::WriteLock* tablet_write_lock) EXCLUDES(mutex_);
-
-  Result<TabletInfoPtr> GetTabletInfoUnlocked(const TabletId& tablet_id)
-      REQUIRES_SHARED(mutex_);
+  Result<TabletInfoPtr> GetTabletInfoUnlocked(TabletIdView tablet_id) REQUIRES_SHARED(mutex_);
 
   Status DoSplitTablet(
-      const TabletInfoPtr& source_tablet_info, std::string split_encoded_key,
-      std::string split_partition_key, ManualSplit is_manual_split, const LeaderEpoch& epoch);
+      const TabletInfoPtr& source_tablet_info, const std::vector<std::string>& split_encoded_keys,
+      const std::vector<std::string>& split_partition_keys, ManualSplit is_manual_split,
+      const LeaderEpoch& epoch);
 
   // Splits tablet using specified split_hash_code as a split point.
   Status DoSplitTablet(
-      const TabletInfoPtr& source_tablet_info, docdb::DocKeyHash split_hash_code,
-      ManualSplit is_manual_split, const LeaderEpoch& epoch);
+      const TabletInfoPtr& source_tablet_info,
+      const std::vector<docdb::DocKeyHash>& split_hash_codes, ManualSplit is_manual_split,
+      const LeaderEpoch& epoch);
 
   int64_t leader_ready_term() const override {
     return leader_ready_term_.load();
@@ -2318,20 +2356,31 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // issuing a DeleteTablet call to tservers. It is possible in the case of corrupted sys catalog or
   // tservers heartbeating into wrong clusters that live data is considered to be orphaned. So make
   // sure that the tablet was explicitly deleted before deleting any on-disk data from tservers.
-  std::unordered_set<TabletId> deleted_tablets_ GUARDED_BY(mutex_);
+  UnorderedStringSet<TabletId> deleted_tablets_ GUARDED_BY(mutex_);
 
-  // Split parent tablets that are now hidden and still being replicated by some CDC stream. Keep
-  // track of these tablets until their children tablets start being polled, at which point they
-  // can be deleted and cdc_state metadata can also be cleaned up. retained_by_cdcsdk_ is a
-  // subset of hidden_tablets_.
-  struct HiddenReplicationParentTabletInfo {
+  // Stores the info about the tablets being hidden and retained for CDC.
+  // A tablet is retained by CDC in two scenarios:
+  // 1. Split parent tablet is hidden, until both its children are polled by CDC. After which the
+  // hidden parent can be deleted and cdc_state metadata can also be cleaned up.
+  // 2. A tablet from a table being dropped (either as a consequence of drop table or because the
+  // table is being re-written due to a DDL) is hidden, until all the data from this tablet is
+  // streamed by CDC.
+  struct HiddenReplicationTabletInfo {
+    enum HideReason {
+      // Tablet is hidden because its table is hidden as part of drop or table-rewrite request.
+      kTableDeleted = 0,
+      // Tablet is hidden because it is a split parent tablet.
+      kTabletSplit = 1,
+    };
+
     TableId table_id_;
     std::string parent_tablet_id_;
-    std::array<TabletId, kNumSplitParts> split_tablets_;
+    std::vector<TabletId> split_tablets_;
     HybridTime hide_time_;
+    HideReason hide_reason_;
   };
-  std::unordered_map<TabletId, HiddenReplicationParentTabletInfo> retained_by_cdcsdk_
-      GUARDED_BY(mutex_);
+  // retained_by_cdcsdk_ is a subset of hidden_tablets_.
+  std::unordered_map<TabletId, HiddenReplicationTabletInfo> retained_by_cdcsdk_ GUARDED_BY(mutex_);
 
   // TODO(jhe) Cleanup how we use ScheduledTaskTracker, move is_running and util functions to class.
   // Background task for deleting parent split tablets retained by xCluster streams.
@@ -2451,8 +2500,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   scoped_refptr<AtomicGauge<uint64_t>> metric_max_follower_heartbeat_delay_;
 
-  friend class ClusterLoadBalancer;
-
   // Policy for load balancing tablets on tablet servers.
   std::unique_ptr<ClusterLoadBalancer> load_balance_policy_;
 
@@ -2461,7 +2508,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status UpdateMastersListInMemoryAndDisk();
 
   // Tablets of system tables on the master indexed by the tablet id.
-  std::unordered_map<std::string, std::shared_ptr<tablet::AbstractTablet>> system_tablets_;
+  using SystemTablets = UnorderedStringMap<TabletId, std::shared_ptr<tablet::AbstractTablet>>;
+  SystemTablets system_tablets_;
 
   // Tablet of colocated databases indexed by the namespace id.
   std::unordered_map<NamespaceId, TabletInfoPtr> colocated_db_tablets_map_
@@ -2535,11 +2583,11 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Status SplitTablet(
       const TabletInfoPtr& tablet, ManualSplit is_manual_split,
-      const LeaderEpoch& epoch);
+      int split_factor, const LeaderEpoch& epoch);
 
-  void SplitTabletWithKey(
-      const TabletInfoPtr& tablet, const std::string& split_encoded_key,
-      const std::string& split_partition_key, ManualSplit is_manual_split,
+  void SplitTabletWithKeys(
+      const TabletInfoPtr& tablet, const std::vector<std::string>& split_encoded_keys,
+      const std::vector<std::string>& split_partition_keys, ManualSplit is_manual_split,
       const LeaderEpoch& epoch);
 
   Status XReplValidateSplitCandidateTableUnlocked(const TableId& table_id) const
@@ -2661,10 +2709,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const Schema& schema, int num_tablets, bool colocated,
       CreateTableRequestPB* request, CreateTableResponsePB* resp);
 
-  Status RestoreEntry(
-      const SysRowEntry& entry, const SnapshotId& snapshot_id, const LeaderEpoch& epoch)
-      REQUIRES(mutex_);
-
   Status ImportSnapshotPreprocess(
       const SnapshotInfoPB& snapshot_pb,
       const LeaderEpoch& epoch,
@@ -2712,7 +2756,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   // Helper function for ImportTableEntry.
   Result<bool> CheckTableForImport(
-      scoped_refptr<TableInfo> table, ExternalTableSnapshotData* snapshot_data)
+      const scoped_refptr<TableInfo>& table, ExternalTableSnapshotData* snapshot_data)
       REQUIRES_SHARED(mutex_);
 
   Status ImportNamespaceEntry(
@@ -2889,8 +2933,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Return all CDC streams.
   void GetAllCDCStreams(std::vector<CDCStreamInfoPtr>* streams);
 
-  // This method returns all tables in the namespace suitable for CDCSDK.
-  std::vector<TableInfoPtr> FindAllTablesForCDCSDK(const NamespaceId& ns_id)
+  // This method returns all tables in the namespace based on the criteria specified by
+  // 'allows_tables_without_primary_key'.
+  std::vector<TableInfoPtr> FindAllTablesForCDCSDK(
+      const NamespaceId& ns_id, const bool allow_tables_without_primary_key)
       REQUIRES_SHARED(mutex_);
 
   // Find CDC streams for a table.
@@ -2937,6 +2983,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   std::unordered_set<xrepl::StreamId> GetCDCSDKStreamsForTable(const TableId& table_id) const
       REQUIRES_SHARED(mutex_);
 
+  std::unordered_set<xrepl::StreamId> GetAllCDCSDKStreamsForNamespace(
+      const NamespaceId& ns_id) const REQUIRES_SHARED(mutex_);
+
   // Reads the slot entries for all the stream_ids provided and returns the minimum restart time
   // across them.
   Result<HybridTime> GetMinRestartTimeAcrossSlots(
@@ -2970,6 +3019,13 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   void ProcessXReplParentTabletDeletionPeriodically();
 
+  // Currently, there are 2 cases where a tablet is retained by CDCSDK:
+  //   1. The table of such tablet was dropped, however, there was atleast one active stream on
+  //   it. The table (and so all its tablets) is intended to be deleted once all the streams
+  //   complete streaming all its records.
+  //   2. Such tablet was split and is intended to kept hidden till the time all streams complete
+  //   their streaming from this tablet (aka start streaming from its children tablets).
+  // This method processes all such tablets and deletes the ones which are eligible for deletion.
   Status DoProcessCDCSDKTabletDeletion();
 
   void RecordCDCSDKHiddenTablets(
@@ -2996,6 +3052,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   void CDCSDKPopulateDeleteRetainerInfoForTabletDrop(
       const TabletInfo& tablet_info, TabletDeleteRetainerInfo& delete_retainer) const
+      REQUIRES_SHARED(mutex_);
+
+  void CDCSDKPopulateDeleteRetainerInfoForTableDrop(
+      const TableInfo& table_info, TabletDeleteRetainerInfo& delete_retainer) const
       REQUIRES_SHARED(mutex_);
 
   using SysCatalogPostLoadTasks = std::vector<std::pair<std::function<void()>, std::string>>;
@@ -3052,19 +3112,24 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const TabletInfo& tablet, const ScheduleMinRestoreTime& schedule_to_min_restore_time)
       EXCLUDES(mutex_);
 
-  Status UpdateCheckpointForTabletEntriesInCDCState(
+  bool CDCSDKAllowTableRewrite(const TableId& table_id, bool is_truncate_request) const
+      REQUIRES_SHARED(mutex_);
+
+  Status RemoveTabletEntriesInCDCState(
       const xrepl::StreamId& stream_id,
       const std::unordered_set<TableId>& tables_in_stream_metadata,
       const TableInfoPtr& table_to_be_removed);
 
-  // Scans all the entries in cdc_state table. Updates the checkpoint to max if the table of the
-  // entry's tablet is not present in qualified table list of the stream.
-  Result<std::vector<cdc::CDCStateTableEntry>> SyncCDCStateTableEntries(
+  // Scans all the entries in cdc_state table. Deletes the entry if the table of the entry's tablet
+  // is not present in qualified table list of the stream.
+  Result<std::vector<cdc::CDCStateTableKey>> SyncCDCStateTableEntries(
       const xrepl::StreamId& stream_id,
       const std::unordered_set<TableId>& tables_in_stream_metadata);
 
   Status RemoveTableFromCDCStreamMetadataAndMaps(
       const CDCStreamInfoPtr stream, const TableId table_id, const LeaderEpoch& epoch);
+
+  void WarnIfTableNotPresentInAllCDCSDKStreams(const TableId& table_id);
 
   Result<ColocationId> ObtainColocationId(
       const CreateTableRequestPB& req, const TablegroupInfo* tablegroup,
@@ -3121,6 +3186,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
     // The table info objects of the tables affected by this rollback to sub-transaction operation.
     std::vector<TableInfoPtr> tables;
+    // Set of index tables whose deletion due to rollback to sub-transaction operation was skipped
+    // since its base table.
+    std::unordered_set<TableId> indexes_skipped_due_to_base_table_deletion;
   };
 
   // This map stores the transaction ids of all the DDL transactions undergoing verification.

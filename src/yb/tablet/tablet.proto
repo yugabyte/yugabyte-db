@@ -88,6 +88,7 @@ message MaintenanceManagerStatusPB {
     required uint64 ram_anchored_bytes = 4;
     required int64 logs_retained_bytes = 5;
     required double perf_improvement = 6;
+    optional bool cdcsdk_reset_stale_retention_barrier = 7 [ default = false ];
   }
 
   message CompletedOpPB {

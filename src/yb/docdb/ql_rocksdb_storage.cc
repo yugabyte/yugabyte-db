@@ -15,8 +15,8 @@
 
 #include <utility>
 
-#include "yb/common/pgsql_protocol.pb.h"
-#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_protocol.messages.h"
+#include "yb/common/pgsql_protocol.messages.h"
 
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/partition.h"
@@ -47,7 +47,7 @@ QLRocksDBStorage::QLRocksDBStorage(
 //--------------------------------------------------------------------------------------------------
 
 Status QLRocksDBStorage::GetIterator(
-    const QLReadRequestPB& request,
+    const QLReadRequestMsg& request,
     const dockv::ReaderProjection& projection,
     std::reference_wrapper<const DocReadContext> doc_read_context,
     const TransactionOperationContext& txn_op_context,
@@ -63,7 +63,7 @@ Status QLRocksDBStorage::GetIterator(
 }
 
 Status QLRocksDBStorage::BuildYQLScanSpec(
-    const QLReadRequestPB& request, const ReadHybridTime& read_time, const Schema& schema,
+    const QLReadRequestMsg& request, const ReadHybridTime& read_time, const Schema& schema,
     const bool include_static_columns, std::unique_ptr<qlexpr::QLScanSpec>* spec,
     std::unique_ptr<qlexpr::QLScanSpec>* static_row_spec) const {
   // Populate dockey from QL key columns.
@@ -73,10 +73,9 @@ Status QLRocksDBStorage::BuildYQLScanSpec(
                            ? std::make_optional<int32_t>(request.max_hash_code())
                            : std::nullopt;
 
-  dockv::KeyEntryValues hashed_components;
-  RETURN_NOT_OK(QLKeyColumnValuesToPrimitiveValues(
-      request.hashed_column_values(), schema, 0, schema.num_hash_key_columns(),
-      &hashed_components));
+  auto arena = SharedSmallArena();
+  auto hashed_components = VERIFY_RESULT(dockv::QLKeyColumnValuesToPrimitiveValues(
+      request.hashed_column_values(), schema, 0, schema.num_hash_key_columns(), *arena));
 
   dockv::SubDocKey start_sub_doc_key;
   // Decode the start SubDocKey from the paging state and set scan start key and hybrid time.
@@ -97,17 +96,26 @@ Status QLRocksDBStorage::BuildYQLScanSpec(
           request.query_id(), request.is_forward_scan()));
     }
   } else if (!request.is_forward_scan() && include_static_columns) {
-      const DocKey hashed_doc_key(hash_code ? *hash_code : 0, hashed_components);
-      static_row_spec->reset(new DocQLScanSpec(schema, hashed_doc_key,
-          request.query_id(), /* is_forward_scan = */ true));
+    dockv::KeyBytes hashed_doc_key;
+    AppendHash(hash_code.value_or(0), &hashed_doc_key);
+    for (Slice component : hashed_components) {
+      hashed_doc_key.AppendRawBytes(component);
+    }
+    // Static column does not have range components. So we have 2 group ends. The first one for
+    // hash components, and the seconds one for range components.
+    hashed_doc_key.AppendGroupEnd();
+    hashed_doc_key.AppendGroupEnd();
+    *static_row_spec = std::make_unique<DocQLScanSpec>(
+        schema, std::move(hashed_doc_key), request.query_id(), /* is_forward_scan = */ true);
   }
 
   // Construct the scan spec basing on the WHERE condition.
-  spec->reset(new DocQLScanSpec(schema, hash_code, max_hash_code, hashed_components,
-      request.has_where_expr() ? &request.where_expr().condition() : nullptr,
-      request.has_if_expr() ? &request.if_expr().condition() : nullptr,
+  *spec = std::make_unique<DocQLScanSpec>(
+      schema, hash_code, max_hash_code, arena, hashed_components,
+      QLConditionPBPtr(request.has_where_expr() ? &request.where_expr().condition() : nullptr),
+      QLConditionPBPtr(request.has_if_expr() ? &request.if_expr().condition() : nullptr),
       request.query_id(), request.is_forward_scan(),
-      request.is_forward_scan() && include_static_columns, start_sub_doc_key.doc_key()));
+      request.is_forward_scan() && include_static_columns, start_sub_doc_key.doc_key());
   return Status::OK();
 }
 
@@ -144,8 +152,7 @@ Result<std::unique_ptr<YQLRowwiseIteratorIf>> QLRocksDBStorage::GetIteratorForYb
     const ReadOperationData& read_operation_data,
     const YbctidBounds& bounds,
     std::reference_wrapper<const ScopedRWOperation> pending_op,
-    SkipSeek skip_seek,
-    UseVariableBloomFilter use_variable_bloom_filter) const {
+    SkipSeek skip_seek) const {
   DocKey lower_doc_key(doc_read_context.get().schema());
 
   if (!bounds.first.empty()) {
@@ -161,10 +168,13 @@ Result<std::unique_ptr<YQLRowwiseIteratorIf>> QLRocksDBStorage::GetIteratorForYb
   auto doc_iter = std::make_unique<DocRowwiseIterator>(
       projection, doc_read_context, txn_op_context, doc_db_, read_operation_data, pending_op);
 
+  static const std::vector<Slice> kEmtpySliceVec;
   static const dockv::KeyEntryValues kEmptyVec;
   RETURN_NOT_OK(doc_iter->Init(
-      DocPgsqlScanSpec(doc_read_context.get().schema(), stmt_id,
-        kEmptyVec, /* hashed_components */
+      DocPgsqlScanSpec(
+        doc_read_context.get().schema(), stmt_id,
+        nullptr, /* arena */
+        kEmtpySliceVec, /* hashed_components */
         kEmptyVec /* range_components */,
         nullptr /* condition */,
         std::nullopt /* hash_code */,
@@ -173,12 +183,14 @@ Result<std::unique_ptr<YQLRowwiseIteratorIf>> QLRocksDBStorage::GetIteratorForYb
         true /* is_forward_scan */,
         lower_doc_key,
         upper_doc_key),
-      skip_seek, use_variable_bloom_filter));
+      skip_seek,
+      AllowVariableBloomFilter::kTrue,
+      AvoidUselessNextInsteadOfSeek::kTrue));
   return std::move(doc_iter);
 }
 
 Status QLRocksDBStorage::GetIterator(
-    const PgsqlReadRequestPB& request,
+    const PgsqlReadRequestMsg& request,
     const dockv::ReaderProjection& projection,
     std::reference_wrapper<const DocReadContext> doc_read_context,
     const TransactionOperationContext& txn_op_context,
@@ -188,86 +200,64 @@ Status QLRocksDBStorage::GetIterator(
     YQLRowwiseIteratorIf::UniPtr* iter) const {
   const auto& schema = doc_read_context.get().schema();
   // Populate dockey from QL key columns.
-  auto hashed_components = VERIFY_RESULT(qlexpr::InitKeyColumnPrimitiveValues(
-      request.partition_column_values(), schema, 0 /* start_idx */));
+  auto arena = SharedSmallArena();
+  auto hashed_components = VERIFY_RESULT(qlexpr::InitKeyColumnValueSlices(
+      *arena, request.partition_column_values(), schema, 0 /* start_idx */));
 
-  auto range_components = VERIFY_RESULT(qlexpr::InitKeyColumnPrimitiveValues(
+  auto range_components = VERIFY_RESULT(qlexpr::InitKeyColumnValues(
       request.range_column_values(), schema, schema.num_hash_key_columns()));
 
   auto doc_iter = std::make_unique<DocRowwiseIterator>(
       projection, doc_read_context, txn_op_context, doc_db_, read_operation_data, pending_op);
 
-  if (range_components.size() == schema.num_range_key_columns() &&
-      hashed_components.size() == schema.num_hash_key_columns()) {
-    // Construct the scan spec basing on the RANGE condition as all range columns are specified.
-    RETURN_NOT_OK(doc_iter->Init(
-        DocPgsqlScanSpec(
-            schema,
-            request.stmt_id(),
-            hashed_components.empty()
-              ? DocKey(schema, std::move(range_components))
-              : DocKey(schema,
-                       request.hash_code(),
-                       std::move(hashed_components),
-                       std::move(range_components)),
-            request.has_hash_code() ? std::make_optional<int32_t>(request.hash_code())
-                                    : std::nullopt,
-            request.has_max_hash_code() ? std::make_optional<int32_t>(request.max_hash_code())
-                                        : std::nullopt,
-            start_doc_key,
-            request.is_forward_scan(),
-            request.prefix_length()),
-        SkipSeek(request.has_index_request())));
-  } else {
-    // Construct the scan spec basing on the HASH condition.
-
-    DocKey lower_doc_key(schema);
-    if (request.has_lower_bound() &&
-        (schema.num_hash_key_columns() == 0 ||
-         !dockv::PartitionSchema::IsValidHashPartitionKeyBound(request.lower_bound().key()))) {
-        Slice lower_key_slice = request.lower_bound().key();
-        RETURN_NOT_OK(lower_doc_key.DecodeFrom(
-            &lower_key_slice, dockv::DocKeyPart::kWholeDocKey, dockv::AllowSpecial::kTrue));
-        if (request.lower_bound().has_is_inclusive()
-            && !request.lower_bound().is_inclusive()) {
-            lower_doc_key.AddRangeComponent(dockv::KeyEntryValue(dockv::KeyEntryType::kHighest));
-        }
-    }
-
-    DocKey upper_doc_key(schema);
-    if (request.has_upper_bound() &&
-        (schema.num_hash_key_columns() == 0 ||
-         !dockv::PartitionSchema::IsValidHashPartitionKeyBound(request.upper_bound().key()))) {
-        Slice upper_key_slice = request.upper_bound().key();
-        RETURN_NOT_OK(upper_doc_key.DecodeFrom(
-            &upper_key_slice, dockv::DocKeyPart::kWholeDocKey, dockv::AllowSpecial::kTrue));
-        if (request.upper_bound().has_is_inclusive()
-            && request.upper_bound().is_inclusive()) {
-            upper_doc_key.AddRangeComponent(dockv::KeyEntryValue(dockv::KeyEntryType::kHighest));
-        }
-    }
-
-
-    SCHECK(!request.has_where_expr(),
-           InternalError,
-           "WHERE clause is not yet supported in docdb::pgsql");
-    RETURN_NOT_OK(doc_iter->Init(
-        DocPgsqlScanSpec(
-            schema,
-            request.stmt_id(),
-            hashed_components,
-            range_components,
-            request.has_condition_expr() ? &request.condition_expr().condition() : nullptr,
-            request.hash_code(),
-            request.has_max_hash_code() ? std::make_optional<int32_t>(request.max_hash_code())
-                                        : std::nullopt,
-            start_doc_key,
-            request.is_forward_scan(),
-            lower_doc_key,
-            upper_doc_key,
-            request.prefix_length()),
-        SkipSeek(request.has_index_request())));
+  DocKey lower_doc_key(schema);
+  if (request.has_lower_bound() &&
+      (schema.num_hash_key_columns() == 0 ||
+       !dockv::PartitionSchema::IsValidHashPartitionKeyBound(request.lower_bound().key()))) {
+      Slice lower_key_slice = request.lower_bound().key();
+      RETURN_NOT_OK(lower_doc_key.DecodeFrom(
+          &lower_key_slice, dockv::DocKeyPart::kWholeDocKey, dockv::AllowSpecial::kTrue));
+      if (request.lower_bound().has_is_inclusive()
+          && !request.lower_bound().is_inclusive()) {
+          lower_doc_key.AddRangeComponent(dockv::KeyEntryValue(dockv::KeyEntryType::kHighest));
+      }
   }
+
+  DocKey upper_doc_key(schema);
+  if (request.has_upper_bound() &&
+      (schema.num_hash_key_columns() == 0 ||
+       !dockv::PartitionSchema::IsValidHashPartitionKeyBound(request.upper_bound().key()))) {
+      Slice upper_key_slice = request.upper_bound().key();
+      RETURN_NOT_OK(upper_doc_key.DecodeFrom(
+          &upper_key_slice, dockv::DocKeyPart::kWholeDocKey, dockv::AllowSpecial::kTrue));
+      if (request.upper_bound().has_is_inclusive()
+          && request.upper_bound().is_inclusive()) {
+          upper_doc_key.AddRangeComponent(dockv::KeyEntryValue(dockv::KeyEntryType::kHighest));
+      }
+  }
+
+
+  SCHECK(!request.has_where_expr(),
+         InternalError,
+         "WHERE clause is not yet supported in docdb::pgsql");
+  RETURN_NOT_OK(doc_iter->Init(
+      DocPgsqlScanSpec(
+          schema,
+          request.stmt_id(),
+          arena,
+          hashed_components,
+          range_components,
+          PgsqlConditionPBPtr(
+                request.has_condition_expr() ? &request.condition_expr().condition() : nullptr),
+          request.hash_code(),
+          request.has_max_hash_code() ? std::make_optional<int32_t>(request.max_hash_code())
+                                      : std::nullopt,
+          start_doc_key,
+          request.is_forward_scan(),
+          lower_doc_key,
+          upper_doc_key,
+          request.prefix_length()),
+      SkipSeek(request.has_index_request())));
 
   *iter = std::move(doc_iter);
   return Status::OK();
@@ -639,20 +629,13 @@ Result<std::unique_ptr<SampleBlocksIterator>> CreateSampleBlocksIterator(
       blocks_sampling_method);
 }
 
-bool PutAdjustedSampleBlockBounds(
-    std::pair<Slice, Slice> sample_block, Slice partition_lower_bound_key,
-    Slice partition_upper_bound_key, size_t index,
+void PutSampleBlockToReservoir(const std::pair<Slice, Slice> sample_block, size_t index,
     QLRocksDBStorage::SampleBlocksReservoir* reservoir) {
+  VLOG_WITH_FUNC(3) << "Putting sample block to reservoir at index #" << index
+                    << ", block bounds: " << AsDebugHexString(sample_block);
   auto adjusted_sample_block_bounds = std::make_pair(
-      KeyBuffer(sample_block.first.empty() ? partition_lower_bound_key : sample_block.first),
-      KeyBuffer(sample_block.second.empty() ? partition_upper_bound_key : sample_block.second));
-  if (adjusted_sample_block_bounds.first == adjusted_sample_block_bounds.second &&
-      !adjusted_sample_block_bounds.first.empty()) {
-    // Don't put empty sample block
-    return false;
-  }
+      KeyBuffer(sample_block.first), KeyBuffer(sample_block.second));
   (*reservoir)[index] = std::move(adjusted_sample_block_bounds);
-  return true;
 }
 
 } // namespace
@@ -748,35 +731,31 @@ Result<YQLStorageIf::SampleBlocksReservoir> QLRocksDBStorage::GetSampleBlocks(
       blocks_sampling_method, index_iter.get(), partition_upper_bound_key));
 
   Status status;
-  for (; VERIFY_RESULT(sample_block_iter->CheckedValid());
-       ++state->num_blocks_processed, status = sample_block_iter->Next()) {
+  for (; VERIFY_RESULT(sample_block_iter->CheckedValid()); status = sample_block_iter->Next()) {
     RETURN_NOT_OK(status);
-    if (state->num_blocks_collected < num_blocks_for_sample) {
-      const auto block_bounds = VERIFY_RESULT(sample_block_iter->GetCurrentBlockBounds());
-      VLOG_WITH_PREFIX_AND_FUNC(3)
-          << "Candidate sample block bounds: " << AsDebugHexString(block_bounds)
-          << " state: " << state->ToString();
-      if (PutAdjustedSampleBlockBounds(
-              block_bounds, partition_lower_bound_key, partition_upper_bound_key,
-              state->num_blocks_collected, &blocks_reservoir)) {
-        ++state->num_blocks_collected;
-      }
-    } else {
-      VLOG_WITH_PREFIX_AND_FUNC(4)
-          << "Current sample block bounds: "
-          << AsDebugHexString(sample_block_iter->GetCurrentBlockBounds())
-          << " state: " << state->ToString();
-      if (RandomActWithProbability(
-              1.0 * num_blocks_for_sample / (state->num_blocks_processed + 1))) {
-        const auto block_bounds = VERIFY_RESULT(sample_block_iter->GetCurrentBlockBounds());
-        VLOG_WITH_PREFIX_AND_FUNC(3)
-            << "Candidate sample block bounds: " << AsDebugHexString(block_bounds);
-        const auto replace_idx = RandomUniformInt<size_t>(0, num_blocks_for_sample - 1);
-        PutAdjustedSampleBlockBounds(
-            block_bounds, partition_lower_bound_key, partition_upper_bound_key, replace_idx,
-            &blocks_reservoir);
-      }
+    auto block_bounds = VERIFY_RESULT(sample_block_iter->GetCurrentBlockBounds());
+    VLOG_WITH_PREFIX_AND_FUNC(4) << "Got sample block bounds: " << AsDebugHexString(block_bounds)
+                                 << " state: " << state->ToString();
+    if (block_bounds.first.empty()) {
+      block_bounds.first = partition_lower_bound_key;
     }
+    if (block_bounds.second.empty()) {
+      block_bounds.second = partition_upper_bound_key;
+    }
+    if (block_bounds.first == block_bounds.second && !block_bounds.first.empty()) {
+      // Skip empty sample blocks. (The one with both boundaries not set is treated as the whole
+      // partition, so it isn't empty).
+      continue;
+    }
+    if (state->num_blocks_collected < num_blocks_for_sample) {
+      PutSampleBlockToReservoir(block_bounds, state->num_blocks_collected, &blocks_reservoir);
+      ++state->num_blocks_collected;
+    } else if (RandomActWithProbability(
+                   1.0 * num_blocks_for_sample / (state->num_blocks_processed + 1))) {
+      const auto replace_idx = RandomUniformInt<size_t>(0, num_blocks_for_sample - 1);
+      PutSampleBlockToReservoir(block_bounds, replace_idx, &blocks_reservoir);
+    }
+    ++state->num_blocks_processed;
   }
 
   LOG_WITH_PREFIX_AND_FUNC(INFO) << "state: " << state->ToString();

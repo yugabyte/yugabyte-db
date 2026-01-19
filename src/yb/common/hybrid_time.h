@@ -290,13 +290,13 @@ inline std::ostream &operator <<(std::ostream &o, const HybridTime &hybridTime) 
 
 namespace hybrid_time_literals {
 
-inline HybridTime operator "" _usec_ht(unsigned long long microseconds) { // NOLINT
+inline HybridTime operator""_usec_ht(unsigned long long microseconds) { // NOLINT
   return HybridTime::FromMicros(microseconds);
 }
 
 } // namespace hybrid_time_literals
 
-using hybrid_time_literals::operator"" _usec_ht;
+using hybrid_time_literals::operator""_usec_ht;
 
 struct ReadRestartData {
   HybridTime restart_time;

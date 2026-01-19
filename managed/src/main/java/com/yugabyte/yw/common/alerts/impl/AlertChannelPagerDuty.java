@@ -21,6 +21,7 @@ import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertLabel;
 import com.yugabyte.yw.models.AlertTemplateVariable;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import java.time.ZoneId;
 import java.util.Comparator;
 import java.util.List;
@@ -82,7 +83,14 @@ public class AlertChannelPagerDuty extends AlertChannelWebBase {
         ObjectNode customDetails = Json.newObject();
         alert.getEffectiveLabels().stream()
             .sorted(Comparator.comparing(AlertLabel::getName))
-            .forEach(label -> customDetails.put(label.getName(), label.getValue()));
+            .forEach(
+                label -> {
+                  String name = label.getName();
+                  if (name.equals(KnownAlertLabels.SEVERITY.labelName())) {
+                    name = "yba_" + name;
+                  }
+                  customDetails.put(name, label.getValue());
+                });
         Payload payload =
             Payload.builder()
                 .group(alert.getConfigurationType().name())

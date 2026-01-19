@@ -30,7 +30,7 @@ var updateAZStorageConfigurationCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(storageNameFlag)) == 0 {
+		if util.IsEmptyString(storageNameFlag) {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize(
@@ -45,10 +45,12 @@ var updateAZStorageConfigurationCmd = &cobra.Command{
 
 		r, response, err := storageConfigListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response, err, "Storage Configuration: Azure",
-				"Update - List Customer Configurations")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(
+				response,
+				err,
+				"Storage Configuration: Azure",
+				"Update - List Customer Configurations",
+			)
 		}
 
 		storageConfigs := make([]ybaclient.CustomerConfigUI, 0)
@@ -134,9 +136,7 @@ var updateAZStorageConfigurationCmd = &cobra.Command{
 		_, response, err = authAPI.EditCustomerConfig(storageUUID).
 			Config(requestBody).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response, err, "Storage Configuration: Azure", "Update")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Storage Configuration: Azure", "Update")
 		}
 
 		logrus.Infof("The storage configuration %s (%s) has been updated\n",

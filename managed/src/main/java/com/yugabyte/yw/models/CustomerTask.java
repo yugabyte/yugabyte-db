@@ -434,8 +434,8 @@ public class CustomerTask extends Model {
     @EnumValue("KubernetesToggleImmutableYbc")
     KubernetesToggleImmutableYbc,
 
-    @EnumValue("OperatorImportUniverse")
-    OperatorImportUniverse;
+    @EnumValue("OperatorImport")
+    OperatorImport;
 
     public String toString(boolean completed) {
       switch (this) {
@@ -642,7 +642,7 @@ public class CustomerTask extends Model {
           return completed ? "Migrated universe" : "Migrating universe";
         case KubernetesToggleImmutableYbc:
           return completed ? "Set Immutable Ybc on K8s" : "Setting Immutable Ybc on K8s";
-        case OperatorImportUniverse:
+        case OperatorImport:
           return completed ? "Imported universe to Operator" : "Importing universe to Operator";
         default:
           return null;

@@ -26,14 +26,23 @@ import java.util.Arrays;
 import java.util.stream.IntStream;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.function.BiConsumer;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.Map;
 import java.util.HashMap;
+import java.util.Properties;
+import java.util.Queue;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -55,6 +64,12 @@ import org.yb.minicluster.MiniYBCluster;
  */
 @RunWith(value = YBTestRunner.class)
 public class TestRelcacheUpdate extends BasePgSQLTest {
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flags = super.getTServerFlags();
+    flags.put("ysql_pg_conf_csv", "log_statement=all");
+    return flags;
+  }
+
   private static final Logger LOG = LoggerFactory.getLogger(TestRelcacheUpdate.class);
 
   /**
@@ -90,6 +105,11 @@ public class TestRelcacheUpdate extends BasePgSQLTest {
     return stats;
   }
 
+  private long getVmRSS(int pid) throws IOException {
+    Map<String, Long> memStats = getMemoryStats(pid);
+    return memStats.get("VmRSS");
+  }
+
   /**
    * Checks that a given backend process never used more than 50MB above its idle memory usage.
    *
@@ -112,6 +132,22 @@ public class TestRelcacheUpdate extends BasePgSQLTest {
 
     long diff = peakMemoryKB - currentMemoryKB;
     assertTrue(String.format("Memory spike of %d KB exceeds 50 MB", diff), diff < 50 * 1024);
+  }
+
+  private int getCurrentDatabaseOid(final Connection inputConnection) throws Exception {
+    try (Statement statement = inputConnection.createStatement()) {
+      ResultSet result = statement.executeQuery(
+        "SELECT oid FROM pg_database WHERE datname = current_database()");
+      assertTrue(result.next());
+      return result.getInt("oid");
+    }
+  }
+
+  private String getCatalogVersions(Statement stmt) throws Exception {
+    ResultSet resultSet = stmt.executeQuery(
+      "SELECT db_oid, current_version FROM pg_yb_catalog_version");
+    Set<Row> rows = getRowSet(resultSet);
+    return rows.toString();
   }
 
   @Test
@@ -586,5 +622,166 @@ public class TestRelcacheUpdate extends BasePgSQLTest {
       }
       throw combinedException;
     }
+  }
+
+  @Test
+  public void testRelcacheInitConnectionStress() throws Exception {
+    boolean isSanitizerBuild = BuildTypeUtil.isASAN() || BuildTypeUtil.isTSAN();
+    // Number of databases and connections per DB.
+    final int NUM_DATABASES = 10;
+    final int CONNECTIONS_PER_DB = isSanitizerBuild ? 10 : 20;
+    final String TEST_USER = "test_user";
+
+    // --- Setup ---
+    List<String> dbNames = new ArrayList<>();
+    for (int i = 0; i < NUM_DATABASES; i++) {
+      dbNames.add("test_db_" + i);
+    }
+    int totalConnections = NUM_DATABASES * CONNECTIONS_PER_DB;
+    ExecutorService executorService = Executors.newCachedThreadPool();
+    AtomicInteger numSuccesses = new AtomicInteger(0);
+    AtomicInteger numFailures = new AtomicInteger(0);
+    AtomicBoolean stopBumper = new AtomicBoolean(false);
+    final Queue<Connection> establishedConnections = new ConcurrentLinkedQueue<>();
+
+    try (Connection connSuperuser = getConnectionBuilder().connect();
+         Statement stmtSuperuser = connSuperuser.createStatement()) {
+
+      LOG.info("Starting catalog versions: {}", getCatalogVersions(stmtSuperuser));
+      LOG.info("Creating test user: {}", TEST_USER);
+      stmtSuperuser.execute(String.format("CREATE USER %s", TEST_USER));
+
+      LOG.info("Creating {} databases...", NUM_DATABASES);
+      for (String dbName : dbNames) {
+        stmtSuperuser.execute(String.format("CREATE DATABASE %s", dbName));
+      }
+
+      executorService.submit(() -> {
+        LOG.info("Catalog version bumper thread started.");
+        // Use a separate connection/statement inside the thread for safety
+        try (Connection bumperConn = getConnectionBuilder().connect();
+             Statement bumperStmt = bumperConn.createStatement()) {
+          int currentDatabaeOid = getCurrentDatabaseOid(bumperConn);
+          // Continuously bump up catalog version to simulate burst of DDLs.
+          while (!stopBumper.get()) {
+            try {
+              bumperStmt.execute(
+                "SET yb_non_ddl_txn_for_sys_tables_allowed=1;" +
+                "SELECT yb_increment_all_db_catalog_versions_with_inval_messages(" +
+                currentDatabaeOid + ", false, '', 10);" +
+                "SET yb_non_ddl_txn_for_sys_tables_allowed=0");
+            } catch (Exception e) {
+              if (!stopBumper.get()) {
+                LOG.error("Error bumping catalog version: {}", e.getMessage());
+              }
+            }
+          }
+        } catch (Exception connEx) { // Catch errors getting the connection/statement
+          LOG.error("Failed to set up connection for bumper thread: {}", connEx.getMessage());
+        }
+        LOG.info("Catalog version bumper thread stopped.");
+      });
+
+      // Latch to wait until all connection attempts are finished
+      CountDownLatch connectionLatch = new CountDownLatch(totalConnections);
+
+      // --- Submit Connection Tasks ---
+      LOG.info("Submitting {} concurrent connection tasks...", totalConnections);
+      Properties props = new Properties();
+      if (isSanitizerBuild) {
+        // Set to 60 second timeout for slower builds.
+        props.setProperty("sslResponseTimeout", "60000");
+      }
+      for (String dbName : dbNames) {
+        for (int j = 0; j < CONNECTIONS_PER_DB; j++) {
+          final String currentDbName = dbName; // Need final variable for lambda
+          executorService.submit(() -> {
+            Connection conn = null; // Declare connection outside try
+            try {
+              // Try connecting as the test user to the specific database
+              conn = getConnectionBuilder().withUser(TEST_USER)
+                                           .withDatabase(currentDbName)
+                                           .connect(props);
+              // If successful, add to the queue
+              establishedConnections.offer(conn); // Use offer for non-blocking add
+              numSuccesses.incrementAndGet();
+              LOG.debug("Successfully connected to {}", currentDbName);
+            } catch (Exception e) {
+              numFailures.incrementAndGet();
+              LOG.warn("Failed to connect to {}: {}", currentDbName, e.getMessage());
+            } finally {
+              connectionLatch.countDown(); // Signal that this attempt is done
+            }
+          });
+        }
+      }
+
+      // --- Wait for Completion ---
+      LOG.info("Waiting for all {} connection attempts to complete...", totalConnections);
+      // Wait indefinitely until all connection threads have finished
+      connectionLatch.await();
+      LOG.info("All connection attempts finished. Successes: {}, Failures: {}",
+               numSuccesses.get(), numFailures.get());
+
+      // --- Shutdown ---
+      LOG.info("Stopping catalog version bumper...");
+      stopBumper.set(true); // Signal the bumper thread to stop
+
+      LOG.info("Shutting down executor service...");
+      executorService.shutdown(); // Disable new tasks from being submitted
+      if (!executorService.awaitTermination(60, TimeUnit.SECONDS)) { // Wait for existing tasks
+        LOG.warn("Executor service did not terminate gracefully after 60 seconds.");
+        executorService.shutdownNow(); // Force shutdown
+      }
+      LOG.info("Executor service shut down.");
+
+      assertEquals("Total connection successes mismatch", totalConnections, numSuccesses.get());
+
+      LOG.info("Ending catalog versions: {}", getCatalogVersions(stmtSuperuser));
+    }
+
+    LOG.info("Processing {} established connections...", establishedConnections.size());
+    long minRSS = -1;
+    long maxRSS = -1;
+    long totalRSS = 0;
+    long count = 0;
+    for (Connection c : establishedConnections) {
+      try {
+        // If a connection is idled too long, jdbc can close it.
+        if (c == null || c.isClosed()) {
+          LOG.warn("Connection was closed or is null, skipping RSS check for this backend.");
+          continue;
+        }
+        count++;
+        Statement s = c.createStatement();
+        ResultSet pidRs = s.executeQuery("SELECT pg_backend_pid()");
+        pidRs.next();
+        int pid = pidRs.getInt(1);
+        long rss = getVmRSS(pid);
+        if (minRSS == -1) {
+          minRSS = rss;
+        }
+        if (maxRSS == -1) {
+          maxRSS = rss;
+        }
+        if (rss < minRSS) {
+          minRSS = rss;
+        }
+        if (rss > maxRSS) {
+          maxRSS = rss;
+        }
+        LOG.info("PG backend with pid {} has RSS {}", pid, rss);
+        totalRSS += rss;
+      } catch (SQLException e) {
+        LOG.warn("Error checking connection status: {}", e.getMessage());
+      }
+    }
+    double avgRSS = (double)totalRSS / count;
+    LOG.info("minRSS {}, maxRSS {}", minRSS, maxRSS);
+    LOG.info("count {}, totalRSS {}, avgRSS {}", count, totalRSS, avgRSS);
+    // Assert the variations between connections are less than 20%.
+    double maxVariationPercent = (double)(maxRSS - minRSS) / minRSS;
+    LOG.info("maxVariationPercent {}", maxVariationPercent);
+    assertTrue("Expected maxVariationPercent less than 20%", maxVariationPercent < 0.20);
   }
 }

@@ -362,7 +362,6 @@ class PostgresBuilder(YbBuildToolBase):
         install_cmd_line_prefix = 'INSTALL = '
 
         new_makefile_lines = []
-        install_script_updated = False
 
         with open(makefile_global_path) as makefile_global_input_f:
             for line in makefile_global_input_f:
@@ -375,29 +374,10 @@ class PostgresBuilder(YbBuildToolBase):
                             new_cflags + ' $(YB_APPEND_CFLAGS)'
                         replaced_cflags = True
 
-                if line.startswith(install_cmd_line_prefix):
-                    new_makefile_lines.extend([
-                        '# The following line was modified by the build_postgres.py script to use',
-                        '# our install_wrapper.py script to customize installation path of',
-                        '# executables and libraries, needed in case of LTO.'
-                    ])
-                    line = ''.join([
-                        install_cmd_line_prefix,
-                        os.path.join('$(YB_SRC_ROOT)', 'python', 'yugabyte', 'install_wrapper.py'),
-                        ' ',
-                        line[len(install_cmd_line_prefix):]
-                    ])
-                    install_script_updated = True
-
                 new_makefile_lines.append(line)
 
         if not found_cflags:
             raise RuntimeError("Could not find a CFLAGS line in %s" % makefile_global_path)
-
-        if not install_script_updated:
-            raise RuntimeError(
-                f"Could not find and update a line starting with '{install_cmd_line_prefix}' in "
-                f"{makefile_global_path}.")
 
         if replaced_cflags:
             logging.info("Replaced cflags in %s", makefile_global_path)
@@ -456,7 +436,6 @@ class PostgresBuilder(YbBuildToolBase):
 
         additional_c_cxx_flags = [
             '-Wimplicit-function-declaration',
-            '-Wno-error=unused-function',
             '-DHAVE__BUILTIN_CONSTANT_P=1',
             '-Werror=implicit-function-declaration',
             '-Werror=int-conversion',
@@ -464,7 +443,6 @@ class PostgresBuilder(YbBuildToolBase):
 
         if self.is_clang():
             additional_c_cxx_flags += [
-                '-Wno-builtin-requires-header',
                 '-Wno-shorten-64-to-32',
             ]
 
@@ -472,17 +450,7 @@ class PostgresBuilder(YbBuildToolBase):
             additional_c_cxx_flags += [
                 '-Wall',
                 '-Werror',
-                '-Wno-error=unused-function'
             ]
-
-            if self.build_type in ['release', 'prof_gen', 'prof_use']:
-                if self.is_clang():
-                    additional_c_cxx_flags += [
-                        '-Wno-error=array-bounds',
-                        '-Wno-error=gnu-designator',
-                    ]
-                if self.is_gcc():
-                    additional_c_cxx_flags += ['-Wno-error=strict-overflow']
 
             if self.build_type in ['asan', 'asan_release']:
                 additional_c_cxx_flags += [
@@ -498,9 +466,6 @@ class PostgresBuilder(YbBuildToolBase):
             for build_path in get_absolute_path_aliases(self.pg_build_root)
             for source_path in get_absolute_path_aliases(self.postgres_src_dir)
         ]
-
-        if self.is_gcc():
-            additional_c_cxx_flags.append('-Wno-error=maybe-uninitialized')
 
         for var_name in COMPILER_AND_LINKER_FLAG_ENV_VAR_NAMES:
             os.environ[var_name] = adjust_compiler_or_linker_flags(
@@ -712,30 +677,29 @@ class PostgresBuilder(YbBuildToolBase):
         with WorkDirContext(YB_SRC_ROOT):
             # Postgres files.
             pathspec = [
+                'CMakeLists.txt',
+                'build-support/build_postgres',
+                'python/yugabyte/build_postgres.py',
                 'src/postgres',
                 'src/yb/yql/pggate',
-                'python/yugabyte/build_postgres.py',
-                'build-support/build_postgres',
-                'CMakeLists.txt',
             ]
             git_version = self.get_git_version()
             if git_version and git_version >= semantic_version.Version('1.9.0'):
                 # Git version 1.8.5 allows specifying glob pathspec, and Git version 1.9.0 allows
                 # specifying negative pathspec.  Use them to exclude changes to regress test files
                 # not needed for build.
-                pathspec.extend([
-                    ':(glob,exclude)src/postgres/**/*_schedule',
-                    ':(glob,exclude)src/postgres/**/data/*.csv',
-                    ':(glob,exclude)src/postgres/**/data/*.data',
-                    ':(glob,exclude)src/postgres/**/expected/*.out',
-                    ':(glob,exclude)src/postgres/**/input/*.source',
-                    ':(glob,exclude)src/postgres/**/output/*.source',
-                    ':(glob,exclude)src/postgres/**/specs/*.spec',
-                    ':(glob,exclude)src/postgres/**/sql/*.sql',
-                    ':(glob,exclude)src/postgres/.clang-format',
-                    ':(glob,exclude)src/postgres/src/test/regress/README',
-                    ':(glob,exclude)src/postgres/src/test/regress/yb_lint_regress_schedule.sh',
-                ])
+                pathspec.extend(map(lambda path: ':(glob,exclude)' + path, [
+                    'src/postgres/**/*_schedule',
+                    'src/postgres/**/README',
+                    'src/postgres/**/data/*.csv',
+                    'src/postgres/**/data/*.data',
+                    'src/postgres/**/expected/*.out',
+                    'src/postgres/**/specs/*.spec',
+                    'src/postgres/**/sql/*.sql',
+                    'src/postgres/**/yb_commands/*.sql',
+                    'src/postgres/.clang-format',
+                    'src/yb/yql/pggate/**/README',
+                ]))
             # Get the most recent commit that touched postgres files.
             git_hash = subprocess.check_output(
                 ['git', '--no-pager', 'log', '-n', '1', '--format=%H', '--'] + pathspec

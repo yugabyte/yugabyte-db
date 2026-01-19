@@ -56,6 +56,7 @@
 /* YB includes */
 #include "executor/ybModifyTable.h"
 #include "pg_yb_utils.h"
+#include "storage/lmgr.h"
 #include "utils/builtins.h"
 
 /*
@@ -1380,17 +1381,11 @@ yb_process_more_batches:
 	}
 	else
 	{
-		YbcFlushDebugContext yb_debug_context = {
-			.reason = YB_COPY_BATCH,
-			.uintarg = processed,
-			.strarg1 = RelationGetRelationName(cstate->rel),
-		};
-
 		/*
 		 * We need to flush buffered operations so that error callback is
 		 * executed
 		 */
-		YBFlushBufferedOperations(&yb_debug_context);
+		YBFlushBufferedOperations(YBCMakeFlushDebugContextCopyBatch(processed, RelationGetRelationName(cstate->rel)));
 
 		/* Update progress of the COPY command as well */
 		pgstat_progress_update_param(PROGRESS_COPY_TUPLES_PROCESSED, processed);
@@ -1398,7 +1393,34 @@ yb_process_more_batches:
 	}
 
 	if (has_more_tuples)
+	{
+		if (cstate->opts.batch_size > 0)
+		{
+			/*
+			 * Re-acquire the relation lock(s) for the new transaction. This is
+			 * necessary because when YB performs batched COPY, it commits the
+			 * intermediate transaction, resulting in release of all the object
+			 * locks associated with that transaction.
+			 *
+			 * It still doesn't resolve the problem fully as a ddl could have
+			 * changed the schema and 'cstate' would need to be computed again,
+			 * without which the subsequent batches may fail. Nevertheless,
+			 * acquire locks to gate ddls for the duration of the batch.
+			 *
+			 * TODO(#27120): Once session level object locking is supported, we
+			 * could acquire session locks and skip transactional object locks
+			 * all together, leaving no window for DDLs to come in between
+			 * internal batches of COPY execution.
+			 */
+			LockRelation(resultRelInfo->ri_RelationDesc, RowExclusiveLock);
+			for (int i = 0; i < resultRelInfo->ri_NumIndices; ++i)
+			{
+				LockRelation(resultRelInfo->ri_IndexRelationDescs[i],
+							 RowExclusiveLock);
+			}
+		}
 		goto yb_process_more_batches;
+	}
 
 yb_no_more_tuples:
 	/* Flush any remaining buffered tuples */

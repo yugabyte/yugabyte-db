@@ -12,7 +12,7 @@
 // under the License.
 
 #include "yb/common/redis_constants_common.h"
-#include "yb/common/redis_protocol.pb.h"
+#include "yb/common/redis_protocol.messages.h"
 
 #include "yb/client/session.h"
 #include "yb/client/table.h"
@@ -135,10 +135,6 @@ void YBBackupTest::SetUp() {
 void YBBackupTest::UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) {
   pgwrapper::PgCommandTestBase::UpdateMiniClusterOptions(options);
   options->extra_master_flags.push_back("--ysql_legacy_colocated_database_creation=false");
-  options->extra_master_flags.push_back(
-      "--allowed_preview_flags_csv=ysql_enable_db_catalog_version_mode");
-  options->extra_tserver_flags.push_back(
-      "--allowed_preview_flags_csv=ysql_enable_db_catalog_version_mode");
 }
 
 Status YBBackupTest::RunBackupCommand(const vector<string>& args) {
@@ -277,11 +273,23 @@ void YBBackupTest::RestartClusterWithCatalogVersionMode(bool db_catalog_version_
   const auto db_catalog_version_gflag =
       Format("--ysql_enable_db_catalog_version_mode=$0",
              db_catalog_version_mode ? "true" : "false");
+  // Table locks depends on the per db catalog, so we need to disable the features when
+  // ysql_enable_db_catalog_version_mode is disabled.
+  const auto object_locking_gflag =
+      Format("--enable_object_locking_for_table_locks=$0",
+             db_catalog_version_mode ? "true" : "false");
+  const auto ddl_transaction_gflag =
+      Format("--ysql_yb_ddl_transaction_block_enabled=$0",
+             db_catalog_version_mode ? "true" : "false");
   for (size_t i = 0; i != cluster_->num_masters(); ++i) {
     cluster_->master(i)->mutable_flags()->push_back(db_catalog_version_gflag);
+    cluster_->master(i)->mutable_flags()->push_back(object_locking_gflag);
+    cluster_->master(i)->mutable_flags()->push_back(ddl_transaction_gflag);
   }
   for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
     cluster_->tablet_server(i)->mutable_flags()->push_back(db_catalog_version_gflag);
+    cluster_->tablet_server(i)->mutable_flags()->push_back(object_locking_gflag);
+    cluster_->tablet_server(i)->mutable_flags()->push_back(ddl_transaction_gflag);
   }
   ASSERT_OK(cluster_->Restart());
   ASSERT_NO_FATALS(RunPsqlCommand(

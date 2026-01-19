@@ -166,8 +166,8 @@ class BaseDeltaIterator final : public Iterator {
     return delta_iterator_->status();
   }
 
-  void UpdateFilterKey(Slice user_key_for_filter) override {
-    base_iterator_->UpdateFilterKey(user_key_for_filter);
+  void UpdateFilterKey(Slice user_key_for_filter, Slice seek_key) override {
+    base_iterator_->UpdateFilterKey(user_key_for_filter, seek_key);
   }
 
  private:

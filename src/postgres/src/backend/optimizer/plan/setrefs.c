@@ -612,8 +612,6 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 				/*
 				 * YB: Index quals has to be fixed to refer to index columns,
 				 * not main table columns, so we need to index the indextlist.
-				 * Also, indextlist has to be converted, as ANALYZE may use it.
-				 * Skip that if we don't have index pushdown quals.
 				 */
 				if (splan->yb_idx_pushdown.quals)
 				{
@@ -634,11 +632,15 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 									   INDEX_VAR,
 									   rtoffset,
 									   NUM_EXEC_TLIST(plan));
-					splan->indextlist =
-						fix_scan_list(root, splan->indextlist, rtoffset,
-									  NUM_EXEC_TLIST(plan));
 					pfree(index_itlist);
 				}
+				/*
+				 * YB: Also, indextlist has to be converted as ANALYZE may use
+				 * it.
+				 */
+				splan->indextlist =
+					fix_scan_list(root, splan->indextlist, rtoffset,
+								  NUM_EXEC_TLIST(plan));
 				splan->indexqual =
 					fix_scan_list(root, splan->indexqual,
 								  rtoffset, 1);

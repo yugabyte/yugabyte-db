@@ -9,6 +9,9 @@ menu:
     name: Google Kubernetes Engine
     identifier: k8s-gke-1
     weight: 623
+aliases:
+  - /stable/deploy/kubernetes/gke/helm-chart/
+  - /stable/deploy/kubernetes/single-zone/gke/
 type: docs
 ---
 

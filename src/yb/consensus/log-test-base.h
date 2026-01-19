@@ -176,8 +176,10 @@ class LogTestBase : public YBTest {
     ASSERT_OK(fs_manager_->CreateInitialFileSystemLayout());
   }
 
-  void BuildLog() {
+  void BuildLog(int64_t byte_limit = -1) {
     Schema schema_with_ids = SchemaBuilder(schema_).Build();
+    read_wal_mem_tracker_ =
+        MemTracker::FindOrCreateTracker(byte_limit, "Log Reader Memory");
     ASSERT_OK(Log::Open(options_,
                        kTestTablet,
                        tablet_wal_path_,
@@ -186,7 +188,7 @@ class LogTestBase : public YBTest {
                        0, // schema_version
                        table_metric_entity_.get(),
                        tablet_metric_entity_.get(),
-                       /*read_wal_mem_tracker=*/nullptr,
+                       read_wal_mem_tracker_,
                        log_thread_pool_.get(),
                        log_thread_pool_.get(),
                        log_thread_pool_.get(),
@@ -353,6 +355,7 @@ class LogTestBase : public YBTest {
   std::unique_ptr<MetricRegistry> metric_registry_;
   scoped_refptr<MetricEntity> table_metric_entity_;
   scoped_refptr<MetricEntity> tablet_metric_entity_;
+  std::shared_ptr<MemTracker> read_wal_mem_tracker_;
   std::unique_ptr<ThreadPool> log_thread_pool_;
   scoped_refptr<Log> log_;
   int64_t current_index_;

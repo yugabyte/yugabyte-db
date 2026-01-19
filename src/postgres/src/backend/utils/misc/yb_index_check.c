@@ -25,6 +25,7 @@
 
 #include "postgres.h"
 
+#include "access/relation.h"
 #include "catalog/heap.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_am.h"
@@ -183,11 +184,16 @@ yb_index_check(PG_FUNCTION_ARGS)
 static void
 do_index_check(Oid indexoid, bool multi_snapshot_mode)
 {
-	Relation	indexrel = RelationIdGetRelation(indexoid);
+	/*
+	 * Open the base and the index relation with AccessShareLock since we read
+	 * both as of time.
+	 */
+	LOCKMODE	lockmode = AccessShareLock;
+	Relation	indexrel = relation_open(indexoid, AccessShareLock);
 
 	if (indexrel->rd_rel->relkind == RELKIND_PARTITIONED_INDEX)
 	{
-		RelationClose(indexrel);
+		relation_close(indexrel, lockmode);
 		return partitioned_index_check(indexoid, multi_snapshot_mode);
 	}
 
@@ -208,11 +214,11 @@ do_index_check(Oid indexoid, bool multi_snapshot_mode)
 	/* YB doesn't have separate PK index, hence it is always consistent */
 	if (indexrel->rd_index->indisprimary)
 	{
-		RelationClose(indexrel);
+		relation_close(indexrel, lockmode);
 		return;
 	}
 
-	Relation	baserel = RelationIdGetRelation(indexrel->rd_index->indrelid);
+	Relation	baserel = relation_open(indexrel->rd_index->indrelid, lockmode);
 
 	PG_TRY();
 	{
@@ -230,8 +236,8 @@ do_index_check(Oid indexoid, bool multi_snapshot_mode)
 	}
 	PG_END_TRY();
 
-	RelationClose(indexrel);
-	RelationClose(baserel);
+	relation_close(indexrel, lockmode);
+	relation_close(baserel, lockmode);
 }
 
 static void

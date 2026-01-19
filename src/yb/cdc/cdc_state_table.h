@@ -26,6 +26,8 @@
 
 #include "yb/gutil/thread_annotations.h"
 
+#include "yb/util/condition_variable.h"
+#include "yb/util/mutex.h"
 #include "yb/util/status.h"
 
 namespace yb {
@@ -126,6 +128,20 @@ struct CDCStateTableEntrySelector {
 
 class CDCStateTableRange;
 
+class ShutDownState {
+ public:
+  bool SetShuttingDown();
+  // This method does not mutate state. Takes a non-const ref to prevent callers from passing
+  // a temporary.
+  Status WaitForShutdownOr(bool& state) const;
+  void UpdateAndBroadcast(bool& var) const;
+
+ private:
+  mutable Mutex mutex_;
+  mutable ConditionVariable cv_{&mutex_};
+  bool shutting_down_ GUARDED_BY(mutex_) = false;
+};
+
 // CDCStateTable is a wrapper class to access the cdc_state table. This handle the YQL table schema
 // creation, data serialization\deserialization and column name to id conversions. It internally
 // uses the YBClient and YBSession to access the table.
@@ -158,6 +174,8 @@ class CDCStateTable {
   Result<std::optional<CDCStateTableEntry>> TryFetchEntry(
       const CDCStateTableKey& key, CDCStateTableEntrySelector&& field_filter = {}) EXCLUDES(mutex_);
 
+  void Shutdown();
+
  private:
   client::YBClient& client() { return *client_future_.get(); }
   std::shared_ptr<client::YBSession> MakeSession();
@@ -183,6 +201,7 @@ class CDCStateTable {
 
   std::shared_ptr<client::TableHandle> cdc_table_ GUARDED_BY(mutex_);
   bool created_ GUARDED_BY(mutex_) = false;
+  std::shared_ptr<ShutDownState> shutdown_;
 };
 
 class CdcStateTableIterator : public client::TableIterator {

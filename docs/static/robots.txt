@@ -5,9 +5,9 @@ Allow: /preview/api/ysql/syntax_resources/grammar_diagrams/
 Disallow: */binary/
 # don't index the non-current docs (just preview and stable)
 Disallow: /v2.20/
-Disallow: /stable/
 Disallow: /v2024.1/
 Disallow: /v2024.2/
-
+Disallow: /v2.25/
+Disallow: /v2025.1/
 
 # Algolia-Crawler-Verif: 73EC23ACA4B42138

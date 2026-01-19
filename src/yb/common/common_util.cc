@@ -18,12 +18,15 @@
 #include "yb/gutil/casts.h"
 #include "yb/gutil/sysinfo.h"
 
-#include "yb/util/flags.h"
+#include "yb/master/master_replication.pb.h"
+
 #include "yb/util/tsan_util.h"
 
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(ysql_yb_ddl_rollback_enabled);
 DECLARE_bool(ysql_yb_enable_ddl_atomicity_infra);
+DECLARE_bool(ysql_yb_enable_ddl_savepoint_infra);
+DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 
 namespace yb {
 
@@ -105,7 +108,56 @@ int GetInitialNumTabletsPerTable(TableType table_type, size_t tserver_count) {
 }
 
 bool YsqlDdlRollbackEnabled() {
+  // Also change the validator for ysql_yb_ddl_transaction_block_enabled flag in common_flag.cc if
+  // changing this logic.
   return FLAGS_ysql_yb_enable_ddl_atomicity_infra && FLAGS_ysql_yb_ddl_rollback_enabled;
+}
+
+bool YsqlDdlSavepointEnabled() {
+  return FLAGS_ysql_yb_enable_ddl_savepoint_infra && FLAGS_ysql_yb_enable_ddl_savepoint_support;
+}
+
+template <typename RequestType>
+std::vector<TabletId> GetSplitChildTabletIds(const RequestType& req) {
+  if (req.new_tablet_ids_size() > 0) {
+    return std::vector<TabletId>(req.new_tablet_ids().begin(), req.new_tablet_ids().end());
+  }
+
+  return {req.deprecated_new_tablet1_id(), req.deprecated_new_tablet2_id()};
+}
+
+template std::vector<TabletId> GetSplitChildTabletIds(const tablet::SplitTabletRequestPB& req);
+template std::vector<TabletId> GetSplitChildTabletIds(const master::ProducerSplitTabletInfoPB& req);
+
+std::vector<TabletId> GetSplitChildTabletIds(const tablet::LWSplitTabletRequestPB& req) {
+  if (req.new_tablet_ids_size() > 0) {
+    return std::vector<TabletId>(req.new_tablet_ids().begin(), req.new_tablet_ids().end());
+  }
+
+  return {req.deprecated_new_tablet1_id().ToBuffer(), req.deprecated_new_tablet2_id().ToBuffer()};
+}
+
+template <typename RequestType>
+std::vector<std::string> GetSplitPartitionKeys(const RequestType& req) {
+  if (req.split_partition_keys_size() > 0) {
+    return std::vector<std::string>(
+        req.split_partition_keys().begin(), req.split_partition_keys().end());
+  }
+
+  return {req.deprecated_split_partition_key()};
+}
+
+template std::vector<std::string> GetSplitPartitionKeys(const tablet::SplitTabletRequestPB& req);
+template std::vector<std::string> GetSplitPartitionKeys(
+    const master::ProducerSplitTabletInfoPB& req);
+
+std::vector<std::string> GetSplitEncodedKeys(const tablet::SplitTabletRequestPB& req) {
+  if (req.split_encoded_keys_size() > 0) {
+    return std::vector<std::string>(
+        req.split_encoded_keys().begin(), req.split_encoded_keys().end());
+  }
+
+  return {req.deprecated_split_encoded_key()};
 }
 
 } // namespace yb

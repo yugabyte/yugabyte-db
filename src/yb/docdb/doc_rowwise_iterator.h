@@ -41,8 +41,7 @@
 #include "yb/util/operation_counter.h"
 #include "yb/util/status_fwd.h"
 
-namespace yb {
-namespace docdb {
+namespace yb::docdb {
 
 YB_STRONGLY_TYPED_BOOL(AddTablePrefixToKey);
 
@@ -71,14 +70,15 @@ class DocRowwiseIterator final : public YQLRowwiseIteratorIf {
   void SetSchema(const Schema& schema);
 
   // Init scan iterator.
-  void InitForTableType(
+  Status InitForTableType(
       TableType table_type, Slice sub_doc_key = Slice(), SkipSeek skip_seek = SkipSeek::kFalse,
       AddTablePrefixToKey add_table_prefix_to_key = AddTablePrefixToKey::kFalse);
   // Init QL read scan.
   Status Init(
-      const qlexpr::YQLScanSpec& spec,
-      SkipSeek skip_seek = SkipSeek::kFalse,
-      UseVariableBloomFilter use_variable_bloom_filter = UseVariableBloomFilter::kFalse);
+      const qlexpr::YQLScanSpec& spec, SkipSeek skip_seek = SkipSeek::kFalse,
+      AllowVariableBloomFilter allow_variable_bloom_filter = AllowVariableBloomFilter::kFalse,
+      AvoidUselessNextInsteadOfSeek avoid_useless_next_instead_of_seek =
+          AvoidUselessNextInsteadOfSeek::kFalse);
 
   bool IsFetchedRowStatic() const override;
 
@@ -90,7 +90,8 @@ class DocRowwiseIterator final : public YQLRowwiseIteratorIf {
 
   // Seeks to the given tuple by its id. The tuple id should be the serialized DocKey and without
   // the cotable id.
-  void SeekTuple(Slice tuple_id) override;
+  void SeekTuple(
+      Slice tuple_id, UpdateFilterKey update_filter_key = UpdateFilterKey::kTrue) override;
 
   // Returns true if tuple was fetched, false otherwise.
   Result<bool> FetchTuple(Slice tuple_id, qlexpr::QLTableRow* row) override;
@@ -144,8 +145,6 @@ class DocRowwiseIterator final : public YQLRowwiseIteratorIf {
     return use_fast_backward_scan_;
   }
 
-  Result<Slice> FetchDirect(Slice key) override;
-
  private:
   void CheckInitOnce();
 
@@ -174,8 +173,9 @@ class DocRowwiseIterator final : public YQLRowwiseIteratorIf {
   Slice shared_key_prefix() const;
   Slice upperbound() const;
 
-  void InitIterator(
+  Status InitIterator(
       const BloomFilterOptions& bloom_filter,
+      AvoidUselessNextInsteadOfSeek avoid_useless_next_instead_of_seek,
       const rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
       std::shared_ptr<rocksdb::ReadFileFilter> file_filter = nullptr);
 
@@ -241,6 +241,7 @@ class DocRowwiseIterator final : public YQLRowwiseIteratorIf {
   bool has_bound_key_ = false;
   dockv::KeyBytes bound_key_;
 
+  IntentAwareIteratorPtr db_iter_;
   std::unique_ptr<ScanChoices> scan_choices_;
 
   // We keep the "pending operation" counter incremented for the lifetime of this iterator so that
@@ -276,7 +277,6 @@ class DocRowwiseIterator final : public YQLRowwiseIteratorIf {
   size_t obsolete_keys_found_ = 0;
   size_t obsolete_keys_found_past_cutoff_ = 0;
 
-  std::unique_ptr<IntentAwareIterator> db_iter_;
   KeyBuffer prefix_buffer_;
   std::optional<IntentAwareIteratorUpperboundScope> upperbound_scope_;
   std::optional<IntentAwareIteratorLowerboundScope> lowerbound_scope_;
@@ -300,5 +300,4 @@ class DocRowwiseIterator final : public YQLRowwiseIteratorIf {
   SeekFilter seek_filter_ = SeekFilter::kAll;
 };
 
-}  // namespace docdb
-}  // namespace yb
+}  // namespace yb::docdb

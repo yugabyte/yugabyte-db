@@ -9,6 +9,8 @@ menu:
     parent: pg-extensions
     weight: 20
 type: docs
+aliases:
+  - /stable/explore/ysql-language-features/pg-extensions/extension-pgcrypto
 ---
 
 The [pgcrypto](https://www.postgresql.org/docs/15/pgcrypto.html) module provides cryptographic functions for PostgreSQL.

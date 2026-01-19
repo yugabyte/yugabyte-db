@@ -1,0 +1,18 @@
+{{! Yugabyte modification: Skip using SecurityAPIUtils since we rely on pac4j}}
+import com.google.inject.AbstractModule;
+
+import {{apiPackage}}.*;
+{{! import openapitools.SecurityAPIUtils;}}
+
+public class Module extends AbstractModule {
+
+    @Override
+    protected void configure() {
+        {{#apiInfo}}
+        {{#apis}}
+        bind({{classname}}ControllerImpInterface.class).to({{classname}}ControllerImp.class);
+        {{/apis}}
+        {{/apiInfo}}
+        {{!bind(SecurityAPIUtils.class);}}
+    }
+}

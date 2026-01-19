@@ -45,10 +45,15 @@ INSTALLER_NAME="node-agent-installer.sh"
 SYSTEMD_PATH="/etc/systemd/system"
 SERVICE_NAME="yb-node-agent.service"
 SERVICE_RESTART_INTERVAL_SEC=2
+SERVICE_TIMEOUT_STOP_SEC=10
 SESSION_INFO_URL=""
+EXISTING_SYSTEMD_USER_ID=-1
 
 ARCH=$(uname -m)
 OS=$(uname -s)
+
+CURRENT_USER=$(id -u -n)
+CURRENT_USER_ID=$(id -u)
 
 pushd () {
   command pushd "$@" > /dev/null
@@ -78,8 +83,7 @@ check_run_as_super_user() {
 
 # Function to run systemd commands as the target user
 run_as_target_user() {
-  local cmd=$1
-  XDG_RUNTIME_DIR=/run/user/$(id -u $INSTALL_USER) $cmd
+  XDG_RUNTIME_DIR=/run/user/$(id -u $INSTALL_USER) "$@"
 }
 
 export_path() {
@@ -173,6 +177,7 @@ uninstall_node_agent() {
     fi
   fi
   set -e
+  echo "Node agent uninstalled successfully. Node agent directory can be removed manually."
 }
 
 download_package() {
@@ -212,8 +217,8 @@ extract_package() {
     pushd "$NODE_AGENT_RELEASE_PATH"
     set +o pipefail
     # Look for the folder containing the version file.
-    VERSION=$(tar -tzf "$NODE_AGENT_PKG_TGZ" | grep "version_metadata.json" | awk -F '/' \
-    '$2{print $2;exit}')
+    VERSION=$(tar -tzf "$NODE_AGENT_PKG_TGZ" | grep "/version_metadata.json" | awk -F '/' \
+    '$2{print $(NF-1);exit}')
     set -o pipefail
     if [ -z "$VERSION" ]; then
       echo "Node agent version cannot be determined"
@@ -237,20 +242,6 @@ setup_symlink() {
   fi
   #Create a new symlink between node-agent/pkg -> node-agent/release/<version>.
   ln -s -f "$NODE_AGENT_RELEASE_PATH/$VERSION" "$NODE_AGENT_PKG_PATH"
-}
-
-check_sudo_access() {
-  SUDO_ACCESS="false"
-  set +e
-  if [ $(id -u) = 0 ]; then
-    SUDO_ACCESS="true"
-  elif sudo -n pwd >/dev/null 2>&1; then
-    SUDO_ACCESS="true"
-  fi
-  if [ "$OS" = "Linux" ]; then
-    SE_LINUX_STATUS=$(getenforce 2>/dev/null)
-  fi
-  set -e
 }
 
 modify_firewall() {
@@ -304,36 +295,60 @@ modify_selinux() {
   set -e
 }
 
-stop_systemd_service() {
-  local UNIT_FILE_PRESENT=""
-  local USER_SCOPED_UNIT=""
+set_systemd_user_id() {
   set +e
-  UNIT_FILE_PRESENT=$(systemctl list-units | grep -F yb-node-agent.service)
-  # If not found, check in user-level units
-  if [ -z "$UNIT_FILE_PRESENT" ]; then
-    UNIT_FILE_PRESENT=$(systemctl --user list-units | grep -F yb-node-agent.service)
-    if [ -n "$UNIT_FILE_PRESENT" ]; then
-      USER_SCOPED_UNIT="true"
-    fi
+  local UNIT_EXISTS=$(systemctl --user list-units | grep -F yb-node-agent.service)
+  if [ -n "$UNIT_EXISTS" ]; then
+    EXISTING_SYSTEMD_USER_ID=$CURRENT_USER_ID
   else
-    USER_SCOPED_UNIT="false"
-  fi
-  if [ -n "$UNIT_FILE_PRESENT" ]; then
-    if [ "$USER_SCOPED_UNIT" = "false" ] && [ "$SUDO_ACCESS" = "true" ]; then
-      run_as_super_user systemctl stop yb-node-agent >/dev/null 2>&1
-      run_as_super_user systemctl disable yb-node-agent >/dev/null 2>&1
-    elif [ "$USER_SCOPED_UNIT" = "true" ]; then
-      systemctl --user stop yb-node-agent >/dev/null 2>&1
-      systemctl --user disable yb-node-agent >/dev/null 2>&1
+    UNIT_EXISTS=$(systemctl list-units | grep -F yb-node-agent.service)
+    if [ -n "$UNIT_EXISTS" ]; then
+      EXISTING_SYSTEMD_USER_ID=0
     fi
+  fi
+  set -e
+}
+
+stop_systemd_service() {
+  if [ "$EXISTING_SYSTEMD_USER_ID" -eq -1 ]; then
+    # Systemd unit does not exist.
+    return
+  fi
+  local SCOPE_PARAM=""
+  if [ "$EXISTING_SYSTEMD_USER_ID" -ne 0 ]; then
+    SCOPE_PARAM="--user"
+  fi
+  set +e
+  local UNIT_FILE=$(systemctl $SCOPE_PARAM cat $SERVICE_NAME --no-pager 2>/dev/null | head -1 | \
+  sed -e 's/#\s*//g' || true)
+  if [ "$EXISTING_SYSTEMD_USER_ID" -eq 0 ]; then
+    if [ "$CURRENT_USER_ID" -ne 0 ]; then
+      # Current user must be root as services are installed as root.
+      echo "SUDO access is required to stop the root-level systemd service."
+      echo "Uninstall node agent by running node-agent-installer.sh -c uninstall ... as root."
+      exit 1
+    fi
+    run_as_super_user systemctl stop $SERVICE_NAME >/dev/null 2>&1
+    run_as_super_user systemctl disable $SERVICE_NAME >/dev/null 2>&1
+    run_as_super_user rm -f "$UNIT_FILE"
+    run_as_super_user systemctl daemon-reload
+  else
+    run_as_target_user systemctl --user stop $SERVICE_NAME >/dev/null 2>&1
+    run_as_target_user systemctl --user disable $SERVICE_NAME >/dev/null 2>&1
+    rm -f "$UNIT_FILE"
+    run_as_target_user systemctl --user daemon-reload
   fi
   set -e
 }
 
 install_systemd_service() {
   local USER_SCOPED_UNIT="false"
-  if [ "$SUDO_ACCESS" = "false" ]; then
+  local SCOPE_PARAM=""
+  local SUDO_PARAM="sudo "
+  if [ "$INSTALL_USER_ID" -ne 0 ]; then
     USER_SCOPED_UNIT="true"
+    SCOPE_PARAM="--user"
+    SUDO_PARAM=""
     SYSTEMD_PATH="$INSTALL_USER_HOME/.config/systemd/user"
   fi
   if [ "$USER_SCOPED_UNIT" = "false" ]; then
@@ -343,11 +358,52 @@ install_systemd_service() {
     modify_firewall
   fi
   echo "* Installing Node Agent Systemd Service"
-  # Define the path to the service file.
-  SERVICE_FILE_PATH="$SYSTEMD_PATH/$SERVICE_NAME"
+  write_systemd_service_file "$USER_SCOPED_UNIT"
+  echo "* Starting the systemd service"
 
-  # Check if USER_SCOPED_UNIT is defined.
   if [ "$USER_SCOPED_UNIT" = "false" ]; then
+    #To enable the node-agent service on reboot.
+    run_as_super_user systemctl enable $SERVICE_NAME
+    run_as_super_user systemctl restart $SERVICE_NAME
+  else
+    run_as_target_user systemctl --user enable $SERVICE_NAME
+    run_as_target_user systemctl --user restart $SERVICE_NAME
+  fi
+
+  echo "* Started the systemd service"
+  echo "* Run '${SUDO_PARAM}systemctl $SCOPE_PARAM status $SERVICE_NAME' to check\
+ the status of the $SERVICE_NAME"
+  echo "* Run '${SUDO_PARAM}systemctl $SCOPE_PARAM stop $SERVICE_NAME' to stop\
+ the $SERVICE_NAME service"
+}
+
+# Upgrade existing systemd service if it exists. Used internally.
+upgrade_systemd_service() {
+  if [ "$EXISTING_SYSTEMD_USER_ID" -eq -1 ]; then
+    # User systemd unit does not exist.
+    return
+  fi
+  echo "* Upgrading Node Agent Systemd Service"
+  local USER_SCOPED_UNIT="true"
+  # Not possible to have user systemd and root user.
+  # If it is systemd user, the current user is always the systemd user.
+  # So, check only the case for root systemd.
+  if [ "$EXISTING_SYSTEMD_USER_ID" -eq 0 ]; then
+    # Systemd unit is installed as root.
+    if [ "$INSTALL_USER_ID" -ne 0 ]; then
+      # Current user is non-root. It cannot do anything.
+      return
+    fi
+    USER_SCOPED_UNIT="false"
+  fi
+  write_systemd_service_file "$USER_SCOPED_UNIT"
+}
+
+write_systemd_service_file() {
+  local USE_USER_SYSTEMD="${1:-true}"
+  local SERVICE_FILE_PATH="$SYSTEMD_PATH/$SERVICE_NAME"
+  # Check if USER_SCOPED_UNIT is defined.
+  if [ "$USE_USER_SYSTEMD" = "false" ]; then
     run_as_super_user tee "$SERVICE_FILE_PATH" <<-EOF
   [Unit]
   Description=YB Anywhere Node Agent
@@ -361,14 +417,20 @@ install_systemd_service() {
   LimitCORE=infinity
   LimitNOFILE=1048576
   LimitNPROC=12000
-  ExecStart=$NODE_AGENT_PKG_PATH/bin/node-agent server start
+  ExecStart="$NODE_AGENT_PKG_PATH/bin/node-agent" server start
   Restart=always
   RestartSec=$SERVICE_RESTART_INTERVAL_SEC
+  KillMode=process
+  KillSignal=SIGTERM
+  TimeoutStopSec=$SERVICE_TIMEOUT_STOP_SEC
+  FinalKillSignal=SIGKILL
 
   [Install]
   WantedBy=default.target
 EOF
   else
+    SYSTEMD_PATH="$INSTALL_USER_HOME/.config/systemd/user"
+    SERVICE_FILE_PATH="$SYSTEMD_PATH/$SERVICE_NAME"
     tee "$SERVICE_FILE_PATH" <<-EOF
   [Unit]
   Description=YB Anywhere Node Agent
@@ -379,36 +441,26 @@ EOF
   LimitCORE=infinity
   LimitNOFILE=1048576
   LimitNPROC=12000
-  ExecStart=$NODE_AGENT_PKG_PATH/bin/node-agent server start
+  ExecStart="$NODE_AGENT_PKG_PATH/bin/node-agent" server start
   Restart=always
   RestartSec=$SERVICE_RESTART_INTERVAL_SEC
+  KillMode=process
+  KillSignal=SIGTERM
+  TimeoutStopSec=$SERVICE_TIMEOUT_STOP_SEC
+  FinalKillSignal=SIGKILL
 
   [Install]
   WantedBy=default.target
 EOF
+  fi
   # Set the permissions after file creation. This is needed so that the service file
   # is executable during restart of systemd unit.
   chmod 755 "$SERVICE_FILE_PATH"
-  fi
-
-  echo "* Starting the systemd service"
-
-  if [ "$USER_SCOPED_UNIT" = "false" ]; then
+  if [ "$USE_USER_SYSTEMD" = "false" ]; then
     run_as_super_user systemctl daemon-reload
-    #To enable the node-agent service on reboot.
-    run_as_super_user systemctl enable yb-node-agent
-    run_as_super_user systemctl restart yb-node-agent
   else
-    run_as_target_user "systemctl --user daemon-reload"
-    run_as_target_user "systemctl --user enable yb-node-agent"
-    run_as_target_user "systemctl --user restart yb-node-agent"
+    run_as_target_user systemctl --user daemon-reload
   fi
-
-  echo "* Started the systemd service"
-  echo "* Run 'systemctl status yb-node-agent' to check\
- the status of the yb-node-agent"
-  echo "* Run 'sudo systemctl stop yb-node-agent' to stop\
- the yb-node-agent service"
 }
 
 #The usage shows only the ones available to end users.
@@ -429,8 +481,9 @@ Options:
   -p, --node_port (OPTIONAL for install command)
     Server port.
   --bind_ip (OPTIONAL if bind_ip is different than node_ip)
-  --user (REQUIRED only for install_service command)
-    Username of the installation. A sudo user can install service for a non-sudo user.
+    Bind IP for the node agent to listen on.
+  --user (REQUIRED only for install_service command for root systemd service)
+    DEPRECATED: Username of the installation. A sudo user can install service for a non-sudo user.
   --skip_verify_cert (OPTIONAL)
     Specify to skip Yugabyte Anywhere server cert verification during install.
   --airgap (OPTIONAL)
@@ -462,16 +515,25 @@ err_msg() {
 #Main entry function.
 main() {
   echo "* Starting YB Node Agent $COMMAND."
+  #Detect and set the systemd user ID.
+  set_systemd_user_id
   if [ "$COMMAND" = "install_service" ]; then
     install_systemd_service
   elif [ "$COMMAND" = "upgrade" ]; then
     extract_package > /dev/null
     setup_symlink > /dev/null
     set_log_dir_permission > /dev/null
+    upgrade_systemd_service > /dev/null
   elif [ "$COMMAND" = "install" ]; then
     local NODE_AGENT_CONFIG_ARGS=()
     if [ "$DISABLE_EGRESS" = "false" ]; then
       #Node agent can initiate connection to Yugabyte Anywhere.
+      if [ "$INSTALL_USER_ID" -eq 0 ]; then
+        # Allow only non-root user to run the installer for onprem.
+        echo "Root user is not allowed to run $COMMAND."
+        show_usage >&2
+        exit 1
+      fi
       if [ -z "$PLATFORM_URL" ]; then
         echo "Yugabyte Anywhere URL is required."
         show_usage >&2
@@ -590,8 +652,8 @@ main() {
       show_usage >&2
       exit 1
     fi
-    if [ "$SUDO_ACCESS" = "false" ]; then
-      echo "SUDO access is required."
+    if [ "$CURRENT_USER_ID" -ne 0 ] && [ "$EXISTING_SYSTEMD_USER_ID" -eq 0 ]; then
+      echo "SUDO access is required to run the command $COMMAND."
       show_usage >&2
       exit 1
     fi
@@ -711,21 +773,25 @@ if [ -z "$COMMAND" ]; then
   exit 1
 fi
 
-CURRENT_USER=$(id -u -n)
-
-if [ -z "$INSTALL_USER" ]; then
-  if [ "$COMMAND" = "install_service" ]; then
-    echo "Install user is required."
+ if [ "$COMMAND" = "install_service" ]; then
+  if [ -n "$INSTALL_USER" ] && [ "$CURRENT_USER_ID" -eq 0 ]; then
+    # Root systemd service is not supported. Do not fail for backward compatibility.
+    echo "--user option is deprecated and will be removed in future releases."
+    echo "Systemd service should already be installed as the user running the installer."
+    exit 0
+  elif [ "$CURRENT_USER_ID" -eq 0 ]; then
+    echo "Install user is required for install_service."
     show_usage >&2
     exit 1
   fi
-  INSTALL_USER="$CURRENT_USER"
-elif [ "$INSTALL_USER" != "$CURRENT_USER" ] && [ "$COMMAND" != "install_service" ]; then
+elif [ -n "$INSTALL_USER" ]; then
+  echo "--user option is not supported for command $COMMAND."
   show_usage >&2
-  echo "Different user is only used for installing service."
   exit 1
 fi
 
+INSTALL_USER="$CURRENT_USER"
+INSTALL_USER_ID="$CURRENT_USER_ID"
 INSTALL_USER_HOME=$(eval cd ~"$INSTALL_USER" && pwd)
 
 if [ -z "$INSTALL_PATH" ]; then
@@ -761,16 +827,16 @@ API_TOKEN=$(echo "$API_TOKEN" | xargs)
 
 NODE_AGENT_DOWNLOAD_URL="$PLATFORM_URL/api/v1/node_agents/download"
 SESSION_INFO_URL="$PLATFORM_URL/api/v1/session_info"
+if [ "$OS" = "Linux" ]; then
+  set +e
+  SE_LINUX_STATUS=$(getenforce 2>/dev/null)
+  set -e
+fi
 
-check_sudo_access
 main
 
 if [ "$?" -eq 0 ] && [ "$COMMAND" = "install" ]; then
-  if [ "$DISABLE_EGRESS" == "false" ]; then
-    echo "You can install a systemd service on linux machines\
- by running $INSTALLER_NAME -c install_service --user yugabyte (Requires sudo access)."
-  else
-    echo "Automatically installing systemd service for node agent installed by YBA."
-    install_systemd_service
-  fi
+  # Always install the systemd service after a successful install.
+  echo "Installing systemd service for node agent."
+  install_systemd_service
 fi

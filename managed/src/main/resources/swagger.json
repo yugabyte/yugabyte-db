@@ -912,7 +912,11 @@
             "SAFETIME_LAG",
             "CONTINUOUS_BACKUPS_STATUS",
             "THP_RSS_ISSUE",
-            "THP_INCORRECT_SETTINGS"
+            "THP_INCORRECT_SETTINGS",
+            "CDCSDK_FLUSH_LAG",
+            "CDCSDK_EXPIRY",
+            "CDCSDK_IDLE_STREAM",
+            "OTEL_LOG_EXPORT_FAILURE"
           ],
           "type" : "string"
         },
@@ -1090,7 +1094,11 @@
             "SAFETIME_LAG",
             "CONTINUOUS_BACKUPS_STATUS",
             "THP_RSS_ISSUE",
-            "THP_INCORRECT_SETTINGS"
+            "THP_INCORRECT_SETTINGS",
+            "CDCSDK_FLUSH_LAG",
+            "CDCSDK_EXPIRY",
+            "CDCSDK_IDLE_STREAM",
+            "OTEL_LOG_EXPORT_FAILURE"
           ],
           "type" : "string"
         },
@@ -1364,7 +1372,11 @@
             "SAFETIME_LAG",
             "CONTINUOUS_BACKUPS_STATUS",
             "THP_RSS_ISSUE",
-            "THP_INCORRECT_SETTINGS"
+            "THP_INCORRECT_SETTINGS",
+            "CDCSDK_FLUSH_LAG",
+            "CDCSDK_EXPIRY",
+            "CDCSDK_IDLE_STREAM",
+            "OTEL_LOG_EXPORT_FAILURE"
           ],
           "type" : "string"
         },
@@ -2051,13 +2063,15 @@
             "DeleteImageBundle",
             "EditImageBundle",
             "Detach",
+            "RollbackDetach",
             "DeleteAttachDetachMetadata",
             "Unlock",
             "LdapUniverseSync",
             "UpdateProxyConfig",
             "CloneNamespace",
             "UpdateAdditionalServicesState",
-            "KubernetesToggleImmutableYbc"
+            "KubernetesToggleImmutableYbc",
+            "OperatorImportUniverse"
           ],
           "example" : "Create User",
           "readOnly" : true,
@@ -2331,6 +2345,7 @@
           "type" : "boolean"
         },
         "mastersInDefaultRegion" : {
+          "description" : "<b style=\"color:#ff0000\">Deprecated since YBA version 2025.2.</b> With geo partitioning support, default region is replaced with default partition",
           "type" : "boolean"
         },
         "nextClusterIndex" : {
@@ -2825,7 +2840,11 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
+            "OperatorImportResource"
           ],
           "type" : "string"
         },
@@ -3155,6 +3174,9 @@
         "incrementalBackup" : {
           "type" : "boolean"
         },
+        "kubernetesOperatorControlled" : {
+          "type" : "boolean"
+        },
         "parentBackup" : {
           "type" : "boolean"
         },
@@ -3223,6 +3245,7 @@
       },
       "required" : [
         "incrementalBackup",
+        "kubernetesOperatorControlled",
         "parentBackup"
       ],
       "type" : "object"
@@ -3429,6 +3452,10 @@
             "YB_CONTROLLER"
           ],
           "type" : "string"
+        },
+        "backupStats" : {
+          "description" : "WARNING: This is a preview API that could change. Backup stats with YSQL dump.",
+          "type" : "boolean"
         },
         "backupType" : {
           "description" : "Backup type",
@@ -3691,6 +3718,10 @@
           "description" : "Use local timezone for Cron Expression, otherwise use UTC",
           "type" : "boolean"
         },
+        "useRoles" : {
+          "description" : "Backup global ysql roles",
+          "type" : "boolean"
+        },
         "useTablespaces" : {
           "description" : "Is tablespaces information included",
           "type" : "boolean"
@@ -3827,6 +3858,10 @@
           "format" : "uuid",
           "type" : "string"
         },
+        "useRoles" : {
+          "description" : "WARNING: This is a preview API that could change. Indicates if role objects were backed up",
+          "type" : "boolean"
+        },
         "useTablespaces" : {
           "type" : "boolean"
         }
@@ -3945,6 +3980,10 @@
           ],
           "type" : "string"
         },
+        "errorIfRolesExists" : {
+          "description" : "WARNING: This is a preview API that could change. Fail if roles exist with same names.Only applicable with new roles behavior.",
+          "type" : "boolean"
+        },
         "errorIfTablespacesExists" : {
           "description" : "WARNING: This is a preview API that could change. Fail if tablespaces exist with same names. Only applicable with new roles behavior.",
           "type" : "boolean"
@@ -3983,6 +4022,10 @@
             "type" : "string"
           },
           "type" : "array"
+        },
+        "useRoles" : {
+          "description" : "Restore global ysql roles",
+          "type" : "boolean"
         },
         "useTablespaces" : {
           "description" : "Use tablespaces during restore",
@@ -4325,6 +4368,10 @@
           "format" : "uuid",
           "type" : "string"
         },
+        "useRoles" : {
+          "description" : "Backup global ysql roles",
+          "type" : "boolean"
+        },
         "useTablespaces" : {
           "description" : "Is tablespaces information included",
           "type" : "boolean"
@@ -4385,6 +4432,18 @@
       "required" : [
         "password",
         "username"
+      ],
+      "type" : "object"
+    },
+    "BearerToken" : {
+      "properties" : {
+        "token" : {
+          "description" : "Bearer Token",
+          "type" : "string"
+        }
+      },
+      "required" : [
+        "token"
       ],
       "type" : "object"
     },
@@ -5027,6 +5086,7 @@
           "type" : "boolean"
         },
         "mastersInDefaultRegion" : {
+          "description" : "<b style=\"color:#ff0000\">Deprecated since YBA version 2025.2.</b> With geo partitioning support, default region is replaced with default partition",
           "type" : "boolean"
         },
         "nextClusterIndex" : {
@@ -5527,7 +5587,11 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
+            "OperatorImportResource"
           ],
           "type" : "string"
         },
@@ -5856,6 +5920,13 @@
         "index" : {
           "format" : "int32",
           "type" : "integer"
+        },
+        "partitions" : {
+          "description" : "WARNING: This is a preview API that could change. Geo partitions for cluster",
+          "items" : {
+            "$ref" : "#/definitions/PartitionInfo"
+          },
+          "type" : "array"
         },
         "placementInfo" : {
           "$ref" : "#/definitions/PlacementInfo"
@@ -6767,6 +6838,9 @@
           "example" : "{\"AWS_ACCESS_KEY_ID\": \"AK****************ZD\"}",
           "type" : "object"
         },
+        "kubernetesOperatorControlled" : {
+          "type" : "boolean"
+        },
         "name" : {
           "description" : "Name",
           "example" : "S3",
@@ -6799,6 +6873,7 @@
         "configName",
         "customerUUID",
         "data",
+        "kubernetesOperatorControlled",
         "name",
         "type"
       ],
@@ -6837,6 +6912,9 @@
         "inUse" : {
           "description" : "True if there is an in use reference to the object",
           "readOnly" : true,
+          "type" : "boolean"
+        },
+        "kubernetesOperatorControlled" : {
           "type" : "boolean"
         },
         "name" : {
@@ -6879,6 +6957,7 @@
         "configName",
         "customerUUID",
         "data",
+        "kubernetesOperatorControlled",
         "name",
         "type"
       ],
@@ -7301,6 +7380,7 @@
           "description" : "Storage type used for this instance",
           "enum" : [
             "IO1",
+            "IO2",
             "GP2",
             "GP3",
             "Scratch",
@@ -8092,6 +8172,7 @@
           "type" : "boolean"
         },
         "mastersInDefaultRegion" : {
+          "description" : "<b style=\"color:#ff0000\">Deprecated since YBA version 2025.2.</b> With geo partitioning support, default region is replaced with default partition",
           "type" : "boolean"
         },
         "nextClusterIndex" : {
@@ -8586,7 +8667,11 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
+            "OperatorImportResource"
           ],
           "type" : "string"
         },
@@ -8887,6 +8972,7 @@
           "type" : "object"
         },
         "mastersInDefaultRegion" : {
+          "description" : "<b style=\"color:#ff0000\">Deprecated since YBA version 2025.2.</b> With geo partitioning support, default region is replaced with default partition",
           "type" : "boolean"
         },
         "nextClusterIndex" : {
@@ -9387,7 +9473,11 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
+            "OperatorImportResource"
           ],
           "type" : "string"
         },
@@ -9539,6 +9629,71 @@
       ],
       "type" : "object"
     },
+    "HAConfigFormData" : {
+      "properties" : {
+        "accept_any_certificate" : {
+          "type" : "boolean"
+        },
+        "cluster_key" : {
+          "type" : "string"
+        }
+      },
+      "required" : [
+        "accept_any_certificate",
+        "cluster_key"
+      ],
+      "type" : "object"
+    },
+    "HAConfigGetResp" : {
+      "description" : "HA config response",
+      "properties" : {
+        "accept_any_certificate" : {
+          "description" : "HA accepts any certificate",
+          "readOnly" : true,
+          "type" : "boolean"
+        },
+        "cluster_key" : {
+          "description" : "HA config cluster key",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "global_state" : {
+          "description" : "HA config global state",
+          "enum" : [
+            "Unknown",
+            "NoReplicas",
+            "AwaitingReplicas",
+            "Operational",
+            "Error",
+            "Warning",
+            "StandbyConnected",
+            "StandbyDisconnected"
+          ],
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "instances" : {
+          "description" : "HA config platform instances",
+          "items" : {
+            "$ref" : "#/definitions/PlatformInstance"
+          },
+          "type" : "array"
+        },
+        "last_failover" : {
+          "description" : "HA last failover",
+          "example" : "2022-12-12T13:07:18Z",
+          "format" : "date-time",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "uuid" : {
+          "description" : "HA config UUID",
+          "format" : "uuid",
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
     "HTTP Auth information" : {
       "discriminator" : "type",
       "properties" : {
@@ -9614,6 +9769,37 @@
         "mountPath",
         "role",
         "vaultAddr"
+      ],
+      "type" : "object"
+    },
+    "HighAvailabilityConfig" : {
+      "properties" : {
+        "accept_any_certificate" : {
+          "type" : "boolean"
+        },
+        "cluster_key" : {
+          "type" : "string"
+        },
+        "instances" : {
+          "items" : {
+            "$ref" : "#/definitions/PlatformInstance"
+          },
+          "type" : "array"
+        },
+        "last_failover" : {
+          "description" : "HA last failover",
+          "example" : "2022-12-12T13:07:18Z",
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "uuid" : {
+          "format" : "uuid",
+          "type" : "string"
+        }
+      },
+      "required" : [
+        "instances",
+        "uuid"
       ],
       "type" : "object"
     },
@@ -10309,6 +10495,7 @@
           "type" : "boolean"
         },
         "mastersInDefaultRegion" : {
+          "description" : "<b style=\"color:#ff0000\">Deprecated since YBA version 2025.2.</b> With geo partitioning support, default region is replaced with default partition",
           "type" : "boolean"
         },
         "nextClusterIndex" : {
@@ -10806,7 +10993,11 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
+            "OperatorImportResource"
           ],
           "type" : "string"
         },
@@ -11042,6 +11233,7 @@
           "type" : "boolean"
         },
         "mastersInDefaultRegion" : {
+          "description" : "<b style=\"color:#ff0000\">Deprecated since YBA version 2025.2.</b> With geo partitioning support, default region is replaced with default partition",
           "type" : "boolean"
         },
         "nextClusterIndex" : {
@@ -11536,7 +11728,11 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
+            "OperatorImportResource"
           ],
           "type" : "string"
         },
@@ -11784,7 +11980,8 @@
               "description" : "Auth Type",
               "enum" : [
                 "BasicAuth",
-                "NoAuth"
+                "NoAuth",
+                "BearerToken"
               ],
               "type" : "string"
             },
@@ -12553,6 +12750,10 @@
           "format" : "uuid",
           "type" : "string"
         },
+        "useRoles" : {
+          "description" : "Backup global ysql roles",
+          "type" : "boolean"
+        },
         "useTablespaces" : {
           "description" : "Is tablespaces information included",
           "type" : "boolean"
@@ -13011,80 +13212,6 @@
           "type" : "boolean"
         }
       },
-      "type" : "object"
-    },
-    "NodeConfig" : {
-      "description" : "A node configuration.",
-      "properties" : {
-        "type" : {
-          "enum" : [
-            "NTP_SERVICE_STATUS",
-            "PROMETHEUS_SPACE",
-            "MOUNT_POINTS_WRITABLE",
-            "USER",
-            "USER_GROUP",
-            "HOME_DIR_SPACE",
-            "HOME_DIR_EXISTS",
-            "HOME_DIR_MATCHES",
-            "RAM_SIZE",
-            "INTERNET_CONNECTION",
-            "CPU_CORES",
-            "PROMETHEUS_NO_NODE_EXPORTER",
-            "TMP_DIR_SPACE",
-            "PAM_LIMITS_WRITABLE",
-            "PYTHON_VERSION",
-            "MOUNT_POINTS_VOLUME",
-            "CHRONYD_RUNNING",
-            "LOCALE_PRESENT",
-            "SSH_PORT",
-            "SUDO_ACCESS",
-            "OPENSSL",
-            "POLICYCOREUTILS",
-            "RSYNC",
-            "XXHASH",
-            "LIBATOMIC1",
-            "LIBNCURSES6",
-            "LIBATOMIC",
-            "AZCOPY",
-            "CHRONYC",
-            "GSUTIL",
-            "S3CMD",
-            "NODE_EXPORTER_RUNNING",
-            "NODE_EXPORTER_PORT",
-            "SWAPPINESS",
-            "ULIMIT_CORE",
-            "ULIMIT_OPEN_FILES",
-            "ULIMIT_USER_PROCESSES",
-            "SSH_ACCESS",
-            "NODE_AGENT_ACCESS",
-            "MASTER_HTTP_PORT",
-            "MASTER_RPC_PORT",
-            "TSERVER_HTTP_PORT",
-            "TSERVER_RPC_PORT",
-            "YB_CONTROLLER_HTTP_PORT",
-            "YB_CONTROLLER_RPC_PORT",
-            "REDIS_SERVER_HTTP_PORT",
-            "REDIS_SERVER_RPC_PORT",
-            "YB_HOME_DIR_CLEAN",
-            "DATA_DIR_CLEAN",
-            "YCQL_SERVER_HTTP_PORT",
-            "YCQL_SERVER_RPC_PORT",
-            "YSQL_SERVER_HTTP_PORT",
-            "YSQL_SERVER_RPC_PORT",
-            "VM_MAX_MAP_COUNT",
-            "NTP_SKEW"
-          ],
-          "type" : "string"
-        },
-        "value" : {
-          "description" : "true",
-          "type" : "string"
-        }
-      },
-      "required" : [
-        "type",
-        "value"
-      ],
       "type" : "object"
     },
     "NodeData" : {
@@ -13722,14 +13849,6 @@
           "example" : "1.1.1.1",
           "type" : "string"
         },
-        "nodeConfigs" : {
-          "description" : "Node configurations",
-          "items" : {
-            "$ref" : "#/definitions/NodeConfig"
-          },
-          "type" : "array",
-          "uniqueItems" : true
-        },
         "nodeName" : {
           "description" : "Node name in a universe",
           "example" : "universe_node1",
@@ -13823,6 +13942,78 @@
         "numUpdate"
       ],
       "type" : "object"
+    },
+    "OTLPConfig" : {
+      "allOf" : [
+        {
+          "$ref" : "#/definitions/TelemetryProviderConfig"
+        },
+        {
+          "description" : "OTLP Config",
+          "properties" : {
+            "authType" : {
+              "description" : "Auth Type",
+              "enum" : [
+                "BasicAuth",
+                "NoAuth",
+                "BearerToken"
+              ],
+              "type" : "string"
+            },
+            "basicAuth" : {
+              "$ref" : "#/definitions/BasicAuthCredentials",
+              "description" : "Basic Auth Credentials"
+            },
+            "bearerToken" : {
+              "$ref" : "#/definitions/BearerToken",
+              "description" : "Bearer Token"
+            },
+            "compression" : {
+              "description" : "Compression",
+              "enum" : [
+                "gzip",
+                "none",
+                "snappy",
+                "zstd"
+              ],
+              "type" : "string"
+            },
+            "endpoint" : {
+              "description" : "End Point. For HTTP protcol logs export \"/v1/logs\" will be appended.",
+              "type" : "string"
+            },
+            "headers" : {
+              "additionalProperties" : {
+                "type" : "string"
+              },
+              "description" : "Headers",
+              "type" : "object"
+            },
+            "logsEndpoint" : {
+              "description" : "Logs endpoint. The target URL to send log data to (e.g.: https://example.com:4318/v1/logs). If this setting is present the endpoint setting is ignored logs. Allowed only for HTTP protocol",
+              "type" : "string"
+            },
+            "protocol" : {
+              "description" : "Protocol",
+              "enum" : [
+                "gRPC",
+                "HTTP"
+              ],
+              "type" : "string"
+            },
+            "timeoutSeconds" : {
+              "description" : "Timeout in seconds",
+              "format" : "int32",
+              "type" : "integer"
+            }
+          },
+          "required" : [
+            "authType",
+            "endpoint"
+          ],
+          "type" : "object"
+        }
+      ]
     },
     "OidcGroupToYbaRolesData" : {
       "properties" : {
@@ -14030,6 +14221,29 @@
       "required" : [
         "backupUUID"
       ],
+      "type" : "object"
+    },
+    "PartitionInfo" : {
+      "description" : "WARNING: This is a preview API that could change. Information about Geo partition",
+      "properties" : {
+        "defaultPartition" : {
+          "type" : "boolean"
+        },
+        "name" : {
+          "type" : "string"
+        },
+        "placement" : {
+          "$ref" : "#/definitions/PlacementInfo"
+        },
+        "replicationFactor" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "uuid" : {
+          "format" : "uuid",
+          "type" : "string"
+        }
+      },
       "type" : "object"
     },
     "PerBackupLocationKeyspaceTables" : {
@@ -14859,6 +15073,88 @@
       },
       "type" : "object"
     },
+    "PlatformBackupFrequencyFormData" : {
+      "properties" : {
+        "frequency_milliseconds" : {
+          "format" : "int64",
+          "type" : "integer"
+        }
+      },
+      "required" : [
+        "frequency_milliseconds"
+      ],
+      "type" : "object"
+    },
+    "PlatformInstance" : {
+      "properties" : {
+        "address" : {
+          "type" : "string"
+        },
+        "config_uuid" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "instance_state" : {
+          "enum" : [
+            "Awaiting Connection to Replicas",
+            "Connected",
+            "Disconnected"
+          ],
+          "type" : "string"
+        },
+        "is_leader" : {
+          "type" : "boolean"
+        },
+        "is_local" : {
+          "type" : "boolean"
+        },
+        "last_backup" : {
+          "description" : "Last backup time",
+          "example" : "2022-12-12T13:07:18Z",
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "uuid" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "ybaVersion" : {
+          "type" : "string"
+        }
+      },
+      "required" : [
+        "address",
+        "instance_state",
+        "is_leader",
+        "is_local",
+        "uuid",
+        "ybaVersion"
+      ],
+      "type" : "object"
+    },
+    "PlatformInstanceFormData" : {
+      "properties" : {
+        "address" : {
+          "type" : "string"
+        },
+        "cleanAddress" : {
+          "type" : "string"
+        },
+        "is_leader" : {
+          "type" : "boolean"
+        },
+        "is_local" : {
+          "type" : "boolean"
+        }
+      },
+      "required" : [
+        "address",
+        "cleanAddress",
+        "is_leader",
+        "is_local"
+      ],
+      "type" : "object"
+    },
     "PlatformLoggingConfig" : {
       "properties" : {
         "fileNamePrefix" : {
@@ -15280,6 +15576,7 @@
           "type" : "boolean"
         },
         "mastersInDefaultRegion" : {
+          "description" : "<b style=\"color:#ff0000\">Deprecated since YBA version 2025.2.</b> With geo partitioning support, default region is replaced with default partition",
           "type" : "boolean"
         },
         "nextClusterIndex" : {
@@ -15774,7 +16071,11 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
+            "OperatorImportResource"
           ],
           "type" : "string"
         },
@@ -16315,6 +16616,7 @@
           "type" : "object"
         },
         "mastersInDefaultRegion" : {
+          "description" : "<b style=\"color:#ff0000\">Deprecated since YBA version 2025.2.</b> With geo partitioning support, default region is replaced with default partition",
           "type" : "boolean"
         },
         "nextClusterIndex" : {
@@ -16815,7 +17117,11 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
+            "OperatorImportResource"
           ],
           "type" : "string"
         },
@@ -17149,6 +17455,7 @@
           "type" : "boolean"
         },
         "mastersInDefaultRegion" : {
+          "description" : "<b style=\"color:#ff0000\">Deprecated since YBA version 2025.2.</b> With geo partitioning support, default region is replaced with default partition",
           "type" : "boolean"
         },
         "nextClusterIndex" : {
@@ -17643,7 +17950,11 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
+            "OperatorImportResource"
           ],
           "type" : "string"
         },
@@ -18115,6 +18426,17 @@
         "hasNext",
         "hasPrev",
         "totalCount"
+      ],
+      "type" : "object"
+    },
+    "RestorePlatformBackupFormData" : {
+      "properties" : {
+        "backup_file" : {
+          "type" : "string"
+        }
+      },
+      "required" : [
+        "backup_file"
       ],
       "type" : "object"
     },
@@ -18666,6 +18988,7 @@
           "type" : "boolean"
         },
         "mastersInDefaultRegion" : {
+          "description" : "<b style=\"color:#ff0000\">Deprecated since YBA version 2025.2.</b> With geo partitioning support, default region is replaced with default partition",
           "type" : "boolean"
         },
         "nextClusterIndex" : {
@@ -19160,7 +19483,11 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
+            "OperatorImportResource"
           ],
           "type" : "string"
         },
@@ -19251,6 +19578,93 @@
       },
       "type" : "object"
     },
+    "S3Config" : {
+      "allOf" : [
+        {
+          "$ref" : "#/definitions/TelemetryProviderConfig"
+        },
+        {
+          "description" : "S3 Config",
+          "properties" : {
+            "accessKey" : {
+              "description" : "Access Key",
+              "maxLength" : 2147483647,
+              "minLength" : 1,
+              "type" : "string"
+            },
+            "bucket" : {
+              "description" : "S3 bucket",
+              "maxLength" : 2147483647,
+              "minLength" : 1,
+              "type" : "string"
+            },
+            "directoryPrefix" : {
+              "description" : "S3 Prefix Key (root directory inside bucket)",
+              "type" : "string"
+            },
+            "disableSSL" : {
+              "description" : "Disable SSL",
+              "type" : "boolean"
+            },
+            "endpoint" : {
+              "description" : "Endpoint. Overrides the endpoint used by the exporter instead of constructing it from region and bucket",
+              "type" : "string"
+            },
+            "filePrefix" : {
+              "description" : "File prefix",
+              "type" : "string"
+            },
+            "forcePathStyle" : {
+              "description" : "Force Path Style. Set this to true to force the request to use path-style addressing",
+              "type" : "boolean"
+            },
+            "includeUniverseAndNodeInPrefix" : {
+              "description" : "When true, appends universe UUID and node name to the S3 prefix. Example: 'yb-logs/<universe-uuid>/<node-name>'",
+              "type" : "boolean"
+            },
+            "marshaler" : {
+              "description" : "Marshaler",
+              "enum" : [
+                "OTLP_JSON",
+                "SUMO_IC"
+              ],
+              "type" : "string"
+            },
+            "partition" : {
+              "description" : "S3 Partition",
+              "enum" : [
+                "hour",
+                "minute"
+              ],
+              "type" : "string"
+            },
+            "region" : {
+              "description" : "Region",
+              "maxLength" : 2147483647,
+              "minLength" : 1,
+              "type" : "string"
+            },
+            "roleArn" : {
+              "description" : "Role ARN",
+              "type" : "string"
+            },
+            "secretKey" : {
+              "description" : "Secret Key",
+              "maxLength" : 2147483647,
+              "minLength" : 1,
+              "type" : "string"
+            }
+          },
+          "required" : [
+            "accessKey",
+            "bucket",
+            "region",
+            "secretKey"
+          ],
+          "type" : "object"
+        }
+      ]
+    },
     "S3Location" : {
       "properties" : {
         "paths" : {
@@ -19301,6 +19715,9 @@
         "incrementBacklogStatus" : {
           "description" : "Backlog status of schedule of incremental backups arose due to conflicts",
           "readOnly" : true,
+          "type" : "boolean"
+        },
+        "kubernetesOperatorControlled" : {
           "type" : "boolean"
         },
         "nextIncrementScheduleTaskTime" : {
@@ -19717,7 +20134,11 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
+            "OperatorImportResource"
           ],
           "type" : "string"
         },
@@ -19731,6 +20152,9 @@
           "type" : "string"
         }
       },
+      "required" : [
+        "kubernetesOperatorControlled"
+      ],
       "type" : "object"
     },
     "ScheduleApiFilter" : {
@@ -20116,7 +20540,11 @@
               "DeleteCapacityReservation",
               "DisablePitrConfig",
               "EnablePitrConfig",
-              "UpdateAndPersistKubernetesImmutableYbc"
+              "UpdateAndPersistKubernetesImmutableYbc",
+              "TablespaceValidationOnRemove",
+              "CheckServiceLiveness",
+              "CheckNodeCommandExecution",
+              "OperatorImportResource"
             ],
             "type" : "string"
           },
@@ -20445,6 +20873,7 @@
           "type" : "boolean"
         },
         "mastersInDefaultRegion" : {
+          "description" : "<b style=\"color:#ff0000\">Deprecated since YBA version 2025.2.</b> With geo partitioning support, default region is replaced with default partition",
           "type" : "boolean"
         },
         "nextClusterIndex" : {
@@ -20939,7 +21368,11 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
+            "OperatorImportResource"
           ],
           "type" : "string"
         },
@@ -21538,6 +21971,7 @@
           "type" : "boolean"
         },
         "mastersInDefaultRegion" : {
+          "description" : "<b style=\"color:#ff0000\">Deprecated since YBA version 2025.2.</b> With geo partitioning support, default region is replaced with default partition",
           "type" : "boolean"
         },
         "nextClusterIndex" : {
@@ -22032,7 +22466,11 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
+            "OperatorImportResource"
           ],
           "type" : "string"
         },
@@ -22581,7 +23019,7 @@
               "ImportUniverse",
               "MigrateUniverse",
               "KubernetesToggleImmutableYbc",
-              "OperatorImportUniverse"
+              "OperatorImport"
             ],
             "type" : "string"
           },
@@ -22855,6 +23293,7 @@
           "type" : "boolean"
         },
         "mastersInDefaultRegion" : {
+          "description" : "<b style=\"color:#ff0000\">Deprecated since YBA version 2025.2.</b> With geo partitioning support, default region is replaced with default partition",
           "type" : "boolean"
         },
         "nextClusterIndex" : {
@@ -23349,7 +23788,11 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
+            "OperatorImportResource"
           ],
           "type" : "string"
         },
@@ -23526,6 +23969,7 @@
           "type" : "boolean"
         },
         "mastersInDefaultRegion" : {
+          "description" : "<b style=\"color:#ff0000\">Deprecated since YBA version 2025.2.</b> With geo partitioning support, default region is replaced with default partition",
           "type" : "boolean"
         },
         "nextClusterIndex" : {
@@ -24020,7 +24464,11 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
+            "OperatorImportResource"
           ],
           "type" : "string"
         },
@@ -24059,7 +24507,6 @@
         }
       },
       "required" : [
-        "allowInsecure",
         "clusters",
         "creatingUser",
         "enableClientToNodeEncrypt",
@@ -24449,6 +24896,7 @@
           "type" : "string"
         },
         "mastersInDefaultRegion" : {
+          "description" : "<b style=\"color:#ff0000\">Deprecated since YBA version 2025.2.</b> With geo partitioning support, default region is replaced with default partition",
           "type" : "boolean"
         },
         "nextClusterIndex" : {
@@ -24946,7 +25394,11 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
+            "OperatorImportResource"
           ],
           "type" : "string"
         },
@@ -25087,6 +25539,7 @@
           "type" : "string"
         },
         "mastersInDefaultRegion" : {
+          "description" : "<b style=\"color:#ff0000\">Deprecated since YBA version 2025.2.</b> With geo partitioning support, default region is replaced with default partition",
           "type" : "boolean"
         },
         "nextClusterIndex" : {
@@ -25581,7 +26034,11 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
+            "OperatorImportResource"
           ],
           "type" : "string"
         },
@@ -25722,6 +26179,7 @@
           "type" : "string"
         },
         "mastersInDefaultRegion" : {
+          "description" : "<b style=\"color:#ff0000\">Deprecated since YBA version 2025.2.</b> With geo partitioning support, default region is replaced with default partition",
           "type" : "boolean"
         },
         "nextClusterIndex" : {
@@ -26216,7 +26674,11 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
+            "OperatorImportResource"
           ],
           "type" : "string"
         },
@@ -26867,6 +27329,7 @@
           "type" : "boolean"
         },
         "mastersInDefaultRegion" : {
+          "description" : "<b style=\"color:#ff0000\">Deprecated since YBA version 2025.2.</b> With geo partitioning support, default region is replaced with default partition",
           "type" : "boolean"
         },
         "nextClusterIndex" : {
@@ -27361,7 +27824,11 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
+            "OperatorImportResource"
           ],
           "type" : "string"
         },
@@ -28056,6 +28523,7 @@
           "type" : "object"
         },
         "mastersInDefaultRegion" : {
+          "description" : "<b style=\"color:#ff0000\">Deprecated since YBA version 2025.2.</b> With geo partitioning support, default region is replaced with default partition",
           "type" : "boolean"
         },
         "nextClusterIndex" : {
@@ -28558,7 +29026,11 @@
             "DeleteCapacityReservation",
             "DisablePitrConfig",
             "EnablePitrConfig",
-            "UpdateAndPersistKubernetesImmutableYbc"
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
+            "OperatorImportResource"
           ],
           "type" : "string"
         },
@@ -40919,6 +41391,200 @@
         ]
       }
     },
+    "/api/v1/customers/{cUUID}/telemetry_provider" : {
+      "get" : {
+        "description" : "WARNING: This is a preview API that could change. List All Telemetry Providers",
+        "operationId" : "listAllTelemetryProviders",
+        "parameters" : [
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "cUUID",
+            "required" : true,
+            "type" : "string"
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/TelemetryProvider"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/TelemetryProvider"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "security" : [
+          {
+            "apiKeyAuth" : [ ]
+          }
+        ],
+        "summary" : "List All Telemetry Providers",
+        "tags" : [
+          "Telemetry Provider"
+        ]
+      },
+      "post" : {
+        "description" : "WARNING: This is a preview API that could change. Create Telemetry Provider",
+        "operationId" : "createTelemetry",
+        "parameters" : [
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "cUUID",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "in" : "query",
+            "name" : "request",
+            "required" : false
+          },
+          {
+            "in" : "body",
+            "name" : "providerData",
+            "required" : true,
+            "schema" : {
+              "$ref" : "#/definitions/TelemetryProvider"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/TelemetryProvider"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/TelemetryProvider"
+            }
+          }
+        },
+        "security" : [
+          {
+            "apiKeyAuth" : [ ]
+          }
+        ],
+        "summary" : "Create Telemetry Provider",
+        "tags" : [
+          "Telemetry Provider"
+        ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/telemetry_provider/{intUUID}" : {
+      "delete" : {
+        "description" : "WARNING: This is a preview API that could change. Delete a Telemetry Provider",
+        "operationId" : "deleteTelemetryProvider",
+        "parameters" : [
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "cUUID",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "intUUID",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "in" : "query",
+            "name" : "request",
+            "required" : false
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "security" : [
+          {
+            "apiKeyAuth" : [ ]
+          }
+        ],
+        "summary" : "Delete a telemetry provider",
+        "tags" : [
+          "Telemetry Provider"
+        ]
+      },
+      "get" : {
+        "description" : "WARNING: This is a preview API that could change. Get Telemetry Provider",
+        "operationId" : "getTelemetryProvider",
+        "parameters" : [
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "cUUID",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "intUUID",
+            "required" : true,
+            "type" : "string"
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/TelemetryProvider"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/TelemetryProvider"
+            }
+          }
+        },
+        "security" : [
+          {
+            "apiKeyAuth" : [ ]
+          }
+        ],
+        "summary" : "Get Telemetry Provider",
+        "tags" : [
+          "Telemetry Provider"
+        ]
+      }
+    },
     "/api/v1/customers/{cUUID}/universes" : {
       "get" : {
         "description" : "Available since YBA version 2.2.0.0.",
@@ -41071,53 +41737,6 @@
         ]
       }
     },
-    "/api/v1/customers/{cUUID}/universes/{uUUID}/operator_import/precheck" : {
-      "post" : {
-        "description" : "WARNING: This is a preview API that could change: import operator universe",
-        "operationId" : "operatorImportUniverse",
-        "parameters" : [
-          {
-            "format" : "uuid",
-            "in" : "path",
-            "name" : "cUUID",
-            "required" : true,
-            "type" : "string"
-          },
-          {
-            "format" : "uuid",
-            "in" : "path",
-            "name" : "uUUID",
-            "required" : true,
-            "type" : "string"
-          }
-        ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YBPTask"
-            }
-          }
-        },
-        "responsesObject" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YBPTask"
-            }
-          }
-        },
-        "security" : [
-          {
-            "apiKeyAuth" : [ ]
-          }
-        ],
-        "summary" : "Import a universe and related resources to be managed by the kubernetes operator",
-        "tags" : [
-          "preview"
-        ]
-      }
-    },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}" : {
       "delete" : {
         "description" : "Available since YBA version 2.2.0.0.",
@@ -41233,6 +41852,67 @@
         "summary" : "Get a universe",
         "tags" : [
           "Universe management"
+        ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/universes/{uniUUID}/audit_log_config" : {
+      "post" : {
+        "description" : "WARNING: This is a preview API that could change. Modifies the audit logging configuration for a universe.",
+        "operationId" : "modifyAuditLogging",
+        "parameters" : [
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "cUUID",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "uniUUID",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "in" : "query",
+            "name" : "request",
+            "required" : false
+          },
+          {
+            "description" : "Audit Logging Configuration",
+            "in" : "body",
+            "name" : "auditLoggingConfig",
+            "required" : true,
+            "schema" : {
+              "$ref" : "#/definitions/AuditLogConfigParams"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "security" : [
+          {
+            "apiKeyAuth" : [ ]
+          }
+        ],
+        "summary" : "Modify Audit Logging Configuration",
+        "tags" : [
+          "Universe Upgrades Management"
         ]
       }
     },
@@ -47836,6 +48516,7 @@
               "items" : {
                 "enum" : [
                   "IO1",
+                  "IO2",
                   "GP2",
                   "GP3",
                   "Scratch",
@@ -47861,6 +48542,7 @@
               "items" : {
                 "enum" : [
                   "IO1",
+                  "IO2",
                   "GP2",
                   "GP3",
                   "Scratch",
@@ -47902,6 +48584,7 @@
               "items" : {
                 "enum" : [
                   "IO1",
+                  "IO2",
                   "GP2",
                   "GP3",
                   "Scratch",
@@ -47927,6 +48610,7 @@
               "items" : {
                 "enum" : [
                   "IO1",
+                  "IO2",
                   "GP2",
                   "GP3",
                   "Scratch",
@@ -47968,6 +48652,7 @@
               "items" : {
                 "enum" : [
                   "IO1",
+                  "IO2",
                   "GP2",
                   "GP3",
                   "Scratch",
@@ -47993,6 +48678,7 @@
               "items" : {
                 "enum" : [
                   "IO1",
+                  "IO2",
                   "GP2",
                   "GP3",
                   "Scratch",
@@ -48423,7 +49109,7 @@
     },
     "/api/v1/session_info" : {
       "get" : {
-        "description" : "",
+        "description" : "Available since YBA version 2.20.0.",
         "operationId" : "getSessionInfo",
         "parameters" : [
           {
@@ -48456,6 +49142,675 @@
         "summary" : "Get current user and customer uuid. This will not generate or return the API token, use /api_token API for that.",
         "tags" : [
           "Session management"
+        ]
+      }
+    },
+    "/api/v1/settings/ha/config" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "getHAConfig",
+        "parameters" : [ ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/HAConfigGetResp"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/HAConfigGetResp"
+            }
+          }
+        },
+        "security" : [
+          {
+            "apiKeyAuth" : [ ]
+          }
+        ],
+        "summary" : "Get high availability config",
+        "tags" : [
+          "HA"
+        ]
+      },
+      "post" : {
+        "description" : "Available since YBA version 2.20.0.",
+        "operationId" : "createHAConfig",
+        "parameters" : [
+          {
+            "in" : "query",
+            "name" : "request",
+            "required" : false
+          },
+          {
+            "in" : "body",
+            "name" : "HAConfigFormRequest",
+            "required" : true,
+            "schema" : {
+              "$ref" : "#/definitions/HAConfigFormData"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/HighAvailabilityConfig"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/HighAvailabilityConfig"
+            }
+          }
+        },
+        "security" : [
+          {
+            "apiKeyAuth" : [ ]
+          }
+        ],
+        "summary" : "Create high availability config",
+        "tags" : [
+          "HA"
+        ]
+      }
+    },
+    "/api/v1/settings/ha/config/{cUUID}" : {
+      "delete" : {
+        "operationId" : "deleteHAConfig",
+        "parameters" : [
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "cUUID",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "in" : "query",
+            "name" : "request",
+            "required" : false
+          }
+        ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "responsesObject" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "security" : [
+          {
+            "apiKeyAuth" : [ ]
+          }
+        ],
+        "tags" : [
+          "HA"
+        ]
+      },
+      "put" : {
+        "operationId" : "editHAConfig",
+        "parameters" : [
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "cUUID",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "in" : "query",
+            "name" : "request",
+            "required" : false
+          }
+        ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "responsesObject" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "security" : [
+          {
+            "apiKeyAuth" : [ ]
+          }
+        ],
+        "tags" : [
+          "HA"
+        ]
+      }
+    },
+    "/api/v1/settings/ha/config/{cUUID}/backup/list" : {
+      "get" : {
+        "description" : "Available since YBA version 2.20.0.",
+        "operationId" : "listBackups",
+        "parameters" : [
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "cUUID",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "default" : "null",
+            "in" : "query",
+            "name" : "leader",
+            "required" : false,
+            "type" : "string"
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "type" : "string"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "type" : "string"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "security" : [
+          {
+            "apiKeyAuth" : [ ]
+          }
+        ],
+        "summary" : "List backups",
+        "tags" : [
+          "Platform Replication"
+        ]
+      }
+    },
+    "/api/v1/settings/ha/config/{cUUID}/instance" : {
+      "post" : {
+        "description" : "Available since YBA version 2.20.0.",
+        "operationId" : "createInstance",
+        "parameters" : [
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "cUUID",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "in" : "query",
+            "name" : "request",
+            "required" : false
+          },
+          {
+            "in" : "body",
+            "name" : "PlatformInstanceFormRequest",
+            "required" : true,
+            "schema" : {
+              "$ref" : "#/definitions/PlatformInstanceFormData"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/PlatformInstance"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/PlatformInstance"
+            }
+          }
+        },
+        "security" : [
+          {
+            "apiKeyAuth" : [ ]
+          }
+        ],
+        "summary" : "Create platform instance",
+        "tags" : [
+          "Platform Instance"
+        ]
+      }
+    },
+    "/api/v1/settings/ha/config/{cUUID}/instance/local" : {
+      "get" : {
+        "operationId" : "getLocal",
+        "parameters" : [
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "cUUID",
+            "required" : true,
+            "type" : "string"
+          }
+        ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "responsesObject" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "security" : [
+          {
+            "apiKeyAuth" : [ ]
+          }
+        ],
+        "tags" : [
+          "Platform Instance"
+        ]
+      }
+    },
+    "/api/v1/settings/ha/config/{cUUID}/instance/{iUUID}" : {
+      "delete" : {
+        "operationId" : "deleteInstance",
+        "parameters" : [
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "cUUID",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "iUUID",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "in" : "query",
+            "name" : "request",
+            "required" : false
+          }
+        ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "responsesObject" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "security" : [
+          {
+            "apiKeyAuth" : [ ]
+          }
+        ],
+        "tags" : [
+          "Platform Instance"
+        ]
+      }
+    },
+    "/api/v1/settings/ha/config/{cUUID}/instance/{iUUID}/promote" : {
+      "post" : {
+        "description" : "Available since YBA version 2.20.0.",
+        "operationId" : "promoteInstance",
+        "parameters" : [
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "cUUID",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "iUUID",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "default" : "null",
+            "in" : "query",
+            "name" : "curLeader",
+            "required" : false,
+            "type" : "string"
+          },
+          {
+            "default" : true,
+            "in" : "query",
+            "name" : "isForcePromote",
+            "required" : false,
+            "type" : "boolean"
+          },
+          {
+            "in" : "query",
+            "name" : "request",
+            "required" : false
+          },
+          {
+            "in" : "body",
+            "name" : "PlatformBackupRestoreRequest",
+            "required" : true,
+            "schema" : {
+              "$ref" : "#/definitions/RestorePlatformBackupFormData"
+            }
+          }
+        ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "responsesObject" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "security" : [
+          {
+            "apiKeyAuth" : [ ]
+          }
+        ],
+        "summary" : "Promote platform instance",
+        "tags" : [
+          "Platform Instance"
+        ]
+      }
+    },
+    "/api/v1/settings/ha/config/{cUUID}/replication_schedule" : {
+      "get" : {
+        "operationId" : "getBackupInfo",
+        "parameters" : [
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "cUUID",
+            "required" : true,
+            "type" : "string"
+          }
+        ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "responsesObject" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "security" : [
+          {
+            "apiKeyAuth" : [ ]
+          }
+        ],
+        "tags" : [
+          "Platform Replication"
+        ]
+      }
+    },
+    "/api/v1/settings/ha/config/{cUUID}/replication_schedule/start" : {
+      "put" : {
+        "description" : "Available since YBA version 2.20.0.",
+        "operationId" : "startPeriodicBackup",
+        "parameters" : [
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "cUUID",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "in" : "query",
+            "name" : "request",
+            "required" : false
+          },
+          {
+            "in" : "body",
+            "name" : "PlatformBackupFrequencyRequest",
+            "required" : true,
+            "schema" : {
+              "$ref" : "#/definitions/PlatformBackupFrequencyFormData"
+            }
+          }
+        ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "responsesObject" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "security" : [
+          {
+            "apiKeyAuth" : [ ]
+          }
+        ],
+        "summary" : "Start periodic backup",
+        "tags" : [
+          "Platform Replication"
+        ]
+      }
+    },
+    "/api/v1/settings/ha/config/{cUUID}/replication_schedule/stop" : {
+      "put" : {
+        "operationId" : "stopPeriodicBackup",
+        "parameters" : [
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "cUUID",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "in" : "query",
+            "name" : "request",
+            "required" : false
+          }
+        ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "responsesObject" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "security" : [
+          {
+            "apiKeyAuth" : [ ]
+          }
+        ],
+        "tags" : [
+          "Platform Replication"
+        ]
+      }
+    },
+    "/api/v1/settings/ha/generate_key" : {
+      "get" : {
+        "description" : "Available since YBA version 2.20.0.",
+        "operationId" : "generateClusterKey",
+        "parameters" : [ ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "responsesObject" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "security" : [
+          {
+            "apiKeyAuth" : [ ]
+          }
+        ],
+        "summary" : "Generate cluster key",
+        "tags" : [
+          "HA"
+        ]
+      }
+    },
+    "/api/v1/settings/ha/internal/config" : {
+      "get" : {
+        "operationId" : "getHAConfigByClusterKey",
+        "parameters" : [
+          {
+            "in" : "query",
+            "name" : "request",
+            "required" : false
+          }
+        ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "responsesObject" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "tags" : [
+          "Internal HA"
+        ]
+      }
+    },
+    "/api/v1/settings/ha/internal/config/demote/{timestamp}" : {
+      "put" : {
+        "description" : "Available since YBA version 2.20.0.",
+        "operationId" : "demoteLocalLeader",
+        "parameters" : [
+          {
+            "format" : "int64",
+            "in" : "path",
+            "name" : "timestamp",
+            "required" : true,
+            "type" : "integer"
+          },
+          {
+            "default" : false,
+            "in" : "query",
+            "name" : "promote",
+            "required" : false,
+            "type" : "boolean"
+          },
+          {
+            "in" : "query",
+            "name" : "request",
+            "required" : false
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/PlatformInstance"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/PlatformInstance"
+            }
+          }
+        },
+        "summary" : "Demote local leader",
+        "tags" : [
+          "Internal HA"
+        ]
+      }
+    },
+    "/api/v1/settings/ha/internal/config/sync/{timestamp}" : {
+      "put" : {
+        "operationId" : "syncInstances",
+        "parameters" : [
+          {
+            "format" : "int64",
+            "in" : "path",
+            "name" : "timestamp",
+            "required" : true,
+            "type" : "integer"
+          },
+          {
+            "in" : "query",
+            "name" : "request",
+            "required" : false
+          }
+        ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "responsesObject" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "tags" : [
+          "Internal HA"
+        ]
+      }
+    },
+    "/api/v1/settings/ha/internal/upload" : {
+      "post" : {
+        "operationId" : "syncBackups",
+        "parameters" : [
+          {
+            "in" : "query",
+            "name" : "request",
+            "required" : false
+          }
+        ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "responsesObject" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "tags" : [
+          "Internal HA"
         ]
       }
     },
@@ -48569,7 +49924,13 @@
       "name" : "Grafana Dashboard"
     },
     {
+      "name" : "HA"
+    },
+    {
       "name" : "Instance types"
+    },
+    {
+      "name" : "Internal HA"
     },
     {
       "name" : "KubernetesOverridesController"
@@ -48608,6 +49969,12 @@
       "name" : "Performance Advisor"
     },
     {
+      "name" : "Platform Instance"
+    },
+    {
+      "name" : "Platform Replication"
+    },
+    {
       "name" : "RBAC management"
     },
     {
@@ -48630,6 +49997,9 @@
     },
     {
       "name" : "Table management"
+    },
+    {
+      "name" : "Telemetry Provider"
     },
     {
       "name" : "Universe CDC Management"

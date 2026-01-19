@@ -39,7 +39,7 @@ class DocBoundaryValuesExtractor : public rocksdb::BoundaryValuesExtractor {
   virtual ~DocBoundaryValuesExtractor() {}
 
   Status Extract(Slice user_key, rocksdb::UserBoundaryValueRefs* values) override {
-    if (dockv::IsInternalRecordKeyType(dockv::DecodeKeyEntryType(user_key))) {
+    if (dockv::IsMetaKeyType(dockv::DecodeKeyEntryType(user_key))) {
       // Skipping internal DocDB records.
       return Status::OK();
     }

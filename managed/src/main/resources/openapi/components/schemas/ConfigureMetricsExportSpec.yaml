@@ -5,7 +5,6 @@ description: |
   Configuration for metrics export from a universe to telemetry providers.
 type: object
 allOf:
-  - $ref: "./SleepAfterRestartSchema.yaml"
   - type: object
     properties:
       install_otel_collector:

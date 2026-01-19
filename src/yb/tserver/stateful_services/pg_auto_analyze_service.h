@@ -31,7 +31,7 @@ class PGConn;
 namespace stateful_service {
 
 typedef std::function<Result<pgwrapper::PGConn>(
-    const std::string&, const std::optional<CoarseTimePoint>&)>
+    const std::string&, const CoarseTimePoint&)>
     ConnectToPostgresFunc;
 
 struct AutoAnalyzeInfo {

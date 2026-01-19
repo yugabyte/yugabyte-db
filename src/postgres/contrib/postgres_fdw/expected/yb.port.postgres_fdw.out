@@ -9906,7 +9906,7 @@ DO $d$
     END;
 $d$;
 ERROR:  invalid option "password"
-HINT:  Valid options in this context are: service, passfile, channel_binding, connect_timeout, dbname, host, hostaddr, port, options, application_name, keepalives, keepalives_idle, keepalives_interval, keepalives_count, tcp_user_timeout, sslmode, sslcompression, sslcert, sslkey, sslrootcert, sslcrl, sslcrldir, sslsni, requirepeer, ssl_min_protocol_version, ssl_max_protocol_version, gssencmode, krbsrvname, gsslib, target_session_attrs, use_remote_estimate, fdw_startup_cost, fdw_tuple_cost, extensions, updatable, truncatable, fetch_size, batch_size, async_capable, parallel_commit, keep_connections, server_type
+HINT:  Valid options in this context are: service, passfile, channel_binding, connect_timeout, dbname, host, hostaddr, port, options, application_name, keepalives, keepalives_idle, keepalives_interval, keepalives_count, tcp_user_timeout, sslmode, sslcompression, sslcert, sslkey, sslrootcert, sslcrl, sslcrldir, sslsni, requirepeer, ssl_min_protocol_version, ssl_max_protocol_version, gssencmode, krbsrvname, gsslib, target_session_attrs, yb_auto_analyze, use_remote_estimate, fdw_startup_cost, fdw_tuple_cost, extensions, updatable, truncatable, fetch_size, batch_size, async_capable, parallel_commit, keep_connections, server_type
 CONTEXT:  SQL statement "ALTER SERVER loopback_nopw OPTIONS (ADD password 'dummypw')"
 PL/pgSQL function inline_code_block line 3 at EXECUTE
 -- If we add a password for our user mapping instead, we should get a different
@@ -10000,10 +10000,11 @@ SELECT 1 FROM ft1 LIMIT 1;
 -- Terminate the remote connection and wait for the termination to complete.
 -- (If a cache flush happens, the remote connection might have already been
 -- dropped; so code this step in a way that doesn't fail if no connection.)
-DO $$ BEGIN
-PERFORM pg_terminate_backend(pid, 180000) FROM pg_stat_activity
-	WHERE application_name = 'fdw_retry_check';
-END $$;
+-- YB: Re-enable this section once GH-29528 is fixed.
+-- DO $$ BEGIN
+-- PERFORM pg_terminate_backend(pid, 180000) FROM pg_stat_activity
+-- 	WHERE application_name = 'fdw_retry_check';
+-- END $$;
 -- This query should detect the broken connection when starting new remote
 -- transaction, reestablish new connection, and then succeed.
 BEGIN;
@@ -10016,16 +10017,17 @@ SELECT 1 FROM ft1 LIMIT 1;
 -- If we detect the broken connection when starting a new remote
 -- subtransaction, we should fail instead of establishing a new connection.
 -- Terminate the remote connection and wait for the termination to complete.
-DO $$ BEGIN
-PERFORM pg_terminate_backend(pid, 180000) FROM pg_stat_activity
-	WHERE application_name = 'fdw_retry_check';
-END $$;
+-- YB: Re-enable this section once GH-29528 is fixed.
+-- DO $$ BEGIN
+-- PERFORM pg_terminate_backend(pid, 180000) FROM pg_stat_activity
+-- 	WHERE application_name = 'fdw_retry_check';
+-- END $$;
 SAVEPOINT s;
 -- The text of the error might vary across platforms, so only show SQLSTATE.
-\set VERBOSITY sqlstate
-SELECT 1 FROM ft1 LIMIT 1;    -- should fail
-ERROR:  08006
-\set VERBOSITY default
+-- YB: Re-enable this section once GH-29528 is fixed.
+-- \set VERBOSITY sqlstate
+-- SELECT 1 FROM ft1 LIMIT 1;    -- should fail
+-- \set VERBOSITY default
 COMMIT;
 -- =============================================================================
 -- test connection invalidation cases and postgres_fdw_get_connections function

@@ -5361,6 +5361,43 @@ _copyYbSkippableEntities(const YbSkippableEntities *from)
 	return newnode;
 }
 
+static YbSaopMergeInfo *
+_copyYbSaopMergeInfo(const YbSaopMergeInfo *from)
+{
+	YbSaopMergeInfo *newnode = makeNode(YbSaopMergeInfo);
+
+	COPY_NODE_FIELD(saop_cols);
+	COPY_NODE_FIELD(sort_cols);
+
+	return newnode;
+}
+
+static YbSaopMergeSaopColInfo *
+_copyYbSaopMergeSaopColInfo(const YbSaopMergeSaopColInfo *from)
+{
+	YbSaopMergeSaopColInfo *newnode = makeNode(YbSaopMergeSaopColInfo);
+
+	COPY_NODE_FIELD(saop);
+	COPY_SCALAR_FIELD(indexcol);
+	COPY_SCALAR_FIELD(num_elems);
+
+	return newnode;
+}
+
+static YbSortInfo *
+_copyYbSortInfo(const YbSortInfo *from)
+{
+	YbSortInfo *newnode = makeNode(YbSortInfo);
+
+	COPY_SCALAR_FIELD(numCols);
+	COPY_POINTER_FIELD(sortColIdx, from->numCols * sizeof(AttrNumber));
+	COPY_POINTER_FIELD(sortOperators, from->numCols * sizeof(Oid));
+	COPY_POINTER_FIELD(collations, from->numCols * sizeof(Oid));
+	COPY_POINTER_FIELD(nullsFirst, from->numCols * sizeof(bool));
+
+	return newnode;
+}
+
 /*
  * copyObjectImpl -- implementation of copyObject(); see nodes/nodes.h
  *
@@ -6333,6 +6370,13 @@ copyObjectImpl(const void *from)
 			retval = _copyForeignKeyCacheInfo(from);
 			break;
 
+			/*
+			 * YB NODES
+			 */
+		case T_YbPartitionPruneStepFuncOp:
+			retval = _copyYbPartitionPruneStepFuncOp(from);
+			break;
+
 		case T_YbBackfillIndexStmt:
 			retval = _copyYbBackfillIndexStmt(from);
 			break;
@@ -6359,6 +6403,18 @@ copyObjectImpl(const void *from)
 
 		case T_YbUpdateAffectedEntities:
 			retval = _copyYbUpdateAffectedEntities(from);
+			break;
+
+		case T_YbSaopMergeInfo:
+			retval = _copyYbSaopMergeInfo(from);
+			break;
+
+		case T_YbSaopMergeSaopColInfo:
+			retval = _copyYbSaopMergeSaopColInfo(from);
+			break;
+
+		case T_YbSortInfo:
+			retval = _copyYbSortInfo(from);
 			break;
 
 		default:

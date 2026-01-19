@@ -212,6 +212,7 @@ export const StorageTypeField: FC<StorageTypeFieldProps> = ({ isViewMode, isEdit
     if (
       ![
         StorageType.IO1,
+        StorageType.IO2,
         StorageType.GP3,
         StorageType.UltraSSD_LRS,
         StorageType.PremiumV2_LRS,

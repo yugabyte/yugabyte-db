@@ -1,5 +1,6 @@
 package com.yugabyte.yw.controllers.apiModels;
 
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.models.ReleaseArtifact;
 import io.swagger.annotations.ApiModel;
@@ -13,7 +14,10 @@ public class UpdateRelease {
     public UUID package_file_id;
     public String package_url;
     @Constraints.Required public ReleaseArtifact.Platform platform;
-    @Constraints.Required public PublicCloudConstants.Architecture architecture;
+
+    @JsonDeserialize(using = PublicCloudConstants.Architecture.JSONDeserializer.class)
+    public PublicCloudConstants.Architecture architecture;
+
     public String sha256;
   }
 

@@ -77,6 +77,10 @@ message TransactionStatePB {
   // For detection deadlocks spanning session advisory locks and row-level locks, the status tablet
   // needs to be made aware of the active regular docdb transaction of the ysql session, if any.
   optional TransactionMetadataPB background_transaction_meta = 15;
+
+  // Replication origin id associated with the transaction. Used by CDCSDK and
+  // xCluster to prevent loops in bidirectional replication.
+  optional uint32 xrepl_origin_id = 16;
 }
 
 message TruncatePB {
@@ -101,6 +105,8 @@ message WritePB {
   optional uint64 batch_idx = 20;
 
   optional uint64 start_time_micros = 21;
+
+  optional uint32 xrepl_origin_id = 22;
 }
 
 message ChangeMetadataRequestPB {
@@ -158,6 +164,8 @@ message ChangeMetadataRequestPB {
   //
   // If missing, then all existing columns may safely be treated as non-provisional.
   optional int32 first_provisional_column_id = 21;
+
+  optional bool only_abort_txns_not_using_table_locks = 22;
 }
 
 message SplitTabletRequestPB {
@@ -168,13 +176,16 @@ message SplitTabletRequestPB {
 
   required bytes tablet_id = 3;
 
-  required bytes new_tablet1_id = 4;
+  // Fields describing a 2-way split.
+  required bytes DEPRECATED_new_tablet1_id = 4;
+  required bytes DEPRECATED_new_tablet2_id = 5;
+  required bytes DEPRECATED_split_partition_key = 6;
+  required bytes DEPRECATED_split_encoded_key = 7;
 
-  required bytes new_tablet2_id = 5;
-
-  required bytes split_partition_key = 6;
-
-  required bytes split_encoded_key = 7;
+  // Vectorized fields for an N-way split.
+  repeated bytes new_tablet_ids = 9;
+  repeated bytes split_partition_keys = 10;
+  repeated bytes split_encoded_keys = 11;
 
   // TODO(tsplit): after we support backward-compatibility conversion for protobufs, switch
   // SplitOperation class to use a new SplitOperationDataPB that contains both SplitTabletRequestPB

@@ -2,6 +2,31 @@
 -- Yugabyte-owned test on ybgin index access method for things not covered
 -- elsewhere.
 --
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set filename :abs_srcdir '/yb_commands/explainrun_ybgin.sql'
+\i :filename
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set filename :abs_srcdir '/yb_commands/explainrun.sql'
+\i :filename
+-- A helper script to explain and run a query.  Use in regress tests by
+-- defining :explain, :query, and optionally :hint#.
+\set explain1 ':explain :hint1 :query;'
+\set explain2 ':explain1 :explain :hint2 :query;'
+\set explain3 ':explain2 :explain :hint3 :query;'
+\set explain4 ':explain3 :explain :hint4 :query;'
+\set explain5 ':explain4 :explain :hint5 :query;'
+\set explain1run1 ':explain1; :hint1 :query;'
+\set explain2run2 ':explain2; :hint1 :query; :hint2 :query;'
+\set explain3run3 ':explain3; :hint1 :query; :hint2 :query; :hint3 :query;'
+\set explain4run4 ':explain4; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query;'
+\set explain5run5 ':explain5; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query; :hint5 :query;'
+-- Default to no hints.
+\set hint1 ''
+\set hint2 ''
+\set hint3 ''
+\set hint4 ''
+\set hint5 ''
+\set explain 'EXPLAIN (costs off)'
 -- Always choose index scan.
 SET enable_seqscan = off;
 SET yb_test_ybgin_disable_cost_factor = 0.5;
@@ -13,8 +38,10 @@ CREATE INDEX ON jsonbs USING ybgin (j);
 --
 -- tsvector
 INSERT INTO vectors (v) VALUES ('a b c i k'), ('abc j k');
-EXPLAIN (costs off)
-UPDATE vectors SET v = ts_delete(v, '{c, j}'::text[]) WHERE v @@ 'k';
+SELECT $$
+UPDATE vectors SET v = ts_delete(v, '{c, j}'::text[]) WHERE v @@ 'k'
+$$ AS query \gset
+:explain1run1
                    QUERY PLAN                    
 -------------------------------------------------
  Update on vectors
@@ -22,7 +49,6 @@ UPDATE vectors SET v = ts_delete(v, '{c, j}'::text[]) WHERE v @@ 'k';
          Index Cond: (v @@ '''k'''::tsquery)
 (3 rows)
 
-UPDATE vectors SET v = ts_delete(v, '{c, j}'::text[]) WHERE v @@ 'k';
 SELECT v FROM vectors WHERE v @@ 'k' ORDER BY i;
         v        
 -----------------
@@ -33,8 +59,10 @@ SELECT v FROM vectors WHERE v @@ 'k' ORDER BY i;
 DELETE FROM vectors WHERE v @@ 'k';
 -- jsonb
 INSERT INTO jsonbs (j) VALUES ('[4,7,"sh",3,"du"]'), ('{"du":[7,9], "sh":13}');
-EXPLAIN (costs off)
-UPDATE jsonbs SET j = j - 'sh' WHERE j ? 'du';
+SELECT $$
+UPDATE jsonbs SET j = j - 'sh' WHERE j ? 'du'
+$$ AS query \gset
+:explain1run1
                   QUERY PLAN                   
 -----------------------------------------------
  Update on jsonbs
@@ -42,7 +70,6 @@ UPDATE jsonbs SET j = j - 'sh' WHERE j ? 'du';
          Index Cond: (j ? 'du'::text)
 (3 rows)
 
-UPDATE jsonbs SET j = j - 'sh' WHERE j ? 'du';
 SELECT j FROM jsonbs WHERE j ? 'du' ORDER BY i;
         j        
 -----------------
@@ -95,8 +122,10 @@ INSERT INTO vectors (v) VALUES
     (E'\x7F\x7F\x7Fa'),
     (E'\x7F\x7F\x7F\x7F'),
     (E'\x7F\x7F');
-EXPLAIN (costs off)
-SELECT v FROM vectors WHERE v @@ E'\x7F\x7F\x7F:*' ORDER BY i;
+SELECT $$
+SELECT v FROM vectors WHERE v @@ E'\x7F\x7F\x7F:*' ORDER BY i
+$$ AS query \gset
+:explain1run1
                         QUERY PLAN                        
 ----------------------------------------------------------
  Sort
@@ -105,7 +134,6 @@ SELECT v FROM vectors WHERE v @@ E'\x7F\x7F\x7F:*' ORDER BY i;
          Index Cond: (v @@ '''\x7F\x7F\x7F'':*'::tsquery)
 (4 rows)
 
-SELECT v FROM vectors WHERE v @@ E'\x7F\x7F\x7F:*' ORDER BY i;
          v          
 --------------------
  '\x7F\x7F\x7F'
@@ -113,8 +141,10 @@ SELECT v FROM vectors WHERE v @@ E'\x7F\x7F\x7F:*' ORDER BY i;
  '\x7F\x7F\x7F\x7F'
 (3 rows)
 
-EXPLAIN (costs off)
-DELETE FROM vectors WHERE v @@ E'\x7F:*';
+SELECT $$
+DELETE FROM vectors WHERE v @@ E'\x7F:*'
+$$ AS query \gset
+:explain1run1
                     QUERY PLAN                    
 --------------------------------------------------
  Delete on vectors
@@ -122,7 +152,6 @@ DELETE FROM vectors WHERE v @@ E'\x7F:*';
          Index Cond: (v @@ '''\x7F'':*'::tsquery)
 (3 rows)
 
-DELETE FROM vectors WHERE v @@ E'\x7F:*';
 --
 -- Prefix match with other odd characters.
 --
@@ -234,15 +263,16 @@ DELETE FROM vectors WHERE v @@ E'\x7F:*';
 -- Three ways to query tsvectors containing both of two specific words.
 --
 -- AND inside tsquery
-EXPLAIN (costs off)
-SELECT * FROM vectors WHERE v @@ 'a & bb';
+SELECT $$
+SELECT * FROM vectors WHERE v @@ 'a & bb'
+$$ AS query \gset
+:explain1run1
                    QUERY PLAN                   
 ------------------------------------------------
  Index Scan using vectors_v_idx on vectors
    Index Cond: (v @@ '''a'' & ''bb'''::tsquery)
 (2 rows)
 
-SELECT * FROM vectors WHERE v @@ 'a & bb';
  i |                  v                   
 ---+--------------------------------------
  1 | 'a':1 'bb':2 'ccc':3
@@ -250,21 +280,24 @@ SELECT * FROM vectors WHERE v @@ 'a & bb';
 (2 rows)
 
 -- AND between '@@' ops
-EXPLAIN (costs off)
-SELECT * FROM vectors WHERE v @@ 'a' and v @@ 'bb';
+SELECT $$
+SELECT * FROM vectors WHERE v @@ 'a' and v @@ 'bb'
+$$ AS query \gset
+:explain1run1
                               QUERY PLAN                              
 ----------------------------------------------------------------------
  Index Scan using vectors_v_idx on vectors
    Index Cond: ((v @@ '''a'''::tsquery) AND (v @@ '''bb'''::tsquery))
 (2 rows)
 
-SELECT * FROM vectors WHERE v @@ 'a' and v @@ 'bb';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method cannot use more than one scan key: got 2.
 HINT:  Consider rewriting the query with INTERSECT and UNION.
 -- INTERSECT between '@@' selects
-EXPLAIN (costs off)
-SELECT * FROM vectors WHERE v @@ 'a' INTERSECT SELECT * FROM vectors WHERE v @@ 'bb';
+SELECT $$
+SELECT * FROM vectors WHERE v @@ 'a' INTERSECT SELECT * FROM vectors WHERE v @@ 'bb'
+$$ AS query \gset
+:explain1run1
                                  QUERY PLAN                                  
 -----------------------------------------------------------------------------
  SetOp Intersect
@@ -279,7 +312,6 @@ SELECT * FROM vectors WHERE v @@ 'a' INTERSECT SELECT * FROM vectors WHERE v @@ 
                            Index Cond: (v @@ '''bb'''::tsquery)
 (10 rows)
 
-SELECT * FROM vectors WHERE v @@ 'a' INTERSECT SELECT * FROM vectors WHERE v @@ 'bb';
  i |                  v                   
 ---+--------------------------------------
  1 | 'a':1 'bb':2 'ccc':3
@@ -290,27 +322,29 @@ SELECT * FROM vectors WHERE v @@ 'a' INTERSECT SELECT * FROM vectors WHERE v @@ 
 -- Three ways to query tsvectors containing at least one of two specific words.
 --
 -- OR inside tsquery
-EXPLAIN (costs off)
-SELECT * FROM vectors WHERE v @@ 'a | c';
+SELECT $$
+SELECT * FROM vectors WHERE v @@ 'a | c'
+$$ AS query \gset
+:explain1run1
                   QUERY PLAN                   
 -----------------------------------------------
  Index Scan using vectors_v_idx on vectors
    Index Cond: (v @@ '''a'' | ''c'''::tsquery)
 (2 rows)
 
-SELECT * FROM vectors WHERE v @@ 'a | c';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method cannot use more than one required scan entry: got 2.
 -- OR between '@@' ops
-EXPLAIN (costs off)
-SELECT * FROM vectors WHERE v @@ 'a' or v @@ 'c';
+SELECT $$
+SELECT * FROM vectors WHERE v @@ 'a' or v @@ 'c'
+$$ AS query \gset
+:explain1run1
                                QUERY PLAN                               
 ------------------------------------------------------------------------
  Seq Scan on vectors
    Storage Filter: ((v @@ '''a'''::tsquery) OR (v @@ '''c'''::tsquery))
 (2 rows)
 
-SELECT * FROM vectors WHERE v @@ 'a' or v @@ 'c';
  i |                  v                   
 ---+--------------------------------------
  1 | 'a':1 'bb':2 'ccc':3
@@ -319,8 +353,10 @@ SELECT * FROM vectors WHERE v @@ 'a' or v @@ 'c';
 (3 rows)
 
 -- UNION between '@@' selects
-EXPLAIN (costs off)
-SELECT * FROM vectors WHERE v @@ 'a' UNION SELECT * FROM vectors WHERE v @@ 'c';
+SELECT $$
+SELECT * FROM vectors WHERE v @@ 'a' UNION SELECT * FROM vectors WHERE v @@ 'c'
+$$ AS query \gset
+:explain1run1
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  Unique
@@ -333,7 +369,6 @@ SELECT * FROM vectors WHERE v @@ 'a' UNION SELECT * FROM vectors WHERE v @@ 'c';
                      Index Cond: (v @@ '''c'''::tsquery)
 (8 rows)
 
-SELECT * FROM vectors WHERE v @@ 'a' UNION SELECT * FROM vectors WHERE v @@ 'c';
  i |                  v                   
 ---+--------------------------------------
  1 | 'a':1 'bb':2 'ccc':3
@@ -345,30 +380,32 @@ SELECT * FROM vectors WHERE v @@ 'a' UNION SELECT * FROM vectors WHERE v @@ 'c';
 -- Complicated query
 --
 -- Top-level disjunction where the last item is simple
-EXPLAIN (costs off)
-SELECT * FROM vectors WHERE v @@ '((a & e) | (ccc & ccd)) & o';
+SELECT $$
+SELECT * FROM vectors WHERE v @@ '((a & e) | (ccc & ccd)) & o'
+$$ AS query \gset
+:explain1run1
                                   QUERY PLAN                                   
 -------------------------------------------------------------------------------
  Index Scan using vectors_v_idx on vectors
    Index Cond: (v @@ '( ''a'' & ''e'' | ''ccc'' & ''ccd'' ) & ''o'''::tsquery)
 (2 rows)
 
-SELECT * FROM vectors WHERE v @@ '((a & e) | (ccc & ccd)) & o';
  i |                  v                   
 ---+--------------------------------------
  2 | 'a':2 'bb':1 'e':3 'i':4 'o':5 'u':6
 (1 row)
 
 -- Top-level disjunction where the last item is complex
-EXPLAIN (costs off)
-SELECT * FROM vectors WHERE v @@ 'o & ((a & e) | (ccc & ccd))';
+SELECT $$
+SELECT * FROM vectors WHERE v @@ 'o & ((a & e) | (ccc & ccd))'
+$$ AS query \gset
+:explain1run1
                                   QUERY PLAN                                   
 -------------------------------------------------------------------------------
  Index Scan using vectors_v_idx on vectors
    Index Cond: (v @@ '''o'' & ( ''a'' & ''e'' | ''ccc'' & ''ccd'' )'::tsquery)
 (2 rows)
 
-SELECT * FROM vectors WHERE v @@ 'o & ((a & e) | (ccc & ccd))';
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method cannot use more than one required scan entry: got 3.
 -- TODO(jason): add top-level conjunction tests
@@ -429,15 +466,16 @@ CREATE TABLE garrays (i serial PRIMARY KEY, a int[]) TABLEGROUP g;
 INSERT INTO garrays (a) VALUES ('{11, 22}');
 CREATE INDEX ON garrays USING ybgin (a);
 INSERT INTO garrays (a) VALUES ('{22, 33}'), ('{33, 11}');
-EXPLAIN (costs off)
-SELECT * FROM garrays WHERE a && '{11}';
+SELECT $$
+SELECT * FROM garrays WHERE a && '{11}'
+$$ AS query \gset
+:explain1run1
                 QUERY PLAN                 
 -------------------------------------------
  Index Scan using garrays_a_idx on garrays
    Index Cond: (a && '{11}'::integer[])
 (2 rows)
 
-SELECT * FROM garrays WHERE a && '{11}';
  i |    a    
 ---+---------
  1 | {11,22}

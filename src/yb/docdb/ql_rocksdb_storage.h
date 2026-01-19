@@ -35,7 +35,7 @@ class QLRocksDBStorage : public YQLStorageIf {
   //------------------------------------------------------------------------------------------------
   // CQL Support.
   Status GetIterator(
-      const QLReadRequestPB& request,
+      const QLReadRequestMsg& request,
       const dockv::ReaderProjection& projection,
       std::reference_wrapper<const DocReadContext> doc_read_context,
       const TransactionOperationContext& txn_op_context,
@@ -45,7 +45,7 @@ class QLRocksDBStorage : public YQLStorageIf {
       std::unique_ptr<YQLRowwiseIteratorIf> *iter) const override;
 
   Status BuildYQLScanSpec(
-      const QLReadRequestPB& request,
+      const QLReadRequestMsg& request,
       const ReadHybridTime& read_time,
       const Schema& schema,
       bool include_static_columns,
@@ -68,7 +68,7 @@ class QLRocksDBStorage : public YQLStorageIf {
                       const QLValuePB& ybctid) const override;
 
   Status GetIterator(
-      const PgsqlReadRequestPB& request,
+      const PgsqlReadRequestMsg& request,
       const dockv::ReaderProjection& projection,
       std::reference_wrapper<const DocReadContext> doc_read_context,
       const TransactionOperationContext& txn_op_context,
@@ -85,8 +85,7 @@ class QLRocksDBStorage : public YQLStorageIf {
       const ReadOperationData& read_operation_data,
       const YbctidBounds& bounds,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
-      SkipSeek skip_seek,
-      UseVariableBloomFilter use_variable_bloom_filter) const override;
+      SkipSeek skip_seek) const override;
 
   Result<SampleBlocksReservoir> GetSampleBlocks(
       std::reference_wrapper<const DocReadContext> doc_read_context,

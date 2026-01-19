@@ -13,3 +13,9 @@ convention.
 Ported tests (those named yb.port.foo) should be ordered the same way as
 parallel_schedule.  Otherwise, tests may not have the right dependencies or
 expected state.
+
+yb.depd.foo are targeted dependency tests that set up certain objects and
+eliminate the need to run whole dependency tests such as yb.port.test_setup and
+yb.port.create_index.
+
+The yb_commands directory holds sql scripts to be \i included in tests.

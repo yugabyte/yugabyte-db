@@ -35,7 +35,7 @@ import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { fetchTablesInUniverse } from '../../../actions/xClusterReplication';
 import { YBLoading } from '../../common/indicators';
 import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
-import Bulb from '../../universes/images/bulb.svg';
+import Bulb from '../../universes/images/bulb.svg?img';
 import { toast } from 'react-toastify';
 import { createBackup, editBackup } from '../common/BackupAPI';
 import { Badge_Types, StatusBadge } from '../../common/badge/StatusBadge';
@@ -58,7 +58,7 @@ import { handleCACertErrMsg } from '../../customCACerts';
 import { useInterceptBackupTaskLinks } from '../../../redesign/features/tasks/TaskUtils';
 import './BackupCreateModal.scss';
 
-import Close from '../../universes/images/close.svg';
+import Close from '../../universes/images/close.svg?img';
 
 interface BackupCreateModalProps {
   onHide: Function;
@@ -173,7 +173,8 @@ const initialValues = {
   incremental_backup_frequency: 1,
   incremental_backup_frequency_type: INCREMENTAL_BACKUP_DURATION_OPTIONS[1],
   isTableByTableBackup: false,
-  useTablespaces: false
+  useTablespaces: false,
+  useRoles: false
 };
 
 export const BackupCreateModal: FC<BackupCreateModalProps> = ({
@@ -259,9 +260,11 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
         toast.success(
           <span>
             Backup is in progress. Click &nbsp;
-            {interceptBackupLink(<a href={`/tasks/${resp.data.taskUUID}`} target="_blank" rel="noopener noreferrer">
-              here
-            </a>)}
+            {interceptBackupLink(
+              <a href={`/tasks/${resp.data.taskUUID}`} target="_blank" rel="noopener noreferrer">
+                here
+              </a>
+            )}
             &nbsp; for task details
           </span>
         );
@@ -315,9 +318,11 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
         toast.success(
           <span>
             Creating schedule policy. Click &nbsp;
-            {interceptBackupLink(<a href={`/tasks/${resp.data.taskUUID}`} target="_blank" rel="noopener noreferrer">
-              here
-            </a>)}
+            {interceptBackupLink(
+              <a href={`/tasks/${resp.data.taskUUID}`} target="_blank" rel="noopener noreferrer">
+                here
+              </a>
+            )}
             &nbsp; for task details
           </span>
         );
@@ -890,6 +895,24 @@ function BackupConfigurationForm({
           </Col>
         )}
       </Row>
+
+      <Row>
+        <Col lg={12} className="no-padding tablespaces">
+          <div>Role backup options</div>
+          <Row>
+            <Col lg={12} className="no-padding">
+              <Field
+                name="useRoles"
+                component={YBCheckBox}
+                disabled={isEditMode || isIncrementalBackup}
+                checkState={values['useRoles']}
+              />
+              {'Backup global roles'}
+            </Col>
+          </Row>
+        </Col>
+      </Row>
+
       {isScheduledBackup && !isEditBackupMode && (
         <Row>
           <div>Set backup intervals</div>

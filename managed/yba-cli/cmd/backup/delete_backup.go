@@ -53,8 +53,7 @@ var deleteBackupCmd = &cobra.Command{
 		backupDeleteRequest := authAPI.DeleteBackups().DeleteBackup(deleteBackupParams)
 		_, response, err := backupDeleteRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Backup", "Delete")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Backup", "Delete")
 		}
 
 		logrus.Infof(
@@ -83,7 +82,7 @@ func buildBackupInfo(backupInfos []string) []ybaclient.DeleteBackupInfo {
 			val := kvp[1]
 			switch key {
 			case "backup-uuid":
-				if len(strings.TrimSpace(val)) != 0 {
+				if !util.IsEmptyString(val) {
 					backupDetails["backup-uuid"] = val
 				} else {
 					logrus.Fatalf(
@@ -92,7 +91,7 @@ func buildBackupInfo(backupInfos []string) []ybaclient.DeleteBackupInfo {
 				}
 			case "storage-config-uuid":
 				backupDetails["storage-config-uuid"] = ""
-				if len(strings.TrimSpace(val)) != 0 {
+				if !util.IsEmptyString(val) {
 					backupDetails["storage-config-uuid"] = val
 				}
 			}

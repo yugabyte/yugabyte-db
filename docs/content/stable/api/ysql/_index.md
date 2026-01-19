@@ -61,7 +61,7 @@ This section lists the main elements that support the YugabyteDB SQL language su
 
 ## Quick Start
 
-You can explore the basics of the YSQL API using the [Quick Start](/preview/quick-start/macos/).
+You can explore the basics of the YSQL API using the [Quick Start](/stable/quick-start/macos/).
 
 It always helps to have access to a sandbox YugabyteDB cluster where you can, when you need to, do whatever you want without considering any risk of doing harm. Here are the kinds of things you'll want to do:
 
@@ -78,4 +78,4 @@ It also helps to have a vanilla PostgreSQL installation on the same server so th
 
 To do all this confidently, you need to be sure that nobody else can use your sandbox so that you know that everything that you observe will be explained by what you deliberately did. Occasionally, you'll even want to destroy a cluster at one version and replace it with a cluster at a different version.
 
-The simplest way to achieve this ideal sandbox regime is to use your own laptop. The [Quick Start](/preview/quick-start/macos/) shows you how to do this.
+The simplest way to achieve this ideal sandbox regime is to use your own laptop. The [Quick Start](/stable/quick-start/macos/) shows you how to do this.

@@ -12,7 +12,8 @@ import {
   RootCertificateField,
   TimeSyncField,
   YCQLField,
-  YSQLField
+  YSQLField,
+  K8EncryptionTypeField
 } from '../../fields';
 import { YBLabel } from '../../../../../../components';
 import { UniverseFormContext } from '../../../UniverseFormContainer';
@@ -22,17 +23,25 @@ import {
   ClusterModes,
   ClusterType,
   RunTimeConfigEntry,
-  UniverseFormConfigurationProps
+  UniverseFormConfigurationProps,
+  K8sEncryptionOption
 } from '../../../utils/dto';
 import {
   PROVIDER_FIELD,
   EAR_FIELD,
   CLIENT_TO_NODE_ENCRYPT_FIELD,
   NODE_TO_NODE_ENCRYPT_FIELD,
-  ACCESS_KEY_FIELD
+  ACCESS_KEY_FIELD,
+  ROOT_CERT_FIELD,
+  CLIENT_CERT_FIELD,
+  ROOT_CA_CLIENT_CA_SAME_FIELD,
+  K8S_ENCRYPTION_TYPE_FIELD,
+  ENABLE_TLS_FIELD
 } from '../../../utils/constants';
+import { ClientCaAndRootCASameField } from '../../fields/RootCertificateField/ClientCAAndRootCASameField';
 import { RuntimeConfigKey } from '../../../../../../helpers/constants';
 import { useSectionStyles } from '../../../universeMainStyle';
+import { useUpdateEffect } from 'react-use';
 
 const useStyles = makeStyles((theme) => ({
   settingsContainer: {
@@ -77,7 +86,10 @@ export const SecurityConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
   const clientNodeTLSEnabled = useWatch({ name: CLIENT_TO_NODE_ENCRYPT_FIELD });
   const nodeNodeTLSEnabled = useWatch({ name: NODE_TO_NODE_ENCRYPT_FIELD });
   const accessKey = useWatch({ name: ACCESS_KEY_FIELD });
+  const k8EncryptionTypeValue = useWatch({ name: K8S_ENCRYPTION_TYPE_FIELD });
+  const k8EnableTLSVal = useWatch({ name: ENABLE_TLS_FIELD });
 
+  const rootCaClientCaSame = useWatch({ name: ROOT_CA_CLIENT_CA_SAME_FIELD });
   //access key info
   const accessKeys = useSelector((state: any) => state.cloud.accessKeys);
   const currentAccessKeyInfo = accessKeys.data.find(
@@ -154,27 +166,67 @@ export const SecurityConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
               <Typography className={classes.subsectionHeaderFont}>
                 {t('universeForm.securityConfig.encryptionSettings.title')}
               </Typography>
-
               <Box className={helperClasses.settingsContainerBorder}>
-                <Box mt={3} ml={2}>
-                  <YBLabel dataTestId="EncryptionInTransit-Label">
-                    {t('universeForm.securityConfig.encryptionSettings.encryptionInTransit')}
-                  </YBLabel>
-                  <NodeToNodeTLSField disabled={!isCreatePrimary} />
-                </Box>
-
-                <Box mt={3} ml={2}>
-                  <ClientToNodeTLSField disabled={!isCreatePrimary} />
-                </Box>
-
-                {(clientNodeTLSEnabled || nodeNodeTLSEnabled) && (
-                  <Box mt={3} ml={2}>
-                    <RootCertificateField
-                      disabled={!isCreatePrimary}
-                      isPrimary={isPrimary}
-                      isCreateMode={isCreateMode}
-                    />
-                  </Box>
+                {provider?.code !== CloudType.kubernetes || !isCreateMode ? (
+                  <>
+                    <Box mt={3} ml={2}>
+                      <ClientCaAndRootCASameField
+                        isCreateMode={isCreateMode}
+                        disabled={!isCreatePrimary}
+                      />
+                    </Box>
+                    <Box mt={3} ml={2}>
+                      <YBLabel dataTestId="EncryptionInTransit-Label">
+                        {t('universeForm.securityConfig.encryptionSettings.encryptionInTransit')}
+                      </YBLabel>
+                      <NodeToNodeTLSField disabled={!isCreatePrimary} />
+                    </Box>
+                    {nodeNodeTLSEnabled && (
+                      <Box mt={3} ml={2}>
+                        <RootCertificateField
+                          disabled={!isCreatePrimary}
+                          isPrimary={isPrimary}
+                          isCreateMode={isCreateMode}
+                          fieldName={ROOT_CERT_FIELD}
+                        />
+                      </Box>
+                    )}
+                    {!rootCaClientCaSame && (
+                      <Box mt={3} ml={2}>
+                        <ClientToNodeTLSField disabled={!isCreatePrimary} />
+                      </Box>
+                    )}
+                    {clientNodeTLSEnabled && !rootCaClientCaSame && (
+                      <Box mt={3} ml={2}>
+                        <RootCertificateField
+                          disabled={!isCreatePrimary}
+                          isPrimary={isPrimary}
+                          isCreateMode={isCreateMode}
+                          fieldName={CLIENT_CERT_FIELD}
+                        />
+                      </Box>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <Box mt={3} ml={2}>
+                      <K8EncryptionTypeField disabled={false} />
+                    </Box>
+                    {k8EnableTLSVal && (
+                      <Box mt={2} ml={2}>
+                        <RootCertificateField
+                          disabled={!isCreatePrimary}
+                          isPrimary={isPrimary}
+                          isCreateMode={isCreateMode}
+                          fieldName={
+                            k8EncryptionTypeValue === K8sEncryptionOption.ClienToNode
+                              ? CLIENT_CERT_FIELD
+                              : ROOT_CERT_FIELD
+                          }
+                        />
+                      </Box>
+                    )}
+                  </>
                 )}
                 <Box className={helperClasses.settingsContainerDivider}></Box>
 

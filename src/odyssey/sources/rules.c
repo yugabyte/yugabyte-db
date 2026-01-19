@@ -161,7 +161,8 @@ od_rule_t *od_rules_add(od_rules_t *rules)
 	od_list_init(&rule->ldap_storage_creds_list);
 #endif
 
-	kiwi_vars_init(&rule->vars);
+	/* YB: This is used by auth passthrough, the "true" is needed for that */
+	kiwi_vars_init(&rule->vars, true);
 
 	rule->enable_password_passthrough = 0;
 

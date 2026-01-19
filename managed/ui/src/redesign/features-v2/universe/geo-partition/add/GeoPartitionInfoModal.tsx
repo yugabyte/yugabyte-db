@@ -1,11 +1,14 @@
-import { useLocalStorage } from 'react-use';
-import { YBModal } from '@yugabyte-ui-library/core';
-import { Trans, useTranslation } from 'react-i18next';
+import { useContext } from 'react';
+import { useToggle } from 'react-use';
+import { YBModal, YBTag } from '@yugabyte-ui-library/core';
 import { mui } from '@yugabyte-ui-library/core';
+import { Trans, useTranslation } from 'react-i18next';
+import { AddGeoPartitionContext, AddGeoPartitionContextMethods } from './AddGeoPartitionContext';
 
-import { ReactComponent as CloseIcon } from '@app/redesign/assets/close rounded inverted.svg';
-import GeoPartitionHelpImage from '@app/redesign/assets/geoPartition.png';
-import { ReactComponent as BookIcon } from '@app/redesign/assets/book_open_blue.svg';
+import CloseIcon from '@app/redesign/assets/close rounded inverted.svg';
+import BookIcon from '@app/redesign/assets/book_open_blue.svg';
+import Marker from '@app/redesign/assets/marker.svg';
+import Designated from '@app/redesign/assets/geo_partition_designated.svg';
 
 const { styled, Box, Typography } = mui;
 
@@ -30,20 +33,68 @@ const ModalHeader = styled('span')(() => ({
   }
 }));
 
+const RegionPanel = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  gap: '16px',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: '56px 32px',
+  background: '#FBFCFD',
+  border: `1px solid ${theme.palette.grey[300]}`,
+  borderRadius: '8px'
+}));
+
+const RegionCard = styled('div')(({ theme, active }) => ({
+  padding: '40px 24px 24px 24px',
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  gap: '16px',
+  borderRadius: '8px',
+  border: `1px solid ${active ? theme.palette.common.periwinkle : theme.palette.grey[300]}`,
+  background: '#F7F9FB',
+  width: '205px',
+  position: 'relative',
+  color: theme.palette.grey[700],
+  '& > .header': {
+    position: 'absolute',
+    top: '-16px',
+    padding: '8px 12px',
+    borderRadius: '16px',
+    border: `1px solid ${active ? theme.palette.common.periwinkle : theme.palette.grey[300]}`,
+    background: '#F7F9FB',
+    height: '32px',
+    minWidth: '120px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: active ? theme.palette.common.purpleDark : theme.palette.grey[600],
+    fontWeight: '600',
+    fontSize: '11.5px'
+  }
+}));
+
+const RegionItem = styled('div')(() => ({
+  display: 'flex',
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: '8px'
+}));
+
 export const GeoPartitionInfoModal = () => {
   const { t } = useTranslation('translation', { keyPrefix: 'geoPartition.GeoPartitionInfoModal' });
 
-  const [alreadyViewed, setAlreadyViewed] = useLocalStorage(
-    '__yb_geo_partition_intro_dialog__',
-    false,
-    {
-      raw: false,
-      deserializer: (value) => value === 'true',
-      serializer: (value) => value.toString()
-    }
-  );
+  const [addGeoPartitionContext, addGeoPartitionMethods] = (useContext(
+    AddGeoPartitionContext
+  ) as unknown) as AddGeoPartitionContextMethods;
 
-  if (alreadyViewed) return null;
+  const { isNewGeoPartition, geoPartitions } = addGeoPartitionContext;
+
+  const [alreadyViewed, setAlreadyViewed] = useToggle(!isNewGeoPartition);
+
+  const currentGeoPartition = geoPartitions[0];
+
+  if (alreadyViewed || !isNewGeoPartition) return null;
 
   return (
     <YBModal
@@ -83,11 +134,54 @@ export const GeoPartitionInfoModal = () => {
         <div>
           <Trans t={t} i18nKey={'description'} components={{ b: <b /> }} />
         </div>
-        <img
-          src={GeoPartitionHelpImage}
-          alt="Geo Partition Help"
-          style={{ width: '100%', borderRadius: '8px' }}
-        />
+        <RegionPanel>
+          <RegionCard>
+            <span className="header">{t('existingRegions')}</span>
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+                alignItems: 'flex-start'
+              }}
+            >
+              {currentGeoPartition?.resilience?.regions.map((region) => (
+                <RegionItem key={region.uuid}>
+                  <Marker style={{ minWidth: '16px', alignSelf: 'flex-start' }} />
+                  <span>
+                    {region.name} ({region.code})
+                  </span>
+                </RegionItem>
+              ))}
+            </Box>
+          </RegionCard>
+          <Designated />
+          <RegionCard active>
+            <RegionItem className="header">
+              {t('geoPartition1')}
+              <YBTag color="primary" size="small">
+                {t('primary')}
+              </YBTag>
+            </RegionItem>
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+                alignItems: 'flex-start'
+              }}
+            >
+              {currentGeoPartition?.resilience?.regions.map((region) => (
+                <RegionItem key={region.uuid}>
+                  <Marker style={{ minWidth: '16px', alignSelf: 'flex-start' }} />
+                  <span>
+                    {region.name} ({region.code})
+                  </span>
+                </RegionItem>
+              ))}
+            </Box>
+          </RegionCard>
+        </RegionPanel>
         <Box
           sx={{
             display: 'flex',

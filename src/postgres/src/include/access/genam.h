@@ -22,6 +22,7 @@
 #include "utils/snapshot.h"
 
 /* YB includes */
+#include "nodes/plannodes.h"
 #include "nodes/ybtidbitmap.h"
 
 /* We don't want this file to depend on execnodes.h. */
@@ -213,7 +214,7 @@ extern bytea *index_opclass_options(Relation relation, AttrNumber attnum,
 									Datum attoptions, bool validate);
 
 
-extern bool yb_index_might_recheck(Relation heapRelation,
+extern bool yb_index_might_recheck(Scan *scan, Relation heapRelation,
 								   Relation indexRelation, bool xs_want_itup,
 								   ScanKey keys, int nkeys);
 

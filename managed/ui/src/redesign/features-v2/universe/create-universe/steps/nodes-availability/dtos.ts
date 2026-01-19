@@ -2,7 +2,7 @@ export type Zone = {
   name: string;
   uuid: string;
   nodeCount: number;
-  preffered: string;
+  preffered: number;
 };
 export interface NodeAvailabilityProps {
   availabilityZones: {

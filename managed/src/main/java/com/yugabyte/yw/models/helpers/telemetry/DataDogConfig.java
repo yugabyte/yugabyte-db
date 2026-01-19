@@ -32,7 +32,7 @@ public class DataDogConfig extends TelemetryProviderConfig {
   }
 
   @Override
-  public void validate(ApiHelper apiHelper) {
+  public void validateConnectivity(ApiHelper apiHelper) {
     ApiClient dataDogApiClient = new ApiClient();
     dataDogApiClient.setServerVariables(Collections.singletonMap("site", site));
     dataDogApiClient.configureApiKeys(Collections.singletonMap("apiKeyAuth", apiKey));
@@ -50,6 +50,5 @@ public class DataDogConfig extends TelemetryProviderConfig {
           BAD_REQUEST,
           "Validation failed. Ensure your Datadog API Key and Datadog Site URL are valid.");
     }
-    log.info("Successfully validated Datadog API Key and Site URL.");
   }
 }

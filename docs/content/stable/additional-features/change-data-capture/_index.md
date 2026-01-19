@@ -6,6 +6,8 @@ description: CDC or Change data capture is a process to capture changes made to 
 headcontent: Capture changes made to data in the database
 tags:
   feature: early-access
+aliases:
+  - /stable/develop/change-data-capture/
 menu:
   stable:
     identifier: explore-change-data-capture

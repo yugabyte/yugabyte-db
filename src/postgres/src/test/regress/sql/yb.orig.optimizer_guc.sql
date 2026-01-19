@@ -253,6 +253,17 @@ show yb_enable_cbo;
 set yb_enable_cbo = oui;
 
 
+----------------------------------------------------------------
+-- yb_enable_parallel_append - enable_parallel_append mapping --
+----------------------------------------------------------------
+show yb_enable_parallel_append;
+show enable_parallel_append;
+set yb_enable_parallel_append = off;
+show enable_parallel_append;
+set enable_parallel_append = on;
+show yb_enable_parallel_append;
+
+
 ---------------------------
 -- test GUC_EXPLAIN flag --
 ---------------------------
@@ -280,10 +291,7 @@ set yb_pushdown_strict_inequality = off;
 set yb_pushdown_is_not_null = off;
 set yb_enable_distinct_pushdown = off;
 set yb_bypass_cond_recheck = off;
-set yb_enable_parallel_append = on;
 set yb_enable_bitmapscan = on;
-set yb_enable_base_scans_cost_model = on;
-set yb_enable_optimizer_statistics = on;
 set yb_bnl_batch_size = 1;
 set yb_fetch_row_limit = 0;
 set yb_fetch_size_limit = '2kB';

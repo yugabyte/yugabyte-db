@@ -33,6 +33,10 @@ import org.mockito.Mockito;
 @Slf4j
 public class MockUpgrade extends UpgradeTaskBase {
 
+  // Task types that are created per node and should be added as simultaneous tasks
+  public static final Set<TaskType> NODE_LEVEL_PRECHECK_TASKS =
+      Set.of(TaskType.CheckServiceLiveness, TaskType.CheckNodeCommandExecution);
+
   private UpgradeContext context = DEFAULT_CONTEXT;
   private final UUID userTaskUUID = UUID.randomUUID();
   private final Map<Integer, List<TaskInfo>> subtasksByPosition = new HashMap<>();
@@ -170,12 +174,22 @@ public class MockUpgrade extends UpgradeTaskBase {
   }
 
   public MockUpgrade precheckTasks(TaskType... taskTypes) {
-    return precheckTasks(true, taskTypes);
+    return precheckTasks(true, universe.getUniverseDetails().nodeDetailsSet.size(), taskTypes);
   }
 
   public MockUpgrade precheckTasks(boolean enableYSQL, TaskType... taskTypes) {
+    return precheckTasks(
+        enableYSQL, universe.getUniverseDetails().nodeDetailsSet.size(), taskTypes);
+  }
+
+  public MockUpgrade precheckTasks(boolean enableYSQL, int nodeCount, TaskType... taskTypes) {
     for (TaskType taskType : taskTypes) {
-      addTask(taskType, null);
+      if (NODE_LEVEL_PRECHECK_TASKS.contains(taskType)) {
+        // Node-level precheck tasks are created per node, so add them as simultaneous tasks
+        addSimultaneousTasks(taskType, nodeCount);
+      } else {
+        addTask(taskType, null);
+      }
     }
     if (enableYSQL) {
       addTask(TaskType.UpdateConsistencyCheck, null);

@@ -355,7 +355,10 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
       size_t batch_number, int64_t batch_offset, std::vector<int64_t>* recent_offsets,
       const LogEntries& entries, const Status& status) const;
 
-  Result<std::shared_ptr<LWLogEntryBatchPB>> ReadEntryHeaderAndBatch(int64_t* offset);
+  // Returns status Busy if obey_memory_limit is set and there is insufficient memory to hold the
+  // batch.
+  Result<std::shared_ptr<LWLogEntryBatchPB>> ReadEntryHeaderAndBatch(
+      ObeyMemoryLimit obey_memory_limit, int64_t* offset);
 
   // Reads a log entry header from the segment.
   // Also increments the passed offset* by the length of the entry.
@@ -370,8 +373,11 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
 
   // Reads a log entry batch from the provided readable segment, which gets decoded
   // into 'entry_batch' and increments 'offset' by the batch's length.
+  //
+  // Returns status Busy if obey_memory_limit is set and there is insufficient memory to hold the
+  // batch.
   Result<std::shared_ptr<LWLogEntryBatchPB>> ReadEntryBatch(
-      int64_t *offset, const EntryHeader& header);
+      ObeyMemoryLimit obey_memory_limit, int64_t* offset, const EntryHeader& header);
 
   void UpdateReadableToOffset(int64_t readable_to_offset);
 

@@ -9,6 +9,8 @@ menu:
     name: Google Kubernetes Engine
     identifier: k8s-mc-gke-1
     weight: 628
+aliases:
+  - /stable/deploy/kubernetes/multi-cluster/gke
 type: docs
 ---
 
@@ -34,7 +36,7 @@ The YugabyteDB Helm chart has been tested with the following software versions:
 - GKE running Kubernetes 1.20 or later with nodes such that a total of 12 CPU cores and 45 GB RAM can be allocated to YugabyteDB. This can be three nodes with 4 CPU core and 15 GB RAM allocated to YugabyteDB. `n1-standard-8` is the minimum instance type that meets these criteria.
 - Helm 3.4 or later.
 - YugabyteDB Docker image (yugabytedb/yugabyte) 2.1.0 or later.
-- For optimal performance, ensure you have set the appropriate [system limits using `ulimit`](../../../../manual-deployment/system-config/#set-ulimits) on each node in your Kubernetes cluster.
+- For optimal performance, ensure you have set the appropriate [system configuration](../../../../manual-deployment/system-config/) on each node in your Kubernetes cluster.
 
 The following steps show how to meet these prerequisites:
 
@@ -498,7 +500,7 @@ kubectl exec -n yb-demo-us-west1-b --context gke_yugabyte_us-west1-b_yugabytedb1
 -it yb-tserver-0 -- ycqlsh yb-tserver-0.yb-tservers.yb-demo-us-west1-b
 ```
 
-Follow the instructions provided in [Explore YSQL](/preview/quick-start/explore/ysql/) and then browse to `http://<external-ip>:7000/tablet-servers` of the YB-Master Admin UI to confirm that tablet peers and their leaders are placed evenly across all three zones for both user data and system data, as per the following illustration:
+Follow the instructions provided in [Explore YSQL](/stable/quick-start/explore/ysql/) and then browse to `http://<external-ip>:7000/tablet-servers` of the YB-Master Admin UI to confirm that tablet peers and their leaders are placed evenly across all three zones for both user data and system data, as per the following illustration:
 
 ![mz-ybtserver](/images/deploy/kubernetes/gke-multicluster-ybtserver.png)
 

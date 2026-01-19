@@ -37,6 +37,7 @@ import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
+import org.yb.CommonTypes.YQLDatabase;
 import org.yb.client.ListSnapshotSchedulesResponse;
 import org.yb.client.ListSnapshotsResponse;
 import org.yb.client.SnapshotInfo;
@@ -80,7 +81,14 @@ public class SnapshotCleanupTest extends FakeDBApplication {
 
     UUID testSchedule_UUID = UUID.randomUUID();
     SnapshotScheduleInfo testScheduleInfo =
-        new SnapshotScheduleInfo(testSchedule_UUID, 3600, 3600, testScheduledSnapshotInfoList);
+        new SnapshotScheduleInfo(
+            testSchedule_UUID,
+            3600,
+            3600,
+            testScheduledSnapshotInfoList,
+            null,
+            null,
+            YQLDatabase.YQL_DATABASE_PGSQL);
     ListSnapshotSchedulesResponse mockSchedulesResponse = mock(ListSnapshotSchedulesResponse.class);
     when(mockYBClient.listSnapshotSchedules(isNull())).thenReturn(mockSchedulesResponse);
     when(mockSchedulesResponse.getSnapshotScheduleInfoList())

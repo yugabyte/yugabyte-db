@@ -1,4 +1,4 @@
--- Test yb_make_all_ddl_statements_incrementing GUC.
+-- Test yb_test_make_all_ddl_statements_incrementing GUC.
 -- All of the following DDL statements should increment current_version.
 \set template1_db_oid 1
 \set db_oid 'CASE WHEN (select count(*) from pg_yb_catalog_version) = 1 THEN :template1_db_oid ELSE (SELECT oid FROM pg_database WHERE datname = \'yugabyte\') END'
@@ -59,7 +59,7 @@ ALTER TABLE temp_to_drop_guc ADD COLUMN val int;
 DROP TABLE temp_to_drop_guc;
 :display_catalog_version;
 
--- Additional DDLs that should increment under yb_make_all_ddl_statements_incrementing=true.
+-- Additional DDLs that should increment under yb_test_make_all_ddl_statements_incrementing=true.
 CREATE OPERATOR ==# (
     LEFTARG = int,
     RIGHTARG = int,

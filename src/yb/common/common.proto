@@ -129,7 +129,7 @@ enum PgVectorDistanceType {
 
 enum PgVectorIndexType {
   UNKNOWN_IDX = 0;
-  DUMMY = 1;
+  DEPRECATED_DUMMY = 1;
   IVFFLAT = 2;
   HNSW = 3;
 }
@@ -290,11 +290,20 @@ message IndexInfoPB {
   optional WherePredicateSpecPB where_predicate_spec = 33;
 
   // When the backfill job on this index is cleared, this field is set to the number of indexed
-  // table rows processed by the backfill job. The (default) value is zero, otherwise.
+  // table rows read by the backfill job. The (default) value is zero, otherwise.
   // For partial indexes, this includes non-matching rows of the indexed table.
-  optional uint64 num_rows_processed_by_backfill_job = 34;
+  optional uint64 num_rows_read_from_table_for_backfill = 34;
 
   optional PgVectorIdxOptionsPB vector_idx_options = 35;
+
+  // When the backfill job on this index is cleared, this field is set to the number of rows
+  // inserted in the index by the backfill job.
+  // This field is used to initialize pg_class.reltuples for the index after the index is created.
+  // However, this only counts the tuples that were inserted in the index in backfill. This value
+  // may be stale because rows can be inserted in the table during concurrent backfill, and those
+  // are not included in this count. Moreover, after backfill is completed, this field is no longer
+  // updated.
+  optional double num_rows_backfilled_in_index = 36;
 }
 
 // The possible order modes for clients.
@@ -459,6 +468,11 @@ message TransactionMetadataPB {
 
   // Reserved for deprecated xcluster field external_transaction.
   reserved 8;
+
+  optional bool using_table_locks = 12;
+
+  // Stores hybrid time of first write batch of the transaction on a participating tablet.
+  optional fixed64 first_write_ht = 13;
 }
 
 // See ReadHybridTime for explation of this message.
@@ -736,6 +750,8 @@ message AshMetadataPB {
   optional int32 pid = 9;
   // PG database OID. This will be 0 for YCQL.
   optional uint32 database_id = 8;
+  // YSQL user OID. This field will not be set for YCQL.
+  optional uint32 user_id = 10;
 }
 
 // Some optional/additional fields that is collected in addition to the wait

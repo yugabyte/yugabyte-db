@@ -9,6 +9,8 @@ menu:
     identifier: large-datasets-1-ycql
     parent: benchmark
     weight: 7
+aliases:
+  - /benchmark/large-datasets/
 type: docs
 ---
 

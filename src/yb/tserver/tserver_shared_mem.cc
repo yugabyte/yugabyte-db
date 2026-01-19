@@ -183,7 +183,9 @@ class SharedExchangeHeader {
 
   void SignalStop() {
     state_.store(SharedExchangeState::kShutdown, std::memory_order_release);
-    WARN_NOT_OK(request_semaphore_.Post(), "SignalStop failed");
+    for (auto* semaphore : {&request_semaphore_, &response_semaphore_}) {
+      WARN_NOT_OK(semaphore->Post(), "SignalStop failed");
+    }
   }
 
  private:
@@ -465,10 +467,16 @@ SharedExchangeRunnable::SharedExchangeRunnable(
     : exchange_(exchange), session_id_(session_id), listener_(listener) {
 }
 
-Status SharedExchangeRunnable::Start(ThreadPool& thread_pool) {
-  RETURN_NOT_OK(thread_pool.Submit(shared_from_this()));
-  stop_latch_.Reset(1);
+Status SharedExchangeRunnable::Start(YBThreadPool& thread_pool) {
+  stop_future_ = stop_promise_.get_future();
+  if (!thread_pool.Enqueue(this)) {
+    return stop_future_.get();
+  }
   return Status::OK();
+}
+
+void SharedExchangeRunnable::Done(const Status& status) {
+  stop_promise_.set_value(status);
 }
 
 void SharedExchangeRunnable::Run() {
@@ -483,7 +491,6 @@ void SharedExchangeRunnable::Run() {
     }
     listener_(*query_size);
   }
-  stop_latch_.CountDown();
 }
 
 SharedExchangeRunnable::~SharedExchangeRunnable() {
@@ -492,13 +499,19 @@ SharedExchangeRunnable::~SharedExchangeRunnable() {
 }
 
 void SharedExchangeRunnable::StartShutdown() {
-  if (stop_latch_.count()) {
+  if (stop_future_.valid()) {
     exchange_.SignalStop();
   }
 }
 
 void SharedExchangeRunnable::CompleteShutdown() {
-  stop_latch_.Wait();
+  if (stop_future_.valid()) {
+    stop_future_.get();
+  }
+}
+
+bool SharedExchangeRunnable::ReadyToShutdown() const {
+  return !stop_future_.valid() || stop_future_.wait_for(0s) == std::future_status::ready;
 }
 
 class PgSessionSharedMemoryManager::Impl {

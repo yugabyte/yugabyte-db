@@ -73,7 +73,7 @@
 #include "yb/util/string_util.h"
 #include "yb/util/tostring.h"
 
-using yb::operator"" _KB;
+using yb::operator""_KB;
 
 DEFINE_RUNTIME_uint64(rocksdb_iterator_sequential_disk_reads_for_auto_readahead, 4,
     "Enable readahead when RocksDB iterator attempts to perform a configured number of sequential "
@@ -169,12 +169,12 @@ class NotMatchingFilterBlockReader : public FilterBlockReader {
   size_t ApproximateMemoryUsage() const override { return 0; }
 };
 
-InternalIterator* ReturnErrorIterator(const Status& status, BlockIter* input_iter) {
+BlockIter* ReturnErrorBlockIterator(const Status& status, BlockIter* input_iter) {
   if (input_iter != nullptr) {
     input_iter->SetStatus(status);
     return input_iter;
   } else {
-    return NewErrorInternalIterator(status);
+    return NewErrorBlockIterator(status);
   }
 }
 
@@ -319,12 +319,12 @@ struct BlockBasedTable::BlockRetrievalInfo {
 
 // BlockEntryIteratorState is used by TwoLevelIterator and MultiLevelIterator in order to check if
 // key prefix may match the filter of the SST file or to create a secondary iterator.
-class BlockBasedTable::BlockEntryIteratorState : public TwoLevelIteratorState {
+class BlockBasedTable::BlockEntryIteratorState : public TwoLevelBlockIteratorState {
  public:
   BlockEntryIteratorState(
       BlockBasedTable* table, const ReadOptions& read_options, bool skip_filters,
       BlockType block_type)
-      : TwoLevelIteratorState(table->rep_->ioptions.prefix_extractor != nullptr),
+      : TwoLevelBlockIteratorState(table->rep_->ioptions.prefix_extractor != nullptr),
         table_(table),
         read_options_(read_options),
         skip_filters_(skip_filters),
@@ -336,14 +336,14 @@ class BlockBasedTable::BlockEntryIteratorState : public TwoLevelIteratorState {
             : read_options.statistics ? read_options.statistics
                                       : table_->rep_->ioptions.statistics) {}
 
-  InternalIterator* NewSecondaryIterator(const Slice& index_value) override {
+  BlockIter* NewSecondaryIterator(const Slice& index_value) override {
     PERF_TIMER_GUARD(new_table_block_iter_nanos);
 
     BlockRetrievalInfo block_info;
     {
       auto status = table_->GetBlockRetrievalInfo(index_value, block_type_, &block_info);
       if (!status.ok()) {
-        return NewErrorInternalIterator(status);
+        return NewErrorBlockIterator(status);
       }
     }
     auto block_res = table_->GetBlockFromCache(read_options_, block_info);
@@ -419,7 +419,7 @@ class BlockBasedTable::BlockEntryIteratorState : public TwoLevelIteratorState {
     UpdateReadPattern(handle);
 
     if (!block_res.ok()) {
-      return NewErrorInternalIterator(block_res.status());
+      return NewErrorBlockIterator(block_res.status());
     }
 
     return table_->NewBlockIterator(
@@ -542,6 +542,8 @@ bool BloomFilterAwareFileFilter::Filter(
     const QueryOptions& options, Slice user_key, FilterKeyCache* filter_key_cache,
     TableReader* reader) const {
   auto table = down_cast<BlockBasedTable*>(reader);
+  auto* statistics = options.statistics ? options.statistics : table->rep_->ioptions.statistics;
+  StopWatchNano sw(table->rep_->ioptions.env, statistics, BLOOM_FILTER_TIME_NANOS);
   if (PREDICT_FALSE(table->rep_->filter_type != FilterType::kFixedSizeFilter)) {
     // For non fixed-size filters - take file into account. We are only using fixed-size bloom
     // filters for DocDB, so not need to support others.
@@ -1145,8 +1147,9 @@ FilterBlockReader* BlockBasedTable::ReadFilterBlock(const BlockHandle& filter_ha
   return nullptr;
 }
 
-Status BlockBasedTable::GetFixedSizeFilterBlockHandle(const Slice& filter_key,
-    BlockHandle* filter_block_handle) const {
+Status BlockBasedTable::GetFixedSizeFilterBlockHandle(
+    const Slice& filter_key, BlockHandle* filter_block_handle, Statistics* statistics) const {
+  StopWatchNano sw(rep_->ioptions.env, statistics, GET_FIXED_SIZE_FILTER_BLOCK_HANDLE_NANOS);
   // Determine block of fixed-size bloom filter using filter index. It is expected `NewIterator()`
   // is reusing `fiter` and not creating a new iterator (multi-level index case).
   BlockIter fiter;
@@ -1184,8 +1187,7 @@ Slice BlockBasedTable::GetFilterKeyFromUserKey(
 }
 
 BlockBasedTable::CachableEntry<FilterBlockReader> BlockBasedTable::GetFilter(
-    const QueryOptions& options,
-    const Slice* filter_key) const {
+    const QueryOptions& options, const Slice* filter_key) const {
   const bool is_fixed_size_filter = rep_->filter_type == FilterType::kFixedSizeFilter;
 
   // Key is required for fixed size filter.
@@ -1214,11 +1216,14 @@ BlockBasedTable::CachableEntry<FilterBlockReader> BlockBasedTable::GetFilter(
     return {};
   }
 
+  auto* statistics = options.statistics ? options.statistics : rep_->ioptions.statistics;
+
   const BlockHandle* filter_block_handle;
   // Determine filter block handle
   BlockHandle fixed_size_filter_block_handle;
   if (is_fixed_size_filter) {
-    Status s = GetFixedSizeFilterBlockHandle(*filter_key, &fixed_size_filter_block_handle);
+    Status s =
+        GetFixedSizeFilterBlockHandle(*filter_key, &fixed_size_filter_block_handle, statistics);
     if (s.ok()) {
       if (fixed_size_filter_block_handle.IsNull()) {
         // Key is beyond filter index - return stub filter.
@@ -1239,6 +1244,7 @@ BlockBasedTable::CachableEntry<FilterBlockReader> BlockBasedTable::GetFilter(
   }
 
   // Fetching from the cache
+  StopWatchNano sw(rep_->ioptions.env, statistics, GET_FILTER_BLOCK_FROM_CACHE_NANOS);
   char cache_key_buffer[block_based_table::kCacheKeyBufferSize];
   auto filter_block_cache_key = GetCacheKey(rep_->base_reader_with_cache_prefix->cache_key_prefix,
       *filter_block_handle, cache_key_buffer);
@@ -1362,7 +1368,7 @@ InternalIterator* BlockBasedTable::NewIndexIterator(
     const ReadOptions& read_options, BlockIter* input_iter) {
   const auto index_reader_result = GetIndexReader(read_options);
   if (!index_reader_result.ok()) {
-    return ReturnErrorIterator(index_reader_result.status(), input_iter);
+    return ReturnErrorBlockIterator(index_reader_result.status(), input_iter);
   }
 
   auto* new_iter = index_reader_result->value->NewIterator(
@@ -1465,7 +1471,7 @@ BlockBasedTable::ReadBlockFromFileAndMaybePutToCache(
     // Don't uncompress for now if we need to fill compressed block cache.
     // It will be uncompressed by PutDataBlockToCache.
     const auto skip_uncompress = ro.fill_cache && block_cache_compressed != nullptr;
-    StopWatch sw(rep_->ioptions.env, statistics, READ_BLOCK_GET_MICROS);
+    StopWatchMicro sw(rep_->ioptions.env, statistics, READ_BLOCK_GET_MICROS);
     RETURN_NOT_OK(block_based_table::ReadBlockFromFile(
         block_info.file_reader, rep_->footer, ro, block_info.handle, &raw_block, rep_->ioptions.env,
         rep_->mem_tracker, /* do_uncompress = */ !skip_uncompress));
@@ -1517,12 +1523,12 @@ size_t GetRestartBlockCacheCapacity(
 
 } // namespace
 
-InternalIterator* BlockBasedTable::NewBlockIterator(
+BlockIter* BlockBasedTable::NewBlockIterator(
     const ReadOptions& read_options, BlockBasedTable::CachableEntry<Block>* block,
     BlockType block_type, BlockIter* input_iter) {
   const auto restart_block_cache_capacity =
       GetRestartBlockCacheCapacity(read_options, rep_->table_options, block_type);
-  InternalIterator* iter = block->value->NewIterator(
+  auto* iter = block->value->NewIterator(
       rep_->comparator.get(), GetKeyValueEncodingFormat(block_type), input_iter,
       /* total_order_seek = */ true, restart_block_cache_capacity);
   if (block->cache_handle) {
@@ -1534,13 +1540,13 @@ InternalIterator* BlockBasedTable::NewBlockIterator(
   return iter;
 }
 
-InternalIterator* BlockBasedTable::NewBlockIterator(
+BlockIter* BlockBasedTable::NewBlockIterator(
     const ReadOptions& ro, const Slice index_value, BlockType block_type, BlockIter* input_iter) {
   PERF_TIMER_GUARD(new_table_block_iter_nanos);
 
   auto block = RetrieveBlock(ro, index_value, block_type);
   if (!block.ok()) {
-    return ReturnErrorIterator(block.status(), input_iter);
+    return ReturnErrorBlockIterator(block.status(), input_iter);
   }
 
   return NewBlockIterator(ro, block.get_ptr(), block_type, input_iter);
@@ -2192,15 +2198,24 @@ const ImmutableCFOptions& BlockBasedTable::ioptions() {
   return rep_->ioptions;
 }
 
-yb::Result<std::string> BlockBasedTable::GetMiddleKey() {
+Result<std::string> BlockBasedTable::GetIndexMiddleKey(Slice lower_bound_internal_key) {
+  // If a lower bound key is provided, find the middle key starting from that.
+  if (!lower_bound_internal_key.empty()) {
+    std::unique_ptr<DataBlockAwareIndexInternalIterator> index_iter(
+        NewDataBlockAwareIndexIterator(ReadOptions::kDefault));
+    return index_iter->GetMiddleKey(lower_bound_internal_key);
+  }
+
+  // If a lower bound key is not provided, find the middle key across all keys by retrieving the
+  // restart key at the middle position of the (top-level) index block.
   auto index_reader = VERIFY_RESULT(GetIndexReader(ReadOptions::kDefault));
+  auto middle_key = index_reader.value->GetMiddleKey();
+  index_reader.Release(rep_->table_options.block_cache.get());
+  return middle_key;
+}
 
-  // TODO: remove this trick after https://github.com/yugabyte/yugabyte-db/issues/4720 is resolved.
-  auto se = yb::ScopeExit([this, &index_reader] {
-    index_reader.Release(rep_->table_options.block_cache.get());
-  });
-
-  auto index_middle_key = index_reader.value->GetMiddleKey();
+yb::Result<std::string> BlockBasedTable::GetMiddleKey(Slice lower_bound_internal_key) {
+  Result<std::string> index_middle_key = GetIndexMiddleKey(lower_bound_internal_key);
   if (PREDICT_TRUE(index_middle_key.ok())) {
     // Seek to a nearest data block key is required as index may contain non-existent key
     std::unique_ptr<InternalIterator> iter(
@@ -2212,21 +2227,31 @@ yb::Result<std::string> BlockBasedTable::GetMiddleKey() {
     return iter->key().ToBuffer();
   }
 
-  // Incomplete status might mean number of block entries is 0 or 1. Let's check the last case and
-  // try to manually locate a data block and retrieve it's middle key.
   if (!index_middle_key.status().IsIncomplete()) {
     return index_middle_key.status().CloneAndPrepend(
         "Failed to locate a middle key in index SST file");
   }
 
+  // On Incomplete status, find the middle key by manually locating the sole data block in the SST.
+  // If a lower bound was not used (traditional algorithm), we reach here when the SST has only one
+  // data block (consequently the top-level index block has only one entry).
+  // If a lower bound was used, we reach here when the SST has only one data block with user keys
+  // in them. There may be several index levels and data blocks.
   std::unique_ptr<InternalIterator> index_iter(NewIndexIterator(ReadOptions::kDefault));
   RETURN_NOT_OK_PREPEND(index_iter->status(), "Index iterator creation failed");
-  index_iter->SeekToFirst();
+  if (!lower_bound_internal_key.empty()) {
+    index_iter->Seek(lower_bound_internal_key);
+  } else {
+    index_iter->SeekToFirst();
+  }
   RETURN_NOT_OK_PREPEND(index_iter->status(), "Failed to seek to first index entry");
   if (!index_iter->Valid()) {
     return STATUS(Incomplete, "Index iterator is not valid after SeekToFirst");
   }
 
+  // The middle key retrieved from the sole data block may be lesser than the lower bound (i.e., a
+  // DocDB system record) since the lower bound is not applied in the middle key determination
+  // below.
   auto data_block = VERIFY_RESULT(
       RetrieveBlock(ReadOptions::kDefault, index_iter->value(), BlockType::kData));
   auto middle_key_res = data_block.value->GetMiddleKey(

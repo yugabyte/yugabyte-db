@@ -17,6 +17,7 @@
 #include <string>
 #include <utility>
 
+#include <boost/algorithm/string/replace.hpp>
 #include <boost/preprocessor/seq/for_each.hpp>
 
 #include "yb/common/pgsql_error.h"
@@ -54,16 +55,6 @@ const MonoTime& PGPostgresEpoch() {
   // Jan 01 2000 00:00:00 GMT+0000
   static const auto result = MonoTime::FromDuration(946684800s);
   return result;
-}
-
-// Taken from <https://stackoverflow.com/a/24315631> by Gauthier Boaglio.
-void ReplaceAll(std::string* str, const std::string& from, const std::string& to) {
-  CHECK(str);
-  size_t start_pos = 0;
-  while ((start_pos = str->find(from, start_pos)) != std::string::npos) {
-    str->replace(start_pos, from.length(), to);
-    start_pos += to.length(); // Handles case where 'to' is a substring of 'from'
-  }
 }
 
 namespace {
@@ -139,6 +130,9 @@ std::string BuildConnectionString(const PGConnSettings& settings, bool mask_pass
   }
   if (!settings.replication.empty()) {
     result += Format(" replication=$0", PqEscapeLiteral(settings.replication));
+  }
+  if (settings.yb_auto_analyze) {
+    result += Format(" yb_auto_analyze=true");
   }
   return result;
 }
@@ -758,8 +752,8 @@ Result<std::string> ToString(const PGresult* result, int row, int column) {
 std::string PqEscapeLiteral(const std::string& input) {
   std::string output = input;
   // Escape certain characters.
-  ReplaceAll(&output, "\\", "\\\\");
-  ReplaceAll(&output, "'", "\\'");
+  boost::algorithm::replace_all(output, "\\", "\\\\");
+  boost::algorithm::replace_all(output, "'", "\\'");
   // Quote.
   output.insert(0, 1, '\'');
   output.push_back('\'');
@@ -774,7 +768,7 @@ std::string PqEscapeLiteral(const std::string& input) {
 std::string PqEscapeIdentifier(const std::string& input) {
   std::string output = input;
   // Escape certain characters.
-  ReplaceAll(&output, "\"", "\"\"");
+  boost::algorithm::replace_all(output, "\"", "\"\"");
   // Quote.
   output.insert(0, 1, '"');
   output.push_back('"');
@@ -863,7 +857,8 @@ PGConnPerf::~PGConnPerf() {
 
 PGConnBuilder CreateInternalPGConnBuilder(
     const HostPort& pgsql_proxy_bind_address, const std::string& database_name,
-    uint64_t postgres_auth_key, const std::optional<CoarseTimePoint>& deadline) {
+    uint64_t postgres_auth_key, const std::optional<CoarseTimePoint>& deadline,
+    bool yb_auto_analyze) {
   size_t connect_timeout = 0;
   if (deadline && *deadline != CoarseTimePoint::max()) {
     // By default, connect_timeout is 0, meaning infinite. 1 is automatically converted to 2, so set
@@ -880,7 +875,8 @@ PGConnBuilder CreateInternalPGConnBuilder(
        .dbname = database_name,
        .user = "postgres",
        .password = UInt64ToString(postgres_auth_key),
-       .connect_timeout = connect_timeout});
+       .connect_timeout = connect_timeout,
+       .yb_auto_analyze = yb_auto_analyze});
 }
 
 namespace libpq_utils::internal {

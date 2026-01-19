@@ -88,7 +88,7 @@ $ ulimit -n <value>
 
 {{< note title="Restart servers" >}}
 
-After changing a ulimit setting, the YB-Master and YB-TServer servers must be restarted in order for the new settings to take effect. Check the [yb-tserver.INFO](../start-tservers/#verify-health) file to verify that the ulimits are applied. You can also check the `/proc/<process pid>` file to see the current settings.
+If you change a ulimit setting on a node where the YB-Master and YB-TServer servers are already running, you must restart the servers for the new settings to take effect. Check the [yb-tserver.INFO](../start-masters/#verify-tserver-health) file to verify that the ulimits are applied. You can also check the `/proc/<process pid>` file to see the current settings.
 
 {{< /note >}}
 

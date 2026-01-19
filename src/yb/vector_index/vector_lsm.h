@@ -30,6 +30,7 @@
 #include "yb/util/status_callback.h"
 
 #include "yb/vector_index/vector_index_if.h"
+#include "yb/vector_index/vector_lsm_metrics.h"
 
 namespace yb::vector_index {
 
@@ -78,10 +79,11 @@ struct VectorLSMOptions {
   size_t vectors_per_chunk;
   rpc::ThreadPool* thread_pool;
   rpc::ThreadPool* insert_thread_pool;
-  PriorityThreadPool* compaction_thread_pool;
+  PriorityThreadPoolTokenPtr compaction_token;
   FrontiersFactory frontiers_factory;
   MergeFilterFactory vector_merge_filter_factory;
   std::string file_extension;
+  MetricEntityPtr metric_entity;
 };
 
 template<IndexableVectorType VectorType,
@@ -139,6 +141,9 @@ class VectorLSM {
   bool TEST_ObsoleteFilesCleanupInProgress() const;
   size_t TEST_NextManifestFileNo() const EXCLUDES(mutex_);
 
+  // Test helper method to get the size of the latest chunk (highest serial number).
+  uint64_t TEST_LatestChunkSize() const;
+
   DistanceResult Distance(const Vector& lhs, const Vector& rhs) const;
 
   // Utility method to correctly prepare Status instance in case of shutting down.
@@ -150,6 +155,10 @@ class VectorLSM {
 
   const std::string& StorageDir() const {
     return options_.storage_dir;
+  }
+
+  VectorLSMMetrics& metrics() const {
+    return *DCHECK_NOTNULL(metrics_.get());
   }
 
   struct MutableChunk;
@@ -274,8 +283,8 @@ class VectorLSM {
   // modifications (e.g. due to merging of chunks).
   ImmutableChunkPtrs immutable_chunks_ GUARDED_BY(mutex_);
 
-  std::unique_ptr<InsertRegistry> insert_registry_;
-  std::unique_ptr<MergeRegistry> merge_registry_;
+  std::shared_ptr<InsertRegistry> insert_registry_;
+  std::shared_ptr<MergeRegistry> merge_registry_;
 
   // May be changed if new manifest file is created (due to absence or compaction).
   size_t next_manifest_file_no_ = 0;
@@ -307,6 +316,8 @@ class VectorLSM {
   std::atomic<bool> obsolete_files_cleanup_in_progress_ = false;
 
   Status failed_status_ GUARDED_BY(mutex_);
+
+  std::unique_ptr<VectorLSMMetrics> metrics_;
 };
 
 template<template<class, class> class Factory, class VectorIndex>

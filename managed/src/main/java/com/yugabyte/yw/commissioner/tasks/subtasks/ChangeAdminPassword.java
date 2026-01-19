@@ -6,8 +6,6 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.YcqlQueryExecutor;
-import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.forms.DatabaseSecurityFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseTaskParams;
@@ -23,9 +21,6 @@ public class ChangeAdminPassword extends UniverseTaskBase {
   protected ChangeAdminPassword(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
   }
-
-  @Inject YsqlQueryExecutor ysqlQueryExecutor;
-  @Inject YcqlQueryExecutor ycqlQueryExecutor;
 
   // Parameters for marking universe update as a success.
   public static class Params extends UniverseTaskParams {

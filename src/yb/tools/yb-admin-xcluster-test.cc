@@ -875,15 +875,15 @@ TEST_F(XClusterAdminCliTest_Large, TestBootstrapProducerPerformance) {
     table_ids += "," + tables.at(i)->id();
   }
 
-  // Wait for load balancer to be idle until we call bootstrap_cdc_producer.
+  // Wait for cluster balancer to be idle until we call bootstrap_cdc_producer.
   // This prevents TABLET_DATA_TOMBSTONED errors when we make rpc calls.
-  // Todo: need to improve bootstrap behaviour with load balancer.
+  // Todo: need to improve bootstrap behaviour with cluster balancer.
   ASSERT_OK(WaitFor(
       [this, table_ids]() -> Result<bool> {
         return producer_cluster_client_->IsLoadBalancerIdle();
       },
       MonoDelta::FromSeconds(120 * kTimeMultiplier),
-      "Waiting for load balancer to be idle"));
+      "Waiting for cluster balancer to be idle"));
 
   // Add delays to all rpc calls to simulate live environment.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_yb_inbound_big_calls_parse_delay_ms) = 5;

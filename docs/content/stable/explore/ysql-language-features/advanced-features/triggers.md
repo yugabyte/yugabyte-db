@@ -7,6 +7,8 @@ menu:
     identifier: explore-ysql-language-features-triggers
     parent: advanced-features
     weight: 700
+aliases:
+  - /stable/explore/ysql-language-features/triggers/
 type: docs
 ---
 

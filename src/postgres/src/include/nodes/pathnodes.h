@@ -1279,6 +1279,20 @@ typedef struct YbPlanInfo
 } YbPlanInfo;
 
 /*
+ * YB: info used by YbIndexPathInfo.
+ *
+ * Holds info used for scalar array operation merge index [only] scans.
+ */
+typedef struct YbSaopMergeSaopColInfo
+{
+	NodeTag		type;
+	ScalarArrayOpExpr *saop;
+	int			indexcol;
+	int			num_elems;
+	bool		derived;
+} YbSaopMergeSaopColInfo;
+
+/*
  * Info propagated for YugabyteDB, for index scans.
  *
  * 'yb_lock_mechanism' indicates what kind of lock can or must be taken as part
@@ -1288,6 +1302,7 @@ typedef struct YbIndexPathInfo
 {
 	int			yb_distinct_prefixlen;
 	YbLockMechanism yb_lock_mechanism;	/* what lock as part of a scan */
+	List	   *saop_merge_saop_cols;	/* List of YbSaopMergeSaopColInfo */
 } YbIndexPathInfo;
 
 

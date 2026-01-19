@@ -269,6 +269,7 @@ func (prom Prometheus) Status() (common.Status, error) {
 		Version:    prom.version,
 		ConfigLoc:  prom.ConfFileLocation,
 		LogFileLoc: common.GetBaseInstall() + "/data/logs/prometheus.log",
+		BinaryLoc:  prom.PromDir,
 	}
 
 	// Set the systemd service file location if one exists

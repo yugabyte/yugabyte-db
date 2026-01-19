@@ -27,6 +27,8 @@ class Slice;
 
 namespace docdb {
 
+YB_STRONGLY_TYPED_BOOL(UpdateFilterKey);
+
 YB_DEFINE_ENUM(ReadKey, (kCurrent)(kNext));
 
 class YQLRowwiseIteratorIf {
@@ -77,7 +79,8 @@ class YQLRowwiseIteratorIf {
   virtual Slice GetRowKey() const;
 
   // Seeks to the given tuple by its id. See DocRowwiseIterator for details.
-  virtual void SeekTuple(Slice tuple_id);
+  virtual void SeekTuple(
+      Slice tuple_id, UpdateFilterKey update_filter_key = UpdateFilterKey::kTrue);
 
   // Seeks to first record after specified doc_key_prefix. Also accepts RocksDB-shortened doc key
   // (which could have last byte incremented, see rocksdb::ShortenedIndexBuilder).
@@ -86,10 +89,6 @@ class YQLRowwiseIteratorIf {
   virtual void SeekToDocKeyPrefix(Slice doc_key_prefix);
 
   virtual Result<bool> FetchTuple(Slice tuple_id, qlexpr::QLTableRow* row);
-
-  // Directly fetch entry from underlying iterator for specified key. Returns empty slice when entry
-  // not found.
-  virtual Result<Slice> FetchDirect(Slice key);
 
  protected:
   virtual Result<bool> DoFetchNext(

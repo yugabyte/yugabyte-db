@@ -232,3 +232,10 @@ ALTER TABLE fk ADD FOREIGN KEY (a) REFERENCES pk; -- should fail due to FK const
 BEGIN;
 SELECT * from pk;
 COMMIT;
+
+-- verify error message for alter primary key index change owner
+CREATE TABLE yb_foo(id INT, PRIMARY KEY(id));
+ALTER INDEX yb_foo_pkey OWNER TO postgres;
+-- for temp table we get same error as in PG
+CREATE TEMP TABLE pg_foo(id INT, PRIMARY KEY(id));
+ALTER INDEX pg_foo_pkey OWNER TO postgres;

@@ -15,6 +15,7 @@
 
 #include "yb/common/ql_type.h"
 
+#include "yb/dockv/doc_key.h"
 #include "yb/dockv/value_type.h"
 
 #include "yb/util/logging.h"
@@ -152,6 +153,17 @@ void DocReadContext::UpdateKeyPrefix() {
   } else {
     upperbound_buffer_[upperbound_len_++] = dockv::KeyEntryTypeAsChar::kHighest;
   }
+}
+
+Result<bool> DocReadContext::HaveEqualBloomFilterKey(Slice lhs, Slice rhs) const {
+  return dockv::HashedOrFirstRangeComponentsEqual(lhs, rhs);
+}
+
+size_t DocReadContext::NumColumnsUsedByBloomFilterKey() const {
+  // If there are hash columns, when we include hash code, otherwise bloom filter
+  // pick the first range component.
+  // So num columns used by bloom filter always num hash columns + 1.
+  return schema_.num_hash_key_columns() + 1;
 }
 
 DocReadContext DocReadContext::TEST_Create(const Schema& schema) {

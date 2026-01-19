@@ -87,7 +87,7 @@ class TSLocalLockManager {
   //
   // There is no 1:1 mapping that exists among lock and unlock requests. A txn can acquire different
   // lock modes on a key multiple times, and will unlock them all with a single unlock rpc.
-  Status ReleaseObjectLocks(
+  Result<docdb::TxnBlockedTableLockRequests> ReleaseObjectLocks(
       const tserver::ReleaseObjectLockRequestPB& req, CoarseTimePoint deadline);
 
   void TrackDeadlineForGlobalAcquire(
@@ -101,6 +101,7 @@ class TSLocalLockManager {
   void Start(docdb::LocalWaitingTxnRegistry* waiting_txn_registry);
 
   void Shutdown();
+  void StartShutdown();
 
   void DumpLocksToHtml(std::ostream& out);
 

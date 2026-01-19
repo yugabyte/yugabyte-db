@@ -87,7 +87,7 @@ var createReleaseCmd = &cobra.Command{
 
 		var sha256 string
 
-		if len(strings.TrimSpace(fileID)) != 0 {
+		if !util.IsEmptyString(fileID) {
 			sha256, err = cmd.Flags().GetString("sha256")
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -120,12 +120,11 @@ var createReleaseCmd = &cobra.Command{
 
 		rCreate, response, err := authAPI.CreateNewRelease().Release(req).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Release", "Create")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Release", "Create")
 		}
 
 		resourceUUID := rCreate.GetResourceUUID()
-		if len(strings.TrimSpace(resourceUUID)) == 0 {
+		if util.IsEmptyString(resourceUUID) {
 			logrus.Fatalf(
 				formatter.Colorize(
 					"An error occurred while adding YugabyteDB version.\n",
@@ -136,17 +135,14 @@ var createReleaseCmd = &cobra.Command{
 
 		rGet, response, err := authAPI.GetNewRelease(resourceUUID).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"Release",
-				"Create - Get Release",
-			)
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Release", "Create - Get Release")
 		}
 
-		r := make([]ybaclient.ResponseRelease, 0)
-		r = append(r, rGet)
+		r := util.CheckAndAppend(
+			make([]ybaclient.ResponseRelease, 0),
+			rGet,
+			"An error occurred while adding YugabyteDB version",
+		)
 
 		releaseCtx := formatter.Context{
 			Command: "create",

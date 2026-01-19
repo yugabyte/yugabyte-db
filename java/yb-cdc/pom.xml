@@ -5,7 +5,7 @@
   <parent>
     <groupId>org.yb</groupId>
     <artifactId>yb-parent</artifactId>
-    <version>0.8.108-SNAPSHOT</version>
+    <version>0.8.109-SNAPSHOT</version>
   </parent>
   <artifactId>yb-cdc</artifactId>
   <name>YB CDC Connector</name>
@@ -108,7 +108,7 @@
     <dependency>
       <groupId>com.yugabyte</groupId>
       <artifactId>jdbc-yugabytedb</artifactId>
-      <version>42.3.5-yb-1</version>
+      <version>42.7.3-yb-4</version>
     </dependency>
     <dependency>
       <groupId>${junit.groupId}</groupId>

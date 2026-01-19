@@ -171,12 +171,14 @@ public class CertsRotateKubernetesUpgrade extends KubernetesUpgradeTaskBase {
       for (UniverseDefinitionTaskParams.Cluster cluster : universe.getUniverseDetails().clusters) {
         Set<NodeDetails> tservers =
             universe.getTserversInCluster(cluster.uuid).stream().collect(Collectors.toSet());
-        installYbcOnThePods(
-            tservers,
-            cluster.clusterType.equals(ClusterType.ASYNC),
-            stableYbcVersion,
-            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybcFlags);
-        performYbcAction(tservers, false, "stop");
+        if (!universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseYbdbInbuiltYbc()) {
+          installYbcOnThePods(
+              tservers,
+              cluster.clusterType.equals(ClusterType.ASYNC),
+              stableYbcVersion,
+              universe.getUniverseDetails().getPrimaryCluster().userIntent.ybcFlags);
+          performYbcAction(tservers, false, "stop");
+        }
         createWaitForYbcServerTask(tservers);
       }
     }

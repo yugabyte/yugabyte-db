@@ -217,13 +217,12 @@ TEST_F_EX(ExternalMiniClusterSecureTest, InsecureCql, ExternalMiniClusterSecureA
 class ExternalMiniClusterSecureWithClientCertsTest : public ExternalMiniClusterSecureTest {
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_node_to_node_encryption_use_client_certificates) = true;
-    // TODO: enable ysql after #26138 is fixed
     ExternalMiniClusterSecureTest::SetUp();
   }
 
   ExternalMiniClusterOptions CreateExternalMiniClusterOptions() override {
     auto opts = ExternalMiniClusterSecureTest::CreateExternalMiniClusterOptions();
-    opts.enable_ysql = false;
+    opts.enable_ysql = true;
     return opts;
   }
 };

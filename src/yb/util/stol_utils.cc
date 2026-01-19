@@ -23,7 +23,7 @@ namespace yb {
 
 namespace {
 
-Status CreateInvalid(Slice input, int err = 0, const char* type_name = "") {
+Status StatusForInvalidNumber(Slice input, int err, const char* type_name) {
   auto message = Format("$0 is not a valid number", input.ToDebugString());
   if (*type_name) {
     message += Format(" for type $0", type_name);
@@ -35,62 +35,66 @@ Status CreateInvalid(Slice input, int err = 0, const char* type_name = "") {
   return STATUS(InvalidArgument, message);
 }
 
-Status CheckNotSpace(Slice slice) {
-  if (slice.empty() || isspace(*slice.cdata())) {
+template <class T>
+std::enable_if_t<std::is_integral_v<T>, std::from_chars_result> FromCharsHelper(
+    Slice input, T& result, int base = 10) {
+  return std::from_chars(input.cdata(), input.cend(), result, base);
+}
+
+// TODO All helpers could be removed when libc++ will support std::from_chars for floats
+template <class T>
+std::enable_if_t<std::is_same_v<T, long double>, std::from_chars_result> FromCharsHelper(
+    Slice input, T& result) {
+  if (input.empty() || isspace(*input.cdata())) {
     // disable skip of spaces.
-    return CreateInvalid(slice);
+    return {input.cdata(), std::errc::invalid_argument};
   }
-  return Status::OK();
-}
-
-template <typename T, typename StrToT>
-Result<T> CheckedSton(Slice slice, StrToT str_to_t) {
-  RETURN_NOT_OK(CheckNotSpace(slice));
-  if constexpr (std::is_floating_point_v<T>) {
-    auto maybe_special_value = TryParsingNonNumberValue<T>(slice);
-    if (maybe_special_value) {
-      return *maybe_special_value;
-    }
+  auto maybe_special_value = TryParsingNonNumberValue<T>(input);
+  if (maybe_special_value) {
+    result = *maybe_special_value;
+    return {input.cend(), std::errc{}};
   }
-
-  char* str_end;
+  // Ensure input is zero terminated.
+  std::string input_copy(input);
+  char* end;
   errno = 0;
-  T result = str_to_t(slice.cdata(), &str_end);
-  // Check errno.
-  if (errno != 0) {
-    return CreateInvalid(slice, errno, typeid(T).name());
-  }
-  if constexpr (std::is_unsigned<T>::value) {
-    // Do not allow any minus signs for unsigned types.
-    for (auto* p = slice.cdata(); p != str_end; ++p) {
-      if (*p == '-') {
-        return CreateInvalid(slice, /* err= */ 0, typeid(T).name());
-      }
-    }
-  }
-  // Check that entire string was processed.
-  if (str_end != slice.cend()) {
-    return CreateInvalid(slice, /* err= */ 0, typeid(T).name());
-  }
-
-  return result;
+  result = std::strtold(input_copy.c_str(), &end);
+  return std::from_chars_result{
+    .ptr = input.cdata() + (end - input_copy.c_str()),
+    .ec = static_cast<std::errc>(errno),
+  };
 }
 
-} // Anonymous namespace
+template <class T, class... Args>
+Result<T> CheckedSton(Slice input, Args&&... args) {
+  T result;
+  auto [ptr, ec] = FromCharsHelper(input, result, std::forward<Args>(args)...);
+  if (ec == std::errc{} && ptr == input.cend()) { // NOLINT
+    return result;
+  }
+  return StatusForInvalidNumber(input, std::to_underlying(ec), typeid(T).name());
+}
+
+} // namespace
 
 Result<int64_t> CheckedStoll(Slice slice) {
-  return CheckedSton<int64_t>(slice, std::bind(&std::strtoll, _1, _2, 10));
+  return CheckedSton<int64_t>(slice);
 }
 
-Result<uint64_t> CheckedStoull(Slice slice) {
-  return CheckedSton<uint64_t>(slice, std::bind(&std::strtoull, _1, _2, 10));
+Result<uint64_t> CheckedStoull(Slice slice, int base) {
+  return CheckedSton<uint64_t>(slice, base);
+}
+
+Result<uint32_t> CheckedStoul(Slice slice, int base) {
+  return CheckedSton<uint32_t>(slice, base);
 }
 
 Result<int64_t> DoCheckedStol(Slice value, int64_t*) { return CheckedStoll(value); }
 Result<uint64_t> DoCheckedStol(Slice value, uint64_t*) { return CheckedStoull(value); }
+Result<uint64_t> DoCheckedStol(Slice value, uint32_t*) { return CheckedStoul(value); }
 
 Result<long double> CheckedStold(Slice slice) {
-  return CheckedSton<long double>(slice, std::strtold);
+  return CheckedSton<long double>(slice);
 }
 
 } // namespace yb

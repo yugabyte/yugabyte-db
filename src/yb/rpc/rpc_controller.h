@@ -157,6 +157,7 @@ class RpcController {
   int32_t call_id() const;
 
   CallResponsePtr response() const;
+  RefCntBuffer data_holder() const;
 
   Result<CallResponsePtr> CheckedResponse() const;
 

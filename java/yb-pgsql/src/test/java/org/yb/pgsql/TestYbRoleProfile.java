@@ -31,7 +31,6 @@ import java.util.regex.Pattern;
 import org.junit.After;
 import org.junit.Assume;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
@@ -226,6 +225,9 @@ public class TestYbRoleProfile extends BasePgSQLTest {
 
   @After
   public void cleanup() throws Exception {
+    if (connection == null) {
+      return;
+    }
     try (Statement stmt = connection.createStatement()) {
       /* Cleanup fails if the tables don't exist. */
       boolean profile_exists = stmt.executeQuery("SELECT 1 FROM pg_class WHERE" +

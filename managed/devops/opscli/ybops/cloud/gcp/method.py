@@ -111,10 +111,15 @@ class GcpCreateRootVolumesMethod(CreateRootVolumesMethod):
         self.create_method = GcpCreateInstancesMethod(base_command)
 
     def create_master_volume(self, args):
+        if args.instance_type is None:
+            raise YBOpsRuntimeError("instance_type is required for boot disk type selection."
+                                    " Please define it using --instance_type argument.")
         name = args.search_pattern[:63] if len(args.search_pattern) > 63 else args.search_pattern
+        deviceType = self.cloud.get_admin()._get_boot_disk_type(args.zone, args.instance_type)
         res = self.cloud.get_admin().create_disk(args.zone, args.instance_tags, body={
             "name": name,
             "sizeGb": args.boot_disk_size_gb,
+            "type": deviceType,
             "sourceImage": args.machine_image})
         return res["targetLink"]
 

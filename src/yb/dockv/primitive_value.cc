@@ -214,7 +214,7 @@ std::string FrozenToString(const FrozenContainer& frozen) {
 // (1) in Postgres kCollString means a collation encoded string;
 // (2) in both YCQL and Redis kCollString is a synonym for kString so it is also correct;
 inline bool IsCollationEncodedString(Slice val) {
-  return !val.empty() && val[0] == '\0';
+  return val.starts_with('\0');
 }
 
 template <class Name>
@@ -283,6 +283,358 @@ void AppendEncodedVector(
   for (auto entry : v) {
     writer(out, entry);
   }
+}
+
+class StringAppender {
+ public:
+  StringAppender(Arena& arena, size_t length)
+      : arena_(arena), buffer_(arena_.LockBytes(1 + length + 2)),
+        out_(buffer_.mutable_data()) {
+  }
+
+  void Start(KeyEntryType type) {
+    *out_++ = static_cast<char>(type);
+  }
+
+  Slice Complete() {
+    Slice result(buffer_.data(), out_);
+    arena_.ConsumeBytes(result.size());
+    return result;
+  }
+
+  void append(const char* begin, const char* end) {
+    auto size = end - begin;
+    if (PREDICT_FALSE(buffer_.end() - out_ < size)) {
+      auto used_bytes = out_ - buffer_.data();
+      auto new_buffer = arena_.LockBytes(used_bytes + size);
+      memcpy(new_buffer.mutable_data(), buffer_.data(), used_bytes);
+      buffer_ = new_buffer;
+      out_ = buffer_.mutable_data() + used_bytes;
+    }
+    memcpy(out_, begin, size);
+    out_ += size;
+  }
+
+  void push_back(char ch) {
+    append(&ch, &ch + 1);
+  }
+
+  uint8_t* SuffixStart(size_t bytes) const {
+    return out_ - bytes;
+  }
+
+ private:
+  Arena& arena_;
+  Slice buffer_;
+  uint8_t* out_;
+};
+
+class ArenaAppender {
+ public:
+  explicit ArenaAppender(Arena& arena) : arena_(arena) {}
+
+  ArenaAppender* Bind(KeyEntryType type) {
+    type_ = type;
+    return this;
+  }
+
+  void TypeOnly(KeyEntryType type) {
+    auto out = static_cast<uint8_t*>(arena_.AllocateBytes(1));
+    *out = static_cast<uint8_t>(type);
+    result_ = Slice(out, 1);
+  }
+
+  void append(const char* buf, size_t size) {
+    auto out = static_cast<uint8_t*>(arena_.AllocateBytes(size + 1));
+    *out = static_cast<uint8_t>(type_);
+    memcpy(out + 1, buf, size);
+    result_ = Slice(out, size + 1);
+  }
+
+  Slice result() const {
+    return result_;
+  }
+
+  void AppendInt32(int32_t value, SortOrder sort_order) {
+    switch (sort_order) {
+      case SortOrder::kAscending:
+        util::AppendInt32ToKey(value, Bind(KeyEntryType::kInt32));
+        break;
+      case SortOrder::kDescending:
+        util::AppendInt32ToKey(~value, Bind(KeyEntryType::kInt32Descending));
+        break;
+    }
+  }
+
+  void AppendUInt32(uint32_t value, SortOrder sort_order) {
+    switch (sort_order) {
+      case SortOrder::kAscending:
+        util::AppendBigEndianUInt32(value, Bind(KeyEntryType::kUInt32));
+        break;
+      case SortOrder::kDescending:
+        util::AppendBigEndianUInt32(~value, Bind(KeyEntryType::kUInt32Descending));
+        break;
+    }
+  }
+
+  void AppendInt64(
+      int64_t value, SortOrder sort_order, KeyEntryType asc_type, KeyEntryType desc_type) {
+    switch (sort_order) {
+      case SortOrder::kAscending:
+        util::AppendInt64ToKey(value, Bind(asc_type));
+        break;
+      case SortOrder::kDescending:
+        util::AppendInt64ToKey(~value, Bind(desc_type));
+        break;
+    }
+  }
+
+  void AppendBigNumber(
+      Slice value, SortOrder sort_order, KeyEntryType asc_type, KeyEntryType desc_type) {
+    auto value_size = value.size();
+    auto start = pointer_cast<char*>(arena_.AllocateBytes(value_size + 1));
+    auto out = start;
+    switch (sort_order) {
+      case SortOrder::kAscending:
+        *out++ = static_cast<char>(asc_type);
+        memcpy(out, value.data(), value_size);
+        break;
+      case SortOrder::kDescending:
+        *out++ = static_cast<char>(desc_type);
+        if (value.starts_with('\x80')) {
+          *out = 0x80;
+          value_size = 1;
+        } else {
+          for (char ch : boost::make_iterator_range(value.data(), value.end())) {
+            *out++ = ~ch;
+          }
+        }
+        break;
+    }
+    result_ = Slice(start, value_size + 1);
+  }
+
+  void AppendString(
+      Slice value, SortOrder sort_order, KeyEntryType asc_type, KeyEntryType desc_type) {
+    StringAppender appender(arena_, value.size());
+    switch (sort_order) {
+      case SortOrder::kAscending:
+        appender.Start(asc_type);
+        ZeroEncodeAndAppendStrToKey(value, appender);
+        break;
+      case SortOrder::kDescending:
+        appender.Start(desc_type);
+        ComplementZeroEncodeAndAppendStrToKey(value, appender);
+        break;
+    }
+    result_ = appender.Complete();
+  }
+
+  template<class Elems>
+  void AppendFrozen(const Elems& elems, SortOrder sort_order, SortingType sorting_type);
+
+  void AppendGinNull(uint32_t gin_null) {
+    char buf[2] = {KeyEntryTypeAsChar::kGinNull, narrow_cast<char>(gin_null)};
+    result_ = arena_.DupSlice(Slice(buf, sizeof(buf)));
+  }
+
+ private:
+  Arena& arena_;
+  KeyEntryType type_;
+  Slice result_;
+};
+
+template <class PB>
+Slice EncodedKeyEntryValueImpl(Arena& arena, const PB& value, SortingType sorting_type) {
+  const auto sort_order = SortOrderFromColumnSchemaSortingType(sorting_type);
+
+  ArenaAppender appender(arena);
+
+  switch (value.value_case()) {
+    case QLValuePB::kInt8Value:
+      appender.AppendInt32(value.int8_value(), sort_order);
+      break;
+    case QLValuePB::kInt16Value:
+      appender.AppendInt32(value.int16_value(), sort_order);
+      break;
+    case QLValuePB::kInt32Value:
+      appender.AppendInt32(value.int32_value(), sort_order);
+      break;
+    case QLValuePB::kInt64Value:
+      appender.AppendInt64(
+          value.int64_value(), sort_order, KeyEntryType::kInt64, KeyEntryType::kInt64Descending);
+      break;
+    case QLValuePB::kUint32Value:
+      appender.AppendUInt32(value.uint32_value(), sort_order);
+      break;
+    case QLValuePB::kUint64Value:
+      switch (sort_order) {
+        case SortOrder::kAscending:
+          util::AppendBigEndianUInt64(value.uint64_value(), appender.Bind(KeyEntryType::kUInt64));
+          break;
+        case SortOrder::kDescending:
+          util::AppendBigEndianUInt64(
+              ~value.uint64_value(), appender.Bind(KeyEntryType::kUInt64Descending));
+          break;
+      }
+      break;
+    case QLValuePB::kFloatValue:
+      util::AppendFloatToKey(
+          util::CanonicalizeFloat(value.float_value()),
+          appender.Bind(SELECT_VALUE_TYPE(Float, sort_order)),
+          sort_order == SortOrder::kDescending);
+      break;
+    case QLValuePB::kDoubleValue:
+      util::AppendDoubleToKey(
+          util::CanonicalizeDouble(value.double_value()),
+          appender.Bind(SELECT_VALUE_TYPE(Double, sort_order)),
+          sort_order == SortOrder::kDescending);
+      break;
+    case QLValuePB::kDecimalValue:
+      appender.AppendBigNumber(
+          value.decimal_value(), sort_order, KeyEntryType::kDecimal,
+          KeyEntryType::kDecimalDescending);
+      break;
+    case QLValuePB::kVarintValue:
+      appender.AppendBigNumber(
+          value.varint_value(), sort_order, KeyEntryType::kVarInt, KeyEntryType::kVarIntDescending);
+      break;
+    case QLValuePB::kStringValue:
+      if (sorting_type != SortingType::kNotSpecified
+              && IsCollationEncodedString(value.string_value())) {
+        appender.AppendString(value.string_value(), sort_order, KeyEntryType::kCollString,
+                              KeyEntryType::kCollStringDescending);
+      } else {
+        appender.AppendString(value.string_value(), sort_order, KeyEntryType::kString,
+                              KeyEntryType::kStringDescending);
+      }
+      break;
+    case QLValuePB::kBinaryValue:
+      appender.AppendString(value.binary_value(), sort_order, KeyEntryType::kString,
+                            KeyEntryType::kStringDescending);
+      break;
+    case QLValuePB::kBoolValue:
+      appender.TypeOnly(sort_order == SortOrder::kDescending
+                            ? (value.bool_value() ? KeyEntryType::kTrueDescending
+                                                  : KeyEntryType::kFalseDescending)
+                            : (value.bool_value() ? KeyEntryType::kTrue
+                                                  : KeyEntryType::kFalse));
+      break;
+    case QLValuePB::kTimestampValue:
+      appender.AppendInt64(
+          QLValue::timestamp_value_pb(value), sort_order, KeyEntryType::kTimestamp,
+          KeyEntryType::kTimestampDescending);
+      break;
+    case QLValuePB::kDateValue:
+      appender.AppendUInt32(value.date_value(), sort_order);
+      break;
+    case QLValuePB::kTimeValue:
+      appender.AppendInt64(
+          value.time_value(), sort_order, KeyEntryType::kInt64, KeyEntryType::kInt64Descending);
+      break;
+    case QLValuePB::kInetaddressValue:
+      appender.AppendString(QLValue::inetaddress_value_pb(value), sort_order,
+                            KeyEntryType::kInetaddress, KeyEntryType::kInetaddressDescending);
+      break;
+    case QLValuePB::kUuidValue:
+      appender.AppendString(
+          Uuid::TryFullyDecode(QLValue::uuid_value_pb(value)).EncodedToComparable(), sort_order,
+          KeyEntryType::kUuid, KeyEntryType::kUuidDescending);
+      break;
+    case QLValuePB::kTimeuuidValue:
+      appender.AppendString(
+          Uuid::TryFullyDecode(QLValue::timeuuid_value_pb(value)).EncodedToComparable(), sort_order,
+          KeyEntryType::kUuid, KeyEntryType::kUuidDescending);
+      break;
+    case QLValuePB::kFrozenValue:
+      appender.AppendFrozen(value.frozen_value().elems(), sort_order, sorting_type);
+      break;
+    case QLValuePB::kVirtualValue:
+      appender.TypeOnly(VirtualValueToKeyEntryType(value.virtual_value()));
+      break;
+    case QLValuePB::kGinNullValue:
+      appender.AppendGinNull(value.gin_null_value());
+      break;
+    case QLValuePB::kBsonValue:
+      appender.AppendString(
+          value.bson_value(), sort_order, KeyEntryType::kBson, KeyEntryType::kBsonDescending);
+      break;
+
+    case QLValuePB::VALUE_NOT_SET:
+      appender.TypeOnly(NullKeyEntryType(sorting_type));
+      break;
+
+    case QLValuePB::kJsonbValue: [[fallthrough]];
+    case QLValuePB::kMapValue: [[fallthrough]];
+    case QLValuePB::kSetValue: [[fallthrough]];
+    case QLValuePB::kListValue: [[fallthrough]];
+    case QLValuePB::kTupleValue:
+      break;
+  }
+
+  if (appender.result().empty()) {
+    FATAL_INVALID_ENUM_VALUE(QLValuePB::ValueCase, value.value_case());
+  }
+
+  {
+    auto temp = KeyEntryValue::FromQLValuePBForKey(value, sorting_type);
+    KeyBytes temp_buffer;
+    temp.AppendToKey(&temp_buffer);
+    CHECK_EQ(temp_buffer.AsSlice(), appender.result()) << value.ShortDebugString();
+  }
+
+  return appender.result();
+}
+
+template<class Elems>
+void ArenaAppender::AppendFrozen(
+    const Elems& elems, SortOrder sort_order, SortingType sorting_type) {
+  char key_type;
+  char null_type;
+  char group_end_type;
+  switch (sort_order) {
+    case SortOrder::kAscending:
+      key_type = KeyEntryTypeAsChar::kFrozen;
+      null_type = KeyEntryTypeAsChar::kNullLow;
+      group_end_type = KeyEntryTypeAsChar::kGroupEnd;
+      break;
+    case SortOrder::kDescending:
+      key_type = KeyEntryTypeAsChar::kFrozenDescending;
+      null_type = KeyEntryTypeAsChar::kNullHigh;
+      group_end_type = KeyEntryTypeAsChar::kGroupEndDescending;
+      break;
+  }
+  boost::container::small_vector<Slice, 0x10> slices;
+  slices.reserve(elems.size() + 2);
+  slices.push_back(arena_.DupSlice(Slice(&key_type, 1)));
+  for (const auto& elem : elems) {
+    if (IsNull(elem)) {
+      slices.push_back(arena_.DupSlice(Slice(&null_type, 1)));
+    } else {
+      slices.push_back(EncodedKeyEntryValueImpl(arena_, elem, sorting_type));
+    }
+  }
+  slices.push_back(arena_.DupSlice(Slice(&group_end_type, 1)));
+  size_t total_size = 0;
+  bool continuous = true;
+  const auto* prev_stop = slices.front().data();
+  for (const auto& slice : slices) {
+    total_size += slice.size();
+    continuous = continuous && prev_stop == slice.data();
+    prev_stop = slice.end();
+  }
+  if (continuous) {
+    result_ = Slice(slices.front().data(), total_size);
+    return;
+  }
+  result_ = arena_.LockBytes(total_size);
+  auto out = result_.mutable_data();
+  for (const auto& slice : slices) {
+    slice.CopyTo(out);
+    out += slice.size();
+  }
+  arena_.ConsumeBytes(total_size);
+  result_ = result_.Prefix(total_size);
 }
 
 } // anonymous namespace
@@ -552,19 +904,13 @@ void KeyEntryValue::AppendToKey(KeyBytes* key_bytes) const {
     case KeyEntryType::kExternalTransactionId: FALLTHROUGH_INTENDED;
     case KeyEntryType::kTransactionId: FALLTHROUGH_INTENDED;
     case KeyEntryType::kTableId: FALLTHROUGH_INTENDED;
-    case KeyEntryType::kUuid: {
-      std::string bytes;
-      uuid_val_.EncodeToComparable(&bytes);
-      key_bytes->AppendString(bytes);
+    case KeyEntryType::kUuid:
+      key_bytes->AppendString(uuid_val_.EncodedToComparable());
       return;
-    }
 
-    case KeyEntryType::kUuidDescending: {
-      std::string bytes;
-      uuid_val_.EncodeToComparable(&bytes);
-      key_bytes->AppendDescendingString(bytes);
+    case KeyEntryType::kUuidDescending:
+      key_bytes->AppendDescendingString(uuid_val_.EncodedToComparable());
       return;
-    }
 
     case KeyEntryType::kArrayIndex:
       key_bytes->AppendInt64(int64_val_);
@@ -846,6 +1192,10 @@ void AppendEncodedValue(const QLValuePB& value, std::string* out) {
 }
 
 void AppendEncodedValue(const LWQLValuePB& value, ValueBuffer* out) {
+  DoAppendEncodedValue(value, out);
+}
+
+void AppendEncodedValue(const LWQLValuePB& value, std::string* out) {
   DoAppendEncodedValue(value, out);
 }
 
@@ -2018,10 +2368,7 @@ PrimitiveValue::~PrimitiveValue() {
 }
 
 KeyEntryValue KeyEntryValue::NullValue(SortingType sorting) {
-  return KeyEntryValue(
-      sorting == SortingType::kAscendingNullsLast || sorting == SortingType::kDescendingNullsLast
-      ? KeyEntryType::kNullHigh
-      : KeyEntryType::kNullLow);
+  return KeyEntryValue(NullKeyEntryType(sorting));
 }
 
 bool PrimitiveValue::IsPrimitive() const {
@@ -2037,7 +2384,7 @@ bool PrimitiveValue::IsTombstoneOrPrimitive() const {
 }
 
 bool KeyEntryValue::IsInfinity() const {
-  return type_ == KeyEntryType::kHighest || type_ == KeyEntryType::kLowest;
+  return dockv::IsInfinity(type_);
 }
 
 bool PrimitiveValue::IsInt64() const {
@@ -3259,6 +3606,38 @@ Status ConsumeKeyEntryType(Slice& slice, KeyEntryType key_entry_type) {
 
 Status ConsumeValueEntryType(Slice& slice, ValueEntryType value_entry_type) {
   return ConsumeEntryType(slice, value_entry_type);
+}
+
+Slice KeyEntryValueAsSliceFactory::operator()(dockv::KeyEntryType type) const {
+  return arena.DupSlice(Slice(pointer_cast<char*>(&type), 1));
+}
+
+Slice EncodedKeyEntryValue(Arena& arena, const QLValuePB& pb, SortingType sorting_type) {
+  return EncodedKeyEntryValueImpl(arena, pb, sorting_type);
+}
+
+Slice EncodedKeyEntryValue(Arena& arena, const LWQLValuePB& pb, SortingType sorting_type) {
+  return EncodedKeyEntryValueImpl(arena, pb, sorting_type);
+}
+
+Slice EncodedHashCode(Arena& arena, uint16_t val) {
+  constexpr size_t kSize = 1 + sizeof(uint16_t);
+  char* buf = static_cast<char*>(arena.AllocateBytes(kSize));
+  buf[0] = KeyEntryTypeAsChar::kUInt16Hash;
+  BigEndian::Store16(buf + 1, val);
+  return Slice(buf, kSize);
+}
+
+std::vector<Slice> TEST_KeyEntryValuesToSlices(Arena& arena, const KeyEntryValues& values) {
+  std::vector<Slice> result;
+  result.reserve(values.size());
+  KeyBytes buffer;
+  for (const auto& value : values) {
+    buffer.Clear();
+    value.AppendToKey(&buffer);
+    result.push_back(arena.DupSlice(buffer.AsSlice()));
+  }
+  return result;
 }
 
 }  // namespace yb::dockv

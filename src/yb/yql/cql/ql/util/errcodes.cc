@@ -17,11 +17,13 @@
 //--------------------------------------------------------------------------------------------------
 #include "yb/yql/cql/ql/util/errcodes.h"
 
+#include <unordered_map>
+#include <utility>
+
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/util/enums.h"
 
-namespace yb {
-namespace ql {
+namespace yb::ql {
 
 const std::unordered_map<ErrorCode, const char*, EnumHash> kQLErrorMessage {
   //------------------------------------------------------------------------------------------------
@@ -153,10 +155,4 @@ ErrorCode QLStatusToErrorCode(QLResponsePB::QLStatus status) {
   FATAL_INVALID_ENUM_VALUE(QLResponsePB::QLStatus, status);
 }
 
-static const std::string kQLErrorCategoryName = "ql error";
-
-static StatusCategoryRegisterer ql_error_category_registerer(
-    StatusCategoryDescription::Make<QLErrorTag>(&kQLErrorCategoryName));
-
-}  // namespace ql
-}  // namespace yb
+}  // namespace yb::ql

@@ -267,6 +267,8 @@ TEST(ThrottledHeapSnapshotDumperTest, DoNotDumpIfBelowSoftLimit) {
 }
 
 TEST(ThrottledHeapSnapshotDumperTest, DumpIfSoftLimitExceeded) {
+  // Ask for real root tracker so it is created before the dump and included into dump output.
+  auto real_root_tracker = MemTracker::GetRootTracker();
   // Create a fake root tracker that does not use a consumption_functor as its source of truth.
   auto hard_limit = 100000;
   auto root_tracker = std::make_shared<MemTracker>(

@@ -58,6 +58,8 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/common/ysql_utils.h"
 
+#include "yb/consensus/metadata.messages.h"
+
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/substitute.h"
@@ -374,9 +376,10 @@ RemoteTablet::~RemoteTablet() {
   }
 }
 
+template <class RaftPB, class ConsensusPB>
 Status RemoteTablet::RefreshFromRaftConfig(
-    const TabletServerMap& tservers, const consensus::RaftConfigPB& raft_config,
-    const consensus::ConsensusStatePB& consensus_state) {
+    const TabletServerMap& tservers, const RaftPB& raft_config,
+    const ConsensusPB& consensus_state) {
   std::lock_guard lock(mutex_);
   std::vector<std::shared_ptr<RemoteReplica>> new_replicas;
   std::string leader_uuid = "";
@@ -803,8 +806,9 @@ void MetaCache::UpdateTabletServerUnlocked(const master::TSInfoPB& pb) {
   CHECK(ts_cache_.emplace(permanent_uuid, std::make_unique<RemoteTabletServer>(pb)).second);
 }
 
-Status MetaCache::UpdateTabletServerWithRaftPeerUnlocked(const consensus::RaftPeerPB& pb) {
-  const std::string& permanent_uuid = pb.permanent_uuid();
+template <class PB>
+Status MetaCache::UpdateTabletServerWithRaftPeerUnlocked(const PB& pb) {
+  std::string_view permanent_uuid(pb.permanent_uuid());
   auto it = ts_cache_.find(permanent_uuid);
   if (it != ts_cache_.end()) {
     it->second->UpdateFromRaftPeer(pb);
@@ -857,10 +861,10 @@ class LookupRpc : public internal::ClientMasterRpcBase, public RequestCleanup {
   // as we add to the to_notify set.
   virtual void AddCallbacksToBeNotified(
       const ProcessedTablesMap& processed_tables,
-      std::unordered_map<TableId, TableData>* tables,
+      UnorderedStringMap<TableId, TableData>* tables,
       std::vector<std::pair<LookupCallback, LookupCallbackVisitor>>* to_notify) = 0;
 
-  // When looking up by key or full table, update the processe table with the returned location.
+  // When looking up by key or full table, update the processed table with the returned location.
   virtual void UpdateProcessedTable(const TabletLocationsPB& loc,
                                     RemoteTabletPtr remote,
                                     ProcessedTablesMap::mapped_type* processed_table) = 0;
@@ -1028,7 +1032,9 @@ Status MetaCache::ProcessTabletLocations(
     std::optional<PartitionListVersion> table_partition_list_version, LookupRpc* lookup_rpc,
     AllowSplitTablet allow_split_tablets) {
   if (VLOG_IS_ON(2)) {
-    VLOG_WITH_PREFIX_AND_FUNC(2) << "lookup_rpc: " << AsString(lookup_rpc);
+    VLOG_WITH_PREFIX_AND_FUNC(2)
+        << "lookup_rpc: " << AsString(lookup_rpc)
+        << ", partition list version: " << AsString(table_partition_list_version);
     for (const auto& loc : locations) {
       for (const auto& table_id : loc.table_ids()) {
         VLOG_WITH_PREFIX_AND_FUNC(2) << loc.tablet_id() << ", " << table_id;
@@ -1074,8 +1080,9 @@ Result<RemoteTabletPtr> MetaCache::ProcessTabletLocation(
     const TabletLocationsPB& location, ProcessedTablesMap* processed_tables,
     const std::optional<PartitionListVersion>& table_partition_list_version,
     LookupRpc* lookup_rpc) {
-  const std::string& tablet_id = location.tablet_id();
+  VLOG_WITH_PREFIX_AND_FUNC(2) << "Location: " << location.ShortDebugString();
 
+  const auto& tablet_id = location.tablet_id();
   RemoteTabletPtr remote = FindPtrOrNull(tablets_by_id_, tablet_id);
 
   // First, update the tserver cache, needed for the Refresh calls below.
@@ -1095,6 +1102,9 @@ Result<RemoteTabletPtr> MetaCache::ProcessTabletLocation(
     const auto lookup_table_it = tables_.find(lookup_rpc->table()->id());
     if (lookup_table_it != tables_.end()) {
       colocated_table_partition_list = lookup_table_it->second.partition_list;
+      VLOG_WITH_PREFIX_AND_FUNC(1)
+          << "Table " << lookup_table_it->first
+          << " partition list: " << AsString(colocated_table_partition_list);
     } else {
       // We don't want to crash the server in that case for production, since this is not a
       // correctness issue, but gives some performance degradation on first lookups for
@@ -1125,7 +1135,7 @@ Result<RemoteTabletPtr> MetaCache::ProcessTabletLocation(
             "$2",
             table_id, table_partition_list_version, table_data.partition_list->version);
       };
-      VLOG_WITH_PREFIX_AND_FUNC(4) << msg_formatter();
+      VLOG_WITH_PREFIX_AND_FUNC(1) << msg_formatter();
       if (table_partition_list_version.has_value()) {
         if (table_partition_list_version.value() != table_data.partition_list->version) {
           return STATUS(
@@ -1207,12 +1217,17 @@ Result<RemoteTabletPtr> MetaCache::ProcessTabletLocation(
 
 Status MetaCache::RefreshTabletInfoWithConsensusInfo(
     const tserver::TabletConsensusInfoPB& tablet_consensus_info) {
+  return DoRefreshTabletInfoWithConsensusInfo(tablet_consensus_info);
+}
+
+template <class PB>
+Status MetaCache::DoRefreshTabletInfoWithConsensusInfo(const PB& tablet_consensus_info) {
   SCHECK(
       tablet_consensus_info.has_consensus_state(), IllegalState,
       Format(
           "Tablet consensus info did not have a consensus state for tablet $0",
           tablet_consensus_info.tablet_id()));
-  auto consensus_state = tablet_consensus_info.consensus_state();
+  auto& consensus_state = tablet_consensus_info.consensus_state();
   SCHECK(
       consensus_state.config().has_opid_index(), IllegalState,
       "TabletConsensusInfo does not have a valid opid_index");
@@ -1246,8 +1261,8 @@ Status MetaCache::RefreshTabletInfoWithConsensusInfo(
 
     VLOG_WITH_PREFIX(1) << "Using Tablet Consensus Info to refresh metacache for tablet "
             << tablet_consensus_info.tablet_id();
-    consensus::RaftConfigPB raft_config = consensus_state.config();
-    for (auto peer : raft_config.peers()) {
+    const auto& raft_config = consensus_state.config();
+    for (const auto& peer : raft_config.peers()) {
       RETURN_NOT_OK(UpdateTabletServerWithRaftPeerUnlocked(peer));
     }
     return remote->RefreshFromRaftConfig(ts_cache_, raft_config, consensus_state);
@@ -1268,7 +1283,7 @@ int64_t MetaCache::GetRaftConfigOpidIndex(const TabletId& tablet_id) {
 
 std::unordered_map<TableId, TableData>::iterator MetaCache::InitTableDataUnlocked(
     const TableId& table_id, const VersionedTablePartitionListPtr& partitions) {
-  VLOG_WITH_PREFIX_AND_FUNC(4) << Format(
+  VLOG_WITH_PREFIX_AND_FUNC(2) << Format(
       "MetaCache initializing TableData ($0 tables) for table $1: $2, "
       "partition_list_version: $3",
       tables_.size(), table_id, tables_.count(table_id), partitions->version);
@@ -1278,8 +1293,11 @@ std::unordered_map<TableId, TableData>::iterator MetaCache::InitTableDataUnlocke
 }
 
 void MetaCache::InvalidateTableCache(const YBTable& table) {
-  const auto& table_id = table.id();
-  const auto table_partition_list = table.GetVersionedPartitions();
+  InvalidateTableCache(table.id(), table.GetVersionedPartitions());
+}
+
+void MetaCache::InvalidateTableCache(
+      const TableId& table_id, VersionedTablePartitionListPtr table_partition_list) {
   VLOG_WITH_PREFIX_AND_FUNC(1) << Format(
       "table: $0, table.partition_list.version: $1", table_id, table_partition_list->version);
 
@@ -1287,7 +1305,7 @@ void MetaCache::InvalidateTableCache(const YBTable& table) {
 
   auto invalidate_needed = [this, &table_id, &table_partition_list](const auto& it) {
     const auto table_data_partition_list_version = it->second.partition_list->version;
-    VLOG_WITH_PREFIX(1) << Format(
+    VLOG_WITH_PREFIX(2) << Format(
         "tables_[$0].partition_list.version: $1", table_id, table_data_partition_list_version);
     // Only need to invalidate table cache, if it is has partition list version older than table's
     // one.
@@ -1313,8 +1331,7 @@ void MetaCache::InvalidateTableCache(const YBTable& table) {
       }
     } else {
       it = InitTableDataUnlocked(table_id, table_partition_list);
-      // Nothing to invalidate, we have just initiliazed it first time.
-      return;
+      return; // Nothing to invalidate, we have just initialized it first time.
     }
 
     auto& table_data = it->second;
@@ -1341,6 +1358,9 @@ void MetaCache::InvalidateTableCache(const YBTable& table) {
     // Only update partitions here after invalidating TableData cache to avoid inconsistencies.
     // See https://github.com/yugabyte/yugabyte-db/issues/6890.
     table_data.partition_list = table_partition_list;
+    VLOG_WITH_PREFIX_AND_FUNC(2) << Format(
+        "MetaCache updated for table $0, new partition_list_version: $1",
+        table_id, table_partition_list);
   }
   for (const auto& callback : to_notify) {
     const auto s = STATUS_EC_FORMAT(
@@ -1470,7 +1490,7 @@ class LookupByIdRpc : public LookupRpc {
 
   void AddCallbacksToBeNotified(
     const ProcessedTablesMap& processed_tables,
-    std::unordered_map<TableId, TableData>* tables,
+    UnorderedStringMap<TableId, TableData>* tables,
     std::vector<std::pair<LookupCallback, LookupCallbackVisitor>>* to_notify) override {
     // Nothing to do when looking up by id.
     return;
@@ -1563,7 +1583,7 @@ class LookupFullTableRpc : public LookupRpc {
 
   void AddCallbacksToBeNotified(
       const ProcessedTablesMap& processed_tables,
-      std::unordered_map<TableId, TableData>* tables,
+      UnorderedStringMap<TableId, TableData>* tables,
       std::vector<std::pair<LookupCallback, LookupCallbackVisitor>>* to_notify) override {
     for (const auto& processed_table : processed_tables) {
       // Handle tablet range
@@ -1674,7 +1694,7 @@ class LookupByKeyRpc : public LookupRpc {
 
   void AddCallbacksToBeNotified(
       const ProcessedTablesMap& processed_tables,
-      std::unordered_map<TableId, TableData>* tables,
+      UnorderedStringMap<TableId, TableData>* tables,
       std::vector<std::pair<LookupCallback, LookupCallbackVisitor>>* to_notify) override {
     for (const auto& processed_table : processed_tables) {
       const auto table_it = tables->find(processed_table.first);
@@ -2171,6 +2191,18 @@ bool MetaCache::DoLookupAllTablets(const std::shared_ptr<const YBTable>& table,
     }
   }
 
+  // The vector index table is colocated with the indexable table (they share the same
+  // partitions/tablets). If the vector index table is created after some data has already been
+  // written to the indexable table, the cached partition list of the indexable table may become
+  // stale because its tablets may have been split in the meantime, whereas the vector index table
+  // is created with the up-to-date partition list. Therefore, it is needed to try to invalidate
+  // the indexable table using the partition list received from the vector index table (it will be
+  // invalidated only if the vector index table's partition list is newer), in order to prevent
+  // lookup errors and failures caused by a stale partition list.
+  if (table->index_info().is_vector_index()) {
+    InvalidateTableCache(table->index_info().indexed_table_id(), table->GetVersionedPartitions());
+  }
+
   VLOG_WITH_PREFIX_AND_FUNC(4)
       << "Start lookup for table: " << table->ToString();
 
@@ -2383,8 +2415,33 @@ void MetaCache::LookupTabletById(const TabletId& tablet_id,
   LOG_IF(DFATAL, !result) << "Lookup was not started for tablet " << tablet_id;
 }
 
+void MetaCache::InvalidateVectorIndexes(const YBTable& indexed_table) {
+  TableIds vector_index_ids;
+  vector_index_ids.reserve(indexed_table.index_map().size());
+  for (const auto& [_, index] : indexed_table.index_map()) {
+    if (index.is_vector_index()) {
+      vector_index_ids.emplace_back(index.table_id());
+    }
+  }
+  VLOG_WITH_FUNC(3) << "Collected: " << AsString(vector_index_ids);
+
+  size_t num_removed = 0;
+  {
+    std::lock_guard lock(mutex_);
+    for (const auto& id : vector_index_ids) {
+      num_removed += tables_.erase(id);
+    }
+  }
+  VLOG_WITH_FUNC(3) << "Removed " << num_removed << " cached vector indexes";
+}
+
 void MetaCache::RefreshTablePartitions(
     const std::shared_ptr<YBTable>& table, StdStatusCallback callback) {
+  // It is required to invalidate table's cached vector indexes completely to let them get
+  // the actual partitions, because vector index does not participate in any DML, and hence
+  // the meta cache will never trigger partitions refresh for the vector index.
+  InvalidateVectorIndexes(*table);
+
   table->RefreshPartitions(
       client_,
       [this, table, callback = std::move(callback)](

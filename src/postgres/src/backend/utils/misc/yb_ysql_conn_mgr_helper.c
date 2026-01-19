@@ -84,6 +84,25 @@ YbIsClientYsqlConnMgr()
 	return IsYugaByteEnabled() && yb_is_client_ysqlconnmgr;
 }
 
+bool
+YbIsAuthPassthroughInProgress(struct Port *port)
+{
+	return YbIsClientYsqlConnMgr() && port != NULL &&
+		   port->yb_is_auth_passthrough_req;
+}
+
+/*
+ * GH #19781: FATAL or ERROR packet leads to a broken physical connection.
+ * Therefore, in auth passthrough, instead of FATAL/ERROR packet, WARNING packet
+ * along with FatalForLogicalConnection packet is used.
+ */
+int
+YbAuthFailedErrorLevel(const bool auth_passthrough)
+{
+	return (YbIsClientYsqlConnMgr() && auth_passthrough == true) ? WARNING :
+																   FATAL;
+}
+
 int
 attach_shmem(int shmem_id, char **shmem_ptr)
 {
@@ -686,6 +705,10 @@ YbHandleSetSessionParam(int yb_client_id)
  *  		1. Does the role exist.
  * 			2. Is the role permitted to login.
  * 			3. Check whether connection limit is exceeded for the role
+ *
+ * The `session_authorization` GUC is set to the provided rolename to allow the
+ * authenticating backend to masquerade as the authenticating user for the
+ * purposes of fetching user-specific settings like GUC defaults.
  */
 static int8_t
 SetLogicalClientUserDetailsIfValid(const char *rolename, bool *is_superuser,
@@ -767,6 +790,9 @@ SetLogicalClientUserDetailsIfValid(const char *rolename, bool *is_superuser,
 		return -1;
 	}
 
+	SetConfigOption("session_authorization", rolename, PGC_BACKEND,
+					PGC_S_OVERRIDE);
+
 	ReleaseSysCache(roleTup);
 	return 0;
 }
@@ -790,8 +816,9 @@ send_oid_info(const char oid_type, const int oid)
 	CHECK_FOR_INTERRUPTS();
 }
 
-static void
-YbSendDbRoleOidsAndSetupSharedMemory(Oid database_oid, Oid user, bool is_superuser)
+static int
+YbSendDbRoleOidsAndSetupSharedMemory(Oid database_oid, Oid user,
+									 bool is_superuser)
 {
 	/* Send back database and role oids */
 	send_oid_info('d', database_oid);
@@ -802,7 +829,7 @@ YbSendDbRoleOidsAndSetupSharedMemory(Oid database_oid, Oid user, bool is_superus
 		ereport(WARNING,
 				(errmsg("database \"%s\" does not exist",
 						MyProcPort->database_name)));
-		return;
+		return -1;
 	}
 
 	if (user == InvalidOid)
@@ -810,7 +837,7 @@ YbSendDbRoleOidsAndSetupSharedMemory(Oid database_oid, Oid user, bool is_superus
 		YbSendFatalForLogicalConnectionPacket();
 		ereport(WARNING,
 				(errmsg("role \"%s\" does not exist", MyProcPort->user_name)));
-		return;
+		return -1;
 	}
 
 	/*
@@ -826,9 +853,10 @@ YbSendDbRoleOidsAndSetupSharedMemory(Oid database_oid, Oid user, bool is_superus
 	else
 		ereport(FATAL, (errmsg("unable to create the shared memory block")));
 #endif
+	return 0;
 }
 
-void
+int
 YbCreateClientId(void)
 {
 	bool		is_superuser;
@@ -840,11 +868,16 @@ YbCreateClientId(void)
 
 	if (SetLogicalClientUserDetailsIfValid(MyProcPort->user_name, &is_superuser,
 										   &user) < 0)
-		return;
+		return -1;
 
 	database = get_database_oid(MyProcPort->database_name, true);
 
-	YbSendDbRoleOidsAndSetupSharedMemory(database, user, is_superuser);
+	YbCheckMyDatabase(MyProcPort->database_name, is_superuser, false, database);
+
+	if (MyProcPort->yb_has_auth_passthrough_failed)
+		return -1;
+
+	return YbSendDbRoleOidsAndSetupSharedMemory(database, user, is_superuser);
 }
 
 void

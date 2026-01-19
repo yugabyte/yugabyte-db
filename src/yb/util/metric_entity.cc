@@ -173,17 +173,39 @@ AggregationLevels MetricEntity::ReconstructPrometheusAttributes() {
   return ReconstructPrometheusAttributesUnlocked();
 }
 
+std::string EscapePrometheusLabelValue(const std::string& s) {
+  if (s.find_first_of("\\\"\n") == std::string::npos) {
+    return s;
+  }
+
+  std::string result;
+  result.reserve(s.size() * 2);
+  for (char c : s) {
+    if (c == '\n') {
+      result += "\\n";
+      continue;
+    }
+    if (c == '\\' || c == '"') {
+      result += '\\';
+    }
+    result += c;
+  }
+  return result;
+}
+
 AggregationLevels MetricEntity::ReconstructPrometheusAttributesUnlocked() {
   auto default_aggregation_level = kNoLevel;
 
   const std::string& prototype_type = prototype_->name();
   prometheus_attributes_.clear();
-  if (prototype_type == "tablet" || prototype_type == "table") {
+  if (prototype_type == "tablet" || prototype_type == "table" ||
+      prototype_type == kVectorIndexMetricEntityName) {
     aggregation_id_for_pre_aggregation_ = attributes_["table_id"];
     prometheus_attributes_["table_id"] = aggregation_id_for_pre_aggregation_;
-    prometheus_attributes_["table_name"] = attributes_["table_name"];
+    prometheus_attributes_["table_name"] = EscapePrometheusLabelValue(attributes_["table_name"]);
     prometheus_attributes_["table_type"] = attributes_["table_type"];
-    prometheus_attributes_["namespace_name"] = attributes_["namespace_name"];
+    prometheus_attributes_["namespace_name"] =
+        EscapePrometheusLabelValue(attributes_["namespace_name"]);
     default_aggregation_level = kTableLevel | kServerLevel;
   } else if (prototype_type == "server" || prototype_type == "cluster") {
     prometheus_attributes_ = attributes_;
@@ -192,14 +214,16 @@ AggregationLevels MetricEntity::ReconstructPrometheusAttributesUnlocked() {
   } else if (prototype_type == kXClusterMetricEntityName) {
     aggregation_id_for_pre_aggregation_ = attributes_["stream_id"];
     prometheus_attributes_["table_id"] = attributes_["table_id"];
-    prometheus_attributes_["table_name"] = attributes_["table_name"];
+    prometheus_attributes_["table_name"] = EscapePrometheusLabelValue(attributes_["table_name"]);
     prometheus_attributes_["table_type"] = attributes_["table_type"];
-    prometheus_attributes_["namespace_name"] = attributes_["namespace_name"];
+    prometheus_attributes_["namespace_name"] =
+        EscapePrometheusLabelValue(attributes_["namespace_name"]);
     prometheus_attributes_["stream_id"] = aggregation_id_for_pre_aggregation_;
     default_aggregation_level = kStreamLevel;
   } else if (prototype_type == kCdcsdkMetricEntityName) {
     aggregation_id_for_pre_aggregation_ = attributes_["stream_id"];
-    prometheus_attributes_["namespace_name"] = attributes_["namespace_name"];
+    prometheus_attributes_["namespace_name"] =
+        EscapePrometheusLabelValue(attributes_["namespace_name"]);
     prometheus_attributes_["stream_id"] = aggregation_id_for_pre_aggregation_;
     auto it = attributes_.find("slot_name");
     if (it != attributes_.end() && !it->second.empty()) {

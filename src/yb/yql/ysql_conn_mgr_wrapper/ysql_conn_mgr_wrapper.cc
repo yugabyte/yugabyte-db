@@ -144,12 +144,14 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_jitter_time, 120,
     "open beyond its idle timeout duration. This is to avoid sudden bursts of connections closing "
     "when dealing with connection burst sceanrios.");
 
-DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_max_phy_conn_percent, 85,
-  "This flag represents the percentage of ysql_max_connections as an approximate limit for "
-  "the physical connections that can be created through YSQL Connection Manager. For example, if "
-  "ysql_max_connections is 100 and this flag is set to 85, then YSQL Connection Manager will "
-  "assume a soft physical connection limit of 0.85 * ysql_max_connections, which is 85 in this "
-  "case.");
+DEPRECATE_FLAG(uint32, ysql_conn_mgr_max_phy_conn_percent, "12_2025");
+
+DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_reserve_internal_conns, 15,
+  "This flag specifies the number of physical connections to reserve from ysql_max_connections"
+  "for internal operations that bypass the YSQL Connection Manager. The remaining connections"
+  "are then available for the connection manager's pool. For example, if ysql_max_connections"
+  "is 300 and this flag is set to its default of 15, the YSQL Connection Manager will have a"
+  "physical connection limit of 285 (300 - 15).");
 
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_dump_heap_snapshot_interval, 0,
     "Dump tcmalloc current heap snapshot of Ysql Connection Manager process. "
@@ -164,15 +166,6 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_tcmalloc_sample_period, 1024 * 1024,
     "has set for connection manager process");
 
 namespace {
-
-bool ValidatePhysicalConnectionPercentage(const char* flag_name, uint32_t value) {
-  if (value < 1 || value > 100) {
-    LOG_FLAG_VALIDATION_ERROR(flag_name, value)
-        << "Physical connection percentage must be between 1 and 100.";
-    return false;
-  }
-  return true;
-}
 
 bool ValidateLogSettings(const char* flag_name, const std::string& value) {
   const std::unordered_set<std::string> valid_settings = {
@@ -202,7 +195,6 @@ bool ValidateLogSettings(const char* flag_name, const std::string& value) {
 } // namespace
 
 DEFINE_validator(ysql_conn_mgr_log_settings, &ValidateLogSettings);
-DEFINE_validator(ysql_conn_mgr_max_phy_conn_percent, &ValidatePhysicalConnectionPercentage);
 
 namespace yb {
 namespace ysql_conn_mgr_wrapper {

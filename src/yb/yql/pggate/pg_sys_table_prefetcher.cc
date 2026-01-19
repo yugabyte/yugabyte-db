@@ -326,7 +326,7 @@ Result<rpc::CallResponsePtr> Run(
           make_lw_function(MakeGenerator(ops)),
           BuildCacheOptions(arena, session->catalog_read_time(), ops, *options.caching_info))
       : session->RunAsync(make_lw_function(MakeGenerator(ops)), HybridTime())),
-      {TableType::SYSTEM, IsForWritePgDoc::kFalse});
+      {TableType::SYSTEM, IsForWritePgDoc::kFalse, IsOpBuffered::kFalse});
   return VERIFY_RESULT(response.Get(*session)).response;
 }
 
@@ -374,10 +374,11 @@ class Loader {
         table->schema().table_properties().is_ysql_catalog_table(),
         InternalError,
         Format("$0 $1 is not a catalog table", item.table_id, table->table_name().table_name()));
-    // System tables are not region local.
+    // System tables has empty (default) table locality.
     op_info_.emplace_back(
-        ArenaMakeShared<PgsqlReadOp>(arena_, &*arena_, *table, false /* is_region_local */,
-                                     session_->metrics().metrics_capture()),
+        ArenaMakeShared<PgsqlReadOp>(
+            arena_, &*arena_, *table, YbcPgTableLocalityInfo{},
+            session_->metrics().metrics_capture()),
         table, index);
     auto& info = op_info_.back();
     auto& req = info.operation->read_request();
@@ -404,7 +405,6 @@ class Loader {
           index_req.dup_table_id(index->relfilenode_id().GetYbTableId());
           SetupPaging(&index_req);
           AddTargetColumn(&index_req, column);
-          info.index_targets.push_back(column.id());
           break;
         }
       }
@@ -478,7 +478,7 @@ std::string PrefetcherOptions::ToString() const {
 class PgSysTablePrefetcher::Impl {
  public:
   explicit Impl(const PrefetcherOptions& options)
-      : arena_(SharedArena()), options_(options) {
+      : arena_(SharedThreadSafeArena()), options_(options) {
     VLOG(1) << "Starting prefetcher with " << options_.ToString();
   }
 

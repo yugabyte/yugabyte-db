@@ -18,6 +18,7 @@ import (
 type perfAdvisorDirectories struct {
 	SystemdFileLocation string
 	templateFileName    string
+	ConfFileLocation    string
 	PABin               string
 	PALogDir            string
 }
@@ -32,16 +33,16 @@ type PerfAdvisor struct {
 func newPerfAdvisorDirectories(version string) perfAdvisorDirectories {
 	return perfAdvisorDirectories{
 		SystemdFileLocation: common.SystemdDir + "/yb-perf-advisor.service",
+		ConfFileLocation:    common.GetSoftwareRoot() + "/perf-advisor/conf/overrides.properties",
 		templateFileName:    "yb-installer-perf-advisor.yml",
 		// GetSoftwareRoot returns /opt/yugabyte/software/
-		PABin:          common.GetSoftwareRoot() + "/perf-advisor/backend/bin",
-		PALogDir:       common.GetBaseInstall() + "/data/logs",
+		PABin:    common.GetSoftwareRoot() + "/perf-advisor/backend/bin",
+		PALogDir: common.GetBaseInstall() + "/data/logs",
 	}
 }
 
 // NewPerfAdvisor creates and returns a new PerfAdvisor struct for the given version.
 func NewPerfAdvisor(version string) PerfAdvisor {
-
 	return PerfAdvisor{
 		name:                   "yb-perf-advisor",
 		version:                version,
@@ -201,11 +202,11 @@ func (perf PerfAdvisor) untarAndSetupPerfAdvisorPackages() error {
 	// Untar pa.tar.gz into perf-advisor
 	rExtract, err := os.Open(paPath)
 	if err != nil {
-			return fmt.Errorf("failed to open %s: %w", paPath, err)
+		return fmt.Errorf("failed to open %s: %w", paPath, err)
 	}
 	defer rExtract.Close()
 	if err := tar.Untar(rExtract, targetDir, tar.WithMaxUntarSize(-1)); err != nil {
-			return fmt.Errorf("failed to extract %s: %w", paPath, err)
+		return fmt.Errorf("failed to extract %s: %w", paPath, err)
 	}
 
 	// Now check that backend and ui/frontend exist
@@ -213,10 +214,10 @@ func (perf PerfAdvisor) untarAndSetupPerfAdvisorPackages() error {
 	frontendDir := filepath.Join(targetDir, "ui")
 
 	if stat, err := os.Stat(backendDir); err != nil || !stat.IsDir() {
-			return fmt.Errorf("backend directory not found in %s after extraction", targetDir)
+		return fmt.Errorf("backend directory not found in %s after extraction", targetDir)
 	}
 	if stat, err := os.Stat(frontendDir); err != nil || !stat.IsDir() {
-			return fmt.Errorf("ui directory not found in %s after extraction", targetDir)
+		return fmt.Errorf("ui directory not found in %s after extraction", targetDir)
 	}
 
 	if common.HasSudoAccess() {
@@ -294,6 +295,11 @@ func (perf PerfAdvisor) Reconfigure() error {
 	log.Info("Reconfiguring Perf Advisor")
 	if err := template.GenerateTemplate(perf); err != nil {
 		return fmt.Errorf("failed to generate template: %w", err)
+	}
+
+	// Reload systemd daemon to pick up the regenerated service file
+	if err := systemd.DaemonReload(); err != nil {
+		return fmt.Errorf("failed to reload systemd daemon: %w", err)
 	}
 	log.Info("Perf Advisor reconfigured")
 	return nil

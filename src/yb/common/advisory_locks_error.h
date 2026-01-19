@@ -15,21 +15,25 @@
 
 #pragma once
 
-#include "yb/common/wire_protocol.h"
+#include <string>
+#include <string_view>
 
+#include "yb/util/format.h"
 #include "yb/util/status_ec.h"
+
+using namespace std::literals;
 
 namespace yb {
 
 struct AdvisoryLocksErrorTag : IntegralErrorTag<uint64_t> {
   // This category id is part of the wire protocol and should not be changed once released.
-  static constexpr uint8_t kCategory = 24;
+  static constexpr CategoryDescriptor kCategory{24, "advisory locks error"sv};
 
   static std::string ToMessage(Value value) {
     return Format("Min active PgSessionRequestVersion: $0", value);
   }
 };
 
-typedef StatusErrorCodeImpl<AdvisoryLocksErrorTag> AdvisoryLocksError;
+using AdvisoryLocksError = StatusErrorCodeImpl<AdvisoryLocksErrorTag>;
 
 } // namespace yb

@@ -7,6 +7,11 @@ menu:
   stable_api:
     parent: api-cassandra
     weight: 1450
+aliases:
+  - /stable/api/cassandra/type_datetime
+  - /stable/api/cassandra/type_timestamp
+  - /stable/api/ycql/type_datetime
+  - /stable/api/ycql/type_timestamp
 type: docs
 ---
 

@@ -15,7 +15,6 @@ import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.LocalNodeManager;
 import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.controllers.UniverseControllerRequestBinder;
 import com.yugabyte.yw.forms.NodeActionFormData;
@@ -69,7 +68,7 @@ public class NodeOperationsLocalTest extends LocalProviderUniverseTestBase {
   @Test
   public void testStopStartNodeInUniverse() throws InterruptedException {
     UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
-    userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
+    userIntent.specificGFlags = getGFlags();
     Universe universe = createUniverse(userIntent);
     NodeDetails nodeDetails = universe.getUniverseDetails().nodeDetailsSet.iterator().next();
     String nodeName = nodeDetails.nodeName;

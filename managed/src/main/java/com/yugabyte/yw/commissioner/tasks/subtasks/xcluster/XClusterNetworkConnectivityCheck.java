@@ -13,7 +13,6 @@ package com.yugabyte.yw.commissioner.tasks.subtasks.xcluster;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.NodeTaskBase;
-import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
@@ -30,13 +29,9 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class XClusterNetworkConnectivityCheck extends NodeTaskBase {
 
-  private final NodeUniverseManager nodeUniverseManager;
-
   @Inject
-  protected XClusterNetworkConnectivityCheck(
-      BaseTaskDependencies baseTaskDependencies, NodeUniverseManager nodeUniverseManager) {
+  protected XClusterNetworkConnectivityCheck(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
-    this.nodeUniverseManager = nodeUniverseManager;
   }
 
   public static class Params extends NodeTaskParams {

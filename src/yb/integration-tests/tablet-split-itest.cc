@@ -175,6 +175,7 @@ DECLARE_bool(TEST_asyncrpc_finished_set_timedout);
 DECLARE_bool(enable_copy_retryable_requests_from_parent);
 DECLARE_bool(enable_flush_retryable_requests);
 DECLARE_int32(max_create_tablets_per_ts);
+DECLARE_bool(tablet_split_use_middle_user_key);
 DECLARE_double(tablet_split_min_size_ratio);
 
 namespace yb {
@@ -224,6 +225,29 @@ TEST_P(TabletSplitITestWithIsolationLevel, SplitSingleTablet) {
   ASSERT_OK(cluster_->WaitForLoadBalancerToStabilize(
       RegularBuildVsDebugVsSanitizers(10s, 20s, 30s)));
   ASSERT_OK(CheckPostSplitTabletReplicasData(kNumRows * 2));
+}
+
+TEST_F(TabletSplitITest, SplitHashTabletNWays) {
+  // TODO(nway-tsplit): Parameterize test to multi-way splits.
+  constexpr auto kNumRows = kDefaultNumRows;
+
+  CreateSingleTablet();
+
+  // Write rows and compute N - 1 split points.
+  auto hash_interval = ASSERT_RESULT(WriteRowsAndFlush(kNumRows));
+  const auto interval_size = hash_interval.second - hash_interval.first + 1;
+  const auto split_factor = cluster_->GetSplitFactor();
+  ASSERT_GE(interval_size, split_factor);
+  const auto step_size = interval_size / split_factor;
+  std::vector<docdb::DocKeyHash> split_hash_codes;
+  for (auto i = 1; i < split_factor; ++i) {
+    auto split_hash = hash_interval.first + i * step_size;
+    ASSERT_LT(split_hash, hash_interval.second);
+    split_hash_codes.push_back(split_hash);
+  }
+
+  ASSERT_EQ(split_factor - 1, split_hash_codes.size());
+  ASSERT_OK(SplitTabletAndValidate(split_hash_codes, kNumRows));
 }
 
 TEST_F(TabletSplitITest, SplitTabletIsAsync) {
@@ -576,7 +600,7 @@ TEST_F(TabletSplitITest, SplitTabletDuringReadWriteLoad) {
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_buffer_size) = 100_KB;
 
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.set_table_name(client::kTableName);
   workload.set_write_timeout_millis(MonoDelta(kRpcTimeout).ToMilliseconds());
   workload.set_num_tablets(kNumTablets);
@@ -877,10 +901,10 @@ TEST_F(TabletSplitITest, SplitDuringReplicaOffline) {
   ASSERT_OK(catalog_mgr->TEST_SplitTablet(source_tablet_info, split_hash_code));
 
   ASSERT_OK(WaitForTabletSplitCompletion(
-      /* expected_non_split_tablets =*/ 2, /* expected_split_tablets =*/ 1,
+      /* expected_non_split_tablets =*/ kDefaultNumSplitParts, /* expected_split_tablets =*/ 1,
       /* num_replicas_online =*/ 2));
 
-  ASSERT_OK(CheckPostSplitTabletReplicasData(kNumRows, 2));
+  ASSERT_OK(CheckPostSplitTabletReplicasData(kNumRows, kDefaultNumSplitParts, 2));
 
   ASSERT_OK(CheckSourceTabletAfterSplit(source_tablet_id));
 
@@ -897,7 +921,7 @@ TEST_F(TabletSplitITest, SplitDuringReplicaOffline) {
 
   // This time we expect all replicas to be online.
   ASSERT_OK(WaitForTabletSplitCompletion(
-      /* expected_non_split_tablets =*/ 2, /* expected_split_tablets =*/ 0));
+      /* expected_non_split_tablets =*/ kDefaultNumSplitParts, /* expected_split_tablets =*/ 0));
 
   Status s;
   ASSERT_OK_PREPEND(LoggedWaitFor([&] {
@@ -2202,6 +2226,17 @@ class TabletSplitSingleServerITest : public TabletSplitITest {
   void TestRetryableWrite();
 };
 
+// Parameterized extension to test N-way tablet split.
+class TabletNSplitSingleServerITest :
+    public TabletSplitSingleServerITest,
+    public testing::WithParamInterface<int> {
+ protected:
+  void SetUp() override {
+    TabletSplitSingleServerITest::SetUp();
+    cluster_->SetSplitFactor(GetParam());
+  }
+};
+
 // Start tablet split, create Index to start backfill while split operation in progress
 // and check backfill state.
 TEST_F(TabletSplitSingleServerITest, TestBackfillDuringSplit) {
@@ -2285,7 +2320,33 @@ TEST_F(TabletSplitSingleServerITest, TestSplitDuringBackfill) {
   ASSERT_OK(CheckPostSplitTabletReplicasData(kNumRows));
 }
 
-TEST_F(TabletSplitSingleServerITest, TabletServerGetSplitKey) {
+TEST_P(TabletNSplitSingleServerITest, ComputeSplitKeys) {
+  constexpr auto kNumRows = kDefaultNumRows;
+  // Setup table with rows.
+  CreateSingleTablet();
+  ASSERT_OK(WriteRowsAndFlush(kNumRows));
+
+  // Compute split keys.
+  auto tablet_peer = ASSERT_RESULT(GetSingleTabletLeaderPeer());
+  auto tablet = ASSERT_RESULT(tablet_peer->shared_tablet());
+
+  const auto split_factor = cluster_->GetSplitFactor();
+  const auto expected_num_keys = split_factor - 1;
+  const auto split_keys = ASSERT_RESULT(tablet->GetSplitKeys(split_factor));
+  const auto& encoded_keys = split_keys.encoded_keys;
+  const auto& partition_keys = split_keys.partition_keys;
+
+  EXPECT_EQ(encoded_keys.size(), expected_num_keys);
+  EXPECT_EQ(partition_keys.size(), expected_num_keys);
+
+  // Verify split keys form valid exclusive child partitions.
+  for (auto i = 1; i < expected_num_keys; ++i) {
+    EXPECT_LT(encoded_keys[i - 1], encoded_keys[i]);
+    EXPECT_LT(partition_keys[i - 1], partition_keys[i]);
+  }
+}
+
+TEST_P(TabletNSplitSingleServerITest, GetSplitKeys) {
   constexpr auto kNumRows = kDefaultNumRows;
   // Setup table with rows.
   CreateSingleTablet();
@@ -2293,23 +2354,42 @@ TEST_F(TabletSplitSingleServerITest, TabletServerGetSplitKey) {
   const auto source_tablet_id =
       ASSERT_RESULT(GetSingleTestTabletInfo(ASSERT_RESULT(catalog_manager())))->id();
 
-  // Flush tablet and directly compute expected middle key.
+  // Flush tablet and directly compute expected split keys.
   auto tablet_peer = ASSERT_RESULT(GetSingleTabletLeaderPeer());
   auto tablet = ASSERT_RESULT(tablet_peer->shared_tablet());
   ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
-  auto middle_key = ASSERT_RESULT(tablet->GetEncodedMiddleSplitKey());
-  auto expected_middle_key_hash = CHECK_RESULT(dockv::DocKey::DecodeHash(middle_key));
+  const auto split_keys = ASSERT_RESULT(tablet->GetSplitKeys(cluster_->GetSplitFactor()));
+  const auto& expected_split_encoded_keys = split_keys.encoded_keys;
+  const auto expected_first_split_key_hash =
+      CHECK_RESULT(dockv::DocKey::DecodeHash(expected_split_encoded_keys.front()));
 
   // Send RPC.
   auto resp = ASSERT_RESULT(SendTServerRpcSyncGetSplitKey(source_tablet_id));
 
   // Validate response.
   CHECK(!resp.has_error()) << resp.error().DebugString();
-  auto decoded_split_key_hash = CHECK_RESULT(dockv::DocKey::DecodeHash(resp.split_encoded_key()));
-  CHECK_EQ(decoded_split_key_hash, expected_middle_key_hash);
+
+  // Validate the singular split key fields in the response.
+  auto decoded_split_key_hash =
+      CHECK_RESULT(dockv::DocKey::DecodeHash(resp.deprecated_split_encoded_key()));
+  EXPECT_EQ(decoded_split_key_hash, expected_first_split_key_hash);
   auto decoded_partition_key_hash = dockv::PartitionSchema::DecodeMultiColumnHashValue(
-      resp.split_partition_key());
-  CHECK_EQ(decoded_partition_key_hash, expected_middle_key_hash);
+      resp.deprecated_split_partition_key());
+  EXPECT_EQ(decoded_partition_key_hash, expected_first_split_key_hash);
+
+  // Validate the repeated N-way split key fields in the response.
+  EXPECT_EQ(expected_split_encoded_keys.size(), resp.split_encoded_keys_size());
+  EXPECT_EQ(expected_split_encoded_keys.size(), resp.split_partition_keys_size());
+  for (size_t i = 0; i < expected_split_encoded_keys.size(); ++i) {
+    const auto expected_split_key_hash =
+        CHECK_RESULT(dockv::DocKey::DecodeHash(expected_split_encoded_keys[i]));
+    const auto decoded_split_key_hash =
+        CHECK_RESULT(dockv::DocKey::DecodeHash(resp.split_encoded_keys(narrow_cast<int>(i))));
+    EXPECT_EQ(decoded_split_key_hash, expected_split_key_hash);
+    auto decoded_partition_key_hash = dockv::PartitionSchema::DecodeMultiColumnHashValue(
+        resp.split_partition_keys(narrow_cast<int>(i)));
+    EXPECT_EQ(decoded_partition_key_hash, expected_split_key_hash);
+  }
 }
 
 TEST_F(TabletSplitSingleServerITest, SplitKeyNotSupportedForTTLTablets) {
@@ -2521,10 +2601,10 @@ TEST_F(TabletSplitSingleServerITest, TabletServerSplitAlreadySplitTablet) {
   auto tablet_peer = ASSERT_RESULT(GetSingleTabletLeaderPeer());
   const auto tserver_uuid = tablet_peer->permanent_uuid();
 
-  SetAtomicFlag(true, &FLAGS_TEST_skip_deleting_split_tablets);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = true;
   const auto source_tablet_id = ASSERT_RESULT(SplitSingleTablet(split_hash_code));
   ASSERT_OK(WaitForTabletSplitCompletion(
-      /* expected_non_split_tablets =*/ 2, /* expected_split_tablets = */ 1));
+      /* expected_non_split_tablets =*/ kDefaultNumSplitParts, /* expected_split_tablets = */ 1));
 
   auto send_split_request = [this, &tserver_uuid, &source_tablet_id]()
       -> Result<tserver::SplitTabletResponsePB> {
@@ -2534,10 +2614,14 @@ TEST_F(TabletSplitSingleServerITest, TabletServerSplitAlreadySplitTablet) {
     tablet::SplitTabletRequestPB req;
     req.set_dest_uuid(tserver_uuid);
     req.set_tablet_id(source_tablet_id);
-    req.set_new_tablet1_id(Format("$0$1", source_tablet_id, "1"));
-    req.set_new_tablet2_id(Format("$0$1", source_tablet_id, "2"));
-    req.set_split_partition_key("abc");
-    req.set_split_encoded_key("def");
+    req.set_deprecated_new_tablet1_id(Format("$0$1", source_tablet_id, "1"));
+    req.set_deprecated_new_tablet2_id(Format("$0$1", source_tablet_id, "2"));
+    req.set_deprecated_split_partition_key("abc");
+    req.set_deprecated_split_encoded_key("def");
+    req.add_new_tablet_ids(req.deprecated_new_tablet1_id());
+    req.add_new_tablet_ids(req.deprecated_new_tablet2_id());
+    req.add_split_partition_keys(req.deprecated_split_partition_key());
+    req.add_split_encoded_keys(req.deprecated_split_encoded_key());
     rpc::RpcController controller;
     controller.set_timeout(kRpcTimeout);
     tserver::SplitTabletResponsePB resp;
@@ -2550,8 +2634,8 @@ TEST_F(TabletSplitSingleServerITest, TabletServerSplitAlreadySplitTablet) {
   EXPECT_TRUE(resp.has_error());
   EXPECT_TRUE(StatusFromPB(resp.error().status()).IsAlreadyPresent()) << resp.error().DebugString();
 
-  SetAtomicFlag(false, &FLAGS_TEST_skip_deleting_split_tablets);
-  ASSERT_OK(WaitForTabletSplitCompletion(/* expected_non_split_tablets =*/ 2));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = false;
+  ASSERT_OK(WaitForTabletSplitCompletion(/* expected_non_split_tablets =*/ kDefaultNumSplitParts));
 
   // If the parent tablet has been cleaned up or is still being cleaned up, this should trigger
   // a Not Found error or a Not Running error correspondingly.
@@ -3344,8 +3428,9 @@ TEST_P(TabletSplitSingleServerITestWithPartition, TestSplitEncodedKeyAfterBreakI
 
   // Split should return an OK status, so, let's try to wait for child tablets. The wait must fail
   // as master error has been simulated in the middle.
+  auto split_factor = cluster_->GetSplitFactor();
   const auto status = WaitForTabletSplitCompletion(
-      /* expected_non_split_tablets = */2,
+      /* expected_non_split_tablets = */ split_factor,
       /* expected_split_tablets = */ 0,
       /* num_replicas_online = */ 0,
       client::kTableName,
@@ -3359,33 +3444,61 @@ TEST_P(TabletSplitSingleServerITestWithPartition, TestSplitEncodedKeyAfterBreakI
   // Split should pass without any error.
   const auto response = ASSERT_RESULT(SendMasterRpcSyncSplitTablet(source_tablet_id));
   ASSERT_FALSE(response.has_error()) << response.error().ShortDebugString();
-  ASSERT_OK(WaitForTabletSplitCompletion(2 /* expected_non_split_tablets */));
+  ASSERT_OK(WaitForTabletSplitCompletion(split_factor /* expected_non_split_tablets */));
 
-  // Investigate child tablets to make sure keys are expected.
+  // For each child tablet, lookup its position in the sub-partition sequence, and verify the
+  // partition and key bounds are as expected.
+  const auto& split_partition_keys = key_response.split_partition_keys();
+  const auto& split_encoded_keys = key_response.split_encoded_keys();
+  ASSERT_EQ(split_partition_keys.size(), split_factor - 1);
+  ASSERT_EQ(split_encoded_keys.size(), split_factor - 1);
   peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_->id());
-  ASSERT_EQ(peers.size(), 2);
+  ASSERT_EQ(peers.size(), split_factor);
+  const auto first_child_idx = 0;
+  const auto last_child_idx = split_factor - 1;
   for (const auto& peer : peers) {
     auto tablet = ASSERT_RESULT(peer->shared_tablet());
     const auto& key_bounds = tablet->key_bounds();
     ASSERT_TRUE(key_bounds.IsInitialized());
 
-    const auto partition_end = peer->tablet_metadata()->partition()->partition_key_end();
-    const auto partition = peer->tablet_metadata()->partition()->partition_key_start();
-    if (partition.empty()) {
-      // First child
-      ASSERT_EQ(partition_end, key_response.split_partition_key());
-      ASSERT_TRUE(key_bounds.lower.empty())
-          << "peer lower bound = " << FormatSliceAsStr(key_bounds.lower.AsSlice());
-      ASSERT_EQ(key_bounds.upper.ToStringBuffer(), key_response.split_encoded_key());
+    const auto& partition_end = peer->tablet_metadata()->partition()->partition_key_end();
+    const auto& partition_start = peer->tablet_metadata()->partition()->partition_key_start();
+    const auto lower_key_bound = key_bounds.lower.ToStringBuffer();
+    const auto upper_key_bound = key_bounds.upper.ToStringBuffer();
+
+    int child_idx;
+    if (partition_end.empty()) {
+      // Last child.
+      child_idx = last_child_idx;
     } else {
-      // Second child
-      ASSERT_EQ(partition, key_response.split_partition_key());
-      ASSERT_TRUE(partition_end.empty())
-          << "peer partition end = " << FormatBytesAsStr(partition_end);
-      ASSERT_EQ(key_bounds.lower.ToStringBuffer(), key_response.split_encoded_key());
-      ASSERT_TRUE(key_bounds.upper.empty())
-          << "peer upper bound = " << FormatSliceAsStr(key_bounds.upper.AsSlice());
+      // Other children.
+      const auto it = std::lower_bound(
+          split_partition_keys.begin(), split_partition_keys.end(), partition_end);
+      child_idx = narrow_cast<int>(std::distance(split_partition_keys.begin(), it));
+      CHECK_LT(child_idx, last_child_idx);
     }
+
+    const auto& expected_partition_start =
+        child_idx == first_child_idx ? std::string() : split_partition_keys[child_idx - 1];
+    const auto& expected_lower_key_bound =
+        child_idx == first_child_idx ? std::string() : split_encoded_keys[child_idx - 1];
+    const auto& expected_partition_end =
+        child_idx == last_child_idx ? std::string() : split_partition_keys[child_idx];
+    const auto& expected_upper_key_bound =
+        child_idx == last_child_idx ? std::string() : split_encoded_keys[child_idx];
+
+    ASSERT_EQ(partition_start, expected_partition_start) << Format(
+        "peer $0 partition start: $1, expected: $2",
+        child_idx, FormatBytesAsStr(partition_start), FormatBytesAsStr(expected_partition_start));
+    ASSERT_EQ(partition_end, expected_partition_end) << Format(
+        "peer $0 partition end: $1, expected: $2",
+        child_idx, FormatBytesAsStr(partition_end), FormatBytesAsStr(expected_partition_end));
+    ASSERT_EQ(lower_key_bound, expected_lower_key_bound) << Format(
+        "peer $0 lower key bound: $1, expected: $2",
+        child_idx, FormatBytesAsStr(lower_key_bound), FormatBytesAsStr(expected_lower_key_bound));
+    ASSERT_EQ(upper_key_bound, expected_upper_key_bound) << Format(
+        "peer $0 upper key bound: $1, expected: $2",
+        child_idx, FormatBytesAsStr(upper_key_bound), FormatBytesAsStr(expected_upper_key_bound));
   }
 }
 
@@ -3408,7 +3521,7 @@ class TabletSplitSystemRecordsITest :
     SCHECK_NOTNULL(tablet.get());
 
     // Get middle key directly from in-memory tablet and check correct message has been returned.
-    auto middle_key = tablet->GetEncodedMiddleSplitKey();
+    const auto middle_key = tablet->GetSplitKeys(cluster_->GetSplitFactor());
     SCHECK_EQ(middle_key.ok(), false, IllegalState, "Valid split key is not expected.");
     const auto key_message = middle_key.status().message();
     const auto is_expected_key_message =
@@ -3437,6 +3550,9 @@ TEST_P(TabletSplitSystemRecordsITest, GetSplitKey) {
   //   2) run kNumTxns transaction with the same keys
   //   3) run manual compaction to collapse all user records to the latest transaciton content
   //   4) at this step there are kNumTxns internal records followed by 2 * kNumRows user records
+
+  // Disable the fix to split only across user keys.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_use_middle_user_key) = false;
 
   // Selecting a small period for history cutoff to force compacting records with the same keys.
   constexpr auto kHistoryRetentionSec = 1;
@@ -3794,6 +3910,11 @@ INSTANTIATE_TEST_CASE_P(
         "TEST_crash_before_apply_tablet_split_op",
         "TEST_crash_before_source_tablet_mark_split_done",
         "TEST_crash_after_tablet_split_completed"));
+
+INSTANTIATE_TEST_CASE_P(
+    TabletSplitSingleServerITest,
+    TabletNSplitSingleServerITest,
+    ::testing::Values(2, 3, 4, 5));
 
 namespace {
 

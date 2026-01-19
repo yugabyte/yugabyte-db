@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 
 import { getPrometheusUrls } from './utils';
 import { YBTooltip } from '../YBTooltip/YBTooltip';
-import { ReactComponent as PrometheusIcon } from '../../../redesign/assets/prometheus-icon.svg';
+import PrometheusIcon from '../../../redesign/assets/prometheus-icon.svg';
 
 import { useAnchorStyles, useIconStyles } from '../../styles/styles';
 

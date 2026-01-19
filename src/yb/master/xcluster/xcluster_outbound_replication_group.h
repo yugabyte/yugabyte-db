@@ -45,7 +45,7 @@ class XClusterOutboundReplicationGroup
     const std::function<Result<scoped_refptr<NamespaceInfo>>(const NamespaceIdentifierPB&)>
         get_namespace_func;
     const std::function<Result<std::vector<TableDesignator>>(
-        const NamespaceId&, bool include_sequences_data)>
+        const NamespaceId&, bool is_automatic_ddl_mode)>
         get_tables_func;
     const std::function<bool(const NamespaceId& namespace_id)> is_automatic_mode_switchover_func;
     const std::function<Result<std::unique_ptr<XClusterCreateStreamsContext>>(

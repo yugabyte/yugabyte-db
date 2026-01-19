@@ -119,7 +119,7 @@ var stopCmd = &cobra.Command{
 				log.Fatal("Failed to stop " + args[0] + ": " + err.Error())
 			}
 		} else {
-			for service := range serviceManager.Services() {
+			for service := range serviceManager.ServicesReverse() {
 				if err := service.Stop(); err != nil {
 					log.Fatal("Failed to stop " + service.Name() + ": " + err.Error())
 				}

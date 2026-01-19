@@ -3,7 +3,9 @@
 package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
+import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.operator.annotations.BlockOperatorResource;
@@ -48,6 +50,8 @@ public class UniverseController extends AuthenticatedController {
   @Inject private RuntimeConfGetter configGetter;
   @Inject private UniverseCRUDHandler universeCRUDHandler;
   @Inject private RoleBindingUtil roleBindingUtil;
+  @Inject private ConfigHelper configHelper;
+  @Inject private YsqlQueryExecutor ysqlQueryExecutor;
 
   /** List the universes for a given customer. */
   @ApiOperation(
@@ -125,6 +129,10 @@ public class UniverseController extends AuthenticatedController {
       Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
+    if (!isForceDelete) {
+      Util.validateUniverseOwnershipAndNotDetached(
+          universe, configHelper, ysqlQueryExecutor, configGetter);
+    }
 
     UUID taskUUID =
         universeCRUDHandler.destroy(

@@ -7,6 +7,9 @@ menu:
   stable_api:
     parent: api-cassandra
     weight: 1410
+aliases:
+  - /stable/api/cassandra/type_inet
+  - /stable/api/ycql/type_inet
 type: docs
 ---
 

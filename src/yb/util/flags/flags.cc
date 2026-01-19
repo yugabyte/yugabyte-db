@@ -69,7 +69,7 @@ using std::endl;
 using std::string;
 using std::unordered_set;
 using std::vector;
-using yb::operator"" _MB;
+using yb::operator""_MB;
 
 // Because every binary initializes its flags here, we use it as a convenient place
 // to offer some global flags as well.

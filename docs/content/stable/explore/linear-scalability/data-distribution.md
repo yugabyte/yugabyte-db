@@ -4,6 +4,8 @@ headerTitle: Data distribution
 linkTitle: Data distribution
 description: Understand how a table is split into tablets and is moved seamlessly across nodes
 headcontent: Understand how a table is split into tablets and moved seamlessly across nodes
+aliases:
+  - /explore/linear-scalability/sharding-rebalancing
 menu:
   stable:
     identifier: scalability-data-distribution
@@ -51,6 +53,10 @@ Depending on how many tablets are split, the tablet distribution across the node
 In the previous illustration, `T1` and `T2` are in the same node (`node-2`). YugabyteDB realizes that the leaders are not balanced and automatically distributes the leaders across different nodes. This ensures that the cluster is used optimally.
 
 ![Leader rebalancing](/images/explore/scalability/sharding-leader-rebalancing.png)
+
+{{<lead link="../../../architecture/docdb-sharding/tablet-splitting/#approaches-to-tablet-splitting">}}
+For more details on cluster balancing scenarios, see [Cluster balancing](../../../architecture/docdb-sharding/cluster-balancing/#approaches-to-tablet-splitting).
+{{</lead>}}
 
 {{<note>}}
 Rebalancing is done also for followers and not just for leaders.

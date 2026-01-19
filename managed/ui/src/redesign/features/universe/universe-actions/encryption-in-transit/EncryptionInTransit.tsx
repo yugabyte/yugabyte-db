@@ -1,4 +1,4 @@
-import React, { FC, useEffect } from 'react';
+import React, { FC, useEffect, useState } from 'react';
 import clsx from 'clsx';
 import { useMutation, useQuery } from 'react-query';
 import { useForm, FormProvider } from 'react-hook-form';
@@ -16,11 +16,13 @@ import {
   ENABLE_NODE_NODE_ENCRYPTION_NAME,
   ENABLE_CLIENT_NODE_ENCRYPTION_NAME,
   FORM_RESET_VALUES,
+  USE_SAME_CERTS_FIELD_NAME,
   EncryptionInTransitFormValues,
-  useEITStyles,
-  getInitialFormValues,
+  UpgradeOptions,
   isSelfSignedCert,
-  USE_SAME_CERTS_FIELD_NAME
+  getInitialFormValues,
+  useEITStyles,
+  K8sEncryptionOption
 } from './EncryptionInTransitUtils';
 import { api, QUERY_KEY } from '../../../../utils/api';
 import { Certificate } from '../../universe-form/utils/dto';
@@ -69,6 +71,7 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({
   universe,
   isItKubernetesUniverse
 }) => {
+  const [openRollingUpgradeModal, setRollingUpgradeModal] = useState(false);
   const { t } = useTranslation();
   const classes = useEITStyles();
   const theme = useTheme();
@@ -89,7 +92,7 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({
     mode: 'onChange',
     reValidateMode: 'onChange'
   });
-  const { control, watch, handleSubmit, setValue } = formMethods;
+  const { control, watch, setValue, getValues } = formMethods;
 
   //initial values
   const encryptionEnabled = INITIAL_VALUES.enableUniverseEncryption;
@@ -168,56 +171,61 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({
 
     if (values.enableNodeToNodeEncrypt === false) {
       payload['rootCA'] = null;
-      payload['createNewRootCA'] = false;
     }
     if (values.enableNodeToNodeEncrypt === true) {
       if (!values['rootCA']) {
         payload['rootCA'] = null;
-        payload['createNewRootCA'] = true;
-      } else {
-        payload['createNewRootCA'] = false;
       }
     }
 
     if (values.enableClientToNodeEncrypt === false) {
       payload['clientRootCA'] = null;
-      payload['createNewClientRootCA'] = false;
     }
     if (values.enableClientToNodeEncrypt === true && !values.rootAndClientRootCASame) {
       if (!values['clientRootCA']) {
         payload['clientRootCA'] = null;
-        payload['createNewClientRootCA'] = true;
-      } else {
-        payload['createNewClientRootCA'] = false;
       }
     }
 
     if (values.rootAndClientRootCASame) {
       if (values.enableNodeToNodeEncrypt && values.enableClientToNodeEncrypt) {
         payload['clientRootCA'] = values.rootCA;
-        payload['createNewClientRootCA'] = false;
       }
     }
 
-    //Rolling Upgrade
-    if (values.rollingUpgrade && !tlsToggled) {
+    if (isItKubernetesUniverse && values.k8sEncryptionType === K8sEncryptionOption.EnableBoth) {
+      if (!values['rootCA']) {
+        payload['rootCA'] = null;
+        payload['clientRootCA'] = null;
+      } else {
+        payload['clientRootCA'] = values.rootCA;
+      }
+    }
+
+    if (tlsToggled) {
+      payload.upgradeOption = UpgradeOptions.NonRolling;
+    }
+    if (values.upgradeOption === UpgradeOptions.Rolling) {
       payload.sleepAfterMasterRestartMillis = values.upgradeDelay * 1000;
       payload.sleepAfterTServerRestartMillis = values.upgradeDelay * 1000;
-      payload.upgradeOption = 'Rolling';
-    } else {
-      payload.upgradeOption = 'Non-Rolling';
+    }
+    if (isItKubernetesUniverse) {
+      payload.rootAndClientRootCASame = true;
+      if (payload.k8sEncryptionType) delete payload.k8sEncryptionType;
     }
 
     return payload;
   };
 
-  const handleFormSubmit = handleSubmit(async (values) => {
+  const handleFormSubmit = () => {
+    const values = getValues();
     if (
       values.enableUniverseEncryption &&
       !(values.enableNodeToNodeEncrypt || values.enableClientToNodeEncrypt)
     ) {
       //If encryption is enabled at global level, but if one of NN OR CN toggle is not turned on
       toast.warn(t('universeActions.encryptionInTransit.enableEITWarning'), TOAST_OPTIONS);
+      setRollingUpgradeModal(false);
     } else {
       try {
         let payload = constructPayload(values);
@@ -227,7 +235,7 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({
         console.error(e);
       }
     }
-  });
+  };
 
   const canEditEAT = hasNecessaryPerm({
     onResource: universeId,
@@ -254,10 +262,16 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({
       overrideWidth={650}
       overrideHeight="auto"
       cancelLabel={t('common.cancel')}
-      submitLabel={t('common.apply')}
+      submitLabel={
+        !tlsToggled ? t('universeActions.encryptionInTransit.selectAndApply') : t('common.apply')
+      }
       title={t('universeActions.encryptionInTransit.title')}
       onClose={onClose}
-      onSubmit={handleFormSubmit}
+      onSubmit={() => {
+        if (tlsToggled) {
+          handleFormSubmit();
+        } else setRollingUpgradeModal(true);
+      }}
       submitTestId="EncryptionInTransit-Submit"
       cancelTestId="EncryptionInTransit-Close"
       buttonProps={{
@@ -353,8 +367,6 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({
                 {currentTab === EitTabs.ServerCert && !disableServerCertRotation && (
                   <RotateServerCerts initialValues={INITIAL_VALUES} />
                 )}
-
-                {!tlsToggled && <RollingUpgrade />}
               </Box>
             )}
             <Box display="flex" flexDirection="column" gridGap={theme.spacing(2)} marginTop={2}>
@@ -373,6 +385,15 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({
               )}
             </Box>
           </Box>
+          {!tlsToggled && (
+            <RollingUpgrade
+              open={openRollingUpgradeModal}
+              onClose={() => {
+                setRollingUpgradeModal(false);
+              }}
+              onSubmit={handleFormSubmit}
+            />
+          )}
         </FormProvider>
       )}
     </YBModal>

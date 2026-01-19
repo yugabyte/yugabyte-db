@@ -841,6 +841,9 @@ class AtomicGauge : public Gauge {
 };
 
 template <class T>
+using AtomicGaugePtr = scoped_refptr<AtomicGauge<T>>;
+
+template <class T>
 void IncrementGauge(const scoped_refptr<AtomicGauge<T>>& gauge) {
   if (gauge) {
     gauge->Increment();

@@ -23,12 +23,17 @@ import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
+import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
 import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
 import com.yugabyte.yw.rbac.annotations.Resource;
 import com.yugabyte.yw.rbac.enums.SourceType;
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiImplicitParam;
+import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.Authorization;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -39,10 +44,23 @@ import play.mvc.Http;
 import play.mvc.Result;
 import play.mvc.Results;
 
+@Api(value = "HA", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 @Slf4j
 public class HAController extends AuthenticatedController {
   @Inject private PlatformReplicationManager replicationManager;
 
+  @ApiOperation(
+      notes = "Available since YBA version 2.20.0.",
+      nickname = "createHAConfig",
+      value = "Create high availability config",
+      response = HighAvailabilityConfig.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "HAConfigFormRequest",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.HAConfigFormData",
+          required = true))
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.20.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -152,6 +170,12 @@ public class HAController extends AuthenticatedController {
     return ok();
   }
 
+  @ApiOperation(
+      notes = "Available since YBA version 2.20.0.",
+      value = "Generate cluster key",
+      response = JsonNode.class,
+      nickname = "generateClusterKey")
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.20.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =

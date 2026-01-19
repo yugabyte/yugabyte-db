@@ -1085,17 +1085,29 @@ export const ApiPermissionMap = {
         requestType: ApiRequestType.POST,
         endpoint: '/settings/ha/internal/upload'
     },
-    CREATE_CONTINUOUS_BACKUP: {
+    CREATE_CONTINUOUS_YBA_BACKUP: {
         requestType: ApiRequestType.POST,
         endpoint: '/auto-yba-backups'
     },
-    DELETE_CONTINUOUS_BACKUP: {
+    DELETE_CONTINUOUS_YBA_BACKUP: {
         requestType: ApiRequestType.DELETE,
         endpoint: '/auto-yba-backups/$bUUID<[^/]+>'
     },
-    EDIT_CONTINUOUS_BACKUP: {
+    EDIT_CONTINUOUS_YBA_BACKUP: {
         requestType: ApiRequestType.DELETE,
         endpoint: '/auto-yba-backups/$bUUID<[^/]+>'
+    },
+    RESTORE_CONTINUOUS_YBA_BACKUP: {
+        requestType: ApiRequestType.POST,
+        endpoint: '/auto-yba-backups/restore'
+    },
+    CREATE_ISOLATED_YBA_BACKUP: {
+        requestType: ApiRequestType.POST,
+        endpoint: '/yba-backups'
+    },
+    RESTORE_ISOLATED_YBA_BACKUP: {
+        requestType: ApiRequestType.POST,
+        endpoint: '/yba-backups/restore'
     },
     GET_UNIVERSE_PROXY: {
         requestType: ApiRequestType.GET,

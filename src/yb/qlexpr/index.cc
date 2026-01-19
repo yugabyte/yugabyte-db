@@ -93,7 +93,8 @@ IndexInfo::IndexInfo(const IndexInfoPB& pb)
       indexed_range_column_ids_(ColumnIdsFromPB(pb.indexed_range_column_ids())),
       index_permissions_(pb.index_permissions()),
       backfill_error_message_(pb.backfill_error_message()),
-      num_rows_processed_by_backfill_job_(pb.num_rows_processed_by_backfill_job()),
+      num_rows_read_from_table_for_backfill_(pb.num_rows_read_from_table_for_backfill()),
+      num_rows_backfilled_in_index_(pb.num_rows_backfilled_in_index()),
       use_mangled_column_name_(pb.use_mangled_column_name()),
       where_predicate_spec_(pb.has_where_predicate_spec() ?
         std::make_shared<IndexInfoPB::WherePredicateSpecPB>(pb.where_predicate_spec()) : nullptr) {
@@ -142,7 +143,8 @@ void IndexInfo::ToPB(IndexInfoPB* pb) const {
   }
   pb->set_index_permissions(index_permissions_);
   pb->set_backfill_error_message(backfill_error_message_);
-  pb->set_num_rows_processed_by_backfill_job(num_rows_processed_by_backfill_job_);
+  pb->set_num_rows_read_from_table_for_backfill(num_rows_read_from_table_for_backfill_);
+  pb->set_num_rows_backfilled_in_index(num_rows_backfilled_in_index_);
   pb->set_use_mangled_column_name(use_mangled_column_name_);
   if (where_predicate_spec_) {
     pb->mutable_where_predicate_spec()->CopyFrom(*where_predicate_spec_);
@@ -311,7 +313,7 @@ void IndexMap::ToPB(google::protobuf::RepeatedPtrField<IndexInfoPB>* indexes) co
   }
 }
 
-Result<const IndexInfo*> IndexMap::FindIndex(const TableId& index_id) const {
+Result<const IndexInfo*> IndexMap::FindIndex(TableIdView index_id) const {
   const auto itr = find(index_id);
   if (itr == end()) {
     return STATUS(NotFound, Format("Index id $0 not found", index_id));
@@ -321,7 +323,7 @@ Result<const IndexInfo*> IndexMap::FindIndex(const TableId& index_id) const {
 
 bool IndexMap::TEST_Equals(const IndexMap& lhs, const IndexMap& rhs) {
   // We can't use std::unordered_map's == because IndexInfo does not define ==.
-  using MapType = std::unordered_map<TableId, IndexInfo>;
+  using MapType = UnorderedStringMap<TableId, IndexInfo>;
   return util::MapsEqual(static_cast<const MapType&>(lhs),
                          static_cast<const MapType&>(rhs),
                          &IndexInfo::TEST_Equals);

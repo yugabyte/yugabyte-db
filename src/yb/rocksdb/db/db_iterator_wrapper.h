@@ -61,8 +61,8 @@ class DBIteratorWrapper : public Iterator {
     wrapped_->UseFastNext(value);
   }
 
-  void UpdateFilterKey(Slice user_key_for_filter) override {
-    wrapped_->UpdateFilterKey(user_key_for_filter);
+  void UpdateFilterKey(Slice user_key_for_filter, Slice seek_key) override {
+    wrapped_->UpdateFilterKey(user_key_for_filter, seek_key);
   }
 
  protected:

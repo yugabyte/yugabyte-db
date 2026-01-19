@@ -47,6 +47,7 @@ using namespace std::literals;
 
 DECLARE_string(pggate_master_addresses);
 DECLARE_string(test_leave_files);
+DECLARE_bool(enable_object_locking_for_table_locks);
 
 namespace yb {
 namespace pggate {
@@ -81,6 +82,17 @@ YbcWaitEventInfo PgstatReportWaitStartNoOp(YbcWaitEventInfo info) {
   return info;
 }
 
+YbcReadPointHandle GetCatalogSnapshotReadPoint(YbcPgOid table_oid, bool create_if_not_exists) {
+  return 0;
+}
+
+uint16_t GetSessionReplicationOriginId() {
+  return 0;
+}
+
+void CheckForInterruptsNoOp() {
+}
+
 } // namespace
 
 PggateTest::PggateTest() = default;
@@ -111,11 +123,30 @@ struct varlena* PggateTestCStringToTextWithLen(const char* c, int size) {
   return reinterpret_cast<struct varlena*>(buf);
 }
 
+void *PggateTestSwitchMemoryContext(void* context) {
+  return context;
+}
+
+void *PggateTestCreateMemContext(void* parent, const char*name) {
+  static MemoryContext memctx;
+  return static_cast<void*>(&memctx);
+}
+
+void PggateTestDeleteMemContext(void* context) {
+}
+
 //--------------------------------------------------------------------------------------------------
 // Starting and ending routines.
 
 void PggateTest::SetUp() {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_test_leave_files) = "always";
+  // The tests by pass creating pg connections and perform custom operations by creating
+  // YbcPgStatement and invoking YBCPgExecInsert/YBCPgExecSelect etc. In the normal case,
+  // these functions are invoked from the ysql backend after opening the relevant relations
+  // (and thus acquiring relevant object locks). As a result, the sanity check which ensures
+  // that some object locks are taken before performing a read/write fails for these tests.
+  // Hence, disabling the object locks feature for this suite.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
   YBTest::SetUp();
 }
 
@@ -140,7 +171,9 @@ Status PggateTest::Init(
   RETURN_NOT_OK(CreateCluster(num_tablet_servers, replication_factor));
 
   // Init PgGate API.
-  CHECK_YBC_STATUS(YBCInit(test_name, PggateTestAlloc, PggateTestCStringToTextWithLen));
+  CHECK_YBC_STATUS(YBCInit(test_name, PggateTestAlloc, PggateTestCStringToTextWithLen,
+                           PggateTestSwitchMemoryContext, PggateTestCreateMemContext,
+                           PggateTestDeleteMemContext));
 
   YbcPgCallbacks callbacks;
 
@@ -150,20 +183,22 @@ Status PggateTest::Init(
   callbacks.GetCurrentYbMemctx = &GetCurrentTestYbMemctx;
   callbacks.GetDebugQueryString = &GetDebugQueryStringStub;
   callbacks.PgstatReportWaitStart = &PgstatReportWaitStartNoOp;
+  callbacks.GetCatalogSnapshotReadPoint = &GetCatalogSnapshotReadPoint;
+  callbacks.GetSessionReplicationOriginId = &GetSessionReplicationOriginId;
+  callbacks.CheckForInterrupts = &CheckForInterruptsNoOp;
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_pggate_tserver_shared_memory_uuid) =
       cluster_->tablet_server(0)->instance_id().permanent_uuid();
 
-  ash_metadata.query_id = 5; // to make sure a DCHECK passes during metadata serilazation
+  ash_metadata.query_id = 5; // to make sure a DCHECK passes during metadata serialization
   ash_config.metadata = &ash_metadata;
 
   YbcPgInitPostgresInfo init_info{
     .parallel_leader_session_id = nullptr,
     .shared_data = &shared_data_placeholder};
-  YBCInitPgGate(
-      YBCTestGetTypeTable(), &callbacks, &init_info, &ash_config);
-
-  CHECK_YBC_STATUS(YBCPgInitSession(session_stats, false /* is_binary_upgrade */));
+  CHECK_YBC_STATUS(YBCInitPgGate(
+      YBCTestGetTypeTable(), &callbacks, &init_info, &ash_config, session_stats,
+      false /* is_binary_upgrade */));
   if (should_create_db) {
     CreateDB();
   }

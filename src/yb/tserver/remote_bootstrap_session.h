@@ -225,6 +225,8 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
 
   Result<OpId> CreateSnapshot(int retry);
 
+  void RemoveCheckpointDir();
+
   // When a follower peer is serving as the rbs source, try registering a log anchor
   // at remote_log_anchor_index_ on the leader peer.
   Status RegisterRemoteLogAnchorUnlocked() REQUIRES(mutex_);

@@ -649,7 +649,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     defaultUserIntent.ybSoftwareVersion = ybSoftwareVersion;
     defaultUserIntent.enableNodeToNodeEncrypt = true;
     defaultUserIntent.enableClientToNodeEncrypt = true;
-    details.upsertPrimaryCluster(defaultUserIntent, null);
+    details.upsertPrimaryCluster(defaultUserIntent, null, null);
     details.rootCA = defaultCert.getUuid();
     defaultUniverse.setUniverseDetails(details);
     defaultUniverse.save();
@@ -700,7 +700,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     defaultUserIntent.ybSoftwareVersion = ybSoftwareVersion;
     defaultUserIntent.enableNodeToNodeEncrypt = true;
     defaultUserIntent.enableClientToNodeEncrypt = false;
-    details.upsertPrimaryCluster(defaultUserIntent, null);
+    details.upsertPrimaryCluster(defaultUserIntent, null, null);
     details.rootCA = defaultCert.getUuid();
     defaultUniverse.setUniverseDetails(details);
     defaultUniverse.save();
@@ -750,7 +750,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     defaultUserIntent.ybSoftwareVersion = ybSoftwareVersion;
     defaultUserIntent.enableNodeToNodeEncrypt = false;
     defaultUserIntent.enableClientToNodeEncrypt = true;
-    details.upsertPrimaryCluster(defaultUserIntent, null);
+    details.upsertPrimaryCluster(defaultUserIntent, null, null);
     details.rootCA = defaultCert.getUuid();
     defaultUniverse.setUniverseDetails(details);
     defaultUniverse.save();

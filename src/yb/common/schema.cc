@@ -628,15 +628,6 @@ Result<const ColumnSchema&> Schema::column_by_id(ColumnId id) const {
   return cols_[idx];
 }
 
-void Schema::UpdateMissingValuesFrom(
-    const google::protobuf::RepeatedPtrField<ColumnSchemaPB>& columns) {
-  for (int i = 0; i < columns.size(); ++i) {
-    if (columns[i].has_missing_value()) {
-      cols_[i].set_missing_value(columns[i].missing_value());
-    }
-  }
-}
-
 Result<const QLValuePB&> Schema::GetMissingValueByColumnId(ColumnId id) const {
   const auto& column_schema = VERIFY_RESULT_REF(column_by_id(id));
   return column_schema.missing_value();

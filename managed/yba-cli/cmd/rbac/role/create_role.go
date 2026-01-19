@@ -35,7 +35,7 @@ var createRoleCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(name)) == 0 {
+		if util.IsEmptyString(name) {
 			cmd.Help()
 			logrus.Fatalln(formatter.Colorize("No role name found to create\n", formatter.RedColor))
 		}
@@ -79,11 +79,12 @@ var createRoleCmd = &cobra.Command{
 
 		r, response, err := authAPI.CreateRole().RoleFormData(req).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "RBAC: Role", "Create")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "RBAC: Role", "Create")
 		}
 
-		roles := []ybaclient.Role{r}
+		createdRole := util.CheckAndDereference(r, "Role creation failed")
+
+		roles := []ybaclient.Role{createdRole}
 		rolesCtx := formatter.Context{
 			Command: "create",
 			Output:  os.Stdout,
@@ -148,13 +149,13 @@ func buildPermissionMapFromString(permissionString string) (res map[string]strin
 		val := kvp[1]
 		switch key {
 		case "resource-type":
-			if len(strings.TrimSpace(val)) != 0 {
+			if !util.IsEmptyString(val) {
 				permission["resource-type"] = strings.ToUpper(val)
 			} else {
 				providerutil.ValueNotFoundForKeyError(key)
 			}
 		case "action":
-			if len(strings.TrimSpace(val)) != 0 {
+			if !util.IsEmptyString(val) {
 				permission["action"] = strings.ToUpper(val)
 			} else {
 				providerutil.ValueNotFoundForKeyError(key)

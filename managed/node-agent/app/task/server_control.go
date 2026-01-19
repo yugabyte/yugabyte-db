@@ -77,7 +77,7 @@ func (handler *ServerControlHandler) Handle(
 		}
 	}
 	// Enable linger for user level systemd.
-	yes, err := module.IsUserSystemd(handler.username, handler.param.GetServerName())
+	yes, _, err := module.IsUserSystemd(handler.username, handler.param.GetServerName())
 	if err != nil {
 		return nil, err
 	}

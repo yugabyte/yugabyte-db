@@ -104,7 +104,7 @@ TEST_F(RemoveTabletServerTest, NotBlacklisted) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 5 * 1000;
   ASSERT_OK(WaitForMasterLeaderToMarkTabletServerDead(uuid_to_remove, cluster_client, 30s));
 
-  // Disable the load balancer and unblacklist the node.
+  // Disable the cluster balancer and unblacklist the node.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
   ASSERT_OK(cluster_client.ClearBlacklist());
 
@@ -150,7 +150,7 @@ TEST_F(RemoveTabletServerTest, StillHostingTablets) {
   ASSERT_NE(tserver_it, tserver_resp.servers().end())
       << "Couldn't find a tserver hosting live tablets";
   // We're going to blacklist the tserver to avoid triggering the "not blacklisted" validation
-  // logic. So disable the load balancer.
+  // logic. So disable the cluster balancer.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
   auto tserver_to_remove = *tserver_it;
   auto& uuid_to_remove = tserver_to_remove.instance_id().permanent_uuid();
@@ -237,7 +237,7 @@ Status MasterClusterTest::DrainTabletServer(
   auto& hp = tserver_it->registration().common().broadcast_addresses(0);
   RETURN_NOT_OK(client.BlacklistHost(HostPortPB(hp)));
 
-  // Now wait for the load balancer to move all tablets off the tserver.
+  // Now wait for the cluster balancer to move all tablets off the tserver.
   auto ts_proxy = VERIFY_RESULT(CreateTabletServerServiceProxy(uuid));
   std::string message;
   return WaitFor(

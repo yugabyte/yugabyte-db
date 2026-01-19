@@ -34,7 +34,7 @@ If you are running YugabyteDB Anywhere airgapped, download the YugabyteDB releas
 
 If your YugabyteDB Anywhere instance has internet access, you can import the release from a bucket or an internal server using a URL.
 
-You can obtain YugabyteDB releases by navigating to the release from the [YugabyteDB releases](../../../releases/ybdb-releases/) page.
+You can obtain YugabyteDB releases by navigating to the release from the [YugabyteDB releases](/stable/releases/ybdb-releases/) page.
 
 {{< note title="Importing Stable and Preview versions" >}}
 By default, you cannot import the latest stable YugabyteDB versions (v2024.1.x) in preview YugabyteDB Anywhere versions (for example, v2.23.x).
@@ -52,7 +52,7 @@ To import a YugabyteDB release, do the following:
 
     - If uploading a file, click **Upload** and select the release file. Upload the package in tar.gz format. For example:
 
-        `yugabyte-{{< yb-version version="preview" format="build">}}-linux-x86_64.tar.gz`
+        `yugabyte-{{< yb-version version="v2024.1" format="build">}}-linux-x86_64.tar.gz`
 
     - If loading the release from a URL, enter the URL of the storage location.
 
@@ -76,7 +76,7 @@ If a the architecture for a YugabyteDB release that you want to install on a uni
 
     - If uploading a file, click **Upload** and select the release file. Upload the package in tar.gz format. For example:
 
-        `yugabyte-{{< yb-version version="preview" format="build">}}-el8-aarch64.tar.gz`
+        `yugabyte-{{< yb-version version="v2024.1" format="build">}}-el8-aarch64.tar.gz`
 
     - If loading the release from a URL, enter the URL of the storage location.
 

@@ -19,6 +19,10 @@ set parallel_tuple_cost=0;
 set min_parallel_table_scan_size=0;
 set max_parallel_workers_per_gather=4;
 
+-- Note: The test below was copied from upstream `select_parallel.sql`.
+-- Contrary to the original comment, it *does* show a Parallel Append.
+-- See: https://github.com/postgres/postgres/blob/e6dfd068ed453b8690551dac700d57fbf32ba187/src/test/regress/expected/select_parallel.out#L156
+
 -- Parallel Append is not to be used when the subpath depends on the outer param
 create table part_pa_test(a int, b int) partition by range(a);
 create table part_pa_test_p1 partition of part_pa_test for values from (minvalue) to (0);

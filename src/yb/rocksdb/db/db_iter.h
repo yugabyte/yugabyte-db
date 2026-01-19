@@ -55,19 +55,19 @@ extern Iterator* NewDBIterator(
 // to allocate.
 class ArenaWrappedDBIter final : public Iterator {
  public:
-  virtual ~ArenaWrappedDBIter();
+  ~ArenaWrappedDBIter();
 
   // Get the arena to be used to allocate memory for DBIter to be wrapped,
   // as well as child iterators in it.
-  virtual Arena* GetArena() { return &arena_; }
+  Arena* GetArena() { return &arena_; }
 
   // Set the DB Iterator to be wrapped
 
-  virtual void SetDBIter(DBIter* iter);
+  void SetDBIter(DBIter* iter);
 
   // Set the internal iterator wrapped inside the DB Iterator. Usually it is
   // a merging iterator.
-  virtual void SetIterUnderDBIter(InternalIterator* iter);
+  void SetIterUnderDBIter(InternalIterator* iter);
 
   const KeyValueEntry& Entry() const override;
   const KeyValueEntry& SeekToFirst() override;
@@ -79,15 +79,15 @@ class ArenaWrappedDBIter final : public Iterator {
   void UseFastNext(bool value) override;
 
   void RegisterCleanup(CleanupFunction function, void* arg1, void* arg2);
-  virtual Status PinData();
-  virtual Status ReleasePinnedData();
+  Status PinData();
+  Status ReleasePinnedData();
 
   Status GetProperty(std::string prop_name, std::string* prop) override;
 
   void RevalidateAfterUpperBoundChange() override;
 
  private:
-  void UpdateFilterKey(Slice user_key_for_filter) override;
+  void UpdateFilterKey(Slice user_key_for_filter, Slice seek_key) override;
 
   DBIter* db_iter_;
   Arena arena_;

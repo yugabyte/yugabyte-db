@@ -129,6 +129,7 @@ race:google::RawLog__SetLastTime
 
 # Bug in gflags
 race:google::FlagSaverImpl::RestoreToRegistry
+race:google::GetAllFlags
 
 # On shutdown we get a lot of signal-unsafe calls originating from PostgreSQL's ServerLoop.
 signal:src/postgres/src/backend/postmaster/postmaster.c

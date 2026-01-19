@@ -20,7 +20,7 @@ intent_check:
 
 intent_write:
 Wrote 7 key/value pairs to kIntents RocksDB:
- 1. PutCF: TXN META ********-****-****-****-************ => { transaction_id: ********-****-****-****-************ isolation: SERIALIZABLE_ISOLATION status_tablet: 0 priority: 0 start_time: { physical: 0 } locality: GLOBAL old_status_tablet:  skip_prefix_locks: 1 }
+ 1. PutCF: TXN META ********-****-****-****-************ => { transaction_id: ********-****-****-****-************ isolation: SERIALIZABLE_ISOLATION status_tablet: 0 priority: 0 start_time: { physical: 0 } using_table_locks: 1 locality: GLOBAL old_status_tablet:  skip_prefix_locks: 1 }
  2. PutCF: SubDocKey(DocKey(0x4d44, [null], [EncodedSubDocKey(DocKey(0xbdda, ["1", "2"], ["3", "4"]), [])]), []) [kStrongWrite] HT{ days: 0 time: 0 } => TransactionId(********-****-****-****-************) WriteId(0) { 2: "G\xbd\xdaS1\x00\x00S2\x00\x00!S3\x00\x00S4\x00\x00!" }
  4. PutCF: SubDocKey(DocKey(0x4d44, [null], [EncodedSubDocKey(DocKey(0xbdda, ["1", "2"], ["3", "4"]), [])]), []) [kStrongRead] HT{ days: 0 time: 0 } => TransactionId(********-****-****-****-************) WriteId(1) null
  6. PutCF: SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ days: 0 time: 0 } => TransactionId(********-****-****-****-************) none
@@ -28,7 +28,7 @@ Wrote 7 key/value pairs to kIntents RocksDB:
 
 intent_write:
 Wrote 7 key/value pairs to kIntents RocksDB:
- 1. PutCF: TXN META ********-****-****-****-************ => { transaction_id: ********-****-****-****-************ isolation: SERIALIZABLE_ISOLATION status_tablet: 0 priority: 0 start_time: { physical: 0 } locality: GLOBAL old_status_tablet:  skip_prefix_locks: 1 }
+ 1. PutCF: TXN META ********-****-****-****-************ => { transaction_id: ********-****-****-****-************ isolation: SERIALIZABLE_ISOLATION status_tablet: 0 priority: 0 start_time: { physical: 0 } using_table_locks: 1 locality: GLOBAL old_status_tablet:  skip_prefix_locks: 1 }
  2. PutCF: SubDocKey(DocKey(0xbdda, ["1", "2"], ["3", "4"]), []) [kStrongWrite] HT{ days: 0 time: 0 } => TransactionId(********-****-****-****-************) WriteId(0) { 4: NULL 5: "b" }
  4. PutCF: SubDocKey(DocKey(0xbdda, ["1", "2"], ["3", "4"]), []) [kStrongRead] HT{ days: 0 time: 0 } => TransactionId(********-****-****-****-************) WriteId(1) null
  6. PutCF: SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ days: 0 time: 0 } => TransactionId(********-****-****-****-************) none

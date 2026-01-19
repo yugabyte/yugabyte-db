@@ -15,7 +15,7 @@
 
 #include <string>
 #include <ostream>
-#include <unordered_set>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -40,11 +40,11 @@
 #include "yb/util/lw_function.h"
 #include "yb/util/status.h"
 
+#include "yb/yql/pggate/pg_flush_debug_context.h"
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_op.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
-#include "yb/yql/pggate/util/ybc_guc.h"
-#include "ybc_pg_typedefs.h"
+#include "yb/yql/pggate/pggate_flags.h"
 
 DECLARE_uint64(rpc_max_message_size);
 DECLARE_double(max_buffer_size_to_rpc_limit_ratio);
@@ -144,14 +144,15 @@ size_t hash_value(const RowIdentifier& key) {
   return hash;
 }
 
-using RowKeys = std::unordered_set<RowIdentifier, boost::hash<RowIdentifier>>;
+using RowKeys = std::unordered_map<RowIdentifier, uint64_t, boost::hash<RowIdentifier>>;
 
 struct InFlightOperation {
   RowKeys keys;
   FlushFuture future;
+  size_t op_count;
 
-  explicit InFlightOperation(FlushFuture&& future_)
-      : future(std::move(future_)) {}
+  explicit InFlightOperation(RowKeys&& keys, FlushFuture&& future_, size_t op_count_)
+      : keys(std::move(keys)), future(std::move(future_)), op_count(op_count_) {}
 };
 
 using InFlightOps = boost::circular_buffer_space_optimized<InFlightOperation,
@@ -229,7 +230,7 @@ std::pair<BufferableOperations, BufferableOperations> Split(
 
 class PgOperationBuffer::Impl {
  public:
-  Impl( Flusher&& flusher, const BufferingSettings& buffering_settings)
+  Impl(Flusher&& flusher, const BufferingSettings& buffering_settings)
       : flusher_(std::move(flusher)),
         buffering_settings_(buffering_settings) {}
 
@@ -237,16 +238,20 @@ class PgOperationBuffer::Impl {
     return ClearOnError(DoAdd(table, std::move(op), transactional));
   }
 
-  Status Flush(const YbcFlushDebugContext& debug_context) {
-    return ClearOnError(DoFlush(debug_context));
+  Status Flush(const PgFlushDebugContext& dbg_ctx) {
+    return ClearOnError(DoFlush(dbg_ctx));
   }
 
-  Result<BufferableOperations> Take(bool transactional, const YbcFlushDebugContext& debug_context) {
-    return ClearOnError(DoTake(transactional, debug_context));
+  Result<BufferableOperations> Take(bool transactional, const PgFlushDebugContext& dbg_ctx) {
+    return ClearOnError(DoTake(transactional, dbg_ctx));
+  }
+
+  size_t PendingOpsCount() const {
+    return ops_.Size() + txn_ops_.Size();
   }
 
   size_t Size() const {
-    return keys_.size() + InFlightOpsCount();
+    return PendingOpsCount() + InFlightOpsCount();
   }
 
   bool IsEmpty() const {
@@ -254,7 +259,8 @@ class PgOperationBuffer::Impl {
   }
 
   void Clear() {
-    VLOG_IF(1, !keys_.empty()) << "Dropping " << keys_.size() << " pending operations";
+    const auto op_count = PendingOpsCount();
+    VLOG_IF(1, op_count) << "Dropping " << op_count << " pending operations";
     ops_.Clear();
     txn_ops_.Clear();
     keys_.clear();
@@ -278,6 +284,70 @@ class PgOperationBuffer::Impl {
       Clear();
     }
     return res;
+  }
+
+  // Inserts a (key=row-key, value=op) pair into an in-memory map that tracks
+  // pending write operations. This function returns true if the operation can
+  // be enqueued immediately, or false if the buffer is required to be flushed
+  // before enqueuing the operation.
+  bool InsertKey(const RowIdentifier& key, LWPgsqlWriteRequestPB& write_request) {
+    const auto stmt_type = write_request.stmt_type();
+    uint64_t stmt_type_mask = (1u << stmt_type);
+
+    bool is_index_row_rewrite_optimization_allowed = false;
+    if (PREDICT_TRUE(FLAGS_ysql_optimize_index_row_rewrites)) {
+      switch (stmt_type) {
+        case PgsqlWriteRequestPB::PGSQL_INSERT:
+        case PgsqlWriteRequestPB::PGSQL_UPDATE:
+        case PgsqlWriteRequestPB::PGSQL_UPSERT:
+          is_index_row_rewrite_optimization_allowed = true;
+          break;
+        case PgsqlWriteRequestPB::PGSQL_DELETE:
+        case PgsqlWriteRequestPB::PGSQL_TRUNCATE_COLOCATED:
+        case PgsqlWriteRequestPB::PGSQL_FETCH_SEQUENCE:
+          is_index_row_rewrite_optimization_allowed = false;
+          break;
+        default:
+          LOG(DFATAL) << "Unexpected stmt_type: " << write_request.ShortDebugString();
+          return false;
+      }
+    }
+
+    const auto it = keys_.find(key);
+    if (!is_index_row_rewrite_optimization_allowed || it == keys_.end()) {
+      return keys_.emplace(key, stmt_type_mask).second;
+    }
+
+    constexpr auto kDeleteMask = (1u << PgsqlWriteRequestPB::PGSQL_DELETE);
+    constexpr auto kUpsertMask = (1u << PgsqlWriteRequestPB::PGSQL_UPSERT);
+
+    // An operation corresponding to the same key is already enqueued in the buffer.
+    // If the enqueued operation is anything other than a DELETE, then we cannot enqueue
+    // the incoming operation as it would insert a new row corresponding to the same key.
+    if (it->second != kDeleteMask) {
+      return false;
+    }
+
+    // If the operation is an INSERT and a DELETE has already been enqueued for the same key,
+    // there is no need to perform the uniqueness check associated with the INSERT. Therefore,
+    // the INSERT can be downgraded to an UPSERT.
+    if (stmt_type == PgsqlWriteRequestPB::PGSQL_INSERT) {
+      write_request.set_stmt_type(PgsqlWriteRequestPB::PGSQL_UPSERT);
+      stmt_type_mask = kUpsertMask;
+    }
+
+    it->second |= stmt_type_mask;
+    return true;
+  }
+
+  void EraseKey(const RowIdentifier& key, PgsqlWriteRequestPB::PgsqlStmtType stmt_type) {
+    if (auto it = keys_.find(key); it == keys_.end()) {
+      it->second &= ~(1u << stmt_type);
+
+      if (PREDICT_TRUE(!it->second)) {
+        keys_.erase(it);
+      }
+    }
   }
 
   Status CheckDuplicateInsertForFastPathCopy(const PgTableDesc& table,
@@ -318,7 +388,7 @@ class PgOperationBuffer::Impl {
     }
     DCHECK_EQ(buffering_settings_.max_batch_size % buffering_settings_.multiple, 0);
 
-    const auto& write_request = op->write_request();
+    auto& write_request = op->write_request();
     const auto stmt_type = write_request.stmt_type();
     const bool need_transaction = op->need_transaction();
     const auto& packed_rows = write_request.packed_rows();
@@ -327,30 +397,26 @@ class PgOperationBuffer::Impl {
     const size_t payload = write_request.SerializedSize();
     const size_t max_size = GetAtomicFlag(&FLAGS_rpc_max_message_size) *
                             FLAGS_max_buffer_size_to_rpc_limit_ratio;
-    const bool need_flush_context = yb_debug_log_docdb_requests;
 
-    if (keys_.size() % buffering_settings_.multiple == 0 &&
+    if (PendingOpsCount() % buffering_settings_.multiple == 0 &&
         total_bytes_in_buffer_ + payload >= max_size) {
       // The data size in buffer exceeds the limit, need to flush buffer.
       // For copy on colocated tables that use fast-path transaction, we perform the check only
       // when the op comes from a row rather than an index. This makes the check very simple,
       // but it should be sufficient to catch common cases where the average row size is large,
       // causing the buffer size to exceed the RPC limit with the default batch size.
-      YbcFlushDebugContext internal_debug_context = {};
-      internal_debug_context.reason = YB_BUFFER_FULL;
-      internal_debug_context.uintarg = total_bytes_in_buffer_ + payload;
-      RETURN_NOT_OK(SendBuffer(internal_debug_context));
+      RETURN_NOT_OK(SendBuffer(PgFlushDebugContext::BufferFull(total_bytes_in_buffer_ + payload)));
     }
 
     if (!packed_rows.empty()) {
       // Optimistically assume that we don't have conflicts with existing operations.
       bool has_conflict = false;
       for (auto it = packed_rows.begin(); it != packed_rows.end(); it += 2) {
-        if (PREDICT_FALSE(!keys_.insert(RowIdentifier(table_relfilenode_id, *it)).second)) {
+        if (PREDICT_FALSE(!InsertKey(RowIdentifier(table_relfilenode_id, *it), write_request))) {
           RETURN_NOT_OK(CheckDuplicateInsertForFastPathCopy(table, stmt_type, need_transaction));
           while (it != packed_rows.begin()) {
             it -= 2;
-            keys_.erase(RowIdentifier(table_relfilenode_id, *it));
+            EraseKey(RowIdentifier(table_relfilenode_id, *it), stmt_type);
           }
           // Have to flush because already have operations for the same key.
           has_conflict = true;
@@ -358,35 +424,24 @@ class PgOperationBuffer::Impl {
         }
       }
       if (has_conflict) {
-        YbcFlushDebugContext debug_context {};
-        debug_context.reason = YB_CONFLICTING_KEY_WRITE;
-        debug_context.oidarg = table.pg_table_id().object_oid;
-        debug_context.strarg1 =
-            need_flush_context ? table.table_name().table_name().c_str() : nullptr;
-        RETURN_NOT_OK(Flush(debug_context));
+        RETURN_NOT_OK(Flush(PgFlushDebugContext::ConflictingKeyWrite(
+            table.pg_table_id().object_oid, table.table_name().table_name())));
         for (auto it = packed_rows.begin(); it != packed_rows.end(); it += 2) {
-          SCHECK(keys_.insert(RowIdentifier(table_relfilenode_id, *it)).second, IllegalState,
-                 "Unable to insert key: $0", packed_rows);
+          SCHECK(InsertKey(RowIdentifier(table_relfilenode_id, *it), write_request),
+                 IllegalState, "Unable to insert key: $0", packed_rows);
         }
       }
     } else {
       RowIdentifier row_id(table_relfilenode_id, table.schema(), write_request);
-      if (PREDICT_FALSE(!keys_.insert(row_id).second)) {
+      if (PREDICT_FALSE(!InsertKey(row_id, write_request))) {
         RETURN_NOT_OK(CheckDuplicateInsertForFastPathCopy(table, stmt_type, need_transaction));
-
-        YbcFlushDebugContext debug_context {};
-        debug_context.reason = YB_CONFLICTING_KEY_WRITE;
-        debug_context.oidarg = table.pg_table_id().object_oid;
-        if (need_flush_context) {
-          debug_context.strarg1 = table.table_name().table_name().c_str();
-          debug_context.strarg2 = row_id.ybctid().ToDebugHexString().c_str();
-        }
-        RETURN_NOT_OK(Flush(debug_context));
-        keys_.insert(row_id);
+        RETURN_NOT_OK(Flush(PgFlushDebugContext::ConflictingKeyWrite(
+            table.pg_table_id().object_oid, table.table_name().table_name(), row_id.ybctid())));
+        InsertKey(row_id, write_request);
       } else {
         // Prevent conflicts on in-flight operations which use current row_id.
         for (auto i = in_flight_ops_.begin(); i != in_flight_ops_.end(); ++i) {
-          if (i->keys.find(row_id) != i->keys.end()) {
+          if (i->keys.contains(row_id)) {
             RETURN_NOT_OK(EnsureCompleted(i - in_flight_ops_.begin() + 1));
             break;
           }
@@ -396,25 +451,21 @@ class PgOperationBuffer::Impl {
     target.Add(std::move(op), table);
     total_bytes_in_buffer_ += write_request.SerializedSize();
 
-    if (keys_.size() >= buffering_settings_.max_batch_size) {
-      YbcFlushDebugContext internal_debug_context = {};
-      internal_debug_context.reason = YB_BUFFER_FULL;
-      internal_debug_context.uintarg = total_bytes_in_buffer_;
-      return SendBuffer(internal_debug_context);
+    if (PendingOpsCount() >= buffering_settings_.max_batch_size) {
+      return SendBuffer(PgFlushDebugContext::BufferFull(total_bytes_in_buffer_));
     }
 
     return Status::OK();
   }
 
-  Status DoFlush(const YbcFlushDebugContext& debug_context) {
-    RETURN_NOT_OK(SendBuffer(debug_context));
+  Status DoFlush(const PgFlushDebugContext& dbg_ctx) {
+    RETURN_NOT_OK(SendBuffer(dbg_ctx));
     return EnsureAllCompleted();
   }
 
-  Result<BufferableOperations> DoTake(bool transactional,
-                                      const YbcFlushDebugContext& debug_context) {
+  Result<BufferableOperations> DoTake(bool transactional, const PgFlushDebugContext& dbg_ctx) {
     BufferableOperations result;
-    RETURN_NOT_OK(SendBuffer(debug_context, make_lw_function(
+    RETURN_NOT_OK(SendBuffer(dbg_ctx, make_lw_function(
         [transactional, &result](BufferableOperations* ops, bool txn) {
           if (txn == transactional) {
             ops->Swap(&result);
@@ -429,7 +480,7 @@ class PgOperationBuffer::Impl {
   size_t InFlightOpsCount() const {
     size_t ops_count = 0;
     for (const auto& op : in_flight_ops_) {
-      ops_count += op.keys.size();
+      ops_count += op.op_count;
     }
     return ops_count;
   }
@@ -448,44 +499,42 @@ class PgOperationBuffer::Impl {
 
   using SendInterceptor = LWFunction<bool(BufferableOperations*, bool)>;
 
-  Status SendBuffer(const YbcFlushDebugContext& debug_context) {
-    return SendBufferImpl(nullptr /* interceptor */, debug_context);
+  Status SendBuffer(const PgFlushDebugContext& dbg_ctx) {
+    return SendBufferImpl(nullptr /* interceptor */, dbg_ctx);
   }
 
-  Status SendBuffer(const YbcFlushDebugContext& debug_context, const SendInterceptor& interceptor) {
-    return SendBufferImpl(&interceptor, debug_context);
+  Status SendBuffer(const PgFlushDebugContext& dbg_ctx, const SendInterceptor& interceptor) {
+    return SendBufferImpl(&interceptor, dbg_ctx);
   }
 
-  Status SendBufferImpl(const SendInterceptor* interceptor,
-                        const YbcFlushDebugContext& debug_context) {
+  Status SendBufferImpl(const SendInterceptor* interceptor, const PgFlushDebugContext& dbg_ctx) {
     if (keys_.empty()) {
       return Status::OK();
     }
-    BufferableOperations ops;
-    BufferableOperations txn_ops;
-    RowKeys keys;
-    ops_.Swap(&ops);
-    txn_ops_.Swap(&txn_ops);
-    keys_.swap(keys);
+
+    RSTATUS_DCHECK(
+        ops_.Empty() || txn_ops_.Empty(), IllegalState,
+        "Operations buffer cannot have both transactional and non-transactional ops enqueued");
+
+    auto* ops_source = &txn_ops_;
+    bool is_transactional = true;
+    if (ops_source->Empty()) {
+      ops_source = &ops_;
+      is_transactional = false;
+    }
+
+    BufferableOperations ops = std::exchange(*ops_source, {});
+    RowKeys keys = std::exchange(keys_, {});
     total_bytes_in_buffer_ = 0;
 
-    const auto ops_count = keys.size();
-    bool ops_sent = VERIFY_RESULT(SendOperations(
-      interceptor, std::move(txn_ops), true /* transactional */, ops_count, debug_context));
-    ops_sent = VERIFY_RESULT(SendOperations(
-      interceptor, std::move(ops),
-      false /* transactional */, ops_sent ? 0 : ops_count, debug_context)) || ops_sent;
-    if (ops_sent) {
-      in_flight_ops_.back().keys = std::move(keys);
-    }
-    return Status::OK();
+    return SendOperations(
+        interceptor, std::move(ops), std::move(keys), is_transactional, dbg_ctx);
   }
 
-  Result<bool> SendOperations(const SendInterceptor* interceptor,
-                              BufferableOperations ops,
-                              bool transactional,
-                              size_t ops_count,
-                              const YbcFlushDebugContext& debug_context) {
+  Status SendOperations(
+      const SendInterceptor* interceptor, BufferableOperations ops, RowKeys&& keys,
+      bool transactional, const PgFlushDebugContext& dbg_ctx) {
+    const auto ops_count = ops.Size();
     if (!ops.Empty() && !(interceptor && (*interceptor)(&ops, transactional))) {
       EnsureCapacity(&in_flight_ops_, buffering_settings_);
       // In case max_in_flight_operations < max_batch_size, the number of in-flight operations will
@@ -497,15 +546,15 @@ class PgOperationBuffer::Impl {
       int64_t space_required = (InFlightOpsCount() + ops_count) - actual_max_in_flight_operations;
       while (!in_flight_ops_.empty() &&
              (space_required > 0 || in_flight_ops_.front().future.Ready())) {
-        space_required -= in_flight_ops_.front().keys.size();
+        space_required -= in_flight_ops_.front().op_count;
         RETURN_NOT_OK(EnsureCompleted(1));
       }
-      in_flight_ops_.push_back(
-          InFlightOperation(VERIFY_RESULT(flusher_(
-              std::move(ops), transactional, debug_context))));
-      return true;
+      in_flight_ops_.push_back(InFlightOperation{
+          std::move(keys),
+          VERIFY_RESULT(flusher_(std::move(ops), transactional, dbg_ctx)), ops_count});
     }
-    return false;
+
+    return Status::OK();
   }
 
   Flusher flusher_;
@@ -527,13 +576,13 @@ Status PgOperationBuffer::Add(const PgTableDesc& table, PgsqlWriteOpPtr op, bool
     return impl_->Add(table, std::move(op), transactional);
 }
 
-Status PgOperationBuffer::Flush(const YbcFlushDebugContext& debug_context) {
-    return impl_->Flush(debug_context);
+Status PgOperationBuffer::Flush(const PgFlushDebugContext& dbg_ctx) {
+    return impl_->Flush(dbg_ctx);
 }
 
 Result<BufferableOperations> PgOperationBuffer::Take(
-    bool transactional, const YbcFlushDebugContext& debug_context) {
-  return impl_->Take(transactional, debug_context);
+    bool transactional, const PgFlushDebugContext& dbg_ctx) {
+  return impl_->Take(transactional, dbg_ctx);
 }
 
 size_t PgOperationBuffer::Size() const {

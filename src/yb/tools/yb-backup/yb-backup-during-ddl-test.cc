@@ -14,11 +14,15 @@
 #include <future>
 #include <memory>
 #include <string>
+#include <tuple>
 
 #include "yb/common/colocated_util.h"
 #include "yb/common/transaction.h"
 
 #include "yb/gutil/strings/join.h"
+
+#include "yb/client/client-test-util.h"
+#include "yb/client/table_info.h"
 
 #include "yb/master/master.h"
 #include "yb/master/master_backup.proxy.h"
@@ -31,6 +35,8 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
+#include "yb/util/env.h"
+#include "yb/util/path_util.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
@@ -38,6 +44,7 @@
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
+using yb::client::GetTableIdByTableName;
 using yb::client::Snapshots;
 using yb::client::SnapshotTestUtil;
 using yb::client::YBTableName;
@@ -50,11 +57,12 @@ namespace yb {
 namespace tools {
 
 YB_DEFINE_ENUM(YsqlColocationConfig, (kNotColocated)(kDBColocated));
-class YBBackupTestWithColocationParam : public pgwrapper::PgMiniTestBase,
-                                        public YBBackupTestBase,
-                                        public ::testing::WithParamInterface<YsqlColocationConfig> {
+
+// Base class for backup during DDL tests - contains all common functionality
+// that doesn't depend on test parameters.
+class YBBackupDuringDdl : public pgwrapper::PgMiniTestBase, public YBBackupTestBase {
  public:
-  void SetUp() override {
+  void SetUp() {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
     // We need the following to be able to run yb-controller with MiniCluster.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_use_custom_varz) = true;
@@ -65,7 +73,6 @@ class YBBackupTestWithColocationParam : public pgwrapper::PgMiniTestBase,
     if (UseYbController()) {
       CHECK_OK(cluster_->StartYbControllerServers());
     }
-    CreateDatabase(kBackupSourceDbName, GetParam());
     snapshot_util_ = std::make_unique<SnapshotTestUtil>();
     snapshot_util_->SetProxy(&client_->proxy_cache());
     snapshot_util_->SetCluster(cluster_.get());
@@ -97,6 +104,35 @@ class YBBackupTestWithColocationParam : public pgwrapper::PgMiniTestBase,
     YsqlshRunner ysqlsh_runner =
         VERIFY_RESULT(YsqlshRunner::GetYsqlshRunner(cluster_->YsqlHostport()));
     return ysqlsh_runner.ExecuteSqlScript(sql_script, "ysql_dump" /* tmp_file_prefix */);
+  }
+
+  // Log the contents of a directory recursively for debugging backup artifacts.
+  void LogBackupDirContents(const std::string& dir) {
+    LOG(INFO) << "Listing backup directory contents: " << dir;
+    auto* env = Env::Default();
+    if (!env->DirExists(dir)) {
+      LOG(INFO) << "Directory does not exist: " << dir;
+      return;
+    }
+    Status s = env->Walk(
+        dir, Env::PRE_ORDER,
+        [&](Env::FileType type, const std::string& dirname, const std::string& basename) -> Status {
+          const std::string full = JoinPathSegments(dirname, basename);
+          if (type == Env::DIRECTORY_TYPE) {
+            LOG(INFO) << "dir  " << full;
+          } else {
+            auto size = env->GetFileSize(full);
+            if (size.ok()) {
+              LOG(INFO) << "file " << full << " (" << *size << " bytes)";
+            } else {
+              LOG(INFO) << "file " << full;
+            }
+          }
+          return Status::OK();
+        });
+    if (!s.ok()) {
+      LOG(WARNING) << "Failed to walk directory " << dir << ": " << s.ToString();
+    }
   }
 
   Status AreTablesIncludedInSnapshot(
@@ -185,9 +221,20 @@ class YBBackupTestWithColocationParam : public pgwrapper::PgMiniTestBase,
     return future;
   }
 
+ protected:
   std::unique_ptr<SnapshotTestUtil> snapshot_util_;
   const std::string kBackupSourceDbName = "backup_source_db";
   const std::string kRestoreTargetDbName = "restore_target_db";
+};
+
+// Parametrized test class for colocation-only tests
+class YBBackupTestWithColocationParam : public YBBackupDuringDdl,
+                                        public ::testing::WithParamInterface<YsqlColocationConfig> {
+ public:
+  void SetUp() override {
+    YBBackupDuringDdl::SetUp();
+    CreateDatabase(kBackupSourceDbName, GetParam());
+  }
 };
 
 INSTANTIATE_TEST_CASE_P(
@@ -214,6 +261,7 @@ TEST_P(YBBackupTestWithColocationParam, TestRestorePreserveRelfilenode) {
       {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", kBackupSourceDbName),
        "create"},
       cluster_.get()));
+  LogBackupDirContents(backup_dir);
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO mytbl (k, v) VALUES (999, 'foo')"));
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", kRestoreTargetDbName),
@@ -245,8 +293,7 @@ TEST_P(YBBackupTestWithColocationParam, TestFailImportWithUnmatchedDocDBTable) {
   namespace_info.set_namespace_name(kBackupSourceDbName);
   // Get the namespace ID for the database using the client API
   master::GetNamespaceInfoResponsePB namespace_resp;
-  ASSERT_OK(client_->GetNamespaceInfo(
-      "" /* namespace_id */, kBackupSourceDbName, YQL_DATABASE_PGSQL, &namespace_resp));
+  ASSERT_OK(client_->GetNamespaceInfo(kBackupSourceDbName, YQL_DATABASE_PGSQL, &namespace_resp));
   auto namespace_id = namespace_resp.namespace_().id();
   namespace_info.set_namespace_id(namespace_id);
   TxnSnapshotId snapshot_id = ASSERT_RESULT(snapshot_util_->CreateSnapshot(namespace_info));
@@ -323,8 +370,7 @@ TEST_P(YBBackupTestWithColocationParam, CreateConsistentMasterSnapshot) {
   namespace_info.set_namespace_name(kBackupSourceDbName);
   // Get the namespace ID for the database using the client API
   master::GetNamespaceInfoResponsePB namespace_resp;
-  ASSERT_OK(client_->GetNamespaceInfo(
-      "" /* namespace_id */, kBackupSourceDbName, YQL_DATABASE_PGSQL, &namespace_resp));
+  ASSERT_OK(client_->GetNamespaceInfo(kBackupSourceDbName, YQL_DATABASE_PGSQL, &namespace_resp));
   auto namespace_id = namespace_resp.namespace_().id();
   namespace_info.set_namespace_id(namespace_id);
 
@@ -411,8 +457,7 @@ TEST_P(YBBackupTestWithColocationParam, RetainTableDeletedDuringCreateSnapshot) 
 
   // Get the namespace ID for the database using the client API.
   master::GetNamespaceInfoResponsePB namespace_resp;
-  ASSERT_OK(client_->GetNamespaceInfo(
-      "" /* namespace_id */, kBackupSourceDbName, YQL_DATABASE_PGSQL, &namespace_resp));
+  ASSERT_OK(client_->GetNamespaceInfo(kBackupSourceDbName, YQL_DATABASE_PGSQL, &namespace_resp));
   auto& namespace_id = namespace_resp.namespace_().id();
   // We will delete table test_table2 after starting the async create snapshot. Table deletion
   // happens after the master leader selects the snapshot_hybrid_time and collects the entries
@@ -490,8 +535,7 @@ TEST_P(YBBackupTestWithColocationParam, CleanNamespaceAnchoringAfterFailedSnapsh
 
   // Get the namespace ID for the database using the client API
   master::GetNamespaceInfoResponsePB namespace_resp;
-  ASSERT_OK(client_->GetNamespaceInfo(
-      "" /* namespace_id */, kBackupSourceDbName, YQL_DATABASE_PGSQL, &namespace_resp));
+  ASSERT_OK(client_->GetNamespaceInfo(kBackupSourceDbName, YQL_DATABASE_PGSQL, &namespace_resp));
   auto namespace_id = namespace_resp.namespace_().id();
 
   // Specifying only namespace identifier (ns id, name and type) means the created snapshot includes
@@ -534,6 +578,351 @@ TEST_P(YBBackupTestWithColocationParam, CleanNamespaceAnchoringAfterFailedSnapsh
         return list_tables_resp.tables_size() == 1;
       },
       30s, "Wait for dropped table to be hard deleted"));
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+// Base class for Backup creation during ALTER TABLE tests.
+// Test that import_snapshot restores the correct DocDB table schema in case a snapshot is created
+// in the middle of alter table DDL.
+// Timeline of the test:
+// Main Thread                    Master Leader
+//   |                                 |
+//   |1.Create test_table              |
+//   |2.Setup sync points              |
+//   |3.Start AlterTable               |
+//   |4.Create a Backup and            |
+//   |  start CreateSnapshot           |
+//   |                                 |5.Wait until new DocDB table schema is committed
+//   |                                 |6.Select snapshot_ht
+//   |                                 |7.Collect tables (including test_table)
+//   |8.continue AlterTable, commit on pg|
+//   |9.Run ysql_dump as of snapshot_ht|
+//   |10.Wait for snapshot completion  |
+//   |11.Export snapshot               |
+//   |12.Restore the database          |
+//   |13.Verify restore is successful  |
+//   |14.Assert test_table has old     |
+//   |   schema (before the ALTER)     |
+
+class YBBackupDuringAlterTable : public YBBackupDuringDdl,
+                                 public ::testing::WithParamInterface<YsqlColocationConfig> {
+ public:
+  void SetUp() override {
+    YBBackupDuringDdl::SetUp();
+    CreateDatabase(kBackupSourceDbName, GetParam());
+  }
+
+  static std::vector<SyncPoint::Dependency> DefaultAlterTableDuringBackupDependencies() {
+    std::vector<SyncPoint::Dependency> dependencies;
+    dependencies.push_back(
+        {"YBBackupTestWithColocationParam::AlterTableDocDBTableCommitted",
+         "YBBackupTestWithColocationParam::ContinueSnapshotCreation"});
+    dependencies.push_back(
+        {"YBBackupTestWithColocationParam::CreateSnapshotEntriesCollected",
+         "YBBackupTestWithColocationParam::ContinueAlterTable"});
+    return dependencies;
+  }
+
+  // Runs the DDL query during backup creation and returns the restored table info and connection.
+  // The caller can optionally pass sync-point dependencies, and can optionally specify a "window"
+  // (two test sync points) to run the DDL in between.
+  //
+  // If before_alter_sync_point is non-empty, we wait on that sync point before running the DDL.
+  // If after_alter_sync_point is non-empty, we signal that sync point after running the DDL.
+  Result<std::pair<client::YBTableInfo, pgwrapper::PGConn>> RunAlterDuringBackup(
+      const std::string& table_name, const std::string& alter_query,
+      const std::vector<SyncPoint::Dependency>& dependencies,
+      const std::string& before_alter_sync_point = "",
+      const std::string& after_alter_sync_point = "") {
+    yb::SyncPoint::GetInstance()->LoadDependency(dependencies);
+    yb::SyncPoint::GetInstance()->EnableProcessing();
+
+    // Run the ALTER TABLE DDL while the backup is being created.
+    // Creating the snapshot can be delayed using sync points to simulate races between:
+    // - committing schema in DocDB
+    // - selecting snapshot hybrid time / collecting snapshot entries
+    // - tablet-level snapshot creation and restore
+    auto conn = VERIFY_RESULT(ConnectToDB(kBackupSourceDbName));
+
+    const string backup_dir = GetTempDir("backup");
+    TestThreadHolder thread_holder;
+    // Run the backup creation in a background thread so that we can interleave it with the ALTER.
+    thread_holder.AddThreadFunctor([&] {
+      LOG(INFO) << Format(
+          "Starting backup create for keyspace ysql.$0 into dir $1", kBackupSourceDbName,
+          backup_dir);
+      ASSERT_OK(RunBackupCommand(
+          {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", kBackupSourceDbName),
+           "create"},
+          cluster_.get()));
+      LOG(INFO) << "Backup create finished";
+    });
+
+    if (!before_alter_sync_point.empty()) {
+      TEST_SYNC_POINT(before_alter_sync_point.c_str());
+    }
+    LOG(INFO) << Format("Started Altering table: $0 with query: $1", table_name, alter_query);
+    RETURN_NOT_OK(conn.ExecuteFormat(alter_query));
+    if (!after_alter_sync_point.empty()) {
+      TEST_SYNC_POINT(after_alter_sync_point.c_str());
+    }
+
+    thread_holder.JoinAll();
+
+    LogBackupDirContents(backup_dir);
+    RETURN_NOT_OK(RunBackupCommand(
+        {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", kRestoreTargetDbName),
+         "restore"},
+        cluster_.get()));
+
+    // Get the restored table info.
+    auto client = VERIFY_RESULT(cluster_->CreateClient());
+    auto table_id =
+        VERIFY_RESULT(GetTableIdByTableName(client.get(), kRestoreTargetDbName, table_name));
+    auto table_info =
+        VERIFY_RESULT(client->GetYBTableInfoById(table_id, false /* include_hidden */));
+    LOG(INFO) << "Table info: " << table_info.schema.ToString();
+
+    auto restored_conn = VERIFY_RESULT(ConnectToDB(kRestoreTargetDbName));
+    return std::make_pair(std::move(table_info), std::move(restored_conn));
+  }
+
+  // The default "alter during backup" dependency sync points. Used in multiple tests.
+  Result<std::pair<client::YBTableInfo, pgwrapper::PGConn>> RunAlterDuringBackup(
+      const std::string& table_name, const std::string& alter_query) {
+    return RunAlterDuringBackup(
+        table_name, alter_query, DefaultAlterTableDuringBackupDependencies());
+  }
+};
+
+INSTANTIATE_TEST_CASE_P(
+    AlterTable, YBBackupDuringAlterTable,
+    ::testing::Values(YsqlColocationConfig::kNotColocated, YsqlColocationConfig::kDBColocated));
+
+  // Test a race condition when a DDL is issued in the window between the master leader collecting
+  // snapshot entries and submitting CREATE_ON_MASTER (and thus CREATE_ON_TABLET) operations.
+TEST_P(YBBackupDuringAlterTable, AlterTableDuringCreateSnapshot) {
+  if (!UseYbController()) {
+    GTEST_SKIP() << "Test requires YBC";
+  }
+
+  auto conn = ASSERT_RESULT(ConnectToDB(kBackupSourceDbName));
+  const std::string table_name = "test_table";
+
+  // Set up table with initial schema.
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY)", table_name));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 (k) VALUES (1)", table_name));
+
+  // Orchestrate the following timeline:
+  // 1. Backup creation starts and the master collects snapshot entries for the namespace.
+  // 2. Before submitting CREATE_ON_MASTER (and thus CREATE_ON_TABLET) operations, we run
+  //    "ALTER TABLE ... ADD COLUMN v INT" which bumps the DocDB schema.
+  // 3. Snapshot creation then finishes and backup completes.
+  // 4. We restore the backup into a new database and assert that restore succeeds.
+  std::vector<SyncPoint::Dependency> dependencies;
+  dependencies.push_back(
+      {"YBBackupTestWithColocationParam::CreateSnapshotEntriesCollected",
+       "YBBackupTestWithColocationParam::StartAlterTableAfterCollectingSnapshotEntries"});
+  dependencies.push_back(
+      {"YBBackupTestWithColocationParam::AlterTableDuringCreateSnapshotFinished",
+       "YBBackupTestWithColocationParam::StartSnapshotSubmitCreate"});
+  auto [_, restored_conn] = ASSERT_RESULT(RunAlterDuringBackup(
+      table_name, Format("ALTER TABLE $0 ADD COLUMN v INT", table_name), dependencies,
+      "YBBackupTestWithColocationParam::StartAlterTableAfterCollectingSnapshotEntries",
+      "YBBackupTestWithColocationParam::AlterTableDuringCreateSnapshotFinished"));
+
+  auto rows =
+      ASSERT_RESULT(restored_conn.FetchRows<int32_t>(Format("SELECT k FROM $0", table_name)));
+  ASSERT_EQ(rows.size(), 1);
+  ASSERT_EQ(rows[0], 1);
+}
+
+TEST_P(YBBackupDuringAlterTable, AddColumnWithDefaultValueDuringCreateSnapshot) {
+  if (!UseYbController()) {
+    GTEST_SKIP() << "Test requires YBC";
+  }
+
+  const std::string table_name = "test_table";
+
+  // Set up table with initial schema.
+  auto conn = ASSERT_RESULT(ConnectToDB(kBackupSourceDbName));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY)", table_name));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 (k) VALUES (1)", table_name));
+
+  // Orchestrate the following timeline:
+  // 1. Backup creation starts and the master collects snapshot entries for the namespace.
+  // 2. Before submitting CREATE_ON_MASTER (and thus CREATE_ON_TABLET) operations, we run
+  //    "ALTER TABLE ... ADD COLUMN v TEXT DEFAULT 'foo'" which bumps the DocDB schema and sets
+  //    missing_value for the new column.
+  // 3. Snapshot creation then finishes and backup completes.
+  // 4. We restore the backup into a new database and assert that restore succeeds.
+  std::vector<SyncPoint::Dependency> dependencies;
+  dependencies.push_back(
+      {"YBBackupTestWithColocationParam::CreateSnapshotEntriesCollected",
+       "YBBackupTestWithColocationParam::StartAlterTableAfterCollectingSnapshotEntries"});
+  dependencies.push_back(
+      {"YBBackupTestWithColocationParam::AlterTableDuringCreateSnapshotFinished",
+       "YBBackupTestWithColocationParam::StartSnapshotSubmitCreate"});
+  auto [_, restored_conn] = ASSERT_RESULT(RunAlterDuringBackup(
+      table_name, Format("ALTER TABLE $0 ADD COLUMN v TEXT DEFAULT 'foo'", table_name),
+      dependencies,
+      "YBBackupTestWithColocationParam::StartAlterTableAfterCollectingSnapshotEntries",
+      "YBBackupTestWithColocationParam::AlterTableDuringCreateSnapshotFinished"));
+
+  auto rows = ASSERT_RESULT(
+      restored_conn.FetchRows<int32_t>(Format("SELECT k FROM $0 ORDER BY k", table_name)));
+  ASSERT_EQ(rows.size(), 1);
+  ASSERT_EQ(rows[0], 1);
+
+  // The restored schema should match the dump schema (as-of snapshot creation time), i.e. only
+  // column k. Verify we can add column v again.
+  ASSERT_OK(restored_conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN v TEXT", table_name));
+}
+
+TEST_P(YBBackupDuringAlterTable, DropColumnWithDefaultValueDuringCreateSnapshot) {
+  if (!UseYbController()) {
+    GTEST_SKIP() << "Test requires YBC";
+  }
+
+  const std::string table_name = "test_table";
+
+  // Set up table with initial schema (includes default value column).
+  auto conn = ASSERT_RESULT(ConnectToDB(kBackupSourceDbName));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY)", table_name));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 (k) VALUES (1)", table_name));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN v TEXT DEFAULT 'foo'", table_name));
+  // Orchestrate the following timeline:
+  // 1. Backup creation starts and the master collects snapshot entries for the namespace.
+  // 2. Before submitting CREATE_ON_MASTER (and thus CREATE_ON_TABLET) operations, we run
+  //    "ALTER TABLE ... DROP COLUMN v" which bumps the DocDB schema.
+  // 3. Snapshot creation then finishes and backup completes.
+  // 4. We restore the backup into a new database and assert that restore succeeds.
+  std::vector<SyncPoint::Dependency> dependencies;
+  dependencies.push_back(
+      {"YBBackupTestWithColocationParam::CreateSnapshotEntriesCollected",
+       "YBBackupTestWithColocationParam::StartAlterTableAfterCollectingSnapshotEntries"});
+  dependencies.push_back(
+      {"YBBackupTestWithColocationParam::AlterTableDuringCreateSnapshotFinished",
+       "YBBackupTestWithColocationParam::StartSnapshotSubmitCreate"});
+
+  auto [_, restored_conn] = ASSERT_RESULT(RunAlterDuringBackup(
+      table_name, Format("ALTER TABLE $0 DROP COLUMN v", table_name), dependencies,
+      "YBBackupTestWithColocationParam::StartAlterTableAfterCollectingSnapshotEntries",
+      "YBBackupTestWithColocationParam::AlterTableDuringCreateSnapshotFinished"));
+
+  // The restored schema should match the dump schema (as-of snapshot creation time), i.e. it
+  // should still have column v with default 'foo' applied to existing row.
+  auto rows = ASSERT_RESULT((restored_conn.FetchRows<int32_t, std::string>(
+      Format("SELECT k, v FROM $0 ORDER BY k", table_name))));
+  ASSERT_EQ(rows.size(), 1);
+  ASSERT_EQ(std::get<0>(rows[0]), 1);
+  ASSERT_EQ(std::get<1>(rows[0]), "foo");
+
+  // Verify v exists by dropping it successfully.
+  ASSERT_OK(restored_conn.ExecuteFormat("ALTER TABLE $0 DROP COLUMN v", table_name));
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+TEST_P(YBBackupDuringAlterTable, AddColumn) {
+  if (!UseYbController()) {
+    GTEST_SKIP() << "Test requires YBC";
+  }
+  auto conn = ASSERT_RESULT(ConnectToDB(kBackupSourceDbName));
+  const std::string table_name = "test_table";
+
+  // Set up table with initial schema
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY)", table_name));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 (k) VALUES (1)", table_name));
+  // Add and remove some columns so that we have multiple schema packings
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN c1 INT", table_name));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 (k,c1) VALUES (2, 2)", table_name));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP COLUMN c1", table_name));
+  // Add and remove c2
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN c2 INT", table_name));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 (k,c2) VALUES (3, 3)", table_name));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP COLUMN c2", table_name));
+  // Add column c3 and keep it. This is to test different column_ids in backup/restore side for
+  // the same column name. i.e c3 will have column_id= [1,3] in the [backup,restore] side.
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN c3 INT", table_name));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 (k,c3) VALUES (4, 4)", table_name));
+
+  // Run the ALTER TABLE DDL during backup
+  auto [table_info, restored_conn] = ASSERT_RESULT(RunAlterDuringBackup(
+      table_name, Format("ALTER TABLE $0 ADD COLUMN v TEXT", table_name),
+      DefaultAlterTableDuringBackupDependencies()));
+
+  // Verify that the restored table has the old schema (before the ALTER).
+  // Should have old schema: just k and c3 columns
+  ASSERT_EQ(table_info.schema.columns().size(), 2);
+  ASSERT_EQ(table_info.schema.columns()[0].name(), "k");
+  ASSERT_EQ(table_info.schema.columns()[1].name(), "c3");
+  auto result =
+      ASSERT_RESULT(restored_conn.FetchRows<int32_t>(Format("SELECT k FROM $0", table_name)));
+  ASSERT_EQ(result.size(), 4);
+  // Try to add a new column with the name v and verify it works successfully
+  ASSERT_OK(restored_conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN v TEXT", table_name));
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+TEST_P(YBBackupDuringAlterTable, DropColumn) {
+  if (!UseYbController()) {
+    GTEST_SKIP() << "Test requires YBC";
+  }
+  auto conn = ASSERT_RESULT(ConnectToDB(kBackupSourceDbName));
+  const std::string table_name = "test_table";
+
+  // Set up table with initial schema
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY, v TEXT)", table_name));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 (k, v) VALUES (1, 'test')", table_name));
+
+  // Run the ALTER TABLE DDL during backup
+  auto [table_info, restored_conn] = ASSERT_RESULT(RunAlterDuringBackup(
+      table_name, Format("ALTER TABLE $0 DROP COLUMN v", table_name),
+      DefaultAlterTableDuringBackupDependencies()));
+
+  // Verify that the restored table has the old schema (before the ALTER).
+  // Should have old schema: both k and v columns
+  ASSERT_EQ(table_info.schema.columns().size(), 2);
+  ASSERT_EQ(table_info.schema.columns()[0].name(), "k");
+  ASSERT_EQ(table_info.schema.columns()[1].name(), "v");
+  auto result = ASSERT_RESULT(
+      (restored_conn.FetchRows<int32_t, std::string>(Format("SELECT k, v FROM $0", table_name))));
+  ASSERT_EQ(result.size(), 1);
+  ASSERT_EQ(std::get<0>(result[0]), 1);
+  ASSERT_EQ(std::get<1>(result[0]), "test");
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+TEST_P(YBBackupDuringAlterTable, RenameColumn) {
+  if (!UseYbController()) {
+    GTEST_SKIP() << "Test requires YBC";
+  }
+  auto conn = ASSERT_RESULT(ConnectToDB(kBackupSourceDbName));
+  const std::string table_name = "test_table";
+
+  // Set up table with initial schema
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY, v TEXT)", table_name));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 (k, v) VALUES (1, 'test')", table_name));
+
+  // Run the ALTER TABLE DDL during backup
+  auto [table_info, restored_conn] = ASSERT_RESULT(RunAlterDuringBackup(
+      table_name, Format("ALTER TABLE $0 RENAME COLUMN v TO v2", table_name),
+      DefaultAlterTableDuringBackupDependencies()));
+
+  // Verify that the restored table has the old schema (before the ALTER).
+  // Should have old schema: k and v (not v2)
+  ASSERT_EQ(table_info.schema.columns().size(), 2);
+  ASSERT_EQ(table_info.schema.columns()[0].name(), "k");
+  ASSERT_EQ(table_info.schema.columns()[1].name(), "v");
+  auto result = ASSERT_RESULT(
+      (restored_conn.FetchRows<int32_t, std::string>(Format("SELECT k, v FROM $0", table_name))));
+  ASSERT_EQ(result.size(), 1);
+  ASSERT_EQ(std::get<0>(result[0]), 1);
+  ASSERT_EQ(std::get<1>(result[0]), "test");
+
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 

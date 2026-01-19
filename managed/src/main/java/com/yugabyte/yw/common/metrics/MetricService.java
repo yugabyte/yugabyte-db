@@ -10,9 +10,7 @@
 package com.yugabyte.yw.common.metrics;
 
 import static com.yugabyte.yw.models.helpers.CommonUtils.nowPlusWithoutMillis;
-import static play.mvc.Http.Status.BAD_REQUEST;
 
-import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Metric;
 import com.yugabyte.yw.models.MetricKey;
@@ -32,7 +30,6 @@ import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
 
 @Singleton
 @Slf4j
@@ -114,18 +111,6 @@ public class MetricService {
     metricStorage.delete(filter.build());
   }
 
-  private void validate(Metric metric) {
-    if (metric.getType() == null) {
-      throw new PlatformServiceException(BAD_REQUEST, "Type field is mandatory");
-    }
-    if (StringUtils.isEmpty(metric.getName())) {
-      throw new PlatformServiceException(BAD_REQUEST, "Name field is mandatory");
-    }
-    if (metric.getValue() == null) {
-      throw new PlatformServiceException(BAD_REQUEST, "Value field is mandatory");
-    }
-  }
-
   public static Metric buildMetricTemplate(PlatformMetrics metric) {
     return buildMetricTemplate(metric, DEFAULT_METRIC_EXPIRY_SEC);
   }
@@ -133,7 +118,6 @@ public class MetricService {
   public static Metric buildMetricTemplate(PlatformMetrics metric, long metricExpiryPeriodSec) {
     return new Metric()
         .setExpireTime(nowPlusWithoutMillis(metricExpiryPeriodSec, ChronoUnit.SECONDS))
-        .setType(Metric.Type.GAUGE)
         .setName(metric.getMetricName());
   }
 

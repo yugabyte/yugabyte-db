@@ -15,9 +15,9 @@
 
 #include "yb/util/flags.h"
 
-DECLARE_int32(pggate_rpc_timeout_secs);
 DECLARE_int32(pggate_ybclient_reactor_threads);
 DECLARE_string(pggate_master_addresses);
+DECLARE_string(pggate_cert_base_name);
 DECLARE_string(pggate_tserver_shared_memory_uuid);
 DECLARE_int32(ysql_request_limit);
 DECLARE_uint64(ysql_prefetch_limit);
@@ -50,3 +50,4 @@ DECLARE_bool(ysql_enable_read_request_caching);
 DECLARE_bool(ysql_enable_create_database_oid_collision_retry);
 DECLARE_bool(ysql_use_relcache_file);
 DECLARE_bool(ysql_use_optimized_relcache_update);
+DECLARE_bool(ysql_optimize_index_row_rewrites);

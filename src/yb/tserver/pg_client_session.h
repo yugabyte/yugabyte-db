@@ -13,6 +13,8 @@
 
 #pragma once
 
+#include <sys/types.h>
+
 #include <cstddef>
 #include <functional>
 #include <memory>
@@ -36,6 +38,7 @@
 #include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
+#include "yb/util/lw_function.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
 #include "yb/util/strongly_typed_bool.h"
@@ -98,7 +101,10 @@ struct PgClientSessionContext {
   const EventStatsPtr& stats_exchange_response_size;
   const std::string& instance_uuid;
   docdb::ObjectLockOwnerRegistry* lock_owner_registry;
+  const TransactionManagerProvider transaction_manager_provider;
 };
+
+using RequestProcessingPreconditionWaiter = LWFunction<Status(size_t, CoarseTimePoint)>;
 
 class PgClientSession final {
  private:
@@ -111,8 +117,8 @@ class PgClientSession final {
   PgClientSession(
       TransactionBuilder&& transaction_builder, SharedThisSource shared_this_source,
       client::YBClient& client, std::reference_wrapper<const PgClientSessionContext> context,
-      uint64_t id, uint64_t lease_epoch, tserver::TSLocalLockManagerPtr ts_local_lock_manager,
-      rpc::Scheduler& scheduler);
+      uint64_t id, pid_t pid, uint64_t lease_epoch,
+      tserver::TSLocalLockManagerPtr ts_local_lock_manager, rpc::Scheduler& scheduler);
   ~PgClientSession();
 
   uint64_t id() const;
@@ -123,7 +129,9 @@ class PgClientSession final {
       PgPerformRequestPB& req, PgPerformResponsePB& resp, rpc::RpcContext&& context,
       const PgTablesQueryResult& tables);
 
-  void ProcessSharedRequest(size_t size, SharedExchange* exchange);
+  void ProcessSharedRequest(
+      size_t size, SharedExchange* exchange,
+      const RequestProcessingPreconditionWaiter& precondition_waiter);
 
   size_t SaveData(const RefCntBuffer& buffer, WriteBuffer&& sidecars);
 
@@ -163,7 +171,7 @@ class PgClientSession final {
 };
 
 void PreparePgTablesQuery(
-    const PgPerformRequestPB& req, boost::container::small_vector_base<TableId>& table_ids);
+    const PgPerformRequestMsg& req, boost::container::small_vector_base<TableId>& table_ids);
 
 } // namespace tserver
 } // namespace yb

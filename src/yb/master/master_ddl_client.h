@@ -44,6 +44,8 @@ class MasterDDLClient {
 
   Status DeleteTable(const TableId& id, MonoDelta timeout);
 
+  Result<ListTablesResponsePB> ListTables();
+
  private:
   MasterDdlProxy proxy_;
 };

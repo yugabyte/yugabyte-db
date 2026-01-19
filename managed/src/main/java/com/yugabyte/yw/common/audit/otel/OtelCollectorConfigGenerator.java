@@ -27,20 +27,20 @@ import com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterC
 import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig;
 import com.yugabyte.yw.models.helpers.telemetry.AWSCloudWatchConfig;
+import com.yugabyte.yw.models.helpers.telemetry.AuthCredentials.AuthType;
 import com.yugabyte.yw.models.helpers.telemetry.DataDogConfig;
 import com.yugabyte.yw.models.helpers.telemetry.DynatraceConfig;
 import com.yugabyte.yw.models.helpers.telemetry.ExportType;
 import com.yugabyte.yw.models.helpers.telemetry.GCPCloudMonitoringConfig;
 import com.yugabyte.yw.models.helpers.telemetry.LokiConfig;
+import com.yugabyte.yw.models.helpers.telemetry.OTLPConfig;
 import com.yugabyte.yw.models.helpers.telemetry.ProviderType;
+import com.yugabyte.yw.models.helpers.telemetry.S3Config;
 import com.yugabyte.yw.models.helpers.telemetry.SplunkConfig;
 import java.io.BufferedWriter;
 import java.io.FileWriter;
 import java.nio.file.Path;
 import java.util.*;
-import java.util.Base64;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -114,13 +114,17 @@ public class OtelCollectorConfigGenerator {
   private static final String EXPORTER_PREFIX_GCP_CLOUD_MONITORING = "googlecloud/";
   private static final String EXPORTER_PREFIX_LOKI = "loki/";
   private static final String EXPORTER_PREFIX_DYNATRACE = "otlphttp/";
+  private static final String EXPORTER_PREFIX_S3 = "awss3/";
 
   // Export type prefixes
   private static final String EXPORT_TYPE_PREFIX_QUERY_LOGS = "query_logs_";
   private static final String EXPORT_TYPE_PREFIX_METRICS = "metrics_";
 
-  // Common attribute prefixes
+  // Common attribute strings
   private static final String ATTR_PREFIX_YUGABYTE = "yugabyte.";
+  private static final String PURPOSE_SUFFIX_METRICS_EXPORT = "_METRICS_EXPORT";
+  private static final String PURPOSE_SUFFIX_AUDIT_LOG_EXPORT = "_LOG_EXPORT";
+  private static final String PURPOSE_SUFFIX_QUERY_LOG_EXPORT = "_QUERY_LOG_EXPORT";
 
   private final FileHelperService fileHelperService;
   private final TelemetryProviderService telemetryProviderService;
@@ -381,7 +385,12 @@ public class OtelCollectorConfigGenerator {
         // Add AttributesProcessor for metrics.
         String attributesProcessorName = PROCESSOR_PREFIX_ATTRIBUTES + exportTypeAndUUIDString;
         OtelCollectorConfigFormat.AttributesProcessor attributesProcessor =
-            createMetricsExporterAttributesProcessor(exporterConfig);
+            createMetricsExporterAttributesProcessor(
+                exporterConfig,
+                nodeParams.nodeName,
+                nodeDetails,
+                universe,
+                exporterConfig.getAdditionalTags());
         if (attributesProcessor != null
             && !CollectionUtils.isEmpty(attributesProcessor.getActions())) {
           collectorConfigFormat.getProcessors().put(attributesProcessorName, attributesProcessor);
@@ -506,7 +515,7 @@ public class OtelCollectorConfigGenerator {
                   String exporterName =
                       appendExporterConfig(
                           telemetryProvider,
-                          collectorConfigFormat.getExporters(),
+                          collectorConfigFormat,
                           new ArrayList<>(),
                           ExportType.AUDIT_LOGS);
                   appendSecretEnv(telemetryProvider, secretEnv);
@@ -1115,20 +1124,27 @@ public class OtelCollectorConfigGenerator {
   }
 
   private OtelCollectorConfigFormat.AttributesProcessor createMetricsExporterAttributesProcessor(
-      UniverseMetricsExporterConfig exporterConfig) {
+      UniverseMetricsExporterConfig exporterConfig,
+      String nodeName,
+      NodeDetails nodeDetails,
+      Universe universe,
+      Map<String, String> additionalTags) {
     TelemetryProvider telemetryProvider =
         telemetryProviderService.getOrBadRequest(exporterConfig.getExporterUuid());
 
     List<OtelCollectorConfigFormat.AttributeAction> attributeActions = new ArrayList<>();
-    // Override or add tags from the exporter config.
-    if (MapUtils.isNotEmpty(telemetryProvider.getTags())) {
-      attributeActions.addAll(getTagsToAttributeActions(telemetryProvider.getTags()));
-    }
+    // Add common required attributes
+    addCommonRequiredAttributes(
+        attributeActions,
+        nodeName,
+        nodeDetails,
+        universe,
+        telemetryProvider,
+        PURPOSE_SUFFIX_METRICS_EXPORT);
 
-    // Override or add additional tags from the log config payload.
-    if (MapUtils.isNotEmpty(exporterConfig.getAdditionalTags())) {
-      attributeActions.addAll(getTagsToAttributeActions(exporterConfig.getAdditionalTags()));
-    }
+    // Add common additional attributes from the exporter config and additional tags from the log
+    // config payload.
+    addCommonAdditionalAttributes(attributeActions, telemetryProvider, additionalTags);
 
     OtelCollectorConfigFormat.AttributesProcessor processor =
         new OtelCollectorConfigFormat.AttributesProcessor();
@@ -1144,10 +1160,7 @@ public class OtelCollectorConfigGenerator {
 
     String exporterName =
         appendExporterConfig(
-            telemetryProvider,
-            collectorConfigFormat.getExporters(),
-            new ArrayList<>(),
-            ExportType.METRICS);
+            telemetryProvider, collectorConfigFormat, new ArrayList<>(), ExportType.METRICS);
 
     return exporterName;
   }
@@ -1235,14 +1248,19 @@ public class OtelCollectorConfigGenerator {
     NodeDetails nodeDetails = universe.getNode(nodeName);
     TelemetryProvider telemetryProvider =
         telemetryProviderService.getOrBadRequest(logsExporterConfig.getExporterUuid());
-    Map<String, OtelCollectorConfigFormat.Exporter> exporters = collectorConfig.getExporters();
     String exporterName;
     List<OtelCollectorConfigFormat.AttributeAction> attributeActions = new ArrayList<>();
     OtelCollectorConfigFormat.AttributesProcessor attributesProcessor =
         new OtelCollectorConfigFormat.AttributesProcessor();
 
     exporterName =
-        appendExporterConfig(telemetryProvider, exporters, attributeActions, ExportType.AUDIT_LOGS);
+        appendExporterConfig(
+            telemetryProvider,
+            collectorConfig,
+            attributeActions,
+            ExportType.AUDIT_LOGS,
+            universe.getUniverseUUID(),
+            nodeName);
 
     // Add common log attributes, log prefix extraction, and tags
     AuditLogRegexGenerator.LogRegexResult regexResult =
@@ -1253,7 +1271,7 @@ public class OtelCollectorConfigGenerator {
         nodeDetails,
         universe,
         telemetryProvider,
-        "_LOG_EXPORT",
+        PURPOSE_SUFFIX_AUDIT_LOG_EXPORT,
         true,
         regexResult,
         logsExporterConfig.getAdditionalTags());
@@ -1308,14 +1326,19 @@ public class OtelCollectorConfigGenerator {
     NodeDetails nodeDetails = universe.getNode(nodeName);
     TelemetryProvider telemetryProvider =
         telemetryProviderService.getOrBadRequest(logsExporterConfig.getExporterUuid());
-    Map<String, OtelCollectorConfigFormat.Exporter> exporters = collectorConfig.getExporters();
     String exporterName;
     List<OtelCollectorConfigFormat.AttributeAction> attributeActions = new ArrayList<>();
     OtelCollectorConfigFormat.AttributesProcessor attributesProcessor =
         new OtelCollectorConfigFormat.AttributesProcessor();
 
     exporterName =
-        appendExporterConfig(telemetryProvider, exporters, attributeActions, ExportType.QUERY_LOGS);
+        appendExporterConfig(
+            telemetryProvider,
+            collectorConfig,
+            attributeActions,
+            ExportType.QUERY_LOGS,
+            universe.getUniverseUUID(),
+            nodeName);
 
     // Add common log attributes, log prefix extraction, and tags
     AuditLogRegexGenerator.LogRegexResult regexResult =
@@ -1326,7 +1349,7 @@ public class OtelCollectorConfigGenerator {
         nodeDetails,
         universe,
         telemetryProvider,
-        "_QUERY_LOG_EXPORT",
+        PURPOSE_SUFFIX_QUERY_LOG_EXPORT,
         false,
         regexResult,
         logsExporterConfig.getAdditionalTags());
@@ -1398,23 +1421,19 @@ public class OtelCollectorConfigGenerator {
         .toList();
   }
 
-  private void addCommonLogAttributes(
+  private void addCommonRequiredAttributes(
       List<OtelCollectorConfigFormat.AttributeAction> attributeActions,
       String nodeName,
       NodeDetails nodeDetails,
       Universe universe,
       TelemetryProvider telemetryProvider,
-      String purposeSuffix,
-      boolean includeAuditType,
-      AuditLogRegexGenerator.LogRegexResult regexResult,
-      Map<String, String> additionalTags) {
+      String purposeSuffix) {
     // Add some common collector labels.
     attributeActions.add(
         new OtelCollectorConfigFormat.AttributeAction("host", nodeName, "upsert", null));
     attributeActions.add(
         new OtelCollectorConfigFormat.AttributeAction(
             "yugabyte.node_name", nodeName, "upsert", null));
-
     attributeActions.add(
         new OtelCollectorConfigFormat.AttributeAction(
             "yugabyte.cloud",
@@ -1448,6 +1467,36 @@ public class OtelCollectorConfigGenerator {
             telemetryProvider.getConfig().getType().toString() + purposeSuffix,
             "upsert",
             null));
+  }
+
+  private void addCommonAdditionalAttributes(
+      List<OtelCollectorConfigFormat.AttributeAction> attributeActions,
+      TelemetryProvider telemetryProvider,
+      Map<String, String> additionalTags) {
+    // Override or add tags from the exporter config.
+    if (MapUtils.isNotEmpty(telemetryProvider.getTags())) {
+      attributeActions.addAll(getTagsToAttributeActions(telemetryProvider.getTags()));
+    }
+
+    // Override or add additional tags from the log config payload.
+    if (MapUtils.isNotEmpty(additionalTags)) {
+      attributeActions.addAll(getTagsToAttributeActions(additionalTags));
+    }
+  }
+
+  private void addCommonLogAttributes(
+      List<OtelCollectorConfigFormat.AttributeAction> attributeActions,
+      String nodeName,
+      NodeDetails nodeDetails,
+      Universe universe,
+      TelemetryProvider telemetryProvider,
+      String purposeSuffix,
+      boolean includeAuditType,
+      AuditLogRegexGenerator.LogRegexResult regexResult,
+      Map<String, String> additionalTags) {
+    // Add some common collector labels.
+    addCommonRequiredAttributes(
+        attributeActions, nodeName, nodeDetails, universe, telemetryProvider, purposeSuffix);
 
     // Rename the common attributes to organise under the key yugabyte.
     List<RenamePair> commonRenamePairs = new ArrayList<RenamePair>();
@@ -1476,24 +1525,32 @@ public class OtelCollectorConfigGenerator {
               attributeActions.addAll(rp.getRenameAttributeActions());
             });
 
-    // Override or add tags from the exporter config.
-    if (MapUtils.isNotEmpty(telemetryProvider.getTags())) {
-      attributeActions.addAll(getTagsToAttributeActions(telemetryProvider.getTags()));
-    }
-
-    // Override or add additional tags from the log config payload.
-    if (MapUtils.isNotEmpty(additionalTags)) {
-      attributeActions.addAll(getTagsToAttributeActions(additionalTags));
-    }
+    // Override or add tags from the exporter config and additional tags from the log config
+    // payload.
+    addCommonAdditionalAttributes(attributeActions, telemetryProvider, additionalTags);
   }
 
   private String appendExporterConfig(
       TelemetryProvider telemetryProvider,
-      Map<String, OtelCollectorConfigFormat.Exporter> exporters,
+      OtelCollectorConfigFormat collectorConfig,
       List<OtelCollectorConfigFormat.AttributeAction> attributeActions,
       ExportType exportType) {
+    return appendExporterConfig(
+        telemetryProvider, collectorConfig, attributeActions, exportType, null, null);
+  }
+
+  private String appendExporterConfig(
+      TelemetryProvider telemetryProvider,
+      OtelCollectorConfigFormat collectorConfig,
+      List<OtelCollectorConfigFormat.AttributeAction> attributeActions,
+      ExportType exportType,
+      UUID universeUUID,
+      String nodeName) {
     String exporterName;
     String exportTypeAndUUIDString = exportTypeAndUUID(telemetryProvider.getUuid(), exportType);
+    Map<String, OtelCollectorConfigFormat.Exporter> exporters = collectorConfig.getExporters();
+    Map<String, OtelCollectorConfigFormat.Extension> extensions = collectorConfig.getExtensions();
+    boolean setExtension = false;
     switch (telemetryProvider.getConfig().getType()) {
       case DATA_DOG:
         DataDogConfig dataDogConfig = (DataDogConfig) telemetryProvider.getConfig();
@@ -1566,6 +1623,42 @@ public class OtelCollectorConfigGenerator {
             exporterName, setExporterCommonConfig(awsCloudWatchExporter, false, true, exportType));
 
         break;
+      case S3:
+        S3Config s3Config = (S3Config) telemetryProvider.getConfig();
+        OtelCollectorConfigFormat.AWSS3Exporter s3Exporter =
+            new OtelCollectorConfigFormat.AWSS3Exporter();
+        s3Exporter.setMarshaler(s3Config.getMarshaler().getName());
+        OtelCollectorConfigFormat.S3UploaderConfig s3UploaderConfig =
+            new OtelCollectorConfigFormat.S3UploaderConfig();
+        s3UploaderConfig.setS3_bucket(s3Config.getBucket());
+
+        // Build S3 prefix - include universe UUID and node name if enabled
+        String s3Prefix = s3Config.getDirectoryPrefix();
+        if (s3Config.getIncludeUniverseAndNodeInPrefix()
+            && universeUUID != null
+            && nodeName != null) {
+          // Ensure prefix ends with "/" before appending universe UUID and node name
+          if (!s3Prefix.endsWith("/")) {
+            s3Prefix = s3Prefix + "/";
+          }
+          s3Prefix = s3Prefix + universeUUID.toString() + "/" + nodeName;
+        }
+        s3UploaderConfig.setS3_prefix(s3Prefix);
+
+        s3UploaderConfig.setS3_partition(s3Config.getPartition().getGranularity());
+        s3UploaderConfig.setRole_arn(s3Config.getRoleArn());
+        s3UploaderConfig.setFile_prefix(s3Config.getFilePrefix());
+        s3UploaderConfig.setRegion(s3Config.getRegion());
+        s3UploaderConfig.setEndpoint(s3Config.getEndpoint());
+        s3UploaderConfig.setS3_force_path_style(s3Config.getForcePathStyle());
+        s3UploaderConfig.setDisable_ssl(s3Config.getDisableSSL());
+        s3Exporter.setS3uploader(s3UploaderConfig);
+
+        exporterName = EXPORTER_PREFIX_S3 + exportTypeAndUUIDString;
+
+        exporters.put(exporterName, setExporterCommonConfig(s3Exporter, false, false, exportType));
+        break;
+
       case GCP_CLOUD_MONITORING:
         GCPCloudMonitoringConfig gcpCloudMonitoringConfig =
             (GCPCloudMonitoringConfig) telemetryProvider.getConfig();
@@ -1597,7 +1690,7 @@ public class OtelCollectorConfigGenerator {
           headers.put("X-Scope-OrgID", lokiConfig.getOrganizationID());
           setHeaders = true;
         }
-        if (lokiConfig.getAuthType() == LokiConfig.LokiAuthType.BasicAuth) {
+        if (lokiConfig.getAuthType() == AuthType.BasicAuth) {
           String credentials =
               Base64.getEncoder()
                   .encodeToString(
@@ -1614,12 +1707,94 @@ public class OtelCollectorConfigGenerator {
         exporterName = EXPORTER_PREFIX_LOKI + exportTypeAndUUIDString;
         exporters.put(exporterName, setExporterCommonConfig(lokiExporter, true, true, exportType));
         break;
+      case OTLP:
+        OTLPConfig otlpConfig = (OTLPConfig) telemetryProvider.getConfig();
+        OtelCollectorConfigFormat.OTLPExporter otlpExporter =
+            new OtelCollectorConfigFormat.OTLPExporter();
+
+        otlpExporter.setEndpoint(otlpConfig.getEndpoint());
+        otlpExporter.setTimeout(otlpConfig.getTimeoutSeconds() + "s");
+        otlpExporter.setCompression(otlpConfig.getCompression().name());
+        otlpExporter.setHeaders(otlpConfig.getHeaders());
+
+        OtelCollectorConfigFormat.TlsSettings otlpTLSSettings =
+            new OtelCollectorConfigFormat.TlsSettings();
+        otlpTLSSettings.setInsecure_skip_verify(true);
+        otlpExporter.setTls(otlpTLSSettings);
+
+        if (otlpConfig.getLogsEndpoint() != null && !otlpConfig.getLogsEndpoint().isEmpty()) {
+          otlpExporter.setLogs_endpoint(otlpConfig.getLogsEndpoint());
+        }
+
+        // Add authentication extension if auth type is not NoAuth
+        String authExtensionName;
+        switch (otlpConfig.getAuthType()) {
+          case BasicAuth:
+            OtelCollectorConfigFormat.BasicAuthExtension basicAuthExt =
+                new OtelCollectorConfigFormat.BasicAuthExtension();
+            OtelCollectorConfigFormat.ClientAuth clientAuth =
+                new OtelCollectorConfigFormat.ClientAuth();
+            clientAuth.setUsername(otlpConfig.getBasicAuth().getUsername());
+            clientAuth.setPassword(otlpConfig.getBasicAuth().getPassword());
+            basicAuthExt.setClient_auth(clientAuth);
+
+            authExtensionName = "basicauth/" + exportTypeAndUUIDString;
+            extensions.put(authExtensionName, basicAuthExt);
+
+            // Set the auth reference in the exporter
+            OtelCollectorConfigFormat.AuthConfig basicAuthConfig =
+                new OtelCollectorConfigFormat.AuthConfig();
+            basicAuthConfig.setAuthenticator(authExtensionName);
+            otlpExporter.setAuth(basicAuthConfig);
+            setExtension = true;
+            break;
+
+          case BearerToken:
+            OtelCollectorConfigFormat.BearerTokenAuthExtension bearerAuthExt =
+                new OtelCollectorConfigFormat.BearerTokenAuthExtension();
+            bearerAuthExt.setBearer_token(otlpConfig.getBearerToken().getToken());
+
+            authExtensionName = "bearertoken/" + exportTypeAndUUIDString;
+            extensions.put(authExtensionName, bearerAuthExt);
+
+            // Set the auth reference in the exporter
+            OtelCollectorConfigFormat.AuthConfig bearerAuthConfig =
+                new OtelCollectorConfigFormat.AuthConfig();
+            bearerAuthConfig.setAuthenticator(authExtensionName);
+            otlpExporter.setAuth(bearerAuthConfig);
+            setExtension = true;
+            break;
+
+          case NoAuth:
+            // No authentication extension needed
+            break;
+
+          default:
+            throw new IllegalArgumentException(
+                "Unsupported auth type: " + otlpConfig.getAuthType());
+        }
+
+        String exporterTypePrefix = otlpConfig.getProtocol().getExporterType();
+
+        exporterName = exporterTypePrefix + "/" + exportTypeAndUUIDString;
+        exporters.put(exporterName, setExporterCommonConfig(otlpExporter, true, true, exportType));
+
+        break;
       default:
         throw new IllegalArgumentException(
             "Exporter type "
                 + telemetryProvider.getConfig().getType().name()
                 + " is not supported.");
     }
+
+    // Update service extensions to include any dynamically added extensions (e.g., auth
+    // extensions)
+    if (collectorConfig.getService() != null && setExtension) {
+      collectorConfig
+          .getService()
+          .setExtensions(new ArrayList<>(collectorConfig.getExtensions().keySet()));
+    }
+
     return exporterName;
   }
 
@@ -1646,15 +1821,19 @@ public class OtelCollectorConfigGenerator {
       retryConfig.setMax_interval(maxInterval);
       retryConfig.setMax_elapsed_time(maxElapsedTime);
       exporter.setRetry_on_failure(retryConfig);
+    } else {
+      exporter.setRetry_on_failure(null);
     }
     if (exportType == ExportType.AUDIT_LOGS) {
       OtelCollectorConfigFormat.QueueConfig queueConfig =
           new OtelCollectorConfigFormat.QueueConfig();
       if (setQueueEnabled) {
         queueConfig.setEnabled(true);
+        queueConfig.setStorage("file_storage/queue");
+        exporter.setSending_queue(queueConfig);
+      } else {
+        exporter.setSending_queue(null);
       }
-      queueConfig.setStorage("file_storage/queue");
-      exporter.setSending_queue(queueConfig);
     }
     return exporter;
   }
@@ -1684,23 +1863,30 @@ public class OtelCollectorConfigGenerator {
     return "/mnt/d0";
   }
 
+  private void addAwsCredentialsToSecretEnv(
+      String accessKey, String secretKey, List<Object> secretEnv) {
+    if (StringUtils.isNotEmpty(accessKey)) {
+      String encodedAccessKey = Base64.getEncoder().encodeToString(accessKey.getBytes());
+      secretEnv.add(ImmutableMap.of("envName", "AWS_ACCESS_KEY_ID", "envValue", encodedAccessKey));
+    }
+    if (StringUtils.isNotEmpty(secretKey)) {
+      String encodedSecretKey = Base64.getEncoder().encodeToString(secretKey.getBytes());
+      secretEnv.add(
+          ImmutableMap.of("envName", "AWS_SECRET_ACCESS_KEY", "envValue", encodedSecretKey));
+    }
+  }
+
   private void appendSecretEnv(TelemetryProvider telemetryProvider, List<Object> secretEnv) {
     switch (telemetryProvider.getConfig().getType()) {
       case AWS_CLOUDWATCH:
         AWSCloudWatchConfig awsCloudWatchConfig =
             (AWSCloudWatchConfig) telemetryProvider.getConfig();
-        if (StringUtils.isNotEmpty(awsCloudWatchConfig.getAccessKey())) {
-          String encodedAccessKey =
-              Base64.getEncoder().encodeToString(awsCloudWatchConfig.getAccessKey().getBytes());
-          secretEnv.add(
-              ImmutableMap.of("envName", "AWS_ACCESS_KEY_ID", "envValue", encodedAccessKey));
-        }
-        if (StringUtils.isNotEmpty(awsCloudWatchConfig.getSecretKey())) {
-          String encodedSecretKey =
-              Base64.getEncoder().encodeToString(awsCloudWatchConfig.getSecretKey().getBytes());
-          secretEnv.add(
-              ImmutableMap.of("envName", "AWS_SECRET_ACCESS_KEY", "envValue", encodedSecretKey));
-        }
+        addAwsCredentialsToSecretEnv(
+            awsCloudWatchConfig.getAccessKey(), awsCloudWatchConfig.getSecretKey(), secretEnv);
+        break;
+      case S3:
+        S3Config s3Config = (S3Config) telemetryProvider.getConfig();
+        addAwsCredentialsToSecretEnv(s3Config.getAccessKey(), s3Config.getSecretKey(), secretEnv);
         break;
       case GCP_CLOUD_MONITORING:
         GCPCloudMonitoringConfig gcpCloudMonitoringConfig =

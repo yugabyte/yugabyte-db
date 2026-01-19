@@ -27,6 +27,7 @@
 
 #include "yb/bfql/tserver_opcodes.h"
 
+#include "yb/dockv/key_entry_value.h"
 #include "yb/dockv/primitive_value.h"
 
 #include "yb/gutil/int128.h"

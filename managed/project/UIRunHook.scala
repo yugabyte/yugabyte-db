@@ -17,17 +17,20 @@ object UIRunHook {
 
        override def afterStarted(): Unit = {
         // don't run "npm start" directly as it leaves zombie node.js child processes on termination
-        // EXTEND_ESLINT is a CRA env variable. If true, it allows your project to extend the
-        // default ESLint config with your own custom rules in .eslintrc.js or similar.
-        val cracoCmd = "EXTEND_ESLINT=true exec node node_modules/@craco/craco/bin/craco.js start"
-        val command = Seq("bash", "-c", cracoCmd)
+        val checkServerStarted = Seq("bash", "-c",
+          "while ! curl -s -f http://localhost:9000/api/v1/prometheus_metrics </dev/null;" +
+            " do sleep 10; done")
+        checkServerStarted.!!
+
+        println("[Yugabyte sbt log] Starting UI...")
+        val command = Seq("bash", "-c", "exec node node_modules/.bin/vite")
         val pb = Process(command, base)
 
+        // Redirect stderr to stdout so we can see errors
         val p = pb.run()
         watchProcess = Some(p)
-
         // Capture the PID (best-effort via ps)
-        val getPidCmd = Seq("bash", "-c", s"pgrep -f 'node.*craco.js start'")
+        val getPidCmd = Seq("bash", "-c", s"pgrep -f 'vite'")
         pid = getPidCmd.lineStream_!.headOption.map(_.toInt)
       }
 

@@ -59,7 +59,7 @@ Example log output:
     ORDER BY 2, 3;
 ```
 
-Results are written to the current `postgres*log` file. For information on the YB-TServer logs, refer to [Understand YugabyteDB logging](/preview/explore/observability/logging/).
+Results are written to the current `postgres*log` file. For information on the YB-TServer logs, refer to [Understand YugabyteDB logging](/stable/explore/observability/logging/).
 
 {{< note title="Note" >}}
 

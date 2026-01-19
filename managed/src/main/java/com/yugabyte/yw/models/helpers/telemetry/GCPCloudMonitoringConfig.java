@@ -48,13 +48,16 @@ public class GCPCloudMonitoringConfig extends TelemetryProviderConfig {
   }
 
   @Override
-  public void validate(ApiHelper apiHelper) {
+  public void validateConfigFields() {
     // Check if project is given in atleast one of the param or creds.
     if (StringUtils.isBlank(project) && !credentials.hasNonNull("project_id")) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Validation failed. Project is required for GCP Cloud Monitoring");
     }
+  }
 
+  @Override
+  public void validateConnectivity(ApiHelper apiHelper) {
     // Use the project given in the creds if not given in the param.
     String project_id =
         StringUtils.isBlank(project) ? credentials.get("project_id").asText() : project;

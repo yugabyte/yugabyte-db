@@ -64,6 +64,10 @@ message CDCStreamInfoPB {
 
   // Field to store all the metadata related to a CDC stream.
   optional CDCStreamInfoOptionsPB cdc_stream_info_options = 14;
+
+  // This field controls if tables without primary key will be polled by the CDC
+  // stream.
+  optional bool allow_tables_without_primary_key = 15 [ default = false ];
 }
 
 message ValidateReplicationInfoRequestPB {
@@ -426,19 +430,23 @@ message IsSetupNamespaceReplicationWithBootstrapDoneResponsePB {
 message ProducerSplitTabletInfoPB {
   required bytes tablet_id = 1;
 
-  required bytes new_tablet1_id = 2;
+  // Fields describing a 2-way split.
+  required bytes DEPRECATED_new_tablet1_id = 2;
+  required bytes DEPRECATED_new_tablet2_id = 3;
+  required bytes DEPRECATED_split_partition_key = 4;
+  required bytes DEPRECATED_split_encoded_key = 5;
 
-  required bytes new_tablet2_id = 3;
-
-  required bytes split_partition_key = 4;
-
-  required bytes split_encoded_key = 5;
+  // Vectorized fields for an N-way split.
+  repeated bytes new_tablet_ids = 6;
+  repeated bytes split_partition_keys = 7;
+  repeated bytes split_encoded_keys = 8;
 }
 
 message UpdateConsumerOnProducerSplitRequestPB {
   optional string replication_group_id = 1;
   optional string stream_id = 2;
   optional ProducerSplitTabletInfoPB producer_split_tablet_info = 3;
+  optional bytes consumer_table_id = 4;
 }
 
 message UpdateConsumerOnProducerSplitResponsePB {
@@ -520,11 +528,23 @@ message InsertPackedSchemaForXClusterTargetRequestPB {
   // and we also need to specify the colocation_id.
   optional bytes table_id = 1;
   optional SchemaPB packed_schema = 2;
-  optional uint32 current_schema_version = 3;
+  optional uint32 current_consumer_schema_version = 3;
   optional uint32 colocation_id = 4;
 }
 
 message InsertPackedSchemaForXClusterTargetResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message HandleNewSchemaForAutomaticXClusterTargetRequestPB {
+  optional bytes table_id = 1;
+  optional string replication_group_id = 2;
+  optional string stream_id = 3;
+  optional uint32 producer_schema_version = 4;
+  optional SchemaPB schema = 5;
+}
+
+message HandleNewSchemaForAutomaticXClusterTargetResponsePB {
   optional MasterErrorPB error = 1;
 }
 
@@ -841,7 +861,8 @@ message ValidateAndSyncCDCStateEntriesForCDCSDKStreamRequestPB {
 
 message ValidateAndSyncCDCStateEntriesForCDCSDKStreamResponsePB {
   optional MasterErrorPB error = 1;
-  repeated string updated_tablet_entries = 2;
+  repeated string updated_tablet_entries = 2 [ deprecated = true ];
+  repeated string deleted_tablet_entries = 3;
 }
 
 message RemoveTablesFromCDCSDKStreamRequestPB {
@@ -907,6 +928,9 @@ service MasterReplication {
       returns (InsertHistoricalColocatedSchemaPackingResponsePB);
   rpc InsertPackedSchemaForXClusterTarget(InsertPackedSchemaForXClusterTargetRequestPB)
       returns (InsertPackedSchemaForXClusterTargetResponsePB);
+  rpc HandleNewSchemaForAutomaticXClusterTarget(
+      HandleNewSchemaForAutomaticXClusterTargetRequestPB)
+      returns (HandleNewSchemaForAutomaticXClusterTargetResponsePB);
 
   rpc GetUniverseReplications(GetUniverseReplicationsRequestPB)
       returns (GetUniverseReplicationsResponsePB);

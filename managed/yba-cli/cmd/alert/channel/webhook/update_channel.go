@@ -63,7 +63,7 @@ var updateWebhookChannelAlertCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(newName)) > 0 {
+		if !util.IsEmptyString(newName) {
 			hasUpdates = true
 			logrus.Debug("Updating alert channel name\n")
 			alert.SetName(newName)
@@ -73,7 +73,7 @@ var updateWebhookChannelAlertCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(webhookURL)) > 0 {
+		if !util.IsEmptyString(webhookURL) {
 			hasUpdates = true
 			logrus.Debug("Updating alert channel webhook URL\n")
 			params.SetWebhookUrl(webhookURL)
@@ -94,7 +94,7 @@ var updateWebhookChannelAlertCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(authType)) > 0 {
+		if !util.IsEmptyString(authType) {
 			hasUpdates = true
 			logrus.Debug("Updating alert channel auth type\n")
 			httpAuth.SetType(strings.ToUpper(authType))
@@ -109,7 +109,7 @@ var updateWebhookChannelAlertCmd = &cobra.Command{
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
-			if len(strings.TrimSpace(username)) > 0 && len(strings.TrimSpace(password)) > 0 {
+			if !util.IsEmptyString(username) && !util.IsEmptyString(password) {
 				hasUpdates = true
 				logrus.Debug("Updating alert channel username and password\n")
 				httpAuth.SetUsername(username)
@@ -128,7 +128,7 @@ var updateWebhookChannelAlertCmd = &cobra.Command{
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
-			if len(strings.TrimSpace(tokenHeader)) > 0 && len(strings.TrimSpace(tokenValue)) > 0 {
+			if !util.IsEmptyString(tokenHeader) && !util.IsEmptyString(tokenValue) {
 				hasUpdates = true
 				logrus.Debug("Updating alert channel token header and value\n")
 				httpAuth.SetTokenHeader(tokenHeader)

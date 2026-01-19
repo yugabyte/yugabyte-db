@@ -31,7 +31,7 @@
 {{- $ordinals := slice "zeroth" "first" "second" "third" "fourth" "fifth" "sixth" "seventh" "eighth" "ninth" -}}
 {{- $data := "" -}}
 {{- if (eq $destroy "yes") -}}
-{{- $data = print $data "If a local universe is currently running, first [destroy it](/preview/reference/configuration/yugabyted/#destroy-a-local-cluster)." "\n" -}}
+{{- $data = print $data "If a local universe is currently running, first [destroy it](/stable/reference/configuration/yugabyted/#destroy-a-local-universe)." "\n" -}}
 {{end}}
 {{- $data = print $data "\n\n" -}}
 

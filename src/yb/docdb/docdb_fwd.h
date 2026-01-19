@@ -43,7 +43,7 @@ class DocVectorIndex;
 class DocWriteBatch;
 class HistoryRetentionPolicy;
 class IntentAwareIterator;
-class IntentIterator;
+class IntentAwareIteratorBoundsScope;
 class LocalWaitingTxnRegistry;
 class LockBatch;
 class ManualHistoryRetentionPolicy;
@@ -81,6 +81,10 @@ struct ReadOperationData;
 using DocKeyHash = uint16_t;
 using DocReadContextPtr = std::shared_ptr<const DocReadContext>;
 using DocRowwiseIteratorPtr = std::unique_ptr<DocRowwiseIterator>;
+using IntentAwareIteratorPtr = std::unique_ptr<IntentAwareIterator>;
+using IntentAwareIteratorBoundsScopePtr = std::unique_ptr<IntentAwareIteratorBoundsScope>;
+using IntentAwareIteratorWithBounds =
+    std::tuple<IntentAwareIteratorPtr, IntentAwareIteratorBoundsScopePtr>;
 
 template <typename LockManager>
 using LockBatchEntries = std::vector<LockBatchEntry<LockManager>>;
@@ -93,16 +97,21 @@ using LockState = uint64_t;
 using ScanChoicesPtr = std::unique_ptr<ScanChoices>;
 
 using ConsensusFrontierPtr = clone_ptr<ConsensusFrontier>;
-using IndexRequests = std::vector<std::pair<const qlexpr::IndexInfo*, QLWriteRequestPB>>;
+using IndexRequests = std::vector<std::pair<const qlexpr::IndexInfo*, QLWriteRequestMsg>>;
 using DocVectorIndexPtr = std::shared_ptr<DocVectorIndex>;
 using DocVectorIndexes = std::vector<DocVectorIndexPtr>;
 using DocVectorIndexesPtr = std::shared_ptr<DocVectorIndexes>;
 using DocVectorIndexInsertEntries = std::vector<DocVectorIndexInsertEntry>;
 
+YB_STRONGLY_TYPED_BOOL(AvoidUselessNextInsteadOfSeek);
 YB_STRONGLY_TYPED_BOOL(FastBackwardScan);
+YB_STRONGLY_TYPED_BOOL(AllowVariableBloomFilter);
 YB_STRONGLY_TYPED_BOOL(IncludeIntents);
 YB_STRONGLY_TYPED_BOOL(SkipFlush);
 YB_STRONGLY_TYPED_BOOL(SkipSeek);
-YB_STRONGLY_TYPED_BOOL(UseVariableBloomFilter);
+
+// Temporary typedef for lightweight protobuf migration
+using KeyValueWriteBatchMsg = KeyValueWriteBatchPB;
+using KeyValuePairMsg = KeyValuePairPB;
 
 }  // namespace yb::docdb

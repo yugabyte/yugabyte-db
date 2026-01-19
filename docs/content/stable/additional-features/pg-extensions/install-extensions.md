@@ -10,6 +10,8 @@ menu:
     parent: pg-extensions
     weight: 10
 type: docs
+aliases:
+  - /stable/explore/ysql-language-features/pg-extensions/install-extensions
 ---
 
 If an extension is not pre-bundled, you need to install it manually before you can enable it using the [CREATE EXTENSION](../../../api/ysql/the-sql-language/statements/ddl_create_extension/) statement. You can install only [extensions that are supported](../#supported-extensions) by YugabyteDB.

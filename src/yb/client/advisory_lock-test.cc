@@ -129,7 +129,7 @@ class AdvisoryLockTest: public MiniClusterTestWithClient<MiniCluster> {
     auto* server = cluster_->mini_tablet_server(0)->server();
     auto& pool = server->TransactionPool();
     auto txn = VERIFY_RESULT(pool.TakeAndInit(SNAPSHOT_ISOLATION, TransactionRpcDeadline()));
-    RETURN_NOT_OK(txn->SetPgTxnStart(server->Clock()->Now().GetPhysicalValueMicros()));
+    RETURN_NOT_OK(txn->SetPgTxnStart(server->Clock()->Now().GetPhysicalValueMicros(), false));
     return txn;
   }
 

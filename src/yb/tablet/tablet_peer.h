@@ -193,11 +193,13 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   void CompleteShutdown(DisableFlushOnShutdown disable_flush_on_shutdown, AbortOps abort_ops);
 
   // Abort active transactions on the tablet after shutdown is initiated.
-  void AbortActiveTransactions() const;
+  void AbortActiveTransactions(
+      std::optional<TransactionId>&& exclude_aborting_txn_id = std::nullopt) const;
 
   Status Shutdown(
       ShouldAbortActiveTransactions should_abort_active_txns,
-      DisableFlushOnShutdown disable_flush_on_shutdown);
+      DisableFlushOnShutdown disable_flush_on_shutdown,
+      std::optional<TransactionId>&& exclude_aborting_txn_id = std::nullopt);
 
   // Check that the tablet is in a RUNNING state.
   Status CheckRunning() const;
@@ -418,6 +420,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   //------------------------------------------------------------------------------------------------
   // CDC Related
 
+  bool is_cdc_min_replicated_index_stale(double* seconds_since_last_refresh = nullptr) const;
+
   Status set_cdc_min_replicated_index(int64_t cdc_min_replicated_index);
 
   Status set_cdc_min_replicated_index_unlocked(int64_t cdc_min_replicated_index);
@@ -437,6 +441,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   CoarseTimePoint cdc_sdk_min_checkpoint_op_id_expiration();
 
   bool is_under_cdc_sdk_replication();
+
+  Status reset_all_cdc_retention_barriers_if_stale();
 
   HybridTime GetMinStartHTRunningTxnsOrLeaderSafeTime();
 
@@ -461,6 +467,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   Result<bool> MoveForwardAllCDCRetentionBarriers(
       int64 cdc_wal_index, OpId cdc_sdk_intents_op_id, MonoDelta cdc_sdk_op_id_expiration,
       HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff);
+
+  std::string AllCDCRetentionBarriersToString() const;
   //------------------------------------------------------------------------------------------------
 
   OpId GetLatestCheckPoint();
@@ -600,8 +608,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
   OperationCounter preparing_operations_counter_;
 
-  // Serializes access to set_cdc_min_replicated_index and reset_cdc_min_replicated_index_if_stale
-  // and protects cdc_min_replicated_index_refresh_time_ for reads and writes.
+  // Serializes access to set_cdc_min_replicated_index and is_cdc_min_replicated_index_stale and
+  // protects cdc_min_replicated_index_refresh_time_ for reads and writes.
   mutable simple_spinlock cdc_min_replicated_index_lock_;
   MonoTime cdc_min_replicated_index_refresh_time_ = MonoTime::Min();
 
@@ -623,7 +631,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
   bool FlushBootstrapStateEnabled() const;
 
-  void MinReplayTxnStartTimeUpdated(HybridTime start_ht);
+  void MinReplayTxnFirstWriteTimeUpdated(HybridTime first_write_ht);
 
   MetricRegistry* metric_registry_;
 
@@ -660,7 +668,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 };
 
 Status BackfillNamespaceIdIfNeeded(
-    tablet::RaftGroupMetadata& metadata, client::YBClient& client);
+    const TableId& table_id, tablet::RaftGroupMetadata& metadata, client::YBClient& client);
 
 }  // namespace tablet
 }  // namespace yb

@@ -97,6 +97,15 @@ func (handler *ServerGflagsHandler) Handle(
 				Infof(ctx, "Master process must be stopped before resetting state")
 			return nil, errors.New("Master process must be stopped before resetting state")
 		}
+		enabled, err := module.IsProcessEnabled(ctx, handler.username, "yb-master", handler.logOut)
+		if err != nil {
+			return nil, err
+		}
+		if enabled {
+			util.FileLogger().
+				Infof(ctx, "Master process must be disabled before resetting state")
+			return nil, errors.New("Master process must be disabled before resetting state")
+		}
 		if fsDataDirsCsv, ok := gflags["fs_data_dirs"]; ok {
 			util.FileLogger().
 				Infof(ctx, "Deleting master state dirs in fs_data_dirs: %s", fsDataDirsCsv)
@@ -112,11 +121,14 @@ func (handler *ServerGflagsHandler) Handle(
 				}
 			}
 			if len(toDeletePaths) > 0 {
+				rmArgs := make([]string, 0, len(toDeletePaths)+1)
+				rmArgs = append(rmArgs, "-rf")
+				rmArgs = append(rmArgs, toDeletePaths...)
 				cmdInfo := &module.CommandInfo{
 					User: handler.username,
 					Desc: "DeleteMasterState",
 					Cmd:  "rm",
-					Args: []string{"-rf", strings.Join(toDeletePaths, " ")},
+					Args: rmArgs,
 				}
 				err := cmdInfo.RunCmd(ctx)
 				if err != nil {
@@ -146,7 +158,7 @@ func (handler *ServerGflagsHandler) Handle(
 		"gflags": processedGflags,
 	}
 	destination := filepath.Join(handler.param.GetServerHome(), ServerConfSubpath)
-	err := module.CopyFile(
+	_, err := module.CopyFile(
 		ctx,
 		gflagsContext,
 		ServerConfTemplateSubpath,

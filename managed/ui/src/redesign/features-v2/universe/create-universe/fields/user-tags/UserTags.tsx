@@ -17,8 +17,8 @@ import { StyledLink } from '../../components/DefaultComponents';
 
 const { Box, styled, Typography, IconButton } = mui;
 
-import { ReactComponent as CloseIcon } from '../../../../../assets/close-v2.svg';
-import { ReactComponent as CircleAddIcon } from '../../../../../assets/circle-add-v2.svg';
+import CloseIcon from '../../../../../assets/close-v2.svg';
+import CircleAddIcon from '../../../../../assets/circle-add-v2.svg';
 
 interface UserTagsProps {
   disabled: boolean;

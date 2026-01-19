@@ -319,7 +319,10 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
     universe
         .getUniverseDetails()
         .upsertCluster(
-            universe.getUniverseDetails().getPrimaryCluster().userIntent, placementInfo2, cluster2);
+            universe.getUniverseDetails().getPrimaryCluster().userIntent,
+            null,
+            placementInfo2,
+            cluster2);
     setupCluster(universe, nodes2, cluster2);
 
     // Test retrieve all nodes from lb1
@@ -402,7 +405,10 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
     universe
         .getUniverseDetails()
         .upsertCluster(
-            universe.getUniverseDetails().getPrimaryCluster().userIntent, placementInfo2, cluster2);
+            universe.getUniverseDetails().getPrimaryCluster().userIntent,
+            null,
+            placementInfo2,
+            cluster2);
     setupCluster(universe, nodes2, cluster2);
 
     // Test

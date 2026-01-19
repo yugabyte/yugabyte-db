@@ -162,23 +162,9 @@ public class TestEnquote extends BaseYsqlConnMgr {
       expectedString = "\"\"";
       for (int i = 0; i < 3; i++) {
         actualString = getGUCValue(statement, guc_var);
-        if (default_value.equals("")) {
-          // If default is empty string then it won't become part of deploy phase query.
-          // So, it's original value will be returned and not affected by SET stmts executed
-          // by conn mgr
-          assertTrue(
-          String.format("Got a mismatch in the value of %s guc variable. " +
-                        "actual: %s, expected: %s",
-                        guc_var, actualString, default_value),
-                        actualString.equals(default_value));
-        }
-        else {
-          assertTrue(
-          String.format("Got a mismatch in the value of %s guc variable. " +
-                        "actual: %s, expected: %s",
-                        guc_var, actualString, expectedString),
-                        actualString.equals(expectedString));
-        }
+        assertTrue(String.format(
+            "Got a mismatch in the value of %s guc variable. actual: %s, expected: %s", guc_var,
+            actualString, expectedString), actualString.equals(expectedString));
       }
 
       statement.execute(String.format

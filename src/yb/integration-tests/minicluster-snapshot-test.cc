@@ -63,6 +63,8 @@
 #include "yb/master/master_types.pb.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog.h"
+#include "yb/master/tablet_creation_limits.h"
+#include "yb/master/ts_manager.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
@@ -86,9 +88,11 @@ DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_int32(data_size_metric_updater_interval_sec);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_bool(enable_db_clone);
+DECLARE_bool(enforce_tablet_replica_limits);
 DECLARE_int32(load_balancer_initial_delay_secs);
 DECLARE_bool(master_auto_run_initdb);
 DECLARE_int32(metrics_snapshotter_interval_ms);
+DECLARE_int32(num_cpus);
 DECLARE_int32(pgsql_proxy_webserver_port);
 DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
@@ -560,7 +564,7 @@ TEST_P(MasterExportSnapshotTest, ExportSnapshotAsOfTime) {
   LOG(INFO) << Format(
       "Exporting snapshot from snapshot schedule: $0, Hybrid time = $1", schedule_id, time);
   auto deadline = CoarseMonoClock::Now() + timeout;
-  auto [snapshot_info_as_of_time, not_snapshotted_tablets] = ASSERT_RESULT(
+  auto [snapshot_info_as_of_time, not_snapshotted_tablets, _] = ASSERT_RESULT(
       mini_cluster()
           ->mini_master()
           ->catalog_manager_impl()
@@ -607,7 +611,7 @@ TEST_P(MasterExportSnapshotTest, ExportSnapshotAsOfTimeWithHiddenTables) {
   LOG(INFO) << Format(
       "Exporting snapshot from snapshot schedule: $0, Hybrid time = $1", schedule_id, time);
   auto deadline = CoarseMonoClock::Now() + timeout;
-  auto [snapshot_info_as_of_time, not_snapshotted_tablets] = ASSERT_RESULT(
+  auto [snapshot_info_as_of_time, not_snapshotted_tablets, _] = ASSERT_RESULT(
       mini_cluster()
           ->mini_master()
           ->catalog_manager_impl()
@@ -712,7 +716,8 @@ class PgCloneTest : public PgCloneInitiallyEmptyDBTest {
 class PgCloneTestWithColocatedDBParam
     : public PgCloneTest,
       public ::testing::WithParamInterface<master::YsqlColocationConfig> {
-  void SetUp() override { PgCloneTest::SetUp(); }
+ public:
+  virtual void SetUp() override { PgCloneTest::SetUp(); }
 
   master::YsqlColocationConfig ColocateDatabase() override { return GetParam(); }
 };
@@ -722,9 +727,7 @@ INSTANTIATE_TEST_CASE_P(
     ::testing::Values(
         master::YsqlColocationConfig::kNotColocated, master::YsqlColocationConfig::kDBColocated));
 
-// This test is disabled in sanitizers as ysql_dump fails in ASAN builds due to memory leaks
-// inherited from pg_dump.
-TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneYsqlSyntax)) {
+TEST_P(PgCloneTestWithColocatedDBParam, CloneYsqlSyntax) {
   // Basic clone test for PG using the YSQL TEMPLATE syntax.
   // Writes some data before time t and some data after t, and verifies that the cloning as of t
   // creates a clone with only the first set of rows, and cloning after t creates a clone with both
@@ -969,8 +972,7 @@ TEST_F(TsDataSizeMetricsTest, TestSnapshotSchedule) {
 }
 
 // Test that hard links are not double-counted by the data size metric updater.
-// This test is disabled in ASAN builds as it fails due to memory leaks inherited from pg_dump.
-TEST_F(TsDataSizeMetricsTest, YB_DISABLE_TEST_IN_SANITIZERS(Hardlinks)) {
+TEST_F(TsDataSizeMetricsTest, Hardlinks) {
   // Drop the table to get the size of just the transaction table.
   ASSERT_OK(source_conn_->ExecuteFormat("DROP TABLE $0", kSourceTableName));
   SleepFor(FLAGS_data_size_metric_updater_interval_sec * 2s);
@@ -995,7 +997,7 @@ TEST_F(TsDataSizeMetricsTest, YB_DISABLE_TEST_IN_SANITIZERS(Hardlinks)) {
   ASSERT_LT(size_after_clone - baseline_size, 2 * table_size);
 }
 
-TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneWithAlterTableSchema)) {
+TEST_P(PgCloneTestWithColocatedDBParam, CloneWithAlterTableSchema) {
   // Clone to a time before a schema change happened.
   // Writes some data before time t and alter the table schema after t and add some data according
   // to the new schema. Verifies that the cloning as of t creates a clone with the correct schema
@@ -1023,7 +1025,7 @@ TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneWithA
   ASSERT_EQ(rows[0], kRow);
 }
 
-TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(CloneYsqlDbTimeout)) {
+TEST_F(PgCloneTest, CloneYsqlDbTimeout) {
   // Inject an artificial delay that would make CREATE DATABASE timeout in case clone is using
   // a timeout other than ysql_clone_pg_schema_rpc_timeout_ms.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_clone_pg_schema_delay_ms) =
@@ -1033,7 +1035,7 @@ TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(CloneYsqlDbTimeout)) {
   ASSERT_OK(status);
 }
 
-TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(AbortMessage)) {
+TEST_F(PgCloneTest, AbortMessage) {
   // Assert that we propagate the error message from the clone operation to the user.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_clone_pg_schema) = true;
   auto status = source_conn_->ExecuteFormat(
@@ -1043,8 +1045,8 @@ TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(AbortMessage)) {
 }
 
 TEST_F(PgCloneTest, CloneTimeoutExceeded) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_clone_pg_schema_delay_ms) = 1000;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_clone_pg_schema_rpc_timeout_ms) = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_clone_pg_schema_delay_ms) = 10000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_clone_pg_schema_rpc_timeout_ms) = 1000;
   auto status = source_conn_->ExecuteFormat(
       "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName);
   ASSERT_NOK(status);
@@ -1062,9 +1064,7 @@ TEST_F(PgCloneTest, CloneTimeoutExceeded) {
   ASSERT_STR_CONTAINS(error_msg, "timed out");
 }
 
-// The test is disabled in Sanitizers as ysql_dump fails in ASAN builds due to memory leaks
-// inherited from pg_dump.
-TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneAfterDropTable)) {
+TEST_P(PgCloneTestWithColocatedDBParam, CloneAfterDropTable) {
   // Clone to a time before a drop table and check that the table exists with correct data.
   // 1. Create a table and load some data.
   // 2. Mark time t.
@@ -1091,9 +1091,7 @@ TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneAfter
   ASSERT_EQ(row, kRows[0]);
 }
 
-// The test is disabled in Sanitizers as ysql_dump fails in ASAN builds due to memory leaks
-// inherited from pg_dump.
-TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneAfterDropIndex)) {
+TEST_P(PgCloneTestWithColocatedDBParam, CloneAfterDropIndex) {
   // (Auto-Analyze #28427)
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze_infra) = false;
@@ -1135,7 +1133,7 @@ TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneAfter
   ASSERT_EQ(row, kRows[0]);
 }
 
-TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneWithSequences)) {
+TEST_P(PgCloneTestWithColocatedDBParam, CloneWithSequences) {
   int kIncrement = 5;
   // First 3 rows will be inserted into source database while the 4th row will be inserted in the
   // clone. The 4th row takes into account that the first "FLAGS_ysql_sequence_cache_minval" values
@@ -1170,7 +1168,7 @@ TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneWithS
   ASSERT_EQ(row, kRows[3]);
 }
 
-TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneWithSequencesAndDdl)) {
+TEST_P(PgCloneTestWithColocatedDBParam, CloneWithSequencesAndDdl) {
   auto seq_table_name = "table_with_sequence";
   ASSERT_OK(
       source_conn_->ExecuteFormat("CREATE TABLE $0 (id INT, i2 SERIAL, c1 INT)", seq_table_name));
@@ -1188,7 +1186,7 @@ TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneWithS
 }
 
 // Test yb_database_clones (ysql function to list clones)
-TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(YsqlListClonesAPI)) {
+TEST_F(PgCloneTest, YsqlListClonesAPI) {
   std::string list_clones_query =
       "SELECT db_oid, db_name, parent_db_oid, parent_db_name, state, failure_reason FROM "
       "yb_database_clones()";
@@ -1202,7 +1200,7 @@ TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(YsqlListClonesAPI)) {
   ASSERT_EQ(row, kExpectedCloneRow);
 }
 
-TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(TabletSplitting)) {
+TEST_F(PgCloneTest, TabletSplitting) {
   const int kNumRows = 1000;
 
   // Test that we are able to clone to:
@@ -1268,7 +1266,7 @@ TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(TabletSplitting)) {
   ASSERT_OK(clone_and_validate("testdb_clone3", parent_hidden_timestamp, 4));
 }
 
-TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(TabletSplittingWithIndex)) {
+TEST_F(PgCloneTest, TabletSplittingWithIndex) {
   // Test that we can clone after splitting an index.
   // Write enough data for a middle key so tablet splitting succeeds.
   const int kNumRows = 1000;
@@ -1295,7 +1293,7 @@ TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(TabletSplittingWithIndex)) {
   ASSERT_RESULT(GetTable("i1", kTargetNamespaceName1));
 }
 
-TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(UserIsSet)) {
+TEST_F(PgCloneTest, UserIsSet) {
   // Test that the user is set to the user running the clone operation.
   ASSERT_OK(source_conn_->Execute("CREATE ROLE test_user WITH LOGIN PASSWORD 'test'"));
   ASSERT_OK(source_conn_->Execute("ALTER ROLE test_user SUPERUSER"));
@@ -1311,7 +1309,7 @@ TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(UserIsSet)) {
   ASSERT_EQ(owner[0], "test_user");
 }
 
-TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(PreventConnectionsUntilCloneSuccessful)) {
+TEST_F(PgCloneTest, PreventConnectionsUntilCloneSuccessful) {
   // Test that we prevent connections to the target DB until the clone operation is successful.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_clone_tablets) = true;
   auto status = source_conn_->ExecuteFormat(
@@ -1326,11 +1324,12 @@ TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(PreventConnectionsUntilCloneSu
       Format("database \"$0\" is not currently accepting connections", kTargetNamespaceName1));
 }
 
-TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(Tablespaces)) {
+TEST_F(PgCloneTest, Tablespaces) {
   const auto kTablespaceName = "test_tablespace";
+  // With (index_ + 1) / FLAGS_TEST_nodes_per_cloud formula, ts-0 (index_=1) is in cloud1.region1
   ASSERT_OK(source_conn_->ExecuteFormat(
       "CREATE TABLESPACE $0 WITH (replica_placement='{\"num_replicas\": 1, \"placement_blocks\": "
-      "[{\"cloud\":\"cloud1\",\"region\":\"rack1\",\"zone\":\"zone\","
+      "[{\"cloud\":\"cloud1\",\"region\":\"region1\",\"zone\":\"zone\","
       "\"min_num_replicas\":1}]}')", kTablespaceName));
   auto* catalog_mgr = cluster_->mini_master()->master()->catalog_manager();
 
@@ -1377,7 +1376,7 @@ class PgCloneMultiMaster : public PgCloneTest {
   }
 };
 
-TEST_F(PgCloneMultiMaster, YB_DISABLE_TEST_IN_SANITIZERS(CloneAfterMasterChange)) {
+TEST_F(PgCloneMultiMaster, CloneAfterMasterChange) {
   const std::tuple<int32_t, int32_t> kRow = {1, 10};
   ASSERT_OK(source_conn_->ExecuteFormat(
       "INSERT INTO t1 VALUES ($0, $1)", std::get<0>(kRow), std::get<1>(kRow)));
@@ -1415,11 +1414,75 @@ class PgCloneColocationTest : public PgCloneTest {
   }
 };
 
+class PgCloneTestWithColocatedDBTabletLimitsCheck : public PgCloneTestWithColocatedDBParam {
+ public:
+  void SetUp() override {
+    // Simulate a single core cluster.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_cpus) = 1;
+    PgCloneTestWithColocatedDBParam::SetUp();
+  }
+};
+
+INSTANTIATE_TEST_CASE_P(
+  Colocation, PgCloneTestWithColocatedDBTabletLimitsCheck,
+  ::testing::Values(
+      master::YsqlColocationConfig::kNotColocated, master::YsqlColocationConfig::kDBColocated));
+
+TEST_P(PgCloneTestWithColocatedDBTabletLimitsCheck, TabletLimitsCheck) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_replicas_per_core_limit) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enforce_tablet_replica_limits) = true;
+  ASSERT_NOK_STR_CONTAINS(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName),
+      "to exceed the safe system maximum");
+
+  // If we don't hit a limit, the clone should succeed.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_replicas_per_core_limit) = 1000;
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName));
+}
+
+class PgCloneColocationTestWithTabletLimitsCheck : public PgCloneColocationTest {
+ public:
+  void SetUp() override {
+    // Simulate a single core cluster.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_cpus) = 1;
+    PgCloneColocationTest::SetUp();
+  }
+};
+
+TEST_F(PgCloneColocationTestWithTabletLimitsCheck, TabletLimitsColocated) {
+  // We should only count physical tables when checking the tablet limits.
+  auto leader_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
+  auto cluster_info = ComputeAggregatedClusterInfo(
+      leader_master->catalog_manager().GetAllLiveNotBlacklistedTServers(), BlacklistSet(), "");
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enforce_tablet_replica_limits) = true;
+  // Allow no extra tablet replicas initially.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_replicas_per_core_limit) =
+      static_cast<uint32_t>(cluster_info.total_live_replicas) / NumTabletServers();
+
+  // Create some more colocated tables. These should use the existing tablet created in the test
+  // setup.
+  for (int i = 0; i < 10; i++) {
+    ASSERT_OK(source_conn_->ExecuteFormat("CREATE TABLE table_$0 (id INT)", i));
+  }
+
+  // The clone should fail because we are at the limit.
+  ASSERT_NOK_STR_CONTAINS(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName),
+      "to exceed the safe system maximum");
+  // Allow for NumTabletServers() more tablet replicas so the clone of the one colocated tablet
+  // succeeds.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_replicas_per_core_limit) =
+      static_cast<uint32_t>(cluster_info.total_live_replicas + NumTabletServers());
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName));
+}
+
 // Verify that after a successful clone, the target database is readable even after performing
 // master leader failover. This is a sanity check on the persisted tables and tablet sys catalog
 // entities in case of cloning a colocated database.
 TEST_F(
-    PgCloneColocationTest, YB_DISABLE_TEST_IN_SANITIZERS(ReadClonedDatabaseAfterMasterFailover)) {
+    PgCloneColocationTest, ReadClonedDatabaseAfterMasterFailover) {
   const std::tuple<int32_t, int32_t> kRowT1 = {1, 10};
   const std::tuple<int32_t, int32_t, int32_t> kRowT2 = {2, 20, 200};
   ASSERT_OK(source_conn_->ExecuteFormat(
@@ -1452,7 +1515,7 @@ TEST_F(
   ASSERT_EQ(rows_t2[0], kRowT2);
 }
 
-TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CreateTableAfterClone)) {
+TEST_P(PgCloneTestWithColocatedDBParam, CreateTableAfterClone) {
   ASSERT_OK(source_conn_->ExecuteFormat("INSERT INTO t1 VALUES (1, 1)"));
 
   auto clone_time = ASSERT_RESULT(GetCurrentTime()).ToInt64();
@@ -1478,7 +1541,7 @@ TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CreateTabl
   ASSERT_OK(target_conn.Execute("INSERT INTO t3 VALUES (1, 1)"));
 }
 
-TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneOfClone)) {
+TEST_P(PgCloneTestWithColocatedDBParam, CloneOfClone) {
   ASSERT_OK(source_conn_->ExecuteFormat(
       "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName));
   SnapshotScheduleId schedule_id = ASSERT_RESULT(CreateSnapshotSchedule(
@@ -1493,7 +1556,7 @@ TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneOfClo
   ASSERT_RESULT(ConnectToDB(kTargetNamespaceName2));
 }
 
-TEST_F(PgCloneColocationTest, YB_DISABLE_TEST_IN_SANITIZERS(NoColocatedChildTables)) {
+TEST_F(PgCloneColocationTest, NoColocatedChildTables) {
   ASSERT_OK(source_conn_->Execute("CREATE TABLE t2(k int, v1 int) WITH (COLOCATION = false)"));
   ASSERT_OK(source_conn_->Execute("DROP TABLE t1"));
   auto no_child_tables_time = ASSERT_RESULT(GetCurrentTime()).ToInt64();

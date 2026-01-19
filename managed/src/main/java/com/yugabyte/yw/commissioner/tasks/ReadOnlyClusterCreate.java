@@ -70,7 +70,8 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
     Cluster cluster = taskParams().getReadOnlyClusters().get(0);
     universe
         .getUniverseDetails()
-        .upsertCluster(cluster.userIntent, cluster.placementInfo, cluster.uuid);
+        .upsertCluster(
+            cluster.userIntent, cluster.getPartitions(), cluster.placementInfo, cluster.uuid);
     updateTaskDetailsInDB(taskParams());
   }
 
@@ -115,6 +116,7 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
           universe,
           nodesToProvision,
           false /* ignore node status check */,
+          true /* do validation of gflags */,
           setupServerParams -> {
             setupServerParams.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig;
             setupServerParams.rebootNodeAllowed = true;

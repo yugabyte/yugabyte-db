@@ -28,6 +28,7 @@ import com.yugabyte.yba.v2.client.models.ClusterInfo;
 import com.yugabyte.yba.v2.client.models.ClusterNetworkingSpec;
 import com.yugabyte.yba.v2.client.models.ClusterNetworkingSpec.EnableExposingServiceEnum;
 import com.yugabyte.yba.v2.client.models.ClusterNodeSpec;
+import com.yugabyte.yba.v2.client.models.ClusterPartitionSpec;
 import com.yugabyte.yba.v2.client.models.ClusterPlacementSpec;
 import com.yugabyte.yba.v2.client.models.ClusterProviderEditSpec;
 import com.yugabyte.yba.v2.client.models.ClusterProviderSpec;
@@ -73,6 +74,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.AllowedTasks;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
@@ -103,6 +105,7 @@ import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -110,11 +113,13 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.rules.TestName;
 
+@Slf4j
 public class UniverseTestBase extends UniverseControllerTestBase {
 
   protected UUID providerUuid;
@@ -307,10 +312,15 @@ public class UniverseTestBase extends UniverseControllerTestBase {
 
   // Place nodes evenly across zones of first region
   protected PlacementCloud placementFromProvider(int numNodesToPlace, int rfTotal) {
+    return placementFromProvider(0, numNodesToPlace, rfTotal);
+  }
+
+  // Place nodes evenly across zones of regionIdx region
+  protected PlacementCloud placementFromProvider(int regionIdx, int numNodesToPlace, int rfTotal) {
     Provider provider = Provider.get(customer.getUuid(), providerUuid);
     PlacementCloud placementCloud =
         new PlacementCloud().uuid(providerUuid).code(provider.getCode());
-    Region region = Region.getByProvider(providerUuid).get(0);
+    Region region = Region.getByProvider(providerUuid).get(regionIdx);
     PlacementRegion pr = getOrCreatePlacementRegion(placementCloud, region);
     int numPlacedNodes = 0;
     int rf = 0;
@@ -407,6 +417,29 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     primaryClusterSpec.setAuditLogConfig(createPrimaryAuditLogConfig());
     primaryClusterSpec.setQueryLogConfig(createPrimaryQueryLogConfig());
     universeSpec.addClustersItem(primaryClusterSpec);
+    return universeCreateSpec;
+  }
+
+  protected UniverseCreateSpec getUniverseCreateSpecV2Geo() {
+    UniverseCreateSpec universeCreateSpec = getUniverseCreateSpecV2();
+    ClusterSpec clusterSpec = universeCreateSpec.getSpec().getClusters().get(0);
+    clusterSpec.setPlacementSpec(null);
+    List<ClusterPartitionSpec> geoPartitionSpecList = new ArrayList<>();
+    int numNodes = 0;
+    for (int i = 0; i < 3; i++) {
+      ClusterPartitionSpec geoPartitionSpec = new ClusterPartitionSpec();
+      geoPartitionSpec.setName("geo" + i);
+      geoPartitionSpec.setDefaultPartition(i == 0);
+      int numNodesInGeo = 5 + i;
+      int rf = i == 0 ? clusterSpec.getReplicationFactor() : 3;
+      PlacementCloud placementCloud = placementFromProvider(i, numNodesInGeo, rf);
+      geoPartitionSpec.setPlacement(new ClusterPlacementSpec().cloudList(List.of(placementCloud)));
+      geoPartitionSpec.setReplicationFactor(rf);
+      numNodes += numNodesInGeo;
+      geoPartitionSpecList.add(geoPartitionSpec);
+    }
+    clusterSpec.setNumNodes(numNodes);
+    clusterSpec.setPartitionsSpec(geoPartitionSpecList);
     return universeCreateSpec;
   }
 
@@ -643,7 +676,11 @@ public class UniverseTestBase extends UniverseControllerTestBase {
       assertThat(v2Cluster.getUseSpotInstance(), is(dbCluster.userIntent.useSpotInstance));
     }
     validateProviderSpec(v2Cluster.getProviderSpec(), dbCluster);
-    validatePlacementSpec(v2Cluster.getPlacementSpec(), dbCluster.placementInfo);
+    if (v2Cluster.getPartitionsSpec() == null || v2Cluster.getPartitionsSpec().isEmpty()) {
+      validatePlacementSpec(v2Cluster.getPlacementSpec(), dbCluster.placementInfo);
+    } else {
+      validateGeoPartitions(v2Cluster, dbCluster);
+    }
     validateNetworkingSpec(
         v2Cluster.getNetworkingSpec(), dbCluster, v2PrimaryCluster.getNetworkingSpec());
     validateGFlags(
@@ -660,6 +697,49 @@ public class UniverseTestBase extends UniverseControllerTestBase {
         v2Cluster.getQueryLogConfig(),
         dbCluster.userIntent.queryLogConfig,
         v2PrimaryCluster.getQueryLogConfig());
+  }
+
+  private void validateGeoPartitions(ClusterSpec v2Cluster, Cluster dbCluster) {
+    validateGeoPartitions(v2Cluster.getPartitionsSpec(), dbCluster);
+  }
+
+  private void validateGeoPartitions(List<ClusterPartitionSpec> geoPartitions, Cluster dbCluster) {
+    assertThat(dbCluster.getPartitions().size(), is(geoPartitions.size()));
+
+    int numNodes =
+        dbCluster.getPartitions().stream()
+            .flatMap(g -> g.getPlacement().azStream())
+            .mapToInt(az -> az.numNodesInAZ)
+            .sum();
+    assertThat(numNodes, is(dbCluster.userIntent.numNodes));
+
+    Map<UUID, Integer> countsByUUID = new HashMap<>();
+    for (ClusterPartitionSpec partitionSpec : geoPartitions) {
+      Optional<UniverseDefinitionTaskParams.PartitionInfo> geoPartitionInfo =
+          dbCluster.getPartitions().stream()
+              .filter(g -> partitionSpec.getName().equals(g.getName()))
+              .findFirst();
+      assertThat(geoPartitionInfo.isPresent(), is(true));
+      assertThat(
+          geoPartitionInfo.get().isDefaultPartition(), is(partitionSpec.getDefaultPartition()));
+
+      validatePlacementSpec(partitionSpec.getPlacement(), geoPartitionInfo.get().getPlacement());
+
+      Map<UUID, Integer> azMap =
+          geoPartitionInfo
+              .get()
+              .getPlacement()
+              .azStream()
+              .collect(Collectors.toMap(az -> az.uuid, az -> az.numNodesInAZ));
+
+      azMap.forEach(
+          (uuid, count) -> {
+            assertThat(countsByUUID.get(uuid), is(nullValue()));
+            countsByUUID.put(uuid, count);
+          });
+    }
+    assertThat(
+        countsByUUID, is(PlacementInfoUtil.getAzUuidToNumNodes(dbCluster.getOverallPlacement())));
   }
 
   private void validateClusterNodeSpec(
@@ -1255,7 +1335,8 @@ public class UniverseTestBase extends UniverseControllerTestBase {
       assertThat(v2Az.getLbName(), is(dbAz.lbName));
       assertThat(v2Az.getName(), is(dbAz.name));
       assertThat(v2Az.getNumNodesInAz(), is(dbAz.numNodesInAZ));
-      assertThat(v2Az.getReplicationFactor(), is(dbAz.replicationFactor));
+      int v2RF = Optional.ofNullable(v2Az.getReplicationFactor()).orElse(0);
+      assertThat(v2Az.getName() + " has replication factor", v2RF, is(dbAz.replicationFactor));
       assertThat(v2Az.getSecondarySubnet(), is(dbAz.secondarySubnet));
       assertThat(v2Az.getSubnet(), is(dbAz.subnet));
       assertThat(
@@ -1459,6 +1540,9 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     }
     if (v2Cluster.getPlacementSpec() != null) {
       validatePlacementSpec(v2Cluster.getPlacementSpec(), dbCluster.placementInfo);
+    }
+    if (v2Cluster.getPartitionsSpec() != null && !v2Cluster.getPartitionsSpec().isEmpty()) {
+      validateGeoPartitions(v2Cluster.getPartitionsSpec(), dbCluster);
     }
     if (v2Cluster.getInstanceTags() != null) {
       Map<String, String> v2PrimaryInstanceTags =

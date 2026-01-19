@@ -71,6 +71,10 @@ class CatalogManagerBgTasks final {
   void RunOnceAsLeader(const LeaderEpoch& epoch);
 
  private:
+  void MaybeRunClusterBalancer(
+      const LeaderEpoch& epoch, const std::vector<TableInfoPtr>& tables,
+      const TabletInfoMap& tablets);
+
   std::atomic<bool> closing_;
   bool pending_updates_;
   mutable Mutex lock_;
@@ -79,7 +83,7 @@ class CatalogManagerBgTasks final {
   Master* master_;
   CatalogManager* catalog_manager_;
   bool was_leader_ = false;
-  scoped_refptr<EventStats> load_balancer_duration_;
+  scoped_refptr<EventStats> cluster_balancer_duration_;
 };
 
 }  // namespace master

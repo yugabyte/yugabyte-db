@@ -4,6 +4,8 @@ linkTitle: Index backfill
 description: Understand how to create indexes without affecting ongoing queries
 headerTitle: Create indexes and track the progress
 headcontent: Understand how YugabyteDB creates indexes without affecting ongoing queries
+aliases:
+  - /stable/explore/query-1-performance/pg-stat-progress-create-index/
 menu:
   stable:
     identifier: index-backfill

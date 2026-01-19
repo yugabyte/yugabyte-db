@@ -33,11 +33,20 @@
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/util/ybc_util.h"
 
-namespace yb {
-namespace pggate {
+namespace yb::pggate {
+namespace {
+
+template<class ReqPB>
+void Apply(ReqPB& req, const YbcPgTableLocalityInfo& info) {
+  if (info.tablespace_oid != kInvalidOid) {
+    req.set_tablespace_oid(info.tablespace_oid);
+  }
+}
+
+} // namespace
 
 // Check if bound is derived from hash code using HashCodeToDocKeyBound().
-Result<bool> BoundDerivedFromHashCode(const Slice bound, bool is_lower);
+Result<bool> BoundDerivedFromHashCode(Slice bound, bool is_lower);
 
 Result<bool> PrepareNextRequest(const PgTableDesc& table, PgsqlReadOp* read_op) {
   // Set up paging state for next request.
@@ -117,18 +126,20 @@ std::string PgsqlOp::ToString() const {
                 is_read() ? "READ" : "WRITE", active_, read_time_, RequestToString());
 }
 
-PgsqlReadOp::PgsqlReadOp(ThreadSafeArena* arena, bool is_region_local)
-    : PgsqlOp(arena, is_region_local), read_request_(arena) {
+PgsqlReadOp::PgsqlReadOp(ThreadSafeArena* arena, const YbcPgTableLocalityInfo& locality_info)
+    : PgsqlOp(arena, locality_info), read_request_(arena) {
 }
 
-PgsqlReadOp::PgsqlReadOp(ThreadSafeArena* arena, const PgTableDesc& desc, bool is_region_local,
-                         PgsqlMetricsCaptureType metrics_capture)
-    : PgsqlReadOp(arena, is_region_local) {
+PgsqlReadOp::PgsqlReadOp(
+    ThreadSafeArena* arena, const PgTableDesc& desc, const YbcPgTableLocalityInfo& locality_info_,
+    PgsqlMetricsCaptureType metrics_capture)
+    : PgsqlReadOp(arena, locality_info_) {
   read_request_.set_client(YQL_CLIENT_PGSQL);
   read_request_.dup_table_id(desc.relfilenode_id().GetYbTableId());
   read_request_.set_schema_version(desc.schema_version());
   read_request_.set_stmt_id(reinterpret_cast<int64_t>(&read_request_));
   read_request_.set_metrics_capture(metrics_capture);
+  Apply(read_request_, locality_info());
 }
 
 Status PgsqlReadOp::InitPartitionKey(const PgTableDesc& table) {
@@ -137,7 +148,7 @@ Status PgsqlReadOp::InitPartitionKey(const PgTableDesc& table) {
 }
 
 PgsqlOpPtr PgsqlReadOp::DeepCopy(const std::shared_ptr<ThreadSafeArena>& arena_ptr) const {
-  auto result = ArenaMakeShared<PgsqlReadOp>(arena_ptr, &*arena_ptr, is_region_local());
+  auto result = ArenaMakeShared<PgsqlReadOp>(arena_ptr, &*arena_ptr, locality_info());
   result->set_read_time(read_time());
   result->read_request() = read_request();
   return result;
@@ -210,9 +221,11 @@ void PgsqlReadOp::OverrideBoundWithHashCode(uint16_t hash_code, bool is_lower) {
   }
 }
 
-PgsqlWriteOp::PgsqlWriteOp(ThreadSafeArena* arena, bool need_transaction, bool is_region_local)
-    : PgsqlOp(arena, is_region_local), write_request_(arena),
+PgsqlWriteOp::PgsqlWriteOp(
+    ThreadSafeArena* arena, bool need_transaction, const YbcPgTableLocalityInfo& locality_info_)
+    : PgsqlOp(arena, locality_info_), write_request_(arena),
       need_transaction_(need_transaction) {
+  Apply(write_request_, locality_info());
 }
 
 Status PgsqlWriteOp::InitPartitionKey(const PgTableDesc& table) {
@@ -226,7 +239,7 @@ std::string PgsqlWriteOp::RequestToString() const {
 PgsqlOpPtr PgsqlWriteOp::DeepCopy(const std::shared_ptr<void>& shared_ptr) const {
   auto result = ArenaMakeShared<PgsqlWriteOp>(
       std::shared_ptr<ThreadSafeArena>(shared_ptr, &arena()), &arena(), need_transaction_,
-      is_region_local());
+      locality_info());
   result->write_request() = write_request();
   return result;
 }
@@ -245,5 +258,4 @@ Result<bool> BoundDerivedFromHashCode(const Slice bound, bool is_lower) {
          range_components.size() == 1 && range_components[0].type() == expected_type;
 }
 
-}  // namespace pggate
-}  // namespace yb
+}  // namespace yb::pggate

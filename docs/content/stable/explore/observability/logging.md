@@ -7,6 +7,8 @@ menu:
     identifier: observability-logging
     parent: explore-observability
     weight: 900
+aliases:
+  - /stable/troubleshoot/nodes/check-logs/
 type: docs
 ---
 

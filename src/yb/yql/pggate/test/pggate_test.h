@@ -54,6 +54,9 @@ class PggateTest : public YBTest {
   static constexpr const char* kDefaultSchema = "pggate_test_schema";
   static constexpr YbcPgOid kDefaultDatabaseOid = 1;
   static constexpr const char* kDefaultTemplateDatabaseName = "template1";
+  static constexpr YbcPgOid kDefaultTablespaceOid = InvalidOid;
+  static constexpr YbcPgTableLocalityInfo kDefaultTableLocality =
+      {.is_region_local = false, .tablespace_oid = kDefaultTablespaceOid};
 
   PggateTest();
   virtual ~PggateTest();

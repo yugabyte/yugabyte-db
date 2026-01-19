@@ -858,6 +858,9 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
                                  help="Path to GCP credentials file used for logs export.")
         self.parser.add_argument('--ycql_audit_log_level', default=None,
                                  help="YCQL audit log level.")
+        self.parser.add_argument('--skip_ansible_playbook', action='store_true', default=False,
+                                 help='If set YBA will only setup the dual NIC for the'
+                                 'node but not run ansible setup server')
         self.parser.add_argument('--reboot_node_allowed', action='store_true', default=False,
                                  help='If set YBA will reboot the node for configuring the ulimits')
 
@@ -892,6 +895,9 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
             if args.boot_script:
                 # copy and run the script
                 self.cloud.execute_boot_script(args, self.extra_vars)
+        # Short Circuit for only setup dual NIC, used by YNP provisioning.
+        if args.skip_ansible_playbook:
+            return
 
         if args.air_gap:
             self.extra_vars.update({"air_gap": args.air_gap})
@@ -1219,12 +1225,15 @@ class ChangeInstanceTypeMethod(AbstractInstancesMethod):
         finally:
             if args.boot_script is not None:
                 self.cloud.update_user_data(args)
-            server_ports = self.get_server_ports_to_check(args)
-            self.cloud.start_instance(host_info, server_ports)
+            self._start_instance(args, host_info)
             logging.info('Instance {} is started'.format(args.search_pattern))
         # Make sure we are using the updated cgroup value if instance type is changing.
         if args.pg_max_mem_mb > 0:
             self.cloud.setup_ansible(args).run("setup-cgroup.yml", self.extra_vars, host_info)
+
+    def _start_instance(self, args, host_info):
+        server_ports = self.get_server_ports_to_check(args)
+        self.cloud.start_instance(host_info, server_ports)
 
 
 class CronCheckMethod(AbstractInstancesMethod):
@@ -1666,9 +1675,9 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
             files = os.listdir(args.local_gflag_files_path)
             remote_shell = RemoteShell(self.extra_vars)
             # Delete the gFlag file directory in case already present in remote
-            remote_shell.exec_command("rm -rf {}".format(args.remote_gflag_files_path))
+            remote_shell.check_exec_command("rm -rf {}".format(args.remote_gflag_files_path))
             # Create the gFlag file directory before copying the file.
-            remote_shell.exec_command("mkdir -p {}".format(args.remote_gflag_files_path))
+            remote_shell.check_exec_command("mkdir -p {}".format(args.remote_gflag_files_path))
             for file in files:
                 src_file = os.path.join(args.local_gflag_files_path, file)
                 dest_file = os.path.join(args.remote_gflag_files_path, file)

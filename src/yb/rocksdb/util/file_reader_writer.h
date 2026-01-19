@@ -84,7 +84,7 @@ class RandomAccessFileReader {
   std::unique_ptr<RandomAccessFile> file_;
   Env*            env_;
   Statistics*     stats_;
-  uint32_t        hist_type_;
+  Histograms      hist_type_;
   HistogramImpl*  file_read_hist_;
 
  public:

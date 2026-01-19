@@ -47,6 +47,7 @@
 
 /* YB includes */
 #include "pg_yb_utils.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
 
 static Datum yb_pg_relation_is_publishable(PG_FUNCTION_ARGS, Oid relid);
 
@@ -91,7 +92,8 @@ check_publication_add_relation(Relation targetrel)
 						RelationGetRelationName(targetrel)),
 				 errdetail("This operation is not supported for unlogged tables.")));
 
-	if (IsYugaByteEnabled() && !YBRelationHasPrimaryKey(targetrel))
+	if (IsYugaByteEnabled() && !yb_cdcsdk_stream_tables_without_primary_key &&
+		!YBRelationHasPrimaryKey(targetrel))
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("table \"%s\" cannot be replicated",
@@ -1378,14 +1380,16 @@ yb_pg_relation_is_publishable(PG_FUNCTION_ARGS, Oid relid)
 }
 
 /*
- * Similar to is_publishable_relation with additional check for user defined
- * primary key.
+ * Similar to is_publishable_relation but with additional check for user defined
+ * primary key when GUC variable 'yb_cdcsdk_stream_tables_without_primary_key'
+ * is set to false.
  */
 bool
 yb_is_publishable_relation(Relation rel)
 {
 	return (is_publishable_class(RelationGetRelid(rel), rel->rd_rel) &&
-			YBRelationHasPrimaryKey(rel));
+			(yb_cdcsdk_stream_tables_without_primary_key ||
+			 YBRelationHasPrimaryKey(rel)));
 }
 
 /*
@@ -1420,6 +1424,7 @@ yb_log_unsupported_publication_relations(void)
 		rel = table_open(relid, AccessShareLock);
 
 		if (is_publishable_class(RelationGetRelid(rel), relForm) &&
+			!yb_cdcsdk_stream_tables_without_primary_key &&
 			!YBRelationHasPrimaryKey(rel))
 		{
 			ereport(NOTICE,

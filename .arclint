@@ -48,9 +48,13 @@
      "(^managed/src/main/resources/gflag_groups/)",
      "(^managed/src/main/resources/openapi/)",
      "(^managed/src/main/resources/openapi_templates/)",
+    "(^managed/client/go/templates/)",
      "(^yb_release_manifest.json$)",
      "(^managed/client/java/.*/pom.xml)",
-     "(^yugabyted-ui/ui/package-lock.json)"
+     "(^src/yb/tools/.*pl$)",
+     "(^yugabyted-ui/ui/package-lock.json)",
+     "(^src/yb/integration-tests/conflict_resolve_keys_verification/sql/expected/)",
+     "(^java/yb-pgsql/src/test/resources/TestYbQueryDiagnostics/)"
   ],
   "linters": {
     "go-files": {
@@ -102,6 +106,7 @@
         "(^[.]fossa[.]yml$)",
         "(^managed/.*[.]conf)",
         "(^src/postgres/)",
+        "(^src/yb/integration-tests/.*[.]out$)",
         "(^[.]gitignore$)",
         "(^.*[.]svg$)",
         "(^.*[.]md$)",

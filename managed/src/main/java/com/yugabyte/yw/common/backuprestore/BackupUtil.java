@@ -389,7 +389,9 @@ public class BackupUtil {
             .lastIncrementalBackupTime(lastIncrementDate)
             .lastBackupState(lastBackupState)
             .scheduleName(backup.getScheduleName())
-            .useTablespaces(backup.getBackupInfo().useTablespaces);
+            .useTablespaces(backup.getBackupInfo().useTablespaces)
+            .useRoles(backup.getBackupInfo().getUseRoles());
+
     return builder.build();
   }
 

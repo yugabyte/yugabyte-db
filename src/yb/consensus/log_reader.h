@@ -99,8 +99,10 @@ class LogReader {
   // The caller takes ownership of the returned ReplicateMsg objects.
   //
   // Will attempt to read no more than 'max_bytes_to_read', unless it is set to
-  // LogReader::kNoSizeLimit. If the size limit would prevent reading any operations at
-  // all, then will read exactly one operation.
+  // LogReader::kNoSizeLimit.  If the size limit would prevent reading any operations at all, then
+  // will read exactly one operation.  Exception: if obey_memory_limit is true then may fail to read
+  // even one operation if doing so would exceed the log reader memory tracker limit; returns Busy
+  // in that case.
   //
   // Requires that a LogIndex was passed into LogReader::Open().
   // Requires up_to operation index to be Raft-committed, otherwise might return NotFound error if
@@ -113,6 +115,7 @@ class LogReader {
       const int64_t starting_at,
       const int64_t up_to,
       int64_t max_bytes_to_read,
+      ObeyMemoryLimit obey_memory_limit,
       consensus::ReplicateMsgs* replicates,
       int64_t* starting_op_segment_seq_num,
       CoarseTimePoint deadline = CoarseTimePoint::max()) const;
@@ -200,8 +203,11 @@ class LogReader {
 
   // Read the LogEntryBatch pointed to by the provided index entry.
   // 'tmp_buf' is used as scratch space to avoid extra allocation.
+  //
+  // Returns status Busy if obey_memory_limit is set and there is insufficient memory to hold the
+  // batch.
   Result<std::shared_ptr<LWLogEntryBatchPB>> ReadBatchUsingIndexEntry(
-      const LogIndexEntry& index_entry) const;
+      const LogIndexEntry& index_entry, ObeyMemoryLimit obey_memory_limit) const;
 
   LogReader(
       Env* env, const scoped_refptr<LogIndex>& index, std::string log_prefix,

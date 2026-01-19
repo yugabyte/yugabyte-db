@@ -1,21 +1,31 @@
-import { FC } from 'react';
+import { FC, useEffect } from 'react';
+import { useMethods } from 'react-use';
 import { styled } from '@material-ui/core';
 import { mui, Step, YBMultiLevelStepper } from '@yugabyte-ui-library/core';
+import { useQuery } from 'react-query';
 
-import { ReactComponent as YBLogo } from '../../../../assets/yb_logo.svg';
-import { ReactComponent as Close } from '../../../../assets/close rounded inverted.svg';
 import { useTranslation } from 'react-i18next';
-import { useMethods, useMount } from 'react-use';
 import {
   AddGeoPartitionContext,
   AddGeoPartitionContextProps,
-  addGeoPartitionFormMethods,
   AddGeoPartitionSteps,
-  initialAddGeoPartitionFormState
+  initialAddGeoPartitionFormState,
+  GeoPartition,
+  addGeoPartitionFormMethods
 } from './AddGeoPartitionContext';
 import { SwitchGeoPartitionSteps } from './SwitchGeoPartitionSteps';
-import { useGetSteps } from './AddGeoPartitionUtils';
+import {
+  extractRegionsAndNodeDataFromUniverse,
+  getExistingGeoPartitions,
+  useGetSteps
+} from './AddGeoPartitionUtils';
 import { GeoPartitionInfoModal } from './GeoPartitionInfoModal';
+import { getUniverse } from '@app/v2/api/universe/universe';
+import { api } from '@app/redesign/helpers/api';
+import { YBLoadingCircleIcon } from '@app/components/common/indicators';
+
+import YBLogo from '../../../../assets/yb_logo.svg';
+import Close from '../../../../assets/close rounded inverted.svg';
 
 const { Grid2: Grid, Typography } = mui;
 
@@ -34,18 +44,55 @@ interface AddGeoPartitionProps {
 
 export const AddGeoPartition: FC<AddGeoPartitionProps> = (props) => {
   const { t } = useTranslation('translation', { keyPrefix: 'geoPartition.addGeoPartition' });
+
   const addGeoPartitionContextData = useMethods(
     addGeoPartitionFormMethods,
     initialAddGeoPartitionFormState
   );
+
   const [addGeoPartitionContext, addGeoPartitionMethods] = addGeoPartitionContextData;
-  const { activeStep, activeGeoPartitionIndex } = addGeoPartitionContext;
-  const { isNewGeoPartition } = props;
+  const { geoPartitions, activeGeoPartitionIndex, activeStep } = addGeoPartitionContext;
 
   const universeUUID = props.params?.uuid ?? '';
 
-  // const { data } = useQuery([universeUUID], () => getUniverse(universeUUID));
-  // console.log(data);
+  const { data: universeData, isSuccess, isLoading: isUniverseDataLoading } = useQuery(
+    [universeUUID],
+    () => getUniverse(universeUUID),
+    {
+      onSuccess(data) {
+        addGeoPartitionMethods.setUniverseData(data);
+        const existingGeoParitionsCount = getExistingGeoPartitions(data).length;
+        addGeoPartitionMethods.updateGeoPartition({
+          geoPartition: {
+            ...geoPartitions[0],
+            name: `Geo Partition ${existingGeoParitionsCount + 1}`,
+            tablespaceName: `Tablespace ${existingGeoParitionsCount + 1}`
+          } as GeoPartition,
+          activeGeoPartitionIndex: 0
+        });
+      }
+    }
+  );
+  const provider = universeData?.spec?.clusters[0].provider_spec.provider;
+
+  useQuery([universeUUID, provider], () => api.fetchProviderRegions(provider), {
+    enabled: isSuccess && !!provider,
+    onSuccess(providerRegionList) {
+      addGeoPartitionMethods.setUniverseData(universeData!);
+      const data = extractRegionsAndNodeDataFromUniverse(universeData!, providerRegionList);
+
+      addGeoPartitionMethods.updateGeoPartition({
+        geoPartition: {
+          ...geoPartitions[0],
+          resilience: {
+            ...geoPartitions[0].resilience,
+            regions: data.regions
+          } as any
+        },
+        activeGeoPartitionIndex: 0
+      });
+    }
+  });
 
   const steps: Step[] = useGetSteps(addGeoPartitionContext);
 
@@ -53,9 +100,14 @@ export const AddGeoPartition: FC<AddGeoPartitionProps> = (props) => {
     return acc + step.subSteps.length;
   }, 0);
 
-  useMount(() => {
-    addGeoPartitionMethods.setIsNewGeoPartition(isNewGeoPartition);
-  });
+  useEffect(() => {
+    const isGeoPartitionPresent = universeData?.spec?.clusters?.some((cluster) => {
+      return cluster.partitions_spec?.length ?? false;
+    });
+    addGeoPartitionMethods.setIsNewGeoPartition(!isGeoPartitionPresent);
+  }, [universeData]);
+
+  if (isUniverseDataLoading) return <YBLoadingCircleIcon />;
 
   return (
     <AddGeoPartitionContext.Provider
@@ -82,7 +134,12 @@ export const AddGeoPartition: FC<AddGeoPartitionProps> = (props) => {
               {t('title')}
             </Typography>
           </div>
-          <Close style={{ cursor: 'pointer' }} />
+          <Close
+            style={{ cursor: 'pointer' }}
+            onClick={() => {
+              window.location.href = `/universes/${universeUUID}/settings`;
+            }}
+          />
         </Grid>
         <Grid container spacing={2}>
           <Grid sx={{ borderRight: '1px solid #E9EEF2', height: '100vh' }}>

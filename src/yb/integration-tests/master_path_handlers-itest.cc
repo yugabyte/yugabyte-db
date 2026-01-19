@@ -35,6 +35,7 @@
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/mini_cluster.h"
+#include "yb/integration-tests/path_handlers_util.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
 #include "yb/master/catalog_entity_info.h"
@@ -88,7 +89,7 @@ DECLARE_int32(TEST_sleep_before_reporting_lb_ui_ms);
 DECLARE_bool(ysql_enable_auto_analyze_infra);
 DECLARE_int32(tablet_overhead_size_percentage);
 
-namespace yb::master {
+namespace yb::integration_tests {
 
 using std::string;
 using std::vector;
@@ -124,21 +125,20 @@ class MasterPathHandlersBaseItest : public YBMiniClusterTestBase<T> {
   }
 
  protected:
-  // Attempts to fetch url until a response with status OK, or until timeout.
-  // On mac the curl command fails with error "A libcurl function was given a bad argument", but
-  // succeeds on retries.
-  Status GetUrl(const string& query_path, faststring* result, MonoDelta timeout = 30s) {
-    const string url = master_http_url_ + query_path;
-    Status status;
-    return WaitFor(
-        [&]() -> bool {
-          EasyCurl curl;
-          status = curl.FetchURL(url, result);
-          YB_LOG_IF_EVERY_N(WARNING, !status.ok(), 5) << status;
+  Status GetUrl(const std::string& query_path, faststring* result) {
+    return path_handlers_util::GetUrl(master_http_url_ + query_path, result);
+  }
 
-          return status.ok();
-        },
-        timeout, "Wait for curl response to return with status OK");
+  Result<std::vector<std::vector<std::string>>> GetHtmlTableRows(
+      const std::string& url, const std::string& html_table_tag_id) {
+    return path_handlers_util::GetHtmlTableRows(master_http_url_ + url, html_table_tag_id);
+  }
+
+  Result<std::vector<std::string>> GetHtmlTableColumn(
+      const std::string& url, const std::string& html_table_tag_id,
+      const std::string& column_header) {
+    return path_handlers_util::GetHtmlTableColumn(
+        master_http_url_ + url, html_table_tag_id, column_header);
   }
 
   virtual int num_tablet_servers() const {
@@ -221,74 +221,6 @@ class MasterPathHandlersItest : public MasterPathHandlersBaseItest<MiniCluster> 
     client_ = ASSERT_RESULT(cluster_->CreateClient());
   }
 
-  // Returns the rows in a table with a given id, excluding the header row.
-  Result<std::vector<std::vector<std::string>>> GetHtmlTableRows(
-      const std::string& url, const std::string& html_table_tag_id, bool include_header = false) {
-    faststring result;
-    RETURN_NOT_OK(GetUrl(url, &result));
-    const auto webpage = result.ToString();
-    // Using [^]* to matches all characters instead of .* because . does not match newlines.
-    const std::regex table_regex(
-        Format("<table[^>]*id='$0'[^>]*>([^]*?)</table>", html_table_tag_id));
-    const std::regex row_regex(Format("<tr>([^]*?)</tr>"));
-    const std::regex col_regex(Format("<td[^>]*>([^]*?)</td>"));
-    const std::regex header_regex("<th[^>]*>([^>]*?)</th>");
-
-    std::smatch match;
-    std::regex_search(webpage, match, table_regex);
-
-    // [0] is the full match.
-    if (match.size() < 1) {
-      LOG(INFO) << "Full webpage: " << webpage;
-      return STATUS_FORMAT(NotFound, "Table with id $0 not found", html_table_tag_id);
-    }
-    // Match[1] is the first capture group, and contains everything inside the <table> tags.
-    std::string table = match[1];
-
-    std::vector<std::vector<std::string>> rows;
-    // Start at the second row to skip the header.
-    auto table_begin = std::sregex_iterator(table.begin(), table.end(), row_regex);
-    if (!include_header) {
-      ++table_begin;
-    }
-    for (auto row_it = table_begin; row_it != std::sregex_iterator(); ++row_it) {
-      auto row = row_it->str(1);
-      std::vector<std::string> cols;
-      std::regex regex;
-      if (include_header && rows.empty()) {
-        regex = header_regex;
-      } else {
-        regex = col_regex;
-      }
-      const auto row_begin = std::sregex_iterator(row.begin(), row.end(), regex);
-      for (auto col_it = row_begin; col_it != std::sregex_iterator(); ++col_it) {
-        cols.push_back(col_it->str(1));
-      }
-      rows.push_back(std::move(cols));
-    }
-    return rows;
-  }
-
-  Result<std::vector<std::string>> GetHtmlTableColumn(
-      const std::string& url, const std::string& html_table_tag_id,
-      const std::string& column_header) {
-    auto rows = VERIFY_RESULT(GetHtmlTableRows(url, html_table_tag_id, /* include_header= */ true));
-    if (rows.size() < 1) {
-      return STATUS_FORMAT(
-          NotFound, "Couldn't find table at url $0 with tag id $1", url, html_table_tag_id);
-    }
-    auto it = std::find(rows[0].begin(), rows[0].end(), column_header);
-    if (it == rows[0].end()) {
-      return STATUS_FORMAT(
-          NotFound, "Couldn't find column with header $0 at url $1 with tag id $2", column_header,
-          url, html_table_tag_id);
-    }
-    auto col_idx = it - rows[0].begin();
-    auto rng = rows | std::views::drop(1) |
-               std::views::transform([&col_idx](const auto& row) { return row[col_idx]; });
-    return std::vector(std::ranges::begin(rng), std::ranges::end(rng));
-  }
-
   void ExpectLoadDistributionViewTabletsShown(int tablet_count) {
     // This code expects that we have 3 TServers, 1 table, and RF 3.
     int expected_replicas = tablet_count * 3;
@@ -329,12 +261,12 @@ class MasterPathHandlersItest : public MasterPathHandlersBaseItest<MiniCluster> 
 bool verifyTServersAlive(int n, const string& result) {
   size_t pos = 0;
   for (int i = 0; i < n; i++) {
-    pos = result.find(kTserverAlive, pos + 1);
+    pos = result.find(master::kTserverAlive, pos + 1);
     if (pos == string::npos) {
       return false;
     }
   }
-  return result.find(kTserverAlive, pos + 1) == string::npos;
+  return result.find(master::kTserverAlive, pos + 1) == string::npos;
 }
 
 TEST_F(MasterPathHandlersItest, TestMasterPathHandlers) {
@@ -361,9 +293,9 @@ TEST_F(MasterPathHandlersItest, TestDeadTServers) {
   ASSERT_TRUE(verifyTServersAlive(2, result_str));
 
   // Now verify dead.
-  size_t pos = result_str.find(kTserverDead, 0);
+  size_t pos = result_str.find(master::kTserverDead, 0);
   ASSERT_TRUE(pos != string::npos);
-  ASSERT_TRUE(result_str.find(kTserverDead, pos + 1) == string::npos);
+  ASSERT_TRUE(result_str.find(master::kTserverDead, pos + 1) == string::npos);
 
   // Startup the tserver and wait for heartbeats.
   ASSERT_OK(cluster_->mini_tablet_server(0)->Start(tserver::WaitTabletsBootstrapped::kFalse));
@@ -384,7 +316,7 @@ TEST_F(MasterPathHandlersItest, TestTabletReplicationEndpoint) {
 
   // Choose a tablet to orphan and take note of the servers which are leaders/followers for this
   // tablet.
-  google::protobuf::RepeatedPtrField<TabletLocationsPB> tablets;
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(client_->GetTabletsFromTableId(table->id(), kNumTablets, &tablets));
   std::vector<yb::tserver::MiniTabletServer *> followers;
   yb::tserver::MiniTabletServer* leader = nullptr;
@@ -572,7 +504,7 @@ TEST_F(MasterPathHandlersItest, TestTableJsonEndpointValidTableId) {
 
   // Call endpoint and validate format of response.
   faststring result;
-  ASSERT_OK(GetUrl(Format("/api/v1/table?id=$0", table->id()), &result, 30s /* timeout */));
+  ASSERT_OK(GetUrl(Format("/api/v1/table?id=$0", table->id()), &result));
 
   JsonReader r(result.ToString());
   ASSERT_OK(r.Init());
@@ -603,8 +535,8 @@ TEST_F(MasterPathHandlersItest, TestTableJsonEndpointValidTableName) {
   // Call endpoint and validate format of response.
   faststring result;
   ASSERT_OK(GetUrl(
-      Format("/api/v1/table?keyspace_name=$0&table_name=$1", kKeyspaceName, "test_table"), &result,
-      30s /* timeout */));
+      Format("/api/v1/table?keyspace_name=$0&table_name=$1", kKeyspaceName, "test_table"),
+      &result));
 
   JsonReader r(result.ToString());
   ASSERT_OK(r.Init());
@@ -622,7 +554,7 @@ TEST_F(MasterPathHandlersItest, TestTableJsonEndpointInvalidTableId) {
 
   // Call endpoint and validate format of response.
   faststring result;
-  ASSERT_OK(GetUrl("/api/v1/table?id=12345", &result, 30s /* timeout */));
+  ASSERT_OK(GetUrl("/api/v1/table?id=12345", &result));
 
   JsonReader r(result.ToString());
   ASSERT_OK(r.Init());
@@ -638,7 +570,7 @@ TEST_F(MasterPathHandlersItest, TestTableJsonEndpointNoArgs) {
 
   // Call endpoint and validate format of response.
   faststring result;
-  ASSERT_OK(GetUrl("/api/v1/table", &result, 30s /* timeout */));
+  ASSERT_OK(GetUrl("/api/v1/table", &result));
 
   JsonReader r(result.ToString());
   ASSERT_OK(r.Init());
@@ -653,7 +585,7 @@ TEST_F(MasterPathHandlersItest, TestTablesJsonEndpoint) {
   auto table = CreateTestTable();
 
   faststring result;
-  ASSERT_OK(GetUrl("/api/v1/tables", &result, 30s /* timeout */));
+  ASSERT_OK(GetUrl("/api/v1/tables", &result));
 
   JsonReader r(result.ToString());
   ASSERT_OK(r.Init());
@@ -670,7 +602,7 @@ TEST_F(MasterPathHandlersItest, TestTablesJsonEndpoint) {
   const rapidjson::Value& table_obj = (*json_obj)["user"][0];
   EXPECT_EQ(kKeyspaceName, table_obj["keyspace"].GetString());
   EXPECT_EQ(table_name.table_name(), table_obj["table_name"].GetString());
-  EXPECT_EQ(SysTablesEntryPB_State_Name(SysTablesEntryPB_State_RUNNING),
+  EXPECT_EQ(SysTablesEntryPB_State_Name(master::SysTablesEntryPB_State_RUNNING),
       table_obj["state"].GetString());
   EXPECT_EQ(table_obj["message"].GetString(), string());
   EXPECT_EQ(table->id(), table_obj["uuid"].GetString());
@@ -701,7 +633,7 @@ TEST_F(MasterPathHandlersItest, TestMemTrackersJsonEndpoint) {
   auto table = CreateTestTable();
 
   faststring result;
-  ASSERT_OK(GetUrl("/api/v1/mem-trackers", &result, 30s /* timeout */));
+  ASSERT_OK(GetUrl("/api/v1/mem-trackers", &result));
 
   JsonReader r(result.ToString());
   ASSERT_OK(r.Init());
@@ -748,7 +680,7 @@ class TabletSplitMasterPathHandlersItest : public MasterPathHandlersItest {
   void InsertRows(const client::TableHandle& table, int num_rows_to_insert) {
     auto session = client_->NewSession(60s);
     for (int i = 0; i < num_rows_to_insert; i++) {
-      auto insert = table.NewInsertOp();
+      auto insert = table.NewInsertOp(session->arena());
       auto req = insert->mutable_request();
       QLAddInt32HashValue(req, i);
       ASSERT_OK(session->TEST_ApplyAndFlush(insert));
@@ -770,12 +702,11 @@ TEST_F_EX(MasterPathHandlersItest, ShowDeletedTablets, TabletSplitMasterPathHand
       [this, &table](const bool should_show_deleted) -> Result<bool> {
         faststring result;
         RETURN_NOT_OK(GetUrl(
-            "/table?id=" + table->id() + (should_show_deleted ? "&show_deleted" : ""), &result,
-            30s /* timeout */));
+            "/table?id=" + table->id() + (should_show_deleted ? "&show_deleted" : ""), &result));
         const auto webpage = result.ToString();
         std::smatch match;
         const std::regex regex(
-            "<tr>.*<td>Delete*d</td><td>0</td><td>Not serving tablet deleted upon request "
+            "<tr>[\\S\\s]*<td>Deleted</td><td>0</td><td>Not serving tablet deleted upon request "
             "at(.|\n)*</tr>");
         std::regex_search(webpage, match, regex);
         return !match.empty();
@@ -944,8 +875,9 @@ class MasterPathHandlersExternalItest : public MasterPathHandlersBaseItest<Exter
     opts_.extra_tserver_flags.push_back("--placement_zone=z${index}");
     opts_.extra_tserver_flags.push_back("--placement_uuid=" + kLivePlacementUuid);
     opts_.extra_tserver_flags.push_back("--follower_unavailable_considered_failed_sec=10");
-    const auto rf = opts_.replication_factor > 0 ? opts_.replication_factor : 3;
-    opts_.extra_master_flags.push_back(Format("--replication_factor=$0", rf));
+    if (opts_.replication_factor <= 0) {
+      opts_.replication_factor = 3;
+    }
 
     MasterPathHandlersBaseItest<ExternalMiniCluster>::SetUp();
 
@@ -954,13 +886,13 @@ class MasterPathHandlersExternalItest : public MasterPathHandlersBaseItest<Exter
     ASSERT_OK(yb_admin_client_->Init());
 
     std::string placement_infos;
-    for (int i = 0; i < rf; i++) {
+    for (int i = 0; i < opts_.replication_factor; i++) {
       placement_infos += Format("c.r.z$0:1", i);
-      if (i < rf - 1) {
+      if (i < opts_.replication_factor - 1) {
         placement_infos += ",";
       }
     }
-    ASSERT_OK(yb_admin_client_->ModifyPlacementInfo(placement_infos, rf,
+    ASSERT_OK(yb_admin_client_->ModifyPlacementInfo(placement_infos, opts_.replication_factor,
         kLivePlacementUuid));
   }
 
@@ -1508,7 +1440,7 @@ TEST_F(MasterPathHandlersItest, TestLeaderlessDeletedTablet) {
   MonoTime last_time_with_valid_leader_override = MonoTime::Now();
   last_time_with_valid_leader_override.SubtractDelta(kLeaderlessTabletAlertDelaySecs * 1s);
   for (auto& tablet : tablets) {
-    auto replicas = std::make_shared<TabletReplicaMap>(*tablet->GetReplicaLocations());
+    auto replicas = std::make_shared<master::TabletReplicaMap>(*tablet->GetReplicaLocations());
     for (auto& replica : *replicas) {
       replica.second.role = PeerRole::FOLLOWER;
     }
@@ -1520,11 +1452,11 @@ TEST_F(MasterPathHandlersItest, TestLeaderlessDeletedTablet) {
   auto replaced_tablet = tablets[2];
 
   auto deleted_lock = deleted_tablet->LockForWrite();
-  deleted_lock.mutable_data()->set_state(SysTabletsEntryPB::DELETED, "");
+  deleted_lock.mutable_data()->set_state(master::SysTabletsEntryPB::DELETED, "");
   deleted_lock.Commit();
 
   auto replaced_lock = replaced_tablet->LockForWrite();
-  replaced_lock.mutable_data()->set_state(SysTabletsEntryPB::REPLACED, "");
+  replaced_lock.mutable_data()->set_state(master::SysTabletsEntryPB::REPLACED, "");
   replaced_lock.Commit();
 
   // Only the RUNNING tablet should be returned in the endpoint.
@@ -1961,7 +1893,7 @@ TEST_F(MasterPathHandlersItest, TabletLimitsSkipBlacklistedTServers) {
   auto original_value = std::stoll(cols[0]);
 
   auto ts = cluster_->mini_tablet_server(0);
-  auto cluster_client = MasterClusterClient(
+  auto cluster_client = master::MasterClusterClient(
       ASSERT_RESULT(cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>()));
   for (const auto& hp : ts->options()->broadcast_addresses) {
     ASSERT_OK(cluster_client.BlacklistHost(hp.ToPB<HostPortPB>()));
@@ -1977,4 +1909,4 @@ TEST_F(MasterPathHandlersItest, TabletLimitsSkipBlacklistedTServers) {
       10s, "Reported tablet limit should decrease"));
 }
 
-} // namespace yb::master
+} // namespace yb::integration_tests

@@ -126,6 +126,7 @@ public class GFlagsUtil {
   public static final String USE_PRIVATE_IP = "use_private_ip";
   public static final String WEBSERVER_PORT = "webserver_port";
   public static final String WEBSERVER_INTERFACE = "webserver_interface";
+  public static final String OPENSSL_REQUIRE_FIPS = "openssl_require_fips";
   public static final String REDIS_PROXY_BIND_ADDRESS = "redis_proxy_bind_address";
   public static final String REDIS_PROXY_WEBSERVER_PORT = "redis_proxy_webserver_port";
   public static final String POSTMASTER_CGROUP = "postmaster_cgroup";
@@ -232,15 +233,11 @@ public class GFlagsUtil {
           .add(CERTS_FOR_CLIENT_DIR)
           .build();
 
-  private static final Map<String, StringIntentAccessor> GFLAG_TO_INTENT_ACCESSOR =
+  private static final Map<String, StringIntentAccessor> COMMON_GFLAG_TO_INTENT_ACCESSOR =
       ImmutableMap.<String, StringIntentAccessor>builder()
           .put(ENABLE_YSQL, boolAccessor(u -> u.enableYSQL, (u, v) -> u.enableYSQL = v))
           .put(
               YSQL_ENABLE_AUTH, boolAccessor(u -> u.enableYSQLAuth, (u, v) -> u.enableYSQLAuth = v))
-          .put(START_CQL_PROXY, boolAccessor(u -> u.enableYCQL, (u, v) -> u.enableYCQL = v))
-          .put(
-              USE_CASSANDRA_AUTHENTICATION,
-              boolAccessor(u -> u.enableYCQLAuth, (u, v) -> u.enableYCQLAuth = v))
           .put(
               USE_NODE_TO_NODE_ENCRYPTION,
               boolAccessor(u -> u.enableNodeToNodeEncrypt, (u, v) -> u.enableNodeToNodeEncrypt = v))
@@ -248,7 +245,23 @@ public class GFlagsUtil {
               USE_CLIENT_TO_SERVER_ENCRYPTION,
               boolAccessor(
                   u -> u.enableClientToNodeEncrypt, (u, v) -> u.enableClientToNodeEncrypt = v))
+          .build();
+  private static final Map<String, StringIntentAccessor> TSERVER_GFLAG_TO_INTENT_ACCESSOR =
+      ImmutableMap.<String, StringIntentAccessor>builder()
+          .putAll(COMMON_GFLAG_TO_INTENT_ACCESSOR)
+          .put(START_CQL_PROXY, boolAccessor(u -> u.enableYCQL, (u, v) -> u.enableYCQL = v))
+          .put(
+              USE_CASSANDRA_AUTHENTICATION,
+              boolAccessor(u -> u.enableYCQLAuth, (u, v) -> u.enableYCQLAuth = v))
           .put(START_REDIS_PROXY, boolAccessor(u -> u.enableYEDIS, (u, v) -> u.enableYEDIS = v))
+          .build();
+  private static final Map<String, StringIntentAccessor> MASTER_GFLAG_TO_INTENT_ACCESSOR =
+      ImmutableMap.<String, StringIntentAccessor>builder()
+          .putAll(COMMON_GFLAG_TO_INTENT_ACCESSOR)
+          .build();
+  private static final Map<String, StringIntentAccessor> GFLAG_TO_INTENT_ACCESSOR =
+      ImmutableMap.<String, StringIntentAccessor>builder()
+          .putAll(TSERVER_GFLAG_TO_INTENT_ACCESSOR)
           .build();
 
   /**
@@ -300,6 +313,10 @@ public class GFlagsUtil {
       extra_gflags.put(FS_DATA_DIRS, mountPoints);
     } else {
       throw new RuntimeException("mountpoints and numVolumes are missing from taskParam");
+    }
+
+    if (universe.getUniverseDetails().fipsEnabled) {
+      extra_gflags.put(OPENSSL_REQUIRE_FIPS, "true");
     }
 
     boolean isMultiRegion =
@@ -359,13 +376,6 @@ public class GFlagsUtil {
 
     // Set on both master and tserver processes to allow db to validate inter-node RPCs.
     extra_gflags.put(CLUSTER_UUID, String.valueOf(taskParam.getUniverseUUID()));
-
-    if (taskParam.isMaster) {
-      extra_gflags.put(REPLICATION_FACTOR, String.valueOf(userIntent.replicationFactor));
-      extra_gflags.put(
-          LOAD_BALANCER_INITIAL_DELAY_SECS,
-          String.valueOf(DEFAULT_LOAD_BALANCER_INITIAL_DELAY_SECS));
-    }
 
     if (taskParam.getCurrentClusterType() == UniverseDefinitionTaskParams.ClusterType.PRIMARY
         && taskParam.setTxnTableWaitCountFlag) {
@@ -935,6 +945,7 @@ public class GFlagsUtil {
       Universe universe,
       Boolean useHostname,
       Boolean useSecondaryIp) {
+    String processType = taskParam.getProperty("processType");
     Map<String, String> gflags = new TreeMap<>();
     NodeDetails node = universe.getNode(taskParam.nodeName);
     String cqlProxyBindAddress = node.cloudInfo.private_ip;
@@ -943,7 +954,9 @@ public class GFlagsUtil {
     }
 
     if (taskParam.enableYCQL) {
-      gflags.put(START_CQL_PROXY, "true");
+      if (processType == null || UniverseTaskBase.ServerType.TSERVER.name().equals(processType)) {
+        gflags.put(START_CQL_PROXY, "true");
+      }
       gflags.put(
           CSQL_PROXY_BIND_ADDRESS,
           String.format(
@@ -964,7 +977,8 @@ public class GFlagsUtil {
         gflags.put(USE_CASSANDRA_AUTHENTICATION, "false");
       }
       gflags.putAll(getYcqlAuditFlags(taskParam));
-    } else {
+    } else if (processType == null
+        || UniverseTaskBase.ServerType.TSERVER.name().equals(processType)) {
       gflags.put(START_CQL_PROXY, "false");
     }
     return gflags;
@@ -1066,6 +1080,8 @@ public class GFlagsUtil {
       RuntimeConfGetter confGetter) {
     Map<String, String> gflags = new TreeMap<>();
     NodeDetails node = universe.getNode(taskParam.nodeName);
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent;
     String masterAddresses = getMasterAddrs(taskParam, universe, useSecondaryIp);
     String privateIp = node.cloudInfo.private_ip;
     int masterRpcPort =
@@ -1122,6 +1138,10 @@ public class GFlagsUtil {
       gflags.put(MASTER_JOIN_EXISTING_UNIVERSE, "true");
       gflags.merge(UNDEFOK, MASTER_JOIN_EXISTING_UNIVERSE, (v1, v2) -> mergeCSVs(v1, v2, false));
     }
+    gflags.put(REPLICATION_FACTOR, String.valueOf(userIntent.replicationFactor));
+    gflags.put(
+        LOAD_BALANCER_INITIAL_DELAY_SECS, String.valueOf(DEFAULT_LOAD_BALANCER_INITIAL_DELAY_SECS));
+
     return gflags;
   }
 
@@ -1137,43 +1157,58 @@ public class GFlagsUtil {
    */
   public static void checkGflagsAndIntentConsistency(
       UniverseDefinitionTaskParams.UserIntent userIntent) {
-    List<Map<String, String>> masterAndTserverGFlags =
-        Arrays.asList(userIntent.masterGFlags, userIntent.tserverGFlags);
-    if (userIntent.specificGFlags != null) {
-      if (userIntent.specificGFlags.isInheritFromPrimary()) {
-        return;
-      }
-      if (userIntent.specificGFlags.getPerProcessFlags() != null) {
-        masterAndTserverGFlags =
-            Arrays.asList(
-                userIntent
-                    .specificGFlags
-                    .getPerProcessFlags()
-                    .value
-                    .getOrDefault(UniverseTaskBase.ServerType.MASTER, new HashMap<>()),
-                userIntent
-                    .specificGFlags
-                    .getPerProcessFlags()
-                    .value
-                    .getOrDefault(UniverseTaskBase.ServerType.TSERVER, new HashMap<>()));
-      }
+
+    if (userIntent.specificGFlags != null && userIntent.specificGFlags.isInheritFromPrimary()) {
+      return;
     }
-    for (Map<String, String> gflags : masterAndTserverGFlags) {
-      GFLAG_TO_INTENT_ACCESSOR.forEach(
-          (gflagKey, accessor) -> {
-            if (gflags.containsKey(gflagKey)) {
-              String gflagVal = gflags.get(gflagKey);
-              String intentVal = accessor.strGetter().apply(userIntent);
-              if (!gflagVal.equalsIgnoreCase(intentVal)) {
-                throw new PlatformServiceException(
-                    BAD_REQUEST,
-                    String.format(
-                        "G-Flag value '%s' for '%s' is not compatible with intent value '%s'",
-                        gflagVal, gflagKey, intentVal));
-              }
+
+    Map<String, String> masterGFlags = userIntent.masterGFlags;
+    Map<String, String> tserverGFlags = userIntent.tserverGFlags;
+
+    if (userIntent.specificGFlags != null
+        && userIntent.specificGFlags.getPerProcessFlags() != null) {
+      masterGFlags =
+          userIntent
+              .specificGFlags
+              .getPerProcessFlags()
+              .value
+              .getOrDefault(UniverseTaskBase.ServerType.MASTER, new HashMap<>());
+      tserverGFlags =
+          userIntent
+              .specificGFlags
+              .getPerProcessFlags()
+              .value
+              .getOrDefault(UniverseTaskBase.ServerType.TSERVER, new HashMap<>());
+    }
+
+    validateGflagsAgainstIntent(
+        masterGFlags, MASTER_GFLAG_TO_INTENT_ACCESSOR, userIntent, "Master");
+    validateGflagsAgainstIntent(
+        tserverGFlags, TSERVER_GFLAG_TO_INTENT_ACCESSOR, userIntent, "Tserver");
+  }
+
+  private static void validateGflagsAgainstIntent(
+      Map<String, String> gflags,
+      Map<String, StringIntentAccessor> gflagToIntentAccessor,
+      UniverseDefinitionTaskParams.UserIntent userIntent,
+      String serverTypeName) {
+
+    if (gflags == null) return;
+
+    gflagToIntentAccessor.forEach(
+        (gflagKey, accessor) -> {
+          if (gflags.containsKey(gflagKey)) {
+            String gflagVal = gflags.get(gflagKey);
+            String intentVal = accessor.strGetter().apply(userIntent);
+            if (!gflagVal.equalsIgnoreCase(intentVal)) {
+              throw new PlatformServiceException(
+                  BAD_REQUEST,
+                  String.format(
+                      "%s G-Flag value '%s' for '%s' is not compatible with intent value '%s'",
+                      serverTypeName, gflagVal, gflagKey, intentVal));
             }
-          });
-    }
+          }
+        });
   }
 
   /**
@@ -1229,7 +1264,12 @@ public class GFlagsUtil {
       mergeHostAndPort(userGFlags, PSQL_PROXY_BIND_ADDRESS, ysqlPort);
     }
     if (userGFlags.containsKey(CSQL_PROXY_BIND_ADDRESS)) {
-      mergeHostAndPort(userGFlags, CSQL_PROXY_BIND_ADDRESS, node.yqlServerRpcPort);
+      // If user is changing the port during configure YCQL upgrade, need to use the new port.
+      int yqlPort =
+          taskParams.overrideNodePorts
+              ? taskParams.communicationPorts.yqlServerRpcPort
+              : node.yqlServerRpcPort;
+      mergeHostAndPort(userGFlags, CSQL_PROXY_BIND_ADDRESS, yqlPort);
     }
     if (userGFlags.containsKey(REDIS_PROXY_BIND_ADDRESS)) {
       mergeHostAndPort(userGFlags, REDIS_PROXY_BIND_ADDRESS, node.redisServerRpcPort);
@@ -1393,6 +1433,9 @@ public class GFlagsUtil {
   }
 
   private static String getMountPoints(AnsibleConfigureServers.Params taskParam) {
+    if (taskParam.deviceInfo == null) {
+      return null;
+    }
     if (taskParam.deviceInfo.mountPoints != null) {
       return taskParam.deviceInfo.mountPoints;
     } else if (taskParam.deviceInfo.numVolumes != null
@@ -1415,7 +1458,8 @@ public class GFlagsUtil {
    */
   public static void checkConsistency(
       Map<String, String> masterGFlags, Map<String, String> tserverGFlags) {
-    for (String gflagKey : GFLAG_TO_INTENT_ACCESSOR.keySet()) {
+    // Only check flags that are valid for both master and tserver (common flags)
+    for (String gflagKey : COMMON_GFLAG_TO_INTENT_ACCESSOR.keySet()) {
       if (masterGFlags.containsKey(gflagKey)
           && tserverGFlags.containsKey(gflagKey)
           && !masterGFlags
@@ -1534,6 +1578,24 @@ public class GFlagsUtil {
       userGFlags.put(
           key, mergeCSVs(userValue, platformGFlags.getOrDefault(key, ""), mergeKeyValues));
     }
+  }
+
+  // Extract out the flag names from the undefok gflag.
+  public static Set<String> extractUndefokFlags(Map<String, String> gflags) {
+    Set<String> undefokFlags = new HashSet<>();
+    String undefokValue = gflags.get(UNDEFOK);
+
+    if (StringUtils.isNotBlank(undefokValue)) {
+      String[] flagNames = undefokValue.split(",");
+      for (String flagName : flagNames) {
+        String trimmedFlagName = flagName.trim();
+        if (!trimmedFlagName.isEmpty()) {
+          undefokFlags.add(trimmedFlagName);
+        }
+      }
+    }
+
+    return undefokFlags;
   }
 
   private static void mergeHostAndPort(

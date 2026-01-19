@@ -2,8 +2,10 @@
 title: yugabyted reference
 headerTitle: yugabyted
 linkTitle: yugabyted
-description: Use yugabyted to deploy YugabyteDB clusters.
+description: Use yugabyted to deploy YugabyteDB universes.
 headcontent: Utility for deploying and managing YugabyteDB
+aliases:
+  - /stable/deploy/docker/
 menu:
   stable:
     identifier: yugabyted
@@ -28,15 +30,15 @@ You can use yugabyted for production deployments. You can also administer [YB-TS
 
 The yugabyted executable file is packaged with YugabyteDB and located in the YugabyteDB home `bin` directory.
 
-For information on installing YugabyteDB, see [Use a local cluster](/preview/quick-start/linux/) or [Get started](https://download.yugabyte.com).
+For information on installing YugabyteDB, see [Use a local cluster](/stable/quick-start/linux/) or [Get started](https://download.yugabyte.com).
 
 After installing YugabyteDB, if you want to use [backup](#backup) and [restore](#restore), you also need to install the YB Controller service, which manages backup and restore operations. YB Controller is included in the `share` directory of your YugabyteDB installation.
 
-For example, if you installed v{{< yb-version version="stable"  format="short">}}, extract the `ybc-2.0.0.0-b19-linux-x86_64.tar.gz` file into the `ybc` folder as follows:
+For example, if you installed v{{< yb-version version="stable"  format="short">}}, extract the `ybc-2.2.0.3-b14-linux-x86_64.tar.gz` file into the `ybc` folder as follows:
 
 ```sh
 cd yugabyte-{{< yb-version version="stable" >}}
-mkdir ybc | tar -xvf share/ybc-2.0.0.0-b19-linux-x86_64.tar.gz -C ybc --strip-components=1
+mkdir ybc | tar -xvf share/ybc-2.2.0.3-b14-linux-x86_64.tar.gz -C ybc --strip-components=1
 ```
 
 To use the service, when creating nodes run the [yugabyted start](#start) command with `--backup_daemon=true`:
@@ -760,7 +762,7 @@ Create a local single-node universe with IPv6 address:
 Create a single-node locally and join other nodes that are part of the same universe:
 
 ```sh
-./bin/yugabyted start --join=host:port,[host:port]
+./bin/yugabyted start --join=host:port
 ```
 
 Create a single-node locally and set advanced flags using a configuration file:
@@ -780,7 +782,7 @@ For more advanced examples, see [Examples](#examples).
 : IP (v4 or v6) address or local hostname on which yugabyted will listen.
 
 --join *master-ip*
-: The IP (v4 or v6) or DNS address of the existing yugabyted server that the new yugabyted server will join, or if the server was restarted, rejoin. The join flag accepts IP addresses, DNS names, or labels with correct [DNS syntax](https://en.wikipedia.org/wiki/Domain_Name_System#Domain_name_syntax,_internationalization) (that is, letters, numbers, and hyphens).
+: The IP (v4 or v6) or DNS address of an existing yugabyted server (that is part of a universe) that the new yugabyted server will join, or if the server was restarted, rejoin. The join flag accepts a single IP address, DNS name, or label with correct [DNS syntax](https://en.wikipedia.org/wiki/Domain_Name_System#Domain_name_syntax,_internationalization) (that is, letters, numbers, and hyphens).
 
 --config *path-to-config-file*
 : yugabyted advanced configuration file path. Refer to [Use a configuration file](#use-a-configuration-file).
@@ -818,9 +820,6 @@ For on-premises deployments, consider racks as zones to treat them as fault doma
 --backup_daemon *backup-daemon-process*
 : Enable or disable the backup daemon with yugabyted start. Default: `false`
 : Using the `--backup_daemon` flag requires YB Controller; see [Installation](#installation).
-
---enable_pg_parity_early_access *PostgreSQL-compatibilty*
-: Enable Enhanced PostgreSQL Compatibility Mode. Default: `false`
 
 #### Advanced flags
 
@@ -1649,7 +1648,7 @@ When authentication is enabled, the default user is `yugabyte` in YSQL, and `cas
 
 ### Create a local multi-node universe
 
-To create a universe with multiple nodes, you first create a single node, and then create additional nodes using the `--join` flag to add them to the universe. If a node is restarted, you would also use the `--join` flag to rejoin the universe.
+To create a universe with multiple nodes, you first create a single node and then create additional nodes using the `--join` flag, providing the address of any already running node to connect them to the universe. If a node is restarted, you would also use the `--join` flag to rejoin the universe.
 
 To create a secure multi-node universe, ensure you have [generated and copied the certificates](#create-certificates-for-a-secure-local-multi-node-universe) for each node.
 
@@ -1721,12 +1720,16 @@ To create a secure multi-zone universe:
 
     Set the `--backup_daemon` flag to true if you want to perform backup and restore operations.
 
+    For the second node, use the IP address of the first node in the `--join` flag:
+
     ```sh
     ./bin/yugabyted start --secure --advertise_address=<host-ip> \
         --join=<ip-address-first-yugabyted-node> \
         --cloud_location=aws.us-east-1.us-east-1b \
         --fault_tolerance=zone
     ```
+
+    For the third node, you can use the IP address of any currently running node in the universe (for example, the first or the second node) in the `--join` flag:
 
     ```sh
     ./bin/yugabyted start --secure --advertise_address=<host-ip> \
@@ -1757,12 +1760,16 @@ To create a multi-zone universe:
 
     Set the `--backup_daemon` flag to true if you want to perform backup and restore operations.
 
+    For the second node, use the IP address of the first node in the `--join` flag:
+
     ```sh
     ./bin/yugabyted start --advertise_address=<host-ip> \
         --join=<ip-address-first-yugabyted-node> \
         --cloud_location=aws.us-east-1.us-east-1b \
         --fault_tolerance=zone
     ```
+
+    For the third node, you can use the IP address of any currently running node in the universe (for example, the first or the second node) in the `--join` flag:
 
     ```sh
     ./bin/yugabyted start --advertise_address=<host-ip> \
@@ -1836,12 +1843,16 @@ To create a secure multi-region universe:
 
     Set the `--backup_daemon` flag to true if you want to perform backup and restore operations.
 
+    For the second node, use the IP address of the first node in the `--join` flag:
+
     ```sh
     ./bin/yugabyted start --secure --advertise_address=<host-ip> \
         --join=<ip-address-first-yugabyted-node> \
         --cloud_location=aws.us-west-1.us-west-1a \
         --fault_tolerance=region
     ```
+
+    For the third node, you can use the IP address of any currently running node in the universe (for example, the first or the second node) in the `--join` flag:
 
     ```sh
     ./bin/yugabyted start --secure --advertise_address=<host-ip> \
@@ -1872,12 +1883,16 @@ To create a multi-region universe:
 
     Set the `--backup_daemon` flag to true if you want to perform backup and restore operations.
 
+    For the second node, use the IP address of the first node in the `--join` flag:
+
     ```sh
     ./bin/yugabyted start --advertise_address=<host-ip> \
         --join=<ip-address-first-yugabyted-node> \
         --cloud_location=aws.us-west-1.us-west-1a \
         --fault_tolerance=region
     ```
+
+    For the third node, you can use the IP address of any currently running node in the universe (for example, the first or the second node) in the `--join` flag:
 
     ```sh
     ./bin/yugabyted start --advertise_address=<host-ip> \
@@ -1923,11 +1938,11 @@ You can set the replication factor of the universe manually using the `--rf` fla
 
 Docker-based deployments are in {{<tags/feature/ea>}}.
 
-You can run yugabyted in a Docker container. For more information, see the [Quick Start](/preview/quick-start/docker/).
+You can run yugabyted in a Docker container. For more information, see the [Quick Start](/stable/quick-start/docker/).
 
 The following example shows how to create a multi-region universe. If the `~/yb_docker_data` directory already exists, delete and re-create it.
 
-Note that the `--join` flag only accepts labels that conform to DNS syntax, so name your Docker container accordingly using only letters, numbers, and hyphens.
+Note that the `--join` flag only accepts a label that conforms to DNS syntax, so name your Docker container accordingly using only letters, numbers, and hyphens. When joining, you can use the DNS name or IP address of any existing, active node in the universe.
 
 ```sh
 rm -rf ~/yb_docker_data
@@ -1963,7 +1978,7 @@ To create a read replica cluster, you first need an existing YugabyteDB universe
 
 Initially universes have only one cluster, called its primary or live cluster.  This cluster consists of all its non-read replica nodes.
 
-To add read replica nodes to the universe, you need to first create a read replica cluster for them to belong to. After you have done that, you add read replica nodes to the universe using the `--join` and `--read_replica` flags.
+To add read replica nodes to the universe, you need to first create a read replica cluster for them to belong to. After you have done that, you add read replica nodes to the universe using the `--join` and `--read_replica` flags. When joining, you can use the DNS name or IP address of any existing, active node in the universe.
 
 ### Create a read replica cluster
 

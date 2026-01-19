@@ -12,6 +12,9 @@
 
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
 
+DECLARE_bool(ysql_use_packed_row_v2);
+DECLARE_bool(ysql_mark_update_packed_row);
+
 namespace yb {
 namespace cdc {
 
@@ -2055,6 +2058,103 @@ TEST_F(CDCSDKBeforeImageTest, TestBeforeImageOfRecordInsertedInSameTxn) {
     CheckCount(expected_count, count);
   }
 }
+TEST_F(CDCSDKBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestPackedRowUpdateFlagWithBeforeImage)) {
+  // Enable packed rows and the new update flag
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_use_packed_row_v2) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_pack_full_row_update) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_mark_update_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
 
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  xrepl::StreamId stream_id =
+      ASSERT_RESULT(CreateDBStream(CDCCheckpointType::IMPLICIT, CDCRecordType::PG_FULL));
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(set_resp.has_error());
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  // Test 1: INSERT two rows
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0($1, $2) VALUES (1, 100)", kTableName, kKeyColumnName, kValueColumnName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0($1, $2) VALUES (2, 200)", kTableName, kKeyColumnName, kValueColumnName));
+
+  // Test 2: UPDATE first row with implicit transaction
+  ASSERT_OK(conn.ExecuteFormat(
+      "UPDATE $0 SET $1 = 150 WHERE $2 = 1", kTableName, kValueColumnName, kKeyColumnName));
+
+  // Test 3: UPDATE second row with explicit transaction
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "UPDATE $0 SET $1 = 250 WHERE $2 = 2", kTableName, kValueColumnName, kKeyColumnName));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  // Test 4: DELETE first row
+  ASSERT_OK(conn.ExecuteFormat("DELETE FROM $0 WHERE $1 = 1", kTableName, kKeyColumnName));
+
+  // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
+  // With FLAGS_ysql_mark_update_packed_row enabled:
+  // - 2 INSERTs
+  // - 2 UPDATEs (both should be UPDATE, NOT INSERT, regardless of transaction mode)
+  // - 1 DELETE
+  const uint32_t expected_count[] = {1, 2, 2, 1, 0, 0};
+  uint32_t count[] = {0, 0, 0, 0, 0, 0};
+
+  // Expected records:
+  // - DDL
+  // - INSERT (key=1, value=100)
+  // - INSERT (key=2, value=200)
+  // - UPDATE (key=1, value=150) - implicit transaction
+  // - UPDATE (key=2, value=250) - explicit transaction
+  // - DELETE (key=1) - before image should have (key=1, value=150)
+  ExpectedRecord expected_records[] = {{1, 100}, {2, 200}, {1, 150}, {2, 250}, {1, 150}};
+
+  // Expected before images:
+  // - DDL: no before image
+  // - INSERT key=1: no before image (old values are 0)
+  // - INSERT key=2: no before image (old values are 0)
+  // - UPDATE key=1: before image should have original values (key=1, value=100)
+  // - UPDATE key=2: before image should have original values (key=2, value=200)
+  // - DELETE key=1: before image should have values before deletion (key=1, value=150)
+  ExpectedRecord expected_before_image_records[] = {{}, {}, {1, 100}, {2, 200}, {1, 150}};
+
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+
+  LOG(INFO) << "Total CDC records received: " << change_resp.cdc_sdk_proto_records_size();
+
+  // Validate records
+  uint32_t seen_dml_records = 0;
+  for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+    if (record.row_message().op() == RowMessage::BEGIN ||
+        record.row_message().op() == RowMessage::COMMIT) {
+      continue;
+    }
+    if (record.row_message().op() == RowMessage::DDL) {
+      count[0]++;
+      continue;
+    }
+
+    LOG(INFO) << "Validating DML record " << seen_dml_records
+              << ": expected key=" << expected_records[seen_dml_records].key
+              << ", value=" << expected_records[seen_dml_records].value;
+
+    CheckRecord(
+        record, expected_records[seen_dml_records], count, true,
+        expected_before_image_records[seen_dml_records]);
+    seen_dml_records++;
+  }
+
+  LOG(INFO) << "Got " << count[1] << " insert record, " << count[2] << " update record, and "
+            << count[3] << " delete record";
+  LOG(INFO) << "Expected " << expected_count[1] << " insert record, " << expected_count[2]
+            << " update record, and " << expected_count[3] << " delete record";
+  CheckCount(expected_count, count);
+}
 }  // namespace cdc
 }  // namespace yb

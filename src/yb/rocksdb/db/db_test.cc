@@ -4750,7 +4750,7 @@ class ModelDB: public DB {
     return nullptr;
   }
 
-  Result<std::string> GetMiddleKey() override {
+  Result<std::string> GetMiddleKey(Slice lower_bound_key) override {
     return NotSupported();
   }
 
@@ -4811,7 +4811,7 @@ class ModelDB: public DB {
       return entry_;
     }
 
-    void UpdateFilterKey(Slice user_key_for_filter) override {}
+    void UpdateFilterKey(Slice user_key_for_filter, Slice seek_key) override {}
 
     Status status() const override { return Status::OK(); }
 

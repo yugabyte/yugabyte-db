@@ -363,7 +363,7 @@ class PgWrapperOneNodeClusterTest : public PgWrapperTest {
 
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     PgCommandTestBase::UpdateMiniClusterOptions(options);
-    options->extra_master_flags.push_back("--replication_factor=1");
+    options->replication_factor = 1;
   }
 
   Status WaitForPostgresToStart(MonoDelta timeout) {

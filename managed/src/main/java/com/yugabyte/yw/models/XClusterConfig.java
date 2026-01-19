@@ -224,7 +224,7 @@ public class XClusterConfig extends Model {
   @JsonProperty
   public Boolean isAutomaticDdlMode() {
     if (this.type != ConfigType.Db) {
-      return null; // Only db scoped xCluster configs can have automatic DDL mode.
+      return false;
     }
     return automaticDdlMode;
   }
@@ -846,7 +846,8 @@ public class XClusterConfig extends Model {
   }
 
   @Transactional
-  public void updateBootstrapCreateTimeForTables(Collection<String> tableIds, Date moment) {
+  public void updateBootstrapCreateTimeForTables(
+      Collection<String> tableIds, @Nullable Date moment) {
     ensureTableIdsExist(new HashSet<>(tableIds));
     this.getTableDetails().stream()
         .filter(tableConfig -> tableIds.contains(tableConfig.getTableId()))

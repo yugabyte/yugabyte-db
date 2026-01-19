@@ -26,8 +26,7 @@
 
 #include "yb/util/slice.h"
 
-namespace yb {
-namespace docdb {
+namespace yb::docdb {
 
 // Map from old cotable id to new cotable id.
 // Used to restore snapshot to a new database/tablegroup and update cotable ids in the frontiers.
@@ -52,6 +51,9 @@ class BloomFilterOptions {
   static BloomFilterOptions Fixed(Slice key) {
     return BloomFilterOptions(BloomFilterMode::kFixed, key);
   }
+
+  static Result<BloomFilterOptions> Make(
+      const DocReadContext& doc_read_context, Slice lower, Slice upper, bool allow_variable);
 
   BloomFilterMode mode() const {
     return mode_;
@@ -90,7 +92,7 @@ BoundedRocksDbIterator CreateRocksDBIterator(
 // for re-requesting pending transaction status if we already know it wasn't committed at high_ht.
 // Set `use_fast_backward_scan` to true only if an iterator will be used for a backward scan. In
 // this case the iterator would use an optimized version of backward scan. Tested for YSQL only.
-std::unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
+IntentAwareIteratorPtr CreateIntentAwareIterator(
     const DocDB& doc_db,
     const BloomFilterOptions& bloom_filter,
     const rocksdb::QueryId query_id,
@@ -98,7 +100,9 @@ std::unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
     const ReadOperationData& read_operation_data,
     std::shared_ptr<rocksdb::ReadFileFilter> file_filter = nullptr,
     const Slice* iterate_upper_bound = nullptr,
-    FastBackwardScan use_fast_backward_scan = FastBackwardScan::kFalse);
+    FastBackwardScan use_fast_backward_scan = FastBackwardScan::kFalse,
+    AvoidUselessNextInsteadOfSeek avoid_useless_next_instead_of_seek =
+        AvoidUselessNextInsteadOfSeek::kFalse);
 
 // Set `cache_restart_block_keys` to kTrue to allow underlying block iterator to cache block
 // entries per restart block. This could be useful for a backward scan, but should not be used for
@@ -109,7 +113,8 @@ BoundedRocksDbIterator CreateIntentsIteratorWithHybridTimeFilter(
     const KeyBounds* docdb_key_bounds,
     const Slice* iterate_upper_bound,
     rocksdb::CacheRestartBlockKeys cache_restart_block_keys,
-    rocksdb::Statistics* statistics = nullptr);
+    rocksdb::Statistics* statistics = nullptr,
+    bool use_ht_file_filter = true);
 
 std::shared_ptr<rocksdb::RocksDBPriorityThreadPoolMetrics> CreateRocksDBPriorityThreadPoolMetrics(
     scoped_refptr<yb::MetricEntity> entity);
@@ -138,9 +143,18 @@ RateLimiterSharingMode GetRocksDBRateLimiterSharingMode();
 // calls `rocksdb::NewGenericRateLimiter` internally
 std::shared_ptr<rocksdb::RateLimiter> CreateRocksDBRateLimiter();
 
-// Initialize the RocksDB 'options'.
+// Initialize the RocksDB base 'options' that are common for regular DB and intents DB.
 // The 'statistics' object provided by the caller will be used by RocksDB to maintain the stats for
 // the tablet.
+void InitRocksDBBaseOptions(
+    rocksdb::Options* options, const std::string& log_prefix, const TabletId& tablet_id,
+    const tablet::TabletOptions& tablet_options,
+    const uint64_t group_no = kDefaultGroupNo);
+
+void InitRocksDBOptionsTableFactory(
+    rocksdb::Options* options, const tablet::TabletOptions& tablet_options,
+    rocksdb::BlockBasedTableOptions table_options = rocksdb::BlockBasedTableOptions());
+
 void InitRocksDBOptions(
     rocksdb::Options* options, const std::string& log_prefix,
     const TabletId& tablet_id,
@@ -188,5 +202,4 @@ class RocksDBPatcher {
   std::unique_ptr<Impl> impl_;
 };
 
-}  // namespace docdb
-}  // namespace yb
+}  // namespace yb::docdb

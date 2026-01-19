@@ -19,6 +19,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/tsan_util.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
 
@@ -63,6 +64,15 @@ Result<PGConn> LibPqTestBase::ConnectToTs(const ExternalTabletServer& pg_ts) {
   }).Connect();
 }
 
+Result<PGConn> LibPqTestBase::ConnectToTsForDB(
+    const ExternalTabletServer& pg_ts, const std::string& db_name) {
+  return PGConnBuilder({
+    .host = pg_ts.bind_host(),
+    .port = pg_ts.ysql_port(),
+    .dbname = db_name,
+  }).Connect();
+}
+
 Result<PGConn> LibPqTestBase::ConnectToTsAsUser(
     const ExternalTabletServer& pg_ts, const string& user) {
   return PGConnBuilder({
@@ -88,12 +98,8 @@ Result<PGConn> LibPqTestBase::ConnectToDBWithReplication(const std::string& db_n
 }
 
 bool LibPqTestBase::TransactionalFailure(const Status& status) {
-  const uint8_t* pgerr = status.ErrorData(PgsqlErrorTag::kCategory);
-  if (pgerr == nullptr) {
-    return false;
-  }
-  YBPgErrorCode code = PgsqlErrorTag::Decode(pgerr);
-  return code == YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE;
+  const auto pgerr = PgsqlError::ValueFromStatus(status);
+  return pgerr && *pgerr == YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE;
 }
 
 Result<PgOid> GetDatabaseOid(PGConn* conn, const std::string& db_name) {
@@ -414,7 +420,7 @@ void LibPqTestBase::WaitForCatalogVersionToPropagate() {
   // actually propagated.
   constexpr int kSleepSeconds = 2;
   LOG(INFO) << "Wait " << kSleepSeconds << " seconds for heartbeat to propagate catalog versions";
-  std::this_thread::sleep_for(kSleepSeconds * 1s);
+  std::this_thread::sleep_for(kSleepSeconds * kTimeMultiplier * 1s);
 }
 
 } // namespace pgwrapper

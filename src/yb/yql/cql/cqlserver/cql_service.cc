@@ -187,6 +187,9 @@ void CQLServiceImpl::CompleteInit() {
 }
 
 void CQLServiceImpl::Shutdown() {
+  if (system_cache_) {
+    system_cache_->Shutdown();
+  }
   decltype(processors_) processors;
   {
     std::lock_guard guard(processors_mutex_);
@@ -198,9 +201,6 @@ void CQLServiceImpl::Shutdown() {
   }
   if (metadata_cache_) {
     metadata_cache_->Shutdown();
-  }
-  if (system_cache_) {
-    system_cache_->Shutdown();
   }
 }
 
@@ -535,7 +535,7 @@ void CQLServiceImpl::UpdateStmtCounters(const ql::CQLMessage::QueryId& query_id,
   auto itr = stmts_map.find(query_id);
   if (itr == stmts_map.end()) {
     if (is_prepare) {
-      LOG(WARNING) << "Prepared Statement not found in LRU cache.";
+      LOG(WARNING) << "Prepared Statement " << b2a_hex(query_id) << " not found in LRU cache.";
     } else {
       VLOG(1) << "Unprepared Statement not found in LRU cache.";
     }

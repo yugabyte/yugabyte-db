@@ -72,7 +72,8 @@ struct ToStringVectorHelper<Unpacker<T> > {
   }
 
   template<class... Args>
-  static void Append(std::vector<std::string>* dest, const Unpacker<T>& unpacker, const Args&... args) {
+  static void Append(
+      std::vector<std::string>* dest, const Unpacker<T>& unpacker, const Args&... args) {
     for(auto&& i : unpacker.container) {
       dest->push_back(ToString(i));
     }

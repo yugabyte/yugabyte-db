@@ -13,8 +13,6 @@
 
 #pragma once
 
-#include <vector>
-
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/util/numbered_deque.h"
@@ -26,7 +24,6 @@ namespace log {
 
 class Log;
 class LogAnchorRegistry;
-using LogPtr = scoped_refptr<Log>;
 class LogEntryBatchPB;
 class LogEntryPB;
 class LogIndex;
@@ -44,10 +41,13 @@ struct LogMetrics;
 struct LogOptions;
 
 using LogAnchorRegistryPtr = scoped_refptr<LogAnchorRegistry>;
+using LogPtr = scoped_refptr<Log>;
+using MinStartHTRunningTxnsCallback = std::function<HybridTime(void)>;
+using PreLogRolloverCallback = std::function<void()>;
 using ReadableLogSegmentPtr = scoped_refptr<ReadableLogSegment>;
 using SegmentSequence = NumberedDeque<int64_t, ReadableLogSegmentPtr>;
-using PreLogRolloverCallback = std::function<void()>;
-using MinStartHTRunningTxnsCallback = std::function<HybridTime(void)>;
+
+YB_STRONGLY_TYPED_BOOL(ObeyMemoryLimit);
 
 }  // namespace log
 }  // namespace yb

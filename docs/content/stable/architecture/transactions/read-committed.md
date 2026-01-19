@@ -23,10 +23,15 @@ Note that retries for the statement in YugabyteDB's Read Committed isolation are
 
 {{< tip title="Enable Read Committed" >}}
 
-To enable Read Committed isolation, set the YB-TServer flag [yb_enable_read_committed_isolation](../../../reference/configuration/yb-tserver/#yb-enable-read-committed-isolation) to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot isolation).
+Read Committed is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`.
+
+For new universes running v2025.2 or later, Read Committed is enabled by default when you deploy using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon.
+
+In versions of YugabyteDB prior to v2025.2, or for manually deployed universes, `yb_enable_read_committed_isolation` is `false` (the default), and the Read Committed isolation level of YugabyteDB's transactional layer falls back to the stricter Snapshot isolation. This makes the default isolation level for the YSQL API effectively Snapshot because Read Committed, which is the YSQL API and PostgreSQL syntactic default, maps to Snapshot isolation.
 
 Refer to [Usage](#usage) to start a Read Committed transaction after enabling the flag.
 {{< /tip >}}
+
 
 ## Implementation and semantics (as in PostgreSQL)
 
@@ -341,7 +346,7 @@ The retries for serialization errors are done at the statement level. Each retry
 
 ## Usage
 
-To use Read Committed isolation, first set the YB-TServer flag `yb_enable_read_committed_isolation=true`; this maps the syntactic Read Committed isolation in YSQL to the Read Committed implementation in DocDB. (When set to `false`, syntactic Read Committed in YSQL is mapped to Snapshot isolation in DocDB, meaning it behaves as Repeatable Read.)
+To use Read Committed isolation, ensure the YB-TServer flag `yb_enable_read_committed_isolation=true`; this maps the syntactic Read Committed isolation in YSQL to the Read Committed implementation in DocDB. (When set to `false`, syntactic Read Committed in YSQL is mapped to Snapshot isolation in DocDB, meaning it behaves as Repeatable Read.)
 
 Assuming the flag has been set, you can start a Read Committed transaction in the following ways:
 
@@ -1404,11 +1409,11 @@ commit;
 
 Read Committed interacts with the following feature:
 
-* [Follower reads](/preview/develop/build-global-apps/follower-reads/): When follower reads is enabled and the transaction block is explicitly marked `READ ONLY`, the read point for each statement in a read committed transaction is selected as `Now()` - `yb_follower_read_staleness_ms`.
+* [Follower reads](../../../develop/build-global-apps/follower-reads/): When follower reads is enabled and the transaction block is explicitly marked `READ ONLY`, the read point for each statement in a read committed transaction is selected as `Now()` - `yb_follower_read_staleness_ms`.
 
 ## Limitations
 
-* A `SET TRANSACTION ISOLATION LEVEL ...` statement immediately issued after `BEGIN;` or `BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;` will fail if the YB-TServer GFlag `yb_enable_read_committed_isolation=true`, and the following error will be issued:
+* A `SET TRANSACTION ISOLATION LEVEL ...` statement immediately issued after `BEGIN;` or `BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;` will fail if the YB-TServer flag `yb_enable_read_committed_isolation=true`, and the following error will be issued:
 
     ```output
     ERROR:  SET TRANSACTION ISOLATION LEVEL must not be called in a subtransaction

@@ -60,9 +60,7 @@ var preflightNodesCmd = &cobra.Command{
 			ProviderCode(util.OnpremProviderType)
 		r, response, err := providerListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err,
-				"Node Instance", "Preflight - Fetch Provider")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Node Instance", "Preflight - Fetch Provider")
 		}
 		if len(r) < 1 {
 			logrus.Fatalf(
@@ -76,9 +74,7 @@ var preflightNodesCmd = &cobra.Command{
 
 		nodesFromProvider, response, err := authAPI.ListByProvider(providerUUID).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Node Instance",
-				"Preflight - Fetch Nodes")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Node Instance", "Preflight - Fetch Nodes")
 		}
 
 		ip, err := cmd.Flags().GetString("ip")
@@ -102,9 +98,11 @@ var preflightNodesCmd = &cobra.Command{
 		)
 		rTask, response, err := detachedNodeActionAPI.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Node Instance", "Preflight")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Node Instance", "Preflight")
 		}
+
+		util.CheckTaskAfterCreation(rTask)
+
 		nodeUUID := rTask.GetResourceUUID()
 		taskUUID := rTask.GetTaskUUID()
 
@@ -135,18 +133,17 @@ var preflightNodesCmd = &cobra.Command{
 
 			nodeInstance, response, err := authAPI.GetNodeInstance(nodeUUID).Execute()
 			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(response, err, "Node Instance",
-					"Preflight - Fetch Nodes")
-				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+				util.FatalHTTPError(response, err, "Node Instance", "Preflight - Fetch Nodes")
 			}
 
-			nodeInstanceList := make([]ybaclient.NodeInstance, 0)
-			nodeInstanceList = append(nodeInstanceList, nodeInstance)
+			nodeInstanceList := util.CheckAndAppend(
+				make([]ybaclient.NodeInstance, 0),
+				nodeInstance,
+				fmt.Sprintf("Node Instance %s not found", nodeUUID),
+			)
 			universeList, response, err := authAPI.ListUniverses().Execute()
 			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(response, err, "Node Instance",
-					"Preflight - Fetch Universes")
-				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+				util.FatalHTTPError(response, err, "Node Instance", "Preflight - Fetch Universes")
 			}
 			for _, u := range universeList {
 				details := u.GetUniverseDetails()
@@ -154,7 +151,7 @@ var preflightNodesCmd = &cobra.Command{
 					details.GetClusters(),
 					util.PrimaryClusterType,
 				)
-				if primaryCluster == (ybaclient.Cluster{}) {
+				if universeutil.IsClusterEmpty(primaryCluster) {
 					logrus.Debug(
 						formatter.Colorize(
 							fmt.Sprintf(
@@ -181,7 +178,7 @@ var preflightNodesCmd = &cobra.Command{
 			Output:  os.Stdout,
 			Format:  ybatask.NewTaskFormat(viper.GetString("output")),
 		}
-		ybatask.Write(taskCtx, []ybaclient.YBPTask{rTask})
+		ybatask.Write(taskCtx, []ybaclient.YBPTask{*rTask})
 
 	},
 }

@@ -23,4 +23,15 @@ HostPortPB MakeHostPortPB(std::string&& host, uint32_t port);
 
 CloudInfoPB MakeCloudInfoPB(std::string&& cloud, std::string&& region, std::string&& zone);
 
+bool IsCloudInfoEqual(const CloudInfoPB& lhs, const CloudInfoPB& rhs);
+
+bool CloudInfoContainsCloudInfo(const CloudInfoPB& lhs, const CloudInfoPB& rhs);
+
+bool PlacementInfoContainsCloudInfo(
+    const PlacementInfoPB& placement_info, const CloudInfoPB& cloud_info);
+
+bool PlacementInfoSpansMultipleRegions(const PlacementInfoPB& placement_info);
+
+bool PlacementInfoContainsPlacementInfo(const PlacementInfoPB& lhs, const PlacementInfoPB& rhs);
+
 }  // namespace yb

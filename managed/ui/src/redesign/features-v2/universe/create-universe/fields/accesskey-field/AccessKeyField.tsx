@@ -43,7 +43,7 @@ export const AccessKeyField: FC<AccessKeyFieldProps> = ({ disabled, provider }) 
         control={control}
         disabled={disabled}
         label={t('createUniverseV2.otherAdvancedSettings.accessKeyLabel')}
-        dataTestId='access-key-select'
+        dataTestId="access-key-select"
       >
         {allAccessKeys.map((item: AccessKey) => (
           <MenuItem key={item.idKey.keyCode} value={item.idKey.keyCode}>

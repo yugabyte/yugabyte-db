@@ -903,10 +903,12 @@ def is_one_shot_test(rel_binary_path: str) -> bool:
 
 
 def collect_cpp_tests(
-        cpp_test_program_filter_list: List[str]) -> List[yb_dist_tests.TestDescriptor]:
+        cpp_test_program_filter_list: List[str],
+        test_descriptor_filter_list: List[str]) -> List[yb_dist_tests.TestDescriptor]:
     """
     Collect C++ test programs to run.
     @param cpp_test_program_filter_list: a list of C++ test program names to be used as a filter
+    @param test_descriptor_filter_list: a list of individual test cases to be used as a filter
     """
 
     global_conf = yb_dist_tests.get_global_conf()
@@ -1010,6 +1012,24 @@ def collect_cpp_tests(
                 "YB_SKIP_TEST_IN_TSAN() as the first line of the test instead."
             )
 
+    if test_descriptor_filter_list:
+        cpp_test_descriptor_filter_list = [
+            test_descriptor for test_descriptor in test_descriptor_filter_list
+            # C++ tests have TEST_DESCRIPTOR_SEPARATOR in the test descriptor.
+            # Also remove tests that are not in the cpp_test_program_filter_list.
+            if (TEST_DESCRIPTOR_SEPARATOR in test_descriptor and
+                (not cpp_test_program_filter_list or
+                 os.path.basename(test_descriptor.split(TEST_DESCRIPTOR_SEPARATOR)[0])
+                 in cpp_test_program_filter_list))
+        ]
+        missing_tests = [
+            test_descriptor for test_descriptor in cpp_test_descriptor_filter_list
+            if test_descriptor not in test_descriptor_strs
+        ]
+        if missing_tests:
+            raise RuntimeError(f"Missing tests: {missing_tests}")
+        test_descriptor_strs = cpp_test_descriptor_filter_list
+
     return [yb_dist_tests.TestDescriptor(s) for s in test_descriptor_strs]
 
 
@@ -1026,7 +1046,8 @@ def fatal_error(msg: str) -> None:
     raise RuntimeError(msg)
 
 
-def get_java_test_descriptors() -> List[yb_dist_tests.TestDescriptor]:
+def get_java_test_descriptors(
+        test_descriptor_filter_list: List[str]) -> List[yb_dist_tests.TestDescriptor]:
     java_test_list_path = os.path.join(
         yb_dist_tests.get_global_conf().build_root, 'java_test_list.txt')
     if not os.path.exists(java_test_list_path):
@@ -1039,11 +1060,24 @@ def get_java_test_descriptors() -> List[yb_dist_tests.TestDescriptor]:
             line = line.strip()
             if not line:
                 continue
-            java_test_descriptors.append(yb_dist_tests.TestDescriptor(line))
+            if not test_descriptor_filter_list or line in test_descriptor_filter_list:
+                java_test_descriptors.append(yb_dist_tests.TestDescriptor(line))
     if not java_test_descriptors:
         raise RuntimeError("Could not find any Java tests in '%s'" % java_test_list_path)
 
     logging.info("Found %d Java tests", len(java_test_descriptors))
+
+    if test_descriptor_filter_list:
+        java_descriptor_strs = {td.descriptor_str for td in java_test_descriptors}
+        missing_tests = [
+            test_descriptor for test_descriptor in test_descriptor_filter_list
+            # Java tests do not have TEST_DESCRIPTOR_SEPARATOR in the test descriptor.
+            if (TEST_DESCRIPTOR_SEPARATOR not in test_descriptor and
+                test_descriptor not in java_descriptor_strs)
+        ]
+        if missing_tests:
+            raise RuntimeError(f"Missing tests: {missing_tests}")
+
     return java_test_descriptors
 
 
@@ -1062,14 +1096,24 @@ def collect_tests(args: argparse.Namespace) -> List[yb_dist_tests.TestDescriptor
         if 'test_filter_re' in test_conf:
             args.test_filter_re = test_conf['test_filter_re']
 
+    test_descriptor_filter_list = []
+    if is_macos() and os.environ.get('YB_RUN_ALL_MAC_TESTS') != '1':
+        test_data_base_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'test_data')
+        with open(os.path.join(test_data_base_dir, 'mac_tests.txt')) as f:
+            test_descriptor_filter_list = [
+                line.strip() for line in f.readlines()
+                if line.strip() and not line.startswith('#')
+            ]
+        logging.info("This is macOS, filtering down to %d tests", len(test_descriptor_filter_list))
+
     cpp_test_descriptors = []
     if args.run_cpp_tests:
-        cpp_test_programs = test_conf.get('cpp_test_programs')
-        cpp_test_descriptors = collect_cpp_tests(cast(List[str], cpp_test_programs))
+        cpp_test_programs = cast(List[str], test_conf.get('cpp_test_programs'))
+        cpp_test_descriptors = collect_cpp_tests(cpp_test_programs, test_descriptor_filter_list)
 
     java_test_descriptors = []
     if args.run_java_tests:
-        java_test_descriptors = get_java_test_descriptors()
+        java_test_descriptors = get_java_test_descriptors(test_descriptor_filter_list)
 
     test_descriptors = sorted(java_test_descriptors) + sorted(cpp_test_descriptors)
 
@@ -1154,7 +1198,10 @@ def skip_disabled_tests(test_descriptors: List[yb_dist_tests.TestDescriptor],
         for line in input_file:
             line = line.strip()
             if line:
-                disabled_tests.append(SimpleTestDescriptor.parse(line))
+                try:
+                    disabled_tests.append(SimpleTestDescriptor.parse(line))
+                except Exception:
+                    logging.exception("Could not parse disabled test line: '%s'", line)
     logging.info("Loaded %d disabled tests from %s", len(disabled_tests), disable_list_path)
 
     enabled = []

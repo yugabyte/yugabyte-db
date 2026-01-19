@@ -112,7 +112,7 @@ class Message {
         "Status ParseFromCodedStream("
             "google::protobuf::io::CodedInputStream* cis) override;\n"
         "size_t SerializedSize() const override;\n"
-        "uint8_t* SerializeToArray(uint8_t* out) const override;\n"
+        "uint8_t* DoSerializeToArray(uint8_t* out) const override;\n"
         "void AppendToDebugString(std::string* out) const override;\n"
         "\n"
         "void Clear() override;\n"
@@ -175,7 +175,16 @@ class Message {
 
       if (IsSimple(field)) {
         printer(
+            "using $field_camelcase_name$ReturnType = $field_stored_type$;\n"
             "$field_stored_type$ $field_name$() const {\n"
+            );
+        if (field->containing_oneof()) {
+          printer(
+              "  if (!has_$field_name$()) {\n"
+              "    return $field_default_value$;\n"
+              "  }\n");
+        }
+        printer(
             "  return $field_accessor$;\n"
             "}\n"
             "\n");
@@ -183,7 +192,7 @@ class Message {
           printer(
               "void dup_$field_name$($field_stored_type$ value) {\n"
               "  " + set_has_field + "\n"
-              "  $field_accessor$ = arena_.DupSlice(value);\n"
+              "  $field_accessor$ = arena_->DupSlice(value);\n"
               "}\n\n"
               "void ref_$field_name$($field_stored_type$ value) {\n"
               "  " + set_has_field + "\n"
@@ -200,6 +209,7 @@ class Message {
         }
       } else if (StoreAsPointer(field)) {
         printer(
+            "using $field_camelcase_name$ReturnType = const $field_stored_type$&;\n"
             "const $field_stored_type$& $field_name$() const {\n"
             "  return ");
         if (field->containing_oneof()) {
@@ -223,7 +233,15 @@ class Message {
         );
       } else {
         printer(
-            "const $field_stored_type$& $field_name$() const {\n"
+            "using $field_camelcase_name$ReturnType = const $field_stored_type$&;\n"
+            "const $field_stored_type$& $field_name$() const {\n");
+        if (field->containing_oneof()) {
+          printer(
+              "  if (!has_$field_name$()) {\n"
+              "    return $field_default_value$;\n"
+              "  }\n");
+        }
+        printer(
             "  return $field_accessor$;\n"
             "}\n\n"
         );
@@ -243,7 +261,7 @@ class Message {
           printer("if (!$field_name$_) {\n");
         }
         printer(
-          "  $field_accessor$ = arena_.NewObject<$field_stored_type$>(&arena_);\n"
+          "  $field_accessor$ = arena_->NewArenaObject<$field_stored_type$>();\n"
           "}\n"
           "return $field_accessor$;\n"
         );
@@ -311,7 +329,7 @@ class Message {
         } else if (StoredAsSlice(field)) {
           printer(
               "void add_dup_$field_name$(const ::yb::Slice& value) {\n"
-              "  $field_accessor$.push_back(arena_.DupSlice(value));\n"
+              "  $field_accessor$.push_back(arena_->DupSlice(value));\n"
               "}\n\n"
               "void add_ref_$field_name$(const ::yb::Slice& value) {\n"
               "  $field_accessor$.push_back(value);\n"
@@ -337,7 +355,7 @@ class Message {
     if (NeedArena(message_)) {
       printer(
           "::yb::ThreadSafeArena& arena() const {\n"
-          "  return arena_;\n"
+          "  return *arena_;\n"
           "}\n\n"
       );
     }
@@ -356,7 +374,7 @@ class Message {
 
     if (NeedArena(message_)) {
       printer(
-          "::yb::ThreadSafeArena& arena_;\n"
+          "::yb::ThreadSafeArena* arena_;\n"
       );
     }
     if (need_has_fields_enum_) {
@@ -430,6 +448,20 @@ class Message {
 
     private_scope.Reset("};\n\n");
 
+    if (message_->options().map_entry()) {
+      printer(
+          "inline $message_lw_name$::KeyReturnType ExtractKey(const $message_lw_name$& pair) {\n"
+          "  return pair.key();\n"
+          "}\n"
+          "\n"
+          "inline $message_lw_name$::ValueReturnType ExtractValue"
+              "(const $message_lw_name$& pair) {\n"
+          "  return pair.value();\n"
+          "}\n"
+          "\n"
+      );
+    }
+
     generated_ = true;
   }
 
@@ -468,7 +500,7 @@ class Message {
     bool first = true;
     if (NeedArena(message_)) {
       NextCtorField(printer, &first);
-      printer("arena_(*arena)");
+      printer("arena_(arena)");
     }
     for (int j = 0; j != message_->field_count(); ++j) {
       const auto* field = message_->field(j);
@@ -490,7 +522,7 @@ class Message {
     bool first = true;
     if (NeedArena(message_)) {
       NextCtorField(printer, &first);
-      printer("arena_(*arena)");
+      printer("arena_(arena)");
     }
     if (need_has_fields_enum_) {
       NextCtorField(printer, &first);
@@ -641,7 +673,7 @@ class Message {
               "$field_accessor$.clear();\n"
               "$field_accessor$.reserve(" + source + ".size());\n"
               "for (const auto& entry : " + source + ") {\n"
-              "  $field_accessor$.push_back(arena_.DupSlice(entry));\n"
+              "  $field_accessor$.push_back(arena_->DupSlice(entry));\n"
               "}\n"
           );
         } else if (lightweight) {
@@ -693,7 +725,7 @@ class Message {
           if (IsMessage(field)) {
             printer("  $field_name$_.CopyFrom(" + source + ");\n");
           } else if (StoredAsSlice(field)) {
-            printer("  $field_accessor$ = arena_.DupSlice(" + source + ");\n");
+            printer("  $field_accessor$ = arena_->DupSlice(" + source + ");\n");
           } else {
             printer("  $field_accessor$ = " + source + ";\n");
           }
@@ -938,7 +970,7 @@ class Message {
 
   void Serialize(YBPrinter printer) const {
     printer(
-        "uint8_t* $message_lw_name$::SerializeToArray(uint8_t* out) const {\n");
+        "uint8_t* $message_lw_name$::DoSerializeToArray(uint8_t* out) const {\n");
 
     ScopedIndent method_indent(printer);
 

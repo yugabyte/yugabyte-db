@@ -91,6 +91,7 @@
 #include "catalog/pg_yb_tablegroup.h"
 #include "catalog/yb_catalog_version.h"
 #include "catalog/yb_logical_client_version.h"
+#include "commands/dbcommands.h"
 #include "utils/yb_inheritscache.h"
 #include "yb/yql/pggate/ybc_gflags.h"
 
@@ -336,6 +337,143 @@ PerformAuthentication(Port *port)
 	ClientAuthInProgress = false;	/* client_min_messages is active now */
 }
 
+static int
+YbHandleAuthPassthroughFailureAndGetElevel()
+{
+	Assert(YbIsAuthPassthroughInProgress(MyProcPort));
+
+	MyProcPort->yb_has_auth_passthrough_failed = true;
+	YbSendFatalForLogicalConnectionPacket();
+
+	return YbAuthFailedErrorLevel(true /* auth_passthrough */ );
+}
+
+/*
+ * YB: This function is essentially a copy of the first half of CheckMyDatabase.
+ * This is used in the Auth Passthrough mode of Connection Manager to performs
+ * checks on db CONNECT privileges during authentication, while avoiding
+ * changing other state on the control backend.
+ * This functions checks:
+ *   1) Whether the supplied dbname matches the dboid
+ *   2) Whether the database is accepting connections
+ *   3) Whether the user has login privileges for this db
+ *
+ * We do not perform the GUC settings in the latter half of the function to
+ * avoid unnecessary state changes on the control backend as these will be done
+ * on the appropriate transactional backend when the client fires a query.
+ */
+void
+YbCheckMyDatabase(const char *name, bool am_superuser,
+				  bool override_allow_connections, Oid db_oid)
+{
+	Assert(YbIsAuthPassthroughInProgress(MyProcPort));
+
+	HeapTuple	tup;
+	Form_pg_database dbform;
+
+	/* Fetch our pg_database row normally, via syscache */
+	tup = SearchSysCache1(DATABASEOID, ObjectIdGetDatum(db_oid));
+	if (!HeapTupleIsValid(tup))
+	{
+		elog(YbHandleAuthPassthroughFailureAndGetElevel(),
+			 "cache lookup failed for database %u or "
+			 "database \"%s\" does not exist", db_oid, name);
+		return;
+	}
+	dbform = (Form_pg_database) GETSTRUCT(tup);
+
+	/* This recheck is strictly paranoia */
+	if (strcmp(name, NameStr(dbform->datname)) != 0)
+	{
+		ereport(YbHandleAuthPassthroughFailureAndGetElevel(),
+				(errcode(ERRCODE_UNDEFINED_DATABASE),
+				 errmsg("database \"%s\" has disappeared from pg_database", name),
+				 errdetail("Database OID %u now seems to belong to \"%s\".", db_oid,
+						   NameStr(dbform->datname))));
+
+		return;
+	}
+
+	/*
+	 * Check permissions to connect to the database.
+	 *
+	 * These checks are not enforced when in standalone mode, so that there is
+	 * a way to recover from disabling all access to all databases, for
+	 * example "UPDATE pg_database SET datallowconn = false;".
+	 */
+	if (IsUnderPostmaster)
+	{
+		/*
+		 * Check that the database is currently allowing connections.
+		 * (Background processes can override this test and the next one by
+		 * setting override_allow_connections.)
+		 */
+		if (!dbform->datallowconn && !override_allow_connections)
+		{
+			ereport(YbHandleAuthPassthroughFailureAndGetElevel(),
+					(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+					 errmsg("database \"%s\" is not currently accepting "
+							"connections",
+							name)));
+
+			return;
+		}
+
+		/*
+		 * Check privilege to connect to the database.  (The am_superuser test
+		 * is redundant, but since we have the flag, might as well check it
+		 * and save a few cycles.)
+		 */
+		if (!am_superuser && !override_allow_connections &&
+			pg_database_aclcheck(db_oid, GetUserId(), ACL_CONNECT) !=
+			ACLCHECK_OK)
+		{
+			ereport(YbHandleAuthPassthroughFailureAndGetElevel(),
+					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+					 errmsg("permission denied for database \"%s\"", name),
+					 errdetail("User does not have CONNECT privilege.")));
+
+			return;
+		}
+
+		/*
+		 * Check connection limit for this database.  We enforce the limit
+		 * only for regular backends, since other process types have their own
+		 * PGPROC pools.
+		 *
+		 * There is a race condition here --- we create our PGPROC before
+		 * checking for other PGPROCs.  If two backends did this at about the
+		 * same time, they might both think they were over the limit, while
+		 * ideally one should succeed and one fail.  Getting that to work
+		 * exactly seems more trouble than it is worth, however; instead we
+		 * just document that the connection limit is approximate.
+		 */
+		if (dbform->datconnlimit >= 0 && AmRegularBackendProcess() &&
+			!am_superuser && CountDBConnections(db_oid) > dbform->datconnlimit)
+		{
+			ereport(YbHandleAuthPassthroughFailureAndGetElevel(),
+					(errcode(ERRCODE_TOO_MANY_CONNECTIONS),
+					 errmsg("too many connections for database \"%s\"", name)));
+
+			return;
+		}
+	}
+
+	/*
+	 * OK, we're golden.  Next to-do item is to save the encoding info out of
+	 * the pg_database tuple.
+	 * YB: GUC SOURCE has been changed to PGC_S_CLIENT from
+	 * PGC_S_DEFAULT_DYNAMIC in order to avoid setting defaults and sending
+	 * PARAMETER STATUS packets back on auth failure.
+	 */
+	SetDatabaseEncoding(dbform->encoding);
+	/* Record it as a GUC internal option, too */
+	SetConfigOption("server_encoding", GetDatabaseEncodingName(), PGC_INTERNAL,
+					PGC_S_CLIENT);
+	/* If we have no other source of client_encoding, use server encoding */
+	SetConfigOption("client_encoding", GetDatabaseEncodingName(), PGC_BACKEND,
+					PGC_S_CLIENT);
+}
 
 /*
  * CheckMyDatabase -- fetch information from the pg_database entry for our DB
@@ -1195,6 +1333,12 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 	MyDatabaseId = dboid;
 
 	/*
+	 * Validate the internal relcache init connection.
+	 */
+	if (MyProcPort && MyProcPort->yb_is_tserver_auth_method)
+		yb_is_internal_connection = true;
+
+	/*
 	 * Now we can mark our PGPROC entry with the database ID.
 	 *
 	 * We assume this is an atomic store so no lock is needed; though actually
@@ -1494,6 +1638,44 @@ long
 YbGetAuthorizedConnections()
 {
 	return YbNumAuthorizedConnections;
+}
+
+/*
+ * YB: Used in Connection Manager with Auth Passthrough mode.
+ * Initialise GUC state on the control backend and report GUC vars back to
+ * connection manager.
+ */
+void
+YbAuthPassthroughSetupGUCAndReport(void)
+{
+	/* This function is only for auth passthrough via Connection Manager */
+	Assert(YbIsAuthPassthroughInProgress(MyProcPort));
+
+	const char *dbname = MyProcPort->database_name;
+	Oid			dboid = get_database_oid(dbname, false);
+
+	/*
+	 * Process any options passed in the startup packet. This is important
+	 * to do here since this is what sets the GUC values sent to the client.
+	 */
+	if (MyProcPort != NULL)
+		process_startup_options(MyProcPort, superuser_arg(GetSessionUserId()));
+
+	if (YBIsDBLogicalClientVersionMode())
+	{
+		int32_t		logical_client_version = YbGetMasterLogicalClientVersion();
+
+		elog(DEBUG1, "set logical_client_version to %d",
+			 logical_client_version);
+		YbResetLogicalClientCacheVersion();
+		YbSetLogicalClientCacheVersion(logical_client_version);
+		SendLogicalClientCacheVersionToFrontend();
+	}
+
+	/* Process pg_db_role_setting options */
+	process_settings(dboid, GetSessionUserId());
+
+	BeginReportingGUCOptions();
 }
 
 /*

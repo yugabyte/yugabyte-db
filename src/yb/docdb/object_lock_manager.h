@@ -75,7 +75,7 @@ class ObjectLockManager {
   void Lock(LockData&& data);
 
   // Release all locks held against the given object_lock_owner.
-  void Unlock(const ObjectLockOwner& object_lock_owner);
+  TxnBlockedTableLockRequests Unlock(const ObjectLockOwner& object_lock_owner);
 
   void Poll();
 

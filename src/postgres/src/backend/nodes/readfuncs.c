@@ -2959,6 +2959,43 @@ _readYbUpdateAffectedEntities(void)
 	READ_DONE();
 }
 
+static YbSaopMergeInfo *
+_readYbSaopMergeInfo(void)
+{
+	READ_LOCALS(YbSaopMergeInfo);
+
+	READ_NODE_FIELD(saop_cols);
+	READ_NODE_FIELD(sort_cols);
+
+	READ_DONE();
+}
+
+static YbSaopMergeSaopColInfo *
+_readYbSaopMergeSaopColInfo(void)
+{
+	READ_LOCALS(YbSaopMergeSaopColInfo);
+
+	READ_NODE_FIELD(saop);
+	READ_INT_FIELD(indexcol);
+	READ_INT_FIELD(num_elems);
+
+	READ_DONE();
+}
+
+static YbSortInfo *
+_readYbSortInfo(void)
+{
+	READ_LOCALS(YbSortInfo);
+
+	READ_INT_FIELD(numCols);
+	READ_ATTRNUMBER_ARRAY(sortColIdx, local_node->numCols);
+	READ_OID_ARRAY(sortOperators, local_node->numCols);
+	READ_OID_ARRAY(collations, local_node->numCols);
+	READ_BOOL_ARRAY(nullsFirst, local_node->numCols);
+
+	READ_DONE();
+}
+
 /*
  * parseNodeString
  *
@@ -3242,12 +3279,20 @@ parseNodeString(void)
 		return_value = _readPartitionBoundSpec();
 	else if (MATCH("PARTITIONRANGEDATUM", 19))
 		return_value = _readPartitionRangeDatum();
+	else if (MATCH("PARTITIONPRUNESTEPFUNCOP", 24))
+		return_value = _readYbPartitionPruneStepFuncOp();
 	else if (MATCH("YBEXPRCOLREFDESC", 16))
 		return_value = _readYbExprColrefDesc();
 	else if (MATCH("YBSKIPPABLEENTITIES", 19))
 		return_value = _readYbSkippableEntities();
 	else if (MATCH("YBUPDATEAFFECTEDENTITIES", 24))
 		return_value = _readYbUpdateAffectedEntities();
+	else if (MATCH("YBSAOPMERGEINFO", 15))
+		return_value = _readYbSaopMergeInfo();
+	else if (MATCH("YBSAOPMERGESAOPCOLINFO", 22))
+		return_value = _readYbSaopMergeSaopColInfo();
+	else if (MATCH("YBSORTINFO", 10))
+		return_value = _readYbSortInfo();
 	else
 	{
 		elog(ERROR, "badly formatted node string \"%.32s\"...", token);

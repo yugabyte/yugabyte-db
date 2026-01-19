@@ -168,6 +168,67 @@ TEST(PackedRowTest, LongStringV2) {
   TestRowPacking<RowPackerV2, PackedRowDecoderV2>(schema, {value2, value1});
 }
 
+TEST(PackedRowTest, UpdateFlagV2) {
+  // Check that kIsUpdateFlag is correctly set in packed rows based on is_update parameter
+  constexpr int kVersion = 1;
+
+  struct TestCase {
+    bool is_update;
+    bool allow_nullable;
+    bool has_null_value;
+    uint8_t expected_flags;
+    std::string description;
+  };
+
+  std::vector<TestCase> test_cases = {
+      {false, false, false, 0, "INSERT without nulls"},
+      {false, true, true, RowPackerV2::kHasNullsFlag, "INSERT with nulls"},
+      {true, false, false, RowPackerV2::kIsUpdateFlag, "UPDATE without nulls"},
+      {true, true, true, RowPackerV2::kIsUpdateFlag | RowPackerV2::kHasNullsFlag,
+       "UPDATE with nulls"},
+  };
+
+  for (const auto& test_case : test_cases) {
+    auto schema =
+        ASSERT_RESULT(BuildSchema({DataType::INT32, DataType::STRING}, test_case.allow_nullable));
+    SchemaPacking schema_packing(TableType::PGSQL_TABLE_TYPE, schema);
+
+    RowPackerV2 packer(
+        kVersion, schema_packing, std::numeric_limits<int64_t>::max(), Slice(),
+        test_case.is_update);
+    QLValuePB value1, value2;
+    value1.set_int32_value(100);
+    if (!test_case.has_null_value) {
+      value2.set_string_value("test");
+    }
+    ASSERT_OK(packer.AddValue(schema_packing.column_packing_data(0).id, value1));
+    ASSERT_OK(packer.AddValue(schema_packing.column_packing_data(1).id, value2));
+
+    auto packed = ASSERT_RESULT(packer.Complete());
+
+    // Parse header - value_slice should start after value type byte
+    Slice value_slice = packed;
+    auto value_type = static_cast<ValueEntryType>(value_slice.consume_byte());
+    ASSERT_EQ(value_type, ValueEntryType::kPackedRowV2);
+
+    auto header = ASSERT_RESULT(ParsePackedRowV2Header(value_slice));
+
+    // Verify schema version
+    ASSERT_EQ(header.schema_version, kVersion)
+        << test_case.description << ", schema_version mismatch";
+
+    // Verify flags match expected
+    ASSERT_EQ(header.flags, test_case.expected_flags)
+        << test_case.description
+        << ", expected flags=" << static_cast<int>(test_case.expected_flags)
+        << ", actual flags=" << static_cast<int>(header.flags);
+
+    // Verify IsUpdate flag
+    ASSERT_EQ(header.IsUpdate(), test_case.is_update)
+        << test_case.description << ", header.IsUpdate() mismatch";
+  }
+}
+
 template <class Packer>
 std::string TestPackWithControlFields() {
   auto schema = EXPECT_RESULT(BuildSchema(

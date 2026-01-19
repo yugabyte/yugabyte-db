@@ -11,7 +11,7 @@
 #include <time.h>
 
 static void clear_stats(struct ConnectionStats *yb_stats, const int yb_max_pools) {
-    for (int i = 1; i < yb_max_pools; i++) {
+    for (int i = YB_TXN_POOL_STATS_START_INDEX; i < yb_max_pools; i++) {
         yb_stats[i].active_clients = 0;
 		yb_stats[i].queued_clients = 0;
 		yb_stats[i].waiting_clients = 0;
@@ -379,7 +379,7 @@ clean:
 	pool->count--;
 	od_list_unlink(&route->link);
 
-	if (index > 0) {
+	if (index >= YB_TXN_POOL_STATS_START_INDEX) {
 		instance->yb_stats[index].database_oid = -1;
 		instance->yb_stats[index].user_oid = -1;
 	}
@@ -730,7 +730,8 @@ static uint32_t yb_count_all_active_routes(od_router_t *router, od_route_t *curr
 		od_route_t *route;
 		route = od_container_of(i, od_route_t, link);
 
-		if (yb_is_route_invalid(route))
+		if (yb_is_route_invalid(route) ||
+			(route->id.logical_rep))
 			continue;
 
 		/*
@@ -771,7 +772,8 @@ static uint32_t yb_calculate_all_in_use_backends(od_router_t *router) {
 		od_route_t *route;
 		route = od_container_of(i, od_route_t, link);
 
-		if (yb_is_route_invalid(route))
+		if (yb_is_route_invalid(route) ||
+			(route->id.logical_rep))
 			continue;
 
 		od_route_lock(route);
@@ -960,6 +962,15 @@ od_router_status_t od_router_attach(od_router_t *router,
 					connections_in_pool < pool_size;
 			}
 
+			// For replication connection, PG has a different pool from ysql connections.
+			// Replication connections are not detached after txn is committed similar to sticky
+			// connections.They are expired after logical replication connection is closed.
+			// Therefore always allow it to spin up a new physical connection. And let
+			// postgres take care of the limits on number of backend connections.
+			if (route->id.logical_rep) {
+				yb_is_slot_available = true;
+			}
+
 			if (yb_is_slot_available) {
 				if (od_should_not_spun_connection_yet(
 					    connections_in_pool,
@@ -1099,6 +1110,23 @@ attach:
 	server->idle_time = 0;
 	server->key_client = client_for_router->key;
 
+	if (route->id.logical_rep) {
+		/*
+		 * Replication connections are never detached after txn is committed
+		 * similar to sticky connections. Attach phase is called once for a
+		 * replication connection. So only once the sticky count is incremented
+		 * to reflect on stats. Control backends are however NOT marked as
+		 * sticky, as they are either automatically closed after athentication
+		 * (Auth Backend) or reset and reused for further authentication
+		 * (Auth Passthrough).
+		 */
+
+		server->yb_replication_connection = true;
+		if(!(route->rule->pool->routing == OD_RULE_POOL_INTERVAL)) {
+			route->server_pool.yb_count_sticky++;
+		}
+	}
+
 	od_route_unlock(route);
 
 	/* attach server io to clients machine context */
@@ -1213,13 +1241,15 @@ void od_router_detach(od_router_t *router, od_client_t *client)
 	 * 			a. Creating TEMP TABLES.
 	 * 			b. Use of WITH HOLD CURSORS.
 	 *  c. Client connection is a logical or physical replication connection
+	 *     (but NOT a control connection).
 	 *  d. It took too long to reset state on the server.
 	 */
 	if (od_likely(!server->offline) &&
 		!server->yb_sticky_connection &&
 		!server->reset_timeout) {
 		od_instance_t *instance = server->global->instance;
-		if (route->id.physical_rep || route->id.logical_rep) {
+		if ((route->id.physical_rep || route->id.logical_rep) &&
+		    (route->rule->pool->routing != OD_RULE_POOL_INTERVAL)) {
 			od_debug(&instance->logger, "expire-replication", NULL,
 				 server, "closing replication connection");
 			server->route = NULL;

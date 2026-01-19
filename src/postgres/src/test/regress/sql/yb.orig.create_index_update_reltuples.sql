@@ -1,0 +1,422 @@
+-- #25394 : Update pg_class.reltuples after CREATE INDEX
+
+---------------------------------
+-- Tests with feature disabled
+---------------------------------
+SET yb_enable_update_reltuples_after_create_index = OFF;
+
+----------------------------
+-- Concurrent Index Creation
+----------------------------
+
+-- Create a table and insert 100 rows, do not run ANALYZE.
+CREATE TABLE test_25394 (id INT, val INT, tags text[]);
+INSERT INTO test_25394 SELECT i, i*10, array[md5(random()::text), md5(random()::text)] FROM generate_series(1,100) AS i;
+
+-- Reltuples should be -1 for the base table.
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Create indexes. Reltuples for the indexes should be 0.
+CREATE INDEX CONCURRENTLY test_25394_val_idx ON test_25394(val);
+CREATE INDEX CONCURRENTLY test_25394_tags_idx ON test_25394 using gin (tags);
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Drop the index.
+DROP INDEX test_25394_val_idx;
+DROP INDEX test_25394_tags_idx;
+
+-- After ANALYZE, reltuples should be 100.
+ANALYZE test_25394;
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Create indexes again. Index reltuples should not be set.
+CREATE INDEX CONCURRENTLY test_25394_val_idx ON test_25394(val);
+CREATE INDEX CONCURRENTLY test_25394_tags_idx ON test_25394 using gin (tags);
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Insert another 100 rows to the table.
+INSERT INTO test_25394 SELECT i, i*10, array[md5(random()::text), md5(random()::text)] FROM generate_series(101,200) AS i;
+
+-- Since ANALYZE is not called, reltuples should still be 100.
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Create another index. Base table reltuples should not be updated. Index reltuples should be 0.
+CREATE INDEX CONCURRENTLY test_25394_k_idx ON test_25394(val);
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Create partial indexes
+CREATE INDEX CONCURRENTLY test_25394_partial_val_idx ON test_25394(val) WHERE id > 100;
+CREATE INDEX CONCURRENTLY test_25394_partial_tags_idx ON test_25394 using gin (tags) WHERE id > 100;
+
+-- Base table Reltuples should not be updated. Index reltuples should be 0.
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Cleanup
+DROP TABLE test_25394;
+
+--------------------------------
+-- Non-concurrent Index Creation
+--------------------------------
+
+-- Before this fix, reltuples for the index were updated in non-concurrent
+-- index creation, but the base table reltuples were left unchanged. After this
+-- fix, both the base table and index reltuples are updated.
+
+-- Create a table and insert 100 rows, do not run ANALYZE.
+CREATE TABLE test_25394 (id INT, val INT, tags text[]);
+INSERT INTO test_25394 SELECT i, i*10, array[md5(random()::text), md5(random()::text)] FROM generate_series(1,100) AS i;
+
+-- Reltuples should be -1 for the base table.
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Create indexes. Reltuples for the indexes should be set, but base table should have -1.
+CREATE INDEX NONCONCURRENTLY test_25394_val_idx ON test_25394(val);
+CREATE INDEX NONCONCURRENTLY test_25394_tags_idx ON test_25394 using gin (tags);
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Drop the index.
+DROP INDEX test_25394_val_idx;
+DROP INDEX test_25394_tags_idx;
+
+-- After ANALYZE, reltuples should be 100.
+ANALYZE test_25394;
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Create indexes again. Index reltuples should be set.
+CREATE INDEX NONCONCURRENTLY test_25394_val_idx ON test_25394(val);
+CREATE INDEX NONCONCURRENTLY test_25394_tags_idx ON test_25394 using gin (tags);
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Insert another 100 rows to the table.
+INSERT INTO test_25394 SELECT i, i*10, array[md5(random()::text), md5(random()::text)] FROM generate_series(101,200) AS i;
+
+-- Since ANALYZE is not called, reltuples should still be 100.
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Create another index. Base table reltuples should not be updated. Index reltuples should be set.
+-- Reltuples for old indexes will not be updated.
+CREATE INDEX NONCONCURRENTLY test_25394_k_idx ON test_25394(val);
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Create partial indexes
+CREATE INDEX NONCONCURRENTLY test_25394_partial_val_idx ON test_25394(val) WHERE id > 100;
+CREATE INDEX NONCONCURRENTLY test_25394_partial_tags_idx ON test_25394 using gin (tags) WHERE id > 100;
+
+-- Base table Reltuples should not be updated. Index reltuples should be set.
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Cleanup
+DROP TABLE test_25394;
+
+-----------------------------------------------
+-- Concurrent Index Creation on Temporary Table
+-----------------------------------------------
+
+-- The behavior for temporary tables has not changed. After create index, the
+-- reltuples for the index and the base table are set to the actual number
+-- of tuples.
+
+-- Create a table and insert 100 rows, do not run ANALYZE.
+CREATE TEMP TABLE test_25394 (id INT, val INT, tags text[]);
+INSERT INTO test_25394 SELECT i, i*10, array[md5(random()::text), md5(random()::text)] FROM generate_series(1,100) AS i;
+
+-- Reltuples should be -1 for the base table.
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Create indexes. Reltuples are set to actual number of rows in the table and indexes.
+CREATE INDEX CONCURRENTLY test_25394_val_idx ON test_25394(val);
+CREATE INDEX CONCURRENTLY test_25394_tags_idx ON test_25394 using gin (tags);
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Drop the index.
+DROP INDEX test_25394_val_idx;
+DROP INDEX test_25394_tags_idx;
+
+-- After ANALYZE, reltuples should be 100.
+ANALYZE test_25394;
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Create indexes again. Reltuples are set to actual number of rows in the table and indexes.
+CREATE INDEX CONCURRENTLY test_25394_val_idx ON test_25394(val);
+CREATE INDEX CONCURRENTLY test_25394_tags_idx ON test_25394 using gin (tags);
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Insert another 100 rows to the table.
+INSERT INTO test_25394 SELECT i, i*10, array[md5(random()::text), md5(random()::text)] FROM generate_series(101,200) AS i;
+
+-- Since ANALYZE is not called, reltuples should still be 100.
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Create another index. Reltuples for base table and new index should be 200.
+-- Reltuples for old indexes will not be updated.
+CREATE INDEX CONCURRENTLY test_25394_k_idx ON test_25394(val);
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Create partial indexes
+CREATE INDEX CONCURRENTLY test_25394_partial_val_idx ON test_25394(val) WHERE id > 100;
+CREATE INDEX CONCURRENTLY test_25394_partial_tags_idx ON test_25394 using gin (tags) WHERE id > 100;
+
+-- Reltuples for the partial indexes should be set correctly.
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Cleanup
+DROP TABLE test_25394;
+
+---------------------------------------------------
+-- Non-concurrent Index Creation on Temporary Table
+---------------------------------------------------
+
+-- Create a table and insert 100 rows, do not run ANALYZE.
+CREATE TEMP TABLE test_25394 (id INT, val INT, tags text[]);
+INSERT INTO test_25394 SELECT i, i*10, array[md5(random()::text), md5(random()::text)] FROM generate_series(1,100) AS i;
+
+-- Reltuples should be -1 for the base table.
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Create indexes. Reltuples are set to actual number of rows in the table and indexes.
+CREATE INDEX NONCONCURRENTLY test_25394_val_idx ON test_25394(val);
+CREATE INDEX NONCONCURRENTLY test_25394_tags_idx ON test_25394 using gin (tags);
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Drop the index.
+DROP INDEX test_25394_val_idx;
+DROP INDEX test_25394_tags_idx;
+
+-- After ANALYZE, reltuples should be 100.
+ANALYZE test_25394;
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Create indexes again. Reltuples are set to actual number of rows in the table and indexes.
+CREATE INDEX NONCONCURRENTLY test_25394_val_idx ON test_25394(val);
+CREATE INDEX NONCONCURRENTLY test_25394_tags_idx ON test_25394 using gin (tags);
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Insert another 100 rows to the table.
+INSERT INTO test_25394 SELECT i, i*10, array[md5(random()::text), md5(random()::text)] FROM generate_series(101,200) AS i;
+
+-- Since ANALYZE is not called, reltuples should still be 100.
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Create another index. Reltuples for base table and new index should be 200.
+-- Reltuples for old indexes will not be updated.
+CREATE INDEX NONCONCURRENTLY test_25394_k_idx ON test_25394(val);
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Create partial indexes
+CREATE INDEX NONCONCURRENTLY test_25394_partial_val_idx ON test_25394(val) WHERE id > 100;
+CREATE INDEX NONCONCURRENTLY test_25394_partial_tags_idx ON test_25394 using gin (tags) WHERE id > 100;
+
+-- Reltuples for the partial indexes should be set correctly.
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Cleanup
+DROP TABLE test_25394;
+
+--------------------------------
+-- Tests with feature enabled
+--------------------------------
+
+SET yb_enable_update_reltuples_after_create_index = ON;
+
+----------------------------
+-- Concurrent Index Creation
+----------------------------
+
+-- Create a table and insert 100 rows, do not run ANALYZE.
+CREATE TABLE test_25394 (id INT, val INT, tags text[]);
+INSERT INTO test_25394 SELECT i, i*10, array[md5(random()::text), md5(random()::text)] FROM generate_series(1,100) AS i;
+
+-- Reltuples should be -1 for the base table.
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Create indexes. Reltuples should be set to actual number or rows in the base table or index.
+CREATE INDEX CONCURRENTLY test_25394_val_idx ON test_25394(val);
+CREATE INDEX CONCURRENTLY test_25394_tags_idx ON test_25394 using gin (tags);
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Drop the index.
+DROP INDEX test_25394_val_idx;
+DROP INDEX test_25394_tags_idx;
+
+-- After ANALYZE, base table reltuples should be 100.
+ANALYZE test_25394;
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Create indexes again. Reltuples should be set to actual number of rows in the base table or index.
+CREATE INDEX CONCURRENTLY test_25394_val_idx ON test_25394(val);
+CREATE INDEX CONCURRENTLY test_25394_tags_idx ON test_25394 using gin (tags);
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Insert another 100 rows to the table.
+INSERT INTO test_25394 SELECT i, i*10, array[md5(random()::text), md5(random()::text)] FROM generate_series(101,200) AS i;
+
+-- Since ANALYZE is not called, reltuples should still be 100.
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Create another index. Base table reltuples should be updated and new index should have 200 reltuples.
+CREATE INDEX CONCURRENTLY test_25394_k_idx ON test_25394(val);
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Create partial indexes
+CREATE INDEX CONCURRENTLY test_25394_partial_val_idx ON test_25394(val) WHERE id > 100;
+CREATE INDEX CONCURRENTLY test_25394_partial_tags_idx ON test_25394 using gin (tags) WHERE id > 100;
+
+-- Base table Reltuples should not be updated. Index reltuples should be 0.
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Cleanup
+DROP TABLE test_25394;
+
+--------------------------------
+-- Non-concurrent Index Creation
+--------------------------------
+
+-- Create a table and insert 100 rows, do not run ANALYZE.
+CREATE TABLE test_25394 (id INT, val INT, tags text[]);
+INSERT INTO test_25394 SELECT i, i*10, array[md5(random()::text), md5(random()::text)] FROM generate_series(1,100) AS i;
+
+-- Reltuples should be -1 for the base table.
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Create indexes. Reltuples should be set to actual number or rows in the base table or index.
+CREATE INDEX NONCONCURRENTLY test_25394_val_idx ON test_25394(val);
+CREATE INDEX NONCONCURRENTLY test_25394_tags_idx ON test_25394 using gin (tags);
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Drop the index.
+DROP INDEX test_25394_val_idx;
+DROP INDEX test_25394_tags_idx;
+
+-- After ANALYZE, base table reltuples should be 100.
+ANALYZE test_25394;
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Create indexes again. Reltuples should be set to actual number of rows in the base table or index.
+CREATE INDEX NONCONCURRENTLY test_25394_val_idx ON test_25394(val);
+CREATE INDEX NONCONCURRENTLY test_25394_tags_idx ON test_25394 using gin (tags);
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Insert another 100 rows to the table.
+INSERT INTO test_25394 SELECT i, i*10, array[md5(random()::text), md5(random()::text)] FROM generate_series(101,200) AS i;
+
+-- Since ANALYZE is not called, reltuples should still be 100.
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Create another index. Base table reltuples should be updated and new index should have 200 reltuples.
+-- Reltuples for old indexes will not be updated.
+CREATE INDEX NONCONCURRENTLY test_25394_k_idx ON test_25394(val);
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Create partial indexes
+CREATE INDEX NONCONCURRENTLY test_25394_partial_val_idx ON test_25394(val) WHERE id > 100;
+CREATE INDEX NONCONCURRENTLY test_25394_partial_tags_idx ON test_25394 using gin (tags) WHERE id > 100;
+
+-- Index reltuples should be set to actual number of rows in the index.
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Cleanup
+DROP TABLE test_25394;
+
+-----------------------------------------------
+-- Concurrent Index Creation on Temporary Table
+-----------------------------------------------
+
+-- The behavior for temporary tables has not changed. After create index, the
+-- reltuples for the index and the base table are set to the actual number
+-- of tuples.
+
+-- Create a table and insert 100 rows, do not run ANALYZE.
+CREATE TEMP TABLE test_25394 (id INT, val INT, tags text[]);
+INSERT INTO test_25394 SELECT i, i*10, array[md5(random()::text), md5(random()::text)] FROM generate_series(1,100) AS i;
+
+-- Reltuples should be -1 for the base table.
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Create indexes. Reltuples are set to actual number of rows in the table and indexes.
+CREATE INDEX CONCURRENTLY test_25394_val_idx ON test_25394(val);
+CREATE INDEX CONCURRENTLY test_25394_tags_idx ON test_25394 using gin (tags);
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Drop the index.
+DROP INDEX test_25394_val_idx;
+DROP INDEX test_25394_tags_idx;
+
+-- After ANALYZE, reltuples should be 100.
+ANALYZE test_25394;
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Create indexes again. Reltuples are set to actual number of rows in the table and indexes.
+CREATE INDEX CONCURRENTLY test_25394_val_idx ON test_25394(val);
+CREATE INDEX CONCURRENTLY test_25394_tags_idx ON test_25394 using gin (tags);
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Insert another 100 rows to the table.
+INSERT INTO test_25394 SELECT i, i*10, array[md5(random()::text), md5(random()::text)] FROM generate_series(101,200) AS i;
+
+-- Since ANALYZE is not called, reltuples should still be 100.
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Create another index. Reltuples for base table and new index should be 200.
+-- Reltuples for old indexes will not be updated.
+CREATE INDEX CONCURRENTLY test_25394_k_idx ON test_25394(val);
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Create partial indexes
+CREATE INDEX CONCURRENTLY test_25394_partial_val_idx ON test_25394(val) WHERE id > 100;
+CREATE INDEX CONCURRENTLY test_25394_partial_tags_idx ON test_25394 using gin (tags) WHERE id > 100;
+
+-- Reltuples for the partial indexes should be set correctly.
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Cleanup
+DROP TABLE test_25394;
+
+---------------------------------------------------
+-- Non-concurrent Index Creation on Temporary Table
+---------------------------------------------------
+
+-- Create a table and insert 100 rows, do not run ANALYZE.
+CREATE TEMP TABLE test_25394 (id INT, val INT, tags text[]);
+INSERT INTO test_25394 SELECT i, i*10, array[md5(random()::text), md5(random()::text)] FROM generate_series(1,100) AS i;
+
+-- Reltuples should be -1 for the base table.
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Create indexes. Reltuples are set to actual number of rows in the table and indexes.
+CREATE INDEX NONCONCURRENTLY test_25394_val_idx ON test_25394(val);
+CREATE INDEX NONCONCURRENTLY test_25394_tags_idx ON test_25394 using gin (tags);
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Drop the index.
+DROP INDEX test_25394_val_idx;
+DROP INDEX test_25394_tags_idx;
+
+-- After ANALYZE, reltuples should be 100.
+ANALYZE test_25394;
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Create indexes again. Reltuples are set to actual number of rows in the table and indexes.
+CREATE INDEX NONCONCURRENTLY test_25394_val_idx ON test_25394(val);
+CREATE INDEX NONCONCURRENTLY test_25394_tags_idx ON test_25394 using gin (tags);
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Insert another 100 rows to the table.
+INSERT INTO test_25394 SELECT i, i*10, array[md5(random()::text), md5(random()::text)] FROM generate_series(101,200) AS i;
+
+-- Since ANALYZE is not called, reltuples should still be 100.
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Create another index. Reltuples for base table and new index should be 200.
+-- Reltuples for old indexes will not be updated.
+CREATE INDEX NONCONCURRENTLY test_25394_k_idx ON test_25394(val);
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Create partial indexes
+CREATE INDEX NONCONCURRENTLY test_25394_partial_val_idx ON test_25394(val) WHERE id > 100;
+CREATE INDEX NONCONCURRENTLY test_25394_partial_tags_idx ON test_25394 using gin (tags) WHERE id > 100;
+
+-- Reltuples for the partial indexes should be set correctly.
+SELECT relname, reltuples FROM pg_class WHERE relname like 'test_25394%' order by relname;
+
+-- Cleanup
+DROP TABLE test_25394;

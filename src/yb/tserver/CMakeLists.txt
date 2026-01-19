@@ -135,6 +135,7 @@ ADD_YB_LIBRARY(tserver_admin_proto
 
 YRPC_GENERATE(
   TSERVER_YRPC_SRCS TSERVER_YRPC_HDRS TSERVER_YRPC_TGTS
+  MESSAGES TRUE
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
   PROTO_FILES tserver_service.proto)
@@ -216,8 +217,7 @@ set(TSERVER_SHARED_SRCS
 set(TSERVER_SHARED_LIBS
   yb_docdb_shared
   yb_util
-  yb_util_shmem
-  consensus_error)
+  yb_util_shmem)
 ADD_YB_LIBRARY(tserver_shared
   SRCS ${TSERVER_SHARED_SRCS}
   DEPS ${TSERVER_SHARED_LIBS})
@@ -267,6 +267,7 @@ set(TSERVER_SRCS
   tablet_validator.cc
   ts_data_size_metrics.cc
   ts_local_lock_manager.cc
+  ts_snapshots_page_handler.cc
   ts_tablet_manager.cc
   tserver-path-handlers.cc
   tserver_auto_flags_manager.cc
@@ -288,6 +289,7 @@ set(TSERVER_SRCS
   xcluster_output_client.cc
   xcluster_write_implementations.cc
   ysql_advisory_lock_table.cc
+  ysql_lease_manager.cc
   ysql_lease_poller.cc)
 
 set(TSERVER_DEPS

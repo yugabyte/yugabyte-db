@@ -27,14 +27,14 @@ PgSelect::PgSelect(const PgSession::ScopedRefPtr& pg_session)
     : BaseType(pg_session) {}
 
 Status PgSelect::Prepare(
-    const PgObjectId& table_id, bool is_region_local,
+    const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info,
     const std::optional<IndexQueryInfo>& index_info) {
   // Prepare target and bind descriptors.
   target_ = PgTable(VERIFY_RESULT(pg_session_->LoadTable(table_id)));
 
   // Allocate READ requests to send to DocDB.
   auto read_op = ArenaMakeShared<PgsqlReadOp>(
-      arena_ptr(), &arena(), *target_, is_region_local, pg_session_->metrics().metrics_capture());
+      arena_ptr(), &arena(), *target_, locality_info, pg_session_->metrics().metrics_capture());
   read_req_ = std::shared_ptr<LWPgsqlReadRequestPB>(read_op, &read_op->read_request());
 
   auto doc_op = std::make_shared<PgDocReadOp>(pg_session_, &target_, std::move(read_op));
@@ -61,7 +61,7 @@ Status PgSelect::Prepare(
     }
 
     SetSecondaryIndex(VERIFY_RESULT(PgSelectIndex::Make(
-        pg_session_, index_info->id, is_region_local, std::move(index_req))));
+        pg_session_, index_info->id, locality_info, std::move(index_req))));
   }
 
   // Prepare binds for the request.
@@ -72,10 +72,10 @@ Status PgSelect::Prepare(
 }
 
 Result<std::unique_ptr<PgSelect>> PgSelect::Make(
-    const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id, bool is_region_local,
-    const std::optional<IndexQueryInfo>& index_info) {
+    const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id,
+    const YbcPgTableLocalityInfo& locality_info, const std::optional<IndexQueryInfo>& index_info) {
   std::unique_ptr<PgSelect> result{new PgSelect{pg_session}};
-  RETURN_NOT_OK(result->Prepare(table_id, is_region_local, index_info));
+  RETURN_NOT_OK(result->Prepare(table_id, locality_info, index_info));
   return result;
 }
 

@@ -438,6 +438,8 @@ Status ClusterAdminCli::Run(int argc, char** argv) {
   ParseCommandLineFlags(&argc, &argv, true);
   InitGoogleLoggingSafe(prog_name.c_str());
 
+  HybridTime::TEST_SetPrettyToString(true);
+
   const string addrs = FLAGS_master_addresses;
   if (!FLAGS_init_master_addrs.empty()) {
     std::vector<HostPort> init_master_addrs;
@@ -1032,7 +1034,7 @@ Status set_load_balancer_enabled_action(
 
   const bool is_enabled = VERIFY_RESULT(CheckedStoi(args[0])) != 0;
   RETURN_NOT_OK_PREPEND(
-      client->SetLoadBalancerEnabled(is_enabled), "Unable to change load balancer state");
+      client->SetLoadBalancerEnabled(is_enabled), "Unable to change cluster balancer state");
   return Status::OK();
 }
 
@@ -1043,7 +1045,7 @@ Status get_load_balancer_state_action(
     return ClusterAdminCli::kInvalidArguments;
   }
 
-  RETURN_NOT_OK_PREPEND(client->GetLoadBalancerState(), "Unable to get the load balancer state");
+  RETURN_NOT_OK_PREPEND(client->GetLoadBalancerState(), "Unable to get the cluster balancer state");
   return Status::OK();
 }
 
@@ -1065,7 +1067,7 @@ Status get_leader_blacklist_completion_action(
 const auto get_is_load_balancer_idle_args = "";
 Status get_is_load_balancer_idle_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
-  RETURN_NOT_OK_PREPEND(client->GetIsLoadBalancerIdle(), "Unable to get is load balancer idle");
+  RETURN_NOT_OK_PREPEND(client->GetIsLoadBalancerIdle(), "Unable to get is cluster balancer idle");
   return Status::OK();
 }
 
@@ -1129,14 +1131,20 @@ Status leader_stepdown_action(
   return LeaderStepDown(client, args);
 }
 
+// Optionally accepts [<split_factor>] as a test param when
+// FLAGS_TEST_enable_multi_way_tablet_split is enabled.
 const auto split_tablet_args = "<tablet_id>";
 Status split_tablet_action(const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
-  if (args.size() < 1) {
-    return ClusterAdminCli::kInvalidArguments;
-  }
+  RETURN_NOT_OK(CheckArgumentsCount(args.size(), 1, 2));
   const string tablet_id = args[0];
+  int split_factor = 0;
+  if (args.size() >= 2) {
+    split_factor = VERIFY_RESULT(CheckedStoi(args[1]));
+  }
+
   RETURN_NOT_OK_PREPEND(
-      client->SplitTablet(tablet_id), Format("Unable to start split of tablet $0", tablet_id));
+      client->SplitTablet(tablet_id, split_factor),
+      Format("Unable to start split of tablet $0", tablet_id));
   return Status::OK();
 }
 
@@ -1197,10 +1205,21 @@ Status add_transaction_tablet_action(
   return Status::OK();
 }
 
-const auto ysql_catalog_version_args = "";
+const auto ysql_catalog_version_args = "[ysql.][<database_name>]";
 Status ysql_catalog_version_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
-  RETURN_NOT_OK_PREPEND(client->GetYsqlCatalogVersion(), "Unable to get catalog version");
+  if (args.size() >= 2) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  TypedNamespaceName ns;
+  if (args.size() >= 1) {
+    ns = VERIFY_RESULT(ParseNamespaceName(args[0], YQL_DATABASE_PGSQL));
+  }
+
+  RETURN_NOT_OK_PREPEND(
+      client->GetYsqlCatalogVersion(ns),
+      Format("Unable to get catalog version for YSQL database: $0", ns.name));
   return Status::OK();
 }
 
@@ -2866,6 +2885,21 @@ Status unsafe_release_object_locks_global_action(
   return client->ReleaseObjectLocksGlobal(txn_id, subtxn_id);
 }
 
+const auto get_table_hash_args = "<table_id> [read_ht]";
+Status get_table_hash_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() < 1 || args.size() > 2) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  const auto table_id = args[0];
+  uint64_t read_ht = 0;
+  if (args.size() == 2) {
+    read_ht = VERIFY_RESULT(CheckedStoll(args[1]));
+  }
+  return client->GetTableXorHash(table_id, read_ht);
+}
+
 }  // namespace
 
 void ClusterAdminCli::RegisterCommandHandlers() {
@@ -2957,6 +2991,8 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(write_universe_key_to_file);
   REGISTER_COMMAND(are_nodes_safe_to_take_down);
   REGISTER_COMMAND_HIDDEN(unsafe_release_object_locks_global);
+  REGISTER_COMMAND(get_table_hash);
+
   // CDCSDK commands
   REGISTER_COMMAND(create_change_data_stream);
   REGISTER_COMMAND(delete_change_data_stream);

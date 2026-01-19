@@ -569,7 +569,9 @@ pg_stat_get_progress_info(PG_FUNCTION_ARGS)
 			 * the relevant entry
 			 */
 			beentry->st_progress_param[PROGRESS_CREATEIDX_TUPLES_DONE]
-				= *index_progress_iterator;
+				= (*index_progress_iterator > PG_INT64_MAX ?
+				   PG_INT64_MAX :
+				   (int64) *index_progress_iterator);
 			index_progress_iterator++;
 		}
 
@@ -803,6 +805,7 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 			proc = BackendPidGetProc(beentry->st_procpid);
 
 			if (proc == NULL && (beentry->st_backendType != B_BACKEND &&
+								 beentry->st_backendType != YB_AUTO_ANALYZE_BACKEND &&
 								 beentry->st_backendType != YB_YSQL_CONN_MGR))
 			{
 				/*
@@ -2728,7 +2731,7 @@ yb_pg_stat_retrieve_concurrent_index_progress()
 	int			num_indexes = 0;
 	Oid			database_oids[num_backends];
 	Oid			index_oids[num_backends];
-	uint64_t   *progress = NULL;
+	uint64_t   *num_rows_read_from_table = NULL;
 
 	for (curr_backend = 1; curr_backend <= num_backends; curr_backend++)
 	{
@@ -2762,10 +2765,12 @@ yb_pg_stat_retrieve_concurrent_index_progress()
 
 	if (num_indexes > 0)
 	{
-		progress = palloc(sizeof(uint64_t) * num_indexes);
+		num_rows_read_from_table = palloc(sizeof(uint64_t) * num_indexes);
 		HandleYBStatus(YBCGetIndexBackfillProgress(index_oids, database_oids,
-												   &progress, num_indexes));
+												   num_rows_read_from_table,
+												   NULL,
+												   num_indexes));
 	}
 
-	return progress;
+	return num_rows_read_from_table;
 }

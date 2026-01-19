@@ -11,7 +11,6 @@ import {
   FullMoveModal,
   KubernetesPlacementModal,
   PlacementModal,
-  ResizeNodeModal,
   SmartResizeModal
 } from './action-modals';
 import { YBLoading } from '../../../../components/common/indicators';
@@ -70,7 +69,6 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid, isViewMode }) => {
 
   //Local states
   const [showFMModal, setFMModal] = useState(false); //FM -> Full Move
-  const [showRNModal, setRNModal] = useState(false); //RN -> Resize Nodes
   const [showSRModal, setSRModal] = useState(false); //SR -> Smart Resize
   const [showPlacementModal, setPlacementModal] = useState(false);
   const [showK8Modal, setK8Modal] = useState(false);
@@ -214,11 +212,10 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid, isViewMode }) => {
 
       if (!isK8sUniverse) {
         if (
-          _.intersection(updateOptions, [UpdateActions.SMART_RESIZE, UpdateActions.FULL_MOVE])
-            .length > 1
+          updateOptions.includes(UpdateActions.SMART_RESIZE) ||
+          updateOptions.includes(UpdateActions.SMART_RESIZE_NON_RESTART)
         )
           setSRModal(true);
-        else if (updateOptions.includes(UpdateActions.SMART_RESIZE_NON_RESTART)) setRNModal(true);
         else if (updateOptions.includes(UpdateActions.FULL_MOVE)) setFMModal(true);
         else setPlacementModal(true);
       } else setK8Modal(true);
@@ -240,14 +237,6 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid, isViewMode }) => {
       <TaskDetailDrawer />
       {universePayload && (
         <>
-          {showRNModal && (
-            <ResizeNodeModal
-              open={showRNModal}
-              isPrimary={true}
-              universeData={universePayload}
-              onClose={() => setRNModal(false)}
-            />
-          )}
           {showSRModal && (
             <SmartResizeModal
               open={showSRModal}
@@ -255,11 +244,8 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid, isViewMode }) => {
               oldConfigData={originalData.universeDetails}
               newConfigData={universePayload}
               onClose={() => setSRModal(false)}
-              handleSmartResize={() => {
-                setSRModal(false);
-                setRNModal(true);
-              }}
-              handleFullMove={(runOnlyPrechecks: boolean) =>
+              handlePrechecks={(runOnlyPrechecks: boolean) =>
+                // Just runs prechecks, does not submit the form if prechecks is true
                 submitEditUniverse(universePayload, runOnlyPrechecks)
               }
             />

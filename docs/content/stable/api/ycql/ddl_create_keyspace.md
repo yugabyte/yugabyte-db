@@ -7,6 +7,9 @@ menu:
   stable_api:
     parent: api-cassandra
     weight: 1230
+aliases:
+  - /stable/api/cassandra/ddl_create_keyspace
+  - /stable/api/ycql/ddl_create_keyspace
 type: docs
 ---
 

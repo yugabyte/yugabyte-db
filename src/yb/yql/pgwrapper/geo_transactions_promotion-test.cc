@@ -36,6 +36,8 @@ DECLARE_bool(auto_promote_nonlocal_transactions_to_global);
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(force_global_transactions);
 DECLARE_bool(yb_enable_read_committed_isolation);
+DECLARE_bool(TEST_perform_ignore_pg_is_region_local);
+DECLARE_bool(TEST_force_initial_region_local);
 DECLARE_double(transaction_max_missed_heartbeat_periods);
 DECLARE_int32(TEST_old_txn_status_abort_delay_ms);
 DECLARE_int32(TEST_transaction_inject_flushed_delay_ms);
@@ -44,6 +46,7 @@ DECLARE_int32(TEST_txn_status_moved_rpc_send_delay_ms);
 DECLARE_int32(TEST_new_txn_status_initial_heartbeat_delay_ms);
 DECLARE_int64(transaction_rpc_timeout_ms);
 DECLARE_string(ysql_pg_conf_csv);
+DECLARE_string(TEST_transaction_manager_preferred_tablet);
 DECLARE_uint64(TEST_inject_sleep_before_applying_write_batch_ms);
 DECLARE_uint64(TEST_override_transaction_priority);
 DECLARE_uint64(TEST_sleep_before_entering_wait_queue_ms);
@@ -89,16 +92,25 @@ class GeoTransactionsPromotionTest : public GeoTransactionsTestBase {
     ASSERT_OK(client_->SetReplicationInfo(GetClusterDefaultReplicationInfo()));
     for (int i = 0; i < 3; ++i) {
       auto options = ASSERT_RESULT(MakeTserverOptionsWithPlacement(
-          "cloud0", Format("rack$0", kLocalRegion), kLocalZone));
+          "cloud0", Format("region$0", kLocalRegion), kLocalZone));
       ASSERT_OK(cluster_->AddTabletServer(options));
     }
     num_tservers_ += 3;
 
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_create_local_transaction_tables) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_create_local_transaction_tables) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_promote_nonlocal_transactions_to_global) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_perform_ignore_pg_is_region_local) = true;
 
     SetupTablesAndTablespaces(tables_per_region);
     CreateLocalTransactionTable();
+
+    // Use tablets from the local transaction table we manually created, rather than from
+    // auto-created transaction tables.
+    auto tablets = ASSERT_RESULT(GetStatusTabletsWithTableName(
+        "transactions_local", ExpectedLocality::kLocal));
+    ASSERT_FALSE(tablets.empty());
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_manager_preferred_tablet) =
+        tablets[0];
   }
 
  protected:
@@ -120,7 +132,7 @@ class GeoTransactionsPromotionTest : public GeoTransactionsTestBase {
     std::vector<yb::tserver::TabletServerOptions> extra_tserver_options;
     for (int i = 1; i <= 3; ++i) {
       extra_tserver_options.push_back(EXPECT_RESULT(MakeTserverOptionsWithPlacement(
-          "cloud0", strings::Substitute("rack$0", i), "zone")));
+          "cloud0", strings::Substitute("region$0", i), "zone")));
     }
     return extra_tserver_options;
   }
@@ -139,7 +151,7 @@ class GeoTransactionsPromotionTest : public GeoTransactionsTestBase {
       auto* placement_block = replication_info.mutable_live_replicas()->add_placement_blocks();
       auto* cloud_info = placement_block->mutable_cloud_info();
       cloud_info->set_placement_cloud("cloud0");
-      cloud_info->set_placement_region(strings::Substitute("rack$0", i));
+      cloud_info->set_placement_region(strings::Substitute("region$0", i));
       cloud_info->set_placement_zone("zone");
       placement_block->set_min_num_replicas(1);
     }
@@ -155,9 +167,9 @@ class GeoTransactionsPromotionTest : public GeoTransactionsTestBase {
           "num_replicas": 3,
           "placement_blocks":[{
             "cloud": "cloud0",
-            "region": "rack$0",
+            "region": "region$0",
             "zone": "$1",
-            "min_num_replicas": 1
+            "min_num_replicas": 3
           }]
         }')
     )#", kLocalRegion, kLocalZone));
@@ -172,7 +184,7 @@ class GeoTransactionsPromotionTest : public GeoTransactionsTestBase {
     replicas->set_num_replicas(3);
     auto pb = replicas->add_placement_blocks();
     pb->mutable_cloud_info()->set_placement_cloud("cloud0");
-    pb->mutable_cloud_info()->set_placement_region("rack1");
+    pb->mutable_cloud_info()->set_placement_region("region1");
     pb->mutable_cloud_info()->set_placement_zone("local_txn_zone");
     pb->set_min_num_replicas(3);
     ASSERT_OK(client_->CreateTransactionsStatusTable(name, &replication_info));
@@ -213,6 +225,10 @@ class GeoTransactionsPromotionTest : public GeoTransactionsTestBase {
 
     auto conn = ASSERT_RESULT(Connect());
     ASSERT_OK(conn.Execute("SET force_global_transaction = false"));
+    for (size_t i = 1; i <= tables_per_region_; ++i) {
+      ASSERT_OK(WarmupTablespaceCache(conn, Format("$0$1_$2", kTablePrefix, kLocalRegion, i)));
+    }
+    ASSERT_OK(WarmupTablespaceCache(conn, Format("$0$1_1", kTablePrefix, kOtherRegion)));
 
     ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
 
@@ -292,28 +308,36 @@ class GeoTransactionsPromotionTest : public GeoTransactionsTestBase {
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = false;
 
+    auto local_table = Format("$0$1_1", kTablePrefix, kLocalRegion);
+    auto other_table = Format("$0$1_1", kTablePrefix, kOtherRegion);
+
     auto conn1 = ASSERT_RESULT(Connect());
     auto conn2 = ASSERT_RESULT(Connect());
 
     ASSERT_OK(conn1.Execute("SET force_global_transaction = false"));
+    ASSERT_OK(WarmupTablespaceCache(conn1, local_table));
+    ASSERT_OK(WarmupTablespaceCache(conn1, other_table));
+
     ASSERT_OK(conn2.Execute("SET force_global_transaction = false"));
+    ASSERT_OK(WarmupTablespaceCache(conn2, local_table));
+    ASSERT_OK(WarmupTablespaceCache(conn2, other_table));
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_override_transaction_priority) = 100;
     ASSERT_OK(conn1.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
     ASSERT_OK(conn1.ExecuteFormat(
-        "INSERT INTO $0$1_1(value, other_value) VALUES (1, 1)", kTablePrefix, kLocalRegion));
+        "INSERT INTO $0(value, other_value) VALUES (1, 1)", local_table));
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_override_transaction_priority) = 200;
     ASSERT_OK(conn2.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
     ASSERT_OK(conn2.ExecuteFormat(
-        "INSERT INTO $0$1_1(value, other_value) VALUES (1, 2)", kTablePrefix, kLocalRegion));
+        "INSERT INTO $0(value, other_value) VALUES (1, 2)", local_table));
     ASSERT_OK(conn2.CommitTransaction());
 
     std::this_thread::sleep_for(delay_before_promotion_us * 1us);
 
     // Attempt to trigger promotion to global on conn1. This should not trigger a DFATAL.
     auto insert_status = conn1.ExecuteFormat(
-        "INSERT INTO $0$1_1(value, other_value) VALUES (1, 1)", kTablePrefix, kOtherRegion);
+        "INSERT INTO $0(value, other_value) VALUES (1, 1)", other_table);
     ASSERT_TRUE(!insert_status.ok() || !conn1.CommitTransaction().ok());
   }
 };
@@ -343,6 +367,10 @@ class GeoTransactionsPromotionConflictAbortTest : public GeoTransactionsPromotio
 
     ASSERT_OK(conn1.Execute("SET force_global_transaction = false"));
     ASSERT_OK(conn2.Execute("SET force_global_transaction = false"));
+
+    ASSERT_OK(WarmupTablespaceCache(conn1, Format("$0$1_1", kTablePrefix, kLocalRegion)));
+    ASSERT_OK(WarmupTablespaceCache(conn1, Format("$0$1_1", kTablePrefix, kOtherRegion)));
+    ASSERT_OK(WarmupTablespaceCache(conn2, Format("$0$1_1", kTablePrefix, kLocalRegion)));
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_override_transaction_priority) = 100;
     ASSERT_OK(conn1.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
@@ -406,7 +434,7 @@ class GeoTransactionsPromotionRF1Test : public GeoTransactionsPromotionTest {
       auto* placement_block = replication_info.mutable_live_replicas()->add_placement_blocks();
       auto* cloud_info = placement_block->mutable_cloud_info();
       cloud_info->set_placement_cloud("cloud0");
-      cloud_info->set_placement_region(strings::Substitute("rack$0", i));
+      cloud_info->set_placement_region(strings::Substitute("region$0", i));
       cloud_info->set_placement_zone("zone");
       placement_block->set_min_num_replicas(0);
     }
@@ -442,7 +470,6 @@ class GeoPartitionedDeadlockTest : public GeoTransactionsPromotionTest {
   // ${ NumRegions() } partitions are created with names T1, T2, T3...
   void SetupPartitionedTable(std::string table_name, size_t num_keys_per_region) {
     auto conn = ASSERT_RESULT(Connect());
-    auto current_version = GetCurrentVersion();
     ASSERT_OK(conn.ExecuteFormat(
         "CREATE TABLE $0(key INT PRIMARY KEY, value INT) PARTITION BY RANGE(key)",
         table_name));
@@ -453,11 +480,6 @@ class GeoPartitionedDeadlockTest : public GeoTransactionsPromotionTest {
           i,
           (i - 1) * num_keys_per_region,
           i * num_keys_per_region));
-
-      if (ANNOTATE_UNPROTECTED_READ(FLAGS_auto_create_local_transaction_tables)) {
-        WaitForStatusTabletsVersion(current_version + 1);
-        ++current_version;
-      }
     }
 
     for (size_t i = 0 ; i < NumRegions() * num_keys_per_region; i++) {
@@ -783,6 +805,12 @@ TEST_F(GeoTransactionsPromotionTest, YB_DISABLE_TEST_IN_TSAN(TestParticipantLead
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = false;
 
+  // test_local actually has a placement that's entirely independent of the node we're running
+  // things from. But the case we're testing needs RF3, and the layout of nodes is such that
+  // we only have that on local_txn_zone. So just forcing the transaction here to start region local
+  // regardless.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_force_initial_region_local) = true;
+
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("SET force_global_transaction = false"));
   ASSERT_OK(conn.ExecuteFormat(
@@ -817,6 +845,8 @@ TEST_F(GeoTransactionsPromotionTest, YB_DISABLE_TEST_IN_TSAN(TestParticipantLead
 
   LOG(INFO) << "Leader Peer: " << leader_peer->permanent_uuid();
   LOG(INFO) << "Follower Peer: " << follower_peer->permanent_uuid();
+
+  ASSERT_OK(WarmupTablespaceCache(conn, kLocalTable));
 
   ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (0, 0)", kLocalTable));

@@ -4216,7 +4216,10 @@ class index_gt {
         for (std::size_t i = 0; i != size; ++i) {
             auto slot = static_cast<compressed_slot_t>(i);
             // Check that node was completely inserted, otherwise it could crash measuring distance.
-            if (slot != entry_slot && neighbors_base_(node_at_(i)).size() == 0)
+            auto node = node_at_(i);
+            if (!node)
+                continue;
+            if (slot != entry_slot && neighbors_base_(node).size() == 0)
                 continue;
             if (!is_dummy<predicate_at>())
                 if (!predicate(at(slot)))

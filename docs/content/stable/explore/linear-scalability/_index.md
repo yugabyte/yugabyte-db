@@ -4,6 +4,17 @@ headerTitle: Horizontal scalability
 linkTitle: Horizontal scalability
 description: Horizontal scalability in YugabyteDB.
 headcontent: Handle larger workloads by adding nodes to your cluster
+aliases:
+  - /explore/linear-scalability/
+  - /stable/explore/postgresql/linear-scalability/
+  - /stable/explore/linear-scalability-macos/
+  - /stable/explore/linear-scalability/linux/
+  - /stable/explore/linear-scalability/docker/
+  - /stable/explore/linear-scalability/kubernetes/
+  - /stable/explore/auto-sharding/macos/
+  - /stable/explore/auto-sharding/linux/
+  - /stable/explore/auto-sharding/docker/
+  - /stable/explore/auto-sharding/kubernetes/
 menu:
   stable:
     identifier: explore-scalability

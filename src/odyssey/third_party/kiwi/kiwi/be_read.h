@@ -25,13 +25,30 @@ static inline void kiwi_be_startup_init(kiwi_be_startup_t *su)
 	su->is_ssl_request = 0;
 	su->unsupported_request = 0;
 	kiwi_key_init(&su->key);
-	kiwi_var_init(&su->user, NULL, 0);
-	kiwi_var_init(&su->database, NULL, 0);
-	kiwi_var_init(&su->replication, NULL, 0);
+	kiwi_var_init(&su->user, NULL, 0, false);
+	kiwi_var_init(&su->database, NULL, 0, false);
+	kiwi_var_init(&su->replication, NULL, 0, false);
+}
+
+/*
+ * YB: PG limits names to NAMEDATALEN size, which is set to 64 in code. Database
+ * and user names longer than that are truncated to first 63 characters followed by
+ * a null terminator
+ */
+#define YB_MAX_PG_NAME_LEN 64
+
+static inline void yb_kiwi_be_truncate_and_set_var(kiwi_var_t *var, char *value,
+						   uint32_t value_len)
+{
+	if (value_len > YB_MAX_PG_NAME_LEN)
+		value_len = YB_MAX_PG_NAME_LEN;
+	yb_kiwi_var_set(var, value, value_len);
+	var->value[value_len - 1] = '\0';
 }
 
 static inline int kiwi_be_read_options(kiwi_be_startup_t *su, char *pos,
-				       uint32_t pos_size, kiwi_vars_t *vars)
+				       uint32_t pos_size, kiwi_vars_t *vars,
+				       bool parse_options)
 {
 	for (;;) {
 		/* name */
@@ -53,11 +70,14 @@ static inline int kiwi_be_read_options(kiwi_be_startup_t *su, char *pos,
 		value_size = pos - value;
 
 		/* set common params */
+		/* YB: Truncate user and database value lengths if longer than 64 */
 #ifndef YB_GUC_SUPPORT_VIA_SHMEM
 		if (name_size == 5 && !memcmp(name, "user", 5))
-			yb_kiwi_var_set(&su->user, value, value_size);
+			yb_kiwi_be_truncate_and_set_var(&su->user, value,
+							value_size);
 		else if (name_size == 9 && !memcmp(name, "database", 9))
-			yb_kiwi_var_set(&su->database, value, value_size);
+			yb_kiwi_be_truncate_and_set_var(&su->database, value,
+							value_size);
 		else if (name_size == 12 && !memcmp(name, "replication", 12))
 			yb_kiwi_var_set(&su->replication, value, value_size);
 #else
@@ -71,12 +91,13 @@ static inline int kiwi_be_read_options(kiwi_be_startup_t *su, char *pos,
 			kiwi_var_set(&su->replication, KIWI_VAR_UNDEF, value,
 				     value_size);
 #endif
-		else if (name_size == 8 && !memcmp(name, "options", 8))
+		else if (parse_options && name_size == 8 &&
+			 !memcmp(name, "options", 8))
 			kiwi_parse_options_and_update_vars(vars, value,
 							   value_size);
 		else
 			kiwi_vars_update(vars, name, name_size, value,
-					 value_size);
+					 value_size, parse_options);
 	}
 
 	/* user is mandatory */
@@ -103,7 +124,8 @@ static inline int kiwi_be_read_options(kiwi_be_startup_t *su, char *pos,
 
 KIWI_API static inline int kiwi_be_read_startup(char *data, uint32_t size,
 						kiwi_be_startup_t *su,
-						kiwi_vars_t *vars)
+						kiwi_vars_t *vars,
+						bool parse_options)
 {
 	uint32_t pos_size = size;
 	char *pos = data;
@@ -121,7 +143,8 @@ KIWI_API static inline int kiwi_be_read_startup(char *data, uint32_t size,
 	/* StartupMessage */
 	case PG_PROTOCOL_LATEST:
 		su->is_cancel = 0;
-		rc = kiwi_be_read_options(su, pos, pos_size, vars);
+		rc = kiwi_be_read_options(su, pos, pos_size, vars,
+					  parse_options);
 		if (kiwi_unlikely(rc == -1))
 			return -1;
 		break;
@@ -294,7 +317,10 @@ KIWI_API static inline int kiwi_be_read_parse(char *data, uint32_t size,
 	int rc = kiwi_read(&len, &data, &size);
 	if (kiwi_unlikely(rc != 0))
 		return -1;
-	if (kiwi_unlikely(header->type != KIWI_FE_PARSE))
+	/* YB: Also parse new YB parse packets as they have the same format */
+	if (kiwi_unlikely(header->type != KIWI_FE_PARSE &&
+			  header->type != YB_KIWI_FE_PARSE_NO_PARSE_COMPLETE &&
+			  header->type != YB_KIWI_FE_NO_PARSE_PARSE_COMPLETE))
 		return -1;
 	uint32_t pos_size = len;
 	char *pos = kiwi_header_data(header);

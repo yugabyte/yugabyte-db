@@ -7,10 +7,10 @@ package auth
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 	"golang.org/x/term"
 )
@@ -50,7 +50,7 @@ var AuthCmd = &cobra.Command{
 			}
 		}
 		// Validate that apiToken is a valid
-		if strings.TrimSpace(apiToken) == "" {
+		if util.IsEmptyString(apiToken) {
 			logrus.Fatalln(formatter.Colorize("apiToken cannot be empty.\n",
 				formatter.RedColor))
 		}

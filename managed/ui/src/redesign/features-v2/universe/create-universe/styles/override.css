@@ -2,13 +2,15 @@
     These styles overrides the default styles from the UniverseDetail.scss and App.scss
 **/
 .yb-MuiCheckbox-root {
-    width: 28px;
-    height: 20px;
+  width: 28px;
+  height: 20px;
 }
+
 h2 {
-    height: unset;
-    span {
-        color: unset;
-        font-size: unset;
-    }
+  height: unset;
+
+  span {
+    color: unset;
+    font-size: unset;
+  }
 }

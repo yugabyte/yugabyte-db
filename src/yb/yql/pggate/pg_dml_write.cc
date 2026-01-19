@@ -37,14 +37,15 @@ PgDmlWrite::PgDmlWrite(
     pg_session_->SetTransactionHasWrites();
 }
 
-Status PgDmlWrite::Prepare(const PgObjectId& table_id, bool is_region_local) {
+Status PgDmlWrite::Prepare(
+    const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info) {
   // Setup descriptors for target and bind columns.
   target_ = bind_ = PgTable(VERIFY_RESULT(pg_session_->LoadTable(table_id)));
 
   auto write_op = ArenaMakeShared<PgsqlWriteOp>(
       arena_ptr(), &arena(),
       /* need_transaction= */ transaction_setting_ == YbcPgTransactionSetting::YB_TRANSACTIONAL,
-      is_region_local);
+      locality_info);
 
   write_req_ = std::shared_ptr<LWPgsqlWriteRequestPB>(write_op, &write_op->write_request());
   write_req_->set_stmt_type(stmt_type());
@@ -134,6 +135,10 @@ Status PgDmlWrite::Exec(ForceNonBufferable force_non_bufferable) {
   ColRefsToPB();
   // Compatibility: set column ids as expected by legacy nodes
   ColumnRefsToPB(write_req_->mutable_column_refs());
+
+  if (targets_) {
+    doc_op_->SetFetchedTargets(targets_);
+  }
 
   // Execute the statement. If the request has been sent, get the result and handle any rows
   // returned.

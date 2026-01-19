@@ -15,22 +15,26 @@
 
 #pragma once
 
+#include <string>
+#include <string_view>
+
 #include "yb/consensus/consensus_types.pb.h"
 #include "yb/util/status_ec.h"
 
-namespace yb {
-namespace consensus {
+using namespace std::literals;
+
+namespace yb::consensus {
 
 struct ConsensusErrorTag : IntegralErrorTag<ConsensusErrorPB::Code> {
   // This category id is part of the wire protocol and should not be changed once released.
-  static constexpr uint8_t kCategory = 11;
+  static constexpr CategoryDescriptor kCategory{11, "consensus error"sv};
 
   static const std::string& ToMessage(Value code) {
     return ConsensusErrorPB::Code_Name(code);
   }
 };
 
-typedef StatusErrorCodeImpl<ConsensusErrorTag> ConsensusError;
+using ConsensusError = StatusErrorCodeImpl<ConsensusErrorTag>;
 
-} // namespace consensus
-} // namespace yb
+} // namespace yb::consensus
+

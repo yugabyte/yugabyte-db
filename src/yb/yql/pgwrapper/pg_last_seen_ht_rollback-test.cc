@@ -18,11 +18,11 @@
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
 
-DECLARE_string(ysql_pg_conf_csv);
-DECLARE_string(vmodule);
-DECLARE_string(ysql_log_statement);
-DECLARE_bool(ysql_colocate_database_by_default);
 DECLARE_bool(disable_last_seen_ht_rollback);
+DECLARE_bool(enable_scan_choices_variable_bloom_filter);
+DECLARE_bool(ysql_colocate_database_by_default);
+DECLARE_string(ysql_log_statement);
+DECLARE_string(ysql_pg_conf_csv);
 
 namespace yb::pgwrapper {
 
@@ -35,6 +35,8 @@ class PgLastSeenHtRollbackTest : public PgMiniTestBase {
     // the 'keys' table.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_colocate_database_by_default) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_log_statement) = "all";
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_scan_choices_variable_bloom_filter) = false;
+
     PgMiniTestBase::SetUp();
   }
 

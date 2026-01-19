@@ -195,6 +195,28 @@ yb_expr_instantiate_exprs_mutator(Node *node, EState *estate)
 									  get_typbyval(func->funcresulttype));
 		}
 	}
+	else if (IsA(node, SQLValueFunction))
+	{
+		SQLValueFunction *svf = (SQLValueFunction *) node;
+
+		Expr *expr = (Expr *) svf;
+		ExprState *exprstate = ExecInitExpr(expr, NULL);
+
+		Datum result;
+		bool isnull;
+
+		result = ExecEvalExpr(exprstate, GetPerTupleExprContext(estate),
+								&isnull);
+
+		return (Node *) makeConst(svf->type,
+								  svf->typmod,
+								  InvalidOid, /* collation */
+								  get_typlen(svf->type),
+								  result,
+								  isnull,
+								  get_typbyval(svf->type));
+	}
+
 	return expression_tree_mutator(node,
 								   yb_expr_instantiate_exprs_mutator,
 								   (void *) estate);
@@ -579,6 +601,11 @@ yb_pushdown_walker(Node *node, List **colrefs)
 					return true;
 				break;
 			}
+		case T_SQLValueFunction:
+			/*
+			 * SQL Value Functions are parameterless and stable. Therefore,
+			 * they can be evaluated and pushed down as constants.
+			 */
 		case T_RelabelType:
 		case T_NullTest:
 		case T_BoolExpr:

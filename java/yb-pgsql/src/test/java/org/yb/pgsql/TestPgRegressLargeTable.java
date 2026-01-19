@@ -14,29 +14,16 @@ package org.yb.pgsql;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.yb.client.TestUtils;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
-import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
 import java.util.Map;
-import java.time.Instant;
-
-import static org.yb.AssertionWrappers.*;
 
 /**
  * Runs the pg_regress test suite on YB code.
  */
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
 public class TestPgRegressLargeTable extends BasePgRegressTest {
-  private static final Logger LOG = LoggerFactory.getLogger(TestPgRegressLargeTable.class);
-
   private static final String TURN_OFF_COPY_FROM_BATCH_TRANSACTION =
       "yb_default_copy_from_rows_per_transaction=0";
 
@@ -50,6 +37,17 @@ public class TestPgRegressLargeTable extends BasePgRegressTest {
     Map<String, String> flags = super.getTServerFlags();
     appendToYsqlPgConf(flags, TURN_OFF_COPY_FROM_BATCH_TRANSACTION);
     return flags;
+  }
+
+  int getBuildMaxRuntime(int releaseRuntimeSeconds) {
+    int releaseRuntimeMs = releaseRuntimeSeconds * 1000;
+    int debugRuntimeMs = releaseRuntimeMs * 3;
+    int sanRuntimeMs = releaseRuntimeMs * 10;
+    return getPerfMaxRuntime(releaseRuntimeMs,
+                             debugRuntimeMs,
+                             sanRuntimeMs,
+                             sanRuntimeMs,
+                             sanRuntimeMs);
   }
 
   @Test
@@ -67,7 +65,7 @@ public class TestPgRegressLargeTable extends BasePgRegressTest {
                                      "SELECT 1 FROM airports LIMIT 1",
                                      1 /* expectedRowCount */,
                                      execCount /* numberOfRuns */,
-                                     getPerfMaxRuntime(2000, 6000, 20000, 20000, 20000)
+                                     getBuildMaxRuntime(2)
                                      /* maxTotalMillis */);
 
       // Check time when selecting less than 4096 rows (YugaByte default prefetch limit).
@@ -75,7 +73,7 @@ public class TestPgRegressLargeTable extends BasePgRegressTest {
                                      "SELECT 1 FROM airports LIMIT 1 OFFSET 1000",
                                      1 /* expectedRowCount */,
                                      execCount /* numberOfRuns */,
-                                     getPerfMaxRuntime(2000, 6000, 20000, 20000, 20000)
+                                     getBuildMaxRuntime(2)
                                      /* maxTotalMillis */);
 
       // Check time when selecting more than 4096 rows (YugaByte default prefetch limit).
@@ -83,7 +81,7 @@ public class TestPgRegressLargeTable extends BasePgRegressTest {
                                      "SELECT 1 FROM airports LIMIT 1 OFFSET 5000",
                                      1 /* expectedRowCount */,
                                      execCount /* numberOfRuns */,
-                                     getPerfMaxRuntime(3000, 9000, 30000, 30000, 30000)
+                                     getBuildMaxRuntime(3)
                                      /* maxTotalMillis */);
 
       // Check aggregate functions.
@@ -91,7 +89,7 @@ public class TestPgRegressLargeTable extends BasePgRegressTest {
                                      "SELECT count(*) FROM airports",
                                      1 /* expectedRowCount */,
                                      execCount /* numberOfRuns */,
-                                     getPerfMaxRuntime(4000, 12000, 40000, 40000, 40000)
+                                     getBuildMaxRuntime(4)
                                      /* maxTotalMillis */);
 
       // Check large result set.
@@ -99,7 +97,7 @@ public class TestPgRegressLargeTable extends BasePgRegressTest {
                                      "SELECT * FROM airports",
                                      9999 /* expectedRowCount */,
                                      execCount /* numberOfRuns */,
-                                     getPerfMaxRuntime(10000, 30000, 100000, 100000, 100000)
+                                     getBuildMaxRuntime(10)
                                      /* maxTotalMillis */);
 
       // Check large result set with WHERE clause.
@@ -107,7 +105,7 @@ public class TestPgRegressLargeTable extends BasePgRegressTest {
                                      "SELECT * FROM airports WHERE ident < '04' AND ident > '01'",
                                      188 /* expectedRowCount */,
                                      execCount /* numberOfRuns */,
-                                     getPerfMaxRuntime(10000, 30000, 100000, 100000, 100000)
+                                     getBuildMaxRuntime(10)
                                      /* maxTotalMillis */);
 
       // Check large result set with WHERE clause.
@@ -115,7 +113,7 @@ public class TestPgRegressLargeTable extends BasePgRegressTest {
                                      "SELECT * FROM airports WHERE iso_region = 'US-CA'",
                                      488 /* expectedRowCount */,
                                      execCount /* numberOfRuns */,
-                                     getPerfMaxRuntime(10000, 30000, 100000, 100000, 100000)
+                                     getBuildMaxRuntime(10)
                                      /* maxTotalMillis */);
     }
   }

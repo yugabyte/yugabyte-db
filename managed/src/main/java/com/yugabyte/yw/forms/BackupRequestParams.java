@@ -155,6 +155,25 @@ public class BackupRequestParams extends UniverseTaskParams {
   @Setter
   private Boolean dumpRoleChecks = true;
 
+  @ApiModelProperty(
+      value = "Backup privileges for roles. If false, --no-privileges will be added",
+      hidden = true)
+  @Getter
+  @Setter
+  private Boolean usePrivileges = true;
+
+  @ApiModelProperty(value = "Backup global ysql roles")
+  @Getter
+  @Setter
+  private Boolean useRoles = false;
+
+  @ApiModelProperty(
+      value = "WARNING: This is a preview API that could change. Backup stats with YSQL dump.")
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2025.2.2.0")
+  @Getter
+  @Setter
+  private Boolean backupStats = true;
+
   // Intermediate states to resume ybc backups
   public UUID backupUUID;
 
@@ -201,7 +220,9 @@ public class BackupRequestParams extends UniverseTaskParams {
     this.incrementalBackupFrequency = backupRequestParams.incrementalBackupFrequency;
     this.incrementalBackupFrequencyTimeUnit =
         backupRequestParams.incrementalBackupFrequencyTimeUnit;
-    // this.useRoles = backupRequestParams.useRoles;
+    this.useRoles = backupRequestParams.useRoles;
+    this.usePrivileges = backupRequestParams.usePrivileges;
+    this.dumpRoleChecks = backupRequestParams.dumpRoleChecks;
 
     // Deep copy.
     if (backupRequestParams.keyspaceTableList == null) {

@@ -1846,8 +1846,7 @@ Result<SegmentOpIdRelation> Log::GetSegmentOpIdRelation(
 }
 
 Result<bool> Log::CopySegmentUpTo(
-    ReadableLogSegment* segment, const std::string& dest_wal_dir,
-    const OpId& max_included_op_id) {
+    ReadableLogSegment* segment, const std::string& dest_wal_dir, const OpId& max_included_op_id) {
   SegmentOpIdRelation relation = VERIFY_RESULT(GetSegmentOpIdRelation(segment, max_included_op_id));
   auto* const env = options_.env;
   const auto sequence_number = segment->header().sequence_number();
@@ -2166,6 +2165,11 @@ Status Log::ResetLastSyncedEntryOpId(const OpId& op_id) {
     YB_PROFILE(last_synced_entry_op_id_cond_.notify_all());
   }
   LOG_WITH_PREFIX(INFO) << "Reset last synced entry op id from " << old_value << " to " << op_id;
+  if (old_value.term < op_id.term) {
+    LOG(DFATAL) << "Last synced entry has been overwritten with an op from a later term. "
+                << "Potential data corruption on this replica. "
+                << "old_value: " << old_value << ", op_id: " << op_id;
+  }
 
   return Status::OK();
 }

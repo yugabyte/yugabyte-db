@@ -53,6 +53,7 @@ struct ValueControlFields;
 
 using DocKeyHash = uint16_t;
 using KeyEntryValues = std::vector<KeyEntryValue>;
+using FrozenContainer = KeyEntryValues;
 
 enum class KeyEntryType;
 enum class ValueEntryType;
@@ -100,6 +101,6 @@ YB_DEFINE_ENUM(IntentType,
     ((kStrongWrite, kStrongIntentFlag | kWriteIntentFlag))
 );
 
-typedef EnumBitSet<IntentType> IntentTypeSet;
+using IntentTypeSet = EnumBitSet<IntentType>;
 
 }  // namespace yb::dockv

@@ -41,10 +41,10 @@ public class TelemetryProviderController extends AuthenticatedController {
   @Inject private TelemetryProviderService telemetryProviderService;
 
   @ApiOperation(
-      notes = "YbaApi Internal.",
+      notes = "WARNING: This is a preview API that could change. Get Telemetry Provider",
       value = "Get Telemetry Provider",
       response = TelemetryProvider.class)
-  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.0.0")
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -62,12 +62,12 @@ public class TelemetryProviderController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      notes = "YbaApi Internal.",
+      notes = "WARNING: This is a preview API that could change. List All Telemetry Providers",
       value = "List All Telemetry Providers",
       response = TelemetryProvider.class,
       responseContainer = "List",
       nickname = "listAllTelemetryProviders")
-  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.0.0")
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -85,7 +85,7 @@ public class TelemetryProviderController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      notes = "YbaApi Internal.",
+      notes = "WARNING: This is a preview API that could change. Create Telemetry Provider",
       value = "Create Telemetry Provider",
       response = TelemetryProvider.class,
       nickname = "createTelemetry")
@@ -95,7 +95,7 @@ public class TelemetryProviderController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.models.TelemetryProvider",
           required = true,
           paramType = "body"))
-  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.0.0")
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -129,10 +129,10 @@ public class TelemetryProviderController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      notes = "YbaApi Internal.",
+      notes = "WARNING: This is a preview API that could change. Delete a Telemetry Provider",
       value = "Delete a telemetry provider",
       response = YBPSuccess.class)
-  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.0.0")
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =

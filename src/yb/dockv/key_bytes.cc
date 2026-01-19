@@ -61,6 +61,7 @@ void KeyBytes::AppendKeyEntryType(KeyEntryType value_type) {
 
 void KeyBytes::AppendKeyEntryTypeBeforeGroupEnd(KeyEntryType value_type) {
   if (data_.empty() || data_.back() != KeyEntryTypeAsChar::kGroupEnd) {
+    CHECK(data_.empty());
     AppendKeyEntryType(value_type);
     AppendKeyEntryType(KeyEntryType::kGroupEnd);
   } else {
@@ -83,20 +84,20 @@ std::string KeyBytes::ToString() const {
   return FormatSliceAsStr(data_.AsSlice());
 }
 
-void KeyBytes::AppendString(const std::string& raw_string) {
-  ZeroEncodeAndAppendStrToKey(raw_string, &data_);
+void KeyBytes::AppendString(std::string_view raw_string) {
+  ZeroEncodeAndAppendStrToKey(raw_string, data_);
 }
 
-void KeyBytes::AppendDescendingString(const std::string &raw_string) {
-  ComplementZeroEncodeAndAppendStrToKey(raw_string, &data_);
+void KeyBytes::AppendDescendingString(std::string_view raw_string) {
+  ComplementZeroEncodeAndAppendStrToKey(raw_string, data_);
 }
 
 void KeyBytes::AppendBson(const std::string& raw_string) {
-  BsonKeyToComparableBinary(raw_string, &data_);
+  BsonKeyToComparableBinary(raw_string, data_);
 }
 
 void KeyBytes::AppendDescendingBson(const std::string& raw_string) {
-  BsonKeyToComparableBinaryDescending(raw_string, &data_);
+  BsonKeyToComparableBinaryDescending(raw_string, data_);
 }
 
 void KeyBytes::AppendUInt64(uint64_t x) {

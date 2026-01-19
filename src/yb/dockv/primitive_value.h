@@ -37,8 +37,6 @@
 #include "yb/util/timestamp.h"
 #include "yb/util/uuid.h"
 
-#include "yb/dockv/key_entry_value.h"
-
 namespace yb::dockv {
 
 // Used for extending a list.
@@ -324,6 +322,7 @@ SortOrder SortOrderFromColumnSchemaSortingType(SortingType sorting_type);
 void AppendEncodedValue(const QLValuePB& value, ValueBuffer* out);
 void AppendEncodedValue(const QLValuePB& value, std::string* out);
 void AppendEncodedValue(const LWQLValuePB& value, ValueBuffer* out);
+void AppendEncodedValue(const LWQLValuePB& value, std::string* out);
 size_t EncodedValueSize(const QLValuePB& value);
 size_t EncodedValueSize(const LWQLValuePB& value);
 

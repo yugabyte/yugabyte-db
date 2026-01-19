@@ -622,19 +622,19 @@ CatalogTupleUpdateWithInfo(Relation heapRel, ItemPointer otid, HeapTuple tup,
  * it might be better to do something about caching CatalogIndexState.
  */
 void
-CatalogTupleDelete(Relation heapRel, HeapTuple tup)
+CatalogTupleDelete(Relation heapRel, HeapTuple yb_tup)
 {
 	if (IsYugaByteEnabled())
 	{
-		YBCDeleteSysCatalogTuple(heapRel, tup);
+		YBCDeleteSysCatalogTuple(heapRel, yb_tup);
 
 		CatalogIndexState indstate = CatalogOpenIndexes(heapRel);
 
-		CatalogIndexDelete(indstate, tup);
+		CatalogIndexDelete(indstate, yb_tup);
 		CatalogCloseIndexes(indstate);
 	}
 	else
 	{
-		simple_heap_delete(heapRel, &tup->t_self);
+		simple_heap_delete(heapRel, &yb_tup->t_self);
 	}
 }

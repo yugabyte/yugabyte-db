@@ -21,7 +21,8 @@
 
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 
-DECLARE_bool(vector_index_disable_compactions);
+DECLARE_bool(vector_index_enable_compactions);
+DECLARE_uint32(vector_index_num_compactions_limit);
 
 using namespace std::literals;
 
@@ -32,7 +33,8 @@ constexpr auto kBackfillSleepSec = 10 * kTimeMultiplier;
 class PgVectorIndexITest : public LibPqTestBase {
  public:
   void SetUp() override {
-    FLAGS_vector_index_disable_compactions = false;
+    FLAGS_vector_index_enable_compactions = true;
+    FLAGS_vector_index_num_compactions_limit = 0;
     LibPqTestBase::SetUp();
   }
 
@@ -172,6 +174,8 @@ class PgVectorIndexBackfillITest : public PgVectorIndexITest {
     options->extra_master_flags.push_back("--ysql_disable_index_backfill=false");
     options->extra_tserver_flags.push_back(
         Format("--TEST_sleep_before_vector_index_backfill_seconds=$0", kBackfillSleepSec));
+    // yb_hnsw wrapper currently does not support retrieving vectors by id.
+    options->extra_master_flags.push_back("--vector_index_use_yb_hnsw=false");
   }
 };
 

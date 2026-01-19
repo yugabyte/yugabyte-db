@@ -827,7 +827,7 @@ static const struct object_type_map
 	{
 		"database", OBJECT_DATABASE
 	},
-	/* OCLASS_TBLGROUP */
+	/* OCLASS_YBTBLGROUP */
 	{
 		"tablegroup", OBJECT_YBTABLEGROUP
 	},
@@ -989,6 +989,7 @@ get_object_address(ObjectType objtype, Node *object,
 	ObjectAddress old_address = {InvalidOid, InvalidOid, 0};
 	Relation	relation = NULL;
 	uint64		inval_count;
+	uint64		yb_inval_count;
 
 	/* Some kind of lock must be taken. */
 	Assert(lockmode != NoLock);
@@ -1001,6 +1002,7 @@ get_object_address(ObjectType objtype, Node *object,
 		 * been processed that might require a do-over.
 		 */
 		inval_count = SharedInvalidMessageCounter;
+		yb_inval_count = YbGetCatCacheDeltaRefreshes();
 
 		/* Look up object address. */
 		switch (objtype)
@@ -1265,7 +1267,8 @@ get_object_address(ObjectType objtype, Node *object,
 		 * up no longer refers to the object we locked, so we retry the lookup
 		 * and see whether we get the same answer.
 		 */
-		if (inval_count == SharedInvalidMessageCounter || relation != NULL)
+		if ((inval_count == SharedInvalidMessageCounter &&
+			 yb_inval_count == YbGetCatCacheDeltaRefreshes()) || relation != NULL)
 			break;
 		old_address = address;
 	}
@@ -3806,7 +3809,7 @@ getObjectDescription(const ObjectAddress *object, bool missing_ok)
 				break;
 			}
 
-		case OCLASS_TBLGROUP:
+		case OCLASS_YBTBLGROUP:
 			{
 				char	   *tblgroup;
 
@@ -4728,7 +4731,7 @@ getObjectTypeDescription(const ObjectAddress *object, bool missing_ok)
 			appendStringInfoString(&buffer, "database");
 			break;
 
-		case OCLASS_TBLGROUP:
+		case OCLASS_YBTBLGROUP:
 			appendStringInfoString(&buffer, "tablegroup");
 			break;
 
@@ -5697,7 +5700,7 @@ getObjectIdentityParts(const ObjectAddress *object,
 				break;
 			}
 
-		case OCLASS_TBLGROUP:
+		case OCLASS_YBTBLGROUP:
 			{
 				char	   *tblgroup;
 

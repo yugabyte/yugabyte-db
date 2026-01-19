@@ -34,6 +34,11 @@
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 
+DEFINE_RUNTIME_bool(rocksdb_collect_bloom_filter_time_metrics, false,
+    "Collect bloom filter time metrics. Should only be used for perf investigations since those "
+    "metrics are in hot path and could affect queries execution time.");
+TAG_FLAG(rocksdb_collect_bloom_filter_time_metrics, hidden);
+
 namespace rocksdb {
 
 constexpr std::pair<Tickers, const char *> TickersNameMap[] = {
@@ -152,6 +157,9 @@ constexpr std::pair<Histograms, const char *> HistogramsNameMap[] = {
     {BYTES_PER_READ, "rocksdb_bytes_per_read"},
     {BYTES_PER_WRITE, "rocksdb_bytes_per_write"},
     {BYTES_PER_MULTIGET, "rocksdb_bytes_per_multiget"},
+    {BLOOM_FILTER_TIME_NANOS, "rocksdb_bloom_filter_time_nanos"},
+    {GET_FIXED_SIZE_FILTER_BLOCK_HANDLE_NANOS, "rocksdb_get_fixed_size_filter_block_handle_nanos"},
+    {GET_FILTER_BLOCK_FROM_CACHE_NANOS, "rocksdb_get_filter_block_from_cache_nanos"},
 };
 
 namespace {
@@ -363,6 +371,9 @@ void StatisticsMetricImpl::recordTick(uint32_t ticker_type, uint64_t count) {
     if (ticker_type == CURRENT_VERSION_SST_FILES_SIZE) {
       tickers_[OLD_BK_COMPAT_CURRENT_VERSION_SST_FILES_SIZE]->IncrementBy(count);
     }
+    if (ticker_type == ITER_BYTES_READ) {
+      tickers_[BYTES_READ]->IncrementBy(count);
+    }
   }
 }
 
@@ -456,6 +467,17 @@ void ScopedStatistics::MergeAndClear(Statistics* target) {
       target->addHistogram(i, histograms_[i]);
       histograms_[i].Reset(yb::PreserveTotalStats::kFalse);
     }
+  }
+}
+
+bool Statistics::HistEnabledForType(uint32_t type) const {
+  switch (type) {
+    case BLOOM_FILTER_TIME_NANOS: [[fallthrough]];
+    case GET_FILTER_BLOCK_FROM_CACHE_NANOS: [[fallthrough]];
+    case GET_FIXED_SIZE_FILTER_BLOCK_HANDLE_NANOS:
+      return FLAGS_rocksdb_collect_bloom_filter_time_metrics;
+    default:
+      return type < HISTOGRAM_ENUM_MAX;
   }
 }
 

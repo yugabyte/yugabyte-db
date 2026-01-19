@@ -20,6 +20,7 @@
 #include <vector>
 
 #include <rapidjson/document.h>
+
 #include "yb/cdc/xcluster_types.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/pg_types.h"
@@ -31,7 +32,7 @@ namespace tserver {
 
 struct XClusterOutputClientResponse;
 
-typedef std::function<void(HybridTime)> UpdateSafeTimeFunc;
+using UpdateSafeTimeFunc = std::function<void (HybridTime)>;
 
 struct XClusterDDLQueryInfo {
   int64 ddl_end_time;
@@ -46,11 +47,13 @@ struct XClusterDDLQueryInfo {
 
   struct RelationInfo {
     std::string relation_name;
+    std::string relation_pgschema_name;
     PgOid relfile_oid;
     ColocationId colocation_id;
     bool is_index;
     std::string ToString() const {
-      return YB_STRUCT_TO_STRING(relation_name, relfile_oid, colocation_id, is_index);
+      return YB_STRUCT_TO_STRING(
+          relation_name, relation_pgschema_name, relfile_oid, colocation_id, is_index);
     }
   };
   std::vector<RelationInfo> relation_map;
@@ -78,6 +81,8 @@ class XClusterDDLQueueHandler {
       const std::string& log_prefix, TserverXClusterContextIf& xcluster_context,
       ConnectToPostgresFunc connect_to_pg_func, UpdateSafeTimeFunc update_safe_time_func);
   virtual ~XClusterDDLQueueHandler();
+
+  void Shutdown();
 
   // This function is called before the poller calls GetChanges. This will detect if we are in the
   // middle of a executing a DDL batch and complete it.

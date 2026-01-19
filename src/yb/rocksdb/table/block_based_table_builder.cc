@@ -628,7 +628,7 @@ size_t BlockBasedTableBuilder::WriteRawBlock(const Slice& block_contents,
                                              BlockHandle* handle,
                                              FileWriterWithOffsetAndCachePrefix* writer_info) {
   Rep* r = rep_;
-  StopWatch sw(r->ioptions.env, r->ioptions.statistics, WRITE_RAW_BLOCK_MICROS);
+  StopWatchMicro sw(r->ioptions.env, r->ioptions.statistics, WRITE_RAW_BLOCK_MICROS);
   const auto start_offset = writer_info->offset;
   handle->set_offset(writer_info->offset);
   handle->set_size(block_contents.size());

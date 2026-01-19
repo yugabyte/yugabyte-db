@@ -8,13 +8,7 @@
  */
 
 import React, { FC, useMemo, useState } from 'react';
-import {
-  Col,
-  DropdownButton,
-  MenuItem,
-  OverlayTrigger,
-  Popover,
-  Row} from 'react-bootstrap';
+import { Col, DropdownButton, MenuItem, OverlayTrigger, Popover, Row } from 'react-bootstrap';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from 'react-query';
 import { toast } from 'react-toastify';
 import cronstrue from 'cronstrue';
@@ -33,10 +27,7 @@ import {
   RbacValidator,
   hasNecessaryPerm
 } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
-import {
-  deleteBackupSchedule,
-  getScheduledBackupList
-} from '../common/BackupScheduleAPI';
+import { deleteBackupSchedule, getScheduledBackupList } from '../common/BackupScheduleAPI';
 import { toggleScheduledBackupPolicy } from '../../../redesign/features/backup/scheduled/api/api';
 import { AllowedTasks, TableType, TableTypeLabel } from '../../../redesign/helpers/dtos';
 import { convertScheduleToFormValues, convertMsecToTimeFrame } from './ScheduledBackupUtils';
@@ -243,15 +234,18 @@ const ScheduledBackupCard: FC<ScheduledBackupCardProps> = ({
   const queryClient = useQueryClient();
   const [showDeleteModal, setShowDeleteModal] = useState('');
 
-  const toggleSchedule = useMutation((val: toogleScheduleProps) => toggleScheduledBackupPolicy(universeUUID, val), {
-    onSuccess: (_, params) => {
-      toast.success(`Schedule policy is now ${params.status}`);
-      queryClient.invalidateQueries('scheduled_backup_list');
-    },
-    onError: (resp: any) => {
-      toast.error(resp.response.data.error);
+  const toggleSchedule = useMutation(
+    (val: toogleScheduleProps) => toggleScheduledBackupPolicy(universeUUID, val),
+    {
+      onSuccess: (_, params) => {
+        toast.success(`Schedule policy is now ${params.status}`);
+        queryClient.invalidateQueries('scheduled_backup_list');
+      },
+      onError: (resp: any) => {
+        toast.error(resp.response.data.error);
+      }
     }
-  });
+  );
 
   const deleteSchedule = useMutation(
     () => deleteBackupSchedule(schedule.scheduleUUID),

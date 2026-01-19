@@ -38,6 +38,9 @@ public class BasePgRegressTest extends BasePgSQLTest {
     appendToYsqlPgConf(flagMap, "compute_query_id=regress");
     appendToYsqlPgConf(flagMap, "yb_explain_hide_non_deterministic_fields=on");
     flagMap.put("TEST_hide_details_for_pg_regress", "true");
+    // todo(28972): These tests have multiple problems. For now skip graceful shutdown so we can
+    // fix the other issues.
+    flagMap.put("graceful_shutdown", "false");
     return flagMap;
   }
 

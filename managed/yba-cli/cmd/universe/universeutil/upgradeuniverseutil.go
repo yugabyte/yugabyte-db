@@ -29,11 +29,13 @@ import (
 
 // WaitForUpgradeUniverseTask waits for the upgrade task to complete
 func WaitForUpgradeUniverseTask(
-	authAPI *ybaAuthClient.AuthAPIClient, universeName string, rTask ybaclient.YBPTask) {
+	authAPI *ybaAuthClient.AuthAPIClient, universeName string, rTask *ybaclient.YBPTask) {
 
 	var universeData []ybaclient.UniverseResp
 	var response *http.Response
 	var err error
+
+	util.CheckTaskAfterCreation(rTask)
 
 	universeUUID := rTask.GetResourceUUID()
 	taskUUID := rTask.GetTaskUUID()
@@ -55,13 +57,7 @@ func WaitForUpgradeUniverseTask(
 
 		universeData, response, err = authAPI.ListUniverses().Name(universeName).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"Universe",
-				"Upgrade - Fetch Universe",
-			)
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Universe", "Upgrade - Fetch Universe")
 		}
 		universesCtx := formatter.Context{
 			Command: "upgrade",
@@ -78,7 +74,7 @@ func WaitForUpgradeUniverseTask(
 		Output:  os.Stdout,
 		Format:  ybatask.NewTaskFormat(viper.GetString("output")),
 	}
-	ybatask.Write(taskCtx, []ybaclient.YBPTask{rTask})
+	ybatask.Write(taskCtx, []ybaclient.YBPTask{*rTask})
 
 }
 
@@ -120,7 +116,7 @@ func Validations(cmd *cobra.Command, operation string) (
 // FetchMasterGFlags is to fetch list of master gflags
 func FetchMasterGFlags(masterGFlagsString string) map[string]string {
 	masterGFlags := make(map[string]interface{}, 0)
-	if len(strings.TrimSpace(masterGFlagsString)) != 0 {
+	if !util.IsEmptyString(masterGFlagsString) {
 		for _, masterGFlagPair := range strings.Split(masterGFlagsString, ",") {
 			kvp := strings.Split(masterGFlagPair, "=")
 			if len(kvp) != 2 {
@@ -141,7 +137,7 @@ func FetchTServerGFlags(
 ) []map[string]string {
 	tserverGFlagsList := make([]map[string]string, 0)
 	for _, tserverGFlagsString := range tserverGFlagsStringList {
-		if len(strings.TrimSpace(tserverGFlagsString)) > 0 {
+		if !util.IsEmptyString(tserverGFlagsString) {
 			tserverGFlags := make(map[string]interface{}, 0)
 			for _, tserverGFlagPair := range strings.Split(tserverGFlagsString, ",") {
 				kvp := strings.Split(tserverGFlagPair, "=")
@@ -225,7 +221,7 @@ func ProcessTServerGFlagsFromConfig(input map[string]interface{}) map[string]map
 // BuildNodeDetailsRespArrayToNodeDetailsArray takes in an array of NodeDetailsResp and returns an array of NodeDetails
 func BuildNodeDetailsRespArrayToNodeDetailsArray(
 	nodes []ybaclient.NodeDetailsResp,
-) *[]ybaclient.NodeDetails {
+) []ybaclient.NodeDetails {
 	var nodesDetails []ybaclient.NodeDetails
 	for _, v := range nodes {
 		nodeDetail := ybaclient.NodeDetails{
@@ -260,7 +256,7 @@ func BuildNodeDetailsRespArrayToNodeDetailsArray(
 		}
 		nodesDetails = append(nodesDetails, nodeDetail)
 	}
-	return &nodesDetails
+	return nodesDetails
 }
 
 // FetchRegionUUIDFromName fetches the region UUID from the region name
@@ -466,4 +462,16 @@ func FindClusterByType(clusters []ybaclient.Cluster, clusterType string) ybaclie
 	}
 	logrus.Debug("No cluster found with type: ", clusterType)
 	return ybaclient.Cluster{}
+}
+
+// IsClusterEmpty checks if a cluster is empty/not found
+func IsClusterEmpty(cluster ybaclient.Cluster) bool {
+	return cluster.GetClusterType() == ""
+}
+
+// IsDeviceInfoEmpty checks if a device info is empty/not found
+// Check multiple fields to ensure it's truly empty, as some fields like StorageType can be legitimately empty
+func IsDeviceInfoEmpty(deviceInfo ybaclient.DeviceInfo) bool {
+	return deviceInfo.NumVolumes == nil && deviceInfo.VolumeSize == nil &&
+		deviceInfo.StorageType == nil
 }

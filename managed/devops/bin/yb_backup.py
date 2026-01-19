@@ -3054,12 +3054,19 @@ class YBBackup:
             if self.is_az():
                 self.run_ssh_cmd(self.storage.clean_up_logs_cmd(), server_ip)
 
-    def get_ysql_catalog_version(self):
+    def get_ysql_catalog_version(self, ysql_keyspace):
         """
-        Get current YSQL Catalog version.
+        Get current YSQL Catalog version for the YSQL DB.
         :return: YSQL Catalog version
         """
-        output = self.run_yb_admin(['ysql_catalog_version'])
+        try:
+            output = self.run_yb_admin(['ysql_catalog_version', keyspace_name(ysql_keyspace)])
+        except Exception as ex:
+            logging.warning("Try old form of ysql_catalog_version command. "
+                            "Ignoring previous error: {}".format(ex))
+            # Compatibility mode: try old syntax of the command (without db-name argument).
+            output = self.run_yb_admin(['ysql_catalog_version'])
+
         matched = YSQL_CATALOG_VERSION_RE.match(output)
         if not matched:
             raise BackupException(
@@ -3173,7 +3180,7 @@ class YBBackup:
 
         is_ysql = self.is_ysql_keyspace()
         if is_ysql:
-            start_version = self.get_ysql_catalog_version()
+            start_version = self.get_ysql_catalog_version(self.args.keyspace[0])
 
         stored_keyspaces = self.args.keyspace
         stored_tables = self.args.table
@@ -3186,7 +3193,7 @@ class YBBackup:
             (snapshot_id, dump_files) = self.create_metadata_files()
 
             if is_ysql:
-                final_version = self.get_ysql_catalog_version()
+                final_version = self.get_ysql_catalog_version(stored_keyspaces[0])
                 logging.info('[app] YSQL catalog versions: {} - {}'.format(
                              start_version, final_version))
                 if final_version == start_version:

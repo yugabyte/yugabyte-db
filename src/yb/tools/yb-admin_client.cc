@@ -96,6 +96,7 @@
 
 #include "yb/encryption/encryption_util.h"
 
+#include "yb/util/date_time.h"
 #include "yb/util/format.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/net/net_util.h"
@@ -1528,18 +1529,13 @@ struct FollowerDetails {
     uuid(u), host_port(hp), peer_role(role) {}
 };
 
-Status ClusterAdminClient::ListTablets(
-    const YBTableName& table_name, int max_tablets, bool json, bool followers) {
-  std::vector<string> tablet_uuids, ranges;
-  std::vector<master::TabletLocationsPB> locations;
-  RETURN_NOT_OK(yb_client_->GetTablets(
-      table_name, max_tablets, &tablet_uuids, &ranges, &locations));
+namespace {
 
-  // Get table schema to access partition schema
-  client::YBSchema schema;
-  dockv::PartitionSchema partition_schema;
-  RETURN_NOT_OK(yb_client_->GetTableSchema(table_name, &schema, &partition_schema));
-
+Status DoListTablets(
+    const client::YBTableInfo& table_info,
+    const std::vector<TabletId>& tablet_uuids,
+    const std::vector<master::TabletLocationsPB>& locations,
+    bool json, bool followers) {
   rapidjson::Document document(rapidjson::kObjectType);
   rapidjson::Value json_tablets(rapidjson::kArrayType);
   CHECK(json_tablets.IsArray());
@@ -1554,12 +1550,11 @@ Status ClusterAdminClient::ListTablets(
     std::cout << std::endl;
   }
 
-  const auto common_schema = client::internal::GetSchema(schema);
-  auto getPartitionDebugString = [&partition_schema,
-                                  &common_schema](const PartitionPB& partition) -> std::string {
+  const auto table_schema = client::internal::GetSchema(table_info.schema);
+  auto stringify_partition = [&table_info, &table_schema](const PartitionPB& partition) {
     dockv::Partition dockv_partition;
     dockv::Partition::FromPB(partition, &dockv_partition);
-    return partition_schema.PartitionDebugString(dockv_partition, common_schema);
+    return table_info.partition_schema.PartitionDebugString(dockv_partition, table_schema);
   };
 
   for (size_t i = 0; i < tablet_uuids.size(); i++) {
@@ -1576,31 +1571,27 @@ Status ClusterAdminClient::ListTablets(
           leader_host_port = HostPortPBToString(replica.ts_info().private_rpc_addresses(0));
           leader_uuid = replica.ts_info().permanent_uuid();
         } else {
-          LOG(ERROR) << "Multiple leader replicas found for tablet " << tablet_uuid
-                     << ": " << locations_of_this_tablet.ShortDebugString();
+          LOG(DFATAL) << "Multiple leader replicas found for tablet " << tablet_uuid
+                      << ": " << locations_of_this_tablet.ShortDebugString();
         }
-      } else {
-        if (followers) {
-          std::string follower_host_port =
-            HostPortPBToString(replica.ts_info().private_rpc_addresses(0));
-          if (json) {
-            follower_list.push_back(
-                FollowerDetails(replica.ts_info().permanent_uuid(), follower_host_port,
-                  PeerRole_Name(replica.role())));
-          } else {
-            if (!follower_list_str.empty()) {
-              follower_list_str += ",";
-            }
-            follower_list_str += follower_host_port;
+      } else if (followers) {
+        auto follower_host_port = HostPortPBToString(replica.ts_info().private_rpc_addresses(0));
+        if (json) {
+          follower_list.push_back(
+              { replica.ts_info().permanent_uuid(),
+                follower_host_port, PeerRole_Name(replica.role()) });
+        } else {
+          if (!follower_list_str.empty()) {
+            follower_list_str += ",";
           }
+          follower_list_str += follower_host_port;
         }
       }
     }
 
     // Get partition debug string (common for both JSON and non-JSON output)
     const auto& partition = locations_of_this_tablet.partition();
-    const auto partition_debug_string = getPartitionDebugString(partition);
-
+    const auto partition_debug_string = stringify_partition(partition);
     if (json) {
       rapidjson::Value json_tablet(rapidjson::kObjectType);
       AddStringField("id", tablet_uuid, &json_tablet, &document.GetAllocator());
@@ -1609,8 +1600,8 @@ Status ClusterAdminClient::ListTablets(
       rapidjson::Value json_leader(rapidjson::kObjectType);
       AddStringField("uuid", leader_uuid, &json_leader, &document.GetAllocator());
       AddStringField("endpoint", leader_host_port, &json_leader, &document.GetAllocator());
-      AddStringField("role", PeerRole_Name(PeerRole::LEADER), &json_leader,
-          &document.GetAllocator());
+      AddStringField(
+          "role", PeerRole_Name(PeerRole::LEADER), &json_leader, &document.GetAllocator());
       json_tablet.AddMember(rapidjson::StringRef("leader"), json_leader, document.GetAllocator());
       if (followers) {
         rapidjson::Value json_followers(rapidjson::kArrayType);
@@ -1622,8 +1613,8 @@ Status ClusterAdminClient::ListTablets(
           AddStringField("role", follower.peer_role, &json_follower, &document.GetAllocator());
           json_followers.PushBack(json_follower, document.GetAllocator());
         }
-        json_tablet.AddMember(rapidjson::StringRef("followers"), json_followers,
-                              document.GetAllocator());
+        json_tablet.AddMember(
+            rapidjson::StringRef("followers"), json_followers, document.GetAllocator());
       }
       json_tablets.PushBack(json_tablet, document.GetAllocator());
     } else {
@@ -1644,6 +1635,79 @@ Status ClusterAdminClient::ListTablets(
   }
 
   return Status::OK();
+}
+
+template <typename TableIdentifier>
+struct TableTraits;
+
+template <>
+struct TableTraits<yb::client::YBTableName> {
+  using TableIdentifier = yb::client::YBTableName;
+
+  static Result<client::YBTableInfo> GetInfo(
+      client::YBClient& client, const TableIdentifier& table_name) {
+    return client.GetYBTableInfo(table_name);
+  }
+
+  static Status GetTablets(
+      client::YBClient& client,
+      const TableIdentifier& table_name,
+      const int32_t max_tablets,
+      std::vector<TabletId>& tablet_uuids,
+      std::vector<master::TabletLocationsPB>* locations) {
+    std::vector<string> ranges;
+    return client.GetTablets(table_name, max_tablets, &tablet_uuids, &ranges, locations);
+  }
+};
+
+template <>
+struct TableTraits<TableId> {
+  using TableIdentifier = TableId;
+
+  static Result<client::YBTableInfo> GetInfo(
+        client::YBClient& client, const TableIdentifier& table_id) {
+    return client.GetYBTableInfoById(table_id, /* include_hidden = */ false);
+  }
+
+  static Status GetTablets(
+      client::YBClient& client,
+      const TableIdentifier& table_id,
+      const int32_t max_tablets,
+      std::vector<TabletId>& tablet_uuids,
+      std::vector<master::TabletLocationsPB>* locations) {
+    std::vector<std::string> ranges;
+    return client.GetTabletsFromTableId(table_id, max_tablets, &tablet_uuids, &ranges, locations);
+  }
+};
+
+template <typename TableIdentifier>
+Status DoListTablets(
+    client::YBClient& client, const TableIdentifier& table_identifier,
+    int max_tablets, bool json, bool followers) {
+  // Get table info (works for both regular tables and indexes) to access partition schema.
+  const auto table_info = VERIFY_RESULT(
+      TableTraits<TableIdentifier>::GetInfo(client, table_identifier));
+
+  // Vector indexes are colocated on the indexed table tablets, so we need to list
+  // the tablets of the indexed table.
+  if (table_info.index_info && table_info.index_info->is_vector_index()) {
+    const auto indexed_table_id = table_info.index_info->indexed_table_id();
+    return DoListTablets(client, indexed_table_id, max_tablets, json, followers);
+  }
+
+  std::vector<TabletId> tablet_uuids;
+  std::vector<master::TabletLocationsPB> locations;
+  RETURN_NOT_OK(TableTraits<TableIdentifier>::GetTablets(
+      client, table_identifier, max_tablets, tablet_uuids, &locations));
+
+  return DoListTablets(table_info, tablet_uuids, locations, json, followers);
+}
+
+} // namespace
+
+Status ClusterAdminClient::ListTablets(
+    const YBTableName& table_name, int max_tablets, bool json, bool followers) {
+  return DoListTablets(*yb_client_, table_name, max_tablets, json, followers);
 }
 
 Status ClusterAdminClient::LaunchBackfillIndexForTable(const YBTableName& table_name) {
@@ -2334,9 +2398,17 @@ Status ClusterAdminClient::GetXClusterConfig() {
   return Status::OK();
 }
 
-Status ClusterAdminClient::GetYsqlCatalogVersion() {
+Status ClusterAdminClient::GetYsqlCatalogVersion(const TypedNamespaceName& ns) {
   uint64_t version = 0;
-  RETURN_NOT_OK(yb_client_->GetYsqlCatalogMasterVersion(&version));
+  if (ns.name.empty()) {
+    RETURN_NOT_OK(yb_client_->DEPRECATED_GetYsqlCatalogMasterVersion(&version));
+  } else {
+    SCHECK_EQ(
+        ns.db_type, YQL_DATABASE_PGSQL, InvalidArgument,
+        Format("Wrong database type: $0", YQLDatabase_Name(ns.db_type)));
+    RETURN_NOT_OK(yb_client_->GetYsqlDBCatalogMasterVersion(ns.name, &version));
+  }
+
   cout << "Version: "  << version << endl;
   return Status::OK();
 }
@@ -2639,9 +2711,13 @@ Result<master::GetMasterXClusterConfigResponsePB> ClusterAdminClient::GetMasterX
                    "MasterServiceImpl::GetMasterXClusterConfig call failed.");
 }
 
-Status ClusterAdminClient::SplitTablet(const TabletId& tablet_id) {
+Status ClusterAdminClient::SplitTablet(const TabletId& tablet_id, int split_factor) {
   master::SplitTabletRequestPB req;
   req.set_tablet_id(tablet_id);
+  if (split_factor > 1) {
+    req.set_split_factor(split_factor);
+  }
+
   const auto resp = VERIFY_RESULT(InvokeRpc(
       &master::MasterAdminProxy::SplitTablet, *master_admin_proxy_, req));
   if (resp.has_error()) {
@@ -4014,8 +4090,8 @@ Status ClusterAdminClient::ListCDCSDKStreams(const std::string& namespace_name) 
   if (!namespace_name.empty()) {
     cout << "Filtering out DB streams for the namespace: " << namespace_name << "\n\n";
     master::GetNamespaceInfoResponsePB namespace_info_resp;
-    RETURN_NOT_OK(yb_client_->GetNamespaceInfo(
-        "", namespace_name, YQL_DATABASE_PGSQL, &namespace_info_resp));
+    RETURN_NOT_OK(
+        yb_client_->GetNamespaceInfo(namespace_name, YQL_DATABASE_PGSQL, &namespace_info_resp));
     req.set_namespace_id(namespace_info_resp.namespace_().id());
   }
 
@@ -4142,11 +4218,11 @@ Status ClusterAdminClient::ValidateAndSyncCDCStateEntriesForCDCSDKStream(
 
   cout << "Successfully validated and synced CDC state table entries on CDC stream: " << stream_id
        << "\n";
-  if (resp.updated_tablet_entries().size() > 0) {
-    cout << "Updated checkpoint for the stream's cdc state table entries for following tablet_ids: "
-         << AsString(resp.updated_tablet_entries()) << "\n";
+  if (resp.deleted_tablet_entries().size() > 0) {
+    cout << "Deleted cdc state table entries for the stream for following tablet_ids: "
+         << AsString(resp.deleted_tablet_entries()) << "\n";
   } else {
-    cout << "No additional entries found in cdc state table that requires update. \n";
+    cout << "No additional entries found in cdc state table that requires deletion. \n";
   }
 
   return Status::OK();
@@ -4796,6 +4872,57 @@ Status ClusterAdminClient::WriteSysCatalogEntryAction(
   RETURN_NOT_OK(WriteSysCatalogEntry(operation, entry_type, entry_id, entity_data));
 
   std::cout << std::endl << "Successfully updated the YugabyteDB system catalog." << std::endl;
+  return Status::OK();
+}
+
+Status ClusterAdminClient::GetTableXorHash(const TableId& table_id, uint64_t read_ht) {
+  uint64_t xor_hash = 0;
+  uint64_t row_count = 0;
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablet_locations;
+  RETURN_NOT_OK(yb_client_->GetTabletsFromTableId(table_id, /*max_tablets=*/0, &tablet_locations));
+  std::cout << "Processing " << tablet_locations.size() << " tablets for table " << table_id
+            << std::endl;
+
+  HybridTime ht;
+  if (!read_ht) {
+    ht = HybridTime::FromMicros(DateTime::TimestampNow().ToInt64());
+  } else {
+    RETURN_NOT_OK(ht.FromUint64(read_ht));
+  }
+  std::cout << "Read HT: " << ht << std::endl;
+
+  for (const auto& location : tablet_locations) {
+    auto leader_replica = std::find_if(
+        location.replicas().begin(), location.replicas().end(),
+        [](const auto& replica) { return replica.role() == PeerRole::LEADER; });
+    SCHECK_FORMAT(
+        leader_replica != location.replicas().end(), NotFound,
+        "Leader replica not found for tablet $0", location.tablet_id());
+
+    auto addr = HostPort::FromPB(leader_replica->ts_info().private_rpc_addresses(0));
+    auto tserver_proxy =
+        std::make_unique<tserver::TabletServerServiceProxy>(proxy_cache_.get(), addr);
+    tserver::DumpTabletDataRequestPB req;
+    tserver::DumpTabletDataResponsePB resp;
+    RpcController rpc;
+    rpc.set_timeout(timeout_);
+    req.set_tablet_id(location.tablet_id());
+    req.set_read_ht(ht.ToUint64());
+    RETURN_NOT_OK(tserver_proxy->DumpTabletData(req, &resp, &rpc));
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
+    std::cout << "Tablet ID: " << location.tablet_id() << std::endl;
+    std::cout << "\tRow count: " << resp.row_count() << std::endl;
+    std::cout << "\tXOR hash: " << resp.xor_hash() << std::endl;
+    std::cout << std::endl;
+    xor_hash ^= resp.xor_hash();
+    row_count += resp.row_count();
+  }
+
+  std::cout << "Total row count: " << row_count << std::endl;
+  std::cout << "Total XOR hash: " << xor_hash << std::endl;
   return Status::OK();
 }
 

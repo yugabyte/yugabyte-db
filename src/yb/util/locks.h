@@ -33,6 +33,7 @@
 
 #include <algorithm>
 #include <mutex>
+#include <thread>
 
 #include "yb/util/logging.h"
 

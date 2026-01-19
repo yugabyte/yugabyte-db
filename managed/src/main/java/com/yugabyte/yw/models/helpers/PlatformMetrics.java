@@ -109,7 +109,7 @@ public enum PlatformMetrics {
   UNIVERSE_NODE_PROVISIONED_THROUGHPUT(
       "Provisioned throughput for the node disk", Unit.COUNT, false),
   UNIVERSE_CONNECTION_POOLING_STATUS(
-      "Flag indicating whether connection pooling is enabled on Universe", Unit.STATUS),
+      "Flag indicating whether connection pooling is enabled on Universe", Unit.STATUS, false),
   // Used for k8s universes only.
   CONTAINER_RESOURCE_REQUESTS_CPU_CORES(
       "Requested number of CPU cores for the db process", Unit.COUNT, false),
@@ -121,7 +121,8 @@ public enum PlatformMetrics {
       "Local filepath for universe DB version is missing", Unit.STATUS, false),
   // XCluster
   XCLUSTER_METRIC_PROCESSOR_STATUS("xCluster metrics processor status", Unit.STATUS),
-  XCLUSTER_TABLE_STATUS("XCluster table status", Unit.STATUS);
+  XCLUSTER_TABLE_STATUS("XCluster table status", Unit.STATUS),
+  CAPACITY_RESERVATION_ENABLED_STATUS("Capacity reservation status", Unit.STATUS);
 
   private final String help;
   private final Unit unit;

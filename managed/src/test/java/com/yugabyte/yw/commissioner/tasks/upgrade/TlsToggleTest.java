@@ -297,7 +297,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
               if (nodeToNode || clientToNode) {
                 universeDetails.allowInsecure = false;
               }
-              universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
+              universeDetails.upsertPrimaryCluster(userIntent, null, placementInfo);
               universe.setUniverseDetails(universeDetails);
             },
             false);
@@ -315,6 +315,8 @@ public class TlsToggleTest extends UpgradeTaskTest {
     taskParams.enableNodeToNodeEncrypt = nodeToNode;
     taskParams.enableClientToNodeEncrypt = clientToNode;
     taskParams.rootAndClientRootCASame = rootAndClientRootCASame;
+    taskParams.sleepAfterMasterRestartMillis = 5;
+    taskParams.sleepAfterTServerRestartMillis = 5;
     taskParams.rootCA = rootCA;
     if (clientToNode) {
       taskParams.setClientRootCA(rootAndClientRootCASame ? rootCA : clientRootCA);
@@ -358,7 +360,7 @@ public class TlsToggleTest extends UpgradeTaskTest {
         expectedNumberOfInvocations += 18;
       }
     } else {
-      if (nodeToNodeChange != 0) {
+      if (nodeToNodeChange == 1) {
         expectedPosition += 20;
         expectedNumberOfInvocations += 24;
       } else {
@@ -510,8 +512,11 @@ public class TlsToggleTest extends UpgradeTaskTest {
       assertEquals(3, certUpdateTasks.size());
     }
     // First round gflag update tasks
-    position = assertSequence(subTasksByPosition, MASTER, position, upgrade.getFirst());
-    position = assertSequence(subTasksByPosition, TSERVER, position, upgrade.getFirst());
+    // for disabling node-to-node encryption + non-rolling upgrade round1 is not required
+    if (nodeToNodeChange != -1) {
+      position = assertSequence(subTasksByPosition, MASTER, position, upgrade.getFirst());
+      position = assertSequence(subTasksByPosition, TSERVER, position, upgrade.getFirst());
+    }
     position = assertCommonTasks(subTasksByPosition, position, upgrade.getFirst(), true);
     if (nodeToNodeChange != 0) {
       // Second round gflag update tasks
@@ -525,16 +530,20 @@ public class TlsToggleTest extends UpgradeTaskTest {
     verify(mockNodeManager, times(expectedValues.getSecond())).nodeCommand(any(), any());
 
     Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
-    if (EncryptionInTransitUtil.isRootCARequired(
-        nodeToNode, clientToNode, rootAndClientRootCASame)) {
-      assertEquals(taskParams.rootCA, universe.getUniverseDetails().rootCA);
+
+    if (nodeToNode || clientToNode) {
+      if (rootAndClientRootCASame) {
+        UUID expectedRootCA = taskParams.rootCA != null ? taskParams.rootCA : clientRootCA;
+        UUID expectedClientRootCA =
+            taskParams.getClientRootCA() != null ? taskParams.getClientRootCA() : rootCA;
+        assertEquals(expectedRootCA, universe.getUniverseDetails().rootCA);
+        assertEquals(expectedClientRootCA, universe.getUniverseDetails().getClientRootCA());
+      } else {
+        assertEquals(taskParams.rootCA, universe.getUniverseDetails().rootCA);
+        assertEquals(taskParams.getClientRootCA(), universe.getUniverseDetails().getClientRootCA());
+      }
     } else {
       assertNull(universe.getUniverseDetails().rootCA);
-    }
-    if (EncryptionInTransitUtil.isClientRootCARequired(
-        nodeToNode, clientToNode, rootAndClientRootCASame)) {
-      assertEquals(taskParams.getClientRootCA(), universe.getUniverseDetails().getClientRootCA());
-    } else {
       assertNull(universe.getUniverseDetails().getClientRootCA());
     }
     assertEquals(
@@ -751,8 +760,6 @@ public class TlsToggleTest extends UpgradeTaskTest {
             UpgradeOption.NON_ROLLING_UPGRADE);
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.expectedUniverseVersion = -1;
-    taskParams.sleepAfterMasterRestartMillis = 5;
-    taskParams.sleepAfterTServerRestartMillis = 5;
     taskParams.creatingUser = defaultUser;
     super.verifyTaskRetries(
         defaultCustomer,

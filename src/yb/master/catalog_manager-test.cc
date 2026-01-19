@@ -263,7 +263,7 @@ const std::string GetSplitKey(const std::string& start_key, const std::string& e
   return split_key;
 }
 
-Result<std::array<TabletInfoPtr, kNumSplitParts>> SplitTablet(
+Result<std::array<TabletInfoPtr, kDefaultNumSplitParts>> SplitTablet(
     const TabletInfoPtr& source_tablet) {
   auto lock = source_tablet->LockForRead();
   const auto partition = lock->pb.partition();
@@ -277,7 +277,7 @@ Result<std::array<TabletInfoPtr, kNumSplitParts>> SplitTablet(
   auto child2 = VERIFY_RESULT(CreateTablet(
       source_tablet->table(), source_tablet->tablet_id() + ".2", split_key,
       partition.partition_key_end(), lock->pb.split_depth() + 1));
-  std::array<TabletInfoPtr, kNumSplitParts> result = { child1, child2 };
+  std::array<TabletInfoPtr, kDefaultNumSplitParts> result = { child1, child2 };
   return result;
 }
 

@@ -7,6 +7,8 @@ menu:
   stable_api:
     identifier: dcl_alter_default_privileges
     parent: statements
+aliases:
+  - /stable/api/ysql/commands/dcl_alter_default_privileges/
 type: docs
 ---
 

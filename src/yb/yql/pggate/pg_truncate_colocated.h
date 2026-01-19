@@ -25,11 +25,12 @@ namespace yb::pggate {
 class PgTruncateColocated final : public PgStatementLeafBase<PgDmlWrite, StmtOp::kTruncate> {
  public:
   static Result<std::unique_ptr<PgTruncateColocated>> Make(
-      const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id, bool is_region_local,
+      const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id,
+      const YbcPgTableLocalityInfo& locality_info,
       YbcPgTransactionSetting transaction_setting) {
     std::unique_ptr<PgTruncateColocated> result{new PgTruncateColocated{
         pg_session, transaction_setting}};
-    RETURN_NOT_OK(result->Prepare(table_id, is_region_local));
+    RETURN_NOT_OK(result->Prepare(table_id, locality_info));
     return result;
   }
 

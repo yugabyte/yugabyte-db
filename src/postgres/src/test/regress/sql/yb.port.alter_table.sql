@@ -996,10 +996,8 @@ vacuum analyze atacc1(a);
 vacuum analyze atacc1("........pg.dropped.1........");
 comment on column atacc1.a is 'testing';
 comment on column atacc1."........pg.dropped.1........" is 'testing';
-/* YB: set storage for column not supported #1124
 alter table atacc1 alter a set storage plain;
 alter table atacc1 alter "........pg.dropped.1........" set storage plain;
-*/ -- YB
 alter table atacc1 alter a set statistics 0;
 alter table atacc1 alter "........pg.dropped.1........" set statistics 0;
 alter table atacc1 alter a set default 3;
@@ -1486,8 +1484,7 @@ alter table recur1 add column f2 int;
 alter table recur1 alter column f2 type recur2; -- fails
 
 -- SET STORAGE may need to add a TOAST table
-/* YB: storage semantics does not match PG
-create table test_storage (a text);
+create temp table test_storage (a text); -- YB use temp tables instead of regular tables
 select reltoastrelid <> 0 as has_toast_table
   from pg_class where oid = 'test_storage'::regclass;
 alter table test_storage alter a set storage plain;
@@ -1502,9 +1499,16 @@ select reltoastrelid <> 0 as has_toast_table
 -- test that SET STORAGE propagates to index correctly
 create index test_storage_idx on test_storage (b, a);
 alter table test_storage alter column a set storage external;
+select current_setting('data_directory') || 'describe.out' as desc_output_file -- YB remove temp table schema name UUID
+\gset
+\o :desc_output_file \\ -- YB remove temp table schema name UUID
 \d+ test_storage
+\o \\ -- YB remove temp table schema name UUID
+select regexp_replace(pg_read_file(:'desc_output_file'), 'pg_temp_.{32}_\d+', 'pg_temp_x', 'g'); -- YB remove temp table schema name UUID
+\o :desc_output_file \\ -- YB remove temp table schema name UUID
 \d+ test_storage_idx
-*/ -- YB
+\o \\ -- YB remove temp table schema name UUID
+select regexp_replace(pg_read_file(:'desc_output_file'), 'pg_temp_.{32}_\d+', 'pg_temp_x', 'g'); -- YB remove temp table schema name UUID
 
 -- ALTER COLUMN TYPE with a check constraint and a child table (bug #13779)
 CREATE TABLE test_inh_check (a float check (a > 10.2), b float);

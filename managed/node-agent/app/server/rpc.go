@@ -204,6 +204,17 @@ func (server *RPCServer) Stop() {
 	server.listener = nil
 }
 
+func toGrpcErrorIfNeeded(code codes.Code, err error) error {
+	if err == nil {
+		return err
+	}
+	_, ok := status.FromError(err)
+	if ok {
+		return err
+	}
+	return status.Error(code, err.Error())
+}
+
 /* Implementation of gRPC methods start here. */
 
 // Ping handles ping request.
@@ -271,7 +282,7 @@ func (server *RPCServer) SubmitTask(
 		shellTask := task.NewShellTaskWithUser("RemoteCommand", username, cmd[0], cmd[1:])
 		err := task.GetTaskManager().Submit(ctx, taskID, shellTask)
 		if err != nil {
-			return res, status.Error(codes.Internal, err.Error())
+			return res, toGrpcErrorIfNeeded(codes.Internal, err)
 		}
 		return res, nil
 	}
@@ -282,14 +293,14 @@ func (server *RPCServer) SubmitTask(
 		err := util.ConvertType(preflightCheckInput, &preflightCheckParam)
 		if err != nil {
 			util.FileLogger().Errorf(ctx, "Error in preflight input conversion - %s", err.Error())
-			return res, status.Error(codes.InvalidArgument, err.Error())
+			return res, toGrpcErrorIfNeeded(codes.InvalidArgument, err)
 		}
 		preflightCheckHandler := task.NewPreflightCheckHandler(preflightCheckParam)
 		err = task.GetTaskManager().
 			Submit(ctx, taskID, preflightCheckHandler)
 		if err != nil {
 			util.FileLogger().Errorf(ctx, "Error in running preflight check - %s", err.Error())
-			return res, status.Error(codes.Internal, err.Error())
+			return res, toGrpcErrorIfNeeded(codes.Internal, err)
 		}
 		return res, nil
 	}
@@ -299,7 +310,7 @@ func (server *RPCServer) SubmitTask(
 		err := task.GetTaskManager().Submit(ctx, taskID, downloadSoftwareHandler)
 		if err != nil {
 			util.FileLogger().Errorf(ctx, "Error in running download software - %s", err.Error())
-			return res, status.Error(codes.Internal, err.Error())
+			return res, toGrpcErrorIfNeeded(codes.Internal, err)
 		}
 		res.TaskId = taskID
 		return res, nil
@@ -310,7 +321,7 @@ func (server *RPCServer) SubmitTask(
 		err := task.GetTaskManager().Submit(ctx, taskID, installSoftwareHandler)
 		if err != nil {
 			util.FileLogger().Errorf(ctx, "Error in running install software - %s", err.Error())
-			return res, status.Error(codes.Internal, err.Error())
+			return res, toGrpcErrorIfNeeded(codes.Internal, err)
 		}
 		res.TaskId = taskID
 		return res, nil
@@ -322,7 +333,7 @@ func (server *RPCServer) SubmitTask(
 		err := task.GetTaskManager().Submit(ctx, taskID, serverControlHandler)
 		if err != nil {
 			util.FileLogger().Errorf(ctx, "Error in running server control - %s", err.Error())
-			return res, status.Error(codes.Internal, err.Error())
+			return res, toGrpcErrorIfNeeded(codes.Internal, err)
 		}
 		res.TaskId = taskID
 		return res, nil
@@ -339,7 +350,7 @@ func (server *RPCServer) SubmitTask(
 			if err2 != nil {
 				util.FileLogger().
 					Errorf(ctx, "Error in running configure handler - %s", err2.Error())
-				return res, status.Error(codes.Internal, err2.Error())
+				return res, toGrpcErrorIfNeeded(codes.Internal, err2)
 			}
 			res.TaskId = taskID
 			return res, nil
@@ -357,7 +368,7 @@ func (server *RPCServer) SubmitTask(
 		err := task.GetTaskManager().Submit(ctx, taskID, serverGFlagsHandler)
 		if err != nil {
 			util.FileLogger().Errorf(ctx, "Error in running server gflags - %s", err.Error())
-			return res, status.Error(codes.Internal, err.Error())
+			return res, toGrpcErrorIfNeeded(codes.Internal, err)
 		}
 		res.TaskId = taskID
 		return res, nil
@@ -368,7 +379,7 @@ func (server *RPCServer) SubmitTask(
 		err := task.GetTaskManager().Submit(ctx, taskID, installYbcHandler)
 		if err != nil {
 			util.FileLogger().Errorf(ctx, "Error in running install ybc - %s", err.Error())
-			return res, status.Error(codes.Internal, err.Error())
+			return res, toGrpcErrorIfNeeded(codes.Internal, err)
 		}
 		res.TaskId = taskID
 		return res, nil
@@ -379,7 +390,7 @@ func (server *RPCServer) SubmitTask(
 		err := task.GetTaskManager().Submit(ctx, taskID, configureServerHandler)
 		if err != nil {
 			util.FileLogger().Errorf(ctx, "Error in running configure server - %s", err.Error())
-			return res, status.Error(codes.Internal, err.Error())
+			return res, toGrpcErrorIfNeeded(codes.Internal, err)
 		}
 		res.TaskId = taskID
 		return res, nil
@@ -394,7 +405,7 @@ func (server *RPCServer) SubmitTask(
 		if err != nil {
 			util.FileLogger().
 				Errorf(ctx, "Error in running install otel collector - %s", err.Error())
-			return res, status.Error(codes.Internal, err.Error())
+			return res, toGrpcErrorIfNeeded(codes.Internal, err)
 		}
 		res.TaskId = taskID
 		return res, nil
@@ -409,7 +420,7 @@ func (server *RPCServer) SubmitTask(
 		if err != nil {
 			util.FileLogger().
 				Errorf(ctx, "Error in running setup cGroup - %s", err.Error())
-			return res, status.Error(codes.Internal, err.Error())
+			return res, toGrpcErrorIfNeeded(codes.Internal, err)
 		}
 		res.TaskId = taskID
 		return res, nil
@@ -424,12 +435,12 @@ func (server *RPCServer) SubmitTask(
 		if err != nil {
 			util.FileLogger().
 				Errorf(ctx, "Error in running destroy server - %s", err.Error())
-			return res, status.Error(codes.Internal, err.Error())
+			return res, toGrpcErrorIfNeeded(codes.Internal, err)
 		}
 		res.TaskId = taskID
 		return res, nil
 	}
-	return res, status.Error(codes.Unimplemented, "Unknown task")
+	return res, toGrpcErrorIfNeeded(codes.Unimplemented, errors.New("Unknown task"))
 }
 
 // DescribeTask describes a submitted task.
@@ -475,7 +486,7 @@ func (server *RPCServer) DescribeTask(
 			return nil
 		})
 	if err != nil && err != io.EOF {
-		return status.Error(codes.Internal, err.Error())
+		return toGrpcErrorIfNeeded(codes.Internal, err)
 	}
 	return nil
 }
@@ -487,7 +498,7 @@ func (server *RPCServer) AbortTask(
 ) (*pb.AbortTaskResponse, error) {
 	taskID, err := task.GetTaskManager().Abort(ctx, req.GetTaskId())
 	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
+		return nil, toGrpcErrorIfNeeded(codes.Internal, err)
 	}
 	return &pb.AbortTaskResponse{TaskId: taskID}, nil
 }
@@ -498,7 +509,7 @@ func (server *RPCServer) UploadFile(stream pb.NodeAgent_UploadFileServer) error 
 	req, err := stream.Recv()
 	if err != nil {
 		util.FileLogger().Errorf(ctx, "Error in receiving file info - %s", err.Error())
-		return status.Error(codes.Internal, err.Error())
+		return toGrpcErrorIfNeeded(codes.Internal, err)
 	}
 	fileInfo := req.GetFileInfo()
 	filename := fileInfo.GetFilename()
@@ -506,7 +517,7 @@ func (server *RPCServer) UploadFile(stream pb.NodeAgent_UploadFileServer) error 
 	chmod := req.GetChmod()
 	userDetail, err := util.UserInfo(username)
 	if err != nil {
-		return status.Error(codes.Internal, err.Error())
+		return toGrpcErrorIfNeeded(codes.Internal, err)
 	}
 	util.FileLogger().Debugf(ctx, "Using user: %s, uid: %d, gid: %d",
 		userDetail.User.Username, userDetail.UserID, userDetail.GroupID)
@@ -524,14 +535,14 @@ func (server *RPCServer) UploadFile(stream pb.NodeAgent_UploadFileServer) error 
 		if err != nil {
 			util.FileLogger().Errorf(
 				ctx, "Error in deleting existing file %s - %s", filename, err.Error())
-			return status.Error(codes.Internal, err.Error())
+			return toGrpcErrorIfNeeded(codes.Internal, err)
 		}
 		util.FileLogger().Infof(ctx, "Setting file permission for %s to %o", filename, chmod)
 	}
 	file, err := os.OpenFile(filename, os.O_TRUNC|os.O_RDWR|os.O_CREATE, fs.FileMode(chmod))
 	if err != nil {
 		util.FileLogger().Errorf(ctx, "Error in creating file %s - %s", filename, err.Error())
-		return status.Error(codes.Internal, err.Error())
+		return toGrpcErrorIfNeeded(codes.Internal, err)
 	}
 	defer file.Close()
 	if !userDetail.IsCurrent {
@@ -539,7 +550,7 @@ func (server *RPCServer) UploadFile(stream pb.NodeAgent_UploadFileServer) error 
 		if err != nil {
 			util.FileLogger().
 				Errorf(ctx, "Error in changing file owner %s - %s", filename, err.Error())
-			return status.Error(codes.Internal, err.Error())
+			return toGrpcErrorIfNeeded(codes.Internal, err)
 		}
 	}
 	// Flushes 4K bytes by default.
@@ -553,11 +564,11 @@ func (server *RPCServer) UploadFile(stream pb.NodeAgent_UploadFileServer) error 
 			}
 			util.FileLogger().
 				Errorf(ctx, "Error in flushing data to file %s - %s", filename, err.Error())
-			return status.Error(codes.Internal, err.Error())
+			return toGrpcErrorIfNeeded(codes.Internal, err)
 		}
 		if err != nil {
 			util.FileLogger().Errorf(ctx, "Error in reading from stream - %s", err.Error())
-			return status.Error(codes.Internal, err.Error())
+			return toGrpcErrorIfNeeded(codes.Internal, err)
 		}
 		chunk := req.GetChunkData()
 		size := len(chunk)
@@ -565,14 +576,14 @@ func (server *RPCServer) UploadFile(stream pb.NodeAgent_UploadFileServer) error 
 		_, err = writer.Write(chunk)
 		if err != nil {
 			util.FileLogger().Errorf(ctx, "Error in writing to file %s - %s", filename, err.Error())
-			return status.Error(codes.Internal, err.Error())
+			return toGrpcErrorIfNeeded(codes.Internal, err)
 		}
 	}
 	res := &pb.UploadFileResponse{}
 	err = stream.SendAndClose(res)
 	if err != nil {
 		util.FileLogger().Errorf(ctx, "Error in sending response - %s", err.Error())
-		return status.Error(codes.Internal, err.Error())
+		return toGrpcErrorIfNeeded(codes.Internal, err)
 	}
 	return nil
 }
@@ -589,7 +600,7 @@ func (server *RPCServer) DownloadFile(
 		username := in.GetUser()
 		userDetail, err := util.UserInfo(username)
 		if err != nil {
-			return status.Error(codes.Internal, err.Error())
+			return toGrpcErrorIfNeeded(codes.Internal, err)
 		}
 		util.FileLogger().Debugf(ctx, "Using user: %s, uid: %d, gid: %d",
 			userDetail.User.Username, userDetail.UserID, userDetail.GroupID)
@@ -598,7 +609,7 @@ func (server *RPCServer) DownloadFile(
 	file, err := os.Open(filename)
 	if err != nil {
 		util.FileLogger().Errorf(ctx, "Error in opening file %s - %s", filename, err.Error())
-		return status.Error(codes.Internal, err.Error())
+		return toGrpcErrorIfNeeded(codes.Internal, err)
 	}
 	defer file.Close()
 	// Reads 4K bytes by default.
@@ -610,13 +621,13 @@ func (server *RPCServer) DownloadFile(
 		}
 		if err != nil {
 			util.FileLogger().Errorf(ctx, "Error in reading file %s - %s", filename, err.Error())
-			return status.Error(codes.Internal, err.Error())
+			return toGrpcErrorIfNeeded(codes.Internal, err)
 		}
 		res.ChunkData = res.ChunkData[:n]
 		err = stream.Send(res)
 		if err != nil {
 			util.FileLogger().Errorf(ctx, "Error in sending file %s - %s", filename, err.Error())
-			return status.Error(codes.Internal, err.Error())
+			return toGrpcErrorIfNeeded(codes.Internal, err)
 		}
 	}
 	return nil

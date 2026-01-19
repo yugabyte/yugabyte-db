@@ -25,8 +25,7 @@ using namespace yb::size_literals;
 
 DEPRECATE_FLAG(int32, pgsql_rpc_keepalive_time_ms, "02_2024");
 
-DEFINE_UNKNOWN_int32(pggate_rpc_timeout_secs, 60,
-             "Timeout for RPCs from pggate to YB cluster");
+DEPRECATE_FLAG(int32, pggate_rpc_timeout_secs, "11_2025");
 
 DEFINE_UNKNOWN_int32(pggate_ybclient_reactor_threads, 2,
              "The number of reactor threads to be used for processing ybclient "
@@ -34,6 +33,9 @@ DEFINE_UNKNOWN_int32(pggate_ybclient_reactor_threads, 2,
 
 DEFINE_UNKNOWN_string(pggate_master_addresses, "",
               "Addresses of the master servers to which the PostgreSQL proxy server connects.");
+
+DEFINE_NON_RUNTIME_string(pggate_cert_base_name, "",
+              "Certificate base name computed by pg_wrapper");
 
 DEFINE_NON_RUNTIME_string(pggate_tserver_shared_memory_uuid, "",
                           "UUID for shared memory allocator files. This is used by tserver when "
@@ -157,9 +159,9 @@ DEFINE_NON_RUNTIME_uint32(
     "for regex functions. ");
 
 #ifdef NDEBUG
-constexpr bool kEnableReadCommitted = false;
-#else
 constexpr bool kEnableReadCommitted = true;
+#else
+constexpr bool kEnableReadCommitted = false;
 #endif
 DEFINE_NON_RUNTIME_bool(
     yb_enable_read_committed_isolation, kEnableReadCommitted,
@@ -189,3 +191,7 @@ DEFINE_NON_RUNTIME_bool(ysql_use_optimized_relcache_update, true,
 
 DEFINE_RUNTIME_double(max_buffer_size_to_rpc_limit_ratio, 0.9, "the max buffer size is set to "
                       "max_buffer_size_to_rpc_limit_ratio*FLAGS_rpc_max_message_size.");
+
+DEFINE_RUNTIME_bool(ysql_optimize_index_row_rewrites, true, "When enabled, operations that rewrite "
+    "index rows will be optimized to reduce the number of network round trips.");
+TAG_FLAG(ysql_optimize_index_row_rewrites, advanced);

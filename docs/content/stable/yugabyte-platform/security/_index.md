@@ -4,6 +4,10 @@ headerTitle: Security
 linkTitle: Security
 description: Secure YugabyteDB Anywhere and YugabyteDB universes.
 headcontent: Secure YugabyteDB Anywhere and your YugabyteDB universes
+aliases:
+  - /stable/yugabyte-platform/security/network-security/
+  - /stable/yugabyte-platform/security/customize-ports/
+  - /stable/yugabyte-platform/security/security-checklist-yp/
 menu:
   stable_yugabyte-platform:
     parent: yugabytedb-anywhere
@@ -29,7 +33,7 @@ For information on networking and port requirements, refer to [Networking](../pr
 
 Authentication requires that all clients provide valid credentials before they can connect to a YugabyteDB universe. The authentication credentials in YugabyteDB are stored internally in the YB-Master system tables. The authentication mechanisms available to users depends on what is supported and exposed by the YSQL and YCQL APIs.
 
-You enable authentication for the YSQL and YCQL APIs when you deploy a universe. See [Enable database authorization](authorization-platform/#enable-database-authorization).
+You enable authentication for the YSQL and YCQL APIs when you deploy a universe. See [Enable database endpoints and authorization](authorization-platform/#enable-database-endpoints-and-authorization).
 
 YugabyteDB Anywhere and YugabyteDB also support LDAP and OIDC for managing authentication. See [Database authentication](authentication/).
 

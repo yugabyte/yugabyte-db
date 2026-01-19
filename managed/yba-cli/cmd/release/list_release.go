@@ -38,15 +38,14 @@ var listReleaseCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(deploymentType)) != 0 {
+		if !util.IsEmptyString(deploymentType) {
 			releasesListRequest = releasesListRequest.DeploymentType(
 				strings.ToLower(deploymentType))
 		}
 
 		rList, response, err := releasesListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Release", "List")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Release", "List")
 		}
 
 		r := make([]ybaclient.ResponseRelease, 0)
@@ -55,7 +54,7 @@ var listReleaseCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(releaseType)) != 0 {
+		if !util.IsEmptyString(releaseType) {
 			for _, v := range rList {
 				if strings.Compare(v.GetReleaseType(), strings.ToUpper(releaseType)) == 0 {
 					r = append(r, v)

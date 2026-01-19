@@ -22,7 +22,7 @@ Suppose you have a universe with a replication factor (RF) of 3, which allows a 
 
 Follow the [setup instructions](../../cluster-setup-local) to start a single region three-node universe, connect the [YB Workload Simulator](../../cluster-setup-local/#set-up-yb-workload-simulator) application, and run a read-write workload. To verify that the application is running correctly, navigate to the application UI at <http://localhost:8080/> to view the universe network diagram, as well as latency and throughput charts for the running workload.
 
-{{<note>}} The YB Workload Simulator uses the [YugabyteDB JDBC Smart Driver](/preview/develop/drivers-orms/smart-drivers/) configured with connection load balancing. It automatically balances application connections across the nodes in a universe and re-balances connections when a node fails.{{</note>}}
+{{<note>}} The YB Workload Simulator uses the [YugabyteDB JDBC Smart Driver](/stable/develop/drivers-orms/smart-drivers/) configured with connection load balancing. It automatically balances application connections across the nodes in a universe and re-balances connections when a node fails.{{</note>}}
 
 ## Observe even load across all nodes
 

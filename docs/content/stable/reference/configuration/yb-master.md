@@ -186,7 +186,7 @@ Default: `true`
 
 ##### --time_source
 
-Specifies the time source used by the database. {{<tags/feature/tp idea="1807">}} Set this to `clockbound` for configuring a highly accurate time source. Using `clockbound` requires [system configuration](../../../deploy/manual-deployment/system-config/#set-up-time-synchronization).
+Specifies the time source used by the database. {{<tags/feature/ea idea="1807">}} Set this to `clockbound` for configuring a highly accurate time source. Using `clockbound` requires [system configuration](../../../deploy/manual-deployment/system-config/#set-up-time-synchronization).
 
 Default: `""`
 
@@ -463,17 +463,19 @@ Default: `64`
 
 When the server restarts from a previous crash, if the tablet's last WAL file size is less than or equal to this threshold value, the last WAL file will be reused. Otherwise, WAL will allocate a new file at bootstrap. To disable WAL reuse, set the value to `-1`.
 
-Default: The default value in {{<release "2.18.1">}} is `-1` - feature is disabled by default. The default value starting from {{<release "2.19.1">}} is `524288` (0.5 MB) - feature is enabled by default.
+Default: The default value in [v2.18.1](/stable/releases/ybdb-releases/end-of-life/v2.18/#v2.18.1.0) is `-1` - feature is disabled by default. The default value starting from {{<release "2.19.1">}} is `524288` (0.5 MB) - feature is enabled by default.
 
-## Load balancing flags
+## Cluster balancing flags
 
-For information on YB-Master load balancing, see [Tablet assignments](../../../architecture/yb-master#tablet-assignments).
+For information on YB-Master cluster balancing, see [Cluster balancing](../../../architecture/yb-master/#cluster-balancing).
 
-For load balancing commands in yb-admin, see [Rebalancing commands (yb-admin)](../../../admin/yb-admin/#rebalancing-commands).
+For cluster balancing commands in yb-admin, see [Cluster balancing commands (yb-admin)](../../../admin/yb-admin/#cluster-balancing-commands).
+
+For detailed information on cluster balancing scenarios, monitoring, and configuration, see [Cluster balancing](../../../architecture/docdb-sharding/cluster-balancing/).
 
 ##### --enable_load_balancing
 
-Enables or disables the load balancing algorithm, to move tablets around.
+Enables or disables the cluster balancing algorithm, to move tablets around.
 
 Default: `true`
 
@@ -491,25 +493,25 @@ Default: `3000` (3 seconds)
 
 ##### --load_balancer_max_concurrent_adds
 
-Specifies the maximum number of tablet peer replicas to add in a load balancer operations.
+Specifies the maximum number of tablet peer replicas to add in a cluster balancer operations.
 
 Default: `1`
 
 ##### --load_balancer_max_concurrent_moves
 
-Specifies the maximum number of tablet leaders on tablet servers (across the cluster) to move in a load balancer operation.
+Specifies the maximum number of tablet leaders on tablet servers (across the cluster) to move in any one run of the cluster balancer.
 
 Default: `2`
 
 ##### --load_balancer_max_concurrent_moves_per_table
 
-Specifies the maximum number of tablet leaders per table to move in any one run of the load balancer. The maximum number of tablet leader moves across the cluster is still limited by the flag `load_balancer_max_concurrent_moves`. This flag is meant to prevent a single table from using all of the leader moves quota and starving other tables.
+Specifies the maximum number of tablet leaders per table to move in any one run of the cluster balancer. The maximum number of tablet leader moves across the cluster is still limited by the flag `load_balancer_max_concurrent_moves`. This flag is meant to prevent a single table from using all of the leader moves quota and starving other tables. If set to -1, the number of leader moves per table is set to the global number of leader moves (`load_balancer_max_concurrent_moves`).
 
 Default: `1`
 
 ##### --load_balancer_max_concurrent_removals
 
-Specifies the maximum number of over-replicated tablet peer removals to do in a load balancer operation.
+Specifies the maximum number of over-replicated tablet peer removals to do in any one run of the cluster balancer. A value less than 0 means no limit.
 
 Default: `1`
 
@@ -1058,19 +1060,19 @@ Default: `true`
 
 ## Auto Analyze service flags
 
-{{<tags/feature/ea idea="590">}}To learn about the Auto Analyze service, see [Auto Analyze service](../../../additional-features/auto-analyze).
+To learn about the Auto Analyze service, see [Auto Analyze service](../../../additional-features/auto-analyze).
 
-See also [Auto Analyze Service TServer flags](../yb-tserver/#auto-analyze-service-flags).
+Auto analyze is automatically enabled when the [cost-based optimizer](../../../architecture/query-layer/planner-optimizer/) (CBO) is enabled by setting the [yb_enable_cbo](../yb-tserver/#yb_enable_cbo) flag to `on`.
 
-##### ysql_enable_auto_analyze_service
+##### ysql_enable_auto_analyze_service (deprecated)
 
-{{<tags/feature/ea idea="590">}}Enable the Auto Analyze service, which automatically runs ANALYZE to update table statistics for tables that have changed more than a configurable threshold.
+Default: `false`
 
-Default: false
+Use [ysql_enable_auto_analyze](../yb-tserver/#ysql_enable_auto_analyze) on yb-tservers instead.
 
 ## Advisory lock flags
 
-To learn about advisory locks, see [Advisory locks](../../../explore/transactions/explicit-locking/#advisory-locks).
+To learn about advisory locks, see [Advisory locks](../../../architecture/transactions/concurrency-control/#advisory-locks).
 
 ##### --ysql_yb_enable_advisory_locks
 
@@ -1084,7 +1086,7 @@ Default: true
 
 ##### --allowed_preview_flags_csv
 
-Comma-separated values (CSV) formatted catalogue of [preview feature](/preview/releases/versioning/#tech-preview-tp) flag names. Preview flags represent experimental or in-development features that are not yet fully supported. Flags that are tagged as "preview" cannot be modified or configured unless they are included in this list.
+Comma-separated values (CSV) formatted catalogue of [preview feature](/stable/releases/versioning/#tech-preview-tp) flag names. Preview flags represent experimental or in-development features that are not yet fully supported. Flags that are tagged as "preview" cannot be modified or configured unless they are included in this list.
 
 By adding a flag to this list, you explicitly acknowledge and accept any potential risks or instability that may arise from modifying these preview features. This process serves as a safeguard, ensuring that you are fully aware of the experimental nature of the flags you are working with.
 

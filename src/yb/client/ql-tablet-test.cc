@@ -110,7 +110,7 @@ DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(raft_heartbeat_interval_ms);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
 DECLARE_double(leader_failure_max_missed_heartbeat_periods);
-DECLARE_string(regular_tablets_data_block_key_value_encoding);
+DECLARE_string(ycql_regular_tablets_data_block_key_value_encoding);
 DECLARE_bool(ycql_enable_packed_row);
 DECLARE_bool(ysql_enable_packed_row);
 
@@ -193,7 +193,7 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
   }
 
   std::shared_ptr<YBqlReadOp> CreateReadOp(int32_t key, const TableHandle& table) {
-    return client::CreateReadOp(key, table, kValueColumn);
+    return client::CreateReadOp(SharedThreadSafeArena(), key, table, kValueColumn);
   }
 
   void CreateTable(
@@ -796,7 +796,7 @@ TEST_F(QLTabletTest, WaitFlush) {
   // Use small memtable to induce background flush on each write.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_buffer_size) = 10;
 
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.set_table_name(kTable1Name);
   workload.set_write_timeout_millis(30000);
   workload.set_num_tablets(kNumTablets);
@@ -932,7 +932,7 @@ TEST_F(QLTabletTest, SkewedClocks) {
 
   auto delta_changers = SkewClocks(cluster_.get(), 50ms);
 
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.set_table_name(kTable1Name);
   workload.set_write_timeout_millis(30000);
   workload.set_num_tablets(12);
@@ -1187,7 +1187,7 @@ class QLTabletTestSmallMemstore : public QLTabletTest {
 TEST_F_EX(QLTabletTest, DoubleFlush, QLTabletTestSmallMemstore) {
   SetAtomicFlag(false, &FLAGS_TEST_allow_stop_writes);
 
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.set_table_name(kTable1Name);
   workload.set_write_timeout_millis(30000);
   workload.set_num_tablets(1);
@@ -1254,7 +1254,7 @@ TEST_F(QLTabletTest, OperationMemTracking) {
     // We have overhead in both log cache and tablets.
     // So if value is double tracked then sum consumption will be higher than double value size.
     ASSERT_LE(operation_tracker_consumption + log_cache_consumption, kValueSize * 2)
-        << DumpMemoryUsage();
+        << [] { DumpMemoryUsage(); return ""; }();
     if (std::chrono::steady_clock::time_point() == deadline) { // operation did not finish yet
       if (future.wait_for(kWaitInterval) == std::future_status::ready) {
         LOG(INFO) << "Value written";
@@ -1464,7 +1464,7 @@ INSTANTIATE_TEST_SUITE_P(, QLTabletRf1TestToggleEnablePackedRow, ::testing::Bool
 TEST_P(QLTabletRf1TestToggleEnablePackedRow, GetMiddleKey) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_buffer_size) = 20_KB;
 
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.set_table_name(kTable1Name);
   workload.set_write_timeout_millis(30000);
   workload.set_num_tablets(1);
@@ -1500,7 +1500,8 @@ TEST_P(QLTabletRf1TestToggleEnablePackedRow, GetMiddleKey) {
 
   ASSERT_OK(cluster_->FlushTablets());
 
-  const auto encoded_split_key = ASSERT_RESULT(tablet.GetEncodedMiddleSplitKey());
+  const auto split_keys = ASSERT_RESULT(tablet.GetSplitKeys(kDefaultNumSplitParts));
+  const auto& encoded_split_key = split_keys.encoded_keys.front();
   LOG(INFO) << "Encoded split key: " << Slice(encoded_split_key).ToDebugString();
 
   if (tablet.metadata()->partition_schema()->IsHashPartitioning()) {
@@ -1659,7 +1660,7 @@ TEST_F(QLTabletTest, SlowPrepare) {
 
   auto session = client_->NewSession(60s);
 
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.set_table_name(kTable1Name);
   workload.set_write_timeout_millis(30000 * kTimeMultiplier);
   workload.set_num_tablets(kNumTablets);
@@ -1782,7 +1783,7 @@ TEST_F_EX(QLTabletTest, DataBlockKeyValueEncoding, QLTabletRf1Test) {
       rocksdb::KeyValueEncodingFormat::kKeyDeltaEncodingThreeSharedParts;
 
   for (auto encoding : {kEncodingSharedPrefix, kEncodingThreeSharedParts}) {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_regular_tablets_data_block_key_value_encoding) =
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ycql_regular_tablets_data_block_key_value_encoding) =
         KeyValueEncodingFormatToString(encoding);
     const YBTableName table_name(
         YQL_DATABASE_CQL, "my_keyspace", Format("ql_client_test_table_$0", encoding));

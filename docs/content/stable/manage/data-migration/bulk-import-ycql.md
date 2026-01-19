@@ -5,6 +5,8 @@ linkTitle: Import data
 description: Import data from Apache Cassandra to YugabyteDB.
 tags:
   other: ycql
+aliases:
+  - /stable/manage/data-migration/ycql/bulk-import/
 menu:
   stable:
     identifier: manage-bulk-import-ycql

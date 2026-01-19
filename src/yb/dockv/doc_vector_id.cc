@@ -15,8 +15,10 @@
 
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/value.messages.h"
 
 #include "yb/dockv/primitive_value.h"
+#include "yb/dockv/value_packing_v2.h"
 #include "yb/dockv/value_type.h"
 
 namespace yb::dockv {
@@ -78,21 +80,11 @@ Result<vector_index::VectorId> EncodedDocVectorValue::DecodeId() const {
   return vector_index::FullyDecodeVectorId(id);
 }
 
-size_t DocVectorValue::EncodedSize() const {
-  return EncodedValueSize(value_) + kEncodedVectorIdSize;
-}
-
-template <typename Buffer>
-void DocVectorValue::DoEncodeTo(Buffer* buffer) const {
-  AppendEncodedValue(value_, buffer);
-
-  // Vector id is appended to the end of the main value. The last byte is mandatory to reflect
-  // whether vector id is specified or not.
-  if (PREDICT_FALSE(id_.IsNil())) {
-    buffer->push_back(0);
+template <class Buffer>
+void DocVectorValue::AppendVectorId(Buffer* buffer) const {
+  if (IsNull()) {
     return;
   }
-
   char* out = GrowAtLeast(buffer, kEncodedVectorIdSize);
 
   *out = ValueEntryTypeAsChar::kVectorId;
@@ -103,11 +95,8 @@ void DocVectorValue::DoEncodeTo(Buffer* buffer) const {
 }
 
 void DocVectorValue::EncodeTo(std::string* buffer) const {
-  DoEncodeTo(buffer);
-}
-
-void DocVectorValue::EncodeTo(ValueBuffer* buffer) const {
-  DoEncodeTo(buffer);
+  AppendEncodedValue(value_, buffer);
+  AppendVectorId(buffer);
 }
 
 Slice DocVectorValue::SanitizeValue(Slice encoded) {
@@ -118,8 +107,30 @@ std::string DocVectorValue::ToString() const {
   return YB_CLASS_TO_STRING(value, id);
 }
 
-bool IsNull(const dockv::DocVectorValue& v) {
-  return IsNull(v.value());
+bool IsNull(const DocVectorValue& v) {
+  return v.IsNull();
+}
+
+bool DocVectorValue::IsNull() const {
+  return yb::IsNull(value_);
+}
+
+size_t DocVectorValue::PackedSizeV1() const {
+  return EncodedValueSize(value_) + (IsNull() ? 0 : kEncodedVectorIdSize);
+}
+
+void DocVectorValue::PackToV1(ValueBuffer* buffer) const {
+  AppendEncodedValue(value_, buffer);
+  AppendVectorId(buffer);
+}
+
+size_t DocVectorValue::PackedSizeV2() const {
+  return PackedQLValueSizeV2(value_, DataType::VECTOR) + (IsNull() ? 0 : kEncodedVectorIdSize);
+}
+
+void DocVectorValue::PackToV2(ValueBuffer* buffer) const {
+  PackQLValueV2(value_, DataType::VECTOR, buffer);
+  AppendVectorId(buffer);
 }
 
 namespace {
@@ -172,6 +183,12 @@ Result<vector_index::VectorId> DecodeDocVectorKey(Slice* input) {
   return vector_id;
 }
 
+Result<size_t> EncodedDocVectorKeySize(Slice key) {
+  const auto key_begin = key.data();
+  RETURN_NOT_OK(dockv::DecodeDocVectorKey(&key, /* vector_id */ nullptr));
+  return key.data() - key_begin;
+}
+
 std::string DocVectorIdToString(const Uuid& vector_id) {
   return Format("VectorId($0)", vector_id.ToString());
 }
@@ -186,6 +203,13 @@ std::string DocVectorKeyToString(const vector_index::VectorId& vector_id) {
 
 std::string DocVectorKeyToString(const vector_index::VectorId& vector_id, const DocHybridTime& ht) {
   return FormatVectorKey(vector_id, ht.ToString());
+}
+
+Result<std::string> DocVectorMetaKeyToString(Slice input) {
+  auto vector_id = VERIFY_RESULT(DecodeDocVectorKey(&input));
+  auto doc_ht = VERIFY_RESULT_PREPEND(
+      DocHybridTime::DecodeFromEnd(input), DocVectorKeyToString(vector_id));
+  return DocVectorKeyToString(vector_id, doc_ht);
 }
 
 } // namespace yb::dockv

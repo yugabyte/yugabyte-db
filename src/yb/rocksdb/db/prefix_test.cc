@@ -498,9 +498,12 @@ TEST_F(PrefixTest, DynamicPrefixIterator) {
         std::string value(FLAGS_value_size, 0);
 
         perf_context.Reset();
-        StopWatchNano timer(Env::Default(), true);
-        ASSERT_OK(db->Put(write_options, key, value));
-        hist_put_time.Add(timer.ElapsedNanos());
+        uint64_t elapsed;
+        {
+          StopWatchNano timer(Env::Default(), &elapsed);
+          ASSERT_OK(db->Put(write_options, key, value));
+        }
+        hist_put_time.Add(elapsed);
         hist_put_comparison.Add(perf_context.user_key_comparison_count);
       }
     }
@@ -520,19 +523,22 @@ TEST_F(PrefixTest, DynamicPrefixIterator) {
       std::string value = "v" + ToString(0);
 
       perf_context.Reset();
-      StopWatchNano timer(Env::Default(), true);
-      auto key_prefix = options.prefix_extractor->Transform(key);
       uint64_t total_keys = 0;
-      for (iter->Seek(key);
-           ASSERT_RESULT(iter->CheckedValid()) && iter->key().starts_with(key_prefix);
-           iter->Next()) {
-        if (FLAGS_trigger_deadlock) {
-          std::cout << "Behold the deadlock!\n";
-          ASSERT_OK(db->Delete(write_options, iter->key()));
+      uint64_t elapsed;
+      {
+        StopWatchNano timer(Env::Default(), &elapsed);
+        auto key_prefix = options.prefix_extractor->Transform(key);
+        for (iter->Seek(key);
+             ASSERT_RESULT(iter->CheckedValid()) && iter->key().starts_with(key_prefix);
+             iter->Next()) {
+          if (FLAGS_trigger_deadlock) {
+            std::cout << "Behold the deadlock!\n";
+            ASSERT_OK(db->Delete(write_options, iter->key()));
+          }
+          total_keys++;
         }
-        total_keys++;
       }
-      hist_seek_time.Add(timer.ElapsedNanos());
+      hist_seek_time.Add(elapsed);
       hist_seek_comparison.Add(perf_context.user_key_comparison_count);
       ASSERT_EQ(total_keys, FLAGS_items_per_prefix - FLAGS_items_per_prefix/2);
     }
@@ -553,9 +559,12 @@ TEST_F(PrefixTest, DynamicPrefixIterator) {
       Slice key = TestKeyToSlice(test_key);
 
       perf_context.Reset();
-      StopWatchNano timer(Env::Default(), true);
-      iter->Seek(key);
-      hist_no_seek_time.Add(timer.ElapsedNanos());
+      uint64_t elapsed;
+      {
+        StopWatchNano timer(Env::Default(), &elapsed);
+        iter->Seek(key);
+      }
+      hist_no_seek_time.Add(elapsed);
       hist_no_seek_comparison.Add(perf_context.user_key_comparison_count);
       ASSERT_TRUE(!ASSERT_RESULT(iter->CheckedValid()));
     }

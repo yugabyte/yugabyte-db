@@ -4,6 +4,8 @@ headerTitle: Alerts
 linkTitle: Alerts
 description: Use alerts
 headcontent: Set alerts for activity in your account
+aliases:
+  - /stable/yugabyte-platform/alert
 menu:
   stable_yugabyte-platform:
     identifier: alert

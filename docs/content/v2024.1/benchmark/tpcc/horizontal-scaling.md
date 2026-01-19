@@ -135,7 +135,7 @@ IPS=${IPS},127.0.0.4
 
 {{</nav/panel>}}
 {{<nav/panel name="cloud">}}
-Add a node using the [Edit Infrastructure](../../../yugabyte-cloud/cloud-clusters/configure-clusters/) option and increase the node count by 1.
+Add a node using the [Edit Infrastructure](/stable/yugabyte-cloud/cloud-clusters/configure-clusters/) option and increase the node count by 1.
 {{</nav/panel>}}
 {{</nav/panels>}}
 <!-- end: nav tabs -->
@@ -192,7 +192,7 @@ IPS=${IPS},127.0.0.5
 
 {{</nav/panel>}}
 {{<nav/panel name="cloud">}}
-Add a node using the [Edit Infrastructure](../../../yugabyte-cloud/cloud-clusters/configure-clusters/) option and increase the node count by 1.
+Add a node using the [Edit Infrastructure](/stable/yugabyte-cloud/cloud-clusters/configure-clusters/) option and increase the node count by 1.
 {{</nav/panel>}}
 {{</nav/panels>}}
 <!-- end: nav tabs -->
@@ -257,7 +257,7 @@ IPS=${IPS},127.0.0.6
 
 {{</nav/panel>}}
 {{<nav/panel name="cloud">}}
-Add a node using the [Edit Infrastructure](../../../yugabyte-cloud/cloud-clusters/configure-clusters/) option and increase the node count by 1.
+Add a node using the [Edit Infrastructure](/stable/yugabyte-cloud/cloud-clusters/configure-clusters/) option and increase the node count by 1.
 {{</nav/panel>}}
 {{</nav/panels>}}
 <!-- end: nav tabs -->

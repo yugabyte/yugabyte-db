@@ -29,7 +29,6 @@
 
 #include "yb/tserver/pg_client.service.h"
 #include "yb/tserver/pg_txn_snapshot_manager.h"
-#include "yb/tserver/ysql_lease.h"
 
 namespace yb {
 
@@ -72,6 +71,7 @@ class TserverXClusterContextIf;
     (GetTablePartitionList) \
     (GetTserverCatalogMessageLists) \
     (SetTserverCatalogMessageList) \
+    (TriggerRelcacheInitConnection) \
     (GetTserverCatalogVersionInfo) \
     (GetXClusterRole) \
     (Heartbeat) \
@@ -114,13 +114,14 @@ class TserverXClusterContextIf;
     (GetTableKeyRanges) \
     /**/
 
-
 class PgClientServiceImpl : public PgClientServiceIf {
  public:
   explicit PgClientServiceImpl(
       std::reference_wrapper<const TabletServerIf> tablet_server,
       const std::shared_future<client::YBClient*>& client_future,
-      const scoped_refptr<ClockBase>& clock, TransactionPoolProvider transaction_pool_provider,
+      const scoped_refptr<ClockBase>& clock,
+      TransactionManagerProvider transaction_manager_provider,
+      TransactionPoolProvider transaction_pool_provider,
       const std::shared_ptr<MemTracker>& parent_mem_tracker,
       const scoped_refptr<MetricEntity>& entity, rpc::Messenger* messenger,
       const std::string& permanent_uuid, const server::ServerBaseOptions& tablet_server_opts,
@@ -130,15 +131,13 @@ class PgClientServiceImpl : public PgClientServiceIf {
   ~PgClientServiceImpl();
 
   void Perform(
-      const PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext context) override;
+      const PgPerformRequestMsg* req, PgPerformResponseMsg* resp,
+      rpc::RpcContext context) override;
 
   void InvalidateTableCache();
   void InvalidateTableCache(const std::unordered_map<uint32_t, uint64_t>& db_oids_updated,
                             const std::unordered_set<uint32_t>& db_oids_deleted);
   Result<PgTxnSnapshot> GetLocalPgTxnSnapshot(const PgTxnSnapshotLocalId& snapshot_id);
-
-  void ProcessLeaseUpdate(const master::RefreshYsqlLeaseInfoPB& lease_refresh_info);
-  YSQLLeaseInfo GetYSQLLeaseInfo() const;
 
   size_t TEST_SessionsCount();
 
@@ -203,6 +202,8 @@ class PgClientServiceMockImpl : public PgClientServiceIf {
       const PgPollVectorIndexReadyRequestPB& req, CoarseTimePoint deadline) override {
     return STATUS(NotSupported, "Mocking PollVectorIndexReady is not supported");
   }
+
+  void UnsetMock(const std::string& method);
 
  private:
   PgClientServiceIf* impl_;

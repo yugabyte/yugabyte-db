@@ -15,6 +15,8 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
+#include <list>
 #include <memory>
 #include <string>
 #include <utility>
@@ -30,12 +32,11 @@
 #include "yb/util/status_fwd.h"
 
 #include "yb/yql/pggate/pg_memctx.h"
-#include "yb/yql/pggate/pg_session.h"
+#include "yb/yql/pggate/pg_session_fwd.h"
 #include "yb/yql/pggate/pg_value.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
-namespace yb {
-namespace pggate {
+namespace yb::pggate {
 
 template<typename T>
 using ParamAndIsNullPair = std::pair<T, bool>;
@@ -69,17 +70,11 @@ class PgFunctionParams {
 };
 
 using PgFunctionDataProcessor = std::function<Result<std::list<dockv::PgTableRow>>(
-    const PgFunctionParams&, const Schema&, const dockv::ReaderProjection&,
-    const scoped_refptr<PgSession>&)>;
+    const PgFunctionParams&, const Schema&, const dockv::ReaderProjection&, const PgSessionPtr&)>;
 
 class PgFunction : public PgMemctx::Registrable {
  public:
-  explicit PgFunction(PgFunctionDataProcessor processor, scoped_refptr<PgSession> pg_session)
-      : schema_builder_(),
-        pg_session_(pg_session),
-        processor_(std::move(processor)) {}
-
-  virtual ~PgFunction() = default;
+  PgFunction(PgFunctionDataProcessor processor, PgSessionPtr pg_session);
 
   Status AddParam(
       const std::string& name, const YbcPgTypeEntity* type_entity, uint64_t datum, bool is_null);
@@ -98,7 +93,7 @@ class PgFunction : public PgMemctx::Registrable {
   SchemaBuilder schema_builder_;
   Schema schema_;
 
-  scoped_refptr<PgSession> pg_session_;
+  PgSessionPtr pg_session_;
   PgFunctionDataProcessor processor_;
 
   bool executed_ = false;
@@ -109,7 +104,6 @@ class PgFunction : public PgMemctx::Registrable {
 
 Result<std::list<dockv::PgTableRow>> PgLockStatusRequestor(
     const PgFunctionParams& params, const Schema& schema,
-    const dockv::ReaderProjection& reader_projection, const scoped_refptr<PgSession>& pg_session);
+    const dockv::ReaderProjection& reader_projection, const PgSessionPtr& pg_session);
 
-}  // namespace pggate
-}  // namespace yb
+}  // namespace yb::pggate

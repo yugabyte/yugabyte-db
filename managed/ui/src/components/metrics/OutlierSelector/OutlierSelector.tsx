@@ -8,7 +8,7 @@ import {
 } from '../../metrics/constants';
 import { SplitType } from '../dtos';
 import { YBControlledNumericInput } from '../../common/forms/fields';
-import treeIcon from '../../metrics/images/tree-icon.svg';
+import TreeIcon from '../../metrics/images/tree-icon.svg?img';
 import './OutlierSelector.scss';
 
 interface OutlierSelectorData {
@@ -40,7 +40,7 @@ export const OutlierSelector: FC<OutlierSelectorData> = ({
 
   return (
     <div className="outlier-container">
-      <img className="downright-arrow" src={treeIcon} alt="Indicator towards Top K outlier nodes" />
+      <img className="downright-arrow" src={TreeIcon} alt="Indicator towards Top K outlier nodes" />
       <span className="outlier-content">
         <span className="outlier-display-label">{'Display the'}</span>
         <ButtonGroup>

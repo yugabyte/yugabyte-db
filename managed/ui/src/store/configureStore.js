@@ -1,12 +1,8 @@
 // Copyright (c) YugabyteDB, Inc.
 
-if (
-  process.env.NODE_ENV === 'production' ||
-  (window.location && window.location.hostname !== 'localhost')
-) {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  module.exports = require('./configureStore.prod');
-} else {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  module.exports = require('./configureStore.dev');
-}
+const configureStoreModule =
+  import.meta.env.PROD || (window.location && window.location.hostname !== 'localhost')
+    ? await import('./configureStore.prod.js')
+    : await import('./configureStore.dev.js');
+
+export default configureStoreModule.default;

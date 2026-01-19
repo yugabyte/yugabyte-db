@@ -37,7 +37,8 @@ class PgSelectIndex : public PgSelect {
 
   static Result<std::unique_ptr<PgSelectIndex>> Make(
       const PgSession::ScopedRefPtr& pg_session, const PgObjectId& index_id,
-      bool is_region_local, std::shared_ptr<LWPgsqlReadRequestPB>&& read_req = {});
+      const YbcPgTableLocalityInfo& locality_info,
+      std::shared_ptr<LWPgsqlReadRequestPB>&& read_req = {});
 
  protected:
   explicit PgSelectIndex(const PgSession::ScopedRefPtr& pg_session);

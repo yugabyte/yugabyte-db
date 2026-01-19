@@ -19,11 +19,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.YBTestRunner;
 
+import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.text.Format;
 import java.util.List;
+import java.util.Properties;
 
 import static org.yb.AssertionWrappers.assertFalse;
 import static org.yb.AssertionWrappers.assertTrue;
@@ -124,6 +127,64 @@ public class TestPgPrepareExecute extends BasePgSQLTest {
       ResultSet rs = sel.executeQuery();
       List<Row> rows = getRowList(rs);
       assertTrue(rows.toString().contains("Seq Scan"));
+    }
+  }
+
+  private void createSimpleTempTable(Connection conn, String table) throws Exception {
+    Statement stmt = conn.createStatement();
+    stmt.execute(String.format("CREATE TEMPORARY TABLE %s (id INT PRIMARY KEY)", table));
+  }
+
+  private void createAndExecuteClientSidePrepare(Connection conn, String table) throws Exception {
+    // Test JDBC's prepared statement interface to prepare and execute INSERTs on the temp table.
+    // Invoke the statement in excess of the prepare threshold to test server-side plan caching.
+    PreparedStatement ps = conn.prepareStatement(String.format("INSERT INTO %s VALUES (?)", table));
+    for (int i = 0; i < 5; i++) {
+      ps.setInt(1, i);
+      ps.executeUpdate();
+    }
+  }
+
+  private void createAndExecuteServerSidePrepare(Connection conn, String table) throws Exception {
+    Statement stmt = conn.createStatement();
+    // Test server side PREPARE and EXECUTE commands to prepare and execute INSERTs on the
+    // temp table.
+    stmt.execute(String.format("PREPARE temp_insert (INT) AS INSERT INTO %s VALUES ($1)", table));
+    for (int i = 5; i < 10; i++) {
+      stmt.execute(String.format("EXECUTE temp_insert (%d)", i));
+    }
+  }
+
+  @Test
+  public void testPrepareExecuteOnTempTable() throws Exception {
+    final String TEMP_TABLE = "t_temp";
+    // Override the driver side prepare threshold to a fixed low value.
+    Properties props = new Properties();
+    props.setProperty("prepareThreshold", "2");
+
+    Connection extended = getConnectionBuilder()
+        .withPreferQueryMode("extended")
+        .connect(props);
+
+    Connection simple = getConnectionBuilder()
+        .withPreferQueryMode("simple")
+        .connect(props);
+
+    Connection extended_for_prepared = getConnectionBuilder()
+        .withPreferQueryMode("extendedForPrepared")
+        .connect(props);
+
+    Connection extended_cache_everything = getConnectionBuilder()
+        .withPreferQueryMode("extendedCacheEverything")
+        .connect(props);
+
+    final Connection[] connections = new Connection[] {
+        extended, simple, extended_for_prepared, extended_cache_everything};
+
+    for (Connection conn: connections) {
+      createSimpleTempTable(conn, TEMP_TABLE);
+      createAndExecuteClientSidePrepare(conn, TEMP_TABLE);
+      createAndExecuteServerSidePrepare(conn, TEMP_TABLE);
     }
   }
 

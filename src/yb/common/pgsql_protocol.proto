@@ -384,11 +384,11 @@ message PgsqlPagingStatePB {
 // The backfill spec is updated and passed around for each batch and page.
 message PgsqlBackfillSpecPB {
   // [batch] Minimum number of table rows to backfill in this batch (see issue #10649).  Stays
-  // constant for each batch and all of its pages.  -1 means no limit.
-  optional int64 limit = 1 [default = -1];
+  // constant for each batch and all of its pages.
+  optional uint64 limit = 1;
 
   // [page] Number of table rows backfilled so far in this batch.  Updated every page.
-  optional int64 count = 2 [default = 0];
+  optional uint64 count = 2 [default = 0];
 
   // [batch] The next row key to read for a backfill batch.  Defined/used similar to how it is used
   // in paging state.  All the intermediate pages of the batch have this unset.  An example is
@@ -408,6 +408,7 @@ message PgsqlBackfillSpecPB {
 enum PgsqlMetricsCaptureType {
   PGSQL_METRICS_CAPTURE_NONE = 0;
   PGSQL_METRICS_CAPTURE_ALL = 1;
+  PGSQL_METRICS_CAPTURE_PGSS = 2;
 }
 
 // TODO(get_table_key_ranges): deprecate after/if separate GetTabletKeyRanges RPC to the tablet

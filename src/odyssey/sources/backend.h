@@ -12,6 +12,7 @@ int od_backend_connect_cancel(od_server_t *, od_rule_storage_t *, kiwi_key_t *);
 
 void od_backend_close_connection(od_server_t *);
 void od_backend_close(od_server_t *);
+void od_backend_evict_server_hashmap(od_server_t *, char *, char *, uint32_t);
 void od_backend_error(od_server_t *, char *, char *, uint32_t);
 
 int od_backend_update_parameter(od_server_t *, char *, char *, uint32_t, int);

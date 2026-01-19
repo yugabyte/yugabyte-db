@@ -35,9 +35,7 @@ var listConfigurationAlertCmd = &cobra.Command{
 		var err error
 		configuration.AlertDestinations, response, err = authAPI.ListAlertDestinations().Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response, err, "Alert Policy", "List - Get Alert Destinations")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Alert Policy", "List - Get Alert Destinations")
 		}
 
 		alertConfigurationAPIFilter := ybaclient.AlertConfigurationApiFilter{}
@@ -47,7 +45,7 @@ var listConfigurationAlertCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(targetUUIDs)) > 0 {
+		if !util.IsEmptyString(targetUUIDs) {
 			alertConfigurationTarget.SetUuids(strings.Split(targetUUIDs, ","))
 			alertConfigurationTarget.SetAll(false)
 
@@ -61,16 +59,14 @@ var listConfigurationAlertCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(targetType)) > 0 {
+		if !util.IsEmptyString(targetType) {
 			alertConfigurationAPIFilter.SetTargetType(strings.ToUpper(targetType))
 			configuration.Templates, response, err = authAPI.ListAlertTemplates().
 				ListTemplatesRequest(ybaclient.AlertTemplateApiFilter{
 					TargetType: util.GetStringPointer(strings.ToUpper(targetType)),
 				}).Execute()
 			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(
-					response, err, "Alert Policy", "List - Get Alert Templates")
-				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+				util.FatalHTTPError(response, err, "Alert Policy", "List - Get Alert Templates")
 			}
 		}
 
@@ -84,7 +80,7 @@ var listConfigurationAlertCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(destinationType)) > 0 {
+		if !util.IsEmptyString(destinationType) {
 			switch destinationType {
 			case "no":
 				destinationType = util.NoDestinationAlertConfigurationDestinationType
@@ -102,16 +98,10 @@ var listConfigurationAlertCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(destinationName)) > 0 {
+		if !util.IsEmptyString(destinationName) {
 			rList, response, err := authAPI.ListAlertDestinations().Execute()
 			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(
-					response,
-					err,
-					"Alert Policy",
-					"List - List Alert Destinations",
-				)
-				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+				util.FatalHTTPError(response, err, "Alert Policy", "List - List Alert Destinations")
 			}
 			destinationUUID := ""
 			for _, r := range rList {
@@ -137,7 +127,7 @@ var listConfigurationAlertCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(name)) > 0 {
+		if !util.IsEmptyString(name) {
 			alertConfigurationAPIFilter.SetName(name)
 		}
 
@@ -145,7 +135,7 @@ var listConfigurationAlertCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(severity)) > 0 {
+		if !util.IsEmptyString(severity) {
 			alertConfigurationAPIFilter.SetSeverity(strings.ToUpper(severity))
 		}
 
@@ -153,7 +143,7 @@ var listConfigurationAlertCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(template)) > 0 {
+		if !util.IsEmptyString(template) {
 			alertConfigurationAPIFilter.SetTemplate(template)
 		}
 
@@ -161,7 +151,7 @@ var listConfigurationAlertCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(uuids)) > 0 {
+		if !util.IsEmptyString(uuids) {
 			alertConfigurationAPIFilter.SetUuids(strings.Split(uuids, ","))
 		}
 
@@ -228,8 +218,7 @@ var listConfigurationAlertCmd = &cobra.Command{
 			// Execute alert list request
 			r, response, err := alertListRequest.Execute()
 			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(response, err, "Alert Policy", "List")
-				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+				util.FatalHTTPError(response, err, "Alert Policy", "List")
 			}
 
 			// Check if alerts found

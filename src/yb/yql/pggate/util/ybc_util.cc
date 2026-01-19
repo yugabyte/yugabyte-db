@@ -48,6 +48,7 @@
 using std::string;
 DEFINE_test_flag(string, process_info_dir, string(),
                  "Directory where all postgres process will writes their PIDs and executable name");
+DECLARE_bool(enable_object_locking_for_table_locks);
 
 namespace yb::pggate {
 
@@ -168,18 +169,14 @@ class StatusWrapper {
 
 YBPgErrorCode FetchErrorCode(YbcStatus s) {
   StatusWrapper wrapper(s);
-  const uint8_t* pg_err_ptr = wrapper->ErrorData(PgsqlErrorTag::kCategory);
-  // If we have PgsqlError explicitly set, we decode it
-  YBPgErrorCode result = pg_err_ptr != nullptr ? PgsqlErrorTag::Decode(pg_err_ptr)
-                                               : YBPgErrorCode::YB_PG_INTERNAL_ERROR;
+  auto result = PgsqlError::ValueFromStatus(*wrapper).value_or(YBPgErrorCode::YB_PG_INTERNAL_ERROR);
 
   // If there's a schema version mismatch, we need to return the status code 40001.
   // When we get a schema version mismatch, DocDB will set the PgsqlResponsePB::RequestStatus
   // to PGSQL_STATUS_SCHEMA_VERSION_MISMATCH. Note that this is a separate field from the above
   // PgsqlErrorTag.
-  const uint8_t* pgsql_err_ptr = wrapper->ErrorData(PgsqlRequestStatusTag::kCategory);
-  if (PgsqlRequestStatusTag::Decode(pgsql_err_ptr) ==
-      PgsqlResponsePB::PGSQL_STATUS_SCHEMA_VERSION_MISMATCH) {
+  if (const auto pgsql_err = PgsqlRequestStatus::ValueFromStatus(*wrapper);
+      pgsql_err && *pgsql_err == PgsqlResponsePB::PGSQL_STATUS_SCHEMA_VERSION_MISMATCH) {
     LOG_IF(DFATAL, result != YBPgErrorCode::YB_PG_INTERNAL_ERROR)
         << "Expected schema version mismatch error to be YB_PG_INTERNAL_ERROR, got "
         << ToString(result);
@@ -189,36 +186,33 @@ YBPgErrorCode FetchErrorCode(YbcStatus s) {
   // If the error is the default generic YB_PG_INTERNAL_ERROR (as we also set in AsyncRpc::Failed)
   // then we try to deduce it from a transaction error.
   if (result == YBPgErrorCode::YB_PG_INTERNAL_ERROR) {
-    const uint8_t* txn_err_ptr = wrapper->ErrorData(TransactionErrorTag::kCategory);
-    if (txn_err_ptr != nullptr) {
-      switch (TransactionErrorTag::Decode(txn_err_ptr)) {
-        case TransactionErrorCode::kNone:
-          break;
-        case TransactionErrorCode::kAborted:
-          result = YBPgErrorCode::YB_PG_YB_TXN_ABORTED;
-          break;
-        case TransactionErrorCode::kReadRestartRequired:
-          result = YBPgErrorCode::YB_PG_YB_RESTART_READ;
-          break;
-        case TransactionErrorCode::kConflict:
-          result = YBPgErrorCode::YB_PG_YB_TXN_CONFLICT;
-          break;
-        case TransactionErrorCode::kSnapshotTooOld:
-          result = YBPgErrorCode::YB_PG_SNAPSHOT_TOO_OLD;
-          break;
-        case TransactionErrorCode::kDeadlock:
-          result = YBPgErrorCode::YB_PG_YB_DEADLOCK;
-          break;
-        case TransactionErrorCode::kSkipLocking:
-          result = YBPgErrorCode::YB_PG_YB_TXN_SKIP_LOCKING;
-          break;
-        case TransactionErrorCode::kLockNotFound:
-          result = YBPgErrorCode::YB_PG_YB_TXN_LOCK_NOT_FOUND;
-          break;
-        default:
-          result = YBPgErrorCode::YB_PG_YB_TXN_ERROR;
-          break;
-      }
+    switch (TransactionError::ValueFromStatus(*wrapper).value_or(TransactionErrorCode::kNone)) {
+      case TransactionErrorCode::kNone:
+        break;
+      case TransactionErrorCode::kAborted:
+        result = YBPgErrorCode::YB_PG_YB_TXN_ABORTED;
+        break;
+      case TransactionErrorCode::kReadRestartRequired:
+        result = YBPgErrorCode::YB_PG_YB_RESTART_READ;
+        break;
+      case TransactionErrorCode::kConflict:
+        result = YBPgErrorCode::YB_PG_YB_TXN_CONFLICT;
+        break;
+      case TransactionErrorCode::kSnapshotTooOld:
+        result = YBPgErrorCode::YB_PG_SNAPSHOT_TOO_OLD;
+        break;
+      case TransactionErrorCode::kDeadlock:
+        result = YBPgErrorCode::YB_PG_YB_DEADLOCK;
+        break;
+      case TransactionErrorCode::kSkipLocking:
+        result = YBPgErrorCode::YB_PG_YB_TXN_SKIP_LOCKING;
+        break;
+      case TransactionErrorCode::kLockNotFound:
+        result = YBPgErrorCode::YB_PG_YB_TXN_LOCK_NOT_FOUND;
+        break;
+      default:
+        result = YBPgErrorCode::YB_PG_YB_TXN_ERROR;
+        break;
     }
   }
   return result;
@@ -253,10 +247,6 @@ bool YBCStatusIsUnknownSession(YbcStatus s) {
   // However, since we are unable to distinguish between the two, we handle both cases identically.
   return StatusWrapper(s)->IsInvalidArgument() &&
          FetchErrorCode(s) == YBPgErrorCode::YB_PG_CONNECTION_DOES_NOT_EXIST;
-}
-
-bool YBCStatusIsDuplicateKey(YbcStatus s) {
-  return StatusWrapper(s)->IsAlreadyPresent();
 }
 
 bool YBCStatusIsSnapshotTooOld(YbcStatus s) {
@@ -296,9 +286,8 @@ int YBCStatusLineNumber(YbcStatus s) {
 }
 
 const char* YBCStatusFuncname(YbcStatus s) {
-  const std::string funcname_str =
-    FuncNameTag::Decode(StatusWrapper(s)->ErrorData(FuncNameTag::kCategory));
-  return funcname_str.empty() ? nullptr : YBCPAllocStdString(funcname_str);
+  const auto funcname = FuncName::ValueFromStatus(*StatusWrapper(s));
+  return funcname ? YBCPAllocStdString(*funcname) : nullptr;
 }
 
 size_t YBCStatusMessageLen(YbcStatus s) {
@@ -318,20 +307,19 @@ const char* YBCMessageAsCString(YbcStatus s) {
 }
 
 unsigned int YBCStatusRelationOid(YbcStatus s) {
-  return RelationOidTag::Decode(StatusWrapper(s)->ErrorData(RelationOidTag::kCategory));
+  return RelationOid(*StatusWrapper(s)).value();
 }
 
 const char** YBCStatusArguments(YbcStatus s, size_t* nargs) {
   const char** result = nullptr;
-  const std::vector<std::string>& args = PgsqlMessageArgsTag::Decode(
-      StatusWrapper(s)->ErrorData(PgsqlMessageArgsTag::kCategory));
+  const auto args = PgsqlMessageArgs::ValueFromStatus(*StatusWrapper(s));
   if (nargs) {
-    *nargs = args.size();
+    *nargs = args ? args->size() : 0;
   }
-  if (!args.empty()) {
+  if (args && !args->empty()) {
     size_t i = 0;
-    result = static_cast<const char**>(YBCPAlloc(args.size() * sizeof(const char*)));
-    for (const std::string& arg : args) {
+    result = static_cast<const char**>(YBCPAlloc(args->size() * sizeof(const char*)));
+    for (const auto& arg : *args) {
       result[i++] = YBCPAllocStdString(arg);
     }
   }
@@ -340,10 +328,22 @@ const char** YBCStatusArguments(YbcStatus s, size_t* nargs) {
 
 YbcStatus YBCInit(const char* argv0,
                   YbcPallocFn palloc_fn,
-                  YbcCstringToTextWithLenFn cstring_to_text_with_len_fn) {
+                  YbcCstringToTextWithLenFn cstring_to_text_with_len_fn,
+                  YbcSwitchMemoryContextFn switch_mem_context_fn,
+                  YbcCreateMemoryContextFn create_mem_context_fn,
+                  YbcDeleteMemoryContextFn delete_mem_context_fn) {
   YBCSetPAllocFn(palloc_fn);
   if (cstring_to_text_with_len_fn) {
     YBCSetCStringToTextWithLenFn(cstring_to_text_with_len_fn);
+  }
+  if (switch_mem_context_fn) {
+    YBCSetSwitchMemoryContextFn(switch_mem_context_fn);
+  }
+  if (create_mem_context_fn) {
+    YBCSetCreateMemoryContextFn(create_mem_context_fn);
+  }
+  if (delete_mem_context_fn) {
+    YBCSetDeleteMemoryContextFn(delete_mem_context_fn);
   }
   auto status = InitGFlags(argv0);
   if (status.ok() && !FLAGS_TEST_process_info_dir.empty()) {
@@ -895,6 +895,36 @@ uint16_t YBCDecodeMultiColumnHashLeftBound(const char* partition_key, size_t key
 uint16_t YBCDecodeMultiColumnHashRightBound(const char* partition_key, size_t key_len) {
   yb::Slice slice(partition_key, key_len);
   return dockv::PartitionSchema::DecodeMultiColumnHashRightBound(slice);
+}
+
+bool
+YBCIsLegacyModeForCatalogOps() {
+  //
+  // If object locking is enabled:
+  //
+  // (1) Catalog writes will use the CatalogSnapshot's read time serial number instead of the
+  //     TransactionSnapshot's read time serial number (which is the legacy pre-object locking
+  //     behavior). This is required to allow concurrent DDLs by not causing write-write conflicts
+  //     based on overlapping [transaction read time, commit time] windows. The serialization of
+  //     catalog modifications via DDLs is now handled by object locks. Catalog writes were using
+  //     the kTransactional session type pre-object locking and that stays the same.
+  //
+  // (2) Catalog reads will always use the kTransactional session type. This is done so that they
+  //     can also use the CatalogSnapshot's read time serial number to read the latest data (and)
+  //     see the catalog data modified by the current active transaction (this is required because
+  //     transactional DDL is enabled if object locking is enabled).
+  //
+  //     In the pre-object locking mode, catalog reads for DML transactions go via the kCatalog
+  //     session type which has a single catalog_read_time_ (see pg_session.h). Catalog reads
+  //     executed as part of a DDL transaction (or) after a DDL in a DDL-DML transaction block
+  //     (i.e., with transactional DDL enabled) go via the kTransactional session type and would use
+  //     the TransactionSnapshot's read time serial number.
+  //
+  return !YBCIsObjectLockingEnabled() || yb_fallback_to_legacy_catalog_read_time;
+}
+
+bool YBCIsObjectLockingEnabled() {
+  return FLAGS_enable_object_locking_for_table_locks && enable_object_locking_infra;
 }
 
 } // extern "C"

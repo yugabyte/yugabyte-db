@@ -157,6 +157,9 @@ service PgClientService {
 
   rpc SetTserverCatalogMessageList(PgSetTserverCatalogMessageListRequestPB)
       returns (PgSetTserverCatalogMessageListResponsePB);
+
+  rpc TriggerRelcacheInitConnection(PgTriggerRelcacheInitConnectionRequestPB)
+      returns (PgTriggerRelcacheInitConnectionResponsePB);
 }
 
 // TODO: Remove the OptionalUint32PB helper message after updating protobuf generator to allow
@@ -631,7 +634,9 @@ message PgGetIndexBackfillProgressResponsePB {
   AppStatusPB status = 1;
   // The ordering of the indexes' results here is expected to be the same as the ordering in the
   // corresponding request PB (PgGetIndexBackfillProgressRequestPB).
-  repeated uint64 rows_processed_entries = 2;
+  repeated uint64 num_rows_read_from_table_for_backfill = 2;
+
+  repeated double num_rows_backfilled_in_index = 3;
 }
 
 message PgListLiveTabletServersResponsePB {
@@ -661,6 +666,7 @@ message PgReplicationSlotInfoPB {
   PGReplicationSlotLsnType yb_lsn_type = 12;
   uint64 active_pid = 13;
   bool expired = 14;
+  bool allow_tables_without_primary_key = 15;
 }
 
 message PgListReplicationSlotsResponsePB {
@@ -767,6 +773,8 @@ message PgPerformOptionsPB {
   reserved 23; // ASH metadata is now passed in RequestHeader PB
 
   bool force_global_transaction = 13;
+  bool force_tablespace_locality = 29;
+  uint32 force_tablespace_locality_oid = 30;
   bool is_all_region_local = 28;
 
   // When set,
@@ -776,6 +784,10 @@ message PgPerformOptionsPB {
   bool clamp_uncertainty_window = 24;
 
   bool xcluster_target_ddl_bypass = 26;
+
+  uint32 xrepl_origin_id = 31;
+
+  bool is_using_table_locks = 32;
 }
 
 message PgPerformRequestPB {
@@ -1298,6 +1310,7 @@ message PgAcquireObjectLockRequestPB {
     uint64 relation_oid = 2;
     uint64 object_oid = 3;
     uint64 object_sub_oid = 4;
+    uint32 tablespace_oid = 5;
   }
   LockOId lock_oid = 3;
 
@@ -1341,3 +1354,9 @@ message PgClearExportedTxnSnapshotsRequestPB {
 }
 
 message PgClearExportedTxnSnapshotsResponsePB { AppStatusPB status = 1; }
+
+message PgTriggerRelcacheInitConnectionRequestPB {
+  string database_name = 1;
+}
+
+message PgTriggerRelcacheInitConnectionResponsePB { AppStatusPB status = 1; }

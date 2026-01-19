@@ -27,9 +27,9 @@ import {
 } from '@material-ui/core';
 import { YBCheckbox } from '../../../../../../redesign/components';
 import { YBSearchInput } from '../../../../../common/forms/fields/YBSearchInput';
-import Checked from '../../../../../../redesign/assets/checkbox/Checked.svg';
-import UnChecked from '../../../../../../redesign/assets/checkbox/UnChecked.svg';
-import Intermediate from '../../../../../../redesign/assets/checkbox/Intermediate.svg';
+import Checked from '../../../../../../redesign/assets/checkbox/Checked.svg?img';
+import UnChecked from '../../../../../../redesign/assets/checkbox/UnChecked.svg?img';
+import Intermediate from '../../../../../../redesign/assets/checkbox/Intermediate.svg?img';
 
 type YBTableProps<T> = {
   table: T[];
@@ -44,7 +44,7 @@ type YBTableProps<T> = {
   tableCountInfo?: (selectedRows: T[]) => React.ReactChild;
   customComponents?: () => React.ReactChild;
   overrideStyles?: {
-    actionsClassname?: string
+    actionsClassname?: string;
   };
   disableSelection?: boolean;
 };
@@ -117,7 +117,20 @@ const getDefaultValues = <T,>(allValues: T[], selected: T[]) => {
 };
 
 export const YBTable = <T,>(props: YBTableProps<T>) => {
-  const { tableHeader, table, name, setValue, defaultValues, searchPlaceholder, renderBodyFn, searchFn, tableCountInfo, customComponents, overrideStyles, disableSelection = false } = props;
+  const {
+    tableHeader,
+    table,
+    name,
+    setValue,
+    defaultValues,
+    searchPlaceholder,
+    renderBodyFn,
+    searchFn,
+    tableCountInfo,
+    customComponents,
+    overrideStyles,
+    disableSelection = false
+  } = props;
 
   const [selected, { set, setAll, get, remove }] = useMap<typeof table>(
     (getDefaultValues(table, defaultValues) as unknown) as T[]
@@ -252,16 +265,13 @@ export const YBTable = <T,>(props: YBTableProps<T>) => {
                 </components.Control>
               )
             }}
-
             styles={{
-              control: styles => ({ ...styles, borderRadius: '8px', height: '42px' })
+              control: (styles) => ({ ...styles, borderRadius: '8px', height: '42px' })
             }}
           />
         </div>
         <div className={classes.tablesCount}>
-          <Typography variant="body2">
-            {tableCountInfo?.(values(selected))}
-          </Typography>
+          <Typography variant="body2">{tableCountInfo?.(values(selected))}</Typography>
         </div>
       </Box>
       {customComponents?.()}

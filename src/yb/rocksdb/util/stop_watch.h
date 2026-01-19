@@ -21,6 +21,8 @@
 
 #include <string.h>
 
+#include "yb/gutil/sysinfo.h"
+
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/statistics.h"
 
@@ -28,69 +30,72 @@ namespace rocksdb {
 // Auto-scoped.
 // Records the measure time into the corresponding histogram if statistics
 // is not nullptr. It is also saved into *elapsed if the pointer is not nullptr.
+template <TimeResolution kTimeResolution>
 class StopWatch {
  public:
-  StopWatch(Env * const env, Statistics* statistics,
-            const uint32_t hist_type,
-            uint64_t* elapsed = nullptr)
-    : env_(env),
-      statistics_(statistics),
-      hist_type_(hist_type),
-      elapsed_(elapsed),
-      stats_enabled_(statistics && statistics->HistEnabledForType(hist_type)),
-      start_time_((stats_enabled_ || elapsed != nullptr) ?
-                  env->NowMicros() : 0) {
+  StopWatch(Env* const env, uint64_t* elapsed)
+      : env_(env),
+        statistics_(nullptr),
+        hist_type_(HISTOGRAM_ENUM_MAX),
+        ticker_(TICKER_ENUM_MAX),
+        elapsed_(elapsed),
+        stats_enabled_(false),
+        start_time_(elapsed_ != nullptr ? env->NowCpuCycles() : 0) {}
+
+  StopWatch(
+      Env* const env, Statistics* statistics, const Histograms hist_type,
+      uint64_t* elapsed = nullptr)
+      : env_(env),
+        statistics_(statistics),
+        hist_type_(hist_type),
+        ticker_(TICKER_ENUM_MAX),
+        elapsed_(elapsed),
+        stats_enabled_(statistics && statistics->HistEnabledForType(hist_type)),
+        start_time_((stats_enabled_ || elapsed_ != nullptr) ? env->NowCpuCycles() : 0) {}
+
+  StopWatch(
+      Env* const env, Statistics* statistics, const Tickers ticker, uint64_t* elapsed = nullptr)
+      : env_(env),
+        statistics_(statistics),
+        hist_type_(HISTOGRAM_ENUM_MAX),
+        ticker_(ticker),
+        elapsed_(elapsed),
+        stats_enabled_(statistics),
+        start_time_((stats_enabled_ || elapsed_ != nullptr) ? env->NowCpuCycles() : 0) {
   }
 
-
   ~StopWatch() {
+    if (!elapsed_ && !stats_enabled_) {
+      return;
+    }
+    // Multiply first and then divide to minimize rounding error (important for some tests), use
+    // double to avoid overflow.
+    const auto elapsed = 1.0 * (env_->NowCpuCycles() - start_time_) *
+                         UnitsInSecond(kTimeResolution) / base::CyclesPerSecond();
     if (elapsed_) {
-      *elapsed_ = env_->NowMicros() - start_time_;
+      *elapsed_ = elapsed;
     }
     if (stats_enabled_) {
-      statistics_->measureTime(hist_type_,
-          (elapsed_ != nullptr) ? *elapsed_ :
-                                  (env_->NowMicros() - start_time_));
+      if (hist_type_ < HISTOGRAM_ENUM_MAX) {
+        statistics_->measureTime(hist_type_, elapsed);
+      }
+      if (ticker_ < TICKER_ENUM_MAX) {
+        statistics_->recordTick(ticker_, elapsed);
+      }
     }
   }
 
  private:
   Env* const env_;
   Statistics* statistics_;
-  const uint32_t hist_type_;
+  const Histograms hist_type_;
+  const Tickers ticker_;
   uint64_t* elapsed_;
   bool stats_enabled_;
-  const uint64_t start_time_;
+  uint64_t start_time_;
 };
 
-// a nano second precision stopwatch
-class StopWatchNano {
- public:
-  explicit StopWatchNano(Env* const env, bool auto_start = false)
-      : env_(env), start_(0) {
-    if (auto_start) {
-      Start();
-    }
-  }
-
-  void Start() { start_ = env_->NowNanos(); }
-
-  uint64_t ElapsedNanos(bool reset = false) {
-    auto now = env_->NowNanos();
-    auto elapsed = now - start_;
-    if (reset) {
-      start_ = now;
-    }
-    return elapsed;
-  }
-
-  uint64_t ElapsedNanosSafe(bool reset = false) {
-    return (env_ != nullptr) ? ElapsedNanos(reset) : 0U;
-  }
-
- private:
-  Env* const env_;
-  uint64_t start_;
-};
+using StopWatchMicro = StopWatch<TimeResolution::kMicros>;
+using StopWatchNano = StopWatch<TimeResolution::kNanos>;
 
 } // namespace rocksdb

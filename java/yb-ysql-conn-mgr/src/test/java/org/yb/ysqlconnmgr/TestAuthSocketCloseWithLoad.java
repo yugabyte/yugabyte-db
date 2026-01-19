@@ -79,6 +79,11 @@ public class TestAuthSocketCloseWithLoad extends BaseYsqlConnMgr {
     builder.addCommonTServerFlags(additionalTserverFlags);
   }
 
+  @Override
+  public ConnectionBuilder connectionBuilderForVerification(ConnectionBuilder builder) {
+    return builder.withUser("yugabyte").withPassword("yugabyte");
+  }
+
   @Test
   public void testAuthSocketCloseWithLoad() throws Exception {
     setupTestData();

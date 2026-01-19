@@ -33,6 +33,7 @@ DECLARE_bool(use_tablespace_based_transaction_placement);
 DECLARE_bool(transaction_tables_use_preferred_zones);
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
+DECLARE_bool(TEST_perform_ignore_pg_is_region_local);
 
 using namespace std::literals;
 
@@ -50,6 +51,11 @@ const auto kWaitLeaderDistributionTimeout = MonoDelta::FromMilliseconds(270000);
 
 class GeoTransactionsTest : public GeoTransactionsTestBase {
  protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_perform_ignore_pg_is_region_local) = true;
+    GeoTransactionsTestBase::SetUp();
+  }
+
   void SetupTablesWithAlter(size_t tables_per_region) {
     // Create tablespaces and tables.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = true;
@@ -64,7 +70,7 @@ class GeoTransactionsTest : public GeoTransactionsTestBase {
             "num_replicas": 1,
             "placement_blocks":[{
               "cloud": "cloud0",
-              "region": "rack$0",
+              "region": "region$0",
               "zone": "zone",
               "min_num_replicas": 1
             }]
@@ -93,7 +99,8 @@ class GeoTransactionsTest : public GeoTransactionsTestBase {
   void CheckSuccess(auto&& tablespace_or_region, std::optional<std::string_view> local_table,
                     std::string_view target_table,
                     SetGlobalTransactionsGFlag set_global_transactions_gflag,
-                    SetGlobalTransactionSessionVar session_var, ExpectedLocality expected) {
+                    SetGlobalTransactionSessionVar session_var, ExpectedLocality expected,
+                    const std::function<Status(pgwrapper::PGConn&)>& init_conn = {}) {
     auto expected_status_tablets = ASSERT_RESULT(GetStatusTablets(tablespace_or_region, expected));
     if (expected != ExpectedLocality::kNoCheck) {
       ASSERT_FALSE(expected_status_tablets.empty());
@@ -102,8 +109,15 @@ class GeoTransactionsTest : public GeoTransactionsTestBase {
         (set_global_transactions_gflag == SetGlobalTransactionsGFlag::kTrue);
 
     auto conn = ASSERT_RESULT(Connect());
+    if (init_conn) {
+      ASSERT_OK(init_conn(conn));
+    }
     auto insert_value = NextInsertValue();
     ASSERT_OK(conn.ExecuteFormat("SET force_global_transaction = $0", ToString(session_var)));
+    if (local_table) {
+      ASSERT_OK(WarmupTablespaceCache(conn, *local_table));
+    }
+    ASSERT_OK(WarmupTablespaceCache(conn, target_table));
     ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
     if (local_table) {
       ASSERT_OK(conn.ExecuteFormat(
@@ -159,11 +173,19 @@ class GeoTransactionsTest : public GeoTransactionsTestBase {
 
   void CheckAbort(std::optional<std::string_view> local_table, std::string_view target_table,
                   SetGlobalTransactionsGFlag set_global_transactions_gflag,
-                  SetGlobalTransactionSessionVar session_var, size_t num_aborts) {
+                  SetGlobalTransactionSessionVar session_var, size_t num_aborts,
+                  const std::function<Status(pgwrapper::PGConn&)>& init_conn = {}) {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = set_global_transactions_gflag;
 
     auto conn = ASSERT_RESULT(Connect());
+    if (init_conn) {
+      ASSERT_OK(init_conn(conn));
+    }
     ASSERT_OK(conn.ExecuteFormat("SET force_global_transaction = $0", ToString(session_var)));
+    if (local_table) {
+      ASSERT_OK(WarmupTablespaceCache(conn, *local_table));
+    }
+    ASSERT_OK(WarmupTablespaceCache(conn, target_table));
     for (size_t i = 0; i < num_aborts; ++i) {
       ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
       auto insert_value = NextInsertValue();
@@ -276,6 +298,33 @@ class GeoTransactionsTest : public GeoTransactionsTestBase {
     return next_insert_value_++;
   }
 
+  Status EnableAutoCreateTransactionTables() {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_create_local_transaction_tables) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = true;
+    auto current_version = GetCurrentVersion();
+    auto conn = VERIFY_RESULT(Connect());
+    int64_t num_tablespaces = VERIFY_RESULT(conn.FetchRow<int64_t>(Format(
+          "SELECT COUNT(*) FROM pg_catalog.pg_tablespace WHERE oid >= $0",
+          kPgFirstNormalObjectId)));
+    // Create a dummy tablespace to force status tablet version bump, after which we know
+    // transaction tables for older tablespaces have also been created.
+    RETURN_NOT_OK(conn.Execute(R"#(
+        CREATE TABLESPACE __dummy_tablespace WITH (replica_placement='{
+          "num_replicas": 1,
+          "placement_blocks": [
+            {
+              "cloud": "cloud0",
+              "region": "*",
+              "zone": "*",
+              "min_num_replicas": 1
+            }
+          ]
+        }')
+    )#"));
+    WaitForStatusTabletsVersion(current_version + num_tablespaces);
+    return Status::OK();
+  }
+
   uint64_t next_insert_value_ = 0;
 };
 
@@ -288,10 +337,7 @@ class GeoTransactionsTestTableLocksDisabled : public GeoTransactionsTest {
   }
 };
 
-// Fails when table-level locks are enabled due to #28317.
-TEST_F_EX(
-    GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionTabletSelection),
-    GeoTransactionsTestTableLocksDisabled) {
+TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionTabletSelection)) {
   constexpr int tables_per_region = 1;
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_create_local_transaction_tables) = false;
@@ -352,7 +398,7 @@ TEST_F_EX(
       kOtherRegion, SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
       InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
 
-  CreateTransactionTable(kLocalRegion);
+  ASSERT_OK(EnableAutoCreateTransactionTables());
 
   // Local transaction tablets exist in region.
   CheckSuccess(
@@ -469,10 +515,7 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestMultiRegionTransactionTa
       InsertToLocalFirst::kTrue, ExpectedLocality::kGlobal);
 }
 
-// Fails when table-level locks are enabled due to #28317.
-TEST_F_EX(
-    GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestAutomaticLocalTransactionTableCreation),
-    GeoTransactionsTestTableLocksDisabled) {
+TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestAutomaticLocalTransactionTableCreation)) {
   constexpr int tables_per_region = 1;
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_create_local_transaction_tables) = true;
@@ -572,12 +615,11 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionTableDeletion
   constexpr int tables_per_region = 2;
   const auto long_txn_time = 10000ms;
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_create_local_transaction_tables) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_promote_nonlocal_transactions_to_global) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_ts_rpc_timeout_ms) = 5000;
   SetupTablesAndTablespaces(tables_per_region);
 
-  CreateTransactionTable(kLocalRegion);
+  const auto local_tablespace = Format("tablespace$0", kLocalRegion);
 
   CheckSuccess(
       kLocalRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
@@ -592,8 +634,11 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionTableDeletion
     connections.push_back(std::move(conn));
   }
 
+  // Prevent transaction table from getting recreated.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_create_local_transaction_tables) = false;
+
   // This deletion should not go through until the long-running transactions end.
-  StartDeleteTransactionTable(kLocalRegion);
+  StartDeleteTransactionTable(local_tablespace);
 
   // New transactions should not use the table being deleted, even though it has not finished
   // deleting yet.
@@ -610,11 +655,13 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionTableDeletion
   ASSERT_OK(connections[0].CommitTransaction());
   ASSERT_OK(connections[1].RollbackTransaction());
 
-  WaitForDeleteTransactionTableToFinish(kLocalRegion);
+  WaitForDeleteTransactionTableToFinish(local_tablespace);
 
   // Restart to force participants to query transaction status for aborted transaction.
   ASSERT_OK(ShutdownTabletServersByRegion(kLocalRegion));
   ASSERT_OK(StartTabletServersByRegion(kLocalRegion));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = true;
 
   // Check data.
   auto conn = ASSERT_RESULT(Connect());
@@ -642,7 +689,7 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestPreferredZone)) {
     placement_blocks1 += strings::Substitute(
         R"#($0{
               "cloud": "cloud0",
-              "region": "rack$1",
+              "region": "region$1",
               "zone": "zone",
               "min_num_replicas": 1,
               "leader_preference": $1
@@ -663,7 +710,7 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestPreferredZone)) {
     placement_blocks2 += strings::Substitute(
         R"#($0{
               "cloud": "cloud0",
-              "region": "rack$1",
+              "region": "region$1",
               "zone": "zone",
               "min_num_replicas": 1,
               "leader_preference": $2
@@ -816,8 +863,7 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestPromotionAfterTablespace
     }
   }
 
-  CreateTransactionTable(kOtherRegion);
-  CreateTransactionTable(kLocalRegion);
+  ASSERT_OK(EnableAutoCreateTransactionTables());
 
   // Promotion now allowed. We do not check the status tablet for the promoted case in this test,
   // because the transaction object we have access to here is from the original request sent
@@ -903,7 +949,7 @@ TEST_F(GeoTransactionsTablespaceBasedSelectionCandidatesTest, TestCandidates) {
 
   CloudInfoPB local_cloud_info;
   local_cloud_info.set_placement_cloud("cloud0");
-  local_cloud_info.set_placement_region(Format("rack$0", kLocalRegion));
+  local_cloud_info.set_placement_region(Format("region$0", kLocalRegion));
   local_cloud_info.set_placement_zone("zone");
 
   {
@@ -958,13 +1004,13 @@ class GeoTransactionsTablespaceLocalityTest : public GeoTransactionsTest {
           "placement_blocks": [
             {
               "cloud": "cloud0",
-              "region": "rack1",
+              "region": "region1",
               "zone": "zone",
               "min_num_replicas": 1
             },
             {
               "cloud": "cloud0",
-              "region": "rack2",
+              "region": "region3",
               "zone": "zone",
               "min_num_replicas": 1
             }
@@ -977,13 +1023,13 @@ class GeoTransactionsTablespaceLocalityTest : public GeoTransactionsTest {
           "placement_blocks": [
             {
               "cloud": "cloud0",
-              "region": "rack1",
+              "region": "region1",
               "zone": "zone",
               "min_num_replicas": 1
             },
             {
               "cloud": "cloud0",
-              "region": "rack3",
+              "region": "region2",
               "zone": "zone",
               "min_num_replicas": 1
             }
@@ -1100,6 +1146,71 @@ TEST_F(GeoTransactionsTablespaceLocalityTest, TestSimple) {
       ExpectedLocality::kGlobal);
 }
 
+TEST_F(GeoTransactionsTablespaceLocalityTest, TestSessionVariableOverride) {
+  constexpr int kTablesPerRegion = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_promote_nonlocal_transactions_to_global) = false;
+  SetupTablesAndTablespaces(kTablesPerRegion);
+
+  std::string external_table = GetTableName(kOtherRegion);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_tablespace_based_transaction_placement) = false;
+
+  auto force_tablespace_auto_select = [](pgwrapper::PGConn& conn) -> Status {
+    return conn.Execute("SET yb_force_tablespace_locality = true");
+  };
+
+  CheckSuccess(
+      kTablespace1, kTableName, kTableName,
+      SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      ExpectedLocality::kLocal, force_tablespace_auto_select);
+  CheckSuccess(
+      kTablespace1, std::nullopt, external_table,
+      SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      ExpectedLocality::kGlobal, force_tablespace_auto_select);
+  CheckAbort(
+      kTableName, external_table,
+      SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      1 /* num_aborts */, force_tablespace_auto_select);
+  CheckSuccess(
+      kTablespace1, kTableName, kTableName,
+      SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
+      ExpectedLocality::kGlobal, force_tablespace_auto_select);
+  CheckSuccess(
+      kTablespace1, kTableName, external_table,
+      SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kFalse,
+      ExpectedLocality::kGlobal, force_tablespace_auto_select);
+  CheckSuccess(
+      kTablespace1, kTableName, kTableName,
+      SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
+      ExpectedLocality::kGlobal, force_tablespace_auto_select);
+  CheckSuccess(
+      kTablespace1, kTableName, external_table,
+      SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kTrue,
+      ExpectedLocality::kGlobal, force_tablespace_auto_select);
+  CheckSuccess(
+      kTablespace1, kTableName, kTableName,
+      SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
+      ExpectedLocality::kGlobal, force_tablespace_auto_select);
+  CheckSuccess(
+      kTablespace1, kTableName, external_table,
+      SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
+      ExpectedLocality::kGlobal, force_tablespace_auto_select);
+
+  auto force_tablespace_bad_select = [](pgwrapper::PGConn& conn) -> Status {
+    RETURN_NOT_OK(conn.Execute("SET yb_force_tablespace_locality = true"));
+    // Normal user oids start at 16384, so this should not map to anything, and we can test
+    // that it becomes global.
+    RETURN_NOT_OK(conn.Execute("SET yb_force_tablespace_locality_oid = 1"));
+    // Discard current transaction.
+    return WarmupTablespaceCache(conn, kTableName);
+  };
+
+  CheckSuccess(
+      kTablespace1, kTableName, kTableName,
+      SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      ExpectedLocality::kGlobal, force_tablespace_bad_select);
+}
+
 TEST_F(GeoTransactionsTablespaceLocalityTest, TestFK) {
   constexpr int kTablesPerRegion = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_promote_nonlocal_transactions_to_global) = false;
@@ -1149,6 +1260,32 @@ TEST_F(GeoTransactionsTablespaceLocalityTest, TestFK) {
       kTablespace1, kTableName, kTableNameFK,
       SetGlobalTransactionsGFlag::kTrue, SetGlobalTransactionSessionVar::kTrue,
       ExpectedLocality::kGlobal);
+}
+
+TEST_F(GeoTransactionsTablespaceLocalityTest, TestLargeToSmall) {
+  constexpr int kTablesPerRegion = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_promote_nonlocal_transactions_to_global) = false;
+  SetupTablesAndTablespaces(kTablesPerRegion);
+
+  CheckSuccess(
+      kTablespace1, kTableName, GetTableName(kLocalRegion),
+      SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      ExpectedLocality::kLocal);
+  CheckAbort(
+      kTableName, GetTableName(kOtherRegion),
+      SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      1 /* num_aborts */);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_promote_nonlocal_transactions_to_global) = true;
+
+  CheckSuccess(
+      kTablespace1, kTableName, GetTableName(kLocalRegion),
+      SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      ExpectedLocality::kLocal);
+  CheckSuccess(
+      kTablespace1, kTableName, GetTableName(kOtherRegion),
+      SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      ExpectedLocality::kNoCheck);
 }
 
 TEST_F(GeoTransactionsTablespaceLocalityTest, TestAlterSetTablespace) {
@@ -1242,8 +1379,7 @@ TEST_F(GeoTransactionsTablespaceLocalityTest, TestAlterSetTablespace) {
       ExpectedLocality::kGlobal);
 }
 
-// Fails when table-level locks are enabled due to #28317.
-class GeoTransactionsWildcardTest : public GeoTransactionsTestTableLocksDisabled {
+class GeoTransactionsWildcardTest : public GeoTransactionsTest {
  protected:
   void SetupTablespaces() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = true;
@@ -1254,7 +1390,7 @@ class GeoTransactionsWildcardTest : public GeoTransactionsTestTableLocksDisabled
             "num_replicas": 1,
             "placement_blocks":[{
               "cloud": "cloud0",
-              "region": "rack$0",
+              "region": "region$0",
               "zone": "*",
               "min_num_replicas": 1
             }]

@@ -39,13 +39,11 @@ import {
   initialRestoreDetailsContextState,
   restoreDetailsMethods
 } from './RestoreContext';
+import { DateTimePicker } from 'react-widgets';
+import momentLocalizer from 'react-widgets-moment';
+
 import './Restore.scss';
-
-const reactWidgets = require('react-widgets');
-const momentLocalizer = require('react-widgets-moment');
-require('react-widgets/dist/css/react-widgets.css');
-
-const { DateTimePicker } = reactWidgets;
+import 'react-widgets/dist/css/react-widgets.css';
 momentLocalizer(moment);
 
 const DEFAULT_SORT_COLUMN = 'createTime';

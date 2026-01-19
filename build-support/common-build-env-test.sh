@@ -176,14 +176,14 @@ test_set_cmake_build_type_and_compiler_type release      darwin    clang   relea
 test_set_cmake_build_type_and_compiler_type release      linux-gnu clang   release         clang   0
 test_set_cmake_build_type_and_compiler_type release      linux-gnu gcc     release         gcc     0
 test_set_cmake_build_type_and_compiler_type release      linux-gnu gcc12   release         gcc12   0
-test_set_cmake_build_type_and_compiler_type debug        linux-gnu auto    debug           clang19 0
-test_set_cmake_build_type_and_compiler_type FaStDeBuG    linux-gnu auto    fastdebug       clang19 0
-test_set_cmake_build_type_and_compiler_type release      linux-gnu auto    release         clang19 0
-test_set_cmake_build_type_and_compiler_type tsan         linux-gnu auto    release_asserts clang19 0
-test_set_cmake_build_type_and_compiler_type tsan_slow    linux-gnu auto    debug           clang19 0
-test_set_cmake_build_type_and_compiler_type tsan_release linux-gnu auto    release         clang19 0
-test_set_cmake_build_type_and_compiler_type asan         linux-gnu auto    release_asserts clang19 0
-test_set_cmake_build_type_and_compiler_type asan_release linux-gnu auto    release         clang19 0
+test_set_cmake_build_type_and_compiler_type debug        linux-gnu auto    debug           clang21 0
+test_set_cmake_build_type_and_compiler_type FaStDeBuG    linux-gnu auto    fastdebug       clang21 0
+test_set_cmake_build_type_and_compiler_type release      linux-gnu auto    release         clang21 0
+test_set_cmake_build_type_and_compiler_type tsan         linux-gnu auto    release_asserts clang21 0
+test_set_cmake_build_type_and_compiler_type tsan_slow    linux-gnu auto    debug           clang21 0
+test_set_cmake_build_type_and_compiler_type tsan_release linux-gnu auto    release         clang21 0
+test_set_cmake_build_type_and_compiler_type asan         linux-gnu auto    release_asserts clang21 0
+test_set_cmake_build_type_and_compiler_type asan_release linux-gnu auto    release         clang21 0
 
 # -------------------------------------------------------------------------------------------------
 # Test existence of scripts pointed to by specical "script path" variables.

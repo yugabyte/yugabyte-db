@@ -28,13 +28,14 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v1 = 1 WHERE h = 1
  Update on pkey_only_table (actual rows=0 loops=1)
    ->  Result pkey_only_table (actual rows=1 loops=1)
          Storage Table Write Requests: 1
+         Storage Flush Requests: 1
  Storage Read Requests: 0
  Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 1
- Storage Flush Requests: 0
+ Storage Flush Requests: 1
  Transaction: Fast Path
-(9 rows)
+(10 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v1 = 1, v2 = 1 WHERE h = 1;
                       QUERY PLAN                      
@@ -42,13 +43,14 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v1 = 1, v2 = 1 WHE
  Update on pkey_only_table (actual rows=0 loops=1)
    ->  Result pkey_only_table (actual rows=1 loops=1)
          Storage Table Write Requests: 1
+         Storage Flush Requests: 1
  Storage Read Requests: 0
  Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 1
- Storage Flush Requests: 0
+ Storage Flush Requests: 1
  Transaction: Fast Path
-(9 rows)
+(10 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v1 = 2 WHERE h = 1;
                       QUERY PLAN                      
@@ -56,13 +58,14 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v1 = 2 WHERE h = 1
  Update on pkey_only_table (actual rows=0 loops=1)
    ->  Result pkey_only_table (actual rows=1 loops=1)
          Storage Table Write Requests: 1
+         Storage Flush Requests: 1
  Storage Read Requests: 0
  Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 1
- Storage Flush Requests: 0
+ Storage Flush Requests: 1
  Transaction: Fast Path
-(9 rows)
+(10 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v1 = 3, v2 = 3 WHERE h = 1;
                       QUERY PLAN                      
@@ -70,13 +73,14 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v1 = 3, v2 = 3 WHE
  Update on pkey_only_table (actual rows=0 loops=1)
    ->  Result pkey_only_table (actual rows=1 loops=1)
          Storage Table Write Requests: 1
+         Storage Flush Requests: 1
  Storage Read Requests: 0
  Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 1
- Storage Flush Requests: 0
+ Storage Flush Requests: 1
  Transaction: Fast Path
-(9 rows)
+(10 rows)
 
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v1 = v1 + 1, v2 = v1 + 1 WHERE h = 1;
                       QUERY PLAN                      
@@ -84,13 +88,14 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET v1 = v1 + 1, v2 = 
  Update on pkey_only_table (actual rows=0 loops=1)
    ->  Result pkey_only_table (actual rows=1 loops=1)
          Storage Table Write Requests: 1
+         Storage Flush Requests: 1
  Storage Read Requests: 0
  Storage Read Ops: 0
  Storage Rows Scanned: 0
  Storage Write Requests: 1
- Storage Flush Requests: 0
+ Storage Flush Requests: 1
  Transaction: Fast Path
-(9 rows)
+(10 rows)
 
 -- Setting index column in the update should trigger a read, but no update of the index
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE pkey_only_table SET h = 1 WHERE h = 1;
@@ -581,8 +586,8 @@ CREATE INDEX NONCONCURRENTLY non_number_type_table_text_geom_ip ON non_number_ty
 ERROR:  data type line has no default operator class for access method "lsm"
 HINT:  You must specify an operator class for the index or define a default operator class for the data type.
 CREATE INDEX NONCONCURRENTLY non_number_type_table_uuid_enum ON non_number_type_table(uuidcol ASC, enumcol DESC);
-INSERT INTO non_number_type_table VALUES('1999-01-08 04:05:06 -8:00', 'varchar1', 'charpad', 'I am batman', '{1, 2, 3}'::line, '1.2.3.0/24'::cidr, '********-****-4***-****-************'::uuid, 'happy'::mood_type);
-EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE non_number_type_table SET tscol = 'January 8 04:05:06 1999 PST', varcharcol = 'varchar1', charcol = 'charpad', textcol = 'I am not batman :(', linecol = '{1, 2, 3}'::line, ipcol = '1.2.3'::cidr, uuidcol = '********-****-4***-****-************'::uuid, enumcol = 'happy' WHERE tscol = 'January 8 07:05:06 1999 EST';
+INSERT INTO non_number_type_table VALUES('1999-01-08 04:05:06 -8:00', 'varchar1', 'charpad', 'I am batman', '{1, 2, 3}'::line, '1.2.3.0/24'::cidr, 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'::uuid, 'happy'::mood_type);
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE non_number_type_table SET tscol = 'January 8 04:05:06 1999 PST', varcharcol = 'varchar1', charcol = 'charpad', textcol = 'I am not batman :(', linecol = '{1, 2, 3}'::line, ipcol = '1.2.3'::cidr, uuidcol = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'::uuid, enumcol = 'happy' WHERE tscol = 'January 8 07:05:06 1999 EST';
                                              QUERY PLAN                                             
 ----------------------------------------------------------------------------------------------------
  Update on non_number_type_table (actual rows=0 loops=1)
@@ -658,13 +663,12 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_types_table SET v1 = 1, v3 = '{"b
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
-         Storage Flush Requests: 1
  Storage Read Requests: 1
  Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
- Storage Flush Requests: 2
-(14 rows)
+ Storage Flush Requests: 1
+(13 rows)
 
 -- One with white spaces
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_types_table SET v1 = 1, v2 = '{    "b" : 2   ,     "a" :  1}'::jsonb WHERE h = 1;
@@ -1178,13 +1182,12 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE numeric_table SET v1 = 1.2345670, v2 =
          Storage Table Rows Scanned: 1
          Storage Table Write Requests: 1
          Storage Index Write Requests: 2
-         Storage Flush Requests: 1
  Storage Read Requests: 1
  Storage Read Ops: 1
  Storage Rows Scanned: 1
  Storage Write Requests: 3
- Storage Flush Requests: 2
-(14 rows)
+ Storage Flush Requests: 1
+(13 rows)
 
 -- Casting from infinity to infinity should not cause a change in representation.
 -- Note that NUMERIC does not support infinity prior to PG 14.

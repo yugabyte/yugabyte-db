@@ -191,12 +191,6 @@ class WaitStateITest : public pgwrapper::PgMiniTestBase {
     return cql_server_->Start();
   }
 
-  void StartPgSupervisor(uint16_t pg_port, const int pg_ts_idx) override {
-    if (test_mode_ == TestMode::kYSQL) {
-      pgwrapper::PgMiniTestBase::StartPgSupervisor(pg_port, pg_ts_idx);
-    }
-  }
-
   void EnableYSQLFlags() override {
     if (test_mode_ != TestMode::kYCQL) {
       pgwrapper::PgMiniTestBase::EnableYSQLFlags();
@@ -1148,11 +1142,6 @@ class AshTestVerifyPgOccurrence : public AshTestVerifyPgOccurrenceBase,
                                   public ::testing::WithParamInterface<ash::WaitStateCode> {
  public:
   AshTestVerifyPgOccurrence() : AshTestVerifyPgOccurrenceBase(GetParam()) {}
-
- protected:
-  void OverrideMiniClusterOptions(MiniClusterOptions* options) override {
-    options->wait_for_pg = false;
-  }
 };
 
 INSTANTIATE_TEST_SUITE_P(

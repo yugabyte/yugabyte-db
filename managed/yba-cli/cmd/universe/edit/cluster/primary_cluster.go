@@ -62,9 +62,7 @@ var editPrimaryClusterCmd = &cobra.Command{
 		rEdit, response, err := authAPI.UpdatePrimaryCluster(universe.GetUniverseUUID()).
 			UniverseConfigureTaskParams(req).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err,
-				"Universe", "Edit Primary Cluster")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Universe", "Edit Primary Cluster")
 		}
 
 		waitForEditClusterTask(

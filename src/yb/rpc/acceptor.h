@@ -33,13 +33,12 @@
 #pragma once
 
 #include <mutex>
-#include <vector>
 #include <unordered_map>
+#include <vector>
 
 #undef EV_ERROR
 #include <ev++.h> // NOLINT
 
-#include "yb/gutil/atomicops.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/socket.h"
@@ -55,7 +54,7 @@ class Thread;
 namespace rpc {
 
 // Take ownership of the socket via Socket::Release
-typedef std::function<void(Socket *new_socket, const Endpoint& remote)> NewSocketHandler;
+using NewSocketHandler = std::function<void(Socket*, const Endpoint&)>;
 
 // A acceptor that calls accept() to create new connections.
 class Acceptor {

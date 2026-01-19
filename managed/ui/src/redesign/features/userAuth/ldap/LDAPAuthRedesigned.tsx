@@ -56,8 +56,8 @@ import { escapeStr, TOAST_OPTIONS, UserDefaultRoleOptions } from '../UserAuthUti
 import { DisableAuthProviderModal } from '../DisableAuthProvider';
 import { transformData } from './LDAPUtils';
 import { getLDAPValidationSchema } from './LDAPValidationSchema';
-import { ReactComponent as User } from '../../../../redesign/assets/user-outline.svg';
-import { ReactComponent as BulbIcon } from '../../../../redesign/assets/bulb.svg';
+import User from '../../../../redesign/assets/user-outline.svg';
+import BulbIcon from '../../../../redesign/assets/bulb.svg';
 
 const useStyles = makeStyles((theme) => ({
   root: {

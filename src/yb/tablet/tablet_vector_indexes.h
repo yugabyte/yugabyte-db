@@ -57,13 +57,16 @@ class VectorIndexList {
   docdb::DocVectorIndexesPtr list_;
 };
 
-class TabletVectorIndexes : public TabletComponent {
+class TabletVectorIndexes :
+    public TabletComponent,
+    public docdb::DocVectorMetadataIteratorProvider {
  public:
   TabletVectorIndexes(
       Tablet* tablet,
       const VectorIndexThreadPoolProvider& thread_pool_provider,
-      const VectorIndexPriorityThreadPoolProvider& priority_thread_pool_provider,
-      const hnsw::BlockCachePtr& block_cache);
+      const VectorIndexCompactionTokenProvider& compaction_token_provider,
+      const hnsw::BlockCachePtr& block_cache,
+      MetricRegistry* metric_registry);
 
   Status Open(const docdb::ConsensusFrontier* frontier);
 
@@ -102,6 +105,9 @@ class TabletVectorIndexes : public TabletComponent {
 
   Status Verify();
 
+  Result<docdb::IntentAwareIteratorWithBounds> CreateVectorMetadataIterator(
+      const ReadHybridTime& read_ht) const;
+
   void SetHasVectorDeletion() {
     has_vector_deletion_.store(true);
   }
@@ -129,9 +135,10 @@ class TabletVectorIndexes : public TabletComponent {
       REQUIRES(vector_indexes_mutex_);
 
   const VectorIndexThreadPoolProvider thread_pool_provider_;
-  const VectorIndexPriorityThreadPoolProvider priority_thread_pool_provider_;
+  const VectorIndexCompactionTokenProvider compaction_token_provider_;
   const hnsw::BlockCachePtr block_cache_;
   const MemTrackerPtr mem_tracker_;
+  MetricRegistry* metric_registry_ = nullptr;
 
   std::atomic<bool> has_vector_indexes_{false};
   std::atomic<bool> has_vector_deletion_{false};

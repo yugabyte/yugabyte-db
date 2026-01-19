@@ -13,7 +13,9 @@ type: indexpage
 ---
 By default, YugabyteDB provides synchronous replication and strong consistency across geo-distributed data centers. However, many use cases do not require synchronous replication or justify the additional complexity and operating costs associated with managing three or more data centers. A cross-universe (xCluster) deployment provides asynchronous replication across two data centers or cloud regions. Using an xCluster deployment, you can use unidirectional (master-follower) or bidirectional (multi-master) asynchronous replication between two universes (aka data centers).
 
-For information on xCluster deployment architecture, replication scenarios, and limitations, refer to [xCluster architecture](../../../architecture/docdb-replication/async-replication/).
+For information on xCluster deployment architecture and replication scenarios, refer to [xCluster architecture](../../../architecture/docdb-replication/async-replication/).
+
+Before deploying xCluster, review the [limitations](../../../architecture/docdb-replication/async-replication/#limitations).
 
 {{<index/block>}}
 
@@ -46,12 +48,12 @@ For information on xCluster deployment architecture, replication scenarios, and 
 
 ## Best practices
 
-- Set the YB-TServer [cdc_wal_retention_time_secs](../../../reference/configuration/all-flags-yb-tserver/#cdc-wal-retention-time-secs) flag to 86400 on both source and target universe.
+- Set the YB-TServer [cdc_wal_retention_time_secs](../../../reference/configuration/all-flags-yb-tserver/#cdc-wal-retention-time-secs) flag to 86400 on both source and target.
 
-    This flag determines the duration for which WAL is retained on the source universe in case of a network partition or a complete outage of the target universe. The value depends on how long a network partition of the source universe or an outage of the target universe can be tolerated.
+    This flag determines the duration for which write-ahead log (WAL) is retained on the source in case of a network partition or a complete outage of the target. For xCluster replication, set the flag to a value greater than the default. The goal is to retain WALs during a network partition or target outage until replication can be restarted. While setting this value to 86400 (24 hours) is a good starting point, you should also consider how quickly you will be able to recover from a network partition or target outage.
 
 - Make sure all YB-Master and YB-TServer flags are set to the same value on both the source and target universes.
 
-- Monitor CPU usage and ensure it remains below 65%. Note that xCluster replication typically incurs a 20% CPU overhead.
+- Monitor CPU usage and ensure it remains under 65%. Note that xCluster replication typically incurs a 20% CPU overhead.
 
-- Monitor disk space usage and ensure it remains below 65%. Allocate sufficient disk space to accommodate WALs generated based on the `cdc_wal_retention_time_secs` setting, which is higher than the default [log_min_seconds_to_retain](../../../reference/configuration/yb-tserver/#log-min-seconds-to-retain) value.
+- Monitor disk space usage and ensure it remains under 65%. Allocate sufficient disk space to accommodate WALs generated based on `cdc_wal_retention_time_secs`.

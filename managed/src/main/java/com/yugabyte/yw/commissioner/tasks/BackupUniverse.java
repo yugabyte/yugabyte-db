@@ -33,8 +33,8 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.TaskType;
-import io.prometheus.client.CollectorRegistry;
-import io.prometheus.client.Counter;
+import io.prometheus.metrics.core.metrics.Counter;
+import io.prometheus.metrics.model.registry.PrometheusRegistry;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -57,34 +57,41 @@ public class BackupUniverse extends UniverseTaskBase {
 
   // Counters
   public static final Counter SCHEDULED_BACKUP_ATTEMPT_COUNTER =
-      Counter.build(
-              SCHEDULED_BACKUP_ATTEMPT_COUNT, "Count of backup schedule attempts per universe")
+      Counter.builder()
+          .name(SCHEDULED_BACKUP_ATTEMPT_COUNT)
+          .help("Count of backup schedule attempts per universe")
           .labelNames(MetricLabelsBuilder.UNIVERSE_LABELS)
-          .register(CollectorRegistry.defaultRegistry);
+          .register(PrometheusRegistry.defaultRegistry);
   public static final Counter SCHEDULED_BACKUP_SUCCESS_COUNTER =
-      Counter.build(
-              SCHEDULED_BACKUP_SUCCESS_COUNT,
-              "Count of successful backup schedule attempts per universe")
+      Counter.builder()
+          .name(SCHEDULED_BACKUP_SUCCESS_COUNT)
+          .help("Count of successful backup schedule attempts per universe")
           .labelNames(MetricLabelsBuilder.UNIVERSE_LABELS)
-          .register(CollectorRegistry.defaultRegistry);
+          .register(PrometheusRegistry.defaultRegistry);
   public static final Counter SCHEDULED_BACKUP_FAILURE_COUNTER =
-      Counter.build(
-              SCHEDULED_BACKUP_FAILURE_COUNT,
-              "Count of failed backup schedule attempts per universe")
+      Counter.builder()
+          .name(SCHEDULED_BACKUP_FAILURE_COUNT)
+          .help("Count of failed backup schedule attempts per universe")
           .labelNames(MetricLabelsBuilder.UNIVERSE_LABELS)
-          .register(CollectorRegistry.defaultRegistry);
+          .register(PrometheusRegistry.defaultRegistry);
   public static final Counter BACKUP_ATTEMPT_COUNTER =
-      Counter.build(BACKUP_ATTEMPT_COUNT, "Count of backup task attempts per universe")
+      Counter.builder()
+          .name(BACKUP_ATTEMPT_COUNT)
+          .help("Count of backup task attempts per universe")
           .labelNames(MetricLabelsBuilder.UNIVERSE_LABELS)
-          .register(CollectorRegistry.defaultRegistry);
+          .register(PrometheusRegistry.defaultRegistry);
   public static final Counter BACKUP_SUCCESS_COUNTER =
-      Counter.build(BACKUP_SUCCESS_COUNT, "Count of successful backup tasks per universe")
+      Counter.builder()
+          .name(BACKUP_SUCCESS_COUNT)
+          .help("Count of successful backup tasks per universe")
           .labelNames(MetricLabelsBuilder.UNIVERSE_LABELS)
-          .register(CollectorRegistry.defaultRegistry);
+          .register(PrometheusRegistry.defaultRegistry);
   public static final Counter BACKUP_FAILURE_COUNTER =
-      Counter.build(BACKUP_FAILURE_COUNT, "Count of failed backup tasks per universe")
+      Counter.builder()
+          .name(BACKUP_FAILURE_COUNT)
+          .help("Count of failed backup tasks per universe")
           .labelNames(MetricLabelsBuilder.UNIVERSE_LABELS)
-          .register(CollectorRegistry.defaultRegistry);
+          .register(PrometheusRegistry.defaultRegistry);
 
   @Inject
   protected BackupUniverse(BaseTaskDependencies baseTaskDependencies) {
@@ -104,7 +111,7 @@ public class BackupUniverse extends UniverseTaskBase {
     MetricLabelsBuilder metricLabelsBuilder =
         MetricLabelsBuilder.create().fromUniverse(customer, universe);
 
-    BACKUP_ATTEMPT_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
+    BACKUP_ATTEMPT_COUNTER.labelValues(metricLabelsBuilder.getPrometheusValues()).inc();
     try {
       checkUniverseVersion();
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
@@ -187,7 +194,7 @@ public class BackupUniverse extends UniverseTaskBase {
         getRunnableTask().runSubTasks();
 
         if (taskParams().actionType == ActionType.CREATE) {
-          BACKUP_SUCCESS_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
+          BACKUP_SUCCESS_COUNTER.labelValues(metricLabelsBuilder.getPrometheusValues()).inc();
           metricService.setOkStatusMetric(
               buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe));
         }
@@ -208,7 +215,7 @@ public class BackupUniverse extends UniverseTaskBase {
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       if (taskParams().actionType == ActionType.CREATE) {
-        BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
+        BACKUP_FAILURE_COUNTER.labelValues(metricLabelsBuilder.getPrometheusValues()).inc();
         metricService.setFailureStatusMetric(
             buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe));
       }
@@ -235,14 +242,16 @@ public class BackupUniverse extends UniverseTaskBase {
     }
     MetricLabelsBuilder metricLabelsBuilder =
         MetricLabelsBuilder.create().fromUniverse(customer, universe);
-    SCHEDULED_BACKUP_ATTEMPT_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
+    SCHEDULED_BACKUP_ATTEMPT_COUNTER.labelValues(metricLabelsBuilder.getPrometheusValues()).inc();
     if (alreadyRunning
         || universe.getUniverseDetails().updateInProgress
         || universe.getUniverseDetails().universePaused) {
       if (!universe.getUniverseDetails().universePaused) {
         schedule.updateBacklogStatus(true);
         log.debug("Schedule {} backlog status is set to true", schedule.getScheduleUUID());
-        SCHEDULED_BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
+        SCHEDULED_BACKUP_FAILURE_COUNTER
+            .labelValues(metricLabelsBuilder.getPrometheusValues())
+            .inc();
         metricService.setFailureStatusMetric(
             buildMetricTemplate(PlatformMetrics.SCHEDULE_BACKUP_STATUS, universe));
       }
@@ -278,7 +287,7 @@ public class BackupUniverse extends UniverseTaskBase {
         taskParams.tableUUID,
         taskParams.getKeyspace(),
         CommonUtils.logTableName(taskParams.getTableName()));
-    SCHEDULED_BACKUP_SUCCESS_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
+    SCHEDULED_BACKUP_SUCCESS_COUNTER.labelValues(metricLabelsBuilder.getPrometheusValues()).inc();
     metricService.setOkStatusMetric(
         buildMetricTemplate(PlatformMetrics.SCHEDULE_BACKUP_STATUS, universe));
   }

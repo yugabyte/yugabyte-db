@@ -128,6 +128,8 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
     flags.put("ysql_output_buffer_size", String.valueOf(PG_OUTPUT_BUFFER_SIZE_BYTES));
     flags.put("yb_enable_read_committed_isolation", "true");
     flags.put("wait_queue_poll_interval_ms", "5");
+    flags.put("enable_object_locking_for_table_locks", "true");
+    flags.put("ysql_yb_ddl_transaction_block_enabled", "true");
     return flags;
   }
 

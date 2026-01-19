@@ -206,7 +206,7 @@ public class UniverseTest extends FakeDBApplication {
             node.nodeIdx = idx;
             universeDetails.nodeDetailsSet.add(node);
           }
-          universeDetails.upsertPrimaryCluster(userIntent, null);
+          universeDetails.upsertPrimaryCluster(userIntent, null, null);
           universe.setUniverseDetails(universeDetails);
         };
     u = Universe.saveDetails(u.getUniverseUUID(), updater);
@@ -296,7 +296,7 @@ public class UniverseTest extends FakeDBApplication {
               node.isMaster = true;
             }
             node.nodeIdx = idx;
-            universeDetails.upsertPrimaryCluster(userIntent, null);
+            universeDetails.upsertPrimaryCluster(userIntent, null, null);
             universeDetails.nodeDetailsSet.add(node);
           }
           universe.setUniverseDetails(universeDetails);
@@ -413,7 +413,7 @@ public class UniverseTest extends FakeDBApplication {
     ui.provider =
         Provider.get(defaultCustomer.getUuid(), CloudType.aws).get(0).getUuid().toString();
     ui.providerType = CloudType.aws;
-    u.getUniverseDetails().upsertPrimaryCluster(ui, null);
+    u.getUniverseDetails().upsertPrimaryCluster(ui, null, null);
 
     JsonNode universeJson = Json.toJson(new UniverseResp(u, null));
     assertThat(
@@ -477,7 +477,7 @@ public class UniverseTest extends FakeDBApplication {
     ui.provider =
         Provider.get(defaultCustomer.getUuid(), CloudType.aws).get(0).getUuid().toString();
     ui.providerType = CloudType.aws;
-    u.getUniverseDetails().upsertPrimaryCluster(ui, null);
+    u.getUniverseDetails().upsertPrimaryCluster(ui, null, null);
 
     JsonNode universeJson = Json.toJson(new UniverseResp(u, null));
     assertThat(
@@ -497,7 +497,7 @@ public class UniverseTest extends FakeDBApplication {
     UserIntent userIntent = getBaseIntent();
     userIntent.masterGFlags = new HashMap<>();
     userIntent.masterGFlags.put("emulate_redis_responses", "false");
-    taskParams.upsertPrimaryCluster(userIntent, null);
+    taskParams.upsertPrimaryCluster(userIntent, null, null);
     JsonNode clusterJson = Json.toJson(taskParams).get("clusters").get(0);
 
     assertThat(
@@ -513,7 +513,7 @@ public class UniverseTest extends FakeDBApplication {
     UserIntent userIntent = getBaseIntent();
     userIntent.providerType = CloudType.aws;
     userIntent.instanceTags = ImmutableMap.of("Cust", "Test", "Dept", "Misc");
-    Cluster cluster = taskParams.upsertPrimaryCluster(userIntent, null);
+    Cluster cluster = taskParams.upsertPrimaryCluster(userIntent, null, null);
 
     UserIntent newUserIntent = getBaseIntent();
     newUserIntent.providerType = CloudType.aws;
@@ -543,7 +543,7 @@ public class UniverseTest extends FakeDBApplication {
     UserIntent userIntent = getBaseIntent();
     userIntent.providerType = CloudType.azu;
     userIntent.instanceTags = ImmutableMap.of("Cust", "Test", "Dept", "Misc");
-    Cluster cluster = taskParams.upsertPrimaryCluster(userIntent, null);
+    Cluster cluster = taskParams.upsertPrimaryCluster(userIntent, null, null);
 
     UserIntent newUserIntent = getBaseIntent();
     newUserIntent.providerType = CloudType.azu;
@@ -565,7 +565,7 @@ public class UniverseTest extends FakeDBApplication {
     UserIntent userIntent = getBaseIntent();
     userIntent.providerType = CloudType.gcp;
     userIntent.instanceTags = ImmutableMap.of("Cust", "Test", "Dept", "Misc");
-    Cluster cluster = taskParams.upsertPrimaryCluster(userIntent, null);
+    Cluster cluster = taskParams.upsertPrimaryCluster(userIntent, null, null);
 
     UserIntent newUserIntent = getBaseIntent();
     newUserIntent.providerType = CloudType.aws;

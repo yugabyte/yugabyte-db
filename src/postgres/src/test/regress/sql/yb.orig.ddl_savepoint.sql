@@ -65,3 +65,171 @@ SELECT * FROM test_table ORDER BY a;
 ROLLBACK TO SAVEPOINT svpt;
 SELECT * FROM test_table ORDER BY a;
 ROLLBACK;
+
+-- #28955: CREATE INDEX (separate DDL transaction) works when savepoint is enabled.
+CREATE TABLE employees(id INT PRIMARY KEY, code VARCHAR(20) UNIQUE, department VARCHAR(50));
+CREATE INDEX idx_department ON employees(department);
+DROP TABLE employees;
+
+-- #28956: Transaction doesn't self abort
+CREATE TABLE projects (id INT PRIMARY KEY, project_name VARCHAR(100));
+INSERT INTO projects (id, project_name) VALUES (101, 'Project Alpha');
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+UPDATE projects SET project_name = 'Project Phoenix' WHERE id = 101;
+SAVEPOINT sp_mixed;
+CREATE TABLE project_logs (log_id INT, entry TEXT);
+INSERT INTO project_logs VALUES (1, 'Initial log');
+-- This will drop table project_logs but shouldn't abort the entire transaction.
+ROLLBACK TO SAVEPOINT sp_mixed;
+SELECT project_name FROM projects WHERE id = 101;
+
+-- #28957: Rollback to savepoint of ALTER TABLE should complete and not run forever
+CREATE TABLE departments (
+    dept_id INT PRIMARY KEY,
+    dept_name VARCHAR(50)
+);
+CREATE TABLE employees (
+    emp_id INT PRIMARY KEY,
+    emp_name VARCHAR(50),
+    department_id INT,
+    FOREIGN KEY (department_id) REFERENCES departments(dept_id)
+);
+INSERT INTO departments VALUES (1, 'Engineering'), (2, 'Sales');
+INSERT INTO employees VALUES (101, 'Alice', 1), (102, 'Bob', 2);
+BEGIN;
+SAVEPOINT sp_initial_state;
+UPDATE employees SET department_id = 2 WHERE emp_name = 'Alice';
+CREATE INDEX idx_emp_dept ON employees(department_id);
+SAVEPOINT sp_after_index;
+ALTER TABLE employees ADD COLUMN start_date DATE;
+INSERT INTO employees (emp_id, emp_name, department_id, start_date) VALUES (103, 'Charlie', 1, '2025-10-15');
+SAVEPOINT sp_after_alter;
+TRUNCATE TABLE departments; -- This will fail
+ROLLBACK TO SAVEPOINT sp_after_alter;
+ROLLBACK TO SAVEPOINT sp_after_index;
+ROLLBACK TO SAVEPOINT sp_initial_state;
+COMMIT;
+
+-- #29013: Savepoint rollback due to failure in first DDL statement of a
+-- transaction block doesn't lead to a crash.
+BEGIN;
+SAVEPOINT sp_before_constraint_change;
+ALTER TABLE employees DROP CONSTRAINT positive_salary;
+COMMIT;
+
+-- #29373: Transaction doesn't self abort when index deletion skipped due to base table deletion.
+CREATE TABLE txn_self_abort_base (id INT PRIMARY KEY, val INT, category TEXT);
+INSERT INTO txn_self_abort_base (id, val, category) SELECT i, i*10, 'A' FROM generate_series(1, 10) i;
+CREATE MATERIALIZED VIEW txn_self_abort_mv AS SELECT id, val, category FROM txn_self_abort_base;
+CREATE UNIQUE INDEX txn_self_abort_mv_idx ON txn_self_abort_mv (id);
+INSERT INTO txn_self_abort_base (id, val, category) SELECT i, i*10, 'B' FROM generate_series(11, 20) i;
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+SAVEPOINT s1_start;
+REFRESH MATERIALIZED VIEW CONCURRENTLY txn_self_abort_mv;
+SAVEPOINT s2_refreshed_concurrently;
+INSERT INTO txn_self_abort_base (id, val, category) SELECT i, i*10, 'C' FROM generate_series(21, 30) i;
+REFRESH MATERIALIZED VIEW txn_self_abort_mv;
+SAVEPOINT s3_refreshed_normal;
+DELETE FROM txn_self_abort_base WHERE category = 'A';
+REFRESH MATERIALIZED VIEW CONCURRENTLY txn_self_abort_mv;
+SAVEPOINT s4_refreshed_final;
+INSERT INTO txn_self_abort_base (id, val, category) SELECT i, i*10, 'D' FROM generate_series(31, 40) i;
+REFRESH MATERIALIZED VIEW txn_self_abort_mv;
+-- This will drop and recreate txn_self_abort_mv_idx as part of table rewrite
+-- but it shouldn't lead to self abort.
+ROLLBACK TO SAVEPOINT s4_refreshed_final;
+SELECT COUNT(*) FROM txn_self_abort_base;
+ROLLBACK;
+
+-- #29414
+CREATE TABLE test_table (id INT PRIMARY KEY, val TEXT);
+INSERT INTO test_table SELECT i, 'val' || i FROM generate_series(1, 1000) i;
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+SAVEPOINT s1_start;
+CREATE MATERIALIZED VIEW test_table_mv AS SELECT * FROM test_table;
+SAVEPOINT s2_created_mv;
+INSERT INTO test_table SELECT i, 'val' || i FROM generate_series(1001, 2000) i;
+REFRESH MATERIALIZED VIEW test_table_mv;
+SAVEPOINT s3_refreshed_mv;
+CREATE INDEX test_table_idx_mv ON test_table_mv (val);
+SELECT indexname FROM pg_indexes WHERE indexname = 'test_table_idx_mv';
+ROLLBACK TO SAVEPOINT s3_refreshed_mv;
+ROLLBACK;
+
+-- #29538: No Schema version mismatch in case of ALTER TABLE
+CREATE TABLE schema_version_mismatch_table (
+    id INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    val TEXT
+);
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+SAVEPOINT s1_start;
+ALTER TABLE schema_version_mismatch_table ALTER COLUMN id RESTART WITH 100;
+INSERT INTO schema_version_mismatch_table (val) VALUES ('c');
+SELECT id FROM schema_version_mismatch_table WHERE val = 'c';
+SAVEPOINT s2_restarted;
+ALTER TABLE schema_version_mismatch_table ALTER COLUMN id DROP IDENTITY;
+INSERT INTO schema_version_mismatch_table (id, val) VALUES (500, 'd');
+ROLLBACK TO SAVEPOINT s2_restarted;
+INSERT INTO schema_version_mismatch_table (val) VALUES ('e');
+SELECT id FROM schema_version_mismatch_table WHERE val = 'e';
+ROLLBACK TO SAVEPOINT s1_start;
+INSERT INTO schema_version_mismatch_table (val) VALUES ('f');
+SELECT id FROM schema_version_mismatch_table WHERE val = 'f';
+ROLLBACK;
+
+-- #29881
+CREATE TABLE _33_s_1_data (id INT PRIMARY KEY);
+CREATE TABLE _33_s_1_audit (
+    log_id SERIAL PRIMARY KEY,
+    data_id INT,
+    notes TEXT
+);
+CREATE FUNCTION _33_func_audit() RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO _33_s_1_audit (data_id, notes) VALUES (NEW.id, 'V1');
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+CREATE TRIGGER _33_trig_data
+AFTER INSERT ON _33_s_1_data
+FOR EACH ROW EXECUTE FUNCTION _33_func_audit();
+CREATE PROCEDURE _33_sp_insert(val INT) LANGUAGE SQL AS $$
+    INSERT INTO _33_s_1_data (id) VALUES (val);
+$$;
+CALL _33_sp_insert(1);
+SELECT COUNT(*) FROM _33_s_1_audit WHERE notes = 'V1';
+BEGIN;
+SAVEPOINT s1_start;
+CREATE OR REPLACE FUNCTION _33_func_audit() RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO _33_s_1_audit (data_id, notes) VALUES (NEW.id, 'V2');
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+CREATE OR REPLACE PROCEDURE _33_sp_insert(val INT) LANGUAGE SQL AS $$
+    INSERT INTO _33_s_1_data (id) VALUES (val * 100);
+$$;
+CALL _33_sp_insert(2);
+SELECT COUNT(*) FROM _33_s_1_data WHERE id = 200;
+SELECT COUNT(*) FROM _33_s_1_audit WHERE notes = 'V2';
+SAVEPOINT s2_v2_created;
+DROP TRIGGER _33_trig_data ON _33_s_1_data;
+CALL _33_sp_insert(3);
+SELECT COUNT(*) FROM _33_s_1_data WHERE id = 300;
+SELECT COUNT(*) FROM _33_s_1_audit WHERE notes = 'V2';
+ROLLBACK TO SAVEPOINT s2_v2_created;
+SELECT COUNT(*) FROM pg_trigger WHERE tgname = '_33_trig_data';
+CALL _33_sp_insert(4);
+SELECT COUNT(*) FROM _33_s_1_audit WHERE notes = 'V2';
+ROLLBACK TO SAVEPOINT s1_start;
+SELECT COUNT(*) FROM _33_s_1_data WHERE id > 1;
+SELECT COUNT(*) FROM _33_s_1_audit WHERE notes = 'V2';
+CALL _33_sp_insert(5);
+SELECT COUNT(*) FROM _33_s_1_data WHERE id = 5;
+SELECT COUNT(*) FROM _33_s_1_audit WHERE notes = 'V1';
+select * from _33_s_1_audit;
+select * from _33_s_1_audit;
+COMMIT;
+SELECT id FROM _33_s_1_data ORDER BY id;
+SELECT COUNT(*) FROM _33_s_1_audit WHERE notes = 'V1';
+SELECT COUNT(*) FROM _33_s_1_audit WHERE notes = 'V2';

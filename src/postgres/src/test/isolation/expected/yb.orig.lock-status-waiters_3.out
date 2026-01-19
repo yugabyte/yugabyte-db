@@ -1,0 +1,78 @@
+unused step name: s1_select_for_update
+unused step name: s2_update
+Parsed test spec with 2 sessions
+
+starting permutation: s1_insert s2_begin s2_insert s1_1secold s1_wait2s s1_lock_status s1_commit s2_abort
+step s1_insert: INSERT INTO foo VALUES (2,2);
+step s2_begin: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_insert: INSERT INTO foo VALUES (2,2); <waiting ...>
+step s1_1secold: SET yb_locks_min_txn_age TO 1;
+step s1_wait2s: SELECT pg_sleep(2);
+pg_sleep
+--------
+        
+(1 row)
+
+step s1_lock_status: 
+    SELECT
+        locktype, relation::regclass, mode, granted, fastpath, is_explicit,
+        hash_cols, range_cols, attnum, column_id, multiple_rows_locked
+    FROM yb_lock_status(null,null)
+    ORDER BY
+        relation::regclass::text, granted, hash_cols NULLS FIRST, range_cols NULLS FIRST,
+        is_explicit NULLS FIRST, column_id NULLS FIRST;
+
+locktype|relation    |mode                      |granted|fastpath|is_explicit|hash_cols|range_cols|attnum|column_id|multiple_rows_locked
+--------+------------+--------------------------+-------+--------+-----------+---------+----------+------+---------+--------------------
+relation|foo         |{WEAK_READ,WEAK_WRITE}    |f      |f       |f          |         |          |      |         |t                   
+row     |foo         |{STRONG_READ,STRONG_WRITE}|f      |f       |f          |{2}      |          |      |         |f                   
+relation|foo         |{RowExclusiveLock}        |t      |f       |           |         |          |      |         |                    
+relation|foo         |{RowExclusiveLock}        |t      |f       |           |         |          |      |         |                    
+relation|foo         |{WEAK_READ,WEAK_WRITE}    |t      |f       |f          |         |          |      |         |t                   
+row     |foo         |{STRONG_READ,STRONG_WRITE}|t      |f       |f          |{2}      |          |      |         |f                   
+relation|pg_am       |{AccessShareLock}         |t      |f       |           |         |          |      |         |                    
+relation|pg_am       |{AccessShareLock}         |t      |f       |           |         |          |      |         |                    
+relation|pg_amop     |{AccessShareLock}         |t      |f       |           |         |          |      |         |                    
+relation|pg_amproc   |{AccessShareLock}         |t      |f       |           |         |          |      |         |                    
+relation|pg_amproc   |{AccessShareLock}         |t      |f       |           |         |          |      |         |                    
+relation|pg_attribute|{AccessShareLock}         |t      |f       |           |         |          |      |         |                    
+relation|pg_attribute|{AccessShareLock}         |t      |f       |           |         |          |      |         |                    
+relation|pg_cast     |{AccessShareLock}         |t      |f       |           |         |          |      |         |                    
+relation|pg_class    |{AccessShareLock}         |t      |f       |           |         |          |      |         |                    
+relation|pg_class    |{AccessShareLock}         |t      |f       |           |         |          |      |         |                    
+relation|pg_index    |{AccessShareLock}         |t      |f       |           |         |          |      |         |                    
+relation|pg_index    |{AccessShareLock}         |t      |f       |           |         |          |      |         |                    
+relation|pg_opclass  |{AccessShareLock}         |t      |f       |           |         |          |      |         |                    
+relation|pg_opclass  |{AccessShareLock}         |t      |f       |           |         |          |      |         |                    
+relation|pg_proc     |{AccessShareLock}         |t      |f       |           |         |          |      |         |                    
+relation|pg_type     |{AccessShareLock}         |t      |f       |           |         |          |      |         |                    
+relation|pg_type     |{AccessShareLock}         |t      |f       |           |         |          |      |         |                    
+(23 rows)
+
+step s1_commit: COMMIT;
+step s2_insert: <... completed>
+ERROR:  could not serialize access due to concurrent update (yb_max_query_layer_retries set to 0 are exhausted)
+step s2_abort: ABORT;
+
+starting permutation: s1_insert s2_begin s2_insert s1_lock_status_blockers s1_commit s2_abort
+step s1_insert: INSERT INTO foo VALUES (2,2);
+step s2_begin: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_insert: INSERT INTO foo VALUES (2,2); <waiting ...>
+step s1_lock_status_blockers: 
+    WITH uuids AS (SELECT DISTINCT unnest(blocked_by) as uuid
+                   FROM yb_lock_status(null, null) )
+    SELECT s.query FROM uuids u LEFT JOIN pg_stat_activity s ON u.uuid = s.yb_backend_xid;
+
+query                                                                                                                                                                                                          
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+    WITH uuids AS (SELECT DISTINCT unnest(blocked_by) as uuid
+                   FROM yb_lock_status(null, null) )
+    SELECT s.query FROM uuids u LEFT JOIN pg_stat_activity s ON u.uuid = s.yb_backend_xid;
+
+(1 row)
+
+step s1_commit: COMMIT;
+step s2_insert: <... completed>
+ERROR:  could not serialize access due to concurrent update (yb_max_query_layer_retries set to 0 are exhausted)
+step s2_abort: ABORT;

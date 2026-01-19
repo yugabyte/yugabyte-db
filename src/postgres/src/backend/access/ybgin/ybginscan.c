@@ -86,12 +86,8 @@ ybginrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,
 	/* Initialize non-yb gin scan opaque fields. */
 	ginrescan(scan, scankey, nscankeys, orderbys, norderbys);
 
-	/* Initialize ybgin scan opaque handle. */
-	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(scan->heapRelation),
-								  YbGetRelfileNodeId(scan->heapRelation),
-								  &prepare_params,
-								  YBCIsRegionLocal(scan->heapRelation),
-								  &ybso->handle));
+	ybso->handle = YbNewSelect(scan->heapRelation, &prepare_params);
+
 	YbApplyPrimaryPushdown(ybso->handle, scan->yb_rel_pushdown);
 	YbApplySecondaryIndexPushdown(ybso->handle, scan->yb_idx_pushdown);
 

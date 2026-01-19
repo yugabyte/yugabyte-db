@@ -7,7 +7,7 @@ import { YBLabel, YBToggleField, YBTooltip } from '../../../../../../components'
 import { api, QUERY_KEY } from '../../../utils/api';
 import { CloudType, UniverseFormData } from '../../../utils/dto';
 import { TIME_SYNC_FIELD, PROVIDER_FIELD } from '../../../utils/constants';
-import InfoMessageIcon from '../../../../../../assets/info-message.svg';
+import InfoMessageIcon from '../../../../../../assets/info-message.svg?img';
 
 interface TimeSyncFieldProps {
   disabled: boolean;

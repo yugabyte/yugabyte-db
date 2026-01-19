@@ -85,7 +85,8 @@ public interface CloudAPI {
       String regionCode,
       String availabilityZone,
       String instanceType,
-      int count) {
+      int count,
+      Map<String, String> tags) {
     throw new UnsupportedOperationException(
         "Capacity reservations are not supported by this cloud provider");
   }

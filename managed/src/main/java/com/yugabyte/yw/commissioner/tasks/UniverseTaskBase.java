@@ -65,6 +65,7 @@ import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeAgentManager;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.NodeUIApiHelper;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseContainer;
@@ -2169,16 +2170,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       throw new IllegalArgumentException(errMsg);
     }
     int serverPort = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerPort);
-    NodeAgentEnabler nodeAgentEnabler = getInstanceOf(NodeAgentEnabler.class);
-    if (reinstall == false && nodeAgentEnabler.shouldSkipInstallAndMarkUniverse(universe)) {
-      // Reinstall forces direct installation in the same task.
-      log.info(
-          "Skipping node agent installation for universe {} as it is not enabled",
-          universe.getUniverseUUID());
-      nodeAgentEnabler.markUniverse(universe.getUniverseUUID());
-      return subTaskGroup;
-    }
-    nodeAgentEnabler.cancelForUniverse(universe.getUniverseUUID());
+    getInstanceOf(NodeAgentEnabler.class).cancelForUniverse(universe.getUniverseUUID());
     Customer customer = Customer.get(universe.getCustomerId());
     filterNodesForInstallNodeAgent(universe, nodes, reinstall /* includeOnPremManual */)
         .forEach(
@@ -2526,6 +2518,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
   }
 
+  public DumpEntitiesResponse dumpDbEntities(
+      Universe universe, @Nullable Predicate<DumpEntitiesResponse> moreStopCondition) {
+    return dumpDbEntities(universe, moreStopCondition, this.nodeUIApiHelper);
+  }
+
   /**
    * Fetch DB entities from /dump-entities endpoint.
    *
@@ -2533,8 +2530,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param moreStopCondition more stop condition to be checked if needed.
    * @return the API response.
    */
-  public DumpEntitiesResponse dumpDbEntities(
-      Universe universe, @Nullable Predicate<DumpEntitiesResponse> moreStopCondition) {
+  public static DumpEntitiesResponse dumpDbEntities(
+      Universe universe,
+      @Nullable Predicate<DumpEntitiesResponse> moreStopCondition,
+      NodeUIApiHelper nodeUIApiHelper) {
     // Wait for a maximum of 10 seconds for url to succeed.
     NodeDetails masterLeaderNode = universe.getMasterLeaderNode();
     HostAndPort masterLeaderHostPort =
@@ -2639,7 +2638,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                 ? currentNode.cloudInfo.secondary_private_ip
                 : currentNode.cloudInfo.private_ip,
             currentNode.tserverRpcPort);
-    return dumpEntitiesResponse.getTabletsByTserverAddress(currentNodeHP);
+    return dumpEntitiesResponse.getTabletIdsByTserverAddress(currentNodeHP);
   }
 
   /**
@@ -2659,7 +2658,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           universe,
           r -> {
             for (HostAndPort hp : backlistedHostAndPorts) {
-              Set<String> tabletIds = r.getTabletsByTserverAddress(hp);
+              Set<String> tabletIds = r.getTabletIdsByTserverAddress(hp);
               if (log.isDebugEnabled()) {
                 log.debug(
                     "Number of tablets on tserver {} is {} tablets. Example tablets {}...",
@@ -3862,9 +3861,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
 
     if (ybcBackup) {
-      createTableBackupTasksYbc(backupTableParams, backupRequestParams.parallelDBBackups)
-          .setSubTaskGroupType(subTaskGroupType)
-          .setShouldRunPredicate(predicate);
+      createTableBackupTasksYbc(
+          backupTableParams, backupRequestParams.parallelDBBackups, subTaskGroupType, predicate);
     } else {
       // Creating encrypted universe key file only needed for non-ybc backups.
       backupTableParams.backupList.forEach(
@@ -4170,11 +4168,21 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   public SubTaskGroup installThirdPartyPackagesTaskK8s(
       Universe universe, InstallThirdPartySoftwareK8s.SoftwareUpgradeType upgradeType) {
+    return installThirdPartyPackagesTaskK8s(universe, upgradeType, null /* universeParams */);
+  }
+
+  public SubTaskGroup installThirdPartyPackagesTaskK8s(
+      Universe universe,
+      InstallThirdPartySoftwareK8s.SoftwareUpgradeType upgradeType,
+      @Nullable UniverseDefinitionTaskParams universeParams) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("InstallingThirdPartySoftware");
     InstallThirdPartySoftwareK8s task = createTask(InstallThirdPartySoftwareK8s.class);
     InstallThirdPartySoftwareK8s.Params params = new InstallThirdPartySoftwareK8s.Params();
     params.universeUUID = universe.getUniverseUUID();
     params.softwareType = upgradeType;
+    if (universeParams != null) {
+      params.universeParams = universeParams;
+    }
     task.initialize(params);
 
     subTaskGroup.addSubTask(task);
@@ -4229,9 +4237,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
-  public SubTaskGroup createTableBackupTasksYbc(
-      BackupTableParams backupParams, int parallelDBBackups) {
-    SubTaskGroup subTaskGroup = createSubTaskGroup("BackupTableYbc");
+  public void createTableBackupTasksYbc(
+      BackupTableParams backupParams,
+      int parallelDBBackups,
+      SubTaskGroupType subTaskGroupType,
+      Predicate<ITask> predicate) {
+    SubTaskGroup doneGroup = createSubTaskGroup("BackupTableYBC", subTaskGroupType);
+    doneGroup.setShouldRunPredicate(predicate);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("BackupTableYbc", subTaskGroupType);
+    subTaskGroup.setShouldRunPredicate(predicate);
     Universe universe = Universe.getOrBadRequest(backupParams.getUniverseUUID());
     YbcBackupNodeRetriever nodeRetriever =
         new YbcBackupNodeRetriever(universe, parallelDBBackups, backupParams.backupDBStates);
@@ -4246,7 +4260,44 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             paramsEntry ->
                 !backupParams.backupDBStates.get(paramsEntry.backupParamsIdentifier)
                     .alreadyScheduled)
+        .filter(
+            /* Filter out the entries that have gotten a node ip*/
+            paramsEntry ->
+                !Strings.isNullOrEmpty(
+                    backupParams.backupDBStates.get(paramsEntry.backupParamsIdentifier).nodeIp))
         .forEach(
+            /* Create the subtasks */
+            paramsEntry -> {
+              BackupTableYbc task = createTask(BackupTableYbc.class);
+              log.debug("creating backup table task for entry with nodeip");
+              BackupTableYbc.Params backupYbcParams =
+                  new BackupTableYbc.Params(paramsEntry, nodeRetriever, universe);
+              backupYbcParams.previousBackup = previousBackup;
+              backupYbcParams.nodeIp =
+                  backupParams.backupDBStates.get(paramsEntry.backupParamsIdentifier).nodeIp;
+              backupYbcParams.taskID =
+                  backupParams.backupDBStates.get(paramsEntry.backupParamsIdentifier)
+                      .currentYbcTaskId;
+              backupYbcParams.scheduleRetention = scheduleRetention;
+              backupYbcParams.setRevertToPreRolesBehaviour(
+                  backupParams.getRevertToPreRolesBehaviour());
+              task.initialize(backupYbcParams);
+              task.setUserTaskUUID(getUserTaskUUID());
+              doneGroup.addSubTask(task);
+            });
+    getRunnableTask().addSubTaskGroup(doneGroup);
+    backupParams.backupList.stream()
+        .filter(
+            paramsEntry ->
+                !backupParams.backupDBStates.get(paramsEntry.backupParamsIdentifier)
+                    .alreadyScheduled)
+        .filter(
+            /* Filter out the entries that have not gotten a node ip*/
+            paramsEntry ->
+                Strings.isNullOrEmpty(
+                    backupParams.backupDBStates.get(paramsEntry.backupParamsIdentifier).nodeIp))
+        .forEach(
+            /* Create the subtasks */
             paramsEntry -> {
               BackupTableYbc task = createTask(BackupTableYbc.class);
               BackupTableYbc.Params backupYbcParams =
@@ -4258,7 +4309,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                   backupParams.backupDBStates.get(paramsEntry.backupParamsIdentifier)
                       .currentYbcTaskId;
               backupYbcParams.scheduleRetention = scheduleRetention;
-              backupYbcParams.setEnableBackupsDuringDDL(backupParams.getEnableBackupsDuringDDL());
               backupYbcParams.setRevertToPreRolesBehaviour(
                   backupParams.getRevertToPreRolesBehaviour());
               task.initialize(backupYbcParams);
@@ -4266,7 +4316,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
               subTaskGroup.addSubTask(task);
             });
     getRunnableTask().addSubTaskGroup(subTaskGroup);
-    return subTaskGroup;
   }
 
   public SubTaskGroup createSetBackupHiddenStateTask(
@@ -5755,11 +5804,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   protected SubTaskGroup createWaitForDurationSubtask(UUID universeUUID, Duration waitTime) {
+    return createWaitForDurationSubtask(universeUUID, waitTime, null);
+  }
+
+  protected SubTaskGroup createWaitForDurationSubtask(
+      UUID universeUUID, Duration waitTime, String infoMessage) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("WaitForDuration");
     WaitForDuration.Params params = new WaitForDuration.Params();
     params.setUniverseUUID(universeUUID);
     params.waitTime = waitTime;
-
+    params.infoMessage = infoMessage;
     WaitForDuration task = createTask(WaitForDuration.class);
     task.initialize(params);
     subTaskGroup.addSubTask(task);

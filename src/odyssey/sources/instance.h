@@ -34,4 +34,6 @@ int od_instance_main(od_instance_t *, int, char **);
  */
 void YbSetParentDeathSignal();
 
+bool yb_od_instance_should_lowercase_guc_name(od_instance_t *);
+
 #endif /* ODYSSEY_INSTANCE_H */

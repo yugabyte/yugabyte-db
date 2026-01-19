@@ -61,9 +61,8 @@ import com.yugabyte.yw.scheduler.Scheduler;
 import db.migration.default_.common.R__Sync_System_Roles;
 import io.ebean.DB;
 import io.ebean.PagedList;
-import io.prometheus.client.CollectorRegistry;
-import io.prometheus.client.Gauge;
-import io.prometheus.client.hotspot.DefaultExports;
+import io.prometheus.metrics.core.metrics.Gauge;
+import io.prometheus.metrics.model.registry.PrometheusRegistry;
 import java.security.Provider;
 import java.security.Security;
 import java.util.HashSet;
@@ -86,8 +85,10 @@ public class AppInit {
   private static final long MAX_APP_INITIALIZATION_TIME = 30;
 
   public static final Gauge INIT_TIME =
-      Gauge.build("yba_init_time_seconds", "Last YBA startup time in seconds.")
-          .register(CollectorRegistry.defaultRegistry);
+      Gauge.builder()
+          .name("yba_init_time_seconds")
+          .help("Last YBA startup time in seconds.")
+          .register(PrometheusRegistry.defaultRegistry);
 
   private static final AtomicBoolean IS_H2_DB = new AtomicBoolean(false);
 
@@ -281,9 +282,6 @@ public class AppInit {
                   updateSensitiveGflagsforRedaction(gFlagsValidation);
                 });
         flagsThread.start();
-
-        // initialize prometheus exports
-        DefaultExports.initialize();
 
         // Handle incomplete tasks
         taskManager.handleRestoreTask();

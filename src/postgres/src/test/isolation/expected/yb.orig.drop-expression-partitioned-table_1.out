@@ -1,0 +1,7 @@
+Parsed test spec with 2 sessions
+
+starting permutation: s1_insert s2_drop_expression s1_commit
+step s1_insert: INSERT INTO part VALUES (10);
+step s2_drop_expression: ALTER TABLE part ALTER COLUMN double_amount DROP EXPRESSION; <waiting ...>
+step s1_commit: COMMIT;
+step s2_drop_expression: <... completed>

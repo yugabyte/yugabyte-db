@@ -12,17 +12,22 @@ import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.cronutils.utils.StringUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.models.AttachDetachSpec;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
@@ -522,5 +527,401 @@ public class UtilTest extends FakeDBApplication {
     // Empty containers like array and object remain as it is
     JsonNode emptyContainers = Util.convertStringToJson("{\"no\": {}, \"na\": []}");
     assertEquals(emptyContainers, Util.addJsonPathToLeafNodes(emptyContainers));
+  }
+
+  @Test
+  public void testIsUniverseOwner_MatchingUUIDs() {
+    Universe universe = mock(Universe.class);
+    ConfigHelper configHelper = mock(ConfigHelper.class);
+    YsqlQueryExecutor ysqlQueryExecutor = mock(YsqlQueryExecutor.class);
+    RuntimeConfGetter confGetter = mock(RuntimeConfGetter.class);
+
+    UUID currentYwUuid = UUID.randomUUID();
+    UUID storedYwUuid = currentYwUuid; // Same UUID
+
+    when(configHelper.getYugawareUUID()).thenReturn(currentYwUuid);
+
+    YsqlQueryExecutor.ConsistencyInfoResp consistencyInfo =
+        mock(YsqlQueryExecutor.ConsistencyInfoResp.class);
+    when(consistencyInfo.getYwUUID()).thenReturn(storedYwUuid);
+    when(ysqlQueryExecutor.getConsistencyInfo(any(Universe.class))).thenReturn(consistencyInfo);
+
+    assertTrue(
+        "Should return true when UUIDs match",
+        Util.isUniverseOwner(universe, configHelper, ysqlQueryExecutor, confGetter));
+  }
+
+  @Test
+  public void testIsUniverseOwner_DifferentUUIDs() {
+    Universe universe = mock(Universe.class);
+    ConfigHelper configHelper = mock(ConfigHelper.class);
+    YsqlQueryExecutor ysqlQueryExecutor = mock(YsqlQueryExecutor.class);
+    RuntimeConfGetter confGetter = mock(RuntimeConfGetter.class);
+
+    UUID currentYwUuid = UUID.randomUUID();
+    UUID storedYwUuid = UUID.randomUUID(); // Different UUID
+
+    when(configHelper.getYugawareUUID()).thenReturn(currentYwUuid);
+
+    YsqlQueryExecutor.ConsistencyInfoResp consistencyInfo =
+        mock(YsqlQueryExecutor.ConsistencyInfoResp.class);
+    when(consistencyInfo.getYwUUID()).thenReturn(storedYwUuid);
+    when(ysqlQueryExecutor.getConsistencyInfo(any(Universe.class))).thenReturn(consistencyInfo);
+
+    assertFalse(
+        "Should return false when UUIDs don't match",
+        Util.isUniverseOwner(universe, configHelper, ysqlQueryExecutor, confGetter));
+  }
+
+  @Test
+  public void testIsUniverseOwner_NullCurrentYwUuid() {
+    Universe universe = mock(Universe.class);
+    ConfigHelper configHelper = mock(ConfigHelper.class);
+    YsqlQueryExecutor ysqlQueryExecutor = mock(YsqlQueryExecutor.class);
+    RuntimeConfGetter confGetter = mock(RuntimeConfGetter.class);
+
+    when(configHelper.getYugawareUUID()).thenReturn(null);
+
+    PlatformServiceException exception =
+        assertThrows(
+            "Should throw exception when current YW UUID is null",
+            PlatformServiceException.class,
+            () -> Util.isUniverseOwner(universe, configHelper, ysqlQueryExecutor, confGetter));
+
+    assertTrue(
+        "Exception should mention UUID not found",
+        exception.getMessage().contains("Current YugabyteDB Anywhere UUID not found"));
+  }
+
+  @Test
+  public void testIsUniverseOwner_NullStoredYwUuid() {
+    Universe universe = mock(Universe.class);
+    ConfigHelper configHelper = mock(ConfigHelper.class);
+    YsqlQueryExecutor ysqlQueryExecutor = mock(YsqlQueryExecutor.class);
+    RuntimeConfGetter confGetter = mock(RuntimeConfGetter.class);
+
+    UUID currentYwUuid = UUID.randomUUID();
+    when(configHelper.getYugawareUUID()).thenReturn(currentYwUuid);
+    when(universe.getName()).thenReturn("test-universe");
+
+    YsqlQueryExecutor.ConsistencyInfoResp consistencyInfo =
+        mock(YsqlQueryExecutor.ConsistencyInfoResp.class);
+    when(consistencyInfo.getYwUUID()).thenReturn(null);
+    when(ysqlQueryExecutor.getConsistencyInfo(any(Universe.class))).thenReturn(consistencyInfo);
+
+    // When stored UUID is null (YCQL-only universe), assume owned and return true
+    assertTrue(
+        "Should return true when stored YW UUID is null (YCQL-only universe, skip validation)",
+        Util.isUniverseOwner(universe, configHelper, ysqlQueryExecutor, confGetter));
+  }
+
+  @Test
+  public void testGetStoredYwUuid_ValidResponse() {
+    Universe universe = mock(Universe.class);
+    YsqlQueryExecutor ysqlQueryExecutor = mock(YsqlQueryExecutor.class);
+    RuntimeConfGetter confGetter = mock(RuntimeConfGetter.class);
+
+    UUID expectedUuid = UUID.randomUUID();
+    YsqlQueryExecutor.ConsistencyInfoResp consistencyInfo =
+        mock(YsqlQueryExecutor.ConsistencyInfoResp.class);
+    when(consistencyInfo.getYwUUID()).thenReturn(expectedUuid);
+    when(ysqlQueryExecutor.getConsistencyInfo(any(Universe.class))).thenReturn(consistencyInfo);
+
+    UUID result = Util.getStoredYwUuid(universe, ysqlQueryExecutor, confGetter);
+
+    assertEquals("Should return the UUID from consistency info", expectedUuid, result);
+  }
+
+  @Test
+  public void testGetStoredYwUuid_NullConsistencyInfo() {
+    Universe universe = mock(Universe.class);
+    YsqlQueryExecutor ysqlQueryExecutor = mock(YsqlQueryExecutor.class);
+    RuntimeConfGetter confGetter = mock(RuntimeConfGetter.class);
+
+    when(universe.getName()).thenReturn("test-universe");
+    when(ysqlQueryExecutor.getConsistencyInfo(any(Universe.class))).thenReturn(null);
+
+    // When consistency info is null (e.g., YCQL-only universe), should return null gracefully
+    UUID result = Util.getStoredYwUuid(universe, ysqlQueryExecutor, confGetter);
+    assertNull("Should return null when consistency info is null (YCQL-only universe)", result);
+  }
+
+  @Test
+  public void testGetStoredYwUuid_ExceptionThrown() {
+    Universe universe = mock(Universe.class);
+    YsqlQueryExecutor ysqlQueryExecutor = mock(YsqlQueryExecutor.class);
+    RuntimeConfGetter confGetter = mock(RuntimeConfGetter.class);
+
+    when(universe.getName()).thenReturn("test-universe");
+    when(ysqlQueryExecutor.getConsistencyInfo(any(Universe.class)))
+        .thenThrow(new RuntimeException("Database error"));
+
+    PlatformServiceException exception =
+        assertThrows(
+            "Should throw PlatformServiceException when query fails",
+            PlatformServiceException.class,
+            () -> Util.getStoredYwUuid(universe, ysqlQueryExecutor, confGetter));
+
+    assertTrue(
+        "Exception should mention error querying YW UUID",
+        exception.getMessage().contains("Error querying YW UUID"));
+  }
+
+  @Test
+  public void testvalidateUniverseOwnershipAndNotDetached_DetachedUniverse() {
+    Universe universe = mock(Universe.class);
+    ConfigHelper configHelper = mock(ConfigHelper.class);
+    YsqlQueryExecutor ysqlQueryExecutor = mock(YsqlQueryExecutor.class);
+    RuntimeConfGetter confGetter = mock(RuntimeConfGetter.class);
+
+    // Mock attach/detach feature enabled
+    when(confGetter.getGlobalConf(GlobalConfKeys.attachDetachEnabled)).thenReturn(true);
+
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.universeDetached = true;
+
+    // Set up primary cluster with valid version to ensure validation runs
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        new UniverseDefinitionTaskParams.UserIntent();
+    userIntent.ybSoftwareVersion = "2024.2.0.0-b1"; // Valid version for attach/detach
+    taskParams.upsertPrimaryCluster(userIntent, null, null);
+
+    when(universe.getUniverseDetails()).thenReturn(taskParams);
+    when(universe.getName()).thenReturn("test-universe");
+
+    PlatformServiceException exception =
+        assertThrows(
+            "Should throw exception for detached universe",
+            PlatformServiceException.class,
+            () ->
+                Util.validateUniverseOwnershipAndNotDetached(
+                    universe, configHelper, ysqlQueryExecutor, confGetter));
+
+    assertTrue(
+        "Exception should mention detached universe",
+        exception.getMessage().contains("is detached"));
+  }
+
+  @Test
+  public void testvalidateUniverseOwnershipAndNotDetached_NotOwner() {
+    Universe universe = mock(Universe.class);
+    ConfigHelper configHelper = mock(ConfigHelper.class);
+    YsqlQueryExecutor ysqlQueryExecutor = mock(YsqlQueryExecutor.class);
+    RuntimeConfGetter confGetter = mock(RuntimeConfGetter.class);
+
+    // Mock attach/detach feature enabled
+    when(confGetter.getGlobalConf(GlobalConfKeys.attachDetachEnabled)).thenReturn(true);
+
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.universeDetached = false;
+
+    // Set up primary cluster with valid version to ensure validation runs
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        new UniverseDefinitionTaskParams.UserIntent();
+    userIntent.ybSoftwareVersion = "2024.2.0.0-b1"; // Valid version for attach/detach
+    taskParams.upsertPrimaryCluster(userIntent, null, null);
+
+    when(universe.getUniverseDetails()).thenReturn(taskParams);
+    when(universe.getName()).thenReturn("test-universe");
+
+    UUID currentYwUuid = UUID.randomUUID();
+    UUID storedYwUuid = UUID.randomUUID(); // Different UUID
+
+    when(configHelper.getYugawareUUID()).thenReturn(currentYwUuid);
+
+    YsqlQueryExecutor.ConsistencyInfoResp consistencyInfo =
+        mock(YsqlQueryExecutor.ConsistencyInfoResp.class);
+    when(consistencyInfo.getYwUUID()).thenReturn(storedYwUuid);
+    when(ysqlQueryExecutor.getConsistencyInfo(any(Universe.class))).thenReturn(consistencyInfo);
+
+    PlatformServiceException exception =
+        assertThrows(
+            "Should throw exception when not owner",
+            PlatformServiceException.class,
+            () ->
+                Util.validateUniverseOwnershipAndNotDetached(
+                    universe, configHelper, ysqlQueryExecutor, confGetter));
+
+    assertTrue(
+        "Exception should mention different YBA instance",
+        exception.getMessage().contains("belongs to different YugabyteDB Anywhere instance"));
+  }
+
+  @Test
+  public void testvalidateUniverseOwnershipAndNotDetached_ValidOwner() {
+    Universe universe = mock(Universe.class);
+    ConfigHelper configHelper = mock(ConfigHelper.class);
+    YsqlQueryExecutor ysqlQueryExecutor = mock(YsqlQueryExecutor.class);
+    RuntimeConfGetter confGetter = mock(RuntimeConfGetter.class);
+
+    // Mock attach/detach feature enabled
+    when(confGetter.getGlobalConf(GlobalConfKeys.attachDetachEnabled)).thenReturn(true);
+
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.universeDetached = false;
+
+    // Set up primary cluster with valid version to ensure validation runs
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        new UniverseDefinitionTaskParams.UserIntent();
+    userIntent.ybSoftwareVersion = "2024.2.0.0-b1"; // Valid version for attach/detach
+    taskParams.upsertPrimaryCluster(userIntent, null, null);
+
+    when(universe.getUniverseDetails()).thenReturn(taskParams);
+    when(universe.getName()).thenReturn("test-universe");
+
+    UUID currentYwUuid = UUID.randomUUID();
+    UUID storedYwUuid = currentYwUuid; // Same UUID
+
+    when(configHelper.getYugawareUUID()).thenReturn(currentYwUuid);
+
+    YsqlQueryExecutor.ConsistencyInfoResp consistencyInfo =
+        mock(YsqlQueryExecutor.ConsistencyInfoResp.class);
+    when(consistencyInfo.getYwUUID()).thenReturn(storedYwUuid);
+    when(ysqlQueryExecutor.getConsistencyInfo(any(Universe.class))).thenReturn(consistencyInfo);
+
+    // Should not throw any exception
+    Util.validateUniverseOwnershipAndNotDetached(
+        universe, configHelper, ysqlQueryExecutor, confGetter);
+  }
+
+  @Test
+  public void testIsUniverseOwner_DetachedUniverseUuid() {
+    Universe universe = mock(Universe.class);
+    ConfigHelper configHelper = mock(ConfigHelper.class);
+    YsqlQueryExecutor ysqlQueryExecutor = mock(YsqlQueryExecutor.class);
+    RuntimeConfGetter confGetter = mock(RuntimeConfGetter.class);
+
+    UUID currentYwUuid = UUID.randomUUID();
+    when(configHelper.getYugawareUUID()).thenReturn(currentYwUuid);
+    when(universe.getName()).thenReturn("test-universe");
+
+    // Stored UUID is DETACHED_UNIVERSE_UUID (orphaned universe)
+    YsqlQueryExecutor.ConsistencyInfoResp consistencyInfo =
+        mock(YsqlQueryExecutor.ConsistencyInfoResp.class);
+    when(consistencyInfo.getYwUUID()).thenReturn(AttachDetachSpec.DETACHED_UNIVERSE_UUID);
+    when(ysqlQueryExecutor.getConsistencyInfo(any(Universe.class))).thenReturn(consistencyInfo);
+
+    PlatformServiceException exception =
+        assertThrows(
+            "Should throw exception for orphaned universe (DETACHED_UNIVERSE_UUID)",
+            PlatformServiceException.class,
+            () -> Util.isUniverseOwner(universe, configHelper, ysqlQueryExecutor, confGetter));
+
+    assertTrue(
+        "Exception should mention orphaned universe",
+        exception.getMessage().contains("has no owner")
+            && exception.getMessage().contains("orphaned"));
+  }
+
+  @Test
+  public void testvalidateUniverseOwnershipAndNotDetached_OldDbVersion() {
+    Universe universe = mock(Universe.class);
+    ConfigHelper configHelper = mock(ConfigHelper.class);
+    YsqlQueryExecutor ysqlQueryExecutor = mock(YsqlQueryExecutor.class);
+    RuntimeConfGetter confGetter = mock(RuntimeConfGetter.class);
+
+    // Mock attach/detach feature enabled
+    when(confGetter.getGlobalConf(GlobalConfKeys.attachDetachEnabled)).thenReturn(true);
+
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.universeDetached = false;
+
+    // Set up universe with old DB version (before attach/detach support)
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        new UniverseDefinitionTaskParams.UserIntent();
+    userIntent.ybSoftwareVersion = "2.18.0.0-b1"; // Old version
+    taskParams.upsertPrimaryCluster(userIntent, null, null);
+
+    when(universe.getUniverseDetails()).thenReturn(taskParams);
+    when(universe.getName()).thenReturn("test-universe");
+
+    // Should not throw - validation should be skipped for old versions
+    Util.validateUniverseOwnershipAndNotDetached(
+        universe, configHelper, ysqlQueryExecutor, confGetter);
+  }
+
+  @Test
+  public void testvalidateUniverseOwnershipAndNotDetached_NullDbVersion() {
+    Universe universe = mock(Universe.class);
+    ConfigHelper configHelper = mock(ConfigHelper.class);
+    YsqlQueryExecutor ysqlQueryExecutor = mock(YsqlQueryExecutor.class);
+    RuntimeConfGetter confGetter = mock(RuntimeConfGetter.class);
+
+    // Mock attach/detach feature enabled
+    when(confGetter.getGlobalConf(GlobalConfKeys.attachDetachEnabled)).thenReturn(true);
+
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.universeDetached = false;
+
+    // Set up universe with null DB version
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        new UniverseDefinitionTaskParams.UserIntent();
+    userIntent.ybSoftwareVersion = null; // Null version
+    taskParams.upsertPrimaryCluster(userIntent, null, null);
+
+    when(universe.getUniverseDetails()).thenReturn(taskParams);
+    when(universe.getName()).thenReturn("test-universe");
+
+    // Should not throw - validation should be skipped for null versions
+    Util.validateUniverseOwnershipAndNotDetached(
+        universe, configHelper, ysqlQueryExecutor, confGetter);
+  }
+
+  @Test
+  public void testvalidateUniverseOwnershipAndNotDetached_YcqlOnlyUniverse() {
+    Universe universe = mock(Universe.class);
+    ConfigHelper configHelper = mock(ConfigHelper.class);
+    YsqlQueryExecutor ysqlQueryExecutor = mock(YsqlQueryExecutor.class);
+    RuntimeConfGetter confGetter = mock(RuntimeConfGetter.class);
+
+    // Mock attach/detach feature enabled
+    when(confGetter.getGlobalConf(GlobalConfKeys.attachDetachEnabled)).thenReturn(true);
+
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.universeDetached = false;
+
+    // Set up YCQL-only universe (YSQL disabled)
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        new UniverseDefinitionTaskParams.UserIntent();
+    userIntent.ybSoftwareVersion = "2024.2.0.0-b1"; // Valid version
+    userIntent.enableYSQL = false; // YCQL-only
+    taskParams.upsertPrimaryCluster(userIntent, null, null);
+
+    when(universe.getUniverseDetails()).thenReturn(taskParams);
+    when(universe.getName()).thenReturn("test-universe");
+
+    // Mock configHelper to return a valid UUID (needed if validation progresses to isUniverseOwner)
+    when(configHelper.getYugawareUUID()).thenReturn(UUID.randomUUID());
+
+    // Should not throw - validation should be skipped for YCQL-only universes
+    Util.validateUniverseOwnershipAndNotDetached(
+        universe, configHelper, ysqlQueryExecutor, confGetter);
+  }
+
+  @Test
+  public void testvalidateUniverseOwnershipAndNotDetached_FeatureDisabled() {
+    Universe universe = mock(Universe.class);
+    ConfigHelper configHelper = mock(ConfigHelper.class);
+    YsqlQueryExecutor ysqlQueryExecutor = mock(YsqlQueryExecutor.class);
+    RuntimeConfGetter confGetter = mock(RuntimeConfGetter.class);
+
+    // Mock attach/detach feature DISABLED
+    when(confGetter.getGlobalConf(GlobalConfKeys.attachDetachEnabled)).thenReturn(false);
+
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.universeDetached = true;
+
+    // Set up universe with valid version
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        new UniverseDefinitionTaskParams.UserIntent();
+    userIntent.ybSoftwareVersion = "2024.2.0.0-b1";
+    taskParams.upsertPrimaryCluster(userIntent, null, null);
+
+    when(universe.getUniverseDetails()).thenReturn(taskParams);
+    when(universe.getName()).thenReturn("test-universe");
+
+    // validation should be skipped entirely when feature is disabled
+    Util.validateUniverseOwnershipAndNotDetached(
+        universe, configHelper, ysqlQueryExecutor, confGetter);
   }
 }

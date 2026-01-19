@@ -35,13 +35,18 @@ class Env;
 namespace yb::docdb {
 
 extern const std::string kIntentsDirName;
+extern const std::string kSnapshotsDirName;
 
 Status SetValueFromQLBinaryWrapper(
-    QLValuePB ql_value,
-    const int pg_data_type,
+    const QLValuePB& ql_value, int pg_data_type,
     const std::unordered_map<uint32_t, std::string>& enum_oid_label_map,
     const std::unordered_map<uint32_t, std::vector<master::PgAttributePB>>& composite_atts_map,
-    DatumMessagePB* cdc_datum_message = NULL);
+    DatumMessagePB& datum_message);
+
+Result<std::string> QLBinaryWrapperToString(
+    const QLValuePB& ql_value, int pg_data_type,
+    const std::unordered_map<uint32_t, std::string>& enum_oid_label_map,
+    const std::unordered_map<uint32_t, std::vector<master::PgAttributePB>>& composite_atts_map);
 
 void DeleteMemoryContextForCDCWrapper();
 
@@ -128,6 +133,8 @@ class DocDBRocksDBUtil : public SchemaPackingProvider {
 
   void DocDBDebugDumpToContainer(std::unordered_set<std::string>* out);
 
+  static std::shared_ptr<LWQLValuePB> MakeLWValue(const QLValuePB& value);
+
   // ----------------------------------------------------------------------------------------------
   // SetPrimitive taking a Value
 
@@ -143,6 +150,13 @@ class DocDBRocksDBUtil : public SchemaPackingProvider {
       const dockv::DocPath& doc_path,
       const dockv::ValueControlFields& control_fields,
       const ValueRef& value,
+      HybridTime hybrid_time,
+      const ReadHybridTime& read_ht = ReadHybridTime::Max());
+
+  Status SetPrimitive(
+      const dockv::DocPath& doc_path,
+      const dockv::ValueControlFields& control_fields,
+      const QLValuePB& value,
       HybridTime hybrid_time,
       const ReadHybridTime& read_ht = ReadHybridTime::Max());
 
@@ -170,12 +184,32 @@ class DocDBRocksDBUtil : public SchemaPackingProvider {
       MonoDelta ttl = dockv::ValueControlFields::kMaxTtl,
       const ReadHybridTime& read_ht = ReadHybridTime::Max());
 
+  Status InsertSubDocument(
+      const dockv::DocPath& doc_path,
+      const QLValuePB& value,
+      HybridTime hybrid_time,
+      MonoDelta ttl = dockv::ValueControlFields::kMaxTtl,
+      const ReadHybridTime& read_ht = ReadHybridTime::Max()) {
+    return InsertSubDocument(
+        doc_path, ValueRef(value), hybrid_time, ttl, read_ht);
+  }
+
   Status ExtendSubDocument(
       const dockv::DocPath& doc_path,
       const ValueRef& value,
       HybridTime hybrid_time,
       MonoDelta ttl = dockv::ValueControlFields::kMaxTtl,
       const ReadHybridTime& read_ht = ReadHybridTime::Max());
+
+  Status ExtendSubDocument(
+      const dockv::DocPath& doc_path,
+      const QLValuePB& value,
+      HybridTime hybrid_time,
+      MonoDelta ttl = dockv::ValueControlFields::kMaxTtl,
+      const ReadHybridTime& read_ht = ReadHybridTime::Max()) {
+    return ExtendSubDocument(
+        doc_path, ValueRef(value), hybrid_time, ttl, read_ht);
+  }
 
   Status ExtendList(
       const dockv::DocPath& doc_path,
@@ -187,6 +221,17 @@ class DocDBRocksDBUtil : public SchemaPackingProvider {
       const dockv::DocPath &doc_path,
       const int target_cql_index,
       const ValueRef& value,
+      const ReadHybridTime& read_ht,
+      const HybridTime& hybrid_time,
+      const rocksdb::QueryId query_id,
+      MonoDelta default_ttl = dockv::ValueControlFields::kMaxTtl,
+      MonoDelta ttl = dockv::ValueControlFields::kMaxTtl,
+      UserTimeMicros user_timestamp = dockv::ValueControlFields::kInvalidTimestamp);
+
+  Status ReplaceInList(
+      const dockv::DocPath &doc_path,
+      const int target_cql_index,
+      const QLValuePB& value,
       const ReadHybridTime& read_ht,
       const HybridTime& hybrid_time,
       const rocksdb::QueryId query_id,
@@ -257,7 +302,7 @@ class DocDBRocksDBUtil : public SchemaPackingProvider {
   std::shared_ptr<ManualHistoryRetentionPolicy> retention_policy_ {
       std::make_shared<ManualHistoryRetentionPolicy>() };
   std::shared_ptr<rocksdb::CompactionFileFilterFactory> compaction_file_filter_factory_;
-  std::shared_ptr<std::function<bool(const rocksdb::FileMetaData&)>> exclude_from_compaction_;
+  rocksdb::CompactionFileExcluderPtr exclude_from_compaction_;
 
   rocksdb::WriteOptions write_options_;
   std::optional<TransactionId> current_txn_id_;
@@ -286,6 +331,9 @@ class DocDBRocksDBUtil : public SchemaPackingProvider {
 
 std::string GetStorageDir(const std::string& data_dir, const std::string& storage);
 std::string GetStorageCheckpointDir(const std::string& data_dir, const std::string& storage);
+std::string GetVectorIndexStorageName(const PgVectorIdxOptionsPB& options);
+std::string GetVectorIndexChunkFileExtension(const PgVectorIdxOptionsPB& options);
+
 Status MoveChild(Env& env, const std::string& data_dir, const std::string& child);
 Status MoveChildren(Env& env, const std::string& db_dir, IncludeIntents include_intents);
 

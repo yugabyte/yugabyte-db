@@ -18,8 +18,7 @@
 #include "yb/util/string_trim.h"
 #include "yb/util/test_macros.h"
 
-namespace yb {
-namespace util {
+namespace yb::util {
 
 TEST(StringTrimTest, LeftTrimStr) {
   ASSERT_EQ("foo ", LeftTrimStr("  \t \f \n \r \v foo "));
@@ -88,5 +87,24 @@ TEST(StringTrimTest, TrimTrailingWhitespaceFromEveryLine) {
       TrimTrailingWhitespaceFromEveryLine("\n  Line2\nLine3   \n"));
 }
 
-}  // namespace util
-}  // namespace yb
+TEST(StringTrimTest, TrimWhitespaceFromEveryLine) {
+  ASSERT_EQ("", TrimWhitespaceFromEveryLine(""));
+  ASSERT_EQ("", TrimWhitespaceFromEveryLine(" \t  "));
+  ASSERT_EQ("\n\n", TrimWhitespaceFromEveryLine("\n\n"));
+  ASSERT_EQ("\r\n", TrimWhitespaceFromEveryLine("\r\n"));
+  ASSERT_EQ("\n\n", TrimWhitespaceFromEveryLine("\t\n\v\n  "));
+  ASSERT_EQ(
+      "Line1\nLine2\nLine3\n",
+      TrimWhitespaceFromEveryLine("  Line1   \nLine2\nLine3   \n"));
+  ASSERT_EQ(
+      "Line1\nLine2\nLine3",
+      TrimWhitespaceFromEveryLine("  Line1   \nLine2\n Line3   "));
+  ASSERT_EQ(
+      "Line1  // Some C++ comment\nLine2\n",
+      TrimWhitespaceFromEveryLine(" \t Line1  // Some C++ comment   \n\t\t  Line2   \n  "));
+  ASSERT_EQ(
+      "Line1  // Some C++ comment\r\nLine2",
+      TrimWhitespaceFromEveryLine(" \t Line1  // Some C++ comment   \r\n  Line2"));
+}
+
+} // namespace yb::util

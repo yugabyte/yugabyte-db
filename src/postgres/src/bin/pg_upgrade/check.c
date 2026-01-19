@@ -50,6 +50,9 @@ static void yb_check_yugabyte_user(PGconn *old_cluster_conn);
 static void yb_check_old_cluster_user(PGconn *old_cluster_conn);
 static void yb_check_invalid_indexes();
 static void yb_check_installed_extensions();
+static void yb_check_yb_role_prefix();
+
+#define YB_SUPERUSER  "yb_superuser"
 
 /*
  * fix_path_separator
@@ -230,6 +233,7 @@ check_and_dump_old_cluster(bool live_check)
 
 	yb_check_invalid_indexes();
 	yb_check_installed_extensions();
+	yb_check_yb_role_prefix();
 
 	if (yb_has_check_fatal)
 		pg_fatal("\n");
@@ -1928,7 +1932,8 @@ yb_check_installed_extensions()
 								"'plpgsql',"
 								"'anon',"
 								"'cube',"
-								"'earthdistance')");
+								"'earthdistance',"
+								"'yb_ycql_utils')");
 		ntups = PQntuples(res);
 		i_name = PQfnumber(res, "extname");
 
@@ -1965,4 +1970,75 @@ yb_check_installed_extensions()
 	{
 		check_ok();
 	}
+}
+
+/*
+ * yb_check_for_yb_role_prefix()
+ *
+ * Check that no roles start with "yb_" prefix which is reserved for system use
+ */
+static void
+yb_check_yb_role_prefix()
+{
+	PGresult   *res;
+	PGconn	   *conn = connectToServer(&old_cluster, "template1");
+	int			ntups;
+	int			i_rolname;
+	FILE	   *script = NULL;
+	char		output_path[MAXPGPATH];
+	bool		found = false;
+
+	prep_status("Checking for roles starting with \"yb_\"");
+
+	snprintf(output_path, sizeof(output_path), "%s/%s",
+			 log_opts.basedir,
+			 "roles_with_yb_prefix.txt");
+
+	/*
+	 * Like in the PG code in this file, the query below hardcodes
+	 * FirstNormalObjectId as 16384 rather than using that C #define
+	 * in the query because, if that #define is ever changed, the cutoff we
+	 * want to use is the value used by old version servers, not that of
+	 * some future version.
+	 */
+	res = executeQueryOrDie(conn,
+							"SELECT rolname "
+							"FROM pg_catalog.pg_roles "
+							"WHERE rolname ~ '^yb_' "
+							"AND oid >= 16384 "
+							"AND rolname != '%s' "
+							"ORDER BY rolname",
+							YB_SUPERUSER);
+	ntups = PQntuples(res);
+	i_rolname = PQfnumber(res, "rolname");
+
+	if (ntups > 0)
+	{
+		found = true;
+		if (script == NULL && (script = fopen_priv(output_path, "w")) == NULL)
+			pg_fatal("could not open file \"%s\": %s\n",
+					 output_path, strerror(errno));
+
+		yb_fprintf_and_log(script, "Roles with \"yb_\" prefix:\n");
+		for (int rowno = 0; rowno < ntups; rowno++)
+		{
+			yb_fprintf_and_log(script, "  %s\n",
+							   PQgetvalue(res, rowno, i_rolname));
+		}
+		fclose(script);
+	}
+
+	PQclear(res);
+	PQfinish(conn);
+
+	if (found)
+	{
+		yb_fatal("Your installation contains roles starting with \"yb_\".\n"
+				 "The \"yb_\" prefix is reserved for system use and these roles must be\n"
+				 "dropped or renamed before upgrading. A list of the problematic roles\n"
+				 "is printed above and in the file:\n"
+				 "    %s\n\n", output_path);
+	}
+	else
+		check_ok();
 }

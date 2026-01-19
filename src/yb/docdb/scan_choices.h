@@ -13,7 +13,13 @@
 
 #pragma once
 
+#include "yb/qlexpr/ql_scanspec.h"
+
+#include "yb/dockv/doc_key.h"
+#include "yb/docdb/doc_ql_scanspec.h"
+#include "yb/dockv/value.h"
 #include "yb/docdb/docdb_fwd.h"
+#include "yb/dockv/value_type.h"
 
 #include "yb/dockv/dockv_fwd.h"
 
@@ -37,14 +43,20 @@ class ScanChoices {
 
   // Check whether scan choices is interested in specified row.
   // Seek on specified iterator to the next row of interest.
-  virtual Result<bool> InterestedInRow(dockv::KeyBytes* row_key, IntentAwareIterator* iter) = 0;
+  virtual Result<bool> InterestedInRow(dockv::KeyBytes* row_key, IntentAwareIterator& iter) = 0;
   virtual Result<bool> AdvanceToNextRow(dockv::KeyBytes* row_key,
-                                        IntentAwareIterator* iter,
+                                        IntentAwareIterator& iter,
                                         bool current_fetched_row_skipped) = 0;
 
-  static ScanChoicesPtr Create(
-      const Schema& schema, const qlexpr::YQLScanSpec& doc_spec,
-      const qlexpr::ScanBounds& bounds, Slice table_key_prefix);
+  // Initialize iterator before iteration, returns true if upper bound was set by ScanChoices.
+  virtual Result<bool> PrepareIterator(IntentAwareIterator& iter, Slice table_key_prefix) = 0;
+
+  virtual docdb::BloomFilterOptions BloomFilterOptions() = 0;
+
+  static Result<ScanChoicesPtr> Create(
+      const DocReadContext& doc_read_context, const qlexpr::YQLScanSpec& doc_spec,
+      const qlexpr::ScanBounds& bounds, Slice table_key_prefix,
+      AllowVariableBloomFilter allow_variable_bloom_filter);
 
   static ScanChoicesPtr CreateEmpty();
 };

@@ -25,6 +25,7 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/pg_types.h"
+#include "yb/common/ql_protocol.messages.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/common/xcluster_util.h"
 #include "yb/common/ysql_utils.h"
@@ -758,6 +759,8 @@ Status XClusterConsumer::PublishXClusterSafeTimeInternal() {
     for (auto& [producer_info, poller] : pollers_map_) {
       if (xcluster_context_.SafeTimeComputationRequired(poller->GetConsumerNamespaceId())) {
         auto safe_time = poller->GetSafeTime();
+        VLOG_IF_WITH_FUNC(2, safe_time.is_special()) << Format(
+            "Found special safe time for producer tablet $0: $1", producer_info, safe_time);
         if (!safe_time.is_special()) {
           safe_time_map[producer_info] = safe_time;
         }

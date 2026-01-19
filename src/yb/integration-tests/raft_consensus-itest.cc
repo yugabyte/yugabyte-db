@@ -297,7 +297,7 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
       auto last_row_in_batch = first_row_in_batch + count / num_batches;
 
       for (int j = first_row_in_batch; j < last_row_in_batch; j++) {
-        auto op = table.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+        auto op = table.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_INSERT);
         auto* const req = op->mutable_request();
         QLAddInt32HashValue(req, j);
         table.AddInt32ColumnValue(req, "int_val", j * 2);
@@ -1099,7 +1099,7 @@ void RaftConsensusITest::CauseFollowerToFallBehindLogGC(string* leader_uuid,
   *leader_uuid = leader->uuid();
   int leader_index = cluster_->tablet_server_index_by_uuid(*leader_uuid);
 
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.set_table_name(kTableName);
   workload.set_timeout_allowed(true);
   workload.set_payload_bytes(128 * 1024);  // Write ops of size 128KB.
@@ -1514,7 +1514,7 @@ TEST_F(RaftConsensusITest, InsertWithCrashyNodes) {
 
   CreateCluster("raft_consensus-itest-cluster", ts_flags, master_flags);
 
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.set_timeout_allowed(true);
   workload.set_write_timeout_millis(1000);
   workload.set_num_write_threads(10);
@@ -1589,7 +1589,7 @@ void RaftConsensusITest::DoTestChurnyElections(bool with_latency) {
 
   CreateCluster("raft_consensus-itest-cluster", ts_flags, master_flags);
 
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.set_timeout_allowed(true);
   workload.set_write_timeout_millis(100);
   workload.set_num_write_threads(2);
@@ -2839,7 +2839,7 @@ TEST_F(RaftConsensusITest, TestAutoCreateReplica) {
   ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(30), active_tablet_servers,
                                   tablet_id_, 1));
 
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.set_table_name(kTableName);
   workload.set_num_write_threads(10);
   workload.set_write_batch_size(100);
@@ -2917,7 +2917,7 @@ TEST_F(RaftConsensusITest, TestMemoryRemainsConstantDespiteTwoDeadFollowers) {
   // timeout behavior, more and more wedged transactions will accumulate in the
   // leader. To prevent memory usage from skyrocketing, the leader will
   // eventually reject new transactions. That's what we're testing for here.
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.set_table_name(kTableName);
   workload.set_timeout_allowed(true);
   workload.set_write_timeout_millis(50);
@@ -3001,7 +3001,7 @@ TEST_F(RaftConsensusITest, TestSlowLeader) {
   ASSERT_OK(GetLeaderReplicaWithRetries(tablet_id_, &leader));
   ASSERT_NO_FATALS(EnableLogLatency(leader->generic_proxy.get()));
 
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.set_table_name(kTableName);
   workload.Setup();
   workload.Start();
@@ -3029,7 +3029,7 @@ TEST_F(RaftConsensusITest, TestSlowFollower) {
   }
   ASSERT_EQ(1, num_reconfigured);
 
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.set_table_name(kTableName);
   workload.Setup();
   workload.Start();
@@ -3050,7 +3050,7 @@ TEST_F(RaftConsensusITest, TestHammerOneRow) {
     ASSERT_NO_FATALS(EnableLogLatency(follower->generic_proxy.get()));
   }
 
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.set_table_name(kTableName);
   workload.set_pathological_one_row_enabled(true);
   workload.set_num_write_threads(20);
@@ -3401,7 +3401,7 @@ TEST_F(RaftConsensusITest, DisruptiveServerAndSlowWAL) {
   ASSERT_OK(GetConsensusState(leader_tserver, tablet_id_,
                               consensus::CONSENSUS_CONFIG_COMMITTED, kTimeout, &cstate));
 
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.set_table_name(kTableName);
   workload.set_timeout_allowed(true);
   workload.set_num_write_threads(1);
@@ -3483,8 +3483,10 @@ TEST_F(RaftConsensusITest, SplitOpId) {
   // Add SPLIT_OP to the leader.
   tablet::SplitTabletRequestPB req;
   req.set_tablet_id(tablet_id_);
-  req.set_new_tablet1_id(GenerateObjectId());
-  req.set_new_tablet2_id(GenerateObjectId());
+  req.set_deprecated_new_tablet1_id(GenerateObjectId());
+  req.set_deprecated_new_tablet2_id(GenerateObjectId());
+  req.add_new_tablet_ids(req.deprecated_new_tablet1_id());
+  req.add_new_tablet_ids(req.deprecated_new_tablet2_id());
   {
     const auto min_hash_code = std::numeric_limits<docdb::DocKeyHash>::max();
     const auto max_hash_code = std::numeric_limits<docdb::DocKeyHash>::min();
@@ -3493,8 +3495,10 @@ TEST_F(RaftConsensusITest, SplitOpId) {
     dockv::KeyBytes encoded_doc_key;
     dockv::DocKeyEncoderAfterTableIdStep(&encoded_doc_key).Hash(
         split_hash_code, dockv::KeyEntryValues());
-    req.set_split_encoded_key(encoded_doc_key.ToStringBuffer());
-    req.set_split_partition_key(partition_key);
+    req.set_deprecated_split_encoded_key(encoded_doc_key.ToStringBuffer());
+    req.set_deprecated_split_partition_key(partition_key);
+    req.add_split_encoded_keys(req.deprecated_split_encoded_key());
+    req.add_split_partition_keys(req.deprecated_split_partition_key());
   }
   req.set_dest_uuid(initial_leader->uuid());
   tserver::SplitTabletResponsePB resp;

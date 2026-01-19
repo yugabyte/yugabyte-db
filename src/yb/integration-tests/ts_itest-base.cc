@@ -78,6 +78,7 @@ void TabletServerIntegrationTestBase::CreateCluster(
   opts.num_tablet_servers = FLAGS_num_tablet_servers;
   opts.data_root = GetTestPath(data_root_path);
   opts.enable_ysql = enable_ysql;
+  opts.replication_factor = FLAGS_num_replicas;
 
   // If the caller passed no flags use the default ones, where we stress consensus by setting
   // low timeouts and frequent cache misses.
@@ -93,7 +94,6 @@ void TabletServerIntegrationTestBase::CreateCluster(
   // Disable load balancer for master by default for these tests. You can override this through
   // setting flags in the passed in non_default_master_flags argument.
   opts.extra_master_flags.push_back("--enable_load_balancing=false");
-  opts.extra_master_flags.push_back(yb::Format("--replication_factor=$0", FLAGS_num_replicas));
   for (const std::string& flag : non_default_master_flags) {
     opts.extra_master_flags.push_back(flag);
   }

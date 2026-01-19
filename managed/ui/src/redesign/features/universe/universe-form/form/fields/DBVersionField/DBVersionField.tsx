@@ -27,7 +27,7 @@ import {
 import { useFormFieldStyles } from '../../../universeMainStyle';
 import { isNonEmptyString } from '../../../../../../../utils/ObjectUtils';
 
-import InfoMessageIcon from '../../../../../../../redesign/assets/info-message.svg';
+import InfoMessageIcon from '../../../../../../../redesign/assets/info-message.svg?img';
 
 const MAX_RELEASE_TAG_CHAR = 20;
 
@@ -117,8 +117,9 @@ export const DBVersionField = ({ disabled }: DBVersionFieldProps): ReactElement 
       api.getDBVersions(
         true,
         isOsPatchingEnabled &&
-          (isImgBundleSupportedByProvider(provider)  || provider?.code === CloudType.onprem)?
-          (cpuArch || ArchitectureType.X86_64) : null,
+          (isImgBundleSupportedByProvider(provider) || provider?.code === CloudType.onprem)
+          ? cpuArch || ArchitectureType.X86_64
+          : null,
         true
       ),
     {
@@ -141,7 +142,7 @@ export const DBVersionField = ({ disabled }: DBVersionFieldProps): ReactElement 
   );
 
   useEffect(() => {
-    if (isOsPatchingEnabled && !disabled) {
+    if (isOsPatchingEnabled && !disabled && getValues(SOFTWARE_VERSION_FIELD) === null) {
       setValue(SOFTWARE_VERSION_FIELD, null);
     }
   }, [cpuArch, isOsPatchingEnabled]);

@@ -29,6 +29,7 @@
 #include "yb/common/common_types.pb.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/pgsql_error.h"
+#include "yb/common/ql_protocol.messages.h"
 #include "yb/common/ysql_utils.h"
 
 #include "yb/master/master_ddl.pb.h"
@@ -92,12 +93,25 @@ DEFINE_RUNTIME_uint32(ysql_auto_analyze_min_cooldown_per_table,
                        10000,
                        "The minimum cooldown time in milliseconds for the auto analyze service "
                        "to trigger an ANALYZE on a table again after it has been analyzed.");
+DEFINE_RUNTIME_uint32(ysql_auto_analyze_db_connect_timeout_ms, 5000,
+                      "The timeout when trying to connect to the local PG instance for the PG "
+                      "auto analyze service.");
 DEFINE_test_flag(uint64, ysql_auto_analyze_max_history_entries, 5,
                  "The maximum number of analyze history entries to keep for each table.");
 DECLARE_bool(ysql_enable_auto_analyze);
 
 using namespace std::chrono_literals;
 using std::chrono::system_clock;
+
+namespace {
+
+const std::unordered_set<yb::PgOid> kSkipAnalyzeOids = {
+    yb::kPgYbInvalidationMessagesTableOid,
+    // Analyzing catalog version table can hold up DDLs that need an exclusive lock on this table.
+    yb::kPgYbCatalogVersionTableOid
+  };
+
+}  // namespace
 
 namespace yb {
 
@@ -173,12 +187,12 @@ Status PgAutoAnalyzeService::FlushMutationsToServiceTable() {
     auto* const update_req = add_op->mutable_request();
     QLAddStringHashValue(update_req, table_id);
     update_req->mutable_column_refs()->add_ids(mutations_col_id);
-    QLColumnValuePB *col_pb = update_req->add_column_values();
+    auto *col_pb = update_req->add_column_values();
     col_pb->set_column_id(mutations_col_id);
-    QLBCallPB* bfcall_expr_pb = col_pb->mutable_expr()->mutable_bfcall();
+    auto* bfcall_expr_pb = col_pb->mutable_expr()->mutable_bfcall();
     bfcall_expr_pb->set_opcode(std::to_underlying(bfql::BFOpcode::OPCODE_AddI64I64_80));
-    QLExpressionPB* operand1 = bfcall_expr_pb->add_operands();
-    QLExpressionPB* operand2 = bfcall_expr_pb->add_operands();
+    auto* operand1 = bfcall_expr_pb->add_operands();
+    auto* operand2 = bfcall_expr_pb->add_operands();
     operand1->set_column_id(mutations_col_id);
     operand2->mutable_value()->set_int64_value(mutation_count);
     update_req->mutable_if_expr()->mutable_condition()->set_op(::yb::QLOperator::QL_OP_EXISTS);
@@ -478,6 +492,11 @@ Result<PgAutoAnalyzeService::NamespaceTablesMap> PgAutoAnalyzeService::Determine
   VLOG_WITH_FUNC(3);
   NamespaceTablesMap namespace_id_to_analyze_target_tables;
   for (const auto& [table_id, table_info] : table_id_to_info_maps) {
+    auto table_oid = VERIFY_RESULT(GetPgsqlTableOid(table_id));
+    if (kSkipAnalyzeOids.contains(table_oid)) {
+      VLOG(1) << "Skipping table OID " << table_oid << " from auto-analyze";
+      continue;
+    }
     auto it = table_tuple_count_.find(table_id);
     if (it == table_tuple_count_.end()) {
       VLOG(1) << "Table not in table_tuple_count_, so skipping: " << table_id;
@@ -587,9 +606,9 @@ Result<std::pair<std::vector<TableId>, std::vector<TableId>>>
       if (batched_tables.size() == FLAGS_ysql_auto_analyze_batch_size
           || table_id == tables_to_analyze.back()) {
         auto table_names = TableNamesForAnalyzeCmd(batched_tables);
-        VLOG(1) << "In YSQL database: " << dbname
-                <<  ", run ANALYZE statement for tables in batch: "
-                << analyze_query << table_names;
+        LOG(INFO) << "In YSQL database: " << dbname
+                  <<  ", run ANALYZE statement for tables in batch: "
+                  << analyze_query << table_names;
         auto s = conn.Execute(analyze_query + table_names);
         if (s.ok()) {
           analyzed_tables.insert(analyzed_tables.end(), batched_tables.begin(),
@@ -668,12 +687,12 @@ Status PgAutoAnalyzeService::UpdateTableMutationsAfterAnalyze(
     auto* const update_req = update_op->mutable_request();
     QLAddStringHashValue(update_req, table_id);
     update_req->mutable_column_refs()->add_ids(mutations_col_id);
-    QLColumnValuePB *col_pb = update_req->add_column_values();
+    auto *col_pb = update_req->add_column_values();
     col_pb->set_column_id(mutations_col_id);
-    QLBCallPB* bfcall_expr_pb = col_pb->mutable_expr()->mutable_bfcall();
+    auto* bfcall_expr_pb = col_pb->mutable_expr()->mutable_bfcall();
     bfcall_expr_pb->set_opcode(std::to_underlying(bfql::BFOpcode::OPCODE_SubI64I64_85));
-    QLExpressionPB* operand1 = bfcall_expr_pb->add_operands();
-    QLExpressionPB* operand2 = bfcall_expr_pb->add_operands();
+    auto* operand1 = bfcall_expr_pb->add_operands();
+    auto* operand2 = bfcall_expr_pb->add_operands();
     operand1->set_column_id(mutations_col_id);
     auto it = table_id_to_info_maps.find(table_id);
     operand2->mutable_value()->set_int64_value(
@@ -723,6 +742,9 @@ Status PgAutoAnalyzeService::CleanUpDeletedTablesFromServiceTable(
   VLOG_IF_WITH_FUNC(2, !tables_absent_in_name_cache.empty())
       << "Tables that are absent in the name cache: " << AsString(tables_absent_in_name_cache);
 
+  auto session = VERIFY_RESULT(GetYBSession(
+      GetAtomicFlag(&FLAGS_ysql_cluster_level_mutation_persist_rpc_timeout_ms) * 1ms));
+
   auto* table = VERIFY_RESULT(GetServiceTable());
   std::vector<client::YBOperationPtr> ops;
   for (auto& table_id : deleted_tables) {
@@ -744,8 +766,6 @@ Status PgAutoAnalyzeService::CleanUpDeletedTablesFromServiceTable(
     ops.push_back(delete_op);
   }
 
-  auto session = VERIFY_RESULT(GetYBSession(
-      GetAtomicFlag(&FLAGS_ysql_cluster_level_mutation_persist_rpc_timeout_ms) * 1ms));
   // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
   RETURN_NOT_OK_PREPEND(session->TEST_ApplyAndFlush(ops),
       "Failed to clean up deleted entries from auto analyze table");
@@ -758,7 +778,9 @@ Result<pgwrapper::PGConn> PgAutoAnalyzeService::EstablishDBConnection(
     bool* is_deleted_or_renamed) {
   // Connect to PG database.
   const auto& dbname = namespace_id_to_name_[namespace_id];
-  auto conn_result = connect_to_pg_func_(dbname, std::nullopt);
+  auto conn_result = connect_to_pg_func_(
+      dbname, CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(GetAtomicFlag(
+                                           &FLAGS_ysql_auto_analyze_db_connect_timeout_ms)));
   // If connection setup fails,  continue
   // doing ANALYZEs on tables in other databases.
   if (!conn_result) {
@@ -775,9 +797,8 @@ Result<pgwrapper::PGConn> PgAutoAnalyzeService::EstablishDBConnection(
       // If the database is renamed, we need to refresh name cache so that tables in the renamed
       // database can be analyzed in the next iteration of TriggerAnalyze.
       master::GetNamespaceInfoResponsePB resp;
-      RETURN_NOT_OK(client_future_.get()->GetNamespaceInfo(namespace_id, "", YQL_DATABASE_PGSQL,
-                                                           &resp));
-      if (resp.namespace_().name() != dbname) { // renamed
+      RETURN_NOT_OK(client_future_.get()->GetNamespaceInfo(namespace_id, &resp));
+      if (resp.namespace_().name() != dbname) {  // renamed
         VLOG(4) << "Database " << dbname << " was renamed to " << resp.namespace_().name();
         refresh_name_cache_ = true;
         *is_deleted_or_renamed = true;

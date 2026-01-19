@@ -47,9 +47,11 @@ sudo bash ./bin/configure_ptp.sh
 
 ### Configure ClockBound
 
-{{<tags/feature/tp idea="1807">}} [ClockBound](https://github.com/aws/clock-bound) is an open source daemon that allows you to compare timestamps to determine order for events and transactions, independent of an instance's geographic location. ClockBound provides a strict interval in which the reference time (true time) exists.
+{{<tags/feature/ea idea="1807">}} [ClockBound](https://github.com/aws/clock-bound) is an open source daemon that allows you to compare timestamps to determine order for events and transactions, independent of an instance's geographic location. ClockBound provides a strict interval in which the reference time (true time) exists.
 
 Although optional, configuring ClockBound improves clock accuracy by several orders of magnitude. ClockBound requires chrony and can be used in conjunction with PTP.
+
+ClockBound is supported on AWS and GCP. Azure is not supported.
 
 Configure ClockBound using the `configure_clockbound.sh` script in the bin directory of your YugabyteDB home directory as follows:
 
@@ -61,7 +63,7 @@ After configuring ClockBound, you must configure the YB-TServer and YB-Master se
 
 If the ClockBound agent is configured with PTP, use a more aggressive clock error estimate such as `clockbound_clock_error_estimate_usec=100`.
 
-### Verify ClockBound configuration
+#### Verify ClockBound configuration
 
 Verify that ClockBound is configured properly using the following command:
 
@@ -141,7 +143,7 @@ $ ulimit -n <value>
 
 {{< note title="Restart servers" >}}
 
-After changing a ulimit setting, the YB-Master and YB-TServer servers must be restarted in order for the new settings to take effect. Check the [yb-tserver.INFO](../start-masters/#verify-tserver-health) file to verify that the ulimits are applied. You can also check the `/proc/<process pid>` file to see the current settings.
+If you change a ulimit setting on a node where the YB-Master and YB-TServer servers are already running, you must restart the servers for the new settings to take effect. Check the [yb-tserver.INFO](../start-masters/#verify-tserver-health) file to verify that the ulimits are applied. You can also check the `/proc/<process pid>` file to see the current settings.
 
 {{< /note >}}
 

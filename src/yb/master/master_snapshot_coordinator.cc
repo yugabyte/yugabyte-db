@@ -801,6 +801,13 @@ class MasterSnapshotCoordinator::Impl {
       const SnapshotScheduleId& schedule_id, HybridTime restore_at) EXCLUDES(mutex_) {
     std::lock_guard lock(mutex_);
     const auto [begin, end] = snapshots_.get<ScheduleTag>().equal_range(schedule_id);
+    SCHECK_FORMAT(
+        begin != end, IllegalState, "No snapshots have been created for schedule $0", schedule_id);
+    // Check if the restore time is earlier than minimum restore time.
+    SCHECK_FORMAT(
+        restore_at >= ComputeMinRestoreTime(**begin), IllegalState,
+        "Trying to restore to $0, which is earlier than the minimum allowed restore time $1.",
+        restore_at, ComputeMinRestoreTime(**begin));
 
     for (auto it = begin; it != end; ++it) {
       if (VERIFY_RESULT(IsSnapshotSuitableForRestoreAt(**it, restore_at))) {
@@ -1174,9 +1181,11 @@ class MasterSnapshotCoordinator::Impl {
         GetSchedulesForTable(schedules_to_tables_map, table_info.id());
 
     // If even one tablet has an active snapshot then hide the table.
-    delete_retainer.active_snapshot = std::any_of(
-        tablets_to_check.begin(), tablets_to_check.end(),
-        [this](const auto& tablet) { return IsTabletCoveredBySnapshot(tablet->tablet_id()); });
+    delete_retainer.active_snapshot =
+        IsNamespaceRetained(table_info.namespace_id()) ||
+        std::any_of(tablets_to_check.begin(), tablets_to_check.end(), [this](const auto& tablet) {
+          return IsTabletCoveredBySnapshot(tablet->tablet_id(), TxnSnapshotId::Nil());
+        });
 
     return Status::OK();
   }
@@ -1186,7 +1195,7 @@ class MasterSnapshotCoordinator::Impl {
     delete_retainer.snapshot_schedules =
         VERIFY_RESULT(GetSnapshotSchedules(SysRowEntryType::TABLE, tablet_info.table()->id()));
 
-    delete_retainer.active_snapshot = IsTabletCoveredBySnapshot(tablet_info.tablet_id());
+    delete_retainer.active_snapshot = TabletShouldBeRetained(tablet_info);
 
     return Status::OK();
   }
@@ -1202,7 +1211,7 @@ class MasterSnapshotCoordinator::Impl {
     }
 
     return ShouldRetain(
-        tablet_id, tablets_entry_pb, HybridTime::FromPB(tablets_entry_pb.hide_hybrid_time()),
+        tablet_info, tablets_entry_pb, HybridTime::FromPB(tablets_entry_pb.hide_hybrid_time()),
         schedule_to_min_restore_time);
   }
 
@@ -1221,8 +1230,7 @@ class MasterSnapshotCoordinator::Impl {
 
     auto tablet_lock = tablet_info.LockForRead();
     return ShouldRetain(
-        tablet_info.tablet_id(), tablet_lock->pb, table_hide_hybrid_time,
-        schedule_to_min_restore_time);
+        tablet_info, tablet_lock->pb, table_hide_hybrid_time, schedule_to_min_restore_time);
   }
 
   bool IsPitrActive() {
@@ -1278,46 +1286,36 @@ class MasterSnapshotCoordinator::Impl {
     return restore_kv;
   }
 
-  // Checks if a tablet should be retained due to:
-  // 1. A complete snapshot covering the tablet, OR
-  // 2. An ongoing snapshot creation operation which retains all tablets belonging to the namespace.
-  bool IsTabletCoveredBySnapshot(
-      const TabletId& tablet_id, const TxnSnapshotId& snapshot_id = TxnSnapshotId::Nil()) const {
-    {
-      std::lock_guard l(mutex_);
-      // Potential optimization opportunity:
-      // For colocated tables, the following scenario could happen.
-      // 1. Snapshot has colocated tables t1, t2 and t3.
-      // 2. User created t4 after snapshot is complete.
-      // 3. User dropped t4, ideally we can delete this table (instead of hiding)
-      // but the below logic will hide it instead. This is ok from a correctness
-      // standpoint but can be a potential optimization worth considering especially
-      // if the table occupies a lot of space on disk and/or snapshot is long lived.
+  bool IsTabletCoveredBySnapshot(const TabletId& tablet_id, const TxnSnapshotId& snapshot_id) const
+      EXCLUDES(mutex_) {
+    std::lock_guard l(mutex_);
+    // Potential optimization opportunity:
+    // For colocated tables, the following scenario could happen.
+    // 1. Snapshot has colocated tables t1, t2 and t3.
+    // 2. User created t4 after snapshot is complete.
+    // 3. User dropped t4, ideally we can delete this table (instead of hiding)
+    // but the below logic will hide it instead. This is ok from a correctness
+    // standpoint but can be a potential optimization worth considering especially
+    // if the table occupies a lot of space on disk and/or snapshot is long lived.
 
-      // Check if tablet is directly covered by snapshots
-      auto* snapshots = FindOrNull(tablet_to_covering_snapshots_, tablet_id);
-      // If snapshot_id is nil then return true if any snapshot covers the particular tablet
-      // whereas if snapshot_id is not nil then return true if that particular snapshot
-      // covers the tablet.
-      if (snapshots && (!snapshot_id || snapshots->contains(snapshot_id))) {
-        return true;
-      }
-    }
-
-    // Check if tablet's namespace is anchored due to ongoing snapshot operations
-    // This prevents hard deletion while snapshots are being created
-    auto tablet_info_result = cm_->GetTabletInfo(tablet_id);
-    if (tablet_info_result.ok() && *tablet_info_result) {
-      const auto& tablet_info = *tablet_info_result;
-      if (tablet_info->table()) {
-        const auto& namespace_id = tablet_info->table()->namespace_id();
-        if (IsNamespaceRetained(namespace_id)) {
-          return true;
-        }
-      }
+    // Check if tablet is directly covered by snapshots
+    auto* snapshots = FindOrNull(tablet_to_covering_snapshots_, tablet_id);
+    // If snapshot_id is nil then return true if any snapshot covers the particular tablet
+    // whereas if snapshot_id is not nil then return true if that particular snapshot
+    // covers the tablet.
+    if (snapshots && (!snapshot_id || snapshots->contains(snapshot_id))) {
+      return true;
     }
 
     return false;
+  }
+
+  // Checks if a tablet should be retained due to:
+  // 1. A complete snapshot covering the tablet, OR
+  // 2. An ongoing snapshot creation operation which retains all tablets belonging to the namespace.
+  bool TabletShouldBeRetained(const TabletInfo& tablet_info) const {
+    return IsTabletCoveredBySnapshot(tablet_info.tablet_id(), TxnSnapshotId::Nil()) ||
+           IsNamespaceRetained(tablet_info.table()->namespace_id());
   }
 
   void Start() {
@@ -2271,8 +2269,8 @@ class MasterSnapshotCoordinator::Impl {
   }
 
   bool ShouldRetain(
-      const TabletId& tablet_id, const SysTabletsEntryPB& tablets_entry_pb,
-      const HybridTime& hide_hybrid_time,
+      const TabletInfo& tablet_info, const SysTabletsEntryPB& tablets_entry_pb,
+      HybridTime hide_hybrid_time,
       const ScheduleMinRestoreTime& schedule_to_min_restore_time) const {
     for (const auto& schedule_id_str : tablets_entry_pb.retained_by_snapshot_schedules()) {
       auto schedule_id = TryFullyDecodeSnapshotScheduleId(schedule_id_str);
@@ -2280,13 +2278,14 @@ class MasterSnapshotCoordinator::Impl {
       // If schedule is not present in schedule_min_restore_time then it means that schedule
       // was deleted, so it should not retain the tablet.
       if (it != schedule_to_min_restore_time.end() && it->second <= hide_hybrid_time) {
-        VLOG(1) << "Retaining tablet: " << tablet_id << ", hide hybrid time: " << hide_hybrid_time
-                << ", because of schedule: " << schedule_id << ", min restore time: " << it->second;
+        VLOG(1) << "Retaining tablet: " << AsString(tablet_info) << ", hide hybrid time: "
+                << hide_hybrid_time << ", because of schedule: " << schedule_id
+                << ", min restore time: " << it->second;
         return true;
       }
     }
 
-    return IsTabletCoveredBySnapshot(tablet_id);
+    return TabletShouldBeRetained(tablet_info);
   }
 
   SnapshotCoordinatorContext& context_;

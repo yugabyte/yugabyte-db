@@ -63,6 +63,7 @@ struct od_server {
 
 	/* YB */
 	bool yb_sticky_connection;
+	bool yb_replication_connection;
 	bool reset_timeout;
 	/* is this an auth-backend? */
 	bool yb_auth_backend;
@@ -109,6 +110,7 @@ static inline void od_server_init(od_server_t *server, int reserve_prep_stmts)
 	server->endpoint_selector = 0;
 	od_stat_state_init(&server->stats_state);
 	server->yb_sticky_connection = false;
+	server->yb_replication_connection = false;
 	server->reset_timeout = false;
 	server->yb_auth_backend = false;
 	server->logical_client_version = 0;
@@ -120,7 +122,7 @@ static inline void od_server_init(od_server_t *server, int reserve_prep_stmts)
 
 	kiwi_key_init(&server->key);
 	kiwi_key_init(&server->key_client);
-	kiwi_vars_init(&server->vars);
+	kiwi_vars_init(&server->vars, true);
 
 	od_io_init(&server->io);
 	od_relay_init(&server->relay, &server->io);

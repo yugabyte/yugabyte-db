@@ -1250,9 +1250,13 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
 
     String url =
         "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/upgrade/certs";
+    ObjectNode bodyJson = Json.newObject();
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    bodyJson.put("rootCA", universe.getUniverseDetails().rootCA.toString());
+    bodyJson.put("clientRootCA", universe.getUniverseDetails().getClientRootCA().toString());
     Result result =
         assertPlatformException(
-            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, Json.newObject()));
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, "No changes in rootCA or clientRootCA.");
 
     ArgumentCaptor<CertsRotateParams> argCaptor = ArgumentCaptor.forClass(CertsRotateParams.class);
@@ -1373,6 +1377,78 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     assertNotNull(task);
     assertThat(task.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.getUuid())));
     assertThat(task.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
+    assertThat(task.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.CertsRotate)));
+    assertAuditEntry(1, customer.getUuid());
+  }
+
+  @Test
+  public void testCertsRotateWithKubernetesUniverseOnlyRootCA()
+      throws IOException, NoSuchAlgorithmException {
+    UUID fakeTaskUUID =
+        FakeDBApplication.buildTaskInfo(null, TaskType.CertsRotateKubernetesUpgrade);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+
+    // Create initial rootCA and clientRootCA (same for K8s) using certificateHelper
+    // to properly set up certificate files including private key
+    when(mockConfig.getString("yb.storage.path")).thenReturn(TestHelper.TMP_PATH);
+    UUID initialRootCA =
+        certificateHelper.createRootCA(mockConfig, "test-k8s-initial", customer.getUuid());
+
+    // Create K8s universe with both encryption flags set to true
+    Universe universe = createUniverse("Test K8s Universe", customer.getId(), CloudType.kubernetes);
+    Map<String, String> universeConfig = new HashMap<>();
+    universeConfig.put(Universe.HELM2_LEGACY, "helm");
+    universe.setConfig(universeConfig);
+    universe.save();
+
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        universeObject -> {
+          UniverseDefinitionTaskParams universeDetails = universeObject.getUniverseDetails();
+          PlacementInfo placementInfo = universeDetails.getPrimaryCluster().placementInfo;
+          UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
+          userIntent.enableNodeToNodeEncrypt = true;
+          userIntent.enableClientToNodeEncrypt = true;
+          userIntent.providerType = CloudType.kubernetes;
+          universeDetails.rootCA = initialRootCA;
+          universeDetails.setClientRootCA(initialRootCA);
+          universeDetails.rootAndClientRootCASame = true;
+          universeDetails.upsertPrimaryCluster(userIntent, null, placementInfo);
+          universeObject.setUniverseDetails(universeDetails);
+        });
+
+    // Create new rootCA for rotation using certificateHelper to properly set up certificate files
+    UUID newRootCA = certificateHelper.createRootCA(mockConfig, "test-k8s-new", customer.getUuid());
+
+    // Call certs rotate with only rootCA (not clientRootCA)
+    String url =
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + universe.getUniverseUUID()
+            + "/upgrade/certs";
+    ObjectNode bodyJson = Json.newObject().put("rootCA", newRootCA.toString());
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertValue(json, "taskUUID", fakeTaskUUID.toString());
+
+    ArgumentCaptor<CertsRotateParams> argCaptor = ArgumentCaptor.forClass(CertsRotateParams.class);
+    verify(mockCommissioner, times(1))
+        .submit(eq(TaskType.CertsRotateKubernetesUpgrade), argCaptor.capture());
+
+    CertsRotateParams taskParams = argCaptor.getValue();
+    assertEquals(newRootCA, taskParams.rootCA);
+    // For K8s universes, clientRootCA should be automatically set to rootCA
+    assertEquals(newRootCA, taskParams.getClientRootCA());
+    assertEquals(UpgradeOption.ROLLING_UPGRADE, taskParams.upgradeOption);
+    assertTrue(taskParams.rootAndClientRootCASame);
+
+    CustomerTask task = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
+    assertNotNull(task);
+    assertThat(task.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.getUuid())));
+    assertThat(task.getTargetName(), allOf(notNullValue(), equalTo("Test K8s Universe")));
     assertThat(task.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.CertsRotate)));
     assertAuditEntry(1, customer.getUuid());
   }
@@ -1880,7 +1956,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
                 universeDetails.rootAndClientRootCASame = false;
                 userIntent.providerType = CloudType.aws;
               }
-              universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
+              universeDetails.upsertPrimaryCluster(userIntent, null, placementInfo);
               // Modifying default values to make sure these params are merged into taskParams.
               universeDetails.setTxnTableWaitCountFlag = !universeDetails.setTxnTableWaitCountFlag;
               universeDetails.allowInsecure = !universeDetails.allowInsecure;
@@ -1955,7 +2031,8 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
           universeDetails.rootAndClientRootCASame = true;
           universeDetails.rootCA = rootCA;
           universeDetails.setClientRootCA(rootCA);
-          universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
+          universeDetails.upsertPrimaryCluster(
+              userIntent, universeDetails.getPrimaryCluster().getPartitions(), placementInfo);
           universe.setUniverseDetails(universeDetails);
         });
     return universeUUID;
@@ -2002,7 +2079,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
           userIntent.providerType = Common.CloudType.valueOf(provider.getCode());
           userIntent.provider = provider.getUuid().toString();
           userIntent.regionList = ImmutableList.of(region.getUuid());
-          universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
+          universeDetails.upsertPrimaryCluster(userIntent, null, placementInfo);
 
           universeDetails.nodeDetailsSet = new HashSet<>();
           for (int idx = 0; idx <= userIntent.numNodes; idx++) {

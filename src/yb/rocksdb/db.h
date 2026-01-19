@@ -928,7 +928,7 @@ class DB {
   virtual bool NeedsDelay() { return false; }
 
   // Returns approximate middle key (see Version::GetMiddleKey).
-  virtual yb::Result<std::string> GetMiddleKey() = 0;
+  virtual yb::Result<std::string> GetMiddleKey(Slice lower_bound_key) = 0;
 
   // If true, will allow compactions to fail without setting bg_error and not causing writes to
   // fail. Should only be used with extra care for troubleshooting when/while there are no other

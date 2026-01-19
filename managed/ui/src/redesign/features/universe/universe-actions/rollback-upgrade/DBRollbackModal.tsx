@@ -3,7 +3,7 @@ import _ from 'lodash';
 import { toast } from 'react-toastify';
 import { useDispatch } from 'react-redux';
 import { useMutation } from 'react-query';
-import { useTranslation } from 'react-i18next';
+import { useTranslation, Trans } from 'react-i18next';
 import { useForm, FormProvider } from 'react-hook-form';
 import { Box, Typography } from '@material-ui/core';
 import { YBModal, YBCheckboxField, YBInputField, YBLabel } from '../../../../components';
@@ -14,9 +14,10 @@ import {
   fetchCustomerTasks,
   fetchCustomerTasksSuccess,
   fetchCustomerTasksFailure,
-  showTaskInDrawer,
+  showTaskInDrawer
 } from '../../../../../actions/tasks';
 import { createErrorMessage, transitToUniverse } from '../../universe-form/utils/helpers';
+import { getIsKubernetesUniverse } from '@app/utils/UniverseUtils';
 import { Universe } from '../../universe-form/utils/dto';
 import { TOAST_AUTO_DISMISS_INTERVAL } from '../../universe-form/utils/constants';
 import { DBRollbackFormFields, UPGRADE_TYPE, DBRollbackPayload } from './utils/types';
@@ -27,7 +28,8 @@ import { ApiPermissionMap } from '../../../rbac/ApiAndUserPermMapping';
 //imported styles
 import { dbUpgradeFormStyles } from './utils/RollbackUpgradeStyles';
 //icons
-import { ReactComponent as ClockRewindIcon } from '../../../../assets/clock-rewind.svg';
+import ClockRewindIcon from '../../../../assets/clock-rewind.svg';
+import WarningIcon from '../../../../assets/warning-triangle.svg?img';
 
 interface DBRollbackModalProps {
   open: boolean;
@@ -41,6 +43,7 @@ export const DBRollbackModal: FC<DBRollbackModalProps> = ({ open, onClose, unive
   const classes = dbUpgradeFormStyles();
   const { universeDetails, universeUUID } = universeData;
   const prevVersion = _.get(universeDetails, 'prevYBSoftwareConfig.softwareVersion', '');
+  const isK8sUniverse = getIsKubernetesUniverse(universeData);
   const dispatch = useDispatch();
   const isNewTaskUIEnabled = useIsTaskNewUIEnabled();
   const formMethods = useForm<DBRollbackFormFields>({
@@ -77,8 +80,7 @@ export const DBRollbackModal: FC<DBRollbackModalProps> = ({ open, onClose, unive
         }, 2000);
         if (isNewTaskUIEnabled) {
           dispatch(showTaskInDrawer(resp.taskUUID));
-        }
-        else {
+        } else {
           transitToUniverse(universeUUID);
         }
         onClose();
@@ -110,7 +112,7 @@ export const DBRollbackModal: FC<DBRollbackModalProps> = ({ open, onClose, unive
   return (
     <YBModal
       open={open}
-      overrideHeight={'400px'}
+      overrideHeight={'420px'}
       overrideWidth={'610px'}
       cancelLabel={t('common.cancel')}
       submitLabel={t('universeActions.dbRollbackUpgrade.proceedRollback')}
@@ -152,6 +154,7 @@ export const DBRollbackModal: FC<DBRollbackModalProps> = ({ open, onClose, unive
               inputProps={{
                 'data-testid': 'RotateUniverseKey-Checkbox'
               }}
+              disabled={isK8sUniverse}
             />
             <Box
               display={'flex'}
@@ -180,6 +183,19 @@ export const DBRollbackModal: FC<DBRollbackModalProps> = ({ open, onClose, unive
               <Typography variant="body2">{t('common.seconds')}</Typography>
             </Box>
           </Box>
+          {!isRollingUpgrade && (
+            <Box mt={1} className={classes.warningBanner}>
+              <Box display="flex" mr={1}>
+                <img src={WarningIcon} alt="---" height={'22px'} width="22px" />
+              </Box>
+              <Box display={'flex'} flexDirection={'column'}>
+                <Typography variant="body1"></Typography>
+                <Typography variant="body2">
+                  <Trans i18nKey="universeActions.dbRollbackUpgrade.nonRollingWarning" />
+                </Typography>
+              </Box>
+            </Box>
+          )}
         </Box>
       </FormProvider>
     </YBModal>

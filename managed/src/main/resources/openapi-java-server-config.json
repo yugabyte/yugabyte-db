@@ -12,5 +12,7 @@
         "developerOrganization": "Yugabyte",
         "developerName": "Yugabyte",
         "developerEmail": "oss-maintainers@yugabyte.com",
-        "licenseName": "POLYFORM-FREE-TRIAL-LICENSE-1.0.0"
+        "licenseName": "POLYFORM-FREE-TRIAL-LICENSE-1.0.0",
+        "enumPropertyNaming": "legacy",
+        "removeEnumValuePrefix": true
     }

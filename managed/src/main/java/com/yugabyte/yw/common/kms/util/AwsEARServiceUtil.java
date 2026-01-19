@@ -10,12 +10,17 @@
 
 package com.yugabyte.yw.common.kms.util;
 
+import static com.yugabyte.yw.common.Util.HTTPS_SCHEME;
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.List;
@@ -116,21 +121,31 @@ public class AwsEARServiceUtil {
       return KmsClient.builder().build();
     }
 
-    if (authConfig.path(AwsKmsAuthConfigField.ENDPOINT.fieldName).isMissingNode()
-        || StringUtils.isBlank(
-            authConfig.path(AwsKmsAuthConfigField.ENDPOINT.fieldName).asText())) {
+    String endpoint =
+        authConfig.path(AwsKmsAuthConfigField.ENDPOINT.fieldName).isMissingNode()
+            ? null
+            : authConfig.path(AwsKmsAuthConfigField.ENDPOINT.fieldName).asText();
+
+    if (StringUtils.isBlank(endpoint)) {
       return KmsClient.builder()
           .credentialsProvider(StaticCredentialsProvider.create(awsCredentials))
           .region(Region.of(region))
           .build();
+    } else {
+      try {
+        URI uri = new URI(endpoint);
+        if (uri.getScheme() == null) {
+          uri = new URI(HTTPS_SCHEME + endpoint);
+        }
+        return KmsClient.builder()
+            .credentialsProvider(StaticCredentialsProvider.create(awsCredentials))
+            .region(Region.of(region))
+            .endpointOverride(uri)
+            .build();
+      } catch (URISyntaxException e) {
+        throw new PlatformServiceException(BAD_REQUEST, "Invalid end point: " + e.getMessage());
+      }
     }
-    return KmsClient.builder()
-        .credentialsProvider(StaticCredentialsProvider.create(awsCredentials))
-        .region(Region.of(region))
-        .endpointOverride(
-            URI.create(
-                "https://" + authConfig.path(AwsKmsAuthConfigField.ENDPOINT.fieldName).asText()))
-        .build();
   }
 
   public static IamClient getIAMClient(UUID configUUID) {

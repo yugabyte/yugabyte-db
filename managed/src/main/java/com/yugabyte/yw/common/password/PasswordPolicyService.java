@@ -19,6 +19,7 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigPasswordPolicyData;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -38,6 +39,7 @@ public class PasswordPolicyService {
   private static final char[] SPECIAL_CHARACTERS =
       "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~".toCharArray();
   private static final String DEFAULT_MIN_LENGTH_PARAM = "yb.pwdpolicy.default_min_length";
+  public static final String DEFAULT_MIN_LENGTH_FIPS_PARAM = "yb.pwdpolicy.default_min_length_fips";
   private static final String DEFAULT_MIN_UPPERCASE_PARAM = "yb.pwdpolicy.default_min_uppercase";
   private static final String DEFAULT_MIN_LOWERCASE_PARAM = "yb.pwdpolicy.default_min_lowercase";
   private static final String DEFAULT_MIN_DIGITS_PARAM = "yb.pwdpolicy.default_min_digits";
@@ -129,7 +131,12 @@ public class PasswordPolicyService {
 
     if (configuredPolicy == null) {
       effectivePolicy = new CustomerConfigPasswordPolicyData();
-      effectivePolicy.setMinLength(config.getInt(DEFAULT_MIN_LENGTH_PARAM));
+      boolean fipsEnabled = config.getBoolean(CommonUtils.FIPS_ENABLED);
+      if (fipsEnabled) {
+        effectivePolicy.setMinLength(config.getInt(DEFAULT_MIN_LENGTH_FIPS_PARAM));
+      } else {
+        effectivePolicy.setMinLength(config.getInt(DEFAULT_MIN_LENGTH_PARAM));
+      }
       effectivePolicy.setMinUppercase(config.getInt(DEFAULT_MIN_UPPERCASE_PARAM));
       effectivePolicy.setMinLowercase(config.getInt(DEFAULT_MIN_LOWERCASE_PARAM));
       effectivePolicy.setMinDigits(config.getInt(DEFAULT_MIN_DIGITS_PARAM));

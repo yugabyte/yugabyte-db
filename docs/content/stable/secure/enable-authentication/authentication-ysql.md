@@ -8,6 +8,8 @@ menu:
     identifier: enable-authentication-1-ysql
     parent: enable-authentication
     weight: 715
+aliases:
+  - /stable/secure/enable-authentication/ysql/
 type: docs
 ---
 
@@ -277,7 +279,7 @@ yugabyte=# \du
  yugabyte  | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
 ```
 
-{{< note title="Note" >}}
+{{< note title="Superuser Attributes" >}}
 
 In YugabyteDB (just as in PostgreSQL), `SUPERUSER` status includes all of the following attributes: `CREATEROLE` ("Create role"), `CREATEDB` ("Create DB"), `REPLICATION` ("Replication"), and `BYPASSRLS` ("Bypass RLS"). Whether these attributes display or not, all superusers have these attributes.
 

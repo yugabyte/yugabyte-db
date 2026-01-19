@@ -4,6 +4,10 @@ headerTitle: Deploy YugabyteDB
 linkTitle: Deploy
 description: How to deploy the YugabyteDB database to any public cloud or private data center or Kubernetes. Includes checklist and manual deployment options as well.
 headcontent: Deploy to the public cloud, a private data center, or Kubernetes
+aliases:
+  - /deploy/
+  - /stable/architecture/layered-architecture/
+  - /stable/architecture/overview/
 menu:
   stable:
     identifier: deploy
@@ -15,7 +19,7 @@ type: indexpage
 {{< page-finder/head text="Deploy YugabyteDB" subtle="across different products">}}
   {{< page-finder/list icon="/icons/database-hover.svg" text="YugabyteDB" current="" >}}
   {{< page-finder/list icon="/icons/server-hover.svg" text="YugabyteDB Anywhere" url="../yugabyte-platform/create-deployments/" >}}
-  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/preview/yugabyte-cloud/cloud-basics/" >}}
+  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/stable/yugabyte-cloud/cloud-basics/" >}}
 {{< /page-finder/head >}}
 
 {{<index/block>}}

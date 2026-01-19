@@ -3,7 +3,7 @@
 //--------------------------------------------------------------------------------------------------
 #include "yb/qlexpr/ql_resultset.h"
 
-#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_protocol.messages.h"
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/ql_value.h"
 
@@ -20,10 +20,10 @@ namespace yb::qlexpr {
 
 //--------------------------------------------------------------------------------------------------
 
-QLRSRowDesc::RSColDesc::RSColDesc(const QLRSColDescPB& desc_pb)
+QLRSRowDesc::RSColDesc::RSColDesc(const QLRSColDescMsg& desc_pb)
   : name_(desc_pb.name()), ql_type_(QLType::FromQLTypePB(desc_pb.ql_type())) {}
 
-QLRSRowDesc::QLRSRowDesc(const QLRSRowDescPB& desc_pb) {
+QLRSRowDesc::QLRSRowDesc(const QLRSRowDescMsg& desc_pb) {
   rscol_descs_.reserve(desc_pb.rscol_descs().size());
   for (const auto& rscol_desc_pb : desc_pb.rscol_descs()) {
     rscol_descs_.emplace_back(rscol_desc_pb);
@@ -53,6 +53,10 @@ void QLResultSet::AppendColumn(const size_t index, const QLValue& value) {
 }
 
 void QLResultSet::AppendColumn(const size_t index, const QLValuePB& value) {
+  SerializeValue(rsrow_desc_->rscol_descs()[index].ql_type(), YQL_CLIENT_CQL, value, rows_data_);
+}
+
+void QLResultSet::AppendColumn(const size_t index, const LWQLValuePB& value) {
   SerializeValue(rsrow_desc_->rscol_descs()[index].ql_type(), YQL_CLIENT_CQL, value, rows_data_);
 }
 

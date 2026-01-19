@@ -22,7 +22,6 @@
 #include <mutex>
 
 #include <boost/function.hpp>
-#include "yb/util/logging.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/util/monotime.h"
@@ -30,11 +29,15 @@
 #include "yb/util/random_util.h"
 #include "yb/util/status.h"
 
+DEFINE_RUNTIME_int32(slow_periodic_scheduling_threshold_ms, 20,
+    "How far past its scheduled run time the PeriodicTimer callback start can be delayed before "
+    "scheduling is considered slow, which causes warnings to be logged.");
+TAG_FLAG(slow_periodic_scheduling_threshold_ms, advanced);
+
 using std::shared_ptr;
 using std::weak_ptr;
 
-namespace yb {
-namespace rpc {
+namespace yb::rpc {
 
 PeriodicTimer::Options::Options()
     : jitter_pct(0.25),
@@ -50,10 +53,7 @@ shared_ptr<PeriodicTimer> PeriodicTimer::Create(
 }
 
 PeriodicTimer::PeriodicTimer(
-    Messenger* messenger,
-    RunTaskFunctor functor,
-    MonoDelta period,
-    Options options)
+    Messenger* messenger, RunTaskFunctor functor, MonoDelta period, Options options)
     : messenger_(messenger),
       functor_(std::move(functor)),
       period_(period),
@@ -61,7 +61,8 @@ PeriodicTimer::PeriodicTimer(
       rng_(GetRandomSeed32()),
       current_callback_generation_(0),
       num_callbacks_for_tests_(0),
-      started_(false) {
+      started_(false),
+      expected_callback_time_(MonoTime::Max()) {
   DCHECK_GE(options_.jitter_pct, 0);
   DCHECK_LE(options_.jitter_pct, 1);
 }
@@ -76,6 +77,7 @@ void PeriodicTimer::Start(MonoDelta next_task_delta) {
     started_ = true;
     SnoozeUnlocked(next_task_delta);
     auto new_callback_generation = ++current_callback_generation_;
+    expected_callback_time_ = MonoTime::Now();
 
     // Invoke Callback() with the lock released.
     l.unlock();
@@ -167,6 +169,11 @@ void PeriodicTimer::Callback(int64_t my_callback_generation) {
     }
 
     MonoTime now = MonoTime::Now();
+    auto discrepancy = now - expected_callback_time_;
+    if (discrepancy > MonoDelta::FromMilliseconds(FLAGS_slow_periodic_scheduling_threshold_ms)) {
+      YB_LOG_EVERY_N_SECS(WARNING, 1)
+          << "PeriodicTimer callback delayed by " << discrepancy;
+    }
     if (now < next_task_time_) {
       // It's not yet time to run the task. Reduce the scheduled delay if
       // enough time has elapsed, but don't increase it.
@@ -183,6 +190,7 @@ void PeriodicTimer::Callback(int64_t my_callback_generation) {
       SnoozeUnlocked();
       delay = next_task_time_ - now;
     }
+    expected_callback_time_ = now + delay;
   }
 
   if (run_task) {
@@ -210,5 +218,4 @@ void PeriodicTimer::Callback(int64_t my_callback_generation) {
   }, delay.ToSteadyDuration());
 }
 
-} // namespace rpc
-} // namespace yb
+} // namespace yb::rpc

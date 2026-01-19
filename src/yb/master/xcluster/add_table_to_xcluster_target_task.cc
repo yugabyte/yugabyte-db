@@ -64,6 +64,8 @@ std::string AddTableToXClusterTargetTask::description() const {
 }
 
 Status AddTableToXClusterTargetTask::FirstStep() {
+  VLOG_WITH_PREFIX(1) << "Starting AddTableToXClusterTargetTask for table info "
+                      << table_info_->ToString();
   auto universe_l = universe_->LockForRead();
   auto& universe_pb = universe_l->pb;
 
@@ -97,6 +99,10 @@ Status AddTableToXClusterTargetTask::FirstStep() {
   if (!is_db_scoped_) {
     auto xcluster_rpc = VERIFY_RESULT(
         universe_->GetOrCreateXClusterRpcTasks(universe_pb.producer_master_addresses()));
+    VLOG_WITH_PREFIX(1) << "Using BootstrapProducer with namespace: "
+                        << table_info_->namespace_name()
+                        << " pgschema: " << table_info_->pgschema_name()
+                        << " table name: " << table_info_->name();
     return xcluster_rpc->client()->BootstrapProducer(
         YQLDatabase::YQL_DATABASE_PGSQL, table_info_->namespace_name(),
         {table_info_->pgschema_name()}, {table_info_->name()}, std::move(callback));
@@ -122,6 +128,16 @@ Status AddTableToXClusterTargetTask::FirstStep() {
         {xcluster_table_info.xcluster_source_table_id()}, std::move(callback));
   }
 
+  SCHECK(
+      !is_automatic_ddl_mode_, IllegalState,
+      "Table being added to xCluster automatic-mode replication lacks source table ID; it has "
+      "namespace: $0 pg_schema: $1 tablename: $2",
+      table_info_->namespace_name(), table_info_->pgschema_name(), table_info_->name());
+
+  VLOG_WITH_PREFIX(1) << "No source table ID so falling back on GetXClusterTableCheckpointInfos "
+                         "with producer namespace ID: "
+                      << producer_namespace_id << " pgschema: " << table_info_->pgschema_name()
+                      << " table name: " << table_info_->name();
   return remote_client_->GetXClusterClient().GetXClusterTableCheckpointInfos(
       universe_->ReplicationGroupId(), producer_namespace_id, {table_info_->name()},
       {table_info_->pgschema_name()}, std::move(callback));
@@ -210,7 +226,7 @@ AddTableToXClusterTargetTask::GetXClusterSafeTimeWithoutDdlQueue() {
   const auto namespace_id = table_info_->namespace_id();
 
   auto safe_time_res = xcluster_manager_.GetXClusterSafeTimeForNamespace(
-      epoch_, namespace_id, XClusterSafeTimeFilter::DDL_QUEUE);
+      namespace_id, XClusterSafeTimeFilter::DDL_QUEUE);
   if (!safe_time_res) {
     if (!safe_time_res.status().IsNotFound()) {
       return safe_time_res.status();

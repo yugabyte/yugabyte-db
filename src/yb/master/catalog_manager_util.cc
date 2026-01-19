@@ -13,6 +13,7 @@
 
 #include "yb/master/catalog_manager_util.h"
 
+#include "yb/common/common_net.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/wire_protocol.h"
 
@@ -185,49 +186,6 @@ Status CatalogManagerUtil::GetPerZoneTSDesc(const TSDescriptorVector& ts_descs,
   return Status::OK();
 }
 
-bool CatalogManagerUtil::IsCloudInfoEqual(const CloudInfoPB& lhs, const CloudInfoPB& rhs) {
-  return (lhs.placement_cloud() == rhs.placement_cloud() &&
-          lhs.placement_region() == rhs.placement_region() &&
-          lhs.placement_zone() == rhs.placement_zone());
-}
-
-bool CatalogManagerUtil::DoesCloudInfoContainCloudInfo(const CloudInfoPB& lhs,
-                                                       const CloudInfoPB& rhs) {
-  if (!lhs.has_placement_cloud()) return true;
-  if (lhs.placement_cloud() != rhs.placement_cloud()) return false;
-  if (!lhs.has_placement_region()) return true;
-  if (lhs.placement_region() != rhs.placement_region()) return false;
-  if (!lhs.has_placement_zone()) return true;
-  return lhs.placement_zone() == rhs.placement_zone();
-}
-
-bool CatalogManagerUtil::DoesPlacementInfoContainCloudInfo(const PlacementInfoPB& placement_info,
-                                                           const CloudInfoPB& cloud_info) {
-  for (const auto& placement_block : placement_info.placement_blocks()) {
-    if (DoesCloudInfoContainCloudInfo(placement_block.cloud_info(), cloud_info)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-bool CatalogManagerUtil::DoesPlacementInfoSpanMultipleRegions(
-    const PlacementInfoPB& placement_info) {
-  int num_blocks = placement_info.placement_blocks_size();
-  if (num_blocks < 2) {
-    return false;
-  }
-  const auto& first_block = placement_info.placement_blocks(0).cloud_info();
-  for (int i = 1; i < num_blocks; ++i) {
-    const auto& cur_block = placement_info.placement_blocks(i).cloud_info();
-    if (first_block.placement_cloud() != cur_block.placement_cloud() ||
-        first_block.placement_region() != cur_block.placement_region()) {
-      return true;
-    }
-  }
-  return false;
-}
-
 Result<std::string> CatalogManagerUtil::GetPlacementUuidFromRaftPeer(
     const ReplicationInfoPB& replication_info, const consensus::RaftPeerPB& peer) {
   switch (peer.member_type()) {
@@ -241,8 +199,7 @@ Result<std::string> CatalogManagerUtil::GetPlacementUuidFromRaftPeer(
       // This peer is a read replica.
       std::vector<std::string> placement_uuid_matches;
       for (const auto& placement_info : replication_info.read_replicas()) {
-        if (CatalogManagerUtil::DoesPlacementInfoContainCloudInfo(
-                placement_info, peer.cloud_info())) {
+        if (PlacementInfoContainsCloudInfo(placement_info, peer.cloud_info())) {
           placement_uuid_matches.push_back(placement_info.placement_uuid());
         }
       }
@@ -449,7 +406,7 @@ Status ValidateAndAddPreferredZone(
         cloud_info_str);
   }
 
-  if (!CatalogManagerUtil::DoesPlacementInfoContainCloudInfo(placement_info, cloud_info)) {
+  if (!PlacementInfoContainsCloudInfo(placement_info, cloud_info)) {
     return STATUS_FORMAT(
         InvalidArgument, "Preferred zone '$0' not found in Placement info '$1'", cloud_info_str,
         placement_info);
@@ -624,7 +581,10 @@ Status ExecutePgsqlStatements(
       req, resp.get(), controller.get(), [controller, resp, cb = std::move(callback)]() {
         Status status = controller->status();
         if (status.ok() && resp->has_error()) {
-          status = StatusFromPB(resp->error().status());
+          // Underlying error code could be NetworkError from libpq. Convert it to IllegalState.
+          status = STATUS_FORMAT(
+              IllegalState, "Error executing pgsql statements: $0",
+              resp->error().status().message());
         }
         cb(status);
       });

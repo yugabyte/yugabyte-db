@@ -27,7 +27,8 @@ namespace yb {
 
 Status PostgresMiniCluster::InitPostgres() {
   auto pg_ts_idx = RandomUniformInt<size_t>(0, mini_cluster_->num_tablet_servers() - 1);
-  auto pg_port = mini_cluster_->AllocateFreePort();
+  auto pg_ts = mini_cluster_->mini_tablet_server(pg_ts_idx);
+  auto pg_port = pg_ts->server()->pgsql_proxy_bind_address().port();
   return InitPostgres(pg_ts_idx, pg_port);
 }
 

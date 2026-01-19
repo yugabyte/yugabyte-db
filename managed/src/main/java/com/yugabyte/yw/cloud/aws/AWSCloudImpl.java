@@ -1183,6 +1183,7 @@ public class AWSCloudImpl implements CloudAPI {
    * @param availabilityZone AWS availability zone (e.g., "us-east-1a")
    * @param instanceType Instance type (e.g., "m5.large")
    * @param count Number of instances to reserve
+   * @param tags The tags that need to be associated with the capacity reservation
    * @return The capacity reservation ID
    */
   public String createCapacityReservation(
@@ -1191,7 +1192,8 @@ public class AWSCloudImpl implements CloudAPI {
       String regionCode,
       String availabilityZone,
       String instanceType,
-      int count) {
+      int count,
+      Map<String, String> tags) {
     try {
       Ec2Client ec2Client = getEC2Client(provider, regionCode);
 
@@ -1206,6 +1208,24 @@ public class AWSCloudImpl implements CloudAPI {
         return existingReservationId;
       }
 
+      List<software.amazon.awssdk.services.ec2.model.Tag> tagList = new ArrayList<>();
+      tagList.add(
+          software.amazon.awssdk.services.ec2.model.Tag.builder()
+              .key("Name")
+              .value(reservationName)
+              .build());
+
+      // Add all tags from the map
+      if (tags != null && !tags.isEmpty()) {
+        tags.forEach(
+            (key, value) ->
+                tagList.add(
+                    software.amazon.awssdk.services.ec2.model.Tag.builder()
+                        .key(key)
+                        .value(value)
+                        .build()));
+      }
+
       // Create new reservation
       CreateCapacityReservationRequest request =
           CreateCapacityReservationRequest.builder()
@@ -1218,16 +1238,7 @@ public class AWSCloudImpl implements CloudAPI {
               .tagSpecifications(
                   TagSpecification.builder()
                       .resourceType(ResourceType.CAPACITY_RESERVATION)
-                      .tags(
-                          Arrays.asList(
-                              software.amazon.awssdk.services.ec2.model.Tag.builder()
-                                  .key("Name")
-                                  .value(reservationName)
-                                  .build(),
-                              software.amazon.awssdk.services.ec2.model.Tag.builder()
-                                  .key("CreatedBy")
-                                  .value("YugabyteDB-Anywhere")
-                                  .build()))
+                      .tags(tagList)
                       .build())
               .build();
 

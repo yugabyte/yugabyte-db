@@ -58,16 +58,19 @@ var describeSupportBundleUniverseCmd = &cobra.Command{
 
 		bundle, response, err := authAPI.GetSupportBundle(universeUUID, uuid).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"Universe: Support Bundle",
-				"Describe",
-			)
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Universe: Support Bundle", "Describe")
 		}
 
-		if bundle.GetBundleUUID() == "" {
+		supportBundle := util.CheckAndDereference(
+			bundle,
+			fmt.Sprintf("Support Bundle %s for universe %s (%s) not found",
+				uuid,
+				universeName,
+				universeUUID,
+			),
+		)
+
+		if supportBundle.GetBundleUUID() == "" {
 			logrus.Fatalf(
 				formatter.Colorize(
 					fmt.Sprintf(
@@ -82,7 +85,7 @@ var describeSupportBundleUniverseCmd = &cobra.Command{
 		}
 
 		r := make([]ybaclient.SupportBundle, 0)
-		r = append(r, bundle)
+		r = append(r, supportBundle)
 
 		supportbundle.Universe = universe
 

@@ -25,6 +25,7 @@
 #include <boost/logic/tribool.hpp>
 
 #include "yb/common/hybrid_time.h"
+#include "yb/common/ql_protocol.messages.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/transaction.h"
 
@@ -150,8 +151,8 @@ Result<DetermineKeysToLockResult<SharedLockManager>> DetermineKeysToLock(
     const bool top_level_key_takes_strong_locks =
         isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION && skip_prefix_locks &&
         !static_cast<bool>(pk_is_known);
-    VLOG_WITH_FUNC(4) << "isolation_level:" << isolation_level << "skip_prefix_locks:"
-                      << skip_prefix_locks << "pk_is_known:" << static_cast<bool>(pk_is_known);
+    VLOG_WITH_FUNC(4) << "isolation_level:" << isolation_level << ", skip_prefix_locks:"
+                      << skip_prefix_locks << ", pk_is_known:" << static_cast<bool>(pk_is_known);
 
     // TODO(#20662): Assert for the following invariant: the set of (key, intent type) for which
     // in-memory locks are acquired should be a superset of all (key, intent type) pairs which are
@@ -327,6 +328,7 @@ Status AssembleDocWriteBatch(const vector<unique_ptr<DocOperation>>& doc_write_o
   for (const unique_ptr<DocOperation>& doc_op : doc_write_ops) {
     Status s = doc_op->Apply(data);
     if (s.IsQLError() && doc_op->OpType() == DocOperation::Type::QL_WRITE_OPERATION) {
+      VLOG_WITH_FUNC(4) << "Apply " << AsString(*doc_op) << " failed: " << AsString(s);
       std::string error_msg;
       if (ql::GetErrorCode(s) == ql::ErrorCode::CONDITION_NOT_SATISFIED) {
         // Generating the error message here because 'table_name'
@@ -361,6 +363,7 @@ Result<ApplyTransactionState> GetIntentsBatchForCDC(
     const TransactionId& transaction_id,
     const KeyBounds* key_bounds,
     const ApplyTransactionState* stream_state,
+    const SubtxnSet& aborted,
     rocksdb::DB* intents_db,
     std::vector<IntentKeyValueForCDC>* key_value_intents) {
   KeyBytes txn_reverse_index_prefix;
@@ -448,6 +451,13 @@ Result<ApplyTransactionState> GetIntentsBatchForCDC(
             write_id = decoded_value.write_id;
 
             if (decoded_value.body.starts_with(dockv::ValueEntryTypeAsChar::kRowLock)) {
+              reverse_index_iter.Next();
+              continue;
+            }
+
+            // Skip intents from aborted subtransactions (Ex: From rolled-back savepoints).
+            // These writes were never committed and should not be streamed to CDC.
+            if (aborted.Test(decoded_value.subtransaction_id)) {
               reverse_index_iter.Next();
               continue;
             }

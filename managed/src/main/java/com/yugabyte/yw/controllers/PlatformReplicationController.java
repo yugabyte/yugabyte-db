@@ -23,11 +23,17 @@ import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
+import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
 import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
 import com.yugabyte.yw.rbac.annotations.Resource;
 import com.yugabyte.yw.rbac.enums.SourceType;
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiImplicitParam;
+import io.swagger.annotations.ApiImplicitParams;
+import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.Authorization;
 import java.io.File;
 import java.time.Duration;
 import java.util.Collections;
@@ -39,10 +45,25 @@ import org.apache.commons.lang3.StringUtils;
 import play.mvc.Http;
 import play.mvc.Result;
 
+@Api(
+    value = "Platform Replication",
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class PlatformReplicationController extends AuthenticatedController {
 
   @Inject private PlatformReplicationManager replicationManager;
 
+  @ApiOperation(
+      notes = "Available since YBA version 2.20.0.",
+      value = "Start periodic backup",
+      response = JsonNode.class,
+      nickname = "startPeriodicBackup")
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "PlatformBackupFrequencyRequest",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.PlatformBackupFrequencyFormData",
+          required = true))
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.20.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -104,6 +125,13 @@ public class PlatformReplicationController extends AuthenticatedController {
     return ok(replicationManager.getBackupInfo());
   }
 
+  @ApiOperation(
+      notes = "Available since YBA version 2.20.0.",
+      nickname = "listBackups",
+      value = "List backups",
+      response = String.class,
+      responseContainer = "List")
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.20.0")
   @AuthzPath
   public Result listBackups(UUID configUUID, String leaderAddr) {
     HighAvailabilityConfig config =

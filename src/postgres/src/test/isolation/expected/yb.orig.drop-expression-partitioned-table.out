@@ -4,4 +4,4 @@ starting permutation: s1_insert s2_drop_expression s1_commit
 step s1_insert: INSERT INTO part VALUES (10);
 step s2_drop_expression: ALTER TABLE part ALTER COLUMN double_amount DROP EXPRESSION;
 step s1_commit: COMMIT;
-ERROR:  could not serialize access due to concurrent update (query layer retry isn't possible, READ COMMITTED transaction was aborted  and some data was already sent to the user)
+ERROR:  current transaction is expired or aborted (query layer retry isn't possible, READ COMMITTED transaction was aborted  and some data was already sent to the user)

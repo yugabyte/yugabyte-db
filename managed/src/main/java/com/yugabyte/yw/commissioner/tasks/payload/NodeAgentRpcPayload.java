@@ -54,6 +54,7 @@ import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig;
 import com.yugabyte.yw.models.helpers.telemetry.AWSCloudWatchConfig;
 import com.yugabyte.yw.models.helpers.telemetry.GCPCloudMonitoringConfig;
+import com.yugabyte.yw.models.helpers.telemetry.S3Config;
 import com.yugabyte.yw.nodeagent.ConfigureServerInput;
 import com.yugabyte.yw.nodeagent.DownloadSoftwareInput;
 import com.yugabyte.yw.nodeagent.InstallOtelCollectorInput;
@@ -182,6 +183,16 @@ public class NodeAgentRpcPayload {
         ManageOtelCollector.OtelCollectorVersion,
         ManageOtelCollector.OtelCollectorPlatform,
         architecture);
+  }
+
+  private void setAwsCredentialsInBuilder(
+      String accessKey, String secretKey, InstallOtelCollectorInput.Builder builder) {
+    if (StringUtils.isNotEmpty(accessKey)) {
+      builder.setOtelColAwsAccessKey(accessKey);
+    }
+    if (StringUtils.isNotEmpty(secretKey)) {
+      builder.setOtelColAwsSecretKey(secretKey);
+    }
   }
 
   private DownloadSoftwareInput.Builder fillYbReleaseMetadata(
@@ -454,6 +465,7 @@ public class NodeAgentRpcPayload {
     Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
     String customTmpDirectory =
         confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory);
+    Map<String, String> gflags = new HashMap<>();
     AuditLogConfig config = null;
     QueryLogConfig queryLogConfig = null;
     MetricsExportConfig metricsExportConfig = null;
@@ -462,18 +474,19 @@ public class NodeAgentRpcPayload {
       config = params.auditLogConfig;
       queryLogConfig = params.queryLogConfig;
       metricsExportConfig = params.metricsExportConfig;
+      gflags = params.gflags;
     } else if (taskParams instanceof AnsibleConfigureServers.Params) {
       AnsibleConfigureServers.Params params = (AnsibleConfigureServers.Params) taskParams;
       config = params.auditLogConfig;
       queryLogConfig = params.queryLogConfig;
       metricsExportConfig = params.metricsExportConfig;
+      gflags =
+          GFlagsUtil.getGFlagsForAZ(
+              taskParams.azUuid,
+              UniverseTaskBase.ServerType.TSERVER,
+              cluster,
+              universe.getUniverseDetails().clusters);
     }
-    Map<String, String> gflags =
-        GFlagsUtil.getGFlagsForAZ(
-            taskParams.azUuid,
-            UniverseTaskBase.ServerType.TSERVER,
-            cluster,
-            universe.getUniverseDetails().clusters);
 
     installOtelCollectorInputBuilder.setRemoteTmp(customTmpDirectory);
     installOtelCollectorInputBuilder.setYbHomeDir(provider.getYbHome());
@@ -580,18 +593,22 @@ public class NodeAgentRpcPayload {
     TelemetryProvider telemetryProvider = telemetryProviderService.get(exporterUUID);
     switch (telemetryProvider.getConfig().getType()) {
       case AWS_CLOUDWATCH -> {
+        log.info("Setting AWS credentials in builder for exporter UUID: {}", exporterUUID);
         AWSCloudWatchConfig awsCloudWatchConfig =
             (AWSCloudWatchConfig) telemetryProvider.getConfig();
-        if (StringUtils.isNotEmpty(awsCloudWatchConfig.getAccessKey())) {
-          installOtelCollectorInputBuilder.setOtelColAwsAccessKey(
-              awsCloudWatchConfig.getAccessKey());
-        }
-        if (StringUtils.isNotEmpty(awsCloudWatchConfig.getSecretKey())) {
-          installOtelCollectorInputBuilder.setOtelColAwsSecretKey(
-              awsCloudWatchConfig.getSecretKey());
-        }
+        setAwsCredentialsInBuilder(
+            awsCloudWatchConfig.getAccessKey(),
+            awsCloudWatchConfig.getSecretKey(),
+            installOtelCollectorInputBuilder);
+      }
+      case S3 -> {
+        log.info("Setting AWS credentials in builder for exporter UUID: {}", exporterUUID);
+        S3Config s3Config = (S3Config) telemetryProvider.getConfig();
+        setAwsCredentialsInBuilder(
+            s3Config.getAccessKey(), s3Config.getSecretKey(), installOtelCollectorInputBuilder);
       }
       case GCP_CLOUD_MONITORING -> {
+        log.info("Setting GCP credentials in builder for exporter UUID: {}", exporterUUID);
         GCPCloudMonitoringConfig gcpCloudMonitoringConfig =
             (GCPCloudMonitoringConfig) telemetryProvider.getConfig();
         if (gcpCloudMonitoringConfig.getCredentials() != null) {
@@ -680,18 +697,17 @@ public class NodeAgentRpcPayload {
     ServerGFlagsInput.Builder builder =
         ServerGFlagsInput.newBuilder().setServerHome(serverHome).setServerName(serverName);
 
-    Map<String, String> gflags =
-        new HashMap<>(
-            GFlagsUtil.getAllDefaultGFlags(
-                taskParams, universe, userIntent, useHostname, confGetter));
+    Map<String, String> gflags = new HashMap<>();
     if (processType.equals(ServerType.CONTROLLER.toString())) {
       // TODO Is the check taskParam.isEnableYbc() required here?
-      Map<String, String> ybcFlags =
-          GFlagsUtil.getYbcFlags(universe, taskParams, confGetter, appConfig, taskParams.ybcGflags);
-      // Override for existing keys as this has higher precedence.
-      gflags.putAll(ybcFlags);
+      gflags.putAll(
+          GFlagsUtil.getYbcFlags(
+              universe, taskParams, confGetter, appConfig, taskParams.ybcGflags));
     } else if (processType.equals(ServerType.MASTER.toString())
         || processType.equals(ServerType.TSERVER.toString())) {
+      gflags.putAll(
+          GFlagsUtil.getAllDefaultGFlags(
+              taskParams, universe, userIntent, useHostname, confGetter));
       // Override for existing keys as this has higher precedence.
       gflags.putAll(taskParams.gflags);
       nodeManager.processGFlags(appConfig, universe, nodeDetails, taskParams, gflags, useHostname);

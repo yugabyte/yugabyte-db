@@ -32,26 +32,27 @@
 
 #pragma once
 
+#include <string_view>
+
 #include "yb/cdc/cdc_service.pb.h"
-#include "yb/common/wire_protocol.h"
 
 #include "yb/util/status_ec.h"
 
-namespace yb {
-namespace cdc {
+using namespace std::literals;
+
+namespace yb::cdc {
 
 struct CDCErrorTag : IntegralErrorTag<CDCErrorPB::Code> {
   // This category id is part of the wire protocol and should not be changed once released.
-  static constexpr uint8_t kCategory = 16;
+  static constexpr CategoryDescriptor kCategory{16, "CDC error"sv};
 
-  typedef CDCErrorPB::Code Code;
+  using Code = CDCErrorPB::Code;
 
   static const std::string& ToMessage(Code code) {
     return CDCErrorPB::Code_Name(code);
   }
 };
 
-typedef StatusErrorCodeImpl<CDCErrorTag> CDCError;
+using CDCError = StatusErrorCodeImpl<CDCErrorTag>;
 
-} // namespace cdc
-} // namespace yb
+} // namespace yb::cdc

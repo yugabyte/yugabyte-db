@@ -1,9 +1,9 @@
 ---
-title: Change data capture (CDC) Observability in YugabyteDB Anywhere
-headerTitle: CDC Observability
-linkTitle: CDC Observability
-description: Learn how YugabyteDB Anywhere monitors and capture and emit database change events for better visibility and insights into data changes.
-headcontent: Use Change Data Capture (CDC) replication slots to capture and emit database change events
+title: Change data capture (CDC) observability in YugabyteDB Anywhere
+headerTitle: CDC observability
+linkTitle: CDC observability
+description: Learn how YugabyteDB Anywhere monitors replication slots used in CDC.
+headcontent: Monitor replication slots used for CDC
 tags:
   feature: early-access
 menu:
@@ -14,16 +14,16 @@ menu:
 type: docs
 ---
 
-YugabyteDB Anywhere supports monitoring [YSQL](../../../api/ysql/) replication slots in YugabyteDB. A replication slot is a PostgreSQL feature which ensures that a stream of changes stored in a WAL log file is replicated to the destination in the correct order.
+YugabyteDB Anywhere supports monitoring YSQL replication slots used by CDC with the [PostgreSQL replication protocol](../../../additional-features/change-data-capture/using-logical-replication/). A replication slot is a PostgreSQL feature which ensures that a stream of changes stored in a WAL log file is replicated to the destination in the correct order.
 
-You can view all the replications that are present in a universe along with the following metrics associated with each CDC replication slot:
+You can view all the replications that are present in a universe along with the following service metrics associated with each CDC replication slot:
 
 - Current lag
 - Time to expire
 - Messages emitted
 - Bytes emitted
 
-The following table describes the metrics available.
+The following table describes the CDC service metrics available.
 
 | Metric Name | Details |
 | :---------- | :------ |
@@ -31,6 +31,8 @@ The following table describes the metrics available.
 | cdcsdk_expiry_time_ms | Time to expire. Remaining expiry time of CDC replication slot in milliseconds. |
 | cdcsdk_change_event_count | Messages emitted. The change event count metric shows the number of records sent by the CDC service.|
 | cdcsdk_traffic_sent | Bytes emitted. Total traffic sent in bytes from the CDC replication slot. |
+
+For more information on CDC metrics, refer to [Monitor CDC](../../../additional-features/change-data-capture/using-logical-replication/monitor/).
 
 To view your universe's replication slots, navigate to your universe and select the **CDC Replication Slots** tab.
 
@@ -46,6 +48,4 @@ To view your universe's replication slots, navigate to your universe and select 
 
 ## Learn more
 
-- Explore [Change data capture](../../../additional-features/change-data-capture/)
-- Change data capture [architecture](../../../architecture/docdb-replication/change-data-capture/)
-- [CDC Tutorials](/preview/develop/tutorials/cdc-tutorials/)
+- [CDC using PostgreSQL replication protocol](../../../additional-features/change-data-capture/using-logical-replication/)

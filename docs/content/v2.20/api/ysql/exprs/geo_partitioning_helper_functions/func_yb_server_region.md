@@ -42,28 +42,28 @@ Do the following to create a 3-node multi-region cluster and a geo-partitioned t
 1. Create a cluster spread across 3 regions us-west-1, us-east-1, us-east-2 using yugabyted:
 
     ```sh
-    ./bin/yugabyted start                           \
-      --base_dir=/home/yugabyte/<IP1>/yugabyte-data \
-      --advertise_address=<IP1>                     \
-      --cloud_location=aws.us-west-1.us-west-1c     \
+    ./bin/yugabyted start                               \
+      --base_dir=/home/yugabyte/127.0.0.1/yugabyte-data \
+      --advertise_address=127.0.0.1                     \
+      --cloud_location=aws.us-west-1.us-west-1c
 
-    ./bin/yugabyted start                           \
-      --base_dir=/home/yugabyte/<IP2>/yugabyte-data \
-      --advertise_address=<IP2>                     \
-      --join=<IP1>                                  \
-      --cloud_location=aws.us-east-2.us-east-2c     \
+    ./bin/yugabyted start                               \
+      --base_dir=/home/yugabyte/127.0.0.2/yugabyte-data \
+      --advertise_address=127.0.0.2                     \
+      --join=127.0.0.1                                  \
+      --cloud_location=aws.us-east-2.us-east-2c
 
-    ./bin/yugabyted start                            \
-      --base_dir=/home/yugabyte/<IP3>/yugabyte-data  \
-      --advertise_address=<IP3>                      \
-      --join=<IP1>                                   \
-      --cloud_location=aws.us-east-1.us-east-1a     \
+    ./bin/yugabyted start                               \
+      --base_dir=/home/yugabyte/127.0.0.3/yugabyte-data \
+      --advertise_address=127.0.0.3                     \
+      --join=127.0.0.1                                  \
+      --cloud_location=aws.us-east-1.us-east-1a
     ```
 
 1. Use [yb-admin](../../../../../admin/yb-admin/) to specify the placement configuration to be used by the cluster:
 
     ```sh
-    ./bin/yb-admin --master_addresses <IP1>:7100 modify_placement_info aws.us-west-1.us-west-1c:1,aws.us-east-1.us-east-1a:1,aws.us-east-2.us-east-2c:1 3
+    ./bin/yb-admin --master_addresses 127.0.0.1:7100 modify_placement_info aws.us-west-1.us-west-1c:1,aws.us-east-1.us-east-1a:1,aws.us-east-2.us-east-2c:1 3
     ```
 
 1. Create tablespaces corresponding to the regions used by the cluster created above [using ysqlsh](../../../../../api/ysqlsh/#using-ysqlsh):

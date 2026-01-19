@@ -70,8 +70,6 @@ class PgDdlAtomicityStressTest : public PgDdlAtomicityTestBase,
           "--TEST_skip_wait_for_ysql_backends_catalog_version=true");
     }
     // TODO(#28042): Enable object locking once the false deadlock issues are addressed.
-    AppendCsvFlagValue(options->extra_tserver_flags, "allowed_preview_flags_csv",
-                       "enable_object_locking_for_table_locks");
     options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=false");
   }
 

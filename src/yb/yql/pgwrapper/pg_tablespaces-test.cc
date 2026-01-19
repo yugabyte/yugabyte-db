@@ -15,12 +15,15 @@
 #include "yb/client/transaction_pool.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/common/tablespace_parser.h"
+#include "yb/util/test_tablespace_util.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/master_client.pb.h"
+#include "yb/consensus/consensus.pb.h"
 #include "yb/tools/yb-admin_client.h"
 #include "yb/yql/pgwrapper/geo_transactions_test_base.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/tsan_util.h"
 
@@ -50,160 +53,36 @@ const auto kWaitLeaderDistributionTimeout = MonoDelta::FromMilliseconds(270000);
 
 enum class WildCardTestOption { kCloud, kRegion, kZone };
 
-class PlacementBlock {
- public:
-    std::string cloud;
-    std::string region;
-    std::string zone;
-    size_t minNumReplicas;
-    std::optional<size_t> leaderPreference;
-
-    std::string json;
-
-    PlacementBlock(std::string cloud, std::string region, std::string zone, size_t minNumReplicas,
-                   std::optional<size_t> leaderPreference = std::nullopt)
-        : cloud(std::move(cloud)), region(std::move(region)), zone(std::move(zone)),
-          minNumReplicas(minNumReplicas), leaderPreference(leaderPreference) {
-            json = generateJson();
-          }
-
-    // Creates a placement block with the given region ID. For the purposes of this test, the cloud
-    // is always "cloud0" and the zone is always "zone". The region is "rack<regionId>".
-    PlacementBlock(size_t regionId, size_t minNumReplicas,
-                   std::optional<size_t> leaderPreference = std::nullopt)
-        : cloud("cloud0"), zone("zone"), minNumReplicas(minNumReplicas),
-          leaderPreference(leaderPreference) {
-        region = "rack" + std::to_string(regionId);
-        json = generateJson();
-    }
-
-  const std::string& toJson() const {
-    return json;
-  }
-
-  // Checks if the cloud, region, and zone match those of a CloudInfo protobuf.
-  bool MatchesReplica(const CloudInfoPB& replica_cloud_info) const {
-    return
-      (replica_cloud_info.placement_cloud() == cloud ||
-        cloud == TablespaceParser::kWildcardPlacement) &&
-      (replica_cloud_info.placement_region() == region ||
-        region == TablespaceParser::kWildcardPlacement) &&
-      (replica_cloud_info.placement_zone() == zone ||
-        zone == TablespaceParser::kWildcardPlacement);
-  }
-
- private:
-    /*
-    * Returns the JSON representation of the placement block. For example:
-    * {
-    *   "cloud": "aws",
-    *   "region": "us-east-1",
-    *   "zone": "us-east-1a",
-    *   "min_num_replicas": 1,
-    *   "leader_preference": 1
-    * }
-    */
-    std::string generateJson() const {
-        std::ostringstream os;
-        os << "{\"cloud\":\"" << cloud << "\",\"region\":\"" << region << "\",\"zone\":\"" << zone
-           << "\",\"min_num_replicas\":" << minNumReplicas;
-
-        if (leaderPreference) {
-            os << ",\"leader_preference\":" << *leaderPreference;
-        }
-
-        os << "}";
-        return os.str();
-    }
-};
-
-class Tablespace {
- public:
-    std::string name;
-    size_t numReplicas;
-    std::vector<PlacementBlock> placementBlocks;
-
-    std::string json;
-    std::string createCmd;
-
-    Tablespace(std::string name, size_t numReplicas, std::vector<PlacementBlock> placementBlocks)
-    : name(name),
-      numReplicas(numReplicas),
-      placementBlocks(placementBlocks) {
-        json = generateJson();
-        createCmd = generateCreateCmd();
-    }
-
-    const std::vector<PlacementBlock>& getPlacementBlocks() const {
-        return placementBlocks;
-    }
-
-    const std::string& toJson() const {
-        return json;
-    }
-
-    const std::string& getCreateCmd() const {
-        return createCmd;
-    }
-
- private:
-    /*
-    * Generates the JSON representation of the tablespace. For example:
-    * {
-    *   "num_replicas": 1,
-    *   "placement_blocks": [
-    *     {
-    *       "cloud": "aws",
-    *       "region": "us-east-1",
-    *       "zone": "us-east-1a",
-    *       "min_num_replicas": 1,
-    *       "leader_preference": 1
-    *     }
-    *   ]
-    * }
-    */
-    std::string generateJson() const {
-        std::ostringstream os;
-        os << "{\"num_replicas\":" << numReplicas;
-
-        if (!placementBlocks.empty()) {
-          os << ",\"placement_blocks\":[";
-
-          for (size_t i = 0; i < placementBlocks.size(); ++i) {
-              os << placementBlocks[i].toJson();
-              if (i < placementBlocks.size() - 1) {
-                  os << ",";
-              }
-          }
-          os << "]";
-        }
-        os << "}";
-        return os.str();
-    }
-
-    // Generates the SQL command to create this tablespace.
-    std::string generateCreateCmd() const {
-        std::ostringstream os;
-        os << "CREATE TABLESPACE " << name << " WITH (replica_placement='" << toJson() << "');";
-        return os.str();
-    }
-};
+using ::yb::test::BuildPlacementString;
+using ::yb::test::PlacementBlock;
+using ::yb::test::Tablespace;
 
 class PgTablespacesTest : public GeoTransactionsTestBase {
+ private:
+  // We start out with 3 tservers, but individual tests may add more.
+  int num_tservers_ = 3;
  public:
   void SetupObjects(pgwrapper::PGConn *conn, std::string tablespace_name) {
-    std::string table_name = kTablePrefix + "_tbl";
-    std::string index_name = kTablePrefix + "_idx";
-    std::string mv_name = kTablePrefix + "_mv";
     /*
     * Create a table and an index/matview on a table in the given tablespace.
     */
     ASSERT_OK(conn->ExecuteFormat("CREATE TABLE $0(value int) TABLESPACE $1",
-      table_name, tablespace_name));
+      kTableName, tablespace_name));
     ASSERT_OK(conn->ExecuteFormat("CREATE INDEX $0 ON $1(value) TABLESPACE $2",
-      index_name, table_name, tablespace_name));
+      kIndexName, kTableName, tablespace_name));
     ASSERT_OK(conn->ExecuteFormat("CREATE MATERIALIZED VIEW $0 TABLESPACE $1 AS "
-                                "SELECT * FROM $2", mv_name, tablespace_name, table_name));
+                                "SELECT * FROM $2", kMatViewName, tablespace_name, kTableName));
+  }
+
+  Status AlterObjectsSetTablespace(
+      pgwrapper::PGConn *conn, const std::string& new_tablespace_name) {
+    RETURN_NOT_OK(conn->ExecuteFormat(
+        "ALTER TABLE $0 SET TABLESPACE $1", kTableName, new_tablespace_name));
+    RETURN_NOT_OK(conn->ExecuteFormat(
+        "ALTER INDEX $0 SET TABLESPACE $1", kIndexName, new_tablespace_name));
+    RETURN_NOT_OK(conn->ExecuteFormat(
+        "ALTER MATERIALIZED VIEW $0 SET TABLESPACE $1", kMatViewName, new_tablespace_name));
+    return Status::OK();
   }
 
   // Helper function to get tablets for a given table.
@@ -236,32 +115,109 @@ class PgTablespacesTest : public GeoTransactionsTestBase {
   void VerifyTablePlacement(
     const std::string& table_name,
     const std::vector<PlacementBlock>& placement_blocks,
+    const std::vector<PlacementBlock>& read_replica_placement_blocks,
     size_t total_num_replicas) {
-    auto tablets = ASSERT_RESULT(GetTabletsForTable(table_name));
-    for (const auto& tablet : tablets) {
-      std::vector<CloudInfoPB> replica_cloud_infos;
-      for (const auto& replica : tablet.replicas()) {
-        replica_cloud_infos.push_back(replica.ts_info().cloud_info());
+    auto tablets = EXPECT_RESULT(GetTabletsForTable(table_name));
+
+    if (!read_replica_placement_blocks.empty()) {
+      std::ostringstream read_replica_blocks_stream;
+      read_replica_blocks_stream << "[";
+      for (size_t i = 0; i < read_replica_placement_blocks.size(); ++i) {
+        if (i > 0) {
+          read_replica_blocks_stream << ", ";
+        }
+        read_replica_blocks_stream << read_replica_placement_blocks[i].ToJson();
       }
-      ASSERT_EQ(total_num_replicas, replica_cloud_infos.size())
-        << "Tablet of table " << table_name << " has " << replica_cloud_infos.size()
-        << " replicas, expected total replica count is " << total_num_replicas;
+      read_replica_blocks_stream << "]";
+    }
+
+    for (const auto& tablet : tablets) {
+      SCOPED_TRACE(
+          Format("VerifyTablePlacement: table=$0 tablet=$1", table_name, tablet.tablet_id()));
+      std::vector<CloudInfoPB> live_replica_cloud_infos;
+      std::vector<CloudInfoPB> read_replica_cloud_infos;
+      live_replica_cloud_infos.reserve(tablet.replicas().size());
+      read_replica_cloud_infos.reserve(tablet.replicas().size());
+      for (const auto& replica : tablet.replicas()) {
+        const auto& replica_cloud_info = replica.ts_info().cloud_info();
+        if (replica.role() == PeerRole::READ_REPLICA) {
+          read_replica_cloud_infos.push_back(replica_cloud_info);
+        } else {
+          live_replica_cloud_infos.push_back(replica_cloud_info);
+        }
+      }
+
+      EXPECT_EQ(total_num_replicas, live_replica_cloud_infos.size())
+          << "Tablet has " << live_replica_cloud_infos.size()
+          << " live replicas, expected live replica count is " << total_num_replicas;
+      if (tablet.has_expected_live_replicas()) {
+        EXPECT_EQ(tablet.expected_live_replicas(),
+                  static_cast<int>(live_replica_cloud_infos.size()))
+            << "Not enough live replicas for placement policy";
+      }
 
       for (const auto& placement_block : placement_blocks) {
-        int64_t num_matching_replicas = CountMatchingReplicas(replica_cloud_infos, placement_block);
-        ASSERT_GE(num_matching_replicas, placement_block.minNumReplicas)
-            << "Not enough replicas with placement: " << placement_block.toJson()
-            << " for table: " << table_name;
+        const int64_t num_matching_live_replicas =
+            CountMatchingReplicas(live_replica_cloud_infos, placement_block);
+        EXPECT_GE(num_matching_live_replicas, placement_block.min_num_replicas())
+            << "Not enough live replicas for placement block: " << placement_block.ToJson();
+      }
+
+      if (read_replica_placement_blocks.empty()) {
+        EXPECT_TRUE(read_replica_cloud_infos.empty())
+            << "Tablet has unexpected read replica placements.";
+
+        if (tablet.has_expected_read_replicas()) {
+          EXPECT_EQ(0, tablet.expected_read_replicas());
+        }
+        continue;
+      }
+
+      if (tablet.has_expected_read_replicas()) {
+        EXPECT_EQ(tablet.expected_read_replicas(),
+                  static_cast<int>(read_replica_cloud_infos.size()));
+      }
+
+      EXPECT_FALSE(read_replica_cloud_infos.empty())
+          << "Tablet does not have any read replicas despite having read replica configured.";
+
+      for (const auto& placement_block : read_replica_placement_blocks) {
+        const int64_t num_matching_read_replicas =
+            CountMatchingReplicas(read_replica_cloud_infos, placement_block);
+        EXPECT_GE(num_matching_read_replicas, placement_block.min_num_replicas())
+            << "Not enough read replicas with placement: " << placement_block.ToJson();
+      }
+
+      for (const auto& cloud_info : read_replica_cloud_infos) {
+        const bool matches_block = std::any_of(
+            read_replica_placement_blocks.begin(), read_replica_placement_blocks.end(),
+            [&cloud_info](const PlacementBlock& placement_block) {
+              return placement_block.MatchesReplica(cloud_info);
+            });
+        EXPECT_TRUE(matches_block)
+            << "Read replica is placed outside of the expected read replica placement blocks.";
       }
     }
   }
 
-  // Verifies that the table, index, and matview are placed according to placement_blocks.
+  // Verifies that the table, index, and matview are placed according to placement_blocks and
+  // read replica placement blocks (if any).
   void VerifyObjectPlacement(
-    const std::vector<PlacementBlock>& placement_blocks, size_t total_num_replicas) {
-    VerifyTablePlacement(kTablePrefix + "_tbl", placement_blocks, total_num_replicas);
-    VerifyTablePlacement(kTablePrefix + "_idx", placement_blocks, total_num_replicas);
-    VerifyTablePlacement(kTablePrefix + "_mv", placement_blocks, total_num_replicas);
+    const std::vector<PlacementBlock>& placement_blocks,
+    size_t total_num_replicas,
+    const std::vector<PlacementBlock>& read_replica_placement_blocks = {}) {
+    for (const auto& object_name : object_names_) {
+      VerifyTablePlacement(
+          object_name, placement_blocks, read_replica_placement_blocks,
+          total_num_replicas);
+    }
+  }
+
+  void VerifyObjectPlacement(const Tablespace& tablespace) {
+    VerifyObjectPlacement(
+        tablespace.PlacementBlocks(),
+        tablespace.NumReplicas(),
+        tablespace.ReadReplicaPlacementBlocks());
   }
 
   void GeneratePlacementBlocks(
@@ -277,38 +233,49 @@ class PgTablespacesTest : public GeoTransactionsTestBase {
         break;
 
       case WildCardTestOption::kZone:
-        placement_blocks->push_back(PlacementBlock("cloud0", "rack1", "*", 2));
+        placement_blocks->push_back(PlacementBlock("cloud0", "region1", "*", 2));
         if (num_replicas > 2)
-          placement_blocks->push_back(PlacementBlock("cloud0", "rack2", "*", 1));
+          placement_blocks->push_back(PlacementBlock("cloud0", "region2", "*", 1));
         break;
 
       default:
         LOG(FATAL) << "Invalid wildcard option " << int(wildcard_opt);
         break;
-    };
+    }
   }
 
   std::string GetWildcardYbAdminString(
       const std::vector<PlacementBlock>& placement_blocks) {
-    std::stringstream ss;
-    for (size_t i = 0; i < placement_blocks.size(); ++i) {
-      ss << placement_blocks[i].cloud << "." << placement_blocks[i].region << "."
-         << placement_blocks[i].zone << ":" << placement_blocks[i].minNumReplicas;
-      if (i < placement_blocks.size() - 1) {
-        ss << ",";
+    return BuildPlacementString(placement_blocks);
+  }
+
+  // Adds additional tservers starting from region 4, 5, 6, ...
+  Status AddAdditionalTabletServers(int num_tservers, bool read_replica = false) {
+    for (int i = 1; i <= num_tservers; ++i) {
+      const int region_id = num_tservers_ + i;
+      auto options = VERIFY_RESULT(tserver::TabletServerOptions::CreateTabletServerOptions());
+      options.SetPlacement("cloud0", Format("region$0", region_id), "zone");
+      if (read_replica) {
+        options.placement_uuid = "read_replica";
+        LOG(INFO) << "Creating read replica tserver in region " << region_id;
+      } else {
+        LOG(INFO) << "Creating live tserver in region " << region_id;
       }
+      RETURN_NOT_OK(cluster_->AddTabletServer(options));
     }
-    return ss.str();
+    RETURN_NOT_OK(cluster_->WaitForAllTabletServers());
+    num_tservers_ += num_tservers;
+    return Status::OK();
   }
 
   void TestWildcardPlacement(bool use_yb_admin, WildCardTestOption wildcard_opt) {
     /* The base test creates tservers with
-      (cloud0, rack1, zone),
-      (cloud0, rack2, zone),
-      (cloud0, rack3, zone)
+      (cloud0, region1, zone),
+      (cloud0, region2, zone),
+      (cloud0, region3, zone)
      We are adding two tservers afterwards
-      (cloud0, rack1, zone1)
-      (cloud0, rack1, zone2)
+      (cloud0, region1, zone1)
+      (cloud0, region1, zone2)
      */
     std::unique_ptr<tools::ClusterAdminClient> yb_admin_client;
     if (use_yb_admin) {
@@ -321,10 +288,10 @@ class PgTablespacesTest : public GeoTransactionsTestBase {
     }
 
     auto options = EXPECT_RESULT(tserver::TabletServerOptions::CreateTabletServerOptions());
-    options.SetPlacement("cloud0", "rack1", "zone1");
+    options.SetPlacement("cloud0", "region1", "zone1");
     ASSERT_OK(cluster_->AddTabletServer(options));
 
-    options.SetPlacement("cloud0", "rack1", "zone2");
+    options.SetPlacement("cloud0", "region1", "zone2");
     ASSERT_OK(cluster_->AddTabletServer(options));
 
     static constexpr auto kTableName = "test_table";
@@ -338,7 +305,7 @@ class PgTablespacesTest : public GeoTransactionsTestBase {
     if (!use_yb_admin) {
       Tablespace tablespace(kTablespace1, num_replicas, placement_blocks);
       auto conn = ASSERT_RESULT(Connect());
-      auto create_cmd = tablespace.getCreateCmd();
+      auto create_cmd = tablespace.CreateCmd();
       LOG(INFO) << "Creating tablespace using " << create_cmd;
       ASSERT_OK(conn.Execute(create_cmd));
     } else {
@@ -352,7 +319,8 @@ class PgTablespacesTest : public GeoTransactionsTestBase {
         "CREATE TABLE $0 (k INT PRIMARY KEY) $1 $2", kTableName,
         (use_yb_admin ? "" : "TABLESPACE "), (use_yb_admin ? "" : kTablespace1)));
 
-    VerifyTablePlacement(kTableName, placement_blocks, num_replicas);
+    VerifyTablePlacement(kTableName, placement_blocks, /* read_replica_placement_blocks = */ {},
+                         num_replicas);
 
     ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1)", kTableName));
     auto rows = ASSERT_RESULT(
@@ -365,7 +333,7 @@ class PgTablespacesTest : public GeoTransactionsTestBase {
     if (!use_yb_admin) {
       Tablespace tablespace(kTablespace2, num_replicas, placement_blocks);
       auto conn = ASSERT_RESULT(Connect());
-      auto create_cmd = tablespace.getCreateCmd();
+      auto create_cmd = tablespace.CreateCmd();
       LOG(INFO) << "Creating tablespace using " << create_cmd;
       ASSERT_OK(conn.Execute(create_cmd));
       ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 SET TABLESPACE $1", kTableName, kTablespace2));
@@ -377,13 +345,17 @@ class PgTablespacesTest : public GeoTransactionsTestBase {
     }
     WaitForLoadBalanceCompletion();
 
-    VerifyTablePlacement(kTableName, placement_blocks, num_replicas);
+    VerifyTablePlacement(kTableName, placement_blocks, /* read_replica_placement_blocks = */ {},
+                         num_replicas);
 
     ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (2)", kTableName));
     rows = ASSERT_RESULT(
         conn.FetchRows<int32_t>(yb::Format("SELECT k FROM $0 ORDER BY k", kTableName)));
     ASSERT_EQ(rows, std::vector({1, 2}));
   }
+
+ private:
+  const std::vector<std::string> object_names_ = {kTableName, kIndexName, kMatViewName};
 };
 
 // Test that the leader preference is respected for indexes/matviews.
@@ -395,9 +367,9 @@ TEST_F(PgTablespacesTest, TestPreferredZone) {
   // Create tablespaces and tables.
   auto conn = ASSERT_RESULT(Connect());
   auto current_version = GetCurrentVersion();
-  string table_name = kTablePrefix + "_tbl";
-  string index_name = kTablePrefix + "_idx";
-  string mv_name = kTablePrefix + "_mv";
+  string table_name = kTableName;
+  string index_name = kIndexName;
+  string mv_name = kMatViewName;
 
   // Create two tablespaces.
   std::vector<PlacementBlock> placement_blocks_1;
@@ -412,12 +384,12 @@ TEST_F(PgTablespacesTest, TestPreferredZone) {
       /* leaderPreference = */ region_id == NumRegions() ? 1 : (region_id + 1));
   }
 
-  size_t num_replicas = NumTabletServers();
+  int32_t num_replicas = static_cast<int32_t>(NumTabletServers());
   Tablespace tablespace_1("tablespace1", num_replicas, placement_blocks_1);
   Tablespace tablespace_2("tablespace2", num_replicas, placement_blocks_2);
 
-  ASSERT_OK(conn.Execute(tablespace_1.getCreateCmd()));
-  ASSERT_OK(conn.Execute(tablespace_2.getCreateCmd()));
+  ASSERT_OK(conn.Execute(tablespace_1.CreateCmd()));
+  ASSERT_OK(conn.Execute(tablespace_2.CreateCmd()));
 
   SetupObjects(&conn, "tablespace1");
 
@@ -431,7 +403,7 @@ TEST_F(PgTablespacesTest, TestPreferredZone) {
   auto index_uuids = std::vector<TabletId>(index_tablet_uuid_set.begin(),
     index_tablet_uuid_set.end());
 
-  auto mv_id = ASSERT_RESULT(GetTableIDFromTableName(mv_name));
+    auto mv_id = ASSERT_RESULT(GetTableIDFromTableName(mv_name));
   auto mv_tablet_uuid_set = ListTabletIdsForTable(cluster_.get(), mv_id);
   auto mv_uuids = std::vector<TabletId>(mv_tablet_uuid_set.begin(), mv_tablet_uuid_set.end());
 
@@ -482,9 +454,6 @@ TEST_F(PgTablespacesTest, TestAlterTableMajority) {
 
   // Create table, index, and matview.
   auto conn = ASSERT_RESULT(Connect());
-  string table_name = kTablePrefix + "_tbl";
-  string index_name = kTablePrefix + "_idx";
-  string mv_name = kTablePrefix + "_mv";
 
   // Create two tablespaces.
   // valid_ts has all the placement blocks available.
@@ -502,12 +471,12 @@ TEST_F(PgTablespacesTest, TestAlterTableMajority) {
   // The third placement block is invalid for majority_ts.
   majority_placement_blocks.emplace_back(0, 1, 1);
 
-  const size_t total_num_replicas = NumTabletServers();
+  const int32_t total_num_replicas = static_cast<int32_t>(NumTabletServers());
   Tablespace valid_ts("valid_ts", total_num_replicas, valid_placement_blocks);
   Tablespace majority_ts("majority_ts", total_num_replicas, majority_placement_blocks);
 
-  ASSERT_OK(conn.Execute(valid_ts.getCreateCmd()));
-  ASSERT_OK(conn.Execute(majority_ts.getCreateCmd()));
+  ASSERT_OK(conn.Execute(valid_ts.CreateCmd()));
+  ASSERT_OK(conn.Execute(majority_ts.CreateCmd()));
 
   SetupObjects(&conn, "valid_ts");
 
@@ -516,9 +485,12 @@ TEST_F(PgTablespacesTest, TestAlterTableMajority) {
 
   // This ALTER TABLE should succeed because the majority (2/3)
   // of the placement blocks are available.
-  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 SET TABLESPACE majority_ts", table_name));
-  ASSERT_OK(conn.ExecuteFormat("ALTER INDEX $0 SET TABLESPACE majority_ts", index_name));
-  ASSERT_OK(conn.ExecuteFormat("ALTER MATERIALIZED VIEW $0 SET TABLESPACE majority_ts", mv_name));
+  ASSERT_OK(
+      conn.ExecuteFormat("ALTER TABLE $0 SET TABLESPACE majority_ts", kTableName));
+  ASSERT_OK(
+      conn.ExecuteFormat("ALTER INDEX $0 SET TABLESPACE majority_ts", kIndexName));
+  ASSERT_OK(
+      conn.ExecuteFormat("ALTER MATERIALIZED VIEW $0 SET TABLESPACE majority_ts", kMatViewName));
 
   // Even though we have moved the table to majority_ts, the replicas should still be in the
   // valid_placement_blocks because there are only 2 valid placement blocks in majority_ts.
@@ -537,9 +509,6 @@ TEST_F(PgTablespacesTest, TestAlterTableScaling) {
 
   // Create table, index, and matview.
   auto conn = ASSERT_RESULT(Connect());
-  string table_name = kTablePrefix + "_tbl";
-  string index_name = kTablePrefix + "_idx";
-  string mv_name = kTablePrefix + "_mv";
 
   // Create a tablespace with all the placement blocks available.
   std::vector<PlacementBlock> placement_blocks;
@@ -548,10 +517,10 @@ TEST_F(PgTablespacesTest, TestAlterTableScaling) {
     size_t leader_preference = region_id;
     placement_blocks.emplace_back(region_id, /* minNumReplicas = */ 1, leader_preference);
   }
-  const size_t total_num_replicas = NumTabletServers();
+  const int32_t total_num_replicas = static_cast<int32_t>(NumTabletServers());
   Tablespace ts("ts", total_num_replicas, placement_blocks);
 
-  ASSERT_OK(conn.Execute(ts.getCreateCmd()));
+  ASSERT_OK(conn.Execute(ts.CreateCmd()));
 
   SetupObjects(&conn, "ts");
 
@@ -592,8 +561,8 @@ TEST_F(PgTablespacesTest, TombstonedTabletInYbLocalTablets) {
   Tablespace tablespace_2(kTablespace2, /* numReplicas = */ 1, placement_blocks_2);
 
   auto conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn.Execute(tablespace_1.getCreateCmd()));
-  ASSERT_OK(conn.Execute(tablespace_2.getCreateCmd()));
+  ASSERT_OK(conn.Execute(tablespace_1.CreateCmd()));
+  ASSERT_OK(conn.Execute(tablespace_2.CreateCmd()));
   ASSERT_OK(conn.ExecuteFormat(
       "CREATE TABLE $0 (k INT) TABLESPACE $1", kTableName, kTablespace1));
   auto old_tablet_state = ASSERT_RESULT(

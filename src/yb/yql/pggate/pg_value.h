@@ -50,5 +50,10 @@ Status PgValueToPB(const YbcPgTypeEntity *type_entity,
                    bool is_null,
                    QLValuePB* ql_value);
 
+Status PgValueToPB(const YbcPgTypeEntity *type_entity,
+                   uint64_t datum,
+                   bool is_null,
+                   LWQLValuePB* ql_value);
+
 }  // namespace pggate
 }  // namespace yb

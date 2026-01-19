@@ -9,6 +9,7 @@ menu:
     identifier: subprogram-attributes
     parent: user-defined-subprograms-and-anon-blocks
     weight: 10
+aliases:
 type: indexpage
 showRightNav: true
 ---

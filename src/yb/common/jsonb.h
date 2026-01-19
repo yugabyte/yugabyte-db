@@ -63,6 +63,7 @@ class Jsonb {
 
   // Creates an object from a serialized jsonb payload.
   explicit Jsonb(const std::string& jsonb);
+  explicit Jsonb(std::string_view jsonb);
 
   explicit Jsonb(std::string&& jsonb);
 
@@ -76,6 +77,7 @@ class Jsonb {
   Status FromRapidJson(const rapidjson::Value& value);
 
   // Creates a serialized jsonb string from QLValuePB.
+  Status FromQLValue(const LWQLValuePB& value_pb);
   Status FromQLValue(const QLValuePB& value_pb);
   Status FromQLValue(const QLValue& value);
 
@@ -85,9 +87,13 @@ class Jsonb {
   // Returns a json string for serialized jsonb
   Status ToJsonString(std::string* json) const;
 
-  static Status ApplyJsonbOperators(const std::string &serialized_json,
-                                            const QLJsonColumnOperationsPB& json_ops,
-                                            QLValuePB* result);
+  static Status ApplyJsonbOperators(std::string_view serialized_json,
+                                    const QLJsonColumnOperationsPB& json_ops,
+                                    QLValuePB* result);
+
+  static Status ApplyJsonbOperators(std::string_view serialized_json,
+                                    const LWQLJsonColumnOperationsPB& json_ops,
+                                    LWQLValuePB* result);
 
   const std::string& SerializedJsonb() const;
 
@@ -105,22 +111,11 @@ class Jsonb {
 
   // Given a jsonb slice, it applies the given operator to the slice and returns the result as a
   // Slice and the element's metadata.
-  static Status ApplyJsonbOperator(const Slice& jsonb, const QLJsonOperationPB& json_op,
-                                           Slice* result, JEntry* element_metadata);
-
-  static bool IsScalar(const JEntry& jentry);
-
-  // Given a scalar value retrieved from a serialized jsonb, this method creates a jsonb scalar
-  // (which is a single element within an array). This is required for comparison purposes.
-  static Status CreateScalar(const Slice& scalar, const JEntry& original_jentry,
-                                     std::string* scalar_jsonb);
-
-  // Given a serialized json scalar and its metadata, return a string representation of it.
-  static Status ScalarToString(const JEntry& element_metadata, const Slice& json_value,
-                                       std::string* result);
+  template<class Op>
+  static Status ApplyJsonbOperator(
+      Slice jsonb, const Op& json_op, Slice* result, JEntry* element_metadata);
 
   static Status ToJsonStringInternal(const Slice& jsonb, std::string* json);
-  static size_t ComputeDataOffset(const size_t num_entries, const uint32_t container_type);
   static Status ToJsonbInternal(const rapidjson::Value& document, std::string* jsonb);
   static Status ToJsonbProcessObject(const rapidjson::Value& document,
                                              std::string* jsonb);
@@ -145,84 +140,10 @@ class Jsonb {
   static std::pair<size_t, size_t> ComputeOffsetsAndJsonbHeader(size_t num_entries,
                                                                 uint32_t container_type,
                                                                 std::string* jsonb);
-  // Retrieves an element in serialized jsonb array with the provided index. The result is a
-  // slice pointing to a section of the serialized jsonb string provided. The parameters
-  // metdata_begin_offset and data_begin_offset indicate the starting positions of metadata and
-  // data in the serialized jsonb. The method also returns a JEntry for the specified element, if
-  // metadata information for that element is required.
-  static Status GetArrayElement(size_t index, const Slice& jsonb,
-                                        size_t metadata_begin_offset, size_t data_begin_offset,
-                                        Slice* result, JEntry* element_metadata);
 
-  // Retrieves the key from a serialized jsonb object at the given index. The result is a
-  // slice pointing to a section of the serialized jsonb string provided. The parameters
-  // metdata_begin_offset and data_begin_offset indicate the starting positions of metadata and
-  // data in the serialized jsonb.
-  static Status GetObjectKey(size_t index, const Slice& jsonb, size_t metadata_begin_offset,
-                                     size_t data_begin_offset, Slice *result);
-
-  // Retrieves the value from a serialized jsonb object at the given index. The result is a
-  // slice pointing to a section of the serialized jsonb string provided. The parameters
-  // metdata_begin_offset and data_begin_offset indicate the starting positions of metadata and
-  // data in the serialized jsonb. The parameter num_kv_pairs indicates the total number of kv
-  // pairs in the json object. The method also returns a JEntry for the specified element, if
-  // metadata information for that element is required.
-  static Status GetObjectValue(size_t index, const Slice& jsonb,
-                                       size_t metadata_begin_offset, size_t data_begin_offset,
-                                       size_t num_kv_pairs, Slice *result, JEntry* value_metadata);
-
-  // Helper method to retrieve the (offset, length) of a key/value serialized in jsonb format.
-  // element_metadata_offset denotes the offset for the JEntry of the key/value,
-  // element_end_offset denotes the end of data portion of the key/value, data_begin_offset
-  // denotes the offset from which the data portion of jsonb starts, metadata_begin_offset is the
-  // offset from which all the JEntry fields begin.
-  static std::pair<size_t, size_t> GetOffsetAndLength(size_t element_metadata_offset,
-                                                      const Slice& jsonb,
-                                                      size_t element_end_offset,
-                                                      size_t data_begin_offset,
-                                                      size_t metadata_begin_offset);
-
-  static Status ApplyJsonbOperatorToArray(const Slice& jsonb,
-                                                  const QLJsonOperationPB& json_op,
-                                                  const JsonbHeader& jsonb_header,
-                                                  Slice* result,
-                                                  JEntry* element_metadata);
-
-  static Status ApplyJsonbOperatorToObject(const Slice& jsonb,
-                                                   const QLJsonOperationPB& json_op,
-                                                   const JsonbHeader& jsonb_header,
-                                                   Slice* result,
-                                                   JEntry* element_metadata);
-
-  static inline uint32_t GetOffset(JEntry metadata) { return metadata & kJEOffsetMask; }
-
-  static inline uint32_t GetJEType(JEntry metadata) { return metadata & kJETypeMask; }
-
-  static inline uint32_t GetCount(JsonbHeader jsonb_header) { return jsonb_header & kJBCountMask; }
-
-  // Bit masks for jsonb header fields.
-  static constexpr uint32_t kJBCountMask = 0x0FFFFFFF; // mask for number of kv pairs.
-  static constexpr uint32_t kJBScalar = 0x10000000; // indicates whether we have a scalar value.
-  static constexpr uint32_t kJBObject = 0x20000000; // indicates whether we have a json object.
-  static constexpr uint32_t kJBArray = 0x40000000; // indicates whether we have a json array.
-
-  // Bit masks for json header fields.
-  static constexpr uint32_t kJEOffsetMask = 0x0FFFFFFF;
-  static constexpr uint32_t kJETypeMask = 0xF0000000;
-
-  // Values stored in the type bits.
-  static constexpr uint32_t kJEIsString = 0x00000000;
-  static constexpr uint32_t kJEIsObject = 0x10000000;
-  static constexpr uint32_t kJEIsBoolFalse = 0x20000000;
-  static constexpr uint32_t kJEIsBoolTrue = 0x30000000;
-  static constexpr uint32_t kJEIsNull = 0x40000000;
-  static constexpr uint32_t kJEIsArray = 0x50000000;
-  static constexpr uint32_t kJEIsInt = 0x60000000;
-  static constexpr uint32_t kJEIsUInt = 0x70000000;
-  static constexpr uint32_t kJEIsInt64 = 0x80000000;
-  static constexpr uint32_t kJEIsUInt64 = 0x90000000;
-  static constexpr uint32_t kJEIsFloat = 0xA0000000;
-  static constexpr uint32_t kJEIsDouble = 0xB0000000;
+  template <class Ops, class Value>
+  static Status DoApplyJsonbOperators(
+      std::string_view serialized_json, const Ops& json_ops, Value* result);
 };
 
 } // namespace common

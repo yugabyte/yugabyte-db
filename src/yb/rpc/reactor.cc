@@ -568,10 +568,10 @@ ConnectionPtr Reactor::AssignOutboundCall(const OutboundCallPtr& call) {
   }
 
   call->SetConnection(conn);
-  call->SetCompletedCallQueue(completed_call_queue_);
   conn->QueueOutboundCall(call);
 
   if (ShouldTrackOutboundCalls()) {
+    call->SetCompletedCallQueue(completed_call_queue_);
     auto expires_at = call->expires_at();
     tracked_outbound_calls_.insert(TrackedOutboundCall {
       .call_id = call->call_id(),
@@ -635,7 +635,7 @@ void Reactor::ScanIdleConnections() {
     if (connection_delta > connection_keepalive_time_) {
       conn->Shutdown(STATUS_FORMAT(
           NetworkError, "Connection timed out after $0", ToSeconds(connection_delta)));
-      LOG_WITH_PREFIX(INFO)
+      VLOG(2)
           << "DEBUG: Closing idle connection: " << conn->ToString()
           << " - it has been idle for " << ToSeconds(connection_delta) << "s";
       VLOG(1) << "(delta: " << ToSeconds(connection_delta)

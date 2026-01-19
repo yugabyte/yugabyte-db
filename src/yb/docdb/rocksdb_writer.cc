@@ -23,6 +23,7 @@
 #include "yb/docdb/doc_vector_index.h"
 #include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb_compaction_context.h"
+#include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/intent_format.h"
 #include "yb/docdb/kv_debug.h"
@@ -72,6 +73,35 @@ using dockv::ValueEntryTypeAsChar;
 namespace {
 
 constexpr char kPostApplyMetadataMarker = 0;
+
+void DumpIntentsRecordForTransaction(rocksdb::DB* intents_db, const TransactionId& transaction_id,
+                                     SchemaPackingProvider* schema_packing_provider = nullptr) {
+  DumpIntentsContext context(transaction_id, intents_db, schema_packing_provider);
+  IntentsWriter intents_writer(
+      /* start_key = */ Slice(),
+      /* file_filter_ht = */ HybridTime::kInvalid,
+      intents_db,
+      &context,
+      /* ignore_metadata = */ false,
+      /* key_to_apply = */ Slice());
+
+  // Create a dummy handler since we're only reading/logging, not writing
+  class DummyHandler : public rocksdb::DirectWriteHandler {
+   public:
+    std::pair<Slice, Slice> Put(const SliceParts& key, const SliceParts& value) override {
+      return std::make_pair(Slice(), Slice());
+    }
+    void SingleDelete(const Slice& key) override {
+    }
+  };
+
+  DummyHandler dummy_handler;
+  Status status = intents_writer.Apply(dummy_handler);
+  if (!status.ok()) {
+    LOG(WARNING) << "Failed to dump intents for transaction: " << transaction_id
+                 << ", error: " << status;
+  }
+}
 
 // Slice parts with the number of slices fixed at compile time.
 template <int N>
@@ -258,6 +288,7 @@ Status TransactionalWriter::Apply(rocksdb::DirectWriteHandler& handler) {
     yb::LWTransactionMetadataPB data_copy(&metadata_to_store_->arena(), *metadata_to_store_);
     // We use hybrid time only for backward compatibility, actually wall time is required.
     data_copy.set_metadata_write_time(GetCurrentTimeMicros());
+    data_copy.set_first_write_ht(hybrid_time_.ToUint64());
     auto value = data_copy.SerializeAsString();
     Slice value_slice(value);
     handler.Put(key, SliceParts(&value_slice, 1));
@@ -529,6 +560,19 @@ IntentsWriterContext::IntentsWriterContext(
           : FLAGS_txn_max_apply_batch_records) {
 }
 
+IntentsWriterContextBase::IntentsWriterContextBase(
+    const TransactionId& transaction_id,
+    IgnoreMaxApplyLimit ignore_max_apply_limit,
+    rocksdb::DB* intents_db,
+    const KeyBounds* key_bounds,
+    HybridTime file_filter_ht)
+    : IntentsWriterContext(transaction_id, ignore_max_apply_limit),
+      intent_iter_(CreateRocksDBIterator(
+          intents_db, key_bounds, BloomFilterOptions::Inactive(), rocksdb::kDefaultQueryId,
+          CreateIntentHybridTimeFileFilter(file_filter_ht), /* iterate_upper_bound = */ nullptr,
+          rocksdb::CacheRestartBlockKeys::kFalse)) {
+}
+
 IntentsWriter::IntentsWriter(const Slice& start_key,
                              HybridTime file_filter_ht,
                              rocksdb::DB* intents_db,
@@ -624,7 +668,8 @@ ApplyIntentsContext::ApplyIntentsContext(
     const docdb::StorageSet& apply_to_storages,
     ApplyIntentsContextCompleteListener complete_listener)
       // TODO(vector_index) Add support for large transactions.
-    : IntentsWriterContext(transaction_id, IgnoreMaxApplyLimit(vector_indexes != nullptr)),
+    : IntentsWriterContextBase(transaction_id, IgnoreMaxApplyLimit(vector_indexes != nullptr),
+          intents_db, key_bounds, file_filter_ht),
       FrontierSchemaVersionUpdater(schema_packing_provider, frontiers),
       tablet_id_(tablet_id),
       apply_state_(apply_state),
@@ -640,11 +685,8 @@ ApplyIntentsContext::ApplyIntentsContext(
       key_bounds_(key_bounds),
       vector_indexes_(vector_indexes),
       apply_to_storages_(apply_to_storages),
-      intent_iter_(CreateRocksDBIterator(
-          intents_db, key_bounds, BloomFilterOptions::Inactive(), rocksdb::kDefaultQueryId,
-          CreateIntentHybridTimeFileFilter(file_filter_ht), /* iterate_upper_bound = */ nullptr,
-          rocksdb::CacheRestartBlockKeys::kFalse)),
-      complete_listener_(std::move(complete_listener)) {
+      complete_listener_(std::move(complete_listener)),
+      intents_db_(intents_db) {
   if (vector_indexes_) {
     vector_index_batches_.resize(vector_indexes_->size());
   }
@@ -713,16 +755,21 @@ Result<bool> ApplyIntentsContext::Entry(
     const Slice transaction_id_slice = transaction_id().AsSlice();
     auto decoded_value = VERIFY_RESULT(dockv::DecodeIntentValue(
         intent_iter_.value(), &transaction_id_slice));
+    // Dump the intents to log before crashing
+    if (decoded_value.write_id < write_id_) {
+      DumpIntentsRecordForTransaction(intents_db_, transaction_id(), &schema_packing_provider());
 
-    // Write id should match to one that were calculated during append of intents.
-    // Doing it just for sanity check.
-    RSTATUS_DCHECK_GE(
-        decoded_value.write_id, write_id_,
-        Corruption,
-        Format("Unexpected write id. Expected: $0, found: $1, raw value: $2",
-               write_id_,
-               decoded_value.write_id,
-               intent_iter_.value().ToDebugHexString()));
+      // Write id should match to one that were calculated during append of intents.
+      // Doing it just for sanity check.
+      RSTATUS_DCHECK(
+          false,
+          Corruption,
+          Format("Unexpected write id. Expected: $0, found: $1, raw value: $2",
+                 write_id_,
+                 decoded_value.write_id,
+                 intent_iter_.value().ToDebugHexString()));
+    }
+
     write_id_ = decoded_value.write_id;
 
     // Intents for row locks should be ignored (i.e. should not be written as regular records).
@@ -870,7 +917,8 @@ Status ApplyIntentsContext::ProcessVectorIndexesForPackedRow(
     auto ybctid = key.WithoutPrefix(table_key_prefix.size());
     if (ApplyToVectorIndex(i)) {
       vector_index_batches_[i].push_back(DocVectorIndexInsertEntry {
-        .value = ValueBuffer(column_value->WithoutPrefix(1)),
+        .value = ValueBuffer(column_value->WithoutPrefix(
+            std::is_same_v<Decoder, dockv::PackedRowDecoderV2> ? 0 : 1)),
       });
     }
 
@@ -1307,6 +1355,55 @@ Status NonTransactionalBatchWriter::Apply(rocksdb::DirectWriteHandler& handler) 
     }
   }
 
+  return Status::OK();
+}
+
+DumpIntentsContext::DumpIntentsContext(
+    const TransactionId& transaction_id,
+    rocksdb::DB* intents_db,
+    SchemaPackingProvider* schema_packing_provider)
+    : IntentsWriterContextBase(transaction_id, IgnoreMaxApplyLimit::kTrue,
+                                   intents_db, &KeyBounds::kNoBounds, HybridTime::kInvalid),
+      schema_packing_provider_(schema_packing_provider) {
+}
+
+void DumpIntentsContext::Start(const std::optional<Slice>& first_key) {
+  LOG(INFO) << "Dumping intents for transaction: " << transaction_id();
+}
+
+Result<bool> DumpIntentsContext::Entry(const Slice& reverse_index_key,
+                                       const Slice& reverse_index_value, bool metadata,
+                                       rocksdb::DirectWriteHandler& handler) {
+  auto dump_record = [this](const Slice& key, const Slice& val) {
+    LOG(INFO) << "Intent record " << ++intent_count_ << ". "
+              << docdb::EntryToString(key, val, schema_packing_provider_, StorageDbType::kIntents);
+  };
+  dump_record(reverse_index_key, reverse_index_value);
+
+  if (metadata) {
+    return false;
+  }
+
+  intent_iter_.Seek(reverse_index_value);
+  if (!intent_iter_.Valid() || intent_iter_.key() != reverse_index_value) {
+    LOG(WARNING) << "Missing intent: " << reverse_index_value.ToDebugHexString();
+    return false;
+  }
+
+  dump_record(intent_iter_.key(), intent_iter_.value());
+  return false;
+}
+
+Status DumpIntentsContext::DeleteVectorIds(
+    Slice key, Slice ids, rocksdb::DirectWriteHandler& handler) {
+  return Status::OK();
+}
+
+Status DumpIntentsContext::Complete(rocksdb::DirectWriteHandler& handler,
+                                    bool transaction_finished) {
+  LOG(INFO) << "Finished dumping intents for transaction: " << transaction_id()
+            << ", total records: " << intent_count_
+            << ", transaction finished: " << transaction_finished;
   return Status::OK();
 }
 

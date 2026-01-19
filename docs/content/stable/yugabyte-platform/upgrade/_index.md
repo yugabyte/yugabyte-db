@@ -3,6 +3,8 @@ title: Upgrade YugabyteDB Anywhere
 headerTitle: Upgrade YugabyteDB Anywhere
 linkTitle: Upgrade
 description: Upgrade YugabyteDB Anywhere.
+aliases:
+  - /stable/yugabyte-platform/upgrade/upgrade-yp-replicated/
 menu:
   stable_yugabyte-platform:
     parent: yugabytedb-anywhere
@@ -18,7 +20,6 @@ You can upgrade YBA using the following methods:
 | Method | Using | Use If |
 | :--- | :--- | :--- |
 | YBA&nbsp;Installer | yba-ctl CLI | Your installation already uses YBA Installer. |
-| Replicated | Replicated Admin Console | Your installation already uses Replicated.<br>Before you can migrate from a Replicated installation, upgrade to v2.20.1.3 or later using Replicated.<br> Note that you must migrate from Replicated to YBA Installer if you are upgrading YugabyteDB Anywhere to v2024.1 or later. |
 | Kubernetes | Helm chart | You're deploying in Kubernetes. |
 
 {{<index/block>}}

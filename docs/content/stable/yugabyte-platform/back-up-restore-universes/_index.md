@@ -4,6 +4,10 @@ headerTitle: Back up and restore universes
 linkTitle: Back up universes
 description: Use YugabyteDB Anywhere to back up and restore YugabyteDB universe data.
 headcontent: Use YugabyteDB Anywhere to back up and restore YugabyteDB universes and data
+aliases:
+  - /stable/manage/enterprise-edition/backup-restore
+  - /stable/manage/enterprise-edition/back-up-restore-data
+  - /stable/yugabyte-platform/manage/backup-restore-data
 menu:
   stable_yugabyte-platform:
     parent: yugabytedb-anywhere
@@ -15,7 +19,7 @@ type: indexpage
 {{< page-finder/head text="Back Up and Restore" subtle="across different products">}}
   {{< page-finder/list icon="/icons/database-hover.svg" text="YugabyteDB" url="../../manage/backup-restore/" >}}
   {{< page-finder/list icon="/icons/server-hover.svg" text="YugabyteDB Anywhere" current="" >}}
-  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/preview/yugabyte-cloud/cloud-clusters/backup-clusters/" >}}
+  {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/stable/yugabyte-cloud/cloud-clusters/backup-clusters/" >}}
 {{< /page-finder/head >}}
 
 You can use YugabyteDB to schedule and manage backups of your universe data. This includes the following features:

@@ -2130,6 +2130,11 @@ ExecGrant_Relation(InternalGrant *istmt)
 									  noldmembers, oldmembers,
 									  nnewmembers, newmembers);
 			}
+			else
+			{
+				/* YB: ACL unchanged, but we still need to release the tuple lock */
+				UnlockTuple(relation, &tuple->t_self, InplaceUpdateTupleLock);
+			}
 			pfree(new_acl);
 		}
 		else

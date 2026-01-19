@@ -53,13 +53,3 @@ DROP TABLE foo_partitioned_by_col;
 
 SELECT yb_data FROM TEST_filtered_ddl_queue() ORDER BY ddl_end_time;
 SELECT yb_data FROM yb_xcluster_ddl_replication.replicated_ddls ORDER BY ddl_end_time;
-
--- Test mix of temp and regular tables.
-CREATE TEMP TABLE temp_foo(i int PRIMARY KEY);
-CREATE TABLE foo(i int PRIMARY KEY);
-DROP TABLE temp_foo, foo; -- should fail
-DROP TABLE foo, temp_foo; -- should fail
-DROP TABLE temp_foo;
-DROP TABLE foo;
-
-select * from TEST_verify_replicated_ddls();

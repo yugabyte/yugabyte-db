@@ -28,11 +28,11 @@ class TSHeartbeatRequestPB;
 class TSHeartbeatResponsePB;
 
 class PostTabletCreateTaskBase;
-class XClusterInboundReplicationGroupSetupTaskIf;
 class UniverseReplicationInfo;
+class XClusterConsumerReplicationStatusPB;
+class XClusterInboundReplicationGroupSetupTaskIf;
 class XClusterSafeTimeService;
 struct XClusterInboundReplicationGroupStatus;
-class XClusterConsumerReplicationStatusPB;
 struct XClusterSetupUniverseReplicationData;
 
 class XClusterTargetManager {
@@ -54,8 +54,7 @@ class XClusterTargetManager {
       GetXClusterSafeTimeForNamespaceResponsePB* resp, const LeaderEpoch& epoch);
 
   Result<HybridTime> GetXClusterSafeTimeForNamespace(
-      const LeaderEpoch& epoch, const NamespaceId& namespace_id,
-      const XClusterSafeTimeFilter& filter);
+      const NamespaceId& namespace_id, const XClusterSafeTimeFilter& filter) const;
 
   Status RefreshXClusterSafeTimeMap(const LeaderEpoch& epoch);
 
@@ -215,7 +214,12 @@ class XClusterTargetManager {
 
   Status InsertPackedSchemaForXClusterTarget(
       const TableId& table_id, const SchemaPB& packed_schema_to_insert,
-      uint32_t current_schema_version, const LeaderEpoch& epoch);
+      uint32_t current_schema_version, const LeaderEpoch& epoch,
+      bool error_on_incorrect_schema_version = false);
+
+  Status HandleNewSchemaForAutomaticXClusterTarget(
+      const HandleNewSchemaForAutomaticXClusterTargetRequestPB* req,
+      HandleNewSchemaForAutomaticXClusterTargetResponsePB* resp, const LeaderEpoch& epoch);
 
   Status InsertHistoricalColocatedSchemaPacking(
       const InsertHistoricalColocatedSchemaPackingRequestPB* req,
@@ -230,11 +234,11 @@ class XClusterTargetManager {
   // table statuses.
   Result<XClusterInboundReplicationGroupStatus> GetUniverseReplicationInfo(
       const SysUniverseReplicationEntryPB& replication_info_pb,
-      const SysClusterConfigEntryPB& cluster_config_pb) const;
+      const SysClusterConfigEntryPB& cluster_config_pb,
+      const XClusterNamespaceToSafeTimeMap& namespace_safe_time) const;
 
   Status RefreshLocalAutoFlagConfig(const LeaderEpoch& epoch);
   Status DoRefreshLocalAutoFlagConfig(const LeaderEpoch& epoch);
-
 
   // Populate the response with the errors for the given replication group.
   Status PopulateReplicationGroupErrors(
@@ -248,6 +252,13 @@ class XClusterTargetManager {
   Result<HybridTime> PrepareAndGetBackfillTimeForBiDirectionalIndex(
       const std::vector<TableId>& index_table_ids, const TableId& indexed_table,
       const LeaderEpoch& epoch) const;
+
+  // In automatic mode this is used to handle the case when we receive a new schema for a
+  // colocated table that does not exist yet on the target.
+  Status HandleNewTableSchemaForUpcomingColocatedTable(
+      const TableId& table_id, const xcluster::ReplicationGroupId& replication_group_id,
+      const xrepl::StreamId& stream_id, ColocationId colocation_id,
+      uint32_t producer_schema_version, const SchemaPB& schema, const LeaderEpoch& epoch);
 
   Master& master_;
   CatalogManager& catalog_manager_;

@@ -318,6 +318,12 @@ ExecRefreshMatView(RefreshMatViewStmt *stmt, const char *queryString,
 	 * call make_new_heap instead of going through DefineRelation.
 	 * For postgres xid cleanup, mark the current transaction as using
 	 * temp tables.
+	 *
+	 * Both concurrent and in-place refresh use temp tables. During a major
+	 * YSQL upgrade, catalog modifications are blocked unless
+	 * force_catalog_modification is enabled. Enable it here so that the temp
+	 * table operations (e.g. CREATE TEMP TABLE, ALTER TABLE) in
+	 * refresh_by_match_merge are allowed during upgrade.
 	 */
 	if (yb_in_place_refresh)
 	{
@@ -338,7 +344,7 @@ ExecRefreshMatView(RefreshMatViewStmt *stmt, const char *queryString,
 	dest = CreateTransientRelDestReceiver(OIDNewHeap);
 
 	/* Generate the data, if wanted. */
-	if (!stmt->skipData)
+	if (!stmt->skipData && !yb_xcluster_automatic_mode_target_ddl)
 		processed = refresh_matview_datafill(dest, dataQuery, queryString);
 
 	/* Make the matview match the newly generated data. */
@@ -1018,7 +1024,9 @@ refresh_by_heap_swap(Oid matviewOid, Oid OIDNewHeap, char relpersistence)
 {
 	finish_heap_swap(matviewOid, OIDNewHeap, false, false, true, true,
 					 RecentXmin, ReadNextMultiXactId(), relpersistence,
-					 false /* yb_copy_split_options */ );
+					 false /* yb_copy_split_options */ ,
+					 NIL /* changedIndexNames */ ,
+					 NIL /* changedIndexSplitOpts */ );
 }
 
 /*

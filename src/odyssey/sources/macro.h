@@ -28,4 +28,6 @@ typedef int od_retcode_t;
 
 #define INVALID_COROUTINE_ID -1
 
+#define YB_NAME_AND_SIZEOF(name) name, sizeof(name)
+
 #endif /* ODYSSEY_MACRO_H */

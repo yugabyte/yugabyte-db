@@ -2,45 +2,63 @@
 
 package com.yugabyte.yw.commissioner.tasks.local;
 
+import static com.yugabyte.yw.common.Util.YUGABYTE_DB;
 import static com.yugabyte.yw.common.gflags.GFlagsUtil.POSTMASTER_CGROUP;
 import static com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType.CREATE;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
+import com.google.common.collect.Streams;
+import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckLeaderlessTablets;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CreateTableSpaces;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.RetryTaskUntilCondition;
+import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.TableSpaceStructures;
+import com.yugabyte.yw.common.TableSpaceUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
+import com.yugabyte.yw.common.nodeui.DumpEntitiesResponse;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.forms.UniverseTaskParams;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.ImageBundleDetails;
+import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.ServerSocket;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.hamcrest.CoreMatchers;
 import org.junit.Before;
 import org.junit.Test;
 import org.yb.client.YBClient;
@@ -48,6 +66,10 @@ import play.libs.Json;
 
 @Slf4j
 public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
+
+  private Region region2;
+  private AvailabilityZone az21;
+  private AvailabilityZone az22;
 
   @Override
   protected Pair<Integer, Integer> getIpRange() {
@@ -59,6 +81,10 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     provider.getDetails().getCloudInfo().local.setHostedZoneId("test");
     provider.update();
     localNodeManager.setCheckDNS(true);
+
+    region2 = Region.create(provider, "region-2", "region-2", "default-image");
+    az21 = AvailabilityZone.createOrThrow(region2, "az-21", "az-21", "subnet-1");
+    az22 = AvailabilityZone.createOrThrow(region2, "az-22", "az-22", "subnet-1");
   }
 
   @Test
@@ -197,7 +223,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     RuntimeConfigEntry.upsert(universe, "yb.checks.node_disk_size.target_usage_percentage", "0");
     UniverseDefinitionTaskParams.Cluster cluster =
         universe.getUniverseDetails().getPrimaryCluster();
-    cluster.placementInfo.azStream().limit(1).forEach(az -> az.uuid = az4.getUuid());
+    moveAZ(cluster.placementInfo, az1.getUuid(), az4.getUuid());
     PlacementInfoUtil.updateUniverseDefinition(
         universe.getUniverseDetails(),
         customer.getId(),
@@ -620,6 +646,273 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     assertThat(error, containsString("Unexpected TSERVER: " + removed.cloudInfo.private_ip));
   }
 
+  @Test
+  public void testGeoPartitioningRemoveZone() throws InterruptedException {
+    // Primary partition:
+    // az1 -> 1, az2 -> 1, az3 -> 2
+    // Secondary partition:
+    // az21 -> 2
+    // az22 -> 2
+    Universe universe =
+        createGeopartitionedUniverse(
+            p ->
+                p.azStream()
+                    .filter(az -> az.uuid.equals(az3.getUuid()))
+                    .forEach(az -> az.numNodesInAZ += 1));
+    UniverseDefinitionTaskParams.Cluster cluster =
+        universe.getUniverseDetails().getPrimaryCluster();
+    UniverseDefinitionTaskParams.PartitionInfo partition = cluster.getPartitions().get(0);
+
+    initYSQL(universe, "table_in_main", TableSpaceUtil.getTablespaceName(partition));
+    // Target primary partition:
+    // az4 -> 1, az2 -> 1, az3 -> 2
+
+    // Tmp tablespace: az2 -> 1, az3 -> 2
+    TableSpaceStructures.TableSpaceInfo tmpTablespace =
+        initTablespace("tmp_tablespace", az3.getUuid(), 2, az2.getUuid(), 1);
+    NodeDetails nodeInAz3 =
+        universe.getUniverseDetails().nodeDetailsSet.stream()
+            .filter(n -> n.azUuid.equals(az3.getUuid()))
+            .findFirst()
+            .get();
+
+    ShellResponse response =
+        localNodeUniverseManager.runYsqlCommand(
+            nodeInAz3,
+            universe,
+            YUGABYTE_DB,
+            CreateTableSpaces.getTablespaceCreationQuery(tmpTablespace),
+            10,
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.isYSQLAuthEnabled(),
+            false);
+    assertEquals(response.getMessage(), true, response.isSuccess());
+
+    response =
+        localNodeUniverseManager.runYsqlCommand(
+            nodeInAz3,
+            universe,
+            YUGABYTE_DB,
+            "ALTER TABLE table_in_main SET TABLESPACE " + tmpTablespace.name,
+            10,
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.isYSQLAuthEnabled(),
+            false);
+    assertEquals(response.getMessage(), true, response.isSuccess());
+
+    response =
+        localNodeUniverseManager.runYsqlCommand(
+            nodeInAz3,
+            universe,
+            YUGABYTE_DB,
+            "DROP TABLESPACE " + TableSpaceUtil.getTablespaceName(partition),
+            10,
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.isYSQLAuthEnabled(),
+            false);
+    assertEquals(response.getMessage(), true, response.isSuccess());
+
+    moveAZ(partition.getPlacement(), az1.getUuid(), az4.getUuid());
+    PlacementInfoUtil.updateUniverseDefinition(
+        universe.getUniverseDetails(),
+        customer.getId(),
+        cluster.uuid,
+        UniverseConfigureTaskParams.ClusterOperationType.EDIT);
+    verifyNodeModifications(universe, 1, 1);
+    UUID taskID =
+        universeCRUDHandler.update(
+            customer,
+            Universe.getOrBadRequest(universe.getUniverseUUID()),
+            universe.getUniverseDetails());
+    TaskInfo taskInfo = waitForTask(taskID);
+    // This will still fail because tablets are not yet moved.
+    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+
+    UUID universeUUID = universe.getUniverseUUID();
+    HostAndPort hp =
+        HostAndPort.fromParts(
+            universe.getUniverseDetails().nodeDetailsSet.stream()
+                .filter(n -> n.azUuid.equals(az1.getUuid()))
+                .findFirst()
+                .get()
+                .cloudInfo
+                .private_ip,
+            universe.getUniverseDetails().communicationPorts.tserverRpcPort);
+    // Waiting for table to move.
+    RetryTaskUntilCondition<Boolean> condition =
+        new RetryTaskUntilCondition<>(
+            () -> {
+              DumpEntitiesResponse dumpEntitiesResponse =
+                  UniverseTaskBase.dumpDbEntities(
+                      Universe.getOrBadRequest(universeUUID), null, nodeUIApiHelper);
+              Set<String> tables =
+                  dumpEntitiesResponse.getTablesByTserverAddresses(hp).stream()
+                      .map(t -> t.getTableName())
+                      .collect(Collectors.toSet());
+              log.debug("Tables on {}: {}", hp.getHost(), tables);
+              return !tables.contains("table_in_main");
+            },
+            (x) -> x);
+    if (!condition.retryUntilCond(20, 300)) {
+      throw new RuntimeException("Failed to wait till tablets are moved");
+    }
+    universe = Universe.getOrBadRequest(universeUUID);
+    moveAZ(
+        universe.getUniverseDetails().getPrimaryCluster().getPartitions().get(0).getPlacement(),
+        az1.getUuid(),
+        az4.getUuid());
+    PlacementInfoUtil.updateUniverseDefinition(
+        universe.getUniverseDetails(),
+        customer.getId(),
+        cluster.uuid,
+        UniverseConfigureTaskParams.ClusterOperationType.EDIT);
+    taskID =
+        universeCRUDHandler.update(
+            customer,
+            Universe.getOrBadRequest(universe.getUniverseUUID()),
+            universe.getUniverseDetails());
+    taskInfo = waitForTask(taskID);
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    verifyYSQL(
+        universe,
+        false,
+        YUGABYTE_DB,
+        "table_in_main",
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.isYSQLAuthEnabled(),
+        false);
+  }
+
+  @Test
+  public void testGeoPartitioningRemoveGeo() throws InterruptedException {
+    Universe universe = createGeopartitionedUniverse(null);
+    UniverseDefinitionTaskParams.Cluster cluster =
+        universe.getUniverseDetails().getPrimaryCluster();
+    initYSQL(
+        universe,
+        "table_in_main",
+        TableSpaceUtil.getTablespaceName(cluster.getPartitions().get(0)));
+
+    // Removing secondary partition.
+    universe
+        .getUniverseDetails()
+        .getPrimaryCluster()
+        .setPartitions(Collections.singletonList(cluster.getPartitions().get(0)));
+    PlacementInfoUtil.updateUniverseDefinition(
+        universe.getUniverseDetails(),
+        customer.getId(),
+        cluster.uuid,
+        UniverseConfigureTaskParams.ClusterOperationType.EDIT);
+    verifyNodeModifications(universe, 0, 3);
+    UUID taskID =
+        universeCRUDHandler.update(
+            customer,
+            Universe.getOrBadRequest(universe.getUniverseUUID()),
+            universe.getUniverseDetails());
+    TaskInfo taskInfo = waitForTask(taskID, universe);
+
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+
+    verifyYSQL(
+        universe,
+        false,
+        YUGABYTE_DB,
+        "table_in_main",
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.isYSQLAuthEnabled(),
+        false);
+  }
+
+  @Test
+  public void testGeoPartitioningRemoveGeoFAIL() throws InterruptedException {
+    Universe universe = createGeopartitionedUniverse(null);
+    UniverseDefinitionTaskParams.Cluster cluster =
+        universe.getUniverseDetails().getPrimaryCluster();
+    initYSQL(
+        universe,
+        "table_in_main",
+        TableSpaceUtil.getTablespaceName(cluster.getPartitions().get(0)));
+    UniverseDefinitionTaskParams.PartitionInfo secondaryGeo = cluster.getPartitions().get(1);
+    initYSQL(universe, "table_in_secondary", TableSpaceUtil.getTablespaceName(secondaryGeo));
+
+    // Removing secondary partition.
+    universe
+        .getUniverseDetails()
+        .getPrimaryCluster()
+        .setPartitions(Collections.singletonList(cluster.getPartitions().get(0)));
+    PlacementInfoUtil.updateUniverseDefinition(
+        universe.getUniverseDetails(),
+        customer.getId(),
+        cluster.uuid,
+        UniverseConfigureTaskParams.ClusterOperationType.EDIT);
+    verifyNodeModifications(universe, 0, 3);
+    UUID taskID =
+        universeCRUDHandler.update(
+            customer,
+            Universe.getOrBadRequest(universe.getUniverseUUID()),
+            universe.getUniverseDetails());
+    TaskInfo taskInfo = waitForTask(taskID, universe);
+    // Fail because of existing table.
+    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    TaskInfo subTaskInfo =
+        taskInfo.getSubTasks().stream()
+            .filter(st -> st.getTaskType() == TaskType.TablespaceValidationOnRemove)
+            .findFirst()
+            .get();
+    String expectedMsg = "These tables: [table_in_secondary] have tablets on removed AZs";
+    assertThat(subTaskInfo.getErrorMessage(), CoreMatchers.containsString(expectedMsg));
+    assertNull(universe.getUniverseDetails().placementModificationTaskUuid);
+    assertTrue(universe.getUniverseDetails().updateSucceeded);
+  }
+
+  private Universe createGeopartitionedUniverse(Consumer<PlacementInfo> customizer)
+      throws InterruptedException {
+    UniverseDefinitionTaskParams.PartitionInfo main =
+        new UniverseDefinitionTaskParams.PartitionInfo();
+    main.setName("main");
+    main.setDefaultPartition(true);
+    main.setPlacement(toPlacement(az1, az2, az3));
+    if (customizer != null) {
+      customizer.accept(main.getPlacement());
+    }
+    PlacementInfoUtil.checkAndSetPerAZRF(main.getPlacement(), 3, null, false);
+    main.setReplicationFactor(3);
+
+    UniverseDefinitionTaskParams.PartitionInfo secondary =
+        new UniverseDefinitionTaskParams.PartitionInfo();
+    secondary.setName("sec");
+    secondary.setPlacement(toPlacement(az21, az22));
+    secondary.getPlacement().azStream().limit(1).forEach(az -> az.numNodesInAZ = 2);
+    secondary.setReplicationFactor(3);
+    AtomicInteger i = new AtomicInteger(1);
+    secondary.getPlacement().azStream().forEach(az -> az.replicationFactor = i.getAndIncrement());
+
+    int numNodes =
+        Streams.concat(main.getPlacement().azStream(), secondary.getPlacement().azStream())
+            .mapToInt(az -> az.numNodesInAZ)
+            .sum();
+    UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
+    userIntent.replicationFactor = 3;
+    userIntent.numNodes = numNodes;
+    userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.nodePrefix = "univConfCreate";
+    taskParams.upsertPrimaryCluster(userIntent, Arrays.asList(main, secondary), null);
+    PlacementInfoUtil.updateUniverseDefinition(
+        taskParams, customer.getId(), taskParams.getPrimaryCluster().uuid, CREATE);
+    taskParams.expectedUniverseVersion = -1;
+    // CREATE
+    UniverseResp universeResp = universeCRUDHandler.createUniverse(customer, taskParams);
+    TaskInfo taskInfo =
+        waitForTask(universeResp.taskUUID, Universe.getOrBadRequest(universeResp.universeUUID));
+    verifyUniverseTaskSuccess(taskInfo);
+    return Universe.getOrBadRequest(universeResp.universeUUID);
+  }
+
+  private PlacementInfo toPlacement(AvailabilityZone... zones) {
+    PlacementInfo placementInfo = new PlacementInfo();
+    for (AvailabilityZone zone : zones) {
+      PlacementInfoUtil.addPlacementZone(zone.getUuid(), placementInfo);
+    }
+    return placementInfo;
+  }
+
   //  @Test
   public void testLeaderlessTabletsBeforeEditFAIL() throws Exception {
     RuntimeConfigEntry.upsertGlobal("yb.checks.leaderless_tablets.timeout", "10s");
@@ -731,7 +1024,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
             Collections.emptyMap()));
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.nodePrefix = "univConfCreate";
-    taskParams.upsertPrimaryCluster(userIntent, null);
+    taskParams.upsertPrimaryCluster(userIntent, null, null);
     PlacementInfoUtil.updateUniverseDefinition(
         taskParams, customer.getId(), taskParams.getPrimaryCluster().uuid, CREATE);
     taskParams.expectedUniverseVersion = -1;
@@ -758,7 +1051,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
             Collections.singletonMap(GFlagsUtil.CLUSTER_UUID, randomUUID.toString())));
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.nodePrefix = "univConfCreate";
-    taskParams.upsertPrimaryCluster(userIntent, null);
+    taskParams.upsertPrimaryCluster(userIntent, null, null);
     PlacementInfoUtil.updateUniverseDefinition(
         taskParams, customer.getId(), taskParams.getPrimaryCluster().uuid, CREATE);
     taskParams.expectedUniverseVersion = -1;

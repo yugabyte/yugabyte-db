@@ -103,6 +103,7 @@ import com.yugabyte.yw.models.helpers.provider.region.AzureRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.telemetry.AWSCloudWatchConfig;
 import com.yugabyte.yw.models.helpers.telemetry.GCPCloudMonitoringConfig;
+import com.yugabyte.yw.models.helpers.telemetry.S3Config;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -166,13 +167,9 @@ public class NodeManager extends DevopsBase {
 
   @Inject RuntimeConfigFactory runtimeConfigFactory;
 
-  @Inject RuntimeConfGetter confGetter;
-
   @Inject ReleaseManager releaseManager;
 
   @Inject ImageBundleUtil imageBundleUtil;
-
-  @Inject NodeAgentClient nodeAgentClient;
 
   @Inject NodeAgentPoller nodeAgentPoller;
 
@@ -480,10 +477,9 @@ public class NodeManager extends DevopsBase {
       subCommand.add(effectiveSshUser);
     } else if (type == NodeCommandType.Manage_Otel_Collector) {
       boolean useSudo =
-          (params instanceof ManageOtelCollector.Params
-                  && ((ManageOtelCollector.Params) params).installOtelCollector)
-              || (params instanceof ManageOtelCollector.Params
-                  && ((ManageOtelCollector.Params) params).useSudo);
+          params instanceof ManageOtelCollector.Params
+              && ((ManageOtelCollector.Params) params).useSudo
+              && !provider.isManualOnprem();
       // Override the effective user for the non-sudo special case.
       String computedUser =
           type == NodeCommandType.Manage_Otel_Collector && !useSudo
@@ -1866,7 +1862,6 @@ public class NodeManager extends DevopsBase {
         CreateRootVolumes.Params crvParams = (CreateRootVolumes.Params) nodeTaskParam;
         commandArgs.add("--num_disks");
         commandArgs.add(String.valueOf(crvParams.numVolumes));
-
         if (Common.CloudType.aws.equals(userIntent.providerType)) {
           commandArgs.add("--snapshot_creation_delay");
           commandArgs.add(
@@ -2164,6 +2159,9 @@ public class NodeManager extends DevopsBase {
               commandArgs.add("--lun_indexes");
               commandArgs.add(StringUtils.join(node.cloudInfo.lun_indexes, ","));
             }
+          }
+          if (taskParam.skipAnsiblePlaybook) {
+            commandArgs.add("--skip_ansible_playbook");
           }
           break;
         }
@@ -2998,9 +2996,14 @@ public class NodeManager extends DevopsBase {
     if (auditLogConfig == null && queryLogConfig == null && metricsExportConfig == null) {
       return;
     }
-    if ((auditLogConfig != null && !OtelCollectorUtil.isAuditLogEnabledInUniverse(auditLogConfig))
-        && (queryLogConfig != null
-            && !OtelCollectorUtil.isQueryLogEnabledInUniverse(queryLogConfig))) {
+    // Check if any config exists and is enabled. If none are enabled, return early.
+    boolean anyConfigEnabled =
+        (auditLogConfig != null && OtelCollectorUtil.isAuditLogEnabledInUniverse(auditLogConfig))
+            || (queryLogConfig != null
+                && OtelCollectorUtil.isQueryLogEnabledInUniverse(queryLogConfig))
+            || (metricsExportConfig != null
+                && OtelCollectorUtil.isMetricsExportEnabledInUniverse(metricsExportConfig));
+    if (!anyConfigEnabled) {
       return;
     }
     if (auditLogConfig != null && auditLogConfig.getYcqlAuditConfig() != null) {
@@ -3071,6 +3074,18 @@ public class NodeManager extends DevopsBase {
     }
   }
 
+  private void addAwsCredentialsToCommandArgs(
+      String accessKey, String secretKey, List<String> commandArgs) {
+    if (StringUtils.isNotEmpty(accessKey)) {
+      commandArgs.add("--otel_col_aws_access_key");
+      commandArgs.add(accessKey);
+    }
+    if (StringUtils.isNotEmpty(secretKey)) {
+      commandArgs.add("--otel_col_aws_secret_key");
+      commandArgs.add(secretKey);
+    }
+  }
+
   private void addOtelColArgsForExporters(
       List<String> commandArgs, UUID exporterUUID, UUID universeUUID, UUID nodeUUID) {
     TelemetryProvider telemetryProvider = telemetryProviderService.get(exporterUUID);
@@ -3078,14 +3093,13 @@ public class NodeManager extends DevopsBase {
       case AWS_CLOUDWATCH -> {
         AWSCloudWatchConfig awsCloudWatchConfig =
             (AWSCloudWatchConfig) telemetryProvider.getConfig();
-        if (StringUtils.isNotEmpty(awsCloudWatchConfig.getAccessKey())) {
-          commandArgs.add("--otel_col_aws_access_key");
-          commandArgs.add(awsCloudWatchConfig.getAccessKey());
-        }
-        if (StringUtils.isNotEmpty(awsCloudWatchConfig.getSecretKey())) {
-          commandArgs.add("--otel_col_aws_secret_key");
-          commandArgs.add(awsCloudWatchConfig.getSecretKey());
-        }
+        addAwsCredentialsToCommandArgs(
+            awsCloudWatchConfig.getAccessKey(), awsCloudWatchConfig.getSecretKey(), commandArgs);
+      }
+      case S3 -> {
+        S3Config s3Config = (S3Config) telemetryProvider.getConfig();
+        addAwsCredentialsToCommandArgs(
+            s3Config.getAccessKey(), s3Config.getSecretKey(), commandArgs);
       }
       case GCP_CLOUD_MONITORING -> {
         GCPCloudMonitoringConfig gcpCloudMonitoringConfig =

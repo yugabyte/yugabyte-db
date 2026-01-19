@@ -30,7 +30,7 @@ YB_DEFINE_ENUM(
     (kTabletUnderReplicated)
     (kTabletWrongPlacement));
 
-// Information representing the activity in one iteration of the cluster load balancer.
+// Information representing the activity in one iteration of the cluster balancer.
 class ClusterBalancerActivityInfo {
  public:
   bool IsIdle() const {
@@ -83,10 +83,10 @@ class ClusterBalancerActivityInfo {
   bool has_ongoing_remote_bootstraps_ = false;
 
  private:
-  // List of warnings that might prevent the load balancer from making progress.
+  // List of warnings that might prevent the cluster balancer from making progress.
   std::unordered_map<ClusterBalancerWarningType, WarningMessageCount> warnings_;
 
-  // List of load balancer tasks (both ongoing and newly-scheduled).
+  // List of cluster balancer tasks (both ongoing and newly-scheduled).
   std::vector<std::shared_ptr<RetryingRpcTask>> tasks_;
 };
 
@@ -102,7 +102,7 @@ class ClusterBalancerActivityBuffer {
  private:
   mutable rw_spinlock mutex_;
 
-  // Circular buffer of load balancer activity.
+  // Circular buffer of cluster balancer activity.
   boost::circular_buffer<ClusterBalancerActivityInfo> activities_ GUARDED_BY(mutex_);
 };
 
