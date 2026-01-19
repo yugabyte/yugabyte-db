@@ -1015,6 +1015,10 @@ class Tablet : public AbstractTablet,
         read_hybrid_time, CoarseTimePoint::max(), read_operation_data);
   }
 
+  Status DumpTabletData(
+      WritableFile* file, uint64_t read_ht, CoarseTimePoint deadline, uint64_t& xor_hash,
+      uint64_t& row_count) const;
+
  private:
   friend class Iterator;
   friend class TabletPeerTest;

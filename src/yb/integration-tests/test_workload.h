@@ -46,6 +46,7 @@ class Thread;
 
 struct TestWorkloadOptions {
   static const client::YBTableName kDefaultTableName;
+  static const std::string kDefaultPayload;
 
   size_t payload_bytes = 11;
   int num_write_threads = 4;
