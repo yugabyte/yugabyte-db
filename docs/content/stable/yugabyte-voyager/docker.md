@@ -23,7 +23,7 @@ Perform the following steps to install yb-voyager:
 
 1. Run yb-voyager using one of the following methods:
 
-    #### Method 1: Using the Wrapper script
+    #### Method 1: Use the Wrapper script
 
     1. Download the script to run yb-voyager using the docker image from yb-voyager's GitHub repository, and move it to your machine's bin directory using the following commands:
 
@@ -39,11 +39,11 @@ Perform the following steps to install yb-voyager:
 
     **Limitations:**
 
-    - [Configuration file](/stable/yugabyte-voyager/reference/configuration-file/) is not supported in this method.
-    - When using [`import-data-file`](/stable/yugabyte-voyager/reference/bulk-data-load/import-data-file/), [`import data status`](/stable/yugabyte-voyager/reference/data-migration/import-data/#import-data-status) and [`end-migration`](/stable/yugabyte-voyager/reference/end-migration/) commands do not work.
+    - [Configuration file](/stable/yugabyte-voyager/reference/configuration-file/) is not supported.
+    - When using [import-data-file](/stable/yugabyte-voyager/reference/bulk-data-load/import-data-file/), the [import data status](/stable/yugabyte-voyager/reference/data-migration/import-data/#import-data-status) and [end-migration](/stable/yugabyte-voyager/reference/end-migration/) commands do not work.
     - Certain shorthand flags (like `-e`) are not propagated properly to the docker container.
 
-    #### Method 2: Using the Container directly
+    #### Method 2: Use the Container directly
 
     Run the container directly with volume mounts.
 
@@ -62,7 +62,7 @@ Perform the following steps to install yb-voyager:
         yb-voyager version
         ```
 
-    {{< note title="Note" >}}
+    {{< note title="Mount directories" >}}
 
   Mount all directories that yb-voyager needs to access (export directory, [configuration files](/stable/yugabyte-voyager/reference/configuration-file/), SSL certificates, and so on). On macOS, add `--platform=linux/amd64` to the `docker run` command.
 
