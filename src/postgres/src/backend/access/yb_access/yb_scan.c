@@ -3832,6 +3832,8 @@ ybcBuildScanPlanForIndexBuild(Relation relation, IndexInfo *indexInfo)
 	Scan	   *scan_plan;
 	TupleDesc	tupdesc = RelationGetDescr(relation);
 	List	   *targetlist = NIL;
+	Var		   *ybctid_var;
+	TargetEntry *ybctid_tle;
 	int			i;
 	int			idx;
 	int			resno = 1;
@@ -3849,8 +3851,23 @@ ybcBuildScanPlanForIndexBuild(Relation relation, IndexInfo *indexInfo)
 	 */
 	YbAttnumBmsState required_attrs = ybcAttnumBmsConstruct();
 
-	/* Always need ybctid for index entry construction */
-	ybcAttnumBmsAdd(&required_attrs, YBTupleIdAttributeNumber);
+	/*
+	 * Always need ybctid for index entry construction. Add it directly to
+	 * targetlist since it's the only system column allowed in indexes.
+	 * Other system columns (like ctid) are managed by the database and can
+	 * change unpredictably, so they cannot be indexed.
+	 */
+	ybctid_var = makeVar(varno,
+						 YBTupleIdAttributeNumber,
+						 BYTEAOID,
+						 -1,		/* typmod */
+						 InvalidOid,	/* collation */
+						 0);		/* varlevelsup */
+	ybctid_tle = makeTargetEntry((Expr *) ybctid_var,
+								 resno++,
+								 NULL,		/* resname */
+								 false);	/* resjunk */
+	targetlist = lappend(targetlist, ybctid_tle);
 
 	/* Add columns directly referenced in the index */
 	for (i = 0; i < indexInfo->ii_NumIndexAttrs; i++)
@@ -3887,40 +3904,29 @@ ybcBuildScanPlanForIndexBuild(Relation relation, IndexInfo *indexInfo)
 		AttrNumber	attnum = ybcAttnumBmsAttnum(&required_attrs, idx);
 		Var		   *var;
 		TargetEntry *tle;
+		Form_pg_attribute attr;
 
-		if (attnum > 0)
-		{
-			/* Regular column - verify it exists and is not dropped */
-			if (attnum > tupdesc->natts ||
-				TupleDescAttr(tupdesc, attnum - 1)->attisdropped)
-				continue;
+		/*
+		 * Only non-system columns should be in required_attrs. ybctid is
+		 * handled separately above, and other system columns cannot be indexed.
+		 */
+		Assert(attnum > 0);
 
-			Form_pg_attribute attr = TupleDescAttr(tupdesc, attnum - 1);
+		/*
+		 * Verify the column exists and is not dropped. The parser should have
+		 * already rejected any attempt to create an index on a dropped or
+		 * non-existent column, so this is just a sanity check.
+		 */
+		Assert(attnum <= tupdesc->natts);
+		attr = TupleDescAttr(tupdesc, attnum - 1);
+		Assert(!attr->attisdropped);
 
-			var = makeVar(varno,
-						  attnum,
-						  attr->atttypid,
-						  attr->atttypmod,
-						  attr->attcollation,
-						  0);	/* varlevelsup */
-		}
-		else
-		{
-			/*
-			 * System columns (like ybctid).
-			 * The type doesn't matter for column projection - we only need
-			 * the attribute number. Use BYTEAOID as a placeholder since
-			 * ybctid is essentially a bytea. Avoids having to build the
-			 * type from the Var since this scan is used by ybcBuildRequiredAttrs
-			 * in ybcBeginScan which only needs the attr number.
-			 */
-			var = makeVar(varno,
-						  attnum,
-						  BYTEAOID,
-						  -1,	/* typmod */
-						  InvalidOid,	/* collation */
-						  0);	/* varlevelsup */
-		}
+		var = makeVar(varno,
+					  attnum,
+					  attr->atttypid,
+					  attr->atttypmod,
+					  attr->attcollation,
+					  0);	/* varlevelsup */
 
 		tle = makeTargetEntry((Expr *) var,
 							  resno++,
