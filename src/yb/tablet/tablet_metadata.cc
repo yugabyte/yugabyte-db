@@ -97,6 +97,8 @@ DEFINE_RUNTIME_bool(enable_schema_version_check, yb::kIsDebug,
     "Whether to check existence of given schema version in CheckCotablePacking and "
     "CheckColocationPacking. If it's off, always return Status::OK().");
 
+METRIC_DEFINE_entity(table);
+
 using std::string;
 
 using strings::Substitute;
@@ -504,6 +506,19 @@ bool TableInfo::IsVectorIndex() const {
 bool TableInfo::NeedVectorIndex() const {
   return IsVectorIndex() &&
          index_info->vector_idx_options().idx_type() != PgVectorIndexType::DUMMY;
+}
+
+MetricAttributeMap TableInfo::CreateMetricAttributeMap() const {
+  MetricAttributeMap attrs;
+  attrs["table_id"] = table_id;
+  attrs["table_name"] = table_name;
+  attrs["table_type"] = TableType_Name(table_type);
+  attrs["namespace_name"] = namespace_name;
+  return attrs;
+}
+
+MetricEntityPtr TableInfo::CreateMetricEntity(MetricRegistry* registry) const {
+  return METRIC_ENTITY_table.Instantiate(registry, table_id, CreateMetricAttributeMap());
 }
 
 Status KvStoreInfo::LoadTablesFromPB(

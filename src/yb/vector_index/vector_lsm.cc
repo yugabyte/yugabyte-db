@@ -1405,13 +1405,13 @@ auto VectorLSM<Vector, DistanceResult>::Search(
   auto indexes = VERIFY_RESULT(AllIndexes());
   bool dump_stats = FLAGS_vector_index_dump_stats;
 
-  auto start_registry_search = MonoTime::NowIf(dump_stats);
+  auto start_registry_search = MonoTime::Now();
   auto intermediate_results = insert_registry_->Search(query_vector, options);
   VLOG_WITH_PREFIX_AND_FUNC(4) << "Results from registry: " << AsString(intermediate_results);
   size_t num_results_from_insert_registry = intermediate_results.size();
 
   size_t sum_num_found_entries = 0;
-  auto start_chunks_search = MonoTime::NowIf(dump_stats);
+  auto start_chunks_search = MonoTime::Now();
   for (const auto& index : indexes) {
     auto chunk_results = VERIFY_RESULT(index->Search(query_vector, options));
     VLOG_WITH_PREFIX_AND_FUNC(4)
@@ -1419,14 +1419,24 @@ auto VectorLSM<Vector, DistanceResult>::Search(
     sum_num_found_entries += chunk_results.size();
     MergeChunkResults(intermediate_results, chunk_results, options.max_num_results);
   }
-  auto stop_search = MonoTime::NowIf(dump_stats);
+  auto stop_search = MonoTime::Now();
+  auto search_insert_registry_time = start_chunks_search - start_registry_search;
+  auto chunks_search_time = stop_search - start_chunks_search;
+
+  if (metrics_) {
+    metrics_->num_chunks->Increment(indexes.size());
+    metrics_->total_found_entries->Increment(sum_num_found_entries);
+    metrics_->insert_registry_entries->Increment(num_results_from_insert_registry);
+    metrics_->insert_registry_search_us->Increment(search_insert_registry_time.ToMicroseconds());
+    metrics_->chunks_search_us->Increment(chunks_search_time.ToMicroseconds());
+  }
 
   LOG_IF_WITH_PREFIX_AND_FUNC(INFO, dump_stats)
       << "VI_STATS: Number of chunks: " << indexes.size() << ", entries found in all chunks: "
       << sum_num_found_entries << ", entries found in insert registry: "
       << num_results_from_insert_registry << ", time to search insert registry: "
-      << (start_chunks_search - start_registry_search).ToPrettyString()
-      << ", time to search index chunks: " << (stop_search - start_chunks_search).ToPrettyString();
+      << search_insert_registry_time.ToPrettyString()
+      << ", time to search index chunks: " << chunks_search_time.ToPrettyString();
 
   return intermediate_results;
 }

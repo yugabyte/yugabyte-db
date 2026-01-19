@@ -908,7 +908,7 @@ class VectorIndexKeyProvider {
       });
     }
     found_intents_ = result_entries_.size() - old_size;
-    prefetch_done_time_ = MonoTime::NowIf(FLAGS_vector_index_dump_stats);
+    prefetch_done_time_ = MonoTime::Now();
 
     auto cmp_keys = [](const auto& lhs, const auto& rhs) {
       return lhs.key < rhs.key;
@@ -937,7 +937,7 @@ class VectorIndexKeyProvider {
       std::ranges::sort(result_entries_, cmp_keys);
     }
 
-    merge_done_time_ = MonoTime::NowIf(FLAGS_vector_index_dump_stats);
+    merge_done_time_ = MonoTime::Now();
 
     response_.set_vector_index_could_have_more_data(could_have_more_data_);
     return Status::OK();
@@ -978,15 +978,22 @@ YB_DEFINE_ENUM(FetchLimit, (kNotReached)(kReached)(kExceeded));
 
 class PgsqlVectorFilter {
  public:
-  explicit PgsqlVectorFilter(YQLRowwiseIteratorIf::UniPtr* table_iter)
-      : iter_(table_iter) {
+  PgsqlVectorFilter(
+      std::reference_wrapper<const docdb::DocVectorIndexMetrics> metrics,
+      YQLRowwiseIteratorIf::UniPtr* table_iter)
+      : metrics_(metrics), iter_(table_iter) {
   }
 
   ~PgsqlVectorFilter() {
-    LOG_IF(INFO, FLAGS_vector_index_dump_stats && row_)
-        << "VI_STATS: PgsqlVectorFilter, checked: " << num_checked_entries_ << ", accepted: "
-        << num_accepted_entries_ << ", num removed: " << num_removed_
-        << (iter_.has_filter() ? Format(", found: $0", num_found_entries_) : "");
+    if (row_) {
+      metrics_.filter_checked->Increment(num_checked_entries_);
+      metrics_.filter_accepted->Increment(num_accepted_entries_);
+      metrics_.filter_removed->Increment(num_removed_);
+      LOG_IF(INFO, FLAGS_vector_index_dump_stats)
+          << "VI_STATS: PgsqlVectorFilter, checked: " << num_checked_entries_ << ", accepted: "
+          << num_accepted_entries_ << ", num removed: " << num_removed_
+          << (iter_.has_filter() ? Format(", found: $0", num_found_entries_) : "");
+    }
     DCHECK_LE(num_checked_entries_, TEST_vector_index_max_checked_entries);
   }
 
@@ -1070,6 +1077,7 @@ class PgsqlVectorFilter {
     return true;
   }
  private:
+  const docdb::DocVectorIndexMetrics& metrics_;
   FilteringIterator iter_;
   dockv::ReaderProjection projection_;
   docdb::DocVectorIndexReverseMappingReaderPtr reverse_mapping_reader_;
@@ -2781,7 +2789,7 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(const PgVectorReadOpti
   size_t max_results = options.num_top_vectors_to_remove() + options.prefetch_size();
 
   table_iter_.reset();
-  PgsqlVectorFilter filter(&table_iter_);
+  PgsqlVectorFilter filter(data_.vector_index->metrics(), &table_iter_);
   auto could_have_missing_entries = !VERIFY_RESULT(filter.Init(data_));
   RSTATUS_DCHECK(
       data_.vector_index->BackfillDone(), IllegalState,
@@ -2799,20 +2807,26 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(const PgVectorReadOpti
 
   // TODO(vector_index) Order keys by ybctid for fetching.
   auto dump_stats = FLAGS_vector_index_dump_stats;
-  auto read_start_time = MonoTime::NowIf(dump_stats);
+  auto read_start_time = MonoTime::Now();
   VectorIndexKeyProvider key_provider(
       result, response_, *data_.vector_index, vector_slice,
       options.num_top_vectors_to_remove(), max_results, *result_buffer_);
-  auto res = ExecuteBatchKeys(key_provider);
+  auto result_size = VERIFY_RESULT(ExecuteBatchKeys(key_provider));
+  auto passed = MonoTime::Now() - key_provider.merge_done_time();
+  auto read_intents_time = key_provider.prefetch_done_time() - read_start_time;
+  auto merge_time = key_provider.merge_done_time() - key_provider.prefetch_done_time();
+  const auto& metrics = data_.vector_index->metrics();
+  metrics.read_data_us->Increment(passed.ToMicroseconds());
+  metrics.read_intents_us->Increment(read_intents_time.ToMicroseconds());
+  metrics.merge_us->Increment(merge_time.ToMicroseconds());
+  metrics.found_intents->Increment(key_provider.found_intents());
+  metrics.result_size->Increment(result_size);
   LOG_IF(INFO, dump_stats)
-      << "VI_STATS: Read rows data time: "
-      << (MonoTime::Now() - key_provider.merge_done_time()).ToPrettyString()
-      << ", read intents time: "
-      << (key_provider.prefetch_done_time() - read_start_time).ToPrettyString()
-      << ", merge with intents time: "
-      << (key_provider.merge_done_time() - key_provider.prefetch_done_time()).ToPrettyString()
-      << ", found intents: " << key_provider.found_intents() << ", size: " << res;
-  return res;
+      << "VI_STATS: Read rows data time: " << passed.ToPrettyString()
+      << ", read intents time: " << read_intents_time.ToPrettyString()
+      << ", merge with intents time: " << merge_time.ToPrettyString()
+      << ", found intents: " << key_provider.found_intents() << ", size: " << result_size;
+  return result_size;
 }
 
 void PgsqlReadOperation::BindReadTimeToPagingState(const ReadHybridTime& read_time) {
