@@ -2120,3 +2120,38 @@ templates:
         Incorrect THP settings found for universe '{{ $labels.source_name }}'
         on {{ $value | printf "%.0f" }} node(s).
         Affected nodes: {{ $labels.affected_node_names }}
+
+  OTEL_LOG_EXPORT_FAILURE:
+    name: OTel Log Export Failure
+    description: OpenTelemetry log records are not being exported from DB nodes
+    queryTemplate: count by (universe_uuid) (min_over_time(((sum by (universe_uuid, node_name)
+      (increase(otelcol_receiver_accepted_log_records{universe_uuid="__universeUuid__"}[5m]))
+      or count by (universe_uuid, node_name) (up{export_type="otel_export", universe_uuid="__universeUuid__"}) * 0)
+      - (sum by (universe_uuid, node_name)
+      (increase(otelcol_exporter_sent_log_records{universe_uuid="__universeUuid__"}[5m]))
+      or count by (universe_uuid, node_name) (up{export_type="otel_export", universe_uuid="__universeUuid__"}) * 0))[5m:1m])
+      {{ query_condition }} {{ query_threshold }})
+    defaultDurationSec: 300
+    createForNewCustomer: true
+    defaultThresholdMap:
+      SEVERE:
+        threshold: 0.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: COUNT
+    thresholdUnitName: log(s)
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "min_over_time(((sum by (universe_uuid, node_name)
+        (increase(otelcol_receiver_accepted_log_records{universe_uuid='{{ $labels.universe_uuid }}'}[5m]))
+        or count by (universe_uuid, node_name) (up{export_type='otel_export', universe_uuid='{{ $labels.universe_uuid }}'}) * 0)
+        - (sum by (universe_uuid, node_name)
+        (increase(otelcol_exporter_sent_log_records{universe_uuid='{{ $labels.universe_uuid }}'}[5m]))
+        or count by (universe_uuid, node_name) (up{export_type='otel_export', universe_uuid='{{ $labels.universe_uuid }}'}) * 0))[5m:1m])
+        {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+    annotations:
+      summary: >-
+        OpenTelemetry log records are not being exported for universe '{{ $labels.source_name }}'
+        on {{ $value | printf "%.0f" }} node(s).
+
+        Affected nodes: {{ $labels.affected_node_names }}
