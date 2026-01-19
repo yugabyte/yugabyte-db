@@ -272,7 +272,6 @@ extern TableScanDesc ybc_heap_beginscan_for_index_build(Relation relation,
 														Snapshot snapshot,
 														int nkeys,
 														ScanKey key,
-														uint32 flags,
 														struct IndexInfo *indexInfo);
 
 

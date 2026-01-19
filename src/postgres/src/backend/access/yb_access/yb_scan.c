@@ -3832,21 +3832,25 @@ ybcBuildScanPlanForIndexBuild(Relation relation, IndexInfo *indexInfo)
 	Scan	   *scan_plan;
 	TupleDesc	tupdesc = RelationGetDescr(relation);
 	List	   *targetlist = NIL;
-	Bitmapset  *required_attrs = NULL;
 	int			i;
 	int			idx;
 	int			resno = 1;
 	/* Use varno=1 since this is always scanning the base relation */
-	int varno = 1;
+	const Index varno = 1;
+
+	/* This function is only for YugaByte relations */
+	Assert(IsYBRelation(relation));
 
 	/*
-	 * Build the set of required attribute numbers based on IndexInfo.
-	 * Use FirstLowInvalidHeapAttributeNumber as offset for bitmapset indexing.
-	 * Always need ybctid for index entry construction
-	*/
-	required_attrs = bms_add_member(required_attrs,
-									YBTupleIdAttributeNumber -
-									FirstLowInvalidHeapAttributeNumber);
+	 * Use YbAttnumBmsState for bitmapset operations. This handles the
+	 * min_attr offset correctly for YugaByte relations which may have
+	 * different system columns than standard Postgres relations.
+	 * Initialize at declaration since min_attr is const.
+	 */
+	YbAttnumBmsState required_attrs = ybcAttnumBmsConstruct();
+
+	/* Always need ybctid for index entry construction */
+	ybcAttnumBmsAdd(&required_attrs, YBTupleIdAttributeNumber);
 
 	/* Add columns directly referenced in the index */
 	for (i = 0; i < indexInfo->ii_NumIndexAttrs; i++)
@@ -3858,30 +3862,29 @@ ybcBuildScanPlanForIndexBuild(Relation relation, IndexInfo *indexInfo)
 		 * which will be handled by extracting vars from ii_Expressions.
 		 */
 		if (attnum > 0)
-			required_attrs = bms_add_member(required_attrs,
-											attnum -
-											FirstLowInvalidHeapAttributeNumber);
+			ybcAttnumBmsAdd(&required_attrs, attnum);
 	}
 
 	/*
 	 * Add columns referenced in index expressions.
+	 * Use ybcPullVarattnosIntoAttnumBms which handles the min_attr offset.
 	 */
-	if (indexInfo->ii_Expressions != NIL)
-		pull_varattnos((Node *) indexInfo->ii_Expressions, varno, &required_attrs);
+	ybcPullVarattnosIntoAttnumBms(indexInfo->ii_Expressions, varno,
+								  &required_attrs);
 
 	/*
 	 * Add columns referenced in partial index predicate.
 	 */
-	if (indexInfo->ii_Predicate != NIL)
-		pull_varattnos((Node *) indexInfo->ii_Predicate, varno, &required_attrs);
+	ybcPullVarattnosIntoAttnumBms(indexInfo->ii_Predicate, varno,
+								  &required_attrs);
 
 	/*
 	 * Build targetlist with Var nodes for each required column.
 	 */
 	idx = -1;
-	while ((idx = bms_next_member(required_attrs, idx)) >= 0)
+	while ((idx = bms_next_member(required_attrs.bms, idx)) >= 0)
 	{
-		AttrNumber	attnum = idx + FirstLowInvalidHeapAttributeNumber;
+		AttrNumber	attnum = ybcAttnumBmsAttnum(&required_attrs, idx);
 		Var		   *var;
 		TargetEntry *tle;
 
@@ -3894,7 +3897,7 @@ ybcBuildScanPlanForIndexBuild(Relation relation, IndexInfo *indexInfo)
 
 			Form_pg_attribute attr = TupleDescAttr(tupdesc, attnum - 1);
 
-			var = makeVar(1,	/* varno = scanrelid */
+			var = makeVar(varno,
 						  attnum,
 						  attr->atttypid,
 						  attr->atttypmod,
@@ -3911,7 +3914,7 @@ ybcBuildScanPlanForIndexBuild(Relation relation, IndexInfo *indexInfo)
 			 * type from the Var since this scan is used by ybcBuildRequiredAttrs
 			 * in ybcBeginScan which only needs the attr number.
 			 */
-			var = makeVar(1,	/* varno = scanrelid */
+			var = makeVar(varno,
 						  attnum,
 						  BYTEAOID,
 						  -1,	/* typmod */
@@ -3926,11 +3929,11 @@ ybcBuildScanPlanForIndexBuild(Relation relation, IndexInfo *indexInfo)
 		targetlist = lappend(targetlist, tle);
 	}
 
-	bms_free(required_attrs);
+	ybcAttnumBmsDestroy(&required_attrs);
 
 	/* Create the Scan node */
 	scan_plan = makeNode(Scan);
-	scan_plan->scanrelid = 1;	/* Always scanning the base relation */
+	scan_plan->scanrelid = varno;
 	scan_plan->plan.targetlist = targetlist;
 	scan_plan->plan.qual = NIL;	/* No quals for backfill scan */
 

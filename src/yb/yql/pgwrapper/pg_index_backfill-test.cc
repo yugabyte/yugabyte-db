@@ -2852,26 +2852,23 @@ INSTANTIATE_TEST_CASE_P(, PgIndexBackfillIgnoreApplyTest, ::testing::Bool());
 // GUCs cluster-wide so all workers inherit the settings:
 // - yb_enable_pg_stat_statements_rpc_stats=true: enables RPC stats tracking
 // - yb_fetch_size_limit: controls bytes fetched per RPC
+// - yb_enable_index_backfill_column_projection: the feature being tested
 //
-// Test approach:
-// 1. Create a wide table with large columns (~5KB per row)
-// 2. Insert rows
-// 3. Reset pg_stat_statements
-// 4. Create index with projection DISABLED, query docdb_read_rpcs from BACKFILL queries
-// 5. Drop index, reset stats
-// 6. Create index with projection ENABLED, query docdb_read_rpcs from BACKFILL queries
-// 7. Assert that with projection enabled, fewer data plane RPCs are needed
+// The test parameter (bool) controls whether column projection is enabled.
+// We run two separate test instances and compare RPC counts.
 class PgIndexBackfillColumnProjectionTest : public PgIndexBackfillTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     PgIndexBackfillTest::UpdateMiniClusterOptions(options);
-    // Set cluster-wide GUCs for all backends (including backfill workers)
-    // This ensures the backfill worker processes inherit these settings:
-    // - yb_enable_pg_stat_statements_rpc_stats: enables RPC stats in pg_stat_statements
-    // - yb_fetch_size_limit: restricts bytes per RPC to make differences more pronounced
-    options->extra_tserver_flags.push_back(
+    // Set cluster-wide GUCs for all backends (including backfill workers).
+    // The test parameter controls whether column projection is enabled.
+    // Use a small fetch size limit (1KB) to make RPC count differences pronounced.
+    const bool projection_enabled = GetParam();
+    options->extra_tserver_flags.push_back(Format(
         "--ysql_pg_conf_csv=yb_enable_pg_stat_statements_rpc_stats=true,"
-        "yb_fetch_size_limit=50000");
+        "yb_fetch_size_limit=$0,"
+        "yb_enable_index_backfill_column_projection=$1",
+        kFetchSizeLimit, projection_enabled ? "true" : "false"));
   }
 
   // Helper to get total docdb_read_rpcs from backfill queries in pg_stat_statements
@@ -2883,28 +2880,38 @@ class PgIndexBackfillColumnProjectionTest : public PgIndexBackfillTest {
     return result;
   }
 
+  // Small fetch size limit (1KB) to force multiple RPCs and make differences more pronounced
+  static constexpr int kFetchSizeLimit = 1000;
   // Number of rows to insert
   static constexpr int kNumRows = 500;
-  // Size of each large column in bytes
+  // Size of each large column in bytes (~5KB total per row)
   static constexpr int kLargeColSize = 1000;
 };
 
 INSTANTIATE_TEST_CASE_P(, PgIndexBackfillColumnProjectionTest, ::testing::Bool());
 
-// Test that column projection optimization reduces the number of data plane RPCs
+// Test that column projection optimization affects the number of data plane RPCs
 // during index backfill.
 //
-// We create a wide table with large columns and index just one small column.
-// With column projection enabled, we should need fewer RPCs because each RPC
-// can fetch more rows (since we're only fetching the indexed column bytes,
-// not the entire row's ~5KB).
+// We create a wide table with large columns (~5KB per row) and index just one
+// small INT column. The test parameter controls whether projection is enabled:
+// - With projection OFF: each row is ~5KB, fetch limit is 1KB, so ~1 row per RPC
+// - With projection ON: each row is ~few bytes, fetch limit is 1KB, so many rows per RPC
 //
 // Note: This test measures data plane RPCs (docdb_read_rpcs) not control plane
 // RPCs (BackfillIndex admin messages). The control plane RPCs stay the same,
 // but data plane RPCs decrease with projection because more rows fit per RPC.
 TEST_P(PgIndexBackfillColumnProjectionTest, ReducedRpcsWithProjection) {
+  const bool projection_enabled = GetParam();
+  LOG(INFO) << "Testing with column projection " << (projection_enabled ? "ENABLED" : "DISABLED");
+
   // Enable pg_stat_statements extension for RPC tracking
   ASSERT_OK(conn_->Execute("CREATE EXTENSION IF NOT EXISTS pg_stat_statements"));
+
+  // Verify the GUC is set correctly
+  auto projection_setting = ASSERT_RESULT(conn_->FetchRow<std::string>(
+      "SHOW yb_enable_index_backfill_column_projection"));
+  LOG(INFO) << "yb_enable_index_backfill_column_projection = " << projection_setting;
 
   // Create a wide table with multiple large TEXT columns
   ASSERT_OK(conn_->Execute(
@@ -2928,43 +2935,30 @@ TEST_P(PgIndexBackfillColumnProjectionTest, ReducedRpcsWithProjection) {
       "FROM generate_series(1, $1) AS i",
       kLargeColSize, kNumRows));
 
-  // Test 1: Create index with optimization DISABLED
   // Reset pg_stat_statements before measuring
   ASSERT_OK(conn_->Execute("SELECT pg_stat_statements_reset()"));
-  ASSERT_OK(conn_->Execute("SET yb_enable_index_backfill_column_projection = false"));
-  ASSERT_OK(conn_->Execute("CREATE INDEX idx_no_projection ON wide_tbl(indexed_col)"));
+
+  // Create the index - backfill workers will use the cluster-wide GUC settings
+  ASSERT_OK(conn_->Execute("CREATE INDEX idx_test ON wide_tbl(indexed_col)"));
 
   // Get docdb_read_rpcs from backfill queries
-  auto rpcs_without_projection = ASSERT_RESULT(GetBackfillReadRpcs());
-  LOG(INFO) << "Backfill docdb_read_rpcs without column projection: " << rpcs_without_projection;
+  auto rpcs = ASSERT_RESULT(GetBackfillReadRpcs());
+  LOG(INFO) << "Backfill docdb_read_rpcs with projection "
+            << (projection_enabled ? "ENABLED" : "DISABLED") << ": " << rpcs;
 
-  // Drop the index
-  ASSERT_OK(conn_->Execute("DROP INDEX idx_no_projection"));
+  // Verify we got some RPCs
+  ASSERT_GT(rpcs, 0) << "Expected some RPCs during backfill";
 
-  // Test 2: Create index with optimization ENABLED
-  // Reset pg_stat_statements before measuring
-  ASSERT_OK(conn_->Execute("SELECT pg_stat_statements_reset()"));
-  ASSERT_OK(conn_->Execute("SET yb_enable_index_backfill_column_projection = true"));
-  ASSERT_OK(conn_->Execute("CREATE INDEX idx_with_projection ON wide_tbl(indexed_col)"));
-
-  // Get docdb_read_rpcs from backfill queries
-  auto rpcs_with_projection = ASSERT_RESULT(GetBackfillReadRpcs());
-  LOG(INFO) << "Backfill docdb_read_rpcs with column projection: " << rpcs_with_projection;
-
-  // With column projection enabled, we should need significantly fewer RPCs
-  // because each RPC can fetch more rows (we're fetching ~25 bytes per row
-  // instead of ~5000 bytes per row)
-  if (rpcs_with_projection > 0) {
-    LOG(INFO) << "RPC reduction ratio: "
-              << static_cast<double>(rpcs_without_projection) / rpcs_with_projection;
+  if (projection_enabled) {
+    // With projection enabled, we expect significantly fewer RPCs.
+    // With 1KB fetch limit and ~few bytes per projected row, we can fit
+    // many rows per RPC. Expect less than 50 RPCs for 500 rows.
+    ASSERT_LT(rpcs, 50) << "With projection enabled, expected fewer RPCs";
+  } else {
+    // Without projection, each row is ~5KB but fetch limit is 1KB,
+    // so we need roughly 1 RPC per row. Expect close to kNumRows RPCs.
+    ASSERT_GT(rpcs, kNumRows / 2) << "Without projection, expected many RPCs";
   }
-
-  // Assert that projection reduces data plane RPCs
-  // Without projection: ~5KB per row, 50KB fetch limit = ~10 rows per RPC = ~50 RPCs
-  // With projection: ~25 bytes per row, 50KB fetch limit = ~2000 rows per RPC = ~1 RPC
-  ASSERT_GT(rpcs_without_projection, 0) << "Expected some RPCs without projection";
-  ASSERT_LT(rpcs_with_projection, rpcs_without_projection)
-      << "Expected fewer RPCs with column projection enabled";
 
   // Verify the index works correctly
   const auto query = "SELECT indexed_col FROM wide_tbl WHERE indexed_col = 250";
