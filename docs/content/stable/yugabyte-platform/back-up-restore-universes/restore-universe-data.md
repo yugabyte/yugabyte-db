@@ -200,7 +200,7 @@ curl 'http://<platform-url>/api/v1/customers/:cUUID/restore' \
   }'
 ```-->
 
-You can restore entire backups with or without PITR. To enable the feature in YugabyteDB Anywhere, set the **Option for Off-Cluster PITR based Backup Schedule** Global Runtime Configuration option (config key `yb.ui.feature_flags.off_cluster_pitr_enabled`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings.
+You can restore entire backups with or without PITR.
 
 If you created backups using a [scheduled backup policy with PITR](../schedule-data-backups/), you can restore YugabyteDB universe data from a backup as follows:
 
