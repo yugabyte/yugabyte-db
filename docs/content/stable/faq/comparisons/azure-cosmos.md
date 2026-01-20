@@ -8,7 +8,6 @@ aliases:
 menu:
   stable_faq:
     identifier: azure-cosmos
-    identifier: comparisons-cosmos
     parent: comparisons
     weight: 1110
 type: docs
