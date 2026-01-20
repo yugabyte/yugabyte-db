@@ -161,7 +161,7 @@ There is no general method of repairing problems that `yb_index_check()` detects
 
 `yb_index_check()` is not concerned with read-after-commit-visibility. It picks up a read time (and an associated snapshot) and uses it to scan both the index and base relation. Even if a write that committed before the chosen read time is missing from the snapshot due to clock skew, that's acceptable—its effects will be absent from both the index and the base table scans.
 
-If [`Restart read required error`](https://docs.yugabyte.com/preview/architecture/transactions/read-restart-error/) is encountered while running `yb_index_check()`, set the following parameter and then re-run `yb_index_check()`:
+If '[Restart read required error](../../../../architecture/transactions/read-restart-error/)' is encountered while running `yb_index_check()`, set the following parameter and then re-run `yb_index_check()`:
 
 ```sql
 SET yb_read_after_commit_visibility=relaxed;
