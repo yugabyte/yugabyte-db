@@ -1002,6 +1002,10 @@ class Tablet : public AbstractTablet,
 
   void SetAllowCompactionFailures(rocksdb::AllowCompactionFailures allow_compaction_failures);
 
+  Status DumpTabletData(
+      WritableFile* file, uint64_t read_ht, CoarseTimePoint deadline, uint64_t& xor_hash,
+      uint64_t& row_count) const;
+
  private:
   friend class Iterator;
   friend class TabletPeerTest;

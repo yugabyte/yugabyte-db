@@ -176,7 +176,7 @@ Status AddColumnToMap(
     if (!IsNull(ql_value) && col_schema.pg_type_oid() != 0 /*kInvalidOid*/) {
       RETURN_NOT_OK(docdb::SetValueFromQLBinaryWrapper(
           ql_value, col_schema.pg_type_oid(), enum_oid_label_map, composite_atts_map,
-          cdc_datum_message));
+          *cdc_datum_message));
     } else {
       cdc_datum_message->set_column_type(col_schema.pg_type_oid());
       cdc_datum_message->set_pg_type(col_schema.pg_type_oid());
@@ -2002,7 +2002,7 @@ Status PopulateCDCSDKSnapshotRecord(
         if (col_schema.pg_type_oid() != 0 /*kInvalidOid*/) {
           RETURN_NOT_OK(docdb::SetValueFromQLBinaryWrapper(
               *value, col_schema.pg_type_oid(), enum_oid_label_map, composite_atts_map,
-              cdc_datum_message));
+              *cdc_datum_message));
         } else {
           cdc_datum_message->set_column_type(col_schema.pg_type_oid());
           cdc_datum_message->set_pg_type(col_schema.pg_type_oid());

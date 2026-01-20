@@ -2185,5 +2185,76 @@ TEST_F(AdminCliTest, TestAllowImplicitStreamCreationWhenFlagEnabled) {
       output, "Creation of streams with IMPLICIT checkpointing is deprecated");
 }
 
+// Test yb-admin get_table_hash command for YCQL table.
+TEST_F(AdminCliTest, TestGetTableXorHash) {
+  BuildAndStart();
+  const auto table_name =
+      YBTableName(YQLDatabase::YQL_DATABASE_CQL, kTableName.namespace_name(), "my_table");
+
+  client::TableHandle table;
+  const auto num_tablets = 4;
+  ASSERT_OK(table.Create(table_name, num_tablets, client::YBSchema(schema_), client_.get()));
+
+  TestWorkload workload(cluster_.get());
+  workload.set_table_name(table_name);
+  workload.Setup();
+  workload.Start();
+  workload.WaitInserted(100);
+  auto ht1 = ASSERT_RESULT(cluster_->master()->GetServerTime());
+  // Insert 100 more rows.
+  workload.WaitInserted(workload.rows_inserted() + 100);
+  workload.StopAndJoin();
+
+  auto rows_inserted = boost::size(client::TableRange(table));
+  ASSERT_GE(rows_inserted, 200);
+
+  auto tables = ASSERT_RESULT(client_->ListTables(table_name.table_name()));
+  ASSERT_EQ(1, tables.size());
+  const auto table_id = tables.front().table_id();
+
+  auto extract_from_output = [&](const std::string& output) -> std::pair<uint64_t, uint64_t> {
+    LOG(INFO) << "Command output: " << output;
+    // Count the number of line with `Tablet ID:`
+    // Read HT: { days: 20466 time: 15:34:35.245376 }
+    // Tablet ID: 9bd7b975e43e4f41aa41d8bd9c2f8fb0
+    // Row count: 16100
+    // XOR hash: 5512406178816
+
+    // Total row count: 16100
+    // Total XOR hash: 5512406178816
+    size_t tablet_id_lines = 0;
+    const std::string table_id_str = "Tablet ID:";
+    size_t pos = 0;
+    while ((pos = output.find(table_id_str, pos)) != std::string::npos) {
+      ++tablet_id_lines;
+      pos += table_id_str.length();
+    }
+    CHECK_EQ(tablet_id_lines, num_tablets);
+
+    // Extract the row count from the output.
+    // Total row count: 100
+    // Total XOR hash: 1234567890
+    const auto total_row_count_prefix = "Total row count: ";
+    const auto total_xor_hash_prefix = "Total XOR hash: ";
+    auto row_count_pos = output.find(total_row_count_prefix);
+    auto xor_hash_pos = output.find(total_xor_hash_prefix);
+    auto row_count = std::stoull(output.substr(row_count_pos + strlen(total_row_count_prefix)));
+    auto xor_hash = std::stoull(output.substr(xor_hash_pos + strlen(total_xor_hash_prefix)));
+    LOG(INFO) << "Row count: " << row_count << ", XOR hash: " << xor_hash;
+    return std::make_pair(row_count, xor_hash);
+  };
+  auto output = ASSERT_RESULT(CallAdmin("get_table_hash", table_id));
+  auto [row_count, xor_hash] = extract_from_output(output);
+  ASSERT_EQ(row_count, rows_inserted);
+  ASSERT_NE(xor_hash, 0);
+
+  output = ASSERT_RESULT(CallAdmin("get_table_hash", table_id, ht1.ToUint64()));
+  auto [row_count2, xor_hash2] = extract_from_output(output);
+  ASSERT_LT(row_count2, rows_inserted);
+  ASSERT_GT(row_count2, 100);
+  ASSERT_NE(xor_hash2, 0);
+  ASSERT_NE(xor_hash, xor_hash2);
+}
+
 }  // namespace tools
 }  // namespace yb

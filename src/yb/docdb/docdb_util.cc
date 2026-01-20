@@ -51,12 +51,22 @@ using dockv::DocPath;
 const std::string kIntentsDirName = "intents";
 
 Status SetValueFromQLBinaryWrapper(
-    QLValuePB ql_value, const int pg_data_type,
+    const QLValuePB& ql_value, int pg_data_type,
     const std::unordered_map<uint32_t, string>& enum_oid_label_map,
     const std::unordered_map<uint32_t, std::vector<master::PgAttributePB>>& composite_atts_map,
-    DatumMessagePB* cdc_datum_message) {
+    DatumMessagePB& datum_message) {
   return yb::docdb::SetValueFromQLBinary(
-      ql_value, pg_data_type, enum_oid_label_map, composite_atts_map, cdc_datum_message);
+      ql_value, pg_data_type, enum_oid_label_map, composite_atts_map, datum_message);
+}
+
+Result<std::string> QLBinaryWrapperToString(
+  const QLValuePB& ql_value, int pg_data_type,
+  const std::unordered_map<uint32_t, std::string>& enum_oid_label_map,
+  const std::unordered_map<uint32_t, std::vector<master::PgAttributePB>>& composite_atts_map) {
+  DatumMessagePB datum_message;
+  RETURN_NOT_OK(yb::docdb::SetValueFromQLBinary(
+      ql_value, pg_data_type, enum_oid_label_map, composite_atts_map, datum_message));
+  return yb::docdb::DatumMessageValueToString(datum_message);
 }
 
 void DeleteMemoryContextForCDCWrapper() { yb::docdb::DeleteMemoryContextIfSet(); }

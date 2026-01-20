@@ -37,11 +37,15 @@ namespace yb::docdb {
 extern const std::string kIntentsDirName;
 
 Status SetValueFromQLBinaryWrapper(
-    QLValuePB ql_value,
-    const int pg_data_type,
+    const QLValuePB& ql_value, int pg_data_type,
     const std::unordered_map<uint32_t, std::string>& enum_oid_label_map,
     const std::unordered_map<uint32_t, std::vector<master::PgAttributePB>>& composite_atts_map,
-    DatumMessagePB* cdc_datum_message = NULL);
+    DatumMessagePB& datum_message);
+
+Result<std::string> QLBinaryWrapperToString(
+    const QLValuePB& ql_value, int pg_data_type,
+    const std::unordered_map<uint32_t, std::string>& enum_oid_label_map,
+    const std::unordered_map<uint32_t, std::vector<master::PgAttributePB>>& composite_atts_map);
 
 void DeleteMemoryContextForCDCWrapper();
 

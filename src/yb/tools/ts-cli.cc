@@ -105,7 +105,6 @@ const char* const kIsServerReadyOp = "is_server_ready";
 const char* const kSetFlagOp = "set_flag";
 const char* const kValidateFlagValueOp = "validate_flag_value";
 const char* const kRefreshFlagsOp = "refresh_flags";
-const char* const kDumpTabletOp = "dump_tablet";
 const char* const kTabletStateOp = "get_tablet_state";
 const char* const kDeleteTabletOp = "delete_tablet";
 const char* const kUnsafeConfigChange = "unsafe_config_change";
@@ -124,6 +123,7 @@ const char* const kClearAllMetaCachesOnServerOp = "clear_server_metacache";
 const char* const kClearUniverseUuidOp = "clear_universe_uuid";
 const char* const kClearYCQLMetaDataCacheOnServerOp = "clear_ycql_metadatacache";
 const char* const kReleaseAllLocksForTxnOp = "unsafe_release_all_locks_for_txn";
+const char* const kDumpTabletDataOp = "dump_tablet_data";
 
 DEFINE_NON_RUNTIME_string(server_address, "localhost",
               "Address of server to run against");
@@ -222,9 +222,6 @@ class TsAdminClient {
   // Get the schema for the given tablet.
   Status GetTabletSchema(const std::string& tablet_id, SchemaPB* schema);
 
-  // Dump the contents of the given tablet, in key order, to the console.
-  Status DumpTablet(const std::string& tablet_id);
-
   // Print the consensus state to the console.
   Status PrintConsensusState(const std::string& tablet_id);
 
@@ -285,6 +282,9 @@ class TsAdminClient {
 
   Status ReleaseAllLocksForTxn(
       const std::string& txn_id_str, const std::string& subtxn_id);
+
+  Status DumpTabletData(
+      const std::string& tablet_id, const std::string& dest_path, int64_t read_ht);
 
  private:
   Status FlushOrCompactsTabletsImpl(
@@ -502,38 +502,6 @@ Status TsAdminClient::PrintConsensusState(const std::string& tablet_id) {
             << " Leader-UUID ";
   std::cout << PBEnumToString(cons_resp_pb.leader_lease_status()) << "\t\t"
             << cons_resp_pb.cstate().leader_uuid();
-
-  return Status::OK();
-}
-
-Status TsAdminClient::DumpTablet(const std::string& tablet_id) {
-  SchemaPB schema_pb;
-  RETURN_NOT_OK(GetTabletSchema(tablet_id, &schema_pb));
-  Schema schema;
-  RETURN_NOT_OK(SchemaFromPB(schema_pb, &schema));
-
-  tserver::ReadRequestPB req;
-  tserver::ReadResponsePB resp;
-
-  req.set_tablet_id(tablet_id);
-  RpcController rpc;
-  rpc.set_timeout(timeout_);
-  RETURN_NOT_OK_PREPEND(ts_proxy_->Read(req, &resp, &rpc), "Read() failed");
-
-  if (resp.has_error()) {
-    return STATUS(IOError, "Failed to read: ", resp.error().ShortDebugString());
-  }
-
-  qlexpr::QLRowBlock row_block(schema);
-  auto data_buffer = VERIFY_RESULT(rpc.ExtractSidecar(0));
-  auto data = data_buffer.AsSlice();
-  if (!data.empty()) {
-    RETURN_NOT_OK(row_block.Deserialize(YQL_CLIENT_CQL, &data));
-  }
-
-  for (const auto& row : row_block.rows()) {
-    std::cout << row.ToString() << std::endl;
-  }
 
   return Status::OK();
 }
@@ -829,6 +797,33 @@ Status TsAdminClient::ReleaseAllLocksForTxn(
   return Status::OK();
 }
 
+Status TsAdminClient::DumpTabletData(
+    const std::string& tablet_id, const std::string& dest_path, int64_t read_ht) {
+  CHECK(initted_);
+  tserver::DumpTabletDataRequestPB req;
+  tserver::DumpTabletDataResponsePB resp;
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  req.set_tablet_id(tablet_id);
+  if (!dest_path.empty()) {
+    req.set_dest_path(dest_path);
+  }
+  if (read_ht > 0) {
+    req.set_read_ht(read_ht);
+  }
+  RETURN_NOT_OK(ts_proxy_->DumpTabletData(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  if (!dest_path.empty()) {
+    std::cout << "Successfully dumped tablet data for tablet " << tablet_id << " to " << dest_path
+              << std::endl;
+  }
+  std::cout << "Row count: " << resp.row_count() << std::endl;
+  std::cout << "XOR hash: " << resp.xor_hash() << std::endl;
+  return Status::OK();
+}
+
 namespace {
 
 void SetUsage(const char* argv0) {
@@ -843,7 +838,6 @@ void SetUsage(const char* argv0) {
       << "  " << kValidateFlagValueOp << " <flag> <value>\n"
       << "  " << kRefreshFlagsOp << "\n"
       << "  " << kTabletStateOp << " <tablet_id>\n"
-      << "  " << kDumpTabletOp << " <tablet_id>\n"
       << "  " << kDeleteTabletOp << " [-force] <tablet_id> <reason string>\n"
       << "  " << kUnsafeConfigChange << " <tablet_id> <peer1> [<peer2>...]\n"
       << "  " << kCurrentHybridTime << "\n"
@@ -863,7 +857,8 @@ void SetUsage(const char* argv0) {
       << "  " << kClearAllMetaCachesOnServerOp << "\n"
       << "  " << kClearUniverseUuidOp << "\n"
       << "  " << kClearYCQLMetaDataCacheOnServerOp << "\n"
-      << "  " << kReleaseAllLocksForTxnOp << " <txn id> [subtxn id]\n";
+      << "  " << kReleaseAllLocksForTxnOp << " <txn id> [subtxn id]\n"
+      << "  " << kDumpTabletDataOp << " <tablet_id> [<dest_path> | HASH_ONLY] [read_ht]\n";
   google::SetUsageMessage(str.str());
 }
 
@@ -997,12 +992,6 @@ static int TsCliMain(int argc, char** argv) {
     std::string tablet_id = argv[2];
     RETURN_NOT_OK_PREPEND_FROM_MAIN(
         client.PrintConsensusState(tablet_id), "Unable to print tablet state");
-  } else if (op == kDumpTabletOp) {
-    CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 3);
-
-    std::string tablet_id = argv[2];
-    RETURN_NOT_OK_PREPEND_FROM_MAIN(client.DumpTablet(tablet_id),
-                                    "Unable to dump tablet");
   } else if (op == kDeleteTabletOp) {
     CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 4);
 
@@ -1121,6 +1110,20 @@ static int TsCliMain(int argc, char** argv) {
     RETURN_NOT_OK_PREPEND_FROM_MAIN(
         client.ReleaseAllLocksForTxn(argv[2], subtxn),
         "Unable to release all locks for given transaction");
+  } else if (op == kDumpTabletDataOp) {
+    if (argc < 4) {
+      CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 4);
+    }
+    int64_t read_ht = -1;
+    if (argc > 4) {
+      read_ht = std::stoll(argv[4]);
+    }
+    std::string dest_path = argv[3];
+    if (dest_path == "HASH_ONLY") {
+      dest_path = "";
+    }
+    RETURN_NOT_OK_PREPEND_FROM_MAIN(
+        client.DumpTabletData(argv[2], dest_path, read_ht), "Unable to dump tablet data");
   } else {
     std::cerr << "Invalid operation: " << op << std::endl;
     google::ShowUsageWithFlagsRestrict(argv[0], __FILE__);
