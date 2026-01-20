@@ -6,7 +6,7 @@ description: Using the LangChain framework with YugabyteDB
 headcontent: Use YugabyteDB as a vector store with LangChain
 aliases:
 menu:
-  preview_integrations:
+  stable_integrations:
     identifier: langchain-test
     parent: ai-integration
     weight: 25
@@ -204,6 +204,7 @@ def test_rag_chain(rag_chain):
         "What transportation methods were mentioned?",
         "What is YugabyteDB?",
         "How do vector databases work?"
+        "Provide the list of features which went GA in 2025.2.0.0 release."
     ]
 
     for question in test_questions:
@@ -219,7 +220,7 @@ def load_yugabyte_docs(vectorstore, embeddings, api_key):
     print("\nLoading YugabyteDB documentation...")
 
     # Load documentation from web
-    url = "https://docs.yugabyte.com/preview/releases/ybdb-releases/v2.25/"
+    url = "https://docs.yugabyte.com/preview/releases/ybdb-releases/v2025.2.0.0/"
     loader = WebBaseLoader(url)
     documents = loader.load()
 
