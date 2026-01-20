@@ -570,10 +570,11 @@ Status KvStoreInfo::MergeWithRestored(
     post_split_compaction_file_number_upper_bound.reset();
   }
 
-  return MergeTableSchemaPackings(snapshot_kvstoreinfo, primary_table_id, colocated, overwrite);
+  return RestoreMissingValuesAndMergeTableSchemaPackings(
+      snapshot_kvstoreinfo, primary_table_id, colocated, overwrite);
 }
 
-Status KvStoreInfo::MergeTableSchemaPackings(
+Status KvStoreInfo::RestoreMissingValuesAndMergeTableSchemaPackings(
     const KvStoreInfoPB& snapshot_kvstoreinfo, const TableId& primary_table_id, bool colocated,
     dockv::OverwriteSchemaPacking overwrite) {
   if (!colocated) {
@@ -601,12 +602,20 @@ Status KvStoreInfo::MergeTableSchemaPackings(
           "Only vector indexes could be colocated to the non colocated table: $0",
           table_info->ToString());
     }
+    if (overwrite) {
+      auto schema = tables.begin()->second->doc_read_context->mutable_schema();
+      schema->UpdateMissingValuesFrom(primary_table_info->schema().columns());
+    }
     return Status::OK();
   }
 
   for (const auto& snapshot_table_pb : snapshot_kvstoreinfo.tables()) {
     TableInfo* target_table = VERIFY_RESULT(FindMatchingTable(snapshot_table_pb, primary_table_id));
     if (target_table != nullptr) {
+      auto schema = target_table->doc_read_context->mutable_schema();
+      if (overwrite) {
+        schema->UpdateMissingValuesFrom(snapshot_table_pb.schema().columns());
+      }
       RETURN_NOT_OK(target_table->MergeSchemaPackings(snapshot_table_pb, overwrite));
     }
   }
@@ -1240,9 +1249,6 @@ Status RaftGroupMetadata::MergeWithRestored(
   RETURN_NOT_OK(ReadSuperBlockFromDisk(&snapshot_superblock, path));
   LOG_WITH_FUNC(INFO) << "Snapshot superblock: " << AsString(snapshot_superblock);
   std::lock_guard lock(data_mutex_);
-  KvStoreInfoPB restore_side_kv_store_pb;
-  kv_store_.ToPB(primary_table_id_, &restore_side_kv_store_pb);
-  LOG_WITH_FUNC(INFO) << "Kv store at restore side: " << AsString(restore_side_kv_store_pb);
   return kv_store_.MergeWithRestored(
       snapshot_superblock.kv_store(), primary_table_id_, colocated_, overwrite);
 }
