@@ -23,7 +23,7 @@ Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, 
 
 - Improved assessment validation. When replica endpoints are provided during a migration assessment, Voyager now validates that they belong to the same cluster as the primary by comparing the system identifier. Misconfigurations are detected and flagged early in the migration process.
 
--When importing snapshot data to the target YugabyteDB cluster, `import-data` now schedules sharded table imports in descending order of size (as opposed to a random order). This ensures that the import of larger tables starts sooner, avoiding the scenario where the largest tables are imported towards the end, which can cause an uneven load on the cluster and become a bottleneck during snapshot import.
+- When importing snapshot data to the target YugabyteDB cluster, `import-data` now schedules sharded table imports in descending order of size (as opposed to a random order). This ensures that the import of larger tables starts sooner, avoiding the scenario where the largest tables are imported towards the end, which can cause an uneven load on the cluster and become a bottleneck during snapshot import.
 
 ### Bug fixes
 
