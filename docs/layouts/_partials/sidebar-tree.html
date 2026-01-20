@@ -1,25 +1,25 @@
-{{ $currentPage := . }}
-{{ $menuName := .Scratch.Get "leftNavName" }}
+{{ $currentPage := .context }}
+{{ $menuName := .context.Scratch.Get "leftNavName" }}
 {{ $pageUrl := .Page.RelPermalink }}
-{{ $productsMenu := .Site.Menus.products }}
-{{ $versionDir := .Scratch.Get "docVersion" }}
+{{ $productsMenu := .context.Site.Menus.products }}
+{{ $versionDir := .context.Scratch.Get "docVersion" }}
 
-{{ if not (isset .Site.Menus $menuName) }}
-  {{ $menuName = .Scratch.Get "docVersion" }}
+{{ if not (isset .context.Site.Menus $menuName) }}
+  {{ $menuName = .context.Scratch.Get "docVersion" }}
 {{ end }}
 
 <div class="docs-menu desktop-hide">Docs Menu</div>
-<div class="left-sidebar-wrap">
+<div class="left-sidebar-wrap {{$menuName}}">
   <div class="left-sidebar-wrap-inner">
     <nav>
-      {{- range (index .Site.Menus $menuName).ByWeight -}}
+      {{- range (index .context.Site.Menus $menuName).ByWeight -}}
         {{- if .Params.productsDropdown -}}
           {{- partial "products-dropdown.html" (dict "pageUrl" $pageUrl "productsMenu" $productsMenu "versionDir" $versionDir) -}}
         {{- end -}}
         {{- break -}}
       {{- end -}}
       <ul class="list pa0 nl2">
-        {{- range (index .Site.Menus $menuName).ByWeight -}}
+        {{- range (index .context.Site.Menus $menuName).ByWeight -}}
           {{- if .Params.productsDropdown -}}
             {{- continue -}}
           {{- end -}}
@@ -48,7 +48,7 @@
     </nav>
     <nav class="fixed-nav">
       <ul class="left-bottom-nav">
-        {{- range .Site.Menus.leftbottom -}}
+        {{- range .context.Site.Menus.leftbottom -}}
         <li class="bottom-link{{- if .HasChildren }} section submenu parent-menu{{- end }}{{- if .Params.classes }} {{ .Params.classes }}{{- end }}">
           <a {{ if .URL }}href="{{ .URL }}"{{ else }}role="button"{{- end }} title="{{ .Name }}"{{- if .Params.newTab }} target="_blank" rel="noopener"{{- end }}>{{ .Pre }}{{ .Name }}</a>
           {{- if .HasChildren -}}
