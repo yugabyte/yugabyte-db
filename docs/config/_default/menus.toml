@@ -580,15 +580,22 @@
     showSection = true
 
 [[stable_integrations]]
-  name = "Data integration"
+  name = "Gen AI"
   weight = 6
+  identifier = "ai-integration"
+  [stable_integrations.params]
+    showSection = true
+
+[[stable_integrations]]
+  name = "Data integration"
+  weight = 7
   identifier = "data-integration"
   [stable_integrations.params]
     showSection = true
 
 [[stable_integrations]]
   name = "GUI clients"
-  weight = 7
+  weight = 8
   identifier = "tools"
   url = "/stable/integrations/tools/"
   [stable_integrations.params]
@@ -596,42 +603,42 @@
 
 [[stable_integrations]]
   name = "Application frameworks"
-  weight = 8
+  weight = 9
   identifier = "application-frameworks"
   [stable_integrations.params]
     showSection = true
 
 [[stable_integrations]]
   name = "Development platforms"
-  weight = 9
+  weight = 10
   identifier = "development-platforms"
   [stable_integrations.params]
     showSection = true
 
 [[stable_integrations]]
   name = "Data discovery"
-  weight = 10
+  weight = 11
   identifier = "data-discovery"
   [stable_integrations.params]
     showSection = true
 
 [[stable_integrations]]
   name = "Security"
-  weight = 11
+  weight = 12
   identifier = "integrations-security"
   [stable_integrations.params]
     showSection = true
 
 [[stable_integrations]]
   name = "Applications"
-  weight = 12
+  weight = 13
   identifier = "integrations-applications"
   [stable_integrations.params]
     showSection = true
 
 [[stable_integrations]]
   name = "Infrastructure"
-  weight = 13
+  weight = 14
   identifier = "integrations-platforms"
   [stable_integrations.params]
     showSection = true

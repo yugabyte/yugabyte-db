@@ -13,58 +13,71 @@ menu:
 type: docs
 ---
 
-Get started using YugabyteDB as a vector store with [LangChain](https://www.langchain.com) for developing Retrieval-Augmented Generation (RAG) apps.
-
-LangChain is a powerful framework for developing large language model-powered applications. It provides a comprehensive toolkit for building context-aware LLM applications by managing the communication between LLMs and various data sources, including databases and vector stores.
+[LangChain](https://www.langchain.com) is a powerful framework for developing large language model-powered applications. It provides a comprehensive toolkit for building context-aware LLM applications by managing the communication between LLMs and various data sources, including databases and vector stores.
 
 YugabyteDB supports the [pgvector extension](../../additional-features/pg-extensions/extension-pgvector/) in a distributed SQL architecture, providing resilience and seamless scalability for buildling generative AI (GAI) applications.
 
-The `langchain-yugabytedb` Python package provides capabilities for GAI applications to use YugabyteDB as a vector store, using the LangChain framework's vectorstore retrieval for storing and retrieving vector data.
+The [langchain-yugabytedb](https://pypi.org/project/langchain-yugabytedb/) Python package (available as a PyPi module) provides capabilities for Gen-AI applications to use YugabyteDB as a vector store, using the LangChain framework's vector store retrieval for storing and retrieving vector data.
 
-`langchain-yugabytedb` is available as a [PyPi module](https://pypi.org/project/langchain-yugabytedb/).
+For detailed information of all `YugabyteDBVectorStore` features and configurations, see the [langchain-yugabytedb GitHub repository](https://github.com/yugabyte/langchain-yugabytedb).
 
-For detailed information of all `YugabyteDBVectorStore` features and configurations, head to the langchain-yugabytedb [GitHub repo](https://github.com/yugabyte/langchain-yugabytedb).
+## Example
 
-## Quick Start - Complete Working Example
+This example demonstrates a complete RAG (Retrieval-Augmented Generation) application that uses YugabyteDB as a vector store with LangChain. The application follows a three-stage pipeline:
+
+1. Storage: Documents are converted into vector embeddings using OpenAI's embedding model and stored in YugabyteDB. Each document becomes a 1536-dimensional vector that captures its semantic meaning.
+
+1. Retrieval: When a user asks a question, the query is also converted to an embedding. YugabyteDB's vector similarity search finds the most relevant documents from the stored collection based on semantic similarity, not just keyword matching.
+
+1. Generation: The retrieved documents provide context to an LLM (GPT-3.5-turbo), which generates an answer based on the relevant information found in your database, rather than relying solely on its training data.
+
+The example progresses from basic operations (storing and searching documents) to building a complete RAG chain that combines retrieval and generation. Optionally, it can load real YugabyteDB documentation from the web, split it into manageable chunks, and add it to the vector store to create a knowledge base that the LLM can query.
 
 ### Prerequisites
 
 - Python 3.9 or later
 - Docker
-- Create an [OpenAI API Key](https://platform.openai.com/api-keys). Export it as an environment variable with the name `OPENAI_API_KEY`.
+- Create an [OpenAI API key](https://platform.openai.com/api-keys). Export it as an environment variable with the name `OPENAI_API_KEY`.
 
-### Step 1: Setup Environment
+### Setup
 
-**Install all dependencies (including the missing `langchain-postgres` package):**
+1. Create a virtual environment:
 
-```sh
-pip install --upgrade --quiet langchain langchain-openai langchain-community langchain-postgres tiktoken psycopg-binary langchain-yugabytedb
-```
+    ```sh
+    python3 -m venv .venv
+    source .venv/bin/activate
+    ```
 
-**Start YugabyteDB with proper vector extension support:**
+1. Install all dependencies, including the `langchain-postgres` package:
 
-```sh
-docker run -d --name yugabyte_node01 --hostname yugabyte01 \
-  -p 7000:7000 -p 9000:9000 -p 15433:15433 -p 5433:5433 -p 9042:9042 \
-  yugabytedb/yugabyte:2.25.2.0-b359 bin/yugabyted start --background=false \
-  --master_flags="allowed_preview_flags_csv=ysql_yb_enable_advisory_locks,ysql_yb_enable_advisory_locks=true" \
-  --tserver_flags="allowed_preview_flags_csv=ysql_yb_enable_advisory_locks,ysql_yb_enable_advisory_locks=true"
-```
+    ```sh
+    pip install --upgrade --quiet langchain langchain-openai langchain-community langchain-postgres tiktoken psycopg-binary langchain-yugabytedb beautifulsoup4
+    ```
 
-**Enable the vector extension and verify it's working:**
+1. Start YugabyteDB with vector extension support:
 
-```sh
-# Enable vector extension
-docker exec -it yugabyte_node01 bin/ysqlsh -h yugabyte01 -c "CREATE extension if not exists vector;"
+    ```sh
+    docker run -d --name yugabyte_node01 --hostname yugabyte01 \
+    -p 7000:7000 -p 9000:9000 -p 15433:15433 -p 5433:5433 -p 9042:9042 \
+    yugabytedb/yugabyte:2.25.2.0-b359 bin/yugabyted start --background=false \
+    --master_flags="allowed_preview_flags_csv=ysql_yb_enable_advisory_locks,ysql_yb_enable_advisory_locks=true" \
+    --tserver_flags="allowed_preview_flags_csv=ysql_yb_enable_advisory_locks,ysql_yb_enable_advisory_locks=true"
+    ```
 
-# Verify vector extension is installed
-docker exec -it yugabyte_node01 bin/ysqlsh -h yugabyte01 -c "SELECT * FROM pg_extension WHERE extname = 'vector';"
+1. Enable the vector extension and verify it's working:
 
-# Test vector functionality
-docker exec -it yugabyte_node01 bin/ysqlsh -h yugabyte01 -c "SELECT '[1,2,3]'::vector;"
-```
+    ```sh
+    # Enable vector extension
+    docker exec -it yugabyte_node01 bin/ysqlsh -h yugabyte01 -c "CREATE extension if not exists vector;"
 
-### Step 2: Create a sample langchain-yugabytedb application
+    # Verify vector extension is installed
+    docker exec -it yugabyte_node01 bin/ysqlsh -h yugabyte01 -c "SELECT * FROM pg_extension WHERE extname = 'vector';"
+
+    # Test vector functionality
+    docker exec -it yugabyte_node01 bin/ysqlsh -h yugabyte01 -c "SELECT '[1,2,3]'::vector;"
+    ```
+
+### Create a sample langchain-yugabytedb application
 
 Create a file called `langchain_example.py` with the following complete code:
 
@@ -147,6 +160,7 @@ def test_basic_operations(vectorstore):
         Document(page_content="Trains are efficient for long-distance travel"),
         Document(page_content="YugabyteDB is a distributed SQL database"),
         Document(page_content="Vector databases store embeddings for similarity search"),
+        Document(page_content="CDC Logical Replication support, Colocated tables with tablespaces, Auto Analyze service are some features that went GA in 2025.2.0.0."),
     ]
 
     vectorstore.add_documents(docs)
@@ -203,8 +217,8 @@ def test_rag_chain(rag_chain):
         "What are some examples of fruits?",
         "What transportation methods were mentioned?",
         "What is YugabyteDB?",
-        "How do vector databases work?"
-        "Provide the list of features which went GA in 2025.2.0.0 release."
+        "How do vector databases work?",
+        "Can you tell me all the features which went GA in 2025.2.0.0 release?"
     ]
 
     for question in test_questions:
@@ -220,7 +234,7 @@ def load_yugabyte_docs(vectorstore, embeddings, api_key):
     print("\nLoading YugabyteDB documentation...")
 
     # Load documentation from web
-    url = "https://docs.yugabyte.com/preview/releases/ybdb-releases/v2025.2.0.0/"
+    url = "https://docs.yugabyte.com/stable/releases/ybdb-releases/v2025.2/#v2025.2.0.0"
     loader = WebBaseLoader(url)
     documents = loader.load()
 
@@ -287,18 +301,17 @@ if __name__ == "__main__":
     main()
 ```
 
-### Step 3: Run the Example
+### Run the example
 
 Execute the script:
 
-```bash
+```sh
 python langchain_example.py
 ```
 
-**Expected Output:**
+You should see output similar to the following:
 
 ```output
-
 Starting LangChain + YugabyteDB Complete Example
 ============================================================
 Setting up connection to YugabyteDB...
@@ -308,13 +321,13 @@ Connection setup complete!
 
 Testing basic vector store operations...
 Adding test documents...
-Added 5 documents to vector store
+Added 6 documents to vector store
 
 Testing similarity search...
 
 Query: 'I'd like to eat some fruit'
   Result 1: Apples and oranges are delicious fruits
-  Result 2: Vector databases store embeddings for similarity search
+  Result 2: Cars and airplanes are modes of transportation
 
 Query: 'What can I use to travel long distances?'
   Result 1: Trains are efficient for long-distance travel
@@ -322,7 +335,7 @@ Query: 'What can I use to travel long distances?'
 
 Query: 'Tell me about database technology'
   Result 1: YugabyteDB is a distributed SQL database
-  Result 2: Vector databases store embeddings for similarity search
+  Result 2: CDC Logical Replication support, Colocated tables with tablespaces, Auto Analyze service are some features that went GA in 2025.2.0.0.
 
 Setting up RAG chain...
 RAG chain created successfully!
@@ -330,109 +343,77 @@ RAG chain created successfully!
 Testing RAG chain...
 
 Question: What are some examples of fruits?
-YugaAI: Based on the context, apples and oranges are mentioned as examples of delicious fruits.
+YugaAI: Based on the provided context, some examples of fruits are apples and oranges.
 
 Question: What transportation methods were mentioned?
-YugaAI: The context mentions cars, airplanes, and trains as modes of transportation.
+YugaAI: The transportation methods mentioned are cars, airplanes, and trains.
 
 Question: What is YugabyteDB?
 YugaAI: YugabyteDB is a distributed SQL database.
 
 Question: How do vector databases work?
-YugaAI: Vector databases store embeddings for similarity search, which allows for finding similar content based on vector representations.
+YugaAI: Vector databases store embeddings for similarity search.
+
+Question: Can you tell me all the features which went GA in 2025.2.0.0 release?
+YugaAI: The features that went GA in the 2025.2.0.0 release are:
+1. CDC Logical Replication support
+2. Colocated tables with tablespaces
+3. Auto Analyze service
+
+============================================================
+OPTIONAL: Loading YugabyteDB documentation...
+
+Loading YugabyteDB documentation...
+Loaded 1 documents from web
+Created a chunk of size 16341, which is longer than the specified 1000
+Created a chunk of size 15190, which is longer than the specified 1000
+Created a chunk of size 18691, which is longer than the specified 1000
+Created a chunk of size 17885, which is longer than the specified 1000
+Created a chunk of size 2814, which is longer than the specified 1000
+Split into 16 chunks
+Adding documentation chunks to vector store...
+Added 16 documentation chunks
+Documentation loaded successfully!
+
+Testing with documentation...
+
+Testing RAG chain...
+
+Question: What are some examples of fruits?
+YugaAI: Based on the provided context, some examples of fruits are apples and oranges.
+
+Question: What transportation methods were mentioned?
+YugaAI: The transportation methods mentioned are cars, airplanes, and trains.
+
+Question: What is YugabyteDB?
+YugaAI: YugabyteDB is a distributed SQL database.
+
+Question: How do vector databases work?
+YugaAI: Vector databases store embeddings for similarity search.
+
+Question: Can you tell me all the features which went GA in 2025.2.0.0 release?
+YugaAI: The features that went GA (General Availability) in the 2025.2.0.0 release are:
+1. Expands ALTER TABLE functionality to include new and ongoing requests.
+2. Simplifies ongoing and new tasks in the Catalog Caching area excluding main projects like Hybrid Tables/per-node-catalog cache.
+3. Enhances query execution with foreign key performance, further IN batching, distinct and domain type pushdown improvements.
+4. Introduces transaction-related enhancements for v2025.2, fixing consistency issues and read-restart errors.
+5. Removes table tombstone check for colocated tables, increasing read and write performance.
 
 ============================================================
 Complete example finished successfully!
 You now have a working RAG application with YugabyteDB!
 ```
 
-## Understanding the Example
-
-Now let's break down how this complete example works:
-
-### Connection Setup
-
-The script starts by setting up the connection to YugabyteDB:
-
-```python
-# Connection parameters
-YUGABYTEDB_USER = "yugabyte"
-YUGABYTEDB_PASSWORD = ""
-YUGABYTEDB_HOST = "localhost"
-YUGABYTEDB_PORT = "5433"
-YUGABYTEDB_DB = "yugabyte"
-
-# Create connection string - using psycopg instead of asyncpg for better vector support
-CONNECTION_STRING = (
-    f"postgresql+psycopg://{YUGABYTEDB_USER}:{YUGABYTEDB_PASSWORD}@{YUGABYTEDB_HOST}"
-    f":{YUGABYTEDB_PORT}/{YUGABYTEDB_DB}"
-)
-```
-
-### Vector Store Initialization
-
-The script initializes the vector store with OpenAI embeddings:
-
-```python
-engine = YBEngine.from_connection_string(url=CONNECTION_STRING)
-embeddings = OpenAIEmbeddings(api_key=api_key)
-engine.init_vectorstore_table(table_name=TABLE_NAME, vector_size=VECTOR_SIZE)
-vectorstore = YugabyteDBVectorStore.create_sync(
-    engine=engine,
-    table_name=TABLE_NAME,
-    embedding_service=embeddings,
-)
-```
-
-### Basic Operations
-
-The script demonstrates adding documents and performing similarity searches:
-
-```python
-# Add documents
-docs = [
-    Document(page_content="Apples and oranges are delicious fruits"),
-    Document(page_content="Cars and airplanes are modes of transportation"),
-    # ... more documents
-]
-vectorstore.add_documents(docs)
-
-# Perform similarity search
-query = "I'd like to eat some fruit"
-results = vectorstore.similarity_search(query)
-```
-
-### RAG Chain Creation
-
-The script creates a complete RAG (Retrieval-Augmented Generation) chain:
-
-```python
-retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
-llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0, api_key=api_key)
-
-prompt = ChatPromptTemplate.from_messages([
-    ("system", "You are a helpful assistant..."),
-    ("human", "Context: {context}\nQuestion: {question}")
-])
-
-rag_chain = (
-    {"context": retriever, "question": RunnablePassthrough()}
-    | prompt
-    | llm
-    | StrOutputParser()
-)
-```
-
 ## Troubleshooting
 
-### Common Issues
+### Common issues
 
-1. **Vector extension not working**: Make sure you ran all the verification commands
-2. **Connection issues**: Verify YugabyteDB is running and accessible on localhost:5433
-3. **API key issues**: Ensure your OpenAI API key is set correctly
-4. **Driver compatibility**: Use `psycopg` instead of `asyncpg` for better vector support
+- Vector extension not working: Make sure you ran all the verification commands.
+- Connection issues: Verify YugabyteDB is running and accessible on `localhost:5433`.
+- API key issues: Ensure your OpenAI API key is set correctly.
+- Driver compatibility: Use `psycopg` instead of `asyncpg` for better vector support.
 
-### Verification Steps
+### Verification steps
 
 Check if everything is working:
 
@@ -450,83 +431,67 @@ docker exec -it yugabyte_node01 bin/ysqlsh -h yugabyte01 -c "SELECT '[1,2,3]'::v
 python -c "from langchain_yugabytedb import YBEngine, YugabyteDBVectorStore; print('Imports successful')"
 ```
 
-## Detailed API Reference
+## Additional operations
 
-Now let's explore the individual components in detail:
+The main example demonstrates the core RAG workflow. Here are additional operations you can perform with the vector store:
 
-## Manage vector store
+### Delete documents from the vector store
 
-### Add items to the vector store
+Remove documents by their IDs:
 
 ```python
-from langchain_core.documents import Document
-
-docs = [
-    Document(page_content="Apples and oranges"),
-    Document(page_content="Cars and airplanes"),
-    Document(page_content="Train"),
-]
-
-yugabyteDBVectorStore.add_documents(docs)
+# Delete specific documents by their IDs
+vectorstore.delete(ids=["275823d2-1a47-440d-904b-c07b132fd72b", "another-id-here"])
 ```
 
-### Delete items from the vector store
+### Similarity search with scores
+
+Get similarity scores along with the retrieved documents:
 
 ```python
-yugabyteDBVectorStore.delete(ids=["275823d2-1a47-440d-904b-c07b132fd72b"])
-```
-
-### Update items in the vector store
-
-Note that the Update operation is not currently supported by YugabyteDBVectorStore.
-
-## Query the vector store
-
-Once your vector store has been created and the relevant documents have been added, you will likely wish to query it during the running of your chain or agent.
-
-### Query directly
-
-Perform a basic similarity search as follows:
-
-```python
+# Retrieve documents with similarity scores
 query = "I'd like a fruit."
-docs = yugabyteDBVectorStore.similarity_search(query)
-print(docs)
+docs_with_scores = vectorstore.similarity_search_with_score(query, k=3)
+
+for doc, score in docs_with_scores:
+    print(f"Score: {score}")
+    print(f"Content: {doc.page_content}\n")
 ```
 
-To execute a similarity search and receive the corresponding scores, run the following:
+The score represents the distance between the query embedding and the document embedding. Lower scores indicate higher similarity.
+
+### Update documents
+
+Note that the update operation is not currently supported by `YugabyteDBVectorStore`. To update a document, delete the old one and add the updated version.
+
+### Advanced retriever configuration
+
+Customize the retriever with additional search parameters:
 
 ```python
-query = "I'd like a fruit."
-docs = yugabyteDBVectorStore.similarity_search(query, k=1)
-print(docs)
+# Create a retriever with custom search parameters
+retriever = vectorstore.as_retriever(
+    search_type="similarity",
+    search_kwargs={"k": 5, "score_threshold": 0.7}
+)
+
+# Use in a chain
+results = retriever.invoke("What is YugabyteDB?")
 ```
 
-### Query by turning into retriever
+## Chat message history
 
-You can also transform the vector store into a retriever for easier use in your chains.
+`YugabyteDBChatMessageHistory` allows you to persist chat conversation history in YugabyteDB, enabling multi-turn conversations with context. This is separate from the vector store functionality and is useful for maintaining conversation state across sessions.
 
-```python
-retriever = yugabyteDBVectorStore.as_retriever(search_kwargs={"k": 1})
-retriever.invoke("I'd like a fruit.")
-```
-
-## ChatMessageHistory
-
-The chat message history abstraction helps to persist chat message history in a YugabyteDB table.`YugabyteDBChatMessageHistory` is parameterized using a `table_name` and a `session_id`:
-
-- `table_name` is the name of the table in the database where the chat messages will be stored.
-- `session_id` is a unique identifier for the chat session. It can be assigned by the caller using `uuid.uuid4()`.
+### Setup
 
 ```python
 import uuid
-
 from langchain_core.messages import SystemMessage, AIMessage, HumanMessage
 from langchain_yugabytedb import YugabyteDBChatMessageHistory
 import psycopg
 
 # Establish a synchronous connection to the database
-# (or use psycopg.AsyncConnection for async)
 conn_info = "dbname=yugabyte user=yugabyte host=localhost port=5433"
 sync_connection = psycopg.connect(conn_info)
 
@@ -534,196 +499,50 @@ sync_connection = psycopg.connect(conn_info)
 table_name = "chat_history"
 YugabyteDBChatMessageHistory.create_tables(sync_connection, table_name)
 
+# Generate a unique session ID
 session_id = str(uuid.uuid4())
 
 # Initialize the chat history manager
 chat_history = YugabyteDBChatMessageHistory(
     table_name, session_id, sync_connection=sync_connection
 )
+```
 
+### Add messages
+
+```python
 # Add messages to the chat history
 chat_history.add_messages(
     [
-        SystemMessage(content="Meow"),
-        AIMessage(content="woof"),
-        HumanMessage(content="bark"),
+        SystemMessage(content="You are a helpful assistant."),
+        HumanMessage(content="What is YugabyteDB?"),
+        AIMessage(content="YugabyteDB is a distributed SQL database."),
     ]
 )
 
+# Retrieve all messages
 print(chat_history.messages)
 ```
 
-## RAG example
+### Use with RAG chain
 
-One of the primary advantages of vector stores is they provide contextual data to LLMs. LLMs often are trained with stale data and might not have the relevant domain specific knowledge, resulting in halucinations in LLM responses.
-
-Take the following example:
+Combine chat history with your RAG chain for conversational AI:
 
 ```python
-import getpass
-from langchain_openai import ChatOpenAI
-from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
+# Add user question to history
+chat_history.add_user_message("What features are in v2025.2.0.0?")
 
-my_api_key = getpass.getpass("Enter your API Key: ")
+# Get conversation context
+conversation_context = chat_history.messages
 
-llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0.7, api_key=my_api_key)
-# Start with a system message to set the persona/behavior of the AI
-messages = [
-    SystemMessage(
-        content="You are a helpful and friendly assistant named 'YugaAI'. You love to answer questions about YugabyteDB and distributed sql."
-    ),
-    # First human turn
-    HumanMessage(content="Hi YugaAI! Where's the headquarters of YugabyteDB?"),
-]
+# Use RAG chain to get answer
+response = rag_chain.invoke("What features are in v2025.2.0.0?")
 
-print("--- First Interaction ---")
-print(f"Human: {messages[1].content}")  # Print the human message
-response1 = llm.invoke(messages)
-print(f"YugaAI: {response1.content}")
-
-print("\n--- Second Interaction ---")
-print(f"Human: {messages[2].content}")  # Print the new human message
-response2 = llm.invoke(messages)  # Send the *entire* message history
-print(f"YugaAI: {response2.content}")
-
-# Add the second AI response to the history
-messages.append(AIMessage(content=response2.content))
-
-# --- 5. Another Turn with a different topic ---
-messages.append(
-    HumanMessage(
-        content="Can you tell me the current preview release version of YugabyteDB?"
-    )
-)
-
-print("\n--- Third Interaction ---")
-print(f"Human: {messages[4].content}")  # Print the new human message
-response3 = llm.invoke(messages)  # Send the *entire* message history
-print(f"YugaAI: {response3.content}")
-```
-
-The current preview release of YugabyteDB is v2.25.2.0, however the LLM is providing stale information that is 2-3 years old. This is where the vector stores complement the LLMs by providing a way to store and retrive relevant information.
-
-### Construct a RAG to provide contextual information
-
-You can provide the relevant information to the LLM by providing the YugabyteDB documentation. First read the YugabyteDB docs and add data into the YugabyteDB vectorstore by loading, splitting, and chuncking data from an HTML source. Then store the vector embeddings generated by OpenAI embeddings into the YugabyteDB vectorstore.
-
-#### Step 1: Generate Embeddings
-
-```python
-import getpass
-from langchain_community.document_loaders import WebBaseLoader
-from langchain_text_splitters import CharacterTextSplitter
-from langchain_yugabytedb import YBEngine, YugabyteDBVectorStore
-from langchain_openai import OpenAIEmbeddings
-
-my_api_key = getpass.getpass("Enter your API Key: ")
-url = "https://docs.yugabyte.com/preview/releases/ybdb-releases/v2.25/"
-
-loader = WebBaseLoader(url)
-
-documents = loader.load()
-
-print(f"Number of documents loaded: {len(documents)}")
-
-# For very large HTML files, you'll want to split the text into smaller
-# chunks before sending them to an LLM, as LLMs have token limits.
-for i, doc in enumerate(documents):
-    text_splitter = CharacterTextSplitter(
-        separator="\n\n",  # Split by double newline (common paragraph separator)
-        chunk_size=1000,  # Each chunk will aim for 1000 characters
-        chunk_overlap=200,  # Allow 200 characters overlap between chunks
-        length_function=len,
-        is_separator_regex=False,
-    )
-
-    # Apply the splitter to the loaded documents
-    chunks = text_splitter.split_documents(documents)
-
-    print(f"\n--- After Splitting ({len(chunks)} chunks) ---")
-
-    CONNECTION_STRING = "postgresql+psycopg://yugabyte:@localhost:5433/yugabyte"
-    TABLE_NAME = "yb_relnotes_chunks"
-    VECTOR_SIZE = 1536
-    engine = YBEngine.from_connection_string(url=CONNECTION_STRING)
-    engine.init_vectorstore_table(
-        table_name=TABLE_NAME,
-        vector_size=VECTOR_SIZE,
-    )
-    embeddings = OpenAIEmbeddings(api_key=my_api_key)
-
-    # The PGVector.from_documents method handles:
-    # 1. Creating the table if it doesn't exist (with 'embedding' column).
-    # 2. Generating embeddings for each chunk using the provided embeddings model.
-    # 3. Inserting the chunk text, metadata, and embeddings into the table.
-    vectorstore = YugabyteDBVectorStore.from_documents(
-        engine=engine, table_name=TABLE_NAME, documents=chunks, embedding=embeddings
-    )
-
-    print(f"Successfully stored {len(chunks)} chunks in PostgreSQL table: {TABLE_NAME}")
-```
-
-#### Step 2: Configure the YugabyteDB retriever
-
-```python
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import RunnablePassthrough
-from langchain_core.output_parsers import StrOutputParser
-from langchain_openai import ChatOpenAI
-
-retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
-print(
-    f"Retriever created, set to retrieve top {retriever.search_kwargs['k']} documents."
-)
-
-# Initialize the Chat Model (e.g., OpenAI's GPT-3.5 Turbo)
-llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0, api_key=my_api_key)
-
-# Define the RAG prompt template
-prompt = ChatPromptTemplate.from_messages(
-    [
-        (
-            "system",
-            "You are a helpful and friendly assistant named 'YugaAI'. You love to answer questions about YugabyteDB and distributed sql.",
-        ),
-        ("human", "Context: {context}\nQuestion: {question}"),
-    ]
-)
-# Build the RAG chain
-# 1. Take the input question.
-# 2. Pass it to the retriever to get relevant documents.
-# 3. Format the documents into a string for the context.
-# 4. Pass the context and question to the prompt template.
-# 5. Send the prompt to the LLM.
-# 6. Parse the LLM's string output.
-rag_chain = (
-    {"context": retriever, "question": RunnablePassthrough()}
-    | prompt
-    | llm
-    | StrOutputParser()
-)
-```
-
-Now try asking the same question "Can you tell me the current preview release version of YugabyteDB?" again.
-
-```python
-# Invoke the RAG chain with a question
-rag_query = "Can you tell me the current preview release version of YugabyteDB?"
-print(f"\nQuerying RAG chain: '{rag_query}'")
-rag_response = rag_chain.invoke(rag_query)
-print("\n--- RAG Chain Response ---")
-print(rag_response)
-```
-
-```text
-Querying RAG chain: 'Can you tell me the current preview release version of YugabyteDB?'
-```
-
-```text
---- RAG Chain Response ---
-The current preview release version of YugabyteDB is v2.25.2.0.
+# Add AI response to history
+chat_history.add_ai_message(response)
 ```
 
 ## Learn more
 
-- [Develop applications with AI and YugabyteDB](../../develop/tutorials/AI/)
+- [Develop applications with AI and YugabyteDB](/stable/develop/AI/)
+- [pgvector extension](/stable/additional-features/pg-extensions/extension-pgvector/)
