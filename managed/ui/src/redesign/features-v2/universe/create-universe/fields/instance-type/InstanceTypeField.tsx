@@ -10,8 +10,9 @@ import {
   getDefaultInstanceType,
   useGetZones
 } from '@app/redesign/features-v2/universe/create-universe/fields/instance-type/InstanceTypeFieldHelper';
-import { NodeType } from '@app/redesign/utils/dtos';
 import { useRuntimeConfigValues } from '@app/redesign/features-v2/universe/create-universe/helpers/utils';
+import { getDeviceInfoFromInstance } from '@app/redesign/features-v2/universe/create-universe/fields/volume-info/VolumeInfoFieldHelper';
+import { NodeType } from '@app/redesign/utils/dtos';
 import {
   CloudType,
   InstanceType,
@@ -21,7 +22,6 @@ import {
 } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { ProviderType } from '@app/redesign/features-v2/universe/create-universe/steps/general-settings/dtos';
 import { InstanceSettingProps } from '@app/redesign/features-v2/universe/create-universe/steps/hardware-settings/dtos';
-import { getDeviceInfoFromInstance } from '@app/redesign/features-v2/universe/create-universe/fields/volume-info/VolumeInfoFieldHelper';
 import {
   INSTANCE_TYPE_FIELD,
   MASTER_INSTANCE_TYPE_FIELD,
@@ -155,6 +155,7 @@ export const InstanceTypeField = ({
                     ? (option: Record<string, string>) => option.groupName
                     : undefined
                 }
+                size="large"
               />
             </Box>
           </Box>

@@ -1,21 +1,24 @@
 import { FC, useContext } from 'react';
 import { useFormContext } from 'react-hook-form';
 import { Trans, useTranslation } from 'react-i18next';
-import { styled, Typography } from '@material-ui/core';
-import { AlertVariant, YBAlert, YBButton, YBTag } from '@yugabyte-ui-library/core';
+import { AlertVariant, YBAlert, YBButton, YBTag, mui } from '@yugabyte-ui-library/core';
 import { Zone } from './Zone';
 import { CreateUniverseContext, CreateUniverseContextMethods } from '../../CreateUniverseContext';
+import { getFlagFromRegion } from '../../helpers/RegionToFlagUtils';
+import { canSelectMultipleRegions } from '../../CreateUniverseUtils';
 import { FaultToleranceType } from '../resilence-regions/dtos';
 import { NodeAvailabilityProps, Zone as ZoneType } from './dtos';
 import { Region } from '../../../../../features/universe/universe-form/utils/dto';
-import { canSelectMultipleRegions } from '../../CreateUniverseUtils';
+
+//icons
 import AddIcon from '../../../../../assets/add2.svg';
-import { getFlagFromRegion } from '../../helpers/RegionToFlagUtils';
 
 interface RegionCardProps {
   region: Region;
   index: number;
 }
+
+const { styled, Typography, Box } = mui;
 
 const StyledRegionCard = styled('div')(({ theme }) => ({
   background: '#FBFCFD',
@@ -23,7 +26,24 @@ const StyledRegionCard = styled('div')(({ theme }) => ({
   flexDirection: 'column',
   gap: '24px',
   border: `1px solid ${theme.palette.grey[300]}`,
-  borderRadius: '8px'
+  borderRadius: '8px',
+  width: '672px'
+}));
+
+const StyledRegionHeader = styled('div')(({ theme }) => ({
+  display: 'flex',
+  flexDirection: 'row',
+  padding: theme.spacing(1.25, 3),
+  gap: theme.spacing(3),
+  alignItems: 'center'
+}));
+
+const StyledRegionTagContainer = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  flexDirection: 'row',
+  height: '40px',
+  padding: '8px 6px',
+  alignItems: 'center'
 }));
 
 export const RegionCard: FC<RegionCardProps> = ({ region, index }) => {
@@ -31,7 +51,7 @@ export const RegionCard: FC<RegionCardProps> = ({ region, index }) => {
     control,
     watch,
     setValue,
-    formState: { errors }
+    formState: { errors, isSubmitted }
   } = useFormContext<NodeAvailabilityProps>();
   const [{ resilienceAndRegionsSettings }] = (useContext(
     CreateUniverseContext
@@ -65,14 +85,16 @@ export const RegionCard: FC<RegionCardProps> = ({ region, index }) => {
 
   return (
     <StyledRegionCard>
-      <div style={{ display: 'flex', gap: '24px', alignItems: 'center', padding: '10px 24px' }}>
+      <StyledRegionHeader>
         <Typography color="textSecondary" variant="body1">
           {t('region', { region_count: index + 1 })}
         </Typography>
-        <YBTag size="medium">
-          {getFlagFromRegion(region.code)} {region.name} ({region.code})
-        </YBTag>
-      </div>
+        <StyledRegionTagContainer>
+          <YBTag size="medium">
+            {getFlagFromRegion(region.code)} {region.name} ({region.code})
+          </YBTag>
+        </StyledRegionTagContainer>
+      </StyledRegionHeader>
       <div
         style={{
           padding: '0px 24px 24px 64px',
@@ -107,12 +129,12 @@ export const RegionCard: FC<RegionCardProps> = ({ region, index }) => {
             !canSelectMultipleRegions(resilienceAndRegionsSettings?.resilienceType)
           }
           startIcon={<AddIcon />}
-          sx={{ width: '200px', marginLeft: '50px' }}
+          sx={{ marginLeft: '34px', width: 'fit-content' }}
           dataTestId="add-availability-zone-button"
         >
           {t('add_button')}
         </YBButton>
-        {errors.nodeCountPerAz?.message && (
+        {errors.nodeCountPerAz?.message && isSubmitted && (
           <YBAlert
             open
             variant={AlertVariant.Error}

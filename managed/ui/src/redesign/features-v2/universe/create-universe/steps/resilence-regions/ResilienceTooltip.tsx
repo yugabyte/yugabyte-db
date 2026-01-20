@@ -4,7 +4,7 @@ import { YBModal, mui } from '@yugabyte-ui-library/core';
 
 //icons
 import { HelpOutline } from '@material-ui/icons';
-import BookIcon from '../../../../../assets/documentation.svg';
+import BookIcon from '../../../../../assets/blue-book.svg';
 
 export interface ResilienceTooltipProps {
   onClose: () => void;

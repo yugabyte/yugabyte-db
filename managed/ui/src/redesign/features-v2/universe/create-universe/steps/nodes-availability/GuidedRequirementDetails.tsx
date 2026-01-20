@@ -1,12 +1,14 @@
 import { useContext } from 'react';
-import { useFormContext } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
+import { useFormContext } from 'react-hook-form';
 import { mui, YBInput } from '@yugabyte-ui-library/core';
+import { StyledContent, StyledHeader, StyledPanel } from '../../components/DefaultComponents';
 import { getNodeCount } from '../../CreateUniverseUtils';
 import { CreateUniverseContext, CreateUniverseContextMethods } from '../../CreateUniverseContext';
-import { StyledContent, StyledHeader, StyledPanel } from '../../components/DefaultComponents';
-import { FaultToleranceType, ResilienceType } from '../resilence-regions/dtos';
 import { NodeAvailabilityProps } from './dtos';
+import { FaultToleranceType, ResilienceType } from '../resilence-regions/dtos';
+
+//icons
 import Return from '../../../../../assets/tree.svg';
 
 const { styled } = mui;
@@ -18,7 +20,8 @@ const StyledNodesCount = styled('div')(({ theme }) => ({
   gap: theme.spacing(1),
   background: '#FBFCFD',
   border: `1px solid ${theme.palette.grey[300]}`,
-  borderRadius: '8px'
+  borderRadius: '8px',
+  width: '672px'
 }));
 
 const NodesCount = styled(
