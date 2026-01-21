@@ -55,47 +55,7 @@ As described in [Eliminate an unresponsive node](../../manage-deployments/remove
 
 You can manually remove Yugabyte components from existing server images. Before attempting this, you have to determine whether or not YugabyteDB Anywhere is operational. If it is, you either need to delete the universe or delete the nodes from the universe.
 
-### Remove node agent
-
-To clean up a node for reuse, do the following:
-
-1. On your YugabyteDB Anywhere instance, uninstall using the following command:
-
-    ```sh
-    ./installer.sh  -c uninstall -u https://<yba_ip> -t <api_token> -ip <ip_of_the_node> --skip_verify_cert
-    ```
-
-1. Log in to the server node as the `yugabyte` user.
-
-1. Remove the system unit file:
-
-    ```sh
-    rm /etc/systemd/system/yb-node-agent.service
-    ```
-
-    or
-
-    ```sh
-    rm <yugabyte_home>/.config/systemd/user/yb-node-agent.service
-    ```
-
-    depending on where it is installed.
-
-1. Reload systemd:
-
-    ```sh
-    systemctl daemon-reload
-    ```
-
-    or
-
-    ```sh
-    systemctl --user daemon-reload
-    ```
-
-    depending on systemd scope.
-
-### Delete legacy manually provisioned on-premises database server nodes
+### Delete on-premises database server nodes
 
 You can remove YugabyteDB components and configuration from on-premises provider database server nodes as follows:
 
@@ -178,6 +138,42 @@ You can remove YugabyteDB components and configuration from on-premises provider
     ```shell
     ./bin/yb-server-ctl.sh clean-instance
     ```
+
+1. Remove node agent.
+
+    1. Run the following node agent installer (in `node-agent/bin`) command:
+
+        ```sh
+        ./installer.sh  -c uninstall -u https://<yba_ip> -t <api_token> -ip <ip_of_the_node> --skip_verify_cert
+        ```
+
+    1. Remove the system unit file:
+
+        ```sh
+        rm /etc/systemd/system/yb-node-agent.service
+        ```
+
+        or
+
+        ```sh
+        rm <yugabyte_home>/.config/systemd/user/yb-node-agent.service
+        ```
+
+        depending on where it is installed.
+
+    1. Reload systemd:
+
+        ```sh
+        systemctl daemon-reload
+        ```
+
+        or
+
+        ```sh
+        systemctl --user daemon-reload
+        ```
+
+        depending on systemd scope.
 
 This removes all YugabyteDB code and settings from the node, removing it from the universe.
 
