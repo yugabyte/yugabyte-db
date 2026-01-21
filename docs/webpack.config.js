@@ -4,7 +4,6 @@ const path = require('path');
 module.exports = {
   context: path.join(__dirname, 'src'),
   entry: {
-    cookie: './cookie.js',
     site: './index.js',
     search: './algolia-search.js',
     trackUtm: './track-utm.js',

@@ -33,6 +33,8 @@
     "@babel/preset-env": "7.28.6",
     "@stylistic/eslint-plugin": "5.7.0",
     "algoliasearch": "4.23.3",
+    "browser-cookie-utils": "2.0.1",
+    "browser-query-utils": "2.0.0",
     "babel-loader": "10.0.0",
     "clipboard": "2.0.11",
     "detect-external-link": "2.0.1",
