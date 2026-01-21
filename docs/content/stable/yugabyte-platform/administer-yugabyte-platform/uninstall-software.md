@@ -141,10 +141,10 @@ You can remove YugabyteDB components and configuration from on-premises provider
 
 1. Remove node agent.
 
-    1. Run the following node agent installer (in `node-agent/bin`) command:
+    1. Run the following node agent installer (in `node-agent/bin/`) command:
 
         ```sh
-        ./installer.sh  -c uninstall -u https://<yba_ip> -t <api_token> -ip <ip_of_the_node> --skip_verify_cert
+        ./node-agent-installer.sh  -c uninstall -u https://<yba_ip> -t <api_token> -ip <ip_of_the_node> --skip_verify_cert
         ```
 
     1. Remove the system unit file:
