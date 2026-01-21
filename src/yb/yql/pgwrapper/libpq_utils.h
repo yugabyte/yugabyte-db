@@ -26,6 +26,7 @@
 #include "yb/common/transaction.pb.h"
 
 #include "yb/util/format.h"
+#include "yb/util/json_document.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/result.h"
@@ -83,6 +84,7 @@ concept BasePGType =
     IsPGNonNeg<T> || IsPGIntType<T> || IsPGFloatType<T> ||
     std::is_same_v<T, bool> || std::is_same_v<T, std::string> || std::is_same_v<T, char> ||
     std::is_same_v<T, PGOid> || std::is_same_v<T, Uuid> || std::is_same_v<T, MonoDelta> ||
+    std::is_same_v<T, JsonDocument> ||
     std::is_same_v<T, std::vector<float>> || std::is_same_v<T, RowAsString>;
 
 template<class T>
