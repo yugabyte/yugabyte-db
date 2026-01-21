@@ -4162,6 +4162,15 @@ Status CDCServiceImpl::CheckTabletNotOfInterest(
 
   // This is applicable only to Consistent Snapshot Streams,
   auto record = VERIFY_RESULT(GetStream(producer_tablet.stream_id));
+
+  // NOEXPORT_SNAPSHOT streams use on-demand WAL retention model where tables are never marked
+  // as "not of interest". This allows tables to be polled at any time in the future without
+  // becoming permanently unqualified after the timeout period.
+  if (record->GetSnapshotOption().has_value() &&
+      *record->GetSnapshotOption() == CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT) {
+    return Status::OK();
+  }
+
   if (!record->GetSnapshotOption().has_value() || !record->GetStreamCreationTime().has_value()) {
     return Status::OK();
   }

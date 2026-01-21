@@ -1486,6 +1486,46 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestReleaseResourcesOnUnpolledTablets) {
 
 }
 
+// Test that NOEXPORT_SNAPSHOT streams do not mark tables as "not of interest" even after the
+// timeout period expires. This allows tables to be polled at any time in the future without
+// becoming permanently unqualified.
+TEST_F(CDCSDKConsistentSnapshotTest, TestNoexportSnapshotTablesNeverBecomeNotOfInterest) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_tablet_not_of_interest_timeout_secs) = 3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs) = 3;
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE test1(id1 int primary key);"));
+
+  auto table1 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test1"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets1;
+  ASSERT_OK(test_client()->GetTablets(table1, 0, &tablets1, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets1.size(), 1);
+  auto tablet1_peer =
+      ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), tablets1.begin()->tablet_id()));
+
+  // Create a NOEXPORT_SNAPSHOT stream - do NOT poll the table
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream(
+      CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT));
+
+  // Verify initial retention barriers are in place
+  ASSERT_LT(tablet1_peer->get_cdc_min_replicated_index(), OpId::Max().index);
+  ASSERT_LT(tablet1_peer->cdc_sdk_min_checkpoint_op_id(), OpId::Max());
+
+  // Wait well beyond the timeout period (3 seconds * 3 + buffer)
+  SleepFor(MonoDelta::FromSeconds(12));
+
+  // Verify retention barriers are STILL in place (table did NOT become "not of interest")
+  // For NOEXPORT_SNAPSHOT streams, tables should never be marked as not of interest
+  ASSERT_LT(tablet1_peer->get_cdc_min_replicated_index(), OpId::Max().index);
+  ASSERT_LT(tablet1_peer->cdc_sdk_min_checkpoint_op_id(), OpId::Max());
+
+  // Verify we can still get the checkpoint and poll the table successfully
+  auto cp_resp = ASSERT_RESULT(GetCDCSDKSnapshotCheckpoint(stream_id, tablets1[0].tablet_id()));
+  ASSERT_OK(UpdateCheckpoint(stream_id, tablets1, cp_resp));
+}
+
 TEST_F(CDCSDKConsistentSnapshotTest, TestReleaseResourcesOnUnpolledSplitTablets) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs) = 3;
