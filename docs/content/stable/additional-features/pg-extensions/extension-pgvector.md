@@ -162,7 +162,7 @@ SELECT category_id, AVG(embedding) FROM items GROUP BY category_id;
 
 ## Vector indexing
 
-{{<tags/feature/ea idea="1111">}} By default, vector search performs exact nearest neighbor search, ensuring perfect recall.
+By default, vector search performs exact nearest neighbor search, ensuring perfect recall.
 
 To improve query performance, you can use approximate nearest neighbor (ANN) search, which trades some recall for speed. Unlike traditional indexes, approximate indexes may return different results for queries.
 
@@ -211,9 +211,11 @@ A higher `ef_construction` value provides faster recall at the cost of index bui
 
 ### Limitations
 
-- Concurrent index creation is not supported yet.
-- Partial indexes on vector columns are not supported yet.
+- Concurrent index creation is not yet supported.
+- Partial indexes on vector columns are not yet supported.
 - Vector indexes are not supported for [xCluster replication](../../../architecture/docdb-replication/async-replication/).
+- Vector indexes are not supported for [Point-In-Time Recovery](../../../manage/backup-restore/point-in-time-recovery/).
+- Vector indexes are not supported for [Instant database clone](../../../manage/backup-restore/instant-db-cloning/).
 
 ## Learn more
 
