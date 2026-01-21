@@ -353,6 +353,7 @@ set_default_yb_build_args() {
   cmake_only=false
   run_python_tests=false
   cmake_extra_args=""
+  pgo_instrument_type=""
   pgo_data_path=""
   predefined_build_root=""
   java_test_name=""
@@ -727,6 +728,11 @@ parse_yb_build_cmd_line() {
           cmake_extra_args+=" "
         fi
         cmake_extra_args+=$2
+        shift
+      ;;
+      --pgo-instrument-type)
+        ensure_option_has_arg "$@"
+        pgo_instrument_type="$2"
         shift
       ;;
       --pgo-data-path)
