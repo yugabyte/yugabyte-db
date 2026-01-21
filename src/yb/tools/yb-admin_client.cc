@@ -94,6 +94,7 @@
 
 #include "yb/encryption/encryption_util.h"
 
+#include "yb/util/date_time.h"
 #include "yb/util/format.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/net/net_util.h"
@@ -4592,6 +4593,57 @@ Status ClusterAdminClient::WriteSysCatalogEntryAction(
   RETURN_NOT_OK(WriteSysCatalogEntry(operation, entry_type, entry_id, entity_data));
 
   std::cout << std::endl << "Successfully updated the YugabyteDB system catalog." << std::endl;
+  return Status::OK();
+}
+
+Status ClusterAdminClient::GetTableXorHash(const TableId& table_id, uint64_t read_ht) {
+  uint64_t xor_hash = 0;
+  uint64_t row_count = 0;
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablet_locations;
+  RETURN_NOT_OK(yb_client_->GetTabletsFromTableId(table_id, /*max_tablets=*/0, &tablet_locations));
+  std::cout << "Processing " << tablet_locations.size() << " tablets for table " << table_id
+            << std::endl;
+
+  HybridTime ht;
+  if (!read_ht) {
+    ht = HybridTime::FromMicros(DateTime::TimestampNow().ToInt64());
+  } else {
+    RETURN_NOT_OK(ht.FromUint64(read_ht));
+  }
+  std::cout << "Read HT: " << ht << std::endl;
+
+  for (const auto& location : tablet_locations) {
+    auto leader_replica = std::find_if(
+        location.replicas().begin(), location.replicas().end(),
+        [](const auto& replica) { return replica.role() == PeerRole::LEADER; });
+    SCHECK_FORMAT(
+        leader_replica != location.replicas().end(), NotFound,
+        "Leader replica not found for tablet $0", location.tablet_id());
+
+    auto addr = HostPort::FromPB(leader_replica->ts_info().private_rpc_addresses(0));
+    auto tserver_proxy =
+        std::make_unique<tserver::TabletServerServiceProxy>(proxy_cache_.get(), addr);
+    tserver::DumpTabletDataRequestPB req;
+    tserver::DumpTabletDataResponsePB resp;
+    RpcController rpc;
+    rpc.set_timeout(timeout_);
+    req.set_tablet_id(location.tablet_id());
+    req.set_read_ht(ht.ToUint64());
+    RETURN_NOT_OK(tserver_proxy->DumpTabletData(req, &resp, &rpc));
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
+    std::cout << "Tablet ID: " << location.tablet_id() << std::endl;
+    std::cout << "\tRow count: " << resp.row_count() << std::endl;
+    std::cout << "\tXOR hash: " << resp.xor_hash() << std::endl;
+    std::cout << std::endl;
+    xor_hash ^= resp.xor_hash();
+    row_count += resp.row_count();
+  }
+
+  std::cout << "Total row count: " << row_count << std::endl;
+  std::cout << "Total XOR hash: " << xor_hash << std::endl;
   return Status::OK();
 }
 

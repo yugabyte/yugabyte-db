@@ -244,6 +244,9 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
       const GetLocalPgTxnSnapshotRequestPB* req, GetLocalPgTxnSnapshotResponsePB* resp,
       rpc::RpcContext context) override;
 
+  Result<DumpTabletDataResponsePB> DumpTabletData(
+      const DumpTabletDataRequestPB& req, CoarseTimePoint deadline) override;
+
   void Shutdown() override;
 
  private:

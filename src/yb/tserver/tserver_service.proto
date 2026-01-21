@@ -148,6 +148,10 @@ service TabletServerService {
       returns (GetLocalPgTxnSnapshotResponsePB);
 
   rpc GetMetrics(GetMetricsRequestPB) returns (GetMetricsResponsePB);
+
+  rpc DumpTabletData(DumpTabletDataRequestPB) returns (DumpTabletDataResponsePB) {
+    option (yb.rpc.trivial) = true;
+  }
 }
 
 // Note: Either among transactions_by_tablet or transaction_ids should be set. Both the fields
@@ -585,4 +589,16 @@ message GetLocalPgTxnSnapshotResponsePB {
   optional TabletServerErrorPB error = 1;
   optional PgTxnSnapshotPB snapshot = 2;
   optional ReadHybridTimePB snapshot_read_time = 3;
+}
+
+message DumpTabletDataRequestPB {
+  required bytes tablet_id = 1;
+  optional string dest_path = 2;
+  optional uint64 read_ht = 3;
+}
+
+message DumpTabletDataResponsePB {
+  optional TabletServerErrorPB error = 1;
+  optional uint64 row_count = 2;
+  optional uint64 xor_hash = 3;
 }

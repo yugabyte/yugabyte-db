@@ -503,6 +503,7 @@ class ClusterAdminClient {
   // List the uuids of all masters/tservers known to the master leader.
   Result<std::unordered_set<std::string>> ListAllKnownMasterUuids();
   Result<std::unordered_set<std::string>> ListAllKnownTabletServersUuids();
+  Status GetTableXorHash(const TableId& table_id, uint64_t read_ht);
 
  protected:
   // Fetch the locations of the replicas for a given tablet from the Master.
