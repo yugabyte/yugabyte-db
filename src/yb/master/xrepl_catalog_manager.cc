@@ -1284,9 +1284,11 @@ Status CatalogManager::PopulateCDCStateTable(const xrepl::StreamId& stream_id,
                                              uint64_t stream_creation_time,
                                              bool has_replication_slot_name) {
   // Validate that the AlterTable callback has populated the checkpoint i.e. it is no longer
-  // OpId::Invalid().
+  // OpId::Invalid(). This only applies to USE_SNAPSHOT/EXPORT_SNAPSHOT streams which set
+  // retention barriers eagerly. NOEXPORT_SNAPSHOT uses on-demand retention (like legacy streams)
+  // and skips this validation.
   std::unordered_set<TabletId> seen_tablet_ids;
-  if (has_consistent_snapshot_option) {
+  if (has_consistent_snapshot_option && consistent_snapshot_option_use) {
     std::vector<cdc::CDCStateTableKey> cdc_state_entries;
     Status iteration_status;
     auto all_entry_keys = VERIFY_RESULT(cdc_state_table_->GetTableRange(
@@ -1312,7 +1314,8 @@ Status CatalogManager::PopulateCDCStateTable(const xrepl::StreamId& stream_id,
     auto table = VERIFY_RESULT(FindTableById(table_id));
     for (const auto& tablet : VERIFY_RESULT(table->GetTablets())) {
       cdc::CDCStateTableEntry entry(tablet->id(), stream_id);
-      if (has_consistent_snapshot_option) {
+      if (has_consistent_snapshot_option && consistent_snapshot_option_use) {
+        // USE_SNAPSHOT or EXPORT_SNAPSHOT: retention barriers were set eagerly.
         // We must have seen this tablet id in the above check for Invalid checkpoint. If not, this
         // means that the list of tablets is different from what it was at the start of the stream
         // creation which indicates a tablet split. In that case, fail the creation and let the
@@ -1324,26 +1327,29 @@ Status CatalogManager::PopulateCDCStateTable(const xrepl::StreamId& stream_id,
         }
 
         // For USE_SNAPSHOT option, leave entry in POST_SNAPSHOT_BOOTSTRAP state
-        // For NOEXPORT_SNAPSHOT option, leave entry in SNAPSHOT_DONE state
-        if (consistent_snapshot_option_use)
-          entry.snapshot_key = "";
+        entry.snapshot_key = "";
 
         entry.active_time = stream_creation_time;
         entry.cdc_sdk_safe_time = consistent_snapshot_time;
+      } else if (has_consistent_snapshot_option) {
+        // NOEXPORT_SNAPSHOT: no retention barriers, but set active_time to pass CheckStreamActive.
+        // CheckStreamActive requires active_time to be within intent_retention_duration (8 hours).
+        entry.checkpoint = OpId().Invalid();
+        entry.active_time = stream_creation_time;
+        entry.cdc_sdk_safe_time = 0;
       } else {
+        // Legacy streams (no consistent snapshot option)
         entry.checkpoint = OpId().Invalid();
         entry.active_time = 0;
         entry.cdc_sdk_safe_time = 0;
       }
       entries.push_back(std::move(entry));
 
-      // For a consistent snapshot streamm, if it is a Colocated table,
-      // add the colocated table snapshot entry also
-      if (has_consistent_snapshot_option && table->colocated()) {
+      // For USE_SNAPSHOT/EXPORT_SNAPSHOT with colocated tables, add the colocated table
+      // snapshot entry. Not needed for NOEXPORT_SNAPSHOT or legacy streams.
+      if (has_consistent_snapshot_option && consistent_snapshot_option_use && table->colocated()) {
         cdc::CDCStateTableEntry col_entry(tablet->id(), stream_id, table_id);
-        if (consistent_snapshot_option_use)
-          col_entry.snapshot_key = "";
-
+        col_entry.snapshot_key = "";
         col_entry.active_time = GetCurrentTimeMicros();
         col_entry.cdc_sdk_safe_time = consistent_snapshot_time;
         entries.push_back(std::move(col_entry));
@@ -1385,6 +1391,19 @@ Status CatalogManager::SetAllCDCSDKRetentionBarriers(
   const std::vector<TableId>& table_ids, const xrepl::StreamId& stream_id,
   const bool has_consistent_snapshot_option, const bool require_history_cutoff) {
   VLOG_WITH_FUNC(4) << "Setting All retention barriers for stream: " << stream_id;
+
+  // NOEXPORT_SNAPSHOT streams use on-demand WAL retention model - skip setting ALL retention
+  // barriers eagerly at stream creation. WAL retention, intent barriers, and history cutoff will
+  // be set when the table is first polled by the CDC consumer.
+  const bool is_noexport_snapshot = req.has_cdcsdk_consistent_snapshot_option() &&
+      req.cdcsdk_consistent_snapshot_option() == CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT;
+
+  if (is_noexport_snapshot) {
+    // For NOEXPORT_SNAPSHOT, we skip all retention barrier setup at stream creation time.
+    // The barriers will be set on-demand when tables are first polled (implemented in future steps).
+    VLOG_WITH_FUNC(4) << "Skipping retention barriers for NOEXPORT_SNAPSHOT stream: " << stream_id;
+    return Status::OK();
+  }
 
   for (const auto& table_id : table_ids) {
     auto table = VERIFY_RESULT(FindTableById(table_id));
@@ -2319,17 +2338,33 @@ Status CatalogManager::ProcessNewTablesForCDCSDKStreams(
     bool has_replication_slot_consumption =
         !streams.front()->GetCdcsdkYsqlReplicationSlotName().empty();
 
+    // Check if all streams are NOEXPORT_SNAPSHOT - if so, skip WAL retention (on-demand model).
+    // WAL retention will be set when the table is first polled by the CDC consumer.
+    bool all_streams_noexport_snapshot = true;
+    for (const auto& stream : streams) {
+      auto stream_lock = stream->LockForRead();
+      if (!stream_lock->pb.has_cdcsdk_stream_metadata() ||
+          !stream_lock->pb.cdcsdk_stream_metadata().has_consistent_snapshot_option() ||
+          stream_lock->pb.cdcsdk_stream_metadata().consistent_snapshot_option() !=
+              CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT) {
+        all_streams_noexport_snapshot = false;
+        break;
+      }
+    }
+
     if (!FLAGS_ysql_yb_enable_replication_slot_consumption || !has_replication_slot_consumption) {
-      // Set the WAL retention for this new table
-      // Make asynchronous ALTER TABLE requests to do this, just as was done during stream creation
-      AlterTableRequestPB alter_table_req;
-      alter_table_req.mutable_table()->set_table_id(table_id);
-      alter_table_req.set_wal_retention_secs(FLAGS_cdc_wal_retention_time_secs);
-      AlterTableResponsePB alter_table_resp;
-      s = this->AlterTable(&alter_table_req, &alter_table_resp, /*rpc=*/nullptr, epoch);
-      if (!s.ok()) {
-        LOG(WARNING) << "Unable to change the WAL retention time for table " << table_id;
-        continue;
+      // Skip WAL retention for NOEXPORT_SNAPSHOT streams (on-demand retention model)
+      if (!all_streams_noexport_snapshot) {
+        // Set the WAL retention for this new table
+        AlterTableRequestPB alter_table_req;
+        alter_table_req.mutable_table()->set_table_id(table_id);
+        alter_table_req.set_wal_retention_secs(FLAGS_cdc_wal_retention_time_secs);
+        AlterTableResponsePB alter_table_resp;
+        s = this->AlterTable(&alter_table_req, &alter_table_resp, /*rpc=*/nullptr, epoch);
+        if (!s.ok()) {
+          LOG(WARNING) << "Unable to change the WAL retention time for table " << table_id;
+          continue;
+        }
       }
     }
 

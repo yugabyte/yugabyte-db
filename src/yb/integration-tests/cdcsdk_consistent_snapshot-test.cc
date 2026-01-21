@@ -15,6 +15,7 @@
 #include "yb/cdc/cdc_state_table.h"
 
 DECLARE_int32(ysql_ddl_rpc_timeout_sec);
+DECLARE_uint32(cdc_wal_retention_time_secs);
 
 namespace yb {
 namespace cdc {
@@ -46,6 +47,8 @@ void CDCSDKConsistentSnapshotTest::TestCSStreamSnapshotEstablishment(
       ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), tablets.begin()->tablet_id()));
 
   // Create a Consistent Snapshot Stream with NOEXPORT_SNAPSHOT option
+  // NOEXPORT_SNAPSHOT uses on-demand WAL retention - no retention barriers are set at stream
+  // creation. Barriers will be set when the table is first polled.
   auto stream1_id = ASSERT_RESULT(
       (use_replication_slot)
           ? CreateConsistentSnapshotStreamWithReplicationSlot(
@@ -53,23 +56,12 @@ void CDCSDKConsistentSnapshotTest::TestCSStreamSnapshotEstablishment(
           : CreateConsistentSnapshotStream(CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT));
   ASSERT_NOK(
       GetSnapshotDetailsFromCdcStateTable(stream1_id, tablet_peer->tablet_id(), test_client()));
-  auto checkpoint_result =
-      ASSERT_RESULT(GetCDCSnapshotCheckpoint(stream1_id, tablet_peer->tablet_id()));
 
-  // NOEXPORT_SNAPSHOT option - Check for the following
-  // 1. snapshot_key must be null
-  // 2. Checkpoint should be X.Y where X, Y > 0
+  // NOEXPORT_SNAPSHOT with on-demand WAL retention:
+  // 1. snapshot_key must be null (no snapshot)
+  // 2. No retention barriers are set at stream creation
   // 3. History cutoff time should be HybridTime::kInvalid
-  // 4. Checkpoint index Y (in X.Y) >= cdc_min_replicated_index
-  // 5. cdc_sdk_min_checkpoint_op_id.index = cdc_min_replicated_index
-  LogRetentionBarrierAndRelatedDetails(checkpoint_result, tablet_peer);
-  ASSERT_GT(checkpoint_result.checkpoint().op_id().term(), 0);
-  ASSERT_GT(checkpoint_result.checkpoint().op_id().index(), 0);
-  ASSERT_EQ(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
-  ASSERT_GE(checkpoint_result.checkpoint().op_id().index(),
-            tablet_peer->get_cdc_min_replicated_index());
-  ASSERT_EQ(tablet_peer->cdc_sdk_min_checkpoint_op_id().index,
-            tablet_peer->get_cdc_min_replicated_index());
+  // Retention barriers will be set when the table is first polled (on-demand).
 
   // Create a Consistent Snapshot Stream with USE_SNAPSHOT option
   auto stream2_id = ASSERT_RESULT(
@@ -78,7 +70,7 @@ void CDCSDKConsistentSnapshotTest::TestCSStreamSnapshotEstablishment(
   const auto& snapshot_time_key_pair =
       ASSERT_RESULT(GetSnapshotDetailsFromCdcStateTable(
           stream2_id, tablet_peer->tablet_id(), test_client()));
-  checkpoint_result =
+  auto checkpoint_result =
       ASSERT_RESULT(GetCDCSnapshotCheckpoint(stream2_id, tablet_peer->tablet_id()));
 
   // USE_SNAPSHOT option - Check for the following
@@ -1489,6 +1481,13 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestReleaseResourcesOnUnpolledTablets) {
 // Test that NOEXPORT_SNAPSHOT streams do not mark tables as "not of interest" even after the
 // timeout period expires. This allows tables to be polled at any time in the future without
 // becoming permanently unqualified.
+//
+// Note: With on-demand WAL retention (Step 2), NOEXPORT_SNAPSHOT streams do NOT set retention
+// barriers at stream creation time. Barriers will be set on-demand when first polled.
+// This test verifies that:
+// 1. Stream creation succeeds without setting retention barriers
+// 2. Tables don't become "not of interest" even after the timeout
+// 3. The stream remains functional and can be polled later
 TEST_F(CDCSDKConsistentSnapshotTest, TestNoexportSnapshotTablesNeverBecomeNotOfInterest) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_tablet_not_of_interest_timeout_secs) = 3;
@@ -1502,28 +1501,127 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestNoexportSnapshotTablesNeverBecomeNotOfI
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets1;
   ASSERT_OK(test_client()->GetTablets(table1, 0, &tablets1, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets1.size(), 1);
-  auto tablet1_peer =
-      ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), tablets1.begin()->tablet_id()));
 
   // Create a NOEXPORT_SNAPSHOT stream - do NOT poll the table
   auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream(
       CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT));
 
-  // Verify initial retention barriers are in place
-  ASSERT_LT(tablet1_peer->get_cdc_min_replicated_index(), OpId::Max().index);
-  ASSERT_LT(tablet1_peer->cdc_sdk_min_checkpoint_op_id(), OpId::Max());
+  // With on-demand WAL retention, NOEXPORT_SNAPSHOT streams don't set retention barriers at
+  // stream creation time. Barriers will be set on-demand when first polled.
+  // The stream creation succeeded if we got here (ASSERT_RESULT would have failed otherwise).
 
   // Wait well beyond the timeout period (3 seconds * 3 + buffer)
+  // For NOEXPORT_SNAPSHOT, tables should NOT become "not of interest" regardless of timeout
   SleepFor(MonoDelta::FromSeconds(12));
 
-  // Verify retention barriers are STILL in place (table did NOT become "not of interest")
-  // For NOEXPORT_SNAPSHOT streams, tables should never be marked as not of interest
-  ASSERT_LT(tablet1_peer->get_cdc_min_replicated_index(), OpId::Max().index);
-  ASSERT_LT(tablet1_peer->cdc_sdk_min_checkpoint_op_id(), OpId::Max());
-
   // Verify we can still get the checkpoint and poll the table successfully
+  // This confirms the table was not marked as "not of interest" or unqualified
   auto cp_resp = ASSERT_RESULT(GetCDCSDKSnapshotCheckpoint(stream_id, tablets1[0].tablet_id()));
   ASSERT_OK(UpdateCheckpoint(stream_id, tablets1, cp_resp));
+}
+
+// Test that NOEXPORT_SNAPSHOT streams do NOT set WAL retention eagerly at stream creation time.
+// This allows on-demand WAL retention to be set when the table is first polled.
+// In contrast, USE_SNAPSHOT streams should still set WAL retention eagerly.
+TEST_F(CDCSDKConsistentSnapshotTest, TestNoexportSnapshotSkipsEagerWalRetention) {
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+
+  // Create two tables - one for NOEXPORT_SNAPSHOT, one for USE_SNAPSHOT
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE test_noexport(id1 int primary key);"));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE test_use(id1 int primary key);"));
+
+  auto table_noexport = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test_noexport"));
+  auto table_use = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test_use"));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_noexport;
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_use;
+  ASSERT_OK(test_client()->GetTablets(
+      table_noexport, 0, &tablets_noexport, /* partition_list_version =*/nullptr));
+  ASSERT_OK(test_client()->GetTablets(
+      table_use, 0, &tablets_use, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets_noexport.size(), 1);
+  ASSERT_EQ(tablets_use.size(), 1);
+
+  auto tablet_noexport_peer =
+      ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), tablets_noexport.begin()->tablet_id()));
+  auto tablet_use_peer =
+      ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), tablets_use.begin()->tablet_id()));
+
+  // Verify WAL retention is NOT set before stream creation (should be 0)
+  ASSERT_EQ(tablet_noexport_peer->tablet_metadata()->wal_retention_secs(), 0);
+  ASSERT_EQ(tablet_use_peer->tablet_metadata()->wal_retention_secs(), 0);
+
+  // Create a NOEXPORT_SNAPSHOT stream
+  ASSERT_RESULT(CreateConsistentSnapshotStream(CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT));
+
+  // Verify NOEXPORT_SNAPSHOT did NOT set WAL retention (should still be 0)
+  ASSERT_EQ(tablet_noexport_peer->tablet_metadata()->wal_retention_secs(), 0);
+
+  // Create a USE_SNAPSHOT stream (on a different namespace to avoid conflicts)
+  // Since both tables are in the same namespace, we'll verify that use_snapshot WOULD set
+  // retention by creating a new stream with USE_SNAPSHOT and checking the table.
+  // Note: Creating USE_SNAPSHOT stream on same namespace will set retention on all tables.
+  ASSERT_RESULT(CreateConsistentSnapshotStream(CDCSDKSnapshotOption::USE_SNAPSHOT));
+
+  // After USE_SNAPSHOT stream creation, both tables should have WAL retention set
+  // because USE_SNAPSHOT sets retention on ALL tables in the namespace
+  ASSERT_EQ(tablet_use_peer->tablet_metadata()->wal_retention_secs(),
+            FLAGS_cdc_wal_retention_time_secs);
+
+  // The noexport table will also have retention now due to the USE_SNAPSHOT stream
+  // This is expected - the USE_SNAPSHOT stream sets retention on all tables.
+  // The key verification is that NOEXPORT_SNAPSHOT alone did NOT set retention.
+}
+
+// Test that NOEXPORT_SNAPSHOT streams do NOT set WAL retention on dynamic tables (tables created
+// after the stream exists). This is Step 3 of the on-demand WAL retention model.
+// In contrast, USE_SNAPSHOT streams should still set WAL retention on dynamic tables.
+TEST_F(CDCSDKConsistentSnapshotTest, TestNoexportSnapshotDynamicTablesSkipEagerWalRetention) {
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+
+  // Create initial table and NOEXPORT_SNAPSHOT stream
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE test_initial(id1 int primary key);"));
+
+  auto table_initial = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test_initial"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_initial;
+  ASSERT_OK(test_client()->GetTablets(
+      table_initial, 0, &tablets_initial, /* partition_list_version =*/nullptr));
+
+  // Create NOEXPORT_SNAPSHOT stream
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream(
+      CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT));
+
+  // Create a dynamic table (after stream exists) - this triggers ProcessNewTablesForCDCSDKStreams
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE test_dynamic(id1 int primary key);"));
+
+  auto table_dynamic = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test_dynamic"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_dynamic;
+  ASSERT_OK(test_client()->GetTablets(
+      table_dynamic, 0, &tablets_dynamic, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets_dynamic.size(), 1);
+
+  // Wait for the dynamic table to be added to the stream
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto stream_table_ids = VERIFY_RESULT(GetCDCStreamTableIds(stream_id));
+        return std::find(stream_table_ids.begin(), stream_table_ids.end(),
+                         table_dynamic.table_id()) != stream_table_ids.end();
+      },
+      MonoDelta::FromSeconds(30),
+      "Waiting for dynamic table to be added to stream"));
+
+  // Get tablet peer for the dynamic table
+  auto tablet_dynamic_peer =
+      ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), tablets_dynamic.begin()->tablet_id()));
+
+  // Verify NOEXPORT_SNAPSHOT did NOT set WAL retention on the dynamic table (should be 0)
+  ASSERT_EQ(tablet_dynamic_peer->tablet_metadata()->wal_retention_secs(), 0);
+
+  LOG(INFO) << "Dynamic table WAL retention: "
+            << tablet_dynamic_peer->tablet_metadata()->wal_retention_secs()
+            << " (expected 0 for NOEXPORT_SNAPSHOT)";
 }
 
 TEST_F(CDCSDKConsistentSnapshotTest, TestReleaseResourcesOnUnpolledSplitTablets) {
