@@ -170,7 +170,7 @@ void TabletInvoker::SelectTabletServer()  {
       assign_new_leader_ = true;
     } else {
       YB_LOG_EVERY_N_SECS(INFO, 1)
-          << "Unable to pick leader for " << tablet_id_ << ", replicas: " << AsString(replicas)
+          << "Unable to find the leader for " << tablet_id_ << ", replicas: " << AsString(replicas)
           << ", followers: " << AsString(followers_) << THROTTLE_MSG;
     }
   } else {
