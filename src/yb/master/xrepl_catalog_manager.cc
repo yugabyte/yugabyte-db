@@ -4685,6 +4685,113 @@ Status CatalogManager::RemoveTablesFromCDCSDKStream(
   return Status::OK();
 }
 
+Status CatalogManager::SetCDCSDKWalRetentionForTable(
+    const SetCDCSDKWalRetentionForTableRequestPB* req,
+    SetCDCSDKWalRetentionForTableResponsePB* resp, rpc::RpcContext* rpc) {
+  LOG(INFO) << "Servicing SetCDCSDKWalRetentionForTable request from " << RequestorString(rpc)
+            << ": " << req->ShortDebugString();
+
+  if (!req->has_stream_id()) {
+    RETURN_INVALID_REQUEST_STATUS("Stream ID is required for setting WAL retention");
+  }
+  if (!req->has_table_id()) {
+    RETURN_INVALID_REQUEST_STATUS("Table ID is required for setting WAL retention");
+  }
+
+  auto stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(req->stream_id()));
+  const auto& table_id = req->table_id();
+
+  // Verify stream exists and is NOEXPORT_SNAPSHOT
+  CDCStreamInfoPtr stream;
+  {
+    SharedLock lock(mutex_);
+    stream = FindPtrOrNull(cdc_stream_map_, stream_id);
+  }
+  if (!stream) {
+    return STATUS(NotFound, "Stream not found", stream_id.ToString(),
+                  MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
+  }
+
+  // Check that this is a NOEXPORT_SNAPSHOT stream and determine if history cutoff is required.
+  // History cutoff is needed for record types that require BEFORE images (ALL, FULL_ROW_NEW_IMAGE,
+  // PG_FULL, PG_CHANGE_OLD_NEW, PG_DEFAULT). It's NOT needed for CHANGE or PG_NOTHING.
+  bool require_history_cutoff = false;
+  {
+    auto stream_lock = stream->LockForRead();
+    if (!stream_lock->pb.has_cdcsdk_stream_metadata() ||
+        !stream_lock->pb.cdcsdk_stream_metadata().has_consistent_snapshot_option() ||
+        stream_lock->pb.cdcsdk_stream_metadata().consistent_snapshot_option() !=
+            CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT) {
+      // Not a NOEXPORT_SNAPSHOT stream - WAL retention should already be set eagerly.
+      // Return OK to make this idempotent.
+      VLOG(1) << "Stream " << stream_id << " is not NOEXPORT_SNAPSHOT, skipping on-demand "
+              << "WAL retention (should already be set)";
+      return Status::OK();
+    }
+
+    // Determine if history cutoff is required based on record type.
+    // This mirrors the logic in CreateCDCSDKStream.
+    for (const auto& option : stream_lock->pb.options()) {
+      if (option.key() == cdc::kRecordType) {
+        // History cutoff is required for record types that need BEFORE images.
+        // Only CHANGE and PG_NOTHING don't need history cutoff.
+        require_history_cutoff =
+            option.value() != CDCRecordType_Name(cdc::CDCRecordType::CHANGE) &&
+            option.value() != CDCRecordType_Name(cdc::CDCRecordType::PG_NOTHING);
+        break;
+      }
+    }
+  }
+
+  // Verify table exists
+  scoped_refptr<TableInfo> table;
+  {
+    SharedLock lock(mutex_);
+    table = tables_->FindTableOrNull(table_id);
+  }
+  if (!table) {
+    return STATUS(NotFound, "Table not found", table_id,
+                  MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
+  }
+
+  // Check if WAL retention is already set for this table
+  {
+    auto table_lock = table->LockForRead();
+    if (table_lock->pb.has_wal_retention_secs() &&
+        table_lock->pb.wal_retention_secs() >= GetAtomicFlag(&FLAGS_cdc_wal_retention_time_secs)) {
+      // WAL retention already set, nothing to do
+      VLOG(1) << "WAL retention already set for table " << table_id << ", skipping";
+      return Status::OK();
+    }
+  }
+
+  // Set WAL retention via AlterTable
+  AlterTableRequestPB alter_table_req;
+  alter_table_req.mutable_table()->set_table_id(table_id);
+  alter_table_req.set_wal_retention_secs(GetAtomicFlag(&FLAGS_cdc_wal_retention_time_secs));
+
+  // Set the stream_id to trigger retention barrier setup on tablets.
+  // require_history_cutoff depends on the stream's record type.
+  alter_table_req.set_cdc_sdk_stream_id(stream_id.ToString());
+  alter_table_req.set_cdc_sdk_require_history_cutoff(require_history_cutoff);
+
+  AlterTableResponsePB alter_table_resp;
+  auto epoch = LeaderEpoch(
+      tablet_peer()->LeaderTerm(),
+      pitr_count());
+  Status s = this->AlterTable(&alter_table_req, &alter_table_resp, rpc, epoch);
+  if (!s.ok()) {
+    return STATUS(InternalError,
+                  Format("Failed to set WAL retention for table $0: $1", table_id, s.message()),
+                  MasterError(MasterErrorPB::INTERNAL_ERROR));
+  }
+
+  LOG(INFO) << "Successfully triggered on-demand WAL retention for table " << table_id
+            << " in stream " << stream_id
+            << " (require_history_cutoff=" << require_history_cutoff << ")";
+  return Status::OK();
+}
+
 std::vector<SysUniverseReplicationEntryPB>
 CatalogManager::GetAllXClusterUniverseReplicationInfos() {
   SharedLock lock(mutex_);

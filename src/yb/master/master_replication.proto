@@ -874,6 +874,17 @@ message RemoveTablesFromCDCSDKStreamResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+// Request to set WAL retention and retention barriers for a table on-demand.
+// Used by NOEXPORT_SNAPSHOT streams where retention is not set eagerly at stream creation.
+message SetCDCSDKWalRetentionForTableRequestPB {
+  optional string stream_id = 1;
+  optional string table_id = 2;
+}
+
+message SetCDCSDKWalRetentionForTableResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 service MasterReplication {
   option (yb.rpc.custom_service_name) = "yb.master.MasterService";
 
@@ -1011,4 +1022,8 @@ service MasterReplication {
   // Introduced for bug (#22876, #22773)
   rpc RemoveTablesFromCDCSDKStream (RemoveTablesFromCDCSDKStreamRequestPB)
       returns (RemoveTablesFromCDCSDKStreamResponsePB);
+
+  // Set WAL retention for a table on-demand for NOEXPORT_SNAPSHOT streams.
+  rpc SetCDCSDKWalRetentionForTable (SetCDCSDKWalRetentionForTableRequestPB)
+      returns (SetCDCSDKWalRetentionForTableResponsePB);
 }

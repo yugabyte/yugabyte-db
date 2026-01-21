@@ -2608,7 +2608,8 @@ void CDCServiceImpl::ProcessEntryForCdcsdk(
     TabletIdCDCCheckpointMap& tablet_min_checkpoint_map,
     StreamIdSet* slot_entries_to_be_deleted,
     const std::unordered_map<NamespaceId, uint64_t>& namespace_to_min_record_id_commit_time,
-    TableIdToStreamIdMap* expired_tables_map) {
+    TableIdToStreamIdMap* expired_tables_map,
+    TableStreamPairSet* tables_needing_on_demand_retention) {
   const auto& stream_id = entry.key.stream_id;
   const auto& tablet_id = entry.key.tablet_id;
   const auto& checkpoint = *entry.checkpoint;
@@ -2737,6 +2738,26 @@ void CDCServiceImpl::ProcessEntryForCdcsdk(
       return;
     }
     latest_active_time = last_active_time_cdc_state_table;
+
+    // Check if this is a NOEXPORT_SNAPSHOT stream that needs on-demand WAL retention.
+    // WAL retention is triggered when active_time != stream_creation_time (indicating first poll).
+    if (tables_needing_on_demand_retention) {
+      auto snapshot_option = stream_metadata.GetSnapshotOption();
+      auto stream_creation_time = stream_metadata.GetStreamCreationTime();
+      if (snapshot_option.has_value() &&
+          *snapshot_option == CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT &&
+          stream_creation_time.has_value() &&
+          last_active_time_cdc_state_table > 0 &&
+          static_cast<uint64>(last_active_time_cdc_state_table) != *stream_creation_time) {
+        // This table was polled - check if we need to trigger on-demand WAL retention.
+        auto table_id = tablet_peer->tablet_metadata()->table_id();
+        tables_needing_on_demand_retention->insert({table_id, stream_id});
+        VLOG(2) << "Table " << table_id << " in NOEXPORT_SNAPSHOT stream " << stream_id
+                << " was polled (active_time=" << last_active_time_cdc_state_table
+                << " != stream_creation_time=" << *stream_creation_time
+                << "), may need on-demand WAL retention";
+      }
+    }
   }
 
   // Ignoring those non-bootstrapped CDCSDK stream
@@ -3027,7 +3048,8 @@ Status CDCServiceImpl::PopulateTabletCheckPointInfo(
     TabletIdCDCCheckpointMap& cdcsdk_min_checkpoint_map,
     std::unordered_map<TabletId, OpId>& xcluster_tablet_min_opid_map,
     TabletIdStreamIdSet& tablet_stream_to_be_deleted, StreamIdSet& slot_entries_to_be_deleted,
-    TableIdToStreamIdMap& expired_tables_map) {
+    TableIdToStreamIdMap& expired_tables_map,
+    TableStreamPairSet& tables_needing_on_demand_retention) {
   std::unordered_set<xrepl::StreamId> refreshed_metadata_set;
 
   int count = 0;
@@ -3130,7 +3152,7 @@ Status CDCServiceImpl::PopulateTabletCheckPointInfo(
         ProcessEntryForCdcsdk(
             entry, stream_metadata, tablet_peer, cdcsdk_min_checkpoint_map,
             &slot_entries_to_be_deleted, *namespace_to_min_record_id_commit_time,
-            &expired_tables_map);
+            &expired_tables_map, &tables_needing_on_demand_retention);
         continue;
       }
       case CDCRequestSource::XCLUSTER:
@@ -3419,11 +3441,12 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
     TabletIdCDCCheckpointMap cdcsdk_min_checkpoint_map;
     std::unordered_map<TabletId, OpId> xcluster_tablet_min_opid_map;
     TableIdToStreamIdMap expired_tables_map;
+    TableStreamPairSet tables_needing_on_demand_retention;
     const auto now = MonoTime::Now();
 
     auto status = PopulateTabletCheckPointInfo(
         cdcsdk_min_checkpoint_map, xcluster_tablet_min_opid_map, cdc_state_entries_to_delete,
-        slot_entries_to_be_deleted, expired_tables_map);
+        slot_entries_to_be_deleted, expired_tables_map, tables_needing_on_demand_retention);
     if (!status.ok()) {
       LOG(WARNING) << "Failed to populate tablets checkpoint info: " << status;
       continue;
@@ -3458,6 +3481,11 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
           CleanupExpiredTables(expired_tables_map),
           "Failed to remove an expired table entry from stream");
     }
+
+    // Trigger on-demand WAL retention for NOEXPORT_SNAPSHOT streams where a table was first polled.
+    WARN_NOT_OK(
+        TriggerOnDemandWalRetention(tables_needing_on_demand_retention),
+        "Failed to trigger on-demand WAL retention");
 
     WARN_NOT_OK(ResultToStatus(rate_limiter_->SetBytesPerSecond(
         FLAGS_xcluster_get_changes_max_send_rate_mbps * 1_MB)),
@@ -3571,6 +3599,54 @@ Status CDCServiceImpl::CleanupExpiredTables(const TableIdToStreamIdMap& expired_
       num_cleanup_requests++;
     }
   }
+  return Status::OK();
+}
+
+Status CDCServiceImpl::TriggerOnDemandWalRetention(
+    const TableStreamPairSet& tables_needing_retention) {
+  if (tables_needing_retention.empty()) {
+    return Status::OK();
+  }
+
+  // Filter out pairs that have already been triggered (idempotency)
+  TableStreamPairSet pairs_to_trigger;
+  {
+    std::lock_guard lock(mutex_);
+    for (const auto& pair : tables_needing_retention) {
+      if (tables_with_on_demand_retention_triggered_.find(pair) ==
+          tables_with_on_demand_retention_triggered_.end()) {
+        pairs_to_trigger.insert(pair);
+      }
+    }
+  }
+
+  if (pairs_to_trigger.empty()) {
+    VLOG(2) << "All tables in the set already have on-demand WAL retention triggered";
+    return Status::OK();
+  }
+
+  LOG(INFO) << "Triggering on-demand WAL retention for " << pairs_to_trigger.size()
+            << " table/stream pairs";
+
+  for (const auto& [table_id, stream_id] : pairs_to_trigger) {
+    auto status = client()->SetCDCSDKWalRetentionForTable(stream_id, table_id);
+    if (!status.ok()) {
+      LOG(WARNING) << "Failed to trigger on-demand WAL retention for table " << table_id
+                   << " in stream " << stream_id << ": " << status;
+      // Continue with other tables even if one fails
+      continue;
+    }
+
+    LOG(INFO) << "Successfully triggered on-demand WAL retention for table " << table_id
+              << " in stream " << stream_id;
+
+    // Mark as triggered to avoid repeated calls
+    {
+      std::lock_guard lock(mutex_);
+      tables_with_on_demand_retention_triggered_.insert({table_id, stream_id});
+    }
+  }
+
   return Status::OK();
 }
 

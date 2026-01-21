@@ -735,6 +735,11 @@ class YBClient {
       const TableIds& table_id,
       const xrepl::StreamId stream_id);
 
+  // Set WAL retention for a table on-demand for NOEXPORT_SNAPSHOT streams.
+  Status SetCDCSDKWalRetentionForTable(
+      const xrepl::StreamId& stream_id,
+      const TableId& table_id);
+
   Result<bool> IsObjectPartOfXRepl(const TableId& table_id);
 
   Result<bool> IsBootstrapRequired(

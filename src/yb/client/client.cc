@@ -1899,6 +1899,25 @@ Status YBClient::RemoveTablesFromCDCSDKStream(
   return Status::OK();
 }
 
+Status YBClient::SetCDCSDKWalRetentionForTable(
+    const xrepl::StreamId& stream_id,
+    const TableId& table_id) {
+  if (!stream_id) {
+    return STATUS(InvalidArgument, "Stream ID should not be empty");
+  }
+  if (table_id.empty()) {
+    return STATUS(InvalidArgument, "Table ID should not be empty");
+  }
+
+  master::SetCDCSDKWalRetentionForTableRequestPB req;
+  master::SetCDCSDKWalRetentionForTableResponsePB resp;
+  req.set_stream_id(stream_id.ToString());
+  req.set_table_id(table_id);
+
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, SetCDCSDKWalRetentionForTable);
+  return Status::OK();
+}
+
 Result<bool> YBClient::IsObjectPartOfXRepl(const TableId& table_id) {
   IsObjectPartOfXReplRequestPB req;
   IsObjectPartOfXReplResponsePB resp;

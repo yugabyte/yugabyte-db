@@ -51,6 +51,7 @@ class MasterReplicationServiceImpl : public MasterServiceBase, public MasterRepl
     (RemoveUserTableFromCDCSDKStream)
     (ValidateAndSyncCDCStateEntriesForCDCSDKStream)
     (RemoveTablesFromCDCSDKStream)
+    (SetCDCSDKWalRetentionForTable)
   )
 
   MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(

@@ -112,6 +112,8 @@ using StreamIdSet = std::set<xrepl::StreamId>;
 using StreamIdHybridTimeMap = std::unordered_map<xrepl::StreamId, HybridTime>;
 using TableIdToStreamIdMap =
     std::unordered_map<TableId, std::pair<TabletId, std::unordered_set<xrepl::StreamId>>>;
+// Tracks {table_id, stream_id} pairs that need on-demand WAL retention (for NOEXPORT_SNAPSHOT).
+using TableStreamPairSet = std::set<std::pair<TableId, xrepl::StreamId>>;
 using RollBackTabletIdCheckpointMap =
     std::unordered_map<const std::string*, std::pair<int64_t, OpId>>;
 
@@ -213,7 +215,8 @@ class CDCServiceImpl : public CDCServiceIf {
       StreamIdSet* slot_entries_to_be_deleted = nullptr,
       const std::unordered_map<NamespaceId, uint64_t>& namespace_to_min_record_id_commit_time =
       std::unordered_map<NamespaceId, uint64_t>{},
-      TableIdToStreamIdMap* expired_tables_map = nullptr);
+      TableIdToStreamIdMap* expired_tables_map = nullptr,
+      TableStreamPairSet* tables_needing_on_demand_retention = nullptr);
 
   void ProcessEntryForXCluster(
       const CDCStateTableEntry& entry,
@@ -500,6 +503,10 @@ class CDCServiceImpl : public CDCServiceIf {
   // stream metadata and update the checkpoint of cdc_state entries to max.
   Status CleanupExpiredTables(const TableIdToStreamIdMap& expired_tables_map);
 
+  // Trigger on-demand WAL retention for NOEXPORT_SNAPSHOT streams.
+  // Called when a table is first polled (active_time changes from stream_creation_time).
+  Status TriggerOnDemandWalRetention(const TableStreamPairSet& tables_needing_retention);
+
   MicrosTime GetLastReplicatedTime(const std::shared_ptr<tablet::TabletPeer>& tablet_peer);
 
   bool ShouldUpdateMetrics(MonoTime time_since_update_metrics);
@@ -531,7 +538,8 @@ class CDCServiceImpl : public CDCServiceIf {
       TabletIdCDCCheckpointMap& cdcsdk_min_checkpoint_map,
       std::unordered_map<TabletId, OpId>& xcluster_tablet_min_opid_map,
       TabletIdStreamIdSet& tablet_stream_to_be_deleted, StreamIdSet& slot_entries_to_be_deleted,
-      TableIdToStreamIdMap& expired_tables_map);
+      TableIdToStreamIdMap& expired_tables_map,
+      TableStreamPairSet& tables_needing_on_demand_retention);
 
   void AddTableToExpiredTablesMap(
       const tablet::TabletPeerPtr& tablet_peer,
@@ -661,6 +669,10 @@ class CDCServiceImpl : public CDCServiceIf {
 
   // Map of streamId to session_id (uint64) for which VirtualWAL instance was created.
   std::unordered_map<xrepl::StreamId, uint64_t> stream_to_session_;
+
+  // Tracks {table_id, stream_id} pairs for which on-demand WAL retention has already been
+  // triggered. This prevents repeated calls to the Master RPC.
+  TableStreamPairSet tables_with_on_demand_retention_triggered_ GUARDED_BY(mutex_);
 
   mutable rw_spinlock xcluster_replication_maps_mutex_;
 

@@ -1496,6 +1496,11 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const RemoveTablesFromCDCSDKStreamRequestPB* req,
       RemoveTablesFromCDCSDKStreamResponsePB* resp, rpc::RpcContext* rpc);
 
+  // Set WAL retention for a table on-demand for NOEXPORT_SNAPSHOT streams.
+  Status SetCDCSDKWalRetentionForTable(
+      const SetCDCSDKWalRetentionForTableRequestPB* req,
+      SetCDCSDKWalRetentionForTableResponsePB* resp, rpc::RpcContext* rpc);
+
   // Query if Bootstrapping is required for a CDC stream (e.g. Are we missing logs).
   Status IsBootstrapRequired(
       const IsBootstrapRequiredRequestPB* req,
