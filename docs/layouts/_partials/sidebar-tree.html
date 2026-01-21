@@ -1,6 +1,6 @@
 {{ $currentPage := .context }}
 {{ $menuName := .context.Scratch.Get "leftNavName" }}
-{{ $pageUrl := .Page.RelPermalink }}
+{{ $pageUrl := .context.Page.RelPermalink }}
 {{ $productsMenu := .context.Site.Menus.products }}
 {{ $versionDir := .context.Scratch.Get "docVersion" }}
 
