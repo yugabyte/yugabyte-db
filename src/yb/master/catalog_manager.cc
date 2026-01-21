@@ -14237,10 +14237,9 @@ Status CatalogManager::SubmitBackgroundTask(const std::function<void()>& func) {
 }
 
 Status CatalogManager::GetYsqlTableOid(
-    const GetYsqlTableOidRequestPB* req, GetYsqlTableOidResponsePB* resp, rpc::RpcContext* rpc)
-    EXCLUDES(mutex_) {
+    const GetYsqlTableOidRequestPB* req, GetYsqlTableOidResponsePB* resp, rpc::RpcContext* rpc) {
   resp->set_table_oid(
-      VERIFY_RESULT(sys_catalog_->YSQLGetTableOid(req->database_oid(), req->table_name())));
+      VERIFY_RESULT(sys_catalog_->GetYsqlTableOid(req->database_oid(), req->table_name())));
   return Status::OK();
 }
 

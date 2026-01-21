@@ -2289,8 +2289,8 @@ Status SysCatalogTable::ForceWrite(
   return SyncWrite(writer.get());
 }
 
-Result<PgOid> SysCatalogTable::YSQLGetTableOid(PgOid database_oid, const TableName& table_name) {
-  TRACE_EVENT0("master", "YSQLGetTableOid");
+Result<PgOid> SysCatalogTable::GetYsqlTableOid(PgOid database_oid, const TableName& table_name) {
+  TRACE_EVENT0("master", "GetYsqlTableOid");
   auto read_data = VERIFY_RESULT(TableReadData(database_oid, kPgClassTableOid, ReadHybridTime()));
   const auto& schema = read_data.schema();
 
@@ -2305,7 +2305,7 @@ Result<PgOid> SysCatalogTable::YSQLGetTableOid(PgOid database_oid, const TableNa
     cond.add_operands()->set_column_id(oid_col_id);
     cond.set_op(QL_OP_GREATER_THAN_EQUAL);
     cond.add_operands()->mutable_value()->set_uint32_value(kPgFirstNormalObjectId);
-    docdb::DocPgsqlScanSpec spec(schema, nullptr);
+    docdb::DocPgsqlScanSpec spec(schema, &cond);
     RETURN_NOT_OK(iter->Init(spec));
   }
 
@@ -2331,7 +2331,7 @@ Result<PgOid> SysCatalogTable::YSQLGetTableOid(PgOid database_oid, const TableNa
   }
   if (result == kPgInvalidOid)
     LOG(ERROR) << "Could not find YSQL table with table '" << table_name
-               << "' in database_oid = " << database_oid;
+               << "' in database with db_oid = " << database_oid;
   return result;
 }
 

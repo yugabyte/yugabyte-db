@@ -179,7 +179,7 @@ class SysCatalogTable {
       int8_t type, const std::string& item_id, const google::protobuf::Message& new_pb,
       QLWriteRequestPB::QLStmtType op_type, int64_t leader_term);
 
-  Result<PgOid> YSQLGetTableOid(PgOid database_oid, const TableName& table_name);
+  Result<PgOid> GetYsqlTableOid(PgOid database_oid, const TableName& table_name);
 
   // ==================================================================
   // Static schema related methods.

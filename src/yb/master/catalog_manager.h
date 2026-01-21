@@ -1809,8 +1809,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   void RefreshPgCatalogVersionInfo() EXCLUDES(heartbeat_pg_catalog_versions_cache_mutex_);
 
   Status GetYsqlTableOid(
-      const GetYsqlTableOidRequestPB* req, GetYsqlTableOidResponsePB* resp, rpc::RpcContext* rpc)
-      EXCLUDES(mutex_);
+      const GetYsqlTableOidRequestPB* req, GetYsqlTableOidResponsePB* resp, rpc::RpcContext* rpc);
 
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
