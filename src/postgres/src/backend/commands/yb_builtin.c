@@ -60,14 +60,14 @@
  * Example usage:
  * SELECT * FROM yb_heap_stats();
  */
+#define YB_HEAP_STATS_RET_ARG_NUM 7
+
 Datum
 yb_heap_stats(PG_FUNCTION_ARGS)
 {
-	const static size_t kRetArgNum = 7;
-
-	Datum		values[kRetArgNum];
-	bool		isnull[kRetArgNum];
-	TupleDesc	tupdesc = CreateTemplateTupleDesc(kRetArgNum);
+	Datum		values[YB_HEAP_STATS_RET_ARG_NUM];
+	bool		isnull[YB_HEAP_STATS_RET_ARG_NUM];
+	TupleDesc	tupdesc = CreateTemplateTupleDesc(YB_HEAP_STATS_RET_ARG_NUM);
 
 	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "TCMalloc heap_size_bytes",
 					   INT8OID, -1, 0);
@@ -113,21 +113,21 @@ yb_heap_stats(PG_FUNCTION_ARGS)
  * - User command:
  *     SELECT yb_getrusage();
  */
+#define YB_GETRUSAGE_ARG_COUNT 16
+
 Datum
 yb_getrusage(PG_FUNCTION_ARGS)
 {
-	const int	arg_count = 16;
-
 	TupleDesc	tupdesc;
-	Datum		values[arg_count];
-	bool		isnull[arg_count];
+	Datum		values[YB_GETRUSAGE_ARG_COUNT];
+	bool		isnull[YB_GETRUSAGE_ARG_COUNT];
 	struct rusage r;
 
 	/* Get usage. */
 	getrusage(RUSAGE_SELF, &r);
 
 	/* Create tuple descriptor. */
-	tupdesc = CreateTemplateTupleDesc(arg_count);
+	tupdesc = CreateTemplateTupleDesc(YB_GETRUSAGE_ARG_COUNT);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "user cpu", INT8OID, -1, 0);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 2, "system cpu", INT8OID, -1, 0);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 3, "maxrss", INT8OID, -1, 0);

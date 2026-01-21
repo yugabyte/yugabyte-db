@@ -262,13 +262,14 @@ get_replication_role(PG_FUNCTION_ARGS)
 	PG_RETURN_TEXT_P(cstring_to_text(role_name));
 }
 
+#define INSERT_INTO_TABLE_NUM_ARGS 3
+
 void
 InsertIntoTable(const char *table_name, int64 ddl_end_time, int64 query_id,
 				Jsonb *yb_data)
 {
-	const int	kNumArgs = 3;
-	Oid			arg_types[kNumArgs];
-	Datum		arg_vals[kNumArgs];
+	Oid			arg_types[INSERT_INTO_TABLE_NUM_ARGS];
+	Datum		arg_vals[INSERT_INTO_TABLE_NUM_ARGS];
 	StringInfoData query_buf;
 
 	initStringInfo(&query_buf);
@@ -286,7 +287,7 @@ InsertIntoTable(const char *table_name, int64 ddl_end_time, int64 query_id,
 	arg_types[2] = JSONBOID;
 	arg_vals[2] = PointerGetDatum(yb_data);
 
-	int			exec_res = SPI_execute_with_args(query_buf.data, kNumArgs, arg_types,
+	int			exec_res = SPI_execute_with_args(query_buf.data, INSERT_INTO_TABLE_NUM_ARGS, arg_types,
 												 arg_vals, /* Nulls */ NULL, /* readonly */ false,
 												  /* tuple-count limit */ 1);
 
