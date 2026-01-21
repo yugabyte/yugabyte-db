@@ -2289,6 +2289,52 @@ Status SysCatalogTable::ForceWrite(
   return SyncWrite(writer.get());
 }
 
+Result<PgOid> SysCatalogTable::YSQLGetTableOid(PgOid database_oid, const TableName& table_name) {
+  TRACE_EVENT0("master", "YSQLGetTableOid");
+  auto read_data = VERIFY_RESULT(TableReadData(database_oid, kPgClassTableOid, ReadHybridTime()));
+  const auto& schema = read_data.schema();
+
+  const auto oid_col_id = VERIFY_RESULT(schema.ColumnIdByName(kPgClassOidColumnName)).rep();
+  const auto relname_col_id = VERIFY_RESULT(schema.ColumnIdByName("relname")).rep();
+  dockv::ReaderProjection projection(schema, {oid_col_id, relname_col_id});
+
+  auto iter = VERIFY_RESULT(read_data.NewUninitializedIterator(projection));
+  auto request_scope = VERIFY_RESULT(VERIFY_RESULT(Tablet())->CreateRequestScope());
+  {
+    PgsqlConditionPB cond;
+    cond.add_operands()->set_column_id(oid_col_id);
+    cond.set_op(QL_OP_GREATER_THAN_EQUAL);
+    cond.add_operands()->mutable_value()->set_uint32_value(kPgFirstNormalObjectId);
+    docdb::DocPgsqlScanSpec spec(schema, nullptr);
+    RETURN_NOT_OK(iter->Init(spec));
+  }
+
+  PgOid result = kPgInvalidOid;
+  qlexpr::QLTableRow row;
+  while (VERIFY_RESULT(iter->FetchNext(&row))) {
+    const auto& oid_col = row.GetValue(oid_col_id);
+    const auto& relname_col = row.GetValue(relname_col_id);
+    if (!oid_col) {
+      return STATUS_FORMAT(
+          Corruption, "Could not read 'oid' column from pg_class for database_oid: $0",
+          database_oid);
+    }
+    if (!relname_col) {
+      return STATUS_FORMAT(
+          Corruption, "Could not read 'relname' column from pg_class for database_oid: $0",
+          database_oid);
+    }
+    if (relname_col->get().string_value() == table_name) {
+      result = oid_col->get().uint32_value();
+      break;
+    }
+  }
+  if (result == kPgInvalidOid)
+    LOG(ERROR) << "Could not find YSQL table with table '" << table_name
+               << "' in database_oid = " << database_oid;
+  return result;
+}
+
 const Schema& PgTableReadData::schema() const {
   return table_info->schema();
 }

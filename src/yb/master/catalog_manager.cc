@@ -14236,4 +14236,12 @@ Status CatalogManager::SubmitBackgroundTask(const std::function<void()>& func) {
   return background_tasks_thread_pool_->SubmitFunc(func);
 }
 
+Status CatalogManager::GetYsqlTableOid(
+    const GetYsqlTableOidRequestPB* req, GetYsqlTableOidResponsePB* resp, rpc::RpcContext* rpc)
+    EXCLUDES(mutex_) {
+  resp->set_table_oid(
+      VERIFY_RESULT(sys_catalog_->YSQLGetTableOid(req->database_oid(), req->table_name())));
+  return Status::OK();
+}
+
 } // namespace yb::master

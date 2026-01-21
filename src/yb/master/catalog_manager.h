@@ -1808,6 +1808,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Refresh the in-memory map for YSQL pg_yb_catalog_version table.
   void RefreshPgCatalogVersionInfo() EXCLUDES(heartbeat_pg_catalog_versions_cache_mutex_);
 
+  Status GetYsqlTableOid(
+      const GetYsqlTableOidRequestPB* req, GetYsqlTableOidResponsePB* resp, rpc::RpcContext* rpc)
+      EXCLUDES(mutex_);
+
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
   friend class TableLoader;

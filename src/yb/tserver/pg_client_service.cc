@@ -2755,6 +2755,13 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     return Status::OK();
   }
 
+  Status GetTableOid(
+      const PgGetTableOidRequestPB& req, PgGetTableOidResponsePB* resp, rpc::RpcContext* context) {
+    resp->set_table_oid(
+        VERIFY_RESULT(client().GetYsqlTableOid(req.database_oid(), req.table_name())));
+    return Status::OK();
+  }
+
   #define PG_CLIENT_SESSION_METHOD_FORWARD(r, data, method) \
   Status method( \
       const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)& req, \

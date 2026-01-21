@@ -229,6 +229,8 @@ using yb::master::WaitForYsqlBackendsCatalogVersionResponsePB;
 using yb::rpc::Messenger;
 using yb::tserver::AllowSplitTablet;
 using yb::tserver::TabletConsensusInfoPB;
+using yb::master::GetYsqlTableOidRequestPB;
+using yb::master::GetYsqlTableOidResponsePB;
 
 using namespace yb::size_literals;  // NOLINT.
 
@@ -1201,6 +1203,15 @@ Status YBClient::ReservePgsqlOids(
     *oid_cache_invalidations_count = resp.oid_cache_invalidations_count();
   }
   return Status::OK();
+}
+
+Result<PgOid> YBClient::GetYsqlTableOid(PgOid database_oid, const TableName& table_name) {
+  GetYsqlTableOidRequestPB req;
+  GetYsqlTableOidResponsePB resp;
+  req.set_database_oid(database_oid);
+  req.set_table_name(table_name);
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Client, req, resp, GetYsqlTableOid);
+  return resp.table_oid();
 }
 
 Status YBClient::DEPRECATED_GetYsqlCatalogMasterVersion(uint64_t *ysql_catalog_version) {

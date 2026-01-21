@@ -112,6 +112,8 @@ YbcStatus YBCPgSetTserverCatalogMessageList(
     YbcPgOid db_oid, bool is_breaking_change, uint64_t new_catalog_version,
     const YbcCatalogMessageList *message_list);
 
+YbcStatus YBCGetTableOid(YbcPgOid database_oid, const char* table_name, YbcPgOid* table_oid);
+
 // Return auth_key to the local tserver's postgres authentication key stored in shared memory.
 uint64_t YBCGetSharedAuthKey();
 

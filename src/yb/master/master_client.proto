@@ -222,6 +222,16 @@ message GetYsqlCatalogConfigResponsePB {
   optional uint64 version = 2;
 }
 
+message GetYsqlTableOidRequestPB {
+  required uint32 database_oid = 1;
+  required string table_name = 2;
+}
+
+message GetYsqlTableOidResponsePB {
+  optional MasterErrorPB error = 1;
+  optional uint32 table_oid = 2;
+}
+
 message RedisConfigSetRequestPB {
   optional string keyword = 1;
   repeated bytes args = 2;
@@ -287,6 +297,8 @@ service MasterClient {
 
   rpc GetIndexBackfillProgress(GetIndexBackfillProgressRequestPB)
       returns (GetIndexBackfillProgressResponsePB);
+
+  rpc GetYsqlTableOid(GetYsqlTableOidRequestPB) returns (GetYsqlTableOidResponsePB);
 
   // Redis Config
   rpc RedisConfigSet(RedisConfigSetRequestPB) returns (RedisConfigSetResponsePB);

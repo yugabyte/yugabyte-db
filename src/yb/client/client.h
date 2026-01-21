@@ -534,6 +534,8 @@ class YBClient {
       bool use_secondary_space, uint32_t* begin_oid, uint32_t* end_oid,
       uint32_t* oid_cache_invalidations_count = nullptr);
 
+  Result<PgOid> GetYsqlTableOid(PgOid database_oid, const TableName& table_name);
+
   // Deprecated. Use instead per-db version below.
   Status DEPRECATED_GetYsqlCatalogMasterVersion(uint64_t *ysql_catalog_version);
 

@@ -1940,6 +1940,10 @@ PgApiImpl::SetTserverCatalogMessageList(
       db_oid, is_breaking_change, new_catalog_version, messages);
 }
 
+Result<PgOid> PgApiImpl::GetTableOid(PgOid database_oid, const TableName& table_name) {
+  return pg_client_.GetTableOid(database_oid, table_name);
+}
+
 uint64_t PgApiImpl::GetSharedAuthKey() const {
   return tserver_shared_object_->postgres_auth_key();
 }
