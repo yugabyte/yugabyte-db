@@ -3845,7 +3845,7 @@ process_user_cpu_seconds:
   range: true
   filters:
     process: "yb-master|yb-tserver|yb-postmaster|otelcol-contrib|\
-      yb-controller-server|node_exporter|odyssey|total"
+      yb-controller-server|node_exporter|odyssey|total_count"
   group_by: "process"
   panel_group: "Per-process Metrics"
   layout:
@@ -3861,7 +3861,7 @@ process_user_cpu_seconds:
         "yb-controller-server": "YB-Controller"
         "node_exporter": "Node Exporter"
         "odyssey": "Connection Pooling Manager"
-        "total": "Total"
+        "total_count": "Total"
       ticksuffix: "&nbsp;%"
 
 process_system_cpu_seconds:
@@ -3871,7 +3871,7 @@ process_system_cpu_seconds:
   range: true
   filters:
     process: "yb-master|yb-tserver|yb-postmaster|otelcol-contrib|\
-      yb-controller-server|node_exporter|odyssey|total"
+      yb-controller-server|node_exporter|odyssey|total_count"
   group_by: "process"
   panel_group: "Per-process Metrics"
   layout:
@@ -3887,7 +3887,7 @@ process_system_cpu_seconds:
         "yb-controller-server": "YB-Controller"
         "node_exporter": "Node Exporter"
         "odyssey": "Connection Pooling Manager"
-        "total": "Total"
+        "total_count": "Total"
       ticksuffix: "&nbsp;%"
 
 process_virtual_memory:
@@ -3897,7 +3897,7 @@ process_virtual_memory:
   operator: "/ 1024"
   filters:
     process: "yb-master|yb-tserver|yb-postmaster|otelcol-contrib|\
-      yb-controller-server|node_exporter|odyssey|total"
+      yb-controller-server|node_exporter|odyssey|total_count"
     type: "virtual"
   group_by: "process"
   panel_group: "Per-process Metrics"
@@ -3914,7 +3914,7 @@ process_virtual_memory:
         "yb-controller-server": "YB-Controller"
         "node_exporter": "Node Exporter"
         "odyssey": "Connection Pooling Manager"
-        "total": "Total"
+        "total_count": "Total"
       ticksuffix: "&nbsp;MB"
 
 process_resident_memory:
@@ -3924,7 +3924,7 @@ process_resident_memory:
   operator: "/ 1024"
   filters:
     process: "yb-master|yb-tserver|yb-postmaster|otelcol-contrib|\
-      yb-controller-server|node_exporter|odyssey|total"
+      yb-controller-server|node_exporter|odyssey|total_count"
     type: "resident"
   group_by: "process"
   panel_group: "Per-process Metrics"
@@ -3941,7 +3941,7 @@ process_resident_memory:
         "yb-controller-server": "YB-Controller"
         "node_exporter": "Node Exporter"
         "odyssey": "Connection Pooling Manager"
-        "total": "Total"
+        "total_count": "Total"
       ticksuffix: "&nbsp;MB"
 
 process_proportional_memory:
@@ -3951,7 +3951,7 @@ process_proportional_memory:
   operator: "/ 1024"
   filters:
     process: "yb-master|yb-tserver|yb-postmaster|otelcol-contrib|\
-      yb-controller-server|node_exporter|odyssey|total"
+      yb-controller-server|node_exporter|odyssey|total_count"
     type: "proportional"
   group_by: "process"
   panel_group: "Per-process Metrics"
@@ -3968,7 +3968,7 @@ process_proportional_memory:
         "yb-controller-server": "YB-Controller"
         "node_exporter": "Node Exporter"
         "odyssey": "Connection Pooling Manager"
-        "total": "Total"
+        "total_count": "Total"
       ticksuffix: "&nbsp;MB"
 
 process_io_read:
@@ -3977,7 +3977,7 @@ process_io_read:
   range: true
   filters:
     process: "yb-master|yb-tserver|yb-postmaster|otelcol-contrib|\
-      yb-controller-server|node_exporter|odyssey|total"
+      yb-controller-server|node_exporter|odyssey|total_count"
   group_by: "process"
   panel_group: "Per-process Metrics"
   layout:
@@ -3993,7 +3993,7 @@ process_io_read:
         "yb-controller-server": "YB-Controller"
         "node_exporter": "Node Exporter"
         "odyssey": "Connection Pooling Manager"
-        "total": "Total"
+        "total_count": "Total"
       ticksuffix: "&nbsp;KB"
 
 process_io_write:
@@ -4002,7 +4002,7 @@ process_io_write:
   range: true
   filters:
     process: "yb-master|yb-tserver|yb-postmaster|otelcol-contrib|\
-      yb-controller-server|node_exporter|odyssey|total"
+      yb-controller-server|node_exporter|odyssey|total_count"
   group_by: "process"
   panel_group: "Per-process Metrics"
   layout:
@@ -4018,7 +4018,7 @@ process_io_write:
         "yb-controller-server": "YB-Controller"
         "node_exporter": "Node Exporter"
         "odyssey": "Connection Pooling Manager"
-        "total": "Total"
+        "total_count": "Total"
       ticksuffix: "&nbsp;KB"
 
 process_open_files:
@@ -4027,7 +4027,7 @@ process_open_files:
   range: true
   filters:
     process: "yb-master|yb-tserver|yb-postmaster|otelcol-contrib|\
-      yb-controller-server|node_exporter|odyssey|total"
+      yb-controller-server|node_exporter|odyssey|total_count"
   group_by: "process"
   panel_group: "Per-process Metrics"
   layout:
@@ -4043,7 +4043,7 @@ process_open_files:
         "yb-controller-server": "YB-Controller"
         "node_exporter": "Node Exporter"
         "odyssey": "Connection Pooling Manager"
-        "total": "Total"
+        "total_count": "Total"
 
 ysql_catalog_cache_misses:
   metric: "rpc_latency_count"
