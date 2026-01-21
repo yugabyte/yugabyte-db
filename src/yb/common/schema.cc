@@ -628,6 +628,21 @@ Result<const ColumnSchema&> Schema::column_by_id(ColumnId id) const {
   return cols_[idx];
 }
 
+void Schema::UpdateMissingValuesFrom(
+    const google::protobuf::RepeatedPtrField<ColumnSchemaPB>& columns) {
+  for (int i = 0; i < static_cast<int>(cols_.size()); ++i) {
+    if (i >= columns.size()) {
+      LOG(INFO) << Format("More columns in restored schema ($0) than in schema from backup ($1). "
+                          "This can happen if columns were dropped or there was an ongoing schema "
+                          "change at the time of the backup.", cols_.size(), columns.size());
+      break;
+    }
+    if (columns[i].has_missing_value()) {
+      cols_[i].set_missing_value(columns[i].missing_value());
+    }
+  }
+}
+
 Result<const QLValuePB&> Schema::GetMissingValueByColumnId(ColumnId id) const {
   const auto& column_schema = VERIFY_RESULT_REF(column_by_id(id));
   return column_schema.missing_value();

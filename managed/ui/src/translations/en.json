@@ -3447,9 +3447,12 @@
           "title": "Advanced Configuration",
           "helpText": "Optimize performance by allocating dedicated resources for metadata operations.",
           "helpTextLink": "<b>Note!</b> This will increase the number nodes in your cluster.  <a>Learn more.</a>",
+          "helpText1": "Improve metadata and cluster coordination capacity by placing master servers on dedicated nodes.",
+          "helpText2": "<b>Recommended</b> for deployments with many databases or very large table counts.",
           "totalNodes": "Total Nodes",
           "totalTServer": "Total T-Server Nodes",
-          "totalMaster": "Total Master Nodes"
+          "totalMaster": "Total Master Server Nodes",
+          "tooltip": "Master node count is system-assigned and is equal to the cluster’s replication factor. This is to maintain consensus and fault tolerance.<br><br> <a>Learn more</a>"
         },
         "replicationFactorCard": {
           "title": "Setup Requirements",
@@ -3483,7 +3486,7 @@
           "prefferedQues": "What is the preferred availability zone?",
           "prefferedAns": "The preferred availability zones handle all read and write requests from your client application. For lower latencies and best performance, set the availability zones closest to your application as preferred.",
           "links": "<a1>Learn more about preferred availability zone</a1> and <a2>how to select ranking.</a2>",
-          "note": "<b>Note:</b><br/> <li>If no zone is set as preferred, client requests are equally distributed across all zones.</li> <li>Certain exceptions, such as <a>follower reads</a>, will diverge read requests.</li><li>You can set or change the preferred availability zone after cluster creation.</li>"
+          "note": "<b>Note:</b><br><br> <li>If no zone is set as preferred, client requests are equally distributed across all zones.</li> <li>Certain exceptions, such as <a>follower reads</a>, will diverge read requests.</li><li>You can set or change the preferred availability zone after cluster creation.</li>"
         },
         "errMsg": {
           "lessNodes": "<b>Invalid node count!</b>  You have selected <b>{{nodeCount}} nodes</b>. To support the chosen fault tolerance <b>{{faultToleranceNeeded}} nodes</b> are required. Update your selection to proceed. ",

@@ -22,7 +22,7 @@ This page covers the following YCQL features.
 
 ## Quick Start
 
-You can explore the basics of the YCQL API using the [Quick start](/preview/quick-start/macos/) steps.
+You can explore the basics of the YCQL API using the [Quick start](/stable/quick-start/macos/) steps.
 
 ## DDL statements
 
@@ -130,5 +130,5 @@ Primitive Type | Allowed in Key | Type Parameters | Description |
 
 ## Learn more
 
-- [Advantages of YCQL over Cassandra](/preview/faq/comparisons/cassandra)
+- [Advantages of YCQL over Cassandra](/stable/faq/comparisons/cassandra)
 - [YCQL - Cassandra 3.4 compatibility](../../explore/ycql-language/cassandra-feature-support)

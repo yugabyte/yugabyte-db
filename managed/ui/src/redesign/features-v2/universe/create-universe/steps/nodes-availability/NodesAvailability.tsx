@@ -1,9 +1,13 @@
 import { forwardRef, useContext, useImperativeHandle, useState } from 'react';
-import { FormProvider, useForm } from 'react-hook-form';
+import { isEmpty } from 'lodash';
 import { useMount } from 'react-use';
-import { AlertVariant, mui, YBAlert } from '@yugabyte-ui-library/core';
-
+import { Trans, useTranslation } from 'react-i18next';
+import { FormProvider, useForm } from 'react-hook-form';
+import { yupResolver } from '@hookform/resolvers/yup';
 import {
+  AlertVariant,
+  mui,
+  YBAlert,
   YBMaps,
   YBMapMarker,
   MarkerType,
@@ -11,31 +15,30 @@ import {
   MapLegendItem,
   useGetMapIcons
 } from '@yugabyte-ui-library/core';
-import { ClusterType, Region } from '../../../../../helpers/dtos';
-import { FreeFormRFRequirement } from './FreeFormRFRequirement';
+import {
+  FreeFormRFRequirement,
+  GuidedRequirementDetails,
+  AvailabilityZones,
+  ReplicationStatusCard,
+  DedicatedNode
+} from './index';
+import { assignRegionsAZNodeByReplicationFactor } from '../../CreateUniverseUtils';
+import { NodesAvailabilitySchema } from './ValidationSchema';
+import { Universe } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import {
   CreateUniverseContext,
   CreateUniverseContextMethods,
   StepsRef
 } from '../../CreateUniverseContext';
-import { GuidedRequirementDetails } from './GuidedRequirementDetails';
-import { AvailabilityZones } from './AvailabilityZones';
-import { ReplicationStatusCard } from './ReplicationStatusCard';
-import { DedicatedNode } from './DedicatedNodes';
-import { ResilienceFormMode, ResilienceType } from '../resilence-regions/dtos';
-import { assignRegionsAZNodeByReplicationFactor } from '../../CreateUniverseUtils';
 import { NodeAvailabilityProps } from './dtos';
-import { NodesAvailabilitySchema } from './ValidationSchema';
-import { yupResolver } from '@hookform/resolvers/yup';
-import { Trans, useTranslation } from 'react-i18next';
-import { isEmpty } from 'lodash';
-import { ArrowDropDown } from '@material-ui/icons';
-import { Fade, Grow } from '@material-ui/core';
-import { Universe } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
+import { ClusterType, Region } from '../../../../../helpers/dtos';
+import { ResilienceFormMode, ResilienceType } from '../resilence-regions/dtos';
 
+//icons
+import { ArrowDropDown } from '@material-ui/icons';
 import NodesIcon from '@app/redesign/assets/nodes.svg';
 
-const { Box, styled } = mui;
+const { Box, styled, Fade } = mui;
 
 const NodesAccordion = styled('div')(({ theme, expanded }) => ({
   border: `1px solid ${theme.palette.grey[200]}`,

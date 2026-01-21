@@ -1,11 +1,10 @@
 import { useCallback, useContext, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useFormContext } from 'react-hook-form';
-import { Divider, styled, Typography } from '@material-ui/core';
 import { mui } from '@yugabyte-ui-library/core';
-import { ReplicationFactorInfoModal } from './ReplicationFactorInfoModal';
-import { getFaultToleranceNeededForAZ } from '../../CreateUniverseUtils';
+import { ReplicationFactorInfoModal } from './index';
 import { CreateUniverseContext, CreateUniverseContextMethods } from '../../CreateUniverseContext';
+import { getFaultToleranceNeededForAZ } from '../../CreateUniverseUtils';
 import { FaultToleranceType } from '../resilence-regions/dtos';
 
 //icons
@@ -14,7 +13,7 @@ import Check from '../../../../../assets/check-grey.svg';
 import NotAllowed from '../../../../../assets/revoke.svg';
 import DocTick from '../../../../../assets/doc_tick_purple.svg';
 
-const { List, ListItem } = mui;
+const { List, ListItem, styled, Divider, Typography } = mui;
 
 const StyledReplicationCardHeader = styled('div')(({ theme }) => ({
   background: '#F2F3FE',

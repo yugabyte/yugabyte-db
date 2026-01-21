@@ -149,6 +149,19 @@ DECLARE_int32(tserver_yb_client_default_timeout_ms);
 DECLARE_int32(txn_print_trace_every_n);
 DECLARE_int32(txn_slow_op_threshold_ms);
 
+METRIC_DEFINE_event_stats(server, pg_client_exchange_response_size,
+    "The size of PgClient exchange response in bytes", yb::MetricUnit::kBytes,
+    "The size of PgClient exchange response in bytes");
+METRIC_DEFINE_event_stats(server, vector_index_fetch_us,
+    "Time to fetch vector index results from tablets", yb::MetricUnit::kMicroseconds,
+    "Time (microseconds) that query spent fetching list of vectors from tablets.");
+METRIC_DEFINE_event_stats(server, vector_index_collect_us,
+    "Time to collect vector index tablets results", yb::MetricUnit::kMicroseconds,
+    "Time (microseconds) that query spent parsing vectors index tablets results.");
+METRIC_DEFINE_event_stats(server, vector_index_reduce_us,
+    "Time to reduce vector index results", yb::MetricUnit::kMicroseconds,
+    "Time (microseconds) that query spent reducing list of vectors from tablets.");
+
 namespace yb::tserver {
 namespace {
 
@@ -477,7 +490,8 @@ struct VectorIndexQueryPartitionData {
 
 class VectorIndexQuery {
  public:
-  VectorIndexQuery() = default;
+  explicit VectorIndexQuery(std::reference_wrapper<const PgClientSessionMetrics> metrics)
+      : metrics_(metrics) {}
 
   bool active() const {
     return active_;
@@ -523,7 +537,7 @@ class VectorIndexQuery {
       ++partition_idx;
     }
     return_paging_state_ = read_req.return_paging_state();
-    fetch_start_ = MonoTime::NowIf(FLAGS_vector_index_dump_stats);
+    fetch_start_ = MonoTime::Now();
 
     return Status::OK();
   }
@@ -534,7 +548,7 @@ class VectorIndexQuery {
     VLOG_WITH_FUNC(4) << "Resp: " << resp.ShortDebugString();
     active_ = false;
     auto dump_stats = fetch_start_ != MonoTime();
-    auto process_start_time = MonoTime::NowIf(dump_stats);
+    auto process_start_time = MonoTime::Now();
 
     MonoTime reduce_start_time;
     bool partitions_are_stale = false;
@@ -558,7 +572,7 @@ class VectorIndexQuery {
     // to retrigger the request transparently and to force partitions refresh by Prepare().
     if (!partitions_are_stale && !ops.empty()) {
       ProcessOperationsResponse(ops, used_read_time);
-      reduce_start_time = MonoTime::NowIf(dump_stats);
+      reduce_start_time = MonoTime::Now();
 
       // TODO(vector_index): Actually "old" vectors already sorted.
       // So we could sort newly added vectors, then just merge with this first part.
@@ -600,11 +614,16 @@ class VectorIndexQuery {
       VLOG_WITH_FUNC(3) << "Paging state: " << AsString(paging_state);
     }
 
+    auto reduce_time = MonoTime::Now() - reduce_start_time;
+    auto fetch_time = process_start_time - fetch_start_;
+    auto collect_time = reduce_start_time - process_start_time;
+    metrics_.vector_index_fetch_us->Increment(fetch_time.ToMicroseconds());
+    metrics_.vector_index_collect_us->Increment(collect_time.ToMicroseconds());
+    metrics_.vector_index_reduce_us->Increment(reduce_time.ToMicroseconds());
     LOG_IF(INFO, dump_stats)
-        << "VI_STATS: Fetch time: "
-        << (process_start_time - fetch_start_).ToPrettyString()
-        << ", collect time: " << (reduce_start_time - process_start_time).ToPrettyString()
-        << ", reduce time: " << (MonoTime::Now() - reduce_start_time).ToPrettyString();
+        << "VI_STATS: Fetch time: " << fetch_time.ToPrettyString()
+        << ", collect time: " << collect_time.ToPrettyString()
+        << ", reduce time: " << reduce_time.ToPrettyString();
 
     return Status::OK();
   }
@@ -707,6 +726,7 @@ class VectorIndexQuery {
     }
   }
 
+  const PgClientSessionMetrics& metrics_;
   Uuid id_ = Uuid::Generate();
   bool active_ = false;
   size_t prefetch_size_ = 0;
@@ -1426,7 +1446,8 @@ Result<std::pair<PgClientSessionOperations, VectorIndexQueryPtr>> PrepareOperati
     const PgTablesQueryResult& tables, VectorIndexQueryPtr& vector_index_query,
     bool has_distributed_txn,
     const LWFunction<Result<TransactionMetadata>()>& object_locking_txn_meta_provider,
-    IsTxnUsingTableLocks is_txn_using_table_locks) {
+    IsTxnUsingTableLocks is_txn_using_table_locks,
+    const PgClientSessionMetrics& metrics) {
   auto write_time = HybridTime::FromPB(req->write_time());
   std::pair<PgClientSessionOperations, VectorIndexQueryPtr> result;
   auto& ops = result.first;
@@ -1452,7 +1473,7 @@ Result<std::pair<PgClientSessionOperations, VectorIndexQueryPtr>> PrepareOperati
         }
         if (!vector_index_query ||
             !vector_index_query->IsContinuation(read.index_request().paging_state())) {
-          vector_index_query = std::make_shared<VectorIndexQuery>();
+          vector_index_query = std::make_shared<VectorIndexQuery>(metrics);
         }
         result.second = vector_index_query;
         RETURN_NOT_OK(result.second->Prepare(read, table, ops));
@@ -2773,6 +2794,9 @@ class PgClientSession::Impl {
 
   Status DoAcquireObjectLock(const ObjectLockQueryDataPtr& data, CoarseTimePoint deadline) {
     const auto& options = data->req.options();
+    VLOG_WITH_PREFIX(3) << "Object lock for relation " << AsString(data->req.lock_oid())
+              << " with lock type " << AsString(static_cast<TableLockType>(data->req.lock_type()));
+
     RSTATUS_DCHECK(
         options.is_using_table_locks(), IllegalState, "Table Locking feature not enabled.");
     auto setup_session_result = VERIFY_RESULT(SetupSession(
@@ -2790,7 +2814,7 @@ class PgClientSession::Impl {
         : NextObjectLockingTxnMeta(locality, deadline);
     RETURN_NOT_OK(txn_meta_res);
     const auto lock_type = static_cast<TableLockType>(data->req.lock_type());
-    VLOG_WITH_PREFIX_AND_FUNC(1) << "txn_id " << txn_meta_res->transaction_id << " subtxn_id "
+    VLOG_WITH_PREFIX_AND_FUNC(4) << "txn_id " << txn_meta_res->transaction_id << " subtxn_id "
                                  << options.active_sub_transaction_id()
                                  << " lock_type: " << AsString(lock_type)
                                  << " req: " << data->req.ShortDebugString();
@@ -2913,7 +2937,7 @@ class PgClientSession::Impl {
   }
 
   const EventStatsPtr& stats_exchange_response_size() const {
-    return context_.stats_exchange_response_size;
+    return context_.metrics.exchange_response_size;
   }
 
   const tserver::TSLocalLockManagerPtr& ts_lock_manager() const {
@@ -3034,6 +3058,32 @@ class PgClientSession::Impl {
       const PgTablesQueryResult& tables, const PerformQueryDataPtr& data, CoarseTimePoint deadline,
       rpc::RpcContext* context = nullptr) {
     auto& options = *data->req.mutable_options();
+    if (VLOG_IS_ON(3)) {
+      std::stringstream ss;
+      bool is_ddl = options.ddl_mode();
+      bool is_regular_transaction_block = options.ddl_use_regular_transaction_block();
+      bool is_catalog = options.use_catalog_session();
+      ss << LogPrefix() << " ";
+      if (is_ddl && !is_regular_transaction_block) {
+        ss << "Autonomous DDL op: ";
+      } else if (is_catalog) {
+        ss << "Catalog op: ";
+      } else {
+        ss << "Regular DML/ DDL op: ";
+      }
+      ss << "txn_serial_no: " << options.txn_serial_no() << ", ";
+      ss << "read_time_serial_no: " << options.read_time_serial_no() << "; ";
+      for (const auto& op : data->req.ops()) {
+        if (op.has_read()) {
+          ss << "Read op: " << op.read().table_id();
+        } else {
+          ss << "Write op: " << op.write().table_id();
+        }
+        ss << ";";
+      }
+      LOG(INFO) << ss.str();
+    }
+
     VLOG(5) << "Perform request: " << data->req.ShortDebugString();
 
     RETURN_NOT_OK(ValidateRequestForXCluster(options, data));
@@ -3109,7 +3159,8 @@ class PgClientSession::Impl {
         make_lw_function([this, locality, deadline] {
           return NextObjectLockingTxnMeta(locality, deadline);
         }),
-        IsTxnUsingTableLocks(options.is_using_table_locks())));
+        IsTxnUsingTableLocks(options.is_using_table_locks()),
+        context_.metrics));
     if (VLOG_IS_ON(2) || options.trace_requested()) {
       const auto& read_point = *session->read_point();
       const char* session_kind_str =
@@ -3341,6 +3392,7 @@ class PgClientSession::Impl {
     const auto read_time_serial_no = options.read_time_serial_no();
 
     if (options.restart_transaction()) {
+      VLOG_WITH_PREFIX(3) << "Restarting transaction";
       if (options.ddl_mode()) {
         return STATUS(NotSupported, "Restarting a DDL transaction not supported");
       }
@@ -3354,6 +3406,8 @@ class PgClientSession::Impl {
           IllegalState, "read_time_manipulation and read_time fields can't be satisfied together");
 
       if (has_time_manipulation) {
+        VLOG_WITH_PREFIX(3) << "Processing read time manipulation"
+            << options.read_time_manipulation();
         RSTATUS_DCHECK(
             is_plain_session, IllegalState,
             "Read time manipulation can't be specified for non kPlain sessions");
@@ -3370,7 +3424,7 @@ class PgClientSession::Impl {
       } else if (IsReadPointResetRequested(options) ||
                 options.use_catalog_session() ||
                 (is_plain_session && (read_time_serial_no_ != read_time_serial_no))) {
-                  VLOG_WITH_PREFIX(3) << "Resetting read point for session kind " << kind
+          VLOG_WITH_PREFIX(3) << "Resetting read point for session kind " << kind
                   << " read point reset requested: " << IsReadPointResetRequested(options)
                   << " use catalog session: " << options.use_catalog_session()
                   << " change in read time serial number "
@@ -4115,6 +4169,13 @@ void PreparePgTablesQuery(
   for (const auto& op : req.ops()) {
     AddIfMissing(table_ids, op.has_read() ? op.read().table_id() : op.write().table_id());
   }
+}
+
+PgClientSessionMetrics::PgClientSessionMetrics(MetricEntity* metric_entity)
+    : exchange_response_size(METRIC_pg_client_exchange_response_size.Instantiate(metric_entity)),
+      vector_index_fetch_us(METRIC_vector_index_fetch_us.Instantiate(metric_entity)),
+      vector_index_collect_us(METRIC_vector_index_collect_us.Instantiate(metric_entity)),
+      vector_index_reduce_us(METRIC_vector_index_reduce_us.Instantiate(metric_entity)) {
 }
 
 }  // namespace yb::tserver

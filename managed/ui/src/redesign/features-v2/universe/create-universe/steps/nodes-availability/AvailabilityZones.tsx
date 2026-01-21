@@ -1,10 +1,10 @@
 import { useContext } from 'react';
+import { isEmpty } from 'lodash';
 import { useTranslation } from 'react-i18next';
 import { useFormContext } from 'react-hook-form';
-import { isEmpty } from 'lodash';
 import { StyledContent, StyledHeader, StyledPanel } from '../../components/DefaultComponents';
+import { RegionCard } from './index';
 import { CreateUniverseContext, CreateUniverseContextMethods } from '../../CreateUniverseContext';
-import { RegionCard } from './RegionCard';
 import { NodeAvailabilityProps } from './dtos';
 
 export const AvailabilityZones = () => {
@@ -22,7 +22,7 @@ export const AvailabilityZones = () => {
   return (
     <StyledPanel>
       <StyledHeader>{t('title')}</StyledHeader>
-      <StyledContent>
+      <StyledContent sx={{ gap: '16px' }}>
         {!isEmpty(az) &&
           Object.keys(az).map((regionCode, index) => {
             const region = resilienceAndRegionsSettings?.regions.find((r) => r.code === regionCode);

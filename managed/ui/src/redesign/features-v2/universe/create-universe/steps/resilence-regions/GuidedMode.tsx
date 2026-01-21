@@ -3,11 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { useFormContext } from 'react-hook-form';
 import { mui, YBSmartStatus, StatusType, IconPosition } from '@yugabyte-ui-library/core';
 import { FaultToleranceTypeField, ReplicationFactorField } from '../../fields';
-import {
-  ReplicationStatusAvailabilityStatus,
-  ReplicationStatusCard
-} from '../nodes-availability/ReplicationStatusCard';
-import { ResilienceTooltip } from './ResilienceTooltip';
+import { ReplicationStatusAvailabilityStatus, ReplicationStatusCard } from '../nodes-availability';
+import { ResilienceTooltip } from './index';
 import { FaultToleranceType, ResilienceAndRegionsProps } from './dtos';
 import { FAULT_TOLERANCE_TYPE } from '../../fields/FieldNames';
 

@@ -12,7 +12,15 @@ import { useMount } from 'react-use';
 import { Trans, useTranslation } from 'react-i18next';
 import { FormProvider, useForm } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
-import { AlertVariant, mui, YBAlert, YBButtonGroup, YBTag } from '@yugabyte-ui-library/core';
+import {
+  AlertVariant,
+  mui,
+  YBAlert,
+  YBButtonGroup,
+  YBSmartStatus,
+  StatusType,
+  IconPosition
+} from '@yugabyte-ui-library/core';
 import { ResilienceTypeField } from '../../fields';
 import { StyledContent, StyledHeader, StyledPanel } from '../../components/DefaultComponents';
 import { GuidedMode, FreeFormMode, RegionSelection } from './index';
@@ -156,13 +164,11 @@ export const ResilienceAndRegions = forwardRef<
               marginTop: '-8px'
             }}
           >
-            <YBTag
-              size="medium"
-              customSx={{ color: '#9D6C00', background: '#FFEEC8' }}
-              color="warning"
-            >
-              {t('singleNode.caution')}
-            </YBTag>
+            <YBSmartStatus
+              type={StatusType.WARNING}
+              label={t('singleNode.caution')}
+              iconPosition={IconPosition.NONE}
+            />
             {t('singleNode.cautionMsg')}
           </Box>
         </Collapse>

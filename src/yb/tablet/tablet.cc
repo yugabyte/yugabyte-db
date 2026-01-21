@@ -138,7 +138,6 @@ DEFINE_UNKNOWN_bool(tablet_do_compaction_cleanup_for_intents, true,
 DEPRECATE_FLAG(int32, tablet_bloom_block_size, "06_2023");
 DEPRECATE_FLAG(double, tablet_bloom_target_fp_rate, "06_2023");
 
-METRIC_DEFINE_entity(table);
 METRIC_DEFINE_entity(tablet);
 
 DEPRECATE_FLAG(int32, tablet_rocksdb_ops_quiet_down_timeout_ms, "04_2023");
@@ -732,18 +731,14 @@ Tablet::Tablet(const TabletInitData& data)
                         << metadata_->primary_table_schema_version();
 
   if (data.metric_registry) {
-    MetricEntity::AttributeMap attrs;
     // TODO(KUDU-745): table_id is apparently not set in the metadata.
-    attrs["table_id"] = metadata_->table_id();
-    attrs["table_name"] = metadata_->table_name();
-    attrs["table_type"] = TableType_Name(metadata_->table_type());
-    attrs["namespace_name"] = metadata_->namespace_name();
+    auto table_info = metadata_->primary_table_info();
+    table_metrics_entity_ = table_info->CreateMetricEntity(data.metric_registry);
     metric_mem_tracker_ = MemTracker::CreateTracker(
         "Metrics", mem_tracker_, AddToParent::kTrue, CreateMetrics::kFalse);
-    table_metrics_entity_ =
-        METRIC_ENTITY_table.Instantiate(data.metric_registry, metadata_->table_id(), attrs);
     tablet_metrics_entity_ = METRIC_ENTITY_tablet.Instantiate(
-            data.metric_registry, tablet_id(), attrs, metric_mem_tracker_);
+        data.metric_registry, tablet_id(), table_info->CreateMetricAttributeMap(),
+        metric_mem_tracker_);
     // If we are creating a KV table create the metrics callback.
     regulardb_statistics_ =
         rocksdb::CreateDBStatistics(table_metrics_entity_, tablet_metrics_entity_);

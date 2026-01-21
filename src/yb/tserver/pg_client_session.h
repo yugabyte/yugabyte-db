@@ -88,6 +88,15 @@ namespace tserver {
 
 YB_STRONGLY_TYPED_BOOL(IsDDL);
 
+struct PgClientSessionMetrics {
+  explicit PgClientSessionMetrics(MetricEntity* metric_entity);
+
+  EventStatsPtr exchange_response_size;
+  EventStatsPtr vector_index_fetch_us;
+  EventStatsPtr vector_index_collect_us;
+  EventStatsPtr vector_index_reduce_us;
+};
+
 struct PgClientSessionContext {
   // xcluster_context is nullptr on master.
   const TserverXClusterContextIf* xcluster_context;
@@ -98,7 +107,7 @@ struct PgClientSessionContext {
   PgResponseCache& response_cache;
   PgSequenceCache& sequence_cache;
   PgSharedMemoryPool& shared_mem_pool;
-  const EventStatsPtr& stats_exchange_response_size;
+  PgClientSessionMetrics metrics;
   const std::string& instance_uuid;
   docdb::ObjectLockOwnerRegistry* lock_owner_registry;
   const TransactionManagerProvider transaction_manager_provider;

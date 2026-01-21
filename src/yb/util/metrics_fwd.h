@@ -15,6 +15,8 @@
 
 #pragma once
 
+#include <unordered_map>
+
 #include "yb/gutil/ref_counted.h"
 
 namespace yb {
@@ -47,6 +49,7 @@ struct MetricPrometheusOptions;
 using CounterPtr = scoped_refptr<Counter>;
 using EventStatsPtr = scoped_refptr<EventStats>;
 using MetricEntityPtr = scoped_refptr<MetricEntity>;
+using MetricAttributeMap = std::unordered_map<std::string, std::string>;
 
 template<typename T>
 class AtomicGauge;
