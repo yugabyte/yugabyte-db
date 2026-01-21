@@ -466,6 +466,8 @@ Note that the update operation is not currently supported by `YugabyteDBVectorSt
 
 ### Advanced retriever configuration
 
+A retriever is a LangChain interface that provides a standardized way to query your vector store and fetch relevant documents based on a query. It acts as a bridge between your vector store and LangChain chains, converting queries into embeddings and returning the most similar documents. You can convert a vector store into a retriever using `as_retriever()`, which allows you to use it seamlessly in RAG chains and other LangChain workflows.
+
 Customize the retriever with additional search parameters:
 
 ```python
