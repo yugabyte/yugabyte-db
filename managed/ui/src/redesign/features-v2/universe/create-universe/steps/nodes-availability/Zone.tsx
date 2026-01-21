@@ -136,7 +136,7 @@ export const Zone: FC<ZoneProps> = ({ control, index, region, remove }) => {
             }}
             disabled={
               resilienceAndRegionsSettings?.resilienceFormMode === ResilienceFormMode.GUIDED &&
-              resilienceAndRegionsSettings?.faultToleranceType !== FaultToleranceType.NONE
+              isPrefferedAllowed
             }
             dataTestId="availability-zone-node-count-input"
           />

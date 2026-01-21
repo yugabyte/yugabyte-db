@@ -69,7 +69,7 @@ export const RegionCard: FC<RegionCardProps> = ({ region, index }) => {
 
     setValue(`availabilityZones.${region.code}`, [
       ...az,
-      { ...azToAdd, nodeCount: nodesPerAz ?? 1, preffered: 0 }
+      { ...azToAdd, nodeCount: nodesPerAz ?? 1, preffered: az.length }
     ]);
   };
 
@@ -119,21 +119,19 @@ export const RegionCard: FC<RegionCardProps> = ({ region, index }) => {
             }}
           />
         ))}
-        <YBButton
-          variant="secondary"
-          onClick={addAvailabilityZone}
-          disabled={
-            az.length >= region.zones.length ||
-            resilienceAndRegionsSettings?.faultToleranceType === FaultToleranceType.NODE_LEVEL ||
-            resilienceAndRegionsSettings?.faultToleranceType === FaultToleranceType.NONE ||
-            !canSelectMultipleRegions(resilienceAndRegionsSettings?.resilienceType)
-          }
-          startIcon={<AddIcon />}
-          sx={{ marginLeft: '34px', width: 'fit-content' }}
-          dataTestId="add-availability-zone-button"
-        >
-          {t('add_button')}
-        </YBButton>
+        {resilienceAndRegionsSettings?.faultToleranceType === FaultToleranceType.AZ_LEVEL &&
+          canSelectMultipleRegions(resilienceAndRegionsSettings?.resilienceType) && (
+            <YBButton
+              variant="secondary"
+              onClick={addAvailabilityZone}
+              disabled={az.length >= region.zones.length}
+              startIcon={<AddIcon />}
+              sx={{ marginLeft: '34px', width: 'fit-content' }}
+              dataTestId="add-availability-zone-button"
+            >
+              {t('add_button')}
+            </YBButton>
+          )}
         {errors.nodeCountPerAz?.message && isSubmitted && (
           <YBAlert
             open

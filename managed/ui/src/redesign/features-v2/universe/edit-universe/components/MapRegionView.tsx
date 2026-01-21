@@ -49,7 +49,7 @@ export const MapRegionsView: FC<MapRegionsViewProps> = ({ regions }) => {
   return (
     <>
       {regions?.map((region) => {
-        const hasHighestPreferedRank = region.zones.some(
+        const hasHighestPreferedRank = region?.zones?.some(
           (zone: ZoneType) =>
             isDefinedNotNull(zone.leader_preference) && zone.leader_preference === 0
         );

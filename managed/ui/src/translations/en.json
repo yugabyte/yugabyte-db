@@ -3383,7 +3383,10 @@
           "regionErr": "<b>Invalid region count!</b> You have selected <b>{{selected_regions}}</b> regions. To support the chosen fault tolerance <b>{{required_regions}}</b> regions are required. Update your selection to proceed.",
           "azErrFew": "<b>Invalid availability zone count!</b> The selected regions provide total of <b>{{availability_zone}} availability zones</b>. To support the chosen fault tolerance <b>{{required_zones}} availability zones</b> are required. Update your selection to proceed.",
           "azErrMany": "<b>Invalid availability zone count!</b> You have selected <b>{{selected_regions}} regions</b>. Considering 1 availability zone per region, this would exceed the requirement for <b>{{required_zones}} availability zones</b>. Update your selection to proceed.",
-          "nodeErr": "<b>Invalid region count!</b>  You have selected <b>{{selected_regions}} regions</b>. To support the chosen fault tolerance <b>1 region</b> is required. Update your selection to proceed."
+          "nodeErr": "<b>Invalid region count!</b>  You have selected <b>{{selected_regions}} regions</b>. To support the chosen fault tolerance <b>1 region</b> is required. Update your selection to proceed.",
+          "regionFieldRegionsFew": "Must have {{required_regions}} regions to support the selected fault tolerance.",
+          "regionFieldAzFew": "Must have {{az_needed}} availability zones. Selected regions provide total of {{available_az}} availability zones.",
+          "moreNodesNone": "Fault tolerance <b>None</b> supports only single node deployments."
         },
         "guidedMode": {
           "instruction": "Set the resilience for your cluster.",
@@ -3439,7 +3442,11 @@
         "availabilityZones": {
           "title": "Availability Zones",
           "region": "Region {{region_count}}",
-          "add_button": "Add Availability Zone"
+          "add_button": "Add Availability Zone",
+          "errMsg": {
+            "selectedAz": "Selected availability zones: <b>{{count}}</b>",
+            "requiredAz": "Required availability zones: <b>{{count}}</b>"
+          }
         },
         "dedicatedNodes": {
           "toggle": "Allocate dedicated nodes to master servers",

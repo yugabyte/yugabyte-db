@@ -117,7 +117,7 @@ export const RegionSelection = () => {
                 Array.isArray(option) ? option : option === null ? [] : [option],
                 'name'
               );
-              setValue(REGIONS_FIELD, (value as unknown) as Region[], { shouldValidate: true });
+              setValue(REGIONS_FIELD, (value as unknown) as Region[]);
             }}
             value={
               allowmultipleRegionsSelection
