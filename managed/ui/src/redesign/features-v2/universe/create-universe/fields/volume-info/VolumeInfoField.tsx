@@ -44,7 +44,7 @@ interface VolumeInfoFieldProps {
   isMaster?: boolean;
   maxVolumeCount: number;
   disabled: boolean;
-  provider?: ProviderType;
+  provider?: Partial<ProviderType>;
   useDedicatedNodes?: boolean;
   regions?: Region[];
 }
@@ -219,7 +219,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
 
     const fixedNumVolumes =
       [VolumeType.SSD, VolumeType.NVME].includes(volumeType) &&
-      provider &&
+      provider?.code &&
       ![CloudType.kubernetes, CloudType.gcp, CloudType.azu].includes(provider?.code);
 
     // Ephemeral instances volume information cannot be resized, refer to PLAT-16118
@@ -238,7 +238,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
             <YBInput
               type="number"
               fullWidth
-              disabled={fixedNumVolumes ?? numVolumesDisable ?? isEphemeralStorage ?? disabled}
+              disabled={fixedNumVolumes || numVolumesDisable || isEphemeralStorage || disabled}
               slotProps={{
                 htmlInput: {
                   min: 1,
@@ -304,7 +304,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
 
   const renderStorageType = () => {
     if (
-      (provider && [CloudType.gcp, CloudType.azu].includes(provider?.code)) ||
+      (provider?.code && [CloudType.gcp, CloudType.azu].includes(provider?.code)) ||
       (volumeType === VolumeType.EBS && provider?.code === CloudType.aws)
     ) {
       return (

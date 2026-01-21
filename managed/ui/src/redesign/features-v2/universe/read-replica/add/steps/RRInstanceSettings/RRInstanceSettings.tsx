@@ -1,4 +1,4 @@
-import { forwardRef, useContext, useImperativeHandle } from 'react';
+import { forwardRef, useContext, useEffect, useImperativeHandle } from 'react';
 import { useForm, FormProvider } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { mui, YBCheckboxField } from '@yugabyte-ui-library/core';
@@ -19,8 +19,10 @@ import { useRuntimeConfigValues } from '@app/redesign/features-v2/universe/creat
 import { getClusterByType } from '@app/redesign/features-v2/universe/edit-universe/EditUniverseUtils';
 import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { CloudType } from '@app/redesign/features/universe/universe-form/utils/dto';
+import { ProviderType } from '@app/redesign/features-v2/universe/create-universe/steps/general-settings/dtos';
+import { StorageType } from '@app/redesign/helpers/dtos';
 
-const { Box, styled } = mui;
+const { Box, styled, CircularProgress } = mui;
 
 const StyledPanelWrapper = styled('div')(({ theme }) => ({
   display: 'flex',
@@ -39,42 +41,58 @@ export type RRInstanceSettingsProps = Partial<InstanceSettingProps> & {
 };
 
 export const RRInstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
-  const [{ instanceSettings, universeData }, { moveToNextPage, moveToPreviousPage }] = (useContext(
-    AddRRContext
-  ) as unknown) as AddRRContextMethods;
+  const [
+    { instanceSettings, universeData },
+    { moveToNextPage, moveToPreviousPage, saveInstanceSettings }
+  ] = (useContext(AddRRContext) as unknown) as AddRRContextMethods;
 
   const primaryCluster = getClusterByType(universeData!, ClusterSpecClusterType.PRIMARY);
 
-  const provider = {
+  const provider: Partial<ProviderType> = {
     uuid: primaryCluster?.provider_spec.provider ?? '',
-    code: primaryCluster?.placement_spec?.cloud_list[0].code
+    code: (primaryCluster?.placement_spec?.cloud_list[0].code ?? '') as CloudType
   };
 
-  const isK8s = provider.code === CloudType.kubernetes;
-  const universeUUID = universeData?.info?.universe_uuid ?? '';
-  const providerSpec = primaryCluster?.provider_spec.provider;
-
   const {
-    osPatchingEnabled,
-    useK8CustomResources,
     maxVolumeCount,
-    canUseSpotInstance,
     isRuntimeConfigLoading,
     isProviderRuntimeConfigLoading
   } = useRuntimeConfigValues(provider.uuid);
 
   const { t } = useTranslation('translation');
 
-  // , { keyPrefix: 'readReplica.addRR' }
   const methods = useForm<RRInstanceSettingsProps>({
-    // resolver: yupResolver(GeneralSettingsValidationSchema(t)),
     defaultValues: instanceSettings,
     mode: 'onChange'
   });
 
-  const { control, watch } = methods;
+  const { control, watch, reset } = methods;
 
   const sameAsPrimary = watch(SAME_AS_PRIMARY_INST_FIELD);
+
+  // Reset form to initial values from primary cluster when sameAsPrimary is true
+  useEffect(() => {
+    if (sameAsPrimary && primaryCluster && universeData) {
+      const storageSpec = primaryCluster?.node_spec.storage_spec;
+      const initialInstanceSettings: RRInstanceSettingsProps = {
+        inheritPrimaryInstance: true,
+        arch: universeData?.info?.arch,
+        instanceType: primaryCluster?.node_spec.instance_type ?? null,
+        useSpotInstance: primaryCluster?.use_spot_instance ?? false,
+        deviceInfo: storageSpec
+          ? {
+              volumeSize: storageSpec?.volume_size,
+              numVolumes: storageSpec?.num_volumes,
+              diskIops: storageSpec?.disk_iops ?? null,
+              throughput: storageSpec?.throughput ?? null,
+              storageClass: 'standard',
+              storageType: (storageSpec?.storage_type as StorageType) ?? null
+            }
+          : null
+      };
+      reset(initialInstanceSettings);
+    }
+  }, [sameAsPrimary, primaryCluster, universeData, reset]);
 
   useImperativeHandle(
     forwardRef,
@@ -82,10 +100,14 @@ export const RRInstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
       onNext: () => {
         return methods.handleSubmit((data) => {
           moveToNextPage();
+          saveInstanceSettings(data);
         })();
       },
       onPrev: () => {
-        moveToPreviousPage();
+        return methods.handleSubmit((data) => {
+          moveToPreviousPage();
+          saveInstanceSettings(data);
+        })();
       }
     }),
     []
@@ -94,7 +116,10 @@ export const RRInstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
   return (
     <FormProvider {...methods}>
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-        <RRBreadCrumbs groupTitle={t('placement')} subTitle={t('instanceOptional')} />
+        <RRBreadCrumbs
+          groupTitle={t('readReplica.addRR.hardware')}
+          subTitle={t('readReplica.addRR.instanceOptional')}
+        />
         <StyledPanel>
           <StyledHeader>{t('readReplica.addRR.rrInstance')}</StyledHeader>
           <StyledContent>
@@ -109,21 +134,31 @@ export const RRInstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
                 />
               </Box>
               <StyledPanelWrapper>
-                {/* <InstanceBox>
-                  {provider?.code && (
-                    <InstanceTypeField
+                {isRuntimeConfigLoading || isProviderRuntimeConfigLoading ? (
+                  <Box display="flex" alignItems="center" justifyContent="center" width="100%">
+                    <CircularProgress />
+                  </Box>
+                ) : (
+                  <InstanceBox>
+                    {provider && (
+                      <InstanceTypeField
+                        isMaster={false}
+                        disabled={!!sameAsPrimary}
+                        provider={provider}
+                        //pass regions selected in first step
+                        // regions={}
+                      />
+                    )}
+                    <VolumeInfoField
                       isMaster={false}
+                      maxVolumeCount={maxVolumeCount}
                       disabled={!!sameAsPrimary}
                       provider={provider}
-                      regions={regionnsData} //pass regions selected in first step
+                      //pass regions selected in first step
+                      // regions={}
                     />
-                  )}
-                  <VolumeInfoField
-                    isMaster={false}
-                    maxVolumeCount={maxVolumeCount}
-                    disabled={!!sameAsPrimary}
-                  />
-                </InstanceBox> */}
+                  </InstanceBox>
+                )}
               </StyledPanelWrapper>
             </Box>
           </StyledContent>
