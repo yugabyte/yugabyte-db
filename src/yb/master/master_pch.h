@@ -270,7 +270,7 @@
 #include "yb/util/hdr_histogram.h"
 #include "yb/util/high_water_mark.h"
 #include "yb/util/io.h"
-#include "yb/util/jsonreader.h"
+#include "yb/util/json_document.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/kv_util.h"
 #include "yb/util/lockfree.h"

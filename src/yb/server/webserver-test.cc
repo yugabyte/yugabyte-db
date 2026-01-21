@@ -44,7 +44,7 @@
 #include "yb/util/file_util.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/env_util.h"
-#include "yb/util/jsonreader.h"
+#include "yb/util/json_document.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
@@ -204,18 +204,13 @@ TEST_F(WebserverTest, TestDefaultPaths) {
   // Test varz json api
   ASSERT_OK(curl_.FetchURL(strings::Substitute("http://$0/api/v1/varz", ToString(addr_)), &buf_));
   // Output is a JSON array of 'flags'
-  JsonReader jr(buf_.ToString());
-  ASSERT_OK(jr.Init());
-  vector<const rapidjson::Value *> entries;
-  ASSERT_OK(jr.ExtractObjectArray(jr.root(), "flags", &entries));
+  JsonDocument doc;
+  auto root = ASSERT_RESULT(doc.Parse(buf_.ToString()));
+  auto entries = ASSERT_RESULT(root["flags"].GetArray());
 
   // Find flag with name 'v'
-  auto it = std::find_if(entries.begin(), entries.end(), [&](const rapidjson::Value *value) {
-    string name;
-    if (!jr.ExtractString(value, "name", &name).ok()) {
-      return false;
-    }
-    return name == "v";
+  auto it = std::find_if(entries.begin(), entries.end(), [](const JsonValue& value) {
+    return EXPECT_RESULT(value["name"].GetString()) == "v";
   });
   ASSERT_NE(it, entries.end());
 

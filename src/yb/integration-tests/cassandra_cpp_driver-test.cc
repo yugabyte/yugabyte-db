@@ -31,7 +31,7 @@
 #include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/backoff_waiter.h"
-#include "yb/util/jsonreader.h"
+#include "yb/util/json_document.h"
 #include "yb/util/metrics.h"
 #include "yb/util/random_util.h"
 #include "yb/util/size_literals.h"
@@ -49,7 +49,6 @@ using std::tuple;
 using std::get;
 using std::map;
 
-using rapidjson::Value;
 using strings::Substitute;
 
 using yb::CoarseBackoffWaiter;
@@ -865,50 +864,27 @@ TEST_F(CppCassandraDriverTest, TestJsonBType) {
 
 void VerifyLongJson(const string& json) {
   // Parse JSON.
-  JsonReader r(json);
-  ASSERT_OK(r.Init());
-  const Value* json_obj = nullptr;
-  EXPECT_OK(r.ExtractObject(r.root(), NULL, &json_obj));
-  EXPECT_EQ(rapidjson::kObjectType, CHECK_NOTNULL(json_obj)->GetType());
+  JsonDocument doc;
+  auto json_obj = EXPECT_RESULT(doc.Parse(json));
 
-  EXPECT_TRUE(json_obj->HasMember("b"));
-  EXPECT_EQ(rapidjson::kNumberType, (*json_obj)["b"].GetType());
-  EXPECT_EQ(1, (*json_obj)["b"].GetInt());
+  EXPECT_EQ(1, EXPECT_RESULT(json_obj["b"].GetInt32()));
 
-  EXPECT_TRUE(json_obj->HasMember("a1"));
-  EXPECT_EQ(rapidjson::kArrayType, (*json_obj)["a1"].GetType());
-  const Value::ConstArray arr = (*json_obj)["a1"].GetArray();
+  auto arr = json_obj["a1"];
 
-  EXPECT_EQ(rapidjson::kNumberType, arr[2].GetType());
-  EXPECT_EQ(3., arr[2].GetDouble());
+  EXPECT_EQ(3., EXPECT_RESULT(arr[2].GetDouble()));
 
-  EXPECT_EQ(rapidjson::kFalseType, arr[3].GetType());
-  EXPECT_EQ(false, arr[3].GetBool());
+  EXPECT_EQ(false, EXPECT_RESULT(arr[3].GetBool()));
 
-  EXPECT_EQ(rapidjson::kTrueType, arr[4].GetType());
-  EXPECT_EQ(true, arr[4].GetBool());
+  EXPECT_EQ(true, EXPECT_RESULT(arr[4].GetBool()));
 
-  EXPECT_EQ(rapidjson::kObjectType, arr[5].GetType());
-  const Value::ConstObject obj = arr[5].GetObject();
-  EXPECT_TRUE(obj.HasMember("k2"));
-  EXPECT_EQ(rapidjson::kArrayType, obj["k2"].GetType());
-  EXPECT_EQ(rapidjson::kNumberType, obj["k2"].GetArray()[1].GetType());
-  EXPECT_EQ(200, obj["k2"].GetArray()[1].GetInt());
+  auto obj = arr[5];
+  EXPECT_EQ(200, EXPECT_RESULT(obj["k2"][1].GetInt32()));
 
-  EXPECT_TRUE(json_obj->HasMember("a"));
-  EXPECT_EQ(rapidjson::kObjectType, (*json_obj)["a"].GetType());
-  const Value::ConstObject obj_a = (*json_obj)["a"].GetObject();
+  auto obj_a = json_obj["a"];
 
-  EXPECT_TRUE(obj_a.HasMember("q"));
-  EXPECT_EQ(rapidjson::kObjectType, obj_a["q"].GetType());
-  const Value::ConstObject obj_q = obj_a["q"].GetObject();
-  EXPECT_TRUE(obj_q.HasMember("s"));
-  EXPECT_EQ(rapidjson::kNumberType, obj_q["s"].GetType());
-  EXPECT_EQ(2147483647, obj_q["s"].GetInt());
+  EXPECT_EQ(2147483647, EXPECT_RESULT(obj_a["q"]["s"].GetInt32()));
 
-  EXPECT_TRUE(obj_a.HasMember("f"));
-  EXPECT_EQ(rapidjson::kStringType, obj_a["f"].GetType());
-  EXPECT_EQ("hello", string(obj_a["f"].GetString()));
+  EXPECT_EQ("hello", EXPECT_RESULT(obj_a["f"].GetString()));
 }
 
 TEST_F(CppCassandraDriverTest, TestLongJson) {

@@ -133,7 +133,8 @@
         "(^src/yb/gutil/cycleclock-inl[.]h$)",
         "(^src/yb/gutil/spinlock_linux-inl[.]h$)",
         "(^src/yb/gutil/port[.]h$)",
-        "(^src/yb/rocksdb/util/murmurhash[.]cc$)"
+        "(^src/yb/rocksdb/util/murmurhash[.]cc$)",
+        "(_pch[.]h$)"
       ],
       "include": [
         "([.]cpp$)",
