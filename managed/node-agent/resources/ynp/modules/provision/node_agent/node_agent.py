@@ -254,7 +254,7 @@ class InstallNodeAgent(BaseYnpModule):
                 os.remove(file_path)
 
     def render_templates(self, context):
-        if context.get('is_cloud'):
+        if context.get('is_cloud', 'False') == 'True':
             return super().render_templates(context)
 
         node_agent_enabled = False

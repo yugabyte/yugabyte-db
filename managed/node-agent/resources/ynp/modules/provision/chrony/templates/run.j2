@@ -5,8 +5,7 @@
             echo 'server {{ server }} prefer iburst minpoll 4 maxpoll 4' >> /etc/chrony.conf
         {% endif %}
     {% endfor %}
-# Check if cloud_type is defined and not empty
-{% elif cloud_type is defined and cloud_type != '' %}
+{% elif is_cloud == 'True' and cloud_type != 'onprem' %}
     # Remove any existing pool or server lines if using cloud-specific time source
     sed -i '/^pool /d' /etc/chrony.conf
     sed -i '/^server /d' /etc/chrony.conf

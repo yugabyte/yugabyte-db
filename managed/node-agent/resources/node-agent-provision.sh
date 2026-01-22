@@ -28,7 +28,7 @@ err_msg() {
 }
 
 is_csp=false
-cloud_type=""
+cloud_type="onprem"
 is_airgap=false
 # By default, we use the virtual environment.
 use_system_python=false
