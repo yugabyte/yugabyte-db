@@ -15,9 +15,10 @@ import {
   PlacementRegion,
   UniverseCreateReqBody
 } from '../../../../v2/api/yugabyteDBAnywhereV2APIs.schemas';
-import { CloudType, DeviceInfo } from '@app/redesign/features/universe/universe-form/utils/dto';
+import { CloudType, DeviceInfo, RunTimeConfig } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { Provider } from '@app/components/configRedesign/providerRedesign/types';
 import { FAULT_TOLERANCE_TYPE, REPLICATION_FACTOR } from './fields/FieldNames';
+import { RuntimeConfigKey } from '@app/redesign/helpers/constants';
 
 export function getCreateUniverseSteps(t: TFunction, resilienceType?: ResilienceType) {
   return [
@@ -37,10 +38,10 @@ export function getCreateUniverseSteps(t: TFunction, resilienceType?: Resilience
         },
         ...(resilienceType === ResilienceType.REGULAR
           ? [
-              {
-                title: t('nodesAndAvailabilityZone')
-              }
-            ]
+            {
+              title: t('nodesAndAvailabilityZone')
+            }
+          ]
           : [])
       ]
     },
@@ -280,17 +281,17 @@ export const mapCreateUniversePayload = (
             enable_exposing_service: 'UNEXPOSED',
             ...(proxySettings.enableProxyServer
               ? {
-                  proxy_config: {
-                    http_proxy:
-                      proxySettings.enableProxyServer && proxySettings.webProxy
-                        ? `${proxySettings.webProxyServer}:${proxySettings.webProxyPort}`
-                        : '',
-                    https_proxy: proxySettings.secureWebProxy
-                      ? `${proxySettings.secureWebProxyServer}:${proxySettings.secureWebProxyPort}`
+                proxy_config: {
+                  http_proxy:
+                    proxySettings.enableProxyServer && proxySettings.webProxy
+                      ? `${proxySettings.webProxyServer}:${proxySettings.webProxyPort}`
                       : '',
-                    no_proxy_list: proxySettings.byPassProxyListValues ?? []
-                  }
+                  https_proxy: proxySettings.secureWebProxy
+                    ? `${proxySettings.secureWebProxyServer}:${proxySettings.secureWebProxyPort}`
+                    : '',
+                  no_proxy_list: proxySettings.byPassProxyListValues ?? []
                 }
+              }
               : {})
           },
           num_nodes: getNodeCount(nodesAvailabilitySettings.availabilityZones),
@@ -481,4 +482,10 @@ export const computeFaultToleranceTypeFromProvider = (
     [FAULT_TOLERANCE_TYPE]: FaultToleranceType.NODE_LEVEL,
     [REPLICATION_FACTOR]: 3
   };
+};
+
+export const isV2CreateEditUniverseEnabled = (runtimeConfigs: RunTimeConfig) => {
+  return runtimeConfigs?.configEntries?.find(
+    (config) => config.key === RuntimeConfigKey.ENABLE_V2_EDIT_UNIVERSE_UI
+  )?.value === 'true';
 };

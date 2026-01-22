@@ -26,6 +26,7 @@ import { YBProvider } from '../../configRedesign/providerRedesign/types';
 import { getUniverseStatus, UniverseState } from '../../universes/helpers/universeHelpers';
 import { InstallNodeAgentReminderBanner } from '../../../redesign/features/NodeAgent/InstallNodeAgentReminderBanner';
 import { getIsKubernetesUniverse } from '@app/utils/UniverseUtils';
+import { isV2CreateEditUniverseEnabled } from '@app/redesign/features-v2/universe/create-universe/CreateUniverseUtils';
 
 import './UniverseDisplayPanel.scss';
 
@@ -107,6 +108,8 @@ export const UniverseDisplayPanel = ({
       )?.value === 'true';
 
     const showNodeAgentInstallReminderBanner = isNodeAgentEnabled && hasUniverseMissingNodeAgent;
+    const isNewV2CreateUniverseUIEnabled = isV2CreateEditUniverseEnabled(globalRuntimeConfigQuery?.data);
+
     return (
       <div className="universe-display-panel-container">
         <Row>
@@ -121,7 +124,7 @@ export const UniverseDisplayPanel = ({
                 }}
                 isControl
               >
-                <Link to="/universes/create">
+                <Link to={isNewV2CreateUniverseUIEnabled ? "/create-universe" : "/universes/create"}>
                   <YBButton
                     btnClass="universe-button btn btn-lg btn-orange"
                     disabled={isDisabled(currentCustomer.data.features, 'universe.create')}
