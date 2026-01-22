@@ -118,8 +118,6 @@ earlyoom_enable = {{ ynp_config['ynp']['earlyoom'].earlyoom_enable | default('Fa
 earlyoom_args = {{ ynp_config['ynp']['earlyoom'].earlyoom_args | default('') }}
 {%- endif %}
 
-[RebootNode]
-
 {%- if 'extra' in ynp_config and ynp_config.extra.is_ybm %}
 [ConfigureYBMAMI]
 {%- endif %}
