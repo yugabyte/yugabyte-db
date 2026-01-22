@@ -43,7 +43,7 @@ export const EditPlacementResilience = () => {
             }
           },
           {
-            setResilienceType: () => { },
+            setResilienceType: () => {},
             saveResilienceAndRegionsSettings: (data: ResilienceAndRegionsProps) => {
               addEditPlacementMethods.setResilience(data);
               addEditPlacementMethods.setActiveStep(
@@ -53,8 +53,8 @@ export const EditPlacementResilience = () => {
             saveNodesAvailabilitySettings: (data: NodeAvailabilityProps) => {
               addEditPlacementMethods.setNodesAndAvailability(data);
             },
-            moveToNextPage: () => { },
-            moveToPreviousPage: () => { }
+            moveToNextPage: () => {},
+            moveToPreviousPage: () => {}
           }
         ] as unknown) as createUniverseFormProps
       }

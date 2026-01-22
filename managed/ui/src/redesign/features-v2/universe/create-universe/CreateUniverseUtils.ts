@@ -37,10 +37,10 @@ export function getCreateUniverseSteps(t: TFunction, resilienceType?: Resilience
         },
         ...(resilienceType === ResilienceType.REGULAR
           ? [
-            {
-              title: t('nodesAndAvailabilityZone')
-            }
-          ]
+              {
+                title: t('nodesAndAvailabilityZone')
+              }
+            ]
           : [])
       ]
     },
@@ -164,11 +164,10 @@ export const assignRegionsAZNodeByReplicationFactor = (
 
   values(regions).forEach((region, index) => {
     const nodeCount = getNodeCountNeeded(faultToleranceNeeded, regions.length, index);
-    
+
     updatedRegions[region.code] = [];
 
     region.zones.forEach((zone, index) => {
-
       const nodesNeededForAZ = Math.floor(nodeCount / region.zones.length);
 
       const remainder = nodeCount % region.zones.length;
@@ -279,18 +278,20 @@ export const mapCreateUniversePayload = (
           networking_spec: {
             enable_lb: true,
             enable_exposing_service: 'UNEXPOSED',
-            ...(proxySettings.enableProxyServer) ? {
-              proxy_config: {
-                http_proxy:
-                  proxySettings.enableProxyServer && proxySettings.webProxy
-                    ? `${proxySettings.webProxyServer}:${proxySettings.webProxyPort}`
-                    : '',
-                https_proxy: proxySettings.secureWebProxy
-                  ? `${proxySettings.secureWebProxyServer}:${proxySettings.secureWebProxyPort}`
-                  : '',
-                no_proxy_list: proxySettings.byPassProxyListValues ?? []
-              }
-            } : {}
+            ...(proxySettings.enableProxyServer
+              ? {
+                  proxy_config: {
+                    http_proxy:
+                      proxySettings.enableProxyServer && proxySettings.webProxy
+                        ? `${proxySettings.webProxyServer}:${proxySettings.webProxyPort}`
+                        : '',
+                    https_proxy: proxySettings.secureWebProxy
+                      ? `${proxySettings.secureWebProxyServer}:${proxySettings.secureWebProxyPort}`
+                      : '',
+                    no_proxy_list: proxySettings.byPassProxyListValues ?? []
+                  }
+                }
+              : {})
           },
           num_nodes: getNodeCount(nodesAvailabilitySettings.availabilityZones),
           node_spec: {
