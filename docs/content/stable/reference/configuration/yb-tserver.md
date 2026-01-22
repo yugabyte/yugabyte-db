@@ -2422,9 +2422,10 @@ After adding a preview flag to the `allowed_preview_flags_csv` list, you still n
 
 ##### --ysql_enable_write_pipelining
 
-{{<tags/feature/tp idea="1298">}} Enables concurrent execution of multiple write operations within a transaction. Write requests to DocDB will return immediately after completing on the leader, meanwhile the Raft quorum commit happens asynchronously in the background. This enables Postgres to be able to send the next write/read request in parallel, which reduces overall latency.
+{{<tags/feature/ea idea="1298">}} Enables concurrent execution of multiple write operations within a transaction. Write requests to DocDB return immediately after completing on the leader, meanwhile the Raft quorum commit happens asynchronously in the background. This enables PostgreSQL to be able to send the next write or read request in parallel, which reduces overall latency.
 
-Note that this is a preview flag, so it also needs to be added to the `allowed_preview_flags_csv` list.
+Note that this is a preview flag, so it also needs to be added to the [allowed_preview_flags_csv](#allowed-preview-flags-csv) list.
+
 This flag also needs to be enabled on [YB-Master servers](../yb-master/#ysql_enable_write_pipelining).
 
 Default: false
