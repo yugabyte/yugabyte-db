@@ -1,5 +1,7 @@
 {# Start of the configuration file #}
 # This is an auto-generated file. Do not edit manually.
+# Use 'True' or 'False' for boolean comparisons in jinja and shell files.
+# Do not quote the values because they are already strings and doing so makes quotes part of them.
 
 {% macro render_section(section, prefix="") -%}
 {%- for key, value in section.items() if value != '' -%}
@@ -14,6 +16,7 @@
 [DEFAULT]
 version = 1.0.0
 # Keep this as debug level for printing the shell file output.
+# Any previously defined vars are overridden here.
 {% for section_key, section_value in ynp_config.items() %}
     {% if section_key not in ['ynp', 'yba', 'logging'] %}
         {{ render_section(section_value) }}
@@ -61,7 +64,7 @@ yb_user_id = {{ ynp_config['ynp'].yb_user_id }}
 yb_user_password =
 
 [ConfigureOs]
-message = "Configure limits and sysctl parameters"
+message = Configure limits and sysctl parameters
 fd_limit = 1048576
 nproc_limit = 64000
 vm_swappiness = 0

@@ -73,7 +73,7 @@ if [[ {{ os_distribution }} == ubuntu ]]; then
 fi
 
 # Fix google-cloud yum repo settings for GCP VM
-{% if cloud_type is defined and cloud_type != '' %}
+{% if is_cloud == 'True' %}
   if [ -n "{{ cloud_type }}" ]; then
     if [[ {{ cloud_type }} == gcp && {{ os_distribution }} == centos && {{ os_version }} == 7 ]]; then
       sed -i 's/repo_gpgcheck=1/repo_gpgcheck=0/' /etc/yum.repos.d/google-cloud.repo
