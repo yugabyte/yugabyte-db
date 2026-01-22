@@ -381,7 +381,7 @@ TEST_F(DeleteTableTest, TestPendingDeleteStateClearedOnFailure) {
   ASSERT_NO_FATALS(StartCluster(tserver_flags, master_flags, 3));
   // Create a table on the cluster. We're just using TestWorkload
   // as a convenient way to create it.
-  auto test_workload = TestWorkload(cluster_.get());
+  auto test_workload = TestYcqlWorkload(cluster_.get());
   test_workload.Setup();
 
   // The table should have replicas on all three tservers.
@@ -403,7 +403,7 @@ TEST_F(DeleteTableTest, TestDeleteEmptyTable) {
   ASSERT_NO_FATALS(StartCluster());
   // Create a table on the cluster. We're just using TestWorkload
   // as a convenient way to create it.
-  TestWorkload(cluster_.get()).Setup();
+  TestYcqlWorkload(cluster_.get()).Setup();
 
   // The table should have replicas on all three tservers.
   ASSERT_OK(inspect_->WaitForReplicaCount(3));
@@ -470,7 +470,7 @@ TEST_F(DeleteTableTest, TestDeleteTableDestUuidValidation) {
   ASSERT_NO_FATALS(StartCluster());
   // Create a table on the cluster. We're just using TestWorkload
   // as a convenient way to create it.
-  TestWorkload(cluster_.get()).Setup();
+  TestYcqlWorkload(cluster_.get()).Setup();
   ASSERT_OK(inspect_->WaitForReplicaCount(3));
 
   vector<string> tablets = inspect_->ListTabletsOnTS(1);
@@ -501,7 +501,7 @@ TEST_F(DeleteTableTest, TestAtomicDeleteTablet) {
   ASSERT_NO_FATALS(StartCluster());
   // Create a table on the cluster. We're just using TestWorkload
   // as a convenient way to create it.
-  TestWorkload(cluster_.get()).Setup();
+  TestYcqlWorkload(cluster_.get()).Setup();
 
   // The table should have replicas on all three tservers.
   ASSERT_OK(inspect_->WaitForReplicaCount(3));
@@ -557,7 +557,7 @@ TEST_F(DeleteTableTest, TestDeleteTableWithConcurrentWrites) {
   ASSERT_NO_FATALS(StartCluster());
   int n_iters = AllowSlowTests() ? 20 : 1;
   for (int i = 0; i < n_iters; i++) {
-    TestWorkload workload(cluster_.get());
+    TestYcqlWorkload workload(cluster_.get());
     workload.set_table_name(YBTableName(YQL_DATABASE_CQL, "my_keyspace",
         Substitute("table-$0", i)));
 
@@ -600,7 +600,7 @@ TEST_F(DeleteTableTest, DeleteTableWithConcurrentWritesNoRestarts) {
   ASSERT_NO_FATALS(StartCluster());
   constexpr auto kNumIters = 10;
   for (int iter = 0; iter < kNumIters; iter++) {
-    TestWorkload workload(cluster_.get());
+    TestYcqlWorkload workload(cluster_.get());
     workload.set_table_name(YBTableName(YQL_DATABASE_CQL, "my_keyspace", Format("table-$0", iter)));
 
     // We'll delete the table underneath the writers, so we expect a NotFound error during the
@@ -643,7 +643,7 @@ TEST_F(DeleteTableTest, TestAutoTombstoneAfterCrashDuringRemoteBootstrap) {
       cluster_->tablet_server(kTsIndex)->uuid(), MonoTime::Now() + timeout));
 
   // Start a workload on the cluster, and run it for a little while.
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.Setup();
   ASSERT_OK(inspect_->WaitForReplicaCount(2));
 
@@ -691,7 +691,7 @@ TEST_F(DeleteTableTest, TestDeleteTabletFollowerFirst) {
   std::vector<std::string> ts_flags, master_flags;
   master_flags.push_back("--replication_factor=2");
   ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, 2));
-  TestWorkload(cluster_.get()).Setup();
+  TestYcqlWorkload(cluster_.get()).Setup();
 
   ASSERT_OK(inspect_->WaitForReplicaCount(2));
   std::vector<std::string> tablets = inspect_->ListTabletsOnTS(1);
@@ -750,7 +750,7 @@ TEST_F(DeleteTableTest, TestAutoTombstoneAfterRemoteBootstrapRemoteFails) {
       cluster_->tablet_server(kTsIndex)->uuid(), MonoTime::Now() + timeout));
 
   // Start a workload on the cluster, and run it for a little while.
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.set_sequential_write(true);
   workload.Setup();
   ASSERT_OK(inspect_->WaitForReplicaCount(2));
@@ -865,7 +865,7 @@ TEST_F(DeleteTableTest, TestMergeConsensusMetadata) {
   const MonoDelta timeout = MonoDelta::FromSeconds(10);
   const int kTsIndex = 0;
 
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.Setup();
   ASSERT_OK(inspect_->WaitForReplicaCount(3));
 
@@ -991,7 +991,7 @@ TEST_F(DeleteTableTest, TestDeleteFollowerWithReplicatingOperation) {
   TServerDetails* ts = ts_map_[cluster_->tablet_server(kTsIndex)->uuid()].get();
 
   // Create the table.
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.Setup();
 
   // Figure out the tablet ids of the created tablets.
@@ -1049,7 +1049,7 @@ TEST_F(DeleteTableTest, TestMemtableNoFlushOnTabletDelete) {
   TServerDetails* ts = ts_map_[cluster_->tablet_server(kTsIndex)->uuid()].get();
 
   // Create the table.
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.Setup();
 
   // Figure out the tablet ids of the created tablets.
@@ -1106,7 +1106,7 @@ TEST_F(DeleteTableTest, TestOrphanedBlocksClearedOnDelete) {
   TServerDetails* follower_ts = ts_map_[cluster_->tablet_server(kFollowerIndex)->uuid()].get();
 
   // Create the table.
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.Setup();
 
   // Figure out the tablet id of the created tablet.
@@ -1181,7 +1181,7 @@ TEST_F(DeleteTableTest, TestFDsNotLeakedOnTabletTombstone) {
   ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, 1));
 
   // Create the table.
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.Setup();
   workload.Start();
   while (workload.rows_inserted() < 1000) {
@@ -1235,7 +1235,7 @@ TEST_F(DeleteTableTest, TestRemoveUnknownTablets) {
 
   // Create a table on the cluster. We're just using TestWorkload
   // as a convenient way to create it.
-  TestWorkload(cluster_.get()).Setup();
+  TestYcqlWorkload(cluster_.get()).Setup();
   // The table should have replicas on all three tservers.
   ASSERT_OK(inspect_->WaitForReplicaCount(3));
   LOG(INFO) << "Table with 1 tablet and 3 replicas created successfully";
@@ -1299,7 +1299,7 @@ TEST_F(DeleteTableTest, DeleteWithDeadTS) {
 
   // Create a table on the cluster. We're just using TestWorkload
   // as a convenient way to create it.
-  TestWorkload(cluster_.get()).Setup();
+  TestYcqlWorkload(cluster_.get()).Setup();
   // The table should have replicas on all three tservers.
   ASSERT_OK(inspect_->WaitForReplicaCount(3));
   LOG(INFO) << "Table with 1 tablet and 3 replicas created successfully";
@@ -1431,7 +1431,7 @@ TEST_P(DeleteTableDeletedParamTest, TestRollForwardDelete) {
 
   // Create a table on the cluster. We're just using TestWorkload
   // as a convenient way to create it.
-  TestWorkload(cluster_.get()).Setup();
+  TestYcqlWorkload(cluster_.get()).Setup();
 
   // The table should have replicas on all three tservers.
   ASSERT_OK(inspect_->WaitForReplicaCount(3));
@@ -1504,7 +1504,7 @@ TEST_P(DeleteTableTombstonedParamTest, TestTabletTombstone) {
                           .Create());
 
   // Start a workload on the cluster, and run it until we find WALs on disk.
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.Setup();
 
   // The table should have 2 tablets (1 split) on all 3 tservers (for a total of 6).
