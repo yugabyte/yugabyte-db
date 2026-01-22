@@ -37,7 +37,7 @@
 
 namespace yb {
 
-class TestWorkload;
+class TestYcqlWorkload;
 
 namespace client {
 
@@ -48,7 +48,7 @@ class SnapshotTestUtil;
 void DumpTableLocations(
     master::CatalogManagerIf* catalog_mgr, const client::YBTableName& table_name);
 
-void DumpWorkloadStats(const TestWorkload& workload);
+void DumpWorkloadStats(const TestYcqlWorkload& workload);
 
 Status SplitTablet(master::CatalogManagerIf* catalog_mgr, const tablet::Tablet& tablet);
 

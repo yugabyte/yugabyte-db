@@ -28,7 +28,7 @@
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
-//
+
 #pragma once
 
 #include "yb/client/client_fwd.h"
@@ -73,19 +73,19 @@ struct TestWorkloadOptions {
   bool has_table_ttl() const { return table_ttl_sec != -1; }
 };
 
-// Utility class for generating a workload against a test cluster.
+// Utility class for generating a YCQL workload against a test cluster.
 //
 // The actual data inserted is random, and thus can't be verified for
 // integrity. However, this is still useful in conjunction with ClusterVerifier
 // to verify that replicas do not diverge.
-class TestWorkload {
+class TestYcqlWorkload {
  public:
-  explicit TestWorkload(MiniClusterBase* cluster);
-  ~TestWorkload();
+  explicit TestYcqlWorkload(MiniClusterBase* cluster);
+  ~TestYcqlWorkload();
 
-  TestWorkload(TestWorkload&& rhs);
+  TestYcqlWorkload(TestYcqlWorkload&& rhs);
 
-  void operator=(TestWorkload&& rhs);
+  void operator=(TestYcqlWorkload&& rhs);
 
   void set_payload_bytes(size_t n) {
     options_.payload_bytes = n;

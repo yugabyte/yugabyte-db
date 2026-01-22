@@ -256,7 +256,7 @@ TEST_F(AdminCliTest, TestChangeConfig) {
   ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(30), active_tablet_servers,
                                   tablet_id_, 1));
 
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.set_table_name(kTableName);
   workload.set_timeout_allowed(true);
   workload.set_write_timeout_millis(10000);
@@ -1099,7 +1099,7 @@ TEST_F(AdminCliTest, TestModifyTablePlacementPolicy) {
                                        kTableName.namespace_name(),
                                        "extra-table");
   // Start a workload.
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.set_table_name(extra_table);
   workload.set_timeout_allowed(true);
   workload.set_sequential_write(true);
@@ -1205,7 +1205,7 @@ TEST_F(AdminCliTest, TestCreateTransactionStatusTablesWithPlacements) {
                                        kTableName.namespace_name(),
                                        "extra-table");
   // Start a workload.
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.set_table_name(extra_table);
   workload.set_timeout_allowed(true);
   workload.set_sequential_write(true);
@@ -2198,7 +2198,7 @@ TEST_F(AdminCliTest, TestGetTableXorHash) {
   const auto num_tablets = 4;
   ASSERT_OK(table.Create(table_name, num_tablets, client::YBSchema(schema_), client_.get()));
 
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.set_table_name(table_name);
   workload.Setup();
   workload.Start();

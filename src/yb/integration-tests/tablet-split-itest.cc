@@ -577,7 +577,7 @@ TEST_F(TabletSplitITest, SplitTabletDuringReadWriteLoad) {
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_buffer_size) = 100_KB;
 
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.set_table_name(client::kTableName);
   workload.set_write_timeout_millis(MonoDelta(kRpcTimeout).ToMilliseconds());
   workload.set_num_tablets(kNumTablets);
