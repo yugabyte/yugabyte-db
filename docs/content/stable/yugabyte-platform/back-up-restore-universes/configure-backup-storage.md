@@ -200,7 +200,9 @@ In YugabyteDB Anywhere:
 
 ### Azure Managed Identity authentication
 
-{{<tags/feature/ea idea="986">}}YugabyteDB Anywhere supports Azure Managed Identity (IAM) authentication for backup storage configurations (currently via API only), providing an alternative to SAS tokens.
+{{<tags/feature/ea idea="986">}}YugabyteDB Anywhere supports Azure Managed Identity (IAM) authentication for backup storage configurations, providing an alternative to SAS tokens.
+
+Note that this feature is currently supported only for VM-based universes and via API.
 
 When Azure IAM is enabled (via `USE_AZURE_IAM`):
 
@@ -214,7 +216,7 @@ Before configuring Azure IAM authentication, ensure the following:
 
 **For YugabyteDB Anywhere**
 
-1. YugabyteDB Anywhere VM setup. Ensure the YugabyteDB Anywhere VM has one of the following:
+1. YugabyteDB Anywhere VM setup. Ensure the YugabyteDB Anywhere VM has _one_ of the following:
 
    - Managed Identity enabled:
      - In the Azure Portal, navigate to your YugabyteDB Anywhere VM.
@@ -345,7 +347,7 @@ You cannot use both SAS token and Azure IAM authentication in the same configura
 
 #### App Registration setup (if not using Managed Identity)
 
-If you are using App Registration (Service Principal) instead of Managed Identity, you must set the following environment variables on both the YBA VM and all DB nodes:
+If you are using App Registration (Service Principal) instead of Managed Identity, you must set the following environment variables on both the YugabyteDB Anywhere VM and all database nodes:
 
 ```sh
 AZURE_TENANT_ID=<tenant-id>
@@ -355,7 +357,8 @@ AZURE_CLIENT_SECRET=<client-secret>
 
 These credentials are only needed if you are not using Azure VMs with Managed Identity enabled.
 
-<!-- idea="986" This can be used when the feature has UI support #### Create an Azure storage configuration with IAM
+<!-- idea="986" This can be used when the feature has UI support
+#### Create an Azure storage configuration with IAM
 
 To create an Azure backup configuration using Managed Identity, in YugabyteDB Anywhere:
 
