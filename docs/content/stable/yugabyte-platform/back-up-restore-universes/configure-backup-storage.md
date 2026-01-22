@@ -204,7 +204,7 @@ In YugabyteDB Anywhere:
 
 Note that this feature is currently supported only for VM-based universes and via API.
 
-When Azure IAM is enabled (via `USE_AZURE_IAM`):
+When Azure IAM is enabled (via the parameter `USE_AZURE_IAM` set using the API):
 
 - YugabyteDB Anywhere stores the IAM-based Azure storage configuration and validates it using the identity of the YugabyteDB Anywhere host VM or Service Principal.
 - During backup and restore, YB Controller on each database node authenticates to Azure using the node's Managed Identity or Service Principal, and then performs blob operations against the configured container.
@@ -214,81 +214,71 @@ When Azure IAM is enabled (via `USE_AZURE_IAM`):
 
 Before configuring Azure IAM authentication, ensure the following:
 
-**For YugabyteDB Anywhere**
+- **YugabyteDB Anywhere VM**. Ensure the YugabyteDB Anywhere VM has _one_ of the following:
 
-1. YugabyteDB Anywhere VM setup. Ensure the YugabyteDB Anywhere VM has _one_ of the following:
+  - Managed Identity enabled:
+    - In the Azure Portal, navigate to your YugabyteDB Anywhere VM.
+    - Go to **Identity** in the left menu.
+    - Under **System assigned**, set **Status** to **On** and save.
 
-   - Managed Identity enabled:
-     - In the Azure Portal, navigate to your YugabyteDB Anywhere VM.
-     - Go to **Identity** in the left menu.
-     - Under **System assigned**, set **Status** to **On** and save.
-     - For detailed steps, see [Azure documentation on enabling system-assigned managed identity](https://learn.microsoft.com/en-us/azure/active-directory/managed-identities-azure-resources/qs-configure-portal-windows-vm).
+    For detailed steps, see [Configure managed identities on Azure virtual machines](https://learn.microsoft.com/en-us/azure/active-directory/managed-identities-azure-resources/qs-configure-portal-windows-vm) in the Azure documentation.
 
-   - App registration (Service Principal) configured:
-     - In Azure Portal, navigate to **Azure Active Directory > App registrations**.
-     - Create a new app registration or use an existing one.
-     - Note the **Application (client) ID**, **Directory (tenant) ID**, and create a **Client secret**.
-     - For detailed steps, see [Azure documentation on creating a service principal](https://learn.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal).
+  - App registration (Service Principal) configured:
+    - In Azure Portal, navigate to **Azure Active Directory > App registrations**.
+    - Create a new app registration or use an existing one.
+    - Note the **Application (client) ID**, **Directory (tenant) ID**, and create a **Client secret**.
+    - Set the following environment variables on the YugabyteDB Anywhere VM:
 
-1. Database node setup. Ensure your database nodes are hosted on Azure VMs with one of the following:
+      ```sh
+      AZURE_TENANT_ID=<tenant-id>
+      AZURE_CLIENT_ID=<client-id>
+      AZURE_CLIENT_SECRET=<client-secret>
+      ```
 
-   - Managed Identity enabled:
-     - For each database node VM, follow the same steps as above to enable system-assigned managed identity.
-     - This is the recommended approach as it requires no additional credentials.
+    For detailed steps, see [Register a Microsoft Entra app and create a service principal](https://learn.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal) in the Azure documentation.
 
-   - App registration with Azure credentials configured in the environment:
-     - Use the same Service Principal created above.
-     - Set the following environment variables on each database node VM:
+- **Database nodes**. Ensure your database nodes are hosted on Azure VMs with one of the following:
 
-       ```sh
-       AZURE_TENANT_ID=<tenant-id>
-       AZURE_CLIENT_ID=<client-id>
-       AZURE_CLIENT_SECRET=<client-secret>
-       ```
+  - Managed Identity enabled.
 
-     - See [App Registration setup](#app-registration-setup-if-not-using-managed-identity) for more details.
+    For each database node VM, follow the same steps as for the YugabyteDB Anywhere VM to enable system-assigned managed identity.
 
-**For Azure**
+    This is the recommended approach as it requires no additional credentials.
 
-1. IAM role and permissions. Assign the **Storage Blob Data Contributor** role (or a stricter role) on the target storage account/container to the Managed Identity or Service Principal:
+  - App registration with Azure credentials configured in the environment.
+    - Use the same Service Principal as created for the YugabyteDB Anywhere VM.
+    - Set the following environment variables on each database node VM:
 
-   - In Azure Portal, navigate to your **Storage account**.
-   - Go to **Access control (IAM)**.
-   - Click **Add > Add role assignment**.
-   - Select **Storage Blob Data Contributor** role.
-   - Assign access to either:
-     - **Managed Identity**: Select the VM(s) or the system-assigned managed identity.
-     - **Service Principal**: Select the app registration (Service Principal) you created.
-   - Click **Save**.
-   - For detailed steps, see [Azure documentation on assigning Azure roles](https://learn.microsoft.com/en-us/azure/role-based-access-control/role-assignments-portal).
+      ```sh
+      AZURE_TENANT_ID=<tenant-id>
+      AZURE_CLIENT_ID=<client-id>
+      AZURE_CLIENT_SECRET=<client-secret>
+      ```
+
+- **Azure IAM role and permissions**. Assign the **Storage Blob Data Contributor** role (or a stricter role) on the target storage account/container to the Managed Identity or Service Principal:
+
+  - In Azure Portal, navigate to your **Storage account**.
+  - Go to **Access control (IAM)**.
+  - Click **Add > Add role assignment**.
+  - Select **Storage Blob Data Contributor** role.
+  - Assign access to either:
+    - **Managed Identity**: Select the VM(s) or the system-assigned managed identity.
+    - **Service Principal**: Select the app registration (Service Principal) you created.
+  - Click **Save**.
+
+  For detailed steps, see [Assign Azure roles using the Azure portal](https://learn.microsoft.com/en-us/azure/role-based-access-control/role-assignments-portal) in the Azure documentation.
 
 #### Configure Azure storage with IAM using the API
 
-Currently, you can only configure Azure storage with IAM using the YugabyteDB Anywhere API.
+Currently, you can only configure Azure storage with IAM using the [YugabyteDB Anywhere API](../../anywhere-automation/anywhere-api/).
 
-**API endpoint:**
-
-```http
-POST /api/v1/customers/{customerUUID}/configs
-```
-
-**Authentication:**
-
-Include your API token in the request headers:
-
-```http
-X-AUTH-YW-API-TOKEN: <your-api-token>
-```
-
-**Single region configuration:**
-
-Create a storage configuration for a single Azure container with IAM:
+To create a storage configuration for a single Azure container with IAM:
 
 ```bash
 curl -X POST \
-  'https://<yba-host>/api/v1/customers/<customer-uuid>/configs' \
+  'https://<yba-ip>/api/v1/customers/<customer-uuid>/configs' \
   -H 'Content-Type: application/json' \
-  -H 'X-AUTH-YW-API-TOKEN: <your-api-token>' \
+  -H 'X-AUTH-YW-API-TOKEN: <api-token>' \
   -d '{
     "configName": "azure-iam-backup",
     "type": "STORAGE",
@@ -300,15 +290,13 @@ curl -X POST \
   }'
 ```
 
-**Multi-region configuration:**
-
-Create a storage configuration for multiple Azure regions with IAM:
+To create a storage configuration for multiple Azure regions with IAM:
 
 ```bash
 curl -X POST \
-  'https://<yba-host>/api/v1/customers/<customer-uuid>/configs' \
+  'https://<yba-ip>/api/v1/customers/<customer-uuid>/configs' \
   -H 'Content-Type: application/json' \
-  -H 'X-AUTH-YW-API-TOKEN: <your-api-token>' \
+  -H 'X-AUTH-YW-API-TOKEN: <api-token>' \
   -d '{
     "configName": "azure-multi-region-iam",
     "type": "STORAGE",
@@ -330,32 +318,20 @@ curl -X POST \
   }'
 ```
 
-**Configuration parameters:**
+Use the following configuration parameters:
 
-- `configName`: A meaningful name for your storage configuration.
-- `type`: Must be `"STORAGE"`.
-- `name`: Must be `"AZ"` for Azure.
-- `data.BACKUP_LOCATION`: The container URL in the format `https://storageaccount.blob.core.windows.net/container`.
-- `data.USE_AZURE_IAM`: Set to `true` to enable IAM authentication. When this is `true`, do not include SAS token credentials.
-- `data.REGION_LOCATIONS` (optional): Array of region-specific locations for multi-region configurations. Each entry contains:
-  - `REGION`: The region name (for example, `us-west1`).
-  - `LOCATION`: The container URL for that region.
+| Parameter | Description |
+| :--- | :--- |
+| `configName` | A meaningful name for your storage configuration. |
+| `type` | Must be `"STORAGE"`. |
+| `name` | Must be `"AZ"` for Azure. |
+| `data.BACKUP_LOCATION` | The container URL in the format `https://storageaccount.blob.core.windows.net/container`. |
+| `data.USE_AZURE_IAM` | Set to `true` to enable IAM authentication. When this is `true`, do not include SAS token credentials. |
+| `data.REGION_LOCATIONS` | Optional. Array of region-specific locations for multi-region configurations. Each entry contains:<br><ul><li>`REGION`: The region name (for example, `us-west1`).</li><li>`LOCATION`: The container URL for that region.</li><ul> |
 
 {{< note title="Mutually exclusive authentication" >}}
 You cannot use both SAS token and Azure IAM authentication in the same configuration. When `USE_AZURE_IAM` is `true`, do not include SAS token credentials in the request.
 {{< /note >}}
-
-#### App Registration setup (if not using Managed Identity)
-
-If you are using App Registration (Service Principal) instead of Managed Identity, you must set the following environment variables on both the YugabyteDB Anywhere VM and all database nodes:
-
-```sh
-AZURE_TENANT_ID=<tenant-id>
-AZURE_CLIENT_ID=<client-id>
-AZURE_CLIENT_SECRET=<client-secret>
-```
-
-These credentials are only needed if you are not using Azure VMs with Managed Identity enabled.
 
 <!-- idea="986" This can be used when the feature has UI support
 #### Create an Azure storage configuration with IAM
