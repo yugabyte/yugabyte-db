@@ -1529,8 +1529,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
         || !KubernetesEnvironmentVariables.isYbaRunningInKubernetes()) {
       return;
     }
-    String providerName =
-        getProviderName(OperatorUtils.getYbaResourceName(ybUniverse.getMetadata()));
+    String providerName = getProviderName(getUniverseName(ybUniverse));
     // Check if we've already initiated creation of this provider CR
     if (inProgressAutoProviderCRs.contains(providerName)) {
       log.info("Auto-provider {} creation already initiated, skipping", providerName);

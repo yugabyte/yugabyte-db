@@ -1157,7 +1157,10 @@ public class OperatorUtils {
                       regionData.zoneList.stream()
                           .map(
                               zone -> {
-                                String secretNameZone = secretMap.get(zone.code);
+                                String secretNameZone = null;
+                                if (secretMap != null && secretMap.containsKey(zone.code)) {
+                                  secretNameZone = secretMap.get(zone.code);
+                                }
                                 Zones zoneSpec = new Zones();
                                 zoneSpec.setCode(zone.code);
                                 zoneSpec.setCloudInfo(
