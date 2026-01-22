@@ -62,6 +62,11 @@ public class TestPgRegressMisc extends BasePgRegressTest {
 
   @Test
   public void testPgRegressMiscSerial5() throws Exception {
+    // This test requires all queries to run on same backend with conn mgr
+    // otherwise on new backends there are catalog requests which causes a
+    // mismatch in the number of RPCs, leading to a difference in EXPLAIN
+    // output.
+    setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.NONE);
     runPgRegressTest("yb_misc_serial5_schedule");
   }
 }
