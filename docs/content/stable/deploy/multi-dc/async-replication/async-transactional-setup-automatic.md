@@ -107,3 +107,28 @@ Most DDLs can be automatically replicated, however there are still some [Limitat
 {{< /warning >}}
 
 DDL operations must only be performed on the Primary universe. All schema changes are automatically replicated to the Standby universe.
+
+## Checking which cluster is primary or standby
+
+Clients can connect to a database that is replicated by xCluster and run the following command to determine if they are connecting to a primary or standby cluster:
+
+```
+SELECT yb_xcluster_ddl_replication.get_replication_role();
+```
+
+For example:
+```
+yugabyte=# SELECT yb_xcluster_ddl_replication.get_replication_role();
+ get_replication_role
+----------------------
+ source
+(1 row)
+```
+or
+```
+yugabyte=# SELECT yb_xcluster_ddl_replication.get_replication_role();
+ get_replication_role
+----------------------
+ target
+(1 row)
+```
