@@ -126,3 +126,7 @@ To rotate root certificates for a universe, do the following:
     - If available, using a hot certificate reload with no restart (**Apply all changes which do not require a restart immediately**).
 
 1. Click **Apply**.
+
+## Limitation
+
+Currently, certificate rotation for [Kubernetes cert-manager](../add-certificate-kubernetes/) managed certificates is not supported.
