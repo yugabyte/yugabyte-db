@@ -276,6 +276,16 @@ UPDATE pg_index SET indisvalid = false
 UPDATE pg_index SET indisvalid = false
     WHERE indexrelid = 'test_partitioned_even_i_idx'::regclass;
 \c
+-- https://github.com/yugabyte/yugabyte-db/issues/29534
+-- The previous \c can be too fast due to incremental relcache refresh optimization.
+-- This can cause read restart because a read time of the next REINDEX statement
+-- is selected using safetime mechanism which is slightly in the past. If the read
+-- time picked is older than the write time of the above UPDATE pg_index statement,
+-- we will see restart read error, which is intercepted by PG and shows up as
+-- "ERROR:  Restarting a DDL transaction not supported".
+-- To avoid read restart error, sleep 2 seconds to allow safetime to advance past
+-- the write time of the above UPDATE statement.
+SELECT pg_sleep(2);
 REINDEX INDEX test_partitioned_i_idx;
 
 \c
