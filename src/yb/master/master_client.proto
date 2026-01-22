@@ -223,8 +223,8 @@ message GetYsqlCatalogConfigResponsePB {
 }
 
 message GetYsqlTableOidRequestPB {
-  required uint32 database_oid = 1;
-  required string table_name = 2;
+  optional uint32 database_oid = 1; // Required.
+  optional string table_name = 2; // Required.
 }
 
 message GetYsqlTableOidResponsePB {

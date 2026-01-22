@@ -14238,6 +14238,13 @@ Status CatalogManager::SubmitBackgroundTask(const std::function<void()>& func) {
 
 Status CatalogManager::GetYsqlTableOid(
     const GetYsqlTableOidRequestPB* req, GetYsqlTableOidResponsePB* resp, rpc::RpcContext* rpc) {
+  RSTATUS_DCHECK(
+      req->has_database_oid(), InvalidArgument,
+      "database_oid is a required argument in GetYsqlTableOid rpc");
+  RSTATUS_DCHECK(
+      req->has_table_name(), InvalidArgument,
+      "table_name is a required argument in GetYsqlTableOid rpc");
+
   resp->set_table_oid(
       VERIFY_RESULT(sys_catalog_->GetYsqlTableOid(req->database_oid(), req->table_name())));
   return Status::OK();
