@@ -1186,11 +1186,21 @@ int od_auth_backend(od_server_t *server, machine_msg_t *msg,
 		}
 
 		if (od_unlikely(instance->config.TEST_yb_auth_delay_ms > 0)) {
-			od_log(&instance->logger, "auth",
-				external_client, server,
-				"initiating delay of %d ms in od_auth_backend",
-				instance->config.TEST_yb_auth_delay_ms);
-			machine_sleep(instance->config.TEST_yb_auth_delay_ms);
+			/*
+			 * Specify auth types so multi-packet auth methods like SCRAM don't
+			 * unexpectedly get multiple delays. Also allows restricting
+			 * the scope of applicability of this debug operation.
+			 */
+			if (auth_type == OD_AUTH_CLEARTEXT ||
+			    auth_type == OD_AUTH_MD5 ||
+			    auth_type == OD_AUTH_SASL) {
+				od_log(&instance->logger, "auth",
+				       external_client, server,
+				       "initiating delay of %d ms in od_auth_backend",
+				       instance->config.TEST_yb_auth_delay_ms);
+				machine_sleep(
+					instance->config.TEST_yb_auth_delay_ms);
+			}
 		}
 
 		rc = yb_od_relay_client_to_auth_server(server, external_client,
