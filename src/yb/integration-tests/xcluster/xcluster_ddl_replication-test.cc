@@ -3239,6 +3239,34 @@ TEST_F(XClusterDDLReplicationTableRewriteTest, IncrementalSafeTimeBump) {
   VerifyTableRewrite();
 }
 
+TEST_F(XClusterDDLReplicationTableRewriteTest, AlterColumnTypeWithPrimaryKeyAndUniqueTest) {
+  const std::string kTableName = "test_table";
+
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE TABLE $0 ("
+      "  key INT,"
+      "  b VARCHAR(50),"
+      "  c INT,"
+      "  PRIMARY KEY (key, b),"
+      "  UNIQUE (c, key, b)"
+      ");", kTableName));
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "INSERT INTO $0 VALUES (1, 'x', 100);", kTableName));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Execute ALTER COLUMN TYPE on a primary key column
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "ALTER TABLE $0 ALTER COLUMN b TYPE TEXT;", kTableName));
+
+  // Verify table rewrite
+  auto producer_base_table_name_after_rewrite = ASSERT_RESULT(
+      GetYsqlTable(&producer_cluster_, namespace_name, "", kTableName));
+  ASSERT_NE(producer_base_table_name_.table_id(),
+      producer_base_table_name_after_rewrite.table_id());
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifyWrittenRecords({kTableName}));
+}
+
 TEST_F(XClusterDDLReplicationTest, AlterColumnTypePartitioned) {
   ASSERT_OK(SetUpClustersAndReplication());
   auto producer_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
