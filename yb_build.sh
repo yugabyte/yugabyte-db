@@ -1034,6 +1034,10 @@ if [[ $pgo_data_path != "" ]]; then
   cmake_opts+=( "-DYB_PGO_DATA_PATH=$pgo_data_path" )
 fi
 
+if [[ $bolt_enabled == "true" ]]; then
+  cmake_opts+=( "-DYB_BOLT_ENABLED=on" )
+fi
+
 detect_num_cpus_and_set_make_parallelism
 if [[ ${build_cxx} == "true" ]]; then
   log "Using make parallelism of $YB_MAKE_PARALLELISM" \

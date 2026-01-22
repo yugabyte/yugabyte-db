@@ -273,6 +273,11 @@ if(YB_LTO_ENABLED)
   ADD_CXX_FLAGS("-DYB_LTO_ENABLED")
 endif()
 
+if(YB_BOLT_ENABLED)
+  # Retain relocation data in the final binary. This is needed to run BOLT on the binary,
+  ADD_LINKER_FLAGS("-Wl,--emit-relocs")
+endif()
+
 # Generate a compile_commands.json "compilation database" file.
 # See http://clang.llvm.org/docs/JSONCompilationDatabase.html
 if (CMAKE_EXPORT_COMPILE_COMMANDS)
