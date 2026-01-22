@@ -80,7 +80,7 @@ TEST_F(TabletReplacementITest, TestMasterTombstoneEvictedReplica) {
   };
   ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags, num_tservers));
 
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.Setup(); // Easy way to create a new tablet.
 
   const int kLeaderIndex = 0;
@@ -152,7 +152,7 @@ TEST_F(TabletReplacementITest, TestMasterTombstoneOldReplicaOnReport) {
   };
   ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags));
 
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.Setup(); // Easy way to create a new tablet.
 
   const int kLeaderIndex = 0;
@@ -213,7 +213,7 @@ TEST_F(TabletReplacementITest, TestEvictAndReplaceDeadFollower) {
   };
   ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags));
 
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.Setup(); // Easy way to create a new tablet.
 
   const int kLeaderIndex = 0;
@@ -275,7 +275,7 @@ TEST_F(TabletReplacementITest, TestRemoteBoostrapWithPendingConfigChangeCommits)
   };
   ASSERT_NO_FATALS(StartCluster(ts_flags, master_flags));
 
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.Setup(); // Convenient way to create a table.
 
   const int kLeaderIndex = 0;

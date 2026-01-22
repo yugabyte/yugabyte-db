@@ -100,7 +100,7 @@ void DumpTableLocations(
   }
 }
 
-void DumpWorkloadStats(const TestWorkload& workload) {
+void DumpWorkloadStats(const TestYcqlWorkload& workload) {
   LOG(INFO) << "Rows inserted: " << workload.rows_inserted();
   LOG(INFO) << "Rows insert failed: " << workload.rows_insert_failed();
   LOG(INFO) << "Rows read ok: " << workload.rows_read_ok();

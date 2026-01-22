@@ -380,7 +380,7 @@ TEST_F(LoadBalancerPlacementPolicyTest, AlterPlacementDataConsistencyTest) {
   const yb::client::YBTableName placement_table(
     YQL_DATABASE_CQL, table_name().namespace_name(), table);
 
-  TestWorkload workload(external_mini_cluster());
+  TestYcqlWorkload workload(external_mini_cluster());
   workload.set_table_name(placement_table);
   workload.set_sequential_write(true);
   workload.Setup();

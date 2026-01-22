@@ -153,9 +153,9 @@ class SnapshotTestBase : public YBMiniClusterTestBase<MiniClusterType> {
     YBMiniClusterTestBase<MiniClusterType>::DoTearDown();
   }
 
-  TestWorkload CreateDefaultWorkload() {
+  TestYcqlWorkload CreateDefaultWorkload() {
     auto cluster = cluster_.get();
-    TestWorkload workload(cluster);
+    TestYcqlWorkload workload(cluster);
     workload.set_table_name(kTableName);
     workload.set_sequential_write(true);
     workload.set_insert_failures_allowed(false);
@@ -164,7 +164,7 @@ class SnapshotTestBase : public YBMiniClusterTestBase<MiniClusterType> {
     return workload;
   }
 
-  TestWorkload SetupWorkload() {
+  TestYcqlWorkload SetupWorkload() {
     auto workload = CreateDefaultWorkload();
     workload.Setup();
     return workload;
@@ -727,7 +727,7 @@ TEST_F(SnapshotTest, EventuallyDeleteTablesCoveredBySnapshot) {
 }
 
 TEST_F(SnapshotTest, RestoreSnapshot) {
-  TestWorkload workload = SetupWorkload();
+  TestYcqlWorkload workload = SetupWorkload();
   workload.Start();
 
   workload.WaitInserted(100);
@@ -796,7 +796,7 @@ TEST_F(SnapshotTest, SnapshotRemoteBootstrap) {
   TxnSnapshotId snapshot_id = TxnSnapshotId::Nil();
   {
     LOG(INFO) << "Setting up workload";
-    TestWorkload workload = SetupWorkload();
+    TestYcqlWorkload workload = SetupWorkload();
     workload.Start();
     auto se = ScopeExit([&workload] {
       LOG(INFO) << "Stopping workload";
@@ -837,7 +837,7 @@ TEST_F(SnapshotTest, SnapshotRemoteBootstrap) {
 }
 
 TEST_F(SnapshotTest, ImportSnapshotMeta) {
-  TestWorkload workload = SetupWorkload();
+  TestYcqlWorkload workload = SetupWorkload();
   workload.Start();
   workload.WaitInserted(100);
 
@@ -1074,7 +1074,7 @@ TEST_F_EX(SnapshotTest, CrashAfterFlushedFrontierSaved, SnapshotExternalMiniClus
   client::SnapshotTestUtil snapshot_util;
   auto client = ASSERT_RESULT(snapshot_util.InitWithCluster(cluster_.get()));
 
-  TestWorkload workload = SetupWorkload();
+  TestYcqlWorkload workload = SetupWorkload();
 
   client::TableHandle table;
   ASSERT_OK(table.Open(kTableName, client.get()));
