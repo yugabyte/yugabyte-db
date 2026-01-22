@@ -680,6 +680,24 @@ TEST_F_EX(PggateTestSelect, DockeyBoundsForHashPartitionedTables, PggateTestSele
   ASSERT_EQ(expected_result, actual_result);
 }
 
+TEST_F_EX(PggateTestSelect, TestGetTableOid, PggateTestSelectWithYsql) {
+  CHECK_OK(Init(
+      "TestGetTableOid", kNumOfTablets, /* replication_factor = */ 0,
+      /* should_create_db = */ false));
+  auto database_name = "yugabyte";
+  auto table_name = "test_table";
+  auto conn = ASSERT_RESULT(PgConnect(database_name));
+  ASSERT_OK(conn.Execute(Format("CREATE TABLE $0(k INT)", table_name)));
+  const auto table_oid = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGOid>(
+      Format("SELECT oid FROM pg_class WHERE relname = '$0'", table_name)));
+  const auto database_oid = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGOid>(
+      Format("SELECT oid FROM pg_database WHERE datname = '$0'", database_name)));
+
+  YbcPgOid fetched_table_oid;
+  CHECK_YBC_STATUS(YBCGetTableOid(database_oid, table_name, &fetched_table_oid));
+  CHECK_EQ(table_oid, fetched_table_oid);
+}
+
 class PggateTestBucketizedSelect : public PggateTest {
  public:
   static constexpr const char *tab_name = "bkt_table";
