@@ -20,7 +20,8 @@
 #include "yb/util/thread.h"
 
 DEFINE_NON_RUNTIME_bool(
-    graceful_shutdown, true, "Whether to shutdown gracefully when receiving SIGTERM.");
+    graceful_shutdown, false, "Whether to shutdown gracefully when receiving SIGTERM.");
+DECLARE_bool(TEST_running_test);
 
 namespace yb {
 
@@ -70,7 +71,8 @@ void TerminationMonitor::WaitForTermination() {
 }
 
 void TerminationMonitor::InstallSigtermHandler() {
-  if (!FLAGS_graceful_shutdown) {
+  // The C++ test suite no longer passes without graceful shutdown enabled.
+  if (!FLAGS_graceful_shutdown && !FLAGS_TEST_running_test) {
     return;
   }
   std::lock_guard lock(mutex_);
