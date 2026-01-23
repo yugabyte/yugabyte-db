@@ -2525,30 +2525,10 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *scan,
 }
 
 /*
- * Whether any columns may find mismatch during preliminary check.
- */
-static bool
-YbMayFailPreliminaryCheck(YbScanDesc ybScan)
-{
-	if (ybScan->all_ordinary_keys_bound)
-		return false;
-
-	ScanKey    *keys = ybScan->keys;
-
-	for (int i = 0; i < ybScan->nkeys; i += YbGetLengthOfKey(&keys[i]))
-	{
-		if (ybScan->target_key_attnums[i] != InvalidAttrNumber &&
-			(!keys[i]->sk_flags ||
-			 (keys[i]->sk_flags & (SK_SEARCHNULL | SK_SEARCHNOTNULL))))
-			return true;
-	}
-	return false;
-}
-
-/*
  * Before beginning execution, determine whether any kind of recheck is needed:
- * - YB preliminary check
+ * - YB recheck
  * - PG recheck
+ * There is only one condition to avoid both of those: all_ordinary_keys_bound.
  * Use as little resources as possible to make this determination.  This is
  * largely a dup of ybcBeginScan minus the unessential parts.
  * TODO(jason): there may be room for further cleanup/optimization.
@@ -2585,17 +2565,11 @@ YbPredetermineNeedsRecheck(Scan *scan,
 
 	YbBindScanKeys(&ybscan, &scan_plan, scan, true /* is_for_precheck */ );
 
-	/*
-	 * Finally, ybscan has everything needed to determine recheck.  Do it now.
-	 */
-	bool		needs_recheck = (YbNeedsPgRecheck(&ybscan) ||
-								 YbMayFailPreliminaryCheck(&ybscan));
-
+	/* Finally, all_ordinary_keys_bound is finalized. */
 	bms_free(scan_plan.hash_key);
 	bms_free(scan_plan.primary_key);
 	bms_free(scan_plan.sk_cols);
-
-	return needs_recheck;
+	return !ybscan.all_ordinary_keys_bound;
 }
 
 typedef struct
@@ -2827,9 +2801,9 @@ ybcBuildRequiredAttrs(YbScanDesc yb_scan, YbScanPlan scan_plan,
 									  &result);
 
 		/*
-		 * Collect local recheck/precheck attributes
+		 * Collect local YB/PG recheck attributes
 		 *
-		 * TODO(jason): only do this if recheck/precheck is needed.
+		 * TODO(jason): only do this if YB/PG recheck is needed.
 		 */
 		if (IsA(pg_scan_plan, YbBitmapTableScan))
 			YbAddBitmapScanRecheckColumns((YbBitmapTableScan *) pg_scan_plan,
@@ -3388,40 +3362,73 @@ ybcBeginScan(Relation relation,
 }
 
 /*
- * Also known as "preliminary check".
+ * There are two levels of recheck:
+ * - YB recheck
+ * - PG recheck
+ * If YB recheck can make perfect yes/no decisions, then PG recheck is not
+ * needed.
  *
- * Return true if the given tuple does not match the ordinary
- * (non-yb_hash_code) scan keys.  Returning false is not a guarantee for match.
- *
- * Any modifications here may need to be reflected in YbNeedsPgRecheck as well.
+ * Since the logic for determining whether YB recheck can make perfect
+ * decisions and for actually performing the YB recheck are tightly coupled,
+ * this function shares the code for both modes:
+ * - For determining whether PG recheck may be needed: tup is NULL, and
+ *   return...
+ *   - false: tuples definitely will not need PG recheck
+ *   - true: tuples might perform PG recheck
+ * - For actually executing YB recheck: tup is not NULL, and return...
+ *   - false: in case PG recheck is...
+ *     - needed: tup needs PG recheck
+ *     - not needed: tup is a valid match
+ *   - true: tup definitely mismatches
  */
 static bool
-ybIsTupMismatch(HeapTuple tup, YbScanDesc ybScan)
+ybRecheck(HeapTuple tup, YbScanDesc ybScan)
 {
 	ScanKey    *keys = ybScan->keys;
 	AttrNumber *sk_attno = ybScan->target_key_attnums;
+	bool		is_determining_pg_recheck_mode = !tup;
 
 	/*
-	 * This function tries to find mismatches on ordinary keys.  If ordinary
-	 * keys are already known to be pushed down, it is futile to try to find a
-	 * mismatch.
+	 * Neither YB recheck nor PG recheck is needed if all ordinary keys are
+	 * bound.  The caller is expected to avoid calling this function in that
+	 * case.
 	 */
-	if (ybScan->all_ordinary_keys_bound)
-		return false;
+	Assert(!ybScan->all_ordinary_keys_bound);
+
+	/*
+	 * Index Only Scan never goes through YB recheck, so it makes no sense to
+	 * call this function in that case.
+	 */
+	Assert(!ybScan->prepare_params.index_only_scan);
 
 	for (int i = 0; i < ybScan->nkeys; i += YbGetLengthOfKey(&keys[i]))
 	{
+		/* TODO: support expressions */
 		if (sk_attno[i] == InvalidAttrNumber)
+		{
+			if (is_determining_pg_recheck_mode)
+				return true;
 			continue;
+		}
 
+		/*
+		 * res_datum is ill-defined when length of key is not 1, but such cases
+		 * would continue/return before we get to read res_datum.
+		 *
+		 * Both res_datum and is_null are ill-defined when
+		 * is_determining_pg_recheck_mode, but we don't read those values in
+		 * that case.
+		 */
 		ScanKey		key = keys[i];
 		bool		is_null = false;
-		Datum		res_datum = heap_getattr(tup, sk_attno[i], ybScan->target_desc,
-											 &is_null);
+		Datum		res_datum = (tup ?
+								 heap_getattr(tup, sk_attno[i],
+											  ybScan->target_desc, &is_null) :
+								 PointerGetDatum(NULL));
 
 		if (key->sk_flags & SK_SEARCHNULL)
 		{
-			if (is_null)
+			if (is_determining_pg_recheck_mode || is_null)
 				continue;
 			else
 				return true;
@@ -3429,25 +3436,32 @@ ybIsTupMismatch(HeapTuple tup, YbScanDesc ybScan)
 
 		if (key->sk_flags & SK_SEARCHNOTNULL)
 		{
-			if (!is_null)
+			if (is_determining_pg_recheck_mode || !is_null)
 				continue;
 			else
 				return true;
 		}
 
+		if (key->sk_flags == 0)
+		{
+			bool		matches;
+
+			if (is_determining_pg_recheck_mode)
+				continue;
+			if (is_null)
+				return true;
+
+			matches = DatumGetBool(FunctionCall2Coll(&key->sk_func,
+													 key->sk_collation,
+													 res_datum,
+													 key->sk_argument));
+
+			if (!matches)
+				return true;
+		}
+
 		/* TODO: support the different search options like SK_SEARCHARRAY. */
-		if (key->sk_flags != 0)
-			continue;
-
-		if (is_null)
-			return true;
-
-		bool		matches = DatumGetBool(FunctionCall2Coll(&key->sk_func,
-															 key->sk_collation,
-															 res_datum,
-															 key->sk_argument));
-
-		if (!matches)
+		if (is_determining_pg_recheck_mode)
 			return true;
 	}
 
@@ -3455,10 +3469,10 @@ ybIsTupMismatch(HeapTuple tup, YbScanDesc ybScan)
 }
 
 /*
- * Whether rows returned by DocDB need to be rechecked.  Currently, it can be
- * predetermined for the entire scan before tuples are fetched.  This function
- * is ready to be called after calling YbBindScanKeys, which sets some
- * variables that are read here.
+ * Whether rows returned by DocDB may need to go through PG recheck.  This
+ * function is ready to be called after calling YbBindScanKeys, which sets some
+ * variables that are read here.  There is an implicit assumption that this
+ * returns false for heap/system scans.
  */
 inline bool
 YbNeedsPgRecheck(YbScanDesc yb_scan)
@@ -3467,37 +3481,18 @@ YbNeedsPgRecheck(YbScanDesc yb_scan)
 	if (yb_scan->all_ordinary_keys_bound)
 		return false;
 
-	const ScanKey *keys = yb_scan->keys;
-	const bool	is_index_only_scan = yb_scan->prepare_params.index_only_scan;
+	/*
+	 * Index Only Scan does not go through YB recheck like the other scans.  It
+	 * only checks all_ordinary_keys_bound.  So if that fails, we need recheck.
+	 */
+	if (yb_scan->prepare_params.index_only_scan)
+		return true;
 
 	/*
-	 * If we can guarantee precheck will check each tuple accurately, we don't
-	 * need recheck.
+	 * If YB recheck cannot always make a clear decision, we need to fall back
+	 * to PG recheck.
 	 */
-	for (int i = 0; i < yb_scan->nkeys; i += YbGetLengthOfKey(&keys[i]))
-	{
-		const AttrNumber attnum = yb_scan->target_key_attnums[i];
-
-		/*
-		 * Precheck is not run for index only scan and does not cover
-		 * expressions (corresponding to InvalidAttrNumber), so those cases
-		 * always require recheck.  In addition, some sk_flags such as
-		 * SK_SEARCHNULL and SK_SEARCHARRAY could possibly slip through
-		 * precheck for non-matching cases, so we should recheck.
-		 *
-		 * TODO(jason): precheck should go back to returning three possible
-		 * values: yes-match, no-match, recheck, and we should predetermine
-		 * whether precheck may return recheck.  That would make it possible to
-		 * know recheck is not needed for certain cases such as SK_SEARCHNULL.
-		 */
-		if (is_index_only_scan ||
-			attnum == InvalidAttrNumber ||
-			keys[i]->sk_flags)
-		{
-			return true;
-		}
-	}
-	return false;
+	return ybRecheck(NULL /* tup */ , yb_scan);
 }
 
 HeapTuple
@@ -3513,8 +3508,15 @@ ybc_getnext_heaptuple(YbScanDesc ybScan, ScanDirection dir, bool *recheck)
 	/* Loop over rows from pggate. */
 	while (HeapTupleIsValid(tup = ybcFetchNextHeapTuple(ybScan, dir)))
 	{
-		/* Do a preliminary check to skip rows we can guarantee don't match. */
-		if (ybIsTupMismatch(tup, ybScan))
+		if (ybScan->all_ordinary_keys_bound)
+			return tup;
+
+		/*
+		 * Do a YB recheck first before deferring to a PG recheck if needed.
+		 * In case of heap/system scans, this is the main check, and it is
+		 * unexpected to need a PG recheck as there is no such code to do that.
+		 */
+		if (ybRecheck(tup, ybScan))
 		{
 			YBCPgIncrementIndexRecheckCount();
 			heap_freetuple(tup);
