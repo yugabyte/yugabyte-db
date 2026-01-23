@@ -242,7 +242,11 @@ CREATE TABLE multi_region_table (id INTEGER, field text)
   TABLESPACE multi_region_wildcard_tablespace;
 ```
 
-Similarly, the following tablespace allows copies to be placed in any zone and region in the `aws` cloud.
+Similarly, the following tablespace allows copies to be placed in any zone and region in the `aws` cloud. 
+
+{{< note title=" " >}}
+There is no guarantee that tablets are uniformly distributed over independent AZs in this case. Comment on https://github.com/yugabyte/yugabyte-db/issues/19862 if this is a feature that you are interested in.
+{{</note>}}
 
 ```sql
 CREATE TABLESPACE aws_wildcard_tablespace
@@ -330,6 +334,47 @@ You can specify non-zero contiguous integer values for each zone. When multiple 
 You can check the overall leader distribution and [cluster level leader preference](../../../admin/yb-admin/#set-preferred-zones) on the [tablet-servers page](http://127.0.0.1:7000/tablet-servers).
 
 ![Multi Region Table](/images/explore/tablespaces/leader_preference_admin_ui.png)
+
+## Read replicas
+
+[Read replica](../multi-region-deployments/read-replicas-ysql/) clusters in YugabyteDB are a set of follower nodes that maintain asynchronously replicated copies of tablets in the primary cluster. These tservers are configured with an independent placement_uuid that is different from the primary cluster. 
+
+A table can be configured to place read replica copies of tablets on read replica tservers through tablespace configuration. The syntax below creates a table that has 3 primary copies in us-east-1a and 2 read replica copies in us-east-1b. Note that this assumes that tservers have already been started with read replica placement as described in [deployment docs](../../deploy/multi-dc/read-replica-clusters/).
+
+
+```sql
+CREATE TABLESPACE us_east_1_with_rrs_tablespace WITH (
+  replica_placement='{
+  "num_replicas": 3,
+  "placement_blocks": [
+    {
+      "cloud": "aws",
+      "region": "us-east-1",
+      "zone": "us-east-1a",
+      "min_num_replicas": 3
+    }
+  ]
+}', read_replica_placement='[
+  {
+    "num_replicas": 2,
+    "placement_uuid": "read_replica",
+    "placement_blocks": [
+      {
+        "cloud": "aws",
+        "region": "us-east-2",
+        "zone": "us-east-2a",
+        "min_num_replicas": 2
+      },
+      }
+    ]
+  }
+]');
+
+CREATE TABLE single_zone_table_with_read_replica (id INTEGER, field text)
+  TABLESPACE us_east_1_with_rrs_tablespace;
+```
+
+Read replica placement can also use wildcards for region/zone fields, similar to primary placement.
 
 ## Indexes
 
