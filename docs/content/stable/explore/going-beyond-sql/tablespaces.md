@@ -242,11 +242,7 @@ CREATE TABLE multi_region_table (id INTEGER, field text)
   TABLESPACE multi_region_wildcard_tablespace;
 ```
 
-Similarly, the following tablespace allows copies to be placed in any zone and region in the `aws` cloud. 
-
-{{< note title=" " >}}
-There is no guarantee that tablets are uniformly distributed over independent AZs in this case. Comment on https://github.com/yugabyte/yugabyte-db/issues/19862 if this is a feature that you are interested in.
-{{</note>}}
+Similarly, the following tablespace allows copies to be placed in any zone and region in the `aws` cloud.
 
 ```sql
 CREATE TABLESPACE aws_wildcard_tablespace
@@ -256,6 +252,10 @@ CREATE TABLESPACE aws_wildcard_tablespace
 CREATE TABLE aws_wildcard_table (id INTEGER, field text)
   TABLESPACE aws_wildcard_tablespace;
 ```
+
+{{< note title="Tablet distribution" >}}
+There is no guarantee that tablets are uniformly distributed over independent AZs in this case. Comment on issue {{<issue 19862>}} if this is a feature that you are interested in.
+{{</note>}}
 
 ## Leader preference
 
