@@ -72,22 +72,19 @@ Video: [Disaster Recovery With xCluster DR and Two Cloud Regions](https://www.yo
 
 xCluster DR can be set up to perform schema changes in the following ways:
 
-- [Automatic mode](#automatic-mode) {{<tags/feature/ea idea="2089">}} handles all aspects of replication for both data and schema changes.
+- [Automatic mode](#automatic-mode) handles all aspects of replication for both data and schema changes.
 - [Semi-automatic mode](#semi-automatic-mode), providing simpler steps for performing DDL changes.
 - [Manual mode](#manual-mode). Deprecated.
 
 ### Automatic mode
 
-{{<tags/feature/ea idea="2089">}}In automatic mode, all table and index-level schema changes made to the DR primary universe are automatically replicated to the DR replica.
+In automatic mode, all table and index-level schema changes made to the DR primary universe are automatically replicated to the DR replica.
 
 You don't need to make any changes to the DR configuration.
 
 Automatic mode is recommended for all new DR configurations. When possible, you should delete existing DR configurations and re-create them using automatic mode to reduce the operational burden of DDL changes.
 
-Automatic mode is used for any xCluster DR configuration when the following pre-requisites are met at setup time:
-
-- Both DR primary and replica are running YugabyteDB {{<release "2025.1.1">}} or later.
-- Automatic mode is enabled. While in {{<tags/feature/ea idea="2089">}}, the feature is not enabled by default. To enable it, set the **Automatic mode for xCluster** Global runtime configuration option (config key `yb.xcluster.db_scoped.automatic_ddl.creationEnabled`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global runtime configuration settings.
+Automatic mode is used for any xCluster DR configuration when both DR primary and replica are running YugabyteDB {{<release "2025.1.1">}} or later. For earlier versions, semi-automatic mode is used.
 
 ### Semi-automatic mode
 
