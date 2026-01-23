@@ -129,6 +129,6 @@ To rotate root certificates for a universe, do the following:
 
 ## Limitation
 
-Currently, certificate rotation for [Kubernetes cert-manager](../add-certificate-kubernetes/) managed certificates is not supported through YugabyteDB Anywhere.
+Currently, certificate rotation for Kubernetes universes using [cert-manager](../add-certificate-kubernetes/) is not managed using YugabyteDB Anywhere.
 
-For Kubernetes universes using cert-manager, certificate renewal is handled automatically by cert-manager based on the `renewBefore` setting in your [Certificate resources](https://cert-manager.io/v1.4-docs/usage/certificate/). cert-manager monitors certificates and automatically renews them before expiration. Ensure that your cert-manager Certificate resources are properly configured with appropriate `renewBefore` values (for example, 15-30 days before expiry) to prevent certificate expiration.
+For Kubernetes universes using cert-manager, certificate renewal is handled automatically by cert-manager based on the `renewBefore` setting in the [Certificate resource](https://cert-manager.io/v1.4-docs/usage/certificate/). cert-manager monitors certificates and automatically renews them before expiration. Ensure that your certificate resources are properly configured with appropriate `renewBefore` values (for example, 15-30 days before expiry) to prevent certificate expiration.
