@@ -2324,7 +2324,7 @@ Result<PgOid> SysCatalogTable::GetYsqlTableOid(PgOid database_oid, const TableNa
   const auto& schema = read_data.schema();
 
   const auto oid_col_id = VERIFY_RESULT(schema.ColumnIdByName(kPgClassOidColumnName)).rep();
-  const auto relname_col_id = VERIFY_RESULT(schema.ColumnIdByName("relname")).rep();
+  const auto relname_col_id = VERIFY_RESULT(schema.ColumnIdByName(kPgClassRelNameColumnName)).rep();
   dockv::ReaderProjection projection(schema, {oid_col_id, relname_col_id});
 
   auto iter = VERIFY_RESULT(read_data.NewUninitializedIterator(projection));
@@ -2359,8 +2359,8 @@ Result<PgOid> SysCatalogTable::GetYsqlTableOid(PgOid database_oid, const TableNa
     }
   }
   if (result == kPgInvalidOid)
-    LOG(ERROR) << "Could not find YSQL table with table '" << table_name
-               << "' in database with db_oid = " << database_oid;
+    LOG(INFO) << "Could not find YSQL table with table '" << table_name
+              << "' in database with db_oid = " << database_oid;
   return result;
 }
 

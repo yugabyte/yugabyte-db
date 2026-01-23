@@ -52,6 +52,7 @@ static const char* const kDefaultCassandraUsername = "cassandra";
 static const char* const kDefaultCassandraPassword = "cassandra";
 
 static const char* const kPgClassOidColumnName = "oid";
+static const char* const kPgClassRelNameColumnName = "relname";
 static const char* const kPgClassRelFileNodeColumnName = "relfilenode";
 static const char* const kPgClassRelNamespaceColumnName = "relnamespace";
 

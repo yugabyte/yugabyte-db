@@ -176,6 +176,8 @@ using yb::master::GetUDTypeMetadataRequestPB;
 using yb::master::GetUDTypeMetadataResponsePB;
 using yb::master::GetYsqlCatalogConfigRequestPB;
 using yb::master::GetYsqlCatalogConfigResponsePB;
+using yb::master::GetYsqlTableOidRequestPB;
+using yb::master::GetYsqlTableOidResponsePB;
 using yb::master::GrantRevokePermissionRequestPB;
 using yb::master::GrantRevokePermissionResponsePB;
 using yb::master::GrantRevokeRoleRequestPB;
@@ -229,8 +231,6 @@ using yb::master::WaitForYsqlBackendsCatalogVersionResponsePB;
 using yb::rpc::Messenger;
 using yb::tserver::AllowSplitTablet;
 using yb::tserver::TabletConsensusInfoPB;
-using yb::master::GetYsqlTableOidRequestPB;
-using yb::master::GetYsqlTableOidResponsePB;
 
 using namespace yb::size_literals;  // NOLINT.
 
