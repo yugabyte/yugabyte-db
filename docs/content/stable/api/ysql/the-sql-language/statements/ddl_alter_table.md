@@ -257,7 +257,7 @@ Change the type of an existing column. The following semantics apply:
 - Alter type is not supported for partitioned tables. See {{<issue 16980>}}.
 - Alter type is not supported for tables with rules (limitation inherited from PostgreSQL).
 - Alter type is not supported for tables with CDC streams if a table rewrite is required. See {{<issue 27766>}}.
-- Alter type is not supported for tables under xCluster replication if a table rewrite is required, except when using [automatic mode](../../../deploy/multi-dc/async-replication/async-transactional-setup-automatic/).
+- Alter type is not supported for tables under xCluster replication if a table rewrite is required, except when using [automatic mode](../../../../../architecture/docdb-replication/async-replication/#transactional-replication).
 
 ##### Table rewrites
 

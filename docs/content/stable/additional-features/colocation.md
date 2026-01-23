@@ -183,15 +183,15 @@ For a colocated table, a TRUNCATE / DROP operation may abort due to conflicts if
 
 ## xCluster and colocation
 
-xCluster replication supports colocated tables for [all modes](../../deploy/multi-dc/async-replication/async-transactional-setup-automatic/).
+xCluster replication supports colocated tables, regardless of the [replication mode](../../architecture/docdb-replication/async-replication/#asynchronous-replication-modes) being used.
 
-When setting up xCluster for colocated tables when using automatic
+When using transactional automatic
 mode, xCluster automatically replicates all of the database tables
 (colocated and non-colocated), as well as any DDLs performed in that
-database. No additional steps are needed. When creating tables or indexes, do not specify the `colocation_id`.
+database. No additional steps are needed. When creating tables or indexes, do not specify a colocation ID.
 
-When setting up xCluster for colocated tables when using manual or
-semi-automatic mode, the `colocation_id` for a given table or index
+When using transactional manual or
+semi-automatic mode, the colocation ID for a given table or index
 needs to match on the source and target universes.
 
 To set up xCluster for colocated tables in manual or semi-automatic mode, do the following:

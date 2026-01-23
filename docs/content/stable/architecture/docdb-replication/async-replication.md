@@ -328,7 +328,7 @@ Improper use can compromise replication consistency and lead to data divergence.
 
 - `CREATE TABLE AS` and `SELECT INTO DDL` statements are not supported. You can work around this by breaking the DDL into a `CREATE TABLE` followed by `INSERT SELECT`.
 
-- [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) are not replicated by xCluster. When setting up replication for a database, materialized views need to be excluded. You can create them on the target universe after the replication is set up. When refreshing, make sure to refresh on both sides.
+- [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) are not replicated by xCluster in semi-automatic and manual modes. When setting up replication for a database, materialized views need to be excluded. You can create them on the target universe after the replication is set up. When refreshing, make sure to refresh on both sides.
 
 - Sequence data is not replicated by these modes. Serial columns use sequences internally. Avoid serial columns in primary keys, as both universes would generate the same sequence numbers, resulting in conflicting rows. It is recommended to use UUIDs instead.
 
@@ -358,7 +358,7 @@ Improper use can compromise replication consistency and lead to data divergence.
 
 - `CREATE TABLE AS` and `SELECT INTO DDL` statements are not supported. You can work around this by breaking the DDL into a `CREATE TABLE` followed by `INSERT SELECT`.
 
-- [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) are not replicated by xCluster. When setting up replication for a database, materialized views need to be excluded. You can create them on the target universe after the replication is set up. When refreshing, make sure to refresh on both sides.
+- [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) are not replicated by non-transactional xCluster. When setting up replication for a database, materialized views need to be excluded. You can create them on the target universe after the replication is set up. When refreshing, make sure to refresh on both sides.
 
 - pg_partman
 
