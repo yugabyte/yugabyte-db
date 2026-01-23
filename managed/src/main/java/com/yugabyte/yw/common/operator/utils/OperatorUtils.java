@@ -42,6 +42,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.K8SNodeResourceSpec;
 import com.yugabyte.yw.forms.UpdatePitrConfigParams;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams;
 import com.yugabyte.yw.forms.XClusterConfigRestartFormData.RestartBootstrapParams;
@@ -386,13 +387,21 @@ public class OperatorUtils {
     DeviceInfo newDeviceInfo = mapDeviceInfo(newYbUniverse.getSpec().getDeviceInfo());
     DeviceInfo newMasterDeviceInfo =
         mapMasterDeviceInfo(newYbUniverse.getSpec().getMasterDeviceInfo());
+    K8SNodeResourceSpec newMasterK8SNodeResourceSpec =
+        toNodeResourceSpec(
+            newYbUniverse.getSpec().getMasterResourceSpec(), s -> s.getCpu(), s -> s.getMemory());
+    K8SNodeResourceSpec newTserverK8SNodeResourceSpec =
+        toNodeResourceSpec(
+            newYbUniverse.getSpec().getTserverResourceSpec(), s -> s.getCpu(), s -> s.getMemory());
     return !(currentUserIntent.numNodes == newNumNodes)
         || checkifDeviceInfoChanged(
             currentUserIntent.deviceInfo, newDeviceInfo.volumeSize.intValue())
         || checkifDeviceInfoChanged(
             currentUserIntent.masterDeviceInfo, newMasterDeviceInfo.volumeSize.intValue())
         || OperatorPlacementInfoHelper.checkIfPlacementInfoChanged(
-            currentCluster.placementInfo, newYbUniverse, false);
+            currentCluster.placementInfo, newYbUniverse, false)
+        || !currentUserIntent.masterK8SNodeResourceSpec.equals(newMasterK8SNodeResourceSpec)
+        || !currentUserIntent.tserverK8SNodeResourceSpec.equals(newTserverK8SNodeResourceSpec);
   }
 
   public boolean shouldAddReadReplica(Universe universe, YBUniverse ybUniverse) {
@@ -418,6 +427,11 @@ public class OperatorUtils {
           universe.getUniverseDetails().getReadOnlyClusters().get(0).userIntent;
       PlacementInfo readReplicaPlacementInfo =
           universe.getUniverseDetails().getReadOnlyClusters().get(0).placementInfo;
+      K8SNodeResourceSpec newReadReplicaTserverK8SNodeResourceSpec =
+          toNodeResourceSpec(
+              ybUniverse.getSpec().getReadReplica().getTserverResourceSpec(),
+              s -> s.getCpu(),
+              s -> s.getMemory());
       return readReplicaUserIntent.numNodes
               != ybUniverse.getSpec().getReadReplica().getNumNodes().intValue()
           || readReplicaUserIntent.replicationFactor
@@ -426,7 +440,9 @@ public class OperatorUtils {
               readReplicaPlacementInfo, ybUniverse, true)
           || checkifDeviceInfoChanged(
               readReplicaUserIntent.deviceInfo,
-              ybUniverse.getSpec().getReadReplica().getDeviceInfo().getVolumeSize().intValue());
+              ybUniverse.getSpec().getReadReplica().getDeviceInfo().getVolumeSize().intValue())
+          || !readReplicaUserIntent.tserverK8SNodeResourceSpec.equals(
+              newReadReplicaTserverK8SNodeResourceSpec);
     }
   }
 
@@ -573,6 +589,27 @@ public class OperatorUtils {
     di.storageClass = spec.getStorageClass();
 
     return di;
+  }
+
+  public <T> K8SNodeResourceSpec toNodeResourceSpec(
+      T operatorNodeResourceSpec, Function<T, Double> cpuMapper, Function<T, Double> memoryMapper) {
+    K8SNodeResourceSpec spec = new K8SNodeResourceSpec();
+
+    if (operatorNodeResourceSpec == null) {
+      return spec;
+    }
+
+    Double cpu = cpuMapper.apply(operatorNodeResourceSpec);
+    if (cpu != null) {
+      spec.cpuCoreCount = cpu;
+    }
+
+    Double memory = memoryMapper.apply(operatorNodeResourceSpec);
+    if (memory != null) {
+      spec.memoryGib = memory;
+    }
+
+    return spec;
   }
 
   public DeviceInfo defaultMasterDeviceInfo() {
@@ -1815,6 +1852,7 @@ public class OperatorUtils {
           rr.setNumNodes(Long.valueOf(firstReadReplica.userIntent.numNodes));
           rr.setReplicationFactor(Long.valueOf(firstReadReplica.userIntent.replicationFactor));
           universeImporter.setReadReplicaDeviceInfo(rr, firstReadReplica);
+          universeImporter.setReadReplicaResourceSpecFromUniverse(rr, firstReadReplica);
           universeImporter.setReadReplicaPlacementInfo(rr, firstReadReplica);
           spec.setReadReplica(rr);
         }
@@ -1835,6 +1873,8 @@ public class OperatorUtils {
 
       // Device info
       universeImporter.setDeviceInfoSpecFromUniverse(spec, universe);
+      universeImporter.setTserverResourceSpecFromUniverse(spec, universe);
+      universeImporter.setMasterResourceSpecFromUniverse(spec, universe);
       universeImporter.setMasterDeviceInfoSpecFromUniverse(spec, universe);
 
       // Ybc throttle parameters

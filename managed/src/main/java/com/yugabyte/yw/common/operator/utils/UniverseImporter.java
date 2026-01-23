@@ -113,6 +113,55 @@ public class UniverseImporter {
     spec.setDeviceInfo(deviceInfo);
   }
 
+  public void setTserverResourceSpecFromUniverse(YBUniverseSpec spec, Universe universe) {
+    io.yugabyte.operator.v1alpha1.ybuniversespec.TserverResourceSpec resourceSpec =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.TserverResourceSpec();
+    resourceSpec.setCpu(
+        universe
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .tserverK8SNodeResourceSpec
+            .cpuCoreCount);
+    resourceSpec.setMemory(
+        universe
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .tserverK8SNodeResourceSpec
+            .memoryGib);
+    spec.setTserverResourceSpec(resourceSpec);
+  }
+
+  public void setMasterResourceSpecFromUniverse(YBUniverseSpec spec, Universe universe) {
+    io.yugabyte.operator.v1alpha1.ybuniversespec.MasterResourceSpec resourceSpec =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.MasterResourceSpec();
+    resourceSpec.setCpu(
+        universe
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .masterK8SNodeResourceSpec
+            .cpuCoreCount);
+    resourceSpec.setMemory(
+        universe
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .masterK8SNodeResourceSpec
+            .memoryGib);
+    spec.setMasterResourceSpec(resourceSpec);
+  }
+
+  public void setReadReplicaResourceSpecFromUniverse(
+      ReadReplica spec, UniverseDefinitionTaskParams.Cluster cluster) {
+    io.yugabyte.operator.v1alpha1.ybuniversespec.readreplica.TserverResourceSpec resourceSpec =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.readreplica.TserverResourceSpec();
+    resourceSpec.setCpu(cluster.userIntent.tserverK8SNodeResourceSpec.cpuCoreCount);
+    resourceSpec.setMemory(cluster.userIntent.tserverK8SNodeResourceSpec.memoryGib);
+    spec.setTserverResourceSpec(resourceSpec);
+  }
+
   public void setMasterDeviceInfoSpecFromUniverse(YBUniverseSpec spec, Universe universe) {
     MasterDeviceInfo masterDeviceInfo = new MasterDeviceInfo();
     masterDeviceInfo.setVolumeSize(

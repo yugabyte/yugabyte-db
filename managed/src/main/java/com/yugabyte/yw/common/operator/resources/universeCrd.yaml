@@ -253,6 +253,7 @@ spec:
                     x-kubernetes-validations:
                       - message:   StorageClass cannot be changed once set.
                         rule: self == oldSelf
+                    description: Storage class for the volumes. Only used when providerName is not specified.
                 type: object
               masterDeviceInfo:
                 description: >
@@ -275,6 +276,32 @@ spec:
                       - message:   StorageClass cannot be changed once set.
                         rule: self == oldSelf
                 type: object
+              tserverResourceSpec:
+                description: >
+                  Resource specification for the tserver pods in the universe.
+                type: object
+                properties:
+                  cpu:
+                    type: number
+                    description: CPU core count for the tserver pods.
+                    minimum: 1
+                  memory:
+                    type: number
+                    description: Memory in GiB for the tserver pods.
+                    minimum: 1
+              masterResourceSpec:
+                description: >
+                  Resource specification for the master pods in the universe.
+                type: object
+                properties:
+                  cpu:
+                    type: number
+                    description: CPU core count for the master pods.
+                    minimum: 1
+                  memory:
+                    type: number
+                    description: Memory in GiB for the master pods.
+                    minimum: 1
               paused:
                 description: >
                   If the universe is paused. A paused universe will have its statefulsets scaled
@@ -313,6 +340,19 @@ spec:
                         x-kubernetes-validations:
                           - message: numVolumes cannot be changed once set.
                             rule: "self == oldSelf"
+                  tserverResourceSpec:
+                    description: >
+                      Resource specification for the tserver pods in the universe.
+                    type: object
+                    properties:
+                      cpu:
+                        type: number
+                        description: CPU core count for the tserver pods.
+                        minimum: 1
+                      memory:
+                        type: number
+                        description: Memory in GiB for the tserver pods.
+                        minimum: 1
                   placementInfo:
                     description: Placement information for the universe.
                     type: object
