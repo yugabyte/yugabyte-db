@@ -374,7 +374,7 @@ CREATE TABLE single_zone_table_with_read_replica (id INTEGER, field text)
   TABLESPACE us_east_1_with_rr_tablespace;
 ```
 
-Read replica placement can also use wildcards for region/zone fields, similar to primary placement.
+The wildcard `*` can be used in the read_replica_placement section for region/zone fields, with similar semantics as for primary placement.
 
 ## Indexes
 
