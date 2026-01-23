@@ -55,6 +55,7 @@
 #include "yb/master/encryption_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/master_backup.pb.h"
+#include "yb/master/master_client.pb.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_heartbeat.pb.h"
@@ -3494,6 +3495,20 @@ void CatalogManager::PrepareRestore() {
   LOG_WITH_PREFIX(INFO) << "Disabling concurrent RPCs since restoration is ongoing";
   restoring_sys_catalog_ = true;
   sys_catalog_->IncrementPitrCount();
+}
+
+Status CatalogManager::GetYsqlTableOid(
+    const GetYsqlTableOidRequestPB* req, GetYsqlTableOidResponsePB* resp, rpc::RpcContext* rpc) {
+  RSTATUS_DCHECK(
+      req->has_database_oid(), InvalidArgument,
+      "database_oid is a required argument in GetYsqlTableOid rpc");
+  RSTATUS_DCHECK(
+      req->has_table_name(), InvalidArgument,
+      "table_name is a required argument in GetYsqlTableOid rpc");
+
+  resp->set_table_oid(
+      VERIFY_RESULT(sys_catalog_->GetYsqlTableOid(req->database_oid(), req->table_name())));
+  return Status::OK();
 }
 
 docdb::HistoryCutoff CatalogManager::AllowedHistoryCutoffProvider(
