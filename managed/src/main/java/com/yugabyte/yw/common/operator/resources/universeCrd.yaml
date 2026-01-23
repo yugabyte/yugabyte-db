@@ -165,8 +165,8 @@ spec:
                   rule: self == oldSelf
               zoneFilter:
                 description: >
-                  Only deploy yugabytedb nodes in these zones mentioned in the list.
-                  Defaults to all zones if unspecified.
+                  Filter the zones to be added by the auto-provider.
+                  Only used when providerName is not specified.
                 type: array
                 x-kubernetes-validations:
                 - message: zoneFilter cannot be changed
@@ -225,9 +225,8 @@ spec:
                   rule: self == oldSelf
               enableLoadBalancer:
                 description: >
-                  Enable LoadBalancer access to the universe.
-                  Creates a service with Type:LoadBalancer
-                  in the universe for tserver and masters.
+                  WARNING: Enabling LoadBalancer may expose universe servers via public IPs.
+                  Use with caution. To use an internal LoadBalancer, ensure you set appropriate Kubernetes overrides to avoid exposing nodes publicly.
                 type: boolean
                 default: false
                 x-kubernetes-validations:
@@ -251,8 +250,9 @@ spec:
                   storageClass:
                     type: string
                     x-kubernetes-validations:
-                      - message:   StorageClass cannot be changed once set.
+                      - message: StorageClass cannot be changed once set.
                         rule: self == oldSelf
+                    description: Storage class for the volumes. Only used when providerName is not specified.
                 type: object
               masterDeviceInfo:
                 description: >
@@ -274,7 +274,34 @@ spec:
                     x-kubernetes-validations:
                       - message:   StorageClass cannot be changed once set.
                         rule: self == oldSelf
+                    description: Storage class for the volumes. Only used when providerName is not specified.
                 type: object
+              tserverResourceSpec:
+                description: >
+                  Resource specification for the tserver pods in the universe.
+                type: object
+                properties:
+                  cpu:
+                    type: number
+                    description: CPU core count for the tserver pods.
+                    minimum: 1
+                  memory:
+                    type: number
+                    description: Memory in GiB for the tserver pods.
+                    minimum: 1
+              masterResourceSpec:
+                description: >
+                  Resource specification for the master pods in the universe.
+                type: object
+                properties:
+                  cpu:
+                    type: number
+                    description: CPU core count for the master pods.
+                    minimum: 1
+                  memory:
+                    type: number
+                    description: Memory in GiB for the master pods.
+                    minimum: 1
               paused:
                 description: >
                   If the universe is paused. A paused universe will have its statefulsets scaled

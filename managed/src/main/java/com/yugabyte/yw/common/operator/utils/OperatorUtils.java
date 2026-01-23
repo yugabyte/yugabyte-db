@@ -35,6 +35,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.K8SNodeResourceSpec;
 import com.yugabyte.yw.forms.YbcThrottleParametersResponse;
 import com.yugabyte.yw.forms.YbcThrottleParametersResponse.ThrottleParamValue;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -370,10 +371,14 @@ public class OperatorUtils {
       UserIntent currentUserIntent,
       int newNumNodes,
       DeviceInfo newDeviceInfo,
-      DeviceInfo newMasterDeviceInfo) {
+      DeviceInfo newMasterDeviceInfo,
+      K8SNodeResourceSpec newTserverResourceSpec,
+      K8SNodeResourceSpec newMasterResourceSpec) {
     return !(currentUserIntent.numNodes == newNumNodes)
         || !currentUserIntent.deviceInfo.volumeSize.equals(newDeviceInfo.volumeSize)
-        || !currentUserIntent.masterDeviceInfo.volumeSize.equals(newMasterDeviceInfo.volumeSize);
+        || !currentUserIntent.masterDeviceInfo.volumeSize.equals(newMasterDeviceInfo.volumeSize)
+        || !currentUserIntent.masterK8SNodeResourceSpec.equals(newMasterResourceSpec)
+        || !currentUserIntent.tserverK8SNodeResourceSpec.equals(newTserverResourceSpec);
   }
 
   public String getKubernetesOverridesString(Object kubernetesOverrides) {
@@ -563,6 +568,27 @@ public class OperatorUtils {
     return di;
   }
 
+  public <T> K8SNodeResourceSpec toNodeResourceSpec(
+      T operatorNodeResourceSpec, Function<T, Double> cpuMapper, Function<T, Double> memoryMapper) {
+    K8SNodeResourceSpec spec = new K8SNodeResourceSpec();
+
+    if (operatorNodeResourceSpec == null) {
+      return spec;
+    }
+
+    Double cpu = cpuMapper.apply(operatorNodeResourceSpec);
+    if (cpu != null) {
+      spec.cpuCoreCount = cpu;
+    }
+
+    Double memory = memoryMapper.apply(operatorNodeResourceSpec);
+    if (memory != null) {
+      spec.memoryGib = memory;
+    }
+
+    return spec;
+  }
+
   public DeviceInfo defaultMasterDeviceInfo() {
     DeviceInfo masterDeviceInfo = new DeviceInfo();
     masterDeviceInfo.volumeSize = 50;
@@ -599,6 +625,12 @@ public class OperatorUtils {
     DeviceInfo incomingDeviceInfo = mapDeviceInfo(ybUniverse.getSpec().getDeviceInfo());
     DeviceInfo incomingMasterDeviceInfo =
         mapMasterDeviceInfo(ybUniverse.getSpec().getMasterDeviceInfo());
+    K8SNodeResourceSpec incomingTserverResourceSpec =
+        toNodeResourceSpec(
+            ybUniverse.getSpec().getTserverResourceSpec(), s -> s.getCpu(), s -> s.getMemory());
+    K8SNodeResourceSpec incomingMasterResourceSpec =
+        toNodeResourceSpec(
+            ybUniverse.getSpec().getMasterResourceSpec(), s -> s.getCpu(), s -> s.getMemory());
     int incomingNumNodes = (int) ybUniverse.getSpec().getNumNodes().longValue();
     Boolean pauseChangeRequired =
         ybUniverse.getSpec().getPaused() != u.getUniverseDetails().universePaused;
@@ -613,7 +645,9 @@ public class OperatorUtils {
               prevTaskParams.getPrimaryCluster().userIntent,
               incomingNumNodes,
               incomingDeviceInfo,
-              incomingMasterDeviceInfo);
+              incomingMasterDeviceInfo,
+              incomingTserverResourceSpec,
+              incomingMasterResourceSpec);
         case KubernetesOverridesUpgrade:
           KubernetesOverridesUpgradeParams overridesUpgradeTaskParams =
               Json.fromJson(
@@ -652,7 +686,12 @@ public class OperatorUtils {
     mismatch =
         mismatch
             || shouldUpdateYbUniverse(
-                currentUserIntent, incomingNumNodes, incomingDeviceInfo, incomingMasterDeviceInfo);
+                currentUserIntent,
+                incomingNumNodes,
+                incomingDeviceInfo,
+                incomingMasterDeviceInfo,
+                incomingTserverResourceSpec,
+                incomingMasterResourceSpec);
     log.trace("nodes mismatch: {}", mismatch);
     mismatch =
         mismatch
@@ -1679,6 +1718,8 @@ public class OperatorUtils {
 
       // Device info
       universeImporter.setDeviceInfoSpecFromUniverse(spec, universe);
+      universeImporter.setTserverResourceSpecFromUniverse(spec, universe);
+      universeImporter.setMasterResourceSpecFromUniverse(spec, universe);
       universeImporter.setMasterDeviceInfoSpecFromUniverse(spec, universe);
 
       // Ybc throttle parameters
