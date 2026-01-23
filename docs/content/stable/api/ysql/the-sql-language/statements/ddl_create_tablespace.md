@@ -27,8 +27,10 @@ Use the `CREATE TABLESPACE` statement to create a tablespace in the cluster. It 
 
 ### *tablespace_option*
 
-- Can be one of [`replica_placement`].
+Can be one of `replica_placement` or `read_replica_placement`.
+
 - Use `replica_placement` to specify the number of replicas stored in specific zones, regions, or clouds.
+- Use `read_replica_placement` to specify the number of replicas stored in read replicas in specific zones, regions, or clouds.
 
 ## Examples
 
@@ -36,6 +38,6 @@ See [Tablespaces](../../../../../explore/going-beyond-sql/tablespaces/) and [Row
 
 ## See also
 
-- [`DROP TABLESPACE`](../ddl_drop_tablespace)
-- [`CREATE TABLE`](../ddl_create_table)
-- [`ALTER TABLE`](../ddl_alter_table)
+- [DROP TABLESPACE](../ddl_drop_tablespace)
+- [CREATE TABLE](../ddl_create_table)
+- [ALTER TABLE](../ddl_alter_table)
