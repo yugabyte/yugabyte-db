@@ -2046,7 +2046,7 @@ TEST_F(XClusterYsqlTest, ReplicationWithPackedColumnsAndSchemaVersionMismatch) {
   std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
   ASSERT_OK(SetUpWithParams(tables_vector, tables_vector, 1, 1));
 
-  TestReplicationWithSchemaChanges(producer_table_->id(), false /* boostrap */);
+  TestReplicationWithSchemaChanges(producer_table_->id(), /*bootstrap=*/false);
 }
 
 TEST_F(XClusterYsqlTest, ReplicationWithPackedColumnsAndBootstrap) {
@@ -2055,7 +2055,7 @@ TEST_F(XClusterYsqlTest, ReplicationWithPackedColumnsAndBootstrap) {
   std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
   ASSERT_OK(SetUpWithParams(tables_vector, tables_vector, 1, 1));
 
-  TestReplicationWithSchemaChanges(producer_table_->id(), true /* boostrap */);
+  TestReplicationWithSchemaChanges(producer_table_->id(), /*bootstrap=*/true);
 }
 
 TEST_F(XClusterYsqlTest, ReplicationWithDefaultProducerSchemaVersion) {
@@ -2431,28 +2431,38 @@ void XClusterYsqlTest::ValidateRecordsXClusterWithCDCSDK(
 
 TEST_F(XClusterYsqlTest, XClusterWithCDCSDKEnabled) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
-  ValidateRecordsXClusterWithCDCSDK(false, false, false);
+  ValidateRecordsXClusterWithCDCSDK(/*update_min_cdc_indices_interval=*/false,
+                                    /*enable_cdc_sdk_in_producer=*/false,
+                                    /*do_explict_transaction=*/false);
 }
 
 TEST_F(XClusterYsqlTest, XClusterWithCDCSDKPackedRowsEnabled) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_packed_row_size_limit) = 1_KB;
-  ValidateRecordsXClusterWithCDCSDK(false, false, false);
+  ValidateRecordsXClusterWithCDCSDK(/*update_min_cdc_indices_interval=*/false,
+                                    /*enable_cdc_sdk_in_producer=*/false,
+                                    /*do_explict_transaction=*/false);
 }
 
 TEST_F(XClusterYsqlTest, XClusterWithCDCSDKExplictTransaction) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
-  ValidateRecordsXClusterWithCDCSDK(false, true, true);
+  ValidateRecordsXClusterWithCDCSDK(/*update_min_cdc_indices_interval=*/false,
+                                    /*enable_cdc_sdk_in_producer=*/true,
+                                    /*do_explict_transaction=*/true);
 }
 
 TEST_F(XClusterYsqlTest, XClusterWithCDCSDKExplictTranPackedRows) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_packed_row_size_limit) = 1_KB;
-  ValidateRecordsXClusterWithCDCSDK(false, true, true);
+  ValidateRecordsXClusterWithCDCSDK(/*update_min_cdc_indices_interval=*/false,
+                                    /*enable_cdc_sdk_in_producer=*/true,
+                                    /*do_explict_transaction=*/true);
 }
 
 TEST_F(XClusterYsqlTest, XClusterWithCDCSDKUpdateCDCInterval) {
-  ValidateRecordsXClusterWithCDCSDK(true, true, false);
+  ValidateRecordsXClusterWithCDCSDK(/*update_min_cdc_indices_interval=*/true,
+                                    /*enable_cdc_sdk_in_producer=*/true,
+                                    /*do_explict_transaction=*/false);
 }
 
 TEST_F(XClusterYsqlTest, DeletingDatabaseContainingReplicatedTable) {
@@ -3463,6 +3473,32 @@ TEST_F(XClusterYsqlTest, NonconcurrentBackfills) {
           "CREATE UNIQUE INDEX ON $0($1, $2);", kPartitionedTableName, kKeyColumnName,
           kColumn2Name),
       expected_error);
+}
+
+TEST_F(XClusterYsqlTest, ValidatePartitionType) {
+  const auto kNumTablets = 1;
+  ASSERT_OK(SetUpWithParams({kNumTablets}, {kNumTablets}, /*replication_factor=*/1));
+  ASSERT_OK(SetupUniverseReplication({producer_table_}));
+
+  auto producer_conn =
+      EXPECT_RESULT(producer_cluster_.ConnectToDB(producer_table_->name().namespace_name()));
+  auto consumer_conn =
+      EXPECT_RESULT(consumer_cluster_.ConnectToDB(consumer_table_->name().namespace_name()));
+
+  auto producer_table_name = ASSERT_RESULT(CreateYsqlTable(
+      /*idx=*/1, /*num_tablets=*/1, &producer_cluster_, /*tablegroup_name=*/{}, /*colocated=*/false,
+      /*ranged_partitioned=*/true));
+  std::shared_ptr<client::YBTable> new_producer_table;
+  ASSERT_OK(producer_client()->OpenTable(producer_table_name, &new_producer_table));
+
+  ASSERT_OK(CreateYsqlTable(
+      /*idx=*/1, /*num_tablets=*/1, &consumer_cluster_, /*tablegroup_name=*/{}, /*colocated=*/false,
+      /*ranged_partitioned=*/false));
+
+  // We should not replicate from a range-partitioned table to a hash-partitioned table.
+  ASSERT_NOK_STR_CONTAINS(
+      AlterUniverseReplication(kReplicationGroupId, {new_producer_table}, /*add_tables=*/true),
+      "Source and target schemas don\\'t match");
 }
 
 }  // namespace yb

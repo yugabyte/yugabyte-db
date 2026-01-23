@@ -883,7 +883,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // Returns whether this is a type of table that will use tablespaces
   // for placement.
-  bool UsesTablespacesForPlacement() const;
+  bool TableTypeUsesTablespacesForPlacement() const;
 
   bool IsColocationParentTable() const;
   bool IsColocatedDbParentTable() const;

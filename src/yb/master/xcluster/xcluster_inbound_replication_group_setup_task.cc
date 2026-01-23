@@ -997,6 +997,7 @@ Result<GetTableSchemaResponsePB> XClusterTableSetupTask::ValidateSourceSchemaAnd
             VERIFY_RESULT(parent_task_->ConvertSourceToTargetNamespace(
                 VERIFY_RESULT(xcluster::GetReplicationNamespaceBelongsTo(source_table_id_))))));
   }
+
   return table_schema_resp;
 }
 

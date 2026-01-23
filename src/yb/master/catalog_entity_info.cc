@@ -1049,7 +1049,7 @@ TableIds TableInfo::GetVectorIndexIds() const {
   return result;
 }
 
-bool TableInfo::UsesTablespacesForPlacement() const {
+bool TableInfo::TableTypeUsesTablespacesForPlacement() const {
   auto l = LockForRead();
   // Global transaction table is excluded due to not having a tablespace id set.
   bool is_transaction_table_using_tablespaces =
