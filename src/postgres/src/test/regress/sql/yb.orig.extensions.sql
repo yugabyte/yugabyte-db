@@ -15,9 +15,9 @@ select crypt('new password', '$1$7kF93Vc4');
 select count(gen_random_uuid());
 
 -- Testing fuzzystrmatch.
-create extension fuzzystrmatch;
+create extension fuzzystrmatch schema public;
 
-select levenshtein('YugaByte', 'yugabyte');
+select public.levenshtein('YugaByte', 'yugabyte');
 
 select metaphone('yugabyte', 8);
 
@@ -30,7 +30,7 @@ select digest('xyz', 'sha1');
 drop extension fuzzystrmatch;
 
 -- Expect failure since function should be removed.
-select levenshtein('YugaByte', 'yugabyte');
+select public.levenshtein('YugaByte', 'yugabyte');
 
 -- Testing pg_stat_statements;
 select pg_stat_statements_reset();
