@@ -47,7 +47,7 @@ You can obtain YugabyteDB from the following locations:
     Where architecture can be one of `linux-x86_64` or `el8-aarch64`. For example:
 
     ```text
-    https://software.yugabyte.com/releases/{{< yb-version version="stable">}}/yugabyte-{{< yb-version version="stable" format="build">}}-darwin-x86_64.tar.gz
+    https://software.yugabyte.com/releases/{{< yb-version version="stable">}}/yugabyte-{{< yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
     ```
 
 ### YugabyteDB release file
