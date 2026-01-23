@@ -11,6 +11,7 @@
 // under the License.
 //
 #include <iostream>
+#include <string_view>
 
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_entity_parser.h"
@@ -37,7 +38,7 @@
 #include "yb/tools/tool_arguments.h"
 
 #include "yb/util/date_time.h"
-#include "yb/util/jsonreader.h"
+#include "yb/util/json_document.h"
 #include "yb/util/logging.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/string_trim.h"
@@ -52,8 +53,10 @@ namespace po = boost::program_options;
 
 using google::protobuf::Descriptor;
 using google::protobuf::EnumDescriptor;
+using google::protobuf::EnumValueDescriptor;
 using google::protobuf::FieldDescriptor;
 using google::protobuf::Message;
+using google::protobuf::Reflection;
 
 using std::array;
 using std::endl;
@@ -559,92 +562,204 @@ Status SysRowJsonWriter::WriteEntryPB(SysRowEntryType type, const Slice& id, con
 // ------------------------------------------------------------------------------------------------
 // JSON reader with special handling of SysRowEntry.
 // ------------------------------------------------------------------------------------------------
-class SysRowHandlerIf {
+class SysRowJsonReader {
  public:
-  virtual ~SysRowHandlerIf() {}
-  virtual Status ReadAndProcess() = 0;
-};
+  explicit SysRowJsonReader(bool show_no_op) : show_no_op_(show_no_op) {}
 
-class SysRowJsonReader : public JsonReader {
- public:
-  using CreateSysRowHandlerFn =
-      std::function<unique_ptr<SysRowHandlerIf>(const rapidjson::Value&, master::SysRowEntry*)>;
+  Status ExtractSysRowMessage(const JsonValue& value, Message* pb) const;
 
-  explicit SysRowJsonReader(string text) : JsonReader(std::move(text)) {}
-
-  Status ExtractSysRowMessage(const rapidjson::Value& value, Message* pb) const;
+  int GetShowNoOp() const {
+    return show_no_op_;
+  }
 
   int GetNesting() const {
     return nesting_;
   }
 
-  void SetSysRowHandlerCreator(const CreateSysRowHandlerFn& fn) {
-    create_handler_fn_ = fn;
-  }
-
  private:
-  Status ExtractProtobufRepeatedField(
-      const rapidjson::Value& value, Message* pb, const FieldDescriptor* field) const override;
+  friend class SysRowHandler;
 
-  CreateSysRowHandlerFn create_handler_fn_;
+  Status ExtractProtobufMessage(const JsonValue& value, Message* pb) const;
+  Status ExtractProtobufField(const JsonValue& value, Message* pb,
+                              const FieldDescriptor* field) const;
+  Status ExtractProtobufRepeatedField(const JsonValue& value, Message* pb,
+                                      const FieldDescriptor* field) const;
+
+  const bool show_no_op_;
   mutable int nesting_ = 0;
 };
 
-Status SysRowJsonReader::ExtractProtobufRepeatedField(
-    const rapidjson::Value& value, Message* pb, const FieldDescriptor* field) const {
-  if (field->cpp_type() == FieldDescriptor::CPPTYPE_MESSAGE &&
-      field->message_type() &&
-      field->message_type()->full_name() == "yb.master.SysRowEntry") {
-    return ExtractSysRowMessage(value,
-        DCHECK_NOTNULL(DCHECK_NOTNULL(pb)->GetReflection())->AddMessage(pb, field));
-  } else {
-    return JsonReader::ExtractProtobufRepeatedField(value, pb, field);
+Status SysRowJsonReader::ExtractProtobufField(const JsonValue& value, Message* pb,
+                                              const FieldDescriptor* field) const {
+  const Reflection* const reflection = DCHECK_NOTNULL(DCHECK_NOTNULL(pb)->GetReflection());
+  switch (DCHECK_NOTNULL(field)->cpp_type()) {
+    case FieldDescriptor::CPPTYPE_INT32:
+      reflection->SetInt32(pb, field, VERIFY_RESULT(value.GetInt32()));
+      return Status::OK();
+    case FieldDescriptor::CPPTYPE_INT64:
+      reflection->SetInt64(pb, field, VERIFY_RESULT(value.GetInt64()));
+      return Status::OK();
+    case FieldDescriptor::CPPTYPE_UINT32:
+      reflection->SetUInt32(pb, field, VERIFY_RESULT(value.GetUint32()));
+      return Status::OK();
+    case FieldDescriptor::CPPTYPE_UINT64:
+      reflection->SetUInt64(pb, field, VERIFY_RESULT(value.GetUint64()));
+      return Status::OK();
+    case FieldDescriptor::CPPTYPE_DOUBLE:
+      reflection->SetDouble(pb, field, VERIFY_RESULT(value.GetDouble()));
+      return Status::OK();
+    case FieldDescriptor::CPPTYPE_FLOAT:
+      reflection->SetFloat(pb, field, VERIFY_RESULT(value.GetDouble()));
+      return Status::OK();
+    case FieldDescriptor::CPPTYPE_BOOL:
+      reflection->SetBool(pb, field, VERIFY_RESULT(value.GetBool()));
+      return Status::OK();
+    case FieldDescriptor::CPPTYPE_ENUM: {
+        auto name = VERIFY_RESULT(value.GetString());
+        const EnumValueDescriptor* const val =
+            DCHECK_NOTNULL(field->enum_type())->FindValueByName(name);
+        SCHECK(val, InvalidArgument, Format("Cannot parse enum value $0", name));
+        reflection->SetEnum(pb, field, val);
+        return Status::OK();
+      }
+    case FieldDescriptor::CPPTYPE_STRING: {
+        string unescaped, error;
+        auto original = VERIFY_RESULT(value.GetString());
+        SCHECK(strings::CUnescape(original, &unescaped, &error), InvalidArgument,
+            Format("Cannot unescape string '$0' error: '$1'", original, error));
+        reflection->SetString(pb, field, unescaped);
+        return Status::OK();
+      }
+    case FieldDescriptor::CPPTYPE_MESSAGE:
+      RETURN_NOT_OK(ExtractProtobufMessage(value, reflection->MutableMessage(pb, field)));
+      return Status::OK();
   }
+  return STATUS(NotSupported, Format("Unknown cpp_type $0", field->cpp_type()));
 }
 
-Status SysRowJsonReader::ExtractSysRowMessage(const rapidjson::Value& value, Message* pb) const {
-  ++nesting_;
-  LOG_IF(DFATAL, !create_handler_fn_) << "Handler-creator function is not initialized";
-  const unique_ptr<SysRowHandlerIf> sys_row =
-      create_handler_fn_(value, dynamic_cast<master::SysRowEntry*>(pb));
-  const Status s = sys_row->ReadAndProcess();
-  --nesting_;
-  return s;
+Status SysRowJsonReader::ExtractProtobufRepeatedField(const JsonValue& value, Message* pb,
+                                                      const FieldDescriptor* field) const {
+  const Reflection* const reflection = DCHECK_NOTNULL(DCHECK_NOTNULL(pb)->GetReflection());
+
+  switch (DCHECK_NOTNULL(field)->cpp_type()) {
+    case FieldDescriptor::CPPTYPE_INT32:
+      reflection->AddInt32(pb, field, VERIFY_RESULT(value.GetInt32()));
+      return Status::OK();
+    case FieldDescriptor::CPPTYPE_INT64:
+      reflection->AddInt64(pb, field, VERIFY_RESULT(value.GetInt64()));
+      return Status::OK();
+    case FieldDescriptor::CPPTYPE_UINT32:
+      reflection->AddUInt32(pb, field, VERIFY_RESULT(value.GetUint32()));
+      return Status::OK();
+    case FieldDescriptor::CPPTYPE_UINT64:
+      reflection->AddUInt64(pb, field, VERIFY_RESULT(value.GetUint64()));
+      return Status::OK();
+    case FieldDescriptor::CPPTYPE_DOUBLE:
+      reflection->AddDouble(pb, field, VERIFY_RESULT(value.GetDouble()));
+      return Status::OK();
+    case FieldDescriptor::CPPTYPE_FLOAT:
+      reflection->AddFloat(pb, field, VERIFY_RESULT(value.GetDouble()));
+      return Status::OK();
+    case FieldDescriptor::CPPTYPE_BOOL:
+      reflection->AddBool(pb, field, VERIFY_RESULT(value.GetBool()));
+      return Status::OK();
+    case FieldDescriptor::CPPTYPE_ENUM: {
+        auto name = VERIFY_RESULT(value.GetString());
+        const EnumValueDescriptor* const val =
+            DCHECK_NOTNULL(field->enum_type())->FindValueByName(name);
+        SCHECK(val, InvalidArgument,
+            Format("Cannot parse enum value $0", name));
+        reflection->AddEnum(pb, field, val);
+        return Status::OK();
+      }
+    case FieldDescriptor::CPPTYPE_STRING: {
+        string unescaped, error;
+        auto original = VERIFY_RESULT(value.GetString());
+        SCHECK(strings::CUnescape(original, &unescaped, &error), InvalidArgument,
+            Format("Cannot unescape string '$0' error: '$1'", original, error));
+        reflection->AddString(pb, field, unescaped);
+        return Status::OK();
+      }
+    case FieldDescriptor::CPPTYPE_MESSAGE:
+      if (field->message_type() && field->message_type()->full_name() == "yb.master.SysRowEntry") {
+        return ExtractSysRowMessage(value, reflection->AddMessage(pb, field));
+      }
+      return ExtractProtobufMessage(value, reflection->AddMessage(pb, field));
+  }
+  return STATUS(NotSupported, Format("Unknown cpp_type $0", field->cpp_type()));
+}
+
+
+Status SysRowJsonReader::ExtractProtobufMessage(const JsonValue& value,
+                                                Message* pb) const {
+  const Descriptor* const desc = DCHECK_NOTNULL(DCHECK_NOTNULL(pb)->GetDescriptor());
+  unordered_set<std::string_view> required;
+  for (int i = 0; i < desc->field_count(); ++i) {
+    const FieldDescriptor* const field = DCHECK_NOTNULL(desc->field(i));
+    if (field->is_required()) {
+      required.insert(field->name());
+    }
+  }
+
+  for (const auto& [name, subvalue] : VERIFY_RESULT(value.GetObject())) {
+    if (!required.empty()) {
+      required.erase(name);
+    }
+
+    const FieldDescriptor* const field = desc->FindFieldByName(name.data());
+    SCHECK(field != nullptr, InvalidArgument,
+        "Field '" + std::string(name) + "' is not found in PB descriptor: " + desc->DebugString());
+
+    if (field->is_repeated()) {
+      SCHECK(subvalue.IsArray(), InvalidArgument,
+          "Expected JSON Array for field " + field->DebugString());
+      for (const auto& el : VERIFY_RESULT(subvalue.GetArray())) {
+        RETURN_NOT_OK(ExtractProtobufRepeatedField(el, pb, field));
+      }
+    } else {
+      RETURN_NOT_OK(ExtractProtobufField(subvalue, pb, field));
+    }
+  }
+
+  SCHECK(required.empty(), InvalidArgument,
+      "Absent required fields: " + yb::ToString(required) + " in " + desc->DebugString());
+  return Status::OK();
 }
 
 // Helper for debug output.
-string EntryDetails(const SysRowJsonReader& r, const rapidjson::Value& json) {
+string EntryDetails(const JsonValue& json) {
   string type, id;
-  Status s = r.ExtractString(&json, "TYPE", &type);
-  if (!s.ok()) {
-    serr << "Failed to extract TYPE: " << s << endl;
+  auto res = json["TYPE"].GetString();
+  if (!res.ok()) {
+    serr << "Failed to extract TYPE: " << res.status() << endl;
   }
 
-  s = r.ExtractString(&json, "ID", &id);
-  if (!s.ok()) {
-    serr << "Failed to extract ID: " << s << endl;
+  res = json["ID"].GetString();
+  if (!res.ok()) {
+    serr << "Failed to extract ID: " << res.status() << endl;
   }
 
   return type + " ID=" + id;
 }
 
-Status ProcessSysEntryJson(const SysRowJsonReader& r, const rapidjson::Value& value) {
+Status ProcessSysEntryJson(const JsonValue& value, bool show_no_op) {
   // The result entry is ignored.
   // ExtractSysRowMessage is called to call finally the SysRowHandler methods.
   master::SysRowEntry entry;
-  return r.ExtractSysRowMessage(value, &entry);
+  return SysRowJsonReader(show_no_op).ExtractSysRowMessage(value, &entry);
 }
 
 // ------------------------------------------------------------------------------------------------
 // Base SysRowEntry loader.
 // ------------------------------------------------------------------------------------------------
-class SysRowHandler : public SysRowHandlerIf {
+class SysRowHandler {
  public:
   SysRowHandler(
-      const SysRowJsonReader& r, const rapidjson::Value& value, master::SysRowEntry* entry)
+      const SysRowJsonReader& r, const JsonValue& value, master::SysRowEntry* entry)
       : reader_(r), json_entry_(value), entry_(entry) {}
+  virtual ~SysRowHandler() {}
 
-  Status ReadAndProcess() override;
+  Status ReadAndProcess();
   // Hooks for command-specific handling in derived classes.
   virtual Status PreProcess() { return Status::OK(); }
   virtual Status PostProcess() { return Status::OK(); }
@@ -658,8 +773,7 @@ class SysRowHandler : public SysRowHandlerIf {
 
  protected:
   const SysRowJsonReader& reader_;
-
-  const rapidjson::Value& json_entry_;
+  const JsonValue& json_entry_;
   master::SysRowEntry* entry_;
   unique_ptr<Message> sys_row_pb_new_; // From 'DATA' JSON member.
 };
@@ -667,17 +781,15 @@ class SysRowHandler : public SysRowHandlerIf {
 Status SysRowHandler::ReadSysRowPB(SysRowEntryType type) {
   // Parse PB from DATA.
   sys_row_pb_new_ = VERIFY_RESULT(CatalogEntityPBForType(type));
-  RETURN_NOT_OK(reader_.ExtractProtobuf(&json_entry_, "DATA", sys_row_pb_new_.get()));
+  RETURN_NOT_OK(reader_.ExtractProtobufMessage(json_entry_["DATA"], sys_row_pb_new_.get()));
   DCHECK_NOTNULL(entry_)->set_data(sys_row_pb_new_->SerializeAsString());
   return Status::OK();
 }
 
 Status SysRowHandler::ReadAndProcess() {
-  string type_str, id_str;
-  RETURN_NOT_OK(reader_.ExtractString(&json_entry_, "TYPE", &type_str));
+  auto type_str = VERIFY_RESULT(json_entry_["TYPE"].GetString());
   const SysRowEntryType type = VERIFY_RESULT(Parse_SysRowEntryType(type_str));
-
-  RETURN_NOT_OK(reader_.ExtractString(&json_entry_, "ID", &id_str));
+  auto id_str = VERIFY_RESULT(json_entry_["ID"].GetString());
 
   // Fill this SysRowEntry.
   DCHECK_NOTNULL(entry_)->set_type(type);
@@ -687,6 +799,36 @@ Status SysRowHandler::ReadAndProcess() {
   // Fill this SysRowEntry 'data' via SysRowHandler::ReadSysRowPB().
   RETURN_NOT_OK(ReadSysRowPB(type));
   return PostProcess();
+}
+
+// ------------------------------------------------------------------------------------------------
+// SysRowHandler for show-changes command.
+// ------------------------------------------------------------------------------------------------
+class ShowChangesCmdSysRowHandler : public SysRowHandler {
+ public:
+  ShowChangesCmdSysRowHandler(
+      const SysRowJsonReader& r, const JsonValue& value, master::SysRowEntry* entry)
+    : SysRowHandler(r, value, entry) {}
+
+  Status PreProcess() override;
+
+  Status PostProcess() override;
+
+ protected:
+  Status ReadAndCheckPB(SysRowEntryType type);
+
+  ActionType act_ = kUNKNOWN;
+  string old_data_;
+  string prefix_;
+};
+
+Status SysRowJsonReader::ExtractSysRowMessage(const JsonValue& value, Message* pb) const {
+  ++nesting_;
+  auto sys_row = std::make_unique<ShowChangesCmdSysRowHandler>(
+      *this, value, dynamic_cast<master::SysRowEntry*>(pb));
+  const Status s = sys_row->ReadAndProcess();
+  --nesting_;
+  return s;
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -920,35 +1062,11 @@ Result<string> SysCatalogTool::ReadIntoString(const ReadFilters& filters) {
 // ------------------------------------------------------------------------------------------------
 // Show-changes command
 // ------------------------------------------------------------------------------------------------
-
-// ------------------------------------------------------------------------------------------------
-// SysRowHandler for show-changes command.
-// ------------------------------------------------------------------------------------------------
-class ShowChangesCmdSysRowHandler : public SysRowHandler {
- public:
-  ShowChangesCmdSysRowHandler(
-      const SysRowJsonReader& r, const rapidjson::Value& value, master::SysRowEntry* entry,
-      bool show_no_op) : SysRowHandler(r, value, entry), show_no_op_(show_no_op) {}
-
-  Status PreProcess() override;
-
-  Status PostProcess() override;
-
- protected:
-  Status ReadAndCheckPB(SysRowEntryType type);
-
-  bool show_no_op_;
-  ActionType act_ = kUNKNOWN;
-  string old_data_;
-  string prefix_;
-};
-
 Status ShowChangesCmdSysRowHandler::PreProcess() {
-  string act_str;
-  RETURN_NOT_OK(reader_.ExtractString(&json_entry_, "__ACTION__", &act_str));
+  auto act_str = VERIFY_RESULT(json_entry_["__ACTION__"].GetString());
   act_ = VERIFY_RESULT(Parse_ActionType(act_str));
 
-  if (act_ != kNO_OP || show_no_op_) {
+  if (act_ != kNO_OP || reader_.GetShowNoOp()) {
     prefix_.clear();
     for (int i = 1; i < reader_.GetNesting(); ++i) {
       prefix_ += "|-> ";
@@ -962,21 +1080,19 @@ Status ShowChangesCmdSysRowHandler::PreProcess() {
   }
 
   if (act_ != kADD) {
-    string hex;
-    RETURN_NOT_OK(reader_.ExtractString(&json_entry_, "DATA-HEX", &hex));
-    uint64_t hash;
-    RETURN_NOT_OK(reader_.ExtractUInt64(&json_entry_, "DATA-HASH", &hash));
+    auto hex = VERIFY_RESULT(json_entry_["DATA-HEX"].GetString());
+    auto hash = VERIFY_RESULT(json_entry_["DATA-HASH"].GetUint64());
 
     SCHECK(ByteStringFromAscii(hex, &old_data_), InvalidArgument,
-        EntryDetails(reader_, json_entry_) + ": Cannot parse DATA-HEX from: " + hex);
+        EntryDetails(json_entry_) + ": Cannot parse DATA-HEX from: " + hex);
     const uint64_t expected_hash = Slice(old_data_).hash();
-    SCHECK(hash == expected_hash, InvalidArgument, EntryDetails(reader_, json_entry_) +
+    SCHECK(hash == expected_hash, InvalidArgument, EntryDetails(json_entry_) +
         ": Incorrect DATA-HASH value: " + yb::ToString(hash) +
         " expected " + yb::ToString(expected_hash));
 
     // Convert binary data back into hex (format of DATA-HEX).
     SCHECK(ByteStringToAscii(old_data_) == hex, InternalError,
-        EntryDetails(reader_, json_entry_) + ": Invalid DATA-HEX: " + hex);
+        EntryDetails(json_entry_) + ": Invalid DATA-HEX: " + hex);
   }
 
   return Status::OK();
@@ -1033,8 +1149,6 @@ Status ShowChangesCmdSysRowHandler::PostProcess() {
 }
 
 Status SysCatalogTool::ShowChangesIn(const string& file_name, const ReadFilters& filters) {
-  using rapidjson::Value;
-
   LOG(INFO) << "Running the show-changes command: input JSON file=" << file_name;
   const Timestamp start_time = DateTime::TimestampNow();
 
@@ -1046,31 +1160,21 @@ Status SysCatalogTool::ShowChangesIn(const string& file_name, const ReadFilters&
   sinfo << " - done" << endl;
 
   sinfo << "Parsing JSON data " << flush;
-  SysRowJsonReader r(data.ToString());
-  RETURN_NOT_OK(r.Init());
-
-  r.SetSysRowHandlerCreator(
-      [&r, &filters](const rapidjson::Value& value, master::SysRowEntry* entry)
-          -> unique_ptr<SysRowHandlerIf> {
-        return std::make_unique<ShowChangesCmdSysRowHandler>(
-            r, value, entry, filters.IsSet(OptionFlag::kShowNoOp));
-      });
-
+  JsonDocument doc;
+  auto root = VERIFY_RESULT(doc.Parse(data.ToString()));
   sinfo << " - done" << endl;
 
-  array<vector<const Value*>, kNUM_ACTIONS> act_to_values;
+  array<vector<JsonValue>, kNUM_ACTIONS> act_to_values;
   sinfo << "Searching for changed entries:" << endl;
-  vector<const Value*> sys;
-  RETURN_NOT_OK(r.ExtractObjectArray(r.root(), "SYS-CATALOG", &sys));
+  auto sys = VERIFY_RESULT(root["SYS-CATALOG"].GetArray());
 
-  for (const Value* v : sys) {
-    string act_str;
-    RETURN_NOT_OK(r.ExtractString(v, "__ACTION__", &act_str));
+  for (auto&& v : sys) {
+    auto act_str = VERIFY_RESULT(v["__ACTION__"].GetString());
     const ActionType act = VERIFY_RESULT(Parse_ActionType(act_str));
-    act_to_values[act].push_back(v);
     if (act == kUNKNOWN) {
-      sinfo << "WARNING: " << EntryDetails(r, *v) << ": Unknown __ACTION__: " << act_str << endl;
+      sinfo << "WARNING: " << EntryDetails(v) << ": Unknown __ACTION__: " << act_str << endl;
     }
+    act_to_values[act].emplace_back(std::move(v));
   }
 
   for (int act = 0; act < kNUM_ACTIONS; ++act) {
@@ -1084,8 +1188,8 @@ Status SysCatalogTool::ShowChangesIn(const string& file_name, const ReadFilters&
           << "Show details for " << act_to_values[act].size() <<  " "
           << ToString(static_cast<ActionType>(act)) << " actions..."
           << endl << kSectionSeparator << endl;
-    for (const Value* v : act_to_values[act]) {
-      RETURN_NOT_OK(ProcessSysEntryJson(r, *v));
+    for (const auto& v : act_to_values[act]) {
+      RETURN_NOT_OK(ProcessSysEntryJson(v, filters.IsSet(OptionFlag::kShowNoOp)));
     }
 
     if (act == kNO_OP) {

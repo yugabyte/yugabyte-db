@@ -78,6 +78,7 @@ import { InstallNodeAgentModal } from '../../../redesign/features/universe/unive
 import { YBMenuItemLabel } from '../../../redesign/components/YBDropdownMenu/YBMenuItemLabel';
 import { RuntimeConfigKey, UNIVERSE_TASKS } from '../../../redesign/helpers/constants';
 import { isActionFrozen } from '../../../redesign/helpers/utils';
+import { isV2CreateEditUniverseEnabled } from '@app/redesign/features-v2/universe/create-universe/CreateUniverseUtils';
 import {
   getCurrentVersion,
   isVersionPGSupported,
@@ -500,10 +501,7 @@ class UniverseDetail extends Component {
         (config) => config.key === RuntimeConfigKey.ENABLE_CONNECTION_POOLING
       )?.value === 'true';
 
-    const isV2EditUniverseUIEnabled =
-      runtimeConfigs?.data?.configEntries?.find(
-        (config) => config.key === RuntimeConfigKey.ENABLE_V2_EDIT_UNIVERSE_UI
-      )?.value === 'true';
+    const isV2EditUniverseUIEnabled = isV2CreateEditUniverseEnabled(runtimeConfigs?.data);
 
     if (
       getPromiseState(currentUniverse).isLoading() ||

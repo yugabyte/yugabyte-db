@@ -2302,7 +2302,7 @@ bool		yb_user_ddls_preempt_auto_analyze = true;
 
 bool		yb_enable_pg_stat_statements_rpc_stats = true;
 
-bool		yb_enable_pg_stat_statements_metrics = false;
+bool		yb_enable_pg_stat_statements_docdb_metrics = false;
 
 const char *
 YBDatumToString(Datum datum, Oid typid)
@@ -3983,7 +3983,8 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 					YBMarkTxnUsesTempRelAndSetTxnId();
 				}
 				is_breaking_change = false;
-				should_run_in_autonomous_transaction = !IsInTransactionBlock(is_top_level);
+				should_run_in_autonomous_transaction = !IsInTransactionBlock(is_top_level) &&
+						YBCIsLegacyModeForCatalogOps();
 				break;
 			}
 

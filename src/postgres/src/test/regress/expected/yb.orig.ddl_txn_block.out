@@ -305,8 +305,8 @@ BEGIN;
 INSERT INTO test12 VALUES (3, 3);
 SAVEPOINT test12_sp;
 CREATE TABLE test13 (a int primary key, b int);
-ERROR:  interleaving SAVEPOINT & DDL in transaction block not supported by YugaByte yet
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/26734. React with thumbs up to raise its priority.
+ERROR:  interleaving SAVEPOINT & DDL in transaction disallowed without DDL savepoint support
+HINT:  Consider enabling ysql_yb_enable_ddl_savepoint_support.
 ROLLBACK;
 BEGIN;
 CREATE TEMPORARY TABLE temp_table (
@@ -429,6 +429,21 @@ UPDATE pg_index SET indisvalid = false
 UPDATE pg_index SET indisvalid = false
     WHERE indexrelid = 'test_partitioned_even_i_idx'::regclass;
 \c
+-- https://github.com/yugabyte/yugabyte-db/issues/29534
+-- The previous \c can be too fast due to incremental relcache refresh optimization.
+-- This can cause read restart because a read time of the next REINDEX statement
+-- is selected using safetime mechanism which is slightly in the past. If the read
+-- time picked is older than the write time of the above UPDATE pg_index statement,
+-- we will see restart read error, which is intercepted by PG and shows up as
+-- "ERROR:  Restarting a DDL transaction not supported".
+-- To avoid read restart error, sleep 2 seconds to allow safetime to advance past
+-- the write time of the above UPDATE statement.
+SELECT pg_sleep(2);
+ pg_sleep 
+----------
+ 
+(1 row)
+
 REINDEX INDEX test_partitioned_i_idx;
 \c
 -- #29424

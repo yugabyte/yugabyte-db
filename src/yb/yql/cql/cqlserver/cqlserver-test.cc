@@ -27,6 +27,7 @@
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/cast.h"
 #include "yb/util/curl_util.h"
+#include "yb/util/json_document.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/socket.h"
 #include "yb/util/result.h"
@@ -613,12 +614,10 @@ TEST_F(TestCQLService, TestCQLStatementEndpoint) {
   ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements",
                                               ToString(addr)), &buf));
 
-  JsonReader json_post_reset(buf.ToString());
-  ASSERT_OK(json_post_reset.Init());
-  std::vector<const rapidjson::Value*> stmt_stats_post_reset;
-  ASSERT_OK(json_post_reset.ExtractObjectArray(json_post_reset.root(), "unprepared_statements",
-                                               &stmt_stats_post_reset));
-  ASSERT_EQ(stmt_stats_post_reset.size(), 0);
+  JsonDocument doc;
+  auto json_post_reset = ASSERT_RESULT(doc.Parse(buf.ToString()));
+  auto size = ASSERT_RESULT(json_post_reset["unprepared_statements"].size());
+  ASSERT_EQ(size, 0);
 }
 
 TEST_F(TestCQLService, TestCQLDumpStatementLimit) {

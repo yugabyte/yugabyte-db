@@ -62,7 +62,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/date_time.h"
 #include "yb/util/format.h"
-#include "yb/util/jsonreader.h"
+#include "yb/util/json_document.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/status_format.h"
 #include "yb/util/subprocess.h"
@@ -120,21 +120,14 @@ class BlacklistChecker {
     string out;
     RETURN_NOT_OK(Subprocess::Call(args_, &out));
     boost::erase_all(out, "\n");
-    JsonReader reader(out);
+    JsonDocument doc;
+    auto root = VERIFY_RESULT(doc.Parse(out));
 
-    vector<const rapidjson::Value *> blacklistEntries;
-    const rapidjson::Value *blacklistRoot;
-    RETURN_NOT_OK(reader.Init());
-    RETURN_NOT_OK(
-        reader.ExtractObject(reader.root(), "serverBlacklist", &blacklistRoot));
-    RETURN_NOT_OK(
-        reader.ExtractObjectArray(blacklistRoot, "hosts", &blacklistEntries));
+    auto blacklistEntries = VERIFY_RESULT(root["serverBlacklist"]["hosts"].GetArray());
 
-    for (const rapidjson::Value *entry : blacklistEntries) {
-      std::string host;
-      int32_t port;
-      RETURN_NOT_OK(reader.ExtractString(entry, "host", &host));
-      RETURN_NOT_OK(reader.ExtractInt32(entry, "port", &port));
+    for (const auto &entry : blacklistEntries) {
+      auto host = VERIFY_RESULT(entry["host"].GetString());
+      auto port = VERIFY_RESULT(entry["port"].GetInt32());
       HostPort blacklistServer(host, port);
       if (std::find(servers.begin(), servers.end(), blacklistServer) ==
           servers.end()) {
@@ -824,40 +817,27 @@ TEST_F(AdminCliTest, TestFollowersTableList) {
       "list_tablets", kTableName.namespace_name(), kTableName.table_name(),
       "json", "include_followers"));
   boost::erase_all(lt_json_out, "\n");
-  JsonReader reader(lt_json_out);
+  JsonDocument doc;
+  auto root = ASSERT_RESULT(doc.Parse(lt_json_out));
 
-  ASSERT_OK(reader.Init());
-  vector<const rapidjson::Value *> tablets;
-  ASSERT_OK(reader.ExtractObjectArray(reader.root(), "tablets", &tablets));
-
-  for (const rapidjson::Value *entry : tablets) {
-    string tid;
-    ASSERT_OK(reader.ExtractString(entry, "id", &tid));
+  for (const auto& entry : ASSERT_RESULT(root["tablets"].GetArray())) {
+    auto tid = ASSERT_RESULT(entry["id"].GetString());
     // Testing only for the tablet received in list_tablets <table id> 1 include_followers.
     if (tid != tablet_id) {
       continue;
     }
-    const rapidjson::Value *leader;
-    ASSERT_OK(reader.ExtractObject(entry, "leader", &leader));
-    string lhp;
-    string luuid;
-    string role;
-    ASSERT_OK(reader.ExtractString(leader, "endpoint", &lhp));
-    ASSERT_OK(reader.ExtractString(leader, "uuid", &luuid));
-    ASSERT_OK(reader.ExtractString(leader, "role", &role));
+    auto leader = entry["leader"];
+    auto lhp = ASSERT_RESULT(leader["endpoint"].GetString());
+    auto luuid = ASSERT_RESULT(leader["uuid"].GetString());
+    auto role = ASSERT_RESULT(leader["role"].GetString());
     ASSERT_STR_EQ(lhp, leader_host_port);
     ASSERT_STR_EQ(luuid, leader_uuid);
     ASSERT_STR_EQ(role, PeerRole_Name(PeerRole::LEADER));
 
-    vector<const rapidjson::Value *> follower_json;
-    ASSERT_OK(reader.ExtractObjectArray(entry, "followers", &follower_json));
-    for (const rapidjson::Value *f : follower_json) {
-      string fhp;
-      string fuuid;
-      string frole;
-      ASSERT_OK(reader.ExtractString(f, "endpoint", &fhp));
-      ASSERT_OK(reader.ExtractString(f, "uuid", &fuuid));
-      ASSERT_OK(reader.ExtractString(f, "role", &frole));
+    for (const auto& f : ASSERT_RESULT(entry["followers"].GetArray())) {
+      auto fhp = ASSERT_RESULT(f["endpoint"].GetString());
+      auto fuuid = ASSERT_RESULT(f["uuid"].GetString());
+      auto frole = ASSERT_RESULT(f["role"].GetString());
       auto got = follower_hp_to_uuid_map.find(fhp);
       ASSERT_TRUE(got != follower_hp_to_uuid_map.end());
       ASSERT_STR_EQ(got->second, fuuid);
@@ -1474,11 +1454,10 @@ class AdminCliListTabletsTest : public AdminCliTest {
 
   template <class... Args>
   Result<std::size_t> GetListTabletsCount(Args&&... args) {
-    JsonReader reader(VERIFY_RESULT(ListTablets(std::forward<Args>(args)..., "json")));
-    RETURN_NOT_OK(reader.Init());
-    vector<const rapidjson::Value*> tablets;
-    RETURN_NOT_OK(reader.ExtractObjectArray(reader.root(), "tablets", &tablets));
-    return tablets.size();
+    JsonDocument doc;
+    auto root = VERIFY_RESULT(doc.Parse(VERIFY_RESULT(ListTablets(std::forward<Args>(args)...,
+                                                                  "json"))));
+    return root["tablets"].size();
   }
 
  private:

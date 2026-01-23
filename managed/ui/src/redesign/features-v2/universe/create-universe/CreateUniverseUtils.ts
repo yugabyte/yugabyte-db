@@ -1,5 +1,5 @@
 import { TFunction } from 'i18next';
-import { find, keys, values } from 'lodash';
+import { find, has, keys, values } from 'lodash';
 import { NodeAvailabilityProps, Zone } from './steps/nodes-availability/dtos';
 import { createUniverseFormProps } from './CreateUniverseContext';
 import {
@@ -15,9 +15,10 @@ import {
   PlacementRegion,
   UniverseCreateReqBody
 } from '../../../../v2/api/yugabyteDBAnywhereV2APIs.schemas';
-import { CloudType, DeviceInfo } from '@app/redesign/features/universe/universe-form/utils/dto';
+import { CloudType, DeviceInfo, RunTimeConfig } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { Provider } from '@app/components/configRedesign/providerRedesign/types';
 import { FAULT_TOLERANCE_TYPE, REPLICATION_FACTOR } from './fields/FieldNames';
+import { RuntimeConfigKey } from '@app/redesign/helpers/constants';
 
 export function getCreateUniverseSteps(t: TFunction, resilienceType?: ResilienceType) {
   return [
@@ -37,10 +38,10 @@ export function getCreateUniverseSteps(t: TFunction, resilienceType?: Resilience
         },
         ...(resilienceType === ResilienceType.REGULAR
           ? [
-              {
-                title: t('nodesAndAvailabilityZone')
-              }
-            ]
+            {
+              title: t('nodesAndAvailabilityZone')
+            }
+          ]
           : [])
       ]
     },
@@ -107,7 +108,7 @@ export const getNodeCount = (availabilityZones: NodeAvailabilityProps['availabil
   }, 0);
 };
 
-export const getNodeCountForRegion = (
+export const getNodeCountNeeded = (
   totalNodesCount: number,
   totalRegions: number,
   regionIndex: number
@@ -160,78 +161,29 @@ export const assignRegionsAZNodeByReplicationFactor = (
   const faultToleranceNeeded =
     faultToleranceType === FaultToleranceType.AZ_LEVEL
       ? getFaultToleranceNeededForAZ(replicationFactor)
-      : faultToleranceType === FaultToleranceType.NODE_LEVEL
-      ? 1
       : getFaultToleranceNeeded(replicationFactor);
 
   values(regions).forEach((region, index) => {
-    const nodeCount = getNodeCountForRegion(faultToleranceNeeded, regions.length, index);
+    const nodeCount = getNodeCountNeeded(faultToleranceNeeded, regions.length, index);
+
     updatedRegions[region.code] = [];
-    for (let i = 0; i < nodeCount; i++) {
+
+    region.zones.forEach((zone, index) => {
+      const nodesNeededForAZ = Math.floor(nodeCount / region.zones.length);
+
+      const remainder = nodeCount % region.zones.length;
+
+      const nodeCountForAz = nodesNeededForAZ + (index < remainder ? 1 : 0);
+
+      if (nodeCountForAz === 0) return;
+
       updatedRegions[region.code].push({
-        ...region.zones[i % region.zones.length],
-        nodeCount: 1,
-        preffered: i
+        ...zone,
+        nodeCount: nodeCountForAz,
+        preffered: index
       });
-    }
-  });
-
-  return updatedRegions;
-};
-
-export const rebalanceRegionNodes = (
-  az: NodeAvailabilityProps['availabilityZones'],
-  newTotalNodes: number,
-  regions: ResilienceAndRegionsProps['regions']
-): NodeAvailabilityProps['availabilityZones'] => {
-  // Flatten all zones into a single list for distribution
-  const allZones: { region: string; zone: Zone }[] = [];
-
-  for (const region in az) {
-    for (const zone of az[region]) {
-      allZones.push({ region, zone: { ...zone, nodeCount: 0 } }); // reset node count
-    }
-  }
-
-  regions.forEach((region) => {
-    region.zones.forEach((zone) => {
-      const existingZone = find(allZones, { zone: { uuid: zone.uuid } });
-      if (!existingZone) {
-        allZones.push({ region: region.code, zone: { ...zone, nodeCount: 0, preffered: 0 } });
-      }
     });
   });
-
-  const totalZones = allZones.length;
-
-  // Step 1: Assign 1 node to each zone if we have enough nodes
-  for (const item of allZones) {
-    if (newTotalNodes > 0) {
-      item.zone.nodeCount = 1;
-      newTotalNodes--;
-    }
-  }
-
-  // Step 2: Distribute remaining nodes (round-robin, prefer preferred zones if needed)
-  const sortedZones = allZones.sort((a, b) => (a.zone.name.localeCompare(b.zone.name) ? 1 : -1));
-
-  let index = 0;
-  while (newTotalNodes > 0) {
-    const item = sortedZones[index % totalZones];
-    item.zone.nodeCount++;
-    newTotalNodes--;
-    index++;
-  }
-
-  // Step 3: Reconstruct the structure
-  const updatedRegions: NodeAvailabilityProps['availabilityZones'] = {};
-  for (const { region, zone } of allZones) {
-    if (zone.nodeCount === 0) continue; // Skip zones with no nodes
-    if (!updatedRegions[region]) {
-      updatedRegions[region] = [];
-    }
-    updatedRegions[region].push(zone);
-  }
 
   return updatedRegions;
 };
@@ -327,16 +279,20 @@ export const mapCreateUniversePayload = (
           networking_spec: {
             enable_lb: true,
             enable_exposing_service: 'UNEXPOSED',
-            proxy_config: {
-              http_proxy:
-                proxySettings.enableProxyServer && proxySettings.webProxy
-                  ? `${proxySettings.webProxyServer}:${proxySettings.webProxyPort}`
-                  : '',
-              https_proxy: proxySettings.secureWebProxy
-                ? `${proxySettings.secureWebProxyServer}:${proxySettings.secureWebProxyPort}`
-                : '',
-              no_proxy_list: proxySettings.byPassProxyListValues ?? []
-            }
+            ...(proxySettings.enableProxyServer
+              ? {
+                proxy_config: {
+                  http_proxy:
+                    proxySettings.enableProxyServer && proxySettings.webProxy
+                      ? `${proxySettings.webProxyServer}:${proxySettings.webProxyPort}`
+                      : '',
+                  https_proxy: proxySettings.secureWebProxy
+                    ? `${proxySettings.secureWebProxyServer}:${proxySettings.secureWebProxyPort}`
+                    : '',
+                  no_proxy_list: proxySettings.byPassProxyListValues ?? []
+                }
+              }
+              : {})
           },
           num_nodes: getNodeCount(nodesAvailabilitySettings.availabilityZones),
           node_spec: {
@@ -526,4 +482,10 @@ export const computeFaultToleranceTypeFromProvider = (
     [FAULT_TOLERANCE_TYPE]: FaultToleranceType.NODE_LEVEL,
     [REPLICATION_FACTOR]: 3
   };
+};
+
+export const isV2CreateEditUniverseEnabled = (runtimeConfigs: RunTimeConfig) => {
+  return runtimeConfigs?.configEntries?.find(
+    (config) => config.key === RuntimeConfigKey.ENABLE_V2_EDIT_UNIVERSE_UI
+  )?.value === 'true';
 };

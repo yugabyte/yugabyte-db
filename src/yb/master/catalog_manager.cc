@@ -13132,8 +13132,19 @@ Status CatalogManager::SysCatalogRespectLeaderAffinity() {
     return Status::OK();
   }
 
+  consensus::ConsensusStatePB consensus_state;
+  RETURN_NOT_OK(GetCurrentConfig(&consensus_state));
+
   std::vector<ServerEntryPB> masters;
-  RETURN_NOT_OK(master_->ListMasters(&masters));
+  for (const auto& peer : consensus_state.config().peers()) {
+    ServerEntryPB master;
+    master.mutable_instance_id()->set_permanent_uuid(peer.permanent_uuid());
+    auto* registration = master.mutable_registration();
+    registration->mutable_cloud_info()->CopyFrom(peer.cloud_info());
+    registration->mutable_private_rpc_addresses()->CopyFrom(peer.last_known_private_addr());
+    registration->mutable_broadcast_addresses()->CopyFrom(peer.last_known_broadcast_addr());
+    masters.push_back(std::move(master));
+  }
 
   auto[sorted_scored_masters, i_am_eligible] = GetMoreEligibleSysCatalogLeaders(
       affinitized_zones, blacklist, masters, server_registration_);

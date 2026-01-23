@@ -81,7 +81,10 @@ public class LokiConfig extends TelemetryProviderConfig {
     for (int i = 1; i <= maxRetries; i++) {
       try {
         URL validatedBaseUrl = Util.validateAndGetURL(endpoint, true);
-        URI readyUri = validatedBaseUrl.toURI().resolve("/ready");
+        // Use /loki/api/v1/labels endpoint for readiness check as it works for both
+        // self-hosted Loki and Grafana Cloud Loki. The /ready endpoint is not exposed
+        // on Grafana Cloud.
+        URI readyUri = validatedBaseUrl.toURI().resolve("/loki/api/v1/labels");
 
         HttpRequest.Builder requestBuilder =
             HttpRequest.newBuilder().uri(readyUri).timeout(Duration.ofSeconds(3)).GET();
@@ -103,7 +106,8 @@ public class LokiConfig extends TelemetryProviderConfig {
 
         lastStatusCode = statusCode;
 
-        if (statusCode == 200 && "Ready".equalsIgnoreCase(body.trim())) {
+        // Accept 200 OK as ready - the /loki/api/v1/labels endpoint returns JSON with labels
+        if (statusCode == 200) {
           isReady = true;
           break;
         }

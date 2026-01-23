@@ -165,7 +165,7 @@ standard_ExecutorStart(QueryDesc *queryDesc, int eflags)
 	Assert(queryDesc != NULL);
 	Assert(queryDesc->estate == NULL);
 
-	if (yb_enable_pg_stat_statements_metrics)
+	if (yb_enable_pg_stat_statements_docdb_metrics)
 		YbSetMetricsCaptureTypeIfUnset(YB_YQL_METRICS_CAPTURE_PGSS_METRICS);
 
 	/*
@@ -546,7 +546,7 @@ standard_ExecutorEnd(QueryDesc *queryDesc)
 	queryDesc->planstate = NULL;
 	queryDesc->totaltime = NULL;
 	queryDesc->yb_query_stats = NULL;
-	if (yb_enable_pg_stat_statements_metrics)
+	if (yb_enable_pg_stat_statements_docdb_metrics)
 		YbSetMetricsCaptureType(YB_YQL_METRICS_CAPTURE_NONE);
 }
 

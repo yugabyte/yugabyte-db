@@ -185,6 +185,9 @@ struct TableInfo {
   bool IsVectorIndex() const;
   bool NeedVectorIndex() const;
 
+  MetricAttributeMap CreateMetricAttributeMap() const;
+  MetricEntityPtr CreateMetricEntity(MetricRegistry* registry) const;
+
   // Should account for every field in TableInfo.
   static bool TEST_Equals(const TableInfo& lhs, const TableInfo& rhs);
 
@@ -229,7 +232,7 @@ struct KvStoreInfo {
       const KvStoreInfoPB& snapshot_kvstoreinfo, const TableId& primary_table_id, bool colocated,
       dockv::OverwriteSchemaPacking overwrite);
 
-  Status MergeTableSchemaPackings(
+  Status RestoreMissingValuesAndMergeTableSchemaPackings(
       const KvStoreInfoPB& snapshot_kvstoreinfo, const TableId& primary_table_id, bool colocated,
       dockv::OverwriteSchemaPacking overwrite);
 

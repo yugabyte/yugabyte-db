@@ -127,11 +127,12 @@ export const mapUniversePayloadToResilienceAndRegionsProps = (
     regions: []
   };
   if ('provider_spec' in cluster && cluster.provider_spec?.region_list) {
-    regionAndResilience['regions'] =
-      cluster.provider_spec.region_list?.map((regionInfo) => {
-        const matchedRegion = providerRegions.find((region) => region.uuid === regionInfo);
+    regionAndResilience['regions'] = cluster.placement_spec?.cloud_list.flatMap((cloud) =>
+      cloud.region_list?.map((region) => {
+        const matchedRegion = providerRegions.find((r) => r.uuid === region.uuid);
         return matchedRegion!;
-      }) ?? [];
+      })
+    ) as Region[];
   }
   return regionAndResilience;
 };

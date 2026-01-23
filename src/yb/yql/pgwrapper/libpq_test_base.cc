@@ -17,6 +17,7 @@
 #include "yb/common/common.pb.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/json_document.h"
 #include "yb/util/monotime.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/tsan_util.h"
@@ -348,26 +349,24 @@ std::vector<YsqlMetric> LibPqTestBase::ParseJsonMetrics(const std::string& metri
   std::vector<YsqlMetric> parsed_metrics;
 
   // Parse the JSON string
-  rapidjson::Document document;
-  document.Parse(metrics_output.c_str());
+  JsonDocument doc;
+  auto document = EXPECT_RESULT(doc.Parse(metrics_output));
 
-  EXPECT_TRUE(document.IsArray() && document.Size() > 0);
-  const auto& server = document[0];
-  EXPECT_TRUE(server.HasMember("metrics") && server["metrics"].IsArray());
-  const auto& metrics = server["metrics"];
-  for (const auto& metric : metrics.GetArray()) {
+  EXPECT_TRUE(document.IsArray() && EXPECT_RESULT(document.size()) > 0);
+  for (const auto& metric : EXPECT_RESULT(document[0]["metrics"].GetArray())) {
     EXPECT_TRUE(
-        metric.HasMember("name") && metric.HasMember("count") && metric.HasMember("sum") &&
-        metric.HasMember("rows"));
+        metric["name"].IsValid() && metric["count"].IsValid() && metric["sum"].IsValid() &&
+        metric["rows"].IsValid());
+    auto metric_name = EXPECT_RESULT(metric["name"].GetString());
     std::unordered_map<std::string, std::string> labels;
-    if (metric.HasMember("table_name")) {
-      labels["table_name"] = metric["table_name"].GetString();
+    if (metric["table_name"].IsValid()) {
+      labels["table_name"] = EXPECT_RESULT(metric["table_name"].GetString());
     } else {
-      LOG(INFO) << "No table name found for metric: " << metric["name"].GetString();
+      LOG(INFO) << "No table name found for metric: " << metric_name;
     }
 
     parsed_metrics.emplace_back(
-        metric["name"].GetString(), std::move(labels), metric["count"].GetInt64(),
+        metric_name, std::move(labels), EXPECT_RESULT(metric["count"].GetInt64()),
         0  // JSON doesn't include timestamp
     );
   }

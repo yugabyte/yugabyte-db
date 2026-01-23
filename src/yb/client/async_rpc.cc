@@ -475,6 +475,9 @@ bool AsyncRpcBase<Req, Resp>::CommonResponseCheck(const Status& status) {
     auto leader_uuid = tablet().current_leader_uuid();
     auto table_name = table()->name().ToString();
     auto key = resp_.restart_read_key();
+    VLOG(2) << "Restart read required: " << restart_read_time << ", original_read_time: "
+        << original_read_time << ", table: " << table_name << ", tablet: " << tablet_id
+        << ", leader_uuid: " << leader_uuid << ", key: " << key;
     Failed(STATUS(TryAgain,
                   Format("restart_read_time: $0, original_read_time: $1"
                          ", table: $2, tablet: $3, leader_uuid: $4, key: $5",

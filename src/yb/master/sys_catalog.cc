@@ -2289,6 +2289,35 @@ Status SysCatalogTable::ForceWrite(
   return SyncWrite(writer.get());
 }
 
+Result<bool> SysCatalogTable::NamespaceExists(const NamespaceName& ns_name) {
+  TRACE_EVENT0("master", "NamespaceExists");
+  auto read_data =
+      VERIFY_RESULT(TableReadData(kTemplate1Oid, kPgDatabaseTableOid, ReadHybridTime()));
+  const auto& schema = read_data.schema();
+
+  const auto datname_col_id = VERIFY_RESULT(schema.ColumnIdByName("datname")).rep();
+  dockv::ReaderProjection projection(schema, {datname_col_id});
+
+  auto iter = VERIFY_RESULT(read_data.NewUninitializedIterator(projection));
+  auto request_scope = VERIFY_RESULT(VERIFY_RESULT(Tablet())->CreateRequestScope());
+  {
+    docdb::DocPgsqlScanSpec spec(schema, nullptr);
+    RETURN_NOT_OK(iter->Init(spec));
+  }
+
+  qlexpr::QLTableRow row;
+  while (VERIFY_RESULT(iter->FetchNext(&row))) {
+    const auto& datname_col = row.GetValue(datname_col_id);
+    if (!datname_col) {
+      return STATUS(Corruption, "Could not read 'datname' column from pg_database");
+    }
+    if (datname_col->get().string_value() == ns_name) {
+      return true;
+    }
+  }
+  return false;
+}
+
 Result<PgOid> SysCatalogTable::GetYsqlTableOid(PgOid database_oid, const TableName& table_name) {
   TRACE_EVENT0("master", "GetYsqlTableOid");
   auto read_data = VERIFY_RESULT(TableReadData(database_oid, kPgClassTableOid, ReadHybridTime()));

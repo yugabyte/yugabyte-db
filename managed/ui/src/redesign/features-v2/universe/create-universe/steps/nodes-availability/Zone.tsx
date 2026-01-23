@@ -1,17 +1,19 @@
 import { FC, useContext, useState } from 'react';
-import { Typography } from '@material-ui/core';
 import { values } from 'lodash';
 import { Control, Controller, useWatch } from 'react-hook-form';
 import { YBInput, YBSelect, mui } from '@yugabyte-ui-library/core';
+import { PreferredInfoModal } from './index';
 import { CreateUniverseContext, CreateUniverseContextMethods } from '../../CreateUniverseContext';
+import { NodeAvailabilityProps } from './dtos';
 import { Region } from '../../../../../features/universe/universe-form/utils/dto';
 import { FaultToleranceType, ResilienceFormMode } from '../resilence-regions/dtos';
-import { NodeAvailabilityProps } from './dtos';
-import { PreferredInfoModal } from './PrefferedInfoModal';
+
+//icons
 import { HelpOutline } from '@material-ui/icons';
 import Return from '../../../../../assets/tree.svg';
 import RemoveIcon from '../../../../../assets/close-large.svg';
-const { MenuItem } = mui;
+
+const { MenuItem, Typography } = mui;
 
 interface ZoneProps {
   control: Control<NodeAvailabilityProps>;
@@ -91,7 +93,7 @@ export const Zone: FC<ZoneProps> = ({ control, index, region, remove }) => {
   });
 
   return (
-    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', padding: '10px 24px' }}>
+    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', padding: '0px 8px' }}>
       <Return style={{ marginTop: '24px' }} />
       <Controller
         control={control}
@@ -134,7 +136,7 @@ export const Zone: FC<ZoneProps> = ({ control, index, region, remove }) => {
             }}
             disabled={
               resilienceAndRegionsSettings?.resilienceFormMode === ResilienceFormMode.GUIDED &&
-              resilienceAndRegionsSettings?.faultToleranceType !== FaultToleranceType.NONE
+              isPrefferedAllowed
             }
             dataTestId="availability-zone-node-count-input"
           />
@@ -148,13 +150,15 @@ export const Zone: FC<ZoneProps> = ({ control, index, region, remove }) => {
             <YBSelect
               label={
                 <>
-                  Preferred
-                  <HelpOutline
-                    onClick={() => {
-                      setShowPreferredInfoModal(true);
-                    }}
-                    style={{ cursor: 'pointer' }}
-                  />
+                  <span style={{ lineHeight: '16px' }}>Preferred</span>&nbsp;
+                  {index === 0 && (
+                    <HelpOutline
+                      onClick={() => {
+                        setShowPreferredInfoModal(true);
+                      }}
+                      style={{ cursor: 'pointer' }}
+                    />
+                  )}
                 </>
               }
               sx={{ width: '90px' }}
@@ -175,7 +179,10 @@ export const Zone: FC<ZoneProps> = ({ control, index, region, remove }) => {
       )}
 
       {isPrefferedAllowed && (
-        <RemoveIcon style={{ marginTop: '24px', cursor: 'pointer' }} onClick={remove} />
+        <RemoveIcon
+          style={{ marginTop: '24px', cursor: 'pointer', marginLeft: '8px' }}
+          onClick={remove}
+        />
       )}
       <PreferredInfoModal
         open={showPreferredInfoModal}

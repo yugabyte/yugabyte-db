@@ -3,6 +3,8 @@ package com.yugabyte.yw.models.helpers.exporters.query;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import javax.validation.constraints.NotNull;
@@ -77,6 +79,14 @@ public class YSQLQueryLogConfig {
               + " if the statement ran for at least the specified amount of time.",
       accessMode = READ_WRITE)
   private Integer logMinDurationStatement = -1;
+
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2025.2.0.0")
+  @ApiModelProperty(
+      value =
+          "YbaApi Internal. Log line prefix format for PostgreSQL logs. User-configured"
+              + " log_line_prefix in gflags takes precedence over this value when specified.",
+      accessMode = READ_WRITE)
+  private String logLinePrefix;
 
   public enum YSQlLogMinErrorStatement {
     ERROR

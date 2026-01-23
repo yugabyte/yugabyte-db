@@ -34,7 +34,7 @@ export const FaultToleranceTypeField = <T extends FieldValues>({
   t,
   label
 }: FaultToleranceTypeFieldProps<T>) => {
-  const { control, getValues, setValue } = useFormContext<T>();
+  const { control } = useFormContext<T>();
   return (
     <Controller
       name={name}

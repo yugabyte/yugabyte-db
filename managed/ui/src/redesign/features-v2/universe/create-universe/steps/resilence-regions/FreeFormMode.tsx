@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useFormContext } from 'react-hook-form';
 import { Trans, useTranslation } from 'react-i18next';
 import { mui, YBSmartStatus, StatusType, IconPosition } from '@yugabyte-ui-library/core';
-import { ResilienceTooltip } from './ResilienceTooltip';
+import { ReplicationFactorInfoModal } from '../nodes-availability';
 import { ReplicationFactorField } from '../../fields';
 import { ResilienceAndRegionsProps } from './dtos';
 
@@ -75,7 +75,7 @@ export const FreeFormMode = () => {
           </Box>
         </Collapse>
       )}
-      <ResilienceTooltip
+      <ReplicationFactorInfoModal
         open={showResilienceTooltip}
         onClose={() => {
           setShowResilienceTooltip(false);

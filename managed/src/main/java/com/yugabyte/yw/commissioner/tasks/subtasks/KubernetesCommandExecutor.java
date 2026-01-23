@@ -1428,7 +1428,9 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
           "otelCollector",
           otelCollectorConfigGenerator.getOtelHelmValues(
               auditLogConfig,
-              GFlagsUtil.getLogLinePrefix(tserverGFlags.get(GFlagsUtil.YSQL_PG_CONF_CSV))));
+              GFlagsUtil.getLogLinePrefix(
+                  primaryClusterIntent.queryLogConfig,
+                  tserverGFlags.get(GFlagsUtil.YSQL_PG_CONF_CSV))));
     }
 
     if (!tserverGFlags.isEmpty()) {

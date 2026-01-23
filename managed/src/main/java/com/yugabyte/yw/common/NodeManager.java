@@ -2129,7 +2129,8 @@ public class NodeManager extends DevopsBase {
               taskParam.auditLogConfig,
               taskParam.queryLogConfig,
               taskParam.metricsExportConfig,
-              GFlagsUtil.getLogLinePrefix(gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
+              GFlagsUtil.getLogLinePrefix(
+                  taskParam.queryLogConfig, gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
               provider,
               userIntent);
 
@@ -2203,7 +2204,8 @@ public class NodeManager extends DevopsBase {
               taskParam.auditLogConfig,
               taskParam.queryLogConfig,
               taskParam.metricsExportConfig,
-              GFlagsUtil.getLogLinePrefix(gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
+              GFlagsUtil.getLogLinePrefix(
+                  taskParam.queryLogConfig, gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
               provider,
               userIntent);
           commandArgs.addAll(getInlineWaitForClockSyncCommandArgs(this.confGetter));
@@ -2627,7 +2629,8 @@ public class NodeManager extends DevopsBase {
               params.auditLogConfig,
               params.queryLogConfig,
               params.metricsExportConfig,
-              GFlagsUtil.getLogLinePrefix(params.gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
+              GFlagsUtil.getLogLinePrefix(
+                  params.queryLogConfig, params.gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
               provider,
               userIntent);
           if (params.useSudo) {

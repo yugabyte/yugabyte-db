@@ -12,7 +12,15 @@ import { useMount } from 'react-use';
 import { Trans, useTranslation } from 'react-i18next';
 import { FormProvider, useForm } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
-import { AlertVariant, mui, YBAlert, YBButtonGroup, YBTag } from '@yugabyte-ui-library/core';
+import {
+  AlertVariant,
+  mui,
+  YBAlert,
+  YBButtonGroup,
+  YBSmartStatus,
+  StatusType,
+  IconPosition
+} from '@yugabyte-ui-library/core';
 import { ResilienceTypeField } from '../../fields';
 import { StyledContent, StyledHeader, StyledPanel } from '../../components/DefaultComponents';
 import { GuidedMode, FreeFormMode, RegionSelection } from './index';
@@ -86,12 +94,11 @@ export const ResilienceAndRegions = forwardRef<
     mode: 'onSubmit'
   });
 
-  const { watch, trigger } = methods;
+  const { watch } = methods;
 
   const formMode = watch(RESILIENCE_FORM_MODE);
   const regions = watch(REGIONS_FIELD);
   const replicationFactor = watch(REPLICATION_FACTOR);
-  const faultToleranceType = watch(FAULT_TOLERANCE_TYPE);
   const faultToleranceForRegion = getFaultToleranceNeeded(replicationFactor);
   const faultToleranceforAz = getFaultToleranceNeededForAZ(replicationFactor);
   const resilienceType = watch(RESILIENCE_TYPE);
@@ -101,10 +108,6 @@ export const ResilienceAndRegions = forwardRef<
   }, 0);
 
   const { errors, isSubmitted } = methods.formState;
-
-  useEffect(() => {
-    trigger(FAULT_TOLERANCE_TYPE);
-  }, [regions, replicationFactor, faultToleranceType, formMode, resilienceType]);
 
   useEffect(() => {
     setResilienceType(resilienceType);
@@ -141,6 +144,18 @@ export const ResilienceAndRegions = forwardRef<
     }
   });
 
+  useEffect(() => {
+    // if the user switches to guided mode and has set a high replication factor, reduce it to 3 which guided mode supports
+    if (formMode === ResilienceFormMode.GUIDED && replicationFactor > 3) {
+      methods.setValue(REPLICATION_FACTOR, 3);
+    }
+
+    // in free form mode, replication factor should always be odd
+    if (formMode === ResilienceFormMode.FREE_FORM && replicationFactor % 2 === 0) {
+      methods.setValue(REPLICATION_FACTOR, replicationFactor + 1);
+    }
+  }, [formMode]);
+
   return (
     <FormProvider {...methods}>
       {!isGeoPartition && <ResilienceTypeField<ResilienceAndRegionsProps> name="resilienceType" />}
@@ -156,13 +171,11 @@ export const ResilienceAndRegions = forwardRef<
               marginTop: '-8px'
             }}
           >
-            <YBTag
-              size="medium"
-              customSx={{ color: '#9D6C00', background: '#FFEEC8' }}
-              color="warning"
-            >
-              {t('singleNode.caution')}
-            </YBTag>
+            <YBSmartStatus
+              type={StatusType.WARNING}
+              label={t('singleNode.caution')}
+              iconPosition={IconPosition.NONE}
+            />
             {t('singleNode.cautionMsg')}
           </Box>
         </Collapse>
@@ -176,7 +189,7 @@ export const ResilienceAndRegions = forwardRef<
               <YBButtonGroup
                 size="large"
                 dataTestId="yb-button-group-multiselect-normal"
-                value={ResilienceFormMode.GUIDED}
+                value={formMode}
                 buttons={[
                   {
                     value: ResilienceFormMode.GUIDED,

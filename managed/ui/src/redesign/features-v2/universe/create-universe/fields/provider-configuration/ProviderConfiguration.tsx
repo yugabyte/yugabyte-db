@@ -11,7 +11,6 @@ import { ChangeEvent } from 'react';
 import { sortBy } from 'lodash';
 import { useQuery } from 'react-query';
 import { Controller, FieldValues, Path, PathValue, useFormContext } from 'react-hook-form';
-
 import { YBAutoComplete, YBLabel, YBSelectProps, mui } from '@yugabyte-ui-library/core';
 import { api, QUERY_KEY } from '../../../../../features/universe/universe-form/utils/api';
 import { YBProvider } from '../../../../../../components/configRedesign/providerRedesign/types';
@@ -20,6 +19,7 @@ import {
   ProviderCode,
   ProviderStatus
 } from '../../../../../../components/configRedesign/providerRedesign/constants';
+
 interface ProviderConfigurationFieldProps<T extends FieldValues>
   extends Omit<YBSelectProps, 'name' | 'control'> {
   name: Path<T>;

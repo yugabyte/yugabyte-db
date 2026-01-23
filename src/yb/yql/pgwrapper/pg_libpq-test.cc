@@ -49,6 +49,7 @@
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/barrier.h"
+#include "yb/util/json_document.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/os-util.h"
@@ -949,14 +950,12 @@ Status PgLibPqTest::TestEmbeddedIndexScanOptimization(bool is_colocated_with_tab
   // First run is to warm up the cache.
   RETURN_NOT_OK(conn.FetchRow<std::string>(query));
   // Second run is the real test.
-  auto explain_str = VERIFY_RESULT(conn.FetchRow<std::string>(query));
-  rapidjson::Document explain_json;
-  explain_json.Parse(explain_str.c_str());
-  auto scan_type = std::string(explain_json[0]["Plan"]["Node Type"].GetString());
+  auto explain_json = VERIFY_RESULT(conn.FetchRow<JsonDocument>(query));
+  auto scan_type = VERIFY_RESULT(explain_json.Root()[0]["Plan"]["Node Type"].GetString());
   SCHECK_EQ(scan_type, "Index Scan",
             IllegalState,
             "Unexpected scan type");
-  SCHECK_EQ(explain_json[0]["Catalog Read Requests"].GetDouble(), 1,
+  SCHECK_EQ(VERIFY_RESULT(explain_json.Root()[0]["Catalog Read Requests"].GetDouble()), 1,
             IllegalState,
             "Unexpected number of catalog read requests");
 
@@ -967,19 +966,18 @@ Status PgLibPqTest::TestEmbeddedIndexScanOptimization(bool is_colocated_with_tab
   RETURN_NOT_OK(conn.Execute(
       "CREATE INDEX ON vector_test USING ybhnsw (embedding vector_l2_ops)"));
   RETURN_NOT_OK(conn.Execute("INSERT INTO vector_test VALUES (1, '[1, 2, 3]')"));
-  explain_str = VERIFY_RESULT(conn.FetchRow<std::string>(
+  explain_json = VERIFY_RESULT(conn.FetchRow<JsonDocument>(
       "EXPLAIN (ANALYZE, DIST, FORMAT JSON)"
       " SELECT * FROM vector_test ORDER BY embedding <-> '[0, 0, 0]' LIMIT 1"));
-  explain_json.Parse(explain_str.c_str());
-  scan_type = std::string(explain_json[0]["Plan"]["Node Type"].GetString());
+  scan_type = VERIFY_RESULT(explain_json.Root()[0]["Plan"]["Node Type"].GetString());
   SCHECK_EQ(scan_type, "Limit",
             IllegalState,
             "Unexpected scan type");
-  scan_type = std::string(explain_json[0]["Plan"]["Plans"][0]["Node Type"].GetString());
+  scan_type = VERIFY_RESULT(explain_json.Root()[0]["Plan"]["Plans"][0]["Node Type"].GetString());
   SCHECK_EQ(scan_type, "Index Scan",
             IllegalState,
             "Unexpected scan type");
-  SCHECK_EQ(explain_json[0]["Storage Read Requests"].GetDouble(), 1,
+  SCHECK_EQ(VERIFY_RESULT(explain_json.Root()[0]["Storage Read Requests"].GetDouble()), 1,
             IllegalState,
             "Unexpected number of storage read requests");
 
@@ -991,13 +989,12 @@ Status PgLibPqTest::TestEmbeddedIndexScanOptimization(bool is_colocated_with_tab
   RETURN_NOT_OK(conn.Execute("CREATE INDEX ON colo_test (value)"));
   RETURN_NOT_OK(conn.Execute("INSERT INTO colo_test VALUES (1, 'hi')"));
   query = "EXPLAIN (ANALYZE, DIST, FORMAT JSON) SELECT * FROM colo_test WHERE value = 'hi'";
-  explain_str = VERIFY_RESULT(conn.FetchRow<std::string>(query));
-  explain_json.Parse(explain_str.c_str());
-  scan_type = std::string(explain_json[0]["Plan"]["Node Type"].GetString());
+  explain_json = VERIFY_RESULT(conn.FetchRow<JsonDocument>(query));
+  scan_type = VERIFY_RESULT(explain_json.Root()[0]["Plan"]["Node Type"].GetString());
   SCHECK_EQ(scan_type, "Index Scan",
             IllegalState,
             "Unexpected scan type");
-  SCHECK_EQ(explain_json[0]["Storage Read Requests"].GetDouble(), 1,
+  SCHECK_EQ(VERIFY_RESULT(explain_json.Root()[0]["Storage Read Requests"].GetDouble()), 1,
             IllegalState,
             "Unexpected number of storage read requests");
 
@@ -1006,13 +1003,12 @@ Status PgLibPqTest::TestEmbeddedIndexScanOptimization(bool is_colocated_with_tab
     RETURN_NOT_OK(conn.Execute("DROP INDEX colo_test_value_idx"));
     RETURN_NOT_OK(conn.Execute("CREATE TABLESPACE spc LOCATION '/dne'"));
     RETURN_NOT_OK(conn.Execute("CREATE INDEX ON colo_test (value) TABLESPACE spc"));
-    explain_str = VERIFY_RESULT(conn.FetchRow<std::string>(query));
-    explain_json.Parse(explain_str.c_str());
-    scan_type = std::string(explain_json[0]["Plan"]["Node Type"].GetString());
+    explain_json = VERIFY_RESULT(conn.FetchRow<JsonDocument>(query));
+    scan_type = VERIFY_RESULT(explain_json.Root()[0]["Plan"]["Node Type"].GetString());
     SCHECK_EQ(scan_type, "Index Scan",
               IllegalState,
               "Unexpected scan type");
-    SCHECK_GT(explain_json[0]["Storage Read Requests"].GetDouble(), 1,
+    SCHECK_GT(VERIFY_RESULT(explain_json.Root()[0]["Storage Read Requests"].GetDouble()), 1,
               IllegalState,
               "Unexpected number of storage read requests");
   }
@@ -5237,54 +5233,6 @@ TEST_F_EX(PgLibPqTest, ConcurrentAnalyzeWithDDL, PgLibPqTestTableLocksDisabled) 
   stop = true;
   analyze_thread.join();
   ASSERT_NE(conn.ConnStatus(), CONNECTION_BAD);
-}
-
-namespace {
-
-// Captures command output and checks if it contains beta warning
-void ValidateExtensionOutput(PGConn* conn, const std::string& command, bool expect_beta_warning) {
-  std::string output;
-  auto notice_receiver = [](void* arg, const PGresult* res) {
-    auto* output_ptr = static_cast<std::string*>(arg);
-    const char* msg = PQresultErrorField(res, PG_DIAG_MESSAGE_PRIMARY);
-    if (msg) {
-      *output_ptr += std::string(msg) + "\n";
-    }
-  };
-
-  PQsetNoticeReceiver(conn->get(), notice_receiver, &output);
-  auto status = conn->Execute(command);
-  ASSERT_OK(status);
-
-  if (expect_beta_warning) {
-    ASSERT_STR_CONTAINS(output, "'pg_stat_monitor' is a beta feature");
-  } else {
-    ASSERT_STR_NOT_CONTAINS(output, "'pg_stat_monitor' is a beta feature");
-  }
-}
-
-} // namespace
-
-// Test that installing pg_stat_monitor through CREATE EXTENSION and
-// CREATE EXTENSION IF NOT EXISTS commands gives a beta warning on default.
-// Other extensions should not give warnings.
-TEST_F(PgLibPqTest, PgStatMonitorBetaWarning) {
-  auto conn = ASSERT_RESULT(Connect());
-
-  // pg_stat_monitor should give warning on CREATE EXTENSION
-  ASSERT_OK(conn.Execute("DROP EXTENSION IF EXISTS pg_stat_monitor"));
-  ValidateExtensionOutput(&conn, "CREATE EXTENSION pg_stat_monitor", true);
-
-  // pg_stat_monitor should give warning on CREATE EXTENSION IF NOT EXISTS
-  ASSERT_OK(conn.Execute("DROP EXTENSION IF EXISTS pg_stat_monitor"));
-  ValidateExtensionOutput(&conn, "CREATE EXTENSION IF NOT EXISTS pg_stat_monitor", true);
-
-  // Other extensions should NOT give warnings
-  ASSERT_OK(conn.Execute("DROP EXTENSION IF EXISTS pgcrypto"));
-  ValidateExtensionOutput(&conn, "CREATE EXTENSION pgcrypto", false);
-
-  ASSERT_OK(conn.Execute("DROP EXTENSION IF EXISTS fuzzystrmatch"));
-  ValidateExtensionOutput(&conn, "CREATE EXTENSION IF NOT EXISTS fuzzystrmatch", false);
 }
 
 // Test dumping tablet data works for leaders and followers and each returns the same XOR hash.
