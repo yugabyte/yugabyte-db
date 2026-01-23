@@ -25,6 +25,7 @@ const initialized = 9
 const asRootRetry = 10
 const improvedCertHandling = 11
 const stateServices = 12
+const asRootState = 13
 
 // Please do not use this in ybactlstate package, only use getSchemaVersion()
 var schemaVersionCache = -1
@@ -283,6 +284,11 @@ func migrateStateServices(state *State) error {
 	return nil
 }
 
+func migrateAsRootState(state *State) error {
+	state.Config.AsRoot = viper.GetBool("as_root")
+	return nil
+}
+
 // migrateInitialized migrates the initialized flag - all previous installs
 // have been initialized so set to true
 func migrateInitialized(state *State) error {
@@ -303,6 +309,7 @@ var migrations map[int]migrator = map[int]migrator{
 	asRootRetry:          migrateAsRootConfig,
 	improvedCertHandling: migrateCertHandler,
 	stateServices:        migrateStateServices,
+	asRootState:          migrateAsRootState,
 }
 
 func getMigrationHandler(toSchema int) migrator {
