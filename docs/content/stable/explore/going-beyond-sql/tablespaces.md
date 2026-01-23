@@ -337,10 +337,11 @@ You can check the overall leader distribution and [cluster level leader preferen
 
 ## Read replicas
 
-[Read replica](../multi-region-deployments/read-replicas-ysql/) clusters in YugabyteDB are a set of follower nodes that maintain asynchronously replicated copies of tablets in the primary cluster. These tservers are configured with an independent [placement_uuid](../../reference/configuration/yb-tserver/#placement-uuid) flag that is different from the primary cluster. 
+[Read replica](../../multi-region-deployments/read-replicas-ysql/) clusters in YugabyteDB are a set of follower nodes that maintain asynchronously replicated copies of tablets in the primary cluster. These TServers are configured using their own [placement_uuid](../../../reference/configuration/yb-tserver/#placement-uuid) flag that is different from that of the primary cluster.
 
-A table can be configured to place read replica copies of tablets on read replica tservers through tablespace configuration. The syntax below creates a table that has 3 primary copies in us-east-1a and 2 read replica copies in us-east-2a. Note that this assumes that tservers with read replica placement have already been started, as described in [deployment docs](../../deploy/multi-dc/read-replica-clusters/).
+You configure tablespaces with read replica nodes using the `read_replica_placement` configuration option. Tables that you add to the tablespace automatically have copies of their tablets placed on the read replica.
 
+For example, the following commands create a tablespace with a read replica, and then create a table with 3 copies in us-east-1a (the primary cluster) and 2 copies on the read replica in us-east-2a. Note that this assumes that read replica TServers have already been started, as described in [Read replica deployment](../../../deploy/multi-dc/read-replica-clusters/).
 
 ```sql
 CREATE TABLESPACE us_east_1_with_rr_tablespace WITH (
@@ -374,7 +375,7 @@ CREATE TABLE single_zone_table_with_read_replica (id INTEGER, field text)
   TABLESPACE us_east_1_with_rr_tablespace;
 ```
 
-The wildcard `*` can be used in the read_replica_placement section for region/zone fields, with similar semantics as for primary placement.
+You can also use the [wildcard](#use-wildcards-for-zones) `*` when specifying placement in read replicas.
 
 ## Indexes
 
