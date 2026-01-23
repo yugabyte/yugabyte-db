@@ -40,7 +40,10 @@ struct od_server {
 
 	kiwi_key_t key;
 	kiwi_key_t key_client;
-	kiwi_vars_t vars;
+	/* vars set through SET statements */
+	kiwi_vars_t yb_vars_session;
+	/* YB: vars set as default, overriding the backend default */
+	kiwi_vars_t yb_vars_default;
 
 	machine_msg_t *error_connect;
 	/* od_client_t */
@@ -122,7 +125,9 @@ static inline void od_server_init(od_server_t *server, int reserve_prep_stmts)
 
 	kiwi_key_init(&server->key);
 	kiwi_key_init(&server->key_client);
-	kiwi_vars_init(&server->vars, true);
+	/* YB: The second param of init is same as corresponding lists in client */
+	kiwi_vars_init(&server->yb_vars_default, false);
+	kiwi_vars_init(&server->yb_vars_session, true);
 
 	od_io_init(&server->io);
 	od_relay_init(&server->relay, &server->io);
@@ -157,10 +162,8 @@ static inline void od_server_free(od_server_t *server)
 		if (server->prep_stmts) {
 			od_hashmap_free(server->prep_stmts);
 		}
-		if (server->vars.vars != NULL) {
-			free(server->vars.vars);
-			server->vars.vars = NULL;
-		}
+		yb_kiwi_vars_free(&server->yb_vars_default);
+		yb_kiwi_vars_free(&server->yb_vars_session);
 		free(server);
 	}
 }

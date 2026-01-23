@@ -819,6 +819,7 @@ static char *yb_effective_transaction_isolation_level_string;
 static char *yb_xcluster_consistency_level_string;
 static char *yb_read_time_string;
 static char *yb_neg_catcache_ids_string;
+static bool yb_conn_mgr_modifying_defaults = false;
 
 /* should be static, but commands/variable.c needs to get at this */
 char	   *role_string;
@@ -7716,6 +7717,12 @@ string_field_used(struct config_string *conf, char *strval)
 		strval == conf->reset_val ||
 		strval == conf->boot_val)
 		return true;
+
+	/* YB: also check if value has been saved by connection manager */
+	if (conf->gen.ysql_conn_mgr_saved_default &&
+		strval == conf->gen.ysql_conn_mgr_saved_default->prior.val.stringval)
+		return true;
+
 	for (stack = conf->gen.stack; stack; stack = stack->prev)
 	{
 		if (strval == stack->prior.val.stringval ||
@@ -7753,6 +7760,12 @@ extra_field_used(struct config_generic *gconf, void *extra)
 
 	if (extra == gconf->extra)
 		return true;
+
+	/* YB: Check if extra field has been used by conn mgr to save default */
+	if (gconf->ysql_conn_mgr_saved_default &&
+		extra == gconf->ysql_conn_mgr_saved_default->prior.extra)
+		return true;
+
 	switch (gconf->vartype)
 	{
 		case PGC_BOOL:
@@ -8799,8 +8812,9 @@ yb_should_report_guc(struct config_generic *record)
 
 	if (YbIsClientYsqlConnMgr())
 	{
-		shouldReportGUC = shouldReportGUC ||
-			(record->status & GUC_VALUE_RESET) ||
+		shouldReportGUC =
+			shouldReportGUC ||
+			(record->status & (YB_GUC_VALUE_RESET | YB_GUC_DEFAULT_RESET)) ||
 			(record->context >= PGC_SU_BACKEND &&
 			 (record->source == PGC_S_CLIENT ||
 			  record->source == PGC_S_SESSION));
@@ -8821,7 +8835,94 @@ yb_should_report_guc(struct config_generic *record)
 }
 
 /*
+ * YB: Clear default value of GUC set by connection manager and restore
+ * the original reset value
+ */
+static void
+yb_reset_conn_mgr_default(struct config_generic *gconf)
+{
+	/* Early return in case there's no default saved by conn mgr */
+	if (!gconf->ysql_conn_mgr_saved_default)
+		return;
+
+	GucStack   *stack = gconf->ysql_conn_mgr_saved_default;
+
+	gconf->reset_source = stack->source;
+	gconf->reset_scontext = stack->scontext;
+	gconf->reset_srole = stack->srole;
+
+	switch (gconf->vartype)
+	{
+		case PGC_BOOL:
+			{
+				struct config_bool *conf = (struct config_bool *) gconf;
+
+				conf->reset_val = stack->prior.val.boolval;
+				set_extra_field(gconf, &conf->reset_extra, stack->prior.extra);
+				break;
+			}
+		case PGC_INT:
+			{
+				struct config_int *conf = (struct config_int *) gconf;
+
+				conf->reset_val = stack->prior.val.intval;
+				set_extra_field(gconf, &conf->reset_extra, stack->prior.extra);
+				break;
+			}
+		case PGC_OID:
+			{
+				struct yb_config_oid *conf = (struct yb_config_oid *) gconf;
+
+				conf->reset_val = stack->prior.val.oidval;
+				set_extra_field(gconf, &conf->reset_extra, stack->prior.extra);
+				break;
+			}
+		case PGC_REAL:
+			{
+				struct config_real *conf = (struct config_real *) gconf;
+
+				conf->reset_val = stack->prior.val.realval;
+				set_extra_field(gconf, &conf->reset_extra, stack->prior.extra);
+				break;
+			}
+		case PGC_STRING:
+			{
+				struct config_string *conf = (struct config_string *) gconf;
+
+				set_string_field(conf, &conf->reset_val, stack->prior.val.stringval);
+				set_extra_field(gconf, &conf->reset_extra, stack->prior.extra);
+				break;
+			}
+		case PGC_ENUM:
+			{
+				struct config_enum *conf = (struct config_enum *) gconf;
+
+				conf->reset_val = stack->prior.val.enumval;
+				set_extra_field(gconf, &conf->reset_extra, stack->prior.extra);
+				break;
+			}
+	}
+
+	discard_stack_value(gconf, &stack->prior);
+
+	/*
+	 * Note: we don't set the actual value of the variable since that will
+	 * be done by the caller
+	 */
+
+	gconf->status |= YB_GUC_DEFAULT_RESET;
+	report_needed = true;
+
+	pfree(stack);
+	gconf->ysql_conn_mgr_saved_default = NULL;
+}
+
+/*
  * Reset all options to their saved default values (implements RESET ALL)
+ *
+ * YB: When yb_conn_mgr_modifying_defaults is true, it will also reset the
+ * default values saved by connection manager and then proceed to restore
+ * the actual default values.
  */
 void
 ResetAllOptions(void)
@@ -8836,12 +8937,32 @@ ResetAllOptions(void)
 		if (gconf->context != PGC_SUSET &&
 			gconf->context != PGC_USERSET)
 			continue;
-		/* Don't reset if special exclusion from RESET ALL */
-		if (gconf->flags & GUC_NO_RESET_ALL)
-			continue;
-		/* No need to reset if wasn't SET */
-		if (gconf->source <= PGC_S_OVERRIDE)
-			continue;
+
+		/* YB: Reset defaults set by connection manager */
+		if (yb_conn_mgr_modifying_defaults)
+			yb_reset_conn_mgr_default(gconf);
+
+		/*
+		 * YB: When conn mgr is attempting to reset the default values it had
+		 * saved, allow it bypass RESET ALL restriction. Also, source check
+		 * needs to be changed since conn mgr sets PGC_S_CLIENT sources as
+		 * well in a session
+		 */
+		if (yb_conn_mgr_modifying_defaults)
+		{
+			if (gconf->source <= PGC_S_OVERRIDE &&
+				gconf->source != PGC_S_CLIENT)
+				continue;
+		}
+		else
+		{
+			/* Don't reset if special exclusion from RESET ALL */
+			if (gconf->flags & GUC_NO_RESET_ALL)
+				continue;
+			/* No need to reset if wasn't SET */
+			if (gconf->source <= PGC_S_OVERRIDE)
+				continue;
+		}
 
 		/* Save old value to support transaction abort */
 		push_old_value(gconf, GUC_ACTION_SET);
@@ -8925,9 +9046,9 @@ ResetAllOptions(void)
 		gconf->source = gconf->reset_source;
 		gconf->scontext = gconf->reset_scontext;
 		gconf->srole = gconf->reset_srole;
-		/* YB: Add GUC_VALUE_RESET for relaying back to Connection Manager */
+		/* YB: Add YB_GUC_VALUE_RESET for relaying back to Connection Manager */
 		if (YbIsClientYsqlConnMgr())
-			gconf->status |= GUC_VALUE_RESET;
+			gconf->status |= YB_GUC_VALUE_RESET;
 
 		if (yb_should_report_guc(gconf))
 		{
@@ -8937,6 +9058,76 @@ ResetAllOptions(void)
 	}
 }
 
+/* YB: Set GUC variables using same source as startup packet */
+void
+YbSetYsqlConnMgrGucDefaults(const char *data, int len)
+{
+	const char *ptr = data;
+	const char *end = data + len;
+
+	while (ptr < end)
+	{
+		const char *name;
+		const char *value;
+
+		/* Get the key (GUC name) */
+		name = ptr;
+		while (ptr < end && *ptr != '\0')
+			ptr++;
+		if (ptr >= end)
+			break;
+		ptr++;					/* skip null terminator */
+
+		/* Get the value */
+		value = ptr;
+		while (ptr < end && *ptr != '\0')
+			ptr++;
+		if (ptr >= end)
+			break;
+		ptr++;					/* skip null terminator */
+
+		GucContext	gucctx = superuser() ? PGC_SU_BACKEND : PGC_BACKEND;
+
+		/*
+		 * Wrap in try/finally so that yb_conn_mgr_modifying_defaults can be reset
+		 * even in the case of an error
+		 */
+		PG_TRY();
+		{
+			yb_conn_mgr_modifying_defaults = true;
+			SetConfigOption(name, value, gucctx, PGC_S_CLIENT);
+		}
+		PG_FINALLY();
+		{
+			yb_conn_mgr_modifying_defaults = false;
+		}
+		PG_END_TRY();
+	}
+}
+
+/*
+ * YB: Reset GUC defaults that were overridden by YSQL Connection Manager and
+ * also reset all GUC variables to their defaults. Basically does a RESET of GUC
+ * defaults to backend defaults and then performs RESET ALL
+ */
+void
+YbResetYsqlConnMgrGucDefaults(void)
+{
+	/*
+	 * Wrap in try/finally so that yb_conn_mgr_modifying_defaults can be reset
+	 * even in the case of an error
+	 */
+	PG_TRY();
+	{
+		yb_conn_mgr_modifying_defaults = true;
+		ResetAllOptions();
+	}
+	PG_FINALLY();
+	{
+		yb_conn_mgr_modifying_defaults = false;
+	}
+	PG_END_TRY();
+}
 
 /*
  * push_old_value
@@ -9351,6 +9542,7 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 					 gconf->context == PGC_USERSET) &&
 					gconf->source == PGC_S_SESSION)
 				{
+					gconf->status |= YB_GUC_VALUE_RESET;
 					yb_needs_report = true;
 				}
 
@@ -9506,6 +9698,12 @@ ReportGUCOption(struct config_generic *record)
 			if (record->flags & GUC_REPORT)
 				flags |= YB_PARAM_STATUS_REPORT_ENABLED;
 
+			if (record->status & YB_GUC_VALUE_RESET)
+				flags |= YB_PARAM_STATUS_SESSION_VAL_RESET;
+
+			if (record->status & YB_GUC_DEFAULT_RESET)
+				flags |= YB_PARAM_STATUS_DEFAULT_VAL_RESET;
+
 			switch (record->context)
 			{
 				case PGC_INTERNAL:
@@ -9525,13 +9723,12 @@ ReportGUCOption(struct config_generic *record)
 					 */
 
 					if (record->source == PGC_S_CLIENT)
-						flags |= YB_PARAM_STATUS_CONTEXT_BACKEND;
+						flags |= YB_PARAM_STATUS_SOURCE_STARTUP;
 					break;
 				case PGC_SUSET:
 				case PGC_USERSET:
 					if (record->source == PGC_S_CLIENT)
-						flags |=
-							YB_PARAM_STATUS_USERSET_OR_SUSET_SOURCE_STARTUP;
+						flags |= YB_PARAM_STATUS_SOURCE_STARTUP;
 					else if (record->source == PGC_S_SESSION)
 						flags |=
 							YB_PARAM_STATUS_USERSET_OR_SUSET_SOURCE_SESSION;
@@ -9565,9 +9762,12 @@ ReportGUCOption(struct config_generic *record)
 	pfree(val);
 
 	record->status &= ~GUC_NEEDS_REPORT;
-	/* YB: Reset flag that was set for Connection Manager */
+	/* YB: Reset flags that were set for Connection Manager */
 	if (YbIsClientYsqlConnMgr())
-		record->status &= ~GUC_VALUE_RESET;
+	{
+		record->status &= ~YB_GUC_VALUE_RESET;
+		record->status &= ~YB_GUC_DEFAULT_RESET;
+	}
 }
 
 /*
@@ -10274,6 +10474,71 @@ parse_and_validate_value(struct config_generic *record,
 	return true;
 }
 
+static void
+yb_conn_mgr_save_default_value(struct config_generic *gconf)
+{
+	if (gconf->ysql_conn_mgr_saved_default)
+	{
+		elog(WARNING,
+			 "ysql_conn_mgr_saved_default already set for GUC \"%s\", not "
+			 "clearing it. This is a bug",
+			 gconf->name);
+		return;
+	}
+
+	/* TODO: Might be better to have a separate context here? */
+	GucStack   *stack =
+		MemoryContextAllocZero(TopMemoryContext, sizeof(GucStack));
+
+	stack->source = gconf->reset_source;
+	stack->scontext = gconf->reset_scontext;
+	stack->srole = gconf->reset_srole;
+
+	/*
+	 * This is copied from set_stack_value, except we are using reset_val and
+	 * reset_extra from the record
+	 */
+	switch (gconf->vartype)
+	{
+		case PGC_BOOL:
+			stack->prior.val.boolval = ((struct config_bool *) gconf)->reset_val;
+			set_extra_field(gconf, &(stack->prior.extra),
+							((struct config_bool *) gconf)->reset_extra);
+			break;
+		case PGC_INT:
+			stack->prior.val.intval = ((struct config_int *) gconf)->reset_val;
+			set_extra_field(gconf, &(stack->prior.extra),
+							((struct config_int *) gconf)->reset_extra);
+			break;
+		case PGC_OID:
+			stack->prior.val.oidval =
+				((struct yb_config_oid *) gconf)->reset_val;
+			set_extra_field(gconf, &(stack->prior.extra),
+							((struct yb_config_oid *) gconf)->reset_extra);
+			break;
+		case PGC_REAL:
+			stack->prior.val.realval =
+				((struct config_real *) gconf)->reset_val;
+			set_extra_field(gconf, &(stack->prior.extra),
+							((struct config_real *) gconf)->reset_extra);
+			break;
+		case PGC_STRING:
+			set_string_field((struct config_string *) gconf,
+							 &(stack->prior.val.stringval),
+							 ((struct config_string *) gconf)->reset_val);
+			set_extra_field(gconf, &(stack->prior.extra),
+							((struct config_string *) gconf)->reset_extra);
+			break;
+		case PGC_ENUM:
+			stack->prior.val.enumval =
+				((struct config_enum *) gconf)->reset_val;
+			set_extra_field(gconf, &(stack->prior.extra),
+							((struct config_enum *) gconf)->reset_extra);
+			break;
+	}
+
+	gconf->ysql_conn_mgr_saved_default = stack;
+}
 
 /*
  * set_config_option: sets option `name' to given value.
@@ -10679,6 +10944,10 @@ set_config_option_ext(const char *name, const char *value,
 		changeVal = false;
 	}
 
+	/* YB: Save default value if connection manager is trying to set defaults */
+	if (YbIsClientYsqlConnMgr() && yb_conn_mgr_modifying_defaults)
+		yb_conn_mgr_save_default_value(record);
+
 	/*
 	 * Evaluate value and set variable.
 	 */
@@ -10748,7 +11017,7 @@ set_config_option_ext(const char *name, const char *value,
 					conf->gen.srole = srole;
 					/* YB: Mark value as been reset for connection manager */
 					if (gucReset)
-						conf->gen.status |= GUC_VALUE_RESET;
+						conf->gen.status |= YB_GUC_VALUE_RESET;
 				}
 				if (makeDefault)
 				{
@@ -10849,7 +11118,7 @@ set_config_option_ext(const char *name, const char *value,
 					conf->gen.srole = srole;
 					/* YB: Mark value as been reset for connection manager */
 					if (gucReset)
-						conf->gen.status |= GUC_VALUE_RESET;
+						conf->gen.status |= YB_GUC_VALUE_RESET;
 				}
 				if (makeDefault)
 				{
@@ -10945,7 +11214,7 @@ set_config_option_ext(const char *name, const char *value,
 					conf->gen.scontext = context;
 					/* YB: Mark value as been reset for connection manager */
 					if (gucReset)
-						conf->gen.status |= GUC_VALUE_RESET;
+						conf->gen.status |= YB_GUC_VALUE_RESET;
 				}
 				if (makeDefault)
 				{
@@ -11044,7 +11313,7 @@ set_config_option_ext(const char *name, const char *value,
 					conf->gen.srole = srole;
 					/* YB: Mark value as been reset for connection manager */
 					if (gucReset)
-						conf->gen.status |= GUC_VALUE_RESET;
+						conf->gen.status |= YB_GUC_VALUE_RESET;
 				}
 				if (makeDefault)
 				{
@@ -11174,7 +11443,7 @@ set_config_option_ext(const char *name, const char *value,
 					conf->gen.srole = srole;
 					/* YB: Mark value as been reset for connection manager */
 					if (gucReset)
-						conf->gen.status |= GUC_VALUE_RESET;
+						conf->gen.status |= YB_GUC_VALUE_RESET;
 
 					/*
 					 * Ugly hack: during SET session_authorization, forcibly
@@ -11324,7 +11593,7 @@ set_config_option_ext(const char *name, const char *value,
 					conf->gen.srole = srole;
 					/* YB: Mark value as been reset for connection manager */
 					if (gucReset)
-						conf->gen.status |= GUC_VALUE_RESET;
+						conf->gen.status |= YB_GUC_VALUE_RESET;
 				}
 				if (makeDefault)
 				{
