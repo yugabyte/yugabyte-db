@@ -5,6 +5,7 @@ import { Link, withRouter, browserHistory } from 'react-router';
 import { Grid, DropdownButton, MenuItem, Tab, Alert } from 'react-bootstrap';
 import Measure from 'react-measure';
 import { mouseTrap } from 'react-mousetrap';
+import { YBTag } from '@yugabyte-ui-library/core';
 import { CustomerMetricsPanel } from '../../metrics';
 import { RollingUpgradeFormContainer } from '../../../components/common/forms';
 import {
@@ -67,8 +68,7 @@ import { UniverseState, getUniverseStatus, SoftwareUpgradeState } from '../helpe
 import { TaskDetailBanner } from '../../../redesign/features/tasks/components/TaskDetailBanner';
 import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
-// import { RegisterYBAToPerfAdvisor } from '../AttachUniverseToPerfAdvisor/RegisterYBAToPerfAdvisor';
-import { PerfAdvisorTabs } from '../PerfAdvisor/PerfAdvisorTabs';
+import { RegisterYBAToPerfAdvisor } from '../AttachUniverseToPerfAdvisor/RegisterYBAToPerfAdvisor';
 import {
   VM_PATCHING_RUNTIME_CONFIG,
   isImgBundleSupportedByProvider
@@ -76,7 +76,12 @@ import {
 import { DrConfigList } from '../../xcluster/disasterRecovery/DrConfigList';
 import { InstallNodeAgentModal } from '../../../redesign/features/universe/universe-actions/install-node-agent/InstallNodeAgentModal';
 import { YBMenuItemLabel } from '../../../redesign/components/YBDropdownMenu/YBMenuItemLabel';
-import { RuntimeConfigKey, UNIVERSE_TASKS } from '../../../redesign/helpers/constants';
+import {
+  PERF_ADVISOR_PATH,
+  RuntimeConfigKey,
+  UNIVERSE_TASKS
+} from '../../../redesign/helpers/constants';
+import { AppName } from '@app/redesign/helpers/dtos';
 import { isActionFrozen } from '../../../redesign/helpers/utils';
 import { isV2CreateEditUniverseEnabled } from '@app/redesign/features-v2/universe/create-universe/CreateUniverseUtils';
 import {
@@ -393,7 +398,8 @@ class UniverseDetail extends Component {
       featureFlags,
       providers,
       accessKeys,
-      graph
+      graph,
+      location
     } = this.props;
     const { showAlert, alertType, alertMessage } = this.state;
     const universePaused = universe?.currentUniverse?.data?.universeDetails?.universePaused;
@@ -476,15 +482,30 @@ class UniverseDetail extends Component {
       runtimeConfigs?.data?.configEntries?.find((c) => c.key === VM_PATCHING_RUNTIME_CONFIG)
         ?.value === 'true';
 
+    // This is the current Perf Advisor UI which is mostly not used and will be removed from 2026.2
     const isPerfAdvisorUIEnabled =
       runtimeConfigs?.data?.configEntries?.find(
         (config) => config.key === RuntimeConfigKey.PERFORMANCE_ADVISOR_UI_FEATURE_FLAG
       )?.value === 'true';
 
+    // If this flag is enabled, we show 2 things, one is under
+    /*
+    - Integrations -> Perf Advisor (to attach a customer to Perf Advisor service)
+    - Under Universe Actions -> Show options to enable/disable Performance Monitoring for the universe (Perf Advisor Service)
+    */
     const isPerfAdvisorServiceEnabled =
       runtimeConfigs?.data?.configEntries?.find(
         (c) => c.key === RuntimeConfigKey.ENABLE_TROUBLESHOOTING
       )?.value === 'true';
+
+    // Performance Tab should be shown only if Perf Advisor is already enabled for the universe and that needs to be controlled by a separate runtime config as well
+    // This extra layerr of caution is to ensure we treat this as a second class citizen as it is in early BETA stage w.r.t to YBA
+    const isPerformanceTabEnabled =
+      isPerfAdvisorServiceEnabled &&
+      runtimeConfigs?.data?.configEntries?.find(
+        (c) => c.key === RuntimeConfigKey.ENABLE_NEW_PERF_ADVISOR_UI
+      )?.value === 'true' &&
+      universePaRegistrationStatus?.data?.success;
 
     const isK8OperatorBlocked =
       runtimeConfigs?.data?.configEntries?.find(
@@ -624,7 +645,9 @@ class UniverseDetail extends Component {
     const defaultTab = isNotHidden(currentCustomer.data.features, 'universes.details.overview')
       ? 'overview'
       : 'overview';
-    const activeTab = tab || defaultTab;
+    // Check if the pathname contains "performance" to determine if we should show the performance tab
+    const isPerfAdvisorPath = location?.pathname?.includes(PERF_ADVISOR_PATH);
+    const activeTab = isPerfAdvisorPath ? PERF_ADVISOR_PATH : tab || defaultTab;
     const tabElements = [
       //common tabs for every universe
       ...[
@@ -757,95 +780,109 @@ class UniverseDetail extends Component {
             />
           </Tab.Pane>
         ),
-        isNotHidden(currentCustomer.data.features, 'universes.details.perfAdvisor') &&
-        isPerfAdvisorServiceEnabled && (
-          <Tab.Pane
-            eventKey={'perfAdvisor'}
-            tabtitle="Perf Advisor"
-            key="perf-advisor-tab"
-            mountOnEnter={true}
-            unmountOnExit={true}
-            disabled={isDisabled(currentCustomer.data.features, 'universes.details.perfAdvisor')}
-          >
-            <PerfAdvisorTabs
-              universeUUID={currentUniverse.data.universeUUID}
-              timezone={currentUser.data.timezone}
-            />
-          </Tab.Pane>
-        )
+        isNotHidden(currentCustomer.data.features, 'universes.details.performance') &&
+          isPerformanceTabEnabled && (
+            <Tab.Pane
+              eventKey={'perfAdvisor'}
+              tabtitle={
+                <>
+                  {'Performance'}
+                  <YBTag
+                    variant="light"
+                    size="small"
+                    color="gradient"
+                    customSx={{ marginLeft: '8px' }}
+                  >
+                    {'Beta'}
+                  </YBTag>
+                </>
+              }
+              key="performance-tab"
+              mountOnEnter={true}
+              unmountOnExit={true}
+              disabled={isDisabled(currentCustomer.data.features, 'universes.details.performance')}
+            >
+              <RegisterYBAToPerfAdvisor
+                universeUuid={currentUniverse.data.universeUUID}
+                timezone={currentUser.data.timezone}
+                appName={AppName.YBA}
+              />
+            </Tab.Pane>
+          )
       ],
       //tabs relevant for non-imported universes only
       ...(isReadOnlyUniverse
         ? []
         : [
-          isAuditLogEnabled && isYSQLEnabledInUniverse && (
-            <Tab.Pane
-              eventKey={'db-audit-log'}
-              tabtitle="Logs"
-              key="db-audit-log-tab"
-              mountOnEnter={true}
-              unmountOnExit={true}
-            >
-              <AuditLog universeData={currentUniverse.data} universePaused={universePaused} />
-            </Tab.Pane>
-          ),
-          isNotHidden(currentCustomer.data.features, 'universes.details.backups') && (
-            <Tab.Pane
-              eventKey={'backups'}
-              tabtitle={<>Backups</>}
-              key="backups-tab"
-              mountOnEnter={true}
-              unmountOnExit={true}
-              disabled={isDisabled(currentCustomer.data.features, 'universes.details.backups')}
-            >
-              <UniverseLevelBackup />
-            </Tab.Pane>
-          ),
-          (featureFlags.released.showReplicationSlots ||
-            featureFlags.test.showReplicationSlots) && (
-            <Tab.Pane
-              eventKey={'replication-slots'}
-              tabtitle="CDC"
-              key="ReplicationSlots-tab"
-              mountOnEnter={true}
-              unmountOnExit={true}
-            >
-              <ReplicationSlotTable
-                universeUUID={currentUniverse.data.universeUUID}
-                nodePrefix={currentUniverse.data.universeDetails.nodePrefix}
-              />
-            </Tab.Pane>
-          ),
-          isNotHidden(currentCustomer.data.features, 'universes.details.health') && (
-            <Tab.Pane
-              eventKey={'health'}
-              tabtitle="Health"
-              key="health-tab"
-              mountOnEnter={true}
-              unmountOnExit={true}
-              disabled={isDisabled(currentCustomer.data.features, 'universes.details.heath')}
-            >
-              <UniverseHealthCheckList
-                universe={universe}
-                currentCustomer={currentCustomer}
-                currentUser={currentUser}
-                closeModal={closeModal}
-                visibleModal={visibleModal}
-                isNodeAgentEnabled={isProviderNodeAgentEnabled && isNodeAgentClientEnabled}
-              />
-            </Tab.Pane>
-          ),
-          (isV2EditUniverseUIEnabled && (
-            <Tab.Pane
-              eventKey="settings"
-              key="settings-tab"
-              tabtitle="Settings"
-              mountOnEnter={true}
-              unmountOnExit={true}
-            >
-              <EditUniverse universeUUID={currentUniverse.data.universeUUID} />
-            </Tab.Pane>))
-        ])
+            isAuditLogEnabled && isYSQLEnabledInUniverse && (
+              <Tab.Pane
+                eventKey={'db-audit-log'}
+                tabtitle="Logs"
+                key="db-audit-log-tab"
+                mountOnEnter={true}
+                unmountOnExit={true}
+              >
+                <AuditLog universeData={currentUniverse.data} universePaused={universePaused} />
+              </Tab.Pane>
+            ),
+            isNotHidden(currentCustomer.data.features, 'universes.details.backups') && (
+              <Tab.Pane
+                eventKey={'backups'}
+                tabtitle={<>Backups</>}
+                key="backups-tab"
+                mountOnEnter={true}
+                unmountOnExit={true}
+                disabled={isDisabled(currentCustomer.data.features, 'universes.details.backups')}
+              >
+                <UniverseLevelBackup />
+              </Tab.Pane>
+            ),
+            (featureFlags.released.showReplicationSlots ||
+              featureFlags.test.showReplicationSlots) && (
+              <Tab.Pane
+                eventKey={'replication-slots'}
+                tabtitle="CDC"
+                key="ReplicationSlots-tab"
+                mountOnEnter={true}
+                unmountOnExit={true}
+              >
+                <ReplicationSlotTable
+                  universeUUID={currentUniverse.data.universeUUID}
+                  nodePrefix={currentUniverse.data.universeDetails.nodePrefix}
+                />
+              </Tab.Pane>
+            ),
+            isNotHidden(currentCustomer.data.features, 'universes.details.health') && (
+              <Tab.Pane
+                eventKey={'health'}
+                tabtitle="Health"
+                key="health-tab"
+                mountOnEnter={true}
+                unmountOnExit={true}
+                disabled={isDisabled(currentCustomer.data.features, 'universes.details.heath')}
+              >
+                <UniverseHealthCheckList
+                  universe={universe}
+                  currentCustomer={currentCustomer}
+                  currentUser={currentUser}
+                  closeModal={closeModal}
+                  visibleModal={visibleModal}
+                  isNodeAgentEnabled={isProviderNodeAgentEnabled && isNodeAgentClientEnabled}
+                />
+              </Tab.Pane>
+            ),
+            isV2EditUniverseUIEnabled && (
+              <Tab.Pane
+                eventKey="settings"
+                key="settings-tab"
+                tabtitle="Settings"
+                mountOnEnter={true}
+                unmountOnExit={true}
+              >
+                <EditUniverse universeUUID={currentUniverse.data.universeUUID} />
+              </Tab.Pane>
+            )
+          ])
     ].filter((element) => element);
 
     const currentBreadCrumb = (
@@ -1246,50 +1283,12 @@ class UniverseDetail extends Component {
                           }
                           placement="left"
                         >
-                          <span>
-                            <YBMenuItem
-                              disabled={isReadReplicaDisabled}
-                              to={
-                                this.isNewUIEnabled()
-                                  ? `/universes/${uuid}/${this.hasReadReplica(universeInfo) ? 'edit' : 'create'
-                                  }/async`
-                                  : `/universes/${uuid}/edit/async`
-                              }
-                              availability={getFeatureState(
-                                currentCustomer.data.features,
-                                'universes.details.overview.readReplica'
-                              )}
-                            >
-                              <YBLabelWithIcon icon="fa fa-copy fa-fw">
-                                {this.hasReadReplica(universeInfo) ? 'Edit' : 'Add'} Read Replica
-                              </YBLabelWithIcon>
-                            </YBMenuItem>
-                          </span>
-                        </YBTooltip>
-                      </RbacValidator>
-                    )}
-
-                    {!universePaused && (
-                      <RbacValidator
-                        isControl
-                        accessRequiredOn={{
-                          onResource: uuid,
-                          ...ApiPermissionMap.GET_UNIVERSES_BY_ID
-                        }}
-                      >
-                        <UniverseAppsModal
-                          currentUniverse={currentUniverse.data}
-                          modal={modal}
-                          closeModal={closeModal}
-                          button={
-                            <YBMenuItem
-                              disabled={isSampleAppsDisabled}
-                              onClick={showRunSampleAppsModal}
-                            >
-                              <YBLabelWithIcon icon="fa fa-terminal">Run Sample Apps</YBLabelWithIcon>
-                            </YBMenuItem>
-                          }
-                        />
+                          <YBLabelWithIcon icon="fa fa-trash-o fa-fw">
+                            {universePaRegistrationStatus?.data?.success
+                              ? 'Disable Performance Monitoring'
+                              : 'Enable Performance Monitoring'}
+                          </YBLabelWithIcon>
+                        </YBMenuItem>
                       </RbacValidator>
                     )}
                     <YBMenuItem onClick={() => setActiveSubmenu(ActionMenu.MORE)}>

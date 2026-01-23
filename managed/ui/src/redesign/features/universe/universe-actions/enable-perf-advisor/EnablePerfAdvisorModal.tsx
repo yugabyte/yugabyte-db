@@ -36,8 +36,10 @@ export const EnablePerfAdvisorModal = ({
       onSuccess: () => {
         toast.success(t('universeActions.paUniverseStatus.enablePaUniverseSuccess'));
       },
-      onError: () => {
-        toast.error(t('universeActions.paUniverseStatus.enablePaUniverseFailure'));
+      onError: (e: any) => {
+        toast.error(
+          e?.response?.data?.error ?? t('universeActions.paUniverseStatus.enablePaUniverseFailure')
+        );
       }
     }
   );

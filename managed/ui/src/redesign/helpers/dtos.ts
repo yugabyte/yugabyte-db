@@ -611,4 +611,9 @@ export interface YBPBeanValidationError extends YBPStructuredError {
   success: false;
 }
 
+export enum AppName {
+  YBA = 'YBA',
+  YBM = 'YBM',
+  YBD = 'YBD'
+}
 // ---------------------------------------------------------------------------
