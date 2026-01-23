@@ -9306,15 +9306,16 @@ void CatalogManager::ProcessPendingNamespace(
   auto has_transaction = metadata.has_transaction();
   ns_write_lock.Commit();
   if (has_transaction) {
-    LOG(INFO) << "Enqueuing keyspace for Transaction Verification: " << ns.ToString();
+    LOG(INFO) << "Enqueuing keyspace for Transaction Verification: " << ns.ToString()
+              << ", txn_id: " << txn.transaction_id;
     ScheduleVerifyNamespacePgLayer(txn, *ns_res, epoch);
   }
 }
 
 void CatalogManager::ScheduleVerifyNamespacePgLayer(
     TransactionMetadata txn, NamespaceInfoPtr ns, const LeaderEpoch& epoch) {
-  auto when_done = [this, ns, epoch](Result<bool> result) {
-    WARN_NOT_OK(VerifyNamespacePgLayer(ns, result, epoch), "VerifyNamespacePgLayer");
+  auto when_done = [this, ns, txn_id = txn.transaction_id, epoch](Result<bool> result) {
+    WARN_NOT_OK(VerifyNamespacePgLayer(ns, txn_id, result, epoch), "VerifyNamespacePgLayer");
   };
   NamespaceVerificationTask::CreateAndStartTask(
       *this, ns, txn, std::move(when_done), sys_catalog_, master_->client_future(),
@@ -9322,6 +9323,7 @@ void CatalogManager::ScheduleVerifyNamespacePgLayer(
 }
 
 Status CatalogManager::VerifyNamespacePgLayer(scoped_refptr<NamespaceInfo> ns,
+                                              TransactionId txn_id,
                                               Result<bool> exists,
                                               const LeaderEpoch& epoch) {
   if (!exists.ok()) {
@@ -9337,7 +9339,7 @@ Status CatalogManager::VerifyNamespacePgLayer(scoped_refptr<NamespaceInfo> ns,
                  SysNamespaceEntryPB_State_Name(metadata.state()), ns->ToString()));
     metadata.clear_transaction();
     RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), ns));
-    LOG(INFO) << "Namespace transaction succeeded: " << ns->ToString();
+    LOG(INFO) << "Namespace transaction succeeded: " << ns->ToString() << ", txn_id: " << txn_id;
     // Commit the namespace in-memory state.
     l.Commit();
   } else {
@@ -9346,7 +9348,8 @@ Status CatalogManager::VerifyNamespacePgLayer(scoped_refptr<NamespaceInfo> ns,
            metadata.state() == SysNamespaceEntryPB::FAILED, Aborted,
            Format("Invalid Namespace state ($0), aborting delete.",
                       SysNamespaceEntryPB_State_Name(metadata.state()), ns->ToString()));
-    LOG(INFO) << "Namespace transaction failed, deleting: " << ns->ToString();
+    LOG(INFO) << "Namespace transaction failed, deleting: " << ns->ToString()
+              << ", txn_id: " << txn_id;
     metadata.set_state(SysNamespaceEntryPB::DELETING);
     metadata.clear_transaction();
     // todo(zdrudi): we seem to name squat here. The failed creation of a db is visible to all
