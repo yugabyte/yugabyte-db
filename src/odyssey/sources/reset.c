@@ -9,6 +9,39 @@
 #include <machinarium.h>
 #include <odyssey.h>
 
+/*
+ * Send 'g' packet to reset GUC defaults to original values.
+ * Returns 0 on success, -1 on error and -2 on timeout.
+ */
+int yb_send_reset_backend_default_query(od_server_t *server)
+{
+	od_instance_t *instance = server->global->instance;
+	machine_msg_t *msg;
+	int rc;
+
+	msg = yb_kiwi_fe_write_guc_defaults(
+		NULL, NULL, 0, KIWI_FE_RESET_ALL_AND_RESET_GUC_DEFAULTS);
+	if (msg == NULL) {
+		od_error(&instance->logger, "reset all backend default",
+			 server->client, server, "failed to create packet");
+		return -1;
+	}
+
+	rc = od_write(&server->io, &msg);
+	od_server_sync_request(server, 1);
+	if (rc == -1) {
+		od_error(&instance->logger, "reset all backend default",
+			 server->client, server, "write to server error: %s",
+			 od_io_error(&server->io));
+		return -1;
+	}
+
+	/* Wait for ReadyForQuery response */
+	rc = od_backend_ready_wait(server, "reset-guc-defaults", 1,
+				   yb_wait_timeout);
+	return rc;
+}
+
 int od_reset(od_server_t *server)
 {
 	od_instance_t *instance = server->global->instance;
@@ -175,9 +208,7 @@ int od_reset(od_server_t *server)
 	 */
 	if (!instance->config.yb_optimized_session_parameters && !route->id.logical_rep)
 	{
-		char query_reset[] = "RESET ALL";
-		rc = od_backend_query(server, "reset-resetall", query_reset,
-				      NULL, sizeof(query_reset), yb_wait_timeout, 1);
+		rc = yb_send_reset_backend_default_query(server);
 		if (rc == -1)
 			goto error;
 		/* reset timeout */
