@@ -23,7 +23,7 @@ class TSDescriptorTestUtil {
  public:
   static Result<TSDescriptorPtr> RegisterNew(
       const NodeInstancePB& instance, const TSRegistrationPB& registration,
-      CloudInfoPB local_cloud_info, rpc::ProxyCache* proxy_cache,
+      CloudInfoPB local_master_cloud_info, rpc::ProxyCache* proxy_cache,
       RegisteredThroughHeartbeat registered_through_heartbeat = RegisteredThroughHeartbeat::kTrue);
 };
 

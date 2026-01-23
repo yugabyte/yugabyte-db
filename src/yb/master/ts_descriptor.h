@@ -120,7 +120,7 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   static Result<std::pair<TSDescriptorPtr, TSDescriptor::WriteLock>> CreateNew(
       const NodeInstancePB& instance,
       const TSRegistrationPB& registration,
-      CloudInfoPB&& local_cloud_info,
+      CloudInfoPB&& local_master_cloud_info,
       rpc::ProxyCache* proxy_cache,
       // What the source of this registration request is. TServers can be registered by heartbeating
       // to the master.
@@ -405,7 +405,7 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   struct TSMetrics ts_metrics_ GUARDED_BY(mutex_);
 
   // The cloud info of the master.
-  CloudInfoPB local_cloud_info_ GUARDED_BY(mutex_);
+  CloudInfoPB local_master_cloud_info_ GUARDED_BY(mutex_);
   rpc::ProxyCache* proxy_cache_ GUARDED_BY(mutex_);
   int64_t latest_seqno_ GUARDED_BY(mutex_);
 
