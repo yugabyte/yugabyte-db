@@ -339,11 +339,11 @@ You can check the overall leader distribution and [cluster level leader preferen
 
 [Read replica](../multi-region-deployments/read-replicas-ysql/) clusters in YugabyteDB are a set of follower nodes that maintain asynchronously replicated copies of tablets in the primary cluster. These tservers are configured with an independent placement_uuid that is different from the primary cluster. 
 
-A table can be configured to place read replica copies of tablets on read replica tservers through tablespace configuration. The syntax below creates a table that has 3 primary copies in us-east-1a and 2 read replica copies in us-east-1b. Note that this assumes that tservers have already been started with read replica placement as described in [deployment docs](../../deploy/multi-dc/read-replica-clusters/).
+A table can be configured to place read replica copies of tablets on read replica tservers through tablespace configuration. The syntax below creates a table that has 3 primary copies in us-east-1a and 2 read replica copies in us-east-2a. Note that this assumes that tservers have already been started with read replica placement as described in [deployment docs](../../deploy/multi-dc/read-replica-clusters/).
 
 
 ```sql
-CREATE TABLESPACE us_east_1_with_rrs_tablespace WITH (
+CREATE TABLESPACE us_east_1_with_rr_tablespace WITH (
   replica_placement='{
   "num_replicas": 3,
   "placement_blocks": [
@@ -371,7 +371,7 @@ CREATE TABLESPACE us_east_1_with_rrs_tablespace WITH (
 ]');
 
 CREATE TABLE single_zone_table_with_read_replica (id INTEGER, field text)
-  TABLESPACE us_east_1_with_rrs_tablespace;
+  TABLESPACE us_east_1_with_rr_tablespace;
 ```
 
 Read replica placement can also use wildcards for region/zone fields, similar to primary placement.
