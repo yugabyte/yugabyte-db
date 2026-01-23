@@ -302,11 +302,21 @@ If you want to change the defaults, you can use the following command. You can e
 helm upgrade --set resource.tserver.requests.cpu=8,resource.tserver.requests.memory=15Gi yb-demo ./yugabyte
 ```
 
-Replica count can be changed using the following command. Note that only the YB-TServers need to be scaled in a replication factor 3 cluster which keeps the masters count at `3`:
+You can change replica count using the following command:
 
 ```sh
 helm upgrade --set replicas.tserver=5 yb-demo ./yugabyte
 ```
+
+Note that only the YB-TServers need to be scaled in a replication factor 3 cluster, which keeps the masters count at 3.
+
+#### Memory limits for Kubernetes deployments
+
+For Kubernetes deployments, memory limits are controlled via Kubernetes resource specifications in the Helm chart (the `resource.master.limits.memory` and `resource.tserver.limits.memory` values).
+
+The Helm chart automatically converts these Kubernetes pod memory limits to the `--memory_limit_hard_bytes` command-line flag, which is passed to the YugabyteDB processes (yb-tserver and yb-master) when the pods start. The [--default_memory_limit_to_ram_ratio](../../../../../reference/configuration/yb-tserver/#default-memory-limit-to-ram-ratio) flag does not apply to Kubernetes universes because memory resources are specified natively in the Kubernetes YAML rather than as a percentage of system RAM.
+
+For example, if you set `resource.tserver.limits.memory: 4Gi` in your Helm chart, the Helm chart automatically converts this to bytes and sets `--memory_limit_hard_bytes=4294967296` as a command-line argument when starting the TServer pods.
 
 ### Readiness probes
 

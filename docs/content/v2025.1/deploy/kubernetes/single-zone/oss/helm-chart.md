@@ -296,15 +296,13 @@ partition:
   tserver: 3
 ```
 
-If you want to change the defaults, you can use the following command:
+If you want to change the defaults, you can use the following command. You can even do `helm install` instead of `helm upgrade` when you are installing on a Kubernetes cluster with configuration different than the defaults.
 
 ```sh
 helm upgrade --set resource.tserver.requests.cpu=8,resource.tserver.requests.memory=15Gi yb-demo ./yugabyte
 ```
 
-You can even do `helm install` instead of `helm upgrade` when you are installing on a Kubernetes cluster with configuration different than the defaults.
-
-You can change replica count using the following command:
+You can change replica count using the following command.
 
 ```sh
 helm upgrade --set replicas.tserver=5 yb-demo ./yugabyte
