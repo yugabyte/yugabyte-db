@@ -311,6 +311,8 @@ class PggateTestSelectWithYsql : public PggateTestSelect {
     opts->enable_ysql = true;
     opts->extra_tserver_flags.push_back("--db_block_size_bytes=4096");
     opts->extra_tserver_flags.push_back("--db_write_buffer_size=204800");
+    opts->extra_master_flags.push_back("--TEST_ysql_yb_enable_listen_notify=true");
+    opts->extra_tserver_flags.push_back("--TEST_ysql_yb_enable_listen_notify=true");
   }
 
   auto PgConnect(const std::string& database_name) {
@@ -684,10 +686,12 @@ TEST_F_EX(PggateTestSelect, TestGetTableOid, PggateTestSelectWithYsql) {
   CHECK_OK(Init(
       "TestGetTableOid", kNumOfTablets, /* replication_factor = */ 0,
       /* should_create_db = */ false));
-  auto database_name = "yugabyte";
-  auto table_name = "test_table";
+  auto database_name = "yb_system";
+  auto table_name = "pg_yb_notifications";
+
+  sleep(10);  // Wait for master to create these objects.
+
   auto conn = ASSERT_RESULT(PgConnect(database_name));
-  ASSERT_OK(conn.Execute(Format("CREATE TABLE $0(k INT)", table_name)));
   const auto table_oid = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGOid>(
       Format("SELECT oid FROM pg_class WHERE relname = '$0'", table_name)));
   const auto database_oid = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGOid>(
