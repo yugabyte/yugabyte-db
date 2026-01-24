@@ -1803,7 +1803,7 @@ class PgClient::Impl : public BigDataFetcher {
     return resp.last_minute();
   }
 
-  Result<PgOid> GetTableOid(PgOid database_oid, const std::string_view& table_name) {
+  Result<PgOid> GetTableOid(PgOid database_oid, std::string_view table_name) {
     tserver::PgGetTableOidRequestPB req;
     tserver::PgGetTableOidResponsePB resp;
     req.set_database_oid(database_oid);
@@ -2278,7 +2278,7 @@ Status PgClient::SetCronLastMinute(int64_t last_minute) {
 
 Result<int64_t> PgClient::GetCronLastMinute() { return impl_->GetCronLastMinute(); }
 
-Result<PgOid> PgClient::GetTableOid(PgOid database_oid, const std::string_view& table_name) {
+Result<PgOid> PgClient::GetTableOid(PgOid database_oid, std::string_view table_name) {
   return impl_->GetTableOid(database_oid, table_name);
 }
 

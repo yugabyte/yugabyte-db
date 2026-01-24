@@ -1940,7 +1940,7 @@ PgApiImpl::SetTserverCatalogMessageList(
       db_oid, is_breaking_change, new_catalog_version, messages);
 }
 
-Result<PgOid> PgApiImpl::GetTableOid(PgOid database_oid, const std::string_view& table_name) {
+Result<PgOid> PgApiImpl::GetTableOid(PgOid database_oid, std::string_view table_name) {
   return pg_client_.GetTableOid(database_oid, table_name);
 }
 

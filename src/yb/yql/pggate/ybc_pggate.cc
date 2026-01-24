@@ -2217,8 +2217,7 @@ YbcStatus YBCPgSetTserverCatalogMessageList(
 }
 
 YbcStatus YBCGetTableOid(YbcPgOid database_oid, const char* table_name, YbcPgOid* table_oid) {
-  return ExtractValueFromResult(
-      pgapi->GetTableOid(database_oid, std::string(table_name)), table_oid);
+  return ExtractValueFromResult(pgapi->GetTableOid(database_oid, table_name), table_oid);
 }
 
 uint64_t YBCGetSharedAuthKey() {
