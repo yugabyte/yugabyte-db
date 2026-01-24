@@ -547,7 +547,6 @@ class VectorIndexQuery {
       PgPerformResponseMsg& resp, rpc::Sidecars& sidecars) {
     VLOG_WITH_FUNC(4) << "Resp: " << resp.ShortDebugString();
     active_ = false;
-    auto dump_stats = fetch_start_ != MonoTime();
     auto process_start_time = MonoTime::Now();
 
     MonoTime reduce_start_time;
@@ -620,7 +619,7 @@ class VectorIndexQuery {
     metrics_.vector_index_fetch_us->Increment(fetch_time.ToMicroseconds());
     metrics_.vector_index_collect_us->Increment(collect_time.ToMicroseconds());
     metrics_.vector_index_reduce_us->Increment(reduce_time.ToMicroseconds());
-    LOG_IF(INFO, dump_stats)
+    LOG_IF(INFO, FLAGS_vector_index_dump_stats)
         << "VI_STATS: Fetch time: " << fetch_time.ToPrettyString()
         << ", collect time: " << collect_time.ToPrettyString()
         << ", reduce time: " << reduce_time.ToPrettyString();
