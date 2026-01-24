@@ -161,7 +161,9 @@ service PgClientService {
   rpc TriggerRelcacheInitConnection(PgTriggerRelcacheInitConnectionRequestPB)
       returns (PgTriggerRelcacheInitConnectionResponsePB);
 
-  rpc GetTableOid(PgGetTableOidRequestPB) returns (PgGetTableOidResponsePB);
+  // Fetch table info for non-catalog tables in yb_system database
+  rpc GetYbSystemTableInfo(PgGetYbSystemTableInfoRequestPB)
+      returns (PgGetYbSystemTableInfoResponsePB);
 }
 
 // TODO: Remove the OptionalUint32PB helper message after updating protobuf generator to allow
@@ -1363,12 +1365,12 @@ message PgTriggerRelcacheInitConnectionRequestPB {
 
 message PgTriggerRelcacheInitConnectionResponsePB { AppStatusPB status = 1; }
 
-message PgGetTableOidRequestPB {
-  uint32 database_oid = 1;
+message PgGetYbSystemTableInfoRequestPB {
+  uint32 namespace_oid = 1;
   string table_name = 2;
 }
 
-message PgGetTableOidResponsePB {
+message PgGetYbSystemTableInfoResponsePB {
   AppStatusPB status = 1;
   uint32 table_oid = 2;
 }

@@ -100,7 +100,7 @@ class TserverXClusterContextIf;
     (ExportTxnSnapshot) \
     (ImportTxnSnapshot) \
     (ClearExportedTxnSnapshots) \
-    (GetTableOid) \
+    (GetYbSystemTableInfo) \
     /**/
 
 #define YB_PG_CLIENT_TRIVIAL_METHODS \

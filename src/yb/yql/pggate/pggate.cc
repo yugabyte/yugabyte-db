@@ -1940,8 +1940,8 @@ PgApiImpl::SetTserverCatalogMessageList(
       db_oid, is_breaking_change, new_catalog_version, messages);
 }
 
-Result<PgOid> PgApiImpl::GetTableOid(PgOid database_oid, std::string_view table_name) {
-  return pg_client_.GetTableOid(database_oid, table_name);
+Result<PgOid> PgApiImpl::GetYbSystemTableOid(PgOid namespace_oid, std::string_view table_name) {
+  return pg_client_.GetYbSystemTableOid(namespace_oid, table_name);
 }
 
 uint64_t PgApiImpl::GetSharedAuthKey() const {

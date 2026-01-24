@@ -2749,10 +2749,11 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     return Status::OK();
   }
 
-  Status GetTableOid(
-      const PgGetTableOidRequestPB& req, PgGetTableOidResponsePB* resp, rpc::RpcContext* context) {
+  Status GetYbSystemTableInfo(
+      const PgGetYbSystemTableInfoRequestPB& req, PgGetYbSystemTableInfoResponsePB* resp,
+      rpc::RpcContext* context) {
     resp->set_table_oid(
-        VERIFY_RESULT(client().GetYsqlTableOid(req.database_oid(), req.table_name())));
+        VERIFY_RESULT(client().GetYsqlYbSystemTableOid(req.namespace_oid(), req.table_name())));
     return Status::OK();
   }
 

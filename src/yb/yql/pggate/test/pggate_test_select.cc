@@ -13,6 +13,8 @@
 //
 //--------------------------------------------------------------------------------------------------
 
+#include "catalog/pg_namespace_d.h"
+
 #include "yb/common/constants.h"
 #include "yb/common/hybrid_time.h"
 
@@ -694,11 +696,9 @@ TEST_F_EX(PggateTestSelect, TestGetTableOid, PggateTestSelectWithYsql) {
   auto conn = ASSERT_RESULT(PgConnect(database_name));
   const auto table_oid = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGOid>(
       Format("SELECT oid FROM pg_class WHERE relname = '$0'", table_name)));
-  const auto database_oid = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGOid>(
-      Format("SELECT oid FROM pg_database WHERE datname = '$0'", database_name)));
 
   YbcPgOid fetched_table_oid;
-  CHECK_YBC_STATUS(YBCGetTableOid(database_oid, table_name, &fetched_table_oid));
+  CHECK_YBC_STATUS(YBCGetYbSystemTableOid(PG_PUBLIC_NAMESPACE, table_name, &fetched_table_oid));
   CHECK_EQ(table_oid, fetched_table_oid);
 }
 

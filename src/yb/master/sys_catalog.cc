@@ -1382,7 +1382,7 @@ Result<PgOidToOidMap> SysCatalogTable::ReadPgClassColumnWithOidValueMap(
   auto read_data = VERIFY_RESULT(TableReadData(database_oid, kPgClassTableOid, ReadHybridTime()));
   const auto& schema = read_data.schema();
 
-  const auto oid_col_id = VERIFY_RESULT(schema.ColumnIdByName(kPgClassOidColumnName)).rep();
+  const auto oid_col_id = VERIFY_RESULT(schema.ColumnIdByName(kOidColumnName)).rep();
   const auto result_col_idx = VERIFY_RESULT(schema.ColumnIndexByName(column_name));
   const auto result_col_id = schema.column_id(result_col_idx).rep();
   const auto result_col_type = schema.column(result_col_idx).type()->main();
@@ -1428,7 +1428,7 @@ Result<PgOid> SysCatalogTable::ReadPgClassColumnWithOidValue(
   auto read_data = VERIFY_RESULT(TableReadData(database_oid, kPgClassTableOid, read_time));
   const auto& schema = read_data.schema();
 
-  const auto oid_col_id = VERIFY_RESULT(schema.ColumnIdByName(kPgClassOidColumnName)).rep();
+  const auto oid_col_id = VERIFY_RESULT(schema.ColumnIdByName(kOidColumnName)).rep();
   const auto result_col_idx = VERIFY_RESULT(schema.ColumnIndexByName(column_name));
   const auto result_col_id = schema.column_id(result_col_idx).rep();
   const auto result_col_type = schema.column(result_col_idx).type()->main();
@@ -2289,14 +2289,16 @@ Status SysCatalogTable::ForceWrite(
   return SyncWrite(writer.get());
 }
 
-Result<bool> SysCatalogTable::NamespaceExists(const NamespaceName& ns_name) {
-  TRACE_EVENT0("master", "NamespaceExists");
+Result<PgOid> SysCatalogTable::GetYsqlDatabaseOid(const NamespaceName& ns_name) {
+  TRACE_EVENT0("master", "GetYsqlDatabaseOid");
   auto read_data =
       VERIFY_RESULT(TableReadData(kTemplate1Oid, kPgDatabaseTableOid, ReadHybridTime()));
   const auto& schema = read_data.schema();
 
-  const auto datname_col_id = VERIFY_RESULT(schema.ColumnIdByName("datname")).rep();
-  dockv::ReaderProjection projection(schema, {datname_col_id});
+  const auto oid_col_id = VERIFY_RESULT(schema.ColumnIdByName(kOidColumnName)).rep();
+  const auto datname_col_id =
+      VERIFY_RESULT(schema.ColumnIdByName(kPgDatabaseDatNameColumnName)).rep();
+  dockv::ReaderProjection projection(schema, {oid_col_id, datname_col_id});
 
   auto iter = VERIFY_RESULT(read_data.NewUninitializedIterator(projection));
   auto request_scope = VERIFY_RESULT(VERIFY_RESULT(Tablet())->CreateRequestScope());
@@ -2305,27 +2307,39 @@ Result<bool> SysCatalogTable::NamespaceExists(const NamespaceName& ns_name) {
     RETURN_NOT_OK(iter->Init(spec));
   }
 
+  PgOid result = kPgInvalidOid;
   qlexpr::QLTableRow row;
   while (VERIFY_RESULT(iter->FetchNext(&row))) {
+    const auto& oid_col = row.GetValue(oid_col_id);
     const auto& datname_col = row.GetValue(datname_col_id);
+    if (!oid_col) {
+      return STATUS(Corruption, "Could not read 'oid' column from pg_database");
+    }
     if (!datname_col) {
       return STATUS(Corruption, "Could not read 'datname' column from pg_database");
     }
     if (datname_col->get().string_value() == ns_name) {
-      return true;
+      result = oid_col->get().uint32_value();
+      break;
     }
   }
-  return false;
+  return result;
 }
 
-Result<PgOid> SysCatalogTable::GetYsqlTableOid(PgOid database_oid, const TableName& table_name) {
-  TRACE_EVENT0("master", "GetYsqlTableOid");
-  auto read_data = VERIFY_RESULT(TableReadData(database_oid, kPgClassTableOid, ReadHybridTime()));
+Result<PgOid> SysCatalogTable::GetYsqlYbSystemTableOid(
+    PgOid namespace_oid, const TableName& table_name) {
+  TRACE_EVENT0("master", "GetYsqlYbSystemTableOid");
+  auto db_oid = VERIFY_RESULT(GetYsqlDatabaseOid(kYbSystemDbName));
+
+  auto read_data = VERIFY_RESULT(TableReadData(db_oid, kPgClassTableOid, ReadHybridTime()));
   const auto& schema = read_data.schema();
 
-  const auto oid_col_id = VERIFY_RESULT(schema.ColumnIdByName(kPgClassOidColumnName)).rep();
+  const auto oid_col_id = VERIFY_RESULT(schema.ColumnIdByName(kOidColumnName)).rep();
   const auto relname_col_id = VERIFY_RESULT(schema.ColumnIdByName(kPgClassRelNameColumnName)).rep();
-  dockv::ReaderProjection projection(schema, {oid_col_id, relname_col_id});
+  const auto relnamespace_col_id =
+      VERIFY_RESULT(schema.ColumnIdByName(kPgClassRelNamespaceColumnName)).rep();
+
+  dockv::ReaderProjection projection(schema, {oid_col_id, relname_col_id, relnamespace_col_id});
 
   auto iter = VERIFY_RESULT(read_data.NewUninitializedIterator(projection));
   auto request_scope = VERIFY_RESULT(VERIFY_RESULT(Tablet())->CreateRequestScope());
@@ -2343,24 +2357,29 @@ Result<PgOid> SysCatalogTable::GetYsqlTableOid(PgOid database_oid, const TableNa
   while (VERIFY_RESULT(iter->FetchNext(&row))) {
     const auto& oid_col = row.GetValue(oid_col_id);
     const auto& relname_col = row.GetValue(relname_col_id);
+    const auto& relnamespace_col = row.GetValue(relnamespace_col_id);
     if (!oid_col) {
       return STATUS_FORMAT(
-          Corruption, "Could not read 'oid' column from pg_class for database_oid: $0",
-          database_oid);
+          Corruption, "Could not read 'oid' column from pg_class in yb_system database");
     }
     if (!relname_col) {
       return STATUS_FORMAT(
-          Corruption, "Could not read 'relname' column from pg_class for database_oid: $0",
-          database_oid);
+          Corruption, "Could not read 'relname' column from pg_class in yb_system database");
     }
-    if (relname_col->get().string_value() == table_name) {
+    if (!relnamespace_col) {
+      return STATUS_FORMAT(
+          Corruption, "Could not read 'relnamespace' column from pg_class in yb_system database");
+    }
+    if (relname_col->get().string_value() == table_name &&
+        relnamespace_col->get().uint32_value() == namespace_oid) {
       result = oid_col->get().uint32_value();
       break;
     }
   }
   if (result == kPgInvalidOid)
-    LOG(INFO) << "Could not find YSQL table with table '" << table_name
-              << "' in database with db_oid = " << database_oid;
+    LOG(INFO) << Format(
+        "Could not find table '$0' in namespace $1 in yb_system database", table_name,
+        namespace_oid);
   return result;
 }
 

@@ -176,8 +176,8 @@ using yb::master::GetUDTypeMetadataRequestPB;
 using yb::master::GetUDTypeMetadataResponsePB;
 using yb::master::GetYsqlCatalogConfigRequestPB;
 using yb::master::GetYsqlCatalogConfigResponsePB;
-using yb::master::GetYsqlTableOidRequestPB;
-using yb::master::GetYsqlTableOidResponsePB;
+using yb::master::GetYsqlYbSystemTableInfoRequestPB;
+using yb::master::GetYsqlYbSystemTableInfoResponsePB;
 using yb::master::GrantRevokePermissionRequestPB;
 using yb::master::GrantRevokePermissionResponsePB;
 using yb::master::GrantRevokeRoleRequestPB;
@@ -1205,12 +1205,12 @@ Status YBClient::ReservePgsqlOids(
   return Status::OK();
 }
 
-Result<PgOid> YBClient::GetYsqlTableOid(PgOid database_oid, const TableName& table_name) {
-  GetYsqlTableOidRequestPB req;
-  GetYsqlTableOidResponsePB resp;
-  req.set_database_oid(database_oid);
+Result<PgOid> YBClient::GetYsqlYbSystemTableOid(PgOid namespace_oid, const TableName& table_name) {
+  GetYsqlYbSystemTableInfoRequestPB req;
+  GetYsqlYbSystemTableInfoResponsePB resp;
+  req.set_namespace_oid(namespace_oid);
   req.set_table_name(table_name);
-  CALL_SYNC_LEADER_MASTER_RPC_EX(Client, req, resp, GetYsqlTableOid);
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Client, req, resp, GetYsqlYbSystemTableInfo);
   return resp.table_oid();
 }
 

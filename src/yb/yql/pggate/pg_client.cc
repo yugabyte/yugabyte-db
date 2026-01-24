@@ -1803,13 +1803,13 @@ class PgClient::Impl : public BigDataFetcher {
     return resp.last_minute();
   }
 
-  Result<PgOid> GetTableOid(PgOid database_oid, std::string_view table_name) {
-    tserver::PgGetTableOidRequestPB req;
-    tserver::PgGetTableOidResponsePB resp;
-    req.set_database_oid(database_oid);
+  Result<PgOid> GetYbSystemTableOid(PgOid namespace_oid, std::string_view table_name) {
+    tserver::PgGetYbSystemTableInfoRequestPB req;
+    tserver::PgGetYbSystemTableInfoResponsePB resp;
+    req.set_namespace_oid(namespace_oid);
     req.set_table_name(table_name.data(), table_name.size());
-    RETURN_NOT_OK(
-        DoSyncRPC(&PgClientServiceProxy::GetTableOid, req, resp, PggateRPC::kGetTableOid));
+    RETURN_NOT_OK(DoSyncRPC(
+        &PgClientServiceProxy::GetYbSystemTableInfo, req, resp, PggateRPC::kGetYbSystemTableInfo));
     RETURN_NOT_OK(ResponseStatus(resp));
     return resp.table_oid();
   }
@@ -2278,8 +2278,8 @@ Status PgClient::SetCronLastMinute(int64_t last_minute) {
 
 Result<int64_t> PgClient::GetCronLastMinute() { return impl_->GetCronLastMinute(); }
 
-Result<PgOid> PgClient::GetTableOid(PgOid database_oid, std::string_view table_name) {
-  return impl_->GetTableOid(database_oid, table_name);
+Result<PgOid> PgClient::GetYbSystemTableOid(PgOid namespace_oid, std::string_view table_name) {
+  return impl_->GetYbSystemTableOid(namespace_oid, table_name);
 }
 
 template class pg_client::internal::ExchangeFuture<pg_client::internal::PerformData>;

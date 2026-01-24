@@ -3497,17 +3497,19 @@ void CatalogManager::PrepareRestore() {
   sys_catalog_->IncrementPitrCount();
 }
 
-Status CatalogManager::GetYsqlTableOid(
-    const GetYsqlTableOidRequestPB* req, GetYsqlTableOidResponsePB* resp, rpc::RpcContext* rpc) {
+Status CatalogManager::GetYsqlYbSystemTableInfo(
+    const GetYsqlYbSystemTableInfoRequestPB* req, GetYsqlYbSystemTableInfoResponsePB* resp,
+    rpc::RpcContext* rpc) {
   RSTATUS_DCHECK(
-      req->has_database_oid(), InvalidArgument,
-      "database_oid is a required argument in GetYsqlTableOid rpc");
+      req->has_namespace_oid(), InvalidArgument,
+      "namespace_oid is a required argument in GetYsqlYbSystemTableInfo rpc");
   RSTATUS_DCHECK(
       req->has_table_name(), InvalidArgument,
-      "table_name is a required argument in GetYsqlTableOid rpc");
+      "table_name is a required argument in GetYsqlYbSystemTableInfo rpc");
 
-  resp->set_table_oid(
-      VERIFY_RESULT(sys_catalog_->GetYsqlTableOid(req->database_oid(), req->table_name())));
+  auto table_oid =
+      VERIFY_RESULT(sys_catalog_->GetYsqlYbSystemTableOid(req->namespace_oid(), req->table_name()));
+  resp->set_table_oid(table_oid);
   return Status::OK();
 }
 
