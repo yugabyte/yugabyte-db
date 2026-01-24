@@ -629,6 +629,7 @@
         "cpuArch": "CPU Architecture",
         "x86_64": "x86 (Intel)",
         "aarch64": "AArch6 (ARM)",
+        "cpuArchNotSupported": "This CPU Architecture is not supported by current provider.",
         "linuxVersion": "Linux Version",
         "showRetired": "Show retired recommendations",
         "cooldownHours": "Resizing device within cooldown period of 6 hours causes resize to happen only by moving to different nodes",
