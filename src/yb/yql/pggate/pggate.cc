@@ -1941,7 +1941,7 @@ PgApiImpl::SetTserverCatalogMessageList(
 }
 
 Status PgApiImpl::GetYbSystemTableInfo(
-    PgOid namespace_oid, std::string_view table_name, YbcPgOid* oid, YbcPgOid* relfilenode) {
+    PgOid namespace_oid, std::string_view table_name, PgOid* oid, PgOid* relfilenode) {
   return pg_client_.GetYbSystemTableInfo(namespace_oid, table_name, oid, relfilenode);
 }
 

@@ -1804,7 +1804,7 @@ class PgClient::Impl : public BigDataFetcher {
   }
 
   Status GetYbSystemTableInfo(
-      PgOid namespace_oid, std::string_view table_name, YbcPgOid* oid, YbcPgOid* relfilenode) {
+      PgOid namespace_oid, std::string_view table_name, PgOid* oid, PgOid* relfilenode) {
     tserver::PgGetYbSystemTableInfoRequestPB req;
     tserver::PgGetYbSystemTableInfoResponsePB resp;
     req.set_namespace_oid(namespace_oid);
@@ -2282,7 +2282,7 @@ Status PgClient::SetCronLastMinute(int64_t last_minute) {
 Result<int64_t> PgClient::GetCronLastMinute() { return impl_->GetCronLastMinute(); }
 
 Status PgClient::GetYbSystemTableInfo(
-    PgOid namespace_oid, std::string_view table_name, YbcPgOid* oid, YbcPgOid* relfilenode) {
+    PgOid namespace_oid, std::string_view table_name, PgOid* oid, PgOid* relfilenode) {
   return impl_->GetYbSystemTableInfo(namespace_oid, table_name, oid, relfilenode);
 }
 
