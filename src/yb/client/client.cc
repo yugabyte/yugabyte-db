@@ -1205,13 +1205,16 @@ Status YBClient::ReservePgsqlOids(
   return Status::OK();
 }
 
-Result<PgOid> YBClient::GetYsqlYbSystemTableOid(PgOid namespace_oid, const TableName& table_name) {
+Status YBClient::GetYsqlYbSystemTableInfo(
+    PgOid namespace_oid, const TableName& table_name, PgOid* oid, PgOid* relfilenode) {
   GetYsqlYbSystemTableInfoRequestPB req;
   GetYsqlYbSystemTableInfoResponsePB resp;
   req.set_namespace_oid(namespace_oid);
   req.set_table_name(table_name);
   CALL_SYNC_LEADER_MASTER_RPC_EX(Client, req, resp, GetYsqlYbSystemTableInfo);
-  return resp.table_oid();
+  *oid = resp.table_oid();
+  *relfilenode = resp.relfilenode();
+  return Status::OK();
 }
 
 Status YBClient::DEPRECATED_GetYsqlCatalogMasterVersion(uint64_t *ysql_catalog_version) {

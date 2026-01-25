@@ -2752,8 +2752,12 @@ class PgClientServiceImpl::Impl : public SessionProvider {
   Status GetYbSystemTableInfo(
       const PgGetYbSystemTableInfoRequestPB& req, PgGetYbSystemTableInfoResponsePB* resp,
       rpc::RpcContext* context) {
-    resp->set_table_oid(
-        VERIFY_RESULT(client().GetYsqlYbSystemTableOid(req.namespace_oid(), req.table_name())));
+    PgOid oid = kPgInvalidOid;
+    PgOid relfilenode = kPgInvalidOid;
+    RETURN_NOT_OK(client().GetYsqlYbSystemTableInfo(
+        req.namespace_oid(), req.table_name(), &oid, &relfilenode));
+    resp->set_table_oid(oid);
+    resp->set_relfilenode(relfilenode);
     return Status::OK();
   }
 

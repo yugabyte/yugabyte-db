@@ -2326,9 +2326,9 @@ Result<PgOid> SysCatalogTable::GetYsqlDatabaseOid(const NamespaceName& ns_name) 
   return result;
 }
 
-Result<PgOid> SysCatalogTable::GetYsqlYbSystemTableOid(
-    PgOid namespace_oid, const TableName& table_name) {
-  TRACE_EVENT0("master", "GetYsqlYbSystemTableOid");
+Result<bool> SysCatalogTable::GetYsqlYbSystemTableInfo(
+    PgOid namespace_oid, const TableName& table_name, PgOid* oid, PgOid* relfilenode) {
+  TRACE_EVENT0("master", "GetYsqlYbSystemTableInfo");
   auto db_oid = VERIFY_RESULT(GetYsqlDatabaseOid(kYbSystemDbName));
 
   auto read_data = VERIFY_RESULT(TableReadData(db_oid, kPgClassTableOid, ReadHybridTime()));
@@ -2338,8 +2338,11 @@ Result<PgOid> SysCatalogTable::GetYsqlYbSystemTableOid(
   const auto relname_col_id = VERIFY_RESULT(schema.ColumnIdByName(kPgClassRelNameColumnName)).rep();
   const auto relnamespace_col_id =
       VERIFY_RESULT(schema.ColumnIdByName(kPgClassRelNamespaceColumnName)).rep();
+  const auto relfilenode_col_id =
+      VERIFY_RESULT(schema.ColumnIdByName(kPgClassRelFileNodeColumnName)).rep();
 
-  dockv::ReaderProjection projection(schema, {oid_col_id, relname_col_id, relnamespace_col_id});
+  dockv::ReaderProjection projection(
+      schema, {oid_col_id, relname_col_id, relnamespace_col_id, relfilenode_col_id});
 
   auto iter = VERIFY_RESULT(read_data.NewUninitializedIterator(projection));
   auto request_scope = VERIFY_RESULT(VERIFY_RESULT(Tablet())->CreateRequestScope());
@@ -2352,12 +2355,14 @@ Result<PgOid> SysCatalogTable::GetYsqlYbSystemTableOid(
     RETURN_NOT_OK(iter->Init(spec));
   }
 
-  PgOid result = kPgInvalidOid;
+  bool found = false;
   qlexpr::QLTableRow row;
   while (VERIFY_RESULT(iter->FetchNext(&row))) {
     const auto& oid_col = row.GetValue(oid_col_id);
     const auto& relname_col = row.GetValue(relname_col_id);
     const auto& relnamespace_col = row.GetValue(relnamespace_col_id);
+    const auto& relfilenode_col = row.GetValue(relfilenode_col_id);
+
     if (!oid_col) {
       return STATUS_FORMAT(
           Corruption, "Could not read 'oid' column from pg_class in yb_system database");
@@ -2370,17 +2375,23 @@ Result<PgOid> SysCatalogTable::GetYsqlYbSystemTableOid(
       return STATUS_FORMAT(
           Corruption, "Could not read 'relnamespace' column from pg_class in yb_system database");
     }
+    if (!relfilenode_col) {
+      return STATUS_FORMAT(
+          Corruption, "Could not read 'relfilenode' column from pg_class in yb_system database");
+    }
     if (relname_col->get().string_value() == table_name &&
         relnamespace_col->get().uint32_value() == namespace_oid) {
-      result = oid_col->get().uint32_value();
+      *oid = oid_col->get().uint32_value();
+      *relfilenode = relfilenode_col->get().uint32_value();
+      found = true;
       break;
     }
   }
-  if (result == kPgInvalidOid)
+  if (!found)
     LOG(INFO) << Format(
         "Could not find table '$0' in namespace $1 in yb_system database", table_name,
         namespace_oid);
-  return result;
+  return found;
 }
 
 const Schema& PgTableReadData::schema() const {

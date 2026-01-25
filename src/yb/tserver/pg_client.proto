@@ -1373,4 +1373,5 @@ message PgGetYbSystemTableInfoRequestPB {
 message PgGetYbSystemTableInfoResponsePB {
   AppStatusPB status = 1;
   uint32 table_oid = 2;
+  uint32 relfilenode = 3;
 }

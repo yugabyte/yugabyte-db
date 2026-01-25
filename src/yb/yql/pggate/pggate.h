@@ -164,7 +164,8 @@ class PgApiImpl {
       uint32_t db_oid, bool is_breaking_change,
       uint64_t new_catalog_version, const YbcCatalogMessageList *message_list);
 
-  Result<PgOid> GetYbSystemTableOid(PgOid namespace_oid, std::string_view table_name);
+  Status GetYbSystemTableInfo(
+      PgOid namespace_oid, std::string_view table_name, YbcPgOid* oid, YbcPgOid* relfilenode);
   uint64_t GetSharedAuthKey() const;
   const unsigned char *GetLocalTserverUuid() const;
   pid_t GetLocalTServerPid() const;

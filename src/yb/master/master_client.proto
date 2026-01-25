@@ -230,6 +230,7 @@ message GetYsqlYbSystemTableInfoRequestPB {
 message GetYsqlYbSystemTableInfoResponsePB {
   optional MasterErrorPB error = 1;
   optional uint32 table_oid = 2;
+  optional uint32 relfilenode = 3;
 }
 
 message RedisConfigSetRequestPB {

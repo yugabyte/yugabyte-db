@@ -346,7 +346,8 @@ class PgClient {
       std::string_view snapshot_id, tserver::PgPerformOptionsPB&& options);
   Status ClearExportedTxnSnapshots();
 
-  Result<PgOid> GetYbSystemTableOid(PgOid namespace_oid, std::string_view table_name);
+  Status GetYbSystemTableInfo(
+      PgOid namespace_oid, std::string_view table_name, YbcPgOid* oid, YbcPgOid* relfilenode);
 
   using ActiveTransactionCallback = LWFunction<Status(
       const tserver::PgGetActiveTransactionListResponsePB_EntryPB&, bool is_last)>;

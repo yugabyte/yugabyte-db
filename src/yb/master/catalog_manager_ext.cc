@@ -3507,9 +3507,12 @@ Status CatalogManager::GetYsqlYbSystemTableInfo(
       req->has_table_name(), InvalidArgument,
       "table_name is a required argument in GetYsqlYbSystemTableInfo rpc");
 
-  auto table_oid =
-      VERIFY_RESULT(sys_catalog_->GetYsqlYbSystemTableOid(req->namespace_oid(), req->table_name()));
-  resp->set_table_oid(table_oid);
+  PgOid oid = kPgInvalidOid;
+  PgOid relfilenode = kPgInvalidOid;
+  RETURN_NOT_OK(sys_catalog_->GetYsqlYbSystemTableInfo(
+      req->namespace_oid(), req->table_name(), &oid, &relfilenode));
+  resp->set_table_oid(oid);
+  resp->set_relfilenode(relfilenode);
   return Status::OK();
 }
 

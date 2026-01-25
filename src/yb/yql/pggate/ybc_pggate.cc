@@ -2216,9 +2216,9 @@ YbcStatus YBCPgSetTserverCatalogMessageList(
   return YBCStatusOK();
 }
 
-YbcStatus YBCGetYbSystemTableOid(
-    YbcPgOid namespace_oid, const char* table_name, YbcPgOid* table_oid) {
-  return ExtractValueFromResult(pgapi->GetYbSystemTableOid(namespace_oid, table_name), table_oid);
+YbcStatus YBCGetYbSystemTableInfo(
+    YbcPgOid namespace_oid, const char* table_name, YbcPgOid* oid, YbcPgOid* relfilenode) {
+  return ToYBCStatus(pgapi->GetYbSystemTableInfo(namespace_oid, table_name, oid, relfilenode));
 }
 
 uint64_t YBCGetSharedAuthKey() {
