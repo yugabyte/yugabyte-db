@@ -79,6 +79,12 @@ Additional memory will be required for supporting caches and the like if the tab
 
 You can manually provision the amount of memory each TServer uses by setting the [--memory_limit_hard_bytes](../../reference/configuration/yb-tserver/#memory-limit-hard-bytes) or [--default_memory_limit_to_ram_ratio](../../reference/configuration/yb-tserver/#default-memory-limit-to-ram-ratio) flags.
 
+{{<note title = "Kubernetes deployments">}}
+For Kubernetes universes, memory limits are controlled via resource specifications in the Helm chart. Accordingly, `--default_memory_limit_to_ram_ratio` does not apply, and `--memory_limit_hard_bytes` is automatically set from the Kubernetes pod memory limits.
+
+See [Memory limits in Kubernetes deployments](../kubernetes/single-zone/oss/helm-chart/#memory-limits-for-kubernetes-deployments) for details.
+{{</note>}}
+
 #### YSQL
 
 Manually provisioning is a bit tricky as you need to take into account how much memory the kernel needs as well as the PostgreSQL processes and any Master process that is going to be colocated with the TServer.
