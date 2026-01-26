@@ -102,5 +102,60 @@ TEST_F(PgYbIndexCheckTest, YbIndexCheckRestartReadRequired) {
   ASSERT_OK((conn.Fetch("SELECT yb_index_check('abcd_b_c_d_idx'::regclass)")));
 }
 
+// Test for GitHub issue #30104: Partial index corruption during INSERT ON CONFLICT DO UPDATE.
+// When yb_skip_redundant_update_ops is enabled and an upsert changes a column used in a partial
+// index predicate (without changing indexed columns), the partial index can become corrupted.
+// This happens because the skip list check was performed before partial index predicate evaluation,
+// causing membership changes to go undetected.
+TEST_F(PgYbIndexCheckTest, YbIndexCheckPartialIndexOnConflictUpdate) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  // Create table with a partial unique index on user_uuid where is_active = true
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test_partial_idx ("
+      "  uuid UUID PRIMARY KEY,"
+      "  user_uuid UUID NOT NULL,"
+      "  is_active BOOLEAN DEFAULT true"
+      ")"));
+  ASSERT_OK(conn.Execute(
+      "CREATE UNIQUE INDEX idx_active_users ON test_partial_idx (user_uuid) "
+      "WHERE is_active = true"));
+
+  // Insert a row that satisfies the partial index predicate (is_active = true)
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO test_partial_idx VALUES ("
+      "  '11111111-1111-1111-1111-111111111111',"
+      "  'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',"
+      "  true"
+      ")"));
+
+  // Open a NEW connection - this is critical for reproducing the bug.
+  // The bug only manifests when this is the first query in the connection
+  // that references the table (no cached relation info).
+  auto new_conn = ASSERT_RESULT(Connect());
+
+  // Upsert that flips is_active from true to false.
+  // This should remove the row from the partial index since it no longer
+  // satisfies the predicate (is_active = true).
+  // Note: The conflict is on the PRIMARY KEY (uuid), not the partial index.
+  ASSERT_OK(new_conn.Execute(
+      "INSERT INTO test_partial_idx (uuid, user_uuid, is_active) VALUES ("
+      "  '11111111-1111-1111-1111-111111111111',"
+      "  'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',"
+      "  false"
+      ") ON CONFLICT (uuid) DO UPDATE SET is_active = EXCLUDED.is_active"));
+
+  // Verify the partial index is consistent.
+  // Before the fix for #30104, this would fail with "index contains spurious row"
+  // because the row remained in the index despite no longer satisfying the predicate.
+  ASSERT_OK(conn.Fetch("SELECT yb_index_check('idx_active_users'::regclass)"));
+
+  // Verify the table data is correct
+  auto result = ASSERT_RESULT(conn.FetchRow<bool>(
+      "SELECT is_active FROM test_partial_idx "
+      "WHERE uuid = '11111111-1111-1111-1111-111111111111'"));
+  ASSERT_FALSE(result);
+}
+
 } // namespace pgwrapper
 } // namespace yb

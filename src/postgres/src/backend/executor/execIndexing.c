@@ -814,14 +814,7 @@ YbExecUpdateIndexTuples(ResultRelInfo *resultRelInfo,
 		const AttrNumber offset = YBGetFirstLowInvalidAttributeNumber(resultRelInfo->ri_RelationDesc);
 		bool		hasExpressionOrPredicateIndex = false;
 
-		/*
-		 * For an update command check if we need to skip index.
-		 * For that purpose, we check if the relid of the index is part of the
-		 * skip list.
-		 */
-		if (indexRelation == NULL ||
-			list_member_oid(estate->yb_skip_entities.index_list,
-							RelationGetRelid(indexRelation)))
+		if (indexRelation == NULL)
 			continue;
 
 		Form_pg_index indexData = indexRelation->rd_index;
@@ -849,7 +842,11 @@ YbExecUpdateIndexTuples(ResultRelInfo *resultRelInfo,
 		}
 
 		/*
-		 * Check for partial index -
+		 * Check for partial index BEFORE checking skip list.
+		 * This is critical because partial index predicate evaluation must
+		 * always occur to detect membership changes, even if the index would
+		 * otherwise be skipped. See GitHub issue #30104.
+		 *
 		 * There are four different update scenarios for an index with a predicate:
 		 * 1. Both the old and new tuples satisfy the predicate - In this case, the index tuple
 		 *    may either be updated in-place or deleted and reinserted depending on whether the
@@ -913,6 +910,16 @@ YbExecUpdateIndexTuples(ResultRelInfo *resultRelInfo,
 			if (hasExpressionOrPredicateIndex)
 				continue;
 		}
+
+		/*
+		 * For non-partial indexes, check if we can skip this index.
+		 * This check is placed AFTER partial index predicate evaluation
+		 * to ensure membership changes are always detected. See #30104.
+		 */
+		if (indexInfo->ii_Predicate == NIL &&
+			list_member_oid(estate->yb_skip_entities.index_list,
+							RelationGetRelid(indexRelation)))
+			continue;
 
 		/*
 		 * Check if any of the columns associated with the expression index have
