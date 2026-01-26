@@ -215,7 +215,10 @@ else
   exit 1
 fi
 
-loginctl enable-linger {{ yb_user }}
+if ! loginctl enable-linger {{ yb_user }}; then
+    echo "Failed to enable linger for user {{ yb_user }}"
+    exit 1
+fi
 
 if [ $? -eq 0 ]; then
   echo "Node agent service installation successful"
