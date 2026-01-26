@@ -59,9 +59,7 @@ The example progresses from basic operations (storing and searching documents) t
     ```sh
     docker run -d --name yugabyte_node01 --hostname yugabyte01 \
     -p 7000:7000 -p 9000:9000 -p 15433:15433 -p 5433:5433 -p 9042:9042 \
-    yugabytedb/yugabyte:2.25.2.0-b359 bin/yugabyted start --background=false \
-    --master_flags="allowed_preview_flags_csv=ysql_yb_enable_advisory_locks,ysql_yb_enable_advisory_locks=true" \
-    --tserver_flags="allowed_preview_flags_csv=ysql_yb_enable_advisory_locks,ysql_yb_enable_advisory_locks=true"
+    yugabytedb/yugabyte:2.25.2.0-b359 bin/yugabyted start --background=false
     ```
 
 1. Enable the vector extension and verify it's working:
@@ -433,7 +431,7 @@ python -c "from langchain_yugabytedb import YBEngine, YugabyteDBVectorStore; pri
 
 ## Additional operations
 
-The main example demonstrates the core RAG workflow. Here are additional operations you can perform with the vector store:
+The main example demonstrates the core RAG workflow. The vector store also supports a number of additional features.
 
 ### Delete documents from the vector store
 
@@ -464,7 +462,7 @@ The score represents the distance between the query embedding and the document e
 
 Note that the update operation is not currently supported by `YugabyteDBVectorStore`. To update a document, delete the old one and add the updated version.
 
-### Advanced retriever configuration
+### Configure retrievers
 
 A retriever is a LangChain interface that provides a standardized way to query your vector store and fetch relevant documents based on a query. It acts as a bridge between your vector store and LangChain chains, converting queries into embeddings and returning the most similar documents. You can convert a vector store into a retriever using `as_retriever()`, which allows you to use it seamlessly in RAG chains and other LangChain workflows.
 
@@ -547,4 +545,4 @@ chat_history.add_ai_message(response)
 ## Learn more
 
 - [Develop applications with AI and YugabyteDB](/stable/develop/AI/)
-- [pgvector extension](/stable/additional-features/pg-extensions/extension-pgvector/)
+- [pgvector extension](../../../additional-features/pg-extensions/extension-pgvector/)
