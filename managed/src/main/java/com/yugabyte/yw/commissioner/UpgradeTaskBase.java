@@ -636,12 +636,10 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     }
     hasRollingUpgrade = true;
     SubTaskGroupType subGroupType = getTaskSubGroupType();
-    Map<NodeDetails, Set<ServerType>> typesByNode = new HashMap<>();
     boolean hasTServer = false;
     for (NodeDetails node : nodes) {
       Set<ServerType> serverTypes = processTypesFunction.apply(node);
       hasTServer = hasTServer || serverTypes.contains(ServerType.TSERVER);
-      typesByNode.put(node, serverTypes);
     }
     Universe universe = getUniverse();
 
@@ -715,6 +713,8 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
           context.reconfigureMaster && activeRole /* remove master from quorum */,
           false /* deconfigure */,
           subGroupType);
+
+      createDisableMasterOnNonMasterNodesTasks(nodeList, subGroupType);
 
       if (!context.runBeforeStopping) {
         rollingUpgradeLambda.run(nodeList, processTypes);

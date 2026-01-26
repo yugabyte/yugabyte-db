@@ -1657,7 +1657,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
                     Arrays.asList(rrNodesByAZ.get("4"))))));
 
     verifyNodeInteractionsCapacityReservation(
-        21,
+        23,
         NodeManager.NodeCommandType.Change_Instance_Type,
         params -> ((ChangeInstanceType.Params) params).capacityReservation,
         Map.of(
@@ -1800,7 +1800,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
                 "6", new ZoneData("region-2", Arrays.asList(rrNodesByAZ.get("az-6"))))));
 
     verifyNodeInteractionsCapacityReservation(
-        21,
+        23,
         NodeManager.NodeCommandType.Change_Instance_Type,
         params -> ((ChangeInstanceType.Params) params).capacityReservation,
         Map.of(

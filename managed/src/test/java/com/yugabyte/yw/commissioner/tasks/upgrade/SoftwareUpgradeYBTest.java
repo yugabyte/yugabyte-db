@@ -161,7 +161,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
         taskParams.ybSoftwareVersion,
         defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
-    verify(mockNodeManager, times(71)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(75)).nodeCommand(any(), any());
     verify(mockNodeUniverseManager, times(15)).runCommand(any(), any(), anyList(), any());
 
     MockUpgrade mockUpgrade = initMockUpgrade();
@@ -229,7 +229,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
         taskParams.ybSoftwareVersion,
         defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
-    verify(mockNodeManager, times(71)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(75)).nodeCommand(any(), any());
     verify(mockNodeUniverseManager, times(15)).runCommand(any(), any(), anyList(), any());
 
     MockUpgrade mockUpgrade = initMockUpgrade();
@@ -288,7 +288,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
         taskParams.ybSoftwareVersion,
         defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
-    verify(mockNodeManager, times(71)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(75)).nodeCommand(any(), any());
     verify(mockNodeUniverseManager, times(15)).runCommand(any(), any(), anyList(), any());
 
     MockUpgrade mockUpgrade = initMockUpgrade();
@@ -365,7 +365,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
         taskParams.ybSoftwareVersion,
         defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
-    verify(mockNodeManager, times(95)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(102)).nodeCommand(any(), any());
     verify(mockNodeUniverseManager, times(24)).runCommand(any(), any(), anyList(), any());
 
     MockUpgrade mockUpgrade = initMockUpgrade();
@@ -952,6 +952,17 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
 
     assertEquals("Upgraded masters", expectedMasters, configuredMasters);
     assertEquals("Upgraded tservers", tserverNames, configuredTservers);
+
+    // Re-mark node as upgrading to ensure order is correct.
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              u.getNode(tserverUpdatedButNotLive.getNodeName()).state =
+                  NodeDetails.NodeState.UpgradeSoftware;
+              u.setUniverseDetails(details);
+            });
 
     MockUpgrade mockUpgrade = initMockUpgrade();
     mockUpgrade
