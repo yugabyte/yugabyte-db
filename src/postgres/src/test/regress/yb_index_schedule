@@ -8,7 +8,6 @@ test: yb.orig.index_scan
 test: yb.orig.reindex
 test: yb.orig.secondary_index_scan
 test: yb.orig.index_recheck
-test: yb.orig.index_backfill_column_projection
 
 test: yb.orig.index_scan_null_create
 test: yb.orig.index_scan_null_hash
