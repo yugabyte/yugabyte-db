@@ -3729,10 +3729,42 @@ static struct config_bool ConfigureNamesBool[] =
 			gettext_noop("When set, all DDL statements will cause the "
 						 "catalog version to increment. This mainly affects "
 						 "CREATE commands such as CREATE TABLE, CREATE VIEW, "
-						 "and CREATE SEQUENCE."),
+						 "and CREATE SEQUENCE. This also enables negative "
+						 "catcache entries."),
 			NULL
 		},
 		&yb_test_make_all_ddl_statements_incrementing,
+		true,
+		NULL, NULL, NULL
+	},
+
+	/*
+	 * This flag should be enabled first on all the nodes in a cluster
+	 * before enabling yb_enable_negative_catcache_entries.
+	 */
+	{
+		{"yb_always_increment_catalog_version_on_ddl", PGC_SIGHUP, DEVELOPER_OPTIONS,
+			gettext_noop("When set, all DDL statements will cause the "
+						 "catalog version to increment. Unlike "
+						 "yb_test_make_all_ddl_statements_incrementing, this "
+						 "only controls the version incrementing behavior."),
+			NULL
+		},
+		&yb_always_increment_catalog_version_on_ddl,
+		true,
+		NULL, NULL, NULL
+	},
+
+	/*
+	 * This flag should only be enabled after enabling
+	 * yb_test_make_all_ddl_statements_incrementing.
+	 */
+	{
+		{"yb_enable_negative_catcache_entries", PGC_SIGHUP, DEVELOPER_OPTIONS,
+			gettext_noop("When set, negative catcache entries are enabled. "),
+			NULL
+		},
+		&yb_enable_negative_catcache_entries,
 		true,
 		NULL, NULL, NULL
 	},

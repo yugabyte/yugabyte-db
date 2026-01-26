@@ -73,6 +73,7 @@ class LibPqTestBase : public PgWrapperTestBase {
       const std::vector<YsqlMetric>& metrics,
       const std::string& metric_name);
   static void WaitForCatalogVersionToPropagate();
+  Result<int64_t> GetCatCacheTableMissMetric(const std::string& table_name);
 };
 
 Result<PgOid> GetDatabaseOid(PGConn* conn, const std::string& db_name);
