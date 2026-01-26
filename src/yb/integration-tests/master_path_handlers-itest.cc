@@ -44,6 +44,7 @@
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_cluster_client.h"
 #include "yb/master/master_fwd.h"
+#include "yb/master/master_util.h"
 #include "yb/master/mini_master.h"
 
 #include "yb/rpc/messenger.h"
@@ -71,6 +72,7 @@ DECLARE_int32(tserver_unresponsive_timeout_ms);
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_string(TEST_master_extra_list_host_port);
 DECLARE_bool(TEST_tserver_disable_heartbeat);
+DECLARE_uint64(rpc_connection_timeout_ms);
 
 DECLARE_int32(follower_unavailable_considered_failed_sec);
 
@@ -1101,6 +1103,50 @@ TEST_F_EX(MasterPathHandlersItest, TestTablePlacementInfo, MasterPathHandlersExt
   pos = table_str.find("placement_zone", pos + 1);
   ASSERT_NE(pos, string::npos);
   ASSERT_EQ(table_str.substr(pos + 22, 11), "anotherzone");
+}
+
+class MasterPathHandlersEarlyReturnItest : public MasterPathHandlersExternalItest {
+ public:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_connection_timeout_ms) = 60000;
+    opts_.extra_master_flags.push_back("--rpc_connection_timeout_ms=60000");
+    MasterPathHandlersExternalItest::SetUp();
+  }
+};
+
+TEST_F(MasterPathHandlersEarlyReturnItest, GetMasterEntryForHostsReturnsEarlyOnSuccess) {
+  auto* running_master = cluster_->master(0);
+  auto* paused_master = cluster_->master(1);
+
+  // Pause one master so that it won't respond to RPCs, causing timeout.
+  ASSERT_OK(paused_master->Pause());
+
+  // GetMasterEntryForHosts sends RPCs to all provided masters in parallel and returns once the
+  // first successful response is received, or once all RPCs complete.
+  auto start = MonoTime::Now();
+  std::vector<HostPort> hostports = {
+      running_master->bound_rpc_hostport(),
+      paused_master->bound_rpc_hostport()
+  };
+  ServerEntryPB server_entry;
+  auto status = master::GetMasterEntryForHosts(
+      &cluster_->proxy_cache(),
+      hostports,
+      MonoDelta::FromSeconds(30), // 30s request timeout for unresponsive masters.
+      &server_entry);
+  auto elapsed = MonoTime::Now().GetDeltaSince(start);
+
+  ASSERT_OK(paused_master->Resume());
+
+  ASSERT_OK(status);
+
+  // With early return: completes immediately when running_master responds.
+  // Without early return: waits for paused_master to timeout, which is
+  // min(30s request timeout, 60s rpc_connection_timeout) = 30s.
+  // Threshold of 5s catches the 30s regression while providing buffer for test overhead.
+  ASSERT_LT(elapsed.ToSeconds(), 5)
+      << "GetMasterEntryForHosts took too long (" << elapsed.ToSeconds()
+      << "s), early return not working.";
 }
 
 template <int RF>
