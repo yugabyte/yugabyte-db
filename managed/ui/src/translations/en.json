@@ -1202,6 +1202,7 @@
               "tooltip": "<paragraph>Ensure that the backup storage config <bold>can be accessed from both {{sourceUniverseTerm}} and {{targetUniverseTerm}} universe.</bold></paragraph><paragraph>Particularly, <bold>Network File System (NFS)</bold> based storage configs may not be accessible from universes in different regions.</paragraph>"
             },
             "pitrInfoText": "Configure point-in-time recovery (PITR) settings",
+            "currentRetentionPeriod": "Current: {{retentionPeriod}}",
             "retentionPeriod": {
               "label": "Snapshot Retention Period",
               "tooltip": "A longer snapshot retention period requires more disk space."
