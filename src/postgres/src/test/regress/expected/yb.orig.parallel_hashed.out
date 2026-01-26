@@ -5,8 +5,8 @@
 CREATE TABLE pctest1(k int, a int, b int, c int, d text, primary key(k hash));
 CREATE TABLE pctest2(k int, a int, b int, c int, d text, primary key(k hash));
 CREATE UNIQUE INDEX ON pctest1(a hash);
-CREATE INDEX ON pctest1(c hash);
-CREATE INDEX ON pctest2(b hash);
+CREATE INDEX ON pctest1(c hash) split into 3 tablets;
+CREATE INDEX ON pctest2(b hash) split into 3 tablets;
 INSERT INTO pctest1
     SELECT i, 1000 - i, i/3, i%50, 'Value' || i::text FROM generate_series(1, 1000) i;
 INSERT INTO pctest2
