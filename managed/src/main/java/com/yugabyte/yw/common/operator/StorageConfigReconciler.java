@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
+import com.yugabyte.yw.common.operator.utils.ResourceAnnotationKeys;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.CustomerConfigConsts;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
@@ -182,6 +183,24 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
       if (sc.getSpec().getName() != null) {
         configName = OperatorUtils.kubernetesCompatName(sc.getSpec().getName());
       }
+      if (sc.getMetadata().getAnnotations() != null
+          && sc.getMetadata()
+              .getAnnotations()
+              .containsKey(ResourceAnnotationKeys.YBA_RESOURCE_ID)) {
+        if (CustomerConfig.get(
+                UUID.fromString(cuuid),
+                UUID.fromString(
+                    sc.getMetadata().getAnnotations().get(ResourceAnnotationKeys.YBA_RESOURCE_ID)))
+            != null) {
+          log.info("Storage config {} is already controlled by the operator, ignoring", configName);
+          updateStatus(
+              sc,
+              true,
+              sc.getMetadata().getAnnotations().get(ResourceAnnotationKeys.YBA_RESOURCE_ID),
+              "Storage Config already controlled by the operator");
+          return;
+        }
+      }
       CustomerConfig existingConfig = CustomerConfig.get(UUID.fromString(cuuid), configName);
       if (existingConfig != null) {
         log.warn("Storage config {} already exists", configName);
@@ -212,6 +231,13 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
     ObjectMapper objectMapper = new ObjectMapper();
     String cuuid;
     String configUUID = oldSc.getStatus().getResourceUUID();
+    if (newSc.getMetadata().getAnnotations() != null
+        && newSc
+            .getMetadata()
+            .getAnnotations()
+            .containsKey(ResourceAnnotationKeys.YBA_RESOURCE_ID)) {
+      configUUID = newSc.getMetadata().getAnnotations().get(ResourceAnnotationKeys.YBA_RESOURCE_ID);
+    }
 
     try {
       cuuid = operatorUtils.getCustomerUUID();
@@ -247,6 +273,10 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
       return;
     }
     String configUUID = sc.getStatus().getResourceUUID();
+    if (sc.getMetadata().getAnnotations() != null
+        && sc.getMetadata().getAnnotations().containsKey(ResourceAnnotationKeys.YBA_RESOURCE_ID)) {
+      configUUID = sc.getMetadata().getAnnotations().get(ResourceAnnotationKeys.YBA_RESOURCE_ID);
+    }
     ccs.delete(UUID.fromString(cuuid), UUID.fromString(configUUID));
     log.info("Done deleting storage config  {} {}", sc.getMetadata().getName(), configUUID);
   }

@@ -127,7 +127,7 @@ export const EditPerfAdvisorConfigDialog = ({
         >
           <Box display="flex" flexDirection={'row'} mt={2}>
             <YBLabel width="250px" dataTestId="RegisterTSService-Label">
-              {t('clusterDetail.troubleshoot.tpServiceUrlLabel')}
+              {t('clusterDetail.troubleshoot.paServiceUrlLabel')}
             </YBLabel>
             <Box flex={1}>
               <YBInputField

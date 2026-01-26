@@ -3,7 +3,7 @@ title: Multi-Region Deployments
 headerTitle: Multi-Region Deployments
 linkTitle: Multi-region deployments
 description: Explore different Multi-Region deployment topologies in YugabyteDB.
-headcontent: Multi-Region Deployments in YugabyteDB.
+headcontent: Deployment and replication options in YugabyteDB
 menu:
   stable:
     identifier: explore-multi-region-deployments
@@ -11,7 +11,8 @@ menu:
     weight: 270
 type: indexpage
 ---
-YugabyteDB supports a rich set of multi-region deployment topologies. This section explains some of these deployments. The predominant deployments include:
+
+YugabyteDB supports a rich set of multi-region deployment topologies. The predominant deployments include:
 
 * **Default synchronous** replication across regions
 * **Geo-partitioning** to pin data to different geographic locations based on policy

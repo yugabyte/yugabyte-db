@@ -185,6 +185,7 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
         "CREATE TABLE test (id bigserial PRIMARY KEY, embedding vector($0))$1",
         dimensions, create_suffix));
 
+    dimensions_ = dimensions;
     return conn;
   }
 
@@ -203,9 +204,10 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
     return conn;
   }
 
-  Result<PGConn> MakeIndexAndFill(size_t num_rows, Backfill backfill);
+  Result<PGConn> MakeIndexAndFill(
+      size_t num_rows, Backfill backfill = Backfill::kFalse, bool keep_vectors = false);
   Result<PGConn> MakeIndexAndFillRandom(size_t num_rows);
-  Status InsertRows(PGConn& conn, size_t start_row, size_t end_row);
+  Status InsertRows(PGConn& conn, size_t start_row, size_t end_row, bool keep_vectors = false);
   Status InsertRandomRows(PGConn& conn, size_t num_rows);
 
   void VerifyRead(PGConn& conn, size_t limit, AddFilter add_filter);
@@ -218,6 +220,23 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
   [[nodiscard]] bool RowsMatch(
       PGConn& conn, const std::string& filter, const std::vector<std::string>& expected,
       int64_t limit = -1);
+
+  // Returns number of vectors actually returned by the search.
+  template <typename IdxExtractor>
+  Result<size_t> FetchAndVerifyOrder(
+      PGConn& conn, const FloatVector& query_vector, size_t limit, IdxExtractor&& extractor);
+
+  Result<size_t> FetchAndVerifyOrder(PGConn& conn, const FloatVector& query_vector, size_t limit) {
+    return FetchAndVerifyOrder(
+        conn, query_vector, limit, [](auto key) -> Result<size_t> { return key; });
+  }
+
+  FloatVector Vector(int64_t id) {
+    CHECK_GT(dimensions_, 0);
+    FloatVector vector(dimensions_);
+    std::ranges::generate(vector, [id, n{1LL}]() mutable { return id * n++; });
+    return vector;
+  }
 
   FloatVector RandomVector() {
     if (real_dimensions_ == 0) {
@@ -237,6 +256,22 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
       result[j] = real_vector[shuffle_vector_[j]];
     }
     return result;
+  }
+
+  std::string BuildRow(int64_t id, const std::string& value) {
+    return Format("$0, $1", id, value);
+  }
+
+  std::string ExpectedRow(int64_t id) {
+    return BuildRow(id, AsString(Vector(id)));
+  }
+
+  std::vector<std::string> ExpectedRows(size_t limit) {
+    std::vector<std::string> expected;
+    for (size_t i = 1; i <= limit; ++i) {
+      expected.push_back(ExpectedRow(i));
+    }
+    return expected;
   }
 
   const char* VectorOpsName() const {
@@ -319,8 +354,8 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
   std::uniform_real_distribution<> distribution_;
   std::mt19937_64 rng_{42};
   vector_index::DistanceKind distance_kind_ = vector_index::DistanceKind::kL2Squared;
-  size_t dimensions_;
-  size_t real_dimensions_;
+  size_t dimensions_ = 0;
+  size_t real_dimensions_ = 0;
   std::vector<size_t> shuffle_vector_;
   size_t num_pre_split_tablets_ = 0;
 };
@@ -345,31 +380,23 @@ Status PgVectorIndexTestBase::WaitNoBackgroundInserts() {
   return WaitFor(cond, 30s * kTimeMultiplier, "Wait no background inserts");
 }
 
-std::string VectorAsString(int64_t id) {
-  return Format("[$0, $1, $2]", id, id * 2, id * 3);
-}
+Status PgVectorIndexTestBase::InsertRows(
+    PGConn& conn, size_t start_row, size_t end_row, bool keep_vectors) {
+  SCHECK_GE(end_row, start_row, InvalidArgument, "");
 
-std::string BuildRow(int64_t id, const std::string& value) {
-  return Format("$0, $1", id, value);
-}
-
-std::string ExpectedRow(int64_t id) {
-  return BuildRow(id, VectorAsString(id));
-}
-
-std::vector<std::string> ExpectedRows(size_t limit) {
-  std::vector<std::string> expected;
-  for (size_t i = 1; i <= limit; ++i) {
-    expected.push_back(ExpectedRow(i));
+  if (keep_vectors) {
+    vectors_.reserve(vectors_.capacity() + end_row - start_row + 1);
   }
-  return expected;
-}
 
-Status PgVectorIndexTestBase::InsertRows(PGConn& conn, size_t start_row, size_t end_row) {
   RETURN_NOT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
   for (auto i = start_row; i <= end_row; ++i) {
+    auto vector = Vector(i);
     RETURN_NOT_OK(conn.ExecuteFormat(
-       "INSERT INTO test VALUES ($0, '$1')", i, VectorAsString(i)));
+        "INSERT INTO test VALUES ($0, '$1')", i, AsString(vector)));
+    VLOG_WITH_FUNC(2) << "Inserted: " << AsString(vector);
+    if (keep_vectors) {
+      vectors_.push_back(std::move(vector));
+    }
   }
   return conn.CommitTransaction();
 }
@@ -386,11 +413,11 @@ Status PgVectorIndexTestBase::InsertRandomRows(PGConn& conn, size_t num_rows) {
 }
 
 Result<PGConn> PgVectorIndexTestBase::MakeIndexAndFill(
-    size_t num_rows, Backfill backfill = Backfill::kFalse) {
+    size_t num_rows, Backfill backfill, bool keep_vectors) {
   auto conn = VERIFY_RESULT(MakeTable());
   if (backfill) {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_initial_chunk_size) = num_rows / 5 + 1;
-    RETURN_NOT_OK(InsertRows(conn, 1, num_rows));
+    RETURN_NOT_OK(InsertRows(conn, 1, num_rows, keep_vectors));
     std::future<void> future;
     if (tablet::TEST_block_after_backfilling_first_vector_index_chunks) {
       future = std::async([this] {
@@ -407,7 +434,7 @@ Result<PGConn> PgVectorIndexTestBase::MakeIndexAndFill(
     }
   } else {
     RETURN_NOT_OK(CreateIndex(conn));
-    RETURN_NOT_OK(InsertRows(conn, 1, num_rows));
+    RETURN_NOT_OK(InsertRows(conn, 1, num_rows, keep_vectors));
   }
   return conn;
 }
@@ -462,6 +489,36 @@ void PgVectorIndexTestBase::VerifyRows(
 
 void PgVectorIndexTestBase::VerifyRead(PGConn& conn, size_t limit, AddFilter add_filter) {
   VerifyRows(conn, add_filter, ExpectedRows(limit));
+}
+
+template <typename IdxExtractor>
+Result<size_t> PgVectorIndexTestBase::FetchAndVerifyOrder(
+    PGConn& conn, const FloatVector& query_vector, size_t limit, IdxExtractor&& extractor) {
+  SCHECK_GT(vectors_.size(), 0, IllegalState, "Vectors must be filled");
+
+  auto query = "SELECT id FROM test" + IndexQuerySuffix(query_vector, limit);
+  auto result = VERIFY_RESULT(conn.FetchRows<int64_t>(query));
+
+  unum::usearch::metric_punned_t metric(
+      dimensions_, UsearchMetricKind(), unum::usearch::scalar_kind_t::f32_k);
+
+  std::vector<typename unum::usearch::metric_punned_t::result_t> distances;
+  distances.reserve(result.size());
+  const auto* query_byte_vector = VectorToBytePtr(query_vector);
+  for (auto key : result) {
+    size_t idx = VERIFY_RESULT(extractor(key));
+    const auto* byte_vector = VectorToBytePtr(vectors_[idx]);
+    distances.push_back(metric(query_byte_vector, byte_vector));
+  }
+
+  LOG_WITH_FUNC(INFO) << "Requested: " << limit << ", found: " << result.size();
+  VLOG_WITH_FUNC(2) << "   Result: " << AsString(result);
+  VLOG_WITH_FUNC(2) << "Distances: " << AsString(distances);
+
+  bool is_ordered = std::ranges::is_sorted(distances);
+  SCHECK(is_ordered, InternalError, "Order does not match");
+
+  return result.size();
 }
 
 ////////////////////////////////////////////////////////
@@ -744,7 +801,7 @@ TEST_P(PgVectorIndexTest, ManyReads) {
       auto conn = ASSERT_RESULT(Connect());
       while (!stop_flag.load()) {
         auto id = RandomUniformInt<size_t>(1, kNumRows);
-        auto vector = VectorAsString(id);
+        auto vector = Vector(id);
         auto rows = ASSERT_RESULT(conn.FetchAllAsString(
             "SELECT * FROM test" + IndexQuerySuffix(vector, 1)));
         ASSERT_EQ(rows, ExpectedRow(id));
@@ -1067,7 +1124,7 @@ TEST_P(PgVectorIndexTest, Paging) {
     std::ranges::sort(available_keys);
     std::vector<std::string> expected;
     for (auto k : available_keys) {
-      expected.push_back(Format("$0, $1, $0", k, VectorAsString(k)));
+      expected.push_back(Format("$0, $1, $0", k, AsString(Vector(k))));
     }
     for (int limit = 1; limit <= kNumRows; limit *= 2) {
       SCOPED_TRACE(Format("limit: $0", limit));
@@ -1290,7 +1347,7 @@ TEST_P(PgDistributedVectorIndexTest, BaseTableManualSplitSimple) {
 
   num_pre_split_tablets_ = 1;
   auto conn = ASSERT_RESULT(MakeTable());
-  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  ASSERT_OK(InsertRows(conn, 0, kNumRows - 1, /* keep_vectors = */ true));
 
   // Wait for all intents are applied and flush tablets.
   ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
@@ -1306,20 +1363,24 @@ TEST_P(PgDistributedVectorIndexTest, BaseTableManualSplitSimple) {
   // Create vector index.
   ASSERT_OK(CreateIndex(conn));
 
-  // Select some data from the lowest tablet only.
-  // TODO: extend to select from both tablets, refer to GH29445.
-  auto result = ASSERT_RESULT(conn.FetchAllAsString(
-      "SELECT * FROM test" + IndexQuerySuffix("[3.0, 4.0, 5.0]", 1)));
-  ASSERT_EQ(result, Format("3, $0", VectorAsString(3)));
+  // Select whole set of vectors and verify.
+  auto query_vector = Vector(RandomUniformInt(0UL, kNumRows - 1));
+  auto num_found = ASSERT_RESULT(FetchAndVerifyOrder(conn, query_vector, kNumRows));
+
+  // It's OK if searching for all vectors returns less number of vectors due to
+  // algorithm's recall factor. We can tolerate 90% of recall.
+  ASSERT_GE(static_cast<float>(num_found), kNumRows * 0.9);
+  ASSERT_LE(num_found, kNumRows);
 
   // Make sure drop table works fine.
   ASSERT_OK(conn.Execute("DROP TABLE test"));
 }
 
 TEST_P(PgDistributedVectorIndexTest, ManualSplitSimple) {
+  constexpr size_t kNumRows = 80;
   num_pre_split_tablets_ = 2;
   auto conn = ASSERT_RESULT(MakeIndex());
-  ASSERT_OK(InsertRows(conn, /* start_row = */ 1, /* end_row = */ 80));
+  ASSERT_OK(InsertRows(conn, /* start_row = */ 0, kNumRows - 1, /* keep_vectors = */ true));
 
   // Wait for all intents are applied and flush tablets.
   ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
@@ -1343,6 +1404,7 @@ TEST_P(PgDistributedVectorIndexTest, ManualSplitSimple) {
   SleepFor(MonoDelta::FromSeconds(
       2 * ANNOTATE_UNPROTECTED_READ(FLAGS_cleanup_split_tablets_interval_sec)));
 
+  const auto unsplit_tablet = peers.front()->tablet_id();
   peers = ASSERT_RESULT(
       ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
   ASSERT_EQ(peers.size(), 3);
@@ -1363,13 +1425,36 @@ TEST_P(PgDistributedVectorIndexTest, ManualSplitSimple) {
       const auto vi_dir = meta->vector_index_dir(vi->options());
       ASSERT_TRUE(env->DirExists(vi_dir));
       const auto files = AsString(ASSERT_RESULT(path_utils::GetVectorIndexFiles(*env, vi_dir)));
-      const auto expected_files = Format(
-          "[0.meta, vectorindex_1$0]", docdb::GetVectorIndexChunkFileExtension(vi->options()));
-      ASSERT_STR_EQ(files, expected_files);
+      if (unsplit_tablet == tablet->tablet_id()) {
+        const auto expected_files = Format(
+            "[0.meta, vectorindex_1$0]",
+            docdb::GetVectorIndexChunkFileExtension(vi->options()));
+        ASSERT_STR_EQ(files, expected_files);
+      } else {
+        // Wait for compaction is done.
+        ASSERT_OK(
+            LoggedWaitFor([vi]() -> Result<bool> {
+              return vi->TEST_NextManifestFileNo() > 1;
+            }, MonoDelta::FromSeconds(10),
+            Format("Vector index compaction,tablet $0", tablet->tablet_id()))
+        );
+        const auto expected_files = Format(
+            "[0.meta, 1.meta, vectorindex_2$0]",
+            docdb::GetVectorIndexChunkFileExtension(vi->options()));
+        ASSERT_STR_EQ(files, expected_files);
+      }
     }
   }
 
-  // TODO(vector_index): Add simple search when GH29543 is fixed.
+  // Select whole set of vectors and verify.
+  auto query_vector = Vector(RandomUniformInt(0UL, kNumRows - 1));
+  auto num_found = ASSERT_RESULT(FetchAndVerifyOrder(conn, query_vector, kNumRows));
+
+  // It's OK if searching for all vectors returns less number of vectors due to
+  // algorithm's recall factor. We can tolerate 90% of recall.
+  ASSERT_GE(static_cast<float>(num_found), kNumRows * 0.9);
+  ASSERT_LE(num_found, kNumRows);
+
   // TODO(vector_index): Verify compacted tablets content once GH29378 is fixed.
 }
 

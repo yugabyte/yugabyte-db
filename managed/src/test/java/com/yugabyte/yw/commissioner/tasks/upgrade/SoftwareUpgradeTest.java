@@ -187,7 +187,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         taskParams.ybSoftwareVersion,
         defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
-    verify(mockNodeUniverseManager, times(10)).runCommand(any(), any(), anyList(), any());
+    verify(mockNodeUniverseManager, times(15)).runCommand(any(), any(), anyList(), any());
 
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
@@ -235,7 +235,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         taskParams.ybSoftwareVersion,
         defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
-    verify(mockNodeUniverseManager, times(24)).runCommand(any(), any(), anyList(), any());
+    verify(mockNodeUniverseManager, times(36)).runCommand(any(), any(), anyList(), any());
 
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
@@ -290,7 +290,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         taskParams.ybSoftwareVersion,
         defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
-    verify(mockNodeUniverseManager, times(10)).runCommand(any(), any(), anyList(), any());
+    verify(mockNodeUniverseManager, times(15)).runCommand(any(), any(), anyList(), any());
 
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
@@ -351,7 +351,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
     verify(mockNodeManager, times(71)).nodeCommand(any(), any());
-    verify(mockNodeUniverseManager, times(10)).runCommand(any(), any(), anyList(), any());
+    verify(mockNodeUniverseManager, times(15)).runCommand(any(), any(), anyList(), any());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     assertEquals(
@@ -375,7 +375,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         taskParams.ybSoftwareVersion,
         defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
-    verify(mockNodeUniverseManager, times(10)).runCommand(any(), any(), anyList(), any());
+    verify(mockNodeUniverseManager, times(15)).runCommand(any(), any(), anyList(), any());
 
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
@@ -446,7 +446,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         taskParams.ybSoftwareVersion,
         defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
-    verify(mockNodeUniverseManager, times(16)).runCommand(any(), any(), anyList(), any());
+    verify(mockNodeUniverseManager, times(24)).runCommand(any(), any(), anyList(), any());
 
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
@@ -698,16 +698,18 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
 
   @Override
   protected TaskType[] getPrecheckTasks(boolean hasRollingRestarts) {
-    List<TaskType> lst =
-        new ArrayList<>(
-            Arrays.asList(
-                TaskType.CheckUpgrade,
-                TaskType.CheckMemory,
-                TaskType.CheckLocale,
-                TaskType.CheckGlibc));
+    List<TaskType> prechecks = new ArrayList<>();
     if (hasRollingRestarts) {
-      lst.add(0, TaskType.CheckNodesAreSafeToTakeDown);
+      prechecks.add(TaskType.CheckServiceLiveness);
+      prechecks.add(TaskType.CheckNodeCommandExecution);
+      prechecks.add(TaskType.CheckNodesAreSafeToTakeDown);
     }
-    return lst.toArray(new TaskType[0]);
+    prechecks.addAll(
+        Arrays.asList(
+            TaskType.CheckUpgrade,
+            TaskType.CheckMemory,
+            TaskType.CheckLocale,
+            TaskType.CheckGlibc));
+    return prechecks.toArray(new TaskType[0]);
   }
 }

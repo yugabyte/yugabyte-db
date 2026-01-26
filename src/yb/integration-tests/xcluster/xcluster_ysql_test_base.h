@@ -200,6 +200,9 @@ class XClusterYsqlTestBase : public XClusterTestBase {
   Status EnablePITROnClusters();
   Status PerformPITROnConsumerCluster(HybridTime time);
 
+  Result<client::YBTableName> CreateMaterializedView(
+      Cluster& cluster, const client::YBTableName& table);
+
  protected:
   void TestReplicationWithSchemaChanges(TableId producer_table_id, bool bootstrap);
 

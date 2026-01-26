@@ -1159,9 +1159,17 @@ Status XClusterTargetManager::SetupUniverseReplication(
 
   {
     std::lock_guard l(replication_setup_tasks_mutex_);
-    SCHECK(
-        !replication_setup_tasks_.contains(setup_replication_task->Id()), AlreadyPresent,
-        "Setup already running for xCluster ReplicationGroup $0", setup_replication_task->Id());
+    if (setup_replication_task->IsAlterReplication()) {
+      // For alter replication groups, we can retry so return TryAgain.
+      SCHECK_FORMAT(
+          !replication_setup_tasks_.contains(setup_replication_task->Id()), TryAgain,
+          "Alter replication group already running for xCluster ReplicationGroup $0",
+          setup_replication_task->Id());
+    } else {
+      SCHECK_FORMAT(
+          !replication_setup_tasks_.contains(setup_replication_task->Id()), AlreadyPresent,
+          "Setup already running for xCluster ReplicationGroup $0", setup_replication_task->Id());
+    }
     replication_setup_tasks_[setup_replication_task->Id()] = setup_replication_task;
   }
 

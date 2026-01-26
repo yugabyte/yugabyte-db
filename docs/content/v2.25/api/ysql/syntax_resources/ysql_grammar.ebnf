@@ -164,6 +164,10 @@ alter_role_option = 'SUPERUSER'
               | 'NOINHERIT'
               | 'LOGIN'
               | 'NOLOGIN'
+              | 'REPLICATION'
+              | 'NOREPLICATION'
+              | 'BYPASSRLS'
+              | 'NOBYPASSRLS'
               | 'CONNECTION' 'LIMIT' connlimit
               | [ 'ENCRYPTED' ] 'PASSWORD' ''' password '''
               | 'PASSWORD' 'NULL'
@@ -705,6 +709,10 @@ role_option = 'SUPERUSER'
               | 'NOINHERIT'
               | 'LOGIN'
               | 'NOLOGIN'
+              | 'REPLICATION'
+              | 'NOREPLICATION'
+              | 'BYPASSRLS'
+              | 'NOBYPASSRLS'
               | 'CONNECTION' 'LIMIT' connlimit
               | [ 'ENCRYPTED' ] 'PASSWORD' ''' password '''
               | 'PASSWORD' 'NULL'
@@ -1024,7 +1032,7 @@ drop_publication = 'DROP' 'PUBLICATION' [ 'IF' 'EXISTS' ] publication_name
                    [ 'CASCADE' | 'RESTRICT' ] ;
 
 (* DROP_REPLICATION_SLOT *)
-drop_replication_slot = DROP_REPLICATION_SLOT slot_name ;
+drop_replication_slot = 'DROP_REPLICATION_SLOT' slot_name ;
 
 (* 'DROP' 'ROLE' *)
 drop_role = 'DROP' 'ROLE' [ 'IF' 'EXISTS' ] role_name { ',' role_name } ;

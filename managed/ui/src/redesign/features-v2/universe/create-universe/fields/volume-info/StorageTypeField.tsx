@@ -1,4 +1,4 @@
-import { FC, useContext } from 'react';
+import { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useFormContext } from 'react-hook-form';
 import { useQuery } from 'react-query';
@@ -17,10 +17,7 @@ import {
 import { QUERY_KEY, api } from '@app/redesign/features/universe/universe-form/utils/api';
 import { StorageType, CloudType } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { InstanceSettingProps } from '@app/redesign/features-v2/universe/create-universe/steps/hardware-settings/dtos';
-import {
-  CreateUniverseContext,
-  CreateUniverseContextMethods
-} from '@app/redesign/features-v2/universe/create-universe/CreateUniverseContext';
+import { ProviderType } from '@app/redesign/features-v2/universe/create-universe/steps/general-settings/dtos';
 import {
   CPU_ARCHITECTURE_FIELD,
   DEVICE_INFO_FIELD,
@@ -41,11 +38,12 @@ const menuProps = {
 
 interface StorageTypeFieldProps {
   disabled: boolean;
+  provider?: ProviderType;
 }
 
 const { Box, MenuItem } = mui;
 
-export const StorageTypeField: FC<StorageTypeFieldProps> = ({ disabled }) => {
+export const StorageTypeField: FC<StorageTypeFieldProps> = ({ disabled, provider }) => {
   const { t } = useTranslation();
 
   //fetch run time configs
@@ -55,11 +53,6 @@ export const StorageTypeField: FC<StorageTypeFieldProps> = ({ disabled }) => {
 
   // watchers
   const { watch, setValue } = useFormContext<InstanceSettingProps>();
-  const [{ generalSettings }] = (useContext(
-    CreateUniverseContext
-  ) as unknown) as CreateUniverseContextMethods;
-
-  const provider = generalSettings?.providerConfiguration;
   const fieldValue = watch(DEVICE_INFO_FIELD);
   const masterFieldValue = watch(MASTER_DEVICE_INFO_FIELD);
   const instanceType = watch(INSTANCE_TYPE_FIELD);

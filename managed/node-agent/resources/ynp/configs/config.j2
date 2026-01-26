@@ -1,6 +1,7 @@
 {# Start of the configuration file #}
 # This is an auto-generated file. Do not edit manually.
 # Use 'True' or 'False' for boolean comparisons in jinja and shell files.
+# Do not quote the values because they are already strings and doing so makes quotes part of them.
 
 {% macro render_section(section, prefix="") -%}
 {%- for key in section -%}
@@ -18,7 +19,12 @@
 [DEFAULT]
 version = 1.0.0
 ynp_driver = {{ ynp_driver }}
+# True only if the provisioning is initiated by YBA. Default is False.
+is_cloud = false
+# Cloud provider type. Default is onprem.
+cloud_type = onprem
 # Keep this as debug level for printing the shell file output.
+# Any previously defined vars are overridden here.
 {% for section_key in ynp_config %}
     {% if section_key not in ['ynp', 'yba', 'logging'] %}
         {% set section_value = ynp_config[section_key] %}
@@ -39,7 +45,7 @@ tmp_directory = {{ ynp_config['ynp'].tmp_directory }}
 {% if ynp_config['ynp'].no_proxy_list is not defined or not ynp_config['ynp'].no_proxy_list %}
 no_proxy =
 {% else %}
-no_proxy = "{{ ynp_config['ynp'].no_proxy_list| join(', ') }}"
+no_proxy = {{ ynp_config['ynp'].no_proxy_list| join(', ') }}
 {% endif %}
 node_exporter_port = {{ ynp_config['ynp'].node_exporter_port | default(9300) }}
 {% if ynp_config['yba'].instance_type.mount_points %}
@@ -50,16 +56,16 @@ is_yb_prebuilt_image = {{ ynp_config['ynp'].is_yb_prebuilt_image | default(false
 is_ybcontroller_disabled = {{ ynp_config['ynp'].is_ybcontroller_disabled | default(false) }}
 
 [Preprovision]
-is_cloud_only_module = "True"
+is_cloud_only_module = True
 
 [MountEphemeralDrive]
-is_cloud_only_module = "True"
+is_cloud_only_module = True
 
 [InstallPackages]
-is_cloud_only_module = "True"
+is_cloud_only_module = True
 
 [ConfigureChrony]
-chrony_servers = "{{ ynp_config['ynp'].chrony_servers | join(', ') }}"
+chrony_servers = {{ ynp_config['ynp'].chrony_servers | join(', ') }}
 
 [ConfigureClockbound]
 
@@ -71,17 +77,8 @@ chrony_servers = "{{ ynp_config['ynp'].chrony_servers | join(', ') }}"
 yb_user_id = {{ ynp_config['ynp'].yb_user_id }}
 yb_user_password =
 
-[ConfigureSystemd]
-use_system_level_systemd = {{ ynp_config['ynp'].use_system_level_systemd }}
-service_files = "yb-tserver.service, yb-master.service, yb-bind_check.service, yb-clean_cores.service, yb-clean_cores.timer, yb-collect_metrics.service, yb-collect_metrics.timer, yb-controller.service, yb-zip_purge_yb_logs.service, yb-zip_purge_yb_logs.timer"
-
-{%- if 'extra' in ynp_config and ynp_config.extra.custom_ssh_port %}
-[ConfigureSshD]
-ip_address={{ ynp_config['ynp'].node_ip }}
-{%- endif %}
-
 [ConfigureOs]
-message = "Configure limits and sysctl parameters"
+message = Configure limits and sysctl parameters
 fd_limit = 1048576
 nproc_limit = 64000
 vm_swappiness = 0
@@ -105,6 +102,15 @@ stack = 8192
 cpu = unlimited
 nproc = 12000
 locks = unlimited
+
+[ConfigureSystemd]
+use_system_level_systemd = {{ ynp_config['ynp'].use_system_level_systemd }}
+service_files = yb-tserver.service, yb-master.service, yb-bind_check.service, yb-clean_cores.service, yb-clean_cores.timer, yb-collect_metrics.service, yb-collect_metrics.timer, yb-controller.service, yb-zip_purge_yb_logs.service, yb-zip_purge_yb_logs.timer
+
+{%- if 'extra' in ynp_config and ynp_config.extra.custom_ssh_port %}
+[ConfigureSshD]
+ip_address={{ ynp_config['ynp'].node_ip }}
+{%- endif %}
 
 [ConfigureSudoers]
 {% if ynp_config['ynp'].sudoers_commands %}
@@ -132,9 +138,6 @@ node_agent_port = {{ ynp_config['ynp'].node_agent_port | default(9070) }}
 earlyoom_enable = {{ ynp_config['ynp']['earlyoom'].earlyoom_enable | default(false) }}
 earlyoom_args = {{ ynp_config['ynp']['earlyoom'].earlyoom_args | default('') }}
 {%- endif %}
-
-[RebootNode]
-is_onprem_only_module = "True"
 
 {%- if 'extra' in ynp_config and ynp_config.extra.is_ybm is true %}
 [ConfigureYBMAMI]

@@ -51,6 +51,7 @@
 
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/json_document.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/monotime.h"
 #include "yb/util/range.h"
@@ -869,16 +870,12 @@ TEST_F(PgManyTabletsSelect, AnalyzeTableWithLargeRows) {
 
   ASSERT_OK(conn.ExecuteFormat("SET yb_fetch_row_limit = 0"));
 
-  const auto explain_str = ASSERT_RESULT(conn.FetchAllAsString(Format(
+  auto explain_json = ASSERT_RESULT(conn.FetchRow<JsonDocument>(Format(
       "EXPLAIN (ANALYZE, DIST, FORMAT JSON) SELECT * FROM $0 WHERE wide = wide", table_name)));
-  LOG(INFO) << "Explain output: " << explain_str;
-
-  rapidjson::Document explain_json;
-  explain_json.Parse(explain_str.c_str());
-
+  LOG(INFO) << "Explain output: " << ASSERT_RESULT(explain_json.Root().ToString());
   // The response is too large to fit in one request (RPC_MAX_SIZE_LIMIT), so it is split into two
-  ASSERT_EQ(explain_json[0]["Storage Read Requests"].GetInt(), 2);
-  ASSERT_EQ(explain_json[0]["Plan"]["Actual Rows"].GetInt(), rows);
+  ASSERT_EQ(ASSERT_RESULT(explain_json.Root()[0]["Storage Read Requests"].GetDouble()), 2);
+  ASSERT_EQ(ASSERT_RESULT(explain_json.Root()[0]["Plan"]["Actual Rows"].GetDouble()), rows);
 }
 
 class PgPartitioningVersionTest :

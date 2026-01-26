@@ -35,7 +35,7 @@ import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { fetchTablesInUniverse } from '../../../actions/xClusterReplication';
 import { YBLoading } from '../../common/indicators';
 import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
-import Bulb from '../../universes/images/bulb.svg';
+import Bulb from '../../universes/images/bulb.svg?img';
 import { toast } from 'react-toastify';
 import { createBackup, editBackup } from '../common/BackupAPI';
 import { Badge_Types, StatusBadge } from '../../common/badge/StatusBadge';
@@ -58,7 +58,7 @@ import { handleCACertErrMsg } from '../../customCACerts';
 import { useInterceptBackupTaskLinks } from '../../../redesign/features/tasks/TaskUtils';
 import './BackupCreateModal.scss';
 
-import Close from '../../universes/images/close.svg';
+import Close from '../../universes/images/close.svg?img';
 
 interface BackupCreateModalProps {
   onHide: Function;

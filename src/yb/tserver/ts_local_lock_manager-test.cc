@@ -69,6 +69,7 @@ constexpr auto kObject1 = 1;
 constexpr auto kObject2 = 2;
 constexpr uint32_t kDefaultObjectId = 0;
 constexpr uint32_t kDefaultObjectSubId = 0;
+constexpr auto kDefaultTestStatusTabletId = "test_status_tablet";
 
 class TSLocalLockManagerTest : public TabletServerTestBase {
  protected:
@@ -102,6 +103,7 @@ class TSLocalLockManagerTest : public TabletServerTestBase {
     SCHECK_EQ(relation_ids.size(), lock_types.size(), IllegalState, "Expected equal sizes");
     tserver::AcquireObjectLockRequestPB req;
     owner.PopulateLockRequest(&req);
+    req.set_status_tablet(kDefaultTestStatusTabletId);
     for (size_t i = 0; i < relation_ids.size(); i++) {
       auto* lock = req.add_object_locks();
       lock->set_database_oid(database_id);
@@ -798,6 +800,7 @@ class TSLocalLockManagerBootstrappedLocksTest : public TSLocalLockManagerTest {
     DdlLockEntriesPB entries;
     auto* lock_request = entries.mutable_lock_entries()->Add();
     lock_request->set_txn_id(kTxn1.txn_id.data(), kTxn1.txn_id.size());
+    lock_request->set_status_tablet(kDefaultTestStatusTabletId);
     lock_request->set_subtxn_id(kTxn1.subtxn_id);
     auto* lock = lock_request->mutable_object_locks()->Add();
     lock->set_database_oid(kDatabase1);

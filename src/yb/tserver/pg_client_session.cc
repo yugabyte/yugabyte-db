@@ -139,7 +139,7 @@ DECLARE_bool(ysql_yb_enable_advisory_locks);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_enable_object_locking_infra);
-DECLARE_bool(TEST_ysql_yb_enable_ddl_savepoint_support);
+DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 
 DECLARE_string(ysql_sequence_cache_method);
 
@@ -148,6 +148,19 @@ DECLARE_uint64(rpc_max_message_size);
 DECLARE_int32(tserver_yb_client_default_timeout_ms);
 DECLARE_int32(txn_print_trace_every_n);
 DECLARE_int32(txn_slow_op_threshold_ms);
+
+METRIC_DEFINE_event_stats(server, pg_client_exchange_response_size,
+    "The size of PgClient exchange response in bytes", yb::MetricUnit::kBytes,
+    "The size of PgClient exchange response in bytes");
+METRIC_DEFINE_event_stats(server, vector_index_fetch_us,
+    "Time to fetch vector index results from tablets", yb::MetricUnit::kMicroseconds,
+    "Time (microseconds) that query spent fetching list of vectors from tablets.");
+METRIC_DEFINE_event_stats(server, vector_index_collect_us,
+    "Time to collect vector index tablets results", yb::MetricUnit::kMicroseconds,
+    "Time (microseconds) that query spent parsing vectors index tablets results.");
+METRIC_DEFINE_event_stats(server, vector_index_reduce_us,
+    "Time to reduce vector index results", yb::MetricUnit::kMicroseconds,
+    "Time (microseconds) that query spent reducing list of vectors from tablets.");
 
 namespace yb::tserver {
 namespace {
@@ -193,15 +206,19 @@ struct SetupSessionResult {
 
 class PrefixLogger {
  public:
-  explicit PrefixLogger(uint64_t id) : id_(id) {}
+  explicit PrefixLogger(uint64_t id, pid_t pid = 0) : id_(id), pid_(pid) {}
 
   friend std::ostream& operator<<(std::ostream&, const PrefixLogger&);
 
  private:
   const uint64_t id_;
+  const pid_t pid_;
 };
 
 std::ostream& operator<<(std::ostream& str, const PrefixLogger& logger) {
+  if (logger.pid_ != 0) {
+    return str << "Session id " << logger.id_ << " (pid " << logger.pid_ << "): ";
+  }
   return str << "Session id " << logger.id_ << ": ";
 }
 
@@ -473,7 +490,8 @@ struct VectorIndexQueryPartitionData {
 
 class VectorIndexQuery {
  public:
-  VectorIndexQuery() = default;
+  explicit VectorIndexQuery(std::reference_wrapper<const PgClientSessionMetrics> metrics)
+      : metrics_(metrics) {}
 
   bool active() const {
     return active_;
@@ -519,7 +537,7 @@ class VectorIndexQuery {
       ++partition_idx;
     }
     return_paging_state_ = read_req.return_paging_state();
-    fetch_start_ = MonoTime::NowIf(FLAGS_vector_index_dump_stats);
+    fetch_start_ = MonoTime::Now();
 
     return Status::OK();
   }
@@ -529,8 +547,7 @@ class VectorIndexQuery {
       PgPerformResponseMsg& resp, rpc::Sidecars& sidecars) {
     VLOG_WITH_FUNC(4) << "Resp: " << resp.ShortDebugString();
     active_ = false;
-    auto dump_stats = fetch_start_ != MonoTime();
-    auto process_start_time = MonoTime::NowIf(dump_stats);
+    auto process_start_time = MonoTime::Now();
 
     MonoTime reduce_start_time;
     bool partitions_are_stale = false;
@@ -554,7 +571,7 @@ class VectorIndexQuery {
     // to retrigger the request transparently and to force partitions refresh by Prepare().
     if (!partitions_are_stale && !ops.empty()) {
       ProcessOperationsResponse(ops, used_read_time);
-      reduce_start_time = MonoTime::NowIf(dump_stats);
+      reduce_start_time = MonoTime::Now();
 
       // TODO(vector_index): Actually "old" vectors already sorted.
       // So we could sort newly added vectors, then just merge with this first part.
@@ -596,11 +613,16 @@ class VectorIndexQuery {
       VLOG_WITH_FUNC(3) << "Paging state: " << AsString(paging_state);
     }
 
-    LOG_IF(INFO, dump_stats)
-        << "VI_STATS: Fetch time: "
-        << (process_start_time - fetch_start_).ToPrettyString()
-        << ", collect time: " << (reduce_start_time - process_start_time).ToPrettyString()
-        << ", reduce time: " << (MonoTime::Now() - reduce_start_time).ToPrettyString();
+    auto reduce_time = MonoTime::Now() - reduce_start_time;
+    auto fetch_time = process_start_time - fetch_start_;
+    auto collect_time = reduce_start_time - process_start_time;
+    metrics_.vector_index_fetch_us->Increment(fetch_time.ToMicroseconds());
+    metrics_.vector_index_collect_us->Increment(collect_time.ToMicroseconds());
+    metrics_.vector_index_reduce_us->Increment(reduce_time.ToMicroseconds());
+    LOG_IF(INFO, FLAGS_vector_index_dump_stats)
+        << "VI_STATS: Fetch time: " << fetch_time.ToPrettyString()
+        << ", collect time: " << collect_time.ToPrettyString()
+        << ", reduce time: " << reduce_time.ToPrettyString();
 
     return Status::OK();
   }
@@ -703,6 +725,7 @@ class VectorIndexQuery {
     }
   }
 
+  const PgClientSessionMetrics& metrics_;
   Uuid id_ = Uuid::Generate();
   bool active_ = false;
   size_t prefetch_size_ = 0;
@@ -768,12 +791,13 @@ struct QueryDataBase {
   QueryDataBase(
       uint64_t session_id, ReqPB& req_, RespPB& resp_, rpc::Sidecars& sidecars_,
       ResponseSender&& response_sender)
-      : req(req_), resp(resp_), sidecars(sidecars_), session_id_(session_id),
+      : req(req_),
+        resp(resp_),
+        sidecars(sidecars_),
+        session_id_(session_id),
         response_sender_(std::move(response_sender)) {}
 
-  PrefixLogger LogPrefix() const {
-    return PrefixLogger{session_id_};
-  }
+  PrefixLogger LogPrefix() const { return PrefixLogger{session_id_}; }
 
   Status ValidateSidecars() const {
     const size_t max_size = GetAtomicFlag(&FLAGS_rpc_max_message_size);
@@ -1421,7 +1445,8 @@ Result<std::pair<PgClientSessionOperations, VectorIndexQueryPtr>> PrepareOperati
     const PgTablesQueryResult& tables, VectorIndexQueryPtr& vector_index_query,
     bool has_distributed_txn,
     const LWFunction<Result<TransactionMetadata>()>& object_locking_txn_meta_provider,
-    IsTxnUsingTableLocks is_txn_using_table_locks) {
+    IsTxnUsingTableLocks is_txn_using_table_locks,
+    const PgClientSessionMetrics& metrics) {
   auto write_time = HybridTime::FromPB(req->write_time());
   std::pair<PgClientSessionOperations, VectorIndexQueryPtr> result;
   auto& ops = result.first;
@@ -1447,7 +1472,7 @@ Result<std::pair<PgClientSessionOperations, VectorIndexQueryPtr>> PrepareOperati
         }
         if (!vector_index_query ||
             !vector_index_query->IsContinuation(read.index_request().paging_state())) {
-          vector_index_query = std::make_shared<VectorIndexQuery>();
+          vector_index_query = std::make_shared<VectorIndexQuery>(metrics);
         }
         result.second = vector_index_query;
         RETURN_NOT_OK(result.second->Prepare(read, table, ops));
@@ -1501,8 +1526,8 @@ class RpcQuery : public std::enable_shared_from_this<RpcQuery<T>> {
 
   template <class... Args>
   RpcQuery(
-      PrivateTag, uint64_t session_id, ReqPB& req, RespPB& resp, rpc::RpcContext&& context_,
-      Args&&... args)
+      PrivateTag, uint64_t session_id, pid_t session_pid, ReqPB& req, RespPB& resp,
+      rpc::RpcContext&& context_, Args&&... args)
       : context(std::move(context_)),
         data_(
             std::forward<Args>(args)..., session_id, req, resp, context.sidecars(),
@@ -1656,17 +1681,18 @@ class PgClientSession::Impl {
  public:
   Impl(
       TransactionBuilder&& transaction_builder, std::shared_ptr<PgClientSession> shared_this,
-      client::YBClient& client, const PgClientSessionContext& context, uint64_t id,
+      client::YBClient& client, const PgClientSessionContext& context, uint64_t id, pid_t pid,
       uint64_t lease_epoch, TSLocalLockManagerPtr lock_manager, rpc::Scheduler& scheduler)
       : client_(client),
         context_(context),
         shared_this_(std::move(shared_this)),
         id_(id),
+        pid_(pid),
         lease_epoch_(lease_epoch),
         ts_lock_manager_(std::move(lock_manager)),
         transaction_provider_(std::move(transaction_builder), context_.lock_owner_registry),
         big_shared_mem_expiration_task_("big_shared_mem_expiration_task", &scheduler),
-        read_point_history_(PrefixLogger(id_)) {}
+        read_point_history_(PrefixLogger(id_, pid_)) {}
 
   [[nodiscard]] auto id() const {return id_; }
 
@@ -2105,7 +2131,7 @@ class PgClientSession::Impl {
     const auto deadline = context->GetClientDeadline();
     RETURN_NOT_OK(transaction->RollbackToSubTransaction(subtxn_id, deadline));
 
-    if (FLAGS_TEST_ysql_yb_enable_ddl_savepoint_support &&
+    if (YsqlDdlSavepointEnabled() &&
         req.has_options() && req.options().ddl_mode() &&
         req.options().ddl_use_regular_transaction_block() &&
         // Ensure that we have executed a DDL in this transaction block.
@@ -2182,7 +2208,7 @@ class PgClientSession::Impl {
       PgPerformRequestMsg& req, PgPerformResponseMsg& resp, rpc::RpcContext&& context,
       const PgTablesQueryResult& tables) {
     auto query = RpcQuery<PerformQueryTraits>::MakeShared(
-        id_, req, resp, std::move(context), table_cache());
+        id_, pid_, req, resp, std::move(context), table_cache());
     auto& ctx = query->context;
     const auto status = DoPerform(tables, query->SharedData(), ctx.GetClientDeadline(), &ctx);
     if (!status.ok()) {
@@ -2603,7 +2629,7 @@ class PgClientSession::Impl {
   template <QueryTraitsType T, class... Args>
   Status DoHandleSharedExchangeQuery(
       const RequestProcessingPreconditionWaiter& precondition_waiter, SharedExchangeQuery<T>& query,
-      uint8_t* input, size_t size, uint64_t session_id, Args&&... args) {
+      uint8_t* input, size_t size, uint64_t session_id, pid_t session_pid, Args&&... args) {
     auto [data, deadline] = VERIFY_RESULT(
         query.ParseRequest(input, size, session_id, std::forward<Args>(args)...));
     auto wait_state = yb::ash::WaitStateInfo::CreateIfAshIsEnabled<yb::ash::WaitStateInfo>();
@@ -2622,7 +2648,7 @@ class PgClientSession::Impl {
     auto query = SharedExchangeQuery<T>::MakeShared(
         SharedSessionFromThis(), exchange, stats_exchange_response_size());
     const auto status = DoHandleSharedExchangeQuery(
-        precondition_waiter, *query, input, size, id(), std::forward<Args>(args)...);
+        precondition_waiter, *query, input, size, id(), pid_, std::forward<Args>(args)...);
     if (!status.ok()) {
       query->SendErrorResponse(status);
     }
@@ -2767,6 +2793,9 @@ class PgClientSession::Impl {
 
   Status DoAcquireObjectLock(const ObjectLockQueryDataPtr& data, CoarseTimePoint deadline) {
     const auto& options = data->req.options();
+    VLOG_WITH_PREFIX(3) << "Object lock for relation " << AsString(data->req.lock_oid())
+              << " with lock type " << AsString(static_cast<TableLockType>(data->req.lock_type()));
+
     RSTATUS_DCHECK(
         options.is_using_table_locks(), IllegalState, "Table Locking feature not enabled.");
     auto setup_session_result = VERIFY_RESULT(SetupSession(
@@ -2784,7 +2813,7 @@ class PgClientSession::Impl {
         : NextObjectLockingTxnMeta(locality, deadline);
     RETURN_NOT_OK(txn_meta_res);
     const auto lock_type = static_cast<TableLockType>(data->req.lock_type());
-    VLOG_WITH_PREFIX_AND_FUNC(1) << "txn_id " << txn_meta_res->transaction_id << " subtxn_id "
+    VLOG_WITH_PREFIX_AND_FUNC(4) << "txn_id " << txn_meta_res->transaction_id << " subtxn_id "
                                  << options.active_sub_transaction_id()
                                  << " lock_type: " << AsString(lock_type)
                                  << " req: " << data->req.ShortDebugString();
@@ -2835,8 +2864,8 @@ class PgClientSession::Impl {
   void AcquireObjectLock(
       const PgAcquireObjectLockRequestMsg& req, PgAcquireObjectLockResponseMsg* resp,
       yb::rpc::RpcContext&& context) {
-    auto query = RpcQuery<ObjectLockQueryTraits>::MakeShared(
-        id_, req, *resp, std::move(context));
+    auto query =
+        RpcQuery<ObjectLockQueryTraits>::MakeShared(id_, pid_, req, *resp, std::move(context));
     const auto s = DoAcquireObjectLock(
         query->SharedData(), query->context.GetClientDeadline());
     if (!s.ok()) {
@@ -2907,7 +2936,7 @@ class PgClientSession::Impl {
   }
 
   const EventStatsPtr& stats_exchange_response_size() const {
-    return context_.stats_exchange_response_size;
+    return context_.metrics.exchange_response_size;
   }
 
   const tserver::TSLocalLockManagerPtr& ts_lock_manager() const {
@@ -2918,7 +2947,7 @@ class PgClientSession::Impl {
     return context_.instance_uuid;
   }
 
-  PrefixLogger LogPrefix() const { return PrefixLogger{id_}; }
+  PrefixLogger LogPrefix() const { return PrefixLogger{id_, pid_}; }
 
   Status DdlAtomicityFinishTransaction(
       const client::YBTransactionPtr& txn, PgClientSessionKind used_session_kind,
@@ -3028,6 +3057,32 @@ class PgClientSession::Impl {
       const PgTablesQueryResult& tables, const PerformQueryDataPtr& data, CoarseTimePoint deadline,
       rpc::RpcContext* context = nullptr) {
     auto& options = *data->req.mutable_options();
+    if (VLOG_IS_ON(3)) {
+      std::stringstream ss;
+      bool is_ddl = options.ddl_mode();
+      bool is_regular_transaction_block = options.ddl_use_regular_transaction_block();
+      bool is_catalog = options.use_catalog_session();
+      ss << LogPrefix() << " ";
+      if (is_ddl && !is_regular_transaction_block) {
+        ss << "Autonomous DDL op: ";
+      } else if (is_catalog) {
+        ss << "Catalog op: ";
+      } else {
+        ss << "Regular DML/ DDL op: ";
+      }
+      ss << "txn_serial_no: " << options.txn_serial_no() << ", ";
+      ss << "read_time_serial_no: " << options.read_time_serial_no() << "; ";
+      for (const auto& op : data->req.ops()) {
+        if (op.has_read()) {
+          ss << "Read op: " << op.read().table_id();
+        } else {
+          ss << "Write op: " << op.write().table_id();
+        }
+        ss << ";";
+      }
+      LOG(INFO) << ss.str();
+    }
+
     VLOG(5) << "Perform request: " << data->req.ShortDebugString();
 
     RETURN_NOT_OK(ValidateRequestForXCluster(options, data));
@@ -3103,7 +3158,37 @@ class PgClientSession::Impl {
         make_lw_function([this, locality, deadline] {
           return NextObjectLockingTxnMeta(locality, deadline);
         }),
-        IsTxnUsingTableLocks(options.is_using_table_locks())));
+        IsTxnUsingTableLocks(options.is_using_table_locks()),
+        context_.metrics));
+    if (VLOG_IS_ON(2) || options.trace_requested()) {
+      const auto& read_point = *session->read_point();
+      const char* session_kind_str =
+          options.use_catalog_session()                                          ? "kCatalog"
+          : (options.ddl_mode() && !options.ddl_use_regular_transaction_block()) ? "kDdl"
+                                                                                 : "kPlain";
+      std::vector<std::string> op_summaries;
+      op_summaries.reserve(data->ops.size());
+      for (const auto& op_data : data->ops) {
+        const auto& op = *op_data.op;
+        op_summaries.push_back(
+            Format("$0:$1", op.read_only() ? "R" : "W", op.table()->name().table_name()));
+      }
+      auto read_time_str =
+          read_point.GetReadTime() ? AsString(read_point.GetReadTime()) : "not set yet";
+      auto txn_str = data->transaction ? data->transaction->id().ToString() : "none";
+      VLOG_WITH_PREFIX(2) << "Performing RPC: pid=" << pid_ << ", session_kind=" << session_kind_str
+                          << ", ops=[" << JoinStrings(op_summaries, ", ") << "]"
+                          << ", read_time=" << read_time_str
+                          << ", read_time_serial_no=" << read_time_serial_no_
+                          << ", txn=" << txn_str;
+      if (options.trace_requested()) {
+        TRACE(
+            "Performing RPC: session_id=$0, pid=$1, session_kind=$2, ops=[$3], read_time=$4, "
+            "read_time_serial_no=$5, txn=$6",
+            id_, pid_, session_kind_str, JoinStrings(op_summaries, ", "), read_time_str,
+            read_time_serial_no_, txn_str);
+      }
+    }
     session->FlushAsync([this, data, trace, trace_created_locally,
                          start_time](client::FlushStatus* flush_status) {
       ADOPT_TRACE(trace.get());
@@ -3306,6 +3391,7 @@ class PgClientSession::Impl {
     const auto read_time_serial_no = options.read_time_serial_no();
 
     if (options.restart_transaction()) {
+      VLOG_WITH_PREFIX(3) << "Restarting transaction";
       if (options.ddl_mode()) {
         return STATUS(NotSupported, "Restarting a DDL transaction not supported");
       }
@@ -3319,6 +3405,8 @@ class PgClientSession::Impl {
           IllegalState, "read_time_manipulation and read_time fields can't be satisfied together");
 
       if (has_time_manipulation) {
+        VLOG_WITH_PREFIX(3) << "Processing read time manipulation"
+            << options.read_time_manipulation();
         RSTATUS_DCHECK(
             is_plain_session, IllegalState,
             "Read time manipulation can't be specified for non kPlain sessions");
@@ -3335,7 +3423,7 @@ class PgClientSession::Impl {
       } else if (IsReadPointResetRequested(options) ||
                 options.use_catalog_session() ||
                 (is_plain_session && (read_time_serial_no_ != read_time_serial_no))) {
-                  VLOG_WITH_PREFIX(3) << "Resetting read point for session kind " << kind
+          VLOG_WITH_PREFIX(3) << "Resetting read point for session kind " << kind
                   << " read point reset requested: " << IsReadPointResetRequested(options)
                   << " use catalog session: " << options.use_catalog_session()
                   << " change in read time serial number "
@@ -3972,6 +4060,7 @@ class PgClientSession::Impl {
   const PgClientSessionContext& context_;
   const std::weak_ptr<PgClientSession> shared_this_;
   const uint64_t id_;
+  const pid_t pid_;
   const uint64_t lease_epoch_;
   const tserver::TSLocalLockManagerPtr ts_lock_manager_;
   TransactionProvider transaction_provider_;
@@ -3999,11 +4088,11 @@ class PgClientSession::Impl {
 PgClientSession::PgClientSession(
     TransactionBuilder&& transaction_builder, SharedThisSource shared_this_source,
     client::YBClient& client, std::reference_wrapper<const PgClientSessionContext> context,
-    uint64_t id, uint64_t lease_epoch, tserver::TSLocalLockManagerPtr ts_local_lock_manager,
-    rpc::Scheduler& scheduler)
+    uint64_t id, pid_t pid, uint64_t lease_epoch,
+    tserver::TSLocalLockManagerPtr ts_local_lock_manager, rpc::Scheduler& scheduler)
     : impl_(new Impl(
           std::move(transaction_builder), {std::move(shared_this_source), this}, client, context,
-          id, lease_epoch, std::move(ts_local_lock_manager), scheduler)) {}
+          id, pid, lease_epoch, std::move(ts_local_lock_manager), scheduler)) {}
 
 PgClientSession::~PgClientSession() = default;
 
@@ -4079,6 +4168,13 @@ void PreparePgTablesQuery(
   for (const auto& op : req.ops()) {
     AddIfMissing(table_ids, op.has_read() ? op.read().table_id() : op.write().table_id());
   }
+}
+
+PgClientSessionMetrics::PgClientSessionMetrics(MetricEntity* metric_entity)
+    : exchange_response_size(METRIC_pg_client_exchange_response_size.Instantiate(metric_entity)),
+      vector_index_fetch_us(METRIC_vector_index_fetch_us.Instantiate(metric_entity)),
+      vector_index_collect_us(METRIC_vector_index_collect_us.Instantiate(metric_entity)),
+      vector_index_reduce_us(METRIC_vector_index_reduce_us.Instantiate(metric_entity)) {
 }
 
 }  // namespace yb::tserver

@@ -185,6 +185,9 @@ struct TableInfo {
   bool IsVectorIndex() const;
   bool NeedVectorIndex() const;
 
+  MetricAttributeMap CreateMetricAttributeMap() const;
+  MetricEntityPtr CreateMetricEntity(MetricRegistry* registry) const;
+
   // Should account for every field in TableInfo.
   static bool TEST_Equals(const TableInfo& lhs, const TableInfo& rhs);
 
@@ -229,7 +232,7 @@ struct KvStoreInfo {
       const KvStoreInfoPB& snapshot_kvstoreinfo, const TableId& primary_table_id, bool colocated,
       dockv::OverwriteSchemaPacking overwrite);
 
-  Status MergeTableSchemaPackings(
+  Status RestoreMissingValuesAndMergeTableSchemaPackings(
       const KvStoreInfoPB& snapshot_kvstoreinfo, const TableId& primary_table_id, bool colocated,
       dockv::OverwriteSchemaPacking overwrite);
 
@@ -876,7 +879,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   // SPLIT_OP ID designated for this tablet (so child tablets will have this unset until they've
   // been split themselves).
   OpId split_op_id_ GUARDED_BY(data_mutex_);
-  std::vector<TabletId> split_child_tablet_ids_ GUARDED_BY(data_mutex_){kDefaultNumSplitParts};
+  std::vector<TabletId> split_child_tablet_ids_ GUARDED_BY(data_mutex_);
 
   std::vector<TxnSnapshotRestorationId> active_restorations_;
 

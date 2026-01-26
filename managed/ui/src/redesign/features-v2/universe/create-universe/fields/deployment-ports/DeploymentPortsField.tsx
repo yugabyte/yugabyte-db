@@ -19,7 +19,7 @@ import { CloudType } from '../../../../../helpers/dtos';
 
 const { Box, styled, Typography } = mui;
 
-import { ReactComponent as NextLineIcon } from '../../../../../assets/next-line.svg';
+import NextLineIcon from '../../../../../assets/next-line.svg';
 
 interface DeploymentPortsProps {
   disabled: boolean;

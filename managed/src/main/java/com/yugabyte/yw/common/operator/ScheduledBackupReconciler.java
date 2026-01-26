@@ -10,6 +10,7 @@ import com.yugabyte.yw.common.backuprestore.ScheduleTaskHelper;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.common.operator.utils.OperatorWorkQueue;
 import com.yugabyte.yw.common.operator.utils.OperatorWorkQueue.ResourceAction;
+import com.yugabyte.yw.common.operator.utils.ResourceAnnotationKeys;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.backuprestore.BackupScheduleEditParams;
 import com.yugabyte.yw.forms.backuprestore.BackupScheduleTaskParams;
@@ -77,8 +78,24 @@ public class ScheduledBackupReconciler extends AbstractReconciler<BackupSchedule
     if (backupSchedule.getSpec().getName() != null) {
       scheduleName = OperatorUtils.kubernetesCompatName(backupSchedule.getSpec().getName());
     }
-    Optional<Schedule> optSchedule =
-        Schedule.maybeGetScheduleByUniverseWithName(scheduleName, universeUUID, cust.getUuid());
+    Optional<Schedule> optSchedule;
+    if (backupSchedule.getMetadata().getAnnotations() != null
+        && backupSchedule
+            .getMetadata()
+            .getAnnotations()
+            .containsKey(ResourceAnnotationKeys.YBA_RESOURCE_ID)) {
+      optSchedule =
+          Schedule.maybeGet(
+              cust.getUuid(),
+              UUID.fromString(
+                  backupSchedule
+                      .getMetadata()
+                      .getAnnotations()
+                      .get(ResourceAnnotationKeys.YBA_RESOURCE_ID)));
+    } else {
+      optSchedule =
+          Schedule.maybeGetScheduleByUniverseWithName(scheduleName, universeUUID, cust.getUuid());
+    }
     boolean requeueNoOp = (action == ResourceAction.NO_OP);
     boolean scheduleRemoved = false;
     if (optSchedule.isPresent()) {
@@ -135,11 +152,27 @@ public class ScheduledBackupReconciler extends AbstractReconciler<BackupSchedule
     String resourceName = backupSchedule.getMetadata().getName();
     String resourceNamespace = backupSchedule.getMetadata().getNamespace();
     BackupScheduleTaskParams scheduleParams = createScheduledBackupParams(backupSchedule, cust);
-    Optional<Schedule> optionalSchedule =
-        Schedule.maybeGetScheduleByUniverseWithName(
-            scheduleParams.getScheduleParams().scheduleName,
-            scheduleParams.getUniverseUUID(),
-            scheduleParams.customerUUID);
+    Optional<Schedule> optionalSchedule;
+    if (backupSchedule.getMetadata().getAnnotations() != null
+        && backupSchedule
+            .getMetadata()
+            .getAnnotations()
+            .containsKey(ResourceAnnotationKeys.YBA_RESOURCE_ID)) {
+      optionalSchedule =
+          Schedule.maybeGet(
+              cust.getUuid(),
+              UUID.fromString(
+                  backupSchedule
+                      .getMetadata()
+                      .getAnnotations()
+                      .get(ResourceAnnotationKeys.YBA_RESOURCE_ID)));
+    } else {
+      optionalSchedule =
+          Schedule.maybeGetScheduleByUniverseWithName(
+              scheduleParams.getScheduleParams().scheduleName,
+              scheduleParams.getUniverseUUID(),
+              scheduleParams.customerUUID);
+    }
     Universe universe =
         Universe.getOrBadRequest(scheduleParams.getScheduleParams().getUniverseUUID(), cust);
     if (!optionalSchedule.isPresent() && !universe.universeIsLocked()) {
@@ -179,11 +212,27 @@ public class ScheduledBackupReconciler extends AbstractReconciler<BackupSchedule
     String resourceName = backupSchedule.getMetadata().getName();
     String resourceNamespace = backupSchedule.getMetadata().getNamespace();
     BackupScheduleTaskParams scheduleParams = createScheduledBackupParams(backupSchedule, cust);
-    Optional<Schedule> optionalSchedule =
-        Schedule.maybeGetScheduleByUniverseWithName(
-            scheduleParams.getScheduleParams().scheduleName,
-            scheduleParams.getUniverseUUID(),
-            scheduleParams.customerUUID);
+    Optional<Schedule> optionalSchedule;
+    if (backupSchedule.getMetadata().getAnnotations() != null
+        && backupSchedule
+            .getMetadata()
+            .getAnnotations()
+            .containsKey(ResourceAnnotationKeys.YBA_RESOURCE_ID)) {
+      optionalSchedule =
+          Schedule.maybeGet(
+              cust.getUuid(),
+              UUID.fromString(
+                  backupSchedule
+                      .getMetadata()
+                      .getAnnotations()
+                      .get(ResourceAnnotationKeys.YBA_RESOURCE_ID)));
+    } else {
+      optionalSchedule =
+          Schedule.maybeGetScheduleByUniverseWithName(
+              scheduleParams.getScheduleParams().scheduleName,
+              scheduleParams.getUniverseUUID(),
+              scheduleParams.customerUUID);
+    }
     if (!optionalSchedule.isPresent()) {
       log.debug("Schedule does not exist, ignoring update");
       return;
@@ -217,11 +266,27 @@ public class ScheduledBackupReconciler extends AbstractReconciler<BackupSchedule
     String resourceName = backupSchedule.getMetadata().getName();
     String resourceNamespace = backupSchedule.getMetadata().getNamespace();
     BackupScheduleTaskParams scheduleParams = createScheduledBackupParams(backupSchedule, cust);
-    Optional<Schedule> optionalSchedule =
-        Schedule.maybeGetScheduleByUniverseWithName(
-            scheduleParams.getScheduleParams().scheduleName,
-            scheduleParams.getUniverseUUID(),
-            scheduleParams.customerUUID);
+    Optional<Schedule> optionalSchedule;
+    if (backupSchedule.getMetadata().getAnnotations() != null
+        && backupSchedule
+            .getMetadata()
+            .getAnnotations()
+            .containsKey(ResourceAnnotationKeys.YBA_RESOURCE_ID)) {
+      optionalSchedule =
+          Schedule.maybeGet(
+              cust.getUuid(),
+              UUID.fromString(
+                  backupSchedule
+                      .getMetadata()
+                      .getAnnotations()
+                      .get(ResourceAnnotationKeys.YBA_RESOURCE_ID)));
+    } else {
+      optionalSchedule =
+          Schedule.maybeGetScheduleByUniverseWithName(
+              scheduleParams.getScheduleParams().scheduleName,
+              scheduleParams.getUniverseUUID(),
+              scheduleParams.customerUUID);
+    }
 
     TaskInfo taskInfo = getCurrentTaskInfo(backupSchedule);
     if (taskInfo != null) {

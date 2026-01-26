@@ -1,19 +1,19 @@
 import { useCallback, useContext, useState } from 'react';
-import { Divider, styled, Typography } from '@material-ui/core';
-import { mui } from '@yugabyte-ui-library/core';
-import { useFormContext } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
-import { getFaultToleranceNeededForAZ } from '../../CreateUniverseUtils';
+import { useFormContext } from 'react-hook-form';
+import { mui } from '@yugabyte-ui-library/core';
+import { ReplicationFactorInfoModal } from './index';
 import { CreateUniverseContext, CreateUniverseContextMethods } from '../../CreateUniverseContext';
+import { getFaultToleranceNeededForAZ } from '../../CreateUniverseUtils';
 import { FaultToleranceType } from '../resilence-regions/dtos';
 
-import { ReactComponent as Check } from '../../../../../assets/check-grey.svg';
-import { ReactComponent as NotAllowed } from '../../../../../assets/revoke.svg';
-import { ReactComponent as DocTick } from '../../../../../assets/doc_tick_purple.svg';
+//icons
 import { HelpOutline } from '@material-ui/icons';
-import { ReplicationFactorInfoModal } from './ReplicationFactorInfoModal';
+import Check from '../../../../../assets/check-grey.svg';
+import NotAllowed from '../../../../../assets/revoke.svg';
+import DocTick from '../../../../../assets/doc_tick_purple.svg';
 
-const { List, ListItem } = mui;
+const { List, ListItem, styled, Divider, Typography } = mui;
 
 const StyledReplicationCardHeader = styled('div')(({ theme }) => ({
   background: '#F2F3FE',
@@ -34,7 +34,7 @@ const StyledReplicationCardContent = styled('div')(({ theme }) => ({
   background: '#F2F3FE',
   borderRadius: '0px 0px 8px 8px',
   border: `1px solid ${theme.palette.grey[300]}`,
-  padding: '8px 16px 16px 24px',
+  padding: '8px 16px 16px 32px',
   display: 'flex',
   alignItems: 'center',
   gap: '8px'
@@ -159,7 +159,8 @@ export const ReplicationStatusCard = ({ hideSubText = false }: { hideSubText?: b
 };
 
 const StyledTypography = styled(Typography)(({ theme }) => ({
-  color: theme.palette.grey[700]
+  color: theme.palette.grey[700],
+  lineHeight: '20px'
 }));
 
 export const ReplicationStatusAvailabilityStatus = () => {

@@ -653,7 +653,7 @@ class PgApiImpl {
 
   Result<bool> SampleNextBlock(PgStatement* handle);
 
-  Status ExecSample(PgStatement *handle);
+  Status ExecSample(PgStatement *handle, YbcPgExecParameters* exec_params);
 
   Result<EstimatedRowCount> GetEstimatedRowCount(PgStatement* handle);
 
@@ -662,7 +662,7 @@ class PgApiImpl {
   Status BeginTransaction(int64_t start_time);
   Status RecreateTransaction();
   Status RestartTransaction();
-  Status ResetTransactionReadPoint();
+  Status ResetTransactionReadPoint(bool is_catalog_snapshot);
   Status EnsureReadPoint();
   Status RestartReadPoint();
   bool IsRestartReadPointRequested();

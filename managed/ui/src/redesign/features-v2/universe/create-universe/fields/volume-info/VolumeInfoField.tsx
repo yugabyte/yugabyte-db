@@ -1,4 +1,4 @@
-import { FC, useContext, useEffect } from 'react';
+import { FC, useEffect } from 'react';
 import { useQuery } from 'react-query';
 import { useUpdateEffect } from 'react-use';
 import { useTranslation } from 'react-i18next';
@@ -27,10 +27,8 @@ import {
 } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { useRuntimeConfigValues } from '@app/redesign/features-v2/universe/create-universe/helpers/utils';
 import { InstanceSettingProps } from '@app/redesign/features-v2/universe/create-universe/steps/hardware-settings/dtos';
-import {
-  CreateUniverseContext,
-  CreateUniverseContextMethods
-} from '@app/redesign/features-v2/universe/create-universe/CreateUniverseContext';
+import { ProviderType } from '@app/redesign/features-v2/universe/create-universe/steps/general-settings/dtos';
+import { Region } from '@app/redesign/features/universe/universe-form/utils/dto';
 import {
   CPU_ARCHITECTURE_FIELD,
   DEVICE_INFO_FIELD,
@@ -38,7 +36,7 @@ import {
   MASTER_DEVICE_INFO_FIELD,
   MASTER_INSTANCE_TYPE_FIELD
 } from '@app/redesign/features-v2/universe/create-universe/fields/FieldNames';
-import { ReactComponent as Close } from '@app/redesign/assets/close.svg';
+import Close from '@app/redesign/assets/close.svg';
 
 const { Box, MenuItem } = mui;
 
@@ -46,6 +44,9 @@ interface VolumeInfoFieldProps {
   isMaster?: boolean;
   maxVolumeCount: number;
   disabled: boolean;
+  provider?: Partial<ProviderType>;
+  useDedicatedNodes?: boolean;
+  regions?: Region[];
 }
 
 const menuProps = {
@@ -62,19 +63,16 @@ const menuProps = {
 export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   isMaster,
   maxVolumeCount,
-  disabled
+  disabled,
+  provider,
+  useDedicatedNodes,
+  regions
 }) => {
   const { t } = useTranslation();
   const dataTag = isMaster ? 'Master' : 'TServer';
 
   // watchers
   const { watch, control, setValue } = useFormContext<InstanceSettingProps>();
-  const [
-    { generalSettings, nodesAvailabilitySettings, resilienceAndRegionsSettings }
-  ] = (useContext(CreateUniverseContext) as unknown) as CreateUniverseContextMethods;
-
-  const useDedicatedNodes = nodesAvailabilitySettings?.useDedicatedNodes;
-  const provider = generalSettings?.providerConfiguration;
   const fieldValue = isMaster ? watch(MASTER_DEVICE_INFO_FIELD) : watch(DEVICE_INFO_FIELD);
   const instanceType = isMaster ? watch(MASTER_INSTANCE_TYPE_FIELD) : watch(INSTANCE_TYPE_FIELD);
   const cpuArch = watch(CPU_ARCHITECTURE_FIELD);
@@ -88,7 +86,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
     disableStorageType
   } = useVolumeControls();
 
-  const { zones, isLoadingZones } = useGetZones(provider, resilienceAndRegionsSettings?.regions);
+  const { zones, isLoadingZones } = useGetZones(provider, regions);
   const zoneNames = zones.map((zone: Placement) => zone.name);
 
   //fetch run time configs
@@ -221,7 +219,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
 
     const fixedNumVolumes =
       [VolumeType.SSD, VolumeType.NVME].includes(volumeType) &&
-      provider &&
+      provider?.code &&
       ![CloudType.kubernetes, CloudType.gcp, CloudType.azu].includes(provider?.code);
 
     // Ephemeral instances volume information cannot be resized, refer to PLAT-16118
@@ -240,7 +238,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
             <YBInput
               type="number"
               fullWidth
-              disabled={fixedNumVolumes ?? numVolumesDisable ?? isEphemeralStorage ?? disabled}
+              disabled={fixedNumVolumes || numVolumesDisable || isEphemeralStorage || disabled}
               slotProps={{
                 htmlInput: {
                   min: 1,
@@ -306,7 +304,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
 
   const renderStorageType = () => {
     if (
-      (provider && [CloudType.gcp, CloudType.azu].includes(provider?.code)) ||
+      (provider?.code && [CloudType.gcp, CloudType.azu].includes(provider?.code)) ||
       (volumeType === VolumeType.EBS && provider?.code === CloudType.aws)
     ) {
       return (

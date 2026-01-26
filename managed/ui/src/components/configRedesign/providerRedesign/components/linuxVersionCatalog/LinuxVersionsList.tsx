@@ -24,7 +24,11 @@ import {
 import { MoreActionsMenu } from '../../../../customCACerts/MoreActionsMenu';
 import { YBButton } from '../../../../../redesign/components';
 import { AddLinuxVersionModal } from './AddLinuxVersionModal';
-import { ImageBundleDefaultTag, ImageBundleYBActiveTag, IsImgBundleInUseEditEnabled } from './LinuxVersionUtils';
+import {
+  ImageBundleDefaultTag,
+  ImageBundleYBActiveTag,
+  IsImgBundleInUseEditEnabled
+} from './LinuxVersionUtils';
 
 import { LinuxVersionDeleteModal } from './DeleteLinuxVersionModal';
 import { YBPopover } from '../../../../../redesign/components/YBPopover/YBPopover';
@@ -37,8 +41,8 @@ import { ValidationErrMsgDelimiter } from '../../forms/utils';
 import styles from '../RegionList.module.scss';
 
 import { Delete, Edit, Flag } from '@material-ui/icons';
-import MoreIcon from '../../../../../redesign/assets/ellipsis.svg';
-import ErrorIcon from '../../../../../redesign/assets/error.svg';
+import MoreIcon from '../../../../../redesign/assets/ellipsis.svg?img';
+import ErrorIcon from '../../../../../redesign/assets/error.svg?img';
 
 interface LinuxVersionListProps {
   control: Control<AWSProviderCreateFormFieldValues>;

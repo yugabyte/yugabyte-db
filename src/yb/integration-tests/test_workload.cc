@@ -34,7 +34,6 @@
 
 #include <memory>
 #include <string>
-#include <unordered_set>
 #include <vector>
 
 #include "yb/client/client-test-util.h"
@@ -45,14 +44,12 @@
 #include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/table_info.h"
-#include "yb/client/transaction.h"
 #include "yb/client/transaction_pool.h"
 #include "yb/client/yb_op.h"
 
 #include "yb/common/wire_protocol-test-util.h"
 
 #include "yb/gutil/casts.h"
-#include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/mini_cluster_base.h"
@@ -85,7 +82,9 @@ using std::shared_ptr;
 const YBTableName TestWorkloadOptions::kDefaultTableName(
     YQL_DATABASE_CQL, "my_keyspace", "test-workload");
 
-class TestWorkload::State {
+const std::string TestWorkloadOptions::kDefaultPayload = "hello world";
+
+class TestYcqlWorkload::State {
  public:
   explicit State(MiniClusterBase* cluster) : cluster_(cluster) {}
 
@@ -173,22 +172,22 @@ class TestWorkload::State {
   std::vector<scoped_refptr<Thread> > threads_;
 };
 
-TestWorkload::TestWorkload(MiniClusterBase* cluster)
+TestYcqlWorkload::TestYcqlWorkload(MiniClusterBase* cluster)
   : state_(new State(cluster)) {}
 
-TestWorkload::~TestWorkload() {
+TestYcqlWorkload::~TestYcqlWorkload() {
   StopAndJoin();
 }
 
-TestWorkload::TestWorkload(TestWorkload&& rhs)
+TestYcqlWorkload::TestYcqlWorkload(TestYcqlWorkload&& rhs)
     : options_(rhs.options_), state_(std::move(rhs.state_)) {}
 
-void TestWorkload::operator=(TestWorkload&& rhs) {
+void TestYcqlWorkload::operator=(TestYcqlWorkload&& rhs) {
   options_ = rhs.options_;
   state_ = std::move(rhs.state_);
 }
 
-Result<client::YBTransactionPtr> TestWorkload::State::MayBeStartNewTransaction(
+Result<client::YBTransactionPtr> TestYcqlWorkload::State::MayBeStartNewTransaction(
     client::YBSession* session, const TestWorkloadOptions& options) {
   client::YBTransactionPtr txn;
   if (options.is_transactional()) {
@@ -199,7 +198,7 @@ Result<client::YBTransactionPtr> TestWorkload::State::MayBeStartNewTransaction(
   return txn;
 }
 
-Result<client::TableHandle> TestWorkload::State::OpenTable(const TestWorkloadOptions& options) {
+Result<client::TableHandle> TestYcqlWorkload::State::OpenTable(const TestWorkloadOptions& options) {
   client::TableHandle table;
 
   // Loop trying to open up the table. In some tests we set up very
@@ -223,7 +222,7 @@ Result<client::TableHandle> TestWorkload::State::OpenTable(const TestWorkloadOpt
   }
 }
 
-void TestWorkload::State::WaitAllThreads() {
+void TestYcqlWorkload::State::WaitAllThreads() {
   // Wait for all of the workload threads to be ready to go. This maximizes the chance
   // that they all send a flood of requests at exactly the same time.
   //
@@ -234,7 +233,7 @@ void TestWorkload::State::WaitAllThreads() {
   start_latch_.Wait();
 }
 
-void TestWorkload::State::WriteThread(const TestWorkloadOptions& options) {
+void TestYcqlWorkload::State::WriteThread(const TestWorkloadOptions& options) {
   auto next_random = [rng = &ThreadLocalRandom()] {
     return RandomUniformInt<int32_t>(rng);
   };
@@ -249,7 +248,7 @@ void TestWorkload::State::WriteThread(const TestWorkloadOptions& options) {
 
   WaitAllThreads();
 
-  std::string test_payload("hello world");
+  std::string test_payload(TestWorkloadOptions::kDefaultPayload);
   if (options.payload_bytes != test_payload.size()) {
     test_payload = RandomHumanReadableString(options.payload_bytes);
   }
@@ -376,7 +375,7 @@ void TestWorkload::State::WriteThread(const TestWorkloadOptions& options) {
   }
 }
 
-void TestWorkload::State::ReadThread(const TestWorkloadOptions& options) {
+void TestYcqlWorkload::State::ReadThread(const TestWorkloadOptions& options) {
   Random r(narrow_cast<uint32_t>(Env::Default()->gettid()));
 
   auto table_result = OpenTable(options);
@@ -443,18 +442,18 @@ void TestWorkload::State::ReadThread(const TestWorkloadOptions& options) {
   }
 }
 
-void TestWorkload::Setup(YBTableType table_type) {
+void TestYcqlWorkload::Setup(YBTableType table_type) {
   state_->Setup(table_type, options_);
 }
 
-void TestWorkload::set_transactional(
+void TestYcqlWorkload::set_transactional(
     IsolationLevel isolation_level, client::TransactionPool* pool) {
   options_.isolation_level = isolation_level;
   state_->set_transaction_pool(pool);
 }
 
 
-void TestWorkload::State::Setup(YBTableType table_type, const TestWorkloadOptions& options) {
+void TestYcqlWorkload::State::Setup(YBTableType table_type, const TestWorkloadOptions& options) {
   client::YBClientBuilder client_builder;
   client_builder.default_rpc_timeout(options.default_rpc_timeout);
   client_ = CHECK_RESULT(cluster_->CreateClient(&client_builder));
@@ -498,11 +497,11 @@ void TestWorkload::State::Setup(YBTableType table_type, const TestWorkloadOption
   }
 }
 
-void TestWorkload::Start() {
+void TestYcqlWorkload::Start() {
   state_->Start(options_);
 }
 
-void TestWorkload::State::Start(const TestWorkloadOptions& options) {
+void TestYcqlWorkload::State::Start(const TestWorkloadOptions& options) {
   bool expected = false;
   should_run_.compare_exchange_strong(expected, true, std::memory_order_acq_rel);
   CHECK(!expected) << "Already started";
@@ -522,54 +521,54 @@ void TestWorkload::State::Start(const TestWorkloadOptions& options) {
   }
 }
 
-void TestWorkload::Stop() {
+void TestYcqlWorkload::Stop() {
   state_->Stop();
 }
 
-void TestWorkload::Join() {
+void TestYcqlWorkload::Join() {
   state_->Join();
 }
 
-void TestWorkload::StopAndJoin() {
+void TestYcqlWorkload::StopAndJoin() {
   Stop();
   Join();
 }
 
-void TestWorkload::WaitInserted(int64_t required) {
+void TestYcqlWorkload::WaitInserted(int64_t required) {
   while (rows_inserted() < required) {
     std::this_thread::sleep_for(100ms);
   }
 }
 
-int64_t TestWorkload::rows_inserted() const {
+int64_t TestYcqlWorkload::rows_inserted() const {
   return state_->rows_inserted();
 }
 
-int64_t TestWorkload::rows_insert_failed() const {
+int64_t TestYcqlWorkload::rows_insert_failed() const {
   return state_->rows_insert_failed();
 }
 
-int64_t TestWorkload::rows_read_ok() const {
+int64_t TestYcqlWorkload::rows_read_ok() const {
   return state_->rows_read_ok();
 }
 
-int64_t TestWorkload::rows_read_empty() const {
+int64_t TestYcqlWorkload::rows_read_empty() const {
   return state_->rows_read_empty();
 }
 
-int64_t TestWorkload::rows_read_error() const {
+int64_t TestYcqlWorkload::rows_read_error() const {
   return state_->rows_read_error();
 }
 
-int64_t TestWorkload::rows_read_try_again() const {
+int64_t TestYcqlWorkload::rows_read_try_again() const {
   return state_->rows_read_try_again();
 }
 
-int64_t TestWorkload::batches_completed() const {
+int64_t TestYcqlWorkload::batches_completed() const {
   return state_->batches_completed();
 }
 
-client::YBClient& TestWorkload::client() const {
+client::YBClient& TestYcqlWorkload::client() const {
   return state_->client();
 }
 

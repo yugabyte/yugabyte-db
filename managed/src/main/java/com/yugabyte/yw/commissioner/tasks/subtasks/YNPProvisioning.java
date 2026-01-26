@@ -203,6 +203,7 @@ public class YNPProvisioning extends NodeTaskBase {
       // "logging" JSON Object
       ObjectNode loggingNode = mapper.createObjectNode();
       loggingNode.put("level", "INFO");
+      loggingNode.put("directory", nodeAgentHome.resolve("logs").toString());
       rootNode.set("logging", loggingNode);
 
       // Convert to JSON string

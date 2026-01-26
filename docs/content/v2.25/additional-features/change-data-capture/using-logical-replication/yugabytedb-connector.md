@@ -1312,7 +1312,7 @@ This behaviour may be unexpected, but it is still safe. Only the schema definiti
 
 Setting up a YugabyteDB server to run the connector requires a database user that can perform replications. Replication can be performed only by a database user that has appropriate permissions and only for a configured number of hosts.
 
-Although, by default, superusers have the necessary `REPLICATION` and `LOGIN` roles, as mentioned in [Security](#security), it is best not to provide the replication user with elevated privileges. Instead, create a Debezium user that has the minimum required privileges.
+Although, by default, superusers have the necessary `REPLICATION` and `LOGIN` attributes, as mentioned in [Security](#security), it is best not to provide the replication user with elevated privileges. Instead, create a Debezium user that has the minimum required privileges.
 
 **Prerequisites:**
 
@@ -1320,11 +1320,17 @@ Although, by default, superusers have the necessary `REPLICATION` and `LOGIN` ro
 
 **Procedure:**
 
-To provide a user with replication permissions, define a YugabyteDB role that has at least the `REPLICATION` and `LOGIN` permissions, and then grant that role to the user. For example:
+To provide a user with replication permissions, define a YugabyteDB role that has at least the `REPLICATION` and `LOGIN` attributes. For example:
 
 ```sql
 CREATE ROLE <name> REPLICATION LOGIN;
 ```
+
+{{< tip title="REPLICATION is non-inheritable" >}}
+
+Like other PostgreSQL role attributes, REPLICATION is not inheritable. Being a member of a role with REPLICATION will not allow the member to connect to the server in replication mode, even if the membership grant has the INHERIT attribute. You must actually [SET ROLE](../../../../api/ysql/the-sql-language/statements/dcl_set_role/) to a specific role having the REPLICATION attribute in order to make use of the attribute.
+
+{{< /tip >}}
 
 ### Setting privileges to enable the connector to create YugabyteDB publications when you use `pgoutput` or `yboutput`
 

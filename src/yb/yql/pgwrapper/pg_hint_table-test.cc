@@ -14,6 +14,7 @@
 #include <string>
 
 #include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/util/json_document.h"
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
 #include "yb/util/test_macros.h"
@@ -28,21 +29,16 @@ class PgHintTableTest : public LibPqTestBase {
  public:
   // Given an EXPLAIN plan in JSON format, returns the node type
   // of the root plan node. For this test, that's the join type.
-  static std::string GetRootNodeType(const rapidjson::Document& plan_json) {
-    return std::string(plan_json[0]["Plan"]["Node Type"].GetString());
-  }
-
-  static std::string GetJoinType(const std::string& explain_json) {
-    rapidjson::Document plan_json;
-    plan_json.Parse(explain_json.c_str());
-    return GetRootNodeType(plan_json);
+  static Result<std::string> GetRootNodeType(const JsonValue& plan_json) {
+    return plan_json[0]["Plan"]["Node Type"].GetString();
   }
 
   static Result<std::string> ExecuteExplainAndGetJoinType(
       PGConn *conn,
       const std::string& explain_query) {
     auto explain_str = VERIFY_RESULT(conn->FetchRow<std::string>(explain_query));
-    return GetJoinType(explain_str);
+    JsonDocument doc;
+    return GetRootNodeType(VERIFY_RESULT(doc.Parse(explain_str)));
   }
 
   // The query ID is determined via a fingerprint of the query's post-rewrite AST.
@@ -127,15 +123,15 @@ TEST_F(PgHintTableTest, ForceBatchedNestedLoop) {
   const std::string before_plan_str =
       ASSERT_RESULT(conn1.FetchRow<std::string>("EXPLAIN (HINTS, VERBOSE, FORMAT JSON) " + query));
   LOG(INFO) << "Plan before hint str: " << before_plan_str;
-  rapidjson::Document before_plan_json;
-  before_plan_json.Parse(before_plan_str.c_str());
-  ASSERT_STR_EQ("Hash Join", GetRootNodeType(before_plan_json));
+  JsonDocument doc;
+  auto before_plan_json = ASSERT_RESULT(doc.Parse(before_plan_str.c_str()));
+  ASSERT_STR_EQ("Hash Join", ASSERT_RESULT(GetRootNodeType(before_plan_json)));
 
   // ----------------------------------------------------------------------------------------------
   // 3. On the second connection, insert a hint to force a Hash Join
   // ----------------------------------------------------------------------------------------------
   // Extract the query ID from the JSON plan
-  auto plan_query_id = before_plan_json[0]["Query Identifier"].GetInt64();
+  auto plan_query_id = ASSERT_RESULT(before_plan_json[0]["Query Identifier"].GetInt64());
   LOG(INFO) << "Query ID from plan: " << plan_query_id;
   ASSERT_EQ(query_id, plan_query_id);
 

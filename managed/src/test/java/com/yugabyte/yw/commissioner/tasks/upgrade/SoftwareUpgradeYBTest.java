@@ -162,7 +162,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
         defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
     verify(mockNodeManager, times(71)).nodeCommand(any(), any());
-    verify(mockNodeUniverseManager, times(10)).runCommand(any(), any(), anyList(), any());
+    verify(mockNodeUniverseManager, times(15)).runCommand(any(), any(), anyList(), any());
 
     MockUpgrade mockUpgrade = initMockUpgrade();
     mockUpgrade
@@ -230,7 +230,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
         defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
     verify(mockNodeManager, times(71)).nodeCommand(any(), any());
-    verify(mockNodeUniverseManager, times(10)).runCommand(any(), any(), anyList(), any());
+    verify(mockNodeUniverseManager, times(15)).runCommand(any(), any(), anyList(), any());
 
     MockUpgrade mockUpgrade = initMockUpgrade();
     mockUpgrade
@@ -289,7 +289,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
         defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
     verify(mockNodeManager, times(71)).nodeCommand(any(), any());
-    verify(mockNodeUniverseManager, times(10)).runCommand(any(), any(), anyList(), any());
+    verify(mockNodeUniverseManager, times(15)).runCommand(any(), any(), anyList(), any());
 
     MockUpgrade mockUpgrade = initMockUpgrade();
     mockUpgrade
@@ -366,7 +366,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
         defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
     verify(mockNodeManager, times(95)).nodeCommand(any(), any());
-    verify(mockNodeUniverseManager, times(16)).runCommand(any(), any(), anyList(), any());
+    verify(mockNodeUniverseManager, times(24)).runCommand(any(), any(), anyList(), any());
 
     MockUpgrade mockUpgrade = initMockUpgrade();
     mockUpgrade
@@ -993,19 +993,21 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
 
   @Override
   protected TaskType[] getPrecheckTasks(boolean hasRollingRestarts) {
-    List<TaskType> lst =
-        new ArrayList<>(
-            Arrays.asList(
-                TaskType.CheckUpgrade,
-                TaskType.CheckMemory,
-                TaskType.CheckLocale,
-                TaskType.CheckGlibc));
-    if (ysqlMajorUpgrade) {
-      lst.add(TaskType.PGUpgradeTServerCheck);
-    }
+    List<TaskType> prechecks = new ArrayList<>();
     if (hasRollingRestarts) {
-      lst.add(0, TaskType.CheckNodesAreSafeToTakeDown);
+      prechecks.add(TaskType.CheckServiceLiveness);
+      prechecks.add(TaskType.CheckNodeCommandExecution);
+      prechecks.add(TaskType.CheckNodesAreSafeToTakeDown);
     }
-    return lst.toArray(new TaskType[0]);
+    prechecks.addAll(
+        Arrays.asList(
+            TaskType.CheckUpgrade,
+            TaskType.CheckMemory,
+            TaskType.CheckLocale,
+            TaskType.CheckGlibc));
+    if (ysqlMajorUpgrade) {
+      prechecks.add(TaskType.PGUpgradeTServerCheck);
+    }
+    return prechecks.toArray(new TaskType[0]);
   }
 }

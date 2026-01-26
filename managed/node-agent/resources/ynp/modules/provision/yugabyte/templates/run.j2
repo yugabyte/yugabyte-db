@@ -58,20 +58,20 @@ else
     echo "RedHat not detected, skipping changing selinux context"
 fi
 
-{% if cloud_type is defined and cloud_type != '' %}
-    mount_points="{{ mount_paths | default('') | trim }}"
-    IFS=' ' read -ra mount_points_array <<< "$mount_points"
-    # Verify each mount point
-    for mount_point in "${mount_points_array[@]}"; do
-        if [ ! -d "$mount_point" ]; then
-            echo "Creating mount point: $mount_point"
-            mkdir -p "$mount_point"
-        else
-            echo "Mount point already exists: $mount_point"
-        fi
-        chown -R {{ yb_user }}:{{ yb_user }} "$mount_point"
-    done
+mount_points="{{ mount_paths | default('') | trim }}"
+IFS=' ' read -ra mount_points_array <<< "$mount_points"
+# Verify each mount point
+for mount_point in "${mount_points_array[@]}"; do
+    if [ ! -d "$mount_point" ]; then
+        echo "Creating mount point: $mount_point"
+        mkdir -p "$mount_point"
+    else
+        echo "Mount point already exists: $mount_point"
+    fi
+    chown -R {{ yb_user }}:{{ yb_user }} "$mount_point"
+done
 
+{% if is_cloud == 'True' %}
     # Set up the ssh key access for yugabyte
     mkdir -p {{ yb_home_dir }}/.ssh
     # Determine the current user
@@ -97,14 +97,16 @@ fi
 {% endif %}
 
 {% if is_install_node_agent == 'True' %}
-installer_dir="{{ ynp_dir }}/../../bin"
-{% if cloud_type is defined and cloud_type != '' %}
-    installer_dir="{{ ynp_dir }}/../"
-{% endif %}
+installer_script="{{ ynp_dir }}/../../bin/node-agent-installer.sh"
+if [ ! -f "$installer_script" ]; then
+    # For backward compatibility when backported.
+    # Remove me later.
+    installer_script="{{ ynp_dir }}/../node-agent-installer.sh"
+fi
 # Copy node-agent binary to yugabyte home directory. This is needed so that yugabyte user
 # can read the binary in restricted environment.
 mkdir -p {{ yb_home_dir }}/.install
-cp "$installer_dir/node-agent-installer.sh" {{ yb_home_dir }}/.install
+cp "$installer_script" {{ yb_home_dir }}/.install
 chown -R {{ yb_user }}:{{ yb_user }} {{ yb_home_dir }}/.install
 {% endif %}
 

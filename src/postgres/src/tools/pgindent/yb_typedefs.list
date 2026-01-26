@@ -122,6 +122,7 @@ YbNLBucketInfo
 YbNameToOidMapEntry
 YbNewRelMapEntry
 YbNextRangeResult
+YbObjectLockMode
 YbOidAssignmentMapEntry
 YbOptSplit
 YbOptionalReadPointHandle

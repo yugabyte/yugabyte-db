@@ -24,8 +24,8 @@ import {
 import { mapCreateUniversePayload } from '../../CreateUniverseUtils';
 import { YBLoadingCircleIcon } from '@app/components/common/indicators';
 
-import { ReactComponent as UniverseIcon } from '../../../../../assets/clusters.svg';
-import { ReactComponent as Money } from '../../../../../assets/money.svg';
+import UniverseIcon from '../../../../../assets/clusters.svg';
+import Money from '../../../../../assets/money.svg';
 
 const StyledPanel = styled('div')(({ theme }) => ({
   borderRadius: '8px',
@@ -109,9 +109,16 @@ export const ReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
     () => ({
       onNext: () => {
         return createUniverse
-          .mutateAsync({
-            data: payload
-          })
+          .mutateAsync(
+            {
+              data: payload
+            },
+            {
+              onError(error) {
+                toast.error((error.response?.data as any)?.error || 'Failed to create universe');
+              }
+            }
+          )
           .then((resp) => {
             if (resp.resource_uuid) {
               // Navigate to the universe details page after creation

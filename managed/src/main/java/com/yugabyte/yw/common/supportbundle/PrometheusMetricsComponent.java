@@ -23,6 +23,7 @@ import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
@@ -50,36 +51,63 @@ public class PrometheusMetricsComponent implements SupportBundleComponent {
   }
 
   public String getFileName(String type, Date startDate, Date endDate) {
-    return String.format(
-            "%s.%s-%s",
-            type,
-            startDate.toInstant().toString().replace(":", "_"),
-            endDate.toInstant().toString().replace(":", "_"))
-        + ".json";
+    return getFileName(null, type, null, startDate, endDate);
   }
 
-  public void exportMetric(
+  public String getFileName(
+      String nodeName, String type, String metricName, Date startDate, Date endDate) {
+    StringBuilder fileName = new StringBuilder();
+    if (nodeName != null) {
+      fileName.append(nodeName).append(".");
+    }
+    fileName.append(type);
+    if (metricName != null) {
+      fileName.append(".").append(metricName);
+    }
+    fileName
+        .append(".")
+        .append(startDate.toInstant().toString().replace(":", "_"))
+        .append("-")
+        .append(endDate.toInstant().toString().replace(":", "_"))
+        .append(".json");
+    return fileName.toString();
+  }
+
+  public Duration exportMetric(
       Date startDate, Date endDate, String query, String type, String exportDestDir)
       throws Exception {
+    return exportMetric(startDate, endDate, query, null, type, null, exportDestDir, null);
+  }
+
+  public Duration exportMetric(
+      Date startDate,
+      Date endDate,
+      String query,
+      String nodeName,
+      String type,
+      String metricName,
+      String exportDestDir,
+      Duration initialBatchDuration)
+      throws Exception {
     try {
-      // get the default batch duration from the global runtime-config
-      int batchDuration =
-          confGetter.getGlobalConf(GlobalConfKeys.supportBundlePromDumpBatchDurationInMins);
-      Duration defaultBatchDuration = Duration.ofMinutes(batchDuration);
+      // Get the batch duration from provided value or global runtime-config
+      Duration effectiveBatchDuration;
+      if (initialBatchDuration != null) {
+        effectiveBatchDuration = initialBatchDuration;
+      } else {
+        int batchDuration =
+            confGetter.getGlobalConf(GlobalConfKeys.supportBundlePromDumpBatchDurationInMins);
+        effectiveBatchDuration = Duration.ofMinutes(batchDuration);
+      }
 
       log.debug("exportMetric: querying metric '{}' from {} to {}", query, startDate, endDate);
 
       // batchwise collection of prom-dump
       Date batchStartTS = startDate;
-      // end timestamp of the current batch will be batchStartTS +
-      // defaultBatchDuration
-      Date batchEndTS = Date.from(batchStartTS.toInstant().plus(defaultBatchDuration));
+      Date batchEndTS = Date.from(batchStartTS.toInstant().plus(effectiveBatchDuration));
       int batchNumber = 1;
       int freq = 0;
       while (!batchEndTS.after(endDate)) {
-        log.debug(
-            "exportMetric:[{}] batch {} ({} to {})", type, batchNumber, batchStartTS, batchEndTS);
-
         // populate the query params
         HashMap<String, String> queryParams = new HashMap<>();
         queryParams.put("query", query);
@@ -97,14 +125,14 @@ public class PrometheusMetricsComponent implements SupportBundleComponent {
             freq++;
             // newBatchDuration = oldBatchDuration / 2
             Duration newBatchDuration =
-                Duration.ofSeconds(defaultBatchDuration.getSeconds() / (2 * freq));
+                Duration.ofSeconds(effectiveBatchDuration.getSeconds() / (2 * freq));
             if (newBatchDuration.getSeconds() <= 1) {
               throw new RuntimeException(metricResponse.error);
             }
             batchEndTS = Date.from(batchStartTS.toInstant().plus(newBatchDuration));
             if (batchEndTS.after(endDate)) {
               batchEndTS = endDate;
-              defaultBatchDuration =
+              effectiveBatchDuration =
                   Duration.between(batchStartTS.toInstant(), batchEndTS.toInstant());
               continue;
             }
@@ -112,8 +140,10 @@ public class PrometheusMetricsComponent implements SupportBundleComponent {
                 "exportMetric: too many samples in result set. Reducing batch[{}] duration from {}"
                     + " to {} and trying again.",
                 batchNumber,
-                defaultBatchDuration,
+                effectiveBatchDuration,
                 newBatchDuration);
+            // Update the effective batch duration for future use
+            effectiveBatchDuration = newBatchDuration;
             continue;
           }
           throw new RuntimeException(metricResponse.error);
@@ -136,12 +166,14 @@ public class PrometheusMetricsComponent implements SupportBundleComponent {
                       + " space. Prom dump size in bytes: '%d', YBA space free in bytes: '%d'.",
                   type, batchNumber, currBatchPromDumpSize, YbaDiskSpaceFreeInBytes);
           log.error(errMsg);
-          return;
+          return effectiveBatchDuration;
         }
 
         // generate filename for the export
         if (!metricResponse.data.result.isEmpty()) {
-          File outputFile = new File(exportDestDir, getFileName(type, batchStartTS, batchEndTS));
+          File outputFile =
+              new File(
+                  exportDestDir, getFileName(nodeName, type, metricName, batchStartTS, batchEndTS));
           batchNumber++;
 
           // gather and save the promethues metrics.
@@ -157,20 +189,102 @@ public class PrometheusMetricsComponent implements SupportBundleComponent {
         // update the start timestamp for the next batch
         batchStartTS = Date.from(batchEndTS.toInstant().plusSeconds(1));
         if (batchStartTS.after(endDate)) {
-          return;
+          return effectiveBatchDuration;
         }
-        batchEndTS = Date.from(batchStartTS.toInstant().plus(defaultBatchDuration));
+        batchEndTS = Date.from(batchStartTS.toInstant().plus(effectiveBatchDuration));
         if (batchEndTS.after(endDate)) {
           batchEndTS = endDate;
         }
         freq = 0;
       }
+      return effectiveBatchDuration;
     } finally {
       // delete the directory if it is empty
       if (FileUtils.isEmptyDirectory(new File(exportDestDir))) {
         log.debug(
             "Prometheus metrics dump is not available for the type {} in the given duration", type);
         FileUtils.deleteDirectory(new File(exportDestDir));
+      }
+    }
+  }
+
+  public void exportNodeLevelMetrics(
+      Universe universe,
+      Date startDate,
+      Date endDate,
+      String typeName,
+      String exportDestDir,
+      boolean splitTableLevelMetrics)
+      throws Exception {
+    // Query Prometheus for table-level metric names using the label values API
+    // Only needed for tserver_export where we split table-level metrics
+    List<String> tableLevelMetrics = List.of();
+    if (splitTableLevelMetrics) {
+      HashMap<String, String> labelQueryParams = new HashMap<>();
+      labelQueryParams.put("start", startDate.toInstant().toString());
+      labelQueryParams.put("end", endDate.toInstant().toString());
+      labelQueryParams.put("match[]", "{table_id=\"sys.catalog.uuid\"}");
+      tableLevelMetrics = metricQueryHelper.queryLabelValues("__name__", labelQueryParams);
+      log.debug("Found {} table-level metrics: {}", tableLevelMetrics.size(), tableLevelMetrics);
+    }
+
+    // Track effective batch duration to reuse across table-level queries
+    Duration effectiveBatchDuration = null;
+
+    for (NodeDetails node : universe.getNodes()) {
+      String nodeName = node.getNodeName();
+
+      if (splitTableLevelMetrics && !tableLevelMetrics.isEmpty()) {
+        // Get all the non-table level metrics for the node
+        log.debug("Getting all the non-table level metrics for the node: {}", nodeName);
+        String tableLevelMetricsRegex = String.join("|", tableLevelMetrics);
+        String nonTableLevelMetricsQuery =
+            String.format(
+                "{export_type=\"%s\",node_name=\"%s\",__name__!~\"%s\"}",
+                typeName, nodeName, tableLevelMetricsRegex);
+        effectiveBatchDuration =
+            exportMetric(
+                new Date(startDate.getTime()),
+                new Date(endDate.getTime()),
+                nonTableLevelMetricsQuery,
+                nodeName,
+                typeName,
+                null,
+                exportDestDir,
+                effectiveBatchDuration);
+
+        // Get all table level metrics for the node, reusing the effective batch duration
+        log.debug("Getting all the table level metrics for the node: {}", nodeName);
+        for (String tableLevelMetric : tableLevelMetrics) {
+          String query =
+              String.format(
+                  "{export_type=\"%s\",node_name=\"%s\",__name__=\"%s\"}",
+                  typeName, nodeName, tableLevelMetric);
+          effectiveBatchDuration =
+              exportMetric(
+                  new Date(startDate.getTime()),
+                  new Date(endDate.getTime()),
+                  query,
+                  nodeName,
+                  typeName,
+                  tableLevelMetric,
+                  exportDestDir,
+                  effectiveBatchDuration);
+        }
+      } else {
+        // For non-tserver exports or when no table-level metrics exist,
+        // export all metrics for the node in one query
+        log.debug("Getting all metrics for the node: {}", nodeName);
+        String query = String.format("{export_type=\"%s\",node_name=\"%s\"}", typeName, nodeName);
+        exportMetric(
+            new Date(startDate.getTime()),
+            new Date(endDate.getTime()),
+            query,
+            nodeName,
+            typeName,
+            null,
+            exportDestDir,
+            null);
       }
     }
   }
@@ -220,13 +334,20 @@ public class PrometheusMetricsComponent implements SupportBundleComponent {
                       String.format(
                           "{job=\"%s\",node_prefix=\"%s\"}",
                           typeName, (type == PrometheusMetricsType.PLATFORM ? nodePrefix : ""));
+                  exportMetric(
+                      new Date(startTime), new Date(endTime), query, typeName, exportDestDir);
                 } else {
-                  query =
-                      String.format(
-                          "{export_type=\"%s\",node_prefix=\"%s\"}", typeName, nodePrefix);
+                  // Only split table-level metrics for tserver_export
+                  // Master always has 1 table, other export types don't have table-level metrics
+                  boolean splitTableLevelMetrics = (type == PrometheusMetricsType.TSERVER_EXPORT);
+                  exportNodeLevelMetrics(
+                      universe,
+                      new Date(startTime),
+                      new Date(endTime),
+                      typeName,
+                      exportDestDir,
+                      splitTableLevelMetrics);
                 }
-                exportMetric(
-                    new Date(startTime), new Date(endTime), query, typeName, exportDestDir);
               } catch (Exception e) {
                 log.error("Error processing PrometheusMetricsType {}: {}", type, e.getMessage(), e);
               }

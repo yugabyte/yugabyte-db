@@ -23,7 +23,7 @@ import {
 
 import toastStyles from '../../../../redesign/styles/toastStyles.module.scss';
 
-import InfoIcon from '../../../../redesign/assets/info-message.svg';
+import InfoIcon from '../../../../redesign/assets/info-message.svg?img';
 
 interface InitiateFailoverrModalProps {
   drConfig: DrConfig;
@@ -114,14 +114,11 @@ export const InitiateFailoverModal = ({
   );
 
   const initiateFailoverrMutation = useMutation(
-    ({
-      drConfig
-    }: {
-      drConfig: DrConfig;
-    }) =>
+    ({ drConfig }: { drConfig: DrConfig }) =>
       api.initiateFailover(drConfig.uuid, {
         primaryUniverseUuid: drConfig.drReplicaUniverseUuid ?? '',
-        drReplicaUniverseUuid: drConfig.primaryUniverseUuid ?? ''}),
+        drReplicaUniverseUuid: drConfig.primaryUniverseUuid ?? ''
+      }),
     {
       onSuccess: (response, { drConfig }) => {
         const invalidateQueries = () => {
@@ -240,10 +237,7 @@ export const InitiateFailoverModal = ({
 
   const onSubmit = () => {
     setIsSubmitting(true);
-    initiateFailoverrMutation.mutate(
-      { drConfig },
-      { onSettled: () => resetModal() }
-    );
+    initiateFailoverrMutation.mutate({ drConfig }, { onSettled: () => resetModal() });
   };
   const resetModal = () => {
     setIsSubmitting(false);

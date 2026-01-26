@@ -30,8 +30,8 @@ import { ClusterType, UniverseDetails } from '../../../../../redesign/helpers/dt
 import { runtimeConfigQueryKey } from '../../../../../redesign/helpers/api';
 import { CloudVendorRegionField } from '../../forms/configureRegion/ConfigureRegionModal';
 import { fetchGlobalRunTimeConfigs } from '../../../../../api/admin';
-import FlagIcon from '../../../../../redesign/assets/flag-secondary.svg';
-import YBLogo from '../../../../../redesign/assets/yb-logo-secondary.svg';
+import FlagIcon from '../../../../../redesign/assets/flag-secondary.svg?img';
+import YBLogo from '../../../../../redesign/assets/yb-logo-secondary.svg?img';
 import clsx from 'clsx';
 
 /**

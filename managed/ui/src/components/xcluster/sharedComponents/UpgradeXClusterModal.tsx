@@ -10,8 +10,8 @@ import {
   XCLUSTER_REPLICATION_DDL_STEPS_DOCUMENTATION_URL
 } from '../constants';
 import { getSchemaChangeMode } from '../ReplicationUtils';
-import { ReactComponent as DocumentationIcon } from '../../../redesign/assets/documentation.svg';
-import { ReactComponent as UpArrow } from '../../../redesign/assets/upgrade-arrow.svg';
+import DocumentationIcon from '../../../redesign/assets/documentation.svg';
+import UpArrow from '../../../redesign/assets/upgrade-arrow.svg';
 
 import { XClusterConfig } from '../dtos';
 

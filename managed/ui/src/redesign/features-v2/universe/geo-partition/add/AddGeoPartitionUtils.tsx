@@ -10,10 +10,10 @@ import { Step } from '@yugabyte-ui-library/core/dist/esm/components/YBMultiLevel
 import {
   ClusterPartitionSpec,
   ClusterSpecClusterType,
+  PlacementAZ,
   PlacementRegion,
   UniverseRespResponse
 } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
-import { assignRegionsAZNodeByReplicationFactor } from '../../create-universe/CreateUniverseUtils';
 import { ResilienceAndRegionsProps } from '../../create-universe/steps/resilence-regions/dtos';
 import { Region } from '@app/redesign/helpers/dtos';
 
@@ -94,24 +94,78 @@ export function useGetSteps(context: AddGeoPartitionContextProps): Step[] {
   }, [geoPartitions, activeGeoPartitionIndex, isNewGeoPartition]);
 }
 
+export type RegionsAndNodesFormType = {
+  regions: (ResilienceAndRegionsProps['regions'][number] & { zones: PlacementAZ[] } & {
+    clusterType: ClusterSpecClusterType;
+    partitionUUID?: string;
+  })[];
+};
+
 export const extractRegionsAndNodeDataFromUniverse = (
   universeData: UniverseRespResponse,
   providerRegions: Region[]
-) => {
-  const regions: ResilienceAndRegionsProps['regions'] = [];
+): RegionsAndNodesFormType => {
+  const regions: RegionsAndNodesFormType['regions'] = [];
 
   universeData.spec?.clusters.forEach((cluster) => {
-    cluster.provider_spec.region_list?.forEach((region) => {
-      const regionData = providerRegions.find((r) => r.uuid === region);
+    cluster.placement_spec?.cloud_list[0].region_list?.forEach((region) => {
+      const regionData = providerRegions.find((r) => r.uuid === region.uuid);
+      if (!regionData) return;
+      const azs = region?.az_list;
+
       if (regionData) {
         regions.push({
-          ...regionData
-        });
+          ...regionData,
+          clusterType: cluster.cluster_type,
+          zones: azs?.map((zone, index) => {
+            const azData = regionData.zones.find((az) => az.uuid === zone.uuid);
+            return {
+              ...zone,
+              ...azData
+            };
+          })
+        } as any);
       }
     });
   });
 
   return { regions };
+};
+
+export const extractGeoPartitionsFromUniverse = (
+  universeData: UniverseRespResponse,
+  providerRegions: Region[]
+): RegionsAndNodesFormType => {
+  const geoPartitions: RegionsAndNodesFormType['regions'] = [];
+
+  const partitions = universeData.spec?.clusters
+    .map((cluster) => cluster.partitions_spec ?? [])
+    .flat();
+
+  partitions?.forEach((partition) => {
+    partition.placement.cloud_list.forEach((cloud) => {
+      cloud.region_list?.forEach((region) => {
+        const regionData = providerRegions.find((r) => r.uuid === region.uuid);
+        if (regionData) {
+          geoPartitions.push({
+            ...regionData,
+            paritition_name: partition.name,
+            clusterType: ClusterSpecClusterType.PRIMARY,
+            partitionUUID: partition.uuid,
+            zones:
+              region.az_list?.map((zone) => {
+                const azData = regionData.zones.find((az) => az.uuid === zone.uuid);
+                return {
+                  ...zone,
+                  ...azData
+                };
+              }) ?? []
+          } as any);
+        }
+      });
+    });
+  });
+  return { regions: geoPartitions };
 };
 
 export const prepareAddGeoPartitionPayload = (
@@ -120,6 +174,7 @@ export const prepareAddGeoPartitionPayload = (
   const { geoPartitions, universeData, isNewGeoPartition } = addGeoPartitionContext;
 
   const providerUUID = universeData?.spec?.clusters[0].provider_spec.provider;
+
   if (!providerUUID) {
     throw new Error('Provider UUID is missing in universe data');
   }
@@ -161,7 +216,10 @@ export const prepareAddGeoPartitionPayload = (
       return {
         name: gp.name,
         default_partition: isNewGeoPartition && index === 0,
-        replication_factor: gp.resilience.replicationFactor,
+        replication_factor:
+          isNewGeoPartition && index === 0
+            ? universeData!.spec!.clusters[0].replication_factor!
+            : gp.resilience.replicationFactor,
         // if the universe doesn't have a default geo_parition then send the regions list in the new default geo partition
         ...(isNewGeoPartition && index === 0
           ? { placement: primaryCluster!.placement_spec! }
@@ -170,6 +228,7 @@ export const prepareAddGeoPartitionPayload = (
                 cloud_list: [
                   {
                     uuid: providerUUID,
+                    code: primaryCluster!.placement_spec!.cloud_list[0].code!,
                     region_list: regionList
                   }
                 ]

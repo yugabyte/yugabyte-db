@@ -1585,7 +1585,6 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 
 				od_stat_parse(&route->stats);
 				rc = machine_iov_add(relay->iov, msg_new);
-				retstatus = OD_SKIP;
 				if (rc == -1) {
 					od_error(&instance->logger,
 						 "rewrite parse", NULL, server,

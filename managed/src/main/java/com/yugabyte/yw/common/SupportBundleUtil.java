@@ -23,6 +23,7 @@ import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.UniverseResp;
+import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
@@ -36,7 +37,9 @@ import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterNamespaceConfig;
 import com.yugabyte.yw.models.XClusterTableConfig;
+import com.yugabyte.yw.models.YugawareProperty;
 import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.ebean.PagedList;
@@ -737,6 +740,16 @@ public class SupportBundleUtil {
     saveMetadata(customer, destDir, jsonData, "customer.json");
   }
 
+  public void getYugawarePropertyMetadata(Customer customer, String destDir) {
+    // Gather metadata.
+    List<YugawareProperty> yugawareProperties = YugawareProperty.getAll();
+    JsonNode jsonData =
+        RedactingService.filterSecretFields(Json.toJson(yugawareProperties), RedactionTarget.LOGS);
+
+    // Save the above collected metadata.
+    saveMetadata(customer, destDir, jsonData, "yugaware_property.json");
+  }
+
   public void getUniversesMetadata(Customer customer, String destDir) {
     // Gather metadata.
     List<UniverseResp> universes =
@@ -909,6 +922,17 @@ public class SupportBundleUtil {
     return ybSoftwareVersion;
   }
 
+  public void getAlertMetadata(Customer customer, String destDir) {
+    // Gather metadata - filter alerts by customer UUID.
+    AlertFilter filter = AlertFilter.builder().customerUuid(customer.getUuid()).build();
+    List<Alert> alerts = Alert.createQueryByFilter(filter).findList();
+    JsonNode jsonData =
+        RedactingService.filterSecretFields(Json.toJson(alerts), RedactionTarget.LOGS);
+
+    // Save the above collected metadata.
+    saveMetadata(customer, destDir, jsonData, "alert.json");
+  }
+
   public void gatherAndSaveAllMetadata(
       Customer customer, Universe universe, String destDir, Date startDate, Date endDate) {
     ignoreExceptions(() -> getCustomerMetadata(customer, destDir));
@@ -921,6 +945,8 @@ public class SupportBundleUtil {
     ignoreExceptions(() -> getHaMetadata(customer, destDir));
     ignoreExceptions(() -> getXclusterMetadata(customer, destDir));
     ignoreExceptions(() -> getAuditLogs(customer, universe, destDir, startDate, endDate));
+    ignoreExceptions(() -> getYugawarePropertyMetadata(customer, destDir));
+    ignoreExceptions(() -> getAlertMetadata(customer, destDir));
   }
 
   /**

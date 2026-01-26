@@ -501,7 +501,7 @@ class PackedRowData {
   EncodedDocHybridTime encoded_doc_ht_;
   char last_internal_component_[rocksdb::kLastInternalComponentSize];
 
-  // All old_ fields are releated to original row packing.
+  // All old_ fields are related to original row packing.
   // I.e. row state that had place before the compaction.
   ValueBuffer old_value_;
   ValueBuffer control_fields_buffer_;
@@ -537,16 +537,110 @@ class PackedRowData {
   UsedSchemaVersionsMap::iterator used_schema_versions_it_ = used_schema_versions_.end();
 };
 
+class VectorMetadataFilter {
+ public:
+  virtual ~VectorMetadataFilter() = default;
+  virtual rocksdb::FilterDecision Filter(Slice key, Slice value) {
+    // Dummy filter by default.
+    return rocksdb::FilterDecision::kKeep;
+  }
+};
+
+using VectorMetadataFilterPtr = std::unique_ptr<VectorMetadataFilter>;
+
+class VectorMetadataFilterImpl : public VectorMetadataFilter {
+ public:
+  VectorMetadataFilterImpl(
+      const KeyBounds& key_bounds,
+      const DocVectorMetadataIteratorProvider& vector_metadata_iterator_provider)
+      : key_bounds_(key_bounds), provider_(vector_metadata_iterator_provider) {
+    VLOG(1) << "VectorMetadataFilter: key_bounds: " << key_bounds.ToString();
+  }
+
+  rocksdb::FilterDecision Filter(Slice key, Slice value) override {
+    DCHECK(key.starts_with(dockv::KeyEntryTypeAsChar::kVectorIndexMetadata));
+    auto decision = DoFilter(key, value);
+    VLOG_WITH_FUNC(4)
+        << "key: " << key.ToDebugHexString() << ", "
+        << "value: " << value.ToDebugHexString() << ", "
+        << "decision: " << decision;
+    return decision;
+  }
+
+ private:
+  rocksdb::FilterDecision DoFilterYbctid(Slice ybctid) {
+    return IsWithinBounds(&key_bounds_, ybctid)
+        ? rocksdb::FilterDecision::kKeep : rocksdb::FilterDecision::kDiscard;
+  }
+
+  rocksdb::FilterDecision DoFilter(Slice key, Slice value) {
+    DCHECK(key.starts_with(dockv::KeyEntryTypeAsChar::kVectorIndexMetadata));
+    if (!value.starts_with(dockv::ValueEntryTypeAsChar::kTombstone)) {
+      return DoFilterYbctid(value);
+    }
+
+    // Special handling for the tombstoned entries: need to find entry's corresponding ybctid.
+    EnsureIteratorCreated();
+
+    // Seek for the next record.
+    dockv::KeyBytes next_key { key, dockv::KeyEntryTypeAsChar::kMaxByte };
+    iterator()->Seek(next_key.AsSlice(), SeekFilter::kAll);
+    const FetchedEntry& entry = CHECK_RESULT(iterator()->Fetch());
+
+    // Make sure extracted entry matches the specified key.
+    if (!entry.key.starts_with(key.Prefix(dockv::kEncodedDocVectorKeyStaticSize))) {
+      LOG_WITH_FUNC(DFATAL)
+          << "Unable to locate vector index reverse mapping"
+          << ", expected: " << key.Prefix(dockv::kEncodedDocVectorKeyStaticSize).ToDebugHexString()
+          << ", located: " << entry.key.ToDebugHexString();
+      return rocksdb::FilterDecision::kKeep;
+    }
+
+    return DoFilterYbctid(entry.value);
+  }
+
+  // Iterator lazy instantiation.
+  void EnsureIteratorCreated() {
+    if (iterator()) {
+      return;
+    }
+    iterator_holder_ = CHECK_RESULT(provider_.CreateVectorMetadataIterator(ReadHybridTime::Max()));
+    CHECK_NOTNULL(iterator());
+  }
+
+  inline IntentAwareIterator* iterator() {
+    return std::get<docdb::IntentAwareIteratorPtr>(iterator_holder_).get();
+  }
+
+  const KeyBounds& key_bounds_;
+  const DocVectorMetadataIteratorProvider& provider_;
+  IntentAwareIteratorWithBounds iterator_holder_;
+};
+
+static VectorMetadataFilterPtr CreateVectorMetadataFilter(
+    rocksdb::CompactionReason compaction_reason, const KeyBounds* key_bounds,
+    DocVectorMetadataIteratorProvider* vector_metadata_iterator_provider) {
+  VLOG_WITH_FUNC(1) << "compaction_reason: " << compaction_reason;
+  if (compaction_reason == rocksdb::CompactionReason::kPostSplitCompaction &&
+      vector_metadata_iterator_provider && key_bounds && key_bounds->IsInitialized()) {
+    return std::make_unique<VectorMetadataFilterImpl>(
+      *key_bounds, *vector_metadata_iterator_provider);
+  }
+  return std::make_unique<VectorMetadataFilter>();
+}
+
 class DocDBCompactionFeed : public rocksdb::CompactionFeed, public PackedRowFeed {
  public:
   DocDBCompactionFeed(
+      rocksdb::CompactionReason compaction_reason,
       rocksdb::CompactionFeed* next_feed,
       const HistoryRetentionDirective& retention,
       HybridTime min_input_hybrid_time,
       HybridTime min_other_data_ht,
       rocksdb::BoundaryValuesExtractor* boundary_extractor,
       const KeyBounds* key_bounds,
-      SchemaPackingProvider* schema_packing_provider)
+      SchemaPackingProvider* schema_packing_provider,
+      DocVectorMetadataIteratorProvider* vector_metadata_iterator_provider)
       : next_feed_(*next_feed),
         retention_directive_(retention),
         // Use max write id, to be sure that entries with hybrid time equals to history cutoff
@@ -562,8 +656,9 @@ class DocDBCompactionFeed : public rocksdb::CompactionFeed, public PackedRowFeed
         could_change_key_range_(
             !CanHaveOtherDataBefore(EncodedDocHybridTime(min_input_hybrid_time, kMinWriteId))),
         boundary_extractor_(boundary_extractor),
-        packed_row_(this, schema_packing_provider,
-                    retention_directive_.history_cutoff) {
+        packed_row_(this, schema_packing_provider, retention_directive_.history_cutoff),
+        vector_metadata_filter_(CreateVectorMetadataFilter(
+            compaction_reason, key_bounds_, vector_metadata_iterator_provider)) {
   }
 
   Status Feed(const Slice& internal_key, const Slice& value) override;
@@ -765,6 +860,8 @@ class DocDBCompactionFeed : public rocksdb::CompactionFeed, public PackedRowFeed
 
   PendingEntry* first_pending_row_ = nullptr;
   PendingEntry** last_pending_row_next_ = &first_pending_row_;
+
+  VectorMetadataFilterPtr vector_metadata_filter_;
 };
 
 // ------------------------------------------------------------------------------------------------
@@ -838,8 +935,6 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
     return Status::OK();
   }
 
-  // TODO(vector_index): filter out vector index reverse mapping record if its ybctid is out of
-  // key_bounds, should be covered by https://github.com/yugabyte/yugabyte-db/issues/24076.
   if (is_sub_doc_key && !IsWithinBounds(key_bounds_, key)) {
     // If we reach this point, then we're processing a record which should have been excluded by
     // proper use of GetLiveRanges(). We include this as a sanity check, but we should never get
@@ -847,6 +942,12 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
     LOG(DFATAL) << "Unexpectedly filtered out-of-bounds key during compaction: "
         << dockv::SubDocKey::DebugSliceToString(key)
         << " with bounds: " << key_bounds_->ToString();
+    return Status::OK();
+  }
+
+  // Filtering vector index reverse maping records whose ybctid is out of key_bounds.
+  if (key_type == dockv::KeyEntryType::kVectorIndexMetadata &&
+      vector_metadata_filter_->Filter(key, value) == rocksdb::FilterDecision::kDiscard) {
     return Status::OK();
   }
 
@@ -1194,13 +1295,15 @@ void DocDBCompactionFeed::AssignPrevKey(const char* data, size_t same_bytes) {
 class DocDBCompactionContext : public rocksdb::CompactionContext {
  public:
   DocDBCompactionContext(
+      rocksdb::CompactionReason compaction_reason,
       rocksdb::CompactionFeed* next_feed,
       HistoryRetentionDirective retention,
       HybridTime min_input_hybrid_time,
       HybridTime min_other_data_ht,
       rocksdb::BoundaryValuesExtractor* boundary_extractor,
       const KeyBounds* key_bounds,
-      SchemaPackingProvider* schema_packing_provider);
+      SchemaPackingProvider* schema_packing_provider,
+      DocVectorMetadataIteratorProvider* vector_metadata_iterator_provider);
 
   ~DocDBCompactionContext() = default;
 
@@ -1237,18 +1340,21 @@ class DocDBCompactionContext : public rocksdb::CompactionContext {
 };
 
 DocDBCompactionContext::DocDBCompactionContext(
+    rocksdb::CompactionReason compaction_reason,
     rocksdb::CompactionFeed* next_feed,
     HistoryRetentionDirective retention,
     HybridTime min_input_hybrid_time,
     HybridTime min_other_data_ht,
     rocksdb::BoundaryValuesExtractor* boundary_extractor,
     const KeyBounds* key_bounds,
-    SchemaPackingProvider* schema_packing_provider)
+    SchemaPackingProvider* schema_packing_provider,
+    DocVectorMetadataIteratorProvider* vector_metadata_iterator_provider)
     : history_cutoff_(retention.history_cutoff),
       key_bounds_(key_bounds),
       feed_(std::make_unique<DocDBCompactionFeed>(
-          next_feed, std::move(retention), min_input_hybrid_time, min_other_data_ht,
-          boundary_extractor, key_bounds, schema_packing_provider)) {
+          compaction_reason, next_feed, std::move(retention), min_input_hybrid_time,
+          min_other_data_ht, boundary_extractor, key_bounds, schema_packing_provider,
+          vector_metadata_iterator_provider)) {
 }
 
 rocksdb::UserFrontierPtr DocDBCompactionContext::GetLargestUserFrontier() const {
@@ -1343,20 +1449,24 @@ std::shared_ptr<rocksdb::CompactionContextFactory> CreateCompactionContextFactor
     std::shared_ptr<HistoryRetentionPolicy> retention_policy,
     const KeyBounds* key_bounds,
     const DeleteMarkerRetentionTimeProvider& delete_marker_retention_provider,
-    SchemaPackingProvider* schema_packing_provider) {
+    SchemaPackingProvider* schema_packing_provider,
+    DocVectorMetadataIteratorProvider* vector_metadata_iterator_provider) {
   return std::make_shared<rocksdb::CompactionContextFactory>(
-      [retention_policy, key_bounds, delete_marker_retention_provider, schema_packing_provider](
-      rocksdb::CompactionFeed* next_feed, const rocksdb::CompactionContextOptions& options) {
-    return std::make_unique<DocDBCompactionContext>(
-        next_feed,
-        retention_policy->GetRetentionDirective(),
-        MinHybridTime(options.level0_inputs),
-        delete_marker_retention_provider
-            ? delete_marker_retention_provider(options.level0_inputs)
-            : HybridTime::kMax,
-        options.boundary_extractor,
-        key_bounds,
-        schema_packing_provider);
+      [retention_policy, key_bounds, delete_marker_retention_provider,
+       schema_packing_provider, vector_metadata_iterator_provider](
+          rocksdb::CompactionFeed* next_feed, const rocksdb::CompactionContextOptions& options) {
+      return std::make_unique<DocDBCompactionContext>(
+          options.compaction_reason,
+          next_feed,
+          retention_policy->GetRetentionDirective(),
+          MinHybridTime(options.level0_inputs),
+          delete_marker_retention_provider
+              ? delete_marker_retention_provider(options.level0_inputs)
+              : HybridTime::kMax,
+          options.boundary_extractor,
+          key_bounds,
+          schema_packing_provider,
+          vector_metadata_iterator_provider);
   });
 }
 

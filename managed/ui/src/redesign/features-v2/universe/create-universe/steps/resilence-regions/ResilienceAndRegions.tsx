@@ -8,23 +8,35 @@
  */
 
 import { forwardRef, useContext, useEffect, useImperativeHandle } from 'react';
-import { styled } from '@material-ui/core';
-import { yupResolver } from '@hookform/resolvers/yup';
-import { FormProvider, useForm } from 'react-hook-form';
-import { AlertVariant, mui, YBAlert, YBButton, YBTooltip } from '@yugabyte-ui-library/core';
+import { useMount } from 'react-use';
 import { Trans, useTranslation } from 'react-i18next';
+import { FormProvider, useForm } from 'react-hook-form';
+import { yupResolver } from '@hookform/resolvers/yup';
+import {
+  AlertVariant,
+  mui,
+  YBAlert,
+  YBButtonGroup,
+  YBSmartStatus,
+  StatusType,
+  IconPosition
+} from '@yugabyte-ui-library/core';
+import { ResilienceTypeField } from '../../fields';
+import { StyledContent, StyledHeader, StyledPanel } from '../../components/DefaultComponents';
+import { GuidedMode, FreeFormMode, RegionSelection } from './index';
+import { ResilienceAndRegionsSchema } from './ValidationSchema';
+import {
+  computeFaultToleranceTypeFromProvider,
+  getFaultToleranceNeeded,
+  getFaultToleranceNeededForAZ
+} from '../../CreateUniverseUtils';
 import {
   CreateUniverseContext,
   CreateUniverseContextMethods,
+  initialCreateUniverseFormState,
   StepsRef
 } from '../../CreateUniverseContext';
 import { ResilienceAndRegionsProps, ResilienceFormMode, ResilienceType } from './dtos';
-import { StyledContent, StyledHeader, StyledPanel } from '../../components/DefaultComponents';
-import { ResilienceTypeField } from '../../fields/resilience-type/ResilienceType';
-
-import { GuidedMode } from './GuidedMode';
-import { FreeFormMode } from './FreeFormMode';
-import { RegionSelection } from './RegionSelection';
 import {
   FAULT_TOLERANCE_TYPE,
   REGIONS_FIELD,
@@ -33,13 +45,12 @@ import {
   RESILIENCE_TYPE
 } from '../../fields/FieldNames';
 
-import { ResilienceAndRegionsSchema } from './ValidationSchema';
-import { getFaultToleranceNeeded, getFaultToleranceNeededForAZ } from '../../CreateUniverseUtils';
-import { ReactComponent as DocTick } from '../../../../../assets/doc_tick.svg';
-import { ReactComponent as DocTickUnSelected } from '../../../../../assets/doc_tick_unselected.svg';
-import { ReactComponent as Flash } from '../../../../../assets/flash_transparent.svg';
+//icons
+import DocTick from '../../../../../assets/doc_tick.svg';
+import DocTickUnSelected from '../../../../../assets/doc_tick_unselected.svg';
+import Flash from '../../../../../assets/flash_transparent.svg';
 
-const { Grid2: Grid, ButtonGroup } = mui;
+const { Grid2: Grid, Collapse, styled, Box } = mui;
 
 const StyledHelpText = styled('div')(({ theme }) => ({
   padding: '16px 24px',
@@ -50,7 +61,7 @@ const StyledHelpText = styled('div')(({ theme }) => ({
   fontWeight: 400,
   borderRadius: '8px',
   border: `1px solid ${theme.palette.grey[200]}`,
-  marginTop: '24px',
+  alignItems: 'center',
   '& > a': {
     color: theme.palette.grey[700],
     textDecoration: 'underline',
@@ -58,153 +69,199 @@ const StyledHelpText = styled('div')(({ theme }) => ({
   }
 }));
 
-export const ResilienceAndRegions = forwardRef<StepsRef, { isGeoPartition?: boolean }>(
-  ({ isGeoPartition = false }, forwardRef) => {
-    const [
-      { resilienceAndRegionsSettings },
-      { moveToPreviousPage, saveResilienceAndRegionsSettings, moveToNextPage, setResilienceType }
-    ] = (useContext(CreateUniverseContext) as unknown) as CreateUniverseContextMethods;
+export const ResilienceAndRegions = forwardRef<
+  StepsRef,
+  { isGeoPartition?: boolean; hideHelpText?: boolean }
+>(({ isGeoPartition = false, hideHelpText = false }, forwardRef) => {
+  const [
+    { generalSettings, resilienceAndRegionsSettings },
+    {
+      moveToPreviousPage,
+      saveResilienceAndRegionsSettings,
+      saveNodesAvailabilitySettings,
+      moveToNextPage,
+      setResilienceType
+    }
+  ] = (useContext(CreateUniverseContext) as unknown) as CreateUniverseContextMethods;
 
-    const { t } = useTranslation('translation', {
-      keyPrefix: 'createUniverseV2.resilienceAndRegions'
-    });
+  const { t } = useTranslation('translation', {
+    keyPrefix: 'createUniverseV2.resilienceAndRegions'
+  });
 
-    const methods = useForm<ResilienceAndRegionsProps>({
-      defaultValues: resilienceAndRegionsSettings,
-      resolver: yupResolver(ResilienceAndRegionsSchema(t))
-    });
+  const methods = useForm<ResilienceAndRegionsProps>({
+    defaultValues: resilienceAndRegionsSettings,
+    resolver: yupResolver(ResilienceAndRegionsSchema(t)),
+    mode: 'onSubmit'
+  });
 
-    const { watch, trigger } = methods;
+  const { watch } = methods;
 
-    const formMode = watch(RESILIENCE_FORM_MODE);
-    const regions = watch(REGIONS_FIELD);
-    const replicationFactor = watch(REPLICATION_FACTOR);
-    const faultToleranceType = watch(FAULT_TOLERANCE_TYPE);
-    const faultToleranceForRegion = getFaultToleranceNeeded(replicationFactor);
-    const faultToleranceforAz = getFaultToleranceNeededForAZ(replicationFactor);
-    const resilienceType = watch(RESILIENCE_TYPE);
+  const formMode = watch(RESILIENCE_FORM_MODE);
+  const regions = watch(REGIONS_FIELD);
+  const replicationFactor = watch(REPLICATION_FACTOR);
+  const faultToleranceForRegion = getFaultToleranceNeeded(replicationFactor);
+  const faultToleranceforAz = getFaultToleranceNeededForAZ(replicationFactor);
+  const resilienceType = watch(RESILIENCE_TYPE);
 
-    const availabilityZoneCount = regions.reduce((acc, region) => {
-      return acc + region.zones?.length;
-    }, 0);
+  const availabilityZoneCount = regions.reduce((acc, region) => {
+    return acc + region.zones?.length;
+  }, 0);
 
-    const { errors } = methods.formState;
+  const { errors, isSubmitted } = methods.formState;
 
-    useEffect(() => {
-      trigger(FAULT_TOLERANCE_TYPE);
-    }, [regions, replicationFactor, faultToleranceType, formMode, resilienceType]);
+  useEffect(() => {
+    setResilienceType(resilienceType);
 
-    useEffect(() => {
-      setResilienceType(resilienceType);
-    }, [resilienceType]);
+    //reset nodes availability settings when resilience type changes
+    saveNodesAvailabilitySettings(initialCreateUniverseFormState.nodesAvailabilitySettings!);
+  }, [resilienceType]);
 
-    useImperativeHandle(
-      forwardRef,
-      () => ({
-        onNext: () => {
-          return methods.handleSubmit((data) => {
-            saveResilienceAndRegionsSettings(data);
-            moveToNextPage();
-          })();
-        },
-        onPrev: () => {
-          moveToPreviousPage();
-        }
-      }),
-      []
-    );
+  useImperativeHandle(
+    forwardRef,
+    () => ({
+      onNext: () => {
+        return methods.handleSubmit((data) => {
+          saveResilienceAndRegionsSettings(data);
+          moveToNextPage();
+        })();
+      },
+      onPrev: () => {
+        moveToPreviousPage();
+      }
+    }),
+    []
+  );
 
-    return (
-      <FormProvider {...methods}>
-        {!isGeoPartition && (
-          <ResilienceTypeField<ResilienceAndRegionsProps> name="resilienceType" />
-        )}
-        <div style={{ marginBottom: '16px' }} />
-        {resilienceType === ResilienceType.REGULAR && (
-          <StyledPanel>
-            <StyledHeader>
-              <Grid alignContent={'center'} justifyContent={'space-between'} container>
-                {t('title')}
-                <ButtonGroup>
-                  <YBTooltip title={t('infoTooltips.guidedMode')}>
-                    <div>
-                      <YBButton
-                        className={formMode === ResilienceFormMode.GUIDED ? 'yb-active' : ''}
-                        startIcon={
-                          formMode === ResilienceFormMode.FREE_FORM ? (
-                            <DocTickUnSelected />
-                          ) : (
-                            <DocTick />
-                          )
-                        }
-                        onClick={() => {
-                          methods.setValue(RESILIENCE_FORM_MODE, ResilienceFormMode.GUIDED);
-                        }}
-                        dataTestId="guided-mode-button"
-                      >
-                        {t('formType.guidedMode')}
-                      </YBButton>
-                    </div>
-                  </YBTooltip>
-                  <YBTooltip
-                    title={
+  useMount(() => {
+    if (regions.length !== 0) return;
+
+    if (!isGeoPartition && generalSettings?.providerConfiguration) {
+      const computedFaultToleranceType = computeFaultToleranceTypeFromProvider(
+        generalSettings.providerConfiguration
+      );
+      methods.setValue(FAULT_TOLERANCE_TYPE, computedFaultToleranceType[FAULT_TOLERANCE_TYPE]);
+      methods.setValue(REPLICATION_FACTOR, computedFaultToleranceType[REPLICATION_FACTOR]);
+    }
+  });
+
+  useEffect(() => {
+    // if the user switches to guided mode and has set a high replication factor, reduce it to 3 which guided mode supports
+    if (formMode === ResilienceFormMode.GUIDED && replicationFactor > 3) {
+      methods.setValue(REPLICATION_FACTOR, 3);
+    }
+
+    // in free form mode, replication factor should always be odd
+    if (formMode === ResilienceFormMode.FREE_FORM && replicationFactor % 2 === 0) {
+      methods.setValue(REPLICATION_FACTOR, replicationFactor + 1);
+    }
+  }, [formMode]);
+
+  return (
+    <FormProvider {...methods}>
+      {!isGeoPartition && <ResilienceTypeField<ResilienceAndRegionsProps> name="resilienceType" />}
+      {resilienceType === ResilienceType.SINGLE_NODE && (
+        <Collapse in={resilienceType === ResilienceType.SINGLE_NODE}>
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: 'row',
+              gap: '8px',
+              alignItems: 'center',
+              color: '#4E5F6D',
+              marginTop: '-8px'
+            }}
+          >
+            <YBSmartStatus
+              type={StatusType.WARNING}
+              label={t('singleNode.caution')}
+              iconPosition={IconPosition.NONE}
+            />
+            {t('singleNode.cautionMsg')}
+          </Box>
+        </Collapse>
+      )}
+      {resilienceType === ResilienceType.REGULAR && (
+        <StyledPanel>
+          <StyledHeader>
+            <Grid alignItems={'center'} justifyContent={'space-between'} container width="100%">
+              {t('title')}
+              {/* TODO: Missing Tooltip, needs to be added as a prop in CCL */}
+              <YBButtonGroup
+                size="large"
+                dataTestId="yb-button-group-multiselect-normal"
+                value={formMode}
+                buttons={[
+                  {
+                    value: ResilienceFormMode.GUIDED,
+                    label: t('formType.guidedMode'),
+                    icon:
+                      formMode === ResilienceFormMode.FREE_FORM ? (
+                        <DocTickUnSelected />
+                      ) : (
+                        <DocTick />
+                      ),
+                    onClick: () => {
+                      methods.setValue(RESILIENCE_FORM_MODE, ResilienceFormMode.GUIDED);
+                    },
+                    buttonProps: {
+                      dataTestId: 'guided-mode-button'
+                    },
+                    tooltip: t('infoTooltips.guidedMode')
+                  },
+                  {
+                    value: ResilienceFormMode.FREE_FORM,
+                    label: t('formType.freeForm'),
+                    onClick: () => {
+                      methods.setValue(RESILIENCE_FORM_MODE, ResilienceFormMode.FREE_FORM);
+                    },
+                    buttonProps: {
+                      dataTestId: 'free-form-mode-button'
+                    },
+                    tooltip: (
                       <Trans t={t} i18nKey="infoTooltips.freeForm" components={{ b: <b /> }} />
-                    }
-                  >
-                    <div>
-                      <YBButton
-                        className={formMode === ResilienceFormMode.FREE_FORM ? 'yb-active' : ''}
-                        onClick={() => {
-                          methods.setValue(RESILIENCE_FORM_MODE, ResilienceFormMode.FREE_FORM);
-                        }}
-                        dataTestId="free-form-mode-button"
-                      >
-                        {t('formType.freeForm')}
-                      </YBButton>
-                    </div>
-                  </YBTooltip>
-                </ButtonGroup>
-              </Grid>
-            </StyledHeader>
-            <StyledContent style={{ display: 'flex', gap: '24px', flexDirection: 'column' }}>
-              {formMode === ResilienceFormMode.GUIDED ? <GuidedMode /> : <FreeFormMode />}
-            </StyledContent>
-          </StyledPanel>
-        )}
-
-        <div style={{ marginTop: '24px' }}>
-          <RegionSelection />
-        </div>
+                    )
+                  }
+                ]}
+              />
+            </Grid>
+          </StyledHeader>
+          <StyledContent style={{ display: 'flex', gap: '24px', flexDirection: 'column' }}>
+            {formMode === ResilienceFormMode.GUIDED ? <GuidedMode /> : <FreeFormMode />}
+          </StyledContent>
+        </StyledPanel>
+      )}
+      <RegionSelection />
+      {!hideHelpText && (
         <StyledHelpText>
           <Flash />
           <Trans t={t} i18nKey="helpText" components={{ a: <a /> }} />
         </StyledHelpText>
-        {errors?.faultToleranceType?.message && (
-          <div style={{ marginTop: '16px' }}>
-            <YBAlert
-              open
-              variant={AlertVariant.Error}
-              text={
-                <Trans
-                  t={t}
-                  i18nKey={errors?.faultToleranceType?.message}
-                  components={{ b: <b /> }}
-                  values={{
-                    selected_regions: regions.length,
-                    required_regions: faultToleranceForRegion,
-                    availability_zone: availabilityZoneCount,
-                    required_zones: faultToleranceforAz
-                  }}
-                >
-                  {errors.faultToleranceType.message}
-                </Trans>
-              }
-            />
-          </div>
-        )}
-      </FormProvider>
-    );
-  }
-);
+      )}
+      {errors?.faultToleranceType?.message && isSubmitted && (
+        <div>
+          <YBAlert
+            open
+            variant={AlertVariant.Error}
+            text={
+              <Trans
+                t={t}
+                i18nKey={errors?.faultToleranceType?.message}
+                components={{ b: <b /> }}
+                values={{
+                  selected_regions: regions.length,
+                  required_regions: faultToleranceForRegion,
+                  availability_zone: availabilityZoneCount,
+                  required_zones: faultToleranceforAz
+                }}
+              >
+                {errors.faultToleranceType.message}
+              </Trans>
+            }
+          />
+        </div>
+      )}
+    </FormProvider>
+  );
+});
 
 ResilienceAndRegions.displayName = 'ResilienceAndRegions';

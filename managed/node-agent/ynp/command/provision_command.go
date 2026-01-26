@@ -610,7 +610,8 @@ func (pc *ProvisionCommand) saveYnpVersion() error {
 		return err
 	}
 	if details, err := util.UserInfo(ybUser); err == nil {
-		if details.UserID == 0 {
+		if details.CurrentUserID == 0 && !details.IsCurrent {
+			// Change ownership only if running as root and yb_user is different from current user.
 			if err := os.Chown(ynpVersionFile, int(details.UserID), int(details.GroupID)); err != nil {
 				util.FileLogger().
 					Errorf(pc.ctx, "Cannot change ownership of version file: %v", err)

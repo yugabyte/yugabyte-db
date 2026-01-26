@@ -3,9 +3,7 @@ package com.yugabyte.yw.models.helpers.telemetry;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
-import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Map;
@@ -79,8 +77,7 @@ public class OTLPConfig extends TelemetryProviderConfig {
   }
 
   @Override
-  public void validate(ApiHelper apiHelper, RuntimeConfGetter confGetter) {
-
+  public void validateConfigFields() {
     if (endpoint == null || endpoint.isEmpty()) {
       throw new PlatformServiceException(BAD_REQUEST, "Endpoint is required.");
     }
@@ -103,12 +100,5 @@ public class OTLPConfig extends TelemetryProviderConfig {
             BAD_REQUEST, "logsEndpoint is allowed only for HTTP protocol.");
       }
     }
-
-    log.info("Successfully validated OTLP config.");
-  }
-
-  @Override
-  public void validate(ApiHelper apiHelper) {
-    validate(apiHelper, null);
   }
 }

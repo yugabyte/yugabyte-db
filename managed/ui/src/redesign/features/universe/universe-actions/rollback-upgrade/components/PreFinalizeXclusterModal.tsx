@@ -17,7 +17,7 @@ import { createErrorMessage, transitToUniverse } from '../../../universe-form/ut
 import { TOAST_AUTO_DISMISS_INTERVAL } from '../../../universe-form/utils/constants';
 import { preFinalizeStateStyles } from '../utils/RollbackUpgradeStyles';
 //icons
-import { ReactComponent as WarningBell } from '../../../../../assets/warning-bell.svg';
+import WarningBell from '../../../../../assets/warning-bell.svg';
 
 interface PreFinalizeModalProps {
   open: boolean;

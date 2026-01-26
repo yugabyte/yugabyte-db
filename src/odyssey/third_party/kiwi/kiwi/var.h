@@ -533,34 +533,36 @@ static bool yb_is_avoid_enquoting_guc_var(char *name)
 }
 
 /*
+ * YB: Return true if vars1 is a superset of vars2
+ */
+static inline int yb_check_is_superset(kiwi_vars_t *vars1, kiwi_vars_t *vars2,
+				       bool lowercase_name)
+{
+	kiwi_var_t *var2;
+	for (int i = 0; i < vars2->size; i++) {
+		var2 = &vars2->vars[i];
+		kiwi_var_t *var1;
+		var1 = yb_kiwi_vars_get(vars1, var2->name, lowercase_name);
+		if (!kiwi_var_compare(var1, var2))
+			return 0;
+	}
+	return 1;
+}
+
+/*
  * YB: Compare server state to client state to check for the need of the
  * reset phase. If no difference found, return 0 to signify no need of reset.
  */
 static inline int yb_check_reset_needed(kiwi_vars_t *client_startup_vars,
 					kiwi_vars_t *client_session_vars,
-					kiwi_vars_t *server,
+					kiwi_vars_t *server_default_vars,
+					kiwi_vars_t *server_session_vars,
 					bool lowercase_name)
 {
-	int pos = 0;
-	kiwi_var_t *server_var;
-	for (int i = 0; i < server->size; i++) {
-		server_var = &server->vars[i];
-		kiwi_var_t *client_var;
-		/* 
-		 * We first check session vars and then startup vars to determine the
-		 * state of the client. This is because session vars override startup vars
-		 */
-		client_var = yb_kiwi_vars_get(client_session_vars,
-					      server_var->name, lowercase_name);
-		if (client_var == NULL) {
-			client_var = yb_kiwi_vars_get(client_startup_vars,
-						      server_var->name,
-						      lowercase_name);
-		}
-		if (!kiwi_var_compare(client_var, server_var))
-			return 1;
-	}
-	return 0;
+	return !(yb_check_is_superset(client_startup_vars, server_default_vars,
+				      lowercase_name) &&
+		 yb_check_is_superset(client_session_vars, server_session_vars,
+				      lowercase_name));
 }
 
 static inline bool yb_only_white_space(char *value)
@@ -629,24 +631,23 @@ yb_kiwi_add_var_to_query(kiwi_var_t *var, char *query, int pos, int query_len)
 }
 
 __attribute__((hot)) static inline int
-kiwi_vars_cas(kiwi_vars_t *client_startup_vars,
-	      kiwi_vars_t *client_session_vars, kiwi_vars_t *server,
-	      char *query, int query_len, bool lowercase_name)
+kiwi_vars_cas(kiwi_vars_t *client_session_vars,
+	      kiwi_vars_t *server_session_vars, char *query, int query_len,
+	      bool lowercase_name)
 {
-	/* YB: In case of old GUC handling, client_startup_vars will be an empty list */
 	int pos = 0;
 #ifdef YB_GUC_SUPPORT_VIA_SHMEM
 	kiwi_var_type_t type;
 	type = KIWI_VAR_CLIENT_ENCODING;
 	for (; type < KIWI_VAR_MAX; type++) {
 		kiwi_var_t *var;
-		var = kiwi_vars_of(client, type);
+		var = kiwi_vars_of(client_session_vars, type);
 		/* we do not support odyssey-to-backend compression yet */
 		if (var->type == KIWI_VAR_UNDEF ||
 		    var->type == KIWI_VAR_COMPRESSION)
 			continue;
 		kiwi_var_t *server_var;
-		server_var = kiwi_vars_of(server, type);
+		server_var = kiwi_vars_of(server_session_vars, type);
 #else
 	kiwi_var_t *var;
 	for (int i = 0; i < client_session_vars->size; i++) {
@@ -657,8 +658,8 @@ kiwi_vars_cas(kiwi_vars_t *client_startup_vars,
 			continue;
 
 		kiwi_var_t *server_var;
-		server_var =
-			yb_kiwi_vars_get(server, var->name, lowercase_name);
+		server_var = yb_kiwi_vars_get(server_session_vars, var->name,
+					      lowercase_name);
 #endif
 		if (kiwi_var_compare(var, server_var))
 			continue;
@@ -667,34 +668,6 @@ kiwi_vars_cas(kiwi_vars_t *client_startup_vars,
 		if (pos == -1)
 			return -1;
 	}
-
-#ifndef YB_GUC_SUPPORT_VIA_SHMEM
-	for (int i = 0; i < client_startup_vars->size; i++) {
-		var = &client_startup_vars->vars[i];
-
-		/* we do not support odyssey-to-backend compression yet */
-		if (strcmp(var->name, "compression") == 0)
-			continue;
-
-		/* If variable is overriden in the user session, skip it */
-		kiwi_var_t *session_var;
-		session_var = yb_kiwi_vars_get(client_session_vars, var->name,
-					       lowercase_name);
-		if (session_var)
-			continue;
-
-		kiwi_var_t *server_var;
-		server_var =
-			yb_kiwi_vars_get(server, var->name, lowercase_name);
-
-		if (kiwi_var_compare(var, server_var))
-			continue;
-
-		pos = yb_kiwi_add_var_to_query(var, query, pos, query_len);
-		if (pos == -1)
-			return -1;
-	}
-#endif
 
 	return pos;
 }

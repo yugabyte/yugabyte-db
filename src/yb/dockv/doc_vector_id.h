@@ -24,6 +24,14 @@
 
 namespace yb::dockv {
 
+// |----------------------------------------------------|
+// | kVectorIndexMetadata | kVectorId |    vector id    |
+// |----------------------------------------------------|
+// |        1 byte        |  1 byte   | kUuidSize bytes |
+// |----------------------------------------------------|
+// See DecodeDocVectorKey() for the details.
+constexpr size_t kEncodedDocVectorKeyStaticSize = 2 + kUuidSize;
+
 struct EncodedDocVectorValue final {
   Slice data;
   Slice id;

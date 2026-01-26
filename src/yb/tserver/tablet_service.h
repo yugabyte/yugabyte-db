@@ -236,6 +236,11 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
       const ClearMetacacheRequestPB* req, ClearMetacacheResponsePB* resp,
       rpc::RpcContext context) override;
 
+  void ClearYCQLMetaDataCacheOnServer(
+      const ClearYCQLMetaDataCacheOnServerRequestPB* req,
+      ClearYCQLMetaDataCacheOnServerResponsePB* resp,
+      rpc::RpcContext context) override;
+
   void AcquireObjectLocks(
       const AcquireObjectLockRequestPB* req, AcquireObjectLockResponsePB* resp,
       rpc::RpcContext context) override;
@@ -257,6 +262,9 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
 
   Result<VerifyVectorIndexesResponsePB> VerifyVectorIndexes(
       const VerifyVectorIndexesRequestPB& req, CoarseTimePoint deadline) override;
+
+  Result<DumpTabletDataResponsePB> DumpTabletData(
+      const DumpTabletDataRequestPB& req, CoarseTimePoint deadline) override;
 
   void Shutdown() override;
 

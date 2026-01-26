@@ -43,7 +43,6 @@
 #include <vector>
 
 #include <gtest/gtest_prod.h>
-#include <rapidjson/document.h>
 
 #include "yb/common/entity_ids_types.h"
 
@@ -68,7 +67,6 @@
 
 #include "yb/util/curl_util.h"
 #include "yb/util/env.h"
-#include "yb/util/jsonreader.h"
 #include "yb/util/metrics.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/monotime.h"
@@ -79,7 +77,6 @@
 
 namespace yb {
 
-using rapidjson::Value;
 using strings::Substitute;
 
 class ExternalDaemon;

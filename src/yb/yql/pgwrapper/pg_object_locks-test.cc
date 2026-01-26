@@ -59,6 +59,7 @@ DECLARE_int64(olm_poll_interval_ms);
 DECLARE_string(vmodule);
 DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_int32(pg_client_extra_timeout_ms);
+DECLARE_bool(TEST_olm_serve_redundant_lock);
 
 using namespace std::literals;
 
@@ -495,7 +496,8 @@ class PgObjectLocksTest : public LibPqTestBase {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
     LibPqTestBase::UpdateMiniClusterOptions(opts);
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vmodule) = yb::Format("libpq_utils=1,$0", FLAGS_vmodule);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vmodule) =
+        yb::Format("libpq_utils=1,ts_local_lock_manager=2,$0", FLAGS_vmodule);
     opts->extra_tserver_flags.emplace_back(
         yb::Format("--enable_object_locking_for_table_locks=$0", EnableTableLocks()));
     opts->extra_tserver_flags.emplace_back(
@@ -968,6 +970,32 @@ TEST_F(PgObjectLocksTest, VerifyLockTimeout) {
   ASSERT_OK(conn1.CommitTransaction());
 }
 
+TEST_F(PgObjectLocksTest, BootstrapLocksHasStatusTabetIdForTxns) {
+  const auto ts1_idx = 1;
+  const auto ts2_idx = 2;
+  auto* ts1 = cluster_->tablet_server(ts1_idx);
+  auto* ts2 = cluster_->tablet_server(ts2_idx);
+
+  auto conn1 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_OK(conn1.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn1.Execute("INSERT INTO test SELECT generate_series(1,11), 0"));
+
+  ASSERT_OK(conn1.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn1.Execute("ALTER TABLE test ADD COLUMN v1 INT DEFAULT 0"));
+
+  ts2->Shutdown();
+  {
+    LogWaiter log_waiter(ts2, "BootstrapDdlObjectLocks: success");
+    ASSERT_OK(ts2->Restart());
+    ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(kTimeMultiplier * 10)));
+  }
+
+  ASSERT_OK(conn1.CommitTransaction());
+
+  auto conn2 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  ASSERT_OK(conn2.FetchMatrix("SELECT * FROM test WHERE k=1", 1 /* rows */, 3 /* columns */));
+}
+
 YB_STRONGLY_TYPED_BOOL(DoMasterFailover);
 YB_STRONGLY_TYPED_BOOL(UseExplicitLocksInsteadOfDdl);
 class PgObjecLocksTestOutOfOrderMessageHandling
@@ -1365,6 +1393,30 @@ TEST_F(PgObjectLocksTestRF1, TestDisableReuseOfBlockerTxn) {
   ASSERT_OK(conn2.Execute("COMMIT"));
   ASSERT_OK(status_future2.get());
   ASSERT_OK(AssertNumLocks(0, 0));
+}
+
+TEST_F(PgObjectLocksTestRF1, TestRedundantLockIsServedLocallyInYsql) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_olm_serve_redundant_lock) = true;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE pk(k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE fk(k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO pk SELECT generate_series(1, 1000), 0"));
+  ASSERT_OK(conn.Execute("INSERT INTO fk SELECT i,i FROM generate_series(1, 1000) AS i"));
+
+  // ALTER ADD CONSTRAINT requests RowShare on pk for each row in fk. But it should be
+  // a no-op since the transaction already holds RowShare (or greater) on the object.
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("ALTER TABLE fk ADD CONSTRAINT fk_rule FOREIGN KEY (v) REFERENCES pk(k)"));
+  ASSERT_LT(NumGrantedLocks(), 50);
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  // Assert redundant table_open on pk is skipped.
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("INSERT INTO pk VALUES(2000, 0)"));
+  auto num_initial_locks = NumGrantedLocks();
+  ASSERT_OK(conn.Execute("INSERT INTO pk VALUES(3000, 0)"));
+  ASSERT_EQ(num_initial_locks, NumGrantedLocks());
+  ASSERT_OK(conn.Execute("COMMIT"));
 }
 
 class PgObjectLocksFastpathTest : public PgObjectLocksTestRF1 {

@@ -59,6 +59,7 @@ DECLARE_string(ysql_pg_conf_csv);
 DECLARE_int32(ysql_sequence_cache_minval);
 
 DECLARE_bool(TEST_force_get_checkpoint_from_cdc_state);
+DECLARE_int32(TEST_pause_at_start_of_setup_replication_group_ms);
 DECLARE_string(TEST_skip_async_insert_packed_schema_for_tablet_id);
 DECLARE_bool(TEST_skip_oid_advance_on_restore);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_cache_connection);
@@ -223,6 +224,51 @@ TEST_F(XClusterDDLReplicationTest, YB_NEVER_DEBUG_TEST(CheckpointMultipleDatabas
   google::SetVLOGLevel("async_rpc_tests", 1);
   google::SetVLOGLevel("async_rpc_tests_base", 4);
   ASSERT_OK(CheckpointReplicationGroupOnNamespaces(namespaces));
+}
+
+TEST_F(
+    XClusterDDLReplicationTest, ConcurrentCreateTablesWithMultipleDatabasesInSameReplicationGroup) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  // Create an extra database and add both databases to replication.
+  const auto namespace_name2 = namespace_name + "2";
+  auto [source_db2_id, target_db2_id] =
+      ASSERT_RESULT(CreateDatabaseOnBothClusters(namespace_name2));
+  ASSERT_OK(AddDatabaseToReplication(source_db2_id, target_db2_id));
+
+  // Pause replication so we can queue up concurrent create table commands.
+  ASSERT_OK(ToggleUniverseReplication(
+      consumer_cluster(), consumer_client(), kReplicationGroupId, false /* is_enabled */));
+
+  // Create a table with a unique constraint in each database.
+  // This will create a table plus an index in each db, which will require two alter replication
+  // requests per command.
+  const auto kTableName = "tbl_with_unique";
+  for (auto db_name : {namespace_name, namespace_name2}) {
+    auto pconn = ASSERT_RESULT(producer_cluster_.ConnectToDB(db_name));
+    ASSERT_OK(
+        pconn.ExecuteFormat("CREATE TABLE $0(key int PRIMARY KEY, value int unique)", kTableName));
+  }
+
+  // Add a 10s delay to setup creation. This will cause the two table creates to collide, as they
+  // will both attempt to alter the same replication group.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_at_start_of_setup_replication_group_ms) = 10000;
+
+  // Resume replication, ensure that we don't get stuck.
+  ASSERT_OK(ToggleUniverseReplication(
+      consumer_cluster(), consumer_client(), kReplicationGroupId, true /* is_enabled */));
+  ASSERT_OK(
+      WaitForSafeTimeToAdvanceToNow(std::vector<NamespaceName>{namespace_name, namespace_name2}));
+
+  // Verify replication is working.
+  for (auto db_name : {namespace_name, namespace_name2}) {
+    auto pconn = ASSERT_RESULT(producer_cluster_.ConnectToDB(db_name));
+    ASSERT_OK(pconn.ExecuteFormat(
+        "INSERT INTO $0 SELECT i FROM generate_series(1, 100) as i", kTableName));
+  }
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifyWrittenRecords(std::vector<TableName>{kTableName}, namespace_name));
+  ASSERT_OK(VerifyWrittenRecords(std::vector<TableName>{kTableName}, namespace_name2));
 }
 
 TEST_F(XClusterDDLReplicationTest, YB_DISABLE_TEST_ON_MACOS(SurviveRestarts)) {
@@ -2462,8 +2508,7 @@ TEST_F(XClusterDDLReplicationSetupTest, CheckpointingSetUpBumpsOidCounters) {
   // secondary space OID.
   {
     master::GetNamespaceInfoResponsePB resp;
-    ASSERT_OK(producer_client()->GetNamespaceInfo(
-        /*namespace_id=*/std::string(), namespace_name, YQL_DATABASE_PGSQL, &resp));
+    ASSERT_OK(producer_client()->GetNamespaceInfo(namespace_name, YQL_DATABASE_PGSQL, &resp));
     NamespaceId namespace_id = resp.namespace_().id();
     uint32_t begin_oid, end_oid;
     ASSERT_OK(producer_client()->ReservePgsqlOids(
@@ -3104,6 +3149,25 @@ TEST_F(XClusterDDLReplicationTableRewriteTest, AddColumnDefaultVolatile) {
   VerifyIndex(kColumn2Name_, /* expected_indexed */ true);
 }
 
+TEST_F(XClusterDDLReplicationTableRewriteTest, AddColumnGeneratedAlwaysAsIdentity) {
+  const std::string kColumn3Name = "new_id";
+
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT i, i%2 FROM generate_series(1, 100) as i;", kBaseTableName_));
+
+  // Ensure that this does not call any sequence functions (e.g. nextval) on the target.
+  // If those were to be called, then the DDL would fail with "Sequence manipulation
+  // functions are forbidden".
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "ALTER TABLE $0 ADD COLUMN $1 INT GENERATED ALWAYS AS IDENTITY;", kBaseTableName_,
+      kColumn3Name));
+
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT i, i%2 FROM generate_series(101, 200) as i;", kBaseTableName_));
+
+  VerifyTableRewrite();
+}
+
 TEST_F(XClusterDDLReplicationTableRewriteTest, AlterColumnType) {
   ASSERT_OK(producer_conn_->ExecuteFormat(
       "INSERT INTO $0 SELECT i, i%2 FROM generate_series(1, 100) as i;", kBaseTableName_));
@@ -3497,6 +3561,50 @@ TEST_F(XClusterDDLReplicationTest, TempTableDDLs) {
 
   ASSERT_OK(VerifyUniverseReplication(&resp));
   ASSERT_EQ(resp.entry().tables_size(), 2);
+}
+
+TEST_F(XClusterDDLReplicationTest, SetupReplicationWithMaterializedViews) {
+  auto params = XClusterDDLReplicationTestBase::kDefaultParams;
+  params.num_producer_tablets = {1};
+  params.num_consumer_tablets = {1};
+  ASSERT_OK(SetUpClusters(params));
+
+  // Create materialized views on both clusters before setting up replication.
+  std::shared_ptr<client::YBTable> producer_mv;
+  std::shared_ptr<client::YBTable> consumer_mv;
+  ASSERT_OK(RunOnBothClusters([&](Cluster* cluster) -> Status {
+    return WriteWorkload(0, 5, cluster, producer_table_->name());
+  }));
+  ASSERT_OK(
+      producer_client()->OpenTable(
+          ASSERT_RESULT(CreateMaterializedView(producer_cluster_, producer_table_->name())),
+          &producer_mv));
+  ASSERT_OK(
+      consumer_client()->OpenTable(
+          ASSERT_RESULT(CreateMaterializedView(consumer_cluster_, consumer_table_->name())),
+          &consumer_mv));
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  // Validate replication of the materialized view.
+  ASSERT_OK(InsertRowsInProducer(5, 15));  // Should not show up in the materialized view yet.
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  auto producer_rows = ASSERT_RESULT(producer_conn_->FetchRow<pgwrapper::PGUint64>(
+      Format("SELECT * FROM $0", producer_mv->name().table_name())));
+  auto consumer_rows = ASSERT_RESULT(consumer_conn_->FetchRow<pgwrapper::PGUint64>(
+      Format("SELECT * FROM $0", consumer_mv->name().table_name())));
+  ASSERT_EQ(producer_rows, consumer_rows);
+  ASSERT_EQ(producer_rows, 5);
+
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "REFRESH MATERIALIZED VIEW $0", producer_mv->name().table_name()));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  producer_rows = ASSERT_RESULT(producer_conn_->FetchRow<pgwrapper::PGUint64>(
+      Format("SELECT * FROM $0", producer_mv->name().table_name())));
+  consumer_rows = ASSERT_RESULT(consumer_conn_->FetchRow<pgwrapper::PGUint64>(
+      Format("SELECT * FROM $0", consumer_mv->name().table_name())));
+  ASSERT_EQ(producer_rows, consumer_rows);
+  ASSERT_EQ(producer_rows, 15);
 }
 
 TEST_F(XClusterDDLReplicationTest, MatViewWithIndex) {

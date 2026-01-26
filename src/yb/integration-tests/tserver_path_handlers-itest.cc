@@ -25,7 +25,7 @@
 
 #include "yb/tserver/mini_tablet_server.h"
 
-#include "yb/util/jsonreader.h"
+#include "yb/util/json_document.h"
 
 namespace yb::integration_tests {
 
@@ -136,53 +136,33 @@ TEST_F(TServerPathHandlersItest, TestVarzAutoFlag) {
   // Test the JSON API endpoint.
   result = ASSERT_RESULT(FetchURL("/api/v1/varz"));
 
-  JsonReader r(result);
-  ASSERT_OK(r.Init());
-  const rapidjson::Value* json_obj = nullptr;
-  ASSERT_OK(r.ExtractObject(r.root(), NULL, &json_obj));
-  ASSERT_EQ(rapidjson::kObjectType, CHECK_NOTNULL(json_obj)->GetType());
-  ASSERT_TRUE(json_obj->HasMember("flags"));
-  ASSERT_EQ(rapidjson::kArrayType, (*json_obj)["flags"].GetType());
-  const rapidjson::Value::ConstArray flags = (*json_obj)["flags"].GetArray();
+  JsonDocument doc;
+  auto json_obj = ASSERT_RESULT(doc.Parse(result));
+  auto flags = ASSERT_RESULT(json_obj["flags"].GetArray());
 
-  auto it_expected_json_flag = std::find_if(flags.Begin(), flags.End(), [](const auto& flag) {
-    return flag["name"] == kExpectedAutoFlag;
+  auto it_expected_json_flag = std::find_if(flags.begin(), flags.end(), [](const auto& flag) {
+    return EXPECT_RESULT(flag["name"].GetString()) == kExpectedAutoFlag;
   });
-  ASSERT_NE(it_expected_json_flag, flags.End());
-  ASSERT_EQ((*it_expected_json_flag)["type"], "Auto");
+  ASSERT_NE(it_expected_json_flag, flags.end());
+  ASSERT_EQ(ASSERT_RESULT((*it_expected_json_flag)["type"].GetString()), "Auto");
 
-  auto it_unexpected_json_flag = std::find_if(flags.Begin(), flags.End(), [](const auto& flag) {
-    return flag["name"] == kUnExpectedAutoFlag;
+  auto it_unexpected_json_flag = std::find_if(flags.begin(), flags.end(), [](const auto& flag) {
+    return EXPECT_RESULT(flag["name"].GetString()) == kUnExpectedAutoFlag;
   });
 
-  ASSERT_NE(it_unexpected_json_flag, flags.End());
-  ASSERT_EQ((*it_unexpected_json_flag)["type"], "Default");
-}
-
-void VerifyMetaCacheObjectIsValid(
-    const rapidjson::Value* json_object, const JsonReader& json_reader) {
-  EXPECT_TRUE(json_object->HasMember("MainMetaCache"));
-
-  const rapidjson::Value* main_metacache = nullptr;
-  EXPECT_OK(json_reader.ExtractObject(json_object, "MainMetaCache", &main_metacache));
-  EXPECT_TRUE(main_metacache->HasMember("tablets"));
-
-  std::vector<const rapidjson::Value*> remote_tablets;
-  ASSERT_OK(json_reader.ExtractObjectArray(main_metacache, "tablets", &remote_tablets));
-  for (auto remote_tablet : remote_tablets) {
-    EXPECT_TRUE(remote_tablet->HasMember("tablet_id"));
-    EXPECT_TRUE(remote_tablet->HasMember("replicas"));
-  }
+  ASSERT_NE(it_unexpected_json_flag, flags.end());
+  ASSERT_EQ(ASSERT_RESULT((*it_unexpected_json_flag)["type"].GetString()), "Default");
 }
 
 TEST_F(TServerPathHandlersItest, TestListMetaCache) {
   auto result = ASSERT_RESULT(FetchURL("/api/v1/meta-cache"));
-  JsonReader r(result);
-  ASSERT_OK(r.Init());
-  const rapidjson::Value* json_object = nullptr;
-  EXPECT_OK(r.ExtractObject(r.root(), NULL, &json_object));
-  EXPECT_EQ(rapidjson::kObjectType, CHECK_NOTNULL(json_object)->GetType());
-  VerifyMetaCacheObjectIsValid(json_object, r);
+  JsonDocument doc;
+  auto json_object = ASSERT_RESULT(doc.Parse(result));
+  for (const auto& remote_tablet :
+       ASSERT_RESULT(json_object["MainMetaCache"]["tablets"].GetArray())) {
+    ASSERT_TRUE(remote_tablet["tablet_id"].IsValid());
+    ASSERT_TRUE(remote_tablet["replicas"].IsValid());
+  }
 }
 
 TEST_F(TServerPathHandlersItest, TestSnapshotsEndpoint) {

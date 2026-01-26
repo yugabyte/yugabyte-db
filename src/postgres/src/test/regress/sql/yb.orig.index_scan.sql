@@ -582,11 +582,13 @@ set yb_pushdown_is_not_null to false;
 :explain1run1
 drop table t1;
 
-create table t1(a uuid, b timestamptz, PRIMARY KEY(b asc, a asc));
-insert into t1 values ('00000000-0000-0000-0000-000000000000', '2021-01-01 00:00:00');
-insert into t1 values ('00000000-0000-0000-0000-000000000001', '2021-01-01 00:00:00');
+-- Test row compares with shuffled column orders (tests internal attnum handling).
+create table t1(y int, a uuid, z text, b timestamptz, PRIMARY KEY(b asc, y, a, z));
+insert into t1 (a, b, y, z) values ('00000000-0000-0000-0000-000000000000', '2021-01-01 00:00:00', 2, 'foo');
+insert into t1 (a, b, y, z) values ('00000000-0000-0000-0000-000000000001', '2021-01-01 00:00:00', 1, 'bar');
+insert into t1 (a, b, y, z) values ('00000000-0000-0000-0000-000000000001', '2021-01-01 00:00:00', 2, 'foo');
 SELECT $$
-select * from t1 where (b, a) >= ('2021-01-01 00:00:00', '00000000-0000-0000-0000-000000000001')
+select * from t1 where (b, a) >= ('2021-01-01 00:00:00', '00000000-0000-0000-0000-000000000001') and (y, z) >= (2, 'baz')
 $$ AS query \gset
 :explain1run1
 drop table t1;

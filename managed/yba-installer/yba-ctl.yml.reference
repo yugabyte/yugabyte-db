@@ -49,7 +49,7 @@ platform:
    custom_headers: []
 
    # Specifies the list of algorithms that will be disabled for TLS handshake
-   tlsDisabledAlgorithms: ["DHE keySize < 2048"]
+   tlsDisabledAlgorithms: ["DHE keySize < 2048", "EDCH keySize < 224"]
 
    # OAuth related settings
    # useOauth: The boolean that determine if OIDC SSO needs to be
@@ -137,6 +137,11 @@ platform:
       java_non_proxy: ""
 
    support_origin_url: "/"
+
+   # Trusted proxy IPs/CIDRs for X-Forwarded-* header support.
+   # Required for OIDC/SSO when behind a reverse proxy with TLS termination.
+   # Example: [10.0.0.1, 172.16.0.0/16] or [0.0.0.0/0] to trust all proxies.
+   trusted_proxies: []
 
    # Maximum open file descriptors
    fd_limit: 16384
@@ -243,3 +248,9 @@ prometheus:
       # Scraping yugabyteDB metrics
       yugabyte:
          scheme: http
+
+perfAdvisor:
+   enabled: false
+   port: 8443
+   restartSeconds: 10
+   enableHttps: false

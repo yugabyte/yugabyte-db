@@ -17,7 +17,7 @@ This tutorial shows how you can use [Ollama](https://ollama.com/) to generate te
 
 ## Prerequisites
 
-- [YugabyteDB v2.25+](https://download.yugabyte.com/)
+- [YugabyteDB v2025.1](https://download.yugabyte.com/) or later
 - [Ollama](https://ollama.com/)
 - Node.js v18+
 - git-lfs

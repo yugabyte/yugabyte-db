@@ -1,22 +1,18 @@
-import { useContext } from 'react';
 import { useFormContext } from 'react-hook-form';
 import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
 import { YBSelectField, mui, YBTooltip } from '@yugabyte-ui-library/core';
 import { InstanceSettingProps } from '@app/redesign/features-v2/universe/create-universe/steps/hardware-settings/dtos';
-import {
-  CreateUniverseContext,
-  CreateUniverseContextMethods
-} from '@app/redesign/features-v2/universe/create-universe/CreateUniverseContext';
+import { ProviderType } from '@app/redesign/features-v2/universe/create-universe/steps/general-settings/dtos';
 import { QUERY_KEY, api } from '@app/redesign/features/universe/universe-form/utils/api';
 import { ImageBundleType } from '@app/redesign/features/universe/universe-form/utils/dto';
 import {
   LINUX_VERSION_FIELD,
   CPU_ARCH_FIELD
 } from '@app/redesign/features-v2/universe/create-universe/fields/FieldNames';
-import { ReactComponent as YBLogo } from '@app/redesign/assets/yb-logo-transparent.svg';
-import { ReactComponent as StarLogo } from '@app/redesign/assets/in-use-star.svg';
-import { ReactComponent as FlagIcon } from '@app/redesign/assets/flag-secondary.svg';
+import YBLogo from '@app/redesign/assets/yb-logo-transparent.svg';
+import StarLogo from '@app/redesign/assets/in-use-star.svg';
+import FlagIcon from '@app/redesign/assets/flag-secondary.svg';
 
 const { Box, MenuItem, Typography } = mui;
 
@@ -107,16 +103,17 @@ export const ImageBundleDefaultTag = ({
   );
 };
 
-export const LinuxVersionField = ({ disabled }: { disabled: boolean }) => {
+export const LinuxVersionField = ({
+  disabled,
+  provider
+}: {
+  disabled: boolean;
+  provider?: ProviderType;
+}) => {
   const { watch, control, setValue } = useFormContext<InstanceSettingProps>();
   const { t } = useTranslation('translation', { keyPrefix: 'universeForm.instanceConfig' });
 
-  const [{ generalSettings }] = (useContext(
-    CreateUniverseContext
-  ) as unknown) as CreateUniverseContextMethods;
-
   const cpuArch = watch(CPU_ARCH_FIELD);
-  const provider = generalSettings?.providerConfiguration;
   const fieldValue = watch(LINUX_VERSION_FIELD);
 
   const { data: linuxVersions } = useQuery(

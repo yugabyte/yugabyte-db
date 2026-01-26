@@ -22,8 +22,42 @@ Learn more about developing GenAI and RAG applications with YugabyteDB:
 - [How to Build a RAG Workflow for Agentic AI without Code](https://www.yugabyte.com/blog/build-a-rag-workflow-for-agentic-ai-without-codev/)
 - [From RAG to Riches: AI That Knows Your Support Stack](https://www.yugabyte.com/blog/rag-ai-that-knows-your-support-stack/)
 
-Explore the following examples to get started building scalable gen AI applications with YugabyteDB.
+## Get started
 
+{{<tip>}}
+Use YugabyteDB {{<release "2025.1">}} or later to get the latest vector indexing capabilities and MCP features.
+
+No cluster? No problem. Run the [latest YugabyteDB version locally](https://download.yugabyte.com) on macOS (using Docker or the yugabyted binary) or any Linux VM to try these tutorials.
+{{</tip>}}
+
+Get started with AI and YugabyteDB using the "Hello RAG" example to build your first AI application. Hello RAG walks you through building a complete Retrieval-Augmented Generation pipeline, which powers many enterprise AI applications, from customer support chatbots to semantic search systems.
+
+In this tutorial, you will:
+
+1. Vectorize data: Split local documents into chunks and generate embeddings using OpenAI.
+1. Store and index: Insert those embeddings into YugabyteDB using the pgvector extension.
+1. Retrieve and generate: Perform a vector similarity search to find relevant context and use an LLM (like GPT-4) to generate a grounded, accurate response.
+
+{{<lead link="hello-rag/">}}
+Build your first AI app with [Hello RAG](hello-rag/).
+{{</lead>}}
+
+## AI tutorials
+
+Explore the following tutorials to see how YugabyteDB integrates with different LLMs and frameworks.
+
+| Tutorial | Use case | LLM / framework | LLM location |
+| :--- | :--- | :--- | :--- |
+| [Hello RAG](hello-rag/) | Build a basic RAG pipeline for document-based question answering. | OpenAI | External |
+| [Azure AI](azure-openai/) | Use Azure OpenAI to build a scalable RAG application with vector search. | Azure OpenAI | External |
+| [Google Vertex AI](google-vertex-ai/) | Use Google Vertex AI for similarity search and generative AI workflows. | Vertex AI | External |
+| [LocalAI](ai-localai/) | Build and run an LLM application entirely on-premises for privacy and security. | LocalAI | Local / on-premises |
+| [Ollama](ai-ollama/) | Host and run embedding models locally for vector-based similarity search. | Ollama | Local / on-premises |
+| [YugabyteDB MCP server](mcp-server/) | Enable LLMs to interact directly with YugabyteDB using natural language. | Claude / Cursor | External |
+| [LlamaIndex](ai-llamaindex-openai/) | Connect LLMs to structured and unstructured data using LlamaIndex. | OpenAI / LlamaIndex | External |
+| [LangChain](ai-langchain-openai/) | Build a natural language interface to query your database without writing SQL. | OpenAI / LangChain | External |
+
+<!--
 ## Retrieval-augmented generation
 
 Build a Retrieval-Augmented Generation pipeline with YugabyteDB.
@@ -94,3 +128,4 @@ Learn how you can use YugabyteDB as the foundation for your next AI agent applic
     href="ai-langchain-openai/"
     icon="/images/tutorials/ai/icons/langchain-icon.svg">}}
 {{</index/block>}}
+-->

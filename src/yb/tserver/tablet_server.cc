@@ -74,7 +74,7 @@
 #include "yb/server/async_client_initializer.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/server/rpc_server.h"
-#include "yb/server/ycql_stat_provider.h"
+#include "yb/server/ycql_server_external_if.h"
 
 #include "yb/tablet/maintenance_manager.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
@@ -339,6 +339,12 @@ class CDCServiceContextImpl : public cdc::CDCServiceContext {
 
   Result<uint32> GetAutoFlagsConfigVersion() const override {
     return tablet_server_.ValidateAndGetAutoFlagsConfigVersion();
+  }
+
+  Result<HostPort> GetDesiredHostPortForLocal() const override {
+    ServerRegistrationPB reg;
+    RETURN_NOT_OK(tablet_server_.GetRegistration(&reg, server::RpcOnly::kTrue));
+    return HostPortFromPB(DesiredHostPort(reg, tablet_server_.options().MakeCloudInfoPB()));
   }
 
  private:
@@ -1474,6 +1480,10 @@ void TabletServer::SetYsqlDBCatalogVersionsUnlocked(
       }
       // update the newly inserted entry to have the allocated slot.
       inserted_entry.shm_index = shm_index;
+      LOG_WITH_FUNC(INFO) << "inserted new db " << db_oid << ", shm_index: " << shm_index
+                          << ", catalog version: " << new_version
+                          << ", breaking version: " << new_breaking_version
+                          << ", debug_id: " << debug_id;
     }
 
     if (row_inserted || row_updated) {
@@ -1538,10 +1548,9 @@ void TabletServer::SetYsqlDBCatalogVersionsUnlocked(
       // debugging the shared memory array db_catalog_versions_ (e.g., when we can dump
       // the shared memory file to examine its contents).
       shared_object()->SetYsqlDbCatalogVersion(static_cast<size_t>(shm_index), 0);
-      if (FLAGS_log_ysql_catalog_versions) {
-        LOG_WITH_FUNC(INFO) << "reset deleted db " << db_oid << " catalog version to 0"
-                            << ", debug_id: " << debug_id;
-      }
+      LOG_WITH_FUNC(INFO) << "reset deleted db " << db_oid << " catalog version to 0"
+                          << ", shm_index: " << shm_index
+                          << ", debug_id: " << debug_id;
     } else {
       ++it;
     }
@@ -2217,17 +2226,17 @@ Status TabletServer::SetPausedXClusterProducerStreams(
 }
 
 Status TabletServer::ReloadKeysAndCertificates() {
-  if (!secure_context_) {
-    return Status::OK();
+  if (secure_context_) {
+    RETURN_NOT_OK(rpc::ReloadSecureContextKeysAndCertificates(
+        secure_context_.get(), fs_manager_->GetDefaultRootDir(), rpc::SecureContextType::kInternal,
+        options_.HostsString()));
   }
 
-  RETURN_NOT_OK(rpc::ReloadSecureContextKeysAndCertificates(
-      secure_context_.get(), fs_manager_->GetDefaultRootDir(), rpc::SecureContextType::kInternal,
-      options_.HostsString()));
-
-  std::lock_guard l(xcluster_consumer_mutex_);
-  if (xcluster_consumer_) {
-    RETURN_NOT_OK(xcluster_consumer_->ReloadCertificates());
+  {
+    std::lock_guard l(xcluster_consumer_mutex_);
+    if (xcluster_consumer_) {
+      RETURN_NOT_OK(xcluster_consumer_->ReloadCertificates());
+    }
   }
 
   for (const auto& reloader : certificate_reloaders_) {
@@ -2290,17 +2299,17 @@ void TabletServer::ScheduleCheckLaggingCatalogVersions() {
 }
 
 void TabletServer::SetCQLServer(yb::server::RpcAndWebServerBase* server,
-      server::YCQLStatementStatsProvider* stmt_provider) {
+      server::YCQLServerExternalInterface* cql_server_if) {
   DCHECK_EQ(cql_server_.load(), nullptr);
-  DCHECK_EQ(cql_stmt_provider_.load(), nullptr);
+  DCHECK_EQ(cql_server_external_.load(), nullptr);
 
   cql_server_.store(server);
-  cql_stmt_provider_.store(stmt_provider);
+  cql_server_external_.store(cql_server_if);
 }
 
 Status TabletServer::YCQLStatementStats(const tserver::PgYCQLStatementStatsRequestPB& req,
       tserver::PgYCQLStatementStatsResponsePB* resp) const {
-    auto* cql_stmt_provider = cql_stmt_provider_.load();
+    auto* cql_stmt_provider = cql_server_external_.load();
     SCHECK_NOTNULL(cql_stmt_provider);
     RETURN_NOT_OK(cql_stmt_provider->YCQLStatementStats(req, resp));
     return Status::OK();
@@ -2329,6 +2338,13 @@ void TabletServer::ClearAllMetaCachesOnServer() {
 
 Status TabletServer::ClearMetacache(const std::string& namespace_id) {
   return client()->ClearMetacache(namespace_id);
+}
+
+Status TabletServer::ClearYCQLMetaDataCache() {
+  auto* cql_server_api = cql_server_external_.load();
+  SCHECK_NOTNULL(cql_server_api);
+  cql_server_api->ClearMetaDataCache();
+  return Status::OK();
 }
 
 Result<std::vector<tablet::TabletStatusPB>> TabletServer::GetLocalTabletsMetadata() const {

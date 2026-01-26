@@ -87,11 +87,12 @@
 #include "yb/tablet/operations/update_txn_operation.h"
 #include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/read_result.h"
-#include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
+#include "yb/tablet/tablet_dump_helper.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/tablet_vector_indexes.h"
+#include "yb/tablet/tablet.h"
 #include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/write_query.h"
 
@@ -1739,11 +1740,12 @@ Status TabletServiceAdminImpl::DoCreateTablet(const CreateTabletRequestPB* req,
   dockv::Partition::FromPB(req->partition(), &partition);
 
   LOG(INFO) << "Processing CreateTablet for T " << req->tablet_id() << " P " << req->dest_uuid()
-            << " (table=" << req->table_name()
-            << " [id=" << req->table_id() << "]), partition="
-            << partition_schema.PartitionDebugString(partition, schema);
+            << " (table=" << req->table_name() << " [id=" << req->table_id()
+            << "]), partition=" << partition_schema.PartitionDebugString(partition, schema);
   VLOG(1) << "Full request: " << req->DebugString();
 
+  // todo(GH29982): The request includes namespace_id. We should pass it to the TableInfo
+  // constructor.
   auto table_info = std::make_shared<tablet::TableInfo>(
       consensus::MakeTabletLogPrefix(req->tablet_id(), server_->permanent_uuid()),
       tablet::Primary::kTrue, req->table_id(), req->namespace_name(), req->table_name(),
@@ -2338,12 +2340,17 @@ Status TabletServiceAdminImpl::DoClonePgSchema(
   std::string dump_output = VERIFY_RESULT(ysql_dump_runner.RunAndModifyForClone(
       req->source_db_name(), target_db_name, req->source_owner(), req->target_owner(),
       HybridTime(req->restore_ht())));
-  VLOG(2) << "Dump output: " << dump_output;
+  VLOG(2) << "ysql_dump output: " << dump_output;
 
   // Execute the sql script to generate the PG database.
   YsqlshRunner ysqlsh_runner = VERIFY_RESULT(YsqlshRunner::GetYsqlshRunner(local_hostport));
-  RETURN_NOT_OK(
-      ysqlsh_runner.ExecuteSqlScript(dump_output, "clone_pg_schema" /* tmp_file_prefix */));
+  auto result =
+      ysqlsh_runner.ExecuteSqlScript(dump_output, "clone_pg_schema" /* tmp_file_prefix */);
+  if (!result.ok()) {
+    LOG(INFO) << "Failed executing ysql_dump output: " << dump_output;
+    return result.status();
+  }
+
   LOG(INFO) << Format(
       "Clone Pg Schema Objects for source database: $0 to clone database: $1 done successfully",
       req->source_db_name(), target_db_name);
@@ -3820,6 +3827,18 @@ void TabletServiceImpl::ClearMetacache(
   }
 }
 
+void TabletServiceImpl::ClearYCQLMetaDataCacheOnServer(
+    const ClearYCQLMetaDataCacheOnServerRequestPB* req,
+    ClearYCQLMetaDataCacheOnServerResponsePB* resp,
+    rpc::RpcContext context) {
+  auto s = server_->ClearYCQLMetaDataCache();
+  if (!s.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), s, &context);
+  } else {
+    context.RespondSuccess();
+  }
+}
+
 void TabletServiceImpl::AcquireObjectLocks(
     const AcquireObjectLockRequestPB* req, AcquireObjectLockResponsePB* resp,
     rpc::RpcContext context) {
@@ -3975,6 +3994,45 @@ Result<VerifyVectorIndexesResponsePB> TabletServiceImpl::VerifyVectorIndexes(
     RETURN_NOT_OK(tablet->vector_indexes().Verify());
   }
   return VerifyVectorIndexesResponsePB();
+}
+
+Result<DumpTabletDataResponsePB> TabletServiceImpl::DumpTabletData(
+    const DumpTabletDataRequestPB& req, CoarseTimePoint deadline) {
+  LOG(INFO) << "DumpTabletData request: " << req.ShortDebugString();
+  auto peer_tablet =
+      VERIFY_RESULT(LookupTabletPeer(server_->tablet_peer_lookup(), req.tablet_id()));
+  uint64_t read_ht = 0;
+  if (req.has_read_ht()) {
+    read_ht = req.read_ht();
+  }
+
+  auto peer_role = VERIFY_RESULT(peer_tablet.tablet_peer->GetConsensus())->role();
+
+  std::unique_ptr<WritableFile> file;
+  if (!req.dest_path().empty()) {
+    RETURN_NOT_OK(Env::Default()->NewWritableFile(req.dest_path(), &file));
+    RETURN_NOT_OK(file->Append(Format("Tablet ID: $0\n", req.tablet_id())));
+    RETURN_NOT_OK(
+        file->Append(Format("Peer UUID: $0\n", peer_tablet.tablet_peer->permanent_uuid())));
+    RETURN_NOT_OK(file->Append(Format("Peer Role: $0\n", PeerRole_Name(peer_role))));
+  }
+
+  uint64_t row_count = 0;
+  uint64_t xor_hash = 0;
+  RETURN_NOT_OK(
+      tablet::DumpTabletData(
+          *peer_tablet.tablet, server_->client_future(), file.get(), read_ht, deadline, xor_hash,
+          row_count));
+  DumpTabletDataResponsePB resp;
+  resp.set_row_count(row_count);
+  resp.set_xor_hash(xor_hash);
+
+  if (file) {
+    RETURN_NOT_OK(file->Append(Format("\nRow count: $0\n", row_count)));
+    RETURN_NOT_OK(file->Append(Format("XOR hash: $0\n", xor_hash)));
+    RETURN_NOT_OK(file->Close());
+  }
+  return resp;
 }
 
 Status TabletServiceImpl::CheckLocalLeaseEpoch(std::optional<uint64_t> recipient_lease_epoch) {

@@ -50,7 +50,7 @@ This same approach isn't limited to just "Ask Your Support Knowledge Base" scena
 ## Prerequisites
 
 - Python 3
-- YugabyteDB v2.25.1 or later
+- YugabyteDB {{<release "2025.1">}} or later
 - An [OpenAI API key](https://platform.openai.com/api-keys).
 
 ## Set up the application
@@ -84,7 +84,7 @@ If you have issues with `pip install psycopg2`, check the [installation instruct
 
 ## Set up YugabyteDB
 
-1. [Download and install](https://download.yugabyte.com) YugabyteDB v2.25.1 or later.
+1. [Download and install](https://download.yugabyte.com) YugabyteDB {{<release "2025.1">}} or later.
 
 1. Start a single-node cluster using [yugabyted](../../../reference/configuration/yugabyted/).
 

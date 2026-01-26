@@ -96,7 +96,7 @@ ReplicationInfoPB CatalogManagerUtil::GetTableReplicationInfo(
     }
   }
 
-  // For system catalog tables, return cluster config replication info.
+  // For non-system tables, return table-level replication info if available.
   if (!table->is_system() && tablespace_manager) {
     auto result = tablespace_manager->GetTableReplicationInfo(table);
     if (!result.ok()) {

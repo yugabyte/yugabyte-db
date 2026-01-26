@@ -2,7 +2,11 @@ import * as Yup from 'yup';
 import { TFunction } from 'i18next';
 import { uniq, values } from 'lodash';
 import { NodeAvailabilityProps, Zone } from './dtos';
-import { FaultToleranceType, ResilienceAndRegionsProps } from '../resilence-regions/dtos';
+import {
+  FaultToleranceType,
+  ResilienceAndRegionsProps,
+  ResilienceFormMode
+} from '../resilence-regions/dtos';
 import { getFaultToleranceNeededForAZ, getNodeCount } from '../../CreateUniverseUtils';
 
 export const NodesAvailabilitySchema = (
@@ -17,17 +21,63 @@ export const NodesAvailabilitySchema = (
       const faultToleranceNeeded = getFaultToleranceNeededForAZ(
         resilienceAndRegionsProps?.replicationFactor ?? 1
       );
+      const azCounts = values(availabilityZones).reduce((acc, zones) => acc + zones.length, 0);
+      const fieldErrors: Yup.ValidationError[] = [];
+      if (resilienceAndRegionsProps?.resilienceFormMode === ResilienceFormMode.FREE_FORM) {
+        if (azCounts === faultToleranceNeeded) return true;
+
+        return createError({
+          path,
+          message: t('errMsg.lessNodes', {
+            nodeCount: azCounts,
+            faultToleranceNeeded: faultToleranceNeeded
+          })
+        });
+      }
+      if (resilienceAndRegionsProps?.faultToleranceType === FaultToleranceType.AZ_LEVEL) {
+        if (azCounts !== faultToleranceNeeded) {
+          fieldErrors.push(
+            createError({
+              path,
+              message: t('errMsg.azErrFew', {
+                required_zones: faultToleranceNeeded,
+                availability_zone: azCounts,
+                keyPrefix: 'createUniverseV2.resilienceAndRegions'
+              })
+            })
+          );
+          fieldErrors.push(
+            createError({
+              path: 'availabilityZones'
+            })
+          );
+        }
+      }
       if (
         resilienceAndRegionsProps?.faultToleranceType === FaultToleranceType.NODE_LEVEL &&
         nodeCounts < faultToleranceNeeded
       ) {
-        return createError({
-          path,
-          message: t(useDedicatedNodes ? 'errMsg.lessNodesDedicated' : 'errMsg.lessNodes', {
-            nodeCount: nodeCounts,
-            faultToleranceNeeded: faultToleranceNeeded
+        fieldErrors.push(
+          createError({
+            path,
+            message: t(useDedicatedNodes ? 'errMsg.lessNodesDedicated' : 'errMsg.lessNodes', {
+              nodeCount: nodeCounts,
+              faultToleranceNeeded: faultToleranceNeeded
+            })
           })
-        });
+        );
+      }
+
+      const error = new Yup.ValidationError(
+        fieldErrors.map((e) => e.message),
+        'errors',
+        path
+      );
+
+      error.inner = fieldErrors;
+
+      if (fieldErrors.length > 0) {
+        throw error;
       }
       return true;
     }),

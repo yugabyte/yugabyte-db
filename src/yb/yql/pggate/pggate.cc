@@ -1562,8 +1562,10 @@ Result<bool> PgApiImpl::SampleNextBlock(PgStatement* handle) {
   return VERIFY_RESULT_REF(GetStatementAs<PgSample>(handle)).SampleNextBlock();
 }
 
-Status PgApiImpl::ExecSample(PgStatement* handle) {
-  return VERIFY_RESULT_REF(GetStatementAs<PgSample>(handle)).Exec(nullptr);
+Status PgApiImpl::ExecSample(PgStatement* handle, YbcPgExecParameters* exec_params) {
+  auto& sample = VERIFY_RESULT_REF(GetStatementAs<PgSample>(handle));
+  RETURN_NOT_OK(sample.SetNextBatchYbctids(exec_params));
+  return sample.Exec(exec_params);
 }
 
 Result<EstimatedRowCount> PgApiImpl::GetEstimatedRowCount(PgStatement* handle) {
@@ -1982,8 +1984,8 @@ Status PgApiImpl::RestartTransaction() {
   return pg_txn_manager_->RestartTransaction();
 }
 
-Status PgApiImpl::ResetTransactionReadPoint() {
-  return pg_txn_manager_->ResetTransactionReadPoint();
+Status PgApiImpl::ResetTransactionReadPoint(bool is_catalog_snapshot) {
+  return pg_txn_manager_->ResetTransactionReadPoint(is_catalog_snapshot);
 }
 
 Status PgApiImpl::EnsureReadPoint() {

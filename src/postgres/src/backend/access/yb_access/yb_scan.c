@@ -1027,10 +1027,10 @@ ybc_should_pushdown_op(YbScanPlan scan_plan, AttrNumber attnum, int op_strategy)
 static bool
 YbIsHashCodeSearch(ScanKey key)
 {
-	bool		is_hash_search = (key->sk_flags & YB_SK_IS_HASHED) != 0;
+	bool		is_hash_search = (key->sk_flags & YB_SK_SEARCHHASHCODE) != 0;
 
 	/* We currently don't support hash code search with any other flags */
-	Assert(!is_hash_search || key->sk_flags == YB_SK_IS_HASHED);
+	Assert(!is_hash_search || key->sk_flags == YB_SK_SEARCHHASHCODE);
 	return is_hash_search;
 }
 
@@ -1736,10 +1736,12 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 			else if (!is_for_precheck)
 			{
 				ScanKey		current = subkeys[subkey_index];
+				AttrNumber	attnum =
+					scan_plan->bind_key_attnums[skey_index + 1 + subkey_index];
 
 				col_values[j] = YBCNewConstant(ybScan->handle,
 											   ybc_get_atttypid(scan_plan->bind_desc,
-																scan_plan->bind_key_attnums[current->sk_attno]),
+																attnum),
 											   current->sk_collation,
 											   current->sk_argument,
 											   false);
@@ -2749,32 +2751,6 @@ YbBindHashKeys(YbScanDesc ybScan)
 	return true;
 }
 
-static void
-YbCollectHashKeyComponents(YbScanDesc ybScan,
-						   YbScanPlan scan_plan,
-						   bool is_index_only_scan,
-						   YbAttnumBmsState *required_attrs)
-{
-	Relation	index = ybScan->index;
-	const int16 *secondary_index_indkey_values = ((index &&
-												   !is_index_only_scan &&
-												   !index->rd_index->indisprimary) ?
-												  index->rd_index->indkey.values :
-												  NULL);
-
-	int			idx = -1;
-
-	while ((idx = bms_next_member(scan_plan->hash_key, idx)) >= 0)
-	{
-		AttrNumber	attnum = YBBmsIndexToAttnum(scan_plan->target_relation, idx);
-
-		if (secondary_index_indkey_values)
-			attnum = secondary_index_indkey_values[attnum - 1];
-
-		ybcAttnumBmsAdd(required_attrs, attnum);
-	}
-}
-
 static inline void
 ybcPullVarattnosIntoAttnumBms(List *list, Index varno, YbAttnumBmsState *state)
 {
@@ -2798,54 +2774,6 @@ YbAddBitmapScanRecheckColumns(YbBitmapTableScan *plan, Index target_relid,
 								  required_attrs);
 	ybcPullVarattnosIntoAttnumBms(plan->recheck_local_quals, target_relid,
 								  required_attrs);
-}
-
-static bool
-YbHasOrdinaryColumnsNeedingPgRecheckImpl(YbScanDesc yb_scan,
-										 YbAttnumBmsState *dest)
-{
-	if (yb_scan->all_ordinary_keys_bound)
-		return false;
-
-	bool		result = false;
-	const ScanKey *keys = yb_scan->keys;
-	const bool	is_index_only_scan = yb_scan->prepare_params.index_only_scan;
-
-	for (int i = 0; i < yb_scan->nkeys; i += YbGetLengthOfKey(&keys[i]))
-	{
-		const AttrNumber attnum = yb_scan->target_key_attnums[i];
-
-		if (is_index_only_scan ||
-			attnum == InvalidAttrNumber ||
-			keys[i]->sk_flags & ~(SK_SEARCHNULL | SK_SEARCHNOTNULL))
-		{
-			result = true;
-			if (dest)
-				ybcAttnumBmsAdd(dest, attnum);
-			else
-				break;
-		}
-	}
-	return result;
-}
-
-/*
- * Adds all non-hashcode columns that may require a PG recheck.
- */
-static inline void
-YbAddOrdinaryColumnsNeedingPgRecheck(YbScanDesc yb_scan,
-									 YbAttnumBmsState *attnums)
-{
-	YbHasOrdinaryColumnsNeedingPgRecheckImpl(yb_scan, attnums);
-}
-
-/*
- * Checks the existence of non-hashcode columns that may require a PG recheck.
- */
-static inline bool
-YbHasOrdinaryColumnsNeedingPgRecheck(YbScanDesc yb_scan)
-{
-	return YbHasOrdinaryColumnsNeedingPgRecheckImpl(yb_scan, NULL);
 }
 
 static void
@@ -2896,14 +2824,15 @@ ybcBuildRequiredAttrs(YbScanDesc yb_scan, YbScanPlan scan_plan,
 		ybcPullVarattnosIntoAttnumBms(pg_scan_plan->plan.targetlist,
 									  target_relid, &result);
 
-		/* Collect table filtering attributes */
+		/* Collect local table filter attributes */
 		ybcPullVarattnosIntoAttnumBms(pg_scan_plan->plan.qual, target_relid,
 									  &result);
 
-		if (yb_scan->hash_code_keys != NIL)
-			YbCollectHashKeyComponents(yb_scan, scan_plan, is_index_only_scan,
-									   &result);
-
+		/*
+		 * Collect local recheck/precheck attributes
+		 *
+		 * TODO(jason): only do this if recheck/precheck is needed.
+		 */
 		if (IsA(pg_scan_plan, YbBitmapTableScan))
 			YbAddBitmapScanRecheckColumns((YbBitmapTableScan *) pg_scan_plan,
 										  target_relid,
@@ -2912,15 +2841,10 @@ ybcBuildRequiredAttrs(YbScanDesc yb_scan, YbScanPlan scan_plan,
 			ybcPullVarattnosIntoAttnumBms(((IndexOnlyScan *) pg_scan_plan)->recheckqual,
 										  target_relid,
 										  &result);
-
-		YbAddOrdinaryColumnsNeedingPgRecheck(yb_scan, &result);
-
-		/* Add any explicitly listed target keys */
-		AttrNumber *sk_attno = yb_scan->target_key_attnums;
-		AttrNumber *sk_attno_end = sk_attno + yb_scan->nkeys;
-
-		for (; sk_attno != sk_attno_end; ++sk_attno)
-			ybcAttnumBmsAdd(&result, *sk_attno);
+		else if (IsA(pg_scan_plan, IndexScan))
+			ybcPullVarattnosIntoAttnumBms(((IndexScan *) pg_scan_plan)->indexqualorig,
+										  target_relid,
+										  &result);
 
 		/* TableOidAttrNumber is a virtual column, do not send it */
 		if (ybcAttnumBmsDelIfExists(&result, TableOidAttributeNumber))
@@ -3531,24 +3455,57 @@ ybIsTupMismatch(HeapTuple tup, YbScanDesc ybScan)
 
 /*
  * Whether rows returned by DocDB need to be rechecked.  Currently, it can be
- * predetermined for the entire scan before tuples are fetched.
+ * predetermined for the entire scan before tuples are fetched.  This function
+ * is ready to be called after calling YbBindScanKeys, which sets some
+ * variables that are read here.
  */
 inline bool
 YbNeedsPgRecheck(YbScanDesc yb_scan)
 {
-	return (yb_scan->hash_code_keys ||
-			YbHasOrdinaryColumnsNeedingPgRecheck(yb_scan));
+	/* If all keys are bound, there is no need to recheck. */
+	if (yb_scan->all_ordinary_keys_bound)
+		return false;
+
+	const ScanKey *keys = yb_scan->keys;
+	const bool	is_index_only_scan = yb_scan->prepare_params.index_only_scan;
+
+	/*
+	 * If we can guarantee precheck will check each tuple accurately, we don't
+	 * need recheck.
+	 */
+	for (int i = 0; i < yb_scan->nkeys; i += YbGetLengthOfKey(&keys[i]))
+	{
+		const AttrNumber attnum = yb_scan->target_key_attnums[i];
+
+		/*
+		 * Precheck is not run for index only scan and does not cover
+		 * expressions (corresponding to InvalidAttrNumber), so those cases
+		 * always require recheck.  In addition, some sk_flags such as
+		 * SK_SEARCHNULL and SK_SEARCHARRAY could possibly slip through
+		 * precheck for non-matching cases, so we should recheck.
+		 *
+		 * TODO(jason): precheck should go back to returning three possible
+		 * values: yes-match, no-match, recheck, and we should predetermine
+		 * whether precheck may return recheck.  That would make it possible to
+		 * know recheck is not needed for certain cases such as SK_SEARCHNULL.
+		 */
+		if (is_index_only_scan ||
+			attnum == InvalidAttrNumber ||
+			keys[i]->sk_flags)
+		{
+			return true;
+		}
+	}
+	return false;
 }
 
 HeapTuple
-ybc_getnext_heaptuple(YbScanDesc ybScan, ScanDirection dir, bool *recheck)
+ybc_getnext_heaptuple(YbScanDesc ybScan, ScanDirection dir)
 {
 	HeapTuple	tup = NULL;
 
 	if (ybScan->quit_scan)
 		return NULL;
-
-	*recheck = YbNeedsPgRecheck(ybScan);
 
 	/* Loop over rows from pggate. */
 	while (HeapTupleIsValid(tup = ybcFetchNextHeapTuple(ybScan, dir)))
@@ -3566,11 +3523,10 @@ ybc_getnext_heaptuple(YbScanDesc ybScan, ScanDirection dir, bool *recheck)
 }
 
 IndexTuple
-ybc_getnext_indextuple(YbScanDesc ybScan, ScanDirection dir, bool *recheck)
+ybc_getnext_indextuple(YbScanDesc ybScan, ScanDirection dir)
 {
 	if (ybScan->quit_scan)
 		return NULL;
-	*recheck = YbNeedsPgRecheck(ybScan);
 	return ybcFetchNextIndexTuple(ybScan, dir);
 }
 
@@ -3670,15 +3626,10 @@ ybc_systable_getnext(YbSysScanBase default_scan)
 {
 	YbDefaultSysScan scan = (void *) default_scan;
 
-	bool		recheck = false;
-
 	Assert(PointerIsValid(scan->ybscan));
 
 	HeapTuple	tuple = ybc_getnext_heaptuple(scan->ybscan,
-											  true /* is_forward_scan */ ,
-											  &recheck);
-
-	Assert(!recheck);
+											  true);	/* is_forward_scan */
 
 	return tuple;
 }
@@ -3751,6 +3702,7 @@ ybc_systable_begin_default_scan(Relation relation,
 								NULL /* exec_params */ ,
 								true /* is_internal_scan */ ,
 								false /* fetch_ybctids_only */ );
+	Assert(!YbNeedsPgRecheck(scan->ybscan));
 
 	scan->base.vtable = &yb_default_scan;
 
@@ -3786,6 +3738,7 @@ ybc_heap_beginscan(Relation relation,
 									  NULL /* exec_params */ ,
 									  true /* is_internal_scan */ ,
 									  false /* fetch_ybctids_only */ );
+	Assert(!YbNeedsPgRecheck(ybScan));
 
 	/* Set up Postgres sys table scan description */
 	TableScanDesc tsdesc = (TableScanDesc) ybScan;
@@ -3799,13 +3752,11 @@ ybc_heap_beginscan(Relation relation,
 HeapTuple
 ybc_heap_getnext(TableScanDesc tsdesc)
 {
-	bool		recheck = false;
 	YbScanDesc	ybdesc = (YbScanDesc) tsdesc;
 	HeapTuple	tuple;
 
 	Assert(PointerIsValid(tsdesc));
-	tuple = ybc_getnext_heaptuple(ybdesc, true /* is_forward_scan */ , &recheck);
-	Assert(!recheck);
+	tuple = ybc_getnext_heaptuple(ybdesc, true /* is_forward_scan */ );
 
 	return tuple;
 }
@@ -4548,6 +4499,10 @@ ybBeginSample(Relation rel, int targrows)
 			YbDmlAppendTargetRegular(tupdesc, attnum, ybSample->handle);
 	}
 
+	ybSample->exec_params.yb_fetch_row_limit = yb_fetch_row_limit;
+	ybSample->exec_params.yb_fetch_size_limit = yb_fetch_size_limit;
+	ybSample->exec_params.rowmark = -1;
+
 	return ybSample;
 }
 
@@ -4584,26 +4539,30 @@ ybFetchSample(YbSample ybSample, HeapTuple *rows)
 	TupleDesc	tupdesc = RelationGetDescr(ybSample->relation);
 	Datum	   *values = (Datum *) palloc0(tupdesc->natts * sizeof(Datum));
 	bool	   *nulls = (bool *) palloc(tupdesc->natts * sizeof(bool));
-	int			numrows;
+	int			numrows = 0;
+	int			sampledrows;
+	bool		has_data = false;
 
-	/*
-	 * Execute equivalent of
-	 *   SELECT * FROM table WHERE ybctid IN [yctid0, ybctid1, ...];
-	 */
-	HandleYBStatus(YBCPgExecSample(ybSample->handle));
 	/*
 	 * Retrieve liverows and deadrows counters.
 	 * TODO: count deadrows
 	 */
 	HandleYBStatus(YBCPgGetEstimatedRowCount(ybSample->handle,
+											 &sampledrows,
 											 &ybSample->liverows,
 											 &ybSample->deadrows));
-
-	for (numrows = 0; numrows < ybSample->targrows; numrows++)
+	while (numrows < sampledrows)
 	{
-		bool		has_data = false;
+		/*
+		 * Execute equivalent of
+		 *   SELECT * FROM table WHERE ybctid IN [yctid0, ybctid1, ...];
+		 */
+		if (!has_data)
+		{
+			HandleYBStatus(YBCPgExecSample(ybSample->handle,
+										   &ybSample->exec_params));
+		}
 		YbcPgSysColumns syscols;
-
 		/* Fetch one row. */
 		HandleYBStatus(YBCPgDmlFetch(ybSample->handle,
 									 tupdesc->natts,
@@ -4612,15 +4571,22 @@ ybFetchSample(YbSample ybSample, HeapTuple *rows)
 									 &syscols,
 									 &has_data));
 
-		if (!has_data)
-			break;
-
-		/* Make a heap tuple in current memory context */
-		rows[numrows] = heap_form_tuple(tupdesc, values, nulls);
-		if (syscols.ybctid != NULL)
-			HEAPTUPLE_YBCTID(rows[numrows]) = PointerGetDatum(syscols.ybctid);
-		rows[numrows]->t_tableOid = relid;
+		if (has_data)
+		{
+			/* Make a heap tuple in current memory context */
+			rows[numrows] = heap_form_tuple(tupdesc, values, nulls);
+			if (syscols.ybctid != NULL)
+				HEAPTUPLE_YBCTID(rows[numrows]) = PointerGetDatum(syscols.ybctid);
+			rows[numrows]->t_tableOid = relid;
+			++numrows;
+		}
 	}
+
+	if (*YBCGetGFlags()->TEST_delay_after_table_analyze_ms > 0)
+	{
+		pg_usleep(*YBCGetGFlags()->TEST_delay_after_table_analyze_ms * 1000L);
+	}
+
 	pfree(values);
 	pfree(nulls);
 	/* Close the DocDB statement */

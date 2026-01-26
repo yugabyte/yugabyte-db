@@ -35,6 +35,7 @@ func addDefaults(v *viper.Viper) {
 	v.SetDefault("platform.proxy.java_non_proxy_hosts", "")
 	v.SetDefault("platform.support_origin_url", "/")
 	v.SetDefault("platform.additional_config", "")
+	v.SetDefault("platform.trusted_proxies", []string{})
 
 	// Postgres
 	v.SetDefault("postgres.port", 5432)
@@ -86,7 +87,9 @@ func addDefaults(v *viper.Viper) {
 	// PerfAdvisor (no documented fields)
 	// v.SetDefault("performance_advisor.<field>", <value>) // Not set, no info
 	v.SetDefault("perfAdvisor.enabled", false)
-	v.SetDefault("perfAdvisor.port", 8080)
+	v.SetDefault("perfAdvisor.port", 8443)
+	v.SetDefault("perfAdvisor.restart_seconds", 10)
+	v.SetDefault("perfAdvisor.enable_https", false)
 
 	// Services (installerConfig.Services)
 	v.SetDefault("installer.services", []string{"postgres", "prometheus", "platform"})

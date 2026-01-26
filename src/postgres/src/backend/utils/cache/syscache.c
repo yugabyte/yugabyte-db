@@ -1900,9 +1900,16 @@ SearchSysCacheLocked1(int cacheId,
 	ItemPointerData tid;
 	LOCKTAG		tag;
 
-	if (!YBIsPgLockingEnabled())
+	if (YBGetObjectLockMode() != PG_OBJECT_LOCK_MODE)
 	{
-		return SearchSysCache1(cacheId, key1);
+		HeapTuple tuple = SearchSysCache1(cacheId, key1);
+		SET_LOCKTAG_TUPLE(tag,
+						  cache->cc_relisshared ? InvalidOid : MyDatabaseId,
+						  cache->cc_reloid,
+						  0,
+						  0);
+		(void) LockAcquire(&tag, InplaceUpdateTupleLock, false, false);
+		return tuple;
 	}
 
 	/*----------

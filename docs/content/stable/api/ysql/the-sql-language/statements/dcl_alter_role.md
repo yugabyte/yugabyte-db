@@ -42,6 +42,10 @@ Only roles with SUPERUSER privilege can create other SUPERUSER roles.
 - `INHERIT`, `NOINHERIT` determine whether the role inherits privileges of the roles that it is a member of.
 Without INHERIT, membership in another role only grants the ability to SET ROLE to that other role. The privileges of the other role are only available after having done so.
 - `LOGIN`, `NOLOGIN` determine whether new role is allowed to log in or not. Only roles with login privilege can be used during client connection.
+- `REPLICATION`, `NOREPLICATION` determine whether a role is a replication role. A role must have this attribute (or be a superuser) in order to be able to connect to the server in replication mode (physical or logical replication) and in order to be able to create or drop replication slots. A role having the REPLICATION attribute is a very highly privileged role, and should only be used on roles actually used for replication. If not specified, NOREPLICATION is the default. Only superuser roles or roles with REPLICATION can specify REPLICATION.
+- `BYPASSRLS`, `NOBYPASSRLS` determine whether a role bypasses every row-level security (RLS) policy. NOBYPASSRLS is the default. Only superuser roles or roles with BYPASSRLS can specify BYPASSRLS.
+
+  Note that pg_dump will set row_security to OFF by default, to ensure all contents of a table are dumped out. If the user running pg_dump does not have appropriate permissions, an error will be returned. However, superusers and the owner of the table being dumped always bypass RLS.
 - `CONNECTION LIMIT` specifies how many concurrent connections the role can make. This only applies to roles that can log in.
 - `[ENCRYPTED] PASSWORD` sets the password for the role. This only applies to roles that can log in.
 If no password is specified, the password will be set to null and password authentication will always fail for that user.

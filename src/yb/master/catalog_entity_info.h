@@ -669,6 +669,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   bool is_running() const;
   bool is_deleted() const;
   bool is_hidden() const;
+  bool started_hiding() const;
   bool IsPreparing() const;
   bool IsOperationalForClient() const {
     auto l = LockForRead();
@@ -883,7 +884,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // Returns whether this is a type of table that will use tablespaces
   // for placement.
-  bool UsesTablespacesForPlacement() const;
+  bool TableTypeUsesTablespacesForPlacement() const;
 
   bool IsColocationParentTable() const;
   bool IsColocatedDbParentTable() const;

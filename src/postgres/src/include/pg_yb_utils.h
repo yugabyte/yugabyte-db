@@ -289,6 +289,18 @@ extern bool YBIsDBCatalogVersionMode();
  */
 extern bool YBIsDBLogicalClientVersionMode();
 
+typedef enum YbObjectLockMode
+{
+	PG_OBJECT_LOCK_MODE,
+	YB_OBJECT_LOCK_DISABLED,
+	YB_OBJECT_LOCK_ENABLED
+} YbObjectLockMode;
+/*
+ * Whether object locking is enabled for the cluster (via the TServer regular
+ * gflag enable_object_locking_for_table_locks).
+ */
+extern YbObjectLockMode YBGetObjectLockMode();
+
 /*
  * Whether we need to preload additional catalog tables.
  */
@@ -354,12 +366,6 @@ extern void YBCAbortTransaction();
 extern void YBCSetActiveSubTransaction(SubTransactionId id);
 
 extern void YBCRollbackToSubTransaction(SubTransactionId id);
-
-/*
- * Return true if we want to allow PostgreSQL's own locking. This is needed
- * while system tables are still managed by PostgreSQL.
- */
-extern bool YBIsPgLockingEnabled();
 
 /*
  * Get the type ID of a real or virtual attribute (column).
@@ -816,9 +822,14 @@ extern bool yb_xcluster_automatic_mode_target_ddl;
 extern bool yb_user_ddls_preempt_auto_analyze;
 
 /*
-* If true, enable RPC execution time stats for pg_stat_statements.
+ * If true, enable RPC execution time stats for pg_stat_statements.
  */
 extern bool yb_enable_pg_stat_statements_rpc_stats;
+
+/*
+ * If true, enable DocDB metrics collection for pg_stat_statements.
+ */
+extern bool yb_enable_pg_stat_statements_docdb_metrics;
 
 /*
  * See also ybc_util.h which contains additional such variable declarations for
@@ -1415,7 +1426,7 @@ extern bool YbSkipPgSnapshotManagement();
 extern YbOptionalReadPointHandle YbBuildCurrentReadPointHandle();
 extern void YbUseSnapshotReadTime(uint64_t read_time);
 extern YbOptionalReadPointHandle YbRegisterSnapshotReadTime(uint64_t read_time);
-extern YbOptionalReadPointHandle YbResetTransactionReadPoint();
+extern YbOptionalReadPointHandle YbResetTransactionReadPoint(bool is_catalog_snapshot);
 
 extern bool YbUseFastBackwardScan();
 

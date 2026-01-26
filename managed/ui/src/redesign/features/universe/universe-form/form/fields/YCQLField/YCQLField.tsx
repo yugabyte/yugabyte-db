@@ -14,7 +14,7 @@ import {
   YSQL_FIELD
 } from '../../../utils/constants';
 import { useFormFieldStyles } from '../../../universeMainStyle';
-import InfoMessageIcon from '../../../../../../assets/info-message.svg';
+import InfoMessageIcon from '../../../../../../assets/info-message.svg?img';
 
 interface YCQLFieldProps {
   disabled: boolean;

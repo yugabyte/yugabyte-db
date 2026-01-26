@@ -19,7 +19,13 @@ namespace yb::vector_index {
 
 struct VectorLSMMetrics {
   explicit VectorLSMMetrics(const MetricEntityPtr& entity);
+
   CounterPtr compact_write_bytes;
+  EventStatsPtr num_chunks;
+  EventStatsPtr total_found_entries;
+  EventStatsPtr insert_registry_entries;
+  EventStatsPtr insert_registry_search_us;
+  EventStatsPtr chunks_search_us;
 };
 
 }  // namespace yb::vector_index

@@ -13,7 +13,7 @@ import { YSQL_FIELD } from '../ysql-settings/YSQLSettingsField';
 
 const { Box, Typography, styled } = mui;
 
-import { ReactComponent as NextLineIcon } from '../../../../../assets/next-line.svg';
+import NextLineIcon from '../../../../../assets/next-line.svg';
 
 interface ConnectionPoolFieldProps {
   disabled: boolean;

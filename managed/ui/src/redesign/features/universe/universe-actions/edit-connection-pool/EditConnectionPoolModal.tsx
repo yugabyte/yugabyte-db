@@ -16,7 +16,7 @@ import { hasNecessaryPerm } from '../../../rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../rbac/ApiAndUserPermMapping';
 import { RBAC_ERR_MSG_NO_PERM } from '../../../rbac/common/validator/ValidatorUtils';
 //icons
-import InfoMessageIcon from '../../../../assets/info-message.svg';
+import InfoMessageIcon from '../../../../assets/info-message.svg?img';
 import InfoBlue from '../../../../assets/info-blue.svg';
 import InfoError from '../../../../assets/info-red.svg';
 

@@ -742,6 +742,7 @@ Status ObjectLockInfoManager::Impl::PersistRequest(
   auto lock = object_lock_info->LockForWrite();
   auto& txns_map = (*lock.mutable_data()->pb.mutable_lease_epochs())[lease_epoch];
   auto& subtxns_map = (*txns_map.mutable_transactions())[txn_id.ToString()];
+  subtxns_map.set_status_tablet(req.status_tablet());
   auto& object_locks_list = (*subtxns_map.mutable_subtxns())[req.subtxn_id()];
   for (const auto& object_lock : req.object_locks()) {
     object_locks_list.add_locks()->CopyFrom(object_lock);
@@ -835,6 +836,7 @@ tserver::DdlLockEntriesPB ObjectLockInfoManager::Impl::ExportObjectLockInfoUnloc
           auto* lock_entries_pb = entries.add_lock_entries();
           lock_entries_pb->set_session_host_uuid(host_uuid);
           lock_entries_pb->set_txn_id(txn_id.data(), txn_id.size());
+          lock_entries_pb->set_status_tablet(subtxns_map.status_tablet());
           lock_entries_pb->set_subtxn_id(subtxn_id);
           lock_entries_pb->mutable_object_locks()->MergeFrom(object_locks_list.locks());
         }

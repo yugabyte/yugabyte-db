@@ -5,8 +5,10 @@
   width: 28px;
   height: 20px;
 }
+
 h2 {
   height: unset;
+
   span {
     color: unset;
     font-size: unset;

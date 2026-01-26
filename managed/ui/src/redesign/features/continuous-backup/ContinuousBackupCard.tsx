@@ -5,10 +5,10 @@ import moment from 'moment';
 import copy from 'copy-to-clipboard';
 
 import { ContinuousBackup } from '../../../v2/api/yugabyteDBAnywhereV2APIs.schemas';
-import { ReactComponent as TrashIcon } from '../../assets/trashbin.svg';
-import { ReactComponent as PenIcon } from '../../assets/pen.svg';
-import { ReactComponent as CopyIcon } from '../../assets/copy.svg';
-import { ReactComponent as ErrorIcon } from '../../assets/error-circle.svg';
+import TrashIcon from '../../assets/trashbin.svg';
+import PenIcon from '../../assets/pen.svg';
+import CopyIcon from '../../assets/copy.svg';
+import ErrorIcon from '../../assets/error-circle.svg';
 import { YBButton } from '../../components';
 import {
   ConfigureContinuousBackupModal,

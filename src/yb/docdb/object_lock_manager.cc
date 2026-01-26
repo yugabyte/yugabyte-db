@@ -60,6 +60,10 @@ DEFINE_test_flag(bool, olm_skip_sending_wait_for_probes, false,
     "When set, the lock manager doesn't send wait-for probres to the local waiting txn registry, "
     "essentially giving away deadlock detection.");
 
+DEFINE_test_flag(bool, olm_serve_redundant_lock, false,
+    "When set, the lock manager re-acquires redundant locks instead of just incrementing "
+    "the ref_count and returning.");
+
 METRIC_DEFINE_counter(server, object_locking_lock_acquires,
                       "Number of object locking lock acquires (both fast and slow path)",
                       yb::MetricUnit::kRequests,
@@ -476,6 +480,9 @@ bool TrackedTransactionLockEntry::HandleRedundantLock(
     LockBatchEntrySpan key_to_intent_type,
     const ObjectLockOwner& object_lock_owner) {
   TRACE_FUNC();
+  if (PREDICT_FALSE(FLAGS_TEST_olm_serve_redundant_lock)) {
+    return false;
+  }
   std::lock_guard lock(mutex);
   const bool is_lock_redundant =
       std::ranges::all_of(key_to_intent_type, [&](auto key_and_intent) REQUIRES (mutex) {

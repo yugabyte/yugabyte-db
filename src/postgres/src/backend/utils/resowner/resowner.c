@@ -498,6 +498,12 @@ ResourceOwnerRelease(ResourceOwner owner,
 {
 	/* There's not currently any setup needed before recursing */
 	ResourceOwnerReleaseInternal(owner, phase, isCommit, isTopLevel);
+
+	/* YB Note: Assert that local lock table is empty on txn finish */
+#ifdef USE_ASSERT_CHECKING
+	if (isTopLevel && phase == RESOURCE_RELEASE_LOCKS)
+		Assert(hash_get_num_entries(GetLockMethodLocalHash()) == 0);
+#endif
 }
 
 static void

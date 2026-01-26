@@ -61,6 +61,7 @@ struct CompactionContextOptions {
   // In YugabyteDB we use only level0, so for code simplicity pass level0 inputs only.
   const std::vector<FileMetaData*>& level0_inputs;
   BoundaryValuesExtractor* boundary_extractor;
+  CompactionReason compaction_reason;
 };
 
 }  // namespace rocksdb

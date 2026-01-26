@@ -121,7 +121,8 @@ using AddTableListener = std::function<Status(const TableInfo&)>;
 YB_STRONGLY_TYPED_BOOL(AllowBootstrappingState);
 YB_STRONGLY_TYPED_BOOL(ResetSplit);
 
-struct AdminCompactionOptions {
+struct ManualCompactionOptions {
+  rocksdb::CompactionReason compaction_reason = rocksdb::CompactionReason::kUnknown;
   StdStatusCallback compaction_completion_callback;
   TableIdsPtr vector_index_ids;
   VectorIndexOnly vector_index_only = VectorIndexOnly::kTrue;
@@ -557,7 +558,7 @@ class Tablet : public AbstractTablet,
   // request in state. Due to acquiring locks it can block the thread.
   void AcquireLocksAndPerformDocOperations(std::unique_ptr<WriteQuery> query);
 
-  // Given a propopsed "history cutoff" timestamp, returns either that value, if possible, or a
+  // Given a proposed "history cutoff" timestamp, returns either that value, if possible, or a
   // smaller value corresponding to the oldest active reader, whichever is smaller. This ensures
   // that data needed by active read operations is not compacted away.
   //
@@ -755,6 +756,10 @@ class Tablet : public AbstractTablet,
     return *vector_indexes_;
   }
 
+  const TabletVectorIndexes& vector_indexes() const {
+    return *vector_indexes_;
+  }
+
   SnapshotCoordinator* snapshot_coordinator() {
     return snapshot_coordinator_;
   }
@@ -830,7 +835,7 @@ class Tablet : public AbstractTablet,
   Status TriggerManualCompactionIfNeeded(rocksdb::CompactionReason reason);
 
   // Triggers an admin full compaction on this tablet.
-  Status TriggerAdminFullCompactionIfNeeded(const AdminCompactionOptions& options);
+  Status TriggerAdminFullCompactionIfNeeded(const ManualCompactionOptions& options);
 
   bool HasActiveFullCompaction();
   bool HasActiveFullCompactionUnlocked() const REQUIRES(full_compaction_token_mutex_);
@@ -1000,6 +1005,21 @@ class Tablet : public AbstractTablet,
 
   void SetAllowCompactionFailures(rocksdb::AllowCompactionFailures allow_compaction_failures);
 
+  Status GetSafeTimeReadOperationData(
+      const ReadHybridTime& read_hybrid_time, CoarseTimePoint deadline,
+      docdb::ReadOperationData& read_operation_data) const;
+
+  Status GetSafeTimeReadOperationData(
+      const ReadHybridTime& read_hybrid_time,
+      docdb::ReadOperationData& read_operation_data) const {
+    return GetSafeTimeReadOperationData(
+        read_hybrid_time, CoarseTimePoint::max(), read_operation_data);
+  }
+
+  Status DumpTabletData(
+      WritableFile* file, uint64_t read_ht, CoarseTimePoint deadline, uint64_t& xor_hash,
+      uint64_t& row_count) const;
+
  private:
   friend class Iterator;
   friend class TabletPeerTest;
@@ -1053,9 +1073,9 @@ class Tablet : public AbstractTablet,
       rocksdb::CompactionReason reason,
       rocksdb::SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe);
 
-  Status TriggerManualCompactionSync(rocksdb::CompactionReason reason) {
-    return TriggerManualCompactionSyncUnsafe(reason, rocksdb::SkipCorruptDataBlocksUnsafe::kFalse);
-  }
+  Status TriggerManualCompactionSyncUnsafe(const ManualCompactionOptions& options);
+
+  Status TriggerManualCompactionSync(const ManualCompactionOptions& options);
 
   Status TriggerVectorIndexCompactionSync(const TableIds& vector_index_ids);
 

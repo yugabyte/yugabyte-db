@@ -23,6 +23,7 @@ import com.yugabyte.yw.common.operator.helpers.OperatorPlacementInfoHelper;
 import com.yugabyte.yw.common.operator.utils.KubernetesEnvironmentVariables;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.common.operator.utils.OperatorWorkQueue;
+import com.yugabyte.yw.common.operator.utils.ResourceAnnotationKeys;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseActionsHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
@@ -191,8 +192,24 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     String resourceName = ybUniverse.getMetadata().getName();
     String resourceNamespace = ybUniverse.getMetadata().getNamespace();
     log.info("deleting universe {}", ybaUniverseName);
-    UniverseResp universeResp =
-        universeCRUDHandler.findByName(cust, ybaUniverseName).stream().findFirst().orElse(null);
+    UniverseResp universeResp;
+    if (ybUniverse.getMetadata().getAnnotations() != null
+        && ybUniverse
+            .getMetadata()
+            .getAnnotations()
+            .containsKey(ResourceAnnotationKeys.YBA_RESOURCE_ID)) {
+      universeResp =
+          universeCRUDHandler.findByUUID(
+              cust,
+              UUID.fromString(
+                  ybUniverse
+                      .getMetadata()
+                      .getAnnotations()
+                      .get(ResourceAnnotationKeys.YBA_RESOURCE_ID)));
+    } else {
+      universeResp =
+          universeCRUDHandler.findByName(cust, ybaUniverseName).stream().findFirst().orElse(null);
+    }
 
     if (universeResp == null) {
       log.debug("universe {} already deleted in YBA, cleaning up", ybaUniverseName);
@@ -290,7 +307,22 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     String resourceName = ybUniverse.getMetadata().getName();
     String resourceNamespace = ybUniverse.getMetadata().getNamespace();
 
-    Optional<Universe> uOpt = Universe.maybeGetUniverseByName(cust.getId(), ybaUniverseName);
+    Optional<Universe> uOpt;
+    if (ybUniverse.getMetadata().getAnnotations() != null
+        && ybUniverse
+            .getMetadata()
+            .getAnnotations()
+            .containsKey(ResourceAnnotationKeys.YBA_RESOURCE_ID)) {
+      uOpt =
+          Universe.maybeGet(
+              UUID.fromString(
+                  ybUniverse
+                      .getMetadata()
+                      .getAnnotations()
+                      .get(ResourceAnnotationKeys.YBA_RESOURCE_ID)));
+    } else {
+      uOpt = Universe.maybeGetUniverseByName(cust.getId(), ybaUniverseName);
+    }
 
     if (!uOpt.isPresent()) {
       log.info("Creating new universe {}", ybaUniverseName);
@@ -342,7 +374,22 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     String ybaUniverseName = getUniverseName(ybUniverse);
     String resourceName = ybUniverse.getMetadata().getName();
     String resourceNamespace = ybUniverse.getMetadata().getNamespace();
-    Optional<Universe> uOpt = Universe.maybeGetUniverseByName(cust.getId(), ybaUniverseName);
+    Optional<Universe> uOpt;
+    if (ybUniverse.getMetadata().getAnnotations() != null
+        && ybUniverse
+            .getMetadata()
+            .getAnnotations()
+            .containsKey(ResourceAnnotationKeys.YBA_RESOURCE_ID)) {
+      uOpt =
+          Universe.maybeGet(
+              UUID.fromString(
+                  ybUniverse
+                      .getMetadata()
+                      .getAnnotations()
+                      .get(ResourceAnnotationKeys.YBA_RESOURCE_ID)));
+    } else {
+      uOpt = Universe.maybeGetUniverseByName(cust.getId(), ybaUniverseName);
+    }
 
     if (!uOpt.isPresent()) {
       log.debug("Update Action: Universe {} creation failed", ybaUniverseName);
@@ -380,7 +427,22 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     String ybaUniverseName = getUniverseName(ybUniverse);
     String resourceName = ybUniverse.getMetadata().getName();
     String resourceNamespace = ybUniverse.getMetadata().getNamespace();
-    Optional<Universe> uOpt = Universe.maybeGetUniverseByName(cust.getId(), ybaUniverseName);
+    Optional<Universe> uOpt;
+    if (ybUniverse.getMetadata().getAnnotations() != null
+        && ybUniverse
+            .getMetadata()
+            .getAnnotations()
+            .containsKey(ResourceAnnotationKeys.YBA_RESOURCE_ID)) {
+      uOpt =
+          Universe.maybeGet(
+              UUID.fromString(
+                  ybUniverse
+                      .getMetadata()
+                      .getAnnotations()
+                      .get(ResourceAnnotationKeys.YBA_RESOURCE_ID)));
+    } else {
+      uOpt = Universe.maybeGetUniverseByName(cust.getId(), ybaUniverseName);
+    }
 
     if (!uOpt.isPresent()) {
       log.debug("NoOp Action: Universe {} not found, requeuing Create", ybaUniverseName);
@@ -958,8 +1020,24 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
 
     taskConfigParams.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.EDIT;
     taskConfigParams.currentClusterType = clusterType;
-    Universe oldUniverse =
-        Universe.maybeGetUniverseByName(cust.getId(), getUniverseName(ybUniverse)).orElse(null);
+    Universe oldUniverse;
+    if (ybUniverse.getMetadata().getAnnotations() != null
+        && ybUniverse
+            .getMetadata()
+            .getAnnotations()
+            .containsKey(ResourceAnnotationKeys.YBA_RESOURCE_ID)) {
+      oldUniverse =
+          Universe.maybeGet(
+                  UUID.fromString(
+                      ybUniverse
+                          .getMetadata()
+                          .getAnnotations()
+                          .get(ResourceAnnotationKeys.YBA_RESOURCE_ID)))
+              .orElse(null);
+    } else {
+      oldUniverse =
+          Universe.maybeGetUniverseByName(cust.getId(), getUniverseName(ybUniverse)).orElse(null);
+    }
     log.info("Updating universe with new info now");
     universeCRUDHandler.configure(cust, taskConfigParams);
     return universeCRUDHandler.update(cust, oldUniverse, taskConfigParams);
@@ -1401,7 +1479,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
             .collect(Collectors.toList());
     providerData.name = providerName;
 
-    operatorUtils.createProviderCrFromProviderEbean(providerData, kubeNamespace);
+    operatorUtils.createProviderCrFromProviderEbean(providerData, kubeNamespace, true);
   }
 
   /**
@@ -1452,8 +1530,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
         || !KubernetesEnvironmentVariables.isYbaRunningInKubernetes()) {
       return;
     }
-    String providerName =
-        getProviderName(OperatorUtils.getYbaResourceName(ybUniverse.getMetadata()));
+    String providerName = getProviderName(getUniverseName(ybUniverse));
     // Check if we've already initiated creation of this provider CR
     if (inProgressAutoProviderCRs.contains(providerName)) {
       log.info("Auto-provider {} creation already initiated, skipping", providerName);

@@ -8,6 +8,7 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
+import com.yugabyte.yw.common.operator.utils.ResourceAnnotationKeys;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.models.ReleaseArtifact;
 import com.yugabyte.yw.models.ReleaseArtifact.Platform;
@@ -27,6 +28,7 @@ import io.yugabyte.operator.v1alpha1.releasespec.config.downloadconfig.s3.Secret
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -69,8 +71,16 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
     log.info("Adding release {} ", releaseMetadata.getName());
     if (confGetter.getGlobalConf(GlobalConfKeys.enableReleasesRedesign)) {
       String version = release.getSpec().getConfig().getVersion();
-      com.yugabyte.yw.models.Release ybRelease =
-          com.yugabyte.yw.models.Release.getByVersion(version);
+      com.yugabyte.yw.models.Release ybRelease;
+      if (releaseMetadata.getAnnotations() != null
+          && releaseMetadata.getAnnotations().containsKey(ResourceAnnotationKeys.YBA_RESOURCE_ID)) {
+        ybRelease =
+            com.yugabyte.yw.models.Release.get(
+                UUID.fromString(
+                    releaseMetadata.getAnnotations().get(ResourceAnnotationKeys.YBA_RESOURCE_ID)));
+      } else {
+        ybRelease = com.yugabyte.yw.models.Release.getByVersion(version);
+      }
       if (ybRelease != null) {
         log.info("release version already exists, cannot create: " + version);
         // If it already exists, we should just use it.
@@ -120,8 +130,22 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
     }
     if (confGetter.getGlobalConf(GlobalConfKeys.enableReleasesRedesign)) {
       String version = newRelease.getSpec().getConfig().getVersion();
-      com.yugabyte.yw.models.Release ybRelease =
-          com.yugabyte.yw.models.Release.getByVersion(version);
+      com.yugabyte.yw.models.Release ybRelease;
+      if (newRelease.getMetadata().getAnnotations() != null
+          && newRelease
+              .getMetadata()
+              .getAnnotations()
+              .containsKey(ResourceAnnotationKeys.YBA_RESOURCE_ID)) {
+        ybRelease =
+            com.yugabyte.yw.models.Release.get(
+                UUID.fromString(
+                    newRelease
+                        .getMetadata()
+                        .getAnnotations()
+                        .get(ResourceAnnotationKeys.YBA_RESOURCE_ID)));
+      } else {
+        ybRelease = com.yugabyte.yw.models.Release.getByVersion(version);
+      }
       if (ybRelease == null) {
         log.warn("no release found for version " + version + ". creating it");
         ybRelease = com.yugabyte.yw.models.Release.create(version, "LTS");

@@ -160,10 +160,6 @@ DECLARE_int32(yb_client_admin_operation_timeout_sec);
 DECLARE_bool(ysql_yb_enable_advisory_locks);
 DECLARE_bool(enable_object_locking_for_table_locks);
 
-METRIC_DEFINE_event_stats(
-    server, pg_client_exchange_response_size, "The size of PgClient exchange response in bytes",
-    yb::MetricUnit::kBytes, "The size of PgClient exchange response in bytes");
-
 namespace yb::tserver {
 namespace {
 
@@ -845,8 +841,6 @@ class PgClientServiceImpl::Impl : public SessionProvider {
         response_cache_(parent_mem_tracker, metric_entity),
         instance_id_(permanent_uuid),
         shared_mem_pool_(parent_mem_tracker, instance_id_),
-        stats_exchange_response_size_(
-            METRIC_pg_client_exchange_response_size.Instantiate(metric_entity)),
         transaction_builder_([this](auto&&... args) {
           return BuildTransaction(std::forward<decltype(args)>(args)...);
         }),
@@ -860,7 +854,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
             .response_cache = response_cache_,
             .sequence_cache = sequence_cache_,
             .shared_mem_pool = shared_mem_pool_,
-            .stats_exchange_response_size = stats_exchange_response_size_,
+            .metrics = PgClientSessionMetrics{metric_entity},
             .instance_uuid = instance_id_,
             .lock_owner_registry =
                 tablet_server_.ObjectLockSharedStateManager()
@@ -949,8 +943,8 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     auto session_info = SessionInfo::Make(
         txns_assignment_mutexes_[session_id % txns_assignment_mutexes_.size()],
         FLAGS_pg_client_session_expiration_ms * 1ms, transaction_builder_, client(),
-        session_context_, session_id, lease_epoch(), tablet_server_.ts_local_lock_manager(),
-        messenger_.scheduler());
+        session_context_, session_id, req.pid(), lease_epoch(),
+        tablet_server_.ts_local_lock_manager(), messenger_.scheduler());
     resp->set_session_id(session_id);
     if (FLAGS_pg_client_use_shared_memory) {
       std::call_once(exchange_thread_pool_once_flag_, [this] {
@@ -1035,9 +1029,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
   Status GetDatabaseInfo(
       const PgGetDatabaseInfoRequestPB& req, PgGetDatabaseInfoResponsePB* resp,
       rpc::RpcContext* context) {
-    return client().GetNamespaceInfo(
-        GetPgsqlNamespaceId(req.oid()), "" /* namespace_name */, YQL_DATABASE_PGSQL,
-        resp->mutable_info());
+    return client().GetNamespaceInfo(GetPgsqlNamespaceId(req.oid()), resp->mutable_info());
   }
 
   Result<PgPollVectorIndexReadyResponsePB> PollVectorIndexReady(
@@ -2996,8 +2988,6 @@ class PgClientServiceImpl::Impl : public SessionProvider {
   std::unique_ptr<YBThreadPool> exchange_thread_pool_;
 
   PgSharedMemoryPool shared_mem_pool_;
-
-  const EventStatsPtr stats_exchange_response_size_;
 
   std::array<rw_spinlock, 8> txns_assignment_mutexes_;
   TransactionBuilder transaction_builder_;

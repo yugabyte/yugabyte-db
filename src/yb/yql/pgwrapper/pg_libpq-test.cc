@@ -49,6 +49,7 @@
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/barrier.h"
+#include "yb/util/json_document.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/os-util.h"
@@ -949,14 +950,12 @@ Status PgLibPqTest::TestEmbeddedIndexScanOptimization(bool is_colocated_with_tab
   // First run is to warm up the cache.
   RETURN_NOT_OK(conn.FetchRow<std::string>(query));
   // Second run is the real test.
-  auto explain_str = VERIFY_RESULT(conn.FetchRow<std::string>(query));
-  rapidjson::Document explain_json;
-  explain_json.Parse(explain_str.c_str());
-  auto scan_type = std::string(explain_json[0]["Plan"]["Node Type"].GetString());
+  auto explain_json = VERIFY_RESULT(conn.FetchRow<JsonDocument>(query));
+  auto scan_type = VERIFY_RESULT(explain_json.Root()[0]["Plan"]["Node Type"].GetString());
   SCHECK_EQ(scan_type, "Index Scan",
             IllegalState,
             "Unexpected scan type");
-  SCHECK_EQ(explain_json[0]["Catalog Read Requests"].GetDouble(), 1,
+  SCHECK_EQ(VERIFY_RESULT(explain_json.Root()[0]["Catalog Read Requests"].GetDouble()), 1,
             IllegalState,
             "Unexpected number of catalog read requests");
 
@@ -967,19 +966,18 @@ Status PgLibPqTest::TestEmbeddedIndexScanOptimization(bool is_colocated_with_tab
   RETURN_NOT_OK(conn.Execute(
       "CREATE INDEX ON vector_test USING ybhnsw (embedding vector_l2_ops)"));
   RETURN_NOT_OK(conn.Execute("INSERT INTO vector_test VALUES (1, '[1, 2, 3]')"));
-  explain_str = VERIFY_RESULT(conn.FetchRow<std::string>(
+  explain_json = VERIFY_RESULT(conn.FetchRow<JsonDocument>(
       "EXPLAIN (ANALYZE, DIST, FORMAT JSON)"
       " SELECT * FROM vector_test ORDER BY embedding <-> '[0, 0, 0]' LIMIT 1"));
-  explain_json.Parse(explain_str.c_str());
-  scan_type = std::string(explain_json[0]["Plan"]["Node Type"].GetString());
+  scan_type = VERIFY_RESULT(explain_json.Root()[0]["Plan"]["Node Type"].GetString());
   SCHECK_EQ(scan_type, "Limit",
             IllegalState,
             "Unexpected scan type");
-  scan_type = std::string(explain_json[0]["Plan"]["Plans"][0]["Node Type"].GetString());
+  scan_type = VERIFY_RESULT(explain_json.Root()[0]["Plan"]["Plans"][0]["Node Type"].GetString());
   SCHECK_EQ(scan_type, "Index Scan",
             IllegalState,
             "Unexpected scan type");
-  SCHECK_EQ(explain_json[0]["Storage Read Requests"].GetDouble(), 1,
+  SCHECK_EQ(VERIFY_RESULT(explain_json.Root()[0]["Storage Read Requests"].GetDouble()), 1,
             IllegalState,
             "Unexpected number of storage read requests");
 
@@ -991,13 +989,12 @@ Status PgLibPqTest::TestEmbeddedIndexScanOptimization(bool is_colocated_with_tab
   RETURN_NOT_OK(conn.Execute("CREATE INDEX ON colo_test (value)"));
   RETURN_NOT_OK(conn.Execute("INSERT INTO colo_test VALUES (1, 'hi')"));
   query = "EXPLAIN (ANALYZE, DIST, FORMAT JSON) SELECT * FROM colo_test WHERE value = 'hi'";
-  explain_str = VERIFY_RESULT(conn.FetchRow<std::string>(query));
-  explain_json.Parse(explain_str.c_str());
-  scan_type = std::string(explain_json[0]["Plan"]["Node Type"].GetString());
+  explain_json = VERIFY_RESULT(conn.FetchRow<JsonDocument>(query));
+  scan_type = VERIFY_RESULT(explain_json.Root()[0]["Plan"]["Node Type"].GetString());
   SCHECK_EQ(scan_type, "Index Scan",
             IllegalState,
             "Unexpected scan type");
-  SCHECK_EQ(explain_json[0]["Storage Read Requests"].GetDouble(), 1,
+  SCHECK_EQ(VERIFY_RESULT(explain_json.Root()[0]["Storage Read Requests"].GetDouble()), 1,
             IllegalState,
             "Unexpected number of storage read requests");
 
@@ -1006,13 +1003,12 @@ Status PgLibPqTest::TestEmbeddedIndexScanOptimization(bool is_colocated_with_tab
     RETURN_NOT_OK(conn.Execute("DROP INDEX colo_test_value_idx"));
     RETURN_NOT_OK(conn.Execute("CREATE TABLESPACE spc LOCATION '/dne'"));
     RETURN_NOT_OK(conn.Execute("CREATE INDEX ON colo_test (value) TABLESPACE spc"));
-    explain_str = VERIFY_RESULT(conn.FetchRow<std::string>(query));
-    explain_json.Parse(explain_str.c_str());
-    scan_type = std::string(explain_json[0]["Plan"]["Node Type"].GetString());
+    explain_json = VERIFY_RESULT(conn.FetchRow<JsonDocument>(query));
+    scan_type = VERIFY_RESULT(explain_json.Root()[0]["Plan"]["Node Type"].GetString());
     SCHECK_EQ(scan_type, "Index Scan",
               IllegalState,
               "Unexpected scan type");
-    SCHECK_GT(explain_json[0]["Storage Read Requests"].GetDouble(), 1,
+    SCHECK_GT(VERIFY_RESULT(explain_json.Root()[0]["Storage Read Requests"].GetDouble()), 1,
               IllegalState,
               "Unexpected number of storage read requests");
   }
@@ -1285,7 +1281,7 @@ Result<TableId> GetColocationOrTablegroupParentTableId(
     const std::string& database_name,
     const std::string& tablegroup_id) {
   master::GetNamespaceInfoResponsePB resp;
-  Status s = client->GetNamespaceInfo("", database_name, YQL_DATABASE_PGSQL, &resp);
+  Status s = client->GetNamespaceInfo(database_name, YQL_DATABASE_PGSQL, &resp);
   if (!s.ok()) {
     return s;
   }
@@ -3960,8 +3956,7 @@ TEST_F(PgOidCollisionReservedNormalOid, PgOidCollisionSystemPostgresTest) {
   ASSERT_TRUE(user_created_db_oids == expected) << yb::ToString(user_created_db_oids);
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   master::GetNamespaceInfoResponsePB namespace_info;
-  ASSERT_OK(client->GetNamespaceInfo(
-      "" /* namespace_id */, "system_postgres", YQL_DATABASE_PGSQL, &namespace_info));
+  ASSERT_OK(client->GetNamespaceInfo("system_postgres", YQL_DATABASE_PGSQL, &namespace_info));
 
   const auto db_oid = CHECK_RESULT(GetPgsqlDatabaseOid(
       namespace_info.namespace_().id()));
@@ -5238,6 +5233,112 @@ TEST_F_EX(PgLibPqTest, ConcurrentAnalyzeWithDDL, PgLibPqTestTableLocksDisabled) 
   stop = true;
   analyze_thread.join();
   ASSERT_NE(conn.ConnStatus(), CONNECTION_BAD);
+}
+
+// Test dumping tablet data works for leaders and followers and each returns the same XOR hash.
+TEST_F(PgLibPqTest, DumpTabletData) {
+  ASSERT_OK(EnsureClientCreated());
+
+  const auto namespace_name = "yugabyte";
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB(namespace_name));
+  const auto table_name = "tbl1";
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (id INT PRIMARY KEY, name TEXT) SPLIT INTO 1 TABLETS", table_name));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 (id, name) SELECT i, 'test' || i FROM generate_series(1, 10) i", table_name));
+
+  std::vector<TabletId> tablet_ids;
+  auto table_names = ASSERT_RESULT(client_->ListTables(table_name));
+  ASSERT_EQ(table_names.size(), 1);
+  const auto yb_table_name = table_names.front();
+  ASSERT_OK(client_->GetTablets(yb_table_name, 0 /* max_tablets */, &tablet_ids, NULL));
+  ASSERT_EQ(tablet_ids.size(), 1);
+  const auto tablet_id = tablet_ids.front();
+
+  auto tablet_leader_index = ASSERT_RESULT(cluster_->GetTabletLeaderIndex(tablet_id));
+  auto leader_tserver = cluster_->tablet_server(tablet_leader_index);
+  auto leader_proxy = cluster_->GetProxy<tserver::TabletServerServiceProxy>(leader_tserver);
+
+  LOG(INFO) << "Reading from tablet " << tablet_id << " on tserver " << leader_tserver->uuid();
+
+  tserver::DumpTabletDataRequestPB req;
+  req.set_tablet_id(tablet_id);
+  req.set_dest_path("/tmp/dump_tablet_data.txt");
+  tserver::DumpTabletDataResponsePB leader_resp;
+  rpc::RpcController rpc;
+  rpc.set_timeout(10s);
+
+  ASSERT_OK(leader_proxy.DumpTabletData(req, &leader_resp, &rpc));
+  LOG(INFO) << "DumpTabletData response: " << leader_resp.DebugString();
+  ASSERT_FALSE(leader_resp.has_error());
+
+  // Wait for rows to get replicated to followers.
+  SleepFor(1s * kTimeMultiplier);
+
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
+    if (i == tablet_leader_index) {
+      continue;
+    }
+    auto follower_tserver = cluster_->tablet_server(i);
+    auto follower_proxy = cluster_->GetProxy<tserver::TabletServerServiceProxy>(follower_tserver);
+    tserver::DumpTabletDataResponsePB follower_resp;
+    rpc::RpcController rpc;
+    rpc.set_timeout(10s);
+    ASSERT_OK(follower_proxy.DumpTabletData(req, &follower_resp, &rpc));
+    LOG(INFO) << "DumpTabletData response from follower " << follower_tserver->uuid() << ": "
+              << follower_resp.DebugString();
+    ASSERT_FALSE(follower_resp.has_error());
+    ASSERT_EQ(leader_resp.row_count(), follower_resp.row_count());
+    ASSERT_EQ(leader_resp.xor_hash(), follower_resp.xor_hash());
+  }
+}
+
+// Test yb-admin get_table_hash command for tables with different number of tablets, but same data
+// returns the same XOR hash.
+TEST_F(PgLibPqTest, TestGetTableXorHash) {
+  ASSERT_OK(EnsureClientCreated());
+
+  const auto namespace_name = "yugabyte";
+  auto conn = ASSERT_RESULT(Connect());
+
+  const auto tbl1 = "tbl1";
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (id INT PRIMARY KEY, name TEXT) SPLIT INTO 1 TABLETS", tbl1));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 (id, name) SELECT i, 'test' || i FROM generate_series(1, 10) i", tbl1));
+
+  const auto tbl2 = "tbl2";
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (id INT PRIMARY KEY, name TEXT) SPLIT INTO 5 TABLETS", tbl2));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 SELECT * FROM $1", tbl2, tbl1));
+
+  std::string tbl1_id =
+      ASSERT_RESULT(GetTableIdByTableName(client_.get(), namespace_name, tbl1));
+  std::string tbl2_id =
+      ASSERT_RESULT(GetTableIdByTableName(client_.get(), namespace_name, tbl2));
+  auto tbl1_output = ASSERT_RESULT(RunYbAdminCommand(Format("get_table_hash $0", tbl1_id)));
+  auto tbl2_output = ASSERT_RESULT(RunYbAdminCommand(Format("get_table_hash $0", tbl2_id)));
+
+  auto extract_from_output = [&](const std::string& output) -> std::pair<uint64_t, uint64_t> {
+    LOG(INFO) << "Command output: " << output;
+    // Extract the row count from the output.
+    // Total row count: 100
+    // Total XOR hash: 1234567890
+    const auto total_row_count_prefix = "Total row count: ";
+    const auto total_xor_hash_prefix = "Total XOR hash: ";
+    auto row_count_pos = output.find(total_row_count_prefix);
+    auto xor_hash_pos = output.find(total_xor_hash_prefix);
+    auto row_count = std::stoull(output.substr(row_count_pos + strlen(total_row_count_prefix)));
+    auto xor_hash = std::stoull(output.substr(xor_hash_pos + strlen(total_xor_hash_prefix)));
+    LOG(INFO) << "Row count: " << row_count << ", XOR hash: " << xor_hash;
+    return std::make_pair(row_count, xor_hash);
+  };
+  auto [tbl1_row_count, tbl1_xor_hash] = extract_from_output(tbl1_output);
+  auto [tbl2_row_count, tbl2_xor_hash] = extract_from_output(tbl2_output);
+  ASSERT_EQ(tbl1_row_count, 10);
+  ASSERT_NE(tbl1_xor_hash, 0);
+  ASSERT_EQ(tbl2_row_count, 10);
+  ASSERT_EQ(tbl1_xor_hash, tbl2_xor_hash);
 }
 
 } // namespace yb::pgwrapper

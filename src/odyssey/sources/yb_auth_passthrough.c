@@ -313,8 +313,7 @@ static int yb_client_write_pkt(od_client_t *client, od_server_t *server,
 			 * pg_backend will be expecting a packet,
 			 * send an empty password packet.
 			 */
-			yb_client_exit_mid_passthrough(client->server,
-						       instance);
+			yb_client_exit_mid_passthrough(server, instance);
 		}
 
 		/* Since the client socket is closed, we need not send any fatal packet */
@@ -666,17 +665,7 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 				}
 			}
 
-			/*
-			 * TODO(arpit.saxena|vikram.damle) (#20603): If flags & YB_GUC_CONTEXT_BACKEND, then we have to
-			 * ensure that either the auth backend stays or we make a new sticky backend
-			 * and pass the external client's startup settings. This is because client
-			 * has set a variable through the startup packet which can't be set using
-			 * SET statements
-			 */
-
-			if (flags &
-			    (YB_PARAM_STATUS_CONTEXT_BACKEND |
-			     YB_PARAM_STATUS_USERSET_OR_SUSET_SOURCE_STARTUP)) {
+			if (flags & YB_PARAM_STATUS_SOURCE_STARTUP) {
 				/*
 				 * The parameters here are the ones set by the startup packet in
 				 * the auth backend (here, passthrough). These are the parameters

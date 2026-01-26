@@ -12,7 +12,7 @@ import _ from 'lodash';
 import React, { FC, useState } from 'react';
 import { YBControlledTextInput, YBFormInput, YBFormToggle } from '../../../../common/forms/fields';
 import { StorageConfigCreationForm, YBReduxFormSelect } from '../common/StorageConfigCreationForm';
-import Close from '../../../../universes/images/close.svg';
+import Close from '../../../../universes/images/close.svg?img';
 import { OptionTypeBase } from 'react-select';
 import { Col, Row } from 'react-bootstrap';
 import { IStorageProviders } from '../IStorageConfigs';

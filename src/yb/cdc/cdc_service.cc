@@ -1055,8 +1055,7 @@ void CDCServiceImpl::InitNewTabletStreamEntry(
 Result<NamespaceId> CDCServiceImpl::GetNamespaceId(
     const std::string& ns_name, YQLDatabase db_type) {
   master::GetNamespaceInfoResponsePB namespace_info_resp;
-  RETURN_NOT_OK(
-      client()->GetNamespaceInfo(std::string(), ns_name, db_type, &namespace_info_resp));
+  RETURN_NOT_OK(client()->GetNamespaceInfo(ns_name, db_type, &namespace_info_resp));
 
   return namespace_info_resp.namespace_().id();
 }
@@ -4654,8 +4653,7 @@ Result<std::shared_ptr<xrepl::XClusterTabletMetrics>> CDCServiceImpl::GetXCluste
     attributes["table_id"] = table_id;
     const auto namespace_id = VERIFY_RESULT(xcluster::GetReplicationNamespaceBelongsTo(table_id));
     master::GetNamespaceInfoResponsePB namespace_info_resp;
-    RETURN_NOT_OK(client()->GetNamespaceInfo(
-        namespace_id, /*namespace_name=*/"", YQL_DATABASE_PGSQL, &namespace_info_resp));
+    RETURN_NOT_OK(client()->GetNamespaceInfo(namespace_id, &namespace_info_resp));
     attributes["namespace_name"] = namespace_info_resp.namespace_().name();
     return Status::OK();
   };
@@ -4847,11 +4845,6 @@ Status CDCServiceImpl::UpdateChildrenTabletsOnSplitOpForCDCSDK(const TabletStrea
 Status CDCServiceImpl::UpdateChildrenTabletsOnSplitOpForXCluster(
     const TabletStreamInfo& producer_tablet, const consensus::ReplicateMsg& split_op_msg) {
   const auto children_tablets = GetSplitChildTabletIds(split_op_msg.split_request());
-
-  // TODO(nway-tsplit): verify support for N-way split.
-  SCHECK_EQ(kDefaultNumSplitParts, children_tablets.size(), IllegalState, Format(
-      "Unexpected number of split children for parent tablet: $0 and stream: $1",
-      producer_tablet.tablet_id, producer_tablet.stream_id));
 
   // First check if the children tablet entries exist yet in cdc_state.
   for (const auto& child_tablet_id : children_tablets) {
@@ -5167,7 +5160,9 @@ void CDCServiceImpl::InitVirtualWALForCDC(
     }
   }
 
-  HostPort hostport(context.local_address());
+  HostPort hostport = RPC_VERIFY_RESULT(
+      context_->GetDesiredHostPortForLocal(), resp->mutable_error(),
+      CDCErrorPB::INTERNAL_ERROR, context);
   Status s = virtual_wal->InitVirtualWALInternal(
       table_list, hostport, GetDeadline(context, client()), std::move(slot_hash_range),
       publications_list, pub_all_tables);
@@ -5224,7 +5219,9 @@ void CDCServiceImpl::GetConsistentChanges(
   }
 
   auto stream_id = RPC_VERIFY_STRING_TO_STREAM_ID(req->stream_id());
-  HostPort hostport(context.local_address());
+  HostPort hostport = RPC_VERIFY_RESULT(
+      context_->GetDesiredHostPortForLocal(), resp->mutable_error(),
+      CDCErrorPB::INTERNAL_ERROR, context);
   Status s =
       virtual_wal->GetConsistentChangesInternal(resp, hostport, GetDeadline(context, client()));
   if (!s.ok()) {
@@ -5423,7 +5420,9 @@ void CDCServiceImpl::UpdatePublicationTableList(
   }
 
   auto stream_id = RPC_VERIFY_STRING_TO_STREAM_ID(req->stream_id());
-  HostPort hostport(context.local_address());
+  HostPort hostport = RPC_VERIFY_RESULT(
+      context_->GetDesiredHostPortForLocal(), resp->mutable_error(),
+      CDCErrorPB::INTERNAL_ERROR, context);
   std::unordered_set<TableId> new_table_list;
   for (const auto& table_id : req->table_id()) {
     new_table_list.insert(table_id);

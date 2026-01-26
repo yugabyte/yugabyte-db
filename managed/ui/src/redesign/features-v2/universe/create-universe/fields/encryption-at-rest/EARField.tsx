@@ -6,10 +6,11 @@ import { useFormContext, useWatch, Controller } from 'react-hook-form';
 import { mui, YBToggleField, YBLabel, YBAutoComplete } from '@yugabyte-ui-library/core';
 import { FieldContainer } from '../../components/DefaultComponents';
 import { QUERY_KEY, api } from '../../../../../features/universe/universe-form/utils/api';
-
 import { SecuritySettingsProps } from '../../steps/security-settings/dtos';
 import { KmsConfig } from '../../../../../features/universe/universe-form/utils/dto';
-import { ReactComponent as NextLineIcon } from '../../../../../assets/next-line.svg';
+
+//icons
+import NextLineIcon from '../../../../../assets/next-line.svg';
 
 const { Box } = mui;
 
@@ -100,6 +101,7 @@ export const EARField: FC<EARProps> = ({ disabled }) => {
                         getOptionLabel={getOptionLabel}
                         onChange={handleChange}
                         value={(value as unknown) as never}
+                        size="large"
                       />
                     </Box>
                   </Box>

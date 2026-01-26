@@ -2220,6 +2220,7 @@ Result<std::string> Version::GetMiddleOfMiddleKeys(Slice lower_bound_internal_ke
       if (result_mkey.status().IsIncomplete()) {
         continue;
       }
+      LOG_WITH_FUNC(WARNING) << "Getting a middle key failed for " << file->ToString();
       return result_mkey;
     }
 

@@ -57,7 +57,9 @@ class VectorIndexList {
   docdb::DocVectorIndexesPtr list_;
 };
 
-class TabletVectorIndexes : public TabletComponent {
+class TabletVectorIndexes :
+    public TabletComponent,
+    public docdb::DocVectorMetadataIteratorProvider {
  public:
   TabletVectorIndexes(
       Tablet* tablet,
@@ -102,6 +104,9 @@ class TabletVectorIndexes : public TabletComponent {
   }
 
   Status Verify();
+
+  Result<docdb::IntentAwareIteratorWithBounds> CreateVectorMetadataIterator(
+      const ReadHybridTime& read_ht) const;
 
   void SetHasVectorDeletion() {
     has_vector_deletion_.store(true);

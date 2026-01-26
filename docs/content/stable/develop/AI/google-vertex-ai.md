@@ -27,7 +27,7 @@ The [sample application](https://github.com/YugabyteDB-Samples/yugabytedb-google
 
 - A Google Cloud account with appropriate permissions
 - [gcloud CLI](https://cloud.google.com/sdk/docs/install)
-- A YugabyteDB cluster running [v2.25.1](https://download.yugabyte.com/) or later
+- A YugabyteDB cluster running [v2025.1](https://download.yugabyte.com/) or later
 - [Node.js](https://github.com/nodejs/release#release-schedule) v18 or later
 - The latest version of [Docker](https://docs.docker.com/desktop/)
 - [ysqlsh](../../../api/ysqlsh/) or [psql](https://www.postgresql.org/docs/15/app-psql.html)

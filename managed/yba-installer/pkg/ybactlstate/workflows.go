@@ -24,14 +24,8 @@ func (s State) ValidateReconfig() error {
 	if viper.GetBool("postgres.install.ldap_enabled") != s.Postgres.LdapEnabled {
 		return fmt.Errorf("cannot change postgres ldap configuration")
 	}
-	// Check none of the installed services are changing:
-	if s.Services.PerfAdvisor != viper.GetBool("perfAdvisor.enabled") {
-		return fmt.Errorf("cannot change perf advisor service from %t", s.Services.PerfAdvisor)
-	}
-	// Platform is enabled only if perf advisor is false.
-	if s.Services.Platform != (!viper.GetBool("perfAdvisor.enabled")) {
-		return fmt.Errorf("cannot change platform service from %t", s.Services.Platform)
-	}
+	// Note: PerfAdvisor service state changes are allowed during reconfigure
+	// to enable uninstalling the service when disabled
 
 	return nil
 }

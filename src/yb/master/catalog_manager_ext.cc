@@ -144,6 +144,9 @@ DEFINE_RUNTIME_bool(
 DEFINE_RUNTIME_AUTO_bool(
     enable_export_snapshot_using_relfilenode, kExternal, false, true,
     "Enable exporting snapshots with the new format version = 3 that uses relfilenodes.");
+
+DECLARE_bool(TEST_enable_table_rewrite_for_cdcsdk_table);
+
 namespace yb {
 
 using google::protobuf::RepeatedPtrField;
@@ -3140,6 +3143,7 @@ void CatalogManager::CleanupHiddenTables(
   }
 
   std::vector<TableInfoPtr> expired_tables;
+  std::unordered_set<TableId> expired_table_ids;
   for (auto& table : tables) {
     if (table->IsSecondaryTable()) {
       // Table is colocated or a vector index and still registered with its hosting tablet(s).
@@ -3150,10 +3154,12 @@ void CatalogManager::CleanupHiddenTables(
     if (table->IsHiddenButNotDeleting()) {
       auto tablets_deleted_result = table->AreAllTabletsDeleted();
       if (tablets_deleted_result.ok() && *tablets_deleted_result) {
+        expired_table_ids.insert(table->id());
         expired_tables.push_back(std::move(table));
       }
     }
   }
+
   // Sort the expired tables so we acquire write locks in id order. This is the required lock
   // acquisition order for tables.
   std::sort(
@@ -3187,6 +3193,19 @@ void CatalogManager::CleanupHiddenTables(
   }
   for (auto& lock : locks) {
     lock.Commit();
+  }
+
+  if (FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table) {
+    // A hidden table, with all the tablets deleted can be removed from the stream metadata of
+    // CDCSDK streams. Here we mark the streams as DELETING_METADATA, catalog manager's background
+    // task will remove the tables from such streams' metadata.
+    Status s = DropCDCSDKStreams(expired_table_ids);
+    if (!s.ok()) {
+      LOG_WITH_PREFIX(WARNING)
+          << "Failed to mark CDC streams as DELETING_METADATA for expired tables: "
+          << AsString(expired_table_ids) << ", Status: " << s;
+      return;
+    }
   }
 }
 

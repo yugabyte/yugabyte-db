@@ -897,7 +897,11 @@
             "SAFETIME_LAG",
             "CONTINUOUS_BACKUPS_STATUS",
             "THP_RSS_ISSUE",
-            "THP_INCORRECT_SETTINGS"
+            "THP_INCORRECT_SETTINGS",
+            "CDCSDK_FLUSH_LAG",
+            "CDCSDK_EXPIRY",
+            "CDCSDK_IDLE_STREAM",
+            "OTEL_LOG_EXPORT_FAILURE"
           ],
           "type" : "string"
         },
@@ -1075,7 +1079,11 @@
             "SAFETIME_LAG",
             "CONTINUOUS_BACKUPS_STATUS",
             "THP_RSS_ISSUE",
-            "THP_INCORRECT_SETTINGS"
+            "THP_INCORRECT_SETTINGS",
+            "CDCSDK_FLUSH_LAG",
+            "CDCSDK_EXPIRY",
+            "CDCSDK_IDLE_STREAM",
+            "OTEL_LOG_EXPORT_FAILURE"
           ],
           "type" : "string"
         },
@@ -1349,7 +1357,11 @@
             "SAFETIME_LAG",
             "CONTINUOUS_BACKUPS_STATUS",
             "THP_RSS_ISSUE",
-            "THP_INCORRECT_SETTINGS"
+            "THP_INCORRECT_SETTINGS",
+            "CDCSDK_FLUSH_LAG",
+            "CDCSDK_EXPIRY",
+            "CDCSDK_IDLE_STREAM",
+            "OTEL_LOG_EXPORT_FAILURE"
           ],
           "type" : "string"
         },
@@ -2811,6 +2823,8 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -5529,6 +5543,8 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -8603,6 +8619,8 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -9399,6 +9417,8 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -10909,6 +10929,8 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -11626,6 +11648,8 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -15914,6 +15938,8 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -16941,6 +16967,8 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -17768,6 +17796,8 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -19287,6 +19317,8 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -19936,6 +19968,8 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -20340,6 +20374,8 @@
               "EnablePitrConfig",
               "UpdateAndPersistKubernetesImmutableYbc",
               "TablespaceValidationOnRemove",
+              "CheckServiceLiveness",
+              "CheckNodeCommandExecution",
               "OperatorImportResource"
             ],
             "type" : "string"
@@ -21162,6 +21198,8 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -22254,6 +22292,8 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -22803,7 +22843,7 @@
               "ImportUniverse",
               "MigrateUniverse",
               "KubernetesToggleImmutableYbc",
-              "OperatorImportUniverse"
+              "OperatorImport"
             ],
             "type" : "string"
           },
@@ -23570,6 +23610,8 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -24240,6 +24282,8 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -25164,6 +25208,8 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -25798,6 +25844,8 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -26432,6 +26480,8 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -27576,6 +27626,8 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -28697,6 +28749,8 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
             "OperatorImportResource"
           ],
           "type" : "string"

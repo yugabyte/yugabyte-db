@@ -9,8 +9,8 @@ import { getXClusterConfig } from '../utils';
 import { SchemaChangeModeInfoModal } from '../../sharedComponents/SchemaChangeInfoModal';
 import { api, universeQueryKey } from '../../../../redesign/helpers/api';
 import { getPrimaryCluster } from '../../../../utils/universeUtilsTyped';
-import { ReactComponent as UpArrow } from '../../../../redesign/assets/upgrade-arrow.svg';
-import { ReactComponent as QuestionCircle } from '../../../../redesign/assets/question-circle.svg';
+import UpArrow from '../../../../redesign/assets/upgrade-arrow.svg';
+import QuestionCircle from '../../../../redesign/assets/question-circle.svg';
 import { UpgradeXClusterModal } from '../../sharedComponents/UpgradeXClusterModal';
 import { SchemaChangesInfoPopover } from '../../sharedComponents/SchemaChangesInfoPopover';
 

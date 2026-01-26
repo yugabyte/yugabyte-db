@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
+import com.yugabyte.yw.common.operator.utils.ResourceAnnotationKeys;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.DeleteBackupParams;
 import com.yugabyte.yw.forms.DeleteBackupParams.DeleteBackupInfo;
@@ -89,6 +90,11 @@ public class BackupReconciler implements ResourceEventHandler<Backup>, Runnable 
     if (MapUtils.isNotEmpty(backupMeta.getLabels())
         && backupMeta.getLabels().containsKey(OperatorUtils.IGNORE_RECONCILER_ADD_LABEL)) {
       log.debug("Backup belongs to a backup schedule, ignoring");
+      return;
+    }
+    if (backupMeta.getAnnotations() != null
+        && backupMeta.getAnnotations().containsKey(ResourceAnnotationKeys.YBA_RESOURCE_ID)) {
+      log.debug("backup is already controlled by the operator, ignoring");
       return;
     }
 

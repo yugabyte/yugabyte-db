@@ -33,7 +33,7 @@ The [sample application](https://github.com/YugabyteDB-Samples/yugabytedb-azure-
 - Access to the [Azure OpenAI Service](https://azure.microsoft.com/en-us/products/ai-services/openai-service) resource
 - The latest [Node.js version](https://github.com/nodejs/release#release-schedule)
 - The latest version of [Docker](https://docs.docker.com/desktop/)
-- A YugabyteDB cluster running [v2.25.1](https://download.yugabyte.com/) or later
+- A YugabyteDB cluster running [v2025.1](https://download.yugabyte.com/) or later
 - [ysqlsh](../../../api/ysqlsh/) or [psql](https://www.postgresql.org/docs/15/app-psql.html)
 
 ## Deploy Azure OpenAI models

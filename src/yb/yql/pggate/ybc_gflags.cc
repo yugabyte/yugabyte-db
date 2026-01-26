@@ -126,9 +126,12 @@ DEFINE_test_flag(bool, ysql_bypass_auto_analyze_auth_check, false,
     "Bypass the yb-tserver-key authentication method check when connecting using "
     "yb_auto_analyze backend type.");
 
+DEFINE_test_flag(int64, delay_after_table_analyze_ms, 0,
+    "Add this delay after each table is analyzed.");
+
 DECLARE_bool(ysql_enable_colocated_tables_with_tablespaces);
 DECLARE_bool(TEST_ysql_enable_db_logical_client_version_mode);
-DECLARE_bool(TEST_ysql_yb_enable_ddl_savepoint_support);
+DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 
 DECLARE_bool(TEST_generate_ybrowid_sequentially);
 DECLARE_bool(TEST_ysql_log_perdb_allocated_new_objectid);
@@ -221,8 +224,8 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
         &FLAGS_ysql_enable_neghit_full_inheritscache,
       .enable_object_locking_for_table_locks =
           &FLAGS_enable_object_locking_for_table_locks,
-      .TEST_ysql_yb_enable_ddl_savepoint_support =
-          &FLAGS_TEST_ysql_yb_enable_ddl_savepoint_support,
+      .ysql_yb_enable_ddl_savepoint_support =
+          &FLAGS_ysql_yb_enable_ddl_savepoint_support,
       .ysql_max_invalidation_message_queue_size =
           &FLAGS_ysql_max_invalidation_message_queue_size,
       .ysql_max_replication_slots = &FLAGS_max_replication_slots,
@@ -242,6 +245,7 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .placement_region = FLAGS_placement_region.c_str(),
       .placement_zone = FLAGS_placement_zone.c_str(),
       .TEST_ysql_bypass_auto_analyze_auth_check = &FLAGS_TEST_ysql_bypass_auto_analyze_auth_check,
+      .TEST_delay_after_table_analyze_ms = &FLAGS_TEST_delay_after_table_analyze_ms,
   };
   // clang-format on
   return &accessor;

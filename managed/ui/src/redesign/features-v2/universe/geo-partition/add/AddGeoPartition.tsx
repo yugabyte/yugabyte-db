@@ -1,12 +1,10 @@
 import { FC, useEffect } from 'react';
+import { useMethods } from 'react-use';
 import { styled } from '@material-ui/core';
 import { mui, Step, YBMultiLevelStepper } from '@yugabyte-ui-library/core';
 import { useQuery } from 'react-query';
 
-import { ReactComponent as YBLogo } from '../../../../assets/yb_logo.svg';
-import { ReactComponent as Close } from '../../../../assets/close rounded inverted.svg';
 import { useTranslation } from 'react-i18next';
-import { useMethods } from 'react-use';
 import {
   AddGeoPartitionContext,
   AddGeoPartitionContextProps,
@@ -25,6 +23,9 @@ import { GeoPartitionInfoModal } from './GeoPartitionInfoModal';
 import { getUniverse } from '@app/v2/api/universe/universe';
 import { api } from '@app/redesign/helpers/api';
 import { YBLoadingCircleIcon } from '@app/components/common/indicators';
+
+import YBLogo from '../../../../assets/yb_logo.svg';
+import Close from '../../../../assets/close rounded inverted.svg';
 
 const { Grid2: Grid, Typography } = mui;
 
@@ -133,7 +134,12 @@ export const AddGeoPartition: FC<AddGeoPartitionProps> = (props) => {
               {t('title')}
             </Typography>
           </div>
-          <Close style={{ cursor: 'pointer' }} />
+          <Close
+            style={{ cursor: 'pointer' }}
+            onClick={() => {
+              window.location.href = `/universes/${universeUUID}/settings`;
+            }}
+          />
         </Grid>
         <Grid container spacing={2}>
           <Grid sx={{ borderRight: '1px solid #E9EEF2', height: '100vh' }}>

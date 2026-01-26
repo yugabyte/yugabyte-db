@@ -668,6 +668,7 @@ void CompactionJob::ProcessKeyValueCompaction(
       auto context = CompactionContextOptions{
           .level0_inputs = *compact_->compaction->inputs(0),
           .boundary_extractor = sub_compact->boundary_extractor,
+          .compaction_reason = sub_compact->compaction->compaction_reason(),
       };
       sub_compact->context = (*db_options_.compaction_context_factory)(sub_compact, context);
       sub_compact->feed = sub_compact->context->Feed();

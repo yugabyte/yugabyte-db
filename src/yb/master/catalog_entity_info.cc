@@ -480,6 +480,10 @@ bool TableInfo::is_hidden() const {
   return LockForRead()->is_hidden();
 }
 
+bool TableInfo::started_hiding() const {
+  return LockForRead()->started_hiding();
+}
+
 HybridTime TableInfo::hide_hybrid_time() const {
   return LockForRead()->hide_hybrid_time();
 }
@@ -1049,7 +1053,7 @@ TableIds TableInfo::GetVectorIndexIds() const {
   return result;
 }
 
-bool TableInfo::UsesTablespacesForPlacement() const {
+bool TableInfo::TableTypeUsesTablespacesForPlacement() const {
   auto l = LockForRead();
   // Global transaction table is excluded due to not having a tablespace id set.
   bool is_transaction_table_using_tablespaces =

@@ -7,10 +7,10 @@ import { YBButton } from '../YBButton/YBButton';
 import { getMemorySizeUnits } from '../../helpers/utils';
 import { YBProgress } from '../YBProgress/YBProgress';
 
-import { ReactComponent as UploadIcon } from '../../assets/upload.svg';
-import { ReactComponent as UploadDisabledIcon } from '../../assets/upload-disabled.svg';
-import { ReactComponent as CloseIcon } from '../../assets/close-large.svg';
-import Checked from '../../assets/check-new.svg';
+import UploadIcon from '../../assets/upload.svg';
+import UploadDisabledIcon from '../../assets/upload-disabled.svg';
+import CloseIcon from '../../assets/close-large.svg';
+import Checked from '../../assets/check-new.svg?img';
 
 const useStyles = makeStyles((theme) => ({
   fileItem: {

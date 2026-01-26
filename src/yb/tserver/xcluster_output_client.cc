@@ -614,8 +614,6 @@ Result<bool> XClusterOutputClient::ProcessMetaOp(const cdc::CDCRecordPB& record)
     split_info.set_deprecated_split_encoded_key(split_req.deprecated_split_encoded_key());
     split_info.set_deprecated_split_partition_key(split_req.deprecated_split_partition_key());
     if (split_req.new_tablet_ids_size() > 0) {
-      SCHECK_EQ(kDefaultNumSplitParts, split_req.new_tablet_ids_size(), IllegalState, Format(
-          "Unexpected number of split children for parent tablet: $0", split_req.tablet_id()));
       SCHECK_EQ(
           split_req.new_tablet_ids_size() - 1, split_req.split_encoded_keys_size(), IllegalState,
           "Unexpected number of encoded keys");
