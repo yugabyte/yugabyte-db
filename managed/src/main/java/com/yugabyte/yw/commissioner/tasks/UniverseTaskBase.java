@@ -4273,6 +4273,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
               backupYbcParams.scheduleRetention = scheduleRetention;
               backupYbcParams.setRevertToPreRolesBehaviour(
                   backupParams.getRevertToPreRolesBehaviour());
+              backupYbcParams.setEnableBackupsDuringDDL(backupParams.getEnableBackupsDuringDDL());
               task.initialize(backupYbcParams);
               task.setUserTaskUUID(getUserTaskUUID());
               doneGroup.addSubTask(task);
@@ -4301,6 +4302,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                   backupParams.backupDBStates.get(paramsEntry.backupParamsIdentifier)
                       .currentYbcTaskId;
               backupYbcParams.scheduleRetention = scheduleRetention;
+              backupYbcParams.setEnableBackupsDuringDDL(backupParams.getEnableBackupsDuringDDL());
               backupYbcParams.setRevertToPreRolesBehaviour(
                   backupParams.getRevertToPreRolesBehaviour());
               task.initialize(backupYbcParams);
