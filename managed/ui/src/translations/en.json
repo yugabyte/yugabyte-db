@@ -3440,6 +3440,7 @@
         "guidedMode": {
           "nodes": "Nodes",
           "nodesPerAz": "Nodes per Availability Zone",
+          "nodesTserverPerAz": "Nodes (T-Server) per Availability Zone",
           "totalNodes": "Total Nodes"
         },
         "availabilityZones": {
@@ -3536,7 +3537,7 @@
         },
         "conPool": {
           "label": "Enable Connection Pooling",
-          "helperMsg": "Use built-in YSQL service for maximizing the number of simultaneous<br /> connections to your database.",
+          "helperMsg": "Use built-in YSQL service for maximizing the number of simultaneous<br /> connections to your database.  <1>Learn more</1>",
           "versionTooltip": "Built-in connection pooling is only available for database version 2024.2 or later.",
           "YSQLWarn": "Enable YSQL first to use connection pooling.",
           "dbVersionWarn": "Built-in connection pooling is only available for database version 2024.2 or later",

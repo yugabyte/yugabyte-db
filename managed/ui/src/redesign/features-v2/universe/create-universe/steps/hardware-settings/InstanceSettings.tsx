@@ -1,17 +1,9 @@
-import { forwardRef, Fragment, useContext, useEffect, useImperativeHandle } from 'react';
+import { forwardRef, useContext, useEffect, useImperativeHandle } from 'react';
 import { upperCase } from 'lodash';
 import { FormProvider, useForm } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { Trans, useTranslation } from 'react-i18next';
 import { mui, YBAccordion, YBCheckboxField } from '@yugabyte-ui-library/core';
-import { useRuntimeConfigValues } from '@app/redesign/features-v2/universe/create-universe/helpers/utils';
-import {
-  CreateUniverseContext,
-  CreateUniverseContextMethods,
-  CreateUniverseSteps,
-  StepsRef
-} from '@app/redesign/features-v2/universe/create-universe/CreateUniverseContext';
-import { InstanceSettingProps } from '@app/redesign/features-v2/universe/create-universe/steps/hardware-settings/dtos';
 import {
   StyledContent,
   StyledHeader,
@@ -27,8 +19,18 @@ import {
   K8NodeSpecField,
   K8VolumeInfoField
 } from '@app/redesign/features-v2/universe/create-universe/fields';
+import { useRuntimeConfigValues } from '@app/redesign/features-v2/universe/create-universe/helpers/utils';
+import {
+  CreateUniverseContext,
+  CreateUniverseContextMethods,
+  CreateUniverseSteps,
+  StepsRef
+} from '@app/redesign/features-v2/universe/create-universe/CreateUniverseContext';
+import { CloudType } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { ProviderType } from '@app/redesign/features-v2/universe/create-universe/steps/general-settings/dtos';
 import { ResilienceType } from '@app/redesign/features-v2/universe/create-universe/steps/resilence-regions/dtos';
+import { InstanceSettingProps } from '@app/redesign/features-v2/universe/create-universe/steps/hardware-settings/dtos';
+import { InstanceSettingsValidationSchema } from '@app/redesign/features-v2/universe/create-universe/steps/hardware-settings/ValidationSchema';
 import {
   DEVICE_INFO_FIELD,
   INSTANCE_TYPE_FIELD,
@@ -39,8 +41,6 @@ import {
   TSERVER_K8_NODE_SPEC_FIELD,
   MASTER_TSERVER_SAME_FIELD
 } from '@app/redesign/features-v2/universe/create-universe/fields/FieldNames';
-import { InstanceSettingsValidationSchema } from '@app/redesign/features-v2/universe/create-universe/steps/hardware-settings/ValidationSchema';
-import { CloudType } from '@app/redesign/features/universe/universe-form/utils/dto';
 
 const { Box, Typography, CircularProgress } = mui;
 

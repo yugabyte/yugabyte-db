@@ -1,10 +1,10 @@
 import { FC } from 'react';
-import { useFormContext } from 'react-hook-form';
-import { useTranslation } from 'react-i18next';
 import { toUpper } from 'lodash';
+import { useTranslation } from 'react-i18next';
+import { useFormContext } from 'react-hook-form';
 import { mui, YBLabel, YBCheckboxField } from '@yugabyte-ui-library/core';
-import { InstanceSettingProps } from '@app/redesign/features-v2/universe/create-universe/steps/hardware-settings/dtos';
 import { CloudType } from '@app/redesign/features/universe/universe-form/utils/dto';
+import { InstanceSettingProps } from '@app/redesign/features-v2/universe/create-universe/steps/hardware-settings/dtos';
 import { SPOT_INSTANCE_FIELD } from '@app/redesign/features-v2/universe/create-universe/fields/FieldNames';
 
 const { Box, styled, Typography } = mui;

@@ -90,8 +90,7 @@ export const ResilienceAndRegions = forwardRef<
 
   const methods = useForm<ResilienceAndRegionsProps>({
     defaultValues: resilienceAndRegionsSettings,
-    resolver: yupResolver(ResilienceAndRegionsSchema(t)),
-    mode: 'onSubmit'
+    resolver: yupResolver(ResilienceAndRegionsSchema(t))
   });
 
   const { watch } = methods;

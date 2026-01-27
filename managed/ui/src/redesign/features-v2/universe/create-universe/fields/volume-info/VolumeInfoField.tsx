@@ -19,16 +19,16 @@ import {
   isEphemeralAwsStorageInstance,
   useGetZones
 } from '@app/redesign/features-v2/universe/create-universe/fields/instance-type/InstanceTypeFieldHelper';
+import { useRuntimeConfigValues } from '@app/redesign/features-v2/universe/create-universe/helpers/utils';
 import {
   CloudType,
   Placement,
   StorageType,
   VolumeType
 } from '@app/redesign/features/universe/universe-form/utils/dto';
-import { useRuntimeConfigValues } from '@app/redesign/features-v2/universe/create-universe/helpers/utils';
+import { Region } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { InstanceSettingProps } from '@app/redesign/features-v2/universe/create-universe/steps/hardware-settings/dtos';
 import { ProviderType } from '@app/redesign/features-v2/universe/create-universe/steps/general-settings/dtos';
-import { Region } from '@app/redesign/features/universe/universe-form/utils/dto';
 import {
   CPU_ARCHITECTURE_FIELD,
   DEVICE_INFO_FIELD,
@@ -36,6 +36,8 @@ import {
   MASTER_DEVICE_INFO_FIELD,
   MASTER_INSTANCE_TYPE_FIELD
 } from '@app/redesign/features-v2/universe/create-universe/fields/FieldNames';
+
+//icons
 import Close from '@app/redesign/assets/close.svg';
 
 const { Box, MenuItem } = mui;
@@ -233,7 +235,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
             <YBLabel>{t('universeForm.instanceConfig.volumeInfoPerNode')}</YBLabel>
           </Box>
         </Box>
-        <Box display="flex">
+        <Box sx={{ gap: '16px', display: 'flex' }}>
           <Box flex={1} sx={{ width: 198 }}>
             <YBInput
               type="number"
@@ -253,14 +255,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
             />
           </Box>
 
-          <Box
-            display="flex"
-            alignItems="center"
-            justifyContent="center"
-            px={1}
-            flexShrink={1}
-            sx={{ width: 48 }}
-          >
+          <Box display="flex" alignItems="center" justifyContent="center">
             <Close />
           </Box>
 
@@ -288,7 +283,6 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
             display="flex"
             alignItems="center"
             sx={(theme) => ({
-              marginLeft: theme.spacing(2),
               alignSelf: 'flex-end',
               marginBottom: 1
             })}
