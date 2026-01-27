@@ -393,11 +393,15 @@ public class ModelFactory {
             if (params.nodeDetailsSet == null) {
               params.nodeDetailsSet = new HashSet<>();
             }
+            UUID azUUID = UUID.randomUUID();
             for (int i = 1; i <= numNodesToAdd; i++) {
               NodeDetails node = new NodeDetails();
               node.cloudInfo = new CloudSpecificInfo();
+              node.cloudInfo.region = "region-1";
+              node.cloudInfo.az = "az-1";
               node.state = NodeState.Live;
               node.isTserver = true;
+              node.azUuid = azUUID;
               node.placementUuid = params.getPrimaryCluster().uuid;
               node.cloudInfo.private_ip = "127.0.0." + Integer.toString(i);
               params.nodeDetailsSet.add(node);

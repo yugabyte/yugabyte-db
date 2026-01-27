@@ -95,6 +95,9 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
                   node.yqlServerHttpPort = 12000;
                   node.nodeExporterPort = 9300;
                   node.otelCollectorMetricsPort = 8889;
+                  node.cloudInfo.region = "";
+                  node.cloudInfo.az = "";
+                  node.azUuid = null;
                 }
                 universe.setUniverseDetails(params);
               }
