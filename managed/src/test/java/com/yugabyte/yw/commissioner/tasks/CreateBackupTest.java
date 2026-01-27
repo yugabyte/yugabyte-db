@@ -6,23 +6,29 @@ import static com.yugabyte.yw.common.Util.SYSTEM_PLATFORM_DB;
 import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.hamcrest.CoreMatchers.containsString;
-import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.net.HostAndPort;
 import com.google.protobuf.ByteString;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.ITaskParams;
@@ -30,6 +36,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
@@ -41,6 +48,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -155,6 +163,7 @@ public class CreateBackupTest extends CommissionerBaseTest {
           .thenReturn(mockSchemaResponse2);
       when(mockClient.getTableSchemaByUUID(TABLE_3_UUID.toString().replace("-", "")))
           .thenReturn(mockSchemaResponse3);
+      when(mockClient.getLeaderMasterHostAndPort()).thenReturn(HostAndPort.fromHost("127.0.0.1"));
     } catch (Exception e) {
       // Do nothing.
     }
@@ -458,5 +467,94 @@ public class CreateBackupTest extends CommissionerBaseTest {
     // Run task
     TaskInfo taskInfo = submitTask(backup.getBackupUUID());
     assertEquals(Success, taskInfo.getTaskState());
+  }
+
+  @Test
+  public void testEnableBackupsDuringDDLFlagInSubtasks() {
+    // Set enableBackupsDuringDDL runtime config flag to true
+    RuntimeConfigEntry.upsert(
+        defaultUniverse, UniverseConfKeys.enableBackupsDuringDDL.getKey(), "true");
+
+    Map<String, String> config = new HashMap<>();
+    config.put(Universe.TAKE_BACKUPS, "true");
+    defaultUniverse.updateConfig(config);
+    defaultUniverse.save();
+
+    // Enable YBC for the universe
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        u -> {
+          UniverseDefinitionTaskParams universeDetails = u.getUniverseDetails();
+          universeDetails.setYbcInstalled(true);
+          universeDetails.setEnableYbc(true);
+          u.setUniverseDetails(universeDetails);
+        });
+    ModelFactory.addNodesToUniverse(defaultUniverse.getUniverseUUID(), 3);
+
+    // Setup YBC mocks
+    when(mockYbcManager.getYbcClient(eq(defaultUniverse), any())).thenReturn(mockYbcClient);
+    when(mockYbcManager.ybcPingCheck(anyString(), nullable(String.class), anyInt()))
+        .thenReturn(true);
+    Mockito.doNothing().when(mockYbcManager).deleteYbcBackupTask(any(), any());
+    Mockito.doNothing().when(mockYbcManager).validateCloudConfigWithClient(any(), any(), any());
+    when(mockYbcBackupUtil.createCloudStoreConfigForNode(any(), any(), any(), any()))
+        .thenReturn(CloudStoreConfig.newBuilder().build());
+    when(mockYbcClient.backupNamespace(any()))
+        .thenReturn(
+            BackupServiceTaskCreateResponse.newBuilder()
+                .setStatus(RpcControllerStatus.newBuilder().setCode(ControllerStatus.OK).build())
+                .build());
+    when(mockYbcClient.backupServiceTaskProgress(any()))
+        .thenReturn(
+            BackupServiceTaskProgressResponse.newBuilder()
+                .setStage(BackupServiceTaskStage.TASK_COMPLETE)
+                .setTaskStatus(ControllerStatus.COMPLETE)
+                .setRetryCount(0)
+                .build());
+    when(mockYbcBackupUtil.createYbcBackupResultRequest(any()))
+        .thenReturn(BackupServiceTaskResultRequest.newBuilder().build());
+    String backupMetadataJson =
+        "{\n"
+            + "  \"backup_size\": \"1024\",\n"
+            + "  \"cloud_store_spec\": {\n"
+            + "    \"default_backup_location\": {\n"
+            + "      \"bucket\": \"test-bucket\",\n"
+            + "      \"cloud_dir\": \"test-dir\"\n"
+            + "    }\n"
+            + "  },\n"
+            + "  \"snapshot_details\": []\n"
+            + "}";
+    when(mockYbcClient.backupServiceTaskResult(any()))
+        .thenReturn(
+            BackupServiceTaskResultResponse.newBuilder()
+                .setTaskStatus(ControllerStatus.OK)
+                .setMetadataJson(backupMetadataJson)
+                .setTimeTakenMs(1000L)
+                .build());
+
+    // Submit backup task
+    TaskInfo taskInfo = submitTask(TableType.PGSQL_TABLE_TYPE);
+    assertEquals(Success, taskInfo.getTaskState());
+
+    // Get all subtasks and filter for BackupTableYbc tasks
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    List<TaskInfo> backupTableYbcSubtasks =
+        subTasks.stream()
+            .filter(subTask -> subTask.getTaskType().equals(TaskType.BackupTableYbc))
+            .collect(Collectors.toList());
+
+    // Validate that all BackupTableYbc subtasks have enableBackupsDuringDDL set to true
+    assertNotEquals(
+        "Should have at least one BackupTableYbc subtask", 0, backupTableYbcSubtasks.size());
+    for (TaskInfo subTask : backupTableYbcSubtasks) {
+      JsonNode taskParams = subTask.getTaskParams();
+      JsonNode enableBackupsDuringDDLNode = taskParams.get("enableBackupsDuringDDL");
+      assertNotEquals(
+          "enableBackupsDuringDDL should be present in subtask params",
+          null,
+          enableBackupsDuringDDLNode);
+      assertEquals(
+          "enableBackupsDuringDDL should be true", true, enableBackupsDuringDDLNode.booleanValue());
+    }
   }
 }
