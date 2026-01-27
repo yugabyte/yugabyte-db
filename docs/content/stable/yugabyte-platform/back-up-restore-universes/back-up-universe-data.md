@@ -35,7 +35,7 @@ The universe **Backups** page allows you to create new backups that start immedi
 
 1. Navigate to the universe and select **Backups**, then click **Backup now**.
 
-    ![Backup](/images/yp/create-backup-ysql-2.20.png)
+    ![Backup](/images/yp/create-backup-ysql-20252.png)
 
 1. Select the API type for the backup.
 
@@ -50,6 +50,8 @@ The universe **Backups** page allows you to create new backups that start immedi
     If you don't choose to back up tablespaces, the tablespaces are not preserved and their data is backed up to the primary region.
 
 1. Specify the period of time during which the backup is to be retained. Note that there's an option to never delete the backup.
+
+1. To back up database roles, choose the **Back up global roles** option.
 
 1. Click **Backup**.
 

@@ -59,6 +59,10 @@ You can restore YugabyteDB universe data from a backup as follows:
 
     You can restore without tablespaces, in which case none of the tablespaces are preserved and all their data is written to the primary region.
 
+1. If the backup includes roles, choose the **Restore global roles** option to restore roles.
+
+    Note that if the target universe already has matching roles, those roles are not overwritten.
+
 1. If you chose to rename databases or keyspaces, click **Next**, then enter new names for the databases or keyspaces that you want to rename.
 
 1. Click **Restore**.
