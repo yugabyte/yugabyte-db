@@ -57,6 +57,7 @@ DECLARE_bool(ysql_enable_packed_row);
 DECLARE_uint32(ysql_oid_cache_prefetch_size);
 DECLARE_string(ysql_pg_conf_csv);
 DECLARE_int32(ysql_sequence_cache_minval);
+DECLARE_uint64(ysql_cdc_active_replication_slot_window_ms);
 
 DECLARE_bool(TEST_force_get_checkpoint_from_cdc_state);
 DECLARE_int32(TEST_pause_at_start_of_setup_replication_group_ms);
@@ -4326,6 +4327,72 @@ TEST_F(XClusterDDLReplicationTest, AvoidOldCompatibleConsumerSchemaVersion) {
   // min schema version. Since the min schema version is used for schema GC, using any value lower
   // than a previous min schema version could result in it already having been GC-ed.
   ASSERT_GT(min_consumer_schema_version_after_drops, min_consumer_schema_version_after_adds);
+}
+
+TEST_F(XClusterDDLReplicationTest, PublicationDDLsNotReplicated) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE TABLE pub_test_table(id int PRIMARY KEY, value TEXT)"));
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE TABLE pub_test_table2(id int PRIMARY KEY, data TEXT)"));
+  ASSERT_OK(producer_conn_->Execute("CREATE PUBLICATION test_pub FOR TABLE pub_test_table"));
+  ASSERT_OK(producer_conn_->Execute("ALTER PUBLICATION test_pub ADD TABLE pub_test_table2"));
+  ASSERT_OK(producer_conn_->Execute("DROP PUBLICATION test_pub"));
+
+  // Verify no PUBLICATION entries in ddl_queue.
+  auto publication_ddls = ASSERT_RESULT(producer_conn_->FetchRows<std::string>(
+      "SELECT yb_data::text FROM yb_xcluster_ddl_replication.ddl_queue "
+      "WHERE yb_data->>'command_tag' LIKE '%PUBLICATION%'"));
+  ASSERT_TRUE(publication_ddls.empty())
+      << "PUBLICATION DDLs should not be replicated. Found: " << AsString(publication_ddls);
+
+  // Verify PUBLICATION DDLs fail on target without manual flag.
+  ASSERT_NOK_STR_CONTAINS(
+      consumer_conn_->Execute("CREATE PUBLICATION target_test_pub FOR ALL TABLES"),
+      "DDL operations are forbidden");
+
+  // Verify PUBLICATION DDLs succeed on target with manual flag.
+  ASSERT_OK(consumer_conn_->Execute(
+      "SET yb_xcluster_ddl_replication.enable_manual_ddl_replication = true"));
+  ASSERT_OK(consumer_conn_->Execute("CREATE PUBLICATION target_test_pub FOR ALL TABLES"));
+  ASSERT_OK(consumer_conn_->Execute("DROP PUBLICATION target_test_pub"));
+  ASSERT_OK(consumer_conn_->Execute(
+      "SET yb_xcluster_ddl_replication.enable_manual_ddl_replication = false"));
+
+  ASSERT_OK(producer_conn_->Execute("DROP TABLE pub_test_table"));
+  ASSERT_OK(producer_conn_->Execute("DROP TABLE pub_test_table2"));
+}
+
+TEST_F(XClusterDDLReplicationTest, ReplicationSlotCommandsNotReplicated) {
+  // Reduce slot inactivity window from default 5mins to 1s to speed up test.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_cdc_active_replication_slot_window_ms) = 1000;
+
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  // Need replication connection for SLOT commands.
+  auto producer_repl_conn =
+      ASSERT_RESULT(producer_cluster_.ConnectToDBWithReplication(namespace_name));
+  auto consumer_repl_conn =
+      ASSERT_RESULT(consumer_cluster_.ConnectToDBWithReplication(namespace_name));
+
+  ASSERT_RESULT(producer_repl_conn.Fetch("CREATE_REPLICATION_SLOT test_slot LOGICAL pgoutput"));
+
+  // Verify ddl_queue is empty since slot commands don't trigger DDL event handlers.
+  auto ddl_queue_entries = ASSERT_RESULT(producer_conn_->FetchRows<std::string>(
+      "SELECT yb_data::text FROM yb_xcluster_ddl_replication.ddl_queue"));
+  ASSERT_TRUE(ddl_queue_entries.empty())
+      << "ddl_queue should be empty. Found: " << AsString(ddl_queue_entries);
+
+  // Wait for the slot to become inactive so that we can drop it.
+  SleepFor(MonoDelta::FromMilliseconds(FLAGS_ysql_cdc_active_replication_slot_window_ms * 2));
+  ASSERT_OK(producer_repl_conn.Execute("DROP_REPLICATION_SLOT test_slot"));
+
+  // Verify SLOT commands succeed on target without manual flag.
+  ASSERT_RESULT(
+      consumer_repl_conn.Fetch("CREATE_REPLICATION_SLOT consumer_slot LOGICAL pgoutput"));
+  SleepFor(MonoDelta::FromMilliseconds(FLAGS_ysql_cdc_active_replication_slot_window_ms * 2));
+  ASSERT_OK(consumer_repl_conn.Execute("DROP_REPLICATION_SLOT consumer_slot"));
 }
 
 }  // namespace yb
