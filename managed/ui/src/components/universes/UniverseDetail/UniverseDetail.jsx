@@ -91,12 +91,12 @@ import {
 } from '../../../redesign/features/universe/universe-form/utils/helpers';
 
 //icons
-import ClockRewind from '../../../redesign/assets/clock-rewind.svg';
-import ClockRewindDisabled from '../../../redesign/assets/clock-rewind-disabled.svg';
-import PGIcon from '../../../redesign/assets/pg-compatibility.svg';
-import PGDisabled from '../../../redesign/assets/pg-disabled.svg';
-import ConnectionPoolIcon from '../../../redesign/assets/connection-pooling.svg';
-import ConnectionPoolDisabled from '../../../redesign/assets/connection-pool-disabled.svg';
+import ClockRewind from '../../../redesign/assets/clock-rewind.svg?img';
+import ClockRewindDisabled from '../../../redesign/assets/clock-rewind-disabled.svg?img';
+import PGIcon from '../../../redesign/assets/pg-compatibility.svg?img';
+import PGDisabled from '../../../redesign/assets/pg-disabled.svg?img';
+import ConnectionPoolIcon from '../../../redesign/assets/connection-pooling.svg?img';
+import ConnectionPoolDisabled from '../../../redesign/assets/connection-pool-disabled.svg?img';
 
 import './UniverseDetail.scss';
 
