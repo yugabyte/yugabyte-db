@@ -3718,9 +3718,13 @@ Status ClusterAdminClient::SetPreferredZones(const std::vector<string>& preferre
         auto current_list = req.mutable_multi_preferred_zones(priority - 1);
         cloud_info = current_list->add_zones();
 
-        cloud_info->set_placement_cloud(tokens[0]);
-        cloud_info->set_placement_region(tokens[1]);
+    cloud_info->set_placement_cloud(tokens[0]);
+    if (tokens[1] != TablespaceParser::kWildcardPlacement) {
+      cloud_info->set_placement_region(tokens[1]);
+      if (tokens[2] != TablespaceParser::kWildcardPlacement) {
         cloud_info->set_placement_zone(tokens[2]);
+      }
+    }
 
         zones.emplace(zone);
 
@@ -3729,9 +3733,13 @@ Status ClusterAdminClient::SetPreferredZones(const std::vector<string>& preferre
       // member as multi_preferred_zones is already set.
       cloud_info = req.add_preferred_zones();
       cloud_info->set_placement_cloud(tokens[0]);
-      cloud_info->set_placement_region(tokens[1]);
-      cloud_info->set_placement_zone(tokens[2]);
+      if (tokens[1] != TablespaceParser::kWildcardPlacement) {
+        cloud_info->set_placement_region(tokens[1]);
+        if (tokens[2] != TablespaceParser::kWildcardPlacement) {
+          cloud_info->set_placement_zone(tokens[2]);
         }
+      }
+    }
   }
 
   int size = static_cast<int>(visited_priorities.size());
