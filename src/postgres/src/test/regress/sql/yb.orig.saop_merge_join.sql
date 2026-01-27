@@ -1,7 +1,6 @@
 --
 -- See yb_saop_merge_schedule for details about the test.  Do not sort on the
 -- r5n.n column because that ruins the plans.
--- TODO(#29072): fix output.
 --
 
 \getenv abs_srcdir PG_ABS_SRCDIR
