@@ -996,6 +996,36 @@ TEST_F(PgObjectLocksTest, BootstrapLocksHasStatusTabetIdForTxns) {
   ASSERT_OK(conn2.FetchMatrix("SELECT * FROM test WHERE k=1", 1 /* rows */, 3 /* columns */));
 }
 
+TEST_F(PgObjectLocksTest, TestGlobalReleaseForFailedDdlsBeforeMetadataIsSet) {
+  const auto ts1_idx = 1;
+  const auto ts2_idx = 2;
+  auto* ts1 = cluster_->tablet_server(ts1_idx);
+  auto* ts2 = cluster_->tablet_server(ts2_idx);
+
+  auto conn1 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_OK(conn1.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn1.Execute("INSERT INTO test SELECT generate_series(1,11), 0"));
+
+  ts2->Shutdown();
+  {
+    LogWaiter log_waiter(ts2, "Received new lease epoch");
+    ASSERT_OK(ts2->Restart(
+        ExternalMiniClusterOptions::kDefaultStartCqlProxy,
+        {std::make_pair("TEST_fail_create_table_rpc", "true")}));
+    ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(kTimeMultiplier * 10)));
+  }
+  auto conn2 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  ASSERT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn2.Execute("LOCK TABLE test in ACCESS EXCLUSIVE mode"));
+  ASSERT_NOK(conn2.Execute("CREATE TABLE test_fail(k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn2.RollbackTransaction());
+
+  ASSERT_OK(conn1.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn1.Execute("LOCK TABLE test in ACCESS EXCLUSIVE mode"));
+  ASSERT_OK(conn1.Execute("CREATE TABLE test_fail(k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn1.CommitTransaction());
+}
+
 YB_STRONGLY_TYPED_BOOL(DoMasterFailover);
 YB_STRONGLY_TYPED_BOOL(UseExplicitLocksInsteadOfDdl);
 class PgObjecLocksTestOutOfOrderMessageHandling

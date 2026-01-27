@@ -67,7 +67,7 @@ public class AvailabilityZoneHandler {
     providerValidator.validate(az, region.getProvider().getCode());
     long nodeCount = az.getNodeCount();
     if (nodeCount > 0) {
-      failDueToAZInUse(nodeCount, "modify");
+      failDueToAZInUse(nodeCount, "modify", az.getName());
     }
     mutator.accept(az);
     az.update();
@@ -84,18 +84,18 @@ public class AvailabilityZoneHandler {
     AvailabilityZone az = AvailabilityZone.getByRegionOrBadRequest(zoneUUID, regionUUID);
     long nodeCount = az.getNodeCount();
     if (nodeCount > 0) {
-      failDueToAZInUse(nodeCount, "delete");
+      failDueToAZInUse(nodeCount, "delete", az.getName());
     }
     az.setActive(false);
     az.update();
     return az;
   }
 
-  private void failDueToAZInUse(long nodeCount, String action) {
+  private void failDueToAZInUse(long nodeCount, String action, String azName) {
     throw new PlatformServiceException(
         FORBIDDEN,
         String.format(
-            "There %s %d node%s in this AZ, cannot %s",
-            nodeCount > 1 ? "are" : "is", nodeCount, nodeCount > 1 ? "s" : "", action));
+            "There %s %d node%s in this AZ (%s), cannot %s",
+            nodeCount > 1 ? "are" : "is", nodeCount, nodeCount > 1 ? "s" : "", azName, action));
   }
 }

@@ -13,6 +13,7 @@
 
 #include "yb/common/common_net.h"
 
+#include <algorithm>
 #include <compare>
 #include <map>
 #include <string>
@@ -56,6 +57,16 @@ bool PlacementInfoContainsCloudInfo(
     const PlacementInfoPB& placement_info, const CloudInfoPB& cloud_info) {
   for (const auto& placement_block : placement_info.placement_blocks()) {
     if (CloudInfoContainsCloudInfo(placement_block.cloud_info(), cloud_info)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool CloudInfoMatchesPlacementInfo(
+    const CloudInfoPB& cloud_info, const PlacementInfoPB& placement_info) {
+  for (const auto& placement_block : placement_info.placement_blocks()) {
+    if (CloudInfoContainsCloudInfo(cloud_info, placement_block.cloud_info())) {
       return true;
     }
   }

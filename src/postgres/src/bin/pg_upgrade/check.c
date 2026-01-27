@@ -50,6 +50,7 @@ static void yb_check_yugabyte_user(PGconn *old_cluster_conn);
 static void yb_check_old_cluster_user(PGconn *old_cluster_conn);
 static void yb_check_invalid_indexes();
 static void yb_check_installed_extensions();
+static void yb_check_pgcrypto_schema();
 static void yb_check_yb_role_prefix();
 
 #define YB_SUPERUSER  "yb_superuser"
@@ -233,6 +234,7 @@ check_and_dump_old_cluster(bool live_check)
 
 	yb_check_invalid_indexes();
 	yb_check_installed_extensions();
+	yb_check_pgcrypto_schema();
 	yb_check_yb_role_prefix();
 
 	if (yb_has_check_fatal)
@@ -1965,6 +1967,71 @@ yb_check_installed_extensions()
 				 "using DROP EXTENSION, and reinstall them after the upgrade. A list of\n"
 				 "extensions with problems is printed above and in the file:\n"
 				 "    %s\n\n", output_path);
+	}
+	else
+	{
+		check_ok();
+	}
+}
+
+/*
+ * yb_check_pgcrypto_schema()
+ *
+ * Check that pgcrypto is not installed in the pg_catalog schema.
+ */
+static void
+yb_check_pgcrypto_schema()
+{
+	int			dbnum;
+	bool		found = false;
+
+	prep_status("Checking for extensions in conflicting schemas");
+
+	for (dbnum = 0; dbnum < old_cluster.dbarr.ndbs; dbnum++)
+	{
+		PGresult   *res;
+		int			ntups;
+		int			rowno;
+		int			i_extname;
+		int			i_nspname;
+		bool		db_used = false;
+		DbInfo	   *active_db = &old_cluster.dbarr.dbs[dbnum];
+		PGconn	   *conn = connectToServer(&old_cluster, active_db->db_name);
+
+		/* Find pgcrypto extension installed in pg_catalog schema */
+		res = executeQueryOrDie(conn,
+								"SELECT e.extname, n.nspname "
+								"FROM pg_extension e "
+								"JOIN pg_namespace n ON e.extnamespace = n.oid "
+								"WHERE e.extname = 'pgcrypto' "
+								"AND n.nspname = 'pg_catalog'");
+		ntups = PQntuples(res);
+		i_extname = PQfnumber(res, "extname");
+		i_nspname = PQfnumber(res, "nspname");
+
+		for (rowno = 0; rowno < ntups; rowno++)
+		{
+			found = true;
+			if (!db_used)
+			{
+				pg_log(PG_REPORT, "In database: %s\n", active_db->db_name);
+				db_used = true;
+			}
+			pg_log(PG_REPORT, "  %s installed in %s schema\n",
+					PQgetvalue(res, rowno, i_extname),
+					PQgetvalue(res, rowno, i_nspname));
+		}
+
+		PQclear(res);
+		PQfinish(conn);
+	}
+
+	if (found)
+	{
+		yb_fatal("Your installation contains the 'pgcrypto' extension in the\n"
+				"conflicting 'pg_catalog' schema. To proceed with the upgrade, please\n"
+				"uninstall the extension using DROP EXTENSION, and reinstall it into\n"
+				"a different schema (e.g. public).");
 	}
 	else
 	{

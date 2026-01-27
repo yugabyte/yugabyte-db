@@ -128,6 +128,9 @@ DEFINE_test_flag(bool, perform_ignore_pg_is_region_local, false,
 DEFINE_test_flag(bool, force_initial_region_local, false,
     "Force transaction to start as region-local initially.");
 
+DEFINE_test_flag(bool, fail_create_table_rpc, false,
+    "Fail all create table requests received at PgClientSession layer.");
+
 DECLARE_bool(vector_index_dump_stats);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
 DECLARE_bool(ysql_enable_db_catalog_version_mode);
@@ -547,7 +550,6 @@ class VectorIndexQuery {
       PgPerformResponseMsg& resp, rpc::Sidecars& sidecars) {
     VLOG_WITH_FUNC(4) << "Resp: " << resp.ShortDebugString();
     active_ = false;
-    auto dump_stats = fetch_start_ != MonoTime();
     auto process_start_time = MonoTime::Now();
 
     MonoTime reduce_start_time;
@@ -620,7 +622,7 @@ class VectorIndexQuery {
     metrics_.vector_index_fetch_us->Increment(fetch_time.ToMicroseconds());
     metrics_.vector_index_collect_us->Increment(collect_time.ToMicroseconds());
     metrics_.vector_index_reduce_us->Increment(reduce_time.ToMicroseconds());
-    LOG_IF(INFO, dump_stats)
+    LOG_IF(INFO, FLAGS_vector_index_dump_stats)
         << "VI_STATS: Fetch time: " << fetch_time.ToPrettyString()
         << ", collect time: " << collect_time.ToPrettyString()
         << ", reduce time: " << reduce_time.ToPrettyString();
@@ -1704,6 +1706,10 @@ class PgClientSession::Impl {
   Status CreateTable(
       const PgCreateTableRequestPB& req, PgCreateTableResponsePB* resp, rpc::RpcContext* context) {
     VLOG_WITH_FUNC(2) << "req: " << req.DebugString();
+
+    if (PREDICT_FALSE(FLAGS_TEST_fail_create_table_rpc)) {
+      return STATUS_FORMAT(IllegalState, "FLAGS_TEST_fail_create_table_rpc set");
+    }
 
     PgCreateTable helper(req);
     RETURN_NOT_OK(helper.Prepare());
@@ -2958,7 +2964,7 @@ class PgClientSession::Impl {
     // any operations postponed to the end of transaction. If the status is known
     // (commit.has_value() is true), then report the status of the transaction and wait for the
     // post-processing by YB-Master to end.
-    if (YsqlDdlRollbackEnabled() && metadata) {
+    if (YsqlDdlRollbackEnabled() && metadata && !metadata->transaction_id.IsNil()) {
       if (has_docdb_schema_changes ) {
         if (commit.has_value() && FLAGS_report_ysql_ddl_txn_status_to_master) {
           // If we failed to report the status of this DDL transaction, we can just log and ignore
@@ -3846,9 +3852,15 @@ class PgClientSession::Impl {
       }
       metadata = &ddl_txn_metadata_;
     }
+    // DDL abort might not have metadata set in the following cases:
+    // 1. backend detects timeout before the previous rpc (which sets ddl_txn_metadata_) returns.
+    // 2. DDL fails even before moving to the phase where ddl_txn_metadata_ gets set.
+    //
+    // In all such cases, no state would exist with the master's ddl verifier, it is ok to
+    // just abort the YBTransaction and move on.
     RSTATUS_DCHECK(
-        !has_docdb_schema_changes || !metadata->transaction_id.IsNil(), IllegalState,
-        "Valid ddl metadata is required");
+        !has_docdb_schema_changes || !metadata->transaction_id.IsNil() || !req.commit(),
+        IllegalState, "Valid ddl metadata is required for ddl commit");
 
     if (req.commit()) {
       auto commit_status = Commit(

@@ -220,15 +220,6 @@ public class YBProviderReconciler extends AbstractReconciler<YBProvider> {
           Provider.get(cust.getUuid(), provider.getMetadata().getName(), CloudType.kubernetes);
     }
     if (existingProvider != null) {
-      long univCount = existingProvider.getUniverseCount();
-      if (univCount > 0) {
-        log.error(
-            "Provider {} is in use by {} universes. Cannot update.",
-            existingProvider.getName(),
-            univCount);
-        throw new Exception(
-            "Provider " + existingProvider.getName() + " is in use by universes. Cannot update.");
-      }
       if (existingProvider.getUsabilityState() == Provider.UsabilityState.ERROR) {
         log.info(
             "Updating provider {} in error state with latest params", existingProvider.getName());
@@ -400,16 +391,18 @@ public class YBProviderReconciler extends AbstractReconciler<YBProvider> {
 
       Provider reqProvider = operatorUtils.getProviderReqFromProviderDetails(reqProviderJson);
       reqProvider.setVersion(existingProvider.getVersion());
-
+      KubernetesResourceDetails kubernetesResourceDetails =
+          KubernetesResourceDetails.fromResource(provider);
       UUID taskUuid =
-          cloudProviderHandler.editProvider(cust, existingProvider, reqProvider, true, false);
+          cloudProviderHandler.editProvider(
+              cust, existingProvider, reqProvider, true, false, kubernetesResourceDetails);
       if (taskUuid != null) {
         providerTaskMap.put(OperatorWorkQueue.getWorkQueueKey(provider.getMetadata()), taskUuid);
       }
       return taskUuid;
     } catch (PlatformServiceException e) {
       log.error("Provider edit failed: {}", e.getMessage());
-      updateProviderStatus(provider, e.getMessage());
+      updateProviderStatus(provider, "Provider edit failed: " + e.getMessage());
       throw e;
     }
   }
@@ -427,7 +420,6 @@ public class YBProviderReconciler extends AbstractReconciler<YBProvider> {
     ObjectNode payload = objectMapper.createObjectNode();
     payload.put("name", provider.getMetadata().getName());
     payload.put("code", "kubernetes");
-    payload.put("kubernetesProvider", "custom");
     String providerNamespace = provider.getMetadata().getNamespace();
     addProviderLevelCloudInfoToPayload(
         payload, objectMapper.valueToTree(provider.getSpec().getCloudInfo()));
@@ -470,29 +462,29 @@ public class YBProviderReconciler extends AbstractReconciler<YBProvider> {
   }
 
   private void addProviderLevelCloudInfoToPayload(ObjectNode targetNode, ObjectNode cloudInfo) {
-    addCloudInfoToPayload(targetNode, cloudInfo, true);
-  }
-
-  private void addZoneLevelCloudInfoToPayload(ObjectNode targetNode, ObjectNode cloudInfo) {
-    addCloudInfoToPayload(targetNode, cloudInfo, false);
-  }
-
-  private void addCloudInfoToPayload(
-      ObjectNode targetNode, ObjectNode cloudInfo, boolean isProviderLevel) {
     if (cloudInfo == null || cloudInfo.isEmpty()) {
       log.warn("Cloud info is null or empty, skipping.");
       return;
     }
-    if (isProviderLevel) {
-      cloudInfo.put("kubernetesPullSecretContent", defaultKubernetesPullSecretContent);
-      cloudInfo.put("kubernetesImagePullSecretName", defaultKubernetesPullSecretName);
-      cloudInfo.put("kubernetesPullSecretName", defaultKubernetesPullSecretName);
-    } else {
-      JsonNode kubernetesOverrides = cloudInfo.get("overrides");
-      if (kubernetesOverrides != null) {
-        cloudInfo.put("overrides", operatorUtils.getKubernetesOverridesString(kubernetesOverrides));
-      }
+    cloudInfo.put("kubernetesPullSecretContent", defaultKubernetesPullSecretContent);
+    cloudInfo.put("kubernetesImagePullSecretName", defaultKubernetesPullSecretName);
+    cloudInfo.put("kubernetesPullSecretName", defaultKubernetesPullSecretName);
+    finalizeCloudInfo(targetNode, cloudInfo);
+  }
+
+  private void addZoneLevelCloudInfoToPayload(ObjectNode targetNode, ObjectNode cloudInfo) {
+    if (cloudInfo == null || cloudInfo.isEmpty()) {
+      log.warn("Cloud info is null or empty, skipping.");
+      return;
     }
+    JsonNode kubernetesOverrides = cloudInfo.get("overrides");
+    if (kubernetesOverrides != null) {
+      cloudInfo.put("overrides", operatorUtils.getKubernetesOverridesString(kubernetesOverrides));
+    }
+    finalizeCloudInfo(targetNode, cloudInfo);
+  }
+
+  private void finalizeCloudInfo(ObjectNode targetNode, ObjectNode cloudInfo) {
     cloudInfo.put("legacyK8sProvider", false);
     cloudInfo.put("isKubernetesOperatorControlled", true);
     maybeExtractKubeConfig(cloudInfo);
@@ -504,6 +496,7 @@ public class YBProviderReconciler extends AbstractReconciler<YBProvider> {
   void maybeExtractKubeConfig(ObjectNode cloudInfo) {
     JsonNode secretRef = cloudInfo.get("kubeConfigSecret");
     if (secretRef == null || !secretRef.has("name") || !secretRef.has("namespace")) {
+      cloudInfo.put("kubeConfig", ""); // empty string to use in-cluster credentials
       return;
     }
 

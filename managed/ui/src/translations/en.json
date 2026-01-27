@@ -333,13 +333,13 @@
         }
       },
       "paUniverseStatus": {
-        "enableTitle": "Enable Perf Advisor",
-        "disableTitle": "Disable Perf Advisor",
-        "enablePaUniverseSuccess": "Successfully enabled Perf Advisor to the universe",
-        "enablePaUniverseFailure": "Failed to enable Perf Advisor to the universe",
-        "disbalePaUniverseSuccess": "Successfully enabled Perf Advisor to the universe",
-        "disablePaUniverseFailure": "Failed to enable Perf Advisor to the universe",
-        "subText": "Are you sure you want to {{action}} Perf Advisor for the universe <strong>{{universeName}}</strong>?"
+        "enableTitle": "Enable Performance Monitoring",
+        "disableTitle": "Disable Performance Monitoring",
+        "enablePaUniverseSuccess": "Successfully enabled  Performance Monitoring to the universe",
+        "enablePaUniverseFailure": "Failed to  Performance Monitoring to the universe",
+        "disbalePaUniverseSuccess": "Successfully disbled Performance Monitoring for the universe",
+        "disablePaUniverseFailure": "Failed to disable  Performance Monitoring to the universe",
+        "subText": "Are you sure you want to {{action}}  Performance Monitoring for the universe <strong>{{universeName}}</strong>?"
       },
       "pgCompatibility": {
         "modalTitle": "Edit Enhanced Postgres Compatibility",
@@ -629,6 +629,7 @@
         "cpuArch": "CPU Architecture",
         "x86_64": "x86 (Intel)",
         "aarch64": "AArch6 (ARM)",
+        "cpuArchNotSupported": "This CPU Architecture is not supported by current provider.",
         "linuxVersion": "Linux Version",
         "showRetired": "Show retired recommendations",
         "cooldownHours": "Resizing device within cooldown period of 6 hours causes resize to happen only by moving to different nodes",
@@ -768,6 +769,7 @@
             "SQLIssue ": "SQL ISSUE"
           }
         },
+        "perfAdvisorClusterLoadTab": "Cluster Load",
         "perfAdvisorAnomaliesTab": "Anomalies",
         "perfAdvisorInsightsTab": "Insights",
         "perfAdvisorQueriesTab": "Queries",
@@ -775,11 +777,11 @@
         "tpServiceUrlHelperText": "Please do not append '/' at the end of the URL",
         "registrationSuccess": "Registered to Perf Advisor service successfully",
         "registrationFailed": "Failed to register to Perf Advisor service",
-        "tpServiceUrlLabel": "Perf Advisor Service URL",
+        "paServiceUrlLabel": "Performance Monitoring Service URL",
         "ybPlatformServiceUrlLabel": "Yugabyte Platform Service URL",
         "ybPlatformMetricsUrlLabel": "Yugabyte Platform Metrics URL",
         "apiTokenLabel": "YBA API Token",
-        "tpApiTokenLabel": "TP API Token",
+        "tpApiTokenLabel": "Performance Monitoring Token",
         "metricsScrapePeriodSecLabel": "Metrics Scrape Period (in seconds)",
         "metricsScrapePeriodSecRequired": "Metrics Scrape Period is required",
         "registerButton": "Register",
@@ -791,6 +793,7 @@
         "urlRequired": "Platform Url required",
         "apiTokenRequired": "API Token required",
         "enablePerfAdvisorMsg": "Select <bold> 'More' </bold> from <bold>Actions</bold> dropdown menu on the top right corner of the page to <bold>'Enable Perf Advisor'</bold> for this universe.",
+        "perfAdvisorRegistrationFailure": "Failed to fetch Perf Advisor registration status, please try again",
         "editDialog": {
           "title": "Update Perf Advisor Configuration",
           "updateButton": "Update",

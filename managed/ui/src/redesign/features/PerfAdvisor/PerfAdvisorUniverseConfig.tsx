@@ -87,7 +87,7 @@ export const PerfAdvisorUniverseConfig = ({
         <Box>
           <Box className={helperClasses.infoBox}>
             <YBLabel dataTestId="PerfAdvisorUniverseConfig-TpUrlLabel" width="300px">
-              {t('clusterDetail.troubleshoot.tpServiceUrlLabel')}
+              {t('clusterDetail.troubleshoot.paServiceUrlLabel')}
             </YBLabel>
             <YBInput
               name="id"

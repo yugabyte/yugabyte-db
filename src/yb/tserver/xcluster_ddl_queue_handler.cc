@@ -69,14 +69,14 @@ DECLARE_bool(ysql_yb_enable_advisory_locks);
 
 #define VALIDATE_MEMBER(doc, member_name, expected_type) \
   SCHECK( \
-      doc.HasMember(member_name), NotFound, \
+      (doc).HasMember(member_name), NotFound, \
       Format("JSON parse error: '$0' member not found.", member_name)); \
   SCHECK( \
-      doc[member_name].Is##expected_type(), InvalidArgument, \
+      (doc)[member_name].Is##expected_type(), InvalidArgument, \
       Format("JSON parse error: '$0' member should be of type $1.", member_name, #expected_type))
 
 #define HAS_MEMBER_OF_TYPE(doc, member_name, is_type) \
-  (doc.HasMember(member_name) && doc[member_name].is_type())
+  ((doc).HasMember(member_name) && (doc)[member_name].is_type())
 
 namespace yb::tserver {
 
@@ -106,6 +106,7 @@ const char* kDDLJsonIsIndex = "is_index";
 const char* kDDLJsonEnumLabelInfo = "enum_label_info";
 const char* kDDLJsonTypeInfo = "type_info";
 const char* kDDLJsonSequenceInfo = "sequence_info";
+const char* kDDLJsonVariableMap = "variables";
 const char* kDDLJsonManualReplication = "manual_replication";
 const char* kDDLPrepStmtManualInsert = "manual_replication_insert";
 const char* kDDLPrepStmtAlreadyProcessed = "already_processed_row";
@@ -299,6 +300,14 @@ Result<XClusterDDLQueryInfo> GetDDLQueryInfo(
       query_info.relation_map.push_back(std::move(rel_info));
     }
   }
+  if (HAS_MEMBER_OF_TYPE(doc, kDDLJsonVariableMap, IsObject)) {
+    auto variables = doc[kDDLJsonVariableMap].GetObject();
+    for (const auto& variable : variables) {
+      auto name = variable.name.GetString();
+      auto value = variable.value.GetString();
+      query_info.variables[name] = value;
+    }
+  }
 
   return query_info;
 }
@@ -475,6 +484,12 @@ Status XClusterDDLQueueHandler::ProcessDDLQuery(const XClusterDDLQueryInfo& quer
   }
   if (!query_info.user.empty()) {
     setup_query << Format("SET ROLE $0;", query_info.user);
+  }
+
+  // Set needed session variables as on source.
+  for (const auto& [name, value] : query_info.variables) {
+    auto escaped_value = std::regex_replace(value, std::regex("'"), "''");
+    setup_query << Format("SET $0 = '$1';", name, escaped_value);
   }
 
   if (FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) {

@@ -1027,10 +1027,10 @@ ybc_should_pushdown_op(YbScanPlan scan_plan, AttrNumber attnum, int op_strategy)
 static bool
 YbIsHashCodeSearch(ScanKey key)
 {
-	bool		is_hash_search = (key->sk_flags & YB_SK_IS_HASHED) != 0;
+	bool		is_hash_search = (key->sk_flags & YB_SK_SEARCHHASHCODE) != 0;
 
 	/* We currently don't support hash code search with any other flags */
-	Assert(!is_hash_search || key->sk_flags == YB_SK_IS_HASHED);
+	Assert(!is_hash_search || key->sk_flags == YB_SK_SEARCHHASHCODE);
 	return is_hash_search;
 }
 
@@ -3462,33 +3462,36 @@ ybIsTupMismatch(HeapTuple tup, YbScanDesc ybScan)
 inline bool
 YbNeedsPgRecheck(YbScanDesc yb_scan)
 {
-	/*
-	 * Due to historical reasons, yb_hash_code pushdown always requires
-	 * recheck.
-	 */
-	if (yb_scan->hash_code_keys)
-		return true;
-
 	/* If all keys are bound, there is no need to recheck. */
 	if (yb_scan->all_ordinary_keys_bound)
 		return false;
 
-	/*
-	 * Precheck takes care of SK_SEARCHNULL and SK_SEARCHNOTNULL cases.  All
-	 * other cases need recheck.  Due to historical reasons, index only scan
-	 * and expressions (corresponding to InvalidAttrNumber) always require
-	 * recheck.
-	 */
 	const ScanKey *keys = yb_scan->keys;
 	const bool	is_index_only_scan = yb_scan->prepare_params.index_only_scan;
 
+	/*
+	 * If we can guarantee precheck will check each tuple accurately, we don't
+	 * need recheck.
+	 */
 	for (int i = 0; i < yb_scan->nkeys; i += YbGetLengthOfKey(&keys[i]))
 	{
 		const AttrNumber attnum = yb_scan->target_key_attnums[i];
 
+		/*
+		 * Precheck is not run for index only scan and does not cover
+		 * expressions (corresponding to InvalidAttrNumber), so those cases
+		 * always require recheck.  In addition, some sk_flags such as
+		 * SK_SEARCHNULL and SK_SEARCHARRAY could possibly slip through
+		 * precheck for non-matching cases, so we should recheck.
+		 *
+		 * TODO(jason): precheck should go back to returning three possible
+		 * values: yes-match, no-match, recheck, and we should predetermine
+		 * whether precheck may return recheck.  That would make it possible to
+		 * know recheck is not needed for certain cases such as SK_SEARCHNULL.
+		 */
 		if (is_index_only_scan ||
 			attnum == InvalidAttrNumber ||
-			keys[i]->sk_flags & ~(SK_SEARCHNULL | SK_SEARCHNOTNULL))
+			keys[i]->sk_flags)
 		{
 			return true;
 		}

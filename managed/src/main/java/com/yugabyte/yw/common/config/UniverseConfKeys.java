@@ -1786,4 +1786,21 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Check if edit operation will affect existing tablespaces",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableNewPerfAdvisorUI =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.enable_new_perf_advisor_ui",
+          ScopeType.UNIVERSE,
+          "Enables new Performance Monitoring UI via Performance Tab if universe"
+              + " is registered with Perf Advisor Service",
+          "Enables new Performance Monitoring UI via Performance Tab",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> editUniverseV2UiEnabled =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.edit_universe_v2_ui_enabled",
+          ScopeType.UNIVERSE,
+          "Enable Edit Universe V2 UI",
+          "Enable the new Edit Universe V2 UI for editing/viewing universe configurations",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

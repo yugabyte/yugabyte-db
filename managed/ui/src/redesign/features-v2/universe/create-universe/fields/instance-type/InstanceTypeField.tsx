@@ -156,7 +156,6 @@ export const InstanceTypeField = ({
                     ? (option: Record<string, string>) => option.groupName
                     : undefined
                 }
-                size="large"
               />
             </Box>
           </Box>

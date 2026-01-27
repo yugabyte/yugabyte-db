@@ -316,8 +316,8 @@ class ProvisionCommand(Command):
             self._check_package(package)
         key = next(iter(self.config), None)
         context = self.config[key]
-        is_cloud = context.get('is_cloud')
-        if is_cloud:
+        is_cloud = context.get('is_cloud', 'False')
+        if is_cloud == 'True':
             cloud_only_packages = ['gzip']
             for package in cloud_only_packages:
                 self._check_package(package)

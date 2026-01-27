@@ -274,7 +274,8 @@ export default (store) => {
         <IndexRoute component={Dashboard} />
         <Route path="/universes" component={Universes}>
           <IndexRoute component={UniverseConsole} />
-          <Route path="/universes/:uuid/perfAdvisor/:id" component={PerfAdvisorAnalysisView} />
+          <Route path="/universes/:uuid/perfAdvisor/clusterLoad/overallLoad/queries/:id" component={PerfAdvisorAnalysisView} />
+          <Route path="/universes/:uuid/perfAdvisor/clusterLoad/dbLoad/queries/:id" component={PerfAdvisorAnalysisView} />
           <Route path="/universes/:uuid/replication-slots/:streamID" component={SlotDetail} />
           <Route path="/universes/create" component={UniverseNewView} />
           <Route path="/universes/:uuid" component={UniverseDetail} />
@@ -285,6 +286,8 @@ export default (store) => {
           <Route path="/universes/:uuid/:mode/:type" component={UniverseNewView} />
           {/* </Route> */}
           <Route path="/universes/:uuid/:tab" component={UniverseDetail} />
+          <Route path="/universes/:uuid/perfAdvisor/clusterLoad/overallLoad/queries" component={UniverseDetail} />
+          <Route path="/universes/:uuid/perfAdvisor/clusterLoad/dbLoad" component={UniverseDetail} />
         </Route>
 
         {/* ------------------------------------------------------------------------*/}

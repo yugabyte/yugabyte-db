@@ -29,6 +29,7 @@
 #include "yb/util/endian_util.h"
 #include "yb/util/enums.h"
 #include "yb/util/format.h"
+#include "yb/util/json_document.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
@@ -303,6 +304,12 @@ bool IsValidType(Oid pg_type) {
     return pg_type == UUIDOID;
   } else if constexpr (std::is_same_v<T, std::vector<float>>) {
     return pg_type == VECTOROID;
+  } else if constexpr (std::is_same_v<T, JsonDocument>) { // NOLINT
+    switch (pg_type) {
+      case JSONOID: [[fallthrough]];
+      case JSONBOID: return true;
+    }
+    return false;
   }
 }
 
@@ -911,6 +918,10 @@ GetValueResult<T> GetValueHelper<T>::Get(const PGresult* result, int row, int co
   } else if constexpr (std::is_same_v<T, MonoDelta>) { // NOLINT
     return MonoDelta::FromMicroseconds(
         VERIFY_RESULT(GetValueHelper<int64_t>::Get(result, row, column)));
+  } else if constexpr (std::is_same_v<T, JsonDocument>) { // NOLINT
+    JsonDocument doc;
+    RETURN_NOT_OK(doc.Parse(VERIFY_RESULT(GetValueHelper<std::string>::Get(result, row, column))));
+    return doc;
   } else {
     return GetValueImpl<typename PGTypeTraits<T>::ReturnType>(result, row, column);
   }
@@ -930,6 +941,7 @@ template struct GetValueHelper<char>;
 template struct GetValueHelper<PGOid>;
 template struct GetValueHelper<Uuid>;
 template struct GetValueHelper<MonoDelta>;
+template struct GetValueHelper<JsonDocument>;
 
 FetchHelper<RowAsString>::RowsResult FetchHelper<RowAsString>::FetchRows(
     Result<PGResultPtr>&& source) {

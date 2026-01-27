@@ -960,14 +960,13 @@ LockAcquireExtended(const LOCKTAG *locktag,
 		if (LockTimeout > 0)
 			enable_timeout_after(LOCK_TIMEOUT, LockTimeout);
 
-		 YbcStatus status = YBCAcquireObjectLock(GetYBObjectLockId(locktag), (YbcObjectLockMode) lockmode);
-
-		 CHECK_FOR_INTERRUPTS();
+		YbcStatus status = YBCAcquireObjectLock(GetYBObjectLockId(locktag), (YbcObjectLockMode) lockmode);
 
 		if (LockTimeout > 0)
 			disable_timeout(LOCK_TIMEOUT, false);
 
 		HandleYBStatus(status);
+		CHECK_FOR_INTERRUPTS();
 
 		elog(log_level, "LockAcquired: lock [%u,%u] mode: %s",
 			 locktag->locktag_field1, locktag->locktag_field2, lockMethodTable->lockModeNames[lockmode]);

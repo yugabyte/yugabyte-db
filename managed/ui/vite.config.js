@@ -124,7 +124,10 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      '@app': path.resolve(__dirname, './src')
+      '@app': path.resolve(__dirname, './src'),
+      // Polyfill Node.js 'events' module for browser compatibility
+      // react-bootstrap-table (used by perf-advisor-ui) requires EventEmitter
+      events: 'events'
     }
   },
   build: {
@@ -159,7 +162,7 @@ export default defineConfig({
   },
   define: {
     'process.env': {
-      REACT_APP_API_URL: 'http://localhost:90000'
+      REACT_APP_API_URL: 'http://localhost:9000'
     },
     global: 'globalThis',
     this: 'window',

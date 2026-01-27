@@ -9,7 +9,9 @@ import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
@@ -666,5 +668,388 @@ public class KubernetesManagerTest extends FakeDBApplication {
     List<String> namespaceList =
         ImmutableList.of("demo-universe-az-1", "demo-universe-az-2", "demo-universe-az-3");
     validateDeletePDBCommand(universe, namespaceList);
+  }
+
+  private void setupKubernetesManagerForHelmTests() {
+    // Set parent class fields (KubernetesManager) using reflection since ShellKubernetesManager
+    // has private fields with the same names that hide the parent fields
+    try {
+      Class<?> parentClass = KubernetesManager.class;
+      java.lang.reflect.Field appConfigField = parentClass.getDeclaredField("appConfig");
+      appConfigField.setAccessible(true);
+      appConfigField.set(kubernetesManager, mockAppConfig);
+
+      java.lang.reflect.Field confGetterField = parentClass.getDeclaredField("confGetter");
+      confGetterField.setAccessible(true);
+      confGetterField.set(kubernetesManager, mockConfGetter);
+
+      java.lang.reflect.Field releaseManagerField = parentClass.getDeclaredField("releaseManager");
+      releaseManagerField.setAccessible(true);
+      releaseManagerField.set(kubernetesManager, releaseManager);
+
+      java.lang.reflect.Field shellProcessHandlerField =
+          parentClass.getDeclaredField("shellProcessHandler");
+      shellProcessHandlerField.setAccessible(true);
+      shellProcessHandlerField.set(kubernetesManager, shellProcessHandler);
+
+      java.lang.reflect.Field fileHelperServiceField =
+          parentClass.getDeclaredField("fileHelperService");
+      fileHelperServiceField.setAccessible(true);
+      fileHelperServiceField.set(kubernetesManager, fileHelperService);
+    } catch (Exception e) {
+      throw new RuntimeException("Failed to set up KubernetesManager fields", e);
+    }
+  }
+
+  @Test
+  public void testHelmInstallWithCommonLabels() throws IOException {
+    // Create a temporary override file with commonLabels
+    Path overrideFile = Files.createTempFile("test-overrides", ".yml");
+    String yamlContent =
+        "commonLabels:\n"
+            + "  environment: production\n"
+            + "  team: platform\n"
+            + "  cost-center: data-infra\n"
+            + "replicas: 3\n";
+    Files.write(overrideFile, yamlContent.getBytes());
+
+    // Create a dummy helm chart file for versions < 2.8.0.0
+    File helmChartFile = new File(TMP_CHART_PATH, "yugabyte-2.7-helm-legacy.tar.gz");
+    helmChartFile.getParentFile().mkdirs();
+    helmChartFile.createNewFile();
+
+    try {
+      setupKubernetesManagerForHelmTests();
+      // Mock helm list to return empty (no existing release)
+      ShellResponse listResponse = ShellResponse.create(0, "");
+      // Mock helm install response
+      ShellResponse installResponse = ShellResponse.create(0, "Release installed");
+      // Mock the 5-parameter run method that execCommand uses
+      when(shellProcessHandler.run(
+              anyList(),
+              anyMap(),
+              anyBoolean(),
+              anyString(),
+              any(RedactingService.RedactionTarget.class)))
+          .thenReturn(listResponse)
+          .thenReturn(installResponse);
+
+      // Mock getHelmPackagePath - we need to set up a release
+      when(mockAppConfig.getString("yb.helm.packagePath")).thenReturn(TMP_CHART_PATH);
+      when(mockConfGetter.getConfForScope(any(Universe.class), any())).thenReturn(300L); // timeout
+
+      kubernetesManager.helmInstall(
+          universe.getUniverseUUID(),
+          "2.7.0.0-b1", // Use version < 2.8.0.0 to use legacy chart
+          configProvider,
+          defaultProvider.getUuid(),
+          "demo-universe",
+          "demo-namespace",
+          overrideFile.toString());
+
+      // Verify helm install was called with --labels flag
+      // Note: execCommand uses the 5-parameter run method
+      ArgumentCaptor<List<String>> commandCaptor = ArgumentCaptor.forClass(List.class);
+      ArgumentCaptor<Map<String, String>> configCaptor = ArgumentCaptor.forClass(Map.class);
+      Mockito.verify(shellProcessHandler, times(2))
+          .run(
+              commandCaptor.capture(),
+              configCaptor.capture(),
+              anyBoolean(),
+              anyString(),
+              any(RedactingService.RedactionTarget.class));
+      List<List<String>> allCommands = commandCaptor.getAllValues();
+      // The second call should be helm install
+      List<String> installCommand = allCommands.get(1);
+      assertTrue(
+          "helm install command should contain --labels flag", installCommand.contains("--labels"));
+      int labelsIndex = installCommand.indexOf("--labels");
+      assertTrue("--labels flag should have a value", labelsIndex < installCommand.size() - 1);
+      String labelsValue = installCommand.get(labelsIndex + 1);
+      assertTrue(
+          "Labels should contain environment=production",
+          labelsValue.contains("environment=production"));
+      assertTrue("Labels should contain team=platform", labelsValue.contains("team=platform"));
+      assertTrue(
+          "Labels should contain cost-center=data-infra",
+          labelsValue.contains("cost-center=data-infra"));
+    } finally {
+      Files.deleteIfExists(overrideFile);
+      helmChartFile.delete();
+    }
+  }
+
+  @Test
+  public void testHelmInstallWithoutCommonLabels() throws IOException {
+    // Create a temporary override file without commonLabels
+    Path overrideFile = Files.createTempFile("test-overrides", ".yml");
+    String yamlContent = "replicas: 3\n" + "resources:\n" + "  limits:\n" + "    memory: 2Gi\n";
+    Files.write(overrideFile, yamlContent.getBytes());
+
+    // Create a dummy helm chart file for versions < 2.8.0.0
+    File helmChartFile = new File(TMP_CHART_PATH, "yugabyte-2.7-helm-legacy.tar.gz");
+    helmChartFile.getParentFile().mkdirs();
+    helmChartFile.createNewFile();
+
+    try {
+      setupKubernetesManagerForHelmTests();
+      // Mock helm list to return empty (no existing release)
+      ShellResponse listResponse = ShellResponse.create(0, "");
+      // Mock helm install response
+      ShellResponse installResponse = ShellResponse.create(0, "Release installed");
+      // Mock the 5-parameter run method that execCommand uses
+      when(shellProcessHandler.run(
+              anyList(),
+              anyMap(),
+              anyBoolean(),
+              anyString(),
+              any(RedactingService.RedactionTarget.class)))
+          .thenReturn(listResponse)
+          .thenReturn(installResponse);
+
+      // Mock getHelmPackagePath
+      when(mockAppConfig.getString("yb.helm.packagePath")).thenReturn(TMP_CHART_PATH);
+      when(mockConfGetter.getConfForScope(any(Universe.class), any())).thenReturn(300L);
+
+      kubernetesManager.helmInstall(
+          universe.getUniverseUUID(),
+          "2.7.0.0-b1", // Use version < 2.8.0.0 to use legacy chart
+          configProvider,
+          defaultProvider.getUuid(),
+          "demo-universe",
+          "demo-namespace",
+          overrideFile.toString());
+
+      // Verify helm install was called without --labels flag
+      // Note: execCommand uses the 5-parameter run method
+      ArgumentCaptor<List<String>> commandCaptor = ArgumentCaptor.forClass(List.class);
+      Mockito.verify(shellProcessHandler, times(2))
+          .run(
+              commandCaptor.capture(),
+              anyMap(),
+              anyBoolean(),
+              anyString(),
+              any(RedactingService.RedactionTarget.class));
+      List<List<String>> allCommands = commandCaptor.getAllValues();
+      List<String> installCommand = allCommands.get(1);
+      assertTrue(
+          "helm install command should not contain --labels flag when no commonLabels present",
+          !installCommand.contains("--labels"));
+    } finally {
+      Files.deleteIfExists(overrideFile);
+      helmChartFile.delete();
+    }
+  }
+
+  @Test
+  public void testHelmUpgradeWithCommonLabels() throws IOException {
+    // Create a temporary override file with commonLabels
+    Path overrideFile = Files.createTempFile("test-overrides", ".yml");
+    String yamlContent =
+        "commonLabels:\n" + "  environment: staging\n" + "  version: 2.0\n" + "replicas: 5\n";
+    Files.write(overrideFile, yamlContent.getBytes());
+
+    // Create a dummy helm chart file for versions < 2.8.0.0
+    File helmChartFile = new File(TMP_CHART_PATH, "yugabyte-2.7-helm-legacy.tar.gz");
+    helmChartFile.getParentFile().mkdirs();
+    helmChartFile.createNewFile();
+
+    try {
+      setupKubernetesManagerForHelmTests();
+      // Mock helm template response (called before upgrade)
+      ShellResponse templateResponse = ShellResponse.create(0, "template output");
+      // Mock kubectl diff response (diff also uses KubernetesManager's execCommand)
+      ShellResponse diffResponse = ShellResponse.create(0, "");
+      // Mock helm upgrade response
+      ShellResponse upgradeResponse = ShellResponse.create(0, "Release upgraded");
+      // Mock the 5-parameter run method for helmTemplate, diff, and helmUpgrade (all in
+      // KubernetesManager)
+      when(shellProcessHandler.run(
+              anyList(),
+              anyMap(),
+              anyBoolean(),
+              anyString(),
+              any(RedactingService.RedactionTarget.class)))
+          .thenReturn(templateResponse)
+          .thenReturn(diffResponse)
+          .thenReturn(upgradeResponse);
+
+      // Mock fileHelperService for template output
+      Path templateOutputFile = Files.createTempFile("helm-template", ".output");
+      when(fileHelperService.createTempFile("helm-template", ".output"))
+          .thenReturn(templateOutputFile);
+
+      // Mock getHelmPackagePath
+      when(mockAppConfig.getString("yb.helm.packagePath")).thenReturn(TMP_CHART_PATH);
+      when(mockConfGetter.getConfForScope(any(Universe.class), any())).thenReturn(300L);
+
+      kubernetesManager.helmUpgrade(
+          universe.getUniverseUUID(),
+          "2.7.0.0-b1", // Use version < 2.8.0.0 to use legacy chart
+          configProvider,
+          "demo-universe",
+          "demo-namespace",
+          overrideFile.toString());
+
+      // Verify helm upgrade was called with --labels flag
+      // Note: helmTemplate, diff, and helmUpgrade all use the 5-parameter run method
+      ArgumentCaptor<List<String>> commandCaptor = ArgumentCaptor.forClass(List.class);
+      Mockito.verify(shellProcessHandler, times(3))
+          .run(
+              commandCaptor.capture(),
+              anyMap(),
+              anyBoolean(),
+              anyString(),
+              any(RedactingService.RedactionTarget.class));
+      List<List<String>> allCommands = commandCaptor.getAllValues();
+      // The third call should be helm upgrade (first is helm template, second is kubectl diff)
+      List<String> upgradeCommand = allCommands.get(2);
+      assertTrue(
+          "helm upgrade command should contain --labels flag", upgradeCommand.contains("--labels"));
+      int labelsIndex = upgradeCommand.indexOf("--labels");
+      String labelsValue = upgradeCommand.get(labelsIndex + 1);
+      assertTrue(
+          "Labels should contain environment=staging", labelsValue.contains("environment=staging"));
+      assertTrue("Labels should contain version=2.0", labelsValue.contains("version=2.0"));
+    } finally {
+      Files.deleteIfExists(overrideFile);
+      helmChartFile.delete();
+    }
+  }
+
+  @Test
+  public void testHelmInstallWithCommonLabelsNonStringValues() throws IOException {
+    // Create a temporary override file with commonLabels containing non-string values
+    Path overrideFile = Files.createTempFile("test-overrides", ".yml");
+    String yamlContent =
+        "commonLabels:\n"
+            + "  environment: production\n"
+            + "  replicas: 3\n"
+            + "  enabled: true\n"
+            + "  priority: 1\n";
+    Files.write(overrideFile, yamlContent.getBytes());
+
+    // Create a dummy helm chart file for versions < 2.8.0.0
+    File helmChartFile = new File(TMP_CHART_PATH, "yugabyte-2.7-helm-legacy.tar.gz");
+    helmChartFile.getParentFile().mkdirs();
+    helmChartFile.createNewFile();
+
+    try {
+      setupKubernetesManagerForHelmTests();
+      // Mock helm list to return empty (no existing release)
+      ShellResponse listResponse = ShellResponse.create(0, "");
+      // Mock helm install response
+      ShellResponse installResponse = ShellResponse.create(0, "Release installed");
+      // Mock the 5-parameter run method that execCommand uses
+      when(shellProcessHandler.run(
+              anyList(),
+              anyMap(),
+              anyBoolean(),
+              anyString(),
+              any(RedactingService.RedactionTarget.class)))
+          .thenReturn(listResponse)
+          .thenReturn(installResponse);
+
+      // Mock getHelmPackagePath
+      when(mockAppConfig.getString("yb.helm.packagePath")).thenReturn(TMP_CHART_PATH);
+      when(mockConfGetter.getConfForScope(any(Universe.class), any())).thenReturn(300L);
+
+      kubernetesManager.helmInstall(
+          universe.getUniverseUUID(),
+          "2.7.0.0-b1", // Use version < 2.8.0.0 to use legacy chart
+          configProvider,
+          defaultProvider.getUuid(),
+          "demo-universe",
+          "demo-namespace",
+          overrideFile.toString());
+
+      // Verify helm install was called with --labels flag containing converted values
+      // Note: execCommand uses the 5-parameter run method
+      ArgumentCaptor<List<String>> commandCaptor = ArgumentCaptor.forClass(List.class);
+      Mockito.verify(shellProcessHandler, times(2))
+          .run(
+              commandCaptor.capture(),
+              anyMap(),
+              anyBoolean(),
+              anyString(),
+              any(RedactingService.RedactionTarget.class));
+      List<List<String>> allCommands = commandCaptor.getAllValues();
+      List<String> installCommand = allCommands.get(1);
+      assertTrue(
+          "helm install command should contain --labels flag", installCommand.contains("--labels"));
+      int labelsIndex = installCommand.indexOf("--labels");
+      String labelsValue = installCommand.get(labelsIndex + 1);
+      assertTrue(
+          "Labels should contain environment=production",
+          labelsValue.contains("environment=production"));
+      assertTrue("Labels should contain replicas=3", labelsValue.contains("replicas=3"));
+      assertTrue("Labels should contain enabled=true", labelsValue.contains("enabled=true"));
+      assertTrue("Labels should contain priority=1", labelsValue.contains("priority=1"));
+    } finally {
+      Files.deleteIfExists(overrideFile);
+      helmChartFile.delete();
+    }
+  }
+
+  @Test
+  public void testHelmInstallWithEmptyCommonLabels() throws IOException {
+    // Create a temporary override file with empty commonLabels
+    Path overrideFile = Files.createTempFile("test-overrides", ".yml");
+    String yamlContent = "commonLabels: {}\n" + "replicas: 3\n";
+    Files.write(overrideFile, yamlContent.getBytes());
+
+    // Create a dummy helm chart file for versions < 2.8.0.0
+    File helmChartFile = new File(TMP_CHART_PATH, "yugabyte-2.7-helm-legacy.tar.gz");
+    helmChartFile.getParentFile().mkdirs();
+    helmChartFile.createNewFile();
+
+    try {
+      setupKubernetesManagerForHelmTests();
+      // Mock helm list to return empty (no existing release)
+      ShellResponse listResponse = ShellResponse.create(0, "");
+      // Mock helm install response
+      ShellResponse installResponse = ShellResponse.create(0, "Release installed");
+      // Mock the 5-parameter run method that execCommand uses
+      when(shellProcessHandler.run(
+              anyList(),
+              anyMap(),
+              anyBoolean(),
+              anyString(),
+              any(RedactingService.RedactionTarget.class)))
+          .thenReturn(listResponse)
+          .thenReturn(installResponse);
+
+      // Mock getHelmPackagePath
+      when(mockAppConfig.getString("yb.helm.packagePath")).thenReturn(TMP_CHART_PATH);
+      when(mockConfGetter.getConfForScope(any(Universe.class), any())).thenReturn(300L);
+
+      kubernetesManager.helmInstall(
+          universe.getUniverseUUID(),
+          "2.7.0.0-b1", // Use version < 2.8.0.0 to use legacy chart
+          configProvider,
+          defaultProvider.getUuid(),
+          "demo-universe",
+          "demo-namespace",
+          overrideFile.toString());
+
+      // Verify helm install was called without --labels flag when commonLabels is empty
+      // Note: execCommand uses the 5-parameter run method
+      ArgumentCaptor<List<String>> commandCaptor = ArgumentCaptor.forClass(List.class);
+      Mockito.verify(shellProcessHandler, times(2))
+          .run(
+              commandCaptor.capture(),
+              anyMap(),
+              anyBoolean(),
+              anyString(),
+              any(RedactingService.RedactionTarget.class));
+      List<List<String>> allCommands = commandCaptor.getAllValues();
+      List<String> installCommand = allCommands.get(1);
+      assertTrue(
+          "helm install command should not contain --labels flag when commonLabels is empty",
+          !installCommand.contains("--labels"));
+    } finally {
+      Files.deleteIfExists(overrideFile);
+      helmChartFile.delete();
+    }
   }
 }

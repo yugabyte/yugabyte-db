@@ -196,7 +196,10 @@ export const InstanceSettings = forwardRef<
                 isImgBundleSupportedByProvider(provider) &&
                 !editMode && (
                   <>
-                    <CPUArchField disabled={false} />
+                    <CPUArchField
+                      supportedArchs={provider.imageBundles?.map((img) => img.details.arch)}
+                      disabled={false}
+                    />
                     <LinuxVersionField disabled={false} provider={provider} />
                   </>
                 )}

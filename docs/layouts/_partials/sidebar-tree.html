@@ -1,25 +1,25 @@
-{{ $currentPage := . }}
-{{ $menuName := .Scratch.Get "leftNavName" }}
-{{ $pageUrl := .Page.RelPermalink }}
-{{ $productsMenu := .Site.Menus.products }}
-{{ $versionDir := .Scratch.Get "docVersion" }}
+{{ $currentPage := .context }}
+{{ $menuName := .context.Scratch.Get "leftNavName" }}
+{{ $pageUrl := .context.Page.RelPermalink }}
+{{ $productsMenu := .context.Site.Menus.products }}
+{{ $versionDir := .context.Scratch.Get "docVersion" }}
 
-{{ if not (isset .Site.Menus $menuName) }}
-  {{ $menuName = .Scratch.Get "docVersion" }}
+{{ if not (isset .context.Site.Menus $menuName) }}
+  {{ $menuName = .context.Scratch.Get "docVersion" }}
 {{ end }}
 
 <div class="docs-menu desktop-hide">Docs Menu</div>
-<div class="left-sidebar-wrap">
+<div class="left-sidebar-wrap {{$menuName}}">
   <div class="left-sidebar-wrap-inner">
     <nav>
-      {{- range (index .Site.Menus $menuName).ByWeight -}}
+      {{- range (index .context.Site.Menus $menuName).ByWeight -}}
         {{- if .Params.productsDropdown -}}
           {{- partial "products-dropdown.html" (dict "pageUrl" $pageUrl "productsMenu" $productsMenu "versionDir" $versionDir) -}}
         {{- end -}}
         {{- break -}}
       {{- end -}}
       <ul class="list pa0 nl2">
-        {{- range (index .Site.Menus $menuName).ByWeight -}}
+        {{- range (index .context.Site.Menus $menuName).ByWeight -}}
           {{- if .Params.productsDropdown -}}
             {{- continue -}}
           {{- end -}}
@@ -48,7 +48,7 @@
     </nav>
     <nav class="fixed-nav">
       <ul class="left-bottom-nav">
-        {{- range .Site.Menus.leftbottom -}}
+        {{- range .context.Site.Menus.leftbottom -}}
         <li class="bottom-link{{- if .HasChildren }} section submenu parent-menu{{- end }}{{- if .Params.classes }} {{ .Params.classes }}{{- end }}">
           <a {{ if .URL }}href="{{ .URL }}"{{ else }}role="button"{{- end }} title="{{ .Name }}"{{- if .Params.newTab }} target="_blank" rel="noopener"{{- end }}>{{ .Pre }}{{ .Name }}</a>
           {{- if .HasChildren -}}
@@ -105,4 +105,4 @@
   {{- end -}}
 {{- end }}
 
-<script>!function(){function e(e){for(var t="".concat(e,"="),i=decodeURIComponent(document.cookie).split(";"),a=i.length,n="",d=0,r="";d<a;){for(n=i[d];n.charAt(0)&&" "===n.charAt(0);)n=n.substring(1);if(0===n.indexOf(t)){r=n.substring(t.length,n.length);break}d+=1}return r}function t(e,t){var i=arguments.length>2&&void 0!==arguments[2]?arguments[2]:3,a="".concat(e,"=").concat(encodeURIComponent(t),"; max-age=").concat(30*i*86400,"; path=/");"localhost"!==location.hostname&&(a+="; secure=true"),document.cookie=a}function i(t){var i=document.querySelector("aside.td-sidebar"),a=300;if("hide"===t){var n=i.style.width;(n<300||n>500)&&(n=300),i.setAttribute("data-pwidth",n),jQuery(".left-sidebar-wrap-inner").animate({opacity:"0"}),jQuery("aside.td-sidebar").animate({minWidth:"0px",width:"60px",maxWidth:"60px"})}else e("leftMenuWidth")&&(a=e("leftMenuWidth")),i.getAttribute("data-pwidth")&&(a=i.getAttribute("data-pwidth")),(a<300||a>500)&&(a=300),jQuery(".left-sidebar-wrap-inner").animate({opacity:"1"}),jQuery("aside.td-sidebar").animate({width:a,maxWidth:a})}var a=document.querySelector(".left-sidebar-wrap nav:not(.fixed-nav) > ul a.current"),n=e("leftMenuShowHide"),d=e("leftMenuWidth"),r=document.querySelector("aside.td-sidebar"),o=document.querySelector(".side-nav-collapse-toggle-2"),s=document.querySelector(".left-sidebar-wrap");r&&(n&&""!==n&&(r.classList.add("toggled-sidebar"),"hide"===n&&(r.classList.add("stick-bar"),s.classList.add("click-to-expand"),i(n))),d&&""!==d&&(jQuery(".td-main").addClass("hide-right-menu"),"hide"===n?r.setAttribute("data-pwidth",d):(r.style.width="".concat(d,"px"),r.style.maxWidth="".concat(d,"px")),setTimeout((function(){jQuery(".td-sidebar nav:not(.fixed-nav) a").each((function(e,t){jQuery(t).outerHeight()>=42&&jQuery(t).outerHeight()<60?jQuery(t).attr("data-lines",2):jQuery(t).outerHeight()>=60&&jQuery(t).outerHeight()<=72?jQuery(t).attr("data-lines",3):jQuery(t).outerHeight()>72?jQuery(t).attr("data-lines",4):jQuery(t).removeAttr("data-lines")}))}),1e3)),a&&function(e){var t=document.querySelector("aside.td-sidebar nav:not(.fixed-nav)");if(t&&e){t.style.overflow="hidden";var i=t.clientHeight,a=e.getBoundingClientRect().top;t.scrollTop=a-i,setTimeout((function(){t.style.overflow="auto"}),600)}}(a),o.addEventListener("click",(function(){r.classList.toggle("stick-bar"),r.classList.add("toggled-sidebar"),r.classList.contains("stick-bar")?(t("leftMenuShowHide","hide",3),i("hide"),s.classList.add("click-to-expand")):(t("leftMenuShowHide","show",3),i("show"),s.classList.remove("click-to-expand"))})),s.addEventListener("click",(function(e){e.target.classList.contains("left-sidebar-wrap")&&e.target.classList.contains("click-to-expand")&&o.click()})))}();</script>
+<script>!function(){function e(e){var t=document.querySelector("aside.td-sidebar"),i=300;if("hide"===e){var a=t.style.width;(a<300||a>500)&&(a=300),t.setAttribute("data-pwidth",a),jQuery(".left-sidebar-wrap-inner").animate({opacity:"0"}),jQuery("aside.td-sidebar").animate({minWidth:"0px",width:"60px",maxWidth:"60px"})}else browserCookieUtils.getCookie("leftMenuWidth")&&(i=browserCookieUtils.getCookie("leftMenuWidth")),t.getAttribute("data-pwidth")&&(i=t.getAttribute("data-pwidth")),(i<300||i>500)&&(i=300),jQuery(".left-sidebar-wrap-inner").animate({opacity:"1"}),jQuery("aside.td-sidebar").animate({width:i,maxWidth:i})}var t=document.querySelector(".left-sidebar-wrap nav:not(.fixed-nav) > ul a.current"),i=browserCookieUtils.getCookie("leftMenuShowHide"),a=browserCookieUtils.getCookie("leftMenuWidth"),o=document.querySelector("aside.td-sidebar"),d=document.querySelector(".side-nav-collapse-toggle-2"),r=document.querySelector(".left-sidebar-wrap");o&&(i&&""!==i&&(o.classList.add("toggled-sidebar"),"hide"===i&&(o.classList.add("stick-bar"),r.classList.add("click-to-expand"),e(i))),a&&""!==a&&(jQuery(".td-main").addClass("hide-right-menu"),"hide"===i?o.setAttribute("data-pwidth",a):(o.style.width="".concat(a,"px"),o.style.maxWidth="".concat(a,"px")),setTimeout(function(){jQuery(".td-sidebar nav:not(.fixed-nav) a").each(function(e,t){jQuery(t).outerHeight()>=42&&jQuery(t).outerHeight()<60?jQuery(t).attr("data-lines",2):jQuery(t).outerHeight()>=60&&jQuery(t).outerHeight()<=72?jQuery(t).attr("data-lines",3):jQuery(t).outerHeight()>72?jQuery(t).attr("data-lines",4):jQuery(t).removeAttr("data-lines")})},1e3)),t&&function(e){var t=document.querySelector("aside.td-sidebar nav:not(.fixed-nav)");if(t&&e){t.style.overflow="hidden";var i=t.clientHeight,a=e.getBoundingClientRect().top;t.scrollTop=a-i,setTimeout(function(){t.style.overflow="auto"},600)}}(t),d.addEventListener("click",function(){o.classList.toggle("stick-bar"),o.classList.add("toggled-sidebar"),o.classList.contains("stick-bar")?(browserCookieUtils.setCookie("leftMenuShowHide","hide",{timeToLive:3,unit:"month"}),e("hide"),r.classList.add("click-to-expand")):(browserCookieUtils.setCookie("leftMenuShowHide","show",{timeToLive:3,unit:"month"}),e("show"),r.classList.remove("click-to-expand"))}),r.addEventListener("click",function(e){e.target.classList.contains("left-sidebar-wrap")&&e.target.classList.contains("click-to-expand")&&d.click()}))}();</script>

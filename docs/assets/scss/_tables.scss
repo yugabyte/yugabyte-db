@@ -151,7 +151,7 @@ main {
               margin-left: 5px;
               transition: all 300ms linear;
               content: "\f0d7";
-              font-family: $font-awesome-font-name;
+              font-family: $td-font-awesome-font-name;
             }
 
             &.sorted::after {

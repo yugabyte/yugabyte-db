@@ -79,13 +79,13 @@ export function useGetSteps(context: AddGeoPartitionContextProps): Step[] {
         },
         ...(index !== 0 || !isNewGeoPartition
           ? [
-            {
-              title: 'Resilience and Regions'
-            },
-            {
-              title: 'Nodes and Availability Zones'
-            }
-          ]
+              {
+                title: 'Resilience and Regions'
+              },
+              {
+                title: 'Nodes and Availability Zones'
+              }
+            ]
           : [])
       ]
     }));
@@ -224,16 +224,16 @@ export const prepareAddGeoPartitionPayload = (
         ...(isNewGeoPartition && index === 0
           ? { placement: primaryCluster!.placement_spec! }
           : {
-            placement: {
-              cloud_list: [
-                {
-                  uuid: providerUUID,
-                  code: primaryCluster!.placement_spec!.cloud_list[0].code!,
-                  region_list: regionList
-                }
-              ]
-            }
-          })
+              placement: {
+                cloud_list: [
+                  {
+                    uuid: providerUUID,
+                    code: primaryCluster!.placement_spec!.cloud_list[0].code!,
+                    region_list: regionList
+                  }
+                ]
+              }
+            })
       };
     });
   }

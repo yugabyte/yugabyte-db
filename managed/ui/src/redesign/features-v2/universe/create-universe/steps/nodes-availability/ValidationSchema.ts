@@ -67,19 +67,7 @@ export const NodesAvailabilitySchema = (
           })
         );
       }
-      if (
-        resilienceAndRegionsProps?.faultToleranceType === FaultToleranceType.NONE &&
-        nodeCounts > 1
-      ) {
-        fieldErrors.push(
-          createError({
-            path,
-            message: t('errMsg.moreNodesNone', {
-              keyPrefix: 'createUniverseV2.resilienceAndRegions'
-            })
-          })
-        );
-      }
+
       const error = new Yup.ValidationError(
         fieldErrors.map((e) => e.message),
         'errors',

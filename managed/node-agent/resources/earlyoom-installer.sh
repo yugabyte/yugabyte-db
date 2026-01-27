@@ -71,9 +71,12 @@ EOF
   fi
   mkdir -p "${TMP_DIR}/earlyoom"
 
-  THIRDPARTY_DIR="${SCRIPT_DIR}/thirdparty"
+  # node-agent/thirdparty directory.
+  THIRDPARTY_DIR="${SCRIPT_DIR}/../thirdparty"
   if [ ! -d "$THIRDPARTY_DIR" ]; then
-      THIRDPARTY_DIR="${SCRIPT_DIR}/../thirdparty"
+    # For backward compatibility when backported.
+    # Remove me later.
+    THIRDPARTY_DIR="${SCRIPT_DIR}/thirdparty"
   fi
   tar -xzf "${THIRDPARTY_DIR}/${ARTIFACT}" -C "${TMP_DIR}/earlyoom/" --no-same-owner
   EXTRACTED_DIR=$(ls -d ${TMP_DIR}/earlyoom/*/ | head -n 1)

@@ -348,6 +348,8 @@ DEFINE_RUNTIME_int32(timestamp_history_retention_interval_sec, 900,
     "after a compaction. Set this to be higher than the expected maximum duration "
     "of any single transaction in your application.");
 
+DEFINE_test_flag(bool, ysql_yb_enable_listen_notify, false, "Enable YSQL LISTEN/NOTIFY.");
+
 namespace yb {
 
 void InitCommonFlags() {
