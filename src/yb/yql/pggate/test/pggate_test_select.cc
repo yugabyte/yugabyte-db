@@ -313,8 +313,6 @@ class PggateTestSelectWithYsql : public PggateTestSelect {
     opts->enable_ysql = true;
     opts->extra_tserver_flags.push_back("--db_block_size_bytes=4096");
     opts->extra_tserver_flags.push_back("--db_write_buffer_size=204800");
-    opts->extra_master_flags.push_back("--TEST_ysql_yb_enable_listen_notify=true");
-    opts->extra_tserver_flags.push_back("--TEST_ysql_yb_enable_listen_notify=true");
   }
 
   auto PgConnect(const std::string& database_name) {
@@ -682,46 +680,6 @@ TEST_F_EX(PggateTestSelect, DockeyBoundsForHashPartitionedTables, PggateTestSele
       db_oid, table_oid, lower_bound, false /* is_inclusive */, true /* is_lower */));
   expected_result = {63, 1632, 1723};
   ASSERT_EQ(expected_result, actual_result);
-}
-
-TEST_F_EX(PggateTestSelect, TestGetTableInfo, PggateTestSelectWithYsql) {
-  CHECK_OK(Init(
-      "TestGetTableInfo", kNumOfTablets, /* replication_factor = */ 0,
-      /* should_create_db = */ false));
-  auto database_name = "yb_system";
-  auto table_name = "abcd";
-
-  sleep(10);  // Wait for master to create these objects.
-
-  auto conn = ASSERT_RESULT(PgConnect(database_name));
-
-  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0(a int, b int, c int, primary key(a))", table_name));
-  {
-    auto [oid, relfilenode] = ASSERT_RESULT((conn.FetchRow<pgwrapper::PGOid, pgwrapper::PGOid>(
-        Format("SELECT oid, relfilenode FROM pg_class WHERE relname = '$0'", table_name))));
-
-    YbcPgOid fetched_table_oid;
-    YbcPgOid fetched_relfilenode;
-    CHECK_YBC_STATUS(YBCGetYbSystemTableInfo(
-        PG_PUBLIC_NAMESPACE, table_name, &fetched_table_oid, &fetched_relfilenode));
-
-    CHECK_EQ(oid, fetched_table_oid);
-    CHECK_EQ(relfilenode, fetched_relfilenode);
-  }
-
-  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP CONSTRAINT $0_pkey", table_name));
-  {
-    auto [oid, relfilenode] = ASSERT_RESULT((conn.FetchRow<pgwrapper::PGOid, pgwrapper::PGOid>(
-        Format("SELECT oid, relfilenode FROM pg_class WHERE relname = '$0'", table_name))));
-
-    YbcPgOid fetched_table_oid;
-    YbcPgOid fetched_relfilenode;
-    CHECK_YBC_STATUS(YBCGetYbSystemTableInfo(
-        PG_PUBLIC_NAMESPACE, table_name, &fetched_table_oid, &fetched_relfilenode));
-
-    CHECK_EQ(oid, fetched_table_oid);
-    CHECK_EQ(relfilenode, fetched_relfilenode);
-  }
 }
 
 class PggateTestBucketizedSelect : public PggateTest {
@@ -1369,6 +1327,55 @@ TEST_F(PggateTestBucketizedSelect, TestHashMixBucketized) {
   {
     auto pg_stmt_bkw = MakeSelect(false, {0}, {}, {sort_k1_desc});
     CheckRowOrder(pg_stmt_bkw, Desc, None, 12);
+  }
+}
+
+class PggateTestSelectWithYbSystemDB : public PggateTestSelectWithYsql {
+ protected:
+  void CustomizeExternalMiniCluster(ExternalMiniClusterOptions* opts) override {
+    PggateTestSelectWithYsql::CustomizeExternalMiniCluster(opts);
+    opts->extra_master_flags.push_back("--TEST_ysql_yb_enable_listen_notify=true");
+    opts->extra_tserver_flags.push_back("--TEST_ysql_yb_enable_listen_notify=true");
+  }
+};
+
+TEST_F_EX(PggateTestSelect, TestGetYbSystemTableInfo, PggateTestSelectWithYbSystemDB) {
+  CHECK_OK(Init(
+      "TestGetTableInfo", kNumOfTablets, /* replication_factor = */ 0,
+      /* should_create_db = */ false));
+  auto database_name = "yb_system";
+  auto table_name = "abcd";
+
+  sleep(10);  // Wait for master to create yb_system database.
+
+  auto conn = ASSERT_RESULT(PgConnect(database_name));
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0(a int, b int, c int, primary key(a))", table_name));
+  {
+    auto [oid, relfilenode] = ASSERT_RESULT((conn.FetchRow<pgwrapper::PGOid, pgwrapper::PGOid>(
+        Format("SELECT oid, relfilenode FROM pg_class WHERE relname = '$0'", table_name))));
+
+    YbcPgOid fetched_table_oid;
+    YbcPgOid fetched_relfilenode;
+    CHECK_YBC_STATUS(YBCGetYbSystemTableInfo(
+        PG_PUBLIC_NAMESPACE, table_name, &fetched_table_oid, &fetched_relfilenode));
+
+    CHECK_EQ(oid, fetched_table_oid);
+    CHECK_EQ(relfilenode, fetched_relfilenode);
+  }
+
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP CONSTRAINT $0_pkey", table_name));
+  {
+    auto [oid, relfilenode] = ASSERT_RESULT((conn.FetchRow<pgwrapper::PGOid, pgwrapper::PGOid>(
+        Format("SELECT oid, relfilenode FROM pg_class WHERE relname = '$0'", table_name))));
+
+    YbcPgOid fetched_table_oid;
+    YbcPgOid fetched_relfilenode;
+    CHECK_YBC_STATUS(YBCGetYbSystemTableInfo(
+        PG_PUBLIC_NAMESPACE, table_name, &fetched_table_oid, &fetched_relfilenode));
+
+    CHECK_EQ(oid, fetched_table_oid);
+    CHECK_EQ(relfilenode, fetched_relfilenode);
   }
 }
 
