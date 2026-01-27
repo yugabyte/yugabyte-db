@@ -62,6 +62,10 @@ export const CertificateDetails = ({ certificate, visible, onHide }) => {
         certificate.type === 'CustomCertHostPath' && (
           <>
             <li>
+              <label>Root CA Certificate (on DB nodes)</label>
+              <div>{certificate.customCertInfo?.rootCertPath ?? '-'}</div>
+            </li>
+            <li>
               <label>Database Node Certificate Path</label>
               <div>{certificate.customCertInfo?.nodeCertPath ?? '-'}</div>
             </li>
