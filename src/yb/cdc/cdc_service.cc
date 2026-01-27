@@ -2644,7 +2644,8 @@ void CDCServiceImpl::ProcessEntryForCdcsdk(
       CheckBeforeImageActive(tablet_id, stream_metadata, tablet_peer);
   if (!is_before_image_active_result.ok()) {
     LOG(WARNING) << "Unable to obtain before image / replica identity information for tablet: "
-                 << tablet_id;
+                 << tablet_id << " in stream " << stream_id.ToString() << ": "
+                 << is_before_image_active_result.status();
     return;
   }
   bool is_before_image_active = *is_before_image_active_result;
@@ -2827,13 +2828,15 @@ Result<bool> CDCServiceImpl::CheckBeforeImageActive(
     bool is_colocated_tablet = tablet_peer->tablet_metadata()->colocated();
     bool is_sys_catalog_tablet = tablet_peer->tablet_metadata()->IsSysCatalog();
 
-    // If the tablet is colocated, we check the replica identities of all the tables residing in it.
-    // If the tablet is sys catalog, we check the replica identities of only tables
+    // - If the tablet is colocated, we check the replica identities of this tablet's tables which
+    // are present in the stream metadata's replica identity map.
+    // - If the tablet is sys catalog, we check the replica identities of only tables
     // 'pg_publication_rel' & 'pg_class' residing in it (This is because currently only these sys
     // catalog tables are part of publication's table list).
     // If before image is active for any such tables then we should return true.
     if (is_colocated_tablet || is_sys_catalog_tablet) {
       auto table_ids = tablet_peer->tablet_metadata()->GetAllColocatedTables();
+      bool replica_identity_found_for_any_table = false;
       for (auto table_id : table_ids) {
         auto table_name = tablet_peer->tablet_metadata()->table_name(table_id);
         if (is_colocated_tablet &&
@@ -2848,15 +2851,22 @@ Result<bool> CDCServiceImpl::CheckBeforeImageActive(
         }
 
         if (replica_identity_map.find(table_id) != replica_identity_map.end()) {
+          replica_identity_found_for_any_table = true;
           auto table_replica_identity = replica_identity_map.at(table_id);
           if (table_replica_identity != PgReplicaIdentity::CHANGE &&
               table_replica_identity != PgReplicaIdentity::NOTHING) {
             is_before_image_active = true;
             break;
           }
-        } else {
-          return STATUS_FORMAT(NotFound, "Replica identity not found for table: $0 ", table_id);
         }
+      }
+      // There is no table present in the replica identity map of 'stream_metadata' for the tablet.
+      // Given that the cdc_state table contains the entry for this tablet-stream pair, this should
+      // never happen.
+      if (!replica_identity_found_for_any_table) {
+        return STATUS_FORMAT(
+            NotFound, "Replica identity not found for any table of tablet $0 in stream $1",
+            tablet_id, stream_metadata.GetStreamId().ToString());
       }
     } else {
       auto table_id = tablet_peer->tablet_metadata()->table_id();
@@ -2867,7 +2877,9 @@ Result<bool> CDCServiceImpl::CheckBeforeImageActive(
           is_before_image_active = true;
         }
       } else {
-        return STATUS_FORMAT(NotFound, "Replica identity not found for table: $0 ", table_id);
+        return STATUS_FORMAT(
+            NotFound, "Replica identity not found for table $0 in stream $1", table_id,
+            stream_metadata.GetStreamId().ToString());
       }
     }
 
