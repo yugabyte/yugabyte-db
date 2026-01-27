@@ -158,6 +158,11 @@ class PgAutoAnalyzeService : public StatefulRpcServiceBase<PgAutoAnalyzeServiceI
 
   // Each postgres database has its own pg_class table, so we use map instead of single value.
   AutoAnalyzeInfoMap pg_class_id_mutations_;
+
+  // Exponential backoff retry running ANALYZEs on failed tables.
+  // Table id -> (remaining_wait_cycle, total_wait_cycle)
+  std::unordered_map<TableId, std::pair<int, int>> failed_table_id_to_wait_cycle_;
+  const int initial_backoff = 2;
 };
 
 }  // namespace stateful_service

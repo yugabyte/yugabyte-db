@@ -66,6 +66,7 @@ DECLARE_int64(TEST_delay_after_table_analyze_ms);
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_yb_user_ddls_preempt_auto_analyze);
 DECLARE_uint64(TEST_ysql_auto_analyze_max_history_entries);
+DECLARE_int32(ysql_auto_analyze_max_retry_backoff);
 
 using namespace std::chrono_literals;
 
@@ -1233,6 +1234,7 @@ TEST_F(PgAutoAnalyzeTest, AutoAnalyzeRetryAnalyze) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_cooldown_per_table_scale_factor) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 500;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_scale_factor) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_max_retry_backoff) = 2;
 
   const std::string table_name = "test";
   const std::string table2_name = "test2";
