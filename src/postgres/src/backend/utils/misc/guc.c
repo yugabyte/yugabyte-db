@@ -5809,8 +5809,7 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		/* TODO(#29072): switch to PGC_USERSET when results become correct. */
-		{"yb_max_saop_merge_streams", PGC_SUSET, QUERY_TUNING_METHOD,
+		{"yb_max_saop_merge_streams", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Sets the maximum number of streams tolerated for "
 						 "scalar array operation merge."),
 			gettext_noop("For YB LSM index scans, when multiple "
@@ -5819,8 +5818,7 @@ static struct config_int ConfigureNamesInt[] =
 						 "cartesian product's cardinality reaches this limit. "
 						 "Scalar array operation merge is per index scan, and "
 						 "the limit applies per index scan, not globally. Set "
-						 "to 0 to disable. WARNING(#29072): results are not "
-						 "sorted correctly."),
+						 "to 0 to disable."),
 		},
 		&yb_max_saop_merge_streams,
 		0, 0, 1024,
