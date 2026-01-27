@@ -545,4 +545,4 @@ chat_history.add_ai_message(response)
 ## Learn more
 
 - [Develop applications with AI and YugabyteDB](/stable/develop/AI/)
-- [pgvector extension](../../../additional-features/pg-extensions/extension-pgvector/)
+- [pgvector extension](../../additional-features/pg-extensions/extension-pgvector/)
