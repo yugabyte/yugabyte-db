@@ -13257,7 +13257,7 @@
       "max" : null,
       "min" : null,
       "show" : true,
-      "format" : "s"
+      "format" : "ms"
     }, {
       "format" : "short",
       "label" : null,
