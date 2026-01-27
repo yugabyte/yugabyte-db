@@ -7,13 +7,14 @@ func TestIsGlibcSupported(t *testing.T) {
 		version   string
 		supported bool
 	}{
-		{"2.25", true},
-		{"2.25.1", true},
-		{"2.26", true},
-		{"2.24", false},
-		{"1.27", false},
-		{"2.30", true},
+		{"2.25", false},
+		{"2.25.1", false},
+		{"2.26", false},
+		{"2.27.9", false},
+		{"2.28", true},
+		{"2.28.1", true},
 		{"2.29", true},
+		{"2.30", true},
 	}
 
 	for _, test := range tests {

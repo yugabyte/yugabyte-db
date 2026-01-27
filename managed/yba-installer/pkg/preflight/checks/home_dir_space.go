@@ -53,6 +53,7 @@ func (h homeDirSpaceCheck) Execute() Result {
 	user, err := osuser.Lookup(serviceUsername)
 	if err != nil {
 		res.Error = fmt.Errorf("failed to look up user '%s': %w", serviceUsername, err)
+		res.Status = StatusWarning
 		return res
 	}
 
