@@ -34,6 +34,7 @@
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/tostring.h"
@@ -210,6 +211,22 @@ void AddTargetColumn(LWPgsqlReadRequestPB* req, const PgColumn& column) {
   }
 }
 
+auto TemporaryClearInsignificantFields(LWPgsqlReadRequestPB& req) {
+  const auto stmt_id = req.has_stmt_id() ? std::optional(req.stmt_id()) : std::nullopt;
+  req.clear_stmt_id();
+  const auto metrics_capture =
+    req.has_metrics_capture() ? std::optional(req.metrics_capture()) : std::nullopt;
+  req.clear_metrics_capture();
+  return ScopeExit([&req, stmt_id, metrics_capture] () {
+    if (stmt_id) {
+      req.set_stmt_id(*stmt_id);
+    }
+    if (metrics_capture) {
+      req.set_metrics_capture(*metrics_capture);
+    }
+  });
+}
+
 using google::protobuf::io::CodedOutputStream;
 
 template<class PB>
@@ -265,15 +282,8 @@ class VersionInfoWriter {
   out = WritePBWithSize(out, read_time_pb ? &*read_time_pb : nullptr);
   for (const auto& o : ops) {
     auto& req = o.operation->read_request();
-    std::optional<uint64_t> stmt_id;
-    if (req.has_stmt_id()) {
-      stmt_id = req.stmt_id();
-      req.clear_stmt_id();
-    }
-    out = WritePBWithSize(out, &o.operation->read_request());
-    if (stmt_id) {
-      req.set_stmt_id(*stmt_id);
-    }
+    auto fields_restorer = TemporaryClearInsignificantFields(req);
+    out = WritePBWithSize(out, &req);
   }
   const auto actual_size = out - start;
   DCHECK_LE(actual_size, total_size);
