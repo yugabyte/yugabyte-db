@@ -728,7 +728,8 @@ TEST_F(TestLoadBalancerPreferredLeader, TestBalancingWildcardZoneLeaderPreferenc
   PrepareTestState(ts_descs);
   PrepareAffinitizedLeadersWithCloudInfo({{{"cloud0", "a", "*"}}});
   TestWildcardLeaderPreference([](const std::shared_ptr<TSDescriptor>& ts) {
-    const auto& ci = ts->GetRegistration().cloud_info();
+    const auto registration = ts->GetRegistration();
+    const auto& ci = registration.cloud_info();
     return ci.placement_cloud() == "cloud0" && ci.placement_region() == "a";
   });
 }
@@ -746,7 +747,8 @@ TEST_F(TestLoadBalancerPreferredLeader, TestBalancingMultiPriorityWildcardLeader
 
   std::shared_ptr<TSDescriptor> priority1_ts;
   for (const auto& ts : ts_descs_) {
-    const auto& ci = ts->GetRegistration().cloud_info();
+    const auto registration = ts->GetRegistration();
+    const auto& ci = registration.cloud_info();
     if (ci.placement_cloud() == "cloud0" && ci.placement_region() == "a" &&
         ci.placement_zone() == "x") {
       priority1_ts = ts;
@@ -810,7 +812,8 @@ TEST_F(TestLoadBalancerPreferredLeader, TestBalancingMultiPriorityWildcardLeader
 
   int leaders_on_priority2 = 0;
   for (const auto& ts : ts_descs_) {
-    const auto& ci = ts->GetRegistration().cloud_info();
+    const auto registration = ts->GetRegistration();
+    const auto& ci = registration.cloud_info();
     if (ci.placement_cloud() == "cloud0" && ci.placement_region() == "a" &&
         ci.placement_zone() != "x") {
       leaders_on_priority2 += leader_count[ts->permanent_uuid()];
@@ -821,7 +824,8 @@ TEST_F(TestLoadBalancerPreferredLeader, TestBalancingMultiPriorityWildcardLeader
 
   std::vector<int> priority2_counts;
   for (const auto& ts : ts_descs_) {
-    const auto& ci = ts->GetRegistration().cloud_info();
+    const auto registration = ts->GetRegistration();
+    const auto& ci = registration.cloud_info();
     if (ci.placement_cloud() == "cloud0" && ci.placement_region() == "a" &&
         ci.placement_zone() != "x") {
       priority2_counts.push_back(leader_count[ts->permanent_uuid()]);
