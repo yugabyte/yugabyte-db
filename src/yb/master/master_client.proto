@@ -223,14 +223,14 @@ message GetYsqlCatalogConfigResponsePB {
 }
 
 message GetYsqlYbSystemTableInfoRequestPB {
-  optional uint32 namespace_oid = 1; // Required.
-  optional string table_name = 2; // Required.
+  optional uint32 namespace_oid = 1; // pg_class.relnamesapce, required.
+  optional string table_name = 2; // pg_class.relname, required.
 }
 
 message GetYsqlYbSystemTableInfoResponsePB {
   optional MasterErrorPB error = 1;
-  optional uint32 table_oid = 2;
-  optional uint32 relfilenode = 3;
+  optional uint32 table_oid = 2;  // pg_class.oid
+  optional uint32 relfilenode = 3; // pg_class.relfilenode
 }
 
 message RedisConfigSetRequestPB {

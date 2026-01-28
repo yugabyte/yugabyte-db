@@ -3500,12 +3500,8 @@ void CatalogManager::PrepareRestore() {
 Status CatalogManager::GetYsqlYbSystemTableInfo(
     const GetYsqlYbSystemTableInfoRequestPB* req, GetYsqlYbSystemTableInfoResponsePB* resp,
     rpc::RpcContext* rpc) {
-  RSTATUS_DCHECK(
-      req->has_namespace_oid(), InvalidArgument,
-      "namespace_oid is a required argument in GetYsqlYbSystemTableInfo rpc");
-  RSTATUS_DCHECK(
-      req->has_table_name(), InvalidArgument,
-      "table_name is a required argument in GetYsqlYbSystemTableInfo rpc");
+  DCHECK(req->has_namespace_oid());
+  DCHECK(req->has_table_name());
 
   PgOid oid = kPgInvalidOid;
   PgOid relfilenode = kPgInvalidOid;

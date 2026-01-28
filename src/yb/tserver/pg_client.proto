@@ -1366,12 +1366,12 @@ message PgTriggerRelcacheInitConnectionRequestPB {
 message PgTriggerRelcacheInitConnectionResponsePB { AppStatusPB status = 1; }
 
 message PgGetYbSystemTableInfoRequestPB {
-  uint32 namespace_oid = 1;
-  string table_name = 2;
+  uint32 namespace_oid = 1; // pg_class.relnamesapce
+  string table_name = 2; // pg_class.relname
 }
 
 message PgGetYbSystemTableInfoResponsePB {
   AppStatusPB status = 1;
-  uint32 table_oid = 2;
-  uint32 relfilenode = 3;
+  uint32 table_oid = 2; // pg_class.oid
+  uint32 relfilenode = 3; // pg_class.relfilenode
 }

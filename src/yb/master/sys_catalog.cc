@@ -2307,7 +2307,6 @@ Result<PgOid> SysCatalogTable::GetYsqlDatabaseOid(const NamespaceName& ns_name) 
     RETURN_NOT_OK(iter->Init(spec));
   }
 
-  PgOid result = kPgInvalidOid;
   qlexpr::QLTableRow row;
   while (VERIFY_RESULT(iter->FetchNext(&row))) {
     const auto& oid_col = row.GetValue(oid_col_id);
@@ -2319,11 +2318,10 @@ Result<PgOid> SysCatalogTable::GetYsqlDatabaseOid(const NamespaceName& ns_name) 
       return STATUS(Corruption, "Could not read 'datname' column from pg_database");
     }
     if (datname_col->get().string_value() == ns_name) {
-      result = oid_col->get().uint32_value();
-      break;
+      return oid_col->get().uint32_value();
     }
   }
-  return result;
+  return kPgInvalidOid;
 }
 
 Result<bool> SysCatalogTable::GetYsqlYbSystemTableInfo(
