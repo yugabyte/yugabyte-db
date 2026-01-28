@@ -245,7 +245,7 @@ CALL disable_catalog_version_check();
 
 ## Replication origins
 
-Replication origins provide a mechanism to track the origin of changes in logical replication, which is essential for implementing bi-directional replication setups and preventing replication loops.
+{{<tags/feature/ea idea="2525">}}Replication origins provide a mechanism to track the origin of changes in logical replication, which is essential for implementing bi-directional replication setups and preventing replication loops.
 
 Replication origins are intended to make it easier to implement logical replication solutions on top of logical decoding. They provide a solution to two common problems:
 
@@ -253,13 +253,24 @@ Replication origins are intended to make it easier to implement logical replicat
 
 - Changing replication behavior based on the origin of a row. This is particularly useful for preventing loops in bi-directional replication setups, where changes replicated from a remote node should not be replicated back to that same node.
 
-Replication origins have two properties:
+In a bi-directional replication setup where two databases replicate changes to each other, replication origins help prevent infinite loops as follows:
 
-- Name: A free-form text identifier that should be used to refer to the origin across systems. It should be used in a way that makes conflicts between replication origins created by different replication solutions unlikely (for example, by prefixing the replication solution's name to it).
+1. When changes are applied on Database A that originated from Database B, those changes are tagged with Database B's replication origin.
 
-- ID: An internal identifier used to avoid having to store the long name in situations where space efficiency is important. The ID should never be shared across systems.
+1. When Database A streams changes to Database B, the output plugin can filter out changes that have Database B's replication origin, preventing those changes from being sent back to Database B.
+
+This ensures that changes only flow in one direction.
 
 The YugabyteDB implementation of replication origins mimics that of PostgreSQL; refer to [Replication Progress Tracking](https://www.postgresql.org/docs/15/replication-origins.html) in the PostgreSQL documentation.
+
+### Properties
+
+Replication origins have two properties:
+
+| Property | Description |
+| :--- | :--- |
+| Name | Free-form text identifier that should be used to refer to the origin across systems. It should be used in a way that makes conflicts between replication origins created by different replication solutions unlikely (for example, by prefixing the replication solution's name to it). |
+| ID | Internal identifier used to avoid having to store the long name in situations where space efficiency is important. The ID should never be shared across systems. |
 
 ### Create and manage replication origins
 
@@ -312,13 +323,3 @@ The PostgreSQL logical replication protocol streams transactions with origin inf
 - Implement different processing logic based on the transaction origin
 
 When a session has a replication origin configured using `pg_replication_origin_session_setup()`, the origin information is included in the WAL records and streamed as part of the logical replication protocol. This enables output plugins and replication clients to detect the origin of events and avoid loops in bi-directional replication setups.
-
-### Use case: Bi-directional replication
-
-In a bi-directional replication setup where two databases replicate changes to each other, replication origins help prevent infinite loops:
-
-1. When changes are applied on Database A that originated from Database B, those changes are tagged with Database B's replication origin.
-
-1. When Database A streams changes to Database B, the output plugin can filter out changes that have Database B's replication origin, preventing those changes from being sent back to Database B.
-
-This ensures that changes only flow in one direction and prevents replication loops.
