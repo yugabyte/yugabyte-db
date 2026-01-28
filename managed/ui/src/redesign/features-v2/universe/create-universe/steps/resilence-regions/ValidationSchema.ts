@@ -6,7 +6,7 @@ import {
   ResilienceFormMode,
   ResilienceType
 } from './dtos';
-import { getFaultToleranceNeeded, getFaultToleranceNeededForAZ } from '../../CreateUniverseUtils';
+import { getFaultToleranceNeeded } from '../../CreateUniverseUtils';
 import { SINGLE_AVAILABILITY_ZONE } from '../../fields/FieldNames';
 
 export const ResilienceAndRegionsSchema = (t: TFunction) => {
@@ -60,7 +60,7 @@ export const ResilienceAndRegionsSchema = (t: TFunction) => {
           break;
         }
         case FaultToleranceType.AZ_LEVEL: {
-          const faultToleranceNeeded = getFaultToleranceNeededForAZ(replicationFactor);
+          const faultToleranceNeeded = getFaultToleranceNeeded(replicationFactor);
           const azCount = regions.reduce((acc, region) => {
             return acc + region.zones.length;
           }, 0);
