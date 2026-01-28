@@ -498,7 +498,8 @@ PgSession::PgSession(
     YbcPgExecStatsState& stats_state,
     bool is_pg_binary_upgrade,
     std::reference_wrapper<const WaitEventWatcher> wait_event_watcher,
-    BufferingSettings& buffering_settings)
+    BufferingSettings& buffering_settings,
+    RunRWOperationsHook&& hook)
     : pg_client_(pg_client),
       pg_txn_manager_(std::move(pg_txn_manager)),
       metrics_(stats_state),
@@ -512,7 +513,8 @@ PgSession::PgSession(
           buffering_settings_),
       is_major_pg_version_upgrade_(is_pg_binary_upgrade),
       wait_event_watcher_(wait_event_watcher),
-      tablespace_cache_(kTablespaceCacheCapacity) {
+      tablespace_cache_(kTablespaceCacheCapacity),
+      rw_operations_hook_{std::move(hook)} {
   Update(&buffering_settings_);
 }
 
@@ -1014,6 +1016,9 @@ Result<PerformFuture> PgSession::DoRunAsync(
   const auto group_session_type = VERIFY_RESULT(GetRequiredSessionType(
       *pg_txn_manager_, *first_table_op.table, **first_table_op.operation,
       non_ddl_txn_for_sys_tables_allowed));
+  if (group_session_type != SessionType::kCatalog) {
+    RETURN_NOT_OK(rw_operations_hook_(options.marker));
+  }
   auto table_op = generator();
   RunHelper runner(
       this, group_session_type, options.in_txn_limit, options.force_non_bufferable);

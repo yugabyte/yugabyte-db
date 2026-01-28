@@ -15,6 +15,7 @@
 
 #include "yb/util/logging.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/test_thread_holder.h"
 #include "yb/util/to_stream.h"
 
 #include "yb/yql/pggate/pggate_flags.h"
@@ -28,6 +29,7 @@ DECLARE_bool(ysql_skip_row_lock_for_update);
 DECLARE_bool(ysql_yb_enable_advisory_locks);
 DECLARE_bool(skip_prefix_locks);
 DECLARE_bool(ysql_enable_packed_row);
+DECLARE_string(ysql_pg_conf_csv);
 
 using namespace std::literals;
 
@@ -294,6 +296,7 @@ class PgMiniTestNoTxnRetry : public PgRowLockTest {
  protected:
   void BeforePgProcessStart() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_sleep_before_retry_on_txn_conflict) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = MaxQueryLayerRetriesConf(0);
   }
 
   // -----------------------------------------------------------------------------------------------
@@ -1043,6 +1046,55 @@ TEST_F_EX(PgRowLockTest,
 
     ASSERT_OK(conn.Execute("DROP TABLE t"));
   });
+}
+
+// The test checks that batcher row locks are flushed before execution of read operation
+// (i.e. read is performed after taking the lock)
+TEST_F_EX(PgRowLockTest, RowLockBatchFlushOnRead, PgMiniTestNoTxnRetry) {
+  auto conn = ASSERT_RESULT(SetHighPriTxn(Connect()));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE lock(k INT PRIMARY KEY);"
+      "CREATE TABLE t(k INT PRIMARY KEY, v INT);"
+      "INSERT INTO t VALUES(1, 1);"
+      "INSERT INTO lock VALUES(1)"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE FUNCTION read_with_delay(key INT, delay INT) RETURNS INT AS $$"
+      "DECLARE"
+      "  value INT;"
+      "BEGIN"
+      "  SELECT v FROM t WHERE k = key INTO value;"
+      "  PERFORM pg_sleep(delay);"
+      "  RETURN value;"
+      "END; $$ LANGUAGE plpgsql"));
+  CountDownLatch latch(1);
+  TestThreadHolder threads;
+  auto aux_conn = ASSERT_RESULT(SetLowPriTxn(Connect()));
+  constexpr auto kShortDelay = 2s;
+  constexpr auto kLongDelay = 5s;
+  threads.AddThreadFunctor([&latch, &aux_conn, &kShortDelay] {
+    latch.Wait();
+    std::this_thread::sleep_for(kShortDelay);
+    const auto status = ResultToStatus(aux_conn.FetchRow<int32_t>("SELECT k FROM lock FOR UPDATE"));
+    ASSERT_NOK(status);
+    ASSERT_TRUE(IsSerializeAccessError(status)) << status;
+  });
+  latch.CountDown();
+  const auto row = ASSERT_RESULT(conn.FetchRow<int32_t>(Format(
+      "SELECT read_with_delay(k, $0) FROM (SELECT k FROM lock FOR UPDATE) AS lock_subquery",
+      std::chrono::duration_cast<std::chrono::seconds>(kLongDelay).count())));
+  ASSERT_EQ(row, 1);
+}
+
+// The test checks that batcher row locks are flushed before execution of write operation
+// (i.e. lock is taken prior to write)
+TEST_F_EX(PgRowLockTest, RowLockBatchFlushOnWrite, PgMiniTestNoTxnRetry) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t(a INT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES(1), (2), (3)"));
+  auto row = ASSERT_RESULT(conn.FetchRow<int32_t>(
+      "WITH s AS MATERIALIZED (SELECT a FROM t ORDER BY a LIMIT 1 FOR UPDATE) "
+      "DELETE FROM t USING s WHERE t.a = s.a RETURNING t.a"));
+  ASSERT_EQ(row, 1);
 }
 
 }  // namespace yb::pgwrapper

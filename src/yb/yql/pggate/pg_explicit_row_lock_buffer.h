@@ -14,10 +14,12 @@
 #pragma once
 
 #include <optional>
+#include <string>
 
 #include "yb/gutil/macros.h"
 
 #include "yb/util/status.h"
+#include "yb/util/tostring.h"
 
 #include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/pg_ybctid_reader.h"
@@ -39,6 +41,10 @@ class ExplicitRowLockBuffer {
     ErrorStatusAdditionalInfo(int pg_wait_policy_, PgOid conflicting_table_id_)
         : pg_wait_policy(pg_wait_policy_), conflicting_table_id(conflicting_table_id_) {}
 
+    std::string ToString() const {
+      return YB_STRUCT_TO_STRING(pg_wait_policy, conflicting_table_id);
+    }
+
     int pg_wait_policy;
     PgOid conflicting_table_id;
   };
@@ -51,7 +57,7 @@ class ExplicitRowLockBuffer {
       std::optional<ErrorStatusAdditionalInfo>& error_info);
   Status Flush(std::optional<ErrorStatusAdditionalInfo>& error_info);
   void Clear();
-  bool IsEmpty() const;
+  bool IsEmpty() const { return !info_; }
 
  private:
   Status DoFlush(std::optional<ErrorStatusAdditionalInfo>& error_info);
