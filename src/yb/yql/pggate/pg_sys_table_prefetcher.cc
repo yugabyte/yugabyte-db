@@ -329,13 +329,15 @@ auto MakeGenerator(const std::vector<OperationInfo>& ops) {
 }
 
 Result<rpc::CallResponsePtr> Run(
-    yb::ThreadSafeArena* arena, PgSession* session,
-    const std::vector<OperationInfo>& ops, const PrefetcherOptions& options) {
-  PgDocResponse response(VERIFY_RESULT(options.caching_info
-      ? session->RunAsync(
+    yb::ThreadSafeArena* arena, PgSession* session, const std::vector<OperationInfo>& ops,
+    const PrefetcherOptions& options) {
+  PgDocResponse response(
+      VERIFY_RESULT(session->RunAsync(
           make_lw_function(MakeGenerator(ops)),
-          BuildCacheOptions(arena, session->catalog_read_time(), ops, *options.caching_info))
-      : session->RunAsync(make_lw_function(MakeGenerator(ops)), HybridTime())),
+          options.caching_info
+              ? std::optional(BuildCacheOptions(
+                  arena, session->catalog_read_time(), ops, *options.caching_info))
+              : std::nullopt)),
       {TableType::SYSTEM, IsForWritePgDoc::kFalse, IsOpBuffered::kFalse});
   return VERIFY_RESULT(response.Get(*session)).response;
 }
