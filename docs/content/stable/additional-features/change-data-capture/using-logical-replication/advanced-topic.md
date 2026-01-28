@@ -261,6 +261,8 @@ In a bi-directional replication setup where two databases replicate changes to e
 
 This ensures that changes only flow in one direction.
 
+Note that, currently, you must create the replication origin before you start streaming changes from a replication slot.
+
 The YugabyteDB implementation of replication origins mimics that of PostgreSQL; refer to [Replication Progress Tracking](https://www.postgresql.org/docs/15/replication-origins.html) in the PostgreSQL documentation.
 
 ### Properties
@@ -323,3 +325,7 @@ The PostgreSQL logical replication protocol streams transactions with origin inf
 - Implement different processing logic based on the transaction origin
 
 When a session has a replication origin configured using `pg_replication_origin_session_setup()`, the origin information is included in the WAL records and streamed as part of the logical replication protocol. This enables output plugins and replication clients to detect the origin of events and avoid loops in bi-directional replication setups.
+
+### Limitations
+
+- Currently, you must create the replication origin before you start streaming changes from a replication slot.
