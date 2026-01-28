@@ -183,7 +183,7 @@ Status Peer::SignalRequest(RequestTriggerMode trigger_mode) {
       auto last_rpc_start_time = last_rpc_start_time_.load(std::memory_order_acquire);
       if (last_rpc_start_time != CoarseTimePoint::min() &&
           now > last_rpc_start_time + stuck_threshold + timeout && !controller_.finished()) {
-        LOG_WITH_PREFIX(DFATAL) << Format(
+        YB_LOG_WITH_PREFIX_EVERY_N_SECS(DFATAL, 1) << Format(
             "Found an RPC call in stuck state - timeout: $0, last_rpc_start_time: $1, "
             "stuck threshold: $2, force recover: $3, call state: $4",
             timeout, last_rpc_start_time, stuck_threshold,
