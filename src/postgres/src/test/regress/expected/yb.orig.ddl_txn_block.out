@@ -305,8 +305,8 @@ BEGIN;
 INSERT INTO test12 VALUES (3, 3);
 SAVEPOINT test12_sp;
 CREATE TABLE test13 (a int primary key, b int);
-ERROR:  interleaving SAVEPOINT & DDL in transaction block not supported by YugaByte yet
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/26734. React with thumbs up to raise its priority.
+ERROR:  interleaving SAVEPOINT & DDL in transaction disallowed without DDL savepoint support
+HINT:  Consider enabling ysql_yb_enable_ddl_savepoint_support.
 ROLLBACK;
 BEGIN;
 CREATE TEMPORARY TABLE temp_table (
@@ -511,3 +511,49 @@ NOTICE:  table rewrite may lead to inconsistencies
 DETAIL:  Concurrent DMLs may not be reflected in the new table.
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 ERROR:  integer out of range
+-- #30109: duplicate key value violates unique constraint
+\c
+-- The bug only exists when yb_fallback_to_legacy_catalog_read_time = false
+-- We also test yb_fallback_to_legacy_catalog_read_time = true to ensure
+-- correctness in both cases.
+SET yb_fallback_to_legacy_catalog_read_time = false;
+CREATE TABLE test_table1();
+CREATE OR REPLACE PROCEDURE test_alter1()
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  EXECUTE 'ALTER TABLE test_table1 ADD COLUMN id_1 int DEFAULT (random() * 1000000)::int';
+  COMMIT;
+  EXECUTE 'ALTER TABLE test_table1 ADD COLUMN id_2 int DEFAULT (random() * 1000000)::int';
+  COMMIT;
+END;
+$$;
+CALL test_alter1();
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+\c
+SET yb_fallback_to_legacy_catalog_read_time = true;
+CREATE TABLE test_table2();
+CREATE OR REPLACE PROCEDURE test_alter2()
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  EXECUTE 'ALTER TABLE test_table2 ADD COLUMN id_1 int DEFAULT (random() * 1000000)::int';
+  COMMIT;
+  EXECUTE 'ALTER TABLE test_table2 ADD COLUMN id_2 int DEFAULT (random() * 1000000)::int';
+  COMMIT;
+END;
+$$;
+CALL test_alter2();
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+\c
+-- end of test of #30109

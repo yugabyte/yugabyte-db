@@ -345,3 +345,40 @@ CREATE TABLE int4_table(id SERIAL, c1 int4, PRIMARY KEY (id ASC));
 ALTER TABLE int4_table ALTER c1 TYPE int8;
 INSERT INTO int4_table(c1) VALUES (2 ^ 40);
 ALTER TABLE int4_table ALTER c1 TYPE int4; -- should fail.
+
+-- #30109: duplicate key value violates unique constraint
+\c
+-- The bug only exists when yb_fallback_to_legacy_catalog_read_time = false
+-- We also test yb_fallback_to_legacy_catalog_read_time = true to ensure
+-- correctness in both cases.
+SET yb_fallback_to_legacy_catalog_read_time = false;
+
+CREATE TABLE test_table1();
+CREATE OR REPLACE PROCEDURE test_alter1()
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  EXECUTE 'ALTER TABLE test_table1 ADD COLUMN id_1 int DEFAULT (random() * 1000000)::int';
+  COMMIT;
+  EXECUTE 'ALTER TABLE test_table1 ADD COLUMN id_2 int DEFAULT (random() * 1000000)::int';
+  COMMIT;
+END;
+$$;
+CALL test_alter1();
+\c
+SET yb_fallback_to_legacy_catalog_read_time = true;
+
+CREATE TABLE test_table2();
+CREATE OR REPLACE PROCEDURE test_alter2()
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  EXECUTE 'ALTER TABLE test_table2 ADD COLUMN id_1 int DEFAULT (random() * 1000000)::int';
+  COMMIT;
+  EXECUTE 'ALTER TABLE test_table2 ADD COLUMN id_2 int DEFAULT (random() * 1000000)::int';
+  COMMIT;
+END;
+$$;
+CALL test_alter2();
+\c
+-- end of test of #30109

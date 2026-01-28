@@ -3348,10 +3348,24 @@ YBCommitTransactionContainingDDL()
 	YBClearDdlTransactionState();
 
 	if (use_regular_txn_block)
+	{
 		HandleYBStatus(YBCPgCommitPlainTransactionContainingDDL(MyDatabaseId, is_silent_altering));
+		/*
+		 * Next reads from catalog tables have to see changes made by the plain
+		 * transaction that contains DDL.
+		 */
+		if (YBCIsLegacyModeForCatalogOps())
+			YBCPgResetCatalogReadTime();
+	}
 	else
+	{
 		HandleYBStatus(YBCPgExitSeparateDdlTxnMode(MyDatabaseId,
 												   is_silent_altering));
+		/*
+		 * Next reads from catalog tables have to see changes made by the DDL transaction.
+		 */
+		YBCPgResetCatalogReadTime();
+	}
 
 	/*
 	 * Optimization to avoid redundant cache refresh on the current session
