@@ -245,10 +245,9 @@ void ClusterLoadBalancer::InitTablespaceManager() {
 
 Status ClusterLoadBalancer::PopulateReplicationInfo(
     const scoped_refptr<TableInfo>& table, const ReplicationInfoPB& replication_info) {
-  PlacementInfoPB pb;
 
   if (state_->options_->type == ReplicaType::kLive) {
-    pb.CopyFrom(replication_info.live_replicas());
+    state_->placement_.CopyFrom(replication_info.live_replicas());
   } else if (state_->options_->type == ReplicaType::kReadOnly) {
     if (replication_info.read_replicas_size() == 0) {
       // Should not reach here as tables that should not have read replicas should
@@ -257,17 +256,15 @@ Status ClusterLoadBalancer::PopulateReplicationInfo(
           IllegalState, "Encountered a table $0 with no read replicas. Placement info $1",
           table->id(), replication_info);
     }
-    pb.CopyFrom(GetReadOnlyPlacementFromUuid(replication_info));
+    state_->placement_.CopyFrom(GetReadOnlyPlacementFromUuid(replication_info));
   }
-  if (pb.num_replicas() == 0) {
-    pb.set_num_replicas(FLAGS_replication_factor);
+  if (state_->placement_.num_replicas() == 0) {
+    state_->placement_.set_num_replicas(FLAGS_replication_factor);
   }
-  if (pb.placement_blocks().empty()) {
+  if (state_->placement_.placement_blocks().empty()) {
     // Wildcard placement matches all tservers.
-    pb.add_placement_blocks()->CopyFrom(PlacementBlockPB());
+    state_->placement_.add_placement_blocks()->CopyFrom(PlacementBlockPB());
   }
-
-  state_->placement_by_table_[table->id()] = std::move(pb);
 
   bool is_txn_table = table->GetTableType() == TRANSACTION_STATUS_TABLE_TYPE;
   state_->use_preferred_zones_ = !is_txn_table || FLAGS_transaction_tables_use_preferred_zones;
@@ -276,21 +273,6 @@ Status ClusterLoadBalancer::PopulateReplicationInfo(
   }
 
   return Status::OK();
-}
-
-Status ClusterLoadBalancer::UpdateTabletInfo(TabletInfo* tablet) {
-  // The placement information should already be set.
-  if (!state_->placement_by_table_.count(tablet->table()->id())) {
-    return STATUS_FORMAT(
-        IllegalState, "Encountered a table $0 with no Placement info.", tablet->table()->name());
-  }
-
-  return state_->UpdateTablet(tablet);
-}
-
-const PlacementInfoPB& ClusterLoadBalancer::GetPlacementByTablet(const TabletId& tablet_id) const {
-  const auto& table_id = GetTabletMap().at(tablet_id)->table()->id();
-  return state_->placement_by_table_.at(table_id);
 }
 
 size_t ClusterLoadBalancer::get_total_wrong_placement() const {
@@ -541,8 +523,7 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
       }
     }
     auto goal_loads = CalculateOptimalLoadDistribution(
-        valid_ts_descs, state_->placement_by_table_[table->id()], current_loads,
-        state_->num_running_tablets_);
+        valid_ts_descs, state_->placement_, current_loads, state_->num_running_tablets_);
     if (goal_loads.ok()) {
       auto num_adds = CalculateTableLoadDifference(current_loads, *goal_loads);
       VLOG(2) << "Table " << table->id() << " current_loads: " << AsString(current_loads);
@@ -884,7 +865,7 @@ Status ClusterLoadBalancer::AnalyzeTabletsUnlocked(const TableId& table_uuid) {
     // of the tablet.
     if (tablet_running) {
       state_->num_running_tablets_++;
-      RETURN_NOT_OK(UpdateTabletInfo(tablet.get()));
+      RETURN_NOT_OK(state_->UpdateTablet(tablet.get()));
       total_tablet_size += state_->per_tablet_meta_[tablet->id()].size;
     }
   }
@@ -932,7 +913,6 @@ Result<bool> ClusterLoadBalancer::HandleAddIfMissingPlacement(
   RETURN_NOT_OK(CanAddReplicas());
 
   const auto& tablet_meta = state_->per_tablet_meta_[tablet_id];
-  const auto& placement_info = GetPlacementByTablet(tablet_id);
   const auto& missing_placements = tablet_meta.under_replicated_placements;
   if (VLOG_IS_ON(3)) {
     std::ostringstream out;
@@ -948,50 +928,36 @@ Result<bool> ClusterLoadBalancer::HandleAddIfMissingPlacement(
   // Loop through TSs by load to find a TS that matches the placement needed and does not already
   // host this tablet.
   for (const auto& ts_uuid : state_->sorted_load_) {
-    bool can_choose_ts = false;
+    // We added a tablet to the set with missing replicas both if it is under-replicated, and we
+    // added a placement to the tablet_meta under_replicated_placements if the num replicas in
+    // that placement is fewer than min_num_replicas. If the under-replicated tablet has a
+    // placement that is under-replicated and the ts is not in that placement, then that ts
+    // isn't valid.
     const auto& ts_meta = state_->per_ts_meta_[ts_uuid];
-    // If we had no placement information, it means we are just under-replicated, so just check
-    // that we can use this tablet server.
-    if (placement_info.placement_blocks().empty()) {
-      // No need to check placement info, as there is none.
-      can_choose_ts = VERIFY_RESULT(
-          state_->CanAddTabletToTabletServer(tablet_id, ts_uuid, nullptr /* placement_info */));
-      VLOG(3) << "Placement info is not available for tablet " << tablet_id << " so this tablet "
-              << "can be added to any valid TS. TS " << ts_uuid
-              << ", can choose: " << can_choose_ts;
-    } else {
-      // We added a tablet to the set with missing replicas both if it is under-replicated, and we
-      // added a placement to the tablet_meta under_replicated_placements if the num replicas in
-      // that placement is fewer than min_num_replicas. If the under-replicated tablet has a
-      // placement that is under-replicated and the ts is not in that placement, then that ts
-      // isn't valid.
-      // Either we have specific placement blocks that are under-replicated, so confirm
-      // that this TS matches or all the placement blocks have min_num_replicas
-      // but overall num_replicas is fewer than expected.
-      // In the latter case, we still need to conform to the placement rules.
-      VLOG(3) << "Tablet " << tablet_id << " has " << missing_placements.size()
-              << " missing placements, checking if we can add to tserver " << ts_uuid;
-      if (missing_placements.empty() ||
-          tablet_meta.CanAddTSToMissingPlacements(ts_meta.descriptor)) {
-        // If we don't have any missing placements but are under-replicated then we need to
-        // validate placement information in order to avoid adding to a wrong placement block.
-        //
-        // Do the placement check for both the cases.
-        // If we have missing placements then this check is a tautology otherwise it matters.
-        can_choose_ts =
-            VERIFY_RESULT(state_->CanAddTabletToTabletServer(tablet_id, ts_uuid, &placement_info));
+    // Either we have specific placement blocks that are under-replicated, so confirm
+    // that this TS matches or all the placement blocks have min_num_replicas
+    // but overall num_replicas is fewer than expected.
+    // In the latter case, we still need to conform to the placement rules.
+    VLOG(3) << "Tablet " << tablet_id << " has " << missing_placements.size()
+            << " missing placements, checking if we can add to tserver " << ts_uuid;
+    if (missing_placements.empty() || tablet_meta.CanAddTSToMissingPlacements(ts_meta.descriptor)) {
+      // If we don't have any missing placements but are under-replicated then we need to
+      // validate placement information in order to avoid adding to a wrong placement block.
+      //
+      // Do the placement check for both the cases.
+      // If we have missing placements then this check is a tautology otherwise it matters.
+      bool can_choose_ts = VERIFY_RESULT(state_->CanAddTabletToTabletServer(tablet_id, ts_uuid));
+      // If we've passed the checks, then we can choose this TS to add the replica to.
+      if (can_choose_ts) {
+        *out_to_ts = ts_uuid;
+        VLOG(3) << "Found tserver " << ts_uuid << " to add a replica of tablet " << tablet_id;
+        RETURN_NOT_OK(AddOrMoveReplica(
+            tablet_id, "" /* from_ts */, ts_uuid,
+            Format("Placement ($0) does not have enough replicas of this tablet",
+                      ts_meta.descriptor->GetCloudInfo().ShortDebugString())));
+        state_->tablets_missing_replicas_.erase(tablet_id);
+        return true;
       }
-    }
-    // If we've passed the checks, then we can choose this TS to add the replica to.
-    if (can_choose_ts) {
-      *out_to_ts = ts_uuid;
-      VLOG(3) << "Found tserver " << ts_uuid << " to add a replica of tablet " << tablet_id;
-      RETURN_NOT_OK(AddOrMoveReplica(
-          tablet_id, "" /* from_ts */, ts_uuid,
-          Format("Placement ($0) does not have enough replicas of this tablet",
-                    ts_meta.descriptor->GetCloudInfo().ShortDebugString())));
-      state_->tablets_missing_replicas_.erase(tablet_id);
-      return true;
     }
   }
   return false;
@@ -1008,7 +974,7 @@ Result<bool> ClusterLoadBalancer::HandleAddIfWrongPlacement(
       continue;
     }
     if (VERIFY_RESULT(state_->CanSelectWrongPlacementReplicaToMove(
-            tablet_id, GetPlacementByTablet(tablet_id), out_from_ts, out_to_ts))) {
+            tablet_id, out_from_ts, out_to_ts))) {
       *out_tablet_id = tablet_id;
       VLOG(3) << "Found destination server " << *out_to_ts << " to move tablet replica "
               << tablet_id << " from " << *out_from_ts;
@@ -1223,7 +1189,7 @@ Result<bool> ClusterLoadBalancer::GetTabletToMove(
       }
 
       if (VERIFY_RESULT(
-          state_->CanAddTabletToTabletServer(tablet_id, to_ts, &GetPlacementByTablet(tablet_id)))) {
+          state_->CanAddTabletToTabletServer(tablet_id, to_ts))) {
         filtered_drive_tablets.insert(tablet_id);
       }
     }
@@ -1241,7 +1207,6 @@ Result<bool> ClusterLoadBalancer::GetTabletToMove(
     CatalogManagerUtil::CloudInfoSimilarity chosen_tablet_ci_similarity =
         CatalogManagerUtil::NO_MATCH;
     for (const TabletId& tablet_id : drive_tablets) {
-      const auto& placement_info = GetPlacementByTablet(tablet_id);
       // TODO(#15853): this should be augmented as well to allow dropping by one replica, if still
       // leaving us with more than the minimum.
       //
@@ -1255,15 +1220,15 @@ Result<bool> ClusterLoadBalancer::GetTabletToMove(
       // Note that we've assumed that for every TS there is a unique placement block to which it
       // can be mapped (see the validation rules in yb_admin-client). If there is no unique
       // placement block then it is simply the C.R.Z of the TS itself.
-      auto from_ts_block = state_->GetValidPlacement(from_ts, &placement_info);
-      auto to_ts_block = state_->GetValidPlacement(to_ts, &placement_info);
+      auto from_ts_block = state_->GetValidPlacement(from_ts);
+      auto to_ts_block = state_->GetValidPlacement(to_ts);
       bool same_placement = false;
       if (to_ts_block.has_value() && from_ts_block.has_value()) {
           same_placement = TSDescriptor::generate_placement_id(*from_ts_block) ==
                                   TSDescriptor::generate_placement_id(*to_ts_block);
       }
 
-      if (!placement_info.placement_blocks().empty() && !same_placement) {
+      if (!state_->placement_.placement_blocks().empty() && !same_placement) {
         continue;
       }
 

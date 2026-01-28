@@ -362,7 +362,9 @@ class PerTableLoadState {
     return ts_desc->placement_uuid() == options_->live_placement_uuid;
   }
 
-  // Update the per-tablet information for this tablet.
+  // Method called when initially analyzing tablets, to build up load and usage information.
+  // Returns an OK status if the method succeeded or an error if there are transient errors in
+  // updating the internal state.
   Status UpdateTablet(TabletInfo* tablet);
 
   virtual void UpdateTabletServer(std::shared_ptr<TSDescriptor> ts_desc);
@@ -372,21 +374,18 @@ class PerTableLoadState {
     initialized_ = true;
   }
 
-  Result<bool> CanAddTabletToTabletServer(
-    const TabletId& tablet_id, const TabletServerId& to_ts, const PlacementInfoPB* placement_info);
+  Result<bool> CanAddTabletToTabletServer(const TabletId& tablet_id, const TabletServerId& to_ts);
 
   // For a TS specified by ts_uuid, this function checks if there is a placement
   // block in placement_info where this TS can be placed. If there doesn't exist
-  // any, it returns boost::none. On the other hand if there is a placement block
+  // any, it returns std::nullopt. On the other hand if there is a placement block
   // that satisfies the criteria then it returns the cloud info of that block.
   // If there wasn't any placement information passed in placement_info then
   // it returns the cloud info of the TS itself.
-  boost::optional<CloudInfoPB> GetValidPlacement(const TabletServerId& ts_uuid,
-                                                 const PlacementInfoPB* placement_info);
+  std::optional<CloudInfoPB> GetValidPlacement(const TabletServerId& ts_uuid);
 
   Result<bool> CanSelectWrongPlacementReplicaToMove(
-    const TabletId& tablet_id, const PlacementInfoPB& placement_info, TabletServerId* out_from_ts,
-    TabletServerId* out_to_ts);
+    const TabletId& tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts);
 
   Status AddReplica(const TabletId& tablet_id, const TabletServerId& to_ts);
 
@@ -439,12 +438,9 @@ class PerTableLoadState {
     for (const auto& ts_meta : per_ts_meta_) {
       out << " " + ts_meta.first + ": " + ts_meta.second.ToString();
     }
-    out << " ], placement_by_table: [";
-    for (const auto& table_placement : placement_by_table_) {
-      out << " " + table_placement.first + ": " + table_placement.second.ShortDebugString();
-    }
     out << " ], ";
 
+    out << Format("placement: $0, ", placement_.ShortDebugString());
     out << Format("total_running: $0, ", total_running_);
     out << Format("total_starting: $0, ", total_starting_);
     out << Format("sorted_load: $0, ", sorted_load_);
@@ -481,10 +477,10 @@ class PerTableLoadState {
   // Map from tablet server ids to the metadata we store for each.
   std::unordered_map<TabletServerId, CBTabletServerMetadata> per_ts_meta_;
 
-  // Map from table id to placement information for this table. This will be used for both
+  // Placement information for this table. This will be used for both
   // determining over-replication, by checking num_replicas, but also for az awareness, by keeping
   // track of the placement block policies between cluster and table level.
-  std::unordered_map<TableId, PlacementInfoPB> placement_by_table_;
+  PlacementInfoPB placement_;
 
   // Total number of running tablet replicas in the cluster.
   int total_running_ = 0;

@@ -217,11 +217,6 @@ class ClusterLoadBalancer {
 
   virtual void InitTablespaceManager();
 
-  // Method called when initially analyzing tablets, to build up load and usage information.
-  // Returns an OK status if the method succeeded or an error if there are transient errors in
-  // updating the internal state.
-  Status UpdateTabletInfo(TabletInfo* tablet);
-
   // If a tablet is under-replicated, or has certain placements that have less than the minimum
   // required number of replicas, we need to add extra tablets to its peer set.
   // Takes in a specific tablet id which we will try to fix.
@@ -314,10 +309,6 @@ class ClusterLoadBalancer {
       REQUIRES_SHARED(catalog_manager_->mutex_);
 
   // Methods called for returning tablet id sets, for figuring out tablets to move around.
-
-  const PlacementInfoPB& GetPlacementByTablet(const TabletId& tablet_id) const
-      REQUIRES_SHARED(catalog_manager_->mutex_);
-
   // Get access to all the tablets for the given table.
   Result<TabletInfos> GetTabletsForTable(const TableId& table_uuid) const
       REQUIRES_SHARED(catalog_manager_->mutex_);
