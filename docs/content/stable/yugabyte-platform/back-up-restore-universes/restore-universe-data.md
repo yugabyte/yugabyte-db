@@ -45,10 +45,6 @@ You can restore YugabyteDB universe data from a backup as follows:
 
 1. In the **Restore Backup** dialog, select the universe (target) to which you want to restore the backup.
 
-1. If you are restoring data from a universe that has, or previously had, [encryption at rest enabled](../../security/enable-encryption-at-rest), then you must select the KMS configuration to use so that the master keys referenced in the metadata file can be retrieved.
-
-    If the universe was previously encrypted at rest, but is not currently, then the retrieved keys assure that any existing files can be decrypted. The retrieved keys are used to build and augment the universe key registry on the restored universe with the required master keys. The universe data files are restored normally afterwards.
-
 1. To rename databases (YSQL) or keyspaces (YCQL), select the **Rename** option.
 
     If you are restoring a backup to a universe with an existing databases of the same name, you must rename the database.
@@ -62,6 +58,10 @@ You can restore YugabyteDB universe data from a backup as follows:
 1. If the backup includes roles, choose the **Restore global roles** option to restore roles.
 
     Note that if the target universe already has matching roles, those roles are not overwritten.
+
+1. If you are restoring data from a universe that has, or previously had, [encryption at rest enabled](../../security/enable-encryption-at-rest), then you must select the KMS configuration to use so that the master keys referenced in the metadata file can be retrieved.
+
+    If the universe was previously encrypted at rest, but is not currently, then the retrieved keys assure that any existing files can be decrypted. The retrieved keys are used to build and augment the universe key registry on the restored universe with the required master keys. The universe data files are restored normally afterwards.
 
 1. If you chose to rename databases or keyspaces, click **Next**, then enter new names for the databases or keyspaces that you want to rename.
 
