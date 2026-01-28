@@ -52,3 +52,13 @@
 \set query 'SELECT r1, r2, n, yb_hash_code(h1, h2, h3), h1, h2, h3 FROM h3r2n WHERE yb_hash_code(h1, h2, h3) IN (17834, 28655, 32412) AND h1 IN (5, 7) AND h2 IN (1, 3, 7) AND h3 IN (3, 6, 7) ORDER BY r1, r2, n LIMIT 5'
 \set hint3 '/*+Set(enable_sort off) Set(yb_max_saop_merge_streams 64)*/'
 :explain3run3
+
+-- #30096: SAOP merge shouldn't be used in a parallel scan.
+\set query 'SELECT * FROM h3r2n WHERE h1 = 1 AND h2 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND h3 = 1 ORDER BY r1, r2'
+\set hint3 '/*+Parallel(h3r2n 2) Set(yb_enable_parallel_scan_hash_sharded true) Set(yb_parallel_range_rows 1) Set(yb_max_saop_merge_streams 0)*/'
+\set hint4 '/*+Parallel(h3r2n 2) Set(yb_enable_parallel_scan_hash_sharded true) Set(yb_parallel_range_rows 1) Set(yb_max_saop_merge_streams 64)*/'
+:explain4
+
+-- Same thing with backwards scan.
+\set query 'SELECT * FROM h3r2n WHERE h1 = 1 AND h2 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND h3 = 1 ORDER BY r1 DESC, r2 DESC'
+:explain4
