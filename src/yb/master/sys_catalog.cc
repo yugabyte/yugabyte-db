@@ -2290,7 +2290,7 @@ Status SysCatalogTable::ForceWrite(
 }
 
 Result<PgOid> SysCatalogTable::GetYsqlDatabaseOid(const NamespaceName& ns_name) {
-  TRACE_EVENT0("master", "GetYsqlDatabaseOid");
+  TRACE_EVENT0("master", __func__);
   auto read_data =
       VERIFY_RESULT(TableReadData(kTemplate1Oid, kPgDatabaseTableOid, ReadHybridTime()));
   const auto& schema = read_data.schema();
@@ -2309,8 +2309,8 @@ Result<PgOid> SysCatalogTable::GetYsqlDatabaseOid(const NamespaceName& ns_name) 
 
   qlexpr::QLTableRow row;
   while (VERIFY_RESULT(iter->FetchNext(&row))) {
-    const auto& oid_col = row.GetValue(oid_col_id);
-    const auto& datname_col = row.GetValue(datname_col_id);
+    const auto oid_col = row.GetValue(oid_col_id);
+    const auto datname_col = row.GetValue(datname_col_id);
     if (!oid_col) {
       return STATUS(Corruption, "Could not read 'oid' column from pg_database");
     }
@@ -2324,9 +2324,14 @@ Result<PgOid> SysCatalogTable::GetYsqlDatabaseOid(const NamespaceName& ns_name) 
   return kPgInvalidOid;
 }
 
+// Fetch the oid and relfilenode from pg_class of yb_system database for the given relnamespace
+// and table_name. This function services the request sent by PG backends (connected to dbs other
+// than yb_system) to fetch info for tables in yb_system. There's no reason for these backends to
+// use this API to fetch catalog table info as that remains the same across dbs. Hence, as an
+// optimization, only consider oid > kPgFirstNormalObjectId when scanning pg_class.
 Result<bool> SysCatalogTable::GetYsqlYbSystemTableInfo(
-    PgOid namespace_oid, const TableName& table_name, PgOid* oid, PgOid* relfilenode) {
-  TRACE_EVENT0("master", "GetYsqlYbSystemTableInfo");
+    PgOid relnamespace, const TableName& table_name, PgOid* oid, PgOid* relfilenode) {
+  TRACE_EVENT0("master", __func__);
   auto db_oid = VERIFY_RESULT(GetYsqlDatabaseOid(kYbSystemDbName));
 
   auto read_data = VERIFY_RESULT(TableReadData(db_oid, kPgClassTableOid, ReadHybridTime()));
@@ -2356,10 +2361,10 @@ Result<bool> SysCatalogTable::GetYsqlYbSystemTableInfo(
   bool found = false;
   qlexpr::QLTableRow row;
   while (VERIFY_RESULT(iter->FetchNext(&row))) {
-    const auto& oid_col = row.GetValue(oid_col_id);
-    const auto& relname_col = row.GetValue(relname_col_id);
-    const auto& relnamespace_col = row.GetValue(relnamespace_col_id);
-    const auto& relfilenode_col = row.GetValue(relfilenode_col_id);
+    const auto oid_col = row.GetValue(oid_col_id);
+    const auto relname_col = row.GetValue(relname_col_id);
+    const auto relnamespace_col = row.GetValue(relnamespace_col_id);
+    const auto relfilenode_col = row.GetValue(relfilenode_col_id);
 
     if (!oid_col) {
       return STATUS_FORMAT(
@@ -2378,7 +2383,7 @@ Result<bool> SysCatalogTable::GetYsqlYbSystemTableInfo(
           Corruption, "Could not read 'relfilenode' column from pg_class in yb_system database");
     }
     if (relname_col->get().string_value() == table_name &&
-        relnamespace_col->get().uint32_value() == namespace_oid) {
+        relnamespace_col->get().uint32_value() == relnamespace) {
       *oid = oid_col->get().uint32_value();
       *relfilenode = relfilenode_col->get().uint32_value();
       found = true;
@@ -2388,7 +2393,7 @@ Result<bool> SysCatalogTable::GetYsqlYbSystemTableInfo(
   if (!found)
     LOG(INFO) << Format(
         "Could not find table '$0' in namespace $1 in yb_system database", table_name,
-        namespace_oid);
+        relnamespace);
   return found;
 }
 
