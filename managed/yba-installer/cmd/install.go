@@ -92,6 +92,10 @@ var installCmd = &cobra.Command{
 				"rerun the command with --skip_preflight <check name1>,<check name2>")
 		}
 
+		if err := ybactlstate.ValidatePrometheusScrapeConfig(); err != nil {
+			log.Fatal("failed to validate prometheus scrape config: " + err.Error())
+		}
+
 		// Mark install start.
 		state.CurrentStatus = ybactlstate.InstallingStatus
 		if err := ybactlstate.StoreState(state); err != nil {
