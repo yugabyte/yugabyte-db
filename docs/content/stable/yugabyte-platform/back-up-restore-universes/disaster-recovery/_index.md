@@ -84,7 +84,7 @@ You don't need to make any changes to the DR configuration.
 
 Automatic mode is recommended for all new DR configurations. When possible, you should delete existing DR configurations and re-create them using automatic mode to reduce the operational burden of DDL changes.
 
-Automatic mode is used for any xCluster DR configuration when both DR primary and replica are running YugabyteDB {{<release "2025.1.1">}} or later. For earlier versions, semi-automatic mode is used.
+Automatic mode is used for any xCluster DR configuration when both DR primary and replica are running YugabyteDB {{<release "2025.2.1">}} or later. For earlier versions, semi-automatic mode is used.
 
 ### Semi-automatic mode
 

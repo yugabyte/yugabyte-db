@@ -86,7 +86,7 @@ Automatic mode is recommended for all new DR configurations. When possible, you 
 
 Automatic mode is used for any xCluster DR configuration when the following pre-requisites are met at setup time:
 
-- Both DR primary and replica are running YugabyteDB {{<release "2025.1.1">}} or later.
+- Both DR primary and replica are running YugabyteDB {{<release "2025.1.2.0">}} or later.
 - Automatic mode is enabled. While in {{<tags/feature/ea idea="2089">}}, the feature is not enabled by default. To enable it, set the **Automatic mode for xCluster** Global runtime configuration option (config key `yb.xcluster.db_scoped.automatic_ddl.creationEnabled`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global runtime configuration settings.
 
 ### Semi-automatic mode
