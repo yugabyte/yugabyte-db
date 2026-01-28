@@ -44,6 +44,8 @@ type appLogger struct {
 	loadConfigFile bool
 	// Path prefix upto node-agent.
 	pathPrefix string
+	// Number of additional stack callers to skip.
+	skipCallers int
 }
 
 // multiAppLogger implements the AppLogger interface for multiple loggers.
@@ -125,6 +127,7 @@ func createLogger(path string,
 		},
 		enableDebugInfo: true,
 		loadConfigFile:  loadConfigFile,
+		skipCallers:     1, /* Skip MultiAppLogger */
 	}
 	if appLogger.pathPrefix == "" {
 		_, file, _, ok := runtime.Caller(0)
@@ -208,7 +211,7 @@ func (l *appLogger) getEntry(ctx context.Context) *log.Entry {
 	entry := log.NewEntry(lgr)
 	if l.enableDebugInfo {
 		// Get the line number from the runtime stack.
-		funcPtr, file, line, ok := runtime.Caller(2)
+		funcPtr, file, line, ok := runtime.Caller(2 + l.skipCallers)
 		if ok {
 			// Trim the unwanted path prefix.
 			file = strings.TrimPrefix(file, l.pathPrefix)
