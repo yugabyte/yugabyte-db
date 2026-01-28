@@ -337,7 +337,7 @@ You can check the overall leader distribution and [cluster level leader preferen
 
 ## Read replicas
 
-[Read replica](../../multi-region-deployments/read-replicas-ysql/) clusters in YugabyteDB are a set of follower nodes that maintain asynchronously replicated copies of tablets in the primary cluster. These TServers are configured using their own [placement_uuid](../../../reference/configuration/yb-tserver/#placement-uuid) flag that is different from that of the primary cluster.
+{{<tags/feature/ea idea="2006">}}[Read replica](../../multi-region-deployments/read-replicas-ysql/) clusters in YugabyteDB are a set of follower nodes that maintain asynchronously replicated copies of tablets in the primary cluster. These TServers are configured using their own [placement_uuid](../../../reference/configuration/yb-tserver/#placement-uuid) flag that is different from that of the primary cluster.
 
 You configure tablespaces with read replica nodes using the `read_replica_placement` configuration option. Tables that you add to the tablespace automatically have copies of their tablets placed on the read replica nodes.
 
