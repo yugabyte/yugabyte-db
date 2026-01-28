@@ -1,6 +1,27 @@
 --
 -- ALTER TABLE with table rewrite tests.
 --
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set filename :abs_srcdir '/yb_commands/explainrun.sql'
+\i :filename
+-- A helper script to explain and run a query.  Use in regress tests by
+-- defining :explain, :query, and optionally :hint#.
+\set explain1 ':explain :hint1 :query;'
+\set explain2 ':explain1 :explain :hint2 :query;'
+\set explain3 ':explain2 :explain :hint3 :query;'
+\set explain4 ':explain3 :explain :hint4 :query;'
+\set explain5 ':explain4 :explain :hint5 :query;'
+\set explain1run1 ':explain1; :hint1 :query;'
+\set explain2run2 ':explain2; :hint1 :query; :hint2 :query;'
+\set explain3run3 ':explain3; :hint1 :query; :hint2 :query; :hint3 :query;'
+\set explain4run4 ':explain4; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query;'
+\set explain5run5 ':explain5; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query; :hint5 :query;'
+-- Default to no hints.
+\set hint1 ''
+\set hint2 ''
+\set hint3 ''
+\set hint4 ''
+\set hint5 ''
 -- Suppress NOTICE messages during table rewrite operations.
 SET client_min_messages TO WARNING;
 -- Test add column operation with table rewrite.
@@ -1205,5 +1226,140 @@ SELECT * FROM parent;
  a 
 ---
  1
+(1 row)
+
+--
+-- Test index rewrites during ALTER TYPE when the base table is not rewritten.
+--
+-- test that indexes are correctly rebuilt when collation changes.
+-- without rebuilding, queries can return incorrect results.
+CREATE TABLE collation_test (name varchar COLLATE "en_US");
+CREATE INDEX idx_collation ON collation_test(name ASC);
+-- insert test data with special characters
+INSERT INTO collation_test VALUES ('abc'), (U&'\00E4bc'), ('xyz');
+-- query before collation change
+SET enable_seqscan = off;
+SET enable_sort = off;
+-- should return: xyz
+SELECT encode(name::bytea, 'escape') as utf8_bytes
+    FROM collation_test WHERE name > 'x';
+ utf8_bytes 
+------------
+ xyz
+(1 row)
+
+-- store the table's relfilenode before ALTER TYPE
+CREATE TEMP TABLE table_info AS
+    SELECT relfilenode FROM pg_class WHERE relname = 'collation_test';
+-- store the index's relfilenode before ALTER TYPE
+CREATE TEMP TABLE index_info AS
+    SELECT relfilenode FROM pg_class WHERE relname = 'idx_collation';
+-- change collation (no table rewrite needed)
+ALTER TABLE collation_test ALTER COLUMN name TYPE varchar COLLATE "C";
+-- check if table was rewritten (relfilenode changed) -- we expect it to not be rewritten
+SELECT
+    CASE
+        WHEN old.relfilenode = new.relfilenode
+        THEN 'Table not rewritten'
+        ELSE 'Table rewritten'
+    END as result
+FROM table_info old, pg_class new
+WHERE new.relname = 'collation_test';
+       result        
+---------------------
+ Table not rewritten
+(1 row)
+
+-- check if index was rebuilt (relfilenode changed) -- we expect it to be rebuilt
+SELECT
+    CASE
+        WHEN old.relfilenode = new.relfilenode
+        THEN 'Index reused'
+        ELSE 'Index rebuilt'
+    END as result
+FROM index_info old, pg_class new
+WHERE new.relname = 'idx_collation';
+    result     
+---------------
+ Index rebuilt
+(1 row)
+
+-- query after collation change should return correct results
+-- should return: xyz and 'U&'\00E4bc''
+\set explain 'EXPLAIN (COSTS OFF)'
+\set hint1 '/*+ IndexScan(collation_test idx_collation) */'
+\set hint2 '/*+ SeqScan(collation_test) */'
+SELECT $$
+SELECT encode(name::bytea, 'escape') as utf8_bytes
+FROM collation_test WHERE name > 'x' ORDER BY name;
+$$ AS query \gset
+:explain2run2
+                    QUERY PLAN                    
+--------------------------------------------------
+ Index Scan using idx_collation on collation_test
+   Index Cond: ((name)::text > 'x'::text)
+(2 rows)
+
+                     QUERY PLAN                     
+----------------------------------------------------
+ Sort
+   Sort Key: name COLLATE "C"
+   ->  Seq Scan on collation_test
+         Storage Filter: ((name)::text > 'x'::text)
+(4 rows)
+
+ utf8_bytes 
+------------
+ xyz
+ \303\244bc
+(2 rows)
+
+ utf8_bytes 
+------------
+ xyz
+ \303\244bc
+(2 rows)
+
+DROP TABLE table_info;
+DROP TABLE index_info;
+RESET enable_seqscan;
+RESET enable_sort;
+-- test that indexes are NOT unnecessarily rebuilt when compatible.
+CREATE TABLE compatible_test (val varchar(10));
+CREATE INDEX idx_compatible ON compatible_test(val);
+-- store the table's relfilenode before ALTER TYPE
+CREATE TEMP TABLE table_info AS
+    SELECT relfilenode FROM pg_class WHERE relname = 'compatible_test';
+-- store the index's relfilenode before ALTER TYPE
+CREATE TEMP TABLE index_info AS
+    SELECT relfilenode FROM pg_class WHERE relname = 'idx_compatible';
+-- alter type without changing storage or semantics (just increase length)
+ALTER TABLE compatible_test ALTER COLUMN val TYPE varchar(100);
+-- check if table was rewritten (relfilenode changed) -- we expect it to not be rewritten
+SELECT
+    CASE
+        WHEN old.relfilenode = new.relfilenode
+        THEN 'Table not rewritten'
+        ELSE 'Table rewritten'
+    END as result
+FROM table_info old, pg_class new
+WHERE new.relname = 'compatible_test';
+       result        
+---------------------
+ Table not rewritten
+(1 row)
+
+-- check if index was rebuilt (relfilenode changed) -- we expect it to not be rebuilt
+SELECT
+    CASE
+        WHEN old.relfilenode = new.relfilenode
+        THEN 'Index reused'
+        ELSE 'Index rebuilt'
+    END as result
+FROM index_info old, pg_class new
+WHERE new.relname = 'idx_compatible';
+    result    
+--------------
+ Index reused
 (1 row)
 
