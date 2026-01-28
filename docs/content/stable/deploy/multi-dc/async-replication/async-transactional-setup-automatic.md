@@ -34,7 +34,7 @@ type: docs
 </ul>
 
 {{< note title="Note" >}}
-To use automatic-mode transactional xCluster replication, both the Primary and Standby universes must be running v2025.2 or later.
+To use automatic-mode transactional xCluster replication, both the Primary and Standby universes must be running v2025.2.1 or later.
 {{< /note >}}
 
 Automatic transactional xCluster replication handles all aspects of replication for both data and schema changes.
