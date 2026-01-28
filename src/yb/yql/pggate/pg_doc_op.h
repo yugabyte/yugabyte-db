@@ -17,6 +17,8 @@
 #include <functional>
 #include <list>
 #include <memory>
+#include <optional>
+#include <span>
 #include <string>
 #include <utility>
 #include <variant>
@@ -256,13 +258,13 @@ class PgDocResponse {
   std::variant<FutureInfo, ProviderPtr> holder_;
 };
 
-class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
+class PgDocOp {
  public:
   using SharedPtr = std::shared_ptr<PgDocOp>;
 
   using Sender = std::function<Result<PgDocResponse>(
-      PgSession*, const PgsqlOpPtr*, size_t, const PgTableDesc&, HybridTime,
-      ForceNonBufferable, IsForWritePgDoc)>;
+      PgSession*, std::span<const PgsqlOpPtr>, const PgTableDesc&, const PgSession::RunOptions&,
+      IsForWritePgDoc)>;
 
   struct OperationRowOrder {
     OperationRowOrder(const PgsqlOpPtr& operation_, int64_t order_)
@@ -332,8 +334,8 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   const PgTable& table() const { return table_; }
 
   static Result<PgDocResponse> DefaultSender(
-      PgSession* session, const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
-      HybridTime in_txn_limit, ForceNonBufferable force_non_bufferable, IsForWritePgDoc is_write);
+      PgSession* session, std::span<const PgsqlOpPtr> ops, const PgTableDesc& table,
+      const PgSession::RunOptions& options, IsForWritePgDoc is_write);
 
  protected:
   PgDocOp(
