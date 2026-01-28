@@ -124,11 +124,7 @@ yugabyte=# SELECT yb_xcluster_ddl_replication.get_replication_role();
  source
 (1 row)
 ```
-or
-```
-yugabyte=# SELECT yb_xcluster_ddl_replication.get_replication_role();
- get_replication_role
-----------------------
- target
-(1 row)
-```
+
+{{< note title="Note" >}}
+To determine if this is a primary cluster, look for the `source` role as in the example above. Roles for the standby side can vary depending on if a switchover is happening, and are subject to change in future releases.
+{{< /note >}}
