@@ -243,6 +243,8 @@ void PggateTest::BeginDDLTransaction() {
 
 void PggateTest::CommitDDLTransaction() {
   CHECK_YBC_STATUS(YBCPgExitSeparateDdlTxnMode(0 /* db_oid */, false /* is_silent_altering */));
+  // Next reads from catalog tables have to see changes made by the DDL transaction.
+  YBCPgResetCatalogReadTime();
 }
 
 void PggateTest::BeginTransaction() {

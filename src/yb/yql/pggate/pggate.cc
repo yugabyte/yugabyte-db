@@ -2072,10 +2072,7 @@ bool PgApiImpl::HasWriteOperationsInDdlTxnMode() const {
 Status PgApiImpl::ExitSeparateDdlTxnMode(PgOid db_oid, bool is_silent_modification) {
   // Flush all buffered operations as ddl txn use its own transaction session.
   RETURN_NOT_OK(pg_session_->FlushBufferedOperations(PgFlushDebugContext::ExitDdlTxnMode()));
-  RETURN_NOT_OK(pg_txn_manager_->ExitSeparateDdlTxnModeWithCommit(db_oid, is_silent_modification));
-  // Next reads from catalog tables have to see changes made by the DDL transaction.
-  ResetCatalogReadTime();
-  return Status::OK();
+  return pg_txn_manager_->ExitSeparateDdlTxnModeWithCommit(db_oid, is_silent_modification);
 }
 
 Status PgApiImpl::ClearSeparateDdlTxnMode() {
