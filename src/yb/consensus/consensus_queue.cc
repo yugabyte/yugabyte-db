@@ -78,7 +78,7 @@ DECLARE_uint64(rpc_max_message_size);
 
 DECLARE_uint64(consensus_max_batch_size_bytes);
 
-DEFINE_UNKNOWN_int32(follower_unavailable_considered_failed_sec, 900,
+DEFINE_RUNTIME_int32(follower_unavailable_considered_failed_sec, 900,
              "Seconds that a leader is unable to successfully heartbeat to a "
              "follower after which the follower is considered to be failed and "
              "evicted from the config.");
