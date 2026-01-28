@@ -85,7 +85,7 @@ A failed incremental backup, which you can delete, is reported similarly to any 
 
 ## Configure backup performance parameters
 
-If you are using v2.16 or later to manage universes with YugabyteDB v2.16 or later, you can manage the speed of backup and restore operations by configuring resource throttling.
+If you are using v2.16 or later to manage universes with YugabyteDB v2.16 or later, you can manage the speed of backup and restore operations by configuring resource throttling and disk usage throttling.
 
 To configure throttle parameters:
 
@@ -95,7 +95,14 @@ To configure throttle parameters:
 
     ![Throttle](/images/yp/backup-restore-throttle.png)
 
-1. For faster backups and restores, enter higher values. For lower impact on database performance, enter lower values.
+1. Set resource throttle and, if needed, disk throttle parameters. For faster backups and restores, enter higher values. For lower impact on database performance, enter lower values. Choose values that balance backup and restore speed with impact on production. Too high a value can consume disk IO that the database needs; too low a value can make backups and restores run longer. This is especially important when using incremental backups.
+
+    {{<note title = "Disk-based throttling in YB Controller">}}
+
+Disk-based throttling is {{<tags/feature/ea idea="1372">}}. You can rate-limit disk usage by YB Controller during backup upload and restore download so that backup and restore operations do not consume too much disk IOPS.
+
+If disk usage parameters are set to 0 (default), YBC uses as much disk as it can (no disk-based throttling). The minimum value for each parameter is 1 MB/s.
+    {{</note>}}
 
 1. Click **Save**.
 
