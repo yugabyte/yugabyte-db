@@ -62,7 +62,7 @@ CREATE TABLE te (
 );
 ```
 
-Create an index which always writes to my 3 nodes:
+Create an index which always writes to the 3 nodes:
 
 ```sql
 CREATE INDEX yb_nothotspot
@@ -150,7 +150,7 @@ The SQL is asking for 1000 globally ordered rows, and YugabyteDB can again retur
 
 This also works perfectly for more complex OLTP top-n queries, such as keyset pagination.
 
-Create a more complicated Index and an extra predicate:
+Create a more complicated index and an extra predicate:
 
 ```sql
 ALTER TABLE te ADD COLUMN key_id integer NOT NULL DEFAULT 123;
