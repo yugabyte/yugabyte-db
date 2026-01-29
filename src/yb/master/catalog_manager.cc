@@ -2851,7 +2851,8 @@ Status CatalogManager::CompactSysCatalog(
 namespace {
 
 Result<std::array<PartitionPB, kNumSplitParts>> CreateNewTabletsPartition(
-    const TabletInfo& tablet_info, const std::string& split_partition_key) {
+    const TabletInfo& tablet_info, const std::string& split_partition_key,
+    const PartitionSchema& partition_schema) {
   // Making a copy of PartitionPB to avoid holding a lock.
   const auto source_partition = tablet_info.LockForRead()->pb.partition();
 
@@ -2874,7 +2875,12 @@ Result<std::array<PartitionPB, kNumSplitParts>> CreateNewTabletsPartition(
 
   new_tablets_partition[0].set_partition_key_end(split_partition_key);
   new_tablets_partition[1].set_partition_key_start(split_partition_key);
+
   static_assert(kNumSplitParts == 2, "We expect tablet to be split into 2 new tablets here");
+  for (const auto& partition : new_tablets_partition) {
+    RETURN_NOT_OK(partition_schema.CheckPartitionBounds(
+        partition.partition_key_start(), partition.partition_key_end()));
+  }
 
   return new_tablets_partition;
 }
@@ -3200,6 +3206,7 @@ class SplitScope {
 
 } // namespace
 
+// TODO(tsplit): remove split_encoded_keys, https://github.com/yugabyte/yugabyte-db/issues/30092.
 Status CatalogManager::DoSplitTablet(
     const TabletInfoPtr& source_tablet_info, std::string split_encoded_key,
     std::string split_partition_key, const ManualSplit is_manual_split, const LeaderEpoch& epoch) {
@@ -3286,9 +3293,15 @@ Status CatalogManager::DoSplitTablet(
       LOG(INFO) << "Starting tablet split for tablet " << source_tablet_info->ToString()
                 << " by partition key: " << Slice(split_partition_key).ToDebugHexString();
 
+      // Get partition schema.
+      auto schema = VERIFY_RESULT(scope.source_table()->GetSchema());
+      PartitionSchema partition_schema;
+      RETURN_NOT_OK(PartitionSchema::FromPB(
+          scope.source_table_lock()->pb.partition_schema(), schema, &partition_schema));
+
       // Get partitions for the split children.
       std::array<PartitionPB, kNumSplitParts> tablet_partitions = VERIFY_RESULT(
-          CreateNewTabletsPartition(*source_tablet_info, split_partition_key));
+          CreateNewTabletsPartition(*source_tablet_info, split_partition_key, partition_schema));
 
       // Create in-memory (uncommitted) tablets for new split children.
       for (size_t i = 0; i < kNumSplitParts; ++i) {
