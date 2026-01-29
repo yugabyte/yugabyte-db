@@ -488,4 +488,15 @@ std::vector<std::string> DumpDocDBToStrings(
 
 void DisableFlushOnShutdown(MiniCluster& cluster, bool disable);
 
+// Helper to check if a row exists in a tablet using tserver proxy directly
+// This allows reading from a specific tablet peer (which may not be the leader)
+// Assumes the table is a PGSQL table
+Result<bool> RowExistsInTablet(MiniCluster* cluster,
+                               client::YBClient* client,
+                               const TableId& table_id,
+                               const TabletId& tablet_id,
+                               int32_t key,
+                               size_t tserver_idx,
+                               const MonoDelta& timeout = 30s);
+
 }  // namespace yb
