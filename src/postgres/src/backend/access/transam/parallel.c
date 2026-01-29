@@ -1534,6 +1534,8 @@ ParallelWorkerMain(Datum main_arg)
 	tsnapshot = tsnapspace ? RestoreSnapshot(tsnapspace) : asnapshot;
 	RestoreTransactionSnapshot(tsnapshot,
 							   fps->parallel_leader_pgproc);
+	if (IsYugaByteEnabled())
+		YBCPgEnsureReadPoint();
 	PushActiveSnapshot(asnapshot);
 
 	/*
