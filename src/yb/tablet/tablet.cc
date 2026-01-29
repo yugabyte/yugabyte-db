@@ -4740,31 +4740,40 @@ Result<std::string> Tablet::GetEncodedMiddleSplitKey(std::string *partition_spli
         "$0: got \"$1\".", error_prefix(), middle_key_slice.ToDebugHexString());
   }
 
-  // Check middle_key fits tablet's partition bounds
-  const Slice partition_start(metadata()->partition()->partition_key_start());
-  const Slice partition_end(metadata()->partition()->partition_key_end());
-  std::string middle_hash_key;
-  if (metadata()->partition_schema()->IsHashPartitioning()) {
-    const auto doc_key_hash = VERIFY_RESULT(dockv::DecodeDocKeyHash(middle_key));
-    if (doc_key_hash.has_value()) {
-      middle_hash_key = dockv::PartitionSchema::EncodeMultiColumnHashValue(doc_key_hash.value());
-      if (partition_split_key) {
-        *partition_split_key = middle_hash_key;
+  // Check middle_key is strictly between tablet's partition bounds.
+  const auto& partition_start = metadata()->partition()->partition_key_start();
+  const auto& partition_end   = metadata()->partition()->partition_key_end();
+  if (metadata()->partition_schema()->IsRangePartitioning()) {
+    // No extra conversion is required for the range partitioning.
+    if (partition_start < middle_key && (partition_end.empty() || middle_key < partition_end)) {
+      return middle_key;
+    }
+  } else {
+    // Sanity check.
+    CHECK(metadata()->partition_schema()->IsHashPartitioning());
+
+    // It is required to compare hash codes for the hash paritioning.
+    const auto key_hash = VERIFY_RESULT(dockv::DecodeDocKeyHash(middle_key));
+    if (key_hash.has_value()) {
+      const auto key_hash_code = *key_hash;
+      const auto hash_bounds = VERIFY_RESULT_PREPEND_FUNC(
+          metadata()->partition()->GetKeysAsHashBoundsInclusive());
+      // It is allowed for the middle key to match the inclusive upper bound.
+      if (hash_bounds.first < key_hash_code && key_hash_code <= hash_bounds.second) {
+        if (partition_split_key) {
+          *partition_split_key = dockv::PartitionSchema::EncodeMultiColumnHashValue(key_hash_code);
+        }
+        return middle_key;
       }
     }
   }
-  const Slice partition_middle_key(middle_hash_key.size() ? middle_hash_key : middle_key);
-  if (partition_middle_key.compare(partition_start) <= 0 ||
-      (!partition_end.empty() && partition_middle_key.compare(partition_end) >= 0)) {
-    // This error occurs when middle key is not strictly between partition bounds.
-    return STATUS_EC_FORMAT(IllegalState,
-        tserver::TabletServerError(tserver::TabletServerErrorPB::TABLET_SPLIT_KEY_RANGE_TOO_SMALL),
-        "$0 with partition bounds (\"$1\" - \"$2\"): got \"$3\".",
-        error_prefix(), partition_start.ToDebugHexString(), partition_end.ToDebugHexString(),
-        middle_key_slice.ToDebugHexString());
-  }
 
-  return middle_key;
+  // This error occurs when middle key is not strictly between partition bounds.
+  return STATUS_EC_FORMAT(IllegalState,
+      tserver::TabletServerError(tserver::TabletServerErrorPB::TABLET_SPLIT_KEY_RANGE_TOO_SMALL),
+      "$0 with partition bounds [\"$1\" - \"$2\"): got \"$3\"",
+      error_prefix(), Slice{partition_start}.ToDebugHexString(),
+      Slice{partition_end}.ToDebugHexString(), middle_key_slice.ToDebugHexString());
 }
 
 bool Tablet::HasActiveFullCompaction() {

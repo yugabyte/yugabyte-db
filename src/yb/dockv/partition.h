@@ -67,7 +67,6 @@ YB_DEFINE_ENUM(YBHashSchema,
 // start and end primary keys, and predicates.
 class Partition {
  public:
-
   const std::vector<int32_t>& hash_buckets() const {
     return hash_buckets_;
   }
@@ -127,6 +126,14 @@ class Partition {
   bool ContainsPartitionStrict(const T& other) const {
     return ContainsPartition(other) && !BoundsEqualToPartition(other);
   }
+
+  // Returns partition key start decoded as hash left bound.
+  // It is the caller's responsibility to make sure the partition is a hash partition.
+  uint16_t GetKeyStartAsHashCode() const;
+
+  // Returns partition keys decoded as inclusive min and max hash code for the partition.
+  // It is the caller's responsibility to make sure the partition is a hash partition.
+  Result<std::pair<uint16_t, uint16_t>> GetKeysAsHashBoundsInclusive() const;
 
   std::string ToString() const;
 
@@ -263,6 +270,9 @@ class PartitionSchema {
     return range_schema_.column_ids.size() > 0;
   }
 
+  // Checks if [partition_key_start, partition_key_end) form a valid range.
+  Status CheckPartitionBounds(Slice partition_key_start, Slice partition_key_end) const;
+
   // Encodes the given uint16 value into a 2 byte string.
   static std::string EncodeMultiColumnHashValue(uint16_t hash_value);
 
@@ -270,16 +280,27 @@ class PartitionSchema {
   static uint16_t DecodeMultiColumnHashValue(Slice partition_key);
 
   // Decode the given partition inclusive left bound to a 2-byte inclusive left bound integer.
-  static uint16_t DecodeMultiColumnHashLeftBound(Slice partition_key);
+  static uint16_t DecodePartitionKeyStartAsHashLeftBoundInclusive(Slice partition_key);
 
   // Decode the given partition exclusive right bound to a 2-byte inclusive right bound integer.
-  static uint16_t DecodeMultiColumnHashRightBound(Slice partition_key);
+  static Result<uint16_t> DecodePartitionKeyEndAsHashRightBoundInclusive(Slice partition_key);
 
-  // Does [partition_key_start, partition_key_end] form a valid range.
-  static Status IsValidHashPartitionRange(const Slice partition_key_start,
-                                          const Slice partition_key_end);
+  // Returns partition keys as inclusive min and max hash code for the partition.
+  static Result<std::pair<uint16_t, uint16_t>> DecodePartitionKeysAsHashBoundsInclusive(
+      Slice partition_key_start, Slice partition_key_end);
 
-  static bool IsValidHashPartitionKeyBound(const Slice partition_key);
+  // Returns partition's keys as inclusive min and max hash code for the partition.
+  static Result<std::pair<uint16_t, uint16_t>> DecodePartitionAsHashBoundsInclusive(
+      const Partition& partition);
+
+  // Returns true if partition_key is a valid hash partition.
+  static bool IsValidHashPartitionKeyBound(Slice partition_key);
+
+  // Checks if partition_key is a valid hash partition.
+  static Status CheckHashPartitionKeyBound(Slice partition_key);
+
+  // Checks if [partition_key_start, partition_key_end) form a valid range.
+  static Status CheckHashPartitionBounds(Slice partition_key_start, Slice partition_key_end);
 
   // Returns the lexicographically ordered middle key between two key bounds.
   static Result<std::string> GetLexicographicMiddleKey(
@@ -316,9 +337,6 @@ class PartitionSchema {
   Result<std::string> GetEncodedPartitionKey(const std::string& partition_key) const;
   static Result<std::string> GetEncodedPartitionKey(
     const std::string& partition_key, const PartitionSchemaPB& partition_schema);
-
-  // Returns inclusive min and max hash code for the partition.
-  static std::pair<uint16_t, uint16_t> GetHashPartitionBounds(const Partition& partition);
 
   // YugaByte partition creation
   // Creates the set of table partitions using multi column hash schema. In this schema, we divide
@@ -384,7 +402,7 @@ class PartitionSchema {
   // with no bucketing components, etc.
   bool IsSimplePKRangePartitioning(const Schema& schema) const;
 
-  // Returns two hash-partitions covering the range of the passed in hash-partiion, or
+  // Returns two hash-partitions covering the range of the passed in hash-partition, or
   // std::nullopt if the passed in partition covers only one value.
   // This does not attempt to split partition evenly based on tablet data, and is only suitable
   // for tablets of the transaction status table, which have no data.
@@ -416,7 +434,7 @@ class PartitionSchema {
     }
   };
 
-  // Convertion between PB and partition schema.
+  // Conversion between PB and partition schema.
   static Status KuduFromPB(const PartitionSchemaPB& pb,
                            const Schema& schema,
                            PartitionSchema* partition_schema);

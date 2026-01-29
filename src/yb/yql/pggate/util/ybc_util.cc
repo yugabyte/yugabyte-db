@@ -902,12 +902,13 @@ void YBCUpdateInitPostgresMetrics() {
 
 uint16_t YBCDecodeMultiColumnHashLeftBound(const char* partition_key, size_t key_len) {
   yb::Slice slice(partition_key, key_len);
-  return dockv::PartitionSchema::DecodeMultiColumnHashLeftBound(slice);
+  return dockv::PartitionSchema::DecodePartitionKeyStartAsHashLeftBoundInclusive(slice);
 }
 
 uint16_t YBCDecodeMultiColumnHashRightBound(const char* partition_key, size_t key_len) {
   yb::Slice slice(partition_key, key_len);
-  return dockv::PartitionSchema::DecodeMultiColumnHashRightBound(slice);
+  return CHECK_RESULT(
+      dockv::PartitionSchema::DecodePartitionKeyEndAsHashRightBoundInclusive(slice));
 }
 
 bool
