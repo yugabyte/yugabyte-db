@@ -200,6 +200,7 @@ typedef struct SerializedSnapshotData
 	CommandId	curcid;
 	TimestampTz whenTaken;
 	XLogRecPtr	lsn;
+	YbOptionalReadPointHandle yb_read_point_handle;
 } SerializedSnapshotData;
 
 Size
@@ -2361,6 +2362,7 @@ SerializeSnapshot(Snapshot snapshot, char *start_address)
 	serialized_snapshot.curcid = snapshot->curcid;
 	serialized_snapshot.whenTaken = snapshot->whenTaken;
 	serialized_snapshot.lsn = snapshot->lsn;
+	serialized_snapshot.yb_read_point_handle = snapshot->yb_read_point_handle;
 
 	/*
 	 * Ignore the SubXID array if it has overflowed, unless the snapshot was
@@ -2436,7 +2438,7 @@ RestoreSnapshot(char *start_address)
 	snapshot->whenTaken = serialized_snapshot.whenTaken;
 	snapshot->lsn = serialized_snapshot.lsn;
 	snapshot->snapXactCompletionCount = 0;
-	snapshot->yb_read_point_handle = YbBuildCurrentReadPointHandle();
+	snapshot->yb_read_point_handle = serialized_snapshot.yb_read_point_handle;
 
 	/* Copy XIDs, if present. */
 	if (serialized_snapshot.xcnt > 0)

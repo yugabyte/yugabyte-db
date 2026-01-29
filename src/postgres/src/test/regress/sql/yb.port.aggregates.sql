@@ -1094,6 +1094,7 @@ SET min_parallel_table_scan_size = 0;
 SET max_parallel_workers_per_gather = 4;
 SET parallel_leader_participation = off;
 SET enable_indexonlyscan = off;
+SET yb_enable_parallel_append = on;
 
 -- YB: the plan differs because parallelism is not supported in non-colocated DBs
 -- variance(int4) covers numeric_poly_combine

@@ -2535,6 +2535,7 @@ SET min_parallel_table_scan_size = 0;
 SET max_parallel_workers_per_gather = 4;
 SET parallel_leader_participation = off;
 SET enable_indexonlyscan = off;
+SET yb_enable_parallel_append = on;
 -- YB: the plan differs because parallelism is not supported in non-colocated DBs
 -- variance(int4) covers numeric_poly_combine
 -- sum(int8) covers int8_avg_combine
@@ -2545,20 +2546,25 @@ FROM (SELECT * FROM tenk1
       UNION ALL SELECT * FROM tenk1
       UNION ALL SELECT * FROM tenk1
       UNION ALL SELECT * FROM tenk1) u;
-                                                                    QUERY PLAN                                                                     
----------------------------------------------------------------------------------------------------------------------------------------------------
- Aggregate
+                                                                                      QUERY PLAN                                                                                       
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Finalize Aggregate
    Output: variance(tenk1.unique1), sum((tenk1.unique1)::bigint), regr_count((tenk1.unique1)::double precision, (tenk1.unique1)::double precision)
-   ->  Append
-         ->  Seq Scan on public.tenk1
-               Output: tenk1.unique1
-         ->  Seq Scan on public.tenk1 tenk1_1
-               Output: tenk1_1.unique1
-         ->  Seq Scan on public.tenk1 tenk1_2
-               Output: tenk1_2.unique1
-         ->  Seq Scan on public.tenk1 tenk1_3
-               Output: tenk1_3.unique1
-(11 rows)
+   ->  Gather
+         Output: (PARTIAL variance(tenk1.unique1)), (PARTIAL sum((tenk1.unique1)::bigint)), (PARTIAL regr_count((tenk1.unique1)::double precision, (tenk1.unique1)::double precision))
+         Workers Planned: 3
+         ->  Partial Aggregate
+               Output: PARTIAL variance(tenk1.unique1), PARTIAL sum((tenk1.unique1)::bigint), PARTIAL regr_count((tenk1.unique1)::double precision, (tenk1.unique1)::double precision)
+               ->  Parallel Append
+                     ->  Seq Scan on public.tenk1
+                           Output: tenk1.unique1
+                     ->  Seq Scan on public.tenk1 tenk1_1
+                           Output: tenk1_1.unique1
+                     ->  Seq Scan on public.tenk1 tenk1_2
+                           Output: tenk1_2.unique1
+                     ->  Seq Scan on public.tenk1 tenk1_3
+                           Output: tenk1_3.unique1
+(16 rows)
 
 SELECT variance(unique1::int4), sum(unique1::int8), regr_count(unique1::float8, unique1::float8)
 FROM (SELECT * FROM tenk1
@@ -2579,20 +2585,25 @@ FROM (SELECT * FROM tenk1
       UNION ALL SELECT * FROM tenk1
       UNION ALL SELECT * FROM tenk1
       UNION ALL SELECT * FROM tenk1) u;
-                                 QUERY PLAN                                 
-----------------------------------------------------------------------------
- Aggregate
+                                               QUERY PLAN                                               
+--------------------------------------------------------------------------------------------------------
+ Finalize Aggregate
    Output: variance((tenk1.unique1)::bigint), avg((tenk1.unique1)::numeric)
-   ->  Append
-         ->  Seq Scan on public.tenk1
-               Output: tenk1.unique1
-         ->  Seq Scan on public.tenk1 tenk1_1
-               Output: tenk1_1.unique1
-         ->  Seq Scan on public.tenk1 tenk1_2
-               Output: tenk1_2.unique1
-         ->  Seq Scan on public.tenk1 tenk1_3
-               Output: tenk1_3.unique1
-(11 rows)
+   ->  Gather
+         Output: (PARTIAL variance((tenk1.unique1)::bigint)), (PARTIAL avg((tenk1.unique1)::numeric))
+         Workers Planned: 3
+         ->  Partial Aggregate
+               Output: PARTIAL variance((tenk1.unique1)::bigint), PARTIAL avg((tenk1.unique1)::numeric)
+               ->  Parallel Append
+                     ->  Seq Scan on public.tenk1
+                           Output: tenk1.unique1
+                     ->  Seq Scan on public.tenk1 tenk1_1
+                           Output: tenk1_1.unique1
+                     ->  Seq Scan on public.tenk1 tenk1_2
+                           Output: tenk1_2.unique1
+                     ->  Seq Scan on public.tenk1 tenk1_3
+                           Output: tenk1_3.unique1
+(16 rows)
 
 SELECT variance(unique1::int8), avg(unique1::numeric)
 FROM (SELECT * FROM tenk1
