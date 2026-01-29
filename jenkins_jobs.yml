@@ -20,13 +20,14 @@ jobs:
   - os: alma8
     compiler: clang21
     build_type: release
-    build_opts: YB_LINKING_TYPE=full-lto
+    build_opts: YB_LINKING_TYPE=full-lto YB_PGO_BOLT=1
     release_artifact: true
 
   - os: alma8
     compiler: clang21
     build_type: release
     architecture: aarch64
+    build_opts: YB_LINKING_TYPE=full-lto YB_PGO_BOLT=1
     release_artifact: true
 
   - os: mac14
