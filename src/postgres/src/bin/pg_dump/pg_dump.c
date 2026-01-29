@@ -920,10 +920,6 @@ main(int argc, char **argv)
 
 	fout->numWorkers = numWorkers;
 
-	/* YB */
-	if (dopt.cparams.pghost == NULL || dopt.cparams.pghost[0] == '\0')
-		dopt.cparams.pghost = DefaultHost;
-
 	/*
 	 * Open the database using the Archiver, so it knows about it. Errors mean
 	 * death.
