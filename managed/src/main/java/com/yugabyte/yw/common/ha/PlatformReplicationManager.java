@@ -268,12 +268,23 @@ public class PlatformReplicationManager {
     // Demote the local instance to follower.
     localInstance.demote();
 
-    // Set the leader locally.
-    PlatformInstance.getByAddress(requestLeaderAddr)
-        .ifPresent(
+    // Set the existing leader to follower to avoid uniqueness violation.
+    config.getInstances().stream()
+        .sorted(Comparator.comparing(PlatformInstance::getIsLeader).reversed())
+        .forEach(
             i -> {
-              i.setIsLeader(true);
-              i.update();
+              boolean isNewLeader = i.getAddress().equals(requestLeaderAddr);
+              if (i.getIsLeader() ^ isNewLeader) {
+                // Update only when there is a difference.
+                log.debug(
+                    "Updating instance {}(uuid={},  isLeader={}) to isLeader={}",
+                    i.getAddress(),
+                    i.getUuid(),
+                    i.getIsLeader(),
+                    isNewLeader);
+                i.setIsLeader(isNewLeader);
+                i.update();
+              }
             });
     // Any failure inside the condition rollbacks the DB updates.
     // This conditional check is just for optimization the prometheus mode switch.
@@ -581,6 +592,14 @@ public class PlatformReplicationManager {
                               "Exception {} syncing config to remote instance {}",
                               e.getMessage(),
                               instance.getAddress());
+                        }
+                      });
+                  remoteInstances.forEach(
+                      instance -> {
+                        try {
+                          replicationHelper.syncToRemoteInstance(instance);
+                        } catch (Exception e) {
+                          log.warn("Error in final sync to instance {}", instance.getAddress(), e);
                         }
                       });
                   // Export metric on last backup.
