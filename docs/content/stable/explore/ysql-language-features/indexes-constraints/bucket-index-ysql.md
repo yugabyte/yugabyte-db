@@ -104,16 +104,16 @@ FROM generate_series(0, 9999999) AS gs;
 
 ### Configure bucket indexing
 
-Enable features that preserve global ordering across the buckets by activating planner optimisations:
+Enable features that preserve global ordering across the buckets by setting the configuration parameters:
 
 ```sql
-analyze;
-set yb_max_saop_merge_streams=64;
-set yb_enable_derived_saops=true;
-set yb_enable_cbo=on;
-Alter database yugabyte set yb_max_saop_merge_streams=64;
-Alter database yugabyte set yb_enable_derived_saops=true;
-Alter database yugabyte set yb_enable_cbo=on;
+ANALYZE;
+SET yb_max_saop_merge_streams=64;
+SET yb_enable_derived_saops=true;
+SET yb_enable_cbo=on;
+ALTER DATABASE yugabyte SET yb_max_saop_merge_streams=64;
+ALTER DATABASE yugabyte SET yb_enable_derived_saops=true;
+ALTER DATABASE yugabyte SET yb_enable_cbo=on;
 ```
 
 Observe planner changes that provide global ordering with no SQL or application changes:
