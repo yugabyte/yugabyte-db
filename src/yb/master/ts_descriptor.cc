@@ -139,6 +139,9 @@ Result<TSDescriptor::WriteLock> TSDescriptor::UpdateRegistration(
   // After re-registering, make the TS re-report its tablets.
   has_tablet_report_ = false;
   l.mutable_data()->pb.set_instance_seqno(instance.instance_seqno());
+  if (instance.has_start_time_us()) {
+    l.mutable_data()->pb.set_start_time_us(instance.start_time_us());
+  }
   *l.mutable_data()->pb.mutable_registration() = registration.common();
   *l.mutable_data()->pb.mutable_resources() = registration.resources();
   if (registration.has_version_info()) {
@@ -215,6 +218,11 @@ MonoTime TSDescriptor::LastHeartbeatTime() const {
 
 int64_t TSDescriptor::latest_seqno() const {
   return LockForRead()->pb.instance_seqno();
+}
+
+uint64_t TSDescriptor::start_time_us() const {
+  auto l = LockForRead();
+  return l->pb.has_start_time_us() ? l->pb.start_time_us() : 0;
 }
 
 int32_t TSDescriptor::latest_report_seqno() const {

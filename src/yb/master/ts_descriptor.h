@@ -161,6 +161,7 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
 
   int64_t latest_seqno() const;
   int32_t latest_report_seqno() const;
+  uint64_t start_time_us() const;
 
   bool has_tablet_report() const;
   void set_has_tablet_report(bool has_report);
