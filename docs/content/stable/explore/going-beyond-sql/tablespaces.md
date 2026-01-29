@@ -358,7 +358,7 @@ CREATE TABLESPACE us_east_1_with_rr_tablespace WITH (
 }', read_replica_placement='[
   {
     "num_replicas": 2,
-    "placement_uuid": "read_replica",
+    "placement_uuid": "9d8f5715-2e7c-4e64-8e34-35f510c12e66",
     "placement_blocks": [
       {
         "cloud": "aws",
@@ -374,6 +374,8 @@ CREATE TABLESPACE us_east_1_with_rr_tablespace WITH (
 CREATE TABLE single_zone_table_with_read_replica (id INTEGER, field text)
   TABLESPACE us_east_1_with_rr_tablespace;
 ```
+
+`9d8f5715-2e7c-4e64-8e34-35f510c12e66` is an example of a possible read replica placement uuid, you will need to match this with the read replica placement uuid for your cluster.
 
 You can also use the [wildcard](#use-wildcards-for-zones) `*` when specifying placement in read replicas.
 
