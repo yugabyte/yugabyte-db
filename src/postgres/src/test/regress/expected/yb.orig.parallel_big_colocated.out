@@ -174,4 +174,48 @@ SELECT pc_id, pc_address, pc_phone, pc_email FROM pcustomer WHERE pc_id > 24 and
     41 | 1316 Unknown Str., Some Random City, XX, 33248 | (141)155-5362 | customer41@example.com
 (17 rows)
 
+-- parallel scan by secondary index
+EXPLAIN (costs off)
+/*+ Parallel(pcustomer 2 hard) */
+SELECT pc_id, pc_address, pc_phone, pc_email FROM pcustomer WHERE pc_phone like '(408)101-%';
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
+ Gather
+   Workers Planned: 2
+   ->  Parallel Index Scan using pcustomer_pc_phone_idx on pcustomer
+         Index Cond: ((pc_phone >= '(408)101-'::text) AND (pc_phone < '(408)101.'::text))
+         Storage Index Filter: (pc_phone ~~ '(408)101-%'::text)
+(5 rows)
+
+/*+ Parallel(pcustomer 2 hard) */
+SELECT pc_id, pc_address, pc_phone, pc_email FROM pcustomer WHERE pc_phone like '(408)101-%';
+ pc_id  |                    pc_address                    |   pc_phone    |          pc_email          
+--------+--------------------------------------------------+---------------+----------------------------
+ 212576 | 426386 Unknown Str., Some Random City, XX, 42644 | (408)101-1921 | customer212576@example.com
+ 331877 | 664988 Unknown Str., Some Random City, XX, 13079 | (408)101-4235 | customer331877@example.com
+ 451178 | 903590 Unknown Str., Some Random City, XX, 73505 | (408)101-6549 | customer451178@example.com
+  93275 | 187784 Unknown Str., Some Random City, XX, 72209 | (408)101-8606 | customer93275@example.com
+(4 rows)
+
+EXPLAIN (costs off)
+/*+ Parallel(pcustomer 2 hard) */
+SELECT pc_id, pc_address, pc_phone, pc_email FROM pcustomer WHERE pc_phone IN ('(125)139-5346', '(128)142-5349', '(142)156-5363', '(129)143-5350');
+                                                 QUERY PLAN                                                 
+------------------------------------------------------------------------------------------------------------
+ Gather
+   Workers Planned: 2
+   ->  Parallel Index Scan using pcustomer_pc_phone_idx on pcustomer
+         Index Cond: (pc_phone = ANY ('{(125)139-5346,(128)142-5349,(142)156-5363,(129)143-5350}'::text[]))
+(4 rows)
+
+/*+ Parallel(pcustomer 2 hard) */
+SELECT pc_id, pc_address, pc_phone, pc_email FROM pcustomer WHERE pc_phone IN ('(125)139-5346', '(128)142-5349', '(142)156-5363', '(129)143-5350');
+ pc_id |                   pc_address                   |   pc_phone    |        pc_email        
+-------+------------------------------------------------+---------------+------------------------
+    25 | 1284 Unknown Str., Some Random City, XX, 24176 | (125)139-5346 | customer25@example.com
+    28 | 1290 Unknown Str., Some Random City, XX, 25877 | (128)142-5349 | customer28@example.com
+    29 | 1292 Unknown Str., Some Random City, XX, 26444 | (129)143-5350 | customer29@example.com
+    42 | 1318 Unknown Str., Some Random City, XX, 33815 | (142)156-5363 | customer42@example.com
+(4 rows)
+
 DROP TABLE pcustomer;

@@ -199,6 +199,8 @@ class PgDmlRead : public PgDml {
   // Required to prevent structures related to request from being freed.
   PgDocOp::SharedPtr original_doc_op_;
 
+  bool primary_binds_processed_ = false;
+
   MergeSortKeysPtr merge_sort_keys_;
 };
 

@@ -63,5 +63,18 @@ SELECT pc_id, pc_address, pc_phone, pc_email FROM pcustomer WHERE pc_id > 24 and
 /*+ Parallel(pcustomer 2 hard) */
 SELECT pc_id, pc_address, pc_phone, pc_email FROM pcustomer WHERE pc_id > 24 and pc_id < 42 order by pc_id;
 
+-- parallel scan by secondary index
+EXPLAIN (costs off)
+/*+ Parallel(pcustomer 2 hard) */
+SELECT pc_id, pc_address, pc_phone, pc_email FROM pcustomer WHERE pc_phone like '(408)101-%';
+/*+ Parallel(pcustomer 2 hard) */
+SELECT pc_id, pc_address, pc_phone, pc_email FROM pcustomer WHERE pc_phone like '(408)101-%';
+
+EXPLAIN (costs off)
+/*+ Parallel(pcustomer 2 hard) */
+SELECT pc_id, pc_address, pc_phone, pc_email FROM pcustomer WHERE pc_phone IN ('(125)139-5346', '(128)142-5349', '(142)156-5363', '(129)143-5350');
+/*+ Parallel(pcustomer 2 hard) */
+SELECT pc_id, pc_address, pc_phone, pc_email FROM pcustomer WHERE pc_phone IN ('(125)139-5346', '(128)142-5349', '(142)156-5363', '(129)143-5350');
+
 DROP TABLE pcustomer;
 

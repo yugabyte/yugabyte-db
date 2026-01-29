@@ -475,8 +475,9 @@ Status PgDmlRead::Exec(const YbcPgExecParameters* exec_params) {
 
   if (doc_op_ && !ybctid_provider() && IsAllPrimaryKeysBound()) {
     RETURN_NOT_OK(SubstitutePrimaryBindsWithYbctids());
-  } else {
+  } else if (!primary_binds_processed_) {
     RETURN_NOT_OK(ProcessEmptyPrimaryBinds());
+    primary_binds_processed_ = true;
   }
 
   if (!doc_op_) {
