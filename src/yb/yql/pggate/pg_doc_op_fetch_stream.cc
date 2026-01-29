@@ -99,11 +99,7 @@ PgTuple PgDocResult::MakePgTuple() {
   memset(isnulls_, true, nattrs_ * sizeof(bool));
   memset(&syscols_, 0, sizeof(YbcPgSysColumns));
   YBCSwitchMemoryContext(save);
-#ifdef PGTUPLE_DEBUG
-  return PgTuple(nattrs_, datums_, isnulls_, &syscols_);
-#else
-  return PgTuple(datums_, isnulls_, &syscols_);
-#endif
+  return PgTuple(datums_, isnulls_, &syscols_, nattrs_);
 }
 
 PgDocResult::PgMemoryContextWrapper::~PgMemoryContextWrapper() {
