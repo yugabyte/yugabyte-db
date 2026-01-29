@@ -888,7 +888,7 @@ ReplicationSlotDrop(const char *name, bool nowait, bool yb_force, bool yb_if_exi
 			if (yb_replication_slot->active)
 				ereport(ERROR,
 						(errcode(ERRCODE_OBJECT_IN_USE),
-						errmsg("replication slot \"%s\" is active", name)));
+						 errmsg("replication slot \"%s\" is active", name)));
 		}
 
 		YBCDropReplicationSlot(name, yb_if_exists);
