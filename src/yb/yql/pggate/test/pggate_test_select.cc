@@ -1346,7 +1346,7 @@ TEST_F_EX(PggateTestSelect, TestGetYbSystemTableInfo, PggateTestSelectWithYbSyst
   auto database_name = "yb_system";
   auto table_name = "abcd";
 
-  sleep(10);  // Wait for master to create yb_system database.
+  sleep(NonTsanVsTsan(10, 30));  // Wait for master to create yb_system database.
 
   auto conn = ASSERT_RESULT(PgConnect(database_name));
 
