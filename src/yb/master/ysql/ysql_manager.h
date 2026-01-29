@@ -158,9 +158,9 @@ class YsqlManager : public YsqlManagerIf {
 
   bool advisory_locks_table_created_ = false;
 
-  bool yb_system_db_created_ = false;
-  bool creating_listen_notify_objects_ = false;
-  bool created_listen_notify_objects_ = false;
+  std::atomic<bool> yb_system_db_created_ = {false};
+  std::atomic<bool> creating_listen_notify_objects_ = {false};
+  std::atomic<bool> created_listen_notify_objects_ = {false};
 
   DISALLOW_COPY_AND_ASSIGN(YsqlManager);
 };
