@@ -37,11 +37,11 @@ In short, it achieves the necessary write scalability and global ordering simult
 ## Syntax
 
 ```sql
-CREATE INDEX index_name ON table_name(yb_hash_code("key_columns") % modulo) ASC, column_name asc) 
+CREATE INDEX index_name ON table_name(yb_hash_code("key_columns") % <modulo>) ASC, column_name asc) 
 SPLIT AT VALUES ((1), (2));
 ```
 
-The simplest way to perform modulo sizing is based on your write throughput; in this example, it is 3 because there are 3 nodes, and you want it to write to all 3. If the example had 9 nodes and received high write-throughput, then the recommended modulo would be at least 9.
+The simplest way to perform modulo sizing is based on your write throughput; if you have 3 nodes, you would set a modulo of 3 to have it write to all 3. If you had 9 nodes and received high write-throughput, then the recommended modulo would be at least 9.
 
 For a unique index or primary key, the arguments to `yb_hash_code` must be a subset of the unique index key or primary key columns. If it's a non-unique index, the columns in the `yb_hash_code` don't matter as long as they are deterministic.
 
