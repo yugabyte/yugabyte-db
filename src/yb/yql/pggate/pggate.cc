@@ -1940,6 +1940,11 @@ PgApiImpl::SetTserverCatalogMessageList(
       db_oid, is_breaking_change, new_catalog_version, messages);
 }
 
+Status PgApiImpl::GetYbSystemTableInfo(
+    PgOid namespace_oid, std::string_view table_name, PgOid* oid, PgOid* relfilenode) {
+  return pg_client_.GetYbSystemTableInfo(namespace_oid, table_name, oid, relfilenode);
+}
+
 uint64_t PgApiImpl::GetSharedAuthKey() const {
   return tserver_shared_object_->postgres_auth_key();
 }
