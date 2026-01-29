@@ -1011,7 +1011,8 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
         assertThrows(PlatformServiceException.class, () -> handler.rotateCerts(params, c, u));
 
     assertEquals(
-        "Kubernetes universes supports only SelfSigned or HashicorpVault certificates.",
+        "CustomCertHostPath certificates are not supported for Kubernetes certificate rotation."
+            + " Use CertManager instead.",
         exception.getMessage());
   }
 

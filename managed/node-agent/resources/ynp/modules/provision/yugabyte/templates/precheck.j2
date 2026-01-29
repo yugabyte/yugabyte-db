@@ -7,6 +7,24 @@ else
     add_result "Yugabyte User Existence Check" "FAIL" "User {{ yb_user }} does not exist"
 fi
 
+# Get the actual home directory of the yugabyte user
+# Output looks like yugabyte:x:1001:1001::/home/yugabyte:/bin/bash
+set_yb_home_dir=$(getent passwd {{ yb_user }} | cut -d: -f6 2>&1)
+if [ -z "$set_yb_home_dir" ]; then
+    echo "Could not find home directory for user {{ yb_user }}"
+    add_result "Yugabyte Home Directory Assigned Check" "FAIL" "Could not find home directory for user {{ yb_user }}"
+else
+    normalized_set_yb_home_dir=$(readlink -m "$set_yb_home_dir" 2>&1)
+    normalized_yb_home_dir=$(readlink -m "{{ yb_home_dir }}" 2>&1)
+    if [ "$normalized_set_yb_home_dir" == "$normalized_yb_home_dir" ]; then
+        echo "Yugabyte home directory for user {{ yb_user }} is correctly set to {{ yb_home_dir }}"
+        add_result "Yugabyte Home Directory Assigned Check" "PASS" "Yugabyte home directory for user {{ yb_user }} is correctly set to {{ yb_home_dir }}"
+    else
+        echo "Yugabyte home directory for user {{ yb_user }} is incorrectly set to $set_yb_home_dir"
+        add_result "Yugabyte Home Directory Assigned Check" "FAIL" "Yugabyte home directory for user {{ yb_user }} is set to $set_yb_home_dir instead of {{ yb_home_dir }}"
+    fi
+fi
+
 # Check the correct permissions for yb_home_dir
 if [ -d {{ yb_home_dir }} ]; then
     owner=$(stat -c "%U" "{{ yb_home_dir }}")

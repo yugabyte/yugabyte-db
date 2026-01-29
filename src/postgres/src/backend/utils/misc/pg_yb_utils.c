@@ -2225,6 +2225,8 @@ bool		yb_enable_parallel_scan_hash_sharded = false;
 bool		yb_enable_parallel_scan_range_sharded = false;
 bool		yb_enable_parallel_scan_system = false;
 bool        yb_test_make_all_ddl_statements_incrementing = false;
+bool		yb_always_increment_catalog_version_on_ddl = true;
+bool		yb_enable_negative_catcache_entries = true;
 
 /* DEPRECATED */
 bool		yb_enable_advisory_locks = true;
@@ -3436,7 +3438,9 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 			 bool *requires_autonomous_transaction)
 {
 	bool		is_ddl = true;
-	bool		should_increment_version_by_default = yb_test_make_all_ddl_statements_incrementing;
+	bool		should_increment_version_by_default =
+		yb_test_make_all_ddl_statements_incrementing ||
+		yb_always_increment_catalog_version_on_ddl;
 	bool		is_version_increment = should_increment_version_by_default;
 	bool		is_breaking_change = true;
 	bool		is_altering_existing_data = false;

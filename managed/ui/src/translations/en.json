@@ -333,13 +333,13 @@
         }
       },
       "paUniverseStatus": {
-        "enableTitle": "Enable Perf Advisor",
-        "disableTitle": "Disable Perf Advisor",
-        "enablePaUniverseSuccess": "Successfully enabled Perf Advisor to the universe",
-        "enablePaUniverseFailure": "Failed to enable Perf Advisor to the universe",
-        "disbalePaUniverseSuccess": "Successfully enabled Perf Advisor to the universe",
-        "disablePaUniverseFailure": "Failed to enable Perf Advisor to the universe",
-        "subText": "Are you sure you want to {{action}} Perf Advisor for the universe <strong>{{universeName}}</strong>?"
+        "enableTitle": "Enable Performance Monitoring",
+        "disableTitle": "Disable Performance Monitoring",
+        "enablePaUniverseSuccess": "Successfully enabled  Performance Monitoring to the universe",
+        "enablePaUniverseFailure": "Failed to  Performance Monitoring to the universe",
+        "disbalePaUniverseSuccess": "Successfully disbled Performance Monitoring for the universe",
+        "disablePaUniverseFailure": "Failed to disable  Performance Monitoring to the universe",
+        "subText": "Are you sure you want to {{action}}  Performance Monitoring for the universe <strong>{{universeName}}</strong>?"
       },
       "pgCompatibility": {
         "modalTitle": "Edit Enhanced Postgres Compatibility",
@@ -629,6 +629,7 @@
         "cpuArch": "CPU Architecture",
         "x86_64": "x86 (Intel)",
         "aarch64": "AArch6 (ARM)",
+        "cpuArchNotSupported": "This CPU Architecture is not supported by current provider.",
         "linuxVersion": "Linux Version",
         "showRetired": "Show retired recommendations",
         "cooldownHours": "Resizing device within cooldown period of 6 hours causes resize to happen only by moving to different nodes",
@@ -768,6 +769,7 @@
             "SQLIssue ": "SQL ISSUE"
           }
         },
+        "perfAdvisorClusterLoadTab": "Cluster Load",
         "perfAdvisorAnomaliesTab": "Anomalies",
         "perfAdvisorInsightsTab": "Insights",
         "perfAdvisorQueriesTab": "Queries",
@@ -775,11 +777,11 @@
         "tpServiceUrlHelperText": "Please do not append '/' at the end of the URL",
         "registrationSuccess": "Registered to Perf Advisor service successfully",
         "registrationFailed": "Failed to register to Perf Advisor service",
-        "tpServiceUrlLabel": "Perf Advisor Service URL",
+        "paServiceUrlLabel": "Performance Monitoring Service URL",
         "ybPlatformServiceUrlLabel": "Yugabyte Platform Service URL",
         "ybPlatformMetricsUrlLabel": "Yugabyte Platform Metrics URL",
         "apiTokenLabel": "YBA API Token",
-        "tpApiTokenLabel": "TP API Token",
+        "tpApiTokenLabel": "Performance Monitoring Token",
         "metricsScrapePeriodSecLabel": "Metrics Scrape Period (in seconds)",
         "metricsScrapePeriodSecRequired": "Metrics Scrape Period is required",
         "registerButton": "Register",
@@ -791,6 +793,7 @@
         "urlRequired": "Platform Url required",
         "apiTokenRequired": "API Token required",
         "enablePerfAdvisorMsg": "Select <bold> 'More' </bold> from <bold>Actions</bold> dropdown menu on the top right corner of the page to <bold>'Enable Perf Advisor'</bold> for this universe.",
+        "perfAdvisorRegistrationFailure": "Failed to fetch Perf Advisor registration status, please try again",
         "editDialog": {
           "title": "Update Perf Advisor Configuration",
           "updateButton": "Update",
@@ -3120,13 +3123,14 @@
           },
           "backupObjects": {
             "advancedConfig": "Advanced Configuration",
-            "rolesConfig": "Roles Configuration",
+            "rolesConfig": "Backup roles and grants",
             "selectDBTitle": "Select the Keyspaces/Databases you want to backup",
             "selectDB": "Databases/Keyspaces",
             "backupTablespace": "Backup tablespaces information",
             "backupRoles": "Backup global roles",
             "backupTablespaceSubText": "In Universes using tablespaces, this allows restoring while preserving source universe tablespaces. (Given both source and target have the same topology.)",
-            "backupRolesSubText": "In Universes using roles, this allows restoring while preserving source universe roles.",
+            "backupRolesSubText": "Back up roles and grants to preserve database access controls after restore.",
+            "backupRolesSubText2": "<b>Note:</b> Applies to full and incremental backups.",
             "allTables": "Select all tables in this Keyspace",
             "subSetOfTables": "Select a subset of tables",
             "selectTables": "Select Tables",
@@ -3211,6 +3215,7 @@
           "scope": "Scope",
           "keyspace": "Keyspace",
           "tables": "Tables",
+          "rolesAndGrants": "Roles and Grants",
           "lastBackup": "Last Backup",
           "nextBackup": "Next Backup",
           "fullBackup": "Full Backup",
@@ -3260,6 +3265,10 @@
           "tables": "Tables",
           "allTables": "All Tables",
           "restoreTo": "Restore to",
+          "restoreRoles": "Restore roles and grants",
+          "restoreRolesNotApplicable": "N/A",
+          "restoreRolesOff": "Off",
+          "restoreRolesOn": "On",
           "restoreSize": "Restore Size",
           "targetUniverse": "Target Universe",
           "kmsConfig": "KMS Config",
@@ -3267,7 +3276,15 @@
         },
         "source": {
           "selectKeyspace": "Select the keyspace(s) you want to restore",
-          "selectTime": "Select time to restore to",
+          "selectDatabase": "Select the database(s) you want to restore",
+          "selectTime": "Choose restore point",
+          "restoreRoles": "Restore roles and grants",
+          "restoreRolesHelpText": "Restore roles and grants to preserve database access controls after restore.",
+          "restoreRolesTooltip1": "Roles and grants not available",
+          "restoreRolesTooltip2": "This backup was created without roles and grants. Select a different backup to restore access controls.",
+          "restoreRolesOnMsg1": "Note:",
+          "restoreRolesOnMsg2": "Roles are restored Universe-wide; grants are limited to selected databases.",
+          "restoreRolesOnMsg3": "Existing destination roles are not overwritten (including credentials and attributes). We only add missing role memberships and object grants from the backup.",
           "mostRecentIncremental": "Most recent incremental backup",
           "backupTime": "Backup time",
           "earlierPointInTime": "An earlier point in time ",
@@ -3437,6 +3454,7 @@
         "guidedMode": {
           "nodes": "Nodes",
           "nodesPerAz": "Nodes per Availability Zone",
+          "nodesTserverPerAz": "Nodes (T-Server) per Availability Zone",
           "totalNodes": "Total Nodes"
         },
         "availabilityZones": {
@@ -3533,7 +3551,7 @@
         },
         "conPool": {
           "label": "Enable Connection Pooling",
-          "helperMsg": "Use built-in YSQL service for maximizing the number of simultaneous<br /> connections to your database.",
+          "helperMsg": "Use built-in YSQL service for maximizing the number of simultaneous<br /> connections to your database.  <1>Learn more</1>",
           "versionTooltip": "Built-in connection pooling is only available for database version 2024.2 or later.",
           "YSQLWarn": "Enable YSQL first to use connection pooling.",
           "dbVersionWarn": "Built-in connection pooling is only available for database version 2024.2 or later",

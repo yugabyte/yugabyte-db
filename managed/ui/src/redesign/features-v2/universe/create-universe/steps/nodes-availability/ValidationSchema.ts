@@ -7,7 +7,7 @@ import {
   ResilienceAndRegionsProps,
   ResilienceFormMode
 } from '../resilence-regions/dtos';
-import { getFaultToleranceNeededForAZ, getNodeCount } from '../../CreateUniverseUtils';
+import { getFaultToleranceNeeded, getNodeCount } from '../../CreateUniverseUtils';
 
 export const NodesAvailabilitySchema = (
   t: TFunction,
@@ -18,7 +18,7 @@ export const NodesAvailabilitySchema = (
       const { path, createError } = this;
       const { availabilityZones, useDedicatedNodes } = this.parent;
       const nodeCounts = getNodeCount(availabilityZones);
-      const faultToleranceNeeded = getFaultToleranceNeededForAZ(
+      const faultToleranceNeeded = getFaultToleranceNeeded(
         resilienceAndRegionsProps?.replicationFactor ?? 1
       );
       const azCounts = values(availabilityZones).reduce((acc, zones) => acc + zones.length, 0);

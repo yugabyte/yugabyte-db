@@ -301,5 +301,69 @@ TEST_F(SysCatalogRespectAffinityTest, TestNoPreferredZonesWithBlacklist) {
   }, kDefaultTimeout, "Master leader stepdown"));
 }
 
+// Test that wildcard zone preference works with blacklist.
+// Masters are in c.r.z0, c.r.z1, c.r2.z2. The wildcard c.r.* matches only z0 and z1.
+// When we blacklist the leader, it should step down to the other node in c.r.*, not to z2.
+TEST_F(SysCatalogRespectAffinityTest, TestWildcardZonePreferenceWithBlacklist) {
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r2.z2", 3, ""));
+
+  // Set wildcard zone preference c.r.* which matches z0 and z1, but not z2.
+  ASSERT_OK(yb_admin_client_->SetPreferredZones({"c.r.*"}));
+
+  // First, wait for leader to be in a preferred zone (z0 or z1).
+  std::vector<CloudInfoPB> preferred_zones;
+  CloudInfoPB cloud_info;
+  cloud_info.set_placement_cloud("c");
+  cloud_info.set_placement_region("r");
+  cloud_info.set_placement_zone("z0");
+  preferred_zones.push_back(cloud_info);
+  cloud_info.set_placement_zone("z1");
+  preferred_zones.push_back(cloud_info);
+
+  ASSERT_OK(WaitFor([&]() {
+    return IsMasterLeaderInZones(preferred_zones);
+  }, kDefaultTimeout, "Master leader moves to wildcard-matching zone"));
+
+  // Blacklist current leader. It should step down to the other node in c.r.*, not to z2.
+  ASSERT_OK(BlacklistLeader());
+  ASSERT_OK(WaitFor([&]() {
+    return IsMasterLeaderInZones(preferred_zones);
+  }, kDefaultTimeout, "Master leader stepdown stays in wildcard preference"));
+}
+
+// Test multi-priority wildcard preferences.
+// First priority: c.r.z0 (specific zone)
+// Second priority: c.r.* (wildcard matching all zones)
+// The leader should start out in z0. After we shutdown z0,
+// the master leader should fall back to c.r.z1 or c.r.z2.
+TEST_F(SysCatalogRespectAffinityTest, TestMultiPriorityWildcardPreference) {
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r.z2", 3, ""));
+
+  // Set multi-priority preference: first z0, then wildcard c.r.*.
+  ASSERT_OK(yb_admin_client_->SetPreferredZones({"c.r.z0:1", "c.r.*:2"}));
+
+  // Leader should end up in z0 (highest priority).
+  ASSERT_OK(WaitFor([&]() {
+    return IsMasterLeaderInZone("c", "r", "z0");
+  }, kDefaultTimeout, "Master leader moves to highest priority zone"));
+
+  // Now shut down z0 master. Leader should step down to another zone
+  // which is still in the wildcard preference c.r.*.
+  external_mini_cluster()->master(0)->Shutdown();
+
+  std::vector<CloudInfoPB> remaining_zones;
+  CloudInfoPB cloud_info;
+  cloud_info.set_placement_cloud("c");
+  cloud_info.set_placement_region("r");
+  cloud_info.set_placement_zone("z1");
+  remaining_zones.push_back(cloud_info);
+  cloud_info.set_placement_zone("z2");
+  remaining_zones.push_back(cloud_info);
+
+  ASSERT_OK(WaitFor([&]() {
+    return IsMasterLeaderInZones(remaining_zones);
+  }, kDefaultTimeout, "Master leader falls back to wildcard preference"));
+}
+
 } // namespace integration_tests
 } // namespace yb

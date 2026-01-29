@@ -11,3 +11,5 @@ test: materialized_views
 
 test: colocated_setup
 test: create_colocated_table
+
+test: table_rewrite

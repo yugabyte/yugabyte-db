@@ -193,7 +193,11 @@ export const SelectDBAndTables = () => {
 
   return (
     <div className={classes.root}>
-      <Typography variant="body1">{t('selectKeyspace')}</Typography>
+      <Typography variant="body1">
+        {backupDetails?.backupType === TableType.PGSQL_TABLE_TYPE
+          ? t('selectDatabase')
+          : t('selectKeyspace')}
+      </Typography>
       <YBReactSelectField
         control={internalControl}
         name="keyspace"

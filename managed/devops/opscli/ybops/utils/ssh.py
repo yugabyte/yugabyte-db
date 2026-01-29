@@ -13,7 +13,7 @@ import functools
 import logging
 import os
 import paramiko
-import pipes
+import shlex
 import shutil
 import socket
 import stat
@@ -153,7 +153,7 @@ def run_command(args, num_retry=1, timeout=1, **kwargs):
 def quote_cmd_line_for_bash(cmd_line):
     if not isinstance(cmd_line, list) and not isinstance(cmd_line, tuple):
         raise Exception("Expected a list/tuple, got: [[ {} ]]".format(cmd_line))
-    return ' '.join([pipes.quote(str(arg)) for arg in cmd_line])
+    return ' '.join([shlex.quote(str(arg)) for arg in cmd_line])
 
 
 def sleep_or_raise(num_retry, timeout, ex):

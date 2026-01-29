@@ -68,10 +68,10 @@ std::string PersistentTServerInfo::placement_uuid() const {
 
 TSDescriptor::TSDescriptor(const std::string& permanent_uuid,
                            RegisteredThroughHeartbeat registered_through_heartbeat,
-                           CloudInfoPB&& local_cloud_info,
+                           CloudInfoPB&& local_master_cloud_info,
                            rpc::ProxyCache* proxy_cache)
   : permanent_uuid_(permanent_uuid),
-    local_cloud_info_(std::move(local_cloud_info)),
+    local_master_cloud_info_(std::move(local_master_cloud_info)),
     proxy_cache_(proxy_cache),
     last_heartbeat_(MonoTime::NowIf(registered_through_heartbeat)),
     registered_through_heartbeat_(registered_through_heartbeat),
@@ -85,11 +85,11 @@ TSDescriptor::TSDescriptor(const std::string& permanent_uuid,
 Result<std::pair<TSDescriptorPtr, TSDescriptor::WriteLock>> TSDescriptor::CreateNew(
     const NodeInstancePB& instance,
     const TSRegistrationPB& registration,
-    CloudInfoPB&& local_cloud_info,
+    CloudInfoPB&& local_master_cloud_info,
     rpc::ProxyCache* proxy_cache,
     RegisteredThroughHeartbeat registered_through_heartbeat) {
   auto desc = std::make_shared<TSDescriptor>(
-      instance.permanent_uuid(), registered_through_heartbeat, std::move(local_cloud_info),
+      instance.permanent_uuid(), registered_through_heartbeat, std::move(local_master_cloud_info),
       proxy_cache);
   auto lock = VERIFY_RESULT(desc->UpdateRegistration(
       instance, registration, registered_through_heartbeat));
@@ -332,7 +332,7 @@ Result<HostPort> TSDescriptor::GetHostPort() const {
 
 Result<HostPort> TSDescriptor::GetHostPortUnlocked() const {
   auto l = LockForRead();
-  const auto& addr = DesiredHostPort(l->pb.registration(), local_cloud_info_);
+  const auto& addr = DesiredHostPort(l->pb.registration(), local_master_cloud_info_);
   if (addr.host().empty()) {
     return STATUS_FORMAT(NetworkError, "Unable to find the TS address for $0: $1",
                          permanent_uuid(), l->pb.registration().ShortDebugString());

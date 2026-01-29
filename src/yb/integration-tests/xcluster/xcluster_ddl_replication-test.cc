@@ -121,6 +121,29 @@ class XClusterDDLReplicationTest : public XClusterDDLReplicationTestBase {
     return consumer_client()->GetXClusterSafeTimeForNamespace(
         VERIFY_RESULT(GetNamespaceId(consumer_client())), master::XClusterSafeTimeFilter::NONE);
   }
+
+  void CheckIndexRebuild(const std::string& table, const std::string& index,
+                         uint32_t prod_oid_before, uint32_t cons_oid_before) {
+    auto prod_table = ASSERT_RESULT(GetProducerTable(ASSERT_RESULT(GetYsqlTable(
+        &producer_cluster_, namespace_name, /*schema_name=*/"", table))));
+    auto cons_table = ASSERT_RESULT(GetConsumerTable(ASSERT_RESULT(GetYsqlTable(
+        &consumer_cluster_, namespace_name, /*schema_name=*/"", table))));
+    ASSERT_OK(VerifyWrittenRecords(prod_table, cons_table));
+
+    // Make sure the index is actually being used.
+    auto query = Format("SELECT COUNT(*) FROM $0 WHERE lower($1) = 'row_1'", table, kKeyColumnName);
+    ASSERT_TRUE(ASSERT_RESULT(producer_conn_->HasIndexScan(query)));
+    ASSERT_TRUE(ASSERT_RESULT(consumer_conn_->HasIndexScan(query)));
+
+    auto prod_oid_after = ASSERT_RESULT(producer_conn_->FetchRow<pgwrapper::PGOid>(
+        Format("SELECT oid FROM pg_class WHERE relname = '$0'", index)));
+    auto cons_oid_after = ASSERT_RESULT(consumer_conn_->FetchRow<pgwrapper::PGOid>(
+        Format("SELECT oid FROM pg_class WHERE relname = '$0'", index)));
+
+    // Index's OID should change because the index gets dropped and rebuilt.
+    ASSERT_NE(prod_oid_before, prod_oid_after);
+    ASSERT_NE(cons_oid_before, cons_oid_after);
+  }
 };
 
 // In automatic mode, sequences_data should have been created on both universe.
@@ -3238,6 +3261,34 @@ TEST_F(XClusterDDLReplicationTableRewriteTest, IncrementalSafeTimeBump) {
   VerifyTableRewrite();
 }
 
+TEST_F(XClusterDDLReplicationTableRewriteTest, AlterColumnTypeWithPrimaryKeyAndUniqueTest) {
+  const std::string kTableName = "test_table";
+
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE TABLE $0 ("
+      "  key INT,"
+      "  b VARCHAR(50),"
+      "  c INT,"
+      "  PRIMARY KEY (key, b),"
+      "  UNIQUE (c, key, b)"
+      ");", kTableName));
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "INSERT INTO $0 VALUES (1, 'x', 100);", kTableName));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Execute ALTER COLUMN TYPE on a primary key column
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "ALTER TABLE $0 ALTER COLUMN b TYPE TEXT;", kTableName));
+
+  // Verify table rewrite
+  auto producer_base_table_name_after_rewrite = ASSERT_RESULT(
+      GetYsqlTable(&producer_cluster_, namespace_name, "", kTableName));
+  ASSERT_NE(producer_base_table_name_.table_id(),
+      producer_base_table_name_after_rewrite.table_id());
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifyWrittenRecords({kTableName}));
+}
+
 TEST_F(XClusterDDLReplicationTest, AlterColumnTypePartitioned) {
   ASSERT_OK(SetUpClustersAndReplication());
   auto producer_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
@@ -3290,54 +3341,61 @@ TEST_F(XClusterDDLReplicationTest, AlterColumnTypePartitioned) {
   ASSERT_STR_CONTAINS(status.ToString(), "partition key");
 }
 
-TEST_F(XClusterDDLReplicationTest, AlterColumnTypeWithDependentIndex) {
+// Varchar to text doesn't rewrite the table but still rebuilds indexes.
+TEST_F(XClusterDDLReplicationTest, AlterColumnTypeVarcharToText) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
   const auto kTableName = "test_table";
   const auto kIndexName = "test_index";
-  ASSERT_OK(SetUpClustersAndReplication());
-  auto producer_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
-  ASSERT_OK(producer_conn.ExecuteFormat("CREATE TABLE $0 ($1 varchar)",
+  ASSERT_OK(producer_conn_->ExecuteFormat("CREATE TABLE $0 ($1 varchar)",
       kTableName, kKeyColumnName));
-  ASSERT_OK(producer_conn.ExecuteFormat(
+  ASSERT_OK(producer_conn_->ExecuteFormat(
       "INSERT INTO $0 ($1) SELECT 'row_' || i FROM generate_series(1, 100) as i",
       kTableName, kKeyColumnName));
-  ASSERT_OK(producer_conn.ExecuteFormat(
-      "CREATE INDEX $0 ON $1 ((lower($2)))", kIndexName, kTableName, kKeyColumnName));
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE INDEX $0 ON $1 (lower($2))", kIndexName, kTableName, kKeyColumnName));
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
 
-  // Get original index OIDs before ALTER
-  auto producer_index_oid_before = ASSERT_RESULT(producer_conn.FetchRow<pgwrapper::PGOid>(
+  auto producer_index_oid_before = ASSERT_RESULT(producer_conn_->FetchRow<pgwrapper::PGOid>(
       Format("SELECT oid FROM pg_class WHERE relname = '$0'", kIndexName)));
-  auto consumer_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
-  auto consumer_index_oid_before = ASSERT_RESULT(consumer_conn.FetchRow<pgwrapper::PGOid>(
+  auto consumer_index_oid_before = ASSERT_RESULT(consumer_conn_->FetchRow<pgwrapper::PGOid>(
       Format("SELECT oid FROM pg_class WHERE relname = '$0'", kIndexName)));
 
-  // ALTER TYPE: varchar -> text (no table rewrite, but index is dropped and recreated)
-  ASSERT_OK(producer_conn.ExecuteFormat(
+  ASSERT_OK(producer_conn_->ExecuteFormat(
       "ALTER TABLE $0 ALTER COLUMN $1 TYPE text", kTableName, kKeyColumnName));
-
-  // Verify row counts
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
-  auto producer_table = ASSERT_RESULT(GetProducerTable(
-      ASSERT_RESULT(GetYsqlTable(&producer_cluster_, namespace_name, "", kTableName))));
-  auto consumer_table = ASSERT_RESULT(GetConsumerTable(
-      ASSERT_RESULT(GetYsqlTable(&producer_cluster_, namespace_name, "", kTableName))));
-  ASSERT_OK(VerifyWrittenRecords(producer_table, consumer_table));
 
-  // Verify index
-  const auto stmt = Format(
-      "SELECT COUNT(*) FROM $0 WHERE lower($1) = 'row_1'", kTableName, kKeyColumnName);
-  ASSERT_TRUE(ASSERT_RESULT(producer_conn.HasIndexScan(stmt)));
-  ASSERT_TRUE(ASSERT_RESULT(consumer_conn.HasIndexScan(stmt)));
+  CheckIndexRebuild(kTableName, kIndexName,
+                    producer_index_oid_before, consumer_index_oid_before);
+}
 
-  // Get new index OIDs after ALTER
-  auto producer_index_oid_after = ASSERT_RESULT(producer_conn.FetchRow<pgwrapper::PGOid>(
+// Changing collation also skips table rewrite but needs index rebuild.
+TEST_F(XClusterDDLReplicationTest, AlterColumnCollation) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  const auto kTableName = "test_table";
+  const auto kIndexName = "test_index";
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE TABLE $0 ($1 text COLLATE \"C\")", kTableName, kKeyColumnName));
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "INSERT INTO $0 ($1) SELECT 'row_' || i FROM generate_series(1, 50) as i",
+      kTableName, kKeyColumnName));
+  ASSERT_OK(producer_conn_->ExecuteFormat("CREATE INDEX $0 ON $1 (lower($2))",
+      kIndexName, kTableName, kKeyColumnName));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  auto producer_index_oid_before = ASSERT_RESULT(producer_conn_->FetchRow<pgwrapper::PGOid>(
       Format("SELECT oid FROM pg_class WHERE relname = '$0'", kIndexName)));
-  auto consumer_index_oid_after = ASSERT_RESULT(consumer_conn.FetchRow<pgwrapper::PGOid>(
+  auto consumer_index_oid_before = ASSERT_RESULT(consumer_conn_->FetchRow<pgwrapper::PGOid>(
       Format("SELECT oid FROM pg_class WHERE relname = '$0'", kIndexName)));
 
-  // Verify index OIDs changed (index was recreated)
-  ASSERT_NE(producer_index_oid_before, producer_index_oid_after);
-  ASSERT_NE(consumer_index_oid_before, consumer_index_oid_after);
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "ALTER TABLE $0 ALTER COLUMN $1 TYPE text COLLATE \"en_US\"",
+      kTableName, kKeyColumnName));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  CheckIndexRebuild(kTableName, kIndexName,
+                    producer_index_oid_before, consumer_index_oid_before);
 }
 
 TEST_F(XClusterDDLReplicationTest, BackupRestorePreservesEnumSortValue) {

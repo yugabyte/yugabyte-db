@@ -832,6 +832,25 @@ function BackupConfigurationForm({
           </Row>
         )}
 
+      {values['api_type'].value === BACKUP_API_TYPES.YSQL && (
+        <Row>
+          <Col lg={8} className="no-padding tablespaces">
+            <Row>
+              <Field
+                name="useRoles"
+                component={YBCheckBox}
+                disabled={isEditMode || isIncrementalBackup}
+                checkState={values['useRoles']}
+              />
+              {'Include roles and grants'}
+            </Row>
+            <div className="tablespaces-subText">
+              Back up roles and grants to preserve database access controls after restore.
+            </div>
+          </Col>
+        </Row>
+      )}
+
       {values['api_type'].value === BACKUP_API_TYPES.YSQL &&
         useTablespacesByDefault?.value === 'false' &&
         isYbcEnabledinCurrentUniverse && (
@@ -894,23 +913,6 @@ function BackupConfigurationForm({
             {errors['retention_interval']}
           </Col>
         )}
-      </Row>
-
-      <Row>
-        <Col lg={12} className="no-padding tablespaces">
-          <div>Role backup options</div>
-          <Row>
-            <Col lg={12} className="no-padding">
-              <Field
-                name="useRoles"
-                component={YBCheckBox}
-                disabled={isEditMode || isIncrementalBackup}
-                checkState={values['useRoles']}
-              />
-              {'Backup global roles'}
-            </Col>
-          </Row>
-        </Col>
       </Row>
 
       {isScheduledBackup && !isEditBackupMode && (

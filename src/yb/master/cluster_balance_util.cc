@@ -13,8 +13,11 @@
 
 #include "yb/master/cluster_balance_util.h"
 
+#include <algorithm>
+
 #include "yb/gutil/map-util.h"
 
+#include "yb/common/common_net.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_cluster.pb.h"
 
@@ -506,7 +509,11 @@ void PerTableLoadState::UpdateTabletServer(std::shared_ptr<TSDescriptor> ts_desc
     } else if (!affinitized_zones_.empty()) {
       auto ci = ts_desc->GetRegistration().cloud_info();
       for (; priority < affinitized_zones_.size(); priority++) {
-        if (affinitized_zones_[priority].find(ci) != affinitized_zones_[priority].end()) {
+        if (std::any_of(
+                affinitized_zones_[priority].begin(), affinitized_zones_[priority].end(),
+                [&ci](const CloudInfoPB& zone) {
+                  return CloudInfoContainsCloudInfo(zone, ci);
+                })) {
           break;
         }
       }

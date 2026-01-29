@@ -61,6 +61,7 @@ public interface UserIntentMapper {
 
     // top-level node spec from UserIntent
     clusterNodeSpec.setInstanceType(userIntent.instanceType);
+    clusterNodeSpec.setDedicatedNodes(userIntent.dedicatedNodes);
     clusterNodeSpec.setStorageSpec(deviceInfoToStorageSpec(userIntent.deviceInfo));
     clusterNodeSpec.setCgroupSize(userIntent.getCgroupSize());
     clusterNodeSpec.setK8sMasterResourceSpec(

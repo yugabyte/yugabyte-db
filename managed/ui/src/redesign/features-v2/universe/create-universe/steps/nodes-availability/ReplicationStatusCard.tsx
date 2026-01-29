@@ -4,7 +4,7 @@ import { useFormContext } from 'react-hook-form';
 import { mui } from '@yugabyte-ui-library/core';
 import { ReplicationFactorInfoModal } from './index';
 import { CreateUniverseContext, CreateUniverseContextMethods } from '../../CreateUniverseContext';
-import { getFaultToleranceNeededForAZ } from '../../CreateUniverseUtils';
+import { getFaultToleranceNeeded } from '../../CreateUniverseUtils';
 import { FaultToleranceType } from '../resilence-regions/dtos';
 
 //icons
@@ -105,7 +105,7 @@ export const ReplicationStatusCard = ({ hideSubText = false }: { hideSubText?: b
   const nodeCount =
     faultToleranceType === FaultToleranceType.NONE
       ? 1
-      : getFaultToleranceNeededForAZ(replicationFactor);
+      : getFaultToleranceNeeded(replicationFactor);
   return (
     <div>
       <StyledReplicationCardHeader>

@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-There are a number of display widgets and shortcodes available. All the shortcodes mentioned on this page are defined in [/docs/layouts/shortcodes](https://github.com/yugabyte/yugabyte-db/tree/master/docs/layouts/shortcodes/).
+There are a number of display widgets and shortcodes available. All the shortcodes mentioned on this page are defined in [/docs/layouts/_shortcodes](https://github.com/yugabyte/yugabyte-db/tree/master/docs/layouts/_shortcodes/).
 
 ## Heading (Skipping ToC)
 

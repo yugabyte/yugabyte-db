@@ -89,6 +89,7 @@ export const RuntimeConfigKey = {
   CONTINUOUS_PLATFORM_BACKUPS_UI: 'yb.ui.feature_flags.continuous_platform_backups',
   METRICS_EXPORT_FEATURE_FLAG: 'yb.universe.metrics_export_enabled',
   ENABLE_V2_EDIT_UNIVERSE_UI: 'yb.ui.feature_flags.edit_universe_v2_ui_enabled',
+  ENABLE_NEW_PERF_ADVISOR_UI: 'yb.ui.feature_flags.enable_new_perf_advisor_ui'
 } as const;
 
 /**
@@ -225,3 +226,4 @@ export const DEFAULT_TIMEZONE = { value: 'Default', label: `${getBrowserTimezone
 
 export const I18N_DURATION_KEY_PREFIX = 'common.duration';
 export const I18N_ACCESSABILITY_ALT_TEXT_KEY_PREFIX = 'iconAltText';
+export const PERF_ADVISOR_PATH = 'perfAdvisor';

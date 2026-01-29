@@ -4,9 +4,12 @@ action=" --enable"
 {%- endif %}
 
 su - {{ yb_user }} -c "mkdir -p {{ yb_home_dir }}/bin && chmod 0755 {{ yb_home_dir }}/bin"
-installer_dir="{{ ynp_dir }}/../../bin"
-{% if cloud_type is defined and cloud_type != '' %}
-    installer_dir="{{ ynp_dir }}/../"
-{% endif %}
-$installer_dir/earlyoom-installer.sh $action --earlyoom_args \
+# node-agent/scripts directory.
+installer_script="{{ ynp_dir }}/../earlyoom-installer.sh"
+if [ ! -f "$installer_script" ]; then
+    # For backward compatibility when backported.
+    # Remove me later.
+    installer_script="{{ ynp_dir }}/../../bin/earlyoom-installer.sh"
+fi
+$installer_script $action --earlyoom_args \
     "{{ earlyoom_args }}" --yb_home_dir "{{ yb_home_dir }}"

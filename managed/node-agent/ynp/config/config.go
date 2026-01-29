@@ -161,21 +161,44 @@ func (bm *BaseModule) String() string {
 	return bm.name + "@" + bm.basePath
 }
 
-func GetBool(m map[string]any, key string, defaultVal bool) bool {
+func LookupType[T any](
+	m map[string]any,
+	key string,
+	defaultVal T,
+	transformer func(string) (T, error),
+) T {
 	val, ok := m[key]
 	if !ok {
 		return defaultVal
 	}
-	if val, ok := val.(bool); ok {
-		return val
+	typedVal, ok := val.(T)
+	if ok {
+		return typedVal
 	}
-	if valStr, ok := val.(string); ok {
-		b, err := strconv.ParseBool(valStr)
-		if err == nil {
-			return b
-		}
+	strVal := fmt.Sprintf("%v", val)
+	result, err := transformer(strVal)
+	if err == nil {
+		return result
 	}
 	return defaultVal
+}
+
+func GetBool(m map[string]any, key string, defaultVal bool) bool {
+	return LookupType(m, key, defaultVal, func(s string) (bool, error) {
+		return strconv.ParseBool(s)
+	})
+}
+
+func GetInt(m map[string]any, key string, defaultVal int64) int64 {
+	return LookupType(m, key, defaultVal, func(s string) (int64, error) {
+		return strconv.ParseInt(s, 10, 64)
+	})
+}
+
+func GetFloat(m map[string]any, key string, defaultVal float64) float64 {
+	return LookupType(m, key, defaultVal, func(s string) (float64, error) {
+		return strconv.ParseFloat(s, 64)
+	})
 }
 
 func processNestedConfigs(

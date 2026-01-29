@@ -770,6 +770,47 @@ PushNameToOidMap(JsonbParseState *state, char *map_key,
 	(void) pushJsonbValue(&state, WJB_END_ARRAY, NULL);
 }
 
+void
+PushVariable(JsonbParseState *state, char *guc_name)
+{
+	char *value = GetConfigOptionByName(guc_name, NULL, false);
+	if (!value)
+		return;
+
+	AddStringJsonEntry(state, guc_name, value);
+}
+
+void
+PushVariableMap(JsonbParseState *state)
+{
+	AddJsonKey(state, "variables");
+	(void) pushJsonbValue(&state, WJB_BEGIN_OBJECT, NULL);
+
+	/*----------
+	 * To maximize safety, we always record the session variables.
+	 *
+	 * This protects us against the source and target clusters having
+	 * different defaults and changes of which DDLs use these variables.
+	 *----------
+	 */
+
+	/* This affects what tablespace a table is created in. */
+	PushVariable(state, "default_tablespace");
+	/* This affects whether a table is range or hash started. */
+	PushVariable(state, "yb_use_hash_splitting_by_default");
+
+	/* Settings that affect parsing of string literals. */
+	PushVariable(state, "standard_conforming_strings");
+	/* Settings that affect parsing of dates, times, and intervals. */
+	PushVariable(state, "DateStyle");
+	PushVariable(state, "TimeZone");
+	PushVariable(state, "IntervalStyle");
+	/* Settings that affect parsing of function bodies. */
+	PushVariable(state, "check_function_bodies");
+
+	(void) pushJsonbValue(&state, WJB_END_OBJECT, NULL);
+}
+
 bool
 ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 {
@@ -934,6 +975,12 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 	PushEnumLabelMap(state, "enum_label_info", enum_label_list);
 	PushNameToOidMap(state, "sequence_info", sequence_info_list);
 	PushNameToOidMap(state, "type_info", type_info_list);
+
+	/*
+	 * Record session variables that are known to meaningfully affect the DDL
+	 * execution.
+	 */
+	PushVariableMap(state);
 
 	return should_replicate_ddl;
 }

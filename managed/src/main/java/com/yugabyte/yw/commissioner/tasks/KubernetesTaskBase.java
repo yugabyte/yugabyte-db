@@ -1088,6 +1088,44 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       PodUpgradeParams podUpgradeParams,
       YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState,
       UUID rootCAUUID) {
+    upgradePodsTask(
+        universeName,
+        newPlacement,
+        masterAddresses,
+        currPlacement,
+        serverType,
+        softwareVersion,
+        universeOverridesStr,
+        azsOverrides,
+        newNamingStyle,
+        isReadOnlyCluster,
+        commandType,
+        enableYbc,
+        ybcSoftwareVersion,
+        podUpgradeParams,
+        ysqlMajorVersionUpgradeState,
+        rootCAUUID,
+        false /* useExistingServerCert */);
+  }
+
+  public void upgradePodsTask(
+      String universeName,
+      KubernetesPlacement newPlacement,
+      String masterAddresses,
+      KubernetesPlacement currPlacement,
+      ServerType serverType,
+      String softwareVersion,
+      String universeOverridesStr,
+      Map<String, String> azsOverrides,
+      boolean newNamingStyle,
+      boolean isReadOnlyCluster,
+      CommandType commandType,
+      boolean enableYbc,
+      String ybcSoftwareVersion,
+      PodUpgradeParams podUpgradeParams,
+      YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState,
+      UUID rootCAUUID,
+      boolean useExistingServerCert) {
     Cluster primaryCluster = taskParams().getPrimaryCluster();
     if (primaryCluster == null) {
       primaryCluster =
@@ -1260,7 +1298,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
               false /* usePreviousGflagsChecksum */,
               null /* previousGflagsChecksumMap */,
               ysqlMajorVersionUpgradeState,
-              rootCAUUID);
+              rootCAUUID,
+              useExistingServerCert);
         }
 
         addParallelTasks(
@@ -2170,7 +2209,6 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         null /* rootCAUUID */);
   }
 
-  // Create a single Kubernetes Executor task in case we cannot execute tasks in parallel.
   public void createSingleKubernetesExecutorTaskForServerType(
       String universeName,
       KubernetesCommandExecutor.CommandType commandType,
@@ -2194,6 +2232,57 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       Map<ServerType, String> previousGflagsChecksumMap,
       YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState,
       UUID rootCAUUID) {
+    createSingleKubernetesExecutorTaskForServerType(
+        universeName,
+        commandType,
+        pi,
+        az,
+        masterAddresses,
+        ybSoftwareVersion,
+        serverType,
+        config,
+        masterPartition,
+        tserverPartition,
+        universeOverrides,
+        azOverrides,
+        isReadOnlyCluster,
+        podName,
+        newDiskSize,
+        ignoreErrors,
+        enableYbc,
+        ybcSoftwareVersion,
+        usePreviousGflagsChecksum,
+        previousGflagsChecksumMap,
+        ysqlMajorVersionUpgradeState,
+        rootCAUUID,
+        false /* useExistingServerCert */);
+  }
+
+  // Create a single Kubernetes Executor task in case we cannot execute tasks in parallel.
+  public void createSingleKubernetesExecutorTaskForServerType(
+      String universeName,
+      KubernetesCommandExecutor.CommandType commandType,
+      PlacementInfo pi,
+      String az,
+      String masterAddresses,
+      String ybSoftwareVersion,
+      ServerType serverType,
+      Map<String, String> config,
+      int masterPartition,
+      int tserverPartition,
+      Map<String, Object> universeOverrides,
+      Map<String, Object> azOverrides,
+      boolean isReadOnlyCluster,
+      String podName,
+      String newDiskSize,
+      boolean ignoreErrors,
+      boolean enableYbc,
+      String ybcSoftwareVersion,
+      boolean usePreviousGflagsChecksum,
+      Map<ServerType, String> previousGflagsChecksumMap,
+      YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState,
+      UUID rootCAUUID,
+      boolean useExistingServerCert) {
     SubTaskGroup subTaskGroup = createSubTaskGroup(commandType.getSubTaskGroupName(), ignoreErrors);
     subTaskGroup.addSubTask(
         getSingleKubernetesExecutorTaskForServerTypeTask(
@@ -2221,7 +2310,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
             false /* useNewMasterDiskSize */,
             false /* useNewTserverDiskSize */,
             ysqlMajorVersionUpgradeState,
-            rootCAUUID));
+            rootCAUUID,
+            useExistingServerCert));
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     subTaskGroup.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.Provisioning);
   }
@@ -2298,6 +2388,62 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       boolean useNewTserverDiskSize,
       YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState,
       UUID rootCAUUID) {
+    return getSingleKubernetesExecutorTaskForServerTypeTask(
+        universeName,
+        commandType,
+        pi,
+        az,
+        masterAddresses,
+        ybSoftwareVersion,
+        serverType,
+        config,
+        masterPartition,
+        tserverPartition,
+        universeOverrides,
+        azOverrides,
+        isReadOnlyCluster,
+        podName,
+        newDiskSize,
+        enableYbc,
+        ybcSoftwareVersion,
+        usePreviousGflagsChecksum,
+        previousGflagsChecksumMap,
+        usePreviousCertChecksum,
+        previousCertChecksum,
+        useNewMasterDiskSize,
+        useNewTserverDiskSize,
+        ysqlMajorVersionUpgradeState,
+        rootCAUUID,
+        false /* useExistingServerCert */);
+  }
+
+  public KubernetesCommandExecutor getSingleKubernetesExecutorTaskForServerTypeTask(
+      String universeName,
+      KubernetesCommandExecutor.CommandType commandType,
+      PlacementInfo pi,
+      String az,
+      String masterAddresses,
+      String ybSoftwareVersion,
+      ServerType serverType,
+      Map<String, String> config,
+      int masterPartition,
+      int tserverPartition,
+      Map<String, Object> universeOverrides,
+      Map<String, Object> azOverrides,
+      boolean isReadOnlyCluster,
+      String podName,
+      String newDiskSize,
+      boolean enableYbc,
+      String ybcSoftwareVersion,
+      boolean usePreviousGflagsChecksum,
+      Map<ServerType, String> previousGflagsChecksumMap,
+      boolean usePreviousCertChecksum,
+      String previousCertChecksum,
+      boolean useNewMasterDiskSize,
+      boolean useNewTserverDiskSize,
+      YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState,
+      UUID rootCAUUID,
+      boolean useExistingServerCert) {
     KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     Cluster primaryCluster = taskParams().getPrimaryCluster();
@@ -2387,6 +2533,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.useNewMasterDiskSize = useNewMasterDiskSize;
     params.useNewTserverDiskSize = useNewTserverDiskSize;
     params.rootCA = rootCAUUID;
+    params.useExistingServerCert = useExistingServerCert;
     KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);
     task.initialize(params);
     return task;
