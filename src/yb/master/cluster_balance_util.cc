@@ -323,10 +323,6 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
     }
   }
 
-  // Only set the over-replication section if we need to.
-  if (placement_.num_replicas() == 0) {
-    placement_.set_num_replicas(FLAGS_replication_factor);
-  }
   tablet_meta.is_over_replicated = placement_.num_replicas() < static_cast<int32_t>(replica_count);
   tablet_meta.is_under_replicated = placement_.num_replicas() > static_cast<int32_t>(replica_count);
   if (VLOG_IS_ON(3)) {
