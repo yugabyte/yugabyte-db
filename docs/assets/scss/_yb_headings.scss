@@ -267,7 +267,7 @@ body.configuration {
     h3 + h5:not(:first-child),
     h4 + h5:not(:first-child) {
       margin-top: 32px;
-      // position: static;
+      position: static;
 
       &::after {
         display: none;
