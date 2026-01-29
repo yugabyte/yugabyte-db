@@ -586,8 +586,10 @@ TEST_F(TabletSplitITest, SplitSystemTable) {
 
   for (const auto& systable : systables) {
     for (const auto& tablet : ASSERT_RESULT(systable->GetTablets())) {
-      LOG(INFO) << "Splitting : " << systable->name() << " Tablet :" << tablet->id();
-      auto s = catalog_mgr->TEST_SplitTablet(tablet, true /* is_manual_split */);
+     LOG(INFO) << "Splitting : " << systable->name() << " Tablet :" << tablet->id();
+      // Does not really matter which hash code is passed, because it should fail
+      // on table validation step.
+      auto s = catalog_mgr->TEST_SplitTablet(tablet, 1 /* split_hash_code */);
       LOG(INFO) << s.ToString();
       EXPECT_TRUE(s.IsNotSupported());
       LOG(INFO) << "Split of system table failed as expected";
