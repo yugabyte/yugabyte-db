@@ -2804,7 +2804,8 @@ std::string AsDebugHexString(const std::vector<std::string>& strings) {
 }
 
 Result<std::vector<PartitionPB>> CreateNewTabletsPartition(
-    const TabletInfo& tablet_info, const std::vector<std::string>& split_partition_keys) {
+    const TabletInfo& tablet_info, const std::vector<std::string>& split_partition_keys,
+    const PartitionSchema& partition_schema) {
   // Making a copy of PartitionPB to avoid holding a lock.
   const auto source_partition = tablet_info.LockForRead()->pb.partition();
   const auto num_split_tablets = narrow_cast<int>(split_partition_keys.size() + 1);
@@ -2825,6 +2826,9 @@ Result<std::vector<PartitionPB>> CreateNewTabletsPartition(
     if (partition_start < partition_end ||
         (i == num_split_tablets - 1 &&
          source_partition.partition_key_end().empty() && partition_end.empty())) {
+      // Make sure partitions are valid.
+      RETURN_NOT_OK(partition_schema.CheckPartitionBounds(partition_start, partition_end));
+
       // TODO(nway-tsplit): How does hash bucket population change with N-way split? For binary
       // splits, we seemed to simply copy from source partition.
       new_tablets_partitions[i].mutable_hash_buckets()->CopyFrom(source_partition.hash_buckets());
@@ -3169,6 +3173,7 @@ class SplitScope {
 
 } // namespace
 
+// TODO(tsplit): remove split_encoded_keys, https://github.com/yugabyte/yugabyte-db/issues/30092.
 Status CatalogManager::DoSplitTablet(
     const TabletInfoPtr& source_tablet_info, const std::vector<std::string>& split_encoded_keys,
     const std::vector<std::string>& split_partition_keys, const ManualSplit is_manual_split,
@@ -3268,9 +3273,15 @@ Status CatalogManager::DoSplitTablet(
       LOG(INFO) << "Starting tablet split: " << source_tablet_info->ToString()
                 << " by partition key(s): " << AsDebugHexString(split_partition_keys);
 
+      // Get partition schema.
+      auto schema = VERIFY_RESULT(scope.source_table()->GetSchema());
+      PartitionSchema partition_schema;
+      RETURN_NOT_OK(PartitionSchema::FromPB(
+          scope.source_table_lock()->pb.partition_schema(), schema, &partition_schema));
+
       // Get partitions for the split children.
       const auto tablet_partitions = VERIFY_RESULT(CreateNewTabletsPartition(
-          *source_tablet_info, split_partition_keys));
+          *source_tablet_info, split_partition_keys, partition_schema));
 
       // Create in-memory (uncommitted) tablets for new split children.
       for (auto i = 0; i < num_split_parts; ++i) {

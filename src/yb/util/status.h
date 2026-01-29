@@ -70,6 +70,10 @@
 #define RETURN_NOT_OK_RET       YB_RETURN_NOT_OK_RET
 #define RETURN_NOT_OK_SET_CODE  YB_RETURN_NOT_OK_SET_CODE
 
+// Return the given status if it is not OK, but first clone it and prepend the caller name.
+// This macro helps to identify the exact place of failure for the widely used expression.
+#define RETURN_NOT_OK_PREPEND_FUNC(s) RETURN_NOT_OK_PREPEND((s), __func__)
+
 extern "C" {
 
 struct YbcStatusStruct;

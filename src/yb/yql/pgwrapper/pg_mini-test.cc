@@ -3261,7 +3261,7 @@ TEST_F(PgMiniTest, TabletMetadataCorrectnessWithHashPartitioning) {
     auto partition = tablet->metadata()->partition();
 
     // Check if this tablet contains our hash code
-    auto hash_bounds = dockv::PartitionSchema::GetHashPartitionBounds(*partition);
+    auto hash_bounds = ASSERT_RESULT(partition->GetKeysAsHashBoundsInclusive());
     uint16_t start_hash = hash_bounds.first;
     uint16_t end_hash = hash_bounds.second;
 
