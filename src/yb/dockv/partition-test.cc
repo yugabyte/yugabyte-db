@@ -210,7 +210,7 @@ TEST(PartitionTest, Distribution) {
     int32_t max_num_hash_codes = std::numeric_limits<int32_t>::min();
     bool first_partition = true;
     for (const auto& partition : partitions) {
-      const auto bounds = PartitionSchema::GetHashPartitionBounds(partition);
+      const auto bounds = ASSERT_RESULT(partition.GetKeysAsHashBoundsInclusive());
       ASSERT_EQ(bounds.first, next_hash_code);
       ASSERT_LT(bounds.first, bounds.second);
       const auto num_hash_codes = bounds.second - bounds.first + 1;

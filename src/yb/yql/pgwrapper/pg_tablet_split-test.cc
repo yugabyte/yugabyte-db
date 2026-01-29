@@ -486,9 +486,7 @@ TEST_F(PgTabletSplitTest, SplitKeyMatchesPartitionBound) {
     LOG(INFO) << "Searching for k1 value that (kK1Value, k2) records should match lower bound of "
                  "the upper-half tablet...";
 
-    const auto boundary_hash_code =
-        dockv::PartitionSchema::GetHashPartitionBounds(*peer->tablet_metadata()->partition()).first;
-
+    const auto boundary_hash_code = peer->tablet_metadata()->partition()->GetKeyStartAsHashCode();
     std::string tmp;
     QLValuePB value;
     for (;; ++kK1Value) {
