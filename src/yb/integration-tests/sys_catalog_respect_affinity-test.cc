@@ -10,6 +10,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+#include <algorithm>
+
 #include <gtest/gtest.h>
 
 #include "yb/common/wire_protocol.h"
@@ -302,15 +304,28 @@ TEST_F(SysCatalogRespectAffinityTest, TestNoPreferredZonesWithBlacklist) {
 }
 
 // Test that wildcard zone preference works with blacklist.
-// Masters are in c.r.z0, c.r.z1, c.r2.z2. The wildcard c.r.* matches only z0 and z1.
-// When we blacklist the leader, it should step down to the other node in c.r.*, not to z2.
+// We start with 3 masters in c:r:z0, c:r:z1, c:r:z2, then add a 4th master in c:r2:z3.
+// The wildcard c.r.* matches z0, z1, z2 but not z3.
+// When we blacklist the leader, it should step down to another node in c.r.*, not to z3.
 TEST_F(SysCatalogRespectAffinityTest, TestWildcardZonePreferenceWithBlacklist) {
-  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r2.z2", 3, ""));
+  // Add a 4th master in a different region (r2)
+  auto* master_flags = external_mini_cluster()->mutable_extra_master_flags();
+  master_flags->erase(
+      std::remove_if(master_flags->begin(), master_flags->end(),
+                     [](const std::string& flag) {
+                       return flag.find("--placement_region=") != std::string::npos;
+                     }),
+      master_flags->end());
+  master_flags->push_back("--placement_region=r2");
 
-  // Set wildcard zone preference c.r.* which matches z0 and z1, but not z2.
+  auto new_master = ASSERT_RESULT(external_mini_cluster()->StartShellMaster());
+  ASSERT_OK(external_mini_cluster()->ChangeConfig(new_master, consensus::ADD_SERVER));
+
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r.z2,c.r2.z3", 4, ""));
+
+  // Set wildcard zone preference c.r.* which matches z0, z1, z2 but NOT z3.
   ASSERT_OK(yb_admin_client_->SetPreferredZones({"c.r.*"}));
 
-  // First, wait for leader to be in a preferred zone (z0 or z1).
   std::vector<CloudInfoPB> preferred_zones;
   CloudInfoPB cloud_info;
   cloud_info.set_placement_cloud("c");
@@ -319,12 +334,13 @@ TEST_F(SysCatalogRespectAffinityTest, TestWildcardZonePreferenceWithBlacklist) {
   preferred_zones.push_back(cloud_info);
   cloud_info.set_placement_zone("z1");
   preferred_zones.push_back(cloud_info);
+  cloud_info.set_placement_zone("z2");
+  preferred_zones.push_back(cloud_info);
 
   ASSERT_OK(WaitFor([&]() {
     return IsMasterLeaderInZones(preferred_zones);
   }, kDefaultTimeout, "Master leader moves to wildcard-matching zone"));
 
-  // Blacklist current leader. It should step down to the other node in c.r.*, not to z2.
   ASSERT_OK(BlacklistLeader());
   ASSERT_OK(WaitFor([&]() {
     return IsMasterLeaderInZones(preferred_zones);
