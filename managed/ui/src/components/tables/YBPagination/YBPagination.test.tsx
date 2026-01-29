@@ -1,4 +1,4 @@
-import { render, screen } from '../../../test-utils';
+import { render, screen } from '@testing-library/react';
 import { within } from '@testing-library/dom';
 import userEvent from '@testing-library/user-event';
 import YBPagination from './YBPagination';
@@ -107,40 +107,40 @@ describe('YBPagination render as controlled component', () => {
     scoped = within(curPage);
     expect(scoped.getByText(/\(current\)/i)).toBeInTheDocument();
   });
-  it('triggers onChange callback function with new page num (valid prev page press)', () => {
+  it('triggers onChange callback function with new page num (valid prev page press)', async () => {
     const initialPage = 8;
-    const onChange = jest.fn();
+    const onChange = vi.fn();
     render(<YBPagination numPages={20} activePage={initialPage} onChange={onChange} />);
-    userEvent.click(screen.getByRole('listitem', { name: /prev/i }));
+    await userEvent.click(screen.getByRole('listitem', { name: /prev/i }));
     expect(onChange.mock.calls[0][0]).toBe(initialPage - 1);
   });
-  it('triggers onChange callback function with new page num (valid next page press)', () => {
+  it('triggers onChange callback function with new page num (valid next page press)', async () => {
     const initialPage = 8;
-    const onChange = jest.fn();
+    const onChange = vi.fn();
     render(<YBPagination numPages={20} activePage={initialPage} onChange={onChange} />);
-    userEvent.click(screen.getByRole('listitem', { name: /next/i }));
+    await userEvent.click(screen.getByRole('listitem', { name: /next/i }));
     expect(onChange.mock.calls[0][0]).toBe(initialPage + 1);
   });
-  it('triggers onChange callback function with new page num (valid next page press)', () => {
+  it('triggers onChange callback function with new page num (valid next page press)', async () => {
     const initialPage = 8;
-    const onChange = jest.fn();
+    const onChange = vi.fn();
     render(<YBPagination numPages={20} activePage={initialPage} onChange={onChange} />);
-    userEvent.click(screen.getByRole('listitem', { name: /next/i }));
+    await userEvent.click(screen.getByRole('listitem', { name: /next/i }));
     expect(onChange.mock.calls[0][0]).toBe(initialPage + 1);
   });
-  it('triggers onChange callback function with new page num (valid lower boundary page press)', () => {
+  it('triggers onChange callback function with new page num (valid lower boundary page press)', async () => {
     const initialPage = 8;
-    const onChange = jest.fn();
+    const onChange = vi.fn();
     render(<YBPagination numPages={20} activePage={initialPage} onChange={onChange} />);
-    userEvent.click(screen.getByText('1'));
+    await userEvent.click(screen.getByText('1'));
     expect(onChange.mock.calls[0][0]).toBe(1);
   });
-  it('triggers onChange callback function with new page num (valid upper boundary page press)', () => {
+  it('triggers onChange callback function with new page num (valid upper boundary page press)', async () => {
     const initialPage = 8;
     const numPages = 20;
-    const onChange = jest.fn();
+    const onChange = vi.fn();
     render(<YBPagination numPages={numPages} activePage={initialPage} onChange={onChange} />);
-    userEvent.click(screen.getByText(numPages.toString()));
+    await userEvent.click(screen.getByText(numPages.toString()));
     expect(onChange.mock.calls[0][0]).toBe(numPages);
   });
 });

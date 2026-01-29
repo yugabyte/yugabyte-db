@@ -1,6 +1,14 @@
 import _ from 'lodash';
 import userEvent from '@testing-library/user-event';
-import { render } from '../../../test-utils';
+import { render } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from 'react-query';
+import { Provider } from 'react-redux';
+import { createStore } from 'redux';
+
+// Mock the container to break circular dependency:
+// HAReplicationView -> PromoteInstanceModal -> ... -> HAReplication -> HAReplicationViewContainer -> HAReplicationView
+vi.mock('./HAReplicationViewContainer', () => ({ HAReplicationViewContainer: () => null }));
+
 import { HAReplicationView } from './HAReplicationView';
 import { HaConfig, HaReplicationSchedule } from '../dtos';
 import { MOCK_HA_WS_RUNTIME_CONFIG } from './mockUtils';
@@ -42,17 +50,27 @@ const mockSchedule: HaReplicationSchedule = {
 };
 
 const setup = (config?: HaConfig) => {
-  const fetchRunTimeConfigs = jest.fn();
-  const setRunTimeConfig = jest.fn();
+  const fetchRunTimeConfigs = vi.fn();
+  const setRunTimeConfig = vi.fn();
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } }
+  });
+  const store = createStore(() => ({
+    customer: { currentUser: { data: { timezone: 'UTC' } } }
+  }));
   return render(
-    <HAReplicationView
-      haConfig={config ?? mockConfig}
-      schedule={mockSchedule}
-      editConfig={() => {}}
-      runtimeConfigs={MOCK_HA_WS_RUNTIME_CONFIG}
-      fetchRuntimeConfigs={fetchRunTimeConfigs}
-      setRuntimeConfig={setRunTimeConfig}
-    />
+    <Provider store={store}>
+      <QueryClientProvider client={queryClient}>
+        <HAReplicationView
+          haConfig={config ?? mockConfig}
+          schedule={mockSchedule}
+          editConfig={() => {}}
+          runtimeConfigs={MOCK_HA_WS_RUNTIME_CONFIG}
+          fetchRuntimeConfigs={fetchRunTimeConfigs}
+          setRuntimeConfig={setRunTimeConfig}
+        />
+      </QueryClientProvider>
+    </Provider>
   );
 };
 
@@ -90,36 +108,36 @@ describe('HA replication configuration overview', () => {
     ]);
   });
 
-  it('should render a modal on when clicking the delete configuration menu item', () => {
+  it('should render a modal on when clicking the delete configuration menu item', async () => {
     const component = setup();
 
     // check if modal opens
-    userEvent.click(component.getByRole('button', { name: /actions/i }));
-    userEvent.click(component.getByRole('menuitem', { name: /delete configuration/i }));
+    await userEvent.click(component.getByRole('button', { name: /actions/i }));
+    await userEvent.click(component.getByRole('menuitem', { name: /delete configuration/i }));
     expect(component.getByTestId('ha-delete-confirmation-modal')).toBeInTheDocument();
 
     // check if modal closes
-    userEvent.click(component.getByRole('button', { name: /cancel/i }));
+    await userEvent.click(component.getByRole('button', { name: /cancel/i }));
     expect(component.queryByTestId('ha-delete-confirmation-modal')).not.toBeInTheDocument();
   });
 
-  it('should render a modal on click at the promotion button', () => {
+  it('should render a modal on click at the promotion button', async () => {
     const config = _.cloneDeep(mockConfig);
     config.instances.forEach((item) => (item.is_leader = false)); // mark all instances as standby
     const component = setup(config);
 
     // check if modal opens
-    userEvent.click(component.getByRole('button', { name: /make active/i }));
+    await userEvent.click(component.getByRole('button', { name: /make active/i }));
     expect(component.getByTestId('ha-make-active-modal')).toBeInTheDocument();
 
     // check if modal closes
-    userEvent.click(component.getByRole('button', { name: /cancel/i }));
+    await userEvent.click(component.getByRole('button', { name: /cancel/i }));
     expect(component.queryByTestId('ha-make-active-modal')).not.toBeInTheDocument();
   });
 
   it('should show generic error message on incorrect config', () => {
-    const consoleError = jest.fn();
-    jest.spyOn(console, 'error').mockImplementation(consoleError);
+    const consoleError = vi.fn();
+    vi.spyOn(console, 'error').mockImplementation(consoleError);
     const component = setup({} as HaConfig);
 
     expect(component.getByTestId('ha-generic-error')).toBeInTheDocument();
