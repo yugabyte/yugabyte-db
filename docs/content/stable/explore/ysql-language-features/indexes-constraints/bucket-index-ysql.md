@@ -51,7 +51,7 @@ Bucket column or index expression column should generally be the first column of
 
 ## Example
 
-Follow the [setup instructions](../../cluster-setup-local/) to start a local multi-node universe with a replication factor of 3.
+Follow the [setup instructions](../../cluster-setup-local/) to start a local multi-node universe with a replication factor of 3. You must be running v2025.2.1.0 or later.
 
 Create a table with a monotonic column:
 
