@@ -1791,6 +1791,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   rpc::Scheduler& Scheduler() override;
 
+  Status GetYsqlYbSystemTableInfo(
+      const GetYsqlYbSystemTableInfoRequestPB* req, GetYsqlYbSystemTableInfoResponsePB* resp,
+      rpc::RpcContext* rpc);
+
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
   friend class TableLoader;
