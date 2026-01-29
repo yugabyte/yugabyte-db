@@ -394,9 +394,6 @@ YbVirtualWalRecord *
 YBXLogReadRecord(XLogReaderState *state, List *publication_names,
 				 char **errormsg)
 {
-	MemoryContext caller_context;
-	caller_context = MemoryContextSwitchTo(cached_records_context);
-
 	/* reset error state */
 	*errormsg = NULL;
 	state->errormsg_buf[0] = '\0';
@@ -405,11 +402,13 @@ YBXLogReadRecord(XLogReaderState *state, List *publication_names,
 
 	YbVirtualWalRecord *record = YBCReadRecord(publication_names);
 
-	state->ReadRecPtr = record->lsn;
-	state->yb_virtual_wal_record = record;
+	if (record)
+	{
+		state->ReadRecPtr = record->lsn;
+		state->yb_virtual_wal_record = record;
+		TrackUnackedTransaction(record);
+	}
 
-	TrackUnackedTransaction(record);
-	MemoryContextSwitchTo(caller_context);
 	return record;
 }
 
