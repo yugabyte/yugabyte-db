@@ -132,8 +132,7 @@ bool CDCSDKVirtualWAL::IsTabletEligibleForVWAL(
     const std::string& tablet_id, const PartitionPB& tablet_partition_pb) {
   dockv::Partition tablet_partition;
   dockv::Partition::FromPB(tablet_partition_pb, &tablet_partition);
-  const auto& [tablet_start_hash_range, _] =
-      dockv::PartitionSchema::GetHashPartitionBounds(tablet_partition);
+  const auto tablet_start_hash_range = tablet_partition.GetKeyStartAsHashCode();
   VLOG_WITH_PREFIX(1) << "tablet " << tablet_id << " has start range: " << tablet_start_hash_range;
   return (tablet_start_hash_range >= slot_hash_range_->start_range) &&
          (tablet_start_hash_range < slot_hash_range_->end_range);
