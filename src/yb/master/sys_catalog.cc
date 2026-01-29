@@ -2358,7 +2358,6 @@ Result<bool> SysCatalogTable::GetYsqlYbSystemTableInfo(
     RETURN_NOT_OK(iter->Init(spec));
   }
 
-  bool found = false;
   qlexpr::QLTableRow row;
   while (VERIFY_RESULT(iter->FetchNext(&row))) {
     const auto oid_col = row.GetValue(oid_col_id);
@@ -2386,15 +2385,14 @@ Result<bool> SysCatalogTable::GetYsqlYbSystemTableInfo(
         relnamespace_col->get().uint32_value() == relnamespace) {
       *oid = oid_col->get().uint32_value();
       *relfilenode = relfilenode_col->get().uint32_value();
-      found = true;
-      break;
+      return true;
     }
   }
-  if (!found)
-    LOG(INFO) << Format(
-        "Could not find table '$0' in namespace $1 in yb_system database", table_name,
-        relnamespace);
-  return found;
+
+  LOG(INFO) << Format(
+      "Could not find table '$0' in namespace $1 in yb_system database", table_name, relnamespace);
+
+  return false;
 }
 
 const Schema& PgTableReadData::schema() const {
