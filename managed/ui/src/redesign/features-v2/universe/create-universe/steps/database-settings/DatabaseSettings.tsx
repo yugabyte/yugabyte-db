@@ -60,14 +60,14 @@ export const DatabaseSettings = forwardRef<StepsRef>((_, forwardRef) => {
       <Box sx={{ display: 'flex', flexDirection: 'column', width: '100%', gap: '24px' }}>
         <StyledPanel>
           <StyledHeader>{t('interface')}</StyledHeader>
-          <StyledContent>
+          <StyledContent sx={{ gap: '16px' }}>
             <YSQLField />
             <YCQField />
           </StyledContent>
         </StyledPanel>
         <StyledPanel>
           <StyledHeader>{t('features')}</StyledHeader>
-          <StyledContent>
+          <StyledContent sx={{ gap: '16px' }}>
             <ConnectionPoolingField
               disabled={false}
               dbVersion={generalSettings?.databaseVersion ?? ''}

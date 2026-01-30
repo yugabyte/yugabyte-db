@@ -3,29 +3,32 @@ import { useQuery } from 'react-query';
 import { toast } from 'react-toastify';
 import { useTranslation } from 'react-i18next';
 import {
-  CreateUniverseContext,
-  CreateUniverseContextMethods,
-  StepsRef
-} from '../../CreateUniverseContext';
-import {
   MapLegend,
   MapLegendItem,
   MarkerType,
   useGetMapIcons,
   YBMapMarker,
-  YBMaps
+  YBMaps,
+  mui
 } from '@yugabyte-ui-library/core';
-import { Region } from '../../../../../features/universe/universe-form/utils/dto';
-import { styled } from '@material-ui/core';
+import { YBLoadingCircleIcon } from '@app/components/common/indicators';
 import {
   getUniverseResources,
   useCreateUniverse
 } from '../../../../../../v2/api/universe/universe';
+import {
+  CreateUniverseContext,
+  CreateUniverseContextMethods,
+  StepsRef
+} from '../../CreateUniverseContext';
 import { mapCreateUniversePayload } from '../../CreateUniverseUtils';
-import { YBLoadingCircleIcon } from '@app/components/common/indicators';
+import { Region } from '../../../../../features/universe/universe-form/utils/dto';
 
+//icons
 import UniverseIcon from '../../../../../assets/clusters.svg';
 import Money from '../../../../../assets/money.svg';
+
+const { styled } = mui;
 
 const StyledPanel = styled('div')(({ theme }) => ({
   borderRadius: '8px',
@@ -53,6 +56,7 @@ const StyledUniverseName = styled('span')(({ theme }) => ({
   color: theme.palette.primary[600],
   textDecoration: 'underline'
 }));
+
 const StyledAttrib = styled('div')(({ theme }) => ({
   fontSize: '13px',
   fontWeight: 400,
@@ -60,6 +64,7 @@ const StyledAttrib = styled('div')(({ theme }) => ({
   color: theme.palette.grey[600],
   width: '120px'
 }));
+
 const StyledValue = styled('div')(({ theme }) => ({
   fontSize: '13px',
   fontWeight: 600,
@@ -68,6 +73,7 @@ const StyledValue = styled('div')(({ theme }) => ({
   textAlign: 'right',
   width: '80px'
 }));
+
 const StyledFooter = styled('div')(({ theme }) => ({
   display: 'flex',
   alignItems: 'flex-end',

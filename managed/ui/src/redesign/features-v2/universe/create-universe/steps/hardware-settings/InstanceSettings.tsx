@@ -281,14 +281,11 @@ export const InstanceSettings = forwardRef<
           </PanelWrapper>
         </Content>
       </Panel>
-
-      <Box mb={3} />
-
       {showDedicatedNodesSection && (
         <YBAccordion
           defaultExpanded={!sameAsTserver}
           titleContent={<>{t('master')}</>}
-          sx={{ width: '100%', padding: 1 }}
+          sx={{ width: '100%' }}
         >
           <Box>
             <Box mb={2}>

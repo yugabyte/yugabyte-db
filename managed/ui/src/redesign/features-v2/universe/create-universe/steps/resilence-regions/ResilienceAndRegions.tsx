@@ -183,7 +183,6 @@ export const ResilienceAndRegions = forwardRef<
           <StyledHeader>
             <Grid alignItems={'center'} justifyContent={'space-between'} container width="100%">
               {t('title')}
-              {/* TODO: Missing Tooltip, needs to be added as a prop in CCL */}
               <YBButtonGroup
                 size="large"
                 dataTestId="yb-button-group-multiselect-normal"

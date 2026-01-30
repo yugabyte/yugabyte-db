@@ -10,6 +10,8 @@ import {
   YBMaps
 } from '@yugabyte-ui-library/core';
 import { Region } from '@app/redesign/features/universe/universe-form/utils/dto';
+
+//icons
 import Money from '../../../../../assets/money.svg';
 
 const { styled } = mui;
