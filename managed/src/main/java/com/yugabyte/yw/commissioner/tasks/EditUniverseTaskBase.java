@@ -53,6 +53,7 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
     setNodeNames(universe);
     // Set non on-prem node UUIDs.
     setCloudNodeUuids(universe);
+    setCommunicationPortsForNodes(false);
     // Update on-prem node UUIDs in task params but do not commit yet.
     updateOnPremNodeUuidsOnTaskParams(false);
     // Select master nodes, if needed. Changes in masters are not automatically
@@ -87,7 +88,6 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
     preTaskActions(universe);
     // Confirm the nodes on hold.
     commitReservedNodes();
-    setCommunicationPortsForNodes(false);
 
     // Set the prepared data to universe in-memory.
     updateUniverseNodesAndSettings(universe, taskParams(), false);
