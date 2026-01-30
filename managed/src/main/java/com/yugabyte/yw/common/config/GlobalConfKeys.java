@@ -511,6 +511,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Allow the usage of CipherTrust KMS.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> kmsAllowOCI =
+      new ConfKeyInfo<>(
+          "yb.kms.allow_oci",
+          ScopeType.GLOBAL,
+          "Allow OCI KMS",
+          "Allow the usage of OCI KMS.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> telemetryAllowLoki =
       new ConfKeyInfo<>(
           "yb.telemetry.allow_loki",
