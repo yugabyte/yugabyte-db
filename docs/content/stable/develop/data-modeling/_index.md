@@ -51,12 +51,12 @@ In distributed systems, a hot-spot or hot-shard refers to a node that is overloa
 To understand the hot-shard problem and solutions to overcome the issue, see [Hot shards](./hot-shards-ysql).
 {{</lead>}}
 
-## Bucket index
+## Bucket-based indexing
 
 {{<tags/feature/tp idea="2275">}}Traditional leading range (ASC/DESC) indexes with monotonic inserts concentrate all writes on the "most recent" tablet, creating hot shards and uneven resource usage. By prepending a bucket column (often a hash code modulo of a key column) to the ASC/DESC key, writes can be evenly distributed across multiple tablets (buckets), achieving write scalability and balanced resource usage.
 
 {{<lead link="bucket-index-ysql/">}}
-To understand how to use bucket indexes for faster retrieval, see [Bucket indexes](bucket-index-ysql/)
+To understand how to use bucket-based indexes for faster retrieval, see [Bucket-based indexes](bucket-index-ysql/)
 {{</lead>}}
 
 ## Table partitioning

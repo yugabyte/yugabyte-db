@@ -1,9 +1,9 @@
 ---
-title: Bucket indexes in YugabyteDB YSQL
-headerTitle: Bucket indexes
-linkTitle: Bucket indexes
-description: Using bucket indexes in YSQL
-headContent: Use bucket-based distribution to avoid hotspots
+title: Bucket-based indexes in YugabyteDB YSQL
+headerTitle: Bucket-based indexes
+linkTitle: Bucket-based indexes
+description: Using bucket-based indexes in YSQL
+headContent: Use bucket-based distribution of indexes to avoid hotspots
 menu:
   stable_develop:
     identifier: bucket-index-ysql
@@ -27,7 +27,7 @@ Normally, to get a globally ordered result for the most recent 1000 rows by time
 
 This is resource-intensive and slow.
 
-Using a bucket index with the Limit pushdown optimization, the database can "push down" the LIMIT request to each of the individual tablets (buckets).
+Using a bucket-based index with the Limit pushdown optimization, the database can "push down" the LIMIT request to each of the individual tablets (buckets).
 
 For example, for a timestamp column that is the second column in the index (and ordered ASC), for each bucket, we can quickly find its top 1000 locally ordered rows. The database only has to scan 1000 rows per bucket instead of scanning potentially millions of rows that match the larger range condition.
 
@@ -37,7 +37,7 @@ In short, it achieves the necessary write scalability and global ordering simult
 
 ## When to use it
 
-Use bucket indexes for the following workloads:
+Use bucket-based indexes for the following workloads:
 
 - Timestamp-ordered inserts.
 - Sequence-based IDs.
@@ -52,7 +52,7 @@ For example:
 ## Syntax
 
 ```sql
-CREATE INDEX index_name ON table_name(yb_hash_code(<key_columns>) % <buckets>) ASC, column_name asc) 
+CREATE INDEX index_name ON table_name(yb_hash_code(<key_columns>) % <buckets>) ASC, column_name ASC) 
 SPLIT AT VALUES ((1), (2));
 ```
 
@@ -72,7 +72,7 @@ SPLIT AT VALUES ((1), (2));
 
 ## Parameters
 
-You configure bucket indexing in the [query planner](../../../architecture/query-layer/planner-optimizer/) using the following configuration parameters:
+You configure bucket-based indexing in the [query planner](../../../architecture/query-layer/planner-optimizer/) using the following configuration parameters:
 
 - yb_enable_derived_equalities: Set to `true`.
 - yb_enable_derived_saops: Set to `true`.
@@ -82,7 +82,7 @@ In addition, the [cost-based optimizer](../../../best-practices-operations/ysql-
 
 ## Example
 
-The following example walks through using a bucket index to avoid write hot spots on a timestamp column. You create a table, define an index that distributes writes across three buckets (tablets), insert sample rows with timestamps over a range, and enable the planner settings for bucket-based merge. Then you run queries with ORDER BY and LIMIT and confirm in the plan that there is no Sort node—ordering comes from merging streams from each bucket.
+The following example walks through using a bucket-based index to avoid write hot spots on a timestamp column. You create a table, define an index that distributes writes across three buckets (tablets), insert sample rows with timestamps over a range, and enable the planner settings for bucket-based merge. Then you run queries with ORDER BY and LIMIT and confirm in the plan that there is no Sort node—ordering comes from merging streams from each bucket.
 
 Follow the [setup instructions](../../../explore/cluster-setup-local/#multi-node-universe) to start a local multi-node universe with a replication factor of 3, and connect to universe using ysqlsh. You must be running v2025.2.1.0 or later.
 
@@ -99,7 +99,7 @@ Create an index that always writes to the 3 nodes by adding a bucket column and 
 
 ```sql
 CREATE INDEX yb_nothotspot
-    ON te ((yb_hash_code(timestamp) % 3) ASC, timestamp) include (id)
+    ON te ((yb_hash_code(timestamp) % 3) ASC, timestamp) INCLUDE (id)
     SPLIT AT VALUES ((1), (2));
 ```
 
@@ -108,7 +108,7 @@ SPLIT AT ensures each bucket (0, 1, 2) maps to its own tablet, so writes are spr
 As a reminder, an ordinary "hot-spot" index would use only the timestamp column (no bucket column and no SPLIT AT).
 
 ```output.sql
-ON te ("timestamp" asc) include (id);
+ON te ("timestamp" ASC) INCLUDE (id);
 ```
 
 Insert rows with increasing timestamps:
@@ -121,7 +121,7 @@ SELECT
 FROM generate_series(0, 99999) AS gs;
 ```
 
-### Configure bucket indexing
+### Configure bucket-based indexing
 
 Enable features that preserve global ordering across the buckets by setting the configuration parameters:
 
@@ -140,7 +140,7 @@ ALTER DATABASE yugabyte SET yb_enable_cbo=on;
 Observe planner changes that provide global ordering with no SQL or application changes:
 
 ```sql
-EXPLAIN (ANALYZE)
+EXPLAIN (ANALYZE, COSTS off)
     SELECT timestamp
     FROM te
     WHERE "timestamp" >= '2020-01-01'
@@ -162,7 +162,7 @@ EXPLAIN (ANALYZE)
 - Merge Stream Key: columns involved in forming buckets (does not include columns fixed to constants).
 - Merge Streams: number of streams that YugabyteDB merges, generally the cross product of all merge stream key values.
 
-Notice that no sort is present and that the `yb_enable_derived_saops` feature passed the "bucket" column into the index condition. YugabyteDB has then merged the streams and returned the data without a sort.
+Notice that no sort is present and that the `yb_enable_derived_saops` feature passed the "bucket" column into the index condition. The index has then merged the streams and returned sorted data, eliminating the need for a sort.
 
 ### Add a LIMIT
 
@@ -238,15 +238,15 @@ EXPLAIN (ANALYZE, COSTS off, TIMING on)
 
 The SQL is asking for 1000 globally ordered rows, and YugabyteDB again returns it, without the sort, while scanning 1000 rows per bucket, in a fraction of the time.
 
-The bucket index also works well for more complex OLTP top-N queries, such as keyset pagination.
+The bucket-based index also works well for more complex OLTP top-N queries, such as keyset pagination.
 
 Create a more complicated index and an extra predicate:
 
 ```sql
 ALTER TABLE te ADD COLUMN key_id integer NOT NULL DEFAULT 123;
-analyze;
+ANALYZE;
 CREATE INDEX scalable_key_timestamp ON te (
-    (yb_hash_code("timestamp") % 3) asc,
+    (yb_hash_code("timestamp") % 3) ASC,
     key_id,
     "timestamp" ASC,
     id
@@ -284,7 +284,7 @@ The global ordering is still preserved on this keyset pagination without any cha
 
 ### Point lookups
 
-Single-row lookups by exact key work with bucket indexes because the planner automatically adds the bucket predicate to the index condition. As a result, the query can target the correct tablet instead of scanning all buckets.
+Single-row lookups by exact key work with bucket-based indexes because the planner automatically adds the bucket predicate to the index condition. As a result, the query can target the correct tablet instead of scanning all buckets.
 
 Using the primary key (id, timestamp), the `bucket_id` clause is automatically added:
 
@@ -307,7 +307,7 @@ Create a secondary index named `te_key_id_secondary`. This index uses a bucket k
 
 ```sql
 CREATE INDEX te_key_id_secondary ON te (
-    (yb_hash_code(key_id) % 3) asc,
+    (yb_hash_code(key_id) % 3) ASC,
     key_id,
     id
 ) SPLIT AT VALUES ((1), (2));
@@ -316,7 +316,7 @@ CREATE INDEX te_key_id_secondary ON te (
 Run an EXPLAIN on a point lookup query.
 
 ```sql
-explain SELECT * FROM te WHERE key_id = 123 AND id = 1;
+EXPLAIN SELECT * FROM te WHERE key_id = 123 AND id = 1;
 ```
 
 ```output
