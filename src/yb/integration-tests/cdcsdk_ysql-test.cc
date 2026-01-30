@@ -12460,5 +12460,62 @@ TEST_F(CDCSDKYsqlTest, TestUPAMNotStuckWithIndexInColocatedTablet) {
   }
 }
 
+TEST_F(CDCSDKYsqlTest, TestHitDeadlineOnWalReadMidTransaction) {
+  // Set a low limit so that a transaction with > 100 records will be streamed in multiple calls.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_max_stream_intent_records) = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+
+  ASSERT_OK(SetUpWithParams(1 /* rf */, 1 /* num_masters */, false /* colocated */));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr /* partition_list_version */));
+  ASSERT_EQ(tablets.size(), 1);
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  // Insert a transaction with > 100 rows to exceed FLAGS_cdc_max_stream_intent_records.
+  // This will cause the transaction to be streamed in multiple GetChanges calls.
+  ASSERT_OK(WriteRowsHelper(0, 200, &test_cluster_, true));
+
+  int record_count = 0;
+  // First GetChanges call - should get partial transaction records.
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  CDCSDKCheckpointPB checkpoint = change_resp.cdc_sdk_checkpoint();
+  record_count += change_resp.cdc_sdk_proto_records_size();
+
+  // Verify we're in a partial transaction state (non-empty key and non-zero write_id).
+  ASSERT_FALSE(checkpoint.key().empty()) << "Checkpoint key must be non-empty for partial txn";
+  ASSERT_NE(checkpoint.write_id(), 0) << "Checkpoint write_id must be non-zero for partial txn";
+
+  // Now enable the test flag to simulate deadline being hit on WAL read.
+  // This will cause ReadReplicatedMessagesInSegmentForCDC to return 0 WAL records.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_hit_deadline_on_wal_read) = true;
+
+  // Second GetChanges call - this should NOT crash even though we get 0 WAL records
+  // while trying to resume a partially-streamed transaction.
+  auto safe_hybrid_time_before = change_resp.safe_hybrid_time();
+  change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &checkpoint));
+
+  // Should get 0 records since deadline was hit and no data records were streamed.
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 0);
+
+  // Checkpoint and safe_hybrid_time should remain unchanged since no progress was made.
+  ASSERT_EQ(change_resp.cdc_sdk_checkpoint().term(), checkpoint.term());
+  ASSERT_EQ(change_resp.cdc_sdk_checkpoint().index(), checkpoint.index());
+  ASSERT_EQ(change_resp.cdc_sdk_checkpoint().key(), checkpoint.key());
+  ASSERT_EQ(change_resp.cdc_sdk_checkpoint().write_id(), checkpoint.write_id());
+  ASSERT_EQ(change_resp.safe_hybrid_time(), safe_hybrid_time_before);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_hit_deadline_on_wal_read) = false;
+
+  // Continue calling GetChanges until we get all records using the helper function.
+  checkpoint = change_resp.cdc_sdk_checkpoint();
+  auto all_pending_changes = GetAllPendingChangesFromCdc(stream_id, tablets, &checkpoint);
+  record_count += all_pending_changes.records.size();
+
+  // 1 DDL + 200 INSERTs + 1 BEGIN + 1 COMMIT = 203 records
+  ASSERT_EQ(record_count, 203);
+}
+
 }  // namespace cdc
 }  // namespace yb
