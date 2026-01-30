@@ -116,8 +116,8 @@ Insert rows with increasing timestamps:
 INSERT INTO te ("timestamp")
 SELECT
     '2026-01-01 00:00:00+00'::timestamptz
-    + (gs * (('2024-01-01 00:00:00+00'::timestamptz - '2026-01-01 00:00:00+00'::timestamptz) / 10000000))
-FROM generate_series(0, 9999999) AS gs;
+    + (gs * (('2024-01-01 00:00:00+00'::timestamptz - '2026-01-01 00:00:00+00'::timestamptz) / 100000))
+FROM generate_series(0, 99999) AS gs;
 ```
 
 ### Configure bucket indexing
@@ -165,8 +165,17 @@ Notice that no sort is present and that the `yb_enable_derived_saops` feature pa
 
 You really see how powerful this feature is when you use the LIMIT clause.
 
+First turn off the optimization:
+
 ```sql
-explain (analyse, costs off, timing on, dist)
+SET yb_enable_derived_saops = false; 
+SET yb_max_saop_merge_streams = 0; 
+```
+
+Run the following query:
+
+```sql
+EXPLAIN (ANALYZE, COSTS off, TIMING on, dist)
     SELECT timestamp
     FROM te
     WHERE "timestamp" >= '2020-01-01'
@@ -176,17 +185,53 @@ explain (analyse, costs off, timing on, dist)
 ```
 
 ```output
- Limit (actual time=1.682..2.258 rows=1000 loops=1)
+ Limit (actual time=94.600..94.975 rows=1000 loops=1)
+   ->  Sort (actual time=94.596..94.778 rows=1000 loops=1)
+         Sort Key: "timestamp"
+         Sort Method: top-N heapsort  Memory: 49kB
+         ->  Index Only Scan using yb_nothotspot on te (actual time=5.413..64.657 rows=100000 loops=1)
+               Index Cond: (("timestamp" >= '2020-01-01 00:00:00-05'::timestamp with time zone) AND ("timestamp" < '2030-01-01 00:00:00-05'::timestamp with time zone))
+               Heap Fetches: 0
+ Planning Time: 0.494 ms
+ Execution Time: 95.281 ms
+ Peak Memory Usage: 117 kB
+```
+
+Without the optimization, the planner perform a sort as expected.
+
+Turn the optimization back on:
+
+```sql
+SET yb_enable_derived_saops = true; 
+SET yb_max_saop_merge_streams = 64; 
+```
+
+Run the query again:
+
+```sql
+EXPLAIN (ANALYZE, COSTS off, TIMING on, dist)
+    SELECT timestamp
+    FROM te
+    WHERE "timestamp" >= '2020-01-01'
+    AND "timestamp" <  '2030-01-01'
+    ORDER BY timestamp
+    LIMIT 1000;
+```
+
+```output
+ Limit (actual time=4.783..6.583 rows=1000 loops=1)
    ->  Index Only Scan using yb_nothotspot on te (actual time=1.680..2.122 rows=1000 loops=1)
          Index Cond: (("timestamp" >= '2020-01-01 00:00:00+00'::timestamp with time zone) AND ("timestamp" < '2030-01-01 00:00:00+00'::timestamp with time zone) AND (((yb_hash_code("timestamp") % 3)) = ANY ('{0,1,2}'::integer[])))
          Merge Sort Key: "timestamp"
          Merge Stream Key: (yb_hash_code("timestamp") % 3)
          Merge Streams: 3
-         Storage Index Rows Scanned: 3000
- Execution Time: 2.402 ms
+         Heap Fetches: 0
+ Planning Time: 0.456 ms
+ Execution Time: 7.241 ms
+ Peak Memory Usage: 8 kB
 ```
 
-The SQL is asking for 1000 globally ordered rows, and YugabyteDB again returns it efficiently, without the sort node, while scanning 1000 rows per bucket.
+The SQL is asking for 1000 globally ordered rows, and YugabyteDB again returns it efficiently, without the sort, while scanning 1000 rows per bucket.
 
 The bucket index also works well for more complex OLTP top-N queries, such as keyset pagination.
 
