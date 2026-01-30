@@ -5,7 +5,7 @@ linkTitle: Bucket indexes
 description: Using bucket indexes in YSQL
 headContent: Explore bucket indexes in YugabyteDB using YSQL
 menu:
-  stable:
+  stable_develop:
     identifier: bucket-index-ysql
     parent: data-modeling
     weight: 250
@@ -28,11 +28,25 @@ This is resource-intensive and slow.
 
 Using a bucket index with the Limit pushdown optimization, the database can "push down" the LIMIT request to each of the individual tablets (buckets).
 
-For a timestamp column that is the second column in the index (and ordered ASC), each tablet can quickly find its top 1000 locally ordered rows. The database only has to scan 1000 rows per bucket instead of scanning potentially millions of rows that match the larger range condition.
+For example, for a timestamp column that is the second column in the index (and ordered ASC), each tablet can quickly find its top 1000 locally ordered rows. The database only has to scan 1000 rows per bucket instead of scanning potentially millions of rows that match the larger range condition.
 
 YugabyteDB then performs an efficient merge of the small, pre-sorted result sets from each bucket to produce the final globally ordered 1000 rows, without a final global sort.
 
 In short, it achieves the necessary write scalability and global ordering simultaneously, making OLTP top-N queries exceptionally fast.
+
+## When to use it
+
+Use bucket indexes for the following workloads:
+
+- Timestamp-ordered inserts.
+- Sequence-based IDs.
+- "Latest N items" queries (feeds, time-series, audit tables).
+
+For example:
+
+- ASC/DESC indexed columns with a high write throughput of monotonic values (timestamps or sequences).
+- High write-throughput ASC/DESC indexed columns requiring range and/or ordered SQL access without hash equality (latest N items queries).
+- Indexed columns that are ASC/DESC sharded, and the first high-cardinality column in the key (which could be the second or third from the first key position) is monotonically increasing.
 
 ## Syntax
 
