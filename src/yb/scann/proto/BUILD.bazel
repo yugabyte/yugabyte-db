@@ -1,0 +1,237 @@
+load("@com_google_protobuf//bazel:py_proto_library.bzl", "py_proto_library")
+load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
+load("@com_google_protobuf//bazel:java_proto_library.bzl", "java_proto_library")
+load("@com_google_protobuf//bazel:proto_library.bzl", "proto_library")
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],
+)
+
+# Generated Files
+# ==================================================================
+
+proto_library(
+    name = "scann_proto",
+    srcs = ["scann.proto"],
+    deps = [
+        ":auto_tuning_proto",
+        ":brute_force_proto",
+        ":crowding_proto",
+        ":disjoint_restrict_token_proto",
+        ":distance_measure_proto",
+        ":exact_reordering_proto",
+        ":hash_proto",
+        ":input_output_proto",
+        ":metadata_proto",
+        ":min_distance_proto",
+        ":partitioning_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "scann_cc_proto",
+    deps = [":scann_proto"],
+)
+
+py_proto_library(
+    name = "scann_py_pb2",
+    deps = [":scann_proto"],
+)
+
+proto_library(
+    name = "crowding_proto",
+    srcs = ["crowding.proto"],
+    deps = [
+    ],
+)
+
+cc_proto_library(
+    name = "crowding_cc_proto",
+    deps = [":crowding_proto"],
+)
+
+proto_library(
+    name = "input_output_proto",
+    srcs = ["input_output.proto"],
+    deps = [
+        "//scann/data_format:features_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "input_output_cc_proto",
+    deps = [":input_output_proto"],
+)
+
+proto_library(
+    name = "hash_proto",
+    srcs = ["hash.proto"],
+    deps = [
+        ":distance_measure_proto",
+        ":projection_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "hash_cc_proto",
+    deps = [":hash_proto"],
+)
+
+py_proto_library(
+    name = "hash_py_pb2",
+    deps = [":hash_proto"],
+)
+
+proto_library(
+    name = "metadata_proto",
+    srcs = ["metadata.proto"],
+    deps = [
+        ":distance_measure_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "metadata_cc_proto",
+    deps = [":metadata_proto"],
+)
+
+proto_library(
+    name = "brute_force_proto",
+    srcs = ["brute_force.proto"],
+    deps = [
+        ":exact_reordering_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "brute_force_cc_proto",
+    deps = [":brute_force_proto"],
+)
+
+proto_library(
+    name = "exact_reordering_proto",
+    srcs = ["exact_reordering.proto"],
+    deps = [
+        ":distance_measure_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "exact_reordering_cc_proto",
+    deps = [":exact_reordering_proto"],
+)
+
+proto_library(
+    name = "partitioning_proto",
+    srcs = ["partitioning.proto"],
+    deps = [
+        ":distance_measure_proto",
+        ":exact_reordering_proto",
+        ":projection_proto",
+        "@com_google_protobuf//:duration_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "partitioning_cc_proto",
+    deps = [":partitioning_proto"],
+)
+
+proto_library(
+    name = "projection_proto",
+    srcs = ["projection.proto"],
+    deps = [
+        "//scann/data_format:features_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "projection_cc_proto",
+    deps = [":projection_proto"],
+)
+
+proto_library(
+    name = "distance_measure_proto",
+    srcs = ["distance_measure.proto"],
+    deps = [
+    ],
+)
+
+cc_proto_library(
+    name = "distance_measure_cc_proto",
+    deps = [":distance_measure_proto"],
+)
+
+proto_library(
+    name = "results_proto",
+    srcs = ["results.proto"],
+    deps = [
+        "//scann/data_format:features_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "results_cc_proto",
+    deps = [":results_proto"],
+)
+
+proto_library(
+    name = "centers_proto",
+    srcs = ["centers.proto"],
+    deps = [
+        ":hash_proto",
+        ":projection_proto",
+        "//scann/data_format:features_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "centers_cc_proto",
+    deps = [":centers_proto"],
+)
+
+py_proto_library(
+    name = "centers_py_pb2",
+    deps = [":centers_proto"],
+)
+
+proto_library(
+    name = "hashed_proto",
+    srcs = ["hashed.proto"],
+    deps = [
+        "//scann/data_format:features_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "hashed_cc_proto",
+    deps = [":hashed_proto"],
+)
+
+proto_library(
+    name = "disjoint_restrict_token_proto",
+    srcs = ["disjoint_restrict_token.proto"],
+    deps = [
+    ],
+)
+
+proto_library(
+    name = "auto_tuning_proto",
+    srcs = ["auto_tuning.proto"],
+)
+
+cc_proto_library(
+    name = "auto_tuning_cc_proto",
+    deps = [":auto_tuning_proto"],
+)
+
+proto_library(
+    name = "min_distance_proto",
+    srcs = ["min_distance.proto"],
+)
+
+cc_proto_library(
+    name = "min_distance_cc_proto",
+    deps = [":min_distance_proto"],
+)

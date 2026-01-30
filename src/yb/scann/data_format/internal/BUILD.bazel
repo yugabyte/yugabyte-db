@@ -1,0 +1,22 @@
+# Description:
+#   Internal data structures for data_format, that are not intended to be part
+#   of ScaNN's public C++ API.
+
+load("@rules_cc//cc:defs.bzl", "cc_library")
+load("@rules_cc//cc:defs.bzl", "cc_test")
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],
+)
+
+cc_library(
+    name = "short_string_optimized_string",
+    hdrs = ["short_string_optimized_string.h"],
+    deps = [
+        "//scann/oss_wrappers:scann_malloc_extension",
+        "//scann/utils:common",
+        "@com_google_absl//absl/base:prefetch",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
