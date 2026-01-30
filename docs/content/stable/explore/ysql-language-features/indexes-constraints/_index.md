@@ -36,14 +36,6 @@ Secondary indexes are additional indexes created on columns other than the prima
 To understand how to use indexes for faster retrieval, see [Secondary indexes](secondary-indexes-ysql/)
 {{</lead>}}
 
-## Bucket index
-
-{{<tags/feature/tp idea="2275">}}Traditional leading range (ASC/DESC) indexes with monotonic inserts concentrate all writes on the "most recent" tablet, creating hot shards and uneven resource usage. By prepending a bucket column (often a hash code modulo of a key column) to the ASC/DESC key, writes can be evenly distributed across multiple tablets (buckets), achieving write scalability and balanced resource usage.
-
-{{<lead link="bucket-index-ysql/">}}
-To understand how to use bucket indexes for faster retrieval, see [Bucket indexes](bucket-index-ysql/)
-{{</lead>}}
-
 ## Unique index
 
 Unique index enforces uniqueness, preventing duplicate entries and maintaining data integrity. When a unique index is applied to a column, the database automatically checks for duplicate values and rejects any insert or update operations that would violate this constraint.

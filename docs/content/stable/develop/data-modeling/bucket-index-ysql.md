@@ -7,14 +7,14 @@ headContent: Explore bucket indexes in YugabyteDB using YSQL
 menu:
   stable:
     identifier: bucket-index-ysql
-    parent: explore-indexes-constraints-ysql
+    parent: data-modeling
     weight: 250
 tags:
   feature: tech-preview
 type: docs
 ---
 
-Traditional leading range (ASC/DESC) indexes with monotonic inserts concentrate all writes on the "most recent" tablet, creating [hot shards](../../../../develop/data-modeling/hot-shards-ysql/) and uneven resource usage. By prepending a bucket column (often a hash code modulo of a key column) to the ASC/DESC key, writes can be evenly distributed across multiple tablets (buckets), achieving write scalability and balanced resource usage.
+Traditional leading range (ASC/DESC) indexes with monotonic inserts concentrate all writes on the "most recent" tablet, creating [hot shards](../hot-shards-ysql/) and uneven resource usage. By prepending a bucket column (often a hash code modulo of a key column) to the ASC/DESC key, writes can be evenly distributed across multiple tablets (buckets), achieving write scalability and balanced resource usage.
 
 The goal is to have a globally ordered result (for example, the latest 1000 rows by timestamp) while avoiding write hot spots on a monotonically increasing column. The bucket-based index solves the hot spot issue by distributing data across multiple tablets (buckets). Using the `yb_enable_derived_saops=true` planner optimization (available in v2025.2.1.0 and later), the system can return a globally ordered result for range queries and LIMIT clauses without a quick sort operation, even though the data is physically sharded by the bucket. This makes queries like top-N and keyset pagination very efficient.
 
@@ -41,7 +41,7 @@ CREATE INDEX index_name ON table_name(yb_hash_code("key_columns") % <buckets>) A
 SPLIT AT VALUES ((1), (2));
 ```
 
-For unique indexes, columns in [yb_hash_code](../../../../api/ysql/exprs/func_yb_hash_code/) must be a subset of the remaining columns in the key. Non-unique indexes can have anything in `yb_hash_code`.
+For unique indexes, columns in [yb_hash_code](../../../api/ysql/exprs/func_yb_hash_code/) must be a subset of the remaining columns in the key. Non-unique indexes can have anything in `yb_hash_code`.
 
 Bucket column or index expression column should generally be the first column of the key.
 
@@ -57,17 +57,19 @@ The SPLIT clause is optional but recommended to cleanly distribute each bucket t
 
 ## Parameters
 
-You configure bucket indexing in the query planner using the following configuration parameters:
+You configure bucket indexing in the [query planner](../../../architecture/query-layer/planner-optimizer/) using the following configuration parameters:
 
-| Parameter | Description |
-| :--- | :--- |
-| yb_enable_derived_equalities | Enables derivation of additional equalities for columns that are generated or computed using an expression. Default: False. |
-| yb_enable_derived_saops | Enable derivation of IN clauses for columns generated or computed using a `yb_hash_code` expression. Such derivation is only done for index paths that consider bucket-based merge. Disabled if `yb_max_saop_merge_streams` is 0. Default: False. |
-| yb_max_saop_merge_streams | Number of maximum buckets stream to be processed in parallel. A value greater than 0 enables bucket-based merge. Disabled if the cost-based optimizer is not enabled (`yb_enable_cbo=false`). Recommended value is 64. Default: 0. |
+| Parameter | Description | Default |
+| :--- | :--- | :--- |
+| yb_enable_derived_equalities | Enables derivation of additional equalities for columns that are generated or computed using an expression. | false |
+| yb_enable_derived_saops | Enable derivation of IN clauses for columns generated or computed using a `yb_hash_code` expression. Such derivation is only done for index paths that consider bucket-based merge. Disabled if `yb_max_saop_merge_streams` is 0. | false |
+| yb_max_saop_merge_streams | Number of maximum buckets stream to be processed in parallel. A value greater than 0 enables bucket-based merge. Disabled if the cost-based optimizer is not enabled (`yb_enable_cbo=false`). Recommended value is 64. | 0 |
 
 ## Example
 
-Follow the [setup instructions](../../cluster-setup-local/) to start a local multi-node universe with a replication factor of 3. You must be running v2025.2.1.0 or later.
+The following example walks through using a bucket index to avoid write hot spots on a timestamp column. You create a table, define an index that distributes writes across three buckets (tablets), insert sample rows with timestamps over a range, and enable the planner settings for bucket-based merge. Then you run queries with ORDER BY and LIMIT and confirm in the plan that there is no Sort node—ordering comes from merging streams from each bucket.
+
+Follow the [setup instructions](../../../explore/cluster-setup-local/) to start a local multi-node universe with a replication factor of 3. You must be running v2025.2.1.0 or later.
 
 Create a table with a monotonic column:
 
@@ -78,7 +80,7 @@ CREATE TABLE te (
 );
 ```
 
-Create an index which always writes to the 3 nodes:
+Create an index that always writes to the 3 nodes by adding a bucket column and SPLIT AT:
 
 ```sql
 CREATE INDEX yb_nothotspot
@@ -86,13 +88,15 @@ CREATE INDEX yb_nothotspot
     SPLIT AT VALUES ((1), (2));
 ```
 
-As a reminder, an ordinary "hot-spot" index would have used the following:
+SPLIT AT ensures each bucket (0, 1, 2) maps to its own tablet, so writes are spread across three tablets.
+
+As a reminder, an ordinary "hot-spot" index would use only the timestamp column (no bucket column and no SPLIT AT).
 
 ```output.sql
 ON te ("timestamp" asc) include (id);
 ```
 
-Insert monotonic data:
+Insert rows with increasing timestamps:
 
 ```sql
 INSERT INTO te ("timestamp")
@@ -168,9 +172,9 @@ explain (analyse, costs off, timing on, dist)
  Execution Time: 2.402 ms
 ```
 
-The SQL is asking for 1000 globally ordered rows, and YugabyteDB can again return it without the sort node, while scanning 1000 rows per bucket. This is very efficient.
+The SQL is asking for 1000 globally ordered rows, and YugabyteDB again returns it efficiently, without the sort node, while scanning 1000 rows per bucket.
 
-This also works perfectly for more complex OLTP top-n queries, such as keyset pagination.
+The bucket index also works well for more complex OLTP top-N queries, such as keyset pagination.
 
 Create a more complicated index and an extra predicate:
 
@@ -213,6 +217,8 @@ SELECT *
 The global ordering is still preserved on this keyset pagination without any changes to the SQL.
 
 ### Point lookups
+
+Single-row lookups by exact key work with bucket indexes because the planner automatically adds the bucket predicate to the index condition, so the query targets the correct tablet and stays efficient instead of scanning all buckets.
 
 Using the primary key (id, timestamp), the `bucket_id` clause is automatically added:
 
@@ -258,3 +264,10 @@ Index Cond: (((yb_hash_code(key_id) % 3) = (yb_hash_code(123) % 3)) AND (key_id 
 ```
 
 The query planner automatically calculates the bucket ID for the search keys (`key_id = 123` and `id = 1`) and adds the bucket predicate to the index condition. This allows the database to go directly to a single, specific tablet (bucket), bypassing a full index scan.
+
+## Learn more
+
+- [Hot shards](../hot-shards-ysql/)
+- [Scaling writes](../../../explore/linear-scalability/scaling-writes)
+- [Cost-based optimizer (CBO)](../../../best-practices-operations/ysql-yb-enable-cbo)
+- [EXPLAIN and ANALYZE](../../../launch-and-manage/monitor-and-alert/query-tuning/explain-analyze)

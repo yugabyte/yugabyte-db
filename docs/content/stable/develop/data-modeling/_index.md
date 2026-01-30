@@ -51,6 +51,14 @@ In distributed systems, a hot-spot or hot-shard refers to a node that is overloa
 To understand the hot-shard problem and solutions to overcome the issue, see [Hot shards](./hot-shards-ysql).
 {{</lead>}}
 
+## Bucket index
+
+{{<tags/feature/tp idea="2275">}}Traditional leading range (ASC/DESC) indexes with monotonic inserts concentrate all writes on the "most recent" tablet, creating hot shards and uneven resource usage. By prepending a bucket column (often a hash code modulo of a key column) to the ASC/DESC key, writes can be evenly distributed across multiple tablets (buckets), achieving write scalability and balanced resource usage.
+
+{{<lead link="bucket-index-ysql/">}}
+To understand how to use bucket indexes for faster retrieval, see [Bucket indexes](bucket-index-ysql/)
+{{</lead>}}
+
 ## Table partitioning
 
 When the data in tables keep growing, you can partition the tables for better performance and enhanced data management. Partitioning also makes it easier to drop older data by dropping partitions. In YugabyteDB, you can also use partitioning with Tablespaces to improve latency in multi-region scenarios and adhere to data residency laws like GDPR.

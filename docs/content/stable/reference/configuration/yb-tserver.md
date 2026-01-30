@@ -698,9 +698,6 @@ Default: `0`
 
 Number of maximum buckets stream to be processed in parallel. A value greater than 0 enables bucket-based merge. Disabled if the cost-based optimizer is not enabled (`yb_enable_cbo=false`). Recommended value is 64.
 
-| yb_enable_derived_saops | Enable derivation of IN clauses for columns generated or computed using a `yb_hash_code` expression. Such derivation is only done for index paths that consider bucket-based merge. Disabled if `yb_max_saop_merge_streams` is 0. Default: False. |
-| yb_max_saop_merge_streams | Number of maximum buckets stream to be processed in parallel. A value greater than 0 enables bucket-based merge. Disabled if the cost-based optimizer is not enabled (`yb_enable_cbo=false`). Recommended value is 64. Default: 0. |
-
 ## Networking
 
 ### RPC and binding addresses
