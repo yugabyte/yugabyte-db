@@ -881,27 +881,19 @@ YbUpdateComputeIndexColumnReferences(const Relation rel,
 		 * over the respective expression trees. It is possible that the
 		 * expression or predicate isn't applicable to this update, but the cost
 		 * of validating that will be prohibitively expensive.
+		 * Note: It is not guaranteed that indexDesc will contain the expression
+		 * trees at this point. Therefore, the NULL values of rd_indpred or
+		 * rd_indexprs cannot be relied upon. Instead, directly lookup the
+		 * pg_index entry of the index which should have been cached by now.
+		 * This is done in YbComputeIndexExprOrPredicateAttrs().
 		 */
 		Bitmapset *extraattrs = NULL;
 
-		/*
-		 * The index predicate and expressions, if any, are expected to be loaded
-		 * already at this point. We don't invoke RelationGetIndexPredicate() /
-		 * RelationGetIndexExpressions() here as these functions return a copy
-		 * of the expression tree which is overkill for the read-only
-		 * examination here.
-		 */
-		if (indexDesc->rd_indpred)
-		{
-			YbComputeIndexExprOrPredicateAttrs(
-				&extraattrs, indexDesc, Anum_pg_index_indpred, offset);
-		}
+		YbComputeIndexExprOrPredicateAttrs(
+			&extraattrs, indexDesc, Anum_pg_index_indpred, offset);
 
-		if (indexDesc->rd_indexprs)
-		{
-			YbComputeIndexExprOrPredicateAttrs(
-				&extraattrs, indexDesc, Anum_pg_index_indexprs, offset);
-		}
+		YbComputeIndexExprOrPredicateAttrs(
+			&extraattrs, indexDesc, Anum_pg_index_indexprs, offset);
 
 		if (extraattrs)
 		{
