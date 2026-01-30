@@ -106,8 +106,6 @@ build_cpp_code() {
 
   log "Finished building C++ code (see timing information above)"
 
-  remove_latest_symlink
-
   # Restore the old source root. See the comment at the top.
   set_yb_src_root "$old_yb_src_root"
 }
@@ -235,9 +233,6 @@ log "YB_NINJA_PATH=${YB_NINJA_PATH:-undefined}"
 
 set_java_home
 
-export YB_DISABLE_LATEST_SYMLINK=1
-remove_latest_symlink
-
 log "Running with PATH: ${PATH}"
 
 log "Running Python tests"
@@ -251,7 +246,6 @@ log "Finished running a light-weight lint script on the Java code"
 export YB_SKIP_BUILD=${YB_SKIP_BUILD:-0}
 
 YB_SKIP_CPP_COMPILATION=${YB_SKIP_CPP_COMPILATION:-0}
-YB_COMPILE_ONLY=${YB_COMPILE_ONLY:-0}
 
 export NO_REBUILD_THIRDPARTY=1
 

@@ -113,7 +113,7 @@ heading "Dependency Graph Self-Test"
     --rebuild-graph )
 
 # -------------------------------------------------------------------------------------------------
-if [[ "${YB_COMPILE_ONLY}" == "1" ]]; then
+if [[ "${YB_COMPILE_ONLY:-0}" == "1" ]]; then
   heading "Skipping Prep for DB unit testing."
 else
   heading "Build Prep for DB unit testing."
