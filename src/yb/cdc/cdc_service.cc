@@ -256,6 +256,10 @@ DECLARE_bool(cdcsdk_enable_dynamic_table_addition_with_table_cleanup);
 
 DECLARE_bool(ysql_yb_enable_consistent_replication_from_hash_range);
 
+DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
+
+DECLARE_bool(TEST_enable_table_rewrite_for_cdcsdk_table);
+
 METRIC_DEFINE_entity(xcluster);
 
 METRIC_DEFINE_entity(cdcsdk);
@@ -5162,7 +5166,7 @@ void CDCServiceImpl::InitVirtualWALForCDC(
 
   bool pub_all_tables = false;
   std::unordered_set<uint32_t> publications_list;
-  if (FLAGS_cdcsdk_enable_dynamic_table_addition_with_table_cleanup) {
+  if (FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) {
     for (const auto& publication : req->publication_oid()) {
       publications_list.insert(publication);
     }
@@ -5172,12 +5176,20 @@ void CDCServiceImpl::InitVirtualWALForCDC(
     }
   }
 
+  std::unordered_map<uint32_t, uint32_t> oid_to_relfilenode;
+  if (FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table) {
+    for (const auto& e : req->oid_to_relfilenode()) {
+      oid_to_relfilenode.emplace(e.first, e.second);
+    }
+  }
+
   HostPort hostport = RPC_VERIFY_RESULT(
       context_->GetDesiredHostPortForLocal(), resp->mutable_error(),
       CDCErrorPB::INTERNAL_ERROR, context);
+
   Status s = virtual_wal->InitVirtualWALInternal(
-      table_list, hostport, GetDeadline(context, client()), std::move(slot_hash_range),
-      publications_list, pub_all_tables);
+      table_list, oid_to_relfilenode, hostport, GetDeadline(context, client()),
+      std::move(slot_hash_range), publications_list, pub_all_tables);
   if (!s.ok()) {
     {
       std::lock_guard l(mutex_);
@@ -5440,8 +5452,15 @@ void CDCServiceImpl::UpdatePublicationTableList(
     new_table_list.insert(table_id);
   }
 
+  std::unordered_map<uint32_t, uint32_t> new_oid_to_relfilenode;
+  if (FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table) {
+    for (const auto& e : req->oid_to_relfilenode()) {
+      new_oid_to_relfilenode.emplace(e.first, e.second);
+    }
+  }
+
   Status s = virtual_wal->UpdatePublicationTableListInternal(
-      new_table_list, hostport, GetDeadline(context, client()));
+      new_table_list, new_oid_to_relfilenode, hostport, GetDeadline(context, client()));
   if (!s.ok()) {
     std::string error_msg =
         Format("UpdatePublicationTableList failed for stream_id: $0", stream_id);

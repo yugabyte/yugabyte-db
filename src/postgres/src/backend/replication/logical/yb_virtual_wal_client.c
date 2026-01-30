@@ -419,7 +419,7 @@ YBCReadRecord(XLogReaderState *state, List *publication_names, char **errormsg)
 		{
 			StartTransactionCommand();
 
-			Assert(yb_read_time < publication_refresh_time);
+			Assert(yb_read_time <= publication_refresh_time);
 
 			elog(DEBUG2,
 				 "Setting yb_read_time to new pub_refresh_time: %" PRIu64,

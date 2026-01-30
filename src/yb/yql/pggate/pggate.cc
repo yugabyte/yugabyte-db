@@ -2377,10 +2377,12 @@ Result<tserver::PgGetReplicationSlotResponsePB> PgApiImpl::GetReplicationSlot(
 
 Result<cdc::InitVirtualWALForCDCResponsePB> PgApiImpl::InitVirtualWALForCDC(
     const std::string& stream_id, const std::vector<PgObjectId>& table_ids,
+    const std::unordered_map<uint32_t, uint32_t>& oid_to_relfilenode,
     const YbcReplicationSlotHashRange* slot_hash_range, uint64_t active_pid,
     const std::vector<PgOid>& publication_oids, bool pub_all_tables) {
   return pg_client_.InitVirtualWALForCDC(
-      stream_id, table_ids, slot_hash_range, active_pid, publication_oids, pub_all_tables);
+    stream_id, table_ids, oid_to_relfilenode, slot_hash_range, active_pid, publication_oids,
+    pub_all_tables);
 }
 
 Result<cdc::GetLagMetricsResponsePB> PgApiImpl::GetLagMetrics(
@@ -2389,8 +2391,9 @@ Result<cdc::GetLagMetricsResponsePB> PgApiImpl::GetLagMetrics(
 }
 
 Result<cdc::UpdatePublicationTableListResponsePB> PgApiImpl::UpdatePublicationTableList(
-    const std::string& stream_id, const std::vector<PgObjectId>& table_ids) {
-  return pg_client_.UpdatePublicationTableList(stream_id, table_ids);
+    const std::string& stream_id, const std::vector<PgObjectId>& table_ids,
+    const std::unordered_map<uint32_t, uint32_t>& oid_to_relfilenode) {
+  return pg_client_.UpdatePublicationTableList(stream_id, table_ids, oid_to_relfilenode);
 }
 
 Result<cdc::DestroyVirtualWALForCDCResponsePB> PgApiImpl::DestroyVirtualWALForCDC() {

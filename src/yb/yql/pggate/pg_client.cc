@@ -77,6 +77,7 @@ DECLARE_bool(ysql_enable_db_catalog_version_mode);
 DECLARE_int32(ysql_yb_ash_sample_size);
 DECLARE_bool(ysql_yb_enable_consistent_replication_from_hash_range);
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
+DECLARE_bool(TEST_enable_table_rewrite_for_cdcsdk_table);
 
 extern int yb_locks_min_txn_age;
 extern int yb_locks_max_transactions;
@@ -1658,6 +1659,7 @@ class PgClient::Impl : public BigDataFetcher {
 
   Result<cdc::InitVirtualWALForCDCResponsePB> InitVirtualWALForCDC(
       const std::string& stream_id, const std::vector<PgObjectId>& table_ids,
+      const std::unordered_map<uint32_t, uint32_t>& oid_to_relfilenode,
       const YbcReplicationSlotHashRange* slot_hash_range, uint64_t active_pid,
       const std::vector<PgOid>& publication_oids, bool pub_all_tables) {
     cdc::InitVirtualWALForCDCRequestPB req;
@@ -1667,6 +1669,12 @@ class PgClient::Impl : public BigDataFetcher {
     req.set_active_pid(active_pid);
     for (const auto& table_id : table_ids) {
       *req.add_table_id() = table_id.GetYbTableId();
+    }
+
+    if (FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table) {
+      for (const auto& e : oid_to_relfilenode) {
+        req.mutable_oid_to_relfilenode()->emplace(e.first, e.second);
+      }
     }
 
     if (FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) {
@@ -1708,12 +1716,19 @@ class PgClient::Impl : public BigDataFetcher {
   }
 
   Result<cdc::UpdatePublicationTableListResponsePB> UpdatePublicationTableList(
-      const std::string& stream_id, const std::vector<PgObjectId>& table_ids) {
+      const std::string& stream_id, const std::vector<PgObjectId>& table_ids,
+      const std::unordered_map<uint32_t, uint32_t>& oid_to_relfilenode) {
     cdc::UpdatePublicationTableListRequestPB req;
     req.set_session_id(session_id_);
     req.set_stream_id(stream_id);
     for (const auto& table_id : table_ids) {
       *req.add_table_id() = table_id.GetYbTableId();
+    }
+
+    if (FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table) {
+      for (const auto& e : oid_to_relfilenode) {
+        req.mutable_oid_to_relfilenode()->emplace(e.first, e.second);
+      }
     }
 
     cdc::UpdatePublicationTableListResponsePB resp;
@@ -2237,10 +2252,12 @@ Result<tserver::PgYCQLStatementStatsResponsePB> PgClient::YCQLStatementStats() {
 
 Result<cdc::InitVirtualWALForCDCResponsePB> PgClient::InitVirtualWALForCDC(
     const std::string& stream_id, const std::vector<PgObjectId>& table_ids,
+    const std::unordered_map<uint32_t, uint32_t>& oid_to_relfilenode,
     const YbcReplicationSlotHashRange* slot_hash_range, uint64_t active_pid,
     const std::vector<PgOid>& publication_oids, bool pub_all_tables) {
   return impl_->InitVirtualWALForCDC(
-      stream_id, table_ids, slot_hash_range, active_pid, publication_oids, pub_all_tables);
+      stream_id, table_ids, oid_to_relfilenode, slot_hash_range, active_pid, publication_oids,
+      pub_all_tables);
 }
 
 Result<cdc::GetLagMetricsResponsePB> PgClient::GetLagMetrics(
@@ -2249,8 +2266,9 @@ Result<cdc::GetLagMetricsResponsePB> PgClient::GetLagMetrics(
 }
 
 Result<cdc::UpdatePublicationTableListResponsePB> PgClient::UpdatePublicationTableList(
-    const std::string& stream_id, const std::vector<PgObjectId>& table_ids) {
-  return impl_->UpdatePublicationTableList(stream_id, table_ids);
+    const std::string& stream_id, const std::vector<PgObjectId>& table_ids,
+    const std::unordered_map<uint32_t, uint32_t>& oid_to_relfilenode) {
+  return impl_->UpdatePublicationTableList(stream_id, table_ids, oid_to_relfilenode);
 }
 
 Result<cdc::DestroyVirtualWALForCDCResponsePB> PgClient::DestroyVirtualWALForCDC() {

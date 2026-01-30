@@ -53,7 +53,8 @@ class CDCSDKVirtualWAL {
       {Status::Code::kNotFound, "Log index cache entry for op index"}};
 
   Status InitVirtualWALInternal(
-      std::unordered_set<TableId> table_list, const HostPort hostport,
+      std::unordered_set<TableId> table_list,
+      const std::unordered_map<uint32_t, uint32_t>& oid_to_relfilenode, const HostPort hostport,
       const CoarseTimePoint deadline, std::unique_ptr<ReplicationSlotHashRange> slot_hash_range,
       const std::unordered_set<uint32_t>& publications_list, bool pub_all_tables);
 
@@ -67,7 +68,8 @@ class CDCSDKVirtualWAL {
       const bool use_vwal_safe_time = false);
 
   Status UpdatePublicationTableListInternal(
-      const std::unordered_set<TableId>& new_tables, const HostPort hostport,
+      const std::unordered_set<TableId>& new_tables,
+      const std::unordered_map<uint32_t, uint32_t>& new_oid_to_relfilenode, const HostPort hostport,
       const CoarseTimePoint deadline);
 
   xrepl::StreamId GetStreamId();
@@ -216,6 +218,11 @@ class CDCSDKVirtualWAL {
 
   bool ShouldPopulateExplicitCheckpoint();
 
+  bool CheckForTableRewriteOrDrop(std::shared_ptr<CDCSDKProtoRecordPB> record);
+
+  void UpdateOidToRelfilenodeMap(
+      const std::unordered_map<uint32_t, uint32_t>& new_oid_to_relfilenode);
+
   CDCServiceImpl* cdc_service_;
 
   xrepl::StreamId stream_id_;
@@ -358,6 +365,10 @@ class CDCSDKVirtualWAL {
 
   // The last slot restart time which was updated in the cdc_state table.
   HybridTime last_persisted_record_id_commit_time_;
+
+  // Maintains the mapping between table's PG OID and relfilenode. This is used in detecting DDLs
+  // that cause table rewrites.
+  std::unordered_map<uint32_t, uint32_t> oid_to_relfilenode_;
 };
 
 }  // namespace cdc

@@ -2678,11 +2678,13 @@ YbcStatus YBCPgInitVirtualWalForCDC(
     size_t num_relations, const YbcReplicationSlotHashRange *slot_hash_range, uint64_t active_pid,
     YbcPgOid *publications, size_t num_publications, bool yb_is_pub_all_tables) {
   std::vector<PgObjectId> tables;
+  std::unordered_map<uint32_t, uint32_t> oid_to_relfilenode;
   tables.reserve(num_relations);
 
   for (size_t i = 0; i < num_relations; i++) {
     PgObjectId table_id(database_oid, relfilenodes[i]);
     tables.push_back(std::move(table_id));
+    oid_to_relfilenode[relations[i]] = relfilenodes[i];
   }
 
   std::vector<PgOid> publications_oid_list;
@@ -2693,8 +2695,8 @@ YbcStatus YBCPgInitVirtualWalForCDC(
   }
 
   const auto result = pgapi->InitVirtualWALForCDC(
-      std::string(stream_id), tables, slot_hash_range, active_pid, publications_oid_list,
-      yb_is_pub_all_tables);
+      std::string(stream_id), tables, oid_to_relfilenode, slot_hash_range, active_pid,
+      publications_oid_list, yb_is_pub_all_tables);
   if (!result.ok()) {
     return ToYBCStatus(result.status());
   }
@@ -2714,15 +2716,18 @@ YbcStatus YBCPgUpdatePublicationTableList(
     const char* stream_id, const YbcPgOid database_oid, YbcPgOid* relations, YbcPgOid* relfilenodes,
     size_t num_relations) {
   std::vector<PgObjectId> tables;
+  std::unordered_map<uint32_t, uint32_t> oid_to_relfilenode;
   tables.reserve(num_relations);
 
   for (size_t i = 0; i < num_relations; i++) {
     PgObjectId table_id(database_oid, relfilenodes[i]);
     tables.push_back(std::move(table_id));
+    oid_to_relfilenode[relations[i]] = relfilenodes[i];
   }
 
-  const auto result = pgapi->UpdatePublicationTableList(std::string(stream_id), tables);
-  if(!result.ok()) {
+  const auto result =
+      pgapi->UpdatePublicationTableList(std::string(stream_id), tables, oid_to_relfilenode);
+  if (!result.ok()) {
     return ToYBCStatus(result.status());
   }
 
