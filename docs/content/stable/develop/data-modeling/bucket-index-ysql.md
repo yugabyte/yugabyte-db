@@ -3,13 +3,14 @@ title: Bucket indexes in YugabyteDB YSQL
 headerTitle: Bucket indexes
 linkTitle: Bucket indexes
 description: Using bucket indexes in YSQL
-headContent: Explore bucket indexes in YugabyteDB using YSQL
+headContent: Use bucket-based distribution to avoid hotspots
 menu:
   stable_develop:
     identifier: bucket-index-ysql
     parent: data-modeling
-    weight: 250
+    weight: 310
 tags:
+  other: ysql
   feature: tech-preview
 type: docs
 ---
@@ -137,7 +138,7 @@ ALTER DATABASE yugabyte SET yb_enable_cbo=on;
 Observe planner changes that provide global ordering with no SQL or application changes:
 
 ```sql
-explain (Analyze)
+EXPLAIN (ANALYZE)
     SELECT timestamp
     FROM te
     WHERE "timestamp" >= '2020-01-01'
@@ -146,8 +147,8 @@ explain (Analyze)
 ```
 
 ```output
- Index Only Scan using yb_nothotspot on te (actual rows=10000000 loops=1)
-   Index Cond: (("timestamp" >= '2020-01-01 00:00:00+00'::timestamp with time zone) AND ("timestamp" < '2030-01-01 00:00:00+00'::timestamp with time zone) AND (((yb_hash_code("timestamp") % 3)) = ANY ('{0,1,2}'::integer[])))
+ Index Only Scan using yb_nothotspot on te  (cost=27.57..4611.19 rows=99980 width=8) (actual time=2.259..65.434 rows=100000 loops=1)
+   Index Cond: (("timestamp" >= '2020-01-01 00:00:00-05'::timestamp with time zone) AND ("timestamp" < '2030-01-01 00:00:00-05'::timestamp with time zone) AND (((yb_hash_code("timestamp") % 3)) = ANY ('{0,1,2}'::integer[])))
    Merge Sort Key: "timestamp"
    Merge Stream Key: (yb_hash_code("timestamp") % 3)
    Merge Streams: 3
@@ -159,7 +160,7 @@ When the optimization is enabled, EXPLAIN output includes the following addition
 - Merge Stream Key: columns involved in forming buckets (does not include columns fixed to constants).
 - Merge Streams: number of streams that YugabyteDB merges, generally the cross product of all merge stream key values.
 
-Notice that no sort is present and that the `yb_enable_derived_saops` feature passed the "bucket" column into the index condition. YugabyteDB has then merged the streams and returned the data without a sort node.
+Notice that no sort is present and that the `yb_enable_derived_saops` feature passed the "bucket" column into the index condition. YugabyteDB has then merged the streams and returned the data without a sort.
 
 ### Add a LIMIT
 
@@ -175,7 +176,7 @@ SET yb_max_saop_merge_streams = 0;
 Run the following query:
 
 ```sql
-EXPLAIN (ANALYZE, COSTS off, TIMING on, dist)
+EXPLAIN (ANALYZE, COSTS off, TIMING on)
     SELECT timestamp
     FROM te
     WHERE "timestamp" >= '2020-01-01'
@@ -197,7 +198,7 @@ EXPLAIN (ANALYZE, COSTS off, TIMING on, dist)
  Peak Memory Usage: 117 kB
 ```
 
-Without the optimization, the planner perform a sort as expected.
+Without the optimization, the planner performs a sort as expected.
 
 Turn the optimization back on:
 
@@ -209,7 +210,7 @@ SET yb_max_saop_merge_streams = 64;
 Run the query again:
 
 ```sql
-EXPLAIN (ANALYZE, COSTS off, TIMING on, dist)
+EXPLAIN (ANALYZE, COSTS off, TIMING on)
     SELECT timestamp
     FROM te
     WHERE "timestamp" >= '2020-01-01'
@@ -231,7 +232,7 @@ EXPLAIN (ANALYZE, COSTS off, TIMING on, dist)
  Peak Memory Usage: 8 kB
 ```
 
-The SQL is asking for 1000 globally ordered rows, and YugabyteDB again returns it efficiently, without the sort, while scanning 1000 rows per bucket.
+The SQL is asking for 1000 globally ordered rows, and YugabyteDB again returns it, without the sort, while scanning 1000 rows per bucket, in a fraction of the time.
 
 The bucket index also works well for more complex OLTP top-N queries, such as keyset pagination.
 
@@ -240,7 +241,7 @@ Create a more complicated index and an extra predicate:
 ```sql
 ALTER TABLE te ADD COLUMN key_id integer NOT NULL DEFAULT 123;
 analyze;
-CREATE INDEX scalable_key_timestamp ON public.te (
+CREATE INDEX scalable_key_timestamp ON te (
     (yb_hash_code("timestamp") % 3) asc,
     key_id,
     "timestamp" ASC,
@@ -248,10 +249,12 @@ CREATE INDEX scalable_key_timestamp ON public.te (
 ) SPLIT AT VALUES ((1), (2));
 ```
 
+Run the following query:
+
 ```sql
-explain (analyze, costs off, timing on)
+EXPLAIN (ANALYZE, COSTS off, TIMING on)
 SELECT *
-    FROM public.te
+    FROM te
     WHERE 1=1
         AND key_id = 123
         AND "timestamp" >= '2025-05-05 08:00:00'
@@ -282,7 +285,7 @@ Single-row lookups by exact key work with bucket indexes because the planner aut
 Using the primary key (id, timestamp), the `bucket_id` clause is automatically added:
 
 ```sql
-explain SELECT * FROM public.te WHERE id = 1 AND "timestamp" = '2025-01-01 00:00:00+00'::timestamptz;
+explain SELECT * FROM te WHERE id = 1 AND "timestamp" = '2025-01-01 00:00:00+00'::timestamptz;
 ```
 
 ```output
@@ -292,19 +295,10 @@ explain SELECT * FROM public.te WHERE id = 1 AND "timestamp" = '2025-01-01 00:00
     AND ("timestamp" = '2025-01-01 00:00:00+00'::timestamptz))
 ```
 
-```sql
-explain SELECT * FROM foo WHERE v1 = 1 AND v2 = 1;
-```
-
-```output
- Index Scan using foo_bucket_idx_v1_v2 on foo  (cost=40.04..68.64 rows=1 width=20)
-   Index Cond: (((yb_hash_code(v1, v2) % 3) = (yb_hash_code(1, 1) % 3)) AND (v1 = 1) AND (v2 = 1))
-```
-
 Create a secondary index named `te_key_id_secondary`. This index uses a bucket key on the `key_id` column to distribute writes evenly while still allowing for efficient lookups on `key_id` and `id`.
 
 ```sql
-CREATE INDEX te_key_id_secondary ON public.te (
+CREATE INDEX te_key_id_secondary ON te (
     (yb_hash_code(key_id) % 3) asc,
     key_id,
     id
@@ -314,7 +308,7 @@ CREATE INDEX te_key_id_secondary ON public.te (
 Run an EXPLAIN on a point lookup query.
 
 ```sql
-explain SELECT * FROM public.te WHERE key_id = 123 AND id = 1;
+explain SELECT * FROM te WHERE key_id = 123 AND id = 1;
 ```
 
 ```output
