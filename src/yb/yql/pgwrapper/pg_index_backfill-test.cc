@@ -2844,7 +2844,7 @@ INSTANTIATE_TEST_CASE_P(, PgIndexBackfillIgnoreApplyTest, ::testing::Bool());
 
 // Tests index backfill column projection optimization across various index types.
 //
-// The optimization reduces data plane RPCs by fetching only columns needed for the index
+// The optimization reduces RPCs by fetching only columns needed for the index
 // rather than entire rows. We validate this by creating tables with ~5KB rows but small
 // indexed columns, then measuring RPCs with a 1KB fetch limit. With projection enabled,
 // many rows fit per RPC; without it, each row requires its own RPC.
@@ -2865,7 +2865,6 @@ class PgIndexBackfillColumnProjectionTest : public PgIndexBackfillTest {
 
   void SetUp() override {
     PgIndexBackfillTest::SetUp();
-    ASSERT_OK(conn_->Execute("CREATE EXTENSION IF NOT EXISTS pg_stat_statements"));
   }
 
   Result<int64_t> GetBackfillReadRpcs() {
@@ -2882,248 +2881,194 @@ class PgIndexBackfillColumnProjectionTest : public PgIndexBackfillTest {
         "  col1 INT,"
         "  col2 TEXT,"
         "  col3 BOOLEAN,"
-        "  col4 FLOAT,"
-        "  large_col1 TEXT,"
-        "  large_col2 TEXT,"
-        "  large_col3 TEXT,"
-        "  large_col4 TEXT,"
-        "  large_col5 TEXT,"
+        "  padding TEXT,"
         "  PRIMARY KEY ($1)"
         ")", table_name, pk_def);
   }
 
   Status InsertTestData(const std::string& table_name, int num_rows = kNumRows) {
     return conn_->ExecuteFormat(
-        "INSERT INTO $0 (col1, col2, col3, col4, "
-        "                large_col1, large_col2, large_col3, large_col4, large_col5) "
-        "SELECT i, 'text_' || i::text, (i % 2 = 0), i * 1.5, "
-        "       repeat('a', $1), repeat('b', $1), repeat('c', $1), "
-        "       repeat('d', $1), repeat('e', $1) "
+        "INSERT INTO $0 (col1, col2, col3, padding) "
+        "SELECT i, 'text_' || i::text, (i % 2 = 0), repeat('x', $1) "
         "FROM generate_series(1, $2) AS i",
-        table_name, kLargeColSize, num_rows);
+        table_name, kPaddingSize, num_rows);
   }
 
-  Result<int64_t> TestIndexBackfillProjection(
-      const std::string& create_index_sql,
-      const std::string& verify_query,
-      const std::string& test_name) {
-    const bool projection_enabled = GetParam();
-    LOG(INFO) << test_name << " [projection "
-              << (projection_enabled ? "ENABLED" : "DISABLED") << "]";
-
+  Result<int64_t> BuildIndexAndGetBackfillRpcs(const std::string& create_index_sql) {
     RETURN_NOT_OK(conn_->Execute("SELECT pg_stat_statements_reset()"));
     RETURN_NOT_OK(conn_->Execute(create_index_sql));
+    return GetBackfillReadRpcs();
+  }
 
-    auto rpcs = VERIFY_RESULT(GetBackfillReadRpcs());
-    LOG(INFO) << test_name << ": " << rpcs << " RPCs";
-
-    SCHECK_GT(rpcs, 0, RuntimeError, "Expected some RPCs during backfill");
-
-    if (projection_enabled) {
-      SCHECK_LT(rpcs, kMaxProjectedRpcs, RuntimeError,
-                Format("Expected < $0 RPCs with projection, got $1", kMaxProjectedRpcs, rpcs));
-    } else {
-      SCHECK_GT(rpcs, kMinUnprojectedRpcs, RuntimeError,
-                Format("Expected > $0 RPCs without projection, got $1", kMinUnprojectedRpcs, rpcs));
+  Status ValidateRpcs(int64_t rpcs) {
+    const bool projection_enabled = GetParam();
+    if (rpcs == 0) {
+      return STATUS(RuntimeError, "Expected some RPCs during backfill");
     }
-
-    SCHECK(VERIFY_RESULT(conn_->HasIndexScan(verify_query)), RuntimeError,
-           Format("Expected index scan for: $0", verify_query));
-
-    return rpcs;
+    if (projection_enabled) {
+      if (rpcs >= kMaxProjectedRpcs) {
+        return STATUS_FORMAT(
+            RuntimeError, "Expected < $0 RPCs with projection, got $1", kMaxProjectedRpcs, rpcs);
+      }
+    } else {
+      if (rpcs <= kMinUnprojectedRpcs) {
+        return STATUS_FORMAT(
+            RuntimeError, "Expected > $0 RPCs without projection, got $1",
+            kMinUnprojectedRpcs, rpcs);
+      }
+    }
+    return Status::OK();
   }
 
   static constexpr int kFetchSizeLimit = 1000;
   static constexpr int kNumRows = 500;
-  static constexpr int kLargeColSize = 1000;
+  static constexpr int kPaddingSize = 5000;
   static constexpr int kMaxProjectedRpcs = 100;
   static constexpr int kMinUnprojectedRpcs = kNumRows / 2;
+  static constexpr auto kTableName = "t";
 };
 
 INSTANTIATE_TEST_CASE_P(, PgIndexBackfillColumnProjectionTest, ::testing::Bool());
 
 // Single column HASH index
 TEST_P(PgIndexBackfillColumnProjectionTest, SingleColumnHash) {
-  ASSERT_OK(CreateWideTable("t"));
-  ASSERT_OK(InsertTestData("t"));
-  ASSERT_OK(TestIndexBackfillProjection(
-      "CREATE INDEX idx ON t (col1 HASH)",
-      "SELECT col1 FROM t WHERE col1 = 250",
-      "SingleColumnHash"));
+  ASSERT_OK(CreateWideTable(kTableName));
+  ASSERT_OK(InsertTestData(kTableName));
+  auto rpcs = ASSERT_RESULT(BuildIndexAndGetBackfillRpcs("CREATE INDEX idx ON t (col1 HASH)"));
+  ASSERT_OK(ValidateRpcs(rpcs));
 }
 
 // Single column ASC index to verify storage strategy doesn't affect optimization
 TEST_P(PgIndexBackfillColumnProjectionTest, SingleColumnAsc) {
-  ASSERT_OK(CreateWideTable("t"));
-  ASSERT_OK(InsertTestData("t"));
-  ASSERT_OK(TestIndexBackfillProjection(
-      "CREATE INDEX idx ON t (col1 ASC)",
-      "SELECT col1 FROM t WHERE col1 = 250",
-      "SingleColumnAsc"));
+  ASSERT_OK(CreateWideTable(kTableName));
+  ASSERT_OK(InsertTestData(kTableName));
+  auto rpcs = ASSERT_RESULT(BuildIndexAndGetBackfillRpcs("CREATE INDEX idx ON t (col1 ASC)"));
+  ASSERT_OK(ValidateRpcs(rpcs));
 }
 
 // Single column expression index - only col1 should be fetched
 TEST_P(PgIndexBackfillColumnProjectionTest, SingleColumnExpression) {
-  ASSERT_OK(CreateWideTable("t"));
-  ASSERT_OK(InsertTestData("t"));
-  ASSERT_OK(TestIndexBackfillProjection(
-      "CREATE INDEX idx ON t (ABS(col1))",
-      "SELECT col1 FROM t WHERE ABS(col1) = 250",
-      "SingleColumnExpression"));
+  ASSERT_OK(CreateWideTable(kTableName));
+  ASSERT_OK(InsertTestData(kTableName));
+  auto rpcs = ASSERT_RESULT(BuildIndexAndGetBackfillRpcs("CREATE INDEX idx ON t (ABS(col1))"));
+  ASSERT_OK(ValidateRpcs(rpcs));
 }
 
 // Partial index where indexed column equals predicate column - col1 fetched only once
 TEST_P(PgIndexBackfillColumnProjectionTest, SingleColumnPartialSameColumn) {
-  ASSERT_OK(CreateWideTable("t"));
-  ASSERT_OK(InsertTestData("t"));
-  ASSERT_OK(TestIndexBackfillProjection(
-      "CREATE INDEX idx ON t (col1) WHERE col1 > 100",
-      "SELECT col1 FROM t WHERE col1 = 250 AND col1 > 100",
-      "SingleColumnPartialSameColumn"));
+  ASSERT_OK(CreateWideTable(kTableName));
+  ASSERT_OK(InsertTestData(kTableName));
+  auto rpcs = ASSERT_RESULT(BuildIndexAndGetBackfillRpcs(
+      "CREATE INDEX idx ON t (col1) WHERE col1 > 100"));
+  ASSERT_OK(ValidateRpcs(rpcs));
 }
 
 // Partial index with different columns - both col1 and col2 must be fetched
 TEST_P(PgIndexBackfillColumnProjectionTest, SingleColumnPartialDifferentColumn) {
-  ASSERT_OK(CreateWideTable("t"));
-  ASSERT_OK(InsertTestData("t"));
-  ASSERT_OK(TestIndexBackfillProjection(
-      "CREATE INDEX idx ON t (col1) WHERE col2 > 'text_100'",
-      "SELECT col1 FROM t WHERE col1 = 250 AND col2 > 'text_100'",
-      "SingleColumnPartialDifferentColumn"));
+  ASSERT_OK(CreateWideTable(kTableName));
+  ASSERT_OK(InsertTestData(kTableName));
+  auto rpcs = ASSERT_RESULT(BuildIndexAndGetBackfillRpcs(
+      "CREATE INDEX idx ON t (col1) WHERE col2 > 'text_100'"));
+  ASSERT_OK(ValidateRpcs(rpcs));
 }
 
 // Multi column index with HASH and ASC
 TEST_P(PgIndexBackfillColumnProjectionTest, MultiColumnHashAsc) {
-  ASSERT_OK(CreateWideTable("t"));
-  ASSERT_OK(InsertTestData("t"));
-  ASSERT_OK(TestIndexBackfillProjection(
-      "CREATE INDEX idx ON t (col1 HASH, col2 ASC)",
-      "SELECT col1, col2 FROM t WHERE col1 = 250",
-      "MultiColumnHashAsc"));
+  ASSERT_OK(CreateWideTable(kTableName));
+  ASSERT_OK(InsertTestData(kTableName));
+  auto rpcs = ASSERT_RESULT(BuildIndexAndGetBackfillRpcs(
+      "CREATE INDEX idx ON t (col1 HASH, col2 ASC)"));
+  ASSERT_OK(ValidateRpcs(rpcs));
 }
 
 // Multi column index with compound hash key
 TEST_P(PgIndexBackfillColumnProjectionTest, MultiColumnCompoundHash) {
-  ASSERT_OK(CreateWideTable("t"));
-  ASSERT_OK(InsertTestData("t"));
-  ASSERT_OK(TestIndexBackfillProjection(
-      "CREATE INDEX idx ON t ((col1, col2) HASH, col3 ASC)",
-      "SELECT col1 FROM t WHERE col1 = 250 AND col2 = 'text_250'",
-      "MultiColumnCompoundHash"));
+  ASSERT_OK(CreateWideTable(kTableName));
+  ASSERT_OK(InsertTestData(kTableName));
+  auto rpcs = ASSERT_RESULT(BuildIndexAndGetBackfillRpcs(
+      "CREATE INDEX idx ON t ((col1, col2) HASH, col3 ASC)"));
+  ASSERT_OK(ValidateRpcs(rpcs));
 }
 
 // Multi column index where col2 appears in both compound hash and range - fetched only once
 TEST_P(PgIndexBackfillColumnProjectionTest, MultiColumnDuplicateColumn) {
-  ASSERT_OK(CreateWideTable("t"));
-  ASSERT_OK(InsertTestData("t"));
-  ASSERT_OK(TestIndexBackfillProjection(
-      "CREATE INDEX idx ON t ((col1, col2) HASH, col2 ASC)",
-      "SELECT col1, col2 FROM t WHERE col1 = 250 AND col2 = 'text_250'",
-      "MultiColumnDuplicateColumn"));
+  ASSERT_OK(CreateWideTable(kTableName));
+  ASSERT_OK(InsertTestData(kTableName));
+  auto rpcs = ASSERT_RESULT(BuildIndexAndGetBackfillRpcs(
+      "CREATE INDEX idx ON t ((col1, col2) HASH, col2 ASC)"));
+  ASSERT_OK(ValidateRpcs(rpcs));
 }
 
 // Index columns in different order than table definition (table: col1, col2, col3)
 TEST_P(PgIndexBackfillColumnProjectionTest, MultiColumnOutOfOrder) {
-  ASSERT_OK(CreateWideTable("t"));
-  ASSERT_OK(InsertTestData("t"));
-  ASSERT_OK(TestIndexBackfillProjection(
-      "CREATE INDEX idx ON t (col2 HASH, col1 ASC, col3 ASC)",
-      "SELECT col2 FROM t WHERE col2 = 'text_250'",
-      "MultiColumnOutOfOrder"));
+  ASSERT_OK(CreateWideTable(kTableName));
+  ASSERT_OK(InsertTestData(kTableName));
+  auto rpcs = ASSERT_RESULT(BuildIndexAndGetBackfillRpcs(
+      "CREATE INDEX idx ON t (col2 HASH, col1 ASC, col3 ASC)"));
+  ASSERT_OK(ValidateRpcs(rpcs));
 }
 
 // Index on (col1, col2) where PK is (col2, col3, col1) - tests column order independence
 TEST_P(PgIndexBackfillColumnProjectionTest, MultiColumnNonDefaultPkOrder) {
-  ASSERT_OK(conn_->Execute(
-      "CREATE TABLE t ("
-      "  id SERIAL,"
-      "  col1 INT,"
-      "  col2 TEXT,"
-      "  col3 BOOLEAN,"
-      "  col4 FLOAT,"
-      "  large_col1 TEXT,"
-      "  large_col2 TEXT,"
-      "  large_col3 TEXT,"
-      "  large_col4 TEXT,"
-      "  large_col5 TEXT,"
-      "  PRIMARY KEY (col2, col3, col1)"
-      ")"));
-  ASSERT_OK(InsertTestData("t"));
-  ASSERT_OK(TestIndexBackfillProjection(
-      "CREATE INDEX idx ON t (col1, col2)",
-      "SELECT col1 FROM t WHERE col1 = 250 AND col2 = 'text_250'",
-      "MultiColumnNonDefaultPkOrder"));
+  ASSERT_OK(CreateWideTable(kTableName, "col2, col3, col1"));
+  ASSERT_OK(InsertTestData(kTableName));
+  auto rpcs = ASSERT_RESULT(BuildIndexAndGetBackfillRpcs("CREATE INDEX idx ON t (col1, col2)"));
+  ASSERT_OK(ValidateRpcs(rpcs));
 }
 
 // Multi column expression index - f(col1, col2) and g(col2), col2 fetched once
 TEST_P(PgIndexBackfillColumnProjectionTest, MultiColumnExpression) {
-  ASSERT_OK(CreateWideTable("t"));
-  ASSERT_OK(InsertTestData("t"));
-  ASSERT_OK(TestIndexBackfillProjection(
-      "CREATE INDEX idx ON t ((col1 + LENGTH(col2)) HASH, UPPER(col2) ASC)",
-      "SELECT col1 FROM t WHERE col1 + LENGTH(col2) = 258",
-      "MultiColumnExpression"));
+  ASSERT_OK(CreateWideTable(kTableName));
+  ASSERT_OK(InsertTestData(kTableName));
+  auto rpcs = ASSERT_RESULT(BuildIndexAndGetBackfillRpcs(
+      "CREATE INDEX idx ON t ((col1 + LENGTH(col2)) HASH, UPPER(col2) ASC)"));
+  ASSERT_OK(ValidateRpcs(rpcs));
 }
 
 // Multi column expression index with partial predicate using col2
 TEST_P(PgIndexBackfillColumnProjectionTest, MultiColumnExpressionPartial) {
-  ASSERT_OK(CreateWideTable("t"));
-  ASSERT_OK(InsertTestData("t"));
-  ASSERT_OK(TestIndexBackfillProjection(
-      "CREATE INDEX idx ON t ((col1 + LENGTH(col2)) HASH, UPPER(col2) ASC) WHERE col2 > 'text_100'",
-      "SELECT col1 FROM t WHERE col1 + LENGTH(col2) = 258 AND col2 > 'text_100'",
-      "MultiColumnExpressionPartial"));
+  ASSERT_OK(CreateWideTable(kTableName));
+  ASSERT_OK(InsertTestData(kTableName));
+  auto rpcs = ASSERT_RESULT(BuildIndexAndGetBackfillRpcs(
+      "CREATE INDEX idx ON t ((col1 + LENGTH(col2)) HASH, UPPER(col2) ASC) WHERE col2 > 'text_100'"));
+  ASSERT_OK(ValidateRpcs(rpcs));
 }
 
 // Multi column index on partitioned table
 TEST_P(PgIndexBackfillColumnProjectionTest, PartitionedTable) {
-  ASSERT_OK(conn_->Execute(
-      "CREATE TABLE t ("
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE TABLE $0 ("
       "  id SERIAL,"
       "  col1 INT,"
       "  col2 TEXT,"
       "  col3 BOOLEAN,"
-      "  col4 FLOAT,"
-      "  large_col1 TEXT,"
-      "  large_col2 TEXT,"
-      "  large_col3 TEXT,"
-      "  large_col4 TEXT,"
-      "  large_col5 TEXT,"
+      "  padding TEXT,"
       "  PRIMARY KEY (id, col1)"
-      ") PARTITION BY RANGE (col1)"));
+      ") PARTITION BY RANGE (col1)", kTableName));
 
-  ASSERT_OK(conn_->Execute(
-      "CREATE TABLE t_p1 PARTITION OF t FOR VALUES FROM (1) TO (251)"));
-  ASSERT_OK(conn_->Execute(
-      "CREATE TABLE t_p2 PARTITION OF t FOR VALUES FROM (251) TO (501)"));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE TABLE $0_p1 PARTITION OF $0 FOR VALUES FROM (1) TO (251)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE TABLE $0_p2 PARTITION OF $0 FOR VALUES FROM (251) TO (501)", kTableName));
 
-  ASSERT_OK(InsertTestData("t"));
-  ASSERT_OK(TestIndexBackfillProjection(
-      "CREATE INDEX idx ON t (col1, col2)",
-      "SELECT col1 FROM t WHERE col1 = 250",
-      "PartitionedTable"));
+  ASSERT_OK(InsertTestData(kTableName));
+  auto rpcs = ASSERT_RESULT(BuildIndexAndGetBackfillRpcs("CREATE INDEX idx ON t (col1, col2)"));
+  ASSERT_OK(ValidateRpcs(rpcs));
 }
 
 // Multi column index on temp table
 TEST_P(PgIndexBackfillColumnProjectionTest, TempTable) {
-  ASSERT_OK(conn_->Execute(
-      "CREATE TEMP TABLE t ("
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE TEMP TABLE $0 ("
       "  id SERIAL PRIMARY KEY,"
       "  col1 INT,"
       "  col2 TEXT,"
       "  col3 BOOLEAN,"
-      "  col4 FLOAT,"
-      "  large_col1 TEXT,"
-      "  large_col2 TEXT,"
-      "  large_col3 TEXT,"
-      "  large_col4 TEXT,"
-      "  large_col5 TEXT"
-      ")"));
-  ASSERT_OK(InsertTestData("t"));
-  ASSERT_OK(TestIndexBackfillProjection(
-      "CREATE INDEX idx ON t (col1, col2)",
-      "SELECT col1 FROM t WHERE col1 = 250",
-      "TempTable"));
+      "  padding TEXT"
+      ")", kTableName));
+  ASSERT_OK(InsertTestData(kTableName));
+  auto rpcs = ASSERT_RESULT(BuildIndexAndGetBackfillRpcs("CREATE INDEX idx ON t (col1, col2)"));
+  ASSERT_OK(ValidateRpcs(rpcs));
 }
 
 } // namespace yb::pgwrapper

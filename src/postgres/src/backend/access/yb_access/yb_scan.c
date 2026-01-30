@@ -3958,8 +3958,8 @@ ybcBuildScanPlanForIndexBuild(Relation relation, IndexInfo *indexInfo)
  *   - ybctid (always needed for index entry construction)
  *
  * This optimization significantly reduces the amount of data read from
- * DocDB during concurrent index creation (backfill), especially for tables
- * with many columns where only a few are indexed.
+ * DocDB during index backfill, especially for tables especially for tables
+ * with many columns where a given index references only a few.
  */
 TableScanDesc
 ybc_heap_beginscan_for_index_build(Relation relation,
@@ -3971,19 +3971,8 @@ ybc_heap_beginscan_for_index_build(Relation relation,
 	YbScanDesc	ybScan;
 	Scan	   *pg_scan_plan;
 
-	uint32 flags = SO_TYPE_SEQSCAN;
-
-	/*
-	 * Build a Scan plan node with the columns required for this index.
-	 * This allows ybcBeginScan to use its standard column projection logic.
-	 */
 	pg_scan_plan = ybcBuildScanPlanForIndexBuild(relation, indexInfo);
 
-	/*
-	 * Call ybcBeginScan with the constructed plan.
-	 * Most parameters are NULL/false since this is a simple table scan
-	 * for index backfill - no index, no pushdowns, no aggregates.
-	 */
 	ybScan = ybcBeginScan(relation,
 						  NULL,		/* index */
 						  false,	/* xs_want_itup */
@@ -3998,11 +3987,9 @@ ybc_heap_beginscan_for_index_build(Relation relation,
 						  false,	/* is_internal_scan */
 						  false);	/* fetch_ybctids_only */
 
-	/* Set additional TableScanDesc fields not handled by ybcBeginScan */
 	TableScanDesc tsdesc = (TableScanDesc) ybScan;
-
 	tsdesc->rs_snapshot = snapshot;
-	tsdesc->rs_flags = flags;
+	tsdesc->rs_flags = SO_TYPE_SEQSCAN;
 
 	return tsdesc;
 }
