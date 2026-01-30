@@ -719,6 +719,16 @@ TEST_F(DBCompactionTest, BGCompactionsAllowed) {
 
 class ThrottlingEventListener : public EventListener {
  public:
+  explicit ThrottlingEventListener(yb::CountDownLatch* flush_compaction_latch = nullptr)
+      : flush_compaction_latch_(flush_compaction_latch) {}
+
+  void OnFlushScheduled(DB* /*db*/) override {
+    if (flush_compaction_latch_) {
+      flush_compaction_latch_->CountDown();
+      LOG(INFO) << "Flush scheduled";
+    }
+  }
+
   void OnFlushCompleted(DB* db, const FlushJobInfo& flush_job_info) override {
     if (flush_job_info.triggered_writes_slowdown) {
       ++slowdown_writes_;
@@ -726,6 +736,21 @@ class ThrottlingEventListener : public EventListener {
     if (flush_job_info.triggered_writes_stop) {
       ++stop_writes_;
     }
+    if (flush_compaction_latch_) {
+      LOG(INFO) << "Flush completed";
+    }
+  }
+
+  void OnCompactionStarted() override {
+    if (flush_compaction_latch_) {
+      LOG(INFO) << "Waiting for compaction to start";
+      flush_compaction_latch_->CountDown();
+    }
+    LOG(INFO) << "Compaction started";
+  }
+
+  void OnCompactionCompleted(DB* /*db*/, const CompactionJobInfo&) override {
+    LOG(INFO) << "Compaction completed";
   }
 
   int slowdown_writes() const {
@@ -739,14 +764,15 @@ class ThrottlingEventListener : public EventListener {
  private:
   std::atomic<int> slowdown_writes_{0};
   std::atomic<int> stop_writes_{0};
+  yb::CountDownLatch* flush_compaction_latch_ = nullptr;
 };
 
 TEST_F(DBCompactionTest, ClogSingleCompactionQueue) {
-  auto listener = std::make_shared<ThrottlingEventListener>();
   // Create several column families. Make large compactions in all but one
   // of them and see small compactions in the other starve.
   const int kNumKeysPerLargeFile = 100000;
   const int kNumKeysPerSmallFile = 1;
+  constexpr auto kNumCF = 3;
 
   Options options;
   options.write_buffer_size = 110 << 20;  // 110 MB
@@ -759,14 +785,25 @@ TEST_F(DBCompactionTest, ClogSingleCompactionQueue) {
   options.soft_pending_compaction_bytes_limit = 1ULL << 63;  // Infinitely large
   options.max_background_compactions = 3;
   options.memtable_factory = std::make_shared<SpecialSkipListFactory>(kNumKeysPerLargeFile);
+
+  // Using a latch to block compactions start until all flushes have been triggered, to make
+  // sure compactions are not too fast.
+  const size_t kNumTotalFlushes =
+      kNumCF * options.level0_file_num_compaction_trigger + options.level0_stop_writes_trigger;
+  LOG(INFO) << "Num of total flushes expected: " << kNumTotalFlushes;
+  yb::CountDownLatch flush_compaction_latch { kNumTotalFlushes };
+  auto listener = std::make_shared<ThrottlingEventListener>(&flush_compaction_latch);
   options.listeners.push_back(listener);
+
   options = CurrentOptions(options);
 
+  // Keeping 1 available slot for flushes while compactions are in progress.
+  const auto kTotalTasks = options.max_background_compactions + 1;
+  env_->SetBackgroundThreads(kTotalTasks, Env::LOW);
+
   // Block all threads in thread pool.
-  const size_t kTotalTasks = 4;
-  env_->SetBackgroundThreads(4, Env::LOW);
   test::SleepingBackgroundTask sleeping_tasks[kTotalTasks];
-  for (size_t i = 0; i < kTotalTasks; i++) {
+  for (auto i = 0; i < kTotalTasks; i++) {
     env_->Schedule(&test::SleepingBackgroundTask::DoSleepTask,
                    &sleeping_tasks[i], Env::Priority::LOW);
     sleeping_tasks[i].WaitUntilSleeping();
@@ -775,7 +812,7 @@ TEST_F(DBCompactionTest, ClogSingleCompactionQueue) {
   CreateAndReopenWithCF({"one", "two", "three"}, options);
 
   Random rnd(301);
-  for (int cf = 0; cf < 3; cf++) {
+  for (int cf = 0; cf < kNumCF; cf++) {
     for (int num = 0; num < options.level0_file_num_compaction_trigger; num++) {
       for (int i = 0; i < kNumKeysPerLargeFile; i++) {
         ASSERT_OK(Put(cf, Key(i), ""));
@@ -787,12 +824,20 @@ TEST_F(DBCompactionTest, ClogSingleCompactionQueue) {
     }
   }
 
-  ASSERT_EQ(3, env_->GetThreadPoolQueueLen(Env::Priority::LOW));
+  // Make sure there are the required number of files before starting compactions, to
+  // make sure, they are not skipped.
+  ASSERT_OK(yb::LoggedWaitFor(
+      [db = db_, num_expected = kNumCF * options.level0_file_num_compaction_trigger] {
+        return db->GetLiveFilesMetaData().size() >= static_cast<size_t>(num_expected);
+      }, 30s, "Waiting for live files"));
 
-  for (size_t i = 0; i < kTotalTasks; i++) {
+  ASSERT_EQ(options.max_background_compactions, env_->GetThreadPoolQueueLen(Env::Priority::LOW));
+
+  for (auto i = 0; i < kTotalTasks; i++) {
     sleeping_tasks[i].WakeUp();
   }
 
+  // Writing into a single CF only.
   for (int num = 0; num < options.level0_stop_writes_trigger; num++) {
     for (int i = 0; i < kNumKeysPerSmallFile; i++) {
       ASSERT_OK(Put(3, Key(i), ""));
@@ -800,13 +845,11 @@ TEST_F(DBCompactionTest, ClogSingleCompactionQueue) {
     ASSERT_OK(Flush(3));
   }
 
-  for (size_t i = 0; i < kTotalTasks; i++) {
+  for (auto i = 0; i < kTotalTasks; i++) {
     ASSERT_FALSE(sleeping_tasks[i].IsSleeping());
   }
 
   ASSERT_OK(dbfull()->TEST_WaitForCompact());
-
-  yb::SyncPoint::GetInstance()->DisableProcessing();
 
   ASSERT_GT(listener->slowdown_writes() + listener->stop_writes(), 0);
 }
