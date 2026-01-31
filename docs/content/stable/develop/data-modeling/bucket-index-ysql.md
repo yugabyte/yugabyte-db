@@ -27,7 +27,7 @@ Normally, to get a globally ordered result for the most recent 1000 rows by time
 
 This is resource-intensive and slow.
 
-Using a bucket-based index with the limit pushdown optimization, the database can "push down" the LIMIT request to each of the individual tablets (buckets).
+Using a bucket-based index, the database can "push down" the LIMIT request to each of the individual tablets (buckets).
 
 For example, for a timestamp column that is the second column in the index (and ordered ASC), for each bucket, we can quickly find its top 1000 locally ordered rows. The database only has to scan 1000 rows per bucket instead of scanning potentially millions of rows that match the larger range condition.
 
