@@ -363,6 +363,7 @@ typedef enum BackendType
 	YB_YSQL_CONN_MGR,
 	YB_YSQL_CONN_MGR_WAL_SENDER,
 	YB_AUTO_ANALYZE_BACKEND,
+	YB_INDEX_BACKFILL_DDL,
 } BackendType;
 
 extern PGDLLIMPORT BackendType MyBackendType;

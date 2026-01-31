@@ -2295,7 +2295,38 @@ DefineIndex(Oid relationId,
 		 * YB: Do backfill if this is a separate DocDB table from the main
 		 * table.
 		 */
-		HandleYBStatus(YBCPgBackfillIndex(databaseId, indexRelationId));
+		if (YBCIsLegacyModeForCatalogOps())
+			HandleYBStatus(YBCPgBackfillIndex(databaseId, indexRelationId));
+		else
+		{
+			/*
+			 * To support concurrent create index statements, change backend type
+			 * to YB_INDEX_BACKFILL_DDL. A YB_INDEX_BACKFILL_DDL backend will be
+			 * ignored by the WaitForYsqlBackendsCatalogVersion query logic in the
+			 * CREATE INDEX CONCURRENTLY workflow. Otherwise a regular backend will
+			 * appear as a lagging backend when the backfill phase takes long time,
+			 * causing the other CREATE INDEX CONCURRENTLY to time out during its
+			 * WaitForYsqlBackendsCatalogVersion call.
+			 */
+			BackendType old_type = MyBackendType;
+			YbcStatus s = NULL;
+
+			PG_TRY();
+			{
+				MyBackendType = YB_INDEX_BACKFILL_DDL;
+				if (MyBEEntry)
+					MyBEEntry->st_backendType = MyBackendType;
+				s = YBCPgBackfillIndex(databaseId, indexRelationId);
+			}
+			PG_FINALLY();
+			{
+				MyBackendType = old_type;
+				if (MyBEEntry)
+					MyBEEntry->st_backendType = old_type;
+			}
+			PG_END_TRY();
+			HandleYBStatus(s);
+		}
 
 		Relation	yb_baserel = table_open(relationId, NoLock);
 
@@ -5227,6 +5258,7 @@ YbWaitForBackendsCatalogVersion()
 								 " backend_type != 'walsender' AND"
 								 " backend_type != 'yb-conn-mgr walsender' AND"
 								 " backend_type != 'yb auto analyze backend' AND"
+								 " backend_type != 'yb index backfill' AND"
 								 " catalog_version < %" PRIu64
 								 " AND datid = %u;",
 								 catalog_version,
