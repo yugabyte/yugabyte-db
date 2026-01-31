@@ -123,4 +123,6 @@ SELECT yb_xcluster_ddl_replication.get_replication_role();
 (1 row)
 ```
 
-The `source` role indicates that you are on the Primary universe. Roles for the Standby can vary depending on whether a switchover is in progress, and are subject to change in future releases.
+The `source` role indicates that you are talking to the Primary version of the database and that it is ready to accept traffic.
+
+Other role values are possible depending on whether a setup or switchover is in progress and whether you are talking to the Primary or Standby. These other roles are subject to change in future releases.
