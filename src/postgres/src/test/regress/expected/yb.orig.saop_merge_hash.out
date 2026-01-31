@@ -463,3 +463,167 @@
   3 |  8 | 83615 |        28655 |  5 |  1 |  6
 (5 rows)
 
+-- #30096: SAOP merge shouldn't be used in a parallel scan.
+\set query 'SELECT * FROM h3r2n WHERE h1 = 1 AND h2 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND h3 = 1 ORDER BY r1, r2'
+\set hint3 '/*+Parallel(h3r2n 2) Set(yb_enable_parallel_scan_hash_sharded true) Set(yb_parallel_range_rows 1) Set(yb_max_saop_merge_streams 0)*/'
+\set hint4 '/*+Parallel(h3r2n 2) Set(yb_enable_parallel_scan_hash_sharded true) Set(yb_parallel_range_rows 1) Set(yb_max_saop_merge_streams 64)*/'
+:explain4
+                                                   QUERY PLAN                                                   
+----------------------------------------------------------------------------------------------------------------
+ Sort (actual rows=44 loops=1)
+   Output: n, r1, r2, h1, h2, h3
+   Sort Key: h3r2n.r1, h3r2n.r2
+   Sort Method: quicksort
+   ->  Index Scan using h3r2n_pkey on public.h3r2n (actual rows=44 loops=1)
+         Output: n, r1, r2, h1, h2, h3
+         Index Cond: ((h3r2n.h1 = 1) AND (h3r2n.h2 = ANY ('{1,2,3,4,5,6,7,8,9}'::bigint[])) AND (h3r2n.h3 = 1))
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 7
+         Storage Table Rows Scanned: 44
+(10 rows)
+
+                                                QUERY PLAN                                                
+----------------------------------------------------------------------------------------------------------
+ Index Scan using h3r2n_pkey on public.h3r2n (actual rows=44 loops=1)
+   Output: n, r1, r2, h1, h2, h3
+   Index Cond: ((h3r2n.h1 = 1) AND (h3r2n.h2 = ANY ('{1,2,3,4,5,6,7,8,9}'::bigint[])) AND (h3r2n.h3 = 1))
+   Merge Sort Key: h3r2n.r1, h3r2n.r2
+   Merge Stream Key: h3r2n.h2
+   Merge Streams: 9
+   Merge Cond: (h3r2n.h2 = ANY ('{1,2,3,4,5,6,7,8,9}'::bigint[]))
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 9
+   Storage Table Rows Scanned: 44
+(10 rows)
+
+                                                      QUERY PLAN                                                      
+----------------------------------------------------------------------------------------------------------------------
+ Gather Merge (actual rows=44 loops=1)
+   Output: n, r1, r2, h1, h2, h3
+   Workers Planned: 2
+   Workers Launched: 2
+   ->  Sort (actual rows=15 loops=3)
+         Output: n, r1, r2, h1, h2, h3
+         Sort Key: h3r2n.r1, h3r2n.r2
+         Sort Method: quicksort
+         Worker 0:  actual rows=0 loops=1
+           Sort Method: quicksort  Memory: 25kB
+         Worker 1:  actual rows=0 loops=1
+           Sort Method: quicksort  Memory: 25kB
+         ->  Parallel Index Scan using h3r2n_pkey on public.h3r2n (actual rows=15 loops=3)
+               Output: n, r1, r2, h1, h2, h3
+               Index Cond: ((h3r2n.h1 = 1) AND (h3r2n.h2 = ANY ('{1,2,3,4,5,6,7,8,9}'::bigint[])) AND (h3r2n.h3 = 1))
+               Rows Removed by Index Recheck: 16
+               Storage Table Read Requests: 2
+               Storage Table Read Ops: 2
+               Storage Table Rows Scanned: 15
+               Worker 0:  actual rows=0 loops=1
+               Worker 1:  actual rows=0 loops=1
+(21 rows)
+
+                                                      QUERY PLAN                                                      
+----------------------------------------------------------------------------------------------------------------------
+ Gather Merge (actual rows=44 loops=1)
+   Output: n, r1, r2, h1, h2, h3
+   Workers Planned: 2
+   Workers Launched: 2
+   ->  Sort (actual rows=15 loops=3)
+         Output: n, r1, r2, h1, h2, h3
+         Sort Key: h3r2n.r1, h3r2n.r2
+         Sort Method: quicksort
+         Worker 0:  actual rows=0 loops=1
+           Sort Method: quicksort  Memory: 25kB
+         Worker 1:  actual rows=0 loops=1
+           Sort Method: quicksort  Memory: 25kB
+         ->  Parallel Index Scan using h3r2n_pkey on public.h3r2n (actual rows=15 loops=3)
+               Output: n, r1, r2, h1, h2, h3
+               Index Cond: ((h3r2n.h1 = 1) AND (h3r2n.h2 = ANY ('{1,2,3,4,5,6,7,8,9}'::bigint[])) AND (h3r2n.h3 = 1))
+               Rows Removed by Index Recheck: 16
+               Storage Table Read Requests: 2
+               Storage Table Read Ops: 2
+               Storage Table Rows Scanned: 15
+               Worker 0:  actual rows=0 loops=1
+               Worker 1:  actual rows=0 loops=1
+(21 rows)
+
+-- Same thing with backwards scan.
+\set query 'SELECT * FROM h3r2n WHERE h1 = 1 AND h2 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND h3 = 1 ORDER BY r1 DESC, r2 DESC'
+:explain4
+                                                   QUERY PLAN                                                   
+----------------------------------------------------------------------------------------------------------------
+ Sort (actual rows=44 loops=1)
+   Output: n, r1, r2, h1, h2, h3
+   Sort Key: h3r2n.r1 DESC, h3r2n.r2 DESC
+   Sort Method: quicksort
+   ->  Index Scan using h3r2n_pkey on public.h3r2n (actual rows=44 loops=1)
+         Output: n, r1, r2, h1, h2, h3
+         Index Cond: ((h3r2n.h1 = 1) AND (h3r2n.h2 = ANY ('{1,2,3,4,5,6,7,8,9}'::bigint[])) AND (h3r2n.h3 = 1))
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 7
+         Storage Table Rows Scanned: 44
+(10 rows)
+
+                                                QUERY PLAN                                                
+----------------------------------------------------------------------------------------------------------
+ Index Scan Backward using h3r2n_pkey on public.h3r2n (actual rows=44 loops=1)
+   Output: n, r1, r2, h1, h2, h3
+   Index Cond: ((h3r2n.h1 = 1) AND (h3r2n.h2 = ANY ('{1,2,3,4,5,6,7,8,9}'::bigint[])) AND (h3r2n.h3 = 1))
+   Merge Sort Key: h3r2n.r1 DESC, h3r2n.r2 DESC
+   Merge Stream Key: h3r2n.h2
+   Merge Streams: 9
+   Merge Cond: (h3r2n.h2 = ANY ('{1,2,3,4,5,6,7,8,9}'::bigint[]))
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 9
+   Storage Table Rows Scanned: 44
+(10 rows)
+
+                                                      QUERY PLAN                                                      
+----------------------------------------------------------------------------------------------------------------------
+ Gather Merge (actual rows=44 loops=1)
+   Output: n, r1, r2, h1, h2, h3
+   Workers Planned: 2
+   Workers Launched: 2
+   ->  Sort (actual rows=15 loops=3)
+         Output: n, r1, r2, h1, h2, h3
+         Sort Key: h3r2n.r1 DESC, h3r2n.r2 DESC
+         Sort Method: quicksort
+         Worker 0:  actual rows=0 loops=1
+           Sort Method: quicksort  Memory: 25kB
+         Worker 1:  actual rows=0 loops=1
+           Sort Method: quicksort  Memory: 25kB
+         ->  Parallel Index Scan using h3r2n_pkey on public.h3r2n (actual rows=15 loops=3)
+               Output: n, r1, r2, h1, h2, h3
+               Index Cond: ((h3r2n.h1 = 1) AND (h3r2n.h2 = ANY ('{1,2,3,4,5,6,7,8,9}'::bigint[])) AND (h3r2n.h3 = 1))
+               Rows Removed by Index Recheck: 16
+               Storage Table Read Requests: 2
+               Storage Table Read Ops: 2
+               Storage Table Rows Scanned: 15
+               Worker 0:  actual rows=0 loops=1
+               Worker 1:  actual rows=0 loops=1
+(21 rows)
+
+                                                      QUERY PLAN                                                      
+----------------------------------------------------------------------------------------------------------------------
+ Gather Merge (actual rows=44 loops=1)
+   Output: n, r1, r2, h1, h2, h3
+   Workers Planned: 2
+   Workers Launched: 2
+   ->  Sort (actual rows=15 loops=3)
+         Output: n, r1, r2, h1, h2, h3
+         Sort Key: h3r2n.r1 DESC, h3r2n.r2 DESC
+         Sort Method: quicksort
+         Worker 0:  actual rows=0 loops=1
+           Sort Method: quicksort  Memory: 25kB
+         Worker 1:  actual rows=0 loops=1
+           Sort Method: quicksort  Memory: 25kB
+         ->  Parallel Index Scan using h3r2n_pkey on public.h3r2n (actual rows=15 loops=3)
+               Output: n, r1, r2, h1, h2, h3
+               Index Cond: ((h3r2n.h1 = 1) AND (h3r2n.h2 = ANY ('{1,2,3,4,5,6,7,8,9}'::bigint[])) AND (h3r2n.h3 = 1))
+               Rows Removed by Index Recheck: 16
+               Storage Table Read Requests: 2
+               Storage Table Read Ops: 2
+               Storage Table Rows Scanned: 15
+               Worker 0:  actual rows=0 loops=1
+               Worker 1:  actual rows=0 loops=1
+(21 rows)
+
