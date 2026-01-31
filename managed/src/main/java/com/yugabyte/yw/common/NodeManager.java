@@ -138,7 +138,7 @@ public class NodeManager extends DevopsBase {
   static final String BOOT_SCRIPT_PATH = "yb.universe_boot_script";
   static final String BOOT_SCRIPT_TOKEN = "39666ab2-6633-4806-9685-5134321bd0d1";
   static final String BOOT_SCRIPT_COMPLETE =
-      "\nsync\necho " + BOOT_SCRIPT_TOKEN + " >/etc/yb-boot-script-complete\n";
+      "\nsync\necho -n " + BOOT_SCRIPT_TOKEN + " >/etc/yb-boot-script-complete\n";
   private static final String YB_CLOUD_COMMAND_TYPE = "instance";
   public static final String CERT_LOCATION_NODE = "node";
   public static final String CERT_LOCATION_PLATFORM = "platform";

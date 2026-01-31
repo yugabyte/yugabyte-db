@@ -1127,6 +1127,9 @@ public enum TaskType {
 
   CheckLocale(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckLocale.class),
 
+  CheckShellConnectivity(
+      com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckShellConnectivity.class),
+
   CheckGlibc(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckGlibc.class),
 
   CheckOpentelemetryOperator(

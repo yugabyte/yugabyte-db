@@ -7,17 +7,19 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import { ReactElement } from 'react';
+import { FC } from 'react';
 import { useTranslation } from 'react-i18next';
-import { mui, YBToggleField, YBPasswordField, YBTooltip } from '@yugabyte-ui-library/core';
 import { useFormContext, useWatch } from 'react-hook-form';
+import { mui, YBToggleField, YBPasswordField, YBTooltip } from '@yugabyte-ui-library/core';
+import { FieldContainer } from '../../components/DefaultComponents';
 import { DatabaseSettingsProps } from '../../steps/database-settings/dtos';
 import { YSQL_FIELD } from '../ysql-settings/YSQLSettingsField';
-import { FieldContainer } from '../../components/DefaultComponents';
+
+//icons
+import NextLineIcon from '../../../../../assets/next-line.svg';
+import InfoIcon from '../../../../../assets/info-new.svg';
 
 const { Box } = mui;
-
-import NextLineIcon from '../../../../../assets/next-line.svg';
 
 interface YCQLProps {
   disabled?: boolean;
@@ -28,7 +30,7 @@ const YCQL_AUTH_FIELD = 'ycql.enable_auth';
 const YCQL_PASSWORD_FIELD = 'ycql.password';
 const YCQL_CONFIRM_PWD = 'ycql.confirm_pwd';
 
-export const YCQField = (): ReactElement => {
+export const YCQField: FC<YCQLProps> = ({ disabled }) => {
   const { control } = useFormContext<DatabaseSettingsProps>();
   const { t } = useTranslation('translation', {
     keyPrefix: 'createUniverseV2.databaseSettings'
@@ -46,16 +48,22 @@ export const YCQField = (): ReactElement => {
       >
         <Box sx={{ marginBottom: '-5px', mr: 1 }}>
           <YBTooltip
-            title={!ysqlEnabled && !ycqlEnabled ? (t('enableYsqlOrYcql') as string) : ''}
+            title={!ysqlEnabled && ycqlEnabled ? (t('enableYsqlOrYcql') as string) : ''}
             placement="top-start"
           >
-            <div>
+            <div
+              style={{ display: 'flex', flexDirection: 'row', gap: '4px', alignItems: 'center' }}
+            >
               <YBToggleField
                 name={YCQL_FIELD}
                 control={control}
                 label={t('ycqlSettings.toggleLabel')}
                 dataTestId="ycql-settings-field"
+                disabled={!ysqlEnabled || disabled}
               />
+              <span>
+                <InfoIcon />
+              </span>
             </div>
           </YBTooltip>
         </Box>
@@ -66,12 +74,22 @@ export const YCQField = (): ReactElement => {
             display: 'flex',
             flexDirection: 'column',
             borderTop: '1px solid #D7DEE4',
-            padding: '16px 24px 32px 32px'
+            padding: '16px 24px'
           }}
         >
-          <Box sx={{ display: 'flex', flexDirection: 'row', alignItems: 'center' }}>
-            <NextLineIcon />
-            <Box sx={{ marginBottom: '-5px', mr: 1, ml: 2 }}>
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: '16px',
+              marginBottom: '-5px'
+            }}
+          >
+            <span>
+              <NextLineIcon />
+            </span>
+            <Box sx={{ mr: 1 }}>
               <YBToggleField
                 name={YCQL_AUTH_FIELD}
                 control={control}
@@ -81,7 +99,14 @@ export const YCQField = (): ReactElement => {
             </Box>
           </Box>
           {ycqlAuthEnabled && (
-            <Box sx={{ display: 'flex', flexDirection: 'column', mt: 4, pl: 5 }}>
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '24px',
+                padding: '16px 0px 16px 40px'
+              }}
+            >
               <YBPasswordField
                 name={YCQL_PASSWORD_FIELD}
                 control={control}
@@ -89,15 +114,13 @@ export const YCQField = (): ReactElement => {
                 label={t('ycqlSettings.authPwd')}
                 dataTestId="ycql-settings-auth-pwd-field"
               />
-              <Box sx={{ display: 'flex', flexDirection: 'column', mt: 3, width: '100%' }}>
-                <YBPasswordField
-                  name={YCQL_CONFIRM_PWD}
-                  control={control}
-                  placeholder={t('ycqlSettings.authConfirmPwd')}
-                  label={t('ycqlSettings.authConfirmPwd')}
-                  dataTestId="ycql-settings-auth-confirm-pwd-field"
-                />
-              </Box>
+              <YBPasswordField
+                name={YCQL_CONFIRM_PWD}
+                control={control}
+                placeholder={t('ycqlSettings.authConfirmPwd')}
+                label={t('ycqlSettings.authConfirmPwd')}
+                dataTestId="ycql-settings-auth-confirm-pwd-field"
+              />
             </Box>
           )}
         </Box>

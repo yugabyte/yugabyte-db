@@ -73,7 +73,7 @@ const RegionList: FC<{ regions: RegionsAndNodesFormType['regions']; t: TFunction
   return (
     <>
       {regions?.map((region) => {
-        const sortedZones = [...region?.zones ?? []].sort((a, b) => {
+        const sortedZones = [...(region?.zones ?? [])].sort((a, b) => {
           const prefA = isDefinedNotNull(a.leader_preference)
             ? a.leader_preference! !== -1
               ? a.leader_preference!

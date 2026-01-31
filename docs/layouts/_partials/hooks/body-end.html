@@ -99,14 +99,14 @@ if (typeof detectExternalLink === 'function') {
         });
       }
 
-      let clearbitAnonymousId = window.yugabyteGetCookie('cb_anonymous_id');
+      let clearbitAnonymousId = window.browserCookieUtils.getCookie('cb_anonymous_id');
       if (clearbitAnonymousId && clearbitAnonymousId !== 'null') {
         clearbitAnonymousId = clearbitAnonymousId.replace(/%22/g, '').replace(/"/g, '');
         const kapaUser = {
           uniqueClientId: clearbitAnonymousId,
         };
 
-        let clearbitUserId = window.yugabyteGetCookie('cb_user_id');
+        let clearbitUserId = window.browserCookieUtils.getCookie('cb_user_id');
         if (clearbitUserId && clearbitUserId !== 'null') {
           clearbitUserId = clearbitUserId.replace(/%22/g, '').replace(/"/g, '');
           kapaUser.email = clearbitUserId;

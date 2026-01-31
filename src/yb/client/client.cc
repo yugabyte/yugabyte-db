@@ -176,6 +176,8 @@ using yb::master::GetUDTypeMetadataRequestPB;
 using yb::master::GetUDTypeMetadataResponsePB;
 using yb::master::GetYsqlCatalogConfigRequestPB;
 using yb::master::GetYsqlCatalogConfigResponsePB;
+using yb::master::GetYsqlYbSystemTableInfoRequestPB;
+using yb::master::GetYsqlYbSystemTableInfoResponsePB;
 using yb::master::GrantRevokePermissionRequestPB;
 using yb::master::GrantRevokePermissionResponsePB;
 using yb::master::GrantRevokeRoleRequestPB;
@@ -1200,6 +1202,18 @@ Status YBClient::ReservePgsqlOids(
   if (oid_cache_invalidations_count) {
     *oid_cache_invalidations_count = resp.oid_cache_invalidations_count();
   }
+  return Status::OK();
+}
+
+Status YBClient::GetYsqlYbSystemTableInfo(
+    PgOid namespace_oid, const TableName& table_name, PgOid* oid, PgOid* relfilenode) {
+  GetYsqlYbSystemTableInfoRequestPB req;
+  GetYsqlYbSystemTableInfoResponsePB resp;
+  req.set_namespace_oid(namespace_oid);
+  req.set_table_name(table_name);
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Client, req, resp, GetYsqlYbSystemTableInfo);
+  *oid = resp.table_oid();
+  *relfilenode = resp.relfilenode();
   return Status::OK();
 }
 

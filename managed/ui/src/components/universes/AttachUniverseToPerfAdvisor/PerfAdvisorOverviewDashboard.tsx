@@ -1,59 +1,76 @@
 import { Trans, useTranslation } from 'react-i18next';
-import { Box, makeStyles } from '@material-ui/core';
+import { useMemo, useState } from 'react';
+import { browserHistory } from 'react-router';
+import { Box } from '@material-ui/core';
 import { PerfAdvisorEntry } from '@yugabytedb/perf-advisor-ui';
+import { AppName } from '@app/redesign/helpers/dtos';
 import { YBPanelItem } from '../../panels';
-import { YBButton } from '../../../redesign/components';
-import { AppName } from '../../../redesign/features/PerfAdvisor/PerfAdvisorAnalysisDashboard';
-
-const useStyles = makeStyles((theme) => ({
-  button: {
-    marginLeft: theme.spacing(2),
-    marginTop: theme.spacing(-0.5),
-    float: 'right'
-  }
-}));
 
 interface PerfAdvisorOverviewDashboardProps {
   universeUuid: string;
-  tpUuid: string;
-  appName: AppName;
   timezone: string;
   apiUrl: string;
   registrationStatus: boolean;
-  refetchUniverseRegistration: any;
 }
 
 export const PerfAdvisorOverviewDashboard = ({
   universeUuid,
-  appName,
-  tpUuid,
   timezone,
   apiUrl,
-  registrationStatus,
-  refetchUniverseRegistration
+  registrationStatus
 }: PerfAdvisorOverviewDashboardProps) => {
-  const helperClasses = useStyles();
   const { t } = useTranslation();
 
-  return registrationStatus ? (
-    <PerfAdvisorEntry
-      universeUuid={universeUuid}
-      appName={appName}
-      timezone={timezone}
-      apiUrl={apiUrl}
-    />
-  ) : (
-    <YBPanelItem
-      body={
-        <Box>
-          <span>
-            <Trans
-              i18nKey={t('clusterDetail.troubleshoot.enablePerfAdvisorMsg')}
-              components={{ bold: <b /> }}
-            />
-          </span>
-        </Box>
-      }
-    />
-  );
+  const [troubleshootUuid, setTroubleshootUuid] = useState<string | null>(null);
+  const [queryId, setQueryId] = useState<string | null>(null);
+
+  // This call back function is to handle YBM case to ensure we dont have a full page reload
+  const onNavigateToUrl = (url: string) => {
+    browserHistory.push(url);
+  };
+
+  const onSelectedIssue = (selectedIssueId: string | null) => {
+    setTroubleshootUuid(selectedIssueId);
+    setQueryId(null);
+  };
+
+  const onSelectedQuery = (selectedQueryId: string | null) => {
+    setQueryId(selectedQueryId);
+    setTroubleshootUuid(null);
+  };
+
+  // We use useMemo to prevent re-rendering the PerfAdvisorEntry component when the universeUuid, queryId, or troubleshootUuid changes.
+  const memoizedPerfAdvisorEntry = useMemo(() => {
+    return (
+      <PerfAdvisorEntry
+        universeUuid={universeUuid}
+        appName={AppName.YBA}
+        timezone={timezone}
+        apiUrl={apiUrl}
+        onSelectedIssue={onSelectedIssue}
+        onSelectedQuery={onSelectedQuery}
+        onNavigateToUrl={onNavigateToUrl}
+      />
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [universeUuid, queryId, troubleshootUuid]);
+
+  if (!registrationStatus) {
+    return (
+      <YBPanelItem
+        body={
+          <Box>
+            <span>
+              <Trans
+                i18nKey={t('clusterDetail.troubleshoot.enablePerfAdvisorMsg')}
+                components={{ bold: <b /> }}
+              />
+            </span>
+          </Box>
+        }
+      />
+    );
+  }
+
+  return registrationStatus && memoizedPerfAdvisorEntry;
 };

@@ -7,6 +7,7 @@ var InstallChecks = []Check{
 	checks.InstallNotExists,
 	checks.ValidateInstallerConfig,
 	checks.User,
+	checks.HomeDirSpace,
 	checks.Cpu,
 	checks.Memory,
 	checks.Port,
@@ -37,6 +38,7 @@ var InstallPerfAdvisorChecks = []Check{
 var UpgradeChecks = []Check{
 	checks.InstallExists,
 	checks.ValidateInstallerConfig,
+	checks.HomeDirSpace,
 	checks.DiskAvail,
 	checks.Cpu,
 	checks.Memory,

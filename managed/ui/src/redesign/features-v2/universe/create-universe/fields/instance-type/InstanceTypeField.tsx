@@ -55,7 +55,7 @@ interface InstanceTypeFieldProps {
   isEditMode?: boolean;
   isMaster?: boolean;
   disabled: boolean;
-  provider?: ProviderType;
+  provider?: Partial<ProviderType>;
   regions?: Region[];
 }
 
@@ -102,7 +102,7 @@ export const InstanceTypeField = ({
           );
 
         // set default/first item as instance type after provider changes
-        if (provider && (!currentInstanceType || !instanceExists(currentInstanceType))) {
+        if (provider?.code && (!currentInstanceType || !instanceExists(currentInstanceType))) {
           const defaultInstanceType = getDefaultInstanceType(provider.code, providerRuntimeConfigs);
           if (instanceExists(defaultInstanceType))
             setValue(UPDATE_FIELD, defaultInstanceType, { shouldValidate: true });
@@ -135,6 +135,7 @@ export const InstanceTypeField = ({
           >
             <Box flex={1}>
               <YBAutoComplete
+                size="large"
                 loading={isLoading}
                 disabled={disabled}
                 value={(value as unknown) as Record<string, string>}
@@ -155,7 +156,6 @@ export const InstanceTypeField = ({
                     ? (option: Record<string, string>) => option.groupName
                     : undefined
                 }
-                size="large"
               />
             </Box>
           </Box>

@@ -37,7 +37,7 @@ struct PgsqlReadOpWithPgTable {
 
 // Helper class to collect operations from multiple doc_ops and send them with a single perform RPC.
 class PrecastRequestSender {
-  // Struct stores operation and table for futher sending this operation
+  // Struct stores operation and table for further sending this operation
   // with the 'PgSession::RunAsync' method.
   struct OperationInfo {
     OperationInfo(const PgsqlOpPtr& operation_, const PgTableDesc& table_)
@@ -68,20 +68,22 @@ class PrecastRequestSender {
 
  public:
   Result<PgDocResponse> Send(
-      PgSession& session, const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
-      HybridTime in_txn_limit) {
+      PgSession& session, std::span<const PgsqlOpPtr> ops, const PgTableDesc& table,
+      const PgSession::RunOptions& options) {
     if (!collecting_mode_) {
-      return PgDocOp::DefaultSender(
-          &session, ops, ops_count, table, in_txn_limit,
-          ForceNonBufferable::kFalse, IsForWritePgDoc::kFalse);
+      return PgDocOp::DefaultSender(&session, ops, table, options, IsForWritePgDoc::kFalse);
     }
     // For now PrecastRequestSender can work only with a new in txn limit set to the current time
     // for each batch of ops. It doesn't use a single in txn limit for all read ops in a statement.
     // TODO: Explain why is this the case because it differs from requirement 1 in
     // src/yb/yql/pggate/README
-    RSTATUS_DCHECK(!in_txn_limit, IllegalState, "Only zero is expected");
-    for (auto end = ops + ops_count; ops != end; ++ops) {
-      ops_.emplace_back(*ops, table);
+    DCHECK(!PgSession::RunOptions{}.in_txn_limit);
+    RSTATUS_DCHECK(
+        options == PgSession::RunOptions{},
+        IllegalState, "Only default run options is expected, got $0", options);
+
+    for (const auto& o : ops) {
+      ops_.emplace_back(o, table);
     }
     if (!provider_state_) {
       provider_state_ = std::make_shared<ResponseProvider::State>();
@@ -104,15 +106,16 @@ class PrecastRequestSender {
  private:
   Status DoTransmitCollected(PgSession& session) {
     auto i = ops_.begin();
-    PgDocResponse response(VERIFY_RESULT(session.RunAsync(make_lw_function(
-        [&i, end = ops_.end()] {
-          using TO = PgSession::TableOperation<PgsqlOpPtr>;
-          if (i == end) {
-            return TO();
-          }
-          auto& info = *i++;
-          return TO{.operation = &info.operation, .table = info.table};
-        }), HybridTime())),
+    PgDocResponse response(
+        VERIFY_RESULT(session.RunAsync(make_lw_function(
+            [&i, end = ops_.end()] {
+              using TO = PgSession::TableOperation<PgsqlOpPtr>;
+              if (i == end) {
+                return TO();
+              }
+              auto& info = *i++;
+              return TO{.operation = &info.operation, .table = info.table};
+            }))),
         {TableType::USER, IsForWritePgDoc::kFalse, IsOpBuffered::kFalse});
     *provider_state_ = VERIFY_RESULT(response.Get(session));
     return Status::OK();
@@ -141,11 +144,10 @@ Result<std::span<LightweightTableYbctid>> YbctidReader::Read(
   PrecastRequestSender precast_sender;
   boost::container::small_vector<std::unique_ptr<PgDocReadOp>, 16> doc_ops;
   auto request_sender = [&precast_sender](
-      PgSession* session, const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
-      HybridTime in_txn_limit, ForceNonBufferable force_non_bufferable, IsForWritePgDoc is_write) {
-    DCHECK(!force_non_bufferable);
+      PgSession* session, std::span<const PgsqlOpPtr> ops, const PgTableDesc& table,
+      const PgSession::RunOptions& options, IsForWritePgDoc is_write) {
     DCHECK(!is_write);
-    return precast_sender.Send(*session, ops, ops_count, table, in_txn_limit);
+    return precast_sender.Send(*session, ops, table, options);
   };
   // Start all the doc_ops to read from docdb in parallel, one doc_op per table ID.
   // Each doc_op will use request_sender to send all the requests with single perform RPC.

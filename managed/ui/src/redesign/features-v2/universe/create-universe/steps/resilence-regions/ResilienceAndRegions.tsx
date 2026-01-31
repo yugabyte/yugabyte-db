@@ -27,8 +27,7 @@ import { GuidedMode, FreeFormMode, RegionSelection } from './index';
 import { ResilienceAndRegionsSchema } from './ValidationSchema';
 import {
   computeFaultToleranceTypeFromProvider,
-  getFaultToleranceNeeded,
-  getFaultToleranceNeededForAZ
+  getFaultToleranceNeeded
 } from '../../CreateUniverseUtils';
 import {
   CreateUniverseContext,
@@ -90,8 +89,7 @@ export const ResilienceAndRegions = forwardRef<
 
   const methods = useForm<ResilienceAndRegionsProps>({
     defaultValues: resilienceAndRegionsSettings,
-    resolver: yupResolver(ResilienceAndRegionsSchema(t)),
-    mode: 'onSubmit'
+    resolver: yupResolver(ResilienceAndRegionsSchema(t))
   });
 
   const { watch } = methods;
@@ -100,7 +98,7 @@ export const ResilienceAndRegions = forwardRef<
   const regions = watch(REGIONS_FIELD);
   const replicationFactor = watch(REPLICATION_FACTOR);
   const faultToleranceForRegion = getFaultToleranceNeeded(replicationFactor);
-  const faultToleranceforAz = getFaultToleranceNeededForAZ(replicationFactor);
+  const faultToleranceforAz = getFaultToleranceNeeded(replicationFactor);
   const resilienceType = watch(RESILIENCE_TYPE);
 
   const availabilityZoneCount = regions.reduce((acc, region) => {

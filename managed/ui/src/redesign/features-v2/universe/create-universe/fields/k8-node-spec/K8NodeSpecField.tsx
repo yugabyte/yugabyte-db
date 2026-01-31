@@ -7,8 +7,8 @@ import {
   getK8MemorySizeRange,
   getK8CPUCoresRange
 } from '@app/redesign/features-v2/universe/create-universe/fields/k8-node-spec/K8NodeSpecFieldHelper';
-import { NodeType } from '@app/redesign/utils/dtos';
 import { useRuntimeConfigValues } from '@app/redesign/features-v2/universe/create-universe/helpers/utils';
+import { NodeType } from '@app/redesign/utils/dtos';
 import { ProviderType } from '@app/redesign/features-v2/universe/create-universe/steps/general-settings/dtos';
 import { InstanceSettingProps } from '@app/redesign/features-v2/universe/create-universe/steps/hardware-settings/dtos';
 import {

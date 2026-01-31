@@ -2216,6 +2216,11 @@ YbcStatus YBCPgSetTserverCatalogMessageList(
   return YBCStatusOK();
 }
 
+YbcStatus YBCGetYbSystemTableInfo(
+    YbcPgOid namespace_oid, const char* table_name, YbcPgOid* oid, YbcPgOid* relfilenode) {
+  return ToYBCStatus(pgapi->GetYbSystemTableInfo(namespace_oid, table_name, oid, relfilenode));
+}
+
 uint64_t YBCGetSharedAuthKey() {
   return pgapi->GetSharedAuthKey();
 }

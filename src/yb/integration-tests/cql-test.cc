@@ -38,7 +38,7 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/curl_util.h"
-#include "yb/util/jsonreader.h"
+#include "yb/util/json_document.h"
 #include "yb/util/random_util.h"
 #include "yb/util/range.h"
 #include "yb/util/status_log.h"
@@ -915,28 +915,23 @@ TEST_F(CqlTest, TestCQLPreparedStmtStats) {
   }
 
   ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements", ToString(addrs[0])), &buf));
-  JsonReader r(buf.ToString());
-  ASSERT_OK(r.Init());
-  std::vector<const rapidjson::Value*> stmt_stats;
-  ASSERT_OK(r.ExtractObjectArray(r.root(), "prepared_statements", &stmt_stats));
-  ASSERT_EQ(2, stmt_stats.size());
+  JsonDocument doc;
+  auto root = ASSERT_RESULT(doc.Parse(buf.ToString()));
+  auto stmt_stats = root["prepared_statements"];
+  ASSERT_EQ(2, ASSERT_RESULT(stmt_stats.size()));
 
-  const rapidjson::Value* insert_stat = stmt_stats[1];
-  string insert_query;
-  ASSERT_OK(r.ExtractString(insert_stat, "query", &insert_query));
+  const auto& insert_stat = stmt_stats[1];
+  auto insert_query = ASSERT_RESULT(insert_stat["query"].GetString());
   ASSERT_EQ("INSERT INTO t1 (i, j) VALUES (?, ?)", insert_query);
 
-  int64 insert_num_calls = 0;
-  ASSERT_OK(r.ExtractInt64(insert_stat, "calls", &insert_num_calls));
+  auto insert_num_calls = ASSERT_RESULT(insert_stat["calls"].GetInt64());
   ASSERT_EQ(10, insert_num_calls);
 
-  const rapidjson::Value* select_stat = stmt_stats[0];
-  string select_query;
-  ASSERT_OK(r.ExtractString(select_stat, "query", &select_query));
+  auto select_stat = stmt_stats[0];
+  auto select_query = ASSERT_RESULT(select_stat["query"].GetString());
   ASSERT_EQ("SELECT * FROM t1 WHERE i = ?", select_query);
 
-  int64 select_num_calls = 0;
-  ASSERT_OK(r.ExtractInt64(select_stat, "calls", &select_num_calls));
+  auto select_num_calls = ASSERT_RESULT(select_stat["calls"].GetInt64());
   ASSERT_EQ(5, select_num_calls);
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
@@ -973,29 +968,26 @@ TEST_F(CqlTest, TestCQLUnpreparedStmtStats) {
   faststring buf;
   ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements", ToString(addrs[0])), &buf));
 
-  JsonReader r(buf.ToString());
-  ASSERT_OK(r.Init());
-  std::vector<const rapidjson::Value*> stmt_stats;
-  ASSERT_OK(r.ExtractObjectArray(r.root(), "unprepared_statements", &stmt_stats));
+  JsonDocument doc;
+  auto root = ASSERT_RESULT(doc.Parse(buf.ToString()));
 
   string query_text;
-  int64 obtained_num_calls = 0;
-  for (auto const& stmt_stat : stmt_stats) {
-    ASSERT_OK(r.ExtractString(stmt_stat, "query", &query_text));
+  for (auto const& stmt_stat : ASSERT_RESULT(root["unprepared_statements"].GetArray())) {
+    auto query_text = ASSERT_RESULT(stmt_stat["query"].GetString());
     if (query_text == create_table_stmt) {
-      ASSERT_OK(r.ExtractInt64(stmt_stat, "calls", &obtained_num_calls));
+      auto obtained_num_calls = ASSERT_RESULT(stmt_stat["calls"].GetInt64());
       ASSERT_EQ(1, obtained_num_calls);
     } else if (query_text == insert_stmt_1) {
-      ASSERT_OK(r.ExtractInt64(stmt_stat, "calls", &obtained_num_calls));
+      auto obtained_num_calls = ASSERT_RESULT(stmt_stat["calls"].GetInt64());
       ASSERT_EQ(1, obtained_num_calls);
     } else if (query_text == insert_stmt_2) {
-      ASSERT_OK(r.ExtractInt64(stmt_stat, "calls", &obtained_num_calls));
+      auto obtained_num_calls = ASSERT_RESULT(stmt_stat["calls"].GetInt64());
       ASSERT_EQ(1, obtained_num_calls);
     } else if (query_text == select_stmt_1) {
-      ASSERT_OK(r.ExtractInt64(stmt_stat, "calls", &obtained_num_calls));
+      auto obtained_num_calls = ASSERT_RESULT(stmt_stat["calls"].GetInt64());
       ASSERT_EQ(num_select_queries/2, obtained_num_calls);
     } else if (query_text == select_stmt_2) {
-      ASSERT_OK(r.ExtractInt64(stmt_stat, "calls", &obtained_num_calls));
+      auto obtained_num_calls = ASSERT_RESULT(stmt_stat["calls"].GetInt64());
       ASSERT_EQ(num_select_queries/2, obtained_num_calls);
     }
   }
@@ -1006,11 +998,8 @@ TEST_F(CqlTest, TestCQLUnpreparedStmtStats) {
   ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements",
                                               ToString(addrs[0])), &buf));
 
-  JsonReader json_post_reset(buf.ToString());
-  ASSERT_OK(json_post_reset.Init());
-  std::vector<const rapidjson::Value*> stmt_stats_post_reset;
-  ASSERT_OK(json_post_reset.ExtractObjectArray(json_post_reset.root(), "unprepared_statements",
-                                               &stmt_stats_post_reset));
+  auto post_reset_root = ASSERT_RESULT(doc.Parse(buf.ToString()));
+  auto stmt_stats_post_reset = ASSERT_RESULT(post_reset_root["unprepared_statements"].GetArray());
   ASSERT_EQ(stmt_stats_post_reset.size(), 0);
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();

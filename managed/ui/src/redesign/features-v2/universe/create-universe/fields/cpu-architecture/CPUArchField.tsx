@@ -1,15 +1,16 @@
-import { FC } from 'react';
+import { FC, useEffect } from 'react';
 import { useFormContext } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { mui, YBLabel, RadioOrientation, YBRadioGroupField } from '@yugabyte-ui-library/core';
-import { ArchitectureType } from '@app/redesign/features-v2/universe/create-universe/helpers/constants';
 import { InstanceSettingProps } from '@app/redesign/features-v2/universe/create-universe/steps/hardware-settings/dtos';
+import { ArchitectureType } from '@app/redesign/features-v2/universe/create-universe/helpers/constants';
 import { CPU_ARCH_FIELD } from '@app/redesign/features-v2/universe/create-universe/fields/FieldNames';
 
 const { Box, styled, Typography } = mui;
 
 interface CPUArchFieldProps {
   disabled: boolean;
+  supportedArchs: ArchitectureType[];
 }
 
 const StyledSubText = styled(Typography)(({ theme }) => ({
@@ -19,20 +20,31 @@ const StyledSubText = styled(Typography)(({ theme }) => ({
   color: theme.palette.grey[600]
 }));
 
-export const CPUArchField: FC<CPUArchFieldProps> = ({ disabled }) => {
-  const { control } = useFormContext<InstanceSettingProps>();
+export const CPUArchField: FC<CPUArchFieldProps> = ({ disabled, supportedArchs }) => {
+  const { control, watch, setValue } = useFormContext<InstanceSettingProps>();
   const { t } = useTranslation('translation', { keyPrefix: 'universeForm.instanceConfig' });
+  const fieldValue = watch(CPU_ARCH_FIELD);
 
-  const IntelArch = {
-    value: ArchitectureType.X86_64,
-    label: t(ArchitectureType.X86_64)
-  };
-  const ArmArch = {
-    value: ArchitectureType.ARM64,
-    label: t(ArchitectureType.ARM64)
-  };
+  const architectures = [
+    {
+      value: ArchitectureType.X86_64,
+      label: t(ArchitectureType.X86_64),
+      disabled: !supportedArchs.includes(ArchitectureType.X86_64),
+      tooltip: !supportedArchs.includes(ArchitectureType.X86_64) ? t('cpuArchNotSupported') : ''
+    },
+    {
+      value: ArchitectureType.ARM64,
+      label: t(ArchitectureType.ARM64),
+      disabled: !supportedArchs.includes(ArchitectureType.ARM64),
+      tooltip: !supportedArchs.includes(ArchitectureType.ARM64) ? t('cpuArchNotSupported') : ''
+    }
+  ];
 
-  const supportedArch = [IntelArch, ArmArch];
+  useEffect(() => {
+    if (!supportedArchs.includes(fieldValue) && fieldValue) {
+      setValue(CPU_ARCH_FIELD, supportedArchs[0]);
+    }
+  }, [fieldValue, supportedArchs]);
 
   return (
     <Box sx={{ display: 'flex', width: '100%', flexDirection: 'column' }}>
@@ -41,7 +53,7 @@ export const CPUArchField: FC<CPUArchFieldProps> = ({ disabled }) => {
         <StyledSubText>| {t('cantChangeLater')}</StyledSubText>
       </Box>
       <YBRadioGroupField
-        options={supportedArch}
+        options={architectures}
         orientation={RadioOrientation.Horizontal}
         control={control}
         name={CPU_ARCH_FIELD}

@@ -14,7 +14,7 @@
 
 #include "yb/server/call_home.h"
 #include "yb/util/flags.h"
-#include "yb/util/jsonreader.h"
+#include "yb/util/json_document.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/user.h"
@@ -81,27 +81,23 @@ void TestCallHome(
     CallHomeType call_home(server);
     json = call_home.BuildJson();
     ASSERT_TRUE(!json.empty());
-    JsonReader reader(json);
-    ASSERT_OK(reader.Init());
+    JsonDocument doc;
+    auto root = ASSERT_RESULT(doc.Parse(json));
     for (const auto& field : collection_level.second) {
       LOG(INFO) << "Checking json has field: " << field;
-      ASSERT_TRUE(reader.root()->HasMember(field.c_str()));
+      ASSERT_TRUE(root[field].IsValid());
     }
     LOG(INFO) << "Checking json has field: tag";
-    ASSERT_TRUE(reader.root()->HasMember("tag"));
-
-    std::string received_tag;
-    ASSERT_OK(reader.ExtractString(reader.root(), "tag", &received_tag));
+    auto received_tag = ASSERT_RESULT(root["tag"].GetString());
     ASSERT_EQ(received_tag, tag_value);
 
     if (collection_level.second.find("current_user") != collection_level.second.end()) {
-      std::string received_user;
-      ASSERT_OK(reader.ExtractString(reader.root(), "current_user", &received_user));
+      auto received_user = ASSERT_RESULT(root["current_user"].GetString());
       auto expected_user = ASSERT_RESULT(GetLoggedInUser());
       ASSERT_EQ(received_user, expected_user);
     }
 
-    auto count = reader.root()->MemberEnd() - reader.root()->MemberBegin();
+    auto count = ASSERT_RESULT(root.size());
     LOG(INFO) << "Number of elements for level " << collection_level.first << ": " << count;
     // The number of fields should be equal to the number of collectors plus one for the tag field.
     ASSERT_EQ(count, collection_level.second.size() + 1);
@@ -186,14 +182,11 @@ void TestGFlagsCallHome(ServerType* server) {
   CallHomeType call_home(server);
   json = call_home.BuildJson();
   ASSERT_TRUE(!json.empty());
-  JsonReader reader(json);
-  ASSERT_OK(reader.Init());
+  JsonDocument doc;
+  auto root = ASSERT_RESULT(doc.Parse(json));
 
-  LOG(INFO) << "Checking json has field: tag";
-  ASSERT_TRUE(reader.root()->HasMember("gflags"));
-
-  std::string flags;
-  ASSERT_OK(reader.ExtractString(reader.root(), "gflags", &flags));
+  LOG(INFO) << "Checking json has field: gflags";
+  auto flags = ASSERT_RESULT(root["gflags"].GetString());
   ASSERT_STR_CONTAINS(flags, kValueWithQuotes);
   ASSERT_STR_NOT_CONTAINS(flags, kHbaValue);
   // Default AutoFlags should not be included.

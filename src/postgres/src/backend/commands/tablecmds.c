@@ -239,6 +239,10 @@ typedef struct AlteredTableInfo
 	bool		yb_skip_copy_split_options; /* true if we need to skip copying
 											 * split options during table
 											 * rewrite */
+	bool		yb_index_rewrite_warning_logged; /* used to track whether we have
+												  * already logged an inconsistency
+												  * warning for index rewrites, so
+												  * that we don't log it again */
 } AlteredTableInfo;
 
 /* Struct describing one new constraint to check in Phase 3 scan */
@@ -6977,6 +6981,7 @@ ATGetQueueEntry(List **wqueue, Relation rel)
 	tab->newTableSpace = InvalidOid;
 	tab->newrelpersistence = RELPERSISTENCE_PERMANENT;
 	tab->chgPersistence = false;
+	tab->yb_index_rewrite_warning_logged = false;
 
 	*wqueue = lappend(*wqueue, tab);
 
@@ -9702,6 +9707,21 @@ ATExecAddIndex(List **yb_wqueue, AlteredTableInfo *tab, Relation *yb_mutable_rel
 		irel->rd_firstRelfilenodeSubid = stmt->oldFirstRelfilenodeSubid;
 		RelationPreserveStorage(irel->rd_node, true);
 		index_close(irel, NoLock);
+	}
+	else if (is_rebuild && !tab->rewrite
+			 && IsYBRelation(*yb_mutable_rel)
+			 && !tab->yb_index_rewrite_warning_logged
+			 && !YBSuppressUnsafeAlterNotice())
+	{
+		tab->yb_index_rewrite_warning_logged = true;
+		ereport(NOTICE,
+				(errmsg("index rewrite may lead to inconsistencies"),
+				 errdetail("Concurrent DMLs may not be reflected in the new"
+						   " index."),
+				 errhint("See https://github.com/yugabyte/yugabyte-db/issues/"
+						 "19860. Set 'ysql_suppress_unsafe_alter_notice'"
+						 " yb-tserver gflag to true to suppress this"
+						 " notice.")));
 	}
 
 	return address;
@@ -14688,6 +14708,43 @@ ATPostAlterTypeCleanup(List **wqueue, AlteredTableInfo *tab, LOCKMODE lockmode)
 	 * constraint or index we're processing to figure out which relation to
 	 * operate on.
 	 */
+
+	/*
+	 * YB: Sort constraints so PRIMARY KEY constraints are processed first.
+	 * When a PRIMARY KEY is altered, it schedules a table rewrite which other
+	 * constraints can then detect and avoid docdb index creation during rebuild phase.
+	 */
+	List *pk_oids = NIL;
+	List *pk_defs = NIL;
+	List *other_oids = NIL;
+	List *other_defs = NIL;
+
+	forboth(oid_item, tab->changedConstraintOids,
+			def_item, tab->changedConstraintDefs)
+	{
+		Oid oldId = lfirst_oid(oid_item);
+		HeapTuple tup = SearchSysCache1(CONSTROID, ObjectIdGetDatum(oldId));
+
+		if (!HeapTupleIsValid(tup))
+			elog(ERROR, "cache lookup failed for constraint %u", oldId);
+
+		Form_pg_constraint con = (Form_pg_constraint) GETSTRUCT(tup);
+		bool is_primary = (con->contype == CONSTRAINT_PRIMARY);
+		ReleaseSysCache(tup);
+
+		if (is_primary)
+		{
+			pk_oids = lappend_oid(pk_oids, oldId);
+			pk_defs = lappend(pk_defs, lfirst(def_item));
+			continue;
+		}
+		other_oids = lappend_oid(other_oids, oldId);
+		other_defs = lappend(other_defs, lfirst(def_item));
+	}
+
+	tab->changedConstraintOids = list_concat(pk_oids, other_oids);
+	tab->changedConstraintDefs = list_concat(pk_defs, other_defs);
+
 	forboth(oid_item, tab->changedConstraintOids,
 			def_item, tab->changedConstraintDefs)
 	{
@@ -14806,11 +14863,45 @@ ATPostAlterTypeCleanup(List **wqueue, AlteredTableInfo *tab, LOCKMODE lockmode)
 			lappend(tab->subcmds[AT_PASS_OLD_CONSTR], cmd);
 	}
 
+	if (IsYugaByteEnabled() && !tab->rewrite)
+	{
+		ListCell *lc;
+		foreach(lc, tab->subcmds[AT_PASS_OLD_INDEX])
+		{
+			AlterTableCmd *cmd = (AlterTableCmd *) lfirst(lc);
+			/*
+			 * Go through all indexes scheduled for rebuild above and drop the
+			 * non-reusable ones from DocDB. We drop them here, then pass
+			 * YB_SKIP_YB_DROP_INDEX to performMultipleDeletions to prevent it
+			 * from dropping indexes that will be reused. PG marks all indexes
+			 * for deletion in performMultipleDeletions, then later calls
+			 * RelationPreserveStorage to unmark specific indexes for deletion.
+			 */
+			if (cmd->subtype == AT_ReAddIndex)
+			{
+				IndexStmt *stmt = (IndexStmt *) cmd->def;
+				Oid oldIndexOid = cmd->yb_old_index_oid;
+
+				/*
+				 * If oldNode is not set for this statement, there's no index
+				 * that is stashed for reuse, so drop the index here.
+				 */
+				if (!OidIsValid(stmt->oldNode) && OidIsValid(oldIndexOid))
+				{
+					Relation old_irel = index_open(oldIndexOid, AccessShareLock);
+					YBCDropIndex(old_irel);
+					index_close(old_irel, NoLock);
+				}
+			}
+		}
+	}
+
 	/*
 	 * It should be okay to use DROP_RESTRICT here, since nothing else should
 	 * be depending on these objects.
 	 */
-	performMultipleDeletions(objects, DROP_RESTRICT, PERFORM_DELETION_INTERNAL);
+	performMultipleDeletions(objects, DROP_RESTRICT, IsYugaByteEnabled() ?
+		YB_SKIP_YB_DROP_INDEX | PERFORM_DELETION_INTERNAL : PERFORM_DELETION_INTERNAL);
 
 	free_object_addresses(objects);
 
@@ -14914,6 +15005,7 @@ ATPostAlterTypeParse(Oid oldId, Oid oldRelId, Oid refRelId, char *cmd,
 			newcmd = makeNode(AlterTableCmd);
 			newcmd->subtype = AT_ReAddIndex;
 			newcmd->def = (Node *) stmt;
+			newcmd->yb_old_index_oid = oldId;
 			tab->subcmds[AT_PASS_OLD_INDEX] =
 				lappend(tab->subcmds[AT_PASS_OLD_INDEX], newcmd);
 		}
@@ -14942,6 +15034,7 @@ ATPostAlterTypeParse(Oid oldId, Oid oldRelId, Oid refRelId, char *cmd,
 					indstmt->reset_default_tblspc = true;
 
 					cmd->subtype = AT_ReAddIndex;
+					cmd->yb_old_index_oid = indoid;
 					tab->subcmds[AT_PASS_OLD_INDEX] =
 						lappend(tab->subcmds[AT_PASS_OLD_INDEX], cmd);
 

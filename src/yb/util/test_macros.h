@@ -187,6 +187,14 @@ std::string TEST_SetDifferenceStr(const std::set<T>& expected, const std::set<T>
   } \
   } while (0)
 
+#define EXPECT_STR_CONTAINS(str, substr) do { \
+  std::string _s = (str); \
+  if (_s.find((substr)) == std::string::npos) { \
+    ADD_FAILURE() << "Expected to find substring '" << (substr) \
+    << "'. Got: '" << _s << "'"; \
+  } \
+  } while (0)
+
 #define ASSERT_STR_NOT_CONTAINS(str, substr) do { \
   std::string _s = (str); \
   if (_s.find((substr)) != std::string::npos) { \

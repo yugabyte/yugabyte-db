@@ -15,9 +15,10 @@ import {
   PlacementRegion,
   UniverseCreateReqBody
 } from '../../../../v2/api/yugabyteDBAnywhereV2APIs.schemas';
-import { CloudType, DeviceInfo } from '@app/redesign/features/universe/universe-form/utils/dto';
+import { CloudType, DeviceInfo, RunTimeConfig } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { Provider } from '@app/components/configRedesign/providerRedesign/types';
 import { FAULT_TOLERANCE_TYPE, REPLICATION_FACTOR } from './fields/FieldNames';
+import { RuntimeConfigKey } from '@app/redesign/helpers/constants';
 
 export function getCreateUniverseSteps(t: TFunction, resilienceType?: ResilienceType) {
   return [
@@ -91,10 +92,6 @@ export function getCreateUniverseSteps(t: TFunction, resilienceType?: Resilience
 }
 
 export function getFaultToleranceNeeded(replicationFactor: number) {
-  return replicationFactor + 2;
-}
-
-export function getFaultToleranceNeededForAZ(replicationFactor: number) {
   return replicationFactor * 2 + 1;
 }
 
@@ -157,18 +154,14 @@ export const assignRegionsAZNodeByReplicationFactor = (
 
   const updatedRegions: NodeAvailabilityProps['availabilityZones'] = {};
 
-  const faultToleranceNeeded =
-    faultToleranceType === FaultToleranceType.AZ_LEVEL
-      ? getFaultToleranceNeededForAZ(replicationFactor)
-      : getFaultToleranceNeeded(replicationFactor);
+  const faultToleranceNeeded = getFaultToleranceNeeded(replicationFactor);
 
   values(regions).forEach((region, index) => {
     const nodeCount = getNodeCountNeeded(faultToleranceNeeded, regions.length, index);
-    
+
     updatedRegions[region.code] = [];
 
     region.zones.forEach((zone, index) => {
-
       const nodesNeededForAZ = Math.floor(nodeCount / region.zones.length);
 
       const remainder = nodeCount % region.zones.length;
@@ -219,7 +212,10 @@ export const mapCreateUniversePayload = (
     throw new Error('Missing required form values to create universe payload');
   }
 
-  const regionList: PlacementRegion[] = getPlacementRegions(resilienceAndRegionsSettings);
+  const regionList: PlacementRegion[] = getPlacementRegions(
+    resilienceAndRegionsSettings,
+    nodesAvailabilitySettings.availabilityZones
+  );
 
   const gflags = mapGFlags(databaseSettings.gFlags);
 
@@ -279,32 +275,25 @@ export const mapCreateUniversePayload = (
           networking_spec: {
             enable_lb: true,
             enable_exposing_service: 'UNEXPOSED',
-            ...(proxySettings.enableProxyServer) ? {
-              proxy_config: {
-                http_proxy:
-                  proxySettings.enableProxyServer && proxySettings.webProxy
-                    ? `${proxySettings.webProxyServer}:${proxySettings.webProxyPort}`
+            ...(proxySettings.enableProxyServer
+              ? {
+                proxy_config: {
+                  http_proxy:
+                    proxySettings.enableProxyServer && proxySettings.webProxy
+                      ? `${proxySettings.webProxyServer}:${proxySettings.webProxyPort}`
+                      : '',
+                  https_proxy: proxySettings.secureWebProxy
+                    ? `${proxySettings.secureWebProxyServer}:${proxySettings.secureWebProxyPort}`
                     : '',
-                https_proxy: proxySettings.secureWebProxy
-                  ? `${proxySettings.secureWebProxyServer}:${proxySettings.secureWebProxyPort}`
-                  : '',
-                no_proxy_list: proxySettings.byPassProxyListValues ?? []
+                  no_proxy_list: proxySettings.byPassProxyListValues ?? []
+                }
               }
-            } : {}
+              : {})
           },
-          num_nodes: getNodeCount(nodesAvailabilitySettings.availabilityZones),
+          num_nodes: resilienceAndRegionsSettings.resilienceType === ResilienceType.SINGLE_NODE ? 1 : getNodeCount(nodesAvailabilitySettings.availabilityZones),
           node_spec: {
-            instance_type: instanceSettings.instanceType!,
-            dedicated_nodes: nodesAvailabilitySettings.useDedicatedNodes,
-            storage_spec: {
-              num_volumes: 1,
-              storage_type: instanceSettings.deviceInfo!.storageType!,
-              storage_class: instanceSettings.deviceInfo!.storageClass!,
-              volume_size:
-                instanceSettings.deviceInfo!.numVolumes * instanceSettings.deviceInfo!.volumeSize!,
-              disk_iops: instanceSettings.deviceInfo!.diskIops!,
-              throughput: instanceSettings.deviceInfo!.throughput!
-            }
+            ...getNodeSpec(formValues),
+            dedicated_nodes: nodesAvailabilitySettings.useDedicatedNodes
           },
           placement_spec: {
             cloud_list: [
@@ -316,6 +305,23 @@ export const mapCreateUniversePayload = (
               }
             ]
           },
+          partitions_spec: [
+            {
+              name: 'default',
+              default_partition: true,
+              replication_factor: resilienceAndRegionsSettings.replicationFactor,
+              placement: {
+                cloud_list: [
+                  {
+                    code: generalSettings.cloud,
+                    uuid: generalSettings.providerConfiguration.uuid,
+                    default_region: regionList[0].uuid,
+                    region_list: regionList
+                  }
+                ]
+              }
+            }
+          ],
           provider_spec: {
             provider: generalSettings.providerConfiguration.uuid,
             region_list: regionList.map((r) => r.uuid!),
@@ -330,9 +336,65 @@ export const mapCreateUniversePayload = (
   return payload;
 };
 
-export const getPlacementRegions = (resilienceAndRegionsSettings: ResilienceAndRegionsProps) => {
-  const azs = assignRegionsAZNodeByReplicationFactor(resilienceAndRegionsSettings);
-  const regionList: PlacementRegion[] = keys(azs).map((regionuuid) => {
+export const getPlacementRegions = (
+  resilienceAndRegionsSettings: ResilienceAndRegionsProps,
+  availabilityZones?: NodeAvailabilityProps['availabilityZones']
+) => {
+  const { replicationFactor, resilienceType } = resilienceAndRegionsSettings;
+
+  const azs = availabilityZones ?? assignRegionsAZNodeByReplicationFactor(resilienceAndRegionsSettings);
+
+  // For single node, replication factor should be 1 for the single AZ
+  if (
+    resilienceType === ResilienceType.SINGLE_NODE
+  ) {
+    const region = resilienceAndRegionsSettings.regions[0];
+
+    if (!region) {
+      throw new Error(
+        `Region with code ${resilienceAndRegionsSettings.singleAvailabilityZone} not found in resilience and regions settings`
+      );
+    }
+    const az = find(region.zones, { code: resilienceAndRegionsSettings.singleAvailabilityZone });
+    if (!az) {
+      throw new Error(
+        `AZ with code ${resilienceAndRegionsSettings.singleAvailabilityZone} not found in resilience and regions settings`
+      );
+    }
+    return [{
+      uuid: region.uuid,
+      name: region.name,
+      code: region.code,
+      az_list: [
+        {
+          uuid: az.uuid,
+          name: az!.name,
+          num_nodes_in_az: 1,
+          subnet: az!.subnet,
+          leader_affinity: true,
+          replication_factor: 1,
+        }]
+    }];
+  }
+
+  // Filter out AZs with 0 nodes first, then calculate replication factor distribution
+  // This ensures we only distribute replicas across AZs that actually have nodes
+  const azsWithNodes: NodeAvailabilityProps['availabilityZones'] = {};
+  keys(azs).forEach((regionuuid) => {
+    azsWithNodes[regionuuid] = azs[regionuuid].filter((az) => az.nodeCount > 0);
+  });
+
+  // Calculate total number of AZs with nodes across all regions
+  const totalAZsWithNodes = Object.values(azsWithNodes).reduce((sum, zones) => sum + zones.length, 0);
+
+  // Distribute replication factor across AZs that have nodes
+  // Each AZ should get at least 1 replica if possible, then distribute remaining evenly
+  // Ensure the sum of all AZ replication_factors equals the cluster replication_factor
+  const baseReplicasPerAZ = totalAZsWithNodes > 0 ? Math.floor(replicationFactor / totalAZsWithNodes) : 0;
+  const extraReplicas = totalAZsWithNodes > 0 ? replicationFactor % totalAZsWithNodes : 0;
+
+  let replicaIndex = 0;
+  const regionList: PlacementRegion[] = keys(azsWithNodes).map((regionuuid) => {
     const region = find(resilienceAndRegionsSettings.regions, { code: regionuuid });
     if (!region) {
       throw new Error(
@@ -341,17 +403,23 @@ export const getPlacementRegions = (resilienceAndRegionsSettings: ResilienceAndR
     }
     return {
       uuid: region.uuid,
-      name: region.code,
-      code: region.name,
-      az_list: azs[regionuuid].map((az) => {
+      name: region.name,
+      code: region.code,
+      az_list: azsWithNodes[regionuuid].map((az) => {
         const azFromRegion = find(region.zones, { uuid: az.uuid });
+        // Calculate replication factor for this AZ
+        // Distribute replicas: each AZ gets baseReplicasPerAZ, first extraReplicas AZs get one more
+        // This ensures the sum equals the total replication_factor
+        const azReplicationFactor = baseReplicasPerAZ + (replicaIndex < extraReplicas ? 1 : 0);
+        replicaIndex++;
+
         return {
           uuid: az.uuid,
           name: azFromRegion!.name,
           num_nodes_in_az: az.nodeCount,
           subnet: azFromRegion!.subnet,
           leader_affinity: true,
-          replication_factor: resilienceAndRegionsSettings.replicationFactor,
+          replication_factor: azReplicationFactor,
           ...(az.preffered !== undefined ? { leader_preference: az.preffered + 1 } : {})
         };
       })
@@ -480,4 +548,10 @@ export const computeFaultToleranceTypeFromProvider = (
     [FAULT_TOLERANCE_TYPE]: FaultToleranceType.NODE_LEVEL,
     [REPLICATION_FACTOR]: 3
   };
+};
+
+export const isV2CreateEditUniverseEnabled = (runtimeConfigs: RunTimeConfig) => {
+  return runtimeConfigs?.configEntries?.find(
+    (config) => config.key === RuntimeConfigKey.ENABLE_V2_EDIT_UNIVERSE_UI
+  )?.value === 'true';
 };

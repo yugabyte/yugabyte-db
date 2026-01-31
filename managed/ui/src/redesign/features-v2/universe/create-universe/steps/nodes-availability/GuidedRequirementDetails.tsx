@@ -54,6 +54,7 @@ export const GuidedRequirementDetails = () => {
   const az = watch('availabilityZones');
 
   const nodePerAz = watch('nodeCountPerAz');
+  const isDedicatedNodes = watch('useDedicatedNodes');
   const totalNodeCount = getNodeCount(az);
 
   const handleNodeCountChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -90,7 +91,7 @@ export const GuidedRequirementDetails = () => {
               disabled={resilienceAndRegionsSettings?.resilienceType === ResilienceType.SINGLE_NODE}
               dataTestId="node-count-per-az-field"
             />
-            {t('nodesPerAz')}
+            {isDedicatedNodes ? t('nodesTserverPerAz') : t('nodesPerAz')}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Return />
