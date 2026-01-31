@@ -19,7 +19,7 @@ The YCQL shell (ycqlsh) is a CLI for interacting with YugabyteDB using [YCQL](..
 
 ### Requirements
 
-Python3 (>= v3.6) must be pre-installed. 
+Python 3 v3.6 or later must be pre-installed.
 
 ### Installation
 
