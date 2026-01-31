@@ -960,7 +960,7 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
     if (key_type == dockv::KeyEntryType::kColumnId ||
         key_type == dockv::KeyEntryType::kSystemColumnId) {
       Slice column_id_slice = key.WithoutPrefix(doc_key_size + 1);
-      auto column_id_as_int64 = VERIFY_RESULT(FastDecodeSignedVarIntUnsafe(&column_id_slice));
+      auto column_id_as_int64 = VERIFY_RESULT(FastDecodeSignedVarInt(&column_id_slice));
       ColumnId column_id;
       RETURN_NOT_OK(ColumnId::FromInt64(column_id_as_int64, &column_id));
 

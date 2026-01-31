@@ -71,10 +71,9 @@ extern const char* GetVarint64Ptr(const char* p, const char* limit, uint64_t* v)
 
 // Might use effective performance optimization that reads before src, but not before
 // read_allowed_from.
-inline const char* GetSignedVarint64Ptr(
-    const char* p, const char* limit, const char* read_allowed_from, int64_t* value) {
+inline const char* GetSignedVarint64Ptr(const char* p, const char* limit, int64_t* value) {
   size_t decoded_size;
-  if (!yb::FastDecodeSignedVarInt(p, limit - p, read_allowed_from, value, &decoded_size).ok()) {
+  if (!yb::FastDecodeSignedVarInt(p, limit - p, value, &decoded_size).ok()) {
     return nullptr;
   }
   return p + decoded_size;

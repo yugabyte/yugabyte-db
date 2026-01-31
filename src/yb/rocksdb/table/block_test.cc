@@ -603,7 +603,7 @@ TEST_F(BlockTest, EncodeThreeSharedPartsSizes) {
 
     auto* result = DecodeEntryThreeSharedParts(
         buffer.data() + encoded_sizes_start_offset, buffer.data() + buffer.size() + payload_size,
-        buffer.data(), &decoded_shared_prefix_size, &decoded_non_shared_1_size,
+        &decoded_shared_prefix_size, &decoded_non_shared_1_size,
         &decoded_non_shared_1_size_delta, &decoded_is_something_shared, &decoded_non_shared_2_size,
         &decoded_non_shared_2_size_delta, &decoded_shared_last_component_size,
         &decoded_shared_last_component_increase, &decoded_value_size);
@@ -644,7 +644,7 @@ TEST_F(BlockTest, EncodeThreeSharedPartsSizes) {
           rest_sizes, prev_key_size, key_size, value_size, &buffer);
       result = DecodeEntryThreeSharedParts(
           buffer.data() + encoded_sizes_start_offset, buffer.data() + buffer.capacity(),
-          buffer.data(), &decoded_shared_prefix_size, &decoded_non_shared_1_size,
+          &decoded_shared_prefix_size, &decoded_non_shared_1_size,
           &decoded_non_shared_1_size_delta, &decoded_is_something_shared,
           &decoded_non_shared_2_size, &decoded_non_shared_2_size_delta,
           &decoded_shared_last_component_size, &decoded_shared_last_component_increase,

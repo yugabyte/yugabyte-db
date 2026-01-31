@@ -53,7 +53,7 @@ void CheckEncoding(int64_t v) {
   {
     int64_t decoded = 0;
     size_t decoded_size = 0;
-    ASSERT_OK(FastDecodeSignedVarIntUnsafe(correct_encoded, &decoded, &decoded_size));
+    ASSERT_OK(FastDecodeSignedVarInt(correct_encoded, &decoded, &decoded_size));
     ASSERT_EQ(v, decoded);
     ASSERT_EQ(correct_encoded.size(), decoded_size);
   }
@@ -66,7 +66,6 @@ void CheckEncoding(int64_t v) {
     ASSERT_OK(FastDecodeSignedVarInt(
         encoded_prefixed.c_str() + kPrefixSize,
         correct_encoded.size(),
-        encoded_prefixed.c_str(),
         &decoded,
         &decoded_size));
     ASSERT_EQ(v, decoded);
@@ -81,9 +80,9 @@ void CheckEncoding(int64_t v) {
 
     constexpr bool kGenerateInvalidDecodingExamples = false;
     if (kGenerateInvalidDecodingExamples &&
-        !FastDecodeSignedVarIntUnsafe(
+        !FastDecodeSignedVarInt(
             buf + 1, encoded_size - 1, &unused_decoded_value, &unused_decoded_size).ok()) {
-      std::cout << "ASSERT_FALSE(FastDecodeSignedVarIntUnsafe("
+      std::cout << "ASSERT_FALSE(FastDecodeSignedVarInt("
                 << FormatBytesAsStr(to_char_ptr(buf) + 1, encoded_size - 1) << ", "
                 << encoded_size - 1 << ", "
                 << "&v, &n).ok());" << std::endl;
@@ -103,7 +102,7 @@ void CheckEncoding(int64_t v) {
 
     Slice slice_for_decoding(encoded_dest.c_str() + kPrefix.size(), encoded_size);
     int64_t decoded_value = 0;
-    ASSERT_OK(FastDecodeDescendingSignedVarIntUnsafe(&slice_for_decoding, &decoded_value));
+    ASSERT_OK(FastDecodeDescendingSignedVarInt(&slice_for_decoding, &decoded_value));
     ASSERT_EQ(0, slice_for_decoding.size());
     ASSERT_EQ(-v, decoded_value);
   }
@@ -351,7 +350,7 @@ TEST(FastVarIntTest, TestDecodeIncorrectValues) {
   size_t n;
   const auto& incorrect_values = IncorrectValues();
   for (const auto& value : incorrect_values) {
-    ASSERT_NOK(FastDecodeSignedVarIntUnsafe(value, &v, &n))
+    ASSERT_NOK(FastDecodeSignedVarInt(value, &v, &n))
         << "Input: " << Slice(value).ToDebugHexString();
   }
 }
@@ -447,7 +446,7 @@ void TestDecodeDescendingSignedPerformance() {
     for (auto cur : bounds) {
       Slice slice(prev, cur);
       int64_t value;
-      ASSERT_OK_FAST(FastDecodeDescendingSignedVarIntUnsafe(&slice, &value));
+      ASSERT_OK_FAST(FastDecodeDescendingSignedVarInt(&slice, &value));
       prev = cur;
     }
   }
@@ -474,9 +473,28 @@ TEST(FastVarIntTest, DecodeDescendingSignedCheck) {
     Slice slice(buffer, end);
     auto size = FastDecodeDescendingSignedVarIntSize(slice);
     ASSERT_EQ(size, slice.size());
-    auto decoded_value = ASSERT_RESULT_FAST(FastDecodeDescendingSignedVarIntUnsafe(&slice));
+    auto decoded_value = ASSERT_RESULT_FAST(FastDecodeDescendingSignedVarInt(&slice));
     ASSERT_TRUE(slice.empty());
     ASSERT_EQ(value, decoded_value);
+  }
+}
+
+// Check decoding fast varint at the start of allocated memory page.
+TEST(FastVarintTest, DecodeAtTheStartOfPage) {
+  constexpr int kValue = 42;
+  constexpr size_t kSegmentSize = 1 << 10;
+  std::vector<std::unique_ptr<char[]>> allocated_segments;
+  // Do a lot of allocation to get into situation where segment starts at the begin of memory page.
+  for (int i = 0; i != 1000; ++i) {
+    std::unique_ptr<char[]> segment(new char[kSegmentSize]);
+    memset(segment.get(), 0xff, kSegmentSize);
+    auto end = FastEncodeDescendingSignedVarInt(kValue, segment.get());
+    Slice slice(segment.get(), end);
+    auto decoded_value = ASSERT_RESULT_FAST(FastDecodeDescendingSignedVarInt(&slice));
+    ASSERT_TRUE(slice.empty());
+    ASSERT_EQ(kValue, decoded_value);
+
+    allocated_segments.push_back(std::move(segment));
   }
 }
 

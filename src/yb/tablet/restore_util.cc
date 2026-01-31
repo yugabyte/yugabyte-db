@@ -249,7 +249,7 @@ Status RestorePatch::ProcessExistingOnlyEntry(
               break;
           }
         }
-        int64_t column_id_as_int64 = VERIFY_RESULT(FastDecodeSignedVarIntUnsafe(&subkey));
+        int64_t column_id_as_int64 = VERIFY_RESULT(FastDecodeSignedVarInt(&subkey));
         // Expect only one subkey.
         SCHECK_EQ(subkey.empty(), true, Corruption, "Only one subkey expected");
         ColumnId column_id;
