@@ -43,12 +43,6 @@ Use bucket-based indexes for the following workloads:
 - Sequence-based IDs.
 - "Latest N items" queries (feeds, time-series, audit tables).
 
-For example:
-
-- ASC/DESC indexed columns with a high write throughput of monotonic values (timestamps or sequences).
-- ASC/DESC indexed columns requiring range and/or ordered SQL access without hash equality (latest N items queries).
-- Indexed columns that are ASC/DESC sharded, and the first high-cardinality column in the key (which could be the second or third from the first key position) is monotonically increasing.
-
 ## Syntax
 
 ```sql
@@ -290,45 +284,56 @@ The global ordering is still preserved on this keyset pagination without any cha
 
 Single-row lookups by exact key work with bucket-based indexes because the planner automatically adds the bucket predicate to the index condition. As a result, the query can target the correct tablet instead of scanning all buckets.
 
-Using the primary key (id, timestamp), the `bucket_id` clause is automatically added:
+Create a table with a generated column:
+
+```sql
+CREATE TABLE foo (
+  r1 int,
+  r2 int,
+  v1 int,
+  v2 int,
+  bucket_id int GENERATED ALWAYS AS (yb_hash_code(r1, r2) % 3) STORED,
+  PRIMARY KEY (bucket_id ASC, r1, r2))
+SPLIT AT VALUES ((1), (2));
+```
+
+Create an index:
+
+```sql
+CREATE INDEX foo_bucket_idx_v1_v2 ON foo (
+  (yb_hash_code(v1, v2) % 3) ASC,
+  v1,
+  v2)
+SPLIT AT VALUES ((1), (2));
+```
+
+Using the primary key (r1, r2), the `bucket_id` clause is automatically added:
 
 ```sql
 EXPLAIN
     SELECT *
-    FROM te
-    WHERE id = 1
-    AND timestamp = '2025-01-01 00:00:00+00'::TIMESTAMPTZ;
+    FROM foo
+    WHERE r1 = 1
+    AND r2 = 1;
 ```
 
 ```output
- Index Scan using te_pkey on te
- Index Cond: ((bucket_id = (yb_hash_code(1, '2025-01-01 00:00:00+00'::timestamptz) % 3)) 
-    AND (id = 1) 
-    AND ("timestamp" = '2025-01-01 00:00:00+00'::timestamptz))
-```
-
-Create a secondary index named `te_key_id_secondary`. This index uses a bucket key on the `key_id` column to distribute writes evenly while still allowing for efficient lookups on `key_id` and `id`.
-
-```sql
-CREATE INDEX te_key_id_secondary ON te (
-    (yb_hash_code(key_id) % 3) ASC,
-    key_id,
-    id
-) SPLIT AT VALUES ((1), (2));
+ Index Scan using foo_pkey on foo  (cost=20.00..21.10 rows=1 width=20)
+   Index Cond: ((bucket_id = (yb_hash_code(1, 1) % 3)) AND (r1 = 1) AND (r2 = 1))
 ```
 
 Run an EXPLAIN on a point lookup query.
 
 ```sql
-EXPLAIN SELECT * FROM te WHERE key_id = 123 AND id = 1;
+EXPLAIN SELECT * FROM foo WHERE v1 = 1 AND v2 = 1;
 ```
 
 ```output
-Index Scan using te_key_id_secondary on te
-Index Cond: (((yb_hash_code(key_id) % 3) = (yb_hash_code(123) % 3)) AND (key_id = 123) AND (id = 1))
+ Index Scan using foo_bucket_idx_v1_v2 on foo  (cost=40.02..68.42 rows=1 width=20)
+   Index Cond: (((yb_hash_code(v1, v2) % 3) = (yb_hash_code(1, 1) % 3)) AND (v1 = 1) AND (v2 = 1))
 ```
 
-The query planner automatically calculates the bucket ID for the search keys (`key_id = 123` and `id = 1`) and adds the bucket predicate to the index condition. This allows the database to go directly to a single, specific tablet (bucket).
+The query planner automatically calculates the bucket ID for the search keys and adds the bucket predicate to the index condition. This allows the database to go directly to a single, specific tablet (bucket).
 
 ## Learn more
 
