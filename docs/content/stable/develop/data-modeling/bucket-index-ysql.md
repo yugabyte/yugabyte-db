@@ -72,13 +72,85 @@ You configure bucket-based indexing in the [query planner](../../../architecture
 - yb_enable_derived_saops: Set to `true`.
 - yb_max_saop_merge_streams: Maximum number of buckets to process in parallel. The recommended value is 64.
 
-In addition, the [cost-based optimizer](../../../best-practices-operations/ysql-yb-enable-cbo/) must be enabled (the default if you deploy your universe using yugabyted, in YugabyteDB Anywhere, or YugabyteDB Aeon).
+In addition, the [cost-based optimizer](../../../best-practices-operations/ysql-yb-enable-cbo/) must be enabled (the default if you deploy your universe using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon).
 
-## Example
+## Setup
+
+Follow the [setup instructions](../../../explore/cluster-setup-local/#multi-node-universe) to start a local multi-node universe with a replication factor of 3, and connect to universe using ysqlsh.
+
+You must be running v2025.2.1.0 or later.
+
+### Configure bucket-based indexing
+
+Enable features that preserve global ordering across the buckets by setting the configuration parameters:
+
+```sql
+SET yb_max_saop_merge_streams=64;
+SET yb_enable_derived_saops=true;
+SET yb_enable_derived_equalities=true;
+ALTER DATABASE yugabyte SET yb_max_saop_merge_streams=64;
+ALTER DATABASE yugabyte SET yb_enable_derived_saops=true;
+ALTER DATABASE yugabyte SET yb_enable_derived_equalities=true;
+```
+
+## Point lookups
+
+Single-row lookups by exact key work with bucket-based indexes because the planner automatically adds the bucket predicate to the index condition. As a result, the query can target the correct tablet instead of scanning all buckets.
+
+Create a table with a generated column:
+
+```sql
+CREATE TABLE foo (
+  r1 int,
+  r2 int,
+  v1 int,
+  v2 int,
+  bucket_id int GENERATED ALWAYS AS (yb_hash_code(r1, r2) % 3) STORED,
+  PRIMARY KEY (bucket_id ASC, r1, r2))
+SPLIT AT VALUES ((1), (2));
+```
+
+Using the primary key (r1, r2), the `bucket_id` clause is automatically added:
+
+```sql
+EXPLAIN
+    SELECT *
+    FROM foo
+    WHERE r1 = 1
+    AND r2 = 1;
+```
+
+```output
+ Index Scan using foo_pkey on foo  (cost=20.00..21.10 rows=1 width=20)
+   Index Cond: ((bucket_id = (yb_hash_code(1, 1) % 3)) AND (r1 = 1) AND (r2 = 1))
+```
+
+Create a secondary index:
+
+```sql
+CREATE INDEX foo_bucket_idx_v1_v2 ON foo (
+  (yb_hash_code(v1, v2) % 3) ASC,
+  v1,
+  v2)
+SPLIT AT VALUES ((1), (2));
+```
+
+Run an EXPLAIN on a point lookup query:
+
+```sql
+EXPLAIN SELECT * FROM foo WHERE v1 = 1 AND v2 = 1;
+```
+
+```output
+ Index Scan using foo_bucket_idx_v1_v2 on foo  (cost=40.02..68.42 rows=1 width=20)
+   Index Cond: (((yb_hash_code(v1, v2) % 3) = (yb_hash_code(1, 1) % 3)) AND (v1 = 1) AND (v2 = 1))
+```
+
+The query planner automatically calculates the bucket ID for the search keys and adds the bucket predicate to the index condition. This allows the database to go directly to a single, specific tablet (bucket).
+
+## Range scans
 
 The following example walks through using a bucket-based index to avoid write hot spots on a timestamp column. You create a table, define an index that distributes writes across three buckets (tablets), insert sample rows with timestamps over a range, and enable the planner settings for bucket-based merge. Then you run queries with ORDER BY and LIMIT and confirm in the plan that there is no Sort node—ordering comes from merging streams from each bucket.
-
-Follow the [setup instructions](../../../explore/cluster-setup-local/#multi-node-universe) to start a local multi-node universe with a replication factor of 3, and connect to universe using ysqlsh. You must be running v2025.2.1.0 or later.
 
 Create a table with a monotonic column:
 
@@ -115,23 +187,10 @@ SELECT
 FROM generate_series(0, 99999) AS gs;
 ```
 
-### Configure bucket-based indexing
-
-Enable features that preserve global ordering across the buckets by setting the configuration parameters:
-
-```sql
-ANALYZE;
-SET yb_max_saop_merge_streams=64;
-SET yb_enable_derived_saops=true;
-SET yb_enable_derived_equalities=true;
-ALTER DATABASE yugabyte SET yb_max_saop_merge_streams=64;
-ALTER DATABASE yugabyte SET yb_enable_derived_saops=true;
-ALTER DATABASE yugabyte SET yb_enable_derived_equalities=true;
-```
-
 Observe planner changes that provide global ordering with no SQL or application changes:
 
 ```sql
+ANALYZE;
 EXPLAIN (ANALYZE, COSTS off)
     SELECT timestamp
     FROM te
@@ -279,61 +338,6 @@ SELECT *
 ```
 
 The global ordering is still preserved on this keyset pagination without any changes to the SQL.
-
-### Point lookups
-
-Single-row lookups by exact key work with bucket-based indexes because the planner automatically adds the bucket predicate to the index condition. As a result, the query can target the correct tablet instead of scanning all buckets.
-
-Create a table with a generated column:
-
-```sql
-CREATE TABLE foo (
-  r1 int,
-  r2 int,
-  v1 int,
-  v2 int,
-  bucket_id int GENERATED ALWAYS AS (yb_hash_code(r1, r2) % 3) STORED,
-  PRIMARY KEY (bucket_id ASC, r1, r2))
-SPLIT AT VALUES ((1), (2));
-```
-
-Create an index:
-
-```sql
-CREATE INDEX foo_bucket_idx_v1_v2 ON foo (
-  (yb_hash_code(v1, v2) % 3) ASC,
-  v1,
-  v2)
-SPLIT AT VALUES ((1), (2));
-```
-
-Using the primary key (r1, r2), the `bucket_id` clause is automatically added:
-
-```sql
-EXPLAIN
-    SELECT *
-    FROM foo
-    WHERE r1 = 1
-    AND r2 = 1;
-```
-
-```output
- Index Scan using foo_pkey on foo  (cost=20.00..21.10 rows=1 width=20)
-   Index Cond: ((bucket_id = (yb_hash_code(1, 1) % 3)) AND (r1 = 1) AND (r2 = 1))
-```
-
-Run an EXPLAIN on a point lookup query.
-
-```sql
-EXPLAIN SELECT * FROM foo WHERE v1 = 1 AND v2 = 1;
-```
-
-```output
- Index Scan using foo_bucket_idx_v1_v2 on foo  (cost=40.02..68.42 rows=1 width=20)
-   Index Cond: (((yb_hash_code(v1, v2) % 3) = (yb_hash_code(1, 1) % 3)) AND (v1 = 1) AND (v2 = 1))
-```
-
-The query planner automatically calculates the bucket ID for the search keys and adds the bucket predicate to the index condition. This allows the database to go directly to a single, specific tablet (bucket).
 
 ## Learn more
 
