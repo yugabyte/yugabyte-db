@@ -649,7 +649,7 @@ TabletServiceAdminImpl::TabletServiceAdminImpl(TabletServer* server)
 }
 
 std::string TabletServiceAdminImpl::LogPrefix() const {
-  return Format("P $0: ", server_->permanent_uuid());
+  return server::MakeServerLogPrefix(server_->permanent_uuid());
 }
 
 void TabletServiceAdminImpl::BackfillDone(
@@ -4033,6 +4033,11 @@ Result<DumpTabletDataResponsePB> TabletServiceImpl::DumpTabletData(
     RETURN_NOT_OK(file->Close());
   }
   return resp;
+}
+
+Result<ConnectivityStateResponsePB> TabletServiceImpl::ConnectivityState(
+    const ConnectivityStateRequestPB& req, CoarseTimePoint deadline) {
+  return server_->ConnectivityState();
 }
 
 Status TabletServiceImpl::CheckLocalLeaseEpoch(std::optional<uint64_t> recipient_lease_epoch) {

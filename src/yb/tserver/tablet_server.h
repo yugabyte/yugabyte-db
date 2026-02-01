@@ -66,6 +66,7 @@
 
 #include "yb/server/webserver_options.h"
 
+#include "yb/tserver/connectivity_poller.h"
 #include "yb/tserver/db_server_base.h"
 #include "yb/tserver/pg_mutation_counter.h"
 #include "yb/tserver/remote_bootstrap_service.h"
@@ -172,6 +173,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   TSTabletManager* tablet_manager() const override { return tablet_manager_.get(); }
   TabletPeerLookupIf* tablet_peer_lookup() override;
+
   TSLocalLockManagerPtr ts_local_lock_manager() const override {
     return ysql_lease_manager_->ts_local_lock_manager();
   }
@@ -463,6 +465,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
     return object_lock_shared_state_manager_.get();
   }
 
+  ConnectivityStateResponsePB ConnectivityState() override;
+
  protected:
   virtual Status RegisterServices();
 
@@ -641,6 +645,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void MakeRelcacheInitConnection(std::promise<Status>* p, const std::string& dbname);
   void RelcacheInitConnectionDone(std::promise<Status>* p, const std::string& dbname,
                                   const Status& status);
+  void DoUpdateMasterAddresses();
 
   std::string log_prefix_;
 
@@ -675,7 +680,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   std::shared_ptr<ObjectLockTracker> object_lock_tracker_;
 
-  std::unique_ptr<YSQLLeaseManager> ysql_lease_manager_;
+  std::optional<YSQLLeaseManager> ysql_lease_manager_;
+  std::optional<ConnectivityPoller> connectivity_poller_;
 
   std::unique_ptr<docdb::ObjectLockSharedStateManager> object_lock_shared_state_manager_;
   OneTimeBool shutting_down_;

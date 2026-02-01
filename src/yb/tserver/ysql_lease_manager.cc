@@ -26,6 +26,7 @@
 #include "yb/util/mutex.h"
 
 using namespace std::literals;
+using namespace std::placeholders;
 
 DEFINE_test_flag(
     bool, enable_ysql_operation_lease_expiry_check, true,
@@ -39,9 +40,7 @@ namespace yb::tserver {
 
 class YSQLLeaseManager::Impl {
  public:
-  Impl(
-      TabletServer& server, YSQLLeaseManager& interface,
-      server::MasterAddressesPtr master_addresses);
+  explicit Impl(TabletServer& server);
 
   Status ProcessLeaseUpdate(const master::RefreshYsqlLeaseInfoPB& lease_refresh_info)
       EXCLUDES(lease_toggle_lock_, lock_);
@@ -51,7 +50,7 @@ class YSQLLeaseManager::Impl {
 
   void UpdateMasterAddresses(const server::MasterAddressesPtr& master_addresses);
 
-  Status Stop();
+  void Shutdown();
 
   std::future<Status> RelinquishLease(MonoDelta timeout) const;
   YSQLLeaseInfo GetYSQLLeaseInfo() EXCLUDES(lock_);
@@ -86,7 +85,7 @@ class YSQLLeaseManager::Impl {
   TabletServer& server_;
   mutable rw_spinlock lock_;
   tserver::TSLocalLockManagerPtr ts_local_lock_manager_ GUARDED_BY(lock_);
-  std::unique_ptr<YsqlLeaseClient> lease_client_;
+  YsqlLeaseClient lease_client_;
   rpc::ScheduledTaskTracker check_lease_;
   // Held while toggling the lease from expired to live and from live to expired.
   mutable Mutex lease_toggle_lock_;
@@ -99,11 +98,9 @@ class YSQLLeaseManager::Impl {
 // Class YSQLLeaseManager::Impl, public methods
 // ============================================================================
 
-YSQLLeaseManager::Impl::Impl(
-    TabletServer& server, YSQLLeaseManager& interface,
-    server::MasterAddressesPtr master_addresses)
+YSQLLeaseManager::Impl::Impl(TabletServer& server)
     : server_(server),
-      lease_client_(std::make_unique<YsqlLeaseClient>(server, interface, master_addresses)),
+      lease_client_(server, std::bind(&Impl::ProcessLeaseUpdate, this, _1)),
       check_lease_("check_ysql_lease_liveness", &server_.messenger()->scheduler()) {
   ScheduleCheckLeaseWithNoLiveLease();
 }
@@ -159,7 +156,7 @@ Status YSQLLeaseManager::Impl::ProcessLeaseUpdate(
   return Status::OK();
 }
 
-Status YSQLLeaseManager::Impl::StartYSQLLeaseRefresher() { return lease_client_->Start(); }
+Status YSQLLeaseManager::Impl::StartYSQLLeaseRefresher() { return lease_client_.Start(); }
 
 void YSQLLeaseManager::Impl::StartTSLocalLockManager() {
   std::lock_guard l(lock_);
@@ -168,21 +165,21 @@ void YSQLLeaseManager::Impl::StartTSLocalLockManager() {
 
 void YSQLLeaseManager::Impl::UpdateMasterAddresses(
     const server::MasterAddressesPtr& master_addresses) {
-  lease_client_->set_master_addresses(master_addresses);
+  lease_client_.UpdateMasterAddresses(master_addresses);
 }
 
-Status YSQLLeaseManager::Impl::Stop() {
+void YSQLLeaseManager::Impl::Shutdown() {
   check_lease_.StartShutdown();
   check_lease_.CompleteShutdown();
   auto lock_manager = ts_local_lock_manager();
   if (lock_manager) {
     lock_manager->Shutdown();
   }
-  return lease_client_->Stop();
+  lease_client_.Shutdown();
 }
 
 std::future<Status> YSQLLeaseManager::Impl::RelinquishLease(MonoDelta timeout) const {
-  return lease_client_->RelinquishLease(timeout);
+  return lease_client_.RelinquishLease(timeout);
 }
 
 YSQLLeaseInfo YSQLLeaseManager::Impl::GetYSQLLeaseInfo() {
@@ -280,9 +277,8 @@ std::optional<CoarseTimePoint> YSQLLeaseManager::Impl::CheckLeaseStatusInner() {
 // Class YSQLLeaseManager, public methods
 // ============================================================================
 
-YSQLLeaseManager::YSQLLeaseManager(
-    TabletServer& server, server::MasterAddressesPtr master_addresses)
-    : impl_(std::make_unique<YSQLLeaseManager::Impl>(server, *this, master_addresses)) {}
+YSQLLeaseManager::YSQLLeaseManager(TabletServer& server)
+    : impl_(std::make_unique<Impl>(server)) {}
 
 YSQLLeaseManager::~YSQLLeaseManager() = default;
 
@@ -294,16 +290,13 @@ void YSQLLeaseManager::StartTSLocalLockManager() {
   return impl_->StartTSLocalLockManager();
 }
 
-Status YSQLLeaseManager::ProcessLeaseUpdate(
-    const master::RefreshYsqlLeaseInfoPB& lease_refresh_info) {
-  return impl_->ProcessLeaseUpdate(lease_refresh_info);
-}
-
 void YSQLLeaseManager::UpdateMasterAddresses(const server::MasterAddressesPtr& master_addresses) {
   return impl_->UpdateMasterAddresses(master_addresses);
 }
 
-Status YSQLLeaseManager::Stop() { return impl_->Stop(); }
+void YSQLLeaseManager::Shutdown() {
+  return impl_->Shutdown();
+}
 
 std::future<Status> YSQLLeaseManager::RelinquishLease(MonoDelta timeout) const {
   return impl_->RelinquishLease(timeout);
