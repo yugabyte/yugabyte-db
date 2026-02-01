@@ -231,6 +231,7 @@ include_directories(${YB_BUILD_ROOT}/postgres/include/server)
 
 set(TSERVER_SRCS
   backup_service.cc
+  connectivity_poller.cc
   db_server_base.cc
   full_compaction_manager.cc
   heartbeater.cc

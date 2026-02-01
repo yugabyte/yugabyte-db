@@ -63,6 +63,7 @@ class TabletServerServiceProxy;
 class TabletServiceImpl;
 class TabletServerPathHandlers;
 class TserverXClusterContextIf;
+class YSQLLeaseManager;
 class YsqlAdvisoryLocksTable;
 
 enum class TabletServerServiceRpcMethodIndexes;

@@ -102,9 +102,14 @@ class HostPort {
   template <class PB>
   PB ToPB() const {
     PB out;
-    out.set_host(host());
-    out.set_port(port());
+    ToPB(&out);
     return out;
+  }
+
+  template <class PB>
+  void ToPB(PB* out) const {
+    out->set_host(host());
+    out->set_port(port());
   }
 
   // Takes a vector of HostPort objects and returns a comma separated

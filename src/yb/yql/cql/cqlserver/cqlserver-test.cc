@@ -122,8 +122,7 @@ void TestCQLService::SetUp() {
 void TestCQLService::TearDown() {
   EXPECT_OK(client_sock_.Close());
   DeleteTable();
-  WARN_NOT_OK(mini_cluster()->mini_tablet_server(0)->server()->heartbeater()->Stop(),
-              "Failed to stop heartbeater");
+  mini_cluster()->mini_tablet_server(0)->server()->heartbeater()->Shutdown();
   server_->Shutdown();
   server_.reset();
   YBTableTestBase::TearDown();

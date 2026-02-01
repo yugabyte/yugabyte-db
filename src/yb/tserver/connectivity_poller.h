@@ -1,4 +1,3 @@
-//
 // Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -11,28 +10,29 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-//
 
 #pragma once
 
-#include <memory>
-#include <vector>
+#include "yb/server/server_fwd.h"
+#include "yb/tserver/tserver_fwd.h"
 
-#include "yb/gutil/ref_counted.h"
+namespace yb::tserver {
 
-#include "yb/util/net/net_fwd.h"
+class ConnectivityPoller {
+ public:
+  explicit ConnectivityPoller(server::RpcServerBase& server, const std::string& uuid);
+  ~ConnectivityPoller();
 
-namespace yb::server {
+  Status Start();
 
-class Clock;
-class GenericServiceProxy;
-class MonitoredTask;
-class RpcServerBase;
-class RunnableMonitoredTask;
-enum class MonitoredTaskState : int;
+  void Shutdown();
 
-using ClockPtr = scoped_refptr<Clock>;
-using MasterAddresses = std::vector<std::vector<HostPort>>;
-using MasterAddressesPtr = std::shared_ptr<const MasterAddresses>;
+  void UpdateMasterAddresses(server::MasterAddressesPtr master_addresses);
+  ConnectivityStateResponsePB State();
 
-} // namespace yb::server
+ private:
+  class Impl;
+  std::unique_ptr<Impl> impl_;
+};
+
+} // namespace yb::tserver
