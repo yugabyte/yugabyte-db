@@ -189,6 +189,8 @@ ADD_YB_TEST(pg_yb_index_check-test)
 ADD_YB_TEST(pg_skip_prefix_lock-test)
 ADD_YB_TEST(pg_intents_flush_opid_modify-test)
 
+ADD_YB_TEST_DEPENDENCIES(pg_packed_row-test log-dump)
+
 # This is really a tool, not a test, but uses a lot of existing test infrastructure.
 ADD_YB_TEST(create_initial_sys_catalog_snapshot)
 set(CREATE_INITIAL_SYS_CATALOG_SNAPSHOT_TOOL_PATH ${LAST_ADDED_TEST_BINARY_PATH})
