@@ -75,7 +75,7 @@ public class ApplicationLogsComponentTest extends FakeDBApplication {
     when(mockConfig.getString("log.override.path")).thenReturn(fakeSourceLogsPath);
     when(mockGlobalRuntimeConfig.getString("yb.support_bundle.application_logs_regex_pattern"))
         .thenReturn(testRegexPattern);
-    when(mockConfig.getString("yb.support_bundle.application_logs_sdf_pattern"))
+    when(mockGlobalRuntimeConfig.getString("yb.support_bundle.application_logs_sdf_pattern"))
         .thenReturn(testSdfPattern);
   }
 

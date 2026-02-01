@@ -154,7 +154,9 @@ public class ApplicationLogsComponent implements SupportBundleComponent {
             .collect(Collectors.toList());
 
     String applicationLogsSdfPattern =
-        config.getString("yb.support_bundle.application_logs_sdf_pattern");
+        runtimeConfigFactory
+            .globalRuntimeConf()
+            .getString("yb.support_bundle.application_logs_sdf_pattern");
     SimpleDateFormat sdf = new SimpleDateFormat(applicationLogsSdfPattern);
     // Filters the log files whether it is between startDate and endDate
     for (String logFile : logFiles) {

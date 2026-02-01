@@ -62,6 +62,15 @@ public class ConfDataType<T> {
           (s) -> {
             return parseString(s);
           });
+  static ConfDataType<String> RegexStringType =
+      new ConfDataType<>(
+          "Regex String",
+          String.class,
+          Config::getString,
+          (s) -> {
+            // Skip HOCON parsing, accept the string as-is
+            return s;
+          });
   static ConfDataType<Long> LongType =
       new ConfDataType<>(
           "Long",
