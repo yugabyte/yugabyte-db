@@ -284,68 +284,6 @@ spec:
                   is resumed.
                 type: boolean
                 default: false
-              readReplica:
-                type: object
-                x-kubernetes-validations:
-                - message: placementInfo for read replica cannot be removed once set.
-                  rule: has(self.placementInfo) || !has(oldSelf.placementInfo)
-                required:
-                - numNodes
-                - replicationFactor
-                - deviceInfo
-                properties:
-                  numNodes:
-                    type: integer
-                  replicationFactor:
-                    type: integer
-                  deviceInfo:
-                    description: >
-                      Device information for the readReplica tservers.
-                    type: object
-                    required:
-                    - numVolumes
-                    properties:
-                      volumeSize:
-                        type: integer
-                        default: 50
-                      numVolumes:
-                        type: integer
-                        x-kubernetes-validations:
-                          - message: numVolumes cannot be changed once set.
-                            rule: "self == oldSelf"
-                  placementInfo:
-                    description: Placement information for the universe.
-                    type: object
-                    required:
-                    - regions
-                    properties:
-                      regions:
-                        type: array
-                        description: Regions for the universe.
-                        required:
-                        - code
-                        - zones
-                        items:
-                          type: object
-                          properties:
-                            code:
-                              type: string
-                              description: Code for the region.
-                            zones:
-                              type: array
-                              description: Zones for the region.
-                              required:
-                              - code
-                              - numNodes
-                              items:
-                                type: object
-                                properties:
-                                  code:
-                                    type: string
-                                    description: Code for the zone.
-                                  numNodes:
-                                    type: integer
-                                    description: Number of nodes for the zone.
               ybcThrottleParameters:
                 description: >
                   YBC throttle parameters for the universe. These throttle parameters can be used to
