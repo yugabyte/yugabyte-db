@@ -63,6 +63,8 @@ You can remove YugabyteDB components and configuration from on-premises provider
 
 1. Navigate to the `/home/yugabyte/bin` directory that contains a number of scripts including `yb-server-ctl.sh`. The arguments set in this script allow you to perform various functions on the YugabyteDB processes running on the node.
 
+    If you cannot find the `bin` directory, it means YugabyteDB Anywhere already cleared it during a successful deletion of the universe.
+
 1. For cron-based universes, run the following commands:
 
     ```sh
@@ -177,7 +179,7 @@ You can remove YugabyteDB components and configuration from on-premises provider
 
 This removes all YugabyteDB code and settings from the node, removing it from the universe.
 
-If you cannot find the `bin` directory, it means YugabyteDB Anywhere already cleared it during a successful deletion of the universe.
+### Delete data and users
 
 You should also erase the data from the volume mounted under the `/data` subdirectory, unless this volume is to be permanently erased by the underlying storage subsystem when the volume is deleted.
 
