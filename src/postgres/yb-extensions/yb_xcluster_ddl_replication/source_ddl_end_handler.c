@@ -37,8 +37,13 @@
 #include "catalog/pg_opfamily_d.h"
 #include "catalog/pg_policy_d.h"
 #include "catalog/pg_proc_d.h"
+#include "catalog/pg_publication_d.h"
+#include "catalog/pg_publication_namespace_d.h"
+#include "catalog/pg_publication_rel_d.h"
 #include "catalog/pg_rewrite_d.h"
 #include "catalog/pg_statistic_ext.h"
+#include "catalog/pg_subscription_d.h"
+#include "catalog/pg_subscription_rel_d.h"
 #include "catalog/pg_trigger_d.h"
 #include "catalog/pg_ts_config_d.h"
 #include "catalog/pg_ts_config_map_d.h"
@@ -75,6 +80,15 @@
 #define TABLE_REWRITE_OBJID_COLUMN_ID 1
 
 static List *rewritten_table_oid_list = NIL;
+
+/* DDLs ignored for replication. */
+#define IGNORED_DDL_LIST \
+	X(CMDTAG_ALTER_PUBLICATION) \
+	X(CMDTAG_ALTER_SUBSCRIPTION) \
+	X(CMDTAG_CREATE_PUBLICATION) \
+	X(CMDTAG_CREATE_SUBSCRIPTION) \
+	X(CMDTAG_DROP_PUBLICATION) \
+	X(CMDTAG_DROP_SUBSCRIPTION)
 
 #define ALLOWED_DDL_LIST \
 	X(CMDTAG_COMMENT) \
@@ -209,6 +223,21 @@ IsPassThroughDdlCommandSupported(CommandTag command_tag)
 	{
 #define X(CMD_TAG_VALUE) case CMD_TAG_VALUE: return true;
 			ALLOWED_DDL_LIST
+#undef X
+		default:
+			return false;
+	}
+
+	return false;
+}
+
+static bool
+IsIgnoredDdlCommand(CommandTag command_tag)
+{
+	switch (command_tag)
+	{
+#define X(CMD_TAG_VALUE) case CMD_TAG_VALUE: return true;
+			IGNORED_DDL_LIST
 #undef X
 		default:
 			return false;
@@ -947,6 +976,10 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 		{
 			should_replicate_ddl = !is_temporary_object;
 		}
+		else if (IsIgnoredDdlCommand(command_tag))
+		{
+			continue;
+		}
 		else
 		{
 			elog(ERROR, "Unsupported DDL: %s\n%s", command_tag_name,
@@ -1095,6 +1128,17 @@ ProcessSourceEventTriggerDroppedObjects(CommandTag tag)
 			case UserMappingRelationId:
 				should_replicate_ddl = true;
 				break;
+			/*
+			 * Ignore logical replication objects (not replicated via xCluster).
+			 * Note: Schema-level publications (PublicationNamespaceRelationId)
+			 * and SUBSCRIPTION are not supported yet in YB.
+			 */
+			case PublicationRelationId:
+			case PublicationRelRelationId:
+			case PublicationNamespaceRelationId:
+			case SubscriptionRelationId:
+			case SubscriptionRelRelationId:
+				continue;
 			default:
 				{
 					const char *object_type = SPI_GetText(spi_tuple,
