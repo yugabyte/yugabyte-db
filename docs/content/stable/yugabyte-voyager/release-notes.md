@@ -17,6 +17,22 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, where `YYYY` is the release year, `M` is the month, and `N` is the number of the release in that month.
 
+## v2026.2.1 - February 3, 2026
+
+{{< note title="Important: Breaking change" >}}
+
+This release includes breaking changes for Voyager migrations. Migrations started with earlier Voyager versions cannot be continued with this version. To proceed, either continue the migration using the same Voyager version that started it, or start a new migration with v2026.2.1.
+
+{{< /note >}}
+
+### New feature
+
+- Case-sensitive schema names in PostgreSQL migrations. PostgreSQL schemas that use quoted identifiers (for example, `"pg-schema"`, `"Schema"`) are now correctly handled in all migration workflows: assessment, export schema, export data, live migration, and also the grant-migration-permissions script. The `--source-db-schema` or `schema_list` parameter accepts schema names with or without quotes. Quoted names are preserved and matched correctly.
+
+### Enhancement
+
+- Voyager now automatically re-runs the internal assessment during export schema with the `--start-clean` flag if the `assess-migration` command was skipped. This ensures metadata remains in sync after a clean start and avoids stale assessment data.
+
 ## v2026.1.1 - January 20, 2026
 
 ### Enhancements

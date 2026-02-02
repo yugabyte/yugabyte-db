@@ -1383,6 +1383,7 @@ DROP USER ybvoyager;
 
 ## Limitations
 
+- Special characters in the schema name and table name are not supported.
 - Schema changes on the source database will not be recognized during the live migration.
 - Adding or deleting partitions of a partitioned table is not supported during the live migration.
 - Tables without primary key are not supported.

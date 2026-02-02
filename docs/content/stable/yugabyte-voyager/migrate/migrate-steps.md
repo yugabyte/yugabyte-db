@@ -826,3 +826,7 @@ REASSIGN OWNED BY ybvoyager TO yugabyte;
 DROP OWNED BY ybvoyager;
 DROP USER ybvoyager;
 ```
+
+## Limitation
+
+- Special characters in the schema name and table name are not supported.
