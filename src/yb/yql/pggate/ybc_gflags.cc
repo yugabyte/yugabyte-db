@@ -15,6 +15,7 @@
 #include <string>
 
 #include "yb/common/common_flags.h"
+#include "yb/util/flags.h"
 
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
@@ -95,10 +96,7 @@ DEFINE_NON_RUNTIME_bool(ysql_block_dangerous_roles, false,
     "used with superuser login disabled, such as in YBM. When true, this assumes those blocked "
     "roles are not already in use.");
 
-DEFINE_RUNTIME_PREVIEW_bool(
-    ysql_enable_pg_export_snapshot, false,
-    "Enables the support for synchronizing snapshots across transactions, using pg_export_snapshot "
-    "and SET TRANSACTION SNAPSHOT");
+DEPRECATE_FLAG(bool, ysql_enable_pg_export_snapshot, "01_2026");
 
 DEFINE_NON_RUNTIME_bool(ysql_enable_neghit_full_inheritscache, true,
     "When set to true, a (fully) preloaded inherits cache returns negative cache hits"
@@ -216,7 +214,6 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_conn_mgr_sequence_support_mode = FLAGS_ysql_conn_mgr_sequence_support_mode.c_str(),
       .ysql_conn_mgr_max_query_size = &FLAGS_ysql_conn_mgr_max_query_size,
       .ysql_conn_mgr_wait_timeout_ms = &FLAGS_ysql_conn_mgr_wait_timeout_ms,
-      .ysql_enable_pg_export_snapshot = &FLAGS_ysql_enable_pg_export_snapshot,
       .ysql_enable_neghit_full_inheritscache =
         &FLAGS_ysql_enable_neghit_full_inheritscache,
       .enable_object_locking_for_table_locks =

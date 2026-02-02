@@ -250,11 +250,11 @@ SnapMgrInit(void)
 void
 YBCheckSnapshotsAllowed(bool check_isolation_level)
 {
-	if (!(*YBCGetGFlags()->ysql_enable_pg_export_snapshot))
+	if (!yb_enable_pg_export_snapshot)
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("cannot export or import snapshot when "
-						"ysql_enable_pg_export_snapshot is disabled.")));
+						"ysql_yb_enable_pg_export_snapshot is disabled.")));
 
 	if (check_isolation_level)
 	{

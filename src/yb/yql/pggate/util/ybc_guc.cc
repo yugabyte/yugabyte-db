@@ -51,6 +51,8 @@ bool yb_enable_add_column_missing_default = true;
 
 bool yb_enable_replication_commands = true;
 
+bool yb_enable_pg_export_snapshot = true;
+
 bool yb_enable_replication_slot_consumption = true;
 
 bool yb_allow_replication_slot_lsn_types = true;

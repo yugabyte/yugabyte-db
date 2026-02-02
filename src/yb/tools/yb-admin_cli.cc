@@ -1907,7 +1907,7 @@ Status create_change_data_stream_action(
 
   std::string checkpoint_type = yb::ToString("EXPLICIT");
   cdc::CDCRecordType record_type_pb = cdc::CDCRecordType::CHANGE;
-  std::string consistent_snapshot_option = "USE_SNAPSHOT";
+  std::string consistent_snapshot_option = "EXPORT_SNAPSHOT";
   std::string dynamic_tables_option = "DYNAMIC_TABLES_ENABLED";
   std::string uppercase_checkpoint_type;
   std::string uppercase_record_type;
