@@ -35,6 +35,8 @@ type: docs
 </ul>
 
 {{< note title="Note" >}}
+For v2025.2.1 and later, use Automatic mode.
+
 To use semi-automatic transactional xCluster replication, both the Primary and Standby universes must be running v2024.1.2 or later.
 {{< /note >}}
 

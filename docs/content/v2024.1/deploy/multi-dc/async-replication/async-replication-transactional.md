@@ -34,8 +34,8 @@ xCluster safe time is the transactionally consistent time across all tables in a
 
 Transactional xCluster can be set up in the following ways:
 
-- [Semi-automatic mode](../async-transactional-setup-dblevel/), providing operationally simpler setup and management of replication, as well as simpler steps for performing DDL changes.
-- [Manual mode](../async-transactional-setup/).
+- {{<tags/feature/ea>}}[Semi-automatic mode](../async-transactional-setup-dblevel/), providing operationally simpler setup and management of replication, as well as simpler steps for performing DDL changes.
+- [Manual mode](../async-transactional-setup/). Manual setup and management of replication. DDL changes require manually updating the xCluster configuration.
 
 ## Limitations
 
