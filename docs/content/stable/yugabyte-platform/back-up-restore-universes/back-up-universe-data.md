@@ -87,10 +87,6 @@ A failed incremental backup, which you can delete, is reported similarly to any 
 
 You can manage the speed of backup and restore operations and their impact on database performance by configuring the following parameters:
 
-
-Number of parallel downloads: Number of parallel downloads of tablets per node.
-Number of buffers per download: Number of buffers used to read from cloud and download to disk for a single tablet
-
 - Parallel uploads per node. Number of parallel uploads/downloads of tablets per node. For faster operation, enter higher values; for lower impact on database performance, enter lower values.
 - Buffers per upload per node. Number of buffers used to read from disk and upload/download for a single tablet. For faster operation, enter higher values; for lower impact on database performance, enter lower values.
 - {{<tags/feature/ea idea="1372">}}Disk read/write bytes per second. You can rate-limit disk IOPS during backup upload and restore download so that backup and restore operations do not consume too much IOPS. The minimum value is 1048576 (1 MB/s). To allow backup and restore to use as much IOPS as they can (that is, no disk-based throttling), enter a value of 0 (the default).
