@@ -27,8 +27,8 @@
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/log_cache.h"
-#include "yb/consensus/replicate_msgs_holder.h"
 #include "yb/consensus/raft_consensus.h"
+#include "yb/consensus/replicate_msgs_holder.h"
 
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb_util.h"
@@ -43,9 +43,9 @@
 
 #include "yb/qlexpr/ql_expr.h"
 
+#include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
-#include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_types.pb.h"
 #include "yb/tablet/transaction_participant.h"
 
@@ -117,8 +117,7 @@ DEFINE_RUNTIME_bool(cdc_enable_savepoint_rollback_filtering, true,
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_yb_enable_replica_identity);
 
-namespace yb {
-namespace cdc {
+namespace yb::cdc {
 
 using consensus::ReplicateMsgPtr;
 using consensus::ReplicateMsgs;
@@ -534,7 +533,6 @@ Status DoPopulateBeforeImage(
   auto docdb = tablet->doc_db();
   auto pending_op = tablet->CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
 
-  const auto log_prefix = tablet->LogPrefix();
   auto doc_read_context = table_info->doc_read_context;
   dockv::ReaderProjection projection(schema);
 
@@ -2168,7 +2166,7 @@ Status GetConsistentWALRecords(
 
     if (read_ops.messages.size() > 0) {
       *msgs_holder = consensus::ReplicateMsgsHolder(
-          nullptr, std::move(read_ops.messages), std::move((*consumption)));
+          /*ops=*/nullptr, std::move(read_ops.messages), std::move((*consumption)));
     }
 
     // Handle the case where WAL doesn't have the apply record for all the committed transactions.
@@ -2265,7 +2263,7 @@ Status GetWALRecords(
 
   if (read_ops.messages.size() > 0) {
     *msgs_holder = consensus::ReplicateMsgsHolder(
-        nullptr, std::move(read_ops.messages), std::move((*consumption)));
+        /*ops=*/nullptr, std::move(read_ops.messages), std::move((*consumption)));
   }
 
   return Status::OK();
@@ -2503,19 +2501,20 @@ Status HandleGetChangesForSnapshotRequest(
 
     if (time.read.ToUint64() == 0) {
       // This means there is no data from the sansphot.
-      SetCheckpoint(data.op_id.term, data.op_id.index, 0, "", 0, checkpoint, nullptr);
+      SetCheckpoint(
+          data.op_id.term, data.op_id.index, 0, "", 0, checkpoint, /*last_streamed_op_id=*/nullptr);
     } else {
       *safe_hybrid_time_resp = data.log_ht;
       // This should go to cdc_state table.
       // Below condition update the checkpoint in cdc_state table.
       SetCheckpoint(
-          data.op_id.term, data.op_id.index, -1, "", time.read.ToUint64(), checkpoint, nullptr);
+          data.op_id.term, data.op_id.index, -1, "", time.read.ToUint64(), checkpoint,
+          /*last_streamed_op_id=*/nullptr);
     }
 
     *checkpoint_updated = true;
   } else {
     // Snapshot is already taken.
-    HybridTime ht;
     time = ReadHybridTime::FromUint64(from_op_id.snapshot_time());
     *safe_hybrid_time_resp = HybridTime(from_op_id.snapshot_time());
     const auto& next_key = from_op_id.key();
@@ -2565,7 +2564,9 @@ Status HandleGetChangesForSnapshotRequest(
       LOG(INFO) << "Done with snapshot operation for tablet_id: " << tablet_id
                 << " stream_id: " << stream_id << ", from_op_id: " << from_op_id.DebugString();
       // Get the checkpoint or read the checkpoint from the table/cache.
-      SetCheckpoint(from_op_id.term(), from_op_id.index(), 0, "", 0, checkpoint, nullptr);
+      SetCheckpoint(
+          from_op_id.term(), from_op_id.index(), 0, "", 0, checkpoint,
+          /*last_streamed_op_id=*/nullptr);
       *checkpoint_updated = true;
     } else {
       VLOG(1) << "Setting next sub doc key is " << sub_doc_key.Encode().ToStringBuffer();
@@ -2573,7 +2574,7 @@ Status HandleGetChangesForSnapshotRequest(
       checkpoint->set_write_id(-1);
       SetCheckpoint(
           from_op_id.term(), from_op_id.index(), -1, sub_doc_key.Encode().ToStringBuffer(),
-          time.read.ToUint64(), checkpoint, nullptr);
+          time.read.ToUint64(), checkpoint, /*last_streamed_op_id=*/nullptr);
       *checkpoint_updated = true;
     }
   }
@@ -3284,5 +3285,4 @@ Status GetChangesForCDCSDK(
   return Status::OK();
 }  // NOLINT(readability/fn_size)
 
-}  // namespace cdc
-}  // namespace yb
+} // namespace yb::cdc

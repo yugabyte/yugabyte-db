@@ -34,15 +34,13 @@
 
 #pragma once
 
-#include <inttypes.h>
-
 #include <limits>
 #include <string>
 
-#include "yb/util/status_fwd.h"
 #include "yb/util/faststring.h"
 #include "yb/util/monotime.h"
 #include "yb/util/physical_time.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
@@ -93,9 +91,9 @@ class HybridTime {
   // ----------------------------------------------------------------------------------------------
   // Constructors / static factories
 
-  HybridTime() noexcept : v(kInvalidHybridTimeValue) {}
+  constexpr HybridTime() noexcept : v(kInvalidHybridTimeValue) {}
 
-  HybridTime(MicrosTime micros, LogicalTimeComponent logical_value) {
+  constexpr HybridTime(MicrosTime micros, LogicalTimeComponent logical_value) {
     v = (micros << kBitsForLogicalComponent) + logical_value;
   }
 
@@ -108,7 +106,7 @@ class HybridTime {
     return HybridTime(micros, 0);
   }
 
-  explicit HybridTime(uint64_t val) : v(val) {}
+  constexpr explicit HybridTime(uint64_t val) : v(val) {}
 
   bool operator ==(const HybridTime &other) const {
     return v == other.v;
@@ -260,6 +258,11 @@ class HybridTime {
 
   HybridTimeRepr v;
 };
+
+inline constexpr HybridTime HybridTime::kMin(kMinHybridTimeValue);
+inline constexpr HybridTime HybridTime::kMax(kMaxHybridTimeValue);
+inline constexpr HybridTime HybridTime::kInitial{kInitialHybridTimeValue};
+inline constexpr HybridTime HybridTime::kInvalid(kInvalidHybridTimeValue);
 
 // The maximum microsecond value possible so that the corresponding HybridTime can still fit into a
 // uint64_t.
