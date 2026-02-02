@@ -18,6 +18,8 @@
  public | pre_split_range                                | table             | yugabyte_test
  public | range_tbl_pk_with_include_clause               | table             | yugabyte_test
  public | range_tbl_pk_with_multiple_included_columns    | table             | yugabyte_test
+ public | range_test                                     | table             | yugabyte_test
+ public | range_test_id_seq                              | sequence          | yugabyte_test
  public | rls_private                                    | table             | yugabyte_test
  public | rls_public                                     | table             | yugabyte_test
  public | tbl1                                           | table             | yugabyte_test
@@ -51,7 +53,7 @@
  public | tr1                                            | table             | yugabyte_test
  public | tr2                                            | table             | yugabyte_test
  public | uaccount                                       | table             | regress_rls_alice
-(50 rows)
+(52 rows)
 
           List of tablespaces
     Name    |     Owner     | Location 
@@ -186,7 +188,8 @@ Indexes:
  public     | level1_1                                    | level1_1_c3_idx                                  |            | CREATE INDEX level1_1_c3_idx ON public.level1_1 USING lsm (c3 DESC)
  public     | level2_1                                    | level2_1_pkey                                    |            | CREATE UNIQUE INDEX level2_1_pkey ON public.level2_1 USING lsm (c4 HASH)
  public     | level2_1                                    | level2_1_c3_idx                                  |            | CREATE INDEX level2_1_c3_idx ON public.level2_1 USING lsm (c3 ASC)
-(55 rows)
+ public     | range_test                                  | range_test_pkey                                  |            | CREATE UNIQUE INDEX range_test_pkey ON public.range_test USING lsm (id HASH)
+(56 rows)
 
                Table "public.level0"
  Column |  Type   | Collation | Nullable | Default 

@@ -1280,6 +1280,79 @@ SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_ex
 \endif
 
 --
+-- Name: range_test; Type: TABLE; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16764'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16763'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16762'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16762'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16766'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16766'::pg_catalog.oid);
+
+CREATE TABLE public.range_test (
+    id integer NOT NULL,
+    num_range int4range,
+    CONSTRAINT range_test_pkey PRIMARY KEY((id) HASH)
+)
+SPLIT INTO 3 TABLETS;
+
+
+\if :use_roles
+SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
+\if :role_exists
+    ALTER TABLE public.range_test OWNER TO yugabyte_test;
+\else
+    \echo 'Skipping owner privilege due to missing role:' yugabyte_test
+\endif
+\endif
+
+--
+-- Name: range_test_id_seq; Type: SEQUENCE; Schema: public; Owner: yugabyte_test
+--
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16761'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16761'::pg_catalog.oid);
+
+CREATE SEQUENCE public.range_test_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+\if :use_roles
+SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yugabyte_test') AS role_exists \gset
+\if :role_exists
+    ALTER TABLE public.range_test_id_seq OWNER TO yugabyte_test;
+\else
+    \echo 'Skipping owner privilege due to missing role:' yugabyte_test
+\endif
+\endif
+
+--
+-- Name: range_test_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: yugabyte_test
+--
+
+ALTER SEQUENCE public.range_test_id_seq OWNED BY public.range_test.id;
+
+
+--
 -- Name: rls_private; Type: TABLE; Schema: public; Owner: yugabyte_test
 --
 
@@ -2520,6 +2593,13 @@ ALTER TABLE ONLY hint_plan.hints ALTER COLUMN id SET DEFAULT nextval('hint_plan.
 
 
 --
+-- Name: range_test id; Type: DEFAULT; Schema: public; Owner: yugabyte_test
+--
+
+ALTER TABLE ONLY public.range_test ALTER COLUMN id SET DEFAULT nextval('public.range_test_id_seq'::regclass);
+
+
+--
 -- Name: tbl1 a; Type: DEFAULT; Schema: public; Owner: yugabyte_test
 --
 
@@ -2674,6 +2754,24 @@ COPY public.range_tbl_pk_with_include_clause (k2, v, k1) FROM stdin;
 --
 
 COPY public.range_tbl_pk_with_multiple_included_columns (col1, col2, col3, col4) FROM stdin;
+\.
+
+
+--
+-- Data for Name: range_test; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
+--
+
+COPY public.range_test (id, num_range) FROM stdin;
+5	empty
+1	[1,11)
+6	[30,101)
+7	[50,61)
+9	[80,86)
+10	[90,101)
+4	[25,26)
+2	[2,6)
+8	[70,76)
+3	[15,21)
 \.
 
 
@@ -2932,6 +3030,13 @@ COPY public.uaccount (pguser, seclv) FROM stdin;
 --
 
 SELECT pg_catalog.setval('hint_plan.hints_id_seq', 1, false);
+
+
+--
+-- Name: range_test_id_seq; Type: SEQUENCE SET; Schema: public; Owner: yugabyte_test
+--
+
+SELECT pg_catalog.setval('public.range_test_id_seq', 10, true);
 
 
 --
@@ -3197,6 +3302,45 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'relpages', '0'::integer,
 	'reltuples', '-1'::real,
 	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: range_test; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'range_test',
+	'relpages', '0'::integer,
+	'reltuples', '10'::real,
+	'relallvisible', '0'::integer
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'range_test',
+	'attname', 'id',
+	'inherited', 'f'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real,
+	'histogram_bounds', '{1,2,3,4,5,6,7,8,9,10}'::text,
+	'correlation', '0.018181818'::real
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'range_test',
+	'attname', 'num_range',
+	'inherited', 'f'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '13'::integer,
+	'n_distinct', '-1'::real,
+	'range_length_histogram', '{1,4,6,6,6,10,11,11,71}'::text,
+	'range_empty_frac', '0.1'::real,
+	'range_bounds_histogram', '{"[1,6)","[2,11)","[15,21)","[25,26)","[30,61)","[50,76)","[70,86)","[80,101)","[90,101)"}'::text
 );
 
 
@@ -4090,6 +4234,22 @@ SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 
 
 --
+-- Name: TABLE range_test; Type: ACL; Schema: public; Owner: yugabyte_test
+--
+
+\if :use_roles
+GRANT SELECT ON TABLE public.range_test TO PUBLIC;
+SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'rls_user') AS role_exists \gset
+\if :role_exists
+    GRANT UPDATE ON TABLE public.range_test TO rls_user;
+\else
+    \echo 'Skipping grant privilege due to missing role:' rls_user
+\endif
+
+\endif
+
+
+--
 -- Name: TABLE rls_private; Type: ACL; Schema: public; Owner: yugabyte_test
 --
 
@@ -4629,6 +4789,20 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'relname', 'range_tbl_pk_with_multiple_included_columns_pkey',
 	'relpages', '0'::integer,
 	'reltuples', '0'::real,
+	'relallvisible', '0'::integer
+);
+
+
+--
+-- Statistics for Name: range_test_pkey; Type: STATISTICS DATA; Schema: public; Owner: -
+--
+
+SELECT * FROM pg_catalog.pg_restore_relation_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'range_test_pkey',
+	'relpages', '0'::integer,
+	'reltuples', '10'::real,
 	'relallvisible', '0'::integer
 );
 
