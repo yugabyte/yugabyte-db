@@ -2148,7 +2148,7 @@ YBCCreateReplicationSlot(const char *slot_name,
 						 uint64_t *consistent_snapshot_time,
 						 YbCRSLsnType lsn_type,
 						 YbCRSOrderingMode yb_ordering_mode,
-						 bool for_notifications)
+						 Oid database_oid)
 {
 	YbcPgStatement handle;
 
@@ -2184,7 +2184,7 @@ YBCCreateReplicationSlot(const char *slot_name,
 
 	HandleYBStatus(YBCPgNewCreateReplicationSlot(slot_name,
 												 plugin_name,
-												 MyDatabaseId,
+												 database_oid,
 												 repl_slot_snapshot_action,
 												 repl_slot_lsn_type,
 												 repl_slot_ordering_mode,

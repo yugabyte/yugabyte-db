@@ -287,13 +287,11 @@ ReplicationSlotCreate(const char *name, bool db_specific,
 	 * consuming replication slots via Walsender.
 	 */
 	if (IsYugaByteEnabled())
-	{
-		return YbReplicationSlotCreate(name, two_phase, yb_plugin_name,
-									   yb_snapshot_action,
-									   yb_consistent_snapshot_time, lsn_type,
-									   yb_ordering_mode,
-									   /* for_notifications = */ false);
-	}
+		return YbReplicationSlotCreateForDB(name, two_phase, yb_plugin_name,
+											yb_snapshot_action,
+											yb_consistent_snapshot_time,
+											lsn_type, yb_ordering_mode,
+											MyDatabaseId);
 
 	/*
 	 * If some other backend ran this code concurrently with us, we'd likely
@@ -402,13 +400,13 @@ ReplicationSlotCreate(const char *name, bool db_specific,
 }
 
 void
-YbReplicationSlotCreate(const char *name, bool two_phase,
-						const char *yb_plugin_name,
-						CRSSnapshotAction yb_snapshot_action,
-						uint64_t *yb_consistent_snapshot_time,
-						YbCRSLsnType lsn_type,
-						YbCRSOrderingMode yb_ordering_mode,
-						bool for_notifications)
+YbReplicationSlotCreateForDB(const char *name, bool two_phase,
+							 const char *yb_plugin_name,
+							 CRSSnapshotAction yb_snapshot_action,
+							 uint64_t *yb_consistent_snapshot_time,
+							 YbCRSLsnType lsn_type,
+							 YbCRSOrderingMode yb_ordering_mode,
+							 Oid database_oid)
 {
 	int32_t		max_clock_skew;
 
@@ -422,7 +420,7 @@ YbReplicationSlotCreate(const char *name, bool two_phase,
 
 	YBCCreateReplicationSlot(name, yb_plugin_name, yb_snapshot_action,
 							 yb_consistent_snapshot_time, lsn_type,
-							 yb_ordering_mode, for_notifications);
+							 yb_ordering_mode, database_oid);
 
 	/*
 	 * The creation of a replication slot establishes a boundry between the

@@ -273,12 +273,12 @@ extern void CheckSlotPermissions(void);
 /* YB */
 extern void ReplicationSlotCleanupForProc(PGPROC *proc);
 extern char YBCGetReplicaIdentityForRelation(Oid relid);
-extern void YbReplicationSlotCreate(const char *name, bool two_phase,
-									const char *yb_plugin_name,
-									CRSSnapshotAction yb_snapshot_action,
-									uint64_t *yb_consistent_snapshot_time,
-									YbCRSLsnType lsn_type,
-									YbCRSOrderingMode yb_ordering_mode,
-									bool for_notifications);
+extern void YbReplicationSlotCreateForDB(const char *name, bool two_phase,
+										 const char *yb_plugin_name,
+										 CRSSnapshotAction yb_snapshot_action,
+										 uint64_t *yb_consistent_snapshot_time,
+										 YbCRSLsnType lsn_type,
+										 YbCRSOrderingMode yb_ordering_mode,
+										 Oid database_oid);
 
 #endif							/* SLOT_H */
