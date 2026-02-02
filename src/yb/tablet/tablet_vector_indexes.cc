@@ -53,15 +53,13 @@ namespace yb::tablet {
 
 namespace {
 
-METRIC_DEFINE_entity(vector_index);
-
 class IndexReverseMappingReader : public docdb::DocVectorIndexReverseMappingReader {
  public:
   Status Init(const Tablet& tablet, const ReadHybridTime& read_ht) {
     rocksdb_op_ = tablet.CreateScopedRWOperationBlockingRocksDbShutdownStart();
     RETURN_NOT_OK(rocksdb_op_);
 
-    iter_holder_ = VERIFY_RESULT(tablet.vector_indexes().CreateReverseMappingIterator(read_ht));
+    iter_holder_ = VERIFY_RESULT(tablet.vector_indexes().CreateVectorMetadataIterator(read_ht));
     return Status::OK();
   }
 
@@ -231,15 +229,7 @@ Status TabletVectorIndexes::DoCreateIndex(
 
   MetricEntityPtr vector_index_metric_entity;
   if (metric_registry_) {
-    MetricEntity::AttributeMap attrs;
-    attrs["table_id"] = index_table.table_id;
-    attrs["table_name"] = index_table.table_name;
-    attrs["table_type"] = TableType_Name(index_table.table_type);
-    // Use the namespace name from the base table since the namespace name is not populated in
-    // index_table object.
-    attrs["namespace_name"] = indexed_table->namespace_name;
-    vector_index_metric_entity =
-        METRIC_ENTITY_vector_index.Instantiate(metric_registry_, index_table.table_id, attrs);
+    vector_index_metric_entity = index_table.CreateMetricEntity(metric_registry_);
   }
 
   auto vector_index = VERIFY_RESULT(docdb::CreateDocVectorIndex(
@@ -684,7 +674,7 @@ Status TabletVectorIndexes::Verify() {
   return Status::OK();
 }
 
-Result<docdb::IntentAwareIteratorWithBounds> TabletVectorIndexes::CreateReverseMappingIterator(
+Result<docdb::IntentAwareIteratorWithBounds> TabletVectorIndexes::CreateVectorMetadataIterator(
     const ReadHybridTime& read_ht) const {
   static std::array<char, 2> upper_bound {
       dockv::KeyEntryTypeAsChar::kVectorIndexMetadata,

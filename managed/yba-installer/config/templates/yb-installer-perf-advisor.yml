@@ -13,17 +13,69 @@ services:
       spring.datasource.username=postgres
       spring.datasource.url=jdbc:postgresql://localhost:{{ yamlPath "postgres.install.port" }}/ts
       spring.datasource.password={{ yamlPath "postgres.install.password" }}
+      spring.profiles.active=api,task-runner,collector
 
       # Perf Advisor Security Configuration
-      pa.security.api.token.secret=''
-      pa.security.cors.origin=*
-      pa.security.cors.origin.dev=*
+      pa.security.api.token.secret={{ yamlPath "perfAdvisor.paSecret" }}
+      # CORS allowed origins: host(s) and platform support origin URL(s), comma-separated
+      pa.security.cors.origin={{ yamlPath "host" }}
+      {{- if ne (yamlPath "platform.support_origin_url") "" }}
+      {{- ","}}{{ yamlPath "platform.support_origin_url" }}{{ end }}
 
-      # Perf Advisor Prometheus Configuration
-      pa.prometheus.url=http://localhost:{{ yamlPath "prometheus.port" }}
+      # Perf Advisor CallHome Information
+      pa.callhome.enabled={{ yamlPath "perfAdvisor.callhome.enabled" }}
+      pa.callhome.environment={{ yamlPath "perfAdvisor.callhome.environment" }}
+      pa.deployment.type=yba_installer
+
+      # PA Topology Configuration - for writing the PA collected data to Prometheus
+      pa.metrics.export.topology={{ baseInstall }}/perf-advisor/config/metrics-export.yml
+
+      # Perf Advisor Prometheus Configuration - reading the data from the prometheus server
+      {{ if eq (yamlPath "prometheus.enableHttps") "true" }}
+      pa.prometheus.url=https://{{ index (splitInput (yamlPath "host")) 0 }}:
+      {{- yamlPath "prometheus.port" }}
+      {{ else }}
+      pa.prometheus.url=http://{{ index (splitInput (yamlPath "host")) 0 }}:
+      {{- yamlPath "prometheus.port" }}
+      {{ end }}
 
       # Perf Advisor Web Port
       server.port={{ yamlPath "perfAdvisor.port" }}
+
+      # Perf Advisor TLS/SSL Configuration
+      {{ if eq (yamlPath "perfAdvisor.tls.enabled") "true" }}
+      server.ssl.enabled=true
+      server.ssl.key-store-type=PKCS12
+      server.ssl.key-store={{ baseInstall }}/perf-advisor/certs/tls.p12
+      server.ssl.key-store-password={{ yamlPath "perfAdvisor.tls.keystorePassword" }}
+      {{ if ne (yamlPath "perfAdvisor.tls.sslProtocols") "" }}
+      server.ssl.enabled-protocols={{ yamlPath "perfAdvisor.tls.sslProtocols" }}
+      {{ end }}
+      pa.web.hsts.enabled={{ yamlPath "perfAdvisor.tls.hsts" }}
+      {{ end }}
+
+  - name: perfAdvisorMetricsExportTopology
+    fileName: "{{ baseInstall }}/perf-advisor/config/metrics-export.yml"
+    contents: |
+      labels:
+        collector_id: local
+      shards:
+        - id: 0
+          default: true
+          type: remotewrite
+          replicas:
+            - endpoint: "{{ if eq (yamlPath "prometheus.enableHttps") "true" }}https
+            {{- else }}http{{ end }}://
+              {{- index (splitInput (yamlPath "host")) 0 }}:
+              {{- yamlPath "prometheus.port" }}/api/v1/write"
+              auth:
+                {{ if eq (yamlPath "prometheus.enableAuth") "true" }}
+                type: basic
+                username: {{ yamlPath "prometheus.authUsername" }}
+                password: {{ yamlPath "prometheus.authPassword" }}
+                {{ else }}
+                type: none
+                {{ end }}
 
   - name: perfAdvisorService
     fileName: "{{ .SystemdFileLocation }}"

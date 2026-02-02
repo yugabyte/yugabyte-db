@@ -186,11 +186,16 @@ DEFINE_NON_RUNTIME_PG_FLAG(bool, yb_disable_ddl_transaction_block_for_read_commi
     "ysql_yb_ddl_transaction_block_enabled is true. In other words, for Read Committed, fall back "
     "to the mode when ysql_yb_ddl_transaction_block_enabled is false.");
 
-DEFINE_test_flag(bool, ysql_yb_enable_ddl_savepoint_support, false,
+DEFINE_RUNTIME_AUTO_PG_FLAG(
+    bool, yb_enable_ddl_savepoint_infra, kLocalPersisted, false, true,
+    "Auto flag that controls whether DDL savepoint support can be safely enabled "
+    "during upgrade. Both this flag and ysql_yb_enable_ddl_savepoint_support "
+    "must be true to enable the feature.");
+DEFINE_NON_RUNTIME_PREVIEW_bool(ysql_yb_enable_ddl_savepoint_support, false,
     "If true, support for savepoints for DDL statements within a transaction block will be "
     "enabled. This flag only takes effect if ysql_yb_ddl_transaction_block_enabled is set to "
     "true.");
-DEFINE_validator(TEST_ysql_yb_enable_ddl_savepoint_support,
+DEFINE_validator(ysql_yb_enable_ddl_savepoint_support,
     FLAG_REQUIRES_FLAG_VALIDATOR(ysql_yb_ddl_transaction_block_enabled));
 
 // Wait-queues: Enabling FLAGS_refresh_waiter_timeout_ms is necessary for maintaining up-to-date
@@ -342,6 +347,8 @@ DEFINE_RUNTIME_int32(timestamp_history_retention_interval_sec, 900,
     "reads at a hybrid time further than this in the past might not be allowed "
     "after a compaction. Set this to be higher than the expected maximum duration "
     "of any single transaction in your application.");
+
+DEFINE_test_flag(bool, ysql_yb_enable_listen_notify, false, "Enable YSQL LISTEN/NOTIFY.");
 
 namespace yb {
 

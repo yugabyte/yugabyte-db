@@ -57,11 +57,12 @@ struct XClusterDDLQueryInfo {
     }
   };
   std::vector<RelationInfo> relation_map;
+  std::map<std::string, std::string> variables;
 
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(
         query, ddl_end_time, query_id, version, command_tag, schema, user, json_for_oid_assignment,
-        is_manual_execution, relation_map);
+        is_manual_execution, relation_map, variables);
   }
 };
 

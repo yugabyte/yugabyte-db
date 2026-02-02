@@ -14,6 +14,12 @@ services:
           password = "{{ yamlPath "platform.keyStorePassword" }}"
       }
 
+      {{- $trustedProxies := yamlPathSlice "platform.trusted_proxies" }}
+      {{- if $trustedProxies }}
+      # Trusted proxies for X-Forwarded-* header processing (OIDC HTTPS redirect URIs)
+      play.http.forwarded.trustedProxies = [{{ range $index, $proxy := $trustedProxies }}{{if $index}}, {{end}}{{ removeQuotes $proxy }}{{end}}]
+      {{- end }}
+
       play.i18n.langs = [ "en" ]
       pidfile.path = "/dev/null"
 
@@ -79,6 +85,16 @@ services:
       }
 
       yb {
+        {{if eq (yamlPath "perfAdvisor.enabled") "true" }}
+        {{ if eq (yamlPath "perfAdvisor.tls.enabled") "true" }}
+        pa.url = "https://{{ index (splitInput (yamlPath "host")) 0 }}:
+        {{- yamlPath "perfAdvisor.port" }}"
+        {{ else }}
+        pa.url = "http://{{ index (splitInput (yamlPath "host")) 0 }}:
+        {{- yamlPath "perfAdvisor.port" }}"
+        {{ end }}
+        pa.api_token = "{{ yamlPath "perfAdvisor.paSecret" }}"
+        {{ end }}
         devops.home = "{{ installRoot }}/yb-platform/devops"
         swamper.targetPath = "{{ baseInstall }}/data/prometheus/swamper_targets"
         swamper.rulesPath = "{{ baseInstall }}/data/prometheus/swamper_rules"

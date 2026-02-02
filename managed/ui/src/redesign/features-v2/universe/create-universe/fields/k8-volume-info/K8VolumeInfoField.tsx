@@ -2,18 +2,20 @@ import { ReactElement, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Controller, useFormContext } from 'react-hook-form';
 import { YBLabel, YBInput, mui } from '@yugabyte-ui-library/core';
+import { useRuntimeConfigValues } from '@app/redesign/features-v2/universe/create-universe/helpers/utils';
 import { getK8DeviceInfo } from '@app/redesign/features-v2/universe/create-universe/fields/k8-volume-info/K8VolumeInfoFieldHelper';
 import { NodeType } from '@app/redesign/utils/dtos';
-import { InstanceSettingProps } from '@app/redesign/features-v2/universe/create-universe/steps/hardware-settings/dtos';
 import { ProviderType } from '@app/redesign/features-v2/universe/create-universe/steps/general-settings/dtos';
-import { useRuntimeConfigValues } from '@app/redesign/features-v2/universe/create-universe/helpers/utils';
+import { InstanceSettingProps } from '@app/redesign/features-v2/universe/create-universe/steps/hardware-settings/dtos';
 import {
   DEVICE_INFO_FIELD,
   INSTANCE_TYPE_FIELD,
   MASTER_DEVICE_INFO_FIELD,
   MASTER_INSTANCE_TYPE_FIELD
 } from '@app/redesign/features-v2/universe/create-universe/fields/FieldNames';
-import { ReactComponent as Close } from '@app/redesign/assets/close.svg';
+
+//icons
+import Close from '@app/redesign/assets/close.svg';
 
 const { Box } = mui;
 

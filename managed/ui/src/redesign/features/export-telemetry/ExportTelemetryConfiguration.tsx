@@ -29,8 +29,8 @@ import { useExportTelemetryStyles } from './styles';
 import styles from '../../../components/configRedesign/providerRedesign/ProviderList.module.scss';
 
 //icons
-import AuditBackupIcon from '../../assets/backup.svg';
-import EllipsisIcon from '../../assets/ellipsis.svg';
+import AuditBackupIcon from '../../assets/backup.svg?img';
+import EllipsisIcon from '../../assets/ellipsis.svg?img';
 
 const TRANSLATION_KEY_PREFIX = 'exportTelemetry';
 

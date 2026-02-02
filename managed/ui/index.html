@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta http-equiv="Content-Type" content="text/html;charset=utf-8" />
+    <meta name="commit" content="<%= VITE_BUILD_COMMIT %>" />
+    <title>YugabyteDB Anywhere UI</title>
+    <script type="text/javascript">
+      // Set API base URL based on environment
+      (function () {
+        const isDev =
+          window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        const apiBase = isDev ? 'http://localhost:9000' : '';
+        const platformConfigScript = document.getElementById('platform-config-script');
+        const uiThemeLink = document.getElementById('ui-theme-link');
+        if (platformConfigScript) {
+          platformConfigScript.src = apiBase + '/api/v1/platform_config';
+        }
+        if (uiThemeLink) {
+          uiThemeLink.href = apiBase + '/api/v1/ui_theme';
+        }
+      })();
+    </script>
+    <link rel="preconnect" href="https://fonts.gstatic.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Source+Sans+Pro:ital,wght@0,200;0,300;0,400;0,600;0,700;0,900;1,200;1,300;1,400;1,600;1,700;1,900&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+      as="style"
+      rel="stylesheet preload prefetch"
+      type="text/css"
+      crossorigin="anonymous"
+    />
+  </head>
+
+  <body>
+    <div id="root" class="full-height"></div>
+    <script type="module" src="/src/index.jsx"></script>
+  </body>
+</html>

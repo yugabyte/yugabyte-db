@@ -7,7 +7,6 @@ import (
 	"log"
 	"node-agent/util"
 	"os"
-	"os/user"
 	"path/filepath"
 
 	apex "github.com/apex/log"
@@ -62,18 +61,11 @@ func SetupLogger(ctx context.Context, config map[string]map[string]any) {
 	_ = os.Chmod(logPath, 0644)
 	// Set ownership to original user if run with sudo
 	origUser := os.Getenv("SUDO_USER")
-	if origUser == "" {
-		if u, err := user.Current(); err == nil {
-			origUser = u.Username
-		}
-	}
-	if origUser != "" {
-		if details, err := util.UserInfo(origUser); err == nil {
-			if details.UserID == 0 {
-				_ = os.Chown(logDir, int(details.UserID), int(details.GroupID))
-				_ = os.Chown(logPath, int(details.UserID), int(details.GroupID))
-			}
-		}
+	userInfo, err := util.UserInfo(origUser)
+	if err == nil && userInfo.CurrentUserID == 0 && !userInfo.IsCurrent {
+		// Change ownership only if running as root and yb_user is different from current user.
+		os.Chown(logDir, int(userInfo.UserID), int(userInfo.GroupID))
+		os.Chown(logPath, int(userInfo.UserID), int(userInfo.GroupID))
 	}
 	util.FileLogger().Infof(ctx, "Logging setup complete in UTC timezone. Level: %s, path: %s",
 		logLevel.String(), logPath)

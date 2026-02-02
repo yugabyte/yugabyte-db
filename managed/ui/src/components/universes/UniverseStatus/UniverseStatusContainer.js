@@ -13,7 +13,7 @@ const mapDispatchToProps = (dispatch) => {
         dispatch(fetchUniverseInfoResponse(response.payload));
       });
     },
-    showTaskDetailsInDrawer : (taskUUID) => {
+    showTaskDetailsInDrawer: (taskUUID) => {
       dispatch(showTaskInDrawer(taskUUID));
     }
   };

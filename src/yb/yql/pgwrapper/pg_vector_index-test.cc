@@ -1404,6 +1404,7 @@ TEST_P(PgDistributedVectorIndexTest, ManualSplitSimple) {
   SleepFor(MonoDelta::FromSeconds(
       2 * ANNOTATE_UNPROTECTED_READ(FLAGS_cleanup_split_tablets_interval_sec)));
 
+  const auto unsplit_tablet = peers.front()->tablet_id();
   peers = ASSERT_RESULT(
       ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
   ASSERT_EQ(peers.size(), 3);
@@ -1424,9 +1425,24 @@ TEST_P(PgDistributedVectorIndexTest, ManualSplitSimple) {
       const auto vi_dir = meta->vector_index_dir(vi->options());
       ASSERT_TRUE(env->DirExists(vi_dir));
       const auto files = AsString(ASSERT_RESULT(path_utils::GetVectorIndexFiles(*env, vi_dir)));
-      const auto expected_files = Format(
-          "[0.meta, vectorindex_1$0]", docdb::GetVectorIndexChunkFileExtension(vi->options()));
-      ASSERT_STR_EQ(files, expected_files);
+      if (unsplit_tablet == tablet->tablet_id()) {
+        const auto expected_files = Format(
+            "[0.meta, vectorindex_1$0]",
+            docdb::GetVectorIndexChunkFileExtension(vi->options()));
+        ASSERT_STR_EQ(files, expected_files);
+      } else {
+        // Wait for compaction is done.
+        ASSERT_OK(
+            LoggedWaitFor([vi]() -> Result<bool> {
+              return vi->TEST_NextManifestFileNo() > 1;
+            }, MonoDelta::FromSeconds(10),
+            Format("Vector index compaction,tablet $0", tablet->tablet_id()))
+        );
+        const auto expected_files = Format(
+            "[0.meta, 1.meta, vectorindex_2$0]",
+            docdb::GetVectorIndexChunkFileExtension(vi->options()));
+        ASSERT_STR_EQ(files, expected_files);
+      }
     }
   }
 

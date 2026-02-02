@@ -21,5 +21,5 @@ type StateUpdateRequest struct {
 }
 
 type VersionRequest struct {
-	Version string `json:"version"`
+	Version string `json:"version,omitempty"`
 }

@@ -1808,6 +1808,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Refresh the in-memory map for YSQL pg_yb_catalog_version table.
   void RefreshPgCatalogVersionInfo() EXCLUDES(heartbeat_pg_catalog_versions_cache_mutex_);
 
+  Status GetYsqlYbSystemTableInfo(
+      const GetYsqlYbSystemTableInfoRequestPB* req, GetYsqlYbSystemTableInfoResponsePB* resp,
+      rpc::RpcContext* rpc);
+
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
   friend class TableLoader;
@@ -1906,8 +1910,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   void ScheduleVerifyNamespacePgLayer(TransactionMetadata txn,
       scoped_refptr<NamespaceInfo> ns, const LeaderEpoch& epoch);
 
-  Status VerifyNamespacePgLayer(scoped_refptr<NamespaceInfo> ns, Result<bool> exists,
-      const LeaderEpoch& epoch);
+  Status VerifyNamespacePgLayer(scoped_refptr<NamespaceInfo> ns,
+                                TransactionId txn_id,
+                                Result<bool> exists,
+                                const LeaderEpoch& epoch);
 
   Status ConsensusStateToTabletLocations(const consensus::ConsensusStatePB& cstate,
                                          TabletLocationsPB* locs_pb);

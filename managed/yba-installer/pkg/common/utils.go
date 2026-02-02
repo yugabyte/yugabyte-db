@@ -415,7 +415,13 @@ func InitViper() {
 	viper.SetDefault("perfAdvisor.enabled", false)
 	viper.SetDefault("perfAdvisor.port", 8443)
 	viper.SetDefault("perfAdvisor.restartSeconds", 10)
-	viper.SetDefault("perfAdvisor.enableHttps", false)
+	viper.SetDefault("perfAdvisor.callhome.enabled", true)
+	viper.SetDefault("perfAdvisor.callhome.environment", "dev")
+	viper.SetDefault("perfAdvisor.paSecret", "")
+	viper.SetDefault("perfAdvisor.tls.enabled", true)
+	viper.SetDefault("perfAdvisor.tls.sslProtocols", "")
+	viper.SetDefault("perfAdvisor.tls.hsts", true)
+	viper.SetDefault("perfAdvisor.tls.keystorePassword", "")
 	// Update the installRoot to home directory for non-root installs. Will honor custom install root.
 	if !HasSudoAccess() && viper.GetString("installRoot") == "/opt/yugabyte" {
 		viper.SetDefault("installRoot", filepath.Join(GetUserHomeDir(), "yugabyte"))

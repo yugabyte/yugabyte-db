@@ -1,8 +1,8 @@
 import { useCallback, useContext } from 'react';
-import { useQuery } from 'react-query';
 import { isEmpty, uniqBy } from 'lodash';
-import { useFormContext } from 'react-hook-form';
+import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
+import { useFormContext } from 'react-hook-form';
 import {
   MarkerType,
   YBAutoComplete,
@@ -11,11 +11,15 @@ import {
   MapLegend,
   MapLegendItem,
   useGetMapIcons,
-  YBInputField
+  YBInputField,
+  YBLabel,
+  mui
 } from '@yugabyte-ui-library/core';
-import { StyledHeader } from '../../components/DefaultComponents';
-import { CreateUniverseContext, CreateUniverseContextMethods } from '../../CreateUniverseContext';
+import { AvailabilityZoneField } from '../../fields';
+import { StyledContent, StyledHeader } from '../../components/DefaultComponents';
 import { api, QUERY_KEY } from '../../../../../features/universe/universe-form/utils/api';
+import { canSelectMultipleRegions } from '../../CreateUniverseUtils';
+import { CreateUniverseContext, CreateUniverseContextMethods } from '../../CreateUniverseContext';
 import { Region } from '../../../../../features/universe/universe-form/utils/dto';
 import { FaultToleranceType, ResilienceAndRegionsProps, ResilienceType } from './dtos';
 import {
@@ -24,8 +28,8 @@ import {
   RESILIENCE_TYPE,
   SINGLE_AVAILABILITY_ZONE
 } from '../../fields/FieldNames';
-import { AvailabilityZoneField } from '../../fields/availability-zone/AvailabilityZoneField';
-import { canSelectMultipleRegions } from '../../CreateUniverseUtils';
+
+const { Box } = mui;
 
 export const RegionSelection = () => {
   const [{ generalSettings }] = (useContext(
@@ -86,117 +90,121 @@ export const RegionSelection = () => {
       style={{
         display: 'flex',
         flexDirection: 'column',
-        gap: '24px',
         border: '1px solid #D7DEE4',
         borderRadius: '8px'
       }}
     >
       <StyledHeader>{t('regions')}</StyledHeader>
-      <YBAutoComplete
-        ybInputProps={{
-          placeholder: t('selectRegion'),
-          error: !!errors[REGIONS_FIELD],
-          helperText: errors[REGIONS_FIELD]?.message,
-          dataTestId: 'region-selection-autocomplete'
-        }}
-        dataTestId="region-selection-autocomplete-parent"
-        options={((regionsList as unknown) as Record<string, string>[]) ?? []}
-        getOptionLabel={(r) => (typeof r === 'string' ? r : r.name ?? '')}
-        sx={{ marginBottom: '24px', marginLeft: '24px', marginRight: '24px' }}
-        size="large"
-        loading={isFetching}
-        multiple={allowmultipleRegionsSelection}
-        onChange={(_, option) => {
-          const value = uniqBy(
-            Array.isArray(option) ? option : option === null ? [] : [option],
-            'name'
-          );
-          setValue(REGIONS_FIELD, (value as unknown) as Region[], { shouldValidate: true });
-        }}
-        value={
-          allowmultipleRegionsSelection
-            ? ((regions as unknown) as Record<string, string>[])
-            : isEmpty(regions)
-            ? null
-            : ((regions[0] as unknown) as Record<string, string>)
-        }
-      />
-      {resilienceType === ResilienceType.SINGLE_NODE && (
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'row',
-            gap: '8px',
-            marginBottom: '24px',
-            marginLeft: '24px',
-            marginRight: '24px'
-          }}
-        >
-          <AvailabilityZoneField
-            dataTestId="single-node-availability-zone"
-            name={SINGLE_AVAILABILITY_ZONE}
-            label={t('singleNode.availabilityZone')}
-            placeholder={t('singleNode.chooseAvailabilityZone')}
-            sx={{ width: '500px' }}
+      <StyledContent sx={{ gap: '24px' }}>
+        <Box style={{ display: 'flex', flexDirection: 'column' }}>
+          <YBLabel>{t('regions')}</YBLabel>
+          <YBAutoComplete
+            ybInputProps={{
+              placeholder: t('selectRegion'),
+              error: !!errors[REGIONS_FIELD],
+              helperText: errors[REGIONS_FIELD]?.message,
+              dataTestId: 'region-selection-autocomplete'
+            }}
+            dataTestId="region-selection-autocomplete-parent"
+            options={((regionsList as unknown) as Record<string, string>[]) ?? []}
+            getOptionLabel={(r) => (typeof r === 'string' ? r : r.name ?? '')}
+            sx={{ marginRight: '24px' }}
+            size="large"
+            loading={isFetching}
+            multiple={allowmultipleRegionsSelection}
+            onChange={(_, option) => {
+              const value = uniqBy(
+                Array.isArray(option) ? option : option === null ? [] : [option],
+                'name'
+              );
+              setValue(REGIONS_FIELD, (value as unknown) as Region[]);
+            }}
+            value={
+              allowmultipleRegionsSelection
+                ? ((regions as unknown) as Record<string, string>[])
+                : isEmpty(regions)
+                ? null
+                : ((regions[0] as unknown) as Record<string, string>)
+            }
           />
-          <YBInputField
-            dataTestId="single-node-count"
-            name={NODE_COUNT}
-            control={control}
-            label={t('singleNode.node')}
-            type="number"
-            sx={{ width: '100px' }}
-            disabled
-          />
-        </div>
-      )}
-      <YBMaps
-        mapHeight={345}
-        dataTestId="yb-maps-region-selection"
-        coordinates={mapCoordinates()}
-        initialBounds={[[37.3688, -122.0363]]}
-        mapContainerProps={{
-          scrollWheelZoom: false,
-          zoom: 2,
-          center: [0, 0]
-        }}
-      >
-        {
-          regions?.map((region: Region) => {
-            return (
-              <YBMapMarker
-                key={region.code}
-                position={[region.latitude, region.longitude]}
-                type={MarkerType.REGION_SELECTED}
-                tooltip={<>{region.name}</>}
-              />
-            );
-          }) as any
-        }
-        <>
-          {(regionsList ?? [])
-            .filter((region) => !regions?.some((r) => r.code === region.code))
-            .map((region) => (
-              <YBMapMarker
-                key={region.code}
-                position={[region.latitude, region.longitude]}
-                type={
-                  regions.includes(region)
-                    ? MarkerType.REGION_SELECTED
-                    : MarkerType.REGION_NOT_SELECTED
-                }
-                tooltip={<>{region.name}</>}
-              />
-            ))}
-        </>
-        {regions?.length > 0 ? (
-          <MapLegend
-            mapLegendItems={[<MapLegendItem icon={<>{icon.normal}</>} label={'Region'} />]}
-          />
-        ) : (
-          <span />
+        </Box>
+        {resilienceType === ResilienceType.SINGLE_NODE && (
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'row',
+              gap: '8px',
+              marginRight: '24px'
+            }}
+          >
+            <AvailabilityZoneField
+              dataTestId="single-node-availability-zone"
+              name={SINGLE_AVAILABILITY_ZONE}
+              label={t('singleNode.availabilityZone')}
+              placeholder={t('singleNode.chooseAvailabilityZone')}
+              sx={{ width: '500px' }}
+            />
+            <YBInputField
+              dataTestId="single-node-count"
+              name={NODE_COUNT}
+              control={control}
+              label={t('singleNode.node')}
+              type="number"
+              sx={{ width: '100px' }}
+              disabled
+            />
+          </div>
         )}
-      </YBMaps>
+        <Box sx={{ margin: '0px -25px -25px -25px' }}>
+          <YBMaps
+            mapHeight={345}
+            dataTestId="yb-maps-region-selection"
+            coordinates={mapCoordinates()}
+            initialBounds={[[37.3688, -122.0363]]}
+            mapContainerProps={{
+              scrollWheelZoom: false,
+              zoom: 2,
+              center: [0, 0]
+            }}
+          >
+            {
+              regions?.map((region: Region) => {
+                return (
+                  <YBMapMarker
+                    key={region.code}
+                    position={[region.latitude, region.longitude]}
+                    type={MarkerType.REGION_SELECTED}
+                    tooltip={<>{region.name}</>}
+                  />
+                );
+              }) as any
+            }
+            <>
+              {(regionsList ?? [])
+                .filter((region) => !regions?.some((r) => r.code === region.code))
+                .map((region) => (
+                  <YBMapMarker
+                    key={region.code}
+                    position={[region.latitude, region.longitude]}
+                    type={
+                      regions.includes(region)
+                        ? MarkerType.REGION_SELECTED
+                        : MarkerType.REGION_NOT_SELECTED
+                    }
+                    tooltip={<>{region.name}</>}
+                  />
+                ))}
+            </>
+            {regions?.length > 0 ? (
+              <MapLegend
+                mapLegendItems={[<MapLegendItem icon={<>{icon.normal}</>} label={'Region'} />]}
+              />
+            ) : (
+              <span />
+            )}
+          </YBMaps>
+        </Box>
+      </StyledContent>
     </div>
   );
 };

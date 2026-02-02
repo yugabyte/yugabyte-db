@@ -230,6 +230,9 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     public boolean useNewTserverDiskSize;
     public boolean useNewMasterDiskSize;
     public YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState;
+    // If true, we'll use the existing server cert instead of a new one. Used for cert-manager cert
+    // rotate task.
+    public boolean useExistingServerCert = false;
 
     // Master addresses in multi-az case (to have control over different deployments).
     public String masterAddresses = null;
@@ -1428,7 +1431,9 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
           "otelCollector",
           otelCollectorConfigGenerator.getOtelHelmValues(
               auditLogConfig,
-              GFlagsUtil.getLogLinePrefix(tserverGFlags.get(GFlagsUtil.YSQL_PG_CONF_CSV))));
+              GFlagsUtil.getLogLinePrefix(
+                  primaryClusterIntent.queryLogConfig,
+                  tserverGFlags.get(GFlagsUtil.YSQL_PG_CONF_CSV))));
     }
 
     if (!tserverGFlags.isEmpty()) {
@@ -1847,6 +1852,9 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
 
     certManager.put("enabled", true);
     certManager.put("bootstrapSelfsigned", false);
+    if (taskParams().useExistingServerCert) {
+      certManager.put("useExistingServerCertificate", true);
+    }
 
     if (!StringUtils.isEmpty(certManagerIssuerKind)
         && !StringUtils.isEmpty(certManagerIssuerName)) {

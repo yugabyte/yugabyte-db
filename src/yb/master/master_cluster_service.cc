@@ -57,6 +57,7 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
                          ListTabletServersResponsePB* resp,
                          rpc::RpcContext rpc) override {
     SCOPED_LEADER_SHARED_LOCK(l, server_->catalog_manager_impl());
+    resp->set_master_uuid(server_->permanent_uuid());
     if (!l.CheckIsInitializedAndIsLeaderOrRespond(resp, &rpc)) {
       return;
     }

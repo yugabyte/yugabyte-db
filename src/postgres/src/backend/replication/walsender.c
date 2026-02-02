@@ -1176,16 +1176,6 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 
 	Assert(!MyReplicationSlot);
 
-	/*
-	 * YB: Exporting a snapshot is not supported yet. So we change the default
-	 * for YSQL. A valid default is needed because drivers such as the Java
-	 * JDBC driver do not allow chosing the snapshot action during creation of
-	 * a replication slot. The only action available to the user is the default
-	 * action, so it must work.
-	 */
-	if (IsYugaByteEnabled())
-		snapshot_action = CRS_USE_SNAPSHOT;
-
 	parseCreateReplSlotOptions(cmd, &reserve_wal, &snapshot_action, &two_phase,
 							   &lsn_type, &yb_ordering_mode);
 
@@ -1226,9 +1216,6 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 		}
 	}
 
-	const bool	yb_is_pg_export_snapshot_enabled =
-		*YBCGetGFlags()->ysql_enable_pg_export_snapshot;
-
 	if (cmd->kind == REPLICATION_KIND_LOGICAL)
 	{
 		LogicalDecodingContext *ctx;
@@ -1252,7 +1239,7 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 			need_full_snapshot = true;
 		}
 		else if (snapshot_action == CRS_USE_SNAPSHOT &&
-				 (!IsYugaByteEnabled() || yb_is_pg_export_snapshot_enabled))
+				 (!IsYugaByteEnabled() || yb_enable_pg_export_snapshot))
 		{
 			if (IsYugaByteEnabled())
 			{
@@ -1339,7 +1326,7 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 						 (unsigned long long) yb_consistent_snapshot_time);
 				snapshot_name = pstrdup(yb_consistent_snapshot_time_string);
 
-				if (yb_is_pg_export_snapshot_enabled)
+				if (yb_enable_pg_export_snapshot)
 				{
 					/*
 					 * Do the equivalent of PG logic for CRS_USE_SNAPSHOT (in the else branch below) i.e.,

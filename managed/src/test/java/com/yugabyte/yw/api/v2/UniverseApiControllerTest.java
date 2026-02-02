@@ -57,6 +57,7 @@ public class UniverseApiControllerTest extends UniverseTestBase {
               // ysql
               universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL = true;
               universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQLAuth = true;
+              universe.getUniverseDetails().getPrimaryCluster().userIntent.dedicatedNodes = true;
               universe.getUniverseDetails().getPrimaryCluster().userIntent.ysqlPassword =
                   "password#1";
               // regionList

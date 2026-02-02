@@ -3,21 +3,23 @@ import { mui } from '@yugabyte-ui-library/core';
 const { Box, styled, Typography, Link } = mui;
 
 export const StyledPanel = styled('div')(({ theme }) => ({
+  width: '100%',
   padding: '0',
   backgroundColor: '#fff',
   borderRadius: '8px',
-  border: `1px solid ${theme.palette.grey[200]}`,
-  width: '100%'
+  border: `1px solid ${theme.palette.grey[200]}`
 }));
 
 export const StyledHeader = styled(Typography)(({ theme }) => ({
   padding: `24px`,
   fontSize: 15,
-  color: theme.palette.grey[900]
+  color: theme.palette.grey[900],
+  fontWeight: 600,
+  lineHeight: '16px'
 }));
 
 export const StyledContent = styled('div')(({ theme }) => ({
-  padding: `0px 24px 24px 24px`,
+  padding: `8px 24px 24px 24px`,
   display: 'flex',
   gap: theme.spacing(4),
   flexDirection: 'column'

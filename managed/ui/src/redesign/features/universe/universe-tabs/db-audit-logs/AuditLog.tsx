@@ -31,10 +31,10 @@ import { api, telemetryProviderQueryKey } from '@app/redesign/helpers/api';
 import { auditLogStyles } from './utils/AuditLogStyles';
 //icons
 import ArrowDropDownIcon from '@material-ui/icons/ArrowDropDown';
-import EditLogIcon from '../../../../assets/edit.svg';
-import DeleteIcon from '../../../../assets/delete.svg';
-import AuditBackup from '../../../../assets/backup.svg';
-import DisableExportIcon from '../../../../assets/disable_export.svg';
+import EditLogIcon from '../../../../assets/edit.svg?img';
+import DeleteIcon from '../../../../assets/delete.svg?img';
+import AuditBackup from '../../../../assets/backup.svg?img';
+import DisableExportIcon from '../../../../assets/disable_export.svg?img';
 
 interface AuditLogProps {
   universeData: Universe;

@@ -12,7 +12,7 @@ export const RRBreadCrumbs = ({ groupTitle, subTitle }: RRBreadCrumbsProps) => {
         fontSize: '18px',
         fontWeight: '600',
         gap: '12px',
-        padding: '24px 8px 40px 8px'
+        padding: '24px 8px 16px 8px'
       }}
     >
       <span style={{ color: '#97A5B0' }}>{groupTitle}</span>

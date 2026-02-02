@@ -265,5 +265,7 @@ void TEST_SetupConnectivity(rpc::Messenger* messenger, size_t index);
 // servers.
 void TEST_Isolate(rpc::Messenger* messenger);
 
+std::string MakeServerLogPrefix(const std::string& uuid);
+
 } // namespace server
 } // namespace yb

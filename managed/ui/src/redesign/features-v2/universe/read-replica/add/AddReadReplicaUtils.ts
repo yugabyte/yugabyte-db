@@ -70,6 +70,20 @@ export const transformSpecificGFlagToFlagsArray = (specificGFlags: Record<string
 export const getInitialValues = (data: UniverseRespResponse): Partial<AddRRContextProps> => {
   const primaryClusterSpec = _.get(data, 'spec.clusters[0]');
   const storageSpec = primaryClusterSpec?.node_spec.storage_spec;
+  const instanceSettings = {
+    inheritPrimaryInstance: true,
+    arch: data?.info?.arch,
+    instanceType: primaryClusterSpec?.node_spec.instance_type,
+    useSpotInstance: primaryClusterSpec?.use_spot_instance,
+    deviceInfo: {
+      volumeSize: storageSpec?.volume_size,
+      numVolumes: storageSpec?.num_volumes,
+      diskIops: storageSpec?.disk_iops,
+      throughput: storageSpec?.throughput,
+      storageClass: storageSpec?.storage_class,
+      storageType: storageSpec?.storage_type
+    }
+  };
   return {
     databaseSettings: {
       gFlags: primaryClusterSpec?.specificGFlags
@@ -81,20 +95,8 @@ export const getInitialValues = (data: UniverseRespResponse): Partial<AddRRConte
       customizeRRFlags: false
     },
     ...(data?.info?.arch && {
-      instanceSettings: {
-        inheritPrimaryInstance: true,
-        arch: data?.info?.arch,
-        instanceType: primaryClusterSpec?.node_spec.instance_type,
-        useSpotInstance: primaryClusterSpec?.use_spot_instance,
-        deviceInfo: {
-          volumeSize: storageSpec?.volume_size,
-          numVolumes: storageSpec?.num_volumes,
-          diskIops: storageSpec?.disk_iops,
-          throughput: storageSpec?.throughput,
-          storageClass: storageSpec?.storage_class,
-          storageType: storageSpec?.storage_type
-        }
-      }
+      instanceSettings,
+      instanceSettingsInitial: instanceSettings
     })
   };
 };

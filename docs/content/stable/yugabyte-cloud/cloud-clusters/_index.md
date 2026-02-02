@@ -127,7 +127,7 @@ For Connection Pooling metrics, see [YSQL Ops metrics](../cloud-monitor/overview
   {{<index/item
     title="Change Data Capture"
     body="Capture changes made to data in the database."
-    href="change-data-capture/"
+    href="aeon-cdc/"
     icon="fa-thin fa-arrows-rotate">}}
 
 {{</index/block>}}

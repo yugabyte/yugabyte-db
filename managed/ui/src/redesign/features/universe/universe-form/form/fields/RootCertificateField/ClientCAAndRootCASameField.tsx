@@ -5,7 +5,7 @@ import { Box } from "@material-ui/core";
 import { YBLabel, YBToggleField, YBTooltip } from "@app/redesign/components";
 import { CloudType, UniverseFormData } from "../../../utils/dto";
 import { PROVIDER_FIELD, ROOT_CA_CLIENT_CA_SAME_FIELD } from "../../../utils/constants";
-import InfoMessageIcon from '../../../../../../assets/info-message.svg';
+import InfoMessageIcon from '../../../../../../assets/info-message.svg?img';
 
 interface ClientCaAndRootCASameFieldProps {
     disabled?: boolean;

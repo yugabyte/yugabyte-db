@@ -51,6 +51,8 @@ bool yb_enable_add_column_missing_default = true;
 
 bool yb_enable_replication_commands = true;
 
+bool yb_enable_pg_export_snapshot = true;
+
 bool yb_enable_replication_slot_consumption = true;
 
 bool yb_allow_replication_slot_lsn_types = true;
@@ -155,3 +157,5 @@ bool yb_disable_pg_snapshot_mgmt_in_repeatable_read = false;
 bool enable_object_locking_infra = true;
 
 bool yb_fallback_to_legacy_catalog_read_time = true;
+
+bool yb_enable_ddl_savepoint_infra = true;

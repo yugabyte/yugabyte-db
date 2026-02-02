@@ -819,11 +819,10 @@ class AbstractCloud(AbstractCommandParser):
             raise YBOpsRecoverableError(
                 'Failed to read /etc/yb-boot-script-complete {}\nSTDOUT: {}\nSTDERR: {}\n'.format(
                     args.search_pattern, stdout, stderr))
-        if len(stdout) > 0:
-            if stdout[0].rstrip(os.linesep) != args.boot_script_token:
-                raise YBOpsRuntimeError(
-                    '/etc/yb-boot-script-complete on {} has incorrect token {}'.format(
-                        args.search_pattern, stdout))
+        if stdout and stdout.strip(os.linesep) != args.boot_script_token:
+            raise YBOpsRuntimeError(
+                '/etc/yb-boot-script-complete on {} has incorrect token {}'.format(
+                    args.search_pattern, stdout))
 
     def get_console_output(self, args):
         return ''

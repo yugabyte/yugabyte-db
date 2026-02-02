@@ -21,7 +21,6 @@
 #include <vector>
 
 #include <gtest/gtest_prod.h>
-#include <rapidjson/document.h>
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
@@ -29,7 +28,7 @@
 
 #include "yb/util/curl_util.h"
 #include "yb/util/env.h"
-#include "yb/util/jsonreader.h"
+#include "yb/util/json_document.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/status_fwd.h"
@@ -193,35 +192,28 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
     RETURN_NOT_OK(curl.FetchURL(url, &dst));
 
     // Parse the results, beginning with the top-level entity array.
-    JsonReader r(dst.ToString());
-    RETURN_NOT_OK(r.Init());
-    std::vector<const rapidjson::Value*> entities;
-    RETURN_NOT_OK(r.ExtractObjectArray(r.root(), NULL, &entities));
-    for (const rapidjson::Value* entity : entities) {
+    JsonDocument doc;
+    auto root = VERIFY_RESULT(doc.Parse(dst.ToString()));
+    for (const auto& entity : VERIFY_RESULT(root.GetArray())) {
       // Find the desired entity.
-      std::string type;
-      RETURN_NOT_OK(r.ExtractString(entity, "type", &type));
+      auto type = VERIFY_RESULT(entity["type"].GetString());
       if (type != entity_proto_name) {
         continue;
       }
       if (entity_id) {
-        std::string id;
-        RETURN_NOT_OK(r.ExtractString(entity, "id", &id));
+        auto id = VERIFY_RESULT(entity["id"].GetString());
         if (id != entity_id) {
           continue;
         }
       }
 
       // Find the desired metric within the entity.
-      std::vector<const rapidjson::Value*> metrics;
-      RETURN_NOT_OK(r.ExtractObjectArray(entity, "metrics", &metrics));
-      for (const rapidjson::Value* metric : metrics) {
-        std::string name;
-        RETURN_NOT_OK(r.ExtractString(metric, "name", &name));
+      for (const auto& metric : VERIFY_RESULT(entity["metrics"].GetArray())) {
+        auto name = VERIFY_RESULT(metric["name"].GetString());
         if (name != metric_proto_name) {
           continue;
         }
-        return ExtractMetricValue<ValueType>(r, metric, value_field);
+        return ExtractMetricValue<ValueType>(metric[value_field]);
       }
     }
     std::string msg;
@@ -237,8 +229,7 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   }
 
   template <class ValueType>
-  static Result<ValueType> ExtractMetricValue(
-      const JsonReader& r, const rapidjson::Value* object, const char* field);
+  static Result<ValueType> ExtractMetricValue(const JsonValue& metric_value);
 
   // Get the current value of the flag for the given daemon.
   Result<std::string> GetFlag(const std::string& flag);

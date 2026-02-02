@@ -61,7 +61,7 @@ public class TestPgStatStatements extends BasePgExplainAnalyzeTest {
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
-    appendToYsqlPgConf(flagMap, "yb_enable_pg_stat_statements_rpc_stats=true");
+    appendToYsqlPgConf(flagMap, "yb_enable_pg_stat_statements_docdb_metrics=true");
     return flagMap;
   }
 

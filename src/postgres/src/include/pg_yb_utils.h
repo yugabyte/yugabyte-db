@@ -791,6 +791,21 @@ extern bool	yb_enable_parallel_scan_system;
  */
 extern bool yb_test_make_all_ddl_statements_incrementing;
 
+/*
+ * If set to true, all DDL statements will cause the catalog version to increment.
+ * Unlike yb_test_make_all_ddl_statements_incrementing, this controls ONLY the
+ * version incrementing behavior.
+ */
+extern bool yb_always_increment_catalog_version_on_ddl;
+
+/*
+ * If set to true, negative catcache entries are enabled. A negative cache entry
+ * is created when a lookup returns no result. Unlike
+ * yb_test_make_all_ddl_statements_incrementing, this controls ONLY the negative
+ * caching behavior.
+ */
+extern bool yb_enable_negative_catcache_entries;
+
 typedef struct YBUpdateOptimizationOptions
 {
 	bool		has_infra;
@@ -822,9 +837,14 @@ extern bool yb_xcluster_automatic_mode_target_ddl;
 extern bool yb_user_ddls_preempt_auto_analyze;
 
 /*
-* If true, enable RPC execution time stats for pg_stat_statements.
+ * If true, enable RPC execution time stats for pg_stat_statements.
  */
 extern bool yb_enable_pg_stat_statements_rpc_stats;
+
+/*
+ * If true, enable DocDB metrics collection for pg_stat_statements.
+ */
+extern bool yb_enable_pg_stat_statements_docdb_metrics;
 
 /*
  * See also ybc_util.h which contains additional such variable declarations for
@@ -1421,7 +1441,7 @@ extern bool YbSkipPgSnapshotManagement();
 extern YbOptionalReadPointHandle YbBuildCurrentReadPointHandle();
 extern void YbUseSnapshotReadTime(uint64_t read_time);
 extern YbOptionalReadPointHandle YbRegisterSnapshotReadTime(uint64_t read_time);
-extern YbOptionalReadPointHandle YbResetTransactionReadPoint();
+extern YbOptionalReadPointHandle YbResetTransactionReadPoint(bool is_catalog_snapshot);
 
 extern bool YbUseFastBackwardScan();
 

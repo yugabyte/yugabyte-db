@@ -407,8 +407,8 @@ void CDCSDKConsumptionConsistentChangesTest::TestConcurrentConsumptionFromMultip
 
 TEST_F(
     CDCSDKConsumptionConsistentChangesTest,
-    TestParallelConsumptionFromMultipleVWALWithUseSnapshot) {
-  TestConcurrentConsumptionFromMultipleVWAL(CDCSDKSnapshotOption::USE_SNAPSHOT);
+    TestParallelConsumptionFromMultipleVWALWithExportSnapshot) {
+  TestConcurrentConsumptionFromMultipleVWAL(CDCSDKSnapshotOption::EXPORT_SNAPSHOT);
 }
 
 TEST_F(
@@ -3701,7 +3701,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCreationOfSlotOnNewDBAfterUpg
   auto table_2 = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName_2, "t1"));
   auto conn_2 = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName_2));
   xrepl::StreamId stream_id_2 = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(
-      "test_slot", CDCSDKSnapshotOption::USE_SNAPSHOT, false, kNamespaceName_2));
+      "test_slot", CDCSDKSnapshotOption::EXPORT_SNAPSHOT, false, kNamespaceName_2));
 
   auto dynamic_table_1 = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "test_table_2"));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> dynamic_tablets_1;
@@ -3844,7 +3844,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestFailureCreatingStreamsOfDiffe
   ASSERT_EQ(tablets_2.size(), 1);
 
   ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(
-      "test_slot", CDCSDKSnapshotOption::USE_SNAPSHOT, false /*verify_snapshot_name*/,
+      "test_slot", CDCSDKSnapshotOption::EXPORT_SNAPSHOT, false /*verify_snapshot_name*/,
       kNamespaceName));
   // Since a replication slot is created on kNamespace, creation of old model stream should fail.
   ASSERT_NOK(CreateDBStream(CDCCheckpointType::EXPLICIT, CDCRecordType::CHANGE, kNamespaceName));
@@ -3853,7 +3853,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestFailureCreatingStreamsOfDiffe
       CreateDBStream(CDCCheckpointType::EXPLICIT, CDCRecordType::CHANGE, kNamespaceName_2));
   // Since a old model stream is created on kNamespace_2, creation of replication slot should fail.
   ASSERT_NOK(CreateConsistentSnapshotStreamWithReplicationSlot(
-      "test_slot_2", CDCSDKSnapshotOption::USE_SNAPSHOT, false /*verify_snapshot_name*/,
+      "test_slot_2", CDCSDKSnapshotOption::EXPORT_SNAPSHOT, false /*verify_snapshot_name*/,
       kNamespaceName_2));
 }
 
@@ -5324,7 +5324,6 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestHiddenTableDeletesAfterComple
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestHiddenTableDeletesOnceExpired) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_update_restart_time_when_nothing_to_stream) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 5 * 1000;
 
@@ -5351,72 +5350,64 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestHiddenTableDeletesOnceExpired
       "DROP TABLE $0"};
 
   ASSERT_OK(WriteRowsHelper(0, 1, &test_cluster_, true, 2, table.table_name().c_str()));
-  // Poll this written row's records.
+
+  // Consume the record just written and acknowledge it. This will set the restart time equal to its
+  // commit time.
   auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
   ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 3);  // BEGIN, INSERT, COMMIT
   ASSERT_EQ(change_resp.cdc_sdk_proto_records().Get(2).row_message().op(), RowMessage_Op_COMMIT);
   uint64_t commit_lsn = change_resp.cdc_sdk_proto_records().Get(2).row_message().pg_lsn();
   ASSERT_OK(UpdateAndPersistLSN(stream_id, commit_lsn, commit_lsn));
 
+  // In each iteration of this loop, we perform a DDL which will cause its tablet to be hidden (and
+  // conditionally create new tablet). We will no longer call GetConsistentChanges, meaning that the
+  // restart time will always be behind the hide time of this tablet (DDL's commit time). At the
+  // end of the iteration we assert that the hidden tablet has been deleted due to expiry (We dont
+  // keep a tablet hidden for more than FLAGS_cdc_intent_retention_ms). We will also assert that the
+  // new tablet, if created, is not deleted by this logic.
   for (int i = 0; i < static_cast<int>(cmds.size()); i++) {
     auto old_table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test_table"));
     google::protobuf::RepeatedPtrField<master::TabletLocationsPB> old_tablets;
     ASSERT_OK(test_client()->GetTablets(old_table, 0, &old_tablets, nullptr));
     ASSERT_EQ(old_tablets.size(), 1);
 
+    // Execute the DDL.
     ASSERT_OK(conn.ExecuteFormat(cmds[i], old_table.table_name()));
 
-    auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
-    // For all commands other than TRUNCATE and DROP, we expect 1 DDL record to be present.
-    ASSERT_EQ(
-        change_resp.cdc_sdk_proto_records_size(), (cmds[i].find("TRUNCATE TABLE") == string::npos &&
-                                                   cmds[i].find("DROP TABLE") == string::npos));
-
-    // We won't poll old table anymore. Thus after FLAGS_cdc_intent_retention_ms
-    // milliseconds, the old table will be considered expired and so becomes elligible for deletion.
-    // In the next run of hidden tablet deletion task, the old table will then get deleted.
-    // Meanwhile, for all cases where new table gets created (i.e cmds other than 'DROP TABLE'), we
-    // will keep polling new table so that it doesn't get expired too.
     YBTableName new_table;
     google::protobuf::RepeatedPtrField<master::TabletLocationsPB> new_tablets;
     if (cmds[i].find("DROP TABLE") == string::npos) {
-      // Updating publication to only include new table.
       new_table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test_table"));
       ASSERT_OK(test_client()->GetTablets(new_table, 0, &new_tablets, nullptr));
       ASSERT_EQ(new_tablets.size(), 1);
-      ASSERT_OK(UpdatePublicationTableList(stream_id, {new_table.table_id()}));
     }
 
     ASSERT_OK(WaitFor(
         [&]() -> Result<bool> {
+          SleepFor(MonoDelta::FromSeconds(1));
+          auto old_tablets_deleted =
+              test_client()
+                  ->GetTabletsFromTableId(old_table.table_id(), 0, &old_tablets)
+                  .IsNotFound();
+
+          auto new_tablets_deleted = false;
           if (cmds[i].find("DROP TABLE") == string::npos) {
-            change_resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
-            if (change_resp.cdc_sdk_proto_records_size() > 0) {
-              SCHECK_EQ(
-                  change_resp.cdc_sdk_proto_records_size(), 3, IllegalState,
-                  Format(
-                      "Expected BEGIN, INSERT, COMMIT, got $0",
-                      change_resp.cdc_sdk_proto_records_size()));
-              SCHECK_EQ(
-                  change_resp.cdc_sdk_proto_records().Get(2).row_message().op(),
-                  RowMessage_Op_COMMIT, IllegalState, "Expected COMMIT");
-              commit_lsn = change_resp.cdc_sdk_proto_records().Get(2).row_message().pg_lsn();
-              RETURN_NOT_OK(UpdateAndPersistLSN(stream_id, commit_lsn, commit_lsn));
-            }
+            RETURN_NOT_OK(
+                test_client()->GetTabletsFromTableId(new_table.table_id(), 0, &new_tablets));
+            new_tablets_deleted = (new_tablets.size() == 0);
           }
 
-          SleepFor(MonoDelta::FromSeconds(1));
-          return test_client()
-              ->GetTabletsFromTableId(old_table.table_id(), 0, &old_tablets)
-              .IsNotFound();
+          return old_tablets_deleted && !new_tablets_deleted;
         },
         MonoDelta::FromSeconds(60),
         Format("Timed out waiting for hidden table $0 to be deleted", old_table.table_name())));
+
     auto expected_tablets_in_cdc_state_table =
         new_table.empty()
             ? std::unordered_set<TabletId>{kCDCSDKSlotEntryTabletId}
             : std::unordered_set<TabletId>{new_tablets[0].tablet_id(), kCDCSDKSlotEntryTabletId};
     CheckTabletsInCDCStateTable(expected_tablets_in_cdc_state_table, test_client(), stream_id);
+
     auto expected_tables_in_stream_metadata =
         new_table.empty() ? std::unordered_set<std::string>{}
                           : std::unordered_set<std::string>{new_table.table_id()};

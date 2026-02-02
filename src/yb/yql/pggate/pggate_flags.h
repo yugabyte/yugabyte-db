@@ -41,7 +41,6 @@ DECLARE_bool(ysql_suppress_unsafe_alter_notice);
 
 DECLARE_bool(ysql_beta_features);
 DECLARE_bool(ysql_beta_feature_tablegroup);
-DECLARE_bool(ysql_beta_feature_pg_stat_monitor);
 DECLARE_bool(ysql_colocate_database_by_default);
 DECLARE_bool(ysql_beta_feature_tablespace_alteration);
 DECLARE_bool(ysql_serializable_isolation_for_ddl_txn);

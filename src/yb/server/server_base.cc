@@ -144,8 +144,7 @@ using std::stringstream;
 using std::vector;
 using strings::Substitute;
 
-namespace yb {
-namespace server {
+namespace yb::server {
 
 namespace {
 
@@ -813,5 +812,8 @@ void TEST_Isolate(rpc::Messenger* messenger) {
   }
 }
 
-} // namespace server
-} // namespace yb
+std::string MakeServerLogPrefix(const std::string& uuid) {
+  return Format("P $0: ", uuid);
+}
+
+} // namespace yb::server

@@ -138,22 +138,21 @@ DEFINE_UNKNOWN_bool(tablet_do_compaction_cleanup_for_intents, true,
 DEPRECATE_FLAG(int32, tablet_bloom_block_size, "06_2023");
 DEPRECATE_FLAG(double, tablet_bloom_target_fp_rate, "06_2023");
 
-METRIC_DEFINE_entity(table);
 METRIC_DEFINE_entity(tablet);
 
 DEPRECATE_FLAG(int32, tablet_rocksdb_ops_quiet_down_timeout_ms, "04_2023");
 
 DEFINE_UNKNOWN_int32(intents_flush_max_delay_ms, 2000,
-             "Max time to wait for regular db to flush during flush of intents. "
-             "After this time flush of regular db will be forced.");
+    "Max time to wait for regular db to flush during flush of intents. "
+    "After this time flush of regular db will be forced.");
 
 DEFINE_UNKNOWN_int32(num_raft_ops_to_force_idle_intents_db_to_flush, 1000,
-             "When writes to intents RocksDB are stopped and the number of Raft operations after "
-             "the last write to the intents RocksDB "
-             "is greater than this value, the intents RocksDB would be requested to flush.");
+    "When writes to intents RocksDB are stopped and the number of Raft operations after "
+    "the last write to the intents RocksDB "
+    "is greater than this value, the intents RocksDB would be requested to flush.");
 
-DEFINE_UNKNOWN_bool(delete_intents_sst_files, true,
-            "Delete whole intents .SST files when possible.");
+DEFINE_RUNTIME_bool(delete_intents_sst_files, true,
+    "Delete whole intents .SST files when possible.");
 
 DEFINE_RUNTIME_uint64(backfill_index_write_batch_size, 128,
     "The batch size for backfilling the index.");
@@ -191,13 +190,13 @@ DEFINE_RUNTIME_bool(dump_metrics_to_trace, false,
 DEFINE_RUNTIME_bool(ysql_analyze_dump_metrics, true,
     "Whether to return changed metrics for YSQL queries in RPC response.");
 
-DEFINE_UNKNOWN_bool(cleanup_intents_sst_files, true,
+DEFINE_RUNTIME_bool(cleanup_intents_sst_files, true,
     "Cleanup intents files that are no more relevant to any running transaction.");
 
 DEFINE_UNKNOWN_int32(ysql_transaction_abort_timeout_ms, 15 * 60 * 1000,  // 15 minutes
-             "Max amount of time we can wait for active transactions to abort on a tablet "
-             "after DDL (eg. DROP TABLE) is executed. This deadline is same as "
-             "unresponsive_ts_rpc_timeout_ms");
+    "Max amount of time we can wait for active transactions to abort on a tablet "
+    "after DDL (eg. DROP TABLE) is executed. This deadline is same as "
+    "unresponsive_ts_rpc_timeout_ms");
 
 DEFINE_test_flag(int32, backfill_sabotage_frequency, 0,
     "If set to value greater than 0, every nth row will be corrupted in the backfill process "
@@ -209,25 +208,26 @@ DEFINE_test_flag(int32, backfill_drop_frequency, 0,
     "to create an inconsistency between the index and the indexed tables where n is the "
     "input parameter given.");
 
-DEFINE_UNKNOWN_bool(tablet_enable_ttl_file_filter, false,
-            "Enables compaction to directly delete files that have expired based on TTL, "
-            "rather than removing them via the normal compaction process.");
+DEFINE_NON_RUNTIME_bool(tablet_enable_ttl_file_filter, false,
+    "Enables compaction to directly delete files that have expired based on TTL, "
+    "rather than removing them via the normal compaction process.");
 
-DEFINE_UNKNOWN_bool(enable_schema_packing_gc, true, "Whether schema packing GC is enabled.");
+DEFINE_RUNTIME_bool(enable_schema_packing_gc, true,
+    "Whether schema packing GC is enabled.");
 
 DEFINE_RUNTIME_bool(batch_tablet_metrics_update, true,
-                    "Batch update of rocksdb and tablet metrics to once per request rather than "
-                    "updating immediately.");
+    "Batch update of rocksdb and tablet metrics to once per request rather than "
+    "updating immediately.");
 
 DEFINE_test_flag(int32, slowdown_backfill_by_ms, 0,
-                 "If set > 0, slows down the backfill process by this amount.");
+    "If set > 0, slows down the backfill process by this amount.");
 
 DEFINE_test_flag(uint64, backfill_paging_size, 0,
-                 "If set > 0, returns early after processing this number of rows.");
+    "If set > 0, returns early after processing this number of rows.");
 
 DEFINE_test_flag(bool, tablet_verify_flushed_frontier_after_modifying, false,
-                 "After modifying the flushed frontier in RocksDB, verify that the restored value "
-                 "of it is as expected. Used for testing.");
+    "After modifying the flushed frontier in RocksDB, verify that the restored value "
+    "of it is as expected. Used for testing.");
 
 DEFINE_test_flag(bool, docdb_log_write_batches, false,
                  "Dump write batches being written to RocksDB");
@@ -236,40 +236,40 @@ DEFINE_test_flag(string, file_to_dump_docdb_writes, "",
     "Dump write batches being written to RocksDB to a file");
 
 DEFINE_NON_RUNTIME_bool(export_intentdb_metrics, true,
-                    "Dump intentsdb statistics to prometheus metrics");
+    "Dump intentsdb statistics to prometheus metrics");
 
 DEFINE_test_flag(bool, pause_before_full_compaction, false,
-                 "Pause before triggering full compaction.");
+    "Pause before triggering full compaction.");
 
 DEFINE_test_flag(bool, disable_adding_user_frontier_to_sst, false,
-                 "Prevents adding the UserFrontier to SST file in order to mimic older files.");
+    "Prevents adding the UserFrontier to SST file in order to mimic older files.");
 
 DEFINE_test_flag(bool, skip_post_split_compaction, false,
-                 "Skip processing post split compaction.");
+    "Skip processing post split compaction.");
 
 DEFINE_RUNTIME_uint64(post_split_compaction_input_size_threshold_bytes, 256_MB,
-             "Max size of a files to be compacted within one iteration. "
-             "Set to 0 to compact all files at once during post split compaction.");
+    "Max size of a files to be compacted within one iteration. "
+    "Set to 0 to compact all files at once during post split compaction.");
 
 DEFINE_test_flag(bool, pause_before_getting_safe_time, false,
-                 "Pause before doing Tablet::DoGetSafeTime");
+    "Pause before doing Tablet::DoGetSafeTime");
 
 DEFINE_RUNTIME_bool(tablet_exclusive_post_split_compaction, false,
-       "Enables exclusive mode for post-split compaction for a tablet: all scheduled and "
-       "unscheduled compactions are run before post-split compaction and no other compaction "
-       "will get scheduled during post-split compaction.");
+    "Enables exclusive mode for post-split compaction for a tablet: all scheduled and "
+    "unscheduled compactions are run before post-split compaction and no other compaction "
+    "will get scheduled during post-split compaction.");
 
 DEFINE_RUNTIME_bool(tablet_exclusive_full_compaction, false,
-       "Enables exclusive mode for any non-post-split full compaction for a tablet: all "
-       "scheduled and unscheduled compactions are run before the full compaction and no other "
-       "compactions will get scheduled during a full compaction.");
+    "Enables exclusive mode for any non-post-split full compaction for a tablet: all "
+    "scheduled and unscheduled compactions are run before the full compaction and no other "
+    "compactions will get scheduled during a full compaction.");
 
 DEFINE_RUNTIME_bool(tablet_split_use_middle_user_key, true,
-       "Consider only user keys while determining middle key for tablet split");
+    "Consider only user keys while determining middle key for tablet split");
 
 DEFINE_RUNTIME_uint32(cdcsdk_retention_barrier_no_revision_interval_secs, 120,
-                     "Duration for which CDCSDK retention barriers cannot be revised from the "
-                     "cdcsdk_block_barrier_revision_start_time");
+    "Duration for which CDCSDK retention barriers cannot be revised from the "
+    "cdcsdk_block_barrier_revision_start_time");
 
 DEFINE_RUNTIME_bool(ycql_rocksdb_use_delta_encoding, true,
     "Whether to use delta encoding to compress keys inside data blocks for YCQL.");
@@ -299,27 +299,31 @@ DEFINE_validator(ysql_regular_tablets_data_block_key_value_encoding,
 // we're writing a mixture of SST files with and without UserFrontiers, to ensure that we're
 // not attempting to read the UserFrontier from the MemTable in either case.
 DEFINE_test_flag(bool, disable_getting_user_frontier_from_mem_table, false,
-                 "Prevents checking the MemTable for a UserFrontier for test cases where we are "
-                 "generating SST files without UserFrontiers.");
+    "Prevents checking the MemTable for a UserFrontier for test cases where we are "
+    "generating SST files without UserFrontiers.");
 
 DEFINE_test_flag(bool, disable_adding_last_compaction_to_tablet_metadata, false,
-                 "Prevents adding the last full compaction time to tablet metadata upon "
-                 "full compaction completion.");
+    "Prevents adding the last full compaction time to tablet metadata upon "
+    "full compaction completion.");
 
 DEFINE_test_flag(uint64, inject_sleep_before_applying_write_batch_ms, 0,
-                 "Sleep before applying write batches");
+    "Sleep before applying write batches");
+
 DEFINE_test_flag(uint64, inject_sleep_before_applying_intents_ms, 0,
-                 "Sleep before applying intents to docdb after transaction commit");
+    "Sleep before applying intents to docdb after transaction commit");
 
 DEFINE_test_flag(bool, skip_remove_intent, false,
-                 "If true, remove intent will be skipped");
+    "If true, remove intent will be skipped");
 
 DEFINE_test_flag(bool, simulate_load_txn_for_cdc, false,
-                 "If true GetMinStartHTRunningTxnsForCDCProducer returns kInvalid");
+    "If true GetMinStartHTRunningTxnsForCDCProducer returns kInvalid");
 
 DEFINE_RUNTIME_bool(advance_intents_flushed_op_id_to_match_regular, true,
-                    "If true, the flushed op id of intents db may be updated to match that of "
-                    "regular db during flushing regular db memtable");
+    "If true, the flushed op id of intents db may be updated to match that of "
+    "regular db during flushing regular db memtable");
+
+DEFINE_RUNTIME_bool(vector_index_include_into_post_split_compaction, true,
+    "Whether to include vector indexes into tablet's post split compaction");
 
 DECLARE_bool(cdc_immediate_transaction_cleanup);
 DECLARE_bool(consistent_restore);
@@ -727,18 +731,14 @@ Tablet::Tablet(const TabletInitData& data)
                         << metadata_->primary_table_schema_version();
 
   if (data.metric_registry) {
-    MetricEntity::AttributeMap attrs;
     // TODO(KUDU-745): table_id is apparently not set in the metadata.
-    attrs["table_id"] = metadata_->table_id();
-    attrs["table_name"] = metadata_->table_name();
-    attrs["table_type"] = TableType_Name(metadata_->table_type());
-    attrs["namespace_name"] = metadata_->namespace_name();
+    auto table_info = metadata_->primary_table_info();
+    table_metrics_entity_ = table_info->CreateMetricEntity(data.metric_registry);
     metric_mem_tracker_ = MemTracker::CreateTracker(
         "Metrics", mem_tracker_, AddToParent::kTrue, CreateMetrics::kFalse);
-    table_metrics_entity_ =
-        METRIC_ENTITY_table.Instantiate(data.metric_registry, metadata_->table_id(), attrs);
     tablet_metrics_entity_ = METRIC_ENTITY_tablet.Instantiate(
-            data.metric_registry, tablet_id(), attrs, metric_mem_tracker_);
+        data.metric_registry, tablet_id(), table_info->CreateMetricAttributeMap(),
+        metric_mem_tracker_);
     // If we are creating a KV table create the metrics callback.
     regulardb_statistics_ =
         rocksdb::CreateDBStatistics(table_metrics_entity_, tablet_metrics_entity_);
@@ -1188,7 +1188,7 @@ Status Tablet::OpenRegularDB(const rocksdb::Options& common_options) {
   regular_rocksdb_options.compaction_context_factory = docdb::CreateCompactionContextFactory(
       retention_policy_, &key_bounds_,
       std::bind(&Tablet::DeleteMarkerRetentionTime, this, _1),
-      metadata_.get());
+      metadata_.get(), vector_indexes_.get());
 
   regular_rocksdb_options.mem_table_flush_filter_factory = MakeMemTableFlushFilterFactory([this] {
     {
@@ -4685,6 +4685,8 @@ const std::string& Tablet::tablet_id() const {
   return metadata_->raft_group_id();
 }
 
+// TODO(tsplit): move `partition_split_key` outside the method,
+// covered by https://github.com/yugabyte/yugabyte-db/issues/30092.
 Result<std::string> Tablet::GetEncodedMiddleSplitKey(std::string* partition_split_key) const {
   auto error_prefix = [this]() {
     return Format(
@@ -4745,31 +4747,40 @@ Result<std::string> Tablet::GetEncodedMiddleSplitKey(std::string* partition_spli
         "$0: got \"$1\".", error_prefix(), middle_key_slice.ToDebugHexString());
   }
 
-  // Check middle_key fits tablet's partition bounds
-  const Slice partition_start(metadata()->partition()->partition_key_start());
-  const Slice partition_end(metadata()->partition()->partition_key_end());
-  std::string middle_hash_key;
-  if (metadata()->partition_schema()->IsHashPartitioning()) {
-    const auto doc_key_hash = VERIFY_RESULT(dockv::DecodeDocKeyHash(middle_key));
-    if (doc_key_hash.has_value()) {
-      middle_hash_key = dockv::PartitionSchema::EncodeMultiColumnHashValue(doc_key_hash.value());
-      if (partition_split_key) {
-        *partition_split_key = middle_hash_key;
+  // Check middle_key is strictly between tablet's partition bounds.
+  const auto& partition_start = metadata()->partition()->partition_key_start();
+  const auto& partition_end   = metadata()->partition()->partition_key_end();
+  if (metadata()->partition_schema()->IsRangePartitioning()) {
+    // No extra conversion is required for the range partitioning.
+    if (partition_start < middle_key && (partition_end.empty() || middle_key < partition_end)) {
+      return middle_key;
+    }
+  } else {
+    // Sanity check.
+    CHECK(metadata()->partition_schema()->IsHashPartitioning());
+
+    // It is required to compare hash codes for the hash paritioning.
+    const auto key_hash = VERIFY_RESULT(dockv::DecodeDocKeyHash(middle_key));
+    if (key_hash.has_value()) {
+      const auto key_hash_code = *key_hash;
+      const auto hash_bounds = VERIFY_RESULT_PREPEND_FUNC(
+          metadata()->partition()->GetKeysAsHashBoundsInclusive());
+      // It is allowed for the middle key to match the inclusive upper bound.
+      if (hash_bounds.first < key_hash_code && key_hash_code <= hash_bounds.second) {
+        if (partition_split_key) {
+          *partition_split_key = dockv::PartitionSchema::EncodeMultiColumnHashValue(key_hash_code);
+        }
+        return middle_key;
       }
     }
   }
-  const Slice partition_middle_key(middle_hash_key.size() ? middle_hash_key : middle_key);
-  if (partition_middle_key.compare(partition_start) <= 0 ||
-      (!partition_end.empty() && partition_middle_key.compare(partition_end) >= 0)) {
-    // This error occurs when middle key is not strictly between partition bounds.
-    return STATUS_EC_FORMAT(IllegalState,
-        tserver::TabletServerError(tserver::TabletServerErrorPB::TABLET_SPLIT_KEY_RANGE_TOO_SMALL),
-        "$0 with partition bounds (\"$1\" - \"$2\"): got \"$3\".",
-        error_prefix(), partition_start.ToDebugHexString(), partition_end.ToDebugHexString(),
-        middle_key_slice.ToDebugHexString());
-  }
 
-  return middle_key;
+  // This error occurs when middle key is not strictly between partition bounds.
+  return STATUS_EC_FORMAT(IllegalState,
+      tserver::TabletServerError(tserver::TabletServerErrorPB::TABLET_SPLIT_KEY_RANGE_TOO_SMALL),
+      "$0 with partition bounds [\"$1\" - \"$2\"): got \"$3\"",
+      error_prefix(), Slice{partition_start}.ToDebugHexString(),
+      Slice{partition_end}.ToDebugHexString(), middle_key_slice.ToDebugHexString());
 }
 
 Result<Tablet::SplitKeysData> Tablet::GetSplitKeys(const int split_factor) const {
@@ -4779,23 +4790,19 @@ Result<Tablet::SplitKeysData> Tablet::GetSplitKeys(const int split_factor) const
   if (split_factor > kDefaultNumSplitParts) {
     // Use a naive transitional N-way partitioning algorithm for hash-partitioned tables.
     if (metadata()->partition_schema()->IsHashPartitioning()) {
-      const auto partition_start = dockv::PartitionSchema::DecodeMultiColumnHashLeftBound(
-          metadata()->partition()->partition_key_start());
-      const auto partition_end = dockv::PartitionSchema::DecodeMultiColumnHashRightBound(
-          metadata()->partition()->partition_key_end());
-      SCHECK_LT(
-          partition_start, partition_end, IllegalState, "Invalid parent partition bounds");
+      const auto hash_bounds = VERIFY_RESULT_PREPEND_FUNC(
+          metadata()->partition()->GetKeysAsHashBoundsInclusive());
       const auto split_keys_result = dockv::PartitionSchema::CreateHashSplitKeys(
-          split_factor, partition_start, partition_end);
+          split_factor, hash_bounds.first, hash_bounds.second);
       if (!split_keys_result.ok()) {
         return STATUS_EC_FORMAT(
             IllegalState,
             tserver::TabletServerError(
                 tserver::TabletServerErrorPB::TABLET_SPLIT_KEY_RANGE_TOO_SMALL),
             "Failed to detect split keys for tablet $0 using split factor $1: "
-            "partition [\"$2\" - \"$3\") is too small",
+            "partition [\"$2\" - \"$3\"] is too small",
             tablet_id(), split_factor,
-            Uint16ToHexString(partition_start), Uint16ToHexString(partition_end));
+            Uint16ToHexString(hash_bounds.first), Uint16ToHexString(hash_bounds.second));
       }
 
       const auto num_keys = split_factor - 1;
@@ -4812,7 +4819,7 @@ Result<Tablet::SplitKeysData> Tablet::GetSplitKeys(const int split_factor) const
 
     return STATUS_FORMAT(
         NotSupported,
-        "Split factor $0 (tablet $1) is supported only with hash-partitioning",
+        "Split factor $0 (tablet $1) is not supported for the range partitioning",
         split_factor, tablet_id());
   }
 
@@ -4855,6 +4862,7 @@ void Tablet::TriggerPostSplitCompactionIfNeeded() {
 }
 
 Status Tablet::TriggerManualCompactionIfNeeded(rocksdb::CompactionReason compaction_reason) {
+  DCHECK_NE(compaction_reason, rocksdb::CompactionReason::kUnknown);
   if (!full_compaction_pool_ || state_ != State::kOpen) {
     return STATUS(ServiceUnavailable, "Full compaction thread pool unavailable.");
   }
@@ -4870,13 +4878,28 @@ Status Tablet::TriggerManualCompactionIfNeeded(rocksdb::CompactionReason compact
         full_compaction_pool_->NewToken(ThreadPool::ExecutionMode::SERIAL);
   }
 
+  bool compact_vector_index = compaction_reason == rocksdb::CompactionReason::kPostSplitCompaction;
+  if (compact_vector_index && !FLAGS_vector_index_include_into_post_split_compaction) {
+    LOG_WITH_PREFIX(INFO) << "Vector index post-split compaction disabled by the gflag";
+    compact_vector_index = false;
+  }
+
+  tablet::ManualCompactionOptions options {
+      .compaction_reason = compaction_reason,
+      .compaction_completion_callback = {},
+      .vector_index_ids = compact_vector_index ? std::make_shared<TableIds>() : nullptr,
+      .vector_index_only = VectorIndexOnly::kFalse,
+      .skip_corrupt_data_blocks_unsafe = rocksdb::SkipCorruptDataBlocksUnsafe::kFalse,
+  };
+
   auto token = std::make_shared<ActiveCompactionToken>(num_active_full_compactions_);
-  return full_compaction_task_pool_token_->SubmitFunc([this, token, compaction_reason] {
-    WARN_NOT_OK(TriggerManualCompactionSync(compaction_reason), "Trigger manual compaction failed");
+  return full_compaction_task_pool_token_->SubmitFunc([this, token, options] {
+    WARN_NOT_OK(TriggerManualCompactionSync(options), "Trigger manual compaction failed");
   });
 }
 
-Status Tablet::TriggerAdminFullCompactionIfNeeded(const AdminCompactionOptions& options) {
+Status Tablet::TriggerAdminFullCompactionIfNeeded(const ManualCompactionOptions& options) {
+  CHECK_EQ(options.compaction_reason, rocksdb::CompactionReason::kAdminCompaction);
   if (!admin_triggered_compaction_pool_ || state_ != State::kOpen) {
     return STATUS(ServiceUnavailable, "Admin triggered compaction thread pool unavailable.");
   }
@@ -4889,24 +4912,7 @@ Status Tablet::TriggerAdminFullCompactionIfNeeded(const AdminCompactionOptions& 
 
   auto token = std::make_shared<ActiveCompactionToken>(num_active_full_compactions_);
   return admin_full_compaction_task_pool_token_->SubmitFunc([this, token, options]() {
-    Status status;
-
-    // Since full vector index compaction is not optimized and may take a significant amount of
-    // time, it could be trigger separately from RocksDB manual compaction (default behavior now).
-    const bool compact_vector_index_only = options.vector_index_ids && options.vector_index_only;
-    if (!compact_vector_index_only) {
-      status = TriggerManualCompactionSyncUnsafe(
-          rocksdb::CompactionReason::kAdminCompaction, options.skip_corrupt_data_blocks_unsafe);
-    }
-
-    if (options.vector_index_ids) {
-      auto s = TriggerVectorIndexCompactionSync(*options.vector_index_ids);
-      status = status.ok() ? s : status.CloneAndAppend(s.ToString());
-    }
-
-    if (options.compaction_completion_callback) {
-      options.compaction_completion_callback(status);
-    }
+    WARN_NOT_OK(TriggerManualCompactionSyncUnsafe(options), "Trigger admin compaction failed");
   });
 }
 
@@ -4918,6 +4924,36 @@ Status Tablet::TriggerVectorIndexCompactionSync(const TableIds& vector_index_ids
   WARN_WITH_PREFIX_NOT_OK(
       status, Format("$0: Failed vector index compaction", log_prefix_suffix_));
   return status;
+}
+
+Status Tablet::TriggerManualCompactionSyncUnsafe(const ManualCompactionOptions& options) {
+  DCHECK_NE(options.compaction_reason, rocksdb::CompactionReason::kUnknown);
+
+  Status status;
+
+  // Since full vector index compaction is not optimized and may take a significant amount of
+  // time, it could be trigger separately from RocksDB manual compaction (default behavior now).
+  const bool compact_vector_index_only = options.vector_index_ids && options.vector_index_only;
+  if (!compact_vector_index_only) {
+    status = TriggerManualCompactionSyncUnsafe(
+        options.compaction_reason, options.skip_corrupt_data_blocks_unsafe);
+  }
+
+  if (options.vector_index_ids) {
+    auto s = TriggerVectorIndexCompactionSync(*options.vector_index_ids);
+    status = status.ok() ? s : status.CloneAndAppend(s.ToString());
+  }
+
+  if (options.compaction_completion_callback) {
+    options.compaction_completion_callback(status);
+  }
+
+  return status;
+}
+
+Status Tablet::TriggerManualCompactionSync(const ManualCompactionOptions& options) {
+  CHECK_EQ(options.skip_corrupt_data_blocks_unsafe, rocksdb::SkipCorruptDataBlocksUnsafe::kFalse);
+  return TriggerManualCompactionSyncUnsafe(options);
 }
 
 Status Tablet::TriggerManualCompactionSyncUnsafe(

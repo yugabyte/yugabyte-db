@@ -4,7 +4,7 @@ import { useTranslation, Trans } from 'react-i18next';
 import { mui } from '@yugabyte-ui-library/core';
 import { RRBreadCrumbs } from '../../ReadReplicaBreadCrumbs';
 import { StepsRef, AddRRContext, AddRRContextMethods } from '../../AddReadReplicaContext';
-import { ReactComponent as InfoIcon } from '@app/redesign/assets/book_open_blue.svg';
+import InfoIcon from '@app/redesign/assets/book_open_blue.svg';
 
 const { Box, styled } = mui;
 

@@ -164,6 +164,8 @@ class PgApiImpl {
       uint32_t db_oid, bool is_breaking_change,
       uint64_t new_catalog_version, const YbcCatalogMessageList *message_list);
 
+  Status GetYbSystemTableInfo(
+      PgOid namespace_oid, std::string_view table_name, PgOid* oid, PgOid* relfilenode);
   uint64_t GetSharedAuthKey() const;
   const unsigned char *GetLocalTserverUuid() const;
   pid_t GetLocalTServerPid() const;
@@ -662,7 +664,7 @@ class PgApiImpl {
   Status BeginTransaction(int64_t start_time);
   Status RecreateTransaction();
   Status RestartTransaction();
-  Status ResetTransactionReadPoint();
+  Status ResetTransactionReadPoint(bool is_catalog_snapshot);
   Status EnsureReadPoint();
   Status RestartReadPoint();
   bool IsRestartReadPointRequested();

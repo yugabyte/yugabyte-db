@@ -108,12 +108,10 @@ export const extractRegionsAndNodeDataFromUniverse = (
   const regions: RegionsAndNodesFormType['regions'] = [];
 
   universeData.spec?.clusters.forEach((cluster) => {
-    cluster.provider_spec.region_list?.forEach((region) => {
-      const regionData = providerRegions.find((r) => r.uuid === region);
-      const azs = cluster.placement_spec?.cloud_list
-        .map((cloud) => cloud.region_list)
-        .flat()
-        .find((r) => r?.uuid === region)?.az_list;
+    cluster.placement_spec?.cloud_list[0].region_list?.forEach((region) => {
+      const regionData = providerRegions.find((r) => r.uuid === region.uuid);
+      if (!regionData) return;
+      const azs = region?.az_list;
 
       if (regionData) {
         regions.push({

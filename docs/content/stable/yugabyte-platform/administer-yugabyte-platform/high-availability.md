@@ -160,7 +160,6 @@ After HA is operational, you should enable certificate validation to improve sec
     | Installation | Certificate Location |
     | :--- | :--- |
     | YBA Installer | `/opt/yugabyte/data/yba-installer/certs/ca_cert.pem` <br/>If you configured a [custom install root](../../install-yugabyte-platform/install-software/installer/#configuration-options), replace `/opt/yugabyte` with the path you configured. |
-    | Replicated | `/var/lib/replicated/secrets/ca.crt` |
     | Kubernetes | Locate the CA certificate by running the following command:<br/>`kubectl get secret -n <namespace> <helm-release-name>-yugaware-tls-pem -o jsonpath="{.data['ca\.pem']}" \| base64 -d`<br/>Replace `<namespace>` and `<helm_release_name>` with appropriate values. |
 
     **Custom CA certificates**
@@ -311,7 +310,6 @@ The following HA-related [alerts](../../alerts-monitoring/alert/) are automatica
 - When performing failover, the first time you sign in after failover, you must use your Super Admin account.
 - Promotion will fail when HA is configured with an active instance at YBA version earlier than 2024.1, and a standby instance at version 2024.1 or later. It is not recommended to run in this configuration for an extended period. Reach out to {{% support-platform %}} if this is required.
 - If you are making API calls to YBA through custom automation, note that the [API token](../../anywhere-automation/#authentication) is different on the YBA active and standby until the standby has been promoted at least once to be an active instance. If you are using YBA with an API token, either generate a new token before every request, or perform a switchover after generating the API token (this process will have to be repeated when the API token is regenerated).
-- If you have an older Replicated installation that uses HTTP, the default port is 80. Use `http` when specifying addresses.
 - If you have a reverse proxy in front of the standby or primary instance (such as a Kubernetes ingress or a load balancer), ensure that it does not limit large requests. For example, if you are using nginx ingress, you might need to set the following annotations in your ingress specification to raise the default limit to 100 MB:
 
     ```yaml

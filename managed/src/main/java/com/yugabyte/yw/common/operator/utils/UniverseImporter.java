@@ -9,6 +9,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.operator.helpers.KubernetesOverridesDeserializer;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.YbcThrottleParametersResponse.ThrottleParamValue;
 import com.yugabyte.yw.models.Universe;
 import io.yugabyte.operator.v1alpha1.YBUniverseSpec;
@@ -16,10 +17,12 @@ import io.yugabyte.operator.v1alpha1.ybuniversespec.DeviceInfo;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.GFlags;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.KubernetesOverrides;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.MasterDeviceInfo;
+import io.yugabyte.operator.v1alpha1.ybuniversespec.ReadReplica;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.YbcThrottleParameters;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.gflags.PerAZ;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -101,6 +104,64 @@ public class UniverseImporter {
     spec.setDeviceInfo(deviceInfo);
   }
 
+  public void setReadReplicaDeviceInfo(
+      ReadReplica spec, UniverseDefinitionTaskParams.Cluster cluster) {
+    io.yugabyte.operator.v1alpha1.ybuniversespec.readreplica.DeviceInfo deviceInfo =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.readreplica.DeviceInfo();
+    deviceInfo.setVolumeSize(Long.valueOf(cluster.userIntent.deviceInfo.volumeSize));
+    deviceInfo.setNumVolumes(Long.valueOf(cluster.userIntent.deviceInfo.numVolumes));
+    spec.setDeviceInfo(deviceInfo);
+  }
+
+  public void setTserverResourceSpecFromUniverse(YBUniverseSpec spec, Universe universe) {
+    io.yugabyte.operator.v1alpha1.ybuniversespec.TserverResourceSpec resourceSpec =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.TserverResourceSpec();
+    resourceSpec.setCpu(
+        universe
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .tserverK8SNodeResourceSpec
+            .cpuCoreCount);
+    resourceSpec.setMemory(
+        universe
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .tserverK8SNodeResourceSpec
+            .memoryGib);
+    spec.setTserverResourceSpec(resourceSpec);
+  }
+
+  public void setMasterResourceSpecFromUniverse(YBUniverseSpec spec, Universe universe) {
+    io.yugabyte.operator.v1alpha1.ybuniversespec.MasterResourceSpec resourceSpec =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.MasterResourceSpec();
+    resourceSpec.setCpu(
+        universe
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .masterK8SNodeResourceSpec
+            .cpuCoreCount);
+    resourceSpec.setMemory(
+        universe
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .masterK8SNodeResourceSpec
+            .memoryGib);
+    spec.setMasterResourceSpec(resourceSpec);
+  }
+
+  public void setReadReplicaResourceSpecFromUniverse(
+      ReadReplica spec, UniverseDefinitionTaskParams.Cluster cluster) {
+    io.yugabyte.operator.v1alpha1.ybuniversespec.readreplica.TserverResourceSpec resourceSpec =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.readreplica.TserverResourceSpec();
+    resourceSpec.setCpu(cluster.userIntent.tserverK8SNodeResourceSpec.cpuCoreCount);
+    resourceSpec.setMemory(cluster.userIntent.tserverK8SNodeResourceSpec.memoryGib);
+    spec.setTserverResourceSpec(resourceSpec);
+  }
+
   public void setMasterDeviceInfoSpecFromUniverse(YBUniverseSpec spec, Universe universe) {
     MasterDeviceInfo masterDeviceInfo = new MasterDeviceInfo();
     masterDeviceInfo.setVolumeSize(
@@ -166,5 +227,38 @@ public class UniverseImporter {
     } catch (JsonProcessingException e) {
       throw new RuntimeException("Error in setting KubernetesOverridesSpecFromUniverse", e);
     }
+  }
+
+  public void setReadReplicaPlacementInfo(
+      ReadReplica spec, UniverseDefinitionTaskParams.Cluster cluster) {
+    io.yugabyte.operator.v1alpha1.ybuniversespec.readreplica.PlacementInfo placementInfo =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.readreplica.PlacementInfo();
+    placementInfo.setRegions(
+        cluster.placementInfo.cloudList.get(0).regionList.stream()
+            .map(
+                region -> {
+                  io.yugabyte.operator.v1alpha1.ybuniversespec.readreplica.placementinfo.Regions
+                      regionInfo =
+                          new io.yugabyte.operator.v1alpha1.ybuniversespec.readreplica.placementinfo
+                              .Regions();
+                  regionInfo.setCode(region.code);
+                  regionInfo.setZones(
+                      region.azList.stream()
+                          .map(
+                              zone -> {
+                                io.yugabyte.operator.v1alpha1.ybuniversespec.readreplica
+                                        .placementinfo.regions.Zones
+                                    zoneInfo =
+                                        new io.yugabyte.operator.v1alpha1.ybuniversespec.readreplica
+                                            .placementinfo.regions.Zones();
+                                zoneInfo.setCode(zone.name);
+                                zoneInfo.setNumNodes(Long.valueOf(zone.numNodesInAZ));
+                                return zoneInfo;
+                              })
+                          .collect(Collectors.toList()));
+                  return regionInfo;
+                })
+            .collect(Collectors.toList()));
+    spec.setPlacementInfo(placementInfo);
   }
 }

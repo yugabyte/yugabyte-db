@@ -504,6 +504,22 @@ SocketBackend(StringInfo inBuf)
 						 errmsg("invalid frontend message type %d", qtype)));
 			break;
 
+		case 'G':				/* YB: RESET ALL & RESET defaults from ConnMgr */
+			maxmsglen = PQ_LARGE_MESSAGE_LIMIT;
+			if (!YbIsClientYsqlConnMgr())
+				ereport(FATAL,
+						(errcode(ERRCODE_PROTOCOL_VIOLATION),
+						 errmsg("invalid frontend message type %d", qtype)));
+			break;
+
+		case 'g':				/* YB: RESET GUC DEFAULTS from ConnMgr */
+			maxmsglen = PQ_SMALL_MESSAGE_LIMIT;
+			if (!YbIsClientYsqlConnMgr())
+				ereport(FATAL,
+						(errcode(ERRCODE_PROTOCOL_VIOLATION),
+						 errmsg("invalid frontend message type %d", qtype)));
+			break;
+
 		default:
 
 			/*
@@ -5571,7 +5587,7 @@ yb_restart_current_stmt(int attempt, bool is_read_restart)
 	}
 	else
 	{
-		HandleYBStatus(YBCPgResetTransactionReadPoint());
+		HandleYBStatus(YBCPgResetTransactionReadPoint(false));
 		yb_maybe_sleep_on_txn_conflict(attempt);
 	}
 }
@@ -6519,6 +6535,8 @@ PostgresMain(const char *dbname, const char *username)
 
 			ReadyForQuery(whereToSendOutput);
 			send_ready_for_query = false;
+
+			yb_refresh_stats_before_exec = true;
 		}
 
 		/*
@@ -7345,6 +7363,41 @@ PostgresMain(const char *dbname, const char *username)
 					if (new_shmem_key > 0)
 						yb_logical_client_shmem_key = new_shmem_key;
 
+					send_ready_for_query = true;
+				}
+				else
+				{
+					ereport(FATAL,
+							(errcode(ERRCODE_PROTOCOL_VIOLATION),
+							 errmsg("invalid frontend message type %d",
+									firstchar)));
+				}
+				break;
+
+			case 'G':			/* YB: RESET ALL & RESET defaults from ConnMgr */
+				if (YbIsClientYsqlConnMgr())
+				{
+					start_xact_command();
+					YbSetYsqlConnMgrGucDefaults(input_message.data,
+												input_message.len);
+					finish_xact_command();
+					send_ready_for_query = true;
+				}
+				else
+				{
+					ereport(FATAL,
+							(errcode(ERRCODE_PROTOCOL_VIOLATION),
+							 errmsg("invalid frontend message type %d",
+									firstchar)));
+				}
+				break;
+
+			case 'g':			/* YB: RESET GUC DEFAULTS from ConnMgr */
+				if (YbIsClientYsqlConnMgr())
+				{
+					start_xact_command();
+					YbResetYsqlConnMgrGucDefaults();
+					finish_xact_command();
 					send_ready_for_query = true;
 				}
 				else

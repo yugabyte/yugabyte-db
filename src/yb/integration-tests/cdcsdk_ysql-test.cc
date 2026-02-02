@@ -8684,8 +8684,7 @@ TEST_F(CDCSDKYsqlTest, TestCDCStateEntryForReplicationSlot) {
   // cdc_state entry for the replication slot should only be seen when replication commands are
   // enabled and a consistent_snapshot stream is created.
   auto cdc_state_table = MakeCDCStateTable(test_client());
-  auto stream_id_1 = ASSERT_RESULT(
-      CreateConsistentSnapshotStreamWithReplicationSlot(CDCSDKSnapshotOption::USE_SNAPSHOT));
+  auto stream_id_1 = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
   auto checkpoint = ASSERT_RESULT(GetCDCSDKSnapshotCheckpoint(stream_id_1, tablets[0].tablet_id()));
   auto entry_1 = ASSERT_RESULT(cdc_state_table.TryFetchEntry(
       {kCDCSDKSlotEntryTabletId, stream_id_1}, CDCStateTableEntrySelector().IncludeAll()));
@@ -11585,10 +11584,10 @@ TEST_F(CDCSDKYsqlTest, TestSlotNameInCDCMetricsAttributes) {
   ASSERT_EQ(tablets_2.size(), 1);
 
   std::string slot_name = "test_slot";
-  auto stream_id_with_slot = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(
-      slot_name, CDCSDKSnapshotOption::USE_SNAPSHOT, false /*verify_snapshot_name*/,
-      kNamespaceName));
+  auto stream_id_with_slot =
+      ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(slot_name));
 
+  // USE_SNAPSHOT through RPC path works without transaction
   auto stream_id_without_slot = ASSERT_RESULT(CreateConsistentSnapshotStream(
       CDCSDKSnapshotOption::USE_SNAPSHOT, CDCCheckpointType::EXPLICIT, CDCRecordType::CHANGE,
       kNamespaceName_2));
@@ -12043,7 +12042,7 @@ TEST_F(CDCSDKYsqlTest, TestDropIndexWithColocatedTable) {
   ASSERT_EQ(tablets.size(), 1);
 
   auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream(
-      CDCSDKSnapshotOption::USE_SNAPSHOT, CDCCheckpointType::EXPLICIT, CDCRecordType::ALL));
+      CDCSDKSnapshotOption::EXPORT_SNAPSHOT, CDCCheckpointType::EXPLICIT, CDCRecordType::ALL));
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
 
   // Add a column and create index on that column.
@@ -12161,8 +12160,7 @@ TEST_F(CDCSDKYsqlTest, TestYbRestartCommitTimeInPgReplicationSlots) {
   ASSERT_EQ(tablets.size(), 3);
 
   auto cdc_state_table = MakeCDCStateTable(test_client());
-  auto stream_id = ASSERT_RESULT(
-      CreateConsistentSnapshotStreamWithReplicationSlot(CDCSDKSnapshotOption::USE_SNAPSHOT));
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
   auto checkpoint = ASSERT_RESULT(GetCDCSDKSnapshotCheckpoint(stream_id, tablets[0].tablet_id()));
 
   auto entry = ASSERT_RESULT(cdc_state_table.TryFetchEntry(
@@ -12731,6 +12729,96 @@ TEST_F(CDCSDKYsqlTest, TestOriginId) {
   ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 3);
   ASSERT_EQ(get_xrepl_origin_id(change_resp), 0);
   cdc_sdk_checkpoint = change_resp.cdc_sdk_checkpoint();
+}
+
+TEST_F(CDCSDKYsqlTest, TestUPAMNotStuckWithIndexInColocatedTablet) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 15000;
+
+  ASSERT_OK(SetUpWithParams(1 /* replication_factor */, 1 /* num_masters */, true /* colocated */));
+
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, kNamespaceName, kTableName, 1 /* num_tablets */, true /* add_pk */,
+      true /* colocated */));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr /* partition_list_version */));
+  ASSERT_EQ(tablets.size(), 1);
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  ASSERT_OK(conn.Execute("CREATE INDEX test_table_idx ON test_table(value_1)"));
+
+  GetChangesResponsePB change_resp;
+  const CDCSDKCheckpointPB* explicit_checkpoint = &CDCSDKCheckpointPB::default_instance();
+  for (int i = 0; i < static_cast<int>(FLAGS_cdc_intent_retention_ms / 1000); i++) {
+    ASSERT_OK(WriteRows(i /* start */, i + 1 /* end */, &test_cluster_, 2 /* num_cols */));
+    SleepFor(MonoDelta::FromSeconds(2));
+    change_resp = ASSERT_RESULT(GetChangesFromCDCWithExplictCheckpoint(
+        stream_id, tablets, explicit_checkpoint, explicit_checkpoint));
+    ASSERT_FALSE(change_resp.has_error());
+    explicit_checkpoint = &change_resp.cdc_sdk_checkpoint();
+  }
+}
+
+TEST_F(CDCSDKYsqlTest, TestHitDeadlineOnWalReadMidTransaction) {
+  // Set a low limit so that a transaction with > 100 records will be streamed in multiple calls.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_max_stream_intent_records) = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+
+  ASSERT_OK(SetUpWithParams(1 /* rf */, 1 /* num_masters */, false /* colocated */));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr /* partition_list_version */));
+  ASSERT_EQ(tablets.size(), 1);
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  // Insert a transaction with > 100 rows to exceed FLAGS_cdc_max_stream_intent_records.
+  // This will cause the transaction to be streamed in multiple GetChanges calls.
+  ASSERT_OK(WriteRowsHelper(0, 200, &test_cluster_, true));
+
+  int record_count = 0;
+  // First GetChanges call - should get partial transaction records.
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  CDCSDKCheckpointPB checkpoint = change_resp.cdc_sdk_checkpoint();
+  record_count += change_resp.cdc_sdk_proto_records_size();
+
+  // Verify we're in a partial transaction state (non-empty key and non-zero write_id).
+  ASSERT_FALSE(checkpoint.key().empty()) << "Checkpoint key must be non-empty for partial txn";
+  ASSERT_NE(checkpoint.write_id(), 0) << "Checkpoint write_id must be non-zero for partial txn";
+
+  // Now enable the test flag to simulate deadline being hit on WAL read.
+  // This will cause ReadReplicatedMessagesInSegmentForCDC to return 0 WAL records.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_hit_deadline_on_wal_read) = true;
+
+  // Second GetChanges call - this should NOT crash even though we get 0 WAL records
+  // while trying to resume a partially-streamed transaction.
+  auto safe_hybrid_time_before = change_resp.safe_hybrid_time();
+  change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &checkpoint));
+
+  // Should get 0 records since deadline was hit and no data records were streamed.
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 0);
+
+  // Checkpoint and safe_hybrid_time should remain unchanged since no progress was made.
+  ASSERT_EQ(change_resp.cdc_sdk_checkpoint().term(), checkpoint.term());
+  ASSERT_EQ(change_resp.cdc_sdk_checkpoint().index(), checkpoint.index());
+  ASSERT_EQ(change_resp.cdc_sdk_checkpoint().key(), checkpoint.key());
+  ASSERT_EQ(change_resp.cdc_sdk_checkpoint().write_id(), checkpoint.write_id());
+  ASSERT_EQ(change_resp.safe_hybrid_time(), safe_hybrid_time_before);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_hit_deadline_on_wal_read) = false;
+
+  // Continue calling GetChanges until we get all records using the helper function.
+  checkpoint = change_resp.cdc_sdk_checkpoint();
+  auto all_pending_changes = GetAllPendingChangesFromCdc(stream_id, tablets, &checkpoint);
+  record_count += all_pending_changes.records.size();
+
+  // 1 DDL + 200 INSERTs + 1 BEGIN + 1 COMMIT = 203 records
+  ASSERT_EQ(record_count, 203);
 }
 
 }  // namespace cdc

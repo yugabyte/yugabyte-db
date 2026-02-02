@@ -8,10 +8,9 @@
  */
 
 import { Controller, FieldValues, Path, PathValue, useFormContext } from 'react-hook-form';
-import { Box } from '@material-ui/core';
-import { YBAutoComplete, YBLabel, YBSelectProps } from '@yugabyte-ui-library/core';
-import { REGIONS_FIELD } from '../FieldNames';
+import { YBAutoComplete, YBLabel, YBSelectProps, mui } from '@yugabyte-ui-library/core';
 import { Region } from '../../../../../features/universe/universe-form/utils/dto';
+import { REGIONS_FIELD } from '../FieldNames';
 
 interface AvailabilityZoneFieldProps<T extends FieldValues>
   extends Omit<YBSelectProps, 'name' | 'control'> {
@@ -20,6 +19,8 @@ interface AvailabilityZoneFieldProps<T extends FieldValues>
   placeholder?: string;
   style?: React.CSSProperties;
 }
+
+const { Box } = mui;
 
 export const AvailabilityZoneField = <T extends FieldValues>({
   name,
@@ -62,6 +63,7 @@ export const AvailabilityZoneField = <T extends FieldValues>({
                   dataTestId: 'availability-zone-field'
                 }}
                 sx={sx}
+                size="large"
               />
             </Box>
           </div>

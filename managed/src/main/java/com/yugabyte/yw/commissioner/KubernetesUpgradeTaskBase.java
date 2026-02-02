@@ -7,8 +7,10 @@ import com.yugabyte.yw.commissioner.UpgradeTaskBase.UpgradeContext;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckShellConnectivity;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
+import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
@@ -16,6 +18,7 @@ import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.RollMaxBatchSize;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.models.Provider;
@@ -349,7 +352,8 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
     YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState =
         upgradeContext != null ? upgradeContext.getYsqlMajorVersionUpgradeState() : null;
     UUID rootCAUUID = upgradeContext != null ? upgradeContext.getRootCAUUID() : null;
-
+    boolean useExistingServerCert =
+        upgradeContext != null && upgradeContext.isUseExistingServerCert();
     // If upgradeContext is non-null and has non-null useYBDBInbuiltYbc we use that.
     // It will be set for KubernetesToggleImmutableYbc task.
     // Otherwise pick from universe primary cluster userIntent.
@@ -376,7 +380,8 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
               .delayAfterStartup(taskParams().sleepAfterMasterRestartMillis)
               .build(),
           ysqlMajorVersionUpgradeState,
-          rootCAUUID);
+          rootCAUUID,
+          useExistingServerCert);
     }
 
     if (upgradeTservers) {
@@ -403,7 +408,8 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
               .rollMaxBatchSize(getCurrentRollBatchSize(universe))
               .build(),
           ysqlMajorVersionUpgradeState,
-          rootCAUUID);
+          rootCAUUID,
+          useExistingServerCert);
 
       if (enableYbc) {
         Set<NodeDetails> primaryTservers = new HashSet<>(universe.getTServersInPrimaryCluster());
@@ -452,7 +458,8 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
                 .rollMaxBatchSize(getCurrentRollBatchSize(universe))
                 .build(),
             ysqlMajorVersionUpgradeState,
-            rootCAUUID);
+            rootCAUUID,
+            useExistingServerCert);
 
         if (enableYbc) {
           Set<NodeDetails> replicaTservers =
@@ -487,7 +494,8 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
               .delayAfterStartup(taskParams().sleepAfterMasterRestartMillis)
               .build(),
           ysqlMajorVersionUpgradeState,
-          rootCAUUID);
+          rootCAUUID,
+          useExistingServerCert);
     }
   }
 
@@ -774,6 +782,30 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
     // Pre-check will still be executed after the master upgrade as part of main task.
     if (ysqlMajorVersionUpgrade && taskParams().getPreviousTaskUUID() == null) {
       createPGUpgradeTServerCheckTask(ybSoftwareVersion);
+    }
+    createCheckShellConnectivityTask();
+  }
+
+  private void createCheckShellConnectivityTask() {
+    Universe universe = getUniverse();
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    if (userIntent.enableClientToNodeEncrypt) {
+      UUID rootCaUuid =
+          universe.getUniverseDetails().getClientRootCA() != null
+              ? universe.getUniverseDetails().getClientRootCA()
+              : universe.getUniverseDetails().rootCA;
+      if (CertificateHelper.isK8sCertManager(rootCaUuid)) {
+        doInPrecheckSubTaskGroup(
+            "CheckShellConnectivity",
+            subTaskGroup -> {
+              UniverseTaskParams params = new UniverseTaskParams();
+              params.setUniverseUUID(universe.getUniverseUUID());
+              CheckShellConnectivity task = createTask(CheckShellConnectivity.class);
+              task.initialize(params);
+              subTaskGroup.addSubTask(task);
+            });
+      }
     }
   }
 

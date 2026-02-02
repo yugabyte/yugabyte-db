@@ -122,9 +122,6 @@ DEFINE_UNKNOWN_bool(ysql_beta_feature_tablegroup, false,
 
 TAG_FLAG(ysql_beta_feature_tablegroup, hidden);
 
-DEFINE_UNKNOWN_bool(ysql_beta_feature_pg_stat_monitor, false,
-    "Whether to enable the incomplete 'pg_stat_monitor' ysql beta feature");
-
 DEFINE_UNKNOWN_bool(
     ysql_colocate_database_by_default, false, "Enable colocation by default on each database.");
 

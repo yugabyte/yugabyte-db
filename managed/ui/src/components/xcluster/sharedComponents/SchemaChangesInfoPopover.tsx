@@ -11,7 +11,7 @@ import {
 } from '../constants';
 import { usePillStyles } from '@app/redesign/styles/styles';
 
-import { ReactComponent as UnavailableIcon } from '../../../redesign/assets/unavailable.svg';
+import UnavailableIcon from '../../../redesign/assets/unavailable.svg';
 
 interface InfoPopoverProps {
   isDrInterface: boolean;

@@ -565,7 +565,7 @@ public class CloudProviderHelper {
     KubernetesInfo kubernetesInfo = CloudInfoInterface.get(reqProvider);
 
     boolean hasConfigInProvider = providerConfig.containsKey("KUBECONFIG_NAME");
-    if (kubernetesInfo.getKubeConfig() != null) {
+    if (StringUtils.isNotBlank(kubernetesInfo.getKubeConfig())) {
       hasConfigInProvider = true;
     }
     for (Region rd : reqProvider.getRegions()) {
@@ -584,7 +584,8 @@ public class CloudProviderHelper {
       for (AvailabilityZone zd : rd.getZones()) {
         Map<String, String> zoneConfig = CloudInfoInterface.fetchEnvVars(zd);
         k8sRegionInfo = CloudInfoInterface.get(zd);
-        if (zoneConfig.containsKey("KUBECONFIG_NAME") || k8sRegionInfo.getKubeConfig() != null) {
+        if (zoneConfig.containsKey("KUBECONFIG_NAME")
+            || StringUtils.isNotBlank(k8sRegionInfo.getKubeConfig())) {
           if (hasConfig) {
             throw new PlatformServiceException(BAD_REQUEST, "Kubeconfig can't be at two levels");
           }

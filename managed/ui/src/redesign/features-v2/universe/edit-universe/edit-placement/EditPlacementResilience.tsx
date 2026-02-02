@@ -13,6 +13,7 @@ import { useEditUniverseContext } from '../EditUniverseUtils';
 import { ResilienceAndRegionsProps } from '../../create-universe/steps/resilence-regions/dtos';
 import { getResilienceAndRegionsProps, useGetEditPlacementContext } from './EditPlacementUtils';
 import { EditPlacementSteps } from './EditPlacementContext';
+import { NodeAvailabilityProps } from '../../create-universe/steps/nodes-availability/dtos';
 
 const { Box } = mui;
 
@@ -48,6 +49,9 @@ export const EditPlacementResilience = () => {
               addEditPlacementMethods.setActiveStep(
                 EditPlacementSteps.NODES_AND_AVAILABILITY_ZONES
               );
+            },
+            saveNodesAvailabilitySettings: (data: NodeAvailabilityProps) => {
+              addEditPlacementMethods.setNodesAndAvailability(data);
             },
             moveToNextPage: () => {},
             moveToPreviousPage: () => {}

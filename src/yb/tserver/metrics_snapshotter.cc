@@ -270,7 +270,7 @@ static std::unordered_set<std::string> CSVToSet(const std::string& s) {
 MetricsSnapshotter::Thread::Thread(const TabletServerOptions& opts, TabletServer* server)
   : server_(server),
     cond_(&mutex_),
-    log_prefix_(Format("P $0: ", server_->permanent_uuid())),
+    log_prefix_(server::MakeServerLogPrefix(server_->permanent_uuid())),
     opts_(opts) {
   VLOG_WITH_PREFIX(1) << "Initializing metrics snapshotter thread";
 

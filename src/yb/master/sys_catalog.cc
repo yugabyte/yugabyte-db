@@ -1382,7 +1382,7 @@ Result<PgOidToOidMap> SysCatalogTable::ReadPgClassColumnWithOidValueMap(
   auto read_data = VERIFY_RESULT(TableReadData(database_oid, kPgClassTableOid, ReadHybridTime()));
   const auto& schema = read_data.schema();
 
-  const auto oid_col_id = VERIFY_RESULT(schema.ColumnIdByName(kPgClassOidColumnName)).rep();
+  const auto oid_col_id = VERIFY_RESULT(schema.ColumnIdByName(kOidColumnName)).rep();
   const auto result_col_idx = VERIFY_RESULT(schema.ColumnIndexByName(column_name));
   const auto result_col_id = schema.column_id(result_col_idx).rep();
   const auto result_col_type = schema.column(result_col_idx).type()->main();
@@ -1428,7 +1428,7 @@ Result<PgOid> SysCatalogTable::ReadPgClassColumnWithOidValue(
   auto read_data = VERIFY_RESULT(TableReadData(database_oid, kPgClassTableOid, read_time));
   const auto& schema = read_data.schema();
 
-  const auto oid_col_id = VERIFY_RESULT(schema.ColumnIdByName(kPgClassOidColumnName)).rep();
+  const auto oid_col_id = VERIFY_RESULT(schema.ColumnIdByName(kOidColumnName)).rep();
   const auto result_col_idx = VERIFY_RESULT(schema.ColumnIndexByName(column_name));
   const auto result_col_id = schema.column_id(result_col_idx).rep();
   const auto result_col_type = schema.column(result_col_idx).type()->main();
@@ -2287,6 +2287,112 @@ Status SysCatalogTable::ForceWrite(
   auto writer = NewWriter(leader_term);
   RETURN_NOT_OK(writer->Mutate(type, item_id, pb, op_type));
   return SyncWrite(writer.get());
+}
+
+Result<PgOid> SysCatalogTable::GetYsqlDatabaseOid(const NamespaceName& ns_name) {
+  TRACE_EVENT0("master", __func__);
+  auto read_data =
+      VERIFY_RESULT(TableReadData(kTemplate1Oid, kPgDatabaseTableOid, ReadHybridTime()));
+  const auto& schema = read_data.schema();
+
+  const auto oid_col_id = VERIFY_RESULT(schema.ColumnIdByName(kOidColumnName)).rep();
+  const auto datname_col_id =
+      VERIFY_RESULT(schema.ColumnIdByName(kPgDatabaseDatNameColumnName)).rep();
+  dockv::ReaderProjection projection(schema, {oid_col_id, datname_col_id});
+
+  auto iter = VERIFY_RESULT(read_data.NewUninitializedIterator(projection));
+  auto request_scope = VERIFY_RESULT(VERIFY_RESULT(Tablet())->CreateRequestScope());
+  {
+    docdb::DocPgsqlScanSpec spec(schema, nullptr);
+    RETURN_NOT_OK(iter->Init(spec));
+  }
+
+  qlexpr::QLTableRow row;
+  while (VERIFY_RESULT(iter->FetchNext(&row))) {
+    const auto oid_col = row.GetValue(oid_col_id);
+    const auto datname_col = row.GetValue(datname_col_id);
+    if (!oid_col) {
+      return STATUS(Corruption, "Could not read 'oid' column from pg_database");
+    }
+    if (!datname_col) {
+      return STATUS(Corruption, "Could not read 'datname' column from pg_database");
+    }
+    if (datname_col->get().string_value() == ns_name) {
+      return oid_col->get().uint32_value();
+    }
+  }
+  return kPgInvalidOid;
+}
+
+// Fetch the oid and relfilenode from pg_class of yb_system database for the given relnamespace
+// and table_name. This function services the request sent by PG backends (connected to dbs other
+// than yb_system) to fetch info for tables in yb_system. There's no reason for these backends to
+// use this API to fetch catalog table info as that remains the same across dbs. Hence, as an
+// optimization, only consider oid > kPgFirstNormalObjectId when scanning pg_class.
+Result<bool> SysCatalogTable::GetYsqlYbSystemTableInfo(
+    PgOid relnamespace, const TableName& table_name, PgOid* oid, PgOid* relfilenode) {
+  TRACE_EVENT0("master", __func__);
+  auto db_oid = VERIFY_RESULT(GetYsqlDatabaseOid(kYbSystemDbName));
+
+  auto read_data = VERIFY_RESULT(TableReadData(db_oid, kPgClassTableOid, ReadHybridTime()));
+  const auto& schema = read_data.schema();
+
+  const auto oid_col_id = VERIFY_RESULT(schema.ColumnIdByName(kOidColumnName)).rep();
+  const auto relname_col_id = VERIFY_RESULT(schema.ColumnIdByName(kPgClassRelNameColumnName)).rep();
+  const auto relnamespace_col_id =
+      VERIFY_RESULT(schema.ColumnIdByName(kPgClassRelNamespaceColumnName)).rep();
+  const auto relfilenode_col_id =
+      VERIFY_RESULT(schema.ColumnIdByName(kPgClassRelFileNodeColumnName)).rep();
+
+  dockv::ReaderProjection projection(
+      schema, {oid_col_id, relname_col_id, relnamespace_col_id, relfilenode_col_id});
+
+  auto iter = VERIFY_RESULT(read_data.NewUninitializedIterator(projection));
+  auto request_scope = VERIFY_RESULT(VERIFY_RESULT(Tablet())->CreateRequestScope());
+  {
+    PgsqlConditionPB cond;
+    cond.add_operands()->set_column_id(oid_col_id);
+    cond.set_op(QL_OP_GREATER_THAN_EQUAL);
+    cond.add_operands()->mutable_value()->set_uint32_value(kPgFirstNormalObjectId);
+    docdb::DocPgsqlScanSpec spec(schema, &cond);
+    RETURN_NOT_OK(iter->Init(spec));
+  }
+
+  qlexpr::QLTableRow row;
+  while (VERIFY_RESULT(iter->FetchNext(&row))) {
+    const auto oid_col = row.GetValue(oid_col_id);
+    const auto relname_col = row.GetValue(relname_col_id);
+    const auto relnamespace_col = row.GetValue(relnamespace_col_id);
+    const auto relfilenode_col = row.GetValue(relfilenode_col_id);
+
+    if (!oid_col) {
+      return STATUS_FORMAT(
+          Corruption, "Could not read 'oid' column from pg_class in yb_system database");
+    }
+    if (!relname_col) {
+      return STATUS_FORMAT(
+          Corruption, "Could not read 'relname' column from pg_class in yb_system database");
+    }
+    if (!relnamespace_col) {
+      return STATUS_FORMAT(
+          Corruption, "Could not read 'relnamespace' column from pg_class in yb_system database");
+    }
+    if (!relfilenode_col) {
+      return STATUS_FORMAT(
+          Corruption, "Could not read 'relfilenode' column from pg_class in yb_system database");
+    }
+    if (relname_col->get().string_value() == table_name &&
+        relnamespace_col->get().uint32_value() == relnamespace) {
+      *oid = oid_col->get().uint32_value();
+      *relfilenode = relfilenode_col->get().uint32_value();
+      return true;
+    }
+  }
+
+  LOG(INFO) << Format(
+      "Could not find table '$0' in namespace $1 in yb_system database", table_name, relnamespace);
+
+  return false;
 }
 
 const Schema& PgTableReadData::schema() const {

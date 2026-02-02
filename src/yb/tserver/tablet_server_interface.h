@@ -167,6 +167,8 @@ class TabletServerIf : public LocalTabletServer {
   virtual Status RestartPG() const = 0;
 
   virtual Status KillPg() const = 0;
+
+  virtual ConnectivityStateResponsePB ConnectivityState() = 0;
 };
 
 } // namespace tserver

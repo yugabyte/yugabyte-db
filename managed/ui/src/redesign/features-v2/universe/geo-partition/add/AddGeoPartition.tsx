@@ -24,8 +24,8 @@ import { getUniverse } from '@app/v2/api/universe/universe';
 import { api } from '@app/redesign/helpers/api';
 import { YBLoadingCircleIcon } from '@app/components/common/indicators';
 
-import { ReactComponent as YBLogo } from '../../../../assets/yb_logo.svg';
-import { ReactComponent as Close } from '../../../../assets/close rounded inverted.svg';
+import YBLogo from '../../../../assets/yb_logo.svg';
+import Close from '../../../../assets/close rounded inverted.svg';
 
 const { Grid2: Grid, Typography } = mui;
 

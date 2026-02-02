@@ -96,7 +96,7 @@ ReplicationInfoPB CatalogManagerUtil::GetTableReplicationInfo(
     }
   }
 
-  // For system catalog tables, return cluster config replication info.
+  // For non-system tables, return table-level replication info if available.
   if (!table->is_system() && tablespace_manager) {
     auto result = tablespace_manager->GetTableReplicationInfo(table);
     if (!result.ok()) {
@@ -406,7 +406,7 @@ Status ValidateAndAddPreferredZone(
         cloud_info_str);
   }
 
-  if (!PlacementInfoContainsCloudInfo(placement_info, cloud_info)) {
+  if (!CloudInfoMatchesPlacementInfo(cloud_info, placement_info)) {
     return STATUS_FORMAT(
         InvalidArgument, "Preferred zone '$0' not found in Placement info '$1'", cloud_info_str,
         placement_info);

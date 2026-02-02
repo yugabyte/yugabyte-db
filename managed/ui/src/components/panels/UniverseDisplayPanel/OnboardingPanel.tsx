@@ -5,8 +5,8 @@ import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
 
 import { YBButton } from '../../../redesign/components/YBButton/YBButton';
-import { ReactComponent as BriefcaseIcon } from '@app/redesign/assets/briefcase.svg';
-import { ReactComponent as BulbIcon } from '@app/redesign/assets/bulb2.svg';
+import BriefcaseIcon from '@app/redesign/assets/briefcase.svg';
+import BulbIcon from '@app/redesign/assets/bulb2.svg';
 import { RestoreYbaBackupModal } from '@app/redesign/features/continuous-backup/RestoreYbaBackupModal';
 import {
   hasNecessaryPerm,

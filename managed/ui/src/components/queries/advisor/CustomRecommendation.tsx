@@ -2,7 +2,7 @@ import { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import { EXTERNAL_LINKS } from '../helpers/constants';
 import { CustomRecommendation, RecommendationType } from '../../../redesign/utils/dtos';
-import lightBulbIcon from '../images/lightbulb.svg';
+import LightBulbIcon from '../images/lightbulb.svg?img';
 import './styles.scss';
 
 export const CustomRecommendations: FC<CustomRecommendation> = ({ summary, suggestion, type }) => {
@@ -21,7 +21,7 @@ export const CustomRecommendations: FC<CustomRecommendation> = ({ summary, sugge
       <div className="recommendationBox">
         <span> {summary} </span>
         <div className="recommendationAdvice">
-          <img src={lightBulbIcon} alt="more" className="learnMoreImage" />
+          <img src={LightBulbIcon} alt="more" className="learnMoreImage" />
           <span className="learnPerfAdvisorText">
             {t('clusterDetail.performance.advisor.Recommendation')}
             {t('clusterDetail.performance.advisor.Separator')}

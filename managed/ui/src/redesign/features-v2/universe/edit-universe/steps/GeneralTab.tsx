@@ -29,7 +29,7 @@ import { LinuxVersion } from '../components';
 import { MapRegionsView } from '../components/MapRegionView';
 import { MapGeoPartitionView } from '../components/MapGeoPartitionView';
 import { Star } from '@material-ui/icons';
-import { ReactComponent as CopyIcon } from '../../../../assets/copy_blue.svg';
+import CopyIcon from '../../../../assets/copy_blue.svg';
 
 const { Box, styled, Typography, Grid2, Divider, MenuItem } = mui;
 

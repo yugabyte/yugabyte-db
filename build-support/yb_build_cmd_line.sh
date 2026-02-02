@@ -353,6 +353,7 @@ set_default_yb_build_args() {
   cmake_only=false
   run_python_tests=false
   cmake_extra_args=""
+  pgo_instrument_type=""
   pgo_data_path=""
   predefined_build_root=""
   java_test_name=""
@@ -363,6 +364,7 @@ set_default_yb_build_args() {
   java_lint=false
   collect_java_tests=false
   should_use_packaged_targets=false
+  bolt_enabled=false
 
   test_ybc=true
   if is_linux; then
@@ -729,6 +731,11 @@ parse_yb_build_cmd_line() {
         cmake_extra_args+=$2
         shift
       ;;
+      --pgo-instrument-type)
+        ensure_option_has_arg "$@"
+        pgo_instrument_type="$2"
+        shift
+      ;;
       --pgo-data-path)
         ensure_option_has_arg "$@"
         pgo_data_path=$(realpath "$2")
@@ -898,11 +905,18 @@ parse_yb_build_cmd_line() {
           export YB_LINKING_TYPE=dynamic
         else
           export YB_LINKING_TYPE=$2-lto
+          export bolt_enabled=true
         fi
         shift
       ;;
       --no-lto)
         export YB_LINKING_TYPE=dynamic
+      ;;
+      --bolt)
+        export bolt_enabled=true
+      ;;
+      --no-bolt)
+        export bolt_enabled=false
       ;;
       --export-compile-commands|--ccmds)
         export YB_EXPORT_COMPILE_COMMANDS=1

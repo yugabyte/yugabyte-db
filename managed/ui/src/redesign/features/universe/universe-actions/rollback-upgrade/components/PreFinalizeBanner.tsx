@@ -9,8 +9,7 @@ import { getPrimaryCluster } from '../../../universe-form/utils/helpers';
 import { Universe } from '../../../universe-form/utils/dto';
 import { preFinalizeStateStyles } from '../utils/RollbackUpgradeStyles';
 //icons
-import WarningIcon from '../../../../../assets/warning-triangle.svg';
-import LinkIcon from '../../../../../assets/link.svg';
+import WarningIcon from '../../../../../assets/warning-triangle.svg?img';
 
 interface PreFinalizeBannerProps {
   universeData: Universe;

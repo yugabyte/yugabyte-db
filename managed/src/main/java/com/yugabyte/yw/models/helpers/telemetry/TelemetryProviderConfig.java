@@ -9,6 +9,7 @@ import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import io.swagger.annotations.ApiModelProperty.AccessMode;
 import lombok.Data;
+import lombok.extern.slf4j.Slf4j;
 
 @Data
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
@@ -23,16 +24,44 @@ import lombok.Data;
   @Type(value = OTLPConfig.class, name = "OTLP")
 })
 @ApiModel(description = "Telemetry Provider Configuration")
+@Slf4j
 public class TelemetryProviderConfig {
   @ApiModelProperty(value = "Telemetry Provider Type", accessMode = AccessMode.READ_WRITE)
   private ProviderType type;
 
-  public void validate(ApiHelper apiHelper) {
-    // To be overridden in child classes if validation is required.
-    validate(apiHelper, null);
+  /**
+   * Template method for validation. First validates config fields, then checks if connectivity
+   * validation should be skipped, and finally validates connectivity if not skipped.
+   */
+  public final void validate(ApiHelper apiHelper, RuntimeConfGetter confGetter) {
+    // First, validate config fields (always runs)
+    validateConfigFields();
+    log.debug("Successfully validated {} config fields.", getType());
+
+    // Check if connectivity validation should be skipped
+    if (TelemetryProviderUtil.skipConnectivityValidation(confGetter)) {
+      log.info("Skipping {} connectivity validation as per config.", getType());
+      return;
+    }
+
+    // Validate connectivity
+    validateConnectivity(apiHelper);
+    log.debug("Successfully validated {} connectivity.", getType());
   }
 
-  public void validate(ApiHelper apiHelper, RuntimeConfGetter confGetter) {
-    // Default implementation calls the single-parameter version for backward compatibility
+  /**
+   * Override this method to validate config fields (required fields, format, etc.). This validation
+   * always runs regardless of the "yb.telemetry.skip_connectivity_validations" runtime flag.
+   */
+  public void validateConfigFields() {
+    // Child classes should override as needed.
+  }
+
+  /**
+   * Override this method to validate connectivity (API calls, credential checks, etc.). This
+   * validation is skipped if the "yb.telemetry.skip_connectivity_validations" runtime flag is set.
+   */
+  public void validateConnectivity(ApiHelper apiHelper) {
+    // Child classes should override as needed.
   }
 }

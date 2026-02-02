@@ -1,7 +1,7 @@
 import { Box, makeStyles } from '@material-ui/core';
 import clsx from 'clsx';
 
-import TipIcon from '../../../assets/tip.svg';
+import TipIcon from '../../../assets/tip.svg?img';
 
 interface YBBannerProps {
   bannerClassName?: any;

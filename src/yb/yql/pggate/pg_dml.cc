@@ -74,8 +74,13 @@ Status PgDml::AppendTarget(PgExpr* target, bool is_for_secondary_index) {
 }
 
 Status PgDml::AddBaseYbctidTarget() {
-  RETURN_NOT_OK(PrepareColumnForRead(
-      static_cast<int>(PgSystemAttrNum::kYBIdxBaseTupleId), AllocTargetPB()));
+  auto& col = VERIFY_RESULT_REF(target_.ColumnForAttr(
+      std::to_underlying(PgSystemAttrNum::kYBIdxBaseTupleId)));
+  if (!col.read_requested()) {
+    auto* target_pb = AllocTargetPB();
+    target_pb->set_column_id(col.id());
+    col.set_read_requested(true);
+  }
   return Status::OK();
 }
 
@@ -351,11 +356,7 @@ Status PgDml::Fetch(
 
   // Keep reading until we either reach the end or get some rows.
   *has_data = true;
-#ifdef PGTUPLE_DEBUG
-  PgTuple pg_tuple(natts, values, isnulls, syscols);
-#else
-  PgTuple pg_tuple(values, isnulls, syscols);
-#endif
+  PgTuple pg_tuple(values, isnulls, syscols, natts);
   while (!VERIFY_RESULT(doc_op_->ResultStream().GetNextRow(&pg_tuple))) {
     // Find out if there are more ybctids to fetch
     if (!VERIFY_RESULT(ProcessProvidedYbctids())) {

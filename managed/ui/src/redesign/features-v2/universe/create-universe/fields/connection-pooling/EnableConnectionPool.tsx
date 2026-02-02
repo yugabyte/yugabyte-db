@@ -5,15 +5,16 @@ import { useFormContext, useWatch, Controller } from 'react-hook-form';
 import { mui, YBToggleField, YBTooltip, YBInput } from '@yugabyte-ui-library/core';
 import { FieldContainer } from '../../components/DefaultComponents';
 import { YBEarlyAccessTag } from '../../../../../components';
-import { DEFAULT_COMMUNICATION_PORTS } from '../../helpers/constants';
 import { isVersionConnectionPoolSupported } from '../../../../../features/universe/universe-form/utils/helpers';
-
 import { DatabaseSettingsProps } from '../../steps/database-settings/dtos';
+import { DEFAULT_COMMUNICATION_PORTS } from '../../helpers/constants';
 import { YSQL_FIELD } from '../ysql-settings/YSQLSettingsField';
 
-const { Box, Typography, styled } = mui;
+//icons
+import NextLineIcon from '../../../../../assets/next-line.svg';
+import InfoIcon from '../../../../../assets/info-new.svg';
 
-import { ReactComponent as NextLineIcon } from '../../../../../assets/next-line.svg';
+const { Box, Typography, styled, Link } = mui;
 
 interface ConnectionPoolFieldProps {
   disabled: boolean;
@@ -29,6 +30,24 @@ const StyledSubText = styled(Typography)(({ theme }) => ({
   fontWeight: 400,
   color: '#4E5F6D'
 }));
+
+const StyledLabelIcon = styled(Box)(({ theme }) => ({
+  fontSize: '13px',
+  lineHeight: '16px',
+  fontWeight: 500,
+  color: '#6D7C88',
+  display: 'flex',
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: '2px'
+}));
+
+const StyledLinkText = styled(Link)({
+  fontSize: '11.5px',
+  lineHeight: '16px',
+  fontWeight: 400,
+  color: '#67666C'
+});
 
 export const ConnectionPoolingField: FC<ConnectionPoolFieldProps> = ({ disabled, dbVersion }) => {
   const { control, setValue } = useFormContext<DatabaseSettingsProps>();
@@ -73,8 +92,15 @@ export const ConnectionPoolingField: FC<ConnectionPoolFieldProps> = ({ disabled,
 
   return (
     <FieldContainer>
-      <Box sx={{ display: 'flex', flexDirection: 'column', padding: '16px 24px' }}>
-        <Box sx={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '12px' }}>
+      <Box sx={{ display: 'flex', flexDirection: 'column', padding: '16px 24px', gap: '4px' }}>
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: '8px'
+          }}
+        >
           <YBTooltip
             title={
               isYSQLEnabled ? (
@@ -88,7 +114,7 @@ export const ConnectionPoolingField: FC<ConnectionPoolFieldProps> = ({ disabled,
               )
             }
           >
-            <div>
+            <div style={{ marginBottom: '-5px' }}>
               <YBToggleField
                 dataTestId="enable-PG-compatibility-field"
                 name={CONNECTION_POOLING_FIELD}
@@ -101,11 +127,19 @@ export const ConnectionPoolingField: FC<ConnectionPoolFieldProps> = ({ disabled,
               />
             </div>
           </YBTooltip>
+          <InfoIcon />
           <YBEarlyAccessTag />
         </Box>
-        <Box sx={{ ml: 5 }}>
+        <Box sx={{ ml: 6 }}>
           <StyledSubText>
-            <Trans>{t('helperMsg')}</Trans>
+            <Trans>
+              {t('helperMsg')}
+              <StyledLinkText
+                underline="always"
+                href="https://docs.yugabyte.com/preview/explore/ysql-language-features/postgresql-compatibility/"
+                target="_blank"
+              ></StyledLinkText>
+            </Trans>
           </StyledSubText>
         </Box>
       </Box>
@@ -135,9 +169,7 @@ export const ConnectionPoolingField: FC<ConnectionPoolFieldProps> = ({ disabled,
               sx={{
                 display: 'flex',
                 flexDirection: 'column',
-                ml: 5,
-                pt: 2,
-                pl: 1,
+                padding: '32px 0px 8px 40px',
                 gap: '16px',
                 width: '200px'
               }}
@@ -150,7 +182,12 @@ export const ConnectionPoolingField: FC<ConnectionPoolFieldProps> = ({ disabled,
                       <YBInput
                         value={value}
                         onChange={onChange}
-                        label={item.label}
+                        label={
+                          <StyledLabelIcon>
+                            <span>{item.label}</span>
+                            <InfoIcon />
+                          </StyledLabelIcon>
+                        }
                         helperText={item.helperText}
                         dataTestId={`override-CP-ports-field-${item.id}`}
                         onBlur={(event) => {

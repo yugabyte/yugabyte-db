@@ -94,6 +94,20 @@ class DocVectorIndexContext {
 
 using DocVectorIndexContextPtr = std::unique_ptr<DocVectorIndexContext>;
 
+struct DocVectorIndexMetrics {
+  explicit DocVectorIndexMetrics(const MetricEntityPtr& metric_entity);
+
+  EventStatsPtr convert_us;
+  EventStatsPtr filter_checked;
+  EventStatsPtr filter_accepted;
+  EventStatsPtr filter_removed;
+  EventStatsPtr read_data_us;
+  EventStatsPtr read_intents_us;
+  EventStatsPtr merge_us;
+  EventStatsPtr found_intents;
+  EventStatsPtr result_size;
+};
+
 class DocVectorIndex {
  public:
   virtual ~DocVectorIndex() = default;
@@ -105,6 +119,7 @@ class DocVectorIndex {
   virtual const std::string& path() const = 0;
   virtual HybridTime hybrid_time() const = 0;
   virtual const DocVectorIndexContext& context() const = 0;
+  virtual const DocVectorIndexMetrics& metrics() const = 0;
 
   virtual Status Insert(
       const DocVectorIndexInsertEntries& entries, const rocksdb::UserFrontiers& frontiers) = 0;
@@ -129,6 +144,7 @@ class DocVectorIndex {
   virtual void CompleteShutdown() = 0;
 
   virtual bool TEST_HasBackgroundInserts() const = 0;
+  virtual size_t TEST_NextManifestFileNo() const = 0;
 
   bool BackfillDone();
 

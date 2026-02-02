@@ -317,8 +317,8 @@ Status CDCSDKTestBase::RenameColumn(
 Result<std::string> CDCSDKTestBase::GetNamespaceId(const std::string& namespace_name) {
   master::GetNamespaceInfoResponsePB namespace_info_resp;
 
-  RETURN_NOT_OK(test_client()->GetNamespaceInfo(
-      std::string(), kNamespaceName, YQL_DATABASE_PGSQL, &namespace_info_resp));
+  RETURN_NOT_OK(
+      test_client()->GetNamespaceInfo(kNamespaceName, YQL_DATABASE_PGSQL, &namespace_info_resp));
 
   // Return namespace_id.
   return namespace_info_resp.namespace_().id();
@@ -457,6 +457,9 @@ Result<xrepl::StreamId> CDCSDKTestBase::CreateConsistentSnapshotStreamWithReplic
       SCHECK_EQ(
           *snapshot_name, std::to_string(cstime), InternalError,
           "Snapshot Name is not matching the consistent snapshot time");
+    } else if (snapshot_option == EXPORT_SNAPSHOT) {
+      SCHECK(snapshot_name.has_value(), InternalError, "Snapshot name is NULL for EXPORT_SNAPSHOT");
+      SCHECK(!snapshot_name->empty(), InternalError, "Snapshot name is empty for EXPORT_SNAPSHOT");
     }
   }
 

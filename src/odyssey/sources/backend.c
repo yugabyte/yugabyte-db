@@ -523,18 +523,9 @@ static inline int od_backend_startup(od_server_t *server,
 				}
 			}
 
-			/*
-			 * TODO(arpit.saxena) (#20603): If flags & YB_GUC_CONTEXT_BACKEND, then we have to
-			 * ensure that either the auth backend stays or we make a new sticky backend
-			 * and pass the external client's startup settings. This is because client
-			 * has set a variable through the startup packet which can't be set using
-			 * SET statements
-			 */
-
 			if (is_authenticating) {
 				if (flags &
-				    (YB_PARAM_STATUS_CONTEXT_BACKEND |
-				     YB_PARAM_STATUS_USERSET_OR_SUSET_SOURCE_STARTUP)) {
+				     YB_PARAM_STATUS_SOURCE_STARTUP) {
 					/*
 					 * The parameters here are the ones set by the startup packet in
 					 * the auth backend. These are the parameters that have to be replayed
@@ -555,11 +546,21 @@ static inline int od_backend_startup(od_server_t *server,
 				// set server parameters, ignore startup session_authorization
 				// session_authorization is sent by the server during startup,
 				// if not ignored, will make every connection sticky
-				kiwi_vars_update(
-					&server->vars, name, name_len, value,
-					value_len,
-					yb_od_instance_should_lowercase_guc_name(
-						instance));
+				if (flags &
+
+				     YB_PARAM_STATUS_SOURCE_STARTUP)
+					kiwi_vars_update(
+						&server->yb_vars_default, name,
+						name_len, value, value_len,
+						yb_od_instance_should_lowercase_guc_name(
+							instance));
+				else if (flags &
+					 YB_PARAM_STATUS_USERSET_OR_SUSET_SOURCE_SESSION)
+					kiwi_vars_update(
+						&server->yb_vars_session, name,
+						name_len, value, value_len,
+						yb_od_instance_should_lowercase_guc_name(
+							instance));
 			}
 
 			if ((name_len != sizeof("session_authorization") ||
@@ -1073,25 +1074,29 @@ int od_backend_update_parameter(od_server_t *server, char *context, char *data,
 	 * to be removed from server and client variable lists
 	 */
 
-	if (flags & (YB_PARAM_STATUS_USERSET_OR_SUSET_SOURCE_SESSION |
-		     YB_PARAM_STATUS_USERSET_OR_SUSET_SOURCE_STARTUP)) {
-		kiwi_vars_update(&server->vars, name, name_len, value,
-				 value_len, should_lowercase_name);
-	} else {
-		yb_kiwi_vars_remove_if_exists(&server->vars, name, name_len,
-					      should_lowercase_name);
-	}
+	if (flags & YB_PARAM_STATUS_SOURCE_STARTUP)
+		kiwi_vars_update(&server->yb_vars_default, name, name_len,
+				 value, value_len, should_lowercase_name);
+	else if (flags & YB_PARAM_STATUS_DEFAULT_VAL_RESET)
+		yb_kiwi_vars_remove_if_exists(&server->yb_vars_default, name,
+					      name_len, should_lowercase_name);
+
+	if (flags & YB_PARAM_STATUS_USERSET_OR_SUSET_SOURCE_SESSION)
+		kiwi_vars_update(&server->yb_vars_session, name, name_len,
+				 value, value_len, should_lowercase_name);
+	else if (flags & YB_PARAM_STATUS_SESSION_VAL_RESET)
+		yb_kiwi_vars_remove_if_exists(&server->yb_vars_session, name,
+					      name_len, should_lowercase_name);
 
 	if (!server_only) {
-		if (flags & YB_PARAM_STATUS_USERSET_OR_SUSET_SOURCE_SESSION) {
+		if (flags & YB_PARAM_STATUS_USERSET_OR_SUSET_SOURCE_SESSION)
 			kiwi_vars_update(&client->yb_vars_session, name,
 					 name_len, value, value_len,
 					 should_lowercase_name);
-		} else {
+		else if (flags & YB_PARAM_STATUS_SESSION_VAL_RESET)
 			yb_kiwi_vars_remove_if_exists(&client->yb_vars_session,
 						      name, name_len,
 						      should_lowercase_name);
-		}
 	}
 
 	return 0;

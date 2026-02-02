@@ -26,6 +26,7 @@
 #include "yb/client/transaction_pool.h"
 
 #include "yb/common/pg_types.h"
+#include "yb/common/wire_protocol.h"
 
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
@@ -57,8 +58,7 @@ DEFINE_RUNTIME_int32(update_min_cdc_indices_master_interval_secs, 300 /* 5 minut
 DECLARE_bool(create_initial_sys_catalog_snapshot);
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 
-namespace yb {
-namespace master {
+namespace yb::master {
 
 using consensus::StartRemoteBootstrapRequestPB;
 
@@ -90,6 +90,10 @@ class MasterCDCServiceContextImpl : public cdc::CDCServiceContext {
 
   Result<uint32> GetAutoFlagsConfigVersion() const override {
     return STATUS(InternalError, "Unexpected call to GetAutoFlagsConfigVersion in master_tserver.");
+  }
+
+  Result<HostPort> GetDesiredHostPortForLocal() const override {
+    return STATUS(NotSupported, "GetDesiredHostPortForLocal not supported on master");
   }
 
  private:
@@ -346,5 +350,8 @@ void MasterTabletServer::EnableCDCService() {
   LOG(INFO) << "CDC service enabled on master";
 }
 
-} // namespace master
-} // namespace yb
+tserver::ConnectivityStateResponsePB MasterTabletServer::ConnectivityState() {
+  return tserver::ConnectivityStateResponsePB{};
+}
+
+} // namespace yb::master

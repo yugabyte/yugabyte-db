@@ -124,10 +124,12 @@ type Handler func(context.Context) (any, error)
 
 // UserDetail is a placeholder for OS user.
 type UserDetail struct {
-	User      *user.User
-	UserID    uint32
-	GroupID   uint32
-	IsCurrent bool
+	User           *user.User
+	UserID         uint32
+	GroupID        uint32
+	CurrentUserID  uint32
+	CurrentGroupID uint32
+	IsCurrent      bool
 }
 
 func NewUUID() uuid.UUID {
@@ -334,24 +336,41 @@ func UserInfo(username string) (*UserDetail, error) {
 	if err != nil {
 		return nil, err
 	}
-	isCurrent := true
+	currUserID, err := strconv.Atoi(userAcc.Uid)
+	if err != nil {
+		return nil, err
+	}
+	currGroupID, err := strconv.Atoi(userAcc.Gid)
+	if err != nil {
+		return nil, err
+	}
+	detail := &UserDetail{
+		UserID:         uint32(currUserID),
+		GroupID:        uint32(currGroupID),
+		CurrentUserID:  uint32(currUserID),
+		CurrentGroupID: uint32(currGroupID),
+		User:           userAcc,
+		IsCurrent:      true,
+	}
 	if username != "" && userAcc.Username != username {
 		userAcc, err = user.Lookup(username)
 		if err != nil {
 			return nil, err
 		}
-		isCurrent = false
+		uid, err := strconv.Atoi(userAcc.Uid)
+		if err != nil {
+			return nil, err
+		}
+		gid, err := strconv.Atoi(userAcc.Gid)
+		if err != nil {
+			return nil, err
+		}
+		detail.UserID = uint32(uid)
+		detail.GroupID = uint32(gid)
+		detail.User = userAcc
+		detail.IsCurrent = false
 	}
-	uid, err := strconv.Atoi(userAcc.Uid)
-	if err != nil {
-		return nil, err
-	}
-	gid, err := strconv.Atoi(userAcc.Gid)
-	if err != nil {
-		return nil, err
-	}
-	return &UserDetail{
-		User: userAcc, UserID: uint32(uid), GroupID: uint32(gid), IsCurrent: isCurrent}, nil
+	return detail, nil
 }
 
 // InheritContextKeys inherits the context related info from a context.

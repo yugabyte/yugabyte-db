@@ -222,7 +222,7 @@ export function validateToken() {
   if (IN_DEVELOPMENT_MODE) {
     axios.defaults.withCredentials = true;
   }
-  if (!IN_DEVELOPMENT_MODE || !process.env.REACT_APP_YUGAWARE_API_URL) {
+  if (!IN_DEVELOPMENT_MODE || !import.meta.env.VITE_YUGAWARE_API_URL) {
     axios.defaults.headers.common['Csrf-Token'] = Cookies.get('csrfCookie');
   }
 

@@ -113,7 +113,6 @@ class HeartbeatPoller : public MasterLeaderPollerInterface {
   MonoDelta IntervalToNextPoll(int32_t consecutive_failures) override;
   void Init() override;
   void ResetProxy() override;
-  std::string category() override;
   std::string name() override;
   const std::string& LogPrefix() const override;
 
@@ -149,7 +148,7 @@ class Heartbeater::Impl {
   void operator=(const Impl& other) = delete;
 
   Status Start();
-  Status Stop();
+  void Shutdown();
   void TriggerASAP();
 
   void set_master_addresses(server::MasterAddressesPtr master_addresses) {
@@ -179,11 +178,15 @@ Heartbeater::Heartbeater(
 }
 
 Heartbeater::~Heartbeater() {
-  WARN_NOT_OK(Stop(), "Unable to stop heartbeater thread");
+  Shutdown();
 }
 
 Status Heartbeater::Start() { return impl_->Start(); }
-Status Heartbeater::Stop() { return impl_->Stop(); }
+
+void Heartbeater::Shutdown() {
+  return impl_->Shutdown();
+}
+
 void Heartbeater::TriggerASAP() { impl_->TriggerASAP(); }
 
 void Heartbeater::set_master_addresses(server::MasterAddressesPtr master_addresses) {
@@ -212,10 +215,12 @@ Heartbeater::Impl::Impl(
                       << AsString(master_addresses);
 }
 
-Status Heartbeater::Impl::Start() { return poll_scheduler_.Start(); }
+Status Heartbeater::Impl::Start() {
+  return poll_scheduler_.Start();
+}
 
-Status Heartbeater::Impl::Stop() {
-  return poll_scheduler_.Stop();
+void Heartbeater::Impl::Shutdown() {
+  poll_scheduler_.Shutdown();
 }
 
 void Heartbeater::Impl::TriggerASAP() {
@@ -259,11 +264,8 @@ Status HeartbeatPoller::Poll() {
 
   if (!proxy_) {
     VLOG_WITH_PREFIX(1) << "No valid master proxy. Connecting...";
-
-    auto hostport = VERIFY_RESULT(finder_.UpdateMasterLeaderHostPort(
+    proxy_ = VERIFY_RESULT(finder_.CreateProxy<master::MasterHeartbeatProxy>(
         MonoDelta::FromMilliseconds(FLAGS_heartbeat_rpc_timeout_ms)));
-    LOG_WITH_PREFIX(INFO) << "Connected to a leader master server at " << hostport;
-    proxy_ = master::MasterHeartbeatProxy(&server_.proxy_cache(), hostport);
   }
 
   for (;;) {
@@ -296,10 +298,6 @@ void HeartbeatPoller::Init() {
 }
 
 void HeartbeatPoller::ResetProxy() { proxy_ = std::nullopt; }
-
-std::string HeartbeatPoller::category() {
-  return "heartbeater";
-}
 
 std::string HeartbeatPoller::name() {
   return "heartbeat";

@@ -16,7 +16,7 @@ import { makeStyles } from '@material-ui/core';
 import { YBInputField, YBModal } from '../../../../components';
 import { deleteUser } from '../../api';
 import { createErrorMessage } from '../../../universe/universe-form/utils/helpers';
-import ErrorIcon from '../../../../assets/error.svg';
+import ErrorIcon from '../../../../assets/error.svg?img';
 import { RbacUser } from '../interface/Users';
 import { UserContextMethods, UserPages, UserViewContext } from './UserContext';
 

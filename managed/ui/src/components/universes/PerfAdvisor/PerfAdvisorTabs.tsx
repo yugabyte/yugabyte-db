@@ -1,58 +1,87 @@
 import { useEffect, useState } from 'react';
 import { Tab } from 'react-bootstrap';
 import { useTranslation } from 'react-i18next';
+import { withRouter } from 'react-router';
 import { Box } from '@material-ui/core';
+import { PerfAdvisorOverviewDashboard } from '../AttachUniverseToPerfAdvisor/PerfAdvisorOverviewDashboard';
 import { YBTabsPanel } from '../../../components/panels';
-import { RegisterYBAToPerfAdvisor } from '../AttachUniverseToPerfAdvisor/RegisterYBAToPerfAdvisor';
-import { AppName } from '../../../redesign/features/PerfAdvisor/PerfAdvisorAnalysisDashboard';
 
 interface PerfAdvisorTabsProps {
-  universeUUID: string;
+  universeUuid: string;
   timezone: string;
+  apiUrl: string;
+  registrationStatus: boolean;
+  location?: any;
+  router?: any;
 }
 
 export const ConfigTabKey = {
-  ANOMALIES: 'anomalies',
-  QUERIES: 'queries',
-  METRICS: 'metricsNew',
-  INSIGHTS: 'insights'
+  CLUSTER_LOAD: 'clusterLoad',
+  METRICS: 'metricsNew'
 } as const;
 export type ConfigTabKey = typeof ConfigTabKey[keyof typeof ConfigTabKey];
 
-export const PerfAdvisorTabs = ({ universeUUID, timezone }: PerfAdvisorTabsProps) => {
-  // Extract the tab name from the URL query parameter
-  const queryParams = new URLSearchParams(window.location.search);
-  const tabFromUrl = (queryParams.get('tab') as ConfigTabKey) || ConfigTabKey.ANOMALIES; // Default to ANOMALIES if no tab is specified
+const PerfAdvisorTabsComponent = ({
+  universeUuid,
+  timezone,
+  apiUrl,
+  registrationStatus,
+  location,
+  router
+}: PerfAdvisorTabsProps) => {
   const { t } = useTranslation();
 
+  // Get tab from URL query params (react-router v3 style)
+  const tabFromUrl = (location?.query?.tab as ConfigTabKey) || ConfigTabKey.CLUSTER_LOAD;
   const [tabToDisplay, setTabToDisplay] = useState<ConfigTabKey>(tabFromUrl);
 
   useEffect(() => {
-    // If no tab is specified in the URL, update the URL to include ?tab=anomalies
-    if (!queryParams.get('tab')) {
-      const newUrl = `${window.location.pathname}?tab=${ConfigTabKey.ANOMALIES}`;
-      window.history.replaceState(null, '', newUrl); // Update the URL without reloading the page
+    // Update state when URL tab changes
+    if (location?.query?.tab) {
+      setTabToDisplay(location.query.tab as ConfigTabKey);
     }
-    setTabToDisplay(tabFromUrl);
-  }, [tabFromUrl]);
+  }, [location?.query?.tab]);
 
-  // Set the ref to true when the component is unmounting
+  // Handle initial tab setup and subtab cleanup
   useEffect(() => {
-    // // Cleanup function to remove query parameters on unmount
-    return () => {
-      const basePath = window.location.pathname.split('?')[0]; // Remove query parameters
-      window.history.replaceState(null, '', basePath); // Update the URL without reloading the page
-    };
-  }, []);
+    if (!router || !location) return;
+
+    const currentTab = location.query?.tab as ConfigTabKey;
+    const currentQuery = location.query || {};
+
+    // If no tab is specified in the URL, set default tab with subTab
+    if (!currentTab) {
+      const currentLocation = { ...location };
+      currentLocation.query = {
+        ...currentQuery, // Preserve all existing params (duration, etc.)
+        tab: ConfigTabKey.CLUSTER_LOAD
+      };
+      router.replace(currentLocation);
+      return;
+    }
+
+    // Build new query object, removing subtab params that don't belong to current tab
+    const newQuery = { ...currentQuery };
+    let needsUpdate = false;
+
+    // Remove subTab if current tab doesn't use it (or if it's not clusterLoad)
+    if (currentTab !== ConfigTabKey.CLUSTER_LOAD && currentQuery.subTab) {
+      delete newQuery.subTab;
+      needsUpdate = true;
+    }
+
+    // Update URL if we removed any subtab params
+    if (needsUpdate) {
+      const currentLocation = { ...location };
+      currentLocation.query = newQuery;
+      router.replace(currentLocation);
+    }
+  }, [location?.query?.tab, location?.query?.metricsTab, router, location]);
 
   const tabConfig = [
     {
-      key: ConfigTabKey.ANOMALIES,
-      title: t('clusterDetail.troubleshoot.perfAdvisorAnomaliesTab')
-    },
-    {
-      key: ConfigTabKey.QUERIES,
-      title: t('clusterDetail.troubleshoot.perfAdvisorQueriesTab')
+      key: ConfigTabKey.CLUSTER_LOAD,
+      title: t('clusterDetail.troubleshoot.perfAdvisorClusterLoadTab')
     },
     {
       key: ConfigTabKey.METRICS,
@@ -69,16 +98,18 @@ export const PerfAdvisorTabs = ({ universeUUID, timezone }: PerfAdvisorTabsProps
       >
         {tabConfig.map((tab) => (
           <Tab eventKey={tab.key} title={tab.title} key={tab.key} unmountOnExit={true}>
-            <Box mt={1}>
-              <RegisterYBAToPerfAdvisor
-                universeUuid={universeUUID}
-                appName={AppName.YBA}
-                timezone={timezone}
-              />
-            </Box>
+            <PerfAdvisorOverviewDashboard
+              universeUuid={universeUuid}
+              timezone={timezone}
+              apiUrl={apiUrl}
+              registrationStatus={registrationStatus}
+            />
           </Tab>
         ))}
       </YBTabsPanel>
     </Box>
   );
 };
+
+// Export with withRouter to get location and router props
+export const PerfAdvisorTabs = withRouter(PerfAdvisorTabsComponent);

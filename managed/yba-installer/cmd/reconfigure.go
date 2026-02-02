@@ -103,16 +103,7 @@ var reconfigureCmd = &cobra.Command{
 			log.Fatal(err.Error())
 		}
 
-		for service := range serviceManager.Services() {
-			status, err := service.Status()
-			if err != nil {
-				log.Fatal("Failed to get status: " + err.Error())
-			}
-			if !common.IsHappyStatus(status) {
-				log.Fatal(status.Service + " is not running! Restart might have failed, please check " +
-					common.YbactlLogFile())
-			}
-		}
+		getAndPrintStatus(state)
 
 		// Update state to reflect current service configuration
 		state.Services.PerfAdvisor = viper.GetBool("perfAdvisor.enabled")

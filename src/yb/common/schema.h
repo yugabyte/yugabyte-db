@@ -1051,6 +1051,9 @@ class Schema : public MissingValueProvider {
 
   static ColumnId first_column_id();
 
+  // Update the missing values of the columns.
+  void UpdateMissingValuesFrom(const google::protobuf::RepeatedPtrField<ColumnSchemaPB>& columns);
+
   // Get a column's missing default value.
   Result<const QLValuePB&> GetMissingValueByColumnId(ColumnId id) const final;
 

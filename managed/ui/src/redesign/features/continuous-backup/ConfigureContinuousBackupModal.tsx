@@ -7,9 +7,9 @@ import { toast } from 'react-toastify';
 import { AxiosError } from 'axios';
 
 import { YBInputField, YBModal, YBModalProps, YBTooltip } from '../../components';
-import { ReactComponent as CheckmarkIcon } from '../../assets/check.svg';
-import { ReactComponent as UnavailableIcon } from '../../assets/unavailable.svg';
-import { ReactComponent as TipIcon } from '../../assets/tip.svg';
+import CheckmarkIcon from '../../assets/check.svg';
+import UnavailableIcon from '../../assets/unavailable.svg';
+import TipIcon from '../../assets/tip.svg';
 import { I18N_ACCESSABILITY_ALT_TEXT_KEY_PREFIX } from '../../helpers/constants';
 import { BackupStorageConfigSelectField } from './BackupStorageConfigSelectField';
 import {

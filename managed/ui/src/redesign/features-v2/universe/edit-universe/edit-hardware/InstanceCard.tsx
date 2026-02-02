@@ -7,7 +7,7 @@ import { mui, YBButton } from '@yugabyte-ui-library/core';
 import { StyledInfoRow } from '../../create-universe/components/DefaultComponents';
 import { LinuxVersion } from '../components';
 
-import { ReactComponent as EditIcon } from '@app/redesign/assets/edit2.svg';
+import EditIcon from '@app/redesign/assets/edit2.svg';
 interface InstanceCardProps {
   title: string;
   arch?: string;

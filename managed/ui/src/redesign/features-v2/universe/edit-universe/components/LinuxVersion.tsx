@@ -14,7 +14,7 @@ import { ImageBundleDefaultTag, ImageBundleYBActiveTag } from '../../create-univ
 import { AWSProvider } from '@app/components/configRedesign/providerRedesign/types';
 import { CircularProgress } from '@material-ui/core';
 import { StyledInfoRow } from '../../create-universe/components/DefaultComponents';
-import { ReactComponent as ArrowCircleUp } from '@app/redesign/assets/arrow_circle_up.svg';
+import ArrowCircleUp from '@app/redesign/assets/arrow_circle_up.svg';
 
 export const LinuxVersion = () => {
   const { universeData } = useEditUniverseContext();

@@ -36,6 +36,7 @@
 #include "catalog/pg_yb_role_profile.h"
 #include "commands/dbcommands.h"
 #include "common/ip.h"
+#include "common/pg_yb_param_status_flags.h"
 #include "libpq/libpq-be.h"
 #include "libpq/libpq.h"
 #include "libpq/pqformat.h"
@@ -1084,7 +1085,7 @@ YbSendParameterStatusForConnectionManager(const char *name, const char *value)
 	pq_beginmessage(&msgbuf, 'r');
 	pq_sendstring(&msgbuf, name);
 	pq_sendstring(&msgbuf, value);
-	pq_sendbyte(&msgbuf, 0);	/* flags */
+	pq_sendbyte(&msgbuf, YB_PARAM_STATUS_USERSET_OR_SUSET_SOURCE_SESSION);
 	pq_endmessage(&msgbuf);
 
 	pq_flush();

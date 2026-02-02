@@ -99,6 +99,7 @@ import software.amazon.awssdk.services.ec2.model.Instance;
 import software.amazon.awssdk.services.ec2.model.InstanceType;
 import software.amazon.awssdk.services.ec2.model.SpotPrice;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.S3Configuration;
 import software.amazon.awssdk.services.s3.model.Bucket;
 import software.amazon.awssdk.services.s3.model.Delete;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
@@ -926,6 +927,9 @@ public class AWSUtil implements CloudUtil {
     if (s3Data.isPathStyleAccess) {
       builder.forcePathStyle(true);
     }
+    // Apply chunked encoding setting (some S3-compatible storage services don't support it)
+    builder.serviceConfiguration(
+        S3Configuration.builder().chunkedEncodingEnabled(s3Data.useChunkedEncoding).build());
     try {
       //  Use region specific hostbase
       AWSHostBase hostBase = getRegionHostBaseMap(s3Data).get(region);

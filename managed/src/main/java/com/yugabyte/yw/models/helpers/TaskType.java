@@ -713,7 +713,7 @@ public enum TaskType {
 
   OperatorImportUniverse(
       com.yugabyte.yw.commissioner.tasks.OperatorImportUniverse.class,
-      CustomerTask.TaskType.OperatorImportUniverse,
+      CustomerTask.TaskType.OperatorImport,
       CustomerTask.TargetType.Universe),
 
   /* Subtasks start here */
@@ -1126,6 +1126,9 @@ public enum TaskType {
   CheckMemory(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckMemory.class),
 
   CheckLocale(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckLocale.class),
+
+  CheckShellConnectivity(
+      com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckShellConnectivity.class),
 
   CheckGlibc(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckGlibc.class),
 

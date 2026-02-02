@@ -5,6 +5,8 @@
 package cmd
 
 import (
+	"strings"
+
 	"github.com/spf13/cobra"
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components"
@@ -38,6 +40,11 @@ var rootCmd = &cobra.Command{
     Anywhere instance through our command line CLI, such as clean, createBackup,
     restoreBackup, install, and upgrade! View the CLI menu to learn more!`,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		// Skip initialization if help flag is set
+		helpFlag := cmd.Flag("help")
+		if helpFlag.Value.String() == "true" || strings.Contains(cmd.CommandPath(), "help") {
+			return
+		}
 		// Initialize component manager
 		serviceManager = components.NewManager()
 		initAfterFlagsParsed(cmd.CommandPath())

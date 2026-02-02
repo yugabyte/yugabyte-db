@@ -1,11 +1,10 @@
-Ensure that the node/npm binaries are recent. For example,
-\$ npm -v
-7.24.0
+Ensure the Node and NPM version satisfies the version requirement in package.json.
 
-\$ node -v
-v16.10.0
+It is recommended to use nvm (https://github.com/nvm-sh/nvm) to manage your node versions.
+You can run `nvm use` under the `ui` directory to ensure you're running the recommended node version
+specified in `.nvmrc`. 
 
-### `npm install`
+### `npm ci`
 
 Install all the dependencies needed for the project
 

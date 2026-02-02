@@ -26,7 +26,7 @@ import { IStorageProviders } from '../IStorageConfigs';
 import { CloudType } from '../../../../../redesign/helpers/dtos';
 import { toast } from 'react-toastify';
 import './CreateGCSConfigForm.scss';
-import Close from '../../../../universes/images/close.svg';
+import Close from '../../../../universes/images/close.svg?img';
 import { createErrorMessage } from '../../../../../utils/ObjectUtils';
 
 interface CreateGCSConfigFormProps {

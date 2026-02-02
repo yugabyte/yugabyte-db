@@ -140,6 +140,11 @@ extern bool yb_enable_add_column_missing_default;
 extern bool yb_enable_replication_commands;
 
 /*
+ * GUC variable that enables pg_export_snapshot and SET TRANSACTION SNAPSHOT.
+ */
+extern bool yb_enable_pg_export_snapshot;
+
+/*
  * Guc variable that enables replication slot consumption.
  */
 extern bool yb_enable_replication_slot_consumption;
@@ -182,6 +187,8 @@ extern bool yb_enable_consistent_replication_from_hash_range;
 extern bool yb_cdcsdk_stream_tables_without_primary_key;
 
 extern bool enable_object_locking_infra;
+
+extern bool yb_enable_ddl_savepoint_infra;
 
 /*
  * Refer YBCIsLegacyModeForCatalogOps() for details.

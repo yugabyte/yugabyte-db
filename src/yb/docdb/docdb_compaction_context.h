@@ -39,8 +39,7 @@
 
 #include "yb/util/strongly_typed_bool.h"
 
-namespace yb {
-namespace docdb {
+namespace yb::docdb {
 
 YB_STRONGLY_TYPED_BOOL(IsMajorCompaction);
 YB_STRONGLY_TYPED_BOOL(ShouldRetainDeleteMarkersInMajorCompaction);
@@ -159,6 +158,7 @@ class SchemaPackingProvider {
 
   virtual ~SchemaPackingProvider() = default;
 };
+
 // A strategy for deciding how the history of old database operations should be retained during
 // compactions. We may implement this differently in production and in tests.
 class HistoryRetentionPolicy {
@@ -168,6 +168,13 @@ class HistoryRetentionPolicy {
   virtual HybridTime ProposedHistoryCutoff() = 0;
 };
 
+class DocVectorMetadataIteratorProvider {
+ public:
+  virtual ~DocVectorMetadataIteratorProvider() = default;
+  virtual Result<docdb::IntentAwareIteratorWithBounds> CreateVectorMetadataIterator(
+      const ReadHybridTime& read_ht) const = 0;
+};
+
 using DeleteMarkerRetentionTimeProvider = std::function<HybridTime(
     const std::vector<rocksdb::FileMetaData*>&)>;
 
@@ -175,7 +182,8 @@ std::shared_ptr<rocksdb::CompactionContextFactory> CreateCompactionContextFactor
     std::shared_ptr<HistoryRetentionPolicy> retention_policy,
     const KeyBounds* key_bounds,
     const DeleteMarkerRetentionTimeProvider& delete_marker_retention_provider,
-    SchemaPackingProvider* schema_packing_provider);
+    SchemaPackingProvider* schema_packing_provider,
+    DocVectorMetadataIteratorProvider* vector_metadata_iterator_provider = nullptr);
 
 // A history retention policy that can be configured manually. Useful in tests. This class is
 // useful for testing and is thread-safe.
@@ -200,5 +208,4 @@ class ManualHistoryRetentionPolicy : public HistoryRetentionPolicy {
 
 HybridTime GetHistoryCutoffForKey(Slice coprefix, HistoryCutoff cutoff_info);
 
-}  // namespace docdb
-}  // namespace yb
+}  // namespace yb::docdb

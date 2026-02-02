@@ -240,8 +240,7 @@ Status CheckPeerIsReady(
                       tablet->tablet_id(),
                       TabletDataState_Name(tablet_data_state)),
                TabletServerError(TabletServerErrorPB::TABLET_SPLIT))
-        .CloneAndAddErrorCode(SplitChildTabletIdsData(
-            std::vector<TabletId>(split_child_tablet_ids.begin(), split_child_tablet_ids.end())));
+        .CloneAndAddErrorCode(SplitChildTabletIdsData(split_child_tablet_ids));
     // TODO(tsplit): If we get FS corruption on 1 node, we can just delete that tablet copy and
     // bootstrap from a good leader. If there's a way that all peers replicated the SPLIT and
     // modified their data state, but all had some failures (code bug?).

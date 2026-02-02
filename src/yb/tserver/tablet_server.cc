@@ -341,6 +341,12 @@ class CDCServiceContextImpl : public cdc::CDCServiceContext {
     return tablet_server_.ValidateAndGetAutoFlagsConfigVersion();
   }
 
+  Result<HostPort> GetDesiredHostPortForLocal() const override {
+    ServerRegistrationPB reg;
+    RETURN_NOT_OK(tablet_server_.GetRegistration(&reg, server::RpcOnly::kTrue));
+    return HostPortFromPB(DesiredHostPort(reg, tablet_server_.options().MakeCloudInfoPB()));
+  }
+
  private:
   TabletServer& tablet_server_;
 };
@@ -468,10 +474,16 @@ Status TabletServer::UpdateMasterAddresses(const consensus::RaftConfigPB& new_co
 
   opts_.SetMasterAddresses(new_master_addresses);
 
-  heartbeater_->set_master_addresses(new_master_addresses);
-  ysql_lease_manager_->UpdateMasterAddresses(new_master_addresses);
+  DoUpdateMasterAddresses();
 
   return Status::OK();
+}
+
+void TabletServer::DoUpdateMasterAddresses() {
+  auto new_master_addresses = opts_.GetMasterAddresses();
+  heartbeater_->set_master_addresses(new_master_addresses);
+  ysql_lease_manager_->UpdateMasterAddresses(new_master_addresses);
+  connectivity_poller_->UpdateMasterAddresses(new_master_addresses);
 }
 
 Status TabletServer::Init() {
@@ -487,11 +499,13 @@ Status TabletServer::Init() {
 
   RETURN_NOT_OK(path_handlers_->Register(web_server_.get()));
 
-  log_prefix_ = Format("P $0: ", permanent_uuid());
+  log_prefix_ = server::MakeServerLogPrefix(permanent_uuid());
 
   heartbeater_ = CreateHeartbeater(opts_, this);
 
-  ysql_lease_manager_ = std::make_unique<YSQLLeaseManager>(*this, opts_.GetMasterAddresses());
+  ysql_lease_manager_.emplace(*this);
+  connectivity_poller_.emplace(*this, permanent_uuid());
+  DoUpdateMasterAddresses();
 
   if (GetAtomicFlag(&FLAGS_allow_encryption_at_rest)) {
     // Create the encrypted environment that will allow users to enable encryption.
@@ -748,6 +762,7 @@ Status TabletServer::Start() {
 
   RETURN_NOT_OK(heartbeater_->Start());
   ysql_lease_manager_->StartTSLocalLockManager();
+  RETURN_NOT_OK(connectivity_poller_->Start());
 
   if (FLAGS_tserver_enable_metrics_snapshotter) {
     RETURN_NOT_OK(metrics_snapshotter_->Start());
@@ -782,9 +797,11 @@ void TabletServer::Shutdown() {
   // todo(zdrudi): there's lifetime issues trying to access the pg_supervisor here through
   // callbacks. Probably due to the way the MiniCluster sets up the PgSupervisor.
   // Fix them and ensure PG is stopped here.
-  WARN_NOT_OK(ysql_lease_manager_->Stop(), "Failed to stop ysql lease poller");
+  ysql_lease_manager_->Shutdown();
   auto relinquish_lease_future = ysql_lease_manager_->RelinquishLease(
       MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_ysql_lease_refresher_rpc_timeout_ms)));
+
+  connectivity_poller_->Shutdown();
 
   auto xcluster_consumer = GetXClusterConsumer();
   if (xcluster_consumer) {
@@ -792,7 +809,7 @@ void TabletServer::Shutdown() {
   }
 
   maintenance_manager_->Shutdown();
-  WARN_NOT_OK(heartbeater_->Stop(), "Failed to stop TS Heartbeat thread");
+  heartbeater_->Shutdown();
 
   if (FLAGS_tserver_enable_metrics_snapshotter) {
     WARN_NOT_OK(metrics_snapshotter_->Stop(), "Failed to stop TS Metrics Snapshotter thread");
@@ -2220,17 +2237,17 @@ Status TabletServer::SetPausedXClusterProducerStreams(
 }
 
 Status TabletServer::ReloadKeysAndCertificates() {
-  if (!secure_context_) {
-    return Status::OK();
+  if (secure_context_) {
+    RETURN_NOT_OK(rpc::ReloadSecureContextKeysAndCertificates(
+        secure_context_.get(), fs_manager_->GetDefaultRootDir(), rpc::SecureContextType::kInternal,
+        options_.HostsString()));
   }
 
-  RETURN_NOT_OK(rpc::ReloadSecureContextKeysAndCertificates(
-      secure_context_.get(), fs_manager_->GetDefaultRootDir(), rpc::SecureContextType::kInternal,
-      options_.HostsString()));
-
-  std::lock_guard l(xcluster_consumer_mutex_);
-  if (xcluster_consumer_) {
-    RETURN_NOT_OK(xcluster_consumer_->ReloadCertificates());
+  {
+    std::lock_guard l(xcluster_consumer_mutex_);
+    if (xcluster_consumer_) {
+      RETURN_NOT_OK(xcluster_consumer_->ReloadCertificates());
+    }
   }
 
   for (const auto& reloader : certificate_reloaders_) {
@@ -2459,6 +2476,10 @@ PgClientServiceImpl* TabletServer::TEST_GetPgClientService() {
 PgClientServiceMockImpl* TabletServer::TEST_GetPgClientServiceMock() {
   auto holder = pg_client_service_.lock();
   return holder && holder->mock.has_value() ? &holder->mock.value() : nullptr;
+}
+
+ConnectivityStateResponsePB TabletServer::ConnectivityState() {
+  return connectivity_poller_->State();
 }
 
 }  // namespace yb::tserver

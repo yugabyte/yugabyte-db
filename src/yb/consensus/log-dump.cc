@@ -62,6 +62,8 @@
 #include "yb/rpc/secure_stream.h"
 #include "yb/rpc/rpc_fwd.h"
 
+#include "yb/tablet/tablet_metadata.h"
+
 #include "yb/tools/tools_utils.h"
 
 #include "yb/util/env.h"
@@ -105,6 +107,10 @@ DEFINE_NON_RUNTIME_string(output_wal_dir, "",
 DEFINE_NON_RUNTIME_string(master_addresses, "",
               "Comma-separated list of YB Master server addresses, this is required for "
               "printing encrypted logs as we need to get full universe key.");
+
+DEFINE_NON_RUNTIME_string(server_type, "tserver", "Server type of specified log");
+
+DEFINE_NON_RUNTIME_string(tablet_metadata_path, "", "Path to tablet metadata");
 
 namespace yb::log {
 
@@ -164,7 +170,9 @@ void PrintIdOnly(const LogEntryPB& entry) {
   cout << endl;
 }
 
-Status PrintDecodedWriteRequestPB(const string& indent, const tablet::WritePB& write) {
+Status PrintDecodedWriteRequestPB(
+    docdb::SchemaPackingProvider* schema_packing_provider, const std::string& indent,
+    const tablet::WritePB& write) {
   cout << indent << "write {" << endl;
   if (write.has_external_hybrid_time()) {
     HybridTime ht(write.external_hybrid_time());
@@ -191,7 +199,7 @@ Status PrintDecodedWriteRequestPB(const string& indent, const tablet::WritePB& w
       if (kv.has_value()) {
         Result<std::string> formatted_value = DocDBValueToDebugStr(
             kv.key(), ::yb::docdb::StorageDbType::kRegular, kv.value(),
-            /*schema_packing_provider=*/nullptr);
+            schema_packing_provider);
         cout << indent << indent << indent << indent << "Value: " << formatted_value << endl;
       }
       if (kv.has_external_hybrid_time()) {
@@ -280,7 +288,8 @@ yb::Result<std::unique_ptr<yb::Env>> GetEnv() {
       yb::encryption::DefaultHeaderManager(universe_key_manager.get()));
 }
 
-Status PrintDecoded(const LogEntryPB& entry) {
+Status PrintDecoded(
+    docdb::SchemaPackingProvider* schema_packing_provider, const LogEntryPB& entry) {
   cout << "replicate {" << endl;
   PrintIdOnly(entry);
 
@@ -290,7 +299,7 @@ Status PrintDecoded(const LogEntryPB& entry) {
 
     const ReplicateMsg& replicate = entry.replicate();
     if (replicate.op_type() == consensus::WRITE_OP) {
-      RETURN_NOT_OK(PrintDecodedWriteRequestPB(indent, replicate.write()));
+      RETURN_NOT_OK(PrintDecodedWriteRequestPB(schema_packing_provider, indent, replicate.write()));
     } else if (replicate.op_type() == consensus::UPDATE_TRANSACTION_OP) {
       RETURN_NOT_OK(PrintDecodedTransactionStatePB(indent, replicate.transaction_state()));
     } else {
@@ -303,12 +312,13 @@ Status PrintDecoded(const LogEntryPB& entry) {
   return Status::OK();
 }
 
-Status PrintSegment(const scoped_refptr<ReadableLogSegment>& segment) {
+Status PrintSegment(
+    docdb::SchemaPackingProvider* schema_packing_provider, ReadableLogSegment& segment) {
   PrintEntryType print_type = ParsePrintType();
   if (FLAGS_print_headers) {
-    cout << "Header:\n" << segment->header().DebugString();
+    cout << "Header:\n" << segment.header().DebugString();
   }
-  auto read_entries = segment->ReadEntries();
+  auto read_entries = segment.ReadEntries();
   RETURN_NOT_OK(read_entries.status);
 
   if (print_type == DONT_PRINT) return Status::OK();
@@ -322,27 +332,55 @@ Status PrintSegment(const scoped_refptr<ReadableLogSegment>& segment) {
 
       cout << "Entry:\n" << entry.DebugString();
     } else if (print_type == PRINT_DECODED) {
-      RETURN_NOT_OK(PrintDecoded(entry));
+      RETURN_NOT_OK(PrintDecoded(schema_packing_provider, entry));
     } else if (print_type == PRINT_ID) {
       PrintIdOnly(entry);
     }
   }
-  if (FLAGS_print_headers && segment->HasFooter()) {
-    cout << "Footer:\n" << segment->footer().DebugString();
+  if (FLAGS_print_headers && segment.HasFooter()) {
+    cout << "Footer:\n" << segment.footer().DebugString();
   }
 
   return Status::OK();
 }
 
-Status DumpLog(const string& tablet_id, const string& tablet_wal_path) {
-  std::unique_ptr<yb::Env> env = VERIFY_RESULT(GetEnv());
-  FsManagerOpts fs_opts;
-  fs_opts.read_only = true;
-  FsManager fs_manager(env.get(), fs_opts);
+struct DumpLogContext {
+  std::unique_ptr<Env> env;
+  std::optional<FsManager> fs_manager;
+  tablet::RaftGroupMetadataPtr tablet_metadata;
 
-  RETURN_NOT_OK(fs_manager.CheckAndOpenFileSystemRoots());
+  Status InitForTablet(const TabletId& tablet_id) {
+    RETURN_NOT_OK(InitCommon());
+    fs_manager->LookupTablet(tablet_id);
+    tablet_metadata = VERIFY_RESULT(tablet::RaftGroupMetadata::Load(
+        &fs_manager.value(), tablet_id));
+    return Status::OK();
+  }
+
+  Status InitForPath(const std::string& path) {
+    RETURN_NOT_OK(InitCommon());
+    tablet_metadata = VERIFY_RESULT(tablet::RaftGroupMetadata::LoadFromPath(
+        &fs_manager.value(), path));
+    return Status::OK();
+  }
+ private:
+  Status InitCommon() {
+    env = VERIFY_RESULT(GetEnv());
+    FsManagerOpts fs_opts;
+    fs_opts.read_only = true;
+    fs_opts.server_type = FLAGS_server_type;
+    fs_manager.emplace(env.get(), fs_opts);
+
+    return fs_manager->CheckAndOpenFileSystemRoots();
+  }
+};
+
+Status DumpLog(const string& tablet_id, const string& tablet_wal_path) {
+  DumpLogContext context;
+  RETURN_NOT_OK(context.InitForTablet(tablet_id));
+
   std::unique_ptr<LogReader> reader;
-  RETURN_NOT_OK(LogReader::Open(env.get(),
+  RETURN_NOT_OK(LogReader::Open(context.env.get(),
                                 scoped_refptr<LogIndex>(),
                                 "Log reader: ",
                                 tablet_wal_path,
@@ -354,19 +392,25 @@ Status DumpLog(const string& tablet_id, const string& tablet_wal_path) {
   SegmentSequence segments;
   RETURN_NOT_OK(reader->GetSegmentsSnapshot(&segments));
 
-  for (const scoped_refptr<ReadableLogSegment>& segment : segments) {
-    RETURN_NOT_OK(PrintSegment(segment));
+  for (const auto& segment : segments) {
+    RETURN_NOT_OK(PrintSegment(context.tablet_metadata.get(), *segment));
   }
 
   return Status::OK();
 }
 
 Status DumpSegment(const string& segment_path) {
-  std::unique_ptr<yb::Env> env = VERIFY_RESULT(GetEnv());
-  auto segment =
-      VERIFY_RESULT(ReadableLogSegment::Open(env.get(), segment_path,
-                                             /*read_wal_mem_tracker=*/nullptr));
-  RETURN_NOT_OK(PrintSegment(segment));
+  DumpLogContext context;
+  if (!FLAGS_tablet_metadata_path.empty()) {
+    RETURN_NOT_OK(context.InitForPath(FLAGS_tablet_metadata_path));
+  } else {
+    context.env = VERIFY_RESULT(GetEnv());
+  }
+  auto segment = VERIFY_RESULT(ReadableLogSegment::Open(
+      context.env.get(), segment_path, /*read_wal_mem_tracker=*/ nullptr));
+  if (segment) {
+    RETURN_NOT_OK(PrintSegment(context.tablet_metadata.get(), *segment));
+  }
 
   return Status::OK();
 }
@@ -505,6 +549,7 @@ int main(int argc, char **argv) {
   if (argc != 2 && argc != 3) {
     std::cerr << "usage: " << argv[0]
               << " --fs_data_dirs <dirs>"
+              << " [--tablet_metadata_path <path_to_tablet_metadata>]"
               << " {<tablet_name> <log path>} | <log segment path>"
               << " [--filter_log_segment --output_wal_dir <dest_dir>"
               << " --master_addresses <comma-separated ddresses>]" << std::endl;

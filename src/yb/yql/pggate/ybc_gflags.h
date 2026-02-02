@@ -56,10 +56,9 @@ typedef struct {
   const char*     ysql_conn_mgr_sequence_support_mode;
   const int32_t*  ysql_conn_mgr_max_query_size;
   const int32_t*  ysql_conn_mgr_wait_timeout_ms;
-  const bool*     ysql_enable_pg_export_snapshot;
   const bool*     ysql_enable_neghit_full_inheritscache;
   const bool*     enable_object_locking_for_table_locks;
-  const bool*     TEST_ysql_yb_enable_ddl_savepoint_support;
+  const bool*     ysql_yb_enable_ddl_savepoint_support;
   const uint32_t* ysql_max_invalidation_message_queue_size;
   const uint32_t* ysql_max_replication_slots;
   const uint32_t* yb_max_recursion_depth;

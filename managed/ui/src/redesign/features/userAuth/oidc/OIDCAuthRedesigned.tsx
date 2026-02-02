@@ -45,7 +45,7 @@ import { Action } from '../../rbac';
 import { getOIDCValidationSchema } from './OIDCValidationSchema';
 import { OIDC_PATH, OIDC_RUNTIME_CONFIGS_QUERY_KEY } from '../../rbac/groups/components/GroupUtils';
 import { OIDC_FIELDS, OIDCFormProps } from './OIDCConstants';
-import { ReactComponent as BulbIcon } from '../../../../redesign/assets/bulb.svg';
+import BulbIcon from '../../../../redesign/assets/bulb.svg';
 
 const useStyles = makeStyles((theme) => ({
   root: {

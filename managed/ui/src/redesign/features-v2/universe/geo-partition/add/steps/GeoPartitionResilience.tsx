@@ -15,6 +15,7 @@ import { UniverseActionButtons } from '../../../create-universe/components/Unive
 import { useGeoPartitionNavigation } from '../AddGeoPartitionUtils';
 import GeoPartitionBreadCrumb from '../GeoPartitionBreadCrumbs';
 import { mui } from '@yugabyte-ui-library/core';
+import { NodeAvailabilityProps } from '../../../create-universe/steps/nodes-availability/dtos';
 
 const { Box } = mui;
 
@@ -69,6 +70,15 @@ export const GeoPartitionResilience = () => {
                 )
               };
               moveToNextPage(updatedContext);
+            },
+            saveNodesAvailabilitySettings: (data: NodeAvailabilityProps) => {
+              updateGeoPartition({
+                geoPartition: {
+                  ...geoPartitions[activeGeoPartitionIndex],
+                  nodesAndAvailability: data
+                },
+                activeGeoPartitionIndex: activeGeoPartitionIndex
+              });
             },
             moveToNextPage: () => {},
             moveToPreviousPage: () => moveToPreviousPage()

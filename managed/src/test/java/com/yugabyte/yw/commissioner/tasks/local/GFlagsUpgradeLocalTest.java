@@ -575,8 +575,7 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
         specificGFlags,
         null,
         TaskInfo.State.Failure,
-        "Aborting because this operation can potentially "
-            + "take down a majority of copies of some tablets",
+        "Service(s) MASTER are not alive on node",
         null);
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     // Verify that it failed before locking
@@ -593,8 +592,7 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
         specificGFlags,
         null,
         TaskInfo.State.Failure,
-        "Aborting because this operation can potentially "
-            + "take down a majority of copies of some tablets",
+        "Service(s) TSERVER are not alive on node",
         null);
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     // Verify that it failed before locking

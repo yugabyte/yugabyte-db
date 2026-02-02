@@ -3,13 +3,11 @@ import { useTranslation } from 'react-i18next';
 import { usePrevious } from 'react-use';
 import _ from 'lodash';
 
-import lightBulbIcon from '../images/lightbulb.svg';
+import LightBulbIcon from '../images/lightbulb.svg?img';
 import { EXTERNAL_LINKS, CONST_VAR } from '../helpers/constants';
 import { PerfRecommendationProps } from '../../../redesign/utils/dtos';
 import './styles.scss';
-
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const Plotly = require('plotly.js/lib/index-basic.js');
+import Plotly from 'plotly.js-dist';
 
 export const CpuSkew: FC<PerfRecommendationProps> = ({ data, summary }) => {
   const { t } = useTranslation();
@@ -63,7 +61,7 @@ export const CpuSkew: FC<PerfRecommendationProps> = ({ data, summary }) => {
       <div className="recommendationBox">
         <span> {summary} </span>
         <div className="recommendationAdvice">
-          <img src={lightBulbIcon} alt="more" className="learnMoreImage" />
+          <img src={LightBulbIcon} alt="more" className="learnMoreImage" />
           <span className="learnPerfAdvisorText">
             {t('clusterDetail.performance.advisor.Recommendation')}
             {t('clusterDetail.performance.advisor.Separator')}

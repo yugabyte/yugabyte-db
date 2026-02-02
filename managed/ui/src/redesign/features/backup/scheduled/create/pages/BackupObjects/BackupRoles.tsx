@@ -9,7 +9,7 @@
 
 import { FC, useState } from 'react';
 import clsx from 'clsx';
-import { useTranslation } from 'react-i18next';
+import { Trans, useTranslation } from 'react-i18next';
 import { Control, useController } from 'react-hook-form';
 
 import {
@@ -24,8 +24,9 @@ import { YBCheckboxField } from '../../../../../../components';
 import { BackupObjectsModel } from '../../models/IBackupObjects';
 
 import { ArrowDropDown } from '@material-ui/icons';
-import Checked from '../../../../../../assets/checkbox/Checked.svg';
-import UnChecked from '../../../../../../assets/checkbox/UnChecked.svg';
+import Checked from '../../../../../../assets/checkbox/Checked.svg?img';
+import UnChecked from '../../../../../../assets/checkbox/UnChecked.svg?img';
+import { Box } from '@material-ui/core';
 
 const useStyles = makeStyles((theme) => ({
   root: {
@@ -33,7 +34,7 @@ const useStyles = makeStyles((theme) => ({
   },
   roles: {
     width: '550px',
-    height: '90px',
+    height: '112px',
     padding: '8px 8px',
     borderRadius: '8px',
     border: `1px solid ${theme.palette.ybacolors.ybBorderGray}`,
@@ -45,6 +46,9 @@ const useStyles = makeStyles((theme) => ({
   helpText: {
     color: theme.palette.ybacolors.textDarkGray,
     marginLeft: '36px'
+  },
+  secondHelpText: {
+    marginTop: '14px'
   },
   header: {
     padding: 0,
@@ -109,6 +113,11 @@ export const BackupRoles: FC<BacupRolesProps> = ({ control }) => {
             <Typography className={classes.helpText} variant="body2">
               {t('backupRolesSubText')}
             </Typography>
+            <Box mt={2}>
+              <span className={classes.helpText}>
+                <Trans i18nKey="backup.scheduled.create.backupObjects.backupRolesSubText2" components={{ b: <b /> }} />
+              </span>
+            </Box>
           </div>
         </AccordionDetails>
       </Accordion>

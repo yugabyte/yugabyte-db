@@ -24,7 +24,7 @@ import { useBannerCommonStyles } from './BannerStyles';
 import { useRefetchTasks } from '../../TaskUtils';
 import { retryTasks } from '../drawerComp/api';
 import { TaskBannerCompProps } from './dtos';
-import ErrorIcon from '../../../../assets/error.svg';
+import ErrorIcon from '../../../../assets/error.svg?img';
 
 const useStyles = makeStyles((theme) => ({
   root: {

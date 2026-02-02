@@ -2225,6 +2225,8 @@ bool		yb_enable_parallel_scan_hash_sharded = false;
 bool		yb_enable_parallel_scan_range_sharded = false;
 bool		yb_enable_parallel_scan_system = false;
 bool        yb_test_make_all_ddl_statements_incrementing = false;
+bool		yb_always_increment_catalog_version_on_ddl = true;
+bool		yb_enable_negative_catcache_entries = true;
 
 /* DEPRECATED */
 bool		yb_enable_advisory_locks = true;
@@ -2300,7 +2302,9 @@ bool		yb_enable_extended_sql_codes = false;
 
 bool		yb_user_ddls_preempt_auto_analyze = true;
 
-bool		yb_enable_pg_stat_statements_rpc_stats = false;
+bool		yb_enable_pg_stat_statements_rpc_stats = true;
+
+bool		yb_enable_pg_stat_statements_docdb_metrics = false;
 
 const char *
 YBDatumToString(Datum datum, Oid typid)
@@ -3434,7 +3438,9 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 			 bool *requires_autonomous_transaction)
 {
 	bool		is_ddl = true;
-	bool		should_increment_version_by_default = yb_test_make_all_ddl_statements_incrementing;
+	bool		should_increment_version_by_default =
+		yb_test_make_all_ddl_statements_incrementing ||
+		yb_always_increment_catalog_version_on_ddl;
 	bool		is_version_increment = should_increment_version_by_default;
 	bool		is_breaking_change = true;
 	bool		is_altering_existing_data = false;
@@ -3981,39 +3987,60 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 					YBMarkTxnUsesTempRelAndSetTxnId();
 				}
 				is_breaking_change = false;
-				should_run_in_autonomous_transaction = !IsInTransactionBlock(is_top_level);
+				should_run_in_autonomous_transaction = !IsInTransactionBlock(is_top_level) &&
+						YBCIsLegacyModeForCatalogOps();
 				break;
 			}
 
 		case T_VacuumStmt:
-			/* Vacuum with analyze updates relation and attribute statistics */
-			is_version_increment = should_increment_version_by_default;
-			is_breaking_change = false;
-			VacuumStmt *vacuum_stmt = castNode(VacuumStmt, parsetree);
-
-			/* ANALYZE */
-			is_ddl = !vacuum_stmt->is_vacuumcmd;
-			ListCell   *lc;
-
-			if (!is_ddl)
 			{
-				foreach(lc, vacuum_stmt->options)
-				{
-					DefElem    *def_elem = lfirst_node(DefElem, lc);
+				/*
+				 * Four cases:
+				 * 1. VACUUM: No-op in YugabyteDB, no catalog version increment.
+				 * 2. ANALYZE: Increment catalog version.
+				 * 3. VACUUM ANALYZE: Same as ANALYZE, increment catalog version.
+				 * 4. ANALYZE via SPI (as part of concurrent MV refresh): No catalog
+				 *    version increment.
+				 */
+				VacuumStmt *vacuum_stmt = castNode(VacuumStmt, parsetree);
+				bool		is_analyze = false;
+				bool		is_from_spi =
+					(ddl_transaction_state.current_stmt_node_tag != T_VacuumStmt);
 
-					/* VACUUM ANALYZE */
-					is_ddl |= (strcmp(def_elem->defname, "analyze") == 0);
-					if (is_ddl)
-						break;
+				is_breaking_change = false;
+				is_version_increment = false;
+
+				/* Case 2: ANALYZE */
+				if (!vacuum_stmt->is_vacuumcmd)
+					is_analyze = true;
+				else
+				{
+					ListCell   *lc;
+					foreach(lc, vacuum_stmt->options)
+					{
+						DefElem    *def_elem = lfirst_node(DefElem, lc);
+						if (strcmp(def_elem->defname, "analyze") == 0)
+						{
+							/* Case 3: VACUUM ANALYZE */
+							is_analyze = true;
+							break;
+						}
+					}
 				}
+
+				is_ddl = is_analyze;
+
+				/*
+				 * Cases 2 & 3: Increment catalog version for ANALYZE to force
+				 * catalog cache refresh for updated table statistics.
+				 * Case 4: Skip increment if ANALYZE is being executed as part of
+				 * concurrent MV refresh.
+				 */
+				if (is_analyze && !is_from_spi)
+					is_version_increment = true;
+
+				break;
 			}
-			/*
-			 * Increment catalog version for ANALYZE statement to force catalog cache refresh
-			 * to pick up latest table statistics.
-			 */
-			if (is_ddl && ddl_transaction_state.current_stmt_node_tag == T_VacuumStmt)
-				is_version_increment = true;
-			break;
 
 		case T_RefreshMatViewStmt:
 			{
@@ -4322,18 +4349,15 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 				 * Disallow DDL if savepoint for DDL support is disabled and
 				 * there is an active savepoint except the implicit ones created
 				 * for READ COMMITTED isolation.
-				 *
-				 * TODO(#26734): Change the error message to suggest enabling
-				 * the savepoint feature once it is no longer a test flag.
 				 */
-				if (!*YBCGetGFlags()->TEST_ysql_yb_enable_ddl_savepoint_support &&
+				if (!(yb_enable_ddl_savepoint_infra &&
+					  *YBCGetGFlags()->ysql_yb_enable_ddl_savepoint_support) &&
 					YBTransactionContainsNonReadCommittedSavepoint())
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 							 errmsg("interleaving SAVEPOINT & DDL in transaction"
-									" block not supported by YugaByte yet"),
-							 errhint("See https://github.com/yugabyte/yugabyte-db/issues/26734."
-									 " React with thumbs up to raise its priority.")));
+									" disallowed without DDL savepoint support"),
+							 errhint("Consider enabling ysql_yb_enable_ddl_savepoint_support.")));
 
 				YBAddDdlTxnState(ddl_mode.value);
 			}
@@ -7915,7 +7939,7 @@ YbRegisterSnapshotReadTime(uint64_t read_time)
 }
 
 YbOptionalReadPointHandle
-YbResetTransactionReadPoint()
+YbResetTransactionReadPoint(bool is_catalog_snapshot)
 {
 	if (YbSkipPgSnapshotManagement())
 		return (YbOptionalReadPointHandle)
@@ -7934,13 +7958,13 @@ YbResetTransactionReadPoint()
 		 * Flush all earlier operations so that they complete on the previous snapshot.
 		 */
 		YBFlushBufferedOperations(YBCMakeFlushDebugContextGetTxnSnapshot());
-		HandleYBStatus(YBCPgResetTransactionReadPoint());
+		HandleYBStatus(YBCPgResetTransactionReadPoint(is_catalog_snapshot));
 	}
 
-	if (YBCIsLegacyModeForCatalogOps())
+	if (!YBCIsLegacyModeForCatalogOps() && is_catalog_snapshot)
+		return YbMakeReadPointHandle(YBCPgGetMaxReadPoint());
+	else
 		return YbMakeReadPointHandle(YBCPgGetCurrentReadPoint());
-
-	return YbMakeReadPointHandle(YBCPgGetMaxReadPoint());
 }
 
 /*

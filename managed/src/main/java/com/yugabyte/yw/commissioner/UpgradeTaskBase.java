@@ -1335,6 +1335,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     Consumer<NodeDetails> postAction;
     YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState;
     UUID rootCAUUID;
+    @Builder.Default boolean useExistingServerCert = false;
     Boolean useYBDBInbuiltYbc;
   }
 }

@@ -12,9 +12,9 @@ import { getClusterByType, useEditUniverseContext } from '../EditUniverseUtils';
 import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { EditAdvancedSettingsModal } from '../edit-advanced/EditAdvancedSettingsModal';
 
-import { ReactComponent as Checked } from '@app/redesign/assets/check-new.svg';
-import { ReactComponent as EditIcon } from '@app/redesign/assets/edit2.svg';
-import { ReactComponent as Disabled } from '@app/redesign/assets/revoke.svg';
+import Checked from '@app/redesign/assets/check-new.svg';
+import EditIcon from '@app/redesign/assets/edit2.svg';
+import Disabled from '@app/redesign/assets/revoke.svg';
 
 const { styled } = mui;
 

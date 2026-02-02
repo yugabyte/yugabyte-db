@@ -5533,7 +5533,7 @@ CreateExtensionStmt: CREATE EXTENSION name opt_with create_extension_opt_list
 					n->options = $5;
 					if (strcmp(n->extname, "pg_stat_monitor") == 0)
 					{
-						parser_ybc_beta_feature(@1, "pg_stat_monitor", true);
+						parser_ybc_beta_feature(@1, "pg_stat_monitor", false);
 					}
 					$$ = (Node *) n;
 				}
@@ -5546,7 +5546,7 @@ CreateExtensionStmt: CREATE EXTENSION name opt_with create_extension_opt_list
 					n->options = $8;
 					if (strcmp(n->extname, "pg_stat_monitor") == 0)
 					{
-						parser_ybc_beta_feature(@1, "pg_stat_monitor", true);
+						parser_ybc_beta_feature(@1, "pg_stat_monitor", false);
 					}
 					$$ = (Node *) n;
 				}

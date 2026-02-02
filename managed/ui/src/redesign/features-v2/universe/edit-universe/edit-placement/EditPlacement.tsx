@@ -14,8 +14,8 @@ import { EditPlacementResilience } from './EditPlacementResilience';
 
 import { useEditUniverseContext } from '../EditUniverseUtils';
 
-import { ReactComponent as Close } from '../../../../assets/close rounded inverted.svg';
-import { ReactComponent as YBLogo } from '../../../../assets/yb_logo.svg';
+import Close from '../../../../assets/close rounded inverted.svg';
+import YBLogo from '../../../../assets/yb_logo.svg';
 import { getResilienceAndRegionsProps } from './EditPlacementUtils';
 
 const { styled, Grid2: Grid, Typography } = mui;

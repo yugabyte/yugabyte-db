@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.models;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -9,6 +10,7 @@ import io.ebean.annotation.EnumValue;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
+import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
@@ -22,7 +24,9 @@ public class YugawareProperty extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(YugawareProperty.class);
 
   // The name of the property.
-  @Id private String name;
+  @JsonProperty("name")
+  @Id
+  private String name;
 
   // The types of entries in this table.
   private enum PropertyEntryType {
@@ -37,11 +41,13 @@ public class YugawareProperty extends Model {
 
   @Constraints.Required
   @Column(nullable = false)
+  @JsonProperty("type")
   private PropertyEntryType type;
 
   // The property config.
   @Constraints.Required
   @Column(columnDefinition = "TEXT")
+  @JsonProperty("value")
   private JsonNode value;
 
   public JsonNode getValue() {
@@ -50,6 +56,7 @@ public class YugawareProperty extends Model {
 
   // The property description.
   @Column(columnDefinition = "TEXT")
+  @JsonProperty("description")
   private String description;
 
   public static final Finder<String, YugawareProperty> find =
@@ -65,6 +72,10 @@ public class YugawareProperty extends Model {
 
   public static YugawareProperty get(String name) {
     return find.byId(name);
+  }
+
+  public static List<YugawareProperty> getAll() {
+    return find.all();
   }
 
   /**

@@ -30,6 +30,10 @@ typedef enum {
 	YB_KIWI_FE_PARSE_NO_PARSE_COMPLETE = 'p',
 	/* perform no-op on server, instructing server to return ParseComplete */
 	YB_KIWI_FE_NO_PARSE_PARSE_COMPLETE = 'n',
+	/* Set custom GUC defaults from YSQL Connection Manager */
+	KIWI_FE_SET_GUC_DEFAULTS = 'G',
+	/* RESET ALL including resetting GUC defaults to original values */
+	KIWI_FE_RESET_ALL_AND_RESET_GUC_DEFAULTS = 'g',
 } kiwi_fe_type_t;
 
 typedef enum {

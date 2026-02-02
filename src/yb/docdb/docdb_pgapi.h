@@ -101,18 +101,18 @@ Result<std::pair<uint64_t, bool>> DocPgEvalExpr(
 Result<std::vector<std::string>> ExtractTextArrayFromQLBinaryValue(const QLValuePB& ql_value);
 
 Status SetValueFromQLBinary(
-    const QLValuePB ql_value,
-    const int pg_data_type,
-    const std::unordered_map<uint32_t, std::string> &enum_oid_label_map,
-    const std::unordered_map<uint32_t, std::vector<master::PgAttributePB>> &composite_atts_map,
-    DatumMessagePB *cdc_datum_message = NULL);
+    const QLValuePB& ql_value, int pg_data_type,
+    const std::unordered_map<uint32_t, std::string>& enum_oid_label_map,
+    const std::unordered_map<uint32_t, std::vector<master::PgAttributePB>>& composite_atts_map,
+    DatumMessagePB& datum_message);
 
 Status SetValueFromQLBinaryHelper(
-    const QLValuePB ql_value,
-    const int elem_type,
-    const std::unordered_map<uint32_t, std::string> &enum_oid_label_map,
-    const std::unordered_map<uint32_t, std::vector<master::PgAttributePB>> &composite_atts_map,
-    DatumMessagePB *cdc_datum_message = NULL);
+    const QLValuePB& ql_value, int pg_data_type,
+    const std::unordered_map<uint32_t, std::string>& enum_oid_label_map,
+    const std::unordered_map<uint32_t, std::vector<master::PgAttributePB>>& composite_atts_map,
+    DatumMessagePB& datum_message);
+
+std::string DatumMessageValueToString(const DatumMessagePB& datum_message);
 
 void DeleteMemoryContextIfSet();
 

@@ -107,8 +107,6 @@ Status SplitOperation::CheckOperationAllowed(
   // TODO(tsplit): test - check that split_op_id_ is correctly aborted.
   // TODO(tsplit): test - check that split_op_id_ is correctly restored during bootstrap.
   const auto children_ids = GetSplitChildTabletIds(*request());
-  SCHECK_EQ(kDefaultNumSplitParts, children_ids.size(), IllegalState, Format(
-      "Unexpected number of split children for parent tablet: $0", request()->tablet_id()));
   return RejectionStatus(op_id(), id, op_type, children_ids);
 }
 

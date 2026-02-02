@@ -1019,7 +1019,7 @@ Result<TabletPeerPtr> TSTabletManager::CreateNewTablet(
   return new_peer;
 }
 
-struct TabletCreationMetaData {
+struct TabletCreationMetadata {
   TabletId tablet_id;
   scoped_refptr<TransitionInProgressDeleter> transition_deleter;
   dockv::Partition partition;
@@ -1029,43 +1029,35 @@ struct TabletCreationMetaData {
 
 namespace {
 
-// Creates SplitTabletsCreationMetaData for two new tablets for `tablet` splitting based on request.
-SplitTabletsCreationMetaData PrepareTabletCreationMetaDataForSplit(
+// Creates SplitTabletsCreationMetadata for N new tablets for `tablet` splitting based on request.
+SplitTabletsCreationMetadata PrepareTabletCreationMetadataForSplit(
     const tablet::SplitTabletRequestPB& request, const tablet::Tablet& tablet) {
-  SplitTabletsCreationMetaData metas;
-
   const auto new_tablet_ids = GetSplitChildTabletIds(request);
   const auto split_partition_keys = GetSplitPartitionKeys(request);
   const auto split_encoded_keys = GetSplitEncodedKeys(request);
+  const int num_split_tablets = narrow_cast<int>(new_tablet_ids.size());
+  CHECK_EQ(num_split_tablets - 1, split_partition_keys.size());
+  CHECK_EQ(num_split_tablets - 1, split_encoded_keys.size());
 
-  // TODO(nway-tsplit): support metadata generation for more than 2 child tablets.
-  CHECK_EQ(kDefaultNumSplitParts, new_tablet_ids.size());
-  CHECK_EQ(new_tablet_ids.size() - 1, split_partition_keys.size());
-  CHECK_EQ(new_tablet_ids.size() - 1, split_encoded_keys.size());
-  const auto& split_partition_key = split_partition_keys.front();
-  const auto& split_encoded_key = split_encoded_keys.front();
-
-  auto source_partition = tablet.metadata()->partition();
+  const auto source_partition = tablet.metadata()->partition();
   const auto& source_key_bounds = tablet.key_bounds();
-
-  {
-    TabletCreationMetaData meta;
-    meta.tablet_id = new_tablet_ids[0];
+  SplitTabletsCreationMetadata metas;
+  metas.reserve(num_split_tablets);
+  for (int i = 0; i < num_split_tablets; ++i) {
+    TabletCreationMetadata meta;
+    meta.tablet_id = new_tablet_ids[i];
+    // TODO(nway-tsplit): How does hash bucket population change with N-way split? For binary
+    // splits, we seemed to simply copy from source partition.
     meta.partition = *source_partition;
-    meta.key_bounds = source_key_bounds;
-    meta.key_bounds.upper.Reset(split_encoded_key);
-    meta.partition.set_partition_key_end(split_partition_key);
-    metas.push_back(meta);
-  }
-
-  {
-    TabletCreationMetaData meta;
-    meta.tablet_id = new_tablet_ids[1];
-    meta.partition = *source_partition;
-    meta.key_bounds = source_key_bounds;
-    meta.key_bounds.lower.Reset(split_encoded_key);
-    meta.partition.set_partition_key_start(split_partition_key);
-    metas.push_back(meta);
+    meta.partition.set_partition_key_start(GetVectorItemOrDefault(
+        split_partition_keys, i - 1, source_partition->partition_key_start()));
+    meta.partition.set_partition_key_end(GetVectorItemOrDefault(
+        split_partition_keys, i, source_partition->partition_key_end()));
+    meta.key_bounds.lower.Reset(GetVectorItemOrDefault(
+        split_encoded_keys, i - 1, source_key_bounds.lower.AsSlice()));
+    meta.key_bounds.upper.Reset(GetVectorItemOrDefault(
+        split_encoded_keys, i, source_key_bounds.upper.AsSlice()));
+    metas.push_back(std::move(meta));
   }
 
   return metas;
@@ -1092,7 +1084,7 @@ Status TSTabletManager::CleanUpSubtabletIfExistsOnDisk(
 }
 
 Status TSTabletManager::StartSubtabletsSplit(
-    const RaftGroupMetadata& source_tablet_meta, SplitTabletsCreationMetaData* tcmetas) {
+    const RaftGroupMetadata& source_tablet_meta, SplitTabletsCreationMetadata* tcmetas) {
   auto* const env = fs_manager_->env();
 
   auto iter = tcmetas->begin();
@@ -1174,21 +1166,19 @@ Status TSTabletManager::ApplyTabletSplit(
   const auto request_pb = request->ToGoogleProtobuf();
   const auto new_tablet_ids = GetSplitChildTabletIds(*request);
 
-  // TODO(nway-tsplit): support N-way split.
-  SCHECK_EQ(kDefaultNumSplitParts, new_tablet_ids.size(), IllegalState, Format(
-      "Unexpected number of split children for parent tablet: $0", tablet_id));
-
   SCHECK_EQ(
       request->tablet_id(), tablet_id, IllegalState,
       Format(
           "Unexpected SPLIT_OP $0 designated for tablet $1 to be applied to tablet $2",
           split_op_id, request->tablet_id(), tablet_id));
-  SCHECK(
-      tablet_id != new_tablet_ids[0] && tablet_id != new_tablet_ids[1],
-      IllegalState,
+
+  for (size_t i = 0; i < new_tablet_ids.size(); ++i) {
+    SCHECK_NE(
+      tablet_id, new_tablet_ids[i], IllegalState,
       Format(
-          "One of SPLIT_OP $0 destination tablet IDs ($1, $2) is the same as source tablet ID $3",
-          split_op_id, new_tablet_ids[0], new_tablet_ids[1], tablet_id));
+          "The SPLIT_OP $0 destination tablet ID $1 (index $2) is the same as source tablet ID $3",
+          split_op_id, new_tablet_ids[i], i, tablet_id));
+  }
 
   LOG_WITH_PREFIX(INFO) << "Tablet " << tablet_id << " split operation " << split_op_id
                         << " apply started";
@@ -1230,7 +1220,7 @@ Status TSTabletManager::ApplyTabletSplit(
     LOG(INFO) << "TEST: ApplyTabletSplit: delay finished";
   }
 
-  auto tcmetas = PrepareTabletCreationMetaDataForSplit(request_pb, *tablet);
+  auto tcmetas = PrepareTabletCreationMetadataForSplit(request_pb, *tablet);
 
   RETURN_NOT_OK(StartSubtabletsSplit(meta, &tcmetas));
 
@@ -2246,7 +2236,8 @@ Status TSTabletManager::TriggerAdminCompaction(
   auto start_time = CoarseMonoClock::Now();
   uint64_t total_size = 0U;
 
-  tablet::AdminCompactionOptions tablet_compaction_options {
+  tablet::ManualCompactionOptions tablet_compaction_options {
+      .compaction_reason = rocksdb::CompactionReason::kAdminCompaction,
       .compaction_completion_callback =
           options.should_wait ? [&latch, &first_compaction_error,
                                  &first_compaction_error_mutex](const Status& status) {
@@ -3365,7 +3356,7 @@ docdb::HistoryCutoff TSTabletManager::AllowedHistoryCutoff(tablet::RaftGroupMeta
     result = metadata->cdc_sdk_safe_time();
   }
 
-  Status s = BackfillNamespaceIdIfNeeded(*metadata, client());
+  Status s = BackfillNamespaceIdIfNeeded(metadata->table_id(), *metadata, client());
   if (!s.ok()) {
     YB_LOG_EVERY_N_SECS(ERROR, 30) << "Unable to backfill tablet metadata namespace_id for tablet: "
                                    << metadata->raft_group_id() << ": " << s;

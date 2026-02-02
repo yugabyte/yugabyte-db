@@ -939,8 +939,8 @@ Result<GetTableSchemaResponsePB> XClusterTableSetupTask::ValidateSourceSchemaAnd
       }
     }
 
-    // Verify that the table on the target side supports replication.
-    if (is_ysql_table && t.has_relation_type() && t.relation_type() == MATVIEW_TABLE_RELATION) {
+    if (!parent_task_->data_.automatic_ddl_mode && is_ysql_table && t.has_relation_type() &&
+        t.relation_type() == MATVIEW_TABLE_RELATION) {
       return STATUS_FORMAT(
           NotSupported, "Replication is not supported for materialized view: $0",
           source_table_info.table_name.ToString());
@@ -997,6 +997,7 @@ Result<GetTableSchemaResponsePB> XClusterTableSetupTask::ValidateSourceSchemaAnd
             VERIFY_RESULT(parent_task_->ConvertSourceToTargetNamespace(
                 VERIFY_RESULT(xcluster::GetReplicationNamespaceBelongsTo(source_table_id_))))));
   }
+
   return table_schema_resp;
 }
 

@@ -1,6 +1,6 @@
 import { FC } from 'react';
 import { mui, YBButton, YBDropdown, YBTable } from '@yugabyte-ui-library/core';
-import { ReactComponent as EditIcon } from '@app/redesign/assets/edit2.svg';
+import EditIcon from '@app/redesign/assets/edit2.svg';
 import { KeyboardArrowDown } from '@material-ui/icons';
 import { useTranslation } from 'react-i18next';
 import {

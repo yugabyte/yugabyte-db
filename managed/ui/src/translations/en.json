@@ -333,13 +333,13 @@
         }
       },
       "paUniverseStatus": {
-        "enableTitle": "Enable Perf Advisor",
-        "disableTitle": "Disable Perf Advisor",
-        "enablePaUniverseSuccess": "Successfully enabled Perf Advisor to the universe",
-        "enablePaUniverseFailure": "Failed to enable Perf Advisor to the universe",
-        "disbalePaUniverseSuccess": "Successfully enabled Perf Advisor to the universe",
-        "disablePaUniverseFailure": "Failed to enable Perf Advisor to the universe",
-        "subText": "Are you sure you want to {{action}} Perf Advisor for the universe <strong>{{universeName}}</strong>?"
+        "enableTitle": "Enable Performance Monitoring",
+        "disableTitle": "Disable Performance Monitoring",
+        "enablePaUniverseSuccess": "Successfully enabled  Performance Monitoring to the universe",
+        "enablePaUniverseFailure": "Failed to  Performance Monitoring to the universe",
+        "disbalePaUniverseSuccess": "Successfully disbled Performance Monitoring for the universe",
+        "disablePaUniverseFailure": "Failed to disable  Performance Monitoring to the universe",
+        "subText": "Are you sure you want to {{action}}  Performance Monitoring for the universe <strong>{{universeName}}</strong>?"
       },
       "pgCompatibility": {
         "modalTitle": "Edit Enhanced Postgres Compatibility",
@@ -629,6 +629,7 @@
         "cpuArch": "CPU Architecture",
         "x86_64": "x86 (Intel)",
         "aarch64": "AArch6 (ARM)",
+        "cpuArchNotSupported": "This CPU Architecture is not supported by current provider.",
         "linuxVersion": "Linux Version",
         "showRetired": "Show retired recommendations",
         "cooldownHours": "Resizing device within cooldown period of 6 hours causes resize to happen only by moving to different nodes",
@@ -768,6 +769,7 @@
             "SQLIssue ": "SQL ISSUE"
           }
         },
+        "perfAdvisorClusterLoadTab": "Cluster Load",
         "perfAdvisorAnomaliesTab": "Anomalies",
         "perfAdvisorInsightsTab": "Insights",
         "perfAdvisorQueriesTab": "Queries",
@@ -775,11 +777,11 @@
         "tpServiceUrlHelperText": "Please do not append '/' at the end of the URL",
         "registrationSuccess": "Registered to Perf Advisor service successfully",
         "registrationFailed": "Failed to register to Perf Advisor service",
-        "tpServiceUrlLabel": "Perf Advisor Service URL",
+        "paServiceUrlLabel": "Performance Monitoring Service URL",
         "ybPlatformServiceUrlLabel": "Yugabyte Platform Service URL",
         "ybPlatformMetricsUrlLabel": "Yugabyte Platform Metrics URL",
         "apiTokenLabel": "YBA API Token",
-        "tpApiTokenLabel": "TP API Token",
+        "tpApiTokenLabel": "Performance Monitoring Token",
         "metricsScrapePeriodSecLabel": "Metrics Scrape Period (in seconds)",
         "metricsScrapePeriodSecRequired": "Metrics Scrape Period is required",
         "registerButton": "Register",
@@ -791,6 +793,7 @@
         "urlRequired": "Platform Url required",
         "apiTokenRequired": "API Token required",
         "enablePerfAdvisorMsg": "Select <bold> 'More' </bold> from <bold>Actions</bold> dropdown menu on the top right corner of the page to <bold>'Enable Perf Advisor'</bold> for this universe.",
+        "perfAdvisorRegistrationFailure": "Failed to fetch Perf Advisor registration status, please try again",
         "editDialog": {
           "title": "Update Perf Advisor Configuration",
           "updateButton": "Update",
@@ -3120,13 +3123,14 @@
           },
           "backupObjects": {
             "advancedConfig": "Advanced Configuration",
-            "rolesConfig": "Roles Configuration",
+            "rolesConfig": "Backup roles and grants",
             "selectDBTitle": "Select the Keyspaces/Databases you want to backup",
             "selectDB": "Databases/Keyspaces",
             "backupTablespace": "Backup tablespaces information",
             "backupRoles": "Backup global roles",
             "backupTablespaceSubText": "In Universes using tablespaces, this allows restoring while preserving source universe tablespaces. (Given both source and target have the same topology.)",
-            "backupRolesSubText": "In Universes using roles, this allows restoring while preserving source universe roles.",
+            "backupRolesSubText": "Back up roles and grants to preserve database access controls after restore.",
+            "backupRolesSubText2": "<b>Note:</b> Applies to full and incremental backups.",
             "allTables": "Select all tables in this Keyspace",
             "subSetOfTables": "Select a subset of tables",
             "selectTables": "Select Tables",
@@ -3211,6 +3215,7 @@
           "scope": "Scope",
           "keyspace": "Keyspace",
           "tables": "Tables",
+          "rolesAndGrants": "Roles and Grants",
           "lastBackup": "Last Backup",
           "nextBackup": "Next Backup",
           "fullBackup": "Full Backup",
@@ -3260,6 +3265,10 @@
           "tables": "Tables",
           "allTables": "All Tables",
           "restoreTo": "Restore to",
+          "restoreRoles": "Restore roles and grants",
+          "restoreRolesNotApplicable": "N/A",
+          "restoreRolesOff": "Off",
+          "restoreRolesOn": "On",
           "restoreSize": "Restore Size",
           "targetUniverse": "Target Universe",
           "kmsConfig": "KMS Config",
@@ -3267,7 +3276,15 @@
         },
         "source": {
           "selectKeyspace": "Select the keyspace(s) you want to restore",
-          "selectTime": "Select time to restore to",
+          "selectDatabase": "Select the database(s) you want to restore",
+          "selectTime": "Choose restore point",
+          "restoreRoles": "Restore roles and grants",
+          "restoreRolesHelpText": "Restore roles and grants to preserve database access controls after restore.",
+          "restoreRolesTooltip1": "Roles and grants not available",
+          "restoreRolesTooltip2": "This backup was created without roles and grants. Select a different backup to restore access controls.",
+          "restoreRolesOnMsg1": "Note:",
+          "restoreRolesOnMsg2": "Roles are restored Universe-wide; grants are limited to selected databases.",
+          "restoreRolesOnMsg3": "Existing destination roles are not overwritten (including credentials and attributes). We only add missing role memberships and object grants from the backup.",
           "mostRecentIncremental": "Most recent incremental backup",
           "backupTime": "Backup time",
           "earlierPointInTime": "An earlier point in time ",
@@ -3338,7 +3355,7 @@
         "title": "General Settings",
         "universeName": "Universe Name",
         "universeNamePlaceholder": "Enter Universe Name",
-        "cloudProvider": "Cloud Provider",
+        "cloudProvider": "Provider",
         "providerconfiguration": "Provider Configuration",
         "providerConfigurationPlaceholder": "Select Provider Configuration",
         "databaseVersion": "Database Version",
@@ -3366,7 +3383,9 @@
         "singleNode": {
           "availabilityZone": "Availability Zone",
           "chooseAvailabilityZone": "Choose Availability Zone",
-          "node": "Node"
+          "node": "Node",
+          "caution": "Caution!",
+          "cautionMsg": "Single node clusters are not resilient to outages and will be subject to downtime during operations that require a restart."
         },
         "helpText": "Advanced placement options such as  <a>Read Replicas</a>  and  <a>Geo Partitioning</a>  can be configured post cluster creation.",
         "freeFormHelpText": "Set the replication factor for your data.  <a>What is this?</a>",
@@ -3381,10 +3400,13 @@
           "regionErr": "<b>Invalid region count!</b> You have selected <b>{{selected_regions}}</b> regions. To support the chosen fault tolerance <b>{{required_regions}}</b> regions are required. Update your selection to proceed.",
           "azErrFew": "<b>Invalid availability zone count!</b> The selected regions provide total of <b>{{availability_zone}} availability zones</b>. To support the chosen fault tolerance <b>{{required_zones}} availability zones</b> are required. Update your selection to proceed.",
           "azErrMany": "<b>Invalid availability zone count!</b> You have selected <b>{{selected_regions}} regions</b>. Considering 1 availability zone per region, this would exceed the requirement for <b>{{required_zones}} availability zones</b>. Update your selection to proceed.",
-          "nodeErr": "<b>Invalid region count!</b>  You have selected <b>{{selected_regions}} regions</b>. To support the chosen fault tolerance <b>1 region</b> is required. Update your selection to proceed."
+          "nodeErr": "<b>Invalid region count!</b>  You have selected <b>{{selected_regions}} regions</b>. To support the chosen fault tolerance <b>1 region</b> is required. Update your selection to proceed.",
+          "regionFieldRegionsFew": "Must have {{required_regions}} regions to support the selected fault tolerance.",
+          "regionFieldAzFew": "Must have {{az_needed}} availability zones. Selected regions provide total of {{available_az}} availability zones.",
+          "moreNodesNone": "Fault tolerance <b>None</b> supports only single node deployments."
         },
         "guidedMode": {
-          "instruction": "Set the resilience for your cluster",
+          "instruction": "Set the resilience for your cluster.",
           "helpText": "What is this?",
           "faultTolerance": "Fault Tolerance",
           "REGION_LEVEL": {
@@ -3432,12 +3454,17 @@
         "guidedMode": {
           "nodes": "Nodes",
           "nodesPerAz": "Nodes per Availability Zone",
+          "nodesTserverPerAz": "Nodes (T-Server) per Availability Zone",
           "totalNodes": "Total Nodes"
         },
         "availabilityZones": {
           "title": "Availability Zones",
           "region": "Region {{region_count}}",
-          "add_button": "Add Availability Zone"
+          "add_button": "Add Availability Zone",
+          "errMsg": {
+            "selectedAz": "Selected availability zones: <b>{{count}}</b>",
+            "requiredAz": "Required availability zones: <b>{{count}}</b>"
+          }
         },
         "dedicatedNodes": {
           "toggle": "Allocate dedicated nodes to master servers",
@@ -3445,9 +3472,12 @@
           "title": "Advanced Configuration",
           "helpText": "Optimize performance by allocating dedicated resources for metadata operations.",
           "helpTextLink": "<b>Note!</b> This will increase the number nodes in your cluster.  <a>Learn more.</a>",
+          "helpText1": "Improve metadata and cluster coordination capacity by placing master servers on dedicated nodes.",
+          "helpText2": "<b>Recommended</b> for deployments with many databases or very large table counts.",
           "totalNodes": "Total Nodes",
           "totalTServer": "Total T-Server Nodes",
-          "totalMaster": "Total Master Nodes"
+          "totalMaster": "Total Master Server Nodes",
+          "tooltip": "Master node count is system-assigned and is equal to the cluster’s replication factor. This is to maintain consensus and fault tolerance.<br><br> <a>Learn more</a>"
         },
         "replicationFactorCard": {
           "title": "Setup Requirements",
@@ -3481,7 +3511,7 @@
           "prefferedQues": "What is the preferred availability zone?",
           "prefferedAns": "The preferred availability zones handle all read and write requests from your client application. For lower latencies and best performance, set the availability zones closest to your application as preferred.",
           "links": "<a1>Learn more about preferred availability zone</a1> and <a2>how to select ranking.</a2>",
-          "note": "<b>Note:</b><br/> <li>If no zone is set as preferred, client requests are equally distributed across all zones.</li> <li>Certain exceptions, such as <a>follower reads</a>, will diverge read requests.</li><li>You can set or change the preferred availability zone after cluster creation.</li>"
+          "note": "<b>Note:</b><br><br> <li>If no zone is set as preferred, client requests are equally distributed across all zones.</li> <li>Certain exceptions, such as <a>follower reads</a>, will diverge read requests.</li><li>You can set or change the preferred availability zone after cluster creation.</li>"
         },
         "errMsg": {
           "lessNodes": "<b>Invalid node count!</b>  You have selected <b>{{nodeCount}} nodes</b>. To support the chosen fault tolerance <b>{{faultToleranceNeeded}} nodes</b> are required. Update your selection to proceed. ",
@@ -3521,7 +3551,7 @@
         },
         "conPool": {
           "label": "Enable Connection Pooling",
-          "helperMsg": "Use built-in YSQL service for maximizing the number of simultaneous<br /> connections to your database.",
+          "helperMsg": "Use built-in YSQL service for maximizing the number of simultaneous<br /> connections to your database.  <1>Learn more</1>",
           "versionTooltip": "Built-in connection pooling is only available for database version 2024.2 or later.",
           "YSQLWarn": "Enable YSQL first to use connection pooling.",
           "dbVersionWarn": "Built-in connection pooling is only available for database version 2024.2 or later",

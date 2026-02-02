@@ -24,9 +24,9 @@ import { GFlagsFieldNew } from '@app/redesign/features/universe/universe-form/fo
 import { DatabaseSettingsProps } from '../../create-universe/steps/database-settings/dtos';
 import { DatabaseValidationSchema } from '../../create-universe/steps/database-settings/ValidationSchema';
 
-import { ReactComponent as Checked } from '@app/redesign/assets/check-new.svg';
-import { ReactComponent as EditIcon } from '@app/redesign/assets/edit2.svg';
-import { ReactComponent as Disabled } from '@app/redesign/assets/revoke.svg';
+import Checked from '@app/redesign/assets/check-new.svg';
+import EditIcon from '@app/redesign/assets/edit2.svg';
+import Disabled from '@app/redesign/assets/revoke.svg';
 
 const { Box, Grid2: Grid, MenuItem, styled } = mui;
 

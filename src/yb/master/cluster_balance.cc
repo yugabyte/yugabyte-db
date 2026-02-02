@@ -253,19 +253,24 @@ void ClusterLoadBalancer::InitTablespaceManager() {
 Status ClusterLoadBalancer::PopulateReplicationInfo(
     const scoped_refptr<TableInfo>& table, const ReplicationInfoPB& replication_info) {
 
+  bool has_read_replicas = true;
   if (state_->options_->type == ReplicaType::kLive) {
     state_->placement_.CopyFrom(replication_info.live_replicas());
   } else if (state_->options_->type == ReplicaType::kReadOnly) {
     if (replication_info.read_replicas_size() == 0) {
-      // Should not reach here as tables that should not have read replicas should
-      // have already been skipped before reaching here.
-      return STATUS_FORMAT(
-          IllegalState, "Encountered a table $0 with no read replicas. Placement info $1",
-          table->id(), replication_info);
+      // The table has no read replicas configured. Set num_replicas to 0 so that any existing
+      // read replicas are detected as over-replicated and removed. This handles the case where
+      // a table is moved to a tablespace without read replica placement.
+      has_read_replicas = false;
+      state_->placement_.Clear();
+      state_->placement_.set_num_replicas(0);
+    } else {
+      state_->placement_.CopyFrom(GetReadOnlyPlacementFromUuid(replication_info));
     }
-    state_->placement_.CopyFrom(GetReadOnlyPlacementFromUuid(replication_info));
   }
-  if (state_->placement_.num_replicas() == 0) {
+  // Apply default replication factor if not set, but only if the table has read replicas
+  // configured (i.e., we don't want to override an explicit 0 setting).
+  if (state_->placement_.num_replicas() == 0 && has_read_replicas) {
     state_->placement_.set_num_replicas(FLAGS_replication_factor);
   }
   if (state_->placement_.placement_blocks().empty()) {
@@ -428,17 +433,6 @@ void ClusterLoadBalancer::RunClusterBalancerWithOptions(
     const auto replication_info = GetTableReplicationInfo(table);
     VLOG(2) << Format("Replication info for table $0: $1", table_id,
         replication_info.ShortDebugString());
-
-    if (options->type == ReplicaType::kReadOnly) {
-      if (replication_info.read_replicas_size() == 0) {
-        // The table has a replication policy without any read replicas present.
-        // The ClusterBalancer is handling read replicas in this run, so this
-        // table can be skipped.
-        VLOG(2) << Format("Skipping table $0 with no read replicas configured in read replica run",
-            table_id);
-        continue;
-      }
-    }
 
     ResetTableStatePtr(table_id, options);
 

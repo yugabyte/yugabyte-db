@@ -22,6 +22,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/spf13/viper"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common/shell"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 	"golang.org/x/crypto/ssh"
 )
@@ -186,6 +188,33 @@ func parsePrivateKey(filePath string) (*rsa.PrivateKey, error) {
 		return nil, fmt.Errorf("could not convert private key to rsa.Privatekey")
 	}
 	return privateKey, nil
+}
+
+// GeneratePerfAdvisorTLSKeystore creates a PKCS12 keystore (tls.p12) from the given PEM cert
+// and key, for use by Perf Advisor when TLS is enabled. outDir is the directory to write
+// tls.p12 into (e.g. GetPerfAdvisorCertsDir()). password is the keystore password.
+func GeneratePerfAdvisorTLSKeystore(certPath, keyPath, outDir, password string) error {
+	if err := MkdirAll(outDir, DirMode); err != nil && !os.IsExist(err) {
+		return fmt.Errorf("create perf-advisor certs dir: %w", err)
+	}
+	keystorePath := filepath.Join(outDir, "tls.p12")
+	// openssl pkcs12 -export -out tls.p12 -inkey key.pem -in cert.pem -passout pass:<password>
+	out := shell.Run("openssl", "pkcs12", "-export",
+		"-out", keystorePath,
+		"-inkey", keyPath,
+		"-in", certPath,
+		"-passout", "pass:"+password)
+	if !out.Succeeded() {
+		return fmt.Errorf("openssl pkcs12 export: %w", out.Error)
+	}
+	log.Debug("Generated Perf Advisor TLS keystore at " + keystorePath)
+	if HasSudoAccess() {
+		username := viper.GetString("service_username")
+		if err := Chown(outDir, username, username, true); err != nil {
+			return fmt.Errorf("chown perf-advisor certs dir: %w", err)
+		}
+	}
+	return nil
 }
 
 // GetFirstCertInServerPem is mainly used to validate if the server.pem file is generated

@@ -2,25 +2,25 @@
 import _ from 'lodash';
 import Cookies from 'js-cookie';
 
-export const IN_DEVELOPMENT_MODE = process.env.NODE_ENV === 'development';
+export const IN_DEVELOPMENT_MODE = import.meta.env.DEV;
 
-// NOTE: when using REACT_APP_YUGAWARE_API_URL at local development - after login with SSO it will
+// NOTE: when using VITE_YUGAWARE_API_URL at local development - after login with SSO it will
 // set auth cookies for API host domain and redirect to API host root instead of localhost:3000/
 // Need to manually set "userId", "customerId" and "PLAY_SESSION" cookies for localhost:3000
 export const ROOT_URL =
-  process.env.REACT_APP_YUGAWARE_API_URL ??
+  import.meta.env.VITE_YUGAWARE_API_URL ??
   (IN_DEVELOPMENT_MODE ? 'http://localhost:9000/api/v1' : '/api/v1');
 
-// Allow requests made to endpoints in ‘routes’ file.
+// Allow requests made to endpoints in 'routes' file.
 export const BASE_URL = IN_DEVELOPMENT_MODE ? 'http://localhost:9000' : '';
 
 export const REACT_TROUBLESHOOT_API_DEV_URL =
-  process.env.REACT_TROUBLESHOOT_API_DEV_URL ?? `http://localhost:8080`;
+  import.meta.env.VITE_TROUBLESHOOT_API_DEV_URL ?? `http://localhost:8080`;
 export const REACT_TROUBLESHOOT_API_PROD_URL =
-  process.env.REACT_TROUBLESHOOT_API_PROD_URL ?? `https://10.9.15.156:8443/api`;
+  import.meta.env.VITE_TROUBLESHOOT_API_PROD_URL ?? `https://10.9.15.156:8443/api`;
 
 export const MAP_SERVER_URL = IN_DEVELOPMENT_MODE
-  ? `https://s3-us-west-2.amazonaws.com/${process.env.REACT_APP_YB_MAP_URL}/yba-updated-map`
+  ? `https://s3-us-west-2.amazonaws.com/${import.meta.env.VITE_YB_MAP_URL}/yba-updated-map`
   : '/static/map';
 
 // get SSO flag from global config loaded in index.html before UI app started

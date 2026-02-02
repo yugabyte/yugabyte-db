@@ -13257,7 +13257,7 @@
       "max" : null,
       "min" : null,
       "show" : true,
-      "format" : "s"
+      "format" : "ms"
     }, {
       "format" : "short",
       "label" : null,
@@ -13275,7 +13275,7 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Current Lag",
-      "expr" : "max by (saved_name)(cdcsdk_flush_lag{node_prefix=~\"$dbcluster\"}) / 1000000",
+      "expr" : "max by (saved_name)(cdcsdk_flush_lag{node_prefix=~\"$dbcluster\"}) / 1000",
       "refId" : "A"
     } ],
     "gridPos" : {
