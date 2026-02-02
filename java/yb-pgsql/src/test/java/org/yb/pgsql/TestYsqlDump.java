@@ -15,8 +15,10 @@ package org.yb.pgsql;
 
 import static org.yb.AssertionWrappers.*;
 
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -26,6 +28,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -468,6 +471,97 @@ public class TestYsqlDump extends BasePgSQLTest {
       "results/yb.orig.ysql_dump_describe_colocated_tables_with_tablespaces.out"
       /* outputDescribeFileRelativePath */
     );
+  }
+
+  @Test
+  public void ysqlDumpRespectsPGHOSTEnvVar() throws Exception {
+    File pgBinDir = PgRegressBuilder.getPgBinDir();
+    File ysqlDumpExec = new File(pgBinDir, "ysql_dump");
+
+    String invalidHost = "nosuchhost.invalid";
+
+    List<String> args = Arrays.asList(
+        ysqlDumpExec.toString(),
+        "-d", "testdb"
+    );
+
+    ProcessBuilder pb = new ProcessBuilder(args);
+    pb.environment().put("PGHOST", invalidHost);
+    pb.redirectErrorStream(true);
+
+    LOG.info("Running ysql_dump with PGHOST=" + invalidHost);
+    Process process = pb.start();
+
+    // Capture output (stdout + stderr merged)
+    BufferedReader reader = new BufferedReader(
+        new InputStreamReader(process.getInputStream()));
+    StringBuilder output = new StringBuilder();
+    String line;
+    while ((line = reader.readLine()) != null) {
+      output.append(line).append("\n");
+    }
+
+    process.waitFor(60, TimeUnit.SECONDS);
+
+    // The process should fail (non-zero exit code)
+    assertNotEquals("ysql_dump should fail when PGHOST points to invalid host",
+        0, process.exitValue());
+
+    // The error message should contain the invalid host name, proving PGHOST was respected
+    String outputStr = output.toString();
+    assertTrue("Error message should mention the invalid PGHOST value '" + invalidHost +
+        "', but got: " + outputStr,
+        outputStr.contains(invalidHost));
+
+    LOG.info("ysql_dump correctly respected PGHOST environment variable");
+  }
+
+  /**
+   * Test that the --host flag takes precedence over the PGHOST environment variable.
+   * When both are set, ysql_dump should use the --host value and succeed.
+   */
+  @Test
+  public void ysqlDumpHostFlagOverridesPGHOSTEnvVar() throws Exception {
+    int tserverIndex = 0;
+    File pgBinDir = PgRegressBuilder.getPgBinDir();
+    File ysqlDumpExec = new File(pgBinDir, "ysql_dump");
+
+    // Set PGHOST to an invalid host - if this were used, the dump would fail
+    String invalidEnvHost = "invalid-env-host.invalid";
+
+    List<String> args = Arrays.asList(
+        ysqlDumpExec.toString(),
+        "-h", getPgHost(tserverIndex),
+        "-p", Integer.toString(getPgPort(tserverIndex)),
+        "-U", DEFAULT_PG_USER,
+        "-d", DEFAULT_PG_DATABASE
+    );
+
+    ProcessBuilder pb = new ProcessBuilder(args);
+    pb.environment().put("PGHOST", invalidEnvHost);
+    pb.redirectErrorStream(true);
+
+    LOG.info("Running ysql_dump with PGHOST=" + invalidEnvHost +
+        " and -h " + getPgHost(tserverIndex));
+    Process process = pb.start();
+
+    // Capture output (stdout + stderr merged)
+    BufferedReader reader = new BufferedReader(
+        new InputStreamReader(process.getInputStream()));
+    StringBuilder output = new StringBuilder();
+    String line;
+    while ((line = reader.readLine()) != null) {
+      output.append(line).append("\n");
+    }
+
+    process.waitFor(60, TimeUnit.SECONDS);
+
+    // The process should succeed (exit code 0) because -h flag overrides PGHOST
+    assertEquals("ysql_dump should succeed when -h flag points to valid host, " +
+        "even with invalid PGHOST. Output: " + output.toString(),
+        0, process.exitValue());
+
+    LOG.info("ysql_dump correctly prioritized --host flag over PGHOST environment variable");
   }
 
   @Test
