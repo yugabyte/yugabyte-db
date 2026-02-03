@@ -3090,6 +3090,12 @@ index_update_stats(Relation rel,
 		dirty = true;
 	}
 
+	/**
+	  * When concurrent DDL support is enabled and until inplace catalog updates are fully implemented in #29638,
+	  * avoid updating statistics if we don't really need to. If auto analyze is enabled, it will keep reltuples
+	  * on the (indexed) main table reasonably accurate, so we can skip updating statistics here.
+	  */
+	update_stats = update_stats && (YBCIsLegacyModeForCatalogOps() || !YBCIsAutoAnalyzeEnabled());
 	if (update_stats)
 	{
 		if (rd_rel->relpages != (int32) relpages)

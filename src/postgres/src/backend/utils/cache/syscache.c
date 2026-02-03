@@ -1903,12 +1903,18 @@ SearchSysCacheLocked1(int cacheId,
 	if (YBGetObjectLockMode() != PG_OBJECT_LOCK_MODE)
 	{
 		HeapTuple tuple = SearchSysCache1(cacheId, key1);
-		SET_LOCKTAG_TUPLE(tag,
-						  cache->cc_relisshared ? InvalidOid : MyDatabaseId,
-						  cache->cc_reloid,
-						  0,
-						  0);
-		(void) LockAcquire(&tag, InplaceUpdateTupleLock, false, false);
+		if (*YBCGetGFlags()->TEST_enable_obj_tuple_locks)
+		{
+			SET_LOCKTAG_TUPLE(tag,
+							cache->cc_relisshared ? InvalidOid : MyDatabaseId,
+							cache->cc_reloid,
+							0,
+							0);
+			(void) LockAcquire(&tag, InplaceUpdateTupleLock, false, false);
+			ReleaseSysCache(tuple);
+			AcceptInvalidationMessages();
+			tuple = SearchSysCache1(cacheId, key1);
+		}
 		return tuple;
 	}
 

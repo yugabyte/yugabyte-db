@@ -127,6 +127,9 @@ DEFINE_test_flag(bool, ysql_bypass_auto_analyze_auth_check, false,
 DEFINE_test_flag(int64, delay_after_table_analyze_ms, 0,
     "Add this delay after each table is analyzed.");
 
+DEFINE_test_flag(
+    bool, enable_obj_tuple_locks, false, "Enable object tuple locks in the lock manager.");
+
 DECLARE_bool(ysql_enable_colocated_tables_with_tablespaces);
 DECLARE_bool(TEST_ysql_enable_db_logical_client_version_mode);
 DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
@@ -243,6 +246,7 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .placement_zone = FLAGS_placement_zone.c_str(),
       .TEST_ysql_bypass_auto_analyze_auth_check = &FLAGS_TEST_ysql_bypass_auto_analyze_auth_check,
       .TEST_delay_after_table_analyze_ms = &FLAGS_TEST_delay_after_table_analyze_ms,
+      .TEST_enable_obj_tuple_locks = &FLAGS_TEST_enable_obj_tuple_locks,
   };
   // clang-format on
   return &accessor;
