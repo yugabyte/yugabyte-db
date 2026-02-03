@@ -375,7 +375,7 @@ CREATE TABLE single_zone_table_with_read_replica (id INTEGER, field text)
   TABLESPACE us_east_1_with_rr_tablespace;
 ```
 
-The `placement_uuid` field in the `read_replica_placement` section needs to be set to [placement id of the read replica cluster](../../admin/yb-admin/#add-read-replica-placement-info). You can get this placement id using [yb-admin get-universe-config](../../admin/yb-admin/#get-universe-config).
+The `placement_uuid` field in the `read_replica_placement` section needs to be set to the [placement ID of the read replica cluster](../../../admin/yb-admin/#add-read-replica-placement-info). To obtain the placement ID, use the [get-universe-config](../../../admin/yb-admin/#get-universe-config) yb-admin command.
 
 You can also use the [wildcard](#use-wildcards-for-zones) `*` when specifying placement in read replicas.
 
