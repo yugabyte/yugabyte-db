@@ -21,13 +21,13 @@ Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, 
 
 {{< note title="Important: Breaking change" >}}
 
-This release includes breaking changes for Voyager migrations. Migrations started with earlier Voyager versions cannot be continued with this version. To proceed, either continue the migration using the same Voyager version that started it, or start a new migration with v2026.2.1.
+This release includes breaking changes for Voyager migrations. Migrations started with earlier Voyager versions cannot be continued with this version. To proceed, either continue the migration using the same Voyager version you started with, or start a new migration using v2026.2.1.
 
 {{< /note >}}
 
 ### New feature
 
-- Case-sensitive schema names in PostgreSQL migrations. PostgreSQL schemas that use quoted identifiers (for example, `"pg-schema"`, `"Schema"`) are now correctly handled in all migration workflows: assessment, export schema, export data, live migration, and also the grant-migration-permissions script. The `--source-db-schema` or `schema_list` parameter accepts schema names with or without quotes. Quoted names are preserved and matched correctly.
+- Support for case-sensitive schema names in PostgreSQL migrations. PostgreSQL schemas that use quoted identifiers (for example, `"pg-schema"`, `"Schema"`) are now correctly handled in all migration workflows: assessment, export schema, export data, live migration, and also the grant-migration-permissions script. The `--source-db-schema` or `schema_list` parameter accepts schema names with or without quotes. Quoted names are preserved and matched correctly.
 
 ### Enhancement
 
