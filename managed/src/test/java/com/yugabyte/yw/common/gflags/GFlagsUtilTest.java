@@ -12,17 +12,31 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import org.junit.Before;
 import org.junit.Test;
+import org.mockito.Mock;
+import org.mockito.Mockito;
 
 public class GFlagsUtilTest extends FakeDBApplication {
+
+  @Mock private GFlagsValidation gFlagsValidation;
+
+  @Before
+  public void setup() {
+    gFlagsValidation = Mockito.mock(GFlagsValidation.class);
+  }
 
   @Test
   public void testGflagsAndIntentConsistency() {
@@ -470,5 +484,135 @@ public class GFlagsUtilTest extends FakeDBApplication {
         .append("--key3 = val3 #TODO");
     Map<String, String> gflags = GFlagsUtil.parseConfigContents(sb.toString());
     assertEquals(Map.of("key", "true", "key2", "", "key3", "val3"), gflags);
+  }
+
+  @Test
+  public void testMergeSensitiveGFlags() {
+    try (var mockedRedactingService = Mockito.mockStatic(RedactingService.class)) {
+      Set<String> sensitiveGFlags =
+          new HashSet<>(Arrays.asList("ycql_ldap_bind_passwd", "ysql_hba_conf_csv"));
+
+      mockedRedactingService
+          .when(() -> RedactingService.getSensitiveGflagsForRedaction(any(), any()))
+          .thenReturn(sensitiveGFlags);
+
+      // Test case 1: entire ycql_ldap_bind_passwd being REDACTED
+      Map<String, String> existingGFlags1 = new HashMap<>();
+      existingGFlags1.put("ycql_ldap_bind_passwd", "secret");
+      existingGFlags1.put("some_other_flag", "value1");
+
+      Map<String, String> newGFlags1 = new HashMap<>();
+      newGFlags1.put("ycql_ldap_bind_passwd", "REDACTED");
+      newGFlags1.put("some_other_flag", "value2");
+
+      Map<String, String> mergedGFlags1 =
+          GFlagsUtil.mergeSensitiveGFlags(existingGFlags1, newGFlags1, gFlagsValidation, "2.18");
+
+      assertEquals("secret", mergedGFlags1.get("ycql_ldap_bind_passwd"));
+      assertEquals("value2", mergedGFlags1.get("some_other_flag"));
+
+      // Test case 2: ysql_hba_conf_csv containing a redacted field
+      String originalYsqlHbaConf =
+          "host all all 0.0.0.0/0 ldap ldapbindpasswd=\"super-secret-password\"";
+      String newYsqlHbaConf = "host all all 0.0.0.0/0 ldap ldapbindpasswd=\"REDACTED\"";
+
+      Map<String, String> existingGFlags2 = new HashMap<>();
+      existingGFlags2.put("ysql_hba_conf_csv", originalYsqlHbaConf);
+
+      Map<String, String> newGFlags2 = new HashMap<>();
+      newGFlags2.put("ysql_hba_conf_csv", newYsqlHbaConf);
+
+      Map<String, String> mergedGFlags2 =
+          GFlagsUtil.mergeSensitiveGFlags(existingGFlags2, newGFlags2, gFlagsValidation, "2.18");
+
+      assertEquals(originalYsqlHbaConf, mergedGFlags2.get("ysql_hba_conf_csv"));
+
+      // Test case 3: ysql_hba_conf_csv with other changes + redacted password - preserve changes
+      String originalYsqlHbaConf3 =
+          "host all all 0.0.0.0/0 ldap ldapserver=old.example.com ldapbindpasswd=\"secret123\"";
+      String newYsqlHbaConf3 =
+          "host all all 0.0.0.0/0 ldap ldapserver=new.example.com ldapbindpasswd=REDACTED";
+
+      Map<String, String> existingGFlags3 = new HashMap<>();
+      existingGFlags3.put("ysql_hba_conf_csv", originalYsqlHbaConf3);
+
+      Map<String, String> newGFlags3 = new HashMap<>();
+      newGFlags3.put("ysql_hba_conf_csv", newYsqlHbaConf3);
+
+      Map<String, String> mergedGFlags3 =
+          GFlagsUtil.mergeSensitiveGFlags(existingGFlags3, newGFlags3, gFlagsValidation, "2.18");
+
+      // Should preserve the ldapserver change while restoring the original password
+      String expectedMerged =
+          "host all all 0.0.0.0/0 ldap ldapserver=new.example.com ldapbindpasswd=secret123";
+      assertEquals(expectedMerged, mergedGFlags3.get("ysql_hba_conf_csv"));
+
+      // Test case 4: Double-quote CSV format with special characters (real user case)
+      String originalYsqlHbaConf4 =
+          "host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com "
+              + "ldapbindpasswd=\"\"My$ecret!With@Special#Chars\"\"";
+      String newYsqlHbaConf4 =
+          "host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com "
+              + "ldapbindpasswd=\"\"REDACTED\"\"";
+
+      Map<String, String> existingGFlags4 = new HashMap<>();
+      existingGFlags4.put("ysql_hba_conf_csv", originalYsqlHbaConf4);
+
+      Map<String, String> newGFlags4 = new HashMap<>();
+      newGFlags4.put("ysql_hba_conf_csv", newYsqlHbaConf4);
+
+      Map<String, String> mergedGFlags4 =
+          GFlagsUtil.mergeSensitiveGFlags(existingGFlags4, newGFlags4, gFlagsValidation, "2.18");
+
+      // Should restore the original password in double-quote format
+      assertEquals(originalYsqlHbaConf4, mergedGFlags4.get("ysql_hba_conf_csv"));
+    }
+  }
+
+  @Test
+  public void testMergeSensitiveSpecificGFlags() {
+    try (var mockedRedactingService = Mockito.mockStatic(RedactingService.class)) {
+      Set<String> sensitiveGFlags =
+          new HashSet<>(Arrays.asList("ycql_ldap_bind_passwd", "ysql_hba_conf_csv"));
+      mockedRedactingService
+          .when(() -> RedactingService.getSensitiveGflagsForRedaction(any(), any()))
+          .thenReturn(sensitiveGFlags);
+
+      // --- Setup Existing SpecificGFlags ---
+      SpecificGFlags existingSpecificGFlags = new SpecificGFlags();
+      PerProcessFlags existingPerProcessFlags = new PerProcessFlags();
+      Map<String, String> existingMasterGflags = new HashMap<>();
+
+      existingMasterGflags.put("ycql_ldap_bind_passwd", "secret-password");
+      String originalYsqlHbaConf =
+          "host all all 0.0.0.0/0 ldap ldapbindpasswd=\"super-secret-password\"";
+      existingMasterGflags.put("ysql_hba_conf_csv", originalYsqlHbaConf);
+
+      existingPerProcessFlags.value.put(ServerType.MASTER, existingMasterGflags);
+      existingSpecificGFlags.setPerProcessFlags(existingPerProcessFlags);
+
+      // --- Setup New SpecificGFlags with REDACTED values ---
+      SpecificGFlags newSpecificGFlags = new SpecificGFlags();
+      PerProcessFlags newPerProcessFlags = new PerProcessFlags();
+      Map<String, String> newMasterGflags = new HashMap<>();
+
+      newMasterGflags.put("ycql_ldap_bind_passwd", "REDACTED");
+      String newYsqlHbaConf = "host all all 0.0.0.0/0 ldap ldapbindpasswd=\"REDACTED\"";
+      newMasterGflags.put("ysql_hba_conf_csv", newYsqlHbaConf);
+
+      newPerProcessFlags.value.put(ServerType.MASTER, newMasterGflags);
+      newSpecificGFlags.setPerProcessFlags(newPerProcessFlags);
+
+      // --- Perform merge and assert ---
+      SpecificGFlags mergedSpecificGFlags =
+          GFlagsUtil.mergeSensitiveSpecificGFlags(
+              existingSpecificGFlags, newSpecificGFlags, gFlagsValidation, "2.18");
+
+      Map<String, String> mergedMasterGflags =
+          mergedSpecificGFlags.getPerProcessFlags().value.get(ServerType.MASTER);
+
+      assertEquals("secret-password", mergedMasterGflags.get("ycql_ldap_bind_passwd"));
+      assertEquals(originalYsqlHbaConf, mergedMasterGflags.get("ysql_hba_conf_csv"));
+    }
   }
 }

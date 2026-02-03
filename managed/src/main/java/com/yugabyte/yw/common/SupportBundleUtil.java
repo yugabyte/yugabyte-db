@@ -13,7 +13,6 @@ package com.yugabyte.yw.common;
 import static com.yugabyte.yw.common.Util.getDataDirectoryPath;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
@@ -855,7 +854,8 @@ public class SupportBundleUtil {
       JsonNode jsonData =
           RedactingService.filterSecretFields(
               Json.toJson(pagedList.getList()), RedactionTarget.LOGS);
-      jsonData = redactAuditAdditionalDetails(jsonData, universe);
+      jsonData =
+          RedactingService.redactAuditAdditionalDetails(jsonData, universe, gFlagsValidation);
       writeStringToFile(
           jsonData.toPrettyString(), Paths.get(destDir, "audit.json").toString(), true);
     } while (pagedList.hasNext());
@@ -991,89 +991,6 @@ public class SupportBundleUtil {
               : "server.conf");
     } catch (Exception e) {
       log.warn("Error while redacting file {}: {}", filePath, e);
-    }
-  }
-
-  /**
-   * Redacts sensitive information from a single server.conf file. Uses
-   * RedactingService.redactLdapPasswordsInString() for redaction.
-   *
-   * @param filePath The path to the server.conf file
-   * @param universe The universe object for which support bundle is created
-   */
-  private void redactServerConfFile(Path filePath, Universe universe) {
-    try {
-      String content = new String(Files.readAllBytes(filePath), StandardCharsets.UTF_8);
-      String ybVersion = getYbSoftwareVersion(universe);
-      String redactedContent =
-          RedactingService.redactSensitiveInfoInString(content, ybVersion, gFlagsValidation);
-      Files.write(filePath, redactedContent.getBytes(StandardCharsets.UTF_8));
-      log.debug("Redacted sensitive information from server.conf file: {}", filePath);
-    } catch (Exception e) {
-      log.warn("Error while redacting server.conf file {}: {}", filePath, e);
-    }
-  }
-
-  /**
-   * Redacts sensitive gflags in the additionalDetails section of audit logs. Redacts the "old",
-   * "new", and "default" fields for any gflag that has the sensitive_info tag.
-   *
-   * @param jsonData The audit log JSON data
-   * @param universe Universe object for the universe whose support bundle is being created
-   * @return The JSON data with additional redaction applied
-   */
-  private JsonNode redactAuditAdditionalDetails(JsonNode jsonData, Universe universe) {
-    try {
-      if (jsonData.isArray()) {
-        for (JsonNode auditEntry : jsonData) {
-          if (auditEntry.has("additionalDetails")) {
-            JsonNode additionalDetails = auditEntry.get("additionalDetails");
-            if (additionalDetails.has("gflags")) {
-              JsonNode gflags = additionalDetails.get("gflags");
-              redactGflagsSection(gflags, universe);
-            }
-          }
-        }
-      }
-    } catch (Exception e) {
-      log.warn("Error while redacting audit additionalDetails: {}", e);
-    }
-    return jsonData;
-  }
-
-  /**
-   * Redacts sensitive gflags in the gflags section. Handles both master and tserver gflags arrays.
-   * Redacts any gflag that has the sensitive_info tag.
-   *
-   * @param gflags The gflags JSON node
-   * @param universe The universe object for which support bundle is created
-   */
-  private void redactGflagsSection(JsonNode gflags, Universe universe) {
-    try {
-      String ybSoftwareVersion = getYbSoftwareVersion(universe);
-      // Get sensitive gflags dynamically from RedactingService
-      Set<String> sensitiveGflags =
-          RedactingService.getSensitiveGflagsForRedaction(ybSoftwareVersion, gFlagsValidation);
-
-      for (String gflagType : new String[] {"tserver", "master"}) {
-        if (gflags.has(gflagType) && gflags.get(gflagType).isArray()) {
-          for (JsonNode flag : gflags.get(gflagType)) {
-            if (flag.has("name")) {
-              String flagName = flag.get("name").asText();
-              if (sensitiveGflags.contains(flagName)) {
-                ObjectNode flagNode = (ObjectNode) flag;
-                for (String field : new String[] {"old", "new", "default"}) {
-                  if (flag.has(field)) {
-                    flagNode.put(field, RedactingService.SECRET_REPLACEMENT);
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    } catch (Exception e) {
-      log.warn("Error while redacting gflags section: {}", e);
     }
   }
 }
