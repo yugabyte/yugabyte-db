@@ -1756,9 +1756,10 @@ public class GFlagsUtil {
       try {
         Files.createDirectory(localGflagFilePath);
       } catch (IOException e) {
+        LOG.error("Error while creating gflag directory: {}", e);
         throw new PlatformServiceException(
             INTERNAL_SERVER_ERROR,
-            String.format("Failed to create tmp gflag directory, {}", e.getMessage()));
+            String.format("Failed to create tmp gflag directory: %s", e.getMessage()));
       }
     }
     Universe universe = Universe.getOrBadRequest(universeUUID);
@@ -1768,7 +1769,7 @@ public class GFlagsUtil {
         throw new PlatformServiceException(
             INTERNAL_SERVER_ERROR,
             String.format(
-                "Missing placement information for the node in universe {}. Can't Continue",
+                "Missing placement information for the node in universe: %s. Can't Continue",
                 universeUUID.toString()));
       } else {
         placementUUID = node.placementUuid;
