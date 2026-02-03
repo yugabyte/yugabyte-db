@@ -6832,102 +6832,140 @@ Status DB::ListColumnFamilies(const DBOptions& db_options,
 Snapshot::~Snapshot() {
 }
 
-Status DestroyDB(const std::string& dbname, const Options& options) {
-  const InternalKeyComparator comparator(options.comparator);
-  const Options& soptions(SanitizeOptions(dbname, &comparator, options));
-  Env* env = soptions.env;
+namespace {
+void SetStatusIfNotOK(Status& status, Status&& other_status) {
+  if (other_status.ok()) {
+    return;
+  }
+  if (status.ok()) {
+    status = std::move(other_status);
+  } else {
+    LOG(WARNING) << "Ignoring " << other_status << ", because of previous failure: " << status;
+  }
+}
+
+#define GET_CHILDREN_AND_RETURN_IF_NOK(env, dir, children, status) \
+  do { \
+    auto internal_status = env.GetChildren(dir, &children); \
+    if (!internal_status.ok()) { \
+      if (!internal_status.IsNotFound()) { \
+        SetStatusIfNotOK(status, std::move(internal_status)); \
+      } \
+      return; \
+    } \
+  } while (false)
+
+Result<FileLock*> TryGetLock(
+    Env& env, const std::string& db_name, const std::string& lock_file_name) {
+  FileLock* lock = nullptr;
+  if (env.DirExists(db_name)) {
+    RETURN_NOT_OK(env.LockFile(lock_file_name, &lock));
+  }
+  return lock;
+}
+
+void CleanupDbDir(Env& env, Status& status, const std::string& db_name, const Options& options) {
   std::vector<std::string> filenames;
+  GET_CHILDREN_AND_RETURN_IF_NOK(env, db_name, filenames, status);
 
-  // Ignore error in case directory does not exist
-  env->GetChildrenWarnNotOk(dbname, &filenames);
+  uint64_t number;
+  FileType type;
 
-  FileLock* lock;
-  const std::string lockname = LockFileName(dbname);
-  Status result = env->LockFile(lockname, &lock);
-  if (result.ok()) {
-    uint64_t number;
-    FileType type;
-    InfoLogPrefix info_log_prefix(!options.db_log_dir.empty(), dbname);
-    for (size_t i = 0; i < filenames.size(); i++) {
-      if (ParseFileName(filenames[i], &number, info_log_prefix.prefix, &type) &&
-          type != kDBLockFile) {  // Lock file will be deleted at end
-        Status del;
-        std::string path_to_delete = dbname + "/" + filenames[i];
-        if (type == kMetaDatabase) {
-          del = DestroyDB(path_to_delete, options);
-        } else if (type == kTableFile || type == kTableSBlockFile) {
-          del = DeleteSSTFile(&options, path_to_delete, 0);
-        } else {
-          del = env->DeleteFile(path_to_delete);
-        }
-        if (result.ok() && !del.ok()) {
-          result = del;
-        }
+  InfoLogPrefix info_log_prefix(!options.db_log_dir.empty(), db_name);
+  for (size_t i = 0; i < filenames.size(); i++) {
+    if (ParseFileName(filenames[i], &number, info_log_prefix.prefix, &type) &&
+        type != kDBLockFile) {  // Lock file will be deleted at end
+      Status del;
+      std::string path_to_delete = db_name + "/" + filenames[i];
+      if (type == kMetaDatabase) {
+        del = DestroyDB(path_to_delete, options);
+      } else if (type == kTableFile || type == kTableSBlockFile) {
+        del = DeleteSSTFile(&options, path_to_delete, 0);
+      } else {
+        del = env.DeleteFile(path_to_delete);
       }
-    }
-
-    for (size_t path_id = 0; path_id < options.db_paths.size(); path_id++) {
-      const auto& db_path = options.db_paths[path_id];
-      env->GetChildrenWarnNotOk(db_path.path, &filenames);
-      for (size_t i = 0; i < filenames.size(); i++) {
-        if (ParseFileName(filenames[i], &number, &type) &&
-            // Lock file will be deleted at end
-            (type == kTableFile || type == kTableSBlockFile)) {
-          std::string table_path = db_path.path + "/" + filenames[i];
-          Status del = DeleteSSTFile(&options, table_path,
-                                     static_cast<uint32_t>(path_id));
-          if (result.ok() && !del.ok()) {
-            result = del;
-          }
-        }
-      }
-    }
-
-    std::vector<std::string> walDirFiles;
-    std::string archivedir = ArchivalDirectory(dbname);
-    if (dbname != soptions.wal_dir) {
-      env->GetChildrenWarnNotOk(soptions.wal_dir, &walDirFiles);
-      archivedir = ArchivalDirectory(soptions.wal_dir);
-    }
-
-    // Delete log files in the WAL dir
-    for (const auto& file : walDirFiles) {
-      if (ParseFileName(file, &number, &type) && type == kLogFile) {
-        Status del = env->DeleteFile(soptions.wal_dir + "/" + file);
-        if (result.ok() && !del.ok()) {
-          result = del;
-        }
-      }
-    }
-
-    // ignore case where no archival directory is present.
-    if (env->FileExists(archivedir).ok()) {
-      std::vector<std::string> archiveFiles;
-      env->GetChildrenWarnNotOk(archivedir, &archiveFiles);
-      // Delete archival files.
-      for (size_t i = 0; i < archiveFiles.size(); ++i) {
-        if (ParseFileName(archiveFiles[i], &number, &type) &&
-          type == kLogFile) {
-          Status del = env->DeleteFile(archivedir + "/" + archiveFiles[i]);
-          if (result.ok() && !del.ok()) {
-            result = del;
-          }
-        }
-      }
-
-      WARN_NOT_OK(env->DeleteDir(archivedir), "Failed to cleanup dir " + archivedir);
-    }
-    WARN_NOT_OK(env->UnlockFile(lock), "Unlock file failed");
-    env->CleanupFile(lockname);
-    if (env->FileExists(dbname).ok()) {
-      WARN_NOT_OK(env->DeleteDir(dbname), "Failed to cleanup dir " + dbname);
-    }
-    if (env->FileExists(soptions.wal_dir).ok()) {
-      WARN_NOT_OK(env->DeleteDir(soptions.wal_dir),
-                  "Failed to cleanup wal dir " + soptions.wal_dir);
+      SetStatusIfNotOK(status, std::move(del));
     }
   }
-  return result;
+
+  for (size_t path_id = 0; path_id < options.db_paths.size(); path_id++) {
+    const auto& db_path = options.db_paths[path_id];
+    if (!env.DirExists(db_path.path)) {
+      continue;
+    }
+    env.GetChildrenWarnNotOk(db_path.path, &filenames);
+    for (size_t i = 0; i < filenames.size(); i++) {
+      if (ParseFileName(filenames[i], &number, &type) &&
+          // Lock file will be deleted at end
+          (type == kTableFile || type == kTableSBlockFile)) {
+        std::string table_path = db_path.path + "/" + filenames[i];
+        SetStatusIfNotOK(
+            status, DeleteSSTFile(&options, table_path, static_cast<uint32_t>(path_id)));
+      }
+    }
+  }
+}
+
+void DeleteWALDir(Env& env, Status& status, const std::string& wal_dir) {
+  std::vector<std::string> filenames;
+  GET_CHILDREN_AND_RETURN_IF_NOK(env, wal_dir, filenames, status);
+
+  uint64_t number;
+  FileType type;
+  for (const auto& file : filenames) {
+    if (ParseFileName(file, &number, &type) && type == kLogFile) {
+      SetStatusIfNotOK(status, env.DeleteFile(wal_dir + "/" + file));
+    }
+  }
+
+  SetStatusIfNotOK(status, env.DeleteDir(wal_dir));
+}
+
+void DeleteArchivalDir(Env& env, Status& status, const std::string& archival_dir) {
+  std::vector<std::string> filenames;
+  GET_CHILDREN_AND_RETURN_IF_NOK(env, archival_dir, filenames, status);
+
+  uint64_t number;
+  FileType type;
+  for (size_t i = 0; i < filenames.size(); ++i) {
+    if (ParseFileName(filenames[i], &number, &type) && type == kLogFile) {
+      SetStatusIfNotOK(status, env.DeleteFile(archival_dir + "/" + filenames[i]));
+    }
+  }
+  SetStatusIfNotOK(status, env.DeleteDir(archival_dir));
+}
+
+}  // namespace
+
+Status DestroyDB(const std::string& db_name, const Options& options) {
+  const InternalKeyComparator comparator(options.comparator);
+  const Options& soptions(SanitizeOptions(db_name, &comparator, options));
+  Env& env = *soptions.env;
+  Status status;
+
+  const auto lock_file_name = LockFileName(db_name);
+  auto lock = VERIFY_RESULT(TryGetLock(env, db_name, lock_file_name));
+
+  // Release the lock at the end, and cleanup the db directory.
+  auto se = yb::ScopeExit([lock, &env, &status, db_name, lock_file_name] {
+    if (lock) {
+      SetStatusIfNotOK(status, env.UnlockFile(lock));
+      env.CleanupFile(lock_file_name);
+    }
+    if (env.DirExists(db_name)) {
+      SetStatusIfNotOK(status, env.DeleteDir(db_name));
+    }
+  });
+
+  CleanupDbDir(env, status, db_name, options);
+
+  DeleteArchivalDir(env, status, ArchivalDirectory(soptions.wal_dir));
+
+  if (db_name != soptions.wal_dir) {
+    DeleteWALDir(env, status, soptions.wal_dir);
+  }
+
+  return status;
 }
 
 Status DBImpl::WriteOptionsFile() {
