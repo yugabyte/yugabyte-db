@@ -29,7 +29,7 @@ You can uninstall YugabyteDB Anywhere in Kubernetes, as follows:
     helm uninstall <release-name> -n <namespace>
     ```
 
-    `-n` option specifies the namespace scope for this request.
+    Replace <release-name> and <namespace> with the release and namespace you used when installing. The `-n` option specifies the namespace scope for this request.
 
     You should see a message similar to the following, notifying you that the subject release has been removed:
 
@@ -65,7 +65,9 @@ You can remove YugabyteDB components and configuration from on-premises provider
 
     If you cannot find the `bin` directory, it means YugabyteDB Anywhere already removed it during a successful deletion of the universe.
 
-1. For cron-based universes, run the following commands:
+1. Stop YugabyteDB processes.
+
+    For cron-based universes, run the following commands:
 
     ```sh
     ./bin/yb-server-ctl.sh master stop
@@ -81,7 +83,7 @@ You can remove YugabyteDB components and configuration from on-premises provider
     systemctl --user stop yb-controller
     ```
 
-    For user systemd universes, run the following commands:
+    For root systemd universes, run the following commands:
 
     ```sh
     sudo systemctl stop yb-master
