@@ -18,7 +18,6 @@
 #include "yb/consensus/log.h"
 
 #include "yb/docdb/doc_read_context.h"
-#include "yb/docdb/docdb_debug.h"
 
 #include "yb/integration-tests/packed_row_test_base.h"
 
@@ -1083,14 +1082,18 @@ class TestKVFormatter : public tablet::KVFormatter {
 void PgPackedRowTest::TestSstDump(bool specify_metadata, std::string* output) {
   auto conn = ASSERT_RESULT(Connect());
 
-  ASSERT_OK(conn.Execute("CREATE TABLE test(v1 INT PRIMARY KEY, v2 TEXT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("CREATE TABLE test(key INT PRIMARY KEY, v1 TEXT) SPLIT INTO 1 TABLETS"));
 
   ASSERT_OK(conn.Execute("INSERT INTO test VALUES (1, 'one')"));
   ASSERT_OK(conn.Execute("INSERT INTO test VALUES (2, 'two')"));
-  ASSERT_OK(conn.Execute("ALTER TABLE test ADD COLUMN v3 TEXT"));
+  ASSERT_OK(conn.Execute("ALTER TABLE test ADD COLUMN v2 TEXT"));
   ASSERT_OK(conn.Execute("INSERT INTO test VALUES (3, 'three', 'tri')"));
-  ASSERT_OK(conn.Execute("ALTER TABLE test DROP COLUMN v2"));
+  ASSERT_OK(conn.Execute("ALTER TABLE test DROP COLUMN v1"));
   ASSERT_OK(conn.Execute("INSERT INTO test VALUES (4, 'chetyre')"));
+  ASSERT_OK(conn.Execute("BEGIN; INSERT INTO test VALUES (5, 'transactional'); COMMIT"));
+
+  // Wait for background APPLY to move data from IntentsDB to RegularDB.
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
 
   ASSERT_OK(cluster_->FlushTablets());
 
@@ -1142,6 +1145,7 @@ TEST_P(PgPackedRowTest, SstDump) {
 
   ASSERT_STR_EQ_VERBOSE_TRIMMED(util::ApplyEagerLineContinuation(
       Format(R"#(
+          SubDocKey(DocKey(0x0a73, [5], []), [HT{}]) -> { $1: "transactional" }
           SubDocKey(DocKey(0x1210, [1], []), [HT{}]) -> { $0: "one" }
           SubDocKey(DocKey(0x9eaf, [4], []), [HT{}]) -> { $1: "chetyre" }
           SubDocKey(DocKey(0xc0c4, [2], []), [HT{}]) -> { $0: "two" }
@@ -1159,6 +1163,8 @@ TEST_P(PgPackedRowTest, SstDumpNoMetadata) {
 
   ASSERT_STR_EQ_VERBOSE_TRIMMED(util::ApplyEagerLineContinuation(
       R"#(
+          SubDocKey(DocKey(0x0a73, [5], []), [HT{}]) -> \
+              PACKED_ROW_V1[3](0E000000537472616E73616374696F6E616C)
           SubDocKey(DocKey(0x1210, [1], []), [HT{}]) -> PACKED_ROW_V1[0](04000000536F6E65)
           SubDocKey(DocKey(0x9eaf, [4], []), [HT{}]) -> PACKED_ROW_V1[3](080000005363686574797265)
           SubDocKey(DocKey(0xc0c4, [2], []), [HT{}]) -> PACKED_ROW_V1[0](040000005374776F)
@@ -1255,7 +1261,7 @@ void PgPackedRowTest::TestDropColocatedTable(bool use_transaction) {
   }
   ASSERT_OK(conn.Execute("DROP TABLE test"));
 
-  DisableFlushOnShutdown(*cluster_, true);
+  DisableFlushOnShutdown(*cluster_, /*disable=*/true);
   ASSERT_OK(cluster_->RestartSync());
 
   conn = ASSERT_RESULT(ConnectToDB("test"));
