@@ -12,16 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-edition = "2023";
+syntax = "proto2";
 
 package research_scann;
 
-option features.utf8_validation = NONE;
-
 message ScannAsset {
   enum AssetType {
-    option features.enum_type = CLOSED;
-
     UNSPECIFIED_TYPE = 0;
     DATASET = 1;
     INT8_DATASET = 2;
@@ -41,11 +37,11 @@ message ScannAsset {
     BF16_DATASET_NPY = 15;
   }
 
-  AssetType asset_type = 1;
-  string asset_path = 2;
+  optional AssetType asset_type = 1;
+  optional string asset_path = 2;
 }
 
 message ScannAssets {
   repeated ScannAsset assets = 1;
-  bool trained_on_the_fly = 2 [default = true];
+  optional bool trained_on_the_fly = 2 [default = true];
 }

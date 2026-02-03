@@ -4,6 +4,7 @@
 # expected to fall within in the build directory (and indeed, if they're
 # outside for some reason, we want to know as it's likely an error).
 build/
+build-dynamic/
 
 perf.data
 perf.data.old

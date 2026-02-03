@@ -12,34 +12,28 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-edition = "2023";
+syntax = "proto2";
 
 package research_scann;
 
-import "scann/data_format/features.proto";
-
-option features.repeated_field_encoding = EXPANDED;
-
 message HashedItem {
-  bytes data_id_str = 1;
+  optional bytes data_id_str = 1;
 
-  bytes indicator_vars = 2 [features.field_presence = LEGACY_REQUIRED];
+  required bytes indicator_vars = 2;
 
-  bytes soar_indicator_vars = 6;
+  optional bytes soar_indicator_vars = 6;
 
-  int32 soar_partition_idx = 7 [default = -1];
+  optional int32 soar_partition_idx = 7 [default = -1];
 
   reserved 4;
 
   repeated int64 deprecated_token_membership = 3;
 
   enum PackingStrategy {
-    option features.enum_type = CLOSED;
-
     NONE = 0;
     NIBBLE = 1;
     BINARY = 2;
   }
 
-  PackingStrategy packing_strategy = 5 [default = BINARY];
+  optional PackingStrategy packing_strategy = 5 [default = BINARY];
 }

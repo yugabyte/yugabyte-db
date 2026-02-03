@@ -33,6 +33,11 @@
 
 namespace research_scann {
 
+// Undefine the standard absl log macros.
+#ifdef DCHECK_OK
+#undef DCHECK_OK
+#endif
+
 #define DCHECK_OK(val) DCHECK_EQ(OkStatus(), (val))
 
 #ifdef SCANN_DATAPOINT_INDEX_64

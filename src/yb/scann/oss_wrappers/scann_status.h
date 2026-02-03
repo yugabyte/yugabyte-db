@@ -58,6 +58,14 @@
 #define SCANN_LOG_NOOP(...) \
   while (false) LOG(ERROR)
 
+// Undefine the standard absl log macros.
+#ifdef VLOG
+#undef VLOG
+#endif
+#ifdef DVLOG
+#undef DVLOG
+#endif
+
 #define VLOG SCANN_LOG_NOOP
 #define DVLOG SCANN_LOG_NOOP
 

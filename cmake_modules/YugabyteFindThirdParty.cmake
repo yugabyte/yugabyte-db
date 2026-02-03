@@ -425,4 +425,20 @@ macro(yb_find_third_party_dependencies)
   ADD_THIRDPARTY_LIB(pcre
     STATIC_LIB "${PCRE_STATIC_LIB}")
 
+  ## Hwy
+  find_package(Hwy REQUIRED)
+  include_directories(SYSTEM ${HWY_INCLUDE_DIR})
+  ADD_THIRDPARTY_LIB(hwy
+    STATIC_LIB "${HWY_STATIC_LIB}")
+
+  ## Eigen
+  find_package(Eigen REQUIRED)
+  include_directories(SYSTEM ${EIGEN_INCLUDE_DIR})
+
+  ## Cnpy
+  find_package(Cnpy REQUIRED)
+  include_directories(SYSTEM ${CNPY_INCLUDE_DIR})
+  ADD_THIRDPARTY_LIB(cnpy
+    STATIC_LIB "${CNPY_STATIC_LIB}")
+
 endmacro()

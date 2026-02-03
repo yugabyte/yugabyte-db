@@ -911,6 +911,7 @@ set(YB_SUBDIR_NAMES
     rocksdb
     rocksutil
     rpc
+    scann
     server
     tablet
     tools

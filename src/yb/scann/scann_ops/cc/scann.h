@@ -317,7 +317,7 @@ void ScannInterface::ReshapeBatchedNNResult(ConstSpan<NNResultsVector> res,
 /// \return OkStatus on success, or error if parsing fails.
 template <typename T>
 Status ParseTextProto(T* proto, absl::string_view proto_str) {
-  ::google::protobuf::TextFormat::ParseFromString(proto_str, proto);
+  ::google::protobuf::TextFormat::ParseFromString(std::string(proto_str), proto);
   return OkStatus();
 }
 

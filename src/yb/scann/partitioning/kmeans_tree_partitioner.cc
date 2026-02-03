@@ -426,7 +426,7 @@ Status KMeansTreePartitioner<T>::ApplyAvq(
     const DenseDataset<T>& dataset,
     ConstSpan<std::vector<DatapointIndex>> datapoints_by_token, float avq_eta,
     ThreadPool* pool_or_null) {
-  if (!kmeans_tree_.unique()) {
+  if (kmeans_tree_.use_count() != 1) {
     return FailedPreconditionError(
         "Cannot apply AVQ to KMeansTreePartitioner instances with a shared "
         "KMeansTree.");

@@ -39,6 +39,8 @@
 #include "scann/utils/types.h"
 #include "scann/utils/util_functions.h"
 
+#include "yb/util/tostring.h"
+
 namespace research_scann {
 namespace asymmetric_hashing2 {
 
@@ -399,7 +401,7 @@ Status Indexer<T>::Reconstruct(absl::string_view input,
 template <typename T>
 DimensionIndex Indexer<T>::hashed_space_bytes() const {
   DCHECK_EQ(model_->centers().size(), projector_->num_blocks())
-      << model_->ToProto();
+      << yb::ToString(model_->ToProto());
   switch (model_->quantization_scheme()) {
     case AsymmetricHasherConfig::PRODUCT:
       return model_->centers().size();

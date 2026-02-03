@@ -18,7 +18,6 @@
 #include <functional>
 #include <memory>
 
-#include "Eigen/ThreadPool"
 #include "absl/strings/string_view.h"
 
 namespace research_scann {
@@ -26,11 +25,13 @@ namespace research_scann {
 class ThreadPool {
  public:
   ThreadPool(absl::string_view name, int num_threads);
+  ~ThreadPool();
   void Schedule(std::function<void()> fn);
   int NumThreads() const;
 
  private:
-  std::unique_ptr<Eigen::ThreadPool> eigen_threadpool_;
+  class Impl;
+  std::unique_ptr<Impl> impl_;
 };
 
 }  // namespace research_scann
