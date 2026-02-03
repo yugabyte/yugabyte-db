@@ -39,14 +39,13 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
     *affinitized_zones = affinitized_zones_;
   }
 
-  const TabletInfoMap& GetTabletMap() const override { return tablet_map_; }
-
-  TableIndex::TablesRange GetTables() const override {
-    return tables_.GetPrimaryTables();
-  }
-
-  const scoped_refptr<TableInfo> GetTableInfo(const TableId& table_uuid) const override {
-    return tables_.FindTableOrNull(table_uuid);
+  std::optional<std::reference_wrapper<const TabletInfoPtr>> GetTabletInfo(
+      const TabletId& id) const override {
+    auto it = tablet_map_.find(id);
+    if (it == tablet_map_.end()) {
+      return std::nullopt;
+    }
+    return std::cref(it->second);
   }
 
   ReplicationInfoPB GetTableReplicationInfo(

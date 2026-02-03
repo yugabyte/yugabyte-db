@@ -2377,8 +2377,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   scoped_refptr<AtomicGauge<uint64_t>> metric_max_follower_heartbeat_delay_;
 
-  friend class ClusterLoadBalancer;
-
   // Policy for load balancing tablets on tablet servers.
   std::unique_ptr<ClusterLoadBalancer> load_balance_policy_;
 

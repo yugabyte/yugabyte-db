@@ -264,10 +264,12 @@ struct Options {
 // the live and read-only placements).
 class PerRunState {
  public:
+  explicit PerRunState(const TabletInfoMap& tablet_map);
   uint32_t tablets_in_wrong_placement_ = 0;
   uint32_t blacklisted_leaders_ = 0;
   uint32_t total_table_load_difference_ = 0;
   uint64_t estimated_data_to_balance_bytes_ = 0;
+  const TabletInfoMap& tablet_map_;
 };
 
 // Placement-wide state and metrics. This is cleared between processing each placement (between the

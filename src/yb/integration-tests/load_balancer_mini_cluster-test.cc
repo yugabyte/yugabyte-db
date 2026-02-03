@@ -414,7 +414,7 @@ TEST_F(LoadBalancerMiniClusterTest, TableLoadDifferenceMetric) {
 // where we would have an uninitialized TSDescriptor that we try to access.
 // To trigger the race condition, we need a pending add task that gets completed after
 // CountPendingTasksUnlocked, and for the tserver that the add is going to needs to be marked as
-// not live before hitting AnalyzeTabletsUnlocked.
+// not live before hitting AnalyzeTablets.
 TEST_F(LoadBalancerMiniClusterTest, UninitializedTSDescriptorOnPendingAddTest) {
   const int test_bg_task_wait_ms = 5000;
   const int test_short_delay_ms = 100;

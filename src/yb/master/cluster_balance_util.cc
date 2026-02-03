@@ -81,6 +81,8 @@ std::string CBTabletMetadata::ToString() const {
       leader_uuid, leader_stepdown_failures, leader_blacklisted_tablet_servers);
 }
 
+PerRunState::PerRunState(const TabletInfoMap& tablet_map) : tablet_map_(tablet_map) {}
+
 int GlobalLoadState::GetGlobalLoad(const TabletServerId& ts_uuid) const {
   const auto& ts_meta = per_ts_global_meta_.at(ts_uuid);
   return ts_meta.starting_tablets_count + ts_meta.running_tablets_count;

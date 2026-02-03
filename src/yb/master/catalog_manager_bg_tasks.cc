@@ -255,16 +255,6 @@ void CatalogManagerBgTasks::Run() {
       }
       TryResumeBackfillForTables(l.epoch(), &table_map);
 
-      // Do the LB enabling check
-      if (!processed_tablets) {
-        if (catalog_manager_->TimeSinceElectedLeader() >
-            MonoDelta::FromSeconds(FLAGS_load_balancer_initial_delay_secs)) {
-          auto start = CoarseMonoClock::Now();
-          catalog_manager_->load_balance_policy_->RunLoadBalancer(l.epoch());
-          load_balancer_duration_->Increment(ToMilliseconds(CoarseMonoClock::now() - start));
-        }
-      }
-
       std::vector<scoped_refptr<TableInfo>> tables;
       TabletInfoMap tablet_info_map;
       {
@@ -272,6 +262,9 @@ void CatalogManagerBgTasks::Run() {
         auto tables_it = catalog_manager_->tables_->GetPrimaryTables();
         tables = std::vector(std::begin(tables_it), std::end(tables_it));
         tablet_info_map = *catalog_manager_->tablet_map_;
+      }
+      if (!processed_tablets) {
+        MaybeRunLoadBalancer(l.epoch(), tables, tablet_info_map);
       }
       master_->tablet_split_manager().MaybeDoSplitting(
           tables, tablet_info_map, l.epoch());
@@ -406,6 +399,18 @@ void CatalogManagerBgTasks::Run() {
     Wait(FLAGS_catalog_manager_bg_task_wait_ms);
   }
   VLOG(1) << "Catalog manager background task thread shutting down";
+}
+
+void CatalogManagerBgTasks::MaybeRunLoadBalancer(
+    const LeaderEpoch& epoch, const std::vector<TableInfoPtr>& tables,
+    const TabletInfoMap& tablets) {
+  if (catalog_manager_->TimeSinceElectedLeader() <=
+      MonoDelta::FromSeconds(FLAGS_load_balancer_initial_delay_secs)) {
+    return;
+  }
+  auto start = CoarseMonoClock::Now();
+  catalog_manager_->load_balance_policy_->RunLoadBalancer(epoch, tables, tablets);
+  load_balancer_duration_->Increment(ToMilliseconds(CoarseMonoClock::now() - start));
 }
 
 }  // namespace master
