@@ -671,6 +671,8 @@ Default: `20000`
 
 Sets the maximum batch size per transaction when using [COPY FROM](../../../api/ysql/the-sql-language/statements/cmd_copy/).
 
+#### Bucket-based index scan optimization
+
 ##### yb_enable_derived_equalities
 
 {{% tags/wrap %}}

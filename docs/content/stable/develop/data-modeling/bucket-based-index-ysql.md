@@ -6,7 +6,7 @@ description: Using bucket-based indexes in YSQL
 headContent: Use bucket-based distribution of indexes to avoid hotspots
 menu:
   stable_develop:
-    identifier: bucket-index-ysql
+    identifier: bucket-based-index-ysql
     parent: data-modeling
     weight: 310
 tags:
@@ -19,6 +19,8 @@ Traditional leading range (ASC/DESC) indexes with monotonic inserts concentrate 
 
 The goal is to have a globally ordered result (for example, the latest 1000 rows by timestamp) while avoiding write hot spots on a monotonically increasing column. Bucket-based indexes solve the hot spot issue by distributing data across multiple tablets (buckets). The system can return a globally ordered result for range queries and LIMIT clauses without a sort operation, even though the data is physically sharded by the bucket. This makes queries like top-N and keyset pagination very efficient.
 
+{{<tags/feature/tp idea="2275">}}In addition, YugabyteDB (v2025.2.1.0 and later) includes scan optimizations for bucket-based indexes that can produce a globally ordered result without query changes, even when additional ranges are introduced into the index structure.
+
 Normally, to get a globally ordered result for the most recent 1000 rows by timestamp (for example) from data that is sharded across multiple tablets, the database would have to:
 
 1. Query each tablet.
@@ -27,7 +29,7 @@ Normally, to get a globally ordered result for the most recent 1000 rows by time
 
 This is resource-intensive and slow.
 
-Using a bucket-based index, the database can "push down" the LIMIT request to each of the individual tablets (buckets).
+Using a bucket-based index with bucket-based scan optimizations enabled, the database can "push down" the LIMIT request to each of the individual tablets (buckets).
 
 For example, for a timestamp column that is the second column in the index (and ordered ASC), for each bucket, we can quickly find its top 1000 locally ordered rows. The database only has to scan 1000 rows per bucket instead of scanning potentially millions of rows that match the larger range condition.
 
@@ -37,7 +39,7 @@ In short, it achieves the necessary write scalability and global ordering simult
 
 ## When to use it
 
-Use bucket-based indexes for the following workloads:
+Use bucket-based scans for the following workloads:
 
 - Timestamp-ordered inserts.
 - Sequence-based IDs.
@@ -66,13 +68,13 @@ SPLIT AT VALUES ((1), (2));
 
 ## Parameters
 
-You configure bucket-based indexing in the [query planner](../../../architecture/query-layer/planner-optimizer/) using the following configuration parameters:
+You configure bucket-based scan optimizations in the [query planner](../../../architecture/query-layer/planner-optimizer/) using the following configuration parameters:
 
 - yb_enable_derived_equalities: Set to `true`.
 - yb_enable_derived_saops: Set to `true`.
 - yb_max_saop_merge_streams: Maximum number of buckets to process in parallel. The recommended value is 64.
 
-In addition, the [cost-based optimizer](../../../best-practices-operations/ysql-yb-enable-cbo/) must be enabled (the default if you deploy your universe using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon).
+In addition, the [cost-based optimizer](../../../best-practices-operations/ysql-yb-enable-cbo/) (CBO) must be enabled (CBO is enabled by default when you deploy your universe using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon).
 
 ## Setup
 
@@ -226,8 +228,6 @@ You really see how powerful this feature is when you use the LIMIT clause.
 First turn off the optimization:
 
 ```sql
-SET yb_enable_derived_saops = false;
-SET yb_enable_derived_equalities = false;
 SET yb_max_saop_merge_streams = 0;
 ```
 
@@ -261,8 +261,6 @@ Without the optimization, the planner performs a sort as expected.
 Turn the optimization back on:
 
 ```sql
-SET yb_enable_derived_saops = true; 
-SET yb_enable_derived_equalities = true; 
 SET yb_max_saop_merge_streams = 64; 
 ```
 
@@ -295,7 +293,7 @@ The SQL is asking for 1000 globally ordered rows, and the index returns it in a 
 
 ### Keyset pagination
 
-Bucket-based indexes also work well for more complex OLTP top-N queries, such as keyset pagination.
+Bucket-based scans also work well for more complex OLTP top-N queries, such as keyset pagination.
 
 Create a more complicated index and an extra predicate:
 
