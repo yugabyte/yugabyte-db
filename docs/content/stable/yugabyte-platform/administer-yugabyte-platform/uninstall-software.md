@@ -23,10 +23,10 @@ To completely eliminate all traces of YugabyteDB Anywhere and configuration, you
 
 You can uninstall YugabyteDB Anywhere in Kubernetes, as follows:
 
-1. To remove YugabyteDB Anywhere, execute the following Helm command:
+1. To remove YugabyteDB Anywhere, run the following Helm command:
 
     ```sh
-    helm uninstall yw-test -n yw-test
+    helm uninstall <release-name> -n <namespace>
     ```
 
     `-n` option specifies the namespace scope for this request.
@@ -34,24 +34,24 @@ You can uninstall YugabyteDB Anywhere in Kubernetes, as follows:
     You should see a message similar to the following, notifying you that the subject release has been removed:
 
     ```output
-    release "yw-test" uninstalled
+    release "<release-name>" uninstalled
     ```
 
-2. Execute the following command to remove the `yw-test` namespace:
+1. Run the following command to remove the namespace:
 
     ```sh
-    kubectl delete namespace yw-test
+    kubectl delete namespace <namespace>
     ```
 
     You should see a message similar to the following:
 
     ```output
-    namespace "yw-test" deleted
+    namespace "<namespace>" deleted
     ```
 
 ## Remove YugabyteDB components from nodes
 
-As described in [Eliminate an unresponsive node](../../manage-deployments/remove-nodes/), when a node enters an undesirable state, you can delete the node, with YugabyteDB Anywhere clearing up all the remaining artifacts except the `prometheus` and `yugabyte` user.
+As described in [Eliminate an unresponsive node](../../manage-deployments/remove-nodes/#eliminate-an-unresponsive-node), when a node enters an undesirable state, you can delete the node, with YugabyteDB Anywhere clearing up all the remaining artifacts except the `prometheus` and `yugabyte` user.
 
 You can manually remove Yugabyte components from existing server images. Before attempting this, you have to determine whether or not YugabyteDB Anywhere is operational. If it is, you either need to delete the universe or delete the nodes from the universe.
 
@@ -63,7 +63,7 @@ You can remove YugabyteDB components and configuration from on-premises provider
 
 1. Navigate to the `/home/yugabyte/bin` directory that contains a number of scripts including `yb-server-ctl.sh`. The arguments set in this script allow you to perform various functions on the YugabyteDB processes running on the node.
 
-    If you cannot find the `bin` directory, it means YugabyteDB Anywhere already cleared it during a successful deletion of the universe.
+    If you cannot find the `bin` directory, it means YugabyteDB Anywhere already removed it during a successful deletion of the universe.
 
 1. For cron-based universes, run the following commands:
 
@@ -193,7 +193,7 @@ sudo umount /data
 sudo dd if=/dev/zero of=/dev/sdb bs=1M
 ```
 
-The preceding commands assume the data volume is attached to the server as `/dev/sdb`.
+The preceding command assumes the data volume is attached to the server as `/dev/sdb`.
 
 If there is a requirement to remove the `yugabyte` user, execute the following command:
 
