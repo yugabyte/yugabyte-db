@@ -479,7 +479,13 @@ OAuth related settings are described in the following table. With the exception 
 
 #### Proxy
 
-When configuring proxy values for YBA, all values must be set correctly. On AWS, ensure `169.254.169.254` is in the `no_proxy` and `java_non_proxy` lists, as this enables access to the EC2 metadata service.
+When configuring proxy values for YBA, all values must be set correctly.
+
+{{< note title="Using a proxy with AWS or Azure" >}}
+On AWS, ensure `169.254.169.254` is in the `no_proxy` and `java_non_proxy` lists, as this enables access to the EC2 metadata service.
+
+On Azure, ensure `169.254.169.254` is in the `no_proxy` list so that YugabyteDB Anywhere can fetch the VM instance metadata.
+{{< /note >}}
 
 If you are setting these values on an existing system, run `yba-ctl reconfigure` to set the new values for YBA.
 

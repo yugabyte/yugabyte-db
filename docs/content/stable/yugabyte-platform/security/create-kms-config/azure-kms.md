@@ -82,6 +82,8 @@ You can create a KMS configuration that uses Azure Key Vault, as follows:
     - **Configuration Name** — Enter a meaningful name for your configuration.
     - **KMS Provider** — Select **Azure KMS**.
     - **Use Managed Identity** - Select this option to use the [managed identity](https://learn.microsoft.com/en-us/entra/identity/managed-identities-azure-resources/qs-configure-portal-windows-vm) of the Azure VM hosting YugabyteDB Anywhere to authenticate. This option is only available if YugabyteDB Anywhere is deployed on an Azure VM that has a managed identity assigned.
+
+      If you are using a proxy, make sure the [proxy settings](../../../install-yugabyte-platform/install-software/installer/#proxy) are set correctly for Azure, or this option will not be available.
     - **Client ID** — Enter the Azure Active Directory (AD) application client ID. Not required if you are using the managed identity.
     - **Client Secret** — Enter the Azure AD application client secret. Not required if you are using the managed identity.
     - **Tenant ID** — Enter the Azure AD application tenant ID.
