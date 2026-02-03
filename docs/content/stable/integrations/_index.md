@@ -47,7 +47,7 @@ Version refers to the latest tested version of the integration.
 
 | Tool      | Version | Support | Tutorial |
 | :---------| :------ | :------ | :------- |
-| LangChain Framework | 0.0.3   | Full | [LangChain](langchain/) |
+| LangChain Framework | 0.2.13-0.3.x  | Full | [LangChain](langchain/) |
 
 ### Data integration (CDC)
 

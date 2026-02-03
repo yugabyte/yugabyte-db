@@ -19,7 +19,7 @@ YugabyteDB supports the [pgvector extension](../../additional-features/pg-extens
 
 The [langchain-yugabytedb](https://pypi.org/project/langchain-yugabytedb/) Python package (available as a PyPi module) provides capabilities for Gen-AI applications to use YugabyteDB as a vector store, using the LangChain framework's vector store retrieval for storing and retrieving vector data.
 
-For detailed information of all `YugabyteDBVectorStore` features and configurations, see the [langchain-yugabytedb GitHub repository](https://github.com/yugabyte/langchain-yugabytedb).
+For detailed information on langchain-yugabytedb features and configuration, see the [langchain-yugabytedb GitHub repository](https://github.com/yugabyte/langchain-yugabytedb).
 
 ## Example
 
