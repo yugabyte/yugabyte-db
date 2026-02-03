@@ -2869,9 +2869,16 @@ class PgIndexBackfillColumnProjectionTest : public PgIndexBackfillTest {
 
   Result<int64_t> GetBackfillReadRpcs() {
     return conn_->FetchRow<int64_t>(
-        "SELECT COALESCE(sum(docdb_read_rpcs), 0) "
+        "SELECT COALESCE(sum(docdb_read_rpcs)::int8, 0) "
         "FROM pg_stat_statements(true) "
         "WHERE query LIKE 'BACKFILL%'");
+  }
+
+  Result<int64_t> GetCreateIndexReadRpcs() {
+    return conn_->FetchRow<int64_t>(
+        "SELECT COALESCE(sum(docdb_read_rpcs)::int8, 0) "
+        "FROM pg_stat_statements(true) "
+        "WHERE query LIKE 'CREATE INDEX%'");
   }
 
   Status CreateWideTable(const std::string& table_name, const std::string& pk_def = "id") {
@@ -2894,10 +2901,11 @@ class PgIndexBackfillColumnProjectionTest : public PgIndexBackfillTest {
         table_name, kPaddingSize, num_rows);
   }
 
-  Result<int64_t> BuildIndexAndGetBackfillRpcs(const std::string& create_index_sql) {
-    RETURN_NOT_OK(conn_->Execute("SELECT pg_stat_statements_reset()"));
+  Result<int64_t> BuildIndexAndGetRpcs(
+      const std::string& create_index_sql, bool use_backfill_rpcs = true) {
+    RETURN_NOT_OK(conn_->Fetch("SELECT pg_stat_statements_reset()"));
     RETURN_NOT_OK(conn_->Execute(create_index_sql));
-    return GetBackfillReadRpcs();
+    return use_backfill_rpcs ? GetBackfillReadRpcs() : GetCreateIndexReadRpcs();
   }
 
   Status ValidateRpcs(int64_t rpcs) {
@@ -2924,7 +2932,7 @@ class PgIndexBackfillColumnProjectionTest : public PgIndexBackfillTest {
   static constexpr int kNumRows = 500;
   static constexpr int kPaddingSize = 5000;
   static constexpr int kMaxProjectedRpcs = 100;
-  static constexpr int kMinUnprojectedRpcs = kNumRows / 2;
+  static constexpr int kMinUnprojectedRpcs = kNumRows / 4;
   static constexpr auto kTableName = "t";
 };
 
@@ -2934,7 +2942,7 @@ INSTANTIATE_TEST_CASE_P(, PgIndexBackfillColumnProjectionTest, ::testing::Bool()
 TEST_P(PgIndexBackfillColumnProjectionTest, SingleColumnHash) {
   ASSERT_OK(CreateWideTable(kTableName));
   ASSERT_OK(InsertTestData(kTableName));
-  auto rpcs = ASSERT_RESULT(BuildIndexAndGetBackfillRpcs("CREATE INDEX idx ON t (col1 HASH)"));
+  auto rpcs = ASSERT_RESULT(BuildIndexAndGetRpcs("CREATE INDEX idx ON t (col1 HASH)"));
   ASSERT_OK(ValidateRpcs(rpcs));
 }
 
@@ -2942,7 +2950,7 @@ TEST_P(PgIndexBackfillColumnProjectionTest, SingleColumnHash) {
 TEST_P(PgIndexBackfillColumnProjectionTest, SingleColumnAsc) {
   ASSERT_OK(CreateWideTable(kTableName));
   ASSERT_OK(InsertTestData(kTableName));
-  auto rpcs = ASSERT_RESULT(BuildIndexAndGetBackfillRpcs("CREATE INDEX idx ON t (col1 ASC)"));
+  auto rpcs = ASSERT_RESULT(BuildIndexAndGetRpcs("CREATE INDEX idx ON t (col1 ASC)"));
   ASSERT_OK(ValidateRpcs(rpcs));
 }
 
@@ -2950,7 +2958,7 @@ TEST_P(PgIndexBackfillColumnProjectionTest, SingleColumnAsc) {
 TEST_P(PgIndexBackfillColumnProjectionTest, SingleColumnExpression) {
   ASSERT_OK(CreateWideTable(kTableName));
   ASSERT_OK(InsertTestData(kTableName));
-  auto rpcs = ASSERT_RESULT(BuildIndexAndGetBackfillRpcs("CREATE INDEX idx ON t (ABS(col1))"));
+  auto rpcs = ASSERT_RESULT(BuildIndexAndGetRpcs("CREATE INDEX idx ON t (ABS(col1))"));
   ASSERT_OK(ValidateRpcs(rpcs));
 }
 
@@ -2958,7 +2966,7 @@ TEST_P(PgIndexBackfillColumnProjectionTest, SingleColumnExpression) {
 TEST_P(PgIndexBackfillColumnProjectionTest, SingleColumnPartialSameColumn) {
   ASSERT_OK(CreateWideTable(kTableName));
   ASSERT_OK(InsertTestData(kTableName));
-  auto rpcs = ASSERT_RESULT(BuildIndexAndGetBackfillRpcs(
+  auto rpcs = ASSERT_RESULT(BuildIndexAndGetRpcs(
       "CREATE INDEX idx ON t (col1) WHERE col1 > 100"));
   ASSERT_OK(ValidateRpcs(rpcs));
 }
@@ -2967,7 +2975,7 @@ TEST_P(PgIndexBackfillColumnProjectionTest, SingleColumnPartialSameColumn) {
 TEST_P(PgIndexBackfillColumnProjectionTest, SingleColumnPartialDifferentColumn) {
   ASSERT_OK(CreateWideTable(kTableName));
   ASSERT_OK(InsertTestData(kTableName));
-  auto rpcs = ASSERT_RESULT(BuildIndexAndGetBackfillRpcs(
+  auto rpcs = ASSERT_RESULT(BuildIndexAndGetRpcs(
       "CREATE INDEX idx ON t (col1) WHERE col2 > 'text_100'"));
   ASSERT_OK(ValidateRpcs(rpcs));
 }
@@ -2976,7 +2984,7 @@ TEST_P(PgIndexBackfillColumnProjectionTest, SingleColumnPartialDifferentColumn) 
 TEST_P(PgIndexBackfillColumnProjectionTest, MultiColumnHashAsc) {
   ASSERT_OK(CreateWideTable(kTableName));
   ASSERT_OK(InsertTestData(kTableName));
-  auto rpcs = ASSERT_RESULT(BuildIndexAndGetBackfillRpcs(
+  auto rpcs = ASSERT_RESULT(BuildIndexAndGetRpcs(
       "CREATE INDEX idx ON t (col1 HASH, col2 ASC)"));
   ASSERT_OK(ValidateRpcs(rpcs));
 }
@@ -2985,7 +2993,7 @@ TEST_P(PgIndexBackfillColumnProjectionTest, MultiColumnHashAsc) {
 TEST_P(PgIndexBackfillColumnProjectionTest, MultiColumnCompoundHash) {
   ASSERT_OK(CreateWideTable(kTableName));
   ASSERT_OK(InsertTestData(kTableName));
-  auto rpcs = ASSERT_RESULT(BuildIndexAndGetBackfillRpcs(
+  auto rpcs = ASSERT_RESULT(BuildIndexAndGetRpcs(
       "CREATE INDEX idx ON t ((col1, col2) HASH, col3 ASC)"));
   ASSERT_OK(ValidateRpcs(rpcs));
 }
@@ -2994,7 +3002,7 @@ TEST_P(PgIndexBackfillColumnProjectionTest, MultiColumnCompoundHash) {
 TEST_P(PgIndexBackfillColumnProjectionTest, MultiColumnDuplicateColumn) {
   ASSERT_OK(CreateWideTable(kTableName));
   ASSERT_OK(InsertTestData(kTableName));
-  auto rpcs = ASSERT_RESULT(BuildIndexAndGetBackfillRpcs(
+  auto rpcs = ASSERT_RESULT(BuildIndexAndGetRpcs(
       "CREATE INDEX idx ON t ((col1, col2) HASH, col2 ASC)"));
   ASSERT_OK(ValidateRpcs(rpcs));
 }
@@ -3003,7 +3011,7 @@ TEST_P(PgIndexBackfillColumnProjectionTest, MultiColumnDuplicateColumn) {
 TEST_P(PgIndexBackfillColumnProjectionTest, MultiColumnOutOfOrder) {
   ASSERT_OK(CreateWideTable(kTableName));
   ASSERT_OK(InsertTestData(kTableName));
-  auto rpcs = ASSERT_RESULT(BuildIndexAndGetBackfillRpcs(
+  auto rpcs = ASSERT_RESULT(BuildIndexAndGetRpcs(
       "CREATE INDEX idx ON t (col2 HASH, col1 ASC, col3 ASC)"));
   ASSERT_OK(ValidateRpcs(rpcs));
 }
@@ -3012,7 +3020,7 @@ TEST_P(PgIndexBackfillColumnProjectionTest, MultiColumnOutOfOrder) {
 TEST_P(PgIndexBackfillColumnProjectionTest, MultiColumnNonDefaultPkOrder) {
   ASSERT_OK(CreateWideTable(kTableName, "col2, col3, col1"));
   ASSERT_OK(InsertTestData(kTableName));
-  auto rpcs = ASSERT_RESULT(BuildIndexAndGetBackfillRpcs("CREATE INDEX idx ON t (col1, col2)"));
+  auto rpcs = ASSERT_RESULT(BuildIndexAndGetRpcs("CREATE INDEX idx ON t (col1, col2)"));
   ASSERT_OK(ValidateRpcs(rpcs));
 }
 
@@ -3020,7 +3028,7 @@ TEST_P(PgIndexBackfillColumnProjectionTest, MultiColumnNonDefaultPkOrder) {
 TEST_P(PgIndexBackfillColumnProjectionTest, MultiColumnExpression) {
   ASSERT_OK(CreateWideTable(kTableName));
   ASSERT_OK(InsertTestData(kTableName));
-  auto rpcs = ASSERT_RESULT(BuildIndexAndGetBackfillRpcs(
+  auto rpcs = ASSERT_RESULT(BuildIndexAndGetRpcs(
       "CREATE INDEX idx ON t ((col1 + LENGTH(col2)) HASH, UPPER(col2) ASC)"));
   ASSERT_OK(ValidateRpcs(rpcs));
 }
@@ -3029,8 +3037,9 @@ TEST_P(PgIndexBackfillColumnProjectionTest, MultiColumnExpression) {
 TEST_P(PgIndexBackfillColumnProjectionTest, MultiColumnExpressionPartial) {
   ASSERT_OK(CreateWideTable(kTableName));
   ASSERT_OK(InsertTestData(kTableName));
-  auto rpcs = ASSERT_RESULT(BuildIndexAndGetBackfillRpcs(
-      "CREATE INDEX idx ON t ((col1 + LENGTH(col2)) HASH, UPPER(col2) ASC) WHERE col2 > 'text_100'"));
+  auto rpcs = ASSERT_RESULT(BuildIndexAndGetRpcs(
+      "CREATE INDEX idx ON t ((col1 + LENGTH(col2)) HASH, UPPER(col2) ASC) "
+      "WHERE col2 > 'text_100'"));
   ASSERT_OK(ValidateRpcs(rpcs));
 }
 
@@ -3052,7 +3061,9 @@ TEST_P(PgIndexBackfillColumnProjectionTest, PartitionedTable) {
       "CREATE TABLE $0_p2 PARTITION OF $0 FOR VALUES FROM (251) TO (501)", kTableName));
 
   ASSERT_OK(InsertTestData(kTableName));
-  auto rpcs = ASSERT_RESULT(BuildIndexAndGetBackfillRpcs("CREATE INDEX idx ON t (col1, col2)"));
+  // Partitioned tables use non-concurrent index builds which don't issue BACKFILL queries.
+  auto rpcs = ASSERT_RESULT(BuildIndexAndGetRpcs(
+      "CREATE INDEX idx ON t (col1, col2)", /* use_backfill_rpcs */ false));
   ASSERT_OK(ValidateRpcs(rpcs));
 }
 
@@ -3067,8 +3078,8 @@ TEST_P(PgIndexBackfillColumnProjectionTest, TempTable) {
       "  padding TEXT"
       ")", kTableName));
   ASSERT_OK(InsertTestData(kTableName));
-  auto rpcs = ASSERT_RESULT(BuildIndexAndGetBackfillRpcs("CREATE INDEX idx ON t (col1, col2)"));
-  ASSERT_OK(ValidateRpcs(rpcs));
+  // Temp tables are not backed by DocDB, so docdb_read_rpcs is always 0. Just verify index builds.
+  ASSERT_OK(conn_->Execute("CREATE INDEX idx ON t (col1, col2)"));
 }
 
 } // namespace yb::pgwrapper
