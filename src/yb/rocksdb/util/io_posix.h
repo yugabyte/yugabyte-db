@@ -37,7 +37,7 @@
 
 namespace rocksdb {
 
-#define STATUS_IO_ERROR(context, err_number) STATUS(IOError, (context), strerror(err_number))
+#define STATUS_IO_ERROR(context, err_number) STATUS_FROM_ERRNO(context, err_number)
 
 class PosixMmapReadableFile : public RandomAccessFile {
  private:
