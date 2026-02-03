@@ -30,6 +30,7 @@
 
 /* YB includes */
 #include "pg_yb_utils.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 
 
 /*
@@ -574,6 +575,11 @@ UnlockPage(Relation relation, BlockNumber blkno, LOCKMODE lockmode)
 void
 LockTuple(Relation relation, ItemPointer tid, LOCKMODE lockmode)
 {
+
+	if (YBGetObjectLockMode() != PG_OBJECT_LOCK_MODE && !*YBCGetGFlags()->TEST_enable_obj_tuple_locks)
+	{
+		return;
+	}
 	LOCKTAG		tag;
 
 	/*
@@ -606,6 +612,10 @@ LockTuple(Relation relation, ItemPointer tid, LOCKMODE lockmode)
 bool
 ConditionalLockTuple(Relation relation, ItemPointer tid, LOCKMODE lockmode)
 {
+	if (YBGetObjectLockMode() != PG_OBJECT_LOCK_MODE && !*YBCGetGFlags()->TEST_enable_obj_tuple_locks)
+	{
+		return true;
+	}
 	LOCKTAG		tag;
 
 	/*
@@ -635,6 +645,10 @@ ConditionalLockTuple(Relation relation, ItemPointer tid, LOCKMODE lockmode)
 void
 UnlockTuple(Relation relation, ItemPointer tid, LOCKMODE lockmode)
 {
+	if (YBGetObjectLockMode() != PG_OBJECT_LOCK_MODE && !*YBCGetGFlags()->TEST_enable_obj_tuple_locks)
+	{
+		return;
+	}
 	LOCKTAG		tag;
 
 	/*
