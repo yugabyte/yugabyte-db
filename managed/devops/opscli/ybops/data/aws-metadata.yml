@@ -86,7 +86,7 @@ regions:
     image: ami-0b6d8cf2511047705
   me-central-1:
     arm_image: "ami-0ec004482c3625a99"
-    cidr_prefix: 172.31
+    cidr_prefix: '10.117'
     image: "ami-0ae4a6c373f1eaf19"
   sa-east-1:
     arm_image: ami-02ec63f5718863cf0
