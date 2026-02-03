@@ -247,11 +247,7 @@ CALL disable_catalog_version_check();
 
 {{<tags/feature/ea idea="2525">}}Replication origins provide a mechanism to track the origin of changes in logical replication, which is essential for implementing bi-directional replication setups and preventing replication loops.
 
-Replication origins are intended to make it easier to implement logical replication solutions on top of logical decoding. They provide a solution to two common problems:
-
-- Tracking replication progress. Replication origins allow you to track replay progress in a crash-safe manner without the overhead and database bloat of naive solutions like updating a row in a table for every replayed transaction.
-
-- Changing replication behavior based on the origin of a row. This is particularly useful for preventing loops in bi-directional replication setups, where changes replicated from a remote node should not be replicated back to that same node.
+Replication origins are intended to make it easier to implement logical replication solutions on top of logical decoding. Using a replication origin, you can change replication behavior based on the origin of a row. This is particularly useful for preventing loops in bi-directional replication setups, where changes replicated from a remote node should not be replicated back to that same node.
 
 In a bi-directional replication setup where two databases replicate changes to each other, replication origins help prevent infinite loops as follows:
 
@@ -261,7 +257,7 @@ In a bi-directional replication setup where two databases replicate changes to e
 
 This ensures that changes only flow in one direction.
 
-Note that, currently, you must create the replication origin before you start streaming changes from a replication slot.
+Note that, currently, you must create the replication origin before you start streaming changes from a replication slot. (Tracked in issue {{<issue 30068>}}.)
 
 The YugabyteDB implementation of replication origins mimics that of PostgreSQL; refer to [Replication Progress Tracking](https://www.postgresql.org/docs/15/replication-origins.html) in the PostgreSQL documentation.
 
@@ -328,4 +324,4 @@ When a session has a replication origin configured using `pg_replication_origin_
 
 ### Limitations
 
-- Currently, you must create the replication origin before you start streaming changes from a replication slot.
+- Currently, you must create the replication origin before you start streaming changes from a replication slot. Tracked in issue {{<issue 30068>}}.
