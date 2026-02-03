@@ -27,8 +27,10 @@
 #include <inttypes.h>
 #include <stdio.h>
 
+#include <iomanip>
 #include <map>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -457,6 +459,15 @@ BlockBasedTableBuilder::BlockBasedTableBuilder(
           /* meta_block_checksum = */ 0,
           &rep_->metadata_writer->compressed_cache_key_prefix);
     }
+
+    // Convert the binary data in the prefix buffer to a single hex-formatted string for logging.
+    std::ostringstream hex_stream;
+    hex_stream << std::hex << std::setw(2) << std::setfill('0');
+    for (size_t i = 0; i < rep_->metadata_writer->compressed_cache_key_prefix.size; ++i) {
+        hex_stream << static_cast<unsigned int>(
+          static_cast<unsigned char>(rep_->metadata_writer->compressed_cache_key_prefix.data[i]));
+    }
+    rep_->props.cache_key_prefix = hex_stream.str();
   }
 }
 
