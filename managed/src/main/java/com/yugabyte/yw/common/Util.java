@@ -43,7 +43,9 @@ import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import io.ebean.DB;
 import io.swagger.annotations.ApiModel;
+import jakarta.persistence.PersistenceException;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.File;
@@ -1635,6 +1637,35 @@ public class Util {
     } catch (MalformedURLException e) {
       log.error("URL is malformed: {}", e.getMessage());
       throw new IllegalArgumentException(e);
+    }
+  }
+
+  // Waits for DB connection to be established with retry mechanism.
+  public static void waitForDBConnection(int retryLimit) {
+    int count = 1;
+    while (true) {
+      try {
+        DB.sqlQuery("SELECT 1").findOneOrEmpty();
+        log.info("DB connection is established after {} attempts", count);
+        break;
+      } catch (PersistenceException pe) {
+        if (count > retryLimit) {
+          log.error("DB connection could not be established after {} attempts", count, pe);
+          throw pe;
+        }
+        String errMsg = pe.getMessage();
+        if (errMsg == null || !errMsg.contains("Connection is closed")) {
+          log.error("DB connection could not be established due to unexpected error", pe);
+          throw pe;
+        }
+        count++;
+        log.info("Waiting for DB to connection - {} attempts...", count);
+        try {
+          Thread.sleep(100);
+        } catch (InterruptedException ignored) {
+          Thread.currentThread().interrupt();
+        }
+      }
     }
   }
 }
