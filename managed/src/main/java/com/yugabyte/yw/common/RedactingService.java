@@ -403,18 +403,20 @@ public class RedactingService {
     }
     if (node.isObject()) {
       ObjectNode objNode = (ObjectNode) node;
-      node.fieldNames().forEachRemaining(fieldName -> {
-        JsonNode fieldValue = objNode.get(fieldName);
-        if (fieldValue != null && fieldValue.isTextual()) {
-          if (fieldName.equals("ysql_hba_conf_csv") || fieldName.equals("ysql_hba_conf")) {
-            String originalValue = fieldValue.asText();
-            String redactedValue = redactLdapBindPasswdInString(originalValue);
-            objNode.put(fieldName, redactedValue);
-          }
-        } else if (fieldValue != null && (fieldValue.isObject() || fieldValue.isArray())) {
-          redactLdapBindPasswdRecursive(fieldValue);
-        }
-      });
+      node.fieldNames()
+          .forEachRemaining(
+              fieldName -> {
+                JsonNode fieldValue = objNode.get(fieldName);
+                if (fieldValue != null && fieldValue.isTextual()) {
+                  if (fieldName.equals("ysql_hba_conf_csv") || fieldName.equals("ysql_hba_conf")) {
+                    String originalValue = fieldValue.asText();
+                    String redactedValue = redactLdapBindPasswdInString(originalValue);
+                    objNode.put(fieldName, redactedValue);
+                  }
+                } else if (fieldValue != null && (fieldValue.isObject() || fieldValue.isArray())) {
+                  redactLdapBindPasswdRecursive(fieldValue);
+                }
+              });
     } else if (node.isArray()) {
       for (JsonNode element : node) {
         redactLdapBindPasswdRecursive(element);
@@ -429,7 +431,8 @@ public class RedactingService {
     }
     String result = input;
     // Double-quoted CSV escape: ldapbindpasswd=""value""
-    result = result.replaceAll("(ldapbindpasswd=\"\")([^\"]+)(\"\")", "$1" + SECRET_REPLACEMENT + "$3");
+    result =
+        result.replaceAll("(ldapbindpasswd=\"\")([^\"]+)(\"\")", "$1" + SECRET_REPLACEMENT + "$3");
     // Quoted: ldapbindpasswd="value"
     result = result.replaceAll("(ldapbindpasswd=\")([^\"]+)(\")", "$1" + SECRET_REPLACEMENT + "$3");
     // Unquoted: ldapbindpasswd=value (until space, comma, or quote)

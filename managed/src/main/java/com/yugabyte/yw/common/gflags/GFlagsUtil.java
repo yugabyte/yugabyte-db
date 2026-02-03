@@ -2207,8 +2207,7 @@ public class GFlagsUtil {
       if (newYsqlHbaConf != null
           && existingYsqlHbaConf != null
           && newYsqlHbaConf.contains(RedactingService.SECRET_REPLACEMENT)) {
-        String mergedValue =
-            mergeYsqlHbaConfLdapPassword(existingYsqlHbaConf, newYsqlHbaConf);
+        String mergedValue = mergeYsqlHbaConfLdapPassword(existingYsqlHbaConf, newYsqlHbaConf);
         mergedGFlags.put("ysql_hba_conf_csv", mergedValue);
         if (!mergedValue.contains(RedactingService.SECRET_REPLACEMENT)) {
           LOG.debug(

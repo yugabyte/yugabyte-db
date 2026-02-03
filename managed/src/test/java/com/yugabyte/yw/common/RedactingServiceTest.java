@@ -92,8 +92,7 @@ public class RedactingServiceTest {
   @Test
   public void testAllLdapPasswordRegexPatterns() {
     // Pattern 1: Escaped quotes within JSON strings (ysql_hba_conf_csv format)
-    String escapedQuotesJson =
-        "\"ysql_hba_conf_csv\":\"\\\"ldapbindpasswd=secret123\\\"\"";
+    String escapedQuotesJson = "\"ysql_hba_conf_csv\":\"\\\"ldapbindpasswd=secret123\\\"\"";
     String redacted1 = RedactingService.redactSensitiveInfoInString(escapedQuotesJson);
     assertFalse(redacted1.contains("secret123"));
     assertTrue(redacted1.contains("REDACTED"));
@@ -162,7 +161,8 @@ public class RedactingServiceTest {
     assertTrue(redacted7_1.contains("'--some_other_flag', '123'"));
 
     // Pattern 8: ysql_hba_conf_csv with CSV double-quote escaping (real-world UI input)
-    // This tests the exact format: ldapbinddn=""value"" ldapbindpasswd=password ldapbasedn=""value""
+    // This tests the exact format: ldapbinddn=""value"" ldapbindpasswd=password
+    // ldapbasedn=""value""
     String csvDoubleQuoteEscaped =
         "\"host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com ldapport=389 "
             + "ldapbinddn=\"\"cn=admin,dc=example,dc=com\"\" "
@@ -173,8 +173,10 @@ public class RedactingServiceTest {
     assertTrue("Should contain REDACTED", redacted8.contains("REDACTED"));
     // Crucially: ldapbasedn should NOT be eaten by the regex
     assertTrue(
-        "ldapbasedn should be preserved", redacted8.contains("ldapbasedn=\"\"dc=example,dc=com\"\""));
-    assertTrue("ldapsearchattribute should be preserved", redacted8.contains("ldapsearchattribute=uid"));
+        "ldapbasedn should be preserved",
+        redacted8.contains("ldapbasedn=\"\"dc=example,dc=com\"\""));
+    assertTrue(
+        "ldapsearchattribute should be preserved", redacted8.contains("ldapsearchattribute=uid"));
   }
 
   @Test
