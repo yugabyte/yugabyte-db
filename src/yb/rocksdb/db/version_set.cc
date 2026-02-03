@@ -43,10 +43,6 @@
 
 #include "yb/gutil/casts.h"
 
-#include "yb/util/callsite_profiling.h"
-#include "yb/util/format.h"
-#include "yb/util/status_format.h"
-
 #include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/db/file_numbers.h"
 #include "yb/rocksdb/db/internal_stats.h"
@@ -75,14 +71,16 @@
 #include "yb/rocksdb/util/statistics.h"
 #include "yb/rocksdb/util/stop_watch.h"
 
+#include "yb/util/callsite_profiling.h"
+#include "yb/util/flags.h"
+#include "yb/util/format.h"
+#include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_kill.h"
-#include "yb/util/flags.h"
 
 DEFINE_RUNTIME_bool(log_version_edits, false,
-                    "Log RocksDB version edits as they are being written");
-
-using std::unique_ptr;
+    "Log RocksDB version edits as they are being written");
 
 namespace rocksdb {
 
@@ -1309,7 +1307,7 @@ void VersionStorageInfo::EstimateCompactionBytesNeeded(
   // to the next level. The size of the level is estimated as the actual size
   // on the level plus the input bytes from the previous level if there is any.
   // If it exceeds, take the exceeded bytes as compaction input and add the size
-  // of the compaction size to tatal size.
+  // of the compaction size to total size.
   // We keep doing it to Level 2, 3, etc, until the last level and return the
   // accumulated bytes.
 
@@ -1453,14 +1451,14 @@ void VersionStorageInfo::ComputeFilesMarkedForCompaction() {
 
 namespace {
 
-// used to sort files by size
+// Used to sort files by size.
 struct Fsize {
   size_t index;
   FileMetaData* file;
 };
 
-// Compator that is used to sort files based on their size
-// In normal mode: descending size
+// Comparator that is used to sort files based on their size.
+// In normal mode: descending size.
 bool CompareCompensatedSizeDescending(const Fsize& first, const Fsize& second) {
   return (first.file->compensated_file_size >
       second.file->compensated_file_size);
@@ -2184,65 +2182,118 @@ std::string Version::DebugString(bool hex) const {
   return r;
 }
 
-namespace {
+std::tuple<Result<std::string>, bool> Version::GetMiddleKeyFromFile(
+    const FileMetaData& file, Slice lower_bound) {
+  constexpr int kLevel = 0;
+  auto reader_holder = table_cache_->GetTableReader(
+    vset_->env_options_, cfd_->internal_comparator(), file.fd, kDefaultQueryId,
+    /* no_io = */ false, cfd_->internal_stats()->GetFileReadHist(kLevel),
+    IsFilterSkipped(kLevel, /* is_file_last_in_level = */ true));
+  if (!reader_holder.ok()) {
+    return { std::move(reader_holder.status()), false };
+  }
 
-struct MiddleKeyWithSize {
-  std::string middle_key;
-  uint64_t size;
-};
-
-static bool compareKeys(MiddleKeyWithSize f1,
-                        MiddleKeyWithSize f2) {
-  return f1.middle_key.compare(f2.middle_key) > 0;
+  auto result = reader_holder->table_reader->GetMiddleKey(lower_bound);
+  const auto not_enough_entries = !result.ok() && result.status().IsIncomplete();
+  return { std::move(result), not_enough_entries };
 }
 
-} // namespace
-
-Result<std::string> Version::GetMiddleOfMiddleKeys(Slice lower_bound_internal_key) {
+Result<std::string> Version::GetMiddleKey(Slice lower_bound) {
+  // Largest files are at lowest level, but we don't expect any level but 0.
   const auto level = storage_info_.num_levels_ - 1;
+  SCHECK_EQ(level, 0, NotSupported, "Multi-level storage is not supported");
+
   if (storage_info_.files_[level].size() == 0) {
     return STATUS_FORMAT(Incomplete, "No SST file at level $0", level);
   }
 
-  // Largest files are at lowest level.
-  std::vector <MiddleKeyWithSize> sst_files;
-  sst_files.reserve(storage_info_.files_[level].size());
-  uint64_t total_size = 0;
-  // Get middle key and file size for every file
-  for (const auto* file : storage_info_.files_[level]) {
-    TableCache::TableReaderWithHandle trwh = VERIFY_RESULT(table_cache_->GetTableReader(
-        vset_->env_options_, cfd_->internal_comparator(), file->fd, kDefaultQueryId,
-        /* no_io = */ false, cfd_->internal_stats()->GetFileReadHist(level),
-        IsFilterSkipped(level, /* is_file_last_in_level = */ true)));
+  // Flush written message when leaving the method.
+  auto se = yb::ScopeExit([&]{ LogFlush(info_log_); });
 
-    const auto result_mkey = trwh.table_reader->GetMiddleKey(lower_bound_internal_key);
-    if (!result_mkey.ok()) {
-      if (result_mkey.status().IsIncomplete()) {
-        continue;
-      }
-      LOG_WITH_FUNC(WARNING) << "Getting a middle key failed for " << file->ToString();
-      return result_mkey;
+  // Helper to print file metadata in the shorten format.
+  static auto format_file = [](const FileMetaData* file) {
+    return yb::Format("$0($1/$2)",
+        file->fd.GetNumber(), BytesToHumanString(file->fd.GetBaseFileSize()),
+        BytesToHumanString(file->fd.GetTotalFileSize() - file->fd.GetBaseFileSize()));
+  };
+
+  // Get middle key for every file.
+  std::vector<std::pair<const FileMetaData*, std::string>> sst_files;
+  std::vector<std::pair<const FileMetaData*, Status>> skipped_files;
+  sst_files.reserve(storage_info_.files_[level].size());
+  skipped_files.reserve(storage_info_.files_[level].size());
+  uint64_t total_size = 0;
+  for (const auto* file : storage_info_.files_[level]) {
+    auto [result, not_enough_entries] = GetMiddleKeyFromFile(*file, lower_bound);
+    if (!result.ok() && !not_enough_entries) {
+      RLOG(InfoLogLevel::ERROR_LEVEL, info_log_,
+          "[%s] GetMiddleKey: failed at file %s, status: %s",
+          cfd_->GetName().c_str(), format_file(file).c_str(),
+          result.status().ToString().c_str());
+      return result;
     }
 
-    const auto file_size = file->fd.GetTotalFileSize();
-    sst_files.push_back({*result_mkey, file_size});
-    total_size += file_size;
+    // We are OK to skip this file because it does not have enough entries.
+    if (not_enough_entries) {
+      skipped_files.push_back({ file, std::move(result.status()) });
+      continue;
+    }
+
+    // Sanity check, the result is expected to be valid at this point.
+    DCHECK(result.ok()) << result.status();
+    RETURN_NOT_OK(result);
+
+    sst_files.push_back({ file, *result });
+    total_size += file->fd.GetTotalFileSize();
   }
 
+  if (!skipped_files.empty()) {
+    RLOG(InfoLogLevel::INFO_LEVEL, info_log_, "[%s] GetMiddleKey: skipped files: %s",
+        cfd_->GetName().c_str(),
+        yb::AsString(skipped_files, [](const auto& i) {
+          return yb::Format("$0: $1", format_file(i.first), i.second); }).c_str());
+  }
+
+  // Need to sort files before logging them, to print in the correct order.
+  std::ranges::sort(sst_files, [](const auto& lhs, const auto& rhs) {
+    const auto& [l_, lhs_key] = lhs;
+    const auto& [r_, rhs_key] = rhs;
+    return lhs_key.compare(rhs_key) > 0;
+  });
+
   if (sst_files.size() == 0) {
+    RLOG(InfoLogLevel::INFO_LEVEL, info_log_,
+        "[%s] GetMiddleKey: candidates: [] total: %s",
+        cfd_->GetName().c_str(), BytesToHumanString(0).c_str());
     return STATUS(Incomplete, "SST files too small");
   }
 
-  std::sort(sst_files.begin(), sst_files.end(), compareKeys);
+  // Weighted middle of middle based on file size.
   uint64_t sorted_size = 0;
-  // Weighted middle of middle based on file size
-  for (const auto& sst_file : sst_files) {
-    sorted_size += sst_file.size;
-    if (sorted_size > total_size/2) {
-      return sst_file.middle_key;
+  auto it = sst_files.begin();
+  for (; it != sst_files.end(); ++it) {
+    const auto* file = it->first;
+    sorted_size += file->fd.GetTotalFileSize();
+    if (sorted_size > (total_size / 2)) {
+      break;
     }
   }
-  return STATUS(InternalError, "Unexpected error state.");
+
+  // Sanity check, this should not happen.
+  if (it == sst_files.end()) {
+    auto status = STATUS(InternalError, "Unexpected error state");
+    LOG_WITH_FUNC(DFATAL) << status;
+    return status;
+  }
+
+  RLOG(InfoLogLevel::INFO_LEVEL, info_log_,
+      "[%s] GetMiddleKey: SST files: %s total: %s chosen: #%" PRIu64 " key: %s",
+      cfd_->GetName().c_str(),
+      yb::AsString(sst_files, [](const auto& i){ return format_file(i.first); }).c_str(),
+      BytesToHumanString(total_size).c_str(), it->first->fd.GetNumber(),
+      Slice{ it->second }.ToDebugHexString().c_str());
+
+  return std::move(it->second);
 }
 
 Result<TableCache::TableReaderWithHandle> Version::GetLargestSstTableReader() {
@@ -2256,17 +2307,13 @@ Result<TableCache::TableReaderWithHandle> Version::GetLargestSstTableReader() {
     }
   }
   if (!largest_sst_meta) {
-    return STATUS(Incomplete, "No SST files.");
+    return STATUS(Incomplete, "No SST files");
   }
 
   return table_cache_->GetTableReader(
       vset_->env_options_, cfd_->internal_comparator(), largest_sst_meta->fd, kDefaultQueryId,
       /* no_io = */ false, cfd_->internal_stats()->GetFileReadHist(level),
       IsFilterSkipped(level, /* is_file_last_in_level = */ true));
-}
-
-Result<std::string> Version::GetMiddleKey(Slice lower_bound_internal_key) {
-  return GetMiddleOfMiddleKeys(lower_bound_internal_key);
 }
 
 Result<TableReader*> Version::TEST_GetLargestSstTableReader() {
@@ -2469,7 +2516,7 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
       // Create a new manifest file.
       RLOG(InfoLogLevel::INFO_LEVEL, db_options_->info_log,
           "Creating manifest %" PRIu64 "\n", pending_manifest_file_number_);
-      unique_ptr<WritableFile> descriptor_file;
+      std::unique_ptr<WritableFile> descriptor_file;
       EnvOptions opt_env_opts = env_->OptimizeForManifestWrite(env_options_);
       descriptor_log_file_name_ = DescriptorFileName(dbname_, pending_manifest_file_number_);
       s = NewWritableFile(
@@ -2479,7 +2526,7 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
         descriptor_file->SetPreallocationBlockSize(
             db_options_->manifest_preallocation_size);
 
-        unique_ptr<WritableFileWriter> file_writer(
+        std::unique_ptr<WritableFileWriter> file_writer(
             new WritableFileWriter(std::move(descriptor_file), opt_env_opts));
         descriptor_log_.reset(new log::Writer(
             std::move(file_writer), /* log_number */ 0, /* recycle_log_files */ false));
@@ -3161,9 +3208,9 @@ Status VersionSet::ListColumnFamilies(std::vector<std::string>* column_families,
 
   std::string dscname = dbname + "/" + current;
 
-  unique_ptr<SequentialFileReader> file_reader;
+  std::unique_ptr<SequentialFileReader> file_reader;
   {
-    unique_ptr<SequentialFile> file;
+    std::unique_ptr<SequentialFile> file;
     s = env->NewSequentialFile(dscname, &file, soptions);
     if (!s.ok()) {
       return s;
@@ -3300,10 +3347,10 @@ Status VersionSet::ReduceNumberOfLevels(const std::string& dbname,
 Status VersionSet::DumpManifest(const Options& options, const std::string& dscname,
                                 bool verbose, bool hex) {
   // Open the specified manifest file.
-  unique_ptr<SequentialFileReader> file_reader;
+  std::unique_ptr<SequentialFileReader> file_reader;
   Status s;
   {
-    unique_ptr<SequentialFile> file;
+    std::unique_ptr<SequentialFile> file;
     s = options.env->NewSequentialFile(dscname, &file, env_options_);
     if (!s.ok()) {
       return s;

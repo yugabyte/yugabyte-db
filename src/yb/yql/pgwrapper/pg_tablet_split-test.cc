@@ -588,7 +588,7 @@ TEST_F(PgTabletSplitTest, SplitKeyMatchesPartitionBound) {
   ASSERT_EQ(
       tserver::TabletServerError(result.status()),
       tserver::TabletServerErrorPB::TABLET_SPLIT_KEY_RANGE_TOO_SMALL);
-  ASSERT_NE(result.status().ToString().find("with partition bounds"), std::string::npos);
+  ASSERT_NE(result.status().ToString().find("partition bounds"), std::string::npos);
 }
 
 // Tests for post split compaction with limit by size and upper bound.

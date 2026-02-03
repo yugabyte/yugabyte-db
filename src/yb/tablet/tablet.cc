@@ -4690,8 +4690,7 @@ const std::string& Tablet::tablet_id() const {
 Result<std::string> Tablet::GetEncodedMiddleSplitKey(std::string* partition_split_key) const {
   auto error_prefix = [this]() {
     return Format(
-        "Failed to detect middle key for tablet $0 (key_bounds: \"$1\" - \"$2\")",
-        tablet_id(),
+        "Failed to detect middle key, key_bounds [\"$1\" - \"$2\")",
         Slice(key_bounds_.lower).ToDebugHexString(),
         Slice(key_bounds_.upper).ToDebugHexString());
   };
@@ -4744,7 +4743,7 @@ Result<std::string> Tablet::GetEncodedMiddleSplitKey(std::string* partition_spli
     //    an uncompacted tablet anyways.
     return STATUS_EC_FORMAT(IllegalState,
         tserver::TabletServerError(tserver::TabletServerErrorPB::TABLET_SPLIT_KEY_RANGE_TOO_SMALL),
-        "$0: got \"$1\".", error_prefix(), middle_key_slice.ToDebugHexString());
+        "$0: got \"$1\"", error_prefix(), middle_key_slice.ToDebugHexString());
   }
 
   // Check middle_key is strictly between tablet's partition bounds.
@@ -4778,12 +4777,12 @@ Result<std::string> Tablet::GetEncodedMiddleSplitKey(std::string* partition_spli
   // This error occurs when middle key is not strictly between partition bounds.
   return STATUS_EC_FORMAT(IllegalState,
       tserver::TabletServerError(tserver::TabletServerErrorPB::TABLET_SPLIT_KEY_RANGE_TOO_SMALL),
-      "$0 with partition bounds [\"$1\" - \"$2\"): got \"$3\"",
+      "$0 partition bounds [\"$1\" - \"$2\"): got \"$3\"",
       error_prefix(), Slice{partition_start}.ToDebugHexString(),
       Slice{partition_end}.ToDebugHexString(), middle_key_slice.ToDebugHexString());
 }
 
-Result<Tablet::SplitKeysData> Tablet::GetSplitKeys(const int split_factor) const {
+Result<Tablet::SplitKeysData> Tablet::DoGetSplitKeys(const int split_factor) const {
   SCHECK_GE(
       split_factor, kDefaultNumSplitParts, InvalidArgument, "Split factor must be at least 2");
 
@@ -4799,9 +4798,8 @@ Result<Tablet::SplitKeysData> Tablet::GetSplitKeys(const int split_factor) const
             IllegalState,
             tserver::TabletServerError(
                 tserver::TabletServerErrorPB::TABLET_SPLIT_KEY_RANGE_TOO_SMALL),
-            "Failed to detect split keys for tablet $0 using split factor $1: "
-            "partition [\"$2\" - \"$3\"] is too small",
-            tablet_id(), split_factor,
+            "Failed to detect split keys for using split factor $1: "
+            "partition [\"$2\" - \"$3\"] is too small", split_factor,
             Uint16ToHexString(hash_bounds.first), Uint16ToHexString(hash_bounds.second));
       }
 
@@ -4833,6 +4831,14 @@ Result<Tablet::SplitKeysData> Tablet::GetSplitKeys(const int split_factor) const
     .encoded_keys = {encoded_key},
     .partition_keys = {partition_key}
   };
+}
+
+Result<Tablet::SplitKeysData> Tablet::GetSplitKeys(const int split_factor) const {
+  auto result = DoGetSplitKeys(split_factor);
+  if (!result.ok()) {
+    LOG_WITH_PREFIX_AND_FUNC(INFO) << result.status();
+  }
+  return result;
 }
 
 bool Tablet::HasActiveFullCompaction() {

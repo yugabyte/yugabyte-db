@@ -716,9 +716,9 @@ KeyBytes DocKey::EncodedFromRedisKey(uint16_t hash, std::string_view key) {
   return result;
 }
 
-std::string DocKey::DebugSliceToString(Slice slice) {
+std::string DocKey::DebugSliceToString(Slice slice, DocKeyPart part_to_decode) {
   DocKey key;
-  auto decoded_size = key.DecodeFrom(slice, DocKeyPart::kWholeDocKey, AllowSpecial::kTrue);
+  auto decoded_size = key.DecodeFrom(slice, part_to_decode, AllowSpecial::kTrue);
   if (!decoded_size.ok()) {
     return decoded_size.status().ToString() + ": " + slice.ToDebugHexString();
   }

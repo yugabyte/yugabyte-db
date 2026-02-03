@@ -652,7 +652,7 @@ class Tablet : public AbstractTablet,
   // - When the split_factor is 2, an approximate middle key is determined.
   // - When the split_factor is greater than 2 and with hash-partitioning, a placeholder
   //   logic returns a set of split keys.
-  Result<SplitKeysData> GetSplitKeys(const int split_factor) const;
+  Result<SplitKeysData> GetSplitKeys(int split_factor) const;
 
   std::string TEST_DocDBDumpStr(
       docdb::IncludeIntents include_intents = docdb::IncludeIntents::kFalse);
@@ -1113,6 +1113,9 @@ class Tablet : public AbstractTablet,
   // hash-based partitions only (to prevent additional memory copying), as partition middle key for
   // range-based partitions always matches the returned middle key.
   Result<std::string> GetEncodedMiddleSplitKey(std::string* partition_split_key = nullptr) const;
+
+  // Refer to Tablet::GetSplitKeys(...) for the description.
+  Result<SplitKeysData> DoGetSplitKeys(int split_factor) const;
 
   Status ProcessPgsqlGetTableKeyRangesRequest(
       const PgsqlReadRequestPB& req, PgsqlReadRequestResult* result) const;
