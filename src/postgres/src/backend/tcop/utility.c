@@ -74,11 +74,13 @@
 #include "utils/syscache.h"
 
 /* YB includes */
+#include "commands/trigger.h"
 #include "commands/yb_cmds.h"
 #include "commands/yb_profile.h"
 #include "commands/yb_tablegroup.h"
 #include "libpq/libpq-be.h"
 #include "pg_yb_utils.h"
+#include "utils/backend_status.h"
 
 /* Hook for plugins to get control in ProcessUtility() */
 /*
@@ -1847,13 +1849,46 @@ ProcessUtilitySlow(ParseState *pstate,
 				 * command itself is queued, which is enough.
 				 */
 				EventTriggerInhibitCommandCollection();
+
+				/*
+				 * Use volatile to ensure variables survive a siglongjmp
+				 */
+				volatile BackendType yb_old_type = MyBackendType;
+				volatile bool yb_type_changed = false;
 				PG_TRY();
 				{
+					/*
+					 * YB: To avoid blocking a concurrent CREATE INDEX CONCURRENTLY DDL,
+					 * change the backend type to YB_MATVIEW_REFRESH_DDL, which will be
+					 * ignored by the WaitForYsqlBackendsCatalogVersion query logic in
+					 * CREATE INDEX CONCURRENTLY workflow. Otherwise a regular backend
+					 * will appear as a lagging backend when the matview refresh takes
+					 * long time, causing a concurrent CREATE INDEX CONCURRENTLY to time
+					 * out during its WaitForYsqlBackendsCatalogVersion call.
+					 */
+					if (IsYugaByteEnabled() &&
+						!YBCIsLegacyModeForCatalogOps() &&
+						GetCurrentTransactionNestLevel() == 1 &&
+						YbGetTriggerDepth() == 0)
+					{
+						MyBackendType = YB_MATVIEW_REFRESH_DDL;
+						if (MyBEEntry)
+							MyBEEntry->st_backendType = MyBackendType;
+						yb_type_changed = true;
+					}
 					address = ExecRefreshMatView((RefreshMatViewStmt *) parsetree,
 												 queryString, params, qc);
 				}
 				PG_FINALLY();
 				{
+					/* Always restore if we changed it, even if an error occurred */
+					if (yb_type_changed)
+					{
+						MyBackendType = yb_old_type;
+						if (MyBEEntry)
+							MyBEEntry->st_backendType = yb_old_type;
+					}
+
 					EventTriggerUndoInhibitCommandCollection();
 				}
 				PG_END_TRY();

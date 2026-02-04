@@ -2527,6 +2527,7 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
       " backend_type != 'walsender' AND backend_type != 'yb-conn-mgr walsender'"
       " AND backend_type != 'yb auto analyze backend'"
       " AND backend_type != 'yb index backfill'"
+      " AND backend_type != 'yb matview refresh'"
       " AND catalog_version < $0 AND datid = $1$2",
       catalog_version, database_oid,
       (req->has_requestor_pg_backend_pid() ?
