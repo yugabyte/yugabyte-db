@@ -2330,7 +2330,7 @@ void SetBackfillSpecForYsqlBackfill(
   out_spec.set_limit(limit);
   out_spec.set_count(in_spec.count() + static_cast<uint64_t>(row_count));
   response->set_is_backfill_batch_done(!response->has_paging_state());
-  if (limit >= 0 && out_spec.count() >= limit) {
+  if (out_spec.count() >= limit) {
     // Hint postgres to stop scanning now. And set up the
     // next_row_key based on the paging state.
     if (response->has_paging_state()) {

@@ -22,7 +22,7 @@ namespace yb {
 
 // Returns the tcmalloc property with the given name, or 0 if tcmalloc is not used. In case of an
 // error, logs it as DFATAL and returns 0.
-int64_t GetTCMallocProperty(const char* prop);
+uint64_t GetTCMallocProperty(const char* prop);
 
 // Returns the number of bytes of physical memory used by tcmalloc. This excludes any unmapped
 // free list pages. Returns 0 if tcmalloc is not being used.

@@ -805,7 +805,7 @@ ValidateAndExtractHashRange(const char *hash_range_str, uint32_t *hash_range)
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("invalid value for hash_range")));
 
-	if (parsed_range < 0 || parsed_range > (PG_UINT16_MAX + 1))
+	if (parsed_range > (PG_UINT16_MAX + 1))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("hash_range out of bound")));

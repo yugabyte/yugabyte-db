@@ -370,6 +370,7 @@ ADD_CXX_FLAGS("-Werror=reorder")
 ADD_CXX_FLAGS("-Werror=switch")
 ADD_CXX_FLAGS("-Werror=return-type")
 ADD_CXX_FLAGS("-Werror=non-virtual-dtor")
+ADD_CXX_FLAGS("-Wtype-limits")
 
 if(IS_CLANG)
   ADD_CXX_FLAGS("-Werror=string-plus-int")

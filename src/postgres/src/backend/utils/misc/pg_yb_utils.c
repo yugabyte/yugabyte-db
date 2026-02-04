@@ -6293,7 +6293,7 @@ YBComputeNonCSortKey(Oid collation_id, const char *value, int64_t bytes)
 	}
 	else
 	{
-		Assert(bsize >= 0);
+		Assert((ptrdiff_t) bsize >= 0);
 		/*
 		 * Both strxfrm and strxfrm_l return the length of the transformed
 		 * string not including the terminating \0 byte.
