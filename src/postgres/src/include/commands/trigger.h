@@ -317,4 +317,7 @@ extern void YbAddTriggerFKReferenceIntent(Trigger *trigger, Relation fk_rel,
 /* YB: Return true if the trigger description has non FK trigger. */
 extern bool HasNonRITrigger(const TriggerDesc *trigDesc);
 
+/* YB: Returns MyTriggerDepth */
+extern int YbGetTriggerDepth();
+
 #endif							/* TRIGGER_H */
