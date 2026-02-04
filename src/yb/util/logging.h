@@ -87,6 +87,18 @@
       << VERBOSITY_LEVEL_STR(verboselevel)
 
 ////////////////////////////////////////////////////////////////////////////////
+// Yugabyte DETAIL logging
+////////////////////////////////////////////////////////////////////////////////
+
+// DETAIL logs show up as regular INFO messages with a "DETAIL: " prefix.
+// This allows you to use LOG_DETAIL syntax while still using glog's INFO level.
+// Ex: I1011 20:44:27.393563 1874145280 cdc_service.cc:410] DETAIL: Some DETAIL message
+#define ADD_DETAIL(log_expr) log_expr << "DETAIL: "
+
+#define LOG_DETAIL ADD_DETAIL(LOG(INFO))
+#define LOG_DETAIL_IF(condition) ADD_DETAIL(LOG_IF(INFO, condition))
+
+////////////////////////////////////////////////////////////////////////////////
 // Throttled logging support
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -329,6 +341,13 @@ std::ostream& operator<<(std::ostream &os, const PRIVATE_ThrottleMsg&);
 #define LOG_WITH_FUNC(severity) LOG(severity) << __func__ << ": "
 #define LOG_WITH_PREFIX_AND_FUNC(severity) LOG_WITH_PREFIX(severity) << __func__ << ": "
 
+// Same as above, but for DETAIL-related macros
+#define LOG_WITH_PREFIX_DETAIL_UNLOCKED ADD_DETAIL(LOG(INFO)) << LogPrefixUnlocked()
+#define LOG_WITH_PREFIX_DETAIL ADD_DETAIL(LOG(INFO)) << LogPrefix()
+#define LOG_WITH_FUNC_DETAIL ADD_DETAIL(LOG(INFO)) << __func__ << ": "
+#define LOG_WITH_PREFIX_AND_FUNC_DETAIL \
+  ADD_DETAIL(LOG(severity)) << LogPrefix() << __func__ << ": "
+
 #define VLOG_WITH_PREFIX(verboselevel) VLOG(verboselevel) << LogPrefix()
 #define VLOG_WITH_FUNC(verboselevel) VLOG(verboselevel) << __func__ << ": "
 #define DVLOG_WITH_FUNC(verboselevel) DVLOG(verboselevel) << __func__ << ": "
@@ -342,6 +361,12 @@ std::ostream& operator<<(std::ostream &os, const PRIVATE_ThrottleMsg&);
   << ": "
 #define LOG_IF_WITH_PREFIX_AND_FUNC(severity, condition) LOG_IF_WITH_PREFIX(severity, condition) \
     << __func__ << ": "
+
+// Conditional DETAIL-related macros
+#define LOG_IF_WITH_PREFIX_DETAIL(condition) ADD_DETAIL(LOG_IF(INFO, condition)) << LogPrefix()
+#define LOG_IF_WITH_FUNC_DETAIL(condition) ADD_DETAIL(LOG_IF(INFO, condition)) << __func__ << ": "
+#define LOG_IF_WITH_PREFIX_AND_FUNC_DETAIL(condition) \
+  ADD_DETAIL(LOG_IF(INFO, condition)) << LogPrefix() << __func__ << ": "
 
 // DCHECK_ONLY_NOTNULL is like DCHECK_NOTNULL, but does not result in an unused expression in
 // release mode, so it is suitable for being used as a stand-alone statement. In other words, use
