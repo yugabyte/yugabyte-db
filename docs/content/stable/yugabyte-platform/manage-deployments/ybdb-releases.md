@@ -34,7 +34,7 @@ You can obtain YugabyteDB from the following locations:
 
 - [download.yugabyte.com](https://download.yugabyte.com/#linux).
 
-- [YugabyteDB Releases](../../../releases/ybdb-releases/).
+- [YugabyteDB Releases](/stable/releases/ybdb-releases/).
 
     Choose the release series you want, to navigate to the release notes. Each release includes a Downloads section with links to the release tar.gz file.
 
@@ -67,7 +67,7 @@ yugabyte-{{< yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
 When importing into YugabyteDB Anywhere, use the tar.gz file; do not untar the file before importing.
 
 {{< note title="Importing Stable and Preview versions" >}}
-By default, you cannot import [stable](../../../releases/versioning/#stable-releases) versions of YugabyteDB if you are running a preview version of YugabyteDB Anywhere (for example, v2.25.x).
+By default, you cannot import [stable](/stable/releases/versioning/#stable-releases) versions of YugabyteDB if you are running a preview version of YugabyteDB Anywhere (for example, v2.25.x).
 
 To enable this import, set the YugabyteDB Anywhere runtime flag `yb.allow_db_version_more_than_yba_version` to true. See [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
 {{< /note >}}
