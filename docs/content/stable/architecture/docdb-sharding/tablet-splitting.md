@@ -165,7 +165,7 @@ Note that misuse or overuse of manual tablet splitting (for example, splitting t
 To verify that the table `t` has only one tablet, list all the tablets for table `t` using the following [`yb-admin list_tablets`](../../../admin/yb-admin/#list-tablets) command:
 
 ```bash
-./bin/yb-admin --master_addresses 127.0.0.1:7100 list_tablets ysql.yugabyte t
+./bin/yb-admin --master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 list_tablets ysql.yugabyte t
 ```
 
 Expect the following output:
@@ -183,7 +183,7 @@ The tablet should have some data persisted on the disk. If you insert small amou
 
 ```sh
 ./bin/yb-ts-cli \
-    --server_address=127.0.0.1:9100,127.0.0.2:9100,127.0.0.3:9100 \
+    --server_address=127.0.0.1:9100 \
     flush_tablet 9991368c4b85456988303cd65a3c6503
 ```
 
