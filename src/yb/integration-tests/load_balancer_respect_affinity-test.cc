@@ -36,7 +36,7 @@ using namespace std::literals;
 namespace yb {
 namespace integration_tests {
 
-const MonoDelta kDefaultTimeout = 30000ms;
+const MonoDelta kDefaultTimeout = 60000ms;
 
 class LoadBalancerRespectAffinityTest : public YBTableTestBase {
  protected:
@@ -56,7 +56,10 @@ class LoadBalancerRespectAffinityTest : public YBTableTestBase {
     return client_->IsLoadBalanced(narrow_cast<uint32_t>(num_tablet_servers()));
   }
 
-  Status WaitLoadBalanced(MonoDelta timeout) {
+  Status WaitForLoadBalancing(MonoDelta timeout = kDefaultTimeout) {
+    RETURN_NOT_OK(WaitFor([&]() -> Result<bool> {
+      return !VERIFY_RESULT(IsLoadBalanced());
+    }, timeout, "IsLoadBalanced"));
     return WaitFor([&]() -> Result<bool> {
       return IsLoadBalanced();
     }, timeout, "IsLoadBalanced");
@@ -79,14 +82,13 @@ class LoadBalancerRespectAffinityTest : public YBTableTestBase {
   }
 };
 
-TEST_F(LoadBalancerRespectAffinityTest,
-       TransactionUsePreferredZones) {
+TEST_F(LoadBalancerRespectAffinityTest, TransactionUsePreferredZones) {
   ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r.z2", 3, ""));
   ASSERT_OK(yb_admin_client_->SetPreferredZones({"c.r.z1"}));
 
   // First test whether load is correctly balanced when transaction tablet leaders are not
   // using preferred zones.
-  ASSERT_OK(WaitLoadBalanced(kDefaultTimeout * 2));
+  ASSERT_OK(WaitForLoadBalancing());
 
   ASSERT_OK(WaitFor([&]() {
     return AreLeadersOnPreferredOnly();
@@ -99,7 +101,7 @@ TEST_F(LoadBalancerRespectAffinityTest,
       SetFlag(daemon, "transaction_tables_use_preferred_zones", "1"));
   }
 
-  ASSERT_OK(WaitLoadBalanced(kDefaultTimeout * 2));
+  ASSERT_OK(WaitForLoadBalancing());
 
   ASSERT_OK(WaitFor([&]() {
     return AreLeadersOnPreferredOnly();
@@ -112,11 +114,79 @@ TEST_F(LoadBalancerRespectAffinityTest,
       SetFlag(daemon, "transaction_tables_use_preferred_zones", "0"));
   }
 
-  ASSERT_OK(WaitLoadBalanced(kDefaultTimeout * 2));
+  ASSERT_OK(WaitForLoadBalancing());
 
   ASSERT_OK(WaitFor([&]() {
     return AreLeadersOnPreferredOnly();
   }, kDefaultTimeout, "AreLeadersOnPreferredOnly"));
+}
+
+TEST_F(LoadBalancerRespectAffinityTest, RemoveReplicaRespectsPreferredZones) {
+  // Set placement and preferred zones and wait for load balancing to complete.
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r.z2", 3, ""));
+  ASSERT_OK(yb_admin_client_->SetPreferredZones({"c.r.z0"}));
+  ASSERT_OK(WaitForLoadBalancing());
+
+  // Disable leader moves so only replica removal triggers leader stepdowns.
+  for (ExternalDaemon* daemon : external_mini_cluster()->master_daemons()) {
+    ASSERT_OK(external_mini_cluster()->SetFlag(
+        daemon, "load_balancer_max_concurrent_moves", "0"));
+  }
+
+  // Add a fourth tserver in zone z0 (same as first tserver).
+  std::vector<std::string> extra_flags = {
+      "--placement_cloud=c", "--placement_region=r", "--placement_zone=z0",
+  };
+  ASSERT_OK(external_mini_cluster()->AddTabletServer(true, extra_flags));
+  ASSERT_OK(external_mini_cluster()->WaitForTabletServerCount(4, kDefaultTimeout));
+
+  ASSERT_OK(external_mini_cluster()->AddTServerToBlacklist(
+    external_mini_cluster()->GetLeaderMaster(), external_mini_cluster()->tablet_server(0)));
+  ASSERT_OK(WaitForLoadBalancing());
+
+  // Verify that the leaders are still only in the preferred zone.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return AreLeadersOnPreferredOnly();
+  }, kDefaultTimeout, "AreLeadersOnPreferredOnly"));
+}
+
+TEST_F(LoadBalancerRespectAffinityTest, RemoveReplicaBalancesLeadersByLeaderLoad) {
+  // Test that when we do RemoveReplica for a replica that is the leader, when picking the new
+  // leader to step down to, we break ties (between tservers of the same affinity) by leader load.
+
+  // Add a fourth tserver in zone z0.
+  std::vector<std::string> extra_flags = {
+      "--placement_cloud=c", "--placement_region=r", "--placement_zone=z0",
+  };
+  ASSERT_OK(external_mini_cluster()->AddTabletServer(true, extra_flags));
+  ASSERT_OK(external_mini_cluster()->WaitForTabletServerCount(4, kDefaultTimeout));
+
+  // Start with all leaders on z1.
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r.z2", 3, ""));
+  ASSERT_OK(WaitForLoadBalancing());
+  ASSERT_OK(AreLeadersOnPreferredOnly());
+
+  // Disable leader moves so only replica removal triggers leader stepdowns.
+  for (ExternalDaemon* daemon : external_mini_cluster()->master_daemons()) {
+    ASSERT_OK(external_mini_cluster()->SetFlag(
+        daemon, "load_balancer_max_concurrent_moves", "0"));
+  }
+
+  ASSERT_OK(external_mini_cluster()->AddTServerToBlacklist(
+    external_mini_cluster()->GetLeaderMaster(), external_mini_cluster()->tablet_server(0)));
+  ASSERT_OK(WaitForLoadBalancing());
+  // Verify that leader counts are balanced across the tservers.
+  auto leader_counts = ASSERT_RESULT(yb_admin_client_->GetLeaderCounts(table_name()));
+  auto max_leaders = 0;
+  auto min_leaders = 100000;
+  for (const auto& [ts_uuid, leaders] : leader_counts) {
+    if (ts_uuid == external_mini_cluster()->tablet_server(0)->uuid()) {
+      continue;
+    }
+    max_leaders = std::max(max_leaders, leaders);
+    min_leaders = std::min(min_leaders, leaders);
+  }
+  ASSERT_LE(max_leaders - min_leaders, 1);
 }
 
 } // namespace integration_tests

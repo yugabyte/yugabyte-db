@@ -692,8 +692,9 @@ Result<bool> PerTableLoadState::CanSelectWrongPlacementReplicaToMove(
       }
     }
     if (fallback_to_uuid.empty()) {
-      YB_LOG_EVERY_N_SECS(INFO, 10) << "Cannot move tablet from blacklisted tablet server "
-                                    << from_uuid << ": no eligible destination tablet servers";
+      YB_LOG_EVERY_N_SECS(INFO, 10) << Format(
+          "Cannot move tablet $0 from blacklisted tablet server $1: no eligible destination tablet "
+          "servers", tablet_id, from_uuid);
     }
   }
 
