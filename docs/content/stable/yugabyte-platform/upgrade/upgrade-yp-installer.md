@@ -63,9 +63,9 @@ When ready to upgrade, run the `upgrade` command from the untarred directory of 
 sudo ./yba-ctl upgrade
 ```
 
-YBA Installer runs a pre-check to ensure your existing installation fulfills the necessary prerequisites for the upgrade.
+YBA Installer runs a pre-check to verify your universes are all running node agent, and none are cron-based. If the pre-check fails, fix the issues before attempting again. Refer to [Prepare to upgrade](../prepare-to-upgrade/) for instructions.
 
-The upgrade takes a few minutes to complete.
+If the pre-check succeeds, the upgrade takes a few minutes to complete.
 
 When finished, use the status command to verify that YugabyteDB Anywhere has been upgraded to the target version:
 
