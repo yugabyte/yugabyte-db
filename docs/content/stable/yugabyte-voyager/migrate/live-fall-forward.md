@@ -1390,7 +1390,8 @@ Perform the following steps as part of the cutover process:
 {{% tab header="Config file" lang="config" %}}
 
 ```sh
-yb-voyager initiate cutover to target --config-file <path-to-config-file>
+yb-voyager initiate cutover to target --config-file <path-to-config-file> \
+--use-yb-grpc-connector false
 ```
 
 {{% /tab %}}
@@ -1399,14 +1400,13 @@ yb-voyager initiate cutover to target --config-file <path-to-config-file>
 
 ```sh
 # Replace the argument values with those applicable for your migration.
-yb-voyager initiate cutover to target --export-dir <EXPORT_DIR> --use-yb-grpc-connector true
+yb-voyager initiate cutover to target --export-dir <EXPORT_DIR>
 ```
 
 {{% /tab %}}
 
     {{< /tabpane >}}
 
-    If the target database is on [YugabyteDB Aeon](/stable/yugabyte-cloud), use `--use-yb-grpc-connector false` to allow the workflow to use the [YugabyteDB connector](../../../additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/).
     Refer to [initiate cutover to target](../../reference/cutover-archive/cutover/#cutover-to-target) for more information.
 
     As part of the cutover process, the following occurs in the background:
