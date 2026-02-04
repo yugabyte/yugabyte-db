@@ -2047,8 +2047,6 @@ typedef struct AlterTableCmd	/* one subcommand of an ALTER TABLE */
 	bool		yb_is_add_primary_key;	/* checks if adding primary key */
 	bool		yb_cascade;		/* to restrict movement of single table in
 								 * colocated tablespace */
-	Oid			yb_old_index_oid; /* old index OID to drop from DocDB
-								   * during ALTER TYPE index rebuild */
 } AlterTableCmd;
 
 
