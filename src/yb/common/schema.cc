@@ -55,16 +55,20 @@
 #include "yb/util/status_log.h"
 
 DEFINE_test_flag(int32, partitioning_version, -1,
-                 "When greater than -1, set partitioning_version during table creation.");
+    "When greater than -1, set partitioning_version during table creation.");
 
 namespace yb {
 
-using std::shared_ptr;
-using std::unordered_set;
 using std::string;
 using std::vector;
-using dockv::DocKey;
-using dockv::KeyEntryValue;
+
+namespace {
+
+// For TTL: values < 0 mean "no TTL used", 0 means "TTL reset", and values > 0 represent
+// an effective TTL applied to the corresponding entity.
+constexpr auto kNoDefaultTtl = -1;
+
+} // namespace
 
 // ------------------------------------------------------------------------------------------------
 // ColumnSchema
@@ -271,6 +275,14 @@ void TableProperties::Reset() {
       PREDICT_TRUE(FLAGS_TEST_partitioning_version < 0) ? kCurrentPartitioningVersion
                                                         : FLAGS_TEST_partitioning_version;
   ysql_replica_identity_ = std::nullopt;
+}
+
+bool TableProperties::IsValidTTL(int64_t ttl_msec) {
+  return ttl_msec >= 0;
+}
+
+bool TableProperties::IsEffectiveTTL(int64_t ttl_msec) {
+  return IsValidTTL(ttl_msec) && (ttl_msec > 0);
 }
 
 string TableProperties::ToString() const {
@@ -685,7 +697,7 @@ void SchemaBuilder::Reset(const Schema& schema) {
   colocation_id_ = schema.colocation_id_;
 }
 
-Status SchemaBuilder::AddKeyColumn(const string& name, const shared_ptr<QLType>& type) {
+Status SchemaBuilder::AddKeyColumn(const string& name, const std::shared_ptr<QLType>& type) {
   return AddColumn(ColumnSchema(name, type, ColumnKind::RANGE_ASC_NULL_FIRST));
 }
 
@@ -693,7 +705,7 @@ Status SchemaBuilder::AddKeyColumn(const string& name, DataType type) {
   return AddColumn(ColumnSchema(name, QLType::Create(type), ColumnKind::RANGE_ASC_NULL_FIRST));
 }
 
-Status SchemaBuilder::AddHashKeyColumn(const string& name, const shared_ptr<QLType>& type) {
+Status SchemaBuilder::AddHashKeyColumn(const string& name, const std::shared_ptr<QLType>& type) {
   return AddColumn(ColumnSchema(name, type, ColumnKind::HASH));
 }
 
@@ -729,8 +741,8 @@ Status SchemaBuilder::AddNullableColumn(const std::string& name, DataType type) 
   return AddNullableColumn(name, QLType::Create(type));
 }
 
-Status SchemaBuilder::RemoveColumn(const string& name) {
-  unordered_set<string>::const_iterator it_names;
+Status SchemaBuilder::RemoveColumn(const std::string& name) {
+  std::unordered_set<std::string>::const_iterator it_names;
   if ((it_names = col_names_.find(name)) == col_names_.end()) {
     return STATUS(NotFound, "The specified column does not exist", name);
   }
@@ -751,8 +763,8 @@ Status SchemaBuilder::RemoveColumn(const string& name) {
   return STATUS(Corruption, "Unable to remove existing column");
 }
 
-Status SchemaBuilder::RenameColumn(const string& old_name, const string& new_name) {
-  unordered_set<string>::const_iterator it_names;
+Status SchemaBuilder::RenameColumn(const std::string& old_name, const std::string& new_name) {
+  std::unordered_set<string>::const_iterator it_names;
 
   // check if 'new_name' is already in use
   if ((it_names = col_names_.find(new_name)) != col_names_.end()) {

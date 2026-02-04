@@ -79,7 +79,6 @@ namespace yb {
 
 class DeletedColumnPB;
 
-static const int kNoDefaultTtl = -1;
 static const int kYbHashCodeColId = std::numeric_limits<int16_t>::max() - 1;
 
 // Struct for storing information about deleted columns for cleanup.
@@ -394,8 +393,15 @@ class TableProperties {
     return true;
   }
 
+  // Returns true if default TTL is configured with a valid value.
+  // The method could be redundant, refer to https://github.com/yugabyte/yugabyte-db/issues/30230.
   bool HasDefaultTimeToLive() const {
-    return (default_time_to_live_ != kNoDefaultTtl);
+    return IsValidTTL(default_time_to_live_);
+  }
+
+  // Return true if default TTL is configred with a valid and effective value.
+  bool HasEffectiveDefaultTimeToLive() const {
+    return IsEffectiveTTL(default_time_to_live_);
   }
 
   void SetDefaultTimeToLive(uint64_t default_time_to_live) {
@@ -489,13 +495,19 @@ class TableProperties {
 
   void ToTablePropertiesPB(TablePropertiesPB *pb) const;
 
-  static TableProperties FromTablePropertiesPB(const TablePropertiesPB& pb);
-
   void AlterFromTablePropertiesPB(const TablePropertiesPB& pb);
 
   void Reset();
 
   std::string ToString() const;
+
+  static TableProperties FromTablePropertiesPB(const TablePropertiesPB& pb);
+
+    // Return true if ttl_sec is in valid range [0, inf).
+  static bool IsValidTTL(int64_t ttl_msec);
+
+  // Return true if ttl_sec is valid and in the range (0, inf).
+  static bool IsEffectiveTTL(int64_t ttl_msec);
 
  private:
   // IMPORTANT: Every time a new property is added, we need to revisit
@@ -1040,13 +1052,14 @@ class Schema : public MissingValueProvider {
   // Should be used when allocated on the heap.
   size_t memory_footprint_including_this() const;
 
-  static ColumnId first_column_id();
 
   // Update the missing values of the columns.
   void UpdateMissingValuesFrom(const google::protobuf::RepeatedPtrField<ColumnSchemaPB>& columns);
 
   // Get a column's missing default value.
   Result<const QLValuePB&> GetMissingValueByColumnId(ColumnId id) const final;
+
+  static ColumnId first_column_id();
 
   // Should account for every field in Schema.
   // TODO: Some of them should be in Equals too?
