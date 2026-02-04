@@ -320,7 +320,7 @@ To upgrade using YBA Installer, first download the version of YBA Installer corr
 
 Upgrade works similarly to the install workflow, by first running preflight checks to validate the system is in a good state.
 
-#### Pre-upgrade checks
+#### Pre-upgrade check
 
 For upgrades to YugabyteDB Anywhere v2025.2 or later, a pre-upgrade check validates that every non-Kubernetes universe has the node agent installed on every node. The upgrade will not proceed until this condition is met. Do not attempt the upgrade again until the node agent is installed on every node of every non-Kubernetes universe.
 
