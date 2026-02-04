@@ -1981,6 +1981,9 @@ drop table another;
 begin;
 create table skip_wal_skip_rewrite_index (c varchar(10) primary key);
 alter table skip_wal_skip_rewrite_index alter c type varchar(20);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 commit;
 -- We disallow changing table's row type if it's used for storage
 create table at_tab1 (a int, b text);
@@ -2123,9 +2126,6 @@ select conname, obj_description(oid, 'pg_constraint') as desc
 (3 rows)
 
 alter table at_partitioned alter column name type varchar(127);
-NOTICE:  index rewrite may lead to inconsistencies
-DETAIL:  Concurrent DMLs may not be reflected in the new index.
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 -- Note: these tests currently show the wrong behavior for comments :-(
 select relname,
   c.oid = oldoid as orig_oid,
@@ -2929,6 +2929,9 @@ NOTICE:  table rewrite may lead to inconsistencies
 DETAIL:  Concurrent DMLs may not be reflected in the new table.
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 ALTER TABLE comment_test ALTER COLUMN id SET DATA TYPE int;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 ALTER TABLE comment_test ALTER COLUMN id SET DATA TYPE text;
 NOTICE:  table rewrite may lead to inconsistencies
 DETAIL:  Concurrent DMLs may not be reflected in the new table.
@@ -2970,6 +2973,9 @@ COMMENT ON INDEX comment_test_child_fk IS 'Index backing the FOREIGN KEY of comm
 COMMENT ON CONSTRAINT comment_test_child_fk ON comment_test_child IS 'FOREIGN KEY constraint of comment_test_child';
 -- Change column type of parent
 ALTER TABLE comment_test ALTER COLUMN id SET DATA TYPE text;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 ALTER TABLE comment_test ALTER COLUMN id SET DATA TYPE int USING id::integer;
 ERROR:  foreign key constraint "comment_test_child_fk" cannot be implemented
 DETAIL:  Key columns "id" and "id" are of incompatible types: text and integer.
