@@ -3416,7 +3416,7 @@ void TabletServiceImpl::GetSplitKey(
         const auto& tablet = leader_tablet_peer.tablet;
         if (!req->is_manual_split() &&
             FLAGS_rocksdb_max_file_size_for_compaction > 0 &&
-            tablet->schema()->table_properties().HasDefaultTimeToLive()) {
+            tablet->schema()->table_properties().HasEffectiveDefaultTimeToLive()) {
           auto s = STATUS(NotSupported, "Tablet splitting not supported for TTL tables.");
           return s.CloneAndAddErrorCode(
               TabletServerError(TabletServerErrorPB::TABLET_SPLIT_DISABLED_TTL_EXPIRY));
