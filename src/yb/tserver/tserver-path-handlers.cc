@@ -893,23 +893,56 @@ string TabletServerPathHandlers::ConsensusStatePBToHtml(const ConsensusStatePB& 
   return html.str();
 }
 
+void TabletServerPathHandlers::OutputConnectivity(std::ostream& output) {
+  output << "<h4>Connectivity</h4>\n";
+  output << "<table class='table table-striped'>\n";
+  output << "  <tr><th>Type</th><th>UUID</th><th>Master State</th><th>Last seen</th>"
+                 "<th>Endpoint</th><th>Ping</th></tr>\n";
+  auto state = tserver_->ConnectivityState();
+  std::ranges::sort(*state.mutable_entries(), [](const auto& lhs, const auto& rhs) {
+    return std::tuple(!lhs.alive(), lhs.server_type(), lhs.uuid()) <
+           std::tuple(!rhs.alive(), rhs.server_type(), rhs.uuid());
+  });
+  auto now = WallClock()->Now();
+  for (const auto& entry : state.entries()) {
+    output << Format(
+        "<tr><td>$0</td><td>$1</td><td style=\"color: $2;\">$3</td><td>$4</td><td>$5</td>"
+            "<td style=\"color: $6;\">$7</td></tr>\n",
+        ServerType_Name(entry.server_type()),
+        entry.uuid(),
+        entry.alive() ? "green" : "red",
+        entry.alive() ? "ALIVE" : "DEAD",
+        now.ok() ? MonoDelta::FromMicroseconds(
+                       now->time_point - entry.last_seen_us_since_epoch()).ToPrettyString()
+                 : "<UNKNOWN>",
+        HostPortFromPB(entry.endpoint()),
+        entry.last_failure().empty() ? "black" : "red",
+        entry.last_failure().empty()
+          ? MonoDelta::FromMicroseconds(entry.ping_us()).ToPrettyString()
+          : entry.last_failure());
+  }
+  output << "</table>\n";
+}
+
 void TabletServerPathHandlers::HandleDashboardsPage(const Webserver::WebRequest& req,
                                                     Webserver::WebResponse* resp) {
-  std::stringstream *output = &resp->output;
-  *output << "<h3>Dashboards</h3>\n";
-  *output << "<table class='table table-striped'>\n";
-  *output << "  <tr><th>Dashboard</th><th>Description</th></tr>\n";
-  *output << GetDashboardLine(
+  std::ostream& output = resp->output;
+  output << "<h3>Dashboards</h3>\n";
+  output << "<table class='table table-striped'>\n";
+  output << "  <tr><th>Dashboard</th><th>Description</th></tr>\n";
+  output << GetDashboardLine(
       "operations", "Operations", "List of operations that are currently replicating.");
-  *output << GetDashboardLine(
+  output << GetDashboardLine(
       "remotebootstraps", "Remote Bootstraps Sessions being served",
       "List of remote bootstrap sessions this tablet server is currently serving.");
-  *output << GetDashboardLine("maintenance-manager", "Maintenance Manager",
-                              "List of operations that are currently running and those "
-                              "that are registered.");
-  *output << GetDashboardLine(
+  output << GetDashboardLine("maintenance-manager", "Maintenance Manager",
+                             "List of operations that are currently running and those "
+                             "that are registered.");
+  output << GetDashboardLine(
       "TSLocalLockManager", "Object locks held at the tserver local TSLocalLockManager",
       "Dump of all granted and awaiting object locks at the local TSLocalLockManager");
+  output << "</table>\n";
+  OutputConnectivity(output);
 }
 
 void TabletServerPathHandlers::HandleIntentsDBPage(const Webserver::WebRequest& req,
