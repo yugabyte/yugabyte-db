@@ -481,7 +481,7 @@ OAuth related settings are described in the following table. With the exception 
 
 When configuring proxy values for YBA, all values must be set correctly.
 
-{{< note title="Using a proxy with AWS or Azure" >}}
+{{< note title="Using a proxy with cloud providers" >}}
 On AWS, GCP, or Azure, ensure `169.254.169.254` is in the `no_proxy` and `java_non_proxy` lists, as this enables access to the VM instance metadata.
 {{< /note >}}
 
