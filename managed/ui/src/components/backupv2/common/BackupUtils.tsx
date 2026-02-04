@@ -69,11 +69,11 @@ export const BACKUP_STATUS_OPTIONS: { value: Backup_States | null; label: string
     value: null
   },
   {
-    label: 'In Progress',
+    label: 'Backup In Progress',
     value: Backup_States.IN_PROGRESS
   },
   {
-    label: 'Completed',
+    label: 'Backup Completed',
     value: Backup_States.COMPLETED
   },
   {
@@ -81,7 +81,7 @@ export const BACKUP_STATUS_OPTIONS: { value: Backup_States | null; label: string
     value: Backup_States.DELETE_IN_PROGRESS
   },
   {
-    label: 'Failed',
+    label: 'Backup Failed',
     value: Backup_States.FAILED
   },
   {
@@ -93,11 +93,11 @@ export const BACKUP_STATUS_OPTIONS: { value: Backup_States | null; label: string
     value: Backup_States.QUEUED_FOR_DELETION
   },
   {
-    label: 'Skipped',
+    label: 'Backup Skipped',
     value: Backup_States.SKIPPED
   },
   {
-    label: 'Cancelled',
+    label: 'Backup Cancelled',
     value: Backup_States.STOPPED
   }
 ];
