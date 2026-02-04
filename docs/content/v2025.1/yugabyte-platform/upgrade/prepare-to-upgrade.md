@@ -33,7 +33,7 @@ In addition, both python and python3 must symbolically link to Python 3. Refer t
 
 cron and root-level systemd have been deprecated in favor of user-level systemd with node agent for management of universe nodes.
 
-In particular, cron-based universes will no longer be supported in YugabyteDB Anywhere v2025.2 (LTS release planned for end of 2025) and later. Before you will be able to upgrade to v2025.2 or later, all your universes must be using systemd. YugabyteDB Anywhere will automatically upgrade universes that use a cloud provider configuration to systemd.
+In particular, cron-based universes are no longer supported in YugabyteDB Anywhere v2025.2 and later. Before you will be able to upgrade to v2025.2 or later, all your universes must be using systemd. YugabyteDB Anywhere will automatically upgrade universes that use a cloud provider configuration to systemd.
 
 However, on-premises cron-based universes must be upgraded manually. To do this, in YugabyteDB Anywhere v2024.2.2 or later, navigate to the universe and choose **Actions>Upgrade to Systemd**.
 
@@ -66,7 +66,7 @@ What action you take will depend on the type of provider used to create a univer
 
 ## Node agent
 
-YugabyteDB Anywhere v2025.2 (LTS release planned for end of 2025) and later require universes have node agent running on their nodes. Before you will be able to upgrade to v2025.2 or later, all your universes must be using node agent.
+YugabyteDB Anywhere v2025.2 and later require universes have node agent running on their nodes. Before you will be able to upgrade to v2025.2 or later, all your universes must be using node agent.
 
 If any universe nodes require an update to node agent, YugabyteDB Anywhere displays a banner on the **Dashboard** to that effect.
 

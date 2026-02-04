@@ -29,18 +29,21 @@ If your YugabyteDB Anywhere installation was installed using [YBA Installer](../
 
 For more information, refer to [Compatibility with YugabyteDB](/stable/releases/yba-releases/#compatibility-with-yugabytedb).
 
-If you are upgrading a YugabyteDB Anywhere installation with high availability enabled, follow the instructions provided in [Upgrade instances](../../administer-yugabyte-platform/high-availability/#upgrade-instances).
+## Before you begin
 
-{{< note title="Upgrading YugabyteDB Anywhere on deprecated operating systems" >}}
+Review the requirements for your upgrade:
 
-If you are running YugabyteDB Anywhere on a [deprecated OS](../../../reference/configuration/operating-systems/), you need to update your OS before you can upgrade YugabyteDB Anywhere to the next major release.
+- If you are upgrading a YugabyteDB Anywhere installation with high availability enabled, follow the instructions provided in [Upgrade instances](../../administer-yugabyte-platform/high-availability/#upgrade-instances).
 
-{{< /note >}}
-{{< note title="Upgrading YugabyteDB Anywhere on systems that have older versions of Python" >}}
+- If you are running YugabyteDB Anywhere on a [deprecated OS](../../../reference/configuration/operating-systems/), you need to update your OS before you can upgrade YugabyteDB Anywhere to the next major release.
 
-YugabyteDB Anywhere v25.1 and later requires Python v3.10-3.11. If you are running YugabyteDB Anywhere on a system with Python earlier than 3.10, you will need to update Python on your system before you can upgrade YugabyteDB Anywhere to v25.1 or later.
+- YugabyteDB Anywhere v25.1 and later requires Python v3.10-3.11. If you are running YugabyteDB Anywhere on a system with Python earlier than 3.10, you will need to update Python on your system before you can upgrade YugabyteDB Anywhere to v25.1 or later.
 
-{{< /note >}}
+- YugabyteDB Anywhere v2025.2 and later require all universes have node agent running on their nodes.
+
+- cron-based universes are no longer supported in YugabyteDB Anywhere v2025.2 and later.
+
+For more information, refer to [Prepare to upgrade](../prepare-to-upgrade/).
 
 ## Upgrade using YBA Installer
 
@@ -60,7 +63,11 @@ When ready to upgrade, run the `upgrade` command from the untarred directory of 
 sudo ./yba-ctl upgrade
 ```
 
-The upgrade takes a few minutes to complete. When finished, use the status command to verify that YugabyteDB Anywhere has been upgraded to the target version:
+YBA Installer runs a pre-check to ensure your existing installation fulfills the necessary prerequisites for the upgrade.
+
+The upgrade takes a few minutes to complete.
+
+When finished, use the status command to verify that YugabyteDB Anywhere has been upgraded to the target version:
 
 ```sh
 sudo yba-ctl status

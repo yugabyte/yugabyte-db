@@ -31,7 +31,7 @@ In addition, both python and python3 must symbolically link to Python 3. Refer t
 
 ## cron-based universes
 
-cron-based universes will no longer be supported in YugabyteDB Anywhere v2025.2 (LTS release planned for end of 2025) and later. Before you will be able to upgrade to v2025.2 or later, all your universes must be using systemd.
+cron-based universes are no longer supported in YugabyteDB Anywhere v2025.2 and later. Before you will be able to upgrade to v2025.2 or later, all your universes must be using systemd.
 
 To update cron-based universes, first upgrade YugabyteDB Anywhere to v2024.2.2 or later, and then refer to the steps in [Prepare to upgrade a universe](/v2024.2/yugabyte-platform/manage-deployments/upgrade-software-prepare/).
 
@@ -64,7 +64,7 @@ What action you take will depend on the type of provider used to create a univer
 
 ## Node agent
 
-YugabyteDB Anywhere v2025.2 (LTS release planned for end of 2025) and later require universes have node agent running on their nodes. Before you will be able to upgrade to v2025.2 or later, all your universes must be using node agent.
+YugabyteDB Anywhere v2025.2 and later require universes have node agent running on their nodes. Before you will be able to upgrade to v2025.2 or later, all your universes must be using node agent.
 
 To upgrade a universe to node agent, first upgrade YugabyteDB Anywhere to v2024.2.5 or later, and then refer to the steps in [Prepare to upgrade a universe](/v2024.2/yugabyte-platform/manage-deployments/upgrade-software-prepare/).
 
