@@ -143,4 +143,20 @@ TEST(LoggingTest, TestThrottledOrVlogWithVlog) {
   EXPECT_THAT(msgs[0], testing::ContainsRegex("] vlog1: test$"));
 }
 
+// Test macros for YB-severity log levels.
+TEST(LoggingTest, TestYBLogSeverity) {
+  StringVectorSink sink;
+  ScopedRegisterSink srs(&sink);
+
+  constexpr auto kPattern = "test";
+  LOG_DETAIL << kPattern;
+
+  const vector<string>& msgs = sink.logged_msgs();
+
+  ASSERT_EQ(msgs.size(), 1);
+
+  EXPECT_THAT(msgs[0], testing::HasSubstr(kPattern));
+  EXPECT_THAT(msgs[0], testing::HasSubstr("DETAIL: "));
+}
+
 }  // namespace yb
