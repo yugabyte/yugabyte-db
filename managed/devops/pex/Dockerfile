@@ -15,11 +15,14 @@ RUN yum -y install postgresql-devel python3-devel gcc libcom_err.x86_64
 # Install python-ldap==3.3.1 third-party shared dependencies
 RUN yum -y install openldap-devel
 
-# Install pex, wheel, and auditwheel (for constructing and
+# Install pex for python 3.12
+RUN python3.12 -m pip install pex==2.86.0
+
+# Install wheel and auditwheel (for constructing and
 # repairing the generated PEX file to ensure compatibility
 # across all python versions, and
 # for Linux platform and cross-platform compatibility).
-RUN pip3 install pex==2.45.3 wheel auditwheel
+RUN pip3 install wheel auditwheel
 
 # Copying the testPex folder, which contains the build_pex.sh
 # script we want to run.

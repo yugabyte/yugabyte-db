@@ -22,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+        "github.com/spf13/viper"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 	"golang.org/x/crypto/ssh"
 )
@@ -104,6 +105,7 @@ func generateCert(
 	}
 	if isCA {
 		resultCert.Subject.Organization = []string{SelfSignedOrg}
+		resultCert.Subject.CommonName = viper.GetString("host")
 		resultCert.BasicConstraintsValid = true
 	} else {
 		hosts := strings.Split(host, ",")
