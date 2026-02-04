@@ -1,0 +1,66 @@
+#!/bin/sh
+#
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#  http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+#
+# This script checks the commit log message.
+
+if [ ! -s "$1" ] || ! grep -v '^#' "$1" | grep -q '[^[:space:]]'; then
+	echo "Aborting commit due to empty commit message." >&2
+	exit 1
+fi
+
+# Separate subject from body with a blank line
+line2=$(sed '2q;d' "$1")
+if [ -n "$line2" ] && echo "$line2" | grep -qv '^#'; then
+	echo "FAIL: put a blank line to separate subject from body" >&2
+	head -n 2 "$1" >&2
+	exit 1
+fi
+
+# Limit the subject line to 50 characters
+subject=$(head -n 1 "$1")
+subject_len=$(printf "$subject" | wc -m)
+if [ $subject_len -gt 72 ]; then
+	echo "FAIL: subject lines cannot be longer than 72 characters" >&2
+	echo "$subject" >&2
+	exit 1
+elif [ $subject_len -gt 50 ]; then
+	echo "Subject lines less than or equal to 50 characters are preferred."
+fi
+
+# Capitalize the subject line
+if echo "$subject" | grep -qv '^[[:upper:]]'; then
+	echo "FAIL: begin the subject line with a capital letter" >&2
+	echo "$subject" >&2
+	exit 1
+fi
+
+# Do not end the subject line with a period
+if echo "$subject" | grep -q '\.$'; then
+	echo "FAIL: trailing punctuation is unnecessary in subject lines" >&2
+	echo "$subject" >&2
+	exit 1
+fi
+
+# Wrap the body at 72 characters
+lines=$(grep -nE '.{73,}' "$1")
+if [ -n "$lines" ]; then
+	echo "FAIL: wrap the body at 72 characters" >&2
+	echo "$lines" >&2
+	exit 1
+fi
