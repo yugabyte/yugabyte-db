@@ -5,8 +5,8 @@ package com.yugabyte.yw.common;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.startsWith;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.spy;
@@ -21,6 +21,7 @@ import java.net.URL;
 import java.net.URLConnection;
 import java.net.URLStreamHandler;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -52,6 +53,7 @@ public class ApiHelperTest {
     jsonResponse.put("Foo", "Bar");
     when(mockClient.url(anyString())).thenReturn(mockRequest);
     when(mockRequest.get()).thenReturn(mockCompletion);
+    when(mockResponse.getStatus()).thenReturn(200);
     when(mockResponse.getBody()).thenReturn(jsonResponse.toString());
     JsonNode result = apiHelper.getRequest("http://foo.com/test");
     Mockito.verify(mockClient, times(1)).url("http://foo.com/test");
@@ -63,10 +65,14 @@ public class ApiHelperTest {
     CompletionStage<WSResponse> mockCompletion = CompletableFuture.completedFuture(mockResponse);
     when(mockClient.url(anyString())).thenReturn(mockRequest);
     when(mockRequest.get()).thenReturn(mockCompletion);
+    when(mockRequest.getUrl()).thenReturn("https://yugabyte.com/test");
+    when(mockResponse.getStatus()).thenReturn(400);
     doReturn("Incorrect JSON").when(mockResponse).getBody();
     RuntimeException exception =
         assertThrows(RuntimeException.class, () -> apiHelper.getRequest("http://foo.com/test"));
-    assertThat(exception.getMessage(), startsWith("com.fasterxml.jackson.core.JsonParseException"));
+    assertThat(
+        exception.getMessage(),
+        startsWith("HTTP request to https://yugabyte.com/test failed with status 400"));
   }
 
   @Test
@@ -76,6 +82,7 @@ public class ApiHelperTest {
     jsonResponse.put("Foo", "Bar");
     when(mockClient.url(anyString())).thenReturn(mockRequest);
     when(mockRequest.get()).thenReturn(mockCompletion);
+    when(mockResponse.getStatus()).thenReturn(200);
     when(mockResponse.getBody()).thenReturn(jsonResponse.toString());
 
     HashMap<String, String> headers = new HashMap<>();
@@ -94,6 +101,7 @@ public class ApiHelperTest {
     jsonResponse.put("Foo", "Bar");
     when(mockClient.url(anyString())).thenReturn(mockRequest);
     when(mockRequest.get()).thenReturn(mockCompletion);
+    when(mockResponse.getStatus()).thenReturn(200);
     when(mockResponse.getBody()).thenReturn(jsonResponse.toString());
 
     HashMap<String, String> params = new HashMap<>();
@@ -101,7 +109,7 @@ public class ApiHelperTest {
     JsonNode result =
         apiHelper.getRequest("http://foo.com/test", new HashMap<String, String>(), params);
     Mockito.verify(mockClient, times(1)).url("http://foo.com/test");
-    Mockito.verify(mockRequest).setQueryParameter("param", "foo");
+    Mockito.verify(mockRequest).addQueryParameter("param", "foo");
     assertEquals(result.get("Foo").asText(), "Bar");
   }
 
@@ -115,8 +123,9 @@ public class ApiHelperTest {
     jsonResponse.put("Success", true);
 
     when(mockRequest.post(ArgumentMatchers.any(JsonNode.class))).thenReturn(mockCompletion);
+    when(mockResponse.getStatus()).thenReturn(200);
     when(mockResponse.getBody()).thenReturn(jsonResponse.toString());
-    JsonNode result = apiHelper.postRequest("http://foo.com/test", postData);
+    JsonNode result = apiHelper.postRequest("http://foo.com/test", postData, null /* headers */);
     Mockito.verify(mockClient, times(1)).url("http://foo.com/test");
     Mockito.verify(mockRequest, times(1)).post(postData);
     assertEquals(result.get("Success").asBoolean(), true);
@@ -136,8 +145,7 @@ public class ApiHelperTest {
       URL url = new URL(null, urlPath, handler);
       when(mockApiHelper.getUrl(urlPath)).thenReturn(url);
     } catch (Exception e) {
-      e.printStackTrace();
-      assertNull(e.getMessage());
+      fail(e.getMessage());
     }
     ObjectNode result = mockApiHelper.getHeaderStatus(urlPath);
     if (isSuccess) {
@@ -166,10 +174,10 @@ public class ApiHelperTest {
   public void testBuildUrl() {
     ApiHelper mockApiHelper = spy(apiHelper);
     String baseUrl = "http://test.com";
-    String expectedResult = String.format("%s?testKey2=test2&testKey1=test1", baseUrl);
+    String expectedResult = String.format("%s?testKey1=test1&testKey2=test2", baseUrl);
     String[] values1 = {"test1"};
     String[] values2 = {"test2"};
-    Map<String, String[]> queryParams = new HashMap<>();
+    Map<String, String[]> queryParams = new LinkedHashMap<>();
     queryParams.put("testKey1", values1);
     queryParams.put("testKey2", values2);
     assertEquals(mockApiHelper.buildUrl(baseUrl, queryParams), expectedResult);

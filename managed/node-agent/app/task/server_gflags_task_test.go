@@ -9,10 +9,10 @@ import (
 
 func TestBuildPostmasterCgroupPath(t *testing.T) {
 	tests := []struct {
-		name              string
-		cgroupStatOutput  string
-		userID            string
-		expectedPath      string
+		name             string
+		cgroupStatOutput string
+		userID           string
+		expectedPath     string
 	}{
 		{
 			name:             "cgroup v1 returns memory path",
@@ -30,19 +30,37 @@ func TestBuildPostmasterCgroupPath(t *testing.T) {
 			name:             "cgroup v2 returns unified path with user ID",
 			cgroupStatOutput: "cgroup2fs",
 			userID:           "1000",
-			expectedPath:     filepath.Join("/sys/fs/cgroup", "user.slice", "user-1000.slice", "user@1000.service", "ysql"),
+			expectedPath: filepath.Join(
+				"/sys/fs/cgroup",
+				"user.slice",
+				"user-1000.slice",
+				"user@1000.service",
+				"ysql",
+			),
 		},
 		{
 			name:             "cgroup v2 with different user ID",
 			cgroupStatOutput: "cgroup2fs",
 			userID:           "1001",
-			expectedPath:     filepath.Join("/sys/fs/cgroup", "user.slice", "user-1001.slice", "user@1001.service", "ysql"),
+			expectedPath: filepath.Join(
+				"/sys/fs/cgroup",
+				"user.slice",
+				"user-1001.slice",
+				"user@1001.service",
+				"ysql",
+			),
 		},
 		{
 			name:             "cgroup v2 with root user",
 			cgroupStatOutput: "cgroup2fs",
 			userID:           "0",
-			expectedPath:     filepath.Join("/sys/fs/cgroup", "user.slice", "user-0.slice", "user@0.service", "ysql"),
+			expectedPath: filepath.Join(
+				"/sys/fs/cgroup",
+				"user.slice",
+				"user-0.slice",
+				"user@0.service",
+				"ysql",
+			),
 		},
 	}
 	for _, tt := range tests {
