@@ -485,10 +485,6 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
   std::string LogPrefix() const;
 
-  // Called from RemoteBootstrapSession and RemoteBootstrapAnchorSession to change role of the
-  // new peer post RBS.
-  Status ChangeRole(const std::string& requestor_uuid);
-
   Result<consensus::RetryableRequests> GetRetryableRequests();
   Status FlushBootstrapState();
   Result<OpId> CopyBootstrapStateTo(const std::string& dest_path);

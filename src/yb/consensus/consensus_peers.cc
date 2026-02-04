@@ -117,6 +117,11 @@ DEFINE_test_flag(bool, enable_remote_bootstrap, true,
 
 DECLARE_int32(TEST_log_change_config_every_n);
 
+DEFINE_test_flag(bool, skip_change_role, false,
+    "When set, skip promoting PRE_[VOTER/OBSERVER] to VOTER/OBSERVER while preparing "
+    "consensus requests for the peer. This would lead to the new peers getting stuck in "
+    "the transitioning state.");
+
 namespace yb {
 namespace consensus {
 
@@ -320,7 +325,10 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
   // we need to promote it.
   if (last_exchange_successful &&
       (member_type == PeerMemberType::PRE_VOTER || member_type == PeerMemberType::PRE_OBSERVER)) {
-    if (PREDICT_TRUE(consensus_)) {
+    if (PREDICT_FALSE(FLAGS_TEST_skip_change_role)) {
+      LOG_WITH_PREFIX(INFO)
+          << "Not changing role because flag FLAGS_TEST_skip_change_role is set";
+    } else if (PREDICT_TRUE(consensus_)) {
       auto uuid = peer_pb_.permanent_uuid();
       // Remove these here, before we drop the locks.
       processing_lock.unlock();

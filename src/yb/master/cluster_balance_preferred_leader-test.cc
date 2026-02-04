@@ -181,7 +181,9 @@ class TestLoadBalancerPreferredLeader : public LoadBalancerMockedBase {
         std::const_pointer_cast<TabletReplicaMap>(tablet->GetReplicaLocations());
 
     TabletReplica replica;
-    NewReplica(ts_desc, tablet::RaftGroupStatePB::RUNNING, PeerRole::FOLLOWER, &replica);
+    NewReplica(
+        ts_desc, tablet::RaftGroupStatePB::RUNNING, PeerRole::FOLLOWER,
+        consensus::PeerMemberType::VOTER, &replica);
     InsertOrDie(replicas.get(), ts_desc->permanent_uuid(), replica);
     tablet->SetReplicaLocations(replicas);
   }
