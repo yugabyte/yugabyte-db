@@ -430,6 +430,8 @@ macro(yb_find_third_party_dependencies)
   include_directories(SYSTEM ${HWY_INCLUDE_DIR})
   ADD_THIRDPARTY_LIB(hwy
     STATIC_LIB "${HWY_STATIC_LIB}")
+  ADD_THIRDPARTY_LIB(hwy_contrib
+    STATIC_LIB "${HWY_CONTRIB_STATIC_LIB}")
 
   ## Eigen
   find_package(Eigen REQUIRED)

@@ -23,3 +23,16 @@ find_library(HWY_STATIC_LIB libhwy.a
 include(FindPackageHandleStandardArgs)
 find_package_handle_standard_args(HWY REQUIRED_VARS
   HWY_STATIC_LIB HWY_INCLUDE_DIR)
+
+
+find_path(HWY_CONTRIB_INCLUDE_ROOT_DIR libhwy_contrib
+# make sure we don't accidentally pick up a different version
+  NO_CMAKE_SYSTEM_PATH
+  NO_SYSTEM_ENVIRONMENT_PATH)
+find_library(HWY_CONTRIB_STATIC_LIB libhwy_contrib.a
+  NO_CMAKE_SYSTEM_PATH
+  NO_SYSTEM_ENVIRONMENT_PATH)
+
+include(FindPackageHandleStandardArgs)
+find_package_handle_standard_args(HWY_CONTRIB REQUIRED_VARS
+  HWY_CONTRIB_STATIC_LIB)
