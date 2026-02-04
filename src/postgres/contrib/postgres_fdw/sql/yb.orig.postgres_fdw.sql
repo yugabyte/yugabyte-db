@@ -211,3 +211,32 @@ WHERE s.k = 2 AND t1.v = s.v
 RETURNING *;
 
 SELECT * FROM ft_simple ORDER BY k;
+
+CREATE SERVER IF NOT EXISTS gv_server FOREIGN DATA WRAPPER postgres_fdw OPTIONS (server_type 'federatedYugabyteDB');
+
+CREATE FOREIGN TABLE IF NOT EXISTS "gv$yb_active_session_history" (
+    sample_time TIMESTAMPTZ,
+    root_request_id UUID,
+    rpc_request_id BIGINT,
+    wait_event_component TEXT,
+    wait_event_class TEXT,
+    wait_event TEXT,
+    top_level_node_id UUID,
+    query_id BIGINT,
+    pid INT,
+    client_node_ip TEXT,
+    wait_event_aux TEXT,
+    sample_weight REAL,
+    wait_event_type TEXT,
+    ysql_dbid OID,
+    wait_event_code BIGINT,
+    pss_mem_bytes BIGINT,
+    ysql_userid OID
+)
+SERVER gv_server
+OPTIONS (schema_name 'pg_catalog', table_name 'yb_active_session_history');
+
+SELECT * FROM gv$yb_active_session_history;
+SET yb_enable_global_views = TRUE;
+SELECT * FROM gv$yb_active_session_history;
+SET yb_enable_global_views = FALSE;

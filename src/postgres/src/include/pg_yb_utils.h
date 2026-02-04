@@ -842,6 +842,8 @@ extern bool yb_user_ddls_preempt_auto_analyze;
  */
 extern bool yb_enable_pg_stat_statements_rpc_stats;
 
+extern bool yb_enable_global_views;
+
 /*
  * If true, enable DocDB metrics collection for pg_stat_statements.
  */
