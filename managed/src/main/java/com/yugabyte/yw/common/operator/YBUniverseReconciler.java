@@ -360,6 +360,15 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
         createUniverse(cust.getUuid(), taskParams, ybUniverse);
       } else if (createTaskState.equals(State.Success)) {
         // Can receive once on Platform restart
+        // Lets update that the universe is ready in case there are no edits
+        // to perform
+        kubernetesStatusUpdater.updateYBUniverseStatus(
+            u,
+            KubernetesResourceDetails.fromResource(ybUniverse),
+            "" /* taskName */,
+            null /* taskUUID */,
+            UniverseState.READY,
+            null /* throwable */);
         workqueue.resetRetries(mapKey);
         log.debug("Universe {} already exists, treating as update", ybaUniverseName);
         editUniverse(cust, u, ybUniverse);
