@@ -180,8 +180,9 @@ DECLARE_double(tablet_split_min_size_ratio);
 
 namespace yb {
 
-class TabletSplitITestWithIsolationLevel : public TabletSplitITest,
-                                           public testing::WithParamInterface<IsolationLevel> {
+class TabletSplitITestWithIsolationLevel
+    : public TabletSplitITest,
+      public testing::WithParamInterface<IsolationLevel> {
  public:
   void SetUp() override {
     SetIsolationLevel(GetParam());
@@ -733,7 +734,7 @@ TEST_F(TabletSplitITest, SplitClientRequestsIdsDepth2) {
   SplitClientRequestsIds(2);
 }
 
-class TabletSplitITestSlowMainenanceManager : public TabletSplitITest {
+class TabletSplitITestSlowMaintenanceManager : public TabletSplitITest {
  public:
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_maintenance_manager_polling_interval_ms) = 60 * 1000;
@@ -741,7 +742,7 @@ class TabletSplitITestSlowMainenanceManager : public TabletSplitITest {
   }
 };
 
-TEST_F_EX(TabletSplitITest, SplitClientRequestsClean, TabletSplitITestSlowMainenanceManager) {
+TEST_F_EX(TabletSplitITest, SplitClientRequestsClean, TabletSplitITestSlowMaintenanceManager) {
   constexpr auto kSplitDepth = 3;
   constexpr auto kNumRows = 50 * (1 << kSplitDepth);
   constexpr auto kRetryableRequestTimeoutSecs = 1;
@@ -2412,16 +2413,16 @@ TEST_F(TabletSplitSingleServerITest, SplitKeyNotSupportedForTTLTablets) {
   ASSERT_OK(tablet->ForceManualRocksDBCompact());
 
   auto resp = ASSERT_RESULT(SendTServerRpcSyncGetSplitKey(source_tablet_id));
-  EXPECT_FALSE(resp.has_error());
+  ASSERT_FALSE(resp.has_error()) << resp.error().DebugString();
 
   // Alter the table with a table TTL, and call GetSplitKey RPC, expecting a
   // "not supported" response.
   // Amount of time for the TTL is irrelevant, so long as it's larger than 0.
-  ASSERT_OK(AlterTableSetDefaultTTL(1));
+  ASSERT_OK(AlterTableSetDefaultTTL(/* ttl_sec = */ 1));
 
   resp = ASSERT_RESULT(SendTServerRpcSyncGetSplitKey(source_tablet_id));
 
-  // Validate response
+  // Validate response.
   EXPECT_TRUE(resp.has_error());
   EXPECT_EQ(resp.error().code(),
       tserver::TabletServerErrorPB_Code::TabletServerErrorPB_Code_TABLET_SPLIT_DISABLED_TTL_EXPIRY);
@@ -2429,6 +2430,14 @@ TEST_F(TabletSplitSingleServerITest, SplitKeyNotSupportedForTTLTablets) {
   EXPECT_TRUE(resp.error().status().has_message());
   EXPECT_EQ(resp.error().status().code(),
             yb::AppStatusPB::ErrorCode::AppStatusPB_ErrorCode_NOT_SUPPORTED);
+
+  // Reset table default TTL, GetSplitKey RPC should provide a middle key
+  // since default TTL is reset now.
+  ASSERT_OK(AlterTableSetDefaultTTL(/* ttl_sec = */ 0));
+
+  // Validate response.
+  resp = ASSERT_RESULT(SendTServerRpcSyncGetSplitKey(source_tablet_id));
+  ASSERT_FALSE(resp.has_error()) << resp.error().DebugString();
 }
 
 TEST_F(TabletSplitSingleServerITest, MaxFileSizeTTLTabletOnlyValidForManualSplit) {
@@ -2449,28 +2458,34 @@ TEST_F(TabletSplitSingleServerITest, MaxFileSizeTTLTabletOnlyValidForManualSplit
 
   // Requires a metrics heartbeat to get max_file_size_for_compaction flag to master.
   auto ts_desc = ASSERT_RESULT(source_tablet_info->GetLeader());
-  EXPECT_OK(WaitFor([&]() -> Result<bool> {
+  EXPECT_OK(WaitFor([&ts_desc]() -> Result<bool> {
       return ts_desc->uptime_seconds() > 0 && ts_desc->get_disable_tablet_split_if_default_ttl();
-    }, 10s * kTimeMultiplier, "Wait for TServer to report metrics."));
+  }, 10s * kTimeMultiplier, "Wait for TServer to report metrics."));
 
   // Candidate tablet should still be valid since default TTL not enabled.
-  ASSERT_OK(split_manager->ValidateSplitCandidateTablet(*source_tablet_info,
-                                                        nullptr /* parent */));
+  ASSERT_OK(split_manager->ValidateSplitCandidateTablet(
+      *source_tablet_info, /* parent = */ nullptr));
 
   // Alter the table with a table TTL, at which point tablet should no longer be valid
   // for tablet splitting.
   // Amount of time for the TTL is irrelevant, so long as it's larger than 0.
-  ASSERT_OK(AlterTableSetDefaultTTL(1));
-  ASSERT_NOK(split_manager->ValidateSplitCandidateTablet(*source_tablet_info,
-                                                        nullptr /* parent */));
+  ASSERT_OK(AlterTableSetDefaultTTL(/* ttl_sec = */ 1));
+  ASSERT_NOK(split_manager->ValidateSplitCandidateTablet(
+      *source_tablet_info, /* parent = */ nullptr));
 
   // Tablet should still be a valid candidate if ignore_ttl_validation is set to true
   // (e.g. for manual tablet splitting).
   ASSERT_OK(split_manager->ValidateSplitCandidateTablet(
       *source_tablet_info,
-      nullptr, /* parent */
+      /* parent = */ nullptr,
       master::IgnoreTtlValidation::kTrue,
       master::IgnoreDisabledList::kTrue));
+
+  // A tablet should be a valid candidate if default TTL is set to 0 explicitly,
+  // which is the only case to unset previously set TTL.
+  ASSERT_OK(AlterTableSetDefaultTTL(/* ttl_sec = */ 0));
+  ASSERT_OK(split_manager->ValidateSplitCandidateTablet(
+      *source_tablet_info, /* parent = */ nullptr));
 }
 
 TEST_F(TabletSplitSingleServerITest, AutoSplitNotValidOnceCheckedForTtl) {
@@ -3529,7 +3544,7 @@ class TabletSplitSystemRecordsITest :
     const auto is_expected_key_message =
         strnstr(key_message.cdata(), "got internal record", key_message.size()) != nullptr;
     SCHECK_EQ(is_expected_key_message, true, IllegalState,
-              Format("Unexepected error message: $0", middle_key.status().ToString()));
+              Format("Unexpected error message: $0", middle_key.status().ToString()));
     LOG(INFO) << "System record middle key result: " << middle_key.status().ToString();
 
     // Test that tablet GetSplitKey RPC returns the same message.
@@ -3550,7 +3565,7 @@ TEST_P(TabletSplitSystemRecordsITest, GetSplitKey) {
   // by 2 * kNumRows user records (very small number). This can be achieved by the following steps:
   //   1) pause ApplyIntentsTasks to keep ApplyTransactionState records
   //   2) run kNumTxns transaction with the same keys
-  //   3) run manual compaction to collapse all user records to the latest transaciton content
+  //   3) run manual compaction to collapse all user records to the latest transaction content
   //   4) at this step there are kNumTxns internal records followed by 2 * kNumRows user records
 
   // Disable the fix to split only across user keys.
@@ -3561,7 +3576,7 @@ TEST_P(TabletSplitSystemRecordsITest, GetSplitKey) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec)
       = kHistoryRetentionSec;
 
-  // This flag shoudn't be less than 2, setting it to 1 may cause RemoveIntentsTask to become stuck.
+  // The flag shouldn't be less than 2, setting it to 1 may cause RemoveIntentsTask to become stuck.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_txn_max_apply_batch_records) = 2;
 
   // Force intents to not apply in ApplyIntentsTask.
@@ -3772,7 +3787,7 @@ class TabletSplitSingleBlockITest :
         5s * kTimeMultiplier, "Waiting for successful write", MonoDelta::FromSeconds(1)));
     RETURN_NOT_OK(rows_written_callback(tablet.get()));
 
-    // Send RPC for tablet splitting and validate resposnse.
+    // Send RPC for tablet splitting and validate response.
     LOG(INFO) << "Sending sync SPLIT Rpc";
     auto resp = VERIFY_RESULT(SendMasterRpcSyncSplitTablet(source_tablet_id));
     SCHECK(!resp.has_error(), IllegalState, resp.error().DebugString());
@@ -3988,7 +4003,7 @@ TEST_F_EX(TabletSplitITest, SplitWithParentTabletMove, TabletSplitExternalMiniCl
   // applied. And we can't block apply code path because it will hold ReplicaState mutex and block
   // Raft functioning for parent tablet, so we won't be able to reproduce the issue because RBS
   // won't be triggered. So instead we pause RaftConsensus::UpdateMajorityReplicated on parent
-  // tablet leader that will pause both advancing committed op id and appling operations.
+  // tablet leader that will pause both advancing committed op id and applying operations.
   const auto parent_leader_idx = CHECK_RESULT(cluster_->GetTabletLeaderIndex(parent_tablet_id));
   auto* const parent_leader_tserver = cluster_->tablet_server(parent_leader_idx);
   const auto parent_leader_tserver_id = parent_leader_tserver->uuid();
@@ -4011,7 +4026,7 @@ TEST_F_EX(TabletSplitITest, SplitWithParentTabletMove, TabletSplitExternalMiniCl
   ASSERT_OK(cluster_->SetFlag(added_tserver, "TEST_pause_rbs_before_download_wal", "true"));
 
   LOG(INFO) << "Adding server " << added_tserver_id << " for parent tablet " << parent_tablet_id;
-  // AddServer RPC only returns when CONFIG_CHANGE_OP is majority replicaed, so we do it async to
+  // AddServer RPC only returns when CONFIG_CHANGE_OP is majority replicated, so we do it async to
   // avoid deadlock inside test.
   TestThreadHolder thread_holder;
   thread_holder.AddThreadFunctor([&, added_tserver_details = ts_map[added_tserver_id].get()]() {
