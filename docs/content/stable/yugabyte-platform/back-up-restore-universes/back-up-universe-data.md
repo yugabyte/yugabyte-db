@@ -89,7 +89,7 @@ You can manage the speed of backup and restore operations and their impact on da
 
 - Parallel uploads per node. Number of parallel uploads/downloads of tablets per node. For faster operation, enter higher values; for lower impact on database performance, enter lower values.
 - Buffers per upload per node. Number of buffers used to read from disk and upload/download for a single tablet. For faster operation, enter higher values; for lower impact on database performance, enter lower values.
-- {{<tags/feature/ea idea="1372">}}Disk read/write bytes per second. You can rate-limit disk IOPS during backup upload and restore download so that backup and restore operations do not consume too much IOPS. The minimum value is 1048576 (1 MB/s). To allow backup and restore to use as much IOPS as they can (that is, no disk-based throttling), enter a value of 0 (the default).
+- {{<tags/feature/ea idea="1372">}}Disk read/write bytes per second (in MB/s). You can rate-limit disk throughput during backup upload and restore download to reduce impact on cluster operations. The minimum value is 1 MB/s. To allow backup and restore to use as much throughput as they can (that is, no disk-based throttling), enter a value of 0 (the default).
 
 Choose values that balance backup and restore speed with impact on production. Too high a value can consume disk IO that the database needs; too low a value can make backups and restores run longer. This is especially important when using incremental backups.
 
