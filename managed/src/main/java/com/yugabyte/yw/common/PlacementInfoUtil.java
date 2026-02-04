@@ -128,8 +128,8 @@ public class PlacementInfoUtil {
   public static void validatePriority(PlacementInfo placementInfo) {
     SortedSet<Integer> set = new TreeSet<>();
     placementInfo.azStream().forEach(az -> set.add(az.leaderPreference));
-    if (set.first() < 1) {
-      throw new PlatformServiceException(BAD_REQUEST, "Expect priorities start from 1");
+    if (set.first() < 0) {
+      throw new PlatformServiceException(BAD_REQUEST, "Expect priorities start from 0");
     }
     Integer prev = null;
     for (Integer val : set) {

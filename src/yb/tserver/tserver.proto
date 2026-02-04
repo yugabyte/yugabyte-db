@@ -457,6 +457,8 @@ message AcquireObjectLockRequestPB {
   optional bytes status_tablet = 9;
   // The expected lease epoch of the recipient tserver.
   optional uint64 recipient_lease_epoch = 10;
+  // Used for ignoring conflicts between transactional object locks and host session object locks.
+  optional bytes background_transaction_id = 11;
 }
 
 message AcquireObjectLockResponsePB {
@@ -527,6 +529,7 @@ message ReleaseObjectLockRequestPB {
   // The expected lease epoch of the recipient tserver.
   optional uint64 recipient_lease_epoch = 12;
 
+  repeated docdb.ObjectLockPB object_locks = 13;
   // If any new field is added here. Do not forget to update
   // ReleaseRequestToPersist accordingly.
 }

@@ -3842,6 +3842,14 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_enable_pg_stat_statements_docdb_metrics,
+	},
+
+	{
+		{"yb_enable_global_views", PGC_SUSET, CUSTOM_OPTIONS,
+			gettext_noop("Enables querying of global views."),
+			NULL
+		},
+		&yb_enable_global_views,
 		false,
 		NULL, NULL, NULL
 	},

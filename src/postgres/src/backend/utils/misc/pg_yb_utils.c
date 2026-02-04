@@ -2306,6 +2306,8 @@ bool		yb_enable_pg_stat_statements_rpc_stats = true;
 
 bool		yb_enable_pg_stat_statements_docdb_metrics = false;
 
+bool		yb_enable_global_views = false;
+
 const char *
 YBDatumToString(Datum datum, Oid typid)
 {
@@ -5164,6 +5166,26 @@ yb_database_clones(PG_FUNCTION_ARGS)
 	MemoryContextSwitchTo(oldcontext);
 
 	return (Datum) 0;
+}
+
+/* This function caches the local tserver's uuid locally */
+const unsigned char *
+YbGetLocalTServerUuid()
+{
+	static const unsigned char *local_tserver_uuid = NULL;
+
+	if (!local_tserver_uuid && IsYugaByteEnabled())
+		local_tserver_uuid = YBCGetLocalTserverUuid();
+
+	return local_tserver_uuid;
+}
+
+Datum
+yb_get_local_tserver_uuid(PG_FUNCTION_ARGS)
+{
+	pg_uuid_t *uuid = (pg_uuid_t *) palloc(UUID_LEN);
+	memcpy(uuid->data, YbGetLocalTServerUuid(), UUID_LEN);
+	return UUIDPGetDatum(uuid);
 }
 
 /*

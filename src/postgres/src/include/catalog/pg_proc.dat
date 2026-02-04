@@ -12239,4 +12239,7 @@
   proargmodes => '{o,o,o,o,o,o,o,o,o}',
   prosrc => 'yb_get_tablet_metadata'},
 
+{ oid => '8101', descr => 'Get the UUID of the local tserver',
+  proname => 'yb_get_local_tserver_uuid', provolatile => 'i',
+  prorettype => 'uuid', proargtypes => '', prosrc => 'yb_get_local_tserver_uuid'},
 ]

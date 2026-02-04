@@ -99,10 +99,12 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -937,6 +939,29 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
       UniverseDefinitionTaskParams.Cluster primaryCluster = universeDetails.getPrimaryCluster();
       ReplicationInfoPB replicationInfo = config.getReplicationInfo();
       PlacementInfoPB liveReplicas = replicationInfo.getLiveReplicas();
+      if (primaryCluster.getOverallPlacement().hasRankOrdering()) {
+        Map<Integer, List<String>> prefs = new LinkedHashMap<>();
+        primaryCluster
+            .getOverallPlacement()
+            .azStream()
+            .filter(az -> az.leaderPreference > 0)
+            .sorted(Comparator.comparing(az -> az.leaderPreference))
+            .forEach(
+                az -> {
+                  List<String> lst = prefs.getOrDefault(az.leaderPreference, new ArrayList<>());
+                  lst.add(AvailabilityZone.getOrBadRequest(az.uuid).getCode());
+                  prefs.put(az.leaderPreference, lst);
+                });
+        Iterator<List<String>> it = prefs.values().iterator();
+        for (CommonNet.CloudInfoListPB cloudInfoListPB :
+            replicationInfo.getMultiAffinitizedLeadersList()) {
+          List<String> actual =
+              cloudInfoListPB.getZonesList().stream()
+                  .map(z -> z.getPlacementZone())
+                  .collect(Collectors.toList());
+          assertEquals(actual, it.next());
+        }
+      }
       verifyAffinitized(primaryCluster, replicationInfo);
       verifyCluster(universe, primaryCluster, liveReplicas);
       verifyMasterAddresses(universe);

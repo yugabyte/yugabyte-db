@@ -232,6 +232,7 @@ restore_postgres_backup() {
   pgrestore_path="$7"
   skip_dump_check="$8"
   skip_dump_file_delete="$9"
+  single_transaction="${10}"
   pg_restore="pg_restore"
   psql="psql"
 
@@ -260,18 +261,17 @@ restore_postgres_backup() {
       drop_cmd="${psql} -h ${db_host} -p ${db_port} -U ${db_username} -d ${PLATFORM_DB_NAME} \
         -c \"DROP SCHEMA IF EXISTS public CASCADE;CREATE SCHEMA public;\""
       docker_aware_cmd "postgres" "${drop_cmd}"
-
+      restore_cmd=("${pg_restore} -h ${db_host} -p ${db_port} -U ${db_username} -c --if-exists \
+          -d ${PLATFORM_DB_NAME}")
       if [[ "${verbose}" = true ]]; then
-        restore_cmd="${pg_restore} -h ${db_host} -p ${db_port} -U ${db_username} -c --if-exists -v \
-          -d ${PLATFORM_DB_NAME}"
-      else
-        restore_cmd="${pg_restore} -h ${db_host} -p ${db_port} -U ${db_username} -c --if-exists \
-          -d ${PLATFORM_DB_NAME}"
+        restore_cmd+=( -v )
       fi
-
+      if [[ "$single_transaction" = true ]]; then
+        restore_cmd+=( --single_transaction )
+      fi
       # Run pg_restore.
       echo "Restoring Yugabyte Platform DB backup ${backup_path}..."
-      docker_aware_cmd "postgres" "${restore_cmd}" < "${backup_path}"
+      docker_aware_cmd "postgres" "${restore_cmd[@]}" < "${backup_path}"
       echo "Done"
     fi
   else
@@ -290,7 +290,6 @@ create_ybdb_backup() {
   yba_installer="$6"
   ysql_dump_path="$7"
   ysql_dump="ysql_dump"
-
 
   # ybdb backup is only supported in yba-installer.
   if [[ "$yba_installer" != true ]]; then
@@ -552,6 +551,7 @@ restore_backup() {
   skip_dump_check="${18}"
   prometheus_protocol="${19}"
   skip_dump_file_delete="${20}"
+  single_transaction="${21}"
   prometheus_dir_regex="\.\/${PROMETHEUS_SNAPSHOT_DIR}\/[[:digit:]]{8}T[[:digit:]]{6}Z-[[:alnum:]]{16}\/$"
 
   # Perform K8s restore.
@@ -574,17 +574,16 @@ restore_backup() {
       verbose_flag="-v"
     fi
     backup_script="/opt/yugabyte/devops/bin/yb_platform_backup.sh"
-
     # Skip old files as script was called outside of container so may lack permissions to overwrite
-    if [ "$disable_version_check" != true ]; then
-      kubectl -n "${k8s_namespace}" exec -it "${k8s_pod}" -c yugaware -- /bin/bash -c \
-        "${backup_script} restore ${verbose_flag} --input ${K8S_BACKUP_DIR}/${backup_file} \
-        --skip_old_files"
-    else
-      kubectl -n "${k8s_namespace}" exec -it "${k8s_pod}" -c yugaware -- /bin/bash -c \
-        "${backup_script} restore ${verbose_flag} --input ${K8S_BACKUP_DIR}/${backup_file} \
-        --disable_version_check --skip_old_files"
+    restore_args=(${verbose_flag} --input ${K8S_BACKUP_DIR}/${backup_file} --skip_old_files)
+    if [[ "$disable_version_check" = true ]]; then
+      restore_args+=( --disable_version_check )
     fi
+    if [[ "$single_transaction" = true ]]; then
+      restore_args+=( --single_transaction )
+    fi
+    kubectl -n "${k8s_namespace}" exec -it "${k8s_pod}" -c yugaware -- /bin/bash -c \
+        "${backup_script} restore ${restore_args[@]}"
 
     # Delete backup archive from container.
     kubectl -n "${k8s_namespace}" exec -it "${k8s_pod}" -c yugaware -- \
@@ -718,7 +717,7 @@ restore_backup() {
     # do we need set +e?
     restore_postgres_backup "${db_backup_path}" "${db_username}" "${db_host}" "${db_port}" \
       "${verbose}" "${yba_installer}" "${pgrestore_path}" "${skip_dump_check}" \
-      "${skip_dump_file_delete}"
+      "${skip_dump_file_delete}" "${single_transaction}"
   fi
 
   # Restore prometheus swamper targets on migration always
@@ -1095,6 +1094,7 @@ case $command in
     destination=/opt/yugabyte
     input_path=""
     skip_dump_file_delete=false
+    single_transaction=false
 
     if [[ $# -eq 0 ]]; then
       print_restore_usage
@@ -1224,6 +1224,10 @@ case $command in
           skip_dump_file_delete=true
           shift
           ;;
+        --single_transaction)
+          single_transaction=true
+          shift
+          ;;
         -?|--help)
           print_restore_usage
           exit 0
@@ -1253,7 +1257,8 @@ case $command in
     restore_backup "$input_path" "$destination" "$db_host" "$db_port" "$db_username" "$verbose" \
     "$prometheus_host" "$prometheus_port" "$data_dir" "$k8s_namespace" "$k8s_pod" \
     "$disable_version_check" "$pgrestore_path" "$ybdb" "$ysqlsh_path" "$ybai_data_dir" \
-    "$skip_old_files" "$skip_dump_check" "$prometheus_protocol" "$skip_dump_file_delete"
+    "$skip_old_files" "$skip_dump_check" "$prometheus_protocol" "$skip_dump_file_delete" \
+    "$single_transaction"
     exit 0
     ;;
   *)
