@@ -99,7 +99,8 @@ class TSLocalLockManagerTest : public TabletServerTestBase {
   Status LockRelations(
       const ObjectLockOwner& owner, uint32_t database_id, const std::vector<uint32_t>& relation_ids,
       const std::vector<TableLockType>& lock_types,
-      CoarseTimePoint deadline = CoarseTimePoint::max(), LockStateMap* state_map = nullptr) {
+      CoarseTimePoint deadline = CoarseTimePoint::max(), LockStateMap* state_map = nullptr,
+      TransactionId bg_txn = TransactionId::Nil()) {
     SCHECK_EQ(relation_ids.size(), lock_types.size(), IllegalState, "Expected equal sizes");
     tserver::AcquireObjectLockRequestPB req;
     owner.PopulateLockRequest(&req);
@@ -113,6 +114,9 @@ class TSLocalLockManagerTest : public TabletServerTestBase {
       lock->set_lock_type(lock_types[i]);
     }
     req.set_propagated_hybrid_time(MonoTime::Now().ToUint64());
+    if (!bg_txn.IsNil()) {
+      req.set_background_transaction_id(bg_txn.data(), bg_txn.size());
+    }
     Synchronizer synchronizer;
     lm_->AcquireObjectLocksAsync(req, deadline, synchronizer.AsStdStatusCallback());
     RETURN_NOT_OK(synchronizer.Wait());
@@ -135,8 +139,9 @@ class TSLocalLockManagerTest : public TabletServerTestBase {
   Status LockRelation(
       const ObjectLockOwner& owner, uint32_t database_id, uint32_t relation_id,
       TableLockType lock_type, CoarseTimePoint deadline = CoarseTimePoint::max(),
-      LockStateMap* state_map = nullptr) {
-    return LockRelations(owner, database_id, {relation_id}, {lock_type}, deadline, state_map);
+      LockStateMap* state_map = nullptr, TransactionId bg_txn = TransactionId::Nil()) {
+    return LockRelations(
+        owner, database_id, {relation_id}, {lock_type}, deadline, state_map, bg_txn);
   }
 
   Status ReleaseLocksForSubtxn(
@@ -790,6 +795,38 @@ TEST_F(TSLocalLockManagerTest, RedundadntLockBecomesNoOp) {
       ASSERT_OK(LockRelation(kTxn1, kDatabase1, kObject1, lock_type_2, deadline));
       ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(5 * kTimeMultiplier)));
       ASSERT_OK(ReleaseLocksForOwner(kTxn1));
+    }
+  }
+}
+
+TEST_F(TSLocalLockManagerTest, TestConflictsWithBgTxnAreIgnored) {
+  google::SetVLOGLevel("object_lock_manager*", 4);
+  for (auto l1 = TableLockType_MIN + 1; l1 <= TableLockType_MAX; l1++) {
+    auto lock_type_1 = TableLockType(l1);
+    auto entries1 = docdb::GetEntriesForLockType(lock_type_1);
+    for (auto l2 = TableLockType_MIN + 1; l2 <= TableLockType_MAX; l2++) {
+      auto lock_type_2 = TableLockType(l2);
+      auto entries2 = docdb::GetEntriesForLockType(lock_type_2);
+      const auto is_conflicting = ASSERT_RESULT(
+          DocDBTableLocksConflictMatrixTest::ObjectLocksConflict(entries1, entries2));
+      if (!is_conflicting) {
+        continue;
+      }
+      ASSERT_OK(LockRelation(kTxn1, kDatabase1, kObject1, lock_type_1));
+      ASSERT_OK(LockRelation(
+          kTxn2, kDatabase1, kObject1, lock_type_2, CoarseMonoClock::Now() + 1s * kTimeMultiplier,
+          nullptr, kTxn1.txn_id));
+      ASSERT_OK(LockRelation(
+          kTxn2, kDatabase1, kObject1, lock_type_1, CoarseMonoClock::Now() + 1s * kTimeMultiplier,
+          nullptr, kTxn1.txn_id));
+      ASSERT_OK(LockRelation(
+          kTxn1, kDatabase1, kObject1, lock_type_2, CoarseMonoClock::Now() + 1s * kTimeMultiplier,
+          nullptr, kTxn2.txn_id));
+
+      ASSERT_OK(ReleaseLocksForOwner(kTxn1));
+      ASSERT_OK(ReleaseLocksForOwner(kTxn2));
+      ASSERT_EQ(GrantedLocksSize(), 0);
+      ASSERT_EQ(WaitingLocksSize(), 0);
     }
   }
 }

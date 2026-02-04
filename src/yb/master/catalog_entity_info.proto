@@ -442,6 +442,7 @@ message SysObjectLockEntryPB {
     // subtxn -> object locks ...
     map<uint32, ObjectLocksListPB> subtxns = 1;
     optional bytes status_tablet = 2;
+    optional bytes background_transaction_id = 3;
   }
   message TransactionSubtxnMapPB {
     // txn_id -> subtxn ...
