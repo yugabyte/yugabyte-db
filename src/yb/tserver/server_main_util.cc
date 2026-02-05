@@ -14,6 +14,7 @@
 #include "yb/tserver/server_main_util.h"
 
 #include <iostream>
+#include <string>
 
 #if YB_ABSL_ENABLED
 #include "absl/debugging/symbolize.h"
@@ -30,6 +31,7 @@
 
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flags.h"
+#include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
@@ -159,6 +161,10 @@ Status MasterTServerParseFlagsAndInit(
   RETURN_NOT_OK(log::ModifyDurableWriteFlagIfNotODirect());
 
   RETURN_NOT_OK(InitYB(server_type, (*argv)[0]));
+
+  std::cerr << "Started process id: " << getpid()
+    << " logfile(s): " << GetLogFilePathnamePrefix() << "*"
+    << GetTimePidString(Env::Default()->NowMicros(), getpid()) << std::endl;
 
   RETURN_NOT_OK(GetPrivateIpMode());
 
