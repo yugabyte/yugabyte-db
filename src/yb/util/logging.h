@@ -264,6 +264,13 @@ void UnregisterLoggingCallback();
 // file corresponding to this severity
 void GetFullLogFilename(google::LogSeverity severity, std::string* filename);
 
+// Retuns the log file path without the severity suffix
+std::string GetLogFilePathnamePrefix();
+
+// Returns the time and pid string for the given time (in microseconds) and pid
+// in the format <date>.<time>.<pid> as used in the log file names.
+std::string GetTimePidString(uint64_t now_micros, int pid);
+
 // Shuts down the google logging library. Call before exit to ensure that log files are
 // flushed.
 void ShutdownLoggingSafe();
