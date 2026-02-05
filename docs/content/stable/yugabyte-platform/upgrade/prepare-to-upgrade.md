@@ -25,7 +25,7 @@ If you are running YugabyteDB Anywhere on a [deprecated OS](../../../reference/c
 
 ## Python for YugabyteDB Anywhere
 
-YugabyteDB Anywhere v2025.1 and later requires Python v3.10-3.11. If you are running YugabyteDB Anywhere on a system with Python earlier than 3.10, you will need to update Python on your system before you can upgrade YugabyteDB Anywhere to v25.1 or later. (Note that this requirement applies only to the node running YugabyteDB Anywhere.)
+YugabyteDB Anywhere v2025.1 and later requires Python v3.10-3.11. If you are running YugabyteDB Anywhere on a system with Python earlier than 3.10, you will need to update Python on your system before you can upgrade YugabyteDB Anywhere to v2025.1 or later. (Note that this requirement applies only to the node running YugabyteDB Anywhere.)
 
 In addition, both python and python3 must symbolically link to Python 3. Refer to [Prerequisites to deploy YBA on a VM](../../prepare/server-yba/).
 
@@ -66,7 +66,7 @@ What action you take will depend on the type of provider used to create a univer
 
 ## Node agent
 
-YugabyteDB Anywhere v2025.2 and later require universes have node agent running on their nodes. Before you can upgrade to v2025.2 or later, all your universes must be using node agent.
+YugabyteDB Anywhere v2025.2 and later require universes have node agent running on their nodes. Before you will be able to upgrade to v2025.2 or later, all your universes must be using node agent. (Note that this does not apply to universes deployed on Kubernetes.)
 
 If any universe nodes require an update to node agent, YugabyteDB Anywhere displays a banner on the **Dashboard** to that effect.
 

@@ -37,9 +37,9 @@ Review the requirements for your upgrade:
 
 - If you are running YugabyteDB Anywhere on a [deprecated OS](../../../reference/configuration/operating-systems/), you need to update your OS before you can upgrade YugabyteDB Anywhere to the next major release.
 
-- YugabyteDB Anywhere v25.1 and later requires Python v3.10-3.11. If you are running YugabyteDB Anywhere on a system with Python earlier than 3.10, you will need to update Python on your system before you can upgrade YugabyteDB Anywhere to v25.1 or later.
+- YugabyteDB Anywhere v2025.1 and later requires Python v3.10-3.11. If you are running YugabyteDB Anywhere on a system with Python earlier than 3.10, you will need to update Python on your system before you can upgrade YugabyteDB Anywhere to v2025.1 or later.
 
-- YugabyteDB Anywhere v2025.2 and later require all universes have node agent running on their nodes.
+- YugabyteDB Anywhere v2025.2 and later require all non-Kubernetes universes have node agent running on their nodes.
 
 - cron-based universes are no longer supported in YugabyteDB Anywhere v2025.2 and later.
 
@@ -63,7 +63,7 @@ When ready to upgrade, run the `upgrade` command from the untarred directory of 
 sudo ./yba-ctl upgrade
 ```
 
-YBA Installer runs a pre-check to verify your universes are all running node agent, and none are cron-based. If the pre-check fails, fix the issues before attempting again. Refer to [Prepare to upgrade](../prepare-to-upgrade/) for instructions.
+YBA Installer runs a pre-check to verify your universes are all running node agent, and none are cron-based. If the pre-check fails, fix the issues before attempting again. Refer to [Prepare to upgrade](../prepare-to-upgrade/) for instructions. (To run only the upgrade precheck, use the `sudo ./yba-ctl preflight --upgrade` command.)
 
 If the pre-check succeeds, the upgrade takes a few minutes to complete.
 
