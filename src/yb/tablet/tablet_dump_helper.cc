@@ -14,6 +14,7 @@
 #include "yb/tablet/tablet_dump_helper.h"
 
 #include "yb/client/client.h"
+#include "yb/common/colocated_util.h"
 #include "yb/docdb/docdb_util.h"
 #include "yb/dockv/pg_row.h"
 #include "yb/dockv/reader_projection.h"
@@ -145,6 +146,9 @@ Status DumpTabletData(
   }
 
   for (const auto& table_id : table_ids) {
+    if (IsColocationParentTableId(table_id)) {
+      continue;
+    }
     auto table_info = VERIFY_RESULT(tablet_metadata->GetTableInfo(table_id));
 
     TableInfoPB table_info_pb;

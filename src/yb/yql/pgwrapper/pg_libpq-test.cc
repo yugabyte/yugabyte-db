@@ -4790,31 +4790,46 @@ TEST_F(PgLibPqTest, DumpTabletData) {
   }
 }
 
-// Test yb-admin get_table_hash command for tables with different number of tablets, but same data
-// returns the same XOR hash.
+// Test yb-admin get_table_hash command for colocated, non-colocated tables with different number of
+// tablets, but same data returns the same XOR hash.
 TEST_F(PgLibPqTest, TestGetTableXorHash) {
   ASSERT_OK(EnsureClientCreated());
 
-  const auto namespace_name = "yugabyte";
   auto conn = ASSERT_RESULT(Connect());
+  const auto namespace_name = "colocated_db";
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocation = true", namespace_name));
+  conn = ASSERT_RESULT(ConnectToDB(namespace_name));
 
+  // Non-colocated table with 1 tablet.
   const auto tbl1 = "tbl1";
   ASSERT_OK(conn.ExecuteFormat(
-      "CREATE TABLE $0 (id INT PRIMARY KEY, name TEXT) SPLIT INTO 1 TABLETS", tbl1));
+      "CREATE TABLE $0 (id INT PRIMARY KEY, name TEXT) WITH (colocation = false) SPLIT INTO 1 "
+      "TABLETS",
+      tbl1));
   ASSERT_OK(conn.ExecuteFormat(
       "INSERT INTO $0 (id, name) SELECT i, 'test' || i FROM generate_series(1, 10) i", tbl1));
+  const auto tbl1_id = ASSERT_RESULT(GetTableIdByTableName(client_.get(), namespace_name, tbl1));
 
+  // Non-colocated table with 5 tablets.
   const auto tbl2 = "tbl2";
   ASSERT_OK(conn.ExecuteFormat(
-      "CREATE TABLE $0 (id INT PRIMARY KEY, name TEXT) SPLIT INTO 5 TABLETS", tbl2));
+      "CREATE TABLE $0 (id INT PRIMARY KEY, name TEXT) WITH (colocation = false) SPLIT INTO 5 "
+      "TABLETS",
+      tbl2));
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 SELECT * FROM $1", tbl2, tbl1));
+  const auto tbl2_id = ASSERT_RESULT(GetTableIdByTableName(client_.get(), namespace_name, tbl2));
 
-  std::string tbl1_id =
-      ASSERT_RESULT(GetTableIdByTableName(client_.get(), namespace_name, tbl1));
-  std::string tbl2_id =
-      ASSERT_RESULT(GetTableIdByTableName(client_.get(), namespace_name, tbl2));
+  // Colocated table with 1 tablet.
+  const auto colocated_tbl = "colocated_tbl";
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (id INT PRIMARY KEY, name TEXT)", colocated_tbl));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 SELECT * FROM $1", colocated_tbl, tbl1));
+  const auto colocated_tbl_id =
+      ASSERT_RESULT(GetTableIdByTableName(client_.get(), namespace_name, colocated_tbl));
+
   auto tbl1_output = ASSERT_RESULT(RunYbAdminCommand(Format("get_table_hash $0", tbl1_id)));
   auto tbl2_output = ASSERT_RESULT(RunYbAdminCommand(Format("get_table_hash $0", tbl2_id)));
+  auto colocated_tbl_output =
+      ASSERT_RESULT(RunYbAdminCommand(Format("get_table_hash $0", colocated_tbl_id)));
 
   auto extract_from_output = [&](const std::string& output) -> std::pair<uint64_t, uint64_t> {
     LOG(INFO) << "Command output: " << output;
@@ -4832,10 +4847,17 @@ TEST_F(PgLibPqTest, TestGetTableXorHash) {
   };
   auto [tbl1_row_count, tbl1_xor_hash] = extract_from_output(tbl1_output);
   auto [tbl2_row_count, tbl2_xor_hash] = extract_from_output(tbl2_output);
+  auto [colocated_tbl_row_count, colocated_tbl_xor_hash] =
+      extract_from_output(colocated_tbl_output);
+
   ASSERT_EQ(tbl1_row_count, 10);
   ASSERT_NE(tbl1_xor_hash, 0);
+
   ASSERT_EQ(tbl2_row_count, 10);
   ASSERT_EQ(tbl1_xor_hash, tbl2_xor_hash);
+
+  ASSERT_EQ(colocated_tbl_row_count, 10);
+  ASSERT_EQ(colocated_tbl_xor_hash, tbl1_xor_hash);
 }
 
 } // namespace pgwrapper
