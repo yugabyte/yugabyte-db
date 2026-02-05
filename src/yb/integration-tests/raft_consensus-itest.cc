@@ -987,7 +987,7 @@ TEST_F(RaftConsensusITest, TestAddRemoveNonVoter) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 3;
   vector<string> ts_flags = {
     "--enable_leader_failure_detection=false"s,
-    "--TEST_inject_latency_before_change_role_secs=1"s,
+    "--TEST_delay_end_rbs_session_ms=1000"s,
     "--follower_unavailable_considered_failed_sec=5"s,
   };
   vector<string> master_flags = {
@@ -1159,7 +1159,7 @@ void RaftConsensusITest::TestAddRemoveServer(PeerMemberType member_type) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 3;
   vector<string> ts_flags = {
     "--enable_leader_failure_detection=false"s,
-    "--TEST_inject_latency_before_change_role_secs=1"s,
+    "--TEST_delay_end_rbs_session_ms=1000"s,
   };
   vector<string> master_flags = {
     "--catalog_manager_wait_for_new_tablets_to_elect_leader=false"s,
@@ -1281,7 +1281,7 @@ void RaftConsensusITest::TestRemoveTserverSucceedsWhenServerInTransition(
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 3;
   vector<string> ts_flags = {
     "--enable_leader_failure_detection=false"s,
-    "--TEST_inject_latency_before_change_role_secs=10"s,
+    "--TEST_delay_end_rbs_session_ms=10000"s,
   };
   vector<string> master_flags = {
     "--catalog_manager_wait_for_new_tablets_to_elect_leader=false",
@@ -2465,7 +2465,7 @@ TEST_F(RaftConsensusITest, TestElectPendingVoter) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 5;
   vector<string> ts_flags = {
     "--enable_leader_failure_detection=false"s,
-    "--TEST_inject_latency_before_change_role_secs=10"s,
+    "--TEST_delay_end_rbs_session_ms=10000"s,
   };
   vector<string> master_flags = {
     "--catalog_manager_wait_for_new_tablets_to_elect_leader=false"s,
@@ -3289,11 +3289,11 @@ TEST_F(RaftConsensusITest, TestRemoveTserverSucceedsWhenObserverInTransition) {
 }
 
 TEST_F(RaftConsensusITest, TestRemovePreObserverServerSucceeds) {
-  TestRemoveTserverInTransitionSucceeds(PeerMemberType::PRE_VOTER);
+  TestRemoveTserverInTransitionSucceeds(PeerMemberType::PRE_OBSERVER);
 }
 
 TEST_F(RaftConsensusITest, TestRemovePreVoterServerSucceeds) {
-  TestRemoveTserverInTransitionSucceeds(PeerMemberType::PRE_OBSERVER);
+  TestRemoveTserverInTransitionSucceeds(PeerMemberType::PRE_VOTER);
 }
 
 // A test scenario to verify that a disruptive server doesn't start needless

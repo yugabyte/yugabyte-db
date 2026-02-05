@@ -69,6 +69,7 @@ import org.yb.client.GetAutoFlagsConfigResponse;
 import org.yb.client.GetLoadMovePercentResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.IsServerReadyResponse;
+import org.yb.client.ListMasterRaftPeersResponse;
 import org.yb.client.PromoteAutoFlagsResponse;
 import org.yb.client.RollbackAutoFlagsResponse;
 import org.yb.client.YBClient;
@@ -76,6 +77,7 @@ import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterClusterOuterClass.GetAutoFlagsConfigResponsePB;
 import org.yb.master.MasterClusterOuterClass.PromoteAutoFlagsResponsePB;
 import org.yb.master.MasterClusterOuterClass.RollbackAutoFlagsResponsePB;
+import org.yb.util.PeerInfo;
 
 @Slf4j
 public abstract class UpgradeTaskTest extends CommissionerBaseTest {
@@ -220,6 +222,12 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
       when(mockClient.waitForServer(any(HostAndPort.class), anyLong())).thenReturn(true);
       when(mockClient.getLeaderMasterHostAndPort())
           .thenReturn(HostAndPort.fromString("10.0.0.2").withDefaultPort(11));
+      ListMasterRaftPeersResponse listMastersResponse = mock(ListMasterRaftPeersResponse.class);
+      PeerInfo peerInfo = new PeerInfo();
+      peerInfo.setLastKnownPrivateIps(List.of(HostAndPort.fromParts("10.0.0.2", 11)));
+      peerInfo.setMemberType(PeerInfo.MemberType.VOTER);
+      lenient().when(listMastersResponse.getPeersList()).thenReturn(List.of(peerInfo));
+      lenient().when(mockClient.listMasterRaftPeers()).thenReturn(listMastersResponse);
       IsServerReadyResponse okReadyResp = new IsServerReadyResponse(0, "", null, 0, 0);
       when(mockClient.isServerReady(any(HostAndPort.class), anyBoolean())).thenReturn(okReadyResp);
       GetAutoFlagsConfigResponse resp =

@@ -47,6 +47,7 @@ endif
 
 # YB: Suppress warnings from the extension itself, since yb builds have stricter warning levels by default.
 PG_CFLAGS += -Wno-typedef-redefinition -Wno-unused-function -Wno-tautological-overlap-compare
+PG_CFLAGS += -Wno-tautological-unsigned-enum-zero-compare
 
 ifneq ($(SKIP_API_SCHEMA),yes)
     ifndef API_SCHEMA_NAME

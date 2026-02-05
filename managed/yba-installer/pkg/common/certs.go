@@ -106,6 +106,7 @@ func generateCert(
 	}
 	if isCA {
 		resultCert.Subject.Organization = []string{SelfSignedOrg}
+		resultCert.Subject.CommonName = viper.GetString("host")
 		resultCert.BasicConstraintsValid = true
 	} else {
 		hosts := strings.Split(host, ",")

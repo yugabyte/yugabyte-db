@@ -78,7 +78,7 @@ DECLARE_string(tmp_dir);
 
 namespace yb {
 
-int64_t GetTCMallocProperty(const char* prop) {
+uint64_t GetTCMallocProperty(const char* prop) {
 #if YB_TCMALLOC_ENABLED
   size_t value = 0;
 #if YB_GOOGLE_TCMALLOC

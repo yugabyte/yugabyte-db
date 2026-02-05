@@ -36,7 +36,7 @@ To configure ASH, you can set the following YB-TServer flags for each node of yo
 
 | Flag | Description |
 | :--- | :---------- |
-| ysql_yb_enable_ash | Enables ASH. Changing this flag requires a TServer restart. Default: true |
+| ysql_yb_enable_ash | Enables ASH. Changing this flag requires a TServer restart. Default: false |
 | ysql_yb_ash_circular_buffer_size | Size (in KiB) of circular buffer where the samples are stored. <br> Defaults:<ul><li>32768 (32 MiB) for 1-2 cores</li><li>65536 (64 MiB) for 3-4 cores</li><li>131072 (128 MiB) for 5-8 cores</li><li>262144 (256 MiB) for 9-16 cores</li><li>524288 (512 MiB) for 17-32 cores</li><li>1048576 (1024 MiB) for more than 32 cores</li></ul> Changing this flag requires a TServer restart. |
 | ysql_yb_ash_sampling_interval_ms | Sampling interval (in milliseconds). Changing this flag doesn't require a TServer restart. Default: 1000 |
 | ysql_yb_ash_sample_size | Maximum number of events captured per sampling interval. Changing this flag doesn't require a TServer restart. Default:  500 |

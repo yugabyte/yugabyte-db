@@ -156,13 +156,22 @@ std::string MonoDelta::ToPrettyString() const {
   if (!Initialized()) {
     return "<uninitialized>";
   }
+  auto AugmentTail = [](const char* suffix, std::string str) {
+    while (str.back() == '0') {
+      str.pop_back();
+    }
+    if (str.back() == '.') {
+      str.pop_back();
+    }
+    return str + suffix;
+  };
   if (nano_delta_ < MonoTime::kNanosecondsPerMillisecond) {
-    return StringPrintf(
-        "%.3fus", static_cast<double>(nano_delta_) / MonoTime::kNanosecondsPerMicrosecond);
+    return AugmentTail("us", StringPrintf(
+        "%.3f", static_cast<double>(nano_delta_) / MonoTime::kNanosecondsPerMicrosecond));
   }
   if (nano_delta_ < MonoTime::kNanosecondsPerSecond) {
-    return StringPrintf(
-        "%.3fms", static_cast<double>(nano_delta_) / MonoTime::kNanosecondsPerMillisecond);
+    return AugmentTail("ms", StringPrintf(
+        "%.3f", static_cast<double>(nano_delta_) / MonoTime::kNanosecondsPerMillisecond));
   }
   return ToString();
 }

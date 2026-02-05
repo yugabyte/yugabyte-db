@@ -43,8 +43,10 @@ class ClusterState {
     }
     std::lock_guard lock(mutex_);
     auto& node_info_ref = nodes_[node_info.uuid()];
+    auto last_seen = node_info.last_failure().empty()
+        ? now->time_point : node_info_ref.last_seen_us_since_epoch();
     node_info_ref = node_info;
-    node_info_ref.set_last_seen_us_since_epoch(now->time_point);
+    node_info_ref.set_last_seen_us_since_epoch(last_seen);
   }
 
   ConnectivityStateResponsePB ToPB() {
@@ -84,11 +86,12 @@ class PingRequest : public std::enable_shared_from_this<PingRequest> {
   void HandleResponse() {
     if (controller_.status().ok()) {
       node_info_.set_ping_us((MonoTime::Now() - start_time_).ToMicroseconds());
-      cluster_state_->UpdateNode(node_info_);
     } else {
+      node_info_.set_last_failure(controller_.status().ToString());
       LOG(WARNING) << Format(
           "Ping $0/$1 failed: $2", node_info_.uuid(), node_info_.endpoint(), controller_.status());
     }
+    cluster_state_->UpdateNode(node_info_);
   }
 
   const ClusterStatePtr cluster_state_;

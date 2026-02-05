@@ -192,9 +192,6 @@ Status RemoteBootstrapFileDownloader::DownloadFile(
     req.set_offset(offset);
     if (rate_limiter->active()) {
       auto max_size = rate_limiter->GetMaxSizeForNextTransmission();
-      if (max_size > std::numeric_limits<decltype(max_length)>::max()) {
-        max_size = std::numeric_limits<decltype(max_length)>::max();
-      }
       max_length = std::min(max_length, decltype(max_length)(max_size));
     }
     req.set_max_length(max_length);

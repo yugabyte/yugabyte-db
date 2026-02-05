@@ -115,11 +115,6 @@ DEFINE_RUNTIME_bool(abort_active_txns_during_xrepl_bootstrap, true,
     "may be produced if this is disabled.");
 TAG_FLAG(abort_active_txns_during_xrepl_bootstrap, advanced);
 
-DEFINE_test_flag(double, fault_crash_leader_before_changing_role, 0.0,
-                 "The leader will crash before changing the role (from PRE_VOTER or PRE_OBSERVER "
-                 "to VOTER or OBSERVER respectively) of the tablet server it is remote "
-                 "bootstrapping.");
-
 DECLARE_int32(ysql_transaction_abort_timeout_ms);
 
 DECLARE_bool(cdc_immediate_transaction_cleanup);
@@ -1786,59 +1781,6 @@ bool TabletPeer::CanBeDeleted() {
 
 rpc::Scheduler& TabletPeer::scheduler() const {
   return messenger_->scheduler();
-}
-
-// Called from within RemoteBootstrapSession and RemoteBootstrapServiceImpl.
-Status TabletPeer::ChangeRole(const std::string& requestor_uuid) {
-  MAYBE_FAULT(FLAGS_TEST_fault_crash_leader_before_changing_role);
-  auto consensus = VERIFY_RESULT_PREPEND(GetConsensus(), "Unable to change role for tablet peer");
-
-  // If peer being bootstrapped is already a VOTER, don't send the ChangeConfig request. This could
-  // happen when a tserver that is already a VOTER in the configuration tombstones its tablet, and
-  // the leader starts bootstrapping it.
-  const auto config = consensus->CommittedConfig();
-  for (const RaftPeerPB& peer_pb : config.peers()) {
-    if (peer_pb.permanent_uuid() != requestor_uuid) {
-      continue;
-    }
-
-    switch (peer_pb.member_type()) {
-      case PeerMemberType::OBSERVER: [[fallthrough]];
-      case PeerMemberType::VOTER:
-        LOG(WARNING) << "Peer " << peer_pb.permanent_uuid() << " is a "
-                     << PeerMemberType_Name(peer_pb.member_type())
-                     << " Not changing its role after remote bootstrap";
-
-        // Even though this is an error, we return Status::OK() so the remote server doesn't
-        // tombstone its tablet.
-        return Status::OK();
-
-      case PeerMemberType::PRE_OBSERVER: [[fallthrough]];
-      case PeerMemberType::PRE_VOTER: {
-        consensus::ChangeConfigRequestPB req;
-        consensus::ChangeConfigResponsePB resp;
-
-        req.set_tablet_id(tablet_id());
-        req.set_type(consensus::CHANGE_ROLE);
-        RaftPeerPB* peer = req.mutable_server();
-        peer->set_permanent_uuid(requestor_uuid);
-
-        std::optional<TabletServerErrorPB::Code> error_code;
-        return consensus->ChangeConfig(req, &DoNothingStatusCB, &error_code);
-      }
-      case PeerMemberType::UNKNOWN_MEMBER_TYPE:
-        return STATUS(
-            IllegalState,
-            Substitute(
-                "Unable to change role for peer $0 in config for "
-                "tablet $1. Peer has an invalid member type $2",
-                peer_pb.permanent_uuid(), tablet_id(), PeerMemberType_Name(peer_pb.member_type())));
-    }
-    LOG(FATAL) << "Unexpected peer member type " << PeerMemberType_Name(peer_pb.member_type());
-  }
-  return STATUS(
-      IllegalState,
-      Substitute("Unable to find peer $0 in config for tablet $1", requestor_uuid, tablet_id()));
 }
 
 void TabletPeer::EnableFlushBootstrapState() {

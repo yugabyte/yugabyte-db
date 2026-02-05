@@ -703,6 +703,7 @@ message ConnectivityEntryPB {
   optional fixed64 last_seen_us_since_epoch = 4;
   optional HostPortPB endpoint = 5;
   optional uint64 ping_us = 6;
+  optional string last_failure = 7;
 }
 
 message ConnectivityStateResponsePB {

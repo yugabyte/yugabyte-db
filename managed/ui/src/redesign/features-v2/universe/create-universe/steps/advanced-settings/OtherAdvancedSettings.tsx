@@ -9,6 +9,7 @@
 
 import { forwardRef, useContext, useImperativeHandle } from 'react';
 import { useTranslation } from 'react-i18next';
+import { yupResolver } from '@hookform/resolvers/yup';
 import { FormProvider, useForm } from 'react-hook-form';
 import { mui, YBAccordion } from '@yugabyte-ui-library/core';
 import { StyledContent, StyledHeader, StyledPanel } from '../../components/DefaultComponents';
@@ -27,6 +28,7 @@ import {
 } from '../../CreateUniverseContext';
 import { CloudType } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { OtherAdvancedProps } from './dtos';
+import { OtherAdvancedValidationSchema } from '@app/redesign/features-v2/universe/create-universe/steps/advanced-settings/ValidationSchema';
 
 const { Box } = mui;
 
@@ -43,6 +45,7 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
   });
 
   const methods = useForm<OtherAdvancedProps>({
+    resolver: yupResolver(OtherAdvancedValidationSchema(t)),
     defaultValues: {
       instanceTags: [
         {

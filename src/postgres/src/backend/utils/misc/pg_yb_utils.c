@@ -6293,7 +6293,7 @@ YBComputeNonCSortKey(Oid collation_id, const char *value, int64_t bytes)
 	}
 	else
 	{
-		Assert(bsize >= 0);
+		Assert((ptrdiff_t) bsize >= 0);
 		/*
 		 * Both strxfrm and strxfrm_l return the length of the transformed
 		 * string not including the terminating \0 byte.
@@ -6934,30 +6934,23 @@ YBCheckServerAccessIsAllowed()
 }
 
 static void
-aggregateRpcMetrics(YbcPgExecStorageMetrics **instr_metrics,
+aggregateRpcMetrics(YbcPgExecStorageMetrics *instr_metrics,
 					const YbcPgExecStorageMetrics *exec_stats_metrics)
 {
-	uint64_t	instr_version = (*instr_metrics) ? (*instr_metrics)->version
-		: 0;
-
-	if (exec_stats_metrics->version == instr_version)
+	if (exec_stats_metrics->version == 0)
 		return;
 
-	if (!(*instr_metrics))
-		*instr_metrics = (YbcPgExecStorageMetrics *) palloc0(sizeof(YbcPgExecStorageMetrics));
-
-	(*instr_metrics)->version = exec_stats_metrics->version;
+	instr_metrics->version += exec_stats_metrics->version;
 
 	for (int i = 0; i < YB_STORAGE_GAUGE_COUNT; ++i)
-		(*instr_metrics)->gauges[i] += exec_stats_metrics->gauges[i];
+		instr_metrics->gauges[i] += exec_stats_metrics->gauges[i];
 
 	for (int i = 0; i < YB_STORAGE_COUNTER_COUNT; ++i)
-		(*instr_metrics)->counters[i] += exec_stats_metrics->counters[i];
-
+		instr_metrics->counters[i] += exec_stats_metrics->counters[i];
 	for (int i = 0; i < YB_STORAGE_EVENT_COUNT; ++i)
 	{
 		const YbcPgExecEventMetric *val = &exec_stats_metrics->events[i];
-		YbcPgExecEventMetric *agg = &(*instr_metrics)->events[i];
+		YbcPgExecEventMetric *agg = &instr_metrics->events[i];
 
 		agg->sum += val->sum;
 		agg->count += val->count;

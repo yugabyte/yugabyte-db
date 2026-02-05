@@ -1715,12 +1715,6 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
 
   // Write out the last files to make the new replica visible and update the
   // TabletDataState in the superblock to TABLET_DATA_READY.
-  // Finish() will call EndRemoteSession() and wait for the leader to successfully submit a
-  // ChangeConfig request (to change this server's role from PRE_VOTER or PRE_OBSERVER to VOTER or
-  // OBSERVER respectively). If the RPC times out, we will ignore the error (since the leader could
-  // have successfully submitted the ChangeConfig request and failed to respond in time)
-  // and check the committed config until we find that this server's role has changed, or until we
-  // time out which will cause us to tombstone the tablet.
   TOMBSTONE_NOT_OK(rb_client->Finish(),
                    meta,
                    fs_manager_->uuid(),
@@ -1728,27 +1722,24 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
                    this);
 
   LOG(INFO) << kLogPrefix << "Remote bootstrap: Opening tablet";
-
-  // TODO(hector):  ENG-3173: We need to simulate a failure in OpenTablet during remote bootstrap
-  // and verify that this tablet server gets remote bootstrapped again by the leader. We also need
-  // to check what happens when this server receives raft consensus requests since at this point,
-  // this tablet server could be a voter (if the ChangeRole request in Finish succeeded and its
-  // initial role was PRE_VOTER).
   OpenTablet(meta, nullptr);
   // If OpenTablet fails, tablet_peer->error() will be set.
   RETURN_NOT_OK(ShutdownAndTombstoneTabletPeerNotOk(
       tablet_peer->error(), tablet_peer, meta, fs_manager_->uuid(),
       "Remote bootstrap: OpenTablet() failed", this));
 
+  LOG(INFO) << kLogPrefix << "Remote bootstrap for tablet ended successfully";
+
+  // Since the above call to OpenTablet succeeded, the peer's consensus would have been started.
+  // On receiving the consensus requests from this PRE_VOTER peer, the leader tries to catch the
+  // peer up by sending required ops and then promotes it to VOTER state.
   auto status = rb_client->VerifyChangeRoleSucceeded(VERIFY_RESULT(tablet_peer->GetConsensus()));
   if (!status.ok()) {
-    // If for some reason this tserver wasn't promoted (e.g. from PRE-VOTER to VOTER), the leader
-    // will find out and do the CHANGE_CONFIG.
-    LOG(WARNING) << kLogPrefix << "Remote bootstrap finished. "
-                               << "Failure calling VerifyChangeRoleSucceeded: "
-                               << status.ToString();
-  } else {
-    LOG(INFO) << kLogPrefix << "Remote bootstrap for tablet ended successfully";
+    YB_LOG_EVERY_N_SECS(WARNING, 60)
+        << "Peer not promoted from PRE_[VOTER/OBSERVER] after successful remote bootstrap, "
+        << "could be indicative of either a lagging peer which the leader is unable to bring "
+        << "back to speed as it could have GC'ed the required logs, or could be a consensus/quorum "
+        << "related issue.";
   }
 
   WARN_NOT_OK(rb_client->Remove(), "Remove remote bootstrap sessions failed");

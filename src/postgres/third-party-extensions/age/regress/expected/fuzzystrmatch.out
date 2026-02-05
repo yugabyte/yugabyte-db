@@ -1,0 +1,177 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+LOAD 'age';
+SET search_path=ag_catalog;
+SELECT create_graph('graph');
+NOTICE:  graph "graph" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+-- Should error out
+SELECT * FROM cypher('graph', $$ RETURN soundex("hello") $$) AS (n agtype);
+ERROR:  function soundex does not exist
+LINE 1: SELECT * FROM cypher('graph', $$ RETURN soundex("hello") $$)...
+                                       ^
+HINT:  If the function is from an external extension, make sure the extension is installed and the function is in the search path.
+-- Create the extension in the public schema
+CREATE EXTENSION fuzzystrmatch SCHEMA public;
+-- Should error out
+SELECT * FROM cypher('graph', $$ RETURN soundex("hello") $$) AS (n agtype);
+ERROR:  function soundex does not exist
+LINE 1: SELECT * FROM cypher('graph', $$ RETURN soundex("hello") $$)...
+                                       ^
+HINT:  If the function is from an external extension, make sure the extension is installed and the function is in the search path.
+-- Should work
+SET search_path=ag_catalog, public;
+SELECT * FROM cypher('graph', $$ CREATE (:Person {name: "Jane"}),
+                                        (:Person {name: "John"}),
+                                        (:Person {name: "Jone"}),
+                                        (:Person {name: "Jack"}),
+                                        (:Person {name: "Jax"}),
+                                        (:Person {name: "Jake"}),
+                                        (:Person {name: "Julie"}),
+                                        (:Person {name: "Julius"}),
+                                        (:Person {name: "Jill"}),
+                                        (:Person {name: "Jillie"}),
+                                        (:Person {name: "Julian"})
+$$) AS (n agtype);
+ n 
+---
+(0 rows)
+
+SELECT * FROM cypher('graph', $$ MATCH (p) return soundex(p.name) $$) AS (n agtype);
+   n    
+--------
+ "J500"
+ "J500"
+ "J500"
+ "J200"
+ "J200"
+ "J200"
+ "J400"
+ "J420"
+ "J400"
+ "J400"
+ "J450"
+(11 rows)
+
+SELECT * FROM cypher('graph', $$ MATCH (p) return levenshtein(p.name, "John") $$) AS (n agtype);
+ n 
+---
+ 3
+ 0
+ 2
+ 3
+ 3
+ 3
+ 4
+ 5
+ 3
+ 5
+ 4
+(11 rows)
+
+SELECT * FROM cypher('graph', $$ MATCH (p) return difference(p.name, "John") $$) AS (n agtype);
+ n 
+---
+ 4
+ 4
+ 4
+ 3
+ 3
+ 3
+ 3
+ 2
+ 3
+ 3
+ 2
+(11 rows)
+
+SELECT * FROM cypher('graph', $$ MATCH (p) return metaphone(p.name, 4) $$) AS (n agtype);
+   n   
+-------
+ "JN"
+ "JN"
+ "JN"
+ "JK"
+ "JKS"
+ "JK"
+ "JL"
+ "JLS"
+ "JL"
+ "JL"
+ "JLN"
+(11 rows)
+
+SELECT * FROM cypher('graph', $$ MATCH (p) return dmetaphone(p.name) $$) AS (n agtype);
+   n   
+-------
+ "JN"
+ "JN"
+ "JN"
+ "JK"
+ "JKS"
+ "JK"
+ "JL"
+ "JLS"
+ "JL"
+ "JL"
+ "JLN"
+(11 rows)
+
+-- Difference is basically similarity using soundex, https://www.postgresql.org/docs/current/fuzzystrmatch.html
+SELECT * FROM cypher('graph', $$ MATCH (p) return p ORDER BY difference(p.name, "Jon") DESC LIMIT 3$$) AS (n agtype);
+                                         n                                          
+------------------------------------------------------------------------------------
+ {"id": 844424930131970, "label": "Person", "properties": {"name": "John"}}::vertex
+ {"id": 844424930131971, "label": "Person", "properties": {"name": "Jone"}}::vertex
+ {"id": 844424930131969, "label": "Person", "properties": {"name": "Jane"}}::vertex
+(3 rows)
+
+SELECT * FROM cypher('graph', $$ MATCH (p) return p ORDER BY difference(p.name, "Jak") DESC LIMIT 3$$) AS (n agtype);
+                                         n                                          
+------------------------------------------------------------------------------------
+ {"id": 844424930131972, "label": "Person", "properties": {"name": "Jack"}}::vertex
+ {"id": 844424930131973, "label": "Person", "properties": {"name": "Jax"}}::vertex
+ {"id": 844424930131974, "label": "Person", "properties": {"name": "Jake"}}::vertex
+(3 rows)
+
+SELECT * FROM cypher('graph', $$ MATCH (p) return p ORDER BY difference(p.name, "Jil") DESC LIMIT 3$$) AS (n agtype);
+                                          n                                           
+--------------------------------------------------------------------------------------
+ {"id": 844424930131975, "label": "Person", "properties": {"name": "Julie"}}::vertex
+ {"id": 844424930131977, "label": "Person", "properties": {"name": "Jill"}}::vertex
+ {"id": 844424930131978, "label": "Person", "properties": {"name": "Jillie"}}::vertex
+(3 rows)
+
+-- Clean up
+SELECT drop_graph('graph', true);
+NOTICE:  drop cascades to 3 other objects
+DETAIL:  drop cascades to table graph._ag_label_vertex
+drop cascades to table graph._ag_label_edge
+drop cascades to table graph."Person"
+NOTICE:  graph "graph" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+DROP EXTENSION fuzzystrmatch CASCADE;

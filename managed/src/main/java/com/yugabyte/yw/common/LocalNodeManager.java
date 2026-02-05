@@ -830,6 +830,12 @@ public class LocalNodeManager {
       boolean isDestroy) {
     Process process = nodeInfo.processMap.remove(serverType);
     if (process == null) {
+      // Only show warning here, as "createDisableMasterOnNonMasterNodesTasks" can run
+      // on nodes that do not have a master process
+      if (serverType == UniverseTaskBase.ServerType.MASTER) {
+        log.warn("No process of type {} for {}", serverType, nodeInfo.name);
+        return;
+      }
       throw new IllegalStateException("No process of type " + serverType + " for " + nodeInfo.name);
     }
     log.debug("Killing process {}", process.pid());

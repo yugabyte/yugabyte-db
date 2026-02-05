@@ -159,8 +159,6 @@ typedef enum ObjectClass
 #define YB_SKIP_YB_DROP_ORIGNAL_COLUMN		0x08000
 /* similar to the above, for PK column */
 #define YB_SKIP_YB_DROP_PK_COLUMN			0x10000
-/* skip yb drops on dependent indexes -- used during ALTER TYPE */
-#define YB_SKIP_YB_DROP_INDEX				0x20000
 
 /* in dependency.c */
 

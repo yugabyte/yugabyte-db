@@ -353,7 +353,14 @@ DEFINE_RUNTIME_int32(timestamp_history_retention_interval_sec, 900,
     "of any single transaction in your application.");
 
 DEFINE_test_flag(bool, ysql_yb_enable_listen_notify, false, "Enable YSQL LISTEN/NOTIFY.");
+DEFINE_RUNTIME_AUTO_bool(
+    ysql_enable_auto_analyze_infra, kLocalPersisted, false, true,
+    "Enable the infra required for Auto Analyze");
 
+DEFINE_RUNTIME_bool(
+    ysql_enable_auto_analyze, false,
+    "Enable Auto Analyze to automatically trigger ANALYZE for updating table statistics of tables "
+    "which have changed more than a configurable threshold.");
 namespace yb {
 
 void InitCommonFlags() {
