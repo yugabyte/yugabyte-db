@@ -1178,17 +1178,31 @@ void PgSession::SetDdlHasSyscatalogChanges() {
   pg_txn_manager_->SetDdlHasSyscatalogChanges();
 }
 
-Status PgSession::ValidatePlacement(const std::string& placement_info, bool check_satisfiable) {
-  // For validation, if there is no replica_placement option, we default to the
-  // cluster configuration which the user is responsible for maintaining.
-  if (placement_info.empty()) return Status::OK();
+Status PgSession::ValidatePlacements(
+    const std::string& live_placement_info,
+    const std::string& read_replica_placement_info,
+    bool check_satisfiable) {
+  // If no placements were provided, fall back to cluster defaults.
+  if (live_placement_info.empty() && read_replica_placement_info.empty()) {
+    return Status::OK();
+  }
 
-  ReplicationInfoPB replication_info = VERIFY_RESULT(TablespaceParser::FromString(placement_info));
-  if (check_satisfiable) {
+  if (!read_replica_placement_info.empty() && live_placement_info.empty()) {
+    return STATUS(InvalidArgument,
+                  "read_replica_placement option requires replica_placement to be set");
+  }
+
+  ReplicationInfoPB replication_info =
+      VERIFY_RESULT(TablespaceParser::FromString(
+          live_placement_info, read_replica_placement_info,
+          true /* fail_on_validation_error */));
+
+  if (check_satisfiable && !live_placement_info.empty()) {
     tserver::PgValidatePlacementRequestPB req;
     *req.mutable_replication_info() = std::move(replication_info);
     return pg_client_.ValidatePlacement(&req);
   }
+
   return Status::OK();
 }
 

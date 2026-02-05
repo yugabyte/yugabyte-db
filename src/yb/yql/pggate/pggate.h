@@ -782,7 +782,9 @@ class PgApiImpl {
 
   //------------------------------------------------------------------------------------------------
   // System Validation.
-  Status ValidatePlacement(const char *placement_info, bool check_satisfiable);
+  Status ValidatePlacements(
+      const char *live_placement_info, const char *read_placement_info,
+      bool check_satisfiable);
 
   Result<bool> CheckIfPitrActive();
 

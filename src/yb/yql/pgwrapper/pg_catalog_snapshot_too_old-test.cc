@@ -96,8 +96,12 @@ class PgSnapshotTooOldTest : public PgMiniTestBase {
     ASSERT_OK(conn.ExecuteFormat(R"_tblsp_(
     create tablespace rf3 with
     (replica_placement='{"num_replicas":3, "placement_blocks":
-    [{"cloud": "cloud1", "region":"datacenter1",
-    "zone":"rack1","min_num_replicas":3}]}');
+    [{"cloud": "cloud0", "region":"region1",
+    "zone":"zone","min_num_replicas":1},
+    {"cloud": "cloud1", "region":"region2",
+    "zone":"zone","min_num_replicas":1},
+    {"cloud": "cloud1", "region":"region3",
+    "zone":"zone","min_num_replicas":1}]}');
     )_tblsp_"));
     // The following GUCs also seem to trigger table reads
     // during validation when set via ALTER DATABASE/ROLE

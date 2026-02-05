@@ -2392,12 +2392,6 @@ Status CatalogManager::ValidateTableReplicationInfo(
   if (!IsReplicationInfoSet(replication_info)) {
     return STATUS(InvalidArgument, "No replication info set.");
   }
-  // We don't support read replica placements for now.
-  if (!replication_info.read_replicas().empty()) {
-    return STATUS(
-        InvalidArgument,
-        "Read replica placement info cannot be set for table level replication info.");
-  }
 
   auto l = ClusterConfig()->LockForRead();
   const ReplicationInfoPB& cluster_replication_info = l->pb.replication_info();

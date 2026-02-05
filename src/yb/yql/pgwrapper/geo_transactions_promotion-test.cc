@@ -88,7 +88,7 @@ class GeoTransactionsPromotionTest : public GeoTransactionsTestBase {
     ASSERT_OK(client_->SetReplicationInfo(GetClusterDefaultReplicationInfo()));
     for (int i = 0; i < 3; ++i) {
       auto options = ASSERT_RESULT(MakeTserverOptionsWithPlacement(
-          "cloud0", Format("rack$0", kLocalRegion), kLocalZone));
+          "cloud0", Format("region$0", kLocalRegion), kLocalZone));
       ASSERT_OK(cluster_->AddTabletServer(options));
     }
     num_tservers_ += 3;
@@ -119,7 +119,7 @@ class GeoTransactionsPromotionTest : public GeoTransactionsTestBase {
     std::vector<yb::tserver::TabletServerOptions> extra_tserver_options;
     for (int i = 1; i <= 3; ++i) {
       extra_tserver_options.push_back(EXPECT_RESULT(MakeTserverOptionsWithPlacement(
-          "cloud0", strings::Substitute("rack$0", i), "zone")));
+          "cloud0", strings::Substitute("region$0", i), "zone")));
     }
     return extra_tserver_options;
   }
@@ -138,7 +138,7 @@ class GeoTransactionsPromotionTest : public GeoTransactionsTestBase {
       auto* placement_block = replication_info.mutable_live_replicas()->add_placement_blocks();
       auto* cloud_info = placement_block->mutable_cloud_info();
       cloud_info->set_placement_cloud("cloud0");
-      cloud_info->set_placement_region(strings::Substitute("rack$0", i));
+      cloud_info->set_placement_region(strings::Substitute("region$0", i));
       cloud_info->set_placement_zone("zone");
       placement_block->set_min_num_replicas(1);
     }
@@ -154,7 +154,7 @@ class GeoTransactionsPromotionTest : public GeoTransactionsTestBase {
           "num_replicas": 3,
           "placement_blocks":[{
             "cloud": "cloud0",
-            "region": "rack$0",
+            "region": "region$0",
             "zone": "$1",
             "min_num_replicas": 1
           }]
@@ -171,7 +171,7 @@ class GeoTransactionsPromotionTest : public GeoTransactionsTestBase {
     replicas->set_num_replicas(3);
     auto pb = replicas->add_placement_blocks();
     pb->mutable_cloud_info()->set_placement_cloud("cloud0");
-    pb->mutable_cloud_info()->set_placement_region("rack1");
+    pb->mutable_cloud_info()->set_placement_region("region1");
     pb->mutable_cloud_info()->set_placement_zone("local_txn_zone");
     pb->set_min_num_replicas(3);
     ASSERT_OK(client_->CreateTransactionsStatusTable(name, &replication_info));
@@ -400,7 +400,7 @@ class GeoTransactionsPromotionRF1Test : public GeoTransactionsPromotionTest {
       auto* placement_block = replication_info.mutable_live_replicas()->add_placement_blocks();
       auto* cloud_info = placement_block->mutable_cloud_info();
       cloud_info->set_placement_cloud("cloud0");
-      cloud_info->set_placement_region(strings::Substitute("rack$0", i));
+      cloud_info->set_placement_region(strings::Substitute("region$0", i));
       cloud_info->set_placement_zone("zone");
       placement_block->set_min_num_replicas(0);
     }

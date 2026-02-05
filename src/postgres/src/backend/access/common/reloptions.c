@@ -639,7 +639,21 @@ static relopt_string stringRelOpts[] =
 		},
 		0,						/* default_len */
 		true,					/* default_isnull */
-		validatePlacementConfiguration,
+		NULL,					/* validate_cb */
+		NULL,					/* fill_cb */
+		NULL					/* default_val */
+	},
+	{
+		{
+			"read_replica_placement",
+			"Json formatted string with array of placement policies",
+			RELOPT_KIND_YB_TABLESPACE,
+			AccessExclusiveLock
+		},
+		0,						/* default_len */
+		true,					/* default_isnull */
+		NULL,					/* validate_cb */
+		NULL,					/* fill_cb */
 		NULL					/* default_val */
 	},
 	/* list terminator */
@@ -2338,7 +2352,10 @@ yb_tablespace_reloptions(Datum reloptions, bool validate)
 	YBTableSpaceOpts *tsopts;
 	int			numoptions;
 	static const relopt_parse_elt yb_tab[] = {
-		{"replica_placement", RELOPT_TYPE_STRING, offsetof(YBTableSpaceOpts, placement_offset)}
+		{"replica_placement", RELOPT_TYPE_STRING,
+		 offsetof(YBTableSpaceOpts, placement_offset)},
+		{"read_replica_placement", RELOPT_TYPE_STRING,
+		 offsetof(YBTableSpaceOpts, read_replica_placement_offset)}
 	};
 
 	options = parseRelOptions(reloptions, validate, RELOPT_KIND_YB_TABLESPACE, &numoptions);
@@ -2353,6 +2370,19 @@ yb_tablespace_reloptions(Datum reloptions, bool validate)
 
 	fillRelOptions((void *) tsopts, sizeof(YBTableSpaceOpts), options, numoptions,
 				   validate, yb_tab, lengthof(yb_tab));
+
+	if (validate)
+	{
+		const char *live_replicas_str = NULL;
+		const char *read_replicas_str = NULL;
+
+		if (tsopts->placement_offset > 0)
+			live_replicas_str = (char *) tsopts + tsopts->placement_offset;
+		if (tsopts->read_replica_placement_offset > 0)
+			read_replicas_str = (char *) tsopts + tsopts->read_replica_placement_offset;
+
+		validatePlacementConfigurations(live_replicas_str, read_replicas_str);
+	}
 
 	pfree(options);
 

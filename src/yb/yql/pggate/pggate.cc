@@ -19,6 +19,7 @@
 #include <concepts>
 #include <initializer_list>
 #include <iterator>
+#include <string>
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -2236,8 +2237,13 @@ Status PgApiImpl::GetIndexBackfillProgress(std::vector<PgObjectId> oids,
                                                num_rows_backfilled);
 }
 
-Status PgApiImpl::ValidatePlacement(const char *placement_info, bool check_satisfiable) {
-  return pg_session_->ValidatePlacement(placement_info, check_satisfiable);
+Status PgApiImpl::ValidatePlacements(
+    const char *live_placement_info, const char *read_replica_placement_info,
+    bool check_satisfiable) {
+  return pg_session_->ValidatePlacements(
+      live_placement_info ? std::string(live_placement_info) : std::string(),
+      read_replica_placement_info ? std::string(read_replica_placement_info) : std::string(),
+      check_satisfiable);
 }
 
 void PgApiImpl::StartSysTablePrefetching(const PrefetcherOptions& options) {

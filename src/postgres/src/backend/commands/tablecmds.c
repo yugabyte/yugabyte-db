@@ -16085,25 +16085,61 @@ ATExecSetTableSpaceNoStorage(Relation rel, Oid newTableSpace)
 		 * Validation should only happen on tablespaces that have a defined
 		 * replica placement
 		 */
+		const char *placement_prefix = "replica_placement=";
+		const char *read_prefix = "read_replica_placement=";
+		const int	placement_prefix_len = strlen(placement_prefix);
+		const int	read_prefix_len = strlen(read_prefix);
+
+		char	   *live_option = NULL;
+		char	   *read_option = NULL;
+
 		for (int i = 0; i < num_options; i++)
 		{
 			char	   *option = text_to_cstring(DatumGetTextP(options[i]));
-			const char *placement_str = "replica_placement=";
-			int			placement_strlen = strlen(placement_str);
 
-			if (strncmp(option, placement_str, placement_strlen) == 0)
+			if (strncmp(option, placement_prefix, placement_prefix_len) == 0)
 			{
-				YBCValidatePlacement(option + placement_strlen,
-									 true); /* check_satisfiable */
+				if (live_option != NULL)
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+							 errmsg("duplicate replica_placement option found")));
+				live_option = option;
+				continue;
+			}
+			else if (strncmp(option, read_prefix, read_prefix_len) == 0)
+			{
+				if (read_option != NULL)
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+							 errmsg("duplicate read_replica_placement option found."
+									"Only one read_replica_placement option is supported via "
+									"tablespaces.")));
+				read_option = option;
+				continue;
 			}
 			else
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						 errmsg("expected replica_placement option. Got %s", option)));
+						 errmsg("expected replica_placement or read_replica_placement "
+								"option. Got %s", option)));
 			}
+
 			pfree(option);
 		}
+
+		const char *live_value = live_option ?
+			live_option + placement_prefix_len : NULL;
+		const char *read_value = read_option ?
+			read_option + read_prefix_len : NULL;
+
+		YBCValidatePlacements(live_value, read_value,
+								true /* check_satisfiable */ );
+
+		if (live_option)
+			pfree(live_option);
+		if (read_option)
+			pfree(read_option);
 	}
 
 	/* Update can be done, so change reltablespace */

@@ -2199,9 +2199,13 @@ YbDropAndRecreateIndex(Oid index_oid, Oid new_rel_id, Relation old_rel,
 /* ------------------------------------------------------------------------- */
 /*  System validation. */
 void
-YBCValidatePlacement(const char *placement_info, bool check_satisfiable)
+YBCValidatePlacements(const char *live_placement_info,
+					  const char *read_replica_placement_info,
+					  bool check_satisfiable)
 {
-	HandleYBStatus(YBCPgValidatePlacement(placement_info, check_satisfiable));
+	HandleYBStatus(YBCPgValidatePlacements(live_placement_info,
+										   read_replica_placement_info,
+										   check_satisfiable));
 }
 
 /* ------------------------------------------------------------------------- */

@@ -2083,8 +2083,11 @@ bool YBCCurrentTransactionUsesFastPath() {
 //------------------------------------------------------------------------------------------------
 // System validation.
 //------------------------------------------------------------------------------------------------
-YbcStatus YBCPgValidatePlacement(const char *placement_info, bool check_satisfiable) {
-  return ToYBCStatus(pgapi->ValidatePlacement(placement_info, check_satisfiable));
+YbcStatus YBCPgValidatePlacements(
+    const char *live_placement_info, const char *read_replica_placement_info,
+    bool check_satisfiable) {
+  return ToYBCStatus(pgapi->ValidatePlacements(
+      live_placement_info, read_replica_placement_info, check_satisfiable));
 }
 
 // Referential Integrity Caching

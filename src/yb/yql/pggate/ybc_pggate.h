@@ -756,7 +756,9 @@ bool YBCCurrentTransactionUsesFastPath();
 // System validation -------------------------------------------------------------------------------
 // Validate whether placement information is theoretically valid. If check_satisfiable is true,
 // also check whether the current set of tservers can satisfy the requested placement.
-YbcStatus YBCPgValidatePlacement(const char *placement_info, bool check_satisfiable);
+YbcStatus YBCPgValidatePlacements(
+    const char *live_placement_info, const char *read_placement_info,
+    bool check_satisfiable);
 
 //--------------------------------------------------------------------------------------------------
 // Expressions.

@@ -36,6 +36,10 @@ class TransactionPool;
 class GeoTransactionsTestBase : public pgwrapper::PgMiniTestBase {
  public:
   static const inline std::string kTablePrefix = "test";
+  static const inline std::string kTableName = kTablePrefix + "_tbl";
+  static const inline std::string kIndexName = kTablePrefix + "_idx";
+  static const inline std::string kMatViewName = kTablePrefix + "_mv";
+
   static constexpr auto kLocalRegion = 1;
   static constexpr auto kOtherRegion = 2;
 

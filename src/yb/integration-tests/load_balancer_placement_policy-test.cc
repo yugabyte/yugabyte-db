@@ -11,13 +11,14 @@
 // under the License.
 //
 
+#include <algorithm>
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
 #include "yb/client/schema.h"
-#include "yb/client/table.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_table_name.h"
+
 
 #include "yb/integration-tests/cluster_verifier.h"
 #include "yb/integration-tests/external_mini_cluster.h"
@@ -25,15 +26,20 @@
 #include "yb/integration-tests/yb_table_test_base.h"
 
 #include "yb/master/master_client.proxy.h"
+#include "yb/master/master_types.pb.h"
 
 #include "yb/tools/yb-admin_client.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/format.h"
 #include "yb/util/monotime.h"
-#include "yb/util/net/net_fwd.h"
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/test_tablespace_util.h"
 #include "yb/util/tsan_util.h"
+
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 using std::string;
 using std::vector;
@@ -82,6 +88,18 @@ class LoadBalancerPlacementPolicyTest : public YBTableTestBase {
     }
   }
 
+  Result<vector<int>> GetLoadOnTserversByTableId(
+      const TableId& table_id, size_t num_tservers) {
+    vector<int> load_per_tserver;
+    load_per_tserver.reserve(num_tservers);
+    for (size_t i = 0; i < num_tservers; ++i) {
+      int count = VERIFY_RESULT(GetLoadOnTserverByTableId(
+          external_mini_cluster()->tablet_server(i), table_id));
+      load_per_tserver.emplace_back(count);
+    }
+    return load_per_tserver;
+  }
+
   Result<uint32_t> GetLoadOnTserver(ExternalTabletServer* server, const string tablename) {
     auto proxy = GetMasterLeaderProxy<master::MasterClientProxy>();
     master::GetTableLocationsRequestPB req;
@@ -105,6 +123,30 @@ class LoadBalancerPlacementPolicyTest : public YBTableTestBase {
     }
     LOG(INFO) << Format("For ts $0, table name $1 tablet count $2",
                         server->instance_id().permanent_uuid(), tablename, count);
+    return count;
+  }
+
+  Result<uint32_t> GetLoadOnTserverByTableId(
+      ExternalTabletServer* server, const TableId& table_id) {
+    auto proxy = GetMasterLeaderProxy<master::MasterClientProxy>();
+    master::GetTableLocationsRequestPB req;
+    req.mutable_table()->set_table_id(table_id);
+    master::GetTableLocationsResponsePB resp;
+
+    rpc::RpcController rpc;
+    rpc.set_timeout(kDefaultTimeout);
+    RETURN_NOT_OK(proxy.GetTableLocations(req, &resp, &rpc));
+
+    uint32_t count = 0;
+    std::vector<string> replicas;
+    for (const auto& loc : resp.tablet_locations()) {
+      for (const auto& replica : loc.replicas()) {
+        if (replica.ts_info().permanent_uuid() == server->instance_id().permanent_uuid()) {
+          replicas.push_back(loc.tablet_id());
+          count++;
+        }
+      }
+    }
     return count;
   }
 
@@ -233,7 +275,7 @@ TEST_F(LoadBalancerPlacementPolicyTest, CreateTableWithPlacementPolicyTest) {
 TEST_F(LoadBalancerPlacementPolicyTest, CreateTableWithNondefaultMinNumReplicas) {
   // Set cluster placement policy.
   ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r.z2", 3, ""));
-  const int new_num_tservers = 4;
+  int new_num_tservers = 4;
   AddNewTserverToZone("z0", new_num_tservers);
 
   const string& create_custom_policy_table = "creation-placement-test";
@@ -900,6 +942,190 @@ TEST_F(LoadBalancerReadReplicaPlacementPolicyTest, TotalTableLoadDifferenceMetri
     LOG(INFO) << "Number of adds: " << num_adds;
     return num_adds == 6;
   }, 10s, "Total table load difference metric should reflect the tablets that need to be moved."));
+}
+
+class TablespaceReadReplicaTest : public LoadBalancerReadReplicaPlacementPolicyTest {
+ protected:
+  bool enable_ysql() override {
+    return true;
+  }
+
+  Result<TableId> FindYsqlTableId(
+      const std::string& database_name, const std::string& table_name) {
+    auto tables = VERIFY_RESULT(
+        client_->ListTables(table_name, /*exclude_ysql=*/false, database_name));
+    auto table_it = std::find_if(
+        tables.begin(), tables.end(), [&](const client::YBTableName& table) {
+          return table.table_name() == table_name;
+        });
+    if (table_it == tables.end()) {
+      return STATUS_FORMAT(
+          NotFound, "Unable to find YSQL table $0.$1", database_name, table_name);
+    }
+    return table_it->table_id();
+  }
+};
+
+// Test creating a table in a tablespace that has a read replica.
+TEST_F(TablespaceReadReplicaTest, TestTablespaceReadReplicaBasic) {
+  const auto kTablespaceName = "test_tablespace";
+  const auto kDatabaseName = "yugabyte";
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo(
+      "c.r.z0,c.r.z1,c.r.z2", 3 /* replication_factor */, ""));
+
+  size_t num_tservers = num_tablet_servers();
+  AddNewTserverToZone("z3", ++num_tservers, kReadReplicaPlacementUuid);
+  AddNewTserverToZone("z4", ++num_tservers, kReadReplicaPlacementUuid);
+  ASSERT_OK(yb_admin_client_->AddReadReplicaPlacementInfo(
+      "c.r.z3,c.r.z4", 2 /* replication_factor */, kReadReplicaPlacementUuid));
+
+  DeleteTable();
+  auto pg_conn = ASSERT_RESULT(external_mini_cluster()->ConnectToDB());
+
+  const test::Tablespace tablespace(
+      kTablespaceName,
+      /* numReplicas = */ 3,
+      {test::PlacementBlock("c", "r", "z0", 1), test::PlacementBlock("c", "r", "z1", 1),
+       test::PlacementBlock("c", "r", "z2", 1)},
+      {test::PlacementBlock("c", "r", "z4", 1)});
+
+  const std::string kPgTable = "t";
+
+  ASSERT_STR_CONTAINS(tablespace.CreateCmd(), "read_replica_placement='{\"");
+  ASSERT_STR_NOT_CONTAINS(tablespace.CreateCmd(), "read_replica_placement='[");
+
+  ASSERT_OK(pg_conn.Execute(tablespace.CreateCmd()));
+
+  ASSERT_OK(pg_conn.ExecuteFormat(
+      "CREATE TABLE $0 (k INT PRIMARY KEY) TABLESPACE $1 SPLIT INTO 1 TABLETS",
+      kPgTable,
+      tablespace.name));
+
+  WaitForLoadBalancerToBeIdle();
+
+  const TableId table_id = ASSERT_RESULT(FindYsqlTableId(kDatabaseName, kPgTable));
+
+  vector<int> counts_per_ts = ASSERT_RESULT(GetLoadOnTserversByTableId(table_id, num_tservers));
+
+  // We create read replicas in z3 and z4, but the tablespace specifies to only
+  // place tablets on z4.
+  vector<int> expected_counts_per_ts = {1, 1, 1, 0, 1};
+  ASSERT_VECTORS_EQ(expected_counts_per_ts, counts_per_ts);
+}
+
+TEST_F(TablespaceReadReplicaTest, TestTablespaceReadReplicaAlter) {
+  const auto kTablespaceWithoutReadReplica = "ts_without_rr";
+  const auto kTablespaceWithReadReplica = "ts_with_rr";
+  const auto kTablespaceWithReadReplicaAlt = "ts_with_rr_alt";
+  const auto kDatabaseName = "yugabyte";
+  const auto kPgTable = "t";
+
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo(
+      "c.r.z0,c.r.z1,c.r.z2", 3 /* replication_factor */, ""));
+
+  size_t num_tservers = num_tablet_servers();
+  AddNewTserverToZone("z3", ++num_tservers, kReadReplicaPlacementUuid);
+  AddNewTserverToZone("z4", ++num_tservers, kReadReplicaPlacementUuid);
+  ASSERT_OK(yb_admin_client_->AddReadReplicaPlacementInfo(
+      "c.r.z3,c.r.z4", 2 /* replication_factor */, kReadReplicaPlacementUuid));
+
+  DeleteTable();
+  auto pg_conn = ASSERT_RESULT(external_mini_cluster()->ConnectToDB());
+
+  const std::vector<test::PlacementBlock> live_placement_blocks = {
+      test::PlacementBlock("c", "r", "z0", 1), test::PlacementBlock("c", "r", "z1", 1),
+      test::PlacementBlock("c", "r", "z2", 1)};
+
+  const test::Tablespace tablespace_without_read_replica(
+      kTablespaceWithoutReadReplica,
+      /* numReplicas = */ 3, live_placement_blocks);
+
+  const test::Tablespace tablespace_with_read_replica(
+      kTablespaceWithReadReplica,
+      /* numReplicas = */ 3, live_placement_blocks, {test::PlacementBlock("c", "r", "z4", 1)});
+
+  const test::Tablespace tablespace_with_read_replica_alt(
+      kTablespaceWithReadReplicaAlt,
+      /* numReplicas = */ 3, live_placement_blocks, {test::PlacementBlock("c", "r", "z3", 1)});
+
+  ASSERT_OK(pg_conn.Execute(tablespace_without_read_replica.CreateCmd()));
+  ASSERT_OK(pg_conn.Execute(tablespace_with_read_replica.CreateCmd()));
+  ASSERT_OK(pg_conn.Execute(tablespace_with_read_replica_alt.CreateCmd()));
+
+  ASSERT_OK(pg_conn.ExecuteFormat(
+      "CREATE TABLE $0 (k INT PRIMARY KEY) TABLESPACE $1 SPLIT INTO 1 TABLETS",
+      kPgTable,
+      tablespace_without_read_replica.name));
+
+  WaitForLoadBalancerToBeIdle();
+
+  const TableId table_id = ASSERT_RESULT(FindYsqlTableId(kDatabaseName, kPgTable));
+
+  vector<int> counts_per_ts = ASSERT_RESULT(GetLoadOnTserversByTableId(table_id, num_tservers));
+  vector<int> expected_counts_per_ts = {1, 1, 1, 0, 0};
+  ASSERT_VECTORS_EQ(expected_counts_per_ts, counts_per_ts);
+
+  ASSERT_OK(pg_conn.ExecuteFormat(
+      "ALTER TABLE $0 SET TABLESPACE $1", kPgTable, tablespace_with_read_replica.name));
+  WaitForLoadBalancer();
+  counts_per_ts = ASSERT_RESULT(GetLoadOnTserversByTableId(table_id, num_tservers));
+  expected_counts_per_ts = {1, 1, 1, 0, 1};
+  ASSERT_VECTORS_EQ(expected_counts_per_ts, counts_per_ts);
+
+  ASSERT_OK(pg_conn.ExecuteFormat(
+      "ALTER TABLE $0 SET TABLESPACE $1", kPgTable, tablespace_with_read_replica_alt.name));
+  WaitForLoadBalancer();
+  counts_per_ts = ASSERT_RESULT(GetLoadOnTserversByTableId(table_id, num_tservers));
+  expected_counts_per_ts = {1, 1, 1, 1, 0};
+  ASSERT_VECTORS_EQ(expected_counts_per_ts, counts_per_ts);
+}
+
+// Test creating a table in a tablespace that has a read replica using a wildcard placement block.
+TEST_F(TablespaceReadReplicaTest, TestTablespaceReadReplicaWildcard) {
+  const auto kTablespaceName = "test_tablespace";
+  const auto kDatabaseName = "yugabyte";
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo(
+      "c.r.z0,c.r.z1,c.r.z2", 3 /* replication_factor */, ""));
+
+  size_t num_tservers = num_tablet_servers();
+  AddNewTserverToZone("z3", ++num_tservers, kReadReplicaPlacementUuid);
+  AddNewTserverToZone("z4", ++num_tservers, kReadReplicaPlacementUuid);
+  ASSERT_OK(yb_admin_client_->AddReadReplicaPlacementInfo(
+      "c.r.z3,c.r.z4", 2 /* replication_factor */, kReadReplicaPlacementUuid));
+
+  DeleteTable();
+  auto pg_conn = ASSERT_RESULT(external_mini_cluster()->ConnectToDB());
+
+  const test::Tablespace tablespace(
+      kTablespaceName,
+      /* numReplicas = */ 3,
+      {test::PlacementBlock("c", "r", "z0", 1), test::PlacementBlock("c", "r", "z1", 1),
+       test::PlacementBlock("c", "r", "z2", 1)},
+      {test::PlacementBlock("c", "*", "*", 2)});
+
+  const std::string kPgTable = "t";
+  LOG(INFO) << "Creating tablespace: " << tablespace.CreateCmd();
+
+  ASSERT_STR_CONTAINS(tablespace.CreateCmd(), "read_replica_placement='{\"");
+  ASSERT_STR_NOT_CONTAINS(tablespace.CreateCmd(), "read_replica_placement='[");
+
+  ASSERT_OK(pg_conn.Execute(tablespace.CreateCmd()));
+
+  ASSERT_OK(pg_conn.ExecuteFormat(
+      "CREATE TABLE $0 (k INT PRIMARY KEY) TABLESPACE $1 SPLIT INTO 1 TABLETS",
+      kPgTable,
+      tablespace.name));
+
+  WaitForLoadBalancerToBeIdle();
+
+  const TableId table_id = ASSERT_RESULT(FindYsqlTableId(kDatabaseName, kPgTable));
+
+  vector<int> counts_per_ts = ASSERT_RESULT(GetLoadOnTserversByTableId(table_id, num_tservers));
+
+  // We expect the tablets to be spread across all of the read replicas,
+  // since the wildcard placement block matches both z3 and z4.
+  vector<int> expected_counts_per_ts = {1, 1, 1, 1, 1};
+  ASSERT_VECTORS_EQ(expected_counts_per_ts, counts_per_ts);
 }
 
 } // namespace integration_tests

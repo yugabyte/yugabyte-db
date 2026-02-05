@@ -334,7 +334,8 @@ TEST_F(LoadBalancerMiniClusterTest, TabletsInWrongPlacementMetric) {
 
   // Change placement info to make first tserver invalid.
   // The invalid and blacklisted tablets should not be double-counted.
-  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("cloud1.rack2.zone,cloud2.rack3.zone", 3, ""));
+  ASSERT_OK(
+      yb_admin_client_->ModifyPlacementInfo("cloud1.region2.zone,cloud2.region3.zone", 3, ""));
   SleepFor(FLAGS_catalog_manager_bg_task_wait_ms * 2ms);
   ASSERT_EQ(tablets_in_wrong_placement->value(), peers_on_ts);
 
@@ -346,7 +347,7 @@ TEST_F(LoadBalancerMiniClusterTest, TabletsInWrongPlacementMetric) {
 
   // Change placement info to make first tserver valid again.
   ASSERT_OK(yb_admin_client_->ModifyPlacementInfo(
-      "cloud1.rack1.zone,cloud1.rack2.zone,cloud2.rack3.zone", 3, ""));
+      "cloud1.region1.zone,cloud1.region2.zone,cloud2.region3.zone", 3, ""));
   ASSERT_OK(WaitFor([&] {
     return tablets_in_wrong_placement->value() == 0;
   }, 5s, "Wait for tablets_in_wrong_placement to be 0"));
@@ -416,7 +417,7 @@ TEST_F(LoadBalancerMiniClusterTest, UninitializedTSDescriptorOnPendingAddTest) {
   const int test_short_delay_ms = 100;
   // See MiniTabletServer::MiniTabletServer for default placement info.
   ASSERT_OK(yb_admin_client_->
-      ModifyPlacementInfo("cloud1.rack1.zone,cloud1.rack2.zone,cloud2.rack3.zone", 3, ""));
+    ModifyPlacementInfo("cloud1.region1.zone,cloud1.region2.zone,cloud2.region3.zone", 3, ""));
 
   // Disable load balancing.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
@@ -435,7 +436,7 @@ TEST_F(LoadBalancerMiniClusterTest, UninitializedTSDescriptorOnPendingAddTest) {
   tserver::TabletServerOptions extra_opts =
       ASSERT_RESULT(tserver::TabletServerOptions::CreateTabletServerOptions());
   // Important to set to cloud2 (see TEST_SetupConnectivity, we group servers in groups of two).
-  extra_opts.SetPlacement("cloud2", "rack3", "zone");
+  extra_opts.SetPlacement("cloud2", "region3", "zone");
   ASSERT_OK(mini_cluster()->AddTabletServer(extra_opts));
   ASSERT_OK(mini_cluster()->WaitForTabletServerCount(num_tablet_servers() + 1));
   const auto ts3_uuid = mini_cluster_->mini_tablet_server(3)->server()->permanent_uuid();
@@ -709,21 +710,20 @@ TEST_F(LoadBalancerMiniClusterTest, ClearPendingDeletesOnFailure) {
 }
 
 TEST_F(LoadBalancerMiniClusterTest, LeaderMovesWithGeopartitionedTables) {
-  // See MiniTabletServer::MiniTabletServer for default placement info.
   ASSERT_OK(yb_admin_client_->ModifyPlacementInfo(
-      "cloud1.rack1.zone,cloud1.rack2.zone,cloud2.rack3.zone", 3, ""));
+      "cloud1.region1.zone,cloud1.region2.zone,cloud2.region3.zone", 3, ""));
 
   // Add new set of tservers.
-  for (const auto& [cloud, rack, uuid] : {
-           std::tuple("cloud2", "rack4", "fffffffffffffffffffffffffffffffc"),
-           std::tuple("cloud3", "rack5", "fffffffffffffffffffffffffffffffd"),
-           std::tuple("cloud3", "rack6", "fffffffffffffffffffffffffffffffe"),
+  for (const auto& [cloud, region, uuid] : {
+           std::tuple("cloud2", "region4", "fffffffffffffffffffffffffffffffc"),
+           std::tuple("cloud3", "region5", "fffffffffffffffffffffffffffffffd"),
+           std::tuple("cloud3", "region6", "fffffffffffffffffffffffffffffffe"),
        }) {
     // Set large instance uuids to make sure these tservers are sorted last when breaking ties.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_instance_uuid_override) = uuid;
     tserver::TabletServerOptions extra_opts =
         ASSERT_RESULT(tserver::TabletServerOptions::CreateTabletServerOptions());
-    extra_opts.SetPlacement(cloud, rack, "zone");
+    extra_opts.SetPlacement(cloud, region, "zone");
     ASSERT_OK(mini_cluster()->AddTabletServer(extra_opts));
   }
   ASSERT_OK(mini_cluster()->WaitForTabletServerCount(num_tablet_servers() + 3));
@@ -749,7 +749,7 @@ TEST_F(LoadBalancerMiniClusterTest, LeaderMovesWithGeopartitionedTables) {
   client::YBTableName first_table_name(
       YQLDatabase::YQL_DATABASE_CQL, all_tables[0]->namespace_name(), all_tables[0]->name());
   ASSERT_OK(yb_admin_client_->ModifyTablePlacementInfo(
-      first_table_name, "cloud2.rack4.zone,cloud3.rack5.zone,cloud3.rack6.zone", 3, ""));
+      first_table_name, "cloud2.region4.zone,cloud3.region5.zone,cloud3.region6.zone", 3, ""));
 
   // Wait for the load balancer to finish.
   WaitLoadBalancerActive(

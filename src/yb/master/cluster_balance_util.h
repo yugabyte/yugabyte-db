@@ -22,6 +22,8 @@
 
 #include "yb/gutil/casts.h"
 
+#include "yb/common/replica_type.h"
+
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/cluster_balance_activity_info.h"
 #include "yb/master/ts_descriptor.h"
@@ -43,10 +45,7 @@ DECLARE_int64(remote_bootstrap_rate_limit_bytes_per_sec);
 namespace yb {
 namespace master {
 
-// enum for replica type, either live (synchronous) or read only (timeline consistent)
-YB_DEFINE_ENUM(ReplicaType,
-  (kLive)
-  (kReadOnly));
+using ::yb::ReplicaType;
 
 struct CBTabletMetadata {
   bool is_missing_replicas() { return is_under_replicated || !under_replicated_placements.empty(); }

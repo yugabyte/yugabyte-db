@@ -240,7 +240,10 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
 
   void SetLockTimeout(int lock_timeout_ms);
 
-  Status ValidatePlacement(const std::string& placement_info, bool check_satisfiable);
+  Status ValidatePlacements(
+      const std::string& live_placement_info,
+      const std::string& read_replica_placement_info,
+      bool check_satisfiable);
 
   void TrySetCatalogReadPoint(const ReadHybridTime& read_ht);
 

@@ -77,12 +77,20 @@ Result<boost::optional<TablespaceId>> YsqlTablespaceManager::GetTablespaceForTab
   }
 
   if (!table_to_tablespace_map_) {
+    const auto tablespace_id = table->TablespaceIdForTableCreation();
+    if (!tablespace_id.empty()) {
+      return tablespace_id;
+    }
     return STATUS(InternalError, "Tablespace information not found for table " + table->id());
   }
 
   // Lookup the tablespace for this table.
   const auto& iter = table_to_tablespace_map_->find(table->id());
   if (iter == table_to_tablespace_map_->end()) {
+    const auto tablespace_id = table->TablespaceIdForTableCreation();
+    if (!tablespace_id.empty()) {
+      return tablespace_id;
+    }
     return STATUS(InternalError, "Tablespace information not found for table " + table->id());
   }
 
