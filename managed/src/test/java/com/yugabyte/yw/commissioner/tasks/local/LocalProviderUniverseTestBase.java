@@ -978,7 +978,7 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
     ShellResponse response =
         localNodeUniverseManager.runYsqlCommand(
             nodeDetails, universe, YUGABYTE_DB, createCommand, 10, authEnabled);
-    assertTrue(response.isSuccess());
+    assertTrue(response.getMessage(), response.isSuccess());
     response =
         localNodeUniverseManager.runYsqlCommand(
             nodeDetails,

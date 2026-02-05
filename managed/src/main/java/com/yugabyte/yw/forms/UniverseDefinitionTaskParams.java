@@ -491,8 +491,17 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @Getter
     @Setter
     @ApiModelProperty(
-        value = "WARNING: This is a preview API that could change. Geo partitions for cluster")
+        value = "List of current partitions. " + "WARNING: This is a preview API that could change")
     private List<PartitionInfo> partitions;
+
+    @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.27.0.0")
+    @Getter
+    @Setter
+    @ApiModelProperty(
+        value =
+            "Property indicating that tablespaces are created for partitions."
+                + "WARNING: This is a preview API that could change")
+    private boolean geoPartitioned;
 
     /** Default to PRIMARY. */
     private Cluster() {
@@ -695,11 +704,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
                   + storageType.name());
         }
       }
-    }
-
-    @JsonIgnore
-    public boolean isGeoPartitioned() {
-      return partitions != null && partitions.size() > 1;
     }
 
     @JsonIgnore

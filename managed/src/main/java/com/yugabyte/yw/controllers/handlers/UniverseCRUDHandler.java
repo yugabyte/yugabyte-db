@@ -428,6 +428,7 @@ public class UniverseCRUDHandler {
     if (cluster.placementInfo != null && cluster.placementInfo.hasRankOrdering()) {
       PlacementInfoUtil.validatePriority(cluster.placementInfo);
     }
+    // Old geo-partitioning.
     checkGeoPartitioningParameters(customer, taskParams, OpType.CONFIGURE);
 
     userIntent.masterGFlags = trimFlags(userIntent.masterGFlags);
@@ -1392,6 +1393,12 @@ public class UniverseCRUDHandler {
 
     // Update Primary cluster
     Cluster primaryCluster = taskParams.getPrimaryCluster();
+    if (!primaryCluster.isGeoPartitioned()
+        && primaryCluster.getPartitions() != null
+        && primaryCluster.getPartitions().size() > 1) {
+      LOG.info("Marking universe {} as geo partitioned", taskParams.getUniverseUUID());
+      primaryCluster.setGeoPartitioned(true);
+    }
     for (Cluster readOnlyCluster : u.getUniverseDetails().getReadOnlyClusters()) {
       validateConsistency(primaryCluster, readOnlyCluster);
     }

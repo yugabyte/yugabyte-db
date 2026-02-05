@@ -1855,15 +1855,6 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Enables new Performance Monitoring UI via Performance Tab",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> editUniverseV2UiEnabled =
-      new ConfKeyInfo<>(
-          "yb.ui.feature_flags.edit_universe_v2_ui_enabled",
-          ScopeType.UNIVERSE,
-          "Enable Edit Universe V2 UI",
-          "Enable the new Edit Universe V2 UI for editing/viewing universe configurations",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
-
   // Node Script API configs (Internal)
   public static final ConfKeyInfo<Boolean> nodeScriptEnabled =
       new ConfKeyInfo<>(

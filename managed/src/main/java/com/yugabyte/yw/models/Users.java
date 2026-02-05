@@ -215,6 +215,10 @@ public class Users extends Model {
     return oidcJwtAuthToken;
   }
 
+  @ApiModelProperty(value = "YbaApi Internal. Used to turn off new UI feature for particular user")
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.29.0.0")
+  private Boolean newUniverseUiEnabled = true;
+
   public static final Finder<UUID, Users> find = new Finder<UUID, Users>(Users.class) {};
 
   @Deprecated

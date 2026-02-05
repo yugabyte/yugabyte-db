@@ -2262,4 +2262,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " accept the X-AUTH-TP-API-TOKEN service token as full user-request auth.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> editUniverseV2UiEnabled =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.edit_universe_v2_ui_enabled",
+          ScopeType.GLOBAL,
+          "Enable Edit Universe V2 UI",
+          "Enable the new Edit Universe V2 UI for editing/viewing universe configurations",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

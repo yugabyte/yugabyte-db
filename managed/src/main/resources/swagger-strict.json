@@ -6150,12 +6150,16 @@
           ],
           "type" : "string"
         },
+        "geoPartitioned" : {
+          "description" : "Property indicating that tablespaces are created for partitions.WARNING: This is a preview API that could change",
+          "type" : "boolean"
+        },
         "index" : {
           "format" : "int32",
           "type" : "integer"
         },
         "partitions" : {
-          "description" : "WARNING: This is a preview API that could change. Geo partitions for cluster",
+          "description" : "List of current partitions. WARNING: This is a preview API that could change",
           "items" : {
             "$ref" : "#/definitions/PartitionInfo"
           },
@@ -26863,6 +26867,9 @@
         "itestS3PackagePath" : {
           "type" : "string"
         },
+        "newUI" : {
+          "type" : "boolean"
+        },
         "nextClusterIndex" : {
           "format" : "int32",
           "type" : "integer"
@@ -27413,6 +27420,7 @@
       "required" : [
         "clusters",
         "creatingUser",
+        "newUI",
         "platformUrl",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis"
