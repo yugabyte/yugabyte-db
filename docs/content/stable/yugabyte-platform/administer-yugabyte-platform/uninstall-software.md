@@ -71,14 +71,6 @@ You can remove YugabyteDB components and configuration from on-premises provider
 
 1. Stop YugabyteDB processes.
 
-    For cron-based universes, run the following commands:
-
-    ```sh
-    ./bin/yb-server-ctl.sh master stop
-    ./bin/yb-server-ctl.sh tserver stop
-    ./bin/yb-server-ctl.sh controller stop
-    ```
-
     For systemd universes (user-level services), run the following commands:
 
     ```sh
