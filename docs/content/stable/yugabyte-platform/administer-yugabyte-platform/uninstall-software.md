@@ -15,9 +15,13 @@ type: docs
 
 ## Uninstall YugabyteDB Anywhere
 
+Before uninstalling YugabyteDB Anywhere, you may want to [back up](../back-up-restore-yba/) configuration settings or data you want to keep.
+
+Note that uninstalling YugabyteDB Anywhere removes the YugabyteDB Anywhere application, but does not automatically remove YugabyteDB universes. If YugabyteDB Anywhere is managing universes, delete them as needed before uninstalling the application.
+
 If you used YBA Installer to install YugabyteDB Anywhere, you can use the `clean` command to uninstall the software. This removes the YugabyteDB Anywhere software, but keeps any data such as PostgreSQL or Prometheus information. Refer to [Clean](../../install-yugabyte-platform/install-software/installer/#clean-uninstall).
 
-To completely eliminate all traces of YugabyteDB Anywhere and configuration, you should consider reinstalling the operating system image (or rolling back to a previous image, if available).
+To completely eliminate all traces of YugabyteDB Anywhere and configuration, consider reinstalling the operating system image (or rolling back to a previous image, if available).
 
 ### Uninstall in Kubernetes environments
 
