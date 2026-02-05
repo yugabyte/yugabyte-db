@@ -33,6 +33,8 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tserver_xcluster_context_if.h"
+#include "yb/tserver/xcluster_consumer_if.h"
+#include "yb/tserver/xcluster_poller_stats.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/debug.h"
@@ -4393,6 +4395,44 @@ TEST_F(XClusterDDLReplicationTest, ReplicationSlotCommandsNotReplicated) {
       consumer_repl_conn.Fetch("CREATE_REPLICATION_SLOT consumer_slot LOGICAL pgoutput"));
   SleepFor(MonoDelta::FromMilliseconds(FLAGS_ysql_cdc_active_replication_slot_window_ms * 2));
   ASSERT_OK(consumer_repl_conn.Execute("DROP_REPLICATION_SLOT consumer_slot"));
+}
+
+TEST_F(XClusterDDLReplicationTest, DDLQueuePollerPreservesOriginalError) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  // Cause the target to fail CREATE TABLE DDLs.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) = true;
+
+  const auto kTableName = "test_table_fail_create";
+  ASSERT_OK(producer_conn_->ExecuteFormat("CREATE TABLE $0 (key int PRIMARY KEY);", kTableName));
+
+  // Wait for DDL replication to pause after hitting the retry limit.
+  ASSERT_OK(
+      StringWaiterLogSink("DDL replication is paused due to repeated failures").WaitFor(kTimeout));
+
+  auto consumer_ddl_queue_table = ASSERT_RESULT(GetYsqlTable(
+      &consumer_cluster_, namespace_name, xcluster::kDDLQueuePgSchemaName,
+      xcluster::kDDLQueueTableName));
+
+  auto* tserver = consumer_cluster()->mini_tablet_server(0)->server();
+  auto* xcluster_consumer = tserver->GetXClusterConsumer();
+  auto pollers_stats = xcluster_consumer->GetPollerStats();
+  bool found_ddl_queue_poller = false;
+  for (const auto& stat : pollers_stats) {
+    if (stat.consumer_table_id == consumer_ddl_queue_table.table_id()) {
+      found_ddl_queue_poller = true;
+      LOG(INFO) << "DDL queue poller stats: " << stat.status;
+
+      // Verify that the ddl_queue poller's error contains both the pause message and the original
+      // error message.
+      ASSERT_FALSE(stat.status.ok()) << "Expected ddl_queue poller to have an error status";
+      ASSERT_STR_CONTAINS(
+          stat.status.ToString(), "DDL replication is paused due to repeated failures");
+      ASSERT_STR_CONTAINS(stat.status.ToString(), "Failed DDL operation as requested");
+      break;
+    }
+  }
+  ASSERT_TRUE(found_ddl_queue_poller) << "ddl_queue poller not found in TServer xCluster stats";
 }
 
 }  // namespace yb

@@ -513,6 +513,7 @@ Status XClusterDDLQueueHandler::ProcessFailedDDLQuery(
   if (s.ok()) {
     num_fails_for_this_ddl_ = 0;
     last_failed_query_.reset();
+    original_failed_status_ = Status::OK();
     return Status::OK();
   }
 
@@ -531,17 +532,18 @@ Status XClusterDDLQueueHandler::ProcessFailedDDLQuery(
   } else {
     last_failed_query_ = QueryIdentifier{query_info.ddl_end_time, query_info.query_id};
     num_fails_for_this_ddl_ = 1;
+    original_failed_status_ = s;
   }
 
-  last_failed_status_ = s;
   return s;
 }
 
 Status XClusterDDLQueueHandler::CheckForFailedQuery() {
   if (num_fails_for_this_ddl_ >= FLAGS_xcluster_ddl_queue_max_retries_per_ddl) {
-    return last_failed_status_.CloneAndPrepend(
-        "DDL replication is paused due to repeated failures. Manual fix is required, followed by a "
-        "leader stepdown of the target's ddl_queue tablet. ");
+    return original_failed_status_.CloneAndPrepend(Format(
+        "DDL replication is paused due to repeated failures ($0 retries). Manual fix is "
+        "required, followed by a leader stepdown of the target's ddl_queue tablet leader. ",
+        num_fails_for_this_ddl_));
   }
   return Status::OK();
 }
