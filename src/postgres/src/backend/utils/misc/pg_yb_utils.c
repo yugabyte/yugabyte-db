@@ -2703,6 +2703,13 @@ YBAddDdlTxnState(YbDdlMode mode)
 		 */
 		ddl_transaction_state.num_create_function_stmts +=
 			ddl_transaction_state.current_stmt_node_tag == T_CreateFunctionStmt ? 1 : 0;
+
+		/*
+		 * On a transaction restart, we need call YBCPgSetDdlStateInPlainTransaction()
+		 * again because it has been reset.
+		 */
+		if (!YBCPgIsDdlMode())
+			HandleYBStatus(YBCPgSetDdlStateInPlainTransaction());
 		return;
 	}
 
