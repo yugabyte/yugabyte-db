@@ -188,4 +188,34 @@ TEST_F(PgDDLConcurrencyWithObjectLockingTest, TableDropCascade) {
   thread_holder.Stop();
 }
 
+class PgDDLConcurrencyWithObjectLockingTestRF1 : public PgDDLConcurrencyWithObjectLockingTest {
+ public:
+  int GetNumMasters() const override { return 1; }
+  int GetNumTabletServers() const override { return 1; }
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgDDLConcurrencyWithObjectLockingTest::UpdateMiniClusterOptions(options);
+    options->replication_factor = 1;
+    options->extra_tserver_flags.push_back(
+        "--ysql_pg_conf_csv=yb_fallback_to_legacy_catalog_read_time=true");
+  }
+};
+
+TEST_F(PgDDLConcurrencyWithObjectLockingTestRF1, YB_DISABLE_TEST_IN_SANITIZERS(CreateTables)) {
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor( [this] {
+    auto conn = CHECK_RESULT(Connect());
+    for (int i = 0; i < 500; i++) {
+      ASSERT_OK(conn.ExecuteFormat("create table s_$0 (id int)", i));
+    }
+  });
+  thread_holder.AddThreadFunctor( [this] {
+    auto conn = CHECK_RESULT(Connect());
+    for (int i = 0; i < 500; i++) {
+      ASSERT_OK(conn.ExecuteFormat("create table t_$0 (id int)", i));
+    }
+  });
+  thread_holder.JoinAll();
+}
+
 } // namespace yb::pgwrapper
