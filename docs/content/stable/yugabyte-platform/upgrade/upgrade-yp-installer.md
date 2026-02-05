@@ -63,7 +63,7 @@ When ready to upgrade, run the `upgrade` command from the untarred directory of 
 sudo ./yba-ctl upgrade
 ```
 
-YBA Installer runs a pre-check to verify your universes are all running node agent, and none are cron-based. If the pre-check fails, fix the issues before attempting again. Refer to [Prepare to upgrade](../prepare-to-upgrade/) for instructions. (To run only the upgrade precheck, use the `sudo ./yba-ctl preflight --upgrade` command.)
+YBA Installer runs a pre-check to verify your universes are all running node agent, and none are cron-based. If the pre-check fails, fix the issues before attempting again. Refer to [Prepare to upgrade](../prepare-to-upgrade/) for instructions. (To run only the upgrade pre-check, use the `sudo ./yba-ctl preflight --upgrade` command.)
 
 If the pre-check succeeds, the upgrade takes a few minutes to complete.
 
