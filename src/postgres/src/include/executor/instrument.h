@@ -90,8 +90,8 @@ typedef struct YbInstrumentation
 	double		index_writes;
 	double		catalog_writes;
 
-	YbcPgExecStorageMetrics *read_metrics;
-	YbcPgExecStorageMetrics *write_metrics;
+	YbcPgExecStorageMetrics read_metrics;
+	YbcPgExecStorageMetrics write_metrics;
 
 	uint64_t	rows_removed_by_recheck;
 	uint64_t	commit_wait;
