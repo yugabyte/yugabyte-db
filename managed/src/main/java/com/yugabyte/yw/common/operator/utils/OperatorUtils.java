@@ -24,6 +24,7 @@ import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
 import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
+import com.yugabyte.yw.common.operator.ResourceTracker;
 import com.yugabyte.yw.common.operator.YBUniverseReconciler;
 import com.yugabyte.yw.common.operator.helpers.KubernetesOverridesSerializer;
 import com.yugabyte.yw.common.operator.helpers.OperatorPlacementInfoHelper;
@@ -781,12 +782,19 @@ public class OperatorUtils {
     log.info("Removed release {}", release.getMetadata().getName());
   }
 
-  public String getAndParseSecretForKey(String name, @Nullable String namespace, String key) {
+  public String getAndParseSecretForKey(
+      String name,
+      @Nullable String namespace,
+      String key,
+      ResourceTracker resourceTracker,
+      KubernetesResourceDetails owner) {
     Secret secret = getSecret(name, namespace);
     if (secret == null) {
       log.warn("Secret {} not found", name);
       return null;
     }
+    resourceTracker.trackDependency(owner, secret);
+    log.trace("Tracking secret {} as dependency of {}", secret.getMetadata().getName(), owner);
     return parseSecretForKey(secret, key);
   }
 
@@ -863,7 +871,7 @@ public class OperatorUtils {
             if (value != specParams.getDiskWriteBytesPerSec()) return true;
             break;
           default:
-            // This shoud only happen if a new throttle parameter is introduced and not added here.
+            // This should only happen if a new throttle parameter is introduced and not added here.
             throw new RuntimeException("Unknown throttle parameter: " + key);
         }
       }

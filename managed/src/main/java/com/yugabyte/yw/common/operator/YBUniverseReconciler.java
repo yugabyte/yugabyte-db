@@ -1193,6 +1193,11 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       YsqlPassword ysqlPassword = ybUniverse.getSpec().getYsqlPassword();
       if (ysqlPassword != null) {
         Secret ysqlSecret = getSecret(ysqlPassword.getSecretName());
+        resourceTracker.trackDependency(currentReconcileResource, ysqlSecret);
+        log.trace(
+            "Tracking secret {} as dependency of {}",
+            ysqlSecret.getMetadata().getName(),
+            currentReconcileResource);
         String password = parseSecretForKey(ysqlSecret, YSQL_PASSWORD_SECRET_KEY);
         if (password == null) {
           log.error("could not find ysqlPassword in secret {}", ysqlPassword.getSecretName());
@@ -1205,6 +1210,11 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       YcqlPassword ycqlPassword = ybUniverse.getSpec().getYcqlPassword();
       if (ycqlPassword != null) {
         Secret ycqlSecret = getSecret(ycqlPassword.getSecretName());
+        resourceTracker.trackDependency(currentReconcileResource, ycqlSecret);
+        log.trace(
+            "Tracking secret {} as dependency of {}",
+            ycqlSecret.getMetadata().getName(),
+            currentReconcileResource);
         String password = parseSecretForKey(ycqlSecret, YCQL_PASSWORD_SECRET_KEY);
         if (password == null) {
           log.error("could not find ycqlPassword in secret {}", ycqlPassword.getSecretName());
