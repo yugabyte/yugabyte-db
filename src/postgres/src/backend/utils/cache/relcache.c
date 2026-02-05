@@ -3460,16 +3460,8 @@ RelationInitPhysicalAddr(Relation relation)
 	else
 		relation->rd_node.dbNode = MyDatabaseId;
 
-	/*
-	 * YB: For YB relations, set rd_node.relNode but don't execute the rest of
-	 * the logic in this function.
-	 */
 	if (IsYBRelation(relation))
-	{
-		if (relation->rd_rel->relfilenode)
-			relation->rd_node.relNode = relation->rd_rel->relfilenode;
 		return;
-	}	/* YB */
 
 	if (relation->rd_rel->relfilenode)
 	{
