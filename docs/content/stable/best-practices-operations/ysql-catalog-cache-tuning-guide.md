@@ -555,7 +555,7 @@ If the catalog reads can be traced to a specific query, set the following config
 
 ```sql
 SET yb_debug_log_catcache_events = 1;
-SET yb_debug_report_error_stacktrace = 1;
+SET backtrace_functions = 'SearchCatCacheMiss';
 SET client_min_messages = LOG;
 ```
 
