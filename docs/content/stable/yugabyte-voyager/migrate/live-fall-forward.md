@@ -1391,7 +1391,7 @@ Perform the following steps as part of the cutover process:
 
 ```sh
 yb-voyager initiate cutover to target --config-file <path-to-config-file> \
---use-yb-grpc-connector false
+  --use-yb-grpc-connector false
 ```
 
 {{% /tab %}}
