@@ -245,7 +245,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
                 htmlInput: {
                   min: 1,
                   'data-testid': `VolumeInfoField-${dataTag}-VolumeInput`,
-                  disabled
+                  disabled: fixedNumVolumes || numVolumesDisable || isEphemeralStorage || disabled
                 }
               }}
               value={convertToString(fieldValue?.numVolumes ?? '')}
@@ -268,7 +268,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
                 htmlInput: {
                   min: 1,
                   'data-testid': `VolumeInfoField-${dataTag}-VolumeSizeInput`,
-                  disabled
+                  disabled: isEphemeralStorage || fixedVolumeSize || volumeSizeDisable || disabled
                 }
               }}
               value={convertToString(fieldValue?.volumeSize ?? '')}
@@ -366,7 +366,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
               htmlInput: {
                 min: 1,
                 'data-testid': `VolumeInfoField-${dataTag}-DiskIopsInput`,
-                disabled
+                disabled: disableIops || disabled
               }
             }}
             value={convertToString(fieldValue?.diskIops ?? '')}
@@ -410,7 +410,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
                 htmlInput: {
                   min: 1,
                   'data-testid': `VolumeInfoField-${dataTag}-ThroughputInput`,
-                  disabled
+                  disabled: disableThroughput || disabled
                 }
               }}
               value={convertToString(fieldValue?.throughput ?? '')}
