@@ -113,6 +113,8 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import kamon.instrumentation.play.GuiceModule;
 import lombok.extern.slf4j.Slf4j;
@@ -288,8 +290,16 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
       validateYBCVersion(ybcVersion);
       log.debug("ybc Version to use {}", ybcVersion);
       downloadAndSetUpYBCSoftware(os, arch, ybcVersion);
+    } else {
+      File binFile = new File(ybcBinPath);
+      Pattern pattern = Pattern.compile("((\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+)\\-b[0-9]+)");
+      Matcher matcher = pattern.matcher(binFile.getParent());
+      if (matcher.find()) {
+        YBC_VERSION = matcher.group(1);
+      } else {
+        throw new IllegalStateException("Cannot extract ybc version from " + binFile.getParent());
+      }
     }
-
     log.debug("Using ybc binaries from path {}", ybcBinPath);
   }
 
@@ -999,9 +1009,11 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
           .azStream()
           .forEach(
               az -> {
-                List<PlacementInfo.PlacementAZ> lst =
-                    ranks.computeIfAbsent(az.leaderPreference, x -> new ArrayList<>());
-                lst.add(az);
+                if (az.leaderPreference > 0) {
+                  List<PlacementInfo.PlacementAZ> lst =
+                      ranks.computeIfAbsent(az.leaderPreference, x -> new ArrayList<>());
+                  lst.add(az);
+                }
               });
       assertEquals(ranks.size(), replicationInfo.getMultiAffinitizedLeadersCount());
       Iterator<CommonNet.CloudInfoListPB> iterator =
