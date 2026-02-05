@@ -127,6 +127,7 @@ class TabletSplitManager {
   CoarseTimePoint last_run_time_;
 
   scoped_refptr<yb::AtomicGauge<uint64_t>> automatic_split_manager_time_ms_;
+  scoped_refptr<AtomicGauge<uint64_t>> metric_tablet_split_candidates_;
   scoped_refptr<Counter> metric_split_tablet_too_many_tablets_;
 
   template <typename IdType>

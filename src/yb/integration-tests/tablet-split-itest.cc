@@ -90,6 +90,7 @@
 #include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/format.h"
+#include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/protobuf_util.h"
 #include "yb/util/random_util.h"
@@ -150,6 +151,7 @@ DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_bool(TEST_validate_all_tablet_candidates);
 DECLARE_uint64(outstanding_tablet_split_limit);
 DECLARE_uint64(outstanding_tablet_split_limit_per_tserver);
+DECLARE_int32(process_split_tablet_candidates_interval_msec);
 DECLARE_double(TEST_fail_tablet_split_probability);
 DECLARE_bool(TEST_skip_post_split_compaction);
 DECLARE_int32(TEST_nodes_per_cloud);
@@ -177,6 +179,8 @@ DECLARE_bool(enable_flush_retryable_requests);
 DECLARE_int32(max_create_tablets_per_ts);
 DECLARE_bool(tablet_split_use_middle_user_key);
 DECLARE_double(tablet_split_min_size_ratio);
+
+METRIC_DECLARE_gauge_uint64(tablet_split_candidates);
 
 namespace yb {
 
@@ -1978,6 +1982,42 @@ TEST_F(AutomaticTabletSplitITest, FailedSplitIsRestarted) {
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_tablet_split_probability) = 0;
   ASSERT_OK(WaitForTabletSplitCompletion(2));
+}
+
+TEST_F(AutomaticTabletSplitITest, TabletSplitCandidatesMetric) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_shard_count_per_node) = 5;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_size_threshold_bytes) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_outstanding_tablet_split_limit) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_disable_compactions) = true;
+
+  SetNumTablets(2);
+  CreateTable();
+
+  auto* master = cluster_->mini_master()->master();
+  auto metric_entity = master->metric_entity_cluster();
+  auto metric = metric_entity->FindOrNull<AtomicGauge<uint64_t>>(METRIC_tablet_split_candidates);
+  ASSERT_NE(metric, nullptr);
+  ASSERT_EQ(metric->value(), 0);
+
+  // Insert data to make tablets eligible for splitting.
+  constexpr int kNumRowsPerBatch = 1000;
+  ASSERT_OK(WriteRows(kNumRowsPerBatch, 1));
+  for (const auto& peer : ListTableActiveTabletPeers(cluster_.get(), table_->id())) {
+    ASSERT_OK(FlushAllTabletReplicas(peer->tablet_id(), table_->id()));
+  }
+
+  // Wait for metric to be 1 (one tablet splitting, one still eligible).
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return metric->value() == 1;
+  }, 30s * kTimeMultiplier, "Wait for metric == 1"));
+
+  // Allow more splits to proceed.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_outstanding_tablet_split_limit) = 10;
+
+  // Wait for metric to hit 0 (all eligible tablets have split).
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return metric->value() == 0;
+  }, 30s * kTimeMultiplier, "Wait for metric == 0"));
 }
 
 // Similar to the FailedSplitIsRestarted test, but crash instead.
