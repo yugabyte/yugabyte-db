@@ -82,7 +82,12 @@ A failed incremental backup, which you can delete, is reported similarly to any 
 
 ## Configure backup performance parameters
 
-If you are using v2.16 or later to manage universes with YugabyteDB v2.16 or later, you can manage the speed of backup and restore operations by configuring resource throttling.
+You can manage the speed of backup and restore operations and their impact on database performance by configuring the following parameters:
+
+- Parallel uploads per node. Number of parallel uploads/downloads of tablets per node. For faster operation, enter higher values; for lower impact on database performance, enter lower values.
+- Buffers per upload per node. Number of buffers used to read from disk and upload/download for a single tablet. For faster operation, enter higher values; for lower impact on database performance, enter lower values.
+
+Choose values that balance backup and restore speed with impact on production. Too high a value can consume disk IO that the database needs; too low a value can make backups and restores run longer. This is especially important when using incremental backups.
 
 To configure throttle parameters:
 
@@ -92,7 +97,7 @@ To configure throttle parameters:
 
     ![Throttle](/images/yp/backup-restore-throttle.png)
 
-1. For faster backups and restores, enter higher values. For lower impact on database performance, enter lower values.
+1. Set resource parameters for backups and restores.
 
 1. Click **Save**.
 
