@@ -2497,15 +2497,18 @@ ybcSetupTargets(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *pg_scan_plan)
 		pull_varattnos_min_attr((Node *) pg_scan_plan->plan.qual, target_relid,
 								&required_attrs, min_attr);
 
-		if (IsA(pg_scan_plan, YbBitmapTableScan))
-			YbGetBitmapScanRecheckColumns((YbBitmapTableScan *) pg_scan_plan,
-										  &required_attrs, target_relid,
-										  min_attr);
-
 		if (ybScan->hash_code_keys != NIL)
 			YbCollectHashKeyComponents(ybScan, scan_plan, &required_attrs,
 									   is_index_only_scan,
 									   min_attr);
+
+		if (IsA(pg_scan_plan, YbBitmapTableScan))
+			YbGetBitmapScanRecheckColumns((YbBitmapTableScan *) pg_scan_plan,
+										  &required_attrs, target_relid,
+										  min_attr);
+		else if (IsA(pg_scan_plan, IndexOnlyScan))
+			pull_varattnos_min_attr((Node *) ((IndexOnlyScan *) pg_scan_plan)->indexqual,
+									target_relid, &required_attrs, min_attr);
 
 		required_attrs = bms_join(required_attrs,
 								  YbGetOrdinaryColumnsNeedingPgRecheck(ybScan));

@@ -568,3 +568,33 @@ insert into t1 (a, b, y, z) values ('00000000-0000-0000-0000-000000000001', '202
 explain (costs off) select * from t1 where (b, a) >= ('2021-01-01 00:00:00', '00000000-0000-0000-0000-000000000001') and (y, z) >= (2, 'baz');
 select * from t1 where (b, a) >= ('2021-01-01 00:00:00', '00000000-0000-0000-0000-000000000001') and (y, z) >= (2, 'baz');
 drop table t1;
+
+-- GHI #26717 IndexOnlyScan recheck - selecting a constant
+create table simple (i int);
+create index on simple(i, i asc);
+insert into simple values (1);
+explain (analyze, costs off, timing off, summary off)
+/*+ IndexOnlyScan(simple) */ SELECT 'a' FROM simple WHERE i < 5;
+/*+ IndexOnlyScan(simple) */ SELECT 'a' FROM simple WHERE i < 5;
+
+-- GHI #26713 IndexOnlyScan recheck - selecting an aggregate
+explain (analyze, costs off, timing off, summary off)
+/*+ IndexOnlyScan(simple) */ SELECT COUNT(*) FROM simple WHERE i < 5;
+/*+ IndexOnlyScan(simple) */ SELECT COUNT(*) FROM simple WHERE i < 5;
+
+-- GHI #26705 IndexOnlyScan recheck - selecting nothing from the table
+explain (analyze, costs off, timing off, summary off)
+/*+ IndexOnlyScan(s2) */ SELECT s1.* FROM simple s1, simple s2 WHERE s2.i < 5;
+/*+ IndexOnlyScan(s2) */ SELECT s1.* FROM simple s1, simple s2 WHERE s2.i < 5;
+
+-- set a size limit. this indicates the size of the response
+set yb_fetch_row_limit = 0;
+set yb_fetch_size_limit = '3kB';
+insert into simple select * from generate_series(2, 1000);
+explain (analyze, dist, costs off, timing off, summary off)
+/*+ IndexOnlyScan(simple) */ SELECT 'a' FROM simple WHERE i < 5;
+
+reset yb_fetch_row_limit;
+reset yb_fetch_size_limit;
+
+drop table simple;
