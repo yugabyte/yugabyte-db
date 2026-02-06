@@ -314,17 +314,9 @@ Services:
 
 ### Upgrade
 
-To upgrade using YBA Installer, first download the version of YBA Installer corresponding to the version of YBA you want to upgrade to. See [Download YBA Installer](#download-yba-installer).
+YBA Installer is also used to perform upgrades of existing installations, using the `upgrade` command.
 
-Upgrade works similarly to the install workflow, by first running preflight checks to validate the system is in a good state.
-
-When ready to upgrade, run the `upgrade` command from the untarred directory of the target version of the YBA upgrade:
-
-```sh
-sudo ./yba-ctl upgrade
-```
-
-The upgrade takes a few minutes to complete. When finished, use the [status command](#service-management) to verify that YBA has been upgraded to the target version.
+For complete instructions and details on how to prepare for an upgrade, refer to [Upgrade YugabyteDB Anywhere](../../../upgrade/).
 
 ### Backup and restore
 
