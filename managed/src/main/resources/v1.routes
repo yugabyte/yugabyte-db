@@ -553,6 +553,7 @@ GET    /settings/ha/internal/config                                            c
 PUT    /settings/ha/internal/config/demote/:timestamp                          com.yugabyte.yw.controllers.InternalHAController.demoteLocalLeader(timestamp: Long, promote: java.lang.Boolean ?= false, request: Request)
 PUT    /settings/ha/internal/config/sync/:timestamp                            com.yugabyte.yw.controllers.InternalHAController.syncInstances(timestamp: Long, request: Request)
 POST   /settings/ha/internal/upload                                            com.yugabyte.yw.controllers.InternalHAController.syncBackups(request: Request)
+GET    /settings/ha/internal/backups/:backupName/validate                      com.yugabyte.yw.controllers.InternalHAController.validateBackup(backupName: String, request: Request)
 
 # Schedule External Script API
 POST   /customers/:cUUID/universes/:uniUUID/schedule_script                    com.yugabyte.yw.controllers.ScheduleScriptController.externalScriptSchedule(cUUID: java.util.UUID, uniUUID : java.util.UUID, request: Request)

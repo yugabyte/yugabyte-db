@@ -42,6 +42,9 @@ import java.net.URL;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Date;
@@ -52,6 +55,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -68,6 +73,14 @@ public class PlatformReplicationManager {
   public static final String NO_LOCAL_INSTANCE_MSG = "NO LOCAL INSTANCE! Won't sync";
 
   private static final String INSTANCE_ADDRESS_LABEL = "instance_address";
+
+  // Format is backup_26-02-05-20-42.tgz.
+  private static final Pattern BACKUP_FILE_PATTERN =
+      Pattern.compile("([a-zA-Z]+_)(\\d{2}-\\d{2}-\\d{2}-\\d{2}-\\d{2})(\\..*)");
+
+  // The date time format is always in UTC.
+  private static final DateTimeFormatter DATE_TIME_FORMATTER =
+      DateTimeFormatter.ofPattern("yy-MM-dd-HH-mm").withZone(ZoneId.of("UTC"));
 
   private final AtomicReference<Cancellable> schedule;
 
@@ -486,6 +499,30 @@ public class PlatformReplicationManager {
       log.error("Error testing connection to {}", address);
     }
     return result;
+  }
+
+  /* Validate the backup locally by checking the time against node agent upgrade time.
+   * This is a best effort that should work majority of the cases.
+   * TODO: This will become unnecessary once PLAT-16195 is done.
+   */
+  public boolean validateBackup(String backupName) {
+    Matcher matcher = BACKUP_FILE_PATTERN.matcher(backupName);
+    if (matcher.find()) {
+      String timePart = matcher.group(2);
+      Instant instant = Instant.from(DATE_TIME_FORMATTER.parse(timePart));
+      log.info("Checking backup time {} and instant {} locally", timePart, instant);
+      // Weird to have the backup validation depend on the node agent upgrade, but this is just a
+      // best effort until PLAT-16195 is done.
+      return replicationHelper.isLiveNodeAgentUpgradePendingAt(instant) == false;
+    }
+    log.error("Backup file name {} doesn't match expected pattern", backupName);
+    return false;
+  }
+
+  /* Makes a remote call to validate the backup. */
+  public boolean validateRemoteBackup(
+      HighAvailabilityConfig config, String remoteAddress, String backupName) {
+    return replicationHelper.validateRemoteBackup(config, remoteAddress, backupName);
   }
 
   @VisibleForTesting

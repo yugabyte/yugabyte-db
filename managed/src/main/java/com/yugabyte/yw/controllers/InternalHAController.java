@@ -76,6 +76,14 @@ public class InternalHAController extends Controller {
     return PlatformResults.withData(config);
   }
 
+  public Result validateBackup(String backupName, Http.Request request) {
+    HighAvailabilityConfig.getByClusterKey(this.getClusterKey(request))
+        .orElseThrow(
+            () ->
+                new PlatformServiceException(NOT_FOUND, "Could not find HA Config by cluster key"));
+    return PlatformResults.withData(replicationManager.validateBackup(backupName));
+  }
+
   // TODO: Change this to accept ObjectNode instead of ArrayNode in request body
   public Result syncInstances(long timestamp, Http.Request request) {
     log.debug("Received request to sync instances from {}", request.remoteAddress());

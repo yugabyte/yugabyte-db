@@ -35,7 +35,6 @@ import org.apache.pekko.util.ByteString;
 import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Http.Request;
-import v1.RoutesPrefix;
 
 @Slf4j
 public class PlatformInstanceClient implements AutoCloseable {
@@ -69,10 +68,6 @@ public class PlatformInstanceClient implements AutoCloseable {
     this.remoteAddress = remoteAddress;
     this.requestHeader = ImmutableMap.of(HAAuthenticator.HA_CLUSTER_KEY_TOKEN_HEADER, clusterKey);
     this.configHelper = configHelper;
-  }
-
-  private String getPrefix() {
-    return String.format("%s%s", this.remoteAddress, RoutesPrefix.prefix());
   }
 
   // Map a Call object to a request.
@@ -168,12 +163,21 @@ public class PlatformInstanceClient implements AutoCloseable {
 
   public boolean testConnection() {
     try {
-      JsonNode response =
-          makeRequest("GET", remoteAddress + "/api/settings/ha/internal/config", null);
+      makeRequest("GET", remoteAddress + "/api/settings/ha/internal/config", null);
     } catch (Exception e) {
       return false;
     }
     return true;
+  }
+
+  // Returns true if the backup is valid and can be restored from, false otherwise.
+  // Throws exception if there was an error in the request (e.g. remote instance is unreachable).
+  public boolean validateRemoteBackupAt(String backupName) {
+    return makeRequest(
+            "GET",
+            remoteAddress + "/api/settings/ha/internal/backups/" + backupName + "/validate",
+            null)
+        .asBoolean();
   }
 
   private void maybeGenerateVersionMismatchEvent(JsonNode remoteVersion) {

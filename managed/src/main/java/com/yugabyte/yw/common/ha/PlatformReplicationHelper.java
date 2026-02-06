@@ -31,10 +31,13 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager.PlatformBackupParams;
 import com.yugabyte.yw.common.utils.FileUtils;
+import com.yugabyte.yw.metrics.MetricQueryHelper;
+import com.yugabyte.yw.metrics.MetricQueryResponse;
 import com.yugabyte.yw.metrics.MetricUrlProvider;
 import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertConfigurationThreshold;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
+import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.PlatformInstance;
 import com.yugabyte.yw.models.filters.AlertConfigurationFilter;
 import java.io.BufferedWriter;
@@ -47,14 +50,19 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.pekko.actor.Cancellable;
 import org.apache.velocity.Template;
 import org.apache.velocity.VelocityContext;
@@ -101,6 +109,8 @@ public class PlatformReplicationHelper {
 
   private final AlertConfigurationService alertConfigurationService;
 
+  @VisibleForTesting MetricQueryHelper metricQueryHelper;
+
   @VisibleForTesting ShellProcessHandler shellProcessHandler;
 
   @Inject
@@ -112,7 +122,8 @@ public class PlatformReplicationHelper {
       MetricUrlProvider metricUrlProvider,
       PrometheusConfigHelper prometheusConfigHelper,
       PrometheusConfigManager prometheusConfigManager,
-      AlertConfigurationService alertConfigurationService) {
+      AlertConfigurationService alertConfigurationService,
+      MetricQueryHelper metricQueryHelper) {
     this.confGetter = confGetter;
     this.runtimeConfigFactory = runtimeConfigFactory;
     this.remoteClientFactory = remoteClientFactory;
@@ -121,6 +132,7 @@ public class PlatformReplicationHelper {
     this.prometheusConfigHelper = prometheusConfigHelper;
     this.prometheusConfigManager = prometheusConfigManager;
     this.alertConfigurationService = alertConfigurationService;
+    this.metricQueryHelper = metricQueryHelper;
   }
 
   Path getBackupDir() {
@@ -614,5 +626,71 @@ public class PlatformReplicationHelper {
 
     boolean logCmdOutput = isBackupScriptOutputEnabled();
     return shellProcessHandler.run(commandArgs, extraVars, logCmdOutput);
+  }
+
+  @VisibleForTesting
+  List<NodeAgent> getLiveNodeAgents() {
+    return NodeAgent.getAll().stream()
+        .filter(NodeAgent::isActive)
+        .filter(n -> n.getLastError() == null)
+        .collect(Collectors.toList());
+  }
+
+  /**
+   * Checks if there is any live node agent with version mismatch with YBA software version at the
+   * given instant. Consider only live nodes to prevent blocking forever due to dead node agents.
+   *
+   * @param at the instant to check.
+   * @return true if yes else false.
+   */
+  public boolean isLiveNodeAgentUpgradePendingAt(Instant at) {
+    String ybaVersion = Util.getYbaVersion();
+    Set<String> liveNodeAgentUuids = new HashSet<>();
+    for (NodeAgent nodeAgent : getLiveNodeAgents()) {
+      if (!Util.areYbVersionsEqual(ybaVersion, nodeAgent.getVersion(), true)) {
+        log.warn(
+            "Node agent {} version {} does not match with YBA software version {}",
+            nodeAgent,
+            nodeAgent.getVersion(),
+            ybaVersion);
+        return true;
+      }
+      liveNodeAgentUuids.add(nodeAgent.getUuid().toString());
+    }
+    // Adding 1 minute buffer to make sure the back is well within the range.
+    // Backup time is the creation time, not the completion time. So, it should be within the range
+    // even if the backup took a long time to complete.
+    long minutes = ChronoUnit.MINUTES.between(at, Instant.now()) + 1;
+    if (minutes > 0) {
+      // Check if there was any upgrading pending during this window.
+      String query =
+          String.format("max_over_time(ybp_nodeagent_version_mismatch[%dm]) > 0", minutes);
+      List<MetricQueryResponse.Entry> entries = metricQueryHelper.queryDirect(query);
+      for (MetricQueryResponse.Entry entry : entries) {
+        String nodeAgentUuid = entry.labels.get("node_agent_uuid");
+        if (StringUtils.isBlank(nodeAgentUuid) || !liveNodeAgentUuids.contains(nodeAgentUuid)) {
+          log.debug("Node agent {} was already updated before {}", nodeAgentUuid, at);
+          continue;
+        }
+        log.warn(
+            "Node agent {} had version mismatch with YBA software during last {} minutes",
+            nodeAgentUuid,
+            minutes);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /* Makes a remote call to validate the backup. */
+  public boolean validateRemoteBackup(
+      HighAvailabilityConfig config, String remoteInstanceAddr, String backupName) {
+    try (PlatformInstanceClient client =
+        this.remoteClientFactory.getClient(
+            config.getClusterKey(),
+            remoteInstanceAddr,
+            config.getAcceptAnyCertificateOverrides())) {
+      return client.validateRemoteBackupAt(backupName);
+    }
   }
 }

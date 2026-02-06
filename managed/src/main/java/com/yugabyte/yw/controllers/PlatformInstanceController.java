@@ -269,14 +269,6 @@ public class PlatformInstanceController extends AuthenticatedController {
             }
             leader = leaderInstance.get().getAddress();
           }
-          // Validate we can reach current leader if force is not set.
-          if (force) {
-            log.warn("Connection test to the current leader is skipped");
-          } else if (!replicationManager.testConnection(
-              config, leader, config.getAcceptAnyCertificate())) {
-            throw new PlatformServiceException(
-                BAD_REQUEST, "Could not connect to current leader and force parameter not set.");
-          }
 
           URL leaderUrl = Util.toURL(leader);
           // Make sure the backup file provided exists.
@@ -289,6 +281,35 @@ public class PlatformInstanceController extends AuthenticatedController {
                           new PlatformServiceException(
                               BAD_REQUEST,
                               "Could not find backup file from " + leaderUrl.getHost()));
+
+          // Validate we can reach current leader if force is not set.
+          if (force) {
+            log.warn("Connection test to the current leader is skipped");
+          } else {
+            boolean succeeded = false;
+            try {
+              succeeded = replicationManager.validateRemoteBackup(config, leader, backup.getName());
+            } catch (Exception e) {
+              log.error("Connection test to the current leader {} failed", leader, e);
+              throw new PlatformServiceException(
+                  BAD_REQUEST, "Could not connect to current leader and force parameter not set.");
+            }
+            if (succeeded) {
+              log.info(
+                  "Validation succeeded for backup {} from the current leader {}",
+                  backup.getName(),
+                  leader);
+            } else {
+              String errorMsg =
+                  String.format(
+                      "Validation failed for backup %s with the remote leader %s. Backup may be too"
+                          + " old. Force parameter can be set to true to bypass this check, but it"
+                          + " is not recommended",
+                      backup.getName(), leader);
+              log.error(errorMsg);
+              throw new PlatformServiceException(BAD_REQUEST, errorMsg);
+            }
+          }
 
           // Cache local instance address before restore so we can query to new corresponding model.
           String localInstanceAddr = instance.get().getAddress();
