@@ -6647,7 +6647,7 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap, LOCKMODE lockmode)
 		ListCell   *lc;
 		Snapshot	snapshot;
 
-		bool		yb_rollback_tupledesc_refcount = false;
+		bool		yb_oldrel_has_copied_tupdesc = false;
 
 		if (newrel)
 			ereport(DEBUG1,
@@ -6729,11 +6729,10 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap, LOCKMODE lockmode)
 		if (IsYBRelation(oldrel) && tab->rewrite & AT_REWRITE_COLUMN_REWRITE)
 		{
 			/*
-			 * If the oldTupDesc is not reference-counted, mark it as
-			 * reference-counted temporarily. This is because tuple descriptors
-			 * linked with the Relation object are meant to be
-			 * reference-counted. If we don't do that, then we get a crash while
-			 * invalidating relcache entries during the processing of
+			 * If the oldTupDesc is not reference-counted, make a copy temporarily.
+			 * This is because tuple descriptors linked with the Relation object
+			 * are meant to be reference-counted. If we don't do that, then we get
+			 * a crash while invalidating relcache entries during the processing of
 			 * invalidation messages at the time of transaction abort in case of
 			 * failures in table rewrite below. The crash happens because of the
 			 * assumption that tupledesc stored in a Relation object are
@@ -6742,11 +6741,27 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap, LOCKMODE lockmode)
 			 */
 			if (oldTupDesc->tdrefcount == -1)
 			{
-				yb_rollback_tupledesc_refcount = true;
-				oldTupDesc->tdrefcount = 1;
-			}
+				MemoryContext oldcxt;
 
-			oldrel->rd_att = oldTupDesc;
+				/* Switch to the long-lived context where the Relcache lives */
+				oldcxt = MemoryContextSwitchTo(CacheMemoryContext);
+
+				/*
+				 * Create a copy of the descriptor for the relation to own.
+				 * This ensures that if the relcache entry is destroyed during an
+				 * error, it doesn't free the original descriptor.
+				 */
+				oldrel->rd_att = CreateTupleDescCopy(oldTupDesc);
+				oldrel->rd_att->tdrefcount = 1;
+
+				/* Switch back to the original context */
+				MemoryContextSwitchTo(oldcxt);
+
+				/* Mark that we need to manually free this copy */
+				yb_oldrel_has_copied_tupdesc = true;
+			}
+			else
+				oldrel->rd_att = oldTupDesc;
 		}
 		scan = table_beginscan(oldrel, snapshot, 0, NULL);
 
@@ -6922,8 +6937,11 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap, LOCKMODE lockmode)
 
 		if (IsYBRelation(oldrel) && tab->rewrite & AT_REWRITE_COLUMN_REWRITE)
 		{
-			if (yb_rollback_tupledesc_refcount)
+			if (yb_oldrel_has_copied_tupdesc)
+			{
 				oldrel->rd_att->tdrefcount = -1;
+				FreeTupleDesc(oldrel->rd_att);
+			}
 
 			/* Revert back to the new tuple desc */
 			oldrel->rd_att = newTupDesc;
