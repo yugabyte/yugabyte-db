@@ -3943,7 +3943,8 @@ class PgClientSession::Impl {
       return TransactionFullLocality::RegionLocal();
     }
 
-    if (FLAGS_use_tablespace_based_transaction_placement || options.force_tablespace_locality()) {
+    if (context_.transaction_manager_provider().TablespaceLocalTransactionsPossible() &&
+        (FLAGS_use_tablespace_based_transaction_placement || options.force_tablespace_locality())) {
       if (auto oid = options.force_tablespace_locality_oid()) {
         return TransactionFullLocality::TablespaceLocal(oid);
       }
