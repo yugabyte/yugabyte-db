@@ -877,6 +877,7 @@ const constructDefaultFormValues = (
   sshUser: providerConfig.details.sshUser ?? '',
   version: providerConfig.version,
   vpcSetupType: providerConfig.details.cloudInfo.gcp.vpcType,
+  sharedVPCProject: providerConfig.details.cloudInfo.gcp.sharedVPCProject ?? '',
   ybFirewallTags: providerConfig.details.cloudInfo.gcp.ybFirewallTags ?? ''
 });
 
