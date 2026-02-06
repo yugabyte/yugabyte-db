@@ -187,8 +187,7 @@ update account
 ```
 
 ```output
-ERROR:  40001: Operation failed.
-  Try again.: Transaction aborted: XXXX
+ERROR:  deadlock detected
 ```
 
   </td>
@@ -294,6 +293,7 @@ Insert a different row. Verify that the row inserted in the transaction in sessi
 ```sql
 BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 INSERT INTO example VALUES (2);
+COMMIT;
 SELECT * FROM example;
 ```
 
