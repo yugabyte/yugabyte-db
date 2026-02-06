@@ -537,6 +537,29 @@ SELECT hr FROM text_table WHERE yb_hash_code(tj) < 63;
  5659
 (9 rows)
 
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) /*+IndexOnlyScan(text_table textidx)*/ SELECT tj FROM text_table WHERE 63 >= yb_hash_code(tj);
+                              QUERY PLAN
+----------------------------------------------------------------------
+ Index Only Scan using textidx on text_table (actual rows=10 loops=1)
+   Index Cond: (yb_hash_code(tj) <= 63)
+   Heap Fetches: 0
+(3 rows)
+
+/*+IndexOnlyScan(text_table textidx)*/ SELECT tj FROM text_table WHERE 63 >= yb_hash_code(tj);
+  tj
+------
+ 4999
+ 8300
+ 6918
+ 912
+ 8646
+ 4946
+ 6920
+ 6785
+ 5659
+ 1363
+(10 rows)
+
 DROP TABLE text_table;
 -- testing on a table with multiple hash key columns on
 -- multiple types
