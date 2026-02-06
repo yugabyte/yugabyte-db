@@ -30,6 +30,8 @@
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
 
+DECLARE_bool(skip_prefix_locks);
+
 using namespace std::literals;
 
 namespace yb::pgwrapper {
@@ -51,6 +53,9 @@ Status SetExplicitRowLockingBatchSize(PGConn& conn, size_t value) {
 class PgMiscConflictsTest : public PgMiniTestBase {
  protected:
   void SetUp() override {
+    // disable skip_prefix_locks because serializable is being used.
+    // TODO: enhance this with skip_prefix_locks=true
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_skip_prefix_locks) = false;
     EnableFailOnConflict();
     PgMiniTestBase::SetUp();
   }
