@@ -509,4 +509,17 @@ Result<ParsedIntent> ParseIntentKey(Slice intent_key, Slice transaction_id_sourc
   return result;
 }
 
+bool IsTopLevelIntentKey(Slice key) {
+  const bool has_cotable_id    = *key.cdata() == KeyEntryTypeAsChar::kTableId;
+  const bool has_colocation_id = *key.cdata() == KeyEntryTypeAsChar::kColocationId;
+  // kGroupEnd takes 1 byte
+  size_t payload = 1;
+  if (has_cotable_id) {
+    payload = kUuidSize + 1;
+  } else if (has_colocation_id) {
+    payload = sizeof(ColocationId) + 1;
+  }
+  return payload == key.size();
+}
+
 }  // namespace yb::dockv

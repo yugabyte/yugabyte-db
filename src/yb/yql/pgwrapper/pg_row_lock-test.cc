@@ -68,6 +68,16 @@ class PgRowLockTest : public PgMiniTestBase {
     ASSERT_OK(cluster_->RestartSync());
     test_func();
   }
+
+  // It is much easier to determine whether two operations conflict when slow mode serializable is
+  // being used(skip_prefix_locks + SERIALIZABLE) with 1 tserver
+  size_t NumTabletServers() override {
+    return 1;
+  }
+
+  virtual bool SlowModeSerializable() {
+    return false;
+  }
 };
 
 std::string RowMarkTypeToPgsqlString(const RowMarkType row_mark_type) {
@@ -135,6 +145,8 @@ void PgRowLockTest::TestStmtBeforeRowLock(
 
   LOG(INFO) << "starting transaction isolation level " << isolation << " test statement "
             << statement << " rowmark " << row_mark_str;
+  const bool slow_mode_serializable = isolation == IsolationLevel::SERIALIZABLE_ISOLATION &&
+                                      ANNOTATE_UNPROTECTED_READ(FLAGS_skip_prefix_locks);
 
 
   ASSERT_OK(read_conn.StartTransaction(isolation));
@@ -144,7 +156,6 @@ void PgRowLockTest::TestStmtBeforeRowLock(
   LOG(INFO) << "effective isolation level: " << isolation_level;
 
   ASSERT_OK(read_conn.FetchFormat("SELECT * FROM t WHERE i = $0", -1));
-
   // Sleep to ensure that read done in snapshot isolation txn doesn't face kReadRestart after INSERT
   // (a sleep will ensure sufficient gap between write time and read point - more than clock skew).
   //
@@ -166,6 +177,10 @@ void PgRowLockTest::TestStmtBeforeRowLock(
     ASSERT_TRUE(status.IsNetworkError()) << status;
     ASSERT_TRUE(IsSerializeAccessError(status)) << status;
     ASSERT_OK(read_conn.RollbackTransaction());
+  } else if (slow_mode_serializable) {
+    // With slow mode under serializable level, a strong write lock is taken on tablet level for
+    // INSERT/DELETE with pk, so SELECT on read_conn's transaction will be aborted.
+    ASSERT_NOK(result);
   } else {
     ASSERT_OK(result);
     // NOTE: vanilla PostgreSQL expects kKeys rows, but kKeys +/- 1 rows are expected for
@@ -409,6 +424,11 @@ template<IsolationLevel level>
 class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
  protected:
 
+  bool SlowModeSerializable() override {
+    return level == IsolationLevel::SERIALIZABLE_ISOLATION &&
+           ANNOTATE_UNPROTECTED_READ(FLAGS_skip_prefix_locks);
+  }
+
   // Check possibility of updating column in case row is referenced by foreign key from another txn.
   void TestReferencedTableUpdate() {
     auto conn = ASSERT_RESULT(Connect());
@@ -424,7 +444,12 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
     // conn UPDATE created strong write intent on (1, v).
     // As a result weak write intent is created for (1).
     // Weak read + weak write on (1) has no conflicts.
-    ASSERT_OK(extra_conn.Execute("COMMIT"));
+    // Buf if it is SERIALIZABLE with skip_prefix_locks enabled, the txn in extra_conn will conflict
+    // with one in conn because strong locks on the tablet even if a pk is specified. The txn in
+    // extra_conn will be aborted because the single-shard txn in conn has higher priority.
+    auto status = extra_conn.Execute("COMMIT");
+    ASSERT_EQ(status.ok(), !SlowModeSerializable());
+
     auto res = ASSERT_RESULT(
         conn.template FetchRow<PGUint64>("SELECT COUNT(*) FROM pktable WHERE v = 20"));
     ASSERT_EQ(res, 1);
@@ -526,8 +551,9 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
     ASSERT_OK(StartTxn(&conn));
     RowLock(&conn, "SELECT * FROM t WHERE h = 1 AND r2 = 2 FOR KEY SHARE", cur_name);
 
-    // Doc key (10, 2, 3) is not locked.
-    ASSERT_OK(ExecuteInTxn(&extra_conn, "DELETE FROM t WHERE h = 10 AND r1 = 2 AND r2 = 3"));
+    // Doc key (10, 2, 3) is not locked except in slow mode serializable.
+    auto status = ExecuteInTxn(&extra_conn, "DELETE FROM t WHERE h = 10 AND r1 = 2 AND r2 = 3");
+    ASSERT_EQ(status.ok(), !SlowModeSerializable());
 
     if (level == IsolationLevel::SERIALIZABLE_ISOLATION) {
       ASSERT_NOK(ExecuteInTxn(&extra_conn, "DELETE FROM t WHERE h = 1 AND r1 = 2 AND r2 = 3"));
@@ -556,15 +582,17 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
     RowLock(&conn, "SELECT * FROM t WHERE h = 1 AND r1 = 2 AND r2 = 3 FOR KEY SHARE", cur_name);
 
     ASSERT_NOK(ExecuteInTxn(&extra_conn, "DELETE FROM t WHERE h = 1 AND r1 = 2 AND r2 = 3"));
-    ASSERT_OK(ExecuteInTxn(&extra_conn, "DELETE FROM t WHERE h = 1 AND r1 = 2 AND r2 = 30"));
+    status = ExecuteInTxn(&extra_conn, "DELETE FROM t WHERE h = 1 AND r1 = 2 AND r2 = 30");
+    ASSERT_EQ(status.ok(), !SlowModeSerializable());
 
     // Doc key (1, 2, 2) doesn't exist.
-    ASSERT_OK(ExecuteInTxn(&extra_conn, "DELETE FROM t WHERE h = 1 AND r1 = 2 AND r2 = 2"));
+    status = ExecuteInTxn(&extra_conn, "DELETE FROM t WHERE h = 1 AND r1 = 2 AND r2 = 2");
+    ASSERT_EQ(status.ok(), !SlowModeSerializable());
 
     ASSERT_OK(conn.Execute("COMMIT"));
 
     auto res = ASSERT_RESULT(conn.template FetchRow<PGUint64>("SELECT COUNT(*) FROM t"));
-    ASSERT_EQ(res, 1);
+    ASSERT_EQ(res, SlowModeSerializable() ? 3 : 1);
 
     ASSERT_OK(conn.Execute("DROP TABLE t"));
   }
@@ -577,6 +605,12 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
   // FOR NO KEY UPDATE |       O       |     X     |         X         |     X
   // FOR UPDATE        |       X       |     X     |         X         |     X
   void TestRowLockConflictMatrix(const std::string& cur_name = "") {
+    if (level == IsolationLevel::SERIALIZABLE_ISOLATION &&
+        ANNOTATE_UNPROTECTED_READ(FLAGS_skip_prefix_locks)) {
+      TestRowLockConflictMatrixForSlowModeSerializable(cur_name);
+      return;
+    }
+
     auto conn = ASSERT_RESULT(SetHighPriTxn(Connect()));
     auto extra_conn = ASSERT_RESULT(SetLowPriTxn(Connect()));
 
@@ -639,6 +673,79 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
     ASSERT_OK(conn.Execute("DROP TABLE t"));
   }
 
+  // Check conflicts according to the following matrix (X - conflict, O - no conflict) for
+  // SERIALIZABLE level with skip_prefix_locks enabled:
+  //                   | FOR KEY SHARE | FOR SHARE | FOR NO KEY UPDATE | FOR UPDATE
+  // ------------------+---------------+-----------+-------------------+-----------
+  // FOR KEY SHARE     |       O       |     O     |         X         |     X
+  // FOR SHARE         |       O       |     O     |         X         |     X
+  // FOR NO KEY UPDATE |       X       |     X     |         X         |     X
+  // FOR UPDATE        |       X       |     X     |         X         |     X
+  void TestRowLockConflictMatrixForSlowModeSerializable(const std::string& cur_name = "") {
+    auto conn = ASSERT_RESULT(SetHighPriTxn(Connect()));
+    auto extra_conn = ASSERT_RESULT(SetLowPriTxn(Connect()));
+
+    ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
+    ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1, 1)"));
+
+    // Transaction 1.
+    ASSERT_OK(StartTxn(&conn));
+    RowLock(&conn, "SELECT k FROM t WHERE k = 1 FOR UPDATE", cur_name);
+
+    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR UPDATE"));
+    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR NO KEY UPDATE"));
+    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR SHARE"));
+    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR KEY SHARE"));
+
+    ASSERT_OK(conn.Execute("COMMIT"));
+
+    // Transaction 2.
+    ASSERT_OK(StartTxn(&conn));
+    RowLock(&conn, "SELECT k FROM t WHERE k = 1 FOR NO KEY UPDATE", cur_name);
+
+    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR UPDATE"));
+    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR NO KEY UPDATE"));
+    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR SHARE"));
+    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR KEY SHARE"));
+
+    ASSERT_OK(conn.Execute("COMMIT"));
+
+    // Transaction 3.
+    ASSERT_OK(StartTxn(&conn));
+    RowLock(&conn, "SELECT k FROM t WHERE k = 1 FOR SHARE", cur_name);
+
+    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR UPDATE"));
+    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR NO KEY UPDATE"));
+    ASSERT_RESULT(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR SHARE"));
+    ASSERT_RESULT(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR KEY SHARE"));
+
+    ASSERT_OK(conn.Execute("COMMIT"));
+
+    // Transaction 4.
+    ASSERT_OK(StartTxn(&conn));
+    RowLock(&conn, "SELECT k FROM t WHERE k = 1 FOR KEY SHARE", cur_name);
+
+    ASSERT_RESULT(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR SHARE"));
+    ASSERT_RESULT(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR KEY SHARE"));
+
+    ASSERT_OK(conn.Execute("COMMIT"));
+
+    // Transaction 5.
+    // Check FOR KEY SHARE + FOR UPDATE and FOR NO KEY UPDATE conflict separately
+    // as FOR KEY SHARE uses regular but FOR UPDATE and FOR NO KEY UPDATE uses high txn priority.
+    ASSERT_OK(StartTxn(&conn));
+    RowLock(&conn, "SELECT k FROM t WHERE k = 1 FOR KEY SHARE", cur_name);
+    ASSERT_OK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR UPDATE"));
+    ASSERT_NOK(conn.Execute("COMMIT"));
+
+    ASSERT_OK(StartTxn(&conn));
+    RowLock(&conn, "SELECT k FROM t WHERE k = 1 FOR KEY SHARE", cur_name);
+    ASSERT_OK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR NO KEY UPDATE"));
+    ASSERT_NOK(conn.Execute("COMMIT"));
+
+    ASSERT_OK(conn.Execute("DROP TABLE t"));
+  }
+
   void RowLock(PGConn* connection, const std::string& query, const std::string& cur_name) {
     std::string lock_stmt = query;
     if (!cur_name.empty()) {
@@ -665,7 +772,8 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
     ASSERT_NOK(extra_conn.Execute("DELETE FROM t WHERE h = 1 AND r1 = 11 AND r2 = 1"));
     ASSERT_OK(extra_conn.Execute("ROLLBACK"));
     ASSERT_OK(StartTxn(&extra_conn));
-    ASSERT_OK(extra_conn.Execute("DELETE FROM t WHERE h = 1 AND r1 = 13 AND r2 = 1"));
+    auto status = extra_conn.Execute("DELETE FROM t WHERE h = 1 AND r1 = 13 AND r2 = 1");
+    ASSERT_EQ(status.ok(), !SlowModeSerializable());
     ASSERT_OK(extra_conn.Execute("COMMIT"));
 
     ASSERT_OK(conn.Execute("COMMIT;"));
@@ -681,12 +789,13 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
     ASSERT_NOK(extra_conn.Execute("DELETE FROM t WHERE h = 2 AND r1 = 11 AND r2 = 2"));
     ASSERT_OK(extra_conn.Execute("ROLLBACK"));
     ASSERT_OK(StartTxn(&extra_conn));
-    ASSERT_OK(extra_conn.Execute("DELETE FROM t WHERE h = 2 AND r1 = 12 AND r2 = 2"));
+    status = extra_conn.Execute("DELETE FROM t WHERE h = 2 AND r1 = 12 AND r2 = 2");
+    ASSERT_EQ(status.ok(), !SlowModeSerializable());
     ASSERT_OK(extra_conn.Execute("COMMIT"));
 
     ASSERT_OK(conn.Execute("COMMIT;"));
     const auto count = ASSERT_RESULT(conn.template FetchRow<PGUint64>("SELECT COUNT(*) FROM t"));
-    ASSERT_EQ(4, count);
+    ASSERT_EQ(SlowModeSerializable() ? 6 : 4, count);
 
     ASSERT_OK(conn.Execute("DROP TABLE t"));
   }
@@ -729,6 +838,7 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
 
   void DuplicateInsertImpl(
     IndexRequirement index, bool low_pri_txn_insert_same_key, bool low_pri_txn_succeed = false) {
+
     auto conn = ASSERT_RESULT(SetHighPriTxn(Connect()));
     ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
     if (index != IndexRequirement::NO) {
@@ -743,14 +853,14 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
     ASSERT_OK(conn.Execute("INSERT INTO t VALUES(1, 10)"));
     ASSERT_OK(conn.Execute("COMMIT"));
     const auto low_pri_txn_commit_status = extra_conn.Execute("COMMIT");
-    if (low_pri_txn_succeed) {
+    if (low_pri_txn_succeed && !SlowModeSerializable()) {
       ASSERT_OK(low_pri_txn_commit_status);
     } else {
       ASSERT_NOK(low_pri_txn_commit_status);
     }
     const auto count = ASSERT_RESULT(
       extra_conn.template FetchRow<PGUint64>("SELECT COUNT(*) FROM t WHERE v = 10"));
-    ASSERT_EQ(low_pri_txn_succeed ? 2 : 1, count);
+    ASSERT_EQ(low_pri_txn_succeed && !SlowModeSerializable() ? 2 : 1, count);
 
     ASSERT_OK(extra_conn.Execute("DROP TABLE t"));
   }
@@ -774,9 +884,8 @@ class PgMiniTestTxnHelperSerializable
 
     ASSERT_OK(StartTxn(&conn));
     ASSERT_OK(conn.Execute("UPDATE t SET v1 = 20 WHERE k = 1"));
-
-    ASSERT_OK(ExecuteInTxn(&extra_conn, "UPDATE t SET v1 = 40 WHERE k = 1"));
-
+    auto status = ExecuteInTxn(&extra_conn, "UPDATE t SET v1 = 40 WHERE k = 1");
+    ASSERT_EQ(status.ok(), !SlowModeSerializable());
     ASSERT_OK(conn.Execute("COMMIT"));
 
     auto res = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT COUNT(*) FROM t WHERE v1 = 20"));

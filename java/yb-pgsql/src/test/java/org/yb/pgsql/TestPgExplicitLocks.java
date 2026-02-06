@@ -35,6 +35,16 @@ public class TestPgExplicitLocks extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgSelect.class);
 
   @Override
+  protected int getInitialNumTServers() {
+    return 1;
+  }
+
+  @Override
+  protected int getReplicationFactor() {
+    return 1;
+  }
+
+  @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("yb_enable_read_committed_isolation", "true");
@@ -148,6 +158,8 @@ public class TestPgExplicitLocks extends BasePgSQLTest {
   private void runRangeKeyLocksTest(ParallelQueryRunner runner,
                                     IsolationLevel pgIsolationLevel,
                                     boolean skip_prefix_locks) throws SQLException {
+    boolean slowModeSerializable = pgIsolationLevel == IsolationLevel.SERIALIZABLE &&
+                                   skip_prefix_locks;
     QueryBuilder builder = new QueryBuilder("table_with_hash");
     // NOTE: for all examples below, the SELECT KEY SHARE statement will lock the whole predicate
     // for SERIALIZABLE isolation level and only matching rows in other isolation levels. The
@@ -230,26 +242,30 @@ public class TestPgExplicitLocks extends BasePgSQLTest {
     runner.runWithConflict(
       builder.selectKeyShare("h = 1 AND r1 = 10 AND r2 = 100"),
       builder.delete("h = 1 AND r1 = 10 AND r2 = 100"));
-
-    runner.runWithoutConflict(
+    runner.run(
       builder.selectKeyShare("h = 1"),
-      builder.delete("h = 2 AND r1 = 20 AND r2 = 200"));
+      builder.delete("h = 2 AND r1 = 20 AND r2 = 200"),
+      slowModeSerializable /* conflict_expected */);
     runner.run(
       builder.selectKeyShare("h = 1 AND r1 = 10"),
       builder.delete("h = 1 AND r1 = 11 AND r2 = 101"),
-      pgIsolationLevel == IsolationLevel.SERIALIZABLE && skip_prefix_locks);
-    runner.runWithoutConflict(
+      slowModeSerializable);
+    runner.run(
       builder.selectKeyShare("h = 1 AND r1 in (10, 11) AND r2 = 102"),
-      builder.delete("h = 2 AND r1 = 21 AND r2 = 201"));
-    runner.runWithoutConflict(
+      builder.delete("h = 2 AND r1 = 21 AND r2 = 201"),
+      slowModeSerializable /* conflict_expected */);
+    runner.run(
       builder.selectKeyShare("h = 1 AND r1 = 11 AND r2 in (100, 101)"),
-      builder.delete("h = 1 AND r1 = 10 AND r2 = 100"));
-    runner.runWithoutConflict(
+      builder.delete("h = 1 AND r1 = 10 AND r2 = 100"),
+      slowModeSerializable /* conflict_expected */);
+    runner.run(
       builder.selectKeyShare("h = 1 AND r2 = 102"),
-      builder.delete("h = 2 AND r1 = 22 AND r2 = 202"));
-    runner.runWithoutConflict(
+      builder.delete("h = 2 AND r1 = 22 AND r2 = 202"),
+      slowModeSerializable /* conflict_expected */);
+    runner.run(
       builder.selectKeyShare("h = 1 AND r1 = 10 AND r2 = 100"),
-      builder.delete("h = 1 AND r1 = 10 AND r2 = 1000"));
+      builder.delete("h = 1 AND r1 = 10 AND r2 = 1000"),
+      slowModeSerializable /* conflict_expected */);
 
     builder = new QueryBuilder("table_without_hash");
     // Lock full tablet if SERIALIZABLE.
@@ -273,15 +289,18 @@ public class TestPgExplicitLocks extends BasePgSQLTest {
     runner.run(
       builder.selectKeyShare("r1 = 1"),
       builder.delete("r1 = 2 AND r2 = 20"),
-      pgIsolationLevel == IsolationLevel.SERIALIZABLE && skip_prefix_locks);
-    runner.runWithoutConflict(
+      slowModeSerializable /* conflict_expected */);
+    runner.run(
       builder.selectKeyShare("r2 = 10 AND r1 IN (1)"),
-      builder.delete("r1 = 1 AND r2 = 11"));
+      builder.delete("r1 = 1 AND r2 = 11"),
+      slowModeSerializable /* conflict_expected */);
   }
 
   private void runFKLocksTest(ParallelQueryRunner runner,
                               IsolationLevel pgIsolationLevel,
                               boolean skip_prefix_locks) throws SQLException {
+    boolean slowModeSerializable = pgIsolationLevel == IsolationLevel.SERIALIZABLE &&
+                                   skip_prefix_locks;
     QueryBuilder childBuilder = new QueryBuilder("child_with_hash");
     QueryBuilder parentBuilder = new QueryBuilder("parent_with_hash");
     runner.runWithConflict(
@@ -294,32 +313,35 @@ public class TestPgExplicitLocks extends BasePgSQLTest {
       childBuilder.insert("(3, 1, 10, 100)"),
       parentBuilder.delete("h = 1 AND r1 = 10 AND r2 = 100"));
 
-    runner.runWithoutConflict(
+    runner.run(
       childBuilder.insert("(4, 1, 10, 100)"),
-      parentBuilder.delete("h = 2"));
+      parentBuilder.delete("h = 2"),
+      slowModeSerializable /* conflict_expected */);
     runner.run(
       childBuilder.insert("(5, 1, 10, 100)"),
       parentBuilder.delete("h = 1 AND r1 = 11"),
-      pgIsolationLevel == IsolationLevel.SERIALIZABLE && skip_prefix_locks);
+      slowModeSerializable);
     runner.run(
       childBuilder.insert("(6, 1, 10, 100)"),
       parentBuilder.delete("h = 1 AND r1 = 10 AND r2 = 1000"),
-      pgIsolationLevel == IsolationLevel.SERIALIZABLE && skip_prefix_locks);
-    Pair<Integer, Integer> result = runner.runWithoutConflict(
+      slowModeSerializable);
+    Pair<Integer, Integer> result = runner.run(
       parentBuilder.delete("h = 3 AND r1 = 1 AND r2 = 10"),
-      parentBuilder.delete("h = 3 AND r1 = 1 AND r2 = 20"));
+      parentBuilder.delete("h = 3 AND r1 = 1 AND r2 = 20"),
+      slowModeSerializable /* conflict_expected */);
     LOG.info("RESULT " + result.getFirst() + ", " + result.getSecond());
-    assertEquals(new Pair<>(1, 1), result);
+    assertEquals(slowModeSerializable ? new Pair<>(1, 0) : new Pair<>(1, 1), result);
 
     childBuilder = new QueryBuilder("child_without_hash");
     parentBuilder = new QueryBuilder("parent_without_hash");
-    runner.runWithoutConflict(
+    runner.run(
       childBuilder.insert("(3, 1, 10)"),
-      parentBuilder.delete("r1 = 2"));
+      parentBuilder.delete("r1 = 2"),
+      slowModeSerializable /* conflict_expected */);
     runner.run(
       childBuilder.insert("(4, 1, 10)"),
       parentBuilder.delete("r1 = 1 AND r2 = 11"),
-      pgIsolationLevel == IsolationLevel.SERIALIZABLE && skip_prefix_locks);
+      slowModeSerializable);
 
     runner.runWithConflict(
       childBuilder.insert("(1, 1, 10)"),
@@ -327,10 +349,11 @@ public class TestPgExplicitLocks extends BasePgSQLTest {
     runner.runWithConflict(
       childBuilder.insert("(2, 1, 10)"),
       parentBuilder.delete("r1 = 1 AND r2 = 10"));
-    result = runner.runWithoutConflict(
+    result = runner.run(
       parentBuilder.delete("r1 = 3 AND r2 = 10"),
-      parentBuilder.delete("r1 = 3 AND r2 = 20"));
-    assertEquals(new Pair<>(1, 1), result);
+      parentBuilder.delete("r1 = 3 AND r2 = 20"),
+      slowModeSerializable /* conflict_expected */);
+    assertEquals(slowModeSerializable ? new Pair<>(1, 0) : new Pair<>(1, 1), result);
   }
 
   private void testRangeKeyLocks(IsolationLevel pgIsolationLevel,
