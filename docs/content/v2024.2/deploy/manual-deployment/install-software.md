@@ -43,7 +43,7 @@ Download and extract YugabyteDB as follows:
 
 ```sh
 wget https://software.yugabyte.com/releases/{{< yb-version version="stable">}}/yugabyte-{{< yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
-echo "$(curl -L https://software.yugabyte.com/releases/{{< yb-version version="stable">}}/yugabyte-{{< yb-version version="stable" format="build">}}-linux-x86_64.tar.gz.sha) *yugabyte-{{< yb-version version="stable" format="build">}}-linux-x86_64.tar.gz" | shasum --check && \
+echo "$(curl -L https://software.yugabyte.com/releases/{{< yb-version version="stable">}}/yugabyte-{{< yb-version version="stable" format="build">}}-linux-x86_64-tar.gz.sha) *yugabyte-{{< yb-version version="stable" format="build">}}-linux-x86_64.tar.gz" | shasum --check && \
 tar xvfz yugabyte-{{< yb-version version="stable" format="build">}}-linux-x86_64.tar.gz && cd yugabyte-{{< yb-version version="stable">}}/
 ```
 
@@ -53,7 +53,7 @@ tar xvfz yugabyte-{{< yb-version version="stable" format="build">}}-linux-x86_64
 
 ```sh
 wget https://software.yugabyte.com/releases/{{< yb-version version="stable">}}/yugabyte-{{< yb-version version="stable" format="build">}}-el8-aarch64.tar.gz
-echo "$(curl -L https://software.yugabyte.com/releases/{{< yb-version version="stable">}}/yugabyte-{{< yb-version version="stable" format="build">}}-el8-aarch64.tar.gz.sha) *yugabyte-{{< yb-version version="stable" format="build">}}-el8-aarch64.tar.gz" | shasum --check && \
+echo "$(curl -L https://software.yugabyte.com/releases/{{< yb-version version="stable">}}/yugabyte-{{< yb-version version="stable" format="build">}}-el8-aarch64-tar.gz.sha) *yugabyte-{{< yb-version version="stable" format="build">}}-el8-aarch64.tar.gz" | shasum --check && \
 tar xvfz yugabyte-{{< yb-version version="stable" format="build">}}-el8-aarch64.tar.gz && cd yugabyte-{{< yb-version version="stable">}}/
 ```
 
