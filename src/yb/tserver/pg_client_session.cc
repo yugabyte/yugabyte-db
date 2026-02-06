@@ -3637,8 +3637,9 @@ class PgClientSession::Impl {
   TransactionFullLocality GetTargetTransactionLocality(const PgPerformRequestPB& request) const {
     auto tablespace_oids = request.ops() | std::views::transform(GetOpTablespaceOid);
 
-    if (FLAGS_use_tablespace_based_transaction_placement ||
-        request.options().force_tablespace_locality()) {
+    if (context_.transaction_manager_provider().TablespaceLocalTransactionsPossible() &&
+        (FLAGS_use_tablespace_based_transaction_placement ||
+            request.options().force_tablespace_locality())) {
       if (auto oid = request.options().force_tablespace_locality_oid()) {
         return TransactionFullLocality::TablespaceLocal(oid);
       }

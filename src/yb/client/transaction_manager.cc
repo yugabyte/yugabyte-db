@@ -136,6 +136,11 @@ class TransactionTableState {
     return has_region_local_tablets_.load();
   }
 
+  bool HasAnyTransactionLocalStatusTablets() {
+    SharedLock lock(mutex_);
+    return !tablets_.tablespaces.empty();
+  }
+
   bool HasAnyTransactionLocalStatusTablets(PgTablespaceOid tablespace_oid) {
     SharedLock lock(mutex_);
     return tablets_.tablespaces.contains(tablespace_oid);
@@ -493,6 +498,10 @@ class TransactionManager::Impl {
     return table_state_.TablespaceIsRegionLocal(tablespace_oid);
   }
 
+  bool TablespaceLocalTransactionsPossible() {
+    return table_state_.HasAnyTransactionLocalStatusTablets();
+  }
+
   bool TablespaceLocalTransactionsPossible(PgTablespaceOid tablespace_oid) {
     return table_state_.HasAnyTransactionLocalStatusTablets(tablespace_oid);
   }
@@ -587,6 +596,10 @@ bool TransactionManager::RegionLocalTransactionsPossible() {
 
 bool TransactionManager::TablespaceIsRegionLocal(PgTablespaceOid tablespace_oid) {
   return impl_->TablespaceIsRegionLocal(tablespace_oid);
+}
+
+bool TransactionManager::TablespaceLocalTransactionsPossible() {
+  return impl_->TablespaceLocalTransactionsPossible();
 }
 
 bool TransactionManager::TablespaceLocalTransactionsPossible(PgTablespaceOid tablespace_oid) {

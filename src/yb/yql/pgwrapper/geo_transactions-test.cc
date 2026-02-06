@@ -936,6 +936,16 @@ TEST_F(GeoTransactionsTablespaceBasedSelectionCandidatesTest, TestCandidates) {
     ASSERT_EQ(tablets.region_local_tablets.size(), 3);
   }
 
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_perform_ignore_pg_is_region_local) = false;
+
+  // Make sure that local region transactions are still local region transactions during
+  // upgrade (before autoflag is set to true).
+  CheckSuccess(
+      kLocalRegion, SetGlobalTransactionsGFlag::kFalse, SetGlobalTransactionSessionVar::kFalse,
+      InsertToLocalFirst::kTrue, ExpectedLocality::kLocal);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_perform_ignore_pg_is_region_local) = true;
+
   auto version = GetCurrentVersion();
   ASSERT_OK(SET_FLAG(enable_tablespace_based_transaction_placement, true));
   WaitForStatusTabletsVersion(version + 1);
