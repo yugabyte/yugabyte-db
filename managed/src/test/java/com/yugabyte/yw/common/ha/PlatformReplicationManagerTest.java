@@ -13,14 +13,17 @@ package com.yugabyte.yw.common.ha;
 import static junit.framework.TestCase.assertTrue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.any;
-import static org.mockito.Mockito.anyBoolean;
-import static org.mockito.Mockito.anyInt;
-import static org.mockito.Mockito.anyList;
-import static org.mockito.Mockito.anyMap;
-import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -33,27 +36,35 @@ import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PrometheusConfigHelper;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.services.FileDataService;
+import com.yugabyte.yw.metrics.MetricQueryResponse;
+import com.yugabyte.yw.models.NodeAgent;
 import java.io.File;
 import java.net.URL;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
 
 @RunWith(JUnitParamsRunner.class)
 public class PlatformReplicationManagerTest extends FakeDBApplication {
+  @Rule public MockitoRule rule = MockitoJUnit.rule();
   @Mock Config mockConfig;
 
   @Mock PlatformScheduler mockPlatformScheduler;
@@ -76,13 +87,24 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
   private static final String PG_DUMP_PATH = "/tmp/pg_dump";
   private static final String PG_RESTORE_PATH = "/tmp/pg_restore";
   private static final String BASE_INSTALL = "/tmp/yugabyte";
+  private PlatformReplicationManager backupManager;
 
   @Before
   public void setUp() {
-    MockitoAnnotations.initMocks(this);
     when(mockConfig.getString(STORAGE_PATH)).thenReturn("/tmp");
     when(runtimeConfGetter.getGlobalConf(GlobalConfKeys.k8sYbaRestoreSkipDumpFileDelete))
         .thenReturn(true);
+    mockReplicationUtil.shellProcessHandler = shellProcessHandler;
+    mockReplicationUtil.metricQueryHelper = mockMetricQueryHelper;
+    backupManager =
+        spy(
+            new PlatformReplicationManager(
+                mockPlatformScheduler,
+                mockReplicationUtil,
+                mockFileDataService,
+                mockPrometheusConfigHelper,
+                mockConfigHelper,
+                runtimeConfGetter));
   }
 
   private void setupConfig(
@@ -209,7 +231,6 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
     when(runtimeConfGetter.getStaticConf()).thenReturn(mockConfig);
     when(runtimeConfGetter.getGlobalConf(eq(GlobalConfKeys.disablePlatformHARestoreTransaction)))
         .thenReturn(false);
-    mockReplicationUtil.shellProcessHandler = shellProcessHandler;
     doCallRealMethod()
         .when(mockReplicationUtil)
         .runCommand(any(PlatformReplicationManager.PlatformBackupParams.class));
@@ -268,15 +289,6 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
       doCallRealMethod().when(mockReplicationUtil).cleanupBackups(anyList(), anyInt());
       doCallRealMethod().when(mockReplicationUtil).cleanupReceivedBackups(any(URL.class), anyInt());
       doCallRealMethod().when(mockReplicationUtil).listBackups(any(URL.class));
-      PlatformReplicationManager backupManager =
-          spy(
-              new PlatformReplicationManager(
-                  mockPlatformScheduler,
-                  mockReplicationUtil,
-                  mockFileDataService,
-                  mockPrometheusConfigHelper,
-                  mockConfigHelper,
-                  runtimeConfGetter));
 
       List<File> backups = backupManager.listBackups(testUrl);
       assertEquals(3, backups.size());
@@ -307,5 +319,64 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
       testFile2.delete();
       testFile3.delete();
     }
+  }
+
+  @Test
+  public void testValidateBackup() {
+    Util.setYbaVersion("2025.2.1.0-b1");
+    //  Instant instant = Instant.parse("2026-02-05T20:44:00Z");
+    doCallRealMethod().when(mockReplicationUtil).isLiveNodeAgentUpgradePendingAt(any());
+    NodeAgent n1 = mock(NodeAgent.class);
+    NodeAgent n2 = mock(NodeAgent.class);
+    NodeAgent n3 = mock(NodeAgent.class);
+    UUID uuid1 = UUID.randomUUID();
+    UUID uuid2 = UUID.randomUUID();
+    UUID uuid3 = UUID.randomUUID();
+    when(n1.getVersion()).thenReturn("2025.2.1.0-b1");
+    when(n2.getVersion()).thenReturn("2025.2.1.0-b1");
+    when(n3.getVersion()).thenReturn("2025.2.0.0-b0");
+    when(n1.getUuid()).thenReturn(uuid1);
+    when(n2.getUuid()).thenReturn(uuid2);
+    when(n3.getUuid()).thenReturn(uuid3);
+    MetricQueryResponse.Entry entry1 = new MetricQueryResponse.Entry();
+    entry1.labels = new HashMap<>();
+    entry1.labels.put("node_agent_uuid", uuid1.toString());
+    MetricQueryResponse.Entry entry2 = new MetricQueryResponse.Entry();
+    entry2.labels = new HashMap<>();
+    entry2.labels.put("node_agent_uuid", uuid2.toString());
+    MetricQueryResponse.Entry entry3 = new MetricQueryResponse.Entry();
+    entry3.labels = new HashMap<>();
+    entry3.labels.put("node_agent_uuid", uuid2.toString());
+    ArrayList<MetricQueryResponse.Entry> entries = new ArrayList<>();
+    entries.add(entry1);
+    entries.add(entry2);
+    entries.add(entry3);
+    doReturn(entries).when(mockMetricQueryHelper).queryDirect(anyString());
+    when(mockReplicationUtil.getLiveNodeAgents()).thenReturn(List.of(n1, n2, n3));
+    when(mockReplicationUtil.getLiveNodeAgents()).thenReturn(List.of(n1, n2, n3));
+    boolean result = backupManager.validateBackup("backup_26-02-05-20-44.tgz");
+    // One node agent version is old.
+    assertFalse(result);
+    verify(mockReplicationUtil, times(1)).isLiveNodeAgentUpgradePendingAt(any());
+    // Old node agent found, no query was made to metrics.
+    verify(mockMetricQueryHelper, times(0)).queryDirect(anyString());
+    clearInvocations(mockReplicationUtil, mockMetricQueryHelper);
+    when(n3.getVersion()).thenReturn("2025.2.1.0-b1");
+    result = backupManager.validateBackup("backup_26-02-05-20-44.tgz");
+    // It just got upgraded according to metrics.
+    assertFalse(result);
+    verify(mockReplicationUtil, times(1)).isLiveNodeAgentUpgradePendingAt(any());
+    // All node agents upgraded, query was made to metrics to confirm if they got upgraded before
+    // the backup was taken.
+    verify(mockMetricQueryHelper, times(1)).queryDirect(anyString());
+    clearInvocations(mockReplicationUtil, mockMetricQueryHelper);
+    when(mockReplicationUtil.getLiveNodeAgents()).thenReturn(Collections.emptyList());
+    result = backupManager.validateBackup("backup_26-02-05-20-44.tgz");
+    // All got upgraded according to metrics before the metrics window.
+    assertTrue(result);
+    verify(mockReplicationUtil, times(1)).isLiveNodeAgentUpgradePendingAt(any());
+    // All node agents upgraded, query was made to metrics to confirm if they got upgraded before
+    // the backup was taken.
+    verify(mockMetricQueryHelper, times(1)).queryDirect(anyString());
   }
 }

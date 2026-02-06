@@ -176,8 +176,9 @@ public class NodeAgentPoller {
         } catch (RejectedExecutionException e) {
           stateRef.set(PollerTaskState.IDLE);
           log.warn(
-              "Failed to schedule poller task for {}. Will be retried later",
-              param.getNodeAgentUuid());
+              "Failed to schedule poller task for {} - {}. Will be retried later",
+              param.getNodeAgentUuid(),
+              e.getMessage());
         }
       }
     }
