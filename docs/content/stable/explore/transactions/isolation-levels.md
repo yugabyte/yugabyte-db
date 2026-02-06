@@ -254,7 +254,7 @@ Next, connect to the universe using two independent ysqlsh instances, referred t
 Begin a transaction in session #1 with the Snapshot isolation level, meaning it will work against a snapshot of the database as of this point:
 
 ```sql
-BEGIN TRANSACTION ISOLATION LEVEL SNAPSHOT;
+BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 ```
 
   </td>
@@ -292,7 +292,7 @@ SELECT * FROM example;
 Insert a different row. Verify that the row inserted in the transaction in session #1 is not visible in this session, as follows:
 
 ```sql
-BEGIN TRANSACTION ISOLATION LEVEL SNAPSHOT;
+BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 INSERT INTO example VALUES (2);
 SELECT * FROM example;
 ```
