@@ -145,12 +145,11 @@ Result<DetermineKeysToLockResult<SharedLockManager>> DetermineKeysToLock(
     boost::tribool pk_is_known = doc_op->OpType() == DocOperationType::PGSQL_WRITE_OPERATION ?
         boost::tribool(down_cast<const docdb::PgsqlWriteOperation&>(*doc_op).pk_is_known()) :
         boost::indeterminate;
-    // When skip_prefix_locks is enabled, if a PK is not specified in a serializable txn, the empty
-    // key must be locked to cover the locks of the pk. This is a coarser lock and can result in
-    // blocking many other transactions.
+    // When skip_prefix_locks is enabled, for a serializable txn, we always take a strong lock
+    // on the top level key. This is a coarser lock and can result in blocking many other
+    // transactions.
     const bool top_level_key_takes_strong_locks =
-        isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION && skip_prefix_locks &&
-        !static_cast<bool>(pk_is_known);
+        isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION && skip_prefix_locks;
     VLOG_WITH_FUNC(4) << "isolation_level:" << isolation_level << ", skip_prefix_locks:"
                       << skip_prefix_locks << ", pk_is_known:" << static_cast<bool>(pk_is_known);
 
