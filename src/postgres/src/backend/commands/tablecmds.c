@@ -14688,6 +14688,43 @@ ATPostAlterTypeCleanup(List **wqueue, AlteredTableInfo *tab, LOCKMODE lockmode)
 	 * constraint or index we're processing to figure out which relation to
 	 * operate on.
 	 */
+
+	/*
+	 * YB: Sort constraints so PRIMARY KEY constraints are processed first.
+	 * When a PRIMARY KEY is altered, it schedules a table rewrite which other
+	 * constraints can then detect and avoid docdb index creation during rebuild phase.
+	 */
+	List *pk_oids = NIL;
+	List *pk_defs = NIL;
+	List *other_oids = NIL;
+	List *other_defs = NIL;
+
+	forboth(oid_item, tab->changedConstraintOids,
+			def_item, tab->changedConstraintDefs)
+	{
+		Oid oldId = lfirst_oid(oid_item);
+		HeapTuple tup = SearchSysCache1(CONSTROID, ObjectIdGetDatum(oldId));
+
+		if (!HeapTupleIsValid(tup))
+			elog(ERROR, "cache lookup failed for constraint %u", oldId);
+
+		Form_pg_constraint con = (Form_pg_constraint) GETSTRUCT(tup);
+		bool is_primary = (con->contype == CONSTRAINT_PRIMARY);
+		ReleaseSysCache(tup);
+
+		if (is_primary)
+		{
+			pk_oids = lappend_oid(pk_oids, oldId);
+			pk_defs = lappend(pk_defs, lfirst(def_item));
+			continue;
+		}
+		other_oids = lappend_oid(other_oids, oldId);
+		other_defs = lappend(other_defs, lfirst(def_item));
+	}
+
+	tab->changedConstraintOids = list_concat(pk_oids, other_oids);
+	tab->changedConstraintDefs = list_concat(pk_defs, other_defs);
+
 	forboth(oid_item, tab->changedConstraintOids,
 			def_item, tab->changedConstraintDefs)
 	{

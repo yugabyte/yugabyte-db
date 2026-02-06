@@ -61,15 +61,15 @@ namespace {
 
 Status ExecuteStatementsAsync(
     const std::string& database_name, const std::vector<std::string>& statements,
-    CatalogManagerIf& catalog_manager, const std::string& failure_warn_prefix, bool* executing,
-    bool* execution_successful) {
+    CatalogManagerIf& catalog_manager, const std::string& failure_warn_prefix,
+    std::atomic<bool>* executing, std::atomic<bool>* execution_successful) {
   auto callback = [failure_warn_prefix, executing, execution_successful](const Status& status) {
     if (status.ok()) {
-      *execution_successful = true;
+      execution_successful->store(true, std::memory_order_release);
     } else {
       WARN_NOT_OK(status, failure_warn_prefix);
     }
-    *executing = false;
+    executing->store(false, std::memory_order_release);
   };
   auto deadline = CoarseMonoClock::now() + MonoDelta::FromSeconds(60);
   RETURN_NOT_OK(
@@ -551,12 +551,14 @@ Status YsqlManager::ListenNotifyBgTask() {
 Status YsqlManager::CreateYbSystemDBIfNeeded() {
   DCHECK(FLAGS_enable_ysql);
 
-  if (yb_system_db_created_ || creating_listen_notify_objects_) {
+  if (yb_system_db_created_.load(std::memory_order_acquire) ||
+      creating_listen_notify_objects_.load(std::memory_order_acquire)) {
     return Status::OK();
   }
 
   // Check if kYbSystemDbName namespace already exists.
-  if (VERIFY_RESULT(catalog_manager_.sys_catalog()->NamespaceExists(kYbSystemDbName))) {
+  auto db_oid = VERIFY_RESULT(catalog_manager_.sys_catalog()->GetYsqlDatabaseOid(kYbSystemDbName));
+  if (db_oid != kPgInvalidOid) {
     yb_system_db_created_ = true;
     return Status::OK();
   }
@@ -572,7 +574,9 @@ Status YsqlManager::CreateYbSystemDBIfNeeded() {
 Status YsqlManager::CreateListenNotifyObjects() {
   DCHECK(FLAGS_enable_ysql);
 
-  if (created_listen_notify_objects_ || creating_listen_notify_objects_ || !yb_system_db_created_) {
+  if (created_listen_notify_objects_.load(std::memory_order_acquire) ||
+      creating_listen_notify_objects_.load(std::memory_order_acquire) ||
+      !yb_system_db_created_.load(std::memory_order_acquire)) {
     return Status::OK();
   }
 

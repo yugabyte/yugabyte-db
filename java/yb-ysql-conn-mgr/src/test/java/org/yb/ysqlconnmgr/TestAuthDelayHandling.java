@@ -143,7 +143,8 @@ public class TestAuthDelayHandling extends BaseYsqlConnMgr {
       this.expectSuccess = expectSuccess;
       this.threadId = threadId;
       this.caughtException = false;
-      this.socketTimeout = (expectSuccess) ? (2 * AUTH_DELAY_MS / 1000) : 1;
+      this.socketTimeout =
+          (expectSuccess) ? Math.toIntExact(Math.round(2.5 * AUTH_DELAY_MS) / 1000) : 1;
     }
 
     @Override
@@ -162,7 +163,7 @@ public class TestAuthDelayHandling extends BaseYsqlConnMgr {
         // We want to delay the thread that is expected to succeed so that it is necessarily last in
         // the queue
         try {
-          Thread.sleep(AUTH_DELAY_MS / 2);
+          Thread.sleep(250);
         } catch (InterruptedException e) {
           fail("Sleep interrupted for thread " + threadId + " with expectSuccess. "
               + e.getMessage());

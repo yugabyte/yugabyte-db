@@ -248,6 +248,8 @@ DEFINE_test_flag(bool, get_ysql_catalog_version_from_sys_catalog, false,
                  "Whether catalog manager should get the ysql catalog version "
                  "from the sys_catalog.");
 
+DEFINE_test_flag(uint32, abort_create_table, 0,
+    "Abort the creation of a table at a specified point in code.");
 
 // TODO: should this be a test flag?
 DEFINE_RUNTIME_int32(catalog_manager_inject_latency_in_delete_table_ms, 0,
@@ -2289,7 +2291,8 @@ void CatalogManager::CompleteShutdown() {
 Status CatalogManager::AbortTableCreation(TableInfo* table,
                                           const TabletInfos& tablets,
                                           const Status& s,
-                                          CreateTableResponsePB* resp) {
+                                          CreateTableResponsePB* resp,
+                                          TableInfoWithWriteLock* indexed_table) {
   LOG(WARNING) << s;
 
   const TableId table_id = table->id();
@@ -2308,20 +2311,34 @@ Status CatalogManager::AbortTableCreation(TableInfo* table,
   // all tasks, as (by definition) no tasks may be pending against a
   // table that has failed to successfully create.
   table->CloseAndWaitForAllTasksToAbort();
+
+  // For an index, must release the indexed_table COW lock
+  // that was acquired earlier. The indexed_table lock may be
+  // already released depending on the error causing the abort.
+  // Unlock() api checks for that internally.
+  // Note that the two locks are acquired based on the table_id
+  // order to avoid deadlocks. But can be released in any order
+  // w/o affecting correctness.
+  if (indexed_table && *indexed_table) {
+    indexed_table->lock.Unlock();
+  }
+
+  // Call AbortMutation() manually to release the COW lock.
+  // Callers are assumed to have done some changes and
+  // called StartMutation() earlier.
+  for (const auto& tablet : tablets) {
+    tablet->mutable_metadata()->AbortMutation();
+  }
+  table->mutable_metadata()->AbortMutation();
+
+  // Remove the metadata from the catalog manager
   {
     LockGuard lock(mutex_);
-
-    // Call AbortMutation() manually, as otherwise the lock won't be released.
-    for (const auto& tablet : tablets) {
-      tablet->mutable_metadata()->AbortMutation();
-    }
-    table->mutable_metadata()->AbortMutation();
     auto tablet_map_checkout = tablet_map_.CheckOut();
     for (const TabletId& tablet_id_to_erase : tablet_ids_to_erase) {
       CHECK_EQ(tablet_map_checkout->erase(tablet_id_to_erase), 1)
           << "Unable to erase tablet " << tablet_id_to_erase << " from tablet map.";
     }
-
     auto table_map_checkout = tables_.CheckOut();
     table_names_map_.erase({table_namespace_id, table_name});  // Not present if PGSQL table.
     CHECK_EQ(table_map_checkout->Erase(table_id), 1)
@@ -2333,6 +2350,23 @@ Status CatalogManager::AbortTableCreation(TableInfo* table,
   }
   return CheckIfNoLongerLeaderAndSetupError(s, resp);
 }
+
+namespace {
+
+// Helper for TEST_abort_create_table: if flag matches and name has test prefix, return
+// non-OK status. Caller should call AbortTableCreation if result is not OK.
+Status TEST_MaybeFakeAbortTableCreation(
+    uint32_t test_abort_case, const std::string& table_name) {
+  if (FLAGS_TEST_abort_create_table == test_abort_case &&
+      table_name.starts_with("test_create_abort_")) {
+    return STATUS(InternalError,
+        "TEST: Aborting due to FLAGS_TEST_abort_create_table (case" +
+            std::to_string(test_abort_case) + ")");
+  }
+  return Status::OK();
+}
+
+}  // namespace
 
 Result<ReplicationInfoPB> CatalogManager::GetTableReplicationInfo(
   const ReplicationInfoPB& table_replication_info,
@@ -2804,7 +2838,8 @@ std::string AsDebugHexString(const std::vector<std::string>& strings) {
 }
 
 Result<std::vector<PartitionPB>> CreateNewTabletsPartition(
-    const TabletInfo& tablet_info, const std::vector<std::string>& split_partition_keys) {
+    const TabletInfo& tablet_info, const std::vector<std::string>& split_partition_keys,
+    const PartitionSchema& partition_schema) {
   // Making a copy of PartitionPB to avoid holding a lock.
   const auto source_partition = tablet_info.LockForRead()->pb.partition();
   const auto num_split_tablets = narrow_cast<int>(split_partition_keys.size() + 1);
@@ -2825,6 +2860,9 @@ Result<std::vector<PartitionPB>> CreateNewTabletsPartition(
     if (partition_start < partition_end ||
         (i == num_split_tablets - 1 &&
          source_partition.partition_key_end().empty() && partition_end.empty())) {
+      // Make sure partitions are valid.
+      RETURN_NOT_OK(partition_schema.CheckPartitionBounds(partition_start, partition_end));
+
       // TODO(nway-tsplit): How does hash bucket population change with N-way split? For binary
       // splits, we seemed to simply copy from source partition.
       new_tablets_partitions[i].mutable_hash_buckets()->CopyFrom(source_partition.hash_buckets());
@@ -3169,6 +3207,7 @@ class SplitScope {
 
 } // namespace
 
+// TODO(tsplit): remove split_encoded_keys, https://github.com/yugabyte/yugabyte-db/issues/30092.
 Status CatalogManager::DoSplitTablet(
     const TabletInfoPtr& source_tablet_info, const std::vector<std::string>& split_encoded_keys,
     const std::vector<std::string>& split_partition_keys, const ManualSplit is_manual_split,
@@ -3268,9 +3307,15 @@ Status CatalogManager::DoSplitTablet(
       LOG(INFO) << "Starting tablet split: " << source_tablet_info->ToString()
                 << " by partition key(s): " << AsDebugHexString(split_partition_keys);
 
+      // Get partition schema.
+      auto schema = VERIFY_RESULT(scope.source_table()->GetSchema());
+      PartitionSchema partition_schema;
+      RETURN_NOT_OK(PartitionSchema::FromPB(
+          scope.source_table_lock()->pb.partition_schema(), schema, &partition_schema));
+
       // Get partitions for the split children.
       const auto tablet_partitions = VERIFY_RESULT(CreateNewTabletsPartition(
-          *source_tablet_info, split_partition_keys));
+          *source_tablet_info, split_partition_keys, partition_schema));
 
       // Create in-memory (uncommitted) tablets for new split children.
       for (auto i = 0; i < num_split_parts; ++i) {
@@ -3781,7 +3826,8 @@ Status CatalogManager::CompleteCreateYsqlSysTable(
   if (PREDICT_FALSE(!s.ok())) {
     return AbortTableCreation(
         data.table.get(), {},
-        s.CloneAndPrepend("An error occurred while inserting to sys-tablets: "), &data.resp);
+        s.CloneAndPrepend("An error occurred while inserting to sys-tablets: "),
+          &data.resp, nullptr /* indexed_table */);
   }
   TRACE("Wrote table to system table");
 
@@ -3847,7 +3893,8 @@ Status CatalogManager::CreateYsqlSysTable(
     if (PREDICT_FALSE(!s.ok())) {
       return AbortTableCreation(
           data.table.get(), {},
-          s.CloneAndPrepend("An error occurred while inserting to sys-tablets: "), &data.resp);
+          s.CloneAndPrepend("An error occurred while inserting to sys-tablets: "),
+            &data.resp, nullptr /* indexed_table */);
     }
     // TODO(zdrudi): to handle the new format for the sys tablet, set the child table's parent table
     // id and add to the tablet's in-memory list of hosted table ids.
@@ -4721,11 +4768,19 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     }
   }
 
+  // if test flag to abort create table is set and this is to create
+  // test table, fake abort the table creation.
+  // case 1: fakes the case where the Upsert failed.
+  s = TEST_MaybeFakeAbortTableCreation(1, req.name());
+  if (PREDICT_FALSE(!s.ok())) {
+    return AbortTableCreation(table.get(), tablets, s, resp, &indexed_table);
+  }
+
   s = sys_catalog_->Upsert(epoch, table, tablets);
   if (PREDICT_FALSE(!s.ok())) {
     return AbortTableCreation(
         table.get(), tablets, s.CloneAndPrepend("An error occurred while inserting to sys-tablets"),
-        resp);
+        resp, &indexed_table);
   }
   VLOG(3) << "SysTablesEntryPB after CreateTable: " << table->metadata().dirty().pb.DebugString();
   TRACE("Wrote table and tablets to system table");
@@ -4743,11 +4798,31 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
         index_info.set_index_permissions(INDEX_PERM_DELETE_ONLY);
       }
     }
+
+    // if test flag to abort create table is set and this is to create
+    // test table, fake abort the table creation.
+    // case 2: fakes the case where Upsert was successful but
+    // AddIndexInfoToTable failed while still holding the COW lock
+    // on the indexed table.
+    s = TEST_MaybeFakeAbortTableCreation(2, req.name());
+    if (PREDICT_FALSE(!s.ok())) {
+      return AbortTableCreation(table.get(), tablets, s, resp, &indexed_table);
+    }
+
     s = AddIndexInfoToTable(indexed_table, index_info, epoch, resp);
     if (PREDICT_FALSE(!s.ok())) {
       return AbortTableCreation(
           table.get(), tablets, s.CloneAndPrepend("An error occurred while inserting index info"),
-          resp);
+          resp, &indexed_table);
+    }
+    // if test flag to abort create table is set and this is to create
+    // test table, fake abort the table creation.
+    // case 3: fakes the case where AddIndexInfoToTable failed after
+    // committing indexed table's in-memory state & releasing
+    // the COW lock on the indexed table.
+    s = TEST_MaybeFakeAbortTableCreation(3, req.name());
+    if (PREDICT_FALSE(!s.ok())) {
+      return AbortTableCreation(table.get(), tablets, s, resp, &indexed_table);
     }
   }
 

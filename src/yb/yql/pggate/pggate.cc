@@ -1940,6 +1940,11 @@ PgApiImpl::SetTserverCatalogMessageList(
       db_oid, is_breaking_change, new_catalog_version, messages);
 }
 
+Status PgApiImpl::GetYbSystemTableInfo(
+    PgOid namespace_oid, std::string_view table_name, PgOid* oid, PgOid* relfilenode) {
+  return pg_client_.GetYbSystemTableInfo(namespace_oid, table_name, oid, relfilenode);
+}
+
 uint64_t PgApiImpl::GetSharedAuthKey() const {
   return tserver_shared_object_->postgres_auth_key();
 }
@@ -2067,10 +2072,7 @@ bool PgApiImpl::HasWriteOperationsInDdlTxnMode() const {
 Status PgApiImpl::ExitSeparateDdlTxnMode(PgOid db_oid, bool is_silent_modification) {
   // Flush all buffered operations as ddl txn use its own transaction session.
   RETURN_NOT_OK(pg_session_->FlushBufferedOperations(PgFlushDebugContext::ExitDdlTxnMode()));
-  RETURN_NOT_OK(pg_txn_manager_->ExitSeparateDdlTxnModeWithCommit(db_oid, is_silent_modification));
-  // Next reads from catalog tables have to see changes made by the DDL transaction.
-  ResetCatalogReadTime();
-  return Status::OK();
+  return pg_txn_manager_->ExitSeparateDdlTxnModeWithCommit(db_oid, is_silent_modification);
 }
 
 Status PgApiImpl::ClearSeparateDdlTxnMode() {
@@ -2375,10 +2377,12 @@ Result<tserver::PgGetReplicationSlotResponsePB> PgApiImpl::GetReplicationSlot(
 
 Result<cdc::InitVirtualWALForCDCResponsePB> PgApiImpl::InitVirtualWALForCDC(
     const std::string& stream_id, const std::vector<PgObjectId>& table_ids,
+    const std::unordered_map<uint32_t, uint32_t>& oid_to_relfilenode,
     const YbcReplicationSlotHashRange* slot_hash_range, uint64_t active_pid,
     const std::vector<PgOid>& publication_oids, bool pub_all_tables) {
   return pg_client_.InitVirtualWALForCDC(
-      stream_id, table_ids, slot_hash_range, active_pid, publication_oids, pub_all_tables);
+    stream_id, table_ids, oid_to_relfilenode, slot_hash_range, active_pid, publication_oids,
+    pub_all_tables);
 }
 
 Result<cdc::GetLagMetricsResponsePB> PgApiImpl::GetLagMetrics(
@@ -2387,8 +2391,9 @@ Result<cdc::GetLagMetricsResponsePB> PgApiImpl::GetLagMetrics(
 }
 
 Result<cdc::UpdatePublicationTableListResponsePB> PgApiImpl::UpdatePublicationTableList(
-    const std::string& stream_id, const std::vector<PgObjectId>& table_ids) {
-  return pg_client_.UpdatePublicationTableList(stream_id, table_ids);
+    const std::string& stream_id, const std::vector<PgObjectId>& table_ids,
+    const std::unordered_map<uint32_t, uint32_t>& oid_to_relfilenode) {
+  return pg_client_.UpdatePublicationTableList(stream_id, table_ids, oid_to_relfilenode);
 }
 
 Result<cdc::DestroyVirtualWALForCDCResponsePB> PgApiImpl::DestroyVirtualWALForCDC() {

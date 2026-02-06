@@ -9,3 +9,4 @@ test: yb.orig.user_table_access_in_a_ddl
 test: yb.orig.analyze_ddl_deadlock
 test: yb.orig.concurrent_insert_during_rewrite
 test: yb.orig.concurrent_partition_insert
+test: yb.orig.inplace_catalog_updates

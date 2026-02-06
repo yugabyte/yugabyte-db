@@ -39,7 +39,6 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.K8SNodeResourceSpec;
 import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.forms.YbcThrottleParametersResponse.ThrottleParamValue;
 import com.yugabyte.yw.models.CertificateInfo;
@@ -359,6 +358,15 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
         createUniverse(cust.getUuid(), taskParams, ybUniverse);
       } else if (createTaskState.equals(State.Success)) {
         // Can receive once on Platform restart
+        // Lets update that the universe is ready in case there are no edits
+        // to perform
+        kubernetesStatusUpdater.updateYBUniverseStatus(
+            u,
+            KubernetesResourceDetails.fromResource(ybUniverse),
+            "" /* taskName */,
+            null /* taskUUID */,
+            UniverseState.READY,
+            null /* throwable */);
         workqueue.resetRetries(mapKey);
         log.debug("Universe {} already exists, treating as update", ybaUniverseName);
         editUniverse(cust, u, ybUniverse);
@@ -705,6 +713,9 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
             currentUserIntent.deviceInfo.volumeSize = incomingIntent.deviceInfo.volumeSize;
             currentUserIntent.masterDeviceInfo.volumeSize =
                 incomingIntent.masterDeviceInfo.volumeSize;
+            currentUserIntent.masterK8SNodeResourceSpec = incomingIntent.masterK8SNodeResourceSpec;
+            currentUserIntent.tserverK8SNodeResourceSpec =
+                incomingIntent.tserverK8SNodeResourceSpec;
             // Update the placement info in the task params
             if (ybUniverse.getSpec().getPlacementInfo() != null) {
               universeDetails.getPrimaryCluster().placementInfo =
@@ -849,6 +860,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
           currentUserIntent.deviceInfo.volumeSize = incomingIntent.deviceInfo.volumeSize;
           currentUserIntent.masterDeviceInfo.volumeSize =
               incomingIntent.masterDeviceInfo.volumeSize;
+          currentUserIntent.masterK8SNodeResourceSpec = incomingIntent.masterK8SNodeResourceSpec;
+          currentUserIntent.tserverK8SNodeResourceSpec = incomingIntent.tserverK8SNodeResourceSpec;
           // Update the placement info in the task params
           if (ybUniverse.getSpec().getPlacementInfo() != null) {
             universeDetails.getPrimaryCluster().placementInfo =
@@ -1146,10 +1159,13 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       userIntent.regionList =
           provider.getRegions().stream().map(r -> r.getUuid()).collect(Collectors.toList());
 
-      K8SNodeResourceSpec masterResourceSpec = new K8SNodeResourceSpec();
-      userIntent.masterK8SNodeResourceSpec = masterResourceSpec;
-      K8SNodeResourceSpec tserverResourceSpec = new K8SNodeResourceSpec();
-      userIntent.tserverK8SNodeResourceSpec = tserverResourceSpec;
+      userIntent.masterK8SNodeResourceSpec =
+          operatorUtils.toNodeResourceSpec(
+              ybUniverse.getSpec().getMasterResourceSpec(), s -> s.getCpu(), s -> s.getMemory());
+
+      userIntent.tserverK8SNodeResourceSpec =
+          operatorUtils.toNodeResourceSpec(
+              ybUniverse.getSpec().getTserverResourceSpec(), s -> s.getCpu(), s -> s.getMemory());
 
       userIntent.numNodes =
           ybUniverse.getSpec().getNumNodes() != null
@@ -1625,6 +1641,11 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
         ybUniverse.getSpec().getReadReplica().getDeviceInfo().getVolumeSize().intValue();
     readReplicaUserIntent.deviceInfo.numVolumes =
         ybUniverse.getSpec().getReadReplica().getDeviceInfo().getNumVolumes().intValue();
+    readReplicaUserIntent.tserverK8SNodeResourceSpec =
+        operatorUtils.toNodeResourceSpec(
+            ybUniverse.getSpec().getReadReplica().getTserverResourceSpec(),
+            s -> s.getCpu(),
+            s -> s.getMemory());
     Cluster readReplicaCluster = new Cluster(ClusterType.ASYNC, readReplicaUserIntent);
     if (ybUniverse.getSpec().getReadReplica().getPlacementInfo() != null) {
       readReplicaCluster.placementInfo =
@@ -1651,6 +1672,11 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
         ybUniverse.getSpec().getReadReplica().getReplicationFactor().intValue();
     existingReadReplicaCluster.userIntent.deviceInfo.volumeSize =
         ybUniverse.getSpec().getReadReplica().getDeviceInfo().getVolumeSize().intValue();
+    existingReadReplicaCluster.userIntent.tserverK8SNodeResourceSpec =
+        operatorUtils.toNodeResourceSpec(
+            ybUniverse.getSpec().getReadReplica().getTserverResourceSpec(),
+            s -> s.getCpu(),
+            s -> s.getMemory());
     if (ybUniverse.getSpec().getReadReplica().getPlacementInfo() != null) {
       existingReadReplicaCluster.placementInfo =
           createPlacementInfo(ybUniverse, customerUUID, /*isReadOnlyCluster*/ true);

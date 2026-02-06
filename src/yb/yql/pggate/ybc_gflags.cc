@@ -15,6 +15,7 @@
 #include <string>
 
 #include "yb/common/common_flags.h"
+#include "yb/util/flags.h"
 
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
@@ -95,10 +96,7 @@ DEFINE_NON_RUNTIME_bool(ysql_block_dangerous_roles, false,
     "used with superuser login disabled, such as in YBM. When true, this assumes those blocked "
     "roles are not already in use.");
 
-DEFINE_RUNTIME_PREVIEW_bool(
-    ysql_enable_pg_export_snapshot, false,
-    "Enables the support for synchronizing snapshots across transactions, using pg_export_snapshot "
-    "and SET TRANSACTION SNAPSHOT");
+DEPRECATE_FLAG(bool, ysql_enable_pg_export_snapshot, "01_2026");
 
 DEFINE_NON_RUNTIME_bool(ysql_enable_neghit_full_inheritscache, true,
     "When set to true, a (fully) preloaded inherits cache returns negative cache hits"
@@ -128,6 +126,9 @@ DEFINE_test_flag(bool, ysql_bypass_auto_analyze_auth_check, false,
 
 DEFINE_test_flag(int64, delay_after_table_analyze_ms, 0,
     "Add this delay after each table is analyzed.");
+
+DEFINE_test_flag(
+    bool, enable_obj_tuple_locks, false, "Enable object tuple locks in the lock manager.");
 
 DECLARE_bool(ysql_enable_colocated_tables_with_tablespaces);
 DECLARE_bool(TEST_ysql_enable_db_logical_client_version_mode);
@@ -219,7 +220,6 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_conn_mgr_sequence_support_mode = FLAGS_ysql_conn_mgr_sequence_support_mode.c_str(),
       .ysql_conn_mgr_max_query_size = &FLAGS_ysql_conn_mgr_max_query_size,
       .ysql_conn_mgr_wait_timeout_ms = &FLAGS_ysql_conn_mgr_wait_timeout_ms,
-      .ysql_enable_pg_export_snapshot = &FLAGS_ysql_enable_pg_export_snapshot,
       .ysql_enable_neghit_full_inheritscache =
         &FLAGS_ysql_enable_neghit_full_inheritscache,
       .enable_object_locking_for_table_locks =
@@ -246,6 +246,7 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .placement_zone = FLAGS_placement_zone.c_str(),
       .TEST_ysql_bypass_auto_analyze_auth_check = &FLAGS_TEST_ysql_bypass_auto_analyze_auth_check,
       .TEST_delay_after_table_analyze_ms = &FLAGS_TEST_delay_after_table_analyze_ms,
+      .TEST_enable_obj_tuple_locks = &FLAGS_TEST_enable_obj_tuple_locks,
   };
   // clang-format on
   return &accessor;

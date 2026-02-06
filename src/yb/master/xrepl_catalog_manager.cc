@@ -143,10 +143,6 @@ DEFINE_test_flag(bool, cdcsdk_skip_table_removal_from_qualified_list, false,
 DEFINE_RUNTIME_bool(enable_truncate_cdcsdk_table, false,
     "When set, enables truncating tables currently part of a CDCSDK Stream");
 
-DEFINE_test_flag(bool, enable_table_rewrite_for_cdcsdk_table, false,
-    "When set, enables cdcsdk to stream records from tables hidden as part of table rewrite or "
-    "DROP TABLE");
-
 DEFINE_RUNTIME_AUTO_bool(xcluster_store_older_schema_versions, kLocalPersisted, false, true,
     "When set, enables storing multiple older schema versions in xCluster replication stream "
     "metadata instead of just storing the current and previous schema versions.");
@@ -167,6 +163,7 @@ DECLARE_uint32(cdcsdk_tablet_not_of_interest_timeout_secs);
 DECLARE_bool(cdcsdk_enable_dynamic_table_addition_with_table_cleanup);
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 DECLARE_bool(ysql_yb_cdcsdk_stream_tables_without_primary_key);
+DECLARE_bool(TEST_enable_table_rewrite_for_cdcsdk_table);
 
 #define RETURN_ACTION_NOT_OK(expr, action) \
   RETURN_NOT_OK_PREPEND((expr), Format("An error occurred while $0", action))

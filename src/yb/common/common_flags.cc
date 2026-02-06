@@ -139,6 +139,10 @@ DEFINE_NON_RUNTIME_PREVIEW_bool(ysql_yb_enable_implicit_dynamic_tables_logical_r
     "This replaces the previous mechanism of periodic publication refresh with PG "
     "like semantics for dynamic tables");
 
+DEFINE_test_flag(bool, enable_table_rewrite_for_cdcsdk_table, false,
+    "When set, CDC will not block DDLs causing table rewrites. Also records from the re-written "
+    "tablets will be streamed by CDC after finishing the streaming of data from older tablets.");
+
 DEFINE_NON_RUNTIME_bool(TEST_hide_details_for_pg_regress, false,
     "For pg_regress tests, alter error messages that contain unstable items such as ybctid, oids, "
     "and catalog version numbers to hide such details or omit the message entirely.");
@@ -349,7 +353,14 @@ DEFINE_RUNTIME_int32(timestamp_history_retention_interval_sec, 900,
     "of any single transaction in your application.");
 
 DEFINE_test_flag(bool, ysql_yb_enable_listen_notify, false, "Enable YSQL LISTEN/NOTIFY.");
+DEFINE_RUNTIME_AUTO_bool(
+    ysql_enable_auto_analyze_infra, kLocalPersisted, false, true,
+    "Enable the infra required for Auto Analyze");
 
+DEFINE_RUNTIME_bool(
+    ysql_enable_auto_analyze, false,
+    "Enable Auto Analyze to automatically trigger ANALYZE for updating table statistics of tables "
+    "which have changed more than a configurable threshold.");
 namespace yb {
 
 void InitCommonFlags() {

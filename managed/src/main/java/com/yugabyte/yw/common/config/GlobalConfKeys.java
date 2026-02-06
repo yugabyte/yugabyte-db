@@ -1993,4 +1993,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Log level for Node Agent server per request (0 for debug, -1 for default)",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> disablePlatformHARestoreTransaction =
+      new ConfKeyInfo<>(
+          "yb.ha.disable_platform_ha_restore_transaction",
+          ScopeType.GLOBAL,
+          "Disable Platform HA Restore Transaction",
+          "Disable running platform HA restore operations in a transaction",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

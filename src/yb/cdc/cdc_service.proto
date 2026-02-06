@@ -178,6 +178,8 @@ message InitVirtualWALForCDCRequestPB {
   repeated uint32 publication_oid = 7;
   // Boolean to indicate whether any publication associated with VWAL is an ALL TABLES publication.
   optional bool pub_all_tables = 8;
+  // Mapping of table's OID to relfilenode. This is used to detect table rewrites.
+  map<uint32,uint32> oid_to_relfilenode = 9;
 }
 
 message InitVirtualWALForCDCResponsePB {
@@ -243,6 +245,8 @@ message UpdatePublicationTableListRequestPB {
   optional bytes stream_id = 2;
   repeated string table_id = 3;
   reserved 4; // ASH metadata is now passed in RequestHeader PB
+  // Mapping of table's OID to relfilenode. This is used to detect table rewrites.
+  map<uint32,uint32> oid_to_relfilenode = 5;
 }
 
 message UpdatePublicationTableListResponsePB {

@@ -1493,8 +1493,9 @@ class TestKVFormatter : public tablet::KVFormatter {
 
  public:
   std::string Format(
-      const Slice& key, const Slice& value, docdb::StorageDbType type) const override {
-    auto result = tablet::KVFormatter::Format(key, value, type);
+      Slice key, Slice value, docdb::StorageDbType type, const std::string& key_suffix,
+      docdb::AllowEmptyValue allow_empty_value) const override {
+    auto result = tablet::KVFormatter::Format(key, value, type, key_suffix, allow_empty_value);
     if (!key.starts_with(dockv::KeyEntryTypeAsChar::kVectorIndexMetadata)) {
       return result;
     }

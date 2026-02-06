@@ -10,17 +10,20 @@
 
 import { FC } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useFormContext, FieldPath } from 'react-hook-form';
-import { mui, YBInputField } from '@yugabyte-ui-library/core';
-import { OtherAdvancedProps } from '../../steps/advanced-settings/dtos';
-import { DEFAULT_COMMUNICATION_PORTS } from '../../helpers/constants';
-import { YSQLFormSpec, YCQLFormSpec } from '../../steps/database-settings/dtos';
+import { useFormContext, Controller } from 'react-hook-form';
+import { mui, YBInput } from '@yugabyte-ui-library/core';
 import { CloudType } from '../../../../../helpers/dtos';
+import { OtherAdvancedProps } from '../../steps/advanced-settings/dtos';
+import { YSQLFormSpec, YCQLFormSpec } from '../../steps/database-settings/dtos';
+import { DEFAULT_COMMUNICATION_PORTS } from '../../helpers/constants';
+
+//icons
+import NextLineIcon from '../../../../../assets/next-line.svg';
+import InfoIcon from '../../../../../assets/info-new.svg';
 
 const { Box, styled, Typography } = mui;
 
-import NextLineIcon from '../../../../../assets/next-line.svg';
-
+const MAX_PORT = 65535;
 interface DeploymentPortsProps {
   disabled: boolean;
   providerCode: string;
@@ -37,7 +40,8 @@ const PortContainer = styled(Box)(({ theme }) => ({
   gap: theme.spacing(4),
   borderRadius: '8px',
   border: '1px solid #D7DEE4',
-  backgroundColor: '#FBFCFD'
+  backgroundColor: '#FBFCFD',
+  marginBottom: '12px'
 }));
 
 const PortTitle = styled(Typography)(({ theme }) => ({
@@ -45,6 +49,17 @@ const PortTitle = styled(Typography)(({ theme }) => ({
   lineHeight: '16px',
   fontWeight: 600,
   color: '#4E5F6D'
+}));
+
+const StyledLabelIcon = styled(Box)(({ theme }) => ({
+  fontSize: '13px',
+  lineHeight: '16px',
+  fontWeight: 500,
+  color: '#6D7C88',
+  display: 'flex',
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: '2px'
 }));
 
 export const DeploymentPortsField: FC<DeploymentPortsProps> = ({
@@ -154,19 +169,36 @@ export const DeploymentPortsField: FC<DeploymentPortsProps> = ({
               <Box
                 sx={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '16px' }}
               >
-                {pg.PORTS_LIST.map((port) => {
-                  return (
-                    <YBInputField
-                      name={port.id as FieldPath<OtherAdvancedProps>}
-                      control={control}
-                      label={t(port.id)}
-                      defaultValue={Number(DEFAULT_COMMUNICATION_PORTS[port.id])}
-                      helperText={'Default ' + Number(DEFAULT_COMMUNICATION_PORTS[port.id])}
-                      sx={{ width: '180px' }}
-                      dataTestId={`deployment-ports-field-${port.id}`}
-                    />
-                  );
-                })}
+                {pg.PORTS_LIST.map((item) => (
+                  <Controller
+                    name={item.id}
+                    render={({ field: { value, onChange } }) => {
+                      return (
+                        <YBInput
+                          value={value}
+                          onChange={onChange}
+                          label={
+                            <StyledLabelIcon>
+                              <span>{t(item.id)}</span>
+                              <InfoIcon />
+                            </StyledLabelIcon>
+                          }
+                          helperText={'Default ' + Number(DEFAULT_COMMUNICATION_PORTS[item.id])}
+                          dataTestId={`deployment-ports-field-${item.id}`}
+                          onBlur={(event) => {
+                            let port =
+                              Number(event.target.value.replace(/\D/g, '')) ||
+                              Number(DEFAULT_COMMUNICATION_PORTS[item.id] as string);
+                            port = port > MAX_PORT ? MAX_PORT : port;
+                            onChange(port);
+                          }}
+                          defaultValue={DEFAULT_COMMUNICATION_PORTS[item.id]}
+                          // trimWhitespace={false}
+                        />
+                      );
+                    }}
+                  />
+                ))}
               </Box>
             </Box>
           </Box>

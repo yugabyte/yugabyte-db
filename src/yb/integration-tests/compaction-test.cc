@@ -382,7 +382,10 @@ class CompactionTest : public YBTest {
       const auto tablet_peers = ts_tablet_manager->GetTabletPeersWithTableId(workload_table_id_);
       TSTabletManager::TabletPtrs workload_tablet_ptrs;
       for (const auto& tablet_peer : tablet_peers) {
-        workload_tablet_ptrs.push_back(tablet_peer->shared_tablet_maybe_null());
+        auto tablet_ptr = tablet_peer->shared_tablet_maybe_null();
+        if (tablet_ptr) {
+          workload_tablet_ptrs.emplace_back(std::move(tablet_ptr));
+        }
       }
       RETURN_NOT_OK(ts_tablet_manager->TriggerAdminCompaction(
           workload_tablet_ptrs,

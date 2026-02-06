@@ -40,6 +40,7 @@ export const ReplicationFactorField = ({
           }))}
           value={replicationFactorVal + ''}
           dataTestId="replication-factor-field"
+          size="large"
         />
       }
       sx={{ alignItems: 'flex-start', gap: '4px' }}

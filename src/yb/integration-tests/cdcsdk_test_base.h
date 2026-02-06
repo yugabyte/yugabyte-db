@@ -238,15 +238,15 @@ class CDCSDKTestBase : public YBTest {
 
   Result<xrepl::StreamId> CreateConsistentSnapshotStreamWithReplicationSlot(
       const std::string& replication_slot_name,
-      CDCSDKSnapshotOption snapshot_option = CDCSDKSnapshotOption::USE_SNAPSHOT,
+      CDCSDKSnapshotOption snapshot_option = CDCSDKSnapshotOption::EXPORT_SNAPSHOT,
       bool verify_snapshot_name = false,
       std::string namespace_name = kNamespaceName);
 
   Result<xrepl::StreamId> CreateConsistentSnapshotStreamWithReplicationSlot(
-      CDCSDKSnapshotOption snapshot_option = CDCSDKSnapshotOption::USE_SNAPSHOT,
+      CDCSDKSnapshotOption snapshot_option = CDCSDKSnapshotOption::EXPORT_SNAPSHOT,
       bool verify_snapshot_name = false);
   Result<xrepl::StreamId> CreateConsistentSnapshotStream(
-      CDCSDKSnapshotOption snapshot_option = CDCSDKSnapshotOption::USE_SNAPSHOT,
+      CDCSDKSnapshotOption snapshot_option = CDCSDKSnapshotOption::EXPORT_SNAPSHOT,
       CDCCheckpointType checkpoint_type = CDCCheckpointType::EXPLICIT,
       CDCRecordType record_type = CDCRecordType::CHANGE,
       std::string namespace_name = kNamespaceName);

@@ -153,8 +153,22 @@ type ldapConfig struct {
 }
 
 type perfAdvisorConfig struct {
-	Enabled        bool `mapstructure:"enabled"`
-	Port           int  `mapstructure:"port"`
-	RestartSeconds int  `mapstructure:"restart_seconds"`
-	EnableHttps    bool `mapstructure:"enable_https"`
+	Enabled        bool           `mapstructure:"enabled"`
+	Port           int            `mapstructure:"port"`
+	RestartSeconds int            `mapstructure:"restart_seconds"`
+	PaSecret       string         `mapstructure:"pa_secret"`
+	Callhome       callhomeConfig `mapstructure:"callhome"`
+	Tls            tlsConfig      `mapstructure:"tls"`
+}
+
+type tlsConfig struct {
+	Enabled          bool   `mapstructure:"enabled"`
+	SSLProtocols     string `mapstructure:"ssl_protocols"`
+	Hsts             bool   `mapstructure:"hsts"`
+	KeystorePassword string `mapstructure:"keystore_password"`
+}
+
+type callhomeConfig struct {
+	Enabled     bool   `mapstructure:"enabled"`
+	Environment string `mapstructure:"environment"`
 }

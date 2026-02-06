@@ -40,9 +40,6 @@ public class TestPgReplicationSlotSnapshotAction extends BasePgSQLTest {
         "cdcsdk_publication_list_refresh_interval_secs", Integer.toString(5));
     flagMap.put("cdc_send_null_before_image_if_not_exists", "true");
 
-    String enable_pg_export_snapshot_gFlag = "ysql_enable_pg_export_snapshot";
-    flagMap.put("allowed_preview_flags_csv", enable_pg_export_snapshot_gFlag);
-    flagMap.put(enable_pg_export_snapshot_gFlag, "true");
     return flagMap;
   }
 

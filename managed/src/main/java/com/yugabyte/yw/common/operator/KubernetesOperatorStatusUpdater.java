@@ -336,18 +336,15 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
       UUID taskUUID,
       UniverseState state,
       Throwable t) {
-    if (!universe.getUniverseDetails().isKubernetesOperatorControlled) {
-      return;
-    }
     Customer cust = Customer.get(universe.getCustomerId());
     try (final KubernetesClient client =
         new KubernetesClientBuilder().withConfig(k8sClientConfig).build()) {
       YBUniverse ybUniverse = getYBUniverse(client, universeName);
       if (ybUniverse == null) {
-        log.info("YBUniverse {}/{} is not found", universeName.namespace, universeName.name);
+        log.error("YBUniverse {}/{} is not found", universeName.namespace, universeName.name);
         return;
       }
-      YBUniverseStatus status = ybUniverse.getStatus();
+      YBUniverseStatus status = getOrCreateUniverseStatus(ybUniverse);
 
       boolean shouldUpdateStatus =
           state.equals(UniverseState.READY)
@@ -356,16 +353,20 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
       if (shouldUpdateStatus) {
         status.setUniverseState(state.getUniverseStateString());
       }
+      ybUniverse.setStatus(status);
       // Handle the success case
       String message = null;
-      if (t == null) {
-        removeUniverseAction(status, taskName);
-        message = String.format("Task %s (%s) succeeded", taskName, taskUUID);
-      } else {
-        Actions action = getOrCreateUniverseAction(status, taskName);
-        action.setStatus(Actions.Status.FAILED);
-        message = String.format("Task %s(%s) failed: %s", taskName, taskUUID, t.getMessage());
-        action.setMessage(message);
+      // Keep a null message if we don't have any tasks
+      if (taskUUID != null) {
+        if (t == null) {
+          removeUniverseAction(status, taskName);
+          message = String.format("Task %s (%s) succeeded", taskName, taskUUID);
+        } else {
+          Actions action = getOrCreateUniverseAction(status, taskName);
+          action.setStatus(Actions.Status.FAILED);
+          message = String.format("Task %s(%s) failed: %s", taskName, taskUUID, t.getMessage());
+          action.setMessage(message);
+        }
       }
       // Updating Kubernetes Custom Resource (if done through operator).
       this.updateUniverseStatus(
@@ -403,6 +404,7 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
               cqlEndpoints.addAll(Arrays.asList(cqlServiceEndpoints.split(",")));
             }
           } catch (Exception e) {
+            log.warn("Got Exception in Getting CQL Service Endpoints", e);
           }
 
           sqlEndpoints.addAll(Arrays.asList(u.getYSQLServerAddresses().split(",")));
@@ -415,6 +417,7 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
               sqlEndpoints.addAll(Arrays.asList(sqlServiceEndpoints.split(",")));
             }
           } catch (Exception e) {
+            log.warn("Got Exception in Getting SQL Service Endpoints", e);
           }
         }
 
@@ -429,7 +432,7 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
           .resources(YBUniverse.class)
           .inNamespace(ybUniverse.getMetadata().getNamespace())
           .resource(ybUniverse)
-          .updateStatus(); // Note: Vscode is saying this is invalid, but it is the right way.
+          .updateStatus();
 
       // Update Swamper Targets configMap
       String configMapName =

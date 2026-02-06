@@ -2592,6 +2592,17 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_pg_export_snapshot", PGC_SIGHUP, DEVELOPER_OPTIONS,
+			gettext_noop("Enable pg_export_snapshot and SET TRANSACTION SNAPSHOT for synchronizing snapshots across transactions."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_pg_export_snapshot,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_enable_replication_slot_consumption", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Enable consumption of changes via replication slots. "
 						 "This feature is currently in active development and "
@@ -3729,10 +3740,42 @@ static struct config_bool ConfigureNamesBool[] =
 			gettext_noop("When set, all DDL statements will cause the "
 						 "catalog version to increment. This mainly affects "
 						 "CREATE commands such as CREATE TABLE, CREATE VIEW, "
-						 "and CREATE SEQUENCE."),
+						 "and CREATE SEQUENCE. This also enables negative "
+						 "catcache entries."),
 			NULL
 		},
 		&yb_test_make_all_ddl_statements_incrementing,
+		true,
+		NULL, NULL, NULL
+	},
+
+	/*
+	 * This flag should be enabled first on all the nodes in a cluster
+	 * before enabling yb_enable_negative_catcache_entries.
+	 */
+	{
+		{"yb_always_increment_catalog_version_on_ddl", PGC_SIGHUP, DEVELOPER_OPTIONS,
+			gettext_noop("When set, all DDL statements will cause the "
+						 "catalog version to increment. Unlike "
+						 "yb_test_make_all_ddl_statements_incrementing, this "
+						 "only controls the version incrementing behavior."),
+			NULL
+		},
+		&yb_always_increment_catalog_version_on_ddl,
+		true,
+		NULL, NULL, NULL
+	},
+
+	/*
+	 * This flag should only be enabled after enabling
+	 * yb_test_make_all_ddl_statements_incrementing.
+	 */
+	{
+		{"yb_enable_negative_catcache_entries", PGC_SIGHUP, DEVELOPER_OPTIONS,
+			gettext_noop("When set, negative catcache entries are enabled. "),
+			NULL
+		},
+		&yb_enable_negative_catcache_entries,
 		true,
 		NULL, NULL, NULL
 	},
@@ -3799,6 +3842,14 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_enable_pg_stat_statements_docdb_metrics,
+	},
+
+	{
+		{"yb_enable_global_views", PGC_SUSET, CUSTOM_OPTIONS,
+			gettext_noop("Enables querying of global views."),
+			NULL
+		},
+		&yb_enable_global_views,
 		false,
 		NULL, NULL, NULL
 	},
@@ -5777,8 +5828,7 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		/* TODO(#29072): switch to PGC_USERSET when results become correct. */
-		{"yb_max_saop_merge_streams", PGC_SUSET, QUERY_TUNING_METHOD,
+		{"yb_max_saop_merge_streams", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Sets the maximum number of streams tolerated for "
 						 "scalar array operation merge."),
 			gettext_noop("For YB LSM index scans, when multiple "
@@ -5787,8 +5837,7 @@ static struct config_int ConfigureNamesInt[] =
 						 "cartesian product's cardinality reaches this limit. "
 						 "Scalar array operation merge is per index scan, and "
 						 "the limit applies per index scan, not globally. Set "
-						 "to 0 to disable. WARNING(#29072): results are not "
-						 "sorted correctly."),
+						 "to 0 to disable."),
 		},
 		&yb_max_saop_merge_streams,
 		0, 0, 1024,

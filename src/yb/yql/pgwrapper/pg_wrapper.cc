@@ -39,6 +39,7 @@
 #include "yb/util/env_util.h"
 #include "yb/util/errno.h"
 #include "yb/util/flags.h"
+#include "yb/util/flags/flags_callback.h"
 #include "yb/util/flag_validators.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
@@ -288,6 +289,15 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_saop_pushdown, kLocalVolatile, false
 
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_replication_commands, kLocalPersisted, false, true,
     "Enable logical replication commands for Publication and Replication Slots");
+
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_pg_export_snapshot, kLocalPersisted, false, true,
+    "Enables the support for synchronizing snapshots across transactions, using pg_export_snapshot "
+    "and SET TRANSACTION SNAPSHOT");
+
+/* Deprecated flag */
+namespace deprecated_flag_do_not_use {
+  DECLARE_bool(ysql_enable_pg_export_snapshot);
+}
 
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_replica_identity, kLocalPersisted, false, true,
     "Enable replica identity command for Alter Table query");
@@ -581,6 +591,11 @@ void AppendPgGFlags(vector<string>* lines) {
 
     string pg_variable_name = flag.name.substr(pg_flag_prefix.length());
     lines->push_back(Format("$0=$1", pg_variable_name, flag.current_value));
+  }
+
+  // Special handling for deprecated ysql_enable_pg_export_snapshot flag.
+  if (deprecated_flag_do_not_use::FLAGS_ysql_enable_pg_export_snapshot) {
+    lines->push_back("yb_enable_pg_export_snapshot=true");
   }
 }
 

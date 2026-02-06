@@ -51,6 +51,9 @@
     "redux-form": {
       "react": "17.0.2",
       "react-dom": "17.0.2"
+    },
+    "@yugabytedb/perf-advisor-ui": {
+      "@yugabyte-ui-library/core": "2.0.18"
     }
   },
   "prettier": {
@@ -85,7 +88,6 @@
     "storybook": "7.0.4",
     "vite": "6.0.0",
     "vite-plugin-dynamic-import": "^1.4.1",
-    "vite-plugin-html": "3.2.0",
     "vite-plugin-svgr": "4.3.0"
   },
   "dependencies": {

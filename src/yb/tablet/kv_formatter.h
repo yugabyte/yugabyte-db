@@ -43,7 +43,8 @@ class SchemaPackingProviderFromSuperblock : public docdb::SchemaPackingProvider 
 class KVFormatter : public rocksdb::DocDBKVFormatter {
  public:
   std::string Format(
-      const Slice& key, const Slice& value, docdb::StorageDbType type) const override;
+      Slice user_key, Slice value, docdb::StorageDbType type, const std::string& key_suffix,
+      docdb::AllowEmptyValue allow_empty_value) const override;
 
   Status ProcessArgument(const std::string& argument) override;
 

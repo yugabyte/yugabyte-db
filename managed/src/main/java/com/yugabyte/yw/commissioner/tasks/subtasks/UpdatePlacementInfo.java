@@ -94,9 +94,11 @@ public class UpdatePlacementInfo extends UniverseTaskBase {
         ModifyUniverseConfig.mapToCloudInfoPB(
             primaryCluster.placementInfo,
             (az, cloudInfo) -> {
-              List<CloudInfoPB> list =
-                  rankings.computeIfAbsent(az.leaderPreference, x -> new ArrayList<>());
-              list.add(cloudInfo);
+              if (az.leaderPreference > 0) {
+                List<CloudInfoPB> list =
+                    rankings.computeIfAbsent(az.leaderPreference, x -> new ArrayList<>());
+                list.add(cloudInfo);
+              }
             });
         client.setPreferredZones(rankings);
       }

@@ -62,6 +62,8 @@ public class HighAvailabilityConfig extends Model {
       new Finder<UUID, HighAvailabilityConfig>(HighAvailabilityConfig.class) {};
   private static final KeyLock<UUID> KEY_LOCK = new KeyLock<>();
 
+  private static volatile boolean isSwitchOverInProgress = false;
+
   @JsonIgnore private final int id = 1;
 
   @Id
@@ -201,7 +203,13 @@ public class HighAvailabilityConfig extends Model {
   }
 
   public static boolean isFollower() {
-    return get().flatMap(HighAvailabilityConfig::getLocal).map(i -> !i.getIsLeader()).orElse(false);
+    // Return follower to true as active is not known during switch over.
+    return isSwitchOverInProgress
+        || get().flatMap(HighAvailabilityConfig::getLocal).map(i -> !i.getIsLeader()).orElse(false);
+  }
+
+  public static void setSwitchOverInProgress(boolean isSwitchOverInProgress) {
+    HighAvailabilityConfig.isSwitchOverInProgress = isSwitchOverInProgress;
   }
 
   public boolean anyConnected() {

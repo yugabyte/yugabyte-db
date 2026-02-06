@@ -15,8 +15,9 @@
 
 #include "yb/client/snapshot_test_util.h"
 
+#include "yb/consensus/log.h"
+
 #include "yb/docdb/doc_read_context.h"
-#include "yb/docdb/docdb_debug.h"
 
 #include "yb/integration-tests/packed_row_test_base.h"
 
@@ -55,8 +56,9 @@ DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_uint64(rocksdb_universal_compaction_always_include_size_threshold);
 DECLARE_uint64(ysql_packed_row_size_limit);
 
-namespace yb {
-namespace pgwrapper {
+namespace yb::pgwrapper {
+
+YB_DEFINE_ENUM(DumpMode, (kDir)(kSegmentNoMeta)(kSegmentWithMeta));
 
 class PgPackedRowTest : public PackedRowTestBase<PgMiniTestBase>,
                         public testing::WithParamInterface<dockv::PackedRowVersion> {
@@ -75,6 +77,10 @@ class PgPackedRowTest : public PackedRowTestBase<PgMiniTestBase>,
   void TestSstDump(bool specify_metadata, std::string* output);
   void TestAppliedSchemaVersion(bool colocated);
   void TestDropColocatedTable(bool use_transaction);
+  void TestSimple();
+  Status ExecuteLogDump(
+      const tablet::TabletPeer& peer, DumpMode mode,
+      std::vector<std::pair<std::string, std::string>>& kv_pairs);
 
   std::unique_ptr<client::SnapshotTestUtil> snapshot_util_;
 };
@@ -91,7 +97,7 @@ class PgPackedRowTestDisableTableLocks : public PgPackedRowTest {
       int64_t expected_aggregate_result);
 };
 
-TEST_P(PgPackedRowTest, Simple) {
+void PgPackedRowTest::TestSimple() {
   auto conn = ASSERT_RESULT(Connect());
 
   ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, v1 TEXT, v2 TEXT)"));
@@ -113,6 +119,122 @@ TEST_P(PgPackedRowTest, Simple) {
   row = ASSERT_RESULT((conn.FetchRow<std::string, std::string>(
       "SELECT v1, v2 FROM t WHERE key = 1")));
   ASSERT_EQ(row, (decltype(row){"four", "five"}));
+}
+
+TEST_P(PgPackedRowTest, Simple) {
+  TestSimple();
+}
+
+YB_DEFINE_ENUM(ParserState, (kIdle)(kKey)(kValue));
+
+Status ProcessLogDump(
+    const std::vector<std::string>& args,
+    std::vector<std::pair<std::string, std::string>>& kv_pairs) {
+  static const std::string kKeyPrefix = "Key: ";
+  static const std::string kValuePrefix = "Value: ";
+
+  LOG(INFO) << "Running " << AsString(args);
+  std::string output, error;
+  auto status = Subprocess::Call(args, &output, &error);
+  LOG_IF(INFO, !error.empty()) << "Error:\n" << error;
+  RETURN_NOT_OK(status);
+  auto state = ParserState::kIdle;
+  std::string key;
+  for (auto part : output | std::views::split('\n')) {
+    std::string line(part.begin(), part.end());
+    line = util::TrimStr(line);
+    switch (state) {
+      case ParserState::kIdle:
+        if (line == "write_pairs {") {
+          state = ParserState::kKey;
+        }
+        break;
+      case ParserState::kKey:
+        SCHECK(std::string_view(line).starts_with(kKeyPrefix), InvalidArgument, "Wrong key prefix");
+        key = line.substr(kKeyPrefix.length());
+        state = ParserState::kValue;
+        break;
+      case ParserState::kValue:
+        SCHECK(
+            std::string_view(line).starts_with(kValuePrefix), InvalidArgument,
+            "Wrong value prefix");
+        kv_pairs.emplace_back(std::move(key), line.substr(kValuePrefix.length()));
+        state = ParserState::kIdle;
+        break;
+    }
+  }
+  return Status::OK();
+}
+
+Status PgPackedRowTest::ExecuteLogDump(
+    const tablet::TabletPeer& peer, DumpMode mode,
+    std::vector<std::pair<std::string, std::string>>& kv_pairs) {
+  auto data_dir = DirName(DirName(DirName(
+      peer.tablet_metadata()->fs_manager()->GetDataRootDirs().front())));
+  auto command = ToStringVector(GetToolPath("log-dump"), "--fs_data_dirs", data_dir);
+  auto wal_dir = peer.log()->wal_dir();
+  if (mode != DumpMode::kDir) {
+    if (mode == DumpMode::kSegmentWithMeta) {
+      command.push_back("--tablet_metadata_path");
+      command.push_back(VERIFY_RESULT(
+          peer.tablet_metadata()->fs_manager()->GetRaftGroupMetadataPath(peer.tablet_id())));
+    }
+    auto segments = VERIFY_RESULT(Env::Default()->GetChildren(wal_dir, ExcludeDots::kTrue));
+    for (const auto& segment : segments) {
+      if (!std::string_view(segment).starts_with("wal-")) {
+        continue;
+      }
+      command.push_back(JoinPathSegments(wal_dir, segment));
+      RETURN_NOT_OK(ProcessLogDump(command, kv_pairs));
+      command.pop_back();
+    }
+    return Status::OK();
+  } else {
+    command.push_back(peer.tablet_id());
+    command.push_back(wal_dir);
+    return ProcessLogDump(command, kv_pairs);
+  }
+}
+
+TEST_P(PgPackedRowTest, LogDump) {
+  TestSimple();
+  const auto kColumn1 = kFirstColumnIdRep + 1;
+  const auto kColumn2 = kFirstColumnIdRep + 2;
+
+  auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
+  for (auto mode : kDumpModeArray) {
+    LOG(INFO) << "Check mode: " << mode;
+    bool has_metadata = mode != DumpMode::kSegmentNoMeta;
+    std::vector<std::pair<std::string, std::string>> kv_pairs;
+    for (const auto& peer : peers) {
+      ASSERT_OK(ExecuteLogDump(*peer, mode, kv_pairs));
+    }
+    LOG(INFO) << "Pairs: " << AsString(kv_pairs);
+    ASSERT_EQ(kv_pairs.size(), 4);
+    ASSERT_EQ(kv_pairs[0].first, "SubDocKey(DocKey(0x1210, [1], []), [])");
+    if (has_metadata) {
+      ASSERT_EQ(kv_pairs[0].second,
+                Format("{ $0: \"one\" $1: \"two\" }", kColumn1, kColumn2));
+    } else if (GetParam() == dockv::PackedRowVersion::kV2) {
+      ASSERT_EQ(kv_pairs[0].second, "PACKED_ROW_V2[0](00066F6E650674776F)");
+    } else {
+      ASSERT_EQ(kv_pairs[0].second, "PACKED_ROW_V1[0](0400000008000000536F6E655374776F)");
+    }
+    ASSERT_EQ(kv_pairs[1].first,
+              Format("SubDocKey(DocKey(0x1210, [1], []), [ColumnId($0)])", kColumn2));
+    ASSERT_EQ(kv_pairs[1].second, "\"three\"");
+    ASSERT_EQ(kv_pairs[2].first, "SubDocKey(DocKey(0x1210, [1], []), [])");
+    ASSERT_EQ(kv_pairs[2].second, "DEL");
+    ASSERT_EQ(kv_pairs[3].first, "SubDocKey(DocKey(0x1210, [1], []), [])");
+    if (has_metadata) {
+      ASSERT_EQ(kv_pairs[3].second,
+                Format("{ $0: \"four\" $1: \"five\" }", kColumn1, kColumn2));
+    } else if (GetParam() == dockv::PackedRowVersion::kV2) {
+      ASSERT_EQ(kv_pairs[3].second, "PACKED_ROW_V2[0](0008666F75720866697665)");
+    } else {
+      ASSERT_EQ(kv_pairs[3].second, "PACKED_ROW_V1[0](050000000A00000053666F75725366697665)");
+    }
+  }
 }
 
 TEST_P(PgPackedRowTest, Update) {
@@ -938,8 +1060,9 @@ TEST_P(PgPackedRowTest, UpdateToNullWithPK) {
 class TestKVFormatter : public tablet::KVFormatter {
  public:
   std::string Format(
-      const Slice& key, const Slice& value, docdb::StorageDbType type) const override {
-    auto result = tablet::KVFormatter::Format(key, value, type);
+      Slice key, Slice value, docdb::StorageDbType type, const std::string& key_suffix,
+      docdb::AllowEmptyValue allow_empty_value) const override {
+    auto result = tablet::KVFormatter::Format(key, value, type, key_suffix, allow_empty_value);
     auto b = result.find("HT{");
     auto e = result.find("}", b);
     entries_ += result.substr(0, b + 3);
@@ -959,14 +1082,18 @@ class TestKVFormatter : public tablet::KVFormatter {
 void PgPackedRowTest::TestSstDump(bool specify_metadata, std::string* output) {
   auto conn = ASSERT_RESULT(Connect());
 
-  ASSERT_OK(conn.Execute("CREATE TABLE test(v1 INT PRIMARY KEY, v2 TEXT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("CREATE TABLE test(key INT PRIMARY KEY, v1 TEXT) SPLIT INTO 1 TABLETS"));
 
   ASSERT_OK(conn.Execute("INSERT INTO test VALUES (1, 'one')"));
   ASSERT_OK(conn.Execute("INSERT INTO test VALUES (2, 'two')"));
-  ASSERT_OK(conn.Execute("ALTER TABLE test ADD COLUMN v3 TEXT"));
+  ASSERT_OK(conn.Execute("ALTER TABLE test ADD COLUMN v2 TEXT"));
   ASSERT_OK(conn.Execute("INSERT INTO test VALUES (3, 'three', 'tri')"));
-  ASSERT_OK(conn.Execute("ALTER TABLE test DROP COLUMN v2"));
+  ASSERT_OK(conn.Execute("ALTER TABLE test DROP COLUMN v1"));
   ASSERT_OK(conn.Execute("INSERT INTO test VALUES (4, 'chetyre')"));
+  ASSERT_OK(conn.Execute("BEGIN; INSERT INTO test VALUES (5, 'transactional'); COMMIT"));
+
+  // Wait for background APPLY to move data from IntentsDB to RegularDB.
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
 
   ASSERT_OK(cluster_->FlushTablets());
 
@@ -1018,6 +1145,7 @@ TEST_P(PgPackedRowTest, SstDump) {
 
   ASSERT_STR_EQ_VERBOSE_TRIMMED(util::ApplyEagerLineContinuation(
       Format(R"#(
+          SubDocKey(DocKey(0x0a73, [5], []), [HT{}]) -> { $1: "transactional" }
           SubDocKey(DocKey(0x1210, [1], []), [HT{}]) -> { $0: "one" }
           SubDocKey(DocKey(0x9eaf, [4], []), [HT{}]) -> { $1: "chetyre" }
           SubDocKey(DocKey(0xc0c4, [2], []), [HT{}]) -> { $0: "two" }
@@ -1035,11 +1163,13 @@ TEST_P(PgPackedRowTest, SstDumpNoMetadata) {
 
   ASSERT_STR_EQ_VERBOSE_TRIMMED(util::ApplyEagerLineContinuation(
       R"#(
-          SubDocKey(DocKey(0x1210, [1], []), [HT{}]) -> PACKED_ROW[0](04000000536F6E65)
-          SubDocKey(DocKey(0x9eaf, [4], []), [HT{}]) -> PACKED_ROW[3](080000005363686574797265)
-          SubDocKey(DocKey(0xc0c4, [2], []), [HT{}]) -> PACKED_ROW[0](040000005374776F)
+          SubDocKey(DocKey(0x0a73, [5], []), [HT{}]) -> \
+              PACKED_ROW_V1[3](0E000000537472616E73616374696F6E616C)
+          SubDocKey(DocKey(0x1210, [1], []), [HT{}]) -> PACKED_ROW_V1[0](04000000536F6E65)
+          SubDocKey(DocKey(0x9eaf, [4], []), [HT{}]) -> PACKED_ROW_V1[3](080000005363686574797265)
+          SubDocKey(DocKey(0xc0c4, [2], []), [HT{}]) -> PACKED_ROW_V1[0](040000005374776F)
           SubDocKey(DocKey(0xfca0, [3], []), [HT{}]) -> \
-              PACKED_ROW[1](060000000A00000053746872656553747269)
+              PACKED_ROW_V1[1](060000000A00000053746872656553747269)
       )#"),
       output);
 }
@@ -1131,7 +1261,7 @@ void PgPackedRowTest::TestDropColocatedTable(bool use_transaction) {
   }
   ASSERT_OK(conn.Execute("DROP TABLE test"));
 
-  DisableFlushOnShutdown(*cluster_, true);
+  DisableFlushOnShutdown(*cluster_, /*disable=*/true);
   ASSERT_OK(cluster_->RestartSync());
 
   conn = ASSERT_RESULT(ConnectToDB("test"));
@@ -1217,5 +1347,4 @@ INSTANTIATE_TEST_SUITE_P(
     , PgPackedRowTestDisableTableLocks, ::testing::ValuesIn(dockv::kPackedRowVersionArray),
     PackedRowVersionToString);
 
-} // namespace pgwrapper
-} // namespace yb
+} // namespace yb::pgwrapper

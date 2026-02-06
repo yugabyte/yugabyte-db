@@ -2,7 +2,7 @@
 {% if chrony_servers is defined and chrony_servers | trim != '' %}
     {% for server in chrony_servers | split_string %}
         {% if server %}
-            echo 'server {{ server }} prefer iburst minpoll 4 maxpoll 4' >> /etc/chrony.conf
+            sed -i '1i server {{ server }} prefer iburst minpoll 4 maxpoll 4' /etc/chrony.conf
         {% endif %}
     {% endfor %}
 {% elif is_cloud == 'True' and cloud_type != 'onprem' %}
@@ -11,10 +11,10 @@
     sed -i '/^server /d' /etc/chrony.conf
     {% if cloud_type == 'aws' %}
       grep -q '^server 169.254.169.123' /etc/chrony.conf || \
-      echo 'server 169.254.169.123 iburst minpoll 4 maxpoll 4' >> /etc/chrony.conf
+      sed -i '1i server 169.254.169.123 prefer iburst minpoll 4 maxpoll 4' /etc/chrony.conf
     {% elif cloud_type == 'gcp' %}
-      grep -q '^server metadata.google.internal' /etc/chrony.conf || \
-      echo 'server metadata.google.internal iburst minpoll 4 maxpoll 4' >> /etc/chrony.conf
+      grep -Eq '^server (metadata\.google\.internal|169\.254\.169\.254)\b' /etc/chrony.conf || \
+      sed -i '1i server 169.254.169.254 prefer iburst minpoll 4 maxpoll 4' /etc/chrony.conf
     {% elif cloud_type == 'azu' %}
         ptp_hyper_path="/dev/ptp_hyperv"
         if [ -e "$ptp_hyper_path" ]; then
@@ -55,5 +55,7 @@
 
 {% endif %}
 
+# Systemd restart chrony
+systemctl restart chronyd
 # Force date time synchronization
 chronyc makestep

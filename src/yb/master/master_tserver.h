@@ -159,6 +159,8 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
   Result<std::string> GetUniverseUuid() const override;
 
+  tserver::ConnectivityStateResponsePB ConnectivityState() override;
+
  private:
   Result<pgwrapper::PGConn> CreateInternalPGConn(
       const std::string& database_name, const std::optional<CoarseTimePoint>& deadline) override;

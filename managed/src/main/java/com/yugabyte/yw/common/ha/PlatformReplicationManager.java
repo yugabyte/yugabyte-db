@@ -66,6 +66,8 @@ public class PlatformReplicationManager {
   @VisibleForTesting
   public static final String NO_LOCAL_INSTANCE_MSG = "NO LOCAL INSTANCE! Won't sync";
 
+  private static final String INSTANCE_ADDRESS_LABEL = "instance_address";
+
   private final AtomicReference<Cancellable> schedule;
 
   private final PlatformScheduler platformScheduler;
@@ -79,8 +81,6 @@ public class PlatformReplicationManager {
   private final ConfigHelper configHelper;
 
   private final RuntimeConfGetter confGetter;
-
-  private static final String INSTANCE_ADDRESS_LABEL = "instance_address";
 
   public static final Gauge HA_LAST_BACKUP_TIME =
       Gauge.builder()
@@ -268,12 +268,23 @@ public class PlatformReplicationManager {
     // Demote the local instance to follower.
     localInstance.demote();
 
-    // Set the leader locally.
-    PlatformInstance.getByAddress(requestLeaderAddr)
-        .ifPresent(
+    // Set the existing leader to follower to avoid uniqueness violation.
+    config.getInstances().stream()
+        .sorted(Comparator.comparing(PlatformInstance::getIsLeader).reversed())
+        .forEach(
             i -> {
-              i.setIsLeader(true);
-              i.update();
+              boolean isNewLeader = i.getAddress().equals(requestLeaderAddr);
+              if (i.getIsLeader() ^ isNewLeader) {
+                // Update only when there is a difference.
+                log.debug(
+                    "Updating instance {}(uuid={},  isLeader={}) to isLeader={}",
+                    i.getAddress(),
+                    i.getUuid(),
+                    i.getIsLeader(),
+                    isNewLeader);
+                i.setIsLeader(isNewLeader);
+                i.update();
+              }
             });
     // Any failure inside the condition rollbacks the DB updates.
     // This conditional check is just for optimization the prometheus mode switch.
@@ -324,7 +335,7 @@ public class PlatformReplicationManager {
     HighAvailabilityConfig config = newLeader.getConfig();
     config.refresh();
     // Update is_local after the backup is restored.
-    if (!config.getLocal().isPresent() || !updateLocalInstanceAfterRestore(config)) {
+    if (!config.getLocal().isPresent()) {
       // It must update a local instance.
       throw new RuntimeException("No local instance associated with backup being restored");
     }
@@ -583,6 +594,14 @@ public class PlatformReplicationManager {
                               instance.getAddress());
                         }
                       });
+                  remoteInstances.forEach(
+                      instance -> {
+                        try {
+                          replicationHelper.syncToRemoteInstance(instance);
+                        } catch (Exception e) {
+                          log.warn("Error in final sync to instance {}", instance.getAddress(), e);
+                        }
+                      });
                   // Export metric on last backup.
                   remoteInstances.stream()
                       .forEach(
@@ -792,7 +811,10 @@ public class PlatformReplicationManager {
       if (skipOldFiles) {
         commandArgs.add("--skip_old_files");
       }
-
+      if (!confGetter.getGlobalConf(GlobalConfKeys.disablePlatformHARestoreTransaction)) {
+        log.debug("Setting --single-transaction for platform HA restore");
+        commandArgs.add("--single_transaction");
+      }
       return commandArgs;
     }
   }
@@ -813,6 +835,25 @@ public class PlatformReplicationManager {
     }
 
     return response.code == 0;
+  }
+
+  public boolean restoreBackupOnStandby(HighAvailabilityConfig config, File input) {
+    boolean succeeded =
+        restoreBackup(input, false /* k8sRestoreYbaDbOnRestart */, false /*skipOldFiles*/);
+    if (succeeded) {
+      config.refresh();
+      // Fix the local instance after restore.
+      updateLocalInstanceAfterRestore(config);
+      // Keep the local instance as follower after restore.
+      config
+          .getLocal()
+          .orElseThrow(
+              () ->
+                  new PlatformServiceException(
+                      BAD_REQUEST, "Local instance not found after restore"))
+          .demote();
+    }
+    return succeeded;
   }
 
   public boolean restoreBackup(File input, boolean k8sRestoreYbaDbOnRestart) {
@@ -837,10 +878,12 @@ public class PlatformReplicationManager {
     } else {
       log.info("Platform backup restored successfully");
       DB.cacheManager().clearAll();
+      // Wait for DB connection to be available after restore.
+      // Restore wipes out tables, invalidating the underlying connections.
+      Util.waitForDBConnection(5);
       // Sync the files stored in DB to FS in case restore is successful.
       fileDataService.syncFileData(AppConfigHelper.getStoragePath(), true);
     }
-
     return response.code == 0;
   }
 

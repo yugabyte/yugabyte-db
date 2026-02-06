@@ -15,10 +15,12 @@ import java.net.URL;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.CompletionStage;
-import java.util.concurrent.ExecutionException;
+import java.util.function.Function;
+import javax.annotation.Nullable;
 import lombok.Getter;
+import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.tuple.Pair;
+import org.apache.commons.collections4.MapUtils;
 import org.apache.pekko.stream.javadsl.Source;
 import org.apache.pekko.util.ByteString;
 import play.libs.Json;
@@ -42,60 +44,145 @@ public class ApiHelper {
     this.wsClient = wsClient;
   }
 
-  public boolean postRequest(String url) {
-    return postRequest(url, Collections.emptyMap());
+  @Getter
+  @ToString
+  /** Response class for HTTP requests. */
+  public static class HttpResponse {
+    private final String url;
+    private final int status;
+    private final JsonNode body;
+
+    private HttpResponse(String url, int status, JsonNode body) {
+      this.url = url;
+      this.status = status;
+      this.body = body;
+    }
+
+    public JsonNode getBodyOrThrow() {
+      if (status >= 200 && status < 300) {
+        return body;
+      }
+      throw new PlatformServiceException(
+          status, String.format("HTTP request to %s failed with status %d", url, status));
+    }
   }
 
-  public boolean postRequest(String url, Map<String, String> headers) {
-    try {
-      WSRequest request = wsClient.url(url);
-      if (!headers.isEmpty()) {
-        for (Map.Entry<String, String> entry : headers.entrySet()) {
-          request.addHeader(entry.getKey(), entry.getValue());
-        }
+  // Common helper method to create WSRequest with headers.
+  private WSRequest requestWithHeaders(
+      String url,
+      @Nullable Map<String, String> headers,
+      @Nullable Map<String, String> queryParams,
+      @Nullable Duration timeout) {
+    WSRequest request = wsClient.url(url);
+    request.setFollowRedirects(true);
+    if (timeout != null && timeout.compareTo(Duration.ZERO) > 0) {
+      request.setRequestTimeout(timeout);
+    }
+    if (MapUtils.isNotEmpty(headers)) {
+      for (Map.Entry<String, String> entry : headers.entrySet()) {
+        request.addHeader(entry.getKey(), entry.getValue());
       }
-      return request
+    }
+    if (MapUtils.isNotEmpty(queryParams)) {
+      for (Map.Entry<String, String> entry : queryParams.entrySet()) {
+        request.addQueryParameter(entry.getKey(), entry.getValue());
+      }
+    }
+    return request;
+  }
+
+  // Common helper method to invoke the processor function.
+  private HttpResponse handleHttpRequest(
+      WSRequest request, Function<WSRequest, CompletionStage<WSResponse>> processor) {
+    CompletionStage<HttpResponse> responsePromise =
+        processor
+            .apply(request)
+            .thenApply(
+                r -> {
+                  JsonNode body = Json.newObject();
+                  try {
+                    body = Json.parse(r.getBody());
+                  } catch (RuntimeException e) {
+                    // Suppress and report as HTTP status.
+                    log.warn(
+                        "Unexpected exception while parsing response body {} from {} - {}",
+                        r.getBody(),
+                        request.getUrl(),
+                        e.getMessage());
+                  }
+                  return new HttpResponse(request.getUrl(), r.getStatus(), body);
+                });
+    try {
+      return responsePromise.toCompletableFuture().get();
+    } catch (Exception e) {
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
+    }
+  }
+
+  public HttpResponse postHttpRequest(
+      String url,
+      JsonNode data,
+      @Nullable Map<String, String> headers,
+      @Nullable Duration timeout) {
+    return handleHttpRequest(
+        requestWithHeaders(url, headers, null /* queryParams */, timeout), r -> r.post(data));
+  }
+
+  public boolean postRequest(String url, @Nullable Map<String, String> headers) {
+    try {
+      return requestWithHeaders(url, headers, null /* queryParams */, null /* timeout */)
           .execute("POST")
           .thenApply(wsResponse -> wsResponse.getStatus() == 200)
           .toCompletableFuture()
           .get();
     } catch (Exception e) {
+      log.error("POST request to {} failed: {}", url, e.getMessage());
       return false;
     }
   }
 
-  public JsonNode postRequest(String url, JsonNode data) {
-    return postRequest(url, data, new HashMap<>());
-  }
-
-  public JsonNode postRequest(String url, JsonNode data, Map<String, String> headers) {
-    WSRequest request = requestWithHeaders(url, headers);
-    CompletionStage<String> jsonPromise = request.post(data).thenApply(WSResponse::getBody);
-    return handleJSONPromise(jsonPromise);
+  public JsonNode postRequest(String url, JsonNode data, @Nullable Map<String, String> headers) {
+    return handleHttpRequest(
+            requestWithHeaders(url, headers, null /* queryParams */, null /* timeout */),
+            r -> r.post(data))
+        .getBodyOrThrow();
   }
 
   public JsonNode postRequestEncodedData(
-      String url, String encodedData, Map<String, String> headers) {
-    WSRequest request = requestWithHeaders(url, headers);
-    CompletionStage<String> jsonPromise = request.post(encodedData).thenApply(WSResponse::getBody);
-    return handleJSONPromise(jsonPromise);
+      String url, String encodedData, @Nullable Map<String, String> headers) {
+    return handleHttpRequest(
+            requestWithHeaders(url, headers, null /* queryParams */, null /* timeout */),
+            r -> r.post(encodedData))
+        .getBodyOrThrow();
+  }
+
+  public HttpResponse putHttpRequest(
+      String url,
+      JsonNode data,
+      @Nullable Map<String, String> headers,
+      @Nullable Duration timeout) {
+    return handleHttpRequest(
+        requestWithHeaders(url, headers, null /* queryParams */, timeout), r -> r.put(data));
   }
 
   public JsonNode putRequest(String url, JsonNode data) {
-    return putRequest(url, data, new HashMap<>());
+    return putRequest(url, data, null);
   }
 
-  public JsonNode putRequest(String url, JsonNode data, Map<String, String> headers) {
-    WSRequest request = requestWithHeaders(url, headers);
-    CompletionStage<String> jsonPromise = request.put(data).thenApply(WSResponse::getBody);
-    return handleJSONPromise(jsonPromise);
+  public JsonNode putRequest(String url, JsonNode data, @Nullable Map<String, String> headers) {
+    return handleHttpRequest(
+            requestWithHeaders(url, headers, null /* queryParams */, null /* timeout */),
+            r -> r.put(data))
+        .getBodyOrThrow();
   }
 
-  // Helper method to creaete url object for given webpage string.
-  public URL getUrl(String url) {
+  // Helper method to create URL object for a given web page string.
+  @VisibleForTesting
+  URL getUrl(String url) {
     try {
       return new URL(url);
     } catch (Exception e) {
+      log.error("Invalid url: {} - {}", url, e.getMessage());
       return null;
     }
   }
@@ -105,27 +192,9 @@ public class ApiHelper {
     return getBody(url, new HashMap<>(), DEFAULT_GET_REQUEST_TIMEOUT);
   }
 
-  public Pair<Integer, String> getResponse(String url) {
-    return getResponse(url, new HashMap<>(), DEFAULT_GET_REQUEST_TIMEOUT);
-  }
-
-  public Pair<Integer, String> getResponse(
-      String url, Map<String, String> headers, Duration timeout) {
-    WSRequest request = requestWithHeaders(url, headers);
-    request.setRequestTimeout(timeout);
-    CompletionStage<WSResponse> responsePromise = request.get();
-    try {
-      WSResponse response = responsePromise.toCompletableFuture().get();
-      return Pair.of(response.getStatus(), response.getBody());
-    } catch (Exception e) {
-      log.error("Error occurred", e);
-      return Pair.of(-1, e.getMessage());
-    }
-  }
-
-  public String getBody(String url, Map<String, String> headers, Duration timeout) {
-    WSRequest request = requestWithHeaders(url, headers);
-    request.setRequestTimeout(timeout);
+  private String getBody(
+      String url, @Nullable Map<String, String> headers, @Nullable Duration timeout) {
+    WSRequest request = requestWithHeaders(url, headers, null /* queryParams */, timeout);
     CompletionStage<String> jsonPromise = request.get().thenApply(WSResponse::getBody);
     String pageText = null;
     try {
@@ -154,86 +223,68 @@ public class ApiHelper {
     return objNode;
   }
 
+  public HttpResponse getHttpRequest(
+      String url,
+      @Nullable Map<String, String> headers,
+      @Nullable Map<String, String> queryParams,
+      @Nullable Duration timeout) {
+    return handleHttpRequest(requestWithHeaders(url, headers, queryParams, timeout), r -> r.get());
+  }
+
   public JsonNode getRequest(String url) {
-    return getRequest(url, new HashMap<>());
+    return getRequest(url, null);
   }
 
-  public JsonNode getRequest(String url, Map<String, String> headers) {
-    return getRequest(url, headers, new HashMap<>());
+  public JsonNode getRequest(String url, @Nullable Map<String, String> headers) {
+    return getRequest(url, headers, null);
   }
 
-  public JsonNode getRequest(String url, Map<String, String> headers, Map<String, String> params) {
-    WSRequest request = requestWithHeaders(url, headers);
-    request.setFollowRedirects(true);
-    if (!params.isEmpty()) {
-      for (Map.Entry<String, String> entry : params.entrySet()) {
-        request.setQueryParameter(entry.getKey(), entry.getValue());
-      }
-    }
-    CompletionStage<String> jsonPromise = request.get().thenApply(WSResponse::getBody);
-    return handleJSONPromise(jsonPromise);
+  public JsonNode getRequest(
+      String url, @Nullable Map<String, String> headers, @Nullable Map<String, String> params) {
+    return getRequest(url, headers, params, null);
+  }
+
+  public JsonNode getRequest(
+      String url,
+      @Nullable Map<String, String> headers,
+      @Nullable Map<String, String> queryParams,
+      @Nullable Duration timeout) {
+    return getHttpRequest(url, headers, queryParams, timeout).getBodyOrThrow();
+  }
+
+  public HttpResponse deleteHttpRequest(
+      String url, @Nullable Map<String, String> headers, @Nullable Map<String, String> params) {
+    return handleHttpRequest(
+        requestWithHeaders(url, headers, params, null /* timeout */), r -> r.delete());
   }
 
   public JsonNode deleteRequest(String url) {
-    return deleteRequest(url, new HashMap<>());
+    return deleteRequest(url, null);
   }
 
-  public JsonNode deleteRequest(String url, Map<String, String> headers) {
+  public JsonNode deleteRequest(String url, @Nullable Map<String, String> headers) {
     return deleteRequest(url, headers, new HashMap<>());
   }
 
   public JsonNode deleteRequest(
-      String url, Map<String, String> headers, Map<String, String> params) {
-    WSRequest request = requestWithHeaders(url, headers);
-    request.setFollowRedirects(true);
-    if (!params.isEmpty()) {
-      for (Map.Entry<String, String> entry : params.entrySet()) {
-        request.setQueryParameter(entry.getKey(), entry.getValue());
-      }
-    }
-    CompletionStage<String> jsonPromise = request.delete().thenApply(WSResponse::getBody);
-    return handleJSONPromise(jsonPromise);
+      String url, @Nullable Map<String, String> headers, @Nullable Map<String, String> params) {
+    return deleteHttpRequest(url, headers, params).getBodyOrThrow();
   }
 
-  private JsonNode handleJSONPromise(CompletionStage<String> jsonPromise) {
-    try {
-      String jsonString = jsonPromise.toCompletableFuture().get();
-      return Json.parse(jsonString);
-    } catch (InterruptedException | ExecutionException e) {
-      log.warn("Unexpected exception while parsing response", e);
-      return ApiResponse.errorJSON(e.getMessage());
-    } catch (RuntimeException e) {
-      log.warn("Unexpected exception while parsing response", e);
-      throw e;
-    }
-  }
-
-  private WSRequest requestWithHeaders(String url, Map<String, String> headers) {
-    WSRequest request = wsClient.url(url);
-    if (!headers.isEmpty()) {
-      for (Map.Entry<String, String> entry : headers.entrySet()) {
-        request.addHeader(entry.getKey(), entry.getValue());
-      }
-    }
-    return request;
-  }
-
-  public String buildUrl(String baseUrl, Map<String, String[]> queryParams) {
-    if (queryParams.size() > 0) {
-      baseUrl += "?";
+  public String buildUrl(String baseUrl, @Nullable Map<String, String[]> queryParams) {
+    if (MapUtils.isNotEmpty(queryParams)) {
       StringBuilder requestUrlBuilder = new StringBuilder(baseUrl);
+      requestUrlBuilder.append("?");
+      int paramsIdx = 0;
       for (Map.Entry<String, String[]> entry : queryParams.entrySet()) {
-        requestUrlBuilder
-            .append(entry.getKey())
-            .append("=")
-            .append(entry.getValue()[0])
-            .append("&");
+        if (paramsIdx > 0) {
+          requestUrlBuilder.append("&");
+        }
+        requestUrlBuilder.append(entry.getKey()).append("=").append(entry.getValue()[0]);
+        paramsIdx++;
       }
-
-      baseUrl = requestUrlBuilder.toString();
-      baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
+      return requestUrlBuilder.toString();
     }
-
     return baseUrl;
   }
 
@@ -247,24 +298,25 @@ public class ApiHelper {
         .replaceAll("http://", String.format("/universes/%s/proxy/", universeUUID.toString()));
   }
 
-  public JsonNode multipartRequest(
+  public HttpResponse multipartHttpRequest(
       String url,
-      Map<String, String> headers,
+      @Nullable Map<String, String> headers,
       List<Http.MultipartFormData.Part<Source<ByteString, ?>>> partsList) {
     WSRequest request = wsClient.url(url);
     headers.forEach(request::addHeader);
-    CompletionStage<String> post =
-        request.post(Source.from(partsList)).thenApply(WSResponse::getBody);
-    try {
-      return handleJSONPromise(post);
-    } catch (RuntimeException e) {
-      return new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage()).getContentJson();
-    }
+    return handleHttpRequest(request, r -> r.post(Source.from(partsList)));
   }
 
-  public CompletionStage<WSResponse> getSimpleRequest(String url, Map<String, String> headers) {
-    WSRequest request = requestWithHeaders(url, headers).setFollowRedirects(true);
-    return request.get();
+  public JsonNode multipartRequest(
+      String url,
+      @Nullable Map<String, String> headers,
+      List<Http.MultipartFormData.Part<Source<ByteString, ?>>> partsList) {
+    return multipartHttpRequest(url, headers, partsList).getBodyOrThrow();
+  }
+
+  public CompletionStage<WSResponse> getSimpleRequest(
+      String url, @Nullable Map<String, String> headers) {
+    return requestWithHeaders(url, headers, null /* queryParams */, null /* timeout */).get();
   }
 
   public void closeClient() {

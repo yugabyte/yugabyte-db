@@ -1,5 +1,6 @@
 import { FC } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useEffectOnce } from 'react-use';
 import { useSelector } from 'react-redux';
 import { useFormContext } from 'react-hook-form';
 import { mui, YBSelectField } from '@yugabyte-ui-library/core';
@@ -15,26 +16,25 @@ interface AccessKeyFieldProps {
 const ACCESS_KEY_FIELD = 'accessKeyCode';
 
 export const AccessKeyField: FC<AccessKeyFieldProps> = ({ disabled, provider }) => {
-  const { control } = useFormContext<OtherAdvancedProps>();
+  const { control, setValue } = useFormContext<OtherAdvancedProps>();
   const { t } = useTranslation();
 
   //all access keys
   const allAccessKeys = useSelector((state: any) => state.cloud.accessKeys).data;
 
-  //TODO : Enable this once state is available for this new route
-  // // filter access key list by provider
-  // const accessKeysList = allAccessKeys?.data?.filter(
-  //   (item: AccessKey) => item?.idKey?.providerUUID === (provider || '')
-  // );
+  // filter access key list by provider
+  const accessKeysList = allAccessKeys?.data?.filter(
+    (item: AccessKey) => item?.idKey?.providerUUID === (provider || '')
+  );
 
-  // //only first time
-  // useEffectOnce(() => {
-  //   if (accessKeysList?.length && provider) {
-  //     setValue(ACCESS_KEY_FIELD, accessKeysList[0]?.idKey.keyCode, { shouldValidate: true });
-  //   } else {
-  //     setValue(ACCESS_KEY_FIELD, '', { shouldValidate: true });
-  //   }
-  // });
+  //only first time
+  useEffectOnce(() => {
+    if (accessKeysList?.length && provider) {
+      setValue(ACCESS_KEY_FIELD, accessKeysList[0]?.idKey.keyCode);
+    } else {
+      setValue(ACCESS_KEY_FIELD, '');
+    }
+  });
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', width: '734px' }}>

@@ -114,7 +114,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestCSStreamSnapshotEstablishmentYbAdminYsq
 
 TEST_F(CDCSDKConsistentSnapshotTest, TestSnapshotNameFromCreateReplicationSlot) {
   ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
-  ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(USE_SNAPSHOT,
+  ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(EXPORT_SNAPSHOT,
       true /* verify_snapshot_name */));
   ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(NOEXPORT_SNAPSHOT,
       true /* verify_snapshot_name */));
@@ -1565,7 +1565,6 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestReleaseResourcesWhenNoStreamsOnTablet) 
 }
 
 TEST_F(CDCSDKConsistentSnapshotTest, TestCreateReplicationSlotExportSnapshot) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_pg_export_snapshot) = true;
   auto slot_name = "logical_repl_slot_export_snapshot";
   auto tablets = ASSERT_RESULT(SetUpCluster());
   ASSERT_EQ(tablets.size(), 1);
@@ -1619,6 +1618,54 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestCreateReplicationSlotExportSnapshot) {
   LOG(INFO) << "Got " << rows_in_import_transaction << " rows after setting snapshot";
   // After setting snapshot, we should see exactly the same number of rows as reads_snapshot.
   ASSERT_EQ(rows_in_import_transaction, reads_snapshot);
+}
+
+TEST_F(CDCSDKConsistentSnapshotTest, TestUseSnapshotWithTransaction) {
+  auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
+
+  ASSERT_OK(WriteRowsHelper(1 /* start */, 101 /* end */, &test_cluster_, true));
+
+  auto repl_conn = ASSERT_RESULT(test_cluster_.ConnectToDBWithReplication(kNamespaceName));
+  // Start a transaction with REPEATABLE READ isolation (required for USE_SNAPSHOT)
+  ASSERT_OK(repl_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+
+  std::string slot_name = "test_use_snapshot_slot";
+  auto result = ASSERT_RESULT(repl_conn.FetchFormat(
+      "CREATE_REPLICATION_SLOT $0 LOGICAL pgoutput USE_SNAPSHOT", slot_name));
+
+  auto snapshot_name =
+      ASSERT_RESULT(pgwrapper::GetValue<std::optional<std::string>>(result.get(), 0, 2));
+  ASSERT_TRUE(snapshot_name.has_value());
+  LOG(INFO) << "USE_SNAPSHOT returned snapshot name: " << *snapshot_name;
+
+  auto stream_id = ASSERT_RESULT(repl_conn.FetchRow<std::string>(
+      Format("SELECT yb_stream_id FROM pg_replication_slots WHERE slot_name = '$0'", slot_name)));
+  auto xrepl_stream_id = ASSERT_RESULT(xrepl::StreamId::FromString(stream_id));
+
+  auto resp = ASSERT_RESULT(GetCDCStream(xrepl_stream_id));
+  auto cstime = resp.stream().cdcsdk_consistent_snapshot_time();
+
+  ASSERT_EQ(*snapshot_name, std::to_string(cstime));
+  LOG(INFO) << "Verified: snapshot_name (" << *snapshot_name
+            << ") matches consistent_snapshot_time (" << cstime << ")";
+
+  ASSERT_OK(repl_conn.Execute("COMMIT"));
+
+  ASSERT_OK(WriteRowsHelper(101 /* start */, 201 /* end */, &test_cluster_, true));
+
+  auto cp_resp = ASSERT_RESULT
+  (GetCDCSDKSnapshotCheckpoint(xrepl_stream_id, tablets[0].tablet_id()));
+
+  GetChangesResponsePB change_resp;
+  uint32_t reads_snapshot = ASSERT_RESULT(
+      ConsumeSnapshotAndVerifyCounts(xrepl_stream_id, tablets, cp_resp, &change_resp));
+  LOG(INFO) << "Snapshot READs: " << reads_snapshot;
+  ASSERT_EQ(reads_snapshot, 100);
+
+  uint32_t inserts = ASSERT_RESULT(
+      ConsumeInsertsAndVerifyCounts(xrepl_stream_id, tablets, change_resp));
+  LOG(INFO) << "INSERTs after snapshot: " << inserts;
+  ASSERT_EQ(inserts, 100);
 }
 
 }  // namespace cdc

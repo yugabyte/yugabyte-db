@@ -1,6 +1,5 @@
 --
 -- See yb_saop_merge_schedule for details about the test.
--- TODO(#29072): fix output.
 --
 
 \getenv abs_srcdir PG_ABS_SRCDIR
@@ -298,6 +297,16 @@
 
 -- (Reset the limit change)
 \set on '/*+Set(yb_max_saop_merge_streams 64)*/'
+
+-- #30096: SAOP merge shouldn't be used in a parallel scan.
+\set query 'SELECT * FROM r5n WHERE r1 IN (0, 2, 4) AND r2 IN (6, 8) ORDER BY r3, r4, r5'
+\set hint3 '/*+Parallel(r5n 2) Set(yb_enable_parallel_scan_range_sharded true) Set(yb_parallel_range_rows 1) Set(yb_max_saop_merge_streams 0)*/'
+\set hint4 '/*+Parallel(r5n 2) Set(yb_enable_parallel_scan_range_sharded true) Set(yb_parallel_range_rows 1) Set(yb_max_saop_merge_streams 64)*/'
+:explain4
+
+-- Same thing with backwards scan.
+\set query 'SELECT * FROM r5n WHERE r1 IN (0, 2, 4) AND r2 IN (6, 8) ORDER BY r3 DESC, r4 DESC, r5 DESC'
+:explain4
 
 --
 -- Secondary index

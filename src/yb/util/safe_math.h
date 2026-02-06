@@ -78,4 +78,10 @@ inline Type AddWithOverflowCheck(Type a, Type b, bool *overflowed) {
   return my_struct::Add(a, b, overflowed);
 }
 
+template <class In>
+requires (std::is_unsigned_v<In> && sizeof(In) == sizeof(size_t))
+bool HasOverflow(In in) {
+  return in & (static_cast<In>(1) << (sizeof(In) * 8 - 1));
+}
+
 } // namespace yb

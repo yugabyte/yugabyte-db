@@ -134,7 +134,7 @@ DECLARE_bool(TEST_cdcsdk_skip_processing_unqualified_tables);
 DECLARE_bool(TEST_cdcsdk_skip_table_removal_from_qualified_list);
 DECLARE_bool(cdc_disable_sending_composite_values);
 DECLARE_bool(cdc_use_byte_threshold_for_vwal_changes);
-DECLARE_bool(ysql_enable_pg_export_snapshot);
+DECLARE_bool(ysql_yb_enable_pg_export_snapshot);
 DECLARE_bool(ysql_yb_enable_consistent_replication_from_hash_range);
 DECLARE_uint64(cdcsdk_update_restart_time_interval_secs);
 DECLARE_int32(retryable_request_timeout_secs);
@@ -538,13 +538,18 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   Status InitVirtualWAL(
       const xrepl::StreamId& stream_id, const std::vector<TableId> table_ids,
       const uint64_t session_id = kVWALSessionId1,
-      const std::unique_ptr<ReplicationSlotHashRange>& slot_hash_range = nullptr);
+      const std::unique_ptr<ReplicationSlotHashRange>& slot_hash_range = nullptr,
+      bool include_oid_to_relfilenode = false);
 
   Status DestroyVirtualWAL(const uint64_t session_id = kVWALSessionId1);
 
   Status UpdateAndPersistLSN(
       const xrepl::StreamId& stream_id, const uint64_t confirmed_flush_lsn,
       const uint64_t restart_lsn, const uint64_t session_id = kVWALSessionId1);
+
+  Status PopulateOidToRelfileNode(
+      const std::vector<TableId>& table_ids,
+      google::protobuf::Map<uint32_t, uint32_t>* oid_to_relfilenode_map);
 
   // This method will keep on consuming changes until it gets the txns fully i.e COMMIT record of
   // the last txn. This indicates that even though we might have received the expecpted DML records,
@@ -553,7 +558,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const xrepl::StreamId& stream_id, std::vector<TableId> table_ids, int expected_dml_records,
       bool init_virtual_wal, const uint64_t session_id = kVWALSessionId1,
       bool allow_sending_feedback = true,
-      const std::unique_ptr<ReplicationSlotHashRange>& slot_hash_range = nullptr);
+      const std::unique_ptr<ReplicationSlotHashRange>& slot_hash_range = nullptr,
+      std::vector<TableId> new_table_ids = {});
 
   GetAllPendingChangesResponse GetAllPendingChangesFromCdc(
       const xrepl::StreamId& stream_id,
@@ -590,7 +596,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   Status UpdatePublicationTableList(
       const xrepl::StreamId& stream_id, const std::vector<TableId> table_ids,
-      uint64_t session_id = kVWALSessionId1);
+      uint64_t session_id = kVWALSessionId1, bool include_oid_to_relfilenode = false);
 
   void TestIntentGarbageCollectionFlag(
       const uint32_t num_tservers,
@@ -616,7 +622,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const xrepl::StreamId& stream_id, const std::unordered_set<std::string>& expected_table_ids,
       const std::string& timeout_msg,
       const std::optional<std::unordered_set<std::string>>& expected_unqualified_table_ids =
-          std::nullopt);
+          std::nullopt,
+      bool include_catalog_tables = false);
 
   Status ChangeLeaderOfTablet(size_t new_leader_index, const TabletId tablet_id);
 
@@ -666,7 +673,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const std::unordered_set<TabletId> expected_tablet_ids, client::YBClient* client,
       const xrepl::StreamId& stream_id = xrepl::StreamId::Nil(),
       const std::string timeout_msg =
-          "Tablets in cdc_state for the stream doesnt match the expected set");
+          "Tablets in cdc_state for the stream doesnt match the expected set",
+      bool include_catalog_tables = false);
 
   Result<int> GetStateTableRowCount();
 

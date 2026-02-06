@@ -40,6 +40,7 @@
 #include "utils/resowner.h"
 #include "utils/tuplestore.h"
 #include "utils/typcache.h"
+#include "utils/uuid.h"
 #include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb_ysql_conn_mgr_helper.h"
@@ -791,6 +792,21 @@ extern bool	yb_enable_parallel_scan_system;
  */
 extern bool yb_test_make_all_ddl_statements_incrementing;
 
+/*
+ * If set to true, all DDL statements will cause the catalog version to increment.
+ * Unlike yb_test_make_all_ddl_statements_incrementing, this controls ONLY the
+ * version incrementing behavior.
+ */
+extern bool yb_always_increment_catalog_version_on_ddl;
+
+/*
+ * If set to true, negative catcache entries are enabled. A negative cache entry
+ * is created when a lookup returns no result. Unlike
+ * yb_test_make_all_ddl_statements_incrementing, this controls ONLY the negative
+ * caching behavior.
+ */
+extern bool yb_enable_negative_catcache_entries;
+
 typedef struct YBUpdateOptimizationOptions
 {
 	bool		has_infra;
@@ -825,6 +841,8 @@ extern bool yb_user_ddls_preempt_auto_analyze;
  * If true, enable RPC execution time stats for pg_stat_statements.
  */
 extern bool yb_enable_pg_stat_statements_rpc_stats;
+
+extern bool yb_enable_global_views;
 
 /*
  * If true, enable DocDB metrics collection for pg_stat_statements.
@@ -1527,5 +1545,8 @@ extern YbcPgStatement YbNewTruncateColocated(Relation rel,
 
 extern YbcPgStatement YbNewTruncateColocatedIgnoreNotFound(Relation rel,
 														   YbcPgTransactionSetting transaction_setting);
+
+extern const unsigned char *YbGetLocalTServerUuid();
+extern void YbUCharToUuid(const unsigned char *in, pg_uuid_t *out);
 
 #endif							/* PG_YB_UTILS_H */

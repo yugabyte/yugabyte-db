@@ -934,7 +934,7 @@ static void
 YbExplainRpcRequestMetrics(YbExplainState *yb_es, YbcPgExecStorageMetrics *metrics,
 						   double nloops, bool is_mean, const char *labelname)
 {
-	if (!metrics)
+	if (!metrics || metrics->version == 0)
 		return;
 
 	ExplainOpenGroup(labelname, labelname, true, yb_es->es);
@@ -5192,7 +5192,7 @@ show_yb_rpc_stats(PlanState *planstate, ExplainState *es)
 							   index_rows_scanned);
 
 	if (es->yb_debug)
-		YbExplainRpcRequestMetrics(&yb_es, yb_instr->read_metrics, nloops, true /* is_mean */ ,
+		YbExplainRpcRequestMetrics(&yb_es, &yb_instr->read_metrics, nloops, true /* is_mean */ ,
 								   "Read Metrics" /* labelname */ );
 
 	YbExplainStatWithoutTiming(&yb_es, YB_STAT_LABEL_STORAGE_TABLE_WRITE,
@@ -5203,7 +5203,7 @@ show_yb_rpc_stats(PlanState *planstate, ExplainState *es)
 							flushes_wait);
 
 	if (es->yb_debug)
-		YbExplainRpcRequestMetrics(&yb_es, yb_instr->write_metrics, nloops, true /* is_mean */ ,
+		YbExplainRpcRequestMetrics(&yb_es, &yb_instr->write_metrics, nloops, true /* is_mean */ ,
 								   "Write Metrics" /* labelname */ );
 }
 
@@ -6549,11 +6549,13 @@ static void
 YbAggregateExplainableRpcMetrics(YbcPgExecStorageMetrics **metrics,
 								 const YbcPgExecStorageMetrics *instr_metrics)
 {
-	if (!instr_metrics)
+	if (instr_metrics->version == 0)
 		return;
 
 	if (*metrics == NULL)
 		*metrics = (YbcPgExecStorageMetrics *) palloc0(sizeof(YbcPgExecStorageMetrics));
+
+	(*metrics)->version += instr_metrics->version;
 
 	for (int i = 0; i < YB_STORAGE_GAUGE_COUNT; ++i)
 		(*metrics)->gauges[i] += instr_metrics->gauges[i];
@@ -6606,9 +6608,9 @@ YbAggregateExplainableRPCRequestStat(ExplainState *es,
 	if (es->yb_debug)
 	{
 		YbAggregateExplainableRpcMetrics(&es->yb_stats.read_metrics,
-										 yb_instr->read_metrics);
+										 &yb_instr->read_metrics);
 		YbAggregateExplainableRpcMetrics(&es->yb_stats.write_metrics,
-										 yb_instr->write_metrics);
+										 &yb_instr->write_metrics);
 	}
 }
 

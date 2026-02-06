@@ -253,4 +253,14 @@ perfAdvisor:
    enabled: false
    port: 8443
    restartSeconds: 10
-   enableHttps: false
+   # Ok to leave empty
+   paSecret: ""
+   tls:
+      enabled: true
+      sslProtocols: ""
+      hsts: true
+      # Password for the PKCS12 keystore (tls.p12). Required when tls.enabled is true.
+      keystorePassword: ""
+   callhome:
+      enabled: true
+      environment: dev

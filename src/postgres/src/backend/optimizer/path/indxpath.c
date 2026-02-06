@@ -1544,9 +1544,11 @@ yb_step_4:
 		/*
 		 * If appropriate, consider parallel index scan.  We don't allow
 		 * parallel index scan for bitmap index scans.
+		 * YB: Also, SAOP merge conflicts with parallel scan
 		 */
 		if (index->amcanparallel &&
 			rel->consider_parallel && outer_relids == NULL &&
+			yb_saop_merge_saop_cols == NIL &&
 			scantype != ST_BITMAPSCAN)
 		{
 			ipath = create_index_path(root, index,
@@ -1658,6 +1660,7 @@ yb_step_5:
 			/* If appropriate, consider parallel index scan */
 			if (index->amcanparallel &&
 				rel->consider_parallel && outer_relids == NULL &&
+				yb_saop_merge_saop_cols == NIL &&
 				scantype != ST_BITMAPSCAN)
 			{
 				ipath = create_index_path(root, index,

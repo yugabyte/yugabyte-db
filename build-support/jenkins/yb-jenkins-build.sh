@@ -96,13 +96,15 @@ build_cpp_code() {
   # Static check of bash scripts need only be done during one phase of the build.
   yb_build_args+=( "--shellcheck" )
 
+  if [[ -n "${YB_PGO_DATA_FILE:-}" && -f "$YB_PGO_DATA_FILE" ]]; then
+    yb_build_args+=( "--pgo-data-path=$YB_PGO_DATA_FILE" )
+  fi
+
   log "Building cpp code with options: ${yb_build_args[*]}"
 
   time "$YB_SRC_ROOT/yb_build.sh" ${remote_opt} "${yb_build_args[@]}"
 
   log "Finished building C++ code (see timing information above)"
-
-  remove_latest_symlink
 
   # Restore the old source root. See the comment at the top.
   set_yb_src_root "$old_yb_src_root"
@@ -231,9 +233,6 @@ log "YB_NINJA_PATH=${YB_NINJA_PATH:-undefined}"
 
 set_java_home
 
-export YB_DISABLE_LATEST_SYMLINK=1
-remove_latest_symlink
-
 log "Running with PATH: ${PATH}"
 
 log "Running Python tests"
@@ -247,7 +246,6 @@ log "Finished running a light-weight lint script on the Java code"
 export YB_SKIP_BUILD=${YB_SKIP_BUILD:-0}
 
 YB_SKIP_CPP_COMPILATION=${YB_SKIP_CPP_COMPILATION:-0}
-YB_COMPILE_ONLY=${YB_COMPILE_ONLY:-0}
 
 export NO_REBUILD_THIRDPARTY=1
 
@@ -328,7 +326,6 @@ if ! is_tsan ; then
   fi
 fi
 
-current_git_commit=$(git rev-parse HEAD)
 
 # -------------------------------------------------------------------------------------------------
 # Final LTO linking
@@ -340,6 +337,10 @@ if [[ ${YB_LINKING_TYPE} == *-lto ]]; then
     "${YB_SRC_ROOT}/yb_build.sh"
     "${BUILD_TYPE}" --skip-java --force-run-cmake
   )
+
+  if [[ -n "${YB_PGO_DATA_FILE:-}" && -f "$YB_PGO_DATA_FILE" ]]; then
+    yb_build_cmd_line_for_lto+=( "--pgo-data-path=$YB_PGO_DATA_FILE" )
+  fi
 
   if [[ $( grep -E 'MemTotal: .* kB' /proc/meminfo ) =~ ^.*\ ([0-9]+)\ .*$ ]]; then
     total_mem_kb=${BASH_REMATCH[1]}
@@ -419,105 +420,6 @@ if [[ ${YB_BUILD_JAVA} == "1" && ${YB_SKIP_BUILD} != "1" ]]; then
   collect_java_tests
 
   log "Finished building Java code (see timing information above)"
-fi
-
-# -------------------------------------------------------------------------------------------------
-# Now that all C++ and Java code has been built, test creating a package.
-#
-# Skip this in ASAN/TSAN, as there are still unresolved issues with dynamic libraries there
-# (conflicting versions of the same library coming from thirdparty vs. Linuxbrew) as of 12/04/2017.
-
-if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" ]] && ! is_sanitizer ; then
-  heading "Creating a distribution package"
-
-  package_path_file="${BUILD_ROOT}/package_path.txt"
-  rm -f "${package_path_file}"
-
-  # We are passing --build_args="--skip-build" using the "=" syntax, because otherwise it would be
-  # interpreted as an argument to yb_release.py, causing an error.
-  #
-  # Everything has already been built by this point, so there is no need to invoke compilation at
-  # all as part of building the release package.
-  yb_release_cmd=(
-    "${YB_SRC_ROOT}/yb_release"
-    --build "${build_type}"
-    --build_root "${BUILD_ROOT}"
-    "--build_args=--skip-build"
-    --save_release_path_to_file "${package_path_file}"
-    --commit "${current_git_commit}"
-    --force
-  )
-
-  if [[ ${YB_BUILD_YW:-0} == "1" ]]; then
-    # This is needed for build.sbt to use YB Client jars that we've built and installed to
-    # YB_MVN_LOCAL_REPO.
-    export USE_MAVEN_LOCAL=true
-    yb_release_cmd+=( --yw )
-  fi
-
-  (
-    set -x
-    time "${yb_release_cmd[@]}"
-  )
-
-  YB_PACKAGE_PATH=$( cat "${package_path_file}" )
-  if [[ -z ${YB_PACKAGE_PATH} ]]; then
-    fatal "File '${package_path_file}' is empty"
-  fi
-  if [[ ! -f ${YB_PACKAGE_PATH} ]]; then
-    fatal "Package path stored in '${package_path_file}' does not exist: ${YB_PACKAGE_PATH}"
-  fi
-
-  # Digest the package.
-  digest_package "${YB_PACKAGE_PATH}"
-
-else
-  log "Skipping creating distribution package. Build type: $build_type, OSTYPE: ${OSTYPE}," \
-      "YB_SKIP_CREATING_RELEASE_PACKAGE: ${YB_SKIP_CREATING_RELEASE_PACKAGE:-undefined}."
-
-  # yugabyted-ui is usually built during package build.  Test yugabyted-ui build here when not
-  # building package.
-  log "Building yugabyted-ui"
-  time "${YB_SRC_ROOT}/yb_build.sh" "${BUILD_TYPE}" --build-yugabyted-ui --skip-java
-fi
-
-# -------------------------------------------------------------------------------------------------
-heading "Dependency Graph Self-Test"
-( set -x
-  "$YB_SCRIPT_PATH_DEPENDENCY_GRAPH" \
-    --build-root "${BUILD_ROOT}" \
-    self-test \
-    --rebuild-graph )
-
-# -------------------------------------------------------------------------------------------------
-if [[ "${YB_COMPILE_ONLY}" == "1" ]]; then
-  heading "Skipping Prep for DB unit testing."
-else
-  heading "Build Prep for DB unit testing."
-  prep_ybc_testing
-  export YB_RUN_AFFECTED_TESTS_ONLY=${YB_RUN_AFFECTED_TESTS_ONLY:-0}
-  log "YB_RUN_AFFECTED_TESTS_ONLY=${YB_RUN_AFFECTED_TESTS_ONLY}"
-  if [[ ${YB_RUN_AFFECTED_TESTS_ONLY} == "1" ]]; then
-    log "Running dependency graph to find tests based on modified files"
-    if [[ -n "${YB_TEST_EXECUTION_FILTER_RE:-}" ]]; then
-      log "Disregarding YB_TEST_EXECUTION_FILTER_RE for default test_conf.json"
-      unset YB_TEST_EXECUTION_FILTER_RE
-    fi
-    # YB_GIT_COMMIT_FOR_DETECTING_TESTS allows overriding the commit to use to detect the set
-    # of tests to run. Useful when testing this script.
-    current_git_commit=$(git rev-parse HEAD)
-    ( set -x
-      "$YB_SCRIPT_PATH_DEPENDENCY_GRAPH" \
-          --build-root "${BUILD_ROOT}" \
-          --git-commit "${YB_GIT_COMMIT_FOR_DETECTING_TESTS:-$current_git_commit}" \
-          --output-test-config "${BUILD_ROOT}/test_conf.json" \
-          affected
-    )
-  else
-    log "Skipping dependency graph -- expecting to run all tests."
-  fi
-  heading "Preparing spark archive"
-  prep_spark_archive
 fi
 
 # -------------------------------------------------------------------------------------------------

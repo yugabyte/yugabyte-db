@@ -317,6 +317,7 @@ class PgClient {
 
   Result<cdc::InitVirtualWALForCDCResponsePB> InitVirtualWALForCDC(
       const std::string& stream_id, const std::vector<PgObjectId>& table_ids,
+      const std::unordered_map<uint32_t, uint32_t>& oid_to_relfilenode,
       const YbcReplicationSlotHashRange* slot_hash_range, uint64_t active_pid,
       const std::vector<PgOid>& publication_oids, bool pub_all_tables);
 
@@ -324,7 +325,8 @@ class PgClient {
       const std::string& stream_id, int64_t* lag_metric);
 
   Result<cdc::UpdatePublicationTableListResponsePB> UpdatePublicationTableList(
-    const std::string& stream_id, const std::vector<PgObjectId>& table_ids);
+      const std::string& stream_id, const std::vector<PgObjectId>& table_ids,
+      const std::unordered_map<uint32_t, uint32_t>& oid_to_relfilenode);
 
   Result<cdc::DestroyVirtualWALForCDCResponsePB> DestroyVirtualWALForCDC();
 
@@ -345,6 +347,9 @@ class PgClient {
   Result<PgTxnSnapshotPB> ImportTxnSnapshot(
       std::string_view snapshot_id, tserver::PgPerformOptionsPB&& options);
   Status ClearExportedTxnSnapshots();
+
+  Status GetYbSystemTableInfo(
+      PgOid namespace_oid, std::string_view table_name, PgOid* oid, PgOid* relfilenode);
 
   using ActiveTransactionCallback = LWFunction<Status(
       const tserver::PgGetActiveTransactionListResponsePB_EntryPB&, bool is_last)>;

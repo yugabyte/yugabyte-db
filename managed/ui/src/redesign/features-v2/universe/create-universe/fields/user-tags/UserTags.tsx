@@ -9,17 +9,17 @@
  */
 
 import { FC } from 'react';
-import { useFormContext, useFieldArray, FieldArrayPath } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
+import { useFormContext, useFieldArray, FieldArrayPath } from 'react-hook-form';
 import { mui, YBInputField, YBButton } from '@yugabyte-ui-library/core';
-import { OtherAdvancedProps, InstanceTag } from '../../steps/advanced-settings/dtos';
 import { StyledLink } from '../../components/DefaultComponents';
+import { OtherAdvancedProps, InstanceTag } from '../../steps/advanced-settings/dtos';
 
-const { Box, styled, Typography, IconButton } = mui;
-
+//icons
 import CloseIcon from '../../../../../assets/close-v2.svg';
 import CircleAddIcon from '../../../../../assets/circle-add-v2.svg';
 
+const { Box, styled, Typography, IconButton } = mui;
 interface UserTagsProps {
   disabled: boolean;
 }
@@ -47,7 +47,7 @@ export const UserTagsField: FC<UserTagsProps> = ({ disabled }) => {
   });
 
   return (
-    <Box sx={{ display: 'flex', width: '100%', flexDirection: 'column', pt: 1, pb: 3 }}>
+    <Box sx={{ display: 'flex', width: '100%', flexDirection: 'column', pt: 1, pb: 1.5 }}>
       <StyledSubText>
         {t('subText')}
         <StyledLink>{t('learnMore')}</StyledLink>

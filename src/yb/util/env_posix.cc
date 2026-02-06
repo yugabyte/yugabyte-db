@@ -397,11 +397,11 @@ class PosixWritableFile : public WritableFile {
     // size_on_disk can be either pre_allocated_size_ or pre_allocated_size_ from
     // previous writer. If we've allocated more space than we used, truncate to the
     // actual size of the file and perform Sync().
-    uint64_t size_on_disk = lseek(fd_, 0, SEEK_END);
+    off_t size_on_disk = lseek(fd_, 0, SEEK_END);
     if (size_on_disk < 0) {
        return STATUS_IO_ERROR(filename_, errno);
     }
-    if (filesize_ < size_on_disk) {
+    if (filesize_ < implicit_cast<size_t>(size_on_disk)) {
       if (ftruncate(fd_, filesize_) < 0) {
         s = STATUS_IO_ERROR(filename_, errno);
         pending_sync_ = true;
@@ -607,13 +607,13 @@ class PosixDirectIOWritableFile final : public PosixWritableFile {
     }
     RETURN_NOT_OK(Sync());
     LOG(INFO) << "Closing file " << filename_ << " with " << block_ptr_vec_.size() << " blocks";
-    uint64_t size_on_disk = lseek(fd_, 0, SEEK_END);
+    off_t size_on_disk = lseek(fd_, 0, SEEK_END);
     if (size_on_disk < 0) {
        return STATUS_IO_ERROR(filename_, errno);
     }
     // size_on_disk can be filesize_, pre_allocated_size_, or pre_allocated_size_
     // from other previous writer.
-    if (real_size_ < size_on_disk) {
+    if (real_size_ < implicit_cast<size_t>(size_on_disk)) {
       LOG(INFO) << filename_ << ": Truncating file from size: " << filesize_
                 << " to size: " << real_size_
                 << ". Preallocated size: " << pre_allocated_size_
@@ -1737,7 +1737,7 @@ class PosixFileFactory : public FileFactory {
                                     std::unique_ptr<WritableFile>* result) {
     uint64_t file_size = 0;
     if (opts.mode == PosixEnv::OPEN_EXISTING) {
-      uint64_t lseek_result;
+      off_t lseek_result;
       if (opts.initial_offset.has_value()) {
         lseek_result = lseek(fd, opts.initial_offset.value(), SEEK_SET);
       } else {

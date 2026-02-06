@@ -53,6 +53,7 @@
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/escaping.h"
@@ -69,9 +70,8 @@
 #include "yb/tserver/ts_tablet_manager.h"
 
 #include "yb/client/client_fwd.h"
-#include "yb/gutil/macros.h"
-#include "yb/util/callsite_profiling.h"
 
+#include "yb/util/callsite_profiling.h"
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/date_time.h"
 #include "yb/util/decimal.h"
@@ -82,6 +82,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/safe_math.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
 #include "yb/util/thread.h"
@@ -238,13 +239,12 @@ Result<std::vector<double>> MetricsSnapshotter::GetCpuUsageInInterval(int ms) {
                         "[total_ticks, user-ticks, system_ticks]=$0.", cur_ticks2);
   }
 
+  SCHECK_GE(cur_ticks2[0], cur_ticks1[0], RuntimeError,
+            "Failed to calculate CPU usage - invalid total CPU ticks");
   uint64_t total_ticks = cur_ticks2[0] - cur_ticks1[0];
   uint64_t user_ticks = cur_ticks2[1] - cur_ticks1[1];
   uint64_t system_ticks = cur_ticks2[2] - cur_ticks1[2];
-  if (total_ticks < 0) {
-    return STATUS_FORMAT(RuntimeError, "Failed to calculate CPU usage - "
-                        "invalid total CPU ticks: $0.", total_ticks);
-  } else if (total_ticks == 0) {
+  if (total_ticks == 0) {
     cpu_usage.emplace_back(0);
     cpu_usage.emplace_back(0);
   } else {
@@ -270,7 +270,7 @@ static std::unordered_set<std::string> CSVToSet(const std::string& s) {
 MetricsSnapshotter::Thread::Thread(const TabletServerOptions& opts, TabletServer* server)
   : server_(server),
     cond_(&mutex_),
-    log_prefix_(Format("P $0: ", server_->permanent_uuid())),
+    log_prefix_(server::MakeServerLogPrefix(server_->permanent_uuid())),
     opts_(opts) {
   VLOG_WITH_PREFIX(1) << "Initializing metrics snapshotter thread";
 

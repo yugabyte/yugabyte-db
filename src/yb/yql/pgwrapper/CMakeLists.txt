@@ -114,6 +114,7 @@ ADD_YB_TEST(alter_schema_abort_txn-test)
 ADD_YB_TEST(alter_table_with_concurrent_txn-test)
 ADD_YB_TEST(clockbound_clock-test)
 ADD_YB_TEST(colocation-test)
+ADD_YB_TEST(create_abort-test)
 ADD_YB_TEST(geo_transactions-test)
 ADD_YB_TEST(geo_transactions_promotion-test)
 ADD_YB_TEST(pg_alter_add_column_default-test)
@@ -190,6 +191,8 @@ ADD_YB_TEST(pg_advisory_lock-test)
 ADD_YB_TEST(pg_yb_index_check-test)
 ADD_YB_TEST(pg_skip_prefix_lock-test)
 ADD_YB_TEST(pg_intents_flush_opid_modify-test)
+
+ADD_YB_TEST_DEPENDENCIES(pg_packed_row-test log-dump)
 
 # This is really a tool, not a test, but uses a lot of existing test infrastructure.
 ADD_YB_TEST(create_initial_sys_catalog_snapshot)

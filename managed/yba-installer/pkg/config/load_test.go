@@ -115,7 +115,15 @@ perfAdvisor:
    enabled: false
    port: 8443
    restartSeconds: 10
-   enableHttps: false
+   tls:
+      enabled: true
+      sslProtocols: ""
+      hsts: true
+      keystorePassword: ""
+   paSecret: ""
+   callhome:
+      enabled: true
+      environment: dev
 `
 	v := viper.New()
 	v.SetConfigType("yaml")

@@ -2,7 +2,6 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import svgr from 'vite-plugin-svgr';
 import dynamicImport from 'vite-plugin-dynamic-import';
-import { createHtmlPlugin } from 'vite-plugin-html';
 import path from 'path';
 
 // =============================================================================
@@ -111,14 +110,6 @@ export default defineConfig({
     }),
     react({
       exclude: /\.stories\.tsx?$/
-    }),
-    createHtmlPlugin({
-      minify: false,
-      inject: {
-        data: {
-          VITE_BUILD_COMMIT: process.env.VITE_BUILD_COMMIT
-        }
-      }
     }),
     dynamicImport()
   ],

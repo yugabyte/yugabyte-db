@@ -905,9 +905,13 @@ systable_inplace_update_begin(Relation relation,
 			return;
 		}
 
-		/* YB does not do heap_inplace_lock and doesn't have scan->slot. */
+		/*
+		 * TODO: cover this case if we intend to set TEST_enable_obj_tuple_locks to true.
+		 */
 		if (IsYBRelation(relation))
+		{
 			break;
+		}
 
 		slot = scan->slot;
 		Assert(TTS_IS_BUFFERTUPLE(slot));
@@ -964,8 +968,7 @@ systable_inplace_update_finish(void *state, HeapTuple tuple,
 		}
 
 		/*
-		 * Note: YB doesn't do heap_inplace_lock, so no need for
-		 * heap_inplace_unlock.
+		 * TODO: cover this case if we intend to set TEST_enable_obj_tuple_locks to true.
 		 */
 		systable_endscan(scan);
 		return;
@@ -994,8 +997,7 @@ systable_inplace_update_cancel(void *state)
 	if (IsYBRelation(relation))
 	{
 		/*
-		 * Note: YB doesn't do heap_inplace_lock, so no need for
-		 * heap_inplace_unlock.
+		 * TODO: cover this case if we intend to set TEST_enable_obj_tuple_locks to true.
 		 */
 		systable_endscan(scan);
 		return;

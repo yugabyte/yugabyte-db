@@ -168,8 +168,6 @@ class PgLibPqTest : public LibPqTestBase {
 
   Result<string> GetSchemaName(const string& relname, PGConn* conn);
 
-  Result<YsqlMetric> GetCatCacheTableMissMetric(const std::string& table_name);
-
  private:
   Result<PGConn> RestartTSAndConnectToPostgres(int ts_idx, const std::string& db_name);
 };
@@ -1867,27 +1865,6 @@ Result<string> PgLibPqTest::GetSchemaName(const string& relname, PGConn* conn) {
       "SELECT nspname FROM pg_class JOIN pg_namespace "
       "ON pg_class.relnamespace = pg_namespace.oid WHERE relname = '$0'",
       relname));
-}
-
-Result<YsqlMetric> PgLibPqTest::GetCatCacheTableMissMetric(const std::string& table_name) {
-  auto hostport = Format("$0:$1", pg_ts->bind_host(), pg_ts->pgsql_http_port());
-  EasyCurl c;
-  faststring buf;
-
-  auto json_metrics_url =
-      Substitute("http://$0/metrics?reset_histograms=false&show_help=true", hostport);
-  RETURN_NOT_OK(c.FetchURL(json_metrics_url, &buf));
-  auto json_metrics = ParseJsonMetrics(buf.ToString());
-  auto found_it =
-      std::find_if(json_metrics.begin(), json_metrics.end(), [table_name](YsqlMetric& metric) {
-        return (
-            metric.name.find("yb_ysqlserver_CatalogCacheTableMisses") != std::string::npos &&
-            metric.labels["table_name"] == table_name);
-      });
-  if (found_it == json_metrics.end()) {
-    return STATUS(NotFound, "metric for " + table_name + " not found");
-  }
-  return *found_it;
 }
 
 // Ensure if client sends out duplicate create table requests, one create table request can
@@ -4310,9 +4287,9 @@ class PgLibPqAmopNegCacheTest : public PgLibPqTest {
           conn2.FetchAllAsString("EXPLAIN (ANALYZE, DIST) SELECT * FROM test WHERE k <> 'a'"));
       LOG(INFO) << "output " << str;
 
-      auto value = VERIFY_RESULT(PgLibPqTest::GetCatCacheTableMissMetric("pg_amop"));
-      LOG(INFO) << "metric value for pg_amop misses " << value.value;
-      return value.value;
+      auto value = VERIFY_RESULT(GetCatCacheTableMissMetric("pg_amop"));
+      LOG(INFO) << "metric value for pg_amop misses " << value;
+      return value;
     };
 
     int64_t value1 = ASSERT_RESULT(runQueryAndGetMetricLambda());
@@ -4370,7 +4347,8 @@ class PgLibPqAmopNoPreloadNegCacheTest : public PgLibPqAmopNegCacheTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_tserver_flags.emplace_back(
-        "--ysql_pg_conf_csv=yb_test_make_all_ddl_statements_incrementing=false");
+        "--ysql_pg_conf_csv=yb_test_make_all_ddl_statements_incrementing=false,"
+        "yb_enable_negative_catcache_entries=false");
     PgLibPqTest::UpdateMiniClusterOptions(options);
   }
 };
@@ -4379,7 +4357,8 @@ class PgLibPqAmopPreloadNegCacheTest : public PgLibPqAmopNegCacheTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_tserver_flags.emplace_back(
-        "--ysql_pg_conf_csv=yb_test_make_all_ddl_statements_incrementing=false");
+        "--ysql_pg_conf_csv=yb_test_make_all_ddl_statements_incrementing=false,"
+        "yb_enable_negative_catcache_entries=false");
     options->extra_tserver_flags.emplace_back(
         "--ysql_catalog_preload_additional_table_list=pg_amop");
     PgLibPqTest::UpdateMiniClusterOptions(options);
@@ -4424,14 +4403,14 @@ class PgLibPqPgInheritsNegCacheTest : public PgLibPqTest {
       "CREATE UNIQUE INDEX ON foo (v1, r);"
       "INSERT INTO foo VALUES (1,1,1,1);"));
 
-    auto start_value = ASSERT_RESULT(PgLibPqTest::GetCatCacheTableMissMetric("pg_inherits"));
+    auto start_value = ASSERT_RESULT(GetCatCacheTableMissMetric("pg_inherits"));
 
     // Run the query on a fresh conn
     auto conn2 = ASSERT_RESULT(Connect());
     auto str = conn2.FetchAllAsString(
         "EXPLAIN (ANALYZE, DIST) INSERT INTO foo VALUES (1,1,1,1) ON CONFLICT (h, r) DO UPDATE SET "
         "v2=foo.v2+1");
-    auto end_value = ASSERT_RESULT(PgLibPqTest::GetCatCacheTableMissMetric("pg_inherits"));
+    auto end_value = ASSERT_RESULT(GetCatCacheTableMissMetric("pg_inherits"));
 
     int32_t updated_v2 = ASSERT_RESULT(conn2.FetchRow<int32_t>(
         "SELECT v2 FROM foo WHERE h=1 AND r=1"));
@@ -4440,9 +4419,9 @@ class PgLibPqPgInheritsNegCacheTest : public PgLibPqTest {
     // Given we are preloaded, we should not have any cache misses (incl neg misses)
     // for the query above which should cause lookups for ancestors of a table in pg_inherits
     if (!minimal_preload)
-      ASSERT_EQ(end_value.value, start_value.value);
+      ASSERT_EQ(end_value, start_value);
     else
-      ASSERT_GT(end_value.value, start_value.value);
+      ASSERT_GT(end_value, start_value);
   }
 };
 
@@ -4475,7 +4454,7 @@ class BasePgEnumTest : public PgLibPqTest {
         "CREATE TABLE e (c color);"
         "INSERT INTO e VALUES ('cerulean');"));
 
-    auto start_value = ASSERT_RESULT(PgLibPqTest::GetCatCacheTableMissMetric("pg_enum"));
+    auto start_value = ASSERT_RESULT(GetCatCacheTableMissMetric("pg_enum"));
 
     auto conn2 = ASSERT_RESULT(Connect());
 
@@ -4485,15 +4464,15 @@ class BasePgEnumTest : public PgLibPqTest {
     // Trigger ENUMOID via enum->text output.
     auto s2 = ASSERT_RESULT(conn2.FetchAllAsString("SELECT c::text FROM e"));
 
-    auto end_value = ASSERT_RESULT(PgLibPqTest::GetCatCacheTableMissMetric("pg_enum"));
+    auto end_value = ASSERT_RESULT(GetCatCacheTableMissMetric("pg_enum"));
 
-    LOG(INFO) << "pg_enum cache misses start value: " << start_value.value
-              << " end value: " << end_value.value;
+    LOG(INFO) << "pg_enum cache misses start value: " << start_value
+              << " end value: " << end_value;
 
     if (is_pg_enum_preloaded) {
-      ASSERT_EQ(end_value.value, start_value.value);
+      ASSERT_EQ(end_value, start_value);
     } else {
-      ASSERT_EQ(end_value.value, start_value.value + 2);
+      ASSERT_EQ(end_value, start_value + 2);
     }
   }
 };
@@ -4578,7 +4557,7 @@ TEST_P(PgRangeTest, PgRangeCatalogCacheTest) {
       "    resource_id    INT PRIMARY KEY,"
       "    active_hours   INT4MULTIRANGE)"));
 
-  auto start_value = ASSERT_RESULT(PgLibPqTest::GetCatCacheTableMissMetric("pg_range"));
+  auto start_value = ASSERT_RESULT(GetCatCacheTableMissMetric("pg_range"));
 
   auto conn2 = ASSERT_RESULT(Connect());
 
@@ -4586,15 +4565,15 @@ TEST_P(PgRangeTest, PgRangeCatalogCacheTest) {
   ASSERT_OK(conn2.Execute("INSERT INTO resource_schedule (resource_id, active_hours)"
                           "VALUES (101, '{[9,12), [13,17)}')"));
 
-  auto end_value = ASSERT_RESULT(PgLibPqTest::GetCatCacheTableMissMetric("pg_range"));
+  auto end_value = ASSERT_RESULT(GetCatCacheTableMissMetric("pg_range"));
 
-  LOG(INFO) << "pg_range cache misses start value: " << start_value.value
-            << " end value: " << end_value.value;
+  LOG(INFO) << "pg_range cache misses start value: " << start_value
+            << " end value: " << end_value;
 
   if (is_pg_range_preloaded) {
-    ASSERT_EQ(end_value.value, start_value.value);
+    ASSERT_EQ(end_value, start_value);
   } else {
-    ASSERT_EQ(end_value.value, start_value.value + 2);
+    ASSERT_EQ(end_value, start_value + 2);
   }
 };
 
@@ -5293,31 +5272,46 @@ TEST_F(PgLibPqTest, DumpTabletData) {
   }
 }
 
-// Test yb-admin get_table_hash command for tables with different number of tablets, but same data
-// returns the same XOR hash.
+// Test yb-admin get_table_hash command for colocated, non-colocated tables with different number of
+// tablets, but same data returns the same XOR hash.
 TEST_F(PgLibPqTest, TestGetTableXorHash) {
   ASSERT_OK(EnsureClientCreated());
 
-  const auto namespace_name = "yugabyte";
   auto conn = ASSERT_RESULT(Connect());
+  const auto namespace_name = "colocated_db";
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocation = true", namespace_name));
+  conn = ASSERT_RESULT(ConnectToDB(namespace_name));
 
+  // Non-colocated table with 1 tablet.
   const auto tbl1 = "tbl1";
   ASSERT_OK(conn.ExecuteFormat(
-      "CREATE TABLE $0 (id INT PRIMARY KEY, name TEXT) SPLIT INTO 1 TABLETS", tbl1));
+      "CREATE TABLE $0 (id INT PRIMARY KEY, name TEXT) WITH (colocation = false) SPLIT INTO 1 "
+      "TABLETS",
+      tbl1));
   ASSERT_OK(conn.ExecuteFormat(
       "INSERT INTO $0 (id, name) SELECT i, 'test' || i FROM generate_series(1, 10) i", tbl1));
+  const auto tbl1_id = ASSERT_RESULT(GetTableIdByTableName(client_.get(), namespace_name, tbl1));
 
+  // Non-colocated table with 5 tablets.
   const auto tbl2 = "tbl2";
   ASSERT_OK(conn.ExecuteFormat(
-      "CREATE TABLE $0 (id INT PRIMARY KEY, name TEXT) SPLIT INTO 5 TABLETS", tbl2));
+      "CREATE TABLE $0 (id INT PRIMARY KEY, name TEXT) WITH (colocation = false) SPLIT INTO 5 "
+      "TABLETS",
+      tbl2));
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 SELECT * FROM $1", tbl2, tbl1));
+  const auto tbl2_id = ASSERT_RESULT(GetTableIdByTableName(client_.get(), namespace_name, tbl2));
 
-  std::string tbl1_id =
-      ASSERT_RESULT(GetTableIdByTableName(client_.get(), namespace_name, tbl1));
-  std::string tbl2_id =
-      ASSERT_RESULT(GetTableIdByTableName(client_.get(), namespace_name, tbl2));
+  // Colocated table with 1 tablet.
+  const auto colocated_tbl = "colocated_tbl";
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (id INT PRIMARY KEY, name TEXT)", colocated_tbl));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 SELECT * FROM $1", colocated_tbl, tbl1));
+  const auto colocated_tbl_id =
+      ASSERT_RESULT(GetTableIdByTableName(client_.get(), namespace_name, colocated_tbl));
+
   auto tbl1_output = ASSERT_RESULT(RunYbAdminCommand(Format("get_table_hash $0", tbl1_id)));
   auto tbl2_output = ASSERT_RESULT(RunYbAdminCommand(Format("get_table_hash $0", tbl2_id)));
+  auto colocated_tbl_output =
+      ASSERT_RESULT(RunYbAdminCommand(Format("get_table_hash $0", colocated_tbl_id)));
 
   auto extract_from_output = [&](const std::string& output) -> std::pair<uint64_t, uint64_t> {
     LOG(INFO) << "Command output: " << output;
@@ -5335,10 +5329,17 @@ TEST_F(PgLibPqTest, TestGetTableXorHash) {
   };
   auto [tbl1_row_count, tbl1_xor_hash] = extract_from_output(tbl1_output);
   auto [tbl2_row_count, tbl2_xor_hash] = extract_from_output(tbl2_output);
+  auto [colocated_tbl_row_count, colocated_tbl_xor_hash] =
+      extract_from_output(colocated_tbl_output);
+
   ASSERT_EQ(tbl1_row_count, 10);
   ASSERT_NE(tbl1_xor_hash, 0);
+
   ASSERT_EQ(tbl2_row_count, 10);
   ASSERT_EQ(tbl1_xor_hash, tbl2_xor_hash);
+
+  ASSERT_EQ(colocated_tbl_row_count, 10);
+  ASSERT_EQ(colocated_tbl_xor_hash, tbl1_xor_hash);
 }
 
 } // namespace yb::pgwrapper

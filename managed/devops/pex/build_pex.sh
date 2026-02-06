@@ -33,7 +33,7 @@ function generateMultiPlatformPex {
     # --include-tools to generate venv with PEX_TOOLS=1 on target side
     # --venv-copies copies over python executable directly into PEX rather than symlink to system
     # -o Created PEX file output (named as pexEnv.pex)
-    pex_command_exec=(python3 -m pex -r "$PYTHON_REQUIREMENTS_FILE"
+    pex_command_exec=(python3.12 -m pex -r "$PYTHON_REQUIREMENTS_FILE"
     ${PYTHON3_VERSIONS[@]/#/--python=}
     ${LINUX_PLATFORMS[@]/#/--platform=}
     -D ../opscli

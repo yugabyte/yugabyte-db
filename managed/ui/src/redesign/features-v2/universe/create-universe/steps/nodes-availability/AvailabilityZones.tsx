@@ -7,7 +7,7 @@ import { StyledContent, StyledHeader, StyledPanel } from '../../components/Defau
 import { RegionCard } from './index';
 import { CreateUniverseContext, CreateUniverseContextMethods } from '../../CreateUniverseContext';
 import { NodeAvailabilityProps } from './dtos';
-import { getFaultToleranceNeededForAZ } from '../../CreateUniverseUtils';
+import { getFaultToleranceNeeded } from '../../CreateUniverseUtils';
 
 import ErrorCircle from '@app/redesign/assets/error-circle.svg?img';
 
@@ -46,7 +46,7 @@ export const AvailabilityZones = () => {
 
   const az = watch('availabilityZones');
   const azCount = Object.keys(az).reduce((acc, region) => acc + az[region].length, 0);
-  const faultToleranceNeeded = getFaultToleranceNeededForAZ(
+  const faultToleranceNeeded = getFaultToleranceNeeded(
     resilienceAndRegionsSettings?.replicationFactor ?? 1
   );
 

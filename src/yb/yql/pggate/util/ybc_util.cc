@@ -49,6 +49,8 @@ using std::string;
 DEFINE_test_flag(string, process_info_dir, string(),
                  "Directory where all postgres process will writes their PIDs and executable name");
 DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_enable_auto_analyze_infra);
+DECLARE_bool(ysql_enable_auto_analyze);
 
 namespace yb::pggate {
 
@@ -889,12 +891,13 @@ void YBCUpdateInitPostgresMetrics() {
 
 uint16_t YBCDecodeMultiColumnHashLeftBound(const char* partition_key, size_t key_len) {
   yb::Slice slice(partition_key, key_len);
-  return dockv::PartitionSchema::DecodeMultiColumnHashLeftBound(slice);
+  return dockv::PartitionSchema::DecodePartitionKeyStartAsHashLeftBoundInclusive(slice);
 }
 
 uint16_t YBCDecodeMultiColumnHashRightBound(const char* partition_key, size_t key_len) {
   yb::Slice slice(partition_key, key_len);
-  return dockv::PartitionSchema::DecodeMultiColumnHashRightBound(slice);
+  return CHECK_RESULT(
+      dockv::PartitionSchema::DecodePartitionKeyEndAsHashRightBoundInclusive(slice));
 }
 
 bool
@@ -925,6 +928,10 @@ YBCIsLegacyModeForCatalogOps() {
 
 bool YBCIsObjectLockingEnabled() {
   return FLAGS_enable_object_locking_for_table_locks && enable_object_locking_infra;
+}
+
+bool YBCIsAutoAnalyzeEnabled() {
+  return FLAGS_ysql_enable_auto_analyze_infra && FLAGS_ysql_enable_auto_analyze;
 }
 
 } // extern "C"

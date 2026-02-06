@@ -14,8 +14,8 @@ import argparse
 import atexit
 import copy
 import logging
-import pipes
 import random
+import shlex
 import string
 import subprocess
 import traceback
@@ -179,7 +179,7 @@ def split_by_space(line):
 def quote_cmd_line_for_bash(cmd_line):
     if not isinstance(cmd_line, list) and not isinstance(cmd_line, tuple):
         raise BackupException("Expected a list/tuple, got: [[ {} ]]".format(cmd_line))
-    return ' '.join([pipes.quote(str(arg)) for arg in cmd_line])
+    return ' '.join([shlex.quote(str(arg)) for arg in cmd_line])
 
 
 class BackupTimer:
@@ -402,7 +402,7 @@ def strip_dir(dir_path):
 
 # TODO: get rid of this sed / test program generation in favor of a more maintainable solution.
 def key_and_file_filter(checksum_file):
-    return "\" $( sed 's| .*/| |' {} ) \"".format(pipes.quote(checksum_file))
+    return "\" $( sed 's| .*/| |' {} ) \"".format(shlex.quote(checksum_file))
 
 
 # error_on_failure: If set to true, then the test command will return an error (errno != 0) if the
@@ -417,11 +417,11 @@ def compare_checksums_cmd(checksum_file1, checksum_file2, error_on_failure=False
 
 
 def get_db_name_cmd(dump_file):
-    return r"sed -n 's/CREATE DATABASE\(.*\)WITH.*/\1/p' " + pipes.quote(dump_file)
+    return r"sed -n 's/CREATE DATABASE\(.*\)WITH.*/\1/p' " + shlex.quote(dump_file)
 
 
 def apply_sed_edit_reg_exp_cmd(dump_file, reg_exp):
-    return r"sed -i -e $'{}' {}".format(reg_exp, pipes.quote(dump_file))
+    return r"sed -i -e $'{}' {}".format(reg_exp, shlex.quote(dump_file))
 
 
 def replace_db_name_cmd(dump_file, old_name, new_name):
@@ -687,8 +687,8 @@ class NfsBackupStorage(AbstractBackupStorage):
     # This is a single string because that's what we need for doing `mkdir && rsync`.
     def upload_file_cmd(self, src, dest):
         return ["mkdir -p {} && {} {} {}".format(
-            pipes.quote(os.path.dirname(dest)), " ".join(self._command_list_prefix()),
-            pipes.quote(src), pipes.quote(dest))]
+            shlex.quote(os.path.dirname(dest)), " ".join(self._command_list_prefix()),
+            shlex.quote(src), shlex.quote(dest))]
 
     def download_file_cmd(self, src, dest):
         return self._command_list_prefix() + [src, dest]
@@ -697,19 +697,19 @@ class NfsBackupStorage(AbstractBackupStorage):
     # `mkdir && rsync` and b) we need a list of 1 element, as it goes through a tuple().
     def upload_dir_cmd(self, src, dest):
         return ["mkdir -p {} && {} {} {}".format(
-            pipes.quote(dest), " ".join(self._command_list_prefix()),
-            pipes.quote(src), pipes.quote(dest))]
+            shlex.quote(dest), " ".join(self._command_list_prefix()),
+            shlex.quote(src), shlex.quote(dest))]
 
     def download_dir_cmd(self, src, dest):
         if self.options.args.TEST_sleep_during_download_dir:
             return ["sleep 5 && {} {} {}".format(
-                " ".join(self._command_list_prefix()), pipes.quote(src), pipes.quote(dest))]
+                " ".join(self._command_list_prefix()), shlex.quote(src), shlex.quote(dest))]
         return self._command_list_prefix() + [src, dest]
 
     def delete_obj_cmd(self, dest):
         if dest is None or dest == '/' or dest == '':
             raise BackupException("Destination needs to be well formed.")
-        return ["rm", "-rf", pipes.quote(dest)]
+        return ["rm", "-rf", shlex.quote(dest)]
 
     def backup_obj_size_cmd(self, backup_obj_location):
         # On MAC 'du -sb' does not work: '-b' is not supported.
@@ -2299,7 +2299,7 @@ class YBBackup:
 
         if env_vars:
             # Add env vars to the front of the cmd shell-style like "FOO=bar ls -l"
-            bash_env_args = " ".join(["{}={}".format(env_name, pipes.quote(env_val)) for
+            bash_env_args = " ".join(["{}={}".format(env_name, shlex.quote(env_val)) for
                                      (env_name, env_val) in env_vars.items()])
             cmd = "{} {}".format(bash_env_args, cmd)
 
@@ -2345,7 +2345,7 @@ class YBBackup:
                 '-p', self.args.ssh_port,
                 '-q',
                 '%s@%s' % (self.args.ssh_user, server_ip),
-                'cd / && %s bash -c ' % (change_user_cmd) + pipes.quote(cmd)
+                'cd / && %s bash -c ' % (change_user_cmd) + shlex.quote(cmd)
             ])
             return self.run_program(ssh_command, num_retry=num_retries)
         else:
@@ -2696,12 +2696,12 @@ class YBBackup:
 
     def create_checksum_cmd_not_quoted(self, file_path, checksum_file_path):
         tool_path = self.xxhash_checksum_path if self.xxhash_checksum_path else SHA_TOOL_PATH
-        prefix = pipes.quote(tool_path)
+        prefix = shlex.quote(tool_path)
         return "{} {} > {}".format(prefix, file_path, checksum_file_path)
 
     def create_checksum_cmd(self, file_path, checksum_file_path):
         return self.create_checksum_cmd_not_quoted(
-            pipes.quote(file_path), pipes.quote(checksum_file_path))
+            shlex.quote(file_path), shlex.quote(checksum_file_path))
 
     def checksum_path(self, file_path):
         ext = XXH64_FILE_EXT if self.xxhash_checksum_path else SHA_FILE_EXT
@@ -2712,8 +2712,8 @@ class YBBackup:
 
     def create_checksum_cmd_for_dir(self, dir_path):
         return self.create_checksum_cmd_not_quoted(
-            os.path.join(pipes.quote(strip_dir(dir_path)), '[!i]*'),
-            pipes.quote(self.checksum_path(strip_dir(dir_path))))
+            os.path.join(shlex.quote(strip_dir(dir_path)), '[!i]*'),
+            shlex.quote(self.checksum_path(strip_dir(dir_path))))
 
     def prepare_upload_command(self, parallel_commands, snapshot_filepath, tablet_id,
                                tserver_ip, snapshot_dir):
@@ -2968,7 +2968,7 @@ class YBBackup:
             # While deleting these backups we are deleting the directories multi-table-keyspace1
             # and multi-table-keyspace2 but not deleting the empty directory backup-<backup_time>.
             # The change here is to delete the backup-<backup_time> directory if empty.
-            del_dir_cmd = ["rm", "-df", pipes.quote(re.search('.*(?=/)', backup_path)[0])]
+            del_dir_cmd = ["rm", "-df", shlex.quote(re.search('.*(?=/)', backup_path)[0])]
             try:
                 self.run_ssh_cmd(' '.join(del_dir_cmd), self.get_leader_master_ip())
             except Exception as ex:

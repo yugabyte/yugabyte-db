@@ -54,7 +54,13 @@ func loadLegacyConfig() (*viper.Viper, error) {
 	viper.SetDefault("perfAdvisor.enabled", false)
 	viper.SetDefault("perfAdvisor.port", 8443)
 	viper.SetDefault("perfAdvisor.restartSeconds", 10)
-	viper.SetDefault("perfAdvisor.enableHttps", false)
+	viper.SetDefault("perfAdvisor.callhome.enabled", true)
+	viper.SetDefault("perfAdvisor.callhome.environment", "dev")
+	viper.SetDefault("perfAdvisor.paSecret", "")
+	viper.SetDefault("perfAdvisor.tls.enabled", true)
+	viper.SetDefault("perfAdvisor.tls.sslProtocols", "")
+	viper.SetDefault("perfAdvisor.tls.hsts", true)
+	viper.SetDefault("perfAdvisor.tls.keystorePassword", "")
 
 	viper.SetDefault("prometheus.remoteWrite.enabled", false)
 	viper.SetDefault("prometheus.scrapeConfig.node.scheme", "http")
@@ -193,7 +199,16 @@ func legacyToRootConfig(legacy *viper.Viper) rootConfig {
 			Enabled:        legacy.GetBool("perfAdvisor.enabled"),
 			Port:           legacy.GetInt("perfAdvisor.port"),
 			RestartSeconds: legacy.GetInt("perfAdvisor.restartSeconds"),
-			EnableHttps:    legacy.GetBool("perfAdvisor.enableHttps"),
+			PaSecret:       legacy.GetString("perfAdvisor.paSecret"),
+			Callhome: callhomeConfig{
+				Enabled:     legacy.GetBool("perfAdvisor.callhome.enabled"),
+				Environment: legacy.GetString("perfAdvisor.callhome.environment"),
+			},
+			Tls: tlsConfig{
+				Enabled:      legacy.GetBool("perfAdvisor.tls.enabled"),
+				SSLProtocols: legacy.GetString("perfAdvisor.tls.sslProtocols"),
+				Hsts:         legacy.GetBool("perfAdvisor.tls.hsts"),
+			},
 		},
 	}
 }

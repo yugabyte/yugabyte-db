@@ -76,10 +76,12 @@ set_python_executable() {
 # -------------------------------------------------------------------------------------------------
 # python3 must be the last executable in the list to ensure that if it is used, it is validated to
 # be the correct version.
-readonly PYTHON3_EXECUTABLES=('python3.10' 'python3.11' 'python3.12' 'python3.13' 'python3')
-readonly PYTHON3_VERSIONS=('python3.10' 'python3.11' 'python3.12' 'python3.13')
-readonly LINUX_PLATFORMS=('manylinux2014_x86_64-cp-310-cp310' 'manylinux2014_x86_64-cp-311-cp311')
-readonly MACOS_PLATFORMS=('macosx-10.10-x86_64-cp-310-cp310' 'macosx-10.10-x86_64-cp-311-cp311')
+readonly PYTHON3_EXECUTABLES=('python3.10' 'python3.11' 'python3.12' 'python3')
+readonly PYTHON3_VERSIONS=('python3.10' 'python3.11' 'python3.12')
+readonly LINUX_PLATFORMS=('manylinux_2_28_x86_64-cp-310-cp310' 'manylinux_2_28_x86_64-cp-311-cp311'
+                          'manylinux_2_28_x86_64-cp-312-cp312')
+readonly MACOS_PLATFORMS=('macosx-10.10-x86_64-cp-310-cp310' 'macosx-10.10-x86_64-cp-311-cp311'
+                          'macosx-10.10-x86_64-cp-312-cp312')
 DOCKER_PEX_IMAGE_NAME="yba-devops-pex-builder"
 DOCKER_VENV_IMAGE_NAME="yba-devops-venv-builder"
 PYTHON_EXECUTABLE=""
@@ -598,7 +600,8 @@ activate_pex() {
       rm -rf "$pex_venv_dir" 2> /dev/null || log "Error cleaning up $pex_venv_dir"
       deactivate_virtualenv
       export PEX_VERBOSE=3
-      PEX_TOOLS=1 $PYTHON_EXECUTABLE $PEX_PATH venv $pex_venv_dir
+      # --collisions-ok is used to avoid overlapping .layout.json files in the pex venv.
+      PEX_TOOLS=1 $PYTHON_EXECUTABLE $PEX_PATH venv --collisions-ok $pex_venv_dir
       unset PEX_VERBOSE
       echo $($PYTHON_EXECUTABLE --version) > $PY_VERSION_MARKER
     fi

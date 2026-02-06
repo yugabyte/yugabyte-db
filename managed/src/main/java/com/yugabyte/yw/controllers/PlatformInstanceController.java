@@ -123,7 +123,6 @@ public class PlatformInstanceController extends AuthenticatedController {
               if (i.getIsLeader()) {
                 config.updateLastFailover();
               }
-
               // Reload from DB.
               config.refresh();
               // Save the local HA config before DB record is replaced in backup-restore during
@@ -305,19 +304,22 @@ public class PlatformInstanceController extends AuthenticatedController {
             // promotion.
             replicationManager.saveLocalHighAvailabilityConfig(config);
           }
-
           log.info("Restoring YBA DB using backup {}", backup);
-          // Restore the backup.
-          // For K8s, restore Yba DB inline instead of restoring after restart.
-          if (!replicationManager.restoreBackup(backup, false /* k8sRestoreYbaDbOnRestart */)) {
-            throw new PlatformServiceException(BAD_REQUEST, "Could not restore backup");
+          // Restart should clear this flag also.
+          HighAvailabilityConfig.setSwitchOverInProgress(true);
+          try {
+            // Restore the backup.
+            if (!replicationManager.restoreBackupOnStandby(config, backup)) {
+              throw new PlatformServiceException(BAD_REQUEST, "Could not restore backup");
+            }
+            // Handle any incomplete tasks that may be leftover from the backup that was restored.
+            taskManager.handleAllPendingTasks();
+            // Promote the local instance.
+            PlatformInstance.getByAddress(localInstanceAddr)
+                .ifPresent(replicationManager::promoteLocalInstance);
+          } finally {
+            HighAvailabilityConfig.setSwitchOverInProgress(false);
           }
-          // Handle any incomplete tasks that may be leftover from the backup that was restored.
-          taskManager.handleAllPendingTasks();
-
-          // Promote the local instance.
-          PlatformInstance.getByAddress(localInstanceAddr)
-              .ifPresent(replicationManager::promoteLocalInstance);
           return null;
         });
     auditService()

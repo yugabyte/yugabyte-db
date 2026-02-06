@@ -649,7 +649,7 @@ TabletServiceAdminImpl::TabletServiceAdminImpl(TabletServer* server)
 }
 
 std::string TabletServiceAdminImpl::LogPrefix() const {
-  return Format("P $0: ", server_->permanent_uuid());
+  return server::MakeServerLogPrefix(server_->permanent_uuid());
 }
 
 void TabletServiceAdminImpl::BackfillDone(
@@ -2526,6 +2526,7 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
       "SELECT count(*) FROM pg_stat_activity WHERE"
       " backend_type != 'walsender' AND backend_type != 'yb-conn-mgr walsender'"
       " AND backend_type != 'yb auto analyze backend'"
+      " AND backend_type != 'yb index backfill'"
       " AND catalog_version < $0 AND datid = $1$2",
       catalog_version, database_oid,
       (req->has_requestor_pg_backend_pid() ?
@@ -3417,7 +3418,7 @@ void TabletServiceImpl::GetSplitKey(
         const auto& tablet = leader_tablet_peer.tablet;
         if (!req->is_manual_split() &&
             FLAGS_rocksdb_max_file_size_for_compaction > 0 &&
-            tablet->schema()->table_properties().HasDefaultTimeToLive()) {
+            tablet->schema()->table_properties().HasEffectiveDefaultTimeToLive()) {
           auto s = STATUS(NotSupported, "Tablet splitting not supported for TTL tables.");
           return s.CloneAndAddErrorCode(
               TabletServerError(TabletServerErrorPB::TABLET_SPLIT_DISABLED_TTL_EXPIRY));
@@ -4033,6 +4034,11 @@ Result<DumpTabletDataResponsePB> TabletServiceImpl::DumpTabletData(
     RETURN_NOT_OK(file->Close());
   }
   return resp;
+}
+
+Result<ConnectivityStateResponsePB> TabletServiceImpl::ConnectivityState(
+    const ConnectivityStateRequestPB& req, CoarseTimePoint deadline) {
+  return server_->ConnectivityState();
 }
 
 Status TabletServiceImpl::CheckLocalLeaseEpoch(std::optional<uint64_t> recipient_lease_epoch) {

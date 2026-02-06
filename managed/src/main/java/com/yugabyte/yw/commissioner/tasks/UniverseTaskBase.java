@@ -4985,6 +4985,31 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   /**
+   * Disables master on non-master nodes after validating that they are not in the master config.
+   *
+   * @param nodes List of nodes to disable master on.
+   * @param subTaskGroupType Sub task group type for tasks.
+   */
+  public void createDisableMasterOnNonMasterNodesTasks(
+      List<NodeDetails> nodes, SubTaskGroupType subTaskGroupType) {
+    Universe universe = getUniverse();
+    // Filter out all nodes that are not masters according to both YBA and YBDB.
+    nodes =
+        nodes.stream()
+            .filter(node -> !node.isMaster)
+            .filter(node -> !nodeInMasterConfig(universe, node))
+            .collect(Collectors.toList());
+
+    if (nodes.isEmpty()) {
+      log.info("No non-master nodes to disable master on");
+      return;
+    }
+    log.info("Disabling master on non-master nodes: {}", nodes);
+    createServerControlTasks(nodes, ServerType.MASTER, "stop")
+        .setSubTaskGroupType(subTaskGroupType);
+  }
+
+  /**
    * Creates a task to add nodes to leader blacklist on server if available and wait for completion.
    *
    * @param nodes Nodes that have to be added to the blacklist.

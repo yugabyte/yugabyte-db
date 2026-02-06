@@ -11,6 +11,7 @@ import { KmsConfig } from '../../../../../features/universe/universe-form/utils/
 
 //icons
 import NextLineIcon from '../../../../../assets/next-line.svg';
+import InfoIcon from '../../../../../assets/info-new.svg';
 
 const { Box } = mui;
 
@@ -46,12 +47,24 @@ export const EARField: FC<EARProps> = ({ disabled }) => {
 
   return (
     <FieldContainer sx={{ padding: '16px 24px' }}>
-      <YBToggleField
-        name={EAR_FIELD}
-        control={control}
-        label={t('createUniverseV2.securitySettings.earField.label')}
-        dataTestId="enable-encryption-at-rest-field"
-      />
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: '4px'
+        }}
+      >
+        <Box sx={{ marginBottom: '-5px' }}>
+          <YBToggleField
+            name={EAR_FIELD}
+            control={control}
+            label={t('createUniverseV2.securitySettings.earField.label')}
+            dataTestId="enable-encryption-at-rest-field"
+          />
+        </Box>
+        <InfoIcon />
+      </Box>
       {encryptionEnabled && (
         <Box
           sx={{ display: 'flex', flexDirection: 'row', width: '100%', alignItems: 'center', mt: 2 }}

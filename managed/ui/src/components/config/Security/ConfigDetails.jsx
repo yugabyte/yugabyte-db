@@ -2,6 +2,7 @@ import { YBModal } from '../../common/forms/fields';
 import { CipherTrustAuthType, KmsProvider, PROTECTION_LEVELS } from './KeyManagementConfiguration';
 import { GCP_KMS_REGIONS_FLATTENED } from '../PublicCloud/views/providerRegionsData';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
+import YBInfoTip from '@app/components/common/descriptors/YBInfoTip';
 
 export const ConfigDetails = ({ data, visible, onHide }) => {
   const {
@@ -82,7 +83,8 @@ export const ConfigDetails = ({ data, visible, onHide }) => {
       },
       {
         label: 'Secret Token',
-        value: HC_VAULT_TOKEN
+        value: HC_VAULT_TOKEN,
+        tooltip: 'Token used for authentication with the Vault server'
       },
       {
         label: 'Role ID',
@@ -105,9 +107,10 @@ export const ConfigDetails = ({ data, visible, onHide }) => {
         value: HC_VAULT_MOUNT_PATH
       },
       {
-        label: 'Expiry',
+        label: 'Secret Token Expiry',
         value:
-          HC_VAULT_TTL && HC_VAULT_TTL_EXPIRY ? ybFormatDate(HC_VAULT_TTL_EXPIRY) : 'Wont Expire'
+          HC_VAULT_TTL && HC_VAULT_TTL_EXPIRY ? ybFormatDate(HC_VAULT_TTL_EXPIRY) : 'Wont Expire',
+        tooltip: 'The date and time when this token expires. Once expired, the token becomes invalid and can no longer be used to access Vault resources.'
       }
     ];
     return data;
@@ -248,9 +251,9 @@ export const ConfigDetails = ({ data, visible, onHide }) => {
         <ul className="cert-details-modal__list">
           {[...BASIC_DETAILS, ...MORE_DETAILS]
             .filter(({ value }) => !!value)
-            .map(({ label, value }) => (
+            .map(({ label, value, tooltip }) => (
               <li key={label}>
-                <label>{label}</label>
+                <label>{label} {tooltip && <YBInfoTip content={tooltip} title={label} />}</label>
                 <div>{value}</div>
               </li>
             ))}

@@ -920,10 +920,6 @@ main(int argc, char **argv)
 
 	fout->numWorkers = numWorkers;
 
-	/* YB */
-	if (dopt.cparams.pghost == NULL || dopt.cparams.pghost[0] == '\0')
-		dopt.cparams.pghost = DefaultHost;
-
 	/*
 	 * Open the database using the Archiver, so it knows about it. Errors mean
 	 * death.
@@ -10743,7 +10739,8 @@ dumpRelationStats_dumper(Archive *fout, const void *userArg, const TocEntry *te)
 		if (!PQgetisnull(res, rownum, i_elem_count_histogram))
 			appendNamedArgument(out, fout, "elem_count_histogram", "real[]",
 								PQgetvalue(res, rownum, i_elem_count_histogram));
-		if (fout->remoteVersion >= 170000)
+		if (fout->remoteVersion >= 170000 ||
+			(IsYugabyteEnabled && fout->remoteVersion >= 110000))
 		{
 			if (!PQgetisnull(res, rownum, i_range_length_histogram))
 				appendNamedArgument(out, fout, "range_length_histogram", "text",

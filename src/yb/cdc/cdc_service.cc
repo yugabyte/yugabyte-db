@@ -256,6 +256,10 @@ DECLARE_bool(cdcsdk_enable_dynamic_table_addition_with_table_cleanup);
 
 DECLARE_bool(ysql_yb_enable_consistent_replication_from_hash_range);
 
+DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
+
+DECLARE_bool(TEST_enable_table_rewrite_for_cdcsdk_table);
+
 METRIC_DEFINE_entity(xcluster);
 
 METRIC_DEFINE_entity(cdcsdk);
@@ -2617,7 +2621,8 @@ void CDCServiceImpl::ProcessEntryForCdcsdk(
       CheckBeforeImageActive(tablet_id, stream_metadata, tablet_peer);
   if (!is_before_image_active_result.ok()) {
     LOG(WARNING) << "Unable to obtain before image / replica identity information for tablet: "
-                 << tablet_id;
+                 << tablet_id << " in stream " << stream_id.ToString() << ": "
+                 << is_before_image_active_result.status();
     return;
   }
   bool is_before_image_active = *is_before_image_active_result;
@@ -2798,13 +2803,15 @@ Result<bool> CDCServiceImpl::CheckBeforeImageActive(
     bool is_colocated_tablet = tablet_peer->tablet_metadata()->colocated();
     bool is_sys_catalog_tablet = tablet_peer->tablet_metadata()->IsSysCatalog();
 
-    // If the tablet is colocated, we check the replica identities of all the tables residing in it.
-    // If the tablet is sys catalog, we check the replica identities of only tables
+    // - If the tablet is colocated, we check the replica identities of this tablet's tables which
+    // are present in the stream metadata's replica identity map.
+    // - If the tablet is sys catalog, we check the replica identities of only tables
     // 'pg_publication_rel' & 'pg_class' residing in it (This is because currently only these sys
     // catalog tables are part of publication's table list).
     // If before image is active for any such tables then we should return true.
     if (is_colocated_tablet || is_sys_catalog_tablet) {
       auto table_ids = tablet_peer->tablet_metadata()->GetAllColocatedTables();
+      bool replica_identity_found_for_any_table = false;
       for (auto table_id : table_ids) {
         auto table_name = tablet_peer->tablet_metadata()->table_name(table_id);
         if (is_colocated_tablet &&
@@ -2819,15 +2826,22 @@ Result<bool> CDCServiceImpl::CheckBeforeImageActive(
         }
 
         if (replica_identity_map.find(table_id) != replica_identity_map.end()) {
+          replica_identity_found_for_any_table = true;
           auto table_replica_identity = replica_identity_map.at(table_id);
           if (table_replica_identity != PgReplicaIdentity::CHANGE &&
               table_replica_identity != PgReplicaIdentity::NOTHING) {
             is_before_image_active = true;
             break;
           }
-        } else {
-          return STATUS_FORMAT(NotFound, "Replica identity not found for table: $0 ", table_id);
         }
+      }
+      // There is no table present in the replica identity map of 'stream_metadata' for the tablet.
+      // Given that the cdc_state table contains the entry for this tablet-stream pair, this should
+      // never happen.
+      if (!replica_identity_found_for_any_table) {
+        return STATUS_FORMAT(
+            NotFound, "Replica identity not found for any table of tablet $0 in stream $1",
+            tablet_id, stream_metadata.GetStreamId().ToString());
       }
     } else {
       auto table_id = tablet_peer->tablet_metadata()->table_id();
@@ -2838,7 +2852,9 @@ Result<bool> CDCServiceImpl::CheckBeforeImageActive(
           is_before_image_active = true;
         }
       } else {
-        return STATUS_FORMAT(NotFound, "Replica identity not found for table: $0 ", table_id);
+        return STATUS_FORMAT(
+            NotFound, "Replica identity not found for table $0 in stream $1", table_id,
+            stream_metadata.GetStreamId().ToString());
       }
     }
 
@@ -5150,7 +5166,7 @@ void CDCServiceImpl::InitVirtualWALForCDC(
 
   bool pub_all_tables = false;
   std::unordered_set<uint32_t> publications_list;
-  if (FLAGS_cdcsdk_enable_dynamic_table_addition_with_table_cleanup) {
+  if (FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) {
     for (const auto& publication : req->publication_oid()) {
       publications_list.insert(publication);
     }
@@ -5160,12 +5176,20 @@ void CDCServiceImpl::InitVirtualWALForCDC(
     }
   }
 
+  std::unordered_map<uint32_t, uint32_t> oid_to_relfilenode;
+  if (FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table) {
+    for (const auto& e : req->oid_to_relfilenode()) {
+      oid_to_relfilenode.emplace(e.first, e.second);
+    }
+  }
+
   HostPort hostport = RPC_VERIFY_RESULT(
       context_->GetDesiredHostPortForLocal(), resp->mutable_error(),
       CDCErrorPB::INTERNAL_ERROR, context);
+
   Status s = virtual_wal->InitVirtualWALInternal(
-      table_list, hostport, GetDeadline(context, client()), std::move(slot_hash_range),
-      publications_list, pub_all_tables);
+      table_list, oid_to_relfilenode, hostport, GetDeadline(context, client()),
+      std::move(slot_hash_range), publications_list, pub_all_tables);
   if (!s.ok()) {
     {
       std::lock_guard l(mutex_);
@@ -5428,8 +5452,15 @@ void CDCServiceImpl::UpdatePublicationTableList(
     new_table_list.insert(table_id);
   }
 
+  std::unordered_map<uint32_t, uint32_t> new_oid_to_relfilenode;
+  if (FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table) {
+    for (const auto& e : req->oid_to_relfilenode()) {
+      new_oid_to_relfilenode.emplace(e.first, e.second);
+    }
+  }
+
   Status s = virtual_wal->UpdatePublicationTableListInternal(
-      new_table_list, hostport, GetDeadline(context, client()));
+      new_table_list, new_oid_to_relfilenode, hostport, GetDeadline(context, client()));
   if (!s.ok()) {
     std::string error_msg =
         Format("UpdatePublicationTableList failed for stream_id: $0", stream_id);

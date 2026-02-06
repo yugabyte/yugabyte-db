@@ -155,53 +155,55 @@ export const RegionSelection = () => {
             />
           </div>
         )}
-        <YBMaps
-          mapHeight={345}
-          dataTestId="yb-maps-region-selection"
-          coordinates={mapCoordinates()}
-          initialBounds={[[37.3688, -122.0363]]}
-          mapContainerProps={{
-            scrollWheelZoom: false,
-            zoom: 2,
-            center: [0, 0]
-          }}
-        >
-          {
-            regions?.map((region: Region) => {
-              return (
-                <YBMapMarker
-                  key={region.code}
-                  position={[region.latitude, region.longitude]}
-                  type={MarkerType.REGION_SELECTED}
-                  tooltip={<>{region.name}</>}
-                />
-              );
-            }) as any
-          }
-          <>
-            {(regionsList ?? [])
-              .filter((region) => !regions?.some((r) => r.code === region.code))
-              .map((region) => (
-                <YBMapMarker
-                  key={region.code}
-                  position={[region.latitude, region.longitude]}
-                  type={
-                    regions.includes(region)
-                      ? MarkerType.REGION_SELECTED
-                      : MarkerType.REGION_NOT_SELECTED
-                  }
-                  tooltip={<>{region.name}</>}
-                />
-              ))}
-          </>
-          {regions?.length > 0 ? (
-            <MapLegend
-              mapLegendItems={[<MapLegendItem icon={<>{icon.normal}</>} label={'Region'} />]}
-            />
-          ) : (
-            <span />
-          )}
-        </YBMaps>
+        <Box sx={{ margin: '0px -25px -25px -25px' }}>
+          <YBMaps
+            mapHeight={345}
+            dataTestId="yb-maps-region-selection"
+            coordinates={mapCoordinates()}
+            initialBounds={[[37.3688, -122.0363]]}
+            mapContainerProps={{
+              scrollWheelZoom: false,
+              zoom: 2,
+              center: [0, 0]
+            }}
+          >
+            {
+              regions?.map((region: Region) => {
+                return (
+                  <YBMapMarker
+                    key={region.code}
+                    position={[region.latitude, region.longitude]}
+                    type={MarkerType.REGION_SELECTED}
+                    tooltip={<>{region.name}</>}
+                  />
+                );
+              }) as any
+            }
+            <>
+              {(regionsList ?? [])
+                .filter((region) => !regions?.some((r) => r.code === region.code))
+                .map((region) => (
+                  <YBMapMarker
+                    key={region.code}
+                    position={[region.latitude, region.longitude]}
+                    type={
+                      regions.includes(region)
+                        ? MarkerType.REGION_SELECTED
+                        : MarkerType.REGION_NOT_SELECTED
+                    }
+                    tooltip={<>{region.name}</>}
+                  />
+                ))}
+            </>
+            {regions?.length > 0 ? (
+              <MapLegend
+                mapLegendItems={[<MapLegendItem icon={<>{icon.normal}</>} label={'Region'} />]}
+              />
+            ) : (
+              <span />
+            )}
+          </YBMaps>
+        </Box>
       </StyledContent>
     </div>
   );

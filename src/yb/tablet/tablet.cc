@@ -2330,7 +2330,7 @@ void SetBackfillSpecForYsqlBackfill(
   out_spec.set_limit(limit);
   out_spec.set_count(in_spec.count() + static_cast<uint64_t>(row_count));
   response->set_is_backfill_batch_done(!response->has_paging_state());
-  if (limit >= 0 && out_spec.count() >= limit) {
+  if (out_spec.count() >= limit) {
     // Hint postgres to stop scanning now. And set up the
     // next_row_key based on the paging state.
     if (response->has_paging_state()) {
@@ -4685,6 +4685,8 @@ const std::string& Tablet::tablet_id() const {
   return metadata_->raft_group_id();
 }
 
+// TODO(tsplit): move `partition_split_key` outside the method,
+// covered by https://github.com/yugabyte/yugabyte-db/issues/30092.
 Result<std::string> Tablet::GetEncodedMiddleSplitKey(std::string* partition_split_key) const {
   auto error_prefix = [this]() {
     return Format(
@@ -4745,31 +4747,40 @@ Result<std::string> Tablet::GetEncodedMiddleSplitKey(std::string* partition_spli
         "$0: got \"$1\".", error_prefix(), middle_key_slice.ToDebugHexString());
   }
 
-  // Check middle_key fits tablet's partition bounds
-  const Slice partition_start(metadata()->partition()->partition_key_start());
-  const Slice partition_end(metadata()->partition()->partition_key_end());
-  std::string middle_hash_key;
-  if (metadata()->partition_schema()->IsHashPartitioning()) {
-    const auto doc_key_hash = VERIFY_RESULT(dockv::DecodeDocKeyHash(middle_key));
-    if (doc_key_hash.has_value()) {
-      middle_hash_key = dockv::PartitionSchema::EncodeMultiColumnHashValue(doc_key_hash.value());
-      if (partition_split_key) {
-        *partition_split_key = middle_hash_key;
+  // Check middle_key is strictly between tablet's partition bounds.
+  const auto& partition_start = metadata()->partition()->partition_key_start();
+  const auto& partition_end   = metadata()->partition()->partition_key_end();
+  if (metadata()->partition_schema()->IsRangePartitioning()) {
+    // No extra conversion is required for the range partitioning.
+    if (partition_start < middle_key && (partition_end.empty() || middle_key < partition_end)) {
+      return middle_key;
+    }
+  } else {
+    // Sanity check.
+    CHECK(metadata()->partition_schema()->IsHashPartitioning());
+
+    // It is required to compare hash codes for the hash paritioning.
+    const auto key_hash = VERIFY_RESULT(dockv::DecodeDocKeyHash(middle_key));
+    if (key_hash.has_value()) {
+      const auto key_hash_code = *key_hash;
+      const auto hash_bounds = VERIFY_RESULT_PREPEND_FUNC(
+          metadata()->partition()->GetKeysAsHashBoundsInclusive());
+      // It is allowed for the middle key to match the inclusive upper bound.
+      if (hash_bounds.first < key_hash_code && key_hash_code <= hash_bounds.second) {
+        if (partition_split_key) {
+          *partition_split_key = dockv::PartitionSchema::EncodeMultiColumnHashValue(key_hash_code);
+        }
+        return middle_key;
       }
     }
   }
-  const Slice partition_middle_key(middle_hash_key.size() ? middle_hash_key : middle_key);
-  if (partition_middle_key.compare(partition_start) <= 0 ||
-      (!partition_end.empty() && partition_middle_key.compare(partition_end) >= 0)) {
-    // This error occurs when middle key is not strictly between partition bounds.
-    return STATUS_EC_FORMAT(IllegalState,
-        tserver::TabletServerError(tserver::TabletServerErrorPB::TABLET_SPLIT_KEY_RANGE_TOO_SMALL),
-        "$0 with partition bounds (\"$1\" - \"$2\"): got \"$3\".",
-        error_prefix(), partition_start.ToDebugHexString(), partition_end.ToDebugHexString(),
-        middle_key_slice.ToDebugHexString());
-  }
 
-  return middle_key;
+  // This error occurs when middle key is not strictly between partition bounds.
+  return STATUS_EC_FORMAT(IllegalState,
+      tserver::TabletServerError(tserver::TabletServerErrorPB::TABLET_SPLIT_KEY_RANGE_TOO_SMALL),
+      "$0 with partition bounds [\"$1\" - \"$2\"): got \"$3\"",
+      error_prefix(), Slice{partition_start}.ToDebugHexString(),
+      Slice{partition_end}.ToDebugHexString(), middle_key_slice.ToDebugHexString());
 }
 
 Result<Tablet::SplitKeysData> Tablet::GetSplitKeys(const int split_factor) const {
@@ -4779,23 +4790,19 @@ Result<Tablet::SplitKeysData> Tablet::GetSplitKeys(const int split_factor) const
   if (split_factor > kDefaultNumSplitParts) {
     // Use a naive transitional N-way partitioning algorithm for hash-partitioned tables.
     if (metadata()->partition_schema()->IsHashPartitioning()) {
-      const auto partition_start = dockv::PartitionSchema::DecodeMultiColumnHashLeftBound(
-          metadata()->partition()->partition_key_start());
-      const auto partition_end = dockv::PartitionSchema::DecodeMultiColumnHashRightBound(
-          metadata()->partition()->partition_key_end());
-      SCHECK_LT(
-          partition_start, partition_end, IllegalState, "Invalid parent partition bounds");
+      const auto hash_bounds = VERIFY_RESULT_PREPEND_FUNC(
+          metadata()->partition()->GetKeysAsHashBoundsInclusive());
       const auto split_keys_result = dockv::PartitionSchema::CreateHashSplitKeys(
-          split_factor, partition_start, partition_end);
+          split_factor, hash_bounds.first, hash_bounds.second);
       if (!split_keys_result.ok()) {
         return STATUS_EC_FORMAT(
             IllegalState,
             tserver::TabletServerError(
                 tserver::TabletServerErrorPB::TABLET_SPLIT_KEY_RANGE_TOO_SMALL),
             "Failed to detect split keys for tablet $0 using split factor $1: "
-            "partition [\"$2\" - \"$3\") is too small",
+            "partition [\"$2\" - \"$3\"] is too small",
             tablet_id(), split_factor,
-            Uint16ToHexString(partition_start), Uint16ToHexString(partition_end));
+            Uint16ToHexString(hash_bounds.first), Uint16ToHexString(hash_bounds.second));
       }
 
       const auto num_keys = split_factor - 1;
@@ -4812,7 +4819,7 @@ Result<Tablet::SplitKeysData> Tablet::GetSplitKeys(const int split_factor) const
 
     return STATUS_FORMAT(
         NotSupported,
-        "Split factor $0 (tablet $1) is supported only with hash-partitioning",
+        "Split factor $0 (tablet $1) is not supported for the range partitioning",
         split_factor, tablet_id());
   }
 

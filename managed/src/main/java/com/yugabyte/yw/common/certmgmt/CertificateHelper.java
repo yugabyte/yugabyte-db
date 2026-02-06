@@ -639,6 +639,14 @@ public class CertificateHelper {
             .equals(cer2.getCustomCertPathParams().nodeKeyPath));
   }
 
+  public static boolean isK8sCertManager(UUID rootCA) {
+    if (rootCA == null) {
+      return false;
+    }
+    CertificateInfo certInfo = CertificateInfo.get(rootCA);
+    return certInfo.getCertType() == CertConfigType.K8SCertManager;
+  }
+
   public static void createChecksums() {
     List<CertificateInfo> certs = CertificateInfo.getAllNoChecksum();
     for (CertificateInfo cert : certs) {
@@ -1157,7 +1165,8 @@ public class CertificateHelper {
       CertificateInfo temporaryCert =
           CertificateInfo.createCopy(
               oldRootCert,
-              oldRootCert.getLabel() + EncryptionInTransitUtil.MULTI_ROOT_CERT_TMP_LABEL_SUFFIX,
+              String.join("-", universe.getUniverseUUID().toString(), oldRootCert.getLabel())
+                  + EncryptionInTransitUtil.MULTI_ROOT_CERT_TMP_LABEL_SUFFIX,
               new File(oldRootCert.getCertificate()).getAbsolutePath());
       return temporaryCert.getUuid();
     } catch (Exception e) {

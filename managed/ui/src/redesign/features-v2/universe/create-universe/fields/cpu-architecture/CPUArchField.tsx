@@ -2,8 +2,8 @@ import { FC, useEffect } from 'react';
 import { useFormContext } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { mui, YBLabel, RadioOrientation, YBRadioGroupField } from '@yugabyte-ui-library/core';
-import { ArchitectureType } from '@app/redesign/features-v2/universe/create-universe/helpers/constants';
 import { InstanceSettingProps } from '@app/redesign/features-v2/universe/create-universe/steps/hardware-settings/dtos';
+import { ArchitectureType } from '@app/redesign/features-v2/universe/create-universe/helpers/constants';
 import { CPU_ARCH_FIELD } from '@app/redesign/features-v2/universe/create-universe/fields/FieldNames';
 
 const { Box, styled, Typography } = mui;
