@@ -1632,4 +1632,27 @@ public class Util {
       throw new IllegalArgumentException(e);
     }
   }
+
+  public static List<String> getCheckProcessStatusCommand(String user, String processName) {
+    return ImmutableList.<String>builder()
+        .add("pgrep")
+        .add("-xlu")
+        .add(user)
+        .add(processName)
+        .add("2>/dev/null")
+        .add("||")
+        .add("systemctl")
+        .add("--user")
+        .add("is-enabled")
+        .add(processName)
+        .add("2>/dev/null")
+        .add("||")
+        .add("systemctl")
+        .add("is-enabled")
+        .add(processName)
+        .add("2>/dev/null")
+        .add("||")
+        .add("true")
+        .build();
+  }
 }
