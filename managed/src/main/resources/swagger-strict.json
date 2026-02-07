@@ -2826,6 +2826,7 @@
             "TablespaceValidationOnRemove",
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
+            "CheckNodeDataDirDiskSpace",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -5547,6 +5548,7 @@
             "TablespaceValidationOnRemove",
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
+            "CheckNodeDataDirDiskSpace",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -8624,6 +8626,7 @@
             "TablespaceValidationOnRemove",
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
+            "CheckNodeDataDirDiskSpace",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -9423,6 +9426,7 @@
             "TablespaceValidationOnRemove",
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
+            "CheckNodeDataDirDiskSpace",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -10936,6 +10940,7 @@
             "TablespaceValidationOnRemove",
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
+            "CheckNodeDataDirDiskSpace",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -11656,6 +11661,7 @@
             "TablespaceValidationOnRemove",
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
+            "CheckNodeDataDirDiskSpace",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -15946,6 +15952,7 @@
             "TablespaceValidationOnRemove",
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
+            "CheckNodeDataDirDiskSpace",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -16976,6 +16983,7 @@
             "TablespaceValidationOnRemove",
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
+            "CheckNodeDataDirDiskSpace",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -17806,6 +17814,7 @@
             "TablespaceValidationOnRemove",
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
+            "CheckNodeDataDirDiskSpace",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -19328,6 +19337,7 @@
             "TablespaceValidationOnRemove",
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
+            "CheckNodeDataDirDiskSpace",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -19980,6 +19990,7 @@
             "TablespaceValidationOnRemove",
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
+            "CheckNodeDataDirDiskSpace",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -20387,6 +20398,7 @@
               "TablespaceValidationOnRemove",
               "CheckServiceLiveness",
               "CheckNodeCommandExecution",
+              "CheckNodeDataDirDiskSpace",
               "OperatorImportResource"
             ],
             "type" : "string"
@@ -21212,6 +21224,7 @@
             "TablespaceValidationOnRemove",
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
+            "CheckNodeDataDirDiskSpace",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -22307,6 +22320,7 @@
             "TablespaceValidationOnRemove",
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
+            "CheckNodeDataDirDiskSpace",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -23626,6 +23640,7 @@
             "TablespaceValidationOnRemove",
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
+            "CheckNodeDataDirDiskSpace",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -24299,6 +24314,7 @@
             "TablespaceValidationOnRemove",
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
+            "CheckNodeDataDirDiskSpace",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -25226,6 +25242,7 @@
             "TablespaceValidationOnRemove",
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
+            "CheckNodeDataDirDiskSpace",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -25863,6 +25880,7 @@
             "TablespaceValidationOnRemove",
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
+            "CheckNodeDataDirDiskSpace",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -26500,6 +26518,7 @@
             "TablespaceValidationOnRemove",
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
+            "CheckNodeDataDirDiskSpace",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -27647,6 +27666,7 @@
             "TablespaceValidationOnRemove",
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
+            "CheckNodeDataDirDiskSpace",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -28771,6 +28791,7 @@
             "TablespaceValidationOnRemove",
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
+            "CheckNodeDataDirDiskSpace",
             "OperatorImportResource"
           ],
           "type" : "string"

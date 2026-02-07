@@ -54,6 +54,7 @@ import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.ImageBundleUtil;
+import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.LdapUtil;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NetworkManager;
@@ -186,6 +187,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected TableManagerYb mockTableManagerYb = mock(TableManagerYb.class);
   protected CloudQueryHelper mockCloudQueryHelper = mock(CloudQueryHelper.class);
   protected ShellKubernetesManager mockKubernetesManager = mock(ShellKubernetesManager.class);
+  protected KubernetesManagerFactory mockKubernetesManagerFactory =
+      mock(KubernetesManagerFactory.class);
   protected SwamperHelper mockSwamperHelper = mock(SwamperHelper.class);
   protected CallHome mockCallHome = mock(CallHome.class);
   protected CallbackController mockCallbackController = mock(CallbackController.class);
@@ -346,6 +349,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     when(mockBaseTaskDependencies.getYcqlQueryExecutor()).thenReturn(mockYcqlQueryExecutor);
     when(mockBaseTaskDependencies.getGFlagsValidation()).thenReturn(mockGFlagsValidation);
     when(mockBaseTaskDependencies.getNodeUniverseManager()).thenReturn(mockNodeUniverseManager);
+    lenient().when(mockKubernetesManagerFactory.getManager()).thenReturn(mockKubernetesManager);
     when(mockBaseTaskDependencies.getNodeAgentClient()).thenReturn(mockNodeAgentClient);
     when(mockBaseTaskDependencies.getImageBundleUtil()).thenReturn(imageBundleUtil);
     when(mockBaseTaskDependencies.getRestoreManagerYb()).thenReturn(restoreManagerYb);
@@ -502,7 +506,9 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                 .overrides(bind(AZUClientFactory.class).toInstance(azuClientFactory))
                 .overrides(
                     bind(PrometheusConfigManager.class).toInstance(mockPrometheusConfigManager))
-                .overrides(bind(ReleaseManager.class).toInstance(mockReleaseManager)))
+                .overrides(bind(ReleaseManager.class).toInstance(mockReleaseManager))
+                .overrides(
+                    bind(KubernetesManagerFactory.class).toInstance(mockKubernetesManagerFactory)))
         .overrides(bind(CloudAPI.Factory.class).toInstance(mockCloudAPIFactory))
         .overrides(bind(CapacityReservationMetrics.class).toInstance(reservationMetrics))
         .overrides(
