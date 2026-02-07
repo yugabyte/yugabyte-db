@@ -771,6 +771,7 @@ bool		session_auth_is_superuser;
 
 int			log_min_error_statement = ERROR;
 int			log_min_messages = WARNING;
+int			yb_log_min_backtraces = FATAL;
 int			client_min_messages = NOTICE;
 int			log_min_duration_sample = -1;
 int			log_min_duration_statement = -1;
@@ -2840,18 +2841,6 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"yb_test_fail_next_ddl", PGC_USERSET, DEVELOPER_OPTIONS,
-			gettext_noop("When set, the next DDL will fail right before "
-						 "commit."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&yb_test_fail_next_ddl,
-		false,
-		NULL, NULL, NULL
-	},
-
-	{
 		{"yb_xcluster_automatic_mode_target_ddl", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Used to identify DDLs executed in Automatic xCluster mode target "
 						 "universe. For example, DDL operations will skip the data loading "
@@ -4029,6 +4018,17 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&PostAuthDelay,
 		0, 0, INT_MAX / 1000000,
+		NULL, NULL, NULL
+	},
+	{
+		{"yb_test_fail_next_ddl", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("When set to non-zero, the next DDL will fail: "
+						 "1=ERROR, 2=FATAL, 3=PANIC, 4=crash."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_fail_next_ddl,
+		0, 0, 4,
 		NULL, NULL, NULL
 	},
 	{
@@ -7543,6 +7543,16 @@ static struct config_enum ConfigureNamesEnum[] =
 		},
 		&log_min_error_statement,
 		ERROR, server_message_level_options,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_log_min_backtraces", PGC_SUSET, LOGGING_WHEN,
+			gettext_noop("Sets the minimum message level for including a backtrace in the log."),
+			gettext_noop("Errors at or above this level will have a call stack attached. Each level includes all the levels that follow it.")
+		},
+		&yb_log_min_backtraces,
+		FATAL, server_message_level_options,
 		NULL, NULL, NULL
 	},
 

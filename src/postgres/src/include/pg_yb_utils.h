@@ -722,11 +722,11 @@ extern bool *yb_extra_commands_to_retry_in_proc;
 extern bool yb_test_system_catalogs_creation;
 
 /*
- * If set to true, next DDL operation (only creating a relation for now) will fail,
- * resetting this back to false.
+ * If set to non-zero, next DDL operation will fail with the specified error level:
+ * 0 = disabled (default), 1 = ERROR, 2 = FATAL, 3 = PANIC, 4 = crash.
+ * Resets to 0 after triggering.
  */
-extern bool yb_test_fail_next_ddl;
-
+extern int yb_test_fail_next_ddl;
 /*
  * Sleep before executing a statement.
  * Can be used to simulate race conditions where catalog is updated between
