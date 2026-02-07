@@ -72,9 +72,11 @@ Video: [Disaster Recovery With xCluster DR and Two Cloud Regions](https://www.yo
 
 xCluster DR can be set up to perform schema changes in the following ways:
 
-- [Automatic mode](#automatic-mode) handles all aspects of replication for both data and schema changes.
-- [Semi-automatic mode](#semi-automatic-mode), providing simpler steps for performing DDL changes.
-- [Manual mode](#manual-mode). Deprecated.
+| Mode | Description | GA | Deprecated |
+| :--- | :--- | :--- | :--- |
+| [Automatic](#automatic-mode) | Handles all aspects of replication for both data and schema changes. | v2025.2.1 | |
+| [Semi-automatic](#semi-automatic-mode) | Compared to manual mode, provides operationally simpler setup and management of replication, and fewer steps for performing DDL changes. | v2025.1.0 | |
+| [Manual](#manual-mode) | Deprecated. Manual setup and management of replication. DDL changes require manually updating the xCluster configuration. | v2024.2 | v2025.1 |
 
 ### Automatic mode
 

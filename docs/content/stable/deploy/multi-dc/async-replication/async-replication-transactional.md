@@ -45,4 +45,4 @@ For v2025.2.1 and later, use Automatic mode.
 | :--- | :--- | :--- | :--- |
 | [Automatic](../async-transactional-setup-automatic/) | Handles all aspects of replication for both data and schema changes. | v2025.2.1 | |
 | [Semi-automatic](../async-transactional-setup-semi-automatic/) | Compared to manual mode, provides operationally simpler setup and management of replication, and fewer steps for performing DDL changes. | v2024.2.0 | v2025.2.1 |
-| [Fully Manual](../async-transactional-setup-manual/) | Manual setup and management of replication. DDL changes require manually updating the xCluster configuration. | v2.18.1 | v2024.1 |
+| [Manual](../async-transactional-setup-manual/) | Manual setup and management of replication. DDL changes require manually updating the xCluster configuration. | v2.18.1 | v2025.1 |

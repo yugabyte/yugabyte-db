@@ -73,3 +73,11 @@ To upgrade a universe to node agent, first make sure the universe is not cron-ba
 ## xCluster
 
 If you have upgraded YugabyteDB Anywhere to version 2.12 or later and [xCluster replication](../../../explore/going-beyond-sql/asynchronous-replication-ysql/) for your universe was set up via yb-admin instead of the UI, follow the instructions provided in [Synchronize replication after upgrade](../upgrade-yp-xcluster-ybadmin/).
+
+## xCluster DR
+
+Manual schema change mode will be deprecated in future versions of YugabyteDB Anywhere.
+
+For universes running v2024.2, Semi-automatic mode is recommended.
+
+When possible, you should delete existing Manual DR configurations and re-create them using Semi-automatic mode to reduce the operational burden of DDL changes. Refer to [Schema change modes](../../back-up-restore-universes/disaster-recovery/#schema-change-modes).
