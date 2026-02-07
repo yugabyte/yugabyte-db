@@ -52,7 +52,11 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
-const RestoreSummary: FC = () => {
+interface RestoreSummaryProps {
+  backupRoles: boolean;
+}
+
+const RestoreSummary = ({ backupRoles }: RestoreSummaryProps) => {
   const classes = useStyles();
 
   const { t } = useTranslation('translation', { keyPrefix: 'backup.restore.backupSummary' });
@@ -80,6 +84,14 @@ const RestoreSummary: FC = () => {
       {
         key: t('restoreTo'),
         value: pitrMillis ? ybFormatDate(pitrMillis) : '-'
+      },
+      {
+        key: t('restoreRoles'),
+        value: !backupRoles
+          ? t('restoreRolesNotApplicable')
+          : target.useRoles
+          ? t('restoreRolesOn')
+          : t('restoreRolesOff')
       },
       {
         key: t('restoreSize'),

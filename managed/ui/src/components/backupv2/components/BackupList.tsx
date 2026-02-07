@@ -143,6 +143,10 @@ const useTooltipStyles = makeStyles((theme) => ({
   customWidth: {
     maxWidth: 'none'
   },
+  customWidthRolesMax: {
+    width: '264px',
+    height: '66px'
+  },
   tooltipHeader: {
     padding: theme.spacing(1.5, 2),
     borderBottom: '1px solid #E5E5E9'
@@ -749,6 +753,19 @@ export const BackupList: FC<BackupListOptions> = ({
               Restore
             </TableHeaderColumn>
           )}
+          <TableHeaderColumn
+            dataField="useRoles"
+            dataFormat={(_, row: IBackup) => {
+              return (
+                <div onClick={(e) => e.stopPropagation()}>
+                  {row.useRoles ? 'Included' : 'Not Included'}
+                </div>
+              );
+            }}
+            width="12%"
+          >
+            Roles and Grants
+          </TableHeaderColumn>
           <TableHeaderColumn
             dataField="createTime"
             dataFormat={(_, row: IBackup) => ybFormatDate(row.commonBackupInfo.createTime)}
