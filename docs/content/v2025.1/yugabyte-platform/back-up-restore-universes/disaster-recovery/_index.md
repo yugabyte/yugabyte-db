@@ -100,6 +100,8 @@ In this mode, table and index-level schema changes must be performed in the same
 
 You don't need to make any changes to the DR configuration.
 
+Semi-automatic mode is used for any xCluster DR configuration when both DR primary and replica are running YugabyteDB {{<release "2024.1.3">}} or later (unless [Automatic](#automatic-mode) is turned on).
+
 {{<lead link="https://www.youtube.com/watch?v=vYyn2OUSZFE">}}
 To learn more, watch [Simplified schema management with xCluster DB Scoped](https://www.youtube.com/watch?v=vYyn2OUSZFE)
 {{</lead>}}
