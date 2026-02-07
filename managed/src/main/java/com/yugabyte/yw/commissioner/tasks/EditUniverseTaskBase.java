@@ -78,6 +78,18 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
       createValidateDiskSizeOnNodeRemovalTasks(
           universe, cluster, taskParams().getNodesInCluster(cluster.uuid));
     }
+    Set<NodeDetails> existingNodesToStartMaster =
+        selection.addedMasters.stream()
+            .filter(n -> n.state != NodeState.ToBeAdded)
+            .collect(Collectors.toSet());
+    if (existingNodesToStartMaster.size() > 0) {
+      createCheckProcessStateTask(
+          universe,
+          existingNodesToStartMaster,
+          ServerType.MASTER,
+          false /* ensureRunning */,
+          null /* throw exception on conflict */);
+    }
     createPreflightNodeCheckTasks(universe, taskParams().clusters);
 
     createCheckCertificateConfigTask(universe, taskParams().clusters);

@@ -98,7 +98,11 @@ func VerifyChecksum(filePath, expectedChecksum string) error {
 	expectedNormalized := normalizeExpectedChecksum(expectedChecksum)
 
 	if expectedNormalized == "" {
-		return fmt.Errorf("invalid expected checksum for %s: empty after normalizing (original: %q)", filePath, expectedChecksum)
+		return fmt.Errorf(
+			"invalid expected checksum for %s: empty after normalizing (original: %q)",
+			filePath,
+			expectedChecksum,
+		)
 	}
 	if !strings.EqualFold(actualChecksum, expectedNormalized) {
 		return fmt.Errorf(
