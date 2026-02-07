@@ -3,10 +3,14 @@ package com.yugabyte.yw.commissioner.tasks;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static play.libs.Json.newObject;
@@ -37,6 +41,7 @@ import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -46,10 +51,18 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Before;
+import org.yb.client.ChangeConfigResponse;
+import org.yb.client.ChangeMasterClusterConfigResponse;
+import org.yb.client.GetLoadMovePercentResponse;
+import org.yb.client.GetMasterClusterConfigResponse;
+import org.yb.client.ListLiveTabletServersResponse;
 import org.yb.client.ListMasterRaftPeersResponse;
 import org.yb.client.YBClient;
+import org.yb.master.CatalogEntityInfo;
 import org.yb.util.PeerInfo;
 import play.libs.Json;
 
@@ -129,7 +142,8 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
     when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
-    doAnswer(
+    lenient()
+        .doAnswer(
             inv -> {
               ObjectNode res = newObject();
               res.put("response", "success");
@@ -162,7 +176,66 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
     hookScope2.addHook(hook2);
   }
 
+  protected void mockCommonForEditUniverseBasedTasks(Universe universe) {
+    try {
+      Set<String> dbMasters =
+          universe.getMasters().stream()
+              .map(n -> n.cloudInfo.private_ip)
+              .collect(Collectors.toSet());
+      CatalogEntityInfo.SysClusterConfigEntryPB.Builder configBuilder =
+          CatalogEntityInfo.SysClusterConfigEntryPB.newBuilder().setVersion(1);
+      GetMasterClusterConfigResponse mockConfigResponse =
+          new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
+      ChangeMasterClusterConfigResponse mockMasterChangeConfigResponse =
+          new ChangeMasterClusterConfigResponse(1111, "", null);
+      ChangeConfigResponse mockChangeConfigResponse = mock(ChangeConfigResponse.class);
+      when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
+      when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+      when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
+      when(mockClient.waitForMaster(any(), anyLong())).thenReturn(true);
+      when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
+      when(mockClient.changeMasterClusterConfig(any())).thenReturn(mockMasterChangeConfigResponse);
+      doAnswer(
+              invocation -> {
+                String host = invocation.getArgument(0);
+                boolean isAdd = invocation.getArgument(2);
+                if (isAdd) {
+                  dbMasters.add(host);
+                } else {
+                  dbMasters.remove(host);
+                }
+                return mockChangeConfigResponse;
+              })
+          .when(mockClient)
+          .changeMasterConfig(anyString(), anyInt(), anyBoolean(), anyBoolean(), anyString());
+      when(mockClient.setFlag(any(), anyString(), anyString(), anyBoolean()))
+          .thenReturn(Boolean.TRUE);
+      when(mockClient.waitForAreLeadersOnPreferredOnlyCondition(anyLong())).thenReturn(true);
+      when(mockClient.getLoadMoveCompletion())
+          .thenReturn(new GetLoadMovePercentResponse(0, "", 100.0, 0, 0, null));
+      ListLiveTabletServersResponse mockListLiveTabletServersResponse =
+          mock(ListLiveTabletServersResponse.class);
+      when(mockClient.listLiveTabletServers()).thenReturn(mockListLiveTabletServersResponse);
+      mockMasterAndPeerRoles(mockClient, () -> dbMasters);
+      mockClockSyncResponse(mockNodeUniverseManager);
+      mockLocaleCheckResponse(mockNodeUniverseManager);
+      // setCheckNodesAreSafeToTakeDown(mockClient);
+      setMockLiveTabletServers(mockClient, universe);
+      setLeaderlessTabletsMock();
+      setFollowerLagMock();
+      setUnderReplicatedTabletsMock();
+      setDumpEntitiesMock(universe, "", false);
+    } catch (Exception e) {
+      fail(e.getMessage());
+    }
+  }
+
   protected Universe createUniverseForProvider(String universeName, Provider provider) {
+    return createUniverseForProvider(universeName, provider, 3);
+  }
+
+  protected Universe createUniverseForProvider(
+      String universeName, Provider provider, int numNodes) {
     Optional<Region> optional =
         provider.getAllRegions().stream().filter(r -> r.getCode().equals("region-1")).findFirst();
     Region region =
@@ -173,7 +246,7 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
     // create default universe
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
-    userIntent.numNodes = 3;
+    userIntent.numNodes = numNodes;
     userIntent.ybSoftwareVersion = "yb-version";
     userIntent.accessKeyCode = "default-key";
     userIntent.replicationFactor = 3;
@@ -285,28 +358,40 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
     return accessKey;
   }
 
-  public static void mockMasterAndPeerRoles(YBClient client, List<String> masters) {
-    mockMasterAndPeerRoles(client, masters.isEmpty() ? null : masters.get(0), masters);
+  public static void mockMasterAndPeerRoles(YBClient client, Collection<String> masters) {
+    mockMasterAndPeerRoles(client, () -> masters);
   }
 
   public static void mockMasterAndPeerRoles(
-      YBClient client, String masterLeaderIp, List<String> masters) {
-    when(client.getLeaderMasterHostAndPort()).thenReturn(HostAndPort.fromHost(masterLeaderIp));
+      YBClient client, Supplier<Collection<String>> masterSupplier) {
     try {
       ListMasterRaftPeersResponse listMastersResponse = mock(ListMasterRaftPeersResponse.class);
-      List<PeerInfo> peerInfoList = new ArrayList<>();
-      for (String master : masters) {
-        PeerInfo peerInfo = new PeerInfo();
-
-        peerInfo.setLastKnownPrivateIps(
-            Collections.singletonList(HostAndPort.fromParts(master, 7100)));
-        peerInfo.setMemberType(PeerInfo.MemberType.VOTER);
-        peerInfoList.add(peerInfo);
-      }
-      when(listMastersResponse.getPeersList()).thenReturn(peerInfoList);
+      doAnswer(
+              invocation -> {
+                Collection<String> masters = masterSupplier.get();
+                List<PeerInfo> peerInfoList = new ArrayList<>();
+                for (String master : masters) {
+                  PeerInfo peerInfo = new PeerInfo();
+                  peerInfo.setLastKnownPrivateIps(
+                      Collections.singletonList(HostAndPort.fromParts(master, 7100)));
+                  peerInfo.setMemberType(PeerInfo.MemberType.VOTER);
+                  peerInfoList.add(peerInfo);
+                }
+                return peerInfoList;
+              })
+          .when(listMastersResponse)
+          .getPeersList();
       when(client.listMasterRaftPeers()).thenReturn(listMastersResponse);
-      when(client.getLeaderMasterHostAndPort())
-          .thenReturn(HostAndPort.fromParts(masterLeaderIp, 7100));
+      doAnswer(
+              invocation -> {
+                Collection<String> masters = masterSupplier.get();
+                if (masters.isEmpty()) {
+                  return null;
+                }
+                return HostAndPort.fromParts(masters.iterator().next(), 7100);
+              })
+          .when(client)
+          .getLeaderMasterHostAndPort();
     } catch (Exception e) {
       throw new RuntimeException(e);
     }

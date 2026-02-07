@@ -196,6 +196,9 @@ public class ApiUtils {
           if (azUUIDList != null) {
             int azIndex = (idx - 1) % azUUIDList.size();
             node.azUuid = azUUIDList.get(azIndex);
+            AvailabilityZone az = AvailabilityZone.getOrBadRequest(node.azUuid);
+            node.cloudInfo.region = az.getRegion().getCode();
+            node.cloudInfo.az = az.getName();
           }
           if (userIntent.dedicatedNodes) {
             node.dedicatedTo = UniverseTaskBase.ServerType.TSERVER;
