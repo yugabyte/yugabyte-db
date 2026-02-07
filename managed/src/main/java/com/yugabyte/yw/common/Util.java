@@ -1490,4 +1490,27 @@ public class Util {
       log.warn("Could not write restore task info, will not show up in task info.");
     }
   }
+
+  public static List<String> getCheckProcessStatusCommand(String user, String processName) {
+    return ImmutableList.<String>builder()
+        .add("pgrep")
+        .add("-xlu")
+        .add(user)
+        .add(processName)
+        .add("2>/dev/null")
+        .add("||")
+        .add("systemctl")
+        .add("--user")
+        .add("is-enabled")
+        .add(processName)
+        .add("2>/dev/null")
+        .add("||")
+        .add("systemctl")
+        .add("is-enabled")
+        .add(processName)
+        .add("2>/dev/null")
+        .add("||")
+        .add("true")
+        .build();
+  }
 }
