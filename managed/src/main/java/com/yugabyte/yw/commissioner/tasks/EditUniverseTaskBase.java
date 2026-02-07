@@ -80,7 +80,18 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
           universe, cluster, taskParams().getNodesInCluster(cluster.uuid));
     }
     createPreflightNodeCheckTasks(taskParams().clusters);
-
+    Set<NodeDetails> existingNodesToStartMaster =
+        selection.addedMasters.stream()
+            .filter(n -> n.state != NodeState.ToBeAdded)
+            .collect(Collectors.toSet());
+    if (existingNodesToStartMaster.size() > 0) {
+      createCheckProcessStateTask(
+          universe,
+          existingNodesToStartMaster,
+          ServerType.MASTER,
+          false /* ensureRunning */,
+          null /* throw exception on conflict */);
+    }
     createCheckCertificateConfigTask(universe, taskParams().clusters);
   }
 
