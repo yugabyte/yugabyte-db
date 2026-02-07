@@ -1,6 +1,28 @@
 --
 -- test distinct bitmap scans (distinct pushdown is not supported by bitmap scans)
 --
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set filename :abs_srcdir '/yb_commands/explainrun.sql'
+\i :filename
+-- A helper script to explain and run a query.  Use in regress tests by
+-- defining :explain, :query, and optionally :hint#.
+\set explain1 ':explain :hint1 :query;'
+\set explain2 ':explain1 :explain :hint2 :query;'
+\set explain3 ':explain2 :explain :hint3 :query;'
+\set explain4 ':explain3 :explain :hint4 :query;'
+\set explain5 ':explain4 :explain :hint5 :query;'
+\set explain1run1 ':explain1; :hint1 :query;'
+\set explain2run2 ':explain2; :hint1 :query; :hint2 :query;'
+\set explain3run3 ':explain3; :hint1 :query; :hint2 :query; :hint3 :query;'
+\set explain4run4 ':explain4; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query;'
+\set explain5run5 ':explain5; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query; :hint5 :query;'
+-- Default to no hints.
+\set hint1 ''
+\set hint2 ''
+\set hint3 ''
+\set hint4 ''
+\set hint5 ''
+\set explain 'EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)'
 SET yb_enable_bitmapscan = true;
 CREATE TABLE test_distinct (r1 INT, r2 INT, r3 INT, v INT, PRIMARY KEY(r1 ASC, r2 ASC, r3 ASC)) SPLIT AT VALUES ((1, 1, 500));
 INSERT INTO test_distinct (SELECT 1, i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
@@ -8,8 +30,8 @@ INSERT INTO test_distinct (SELECT 1, i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) A
 INSERT INTO test_distinct (SELECT 2, i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
 SET yb_enable_distinct_pushdown = true;
 SET enable_bitmapscan = false;
-EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
-SELECT DISTINCT r1 FROM test_distinct WHERE r1 < 2 ORDER BY r1;
+\set query 'SELECT DISTINCT r1 FROM test_distinct WHERE r1 < 2 ORDER BY r1'
+:explain1run1
                                          QUERY PLAN                                          
 ---------------------------------------------------------------------------------------------
  Unique (actual rows=1 loops=1)
@@ -18,14 +40,13 @@ SELECT DISTINCT r1 FROM test_distinct WHERE r1 < 2 ORDER BY r1;
          Distinct Keys: r1
 (4 rows)
 
-SELECT DISTINCT r1 FROM test_distinct WHERE r1 < 2 ORDER BY r1;
  r1 
 ----
   1
 (1 row)
 
-EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
-SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 ORDER BY r1, r2;
+\set query 'SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 ORDER BY r1, r2'
+:explain1run1
                                          QUERY PLAN                                          
 ---------------------------------------------------------------------------------------------
  Unique (actual rows=6 loops=1)
@@ -34,7 +55,6 @@ SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 ORDER BY r1, r2
          Storage Filter: ((r1 < 2) OR (r2 < 3))
 (4 rows)
 
-SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 ORDER BY r1, r2;
  r1 | r2 
 ----+----
   1 |  0
@@ -45,8 +65,8 @@ SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 ORDER BY r1, r2
   2 |  2
 (6 rows)
 
-EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
-SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 OR r3 < 2 ORDER BY r1, r2;
+\set query 'SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 OR r3 < 2 ORDER BY r1, r2'
+:explain1run1
                             QUERY PLAN                            
 ------------------------------------------------------------------
  Sort (actual rows=6 loops=1)
@@ -58,7 +78,6 @@ SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 OR r3 < 2 ORDER
                Storage Filter: ((r1 < 2) OR (r2 < 3) OR (r3 < 2))
 (7 rows)
 
-SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 OR r3 < 2 ORDER BY r1, r2;
  r1 | r2 
 ----+----
   1 |  0
@@ -70,8 +89,9 @@ SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 OR r3 < 2 ORDER
 (6 rows)
 
 RESET enable_bitmapscan;
-/*+ BitmapScan(test_distinct) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
-SELECT DISTINCT r1 FROM test_distinct WHERE r1 < 2 ORDER BY r1;
+\set hint1 '/*+ BitmapScan(test_distinct) */'
+\set query 'SELECT DISTINCT r1 FROM test_distinct WHERE r1 < 2 ORDER BY r1'
+:explain1run1
                                       QUERY PLAN                                      
 --------------------------------------------------------------------------------------
  Unique (actual rows=1 loops=1)
@@ -83,15 +103,13 @@ SELECT DISTINCT r1 FROM test_distinct WHERE r1 < 2 ORDER BY r1;
                      Index Cond: (r1 < 2)
 (7 rows)
 
-/*+ BitmapScan(test_distinct) */
-SELECT DISTINCT r1 FROM test_distinct WHERE r1 < 2 ORDER BY r1;
  r1 
 ----
   1
 (1 row)
 
-/*+ BitmapScan(test_distinct) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
-SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 ORDER BY r1, r2;
+\set query 'SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 ORDER BY r1, r2'
+:explain1run1
                                          QUERY PLAN                                         
 --------------------------------------------------------------------------------------------
  Unique (actual rows=6 loops=1)
@@ -106,8 +124,6 @@ SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 ORDER BY r1, r2
                            Index Cond: (r2 < 3)
 (10 rows)
 
-/*+ BitmapScan(test_distinct) */
-SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 ORDER BY r1, r2;
  r1 | r2 
 ----+----
   1 |  0
@@ -118,8 +134,8 @@ SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 ORDER BY r1, r2
   2 |  2
 (6 rows)
 
-/*+ BitmapScan(test_distinct) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
-SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 OR r3 < 2 ORDER BY r1, r2;
+\set query 'SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 OR r3 < 2 ORDER BY r1, r2'
+:explain1run1
                                          QUERY PLAN                                         
 --------------------------------------------------------------------------------------------
  Unique (actual rows=6 loops=1)
@@ -136,8 +152,6 @@ SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 OR r3 < 2 ORDER
                            Index Cond: (r3 < 2)
 (12 rows)
 
-/*+ BitmapScan(test_distinct) */
-SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 OR r3 < 2 ORDER BY r1, r2;
  r1 | r2 
 ----+----
   1 |  0
@@ -150,8 +164,9 @@ SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 OR r3 < 2 ORDER
 
 SET yb_enable_distinct_pushdown TO false;
 SET enable_bitmapscan = false;
-EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
-SELECT DISTINCT r1 FROM test_distinct WHERE r1 < 2 ORDER BY r1;
+\set hint1
+\set query 'SELECT DISTINCT r1 FROM test_distinct WHERE r1 < 2 ORDER BY r1'
+:explain1run1
                                       QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Unique (actual rows=1 loops=1)
@@ -159,14 +174,13 @@ SELECT DISTINCT r1 FROM test_distinct WHERE r1 < 2 ORDER BY r1;
          Index Cond: (r1 < 2)
 (3 rows)
 
-SELECT DISTINCT r1 FROM test_distinct WHERE r1 < 2 ORDER BY r1;
  r1 
 ----
   1
 (1 row)
 
-EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
-SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 ORDER BY r1, r2;
+\set query 'SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 ORDER BY r1, r2'
+:explain1run1
                             QUERY PLAN                            
 ------------------------------------------------------------------
  Sort (actual rows=6 loops=1)
@@ -178,7 +192,6 @@ SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 ORDER BY r1, r2
                Storage Filter: ((r1 < 2) OR (r2 < 3))
 (7 rows)
 
-SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 ORDER BY r1, r2;
  r1 | r2 
 ----+----
   1 |  0
@@ -190,8 +203,9 @@ SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 ORDER BY r1, r2
 (6 rows)
 
 RESET enable_bitmapscan;
-/*+ BitmapScan(test_distinct) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
-SELECT DISTINCT r1 FROM test_distinct WHERE r1 < 2 ORDER BY r1;
+\set hint1 '/*+ BitmapScan(test_distinct) */'
+\set query 'SELECT DISTINCT r1 FROM test_distinct WHERE r1 < 2 ORDER BY r1'
+:explain1run1
                                       QUERY PLAN                                      
 --------------------------------------------------------------------------------------
  Unique (actual rows=1 loops=1)
@@ -203,15 +217,13 @@ SELECT DISTINCT r1 FROM test_distinct WHERE r1 < 2 ORDER BY r1;
                      Index Cond: (r1 < 2)
 (7 rows)
 
-/*+ BitmapScan(test_distinct) */
-SELECT DISTINCT r1 FROM test_distinct WHERE r1 < 2 ORDER BY r1;
  r1 
 ----
   1
 (1 row)
 
-/*+ BitmapScan(test_distinct) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
-SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 ORDER BY r1, r2;
+\set query 'SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 ORDER BY r1, r2'
+:explain1run1
                                          QUERY PLAN                                         
 --------------------------------------------------------------------------------------------
  Unique (actual rows=6 loops=1)
@@ -226,8 +238,6 @@ SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 ORDER BY r1, r2
                            Index Cond: (r2 < 3)
 (10 rows)
 
-/*+ BitmapScan(test_distinct) */
-SELECT DISTINCT r1, r2 FROM test_distinct WHERE r1 < 2 OR r2 < 3 ORDER BY r1, r2;
  r1 | r2 
 ----+----
   1 |  0
