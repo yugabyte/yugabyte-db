@@ -702,7 +702,7 @@ TEST_P(XClusterOutboundReplicationGroupParameterized, CleanupStreamsOfFailedTabl
   auto conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(kNamespaceName));
 
   // This fails due to GUC yb_test_fail_next_ddl.
-  ASSERT_NOK(conn.Execute("SET yb_test_fail_next_ddl=true; CREATE TABLE tbl1 (a int)"));
+  ASSERT_NOK(conn.Execute("SET yb_test_fail_next_ddl=1; CREATE TABLE tbl1 (a int)"));
   ASSERT_OK(check_streams());
 
   ASSERT_OK(conn.Execute("CREATE TABLE moneyp (a money) PARTITION BY LIST (a);"));

@@ -840,9 +840,10 @@ errfinish(const char *filename, int lineno, const char *funcname)
 	oldcontext = MemoryContextSwitchTo(ErrorContext);
 
 	if (!edata->backtrace &&
-		edata->funcname &&
-		backtrace_functions &&
-		matches_backtrace_functions(edata->funcname))
+		((edata->funcname &&
+		  backtrace_functions &&
+		  matches_backtrace_functions(edata->funcname)) ||
+		 (IsYugaByteEnabled() && elevel >= FATAL)))
 		set_backtrace(edata, 2);
 
 	/*
