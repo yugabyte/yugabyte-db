@@ -3371,7 +3371,7 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestBackupWithFailedLegacyRew
   ASSERT_NO_FATALS(CreateIndex(Format("CREATE INDEX idx1 ON $0 (b DESC)", table_name)));
   // Perform a failed ADD PKEY operation.
   ASSERT_NO_FATALS(RunPsqlCommand(
-      Format("SET yb_test_fail_next_ddl = true;"
+      Format("SET yb_test_fail_next_ddl = 1;"
              "ALTER TABLE $0 ADD PRIMARY KEY (a ASC)", table_name), "SET"));
   // Verify the original table and the orphaned table exist.
   ASSERT_EQ(ASSERT_RESULT(client_->ListTables(table_name)).size(), 2);
@@ -3691,7 +3691,7 @@ TEST_F(
   // Perform some failed rewrite operations.
   ASSERT_NO_FATALS(RunPsqlCommand("SET yb_test_fail_table_rewrite_after_creation = true;"
       "ALTER TABLE table_1 ADD COLUMN d SERIAL", "SET"));
-  ASSERT_NO_FATALS(RunPsqlCommand("SET yb_test_fail_next_ddl = true;"
+  ASSERT_NO_FATALS(RunPsqlCommand("SET yb_test_fail_next_ddl = 1;"
       "ALTER TABLE table_1 DROP CONSTRAINT table_1_pkey", "SET"));
   // Backup then restore to a new database.
   const string backup_dir = GetTempDir("backup");

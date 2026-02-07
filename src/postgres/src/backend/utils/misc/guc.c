@@ -2754,18 +2754,6 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"yb_test_fail_next_ddl", PGC_USERSET, DEVELOPER_OPTIONS,
-			gettext_noop("When set, the next DDL will fail right before "
-						 "commit."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&yb_test_fail_next_ddl,
-		false,
-		NULL, NULL, NULL
-	},
-
-	{
 		{"yb_xcluster_automatic_mode_target_ddl", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Used to identify DDLs executed in Automatic xCluster mode target "
 						 "universe. For example, DDL operations will skip the data loading "
@@ -3897,6 +3885,17 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&PostAuthDelay,
 		0, 0, INT_MAX / 1000000,
+		NULL, NULL, NULL
+	},
+	{
+		{"yb_test_fail_next_ddl", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("When set to non-zero, the next DDL will fail: "
+						 "1=ERROR, 2=FATAL, 3=PANIC, 4=crash."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_fail_next_ddl,
+		0, 0, 4,
 		NULL, NULL, NULL
 	},
 	{

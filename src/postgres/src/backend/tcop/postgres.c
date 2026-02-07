@@ -3343,10 +3343,27 @@ FloatExceptionHandler(SIGNAL_ARGS)
 	/* We're not returning, so no need to save errno */
 	ereport(ERROR,
 			(errcode(ERRCODE_FLOATING_POINT_EXCEPTION),
-			 errmsg("floating-point exception"),
-			 errdetail("An invalid floating-point operation was signaled. "
-					   "This probably means an out-of-range result or an "
-					   "invalid operation, such as division by zero.")));
+				errmsg("floating-point exception"),
+				errdetail("An invalid floating-point operation was signaled. "
+						"This probably means an out-of-range result or an "
+						"invalid operation, such as division by zero."),
+				errbacktrace()));
+}
+
+void
+YbCriticalSignalHandler(SIGNAL_ARGS)
+{
+	/* reset to default handler */
+	pqsignal(postgres_signal_arg, SIG_DFL);
+
+	ereport(LOG,
+			(errcode(ERRCODE_INTERNAL_ERROR),
+				errmsg("received critical signal %d", postgres_signal_arg),
+				errdetail("The backend received signal %d.", postgres_signal_arg),
+				errbacktrace()));
+
+	/* route to default handler */
+	raise(postgres_signal_arg);
 }
 
 /*
@@ -6113,7 +6130,8 @@ PostgresMain(const char *dbname, const char *username)
 		pqsignal(SIGUSR1, procsignal_sigusr1_handler);
 		pqsignal(SIGUSR2, SIG_IGN);
 		pqsignal(SIGFPE, FloatExceptionHandler);
-
+		pqsignal(SIGSEGV, YbCriticalSignalHandler);
+		pqsignal(SIGABRT, YbCriticalSignalHandler);
 		/*
 		 * Reset some signals that are accepted by postmaster but not by
 		 * backend

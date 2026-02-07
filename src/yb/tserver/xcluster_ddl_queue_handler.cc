@@ -493,7 +493,7 @@ Status XClusterDDLQueueHandler::ProcessDDLQuery(const XClusterDDLQueryInfo& quer
   }
 
   if (FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) {
-    setup_query << "SET yb_test_fail_next_ddl TO true;";
+    setup_query << "SET yb_test_fail_next_ddl TO 1;";
   }
 
   setup_query << Format(

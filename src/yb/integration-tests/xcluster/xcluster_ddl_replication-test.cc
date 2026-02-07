@@ -2860,9 +2860,9 @@ TEST_F(XClusterDDLReplicationTest, FailedSchemaChangeOnSource) {
   ASSERT_OK(conn.Execute("CREATE TABLE my_table (x INT);"));
 
   // Do a few failing ADD COLUMN DDLs, which might bump the next DocDB column ID.
-  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=true;"));
+  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=1;"));
   ASSERT_NOK(conn.Execute("ALTER TABLE my_table ADD COLUMN y TEXT;"));
-  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=true;"));
+  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=1;"));
   ASSERT_NOK(conn.Execute("ALTER TABLE my_table ADD COLUMN y TEXT;"));
 
   // In the absence of rollback of the next DocDB column ID counter,
@@ -2892,9 +2892,9 @@ TEST_F(XClusterDDLReplicationTest, FailedSchemaChangeOnSourceWithPartitioning) {
       "CREATE TABLE my_table_1 PARTITION OF my_table FOR VALUES FROM (1) TO (100000);"));
 
   // Do a few failing ADD COLUMN DDLs, which might bump the next DocDB column ID.
-  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=true;"));
+  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=1;"));
   ASSERT_NOK(conn.Execute("ALTER TABLE my_table ADD COLUMN y INT;"));
-  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=true;"));
+  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=1;"));
   ASSERT_NOK(conn.Execute("ALTER TABLE my_table ADD COLUMN y INT;"));
 
   // In the absence of rollback of the next DocDB column ID counter,
@@ -3003,7 +3003,7 @@ TEST_F(XClusterDDLReplicationTest, RollbackPreservesDeletedColumns) {
 
   auto conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
   ASSERT_OK(conn.Execute("CREATE TABLE my_table (x INT);"));
-  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=true;"));
+  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=1;"));
   ASSERT_NOK(conn.Execute("ALTER TABLE my_table ADD COLUMN y INT;"));
   ASSERT_OK(conn.Execute("ALTER TABLE my_table ADD COLUMN y INT;"));
 

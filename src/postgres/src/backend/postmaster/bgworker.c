@@ -786,6 +786,8 @@ StartBackgroundWorker(void)
 		pqsignal(SIGINT, StatementCancelHandler);
 		pqsignal(SIGUSR1, procsignal_sigusr1_handler);
 		pqsignal(SIGFPE, FloatExceptionHandler);
+		pqsignal(SIGSEGV, YbCriticalSignalHandler);
+		pqsignal(SIGABRT, YbCriticalSignalHandler);
 
 		/* XXX Any other handlers needed here? */
 	}

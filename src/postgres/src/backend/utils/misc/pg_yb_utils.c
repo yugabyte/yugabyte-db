@@ -150,6 +150,8 @@ static int YbGetNumCreateFunctionStmts();
 static int YbGetNumRollbackToSavepointStmts();
 static bool YBIsCurrentStmtCreateFunction();
 
+static void yb_maybe_test_fail_ddl(void);
+
 uint64_t
 YBGetActiveCatalogCacheVersion()
 {
@@ -2270,7 +2272,7 @@ bool		yb_debug_log_internal_restarts = false;
 
 bool		yb_test_system_catalogs_creation = false;
 
-bool		yb_test_fail_next_ddl = false;
+int			yb_test_fail_next_ddl = 0;
 
 bool		yb_force_catalog_update_on_next_ddl = false;
 
@@ -3082,13 +3084,7 @@ YBCommitTransactionContainingDDL()
 									has_change);
 
 	Assert(ddl_transaction_state.nesting_level == 0);
-	if (yb_test_fail_next_ddl)
-	{
-		yb_test_fail_next_ddl = false;
-		if (YbIsClientYsqlConnMgr())
-			YbSendParameterStatusForConnectionManager("yb_test_fail_next_ddl", "false");
-		elog(ERROR, "Failed DDL operation as requested");
-	}
+	yb_maybe_test_fail_ddl();
 
 	if (yb_test_delay_next_ddl > 0)
 	{
@@ -8633,4 +8629,42 @@ YbNewTruncateColocatedIgnoreNotFound(Relation rel, YbcPgTransactionSetting trans
 	HandleYBStatusIgnoreNotFound(YbNewTruncateColocatedImpl(rel, transaction_setting, &result),
 								 &not_found);
 	return not_found ? NULL : result;
+}
+
+/*
+ * Check yb_test_fail_next_ddl and trigger the appropriate error if set.
+ * 0 = disabled, 1 = ERROR, 2 = FATAL, 3 = PANIC, 4 = crash.
+ * Resets to 0 after triggering.
+ */
+static void
+yb_maybe_test_fail_ddl(void)
+{
+	int fail_mode = yb_test_fail_next_ddl;
+	if (fail_mode == 0)
+		return;
+	yb_test_fail_next_ddl = 0;
+	if (YbIsClientYsqlConnMgr())
+		YbSendParameterStatusForConnectionManager("yb_test_fail_next_ddl", "0");
+
+	switch (fail_mode)
+	{
+		case 1:
+			elog(ERROR, "Failed DDL operation as requested");
+			break;
+		case 2:
+			elog(FATAL, "FATAL on DDL as requested");
+			break;
+		case 3:
+			elog(PANIC, "PANIC on DDL as requested");
+			break;
+		case 4:
+			{
+				/* Intentional null pointer dereference for crash testing */
+				volatile int *null_ptr = NULL;
+				*null_ptr = 0;
+				break;
+			}
+		default:
+			break;
+	}
 }

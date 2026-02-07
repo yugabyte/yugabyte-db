@@ -650,11 +650,11 @@ extern bool yb_debug_log_internal_restarts;
 extern bool yb_test_system_catalogs_creation;
 
 /*
- * If set to true, next DDL operation (only creating a relation for now) will fail,
- * resetting this back to false.
+ * If set to non-zero, next DDL operation will fail with the specified error level:
+ * 0 = disabled (default), 1 = ERROR, 2 = FATAL, 3 = PANIC, 4 = crash.
+ * Resets to 0 after triggering.
  */
-extern bool yb_test_fail_next_ddl;
-
+extern int yb_test_fail_next_ddl;
 /*
  * If set to true,the next DDL will update the catalog in force mode which
  * allows it to operate even during ysql major catalog upgrades.
