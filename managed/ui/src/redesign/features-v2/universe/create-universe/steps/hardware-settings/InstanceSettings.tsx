@@ -17,7 +17,9 @@ import {
   VolumeInfoField,
   StorageTypeField,
   K8NodeSpecField,
-  K8VolumeInfoField
+  K8VolumeInfoField,
+  EBSVolumeField,
+  EBSKmsConfigField
 } from '@app/redesign/features-v2/universe/create-universe/fields';
 import { useRuntimeConfigValues } from '@app/redesign/features-v2/universe/create-universe/helpers/utils';
 import {
@@ -39,7 +41,8 @@ import {
   MASTER_INSTANCE_TYPE_FIELD,
   MASTER_K8_NODE_SPEC_FIELD,
   TSERVER_K8_NODE_SPEC_FIELD,
-  MASTER_TSERVER_SAME_FIELD
+  MASTER_TSERVER_SAME_FIELD,
+  ENABLE_EBS_CONFIG_FIELD
 } from '@app/redesign/features-v2/universe/create-universe/fields/FieldNames';
 
 const { Box, Typography, CircularProgress } = mui;
@@ -95,12 +98,13 @@ export const InstanceSettings = forwardRef<
     maxVolumeCount,
     canUseSpotInstance,
     isRuntimeConfigLoading,
-    isProviderRuntimeConfigLoading
+    isProviderRuntimeConfigLoading,
+    ebsVolumeEnabled
   } = useRuntimeConfigValues(provider?.uuid);
   //Runtime configs
 
   const { t } = useTranslation('translation', {
-    keyPrefix: 'universeForm.instanceConfig'
+    keyPrefix: 'createUniverseV2.instanceSettings'
   });
 
   const methods = useForm<InstanceSettingProps>({
@@ -115,6 +119,7 @@ export const InstanceSettings = forwardRef<
   const sameAsTserver = watch(MASTER_TSERVER_SAME_FIELD);
   const instanceType = watch(INSTANCE_TYPE_FIELD);
   const nodeSpec = watch(TSERVER_K8_NODE_SPEC_FIELD);
+  const ebsEnabled = watch(ENABLE_EBS_CONFIG_FIELD);
 
   useEffect(() => {
     if (osPatchingEnabled && provider && !isImgBundleSupportedByProvider(provider)) {
@@ -277,6 +282,12 @@ export const InstanceSettings = forwardRef<
               {deviceInfo && provider?.code === CloudType.gcp && useDedicatedNodes && (
                 <StorageTypeField disabled={false} provider={provider} />
               )}
+              {ebsVolumeEnabled && provider?.code === CloudType.aws && (
+                <EBSVolumeField disabled={false} />
+              )}
+              {ebsVolumeEnabled && provider?.code === CloudType.aws && ebsEnabled && (
+                <EBSKmsConfigField disabled={false} />
+              )}
             </InstanceBox>
           </PanelWrapper>
         </Content>
@@ -338,7 +349,13 @@ export const InstanceSettings = forwardRef<
                 <Box mt={4} sx={{ width: 480 }}>
                   <Typography variant="subtitle1" color="textSecondary">
                     <Trans i18nKey="masterNote">
-                      {t('masterNote', { cloudType: upperCase(provider?.code) })}
+                      {t('masterNote', {
+                        cloudType: upperCase(provider?.code),
+                        ebs:
+                          ebsVolumeEnabled && provider?.code === CloudType.aws
+                            ? t('EBSVolume.title')
+                            : ''
+                      })}
                       <b />
                     </Trans>
                   </Typography>

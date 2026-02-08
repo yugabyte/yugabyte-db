@@ -156,8 +156,8 @@ export const StorageTypeField: FC<StorageTypeFieldProps> = ({ disabled, provider
           <YBSelect
             label={
               provider?.code === CloudType.aws
-                ? t('universeForm.instanceConfig.ebs')
-                : t('universeForm.instanceConfig.ssd')
+                ? t('createUniverseV2.instanceSettings.ebs')
+                : t('createUniverseV2.instanceSettings.ssd')
             }
             fullWidth
             disabled={disableStorageType || disabled}
@@ -205,7 +205,7 @@ export const StorageTypeField: FC<StorageTypeFieldProps> = ({ disabled, provider
       <Box display="flex" sx={{ width: 198 }} mt={2}>
         <Box flex={1}>
           <YBInput
-            label={t('universeForm.instanceConfig.provisionedIopsPerNode')}
+            label={t('createUniverseV2.instanceSettings.provisionedIopsPerNode')}
             type="number"
             fullWidth
             slotProps={{
@@ -239,7 +239,7 @@ export const StorageTypeField: FC<StorageTypeFieldProps> = ({ disabled, provider
       <Box display="flex" flexDirection="column" mt={2}>
         <Box display="flex">
           <Box>
-            <YBLabel>{t('universeForm.instanceConfig.provisionedThroughputPerNode')}</YBLabel>
+            <YBLabel>{t('createUniverseV2.instanceSettings.provisionedThroughputPerNode')}</YBLabel>
           </Box>
         </Box>
         <Box display="flex" width="100%">
@@ -265,7 +265,7 @@ export const StorageTypeField: FC<StorageTypeFieldProps> = ({ disabled, provider
               marginBottom: 8
             })}
           >
-            {t('universeForm.instanceConfig.throughputUnit')}
+            {t('createUniverseV2.instanceSettings.throughputUnit')}
           </Box>
         </Box>
       </Box>

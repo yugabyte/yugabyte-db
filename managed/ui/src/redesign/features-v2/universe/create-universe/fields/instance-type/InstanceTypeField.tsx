@@ -146,7 +146,7 @@ export const InstanceTypeField = ({
                 ybInputProps={{
                   error: !!fieldState.error,
                   helperText: fieldState.error?.message,
-                  label: t('universeForm.instanceConfig.instanceType'),
+                  label: t('createUniverseV2.instanceSettings.instanceType'),
                   dataTestId: 'instance-type-field'
                 }}
                 dataTestId="instance-type-field-container"

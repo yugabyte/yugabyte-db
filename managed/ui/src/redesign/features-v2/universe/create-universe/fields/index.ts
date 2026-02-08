@@ -21,6 +21,8 @@ export * from './volume-info/StorageTypeField';
 export * from './volume-info/VolumeInfoField';
 export * from './k8-volume-info/K8VolumeInfoField';
 export * from './k8-node-spec/K8NodeSpecField';
+export * from './ebs-volume/EBSVolumeField';
+export * from './ebs-volume/EBSKmsConfigField';
 export * from './provider-configuration/ProviderConfiguration';
 export * from './database-version/DatabaseVersion';
 export * from './provider/ProviderSelect';

@@ -70,6 +70,7 @@ export const transformSpecificGFlagToFlagsArray = (specificGFlags: Record<string
 export const getInitialValues = (data: UniverseRespResponse): Partial<AddRRContextProps> => {
   const primaryClusterSpec = _.get(data, 'spec.clusters[0]');
   const storageSpec = primaryClusterSpec?.node_spec.storage_spec;
+  const cloudVolumeEncryption = storageSpec?.cloud_volume_encryption;
   const instanceSettings = {
     inheritPrimaryInstance: true,
     arch: data?.info?.arch,
@@ -82,7 +83,9 @@ export const getInitialValues = (data: UniverseRespResponse): Partial<AddRRConte
       throughput: storageSpec?.throughput,
       storageClass: storageSpec?.storage_class,
       storageType: storageSpec?.storage_type
-    }
+    },
+    enableEbsVolumeEncryption: cloudVolumeEncryption?.enable_volume_encryption ?? false,
+    ebsKmsConfigUUID: cloudVolumeEncryption?.kms_config_uuid ?? null
   };
   return {
     databaseSettings: {

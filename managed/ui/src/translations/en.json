@@ -3529,7 +3529,43 @@
           "invalidStorageClass": "Invalid storage class",
           "invalidMountPoint": "Mount point must be a valid path starting with '/'",
           "invalidStorageType": "Invalid storage type",
-          "required": "field is required"
+          "required": "{{field}} is required"
+        },
+        "assignPublicIP": "Assign Public IP",
+        "assignPublicIPHelper": "Assign a public IP to the DB servers for connections over the internet.",
+        "dedicatedNodes": "Use dedicated nodes for processes",
+        "dedicatedNodesHelper": "Place tserver and master processes on separate nodes.",
+        "ebs": "EBS Type",
+        "instanceType": "Instance Type",
+        "k8NumCores": "Number of Cores",
+        "k8Memory": "Memory (Gib)",
+        "useSpotInstance": "Use Spot Instances",
+        "kmsConfig": "Key Management Service Config",
+        "kmsConfigPlaceHolder": "Select Configuration",
+        "provisionedIopsPerNode": "Provisioned IOPS / Node ",
+        "provisionedThroughputPerNode": "Provisioned Throughput / Node",
+        "ssd": "Storage Type (SSD)",
+        "useTimeSync": "Use {{provider}} Time Sync",
+        "useTimeSyncHelper": "Enable the {{provider}} Time Sync functionality for the DB servers.",
+        "volumeInfoPerNode": "Volume Info / Node",
+        "volumeSizeUnit": "GB",
+        "throughputUnit": "MB/s",
+        "k8VolumeSizeUnit": "Gib",
+        "cpuArch": "CPU Architecture",
+        "x86_64": "x86 (Intel)",
+        "aarch64": "AArch6 (ARM)",
+        "cpuArchNotSupported": "This CPU Architecture is not supported by current provider.",
+        "linuxVersion": "Linux Version",
+        "spotInstance": "{{cloudType}} Spot Instance",
+        "useAwsSpotInstance": "Use {{cloudType}} spot instances",
+        "clusterInstance": "Cluster Instance",
+        "tserver": "T-Server Instance",
+        "master": "Master Server Instance (Optional)",
+        "keepMasterTserverSame": "Keep master server instance settings same as T-Server instance settings.",
+        "cantChangeLater": "This CANNOT be changed after creation",
+        "masterNote": "<1>Note!</1> CPU Architecture, Linux version, {{ebs}} and {{cloudType}} Spot instance usage are global settings and can not be overridden. You can change these settings from the \"Default Instance Configuration\".",
+        "EBSVolume": {
+          "title": "EBS Volume Encryption"
         }
       },
       "databaseSettings": {
@@ -3851,7 +3887,18 @@
         "regionAZHelpText": "Enhance read scalability and availability with geographically distributed replicas. <a>Learn more</a>",
         "rrInstance": "Read Replica Instance",
         "primaryRRInstanceSame": "Keep read replica instance settings same as primary cluster instance settings.",
-        "primaryClusterInstSettings": "Primary Cluster Instance Settings"
+        "primaryClusterInstSettings": "Primary Cluster Instance Settings",
+        "kmsConfig": "Key Management Service Config",
+        "validation": {
+          "invalidArchitecture": "Invalid CPU Architecture",
+          "positiveNumber": "{{field}} must be a positive number",
+          "minValue": "{{field}} must be at least {{min}}",
+          "maxValue": "{{field}} must be at most {{max}}",
+          "invalidStorageClass": "Invalid storage class",
+          "invalidMountPoint": "Mount point must be a valid path starting with '/'",
+          "invalidStorageType": "Invalid storage type",
+          "required": "{{field}} is required"
+        }
       }
     }
   }

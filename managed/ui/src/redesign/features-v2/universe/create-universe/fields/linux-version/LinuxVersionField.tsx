@@ -113,7 +113,7 @@ export const LinuxVersionField = ({
   provider?: ProviderType;
 }) => {
   const { watch, control, setValue } = useFormContext<InstanceSettingProps>();
-  const { t } = useTranslation('translation', { keyPrefix: 'universeForm.instanceConfig' });
+  const { t } = useTranslation('translation', { keyPrefix: 'createUniverseV2.instanceSettings' });
 
   const cpuArch = watch(CPU_ARCH_FIELD);
   const fieldValue = watch(LINUX_VERSION_FIELD);

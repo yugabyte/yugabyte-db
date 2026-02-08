@@ -232,7 +232,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
       <Box display="flex" flexDirection="column">
         <Box display="flex">
           <Box>
-            <YBLabel>{t('universeForm.instanceConfig.volumeInfoPerNode')}</YBLabel>
+            <YBLabel>{t('createUniverseV2.instanceSettings.volumeInfoPerNode')}</YBLabel>
           </Box>
         </Box>
         <Box sx={{ gap: '16px', display: 'flex' }}>
@@ -288,8 +288,8 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
             })}
           >
             {provider?.code === CloudType.kubernetes
-              ? t('universeForm.instanceConfig.k8VolumeSizeUnit')
-              : t('universeForm.instanceConfig.volumeSizeUnit')}
+              ? t('createUniverseV2.instanceSettings.k8VolumeSizeUnit')
+              : t('createUniverseV2.instanceSettings.volumeSizeUnit')}
           </Box>
         </Box>
       </Box>
@@ -307,8 +307,8 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
             fullWidth
             label={
               provider?.code === CloudType.aws
-                ? t('universeForm.instanceConfig.ebs')
-                : t('universeForm.instanceConfig.ssd')
+                ? t('createUniverseV2.instanceSettings.ebs')
+                : t('createUniverseV2.instanceSettings.ssd')
             }
             disabled={disableStorageType || disabled}
             value={fieldValue?.storageType}
@@ -359,7 +359,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
         <Box flex={1}>
           <YBInput
             type="number"
-            label={t('universeForm.instanceConfig.provisionedIopsPerNode')}
+            label={t('createUniverseV2.instanceSettings.provisionedIopsPerNode')}
             fullWidth
             disabled={disableIops || disabled}
             slotProps={{
@@ -397,7 +397,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
       <Box display="flex" flexDirection="column" mt={2}>
         <Box display="flex">
           <Box>
-            <YBLabel>{t('universeForm.instanceConfig.provisionedThroughputPerNode')}</YBLabel>
+            <YBLabel>{t('createUniverseV2.instanceSettings.provisionedThroughputPerNode')}</YBLabel>
           </Box>
         </Box>
         <Box display="flex" width="100%">
@@ -429,7 +429,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
               marginBottom: 1
             })}
           >
-            {t('universeForm.instanceConfig.throughputUnit')}
+            {t('createUniverseV2.instanceSettings.throughputUnit')}
           </Box>
         </Box>
       </Box>

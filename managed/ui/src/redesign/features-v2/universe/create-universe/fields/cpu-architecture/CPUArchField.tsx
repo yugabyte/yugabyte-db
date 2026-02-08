@@ -22,7 +22,7 @@ const StyledSubText = styled(Typography)(({ theme }) => ({
 
 export const CPUArchField: FC<CPUArchFieldProps> = ({ disabled, supportedArchs }) => {
   const { control, watch, setValue } = useFormContext<InstanceSettingProps>();
-  const { t } = useTranslation('translation', { keyPrefix: 'universeForm.instanceConfig' });
+  const { t } = useTranslation('translation', { keyPrefix: 'createUniverseV2.instanceSettings' });
   const fieldValue = watch(CPU_ARCH_FIELD);
 
   const architectures = [

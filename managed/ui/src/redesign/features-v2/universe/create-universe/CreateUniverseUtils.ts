@@ -1,6 +1,6 @@
 import { TFunction } from 'i18next';
-import { find, has, keys, values } from 'lodash';
-import { NodeAvailabilityProps, Zone } from './steps/nodes-availability/dtos';
+import { find, keys, values } from 'lodash';
+import { NodeAvailabilityProps } from './steps/nodes-availability/dtos';
 import { createUniverseFormProps } from './CreateUniverseContext';
 import {
   FaultToleranceType,
@@ -15,7 +15,11 @@ import {
   PlacementRegion,
   UniverseCreateReqBody
 } from '../../../../v2/api/yugabyteDBAnywhereV2APIs.schemas';
-import { CloudType, DeviceInfo, RunTimeConfig } from '@app/redesign/features/universe/universe-form/utils/dto';
+import {
+  CloudType,
+  DeviceInfo,
+  RunTimeConfig
+} from '@app/redesign/features/universe/universe-form/utils/dto';
 import { Provider } from '@app/components/configRedesign/providerRedesign/types';
 import { FAULT_TOLERANCE_TYPE, REPLICATION_FACTOR } from './fields/FieldNames';
 import { RuntimeConfigKey } from '@app/redesign/helpers/constants';
@@ -38,10 +42,10 @@ export function getCreateUniverseSteps(t: TFunction, resilienceType?: Resilience
         },
         ...(resilienceType === ResilienceType.REGULAR
           ? [
-            {
-              title: t('nodesAndAvailabilityZone')
-            }
-          ]
+              {
+                title: t('nodesAndAvailabilityZone')
+              }
+            ]
           : [])
       ]
     },
@@ -277,20 +281,23 @@ export const mapCreateUniversePayload = (
             enable_exposing_service: 'UNEXPOSED',
             ...(proxySettings.enableProxyServer
               ? {
-                proxy_config: {
-                  http_proxy:
-                    proxySettings.enableProxyServer && proxySettings.webProxy
-                      ? `${proxySettings.webProxyServer}:${proxySettings.webProxyPort}`
+                  proxy_config: {
+                    http_proxy:
+                      proxySettings.enableProxyServer && proxySettings.webProxy
+                        ? `${proxySettings.webProxyServer}:${proxySettings.webProxyPort}`
+                        : '',
+                    https_proxy: proxySettings.secureWebProxy
+                      ? `${proxySettings.secureWebProxyServer}:${proxySettings.secureWebProxyPort}`
                       : '',
-                  https_proxy: proxySettings.secureWebProxy
-                    ? `${proxySettings.secureWebProxyServer}:${proxySettings.secureWebProxyPort}`
-                    : '',
-                  no_proxy_list: proxySettings.byPassProxyListValues ?? []
+                    no_proxy_list: proxySettings.byPassProxyListValues ?? []
+                  }
                 }
-              }
               : {})
           },
-          num_nodes: resilienceAndRegionsSettings.resilienceType === ResilienceType.SINGLE_NODE ? 1 : getNodeCount(nodesAvailabilitySettings.availabilityZones),
+          num_nodes:
+            resilienceAndRegionsSettings.resilienceType === ResilienceType.SINGLE_NODE
+              ? 1
+              : getNodeCount(nodesAvailabilitySettings.availabilityZones),
           node_spec: {
             ...getNodeSpec(formValues),
             dedicated_nodes: nodesAvailabilitySettings.useDedicatedNodes
@@ -342,12 +349,11 @@ export const getPlacementRegions = (
 ) => {
   const { replicationFactor, resilienceType } = resilienceAndRegionsSettings;
 
-  const azs = availabilityZones ?? assignRegionsAZNodeByReplicationFactor(resilienceAndRegionsSettings);
+  const azs =
+    availabilityZones ?? assignRegionsAZNodeByReplicationFactor(resilienceAndRegionsSettings);
 
   // For single node, replication factor should be 1 for the single AZ
-  if (
-    resilienceType === ResilienceType.SINGLE_NODE
-  ) {
+  if (resilienceType === ResilienceType.SINGLE_NODE) {
     const region = resilienceAndRegionsSettings.regions[0];
 
     if (!region) {
@@ -361,20 +367,23 @@ export const getPlacementRegions = (
         `AZ with code ${resilienceAndRegionsSettings.singleAvailabilityZone} not found in resilience and regions settings`
       );
     }
-    return [{
-      uuid: region.uuid,
-      name: region.name,
-      code: region.code,
-      az_list: [
-        {
-          uuid: az.uuid,
-          name: az!.name,
-          num_nodes_in_az: 1,
-          subnet: az!.subnet,
-          leader_affinity: true,
-          replication_factor: 1,
-        }]
-    }];
+    return [
+      {
+        uuid: region.uuid,
+        name: region.name,
+        code: region.code,
+        az_list: [
+          {
+            uuid: az.uuid,
+            name: az!.name,
+            num_nodes_in_az: 1,
+            subnet: az!.subnet,
+            leader_affinity: true,
+            replication_factor: 1
+          }
+        ]
+      }
+    ];
   }
 
   // Filter out AZs with 0 nodes first, then calculate replication factor distribution
@@ -385,12 +394,16 @@ export const getPlacementRegions = (
   });
 
   // Calculate total number of AZs with nodes across all regions
-  const totalAZsWithNodes = Object.values(azsWithNodes).reduce((sum, zones) => sum + zones.length, 0);
+  const totalAZsWithNodes = Object.values(azsWithNodes).reduce(
+    (sum, zones) => sum + zones.length,
+    0
+  );
 
   // Distribute replication factor across AZs that have nodes
   // Each AZ should get at least 1 replica if possible, then distribute remaining evenly
   // Ensure the sum of all AZ replication_factors equals the cluster replication_factor
-  const baseReplicasPerAZ = totalAZsWithNodes > 0 ? Math.floor(replicationFactor / totalAZsWithNodes) : 0;
+  const baseReplicasPerAZ =
+    totalAZsWithNodes > 0 ? Math.floor(replicationFactor / totalAZsWithNodes) : 0;
   const extraReplicas = totalAZsWithNodes > 0 ? replicationFactor % totalAZsWithNodes : 0;
 
   let replicaIndex = 0;
@@ -467,11 +480,16 @@ const mapGFlags = (
   return gflagsMap;
 };
 
-const fillNodeSpec = (deviceType?: string | null, deviceInfo?: DeviceInfo | null) => {
+const fillNodeSpec = (
+  deviceType?: string | null,
+  deviceInfo?: DeviceInfo | null,
+  enableEbsVolumeEncryption?: boolean,
+  ebsKmsConfigUUID?: string | null
+): ClusterNodeSpec => {
   if (!deviceInfo || !deviceType) {
     throw new Error('Instance settings are required to fill node spec');
   }
-  return {
+  const instanceObj: ClusterNodeSpec = {
     instance_type: deviceType,
     storage_spec: {
       num_volumes: 1,
@@ -479,9 +497,15 @@ const fillNodeSpec = (deviceType?: string | null, deviceInfo?: DeviceInfo | null
       storage_class: deviceInfo.storageClass!,
       volume_size: deviceInfo.numVolumes * deviceInfo.volumeSize!,
       disk_iops: deviceInfo.diskIops!,
-      throughput: deviceInfo.throughput!
+      throughput: deviceInfo.throughput!,
+      cloud_volume_encryption: {
+        enable_volume_encryption: enableEbsVolumeEncryption ?? false,
+        kms_config_uuid: enableEbsVolumeEncryption ? ebsKmsConfigUUID ?? '' : ''
+      }
     }
   };
+
+  return instanceObj;
 };
 
 export const getNodeSpec = (formContext: createUniverseFormProps): ClusterNodeSpec => {
@@ -490,14 +514,29 @@ export const getNodeSpec = (formContext: createUniverseFormProps): ClusterNodeSp
     throw new Error('Missing required form values to get node spec');
   }
   if (!nodesAvailabilitySettings.useDedicatedNodes) {
-    return fillNodeSpec(instanceSettings.instanceType, instanceSettings.deviceInfo);
+    return fillNodeSpec(
+      instanceSettings.instanceType,
+      instanceSettings.deviceInfo,
+      instanceSettings.enableEbsVolumeEncryption,
+      instanceSettings.ebsKmsConfigUUID
+    );
   }
 
   if (nodesAvailabilitySettings.useDedicatedNodes) {
     if (instanceSettings.keepMasterTserverSame) {
       return {
-        master: fillNodeSpec(instanceSettings.instanceType, instanceSettings.deviceInfo),
-        tserver: fillNodeSpec(instanceSettings.instanceType, instanceSettings.deviceInfo)
+        master: fillNodeSpec(
+          instanceSettings.instanceType,
+          instanceSettings.deviceInfo,
+          instanceSettings.enableEbsVolumeEncryption,
+          instanceSettings.ebsKmsConfigUUID
+        ),
+        tserver: fillNodeSpec(
+          instanceSettings.instanceType,
+          instanceSettings.deviceInfo,
+          instanceSettings.enableEbsVolumeEncryption,
+          instanceSettings.ebsKmsConfigUUID
+        )
       };
     }
     if (generalSettings?.cloud === CloudType.kubernetes) {
@@ -514,8 +553,18 @@ export const getNodeSpec = (formContext: createUniverseFormProps): ClusterNodeSp
     }
   }
   return {
-    master: fillNodeSpec(instanceSettings.masterInstanceType, instanceSettings.masterDeviceInfo),
-    tserver: fillNodeSpec(instanceSettings.instanceType, instanceSettings.deviceInfo)
+    master: fillNodeSpec(
+      instanceSettings.masterInstanceType,
+      instanceSettings.masterDeviceInfo,
+      instanceSettings.enableEbsVolumeEncryption,
+      instanceSettings.ebsKmsConfigUUID
+    ),
+    tserver: fillNodeSpec(
+      instanceSettings.instanceType,
+      instanceSettings.deviceInfo,
+      instanceSettings.enableEbsVolumeEncryption,
+      instanceSettings.ebsKmsConfigUUID
+    )
   };
 };
 
@@ -551,7 +600,9 @@ export const computeFaultToleranceTypeFromProvider = (
 };
 
 export const isV2CreateEditUniverseEnabled = (runtimeConfigs: RunTimeConfig) => {
-  return runtimeConfigs?.configEntries?.find(
-    (config) => config.key === RuntimeConfigKey.ENABLE_V2_EDIT_UNIVERSE_UI
-  )?.value === 'true';
+  return (
+    runtimeConfigs?.configEntries?.find(
+      (config) => config.key === RuntimeConfigKey.ENABLE_V2_EDIT_UNIVERSE_UI
+    )?.value === 'true'
+  );
 };

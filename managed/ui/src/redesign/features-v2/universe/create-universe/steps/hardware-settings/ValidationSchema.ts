@@ -12,20 +12,15 @@ export const InstanceSettingsValidationSchema = (
   return Yup.object().shape({
     // CPU Architecture validation
     arch: Yup.string()
-      .oneOf(
-        Object.values(ArchitectureType),
-        t('createUniverseV2.instanceSettings.validation.invalidArchitecture')
-      )
-      .required(
-        t('createUniverseV2.instanceSettings.validation.required', { field: 'CPU Architecture' })
-      ),
+      .oneOf(Object.values(ArchitectureType), t('validation.invalidArchitecture'))
+      .required(t('validation.required', { field: 'CPU Architecture' })),
 
     // Image Bundle UUID validation
     imageBundleUUID: Yup.string()
       .nullable()
       .test(
         'image-bundle-required',
-        t('createUniverseV2.instanceSettings.validation.required', { field: 'Linux Version' }),
+        t('validation.required', { field: 'Linux Version' }),
         function (value) {
           // Image bundle is required when OS patching is enabled
           const { parent } = this;
@@ -39,16 +34,14 @@ export const InstanceSettingsValidationSchema = (
       ),
 
     // Spot Instance validation
-    useSpotInstance: Yup.boolean().required(
-      t('createUniverseV2.instanceSettings.validation.required', { field: 'Spot Instance' })
-    ),
+    useSpotInstance: Yup.boolean().required(t('validation.required', { field: 'Spot Instance' })),
 
     // Instance Type validation
     instanceType: Yup.string()
       .nullable()
       .test(
         'instance-type-required',
-        t('createUniverseV2.instanceSettings.validation.required', { field: 'Instance Type' }),
+        t('validation.required', { field: 'Instance Type' }),
         function (value) {
           const isK8s = provider === 'kubernetes';
 
@@ -65,7 +58,7 @@ export const InstanceSettingsValidationSchema = (
       .nullable()
       .test(
         'master-instance-type-required',
-        t('createUniverseV2.instanceSettings.validation.required', {
+        t('validation.required', {
           field: 'Master Instance Type'
         }),
         function (value) {
@@ -86,26 +79,37 @@ export const InstanceSettingsValidationSchema = (
     // Device Info validation
     deviceInfo: Yup.object()
       .nullable()
-      .test(
-        'device-info-required',
-        t('createUniverseV2.instanceSettings.validation.required', { field: 'Device Info' }),
-        function (value) {
-          const isK8s = provider === 'kubernetes';
+      .test('device-info-required', t('validation.required', { field: 'Device Info' }), function (
+        value
+      ) {
+        const isK8s = provider === 'kubernetes';
 
-          // Device info is required for non-K8s or K8s without custom resources
-          if (!isK8s || (isK8s && !useK8CustomResources)) {
-            return value !== null && value !== undefined;
-          }
-          return true;
+        // Device info is required for non-K8s or K8s without custom resources
+        if (!isK8s || (isK8s && !useK8CustomResources)) {
+          return value !== null && value !== undefined;
         }
-      ),
+        return true;
+      })
+      .test('device-info-shape', t('validation.required', { field: 'Device Info' }), function (
+        value
+      ) {
+        if (value == null) return true;
+        try {
+          DeviceInfoValidationSchema(t).validateSync(value, { abortEarly: false });
+          return true;
+        } catch (err: any) {
+          const message =
+            err?.errors?.[0] ?? err?.message ?? t('validation.required', { field: 'Device Info' });
+          return this.createError({ message });
+        }
+      }),
 
-    // Master Device Info validation
+    // Master Device Info validation - required + shape (same as deviceInfo)
     masterDeviceInfo: Yup.object()
       .nullable()
       .test(
         'master-device-info-required',
-        t('createUniverseV2.instanceSettings.validation.required', { field: 'Master Device Info' }),
+        t('validation.required', { field: 'Master Device Info' }),
         function (value) {
           const { parent } = this;
           const keepMasterTserverSame = parent?.keepMasterTserverSame;
@@ -119,6 +123,23 @@ export const InstanceSettingsValidationSchema = (
           }
           return true;
         }
+      )
+      .test(
+        'device-info-shape',
+        t('validation.required', { field: 'Master Device Info' }),
+        function (value) {
+          if (value == null) return true;
+          try {
+            DeviceInfoValidationSchema(t).validateSync(value, { abortEarly: false });
+            return true;
+          } catch (err: any) {
+            const message =
+              err?.errors?.[0] ??
+              err?.message ??
+              t('validation.required', { field: 'Master Device Info' });
+            return this.createError({ message });
+          }
+        }
       ),
 
     // K8S Node Resource Spec validation for TServer
@@ -126,7 +147,7 @@ export const InstanceSettingsValidationSchema = (
       .nullable()
       .test(
         'tserver-k8s-node-spec-required',
-        t('createUniverseV2.instanceSettings.validation.required', {
+        t('validation.required', {
           field: 'TServer K8S Node Resource Spec'
         }),
         function (value) {
@@ -145,7 +166,7 @@ export const InstanceSettingsValidationSchema = (
       .nullable()
       .test(
         'master-k8s-node-spec-required',
-        t('createUniverseV2.instanceSettings.validation.required', {
+        t('validation.required', {
           field: 'Master K8S Node Resource Spec'
         }),
         function (value) {
@@ -162,7 +183,29 @@ export const InstanceSettingsValidationSchema = (
       ),
 
     // Keep Master TServer Same validation
-    keepMasterTserverSame: Yup.boolean().nullable().default(false)
+    keepMasterTserverSame: Yup.boolean().nullable().default(false),
+
+    // EBS Volume Encryption toggle (optional)
+    enableEbsVolumeEncryption: Yup.boolean().nullable().default(false),
+
+    // EBS KMS Config - required when EBS volume encryption is enabled
+    ebsKmsConfigUUID: Yup.string()
+      .nullable()
+      .test(
+        'ebs-kms-config-required',
+        t('validation.required', {
+          field: t('kmsConfig')
+        }),
+        function (value) {
+          const { parent } = this;
+          const enableEbsVolumeEncryption = parent?.enableEbsVolumeEncryption;
+
+          if (enableEbsVolumeEncryption) {
+            return value !== null && value !== undefined && value !== '';
+          }
+          return true;
+        }
+      )
   });
 };
 
@@ -170,29 +213,20 @@ export const InstanceSettingsValidationSchema = (
 export const DeviceInfoValidationSchema = (t: TFunction) => {
   return Yup.object().shape({
     volumeSize: Yup.number()
-      .positive(
-        t('createUniverseV2.instanceSettings.validation.positiveNumber', { field: 'Volume Size' })
-      )
-      .required(
-        t('createUniverseV2.instanceSettings.validation.required', { field: 'Volume Size' })
-      )
-      .min(
-        1,
-        t('createUniverseV2.instanceSettings.validation.minValue', { field: 'Volume Size', min: 1 })
-      ),
+      .positive(t('validation.positiveNumber', { field: 'Volume Size' }))
+      .required(t('validation.required', { field: 'Volume Size' }))
+      .min(1, t('validation.minValue', { field: 'Volume Size', min: 1 })),
 
     numVolumes: Yup.number()
       .positive(
-        t('createUniverseV2.instanceSettings.validation.positiveNumber', {
+        t('validation.positiveNumber', {
           field: 'Number of Volumes'
         })
       )
-      .required(
-        t('createUniverseV2.instanceSettings.validation.required', { field: 'Number of Volumes' })
-      )
+      .required(t('validation.required', { field: 'Number of Volumes' }))
       .min(
         1,
-        t('createUniverseV2.instanceSettings.validation.minValue', {
+        t('validation.minValue', {
           field: 'Number of Volumes',
           min: 1
         })
@@ -203,15 +237,11 @@ export const DeviceInfoValidationSchema = (t: TFunction) => {
       .when('storageType', {
         is: StorageType.IO1,
         then: Yup.number()
-          .positive(
-            t('createUniverseV2.instanceSettings.validation.positiveNumber', { field: 'Disk IOPS' })
-          )
-          .required(
-            t('createUniverseV2.instanceSettings.validation.required', { field: 'Disk IOPS' })
-          )
+          .positive(t('validation.positiveNumber', { field: 'Disk IOPS' }))
+          .required(t('validation.required', { field: 'Disk IOPS' }))
           .min(
             100,
-            t('createUniverseV2.instanceSettings.validation.minValue', {
+            t('validation.minValue', {
               field: 'Disk IOPS',
               min: 100
             })
@@ -224,55 +254,39 @@ export const DeviceInfoValidationSchema = (t: TFunction) => {
         is: StorageType.GP3,
         then: Yup.number()
           .positive(
-            t('createUniverseV2.instanceSettings.validation.positiveNumber', {
+            t('validation.positiveNumber', {
               field: 'Throughput'
             })
           )
-          .required(
-            t('createUniverseV2.instanceSettings.validation.required', { field: 'Throughput' })
-          )
+          .required(t('validation.required', { field: 'Throughput' }))
       }),
 
     storageClass: Yup.string()
-      .oneOf(['standard'], t('createUniverseV2.instanceSettings.validation.invalidStorageClass'))
-      .required(
-        t('createUniverseV2.instanceSettings.validation.required', { field: 'Storage Class' })
-      ),
+      .oneOf(['standard'], t('validation.invalidStorageClass'))
+      .required(t('validation.required', { field: 'Storage Class' })),
 
     mountPoints: Yup.string()
       .nullable()
-      .matches(
-        /^\/[a-zA-Z0-9/_-]+$/,
-        t('createUniverseV2.instanceSettings.validation.invalidMountPoint')
-      ),
+      .matches(/^\/[a-zA-Z0-9/_-]+$/, t('validation.invalidMountPoint')),
 
     storageType: Yup.string()
       .nullable()
-      .oneOf(
-        Object.values(StorageType),
-        t('createUniverseV2.instanceSettings.validation.invalidStorageType')
-      )
+      .oneOf(Object.values(StorageType), t('validation.invalidStorageType'))
   });
 };
 
 export const K8NodeSpecValidationSchema = (t: TFunction) => {
   return Yup.object().shape({
     memoryGib: Yup.number()
-      .positive(
-        t('createUniverseV2.instanceSettings.validation.positiveNumber', { field: 'Memory (GiB)' })
-      )
-      .required(
-        t('createUniverseV2.instanceSettings.validation.required', { field: 'Memory (GiB)' })
-      ),
+      .positive(t('validation.positiveNumber', { field: 'Memory (GiB)' }))
+      .required(t('validation.required', { field: 'Memory (GiB)' })),
 
     cpuCoreCount: Yup.number()
       .positive(
-        t('createUniverseV2.instanceSettings.validation.positiveNumber', {
+        t('validation.positiveNumber', {
           field: 'CPU Core Count'
         })
       )
-      .required(
-        t('createUniverseV2.instanceSettings.validation.required', { field: 'CPU Core Count' })
-      )
+      .required(t('validation.required', { field: 'CPU Core Count' }))
   });
 };

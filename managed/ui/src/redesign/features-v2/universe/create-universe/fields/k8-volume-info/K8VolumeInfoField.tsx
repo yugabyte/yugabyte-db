@@ -35,7 +35,7 @@ export const K8VolumeInfoField = ({
   provider
 }: K8VolumeInfoFieldProps): ReactElement => {
   const { watch, control, setValue } = useFormContext<InstanceSettingProps>();
-  const { t } = useTranslation('translation', { keyPrefix: 'universeForm.instanceConfig' });
+  const { t } = useTranslation('translation', { keyPrefix: 'createUniverseV2.instanceSettings' });
 
   const nodeTypeTag = isMaster ? NodeType.Master : NodeType.TServer;
   const fieldValue = isMaster ? watch(MASTER_DEVICE_INFO_FIELD) : watch(DEVICE_INFO_FIELD);
@@ -72,8 +72,8 @@ export const K8VolumeInfoField = ({
       name={UPDATE_FIELD}
       control={control}
       rules={{
-        required: t('universeForm.validation.required', {
-          field: t('universeForm.instanceConfig.instanceType')
+        required: t('createUniverseV2.validation.required', {
+          field: t('createUniverseV2.instanceSettings.instanceType')
         }) as string
       }}
       render={() => {
