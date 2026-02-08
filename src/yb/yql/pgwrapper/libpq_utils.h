@@ -349,10 +349,6 @@ class PGConn {
     CopyPut(value.c_str(), value.length());
   }
 
-  PGconn* get() {
-    return impl_.get();
-  }
-
  private:
   struct CopyData;
 

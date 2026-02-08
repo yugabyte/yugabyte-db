@@ -72,6 +72,7 @@
 
 #include "yb/yql/pggate/pggate_flags.h"
 
+#include "yb/yql/pgwrapper/libpq_test_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
 
@@ -151,25 +152,17 @@ METRIC_DECLARE_gauge_uint64(wal_replayable_applied_transactions);
 namespace yb::pgwrapper {
 namespace {
 
-Result<int64_t> GetCatalogVersion(PGConn* conn) {
-  if (FLAGS_ysql_enable_db_catalog_version_mode) {
-    const auto db_oid = VERIFY_RESULT(conn->FetchRow<PGOid>(Format(
-        "SELECT oid FROM pg_database WHERE datname = '$0'", PQdb(conn->get()))));
-    return conn->FetchRow<PGUint64>(
-        Format("SELECT current_version FROM pg_yb_catalog_version where db_oid = $0", db_oid));
-  }
-  return conn->FetchRow<PGUint64>("SELECT current_version FROM pg_yb_catalog_version");
-}
-
 Result<bool> IsCatalogVersionChangedDuringDdl(PGConn* conn, const std::string& ddl_query) {
-  const auto initial_version = VERIFY_RESULT(GetCatalogVersion(conn));
+  auto version_getter =
+      [conn]() { return GetCatalogVersion(conn, FLAGS_ysql_enable_db_catalog_version_mode); };
+  const auto initial_version = VERIFY_RESULT(version_getter());
   RETURN_NOT_OK(conn->Execute(ddl_query));
-  return initial_version != VERIFY_RESULT(GetCatalogVersion(conn));
+  return initial_version != VERIFY_RESULT(version_getter());
 }
 
 Status IsReplicaIdentityPopulatedInTabletPeers(
-    PgReplicaIdentity expected_replica_identity, std::vector<tablet::TabletPeerPtr> tablet_peers,
-    std::string table_id) {
+    PgReplicaIdentity expected_replica_identity,
+    const std::vector<tablet::TabletPeerPtr>& tablet_peers, const std::string& table_id) {
   for (const auto& peer : tablet_peers) {
     auto replica_identity =
         peer->tablet_metadata()->schema(table_id)->table_properties().replica_identity();

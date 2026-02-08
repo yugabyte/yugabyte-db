@@ -22,6 +22,7 @@
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/ysql_binary_runner.h"
 #include "yb/yql/pgwrapper/libpq_test_base.h"
+#include "yb/yql/pgwrapper/libpq_test_utils.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
 
 using std::string;
@@ -72,13 +73,6 @@ class PgCatalogVersionTest : public LibPqTestBase {
 
   bool IsTransactionalDdlEnabled() const {
     return ANNOTATE_UNPROTECTED_READ(FLAGS_ysql_yb_ddl_transaction_block_enabled);
-  }
-
-  Result<int64_t> GetCatalogVersion(PGConn* conn) {
-    const auto db_oid = VERIFY_RESULT(conn->FetchRow<PGOid>(Format(
-        "SELECT oid FROM pg_database WHERE datname = '$0'", PQdb(conn->get()))));
-    return conn->FetchRow<PGUint64>(
-        Format("SELECT current_version FROM pg_yb_catalog_version where db_oid = $0", db_oid));
   }
 
   // Prepare the table pg_yb_catalog_version according to 'per_database_mode':
