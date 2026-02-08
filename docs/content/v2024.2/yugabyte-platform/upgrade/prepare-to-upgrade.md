@@ -80,4 +80,4 @@ Manual schema change mode will be deprecated in future versions of YugabyteDB An
 
 For universes running v2024.2, Semi-automatic mode is recommended.
 
-When possible, you should delete existing Manual DR configurations and re-create them using Semi-automatic mode to reduce the operational burden of DDL changes. Refer to [Schema change modes](../../back-up-restore-universes/disaster-recovery/#schema-change-modes).
+When possible, you should delete existing Manual DR configurations and re-create them using Semi-automatic mode to reduce the operational burden of DDL changes. You can do this any time after upgrading. Refer to [Schema change modes](../../back-up-restore-universes/disaster-recovery/#schema-change-modes).
