@@ -167,7 +167,6 @@ hypo_newIndex(Oid relid, char *accessMethod, int nkeycolumns, int ninccolumns,
 	entry->relam = oid;
 
 #if PG_VERSION_NUM >= 90600
-
 	/*
 	 * Since 9.6, AM informations are available through an amhandler function,
 	 * returning an IndexAmRoutine containing what's needed.
@@ -188,8 +187,8 @@ hypo_newIndex(Oid relid, char *accessMethod, int nkeycolumns, int ninccolumns,
 #if PG_VERSION_NUM >= 110000
 	entry->amcanparallel = amroutine->amcanparallel;
 	entry->amcaninclude = amroutine->amcaninclude;
-#endif
-#else
+#endif			/* pg 11+ */
+#else			/* pg 9.6- */
 	/* Up to 9.5, all information is available in the pg_am tuple */
 	entry->amcostestimate = ((Form_pg_am) GETSTRUCT(tuple))->amcostestimate;
 	entry->amcanreturn = ((Form_pg_am) GETSTRUCT(tuple))->amcanreturn;
@@ -203,7 +202,7 @@ hypo_newIndex(Oid relid, char *accessMethod, int nkeycolumns, int ninccolumns,
 	entry->amcanmulticol = ((Form_pg_am) GETSTRUCT(tuple))->amcanmulticol;
 	amoptions = ((Form_pg_am) GETSTRUCT(tuple))->amoptions;
 	entry->amcanorder = ((Form_pg_am) GETSTRUCT(tuple))->amcanorder;
-#endif
+#endif			/* pg 9.6- */
 
 	ReleaseSysCache(tuple);
 	entry->indexname = palloc0(NAMEDATALEN);
@@ -725,7 +724,6 @@ hypo_index_store_parsetree(IndexStmt *node, const char *queryString)
 						 errmsg("hypopg: index creation on system columns is not supported")));
 		}
 
-
 #if PG_VERSION_NUM >= 110000
 		attn = nkeycolumns;
 		foreach(lc, node->indexIncludingParams)
@@ -794,7 +792,7 @@ hypo_index_store_parsetree(IndexStmt *node, const char *queryString)
 			attn++;
 		}
 		Assert(attn == (nkeycolumns + ninccolumns));
-#endif
+#endif			/* pg 11+ */
 
 		/*
 		 * Also check for system columns used in expressions or predicates.
@@ -1556,7 +1554,7 @@ hypopg_get_indexdef(PG_FUNCTION_ARGS)
 		}
 		appendStringInfo(&buf, ")");
 	}
-#endif
+#endif			/* pg 11+ */
 
 	if (entry->options)
 	{
@@ -1777,7 +1775,7 @@ hypo_hideIndexes(RelOptInfo *rel)
 			else
 				prev = lc;
 		}
-#endif
+#endif			/* pg 13- */
 	}
 }
 
@@ -2051,7 +2049,7 @@ hypo_estimate_index(hypoIndex * entry, RelOptInfo *rel)
 
 		entry->pages += data_size;
 	}
-#endif
+#endif			/* pg 9.5+ */
 #if PG_VERSION_NUM >= 90600
 	else if (entry->relam == BLOOM_AM_OID)
 	{
@@ -2181,7 +2179,7 @@ hypo_estimate_index(hypoIndex * entry, RelOptInfo *rel)
 	/* Simply add all computed pages, plus one extra block for the meta page */
 	entry->pages = num_buckets + num_overflow + num_bitmap + 1;
 	}
-#endif
+#endif			/* pg 10+ */
 	else
 	{
 		/* we shouldn't raise this error */
@@ -2374,5 +2372,5 @@ hypo_discover_am(char *amname, Oid oid)
 	/* Is it the bloom access method? */
 	if (strcmp(amname, "bloom") == 0)
 		BLOOM_AM_OID = oid;
-#endif
+#endif			/* pg9.6+ */
 }
