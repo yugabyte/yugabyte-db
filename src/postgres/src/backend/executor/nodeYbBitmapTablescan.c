@@ -280,7 +280,7 @@ CreateYbBitmapTableScanDesc(YbBitmapTableScanState *scanstate)
 						  scanstate->aggrefs /* aggrefs */ ,
 						  0 /* distinct_prefixlen */ ,
 						  &scanstate->ss.ps.state->yb_exec_params,
-						  true /* is_internal_scan */ ,
+						  false /* is_internal_scan */ ,
 						  false /* fetch_ybctids_only */ );
 
 	if (yb_pushdown)
