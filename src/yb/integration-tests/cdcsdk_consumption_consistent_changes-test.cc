@@ -5561,6 +5561,71 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestUnackRecordsPolledFromHiddenT
       std::nullopt /* expected_unqualified_table_ids*/, true /* include_catalog_tables */);
 }
 
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestDDLOnTableWithoutPrimaryKey) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_cdcsdk_stream_tables_without_primary_key) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_update_restart_time_interval_secs) = 0;
+  // ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_dynamic_table_support) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
+      true;
+
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, false /* colocated */,
+      true /* populate_safepoint_record */));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto table_without_pk = ASSERT_RESULT(CreateTable(
+      &test_cluster_, kNamespaceName, "test_table", 1 /* num_tablets */,
+      false /* add_primary_key */));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table_without_pk, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  ASSERT_OK(InitVirtualWAL(
+      stream_id, {table_without_pk.table_id()}, kVWALSessionId1, nullptr /* slot_hash_range */,
+      true /* include_oid_to_relfilenode */));
+
+  ASSERT_OK(WriteRowsHelper(0, 1, &test_cluster_, true, 2, table_without_pk.table_name().c_str()));
+  auto get_consistent_changes_resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {table_without_pk.table_id()}, 1 /* expected_dml_records */,
+      false /* init_virtual_wal */, kVWALSessionId1));
+  ASSERT_EQ(get_consistent_changes_resp.records.size(), 3);
+
+  // Add the primary key contraint
+  ASSERT_OK(
+      conn.ExecuteFormat("ALTER TABLE $0 ADD PRIMARY KEY (key)", table_without_pk.table_name()));
+  auto table_with_pk = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test_table"));
+  ASSERT_OK(test_client()->GetTablets(table_with_pk, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  ASSERT_OK(PollTillRestartTimeExceedsTableHideTime(stream_id, table_without_pk, table_with_pk));
+
+  ASSERT_OK(WriteRowsHelper(1, 2, &test_cluster_, true, 2, table_with_pk.table_name().c_str()));
+  get_consistent_changes_resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {table_with_pk.table_id()}, 1 /* expected_dml_records */,
+      false /* init_virtual_wal */, kVWALSessionId1));
+  ASSERT_EQ(get_consistent_changes_resp.records.size(), 3);
+
+  // Removing the primary key contraint
+  ASSERT_OK(
+      conn.ExecuteFormat("ALTER TABLE $0 DROP CONSTRAINT $0_pkey", table_with_pk.table_name()));
+  auto table_with_dropped_pk =
+      ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test_table"));
+  ASSERT_OK(test_client()->GetTablets(table_with_dropped_pk, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  ASSERT_OK(
+      PollTillRestartTimeExceedsTableHideTime(stream_id, table_with_pk, table_with_dropped_pk));
+
+  ASSERT_OK(
+      WriteRowsHelper(2, 3, &test_cluster_, true, 2, table_with_dropped_pk.table_name().c_str()));
+  get_consistent_changes_resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {table_with_dropped_pk.table_id()}, 1 /* expected_dml_records */,
+      false /* init_virtual_wal */, kVWALSessionId1));
+  ASSERT_EQ(get_consistent_changes_resp.records.size(), 3);
+}
+
 TEST_F(
     CDCSDKConsumptionConsistentChangesTest,
     TestSplitParentTabletAndHiddenTableGetsPolledAndDeleted) {
