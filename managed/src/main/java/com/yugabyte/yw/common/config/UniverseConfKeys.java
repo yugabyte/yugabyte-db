@@ -1803,4 +1803,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Enable the new Edit Universe V2 UI for editing/viewing universe configurations",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+
+  // Node Script API configs (Internal)
+  public static final ConfKeyInfo<Boolean> nodeScriptEnabled =
+      new ConfKeyInfo<>(
+          "yb.node_script.enabled",
+          ScopeType.UNIVERSE,
+          "Enable All Nodes Script APIs",
+          "Enables the all node script APIs for this universe",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }
