@@ -3837,12 +3837,13 @@ ybcBuildScanPlanForIndexBuild(Relation relation, IndexInfo *indexInfo)
 	int			i;
 	int			idx;
 	int			resno = 1;
-	/* Use varno=1 since this is always scanning the base relation.
+	/*
+	 * Use varno=1 since this is always scanning the base relation.
 	 * Concurrent index creation in postgres is restricted to one index
 	 * per table/statement (unlike the non-concurrent index creation process).
 	 * As a result, we're guaranteed that only one table is involved in the process,
 	 * and said table is opened for inspection first, leading to it being varno=1.
-	*/
+	 */
 	const Index varno = 1;
 
 	/* This function is only for Yugabyte relations */

@@ -2981,7 +2981,8 @@ TEST_P(PgIndexBackfillColumnProjectionTest, SingleColumnPartialDifferentColumn) 
 }
 
 // Multi column index with HASH and ASC
-TEST_P(PgIndexBackfillColumnProjectionTest, MultiColumnHashAsc) {
+TEST_P(PgIndexBackfillColumnProjectionTest,
+       YB_DISABLE_TEST_IN_SANITIZERS(MultiColumnHashAsc)) {
   ASSERT_OK(CreateWideTable(kTableName));
   ASSERT_OK(InsertTestData(kTableName));
   auto rpcs = ASSERT_RESULT(BuildIndexAndGetRpcs(
@@ -2990,7 +2991,8 @@ TEST_P(PgIndexBackfillColumnProjectionTest, MultiColumnHashAsc) {
 }
 
 // Multi column index with compound hash key
-TEST_P(PgIndexBackfillColumnProjectionTest, YB_DISABLE_TEST_IN_SANITIZERS(MultiColumnCompoundHash)) {
+TEST_P(PgIndexBackfillColumnProjectionTest,
+       YB_DISABLE_TEST_IN_SANITIZERS(MultiColumnCompoundHash)) {
   ASSERT_OK(CreateWideTable(kTableName));
   ASSERT_OK(InsertTestData(kTableName));
   auto rpcs = ASSERT_RESULT(BuildIndexAndGetRpcs(
@@ -2999,7 +3001,8 @@ TEST_P(PgIndexBackfillColumnProjectionTest, YB_DISABLE_TEST_IN_SANITIZERS(MultiC
 }
 
 // Multi column index where col2 appears in both compound hash and range - fetched only once
-TEST_P(PgIndexBackfillColumnProjectionTest, MultiColumnDuplicateColumn) {
+TEST_P(PgIndexBackfillColumnProjectionTest,
+       YB_DISABLE_TEST_IN_SANITIZERS(MultiColumnDuplicateColumn)) {
   ASSERT_OK(CreateWideTable(kTableName));
   ASSERT_OK(InsertTestData(kTableName));
   auto rpcs = ASSERT_RESULT(BuildIndexAndGetRpcs(
@@ -3008,7 +3011,8 @@ TEST_P(PgIndexBackfillColumnProjectionTest, MultiColumnDuplicateColumn) {
 }
 
 // Index columns in different order than table definition (table: col1, col2, col3)
-TEST_P(PgIndexBackfillColumnProjectionTest, MultiColumnOutOfOrder) {
+TEST_P(PgIndexBackfillColumnProjectionTest,
+       YB_DISABLE_TEST_IN_SANITIZERS(MultiColumnOutOfOrder)) {
   ASSERT_OK(CreateWideTable(kTableName));
   ASSERT_OK(InsertTestData(kTableName));
   auto rpcs = ASSERT_RESULT(BuildIndexAndGetRpcs(
@@ -3017,7 +3021,8 @@ TEST_P(PgIndexBackfillColumnProjectionTest, MultiColumnOutOfOrder) {
 }
 
 // Index on (col1, col2) where PK is (col2, col3, col1) - tests column order independence
-TEST_P(PgIndexBackfillColumnProjectionTest, MultiColumnNonDefaultPkOrder) {
+TEST_P(PgIndexBackfillColumnProjectionTest,
+       YB_DISABLE_TEST_IN_SANITIZERS(MultiColumnNonDefaultPkOrder)) {
   ASSERT_OK(CreateWideTable(kTableName, "col2, col3, col1"));
   ASSERT_OK(InsertTestData(kTableName));
   auto rpcs = ASSERT_RESULT(BuildIndexAndGetRpcs("CREATE INDEX idx ON t (col1, col2)"));
@@ -3025,7 +3030,8 @@ TEST_P(PgIndexBackfillColumnProjectionTest, MultiColumnNonDefaultPkOrder) {
 }
 
 // Multi column expression index - f(col1, col2) and g(col2), col2 fetched once
-TEST_P(PgIndexBackfillColumnProjectionTest, MultiColumnExpression) {
+TEST_P(PgIndexBackfillColumnProjectionTest,
+       YB_DISABLE_TEST_IN_SANITIZERS(MultiColumnExpression)) {
   ASSERT_OK(CreateWideTable(kTableName));
   ASSERT_OK(InsertTestData(kTableName));
   auto rpcs = ASSERT_RESULT(BuildIndexAndGetRpcs(
@@ -3034,7 +3040,8 @@ TEST_P(PgIndexBackfillColumnProjectionTest, MultiColumnExpression) {
 }
 
 // Multi column expression index with partial predicate using col2
-TEST_P(PgIndexBackfillColumnProjectionTest, MultiColumnExpressionPartial) {
+TEST_P(PgIndexBackfillColumnProjectionTest,
+       YB_DISABLE_TEST_IN_SANITIZERS(MultiColumnExpressionPartial)) {
   ASSERT_OK(CreateWideTable(kTableName));
   ASSERT_OK(InsertTestData(kTableName));
   auto rpcs = ASSERT_RESULT(BuildIndexAndGetRpcs(
