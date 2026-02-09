@@ -5307,21 +5307,14 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 		return false;
 	}
 
-	if (IsYBReadCommitted())
-	{
-		if (YBGetDdlNestingLevel() != 0)
-		{
-			const char *retry_err = ("query layer retries aren't supported "
-									 "for DDLs inside a read committed "
-									 "isolation transaction block");
-
-			edata->message = psprintf("%s (%s)", edata->message, retry_err);
-			if (yb_debug_log_internal_restarts)
-				elog(LOG, "%s", retry_err);
-			return false;
-		}
-	}
-	else if (!(is_read || is_dml))
+	/*
+	 * pg_client_session rejects read restarts in DDL mode.
+	 * Retrying in that case is not only wasteful but also results in a non-retryable error
+	 * instead of the expected read restart error. For that reason, reject read restarts
+	 * for non DML statements.
+	 * However, allow retries on conflict errors in read committed isolation.
+	 */
+	if ((!IsYBReadCommitted() || is_read_restart_error) && !(is_read || is_dml))
 	{
 		/*
 		 * if !read committed, we only support retries with
