@@ -3837,15 +3837,20 @@ ybcBuildScanPlanForIndexBuild(Relation relation, IndexInfo *indexInfo)
 	int			i;
 	int			idx;
 	int			resno = 1;
-	/* Use varno=1 since this is always scanning the base relation */
+	/* Use varno=1 since this is always scanning the base relation.
+	 * Concurrent index creation in postgres is restricted to one index
+	 * per table/statement (unlike the non-concurrent index creation process).
+	 * As a result, we're guaranteed that only one table is involved in the process,
+	 * and said table is opened for inspection first, leading to it being varno=1.
+	*/
 	const Index varno = 1;
 
-	/* This function is only for YugaByte relations */
+	/* This function is only for Yugabyte relations */
 	Assert(IsYBRelation(relation));
 
 	/*
 	 * Use YbAttnumBmsState for bitmapset operations. This handles the
-	 * min_attr offset correctly for YugaByte relations which may have
+	 * min_attr offset correctly for Yugabyte relations which may have
 	 * different system columns than standard Postgres relations.
 	 * Initialize at declaration since min_attr is const.
 	 */
@@ -3854,8 +3859,6 @@ ybcBuildScanPlanForIndexBuild(Relation relation, IndexInfo *indexInfo)
 	/*
 	 * Always need ybctid for index entry construction. Add it directly to
 	 * targetlist since it's the only system column allowed in indexes.
-	 * Other system columns (like ctid) are managed by the database and can
-	 * change unpredictably, so they cannot be indexed.
 	 */
 	ybctid_var = makeVar(varno,
 						 YBTupleIdAttributeNumber,
@@ -3982,7 +3985,7 @@ ybc_heap_beginscan_for_index_build(Relation relation,
 						  NULL,		/* rel_pushdown */
 						  NULL,		/* idx_pushdown */
 						  NIL,		/* aggrefs */
-						  0,		  /* distinct_prefixlen */
+						  0,      /* distinct_prefixlen */
 						  NULL,		/* exec_params */
 						  false,	/* is_internal_scan */
 						  false);	/* fetch_ybctids_only */

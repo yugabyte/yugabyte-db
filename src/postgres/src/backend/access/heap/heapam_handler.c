@@ -1287,14 +1287,13 @@ heapam_index_build_range_scan(Relation heapRelation,
 			if (bfinfo)
 			{
 				if (bfinfo->bfinstr)
-				{
 					exec_params->bfinstr = pstrdup(bfinfo->bfinstr);
-					exec_params->backfill_read_time = bfinfo->read_time;
-					exec_params->partition_key =
-						pstrdup(bfinfo->row_bounds->partition_key);
-					exec_params->out_param = bfresult;
-					exec_params->is_index_backfill = true;
-				}
+
+				exec_params->backfill_read_time = bfinfo->read_time;
+				exec_params->partition_key =
+					pstrdup(bfinfo->row_bounds->partition_key);
+				exec_params->out_param = bfresult;
+				exec_params->is_index_backfill = true;
 			}
 			((YbScanDesc) scan)->exec_params = exec_params;
 		}

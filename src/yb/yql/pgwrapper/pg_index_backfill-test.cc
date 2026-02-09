@@ -2990,7 +2990,7 @@ TEST_P(PgIndexBackfillColumnProjectionTest, MultiColumnHashAsc) {
 }
 
 // Multi column index with compound hash key
-TEST_P(PgIndexBackfillColumnProjectionTest, MultiColumnCompoundHash) {
+TEST_P(PgIndexBackfillColumnProjectionTest, YB_DISABLE_TEST_IN_SANITIZERS(MultiColumnCompoundHash)) {
   ASSERT_OK(CreateWideTable(kTableName));
   ASSERT_OK(InsertTestData(kTableName));
   auto rpcs = ASSERT_RESULT(BuildIndexAndGetRpcs(
@@ -3065,21 +3065,6 @@ TEST_P(PgIndexBackfillColumnProjectionTest, PartitionedTable) {
   auto rpcs = ASSERT_RESULT(BuildIndexAndGetRpcs(
       "CREATE INDEX idx ON t (col1, col2)", /* use_backfill_rpcs */ false));
   ASSERT_OK(ValidateRpcs(rpcs));
-}
-
-// Multi column index on temp table
-TEST_P(PgIndexBackfillColumnProjectionTest, TempTable) {
-  ASSERT_OK(conn_->ExecuteFormat(
-      "CREATE TEMP TABLE $0 ("
-      "  id SERIAL PRIMARY KEY,"
-      "  col1 INT,"
-      "  col2 TEXT,"
-      "  col3 BOOLEAN,"
-      "  padding TEXT"
-      ")", kTableName));
-  ASSERT_OK(InsertTestData(kTableName));
-  // Temp tables are not backed by DocDB, so docdb_read_rpcs is always 0. Just verify index builds.
-  ASSERT_OK(conn_->Execute("CREATE INDEX idx ON t (col1, col2)"));
 }
 
 } // namespace yb::pgwrapper

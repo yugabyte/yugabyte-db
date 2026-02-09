@@ -3323,7 +3323,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_enable_index_backfill_column_projection,
-		true,
+		false,
 		NULL, NULL, NULL
 	},
 
