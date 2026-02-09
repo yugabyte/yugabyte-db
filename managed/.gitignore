@@ -84,3 +84,7 @@ ui/src/v2/validationSchema
 # yalc
 .yalc
 yalc.lock
+
+
+#AI Tools
+.cursor/
