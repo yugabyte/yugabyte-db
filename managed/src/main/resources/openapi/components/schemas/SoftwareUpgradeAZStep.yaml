@@ -1,0 +1,18 @@
+title: SoftwareUpgradeAZStep
+description: |
+  AZ upgrade step: order is list order; pause_after_tserver_upgrade controls canary
+  pause after this AZ. Used for canary upgrade configuration.
+type: object
+required:
+  - az_uuid
+properties:
+  az_uuid:
+    description: Availability zone UUID
+    type: string
+    format: uuid
+  pause_after_tserver_upgrade:
+    description: 'If true, upgrade pauses after all tservers in this AZ are upgraded'
+    type: boolean
+    default: false
+x-yba-api-visibility: preview
+x-yba-api-since: 2026.1.0.0-b0

@@ -26,3 +26,10 @@ allOf:
       version:
         description: The target release version to upgrade to.
         type: string
+      canary_upgrade_config:
+        description: |
+          Optional canary upgrade configuration (AZ order and pause points).
+          Preview API since 2026.1.0.0-b0.
+        $ref: "./CanaryUpgradeConfigSpec.yaml"
+        x-yba-api-since: 2026.1.0.0-b0
+        x-yba-api-visibility: preview

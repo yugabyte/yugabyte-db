@@ -19,7 +19,10 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.List;
 import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import play.mvc.Http.Status;
 
@@ -36,6 +39,14 @@ public class SoftwareUpgradeParams extends UpgradeTaskParams {
       hidden = true)
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.2.0")
   public boolean rollbackSupport = true;
+
+  @ApiModelProperty(
+      value =
+          "WARNING: This is a preview API that could change. Canary upgrade configuration. If"
+              + " null, canary upgrade is disabled. Available from 2026.1.0.0-b0.",
+      required = false)
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2026.1.0.0-b0")
+  public CanaryUpgradeConfig canaryUpgradeConfig = null;
 
   public SoftwareUpgradeParams() {}
 
@@ -144,6 +155,71 @@ public class SoftwareUpgradeParams extends UpgradeTaskParams {
         throw new PlatformServiceException(Status.BAD_REQUEST, msg);
       }
     }
+
+    if (canaryUpgradeConfig != null) {
+      validateCanaryUpgradeConfig(universe);
+    }
+  }
+
+  private void validateCanaryUpgradeConfig(Universe universe) {
+    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+    UUID primaryClusterUuid = details.getPrimaryCluster().uuid;
+
+    if (canaryUpgradeConfig.primaryClusterAZSteps != null) {
+      Set<UUID> primaryAzUuids = getAzUuidsForCluster(details, primaryClusterUuid);
+      for (AZUpgradeStep step : canaryUpgradeConfig.primaryClusterAZSteps) {
+        if (step.azUUID == null) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "azUUID is required for canary upgrade AZ step.");
+        }
+        if (!primaryAzUuids.contains(step.azUUID)) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              String.format(
+                  "Canary upgrade: AZ %s is not in the primary cluster placement.", step.azUUID));
+        }
+      }
+    }
+
+    if (canaryUpgradeConfig.readReplicaClusterAZSteps != null) {
+      List<UniverseDefinitionTaskParams.Cluster> readReplicas =
+          details.clusters.stream()
+              .filter(c -> c != null)
+              .filter(c -> !c.uuid.equals(primaryClusterUuid))
+              .collect(Collectors.toList());
+      if (readReplicas.isEmpty()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "Canary upgrade: readReplicaClusterAZSteps is set but universe has no read replica"
+                + " cluster.");
+      }
+      Set<UUID> allRrAzUuids =
+          readReplicas.stream()
+              .flatMap(rr -> getAzUuidsForCluster(details, rr.uuid).stream())
+              .collect(Collectors.toSet());
+      for (AZUpgradeStep step : canaryUpgradeConfig.readReplicaClusterAZSteps) {
+        if (step.azUUID == null) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "azUUID is required for canary upgrade AZ step.");
+        }
+        if (!allRrAzUuids.contains(step.azUUID)) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              String.format(
+                  "Canary upgrade: AZ %s is not in a read replica cluster placement.",
+                  step.azUUID));
+        }
+      }
+    }
+  }
+
+  private Set<UUID> getAzUuidsForCluster(UniverseDefinitionTaskParams details, UUID clusterUuid) {
+    return details.clusters.stream()
+        .filter(c -> c != null)
+        .filter(c -> c.uuid.equals(clusterUuid))
+        .filter(c -> c.placementInfo != null)
+        .flatMap(c -> c.placementInfo.getAllAZUUIDs().stream())
+        .collect(Collectors.toSet());
   }
 
   public static class Converter extends BaseConverter<SoftwareUpgradeParams> {}

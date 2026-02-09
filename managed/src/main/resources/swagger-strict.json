@@ -130,6 +130,26 @@
       },
       "type" : "object"
     },
+    "AZUpgradeStep" : {
+      "description" : "AZ upgrade step: order is list order; pauseAfterTserverUpgrade controls canary pause after this AZ",
+      "properties" : {
+        "azUUID" : {
+          "description" : "Availability zone UUID",
+          "example" : "az-1-uuid",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "pauseAfterTserverUpgrade" : {
+          "description" : "If true, upgrade pauses after all tservers in this AZ are upgraded",
+          "example" : true,
+          "type" : "boolean"
+        }
+      },
+      "required" : [
+        "azUUID"
+      ],
+      "type" : "object"
+    },
     "AccessKey" : {
       "description" : "Access key for the cloud provider. This helps to authenticate the user and get access to the provider.",
       "properties" : {
@@ -4685,6 +4705,33 @@
       "properties" : {
         "ybImage" : {
           "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
+    "CanaryUpgradeConfig" : {
+      "description" : "Canary upgrade configuration",
+      "properties" : {
+        "pauseAfterMasters" : {
+          "description" : "Whether to pause after all masters are upgraded",
+          "example" : true,
+          "type" : "boolean"
+        },
+        "primaryClusterAZSteps" : {
+          "description" : "Primary cluster: ordered list of AZ upgrade steps. List order = upgrade order. Each step can optionally pause after tserver upgrade. Null = use default AZ order with no pause points.",
+          "example" : "[{\"azUUID\": \"az-1-uuid\", \"pauseAfterTserverUpgrade\": true}, {\"azUUID\": \"az-2-uuid\", \"pauseAfterTserverUpgrade\": false}]",
+          "items" : {
+            "$ref" : "#/definitions/AZUpgradeStep"
+          },
+          "type" : "array"
+        },
+        "readReplicaClusterAZSteps" : {
+          "description" : "Read replica cluster: ordered list of AZ upgrade steps. Only applicable if universe has read replica clusters. Null = use default AZ order with no pause points.",
+          "example" : "[{\"azUUID\": \"az-4-uuid\", \"pauseAfterTserverUpgrade\": true}, {\"azUUID\": \"az-5-uuid\", \"pauseAfterTserverUpgrade\": false}]",
+          "items" : {
+            "$ref" : "#/definitions/AZUpgradeStep"
+          },
+          "type" : "array"
         }
       },
       "type" : "object"
@@ -20678,6 +20725,10 @@
         },
         "autoRollbackPerformed" : {
           "type" : "boolean"
+        },
+        "canaryUpgradeConfig" : {
+          "$ref" : "#/definitions/CanaryUpgradeConfig",
+          "description" : "Canary upgrade configuration (preview). If null, canary upgrade is disabled. Available from 2026.1.0.0-b0."
         },
         "capability" : {
           "enum" : [
