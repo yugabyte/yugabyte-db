@@ -121,6 +121,7 @@ set(UTIL_SRCS
   crc.cc
   cross_thread_mutex.cc
   crypt.cc
+  csv_util.cc
   curl_util.cc
   date_time.cc
   debug-util.cc
