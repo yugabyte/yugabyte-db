@@ -1813,4 +1813,12 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Enables the all node script APIs for this universe",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableCanaryUpgrade =
+      new ConfKeyInfo<>(
+          "yb.upgrade.enable_canary_upgrade",
+          ScopeType.UNIVERSE,
+          "Enable Canary Upgrade",
+          "Enable canary upgrade for the universe",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
