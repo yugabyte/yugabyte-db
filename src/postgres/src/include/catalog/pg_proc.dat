@@ -12239,4 +12239,28 @@
   proargmodes => '{o,o,o,o,o,o,o,o,o}',
   prosrc => 'yb_get_tablet_metadata'},
 
+{ oid => '8102',
+  descr => 'Levenshtein distance between two strings',
+  proname => 'levenshtein', provolatile => 'i',
+  prorettype => 'int4', proargtypes => 'text text',
+  prosrc => 'yb_levenshtein' },
+
+{ oid => '8103',
+  descr => 'Levenshtein distance with custom costs',
+  proname => 'levenshtein', provolatile => 'i',
+  prorettype => 'int4', proargtypes => 'text text int4 int4 int4',
+  prosrc => 'yb_levenshtein_with_costs' },
+
+{ oid => '8104',
+  descr => 'Levenshtein distance with max limit',
+  proname => 'levenshtein_less_equal', provolatile => 'i',
+  prorettype => 'int4', proargtypes => 'text text int4',
+  prosrc => 'yb_levenshtein_less_equal' },
+
+{ oid => '8105',
+  descr => 'Levenshtein distance with custom costs and max limit',
+  proname => 'levenshtein_less_equal', provolatile => 'i',
+  prorettype => 'int4', proargtypes => 'text text int4 int4 int4 int4',
+  prosrc => 'yb_levenshtein_less_equal_with_costs' },
+
 ]
