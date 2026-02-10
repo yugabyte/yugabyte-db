@@ -51,6 +51,7 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/tostring.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -142,9 +143,12 @@ TEST_F(MasterHeartbeatITest, PreventHeartbeatWrongCluster) {
   // First ensure that if a tserver heartbeats to a different cluster, heartbeats fail and
   // eventually, master marks servers as dead. Mock a different cluster by setting the flag
   // TEST_master_universe_uuid.
+  const auto unresponsive_log_waiter_timeout = 20s * kTimeMultiplier;
+  StringWaiterLogSink unresponsive_log_waiter("as UNRESPONSIVE: no heartbeat received for");
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_master_universe_uuid) = Uuid::Generate().ToString();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 10 * 1000;
   ASSERT_OK(mini_cluster_->WaitForTabletServerCount(0, true /* live_only */));
+  ASSERT_OK(unresponsive_log_waiter.WaitFor(unresponsive_log_waiter_timeout));
 
   // When the flag is unset, ensure that master leader can register tservers.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_master_universe_uuid) = "";

@@ -508,6 +508,13 @@ std::optional<TSDescriptor::WriteLock> TSDescriptor::MaybeUpdateLiveness(MonoTim
       time.GetDeltaSince(last_heartbeat_).ToMilliseconds() >
           GetAtomicFlag(&FLAGS_tserver_unresponsive_timeout_ms)) {
     proto_lock.mutable_data()->pb.set_state(SysTabletServerEntryPB::UNRESPONSIVE);
+    const auto& addr = DesiredHostPort(proto_lock->pb.registration(), local_master_cloud_info_);
+    LOG(WARNING) << "Marking tserver " << permanent_uuid()
+                 << " (" << addr.host() << ":" << addr.port() << ")"
+                 << " as UNRESPONSIVE: no heartbeat received for "
+                 << time.GetDeltaSince(last_heartbeat_).ToMilliseconds() << "ms"
+                 << " (threshold: " << GetAtomicFlag(&FLAGS_tserver_unresponsive_timeout_ms)
+                 << "ms)";
     return std::move(proto_lock);
   }
   return std::nullopt;
