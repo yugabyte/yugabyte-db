@@ -35,6 +35,16 @@ METRIC_DEFINE_counter(server, rpc_inbound_calls_created,
                       yb::MetricUnit::kRequests,
                       "Number of created RPC inbound calls.");
 
+METRIC_DEFINE_counter(server, rpc_inbound_calls_failed,
+    "Number of failed RPC inbound calls; these are calls where we respond with failure.",
+    yb::MetricUnit::kRequests,
+    "Number of failed RPC inbound calls; these are calls where we respond with failure.");
+
+METRIC_DEFINE_counter(server, rpc_inbound_calls_rejected_because_memory_pressure,
+    "Number of RPC inbound calls rejected (including silent drops) due to memory pressure.",
+    yb::MetricUnit::kRequests,
+    "Number of RPC inbound calls rejected (including silent drops) due to memory pressure.");
+
 METRIC_DEFINE_gauge_int64(server, rpc_outbound_calls_alive,
                           "Number of alive RPC outbound calls.",
                           yb::MetricUnit::kRequests,
@@ -65,6 +75,9 @@ RpcMetrics::RpcMetrics(const scoped_refptr<MetricEntity>& metric_entity) {
     connections_created = METRIC_rpc_connections_created.Instantiate(metric_entity);
     inbound_calls_alive = METRIC_rpc_inbound_calls_alive.Instantiate(metric_entity, 0);
     inbound_calls_created = METRIC_rpc_inbound_calls_created.Instantiate(metric_entity);
+    inbound_calls_failed = METRIC_rpc_inbound_calls_failed.Instantiate(metric_entity);
+    inbound_calls_rejected_because_memory_pressure =
+        METRIC_rpc_inbound_calls_rejected_because_memory_pressure.Instantiate(metric_entity);
     outbound_calls_alive = METRIC_rpc_outbound_calls_alive.Instantiate(metric_entity, 0);
     outbound_calls_created = METRIC_rpc_outbound_calls_created.Instantiate(metric_entity);
     outbound_calls_stuck = METRIC_rpc_outbound_calls_stuck.Instantiate(metric_entity);

@@ -15,8 +15,7 @@
 
 #include "yb/util/metrics_fwd.h"
 
-namespace yb {
-namespace rpc {
+namespace yb::rpc {
 
 struct RpcMetrics {
   explicit RpcMetrics(const scoped_refptr<MetricEntity>& metric_entity);
@@ -25,11 +24,12 @@ struct RpcMetrics {
   scoped_refptr<Counter> connections_created;
   scoped_refptr<AtomicGauge<int64_t>> inbound_calls_alive;
   scoped_refptr<Counter> inbound_calls_created;
+  scoped_refptr<Counter> inbound_calls_failed;
+  scoped_refptr<Counter> inbound_calls_rejected_because_memory_pressure;
   scoped_refptr<AtomicGauge<int64_t>> outbound_calls_alive;
   scoped_refptr<Counter> outbound_calls_created;
   scoped_refptr<Counter> outbound_calls_stuck;
   scoped_refptr<AtomicGauge<int64_t>> busy_reactors;
 };
 
-} // namespace rpc
-} // namespace yb
+} // namespace yb::rpc
