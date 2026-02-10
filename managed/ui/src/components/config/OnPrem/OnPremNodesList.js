@@ -2,21 +2,19 @@
 
 import { Component } from 'react';
 import { Tooltip } from '@material-ui/core';
-import { Row, Col, Alert } from 'react-bootstrap';
+import { Row, Col } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { FieldArray, SubmissionError } from 'redux-form';
 import { Link, withRouter } from 'react-router';
 import { DropdownButton, MenuItem } from 'react-bootstrap';
 
 import { YBConfirmModal } from '../../modals';
-import { YBCodeBlock, YBCopyButton } from '../../common/descriptors/index';
 import InstanceTypeForRegion from '../OnPrem/wizard/InstanceTypeForRegion';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBLoadingCircleIcon } from '../../common/indicators';
-import { isNonEmptyObject, isNonEmptyArray } from '../../../utils/ObjectUtils';
+import { isNonEmptyObject, isNonEmptyArray, isNonEmptyString } from '../../../utils/ObjectUtils';
 import { YBButton, YBModal } from '../../common/forms/fields';
 import { YBBreadcrumb } from '../../common/descriptors';
-import { isDefinedNotNull, isNonEmptyString } from '../../../utils/ObjectUtils';
 import { getLatestAccessKey } from '../../configRedesign/providerRedesign/utils';
 import { TASK_SHORT_TIMEOUT } from '../../tasks/constants';
 import { NodeAgentStatus } from '../../../redesign/features/NodeAgent/NodeAgentStatus';
@@ -330,7 +328,7 @@ class OnPremNodesList extends Component {
 
   render() {
     const {
-      cloud: { nodeInstanceList, instanceTypes, supportedRegionList, accessKeys },
+      cloud: { nodeInstanceList, instanceTypes, supportedRegionList },
       handleSubmit,
       tasks: { customerTaskList },
       showProviderView,
@@ -477,58 +475,6 @@ class OnPremNodesList extends Component {
       );
     };
 
-    const onPremSetupReference =
-      'https://docs.yugabyte.com/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/#configure-hardware-for-yugabytedb-nodes';
-    let provisionMessage = <span />;
-    const onPremProvider = this.props.currentProvider ?? this.findProvider();
-    if (isDefinedNotNull(onPremProvider)) {
-      const onPremKey = accessKeys.data.find(
-        (accessKey) => accessKey.idKey.providerUUID === onPremProvider.uuid
-      );
-      if (
-        onPremProvider.details.skipProvisioning ||
-        (isDefinedNotNull(onPremKey) && onPremKey.keyInfo.skipProvisioning)
-      ) {
-        const provisionInstanceScript = `${
-          onPremProvider.details.provisionInstanceScript ??
-          onPremKey.keyInfo.provisionInstanceScript
-        } --ask_password --ip <node IP Address> --mount_points <instance type mount points> ${
-          onPremProvider.details.enableNodeAgent
-            ? '--install_node_agent --api_token <API token> --yba_url <YBA URL> --node_name <name for the node> --instance_type <instance type name> --region_name <name for the region> --zone_name <name for the zone>'
-            : ''
-        }`;
-
-        provisionMessage = (
-          <Alert bsStyle="warning" className="pre-provision-message">
-            <p>
-              This provider is configured for manual provisioning. Before you can add instances, you
-              must provision the nodes.
-            </p>
-            <p>
-              If the SSH user has sudo access, run the provisioning script on each node using the
-              following command:
-            </p>
-            <YBCodeBlock>
-              {provisionInstanceScript}
-              <YBCopyButton text={provisionInstanceScript} />
-            </YBCodeBlock>
-            {!!onPremProvider.details.enableNodeAgent && (
-              <p>
-                For YBA URL, provide the URL of your YBA machine (e.g.,
-                http://ybahost.company.com:9000). The node must be able to reach YugabyteDB Anywhere
-                at this address.
-              </p>
-            )}
-            <p>
-              If the SSH user does not have sudo access, you must set up each node manually. For
-              information on the script options or setting up nodes manually, see the{' '}
-              <a href={onPremSetupReference}>provider documentation.</a>
-            </p>
-          </Alert>
-        );
-      }
-    }
-
     const currentCloudRegions = this.props.currentProvider
       ? this.props.currentProvider.regions
       : supportedRegionList.data.filter(
@@ -613,8 +559,6 @@ class OnPremNodesList extends Component {
             <h3 className="onprem-node-instances__title">Instances</h3>
           </>
         )}
-
-        {provisionMessage}
 
         <Row>
           <Col xs={12}>
