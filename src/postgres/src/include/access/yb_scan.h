@@ -267,6 +267,17 @@ extern TableScanDesc ybc_heap_beginscan(Relation relation,
 extern HeapTuple ybc_heap_getnext(TableScanDesc scanDesc);
 extern void ybc_heap_endscan(TableScanDesc scanDesc);
 
+/*
+ * Begin a heap scan for index build/backfill that only fetches columns
+ * needed by the index (as defined in IndexInfo).
+ */
+extern TableScanDesc ybc_heap_beginscan_for_index_build(Relation relation,
+														Snapshot snapshot,
+														int nkeys,
+														ScanKey key,
+														struct IndexInfo *indexInfo);
+
+
 extern void YbBindDatumToColumn(YbcPgStatement stmt,
 								int attr_num,
 								Oid type_id,

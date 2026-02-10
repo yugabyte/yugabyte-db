@@ -3338,6 +3338,19 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_index_backfill_column_projection", PGC_USERSET, QUERY_TUNING_OTHER,
+			gettext_noop("Enables index backfill column projection optimization. "
+						 "If true, index build/backfill only reads columns needed for the index, "
+						 "rather than all columns from the base table."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_index_backfill_column_projection,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_enable_fkey_catcache", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Enable preloading of foreign key information into the relation cache."),
 			NULL,

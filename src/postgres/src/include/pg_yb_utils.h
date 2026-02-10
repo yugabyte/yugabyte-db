@@ -559,6 +559,13 @@ extern bool yb_enable_base_scans_cost_model;
 extern bool yb_enable_update_reltuples_after_create_index;
 
 /*
+ * Enables index backfill column projection optimization.
+ * If true, index build/backfill only reads columns needed for the index,
+ * rather than all columns from the base table.
+ */
+extern bool yb_enable_index_backfill_column_projection;
+
+/*
  * Total timeout for waiting for backends to have up-to-date catalog version.
  */
 extern int	yb_wait_for_backends_catalog_version_timeout;
