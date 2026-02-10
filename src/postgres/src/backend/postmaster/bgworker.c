@@ -37,6 +37,7 @@
 #include "utils/timeout.h"
 
 /* YB includes */
+#include "commands/async.h"
 #include "yb_ash.h"
 #include "yb_query_diagnostics.h"
 
@@ -141,6 +142,9 @@ static const struct
 	},
 	{
 		"YbQueryDiagnosticsDatabaseConnectionWorkerMain", YbQueryDiagnosticsDatabaseConnectionWorkerMain
+	},
+	{
+		"YbNotifsPollerMain", YbNotifsPollerMain
 	}
 };
 
@@ -1320,4 +1324,10 @@ GetBackgroundWorkerTypeByPid(pid_t pid)
 		return NULL;
 
 	return result;
+}
+
+size_t
+YbBackgroundWorkerHandleSize()
+{
+	return sizeof(BackgroundWorkerHandle);
 }

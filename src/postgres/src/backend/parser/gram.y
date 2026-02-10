@@ -1131,12 +1131,12 @@ stmt:
 			| ImportForeignSchemaStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
 			| IndexStmt
 			| InsertStmt
-			| ListenStmt { parser_ybc_warn_ignored(@1, "LISTEN", 1872); }
+			| ListenStmt
 			| RefreshMatViewStmt
 			| LoadStmt { parser_ybc_not_support(@1, "This statement"); }
 			| LockStmt
 			| MergeStmt { parser_ybc_not_support(@1, "This statement"); }
-			| NotifyStmt { parser_ybc_warn_ignored(@1, "NOTIFY", 1872); }
+			| NotifyStmt
 			| PrepareStmt
 			| ReassignOwnedStmt
 			| ReindexStmt
@@ -1151,7 +1151,7 @@ stmt:
 			| SelectStmt
 			| TransactionStmt
 			| TruncateStmt
-			| UnlistenStmt { parser_ybc_warn_ignored(@1, "UNLISTEN", 1872); }
+			| UnlistenStmt
 			| UpdateStmt
 			| VacuumStmt
 			| VariableResetStmt

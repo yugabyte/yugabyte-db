@@ -300,6 +300,10 @@ extern PGDLLIMPORT int64 VacuumPageDirty;
 extern PGDLLIMPORT int VacuumCostBalance;
 extern PGDLLIMPORT bool VacuumCostActive;
 
+extern PGDLLIMPORT char *YbSystemDbName;
+extern PGDLLIMPORT char *PgYbNotificationsTableName;
+extern PGDLLIMPORT char *PgYbNotificationsPublicationName;
+
 
 /* in tcop/postgres.c */
 

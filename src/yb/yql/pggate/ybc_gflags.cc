@@ -142,6 +142,7 @@ DECLARE_uint32(ysql_max_invalidation_message_queue_size);
 DECLARE_uint32(max_replication_slots);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
+DECLARE_bool(TEST_ysql_yb_enable_listen_notify);
 
 namespace {
 
@@ -240,6 +241,7 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_enable_relcache_init_optimization = &FLAGS_ysql_enable_relcache_init_optimization,
       .TEST_ysql_bypass_auto_analyze_auth_check = &FLAGS_TEST_ysql_bypass_auto_analyze_auth_check,
       .TEST_delay_after_table_analyze_ms = &FLAGS_TEST_delay_after_table_analyze_ms,
+      .TEST_ysql_yb_enable_listen_notify = &FLAGS_TEST_ysql_yb_enable_listen_notify,
       .TEST_enable_obj_tuple_locks = &FLAGS_TEST_enable_obj_tuple_locks,
   };
   // clang-format on

@@ -1,0 +1,2 @@
+# src/test/regress/yb_pg_async_schedule
+test: async

@@ -602,7 +602,9 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 	YbcPgStatement handle = NULL;
 	ListCell   *listptr;
 	bool		is_shared_relation = tablespaceId == GLOBALTABLESPACE_OID;
-	Oid			databaseId = YBCGetDatabaseOidFromShared(is_shared_relation);
+	Oid			databaseId =
+		YBCGetDatabaseOidFromShared(is_shared_relation,
+									/* belongs_to_yb_system_db= */ false);
 	bool		is_matview = relkind == RELKIND_MATVIEW;
 	bool		is_colocated_tables_with_tablespace_enabled =
 		*YBCGetGFlags()->ysql_enable_colocated_tables_with_tablespaces;
