@@ -221,6 +221,10 @@ ThreadPoolTask* InboundCall::BindTask(InboundCallHandler* handler, int64_t rpc_q
   return &task_;
 }
 
+void InboundCall::RecordCallRejectedDueToMemoryPressure() const {
+  IncrementCounter(rpc_metrics_->inbound_calls_rejected_because_memory_pressure);
+}
+
 void InboundCall::RecordHandlingCompleted() {
   // Protect against multiple calls.
   LOG_IF_WITH_PREFIX(DFATAL, timing_.time_completed.Initialized()) << "Already marked as completed";

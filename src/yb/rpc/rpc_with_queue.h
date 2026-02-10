@@ -21,6 +21,7 @@
 #include <mutex>
 #include <type_traits>
 #include <unordered_set>
+#include <deque>
 
 #include "yb/rpc/connection_context.h"
 #include "yb/rpc/inbound_call.h"

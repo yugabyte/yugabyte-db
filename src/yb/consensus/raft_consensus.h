@@ -36,7 +36,6 @@
 #include <memory>
 #include <mutex>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include <boost/optional/optional_fwd.hpp>
@@ -53,8 +52,6 @@
 #include "yb/gutil/callback.h"
 
 #include "yb/rpc/scheduler.h"
-#include "yb/rpc/strand.h"
-#include "yb/rpc/thread_pool.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/random.h"
@@ -143,7 +140,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     TableType table_type,
     RetryableRequests* retryable_requests);
 
-  virtual ~RaftConsensus();
+  virtual ~RaftConsensus() override;
 
   virtual Status Start(const ConsensusBootstrapInfo& info) override;
 
@@ -760,7 +757,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   AtomicBool shutdown_;
 
-  scoped_refptr<Counter> follower_memory_pressure_rejections_;
+  scoped_refptr<Counter> deprecated_follower_memory_pressure_rejections_;
   scoped_refptr<AtomicGauge<int64_t>> term_metric_;
   scoped_refptr<AtomicMillisLag> follower_last_update_time_ms_metric_;
   scoped_refptr<AtomicGauge<int64_t>> is_raft_leader_metric_;

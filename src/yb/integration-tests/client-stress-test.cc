@@ -41,10 +41,7 @@
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 
-#include "yb/common/schema.h"
-
 #include "yb/gutil/bind.h"
-#include "yb/gutil/mathlimits.h"
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/substitute.h"
 
@@ -52,7 +49,6 @@
 #include "yb/integration-tests/test_workload.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
-#include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/master_rpc.h"
 
 #include "yb/rpc/rpc.h"
@@ -72,7 +68,6 @@ DECLARE_int32(memory_limit_soft_percentage);
 
 METRIC_DECLARE_entity(tablet);
 METRIC_DECLARE_counter(leader_memory_pressure_rejections);
-METRIC_DECLARE_counter(follower_memory_pressure_rejections);
 
 using strings::Substitute;
 using std::vector;
@@ -305,15 +300,13 @@ TEST_F(ClientStressTest_LowMemory, TestMemoryThrottling) {
     // we'll just treat the lack of a metric as non-fatal. If the entity
     // or metric is truly missing, we'll eventually timeout and fail.
     for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
-      for (const auto* metric : { &METRIC_leader_memory_pressure_rejections,
-                                  &METRIC_follower_memory_pressure_rejections }) {
-        auto result = cluster_->tablet_server(i)->GetMetric<int64>(
-            &METRIC_ENTITY_tablet, nullptr, metric, "value");
-        if (result.ok()) {
-          total_num_rejections += *result;
-        } else {
-          ASSERT_TRUE(result.status().IsNotFound()) << result.status();
-        }
+      auto result = cluster_->tablet_server(i)->GetMetric<int64>(
+          &METRIC_ENTITY_tablet, /*entity_id=*/nullptr, &METRIC_leader_memory_pressure_rejections,
+          "value");
+      if (result.ok()) {
+        total_num_rejections += *result;
+      } else {
+        ASSERT_TRUE(result.status().IsNotFound()) << result.status();
       }
     }
     if (total_num_rejections >= kMinRejections) {
@@ -421,7 +414,7 @@ class ThrottleLogCounter : public ExternalDaemon::StringListener {
     daemon_->SetLogListener(this);
   }
 
-  ~ThrottleLogCounter() {
+  ~ThrottleLogCounter() override {
     daemon_->RemoveLogListener(this);
   }
 
