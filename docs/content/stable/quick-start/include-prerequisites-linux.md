@@ -7,9 +7,9 @@ block_indexing = true
 
 Before installing YugabyteDB, ensure that you have the following available:
 
-1. One of the [supported operating systems](/stable/reference/configuration/operating-systems/).
+- One of the [supported operating systems](/stable/reference/configuration/operating-systems/).
 
-1. Python 3.11. To check the version, execute the following command:
+- Python 3.11. To check the version, execute the following command:
 
     ```sh
     python --version
@@ -17,7 +17,7 @@ Before installing YugabyteDB, ensure that you have the following available:
 
     Starting from Ubuntu 20.04, `python` is no longer available. To fix this, run `sudo apt install python-is-python3`.
 
-1. `wget` or `curl`.
+- `wget` or `curl`.
 
     The instructions use the `wget` command to download files. If you prefer to use `curl`, you can replace `wget` with `curl -O`.
 

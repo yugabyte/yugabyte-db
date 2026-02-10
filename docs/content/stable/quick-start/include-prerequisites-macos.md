@@ -9,7 +9,7 @@ Before installing YugabyteDB, ensure that you have the following available:
 
 - <i class="fa-brands fa-apple" aria-hidden="true"></i> macOS 10.12 or later. If you are on Apple silicon, you need to download the macOS ARM package.
 
-1. Python 3.11. To check the version, execute the following command:
+- Python 3.11. To check the version, execute the following command:
 
     ```sh
     python --version
