@@ -3340,11 +3340,14 @@ ybcBeginScan(Relation relation,
 	 * it has been since the early days of YSQL. For tighter correctness, it
 	 * should be sent for syscatalog requests, but this will result in more
 	 * cases of catalog version mismatch.
-	 * TODO(jason): revisit this for #15080. Condition could instead be
-	 * (!IsBootstrapProcessingMode()) which skips initdb and catalog
-	 * prefetching.
+	 * TODO(jason): revisit this for #15080.
+	 *
+	 * Initdb and walsender don't have local catalog version, so ignore for
+	 * those cases as well.
 	 */
-	if (!(is_internal_scan && IsSystemRelation(relation)))
+	if (!(is_internal_scan && IsSystemRelation(relation)) &&
+		!IsBootstrapProcessingMode() &&
+		MyBackendType != B_WAL_SENDER)
 		YbSetCatalogCacheVersion(ybScan->handle,
 								 YbGetCatalogCacheVersion());
 
@@ -3739,7 +3742,7 @@ ybc_heap_beginscan(Relation relation,
 									  NULL /* aggrefs */ ,
 									  0 /* distinct_prefixlen */ ,
 									  NULL /* exec_params */ ,
-									  true /* is_internal_scan */ ,
+									  false /* is_internal_scan */ ,
 									  false /* fetch_ybctids_only */ );
 	Assert(!YbNeedsPgRecheck(ybScan));
 
