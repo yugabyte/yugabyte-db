@@ -631,6 +631,9 @@ AllocateRelationDesc(Form_pg_class relp)
 	/* which we mark as a reference-counted tupdesc */
 	relation->rd_att->tdrefcount = 1;
 
+	/* YB: See struct field's comment for explanation. */
+	relation->belongs_to_yb_system_db = false;
+
 	MemoryContextSwitchTo(oldcxt);
 
 	return relation;
@@ -4164,6 +4167,9 @@ formrdesc(const char *relationName, Oid relationReltype,
 	 */
 	RelationCacheInsert(relation, false);
 
+	/* YB: See struct field's comment for explanation. */
+	relation->belongs_to_yb_system_db = false;
+
 	/* It's fully valid */
 	relation->rd_isvalid = true;
 }
@@ -5933,6 +5939,9 @@ RelationBuildLocalRelation(const char *relname,
 	 * can't do this before storing relid in it.
 	 */
 	EOXactListAdd(rel);
+
+	/* YB: See struct field's comment for explanation. */
+	rel->belongs_to_yb_system_db = false;
 
 	/* It's fully valid */
 	rel->rd_isvalid = true;

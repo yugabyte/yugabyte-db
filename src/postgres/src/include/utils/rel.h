@@ -258,6 +258,16 @@ typedef struct RelationData
 	Bitmapset  *primary_key_bms;	/* NULL if not initialized */
 	/* contains all primary keys of the relation, including yb system columns. */
 	Bitmapset  *full_primary_key_bms;	/* NULL if not initialized */
+	bool belongs_to_yb_system_db;		/* true for relations in the yb_system
+										 * db which are accessible by all databases.
+										 * When this relation is accessed by a db
+										 * other than yb_system, the Relation object
+										 * needs to be manually created (it is not
+										 * part of relcache). While doing so, this
+										 * field should be set to true (for example,
+										 * see ybNotificationsRel()). For all other
+										 * cases, this field should be false.
+										 */
 } RelationData;
 
 

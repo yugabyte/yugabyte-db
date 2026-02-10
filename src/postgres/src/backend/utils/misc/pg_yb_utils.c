@@ -143,6 +143,8 @@ static uint64_t yb_new_catalog_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 static uint64_t yb_logical_client_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 static bool yb_need_invalidate_all_table_cache = false;
 
+static Oid	yb_system_db_oid_cache = InvalidOid;
+
 static bool YbHasDdlMadeChanges();
 static int YbGetNumCreateFunctionStmts();
 static int YbGetNumRollbackToSavepointStmts();
@@ -2102,7 +2104,8 @@ YBCGetSchemaName(Oid schemaoid)
 Oid
 YBCGetDatabaseOid(Relation rel)
 {
-	return YBCGetDatabaseOidFromShared(rel->rd_rel->relisshared);
+	return YBCGetDatabaseOidFromShared(rel->rd_rel->relisshared,
+									   rel->belongs_to_yb_system_db);
 }
 
 Oid
@@ -2112,13 +2115,24 @@ YBCGetDatabaseOidByRelid(Oid relid)
 	bool		relisshared = relation->rd_rel->relisshared;
 
 	RelationClose(relation);
-	return YBCGetDatabaseOidFromShared(relisshared);
+	return YBCGetDatabaseOidFromShared(relisshared,
+									   relation->belongs_to_yb_system_db);
 }
 
 Oid
-YBCGetDatabaseOidFromShared(bool relisshared)
+YbSystemDbOid()
 {
-	return relisshared ? Template1DbOid : MyDatabaseId;
+	if (yb_system_db_oid_cache == InvalidOid)
+		yb_system_db_oid_cache = get_database_oid(YbSystemDbName, true);
+	return yb_system_db_oid_cache;
+}
+
+Oid
+YBCGetDatabaseOidFromShared(bool relisshared, bool belongs_to_yb_system_db)
+{
+	Assert(!relisshared || !belongs_to_yb_system_db);
+	return relisshared ? Template1DbOid :
+		(belongs_to_yb_system_db ? YbSystemDbOid() : MyDatabaseId);
 }
 
 void
