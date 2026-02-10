@@ -120,7 +120,7 @@ public class PlatformInstanceController extends AuthenticatedController {
                       config, formData.getCleanAddress(), formData.is_leader, formData.is_local);
 
               // Mark this instance as "failed over to" initially since it is a leader instance.
-              if (i.getIsLeader()) {
+              if (i.isLeader()) {
                 config.updateLastFailover();
               }
               // Reload from DB.
@@ -164,7 +164,7 @@ public class PlatformInstanceController extends AuthenticatedController {
           if (!instanceUUIDValid) {
             throw new PlatformServiceException(NOT_FOUND, "Invalid instance UUID");
           }
-          if (instanceToDelete.get().getIsLocal()) {
+          if (instanceToDelete.get().isLocal()) {
             throw new PlatformServiceException(BAD_REQUEST, "Cannot delete local instance");
           }
           // Clear metrics for remote instance
@@ -248,12 +248,12 @@ public class PlatformInstanceController extends AuthenticatedController {
             throw new PlatformServiceException(NOT_FOUND, "Invalid platform instance UUID");
           }
 
-          if (!instance.get().getIsLocal()) {
+          if (!instance.get().isLocal()) {
             throw new PlatformServiceException(
                 BAD_REQUEST, "Cannot promote a remote platform instance");
           }
 
-          if (instance.get().getIsLeader()) {
+          if (instance.get().isLeader()) {
             throw new PlatformServiceException(
                 BAD_REQUEST, "Cannot promote a leader platform instance");
           }

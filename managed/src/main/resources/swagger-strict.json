@@ -15065,6 +15065,13 @@
           "format" : "date-time",
           "type" : "string"
         },
+        "state" : {
+          "enum" : [
+            "LEADER",
+            "STAND_BY"
+          ],
+          "type" : "string"
+        },
         "uuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -15077,7 +15084,7 @@
         "address",
         "instance_state",
         "is_leader",
-        "is_local",
+        "state",
         "uuid",
         "ybaVersion"
       ],
