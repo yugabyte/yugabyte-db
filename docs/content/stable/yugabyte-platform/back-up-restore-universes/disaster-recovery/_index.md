@@ -75,7 +75,7 @@ xCluster DR can be set up to perform schema changes in the following ways:
 | Mode | Description | GA | Deprecated |
 | :--- | :--- | :--- | :--- |
 | [Automatic](#automatic-mode) | Handles all aspects of replication for both data and schema changes. | v2025.2.1 | |
-| [Semi-automatic](#semi-automatic-mode) | Compared to manual mode, provides operationally simpler setup and management of replication, and fewer steps for performing DDL changes. | v2025.1.0 | |
+| [Semi-automatic](#semi-automatic-mode) | Compared to manual mode, provides operationally simpler setup and management of replication, and fewer steps for performing DDL changes. | v2025.1.0 | v2025.2.1 |
 | [Manual](#manual-mode) | Deprecated. Manual setup and management of replication. DDL changes require manually updating the xCluster configuration. | v2024.2 | v2025.1 |
 
 ### Automatic mode
@@ -112,6 +112,8 @@ Fully Manual xCluster replication is deprecated and not recommended due to the o
 In manual mode, table and index-level schema changes must be performed on the DR primary universe and the DR replica universe, and, in some cases, they must also be updated on the DR configuration.
 
 The exact sequence of these operations for each type of schema change (DDL) is described in [Manage tables and indexes](./disaster-recovery-tables/).
+
+Manual mode is used for any xCluster DR configuration when both DR primary and replica are running YugabyteDB {{<release "2024.1.2">}} or earlier.
 
 ## Upgrading universes in DR
 
