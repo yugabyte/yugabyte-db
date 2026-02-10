@@ -50,6 +50,8 @@ YbcStatus YBCInitPgGate(
     const YbcPgInitPostgresInfo *init_postgres_info, YbcPgAshConfig* ash_config,
     YbcPgExecStatsState *session_stats, bool is_binary_upgrade);
 
+void YBCSetupPgBackendCgroup(YbcPgOid dboid);
+
 void YBCDestroyPgGate();
 void YBCInterruptPgGate();
 

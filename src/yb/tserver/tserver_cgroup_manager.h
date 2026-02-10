@@ -42,6 +42,8 @@ class TServerCgroupManager {
 
   Status UpdateDbCpuLimits(double max_cpu_fraction, int period);
 
+  static Status MovePgBackendToCgroup(PgOid db_oid);
+
  private:
   std::mutex mutex_;
   std::unordered_map<PgOid, Cgroup&> db_cgroups_ GUARDED_BY(mutex_);

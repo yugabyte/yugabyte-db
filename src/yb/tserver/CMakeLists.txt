@@ -212,8 +212,9 @@ ADD_YB_LIBRARY(pg_cron_leader_service_proto
 #########################################
 
 set(TSERVER_SHARED_SRCS
-  tserver_flags.cc
+  tserver_cgroup_manager.cc
   tserver_error.cc
+  tserver_flags.cc
   tserver_shared_mem.cc)
 set(TSERVER_SHARED_LIBS
   yb_docdb_shared
@@ -273,7 +274,6 @@ set(TSERVER_SRCS
   ts_tablet_manager.cc
   tserver-path-handlers.cc
   tserver_auto_flags_manager.cc
-  tserver_cgroup_manager.cc
   tserver_metrics_heartbeat_data_provider.cc
   server_main_util.cc
   stateful_services/pg_auto_analyze_service.cc

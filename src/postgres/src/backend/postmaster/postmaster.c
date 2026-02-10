@@ -1095,6 +1095,12 @@ PostmasterMain(int argc, char *argv[])
 		 */
 		YBCSetupSharedMemoryAddressSegment();
 
+		/*
+		 * Set up cgroups. This needs to be done before any fork calls, to ensure that all
+		 * subprocesses inherit the cgroup.
+		 */
+		YBCSetupCgroups();
+
 		/* Register ASH collector */
 		if (yb_enable_ash)
 			YbAshRegister();

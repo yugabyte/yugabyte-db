@@ -510,6 +510,10 @@ YbcStatus YBCInitPgGate(
   }));
 }
 
+void YBCSetupPgBackendCgroup(YbcPgOid dboid) {
+  pgapi->SetupPgBackendCgroup(dboid);
+}
+
 void YBCDestroyPgGate() {
   LOG_IF(FATAL, !is_main_thread())
       << __PRETTY_FUNCTION__ << " should only be invoked from the main thread";
