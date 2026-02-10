@@ -2053,7 +2053,8 @@
             "CloneNamespace",
             "UpdateAdditionalServicesState",
             "KubernetesToggleImmutableYbc",
-            "OperatorImportUniverse"
+            "OperatorImportUniverse",
+            "RunScript"
           ],
           "example" : "Create User",
           "readOnly" : true,
@@ -14699,7 +14700,8 @@
             "UPDATE_PROFILE",
             "SUPER_ADMIN_ACTIONS",
             "XCLUSTER",
-            "DEBUG"
+            "DEBUG",
+            "TROUBLESHOOT"
           ],
           "type" : "string"
         },
@@ -14742,7 +14744,8 @@
             "UPDATE_PROFILE",
             "SUPER_ADMIN_ACTIONS",
             "XCLUSTER",
-            "DEBUG"
+            "DEBUG",
+            "TROUBLESHOOT"
           ],
           "type" : "string"
         },

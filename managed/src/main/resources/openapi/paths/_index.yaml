@@ -2027,6 +2027,65 @@
         checkOnlyPermission: false
     x-yba-api-since: 2025.2.0.0
     x-yba-api-visibility: preview
+'/customers/{cUUID}/universes/{uniUUID}/run-script':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      required: true
+  post:
+    operationId: runScript
+    summary: Run a script on database nodes
+    description: |
+      Execute a bash script on one or more nodes in the universe. The script can be provided
+      inline as content or as a path to a file on the YugabyteDB Anywhere node. Results including stdout,
+      stderr, and exit codes are returned for each node.
+
+      This API requires the runtime configuration `yb.node_script.enabled` to be set to true
+      for the universe.
+
+      **Important**: Scripts are executed remotely on database nodes via SSH or Node Agent. Once a
+      script starts executing on a node, it cannot be cancelled remotely. If this API times out or
+      fails while waiting for results, scripts that have already started may continue running on
+      the remote nodes until completion. For this reason, scripts should ideally be:
+      - **Short-lived**: Avoid long-running operations
+      - **Idempotent**: Safe to run multiple times if retried
+      - **Self-terminating**: Include appropriate timeouts within the script itself
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/RunScriptReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/RunScriptResp.yaml"
+      '400':
+        description: Invalid input or feature not enabled
+      '403':
+        description: Feature not enabled for this universe
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: TROUBLESHOOT
+        resourceLocation:
+          path: UNIVERSES
+          sourceType: ENDPOINT
+        checkOnlyPermission: false
+    x-yba-api-since: 2026.1.0.0
+    x-yba-api-visibility: internal
 /yba-info:
   get:
     operationId: GetYBAInstanceInfo

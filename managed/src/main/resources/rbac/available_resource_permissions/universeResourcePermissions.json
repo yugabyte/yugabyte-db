@@ -110,5 +110,18 @@
         "action": "READ"
       }
     ]
+  },
+  {
+    "resourceType": "UNIVERSE",
+    "action": "TROUBLESHOOT",
+    "name": "Troubleshoot Universe",
+    "description": "Allows user to run scripts and collect files from universe nodes for troubleshooting.",
+    "permissionValidOnResource": true,
+    "prerequisitePermissions": [
+      {
+        "resourceType": "UNIVERSE",
+        "action": "READ"
+      }
+    ]
   }
 ]

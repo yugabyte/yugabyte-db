@@ -634,6 +634,9 @@ public class Audit extends Model {
 
     @EnumValue("Import Universe to the Kubernetes Operator")
     OperatorImportUniverse,
+
+    @EnumValue("Run Script on Database Nodes")
+    RunScript,
   }
 
   // An auto incrementing, user-friendly ID for the audit entry.
