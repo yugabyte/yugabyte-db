@@ -70,7 +70,19 @@ func DownloadSoftwareCommand(
 	}
 }
 
+// normalizeExpectedChecksum returns the raw hex digest, stripping an optional
+// "sha256:" prefix (case-insensitive) so comparison works with or without prefix.
+func normalizeExpectedChecksum(expected string) string {
+	s := strings.TrimSpace(expected)
+	const prefix = "sha256:"
+	if len(s) > len(prefix) && strings.EqualFold(s[:len(prefix)], prefix) {
+		return s[len(prefix):]
+	}
+	return s
+}
+
 // VerifyChecksum checks the SHA256 checksum of a file against an expected value.
+// The expected value may be either the raw hex digest or prefixed with "sha256:".
 func VerifyChecksum(filePath, expectedChecksum string) error {
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -83,12 +95,17 @@ func VerifyChecksum(filePath, expectedChecksum string) error {
 		return fmt.Errorf("error calculating checksum for %s: %w", filePath, err)
 	}
 	actualChecksum := hex.EncodeToString(hash.Sum(nil))
+	expectedNormalized := normalizeExpectedChecksum(expectedChecksum)
 
-	if !strings.EqualFold(actualChecksum, expectedChecksum) {
+	if expectedNormalized == "" {
+		return fmt.Errorf("invalid expected checksum for %s: empty after normalizing (original: %q)", filePath, expectedChecksum)
+	}
+	if !strings.EqualFold(actualChecksum, expectedNormalized) {
 		return fmt.Errorf(
-			"checksum mismatch for %s: expected %s, got %s",
+			"checksum mismatch for %s: expected (original) %q, normalized sha256:%s, got %s",
 			filePath,
 			expectedChecksum,
+			expectedNormalized,
 			actualChecksum,
 		)
 	}
