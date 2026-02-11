@@ -841,6 +841,13 @@ Status flush_table_by_id_action(
   return Status::OK();
 }
 
+const auto flush_all_tables_args = "";
+Status flush_all_tables_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client);
+  RETURN_NOT_OK_PREPEND(client->FlushAllTables(), "Unable to flush tables");
+  return Status::OK();
+}
+
 const auto flush_sys_catalog_args = "";
 Status flush_sys_catalog_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
@@ -2926,6 +2933,7 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(delete_index_by_id);
   REGISTER_COMMAND(flush_table);
   REGISTER_COMMAND(flush_table_by_id);
+  REGISTER_COMMAND(flush_all_tables);
   REGISTER_COMMAND(flush_sys_catalog);
   REGISTER_COMMAND(compact_sys_catalog);
   REGISTER_COMMAND(compact_table);

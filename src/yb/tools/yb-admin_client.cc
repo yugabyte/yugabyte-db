@@ -2015,6 +2015,12 @@ Status ClusterAdminClient::CompactTablesById(
   return Status::OK();
 }
 
+Status ClusterAdminClient::FlushAllTables(){
+  const auto tables = VERIFY_RESULT(yb_client_->ListTables());
+  RETURN_NOT_OK(yb_client_->FlushTables(tables, false, 20, true));
+  return Status::OK();
+}
+
 Status ClusterAdminClient::CompactionStatus(const YBTableName& table_name, bool show_tablets) {
   const auto compaction_status =
       VERIFY_RESULT(yb_client_->GetCompactionStatus(table_name, show_tablets));
