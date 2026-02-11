@@ -24,7 +24,7 @@ For an RSS feed of all technical advisories, point your feed reader to the [RSS 
 | {{<ta 30104>}}
 | Index inconsistency with Insert On Conflict with partial index
 | {{<product "ysql">}}
-| {{<release "2024.2">}} to {{<release "2024.2.7.2">}}, {{<release "2025.1">}} to {{<release "2025.1.3.0">}}, {{<release "2025.2.0">}}
+| {{<release "2024.2.0">}} to {{<release "2024.2.7.2">}}, {{<release "2025.1.0">}} to {{<release "2025.1.3.0">}}, {{<release "2025.2.0">}}
 | {{<nobreak "11 February 2026">}}
 |
 | {{<ta 24313>}}
