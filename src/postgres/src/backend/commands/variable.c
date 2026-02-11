@@ -625,7 +625,7 @@ is_staleness_acceptable(int32_t staleness_ms)
 	int32_t		max_clock_skew_usec = YBGetMaxClockSkewUsec();
 	const int	kMargin = 2;
 
-	if (staleness_ms * 1000 < kMargin * max_clock_skew_usec)
+	if ((int64_t) staleness_ms * 1000 < (int64_t) kMargin * max_clock_skew_usec)
 	{
 		GUC_check_errcode(ERRCODE_FEATURE_NOT_SUPPORTED);
 		GUC_check_errmsg("cannot enable yb_read_from_followers with a staleness of less than "

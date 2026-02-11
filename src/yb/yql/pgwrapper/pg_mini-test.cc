@@ -281,6 +281,8 @@ TEST_F(PgMiniTest, FollowerReads) {
     ASSERT_NOK(conn.Execute(Format("SET yb_follower_read_staleness_ms = $0", 999)));
     // Setting a value > 2 * max_clock_skew should work.
     ASSERT_OK(conn.Execute(Format("SET yb_follower_read_staleness_ms = $0", 1001)));
+    // Setting a large value (INT_MAX) should not overflow.
+    ASSERT_OK(conn.Execute(Format("SET yb_follower_read_staleness_ms = $0", INT_MAX)));
 
     ASSERT_OK(conn.ExecuteFormat("SET yb_read_from_followers = false"));
     if (expect_old_behavior_before_20482) {
