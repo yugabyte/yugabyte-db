@@ -488,7 +488,7 @@ Note: this parameter has been replaced by [yb_enable_cbo](#yb-enable-cbo).
 ##### yb_enable_optimizer_statistics
 
 {{% tags/wrap %}}
-{{<tags/feature/tp>}}
+
 Default: `false`
 {{% /tags/wrap %}}
 
@@ -499,7 +499,7 @@ Note: this parameter has been replaced by [yb_enable_cbo](#yb-enable-cbo).
 ##### yb_fetch_size_limit
 
 {{% tags/wrap %}}
-{{<tags/feature/tp>}}
+
 Default: `0`
 {{% /tags/wrap %}}
 
@@ -512,7 +512,7 @@ See also the [--ysql_yb_fetch_size_limit](#ysql-yb-fetch-size-limit) flag. If th
 ##### yb_fetch_row_limit
 
 {{% tags/wrap %}}
-{{<tags/feature/tp>}}
+
 Default: `1024`
 {{% /tags/wrap %}}
 
@@ -2776,7 +2776,7 @@ For details on the expected behaviour when used with the sequence cache clause, 
 ##### --ysql_yb_fetch_size_limit
 
 {{% tags/wrap %}}
-{{<tags/feature/tp>}}
+
 Default: `0`
 {{% /tags/wrap %}}
 
@@ -2793,7 +2793,7 @@ See also the [yb_fetch_size_limit](#yb-fetch-size-limit) configuration parameter
 ##### --ysql_yb_fetch_row_limit
 
 {{% tags/wrap %}}
-{{<tags/feature/tp>}}
+
 Default: `1024`
 {{% /tags/wrap %}}
 
