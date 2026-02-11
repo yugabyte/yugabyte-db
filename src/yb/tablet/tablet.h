@@ -177,7 +177,7 @@ class Tablet : public AbstractTablet,
   //    next API call can resume from where the backfill was left off.
   //    Note that <backfilled_until> only applies to the non-failing indexes.
   Status BackfillIndexesForYsql(
-      const std::vector<qlexpr::IndexInfo>& indexes,
+      const qlexpr::IndexInfo& index,
       const std::string& backfill_from,
       const CoarseTimePoint deadline,
       const HybridTime read_time,
@@ -186,7 +186,7 @@ class Tablet : public AbstractTablet,
       const uint64_t postgres_auth_key,
       bool is_xcluster_target,
       uint64_t* number_of_rows_processed,
-      std::unordered_map<TableId, double>& num_rows_backfilled_in_index,
+      double* num_rows_backfilled_in_index,
       std::string* backfilled_until);
 
   Status VerifyIndexTableConsistencyForCQL(
