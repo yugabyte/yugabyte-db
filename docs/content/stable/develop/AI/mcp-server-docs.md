@@ -11,65 +11,57 @@ menu:
 type: docs
 ---
 
-The Yugabyte Docs MCP Server implements the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) to give AI tools (like ChatGPT, Claude, Cursor, or VS Code) direct access to the Yugabyte knowledge base.
 
-By connecting this server to the AI tools from your IDE (or CLI), you give your AI assistant direct access to official documentation, API references, blogs and support articles—enabling it to answer complex technical questions and generate accurate code without ever leaving your IDE.
+The Yugabyte Docs MCP Server enables you to access Yugabyte documentation directly from your IDE or AI tool (like ChatGPT, Claude, Cursor, or VS Code).
+
+By connecting this server to the AI tools from your IDE (or CLI), you give your AI assistant direct access to Yugabyte official documentation, API references, blogs and support articles.
+
+This enables the tool to answer questions about Yugabyte without leaving your IDE.
 
 ## Set up
 
 The MCP server is hosted at `https://yugabyte.mcp.kapa.ai`.
 
-From the docs Search bar, click **Ask AI > Use MCP**. In the **Connect to AI tools** dropdown, you can choose from one of the four ways to add the Yugabyte Docs MCP server to your environment. Use the tab that matches your tool.
+From the docs Search bar, click **Ask AI > Use MCP**. In the **Connect to AI tools** dropdown, you can add the Yugabyte Docs MCP server by choosing the option that matches your tool.
 
-{{< tabpane lang="bash" >}}
-  {{< tab header="Cursor" >}}
+{{< tabpane text=true >}}
 
-1. Open **Cursor Settings** (`Cmd + Shift + J` on macOS, `Ctrl + Shift + J` on Windows/Linux).
-2. Go to **Features** → **MCP**.
-3. Click **+ Add new MCP server**.
-4. Enter:
-   * **Name:** `yugabytedb-docs`
-   * **Type:** `command`
-   * **Command:** `npx -y @yugabyte/mcp-server-docs`
-5. Click **Save**.
+  {{% tab header="Cursor" lang="cursor" %}}
 
-{{< /tab >}}
+The **Add to Cursor** option opens Cursor directly with the MCP server configuration **Tools** window. You need to do the following additional steps to enable the server:
 
-  {{< tab header="VS Code" >}}
+1. Click **Install** in the **Install MCP Server?** dialog box.
+1. Click **Connect** beside the yugabyte-docs server and you should see a green dot with the tool enabled.
+1. If you get a **Needs authentication** sign, click the option and restart Cursor to apply the changes.
 
-1. Open the **Command Palette** (`Cmd + Shift + P` on macOS, `Ctrl + Shift + P` on Windows/Linux).
-2. Run **MCP: Add Server**.
-3. When prompted, paste:
+  {{% /tab %}}
 
-   ```bash
-   npx -y @yugabyte/mcp-server-docs
-   ```
+  {{% tab header="VS Code" lang="vscode" %}}
 
-4. Restart your Copilot or AI chat session so it picks up the new server.
+**Prerequisites**: VS Code 1.102+ with GitHub Copilot enabled.
 
-{{< /tab >}}
+The **Add to VS Code** option opens VS Code directly with the MCP server configuration window. You need to do the following additional steps to enable the server:
 
-{{< tab header="Claude Code" >}}
+1. Click **Install** to install the yugabyte-docs MCP server.
+1. Go to **Extensions** to check yugabyte-docs listed as an installed MCP server.
+1. Open the Chat view (Ctrl+Cmd+I / Ctrl+Alt+I), and select **Agent** mode from the dropdown.
+1. Click the Tools button to verify that yugabyte-docs is selected in the available MCP tools.
 
-Use the CLI command to register the Docs MCP server with the Claude Code agent.
+  {{% /tab %}}
 
-1. Run:
+  {{% tab header="Claude Code" lang="claude" %}}
 
-   ```bash
-   claude mcp add yugabytedb-docs -- npx -y @yugabyte/mcp-server-docs
-   ```
+1. Use the CLI command to register the Docs MCP server with the Claude Code agent.
 
-2. Confirm the server is listed:
+1. Confirm the server is listed:
 
-```bash
-claude mcp list
-```
+    ```bash
+    claude mcp list
+    ```
 
-{{< /tab >}}
+  {{% /tab %}}
 
-{{< tab header="MCP URL" >}}
-
-### Use the MCP URL or config in other clients
+  {{% tab header="MCP URL" lang="mcp-url" %}}
 
 For Claude Desktop, ChatGPT, or other MCP-compatible clients, you can use the hosted endpoint or a local config.
 
@@ -77,9 +69,9 @@ For Claude Desktop, ChatGPT, or other MCP-compatible clients, you can use the ho
 
 Use this URL in clients that accept an MCP server URL:
 
-`https://mcp.kapa.ai/v0/yugabyte`
+`https://yugabyte.mcp.kapa.ai`
 
-**Option B — Local config (e.g. Claude Desktop)**
+**Option B — Local config (for example, Claude Desktop)**
 
 Add the server to your client config (for example, `claude_desktop_config.json`):
 
@@ -94,13 +86,16 @@ Add the server to your client config (for example, `claude_desktop_config.json`)
 }
 ```
 
-{{< /tab >}}
+Restart Claude Desktop for changes to take effect.
+
+  {{% /tab %}}
+
 {{< /tabpane >}}
 
-## Example prompts
+## Examples
 
 After the server is connected, try prompts such as:
-
-* "What are the default isolation levels in YugabyteDB?"
-* "Provide a Kubernetes manifest for a 3-node YugabyteDB cluster."
-* "Explain the differences between YSQL and YCQL indexing."
+* Explain the Raft consensus implementation in YugabyteDB.
+* Give me a YSQL example of a stored procedure that handles a bank transfer with error checking.
+* What is the recommended way to perform a rolling upgrade on a 6-node cluster?
+* Summarize the main differences between YSQL and YCQL index types.
