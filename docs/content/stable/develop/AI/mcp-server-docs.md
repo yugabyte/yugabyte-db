@@ -24,8 +24,6 @@ From the docs Search bar, click **Ask AI > Use MCP**. In the **Connect to AI too
 {{< tabpane lang="bash" >}}
   {{< tab header="Cursor" >}}
 
-### Add to Cursor
-
 1. Open **Cursor Settings** (`Cmd + Shift + J` on macOS, `Ctrl + Shift + J` on Windows/Linux).
 2. Go to **Features** → **MCP**.
 3. Click **+ Add new MCP server**.
@@ -38,8 +36,6 @@ From the docs Search bar, click **Ask AI > Use MCP**. In the **Connect to AI too
 {{< /tab >}}
 
   {{< tab header="VS Code" >}}
-
-### Add to VS Code
 
 1. Open the **Command Palette** (`Cmd + Shift + P` on macOS, `Ctrl + Shift + P` on Windows/Linux).
 2. Run **MCP: Add Server**.
