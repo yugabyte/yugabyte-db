@@ -7311,6 +7311,12 @@ PostgresMain(const char *dbname, const char *username)
 						yb_abort_xact_command();
 					}
 
+					/*
+					 * NOTE: We don't need to free previous
+					 * MyProcPort fields since they should be allocated in the
+					 * transaction MemoryContext which has been free'd now
+					 */
+
 					/* Place back the old context */
 					MyProcPort->yb_is_auth_passthrough_req = false;
 					MyProcPort->yb_has_auth_passthrough_failed = false;
@@ -7324,11 +7330,6 @@ PostgresMain(const char *dbname, const char *username)
 					inet_pton(AF_INET, MyProcPort->remote_host,
 							  &(ip_address_1->sin_addr));
 
-					/*
-					 * NOTE: We don't need to free previous
-					 * MyProcPort->authn_id since it was allocated in the
-					 * transaction MemoryContext which has been free'd now
-					 */
 					MyProcPort->authn_id = authn_id;
 
 					send_ready_for_query = true;
