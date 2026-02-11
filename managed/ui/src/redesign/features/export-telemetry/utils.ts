@@ -26,13 +26,13 @@ export const getIsMetricsExportSupported = (telemetryProvider: TelemetryProvider
   switch (telemetryProvider.config.type) {
     case TelemetryProviderType.DATA_DOG:
     case TelemetryProviderType.DYNATRACE:
+    case TelemetryProviderType.OTLP:
       return true;
     case TelemetryProviderType.AWS_CLOUDWATCH:
     case TelemetryProviderType.GCP_CLOUD_MONITORING:
     case TelemetryProviderType.LOKI:
     case TelemetryProviderType.SPLUNK:
     case TelemetryProviderType.S3:
-    case TelemetryProviderType.OTLP:
       return false;
     default:
       return assertUnreachableCase(telemetryProvider.config.type);
