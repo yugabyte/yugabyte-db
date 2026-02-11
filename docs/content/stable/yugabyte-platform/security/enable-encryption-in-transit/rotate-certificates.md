@@ -52,7 +52,7 @@ To enable or disable encryption in transit:
 
 1. On the **Certificate Authority** tab, set the **Enable Node to Node Encryption** and **Enable Client to Node Encryption** options.
 
-    You can also opt to use the same certificate for both.
+    You can also opt to use the same certificate for both. (Note that in Kubernetes deployments, you must use the same certificate for both.)
 
 1. Select the root certificate(s) to use.
 
