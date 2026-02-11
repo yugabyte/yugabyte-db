@@ -22,10 +22,10 @@ processors:
     - {action: upsert, key: yugabyte.purpose, value: DATA_DOG_METRICS_EXPORT}
     - {action: upsert, key: tag, value: value}
     - {action: upsert, key: test, value: specific_targets}
-  batch/metrics_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$BatchProcessor {
-    send_batch_max_size: 1000, send_batch_size: 100, timeout: 10s}
   memory_limiter/metrics_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$MemoryLimiterProcessor {
     check_interval: 10s, limit_mib: 2048}
+  batch/metrics_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$BatchProcessor {
+    send_batch_max_size: 1000, send_batch_size: 100, timeout: 10s}
 receivers:
   prometheus/yugabyte: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$PrometheusReceiver
     config:
@@ -56,9 +56,9 @@ receivers:
         metrics_path: /prometheus-metrics
         scheme: http
         static_configs:
-        - labels: {export_type: master_export, __param_show_help: 'false', service: yb-master}
+        - labels: {export_type: master_export, __param_show_help: 'true', service: yb-master}
           targets: ['127.0.0.1:7000']
-        - labels: {export_type: tserver_export, __param_show_help: 'false', service: yb-tserver}
+        - labels: {export_type: tserver_export, __param_show_help: 'true', service: yb-tserver}
           targets: ['127.0.0.1:9000']
         tls_config: {insecure_skip_verify: true}
       - job_name: otel-collector
@@ -73,8 +73,8 @@ service:
   pipelines:
     metrics/metrics_00000000-0000-0000-0000-000000000000:
       exporters: [datadog/metrics_00000000-0000-0000-0000-000000000000]
-      processors: [attributes/metrics_00000000-0000-0000-0000-000000000000, batch/metrics_00000000-0000-0000-0000-000000000000,
-        memory_limiter/metrics_00000000-0000-0000-0000-000000000000]
+      processors: [attributes/metrics_00000000-0000-0000-0000-000000000000, memory_limiter/metrics_00000000-0000-0000-0000-000000000000,
+        batch/metrics_00000000-0000-0000-0000-000000000000]
       receivers: [prometheus/yugabyte]
   telemetry:
     logs:

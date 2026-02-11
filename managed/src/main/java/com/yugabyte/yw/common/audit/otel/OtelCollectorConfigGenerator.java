@@ -86,7 +86,7 @@ public class OtelCollectorConfigGenerator {
   private static final String PARAM_SHOW_HELP = "__param_show_help";
   private static final String PARAM_PRIORITY_REGEX = "__param_priority_regex";
   private static final String PARAM_METRICS = "__param_metrics";
-  private static final String DEFAULT_SHOW_HELP = "false";
+  private static final String DEFAULT_SHOW_HELP = "true";
 
   // Receiver prefixes
   private static final String RECEIVER_PREFIX_FILELOG = "filelog/";
@@ -400,17 +400,6 @@ public class OtelCollectorConfigGenerator {
           processorNames.add(attributesProcessorName);
         }
 
-        // Add BatchProcessor for metrics.
-        String batchProcessorName = PROCESSOR_PREFIX_BATCH + exportTypeAndUUIDString;
-        OtelCollectorConfigFormat.BatchProcessor batchProcessor =
-            new OtelCollectorConfigFormat.BatchProcessor();
-        batchProcessor.setSend_batch_size(exporterConfig.getSendBatchSize());
-        batchProcessor.setSend_batch_max_size(exporterConfig.getSendBatchMaxSize());
-        batchProcessor.setTimeout(exporterConfig.getSendBatchTimeoutSeconds().toString() + "s");
-        collectorConfigFormat.getProcessors().put(batchProcessorName, batchProcessor);
-        // Add BatchProcessor to the pipeline
-        processorNames.add(batchProcessorName);
-
         // Add MemoryLimiterProcessor for metrics.
         String memoryLimiterProcessorName =
             PROCESSOR_PREFIX_MEMORY_LIMITER + exportTypeAndUUIDString;
@@ -460,6 +449,16 @@ public class OtelCollectorConfigGenerator {
           // Add CumulativeToDeltaProcessor to the pipeline
           processorNames.add(cumulativetodeltaProcessorName);
         }
+
+        // Add BatchProcessor at the end, after cumulativetodelta, so processors know metric type
+        String batchProcessorName = PROCESSOR_PREFIX_BATCH + exportTypeAndUUIDString;
+        OtelCollectorConfigFormat.BatchProcessor batchProcessor =
+            new OtelCollectorConfigFormat.BatchProcessor();
+        batchProcessor.setSend_batch_size(exporterConfig.getSendBatchSize());
+        batchProcessor.setSend_batch_max_size(exporterConfig.getSendBatchMaxSize());
+        batchProcessor.setTimeout(exporterConfig.getSendBatchTimeoutSeconds().toString() + "s");
+        collectorConfigFormat.getProcessors().put(batchProcessorName, batchProcessor);
+        processorNames.add(batchProcessorName);
 
         // Add all the processor names to the pipeline
         pipeline.setProcessors(processorNames);
