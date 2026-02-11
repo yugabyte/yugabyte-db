@@ -49,6 +49,7 @@ public class ReplaceNodeInUniverseTest extends UniverseModifyBaseTest {
           mock(ListTabletServersResponse.class);
       when(mockListTabletServersResponse.getTabletServersCount()).thenReturn(10);
       when(mockClient.listTabletServers()).thenReturn(mockListTabletServersResponse);
+      setCheckNodesAreSafeToTakeDown(mockClient);
     } catch (Exception e) {
       fail(e.getMessage());
     }
