@@ -586,3 +586,28 @@ export const optimizeVersion = (version) => {
     return version.join('.');
   }
 };
+
+export const getNodeActionStatusMsg = (actionType) => {
+  const statusMessages = {
+    START: {
+      purpose: 'Exits the Maintenance mode.',
+      description: ''
+    },
+    STOP: {
+      purpose: 'This action stops the node for short-term maintenance (for example, OS patching).',
+      description:
+        "• Master and T-Server processes on the Node are stopped, and tablet leaders are re-elected elsewhere. \n • Existing database connections are unaffected; new connections are redirected to other nodes. \n\n If you don't Exit Maintenance Mode after a set period of time (15 minutes by default), data will be removed from the node and re-replicated to other nodes (if any) in the same fault domain."
+    },
+    REPLACE: {
+      purpose: 'This action replaces a faulty node with a specified replacement.',
+      description:
+        '• All data is migrated to the replacement node. \n • The faulty node is removed from the cluster and fully decommissioned (cleaned). \n • For cloud service providers, the node is deleted. \n • For on-premises providers, if cleanup succeeds, the node is returned to the provider free pool. If cleanup fails, the node is added to the decommissioned pool and must be manually recommissioned.'
+    },
+    REMOVE: {
+      purpose: 'This action removes the node from the cluster.',
+      description:
+        '• If spare nodes are available, tablets may be re-replicated to other nodes to meet the RF requirement for the cluster. \n • If there are no spare nodes, some tablets may be under-replicated, and you should add another node.'
+    }
+  };
+  return statusMessages[actionType] || { purpose: '', description: '' };
+};

@@ -103,6 +103,9 @@ public class DecommissionNode extends EditUniverseTaskBase {
 
   @Override
   public void run() {
+    if (maybeRunOnlyPrechecks()) {
+      return;
+    }
     log.info(
         "Started {} task for node {} in univ uuid={}",
         getName(),
