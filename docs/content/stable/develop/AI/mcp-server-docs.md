@@ -22,13 +22,21 @@ This enables the tool to answer questions about Yugabyte without leaving your ID
 
 The MCP server is hosted at `https://yugabyte.mcp.kapa.ai`.
 
-From the docs Search bar, click **Ask AI > Use MCP**. In the **Connect to AI tools** dropdown, you can add the Yugabyte Docs MCP server by choosing the option that matches your tool.
+From the docs Search bar, click **Ask AI > Use MCP**.
+
+![Use MCP](/images/ai/use-mcp.png)
+
+In the **Connect to AI tools** dropdown, you can add the Yugabyte Docs MCP server by choosing the option that matches your tool.
 
 {{< tabpane text=true >}}
 
   {{% tab header="Cursor" lang="cursor" %}}
 
-The **Add to Cursor** option opens Cursor directly with the MCP server configuration **Tools** window. You need to do the following additional steps to enable the server:
+The **Add to Cursor** option opens Cursor directly with the MCP server configuration **Tools** window.
+
+![Cursor MCP](/images/ai/cursor-mcp1.png)
+
+You need to do the following additional steps to enable the server:
 
 1. Click **Install** in the **Install MCP Server?** dialog box.
 1. Click **Connect** beside the yugabyte-docs server and you should see a green dot with the tool enabled.
@@ -40,7 +48,11 @@ The **Add to Cursor** option opens Cursor directly with the MCP server configura
 
 **Prerequisites**: VS Code 1.102+ with GitHub Copilot enabled.
 
-The **Add to VS Code** option opens VS Code directly with the MCP server configuration window. You need to do the following additional steps to enable the server:
+The **Add to VS Code** option opens VS Code directly with the MCP server configuration window.
+
+![VS Code MCP](/images/ai/vs-code-mcp1.png)
+
+You need to do the following additional steps to enable the server:
 
 1. Click **Install** to install the yugabyte-docs MCP server.
 1. Go to **Extensions** to check yugabyte-docs listed as an installed MCP server.
@@ -95,6 +107,7 @@ Restart Claude Desktop for changes to take effect.
 ## Examples
 
 After the server is connected, try prompts such as:
+
 * Explain the Raft consensus implementation in YugabyteDB.
 * Give me a YSQL example of a stored procedure that handles a bank transfer with error checking.
 * What is the recommended way to perform a rolling upgrade on a 6-node cluster?
