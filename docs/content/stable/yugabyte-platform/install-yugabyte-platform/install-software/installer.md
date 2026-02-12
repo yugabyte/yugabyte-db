@@ -503,7 +503,7 @@ If you are setting these values on an existing system, run `yba-ctl reconfigure`
 | `maxSamples` | Maximum number of samples that a single query can load into memory. |
 | `timeout` | The time threshold for inactivity after which Prometheus will be declared inactive. |
 | `retentionTime` | How long Prometheus retains the database metrics. |
-| `allowedTLSCiphers` | List of ciphers that Prometheus is allowed use (assuming https is enabled). If any of the default ciphers provided in the configuration file are not supported on the machine you are using for YBA, remove them from the list. |
+| `allowedTLSCiphers` | List of ciphers that Prometheus is allowed to use (assuming https is enabled). If any of the default ciphers provided in the configuration file are not supported on the machine you are using for YBA, remove them from the list. |
 
 ### Configure PostgreSQL
 
