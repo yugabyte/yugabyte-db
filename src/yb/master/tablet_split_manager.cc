@@ -233,7 +233,14 @@ Status TabletSplitManager::ValidateSplitCandidateTable(
   auto table_lock = table->LockForRead();
   if (table_lock->started_deleting()) {
     return STATUS_FORMAT(
-        NotSupported, "Table is deleted; ignoring for splitting. table: $0", *table);
+        NotSupported, "Table is in state: $0; ignoring for splitting. table: $1",
+        table_lock->state_name(), *table);
+  }
+
+  if (table_lock->started_hiding()) {
+    return STATUS_FORMAT(
+        NotSupported, "Table is in hide_state: $0; ignoring for splitting. table: $1",
+        table_lock->hide_state_name(), *table);
   }
 
   if (table_lock->is_index() && table_lock->pb.index_info().has_vector_idx_options()) {

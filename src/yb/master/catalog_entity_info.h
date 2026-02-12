@@ -570,6 +570,10 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB> {
     return SysTablesEntryPB_State_Name(pb.state());
   }
 
+  const std::string& hide_state_name() const {
+    return SysTablesEntryPB_HideState_Name(pb.hide_state());
+  }
+
   // Helper to set the state of the tablet with a custom message.
   void set_state(SysTablesEntryPB::State state, const std::string& msg);
 
