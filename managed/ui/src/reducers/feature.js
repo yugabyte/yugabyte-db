@@ -28,7 +28,6 @@ const initialStateFeatureInTest = {
   enableNewUI: true, // feature flag to enable new revamped UI,
   enableCustomEmailTemplates: true,
   enableMKR: true,
-  enableS3BackupProxy: false,
   enableRRGflags: true,
   enableLDAPRoleMapping: true,
   enableNewRestoreModal: true,
