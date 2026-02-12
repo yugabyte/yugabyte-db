@@ -933,7 +933,7 @@ void TabletServiceAdminImpl::BackfillIndex(
   std::string backfilled_until;
   std::unordered_set<TableId> failed_indexes;
   uint64_t num_rows_read_from_table_for_backfill = 0;
-  std::unordered_map<TableId, double> num_rows_backfilled_in_index;
+  double num_rows_backfilled_in_index = 0.0;
   if (is_pg_table) {
     if (!req->has_namespace_name()) {
       SetupErrorAndRespond(
@@ -959,8 +959,11 @@ void TabletServiceAdminImpl::BackfillIndex(
     bool is_xcluster_automatic_mode_target =
         server_->GetXClusterContext().IsTargetAndInAutomaticMode(*namespace_id);
 
+    DCHECK_EQ(indexes_to_backfill.size(), 1)
+        << "We don't support batching index backfill in YSQL yet";
+    const qlexpr::IndexInfo& index_to_backfill = indexes_to_backfill[0];
     backfill_status = tablet.tablet->BackfillIndexesForYsql(
-        indexes_to_backfill,
+        index_to_backfill,
         req->start_key(),
         deadline,
         read_at,
@@ -969,15 +972,15 @@ void TabletServiceAdminImpl::BackfillIndex(
         server_->GetSharedMemoryPostgresAuthKey(),
         is_xcluster_automatic_mode_target,
         &num_rows_read_from_table_for_backfill,
-        num_rows_backfilled_in_index,
+        &num_rows_backfilled_in_index,
         &backfilled_until);
     if (backfill_status.IsIllegalState()) {
-      DCHECK_EQ(failed_indexes.size(), 0) << "We don't support batching in YSQL yet";
-      for (const auto& idx_info : indexes_to_backfill) {
-        failed_indexes.insert(idx_info.table_id());
-      }
+      failed_indexes.insert(index_to_backfill.table_id());
       DCHECK_EQ(failed_indexes.size(), 1) << "We don't support batching in YSQL yet";
     }
+
+    resp->mutable_num_rows_backfilled_in_index()->insert(
+        {index_to_backfill.table_id(), num_rows_backfilled_in_index});
   } else if (tablet.tablet->table_type() == TableType::YQL_TABLE_TYPE) {
     backfill_status = tablet.tablet->BackfillIndexes(
         indexes_to_backfill,
@@ -1002,11 +1005,6 @@ void TabletServiceAdminImpl::BackfillIndex(
   resp->set_backfilled_until(backfilled_until);
   resp->set_propagated_hybrid_time(server_->Clock()->Now().ToUint64());
   resp->set_num_rows_read_from_table_for_backfill(num_rows_read_from_table_for_backfill);
-  if (is_pg_table) {
-    for (const auto& [index_id, num_rows_backfilled] : num_rows_backfilled_in_index) {
-      resp->mutable_num_rows_backfilled_in_index()->insert({index_id, num_rows_backfilled});
-    }
-  }
 
   if (!backfill_status.ok()) {
     VLOG(2) << " Failed indexes are " << yb::ToString(failed_indexes);
@@ -2527,6 +2525,7 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
       " backend_type != 'walsender' AND backend_type != 'yb-conn-mgr walsender'"
       " AND backend_type != 'yb auto analyze backend'"
       " AND backend_type != 'yb index backfill'"
+      " AND backend_type != 'yb matview refresh'"
       " AND catalog_version < $0 AND datid = $1$2",
       catalog_version, database_oid,
       (req->has_requestor_pg_backend_pid() ?

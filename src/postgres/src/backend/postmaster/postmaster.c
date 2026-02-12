@@ -2345,8 +2345,18 @@ retry1:
 	 * running backend (even after PostmasterContext is destroyed).  We need
 	 * not worry about leaking this storage on failure, since we aren't in the
 	 * postmaster process anymore.
+	 *
+	 * YB: When in auth passthrough mode, we reuse this ProcessStartupPacket
+	 * func to handle client startup packets. The specific details of the client
+	 * are not required after authentication is over. Thus, there is no need to
+	 * store startup data in TopMemoryContext; and allocating in
+	 * TopMemoryContext here leads to a memory leak in this scenario (requiring
+	 * explicit pfree's elsewhere). So, we continue allocating in the txn
+	 * MemoryContext (currently active) spawned specifically for Auth
+	 * Passthrough auth attempts.
 	 */
-	oldcontext = MemoryContextSwitchTo(TopMemoryContext);
+	if (!YbIsAuthPassthroughInProgress(port))
+		oldcontext = MemoryContextSwitchTo(TopMemoryContext);
 
 	/* Handle protocol version 3 startup packet */
 	{
@@ -2605,8 +2615,11 @@ retry1:
 
 	/*
 	 * Done putting stuff in TopMemoryContext.
+	 * YB: No context switch required if Auth Passthrough is in progress.
+	 * See above.
 	 */
-	MemoryContextSwitchTo(oldcontext);
+	if (!YbIsAuthPassthroughInProgress(port))
+		MemoryContextSwitchTo(oldcontext);
 
 	/*
 	 * If we're going to reject the connection due to database state, say so

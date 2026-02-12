@@ -14,6 +14,7 @@ import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -57,6 +58,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -103,6 +105,27 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
       setCheckNodesAreSafeToTakeDown(mockClient);
       when(mockGFlagsAuditHandler.constructGFlagAuditPayload(any()))
           .thenReturn(new ObjectMapper().createObjectNode());
+      // CheckNodeDataDirDiskSpace precheck runs df; return sufficient KB so it passes.
+      // CheckNodeCommandExecution runs echo "command-execution-test"; return that output.
+      org.mockito.stubbing.Answer<ShellResponse> runCommandAnswer =
+          inv -> {
+            @SuppressWarnings("unchecked")
+            List<String> cmd = inv.getArgument(2);
+            if (cmd != null && cmd.toString().contains("df")) {
+              return ShellResponse.create(0, "104004792");
+            }
+            if (cmd != null
+                && cmd.toString().contains("echo")
+                && cmd.toString().contains("command-execution-test")) {
+              return ShellResponse.create(
+                  0, ShellResponse.RUN_COMMAND_OUTPUT_PREFIX + " command-execution-test");
+            }
+            return ShellResponse.create(0, "Command output: Linux x86_64");
+          };
+      when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
+          .thenAnswer(runCommandAnswer);
+      when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any(), anyBoolean()))
+          .thenAnswer(runCommandAnswer);
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
@@ -148,6 +171,22 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     MockUpgrade mockUpgrade = initMockUpgrade(GFlagsUpgrade.class);
     mockUpgrade.setUpgradeContext(UpgradeTaskBase.RUN_BEFORE_STOPPING);
     return mockUpgrade;
+  }
+
+  @Override
+  protected TaskType[] getPrecheckTasks(boolean hasRollingRestarts) {
+    return getPrecheckTasks(hasRollingRestarts, hasRollingRestarts);
+  }
+
+  @Override
+  protected TaskType[] getPrecheckTasks(
+      boolean hasRollingRestarts, boolean includeNodeComprehensivePrechecks) {
+    List<TaskType> types =
+        new ArrayList<>(
+            Arrays.asList(
+                super.getPrecheckTasks(hasRollingRestarts, includeNodeComprehensivePrechecks)));
+    types.add(TaskType.CheckNodeDataDirDiskSpace);
+    return types.toArray(new TaskType[0]);
   }
 
   @Test

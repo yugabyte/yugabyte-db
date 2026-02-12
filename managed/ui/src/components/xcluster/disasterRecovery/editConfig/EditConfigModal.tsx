@@ -28,7 +28,11 @@ import {
   DURATION_UNIT_TO_SECONDS,
   PITR_RETENTION_PERIOD_UNIT_OPTIONS
 } from '../constants';
-import { convertSecondsToLargestDurationUnit, getPitrRetentionPeriodMinValue } from '../utils';
+import {
+  convertSecondsToLargestDurationUnit,
+  formatRetentionPeriod,
+  getPitrRetentionPeriodMinValue
+} from '../utils';
 import {
   ReactSelectOption,
   YBReactSelectField
@@ -128,11 +132,8 @@ export const EditConfigModal = ({
   const pitrRetentionPeriodValue = formMethods.watch('pitrRetentionPeriodValue');
   const pitrRetentionPeriodUnit = formMethods.watch('pitrRetentionPeriodUnit.value');
   const pitrRetentionPeriodMinValue = getPitrRetentionPeriodMinValue(pitrRetentionPeriodUnit);
-  console.warn(pitrRetentionPeriodMinValue);
   useEffect(() => {
-    // Changing the retention period unit might clear an error on
-    // `pitrRetentionPeriodValue`. Ex. `pitrRetentionPeriodValue` = 6 does not pass validation when
-    // the unit is seconds, but it does pass validation when the unit is minutes.
+    // Changing the retention period unit might require revalidation of the value.
     if (pitrRetentionPeriodUnit !== undefined) {
       formMethods.trigger('pitrRetentionPeriodValue');
     }
@@ -246,42 +247,49 @@ export const EditConfigModal = ({
               <img src={InfoIcon} alt={t('infoIcon', { keyPrefix: 'imgAltText' })} />
             </YBTooltip>
           </div>
-          <Box display="flex" gridGap={theme.spacing(1)} alignItems="flex-start">
-            <YBInputField
-              control={formMethods.control}
-              name="pitrRetentionPeriodValue"
-              type="number"
-              inputProps={{ min: pitrRetentionPeriodMinValue }}
-              rules={{
-                required: t('error.pitrRetentionPeriodValueRequired'),
-                validate: {
-                  pattern: (value) => {
-                    const integerPattern = /^\d+$/;
-                    return (
-                      integerPattern.test(value?.toString() ?? '') ||
-                      t('error.pitrRetentionPeriodValueIntegerValidation')
-                    );
-                  },
-                  min: (value) => {
-                    return (
-                      (value as number) >= pitrRetentionPeriodMinValue ||
-                      t('error.pitrRetentionPeriodValueMinimum')
-                    );
+          <Box display="flex" flexDirection="column" gridGap={theme.spacing(1)}>
+            <Box display="flex" gridGap={theme.spacing(1)} alignItems="flex-start">
+              <YBInputField
+                control={formMethods.control}
+                name="pitrRetentionPeriodValue"
+                type="number"
+                inputProps={{ min: pitrRetentionPeriodMinValue }}
+                rules={{
+                  required: t('error.pitrRetentionPeriodValueRequired'),
+                  validate: {
+                    pattern: (value) => {
+                      const integerPattern = /^\d+$/;
+                      return (
+                        integerPattern.test(value?.toString() ?? '') ||
+                        t('error.pitrRetentionPeriodValueIntegerValidation')
+                      );
+                    },
+                    min: (value) => {
+                      return (
+                        (value as number) >= pitrRetentionPeriodMinValue ||
+                        t('error.pitrRetentionPeriodValueMinimum')
+                      );
+                    }
                   }
-                }
-              }}
-              disabled={isFormDisabled}
-            />
-            <YBReactSelectField
-              control={formMethods.control}
-              name="pitrRetentionPeriodUnit"
-              onChange={handlePitrRetentionPeriodUnitChange}
-              options={PITR_RETENTION_PERIOD_UNIT_OPTIONS}
-              autoSizeMinWidth={200}
-              maxWidth="100%"
-              rules={{ required: t('error.pitrRetentionPeriodUnitRequired') }}
-              isDisabled={isFormDisabled}
-            />
+                }}
+                disabled={isFormDisabled}
+              />
+              <YBReactSelectField
+                control={formMethods.control}
+                name="pitrRetentionPeriodUnit"
+                onChange={handlePitrRetentionPeriodUnitChange}
+                options={PITR_RETENTION_PERIOD_UNIT_OPTIONS}
+                autoSizeMinWidth={200}
+                maxWidth="100%"
+                rules={{ required: t('error.pitrRetentionPeriodUnitRequired') }}
+                isDisabled={isFormDisabled}
+              />
+            </Box>
+            <Typography variant="body2">
+              {t('currentRetentionPeriod', {
+                retentionPeriod: formatRetentionPeriod(drConfig.pitrRetentionPeriodSec)
+              })}
+            </Typography>
           </Box>
         </div>
       </Box>
@@ -312,12 +320,12 @@ const getDefaultValues = (drConfig: DrConfig, storageConfigs: BackupStorageConfi
   );
   return {
     storageConfig: defaultBackupStorageConfigOption,
-    // Fall back to seconds if we can't find a matching duration unit.
+    // Fall back to hours if we can't find a matching duration unit.
     pitrRetentionPeriodValue: pitrRetentionPeriodUnit
       ? pitrRetentionPeriodValue
-      : drConfig.pitrRetentionPeriodSec,
+      : Math.max(1, Math.round(drConfig.pitrRetentionPeriodSec / 3600)),
     pitrRetentionPeriodUnit: pitrRetentionPeriodUnit
       ? pitrRetentionPeriodUnit
-      : PITR_RETENTION_PERIOD_UNIT_OPTIONS.find((option) => option.value === DurationUnit.SECOND)
+      : PITR_RETENTION_PERIOD_UNIT_OPTIONS.find((option) => option.value === DurationUnit.HOUR)
   };
 };

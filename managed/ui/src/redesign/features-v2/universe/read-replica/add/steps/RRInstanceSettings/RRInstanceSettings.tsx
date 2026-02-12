@@ -1,5 +1,6 @@
 import { forwardRef, useContext, useEffect, useImperativeHandle } from 'react';
 import { useForm, FormProvider } from 'react-hook-form';
+import { yupResolver } from '@hookform/resolvers/yup';
 import { useTranslation } from 'react-i18next';
 import { mui, YBCheckboxField } from '@yugabyte-ui-library/core';
 import { RRBreadCrumbs } from '../../ReadReplicaBreadCrumbs';
@@ -13,8 +14,12 @@ import {
 import { InstanceBox } from '@app/redesign/features-v2/universe/create-universe/steps';
 import {
   InstanceTypeField,
-  VolumeInfoField
+  VolumeInfoField,
+  EBSVolumeField,
+  EBSKmsConfigField
 } from '@app/redesign/features-v2/universe/create-universe/fields';
+import { ENABLE_EBS_CONFIG_FIELD } from '@app/redesign/features-v2/universe/create-universe/fields/FieldNames';
+import { RRInstanceSettingsValidationSchema } from './ValidationSchema';
 import { useRuntimeConfigValues } from '@app/redesign/features-v2/universe/create-universe/helpers/utils';
 import { getClusterByType } from '@app/redesign/features-v2/universe/edit-universe/EditUniverseUtils';
 import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
@@ -56,24 +61,31 @@ export const RRInstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
   const {
     maxVolumeCount,
     isRuntimeConfigLoading,
-    isProviderRuntimeConfigLoading
+    isProviderRuntimeConfigLoading,
+    ebsVolumeEnabled,
+    useK8CustomResources
   } = useRuntimeConfigValues(provider.uuid);
 
-  const { t } = useTranslation('translation');
+  const { t } = useTranslation('translation', { keyPrefix: 'readReplica.addRR' });
 
   const methods = useForm<RRInstanceSettingsProps>({
     defaultValues: instanceSettings,
-    mode: 'onChange'
+    mode: 'onChange',
+    resolver: yupResolver(
+      RRInstanceSettingsValidationSchema(t, useK8CustomResources, provider?.code)
+    )
   });
 
   const { control, watch, reset } = methods;
 
   const sameAsPrimary = watch(SAME_AS_PRIMARY_INST_FIELD);
+  const ebsEnabled = watch(ENABLE_EBS_CONFIG_FIELD);
 
   // Reset form to initial values from primary cluster when sameAsPrimary is true
   useEffect(() => {
     if (sameAsPrimary && primaryCluster && universeData) {
       const storageSpec = primaryCluster?.node_spec.storage_spec;
+      const cloudVolumeEncryption = storageSpec?.cloud_volume_encryption;
       const initialInstanceSettings: RRInstanceSettingsProps = {
         inheritPrimaryInstance: true,
         arch: universeData?.info?.arch,
@@ -88,7 +100,9 @@ export const RRInstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
               storageClass: 'standard',
               storageType: (storageSpec?.storage_type as StorageType) ?? null
             }
-          : null
+          : null,
+        enableEbsVolumeEncryption: cloudVolumeEncryption?.enable_volume_encryption ?? false,
+        ebsKmsConfigUUID: cloudVolumeEncryption?.kms_config_uuid ?? null
       };
       reset(initialInstanceSettings);
     }
@@ -116,17 +130,14 @@ export const RRInstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
   return (
     <FormProvider {...methods}>
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-        <RRBreadCrumbs
-          groupTitle={t('readReplica.addRR.hardware')}
-          subTitle={t('readReplica.addRR.instanceOptional')}
-        />
+        <RRBreadCrumbs groupTitle={t('hardware')} subTitle={t('instanceOptional')} />
         <StyledPanel>
-          <StyledHeader>{t('readReplica.addRR.rrInstance')}</StyledHeader>
+          <StyledHeader>{t('rrInstance')}</StyledHeader>
           <StyledContent>
             <Box>
               <Box mb={2}>
                 <YBCheckboxField
-                  label={t('readReplica.addRR.primaryRRInstanceSame')}
+                  label={t('primaryRRInstanceSame')}
                   control={control}
                   name={SAME_AS_PRIMARY_INST_FIELD}
                   size="large"
@@ -157,6 +168,12 @@ export const RRInstanceSettings = forwardRef<StepsRef>((_, forwardRef) => {
                       //pass regions selected in first step
                       // regions={}
                     />
+                    {ebsVolumeEnabled && provider?.code === CloudType.aws && (
+                      <EBSVolumeField disabled={!!sameAsPrimary} />
+                    )}
+                    {ebsVolumeEnabled && provider?.code === CloudType.aws && ebsEnabled && (
+                      <EBSKmsConfigField disabled={!!sameAsPrimary} />
+                    )}
                   </InstanceBox>
                 )}
               </StyledPanelWrapper>

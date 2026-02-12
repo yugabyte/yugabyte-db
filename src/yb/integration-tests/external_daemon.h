@@ -13,7 +13,6 @@
 
 #pragma once
 
-#include <string.h>
 #include <sys/types.h>
 
 #include <memory>
@@ -31,8 +30,8 @@
 #include "yb/util/json_document.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
-#include "yb/util/status_fwd.h"
 #include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
@@ -150,18 +149,22 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   // 'entity_id' may be NULL, in which case the first entity of the same type as 'entity_proto' will
   // be matched.
 
+  // This retrieves yb.master or yb.tabletserver metrics only.
   template <class ValueType>
   Result<ValueType> GetMetric(
       const MetricEntityPrototype* entity_proto, const char* entity_id,
       const MetricPrototype* metric_proto, const char* value_field) const {
+    // Note that you need a different port from bound_http_hostport() for yb.cqlserver metrics.
     return GetMetricFromHost<ValueType>(
         bound_http_hostport(), entity_proto, entity_id, metric_proto, value_field);
   }
 
+  // This retrieves yb.master or yb.tabletserver metrics only.
   template <class ValueType>
   Result<ValueType> GetMetric(
       const char* entity_proto_name, const char* entity_id, const char* metric_proto_name,
       const char* value_field) const {
+    // Note that you need a different port from bound_http_hostport() for yb.cqlserver metrics.
     return GetMetricFromHost<ValueType>(
         bound_http_hostport(), entity_proto_name, entity_id, metric_proto_name, value_field);
   }

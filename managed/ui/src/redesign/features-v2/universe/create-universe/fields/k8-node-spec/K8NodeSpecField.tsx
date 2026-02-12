@@ -30,7 +30,7 @@ export const K8NodeSpecField = ({
   provider
 }: K8NodeSpecFieldProps): ReactElement => {
   const { watch, control, setValue } = useFormContext<InstanceSettingProps>();
-  const { t } = useTranslation('translation', { keyPrefix: 'universeForm.instanceConfig' });
+  const { t } = useTranslation('translation', { keyPrefix: 'createUniverseV2.instanceSettings' });
 
   const nodeTypeTag = isMaster ? NodeType.Master : NodeType.TServer;
   const fieldValue = isMaster
@@ -82,8 +82,8 @@ export const K8NodeSpecField = ({
       name={UPDATE_FIELD}
       control={control}
       rules={{
-        required: t('universeForm.validation.required', {
-          field: t('universeForm.instanceConfig.instanceType')
+        required: t('createUniverseV2.validation.required', {
+          field: t('createUniverseV2.instanceSettings.instanceType')
         }) as string
       }}
       render={() => {

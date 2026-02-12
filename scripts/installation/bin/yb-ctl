@@ -1639,6 +1639,7 @@ class ClusterControl:
         num_yb_admin_ts = None
 
         def call_check_for_ts(should_get_error):
+            nonlocal num_alive_ts, num_yb_admin_ts
             if not call_check_for_processes(should_get_error):
                 self.dump_missing_process_error_logs()
                 raise ExitWithError("At least one master or tserver process is down.")

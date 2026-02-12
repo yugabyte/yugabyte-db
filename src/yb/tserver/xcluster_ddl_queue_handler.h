@@ -178,7 +178,7 @@ class XClusterDDLQueueHandler {
   // Keep track of how many times we've repeatedly failed a DDL.
   int num_fails_for_this_ddl_ = 0;
   std::optional<QueryIdentifier> last_failed_query_;
-  Status last_failed_status_;
+  Status original_failed_status_;
 
   // Cache of the DDL batch in replicated_ddl table. This only set when we are certain that it is up
   // to date with the persisted state. It is set to nullopt in all other cases and needs to be

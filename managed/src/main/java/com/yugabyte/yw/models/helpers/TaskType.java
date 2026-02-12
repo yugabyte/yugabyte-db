@@ -1278,6 +1278,9 @@ public enum TaskType {
   CheckNodeCommandExecution(
       com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodeCommandExecution.class),
 
+  CheckNodeDataDirDiskSpace(
+      com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodeDataDirDiskSpace.class),
+
   OperatorImportResource(com.yugabyte.yw.commissioner.tasks.subtasks.OperatorImportResource.class);
 
   private final Class<? extends ITask> taskClass;

@@ -841,17 +841,31 @@ Status flush_table_by_id_action(
   return Status::OK();
 }
 
-const auto flush_sys_catalog_args = "";
+const auto flush_sys_catalog_args = "[leader_only]";
 Status flush_sys_catalog_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
-  RETURN_NOT_OK_PREPEND(client->FlushSysCatalog(), "Unable to flush table sys_catalog");
+  bool all_peers = true;
+  if (args.size() == 1 && args[0] == "leader_only") {
+    all_peers = false;
+  } else if (!args.empty()) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+  RETURN_NOT_OK_PREPEND(
+      client->FlushSysCatalog(all_peers), "Unable to flush table sys_catalog");
   return Status::OK();
 }
 
-const auto compact_sys_catalog_args = "";
+const auto compact_sys_catalog_args = "[leader_only]";
 Status compact_sys_catalog_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
-  RETURN_NOT_OK_PREPEND(client->CompactSysCatalog(), "Unable to compact table sys_catalog");
+  bool all_peers = true;
+  if (args.size() == 1 && args[0] == "leader_only") {
+    all_peers = false;
+  } else if (!args.empty()) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+  RETURN_NOT_OK_PREPEND(
+      client->CompactSysCatalog(all_peers), "Unable to compact table sys_catalog");
   return Status::OK();
 }
 

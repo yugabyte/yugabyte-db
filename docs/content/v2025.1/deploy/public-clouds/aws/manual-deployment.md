@@ -321,6 +321,7 @@ for ip in $ALL_NODES; do \
          https://software.yugabyte.com/releases/${YB_VERSION}/yugabyte-${YB_VERSION_BUILD}-linux-x86_64.tar.gz"; \
    ssh -i $PEM $ADMIN_USER@$ip \
       "cd ~/yb-software; \
+       echo \"\$(curl -L https://software.yugabyte.com/releases/\${YB_VERSION}/yugabyte-\${YB_VERSION_BUILD}-linux-x86_64-tar.gz.sha) *yugabyte-\${YB_VERSION}-linux.tar.gz\" | shasum --check && \
        tar xvfz yugabyte-${YB_VERSION}-linux.tar.gz"; \
    ssh -i $PEM $ADMIN_USER@$ip \
        "cd ~/yb-software/yugabyte-${YB_VERSION}; \

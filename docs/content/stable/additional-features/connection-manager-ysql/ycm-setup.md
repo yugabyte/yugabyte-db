@@ -109,7 +109,7 @@ The following table describes YB-TServer flags related to YSQL Connection Manage
 | ysql_conn_mgr_port | YSQL Connection Manager port to which clients can connect. This must be different from the PostgreSQL port set via `pgsql_proxy_bind_address`.<br>Default: 5433 |
 | ysql_conn_mgr_server_lifetime | The maximum duration (in seconds) that a backend PostgreSQL connection managed by YSQL Connection Manager can remain open after creation.<br>Default: 3600 |
 | ysql_conn_mgr_log_settings | Comma-separated list of log settings for YSQL Connection Manger. Can include 'log_debug', 'log_config', 'log_session', 'log_query', and 'log_stats'.<br>Default: "" |
-| ysql_conn_mgr_use_auth_backend | Enable the use of the auth-backend for authentication of client connections. When false, the older auth-passthrough implementation is used.<br>Default: true |
+| ysql_conn_mgr_use_auth_backend | When set to true ("auth backend mode"), each incoming authentication request is handled by a freshly spawned postgres backend. Set this parameter to false to use an authentication passthrough mechanism, where backends from a pool of "control backends" are reused for all authentication requests; this can potentially reduce new connection acquisition latency. Contact {{% support-general %}} about whether setting this parameter to false is recommended for your workload.<br>Default: true |
 | ysql_conn_mgr_readahead_buffer_size | Size of the per-connection buffer (in bytes) used for IO read-ahead operations in YSQL Connection Manager.<br>Default: 8192 |
 | ysql_conn_mgr_tcp_keepalive | TCP keepalive time (in seconds) in YSQL Connection Manager. Set to zero to disable keepalive.<br>Default: 15 |
 | ysql_conn_mgr_tcp_keepalive_keep_interval | TCP keepalive interval (in seconds) in YSQL Connection Manager. Only applicable if 'ysql_conn_mgr_tcp_keepalive' is enabled.<br>Default: 75 |
@@ -172,6 +172,6 @@ When using YSQL Connection Manager, sticky connections can form in the following
 - By default, `currval` and `nextval` functions do not work when YSQL Connection Manager is enabled. They can be supported with the help of the `ysql_conn_mgr_sequence_support_mode` flag.
 - YSQL Connection Manager does not yet support IPv6 connections. {{<issue 24765>}}
 - Currently, [auth-method](../../../secure/authentication/host-based-authentication/#auth-method) `cert` is not supported for host-based authentication. {{<issue 20658>}}
-- Although the use of auth-backends (`ysql_conn_mgr_use_auth_backend=true`) to authenticate client connections can result in higher connection acquisition latencies, using auth-passthrough (`ysql_conn_mgr_use_auth_backend=false`) may not be suitable depending on your workload. Contact {{% support-general %}} before setting `ysql_conn_mgr_use_auth_backend` to false. {{<issue 25313>}}
+- The use of auth-backends (`ysql_conn_mgr_use_auth_backend=true`) to authenticate client connections can result in higher connection acquisition latencies. Contact {{% support-general %}} about whether setting `ysql_conn_mgr_use_auth_backend` to false is the recommended setting for your workload. {{<issue 25313>}}
 - Unix socket connections to YSQL Connection Manager are not supported. {{<issue 20048>}}
 - Connection manager is not supported or included in the MacOS YugabyteDB releases, and there are currently no plans to support it.

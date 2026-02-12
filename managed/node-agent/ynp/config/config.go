@@ -27,6 +27,7 @@ type Args struct {
 	Command         string
 	YnpBasePath     string
 	SpecificModules []string
+	SkipModules     []string
 	ConfigFile      string
 	PreflightCheck  bool
 	YnpConfig       map[string]map[string]any
@@ -109,11 +110,12 @@ type CommandFactory func(context.Context, *INIConfig, Args) Command
 
 // Command represents a command to be executed.
 type Command interface {
+	Init() error
 	Validate() error
 	DryRun() error
 	RunPreflightChecks() error
 	ListModules() error
-	Execute(specificModules []string) error
+	Execute() error
 	Cleanup()
 }
 

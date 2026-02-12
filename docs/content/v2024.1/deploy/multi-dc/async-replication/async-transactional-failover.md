@@ -258,7 +258,7 @@ After completing the preceding steps, the former Standby (B) is the new Primary 
 
 ## Set up reverse replication
 
-If the former Primary universe (A) doesn't come back and you end up creating a new cluster in place of A, follow the [steps for a fresh replication setup](../async-transactional-setup/).
+If the former Primary universe (A) doesn't come back and you end up creating a new cluster in place of A, follow the [steps for a fresh replication setup](../async-transactional-setup-semi-automatic/).
 
 If universe A is brought back, to bring A into sync with B and set up replication in the opposite direction (B->A), the database on A needs to be dropped and recreated from a backup of B (Bootstrap).
 
@@ -330,9 +330,9 @@ Do the following:
 
 1. Recreate the database(s) and schema on A.
 
-1. Enable PITR on all replicating databases on both Primary and Standby universes by following the steps in [Set up replication](../async-transactional-setup/#set-up-replication).
+1. Enable PITR on all replicating databases on both Primary and Standby universes by following the steps in [Set up replication](../async-transactional-setup-semi-automatic/).
 
-1. Set up xCluster Replication from the ACTIVE to STANDBY universe (B to A) by following the steps in [Set up replication](../async-transactional-setup/#set-up-replication).
+1. Set up xCluster Replication from the ACTIVE to STANDBY universe (B to A) by following the steps in [Set up replication](../async-transactional-setup-semi-automatic/).
 
   </div>
 
@@ -376,9 +376,9 @@ Do the following:
 
     Don't create any tables. Replication setup (Bootstrapping) will create tables and objects on A from B.
 
-1. Enable PITR on all replicating databases on both Primary and Standby universes by following the steps in [Set up replication](../async-transactional-setup/#set-up-replication).
+1. Enable PITR on all replicating databases on both Primary and Standby universes by following the steps in [Set up replication](../async-transactional-setup-semi-automatic/).
 
-1. Set up xCluster Replication from the ACTIVE to STANDBY universe (B to A) by following the steps in [Set up replication](../async-transactional-setup/#set-up-replication).
+1. Set up xCluster Replication from the ACTIVE to STANDBY universe (B to A) by following the steps in [Set up replication](../async-transactional-setup-semi-automatic/).
 
   </div>
 
@@ -386,6 +386,6 @@ Do the following:
 
 Replication is now complete.
 
-To verify replication, see [Verify replication](../async-transactional-setup/#verify-replication).
+To verify replication, see [Verify replication](../async-transactional-setup-manual/#verify-replication).
 
 If your eventual desired configuration is for A to be the primary universe and B the standby, follow the steps for [Planned switchover](../async-transactional-switchover/).

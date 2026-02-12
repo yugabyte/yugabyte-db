@@ -4025,18 +4025,18 @@ TEST_F(PgLibPqTest, DropSequenceTest) {
 
   // Verify that if DROP SEQUENCE fails, the sequence is actually not
   // dropped.
-  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=true"));
+  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=1"));
   ASSERT_NOK(conn.Execute("DROP SEQUENCE foo"));
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT nextval('foo')")), 1);
 
   // Verify same behavior for sequences created using CREATE TABLE.
   ASSERT_OK(conn.Execute("CREATE TABLE t (k SERIAL)"));
-  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=true"));
+  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=1"));
   ASSERT_NOK(conn.Execute("DROP SEQUENCE t_k_seq CASCADE"));
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT nextval('t_k_seq')")), 1);
 
   // Verify same behavior is seen while trying to drop the table.
-  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=true"));
+  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=1"));
   ASSERT_NOK(conn.Execute("DROP TABLE t"));
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT nextval('t_k_seq')")), 2);
 

@@ -22,6 +22,8 @@ Use the EXPLAIN statement to show the execution plan for a statement. If the ANA
 The EXPLAIN statement is designed to work primarily for DML statements (for example, SELECT, INSERT, and so on). DDL statements are _not_ explainable and in cases where DDL and DML are combined, the EXPLAIN statement shows only an approximation. For example, EXPLAIN on `SELECT * FROM <TABLE-1> INTO <TABLE-2>` provides only an approximation as INTO is a DDL statement.
 {{</ warning >}}
 
+If you are using bucket-based scan optimizations, EXPLAIN output includes additional fields. Refer to [Bucket-based indexes](../../../../../develop/data-modeling/indexes-constraints/bucket-based-index-ysql/).
+
 ## Syntax
 
 {{%ebnf%}}

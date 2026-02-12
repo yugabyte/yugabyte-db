@@ -456,9 +456,9 @@ SET yb_explicit_row_locking_batch_size = 1024;
    ->  Index Scan using yb_locks_t_pkey on yb_locks_t (actual rows=2 loops=1)
          Index Cond: (k = ANY (ARRAY[z.k1, $2, $3, ..., $1024]))
          Storage Filter: ((k > 0) AND (k <= 5))
-         Storage Table Read Requests: 1
-         Storage Table Read Ops: 2
-         Storage Table Rows Scanned: 4
+         Storage Table Read Requests: 2
+         Storage Table Read Ops: 4
+         Storage Table Rows Scanned: 8
  Storage Read Requests: 3
  Storage Read Ops: 7
  Storage Rows Scanned: 12
@@ -556,11 +556,11 @@ SET yb_explicit_row_locking_batch_size = 1024;
                ->  Limit (actual rows=3 loops=1)
                      ->  LockRows (actual rows=3 loops=1)
                            ->  Seq Scan on yb_locks_t2 (actual rows=3 loops=1)
-                                 Storage Table Read Requests: 1
-                                 Storage Table Read Ops: 3
-                                 Storage Table Rows Scanned: 4
- Storage Read Requests: 3
- Storage Read Ops: 10
+                                 Storage Table Read Requests: 2
+                                 Storage Table Read Ops: 4
+                                 Storage Table Rows Scanned: 5
+ Storage Read Requests: 4
+ Storage Read Ops: 11
  Storage Rows Scanned: 35
  Storage Write Requests: 0
  Storage Flush Requests: 0
@@ -588,9 +588,9 @@ SET yb_explicit_row_locking_batch_size = 1024;
                                  Sort Key: yb_locks_t.k
                                  Sort Method: quicksort
                                  ->  Seq Scan on yb_locks_t (actual rows=15 loops=1)
-                                       Storage Table Read Requests: 1
-                                       Storage Table Read Ops: 3
-                                       Storage Table Rows Scanned: 15
+                                       Storage Table Read Requests: 2
+                                       Storage Table Read Ops: 5
+                                       Storage Table Rows Scanned: 18
          ->  Hash (actual rows=3 loops=1)
                Buckets: 1024 (originally 1024)  Original Batches: 1
                ->  Subquery Scan on z (actual rows=3 loops=1)
@@ -603,7 +603,7 @@ SET yb_explicit_row_locking_batch_size = 1024;
                                              Storage Table Read Requests: 1
                                              Storage Table Read Ops: 3
                                              Storage Table Rows Scanned: 4
- Storage Read Requests: 3
+ Storage Read Requests: 4
  Storage Read Ops: 9
  Storage Rows Scanned: 23
  Storage Write Requests: 0
@@ -668,16 +668,16 @@ SET yb_explicit_row_locking_batch_size = 1024;
    CTE cte_yb_locks_t2
      ->  LockRows (actual rows=4 loops=1)
            ->  Seq Scan on yb_locks_t2 (actual rows=4 loops=1)
-                 Storage Table Read Requests: 2
-                 Storage Table Read Ops: 4
-                 Storage Table Rows Scanned: 4
+                 Storage Table Read Requests: 4
+                 Storage Table Read Ops: 7
+                 Storage Table Rows Scanned: 8
    ->  Nested Loop (actual rows=2 loops=1)
          Join Filter: (cte_yb_locks_t.k = cte_yb_locks_t2.k1)
          Rows Removed by Join Filter: 4
          ->  CTE Scan on cte_yb_locks_t (actual rows=2 loops=1)
          ->  CTE Scan on cte_yb_locks_t2 (actual rows=3 loops=2)
- Storage Read Requests: 4
- Storage Read Ops: 10
+ Storage Read Requests: 6
+ Storage Read Ops: 12
  Storage Rows Scanned: 16
  Storage Write Requests: 0
  Storage Flush Requests: 0
@@ -704,16 +704,16 @@ SET yb_explicit_row_locking_batch_size = 1024;
    CTE cte_yb_locks_t2
      ->  LockRows (actual rows=4 loops=1)
            ->  Seq Scan on yb_locks_t2 (actual rows=4 loops=1)
-                 Storage Table Read Requests: 2
-                 Storage Table Read Ops: 4
-                 Storage Table Rows Scanned: 4
+                 Storage Table Read Requests: 4
+                 Storage Table Read Ops: 7
+                 Storage Table Rows Scanned: 8
    ->  Nested Loop (actual rows=2 loops=1)
          Join Filter: (cte_yb_locks_t.k = cte_yb_locks_t2.k1)
          Rows Removed by Join Filter: 4
          ->  CTE Scan on cte_yb_locks_t (actual rows=2 loops=1)
          ->  CTE Scan on cte_yb_locks_t2 (actual rows=3 loops=2)
- Storage Read Requests: 4
- Storage Read Ops: 10
+ Storage Read Requests: 6
+ Storage Read Ops: 12
  Storage Rows Scanned: 16
  Storage Write Requests: 0
  Storage Flush Requests: 0

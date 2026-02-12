@@ -36,6 +36,7 @@
 #include "yb/rpc/secure_stream.h"
 
 #include "yb/util/debug/sanitizer_scopes.h"
+#include "yb/util/csv_util.h"
 #include "yb/util/env_util.h"
 #include "yb/util/errno.h"
 #include "yb/util/flags.h"

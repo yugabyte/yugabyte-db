@@ -637,6 +637,15 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     }
   }
 
+  @Override
+  protected boolean maybeRunOnlyPrechecks() {
+    try {
+      return super.maybeRunOnlyPrechecks();
+    } finally {
+      releaseReservedNodes();
+    }
+  }
+
   public SelectMastersResult selectAndApplyMasters() {
     return selectMasters(null, true);
   }

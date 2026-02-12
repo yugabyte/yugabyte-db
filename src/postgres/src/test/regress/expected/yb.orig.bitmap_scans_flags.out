@@ -6,15 +6,44 @@
 --  2. a case where we tell the planner to use bitmap scans
 --  3. a case where the alternative option (seq scan) is disabled
 --
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set filename :abs_srcdir '/yb_commands/explainrun.sql'
+\i :filename
+-- A helper script to explain and run a query.  Use in regress tests by
+-- defining :explain, :query, and optionally :hint#.
+\set explain1 ':explain :hint1 :query;'
+\set explain2 ':explain1 :explain :hint2 :query;'
+\set explain3 ':explain2 :explain :hint3 :query;'
+\set explain4 ':explain3 :explain :hint4 :query;'
+\set explain5 ':explain4 :explain :hint5 :query;'
+\set explain1run1 ':explain1; :hint1 :query;'
+\set explain2run2 ':explain2; :hint1 :query; :hint2 :query;'
+\set explain3run3 ':explain3; :hint1 :query; :hint2 :query; :hint3 :query;'
+\set explain4run4 ':explain4; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query;'
+\set explain5run5 ':explain5; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query; :hint5 :query;'
+-- Default to no hints.
+\set hint1 ''
+\set hint2 ''
+\set hint3 ''
+\set hint4 ''
+\set hint5 ''
+\set explain 'EXPLAIN (COSTS OFF)'
 CREATE TABLE test_disable(a int, b int);
 CREATE INDEX ON test_disable(a ASC);
 CREATE INDEX ON test_disable(b ASC);
 CREATE TEMP TABLE tmp_test_disable(a int, b int);
 CREATE INDEX ON tmp_test_disable(a ASC);
 CREATE INDEX ON tmp_test_disable(b ASC);
+\set query_test_disable 'SELECT * FROM test_disable WHERE a < 5 OR b < 5'
+\set hint_test_disable '/*+ BitmapScan(test_disable) */'
+\set query_tmp_test_disable 'SELECT * FROM tmp_test_disable WHERE a < 5 OR b < 5'
+\set hint_tmp_test_disable '/*+ BitmapScan(tmp_test_disable) */'
+\set hint3 '/*+ Set(enable_seqscan false) */'
 SET yb_enable_bitmapscan = true;
 SET enable_bitmapscan = true;
-EXPLAIN (COSTS OFF) SELECT * FROM test_disable WHERE a < 5 OR b < 5;
+\set query ':query_test_disable'
+\set hint2 ':hint_test_disable'
+:explain3
                      QUERY PLAN                      
 -----------------------------------------------------
  YB Bitmap Table Scan on test_disable
@@ -25,8 +54,6 @@ EXPLAIN (COSTS OFF) SELECT * FROM test_disable WHERE a < 5 OR b < 5;
                Index Cond: (b < 5)
 (6 rows)
 
-/*+ BitmapScan(test_disable) */
-EXPLAIN (COSTS OFF) SELECT * FROM test_disable WHERE a < 5 OR b < 5;
                      QUERY PLAN                      
 -----------------------------------------------------
  YB Bitmap Table Scan on test_disable
@@ -37,8 +64,6 @@ EXPLAIN (COSTS OFF) SELECT * FROM test_disable WHERE a < 5 OR b < 5;
                Index Cond: (b < 5)
 (6 rows)
 
-/*+ Set(enable_seqscan false) */
-EXPLAIN (COSTS OFF) SELECT * FROM test_disable WHERE a < 5 OR b < 5;
                      QUERY PLAN                      
 -----------------------------------------------------
  YB Bitmap Table Scan on test_disable
@@ -49,15 +74,15 @@ EXPLAIN (COSTS OFF) SELECT * FROM test_disable WHERE a < 5 OR b < 5;
                Index Cond: (b < 5)
 (6 rows)
 
-EXPLAIN (COSTS OFF) SELECT * FROM tmp_test_disable WHERE a < 5 OR b < 5;
+\set query ':query_tmp_test_disable'
+\set hint2 ':hint_tmp_test_disable'
+:explain3
            QUERY PLAN           
 --------------------------------
  Seq Scan on tmp_test_disable
    Filter: ((a < 5) OR (b < 5))
 (2 rows)
 
-/*+ BitmapScan(tmp_test_disable) */
-EXPLAIN (COSTS OFF) SELECT * FROM tmp_test_disable WHERE a < 5 OR b < 5;
                        QUERY PLAN                        
 ---------------------------------------------------------
  Bitmap Heap Scan on tmp_test_disable
@@ -69,8 +94,6 @@ EXPLAIN (COSTS OFF) SELECT * FROM tmp_test_disable WHERE a < 5 OR b < 5;
                Index Cond: (b < 5)
 (7 rows)
 
-/*+ Set(enable_seqscan false) */
-EXPLAIN (COSTS OFF) SELECT * FROM tmp_test_disable WHERE a < 5 OR b < 5;
                        QUERY PLAN                        
 ---------------------------------------------------------
  Bitmap Heap Scan on tmp_test_disable
@@ -84,15 +107,15 @@ EXPLAIN (COSTS OFF) SELECT * FROM tmp_test_disable WHERE a < 5 OR b < 5;
 
 SET yb_enable_bitmapscan = true;
 SET enable_bitmapscan = false;
-EXPLAIN (COSTS OFF) SELECT * FROM test_disable WHERE a < 5 OR b < 5;
+\set query ':query_test_disable'
+\set hint2 ':hint_test_disable'
+:explain2
                QUERY PLAN               
 ----------------------------------------
  Seq Scan on test_disable
    Storage Filter: ((a < 5) OR (b < 5))
 (2 rows)
 
-/*+ BitmapScan(test_disable) */
-EXPLAIN (COSTS OFF) SELECT * FROM test_disable WHERE a < 5 OR b < 5;
                      QUERY PLAN                      
 -----------------------------------------------------
  YB Bitmap Table Scan on test_disable
@@ -103,15 +126,15 @@ EXPLAIN (COSTS OFF) SELECT * FROM test_disable WHERE a < 5 OR b < 5;
                Index Cond: (b < 5)
 (6 rows)
 
-EXPLAIN (COSTS OFF) SELECT * FROM tmp_test_disable WHERE a < 5 OR b < 5;
+\set query ':query_tmp_test_disable'
+\set hint2 ':hint_tmp_test_disable'
+:explain2
            QUERY PLAN           
 --------------------------------
  Seq Scan on tmp_test_disable
    Filter: ((a < 5) OR (b < 5))
 (2 rows)
 
-/*+ BitmapScan(tmp_test_disable) */
-EXPLAIN (COSTS OFF) SELECT * FROM tmp_test_disable WHERE a < 5 OR b < 5;
                        QUERY PLAN                        
 ---------------------------------------------------------
  Bitmap Heap Scan on tmp_test_disable
@@ -125,30 +148,30 @@ EXPLAIN (COSTS OFF) SELECT * FROM tmp_test_disable WHERE a < 5 OR b < 5;
 
 SET yb_enable_bitmapscan = false;
 SET enable_bitmapscan = true;
-EXPLAIN (COSTS OFF) SELECT * FROM test_disable WHERE a < 5 OR b < 5;
+\set query ':query_test_disable'
+\set hint2 ':hint_test_disable'
+:explain2
                QUERY PLAN               
 ----------------------------------------
  Seq Scan on test_disable
    Storage Filter: ((a < 5) OR (b < 5))
 (2 rows)
 
-/*+ BitmapScan(test_disable) */
-EXPLAIN (COSTS OFF) SELECT * FROM test_disable WHERE a < 5 OR b < 5;
                QUERY PLAN               
 ----------------------------------------
  Seq Scan on test_disable
    Storage Filter: ((a < 5) OR (b < 5))
 (2 rows)
 
-EXPLAIN (COSTS OFF) SELECT * FROM tmp_test_disable WHERE a < 5 OR b < 5;
+\set query ':query_tmp_test_disable'
+\set hint2 ':hint_tmp_test_disable'
+:explain3
            QUERY PLAN           
 --------------------------------
  Seq Scan on tmp_test_disable
    Filter: ((a < 5) OR (b < 5))
 (2 rows)
 
-/*+ BitmapScan(tmp_test_disable) */
-EXPLAIN (COSTS OFF) SELECT * FROM tmp_test_disable WHERE a < 5 OR b < 5;
                        QUERY PLAN                        
 ---------------------------------------------------------
  Bitmap Heap Scan on tmp_test_disable
@@ -160,8 +183,6 @@ EXPLAIN (COSTS OFF) SELECT * FROM tmp_test_disable WHERE a < 5 OR b < 5;
                Index Cond: (b < 5)
 (7 rows)
 
-/*+ Set(enable_seqscan false) */
-EXPLAIN (COSTS OFF) SELECT * FROM tmp_test_disable WHERE a < 5 OR b < 5;
                        QUERY PLAN                        
 ---------------------------------------------------------
  Bitmap Heap Scan on tmp_test_disable
@@ -175,30 +196,30 @@ EXPLAIN (COSTS OFF) SELECT * FROM tmp_test_disable WHERE a < 5 OR b < 5;
 
 SET yb_enable_bitmapscan = false;
 SET enable_bitmapscan = false;
-EXPLAIN (COSTS OFF) SELECT * FROM test_disable WHERE a < 5 OR b < 5;
+\set query ':query_test_disable'
+\set hint2 ':hint_test_disable'
+:explain2
                QUERY PLAN               
 ----------------------------------------
  Seq Scan on test_disable
    Storage Filter: ((a < 5) OR (b < 5))
 (2 rows)
 
-/*+ BitmapScan(test_disable) */
-EXPLAIN (COSTS OFF) SELECT * FROM test_disable WHERE a < 5 OR b < 5;
                QUERY PLAN               
 ----------------------------------------
  Seq Scan on test_disable
    Storage Filter: ((a < 5) OR (b < 5))
 (2 rows)
 
-EXPLAIN (COSTS OFF) SELECT * FROM tmp_test_disable WHERE a < 5 OR b < 5;
+\set query ':query_tmp_test_disable'
+\set hint2 ':hint_tmp_test_disable'
+:explain2
            QUERY PLAN           
 --------------------------------
  Seq Scan on tmp_test_disable
    Filter: ((a < 5) OR (b < 5))
 (2 rows)
 
-/*+ BitmapScan(tmp_test_disable) */
-EXPLAIN (COSTS OFF) SELECT * FROM tmp_test_disable WHERE a < 5 OR b < 5;
                        QUERY PLAN                        
 ---------------------------------------------------------
  Bitmap Heap Scan on tmp_test_disable

@@ -65,6 +65,7 @@ const (
 type ProvisionCommand struct {
 	ctx            context.Context
 	iniConfig      *config.INIConfig
+	args           config.Args
 	modules        map[string]config.Module
 	osVersion      string
 	osFamily       OSFamily
@@ -80,26 +81,35 @@ func NewProvisionCommand(
 	command := &ProvisionCommand{
 		ctx:       ctx,
 		iniConfig: iniConfig,
+		args:      args,
 		modules:   make(map[string]config.Module),
-	}
-	err := command.discoverOSInfo()
-	if err != nil {
-		util.FileLogger().Fatalf(command.ctx, "Failed to discover OS info: %v", err)
-	}
-	err = command.discoverPackageManager()
-	if err != nil {
-		util.FileLogger().Fatalf(command.ctx, "Failed to discover package manager: %v", err)
-	}
-	err = command.registerModules(args)
-	if err != nil {
-		util.FileLogger().Fatalf(command.ctx, "Failed to load module: %v", err)
 	}
 	return command
 }
 
+// Init initializes the ProvisionCommand.
+func (pc *ProvisionCommand) Init() error {
+	err := pc.discoverOSInfo()
+	if err != nil {
+		util.FileLogger().Errorf(pc.ctx, "Failed to discover OS info: %v", err)
+		return err
+	}
+	err = pc.discoverPackageManager()
+	if err != nil {
+		util.FileLogger().Errorf(pc.ctx, "Failed to discover package manager: %v", err)
+		return err
+	}
+	err = pc.RegisterModules()
+	if err != nil {
+		util.FileLogger().Errorf(pc.ctx, "Failed to load module: %v", err)
+		return err
+	}
+	return nil
+}
+
 // Register the modules after initializing their base paths.
-func (pc *ProvisionCommand) registerModules(args config.Args) error {
-	modulesPath := filepath.Join(args.YnpBasePath, "modules", "provision")
+func (pc *ProvisionCommand) RegisterModules() error {
+	modulesPath := filepath.Join(pc.args.YnpBasePath, "modules", "provision")
 	// Start of YBM specific modules.
 	pc.registerModule(configurecoredump.NewConfigureCoredump(modulesPath))
 	pc.registerModule(disablednfautomatic.NewDisabledDnfAutomatic(modulesPath))
@@ -132,7 +142,7 @@ func (pc *ProvisionCommand) registerModules(args config.Args) error {
 	pc.registerModule(rebootnode.NewRebootNode(modulesPath))
 	pc.registerModule(sshd.NewConfigureSshD(modulesPath))
 	pc.registerModule(systemd.NewConfigureSystemd(modulesPath))
-	pc.registerModule(updateos.NewPreprovision(modulesPath))
+	pc.registerModule(updateos.NewUpdateOS(modulesPath))
 	pc.registerModule(ybmami.NewConfigureYBMAMI(modulesPath))
 	pc.registerModule(yugabyte.NewCreateYugabyteUser(modulesPath))
 
@@ -171,17 +181,17 @@ func (pc *ProvisionCommand) Validate() error {
 }
 
 func (pc *ProvisionCommand) DryRun() error {
-	installScript, precheckScript, err := pc.generateTemplate(nil /*specificModulePtr*/)
+	installScript, precheckScript, err := pc.generateTemplate()
 	if err != nil {
 		return err
 	}
-	util.FileLogger().Infof(pc.ctx, "Install Script: %s", installScript)
-	util.FileLogger().Infof(pc.ctx, "Precheck Script: %s", precheckScript)
+	util.ConsoleLogger().Infof(pc.ctx, "Install Script: %s", installScript)
+	util.ConsoleLogger().Infof(pc.ctx, "Precheck Script: %s", precheckScript)
 	return nil
 }
 
 func (pc *ProvisionCommand) RunPreflightChecks() error {
-	_, precheckScript, err := pc.generateTemplate(nil /*specificModule*/)
+	_, precheckScript, err := pc.generateTemplate()
 	if err != nil {
 		return err
 	}
@@ -200,11 +210,11 @@ func (pc *ProvisionCommand) ListModules() error {
 	return nil
 }
 
-func (pc *ProvisionCommand) Execute(specificModules []string) error {
-	if err := pc.validateSpecificModules(specificModules); err != nil {
+func (pc *ProvisionCommand) Execute() error {
+	if err := pc.validateSpecificModules(); err != nil {
 		return err
 	}
-	runScript, precheckScript, err := pc.generateTemplate(specificModules)
+	runScript, precheckScript, err := pc.generateTemplate()
 	if err != nil {
 		return err
 	}
@@ -228,9 +238,9 @@ func (pc *ProvisionCommand) Execute(specificModules []string) error {
 
 func (pc *ProvisionCommand) Cleanup() {}
 
-func (pc *ProvisionCommand) validateSpecificModules(specificModules []string) error {
+func (pc *ProvisionCommand) validateSpecificModules() error {
 	unknownModules := []string{}
-	for _, moduleName := range specificModules {
+	for _, moduleName := range pc.args.SpecificModules {
 		if _, ok := pc.modules[moduleName]; !ok {
 			unknownModules = append(unknownModules, moduleName)
 		}
@@ -318,7 +328,7 @@ func (pc *ProvisionCommand) prepareGenerateTemplate() error {
 
 // generateTemplate generates the install and precheck scripts. If the optional specificModules are
 // provided, only those modules are processed.
-func (pc *ProvisionCommand) generateTemplate(specificModules []string) (string, string, error) {
+func (pc *ProvisionCommand) generateTemplate() (string, string, error) {
 	allTemplates := make([]*config.RenderedTemplates, 0)
 	if err := pc.prepareGenerateTemplate(); err != nil {
 		return "", "", err
@@ -333,17 +343,13 @@ func (pc *ProvisionCommand) generateTemplate(specificModules []string) (string, 
 			util.FileLogger().Infof(pc.ctx, "Module not found: %s", key)
 			continue
 		}
-		if len(specificModules) > 0 && !slices.Contains(specificModules, key) {
+		if len(pc.args.SpecificModules) > 0 && !slices.Contains(pc.args.SpecificModules, key) {
+			continue
+		}
+		if len(pc.args.SkipModules) > 0 && slices.Contains(pc.args.SkipModules, key) {
 			continue
 		}
 		values := pc.iniConfig.SectionValue(key)
-		if config.GetBool(values, "is_cloud", false) {
-			if config.GetBool(values, "is_onprem_only_module", false) {
-				continue
-			}
-		} else if config.GetBool(values, "is_cloud_only_module", false) {
-			continue
-		}
 		if key == nodeagent.ModuleName && !config.GetBool(values, "is_install_node_agent", false) {
 			util.FileLogger().Infof(pc.ctx, "Skipping %s because is_install_node_agent is %v\n",
 				key,
@@ -561,6 +567,18 @@ func (pc *ProvisionCommand) discoverOSInfo() error {
 		pc.osFamily = Unknown
 	}
 	return nil
+}
+
+// Visible for testing only.
+func (pc *ProvisionCommand) SetOSInfo(
+	family OSFamily,
+	distro, version string,
+	packageManager PackageManager,
+) {
+	pc.osFamily = family
+	pc.osDistribution = distro
+	pc.osVersion = version
+	pc.packageManager = packageManager
 }
 
 func (pc *ProvisionCommand) copyTemplatesFilesForYBM(ctx map[string]any) error {

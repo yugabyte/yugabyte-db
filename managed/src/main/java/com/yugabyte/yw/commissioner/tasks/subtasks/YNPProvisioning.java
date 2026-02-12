@@ -20,6 +20,7 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.forms.AdditionalServicesStateData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.NodeAgent;
@@ -93,11 +94,10 @@ public class YNPProvisioning extends NodeTaskBase {
       ynpNode.put("is_yb_prebuilt_image", taskParams().isYbPrebuiltImage);
       ynpNode.put("is_ybcontroller_disabled", !universe.getUniverseDetails().isEnableYbc());
       ynpNode.put(
-          "node_exporter_port", universe.getUniverseDetails().communicationPorts.nodeExporterPort);
-      ynpNode.put(
           "tmp_directory",
           confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory));
       ynpNode.put("is_configure_clockbound", userIntent.isUseClockbound());
+      setCommunicationPorts(ynpNode, universe.getUniverseDetails().communicationPorts);
       if (!provider.getYbHome().isEmpty()) {
         ynpNode.put("yb_home_dir", provider.getYbHome());
       }
@@ -280,6 +280,22 @@ public class YNPProvisioning extends NodeTaskBase {
     nodeUniverseManager
         .runCommand(node, universe, command, shellContext)
         .processErrors("Installation failed");
+  }
+
+  private void setCommunicationPorts(
+      ObjectNode ynpNode, UniverseTaskParams.CommunicationPorts ports) {
+    // TODO consume all these ports in YNP.
+    ynpNode.put("master_http_port", String.valueOf(ports.masterHttpPort));
+    ynpNode.put("master_rpc_port", String.valueOf(ports.masterRpcPort));
+    ynpNode.put("tserver_http_port", String.valueOf(ports.tserverHttpPort));
+    ynpNode.put("tserver_rpc_port", String.valueOf(ports.tserverRpcPort));
+    ynpNode.put("yb_controller_http_port", String.valueOf(ports.ybControllerHttpPort));
+    ynpNode.put("yb_controller_rpc_port", String.valueOf(ports.ybControllerrRpcPort));
+    ynpNode.put("ycql_server_http_port", String.valueOf(ports.yqlServerHttpPort));
+    ynpNode.put("ycql_server_rpc_port", String.valueOf(ports.yqlServerRpcPort));
+    ynpNode.put("ysql_server_http_port", String.valueOf(ports.ysqlServerHttpPort));
+    ynpNode.put("ysql_server_rpc_port", String.valueOf(ports.ysqlServerRpcPort));
+    ynpNode.put("node_exporter_port", String.valueOf(ports.nodeExporterPort));
   }
 
   private AnsibleSetupServer.Params buildDualNicSetupParams(

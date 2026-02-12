@@ -441,6 +441,29 @@ Result<bool> RetrieveYbctidsImpl(
          !YBCIsBinaryUpgrade();
 }
 
+// TODO(#29858): In spite of the fact ExplicitRowLockBuffer::ErrorStatusAdditionalInfo is used only
+//               for building proper error message to the user it is reasonable to add it into
+//               Status object to avoid ignoring.
+Status Flush(ExplicitRowLockBuffer& row_lock_buffer) {
+  std::optional<ExplicitRowLockBuffer::ErrorStatusAdditionalInfo> error_info;
+  auto status = row_lock_buffer.Flush(error_info);
+  if (PREDICT_FALSE(error_info.has_value())) {
+    LOG(INFO)
+        << "User error message might be inaccurate due to ignoring of "
+        << "ExplicitRowLockBuffer::ErrorStatusAdditionalInfo: " << yb::ToString(*error_info)
+        << " on error status: " << ToString(status);
+  }
+  return status;
+}
+
+Status OnPgSessionRunRWOperations(
+    ExplicitRowLockBuffer& row_lock_buffer, std::optional<PgSessionRunOperationMarker> marker) {
+  if (marker && *marker == PgSessionRunOperationMarker::ExplicitRowLock) {
+    return Status::OK();
+  }
+  return Flush(row_lock_buffer);
+}
+
 } // namespace
 
 //--------------------------------------------------------------------------------------------------
@@ -684,7 +707,10 @@ PgApiImpl::PgApiImpl(
       pg_txn_manager_(new PgTxnManager(&pg_client_, clock_, pg_callbacks_, enable_table_locking_)),
       pg_session_(make_scoped_refptr<PgSession>(
           pg_client_, pg_txn_manager_, pg_callbacks_, session_stats, is_binary_upgrade,
-          wait_event_watcher_, buffering_settings_)),
+          wait_event_watcher_, buffering_settings_,
+          [&row_lock_buffer = explicit_row_lock_buffer_](auto marker) {
+            return OnPgSessionRunRWOperations(row_lock_buffer, marker);
+          })),
       fk_reference_cache_(pg_session_, buffering_settings_),
       explicit_row_lock_buffer_(pg_session_) {
   PgBackendSetupSharedMemory();

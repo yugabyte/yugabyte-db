@@ -23,7 +23,7 @@ const StyledSubText = styled(Typography)(({ theme }) => ({
 
 export const SpotInstanceField: FC<SpotInstanceFieldProps> = ({ cloudType, disabled }) => {
   const { control } = useFormContext<InstanceSettingProps>();
-  const { t } = useTranslation('translation', { keyPrefix: 'universeForm.instanceConfig' });
+  const { t } = useTranslation('translation', { keyPrefix: 'createUniverseV2.instanceSettings' });
 
   return (
     <Box sx={{ display: 'flex', width: '100%', flexDirection: 'column' }}>

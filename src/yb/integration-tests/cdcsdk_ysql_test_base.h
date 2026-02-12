@@ -93,7 +93,7 @@ DECLARE_bool(enable_load_balancing);
 DECLARE_int32(cdc_parent_tablet_deletion_task_retry_secs);
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
 DECLARE_int32(cdcsdk_table_processing_limit_per_run);
-DECLARE_int32(cdc_snapshot_batch_size);
+DECLARE_uint64(cdc_snapshot_records_threshold_size_bytes);
 DECLARE_bool(TEST_cdc_snapshot_failure);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_uint64(ysql_packed_row_size_limit);

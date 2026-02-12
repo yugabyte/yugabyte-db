@@ -63,7 +63,7 @@ DROP TABLE pk_tbl;
 
 -- Verify cache cleanup of table names when TABLE RENAME fails.
 CREATE TABLE rename_test (id int);
-SET yb_test_fail_next_ddl TO true;
+SET yb_test_fail_next_ddl TO 1;
 ALTER TABLE rename_test RENAME TO foobar;
 -- The table name must be unchanged.
 SELECT * FROM rename_test;

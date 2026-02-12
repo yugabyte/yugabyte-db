@@ -5150,4 +5150,119 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
     stream.close();
   }
+
+  @Test
+  public void testAddDropPrimaryKey() throws Exception {
+    setFlagsForDynamicTablesTest(super.getTServerFlags(), super.getMasterFlags(),
+        false /* usePubRefresh */, true /* streamTablesWithoutPrimaryKey */);
+
+    String slotName = "test_add_drop_primary_key_slot";
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS t1");
+      stmt.execute("DROP TABLE IF EXISTS t2");
+
+      stmt.execute("CREATE TABLE t1 (a int, b int)");
+      stmt.execute("CREATE TABLE t2 (a int primary key, b int)");
+
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, slotName, YB_OUTPUT_PLUGIN_NAME);
+
+    // Write a row to each table.
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO t1 VALUES (1, 1)");
+      stmt.execute("INSERT INTO t2 VALUES (1, 1)");
+      stmt.execute("COMMIT");
+    }
+
+    // Adding and dropping primary key on t1 and t2 respectively that will cause a table rewrite.
+    // The table rewrites on t1 and t2 will cause the existing rows to be re-written. As a result we
+    // will resend the rows from previous txn again. This behaviour is different from that of
+    // Postgres, where the rows present before the rewrite are not streamed again.
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("ALTER TABLE t1 ADD PRIMARY KEY (a)");
+      stmt.execute("ALTER TABLE t2 DROP CONSTRAINT t2_pkey");
+    }
+
+    // Write another row to each table after table rewrite.
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO t1 VALUES (2, 2)");
+      stmt.execute("INSERT INTO t2 VALUES (2, 2)");
+      stmt.execute("COMMIT");
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+                                     .logical()
+                                     .withSlotName(slotName)
+                                     .withStartPosition(LogSequenceNumber.valueOf(0L))
+                                     .withSlotOption("proto_version", 1)
+                                     .withSlotOption("publication_names", "pub")
+                                     .start();
+
+    List<PgOutputMessage> result = new ArrayList<PgOutputMessage>();
+    // 6 from first txn, 8 from DDLs, 4 from third txn.
+    result.addAll(receiveMessage(stream, 18));
+
+    List<PgOutputMessage> expectedResult = new ArrayList<PgOutputMessage>() {
+      {
+        // First txn.
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/5"), 2));
+        add(PgOutputRelationMessage.CreateForComparison("public", "t1", 'c',
+            Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+                PgOutputRelationMessageColumn.CreateForComparison("b", 23))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(new PgOutputMessageTupleColumnValue("1"),
+                new PgOutputMessageTupleColumnValue("1")))));
+        add(PgOutputRelationMessage.CreateForComparison("public", "t2", 'c',
+            Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+                PgOutputRelationMessageColumn.CreateForComparison("b", 23))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(new PgOutputMessageTupleColumnValue("1"),
+                new PgOutputMessageTupleColumnValue("1")))));
+        add(PgOutputCommitMessage.CreateForComparison(
+            LogSequenceNumber.valueOf("0/5"), LogSequenceNumber.valueOf("0/6")));
+
+        // Add primary key DDL for t1 and the re-written row.
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/8"), 3));
+        add(PgOutputRelationMessage.CreateForComparison("public", "t1", 'c',
+            Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+                PgOutputRelationMessageColumn.CreateForComparison("b", 23))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(new PgOutputMessageTupleColumnValue("1"),
+                new PgOutputMessageTupleColumnValue("1")))));
+        add(PgOutputCommitMessage.CreateForComparison(
+            LogSequenceNumber.valueOf("0/8"), LogSequenceNumber.valueOf("0/9")));
+
+        // Drop primary key DDL for t2 and the re-written row.
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/B"), 4));
+        add(PgOutputRelationMessage.CreateForComparison("public", "t2", 'c',
+            Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+                PgOutputRelationMessageColumn.CreateForComparison("b", 23))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(new PgOutputMessageTupleColumnValue("1"),
+                new PgOutputMessageTupleColumnValue("1")))));
+        add(PgOutputCommitMessage.CreateForComparison(
+            LogSequenceNumber.valueOf("0/B"), LogSequenceNumber.valueOf("0/C")));
+
+        // Remaining txn.
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/F"), 5));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(new PgOutputMessageTupleColumnValue("2"),
+                new PgOutputMessageTupleColumnValue("2")))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(new PgOutputMessageTupleColumnValue("2"),
+                new PgOutputMessageTupleColumnValue("2")))));
+        add(PgOutputCommitMessage.CreateForComparison(
+            LogSequenceNumber.valueOf("0/F"), LogSequenceNumber.valueOf("0/10")));
+      }
+    };
+    assertEquals(expectedResult, result);
+
+    stream.close();
+  }
 }

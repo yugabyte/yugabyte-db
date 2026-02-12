@@ -201,4 +201,73 @@ TEST_F(PgDDLConcurrencyWithObjectLockingTest, TableDropCascade) {
   thread_holder.Stop();
 }
 
+/*
+ * Test ANALYZE running concurrently with catalog version incrementing DDL operations.
+ * This test verifies that ANALYZE can handle concurrent DDL without producing
+ * serialization errors or other unexpected failures.
+ * Unlike other tests, this does NOT suppress serialization errors to verify
+ * that the operations can complete successfully.
+ */
+TEST_F(PgDDLConcurrencyWithObjectLockingTest, AnalyzeWithConcurrentDDL) {
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.Execute("CREATE TABLE analyze_test(k int PRIMARY KEY, v int)"));
+  ASSERT_OK(setup_conn.Execute(
+      "INSERT INTO analyze_test SELECT i, i * 2 FROM generate_series(1, 1000) i"));
+
+  TestThreadHolder thread_holder;
+  CountDownLatch start_latch(1);
+
+  thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag(), &start_latch] {
+    auto conn = ASSERT_RESULT(
+        SetDefaultTransactionIsolation(Connect(), IsolationLevel::SNAPSHOT_ISOLATION));
+    start_latch.CountDown();
+    start_latch.Wait();
+    while (!stop.load(std::memory_order_acquire)) {
+      ASSERT_OK(conn.Execute("ANALYZE analyze_test"));
+    }
+  });
+
+  auto ddl_conn =
+      ASSERT_RESULT(SetDefaultTransactionIsolation(Connect(), IsolationLevel::SNAPSHOT_ISOLATION));
+  start_latch.Wait();
+
+  auto deadline = std::chrono::steady_clock::now() + 10s * kTimeMultiplier;
+  while (std::chrono::steady_clock::now() < deadline) {
+    ASSERT_OK(ddl_conn.Execute("ALTER TABLE analyze_test ADD COLUMN temp_col INT"));
+    ASSERT_OK(ddl_conn.Execute("ALTER TABLE analyze_test DROP COLUMN temp_col"));
+  }
+
+  thread_holder.Stop();
+}
+
+class PgDDLConcurrencyWithObjectLockingTestRF1 : public PgDDLConcurrencyWithObjectLockingTest {
+ public:
+  int GetNumMasters() const override { return 1; }
+  int GetNumTabletServers() const override { return 1; }
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgDDLConcurrencyWithObjectLockingTest::UpdateMiniClusterOptions(options);
+    options->replication_factor = 1;
+    options->extra_tserver_flags.push_back(
+        "--ysql_pg_conf_csv=yb_fallback_to_legacy_catalog_read_time=true");
+  }
+};
+
+TEST_F(PgDDLConcurrencyWithObjectLockingTestRF1, YB_DISABLE_TEST_IN_SANITIZERS(CreateTables)) {
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor( [this] {
+    auto conn = CHECK_RESULT(Connect());
+    for (int i = 0; i < 500; i++) {
+      ASSERT_OK(conn.ExecuteFormat("create table s_$0 (id int)", i));
+    }
+  });
+  thread_holder.AddThreadFunctor( [this] {
+    auto conn = CHECK_RESULT(Connect());
+    for (int i = 0; i < 500; i++) {
+      ASSERT_OK(conn.ExecuteFormat("create table t_$0 (id int)", i));
+    }
+  });
+  thread_holder.JoinAll();
+}
+
 } // namespace yb::pgwrapper

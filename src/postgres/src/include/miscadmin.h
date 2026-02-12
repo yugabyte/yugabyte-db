@@ -300,6 +300,10 @@ extern PGDLLIMPORT int64 VacuumPageDirty;
 extern PGDLLIMPORT int VacuumCostBalance;
 extern PGDLLIMPORT bool VacuumCostActive;
 
+extern PGDLLIMPORT char *YbSystemDbName;
+extern PGDLLIMPORT char *PgYbNotificationsTableName;
+extern PGDLLIMPORT char *PgYbNotificationsPublicationName;
+
 
 /* in tcop/postgres.c */
 
@@ -364,6 +368,7 @@ typedef enum BackendType
 	YB_YSQL_CONN_MGR_WAL_SENDER,
 	YB_AUTO_ANALYZE_BACKEND,
 	YB_INDEX_BACKFILL_DDL,
+	YB_MATVIEW_REFRESH_DDL,
 } BackendType;
 
 extern PGDLLIMPORT BackendType MyBackendType;

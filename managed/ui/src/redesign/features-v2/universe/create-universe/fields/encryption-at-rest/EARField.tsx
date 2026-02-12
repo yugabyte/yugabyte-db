@@ -77,7 +77,7 @@ export const EARField: FC<EARProps> = ({ disabled }) => {
               rules={{
                 required:
                   !disabled && encryptionEnabled
-                    ? (t('universeForm.validation.required', {
+                    ? (t('createUniverseV2.validation.required', {
                         field: t('createUniverseV2.securitySettings.earField.kmsConfig')
                       }) as string)
                     : ''

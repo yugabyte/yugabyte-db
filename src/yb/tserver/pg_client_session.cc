@@ -4014,13 +4014,19 @@ class PgClientSession::Impl {
       return TransactionFullLocality::RegionLocal();
     }
 
-    if (FLAGS_use_tablespace_based_transaction_placement || options.force_tablespace_locality()) {
+    if (context_.transaction_manager_provider().TablespaceLocalTransactionsPossible() &&
+        (FLAGS_use_tablespace_based_transaction_placement || options.force_tablespace_locality())) {
       if (auto oid = options.force_tablespace_locality_oid()) {
         return TransactionFullLocality::TablespaceLocal(oid);
       }
       return CalculateTablespaceBasedLocality(std::move(tablespace_oids));
     }
 
+    return CalculateRegionBasedLocality(std::move(tablespace_oids), options.is_all_region_local());
+  }
+
+  TransactionFullLocality CalculateRegionBasedLocality(
+      std::ranges::range auto&& tablespace_oids, bool is_all_region_local) const {
     // TODO: is_all_region_local() handles exactly two cases that tablespace oid check does not:
     // 1. until upgrade is finalized (enable_tablespace_based_transaction_placement autoflag on
     //    master), tablespace oid check does not work, so it is needed to avoid global latencies
@@ -4031,14 +4037,15 @@ class PgClientSession::Impl {
     //    from use setting up some unit tests.
     // Once these are no longer of concern, is_all_region_local and corresponding code in
     // pggate/pg can be removed.
-    if (!FLAGS_TEST_perform_ignore_pg_is_region_local && options.is_all_region_local()) {
+    if (!FLAGS_TEST_perform_ignore_pg_is_region_local && is_all_region_local) {
       return TransactionFullLocality::RegionLocal();
     }
-    return CalculateRegionBasedLocality(std::move(tablespace_oids));
-  }
-
-  TransactionFullLocality CalculateRegionBasedLocality(
-      std::ranges::range auto&& tablespace_oids) const {
+    // Similar to above, but for the case of table-level locks when tablespace oid locality
+    // calculations are not yet possible, we always return region-local, since requests from
+    // table-level lock acquisition never have the old is_all_region_local field set.
+    if (!context_.transaction_manager_provider().TablespaceLocalTransactionsPossible()) {
+      return TransactionFullLocality::RegionLocal();
+    }
     auto& transaction_manager = context_.transaction_manager_provider();
     bool all_region_local = transaction_manager.RegionLocalTransactionsPossible();
     for (PgTablespaceOid oid : tablespace_oids) {

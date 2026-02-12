@@ -49,6 +49,7 @@
 #include "yb/master/leader_epoch.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_client.fwd.h"
+#include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/sys_catalog_types.h"
 #include "yb/master/tasks_tracker.h"
@@ -1152,7 +1153,8 @@ class ObjectLockInfo : public MetadataCowWrapper<PersistentObjectLockInfo> {
   virtual const std::string& id() const override { return ts_uuid_; }
 
   Result<std::variant<ObjectLockInfo::WriteLock, SysObjectLockEntryPB::LeaseInfoPB>>
-  RefreshYsqlOperationLease(const NodeInstancePB& instance, MonoDelta lease_ttl) EXCLUDES(mutex_);
+  RefreshYsqlOperationLease(const RefreshYsqlLeaseRequestPB& req, MonoDelta lease_ttl)
+      EXCLUDES(mutex_);
 
   virtual void Load(const SysObjectLockEntryPB& metadata) override;
 

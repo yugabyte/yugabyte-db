@@ -959,6 +959,8 @@ public class CustomerTaskManager {
         taskParams = nodeTaskParams;
         break;
       case ReplaceNodeInUniverse:
+      case DecommissionNode:
+        // TODO: Revisit to avoid sending the whole payload.
         nodeTaskParams = Json.fromJson(oldTaskParams, NodeTaskParams.class);
         nodeName = oldTaskParams.get("nodeName").textValue();
         nodeTaskParams.nodeName = nodeName;

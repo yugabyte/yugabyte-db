@@ -32,6 +32,7 @@
 
 #include "yb/tablet/tablet.h"
 
+#include <tuple>
 #include <utility>
 
 #include <boost/container/static_vector.hpp>
@@ -3061,9 +3062,16 @@ string GenerateSerializedBackfillSpec(uint64_t batch_size, const string& next_ro
   return serialized_backfill_spec;
 }
 
-Result<PgsqlBackfillSpecPB> QueryPostgresToDoBackfill(
-    pgwrapper::PGConn* conn, const string& query, double* num_rows_backfilled_in_index) {
-  auto result = conn->Fetch(query);
+// On success, returns
+// - backfilled_until
+// - num rows processed in table
+// - num rows backfilled to index
+// On failure, returns one of
+// - TryAgain: for retryable errors
+// - IllegalState: for nonretryable errors
+Result<std::tuple<std::string, uint64_t, double>> QueryPostgresToDoBackfill(
+    pgwrapper::PGConn* conn, const string& query) {
+  auto result = conn->FetchRow<std::string, double>(query);
   if (!result.ok()) {
     const auto libpq_error_msg = AuxilaryMessage(result.status()).value();
     LOG(WARNING) << "libpq query \"" << query << "\" returned " << result.status() << ": "
@@ -3075,17 +3083,12 @@ Result<PgsqlBackfillSpecPB> QueryPostgresToDoBackfill(
     }
     return STATUS(IllegalState, libpq_error_msg);
   }
-  auto& res = result.get();
-  CHECK_EQ(PQntuples(res.get()), 1);
-  CHECK_EQ(PQnfields(res.get()), 2);
-  const auto returned_spec = CHECK_RESULT(pgwrapper::GetValue<std::string>(res.get(), 0, 0));
-  *num_rows_backfilled_in_index = CHECK_RESULT(pgwrapper::GetValue<double>(res.get(), 0, 1));
-  VLOG(4) << "Returned backfill spec (raw): " << returned_spec;
-
+  const auto [returned_spec, num_rows_backfilled_in_index] = *result;
   PgsqlBackfillSpecPB spec;
   spec.ParseFromString(a2b_hex(returned_spec));
   VLOG(3) << "Returned backfill spec: { " << spec.ShortDebugString() << " }";
-  return spec;
+  VLOG(4) << "Returned backfill spec (raw): " << returned_spec;
+  return std::make_tuple(spec.next_row_key(), spec.count(), num_rows_backfilled_in_index);
 }
 
 struct BackfillParams {
@@ -3175,7 +3178,7 @@ void SlowdownBackfillForTests() {
 
 // Assume that we are already in the Backfilling mode.
 Status Tablet::BackfillIndexesForYsql(
-    const std::vector<IndexInfo>& indexes,
+    const IndexInfo& index,
     const std::string& backfill_from,
     const CoarseTimePoint deadline,
     const HybridTime read_time,
@@ -3184,12 +3187,11 @@ Status Tablet::BackfillIndexesForYsql(
     const uint64_t postgres_auth_key,
     bool is_xcluster_target,
     uint64_t* number_of_rows_processed,
-    std::unordered_map<TableId, double>& num_rows_backfilled_in_index,
+    double* num_rows_backfilled_in_index,
     std::string* backfilled_until) {
-  DCHECK_EQ(indexes.size(), 1) << "We don't support batching index backfill in YSQL yet";
   LOG(INFO) << "Begin " << __func__ << " of tablet " << tablet_id() << " at " << read_time
             << " from row \"" << strings::b2a_hex(backfill_from)
-            << "\" for indexes " << AsString(indexes);
+            << "\" for index " << AsString(index);
   SlowdownBackfillForTests();
   *backfilled_until = backfill_from;
   BackfillParams backfill_params(deadline, true /* is_ysql */);
@@ -3201,22 +3203,23 @@ Status Tablet::BackfillIndexesForYsql(
   auto conn = VERIFY_RESULT(pgwrapper::SetDefaultTransactionIsolation(
       std::move(conn_result), IsolationLevel::SNAPSHOT_ISOLATION));
 
-  // Construct query string.
-  std::string index_oids;
-  {
-    std::stringstream ss;
-    for (auto& index : indexes) {
-      // Cannot use Oid type because for large OID such as 2147500041, it overflows Postgres
-      // lexer <ival> type. Use int to output as -2147467255 that is accepted by <ival>.
-      int index_oid = VERIFY_RESULT(GetPgsqlTableOid(index.table_id()));
-      ss << index_oid << ",";
-    }
-    index_oids = ss.str();
-    index_oids.pop_back();
+  if (is_xcluster_target) {
+    // For xCluster targets, we don't need to use the xCluster safe time as we are reading at
+    // a point in time.
+    // For automatic mode colocated indexes, this is necessary since the ddl_queue table would
+    // hold up the xCluster safe time, and thus backfill would get stuck.
+    RETURN_NOT_OK(conn.Execute("SET yb_xcluster_consistency_level = tablet;"));
   }
+
+  // Cannot use Oid type because for large OID such as 2147500041, it overflows Postgres
+  // lexer <ival> type. Use int to output as -2147467255 that is accepted by <ival>.
+  int index_oid_int = VERIFY_RESULT(GetPgsqlTableOid(index.table_id()));
   std::string partition_key = metadata_->partition()->partition_key_start();
 
-  *number_of_rows_processed = 0;
+  // Caller should have initialized these counters to zero.
+  DCHECK_EQ(*number_of_rows_processed, 0);
+  DCHECK_EQ(*num_rows_backfilled_in_index, 0.0);
+
   do {
     std::string serialized_backfill_spec =
         GenerateSerializedBackfillSpec(backfill_params.batch_size, *backfilled_until);
@@ -3225,33 +3228,16 @@ Status Tablet::BackfillIndexesForYsql(
     // [-,0-9a-f].
     std::string query_str = Format(
         "BACKFILL INDEX $0 WITH x'$1' READ TIME $2 PARTITION x'$3';",
-        index_oids,
+        index_oid_int,
         b2a_hex(serialized_backfill_spec),
         read_time.ToUint64(),
         b2a_hex(partition_key));
     VLOG(1) << __func__ << ": libpq query string: " << query_str;
 
-    if (is_xcluster_target) {
-      // For xCluster targets, we don't need to use the xCluster safe time as we are reading at
-      // a point in time.
-      // For automatic mode colocated indexes, this is necessary since the ddl_queue table would
-      // hold up the xCluster safe time, and thus backfill would get stuck.
-      RETURN_NOT_OK(conn.Execute("SET yb_xcluster_consistency_level = tablet;"));
-    }
-
-    double num_rows_backfilled_in_index_in_batch = 0.0;
-    const auto spec = VERIFY_RESULT(QueryPostgresToDoBackfill(
-        &conn,
-        query_str,
-        &num_rows_backfilled_in_index_in_batch));
-    *number_of_rows_processed += spec.count();
-    *backfilled_until = spec.next_row_key();
-    if (num_rows_backfilled_in_index.find(indexes[0].table_id()) ==
-        num_rows_backfilled_in_index.end()) {
-      num_rows_backfilled_in_index.emplace(indexes[0].table_id(), 0);
-    }
-    num_rows_backfilled_in_index[indexes[0].table_id()] +=
-        num_rows_backfilled_in_index_in_batch;
+    const auto tup = VERIFY_RESULT(QueryPostgresToDoBackfill(&conn, query_str));
+    *backfilled_until = std::get<0>(tup);
+    *number_of_rows_processed += std::get<1>(tup);
+    *num_rows_backfilled_in_index += std::get<2>(tup);
 
     VLOG(2) << "Processed " << *number_of_rows_processed << " base table rows so far in this "
             << "chunk. Setting backfilled_until to \"" << b2a_hex(*backfilled_until) << "\"";
@@ -4690,8 +4676,7 @@ const std::string& Tablet::tablet_id() const {
 Result<std::string> Tablet::GetEncodedMiddleSplitKey(std::string* partition_split_key) const {
   auto error_prefix = [this]() {
     return Format(
-        "Failed to detect middle key for tablet $0 (key_bounds: \"$1\" - \"$2\")",
-        tablet_id(),
+        "Failed to detect middle key, key_bounds [\"$1\" - \"$2\")",
         Slice(key_bounds_.lower).ToDebugHexString(),
         Slice(key_bounds_.upper).ToDebugHexString());
   };
@@ -4744,7 +4729,7 @@ Result<std::string> Tablet::GetEncodedMiddleSplitKey(std::string* partition_spli
     //    an uncompacted tablet anyways.
     return STATUS_EC_FORMAT(IllegalState,
         tserver::TabletServerError(tserver::TabletServerErrorPB::TABLET_SPLIT_KEY_RANGE_TOO_SMALL),
-        "$0: got \"$1\".", error_prefix(), middle_key_slice.ToDebugHexString());
+        "$0: got \"$1\"", error_prefix(), middle_key_slice.ToDebugHexString());
   }
 
   // Check middle_key is strictly between tablet's partition bounds.
@@ -4778,12 +4763,12 @@ Result<std::string> Tablet::GetEncodedMiddleSplitKey(std::string* partition_spli
   // This error occurs when middle key is not strictly between partition bounds.
   return STATUS_EC_FORMAT(IllegalState,
       tserver::TabletServerError(tserver::TabletServerErrorPB::TABLET_SPLIT_KEY_RANGE_TOO_SMALL),
-      "$0 with partition bounds [\"$1\" - \"$2\"): got \"$3\"",
+      "$0 partition bounds [\"$1\" - \"$2\"): got \"$3\"",
       error_prefix(), Slice{partition_start}.ToDebugHexString(),
       Slice{partition_end}.ToDebugHexString(), middle_key_slice.ToDebugHexString());
 }
 
-Result<Tablet::SplitKeysData> Tablet::GetSplitKeys(const int split_factor) const {
+Result<Tablet::SplitKeysData> Tablet::DoGetSplitKeys(const int split_factor) const {
   SCHECK_GE(
       split_factor, kDefaultNumSplitParts, InvalidArgument, "Split factor must be at least 2");
 
@@ -4799,9 +4784,8 @@ Result<Tablet::SplitKeysData> Tablet::GetSplitKeys(const int split_factor) const
             IllegalState,
             tserver::TabletServerError(
                 tserver::TabletServerErrorPB::TABLET_SPLIT_KEY_RANGE_TOO_SMALL),
-            "Failed to detect split keys for tablet $0 using split factor $1: "
-            "partition [\"$2\" - \"$3\"] is too small",
-            tablet_id(), split_factor,
+            "Failed to detect split keys for using split factor $1: "
+            "partition [\"$2\" - \"$3\"] is too small", split_factor,
             Uint16ToHexString(hash_bounds.first), Uint16ToHexString(hash_bounds.second));
       }
 
@@ -4833,6 +4817,14 @@ Result<Tablet::SplitKeysData> Tablet::GetSplitKeys(const int split_factor) const
     .encoded_keys = {encoded_key},
     .partition_keys = {partition_key}
   };
+}
+
+Result<Tablet::SplitKeysData> Tablet::GetSplitKeys(const int split_factor) const {
+  auto result = DoGetSplitKeys(split_factor);
+  if (!result.ok()) {
+    LOG_WITH_PREFIX_AND_FUNC(INFO) << result.status();
+  }
+  return result;
 }
 
 bool Tablet::HasActiveFullCompaction() {

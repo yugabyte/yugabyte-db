@@ -143,10 +143,14 @@ static uint64_t yb_new_catalog_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 static uint64_t yb_logical_client_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 static bool yb_need_invalidate_all_table_cache = false;
 
+static Oid	yb_system_db_oid_cache = InvalidOid;
+
 static bool YbHasDdlMadeChanges();
 static int YbGetNumCreateFunctionStmts();
 static int YbGetNumRollbackToSavepointStmts();
 static bool YBIsCurrentStmtCreateFunction();
+
+static void yb_maybe_test_fail_ddl(void);
 
 uint64_t
 YBGetActiveCatalogCacheVersion()
@@ -2102,7 +2106,8 @@ YBCGetSchemaName(Oid schemaoid)
 Oid
 YBCGetDatabaseOid(Relation rel)
 {
-	return YBCGetDatabaseOidFromShared(rel->rd_rel->relisshared);
+	return YBCGetDatabaseOidFromShared(rel->rd_rel->relisshared,
+									   rel->belongs_to_yb_system_db);
 }
 
 Oid
@@ -2112,13 +2117,24 @@ YBCGetDatabaseOidByRelid(Oid relid)
 	bool		relisshared = relation->rd_rel->relisshared;
 
 	RelationClose(relation);
-	return YBCGetDatabaseOidFromShared(relisshared);
+	return YBCGetDatabaseOidFromShared(relisshared,
+									   relation->belongs_to_yb_system_db);
 }
 
 Oid
-YBCGetDatabaseOidFromShared(bool relisshared)
+YbSystemDbOid()
 {
-	return relisshared ? Template1DbOid : MyDatabaseId;
+	if (yb_system_db_oid_cache == InvalidOid)
+		yb_system_db_oid_cache = get_database_oid(YbSystemDbName, true);
+	return yb_system_db_oid_cache;
+}
+
+Oid
+YBCGetDatabaseOidFromShared(bool relisshared, bool belongs_to_yb_system_db)
+{
+	Assert(!relisshared || !belongs_to_yb_system_db);
+	return relisshared ? Template1DbOid :
+		(belongs_to_yb_system_db ? YbSystemDbOid() : MyDatabaseId);
 }
 
 void
@@ -2204,6 +2220,7 @@ bool		yb_enable_sequence_pushdown = true;
 bool		yb_disable_wait_for_backends_catalog_version = false;
 bool		yb_enable_base_scans_cost_model = false;
 bool		yb_enable_update_reltuples_after_create_index = false;
+bool		yb_enable_index_backfill_column_projection = false;
 int			yb_wait_for_backends_catalog_version_timeout = 5 * 60 * 1000;	/* 5 min */
 bool		yb_prefer_bnl = false;
 bool		yb_explain_hide_non_deterministic_fields = false;
@@ -2255,7 +2272,7 @@ bool		yb_debug_log_internal_restarts = false;
 
 bool		yb_test_system_catalogs_creation = false;
 
-bool		yb_test_fail_next_ddl = false;
+int			yb_test_fail_next_ddl = 0;
 
 bool		yb_force_catalog_update_on_next_ddl = false;
 
@@ -2688,6 +2705,13 @@ YBAddDdlTxnState(YbDdlMode mode)
 		 */
 		ddl_transaction_state.num_create_function_stmts +=
 			ddl_transaction_state.current_stmt_node_tag == T_CreateFunctionStmt ? 1 : 0;
+
+		/*
+		 * On a transaction restart, we need call YBCPgSetDdlStateInPlainTransaction()
+		 * again because it has been reset.
+		 */
+		if (!YBCPgIsDdlMode())
+			HandleYBStatus(YBCPgSetDdlStateInPlainTransaction());
 		return;
 	}
 
@@ -3060,13 +3084,7 @@ YBCommitTransactionContainingDDL()
 									has_change);
 
 	Assert(ddl_transaction_state.nesting_level == 0);
-	if (yb_test_fail_next_ddl)
-	{
-		yb_test_fail_next_ddl = false;
-		if (YbIsClientYsqlConnMgr())
-			YbSendParameterStatusForConnectionManager("yb_test_fail_next_ddl", "false");
-		elog(ERROR, "Failed DDL operation as requested");
-	}
+	yb_maybe_test_fail_ddl();
 
 	if (yb_test_delay_next_ddl > 0)
 	{
@@ -8611,4 +8629,42 @@ YbNewTruncateColocatedIgnoreNotFound(Relation rel, YbcPgTransactionSetting trans
 	HandleYBStatusIgnoreNotFound(YbNewTruncateColocatedImpl(rel, transaction_setting, &result),
 								 &not_found);
 	return not_found ? NULL : result;
+}
+
+/*
+ * Check yb_test_fail_next_ddl and trigger the appropriate error if set.
+ * 0 = disabled, 1 = ERROR, 2 = FATAL, 3 = PANIC, 4 = crash.
+ * Resets to 0 after triggering.
+ */
+static void
+yb_maybe_test_fail_ddl(void)
+{
+	int fail_mode = yb_test_fail_next_ddl;
+	if (fail_mode == 0)
+		return;
+	yb_test_fail_next_ddl = 0;
+	if (YbIsClientYsqlConnMgr())
+		YbSendParameterStatusForConnectionManager("yb_test_fail_next_ddl", "0");
+
+	switch (fail_mode)
+	{
+		case 1:
+			elog(ERROR, "Failed DDL operation as requested");
+			break;
+		case 2:
+			elog(FATAL, "FATAL on DDL as requested");
+			break;
+		case 3:
+			elog(PANIC, "PANIC on DDL as requested");
+			break;
+		case 4:
+			{
+				/* Intentional null pointer dereference for crash testing */
+				volatile int *null_ptr = NULL;
+				*null_ptr = 0;
+				break;
+			}
+		default:
+			break;
+	}
 }

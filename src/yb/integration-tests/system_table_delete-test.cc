@@ -46,7 +46,7 @@ TEST_F(SystemTableDelete, DeleteSysTableWithFixedOid) {
   ASSERT_OK(conn.Execute("SET ysql_upgrade_mode TO true"));
 
   // Force the table crete to fail.
-  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl TO true"));
+  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl TO 1"));
   ASSERT_NOK_STR_CONTAINS(conn.Execute(create_table_stmt), "Failed DDL operation as requested ");
 
   auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager_impl();

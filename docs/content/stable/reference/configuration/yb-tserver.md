@@ -671,6 +671,35 @@ Default: `20000`
 
 Sets the maximum batch size per transaction when using [COPY FROM](../../../api/ysql/the-sql-language/statements/cmd_copy/).
 
+#### Bucket-based index scan optimization
+
+##### yb_enable_derived_equalities
+
+{{% tags/wrap %}}
+{{<tags/feature/tp idea="2275">}}
+Default: `false`
+{{% /tags/wrap %}}
+
+Enables derivation of additional equalities for columns that are generated or computed using an expression. Used for [bucket-based indexes](../../../develop/data-modeling/bucket-index-ysql/).
+
+##### yb_enable_derived_saops
+
+{{% tags/wrap %}}
+{{<tags/feature/tp idea="2275">}}
+Default: `false`
+{{% /tags/wrap %}}
+
+Enable derivation of IN clauses for columns generated or computed using a `yb_hash_code` expression. Such derivation is only done for index paths that consider bucket-based merge. Disabled if `yb_max_saop_merge_streams` is 0.
+
+##### yb_max_saop_merge_streams
+
+{{% tags/wrap %}}
+{{<tags/feature/tp idea="2275">}}
+Default: `0`
+{{% /tags/wrap %}}
+
+Maximum number of buckets to process in parallel. A value greater than 0 enables bucket-based merge (used for [bucket-based indexes](../../../develop/data-modeling/bucket-index-ysql/)). Disabled if the cost-based optimizer is not enabled (`yb_enable_cbo=false`). Recommended value is 64.
+
 ## Networking
 
 ### RPC and binding addresses
@@ -2423,6 +2452,19 @@ If you are using YugabyteDB Anywhere, as with other flags, set `allowed_preview_
 
 After adding a preview flag to the `allowed_preview_flags_csv` list, you still need to set the flag using **Edit Flags** as well.
 {{</note>}}
+
+##### --ysql_enable_write_pipelining
+
+{{% tags/wrap %}}
+{{<tags/feature/ea idea="1298">}}
+{{<tags/feature/restart-needed>}}
+{{% tags/feature/t-server %}}
+Default: `false`
+{{% /tags/wrap %}}
+
+Enables concurrent replication of multiple write operations in a transaction. Write requests to DocDB return immediately after completing on the leader, meanwhile the Raft quorum commit happens asynchronously in the background. This enables PostgreSQL to be able to send the next write or read request in parallel, which reduces overall latency. Note that this does not affect the transactional guarantees of the system. The COMMIT of the transaction waits and ensures all asynchronous quorum replication has completed.
+
+Note that this is a preview flag, so it also needs to be added to the [allowed_preview_flags_csv](#allowed-preview-flags-csv) list.
 
 ## Security
 

@@ -99,6 +99,9 @@ build_cpp_code() {
   if [[ -n "${YB_PGO_DATA_FILE:-}" && -f "$YB_PGO_DATA_FILE" ]]; then
     yb_build_args+=( "--pgo-data-path=$YB_PGO_DATA_FILE" )
   fi
+  if [[ "${YB_PGO_BOLT:-0}" == "1" ]]; then
+    yb_build_args+=( "--bolt" )
+  fi
 
   log "Building cpp code with options: ${yb_build_args[*]}"
 
@@ -340,6 +343,9 @@ if [[ ${YB_LINKING_TYPE} == *-lto ]]; then
 
   if [[ -n "${YB_PGO_DATA_FILE:-}" && -f "$YB_PGO_DATA_FILE" ]]; then
     yb_build_cmd_line_for_lto+=( "--pgo-data-path=$YB_PGO_DATA_FILE" )
+  fi
+  if [[ "${YB_PGO_BOLT:-0}" == "1" ]]; then
+    yb_build_cmd_line_for_lto+=( "--bolt" )
   fi
 
   if [[ $( grep -E 'MemTotal: .* kB' /proc/meminfo ) =~ ^.*\ ([0-9]+)\ .*$ ]]; then

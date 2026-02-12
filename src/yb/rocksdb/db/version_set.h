@@ -577,7 +577,11 @@ class Version {
   void UpdateFilesByCompactionPri();
 
   Result<TableCache::TableReaderWithHandle> GetLargestSstTableReader();
-  Result<std::string> GetMiddleOfMiddleKeys(Slice lower_bound_internal_key);
+
+  // The second component of the return value is true iff there are not enough entries in the file
+  // to detect the middle point. In this case, the first component must contain a non-OK status.
+  std::tuple<Result<std::string>, bool> GetMiddleKeyFromFile(
+      const FileMetaData& file, Slice lower_bound);
 
   template <typename IteratorBuilder, typename CreateIteratorFunc>
   void AddLevel0Iterators(

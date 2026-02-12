@@ -15,9 +15,18 @@
 
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/util/enums.h"
+#include "yb/util/strongly_typed_bool.h"
+
 namespace yb::pggate {
 
 class PgSession;
 using PgSessionPtr = scoped_refptr<PgSession>;
+
+YB_STRONGLY_TYPED_BOOL(InvalidateOnPgClient);
+YB_STRONGLY_TYPED_BOOL(UseCatalogSession);
+YB_STRONGLY_TYPED_BOOL(ForceNonBufferable);
+
+YB_DEFINE_ENUM(PgSessionRunOperationMarker, (ExplicitRowLock));
 
 } // namespace yb::pggate

@@ -65,7 +65,6 @@ YB_CONTROLLER = "yb-controller-server"
 NODE_EXPORTER = "node_exporter"
 CONNECTION_POOLING_MANAGER = "odyssey"
 EARLYOOM = "earlyoom"
-TOTAL = "total"
 
 ALERT_ENHANCEMENTS_RELEASE_BUILD = "2.6.0.0-b0"
 RELEASE_BUILD_PATTERN = "(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+)[-](.+)"
@@ -89,7 +88,7 @@ MAX_THREADS = 10
 
 MAX_TRIES = 2
 
-PER_PROCESS_VERSION = 3
+PER_PROCESS_VERSION = 4
 
 DEFAULT_SSL_VERSION = "TLSv1_2"
 SSL_PROTOCOL_TO_SSL_VERSION = {
@@ -1951,16 +1950,10 @@ class NodeChecker():
         e = self._new_metric_entry("Per-process check", process_name)
         process = Label("process", process_name)
         try:
-            if process_name == TOTAL:
-                stat = self._get_empty_proc_results()
-                for proc in self.current_process_results.keys():
-                    stat = self._merge_proc_results(
-                        stat, self.current_process_results[proc]['total_stat'])
-                self._dump_per_process_results()
-            else:
-                res = self._load_per_process_metrics(process_name)
-                stat = res['total_stat']
-                self.current_process_results[process_name] = res
+            res = self._load_per_process_metrics(process_name)
+            stat = res['total_stat']
+            self.current_process_results[process_name] = res
+            self._dump_per_process_results()
             ticks = int(os.sysconf("SC_CLK_TCK"))
             metrics[0].add_value(stat['user_cpu_seconds'] // ticks, labels=[process,
                                                                             Label('type', 'user')])
@@ -2208,8 +2201,10 @@ class NodeChecker():
         process_map = {}
         for cur_pid in pid_list:
             stat = self._get_empty_proc_results()
+            start_time = None
             try:
                 stat = self._get_process_stats_by_pid(cur_pid)
+                start_time = stat['start_time']
             except Exception as e:
                 pass
             # Calculating the sum with current state
@@ -2217,8 +2212,14 @@ class NodeChecker():
             # We need to substract pid stats from prev run
             if cur_pid in prev_process_map:
                 prev_stat = prev_process_map[cur_pid]['stats']
-                self._invert_prev_pid_stats(prev_stat)
-                total_stat = self._merge_proc_results(total_stat, prev_stat)
+                prev_start_time = prev_stat['start_time'] if 'start_time' in prev_stat.keys()\
+                    else None
+                if prev_start_time == start_time or prev_start_time is None:
+                    self._invert_prev_pid_stats(prev_stat)
+                    total_stat = self._merge_proc_results(total_stat, prev_stat)
+                else:
+                    self.verbose_log("Prev start time {} cur {} for pid {}"
+                                     .format(start_time, prev_start_time, cur_pid))
 
             process_map[cur_pid] = {
                 'is_root': cur_pid == root_pid,
@@ -2279,6 +2280,7 @@ class NodeChecker():
             res['user_cpu_seconds'] = int(stat_list[13])
             res['system_cpu_seconds'] = int(stat_list[14])
             res['virtual_memory_kb'] = int(stat_list[22]) // 1024
+            res['start_time'] = int(stat_list[21])
 
         cmd = 'cat /proc/{}/smaps'.format(pid)
         stat = self._check_output(cmd).strip()
@@ -2854,9 +2856,7 @@ def main():
     if n.clockbound_enabled:
         coordinator.add_check(checker, "check_clockbound_sync_status")
 
-    coordinator.add_check(checker, "check_process_stats", TOTAL)
     if n.topk_other_processes > 0:
-        # This should be run after TOTAL is calculated (we don't want it to be included in total).
         coordinator.add_check(checker, "check_other_process_stats")
 
     if not n.is_k8s and n.check_thp:

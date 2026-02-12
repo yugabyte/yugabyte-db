@@ -493,7 +493,7 @@ Status XClusterDDLQueueHandler::ProcessDDLQuery(const XClusterDDLQueryInfo& quer
   }
 
   if (FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) {
-    setup_query << "SET yb_test_fail_next_ddl TO true;";
+    setup_query << "SET yb_test_fail_next_ddl TO 1;";
   }
 
   setup_query << Format(
@@ -513,6 +513,7 @@ Status XClusterDDLQueueHandler::ProcessFailedDDLQuery(
   if (s.ok()) {
     num_fails_for_this_ddl_ = 0;
     last_failed_query_.reset();
+    original_failed_status_ = Status::OK();
     return Status::OK();
   }
 
@@ -531,17 +532,18 @@ Status XClusterDDLQueueHandler::ProcessFailedDDLQuery(
   } else {
     last_failed_query_ = QueryIdentifier{query_info.ddl_end_time, query_info.query_id};
     num_fails_for_this_ddl_ = 1;
+    original_failed_status_ = s;
   }
 
-  last_failed_status_ = s;
   return s;
 }
 
 Status XClusterDDLQueueHandler::CheckForFailedQuery() {
   if (num_fails_for_this_ddl_ >= FLAGS_xcluster_ddl_queue_max_retries_per_ddl) {
-    return last_failed_status_.CloneAndPrepend(
-        "DDL replication is paused due to repeated failures. Manual fix is required, followed by a "
-        "leader stepdown of the target's ddl_queue tablet. ");
+    return original_failed_status_.CloneAndPrepend(Format(
+        "DDL replication is paused due to repeated failures ($0 retries). Manual fix is "
+        "required, followed by a leader stepdown of the target's ddl_queue tablet leader. ",
+        num_fails_for_this_ddl_));
   }
   return Status::OK();
 }
@@ -651,8 +653,8 @@ XClusterDDLQueueHandler::GetRowsToProcess(const HybridTime& commit_time) {
   // Use yb_disable_catalog_version_check since we do not need to read from the latest catalog (the
   // extension tables should not change).
   RETURN_NOT_OK(pg_conn_->ExecuteFormat(
-      "SET ROLE NONE; SET yb_disable_catalog_version_check = 1; SET yb_read_time = $0",
-      commit_time.GetPhysicalValueMicros()));
+      "SET ROLE NONE; SET yb_disable_catalog_version_check = 1; SET yb_read_time TO '$0 ht'",
+      commit_time.ToUint64()));
   auto rows = VERIFY_RESULT((pg_conn_->FetchRows<int64_t, int64_t, std::string>(Format(
       "/*+ MergeJoin(q r) */ "
       "SELECT q.$0, q.$1, q.$2 FROM $3 AS q "

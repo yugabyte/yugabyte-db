@@ -12,7 +12,7 @@
 [
 
 # For better version control conflict detection, list latest migration filename
-# here: V95__29990__yb_get_local_tserver_uuid.sql
-{ major => '95', minor => '0', name => '<baseline>', time_applied => '_null_' }
+# here: V96__29299__levenshtein_functions.sql
+{ major => '96', minor => '0', name => '<baseline>', time_applied => '_null_' }
 
 ]

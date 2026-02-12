@@ -733,13 +733,16 @@ TEST_F(DeleteTableTest, TestAutoTombstoneAfterRemoteBootstrapRemoteFails) {
   vector<string> tserver_flags, master_flags;
 
   tserver_flags.push_back("--log_segment_size_mb=1");  // Faster log rolls.
+  // Reduce the timeout so as to reduce the window for fetchdata rpc retries,
+  // sicne the test waits for the rbs dest tablet to be tombstoned.
+  tserver_flags.push_back("--remote_bootstrap_idle_timeout_ms=20000");
 
   master_flags.push_back("--enable_load_balancing=false");
   master_flags.push_back("--replication_factor=2");
 
   // Start the cluster with load balancer turned off.
   ASSERT_NO_FATALS(StartCluster(tserver_flags, master_flags));
-  const MonoDelta timeout = MonoDelta::FromSeconds(40);
+  const MonoDelta timeout = MonoDelta::FromSeconds(kTimeMultiplier * 40);
   const int kTsIndex = 0;  // We'll test with the first TS.
 
   // We'll do a config change to remote bootstrap a replica here later. For
@@ -791,7 +794,7 @@ TEST_F(DeleteTableTest, TestAutoTombstoneAfterRemoteBootstrapRemoteFails) {
   // interference while we wait for this to happen.
   cluster_->tablet_server(1)->Shutdown();
   cluster_->tablet_server(2)->Shutdown();
-  ASSERT_NO_FATALS(WaitForTabletTombstonedOnTS(kTsIndex, tablet_id, CMETA_NOT_EXPECTED));
+  ASSERT_NO_FATALS(WaitForTabletTombstonedOnTS(kTsIndex, tablet_id, CMETA_NOT_EXPECTED, timeout));
 
   // Now bring the other replicas back, and wait for the leader to remote
   // bootstrap the tombstoned replica. This will have replaced a tablet with no

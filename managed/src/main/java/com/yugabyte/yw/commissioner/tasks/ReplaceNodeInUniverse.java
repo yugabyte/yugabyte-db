@@ -14,7 +14,6 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.Set;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import play.libs.Json;
 
 @Slf4j
 @Abortable
@@ -41,6 +40,12 @@ public class ReplaceNodeInUniverse extends EditUniverseTaskBase {
     addBasicPrecheckTasks();
     if (isFirstTry()) {
       NodeDetails currentNode = universe.getNode(taskParams().nodeName);
+      if (currentNode == null) {
+        String msg =
+            "No node " + taskParams().nodeName + " found in universe " + universe.getName();
+        log.error(msg);
+        throw new RuntimeException(msg);
+      }
 
       // Generate new nodeDetails from existing node.
       NodeDetails newNode = PlacementInfoUtil.createToBeAddedNode(currentNode);
@@ -54,13 +59,19 @@ public class ReplaceNodeInUniverse extends EditUniverseTaskBase {
     }
   }
 
+  @Override
   protected void freezeUniverseInTxn(Universe universe) {
-    log.debug("taskParams replace node: {}", Json.toJson(taskParams()));
     super.freezeUniverseInTxn(universe);
+    NodeDetails currentNode = universe.getNode(taskParams().nodeName);
+    taskParams().azUuid = currentNode.azUuid;
+    taskParams().placementUuid = currentNode.placementUuid;
   }
 
   @Override
   public void run() {
+    if (maybeRunOnlyPrechecks()) {
+      return;
+    }
     log.info("Started {} task for uuid={}", getName(), taskParams().getUniverseUUID());
     checkUniverseVersion();
     String errorString = null;
@@ -72,7 +83,7 @@ public class ReplaceNodeInUniverse extends EditUniverseTaskBase {
               taskParams().expectedUniverseVersion, this::freezeUniverseInTxn);
       // On retry, the current node may already be removed from the universe
       //   but task may have failed after destroy subtask, hence need to find by taskParams.
-      Cluster taskParamsCluster = taskParams().getClusterByNodeName(taskParams().nodeName);
+      Cluster taskParamsCluster = universe.getCluster(taskParams().placementUuid);
       log.debug(
           "Replacing node: {} in cluster: {} for universe: {}",
           taskParams().nodeName,

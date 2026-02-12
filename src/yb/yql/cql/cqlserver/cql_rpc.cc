@@ -18,10 +18,10 @@
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/escaping.h"
 
-#include "yb/rpc/connection.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/reactor.h"
 #include "yb/rpc/rpc_introspection.pb.h"
+#include "yb/rpc/rpc_metrics.h"
 
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/result.h"
@@ -29,7 +29,6 @@
 #include "yb/util/status_format.h"
 
 #include "yb/yql/cql/cqlserver/cql_service.h"
-#include "yb/util/flags.h"
 
 using std::string;
 
@@ -78,8 +77,7 @@ DEFINE_UNKNOWN_bool(cql_server_always_send_events, false,
 
 DECLARE_int32(client_read_write_timeout_ms);
 
-namespace yb {
-namespace cqlserver {
+namespace yb::cqlserver {
 
 CQLConnectionContext::CQLConnectionContext(
     size_t receive_buffer_size, const MemTrackerPtr& buffer_tracker,
@@ -101,7 +99,7 @@ CQLConnectionContext::CQLConnectionContext(
 Result<rpc::ProcessCallsResult> CQLConnectionContext::ProcessCalls(
     const rpc::ConnectionPtr& connection, const IoVecs& data,
     rpc::ReadBufferFull read_buffer_full) {
-  return parser_.Parse(connection, data, read_buffer_full, nullptr /* tracker_for_throttle */);
+  return parser_.Parse(connection, data, read_buffer_full, /*tracker_for_throttle=*/nullptr);
 }
 
 Status CQLConnectionContext::HandleCall(
@@ -117,12 +115,13 @@ Status CQLConnectionContext::HandleCall(
 
   if (FLAGS_throttle_cql_calls_on_soft_memory_limit) {
     if (!CheckMemoryPressureWithLogging(call_tracker_, /* score= */ 0.0, "Rejecting CQL call: ")) {
+      IncrementCounter(connection->rpc_metrics().inbound_calls_rejected_because_memory_pressure);
       if (FLAGS_throttle_cql_calls_policy != kDropPolicy) {
         static Status status = STATUS(ServiceUnavailable, "Server is under memory pressure");
         // We did not store call yet, so should not notify that it was processed.
         call->ResetCallProcessedListener();
         call->RespondFailure(rpc::ErrorStatusPB::ERROR_SERVER_TOO_BUSY, Status::OK());
-      } // Otherwise silently drop the call without queuing it. Clients will get a timeout.
+      }  // Otherwise silently drop the call without queuing it. Clients will get a timeout.
       return Status::OK();
     }
   }
@@ -156,7 +155,7 @@ CQLInboundCall::CQLInboundCall(rpc::ConnectionPtr conn,
                                rpc::CallStateListenerFactory* call_state_listener_factory)
     : InboundCall(
           std::move(conn),
-          nullptr /* rpc_metrics */,
+          /*rpc_metrics=*/nullptr,
           call_processed_listener,
           call_state_listener_factory),
       ql_session_(std::move(ql_session)),
@@ -377,5 +376,4 @@ rpc::ThreadPoolTask* CQLInboundCall::BindTask(rpc::InboundCallHandler* handler) 
   return rpc::InboundCall::BindTask(handler, rpc_queue_limit);
 }
 
-} // namespace cqlserver
-} // namespace yb
+} // namespace yb::cqlserver

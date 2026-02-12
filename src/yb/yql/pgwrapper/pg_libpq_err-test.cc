@@ -10,6 +10,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include "yb/integration-tests/external_mini_cluster.h"
+
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
@@ -461,6 +463,44 @@ TEST_F(PgLibPqErrTest, InsertPerf) {
   auto finish = MonoTime::Now();
   LOG(INFO) << "Insert time: " << (finish - start);
   threads.JoinAll();
+}
+
+// Test that backtrace is printed to logs on FATAL and PANIC errors.
+TEST_F(PgLibPqErrTest, YbTestBacktraceOnFatal) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE test_fail_ddl (k INT PRIMARY KEY, v INT)"));
+
+  // Test ERROR
+  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl = 1"));
+  auto status = conn.Execute("ALTER TABLE test_fail_ddl ADD COLUMN v2 INT");
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "Failed DDL operation as requested");
+  // Connection should still be good after ERROR
+  ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT 1"));
+
+  auto* ts = cluster_->tablet_server(0);
+  {
+    // Verify backtrace is printed to logs on FATAL
+    LogWaiter log_waiter(ts, "BACKTRACE");
+    ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl = 2"));
+    status = conn.Execute("ALTER TABLE test_fail_ddl ADD COLUMN v3 INT");
+    ASSERT_NOK(status);
+    ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(10 * kTimeMultiplier)));
+  }
+  ASSERT_EQ(conn.ConnStatus(), CONNECTION_BAD);
+
+  conn = ASSERT_RESULT(Connect());
+  {
+    // Verify backtrace is printed to logs on PANIC
+    LogWaiter log_waiter(ts, "BACKTRACE");
+    ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl = 3"));
+    status = conn.Execute("ALTER TABLE test_fail_ddl ADD COLUMN v4 INT");
+    ASSERT_NOK(status);
+    ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(10 * kTimeMultiplier)));
+  }
+  ASSERT_EQ(conn.ConnStatus(), CONNECTION_BAD);
+
 }
 
 } // namespace pgwrapper

@@ -564,7 +564,7 @@ Status PGConn::RollbackTransaction() {
 }
 
 Status PGConn::TestFailDdl(const std::string& ddl_to_fail) {
-  RETURN_NOT_OK(Execute("SET yb_test_fail_next_ddl=true"));
+  RETURN_NOT_OK(Execute("SET yb_test_fail_next_ddl=1"));
   Status s = Execute(ddl_to_fail);
   if (s.ok()) {
     return STATUS_FORMAT(InternalError,

@@ -1925,6 +1925,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable AWS signing region for S3 access",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableS3BackupProxy =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.enable_s3_backup_proxy",
+          ScopeType.GLOBAL,
+          "Enable S3 Backup Proxy",
+          "Enable proxy configuration for S3 backup storage",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> capacityReservationMaxRetries =
       new ConfKeyInfo<>(
           "yb.task.capacity_reservation.max_retries",

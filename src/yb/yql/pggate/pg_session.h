@@ -49,18 +49,15 @@ namespace yb::pggate {
 
 class PgFlushDebugContext;
 
-YB_STRONGLY_TYPED_BOOL(InvalidateOnPgClient);
-YB_STRONGLY_TYPED_BOOL(UseCatalogSession);
-YB_STRONGLY_TYPED_BOOL(ForceNonBufferable);
-
 struct PgSessionRunOptions {
   HybridTime in_txn_limit{};
   ForceNonBufferable force_non_bufferable{ForceNonBufferable::kFalse};
+  std::optional<PgSessionRunOperationMarker> marker{};
 
   friend bool operator==(const PgSessionRunOptions&, const PgSessionRunOptions&) = default;
 
   std::string ToString() const {
-      return YB_STRUCT_TO_STRING(in_txn_limit, force_non_bufferable);
+      return YB_STRUCT_TO_STRING(in_txn_limit, force_non_bufferable, marker);
   }
 };
 
@@ -70,6 +67,7 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
  public:
   // Public types.
   using ScopedRefPtr = PgSessionPtr;
+  using RunRWOperationsHook = std::function<Status(std::optional<PgSessionRunOperationMarker>)>;
 
   // Constructors.
   PgSession(
@@ -79,7 +77,8 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
       YbcPgExecStatsState& stats_state,
       bool is_pg_binary_upgrade,
       std::reference_wrapper<const WaitEventWatcher> wait_event_watcher,
-      BufferingSettings& buffering_settings);
+      BufferingSettings& buffering_settings,
+      RunRWOperationsHook&& hook);
   ~PgSession();
 
   // Resets the read point for catalog tables.
@@ -302,6 +301,7 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
 
   const WaitEventWatcher& wait_event_watcher_;
   TablespaceCache tablespace_cache_;
+  RunRWOperationsHook rw_operations_hook_;
 };
 
 template<class PB>

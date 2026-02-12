@@ -6927,3 +6927,9 @@ YbTriggerNameCmp(const void *a, const void *b)
 
 	return strcmp(ta->tgname, tb->tgname);
 }
+
+int
+YbGetTriggerDepth()
+{
+	return MyTriggerDepth;
+}

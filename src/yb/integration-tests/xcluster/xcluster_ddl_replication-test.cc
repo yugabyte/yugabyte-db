@@ -33,6 +33,8 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tserver_xcluster_context_if.h"
+#include "yb/tserver/xcluster_consumer_if.h"
+#include "yb/tserver/xcluster_poller_stats.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/debug.h"
@@ -68,6 +70,7 @@ DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_end);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_start);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_before_incremental_safe_time_bump);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_ddl);
+DECLARE_bool(TEST_xcluster_increment_logical_commit_time);
 DECLARE_int32(TEST_xcluster_producer_modify_sent_apply_safe_time_ms);
 DECLARE_int32(TEST_xcluster_simulated_lag_ms);
 DECLARE_string(TEST_xcluster_simulated_lag_tablet_filter);
@@ -555,6 +558,17 @@ TEST_F(XClusterDDLReplicationTest, CreateTable) {
       &producer_cluster_, producer_table_name.namespace_name(), producer_table_name.pgschema_name(),
       producer_table_name_new_user_str));
   InsertRowsIntoProducerTableAndVerifyConsumer(producer_table_name_new_user);
+}
+
+TEST_F(XClusterDDLReplicationTest, CreateTableWithNonZeroLogicalCommitTime) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  // Ensure that the ddl_queue poller handles commit times with non-zero logical components.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_increment_logical_commit_time) = true;
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE test_table_1 (key int PRIMARY KEY);"));
+  ASSERT_OK(producer_conn_->Execute("INSERT INTO test_table_1 VALUES (1);"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifyWrittenRecords(std::vector<TableName>{"test_table_1"}));
 }
 
 TEST_F(XClusterDDLReplicationTest, CreateTableInExistingConnection) {
@@ -2860,9 +2874,9 @@ TEST_F(XClusterDDLReplicationTest, FailedSchemaChangeOnSource) {
   ASSERT_OK(conn.Execute("CREATE TABLE my_table (x INT);"));
 
   // Do a few failing ADD COLUMN DDLs, which might bump the next DocDB column ID.
-  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=true;"));
+  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=1;"));
   ASSERT_NOK(conn.Execute("ALTER TABLE my_table ADD COLUMN y TEXT;"));
-  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=true;"));
+  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=1;"));
   ASSERT_NOK(conn.Execute("ALTER TABLE my_table ADD COLUMN y TEXT;"));
 
   // In the absence of rollback of the next DocDB column ID counter,
@@ -2892,9 +2906,9 @@ TEST_F(XClusterDDLReplicationTest, FailedSchemaChangeOnSourceWithPartitioning) {
       "CREATE TABLE my_table_1 PARTITION OF my_table FOR VALUES FROM (1) TO (100000);"));
 
   // Do a few failing ADD COLUMN DDLs, which might bump the next DocDB column ID.
-  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=true;"));
+  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=1;"));
   ASSERT_NOK(conn.Execute("ALTER TABLE my_table ADD COLUMN y INT;"));
-  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=true;"));
+  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=1;"));
   ASSERT_NOK(conn.Execute("ALTER TABLE my_table ADD COLUMN y INT;"));
 
   // In the absence of rollback of the next DocDB column ID counter,
@@ -3003,7 +3017,7 @@ TEST_F(XClusterDDLReplicationTest, RollbackPreservesDeletedColumns) {
 
   auto conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
   ASSERT_OK(conn.Execute("CREATE TABLE my_table (x INT);"));
-  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=true;"));
+  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=1;"));
   ASSERT_NOK(conn.Execute("ALTER TABLE my_table ADD COLUMN y INT;"));
   ASSERT_OK(conn.Execute("ALTER TABLE my_table ADD COLUMN y INT;"));
 
@@ -4393,6 +4407,44 @@ TEST_F(XClusterDDLReplicationTest, ReplicationSlotCommandsNotReplicated) {
       consumer_repl_conn.Fetch("CREATE_REPLICATION_SLOT consumer_slot LOGICAL pgoutput"));
   SleepFor(MonoDelta::FromMilliseconds(FLAGS_ysql_cdc_active_replication_slot_window_ms * 2));
   ASSERT_OK(consumer_repl_conn.Execute("DROP_REPLICATION_SLOT consumer_slot"));
+}
+
+TEST_F(XClusterDDLReplicationTest, DDLQueuePollerPreservesOriginalError) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  // Cause the target to fail CREATE TABLE DDLs.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) = true;
+
+  const auto kTableName = "test_table_fail_create";
+  ASSERT_OK(producer_conn_->ExecuteFormat("CREATE TABLE $0 (key int PRIMARY KEY);", kTableName));
+
+  // Wait for DDL replication to pause after hitting the retry limit.
+  ASSERT_OK(
+      StringWaiterLogSink("DDL replication is paused due to repeated failures").WaitFor(kTimeout));
+
+  auto consumer_ddl_queue_table = ASSERT_RESULT(GetYsqlTable(
+      &consumer_cluster_, namespace_name, xcluster::kDDLQueuePgSchemaName,
+      xcluster::kDDLQueueTableName));
+
+  auto* tserver = consumer_cluster()->mini_tablet_server(0)->server();
+  auto* xcluster_consumer = tserver->GetXClusterConsumer();
+  auto pollers_stats = xcluster_consumer->GetPollerStats();
+  bool found_ddl_queue_poller = false;
+  for (const auto& stat : pollers_stats) {
+    if (stat.consumer_table_id == consumer_ddl_queue_table.table_id()) {
+      found_ddl_queue_poller = true;
+      LOG(INFO) << "DDL queue poller stats: " << stat.status;
+
+      // Verify that the ddl_queue poller's error contains both the pause message and the original
+      // error message.
+      ASSERT_FALSE(stat.status.ok()) << "Expected ddl_queue poller to have an error status";
+      ASSERT_STR_CONTAINS(
+          stat.status.ToString(), "DDL replication is paused due to repeated failures");
+      ASSERT_STR_CONTAINS(stat.status.ToString(), "Failed DDL operation as requested");
+      break;
+    }
+  }
+  ASSERT_TRUE(found_ddl_queue_poller) << "ddl_queue poller not found in TServer xCluster stats";
 }
 
 }  // namespace yb

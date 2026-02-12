@@ -51,9 +51,10 @@ class YbctidReader {
 
     ReadResult Read(
         PgOid database_id, const TableLocalityMap& tables_locality,
-        const ExecParametersMutator& exec_params_mutator) {
+        const ExecParametersMutator& exec_params_mutator,
+        std::optional<PgSessionRunOperationMarker> marker = {}) {
       RSTATUS_DCHECK(IsActive(), IllegalState, "Read from inactive batch is not allowed");
-      return reader_.Read(database_id, tables_locality, exec_params_mutator);
+      return reader_.Read(database_id, tables_locality, exec_params_mutator, marker);
     }
 
    private:
@@ -92,7 +93,8 @@ class YbctidReader {
 
   ReadResult Read(
       PgOid database_id, const TableLocalityMap& tables_locality,
-      const ExecParametersMutator& exec_params_mutator);
+      const ExecParametersMutator& exec_params_mutator,
+      std::optional<PgSessionRunOperationMarker> marker);
 
   const PgSessionPtr& session_;
   BuffersPtr holders_ = std::make_shared<Buffers>();

@@ -108,7 +108,7 @@
     "@types/redux-form": "8.3.1",
     "@types/yup": "0.29.11",
     "@yugabyte-ui-library/core": "2.0.18",
-    "@yugabytedb/perf-advisor-ui": "1.0.93",
+    "@yugabytedb/perf-advisor-ui": "1.0.96",
     "ace-builds": "1.4.12",
     "axios": "0.21.3",
     "bootstrap": "3.4.1",

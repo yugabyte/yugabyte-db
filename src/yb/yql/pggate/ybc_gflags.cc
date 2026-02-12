@@ -145,6 +145,7 @@ DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 DECLARE_string(placement_cloud);
 DECLARE_string(placement_region);
 DECLARE_string(placement_zone);
+DECLARE_bool(TEST_ysql_yb_enable_listen_notify);
 
 namespace {
 
@@ -246,6 +247,7 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .placement_zone = FLAGS_placement_zone.c_str(),
       .TEST_ysql_bypass_auto_analyze_auth_check = &FLAGS_TEST_ysql_bypass_auto_analyze_auth_check,
       .TEST_delay_after_table_analyze_ms = &FLAGS_TEST_delay_after_table_analyze_ms,
+      .TEST_ysql_yb_enable_listen_notify = &FLAGS_TEST_ysql_yb_enable_listen_notify,
       .TEST_enable_obj_tuple_locks = &FLAGS_TEST_enable_obj_tuple_locks,
   };
   // clang-format on

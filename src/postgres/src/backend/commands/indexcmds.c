@@ -2308,8 +2308,10 @@ DefineIndex(Oid relationId,
 			 * causing the other CREATE INDEX CONCURRENTLY to time out during its
 			 * WaitForYsqlBackendsCatalogVersion call.
 			 */
-			BackendType old_type = MyBackendType;
-			YbcStatus s = NULL;
+
+			/* Use volatile to ensure variables survive a siglongjmp */
+			volatile BackendType old_type = MyBackendType;
+			volatile YbcStatus s = NULL;
 
 			PG_TRY();
 			{
@@ -5259,6 +5261,7 @@ YbWaitForBackendsCatalogVersion()
 								 " backend_type != 'yb-conn-mgr walsender' AND"
 								 " backend_type != 'yb auto analyze backend' AND"
 								 " backend_type != 'yb index backfill' AND"
+								 " backend_type != 'yb matview refresh' AND"
 								 " catalog_version < %" PRIu64
 								 " AND datid = %u;",
 								 catalog_version,

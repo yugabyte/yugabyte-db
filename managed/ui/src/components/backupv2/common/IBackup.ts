@@ -24,14 +24,14 @@ export enum Backup_States {
 }
 
 export const BACKUP_LABEL_MAP: Record<Backup_States, string> = {
-  InProgress: 'In progress',
-  Completed: 'Completed',
-  Failed: 'Backup failed',
-  Deleted: 'Deleted',
-  Skipped: 'Cancelled',
+  InProgress: 'Backup In progress',
+  Completed: 'Backup Completed',
+  Failed: 'Backup Failed',
+  Deleted: 'Backup Deleted',
+  Skipped: 'Backup Cancelled',
   FailedToDelete: 'Deletion failed',
-  Stopping: 'Cancelling',
-  Stopped: 'Cancelled',
+  Stopping: 'Cancelling Backup',
+  Stopped: 'Backup Cancelled',
   DeleteInProgress: 'Deleting',
   QueuedForDeletion: 'Queued for deletion'
 };
