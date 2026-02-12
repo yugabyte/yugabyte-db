@@ -68,6 +68,7 @@ import play.libs.Json;
 
 public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
   protected static final String AZ_CODE = "az-1";
+  protected static final String AZ_CODE1 = "az-2";
 
   protected Universe onPremUniverse;
   protected Universe defaultUniverse;
