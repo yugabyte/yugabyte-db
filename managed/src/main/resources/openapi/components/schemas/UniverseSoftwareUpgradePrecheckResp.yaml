@@ -13,3 +13,8 @@ properties:
       If the upgrade requires a finalize step. If true, the user must call the finalize 
       endpoint to complete the upgrade.
     type: boolean
+  ysql_major_version_upgrade:
+    description: |
+      If the upgrade requires a YSQL catalog major version upgrade (e.g. when upgrading
+      across YSQL major versions and YSQL is enabled on the universe).
+    type: boolean
