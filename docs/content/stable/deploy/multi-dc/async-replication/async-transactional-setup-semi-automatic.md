@@ -1,8 +1,8 @@
 ---
-title: Set up transactional xCluster
+title: Set up transactional xCluster (Semi-automatic)
 headerTitle: Set up transactional xCluster
 linkTitle: Setup
-description: Setting up transactional (active-active single-master) replication between two YB universes
+description: Semi-automatic setup of transactional (active-active single-master) replication between two YB universes
 headContent: Set up transactional xCluster replication
 aliases:
   - /stable/deploy/multi-dc/async-replication/async-transactional-setup-dblevel/
@@ -35,6 +35,8 @@ type: docs
 </ul>
 
 {{< note title="Note" >}}
+For v2025.2.1 and later, use Automatic mode.
+
 To use semi-automatic transactional xCluster replication, both the Primary and Standby universes must be running v2024.1.2 or later.
 {{< /note >}}
 

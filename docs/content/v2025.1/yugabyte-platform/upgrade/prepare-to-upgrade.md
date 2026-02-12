@@ -86,6 +86,10 @@ Note that only a Super Admin user can modify Global configuration settings.
 
 </details>
 
-## xCluster
+## xCluster DR
 
-If you have upgraded YugabyteDB Anywhere to version 2.12 or later and [xCluster replication](../../../explore/going-beyond-sql/asynchronous-replication-ysql/) for your universe was set up via yb-admin instead of the UI, follow the instructions provided in [Synchronize replication after upgrade](../upgrade-yp-xcluster-ybadmin/).
+Manual schema change mode is deprecated.
+
+For universes running v2024.2 and later, Semi-automatic mode is recommended.
+
+When possible, you should delete existing Manual or Semi-automatic DR configurations (as appropriate) and re-create them using Semi-automatic or Automatic mode to reduce the operational burden of DDL changes. You can do this any time after upgrading. Refer to [Schema change modes](../../back-up-restore-universes/disaster-recovery/#schema-change-modes).
