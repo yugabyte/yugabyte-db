@@ -80,6 +80,9 @@ var certEncryptionInTransitCmd = &cobra.Command{
 					formatter.RedColor))
 		}
 
+		primaryUserIntent := clusters[0].GetUserIntent()
+		enableClientToNodeEncrypt := primaryUserIntent.GetEnableClientToNodeEncrypt()
+
 		upgradeOption, err := cmd.Flags().GetString("upgrade-option")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -187,8 +190,13 @@ var certEncryptionInTransitCmd = &cobra.Command{
 			} else if len(universeClientRootCA) != 0 {
 				logrus.Debugf("Client Root CA is Universe's Client Root CA\n")
 				requestBody.SetClientRootCA(universeClientRootCA)
-			} else {
+			} else if enableClientToNodeEncrypt {
+				// Only set clientRootCA to rootCA if client-to-node encryption is enabled
+				logrus.Debugf("Client Root CA defaulting to Root CA (client-to-node encryption enabled)\n")
 				requestBody.SetClientRootCA(universeRootCA)
+			} else {
+				// When client-to-node encryption is disabled, don't set clientRootCA
+				logrus.Debugf("Client Root CA not set (client-to-node encryption disabled)\n")
 			}
 		}
 
