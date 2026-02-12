@@ -3033,21 +3033,38 @@ YbcStatus YBCTabletsMetadata(YbcPgGlobalTabletsDescriptor** tablets, size_t* cou
 
     for (const auto& tablet_metadata : tablet_metadatas) {
       const char** replicas_array = nullptr;
+      uint64_t* sst_sizes_array = nullptr;
+      uint64_t* wal_sizes_array = nullptr;
+      const auto replicas_size = tablet_metadata.replicas().size();
 
-      if (!tablet_metadata.replicas().empty()) {
+      if (replicas_size > 0) {
         replicas_array = static_cast<const char**>(
-            YBCPAlloc(tablet_metadata.replicas().size() * sizeof(const char*)));
+            YBCPAlloc(replicas_size * sizeof(const char*)));
 
-        for (int i = 0; i < tablet_metadata.replicas().size(); ++i) {
+        for (int i = 0; i < static_cast<int>(replicas_size); ++i) {
           replicas_array[i] = YBCPAllocStdString(tablet_metadata.replicas(i));
+        }
+
+        sst_sizes_array = static_cast<uint64_t*>(
+            YBCPAlloc(replicas_size * sizeof(uint64_t)));
+        wal_sizes_array = static_cast<uint64_t*>(
+            YBCPAlloc(replicas_size * sizeof(uint64_t)));
+
+        for (int i = 0; i < static_cast<int>(replicas_size); ++i) {
+          sst_sizes_array[i] = i < tablet_metadata.replicas_sst_files_size_size()
+              ? tablet_metadata.replicas_sst_files_size(i) : 0;
+          wal_sizes_array[i] = i < tablet_metadata.replicas_wal_files_size_size()
+              ? tablet_metadata.replicas_wal_files_size(i) : 0;
         }
       }
 
       new (dest) YbcPgGlobalTabletsDescriptor {
         .tablet_descriptor = MakeYbcPgTabletsDescriptor(tablet_metadata),
         .replicas = replicas_array,
-        .replicas_count = static_cast<size_t>(tablet_metadata.replicas().size()),
-        .is_hash_partitioned = tablet_metadata.is_hash_partitioned()
+        .replicas_count = static_cast<size_t>(replicas_size),
+        .is_hash_partitioned = tablet_metadata.is_hash_partitioned(),
+        .replicas_sst_files_size = sst_sizes_array,
+        .replicas_wal_files_size = wal_sizes_array
       };
       ++dest;
     }

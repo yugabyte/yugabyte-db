@@ -117,6 +117,7 @@
 #endif
 #include "storage/procarray.h"
 #include "tcop/utility.h"
+#include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/datum.h"
 #include "utils/fmgroids.h"
@@ -8411,11 +8412,15 @@ YbUseMinimalCatalogCachesPreload()
 	return false;
 }
 
-/* Comparison function for sorting strings in a List */
+/* Sort replica indices lexicographically while keeping parallel arrays aligned. */
 static int
-string_list_compare(const ListCell *a, const ListCell *b)
+replica_index_cmp(const void *a, const void *b, void *arg)
 {
-	return strcmp((char *) lfirst(a), (char *) lfirst(b));
+	const char **replicas = (const char **) arg;
+	int			ia = *(const int *) a;
+	int			ib = *(const int *) b;
+
+	return strcmp(replicas[ia], replicas[ib]);
 }
 
 /*
@@ -8430,10 +8435,13 @@ string_list_compare(const ListCell *a, const ListCell *b)
  * - end_hash_code: int32
  * - leader: text
  * - replicas: text[]
+ * - active_ssts_size: int8[]
+ * - wals_size: int8[]
  *
  * The start_hash_code and end_hash_code are the hash codes of the start and end
  * keys of the tablet for hash sharded tables. Leader is provided as a separate
- * column for simpler querying and self-explanatory access.
+ * column for simpler querying and self-explanatory access. The size arrays are
+ * parallel to replicas (same index refers to the same replica).
  */
 Datum
 yb_get_tablet_metadata(PG_FUNCTION_ARGS)
@@ -8443,7 +8451,7 @@ yb_get_tablet_metadata(PG_FUNCTION_ARGS)
 	Tuplestorestate *tupstore;
 	MemoryContext per_query_ctx;
 	MemoryContext oldcontext;
-	static int	ncols = 9;
+	static int	ncols = 11;
 
 	/* check to see if caller supports us returning a tuplestore */
 	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
@@ -8512,31 +8520,69 @@ yb_get_tablet_metadata(PG_FUNCTION_ARGS)
 			nulls[6] = true;
 		}
 
-		/* Convert replicas array to PostgreSQL text array */
+		/* Convert replicas array to PostgreSQL text array and size arrays */
 		if (tablet->replicas_count > 0)
 		{
+			size_t		nreplicas = tablet->replicas_count;
+			int		   *sort_idx;
+			Datum	   *text_elems;
+			Datum	   *sst_elems;
+			Datum	   *wal_elems;
+
 			Assert(tablet->replicas != NULL);
 
 			/* The last replica is the leader. */
-			values[7] = CStringGetTextDatum(tablet->replicas[tablet->replicas_count - 1]);
-
-			/* Convert char ** to List * */
-			List	   *replicas_list = NIL;
-
-			for (size_t idx = 0; idx < tablet->replicas_count; idx++)
-				replicas_list = lappend(replicas_list, (char *) tablet->replicas[idx]);
+			values[7] = CStringGetTextDatum(tablet->replicas[nreplicas - 1]);
 
 			/*
-			 * Sort the list lexicographically for consistency, so that all rows
-			 * with same replicas have same entries.
+			 * Build a sort index so replicas and their sizes stay parallel
+			 * after lexicographic sorting.
 			 */
-			list_sort(replicas_list, string_list_compare);
-			values[8] = PointerGetDatum(strlist_to_textarray(replicas_list));
+			sort_idx = palloc(nreplicas * sizeof(int));
+			for (size_t idx = 0; idx < nreplicas; idx++)
+				sort_idx[idx] = (int) idx;
+
+			qsort_arg(sort_idx, nreplicas, sizeof(int),
+					  replica_index_cmp, tablet->replicas);
+
+			text_elems = palloc(nreplicas * sizeof(Datum));
+			sst_elems = palloc(nreplicas * sizeof(Datum));
+			wal_elems = palloc(nreplicas * sizeof(Datum));
+
+			for (size_t idx = 0; idx < nreplicas; idx++)
+			{
+				int			si = sort_idx[idx];
+
+				text_elems[idx] = CStringGetTextDatum(tablet->replicas[si]);
+				sst_elems[idx] = Int64GetDatum(
+					tablet->replicas_sst_files_size
+						? (int64) tablet->replicas_sst_files_size[si] : 0);
+				wal_elems[idx] = Int64GetDatum(
+					tablet->replicas_wal_files_size
+						? (int64) tablet->replicas_wal_files_size[si] : 0);
+			}
+
+			values[8] = PointerGetDatum(
+				construct_array(text_elems, (int) nreplicas,
+								TEXTOID, -1, false, TYPALIGN_INT));
+			values[9] = PointerGetDatum(
+				construct_array(sst_elems, (int) nreplicas,
+								INT8OID, 8, FLOAT8PASSBYVAL, TYPALIGN_DOUBLE));
+			values[10] = PointerGetDatum(
+				construct_array(wal_elems, (int) nreplicas,
+								INT8OID, 8, FLOAT8PASSBYVAL, TYPALIGN_DOUBLE));
+
+			pfree(sort_idx);
+			pfree(text_elems);
+			pfree(sst_elems);
+			pfree(wal_elems);
 		}
 		else
 		{
 			nulls[7] = true;
 			nulls[8] = true;
+			nulls[9] = true;
+			nulls[10] = true;
 		}
 
 		tuplestore_putvalues(tupstore, tupdesc, values, nulls);

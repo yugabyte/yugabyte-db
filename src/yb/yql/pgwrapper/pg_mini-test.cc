@@ -3302,6 +3302,56 @@ TEST_F(PgMiniTest, TabletMetadataOidMatchesPgClass) {
       << " but yb_tablet_metadata returned " << tablet_metadata_oid;
 }
 
+TEST_F(PgMiniTest, TabletMetadataSizeColumns) {
+  auto pg_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(pg_conn.Execute(
+      "CREATE TABLE size_test (id INT PRIMARY KEY, data TEXT) SPLIT INTO 1 TABLETS"));
+
+  // All three arrays must exist and have one element per replica.
+  auto [replicas_len, ssts_len, wals_len] = ASSERT_RESULT(
+      (pg_conn.FetchRow<int32_t, int32_t, int32_t>(
+          "SELECT array_length(replicas, 1),"
+          "       array_length(active_ssts_size, 1),"
+          "       array_length(wals_size, 1) "
+          "FROM yb_tablet_metadata WHERE relname = 'size_test'")));
+  ASSERT_EQ(replicas_len, ssts_len);
+  ASSERT_EQ(replicas_len, wals_len);
+  ASSERT_EQ(static_cast<size_t>(replicas_len), NumTabletServers());
+
+  // Unnest all three arrays in parallel to verify ordering and alignment.
+  // Uses WITH ORDINALITY to join corresponding elements in a single snapshot.
+  auto result = ASSERT_RESULT(pg_conn.Fetch(
+      "SELECT r.val, s.val, w.val "
+      "FROM yb_tablet_metadata tm, "
+      "     unnest(tm.replicas)          WITH ORDINALITY AS r(val, ord), "
+      "     unnest(tm.active_ssts_size)  WITH ORDINALITY AS s(val, ord), "
+      "     unnest(tm.wals_size)         WITH ORDINALITY AS w(val, ord) "
+      "WHERE tm.relname = 'size_test' "
+      "  AND r.ord = s.ord AND r.ord = w.ord "
+      "ORDER BY r.ord"));
+
+  auto num_rows = PQntuples(result.get());
+  ASSERT_EQ(static_cast<size_t>(num_rows), NumTabletServers());
+
+  // Validate per-replica rows to catch index misalignment that array-length checks cannot detect.
+  for (int i = 0; i < num_rows; ++i) {
+    auto replica  = ASSERT_RESULT(GetValue<std::string>(result.get(), i, 0));
+    auto sst_size = ASSERT_RESULT(GetValue<int64_t>(result.get(), i, 1));
+    auto wal_size = ASSERT_RESULT(GetValue<int64_t>(result.get(), i, 2));
+    ASSERT_FALSE(replica.empty());
+    ASSERT_GE(sst_size, 0) << "replica " << replica;
+    ASSERT_GE(wal_size, 0) << "replica " << replica;
+  }
+
+  // Every replica address must correspond to a live tserver.
+  auto valid_count = ASSERT_RESULT(pg_conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM yb_servers() s "
+      "WHERE s.host || ':' || s.port IN ("
+      "  SELECT unnest(replicas) FROM yb_tablet_metadata WHERE relname = 'size_test'"
+      ")"));
+  ASSERT_EQ(static_cast<size_t>(valid_count), NumTabletServers());
+}
+
 TEST_F(PgMiniTest, TestYbGetLocalTserverUuid) {
   auto pg_conn = ASSERT_RESULT(Connect());
   auto local_tserver_uuid = ASSERT_RESULT(pg_conn.FetchRow<Uuid>(

@@ -865,6 +865,8 @@ typedef struct {
   const char** replicas;
   size_t replicas_count;
   bool is_hash_partitioned;
+  uint64_t* replicas_sst_files_size;
+  uint64_t* replicas_wal_files_size;
 } YbcPgGlobalTabletsDescriptor;
 
 typedef struct {
