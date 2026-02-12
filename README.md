@@ -177,14 +177,12 @@ As an open-source project with a strong focus on the user community, we welcome 
 
 # License
 
-Source code in this repository is variously licensed under the Apache License 2.0 and the Polyform Free Trial License 1.0.0. A copy of each license can be found in the [licenses](licenses) directory.
+This repository contains two differently licensed components. See [LICENSE.md](LICENSE.md) for detailed directory mappings.
 
-The build produces two sets of binaries:
+* **YugabyteDB** (core database in `src/`, `java/`, etc.) - [Apache License 2.0](licenses/APACHE-LICENSE-2.0.txt)
+* **YugabyteDB Anywhere** (management platform in `managed/`) - [Polyform Free Trial License 1.0.0](licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt)
 
-* The entire database with all its features (including the enterprise ones) is licensed under the Apache License 2.0
-* The binaries that contain `-managed` in the artifact and help run a managed service are licensed under the Polyform Free Trial License 1.0.0.
-
-> By default, the build options generate only the Apache License 2.0 binaries.
+> By default, the build generates only the Apache 2.0 licensed database binaries.
 
 # Read More
 
