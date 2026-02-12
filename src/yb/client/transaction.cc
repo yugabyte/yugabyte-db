@@ -1197,6 +1197,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   }
 
   void SetBackgroundTransaction(const YBTransactionPtr& background_transaction) {
+    std::lock_guard l(mutex_);
     background_transaction_ = background_transaction;
   }
 
@@ -2621,7 +2622,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   // that transaction and is passed on to the session level txn's status tablet, which creates a
   // wait-on-dependency from session level transaction -> regular transaction. This is necessary to
   // detect deadlocks involving advisory locks and row-level locks (and object locks in future).
-  std::weak_ptr<YBTransaction> background_transaction_;
+  std::weak_ptr<YBTransaction> background_transaction_ GUARDED_BY(mutex_);
 
   mutable std::mutex async_write_query_mutex_;
   std::unordered_map<TabletId, AsyncWriteQuery> inflight_async_writes_
