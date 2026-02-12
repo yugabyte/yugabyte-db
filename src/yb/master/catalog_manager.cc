@@ -6108,18 +6108,7 @@ Status CatalogManager::TruncateTable(const TableId& table_id,
   // YBCTruncateTable, so don't handle it here.  Also, it would be incorrect to handle it here in
   // case the index is part of a tablegroup.
   if (table->GetTableType() != PGSQL_TABLE_TYPE) {
-    std::vector<TableId> index_ids;
-    {
-      auto table_lock = table->LockForRead();
-      const bool is_index = IsIndex(table_lock->pb);
-      DCHECK(!is_index || table_lock->pb.indexes().empty())
-          << "Indexes should be empty for index table";
-      index_ids.reserve(table_lock->pb.indexes().size());
-      for (const auto& index_info : table_lock->pb.indexes()) {
-        index_ids.push_back(index_info.table_id());
-      }
-    }
-    for (const auto& index_id : index_ids) {
+    for (const auto& index_id : table->GetIndexIds()) {
       RETURN_NOT_OK(TruncateTable(index_id, resp, rpc, epoch));
     }
   }
@@ -6150,24 +6139,44 @@ void CatalogManager::SendTruncateTabletRequest(
       Substitute("Failed to send truncate request for tablet $0", tablet->id()));
 }
 
+template <class Resp>
+Result<TableInfoPtr> CatalogManager::FindTableByIdOrSetupError(const TableId& table_id,
+                                                               Resp* resp) {
+  // Lookup the truncated table.
+  TRACE("Looking up table $0", table_id);
+  auto table_result = FindTableById(table_id);
+  if (!table_result.ok()) {
+    Status s = STATUS(NotFound, "The object does not exist: table with id", table_id);
+    return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
+  }
+  return *table_result;
+}
+
 Status CatalogManager::IsTruncateTableDone(const IsTruncateTableDoneRequestPB* req,
                                            IsTruncateTableDoneResponsePB* resp) {
   LOG(INFO) << "Servicing IsTruncateTableDone request for table id " << req->table_id();
 
-  // Lookup the truncated table.
-  TRACE("Looking up table $0", req->table_id());
-  auto table_result = FindTableById(req->table_id());
-
-  if (!table_result.ok()) {
-    Status s = STATUS(NotFound, "The object does not exist: table with id", req->table_id());
-    return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
+  const auto& table = VERIFY_RESULT(FindTableByIdOrSetupError(req->table_id(), resp));
+  if (!VERIFY_RESULT(CatalogManagerUtil::GetIsTruncateTableDone(table, resp))) {
+    LOG(INFO) << "For table id " << req->table_id() << " IsTruncateTableDone result: false";
+    resp->set_done(false);
+    return Status::OK();
   }
-  const auto& table = *table_result;
-  TRACE("Locking table");
-  RETURN_NOT_OK(
-      CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(table->LockForRead(), resp));
 
-  resp->set_done(!table->HasTasks(server::MonitoredTaskType::kTruncateTablet));
+  // Check truncated YCQL indexes also.
+  if (table->GetTableType() != PGSQL_TABLE_TYPE) {
+    for (const auto& index_id : table->GetIndexIds()) {
+      const auto& index = VERIFY_RESULT(FindTableByIdOrSetupError(index_id, resp));
+      if (!VERIFY_RESULT(CatalogManagerUtil::GetIsTruncateTableDone(index, resp))) {
+        LOG(INFO) << "For index id " << index_id << " IsTruncateTableDone result: false";
+        resp->set_done(false);
+        return Status::OK();
+      }
+    }
+  }
+
+  LOG(INFO) << "For table id " << req->table_id() << " IsTruncateTableDone result: true";
+  resp->set_done(true);
   return Status::OK();
 }
 
