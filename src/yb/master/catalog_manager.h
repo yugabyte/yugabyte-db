@@ -1132,6 +1132,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Result<scoped_refptr<TableInfo>> FindTableByIdUnlocked(
       const TableId& table_id, bool include_deleted = true) const REQUIRES_SHARED(mutex_);
 
+  template <class Resp>
+  Result<TableInfoPtr> FindTableByIdOrSetupError(const TableId& table_id, Resp* resp);
+
   Result<bool> HasTableWithColocationId(
       const TablegroupId& tablegroup_id, ColocationId colocation_id) const EXCLUDES(mutex_);
 
