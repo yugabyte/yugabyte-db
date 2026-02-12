@@ -1437,18 +1437,19 @@ std::string DdlLogEntry::id() const {
 // ================================================================================================
 
 Result<std::variant<ObjectLockInfo::WriteLock, SysObjectLockEntryPB::LeaseInfoPB>>
-ObjectLockInfo::RefreshYsqlOperationLease(const NodeInstancePB& instance, MonoDelta lease_ttl) {
+ObjectLockInfo::RefreshYsqlOperationLease(
+    const RefreshYsqlLeaseRequestPB& req, MonoDelta lease_ttl) {
   auto l = LockForWrite();
   auto& current_lease_info = l->pb.lease_info();
-  if (instance.instance_seqno() < current_lease_info.instance_seqno()) {
+  if (req.instance().instance_seqno() < current_lease_info.instance_seqno()) {
     return STATUS_FORMAT(
         IllegalState,
         "Cannot grant lease, instance seqno of requestor $0 is lower than instance seqno of a "
         "previously granted lease $1",
-        instance.instance_seqno(), current_lease_info.instance_seqno());
+        req.instance().instance_seqno(), current_lease_info.instance_seqno());
   }
   if (current_lease_info.lease_relinquished() &&
-      instance.instance_seqno() <= current_lease_info.instance_seqno()) {
+      req.instance().instance_seqno() <= current_lease_info.instance_seqno()) {
     return STATUS_FORMAT(
         IllegalState,
         "Cannot grant lease, lease has been relinquished by instance_seqno $0 already",
@@ -1461,13 +1462,15 @@ ObjectLockInfo::RefreshYsqlOperationLease(const NodeInstancePB& instance, MonoDe
     ysql_lease_deadline_ = std::max(ysql_lease_deadline_, MonoTime::Now() + lease_ttl);
   }
   if (l->pb.lease_info().live_lease() &&
-      l->pb.lease_info().instance_seqno() == instance.instance_seqno()) {
+      l->pb.lease_info().instance_seqno() == req.instance().instance_seqno() &&
+      // Only extend the current lease if the tserver thinks it still has a live lease.
+      req.current_lease_epoch() == current_lease_info.lease_epoch()) {
     return l->pb.lease_info();
   }
   auto& lease_info = *l.mutable_data()->pb.mutable_lease_info();
   lease_info.set_live_lease(true);
   lease_info.set_lease_epoch(lease_info.lease_epoch() + 1);
-  lease_info.set_instance_seqno(instance.instance_seqno());
+  lease_info.set_instance_seqno(req.instance().instance_seqno());
   lease_info.set_lease_relinquished(false);
   return std::move(l);
 }
