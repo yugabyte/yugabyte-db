@@ -210,7 +210,7 @@ class HybridTime {
   }
 
   // Returns the physical value embedded in this HybridTime, in microseconds.
-  inline MicrosTime GetPhysicalValueMicros() const {
+  constexpr MicrosTime GetPhysicalValueMicros() const {
     return v >> kBitsForLogicalComponent;
   }
 

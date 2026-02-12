@@ -78,8 +78,10 @@ void ShowVersionAndExit() {
   exit(0);
 }
 // REGISTER_CALLBACK cannot be used since this flag is defined in the gflags library.
+// NOLINTBEGIN(cppcoreguidelines-interfaces-global-init)
 auto show_version_callback = flags_callback_internal::RegisterGlobalFlagUpdateCallback(
     &FLAGS_version, "ShowVersionAndExit", &ShowVersionAndExit);
+// NOLINTEND(cppcoreguidelines-interfaces-global-init)
 
 }  // namespace
 

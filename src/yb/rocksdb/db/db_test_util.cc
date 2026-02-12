@@ -69,9 +69,6 @@ SpecialEnv::SpecialEnv(Env* base)
   table_write_callback_ = nullptr;
 }
 
-const string DBHolder::kKeyId = "key_id";
-const string DBHolder::kKeyFile = "universe_key_file";
-
 DBHolder::DBHolder(const std::string path, bool encryption_enabled)
     : option_config_(kDefault),
       mem_env_(!getenv("MEM_ENV") ? nullptr : new MockEnv(Env::Default())),

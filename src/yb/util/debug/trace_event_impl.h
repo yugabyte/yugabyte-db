@@ -226,7 +226,7 @@ class BASE_EXPORT TraceBufferChunk {
 
   std::unique_ptr<TraceBufferChunk> Clone() const;
 
-  static const size_t kTraceBufferChunkSize = 64;
+  static constexpr size_t kTraceBufferChunkSize = 64;
 
  private:
   size_t next_free_;
