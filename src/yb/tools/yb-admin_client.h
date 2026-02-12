@@ -31,6 +31,7 @@
 //
 #pragma once
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -260,9 +261,9 @@ class ClusterAdminClient {
 
   Status CompactionStatus(const client::YBTableName& table_name, bool show_tablets);
 
-  Status FlushSysCatalog();
+  Status FlushSysCatalog(bool all_peers = true);
 
-  Status CompactSysCatalog();
+  Status CompactSysCatalog(bool all_peers = true);
 
   Status ModifyTablePlacementInfo(const client::YBTableName& table_name,
                                   const std::string& placement_info,
@@ -628,6 +629,16 @@ class ClusterAdminClient {
 
   Status DiscoverAllMasters(
     const HostPort& init_master_addr, std::string* all_master_addrs);
+
+  // If init_master_addr_.host() is empty, uses the first entry from master_addr_list_
+  // and rediscovers all masters; otherwise returns master_addr_list_ parsed as HostPorts.
+  Result<std::vector<HostPort>> HostPortsOfAllMasters();
+
+  // Invokes the given action on each master from HostPortsOfAllMasters(). On first failure
+  // logs and returns that status; on success logs each host. op_name is used in log messages.
+  Status InvokeRpcOnAllMasters(
+      const std::function<Status(const HostPort&)>& action,
+      const std::string& op_name);
 
   // Parses a placement info string of the form
   // "cloud1.region1.zone1[:min_num_replicas],cloud2.region2.zone2[:min_num_replicas],..."
