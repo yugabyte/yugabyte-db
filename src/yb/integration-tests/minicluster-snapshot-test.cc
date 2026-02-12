@@ -804,6 +804,14 @@ TEST_F_EX(PgCloneTest, TestOidsAdvancedAfterClone, PgCloneInitiallyEmptyDBTest) 
   ASSERT_OK(target_conn.Execute("CREATE TABLE my_table (a INT, b INT)"));
 }
 
+TEST_F(PgCloneTest, CloneWithAlterDatabaseSet) {
+  // Ensure cloning succeeds even when the source database has a ALTER DATABASE.
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      R"(ALTER DATABASE $0 SET "TimeZone" TO 'US/Central')", kSourceNamespaceName));
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName));
+}
+
 class TabletDataSizeMetricsTest : public PostgresMiniClusterTest {
  protected:
   void SetUp() override {
