@@ -668,8 +668,8 @@ SnapBuildExportSnapshotImpl(SnapBuild *builder, const uint64_t *yb_read_time)
 	{
 		Assert(yb_read_time);
 		snap = &yb_snap;
-		YbInitSnapshot(snap, YbRegisterSnapshotReadTime(*yb_read_time));
-		snap->yb_is_built_for_export = true;
+		YbInitSnapshot(snap);
+		snap->yb_read_point_handle = YbRegisterSnapshotReadTime(*yb_read_time);
 	}
 
 	/*

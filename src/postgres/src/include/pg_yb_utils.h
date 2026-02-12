@@ -1263,12 +1263,11 @@ static inline bool YbIsNormalDbOidReserved(Oid db_oid) {
 extern Oid YbGetSQLIncrementCatalogVersionsFunctionOid();
 
 extern bool YbIsReadCommittedTxn();
-extern bool YbSkipPgSnapshotManagement();
 
 extern YbOptionalReadPointHandle YbBuildCurrentReadPointHandle();
 extern void YbUseSnapshotReadTime(uint64_t read_time);
 extern YbOptionalReadPointHandle YbRegisterSnapshotReadTime(uint64_t read_time);
-extern YbOptionalReadPointHandle YbResetTransactionReadPoint();
+
 
 extern bool YbUseFastBackwardScan();
 

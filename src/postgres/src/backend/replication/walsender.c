@@ -1087,14 +1087,7 @@ CreateReplicationSlot(CreateReplicationSlotCmd *cmd)
 				snapshot_name = pstrdup(yb_consistent_snapshot_time_string);
 
 				if (yb_is_pg_export_snapshot_enabled)
-				{
-					/*
-					 * Do the equivalent of PG logic for CRS_USE_SNAPSHOT (in the else branch below) i.e.,
-					 * ensure we have gotten a transaction snapshot before setting a read time for it.
-					 */
-					GetTransactionSnapshot();
 					YbUseSnapshotReadTime(yb_consistent_snapshot_time);
-				}
 			}
 
 			/*

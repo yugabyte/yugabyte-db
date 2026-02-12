@@ -70,8 +70,6 @@
 
 #include "pg_yb_utils.h"
 #include "yb/yql/pggate/ybc_pggate.h"
-#include <inttypes.h>
-
 
 /*
  * GUC parameters
@@ -336,7 +334,7 @@ YBCheckSnapshotsAllowed(bool check_isolation_level)
 }
 
 void
-YbInitSnapshot(Snapshot snap, YbOptionalReadPointHandle read_point_handle)
+YbInitSnapshot(Snapshot snap)
 {
 	snap->xmin = FirstNormalTransactionId;
 	snap->xmax = FirstNormalTransactionId;
@@ -344,14 +342,6 @@ YbInitSnapshot(Snapshot snap, YbOptionalReadPointHandle read_point_handle)
 	snap->subxcnt = 0;
 	snap->suboverflowed = false;
 	snap->takenDuringRecovery = false;
-	snap->yb_read_point_handle = read_point_handle;
-	snap->yb_is_built_for_export = false;
-}
-
-static int
-YbSnapshotMgmtLogLevel()
-{
-	return yb_debug_log_snapshot_mgmt ? LOG : DEBUG2;
 }
 
 static void
@@ -359,42 +349,8 @@ YBCOnActiveSnapshotChange()
 {
 	const SnapshotData *snap = ActiveSnapshot ? ActiveSnapshot->as_snap : NULL;
 
-	if (snap &&
-			snap->yb_read_point_handle.has_value)
-	{
-		YbcReadPointHandle current_read_point = YBCPgGetCurrentReadPoint();
-		if (snap->yb_read_point_handle.value == current_read_point)
-		{
-			elog(YbSnapshotMgmtLogLevel(),
-					 "Avoid restoring read point since it is already set to %" PRIu64, current_read_point);
-			return;
-		}
+	if (snap && snap->yb_read_point_handle.has_value)
 		HandleYBStatus(YBCPgRestoreReadPoint(snap->yb_read_point_handle.value));
-	}
-}
-
-void
-YbLogSnapshotData(const char *msg, SnapshotData *snap, bool log_stack_trace)
-{
-	elog(YbSnapshotMgmtLogLevel(),
-		"%s read point: %" PRIu64 ", effective isolation level: %d. %s",
-		msg,
-		snap->yb_read_point_handle.has_value ? snap->yb_read_point_handle.value : 0,
-		YBGetEffectivePggateIsolationLevel(),
-		log_stack_trace ? YBCGetStackTrace() : "");
-}
-
-static void
-YbLogActiveSnapshot(const char *msg, ActiveSnapshotElt *active_snapshot, bool log_stack_trace)
-{
-	if (!active_snapshot)
-	{
-		elog(YbSnapshotMgmtLogLevel(), "%s: <none>", msg);
-		return;
-	}
-
-	elog(YbSnapshotMgmtLogLevel(), "Snapshot operation at level: %d", active_snapshot->as_level);
-	YbLogSnapshotData(msg, active_snapshot->as_snap, log_stack_trace);
 }
 
 /*
@@ -470,6 +426,24 @@ GetTransactionSnapshot(void)
 
 	/* Don't allow catalog snapshot to be older than xact snapshot. */
 	InvalidateCatalogSnapshot();
+
+	/*
+	 * YB: We have to RESET read point in YSQL for READ COMMITTED isolation level.
+	 * A read point is analogous to the snapshot in PostgreSQL.
+	 *
+	 * We also need to flush all earlier operations so that they complete on the
+	 * previous snapshot.
+	 */
+	if (YbIsReadCommittedTxn())
+	{
+		HandleYBStatus(YBCPgFlushBufferedOperations());
+		/* If this is a retry for a kReadRestart error, avoid resetting the read point */
+		if (!YBCIsRestartReadPointRequested())
+		{
+			elog(DEBUG2, "Resetting read point for statement in Read Committed txn");
+			HandleYBStatus(YBCPgResetTransactionReadPoint());
+		}
+	}
 
 	CurrentSnapshot = GetSnapshotData(&CurrentSnapshotData);
 
@@ -720,8 +694,6 @@ SetTransactionSnapshot(Snapshot sourcesnap, VirtualTransactionId *sourcevxid,
 	CurrentSnapshot->takenDuringRecovery = sourcesnap->takenDuringRecovery;
 	/* NB: curcid should NOT be copied, it's a local matter */
 
-	CurrentSnapshot->yb_read_point_handle = sourcesnap->yb_read_point_handle;
-
 	/*
 	 * Now we have to fix what GetSnapshotData did with MyPgXact->xmin and
 	 * TransactionXmin.  There is a race condition: to make sure we are not
@@ -883,8 +855,6 @@ PushActiveSnapshot(Snapshot snap)
 	if (OldestActiveSnapshot == NULL)
 		OldestActiveSnapshot = ActiveSnapshot;
 
-	YbLogActiveSnapshot("Pushed new active snapshot: ",
-		ActiveSnapshot, yb_debug_log_snapshot_mgmt /* log_stack_trace */ );
 	YBCOnActiveSnapshotChange();
 }
 
@@ -948,9 +918,6 @@ PopActiveSnapshot(void)
 
 	Assert(ActiveSnapshot->as_snap->active_count > 0);
 
-	YbLogActiveSnapshot("Pop active snapshot: ",
-		ActiveSnapshot, yb_debug_log_snapshot_mgmt /* log_stack_trace */ );
-
 	ActiveSnapshot->as_snap->active_count--;
 
 	if (ActiveSnapshot->as_snap->active_count == 0 &&
@@ -961,8 +928,6 @@ PopActiveSnapshot(void)
 	ActiveSnapshot = newstack;
 	if (ActiveSnapshot == NULL)
 		OldestActiveSnapshot = NULL;
-
-	YbLogActiveSnapshot("Active snapshot after pop: ", ActiveSnapshot, false /* log_stack_trace */ );
 
 	SnapshotResetXmin();
 	YBCOnActiveSnapshotChange();
@@ -1179,9 +1144,6 @@ AtSubAbort_Snapshot(int level)
 		Assert(ActiveSnapshot->as_snap->active_count >= 1);
 		ActiveSnapshot->as_snap->active_count -= 1;
 
-		YbLogActiveSnapshot("Pop active snapshot for subtransaction abort",
-			ActiveSnapshot, yb_debug_log_snapshot_mgmt /* log_stack_trace */ );
-
 		if (ActiveSnapshot->as_snap->active_count == 0 &&
 			ActiveSnapshot->as_snap->regd_count == 0)
 			FreeSnapshot(ActiveSnapshot->as_snap);
@@ -1192,9 +1154,6 @@ AtSubAbort_Snapshot(int level)
 		ActiveSnapshot = next;
 		if (ActiveSnapshot == NULL)
 			OldestActiveSnapshot = NULL;
-
-		YbLogActiveSnapshot("Active after pop for subtransaction abort",
-			ActiveSnapshot, false /* log_stack_trace */ );
 	}
 
 	SnapshotResetXmin();
@@ -1302,15 +1261,15 @@ AtEOXact_Snapshot(bool isCommit, bool resetXmin)
 }
 
 static char *
-YBCExportSnapshot(const YbcReadPointHandle *read_point)
+YBCExportSnapshot(const YbOptionalReadPointHandle *read_point)
 {
 	char *snapshot_id = NULL;
 	YbcPgTxnSnapshot snapshot =
-	{.db_id = MyDatabaseId,
-		.iso_level = XactIsoLevel,
-	.read_only = XactReadOnly};
-
-	HandleYBStatus(YBCPgExportSnapshot(&snapshot, &snapshot_id, read_point));
+		{.db_id = MyDatabaseId,
+		 .iso_level = XactIsoLevel,
+		 .read_only = XactReadOnly};
+	HandleYBStatus(YBCPgExportSnapshot(&snapshot, &snapshot_id,
+									   read_point->has_value ? &read_point->value : NULL));
 	return snapshot_id;
 }
 
@@ -1371,9 +1330,7 @@ ExportSnapshot(Snapshot snapshot)
 				 errmsg("cannot export a snapshot from a subtransaction")));
 
 	if (IsYugaByteEnabled())
-		return YBCExportSnapshot(snapshot->yb_is_built_for_export &&
-			snapshot->yb_read_point_handle.has_value ?
-				&snapshot->yb_read_point_handle.value : NULL);
+		return YBCExportSnapshot(&snapshot->yb_read_point_handle);
 	/*
 	 * We do however allow previous committed subtransactions to exist.
 	 * Importers of the snapshot must see them as still running, so get their
@@ -1660,7 +1617,7 @@ ImportSnapshot(const char *idstr)
 		src_isolevel = yb_snapshot.iso_level;
 		src_readonly = yb_snapshot.read_only;
 		memset(&snapshot, 0, sizeof(snapshot));
-		YbInitSnapshot(&snapshot, YbBuildCurrentReadPointHandle());
+		YbInitSnapshot(&snapshot);
 	}
 	else
 	{

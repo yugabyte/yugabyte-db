@@ -2145,20 +2145,7 @@ YBCRestartWriteTransaction()
 	 */
 	PopAllActiveSnapshots();
 
-	if (TopTransactionResourceOwner != NULL)
-	{
-		ResourceOwnerRelease(TopTransactionResourceOwner,
-							 RESOURCE_RELEASE_BEFORE_LOCKS,
-							 false, true);
-		ResourceOwnerRelease(TopTransactionResourceOwner,
-							 RESOURCE_RELEASE_LOCKS,
-							 false, true);
-		ResourceOwnerRelease(TopTransactionResourceOwner,
-							 RESOURCE_RELEASE_AFTER_LOCKS,
-							 false, true);
-	}
 	AtEOXact_SPI(false /* isCommit */);
-	AtEOXact_Snapshot(false, true); /* and release the transaction's snapshots */
 
 	/*
 	 * Recreate the global state present for triggers that would have changed

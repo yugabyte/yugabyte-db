@@ -64,9 +64,7 @@
 #include "utils/snapmgr.h"
 
 #include "pg_yb_utils.h"
-#include "yb/yql/pggate/util/ybc_util.h"
 #include "yb_ash.h"
-#include <inttypes.h>
 
 /* Our shared memory area */
 typedef struct ProcArrayStruct
@@ -1829,9 +1827,7 @@ GetSnapshotData(Snapshot snapshot)
 		MaintainOldSnapshotTimeMapping(snapshot->whenTaken, xmin);
 	}
 
-	snapshot->yb_read_point_handle = YbResetTransactionReadPoint();
-	YbLogSnapshotData("Fetched new snapshot", snapshot,
-		yb_debug_log_snapshot_mgmt /* log_stack_trace */ );
+	snapshot->yb_read_point_handle = YbBuildCurrentReadPointHandle();
 	return snapshot;
 }
 

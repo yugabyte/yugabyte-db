@@ -112,7 +112,6 @@ extern Snapshot RestoreSnapshot(char *start_address);
 extern void RestoreTransactionSnapshot(Snapshot snapshot, void *master_pgproc);
 
 extern void YBCheckSnapshotsAllowed(bool check_isolation_level);
-extern void YbInitSnapshot(Snapshot snap, YbOptionalReadPointHandle read_point_handle);
-extern void YbLogSnapshotData(const char *msg, SnapshotData *snap, bool log_stack_trace);
+extern void YbInitSnapshot(Snapshot snap);
 
 #endif							/* SNAPMGR_H */

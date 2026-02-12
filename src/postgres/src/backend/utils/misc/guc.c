@@ -2075,17 +2075,6 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"yb_debug_log_snapshot_mgmt", PGC_USERSET, DEVELOPER_OPTIONS,
-			gettext_noop("Log details about snapshot management such as pushing/popping a snapshot and picking a new snapshot."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&yb_debug_log_snapshot_mgmt,
-		false,
-		NULL, NULL, NULL
-	},
-
-	{
 		{"yb_enable_create_with_table_oid", PGC_USERSET, CUSTOM_OPTIONS,
 			gettext_noop("Enables the ability to set table oids when creating tables or indexes."),
 			NULL,

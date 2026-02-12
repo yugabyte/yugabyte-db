@@ -121,7 +121,6 @@ typedef struct SnapshotData
 	TimestampTz whenTaken;		/* timestamp when snapshot was taken */
 	XLogRecPtr	lsn;			/* position in the WAL stream when taken */
 	YbOptionalReadPointHandle yb_read_point_handle;
-	bool yb_is_built_for_export;
 } SnapshotData;
 
 /*

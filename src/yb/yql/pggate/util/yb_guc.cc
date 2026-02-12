@@ -89,8 +89,6 @@ bool yb_refresh_matview_in_place = false;
 
 int yb_major_version_upgrade_compatibility = 0;
 
-bool yb_debug_log_snapshot_mgmt = false;
-
 bool yb_mixed_mode_expression_pushdown = true;
 
 bool yb_debug_log_catcache_events = false;
