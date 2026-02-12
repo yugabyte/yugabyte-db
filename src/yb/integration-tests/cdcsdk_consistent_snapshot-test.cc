@@ -641,7 +641,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestSnapshotWithInvalidFromOpId) {
 
 TEST_F(CDCSDKConsistentSnapshotTest, TestMultipleTableAlterWithSnapshot) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_batch_size) = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_records_threshold_size_bytes) = 10_KB;
   auto tablets = ASSERT_RESULT(SetUpCluster());
   ASSERT_EQ(tablets.size(), 1);
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
@@ -771,8 +771,8 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestLeadershipChangeDuringSnapshot) {
 
 TEST_F(CDCSDKConsistentSnapshotTest, TestServerFailureDuringSnapshot) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_batch_size) = 100;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_single_record_update) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_records_threshold_size_bytes) = 10_KB;
 
   auto tablets = ASSERT_RESULT(SetUpWithOneTablet(3, 1, false));
 
@@ -835,7 +835,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestServerFailureDuringSnapshot) {
 TEST_F(CDCSDKConsistentSnapshotTest, InsertedRowInbetweenSnapshot) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_batch_size) = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_records_threshold_size_bytes) = 1_KB;
 
   auto tablets = ASSERT_RESULT(SetUpWithOneTablet(3, 1, false));
 
@@ -903,13 +903,12 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestStreamActiveWithSnapshot) {
   // cdc_state table, so that stream should not expire if the snapshot operation takes longer than
   // the stream expiry time.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_batch_size) = 10;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 20000;  // 20 seconds
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_records_threshold_size_bytes) = 1_KB;
 
   auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
 
-  // Inserting 1000 rows, so that there will be 100 snapshot batches each with
-  // 'FLAGS_cdc_snapshot_batch_size'(10) rows.
+  // Inserting 1000 rows.
   ASSERT_OK(WriteRows(1 /* start */, 1001 /* end */, &test_cluster_));
 
   auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream(
@@ -957,7 +956,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestStreamActiveWithSnapshot) {
 
 TEST_F(CDCSDKConsistentSnapshotTest, TestCheckpointUpdatedDuringSnapshot) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_batch_size) = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_records_threshold_size_bytes) = 1_KB;
 
   auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
 
@@ -1059,7 +1058,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestSnapshotNoData) {
 }
 
 TEST_F(CDCSDKConsistentSnapshotTest, TestSnapshotForColocatedTablet) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_batch_size) = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_records_threshold_size_bytes) = 10_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_update_local_peer_min_index) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
@@ -1109,7 +1108,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestSnapshotForColocatedTablet) {
 
 TEST_F(CDCSDKConsistentSnapshotTest, TestCommitTimeRecordTimeAndNoSafepointRecordForSnapshot) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_batch_size) = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_records_threshold_size_bytes) = 1_KB;
 
   auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
 
@@ -1255,7 +1254,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestGetCheckpointOnAddedColocatedTableWithN
 
 TEST_F(CDCSDKConsistentSnapshotTest, TestSnapshotRecordSnapshotKey) {
   FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
-  FLAGS_cdc_snapshot_batch_size = 10;
+  FLAGS_cdc_snapshot_records_threshold_size_bytes = 1_KB;
 
   auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
 

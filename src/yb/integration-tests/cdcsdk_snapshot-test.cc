@@ -366,7 +366,7 @@ TEST_F(CDCSDKYsqlTest, TestSnapshotWithInvalidFromOpId) {
 
 TEST_F(CDCSDKYsqlTest, TestCompactionDuringSnapshot) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_batch_size) = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_records_threshold_size_bytes) = 10_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   auto tablets = ASSERT_RESULT(SetUpCluster());
@@ -430,7 +430,7 @@ TEST_F(CDCSDKYsqlTest, TestCompactionDuringSnapshot) {
 
 TEST_F(CDCSDKYsqlTest, TestMultipleTableAlterWithSnapshot) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_batch_size) = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_records_threshold_size_bytes) = 10_KB;
   auto tablets = ASSERT_RESULT(SetUpCluster());
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
   ASSERT_EQ(tablets.size(), 1);
@@ -544,7 +544,7 @@ TEST_F(CDCSDKYsqlTest, TestLeadershipChangeDuringSnapshot) {
 
 TEST_F(CDCSDKYsqlTest, TestServerFailureDuringSnapshot) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_batch_size) = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_records_threshold_size_bytes) = 10_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_single_record_update) = false;
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto table = EXPECT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
@@ -603,7 +603,7 @@ TEST_F(CDCSDKYsqlTest, TestServerFailureDuringSnapshot) {
 TEST_F(CDCSDKYsqlTest, InsertedRowInbetweenSnapshot) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_batch_size) = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_records_threshold_size_bytes) = 1_KB;
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
@@ -681,7 +681,7 @@ TEST_F(CDCSDKYsqlTest, TestStreamActiveWithSnapshot) {
   // cdc_state table, so that stream should not expire if the snapshot operation takes longer than
   // the stream expiry time.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_batch_size) = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_records_threshold_size_bytes) = 1_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 20000;  // 20 seconds
   ASSERT_OK(SetUpWithParams(1, 1, false));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
@@ -692,8 +692,7 @@ TEST_F(CDCSDKYsqlTest, TestStreamActiveWithSnapshot) {
   auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(set_resp.has_error());
 
-  // Inserting 1000 rows, so that there will be 100 snapshot batches each with
-  // 'FLAGS_cdc_snapshot_batch_size'(10) rows.
+  // Inserting 1000 rows.
   ASSERT_OK(WriteRows(1 /* start */, 1001 /* end */, &test_cluster_));
 
   GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDCSnapshot(stream_id, tablets));
@@ -802,7 +801,7 @@ TEST_F(CDCSDKYsqlTest, TestLeadershipChangeAndSnapshotAffectsCheckpoint) {
 
 TEST_F(CDCSDKYsqlTest, TestCheckpointUpdatedDuringSnapshot) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_batch_size) = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_records_threshold_size_bytes) = 1_KB;
 
   ASSERT_OK(SetUpWithParams(1, 1, false));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
@@ -906,7 +905,7 @@ TEST_F(CDCSDKYsqlTest, TestSnapshotNoData) {
 }
 
 TEST_F(CDCSDKYsqlTest, TestSnapshotForColocatedTablet) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_batch_size) = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_records_threshold_size_bytes) = 10_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_update_local_peer_min_index) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 1;
@@ -988,7 +987,7 @@ TEST_F(
     CDCSDKYsqlTest,
     TestCommitTimeRecordTimeAndNoSafepointRecordForSnapshot) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_batch_size) = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_records_threshold_size_bytes) = 1_KB;
 
   ASSERT_OK(SetUpWithParams(1, 1, false, true /* cdc_populate_safepoint_record */));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
@@ -1123,7 +1122,7 @@ TEST_F(
 
 TEST_F(CDCSDKYsqlTest, TestSnapshotRecordSnapshotKey) {
   FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
-  FLAGS_cdc_snapshot_batch_size = 10;
+  FLAGS_cdc_snapshot_records_threshold_size_bytes = 1_KB;
 
   ASSERT_OK(SetUpWithParams(1, 1, false));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
