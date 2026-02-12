@@ -99,6 +99,10 @@ docker pull yugabytedb/yugabyte-client:latest
 
 The YugabyteDB clients are released with every version of [YugabyteDB](../ybdb-releases/). Only versions with client-specific changes are listed.
 
+### v2025.2.1.0 - February 12, 2025 {#v2025.2.1.0}
+
+* Updated ycqlsh Python compatibility. ycqlsh now requires Python 3 v3.6 or later.
+
 ### v2.25.0.0 - January 17, 2025 {#v2.25.0.0}
 
 * Updated ysqlsh for PostgreSQL 15 compatibility.
