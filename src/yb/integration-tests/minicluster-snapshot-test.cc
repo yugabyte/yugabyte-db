@@ -858,6 +858,14 @@ TEST_F(PgCloneTest, CloneVectorIndex) {
   ASSERT_OK(source_conn_->ExecuteFormat("DROP DATABASE $0", kTargetNamespaceName2));
 }
 
+TEST_F(PgCloneTest, CloneWithAlterDatabaseSet) {
+  // Ensure cloning succeeds even when the source database has a ALTER DATABASE.
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      R"(ALTER DATABASE $0 SET "TimeZone" TO 'US/Central')", kSourceNamespaceName));
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName));
+}
+
 class TabletDataSizeMetricsTest : public PostgresMiniClusterTest {
  protected:
   void SetUp() override {
