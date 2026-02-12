@@ -43,8 +43,6 @@
 #include "yb/consensus/consensus_util.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_anchor_registry.h"
-#include "yb/consensus/log_util.h"
-#include "yb/consensus/opid_util.h"
 #include "yb/consensus/raft_consensus.h"
 #include "yb/consensus/retryable_requests.h"
 #include "yb/consensus/state_change_context.h"
@@ -53,7 +51,6 @@
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/gutil/sysinfo.h"
 
 #include "yb/master/master_ddl.pb.h"
 
@@ -61,8 +58,6 @@
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/periodic.h"
-#include "yb/rpc/strand.h"
-#include "yb/rpc/thread_pool.h"
 
 #include "yb/tablet/operations/change_auto_flags_config_operation.h"
 #include "yb/tablet/operations/change_metadata_operation.h"
@@ -85,13 +80,10 @@
 #include "yb/tablet/write_query.h"
 
 #include "yb/util/debug-util.h"
-#include "yb/util/env_util.h"
 #include "yb/util/fault_injection.h"
-#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
-#include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
@@ -133,8 +125,7 @@ DECLARE_uint64(cdc_intent_retention_ms);
 
 DECLARE_bool(enable_flush_retryable_requests);
 
-namespace yb {
-namespace tablet {
+namespace yb::tablet {
 
 METRIC_DEFINE_event_stats(table, op_prepare_queue_length, "Operation Prepare Queue Length",
                         MetricUnit::kTasks,
@@ -1214,35 +1205,11 @@ OpId TabletPeer::GetLatestCheckPoint() {
 
 Result<NamespaceId> TabletPeer::GetNamespaceId() {
   auto tablet = VERIFY_RESULT(shared_tablet_safe());
+  RETURN_NOT_OK(BackfillNamespaceIdIfNeeded(*tablet->metadata(), *client_future().get()));
   auto namespace_id = tablet->metadata()->namespace_id();
-  if (!namespace_id.empty()) {
-    return namespace_id;
-  }
-  // This is empty the first time we try to fetch the namespace id from the tablet metadata, so
-  // fetch it from the client and populate the tablet metadata.
-  auto* client = client_future().get();
-  master::GetNamespaceInfoResponsePB resp;
-  auto* metadata = tablet->metadata();
-  auto namespace_name = metadata->namespace_name();
-  auto db_type = YQL_DATABASE_CQL;
-  switch (metadata->table_type()) {
-    case PGSQL_TABLE_TYPE:
-      db_type = YQL_DATABASE_PGSQL;
-      break;
-    case REDIS_TABLE_TYPE:
-      db_type = YQL_DATABASE_REDIS;
-      break;
-    default:
-      db_type = YQL_DATABASE_CQL;
-  }
-
-  RETURN_NOT_OK(client->GetNamespaceInfo({} /* namesapce_id */, namespace_name, db_type, &resp));
-  namespace_id = resp.namespace_().id();
-  if (namespace_id.empty()) {
-    return STATUS(IllegalState, Format("Could not get namespace id for $0",
-                                       namespace_name));
-  }
-  RETURN_NOT_OK(metadata->set_namespace_id(namespace_id));
+  RSTATUS_DCHECK(
+      !namespace_id.empty(), IllegalState, "Namespace ID is empty for tablet $0",
+      tablet->tablet_id());
   return namespace_id;
 }
 
@@ -1900,5 +1867,35 @@ bool TabletPeer::IsRunning() const {
   return state == RaftGroupStatePB::RUNNING;
 }
 
-}  // namespace tablet
-}  // namespace yb
+Status BackfillNamespaceIdIfNeeded(
+    tablet::RaftGroupMetadata& metadata, client::YBClient& client) {
+  auto namespace_id = metadata.namespace_id();
+  if (!namespace_id.empty()) {
+    return Status::OK();
+  }
+
+  // If the namespace ID hasn't been backfilled yet, fetch it from master and populate the tablet
+  // metadata.
+  master::GetNamespaceInfoResponsePB resp;
+  auto namespace_name = metadata.namespace_name();
+  auto db_type = YQL_DATABASE_CQL;
+  switch (metadata.table_type()) {
+    case PGSQL_TABLE_TYPE:
+      db_type = YQL_DATABASE_PGSQL;
+      break;
+    case REDIS_TABLE_TYPE:
+      db_type = YQL_DATABASE_REDIS;
+      break;
+    default:
+      db_type = YQL_DATABASE_CQL;
+  }
+
+  RETURN_NOT_OK(client.GetNamespaceInfo(
+      /*namespace_id=*/{}, namespace_name, db_type, &resp));
+  namespace_id = resp.namespace_().id();
+  SCHECK_FORMAT(
+      !namespace_id.empty(), IllegalState, "Could not get namespace ID for $0", namespace_name);
+  return metadata.set_namespace_id(namespace_id);
+}
+
+}  // namespace yb::tablet

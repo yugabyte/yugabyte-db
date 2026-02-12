@@ -34,7 +34,7 @@
 
 #include "yb/tablet/maintenance_manager.h"
 #include "yb/tablet/tablet_peer.h"
-#include "yb/util/stopwatch.h"
+#include "yb/util/semaphore.h"
 
 namespace yb {
 

@@ -36,33 +36,29 @@
 #include <future>
 #include <map>
 #include <memory>
-#include <mutex>
 #include <string>
 #include <vector>
 
-#include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus_context.h"
+#include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus_meta.h"
-#include "yb/consensus/consensus_types.h"
 #include "yb/gutil/callback.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/thread_annotations.h"
 #include "yb/rpc/rpc_fwd.h"
 
-#include "yb/tablet/tablet_fwd.h"
-#include "yb/tablet/metadata.pb.h"
 #include "yb/tablet/mvcc.h"
-#include "yb/tablet/transaction_coordinator.h"
-#include "yb/tablet/transaction_participant_context.h"
 #include "yb/tablet/operations/operation_tracker.h"
 #include "yb/tablet/preparer.h"
 #include "yb/tablet/tablet_bootstrap_state_flusher.h"
 #include "yb/tablet/tablet_bootstrap_state_manager.h"
+#include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/tablet_options.h"
+#include "yb/tablet/transaction_coordinator.h"
+#include "yb/tablet/transaction_participant_context.h"
 #include "yb/tablet/write_query_context.h"
 
 #include "yb/util/atomic.h"
-#include "yb/util/semaphore.h"
 
 using yb::consensus::StateChangeContext;
 
@@ -149,7 +145,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
                    public TransactionCoordinatorContext,
                    public WriteQueryContext {
  public:
-  typedef std::map<int64_t, int64_t> MaxIdxToSegmentSizeMap;
+  using MaxIdxToSegmentSizeMap = std::map<int64_t, int64_t>;
 
   // Creates TabletPeer.
   // `tablet_splitter` will be used for applying split tablet Raft operation.
@@ -163,7 +159,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
       TabletSplitter* tablet_splitter,
       const std::shared_future<client::YBClient*>& client_future);
 
-  ~TabletPeer();
+  ~TabletPeer() override;
 
   // Initializes the TabletPeer, namely creating the Log and initializing
   // Consensus.
@@ -655,6 +651,9 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
   DISALLOW_COPY_AND_ASSIGN(TabletPeer);
 };
+
+Status BackfillNamespaceIdIfNeeded(
+    tablet::RaftGroupMetadata& metadata, client::YBClient& client);
 
 }  // namespace tablet
 }  // namespace yb

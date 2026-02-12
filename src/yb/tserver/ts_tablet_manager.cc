@@ -33,7 +33,6 @@
 #include "yb/tserver/ts_tablet_manager.h"
 
 #include <algorithm>
-#include <chrono>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -52,7 +51,6 @@
 #include "yb/client/meta_data_cache.h"
 #include "yb/client/transaction_manager.h"
 
-#include "yb/common/common.pb.h"
 #include "yb/common/constants.h"
 #include "yb/common/snapshot.h"
 #include "yb/common/wire_protocol.h"
@@ -61,7 +59,6 @@
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus_util.h"
 #include "yb/consensus/log.h"
-#include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/multi_raft_batcher.h"
 #include "yb/consensus/opid_util.h"
@@ -75,8 +72,6 @@
 #include "yb/fs/fs_manager.h"
 
 #include "yb/gutil/bind.h"
-#include "yb/gutil/callback.h"
-#include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/sysinfo.h"
 
@@ -94,7 +89,6 @@
 #include "yb/tablet/operations/clone_operation.h"
 #include "yb/tablet/operations/split_operation.h"
 #include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet.pb.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/tablet_metadata.h"
@@ -103,7 +97,6 @@
 #include "yb/tablet/tablet_snapshots.h"
 
 #include "yb/tablet/tablet_types.pb.h"
-#include "yb/tools/yb-admin_util.h"
 
 #include "yb/tserver/full_compaction_manager.h"
 #include "yb/tserver/heartbeater.h"
@@ -116,9 +109,9 @@
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_xcluster_context_if.h"
 
+#include "yb/util/debug-util.h"
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
-#include "yb/util/debug-util.h"
 #include "yb/util/env.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/file_util.h"
@@ -510,13 +503,10 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
     metric_registry_(metric_registry),
     state_(MANAGER_INITIALIZING) {
   ThreadPoolMetrics metrics = {
-      METRIC_op_apply_queue_length.Instantiate(server_->metric_entity()),
-      METRIC_op_apply_queue_time.Instantiate(server_->metric_entity()),
-      METRIC_op_apply_run_time.Instantiate(server_->metric_entity())
-  };
-  CHECK_OK(ThreadPoolBuilder("apply")
-               .set_metrics(std::move(metrics))
-               .Build(&apply_pool_));
+      .queue_length_stats = METRIC_op_apply_queue_length.Instantiate(server_->metric_entity()),
+      .queue_time_us_stats = METRIC_op_apply_queue_time.Instantiate(server_->metric_entity()),
+      .run_time_us_stats = METRIC_op_apply_run_time.Instantiate(server_->metric_entity())};
+  CHECK_OK(ThreadPoolBuilder("apply").set_metrics(std::move(metrics)).Build(&apply_pool_));
 
   // This pool is shared by all replicas hosted by this server.
   //
@@ -564,10 +554,9 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
                .unlimited_threads()
                .Build(&allocation_pool_));
   ThreadPoolMetrics read_metrics = {
-      METRIC_op_read_queue_length.Instantiate(server_->metric_entity()),
-      METRIC_op_read_queue_time.Instantiate(server_->metric_entity()),
-      METRIC_op_read_run_time.Instantiate(server_->metric_entity())
-  };
+      .queue_length_stats = METRIC_op_read_queue_length.Instantiate(server_->metric_entity()),
+      .queue_time_us_stats = METRIC_op_read_queue_time.Instantiate(server_->metric_entity()),
+      .run_time_us_stats = METRIC_op_read_run_time.Instantiate(server_->metric_entity())};
   CHECK_OK(ThreadPoolBuilder("read-parallel")
                .set_max_threads(FLAGS_read_pool_max_threads)
                .set_max_queue_size(FLAGS_read_pool_max_queue_size)
@@ -654,14 +643,13 @@ Status TSTabletManager::Init() {
     LOG_WITH_PREFIX(INFO) <<  "max_bootstrap_threads=" << max_bootstrap_threads;
   }
   ThreadPoolMetrics bootstrap_metrics = {
-          nullptr,
-          nullptr,
-          METRIC_ts_bootstrap_time.Instantiate(server_->metric_entity())
-  };
+      .queue_length_stats = nullptr,
+      .queue_time_us_stats = nullptr,
+      .run_time_us_stats = METRIC_ts_bootstrap_time.Instantiate(server_->metric_entity())};
   RETURN_NOT_OK(ThreadPoolBuilder("tablet-bootstrap")
-                .set_max_threads(max_bootstrap_threads)
-                .set_metrics(std::move(bootstrap_metrics))
-                .Build(&open_tablet_pool_));
+                    .set_max_threads(max_bootstrap_threads)
+                    .set_metrics(std::move(bootstrap_metrics))
+                    .Build(&open_tablet_pool_));
 
   CleanupCheckpoints();
 
@@ -3314,6 +3302,13 @@ docdb::HistoryCutoff TSTabletManager::AllowedHistoryCutoff(
     result = metadata->cdc_sdk_safe_time();
   }
 
+  Status s = BackfillNamespaceIdIfNeeded(*metadata, client());
+  if (!s.ok()) {
+    YB_LOG_EVERY_N_SECS(ERROR, 30) << "Unable to backfill tablet metadata namespace_id for tablet: "
+                                   << metadata->raft_group_id() << ": " << s;
+    // Only safe action is to block compaction from deleting any document versions.
+    return {.cotables_cutoff_ht = HybridTime::kInvalid, .primary_cutoff_ht = HybridTime::kMin};
+  }
   auto xcluster_safe_time_result =
       server_->GetXClusterContext().GetSafeTime(metadata->namespace_id());
   if (!xcluster_safe_time_result) {
@@ -3322,7 +3317,7 @@ docdb::HistoryCutoff TSTabletManager::AllowedHistoryCutoff(
     // GetSafeTime call fails when special safetime value is set for a namespace -- this can happen
     // when we have new replication setup and safe time is not yet computed. In this case, we return
     // HybridTime::kMin to stop compaction from deleting any of the existing versions of documents.
-    return { HybridTime::kInvalid, HybridTime::kMin };
+    return {.cotables_cutoff_ht = HybridTime::kInvalid, .primary_cutoff_ht = HybridTime::kMin};
   }
   auto opt_xcluster_safe_time = *xcluster_safe_time_result;
   if (opt_xcluster_safe_time) {
@@ -3374,7 +3369,7 @@ docdb::HistoryCutoff TSTabletManager::AllowedHistoryCutoff(
   }
   VLOG(1) << "Setting the allowed historycutoff: " << result
           << " for tablet: " << metadata->raft_group_id();
-  return { HybridTime::kInvalid, result };
+  return {.cotables_cutoff_ht = HybridTime::kInvalid, .primary_cutoff_ht = result};
 }
 
 void TSTabletManager::FlushDirtySuperblocks() {

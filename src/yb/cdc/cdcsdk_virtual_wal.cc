@@ -14,6 +14,9 @@
 
 #include "yb/cdc/cdcsdk_virtual_wal.h"
 #include "yb/cdc/xrepl_stream_metadata.h"
+
+#include "yb/common/entity_ids.h"
+
 #include "yb/util/backoff_waiter.h"
 
 // TODO(22655): Remove the below macro once YB_LOG_EVERY_N_SECS_OR_VLOG() is fixed.
@@ -91,8 +94,7 @@ TAG_FLAG(cdcsdk_update_restart_time_when_nothing_to_stream, advanced);
 DECLARE_uint64(cdc_stream_records_threshold_size_bytes);
 DECLARE_bool(ysql_yb_enable_consistent_replication_from_hash_range);
 
-namespace yb {
-namespace cdc {
+namespace yb::cdc {
 
 using RecordInfo = CDCSDKVirtualWAL::RecordInfo;
 using TabletRecordInfoPair = CDCSDKVirtualWAL::TabletRecordInfoPair;
@@ -1604,5 +1606,4 @@ Status CDCSDKVirtualWAL::ValidateTablesToBeAddedPresentInStream(
   return Status::OK();
 }
 
-}  // namespace cdc
-}  // namespace yb
+}  // namespace yb::cdc

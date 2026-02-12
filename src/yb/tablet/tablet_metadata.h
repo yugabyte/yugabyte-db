@@ -41,14 +41,12 @@
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/constants.h"
-#include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/opid.h"
-#include "yb/common/opid.pb.h"
 #include "yb/common/snapshot.h"
 
-#include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/docdb_compaction_context.h"
+#include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/key_bounds.h"
 
 #include "yb/dockv/partition.h"
@@ -56,16 +54,15 @@
 
 #include "yb/fs/fs_manager.h"
 
-#include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/metadata.pb.h"
 
-#include "yb/util/status_fwd.h"
 #include "yb/util/locks.h"
 #include "yb/util/mutex.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 namespace tablet {
@@ -92,7 +89,7 @@ struct TableInfo {
   std::string table_id;
   std::string namespace_name;
   // namespace_id is currently used on the xcluster path to determine safe time on the apply
-  // transaction path.
+  // transaction path.  In some cases this may be empty due to lack of backfilling.
   NamespaceId namespace_id;
   std::string table_name;
   TableType table_type;
@@ -341,6 +338,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   // Returns the name, type, schema, index map, schema, etc of the table.
   std::string namespace_name(const TableId& table_id = "") const;
 
+  // This may be empty if not backfilled; see BackfillNamespaceIdIfNeeded.
   NamespaceId namespace_id() const;
 
   std::string table_name(const TableId& table_id = "") const;
@@ -730,13 +728,13 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   bool OnPostSplitCompactionDone();
 
  private:
-  typedef simple_spinlock MutexType;
+  using MutexType = simple_spinlock;
 
   friend class RefCountedThreadSafe<RaftGroupMetadata>;
   friend class MetadataTest;
 
   // Compile time assert that no one deletes RaftGroupMetadata objects.
-  ~RaftGroupMetadata();
+  ~RaftGroupMetadata() override;
 
   // Constructor for creating a new Raft group.
   explicit RaftGroupMetadata(

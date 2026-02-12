@@ -18,18 +18,14 @@
 #include "yb/client/client.h"
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
-#include "yb/client/table_handle.h"
 #include "yb/client/table.h"
+#include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_replication.pb.h"
-#include "yb/master/master_replication.proxy.h"
-#include "yb/master/mini_master.h"
-#include "yb/master/xcluster/xcluster_consumer_metrics.h"
-#include "yb/master/xcluster/xcluster_safe_time_service.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/mini_tablet_server.h"
@@ -66,7 +62,7 @@ const client::YBTableName kSafeTimeTableName(
     YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kXClusterSafeTimeTableName);
 
 class XClusterSafeTimeTest : public XClusterTestBase {
-  typedef XClusterTestBase super;
+  using super = XClusterTestBase;
 
  public:
   void SetUp() override {
@@ -104,7 +100,7 @@ class XClusterSafeTimeTest : public XClusterTestBase {
 
     std::vector<TabletId> producer_tablet_ids;
     ASSERT_OK(producer_cluster_.client_->GetTablets(
-        producer_table_->name(), 0 /* max_tablets */, &producer_tablet_ids, NULL));
+        producer_table_->name(), 0 /* max_tablets */, &producer_tablet_ids, nullptr));
     ASSERT_EQ(producer_tablet_ids.size(), kTabletCount);
 
     auto producer_leader_tserver =
@@ -193,9 +189,12 @@ class XClusterSafeTimeTest : public XClusterTestBase {
       ASSERT_TRUE(safe_time_result.get().has_value());
       auto safe_time = *safe_time_result.get();
       for (auto& tablet : tablet_ptrs) {
+        auto cutoff = ts_manager->AllowedHistoryCutoff(tablet->metadata()).primary_cutoff_ht;
+        ASSERT_TRUE(!tablet->metadata()->namespace_id().empty())
+            << "Tablet metadata for namespace_id not backfilled for tablet ID "
+            << tablet->tablet_id();
         if (tablet->metadata()->namespace_id() == namespace_id_) {
-          ASSERT_EQ(safe_time, ts_manager->AllowedHistoryCutoff(
-              tablet->metadata()).primary_cutoff_ht);
+          ASSERT_EQ(safe_time, cutoff);
         }
       }
     }
