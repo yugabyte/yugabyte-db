@@ -1564,18 +1564,24 @@ extern YbcPgStatement YbNewSample(Relation rel, int targrows, double rstate_w,
 extern YbcPgStatement YbNewSelect(Relation rel, const YbcPgPrepareParameters *prepare_params);
 
 extern YbcPgStatement YbNewUpdateForDb(Oid db_oid, Relation rel,
-									  YbcPgTransactionSetting transaction_setting);
+									  YbcPgTransactionSetting transaction_setting,
+									  const char *query_comment);
 
-extern YbcPgStatement YbNewUpdate(Relation rel, YbcPgTransactionSetting transaction_setting);
+extern YbcPgStatement YbNewUpdate(Relation rel, YbcPgTransactionSetting transaction_setting,
+								  const char *query_comment);
 
-extern YbcPgStatement YbNewDelete(Relation rel, YbcPgTransactionSetting transaction_setting);
+extern YbcPgStatement YbNewDelete(Relation rel, YbcPgTransactionSetting transaction_setting,
+								  const char *query_comment);
 
 extern YbcPgStatement YbNewInsertForDb(Oid db_oid, Relation rel,
-									   YbcPgTransactionSetting transaction_setting);
+									   YbcPgTransactionSetting transaction_setting,
+									   const char *query_comment);
 
-extern YbcPgStatement YbNewInsert(Relation rel, YbcPgTransactionSetting transaction_setting);
+extern YbcPgStatement YbNewInsert(Relation rel, YbcPgTransactionSetting transaction_setting,
+								  const char *query_comment);
 
-extern YbcPgStatement YbNewInsertBlock(Relation rel, YbcPgTransactionSetting transaction_setting);
+extern YbcPgStatement YbNewInsertBlock(Relation rel, YbcPgTransactionSetting transaction_setting,
+									   const char *query_comment);
 
 extern YbcPgStatement YbNewTruncateColocated(Relation rel,
 											 YbcPgTransactionSetting transaction_setting);

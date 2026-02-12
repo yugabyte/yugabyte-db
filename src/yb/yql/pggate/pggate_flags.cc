@@ -195,3 +195,11 @@ DEFINE_RUNTIME_double(max_buffer_size_to_rpc_limit_ratio, 0.9, "the max buffer s
 DEFINE_RUNTIME_bool(ysql_optimize_index_row_rewrites, true, "When enabled, operations that rewrite "
     "index rows will be optimized to reduce the number of network round trips.");
 TAG_FLAG(ysql_optimize_index_row_rewrites, advanced);
+
+DEFINE_RUNTIME_bool(cdc_propagate_query_comments, false,
+                    "If 'true', SQL block comments (/* ... */) are extracted from queries and "
+                    "propagated through the write path into CDC change events as query_comment. "
+                    "This allows CDC consumers to correlate change events with application-level "
+                    "context such as tenant ID or request ID. For multi-shard transactions, the "
+                    "comment from the first DML statement is used for all records in the "
+                    "transaction.");

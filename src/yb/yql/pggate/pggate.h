@@ -552,12 +552,14 @@ class PgApiImpl {
   Result<PgStatement*> NewInsertBlock(
       const PgObjectId& table_id,
       const YbcPgTableLocalityInfo& locality_info,
-      YbcPgTransactionSetting transaction_setting);
+      YbcPgTransactionSetting transaction_setting,
+      const char *query_comment = nullptr);
 
   Status NewInsert(const PgObjectId& table_id,
                    const YbcPgTableLocalityInfo& locality_info,
                    YbcPgTransactionSetting transaction_setting,
-                   PgStatement **handle);
+                   PgStatement **handle,
+                   const char *query_comment = nullptr);
 
   Status ExecInsert(PgStatement *handle);
 
@@ -572,7 +574,8 @@ class PgApiImpl {
   Status NewUpdate(const PgObjectId& table_id,
                    const YbcPgTableLocalityInfo& locality_info,
                    YbcPgTransactionSetting transaction_setting,
-                   PgStatement **handle);
+                   PgStatement **handle,
+                   const char *query_comment = nullptr);
 
   Status ExecUpdate(PgStatement *handle);
 
@@ -581,7 +584,8 @@ class PgApiImpl {
   Status NewDelete(const PgObjectId& table_id,
                    const YbcPgTableLocalityInfo& locality_info,
                    YbcPgTransactionSetting transaction_setting,
-                   PgStatement **handle);
+                   PgStatement **handle,
+                   const char *query_comment = nullptr);
 
   Status ExecDelete(PgStatement *handle);
 

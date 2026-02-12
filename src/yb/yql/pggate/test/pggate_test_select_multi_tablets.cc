@@ -110,7 +110,7 @@ TEST_F(PggateTestSelectMultiTablets, TestSelectMultiTablets) {
   // Allocate new insert.
   CHECK_YBC_STATUS(YBCPgNewInsert(
       kDefaultDatabaseOid, tab_oid, kDefaultTableLocality,
-      YbcPgTransactionSetting::YB_TRANSACTIONAL, &pg_stmt));
+      YbcPgTransactionSetting::YB_TRANSACTIONAL, &pg_stmt, nullptr /* query_comment */));
 
   // Allocate constant expressions.
   // TODO(neil) We can also allocate expression with bind.

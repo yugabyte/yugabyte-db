@@ -88,6 +88,8 @@
 #include "utils/rel.h"
 
 /* YB includes */
+#include "parser/parser.h"
+#include "tcop/tcopprot.h"
 #include "access/sysattr.h"
 #include "access/yb_scan.h"
 #include "catalog/index.h"
@@ -4247,10 +4249,18 @@ ExecModifyTable(PlanState *pstate)
 
 	Relation	relation = resultRelInfo->ri_RelationDesc;
 
+	/*
+	 * Extract the SQL comment for the batch-insert path (blockInsertStmt).
+	 * The non-batch path extracts independently in YBCExecuteInsertInternal;
+	 * the two paths are mutually exclusive per row.
+	 */
+	char *blockQueryComment = (IsYBRelation(relation) && operation == CMD_INSERT)
+		? extract_first_sql_comment(debug_query_string) : NULL;
 	YbcPgStatement blockInsertStmt = (IsYBRelation(relation) && operation == CMD_INSERT)
 		? YbNewInsertBlock(relation,
 						   estate->yb_es_is_single_row_modify_txn
-							   ? YB_SINGLE_SHARD_TRANSACTION : YB_TRANSACTIONAL)
+							   ? YB_SINGLE_SHARD_TRANSACTION : YB_TRANSACTIONAL,
+						   blockQueryComment)
 		: NULL;
 	bool		hasInserts = false;
 

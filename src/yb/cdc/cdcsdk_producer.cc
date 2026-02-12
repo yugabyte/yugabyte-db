@@ -119,6 +119,8 @@ DEFINE_RUNTIME_bool(cdc_enable_savepoint_rollback_filtering, true,
                     "from receiving data that was never actually committed. This flag is only "
                     "used for YSQL tables.");
 
+DECLARE_bool(cdc_propagate_query_comments);
+
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_yb_enable_replica_identity);
 
@@ -974,7 +976,8 @@ Status PopulateCDCSDKIntentRecord(
     HybridTime commit_time,
     client::YBClient* client,
     const bool& end_of_transaction,
-    CDCThroughputMetrics* throughput_metrics) {
+    CDCThroughputMetrics* throughput_metrics,
+    const std::string& query_comment) {
   auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet());
 
   const bool colocated = tablet->metadata()->colocated();
@@ -1226,6 +1229,9 @@ Status PopulateCDCSDKIntentRecord(
     }
     row_message->set_table(table_name);
     row_message->set_table_id(table_id);
+    if (!query_comment.empty()) {
+      row_message->set_query_comment(query_comment);
+    }
 
     // Get the next intent to see if it should go into a new record.
     bool is_last_intent = (i == intents.size() -1);
@@ -1499,6 +1505,12 @@ Status PopulateCDCSDKWriteRecord(
       row_message->set_primary_key(primary_key.ToBuffer());
       CDCSDKOpIdPB* cdc_sdk_op_id_pb = proto_record->mutable_cdc_sdk_op_id();
       SetCDCSDKOpId(msg->id().term(), msg->id().index(), record_batch_idx, "", cdc_sdk_op_id_pb);
+
+      // Add query comment if present
+      if (msg->has_write() && msg->write().has_query_comment()) {
+        row_message->set_query_comment(msg->write().query_comment().ToBuffer());
+      }
+
       is_packed_row_record = false;
 
       // Populate PostgreSQL replication origin id if available.
@@ -1822,7 +1834,8 @@ Status ProcessIntents(
     std::vector<docdb::IntentKeyValueForCDC>* keyValueIntents,
     docdb::ApplyTransactionState* stream_state, client::YBClient* client,
     SchemaDetailsMap* cached_schema_details, TableSchemaPackingStorage* schema_packing_storages,
-    HybridTime commit_time, CDCThroughputMetrics* throughput_metrics) {
+    HybridTime commit_time, CDCThroughputMetrics* throughput_metrics,
+    const std::string& query_comment) {
   auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet());
   if (stream_state->key.empty() && stream_state->write_id == 0 &&
       FLAGS_cdc_populate_end_markers_transactions) {
@@ -1871,7 +1884,7 @@ Status ProcessIntents(
         op_id, transaction_id, *keyValueIntents, metadata, tablet_peer, enum_oid_label_map,
         composite_atts_map, request_source, cached_schema_details, schema_packing_storages, resp,
         consumption, &write_id, &reverse_index_key, commit_time, client, end_of_transaction,
-        throughput_metrics));
+        throughput_metrics, query_comment));
   }
 
   if (end_of_transaction) {
@@ -1898,14 +1911,15 @@ Status ProcessIntentsWithInvalidSchemaRetry(
     std::vector<docdb::IntentKeyValueForCDC>* keyValueIntents,
     docdb::ApplyTransactionState* stream_state, client::YBClient* client,
     SchemaDetailsMap* cached_schema_details, TableSchemaPackingStorage* schema_packing_storages,
-    HybridTime commit_time, CDCThroughputMetrics* throughput_metrics) {
+    HybridTime commit_time, CDCThroughputMetrics* throughput_metrics,
+    const std::string& query_comment) {
   const auto& records_size_before = resp->cdc_sdk_proto_records_size();
 
   auto status = ProcessIntents(
       op_id, transaction_id, xrepl_origin_id, aborted, metadata, enum_oid_label_map,
       composite_atts_map, request_source, resp, consumption, checkpoint, tablet_peer,
       keyValueIntents, stream_state, client, cached_schema_details, schema_packing_storages,
-      commit_time, throughput_metrics);
+      commit_time, throughput_metrics, query_comment);
 
   if (!status.ok()) {
     VLOG_WITH_FUNC(1) << "Received error status: " << status.ToString()
@@ -1930,7 +1944,7 @@ Status ProcessIntentsWithInvalidSchemaRetry(
         op_id, transaction_id, xrepl_origin_id, aborted, metadata, enum_oid_label_map,
         composite_atts_map, request_source, resp, consumption, checkpoint, tablet_peer,
         keyValueIntents, stream_state, client, cached_schema_details, schema_packing_storages,
-        commit_time, throughput_metrics);
+        commit_time, throughput_metrics, query_comment);
   }
 
   return status;
@@ -2095,7 +2109,9 @@ Status GetConsistentWALRecords(
     const int64_t& safe_hybrid_time_req, const CoarseTimePoint& deadline,
     std::vector<std::shared_ptr<yb::consensus::LWReplicateMsg>>* consistent_wal_records,
     std::vector<std::shared_ptr<yb::consensus::LWReplicateMsg>>* all_checkpoints,
-    HybridTime* last_read_wal_op_record_time, bool* is_entire_wal_read) {
+    HybridTime* last_read_wal_op_record_time, bool* is_entire_wal_read,
+    std::unordered_map<TransactionId, std::string, TransactionIdHash>*
+        txn_query_comments) {
   VLOG(2) << "Getting consistent WAL records. safe_hybrid_time_req: " << safe_hybrid_time_req
           << ", consistent_safe_time: " << *consistent_safe_time
           << ", last_seen_op_id: " << last_seen_op_id->ToString()
@@ -2139,6 +2155,12 @@ Status GetConsistentWALRecords(
 
       if (IsIntent(msg) || (IsUpdateTransactionOp(msg) &&
                             msg->transaction_state().status() != TransactionStatus::APPLYING)) {
+        // Stash query_comment from intent WRITE_OPs for later use by ProcessIntents.
+        if (IsIntent(msg) && msg->write().has_query_comment() && txn_query_comments) {
+          auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(
+              msg->write().write_batch().transaction().transaction_id()));
+          txn_query_comments->emplace(txn_id, msg->write().query_comment().ToBuffer());
+        }
         continue;
       }
 
@@ -2231,7 +2253,9 @@ Status GetWALRecords(
     uint64_t consistent_safe_time, OpId* last_seen_op_id, int64_t** last_readable_opid_index,
     const int64_t& safe_hybrid_time, const CoarseTimePoint& deadline, bool skip_intents,
     std::vector<std::shared_ptr<yb::consensus::LWReplicateMsg>>* wal_records,
-    std::vector<std::shared_ptr<yb::consensus::LWReplicateMsg>>* all_checkpoints) {
+    std::vector<std::shared_ptr<yb::consensus::LWReplicateMsg>>* all_checkpoints,
+    std::unordered_map<TransactionId, std::string, TransactionIdHash>*
+        txn_query_comments) {
   auto consensus = VERIFY_RESULT(tablet_peer->GetConsensus());
   auto read_ops = VERIFY_RESULT(consensus->ReadReplicatedMessagesForCDC(
       *last_seen_op_id, *last_readable_opid_index, deadline));
@@ -2255,8 +2279,17 @@ Status GetWALRecords(
         IsIntent(msg) || (IsUpdateTransactionOp(msg) &&
                           msg->transaction_state().status() != TransactionStatus::APPLYING);
 
-    if (skip_intents && is_intent_or_invalid_transaction_op) {
-      continue;
+    // Stash query_comment from intent WRITE_OPs for later use by ProcessIntents,
+    // regardless of skip_intents, so that APPLY records can propagate comments.
+    if (is_intent_or_invalid_transaction_op) {
+      if (IsIntent(msg) && msg->write().has_query_comment() && txn_query_comments) {
+        auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(
+            msg->write().write_batch().transaction().transaction_id()));
+        txn_query_comments->emplace(txn_id, msg->write().query_comment().ToBuffer());
+      }
+      if (skip_intents) {
+        continue;
+      }
     }
 
     if (!is_intent_or_invalid_transaction_op) {
@@ -2718,6 +2751,9 @@ Status GetChangesForCDCSDK(
 
     size_t next_checkpoint_index = 0;
     std::vector<std::shared_ptr<yb::consensus::LWReplicateMsg>> wal_records, all_checkpoints;
+    // Maps transaction_id -> query_comment extracted from intent WRITE_OPs during WAL scan.
+    // Used to propagate SQL comments to CDC events for transactional writes.
+    std::unordered_map<TransactionId, std::string, TransactionIdHash> txn_query_comments;
 
     DCHECK(last_readable_opid_index);
     if (FLAGS_cdc_enable_consistent_records)
@@ -2725,14 +2761,14 @@ Status GetChangesForCDCSDK(
           tablet_peer, mem_tracker, msgs_holder, &consumption, &consistent_stream_safe_time,
           historical_max_op_id, &wait_for_wal_update, &last_seen_op_id, *last_readable_opid_index,
           safe_hybrid_time_req, deadline, &wal_records, &all_checkpoints,
-          &last_read_wal_op_record_time, &is_entire_wal_read));
+          &last_read_wal_op_record_time, &is_entire_wal_read, &txn_query_comments));
     else
       // 'skip_intents' is true here because we want the first transaction to be the partially
       // streamed transaction.
       RETURN_NOT_OK(GetWALRecords(
           tablet_peer, mem_tracker, msgs_holder, &consumption, consistent_stream_safe_time,
           &last_seen_op_id, &last_readable_opid_index, safe_hybrid_time_req, deadline, true,
-          &wal_records, &all_checkpoints));
+          &wal_records, &all_checkpoints, &txn_query_comments));
 
     have_more_messages = HaveMoreMessages(true);
 
@@ -2778,11 +2814,18 @@ Status GetChangesForCDCSDK(
                     wal_records[wal_segment_index]->transaction_state().aborted().set()))
               : SubtxnSet();
 
-      RETURN_NOT_OK(ProcessIntentsWithInvalidSchemaRetry(
-          op_id, transaction_id, xrepl_origin_id, aborted_subtxns, stream_metadata,
-          enum_oid_label_map, composite_atts_map, request_source, resp, &consumption, &checkpoint,
-          tablet_peer, &keyValueIntents, &stream_state, client, cached_schema_details,
-          schema_packing_storages, commit_timestamp, throughput_metrics));
+      {
+        std::string txn_comment;
+        auto it = txn_query_comments.find(transaction_id);
+        if (it != txn_query_comments.end()) {
+          txn_comment = it->second;
+        }
+        RETURN_NOT_OK(ProcessIntentsWithInvalidSchemaRetry(
+            op_id, transaction_id, xrepl_origin_id, aborted_subtxns, stream_metadata,
+            enum_oid_label_map, composite_atts_map, request_source, resp, &consumption, &checkpoint,
+            tablet_peer, &keyValueIntents, &stream_state, client, cached_schema_details,
+            schema_packing_storages, commit_timestamp, throughput_metrics, txn_comment));
+      }
 
       if (checkpoint.write_id() == 0 && checkpoint.key().empty() && wal_records.size()) {
         AcknowledgeStreamedMultiShardTxn(
@@ -2822,6 +2865,9 @@ Status GetChangesForCDCSDK(
     }
 
     std::vector<std::shared_ptr<yb::consensus::LWReplicateMsg>> wal_records, all_checkpoints;
+    // Maps transaction_id -> query_comment extracted from intent WRITE_OPs during WAL scan.
+    // Kept outside the loop: intents and their APPLY records may arrive in different batches.
+    std::unordered_map<TransactionId, std::string, TransactionIdHash> txn_query_comments;
     // It's possible that a batch of messages in read_ops after fetching from
     // 'ReadReplicatedMessagesInSegmentForCDC' , will not have any actionable messages. In which
     // case we keep retrying by fetching the next batch, until either we get an actionable message
@@ -2845,14 +2891,14 @@ Status GetChangesForCDCSDK(
             tablet_peer, mem_tracker, msgs_holder, &consumption, &consistent_stream_safe_time,
             historical_max_op_id, &wait_for_wal_update, &last_seen_op_id, *last_readable_opid_index,
             safe_hybrid_time_req, deadline, &wal_records, &all_checkpoints,
-            &last_read_wal_op_record_time, &is_entire_wal_read));
+            &last_read_wal_op_record_time, &is_entire_wal_read, &txn_query_comments));
       else
         // 'skip_intents' is false otherwise in case the complete wal segment is filled with
         // intents we will break the loop thinking that WAL has no more records.
         RETURN_NOT_OK(GetWALRecords(
             tablet_peer, mem_tracker, msgs_holder, &consumption, consistent_stream_safe_time,
             &last_seen_op_id, &last_readable_opid_index, safe_hybrid_time_req, deadline, false,
-            &wal_records, &all_checkpoints));
+            &wal_records, &all_checkpoints, &txn_query_comments));
 
       if (wait_for_wal_update) {
         VLOG_WITH_FUNC(1)
@@ -2976,12 +3022,19 @@ Status GetChangesForCDCSDK(
                       << msg->id().ShortDebugString() << ", tablet_id: " << tablet_id
                       << ", transaction_id: " << txn_id << ", commit_time: " << *commit_timestamp;
 
-              RETURN_NOT_OK(ProcessIntentsWithInvalidSchemaRetry(
-                  op_id, txn_id, xrepl_origin_id, aborted_subtxns, stream_metadata,
-                  enum_oid_label_map, composite_atts_map, request_source, resp, &consumption,
-                  &checkpoint, tablet_peer, &intents, &new_stream_state, client,
-                  cached_schema_details, schema_packing_storages, *commit_timestamp,
-                  throughput_metrics));
+              {
+                std::string txn_comment;
+                auto it = txn_query_comments.find(txn_id);
+                if (it != txn_query_comments.end()) {
+                  txn_comment = it->second;
+                }
+                RETURN_NOT_OK(ProcessIntentsWithInvalidSchemaRetry(
+                    op_id, txn_id, xrepl_origin_id, aborted_subtxns, stream_metadata,
+                    enum_oid_label_map, composite_atts_map, request_source, resp, &consumption,
+                    &checkpoint, tablet_peer, &intents, &new_stream_state, client,
+                    cached_schema_details, schema_packing_storages, *commit_timestamp,
+                    throughput_metrics, txn_comment));
+              }
               streamed_txns.insert(txn_id.ToString());
 
               if (new_stream_state.write_id != 0 && !new_stream_state.key.empty()) {

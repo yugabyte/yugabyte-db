@@ -117,7 +117,8 @@ ADD_YB_LIBRARY(
     cdc
     SRCS ${CDC_SRCS}
     DEPS protobuf cdc_service_proto cdc_util master_proto consensus_proto log_proto log consensus
-         yrpc server_common server_process tablet yb_util ql_util gutil yb_client)
+         yrpc server_common server_process tablet yb_util ql_util gutil yb_client
+         yb_pggate_flags)
 
 # Tests
 set(YB_TEST_LINK_LIBS integration-tests ${YB_MIN_TEST_LIBS})

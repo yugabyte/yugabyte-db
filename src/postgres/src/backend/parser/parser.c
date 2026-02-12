@@ -26,6 +26,9 @@
 #include "parser/parser.h"
 #include "parser/scansup.h"
 
+/* YB includes */
+#include "yb/yql/pggate/ybc_gflags.h"
+
 static bool check_uescapechar(unsigned char escape);
 static char *str_udeescape(const char *str, char escape,
 						   int position, core_yyscan_t yyscanner);
@@ -498,4 +501,118 @@ invalid_pair:
 			 scanner_errposition(in - str + position + 3,	/* 3 for U&" */
 								 yyscanner)));
 	return NULL;				/* keep compiler quiet */
+}
+
+/*
+ * extract_first_sql_comment
+ *
+ * Extract the first C-style block comment from the beginning of a SQL query
+ * string.  Only comments that appear before the first non-whitespace,
+ * non-comment character are considered (i.e. the comment must be a prefix of
+ * the query).  Returns a palloc'd, trimmed string with the comment content
+ * (without delimiters), or NULL if no leading comment is found.
+ *
+ * The returned string is truncated to CDC_QUERY_COMMENT_MAX_LEN bytes to
+ * prevent unbounded WAL bloat.
+ *
+ * This function is gated by the cdc_propagate_query_comments GFlag; when the
+ * flag is false it returns NULL immediately.
+ */
+#define CDC_QUERY_COMMENT_MAX_LEN 1024
+
+char *
+extract_first_sql_comment(const char *query_string)
+{
+	const char *p;
+	const char *end;
+	const char *content;
+	int			len;
+	char	   *comment;
+	char	   *trimmed;
+
+	/* Check GFlag: bail out early when feature is disabled. */
+	if (!(*YBCGetGFlags()->cdc_propagate_query_comments))
+		return NULL;
+
+	if (!query_string)
+		return NULL;
+
+	/*
+	 * Scan through leading block comments, skipping whitespace between them.
+	 * Skip query hints (the pg_hint_plan "+" prefix) and empty comments.
+	 * Return the first comment that contains real application metadata.
+	 */
+	p = query_string;
+	for (;;)
+	{
+		/* Skip whitespace between comments */
+		while (*p && isspace((unsigned char) *p))
+			p++;
+
+		/* Must be the start of a block comment */
+		if (p[0] != '/' || p[1] != '*')
+			return NULL;
+
+		content = p + 2;
+
+		/* Find end of comment */
+		end = strstr(content, "*/");
+		if (!end)
+			return NULL;
+
+		len = end - content;
+
+		/* Advance past this comment for next iteration */
+		p = end + 2;
+
+		if (len <= 0)
+			continue;
+
+		/* Check if this is a query hint (content starts with '+') */
+		{
+			const char *t = content;
+
+			while (t < end && isspace((unsigned char) *t))
+				t++;
+			if (t < end && *t == '+')
+				continue;
+			if (t == end)
+				continue;	/* all-whitespace content */
+		}
+
+		/* Found a real comment — extract it. */
+		if (len > CDC_QUERY_COMMENT_MAX_LEN)
+			len = pg_mbcliplen(content, len, CDC_QUERY_COMMENT_MAX_LEN);
+
+		comment = palloc(len + 1);
+		memcpy(comment, content, len);
+		comment[len] = '\0';
+
+		/* Trim leading whitespace */
+		trimmed = comment;
+		while (*trimmed && isspace((unsigned char) *trimmed))
+			trimmed++;
+
+		/* Trim trailing whitespace */
+		len = strlen(trimmed);
+		while (len > 0 && isspace((unsigned char) trimmed[len - 1]))
+			len--;
+		trimmed[len] = '\0';
+
+		if (*trimmed == '\0')
+		{
+			pfree(comment);
+			continue;
+		}
+
+		if (trimmed != comment)
+		{
+			char	   *result = pstrdup(trimmed);
+
+			pfree(comment);
+			comment = result;
+		}
+
+		return comment;
+	}
 }

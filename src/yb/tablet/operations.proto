@@ -107,6 +107,9 @@ message WritePB {
   optional uint64 start_time_micros = 21;
 
   optional uint32 xrepl_origin_id = 22;
+
+  // SQL comment for CDC tracking
+  optional string query_comment = 23;
 }
 
 message ChangeMetadataRequestPB {

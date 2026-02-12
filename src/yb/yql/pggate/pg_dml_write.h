@@ -46,6 +46,11 @@ class PgDmlWrite : public PgDml {
 
   Status SetWriteTime(const HybridTime& write_time);
 
+  // Set SQL query comment for CDC tracking
+  void SetQueryComment(const std::string& comment) {
+    query_comment_ = comment;
+  }
+
   Status BindRow(uint64_t ybctid, YbcBindColumn* columns, int count);
 
   [[nodiscard]] bool packed() const { return packed_; }
@@ -75,6 +80,8 @@ class PgDmlWrite : public PgDml {
   int32_t rows_affected_count_ = 0;
 
   bool packed_;
+
+  std::string query_comment_;
 
  private:
   [[nodiscard]] ArenaList<LWPgsqlColRefPB>& ColRefPBs() override;

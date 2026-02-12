@@ -8624,51 +8624,60 @@ YbNewSelect(Relation rel, const YbcPgPrepareParameters *prepare_params)
 }
 
 YbcPgStatement
-YbNewUpdateForDb(Oid db_oid, Relation rel, YbcPgTransactionSetting transaction_setting)
+YbNewUpdateForDb(Oid db_oid, Relation rel, YbcPgTransactionSetting transaction_setting,
+				 const char *query_comment)
 {
 	YbcPgStatement result = NULL;
 	HandleYBStatus(YBCPgNewUpdate(db_oid, YbGetRelfileNodeId(rel),
-								  YbBuildTableLocalityInfo(rel), transaction_setting, &result));
+								  YbBuildTableLocalityInfo(rel), transaction_setting, &result,
+								  query_comment));
 	return result;
 }
 
 YbcPgStatement
-YbNewUpdate(Relation rel, YbcPgTransactionSetting transaction_setting)
+YbNewUpdate(Relation rel, YbcPgTransactionSetting transaction_setting,
+			const char *query_comment)
 {
-	return YbNewUpdateForDb(YBCGetDatabaseOid(rel), rel, transaction_setting);
+	return YbNewUpdateForDb(YBCGetDatabaseOid(rel), rel, transaction_setting, query_comment);
 }
 
 YbcPgStatement
-YbNewDelete(Relation rel, YbcPgTransactionSetting transaction_setting)
+YbNewDelete(Relation rel, YbcPgTransactionSetting transaction_setting,
+			const char *query_comment)
 {
 	YbcPgStatement result = NULL;
 	HandleYBStatus(YBCPgNewDelete(YBCGetDatabaseOid(rel), YbGetRelfileNodeId(rel),
-								  YbBuildTableLocalityInfo(rel), transaction_setting, &result));
+								  YbBuildTableLocalityInfo(rel), transaction_setting, &result,
+								  query_comment));
 	return result;
 }
 
 YbcPgStatement
-YbNewInsertForDb(Oid db_oid, Relation rel, YbcPgTransactionSetting transaction_setting)
+YbNewInsertForDb(Oid db_oid, Relation rel, YbcPgTransactionSetting transaction_setting,
+				 const char *query_comment)
 {
 	YbcPgStatement result = NULL;
 	HandleYBStatus(YBCPgNewInsert(db_oid, YbGetRelfileNodeId(rel),
-								  YbBuildTableLocalityInfo(rel), transaction_setting, &result));
+								  YbBuildTableLocalityInfo(rel), transaction_setting, &result,
+								  query_comment));
 	return result;
 }
 
 YbcPgStatement
-YbNewInsert(Relation rel, YbcPgTransactionSetting transaction_setting)
+YbNewInsert(Relation rel, YbcPgTransactionSetting transaction_setting,
+			const char *query_comment)
 {
-	return YbNewInsertForDb(YBCGetDatabaseOid(rel), rel, transaction_setting);
+	return YbNewInsertForDb(YBCGetDatabaseOid(rel), rel, transaction_setting, query_comment);
 }
 
 extern YbcPgStatement
-YbNewInsertBlock(Relation rel, YbcPgTransactionSetting transaction_setting)
+YbNewInsertBlock(Relation rel, YbcPgTransactionSetting transaction_setting,
+				 const char *query_comment)
 {
 	YbcPgStatement result = NULL;
 	HandleYBStatus(YBCPgNewInsertBlock(YBCGetDatabaseOid(rel), YbGetRelfileNodeId(rel),
 									   YbBuildTableLocalityInfo(rel), transaction_setting,
-									   &result));
+									   &result, query_comment));
 	return result;
 }
 

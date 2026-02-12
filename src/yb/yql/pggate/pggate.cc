@@ -1520,7 +1520,8 @@ Status PgApiImpl::DmlExecWriteOp(PgStatement *handle, int32_t *rows_affected_cou
 Result<PgStatement*> PgApiImpl::NewInsertBlock(
     const PgObjectId& table_id,
     const YbcPgTableLocalityInfo& locality_info,
-    YbcPgTransactionSetting transaction_setting) {
+    YbcPgTransactionSetting transaction_setting,
+    const char *query_comment) {
   if (!FLAGS_ysql_pack_inserted_value) {
     return nullptr;
   }
@@ -1530,18 +1531,27 @@ Result<PgStatement*> PgApiImpl::NewInsertBlock(
       VERIFY_RESULT(PgInsert::Make(
           pg_session_, table_id, locality_info, transaction_setting, /* packed= */ true)),
       &result));
+  if (query_comment && result) {
+    down_cast<PgInsert*>(result)->SetQueryComment(query_comment);
+  }
   return result;
 }
 
 Status PgApiImpl::NewInsert(
     const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info,
     YbcPgTransactionSetting transaction_setting,
-    PgStatement **handle) {
+    PgStatement **handle,
+    const char *query_comment) {
   *handle = nullptr;
-  return AddToCurrentPgMemctx(
-    VERIFY_RESULT(PgInsert::Make(
-        pg_session_, table_id, locality_info, transaction_setting, /* packed= */ false)),
-    handle);
+  auto insert = VERIFY_RESULT(PgInsert::Make(
+      pg_session_, table_id, locality_info, transaction_setting, /* packed= */ false));
+
+  // Set query comment if provided
+  if (query_comment) {
+    insert->SetQueryComment(query_comment);
+  }
+
+  return AddToCurrentPgMemctx(std::move(insert), handle);
 }
 
 Status PgApiImpl::ExecInsert(PgStatement* handle) {
@@ -1567,11 +1577,18 @@ Status PgApiImpl::InsertStmtSetIsBackfill(PgStatement* handle, bool is_backfill)
 Status PgApiImpl::NewUpdate(
     const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info,
     YbcPgTransactionSetting transaction_setting,
-    PgStatement** handle) {
+    PgStatement** handle,
+    const char *query_comment) {
   *handle = nullptr;
-  return AddToCurrentPgMemctx(
-      VERIFY_RESULT(PgUpdate::Make(pg_session_, table_id, locality_info, transaction_setting)),
-      handle);
+  auto update = VERIFY_RESULT(PgUpdate::Make(
+      pg_session_, table_id, locality_info, transaction_setting));
+
+  // Set query comment if provided
+  if (query_comment) {
+    update->SetQueryComment(query_comment);
+  }
+
+  return AddToCurrentPgMemctx(std::move(update), handle);
 }
 
 Status PgApiImpl::ExecUpdate(PgStatement* handle) {
@@ -1583,11 +1600,18 @@ Status PgApiImpl::ExecUpdate(PgStatement* handle) {
 Status PgApiImpl::NewDelete(
     const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info,
     YbcPgTransactionSetting transaction_setting,
-    PgStatement** handle) {
+    PgStatement** handle,
+    const char *query_comment) {
   *handle = nullptr;
-  return AddToCurrentPgMemctx(
-      VERIFY_RESULT(PgDelete::Make(pg_session_, table_id, locality_info, transaction_setting)),
-      handle);
+  auto delete_stmt = VERIFY_RESULT(PgDelete::Make(
+      pg_session_, table_id, locality_info, transaction_setting));
+
+  // Set query comment if provided
+  if (query_comment) {
+    delete_stmt->SetQueryComment(query_comment);
+  }
+
+  return AddToCurrentPgMemctx(std::move(delete_stmt), handle);
 }
 
 Status PgApiImpl::ExecDelete(PgStatement* handle) {
