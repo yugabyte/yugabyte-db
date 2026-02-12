@@ -612,12 +612,12 @@ public class NodeAgentRpcPayload {
         log.info("Setting GCP credentials in builder for exporter UUID: {}", exporterUUID);
         GCPCloudMonitoringConfig gcpCloudMonitoringConfig =
             (GCPCloudMonitoringConfig) telemetryProvider.getConfig();
-        if (gcpCloudMonitoringConfig.getCredentials() != null) {
+        if (gcpCloudMonitoringConfig.getGcmCredentials() != null) {
           Path path =
               fileHelperService.createTempFile(
                   "otel_collector_gcp_creds_" + universeUUID + "_" + nodeUUID, ".json");
           String filePath = path.toAbsolutePath().toString();
-          FileUtils.writeJsonFile(filePath, gcpCloudMonitoringConfig.getCredentials());
+          FileUtils.writeJsonFile(filePath, gcpCloudMonitoringConfig.getGcmCredentials());
           nodeAgentClient.uploadFile(
               nodeAgent,
               filePath,

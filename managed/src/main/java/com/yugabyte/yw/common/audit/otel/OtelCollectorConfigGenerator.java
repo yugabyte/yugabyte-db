@@ -1921,10 +1921,11 @@ public class OtelCollectorConfigGenerator {
       case GCP_CLOUD_MONITORING:
         GCPCloudMonitoringConfig gcpCloudMonitoringConfig =
             (GCPCloudMonitoringConfig) telemetryProvider.getConfig();
-        if (gcpCloudMonitoringConfig.getCredentials() != null) {
+        if (gcpCloudMonitoringConfig.getGcmCredentials() != null) {
           String encodedCredentials =
               Base64.getEncoder()
-                  .encodeToString(gcpCloudMonitoringConfig.getCredentials().toString().getBytes());
+                  .encodeToString(
+                      gcpCloudMonitoringConfig.getGcmCredentials().toString().getBytes());
           secretEnv.add(
               ImmutableMap.of(
                   "envName",

@@ -8824,6 +8824,10 @@
         {
           "description" : "GCPCloudMonitoringConfig Config",
           "properties" : {
+            "credentialsString" : {
+              "description" : "WARNING: This is a preview API that could change. GCP service account credentials as JSON string (content of the credentials JSON file)",
+              "type" : "string"
+            },
             "project" : {
               "description" : "Project ID",
               "type" : "string"
