@@ -26,7 +26,11 @@ import {
   fetchRunTimeConfigs,
   fetchRunTimeConfigsResponse
 } from '../../../actions/customers';
-import { isPathStyleAccess, isSigningRegionEnabled } from '../../backupv2/common/BackupUtils';
+import {
+  isPathStyleAccess,
+  isSigningRegionEnabled,
+  isS3BackupProxyEnabled
+} from '../../backupv2/common/BackupUtils';
 
 const getTabTitle = (configName) => {
   switch (configName) {
@@ -535,16 +539,14 @@ const mapDispatchToProps = (dispatch) => {
 };
 
 function mapStateToProps(state) {
-  const {
-    featureFlags: { test, released },
-    customer: { runtimeConfigs }
-  } = state;
+  const { customer: { runtimeConfigs } } = state;
   const enablePathStyleAccess = isPathStyleAccess(runtimeConfigs?.data);
   const enableSigningRegion = isSigningRegionEnabled(runtimeConfigs?.data);
+  const enableS3BackupProxy = isS3BackupProxyEnabled(runtimeConfigs?.data);
   return {
-    enablePathStyleAccess: enablePathStyleAccess,
-    enableSigningRegion: enableSigningRegion,
-    enableS3BackupProxy: test.enableS3BackupProxy || released.enableS3BackupProxy
+    enablePathStyleAccess,
+    enableSigningRegion,
+    enableS3BackupProxy
   };
 }
 
