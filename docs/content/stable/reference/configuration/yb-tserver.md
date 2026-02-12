@@ -671,6 +671,35 @@ Default: `20000`
 
 Sets the maximum batch size per transaction when using [COPY FROM](../../../api/ysql/the-sql-language/statements/cmd_copy/).
 
+#### Bucket-based index scan optimization
+
+##### yb_enable_derived_equalities
+
+{{% tags/wrap %}}
+{{<tags/feature/tp idea="2275">}}
+Default: `false`
+{{% /tags/wrap %}}
+
+Enables derivation of additional equalities for columns that are generated or computed using an expression. Used for [bucket-based indexes](../../../develop/data-modeling/bucket-index-ysql/).
+
+##### yb_enable_derived_saops
+
+{{% tags/wrap %}}
+{{<tags/feature/tp idea="2275">}}
+Default: `false`
+{{% /tags/wrap %}}
+
+Enable derivation of IN clauses for columns generated or computed using a `yb_hash_code` expression. Such derivation is only done for index paths that consider bucket-based merge. Disabled if `yb_max_saop_merge_streams` is 0.
+
+##### yb_max_saop_merge_streams
+
+{{% tags/wrap %}}
+{{<tags/feature/tp idea="2275">}}
+Default: `0`
+{{% /tags/wrap %}}
+
+Maximum number of buckets to process in parallel. A value greater than 0 enables bucket-based merge (used for [bucket-based indexes](../../../develop/data-modeling/bucket-index-ysql/)). Disabled if the cost-based optimizer is not enabled (`yb_enable_cbo=false`). Recommended value is 64.
+
 ## Networking
 
 ### RPC and binding addresses
