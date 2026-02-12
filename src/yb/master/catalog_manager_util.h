@@ -18,7 +18,6 @@
 
 #include "yb/common/entity_ids.h"
 
-#include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/ts_descriptor.h"
@@ -27,6 +26,17 @@
 
 // Utility functions that can be shared between test and code for catalog manager.
 namespace yb {
+
+class Schema;
+
+namespace dockv {
+class PartitionSchema;
+}  // namespace dockv
+
+namespace tablet {
+class TableInfoPB;
+}  // namespace tablet
+
 namespace master {
 
 using ZoneToDescMap = std::unordered_map<std::string, TSDescriptorVector>;
@@ -57,8 +67,8 @@ class CatalogManagerUtil {
   static Status AreLeadersOnPreferredOnly(
       const TSDescriptorVector& ts_descs,
       const ReplicationInfoPB& cluster_replication_info,
-      const std::shared_ptr<const YsqlTablespaceManager> tablespace_manager = nullptr,
-      const std::vector<scoped_refptr<TableInfo>>& tables = {});
+      const std::shared_ptr<const YsqlTablespaceManager> tablespace_manager,
+      const std::vector<scoped_refptr<TableInfo>>& tables);
 
   // For the given set of descriptors, returns the map from each placement AZ to list of tservers
   // running in that zone.
@@ -110,30 +120,8 @@ class CatalogManagerUtil {
   static Status CheckValidLeaderAffinity(const ReplicationInfoPB& replication_info);
 
   template<class LoadState>
-  static Status FillTableLoadState(const scoped_refptr<TableInfo>& table_info, LoadState* state) {
-    auto tablets = VERIFY_RESULT(table_info->GetTabletsIncludeInactive());
-
-    for (const auto& tablet : tablets) {
-      // Ignore if tablet is not running.
-      {
-        auto tablet_lock = tablet->LockForRead();
-        if (!tablet_lock->is_running()) {
-          continue;
-        }
-      }
-      auto replica_locs = tablet->GetReplicaLocations();
-
-      for (const auto& loc : *replica_locs) {
-        // Ignore replica if not present in the tserver list passed.
-        if (state->per_ts_replica_load_.count(loc.first) == 0) {
-          continue;
-        }
-        // Account for this load.
-        state->per_ts_replica_load_[loc.first]++;
-      }
-    }
-    return Status::OK();
-  }
+  static Status FillTableLoadState(
+      const scoped_refptr<TableInfo>& table_info, LoadState* state);
 
   static const google::protobuf::RepeatedPtrField<TableIdentifierPB>& SequenceDataFilter() {
     std::call_once(sequences_data_table_filter_once_flag_, []() {

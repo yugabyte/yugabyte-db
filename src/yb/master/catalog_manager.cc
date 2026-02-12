@@ -76,27 +76,27 @@
 #include "yb/client/universe_key_client.h"
 
 #include "yb/common/colocated_util.h"
-#include "yb/common/common.pb.h"
 #include "yb/common/common_flags.h"
 #include "yb/common/common_net.h"
 #include "yb/common/common_types.pb.h"
 #include "yb/common/common_util.h"
+#include "yb/common/common.pb.h"
 #include "yb/common/constants.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/key_encoder.h"
 #include "yb/common/pg_catversions.h"
 #include "yb/common/pgsql_error.h"
-#include "yb/common/ql_type.h"
 #include "yb/common/ql_type_util.h"
+#include "yb/common/ql_type.h"
 #include "yb/common/roles_permissions.h"
-#include "yb/common/schema.h"
 #include "yb/common/schema_pbutil.h"
+#include "yb/common/schema.h"
 #include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/consensus/consensus_util.h"
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
-#include "yb/consensus/consensus_util.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
@@ -110,7 +110,6 @@
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/escaping.h"
 #include "yb/gutil/strings/join.h"
-#include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/sysinfo.h"
 #include "yb/gutil/walltime.h"
@@ -121,15 +120,14 @@
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_entity_parser.h"
 #include "yb/master/catalog_loaders.h"
-#include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_manager_bg_tasks.h"
 #include "yb/master/catalog_manager_util.h"
+#include "yb/master/catalog_manager-internal.h"
 #include "yb/master/cdcsdk_manager.h"
 #include "yb/master/clone/clone_state_manager.h"
 #include "yb/master/cluster_balance.h"
 #include "yb/master/encryption_manager.h"
 #include "yb/master/leader_epoch.h"
-#include "yb/master/master.h"
 #include "yb/master/master_admin.pb.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_cluster.proxy.h"
@@ -143,12 +141,15 @@
 #include "yb/master/master_replication.pb.h"
 #include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/master_util.h"
+#include "yb/master/master.h"
 #include "yb/master/object_lock_info_manager.h"
 #include "yb/master/permissions_manager.h"
 #include "yb/master/post_tablet_create_task_base.h"
-#include "yb/master/sys_catalog.h"
+#include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/sys_catalog_constants.h"
+#include "yb/master/sys_catalog_initialization.h"
 #include "yb/master/sys_catalog_writer.h"
+#include "yb/master/sys_catalog.h"
 #include "yb/master/system_tablet.h"
 #include "yb/master/tablet_creation_limits.h"
 #include "yb/master/tablet_split_manager.h"
@@ -173,19 +174,20 @@
 #include "yb/master/yql_types_vtable.h"
 #include "yb/master/yql_views_vtable.h"
 
-#include "yb/master/ysql/ysql_initdb_major_upgrade_handler.h"
-#include "yb/master/ysql/ysql_manager.h"
 #include "yb/master/ysql_ddl_verification_task.h"
 #include "yb/master/ysql_tablegroup_manager.h"
 #include "yb/master/ysql_tablespace_manager.h"
+#include "yb/master/ysql/ysql_initdb_major_upgrade_handler.h"
+#include "yb/master/ysql/ysql_manager.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_controller.h"
+#include "yb/rpc/scheduler.h"
 
 #include "yb/tablet/operations/change_metadata_operation.h"
-#include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_retention_policy.h"
+#include "yb/tablet/tablet.h"
 #include "yb/tablet/transaction_participant.h"
 
 #include "yb/tserver/remote_bootstrap_client.h"
@@ -208,9 +210,9 @@
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
-#include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/status.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/string_case.h"
@@ -621,12 +623,15 @@ DEFINE_test_flag(bool, fail_yugabyte_namespace_creation_on_second_attempt, false
 DEFINE_test_flag(bool, enable_multi_way_tablet_split, false,
     "Enable splitting a tablet into more than two child tablets");
 
+DECLARE_bool(create_initial_sys_catalog_snapshot);
 DECLARE_bool(enable_pg_cron);
 DECLARE_bool(enable_truncate_cdcsdk_table);
+DECLARE_bool(enable_ysql);
 DECLARE_bool(TEST_enable_table_rewrite_for_cdcsdk_table);
-DECLARE_bool(ysql_yb_enable_replica_identity);
-DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
+DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
+DECLARE_bool(ysql_yb_enable_replica_identity);
+DECLARE_string(initial_sys_catalog_snapshot_path);
 namespace yb::master {
 
 using std::shared_ptr;
@@ -2239,9 +2244,13 @@ bool CatalogManager::StartShutdown() {
     callback.Deregister();
   }
 
-  refresh_yql_partitions_task_.StartShutdown();
+  if (refresh_yql_partitions_task_) {
+    refresh_yql_partitions_task_->StartShutdown();
+  }
 
-  xrepl_parent_tablet_deletion_task_.StartShutdown();
+  if (xrepl_parent_tablet_deletion_task_) {
+    xrepl_parent_tablet_deletion_task_->StartShutdown();
+  }
 
   xcluster_manager_->StartShutdown();
 
@@ -2255,8 +2264,12 @@ bool CatalogManager::StartShutdown() {
 }
 
 void CatalogManager::CompleteShutdown() {
-  refresh_yql_partitions_task_.CompleteShutdown();
-  xrepl_parent_tablet_deletion_task_.CompleteShutdown();
+  if (refresh_yql_partitions_task_) {
+    refresh_yql_partitions_task_->CompleteShutdown();
+  }
+  if (xrepl_parent_tablet_deletion_task_) {
+    xrepl_parent_tablet_deletion_task_->CompleteShutdown();
+  }
 
   xcluster_manager_->CompleteShutdown();
   ysql_manager_->CompleteShutdown();
@@ -3567,6 +3580,16 @@ Status CatalogManager::ValidateSplitCandidateUnlocked(
   return master_->tablet_split_manager().ValidateSplitCandidateTablet(
       *tablet, parent, ignore_ttl_validation, ignore_disabled_list);
 }
+
+struct CatalogManager::DeletingTableData {
+  explicit DeletingTableData(const TableInfoPtr& info) : table_info_with_write_lock(info) {}
+
+  TableInfoWithWriteLock table_info_with_write_lock;
+  bool remove_from_name_map = false;
+  TabletDeleteRetainerInfo delete_retainer = TabletDeleteRetainerInfo::AlwaysDelete();
+
+  std::string ToString() const;
+};
 
 std::string CatalogManager::DeletingTableData::ToString() const {
   return Format("table: $0, $1", *table_info_with_write_lock.info, delete_retainer.ToString());
@@ -10947,12 +10970,14 @@ Status CatalogManager::EnableBgTasks() {
                         "Failed to initialize catalog manager background tasks");
 
   // Add bg thread to rebuild yql system partitions.
-  refresh_yql_partitions_task_.Bind(&master_->messenger()->scheduler());
+  refresh_yql_partitions_task_ = std::make_unique<rpc::ScheduledTaskTracker>();
+  refresh_yql_partitions_task_->Bind(&master_->messenger()->scheduler());
 
   RETURN_NOT_OK(background_tasks_thread_pool_->SubmitFunc(
       [this]() { RebuildYQLSystemPartitions(); }));
 
-  xrepl_parent_tablet_deletion_task_.Bind(&master_->messenger()->scheduler());
+  xrepl_parent_tablet_deletion_task_ = std::make_unique<rpc::ScheduledTaskTracker>();
+  xrepl_parent_tablet_deletion_task_->Bind(&master_->messenger()->scheduler());
 
   return Status::OK();
 }
@@ -13194,7 +13219,7 @@ void CatalogManager::RebuildYQLSystemPartitions() {
   if (wait_time <= 0s) {
     wait_time = kDefaultYQLPartitionsRefreshBgTaskSleep;
   }
-  refresh_yql_partitions_task_.Schedule([this](const Status& status) {
+  refresh_yql_partitions_task_->Schedule([this](const Status& status) {
     WARN_NOT_OK(
         background_tasks_thread_pool_->SubmitFunc([this]() { RebuildYQLSystemPartitions(); }),
         "Failed to schedule: RebuildYQLSystemPartitions");
@@ -14028,7 +14053,7 @@ CatalogManager::GetStatefulServicesStatus() const {
 }
 
 InitialSysCatalogSnapshotWriter& CatalogManager::AllocateAndGetInitialSysCatalogSnapshotWriter() {
-  initial_snapshot_writer_.emplace();
+  initial_snapshot_writer_ = std::make_unique<InitialSysCatalogSnapshotWriter>();
   return *initial_snapshot_writer_;
 }
 

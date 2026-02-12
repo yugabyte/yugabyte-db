@@ -32,23 +32,26 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_manager.h"
-#include "yb/master/master.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_replication.pb.h"
 #include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/master_util.h"
+#include "yb/master/master.h"
 #include "yb/master/snapshot_transfer_manager.h"
+#include "yb/master/ts_descriptor.h"
+#include "yb/master/xcluster_consumer_registry_service.h"
+#include "yb/master/xcluster_rpc_tasks.h"
 #include "yb/master/xcluster/master_xcluster_util.h"
 #include "yb/master/xcluster/xcluster_manager.h"
 #include "yb/master/xcluster/xcluster_replication_group.h"
-#include "yb/master/xcluster_consumer_registry_service.h"
-#include "yb/master/xcluster_rpc_tasks.h"
 #include "yb/master/ysql/ysql_manager_if.h"
 
+#include "yb/rpc/scheduler.h"
+
 #include "yb/tablet/operations/change_metadata_operation.h"
-#include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/tablet.h"
 #include "yb/tablet/transaction_participant.h"
 
 #include "yb/util/backoff_waiter.h"
@@ -5055,7 +5058,7 @@ void CatalogManager::ScheduleXReplParentTabletDeletionTask() {
   }
 
   // Submit to run async in diff thread pool, since this involves accessing cdc_state.
-  xrepl_parent_tablet_deletion_task_.Schedule(
+  xrepl_parent_tablet_deletion_task_->Schedule(
       [this](const Status& status) {
         Status s = background_tasks_thread_pool_->SubmitFunc(
             [this] { ProcessXReplParentTabletDeletionPeriodically(); });

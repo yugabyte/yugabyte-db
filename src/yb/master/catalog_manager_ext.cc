@@ -20,7 +20,6 @@
 
 #include "yb/client/meta_cache.h"
 #include "yb/client/session.h"
-#include "yb/client/table_info.h"
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
 
@@ -52,6 +51,7 @@
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_manager.h"
+#include "yb/master/catalog_manager_util.h"
 #include "yb/master/encryption_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/master_backup.pb.h"
@@ -67,7 +67,6 @@
 #include "yb/master/tablet_split_manager.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/xcluster_consumer_registry_service.h"
-#include "yb/master/ysql_ddl_verification_task.h"
 #include "yb/master/ysql/ysql_manager_if.h"
 #include "yb/master/ysql_tablegroup_manager.h"
 
@@ -146,6 +145,8 @@ DEFINE_RUNTIME_AUTO_bool(
     enable_export_snapshot_using_relfilenode, kExternal, false, true,
     "Enable exporting snapshots with the new format version = 3 that uses relfilenodes.");
 
+DECLARE_bool(enable_ysql);
+DECLARE_string(initial_sys_catalog_snapshot_path);
 DECLARE_bool(TEST_enable_table_rewrite_for_cdcsdk_table);
 
 namespace yb {

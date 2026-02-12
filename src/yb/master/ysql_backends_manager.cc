@@ -23,9 +23,11 @@
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_admin.pb.h"
+#include "yb/master/master_error.h"
 #include "yb/master/master_util.h"
-
+#include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/ts_manager.h"
+
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/tserver_admin.proxy.h"

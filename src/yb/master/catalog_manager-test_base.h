@@ -19,6 +19,7 @@
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_descriptor_test_util.h"

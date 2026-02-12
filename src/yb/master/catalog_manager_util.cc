@@ -596,5 +596,37 @@ bool UseRelfilenodeForTableMatch(const SnapshotInfoPB& snapshot_pb) {
   return snapshot_pb.format_version() == kUseRelfilenodeFormatVersion;
 }
 
+template <class LoadState>
+Status CatalogManagerUtil::FillTableLoadState(
+    const scoped_refptr<TableInfo>& table_info, LoadState* state) {
+  auto tablets = VERIFY_RESULT(table_info->GetTabletsIncludeInactive());
+
+  for (const auto& tablet : tablets) {
+    // Ignore if tablet is not running.
+    {
+      auto tablet_lock = tablet->LockForRead();
+      if (!tablet_lock->is_running()) {
+        continue;
+      }
+    }
+    auto replica_locs = tablet->GetReplicaLocations();
+
+    for (const auto& loc : *replica_locs) {
+      // Ignore replica if not present in the tserver list passed.
+      if (state->per_ts_replica_load_.count(loc.first) == 0) {
+        continue;
+      }
+      // Account for this load.
+      state->per_ts_replica_load_[loc.first]++;
+    }
+  }
+  return Status::OK();
+}
+
+template Status CatalogManagerUtil::FillTableLoadState(
+    const scoped_refptr<TableInfo>& table_info, CMPerTableLoadState* state);
+template Status CatalogManagerUtil::FillTableLoadState(
+    const scoped_refptr<TableInfo>& table_info, CMGlobalLoadState* state);
+
 } // namespace master
 } // namespace yb
