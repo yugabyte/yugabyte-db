@@ -1345,18 +1345,32 @@ TEST_F(AdminCliTest, DdlLog) {
   ASSERT_EQ(actions[2], "Add column int_column[int32 NULLABLE VALUE]");
 }
 
-TEST_F(AdminCliTest, FlushSysCatalog) {
+TEST_F(AdminCliTest, FlushSysCatalogAll) {
   BuildAndStart();
   string master_address = ToString(cluster_->master()->bound_rpc_addr());
   auto client = ASSERT_RESULT(YBClientBuilder().add_master_server_addr(master_address).Build());
   ASSERT_OK(CallAdmin("flush_sys_catalog"));
 }
 
-TEST_F(AdminCliTest, CompactSysCatalog) {
+TEST_F(AdminCliTest, FlushSysCatalogLeaderOnly) {
+  BuildAndStart();
+  string master_address = ToString(cluster_->master()->bound_rpc_addr());
+  auto client = ASSERT_RESULT(YBClientBuilder().add_master_server_addr(master_address).Build());
+  ASSERT_OK(CallAdmin("flush_sys_catalog", "leader_only"));
+}
+
+TEST_F(AdminCliTest, CompactSysCatalogAll) {
   BuildAndStart();
   string master_address = ToString(cluster_->master()->bound_rpc_addr());
   auto client = ASSERT_RESULT(YBClientBuilder().add_master_server_addr(master_address).Build());
   ASSERT_OK(CallAdmin("compact_sys_catalog"));
+}
+
+TEST_F(AdminCliTest, CompactSysCatalogLeaderOnly) {
+  BuildAndStart();
+  string master_address = ToString(cluster_->master()->bound_rpc_addr());
+  auto client = ASSERT_RESULT(YBClientBuilder().add_master_server_addr(master_address).Build());
+  ASSERT_OK(CallAdmin("compact_sys_catalog", "leader_only"));
 }
 
 // A simple smoke test to ensure it working and

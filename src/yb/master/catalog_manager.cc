@@ -2868,18 +2868,24 @@ Status CatalogManager::FlushSysCatalog(
     const FlushSysCatalogRequestPB* req,
     FlushSysCatalogResponsePB* resp,
     rpc::RpcContext* context) {
-  return PerformOnSysCatalogTablet(req, resp, [](auto shared_tablet) {
+  LOG(INFO) << "FlushSysCatalog started";
+  auto status = PerformOnSysCatalogTablet(req, resp, [](auto shared_tablet) {
     return shared_tablet->Flush(tablet::FlushMode::kSync);
   });
+  LOG(INFO) << "FlushSysCatalog completed: " << status;
+  return status;
 }
 
 Status CatalogManager::CompactSysCatalog(
     const CompactSysCatalogRequestPB* req,
     CompactSysCatalogResponsePB* resp,
     rpc::RpcContext* context) {
-  return PerformOnSysCatalogTablet(req, resp, [&](auto shared_tablet) {
+  LOG(INFO) << "CompactSysCatalog started";
+  auto status = PerformOnSysCatalogTablet(req, resp, [&](auto shared_tablet) {
     return shared_tablet->ForceManualRocksDBCompact();
   });
+  LOG(INFO) << "CompactSysCatalog completed: " << status;
+  return status;
 }
 
 namespace {
