@@ -222,6 +222,21 @@ std::string CgroupConfigPath(std::string_view cgroup_name, std::string_view conf
   return Format("$0$1/$2", cgroup_manager.cpu_group_path(), cgroup_name, config);
 }
 
+Result<int> CpuFractionToCfsQuotaMicroseconds(double cpu_fraction, int period_us) {
+  int max_quota_us = base::NumCPUs() * period_us;
+  int cfs_quota_us = static_cast<int>(std::round(cpu_fraction * max_quota_us));
+  // Linux requires cfs_quota_us to be at least 1 ms.
+  if (cfs_quota_us < 1'000) {
+    double min_cpu_fraction = 1'000.0 / max_quota_us;
+    return STATUS_FORMAT(
+        InvalidArgument,
+        "Period ($0 us) is too low for max cpu of $1% (minimum possible setting with this period "
+        "is $2%)",
+        period_us, (100.0 * cpu_fraction), (100.0 * min_cpu_fraction));
+  }
+  // Return -1 for max, since that's what cgroups v1 uses for cfs_quota_us.
+  return cfs_quota_us < max_quota_us ? cfs_quota_us : -1;
+}
 
 } // namespace
 
@@ -249,7 +264,7 @@ Result<std::string> Cgroup::ReadConfig(std::string_view config, size_t max_lengt
 
 Status Cgroup::Init(bool is_root) {
   if (!is_root) {
-    RETURN_NOT_OK(UpdateMaxCpu(1.0 /* quota */));
+    RETURN_NOT_OK(UpdateCpuLimits(/*max_cpu_fraction=*/1.0));
     RETURN_NOT_OK(UpdateCpuWeight(kDefaultCpuWeight));
     if (cgroup_manager.version() == CgroupVersion::kVersion2) {
       RETURN_NOT_OK(WriteConfig("cgroup.type", "threaded"));
@@ -261,31 +276,23 @@ Status Cgroup::Init(bool is_root) {
   return Status::OK();
 }
 
-Status Cgroup::UpdateMaxCpu(std::optional<double> quota, std::optional<int> period_us) {
+Status Cgroup::CheckMaxCpuValidForPeriod(double max_cpu_fraction, int period_us) {
+  return ResultToStatus(CpuFractionToCfsQuotaMicroseconds(max_cpu_fraction, period_us));
+}
+
+Status Cgroup::UpdateCpuLimits(
+    std::optional<double> max_cpu_fraction, std::optional<int> period_us) {
   std::lock_guard lock(mutex_);
 
-  int cfs_quota_us;
   int cfs_period_us = period_us.value_or(cpu_period_us_);
-  double new_quota = quota.value_or(cpu_quota_);
-  if (new_quota >= 1.0) {
-    // Cgroups v1 uses -1 as the unbounded value, while Cgroups v2 uses "max" as unbounded.
-    cfs_quota_us = -1;
-  } else {
-    cfs_quota_us = static_cast<int>(std::round(new_quota * base::NumCPUs() * cfs_period_us));
-    // Linux requires cfs_quota_us to be at least 1ms.
-    if (cfs_quota_us < 1'000) {
-      double min_quota = 1'000.0 / cfs_period_us;
-      return STATUS_FORMAT(
-          InvalidArgument,
-          "Period ($0us) is too low, cannot satisfy requested max cpu of $1% (minimum possible "
-          "setting with current period is $2%)",
-          cfs_period_us, (100.0 * new_quota), (100.0 * min_quota));
-    }
-  }
+  double cpu_fraction = max_cpu_fraction.value_or(cpu_max_fraction_);
+  int cfs_quota_us = VERIFY_RESULT(CpuFractionToCfsQuotaMicroseconds(cpu_fraction, cfs_period_us));
 
   if (cgroup_manager.version() == CgroupVersion::kVersion1) {
-    RETURN_NOT_OK(WriteConfig("cpu.cfs_period_us", AsString(cfs_period_us)));
-    if (quota) {
+    if (period_us) {
+      RETURN_NOT_OK(WriteConfig("cpu.cfs_period_us", AsString(cfs_period_us)));
+    }
+    if (max_cpu_fraction) {
       RETURN_NOT_OK(WriteConfig("cpu.cfs_quota_us", AsString(cfs_quota_us)));
     }
   } else {
@@ -293,7 +300,7 @@ Status Cgroup::UpdateMaxCpu(std::optional<double> quota, std::optional<int> peri
         "cpu.max",
         Format("$0 $1", cfs_quota_us == -1 ? "max"s : AsString(cfs_quota_us), cfs_period_us)));
   }
-  cpu_quota_ = new_quota;
+  cpu_max_fraction_ = cpu_fraction;
   cpu_period_us_ = cfs_period_us;
   return Status::OK();
 }
@@ -365,10 +372,9 @@ Result<Cgroup&> Cgroup::CreateOrLoadChild(std::string_view child_name) {
     weight = VERIFY_RESULT(CheckedStoi(VERIFY_RESULT(cg.ReadConfig("cpu.weight"))));
   }
 
-  double quota = cfs_quota_us < 0 ? 1.0 : static_cast<double>(cfs_quota_us) / cfs_period_us;
   std::lock_guard child_lock(cg.mutex_);
   cg.cpu_period_us_ = cfs_period_us;
-  cg.cpu_quota_ = quota;
+  cg.cpu_max_fraction_ = cfs_quota_us < 0 ? 1.0 : static_cast<double>(cfs_quota_us) / cfs_period_us;
   cg.cpu_weight_ = weight;
   return cg;
 }
@@ -412,7 +418,7 @@ Cgroup* Cgroup::child(std::string_view name) {
 
 std::string Cgroup::ToString() const {
   std::lock_guard lock(mutex_);
-  return YB_STRUCT_TO_STRING(name_, cpu_period_us_, cpu_quota_, cpu_weight_);
+  return YB_STRUCT_TO_STRING(name_, cpu_period_us_, cpu_max_fraction_, cpu_weight_);
 }
 
 Status SetupCgroupManagement(ClearChildCgroups clear) {

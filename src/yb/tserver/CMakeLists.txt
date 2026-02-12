@@ -273,6 +273,7 @@ set(TSERVER_SRCS
   ts_tablet_manager.cc
   tserver-path-handlers.cc
   tserver_auto_flags_manager.cc
+  tserver_cgroup_manager.cc
   tserver_metrics_heartbeat_data_provider.cc
   server_main_util.cc
   stateful_services/pg_auto_analyze_service.cc
@@ -423,6 +424,7 @@ ADD_YB_TEST(tablet_server-test)
 ADD_YB_TEST(tablet_server-stress-test RUN_SERIAL true)
 ADD_YB_TEST(ts_local_lock_manager-test)
 ADD_YB_TEST(ts_tablet_manager-test)
+ADD_YB_TEST(tserver_cgroup_manager-test)
 ADD_YB_TEST(header_manager_impl-test)
 ADD_YB_TEST(backup_service-test)
 ADD_YB_TEST(clone_operation-test)

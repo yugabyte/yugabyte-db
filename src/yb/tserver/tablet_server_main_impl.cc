@@ -58,8 +58,10 @@
 #include "yb/tserver/server_main_util.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tserver_call_home.h"
+#include "yb/tserver/tserver_cgroup_manager.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
+#include "yb/util/cgroups.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/main_util.h"
@@ -496,6 +498,12 @@ int TabletServerMain(int argc, char** argv) {
 
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(MasterTServerParseFlagsAndInit(
       TabletServerOptions::kServerType, /*is_master=*/false, &argc, &argv));
+
+#ifdef __linux__
+  if (TServerCgroupManagementEnabled()) {
+    LOG_AND_RETURN_FROM_MAIN_NOT_OK(SetupCgroupManagement(ClearChildCgroups::kTrue));
+  }
+#endif
 
   Services services;
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(StartServices(services));

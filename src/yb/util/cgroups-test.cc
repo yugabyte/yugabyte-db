@@ -140,8 +140,8 @@ TEST_F(CgroupsTest, TestCpuLimit) {
 
   auto& child_group = ASSERT_RESULT_REF(RootCgroup()->CreateOrLoadChild("child"));
   auto& throttled_group = ASSERT_RESULT_REF(child_group.CreateOrLoadChild("throttled"));
-  ASSERT_OK(throttled_group.UpdateMaxCpu(
-      0.5 / base::NumCPUs() /* quota */, 10'000 /* period_us */));
+  ASSERT_OK(throttled_group.UpdateCpuLimits(
+      /*max_cpu=*/0.5 / base::NumCPUs(), /*period_us=*/10'000));
 
   auto default_group_time = TimeIncrementWorkload();
   LOG(INFO) << "Unthrottled group time: " << default_group_time;

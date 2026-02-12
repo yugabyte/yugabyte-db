@@ -56,8 +56,12 @@ class Cgroup {
 
   Status Init(bool is_root = false);
 
-  // Quota is a fraction of total CPUs, i.e. 1.0 is all CPUs (uncapped).
-  Status UpdateMaxCpu(std::optional<double> quota, std::optional<int> period_us = std::nullopt)
+  static Status CheckMaxCpuValidForPeriod(double max_cpu_fraction, int period_us);
+
+  // max_cpu_fraction is a fraction of total CPUs, i.e., 1.0 is all CPUs (uncapped).
+  // std::nullopt for either parameter to leave it unchanged.
+  Status UpdateCpuLimits(
+      std::optional<double> max_cpu_fraction, std::optional<int> period_us = std::nullopt)
       EXCLUDES(mutex_);
 
   Status UpdateCpuWeight(int weight) EXCLUDES(mutex_);
@@ -77,9 +81,9 @@ class Cgroup {
 
   Cgroup* child(std::string_view name) EXCLUDES(mutex_);
 
-  double cpu_quota() const EXCLUDES(mutex_) {
+  double cpu_max_fraction() const EXCLUDES(mutex_) {
     std::lock_guard lock(mutex_);
-    return cpu_quota_;
+    return cpu_max_fraction_;
   }
 
   int cpu_period_us() const EXCLUDES(mutex_) {
@@ -114,7 +118,7 @@ class Cgroup {
 
   std::atomic<int> threads_fd_{-1};
 
-  double cpu_quota_ GUARDED_BY(mutex_) = 1.0;
+  double cpu_max_fraction_ GUARDED_BY(mutex_) = 1.0;
   int cpu_period_us_ GUARDED_BY(mutex_) = kDefaultCpuPeriod;
   int cpu_weight_ GUARDED_BY(mutex_) = kDefaultCpuWeight;
 };
