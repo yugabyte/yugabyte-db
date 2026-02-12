@@ -68,6 +68,7 @@ DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_end);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_start);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_before_incremental_safe_time_bump);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_ddl);
+DECLARE_bool(TEST_xcluster_increment_logical_commit_time);
 DECLARE_int32(TEST_xcluster_producer_modify_sent_apply_safe_time_ms);
 DECLARE_int32(TEST_xcluster_simulated_lag_ms);
 DECLARE_string(TEST_xcluster_simulated_lag_tablet_filter);
@@ -532,6 +533,17 @@ TEST_F(XClusterDDLReplicationTest, CreateTable) {
       &producer_cluster_, producer_table_name.namespace_name(), producer_table_name.pgschema_name(),
       producer_table_name_new_user_str));
   InsertRowsIntoProducerTableAndVerifyConsumer(producer_table_name_new_user);
+}
+
+TEST_F(XClusterDDLReplicationTest, CreateTableWithNonZeroLogicalCommitTime) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  // Ensure that the ddl_queue poller handles commit times with non-zero logical components.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_increment_logical_commit_time) = true;
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE test_table_1 (key int PRIMARY KEY);"));
+  ASSERT_OK(producer_conn_->Execute("INSERT INTO test_table_1 VALUES (1);"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifyWrittenRecords(std::vector<TableName>{"test_table_1"}));
 }
 
 TEST_F(XClusterDDLReplicationTest, CreateTableInExistingConnection) {

@@ -651,8 +651,8 @@ XClusterDDLQueueHandler::GetRowsToProcess(const HybridTime& commit_time) {
   // Use yb_disable_catalog_version_check since we do not need to read from the latest catalog (the
   // extension tables should not change).
   RETURN_NOT_OK(pg_conn_->ExecuteFormat(
-      "SET ROLE NONE; SET yb_disable_catalog_version_check = 1; SET yb_read_time = $0",
-      commit_time.GetPhysicalValueMicros()));
+      "SET ROLE NONE; SET yb_disable_catalog_version_check = 1; SET yb_read_time TO '$0 ht'",
+      commit_time.ToUint64()));
   auto rows = VERIFY_RESULT((pg_conn_->FetchRows<int64_t, int64_t, std::string>(Format(
       "/*+ MergeJoin(q r) */ "
       "SELECT q.$0, q.$1, q.$2 FROM $3 AS q "
