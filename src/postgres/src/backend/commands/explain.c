@@ -1273,7 +1273,7 @@ YbExplainCommitStats(DestReceiver *dest)
 	 * YB: Turn off timing RPC requests and metrics capture so that future
 	 * queries are not timed and metrics are not sent by default
 	 */
-	YbToggleSessionStatsTimer(yb_enable_pg_stat_statements_rpc_stats);
+	YbToggleSessionStatsTimer(false);
 	YbSetMetricsCaptureType(YB_YQL_METRICS_CAPTURE_NONE);
 	pfree(es->str->data);
 }

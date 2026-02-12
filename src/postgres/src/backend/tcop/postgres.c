@@ -6548,6 +6548,8 @@ PostgresMain(const char *dbname, const char *username)
 			send_ready_for_query = false;
 
 			yb_refresh_stats_before_exec = true;
+
+			YbToggleSessionStatsTimer(yb_enable_pg_stat_statements_rpc_stats);
 		}
 
 		/*
