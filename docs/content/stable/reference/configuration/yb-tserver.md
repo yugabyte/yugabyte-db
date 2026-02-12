@@ -680,7 +680,7 @@ Sets the maximum batch size per transaction when using [COPY FROM](../../../api/
 Default: `false`
 {{% /tags/wrap %}}
 
-Enables derivation of additional equalities for columns that are generated or computed using an expression. Used for [bucket-based indexes](../../../develop/data-modeling/bucket-index-ysql/).
+Enables derivation of additional equalities for columns that are generated or computed using an expression. Used for [bucket-based indexes](../../../develop/data-modeling/bucket-based-index-ysql/).
 
 ##### yb_enable_derived_saops
 
@@ -698,7 +698,7 @@ Enable derivation of IN clauses for columns generated or computed using a `yb_ha
 Default: `0`
 {{% /tags/wrap %}}
 
-Maximum number of buckets to process in parallel. A value greater than 0 enables bucket-based merge (used for [bucket-based indexes](../../../develop/data-modeling/bucket-index-ysql/)). Disabled if the cost-based optimizer is not enabled (`yb_enable_cbo=false`). Recommended value is 64.
+Maximum number of buckets to process in parallel. A value greater than 0 enables bucket-based merge (used for [bucket-based indexes](../../../develop/data-modeling/bucket-based-index-ysql/)). Disabled if the cost-based optimizer is not enabled (`yb_enable_cbo=false`). Recommended value is 64.
 
 ## Networking
 

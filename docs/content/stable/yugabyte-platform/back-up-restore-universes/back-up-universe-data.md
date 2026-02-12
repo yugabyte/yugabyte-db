@@ -35,7 +35,7 @@ The universe **Backups** page allows you to create new backups that start immedi
 
 1. Navigate to the universe and select **Backups**, then click **Backup now**.
 
-    ![Backup](/images/yp/create-backup-ysql-2025-2.png)
+    ![Backup](/images/yp/create-backup-ysql-20252.png)
 
 1. Select the API type for the backup.
 
