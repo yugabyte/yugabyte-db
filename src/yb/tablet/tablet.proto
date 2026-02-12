@@ -76,6 +76,9 @@ message TabletStatusPB {
   // Leader is the last replica in the list.
   repeated string replicas = 24;
   optional bool is_hash_partitioned = 25;
+  // Per-replica SST and WAL sizes in bytes, parallel to the replicas array.
+  repeated uint64 replicas_sst_files_size = 26;
+  repeated uint64 replicas_wal_files_size = 27;
 }
 
 // Used to present the maintenance manager's internal state.
