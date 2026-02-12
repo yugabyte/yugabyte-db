@@ -57,7 +57,7 @@
 
 using std::string;
 
-DEFINE_RUNTIME_int32(cdc_snapshot_batch_size, 250, "Batch size for the snapshot operation in CDC");
+DEPRECATE_FLAG(int32, cdc_snapshot_batch_size, "02_2026");
 
 DEFINE_RUNTIME_bool(stream_truncate_record, false, "Enable streaming of TRUNCATE record");
 
@@ -77,6 +77,11 @@ DEFINE_RUNTIME_uint64(
     cdc_stream_records_threshold_size_bytes, 4_MB,
     "The threshold for the size of the response of a GetChanges call. The actual size may be a "
     "little higher than this value.");
+
+DEFINE_RUNTIME_uint64(
+    cdc_snapshot_records_threshold_size_bytes, 4_MB,
+    "The threshold for the size of the CDC snapshot GetChanges response. The actual size may be "
+    "slightly higher than this value.");
 
 DEFINE_test_flag(
     bool, cdc_snapshot_failure, false,
@@ -2535,8 +2540,8 @@ Status HandleGetChangesForSnapshotRequest(
       *table_name = VERIFY_RESULT(GetColocatedTableName(tablet_peer, colocated_table_id));
     }
 
-    int limit = FLAGS_cdc_snapshot_batch_size;
-    int fetched = 0;
+    auto threshold = FLAGS_cdc_snapshot_records_threshold_size_bytes;
+    uint64_t bytes_fetched = 0;
     std::vector<qlexpr::QLTableRow> rows;
     qlexpr::QLTableRow row;
     dockv::ReaderProjection projection(*schema_details.schema);
@@ -2549,12 +2554,13 @@ Status HandleGetChangesForSnapshotRequest(
         tablet_ptr->CreateCDCSnapshotIterator(projection, time, next_key, colocated_table_id));
     auto table_id =
         colocated_table_id.empty() ? tablet_ptr->metadata()->table_id() : colocated_table_id;
-    while (fetched < limit && VERIFY_RESULT(iter->FetchNext(&row))) {
+    while (bytes_fetched < threshold && VERIFY_RESULT(iter->FetchNext(&row))) {
       RETURN_NOT_OK(PopulateCDCSDKSnapshotRecord(
           resp, &row, *schema_details.schema, *table_name, table_id, time, enum_oid_label_map,
           composite_atts_map, from_op_id, next_key, tablet_ptr->table_type() == PGSQL_TABLE_TYPE,
           throughput_metrics));
-      fetched++;
+      bytes_fetched +=
+          resp->cdc_sdk_proto_records(resp->cdc_sdk_proto_records_size() - 1).ByteSizeLong();
     }
     dockv::SubDocKey sub_doc_key = VERIFY_RESULT(iter->GetSubDocKey());
 
