@@ -164,4 +164,4 @@ This is a list of people who have contributed code to the [YugabyteDB](https://g
 * [swapshivam3](https://github.com/swapshivam3)
 * [utkarsh-um-yb](https://github.com/utkarsh-um-yb)
 * [aashir24-yb](https://github.com/aashir24-yb)
-
+* [keisku](https://github.com/keisku)
