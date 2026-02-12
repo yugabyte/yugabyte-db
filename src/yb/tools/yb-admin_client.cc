@@ -610,6 +610,33 @@ Status ClusterAdminClient::DiscoverAllMasters(
   return Status::OK();
 }
 
+Result<std::vector<HostPort>> ClusterAdminClient::HostPortsOfAllMasters() {
+  if (init_master_addr_.host().empty()) {
+    // if init_master_addr_ is not set, we need to re-discover all master addresses
+    auto first_addrs =
+        VERIFY_RESULT(HostPort::ParseStrings(master_addr_list_, master::kMasterDefaultPort));
+    SCHECK(!first_addrs.empty(), InvalidArgument, "No master address set in the client");
+    std::string all_master_addrs;
+    RETURN_NOT_OK(DiscoverAllMasters(first_addrs[0], &all_master_addrs));
+    return HostPort::ParseStrings(all_master_addrs, master::kMasterDefaultPort);
+  }
+  return HostPort::ParseStrings(master_addr_list_, master::kMasterDefaultPort);
+}
+
+Status ClusterAdminClient::InvokeRpcOnAllMasters(
+    const std::function<Status(const HostPort&)>& action,
+    const std::string& op_name) {
+  auto master_host_ports = VERIFY_RESULT(HostPortsOfAllMasters());
+  for (const auto& hp : master_host_ports) {
+    std::cout << op_name << ": Invoking on host " << hp.ToString() << std::endl;
+    // TODO: it might be good to have an option to continue and attempt the operation
+    // on other nodes, and just report the success/failure.
+    RETURN_NOT_OK(action(hp));
+    std::cout << op_name << ": Successful on host " << hp.ToString() << std::endl;
+  }
+  return Status::OK();
+}
+
 Status ClusterAdminClient::Init() {
   CHECK(!initted_);
 
@@ -1963,19 +1990,35 @@ Status ClusterAdminClient::CompactionStatus(const YBTableName& table_name, bool 
   return Status::OK();
 }
 
-Status ClusterAdminClient::FlushSysCatalog() {
+
+Status ClusterAdminClient::FlushSysCatalog(bool all_peers) {
   master::FlushSysCatalogRequestPB req;
-  auto res = InvokeRpc(
-      &master::MasterAdminProxy::FlushSysCatalog, *master_admin_proxy_, req);
-  return res.ok() ? Status::OK() : res.status();
+  auto invoke_flush_rpc = [this, &req](const HostPort& hp) {
+    master::MasterAdminProxy proxy(proxy_cache_.get(), hp);
+    auto res = InvokeRpc(
+        &master::MasterAdminProxy::FlushSysCatalog, proxy, req);
+    return res.ok() ? Status::OK() : res.status();
+  };
+  if (all_peers) {
+    return InvokeRpcOnAllMasters(invoke_flush_rpc, "flush_sys_catalog");
+  }
+  return invoke_flush_rpc(leader_addr_);
 }
 
-Status ClusterAdminClient::CompactSysCatalog() {
+Status ClusterAdminClient::CompactSysCatalog(bool all_peers) {
   master::CompactSysCatalogRequestPB req;
-  auto res = InvokeRpc(
-      &master::MasterAdminProxy::CompactSysCatalog, *master_admin_proxy_, req);
-  return res.ok() ? Status::OK() : res.status();
+  auto invoke_compact_rpc = [this, &req](const HostPort& hp) {
+    master::MasterAdminProxy proxy(proxy_cache_.get(), hp);
+    auto res = InvokeRpc(
+        &master::MasterAdminProxy::CompactSysCatalog, proxy, req);
+    return res.ok() ? Status::OK() : res.status();
+  };
+  if (all_peers) {
+    return InvokeRpcOnAllMasters(invoke_compact_rpc, "compact_sys_catalog");
+  }
+  return invoke_compact_rpc(leader_addr_);
 }
+
 
 Status ClusterAdminClient::WaitUntilMasterLeaderReady() {
   for(int iter = 0; iter < kNumberOfTryouts; ++iter) {

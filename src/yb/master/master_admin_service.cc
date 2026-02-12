@@ -70,11 +70,38 @@ class MasterAdminServiceImpl : public MasterServiceBase, public MasterAdminIf {
     rpc.RespondSuccess();
   }
 
+  void FlushSysCatalog(
+      const FlushSysCatalogRequestPB* req,
+      FlushSysCatalogResponsePB* resp,
+      rpc::RpcContext rpc) override {
+    // Run on any master (leader or follower). Only require catalog to be initialized.
+    SCOPED_LEADER_SHARED_LOCK(l, server_->catalog_manager_impl());
+    if (!l.CheckIsInitializedOrRespond(resp, &rpc)) {
+      return;
+    }
+    auto s = server_->catalog_manager_impl()->FlushSysCatalog(req, resp, &rpc);
+    CheckRespErrorOrSetUnknown(s, resp);
+    rpc.RespondSuccess();
+  }
+
+  void CompactSysCatalog(
+      const CompactSysCatalogRequestPB* req,
+      CompactSysCatalogResponsePB* resp,
+      rpc::RpcContext rpc) override {
+    // Run on any master (leader or follower). Only require catalog to be initialized.
+    SCOPED_LEADER_SHARED_LOCK(l, server_->catalog_manager_impl());
+    if (!l.CheckIsInitializedOrRespond(resp, &rpc)) {
+      return;
+    }
+    auto s = server_->catalog_manager_impl()->CompactSysCatalog(req, resp, &rpc);
+    CheckRespErrorOrSetUnknown(s, resp);
+    rpc.RespondSuccess();
+  }
+
   MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(
       CatalogManager,
       (AddTransactionStatusTablet)
       (CheckIfPitrActive)
-      (CompactSysCatalog)
       (GetCompactionStatus)
       (CreateTransactionStatusTable)
       (DdlLog)
@@ -82,7 +109,6 @@ class MasterAdminServiceImpl : public MasterServiceBase, public MasterAdminIf {
       (IsYsqlMajorVersionUpgradeInitdbDone)
       (RollbackYsqlMajorVersionUpgrade)
       (DeleteNotServingTablet)
-      (FlushSysCatalog)
       (SplitTablet)
   )
 
