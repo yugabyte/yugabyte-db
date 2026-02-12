@@ -11,6 +11,7 @@ import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import AwsStorageConfiguration from './AwsStorageConfiguration';
 import GcsStorageConfiguration from './GcsStorageConfiguration';
+import AzureStorageConfiguration from './AzureStorageConfiguration';
 import { BackupList } from './BackupList';
 import { BackupConfigField } from './BackupConfigField';
 import { storageConfigTypes } from './ConfigType';
@@ -68,6 +69,7 @@ class StorageConfiguration extends Component {
       },
       iamRoleEnabled: false,
       useGcpIam: false,
+      useAzureIam: false,
       listView: {
         s3: true,
         nfs: true,
@@ -151,9 +153,18 @@ class StorageConfiguration extends Component {
       }
 
       case 'az': {
-        configName = dataPayload['AZ_CONFIGURATION_NAME'];
-        dataPayload['BACKUP_LOCATION'] = dataPayload['AZ_BACKUP_LOCATION'];
-        dataPayload = _.pick(dataPayload, ['BACKUP_LOCATION', 'AZURE_STORAGE_SAS_TOKEN']);
+        let FIELDS;
+        if (values['USE_AZURE_IAM']) {
+          configName = dataPayload['AZ_CONFIGURATION_NAME'];
+          dataPayload['BACKUP_LOCATION'] = dataPayload['AZ_BACKUP_LOCATION'];
+          dataPayload['USE_AZURE_IAM'] = dataPayload['USE_AZURE_IAM'].toString();
+          FIELDS = ['BACKUP_LOCATION', 'USE_AZURE_IAM'];
+        } else {
+          configName = dataPayload['AZ_CONFIGURATION_NAME'];
+          dataPayload['BACKUP_LOCATION'] = dataPayload['AZ_BACKUP_LOCATION'];
+          FIELDS = ['BACKUP_LOCATION', 'AZURE_STORAGE_SAS_TOKEN'];
+        }
+        dataPayload = _.pick(dataPayload, FIELDS);
         break;
       }
 
@@ -296,6 +307,7 @@ class StorageConfiguration extends Component {
           configUUID: row?.configUUID,
           [`${tab}_BACKUP_LOCATION`]: row.data?.BACKUP_LOCATION,
           [`${tab}_CONFIGURATION_NAME`]: row?.configName,
+          USE_AZURE_IAM: row.data?.USE_AZURE_IAM,
           AZURE_STORAGE_SAS_TOKEN: row.data?.AZURE_STORAGE_SAS_TOKEN
         };
         break;
@@ -326,6 +338,7 @@ class StorageConfiguration extends Component {
       },
       iamRoleEnabled: row.data['IAM_INSTANCE_PROFILE'] || false,
       useGcpIam: row.data['USE_GCP_IAM'] || false,
+      useAzureIam: row.data['USE_AZURE_IAM'] || false,
       listView: {
         ...this.state.listView,
         [activeTab]: false
@@ -363,6 +376,7 @@ class StorageConfiguration extends Component {
       },
       iamRoleEnabled: false,
       useGcpIam: false,
+      useAzureIam: false,
       listView: {
         ...this.state.listView,
         [activeTab]: true
@@ -384,6 +398,10 @@ class StorageConfiguration extends Component {
     this.setState({ useGcpIam: event.target.checked });
   };
 
+  azureIamToggle = (event) => {
+    this.setState({ useAzureIam: event.target.checked });
+  };
+
   render() {
     const {
       handleSubmit,
@@ -393,7 +411,7 @@ class StorageConfiguration extends Component {
       enableSigningRegion,
       enableS3BackupProxy
     } = this.props;
-    const { iamRoleEnabled, useGcpIam, editView, listView } = this.state;
+    const { iamRoleEnabled, useGcpIam, useAzureIam, editView, listView } = this.state;
     const activeTab = this.props.activeTab || Object.keys(storageConfigTypes)[0].toLowerCase();
 
     if (getPromiseState(customerConfigs).isLoading()) {
@@ -434,6 +452,16 @@ class StorageConfiguration extends Component {
               useGcpIam={useGcpIam}
               gcpIamToggle={this.gcpIamToggle}
               isEdited={editView[activeTab]}
+            />
+          )}
+        </Tab>,
+        <Tab eventKey={'az'} title={getTabTitle('AZ')} key={'az-tab'} unmountOnExit={true}>
+          {!listView.az && (
+            <AzureStorageConfiguration
+              useAzureIam={useAzureIam}
+              azureIamToggle={this.azureIamToggle}
+              isEdited={editView[activeTab]}
+              customerConfigs={customerConfigs}
             />
           )}
         </Tab>
