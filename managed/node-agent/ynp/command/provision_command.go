@@ -176,6 +176,10 @@ func (pc *ProvisionCommand) requiredCloudOnlyOSPkgs() []string {
 	return []string{"gzip"}
 }
 
+func (pc *ProvisionCommand) isModuleEnabled(moduleName string) bool {
+	return slices.Contains(pc.iniConfig.Sections(), moduleName)
+}
+
 func (pc *ProvisionCommand) Validate() error {
 	return pc.validateRequiredPackages()
 }
@@ -317,7 +321,8 @@ func (pc *ProvisionCommand) runScript(name, scriptPath string) error {
 
 // prepareGenerateTemplate performs any preparation needed before generating templates.
 func (pc *ProvisionCommand) prepareGenerateTemplate() error {
-	if config.GetBool(pc.iniConfig.DefaultSectionValue(), "is_ybm", false) {
+	// Special case for YBM AMI module.
+	if pc.isModuleEnabled(ybmami.ModuleName) {
 		util.FileLogger().Infof(pc.ctx, "Copying template files for YBM")
 		if err := pc.copyTemplatesFilesForYBM(pc.iniConfig.DefaultSectionValue()); err != nil {
 			return err
