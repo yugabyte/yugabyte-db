@@ -1422,15 +1422,15 @@ To deploy the connector, you install the connector archive, configure the connec
 3. Add the directory with the JAR files to the [Kafka Connect `plugin.path`](https://kafka.apache.org/documentation/#connectconfigs).
 4. Restart your Kafka Connect process to pick up the new JAR files.
 
-{{< warning title="Warning" >}}
+{{< note title="Note" >}}
 
-On connector version dz.2.5.2.yb.2025.2, users may face the following error while deploying the connector:
+Using connector version dz.2.5.2.yb.2025.2, you may get the following error while deploying the connector:
 
 `ERROR: cannot export or import snapshot when ysql_enable_pg_export_snapshot is disabled.`
 
-Use connector version dz.2.5.2.yb.2025.2.2 or dz.2.5.2.yb.2025.1.2 and below versions instead.
+Use connector version dz.2.5.2.yb.2025.2.2, or dz.2.5.2.yb.2025.1.2 and earlier versions instead.
 
-{{< /warning >}}
+{{< /note >}}
 
 ### Creating Kafka topics
 
