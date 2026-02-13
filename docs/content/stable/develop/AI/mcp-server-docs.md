@@ -22,15 +22,17 @@ This enables the tool to answer questions about Yugabyte without leaving your ID
 
 The MCP server is hosted at `https://yugabyte.mcp.kapa.ai`. Note that when you connect to the MCP server for the first time, you will be required to authenticate via a Google sign-in window. For more information, see [Authentication](https://docs.kapa.ai/integrations/mcp/overview#authentication) in Kapa Documentation.
 
-From the docs Search bar, click **Ask AI > Use MCP**.
+To add Yugabyte Docs MCP server, do the following:
 
-![Use MCP](/images/ai/use-mcp.png)
+1. From the docs Search bar, click **Ask AI > Use MCP**.
 
-In the **Connect to AI tools** dropdown, you can add the Yugabyte Docs MCP server by choosing the option that matches your tool.
+    ![Use MCP](/images/ai/use-mcp.png)
 
-{{< tabpane text=true >}}
+1. In the **Connect to AI tools** dropdown, add the Yugabyte Docs MCP server by choosing the option that matches your tool. <br/><br/>
 
-  {{% tab header="Cursor" lang="cursor" %}}
+    {{< tabpane text=true >}}
+
+{{% tab header="Cursor" lang="cursor" %}}
 
 The **Add to Cursor** option opens Cursor directly with the MCP server configuration **Tools** window.
 
@@ -114,7 +116,7 @@ If the logs for the MCP server shows a SyntaxError, it is likely due to an outda
 
   {{% /tab %}}
 
-{{< /tabpane >}}
+  {{< /tabpane >}}
 
 ## Examples
 
