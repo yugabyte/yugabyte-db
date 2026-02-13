@@ -84,6 +84,7 @@ class TserverXClusterContextIf;
     (ListSlotEntries) \
     (ListReplicationSlots) \
     (ReadSequenceTuple) \
+    (RemoteExec) \
     (ReserveOids) \
     (GetNewObjectId) \
     (RollbackToSubTransaction) \

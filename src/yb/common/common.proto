@@ -803,3 +803,16 @@ enum YsqlSamplingAlgorithm {
   FULL_TABLE_SCAN = 0;
   BLOCK_BASED_SAMPLING = 1;
 }
+
+message PgResultPB {
+  message PgResultRowPB {
+    message PgResultColumnPB {
+      // Absence of value (has_value() == false) indicates NULL.
+      optional bytes value = 1;
+    }
+    repeated PgResultColumnPB columns = 1;
+  }
+  repeated PgResultRowPB rows = 1;
+  optional int32 exec_status = 2;
+  optional string error_message = 3;
+}

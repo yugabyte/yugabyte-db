@@ -146,6 +146,7 @@
 #include "yb/util/yb_pg_errcodes.h"
 #include "yb/util/ysql_binary_runner.h"
 
+#include "yb/yql/pggate/util/ybc_pgresult_util.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 #include "yb/yql/pgwrapper/ysql_upgrade.h"
@@ -241,6 +242,7 @@ DEFINE_test_flag(bool, pause_wait_for_ysql_backends_catalog_version_2, false,
 
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_uint64(rocksdb_max_file_size_for_compaction);
+DECLARE_uint64(rpc_max_message_size);
 
 DEFINE_UNKNOWN_bool(enable_ysql, true,
     "Enable YSQL on the cluster. This will cause yb-master to initialize sys catalog "
@@ -300,6 +302,9 @@ DEFINE_test_flag(uint32, clone_pg_schema_delay_ms, 0,
 
 DEFINE_test_flag(uint32, pause_tablet_compact_flush_ms, 0,
     "Used in tests to pause FlushTablet RPC for the specified number of milliseconds");
+
+DEFINE_test_flag(uint32, pause_remote_pg_query_execution_ms, 0,
+    "Used in tests to sleep before executing a remote PG query.");
 
 #if defined ADDRESS_SANITIZER
 // ASAN tests run on machines with limited disk space, so disable disk full checks.
@@ -3574,6 +3579,45 @@ void TabletServiceImpl::GetMetrics(const GetMetricsRequestPB* req,
   context.RespondSuccess();
 }
 
+void TabletServiceImpl::PgRemoteExec(
+    const PgRemoteExecRequestPB* req, PgRemoteExecResponsePB* resp,
+    rpc::RpcContext context) {
+  VLOG(1) << "received remote pg exec query: " << req->query();
+
+  // TODO(#30396): Maintain a pool of connections instead of creating a new connection
+  auto conn_res = server_->CreateInternalPGConn(
+      "template1", /* simple_query_protocol */ true);
+  if (!conn_res.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), conn_res.status(), &context);
+    return;
+  }
+
+  if (FLAGS_TEST_pause_remote_pg_query_execution_ms > 0) {
+    SleepFor(FLAGS_TEST_pause_remote_pg_query_execution_ms * 1ms);
+  }
+
+  auto result = conn_res->Fetch(req->query());
+  auto* result_pb = resp->mutable_pg_result();
+  if (!result.ok()) {
+    // TODO(#30482): Fetch the error status from PGresult
+    result_pb->set_exec_status(PGRES_FATAL_ERROR);
+    result_pb->set_error_message(result.status().message().ToBuffer());
+    context.RespondSuccess();
+    return;
+  }
+
+  auto* pg_result = result->get();
+  // 1 KB is kept aside for RPC headers
+  const auto max_resp_size = FLAGS_rpc_max_message_size - 1_KB;
+  if (!PgResultToPB(pg_result, result_pb, max_resp_size)) {
+    resp->set_reached_size_limit(true);
+    VLOG(1) << "Reached RPC size limit (" << FLAGS_rpc_max_message_size
+            << " bytes). Encoded " << result_pb->rows_size()
+            << " out of " << PQntuples(pg_result) << " rows";
+  }
+  context.RespondSuccess();
+}
+
 void TabletServiceImpl::GetObjectLockStatus(const GetObjectLockStatusRequestPB* req,
                                             GetObjectLockStatusResponsePB* resp,
                                             rpc::RpcContext context) {
@@ -3939,7 +3983,8 @@ void TabletServiceImpl::AdminExecutePgsql(
     rpc::RpcContext context) {
   auto execute_pg_sql = [&req, &context, &server = server_]() -> Status {
     const auto& deadline = context.GetClientDeadline();
-    auto pg_conn = VERIFY_RESULT(server->CreateInternalPGConn(req->database_name(), deadline));
+    auto pg_conn = VERIFY_RESULT(
+        server->CreateInternalPGConn(req->database_name(), false, deadline));
     for (const auto& stmt : req->pgsql_statements()) {
       SCHECK_LT(
           CoarseMonoClock::Now(), deadline, TimedOut, "Timed out while executing Ysql statements");

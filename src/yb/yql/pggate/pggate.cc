@@ -69,6 +69,7 @@
 #include "yb/yql/pggate/pg_explicit_row_lock_buffer.h"
 #include "yb/yql/pggate/pg_flush_debug_context.h"
 #include "yb/yql/pggate/pg_function.h"
+#include "yb/yql/pggate/pg_global_view_read.h"
 #include "yb/yql/pggate/pg_insert.h"
 #include "yb/yql/pggate/pg_memctx.h"
 #include "yb/yql/pggate/pg_sample.h"
@@ -2714,6 +2715,21 @@ Result<std::unique_ptr<PgApiImpl>> PgApiImpl::Make(
       init_postgres_info.parallel_leader_session_id
           ? std::optional(*init_postgres_info.parallel_leader_session_id) : std::nullopt));
     return result;
+}
+
+Status PgApiImpl::NewGlobalViewRead(const char* query, PgGlobalViewRead** handle) {
+  auto ts_info = VERIFY_RESULT(ListTabletServers());
+
+  std::vector<std::string> uuids;
+  uuids.reserve(ts_info.tablet_servers.size());
+  for (const auto& ts : ts_info.tablet_servers) {
+    uuids.push_back(ts.server.uuid);
+  }
+
+  auto read = std::make_unique<PgGlobalViewRead>(pg_client_, query, std::move(uuids));
+  *handle = read.get();
+  pg_callbacks_.GetCurrentYbMemctx()->Register(read.release());
+  return Status::OK();
 }
 
 } // namespace yb::pggate

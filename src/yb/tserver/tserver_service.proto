@@ -183,6 +183,8 @@ service TabletServerService {
   rpc ConnectivityState(ConnectivityStateRequestPB) returns (ConnectivityStateResponsePB) {
     option (yb.rpc.trivial) = true;
   }
+
+  rpc PgRemoteExec(PgRemoteExecRequestPB) returns (PgRemoteExecResponsePB);
 }
 
 // Note: Either among transactions_by_tablet or transaction_ids should be set. Both the fields
@@ -709,4 +711,15 @@ message ConnectivityEntryPB {
 message ConnectivityStateResponsePB {
   optional TabletServerErrorPB error = 1;
   repeated ConnectivityEntryPB entries = 2;
+}
+
+message PgRemoteExecRequestPB {
+  optional string query = 1;
+  optional string tserver_uuid = 2;
+}
+
+message PgRemoteExecResponsePB {
+  optional TabletServerErrorPB error = 1;
+  optional PgResultPB pg_result = 2;
+  optional bool reached_size_limit = 3;
 }

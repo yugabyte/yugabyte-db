@@ -173,7 +173,11 @@ namespace {
 template <class Resp>
 void Respond(const Status& status, Resp* resp, rpc::RpcContext* context) {
   if (!status.ok()) {
-    StatusToPB(status, resp->mutable_status());
+    if constexpr (HasMemberFunction_status<Resp>::value) {
+      StatusToPB(status, resp->mutable_status());
+    } else {
+      StatusToPB(status, resp->mutable_error()->mutable_status());
+    }
   }
   context->RespondSuccess();
 }
@@ -2873,6 +2877,37 @@ class PgClientServiceImpl::Impl : public SessionProvider {
             && last_analyze_qlvalue.value_case() == QLValuePB::kJsonbValue) {
             pg_auto_analyze_entry->set_last_analyze_info(last_analyze_qlvalue.jsonb_value());
         }
+    }
+    return Status::OK();
+  }
+
+  Status RemoteExec(
+      const PgRemoteExecRequestPB& req, PgRemoteExecResponsePB* resp,
+      rpc::RpcContext* context) {
+    const auto& target_uuid = req.tserver_uuid();
+    auto remote_tservers = VERIFY_RESULT(tablet_server_.GetRemoteTabletServers());
+    client::internal::RemoteTabletServerPtr remote_tserver;
+    for (const auto& ts : remote_tservers) {
+      if (ts->permanent_uuid() == target_uuid) {
+        remote_tserver = ts;
+        break;
+      }
+    }
+    RSTATUS_DCHECK(
+        remote_tserver, IllegalState,
+        Format("Tserver $0 not found in live tserver list", target_uuid));
+
+    RETURN_NOT_OK(remote_tserver->InitProxy(&client()));
+    auto proxy = remote_tserver->proxy();
+    rpc::RpcController controller;
+    controller.set_deadline(context->GetClientDeadline());
+    auto s = proxy->PgRemoteExec(req, resp, &controller);
+
+    if (!s.ok() || resp->has_error()) {
+      auto error_status = s.ok() ? StatusFromPB(resp->error().status()) : s;
+      return error_status.CloneAndPrepend(Format(
+          "Failed to execute remote pg query ($0) on tserver $1",
+          req.query(), target_uuid));
     }
 
     return Status::OK();

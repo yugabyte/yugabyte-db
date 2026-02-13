@@ -73,6 +73,7 @@
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/pggate_thread_local_vars.h"
 #include "yb/yql/pggate/util/pg_wire.h"
+#include "yb/yql/pggate/pg_global_view_read.h"
 #include "yb/yql/pggate/util/ybc-internal.h"
 #include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
@@ -3332,6 +3333,32 @@ YbcFlushDebugContext YBCMakeFlushDebugContextSwithToDbCatalogVersionMode(YbcPgOi
 
 YbcFlushDebugContext YBCMakeFlushDebugContextEndOfTopLevelStmt() {
   return PgFlushDebugContext::YbcEndOfTopLevelStmt();
+}
+
+// ---------------------------------------------------------------------------
+// PgGlobalViewRead C API wrappers
+// ---------------------------------------------------------------------------
+
+YbcStatus YBCPgNewGlobalViewRead(const char* query, YbcPgGlobalViewRead* handle) {
+  return ToYBCStatus(pgapi->NewGlobalViewRead(query, handle));
+}
+
+void YBCPgGlobalViewReadResetScan(YbcPgGlobalViewRead handle) {
+  handle->ResetScan();
+}
+
+YbcRemotePgExecResult YBCPgGlobalViewReadExecScan(YbcPgGlobalViewRead handle) {
+  return handle->ExecScan();
+}
+
+void YBCPgGlobalViewReadDestroy(YbcPgGlobalViewRead handle) {
+  if (handle) {
+    PgMemctx::Destroy(handle);
+  }
+}
+
+bool YBCPgGlobalViewReadIsEof(YbcPgGlobalViewRead handle) {
+  return handle->is_eof();
 }
 
 } // extern "C"

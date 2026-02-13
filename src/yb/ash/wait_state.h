@@ -302,6 +302,7 @@ YB_DEFINE_TYPED_ENUM(PggateRPC, uint16_t,
   (kReleaseSessionObjectLock)
   (kQueryAutoAnalyze)
   (kGetTabletForKey)
+  (kRemotePgExec)
 
   // CDCService RPCs
   (kInitVirtualWALForCDC)

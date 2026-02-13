@@ -1084,6 +1084,16 @@ YbcFlushDebugContext YBCMakeFlushDebugContextEndOfTopLevelStmt();
 YbcStatus YBCQueryAutoAnalyze(
     YbcPgOid db_oid, YbcAutoAnalyzeInfo** analyze_info, size_t* count);
 
+// ---------------------------------------------------------------------------
+// PgGlobalViewRead: scan interface for federated YugabyteDB global views.
+// ---------------------------------------------------------------------------
+
+YbcStatus YBCPgNewGlobalViewRead(const char* query, YbcPgGlobalViewRead* handle);
+void YBCPgGlobalViewReadResetScan(YbcPgGlobalViewRead handle);
+YbcRemotePgExecResult YBCPgGlobalViewReadExecScan(YbcPgGlobalViewRead handle);
+void YBCPgGlobalViewReadDestroy(YbcPgGlobalViewRead handle);
+bool YBCPgGlobalViewReadIsEof(YbcPgGlobalViewRead handle);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

@@ -301,7 +301,8 @@ Result<std::vector<TserverMetricsInfoPB>> MasterTabletServer::GetMetrics() const
 }
 
 Result<pgwrapper::PGConn> MasterTabletServer::CreateInternalPGConn(
-    const std::string& database_name, const std::optional<CoarseTimePoint>& deadline) {
+    const std::string& database_name, bool simple_query_protocol,
+    const std::optional<CoarseTimePoint>& deadline) {
   LOG(DFATAL) << "Unexpected call of CreateInternalPGConn()";
   return STATUS_FORMAT(InternalError, "Unexpected call of CreateInternalPGConn()");
 }

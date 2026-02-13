@@ -67,6 +67,11 @@ DEFINE_NON_RUNTIME_int32(pg_client_extra_timeout_ms, 2000,
    "Adding this value to RPC call timeout, so postgres could detect timeout by it's own mechanism "
    "and report it.");
 
+DEFINE_RUNTIME_int32(remote_pg_query_execution_rpc_timeout_ms, 15000,
+    "Timeout for RPCs of remote PG queries from PG to remote tserver "
+    "in milliseconds.");
+TAG_FLAG(remote_pg_query_execution_rpc_timeout_ms, advanced);
+
 DEFINE_test_flag(bool, emulate_op_lost_on_write, false,
     "Emulate lost of operation with serial_no by incrementing counter twice.");
 
@@ -1853,6 +1858,30 @@ class PgClient::Impl : public BigDataFetcher {
     return Status::OK();
   }
 
+  Result<tserver::PgRemoteExecResponsePB> RemoteExec(
+      std::string_view query, const std::string& tserver_uuid) {
+    tserver::PgRemoteExecRequestPB req;
+    tserver::PgRemoteExecResponsePB resp;
+
+    req.set_query(std::string(query));
+    req.set_tserver_uuid(tserver_uuid);
+
+    const auto [deadline, _] = timeouts_.GetDeadlineAndTimeoutForRPC<void>(
+        CoarseMonoClock::now() +
+        MonoDelta::FromMilliseconds(FLAGS_remote_pg_query_execution_rpc_timeout_ms));
+
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::RemoteExec,
+        req, resp, PggateRPC::kRemotePgExec, deadline));
+
+    RETURN_NOT_OK(ResponseStatus(resp));
+
+    if (resp.reached_size_limit()) {
+      LOG(WARNING) << "Reached max RPC size limit for remote pg exec query. "
+                      "Received truncated response.";
+    }
+    return resp;
+  }
+
  private:
   std::string LogPrefix() const {
     return Format("Session id $0: ", session_id_);
@@ -2337,6 +2366,11 @@ Result<int64_t> PgClient::GetCronLastMinute() { return impl_->GetCronLastMinute(
 Status PgClient::GetYbSystemTableInfo(
     PgOid namespace_oid, std::string_view table_name, PgOid* oid, PgOid* relfilenode) {
   return impl_->GetYbSystemTableInfo(namespace_oid, table_name, oid, relfilenode);
+}
+
+Result<tserver::PgRemoteExecResponsePB> PgClient::RemoteExec(
+      std::string_view query, const std::string& tserver_uuid) {
+  return impl_->RemoteExec(query, tserver_uuid);
 }
 
 template class pg_client::internal::ExchangeFuture<pg_client::internal::PerformData>;

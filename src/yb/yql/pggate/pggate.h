@@ -65,6 +65,7 @@ namespace yb::pggate {
 
 class PgDmlRead;
 class PgFlushDebugContext;
+class PgGlobalViewRead;
 
 struct PgMemctxComparator {
   using is_transparent = void;
@@ -888,6 +889,8 @@ class PgApiImpl {
   void DdlEnableForceCatalogModification();
 
   Status TriggerRelcacheInitConnection(const std::string& dbname);
+
+  Status NewGlobalViewRead(const char* query, PgGlobalViewRead** handle);
 
   //----------------------------------------------------------------------------------------------
   // Advisory Locks.

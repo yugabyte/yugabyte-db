@@ -237,6 +237,3 @@ SERVER gv_server
 OPTIONS (schema_name 'pg_catalog', table_name 'yb_active_session_history');
 
 SELECT * FROM gv$yb_active_session_history;
-SET yb_enable_global_views = TRUE;
-SELECT * FROM gv$yb_active_session_history;
-SET yb_enable_global_views = FALSE;

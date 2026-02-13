@@ -44,6 +44,7 @@
 
 #include "yb/tserver/tserver_util_fwd.h"
 #include "yb/tserver/pg_client.fwd.h"
+#include "yb/tserver/pg_client.pb.h"
 
 #include "yb/util/async_util.h"
 
@@ -378,6 +379,9 @@ class PgClient {
   Status CancelTransaction(const unsigned char* transaction_id);
 
   Result<tserver::PgYCQLStatementStatsResponsePB> YCQLStatementStats();
+
+  Result<tserver::PgRemoteExecResponsePB> RemoteExec(
+      std::string_view query, const std::string& tserver_uuid);
 
  private:
   class Impl;

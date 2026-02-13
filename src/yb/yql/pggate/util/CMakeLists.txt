@@ -34,3 +34,12 @@ ADD_YB_LIBRARY(yb_pggate_util
                DEPS ${PGGATE_UTIL_LIBS})
 
 add_dependencies(yb_pggate_util postgres_genbki)
+
+ADD_YB_LIBRARY(yb_pgresult_util
+  SRCS ybc_pgresult_util.cc ybc_pgresult_util_c.c
+  DEPS yb_common_proto
+  NONLINK_DEPS postgres_genbki)
+
+target_include_directories(yb_pgresult_util PRIVATE
+  ${YB_BUILD_ROOT}/postgres_build/src/include
+  ${YB_BUILD_ROOT}/postgres_build/src/interfaces/libpq)

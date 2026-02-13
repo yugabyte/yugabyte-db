@@ -28,6 +28,7 @@ import "yb/master/master_types.proto";
 import "yb/rpc/lightweight_message.proto";
 import "yb/rpc/service.proto";
 import "yb/tablet/tablet.proto";
+import "yb/tserver/tserver_service.proto";
 
 service PgClientService {
   option (yb.rpc.service_send_metadata) = true;
@@ -172,6 +173,9 @@ service PgClientService {
   // Fetch table info for non-catalog tables in yb_system database
   rpc GetYbSystemTableInfo(PgGetYbSystemTableInfoRequestPB)
       returns (PgGetYbSystemTableInfoResponsePB);
+
+  rpc RemoteExec(PgRemoteExecRequestPB)
+      returns (PgRemoteExecResponsePB);
 }
 
 // TODO: Remove the OptionalUint32PB helper message after updating protobuf generator to allow

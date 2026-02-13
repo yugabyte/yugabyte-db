@@ -1301,7 +1301,7 @@ void TabletServer::RelcacheInitConnectionDone(
 
 void TabletServer::MakeRelcacheInitConnection(std::promise<Status>* p, const std::string& dbname) {
   auto deadline = CoarseMonoClock::Now() + default_client_timeout();
-  auto status = ResultToStatus(CreateInternalPGConn(dbname, deadline));
+  auto status = ResultToStatus(CreateInternalPGConn(dbname, false, deadline));
   if (status.ok()) {
     LOG(INFO) << "Relcache init connection to database " << dbname << " succeeded";
   } else {
@@ -1916,7 +1916,7 @@ void TabletServer::DoGarbageCollectionOfInvalidationMessages(
 
 Status TabletServer::CheckYsqlLaggingCatalogVersions() {
   auto deadline = CoarseMonoClock::Now() + default_client_timeout();
-  auto pg_conn = VERIFY_RESULT(CreateInternalPGConn("template1", deadline));
+  auto pg_conn = VERIFY_RESULT(CreateInternalPGConn("template1", false, deadline));
   const std::string query = "SELECT datid, local_catalog_version FROM "
                             "yb_pg_stat_get_backend_local_catalog_version(NULL) "
                             "ORDER BY datid ASC, local_catalog_version ASC";
@@ -2452,10 +2452,11 @@ void TabletServer::SetCronLeaderLease(MonoTime cron_leader_lease_end) {
 }
 
 Result<pgwrapper::PGConn> TabletServer::CreateInternalPGConn(
-    const std::string& database_name, const std::optional<CoarseTimePoint>& deadline) {
+    const std::string& database_name, bool simple_query_protocol,
+    const std::optional<CoarseTimePoint>& deadline) {
   return pgwrapper::CreateInternalPGConnBuilder(
              pgsql_proxy_bind_address(), database_name, GetSharedMemoryPostgresAuthKey(), deadline)
-      .Connect();
+      .Connect(simple_query_protocol);
 }
 
 Result<PgTxnSnapshot> TabletServer::GetLocalPgTxnSnapshot(const PgTxnSnapshotLocalId& snapshot_id) {

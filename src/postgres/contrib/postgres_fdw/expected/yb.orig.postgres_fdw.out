@@ -662,8 +662,5 @@ CREATE FOREIGN TABLE IF NOT EXISTS "gv$yb_active_session_history" (
 SERVER gv_server
 OPTIONS (schema_name 'pg_catalog', table_name 'yb_active_session_history');
 SELECT * FROM gv$yb_active_session_history;
-ERROR:  must enable the GUC yb_enable_global_views
-SET yb_enable_global_views = TRUE;
-SELECT * FROM gv$yb_active_session_history;
-ERROR:  global views feature is incomplete
-SET yb_enable_global_views = FALSE;
+ERROR:  federatedYB queries are not supported
+HINT:  Must enable the GUC yb_enable_global_views
