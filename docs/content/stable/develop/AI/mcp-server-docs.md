@@ -20,7 +20,7 @@ This enables the tool to answer questions about Yugabyte without leaving your ID
 
 ## Set up
 
-The MCP server is hosted at `https://yugabyte.mcp.kapa.ai`.
+The MCP server is hosted at `https://yugabyte.mcp.kapa.ai`. Note that when you connect to the MCP server for the first time, you will be required to authenticate via a Google sign-in window. For more information, see [Authentication](https://docs.kapa.ai/integrations/mcp/overview#authentication) in Kapa Documentation.
 
 From the docs Search bar, click **Ask AI > Use MCP**.
 
@@ -46,7 +46,7 @@ You need to do the following additional steps to enable the server:
 
   {{% tab header="VS Code" lang="vscode" %}}
 
-**Prerequisites**: VS Code 1.102+ with GitHub Copilot enabled.
+**Prerequisites**: VS Code 1.109.2 with GitHub Copilot enabled.
 
 The **Add to VS Code** option opens VS Code directly with the MCP server configuration window.
 
@@ -75,7 +75,7 @@ You need to do the following additional steps to enable the server:
 
   {{% tab header="MCP URL" lang="mcp-url" %}}
 
-For Claude Desktop, ChatGPT, or other MCP-compatible clients, you can use the hosted endpoint or a local config.
+For Claude Desktop, ChatGPT, or other MCP-compatible clients, you can use the hosted endpoint or a local config. 
 
 **Option A — Kapa-hosted endpoint**
 
@@ -90,15 +90,27 @@ Add the server to your client config (for example, `claude_desktop_config.json`)
 ```json
 {
   "mcpServers": {
-    "yugabytedb-docs": {
+    "yugabyte-docs": {
       "command": "npx",
-      "args": ["-y", "@yugabyte/mcp-server-docs"]
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://yugabyte.mcp.kapa.ai"
+      ]
     }
   }
 }
 ```
 
-Restart Claude Desktop for changes to take effect.
+Note that you must fully quit Claude Desktop (from the menu bar, not just closing the window) for changes to take effect.
+
+#### Troubleshooting Node.js issues
+
+If the logs for the MCP server shows a SyntaxError, it is likely due to an outdated Node.js version.
+
+- Check your version: Run `node -v` in your terminal. This tool requires Node v18 or higher (v22.14.0+ recommended).
+
+- Verify the path: If you use NVM, Claude might still pick up an older system version of Node. You can check which version is actually running by looking at the Claude > Developer > View Logs and searching for the "Using MCP server command" line.
 
   {{% /tab %}}
 
@@ -106,9 +118,50 @@ Restart Claude Desktop for changes to take effect.
 
 ## Examples
 
-After the server is connected, try prompts such as:
+After the server is connected, you can ask questions about Yugabyte from your specific IDE or AI tool such as the following:
 
 * Explain the Raft consensus implementation in YugabyteDB.
 * Give me a YSQL example of a stored procedure that handles a bank transfer with error checking.
 * What is the recommended way to perform a rolling upgrade on a 6-node cluster?
 * Summarize the main differences between YSQL and YCQL index types.
+
+### Example prompt in Claude Desktop
+
+Sample prompt:
+
+```text
+What's new YugabyteDB Anywhere for v2025.1.1.1?
+```
+
+You should see a message from Claude indicating that it is searching YugabyteDB knowledge sources and the response similar to the following:
+
+```output
+I'll search the YugabyteDB documentation for information about what's new in YugabyteDB Anywhere version 2025.1.1.0.
+
+Search yugabyte db knowledge sources>
+
+  YugabyteDB Anywhere v2025.1.1.1 - October 3, 2025
+  =================================================
+
+  Build: 2025.1.1.1-b1
+
+  HIGHLIGHTS
+  ----------
+
+  xCluster Disaster Recovery (DR) – Control-plane support for DDL replication (EA)
+    • Adds YugabyteDB Anywhere support for Automatic transactional xCluster replication
+    • Enables seamless replication of schema changes across clusters in a DR setup
+
+  UI updates to automatically provision on-premises nodes (GA)
+    • UI for creating on-premises providers has been modified to direct users to automatic provisioning
+    • Improves the out-of-box experience
+
+  NOTE: Support for legacy node provisioning will be dropped in v2025.2. Before upgrading to v2025.2, update your node provisioning workflows to support automatic provisioning.
+
+  NEW FEATURES
+  ------------
+    • Backups with DDL (TP) - Backups succeed even when DDL changes are occurring during the backup process
+    • Filter PII in support bundles (GA) - When collecting pgAudit logs in support bundles, sensitive PII data is now masked to reduce risk of data privacy violations
+    • AWS EBS disk encryption support (EA) - Support for AWS's EBS disk encryption, complementing or offering an alternative to YugabyteDB's encryption-at-rest
+    • Batching of rolling operations (GA) - During rolling restarts (software upgrades, flag changes), YugabyteDB Anywhere can now process multiple YB-TServer nodes simultaneously in each availability zone, reducing time by 2x-3x or more depending on batch size
+```
