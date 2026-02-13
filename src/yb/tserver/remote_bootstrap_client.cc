@@ -362,7 +362,8 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
     }
     auto table_info = std::make_shared<tablet::TableInfo>(
         consensus::MakeTabletLogPrefix(tablet_id_, fs_manager().uuid()),
-        tablet::Primary::kTrue, table_id, table.namespace_name(), table.table_name(),
+        tablet::Primary::kTrue, table_id, table.namespace_name(), table.namespace_id(),
+        table.table_name(),
         table.table_type(), schema, qlexpr::IndexMap(table.indexes()),
         table.has_index_info() ? std::optional<qlexpr::IndexInfo>(table.index_info())
                                : std::nullopt,

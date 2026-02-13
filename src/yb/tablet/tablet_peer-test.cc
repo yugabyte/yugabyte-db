@@ -525,12 +525,17 @@ TEST_F(TabletPeerTest, TestGCEmptyLog) {
   ASSERT_OK(tablet_peer_->RunLogGC());
 }
 
-TEST_F(TabletPeerTest, TestAddTableUpdatesLastChangeMetadataOpId) {
+TEST_F(TabletPeerTest, TestAddTableUpdatesMetadataAndStoresNamespaceInfo) {
   auto tablet = ASSERT_RESULT(tablet_peer_->shared_tablet());
+  const std::string kTableId = "00004000000030008000000000004020";
+  const std::string kNamespaceId = "abcdef01abcdef01abcdef01abcdef01";
+  const std::string kNamespaceName = "test_ns";
   TableInfoPB table_info;
-  table_info.set_table_id("00004000000030008000000000004020");
+  table_info.set_table_id(kTableId);
   table_info.set_table_name("test");
   table_info.set_table_type(PGSQL_TABLE_TYPE);
+  table_info.set_namespace_id(kNamespaceId);
+  table_info.set_namespace_name(kNamespaceName);
   ColumnSchema col("a", DataType::UINT32, ColumnKind::RANGE_ASC_NULL_FIRST);
   ColumnId col_id(1);
   Schema schema({col}, {col_id});
@@ -538,6 +543,9 @@ TEST_F(TabletPeerTest, TestAddTableUpdatesLastChangeMetadataOpId) {
   OpId op_id(100, 5);
   ASSERT_OK(tablet->AddTable(table_info, op_id, HybridTime()));
   ASSERT_EQ(tablet->metadata()->TEST_LastAppliedChangeMetadataOperationOpId(), op_id);
+  auto result = ASSERT_RESULT(tablet->metadata()->GetTableInfo(kTableId));
+  ASSERT_EQ(result->namespace_id, kNamespaceId);
+  ASSERT_EQ(result->namespace_name, kNamespaceName);
 }
 
 TEST_F(TabletPeerTest, TestRollLogAfterTabletPeerShutdown) {

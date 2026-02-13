@@ -363,7 +363,9 @@ Status SysCatalogTable::CreateNew(FsManager *fs_manager) {
 
   auto table_info = std::make_shared<tablet::TableInfo>(
       consensus::MakeTabletLogPrefix(kSysCatalogTabletId, fs_manager->uuid()),
-      tablet::Primary::kTrue, kSysCatalogTableId, "", table_name(), TableType::YQL_TABLE_TYPE,
+      tablet::Primary::kTrue, kSysCatalogTableId, "" /* namespace_name */, "" /* namespace_id */,
+      table_name(),
+      TableType::YQL_TABLE_TYPE,
       schema, qlexpr::IndexMap(), std::nullopt /* index_info */, 0 /* schema_version */,
       partition_schema, OpId{}, HybridTime{}, "" /* pg_table_id */,
       tablet::SkipTableTombstoneCheck::kTrue);

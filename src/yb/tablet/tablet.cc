@@ -2855,7 +2855,8 @@ Status Tablet::AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id
   }
 
   auto table_info_ptr = VERIFY_RESULT(metadata_->AddTable(
-      table_info.table_id(), table_info.namespace_name(), table_info.table_name(),
+      table_info.table_id(), table_info.namespace_name(), table_info.namespace_id(),
+      table_info.table_name(),
       table_info.table_type(), schema, qlexpr::IndexMap(), partition_schema, index_info,
       table_info.schema_version(), op_id, ht, table_info.pg_table_id(),
       SkipTableTombstoneCheck(table_info.skip_table_tombstone_check()),

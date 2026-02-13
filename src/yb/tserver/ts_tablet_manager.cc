@@ -1391,6 +1391,7 @@ Status TSTabletManager::DoApplyCloneTablet(
       tablet::Primary(source_table->primary()),
       target_table_id,
       target_namespace_name,
+      source_table->namespace_id,
       source_table->table_name,
       source_table->table_type,
       /* Fixed by restore, but we need it to get partition_schema so might as well set it. */

@@ -179,6 +179,7 @@ TableInfo::TableInfo(const std::string& tablet_log_prefix,
                      Primary primary,
                      std::string table_id_,
                      std::string namespace_name,
+                     NamespaceId namespace_id,
                      std::string table_name,
                      TableType table_type,
                      const Schema& schema,
@@ -192,6 +193,7 @@ TableInfo::TableInfo(const std::string& tablet_log_prefix,
                      SkipTableTombstoneCheck skip_table_tombstone_check_)
     : table_id(std::move(table_id_)),
       namespace_name(std::move(namespace_name)),
+      namespace_id(std::move(namespace_id)),
       table_name(std::move(table_name)),
       table_type(table_type),
       cotable_id(CHECK_RESULT(ParseCotableId(primary, table_id))),
@@ -494,7 +496,7 @@ TableInfoPtr TableInfo::TEST_CreateWithLogPrefix(
     dockv::PartitionSchema partition_schema) {
   return std::make_shared<TableInfo>(
       std::move(log_prefix), Primary::kTrue, std::move(table_id), std::move(namespace_name),
-      std::move(table_name), table_type, schema, qlexpr::IndexMap(),
+      "" /* namespace_id */, std::move(table_name), table_type, schema, qlexpr::IndexMap(),
       std::nullopt /* index_info */, 0 /* schema_version */, partition_schema, OpId{}, HybridTime{},
       "" /* pg_table_id */, tablet::SkipTableTombstoneCheck::kFalse);
 }
@@ -1482,7 +1484,8 @@ void RaftGroupMetadata::SetSchemaAndTableName(
 }
 
 Result<TableInfoPtr> RaftGroupMetadata::AddTable(
-    const std::string& table_id, const std::string& namespace_name, const std::string& table_name,
+    const std::string& table_id, const std::string& namespace_name,
+    const NamespaceId& namespace_id, const std::string& table_name,
     const TableType table_type, const Schema& schema, const IndexMap& index_map,
     const dockv::PartitionSchema& partition_schema, const std::optional<IndexInfo>& index_info,
     const SchemaVersion schema_version, const OpId& op_id, HybridTime ht,
@@ -1495,6 +1498,7 @@ Result<TableInfoPtr> RaftGroupMetadata::AddTable(
                                                             primary,
                                                             table_id,
                                                             namespace_name,
+                                                            namespace_id,
                                                             table_name,
                                                             table_type,
                                                             schema,
