@@ -14398,8 +14398,8 @@ void PopulateTabletMetadata(
         leader_wal_files_size = replica.drive_info.wal_files_size;
       } else {
         tablet_metadata->add_replicas(server_address);
-        tablet_metadata->add_replicas_sst_files_size(replica.drive_info.sst_files_size);
-        tablet_metadata->add_replicas_wal_files_size(replica.drive_info.wal_files_size);
+        tablet_metadata->add_replica_sst_sizes(replica.drive_info.sst_files_size);
+        tablet_metadata->add_replica_wal_sizes(replica.drive_info.wal_files_size);
       }
     }
   }
@@ -14407,8 +14407,8 @@ void PopulateTabletMetadata(
   // Add leader as the last replica
   if (!leader_address.empty()) {
     tablet_metadata->add_replicas(leader_address);
-    tablet_metadata->add_replicas_sst_files_size(leader_sst_files_size);
-    tablet_metadata->add_replicas_wal_files_size(leader_wal_files_size);
+    tablet_metadata->add_replica_sst_sizes(leader_sst_files_size);
+    tablet_metadata->add_replica_wal_sizes(leader_wal_files_size);
   }
 
   auto tablet_lock = tablet->LockForRead();

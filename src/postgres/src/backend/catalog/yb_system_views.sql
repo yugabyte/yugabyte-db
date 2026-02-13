@@ -68,8 +68,8 @@ CREATE VIEW yb_tablet_metadata AS
         t.end_hash_code,
         t.leader,
         t.replicas,
-        t.active_ssts_size,
-        t.wals_size
+        t.active_sst_sizes,
+        t.wal_sizes
     FROM
         yb_get_tablet_metadata() t
     LEFT JOIN
