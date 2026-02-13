@@ -36,7 +36,7 @@ To add Yugabyte Docs MCP server, do the following:
 
 The **Add to Cursor** option opens Cursor directly with the MCP server configuration **Tools** window.
 
-![Cursor MCP](/images/ai/cursor-mcp1.png)
+![Cursor MCP](/images/ai/cursor-mcp.png)
 
 You need to do the following additional steps to enable the server:
 
@@ -52,7 +52,7 @@ You need to do the following additional steps to enable the server:
 
 The **Add to VS Code** option opens VS Code directly with the MCP server configuration window.
 
-![VS Code MCP](/images/ai/vs-code-mcp1.png)
+![VS Code MCP](/images/ai/vs-code-mcp.png)
 
 You need to do the following additional steps to enable the server:
 
