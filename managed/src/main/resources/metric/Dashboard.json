@@ -9326,7 +9326,7 @@
     }, {
       "hide" : false,
       "legendFormat" : "Total",
-      "expr" : "avg(avg_over_time(process_io_read_rate{node_prefix=~\"$dbcluster\", process=\"total\"}[300s])) by (process)",
+      "expr" : "avg(avg_over_time(process_io_read_rate{node_prefix=~\"$dbcluster\", process=\"total_count\"}[300s])) by (process)",
       "refId" : "H"
     } ],
     "gridPos" : {
@@ -9453,7 +9453,7 @@
     }, {
       "hide" : false,
       "legendFormat" : "Total",
-      "expr" : "avg(avg_over_time(process_io_write_rate{node_prefix=~\"$dbcluster\", process=\"total\"}[300s])) by (process)",
+      "expr" : "avg(avg_over_time(process_io_write_rate{node_prefix=~\"$dbcluster\", process=\"total_count\"}[300s])) by (process)",
       "refId" : "H"
     } ],
     "gridPos" : {
@@ -9554,13 +9554,13 @@
       "refId" : "B"
     }, {
       "hide" : false,
-      "legendFormat" : "Connection Pooling Manager",
-      "expr" : "avg(max_over_time(yb_process_open_files{node_prefix=~\"$dbcluster\", process=\"odyssey\"}[300s])) by (process)",
+      "legendFormat" : "Total",
+      "expr" : "avg(max_over_time(yb_process_open_files{node_prefix=~\"$dbcluster\", process=\"total_count\"}[300s])) by (process)",
       "refId" : "C"
     }, {
       "hide" : false,
-      "legendFormat" : "Total",
-      "expr" : "avg(max_over_time(yb_process_open_files{node_prefix=~\"$dbcluster\", process=\"total\"}[300s])) by (process)",
+      "legendFormat" : "Connection Pooling Manager",
+      "expr" : "avg(max_over_time(yb_process_open_files{node_prefix=~\"$dbcluster\", process=\"odyssey\"}[300s])) by (process)",
       "refId" : "D"
     }, {
       "hide" : false,
@@ -9671,18 +9671,18 @@
     "id" : 113,
     "targets" : [ {
       "hide" : false,
+      "legendFormat" : "Total",
+      "expr" : "avg(avg_over_time(yb_process_memory_kb{type=\"proportional\", node_prefix=~\"$dbcluster\", process=\"total_count\"}[300s])) by (process) / 1024",
+      "refId" : "A"
+    }, {
+      "hide" : false,
       "legendFormat" : "Tserver",
       "expr" : "avg(avg_over_time(yb_process_memory_kb{type=\"proportional\", node_prefix=~\"$dbcluster\", process=\"yb-tserver\"}[300s])) by (process) / 1024",
-      "refId" : "A"
+      "refId" : "B"
     }, {
       "hide" : false,
       "legendFormat" : "Node Exporter",
       "expr" : "avg(avg_over_time(yb_process_memory_kb{type=\"proportional\", node_prefix=~\"$dbcluster\", process=\"node_exporter\"}[300s])) by (process) / 1024",
-      "refId" : "B"
-    }, {
-      "hide" : false,
-      "legendFormat" : "Total",
-      "expr" : "avg(avg_over_time(yb_process_memory_kb{type=\"proportional\", node_prefix=~\"$dbcluster\", process=\"total\"}[300s])) by (process) / 1024",
       "refId" : "C"
     }, {
       "hide" : false,
@@ -9798,18 +9798,18 @@
     "id" : 114,
     "targets" : [ {
       "hide" : false,
+      "legendFormat" : "Total",
+      "expr" : "avg(avg_over_time(yb_process_memory_kb{type=\"resident\", node_prefix=~\"$dbcluster\", process=\"total_count\"}[300s])) by (process) / 1024",
+      "refId" : "A"
+    }, {
+      "hide" : false,
       "legendFormat" : "Tserver",
       "expr" : "avg(avg_over_time(yb_process_memory_kb{type=\"resident\", node_prefix=~\"$dbcluster\", process=\"yb-tserver\"}[300s])) by (process) / 1024",
-      "refId" : "A"
+      "refId" : "B"
     }, {
       "hide" : false,
       "legendFormat" : "Node Exporter",
       "expr" : "avg(avg_over_time(yb_process_memory_kb{type=\"resident\", node_prefix=~\"$dbcluster\", process=\"node_exporter\"}[300s])) by (process) / 1024",
-      "refId" : "B"
-    }, {
-      "hide" : false,
-      "legendFormat" : "Total",
-      "expr" : "avg(avg_over_time(yb_process_memory_kb{type=\"resident\", node_prefix=~\"$dbcluster\", process=\"total\"}[300s])) by (process) / 1024",
       "refId" : "C"
     }, {
       "hide" : false,
@@ -9930,18 +9930,18 @@
       "refId" : "A"
     }, {
       "hide" : false,
-      "legendFormat" : "Total",
-      "expr" : "avg(avg_over_time(process_system_cpu_seconds_rate{node_prefix=~\"$dbcluster\", process=\"total\"}[300s])) by (process) * 100",
-      "refId" : "B"
-    }, {
-      "hide" : false,
       "legendFormat" : "Postgres",
       "expr" : "avg(avg_over_time(process_system_cpu_seconds_rate{node_prefix=~\"$dbcluster\", process=\"yb-postmaster\"}[300s])) by (process) * 100",
-      "refId" : "C"
+      "refId" : "B"
     }, {
       "hide" : false,
       "legendFormat" : "Connection Pooling Manager",
       "expr" : "avg(avg_over_time(process_system_cpu_seconds_rate{node_prefix=~\"$dbcluster\", process=\"odyssey\"}[300s])) by (process) * 100",
+      "refId" : "C"
+    }, {
+      "hide" : false,
+      "legendFormat" : "Total",
+      "expr" : "avg(avg_over_time(process_system_cpu_seconds_rate{node_prefix=~\"$dbcluster\", process=\"total_count\"}[300s])) by (process) * 100",
       "refId" : "D"
     }, {
       "hide" : false,
@@ -10057,38 +10057,38 @@
       "refId" : "A"
     }, {
       "hide" : false,
-      "legendFormat" : "Total",
-      "expr" : "avg(avg_over_time(process_user_cpu_seconds_rate{node_prefix=~\"$dbcluster\", process=\"total\"}[300s])) by (process) * 100",
-      "refId" : "B"
-    }, {
-      "hide" : false,
       "legendFormat" : "Otel Collector",
       "expr" : "avg(avg_over_time(process_user_cpu_seconds_rate{node_prefix=~\"$dbcluster\", process=\"otelcol-contrib\"}[300s])) by (process) * 100",
-      "refId" : "C"
+      "refId" : "B"
     }, {
       "hide" : false,
       "legendFormat" : "YB-Controller",
       "expr" : "avg(avg_over_time(process_user_cpu_seconds_rate{node_prefix=~\"$dbcluster\", process=\"yb-controller-server\"}[300s])) by (process) * 100",
-      "refId" : "D"
+      "refId" : "C"
     }, {
       "hide" : false,
       "legendFormat" : "Connection Pooling Manager",
       "expr" : "avg(avg_over_time(process_user_cpu_seconds_rate{node_prefix=~\"$dbcluster\", process=\"odyssey\"}[300s])) by (process) * 100",
-      "refId" : "E"
+      "refId" : "D"
     }, {
       "hide" : false,
       "legendFormat" : "Master",
       "expr" : "avg(avg_over_time(process_user_cpu_seconds_rate{node_prefix=~\"$dbcluster\", process=\"yb-master\"}[300s])) by (process) * 100",
-      "refId" : "F"
+      "refId" : "E"
     }, {
       "hide" : false,
       "legendFormat" : "Postgres",
       "expr" : "avg(avg_over_time(process_user_cpu_seconds_rate{node_prefix=~\"$dbcluster\", process=\"yb-postmaster\"}[300s])) by (process) * 100",
-      "refId" : "G"
+      "refId" : "F"
     }, {
       "hide" : false,
       "legendFormat" : "Tserver",
       "expr" : "avg(avg_over_time(process_user_cpu_seconds_rate{node_prefix=~\"$dbcluster\", process=\"yb-tserver\"}[300s])) by (process) * 100",
+      "refId" : "G"
+    }, {
+      "hide" : false,
+      "legendFormat" : "Total",
+      "expr" : "avg(avg_over_time(process_user_cpu_seconds_rate{node_prefix=~\"$dbcluster\", process=\"total_count\"}[300s])) by (process) * 100",
       "refId" : "H"
     } ],
     "gridPos" : {
@@ -10179,18 +10179,18 @@
     "id" : 117,
     "targets" : [ {
       "hide" : false,
+      "legendFormat" : "Total",
+      "expr" : "avg(avg_over_time(yb_process_memory_kb{type=\"virtual\", node_prefix=~\"$dbcluster\", process=\"total_count\"}[300s])) by (process) / 1024",
+      "refId" : "A"
+    }, {
+      "hide" : false,
       "legendFormat" : "Tserver",
       "expr" : "avg(avg_over_time(yb_process_memory_kb{type=\"virtual\", node_prefix=~\"$dbcluster\", process=\"yb-tserver\"}[300s])) by (process) / 1024",
-      "refId" : "A"
+      "refId" : "B"
     }, {
       "hide" : false,
       "legendFormat" : "Node Exporter",
       "expr" : "avg(avg_over_time(yb_process_memory_kb{type=\"virtual\", node_prefix=~\"$dbcluster\", process=\"node_exporter\"}[300s])) by (process) / 1024",
-      "refId" : "B"
-    }, {
-      "hide" : false,
-      "legendFormat" : "Total",
-      "expr" : "avg(avg_over_time(yb_process_memory_kb{type=\"virtual\", node_prefix=~\"$dbcluster\", process=\"total\"}[300s])) by (process) / 1024",
       "refId" : "C"
     }, {
       "hide" : false,
