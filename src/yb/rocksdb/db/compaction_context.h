@@ -54,6 +54,10 @@ class CompactionContext {
   // Update file meta data after compaction. For instance could be used to patch frontiers.
   virtual Status UpdateMeta(FileMetaData* meta) = 0;
 
+  // Must be triggered after successful or unsuccessful compaction to cleanup internal
+  // resources. Must tolerate multiple calls. DB mutex must be unheld!
+  virtual void CompactionFinished() = 0;
+
   virtual ~CompactionContext() = default;
 };
 
