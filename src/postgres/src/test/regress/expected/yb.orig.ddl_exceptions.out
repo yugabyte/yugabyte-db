@@ -1,0 +1,90 @@
+-- Test interaction between "New Table" optimizations and PL/pgSQL exceptions.
+-- Exception blocks create internal subtransactions (savepoints).
+-- Since direct writes to Regular DB cannot be rolled back to a savepoint,
+-- these cases should gracefully fall back to standard intent-based writes.
+-- 1. Rollback of a subtransaction (Exception caught)
+-- Verifies that data written inside a failing exception block is actually removed.
+BEGIN;
+CREATE TABLE exception_test (id INT PRIMARY KEY, val TEXT);
+CREATE OR REPLACE PROCEDURE test_exception_rollback() AS $$
+BEGIN
+    INSERT INTO exception_test VALUES (1, 'initial');
+
+    BEGIN
+        -- This block creates a SUBTRANSACTION.
+        INSERT INTO exception_test VALUES (2, 'should be rolled back');
+
+        -- Force an error
+        RAISE EXCEPTION 'intentional error';
+    EXCEPTION WHEN OTHERS THEN
+        -- Error caught, subtransaction rolls back.
+        RAISE NOTICE 'Caught error: %', SQLERRM;
+    END;
+END;
+$$ LANGUAGE plpgsql;
+CALL test_exception_rollback();
+NOTICE:  Caught error: intentional error
+-- Success Criteria:
+-- Row 1 should exist.
+-- Row 2 MUST NOT exist.
+SELECT * FROM exception_test ORDER BY id;
+ id |   val   
+----+---------
+  1 | initial
+(1 row)
+
+ROLLBACK;
+-- 2. Nested Exceptions
+-- Verifies behavior across multiple levels of savepoints.
+BEGIN;
+CREATE TABLE nested_exception_test (id INT PRIMARY KEY, val TEXT);
+CREATE OR REPLACE PROCEDURE nested_exception_logic() AS $$
+BEGIN
+    INSERT INTO nested_exception_test VALUES (1, 'level 0');
+
+    BEGIN
+        INSERT INTO nested_exception_test VALUES (2, 'level 1');
+        BEGIN
+            INSERT INTO nested_exception_test VALUES (3, 'level 2');
+            RAISE EXCEPTION 'fail level 2';
+        EXCEPTION WHEN OTHERS THEN
+            RAISE NOTICE 'Caught level 2';
+        END;
+    EXCEPTION WHEN OTHERS THEN
+        RAISE NOTICE 'Caught level 1';
+    END;
+END;
+$$ LANGUAGE plpgsql;
+CALL nested_exception_logic();
+NOTICE:  Caught level 2
+-- Success Criteria:
+-- Rows 1 and 2 should exist.
+-- Row 3 MUST NOT exist.
+SELECT * FROM nested_exception_test ORDER BY id;
+ id |   val   
+----+---------
+  1 | level 0
+  2 | level 1
+(2 rows)
+
+ROLLBACK;
+-- 3. Savepoint combined with Schema Evolution
+-- Tests that the system doesn't get confused when metadata changes
+-- occur alongside subtransactions.
+BEGIN;
+CREATE TABLE savepoint_metadata_test (id INT PRIMARY KEY);
+SAVEPOINT s1;
+-- Perform DDL after a savepoint
+ALTER TABLE savepoint_metadata_test ADD COLUMN info TEXT;
+-- Try to insert. The system should detect we are in a subtransaction
+-- (due to the savepoint) and use standard intents.
+INSERT INTO savepoint_metadata_test VALUES (1, 'data');
+ROLLBACK TO SAVEPOINT s1;
+-- Success Criteria:
+-- Table should exist, but column 'info' and Row 1 should be gone.
+SELECT * FROM savepoint_metadata_test;
+ id 
+----
+(0 rows)
+
+ROLLBACK;
