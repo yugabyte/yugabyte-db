@@ -8435,8 +8435,8 @@ replica_index_cmp(const void *a, const void *b, void *arg)
  * - end_hash_code: int32
  * - leader: text
  * - replicas: text[]
- * - active_ssts_size: int8[]
- * - wals_size: int8[]
+ * - active_sst_sizes: int8[]
+ * - wal_sizes: int8[]
  *
  * The start_hash_code and end_hash_code are the hash codes of the start and end
  * keys of the tablet for hash sharded tables. Leader is provided as a separate
@@ -8524,7 +8524,7 @@ yb_get_tablet_metadata(PG_FUNCTION_ARGS)
 		if (tablet->replicas_count > 0)
 		{
 			size_t		nreplicas = tablet->replicas_count;
-			int		   *sort_idx;
+			int		   *sort_idxs;
 			Datum	   *text_elems;
 			Datum	   *sst_elems;
 			Datum	   *wal_elems;
@@ -8538,11 +8538,11 @@ yb_get_tablet_metadata(PG_FUNCTION_ARGS)
 			 * Build a sort index so replicas and their sizes stay parallel
 			 * after lexicographic sorting.
 			 */
-			sort_idx = palloc(nreplicas * sizeof(int));
+			sort_idxs = palloc(nreplicas * sizeof(int));
 			for (size_t idx = 0; idx < nreplicas; idx++)
-				sort_idx[idx] = (int) idx;
+				sort_idxs[idx] = (int) idx;
 
-			qsort_arg(sort_idx, nreplicas, sizeof(int),
+			qsort_arg(sort_idxs, nreplicas, sizeof(int),
 					  replica_index_cmp, tablet->replicas);
 
 			text_elems = palloc(nreplicas * sizeof(Datum));
@@ -8551,15 +8551,15 @@ yb_get_tablet_metadata(PG_FUNCTION_ARGS)
 
 			for (size_t idx = 0; idx < nreplicas; idx++)
 			{
-				int			si = sort_idx[idx];
+				int			si = sort_idxs[idx];
 
 				text_elems[idx] = CStringGetTextDatum(tablet->replicas[si]);
-				sst_elems[idx] = Int64GetDatum(
-					tablet->replicas_sst_files_size
-						? (int64) tablet->replicas_sst_files_size[si] : 0);
-				wal_elems[idx] = Int64GetDatum(
-					tablet->replicas_wal_files_size
-						? (int64) tablet->replicas_wal_files_size[si] : 0);
+				sst_elems[idx] = UInt64GetDatum(
+					tablet->replica_sst_sizes
+						? tablet->replica_sst_sizes[si] : 0);
+				wal_elems[idx] = UInt64GetDatum(
+					tablet->replica_wal_sizes
+						? tablet->replica_wal_sizes[si] : 0);
 			}
 
 			values[8] = PointerGetDatum(
@@ -8572,7 +8572,7 @@ yb_get_tablet_metadata(PG_FUNCTION_ARGS)
 				construct_array(wal_elems, (int) nreplicas,
 								INT8OID, 8, FLOAT8PASSBYVAL, TYPALIGN_DOUBLE));
 
-			pfree(sort_idx);
+			pfree(sort_idxs);
 			pfree(text_elems);
 			pfree(sst_elems);
 			pfree(wal_elems);

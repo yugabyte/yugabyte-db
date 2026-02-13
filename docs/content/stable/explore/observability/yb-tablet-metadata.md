@@ -37,6 +37,8 @@ The following table describes the columns of the `yb_tablet_metadata` view.
 | end_hash_code | int | Ending hash code (exclusive) for the tablet. (NULL for range-sharded tables.) |
 | leader | text | IP address, port of the leader node for the tablet. |
 | replicas | text[] | A list of replica IP addresses and port (includes leader) associated with the tablet. |
+| active_ssts_size | bigint[] | Per-replica SST files size in bytes, in the same order as replicas. |
+| wals_size | bigint[] | Per-replica WAL files size in bytes, in the same order as replicas. |
 
 ## Examples
 
@@ -268,4 +270,3 @@ SELECT
 | 99ed7472ccde4af787cb0bcfd4fd90bd | yugabyte | test_table       | 0               | 32768         | RocksDB_NewIterator                | TServer              | DiskIO          | 1     |
 +----------------------------------+----------+------------------+-----------------+---------------+------------------------------------+----------------------+-----------------+-------+
 ```
-
