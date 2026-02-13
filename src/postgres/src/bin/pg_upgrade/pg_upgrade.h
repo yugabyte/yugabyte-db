@@ -301,6 +301,7 @@ typedef struct
 	int			jobs;			/* number of processes/threads to use */
 	char	   *socketdir;		/* directory to use for Unix sockets */
 	bool		do_statistics;	/* carry over statistics from old cluster */
+	char	   *yb_working_dir;	/* YB: working directory for pg_upgrade */
 } UserOpts;
 
 typedef struct

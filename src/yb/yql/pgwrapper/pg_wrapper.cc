@@ -396,6 +396,9 @@ DEFINE_RUNTIME_PG_FLAG(
 DEFINE_RUNTIME_PG_FLAG(bool, yb_ignore_bool_cond_for_legacy_estimate, false,
     "Ignore boolean condition for row count estimate in legacy cost model.");
 
+DEFINE_NON_RUNTIME_string(pg_upgrade_working_dir, "",
+    "Working directory for pg_upgrade. If empty, defaults to the pg_upgrade data directory.");
+
 using gflags::CommandLineFlagInfo;
 using std::string;
 using std::vector;
@@ -1051,7 +1054,17 @@ Status PgWrapper::RunPgUpgrade(const PgUpgradeParams& param) {
     args.push_back("--no-statistics");
   }
 
+  // pg_upgrade checks for write access to its current working directory. We explicitly set
+  // the working directory rather than inheriting from the parent process (yb-master), because
+  // yb-master may be running in a directory without write permissions. The default is the
+  // pg_upgrade data directory. This can be overridden via the --pg_upgrade_working_dir flag.
+  const auto& working_dir =
+      FLAGS_pg_upgrade_working_dir.empty() ? param.data_dir : FLAGS_pg_upgrade_working_dir;
+  args.push_back("--yb-working-dir");
+  args.push_back(working_dir);
+
   LOG(INFO) << "Launching pg_upgrade: " << AsString(args);
+
   RETURN_NOT_OK_PREPEND(
       Subprocess::Call(args, /*log_stdout_and_stderr=*/true),
       "pg_upgrade failed. Check previous errors for more details.");
