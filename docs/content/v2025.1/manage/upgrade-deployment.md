@@ -63,18 +63,16 @@ To upgrade YugabyteDB to a version based on a different version of PostgreSQL (f
 
 - [Point-in-time-recovery](../backup-restore/point-in-time-recovery/) (PITR)
 
-  When you start the [upgrade](#upgrade-phase), the PITR change history is invalidated. This means that after an upgrade starts, you will no longer be able to access or restore to any time before the upgrade was started - _regardless of the outcome of the upgrade_.
+  Before starting the upgrade, you should delete all the snapshot schedules for the universe. Recreate them after either [finalizing](#a-finalize-phase) or [rolling back](#b-rollback-phase) the upgrade.
 
-  During the [monitoring phase](#monitor-phase) (that is, after upgrading but before finalizing or rolling back), any attempt to perform any PITR-based actions (such as rewind or clone a database to a point in time, back up and restore a database with PITR, or inspect a database at a point in time) will fail.
+  You cannot use PITR during the upgrade, or during the [monitoring phase](#monitor-phase) (before either finalizing or rolling back). In addition, you can't go back in time between versions.
 
-  After [finalizing](#a-finalize-phase) or [rolling back](#b-rollback-phase) the upgrade, PITR-based actions become available again. However, keep in mind the following:
+  After finalizing or rolling back an upgrade, PITR-based actions become available again. However, keep in mind the following:
 
   - After finalizing, you cannot perform a PITR-based action targeting a time before the upgrade was started.
   - After rollback, you cannot perform a PITR-based action targeting a time before the upgrade was started.
 
   If PITR has been enabled on the YSQL database `yugabyte`, disable it before starting the upgrade.
-
-  If you are performing a [major YSQL upgrade](../ysql-major-upgrade-yugabyted/), and have PITR enabled, delete the configuration before performing the upgrade. Recreate it only after the upgrade is either finalized or rolled back.
 
 ### YSQL
 
