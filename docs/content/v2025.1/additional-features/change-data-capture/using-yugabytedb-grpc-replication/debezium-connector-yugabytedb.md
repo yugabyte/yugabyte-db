@@ -27,7 +27,8 @@ The connector is compatible with the following versions of YugabyteDB.
 | 2.20 | 1.9.5.y.220.4 |
 | 2024.1 | dz.1.9.5.yb.grpc.2024.1 |
 | 2024.2 | dz.1.9.5.yb.grpc.2024.2.3 |
-| 2025.1 | dz.1.9.5.yb.grpc.2024.2.3 |
+| 2025.1 | dz.1.9.5.yb.grpc.2025.1 |
+| 2025.2 | dz.1.9.5.yb.grpc.2025.2 |
 
 Starting with YugabyteDB v2024.1, the connector uses the following naming convention:
 
