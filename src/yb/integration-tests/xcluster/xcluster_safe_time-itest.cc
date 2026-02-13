@@ -289,7 +289,7 @@ TEST_F(XClusterSafeTimeTest, LagInSafeTime) {
   ASSERT_OK(WaitForSafeTime(ht_1));
 
   // 2. Simulate replication lag and make sure safe time does not move.
-  SetAtomicFlag(-1, &FLAGS_TEST_xcluster_simulated_lag_ms);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = -1;
   WriteWorkload(0, 100, producer_client(), producer_table_->name());
   auto ht_2 = GetProducerSafeTime();
 
@@ -297,7 +297,7 @@ TEST_F(XClusterSafeTimeTest, LagInSafeTime) {
   ASSERT_NOK(WaitForSafeTime(ht_2));
 
   // 4. Make sure safe time has progressed.
-  SetAtomicFlag(0, &FLAGS_TEST_xcluster_simulated_lag_ms);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = 0;
   ASSERT_OK(WaitForSafeTime(ht_2));
 }
 

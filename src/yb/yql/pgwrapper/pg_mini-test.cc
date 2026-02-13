@@ -718,7 +718,7 @@ TEST_F(PgMiniTest, WriteRetry) {
 
   ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY)"));
 
-  SetAtomicFlag(0.25, &FLAGS_TEST_respond_write_failed_probability);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_respond_write_failed_probability) = 0.25;
 
   LOG(INFO) << "Insert " << kKeys << " keys";
   for (int key = 0; key != kKeys; ++key) {
@@ -727,7 +727,7 @@ TEST_F(PgMiniTest, WriteRetry) {
                 status.ToString().find("Duplicate request") != std::string::npos) << status;
   }
 
-  SetAtomicFlag(0, &FLAGS_TEST_respond_write_failed_probability);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_respond_write_failed_probability) = 0;
 
   auto result = ASSERT_RESULT(conn.FetchMatrix("SELECT * FROM t ORDER BY key", kKeys, 1));
   for (int key = 0; key != kKeys; ++key) {
@@ -839,7 +839,7 @@ class PgMiniLargeClockSkewTest : public PgMiniTest {
   void SetUp() override {
     server::SkewedClock::Register();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_time_source) = server::SkewedClock::kName;
-    SetAtomicFlag(250000ULL, &FLAGS_max_clock_skew_usec);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_clock_skew_usec) = 250000ULL;
     PgMiniTestBase::SetUp();
   }
 };
@@ -1303,7 +1303,7 @@ TEST_F(PgMiniTest, MoveMaster) {
 }
 
 TEST_F(PgMiniTest, DDLWithRestart) {
-  SetAtomicFlag(1.0, &FLAGS_TEST_transaction_ignore_applying_probability);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 1.0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_force_master_leader_resolution) = true;
 
   auto conn = ASSERT_RESULT(Connect());

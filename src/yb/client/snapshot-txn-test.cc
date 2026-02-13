@@ -225,7 +225,7 @@ std::thread RandomClockSkewWalkThread(MiniCluster* cluster, std::atomic<bool>* s
   // Clock skew is modified by a random amount every 100ms.
   return std::thread([cluster, stop] {
     const server::SkewedClock::DeltaTime upperbound =
-        std::chrono::microseconds(GetAtomicFlag(&FLAGS_max_clock_skew_usec)) / 2;
+        std::chrono::microseconds(FLAGS_max_clock_skew_usec) / 2;
     const auto lowerbound = -upperbound;
     while (!stop->load(std::memory_order_acquire)) {
       auto num_servers = cluster->num_tablet_servers();

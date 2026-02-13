@@ -469,10 +469,10 @@ class BlockBasedTable::BlockEntryIteratorState : public TwoLevelBlockIteratorSta
   Statistics* const statistics_;
 
   const uint64_t sequential_disk_reads_for_auto_readahead_ =
-      yb::GetAtomicFlag(&FLAGS_rocksdb_iterator_sequential_disk_reads_for_auto_readahead);
-  const size_t max_readahead_size_ = yb::GetAtomicFlag(&FLAGS_rocksdb_iterator_max_readahead_size);
+      FLAGS_rocksdb_iterator_sequential_disk_reads_for_auto_readahead;
+  const size_t max_readahead_size_ = FLAGS_rocksdb_iterator_max_readahead_size;
   const size_t initial_readahead_size_ = std::min<size_t>(
-      yb::GetAtomicFlag(&FLAGS_rocksdb_iterator_init_readahead_size), max_readahead_size_);
+      FLAGS_rocksdb_iterator_init_readahead_size, max_readahead_size_);
 
   size_t readahead_size_ = initial_readahead_size_;
   size_t prev_offset_ = std::numeric_limits<size_t>::max();

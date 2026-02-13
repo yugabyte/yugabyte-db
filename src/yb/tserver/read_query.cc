@@ -488,7 +488,7 @@ Status ReadQuery::DoPickReadTime(server::Clock* clock) {
       read_time_.local_limit = current_safe_time;
     }
     if (IsPgsqlFollowerReadAtAFollower()) {
-      if (GetAtomicFlag(&FLAGS_ysql_follower_reads_avoid_waiting_for_safe_time) &&
+      if (FLAGS_ysql_follower_reads_avoid_waiting_for_safe_time &&
           current_safe_time < read_time_.read) {
         // We are given a read time. However, for Follower reads, it may be better
         // to redirect the query to the Leader instead of waiting on it.

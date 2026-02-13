@@ -135,7 +135,7 @@ class MasterPartitionedTest : public YBMiniClusterTestBase<MiniCluster> {
 
   void DoTearDown() override {
     client_.reset();
-    SetAtomicFlag(0, &FLAGS_TEST_slowdown_master_async_rpc_tasks_by_ms);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_slowdown_master_async_rpc_tasks_by_ms) = 0;
     SleepFor(MonoDelta::FromMilliseconds(1000));
     cluster_->Shutdown();
   }

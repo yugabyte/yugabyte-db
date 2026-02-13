@@ -2719,8 +2719,8 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteScalar() {
 
   // The response size should not exceed the rpc_max_message_size, so use it as a default size
   // limit. Reduce it to the number requested by the client, if it is stricter.
-  uint64_t response_size_limit = GetAtomicFlag(&FLAGS_rpc_max_message_size) *
-                                 GetAtomicFlag(&FLAGS_max_buffer_size_to_rpc_limit_ratio);
+  uint64_t response_size_limit = FLAGS_rpc_max_message_size *
+                                 FLAGS_max_buffer_size_to_rpc_limit_ratio;
   if (request_.has_size_limit() && request_.size_limit() > 0) {
     response_size_limit = std::min(response_size_limit, request_.size_limit());
   }
@@ -2838,8 +2838,8 @@ Result<std::tuple<size_t, bool>> PgsqlReadOperation::ExecuteScalar() {
 template <class KeyProvider>
 Result<size_t> PgsqlReadOperation::ExecuteBatchKeys(KeyProvider& key_provider) {
   // We limit the response's size.
-  uint64_t response_size_limit = GetAtomicFlag(&FLAGS_rpc_max_message_size) *
-                                 GetAtomicFlag(&FLAGS_max_buffer_size_to_rpc_limit_ratio);
+  uint64_t response_size_limit = FLAGS_rpc_max_message_size *
+                                 FLAGS_max_buffer_size_to_rpc_limit_ratio;
   if (request_.has_size_limit() && request_.size_limit() > 0) {
     response_size_limit = std::min(response_size_limit, request_.size_limit());
   }

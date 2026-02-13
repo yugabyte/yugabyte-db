@@ -151,7 +151,7 @@ void FlushJob::RecordFlushIOStats() {
 Result<FileNumbersHolder> FlushJob::Run(FileMetaData* file_meta) {
   ADOPT_WAIT_STATE(wait_state_);
   SCOPED_WAIT_STATUS(RocksDB_Flush);
-  if (PREDICT_FALSE(yb::GetAtomicFlag(&FLAGS_TEST_rocksdb_crash_on_flush))) {
+  if (PREDICT_FALSE(FLAGS_TEST_rocksdb_crash_on_flush)) {
     CHECK(false) << "a flush should not have been scheduled.";
   }
 

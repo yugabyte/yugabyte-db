@@ -84,7 +84,7 @@ Status CanCreateTabletReplicas(
   if (replication_info_to_num_tablets.empty()) {
     return Status::OK();
   }
-  if (!GetAtomicFlag(&FLAGS_enforce_tablet_replica_limits)) {
+  if (!FLAGS_enforce_tablet_replica_limits) {
     return Status::OK();
   }
   auto limits = GetTabletReplicaPerResourceLimits();

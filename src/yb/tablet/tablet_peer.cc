@@ -1125,7 +1125,7 @@ Result<std::pair<OpId, HybridTime>> TabletPeer::GetOpIdAndSafeTimeForXReplBootst
   // transaction cannot be replicated. If the transaction is still active it needs to be aborted.
   // If, the coordinator is at 110 and the transaction was committed at 105. We need to move our
   // clock to 110 and pick a higher bootstrap_time so that the commit is not part of the bootstrap.
-  if (GetAtomicFlag(&FLAGS_abort_active_txns_during_xrepl_bootstrap)) {
+  if (FLAGS_abort_active_txns_during_xrepl_bootstrap) {
     AbortActiveTransactions();
   }
   auto bootstrap_time = VERIFY_RESULT(tablet->SafeTime(RequireLease::kTrue));
@@ -1162,7 +1162,7 @@ bool TabletPeer::is_cdc_min_replicated_index_stale(double* seconds_since_last_re
   }
   return (
       seconds_since_last_refresh >
-      GetAtomicFlag(&FLAGS_cdc_min_replicated_index_considered_stale_secs));
+      FLAGS_cdc_min_replicated_index_considered_stale_secs);
 }
 
 Status TabletPeer::set_cdc_min_replicated_index_unlocked(int64_t cdc_min_replicated_index) {
@@ -1299,7 +1299,7 @@ Status TabletPeer::SetCDCSDKRetainOpIdAndTime(
 
       txn_participant->SetIntentRetainOpIdAndTime(
           cdc_sdk_op_id, cdc_sdk_op_id_expiration, min_start_ht_cdc_unstreamed_txns);
-      if (GetAtomicFlag(&FLAGS_cdc_immediate_transaction_cleanup)) {
+      if (FLAGS_cdc_immediate_transaction_cleanup) {
         tablet_->CleanupIntentFiles();
       }
     }
@@ -1323,7 +1323,7 @@ Result<MonoDelta> TabletPeer::GetCDCSDKIntentRetainTime(const int64_t& cdc_sdk_l
     // Check how many milliseconds time remaining w.r.t current time, update
     // all the FOLLOWERs as their cdc_sdk_min_checkpoint_op_id_expiration_.
     MonoDelta max_retain_time =
-        MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms));
+        MonoDelta::FromMilliseconds(FLAGS_cdc_intent_retention_ms);
     auto lastest_active_time =
         MonoDelta::FromMicroseconds(GetCurrentTimeMicros() - cdc_sdk_latest_active_time);
     if (max_retain_time >= lastest_active_time) {
@@ -1364,7 +1364,7 @@ Result<bool> TabletPeer::SetAllInitialCDCRetentionBarriers(
     bool require_history_cutoff) {
 
   MonoDelta cdc_sdk_op_id_expiration =
-      MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms));
+      MonoDelta::FromMilliseconds(FLAGS_cdc_intent_retention_ms);
   return SetAllCDCRetentionBarriers(
       cdc_wal_index, cdc_sdk_intents_op_id, cdc_sdk_op_id_expiration, cdc_sdk_history_cutoff,
       require_history_cutoff, /*initial_retention_barrier=*/true);
@@ -1788,7 +1788,7 @@ void TabletPeer::EnableFlushBootstrapState() {
 }
 
 bool TabletPeer::FlushBootstrapStateEnabled() const {
-  return GetAtomicFlag(&FLAGS_enable_flush_retryable_requests) &&
+  return FLAGS_enable_flush_retryable_requests &&
       flush_bootstrap_state_enabled_.load(std::memory_order_relaxed);
 }
 

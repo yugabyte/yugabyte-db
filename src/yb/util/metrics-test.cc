@@ -817,7 +817,7 @@ TEST_F(MetricsTest, SimulateMetricDeletionBeforeFlush) {
     ASSERT_TRUE(registry_.TEST_metrics_aggregator()->IsPreAggregatedMetric(kTabletGaugeName));
   }
 
-  SetAtomicFlag(true, &FLAGS_TEST_pause_flush_aggregated_metrics);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_flush_aggregated_metrics) = true;
   std::thread metric_deletion_thread([&]{
     // Simulate metric deletion in the middle of WriteForPrometheus.
     std::this_thread::sleep_for(2s);
@@ -826,7 +826,7 @@ TEST_F(MetricsTest, SimulateMetricDeletionBeforeFlush) {
     table_entity->RetireOldMetrics();
     tablet_gauge.reset(nullptr);
     table_gauge.reset(nullptr);
-    SetAtomicFlag(false, &FLAGS_TEST_pause_flush_aggregated_metrics);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_flush_aggregated_metrics) = false;
   });
   {
     // Verify that metrics are absent in the scrape output after deletion.

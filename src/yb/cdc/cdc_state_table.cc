@@ -541,7 +541,7 @@ Result<std::shared_ptr<client::TableHandle>> CDCStateTable::OpenTable() {
 }
 
 Result<std::shared_ptr<client::TableHandle>> CDCStateTable::GetTable() {
-  bool use_cache = GetAtomicFlag(&FLAGS_enable_cdc_state_table_caching);
+  bool use_cache = FLAGS_enable_cdc_state_table_caching;
   if (!use_cache) {
     RETURN_NOT_OK(WaitForCreateTableToFinishWithoutCache());
     return OpenTable();

@@ -279,7 +279,7 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
     // If the TS of this replica is deemed DEAD then perform LBing only if it is blacklisted.
     if (check_ts_liveness_ && !meta_ts.descriptor->IsLiveAndHasReported()) {
       if (!global_state_->blacklisted_servers_.count(ts_uuid)) {
-        if (GetAtomicFlag(&FLAGS_allow_leader_balancing_dead_node)) {
+        if (FLAGS_allow_leader_balancing_dead_node) {
           allow_only_leader_balancing_ = true;
           YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 30, 3)
               << strings::Substitute("Master leader not received heartbeat from ts $0. "

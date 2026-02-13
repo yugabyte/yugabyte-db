@@ -575,12 +575,12 @@ Status CatalogManager::CreateTransactionAwareSnapshot(
   // 2. The user did not specify any Ttl value explicitly.
   int32_t retention_duration_hours = req.has_retention_duration_hours()
                                          ? req.retention_duration_hours()
-                                         : GetAtomicFlag(&FLAGS_default_snapshot_retention_hours);
+                                         : FLAGS_default_snapshot_retention_hours;
   TEST_SYNC_POINT("YBBackupTestWithColocationParam::CreateSnapshotReceived");
 
   // When only the namespace_id is specified, the master snapshot coordinator collects the snapshot
   // entries as of the snapshot_hybrid_time
-  if (GetAtomicFlag(&FLAGS_enable_namespace_snapshot_workflow) && req.tables_size() == 1) {
+  if (FLAGS_enable_namespace_snapshot_workflow && req.tables_size() == 1) {
     const auto& filter = req.tables(0);
     if (filter.table_name().empty() && filter.table_id().empty() && filter.has_namespace_() &&
         filter.namespace_().has_id() && filter.namespace_().database_type() == YQL_DATABASE_PGSQL) {
@@ -625,7 +625,7 @@ Status CatalogManager::RepackSnapshotsForBackup(
   TRACE("Acquired catalog manager lock");
   // Repack & extend the backup row entries.
   for (SnapshotInfoPB& snapshot : *resp->mutable_snapshots()) {
-    auto format_version = GetAtomicFlag(&FLAGS_enable_export_snapshot_using_relfilenode) &&
+    auto format_version = FLAGS_enable_export_snapshot_using_relfilenode &&
                                   include_ddl_in_progress_tables
                               ? kUseRelfilenodeFormatVersion
                               : kUseBackupRowEntryFormatVersion;
@@ -3007,7 +3007,7 @@ Status CatalogManager::RestoreSysCatalog(
     SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet, bool leader_mode,
     Status* complete_status) {
   Status s;
-  if (GetAtomicFlag(&FLAGS_enable_fast_pitr)) {
+  if (FLAGS_enable_fast_pitr) {
     s = RestoreSysCatalogFastPitr(restoration, tablet);
   } else {
     s = RestoreSysCatalogSlowPitr(restoration, tablet);

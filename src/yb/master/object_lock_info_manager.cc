@@ -1149,8 +1149,8 @@ Status ObjectLockInfoManager::Impl::RefreshYsqlLease(
   if (!req.has_local_request_send_time_ms()) {
     return STATUS(InvalidArgument, "Missing required local_request_send_time_ms");
   }
-  auto master_ttl = GetAtomicFlag(&FLAGS_master_ysql_operation_lease_ttl_ms);
-  auto buffer = GetAtomicFlag(&FLAGS_ysql_operation_lease_ttl_client_buffer_ms);
+  auto master_ttl = FLAGS_master_ysql_operation_lease_ttl_ms;
+  auto buffer = FLAGS_ysql_operation_lease_ttl_client_buffer_ms;
   CHECK_GT(master_ttl, buffer);
   resp.mutable_info()->set_lease_expiry_time_ms(
       req.local_request_send_time_ms() + master_ttl - buffer);

@@ -1089,10 +1089,10 @@ TEST_F(MasterTest, TestTablegroups) {
         }, namespaces);
   }
 
-  SetAtomicFlag(true, &FLAGS_TEST_tablegroup_master_only);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tablegroup_master_only) = true;
   // Create tablegroup and ensure it exists in catalog manager maps.
   ASSERT_OK(CreateTablegroup(kTablegroupId, ns_id, ns_name, "" /* tablespace_id */));
-  SetAtomicFlag(false, &FLAGS_TEST_tablegroup_master_only);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tablegroup_master_only) = false;
 
   ListTablegroupsRequestPB req;
   req.set_namespace_id(ns_id);
@@ -1823,7 +1823,7 @@ TEST_F(MasterTest, TestNamespaceCreateStates) {
   NamespaceName test_name = "test_pgsql";
 
   // Don't allow the BG thread to process namespaces.
-  SetAtomicFlag(true, &FLAGS_TEST_hang_on_namespace_transition);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_hang_on_namespace_transition) = true;
 
   // Create a new PGSQL namespace.
   CreateNamespaceResponsePB resp;
@@ -1861,7 +1861,7 @@ TEST_F(MasterTest, TestNamespaceCreateStates) {
   }
 
   // Finish Namespace create.
-  SetAtomicFlag(false, &FLAGS_TEST_hang_on_namespace_transition);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_hang_on_namespace_transition) = false;
   ASSERT_OK(CreateNamespaceWait(nsid, YQLDatabase::YQL_DATABASE_PGSQL));
 
   // Verify that Basic Access to a Namespace is now available.
@@ -1876,7 +1876,7 @@ TEST_F(MasterTest, TestNamespaceCreateStates) {
   }
   // 3. Delete the namespace.
   {
-    SetAtomicFlag(true, &FLAGS_TEST_hang_on_namespace_transition);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_hang_on_namespace_transition) = true;
 
     DeleteNamespaceRequestPB del_req;
     DeleteNamespaceResponsePB del_resp;
@@ -1891,7 +1891,7 @@ TEST_F(MasterTest, TestNamespaceCreateStates) {
     ASSERT_FALSE(FindNamespace(std::make_tuple("new_" + test_name, nsid), namespaces));
 
     // Resume finishing both [1] the delete and [2] the create.
-    SetAtomicFlag(false, &FLAGS_TEST_hang_on_namespace_transition);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_hang_on_namespace_transition) = false;
 
     // Verify the old namespace finishes deletion.
     IsDeleteNamespaceDoneRequestPB is_del_req;
@@ -1909,7 +1909,7 @@ TEST_F(MasterTest, TestNamespaceCreateFailure) {
   NamespaceName test_name = "test_pgsql";
 
   // Don't allow the BG thread to process namespaces.
-  SetAtomicFlag(true, &FLAGS_TEST_hang_on_namespace_transition);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_hang_on_namespace_transition) = true;
 
   // Create a new PGSQL namespace.
   CreateNamespaceResponsePB resp;
@@ -1959,7 +1959,7 @@ TEST_F(MasterTest, TestNamespaceCreateFailure) {
   }
 
   // Resume BG thread work and verify that the Namespace is eventually DELETED internally.
-  SetAtomicFlag(false, &FLAGS_TEST_hang_on_namespace_transition);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_hang_on_namespace_transition) = false;
 
   ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
     std::vector<scoped_refptr<NamespaceInfo>> namespace_internal;
@@ -1987,7 +1987,7 @@ TEST_F(MasterTest, TestNamespaceCreateFailure) {
 
 TEST_F(MasterTest, TestMultipleNamespacesWithSameName) {
   NamespaceName test_name = "test_pgsql";
-  SetAtomicFlag(true, &FLAGS_TEST_hang_on_namespace_transition);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_hang_on_namespace_transition) = true;
 
   // Create a new PGSQL namespace.
   CreateNamespaceResponsePB resp;
@@ -2006,7 +2006,7 @@ TEST_F(MasterTest, TestMultipleNamespacesWithSameName) {
   // There should now be two namespaces with the same name in the system, one in the FAILED state
   // and one in the PREPARING state. Allow the async work to run. The first namespace should be
   // cleaned up and the second namespace should be running.
-  SetAtomicFlag(false, &FLAGS_TEST_hang_on_namespace_transition);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_hang_on_namespace_transition) = false;
   ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
     std::vector<scoped_refptr<NamespaceInfo>> namespace_internal;
     mini_master_->catalog_manager().GetAllNamespaces(&namespace_internal, false);

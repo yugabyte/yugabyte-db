@@ -2003,7 +2003,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
     MonoDelta timeout;
     if (status != TransactionStatus::CREATED && status != TransactionStatus::PROMOTED) {
-      if (GetAtomicFlag(&FLAGS_transaction_disable_heartbeat_in_tests)) {
+      if (FLAGS_transaction_disable_heartbeat_in_tests) {
         HeartbeatDone(Status::OK(), /* request= */ {}, /* response= */ {}, status, transaction,
                       send_to_new_tablet);
         return;
@@ -2286,7 +2286,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         transaction_status_move_tablets_.erase(tablet_id);
       }
 
-      if (PREDICT_TRUE(GetAtomicFlag(&FLAGS_replicate_transaction_promotion))) {
+      if (PREDICT_TRUE(FLAGS_replicate_transaction_promotion)) {
         tserver::UpdateTransactionRequestPB req;
 
         auto& state = *req.mutable_state();

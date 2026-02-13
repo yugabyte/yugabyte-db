@@ -684,7 +684,7 @@ class AshTestVerifyOccurrenceBase : public AshTestWithCompactions {
  public:
   explicit AshTestVerifyOccurrenceBase(ash::WaitStateCode code)
       : AshTestWithCompactions(GetTestMode(code)),
-        code_to_look_for_(code), verify_code_was_pulled_(GetAtomicFlag(&FLAGS_TEST_verify_pull)) {}
+        code_to_look_for_(code), verify_code_was_pulled_(FLAGS_TEST_verify_pull) {}
 
   void SetUp() override {
     if (verify_code_was_pulled_ && ShouldSleepAtWaitCode()) {

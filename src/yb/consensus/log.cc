@@ -962,7 +962,7 @@ Status Log::DoAppend(LogEntryBatch* entry_batch, SkipWalWrite skip_wal_write) {
       } else if (entry_batch->IsSingleEntryOfType(ASYNC_ROLLOVER_AT_FLUSH_MARKER)) {
         if (allocation_state() == SegmentAllocationState::kAllocationNotStarted) {
           const auto min_size_to_rollover =
-              GetAtomicFlag(&FLAGS_min_segment_size_bytes_to_rollover_at_flush);
+              FLAGS_min_segment_size_bytes_to_rollover_at_flush;
           if (min_size_to_rollover < 0 || active_segment_->Size() < min_size_to_rollover) {
             VLOG_WITH_PREFIX(1) << Format("Skipping async wal rotation at flush. "
                                           "segment_size: $0 min_size_to_rollover: $1",
@@ -1354,10 +1354,10 @@ Status Log::Sync() {
     return UpdateSegmentReadableOffset();
   }
 
-  if (PREDICT_FALSE(GetAtomicFlag(&FLAGS_log_inject_latency))) {
+  if (PREDICT_FALSE(FLAGS_log_inject_latency)) {
     Random r(static_cast<uint32_t>(GetCurrentTimeMicros()));
-    int sleep_ms = r.Normal(GetAtomicFlag(&FLAGS_log_inject_latency_ms_mean),
-                            GetAtomicFlag(&FLAGS_log_inject_latency_ms_stddev));
+    int sleep_ms = r.Normal(FLAGS_log_inject_latency_ms_mean,
+                            FLAGS_log_inject_latency_ms_stddev);
     if (sleep_ms > 0) {
       LOG_WITH_PREFIX(INFO) << "Injecting " << sleep_ms << "ms of latency in Log::Sync()";
       SleepFor(MonoDelta::FromMilliseconds(sleep_ms));
@@ -2028,11 +2028,11 @@ Status Log::SwitchToAllocatedSegment() {
 
   // As this is an active segment, set the min_start_time_running_txns as kInvalid since we want CDC
   // to stream all records from this segment based on the tablet leader safe time.
-  if (GetAtomicFlag(&FLAGS_store_min_start_ht_running_txns)) {
+  if (FLAGS_store_min_start_ht_running_txns) {
     footer_builder_.set_min_start_time_running_txns(HybridTime::kInvalid.ToUint64());
   }
 
-  if (GetAtomicFlag(&FLAGS_store_last_wal_op_log_ht)) {
+  if (FLAGS_store_last_wal_op_log_ht) {
     footer_builder_.set_last_wal_op_log_ht(HybridTime::kInvalid.ToUint64());
   }
 
@@ -2316,11 +2316,11 @@ bool Log::HasSufficientDiskSpaceForWrite() {
 }
 
 void Log::WriteLatestMinStartTimeRunningTxnsInFooterBuilder() {
-  if (!GetAtomicFlag(&FLAGS_store_min_start_ht_running_txns)) {
+  if (!FLAGS_store_min_start_ht_running_txns) {
     return;
   }
   HybridTime min_start_ht_running_txns = HybridTime::kInitial;
-  if (min_start_ht_running_txns_callback_ && GetAtomicFlag(&FLAGS_store_last_wal_op_log_ht)) {
+  if (min_start_ht_running_txns_callback_ && FLAGS_store_last_wal_op_log_ht) {
     min_start_ht_running_txns = min_start_ht_running_txns_callback_();
     VLOG_WITH_PREFIX(2) << "min_start_ht_running_txns from callback: " << min_start_ht_running_txns;
     DCHECK_NE(min_start_ht_running_txns, HybridTime::kInvalid);

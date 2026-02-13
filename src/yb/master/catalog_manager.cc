@@ -789,9 +789,9 @@ bool IsIndexBackfillEnabled(TableType table_type, bool is_transactional) {
   // Fetch the runtime flag to prevent any issues from the updates to flag while processing.
   const bool disabled =
       (table_type == PGSQL_TABLE_TYPE
-          ? GetAtomicFlag(&FLAGS_ysql_disable_index_backfill)
-          : GetAtomicFlag(&FLAGS_disable_index_backfill) ||
-      (!is_transactional && GetAtomicFlag(&FLAGS_disable_index_backfill_for_non_txn_tables)));
+          ? FLAGS_ysql_disable_index_backfill
+          : FLAGS_disable_index_backfill ||
+      (!is_transactional && FLAGS_disable_index_backfill_for_non_txn_tables));
   return !disabled;
 }
 
@@ -821,7 +821,7 @@ int GetTransactionTableNumShardsPerTServer() {
 
 void InitMasterFlags() {
   yb::InitCommonFlags();
-  if (GetAtomicFlag(&FLAGS_transaction_table_num_tablets_per_tserver) ==
+  if (FLAGS_transaction_table_num_tablets_per_tserver ==
       kAutoDetectNumShardsPerTServer) {
     const auto value = GetTransactionTableNumShardsPerTServer();
     VLOG(1) << "Auto setting FLAGS_transaction_table_num_tablets_per_tserver to " << value;
@@ -1361,7 +1361,7 @@ Status CatalogManager::MaybeRestoreInitialSysCatalogSnapshotAndReloadSysCatalog(
   }
 
   LOG_WITH_PREFIX(INFO) << "Restoring snapshot in sys catalog";
-  if (GetAtomicFlag(&FLAGS_master_join_existing_universe)) {
+  if (FLAGS_master_join_existing_universe) {
     return STATUS(
         IllegalState,
         "Master is joining an existing universe but wants to restore initial sys catalog snapshot. "
@@ -1702,7 +1702,7 @@ Status CatalogManager::PrepareDefaultClusterConfig(int64_t term) {
   LOG_WITH_PREFIX(INFO)
       << "Setting cluster UUID to " << config.cluster_uuid() << " " << cluster_uuid_source;
 
-  if (GetAtomicFlag(&FLAGS_master_enable_universe_uuid_heartbeat_check)) {
+  if (FLAGS_master_enable_universe_uuid_heartbeat_check) {
     auto universe_uuid = Uuid::Generate().ToString();
     LOG_WITH_PREFIX(INFO) << Format("Setting universe_uuid to $0 on new universe", universe_uuid);
     config.set_universe_uuid(universe_uuid);
@@ -1723,7 +1723,7 @@ Status CatalogManager::PrepareDefaultClusterConfig(int64_t term) {
 }
 
 Status CatalogManager::SetUniverseUuidIfNeeded(const LeaderEpoch& epoch) {
-  if (!GetAtomicFlag(&FLAGS_master_enable_universe_uuid_heartbeat_check)) {
+  if (!FLAGS_master_enable_universe_uuid_heartbeat_check) {
     return Status::OK();
   }
 
@@ -2160,7 +2160,7 @@ Status CatalogManager::InitSysCatalogAsync() {
   // Given loading the system catalog failed with NotFound we must decide
   // whether to enter shell mode in order to join an existing universe or to create a fresh, empty
   // system catalog for a new universe.
-  if (GetAtomicFlag(&FLAGS_master_join_existing_universe) ||
+  if (FLAGS_master_join_existing_universe ||
       !master_->opts().AreMasterAddressesProvided()) {
     // We unconditionally enter shell mode if master_join_existing_universe is true.
     // Otherwise we determine whether or not master_addresses is empty to decide to enter shell
@@ -2409,7 +2409,7 @@ Result<ReplicationInfoPB> CatalogManager::GetTableReplicationInfo(
   // Table level replication info not set. Check whether the table is
   // associated with a tablespace and if so, return the tablespace
   // replication info.
-  if (GetAtomicFlag(&FLAGS_enable_ysql_tablespaces_for_placement)) {
+  if (FLAGS_enable_ysql_tablespaces_for_placement) {
     std::optional<ReplicationInfoPB> tablespace_pb =
         VERIFY_RESULT(GetTablespaceReplicationInfoWithRetry(tablespace_id));
     if (tablespace_pb) {
@@ -2700,8 +2700,8 @@ Result<shared_ptr<TableToTablespaceIdMap>> CatalogManager::GetYsqlTableToTablesp
 Status CatalogManager::CreateTransactionStatusTablesForTablespaces(
     const TablespaceIdToReplicationInfoMap& tablespace_info,
     const TableToTablespaceIdMap& table_to_tablespace_map, const LeaderEpoch& epoch) {
-  if (!GetAtomicFlag(&FLAGS_enable_ysql_tablespaces_for_placement) ||
-      !GetAtomicFlag(&FLAGS_auto_create_local_transaction_tables)) {
+  if (!FLAGS_enable_ysql_tablespaces_for_placement ||
+      !FLAGS_auto_create_local_transaction_tables) {
     return Status::OK();
   }
 
@@ -9377,7 +9377,7 @@ void CatalogManager::ProcessPendingNamespace(
   }
   auto term = leader_ready_term();
 
-  if (PREDICT_FALSE(GetAtomicFlag(&FLAGS_TEST_hang_on_namespace_transition))) {
+  if (PREDICT_FALSE(FLAGS_TEST_hang_on_namespace_transition)) {
     TEST_SYNC_POINT("CatalogManager::ProcessPendingNamespace:Fail");
     LOG(INFO) << "Artificially waiting (" << FLAGS_catalog_manager_bg_task_wait_ms
               << "ms) on namespace creation for " << id;
@@ -11413,7 +11413,7 @@ Status CatalogManager::DeleteOrHideTabletsAndSendRequests(
 Status CatalogManager::SendPrepareDeleteTransactionTabletRequest(
     const TabletInfoPtr& tablet, const std::string& leader_uuid,
     const std::string& reason, HideOnly hide_only, const LeaderEpoch& epoch) {
-  if (PREDICT_FALSE(GetAtomicFlag(&FLAGS_TEST_disable_tablet_deletion))) {
+  if (PREDICT_FALSE(FLAGS_TEST_disable_tablet_deletion)) {
     return Status::OK();
   }
   auto table = tablet->table();
@@ -11433,7 +11433,7 @@ void CatalogManager::SendDeleteTabletRequest(
     const std::optional<int64_t>& cas_config_opid_index_less_or_equal,
     const scoped_refptr<TableInfo>& table, const std::string& ts_uuid, const string& reason,
     const LeaderEpoch& epoch, HideOnly hide_only, KeepData keep_data) {
-  if (PREDICT_FALSE(GetAtomicFlag(&FLAGS_TEST_disable_tablet_deletion))) {
+  if (PREDICT_FALSE(FLAGS_TEST_disable_tablet_deletion)) {
     return;
   }
   LOG_WITH_PREFIX(INFO)
@@ -12304,7 +12304,7 @@ Status CatalogManager::MaybeCreateLocalTransactionTable(
   // local transaction status table for the tablespace if there is a placement attached to it
   // (and if it does not exist already).
   const bool is_transactional = request.schema().table_properties().is_transactional();
-  if (GetAtomicFlag(&FLAGS_auto_create_local_transaction_tables)) {
+  if (FLAGS_auto_create_local_transaction_tables) {
     if (is_transactional && request.has_tablespace_id()) {
       const auto& tablespace_id = request.tablespace_id();
       auto tablespace_pb = VERIFY_RESULT(GetTablespaceReplicationInfoWithRetry(tablespace_id));
@@ -13464,7 +13464,7 @@ Result<CMGlobalLoadState> CatalogManager::InitializeGlobalLoadState(
 
 Result<bool> CatalogManager::SysCatalogLeaderStepDown(const ServerEntryPB& master) {
     if (PREDICT_FALSE(
-            GetAtomicFlag(&FLAGS_TEST_crash_server_on_sys_catalog_leader_affinity_move))) {
+            FLAGS_TEST_crash_server_on_sys_catalog_leader_affinity_move)) {
       LOG_WITH_PREFIX(FATAL) << "For test: Crashing the server instead of performing sys "
                                 "catalog leader affinity move.";
     }
@@ -13569,7 +13569,7 @@ AsyncTaskThrottlerBase* CatalogManager::GetDeleteReplicaTaskThrottler(
     delete_replica_task_throttler_per_ts_.emplace(
       ts_uuid,
       std::make_unique<DynamicAsyncTaskThrottler>([]() {
-        return GetAtomicFlag(&FLAGS_max_concurrent_delete_replica_rpcs_per_ts);
+        return FLAGS_max_concurrent_delete_replica_rpcs_per_ts;
       }));
   }
 

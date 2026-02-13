@@ -285,7 +285,7 @@ class RaftConsensusTest : public YBTest {
             MemTracker::GetRootTracker(),
             "");
     retryable_requests->SetServerClock(clock_);
-    retryable_requests->SetRequestTimeout(GetAtomicFlag(&FLAGS_retryable_request_timeout_secs));
+    retryable_requests->SetRequestTimeout(FLAGS_retryable_request_timeout_secs);
     consensus_.reset(new RaftConsensusSpy(options_,
                                           std::move(cmeta),
                                           std::move(proxy_factory),

@@ -309,10 +309,10 @@ void XClusterPoller::SchedulePoll() {
 
   // determine if we should delay our upcoming poll
   int64_t delay_ms =
-      GetAtomicFlag(&FLAGS_async_replication_polling_delay_ms);  // normal throttling.
-  if (idle_polls_ >= GetAtomicFlag(&FLAGS_async_replication_max_idle_wait)) {
+      FLAGS_async_replication_polling_delay_ms;  // normal throttling.
+  if (idle_polls_ >= FLAGS_async_replication_max_idle_wait) {
     delay_ms = std::max(
-        delay_ms, (int64_t)GetAtomicFlag(&FLAGS_async_replication_idle_delay_ms));  // idle backoff.
+        delay_ms, (int64_t)FLAGS_async_replication_idle_delay_ms);  // idle backoff.
   }
   if (poll_failures_ > 0) {
     delay_ms =
@@ -358,12 +358,12 @@ void XClusterPoller::DoPoll() {
   ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN;
 
   if (PREDICT_FALSE(FLAGS_TEST_cdc_skip_replication_poll)) {
-    idle_polls_ = GetAtomicFlag(&FLAGS_async_replication_max_idle_wait);
+    idle_polls_ = FLAGS_async_replication_max_idle_wait;
     SchedulePoll();
     return;
   }
 
-  const auto xcluster_simulated_lag_ms = GetAtomicFlag(&FLAGS_TEST_xcluster_simulated_lag_ms);
+  const auto xcluster_simulated_lag_ms = FLAGS_TEST_xcluster_simulated_lag_ms;
   if (PREDICT_FALSE(xcluster_simulated_lag_ms != 0)) {
     auto flag_info =
         gflags::GetCommandLineFlagInfoOrDie("TEST_xcluster_simulated_lag_tablet_filter");
@@ -372,7 +372,7 @@ void XClusterPoller::DoPoll() {
     if (tablet_filter.empty() || std::find(
                                      tablet_filter_list.begin(), tablet_filter_list.end(),
                                      producer_tablet_info_.tablet_id) != tablet_filter_list.end()) {
-      auto delay = GetAtomicFlag(&FLAGS_async_replication_idle_delay_ms);
+      auto delay = FLAGS_async_replication_idle_delay_ms;
       if (xcluster_simulated_lag_ms > 0) {
         delay = xcluster_simulated_lag_ms;
       }
@@ -395,7 +395,7 @@ void XClusterPoller::DoPoll() {
   cdc::GetChangesRequestPB req;
   req.set_stream_id(producer_tablet_info_.stream_id.ToString());
   req.set_tablet_id(producer_tablet_info_.tablet_id);
-  req.set_serve_as_proxy(GetAtomicFlag(&FLAGS_cdc_consumer_use_proxy_forwarding));
+  req.set_serve_as_proxy(FLAGS_cdc_consumer_use_proxy_forwarding);
   // If we finished processing a ChangeMetadataOp, then we need to force update the cdc_state
   // checkpoint. This ensures that if the poller restarts, it will only go back at most 1 schema
   // version.
@@ -597,7 +597,7 @@ void XClusterPoller::VerifyApplyChangesResponse(XClusterOutputClientResponse res
 
     // Repeat the ApplyChanges step, with exponential backoff.
     apply_failures_ =
-        std::min(apply_failures_ + 1, GetAtomicFlag(&FLAGS_replication_failure_delay_exponent));
+        std::min(apply_failures_ + 1, FLAGS_replication_failure_delay_exponent);
     xcluster_consumer_->IncrementApplyFailureCount();
     ScheduleApplyChanges(std::move(response.get_changes_response));
     return;
@@ -732,7 +732,7 @@ bool XClusterPoller::IsStuck() const {
   }
 
   const auto lag = MonoTime::Now() - last_task_schedule_time_;
-  if (lag > 1s * GetAtomicFlag(&FLAGS_xcluster_poller_task_delay_considered_stuck_secs)) {
+  if (lag > 1s * FLAGS_xcluster_poller_task_delay_considered_stuck_secs) {
     LOG_WITH_PREFIX(DFATAL) << "XCluster Poller has not executed any tasks for " << lag.ToString();
     return true;
   }
@@ -850,7 +850,7 @@ Status XClusterPoller::InitializeWaitState(const std::string& ts_uuid) {
 
 void XClusterPoller::IncrementPollFailures() {
   poll_failures_ =
-      std::min(poll_failures_ + 1, GetAtomicFlag(&FLAGS_replication_failure_delay_exponent));
+      std::min(poll_failures_ + 1, FLAGS_replication_failure_delay_exponent);
 
   xcluster_consumer_->IncrementPollFailureCount();
 }

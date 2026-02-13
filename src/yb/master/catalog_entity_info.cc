@@ -160,7 +160,7 @@ void TabletReplica::UpdateLeaderLeaseInfo(const TabletLeaderLeaseInfo& info) {
 bool TabletReplica::IsStale() const {
   MonoTime now(MonoTime::Now());
   if (now.GetDeltaSince(time_updated).ToMilliseconds() >=
-      GetAtomicFlag(&FLAGS_tserver_unresponsive_timeout_ms)) {
+      FLAGS_tserver_unresponsive_timeout_ms) {
     return true;
   }
   return false;
@@ -1486,7 +1486,7 @@ void ObjectLockInfo::Load(const SysObjectLockEntryPB& metadata) {
     std::lock_guard l(mutex_);
     ysql_lease_deadline_ =
         MonoTime::Now() +
-        MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_master_ysql_operation_lease_ttl_ms));
+        MonoDelta::FromMilliseconds(FLAGS_master_ysql_operation_lease_ttl_ms);
   }
 }
 

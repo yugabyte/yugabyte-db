@@ -618,8 +618,8 @@ class ClientTestForceMasterLookup :
   void SetUp() override {
     ClientTest::SetUp();
     // Do we want to force going to the master instead of using cache.
-    SetAtomicFlag(GetParam(), &FLAGS_TEST_force_master_lookup_all_tablets);
-    SetAtomicFlag(0.5, &FLAGS_TEST_simulate_lookup_timeout_probability);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_force_master_lookup_all_tablets) = GetParam();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_lookup_timeout_probability) = 0.5;
   }
 
 
@@ -1264,9 +1264,9 @@ TEST_F(ClientTest, TestWriteTimeout) {
   LOG(INFO) << "Time out the actual write on the tablet server";
   {
     google::FlagSaver saver;
-    SetAtomicFlag(true, &FLAGS_log_inject_latency);
-    SetAtomicFlag(110, &FLAGS_log_inject_latency_ms_mean);
-    SetAtomicFlag(0, &FLAGS_log_inject_latency_ms_stddev);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_inject_latency) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_inject_latency_ms_mean) = 110;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_inject_latency_ms_stddev) = 0;
 
     ApplyInsertToSession(session.get(), client_table_, 1, 1, "row");
     const auto flush_status = session->TEST_FlushAndGetOpsErrors();

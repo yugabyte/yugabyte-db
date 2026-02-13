@@ -936,7 +936,7 @@ class MasterSnapshotCoordinator::Impl {
       }
       min_last_snapshot_ht.MakeAtMost(complete_time);
     }
-    if (GetAtomicFlag(&FLAGS_enable_fast_pitr)) {
+    if (FLAGS_enable_fast_pitr) {
       return { min_retention, min_last_snapshot_ht };
     }
     return { min_last_snapshot_ht, min_last_snapshot_ht };
@@ -1799,7 +1799,7 @@ class MasterSnapshotCoordinator::Impl {
       request->set_previous_snapshot_hybrid_time(previous_snapshot_hybrid_time.ToUint64());
     }
     // Only set the Ttl field if all the peers are on a version with this feature.
-    if (GetAtomicFlag(&FLAGS_enable_object_retention_due_to_snapshots)
+    if (FLAGS_enable_object_retention_due_to_snapshots
         && retention_duration_hours) {
       request->set_retention_duration_hours(*retention_duration_hours);
     }

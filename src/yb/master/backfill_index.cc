@@ -395,7 +395,7 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
   const bool is_ysql_table = (indexed_table->GetTableType() == TableType::PGSQL_TABLE_TYPE);
   // For YSQL, master won't automatically move the index permission to DO_BACKFILL unless
   // postgres calls CatalogManager::BackfillIndex() because postgres drives permission changes.
-  const bool defer_backfill = !is_ysql_table && GetAtomicFlag(&FLAGS_defer_index_backfill);
+  const bool defer_backfill = !is_ysql_table && FLAGS_defer_index_backfill;
   const bool is_backfilling = indexed_table->IsBackfilling();
 
   std::unordered_map<TableId, IndexPermissions> indexes_to_update;
@@ -462,7 +462,7 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
         catalog_manager, indexed_table, current_version, /* change state to RUNNING */ true, epoch);
   }
 
-  if (!GetAtomicFlag(&FLAGS_allow_batching_non_deferred_indexes) &&
+  if (!FLAGS_allow_batching_non_deferred_indexes &&
       indexes_to_backfill.size() > 1) {
     LOG(INFO) << "Batching of non-deferred index-backfill(s) is disabled. Will be only backfilling "
                  "one index at a time.";

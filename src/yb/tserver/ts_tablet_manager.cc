@@ -2025,9 +2025,9 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
   consensus::RetryableRequests retryable_requests(
       mem_manager_->FindOrCreateOverheadMemTrackerForTablet(cmeta->tablet_id()), kLogPrefix);
   retryable_requests.SetServerClock(server_->Clock());
-  retryable_requests.SetRequestTimeout(GetAtomicFlag(&FLAGS_retryable_request_timeout_secs));
+  retryable_requests.SetRequestTimeout(FLAGS_retryable_request_timeout_secs);
 
-  if (GetAtomicFlag(&FLAGS_enable_copy_retryable_requests_from_parent) &&
+  if (FLAGS_enable_copy_retryable_requests_from_parent &&
           cmeta->has_split_parent_tablet_id()) {
     auto parent_tablet_requests = GetTabletRetryableRequests(cmeta->split_parent_tablet_id());
     if (parent_tablet_requests.ok()) {
@@ -2046,7 +2046,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
 
   LOG_TIMING_PREFIX(INFO, kLogPrefix, "bootstrapping tablet") {
     // Read flag before CAS to avoid TSAN race conflict with GetAllFlags.
-    if (GetAtomicFlag(&FLAGS_TEST_force_single_tablet_failure) &&
+    if (FLAGS_TEST_force_single_tablet_failure &&
         CompareAndSetFlag(&FLAGS_TEST_force_single_tablet_failure,
                           true /* expected */, false /* val */)) {
       LOG(WARNING) << "Setting the state of a tablet to FAILED";

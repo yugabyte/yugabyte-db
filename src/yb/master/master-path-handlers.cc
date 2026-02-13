@@ -2284,7 +2284,7 @@ MasterPathHandlers::GetLeaderlessTablets() {
     const auto time_since_valid_leader_secs =
         MonoTime::Now().GetDeltaSince(t->last_time_with_valid_leader()).ToSeconds();
     if (time_since_valid_leader_secs >
-            GetAtomicFlag(&FLAGS_leaderless_tablet_alert_delay_secs)) {
+            FLAGS_leaderless_tablet_alert_delay_secs) {
       leaderless_tablets.push_back(std::make_pair(
           t,
           Format("No valid leader reported for $0 seconds",

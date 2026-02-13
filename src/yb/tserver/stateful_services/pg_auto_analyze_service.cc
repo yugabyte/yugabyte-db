@@ -174,7 +174,7 @@ Status PgAutoAnalyzeService::FlushMutationsToServiceTable() {
   }
 
   auto session = VERIFY_RESULT(GetYBSession(
-      GetAtomicFlag(&FLAGS_ysql_cluster_level_mutation_persist_rpc_timeout_ms) * 1ms));
+      FLAGS_ysql_cluster_level_mutation_persist_rpc_timeout_ms * 1ms));
   auto* table = VERIFY_RESULT(GetServiceTable());
 
   // Increment mutation counters for tables
@@ -222,7 +222,7 @@ Status PgAutoAnalyzeService::FlushMutationsToServiceTable() {
 }
 
 uint32 PgAutoAnalyzeService::PeriodicTaskIntervalMs() const {
-  return GetAtomicFlag(&FLAGS_ysql_cluster_level_mutation_persist_interval_ms);
+  return FLAGS_ysql_cluster_level_mutation_persist_interval_ms;
 }
 
 // TriggerAnalyze has the following steps:
@@ -320,7 +320,7 @@ Result<AutoAnalyzeInfoMap> PgAutoAnalyzeService::ReadTableMutations() {
   AutoAnalyzeInfoMap table_id_to_info_maps;
   // Read from the underlying YCQL table to get all pairs of (table id, mutation count).
   auto session = VERIFY_RESULT(
-      GetYBSession(GetAtomicFlag(&FLAGS_ysql_cluster_level_mutation_persist_rpc_timeout_ms) * 1ms));
+      GetYBSession(FLAGS_ysql_cluster_level_mutation_persist_rpc_timeout_ms * 1ms));
   auto* table = VERIFY_RESULT(GetServiceTable());
 
   const client::YBqlReadOpPtr read_op = table->NewReadOp();
@@ -713,7 +713,7 @@ Status PgAutoAnalyzeService::UpdateTableMutationsAfterAnalyze(
     const AutoAnalyzeInfoMap& table_id_to_info_maps) {
   VLOG_WITH_FUNC(2) << "tables: " << AsString(tables);
   auto session = VERIFY_RESULT(GetYBSession(
-      GetAtomicFlag(&FLAGS_ysql_cluster_level_mutation_persist_rpc_timeout_ms) * 1ms));
+      FLAGS_ysql_cluster_level_mutation_persist_rpc_timeout_ms * 1ms));
   auto* table = VERIFY_RESULT(GetServiceTable());
   const auto& schema = table->schema();
   auto mutations_col_id = schema.ColumnId(schema.FindColumn(master::kPgAutoAnalyzeMutations));
@@ -780,7 +780,7 @@ Status PgAutoAnalyzeService::CleanUpDeletedTablesFromServiceTable(
       << "Tables that are absent in the name cache: " << AsString(tables_absent_in_name_cache);
 
   auto session = VERIFY_RESULT(GetYBSession(
-      GetAtomicFlag(&FLAGS_ysql_cluster_level_mutation_persist_rpc_timeout_ms) * 1ms));
+      FLAGS_ysql_cluster_level_mutation_persist_rpc_timeout_ms * 1ms));
 
   auto* table = VERIFY_RESULT(GetServiceTable());
   std::vector<client::YBOperationPtr> ops;
@@ -816,8 +816,8 @@ Result<pgwrapper::PGConn> PgAutoAnalyzeService::EstablishDBConnection(
   // Connect to PG database.
   const auto& dbname = namespace_id_to_name_[namespace_id];
   auto conn_result = connect_to_pg_func_(
-      dbname, CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(GetAtomicFlag(
-                                           &FLAGS_ysql_auto_analyze_db_connect_timeout_ms)));
+      dbname, CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(
+          FLAGS_ysql_auto_analyze_db_connect_timeout_ms));
   // If connection setup fails,  continue
   // doing ANALYZEs on tables in other databases.
   if (!conn_result) {
@@ -967,7 +967,7 @@ Result<AutoAnalyzeInfoMap> PgAutoAnalyzeService::UpdateAnalyzeHistory(
 Status PgAutoAnalyzeService::FlushAnalyzeHistory(
     const std::vector<TableId>& tables, const AutoAnalyzeInfoMap& table_id_to_mutations_maps) {
   const auto rpc_timeout =
-      GetAtomicFlag(&FLAGS_ysql_cluster_level_mutation_persist_rpc_timeout_ms) * 1ms;
+      FLAGS_ysql_cluster_level_mutation_persist_rpc_timeout_ms * 1ms;
 
   auto session = VERIFY_RESULT(GetYBSession(rpc_timeout));
   auto* table = VERIFY_RESULT(GetServiceTable());

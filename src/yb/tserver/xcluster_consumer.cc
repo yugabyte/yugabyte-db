@@ -159,7 +159,7 @@ XClusterConsumer::XClusterConsumer(
       xcluster_context_(xcluster_context),
       ts_uuid_(ts_uuid) {
   rate_limiter_ = std::unique_ptr<rocksdb::RateLimiter>(rocksdb::NewGenericRateLimiter(
-      GetAtomicFlag(&FLAGS_apply_changes_max_send_rate_mbps) * 1_MB));
+      FLAGS_apply_changes_max_send_rate_mbps * 1_MB));
   rate_limiter_->EnableLoggingWithDescription("XCluster Output Client");
   SetRateLimiterSpeed();
 
@@ -748,7 +748,7 @@ Status XClusterConsumer::PublishXClusterSafeTimeInternal() {
 
   std::lock_guard l(safe_time_update_mutex_);
 
-  int wait_time = GetAtomicFlag(&FLAGS_xcluster_safe_time_update_interval_secs);
+  int wait_time = FLAGS_xcluster_safe_time_update_interval_secs;
   if (wait_time <= 0 || MonoTime::Now() - last_safe_time_published_at_ < wait_time * 1s) {
     return Status::OK();
   }

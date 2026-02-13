@@ -2022,12 +2022,12 @@ class PgClientServiceImpl::Impl : public SessionProvider {
       auto last_active_time_micros = (it != stream_to_latest_active_time.end()) ? it->second : 0;
       auto is_stream_active =
           current_time - last_active_time_micros <=
-          1000 * GetAtomicFlag(&FLAGS_ysql_cdc_active_replication_slot_window_ms);
+          1000 * FLAGS_ysql_cdc_active_replication_slot_window_ms;
       replication_slot->set_replication_slot_status(
           (is_stream_active) ? ReplicationSlotStatus::ACTIVE : ReplicationSlotStatus::INACTIVE);
 
       auto expiration_threshold_micros =
-          static_cast<int64_t>(1000 * GetAtomicFlag(&FLAGS_cdc_intent_retention_ms));
+          static_cast<int64_t>(1000 * FLAGS_cdc_intent_retention_ms);
       int64_t idle_duration_micros;
       // If the active time has not been set yet implying no tables are present in the database
       // we use the consistent snapshot time to check if the slot/stream has expired or not
@@ -2186,12 +2186,12 @@ class PgClientServiceImpl::Impl : public SessionProvider {
 
     *DCHECK_NOTNULL(active) =
         GetCurrentTimeMicros() - last_activity_time_micros <=
-        1000 * GetAtomicFlag(&FLAGS_ysql_cdc_active_replication_slot_window_ms);
+        1000 * FLAGS_ysql_cdc_active_replication_slot_window_ms;
 
     auto commit_idle_duration_micros =
         GetCurrentTimeMicros() - HybridTime(*record_id_commit_time_ht).GetPhysicalValueMicros();
     auto last_activity_idle_duration_micros = GetCurrentTimeMicros() - last_activity_time_micros;
-    auto expiration_threshold_micros = 1000 * GetAtomicFlag(&FLAGS_cdc_intent_retention_ms);
+    auto expiration_threshold_micros = 1000 * FLAGS_cdc_intent_retention_ms;
     *DCHECK_NOTNULL(expired) =
         (last_activity_time_micros == 0)
             ? (commit_idle_duration_micros > expiration_threshold_micros)

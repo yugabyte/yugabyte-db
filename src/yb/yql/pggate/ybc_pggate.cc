@@ -2145,8 +2145,7 @@ uint64_t YBCPgGetInsertOnConflictKeyCount(void* state) {
 //--------------------------------------------------------------------------------------------------
 
 void YBCInitFlags() {
-  SetAtomicFlag(GetAtomicFlag(&FLAGS_pggate_num_connections_to_server),
-                &FLAGS_num_connections_to_server);
+  FLAGS_num_connections_to_server = FLAGS_pggate_num_connections_to_server;
 
   // TODO(neil) Init a gflag for "YB_PG_TRANSACTIONS_ENABLED" here also.
   // Mikhail agreed that this flag should just be initialized once at the beginning here.

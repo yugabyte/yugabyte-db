@@ -1110,7 +1110,7 @@ Status CDCSDKVirtualWAL::AddRecordToVirtualWalPriorityQueue(
       auto unique_id = std::make_shared<CDCSDKUniqueRecordID>(
           CDCSDKUniqueRecordID(is_publication_refresh_record, record));
 
-      if (GetAtomicFlag(&FLAGS_cdcsdk_update_restart_time_when_nothing_to_stream) &&
+      if (FLAGS_cdcsdk_update_restart_time_when_nothing_to_stream &&
           virtual_wal_safe_time_.is_valid() &&
           unique_id->GetCommitTime() < virtual_wal_safe_time_.ToUint64()) {
         VLOG_WITH_PREFIX(3) << "Received a record with commit time lesser than virtual wal "
@@ -1187,7 +1187,7 @@ Result<TabletRecordInfoPair> CDCSDKVirtualWAL::FindConsistentRecord(
 }
 
 Status CDCSDKVirtualWAL::ValidateAndUpdateVWALSafeTime(const CDCSDKUniqueRecordID& popped_record) {
-  if (!GetAtomicFlag(&FLAGS_cdcsdk_update_restart_time_when_nothing_to_stream)) {
+  if (!FLAGS_cdcsdk_update_restart_time_when_nothing_to_stream) {
     return Status::OK();
   }
 
@@ -1212,14 +1212,14 @@ Status CDCSDKVirtualWAL::ValidateAndUpdateVWALSafeTime(const CDCSDKUniqueRecordI
 }
 
 Status CDCSDKVirtualWAL::UpdateRestartTimeIfRequired() {
-  if (!GetAtomicFlag(&FLAGS_cdcsdk_update_restart_time_when_nothing_to_stream)) {
+  if (!FLAGS_cdcsdk_update_restart_time_when_nothing_to_stream) {
     return Status::OK();
   }
 
   auto current_time = HybridTime::FromMicros(GetCurrentTimeMicros());
   if (last_restart_lsn_read_time_.is_valid() &&
       current_time.PhysicalDiff(last_restart_lsn_read_time_) <
-          MonoDelta::FromSeconds(GetAtomicFlag(&FLAGS_cdcsdk_update_restart_time_interval_secs))) {
+          MonoDelta::FromSeconds(FLAGS_cdcsdk_update_restart_time_interval_secs)) {
     return Status::OK();
   }
 
@@ -1499,14 +1499,14 @@ Status CDCSDKVirtualWAL::PushNextPublicationRefreshRecord() {
   HybridTime hybrid_sum;
   if (FLAGS_TEST_cdcsdk_use_microseconds_refresh_interval) {
     hybrid_sum = last_decided_pub_refresh_time_hybrid.AddMicroseconds(
-        GetAtomicFlag(&FLAGS_TEST_cdcsdk_publication_list_refresh_interval_micros));
+        FLAGS_TEST_cdcsdk_publication_list_refresh_interval_micros);
   } else {
     hybrid_sum = last_decided_pub_refresh_time_hybrid.AddSeconds(
-        GetAtomicFlag(&FLAGS_cdcsdk_publication_list_refresh_interval_secs));
+        FLAGS_cdcsdk_publication_list_refresh_interval_secs);
   }
   DCHECK(hybrid_sum.ToUint64() > last_decided_pub_refresh_time.first);
 
-  bool should_apply = GetAtomicFlag(&FLAGS_cdcsdk_enable_dynamic_table_support);
+  bool should_apply = FLAGS_cdcsdk_enable_dynamic_table_support;
   if (should_apply) {
     pub_refresh_times.insert(hybrid_sum.ToUint64());
   }

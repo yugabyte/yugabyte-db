@@ -481,7 +481,7 @@ static void WriteMetricsForPrometheus(const MetricRegistry* const metrics,
                                       Webserver::WebResponse* resp) {
   MetricPrometheusOptions opts;
   opts.export_help_and_type = ExportHelpAndType(FLAGS_export_help_and_type_in_prometheus_metrics);
-  opts.max_metric_entries = GetAtomicFlag(&FLAGS_max_prometheus_metric_entries);
+  opts.max_metric_entries = FLAGS_max_prometheus_metric_entries;
   ParseRequestOptions(req, &opts);
 
   std::stringstream* output = &resp->output;
@@ -534,7 +534,7 @@ static void StackTraceTrackerHandler(
     WeightFormatter format_weight = {}) {
   std::stringstream& output = resp->output;
 
-  if (!GetAtomicFlag(&FLAGS_track_stack_traces)) {
+  if (!FLAGS_track_stack_traces) {
     output << "track_stack_traces must be turned on to use this page.";
     return;
   }

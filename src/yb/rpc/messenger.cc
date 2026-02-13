@@ -125,7 +125,7 @@ MessengerBuilder::MessengerBuilder(std::string name)
       listen_protocol_(TcpStream::StaticProtocol()),
       uncompressed_protocol_(TcpStream::StaticProtocol()),
       workers_limit_(FLAGS_rpc_workers_limit),
-      num_connections_to_server_(GetAtomicFlag(&FLAGS_num_connections_to_server)) {
+      num_connections_to_server_(FLAGS_num_connections_to_server) {
   AddStreamFactory(TcpStream::StaticProtocol(), TcpStream::Factory());
 }
 

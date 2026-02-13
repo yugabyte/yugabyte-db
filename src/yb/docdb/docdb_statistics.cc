@@ -459,7 +459,7 @@ void DocDBStatistics::DoCopyToPgsqlResponse(
   CopyRocksDBStatisticsToPgsqlResponse(
       regulardb_statistics_, metrics_lists.regular_db_tickers,
       metrics_lists.regular_db_event_stats, metrics);
-  if (GetAtomicFlag(&FLAGS_ysql_analyze_dump_intentsdb_metrics)) {
+  if (FLAGS_ysql_analyze_dump_intentsdb_metrics) {
     CopyRocksDBStatisticsToPgsqlResponse(
         intentsdb_statistics_, metrics_lists.intents_db_tickers,
         metrics_lists.intents_db_event_stats, metrics);

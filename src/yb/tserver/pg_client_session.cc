@@ -803,7 +803,7 @@ struct QueryDataBase {
   PrefixLogger LogPrefix() const { return PrefixLogger{session_id_}; }
 
   Status ValidateSidecars() const {
-    const size_t max_size = GetAtomicFlag(&FLAGS_rpc_max_message_size);
+    const size_t max_size = FLAGS_rpc_max_message_size;
     return sidecars.size() > max_size
         ? STATUS_FORMAT(InvalidArgument,
                         "Sending too long RPC message ($0 bytes of data), limit: $1 bytes",

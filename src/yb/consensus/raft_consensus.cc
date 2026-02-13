@@ -3623,7 +3623,7 @@ void RaftConsensus::DisableFailureDetector() {
 }
 
 void RaftConsensus::SnoozeFailureDetector(AllowLogging allow_logging, MonoDelta delta) {
-  if (PREDICT_TRUE(GetAtomicFlag(&FLAGS_enable_leader_failure_detection))) {
+  if (PREDICT_TRUE(FLAGS_enable_leader_failure_detection)) {
     if (allow_logging == ALLOW_LOGGING) {
       LOG_WITH_PREFIX(INFO) << Format("Snoozing leader timeout detection for $0",
                                       delta.Initialized() ? delta.ToString() : "election timeout");

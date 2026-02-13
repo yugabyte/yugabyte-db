@@ -432,7 +432,7 @@ Status TSManager::MarkUnresponsiveTServers(const LeaderEpoch& epoch) {
 
 Status TSManager::RunLoader(
     const CloudInfoPB& cloud_info, rpc::ProxyCache* proxy_cache, SysCatalogLoadingState& state) {
-  if (!GetAtomicFlag(&FLAGS_persist_tserver_registry)) {
+  if (!FLAGS_persist_tserver_registry) {
     return Status::OK();
   }
   auto loader = std::make_unique<TSDescriptorLoader>(cloud_info, proxy_cache);
@@ -493,7 +493,7 @@ Status TSManager::RemoveTabletServer(
   // Update the TS to REMOVED to signal to code that still has a copy of the shared pointer that
   // this TS has been removed from the universe.
   write_lock.mutable_data()->pb.set_state(SysTabletServerEntryPB::REMOVED);
-  if (GetAtomicFlag(&FLAGS_persist_tserver_registry)) {
+  if (FLAGS_persist_tserver_registry) {
     auto status = sys_catalog_.Delete(epoch, desc);
     WARN_NOT_OK(status, Format("Failed to remove tablet server $0 from sys catalog", desc->id()));
     RETURN_NOT_OK(status);
@@ -578,7 +578,7 @@ bool HasSameHostPort(
 std::function<bool(const ServerRegistrationPB&)> GetHostPortCheckerFunction(
     const TSRegistrationPB& registration, const CloudInfoPB& local_master_cloud_info) {
   // This pivots on a runtime flag so we cannot return a static function.
-  if (PREDICT_TRUE(GetAtomicFlag(&FLAGS_master_register_ts_check_desired_host_port))) {
+  if (PREDICT_TRUE(FLAGS_master_register_ts_check_desired_host_port)) {
     // When desired host-port check is enabled, we do the following checks:
     // 1. For master, the host-port for existing and registering tservers are different.
     // 2. The existing and registering tservers have distinct host-port from each others
@@ -661,7 +661,7 @@ void SetPersisted(const Item& item, Items&&... items) {
 
 template <typename... Items>
 Status UpsertIfRequired(const LeaderEpoch& epoch, SysCatalogTable& sys_catalog, Items&&... items) {
-  if (!GetAtomicFlag(&FLAGS_persist_tserver_registry)) {
+  if (!FLAGS_persist_tserver_registry) {
     return Status::OK();
   }
   SetPersisted(items...);

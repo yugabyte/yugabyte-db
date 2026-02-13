@@ -723,7 +723,7 @@ constexpr auto kRetryableRequestTimeoutSecs = 4;
 } // namespace
 
 TEST_F(QLTabletTest, GCLogWithoutWrites) {
-  SetAtomicFlag(kRetryableRequestTimeoutSecs, &FLAGS_retryable_request_timeout_secs);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_retryable_request_timeout_secs) = kRetryableRequestTimeoutSecs;
 
   TableHandle table;
   CreateTable(kTable1Name, &table);
@@ -737,7 +737,7 @@ TEST_F(QLTabletTest, GCLogWithoutWrites) {
 }
 
 TEST_F(QLTabletTest, GCLogWithRestartWithoutWrites) {
-  SetAtomicFlag(kRetryableRequestTimeoutSecs, &FLAGS_retryable_request_timeout_secs);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_retryable_request_timeout_secs) = kRetryableRequestTimeoutSecs;
 
   TableHandle table;
   CreateTable(kTable1Name, &table);
@@ -754,7 +754,7 @@ TEST_F(QLTabletTest, GCLogWithRestartWithoutWrites) {
 }
 
 TEST_F(QLTabletTest, LeaderLease) {
-  SetAtomicFlag(false, &FLAGS_enable_lease_revocation);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_lease_revocation) = false;
 
   TableHandle table;
   CreateTable(kTable1Name, &table);
@@ -762,8 +762,8 @@ TEST_F(QLTabletTest, LeaderLease) {
   LOG(INFO) << "Filling table";
   FillTable(0, kTotalKeys, table);
 
-  auto old_lease_ms = GetAtomicFlag(&FLAGS_leader_lease_duration_ms);
-  SetAtomicFlag(60 * 1000, &FLAGS_leader_lease_duration_ms);
+  auto old_lease_ms = FLAGS_leader_lease_duration_ms;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_leader_lease_duration_ms) = 60 * 1000;
   // Wait for lease to sync.
   std::this_thread::sleep_for(2ms * old_lease_ms);
 
@@ -1014,11 +1014,11 @@ TEST_F(QLTabletTest, LeaderChange) {
   req->mutable_column_refs()->add_ids(table.ColumnId(kValueColumn));
   session->Apply(write_op);
 
-  SetAtomicFlag(30000, &FLAGS_TEST_delay_execute_async_ms);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_delay_execute_async_ms) = 30000;
   auto flush_future = session->FlushFuture();
   std::this_thread::sleep_for(2s);
 
-  SetAtomicFlag(0, &FLAGS_TEST_delay_execute_async_ms);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_delay_execute_async_ms) = 0;
 
   LOG(INFO) << "Step down old leader";
   StepDownAllTablets(cluster_.get());
@@ -1185,7 +1185,7 @@ class QLTabletTestSmallMemstore : public QLTabletTest {
 };
 
 TEST_F_EX(QLTabletTest, DoubleFlush, QLTabletTestSmallMemstore) {
-  SetAtomicFlag(false, &FLAGS_TEST_allow_stop_writes);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_allow_stop_writes) = false;
 
   TestYcqlWorkload workload(cluster_.get());
   workload.set_table_name(kTable1Name);
@@ -1204,7 +1204,7 @@ TEST_F_EX(QLTabletTest, DoubleFlush, QLTabletTestSmallMemstore) {
   workload.StopAndJoin();
 
   // Flush on rocksdb shutdown could produce second immutable memtable, that will stop writes.
-  SetAtomicFlag(true, &FLAGS_TEST_allow_stop_writes);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_allow_stop_writes) = true;
   cluster_->Shutdown(); // Need to shutdown cluster before resetting clock back.
   cluster_.reset();
 }

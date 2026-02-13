@@ -856,7 +856,7 @@ void TabletServiceAdminImpl::BackfillIndex(
     return;
   }
 
-  auto max_sleep_ms = GetAtomicFlag(&FLAGS_TEST_index_backfill_fail_after_random_wait_upto_ms);
+  auto max_sleep_ms = FLAGS_TEST_index_backfill_fail_after_random_wait_upto_ms;
   if (max_sleep_ms > 0) {
     auto rand_wait = RandomUniformInt(0, max_sleep_ms);
     LOG(INFO) << "Randomly sleeping for " << rand_wait << " ms before failing";
@@ -1126,7 +1126,7 @@ void TabletServiceAdminImpl::AlterSchema(const tablet::ChangeMetadataRequestPB* 
   ScopedRWOperationPause pause_writes;
   if (!req->has_retention_requester_id() &&
       ((tablet.tablet->table_type() == TableType::YQL_TABLE_TYPE &&
-       !GetAtomicFlag(&FLAGS_disable_alter_vs_write_mutual_exclusion)) ||
+       !FLAGS_disable_alter_vs_write_mutual_exclusion) ||
       tablet.tablet->table_type() == TableType::PGSQL_TABLE_TYPE)) {
     // For schema change operations we will have to pause the write operations
     // until the schema change is done. This will be done synchronously.
@@ -2684,7 +2684,7 @@ Status TabletServiceImpl::PerformWrite(
       context_ptr.get(), resp);
   query->set_client_request(*req);
 
-  if (RandomActWithProbability(GetAtomicFlag(&FLAGS_TEST_respond_write_failed_probability))) {
+  if (RandomActWithProbability(FLAGS_TEST_respond_write_failed_probability)) {
     LOG(INFO) << "Responding with a failure to " << req->ShortDebugString();
     tablet.peer->WriteAsync(std::move(query));
     auto status = STATUS(LeaderHasNoLease, "TEST: Random failure");
@@ -2692,7 +2692,7 @@ Status TabletServiceImpl::PerformWrite(
     return Status::OK();
   }
 
-  if (RandomActWithProbability(GetAtomicFlag(&FLAGS_TEST_respond_write_with_abort_probability))) {
+  if (RandomActWithProbability(FLAGS_TEST_respond_write_with_abort_probability)) {
     LOG(INFO) << "Responding with transaction aborted failure to " << req->ShortDebugString();
     SetupErrorAndRespond(resp->mutable_error(), STATUS_EC_FORMAT(
         Expired, PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_ABORTED),

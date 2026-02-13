@@ -1436,7 +1436,7 @@ Status CatalogManager::SetAllCDCSDKRetentionBarriers(
 
     AlterTableRequestPB alter_table_req;
     alter_table_req.mutable_table()->set_table_id(table_id);
-    alter_table_req.set_wal_retention_secs(GetAtomicFlag(&FLAGS_cdc_wal_retention_time_secs));
+    alter_table_req.set_wal_retention_secs(FLAGS_cdc_wal_retention_time_secs);
 
     if (has_consistent_snapshot_option) {
       alter_table_req.set_cdc_sdk_stream_id(stream_id.ToString());
@@ -4051,7 +4051,7 @@ Status CatalogManager::UpdateConsumerOnProducerMetadata(
     UpdateConsumerOnProducerMetadataResponsePB* resp, rpc::RpcContext* rpc) {
   LOG_WITH_FUNC(INFO) << " from " << RequestorString(rpc) << ": " << req->DebugString();
 
-  if (PREDICT_FALSE(GetAtomicFlag(&FLAGS_xcluster_skip_schema_compatibility_checks_on_alter))) {
+  if (PREDICT_FALSE(FLAGS_xcluster_skip_schema_compatibility_checks_on_alter)) {
     resp->set_should_wait(false);
     return Status::OK();
   }
@@ -4310,7 +4310,7 @@ Status CatalogManager::WaitForReplicationDrain(
     deadline = CoarseMonoClock::now() + MonoDelta::FromMilliseconds(FLAGS_master_rpc_timeout_ms);
   }
   auto timeout =
-      MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_wait_replication_drain_retry_timeout_ms));
+      MonoDelta::FromMilliseconds(FLAGS_wait_replication_drain_retry_timeout_ms);
 
   while (true) {
     // 1. Construct the request to be sent to each tserver. Meanwhile, collect all tuples that
@@ -4873,7 +4873,7 @@ bool CatalogManager::IsCDCSDKTabletExpiredOrNotOfInterest(
   }
 
   auto not_of_interest_limit_secs =
-      GetAtomicFlag(&FLAGS_cdcsdk_tablet_not_of_interest_timeout_secs) + 2;
+      FLAGS_cdcsdk_tablet_not_of_interest_timeout_secs + 2;
   if (!stream_creation_time.has_value() || last_active_time != *stream_creation_time ||
       last_active_time.AddSeconds(not_of_interest_limit_secs) > Clock()->Now()) {
     return false;
@@ -5105,7 +5105,7 @@ Status CatalogManager::ClearFailedReplicationBootstrap() {
 }
 
 void CatalogManager::StartXReplParentTabletDeletionTaskIfStopped() {
-  if (GetAtomicFlag(&FLAGS_cdc_parent_tablet_deletion_task_retry_secs) <= 0) {
+  if (FLAGS_cdc_parent_tablet_deletion_task_retry_secs <= 0) {
     // Task is disabled.
     return;
   }
@@ -5116,7 +5116,7 @@ void CatalogManager::StartXReplParentTabletDeletionTaskIfStopped() {
 }
 
 void CatalogManager::ScheduleXReplParentTabletDeletionTask() {
-  int wait_time = GetAtomicFlag(&FLAGS_cdc_parent_tablet_deletion_task_retry_secs);
+  int wait_time = FLAGS_cdc_parent_tablet_deletion_task_retry_secs;
   if (wait_time <= 0) {
     // Task has been disabled.
     xrepl_parent_tablet_deletion_task_running_ = false;

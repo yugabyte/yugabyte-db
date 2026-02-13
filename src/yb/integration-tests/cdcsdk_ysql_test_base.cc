@@ -2747,7 +2747,7 @@ Status CDCSDKYsqlTest::FlushTable(const TableId& table_id) {
 }
 
 Status CDCSDKYsqlTest::WaitForPostApplyMetadataWritten(size_t expected_num_transactions) {
-  if (!GetAtomicFlag(&FLAGS_cdc_write_post_apply_metadata)) {
+  if (!FLAGS_cdc_write_post_apply_metadata) {
     return Status::OK();
   }
   size_t num_intents = 0;

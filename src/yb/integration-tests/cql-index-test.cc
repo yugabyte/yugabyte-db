@@ -230,7 +230,7 @@ TEST_F_EX(CqlIndexTest, ConcurrentIndexUpdate, CqlIndexSmallWorkersTest) {
   constexpr int kNumInserts = kThreads * 5;
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_read_write_timeout_ms) = 10000 * kTimeMultiplier;
-  SetAtomicFlag(1000, &FLAGS_TEST_inject_txn_get_status_delay_ms);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_txn_get_status_delay_ms) = 1000;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_abort_check_interval_ms) = 100000;
 
   auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
@@ -281,7 +281,7 @@ TEST_F_EX(CqlIndexTest, ConcurrentIndexUpdate, CqlIndexSmallWorkersTest) {
 
   thread_holder.Stop();
 
-  SetAtomicFlag(0, &FLAGS_TEST_inject_txn_get_status_delay_ms);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_txn_get_status_delay_ms) = 0;
 }
 
 int64_t GetFailedBatchLockNum(MiniCluster* cluster)  {
@@ -316,7 +316,7 @@ TEST_F(CqlIndexTest, WriteQueryStuckAndUpdateOnSameKey) {
   ASSERT_NOK(session.ExecuteQuery("UPDATE t SET s = 'txn' WHERE id = -1;"));
   std::this_thread::sleep_for(1000ms);
   ASSERT_EQ(failed_batch_lock+1, GetFailedBatchLockNum(cluster_.get()));
-  SetAtomicFlag(false, &FLAGS_TEST_writequery_stuck_from_callback_leak);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_writequery_stuck_from_callback_leak) = false;
 }
 
 TEST_F(CqlIndexTest, WriteQueryStuckAndVerifyTxnCleanup) {
@@ -349,7 +349,7 @@ TEST_F(CqlIndexTest, WriteQueryStuckAndVerifyTxnCleanup) {
     }
   }
   ASSERT_EQ(0, total_txns);
-  SetAtomicFlag(false, &FLAGS_TEST_writequery_stuck_from_callback_leak);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_writequery_stuck_from_callback_leak) = false;
 }
 
 TEST_F(CqlIndexTest, TestSaturatedWorkers) {
