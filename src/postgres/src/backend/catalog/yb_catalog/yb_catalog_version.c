@@ -987,7 +987,9 @@ YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version, bool acquire_f
 				ereport(ERROR,
 						(errcode(ERRCODE_DATABASE_DROPPED),
 						 errmsg("catalog version for database %u was not found.", db_oid),
-						 errhint("Database might have been dropped by another user")));
+						 errhint("Database may have been dropped and recreated. "
+								 "Ensure your client connection pool or metadata cache "
+								 "is refreshed to pick up the new database OID.")));
 
 			uint32_t	oid = DatumGetUInt32(values[oid_attnum - 1]);
 

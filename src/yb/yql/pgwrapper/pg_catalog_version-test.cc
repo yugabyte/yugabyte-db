@@ -756,7 +756,7 @@ TEST_F(PgCatalogVersionTest, DBCatalogVersion) {
   ASSERT_TRUE(status.IsNetworkError()) << status;
   ASSERT_STR_CONTAINS(status.ToString(),
                       Format("catalog version for database $0 was not found", new_db_oid));
-  ASSERT_STR_CONTAINS(status.ToString(), "Database might have been dropped by another user");
+  ASSERT_STR_CONTAINS(status.ToString(), "Database may have been dropped and recreated");
 
   // Recreate the same database and table.
   LOG(INFO) << "Re-create the same database";
@@ -784,7 +784,7 @@ TEST_F(PgCatalogVersionTest, DBCatalogVersion) {
   ASSERT_TRUE(status.IsNetworkError()) << status;
   ASSERT_STR_CONTAINS(status.ToString(),
                       Format("catalog version for database $0 was not found", new_db_oid));
-  ASSERT_STR_CONTAINS(status.ToString(), "Database might have been dropped by another user");
+  ASSERT_STR_CONTAINS(status.ToString(), "Database may have been dropped and recreated");
 
   // We need to make a new connection to the recreated database in order to have a
   // successful query of the re-created table.
@@ -826,7 +826,7 @@ TEST_F(PgCatalogVersionTest, DBCatalogVersionDropDB) {
   auto status = ResultToStatus(conn_test.Fetch("SELECT * FROM non_exist_table"));
   ASSERT_TRUE(status.IsNetworkError()) << status;
   ASSERT_STR_CONTAINS(status.ToString(), Format("base $0", new_db_oid));
-  ASSERT_STR_CONTAINS(status.ToString(), "base might have been dropped");
+  ASSERT_STR_CONTAINS(status.ToString(), "base may have been dropped");
 }
 
 // Test running a SQL script that makes the table pg_yb_catalog_version
@@ -1024,7 +1024,7 @@ TEST_F(PgCatalogVersionTest, FixCatalogVersionTable) {
   ASSERT_TRUE(status.IsNetworkError()) << status;
   ASSERT_STR_CONTAINS(status.ToString(),
                       Format("catalog version for database $0 was not found", yugabyte_db_oid));
-  ASSERT_STR_CONTAINS(status.ToString(), "Database might have been dropped by another user");
+  ASSERT_STR_CONTAINS(status.ToString(), "Database may have been dropped and recreated");
 
   // We can only make a new connection to database "template1" because now it
   // is the only database that has a row in pg_yb_catalog_version table.
