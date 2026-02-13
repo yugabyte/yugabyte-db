@@ -8435,13 +8435,13 @@ replica_index_cmp(const void *a, const void *b, void *arg)
  * - end_hash_code: int32
  * - leader: text
  * - replicas: text[]
- * - active_sst_sizes: int8[]
- * - wal_sizes: int8[]
+ * - attributes: jsonb  (nested structure with per-replica data)
  *
  * The start_hash_code and end_hash_code are the hash codes of the start and end
  * keys of the tablet for hash sharded tables. Leader is provided as a separate
- * column for simpler querying and self-explanatory access. The size arrays are
- * parallel to replicas (same index refers to the same replica).
+ * column for simpler querying and self-explanatory access. The attributes column
+ * contains a JSONB object with a "replicas" key mapping each replica address to
+ * its metrics (active_sst_sizes, wal_sizes).
  */
 Datum
 yb_get_tablet_metadata(PG_FUNCTION_ARGS)
@@ -8451,7 +8451,7 @@ yb_get_tablet_metadata(PG_FUNCTION_ARGS)
 	Tuplestorestate *tupstore;
 	MemoryContext per_query_ctx;
 	MemoryContext oldcontext;
-	static int	ncols = 11;
+	static int	ncols = 10;
 
 	/* check to see if caller supports us returning a tuplestore */
 	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
@@ -8520,14 +8520,16 @@ yb_get_tablet_metadata(PG_FUNCTION_ARGS)
 			nulls[6] = true;
 		}
 
-		/* Convert replicas array to PostgreSQL text array and size arrays */
+		/* Convert replicas array to PostgreSQL text array and JSONB attributes */
 		if (tablet->replicas_count > 0)
 		{
 			size_t		nreplicas = tablet->replicas_count;
 			int		   *sort_idxs;
 			Datum	   *text_elems;
-			Datum	   *sst_elems;
-			Datum	   *wal_elems;
+			JsonbParseState *jb_state = NULL;
+			JsonbValue	jb_result;
+			JsonbValue	jb_key;
+			JsonbValue	jb_val;
 
 			Assert(tablet->replicas != NULL);
 
@@ -8535,8 +8537,7 @@ yb_get_tablet_metadata(PG_FUNCTION_ARGS)
 			values[7] = CStringGetTextDatum(tablet->replicas[nreplicas - 1]);
 
 			/*
-			 * Build a sort index so replicas and their sizes stay parallel
-			 * after lexicographic sorting.
+			 * Build a sort index so replicas stay in lexicographic order.
 			 */
 			sort_idxs = palloc(nreplicas * sizeof(int));
 			for (size_t idx = 0; idx < nreplicas; idx++)
@@ -8546,43 +8547,76 @@ yb_get_tablet_metadata(PG_FUNCTION_ARGS)
 					  replica_index_cmp, tablet->replicas);
 
 			text_elems = palloc(nreplicas * sizeof(Datum));
-			sst_elems = palloc(nreplicas * sizeof(Datum));
-			wal_elems = palloc(nreplicas * sizeof(Datum));
+
+			/* Build JSONB: {"replicas": {"addr": {"active_sst_sizes": N, "wal_sizes": N}, ...}} */
+			pushJsonbValue(&jb_state, WJB_BEGIN_OBJECT, NULL);
+
+			jb_key.type = jbvString;
+			jb_key.val.string.val = "replicas";
+			jb_key.val.string.len = 8;
+			pushJsonbValue(&jb_state, WJB_KEY, &jb_key);
+
+			pushJsonbValue(&jb_state, WJB_BEGIN_OBJECT, NULL);
 
 			for (size_t idx = 0; idx < nreplicas; idx++)
 			{
 				int			si = sort_idxs[idx];
+				int64		sst_size;
+				int64		wal_size;
 
 				text_elems[idx] = CStringGetTextDatum(tablet->replicas[si]);
-				sst_elems[idx] = UInt64GetDatum(
-					tablet->replica_sst_sizes
-						? tablet->replica_sst_sizes[si] : 0);
-				wal_elems[idx] = UInt64GetDatum(
-					tablet->replica_wal_sizes
-						? tablet->replica_wal_sizes[si] : 0);
+
+				sst_size = tablet->replica_sst_sizes
+					? tablet->replica_sst_sizes[si] : 0;
+				wal_size = tablet->replica_wal_sizes
+					? tablet->replica_wal_sizes[si] : 0;
+
+				/* Replica address as key */
+				jb_key.type = jbvString;
+				jb_key.val.string.val = (char *) tablet->replicas[si];
+				jb_key.val.string.len = strlen(tablet->replicas[si]);
+				pushJsonbValue(&jb_state, WJB_KEY, &jb_key);
+
+				/* Per-replica object */
+				pushJsonbValue(&jb_state, WJB_BEGIN_OBJECT, NULL);
+
+				jb_key.type = jbvString;
+				jb_key.val.string.val = "active_sst_sizes";
+				jb_key.val.string.len = 16;
+				pushJsonbValue(&jb_state, WJB_KEY, &jb_key);
+				jb_val.type = jbvNumeric;
+				jb_val.val.numeric = DatumGetNumeric(
+					DirectFunctionCall1(int8_numeric, Int64GetDatum(sst_size)));
+				pushJsonbValue(&jb_state, WJB_VALUE, &jb_val);
+
+				jb_key.type = jbvString;
+				jb_key.val.string.val = "wal_sizes";
+				jb_key.val.string.len = 9;
+				pushJsonbValue(&jb_state, WJB_KEY, &jb_key);
+				jb_val.type = jbvNumeric;
+				jb_val.val.numeric = DatumGetNumeric(
+					DirectFunctionCall1(int8_numeric, Int64GetDatum(wal_size)));
+				pushJsonbValue(&jb_state, WJB_VALUE, &jb_val);
+
+				pushJsonbValue(&jb_state, WJB_END_OBJECT, NULL);
 			}
+
+			pushJsonbValue(&jb_state, WJB_END_OBJECT, NULL);	/* end replicas */
+			jb_result = *pushJsonbValue(&jb_state, WJB_END_OBJECT, NULL);	/* end outer */
 
 			values[8] = PointerGetDatum(
 				construct_array(text_elems, (int) nreplicas,
 								TEXTOID, -1, false, TYPALIGN_INT));
-			values[9] = PointerGetDatum(
-				construct_array(sst_elems, (int) nreplicas,
-								INT8OID, 8, FLOAT8PASSBYVAL, TYPALIGN_DOUBLE));
-			values[10] = PointerGetDatum(
-				construct_array(wal_elems, (int) nreplicas,
-								INT8OID, 8, FLOAT8PASSBYVAL, TYPALIGN_DOUBLE));
+			values[9] = JsonbPGetDatum(JsonbValueToJsonb(&jb_result));
 
 			pfree(sort_idxs);
 			pfree(text_elems);
-			pfree(sst_elems);
-			pfree(wal_elems);
 		}
 		else
 		{
 			nulls[7] = true;
 			nulls[8] = true;
 			nulls[9] = true;
-			nulls[10] = true;
 		}
 
 		tuplestore_putvalues(tupstore, tupdesc, values, nulls);

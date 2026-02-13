@@ -1,15 +1,15 @@
 BEGIN;
   SET LOCAL yb_non_ddl_txn_for_sys_tables_allowed TO true;
 
-  -- Add active_sst_sizes and wal_sizes columns to yb_get_tablet_metadata().
+  -- Add attributes column to yb_get_tablet_metadata().
   UPDATE pg_catalog.pg_proc SET
-    proallargtypes = '{25,25,25,25,25,23,23,25,1009,1016,1016}',
-    proargmodes = '{o,o,o,o,o,o,o,o,o,o,o}',
-    proargnames = '{tablet_id,object_uuid,namespace,object_name,type,start_hash_code,end_hash_code,leader,replicas,active_sst_sizes,wal_sizes}'
+    proallargtypes = '{25,25,25,25,25,23,23,25,1009,3802}',
+    proargmodes = '{o,o,o,o,o,o,o,o,o,o}',
+    proargnames = '{tablet_id,object_uuid,namespace,object_name,type,start_hash_code,end_hash_code,leader,replicas,attributes}'
   WHERE proname = 'yb_get_tablet_metadata' AND pronamespace = 11;
 COMMIT;
 
--- Recreate the view to include the new columns.
+-- Recreate the view to include the new column.
 CREATE OR REPLACE VIEW pg_catalog.yb_tablet_metadata
 WITH (use_initdb_acl = true) AS
     SELECT
@@ -28,8 +28,7 @@ WITH (use_initdb_acl = true) AS
         t.end_hash_code,
         t.leader,
         t.replicas,
-        t.active_sst_sizes,
-        t.wal_sizes
+        t.attributes
     FROM
         yb_get_tablet_metadata() t
     LEFT JOIN
