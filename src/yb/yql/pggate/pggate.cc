@@ -1899,7 +1899,7 @@ Result<uint64_t> PgApiImpl::GetSharedCatalogVersion(std::optional<PgOid> db_oid)
         Format("Failed to find suitable shared memory index for db $0: $1$2",
                *db_oid, status.ToString(),
                status.IsTimedOut() ? ", there may be too many databases or "
-               "the database might have been dropped" : ""));
+               "the database may have been dropped" : ""));
 
     CHECK(catalog_version_db_index_);
   }
