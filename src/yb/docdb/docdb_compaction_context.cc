@@ -722,6 +722,12 @@ class DocDBCompactionFeed : public rocksdb::CompactionFeed, public PackedRowFeed
     return next_feed_.Flush();
   }
 
+  void CompactionFinished() {
+    // Vector index metadata filter may hold an iterator to the Rocks DB. The iterator
+    // must be freed while the compaction is being finished and DB mutex is unheld.
+    vector_metadata_filter_.reset();
+  }
+
  private:
   // Assigns prev_key_ from memory addressed by data. The length of key is taken from
   // sub_key_ends_ and same_bytes are reused.
@@ -1331,6 +1337,10 @@ class DocDBCompactionContext : public rocksdb::CompactionContext {
 
   Status UpdateMeta(rocksdb::FileMetaData* meta) override {
     return feed_->UpdateMeta(meta);
+  }
+
+  void CompactionFinished() override {
+    feed_->CompactionFinished();
   }
 
  private:
