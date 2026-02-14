@@ -12,37 +12,37 @@ type: docs
 ---
 
 
-The Yugabyte Docs MCP Server enables you to access Yugabyte documentation directly from your IDE or AI tool (like ChatGPT, Claude, Cursor, or VS Code).
+Use the Yugabyte Docs MCP Server to access official Yugabyte documentation, including API and CLI references, blogs, and support articles, directly from your IDE or AI tool (including ChatGPT, Claude, Cursor, and VS Code).
 
 By connecting this server to the AI tools from your IDE (or CLI), you give your AI assistant direct access to Yugabyte official documentation, API references, blogs and support articles.
 
-This enables the tool to answer questions about Yugabyte without leaving your IDE.
+Once connected, you can get answers to questions about YugabyteDB without leaving your IDE.
 
-## Set up
+## Setup
 
-The MCP server is hosted at `https://yugabyte.mcp.kapa.ai`. Note that when you connect to the MCP server for the first time, you will be required to authenticate via a Google sign-in window. For more information, see [Authentication](https://docs.kapa.ai/integrations/mcp/overview#authentication) in Kapa Documentation.
+The MCP server is hosted at `https://yugabyte.mcp.kapa.ai`. Note that when you connect to the MCP server for the first time, you must authenticate via a Google sign-in window. For more information, see [Authentication](https://docs.kapa.ai/integrations/mcp/overview#authentication) in the Kapa documentation.
 
-To add Yugabyte Docs MCP server, do the following:
+To add the Yugabyte Docs MCP server, do the following:
 
-1. From the docs Search bar, click **Ask AI > Use MCP**.
+1. On any page of the YugabyteDB documentation site, click **Ask AI > Use MCP**.
 
     ![Use MCP](/images/ai/use-mcp.png)
 
-1. In the **Connect to AI tools** dropdown, add the Yugabyte Docs MCP server by choosing the option that matches your tool. <br/><br/>
+1. Choose the option that best matches your tool. <br/><br/>
 
     {{< tabpane text=true >}}
 
 {{% tab header="Cursor" lang="cursor" %}}
 
-The **Add to Cursor** option opens Cursor directly with the MCP server configuration **Tools** window.
+The **Add to Cursor** option opens Cursor to your **Cursor Settings**.
 
 ![Cursor MCP](/images/ai/cursor-mcp.png)
 
-You need to do the following additional steps to enable the server:
+Perform the following additional steps:
 
-1. Click **Install** in the **Install MCP Server?** dialog box.
+1. Click **Install** under **Install MCP Server?**.
 1. Click **Connect** beside the yugabyte-docs server and you should see a green dot with the tool enabled.
-1. If you get a **Needs authentication** sign, click the option and restart Cursor to apply the changes.
+1. If you get a **Needs authentication** message, click the option and restart Cursor to apply the changes.
 
   {{% /tab %}}
 
@@ -54,12 +54,12 @@ The **Add to VS Code** option opens VS Code directly with the MCP server configu
 
 ![VS Code MCP](/images/ai/vs-code-mcp.png)
 
-You need to do the following additional steps to enable the server:
+Perform the following additional steps:
 
 1. Click **Install** to install the yugabyte-docs MCP server.
-1. Go to **Extensions** to check yugabyte-docs listed as an installed MCP server.
+1. Go to **Extensions** to verify that yugabyte-docs is listed as an installed MCP server.
 1. Open the Chat view (Ctrl+Cmd+I / Ctrl+Alt+I), and select **Agent** mode from the dropdown.
-1. Click the Tools button to verify that yugabyte-docs is selected in the available MCP tools.
+1. Click the **Configure Tools** button to verify that yugabyte-docs is selected in the available MCP tools.
 
   {{% /tab %}}
 
@@ -108,7 +108,7 @@ Note that you must fully quit Claude Desktop (from the menu bar, not just closin
 
 #### Troubleshooting Node.js issues
 
-If the logs for the MCP server shows a SyntaxError, it is likely due to an outdated Node.js version.
+If the logs for the MCP server shows a SyntaxError, it is likely due to an outdated version of Node.js.
 
 - Check your version: Run `node -v` in your terminal. This tool requires Node v18 or higher (v22.14.0+ recommended).
 
@@ -120,7 +120,7 @@ If the logs for the MCP server shows a SyntaxError, it is likely due to an outda
 
 ## Examples
 
-After the server is connected, you can ask questions about Yugabyte from your specific IDE or AI tool such as the following:
+After the server is connected, you can ask questions about Yugabyte from your IDE or AI tool, such as the following:
 
 * Explain the Raft consensus implementation in YugabyteDB.
 * Give me a YSQL example of a stored procedure that handles a bank transfer with error checking.
@@ -135,7 +135,7 @@ Sample prompt:
 What's new YugabyteDB Anywhere for v2025.1.1.1?
 ```
 
-You should see a message from Claude indicating that it is searching YugabyteDB knowledge sources and the response similar to the following:
+You should see a message from Claude indicating that it is searching YugabyteDB knowledge sources and a response similar to the following:
 
 ```output
 I'll search the YugabyteDB documentation for information about what's new in YugabyteDB Anywhere version 2025.1.1.0.
