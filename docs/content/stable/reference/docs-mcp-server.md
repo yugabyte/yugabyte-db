@@ -4,17 +4,15 @@ headerTitle: Yugabyte Docs MCP Server
 linkTitle: Docs MCP Server
 description: Access YugabyteDB documentation directly from your IDE or AI tool.
 menu:
-   stable_develop:
-    identifier: tutorials-docs-mcp-server
-    parent: tutorials-ai-agentic
-    weight: 30
+  stable:
+    identifier: docs-mcp-server
+    parent: reference
+    weight: 2590
 type: docs
 ---
 
 
 Use the Yugabyte Docs MCP Server to access official Yugabyte documentation, including API and CLI references, blogs, and support articles, directly from your IDE or AI tool (including ChatGPT, Claude, Cursor, and VS Code).
-
-By connecting this server to the AI tools from your IDE (or CLI), you give your AI assistant direct access to Yugabyte official documentation, API references, blogs and support articles.
 
 Once connected, you can get answers to questions about YugabyteDB without leaving your IDE.
 
@@ -42,13 +40,13 @@ Perform the following additional steps:
 
 1. Click **Install** under **Install MCP Server?**.
 1. Click **Connect** beside the yugabyte-docs server and you should see a green dot with the tool enabled.
-1. If you get a **Needs authentication** message, click the option and restart Cursor to apply the changes.
+1. If you get a **Needs authentication** message, click the message and restart Cursor to apply the changes.
 
   {{% /tab %}}
 
   {{% tab header="VS Code" lang="vscode" %}}
 
-**Prerequisites**: VS Code 1.109.2 with GitHub Copilot enabled.
+**Prerequisites**: VS Code 1.102 with GitHub Copilot enabled.
 
 The **Add to VS Code** option opens VS Code directly with the MCP server configuration window.
 
@@ -65,7 +63,11 @@ Perform the following additional steps:
 
   {{% tab header="Claude Code" lang="claude" %}}
 
-1. Use the CLI command to register the Docs MCP server with the Claude Code agent.
+1. Use the following CLI command to register the Docs MCP server with the Claude Code agent.
+
+    ```sh
+    claude mcp add --transport http yugabyte-docs https://yugabyte.mcp.kapa.ai
+    ```
 
 1. Confirm the server is listed:
 
@@ -77,7 +79,7 @@ Perform the following additional steps:
 
   {{% tab header="MCP URL" lang="mcp-url" %}}
 
-For Claude Desktop, ChatGPT, or other MCP-compatible clients, you can use the hosted endpoint or a local config. 
+For Claude Desktop, ChatGPT, or other MCP-compatible clients, you can use the hosted endpoint or a local config.
 
 **Option A — Kapa-hosted endpoint**
 
@@ -110,9 +112,9 @@ Note that you must fully quit Claude Desktop (from the menu bar, not just closin
 
 If the logs for the MCP server shows a SyntaxError, it is likely due to an outdated version of Node.js.
 
-- Check your version: Run `node -v` in your terminal. This tool requires Node v18 or higher (v22.14.0+ recommended).
+- Check your version: Run `node -v` in your terminal. The MCP server requires Node v18 or higher (v22.14.0+ recommended).
 
-- Verify the path: If you use NVM, Claude might still pick up an older system version of Node. You can check which version is actually running by looking at the Claude > Developer > View Logs and searching for the "Using MCP server command" line.
+- Verify the path: If you use NVM, Claude might still pick up an older system version of Node. You can check which version is actually running by looking at the **Claude > Developer > View Logs** and searching for the "Using MCP server command" line.
 
   {{% /tab %}}
 
