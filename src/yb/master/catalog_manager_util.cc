@@ -409,7 +409,7 @@ Status ValidateAndAddPreferredZone(
         cloud_info_str);
   }
 
-  if (!PlacementInfoContainsCloudInfo(placement_info, cloud_info)) {
+  if (!CloudInfoMatchesPlacementInfo(cloud_info, placement_info)) {
     return STATUS_FORMAT(
         InvalidArgument, "Preferred zone '$0' not found in Placement info '$1'", cloud_info_str,
         placement_info);

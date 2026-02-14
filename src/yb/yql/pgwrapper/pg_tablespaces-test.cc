@@ -220,20 +220,71 @@ class PgTablespacesTest : public GeoTransactionsTestBase {
         tablespace.ReadReplicaPlacementBlocks());
   }
 
+  // Checks that tablet leader placement respects leader affinity.
+  // Returns true if all leaders are in expected placement blocks, false otherwise.
+  Result<bool> CheckLeaderPlacement(
+      const std::string& table_name,
+      const std::vector<PlacementBlock>& expected_leader_placement_blocks) {
+    auto tablets = VERIFY_RESULT(GetTabletsForTable(table_name));
+
+    for (const auto& tablet : tablets) {
+      const master::TabletLocationsPB::ReplicaPB* leader_replica = nullptr;
+      for (const auto& replica : tablet.replicas()) {
+        if (replica.role() == PeerRole::LEADER) {
+          leader_replica = &replica;
+          break;
+        }
+      }
+      if (!leader_replica) {
+        LOG(INFO) << Format(
+            "CheckLeaderPlacement: table=$0 tablet=$1 has no leader yet",
+            table_name, tablet.tablet_id());
+        return false;
+      }
+
+      const auto& leader_cloud_info = leader_replica->ts_info().cloud_info();
+
+      const bool matches_expected = std::any_of(
+          expected_leader_placement_blocks.begin(), expected_leader_placement_blocks.end(),
+          [&leader_cloud_info](const PlacementBlock& block) {
+            return block.MatchesReplica(leader_cloud_info);
+          });
+      if (!matches_expected) {
+        LOG(INFO) << Format(
+            "CheckLeaderPlacement: table=$0 tablet=$1 leader not yet in expected placement. "
+            "Leader cloud_info: $2",
+            table_name, tablet.tablet_id(), leader_cloud_info.ShortDebugString());
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // Asserts that tablet leader placement respects leader affinity.
+  void VerifyLeaderPlacement(
+      const std::string& table_name,
+      const std::vector<PlacementBlock>& expected_leader_placement_blocks) {
+    ASSERT_TRUE(ASSERT_RESULT(CheckLeaderPlacement(table_name, expected_leader_placement_blocks)))
+        << "Leaders are not in expected placement blocks";
+  }
+
   void GeneratePlacementBlocks(
       WildCardTestOption wildcard_opt, int num_replicas,
-      std::vector<PlacementBlock>* placement_blocks) {
+      std::vector<PlacementBlock>* placement_blocks,
+      std::optional<size_t> leader_preference = std::nullopt) {
     placement_blocks->clear();
     switch (wildcard_opt) {
       case WildCardTestOption::kCloud:
         // No placement blocks means any cloud/region/zone is ok.
         break;
       case WildCardTestOption::kRegion:
-        placement_blocks->push_back(PlacementBlock("cloud0", "*", "*", num_replicas));
+        placement_blocks->push_back(
+            PlacementBlock("cloud0", "*", "*", num_replicas, leader_preference));
         break;
 
       case WildCardTestOption::kZone:
-        placement_blocks->push_back(PlacementBlock("cloud0", "region1", "*", 2));
+        placement_blocks->push_back(
+            PlacementBlock("cloud0", "region1", "*", 2, leader_preference));
         if (num_replicas > 2)
           placement_blocks->push_back(PlacementBlock("cloud0", "region2", "*", 1));
         break;
@@ -598,6 +649,50 @@ TEST_F(PgTablespacesTest, TestWildcardZoneTablespace) {
 
 TEST_F(PgTablespacesTest, TestWildcardZoneYbAdmin) {
   TestWildcardPlacement(true, WildCardTestOption::kZone);
+}
+
+// Test that wildcard leader preferences work correctly.
+// Creates a tablespace with wildcard region/zone and leader_preference, then verifies
+// that all tablet leaders are placed on tservers matching the wildcard specification.
+TEST_F(PgTablespacesTest, TestWildcardLeaderPreference) {
+  auto options = EXPECT_RESULT(tserver::TabletServerOptions::CreateTabletServerOptions());
+  options.SetPlacement("cloud0", "region1", "zone1");
+  ASSERT_OK(cluster_->AddTabletServer(options));
+
+  options.SetPlacement("cloud0", "region1", "zone2");
+  ASSERT_OK(cluster_->AddTabletServer(options));
+
+  ASSERT_OK(cluster_->WaitForAllTabletServers());
+
+  static constexpr auto kTableName = "leader_pref_test";
+  static constexpr auto kTablespaceName = "leader_pref_ts";
+
+  std::vector<PlacementBlock> placement_blocks;
+  placement_blocks.push_back(
+      PlacementBlock("cloud0", "region1", "*", /* num_replicas */ 2, /* leader_preference */ 1));
+  placement_blocks.push_back(PlacementBlock("cloud0", "region2", "zone", 1));
+
+  const int num_replicas = 3;
+  Tablespace tablespace(kTablespaceName, num_replicas, placement_blocks);
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(tablespace.CreateCmd()));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (k INT PRIMARY KEY) TABLESPACE $1", kTableName, kTablespaceName));
+
+  WaitForLoadBalanceCompletion();
+
+  VerifyTablePlacement(kTableName, placement_blocks, /* read_replica_placement_blocks */ {},
+                       num_replicas);
+
+  std::vector<PlacementBlock> leader_placement_blocks;
+  leader_placement_blocks.push_back(PlacementBlock("cloud0", "region1", "*", 1));
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return CheckLeaderPlacement(kTableName, leader_placement_blocks);
+      },
+      kWaitLeaderDistributionTimeout, "Leaders placed in preferred wildcard zone"));
 }
 
 } // namespace client

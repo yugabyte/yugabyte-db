@@ -833,23 +833,21 @@ const std::pair<std::vector<std::pair<ServerEntryPB, size_t>>, bool>
 GetMoreEligibleSysCatalogLeaders(
     const vector<AffinitizedZonesSet>& affinitized_zones, const BlacklistSet& blacklist,
     const std::vector<ServerEntryPB>& masters, const ServerRegistrationPB& current_leader) {
-  std::unordered_map<CloudInfoPB, size_t, cloud_hash, cloud_equal_to> cloud_info_scores;
-  for (size_t i = 0; i < affinitized_zones.size(); ++i) {
-    for (const auto& cloud_info : affinitized_zones[i]) {
-      cloud_info_scores.insert({cloud_info, i});
-    }
-  }
   auto get_score = [&](const ServerRegistrationPB& registration) {
     if (IsBlacklisted(registration, blacklist)) {
       return affinitized_zones.size() + 1;
-    } else {
-      auto cloud_score = cloud_info_scores.find(registration.cloud_info());
-      if (cloud_score == cloud_info_scores.end()) {
-        return affinitized_zones.size();
-      } else {
-        return cloud_score->second;
+    }
+    const auto& ci = registration.cloud_info();
+    for (size_t i = 0; i < affinitized_zones.size(); ++i) {
+      if (std::any_of(
+              affinitized_zones[i].begin(), affinitized_zones[i].end(),
+              [&ci](const CloudInfoPB& zone) {
+                return CloudInfoContainsCloudInfo(zone, ci);
+              })) {
+        return i;
       }
     }
+    return affinitized_zones.size();
   };
 
   auto my_score = get_score(current_leader);
