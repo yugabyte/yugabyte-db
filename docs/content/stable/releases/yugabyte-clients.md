@@ -28,14 +28,8 @@ The YugabyteDB clients are installed with [YugabyteDB](../ybdb-releases/) and lo
 You can also install a standalone version using any of the following methods:
 
 <ul class="nav nav-tabs nav-tabs-yb">
-  <li >
-    <a href="#macos" class="nav-link active" id="macos-tab" data-bs-toggle="tab" role="tab" aria-controls="macos" aria-selected="true">
-      <i class="fa-brands fa-apple" aria-hidden="true"></i>
-      macOS
-    </a>
-  </li>
   <li>
-    <a href="#linuxx86" class="nav-link" id="linuxx86-tab" data-bs-toggle="tab" role="tab" aria-controls="linuxx86" aria-selected="true">
+    <a href="#linuxx86" class="nav-link active" id="linuxx86-tab" data-bs-toggle="tab" role="tab" aria-controls="linuxx86" aria-selected="true">
       <i class="fa-brands fa-linux" aria-hidden="true"></i>
       Linux x86
     </a>
@@ -55,16 +49,7 @@ You can also install a standalone version using any of the following methods:
 </ul>
 
 <div class="tab-content">
-  <div id="macos" class="tab-pane fade show active" role="tabpanel" aria-labelledby="macos-tab">
-
-```sh
-curl -O https://downloads.yugabyte.com/releases/{{< yb-version version="stable" >}}/yugabyte-client-{{< yb-version version="stable"  format="build">}}-darwin-x86_64.tar.gz
-echo "$(curl -L https://downloads.yugabyte.com/releases/{{< yb-version version="stable" >}}/yugabyte-client-{{< yb-version version="stable"  format="build">}}-darwin-x86_64-tar.gz.sha) *yugabyte-client-{{< yb-version version="stable"  format="build">}}-darwin-x86_64.tar.gz" | shasum --check && \
-tar xvfz yugabyte-client-{{< yb-version version="stable"  format="build">}}-darwin-x86_64.tar.gz && cd yugabyte-client-{{< yb-version version="stable" >}}/
-```
-
-  </div>
-  <div id="linuxx86" class="tab-pane fade" role="tabpanel" aria-labelledby="linuxx86-tab">
+  <div id="linuxx86" class="tab-pane fade show active" role="tabpanel" aria-labelledby="linuxx86-tab">
 
 ```sh
 wget https://downloads.yugabyte.com/releases/{{< yb-version version="stable" >}}/yugabyte-client-{{< yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
