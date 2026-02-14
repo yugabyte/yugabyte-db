@@ -104,10 +104,10 @@ step l2commit: COMMIT;
 listener2: NOTIFY "c1" with payload "" from notifier
 step l2stop: UNLISTEN *;
 
-starting permutation: llisten lbegin usage bignotify usage
+starting permutation: llisten lbegin lusage bignotify ybempty lusage
 step llisten: LISTEN c1; LISTEN c2;
 step lbegin: BEGIN;
-step usage: SELECT pg_notification_queue_usage() > 0 AS nonzero;
+step lusage: SELECT pg_notification_queue_usage() > 0 AS nonzero;
 nonzero
 -------
 f      
@@ -120,7 +120,8 @@ count
  1000
 (1 row)
 
-step usage: SELECT pg_notification_queue_usage() > 0 AS nonzero;
+step ybempty: 
+step lusage: SELECT pg_notification_queue_usage() > 0 AS nonzero;
 nonzero
 -------
 t      

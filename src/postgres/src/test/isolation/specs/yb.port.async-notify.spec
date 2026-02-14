@@ -31,8 +31,8 @@ step notifys1	{
 	ROLLBACK TO SAVEPOINT s2;
 	COMMIT;
 }
-step usage		{ SELECT pg_notification_queue_usage() > 0 AS nonzero; }
 step bignotify	{ SELECT count(pg_notify('c1', s::text)) FROM generate_series(1, 1000) s; }
+step ybempty {}
 teardown		{ UNLISTEN *; }
 
 # The listener session is used for cross-backend notify checks.
@@ -43,6 +43,7 @@ step lcheck		{ SELECT 1 AS x; }
 step lbegin		{ BEGIN; }
 step lbegins	{ BEGIN ISOLATION LEVEL SERIALIZABLE; }
 step lcommit	{ COMMIT; }
+step lusage		{ SELECT pg_notification_queue_usage() > 0 AS nonzero; }
 teardown		{ UNLISTEN *; }
 
 # In some tests we need a second listener, just to block the queue.
@@ -87,4 +88,4 @@ permutation l2listen l2begin notify1 lbegins llisten lcommit l2commit l2stop
 # make the output deterministic, add (*) to bignotify to always report it as
 # waiting.
 
-permutation llisten lbegin usage bignotify(*) usage
+permutation llisten lbegin lusage bignotify(*) ybempty lusage
