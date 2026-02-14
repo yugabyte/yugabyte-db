@@ -649,7 +649,8 @@ Result<bool> QLWriteOperation::HasDuplicateUniqueIndexValueBackward(
       BloomFilterOptions::Fixed(pk_doc_key_->Encode().AsSlice()),
       request_.query_id(),
       txn_op_context_,
-      data.read_operation_data);
+      // This should be done with Max so that we do not filter out any records.
+      data.read_operation_data.WithAlteredReadTime(ReadHybridTime::Max()));
 
   HybridTime oldest_past_min_ht = VERIFY_RESULT(FindOldestOverwrittenTimestamp(
       iter.get(), dockv::SubDocKey(*pk_doc_key_), requested_read_time.read));
@@ -658,7 +659,10 @@ Result<bool> QLWriteOperation::HasDuplicateUniqueIndexValueBackward(
           iter.get(),
           dockv::SubDocKey(*pk_doc_key_, KeyEntryValue::kLivenessColumn),
           requested_read_time.read));
+  VLOG_WITH_FUNC(3) << "before MakeAtMost: oldest_past_min_ht=" << oldest_past_min_ht
+                     << ", oldest_past_min_ht_liveness=" << oldest_past_min_ht_liveness;
   oldest_past_min_ht.MakeAtMost(oldest_past_min_ht_liveness);
+  VLOG_WITH_FUNC(3) << "after MakeAtMost: oldest_past_min_ht=" << oldest_past_min_ht;
   if (!oldest_past_min_ht.is_valid()) {
     return false;
   }

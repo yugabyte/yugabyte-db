@@ -2378,6 +2378,54 @@ void DoTestCreateUniqueIndexWithOnlineWrites(CppCassandraDriverTestIndex* test,
   }
 }
 
+// Table starts with one row (1, 'one'). After backfill safe time, we insert another
+// row (2, 'one') with the same indexed value. The CREATE UNIQUE INDEX should fail
+// because backfill sees the original row and the concurrent insert detects a collision.
+TEST_F_EX(CppCassandraDriverTest, DuplicateInsertDuringBackfill,
+          CppCassandraDriverTestIndexSlow) {
+  constexpr auto kNamespace = "test";
+  const YBTableName table_name(YQL_DATABASE_CQL, kNamespace, "test_table");
+  const YBTableName index_table_name(YQL_DATABASE_CQL, kNamespace, "test_table_index_by_v");
+
+  TestTable<cass_int32_t, string> table;
+  ASSERT_OK(table.CreateTable(&session_, "test.test_table", {"k", "v"}, {"(k)"}, true));
+
+  LOG(INFO) << "Inserting initial row (1, 'one')";
+  ASSERT_OK(session_.ExecuteQuery("INSERT INTO test_table (k, v) VALUES (1, 'one');"));
+
+  // Block backfill.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "true"));
+
+  LOG(INFO) << "Creating unique index";
+  auto s = session_.ExecuteQuery(
+      "CREATE UNIQUE INDEX test_table_index_by_v ON test_table (v);");
+  ASSERT_TRUE(CreateTableSuccessOrTimedOut(s));
+  WARN_NOT_OK(s, "Create index command failed. " + s.ToString());
+
+  // Wait for backfill to reach safe time.
+  ASSERT_OK(WaitForBackfillSafeTimeOn(cluster_.get(), table_name));
+
+  // Insert a duplicate: another row with the same indexed value v='one'.
+  LOG(INFO) << "Inserting duplicate row (2, 'one')";
+  ASSERT_OK(session_.ExecuteQuery("INSERT INTO test_table (k, v) VALUES (2, 'one');"));
+
+  // Unblock backfill.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "false"));
+
+  // Wait for the index to reach at least READ_WRITE_AND_DELETE (or beyond, e.g. NOT_USED).
+  // This avoids hanging if the index unexpectedly succeeds.
+  auto perm = ASSERT_RESULT(client_->WaitUntilIndexPermissionsAtLeast(
+      table_name, index_table_name, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE));
+  ASSERT_NE(perm, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE)
+      << "Expected index creation to fail due to duplicate value v='one', but it succeeded";
+
+  // Now confirm the index is cleaned up (deleted).
+  auto res = client_->WaitUntilIndexPermissionsAtLeast(
+      table_name, index_table_name, IndexPermissions::INDEX_PERM_NOT_USED, 50ms /* max_wait */);
+  ASSERT_TRUE(!res.ok());
+  ASSERT_TRUE(res.status().IsNotFound()) << res.status();
+}
+
 TEST_F_EX(CppCassandraDriverTest, TestTableBackfillInChunks,
           CppCassandraDriverTestIndexMultipleChunks) {
   TestBackfillIndexTable(this, PKOnlyIndex::kFalse, IsUnique::kFalse,
