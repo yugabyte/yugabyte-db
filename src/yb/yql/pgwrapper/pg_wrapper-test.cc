@@ -722,6 +722,8 @@ class PgWrapperOverrideFlagsTest : public PgWrapperFlagsTest {
     options->extra_tserver_flags.emplace_back("--ysql_yb_enable_replication_commands=true");
     options->extra_tserver_flags.emplace_back("--ysql_yb_enable_replica_identity=true");
     options->extra_tserver_flags.emplace_back("--ysql_yb_enable_docdb_vector_type=false");
+    options->extra_tserver_flags.emplace_back("--ysql_default_transaction_isolation=read committed");
+    options->extra_tserver_flags.emplace_back("--ysql_datestyle=ISO, YMD");
   }
 };
 
@@ -738,6 +740,8 @@ TEST_F_EX(
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_replication_commands", "true"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_replica_identity", "true"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_docdb_vector_type", "false"));
+  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_datestyle", "ISO, YMD"));
+  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_default_transaction_isolation", "read committed"));
 }
 
 class PgWrapperAutoFlagsTest : public PgWrapperFlagsTest {

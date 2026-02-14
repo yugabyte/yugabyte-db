@@ -594,7 +594,8 @@ void AppendPgGFlags(vector<string>* lines) {
     }
 
     string pg_variable_name = flag.name.substr(pg_flag_prefix.length());
-    lines->push_back(Format("$0=$1", pg_variable_name, flag.current_value));
+    string escaped_value = boost::replace_all_copy(flag.current_value, "'", "''");
+    lines->push_back(Format("$0='$1'", pg_variable_name, escaped_value));
   }
 
   // Special handling for deprecated ysql_enable_pg_export_snapshot flag.
