@@ -14,10 +14,12 @@ package org.yb.cql;
 
 import static org.yb.AssertionWrappers.assertNotNull;
 
+import java.io.IOException;
 import java.math.BigInteger;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.cert.X509Certificate;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
@@ -240,7 +242,8 @@ public class TestJWTAuth extends BaseAuthenticationCQLTest {
   }
 
   private void setJWTConfigAndRestartCluster(List<String> allowedIssuers,
-      List<String> allowedAudiences, String matchingClaimKey, String jwksUrl) throws Exception {
+      List<String> allowedAudiences, String matchingClaimKey, String jwksUrl, String identConfCsv)
+      throws Exception {
     String issuersCsv = String.join(",", allowedIssuers);
     String audiencesCsv = String.join(",", allowedAudiences);
 
@@ -257,21 +260,22 @@ public class TestJWTAuth extends BaseAuthenticationCQLTest {
       jwtOptions.append(" jwt_matching_claim_key=").append(matchingClaimKey);
     }
     flagMap.put("ycql_jwt_options", jwtOptions.toString());
-
+    if (!identConfCsv.isEmpty()) {
+      flagMap.put("ycql_ident_conf_csv", identConfCsv);
+    }
     flagMap.put("vmodule", "cql_processor=4,cql_service=4,jwt_util=4");
     restartClusterWithTSFlags(flagMap);
     LOG.info("Cluster restart finished");
   }
 
-  @Before
-  public void setUp() throws Exception {
-    jwks = createJwks();
+  private void setJWTConfigAndRestartCluster(List<String> allowedIssuers,
+      List<String> allowedAudiences, String matchingClaimKey, String jwksUrl) throws Exception {
+    setJWTConfigAndRestartCluster(
+        allowedIssuers, allowedAudiences, matchingClaimKey, jwksUrl, "" /* identConfCsv */);
   }
 
-  @Test
-  public void authWithSubject() throws Exception {
-    try (MockWebServer server = new MockWebServer()) {
-      Dispatcher mDispatcher = new Dispatcher() {
+  private String configureMockJwksServer(MockWebServer server) throws IOException {
+    Dispatcher mDispatcher = new Dispatcher() {
         @Override
         public MockResponse dispatch(RecordedRequest request) {
           if (request.getPath().contains("/jwks_keys")) {
@@ -287,8 +291,19 @@ public class TestJWTAuth extends BaseAuthenticationCQLTest {
       };
       server.setDispatcher(mDispatcher);
       server.start();
-      String serverUrl = String.format("http://%s:%s/jwks_keys",
-                                       server.getHostName(), server.getPort());
+      return String.format("http://%s:%s/jwks_keys",
+                           server.getHostName(), server.getPort());
+  }
+
+  @Before
+  public void setUp() throws Exception {
+    jwks = createJwks();
+  }
+
+  @Test
+  public void authWithSubject() throws Exception {
+    try (MockWebServer server = new MockWebServer()) {
+      String serverUrl = configureMockJwksServer(server);
 
       setJWTConfigAndRestartCluster(
           ALLOWED_ISSUERS, ALLOWED_AUDIENCES, /* matchingClaimKey */ "", serverUrl);
@@ -333,27 +348,65 @@ public class TestJWTAuth extends BaseAuthenticationCQLTest {
     }
   }
 
+  // YCQL does not allow '@' in the username, so using email without ident mappings is not possible.
+  // YCQL username: testUser1
+  // IDP email: testUser1@example.com
+  // Ident mapping: /^(.*)@example\\.com$      \1
+  @Test
+  public void authWithEmailWithIdent() throws Exception {
+    try (MockWebServer server = new MockWebServer()) {
+      String serverUrl = configureMockJwksServer(server);
+
+      setJWTConfigAndRestartCluster(ALLOWED_ISSUERS, ALLOWED_AUDIENCES,
+          /* matchingClaimKey */ "email", serverUrl,
+          /* identConfCsv */ "\"/^(.*)@example\\.com$ \\1\"");
+
+      List<Pair<JWSAlgorithm, String>> keysWithAlgorithms =
+        new ArrayList<Pair<JWSAlgorithm, String>>() {
+          {
+            add(new Pair<JWSAlgorithm, String>(JWSAlgorithm.RS256, RS256_KEYID));
+            add(new Pair<JWSAlgorithm, String>(JWSAlgorithm.PS256, PS256_KEYID));
+            add(new Pair<JWSAlgorithm, String>(JWSAlgorithm.ES256, ES256_KEYID));
+            add(new Pair<JWSAlgorithm, String>(JWSAlgorithm.RS256, RS256_KEYID_WITH_X5C));
+            add(new Pair<JWSAlgorithm, String>(JWSAlgorithm.PS256, PS256_KEYID_WITH_X5C));
+            add(new Pair<JWSAlgorithm, String>(JWSAlgorithm.ES256, ES256_KEYID_WITH_X5C));
+          }
+        };
+
+      session.execute("CREATE ROLE 'testUser1' WITH LOGIN = true");
+      session.execute("CREATE ROLE 'testUser2' WITH LOGIN = true");
+
+      // Ensure that login works with each key type.
+      for (Pair<JWSAlgorithm, String> key : keysWithAlgorithms) {
+        String jwt = createJWT(key.getFirst(), jwks, key.getSecond(), "AnySubject_Doesnotmatter",
+            "login.issuer1.secured.example.com/2ac843f8-2156-11ee-be56-0242ac120002/v2.0",
+            "795c2b42-2156-11ee-be56-0242ac120002", ISSUED_AT_TIME,
+            EXPIRATION_TIME, new HashMap<String, String>() {
+              {
+                put("email", "testUser1@example.com");
+              }
+            }, null);
+        checkConnectivity(
+            true, "testUser1", jwt, ProtocolOptions.Compression.NONE, false /* expectFailure */);
+
+        // Identity mismatch since IDP username after applying regex mapping: testUser1 while YCQL
+        // username: testUser2.
+        checkConnectivityWithMessage(true, "testUser2", jwt, ProtocolOptions.Compression.NONE,
+            true /* expectFailure */,
+            "Failed to authenticate using JWT: Provided username 'testUser2' and/or token are "
+                + "incorrect");
+      }
+
+      server.shutdown();
+      session.execute("DROP ROLE 'testUser1'");
+      session.execute("DROP ROLE 'testUser2'");
+    }
+  }
+
   @Test
   public void invalidAuthentication() throws Exception {
     try (MockWebServer server = new MockWebServer()) {
-      Dispatcher mDispatcher = new Dispatcher() {
-        @Override
-        public MockResponse dispatch(RecordedRequest request) {
-          if (request.getPath().contains("/jwks_keys")) {
-            return new MockResponse().setResponseCode(200)
-                                     .setBody(jwks.toString(true));
-          }
-          if (request.getPath().contains("/invalid_json")) {
-            return new MockResponse().setResponseCode(200)
-                                      .setBody("invalid json");
-          }
-          return new MockResponse().setResponseCode(404);
-        }
-      };
-      server.setDispatcher(mDispatcher);
-      server.start();
-      String serverUrl = String.format("http://%s:%s/jwks_keys",
-                                       server.getHostName(), server.getPort());
+      String serverUrl = configureMockJwksServer(server);
 
       setJWTConfigAndRestartCluster(
           ALLOWED_ISSUERS, ALLOWED_AUDIENCES, /* matchingClaimKey */ "", serverUrl);
@@ -427,6 +480,112 @@ public class TestJWTAuth extends BaseAuthenticationCQLTest {
       jwt = signedJWT.serialize();
       checkConnectivity(
           true, "testuser1", jwt, ProtocolOptions.Compression.NONE, true /* expectFailure */);
+    }
+  }
+
+  @Test
+  public void authWithGroupsOrRolesWithoutIdent() throws Exception {
+    try (MockWebServer server = new MockWebServer()) {
+      String serverUrl = configureMockJwksServer(server);
+
+      setJWTConfigAndRestartCluster(
+          ALLOWED_ISSUERS, ALLOWED_AUDIENCES, /* matchingClaimKey */ "groups", serverUrl);
+
+      List<Pair<JWSAlgorithm, String>> keysWithAlgorithms =
+        new ArrayList<Pair<JWSAlgorithm, String>>() {
+          {
+            add(new Pair<JWSAlgorithm, String>(JWSAlgorithm.RS256, RS256_KEYID));
+            add(new Pair<JWSAlgorithm, String>(JWSAlgorithm.PS256, PS256_KEYID));
+            add(new Pair<JWSAlgorithm, String>(JWSAlgorithm.ES256, ES256_KEYID));
+            add(new Pair<JWSAlgorithm, String>(JWSAlgorithm.RS256, RS256_KEYID_WITH_X5C));
+            add(new Pair<JWSAlgorithm, String>(JWSAlgorithm.PS256, PS256_KEYID_WITH_X5C));
+            add(new Pair<JWSAlgorithm, String>(JWSAlgorithm.ES256, ES256_KEYID_WITH_X5C));
+          }
+        };
+
+      session.execute("CREATE ROLE 'dbadmintest' WITH LOGIN = true");
+      session.execute("CREATE ROLE 'dbadmintest2' WITH LOGIN = true");
+
+      for (Pair<JWSAlgorithm, String> key : keysWithAlgorithms) {
+        String jwt = createJWT(key.getFirst(), jwks, key.getSecond(), "AnySubject_Doesnotmatter",
+            "login.issuer1.secured.example.com/2ac843f8-2156-11ee-be56-0242ac120002/v2.0",
+            "795c2b42-2156-11ee-be56-0242ac120002", ISSUED_AT_TIME, EXPIRATION_TIME,
+            new HashMap<String, String>() {
+              {
+                put("email", "doesnotmatter@random.com");
+              } // doesn't matter.
+            },
+            new Pair<String, List<String>>(
+                "groups", Arrays.asList("anothergroup", "dbadmintest", "anotheranothergroup@xyz")));
+        // Login must succeed as the user is part of the "dbadmintest" group.
+        checkConnectivity(
+            true, "dbadmintest", jwt, ProtocolOptions.Compression.NONE, false /* expectFailure */);
+
+        // Identity mismatch since the user's group doesn't contain the YCQL username: dbadmintest2.
+        checkConnectivityWithMessage(true, "dbadmintest2", jwt, ProtocolOptions.Compression.NONE,
+            true /* expectFailure */,
+            "Failed to authenticate using JWT: Provided username 'dbadmintest2' and/or token are "
+            + "incorrect");
+      }
+
+      server.shutdown();
+      session.execute("DROP ROLE 'dbadmintest'");
+      session.execute("DROP ROLE 'dbadmintest2'");
+    }
+  }
+
+  @Test
+  public void authWithGroupsOrRolesWithIdent() throws Exception {
+    try (MockWebServer server = new MockWebServer()) {
+      String serverUrl = configureMockJwksServer(server);
+
+      setJWTConfigAndRestartCluster(ALLOWED_ISSUERS, ALLOWED_AUDIENCES,
+          /* matchingClaimKey */ "groups", serverUrl,
+          /* identConfCsv */ "\"/^(.*)@example\\.com$ \\1\"");
+
+      List<Pair<JWSAlgorithm, String>> keysWithAlgorithms =
+        new ArrayList<Pair<JWSAlgorithm, String>>() {
+          {
+            add(new Pair<JWSAlgorithm, String>(JWSAlgorithm.RS256, RS256_KEYID));
+            add(new Pair<JWSAlgorithm, String>(JWSAlgorithm.PS256, PS256_KEYID));
+            add(new Pair<JWSAlgorithm, String>(JWSAlgorithm.ES256, ES256_KEYID));
+            add(new Pair<JWSAlgorithm, String>(JWSAlgorithm.RS256, RS256_KEYID_WITH_X5C));
+            add(new Pair<JWSAlgorithm, String>(JWSAlgorithm.PS256, PS256_KEYID_WITH_X5C));
+            add(new Pair<JWSAlgorithm, String>(JWSAlgorithm.ES256, ES256_KEYID_WITH_X5C));
+          }
+        };
+
+      session.execute("CREATE ROLE 'dbadmintest' WITH LOGIN = true");
+      session.execute("CREATE ROLE 'dbadmintest2' WITH LOGIN = true");
+
+      for (Pair<JWSAlgorithm, String> key : keysWithAlgorithms) {
+        String jwt = createJWT(key.getFirst(), jwks, key.getSecond(), "AnySubject_Doesnotmatter",
+            "login.issuer1.secured.example.com/2ac843f8-2156-11ee-be56-0242ac120002/v2.0",
+            "795c2b42-2156-11ee-be56-0242ac120002", ISSUED_AT_TIME, EXPIRATION_TIME,
+            new HashMap<String, String>() {
+              {
+                put("email", "doesnotmatter@random.com");
+              } // doesn't matter.
+            },
+            new Pair<String, List<String>>("groups",
+                Arrays.asList(
+                    "anothergroup", "dbadmintest@example.com", "anotheranothergroup@xyz")));
+        // Login must succeed as the user is part of the "dbadmintest@example.com" group which after
+        // applying the ident mapping is equal to the YCQL username: dbadmintest.
+        checkConnectivity(
+            true, "dbadmintest", jwt, ProtocolOptions.Compression.NONE, false /* expectFailure */);
+
+        // Identity mismatch since the user's group doesn't contain the YCQL username: dbadmintest2
+        // after applying the ident mapping.
+        checkConnectivityWithMessage(true, "dbadmintest2", jwt, ProtocolOptions.Compression.NONE,
+            true /* expectFailure */,
+            "Failed to authenticate using JWT: Provided username 'dbadmintest2' and/or token are "
+            + "incorrect");
+      }
+
+      server.shutdown();
+      session.execute("DROP ROLE 'dbadmintest'");
+      session.execute("DROP ROLE 'dbadmintest2'");
     }
   }
 }
