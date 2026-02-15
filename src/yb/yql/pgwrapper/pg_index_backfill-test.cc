@@ -1357,6 +1357,78 @@ TEST_P(PgIndexBackfillSnapshotTooOld, SnapshotTooOld) {
   thread_holder_.JoinAll();
 }
 
+// Verify that compacting the INDEX TABLE after the history retention interval does NOT cause
+// backfill writes to fail with "Snapshot too old".  Although the index tablet's history cutoff
+// advances past the backfill safe time, the index table has retain_delete_markers=true during
+// backfill.  This means compaction preserves all data (delete markers and regular values), so
+// RegisterReaderTimestamp skips the SnapshotTooOld check and allows the read to proceed.
+//
+// A UNIQUE index is used because unique index backfill uses PGSQL_INSERT (which requires a read
+// snapshot for duplicate checking via ScopedReadOperation::Create), whereas non-unique uses
+// PGSQL_UPSERT (which skips the read snapshot entirely).
+TEST_P(PgIndexBackfillSnapshotTooOld, SnapshotTooOldOnIndexWritePath) {
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  constexpr int kTimeoutSec = 3;
+
+  LOG(INFO) << "Create table...";
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE TABLE $0 (i int PRIMARY KEY, j int) SPLIT INTO 1 TABLETS", kTableName));
+
+  // Insert a row so backfill has something to write to the index.
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1, 10)", kTableName));
+
+  // conn_ should be used by at most one thread for thread safety.
+  thread_holder_.AddThreadFunctor([this] {
+    LOG(INFO) << "Begin create thread";
+    Status s = conn_->ExecuteFormat("CREATE UNIQUE INDEX $0 ON $1 (j ASC)", kIndexName, kTableName);
+    // The backfill write should succeed despite the index tablet's history cutoff having advanced
+    // past the backfill safe time, because retain_delete_markers=true during backfill causes
+    // RegisterReaderTimestamp to skip the SnapshotTooOld check.
+    LOG(INFO) << "CREATE INDEX status: " << s;
+    ASSERT_OK(s);
+  });
+  thread_holder_.AddThreadFunctor([this, &client] {
+    LOG(INFO) << "Begin compact thread";
+    ASSERT_OK(WaitForBackfillSafeTime(kYBTableName));
+
+    // Look up the index table id so we can compact it specifically.
+    LOG(INFO) << "Get index table id...";
+    const std::string index_table_id = ASSERT_RESULT(GetTableIdByTableName(
+        client.get(), kDatabaseName, kIndexName));
+    LOG(INFO) << "Index table id: " << index_table_id;
+
+    // Write additional rows to the base table while the index is at indisready.  These writes
+    // go through the online write path, populating the index table with SST data.  Without this,
+    // the index table is empty and flush/compact would not advance the history cutoff.
+    LOG(INFO) << "Insert rows to generate index SST data...";
+    PGConn write_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+    for (int i = 2; i <= 10; i++) {
+      ASSERT_OK(write_conn.ExecuteFormat("INSERT INTO $0 VALUES ($1, $2)", kTableName, i, i * 10));
+    }
+
+    LOG(INFO) << "Sleep past history retention...";
+    SleepFor(kHistoryRetentionInterval);
+
+    // Flush and compact the INDEX table (not the base table) to advance the index tablet's
+    // history cutoff past the backfill safe time.
+    LOG(INFO) << "Flush and compact index table...";
+    ASSERT_OK(client->FlushTables(
+        {index_table_id},
+        false /* add_indexes */,
+        kTimeoutSec /* timeout_secs */,
+        false /* is_compaction */));
+    ASSERT_OK(client->FlushTables(
+        {index_table_id},
+        false /* add_indexes */,
+        kTimeoutSec /* timeout_secs */,
+        true /* is_compaction */));
+
+    LOG(INFO) << "Unblock backfill...";
+    ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "false"));
+  });
+  thread_holder_.JoinAll();
+}
+
 // Make sure that read time (and write time) for backfill works.  Simulate the following:
 //   Session A                                    Session B
 //   --------------------------                   ---------------------------------
