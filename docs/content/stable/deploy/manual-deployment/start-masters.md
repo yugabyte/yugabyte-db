@@ -77,7 +77,7 @@ You can specify multiple directories using the [`--fs_data_dirs`](../../../refer
 
 {{<tags/feature/ea idea="1807">}} Highly accurate clocks can be configured by specifying `--time_source=clockbound`. Requires [system configuration](../system-config#set-up-time-synchronization).
 
-If you are running YSQL, for enhanced PostgreSQL compatibility, you can enable [Enhanced PostgreSQL Compatibility Mode](../../../reference/configuration/postgresql-compatibility/) (recommended).
+If you are running YSQL, for enhanced PostgreSQL compatibility, you can enable [Enhanced PostgreSQL Compatibility Mode](../../../reference/configuration/postgresql-compatibility/).
 
 For the full list of configuration flags, see the [YB-Master reference](../../../reference/configuration/yb-master/).
 
