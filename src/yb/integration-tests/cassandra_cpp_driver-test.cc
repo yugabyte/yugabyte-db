@@ -2401,6 +2401,99 @@ void DoTestCreateUniqueIndexWithOnlineWrites(CppCassandraDriverTestIndex* test,
   }
 }
 
+// Test class with a short history retention interval so we can trigger SnapshotTooOld
+// by compacting a tablet after sleeping past the retention period.
+class CppCassandraDriverTestIndexSnapshotTooOld : public CppCassandraDriverTestIndexSlow {
+ public:
+  std::vector<std::string> ExtraTServerFlags() override {
+    auto flags = CppCassandraDriverTestIndexSlow::ExtraTServerFlags();
+    flags.push_back(Format(
+        "--timestamp_history_retention_interval_sec=$0", kHistoryRetentionSec));
+    return flags;
+  }
+
+ protected:
+  static constexpr int kHistoryRetentionSec = 3;
+  const MonoDelta kHistoryRetentionInterval = MonoDelta::FromSeconds(kHistoryRetentionSec);
+};
+
+// Verify that compacting the INDEX TABLE after the history retention interval does NOT cause
+// CQL unique index backfill writes to fail with "Snapshot too old".  Although the index
+// tablet's history cutoff advances past the backfill safe time, the index table has
+// retain_delete_markers=true during backfill.  This means compaction preserves all data
+// (delete markers and regular values), so RegisterReaderTimestamp skips the SnapshotTooOld
+// check and allows the read to proceed.
+//
+// A UNIQUE index is used because unique index backfill uses QL_STMT_INSERT
+// (which sets insert_into_unique_index_ = true, require_read_ = true, and thus
+// need_read_snapshot = true), whereas non-unique uses QL_STMT_INSERT without
+// the unique key projection (require_read_ = false, need_read_snapshot = false).
+TEST_F_EX(CppCassandraDriverTest, SnapshotTooOldOnIndexWritePath,
+          CppCassandraDriverTestIndexSnapshotTooOld) {
+  constexpr auto kNamespace = "test";
+  const YBTableName table_name(YQL_DATABASE_CQL, kNamespace, "test_table");
+  const YBTableName index_table_name(YQL_DATABASE_CQL, kNamespace, "test_table_index_by_v");
+
+  TestTable<cass_int32_t, cass_int32_t> table;
+  ASSERT_OK(table.CreateTable(
+      &session_, "test.test_table", {"k", "v"}, {"(k)"}, true));
+
+  // Insert a row so backfill has something to write to the index.
+  LOG(INFO) << "Inserting initial row (1, 10)";
+  ASSERT_OK(session_.ExecuteQuery("INSERT INTO test_table (k, v) VALUES (1, 10);"));
+
+  // Block backfill.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "true"));
+
+  LOG(INFO) << "Creating unique index";
+  auto s = session_.ExecuteQuery(
+      "CREATE UNIQUE INDEX test_table_index_by_v ON test_table (v);");
+  ASSERT_TRUE(CreateTableSuccessOrTimedOut(s));
+  WARN_NOT_OK(s, "Create index command failed. " + s.ToString());
+
+  // Wait for backfill to reach safe time.
+  ASSERT_OK(WaitForBackfillSafeTimeOn(cluster_.get(), table_name));
+
+  // Insert additional rows while the index is at DO_BACKFILL state (indisready).
+  // These writes go through the online write path, populating the index table with SST
+  // data.  Without this, the index table is empty and flush/compact would not advance
+  // the history cutoff.
+  LOG(INFO) << "Inserting rows to generate index SST data via online write path";
+  for (int i = 2; i <= 10; i++) {
+    ASSERT_OK(session_.ExecuteQuery(
+        Format("INSERT INTO test_table (k, v) VALUES ($0, $1);", i, i * 10)));
+  }
+
+  LOG(INFO) << "Sleep past history retention (" << kHistoryRetentionSec << "s)...";
+  SleepFor(kHistoryRetentionInterval);
+
+  // Look up the index table id so we can compact it specifically.
+  LOG(INFO) << "Get index table id...";
+  const std::string index_table_id = ASSERT_RESULT(GetTableIdByTableName(
+      client_.get(), kNamespace, "test_table_index_by_v"));
+  LOG(INFO) << "Index table id: " << index_table_id;
+
+  // Flush and compact the INDEX table to advance the index tablet's history cutoff
+  // past the backfill safe time.
+  constexpr int kTimeoutSec = 3;
+  LOG(INFO) << "Flush and compact index table...";
+  ASSERT_OK(client_->FlushTables({index_table_id}, MonoDelta::FromSeconds(kTimeoutSec)));
+  ASSERT_OK(client_->CompactTables({index_table_id}, MonoDelta::FromSeconds(kTimeoutSec)));
+
+  // Unblock backfill.
+  LOG(INFO) << "Unblock backfill...";
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "false"));
+
+  // The backfill write should succeed despite the index tablet's history cutoff having
+  // advanced past the backfill safe time, because retain_delete_markers=true during
+  // backfill causes RegisterReaderTimestamp to skip the SnapshotTooOld check.
+  auto perm = ASSERT_RESULT(client_->WaitUntilIndexPermissionsAtLeast(
+      table_name, index_table_name, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE));
+  ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE)
+      << "Expected index creation to succeed (retain_delete_markers prevents "
+         "SnapshotTooOld during backfill), but got permission: " << perm;
+}
+
 // Table starts with one row (1, 'one'). After backfill safe time, we insert another
 // row (2, 'one') with the same indexed value. The CREATE UNIQUE INDEX should fail
 // because backfill sees the original row and the concurrent insert detects a collision.
