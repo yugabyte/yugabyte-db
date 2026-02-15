@@ -900,8 +900,7 @@
             "THP_INCORRECT_SETTINGS",
             "OTEL_LOG_EXPORT_FAILURE",
             "CDCSDK_FLUSH_LAG",
-            "CDCSDK_EXPIRY",
-            "CDCSDK_IDLE_STREAM"
+            "CDCSDK_EXPIRY"
           ],
           "type" : "string"
         },
@@ -1082,8 +1081,7 @@
             "THP_INCORRECT_SETTINGS",
             "OTEL_LOG_EXPORT_FAILURE",
             "CDCSDK_FLUSH_LAG",
-            "CDCSDK_EXPIRY",
-            "CDCSDK_IDLE_STREAM"
+            "CDCSDK_EXPIRY"
           ],
           "type" : "string"
         },
@@ -1360,8 +1358,7 @@
             "THP_INCORRECT_SETTINGS",
             "OTEL_LOG_EXPORT_FAILURE",
             "CDCSDK_FLUSH_LAG",
-            "CDCSDK_EXPIRY",
-            "CDCSDK_IDLE_STREAM"
+            "CDCSDK_EXPIRY"
           ],
           "type" : "string"
         },
