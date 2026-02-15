@@ -963,14 +963,13 @@ class PgApiImpl {
 
   PgSharedDataHolder pg_shared_data_;
 
+  tserver::TServerSharedData& tserver_shared_object_;
+
   // TODO Rename to client_ when YBClient is removed.
   PgClient pg_client_;
   std::unique_ptr<Interrupter> interrupter_;
 
   scoped_refptr<server::HybridClock> clock_;
-
-  // Local tablet-server shared memory data.
-  tserver::TServerSharedData* tserver_shared_object_;
 
   const bool enable_table_locking_;
   scoped_refptr<PgTxnManager> pg_txn_manager_;

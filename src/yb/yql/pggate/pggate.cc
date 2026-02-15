@@ -94,6 +94,7 @@ DECLARE_bool(node_to_node_encryption_use_client_certificates);
 DECLARE_int32(backfill_index_client_rpc_timeout_ms);
 DECLARE_uint32(wait_for_ysql_backends_catalog_version_client_master_rpc_margin_ms);
 DECLARE_uint32(wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms);
+DECLARE_bool(use_node_hostname_for_local_tserver);
 
 DEFINE_RUNTIME_PREVIEW_bool(ysql_pack_inserted_value, false,
      "Enabled packing inserted columns into a single packed value in postgres layer.");
@@ -464,6 +465,25 @@ Status OnPgSessionRunRWOperations(
   return Flush(row_lock_buffer);
 }
 
+tserver::TServerSharedData& GetTServerSharedData() {
+  PgBackendSetupSharedMemory();
+  // This is an RCU object, but there are no concurrent updates on PG side, only on tserver, so
+  // it's safe to just save the pointer.
+  return *CHECK_NOTNULL(PgSharedMemoryManager().SharedData().get());
+}
+
+PgClient::ProxyInitInfo MakeProxyInitInfo(
+    rpc::ProxyCache& proxy_cache, const tserver::TServerSharedData& tserver_shared_data) {
+  PgClient::ProxyInitInfo result{proxy_cache, HostPort{tserver_shared_data.endpoint()}, {}};
+  if (FLAGS_use_node_hostname_for_local_tserver) {
+    result.host_port = HostPort(tserver_shared_data.host().ToBuffer(),
+                          tserver_shared_data.endpoint().port());
+    result.resolve_cache_timeout = MonoDelta::kMax;
+  }
+  LOG(INFO) << "Using TServer host_port: " << result.host_port;
+  return result;
+}
+
 } // namespace
 
 //--------------------------------------------------------------------------------------------------
@@ -695,8 +715,10 @@ PgApiImpl::PgApiImpl(
       }),
       pg_shared_data_(
           *init_postgres_info.shared_data, !init_postgres_info.parallel_leader_session_id),
+      tserver_shared_object_(GetTServerSharedData()),
       pg_client_(
-          wait_event_watcher_, pg_shared_data_->next_perform_op_serial_no),
+          MakeProxyInitInfo(*proxy_cache_, tserver_shared_object_), wait_event_watcher_,
+          pg_shared_data_->next_perform_op_serial_no),
       interrupter_(new Interrupter(*messenger_holder_.messenger, pg_client_)),
       clock_(new server::HybridClock()),
       // For parallel query, multiple PgTxnManager(s) make parallel requests to pg_client_session
@@ -713,22 +735,13 @@ PgApiImpl::PgApiImpl(
           })),
       fk_reference_cache_(pg_session_, buffering_settings_),
       explicit_row_lock_buffer_(pg_session_) {
-  PgBackendSetupSharedMemory();
-  // This is an RCU object, but there are no concurrent updates on PG side, only on tserver, so
-  // it's safe to just save the pointer.
-  tserver_shared_object_ = PgSharedMemoryManager().SharedData().get();
-
-  std::memcpy(ash_config.top_level_node_id, tserver_shared_object_->tserver_uuid(), kUuidSize);
+  std::memcpy(ash_config.top_level_node_id, tserver_shared_object_.tserver_uuid(), kUuidSize);
   wait_state_ = ash::WaitStateInfo::CreateIfAshIsEnabled<ash::PgWaitStateInfo>(ash_config);
   ash::WaitStateInfo::SetCurrentWaitState(wait_state_);
 }
 
 PgApiImpl::~PgApiImpl() {
   mem_contexts_.clear();
-  pg_session_.reset();
-  interrupter_.reset();
-  pg_txn_manager_.reset();
-  pg_client_.Shutdown();
 }
 
 void PgApiImpl::Interrupt() {
@@ -1873,7 +1886,7 @@ Result<bool> PgApiImpl::IsInitDbDone() {
 
 Result<uint64_t> PgApiImpl::GetSharedCatalogVersion(std::optional<PgOid> db_oid) {
   if (!db_oid) {
-    return tserver_shared_object_->ysql_catalog_version();
+    return tserver_shared_object_.ysql_catalog_version();
   }
   if (!catalog_version_db_index_) {
     // If db_oid is for a newly created database, it may not have an entry allocated in shared
@@ -1913,7 +1926,7 @@ Result<uint64_t> PgApiImpl::GetSharedCatalogVersion(std::optional<PgOid> db_oid)
         IllegalState, "Forbidden db switch from $0 to $1 detected",
         catalog_version_db_index_->first, *db_oid);
   }
-  return tserver_shared_object_->ysql_db_catalog_version(
+  return tserver_shared_object_.ysql_db_catalog_version(
       static_cast<size_t>(catalog_version_db_index_->second));
 }
 
@@ -1925,7 +1938,7 @@ Result<uint32_t> PgApiImpl::GetNumberOfDatabases() {
 
 Result<bool> PgApiImpl::CatalogVersionTableInPerdbMode() {
   DCHECK(FLAGS_ysql_enable_db_catalog_version_mode);
-  if (!tserver_shared_object_->catalog_version_table_in_perdb_mode().has_value()) {
+  if (!tserver_shared_object_.catalog_version_table_in_perdb_mode().has_value()) {
     // If this tserver has just restarted, it may not have received any
     // heartbeat response from yb-master that has set a value in
     // catalog_version_table_in_perdb_mode_ in the shared memory object
@@ -1933,7 +1946,7 @@ Result<bool> PgApiImpl::CatalogVersionTableInPerdbMode() {
     // a 30-second timeout.
     auto status = LoggedWaitFor(
         [this]() -> Result<bool> {
-          return tserver_shared_object_->catalog_version_table_in_perdb_mode().has_value();
+          return tserver_shared_object_.catalog_version_table_in_perdb_mode().has_value();
         },
         30s /* timeout */,
         "catalog_version_table mode not set in shared memory, "
@@ -1944,7 +1957,7 @@ Result<bool> PgApiImpl::CatalogVersionTableInPerdbMode() {
         status,
         "Failed to find out pg_yb_catalog_version mode");
   }
-  return tserver_shared_object_->catalog_version_table_in_perdb_mode().value();
+  return tserver_shared_object_.catalog_version_table_in_perdb_mode().value();
 }
 
 Result<tserver::PgGetTserverCatalogMessageListsResponsePB>
@@ -1972,15 +1985,15 @@ Status PgApiImpl::GetYbSystemTableInfo(
 }
 
 uint64_t PgApiImpl::GetSharedAuthKey() const {
-  return tserver_shared_object_->postgres_auth_key();
+  return tserver_shared_object_.postgres_auth_key();
 }
 
 const unsigned char *PgApiImpl::GetLocalTserverUuid() const {
-  return tserver_shared_object_->tserver_uuid();
+  return tserver_shared_object_.tserver_uuid();
 }
 
 pid_t PgApiImpl::GetLocalTServerPid() const {
-  return tserver_shared_object_->pid();
+  return tserver_shared_object_.pid();
 }
 
 Result<int> PgApiImpl::GetXClusterRole(uint32_t db_oid) {
@@ -2469,7 +2482,7 @@ SetupPerformOptionsAccessorTag PgApiImpl::ClearSessionState() {
   return result;
 }
 
-bool PgApiImpl::IsCronLeader() const { return tserver_shared_object_->IsCronLeader(); }
+bool PgApiImpl::IsCronLeader() const { return tserver_shared_object_.IsCronLeader(); }
 
 Status PgApiImpl::SetCronLastMinute(int64_t last_minute) {
   return pg_client_.SetCronLastMinute(last_minute);
@@ -2553,9 +2566,7 @@ Status PgApiImpl::TriggerRelcacheInitConnection(const std::string& dbname) {
 Status PgApiImpl::Init(std::optional<uint64_t> session_id) {
   RETURN_NOT_OK(interrupter_->Start());
   RETURN_NOT_OK(clock_->Init());
-  return pg_client_.Start(
-    proxy_cache_.get(), &messenger_holder_.messenger->scheduler(), *tserver_shared_object_,
-    session_id);
+  return pg_client_.Start(messenger_holder_.messenger->scheduler(), session_id);
 }
 
 Result<std::unique_ptr<PgApiImpl>> PgApiImpl::Make(
