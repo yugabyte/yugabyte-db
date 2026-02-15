@@ -1,19 +1,19 @@
-## yba ha
+## yba ha instance
 
-Manage YugabyteDB Anywhere HA (High Availability) configuration
+Manage HA instances
 
 ### Synopsis
 
-Manage YugabyteDB Anywhere HA (High Availability) configuration
+Manage high availability instances for YugabyteDB Anywhere
 
 ```
-yba ha [flags]
+yba ha instance [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help   help for ha
+  -h, --help   help for instance
 ```
 
 ### Options inherited from parent commands
@@ -35,13 +35,9 @@ yba ha [flags]
 
 ### SEE ALSO
 
-* [yba](yba.md)	 - yba - Command line tools to manage your YugabyteDB Anywhere (Self-managed Database-as-a-Service) resources.
-* [yba ha create](yba_ha_create.md)	 - Create HA configuration
-* [yba ha delete](yba_ha_delete.md)	 - Delete HA configuration
-* [yba ha describe](yba_ha_describe.md)	 - Get HA configuration
-* [yba ha generate-cluster-key](yba_ha_generate-cluster-key.md)	 - Generate a new cluster key
-* [yba ha instance](yba_ha_instance.md)	 - Manage HA instances
-* [yba ha list-backup](yba_ha_list-backup.md)	 - List HA backups
-* [yba ha replication](yba_ha_replication.md)	 - Manage HA replication schedule
-* [yba ha update](yba_ha_update.md)	 - Update HA configuration
+* [yba ha](yba_ha.md)	 - Manage YugabyteDB Anywhere HA (High Availability) configuration
+* [yba ha instance create](yba_ha_instance_create.md)	 - Create an HA platform instance
+* [yba ha instance delete](yba_ha_instance_delete.md)	 - Delete an HA platform instance
+* [yba ha instance get-local](yba_ha_instance_get-local.md)	 - Get the local HA platform instance
+* [yba ha instance promote-instance](yba_ha_instance_promote-instance.md)	 - Promote the local standby to leader
 

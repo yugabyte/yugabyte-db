@@ -1,19 +1,19 @@
-## yba ha
+## yba ha replication
 
-Manage YugabyteDB Anywhere HA (High Availability) configuration
+Manage HA replication schedule
 
 ### Synopsis
 
-Manage YugabyteDB Anywhere HA (High Availability) configuration
+Manage high availability replication schedule for YugabyteDB Anywhere
 
 ```
-yba ha [flags]
+yba ha replication [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help   help for ha
+  -h, --help   help for replication
 ```
 
 ### Options inherited from parent commands
@@ -35,13 +35,8 @@ yba ha [flags]
 
 ### SEE ALSO
 
-* [yba](yba.md)	 - yba - Command line tools to manage your YugabyteDB Anywhere (Self-managed Database-as-a-Service) resources.
-* [yba ha create](yba_ha_create.md)	 - Create HA configuration
-* [yba ha delete](yba_ha_delete.md)	 - Delete HA configuration
-* [yba ha describe](yba_ha_describe.md)	 - Get HA configuration
-* [yba ha generate-cluster-key](yba_ha_generate-cluster-key.md)	 - Generate a new cluster key
-* [yba ha instance](yba_ha_instance.md)	 - Manage HA instances
-* [yba ha list-backup](yba_ha_list-backup.md)	 - List HA backups
-* [yba ha replication](yba_ha_replication.md)	 - Manage HA replication schedule
-* [yba ha update](yba_ha_update.md)	 - Update HA configuration
+* [yba ha](yba_ha.md)	 - Manage YugabyteDB Anywhere HA (High Availability) configuration
+* [yba ha replication describe](yba_ha_replication_describe.md)	 - Get replication schedule info
+* [yba ha replication start](yba_ha_replication_start.md)	 - Start periodic backup replication
+* [yba ha replication stop](yba_ha_replication_stop.md)	 - Stop periodic backup replication
 

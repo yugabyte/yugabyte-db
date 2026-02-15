@@ -1,19 +1,27 @@
-## yba ha
+## yba ha create
 
-Manage YugabyteDB Anywhere HA (High Availability) configuration
+Create HA configuration
 
 ### Synopsis
 
-Manage YugabyteDB Anywhere HA (High Availability) configuration
+Create high availability configuration for YugabyteDB Anywhere. Run this command after genereating the cluster key using "yba ha generate-cluster-key" command
 
 ```
-yba ha [flags]
+yba ha create [flags]
+```
+
+### Examples
+
+```
+yba ha create --cluster-key <cluster-key> [--accept-any-certificate]
 ```
 
 ### Options
 
 ```
-  -h, --help   help for ha
+      --cluster-key string       [Required] The cluster key for HA configuration (must be 44 characters)
+      --accept-any-certificate   [Optional] Accept any certificate for HA connections (default true) (default true)
+  -h, --help                     help for create
 ```
 
 ### Options inherited from parent commands
@@ -35,13 +43,5 @@ yba ha [flags]
 
 ### SEE ALSO
 
-* [yba](yba.md)	 - yba - Command line tools to manage your YugabyteDB Anywhere (Self-managed Database-as-a-Service) resources.
-* [yba ha create](yba_ha_create.md)	 - Create HA configuration
-* [yba ha delete](yba_ha_delete.md)	 - Delete HA configuration
-* [yba ha describe](yba_ha_describe.md)	 - Get HA configuration
-* [yba ha generate-cluster-key](yba_ha_generate-cluster-key.md)	 - Generate a new cluster key
-* [yba ha instance](yba_ha_instance.md)	 - Manage HA instances
-* [yba ha list-backup](yba_ha_list-backup.md)	 - List HA backups
-* [yba ha replication](yba_ha_replication.md)	 - Manage HA replication schedule
-* [yba ha update](yba_ha_update.md)	 - Update HA configuration
+* [yba ha](yba_ha.md)	 - Manage YugabyteDB Anywhere HA (High Availability) configuration
 

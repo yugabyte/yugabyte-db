@@ -1,19 +1,29 @@
-## yba ha
+## yba ha instance create
 
-Manage YugabyteDB Anywhere HA (High Availability) configuration
+Create an HA platform instance
 
 ### Synopsis
 
-Manage YugabyteDB Anywhere HA (High Availability) configuration
+Create a local or remote platform instance for an HA configuration. Run this command after the information provided in the "yba ha create" commands.
 
 ```
-yba ha [flags]
+yba ha instance create [flags]
+```
+
+### Examples
+
+```
+yba ha instance create --uuid <uuid> --ip <instance-ip> --is-leader --is-local
 ```
 
 ### Options
 
 ```
-  -h, --help   help for ha
+      --uuid string   [Required] UUID of the HA configuration
+      --ip string     [Required] IP address of instance (e.g., https://<ip-address or hostname>:<port>)
+      --is-leader     [Optional] Whether this instance is the leader
+      --is-local      [Optional] Whether this is the local instance
+  -h, --help          help for create
 ```
 
 ### Options inherited from parent commands
@@ -35,13 +45,5 @@ yba ha [flags]
 
 ### SEE ALSO
 
-* [yba](yba.md)	 - yba - Command line tools to manage your YugabyteDB Anywhere (Self-managed Database-as-a-Service) resources.
-* [yba ha create](yba_ha_create.md)	 - Create HA configuration
-* [yba ha delete](yba_ha_delete.md)	 - Delete HA configuration
-* [yba ha describe](yba_ha_describe.md)	 - Get HA configuration
-* [yba ha generate-cluster-key](yba_ha_generate-cluster-key.md)	 - Generate a new cluster key
 * [yba ha instance](yba_ha_instance.md)	 - Manage HA instances
-* [yba ha list-backup](yba_ha_list-backup.md)	 - List HA backups
-* [yba ha replication](yba_ha_replication.md)	 - Manage HA replication schedule
-* [yba ha update](yba_ha_update.md)	 - Update HA configuration
 

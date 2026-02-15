@@ -1,19 +1,28 @@
-## yba ha
+## yba ha instance delete
 
-Manage YugabyteDB Anywhere HA (High Availability) configuration
+Delete an HA platform instance
 
 ### Synopsis
 
-Manage YugabyteDB Anywhere HA (High Availability) configuration
+Delete a remote platform instance from an HA configuration (only leader can delete)
 
 ```
-yba ha [flags]
+yba ha instance delete [flags]
+```
+
+### Examples
+
+```
+yba ha instance delete --uuid <uuid> --instance-uuid <instance-uuid> [--force]
 ```
 
 ### Options
 
 ```
-  -h, --help   help for ha
+      --uuid string            [Required] UUID of the HA configuration
+      --instance-uuid string   [Required] UUID of the platform instance to delete
+  -f, --force                  [Optional] Bypass the prompt for non-interactive usage.
+  -h, --help                   help for delete
 ```
 
 ### Options inherited from parent commands
@@ -35,13 +44,5 @@ yba ha [flags]
 
 ### SEE ALSO
 
-* [yba](yba.md)	 - yba - Command line tools to manage your YugabyteDB Anywhere (Self-managed Database-as-a-Service) resources.
-* [yba ha create](yba_ha_create.md)	 - Create HA configuration
-* [yba ha delete](yba_ha_delete.md)	 - Delete HA configuration
-* [yba ha describe](yba_ha_describe.md)	 - Get HA configuration
-* [yba ha generate-cluster-key](yba_ha_generate-cluster-key.md)	 - Generate a new cluster key
 * [yba ha instance](yba_ha_instance.md)	 - Manage HA instances
-* [yba ha list-backup](yba_ha_list-backup.md)	 - List HA backups
-* [yba ha replication](yba_ha_replication.md)	 - Manage HA replication schedule
-* [yba ha update](yba_ha_update.md)	 - Update HA configuration
 

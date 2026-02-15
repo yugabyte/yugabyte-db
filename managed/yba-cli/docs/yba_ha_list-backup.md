@@ -1,19 +1,26 @@
-## yba ha
+## yba ha list-backup
 
-Manage YugabyteDB Anywhere HA (High Availability) configuration
+List HA backups
 
 ### Synopsis
 
-Manage YugabyteDB Anywhere HA (High Availability) configuration
+List available backups for HA configuration
 
 ```
-yba ha [flags]
+yba ha list-backup [flags]
+```
+
+### Examples
+
+```
+yba ha list-backup --uuid <config-uuid>
 ```
 
 ### Options
 
 ```
-  -h, --help   help for ha
+      --uuid string   [Required] The UUID of the HA configuration
+  -h, --help          help for list-backup
 ```
 
 ### Options inherited from parent commands
@@ -35,13 +42,5 @@ yba ha [flags]
 
 ### SEE ALSO
 
-* [yba](yba.md)	 - yba - Command line tools to manage your YugabyteDB Anywhere (Self-managed Database-as-a-Service) resources.
-* [yba ha create](yba_ha_create.md)	 - Create HA configuration
-* [yba ha delete](yba_ha_delete.md)	 - Delete HA configuration
-* [yba ha describe](yba_ha_describe.md)	 - Get HA configuration
-* [yba ha generate-cluster-key](yba_ha_generate-cluster-key.md)	 - Generate a new cluster key
-* [yba ha instance](yba_ha_instance.md)	 - Manage HA instances
-* [yba ha list-backup](yba_ha_list-backup.md)	 - List HA backups
-* [yba ha replication](yba_ha_replication.md)	 - Manage HA replication schedule
-* [yba ha update](yba_ha_update.md)	 - Update HA configuration
+* [yba ha](yba_ha.md)	 - Manage YugabyteDB Anywhere HA (High Availability) configuration
 
