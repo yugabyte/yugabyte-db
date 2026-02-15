@@ -915,7 +915,6 @@
             "THP_INCORRECT_SETTINGS",
             "CDCSDK_FLUSH_LAG",
             "CDCSDK_EXPIRY",
-            "CDCSDK_IDLE_STREAM",
             "OTEL_LOG_EXPORT_FAILURE"
           ],
           "type" : "string"
@@ -1097,7 +1096,6 @@
             "THP_INCORRECT_SETTINGS",
             "CDCSDK_FLUSH_LAG",
             "CDCSDK_EXPIRY",
-            "CDCSDK_IDLE_STREAM",
             "OTEL_LOG_EXPORT_FAILURE"
           ],
           "type" : "string"
@@ -1375,7 +1373,6 @@
             "THP_INCORRECT_SETTINGS",
             "CDCSDK_FLUSH_LAG",
             "CDCSDK_EXPIRY",
-            "CDCSDK_IDLE_STREAM",
             "OTEL_LOG_EXPORT_FAILURE"
           ],
           "type" : "string"

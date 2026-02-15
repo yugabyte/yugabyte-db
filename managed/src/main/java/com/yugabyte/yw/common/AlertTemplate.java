@@ -93,6 +93,5 @@ public enum AlertTemplate {
 
   CDCSDK_FLUSH_LAG,
   CDCSDK_EXPIRY,
-  CDCSDK_IDLE_STREAM,
   OTEL_LOG_EXPORT_FAILURE,
 }
