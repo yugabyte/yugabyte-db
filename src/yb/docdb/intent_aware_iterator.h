@@ -64,7 +64,7 @@ struct EncodedReadHybridTime {
   EncodedDocHybridTime in_txn_limit;
   bool local_limit_gt_read;
 
-  EncodedReadHybridTime(
+  explicit EncodedReadHybridTime(
       const ReadHybridTime& read_time, IntraTxnWriteId write_id = kMaxWriteId);
 
   // The encoded hybrid time to use to filter records in regular RocksDB. This is the maximum of

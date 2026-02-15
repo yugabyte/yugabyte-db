@@ -129,18 +129,27 @@ Status TabletRetentionPolicy::RegisterReaderTimestamp(HybridTime timestamp) {
   std::lock_guard lock(mutex_);
   HybridTime earliest_read_time_allowed = GetEarliestAllowedReadHt();
   if (timestamp < earliest_read_time_allowed) {
-    return STATUS(
-        SnapshotTooOld,
-        Format(
-            "Snapshot too old. Read point: $0, earliest read time allowed: $1, delta (usec): $2. "
-            "Tablet: $3, Table: $4 ($5)",
-            timestamp,
-            earliest_read_time_allowed,
-            earliest_read_time_allowed.PhysicalDiff(timestamp).ToPrettyString(),
-            metadata_.raft_group_id(),
-            metadata_.table_name(),
-            metadata_.table_id()),
-        TransactionError(TransactionErrorCode::kSnapshotTooOld));
+    // When retain_delete_markers is true the tablet is an index table whose backfill is still in
+    // progress.  In that case compaction preserves all data (delete markers and regular values)
+    // regardless of the history cutoff, so the data this reader needs is guaranteed to be present.
+    // Skip the SnapshotTooOld check to allow backfill writes that read at the backfill safe time.
+    if (!ShouldRetainDeleteMarkersInMajorCompaction()) {
+      return STATUS(
+          SnapshotTooOld,
+          Format(
+              "Snapshot too old. Read point: $0, earliest read time allowed: $1, delta (usec): $2. "
+              "Tablet: $3, Table: $4 ($5)",
+              timestamp,
+              earliest_read_time_allowed,
+              earliest_read_time_allowed.PhysicalDiff(timestamp).ToPrettyString(),
+              metadata_.raft_group_id(),
+              metadata_.table_name(),
+              metadata_.table_id()),
+          TransactionError(TransactionErrorCode::kSnapshotTooOld));
+    }
+    VLOG_WITH_PREFIX(1) << "Allowing read at " << timestamp
+                        << " despite history cutoff at " << earliest_read_time_allowed
+                        << " because retain_delete_markers is set (index backfill in progress)";
   }
   active_readers_.insert(timestamp);
   return Status::OK();
