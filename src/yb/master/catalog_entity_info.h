@@ -714,6 +714,9 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // Get info of the specified index.
   qlexpr::IndexInfo GetIndexInfo(const TableId& index_id) const;
 
+  // Get TableIds of all or a specific type of indexes.
+  TableIds GetIndexIds() const;
+
   // Returns true if all tablets of the table are deleted.
   Result<bool> AreAllTabletsDeleted() const;
 

@@ -1042,6 +1042,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Result<scoped_refptr<TableInfo>> FindTableByIdUnlocked(
       const TableId& table_id) const REQUIRES_SHARED(mutex_);
 
+  template <class Resp>
+  Result<TableInfoPtr> FindTableByIdOrSetupError(const TableId& table_id, Resp* resp);
+
   Result<bool> TableExists(
       const std::string& namespace_name, const std::string& table_name) const EXCLUDES(mutex_);
 

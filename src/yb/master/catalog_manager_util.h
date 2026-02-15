@@ -33,6 +33,7 @@ using ZoneToDescMap = std::unordered_map<std::string, TSDescriptorVector>;
 
 struct Comparator;
 class SetPreferredZonesRequestPB;
+class IsTruncateTableDoneResponsePB;
 
 static std::once_flag sequences_data_table_filter_once_flag_;
 static google::protobuf::RepeatedPtrField<TableIdentifierPB> sequences_data_table_filter_;
@@ -177,6 +178,9 @@ class CatalogManagerUtil {
     }
     return Status::OK();
   }
+
+  static Result<bool> GetIsTruncateTableDone(
+      const TableInfoPtr& table, IsTruncateTableDoneResponsePB* resp);
 
   static void FillTableInfoPB(
       const TableId& table_id, const std::string& table_name, const TableType& table_type,

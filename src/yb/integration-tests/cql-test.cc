@@ -24,6 +24,7 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/master_ddl.proxy.h"
+#include "yb/master/master_fwd.h"
 
 #include "yb/rocksdb/db.h"
 
@@ -87,8 +88,29 @@ class CqlTest : public CqlTestBase<MiniCluster> {
   void TestAlteredPrepareForIndexWithPaging(bool check_schema_in_paging,
                                             bool metadata_in_exec_resp = false);
   void TestPrepareWithDropTableWithPaging();
-  void TestCQLPreparedStmtStats();
+
+  void WaitForReadPermsOnAllIndexes(const string& table_name,
+                                    const std::vector<string>& index_names);
 };
+
+void CqlTest::WaitForReadPermsOnAllIndexes(const string& table_name,
+                                           const std::vector<string>& index_names) {
+  // Wait here for the indexes creation end.
+  // Note: in JAVA tests we have 'waitForReadPermsOnAllIndexes' for the same.
+  const YBTableName yb_table_name(YQL_DATABASE_CQL, kCqlTestKeyspace, table_name);
+  for (const auto& index_name : index_names) {
+    const client::YBTableName yb_index_name(YQL_DATABASE_CQL, kCqlTestKeyspace, index_name);
+    ASSERT_OK(LoggedWaitFor(
+        [this, yb_table_name, yb_index_name]() {
+          auto result = client_->WaitUntilIndexPermissionsAtLeast(
+              yb_table_name, yb_index_name, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+          return result.ok() && *result == IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE;
+        },
+        90s,
+        "wait for create index '" + index_name + "' to complete",
+        12s));
+  }
+}
 
 TEST_F(CqlTest, ProcessorsLimit) {
   constexpr int kSessions = 10;
@@ -397,6 +419,61 @@ TEST_F(CqlTest, TestTruncateTable) {
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_disable_truncate_table) = true;
   ASSERT_NOK(session.ExecuteQuery("TRUNCATE TABLE users"));
+}
+
+TEST_F(CqlTest, TestTruncateTableWithIndexes) {
+  master::CatalogManager& catalog_manager = CHECK_NOTNULL(ASSERT_RESULT(
+      cluster_->GetLeaderMiniMaster()))->catalog_manager_impl();
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  auto cql = [&](const string query) { ASSERT_OK(session.ExecuteQuery(query)); };
+
+  cql("create table tbl (h1 int primary key, c1 int, c2 int, c3 int, c4 int, c5 int) "
+      "with transactions = {'enabled' : true} and tablets = 1");
+
+  constexpr int num_indexes = 5;
+  std::vector<string> index_names;
+  for (int i = 1; i <= num_indexes; ++i) {
+    const string index_name = Format("i$0", i);
+    index_names.push_back(index_name);
+    cql(Format("create index $0 on tbl (c$1) with tablets = 32", index_name, i));
+  }
+
+  // Wait here for the creation end.
+  WaitForReadPermsOnAllIndexes("tbl", index_names);
+
+  for (int j = 1; j <= 20; ++j) {
+    cql(Format("insert into tbl (h1, c1, c2, c3, c4, c5) VALUES ($0, $0, $0, $0, $0, $0)", j));
+  }
+
+  const client::YBTableName table_name(YQL_DATABASE_CQL, kCqlTestKeyspace, "tbl");
+  const TableId table_id = ASSERT_RESULT(client::GetTableId(client_.get(), table_name));
+  const master::TableInfoPtr table = ASSERT_RESULT(catalog_manager.FindTableById(table_id));
+
+  std::array<master::TableInfoPtr, num_indexes> index;
+  for (int i = 0; i < num_indexes; ++i) {
+    const client::YBTableName index_name(YQL_DATABASE_CQL, kCqlTestKeyspace, Format("i$0", i + 1));
+    const TableId index_id = ASSERT_RESULT(client::GetTableId(client_.get(), index_name));
+    index[i] = ASSERT_RESULT(catalog_manager.FindTableById(index_id));
+  }
+
+  auto check_no_truncate_tasks = [](const master::TableInfoPtr& table_info, const string& label) {
+    LOG(INFO) << "Checking " << label;
+    ASSERT_FALSE(table_info->HasTasks(server::MonitoredTaskType::kTruncateTablet));
+  };
+
+  auto check_table_and_indexes = [&](const string& comment) {
+    LOG(INFO) << comment;
+    for (int i = num_indexes - 1; i >= 0; --i) {
+        check_no_truncate_tasks(index[i], Format("index i$0", i + 1));
+    }
+    check_no_truncate_tasks(table, "main table tbl");
+  };
+
+  check_table_and_indexes("Check tasks before TRUNCATE tbl");
+  cql("truncate table tbl");
+  check_table_and_indexes("Check tasks after TRUNCATE tbl");
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
 // This test ensure that read correctly timeout under the scenarios where many rows
@@ -1384,27 +1461,16 @@ TEST_F(CqlTest, CheckStateAfterDrop) {
   }
 
   const int num_indexes = 5;
+  std::vector<string> index_names;
   // Initiate the Index Backfilling.
   for (int i = 1; i <= num_indexes; ++i) {
-    cql(Format("create index i$0 on tbl (c$0)", i));
+    const string index_name = Format("i$0", i);
+    index_names.push_back(index_name);
+    cql(Format("create index $0 on tbl (c$1)", index_name, i));
   }
 
   // Wait here for the creation end.
-  // Note: in JAVA tests we have 'waitForReadPermsOnAllIndexes' for the same.
-  const YBTableName table_name(YQL_DATABASE_CQL, kCqlTestKeyspace, "tbl");
-  for (int i = 1; i <= num_indexes; ++i) {
-    const TableName name = Format("i$0", i);
-    const client::YBTableName index_name(YQL_DATABASE_CQL, kCqlTestKeyspace, name);
-    ASSERT_OK(LoggedWaitFor(
-        [this, table_name, index_name]() {
-          auto result = client_->WaitUntilIndexPermissionsAtLeast(
-              table_name, index_name, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
-          return result.ok() && *result == IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE;
-        },
-        90s,
-        "wait for create index '" + name + "' to complete",
-        12s));
-  }
+  WaitForReadPermsOnAllIndexes("tbl", index_names);
 
   class CheckHelper {
     master::CatalogManager& catalog_manager;
@@ -1487,6 +1553,7 @@ TEST_F(CqlTest, CheckStateAfterDrop) {
     }
   } check(cluster_.get());
 
+  const client::YBTableName table_name(YQL_DATABASE_CQL, kCqlTestKeyspace, "tbl");
   const TableId table_id = ASSERT_RESULT(client::GetTableId(client_.get(), table_name));
 
   // IsDeleteTableDone() for RUNNING table should fail.

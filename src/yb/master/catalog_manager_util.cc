@@ -21,6 +21,8 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_cluster.pb.h"
+#include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_util.h"
 #include "yb/master/ysql_tablespace_manager.h"
 
 #include "yb/tserver/tserver_service.pb.h"
@@ -29,6 +31,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/math_util.h"
 #include "yb/util/string_util.h"
+#include "yb/util/trace.h"
 
 using std::string;
 using std::vector;
@@ -536,6 +539,15 @@ Status CatalogManagerUtil::CheckValidLeaderAffinity(const ReplicationInfoPB& rep
   }
 
   return Status::OK();
+}
+
+Result<bool> CatalogManagerUtil::GetIsTruncateTableDone(
+    const TableInfoPtr& table, IsTruncateTableDoneResponsePB* resp) {
+  LOG(INFO) << "Run IsTruncateTableDone for table id " << table->id();
+  TRACE("Locking table");
+  RETURN_NOT_OK(CheckIfTableDeletedOrNotVisibleToClient(table->LockForRead(),
+                                                        DCHECK_NOTNULL(resp)));
+  return !table->HasTasks(server::MonitoredTaskType::kTruncateTablet);
 }
 
 void CatalogManagerUtil::FillTableInfoPB(

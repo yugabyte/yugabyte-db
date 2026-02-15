@@ -759,6 +759,8 @@ Status YBClient::Data::TruncateTables(YBClient* client,
   // Spin until the table is fully truncated, if requested.
   if (wait) {
     for (const auto& table_id : table_ids) {
+      // For YCQL tables this call also must wait for the related indexes.
+      // See CatalogManager::IsTruncateTableDone for details.
       RETURN_NOT_OK(WaitForTruncateTableToFinish(client, table_id, deadline));
     }
   }

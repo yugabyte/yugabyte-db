@@ -44,6 +44,8 @@
 
 #include "yb/master/xcluster/master_xcluster_util.h"
 #include "yb/master/xcluster_rpc_tasks.h"
+
+#include "yb/master/catalog_manager_util.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
@@ -982,6 +984,20 @@ qlexpr::IndexInfo TableInfo::GetIndexInfo(const TableId& index_id) const {
     }
   }
   return qlexpr::IndexInfo();
+}
+
+TableIds TableInfo::GetIndexIds() const {
+  TableIds result;
+  auto lock = LockForRead();
+
+  DCHECK(!IsIndex(lock->pb) || lock->pb.indexes().empty())
+      << "Indexes should be empty for index table";
+
+  result.reserve(lock->pb.indexes().size());
+  for (const auto& index_info_pb : lock->pb.indexes()) {
+    result.emplace_back(index_info_pb.table_id());
+  }
+  return result;
 }
 
 bool TableInfo::UsesTablespacesForPlacement() const {
