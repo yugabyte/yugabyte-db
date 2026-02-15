@@ -15,6 +15,7 @@ import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
@@ -441,6 +442,65 @@ public class ReleaseContainer {
           .filter(r -> r.getPackageFileID() != null)
           .map(r -> ReleaseLocalFile.get(r.getPackageFileID()).getLocalFilePath())
           .collect(Collectors.toSet());
+    }
+  }
+
+  public Optional<String> getLocalReleasePathStringForArchitecture(Architecture arch) {
+    if (arch == null) {
+      return Optional.empty();
+    }
+    if (isLegacy()) {
+      String path = this.metadata.getFilePath(arch); // throws if no matching package
+      if (!path.startsWith("/")) {
+        return Optional.empty(); // Remote artifact
+      }
+      if (!Files.exists(Paths.get(path))) {
+        throw new RuntimeException(
+            "Could not find path " + path + " on system for YB software version " + getVersion());
+      }
+      return Optional.of(path);
+    } else {
+      ReleaseArtifact artifact = this.release.getArtifactForArchitecture(arch);
+      if (artifact == null) {
+        throw new RuntimeException(
+            "No release artifact found for architecture "
+                + arch.name()
+                + " and version "
+                + getVersion());
+      }
+      if (artifact.getPackageURL() != null
+          || artifact.getGcsFile() != null
+          || artifact.getS3File() != null) {
+        return Optional.empty(); // Remote artifact
+      }
+      if (artifact.getPackageFileID() == null) {
+        throw new RuntimeException(
+            "No local package file for architecture "
+                + arch.name()
+                + " and version "
+                + getVersion());
+      }
+      ReleaseLocalFile rlf = ReleaseLocalFile.get(artifact.getPackageFileID());
+      if (rlf == null) {
+        throw new RuntimeException(
+            "Release local file not found for architecture "
+                + arch.name()
+                + " and version "
+                + getVersion());
+      }
+      String path = rlf.getLocalFilePath();
+      if (path == null || path.isEmpty()) {
+        throw new RuntimeException(
+            "Local file path is empty for architecture "
+                + arch.name()
+                + " and version "
+                + getVersion());
+      }
+      if (!Files.exists(Paths.get(path))) {
+        throw new RuntimeException(
+            "Could not find path " + path + " on system for YB software version " + getVersion());
+      }
+      return Optional.of(path);
     }
   }
 

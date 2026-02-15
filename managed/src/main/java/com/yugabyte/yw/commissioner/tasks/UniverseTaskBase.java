@@ -19,6 +19,7 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
 import com.google.common.collect.Streams;
 import com.google.common.net.HostAndPort;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
@@ -552,6 +553,20 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       log.error(msg);
       return false;
     }
+    Architecture arch = universe.getUniverseDetails().arch;
+    if (arch != null) {
+      try {
+        release.getLocalReleasePathStringForArchitecture(arch);
+        return true;
+      } catch (Exception e) {
+        log.error("Error validating local release for universe: {}", e.getMessage(), e);
+        return false;
+      }
+    }
+    log.debug(
+        "Universe arch not set, falling back to validating all local release artifacts for "
+            + "version {}",
+        release.getVersion());
     Set<String> localFilePaths = release.getLocalReleasePathStrings();
     for (String path : localFilePaths) {
       Path localPath = Paths.get(path);
