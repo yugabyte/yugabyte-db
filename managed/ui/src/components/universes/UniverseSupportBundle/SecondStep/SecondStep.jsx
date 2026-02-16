@@ -147,7 +147,9 @@ export const DEFAULT_PROMETHEUS_METRICS_PARAMS = {
   prometheusMetricsOptionsValue: prometheusMetricsOptions.map(() => true),
   isPromDumpDateTypeCustom: false,
   promDumpDateType: filterTypePromDump[0],
-  prometheusQueries: []
+  prometheusQueries: [],
+  stepPromDumpSecs: null,
+  batchDurationPromDumpMins: null
 };
 
 export const DEFAULT_PERF_ADVISOR_METADATA_PARAMS = {
@@ -293,6 +295,15 @@ export const updateOptions = (
         prometheusMetricsTypes: prometheusMetricsTypes,
         promQueries: promQueries
       };
+      if (prometheusMetricsParams.stepPromDumpSecs != null) {
+        payloadObj = { ...payloadObj, stepPromDumpSecs: prometheusMetricsParams.stepPromDumpSecs };
+      }
+      if (prometheusMetricsParams.batchDurationPromDumpMins != null) {
+        payloadObj = {
+          ...payloadObj,
+          batchDurationPromDumpMins: prometheusMetricsParams.batchDurationPromDumpMins
+        };
+      }
     }
   });
   return payloadObj;
@@ -1120,6 +1131,74 @@ export const SecondStep = ({
                         />
                       )}
                     </div>
+                    <Box display="flex" flexDirection="column" gridGap={1} mt={2}>
+                      <Typography variant="body2" color="textSecondary">
+                        Optional: override step and batch duration for longer historical trends
+                        (same data point count, so bundle size unchanged)
+                      </Typography>
+                      <Box display="flex" flexDirection="row" gridGap={2} flexWrap="wrap" justifyContent="space-between">
+                        <Box display="flex" alignItems="center">
+                          <YBLabel width="140px">Step (seconds)</YBLabel>
+                          <YBInput
+                            type="number"
+                            min={1}
+                            placeholder="e.g. 60 (default)"
+                            value={prometheusMetricsParams.stepPromDumpSecs ?? ''}
+                            onChange={(e) => {
+                              const val = e.target.value === '' ? null : parseInt(e.target.value, 10);
+                              const updatedObj = {
+                                ...prometheusMetricsParams,
+                                stepPromDumpSecs: val && val > 0 ? val : null
+                              };
+                              setPrometheusMetricsParams(updatedObj);
+                              const changedOptions = updateOptions(
+                                selectedFilterType.value === CUSTOM
+                                  ? { value: CUSTOM_WITH_VALUE }
+                                  : selectedFilterType,
+                                selectionOptionsValue,
+                                setIsDateTypeCustom,
+                                universeLogsParams,
+                                coreFileParams,
+                                updatedObj,
+                                ...(selectedFilterType.value === CUSTOM ? [startDate, endDate] : [])
+                              );
+                              handleOptionsChange(changedOptions);
+                            }}
+                            style={{ width: '120px' }}
+                          />
+                        </Box>
+                        <Box display="flex" alignItems="center">
+                          <YBLabel width="180px">Batch duration (minutes)</YBLabel>
+                          <YBInput
+                            type="number"
+                            min={1}
+                            placeholder="e.g. 15 (default)"
+                            value={prometheusMetricsParams.batchDurationPromDumpMins ?? ''}
+                            onChange={(e) => {
+                              const val = e.target.value === '' ? null : parseInt(e.target.value, 10);
+                              const updatedObj = {
+                                ...prometheusMetricsParams,
+                                batchDurationPromDumpMins: val && val > 0 ? val : null
+                              };
+                              setPrometheusMetricsParams(updatedObj);
+                              const changedOptions = updateOptions(
+                                selectedFilterType.value === CUSTOM
+                                  ? { value: CUSTOM_WITH_VALUE }
+                                  : selectedFilterType,
+                                selectionOptionsValue,
+                                setIsDateTypeCustom,
+                                universeLogsParams,
+                                coreFileParams,
+                                updatedObj,
+                                ...(selectedFilterType.value === CUSTOM ? [startDate, endDate] : [])
+                              );
+                              handleOptionsChange(changedOptions);
+                            }}
+                            style={{ width: '120px' }}
+                          />
+                        </Box>
+                      </Box>
+                    </Box>
                   </Box>
                 </Collapse>
               )}

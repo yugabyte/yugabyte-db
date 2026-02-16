@@ -21844,6 +21844,11 @@
     "SupportBundleFormData" : {
       "description" : "Support bundle form metadata",
       "properties" : {
+        "batchDurationPromDumpMins" : {
+          "description" : "Batch duration for the prometheus dump (in minutes). Overrides global default. Use with stepPromDumpSecs to get longer historical trends while keeping the same number of data points",
+          "format" : "int32",
+          "type" : "integer"
+        },
         "components" : {
           "description" : "List of components to be included in the support bundle",
           "items" : {
@@ -21950,6 +21955,11 @@
           "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"
+        },
+        "stepPromDumpSecs" : {
+          "description" : "Query resolution step width for prometheus dump (in seconds). Overrides global default. Use with batchDurationPromDumpMins to get longer historical trends while keeping the same number of data points",
+          "format" : "int32",
+          "type" : "integer"
         }
       },
       "required" : [

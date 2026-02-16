@@ -72,6 +72,22 @@ public class SupportBundleFormData {
 
   @ApiModelProperty(
       value =
+          "Query resolution step width for prometheus dump (in seconds). Overrides global default."
+              + " Use with batchDurationPromDumpMins to get longer historical trends while keeping"
+              + " the same number of data points",
+      required = false)
+  public Integer stepPromDumpSecs;
+
+  @ApiModelProperty(
+      value =
+          "Batch duration for the prometheus dump (in minutes). Overrides global default."
+              + " Use with stepPromDumpSecs to get longer historical trends while keeping"
+              + " the same number of data points",
+      required = false)
+  public Integer batchDurationPromDumpMins;
+
+  @ApiModelProperty(
+      value =
           "Specifies if Postgres audit logs should be filtered out when collecting universe logs.")
   public boolean filterPgAuditLogs = false;
 

@@ -74,12 +74,6 @@ public class PrometheusMetricsComponent implements SupportBundleComponent {
   }
 
   public Duration exportMetric(
-      Date startDate, Date endDate, String query, String type, String exportDestDir)
-      throws Exception {
-    return exportMetric(startDate, endDate, query, null, type, null, exportDestDir, null);
-  }
-
-  public Duration exportMetric(
       Date startDate,
       Date endDate,
       String query,
@@ -87,17 +81,30 @@ public class PrometheusMetricsComponent implements SupportBundleComponent {
       String type,
       String metricName,
       String exportDestDir,
-      Duration initialBatchDuration)
+      Duration initialBatchDuration,
+      SupportBundleFormData bundleData)
       throws Exception {
     try {
-      // Get the batch duration from provided value or global runtime-config
+      // Get the batch duration from request params, provided value (obtained from previous
+      // exportMetric call) or global runtime-config
       Duration effectiveBatchDuration;
-      if (initialBatchDuration != null) {
+      Integer batchMins = bundleData != null ? bundleData.batchDurationPromDumpMins : null;
+      if (batchMins != null && batchMins > 0) {
+        effectiveBatchDuration = Duration.ofMinutes(batchMins);
+      } else if (initialBatchDuration != null) {
         effectiveBatchDuration = initialBatchDuration;
       } else {
         int batchDuration =
             confGetter.getGlobalConf(GlobalConfKeys.supportBundlePromDumpBatchDurationInMins);
         effectiveBatchDuration = Duration.ofMinutes(batchDuration);
+      }
+
+      int stepSecs;
+      Integer stepOverride = bundleData != null ? bundleData.stepPromDumpSecs : null;
+      if (stepOverride != null && stepOverride > 0) {
+        stepSecs = stepOverride;
+      } else {
+        stepSecs = confGetter.getGlobalConf(GlobalConfKeys.supportBundlePromDumpStepInSecs);
       }
 
       log.debug("exportMetric: querying metric '{}' from {} to {}", query, startDate, endDate);
@@ -113,9 +120,7 @@ public class PrometheusMetricsComponent implements SupportBundleComponent {
         queryParams.put("query", query);
         queryParams.put("start", batchStartTS.toInstant().toString());
         queryParams.put("end", batchEndTS.toInstant().toString());
-        queryParams.put(
-            "step",
-            confGetter.getGlobalConf(GlobalConfKeys.supportBundlePromDumpStepInSecs).toString());
+        queryParams.put("step", String.valueOf(stepSecs));
 
         JsonNode response = metricQueryHelper.queryRange(queryParams);
         MetricQueryResponse metricResponse = Json.fromJson(response, MetricQueryResponse.class);
@@ -214,7 +219,8 @@ public class PrometheusMetricsComponent implements SupportBundleComponent {
       Date endDate,
       String typeName,
       String exportDestDir,
-      boolean splitTableLevelMetrics)
+      boolean splitTableLevelMetrics,
+      SupportBundleFormData bundleData)
       throws Exception {
     // Query Prometheus for table-level metric names using the label values API
     // Only needed for tserver_export where we split table-level metrics
@@ -251,7 +257,8 @@ public class PrometheusMetricsComponent implements SupportBundleComponent {
                 typeName,
                 null,
                 exportDestDir,
-                effectiveBatchDuration);
+                effectiveBatchDuration,
+                bundleData);
 
         // Get all table level metrics for the node, reusing the effective batch duration
         log.debug("Getting all the table level metrics for the node: {}", nodeName);
@@ -269,7 +276,8 @@ public class PrometheusMetricsComponent implements SupportBundleComponent {
                   typeName,
                   tableLevelMetric,
                   exportDestDir,
-                  effectiveBatchDuration);
+                  effectiveBatchDuration,
+                  bundleData);
         }
       } else {
         // For non-tserver exports or when no table-level metrics exist,
@@ -284,7 +292,8 @@ public class PrometheusMetricsComponent implements SupportBundleComponent {
             typeName,
             null,
             exportDestDir,
-            null);
+            null,
+            bundleData);
       }
     }
   }
@@ -335,7 +344,15 @@ public class PrometheusMetricsComponent implements SupportBundleComponent {
                           "{job=\"%s\",node_prefix=\"%s\"}",
                           typeName, (type == PrometheusMetricsType.PLATFORM ? nodePrefix : ""));
                   exportMetric(
-                      new Date(startTime), new Date(endTime), query, typeName, exportDestDir);
+                      new Date(startTime),
+                      new Date(endTime),
+                      query,
+                      null,
+                      typeName,
+                      null,
+                      exportDestDir,
+                      null,
+                      data);
                 } else {
                   // Only split table-level metrics for tserver_export
                   // Master always has 1 table, other export types don't have table-level metrics
@@ -346,7 +363,8 @@ public class PrometheusMetricsComponent implements SupportBundleComponent {
                       new Date(endTime),
                       typeName,
                       exportDestDir,
-                      splitTableLevelMetrics);
+                      splitTableLevelMetrics,
+                      data);
                 }
               } catch (Exception e) {
                 log.error("Error processing PrometheusMetricsType {}: {}", type, e.getMessage(), e);
@@ -370,7 +388,15 @@ public class PrometheusMetricsComponent implements SupportBundleComponent {
                 supportBundleUtil.saveMetadata(
                     customer, path.toAbsolutePath().toString(), manifest, "manifest.json");
                 exportMetric(
-                    new Date(startTime), new Date(endTime), query, queryType, exportDestDir);
+                    new Date(startTime),
+                    new Date(endTime),
+                    query,
+                    null,
+                    queryType,
+                    null,
+                    exportDestDir,
+                    null,
+                    data);
               } catch (Exception e) {
                 log.error(
                     "Error processing custom prometheus query {}: {}",
