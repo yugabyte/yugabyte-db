@@ -722,7 +722,8 @@ class PgWrapperOverrideFlagsTest : public PgWrapperFlagsTest {
     options->extra_tserver_flags.emplace_back("--ysql_yb_enable_replication_commands=true");
     options->extra_tserver_flags.emplace_back("--ysql_yb_enable_replica_identity=true");
     options->extra_tserver_flags.emplace_back("--ysql_yb_enable_docdb_vector_type=false");
-    options->extra_tserver_flags.emplace_back("--ysql_default_transaction_isolation=read committed");
+    options->extra_tserver_flags.emplace_back(
+        "--ysql_default_transaction_isolation=read committed");
     options->extra_tserver_flags.emplace_back("--ysql_datestyle=ISO, YMD");
   }
 };
