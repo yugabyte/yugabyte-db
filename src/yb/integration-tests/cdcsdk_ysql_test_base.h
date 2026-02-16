@@ -156,6 +156,7 @@ DECLARE_int32(cdc_create_stream_alter_table_dispatch_batch_size);
 DECLARE_int32(cdc_create_stream_alter_table_dispatch_delay_ms);
 DECLARE_int32(max_concurrent_alter_table_rpcs);
 DECLARE_int32(ysql_ddl_rpc_timeout_sec);
+DECLARE_bool(TEST_cdcsdk_disable_stream_drop_during_db_drop);
 
 namespace yb {
 
@@ -927,6 +928,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   void TestLagMetricWithConsistentSnapshotStream(bool expire_table);
 
   Status CdcReleaseBarriersOnTablet(const TabletId& tablet_id);
+  void TestStreamsDroppedOnDBDropAndMasterRestart(
+      const string& sync_point_name, bool use_logical_replication);
 };
 
 }  // namespace cdc
