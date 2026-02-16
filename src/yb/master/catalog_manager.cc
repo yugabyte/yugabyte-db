@@ -609,6 +609,9 @@ DEFINE_NON_RUNTIME_bool(emergency_repair_mode, false,
 TAG_FLAG(emergency_repair_mode, advanced);
 TAG_FLAG(emergency_repair_mode, unsafe);
 
+DEFINE_test_flag(bool, cdcsdk_disable_stream_drop_during_db_drop, false,
+    "When enabled, the DeleteNamespace workflow won't mark associated CDCSDK streams as DELETING.");
+
 DECLARE_bool(enable_pg_cron);
 DECLARE_bool(enable_truncate_cdcsdk_table);
 DECLARE_bool(TEST_enable_object_locking_for_table_locks);
@@ -9174,6 +9177,24 @@ void CatalogManager::DeleteYsqlDatabaseAsync(
     LOG(WARNING) << "Keyspace (" << database->name() << ") has invalid state (" << metadata.state()
                  << "), aborting delete";
     return;
+  }
+
+  if (PREDICT_TRUE(!FLAGS_TEST_cdcsdk_disable_stream_drop_during_db_drop)) {
+    // Dropping all CDCSDK streams for the database.
+    TRACE("Dropping all CDCSDK streams for the YSQL database");
+    auto s = DropAllCDCSDKStreams(database->id());
+    WARN_NOT_OK(s, "DropAllCDCSDKStreams failed");
+
+    if (!s.ok()) {
+      if (s.IsIllegalState() && s.message().ToBuffer() == "Failing for TESTING") {
+        // Simulated failure injected by test. Return immediately.
+        return;
+      }
+      // Move to FAILED so DeleteNamespace can be reissued by the user.
+      metadata.set_state(SysNamespaceEntryPB::FAILED);
+      l.Commit();
+      return;
+    }
   }
 
   // Delete all tables in the database.
