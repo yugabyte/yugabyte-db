@@ -21,8 +21,6 @@ import com.yugabyte.yw.common.certmgmt.castore.CustomCAStoreManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
@@ -1711,33 +1709,16 @@ public class AWSUtil implements CloudUtil {
     }
   }
 
-  public UniverseInterruptionResult spotInstanceUniverseStatus(Universe universe) {
-    UniverseInterruptionResult result = new UniverseInterruptionResult(universe.getName());
-    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
-    Provider primaryClusterProvider =
-        Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
-    UUID primaryClusterUUID = universe.getUniverseDetails().getPrimaryCluster().uuid;
-
-    // For nodes in primary cluster
-    for (final NodeDetails nodeDetails : universe.getNodesInCluster(primaryClusterUUID)) {
-      result.addNodeStatus(
-          nodeDetails.nodeName,
-          isSpotInstanceInterrupted(nodeDetails, primaryClusterProvider)
-              ? InterruptionStatus.Interrupted
-              : InterruptionStatus.NotInterrupted);
-    }
-    // For nodes in read replicas
-    for (Cluster cluster : universe.getUniverseDetails().getReadOnlyClusters()) {
-      Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
-      for (final NodeDetails nodeDetails : universe.getNodesInCluster(cluster.uuid)) {
-        result.addNodeStatus(
-            nodeDetails.nodeName,
-            isSpotInstanceInterrupted(nodeDetails, provider)
-                ? InterruptionStatus.Interrupted
-                : InterruptionStatus.NotInterrupted);
-      }
-    }
-    return result;
+  public void addSpotInstanceUniverseStatus(
+      UniverseInterruptionResult result,
+      NodeDetails nodeDetails,
+      Universe universe,
+      Provider provider) {
+    result.addNodeStatus(
+        nodeDetails.nodeName,
+        isSpotInstanceInterrupted(nodeDetails, provider)
+            ? InterruptionStatus.Interrupted
+            : InterruptionStatus.NotInterrupted);
   }
 
   private boolean isSpotInstanceInterrupted(NodeDetails nodeDetails, Provider provider) {

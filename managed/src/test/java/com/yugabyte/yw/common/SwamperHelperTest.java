@@ -144,8 +144,7 @@ public class SwamperHelperTest extends FakeDBApplication {
       }
       int otelMetricsPort =
           confGetter.getConfForScope(
-              Provider.getOrBadRequest(UUID.fromString(ui.provider)),
-              ProviderConfKeys.otelCollectorMetricsPort);
+              Util.getSingleProvider(ui), ProviderConfKeys.otelCollectorMetricsPort);
       ArrayNode targetsJson = (ArrayNode) Json.parse(sb.toString());
       String expectedTargetsTemplate = TestUtils.readResource(expectedFile);
       String expectedTargetsStr =

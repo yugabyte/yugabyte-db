@@ -259,12 +259,8 @@ public class UniverseYbDbAdminHandler {
                 CONNECTION_POOLING_STABLE_VERSION, CONNECTION_POOLING_PREVIEW_VERSION));
       }
 
-      if (universe
-          .getUniverseDetails()
-          .getPrimaryCluster()
-          .userIntent
-          .providerType
-          .equals(Common.CloudType.kubernetes)) {
+      if (Util.getSingleProvider(universe.getUniverseDetails().getPrimaryCluster()).getCloudCode()
+          == Common.CloudType.kubernetes) {
         if (requestParams.communicationPorts.ysqlServerRpcPort
             != KubernetesCommandExecutor.DEFAULT_YSQL_SERVER_RPC_PORT) {
           throw new PlatformServiceException(
@@ -291,12 +287,7 @@ public class UniverseYbDbAdminHandler {
       return null;
     }
     TaskType taskType =
-        universe
-                .getUniverseDetails()
-                .getPrimaryCluster()
-                .userIntent
-                .providerType
-                .equals(Common.CloudType.kubernetes)
+        Util.isKubernetesBasedUniverse(universe)
             ? TaskType.ConfigureDBApisKubernetes
             : TaskType.ConfigureDBApis;
     UUID taskUUID = commissioner.submit(taskType, requestParams);
@@ -330,7 +321,7 @@ public class UniverseYbDbAdminHandler {
     requestParams.validatePassword(policyService);
     requestParams.validateYCQLTables(universe, tableHandler);
     TaskType taskType =
-        userIntent.providerType.equals(Common.CloudType.kubernetes)
+        Util.isKubernetesBasedUniverse(universe)
             ? TaskType.ConfigureDBApisKubernetes
             : TaskType.ConfigureDBApis;
     UUID taskUUID = commissioner.submit(taskType, requestParams);

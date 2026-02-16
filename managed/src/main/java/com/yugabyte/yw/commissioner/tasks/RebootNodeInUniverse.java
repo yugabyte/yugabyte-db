@@ -8,6 +8,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
@@ -17,7 +18,6 @@ import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
-import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import play.mvc.Http;
@@ -61,9 +61,7 @@ public class RebootNodeInUniverse extends UniverseDefinitionTaskBase {
     currentNode.validateActionOnState(
         taskParams().isHardReboot ? NodeActionType.HARD_REBOOT : NodeActionType.REBOOT);
 
-    UUID providerUuid =
-        UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider);
-    Provider provider = Provider.getOrBadRequest(providerUuid);
+    Provider provider = Util.getProviderForNode(currentNode, universe);
     ProviderDetails providerDetails = provider.getDetails();
     if (provider.getCloudCode() == CloudType.onprem && providerDetails.skipProvisioning == true) {
       throw new PlatformServiceException(

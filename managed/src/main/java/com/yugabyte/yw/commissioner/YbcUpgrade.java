@@ -16,6 +16,7 @@ import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.ShellProcessContext;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -189,12 +190,7 @@ public class YbcUpgrade {
       String ybcVersion = ybcManager.getStableYbcVersion();
       for (Customer customer : Customer.getAll()) {
         for (Universe universe : Universe.getAllWithoutResources(customer)) {
-          if (universe
-              .getUniverseDetails()
-              .getPrimaryCluster()
-              .userIntent
-              .providerType
-              .equals(Common.CloudType.kubernetes)) {
+          if (Util.isKubernetesBasedUniverse(universe)) {
             if (!canUpgradeYBCOnK8s(universe, ybcVersion)) {
               continue;
             }

@@ -491,8 +491,10 @@ public class GFlagsUtil {
             : node.cloudInfo.private_ip;
 
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-    UserIntent userIntent = universeDetails.getClusterByUuid(node.placementUuid).userIntent;
-    String providerUUID = userIntent.provider;
+    Cluster cluster = universeDetails.getClusterByUuid(node.placementUuid);
+    UserIntent userIntent = cluster.userIntent;
+    Provider provider = Util.getProviderForNode(node, cluster);
+    String ybHomeDir = provider.getYbHome();
     Map<String, String> ybcFlags = new TreeMap<>();
     ybcFlags.put("v", "1");
     ybcFlags.put("server_address", serverAddresses);
@@ -502,8 +504,8 @@ public class GFlagsUtil {
             taskParam.overrideNodePorts
                 ? taskParam.communicationPorts.ybControllerrRpcPort
                 : node.ybControllerRpcPort));
-    ybcFlags.put("log_dir", getYbHomeDir(providerUUID) + YBC_LOG_SUBDIR);
-    ybcFlags.put("cores_dir", getYbHomeDir(providerUUID) + CORES_DIR_PATH);
+    ybcFlags.put("log_dir", provider.getYbHome() + YBC_LOG_SUBDIR);
+    ybcFlags.put("cores_dir", provider.getYbHome() + CORES_DIR_PATH);
 
     ybcFlags.put("yb_master_address", node.cloudInfo.private_ip);
     ybcFlags.put(
@@ -523,13 +525,13 @@ public class GFlagsUtil {
     // since pgsql_bind_address is set to 0.0.0.0 or private_ip.
     // Also, /varz endpoint works, since webserver_interface is set to private_ip.
     ybcFlags.put("yb_tserver_address", node.cloudInfo.private_ip);
-    ybcFlags.put("redis_cli", getYbHomeDir(providerUUID) + REDIS_CLI_PATH);
-    ybcFlags.put("yb_admin", getYbHomeDir(providerUUID) + YB_ADMIN_PATH);
-    ybcFlags.put("yb_ctl", getYbHomeDir(providerUUID) + YB_CTL_PATH);
-    ybcFlags.put("ysql_dump", getYbHomeDir(providerUUID) + YSQL_DUMP_PATH);
-    ybcFlags.put("ysql_dumpall", getYbHomeDir(providerUUID) + YSQL_DUMPALL_PATH);
-    ybcFlags.put("ysqlsh", getYbHomeDir(providerUUID) + YSQLSH_PATH);
-    ybcFlags.put("ycqlsh", getYbHomeDir(providerUUID) + YCQLSH_PATH);
+    ybcFlags.put("redis_cli", ybHomeDir + REDIS_CLI_PATH);
+    ybcFlags.put("yb_admin", ybHomeDir + YB_ADMIN_PATH);
+    ybcFlags.put("yb_ctl", ybHomeDir + YB_CTL_PATH);
+    ybcFlags.put("ysql_dump", ybHomeDir + YSQL_DUMP_PATH);
+    ybcFlags.put("ysql_dumpall", ybHomeDir + YSQL_DUMPALL_PATH);
+    ybcFlags.put("ysqlsh", ybHomeDir + YSQLSH_PATH);
+    ybcFlags.put("ycqlsh", ybHomeDir + YCQLSH_PATH);
     ybcFlags.put("log_filename", YBC_LOG_FILENAME);
     ybcFlags.put("log_utc_time", "true");
     ybcFlags.put(
@@ -563,7 +565,6 @@ public class GFlagsUtil {
     }
     ybcFlags.put(TMP_DIRECTORY, ybcTempDir);
     if (EncryptionInTransitUtil.isRootCARequired(taskParam)) {
-      String ybHomeDir = getYbHomeDir(providerUUID);
       String certsNodeDir = CertificateHelper.getCertsNodeDir(ybHomeDir);
       ybcFlags.put("certs_dir_name", certsNodeDir);
     }
@@ -573,7 +574,7 @@ public class GFlagsUtil {
     if (userIntent.providerType == CloudType.local) {
       // In case of local provider, we want ybc to use /tmp directory
       // inside the respective node folder.
-      ybcFlags.put(TMP_DIRECTORY, getYbHomeDir(providerUUID) + "/tmp");
+      ybcFlags.put(TMP_DIRECTORY, ybHomeDir + "/tmp");
     }
     return ybcFlags;
   }
@@ -588,9 +589,10 @@ public class GFlagsUtil {
       RuntimeConfGetter confGetter) {
     NodeDetails node = universe.getNode(nodeName);
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-    UserIntent userIntent = universeDetails.getClusterByUuid(node.placementUuid).userIntent;
-    String providerUUID = userIntent.provider;
-    Provider provider = Provider.getOrBadRequest(UUID.fromString(providerUUID));
+    Cluster cluster = universeDetails.getClusterByUuid(node.placementUuid);
+    UserIntent userIntent = cluster.userIntent;
+
+    Provider provider = Util.getProviderForNode(node, cluster);
     String ybHomeDir = provider.getYbHome();
     String serverAddress =
         listenOnAllInterfaces
@@ -1833,8 +1835,21 @@ public class GFlagsUtil {
       }
     }
     UserIntent userIntent = universeDetails.getClusterByUuid(placementUUID).userIntent;
-    String providerUUID = userIntent.provider;
 
+    Set<UUID> allProviderUUIDs = userIntent.getAllProviderUUIDs();
+    UUID providerUUID;
+    if (allProviderUUIDs.size() == 1) {
+      providerUUID = allProviderUUIDs.iterator().next();
+    } else {
+      if (node == null) {
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR,
+            String.format(
+                "Missing node information for multi-provider universe {}. Can't Continue",
+                universeUUID.toString()));
+      }
+      providerUUID = Util.getProviderForNode(node, universe).getUuid();
+    }
     String modifiedHbaConfEntries = "";
     // Split the input string at positions where it starts with "host..." or "local"
     String[] hbaConfEntries = hbaConfValue.split("(?i)(?<=\\s|,|\")\\s*(?=host\\w*|local\\b)");
@@ -1851,7 +1866,7 @@ public class GFlagsUtil {
           modifiedHbaConfEntry.append("\"");
         }
         modifiedHbaConfEntry.append(
-            updateHbaConfValueForJWT(hbaConfEntry, localGflagFilePath, providerUUID));
+            updateHbaConfValueForJWT(hbaConfEntry, localGflagFilePath, providerUUID.toString()));
         if (i != 0 && !hbaConfEntries[i - 1].endsWith("\"")) {
           if (i != hbaConfEntries.length - 1) {
             // Remove the trailing comma
@@ -2152,8 +2167,7 @@ public class GFlagsUtil {
         log.error("Failed to fetch in memory gflags", ignored);
       }
     } else {
-      Cluster cluster = universe.getCluster(nodeDetails.placementUuid);
-      Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+      Provider provider = Util.getProviderForNode(nodeDetails, universe);
       try {
         ShellResponse response =
             nodeUniverseManager.runCommand(

@@ -175,11 +175,10 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
 
       for (UniverseDefinitionTaskParams.Cluster cluster : universe.getUniverseDetails().clusters) {
         UniverseDefinitionTaskParams.UserIntent userIntent = cluster.userIntent;
-        UUID providerUUID = UUID.fromString(userIntent.provider);
 
         PlacementInfo pi = cluster.placementInfo;
 
-        Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
+        Provider provider = Util.getSingleProvider(cluster);
 
         Map<UUID, Map<String, String>> azToConfig = KubernetesUtil.getConfigPerAZ(pi);
         boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
@@ -221,7 +220,7 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
                     azName,
                     config,
                     KubernetesCommandExecutor.CommandType.HELM_DELETE,
-                    providerUUID,
+                    provider.getUuid(),
                     cluster.clusterType == ClusterType.ASYNC));
           }
 
@@ -234,7 +233,7 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
                   azName,
                   config,
                   KubernetesCommandExecutor.CommandType.VOLUME_DELETE,
-                  providerUUID,
+                  provider.getUuid(),
                   cluster.clusterType == ClusterType.ASYNC));
 
           // TODO(bhavin192): delete the pull secret as well? As of now,
@@ -258,7 +257,7 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
                     azName,
                     config,
                     KubernetesCommandExecutor.CommandType.NAMESPACE_DELETE,
-                    providerUUID,
+                    provider.getUuid(),
                     cluster.clusterType == ClusterType.ASYNC));
           }
         }

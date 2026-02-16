@@ -709,6 +709,38 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           : partitions.stream().filter(g -> g.defaultPartition).findFirst().get();
     }
 
+    public Optional<UUID> searchProviderUUIDByAz(UUID azUUID) {
+      if (!CollectionUtils.isEmpty(partitions)) {
+        for (PartitionInfo partition : partitions) {
+          Optional<UUID> ret = searchProviderUUIDByAz(azUUID, partition.getPlacement());
+          if (ret.isPresent()) {
+            return ret;
+          }
+        }
+        return Optional.empty();
+      }
+      return searchProviderUUIDByAz(azUUID, getOverallPlacement());
+    }
+
+    public static Optional<UUID> searchProviderUUIDByAz(UUID azUUID, PlacementInfo placementInfo) {
+      if (placementInfo == null) {
+        return Optional.empty();
+      }
+      return placementInfo
+          .azInfoStream()
+          .filter(az -> az.placementAZ.uuid.equals(azUUID))
+          .findFirst()
+          .map(az -> az.cloud.uuid);
+    }
+
+    public UUID getProviderUUIDForNode(NodeDetails node) {
+      return UUID.fromString(userIntent.provider);
+    }
+
+    public CloudType getProviderCloudType(NodeDetails nodeDetails) {
+      return userIntent.providerType;
+    }
+
     @JsonIgnore
     public PlacementInfo getOverallPlacement() {
       if (!CollectionUtils.isEmpty(partitions)) {
@@ -1461,6 +1493,20 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     }
 
     @JsonIgnore
+    public Set<UUID> getAllProviderUUIDs() {
+      // For tests to work.
+      if (provider == null) {
+        return Collections.emptySet();
+      }
+      return Collections.singleton(UUID.fromString(provider));
+    }
+
+    @JsonIgnore
+    public Set<CloudType> getAllCloudTypes() {
+      return Collections.singleton(providerType);
+    }
+
+    @JsonIgnore
     public String getBaseInstanceType() {
       return getInstanceType(null);
     }
@@ -1592,6 +1638,11 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         return overridenDetails.getProxyConfig();
       }
       return proxyConfig;
+    }
+
+    @JsonIgnore
+    public boolean isMulticloudSupport() {
+      return false;
     }
 
     @Override
@@ -1908,6 +1959,15 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     }
 
     return Iterables.getOnlyElement(foundClusters, null);
+  }
+
+  public UUID searchProviderUUIDByAz(UUID azUUID) {
+    return clusters.stream()
+        .map(c -> c.searchProviderUUIDByAz(azUUID))
+        .filter(p -> p.isPresent())
+        .findFirst()
+        .map(o -> o.get())
+        .orElseGet(() -> AvailabilityZone.getOrBadRequest(azUUID).getProvider().getUuid());
   }
 
   // the getter has some logic built around, as there are no other layer to

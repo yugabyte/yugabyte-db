@@ -1044,9 +1044,9 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     String accessKeyCode = "someKeyCode";
     AccessKey.create(p.getUuid(), accessKeyCode, new AccessKey.KeyInfo());
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
-    AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
-    AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ 2", "subnet-2");
-    AvailabilityZone.createOrThrow(r, "az-3", "PlacementAZ 3", "subnet-3");
+    AvailabilityZone az1 = AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone az2 = AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ 2", "subnet-2");
+    AvailabilityZone az3 = AvailabilityZone.createOrThrow(r, "az-3", "PlacementAZ 3", "subnet-3");
     Universe u = createUniverse(customer.getId());
     InstanceType i =
         InstanceType.upsert(
@@ -1066,6 +1066,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     userIntentJson.set("regionList", regionList);
 
     ArrayNode nodeDetailsJsonArray = Json.newArray();
+
     u =
         Universe.saveDetails(
             u.getUniverseUUID(),
@@ -1077,6 +1078,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
                 NodeDetails node = ApiUtils.getDummyNodeDetails(idx, NodeState.Live);
                 node.cloudInfo.instance_type = i.getInstanceTypeCode();
                 node.placementUuid = cluster.uuid;
+                node.azUuid = Arrays.asList(az1, az2, az3).get(idx).getUuid();
                 nodeDetailsJsonArray.add(Json.toJson(node));
                 universeDetails.nodeDetailsSet.add(node);
               }

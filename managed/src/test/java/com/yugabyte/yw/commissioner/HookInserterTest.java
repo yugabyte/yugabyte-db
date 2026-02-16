@@ -12,8 +12,10 @@ import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.RestartTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Hook;
 import com.yugabyte.yw.models.HookScope;
+import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
@@ -23,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -32,6 +35,7 @@ import org.mockito.junit.MockitoJUnitRunner;
 /*
  * Reuses the test code for universe upgrade to test triggering.
  */
+@Slf4j
 @RunWith(MockitoJUnitRunner.class)
 public class HookInserterTest extends UpgradeTaskTest {
 
@@ -130,10 +134,19 @@ public class HookInserterTest extends UpgradeTaskTest {
     userIntent.deviceInfo = new DeviceInfo();
     userIntent.deviceInfo.numVolumes = 1;
     userIntent.provider = gcpProvider.getUuid().toString();
+
+    Region gcpRegion = Region.create(gcpProvider, "region-1g", "Region 1g", "yb-image-1");
+    AvailabilityZone az1gcp =
+        AvailabilityZone.createOrThrow(gcpRegion, "az-1g", "AZ 1g", "subnet-1");
+    AvailabilityZone az2gcp =
+        AvailabilityZone.createOrThrow(gcpRegion, "az-2g", "AZ 2g", "subnet-2");
+    AvailabilityZone az3gcp =
+        AvailabilityZone.createOrThrow(gcpRegion, "az-3g", "AZ 3g", "subnet-3");
+
     PlacementInfo pi = new PlacementInfo();
-    PlacementInfoUtil.addPlacementZone(az1.getUuid(), pi, 1, 1, false);
-    PlacementInfoUtil.addPlacementZone(az2.getUuid(), pi, 1, 1, false);
-    PlacementInfoUtil.addPlacementZone(az3.getUuid(), pi, 1, 1, true);
+    PlacementInfoUtil.addPlacementZone(az1gcp.getUuid(), pi, 1, 1, false);
+    PlacementInfoUtil.addPlacementZone(az2gcp.getUuid(), pi, 1, 1, false);
+    PlacementInfoUtil.addPlacementZone(az3gcp.getUuid(), pi, 1, 1, true);
     defaultUniverse =
         Universe.saveDetails(
             defaultUniverse.getUniverseUUID(),

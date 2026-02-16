@@ -11,6 +11,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.gflags.GFlagDetails;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
@@ -116,7 +117,7 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
       Map<UUID, List<NodeDetails>> nodesGroupedByAZs,
       GFlagsValidation.GFlagsValidationErrors gFlagsValidationErrors) {
 
-    // Load metadata once per server type for the whole cluster — it only depends on
+    // Load metadata once per server type for the whole cluster - it only depends on
     // ybSoftwareVersion and serverType, not on AZ or node, so there is no reason to
     // re-fetch it inside every per-AZ call to validateGFlagsWithYBServerBinary.
     Map<String, GFlagDetails> masterGflagMeta = Collections.emptyMap();
@@ -453,10 +454,7 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
       Map<String, GFlagDetails> gflagMeta) {
     Map<String, String> serverGFlagsValidationErrors = new HashMap<>();
 
-    UUID providerUUID =
-        UUID.fromString(
-            universe.getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent.provider);
-    Provider provider = Provider.getOrBadRequest(providerUUID);
+    Provider provider = Util.getProviderForNode(node, universe);
 
     String cliPath;
     if (provider.getCloudCode() == CloudType.local) {

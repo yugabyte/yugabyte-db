@@ -730,7 +730,7 @@ public class KubernetesUtil {
   }
 
   private static boolean isMCSEnabled(UniverseDefinitionTaskParams universeDetails) {
-    UUID providerUUID = UUID.fromString(universeDetails.getPrimaryCluster().userIntent.provider);
+    UUID providerUUID = Util.getSingleProviderUUID(universeDetails.getPrimaryCluster());
     Provider provider = Provider.getOrBadRequest(providerUUID);
     if (provider.getCloudCode().equals(Common.CloudType.kubernetes)) {
       List<Region> regions = Region.getByProvider(provider.getUuid());
@@ -902,7 +902,8 @@ public class KubernetesUtil {
 
     Map<UUID, Map<String, Object>> result = new HashMap<>();
     PlacementInfo placementInfo = cluster.getOverallPlacement();
-    Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+
+    Provider provider = Util.getSingleProvider(cluster);
 
     ObjectMapper mapper = new ObjectMapper();
     Yaml yaml = new Yaml();
@@ -968,7 +969,7 @@ public class KubernetesUtil {
       PlacementInfo pi = cluster.placementInfo;
       boolean isReadOnlyCluster = cluster.clusterType == ClusterType.ASYNC;
       KubernetesPlacement placement = new KubernetesPlacement(pi, isReadOnlyCluster);
-      Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+      Provider provider = Util.getSingleProvider(cluster);
       boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
       for (Entry<UUID, Map<String, String>> entry : placement.configs.entrySet()) {
         AvailabilityZone az = AvailabilityZone.getOrBadRequest(entry.getKey());
@@ -1019,7 +1020,7 @@ public class KubernetesUtil {
       PlacementInfo pi = cluster.getOverallPlacement();
       boolean isReadOnlyCluster = cluster.clusterType == ClusterType.ASYNC;
       KubernetesPlacement placement = new KubernetesPlacement(pi, isReadOnlyCluster);
-      Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+      Provider provider = Util.getSingleProvider(cluster);
       boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
       for (Entry<UUID, Map<String, String>> entry : placement.configs.entrySet()) {
         AvailabilityZone az = AvailabilityZone.getOrBadRequest(entry.getKey());

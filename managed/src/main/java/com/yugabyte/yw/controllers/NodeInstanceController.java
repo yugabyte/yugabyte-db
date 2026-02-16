@@ -21,7 +21,6 @@ import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.controllers.JWTVerifier.ClientType;
-import com.yugabyte.yw.controllers.handlers.NodeAgentHandler;
 import com.yugabyte.yw.controllers.handlers.NodeInstanceHandler;
 import com.yugabyte.yw.forms.NodeActionFormData;
 import com.yugabyte.yw.forms.NodeDetailsResp;
@@ -82,8 +81,6 @@ public class NodeInstanceController extends AuthenticatedController {
 
   @Inject Commissioner commissioner;
 
-  @Inject NodeAgentHandler nodeAgentHandler;
-
   @Inject NodeConfigValidator nodeConfigValidator;
 
   @Inject private KubernetesManagerFactory kubernetesManagerFactory;
@@ -143,8 +140,8 @@ public class NodeInstanceController extends AuthenticatedController {
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     NodeDetails detail = universe.getNode(nodeName);
     String helmValues = "";
-    if (universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType
-        == CloudType.kubernetes) {
+    Provider provider = Util.getProviderForNode(detail, universe);
+    if (provider.getCloudCode() == CloudType.kubernetes) {
       // Return helm values for the corresponding node also for k8s universes.
       helmValues = getAZHelmValues(universe, nodeName);
     }
@@ -172,7 +169,7 @@ public class NodeInstanceController extends AuthenticatedController {
             String.format("Failed to get information about node %s.", nodeName));
       }
       String azName = nodeDetails.cloudInfo.az;
-      Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+      Provider provider = Util.getProviderForNode(nodeDetails, cluster);
       boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
       // Get AZ uuid
       Map<String, String> azConfig = AvailabilityZone.getByCode(provider, azName).getConfig();

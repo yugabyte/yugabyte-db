@@ -541,6 +541,14 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "Default earlyoom arguments",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableEarlyoomOnOSUpgrade =
+      new ConfKeyInfo<>(
+          "yb.node_agent.enable_earlyoom_on_os_upgrade",
+          ScopeType.PROVIDER,
+          "Whether to install and enable earlyoom during OS upgrade",
+          "Whether to install and enable earlyoom during OS upgrade (for old universes)",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Duration> gcpConnectionDrainingTimeout =
       new ConfKeyInfo<>(
           "yb.gcp.operations.connection_draining_timeout",

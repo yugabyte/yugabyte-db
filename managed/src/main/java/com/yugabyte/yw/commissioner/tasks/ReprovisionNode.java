@@ -110,7 +110,8 @@ public class ReprovisionNode extends UniverseDefinitionTaskBase {
       // node-agent-provision.sh, so skip them here to avoid failing on the missing sudo
       // SSH access.
       boolean isUniverseManuallyProvisioned = Util.isOnPremManualProvisioning(universe);
-      if (userIntent.providerType != CloudType.local && !isUniverseManuallyProvisioned) {
+      if (!userIntent.getAllCloudTypes().contains(CloudType.local)
+          && !isUniverseManuallyProvisioned) {
         createSetupYNPTask(universe, nodeCollection)
             .setSubTaskGroupType(SubTaskGroupType.Provisioning);
         createYNPProvisioningTask(universe, nodeCollection, false /*isYBPrebuiltImage*/)
@@ -121,7 +122,7 @@ public class ReprovisionNode extends UniverseDefinitionTaskBase {
       createWaitForNodeAgentTasks(nodeCollection)
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.Provisioning);
 
-      if (userIntent.providerType == CloudType.local) {
+      if (userIntent.getAllCloudTypes().contains(CloudType.local)) {
         createSetupServerTasks(nodeCollection, params -> {})
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.Provisioning);
       }
