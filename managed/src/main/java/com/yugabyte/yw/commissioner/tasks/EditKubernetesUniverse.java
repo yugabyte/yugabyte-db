@@ -29,6 +29,7 @@ import com.yugabyte.yw.common.KubernetesFullMoveReplicas.KubernetesFullMoveRepli
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
@@ -153,8 +154,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         primaryCluster = universeDetails.getPrimaryCluster();
       }
 
-      Provider provider =
-          Provider.getOrBadRequest(UUID.fromString(primaryCluster.userIntent.provider));
+      Provider provider = Util.getSingleProvider(primaryCluster);
 
       /* Steps for multi-cluster edit
       1) Compute masters with the new placement info.
@@ -213,11 +213,6 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               universeDetails.communicationPorts.masterRpcPort,
               newNamingStyle);
 
-      // validate clusters
-      for (Cluster cluster : taskParams().clusters) {
-        Cluster currCluster = universeDetails.getClusterByUuid(cluster.uuid);
-        validateEditParams(cluster, currCluster);
-      }
       boolean primaryRFChange =
           universeDetails.getPrimaryCluster().userIntent.replicationFactor
               != primaryCluster.userIntent.replicationFactor;
@@ -355,7 +350,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
 
     KubernetesPlacement newPlacement = new KubernetesPlacement(newPI, isReadOnlyCluster),
         curPlacement = new KubernetesPlacement(curPI, isReadOnlyCluster);
-    Provider provider = Provider.getOrBadRequest(UUID.fromString(newIntent.provider));
+    Provider provider = Util.getSingleProvider(primaryCluster);
     boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
     boolean newNamingStyle = taskParams().useNewHelmNamingStyle;
 
@@ -1831,8 +1826,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     // 3. Run helm upgrade so that new StatefulSet is created with updated disk size.
     // The newly created statefulSet also claims the already running pods.
     String softwareVersion = userIntent.ybSoftwareVersion;
-    UUID providerUUID = UUID.fromString(userIntent.provider);
-    Provider provider = Provider.getOrBadRequest(providerUUID);
+    Provider provider = Util.getSingleProvider(newCluster);
 
     for (Entry<UUID, Map<String, String>> entry : placement.configs.entrySet()) {
       UUID azUUID = entry.getKey();
@@ -1915,7 +1909,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
                 azName,
                 isReadOnlyCluster,
                 newNamingStyle,
-                providerUUID,
+                provider.getUuid(),
                 serverType));
         // create the three tasks to update volume size
         // Add subtask to stsDelete subtask group
@@ -2036,7 +2030,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               azName,
               isReadOnlyCluster,
               newNamingStyle,
-              providerUUID,
+              provider.getUuid(),
               newDiskSizeGi,
               serverType));
 

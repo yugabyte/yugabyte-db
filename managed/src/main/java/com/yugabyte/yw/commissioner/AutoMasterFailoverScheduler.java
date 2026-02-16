@@ -7,14 +7,13 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.AutoMasterFailover.Action;
 import com.yugabyte.yw.commissioner.AutoMasterFailover.ActionType;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.JobSchedule;
@@ -218,10 +217,9 @@ public class AutoMasterFailoverScheduler {
                 c.getUniverses()
                     .forEach(
                         u -> {
-                          UserIntent userIntent =
+                          UniverseDefinitionTaskParams.UserIntent userIntent =
                               u.getUniverseDetails().getPrimaryCluster().userIntent;
-                          if (userIntent == null
-                              || userIntent.providerType == CloudType.kubernetes) {
+                          if (userIntent == null || Util.isKubernetesBasedUniverse(u)) {
                             return;
                           }
                           boolean isFailoverEnabled =

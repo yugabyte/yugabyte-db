@@ -15,6 +15,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -866,8 +867,7 @@ public class OperatorUtils {
       currentUserIntent.masterDeviceInfo = defaultMasterDeviceInfo();
     }
 
-    Provider provider =
-        Provider.getOrBadRequest(cust.getUuid(), UUID.fromString(currentUserIntent.provider));
+    Provider provider = Util.getSingleProvider(currentUserIntent);
     // Get all required params
     SpecificGFlags specGFlags = getGFlagsFromSpec(ybUniverse, provider);
     String incomingOverrides =

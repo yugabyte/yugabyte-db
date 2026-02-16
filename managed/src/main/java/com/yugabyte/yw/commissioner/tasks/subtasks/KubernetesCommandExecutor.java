@@ -817,21 +817,16 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
             ? taskUniverseDetails.getReadOnlyClusters().get(0)
             : taskUniverseDetails.getPrimaryCluster();
     UniverseDefinitionTaskParams.UserIntent userIntent = cluster.userIntent;
+
     // TODO Support overriden instance types
-    InstanceType instanceType =
-        InstanceType.get(UUID.fromString(userIntent.provider), userIntent.instanceType);
+    InstanceType instanceType = InstanceType.get(provider.getUuid(), userIntent.instanceType);
     if (instanceType == null && !confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
       log.info(
           "Config parameter {}", confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources));
       log.error(
-          "Unable to fetch InstanceType for {}, {}",
-          userIntent.providerType,
-          userIntent.instanceType);
+          "Unable to fetch InstanceType for {}, {}", provider.getUuid(), userIntent.instanceType);
       throw new RuntimeException(
-          "Unable to fetch InstanceType "
-              + userIntent.providerType
-              + ": "
-              + userIntent.instanceType);
+          "Unable to fetch InstanceType " + provider.getUuid() + ": " + userIntent.instanceType);
     }
 
     int numNodes = 0, replicationFactorZone = 0, replicationFactor = 0;

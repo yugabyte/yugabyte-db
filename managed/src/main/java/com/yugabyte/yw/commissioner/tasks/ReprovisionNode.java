@@ -101,7 +101,7 @@ public class ReprovisionNode extends UniverseDefinitionTaskBase {
 
       // Need to reinstall node agent.
       createRemoveNodeAgentTasks(universe, nodeCollection, true /*forceRemove*/);
-      if (userIntent.providerType != CloudType.local) {
+      if (!userIntent.getAllCloudTypes().contains(CloudType.local)) {
         createSetupYNPTask(universe, nodeCollection)
             .setSubTaskGroupType(SubTaskGroupType.Provisioning);
         if (!useAnsibleProvisioning) {
@@ -114,7 +114,7 @@ public class ReprovisionNode extends UniverseDefinitionTaskBase {
       createWaitForNodeAgentTasks(nodeCollection)
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.Provisioning);
 
-      if (useAnsibleProvisioning || userIntent.providerType == CloudType.local) {
+      if (useAnsibleProvisioning || userIntent.getAllCloudTypes().contains(CloudType.local)) {
         createSetupServerTasks(nodeCollection, params -> {})
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.Provisioning);
       }

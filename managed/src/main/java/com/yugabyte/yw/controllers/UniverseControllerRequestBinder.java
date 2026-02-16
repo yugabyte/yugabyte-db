@@ -18,8 +18,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
@@ -79,11 +80,12 @@ public class UniverseControllerRequestBinder {
         // We can get rid of this if when we default to new style resource spec.
         for (Cluster cluster : taskParams.clusters) {
           UserIntent ui = cluster.userIntent;
-          if (ui.providerType == CloudType.kubernetes) {
+          if (ui.getAllCloudTypes().contains(Common.CloudType.kubernetes)) {
             if (ui.instanceType != null) {
               if (runtimeConfGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
+                UUID providerUUID = Util.getSingleProviderUUID(ui);
                 InstanceType instanceType =
-                    InstanceType.getOrBadRequest(UUID.fromString(ui.provider), ui.instanceType);
+                    InstanceType.getOrBadRequest(providerUUID, ui.instanceType);
                 // set K8s resource spec from instance type data.
                 ui.masterK8SNodeResourceSpec = new K8SNodeResourceSpec();
                 ui.tserverK8SNodeResourceSpec = new K8SNodeResourceSpec();

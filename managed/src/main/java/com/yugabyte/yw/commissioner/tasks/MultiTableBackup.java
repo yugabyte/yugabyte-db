@@ -24,11 +24,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.api.client.util.Throwables;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstallThirdPartySoftwareK8s;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BackupTableParams.ActionType;
@@ -93,7 +93,7 @@ public class MultiTableBackup extends UniverseTaskBase {
     Set<String> tablesToBackup = new HashSet<>();
     Universe universe = Universe.getOrBadRequest(params().getUniverseUUID());
     Customer customer = Customer.get(universe.getCustomerId());
-    CloudType cloudType = universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
+    boolean isK8s = Util.isKubernetesBasedUniverse(universe);
     MetricLabelsBuilder metricLabelsBuilder =
         MetricLabelsBuilder.create().fromUniverse(customer, universe);
     BACKUP_ATTEMPT_COUNTER.labelValues(metricLabelsBuilder.getPrometheusValues()).inc();
@@ -243,7 +243,7 @@ public class MultiTableBackup extends UniverseTaskBase {
         // Clear previous subtasks if any.
         getRunnableTask().reset();
 
-        if (cloudType != CloudType.kubernetes) {
+        if (!isK8s) {
           // Ansible Configure Task for copying xxhsum binaries from
           // third_party directory to the DB nodes.
           installThirdPartyPackagesTask(universe)

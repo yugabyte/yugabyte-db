@@ -122,9 +122,7 @@ public class AttachDetachController extends AuthenticatedController {
 
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
-    Provider provider =
-        Provider.getOrBadRequest(
-            UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider));
+    Provider provider = Util.getSingleProvider(universe.getUniverseDetails().getPrimaryCluster());
 
     List<InstanceType> instanceTypes =
         InstanceType.findByProvider(

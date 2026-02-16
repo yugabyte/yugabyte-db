@@ -1159,13 +1159,51 @@ public class Util {
   }
 
   public static boolean isKubernetesBasedUniverse(UniverseDefinitionTaskParams params) {
-    boolean isKubernetesUniverse =
-        params.getPrimaryCluster().userIntent.providerType.equals(CloudType.kubernetes);
+    boolean isKubernetesUniverse = false;
+    if (params.getPrimaryCluster() != null) {
+      isKubernetesUniverse =
+          params.getPrimaryCluster().userIntent.providerType.equals(CloudType.kubernetes);
+    }
     for (Cluster cluster : params.getReadOnlyClusters()) {
       isKubernetesUniverse =
           isKubernetesUniverse || cluster.userIntent.providerType.equals(CloudType.kubernetes);
     }
     return isKubernetesUniverse;
+  }
+
+  public static UUID getSingleProviderUUID(Cluster cluster) {
+    return getSingleProviderUUID(cluster.userIntent);
+  }
+
+  public static UUID getSingleProviderUUID(UserIntent userIntent) {
+    return UUID.fromString(userIntent.provider);
+  }
+
+  public static Provider getSingleProvider(Cluster cluster) {
+    return getSingleProvider(cluster.userIntent);
+  }
+
+  public static Provider getSingleProvider(UserIntent userIntent) {
+    return Provider.getOrBadRequest(getSingleProviderUUID(userIntent));
+  }
+
+  public static Set<UUID> getAllProviderUUIDs(Universe universe) {
+    return universe.getUniverseDetails().clusters.stream()
+        .flatMap(c -> c.userIntent.getAllProviderUUIDs().stream())
+        .collect(Collectors.toSet());
+  }
+
+  public static boolean checkAnyProviderType(
+      UserIntent userIntent, Predicate<CloudType> predicate) {
+    return userIntent.getAllCloudTypes().stream().filter(predicate).findFirst().isPresent();
+  }
+
+  public static CloudType getSingleProviderType(Cluster cluster) {
+    return getSingleProviderType(cluster.userIntent);
+  }
+
+  public static CloudType getSingleProviderType(UserIntent userIntent) {
+    return userIntent.providerType;
   }
 
   public static String getYbcNodeIp(Universe universe) {

@@ -318,7 +318,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     }
 
     TaskType taskType = TaskType.EditUniverse;
-    if (primaryCluster.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
+    if (Util.isKubernetesBasedUniverse(dbUniverse)) {
       taskType = TaskType.EditKubernetesUniverse;
       universeCRUDHandler.notHelm2LegacyOrBadRequest(dbUniverse);
       universeCRUDHandler.checkHelmChartExists(primaryCluster.userIntent.ybSoftwareVersion);

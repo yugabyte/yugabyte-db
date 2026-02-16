@@ -18,6 +18,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
@@ -29,7 +30,6 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.Set;
-import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -80,18 +80,16 @@ public class ReadOnlyKubernetesClusterCreate extends KubernetesTaskBase {
       Cluster readOnlyCluster = taskParams().getReadOnlyClusters().get(0);
       PlacementInfo pi = readOnlyCluster.placementInfo;
 
-      Provider primaryProvider =
-          Provider.getOrBadRequest(UUID.fromString(primaryCluster.userIntent.provider));
-      Provider provider =
-          Provider.getOrBadRequest(UUID.fromString(readOnlyCluster.userIntent.provider));
+      Provider primaryProvider = Util.getSingleProvider(primaryCluster);
+      Provider provider = Util.getSingleProvider(readOnlyCluster);
 
       KubernetesPlacement placement = new KubernetesPlacement(pi, /*isReadOnlyCluster*/ true);
 
-      CloudType primaryCloudType = primaryCluster.userIntent.providerType;
-      if (primaryCloudType != CloudType.kubernetes) {
+      if (primaryProvider.getCloudCode() != CloudType.kubernetes) {
         String msg =
             String.format(
-                "Expected primary cluster on kubernetes but found on %s", primaryCloudType.name());
+                "Expected primary cluster on kubernetes but found on %s",
+                primaryProvider.getCloudCode());
         log.error(msg);
         throw new IllegalArgumentException(msg);
       }

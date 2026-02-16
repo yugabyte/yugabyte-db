@@ -1376,6 +1376,20 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     }
 
     @JsonIgnore
+    public Collection<UUID> getAllProviderUUIDs() {
+      // For tests to work.
+      if (provider == null) {
+        return Collections.emptySet();
+      }
+      return Collections.singletonList(UUID.fromString(provider));
+    }
+
+    @JsonIgnore
+    public Collection<CloudType> getAllCloudTypes() {
+      return Collections.singletonList(providerType);
+    }
+
+    @JsonIgnore
     public String getBaseInstanceType() {
       return getInstanceType(null);
     }
