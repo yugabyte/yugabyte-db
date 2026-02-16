@@ -4858,14 +4858,21 @@ YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
 			 * Report the original error, but add a context mentioning that a
 			 * possibly-conflicting, concurrent DDL transaction happened.
 			 */
-			ereport(edata->elevel,
-					(errcode(edata->sqlerrcode),
-					 errmsg("%s", edata->message),
-					 edata->detail ? errdetail("%s", edata->detail) : 0,
-					 edata->hint ? errhint("%s", edata->hint) : 0,
-					 !(*YBCGetGFlags()->TEST_hide_details_for_pg_regress) ?
-					 (errcontext("Catalog Version Mismatch: A DDL occurred "
-								 "while processing this query. Try again.")) : 0));
+			if (!(*YBCGetGFlags()->TEST_hide_details_for_pg_regress))
+			{
+				const char *ddl_error_context =
+					"Catalog Version Mismatch: "
+					"A DDL occurred while processing this query. "
+					"Try again.";
+				MemoryContext oldcontext = MemoryContextSwitchTo(edata->assoc_context);
+
+				if (edata->context)
+					edata->context = psprintf("%s; %s", edata->context, ddl_error_context);
+				else
+					edata->context = pstrdup(ddl_error_context);
+				MemoryContextSwitchTo(oldcontext);
+			}
+			ThrowErrorData(edata);
 		}
 		else
 		{
