@@ -269,6 +269,10 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
   Result<ConnectivityStateResponsePB> ConnectivityState(
       const ConnectivityStateRequestPB& req, CoarseTimePoint deadline) override;
 
+  void CollectYsqlCallHomeStats(
+      const CollectYsqlCallHomeStatsRequestPB* req, CollectYsqlCallHomeStatsResponsePB* resp,
+      rpc::RpcContext context) override;
+
   void Shutdown() override;
 
  private:

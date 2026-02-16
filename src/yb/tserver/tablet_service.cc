@@ -111,6 +111,7 @@
 #include "yb/tserver/tserver_xcluster_context_if.h"
 #include "yb/tserver/xcluster_safe_time_map.h"
 #include "yb/tserver/ysql_advisory_lock_table.h"
+#include "yb/tserver/ysql_call_home_stats.h"
 #include "yb/tserver/ysql_lease.h"
 
 #include "yb/util/async_util.h"
@@ -3971,6 +3972,18 @@ void TabletServiceImpl::AdminExecutePgsql(
   } else {
     context.RespondSuccess();
   }
+}
+
+void TabletServiceImpl::CollectYsqlCallHomeStats(
+    const CollectYsqlCallHomeStatsRequestPB* req, CollectYsqlCallHomeStatsResponsePB* resp,
+    rpc::RpcContext context) {
+  auto result = CollectYsqlClusterStatsJson(server_);
+  if (!result.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), result.status(), &context);
+    return;
+  }
+  resp->set_json_stats(*result);
+  context.RespondSuccess();
 }
 
 void TabletServiceImpl::GetLocalPgTxnSnapshot(
