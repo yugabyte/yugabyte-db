@@ -123,6 +123,8 @@ When [upgrading universes](../../manage-deployments/upgrade-software-install/) i
 
 Note that switchover operations can potentially fail if the DR primary and replica are at different versions.
 
+Refer to [Upgrades with xCluster and xCluster DR](../../manage-deployments/upgrade-software-install/#upgrades-with-xcluster-and-xcluster-dr).
+
 ## xCluster DR vs xCluster Replication
 
 xCluster refers to all YugabyteDB deployments with two or more universes, and has two major flavors:
