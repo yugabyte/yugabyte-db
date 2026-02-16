@@ -2332,8 +2332,10 @@ TEST_F_EX(PgIndexBackfillTest,
 //   - indisready
 //   - backfill stage
 //     - get safe time for read
-//                                                DELETE (1, 1) -- possibly as a txn batch
-//                                                INSERT (3, 1) -- possibly as a txn batch
+//                                                BEGIN
+//                                                DELETE (1, 1)
+//                                                INSERT (3, 1)
+//                                                COMMIT
 //     - do the actual backfill
 //       (sees (1, 1) from before safe time)
 //       (sees (3, 1) from after safe time)
@@ -2352,8 +2354,8 @@ void PgIndexBackfillBlockDoBackfill::TestDeleteAndInsertSameValue(bool use_singl
     LOG(INFO) << "Begin create thread";
     LOG(INFO) << "Creating unique index...";
     PGConn create_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
-    ASSERT_OK(create_conn.ExecuteFormat(
-        "CREATE UNIQUE INDEX $0 ON $1 (b ASC)", kIndexName, kTableName));
+    ASSERT_OK(
+        create_conn.ExecuteFormat("CREATE UNIQUE INDEX $0 ON $1 (b ASC)", kIndexName, kTableName));
   });
   thread_holder_.AddThreadFunctor([this, use_single_txn] {
     LOG(INFO) << "Begin write thread";
@@ -2380,10 +2382,15 @@ void PgIndexBackfillBlockDoBackfill::TestDeleteAndInsertSameValue(bool use_singl
   thread_holder_.JoinAll();
 
   // Verify the table has only the new row.
-  auto result = conn_->FetchRow<int32_t>(Format(
-      "SELECT a FROM $0 WHERE b = 1", kTableName));
+  auto result = conn_->FetchRow<int32_t>(Format("SELECT a FROM $0 WHERE b = 1", kTableName));
   ASSERT_OK(result);
   ASSERT_EQ(*result, 3);
+}
+
+// DELETE and INSERT in the same transaction (same commit HT, different write_ids).
+TEST_F_EX(
+    PgIndexBackfillTest, DeleteAndInsertSameValueInTxn, PgIndexBackfillBlockDoBackfill) {
+  TestDeleteAndInsertSameValue(/* use_single_txn= */ true);
 }
 
 // DELETE and INSERT as separate statements (different HTs).
@@ -2407,6 +2414,7 @@ TEST_F_EX(PgIndexBackfillTest, DuplicatesExistBeforeBackfill, PgIndexBackfillBlo
     PGConn create_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
     auto status = create_conn.ExecuteFormat(
         "CREATE UNIQUE INDEX $0 ON $1 (b ASC)", kIndexName, kTableName);
+    LOG(INFO) << "CREATE INDEX status: " << status;
     // The CREATE INDEX should fail due to duplicate key on b=1.
     ASSERT_NOK(status);
     ASSERT_TRUE(status.message().ToBuffer().find("duplicate") != std::string::npos)
