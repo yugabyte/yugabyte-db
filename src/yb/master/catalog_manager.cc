@@ -623,6 +623,9 @@ DEFINE_test_flag(bool, fail_yugabyte_namespace_creation_on_second_attempt, false
 DEFINE_test_flag(bool, enable_multi_way_tablet_split, false,
     "Enable splitting a tablet into more than two child tablets");
 
+DEFINE_test_flag(bool, cdcsdk_disable_stream_drop_during_db_drop, false,
+    "When enabled, the DeleteNamespace workflow won't mark associated CDCSDK streams as DELETING.");
+
 DECLARE_bool(create_initial_sys_catalog_snapshot);
 DECLARE_bool(enable_pg_cron);
 DECLARE_bool(enable_truncate_cdcsdk_table);
@@ -9842,10 +9845,31 @@ void CatalogManager::DeleteYsqlDatabaseAsync(
     }
   }
 
+  if (!is_ysql_major_upgrade &&
+      PREDICT_TRUE(!FLAGS_TEST_cdcsdk_disable_stream_drop_during_db_drop)) {
+    // Dropping all CDCSDK streams for the database.
+    TRACE("Dropping all CDCSDK streams for the YSQL database");
+    auto s = DropAllCDCSDKStreams(database->id());
+    WARN_NOT_OK(s, "DropAllCDCSDKStreams failed");
+
+    if (!s.ok()) {
+      if (s.IsIllegalState() && s.message().ToBuffer() == "Failing for TESTING") {
+        // Simulated failure injected by test. Return immediately.
+        return;
+      }
+      // Move to FAILED so DeleteNamespace can be reissued by the user.
+      auto l = database->LockForWrite();
+      SysNamespaceEntryPB& metadata = database->mutable_metadata()->mutable_dirty()->pb;
+      metadata.set_state(SysNamespaceEntryPB::FAILED);
+      l.Commit();
+      return;
+    }
+  }
+
   // Delete all tables in the database. If we're in a major YSQL upgrade, this will delete
   // only the new version's tables.
   TRACE("Delete all tables in YSQL database");
-  Status s = DeleteYsqlDBTables(database->id(), DeleteYsqlDBTablesType::kNormal, epoch);
+  auto s = DeleteYsqlDBTables(database->id(), DeleteYsqlDBTablesType::kNormal, epoch);
   WARN_NOT_OK(s, "DeleteYsqlDBTables failed");
 
   auto l = database->LockForWrite();

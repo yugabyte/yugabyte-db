@@ -798,6 +798,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Delete CDC streams metadata for a table.
   Status DropCDCSDKStreams(const std::unordered_set<TableId>& table_ids) EXCLUDES(mutex_);
 
+  // Delete all the CDCSDK streams on a namespace.
+  Status DropAllCDCSDKStreams(const NamespaceId& ns_id) EXCLUDES(mutex_);
+
   // Add new table metadata to all CDCSDK streams of required namespace.
   Status AddNewTableToCDCDKStreamsMetadata(const TableId& table_id, const NamespaceId& ns_id)
       EXCLUDES(mutex_);

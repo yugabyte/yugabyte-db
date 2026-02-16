@@ -10,6 +10,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <atomic>
+
 #include <gtest/gtest.h>
 
 #include "yb/cdc/cdc_service.pb.h"
@@ -23,6 +25,7 @@
 #include "yb/integration-tests/cdcsdk_test_base.h"
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
 
+#include "yb/master/catalog_manager.h"
 #include "yb/master/sys_catalog_constants.h"
 #include "yb/master/tasks_tracker.h"
 
@@ -31,6 +34,7 @@
 
 #include "yb/util/metrics.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/test_thread_holder.h"
 #include "yb/util/tostring.h"
 
 DECLARE_bool(ysql_use_packed_row_v2);
@@ -12678,6 +12682,244 @@ TEST_F(CDCSDKYsqlTest, TestUPAMMovesRetentionBarriersForCatalogTablet) {
   auto tablet_peer_ptr = ASSERT_NOTNULL(test_cluster_.mini_cluster_->mini_master()->tablet_peer());
   // Checking that UpdatePeersAndMetrics has not expired the tablet checkpoint.
   ASSERT_NE(tablet_peer_ptr->GetLatestCheckPoint(), OpId::Max());
+}
+
+TEST_F(CDCSDKYsqlTest, TestUPAMMovesRetentionBarriersOnDBDropAndMasterRestart) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 60000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_disable_deleted_stream_cleanup) = true;
+
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, false /* colocated */,
+      true /* cdc_populate_safepoint_record */));
+  auto table1 = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> table1_tablets;
+  ASSERT_OK(test_client()->GetTablets(table1, 0, &table1_tablets, nullptr));
+  ASSERT_EQ(table1_tablets.size(), 1);
+
+  const std::string kNamespaceName2 = Format("$0_2", kNamespaceName);
+  const std::string kTableName2 = Format("$0_2", kTableName);
+  ASSERT_OK(CreateDatabase(&test_cluster_, kNamespaceName2));
+  auto table2 = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName2, kTableName2));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> table2_tablets;
+  ASSERT_OK(test_client()->GetTablets(table2, 0, &table2_tablets, nullptr));
+  ASSERT_EQ(table2_tablets.size(), 1);
+
+  auto stream_id1 = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(
+      "slot_1", CDCSDKSnapshotOption::EXPORT_SNAPSHOT, false, kNamespaceName));
+  auto stream_id2 = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(
+      "slot_2", CDCSDKSnapshotOption::EXPORT_SNAPSHOT, false, kNamespaceName2));
+
+  ASSERT_OK(DropDB(&test_cluster_));
+
+  auto master = test_cluster()->mini_master();
+  ASSERT_OK(master->Restart());
+  ASSERT_OK(test_cluster()->mini_tablet_server(0)->Restart());
+  SleepFor(MonoDelta::FromSeconds(5));
+
+  // Keep polling table2 using a thread to ensure that the stream_id2 doesn't expire.
+  std::atomic<bool> stop_get_changes_thread{false};
+  std::thread get_changes_thread([&stream_id2, &table2_tablets, &stop_get_changes_thread, this]() {
+    GetChangesResponsePB change_resp;
+    const CDCSDKCheckpointPB* explicit_checkpoint = &CDCSDKCheckpointPB::default_instance();
+    while (!stop_get_changes_thread.load()) {
+      change_resp = ASSERT_RESULT(GetChangesFromCDCWithExplictCheckpoint(
+          stream_id2, table2_tablets, explicit_checkpoint, explicit_checkpoint));
+      ASSERT_FALSE(change_resp.has_error());
+      explicit_checkpoint = &change_resp.cdc_sdk_checkpoint();
+      SleepFor(MonoDelta::FromSeconds(1));
+    }
+  });
+
+  // Checking that the stream is still present.
+  auto& cm = master->catalog_manager_impl();
+  auto stream_info = ASSERT_RESULT(cm.GetXReplStreamInfo(stream_id1));
+  ASSERT_TRUE(stream_info->LockForRead()->is_deleting());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_disable_deleted_stream_cleanup) = false;
+  // Waiting for catalog manager's background task to delete the stream_id1's related cdc state
+  // table entries.
+  auto cdc_state_table = MakeCDCStateTable(test_client());
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto stream_info = cm.GetXReplStreamInfo(stream_id1);
+        bool stream_deleted = !stream_info.ok() && stream_info.status().IsNotFound();
+        auto tablet_stream_entry = VERIFY_RESULT(
+            cdc_state_table.TryFetchEntry({table1_tablets[0].tablet_id(), stream_id1}));
+        auto slot_entry =
+            VERIFY_RESULT(cdc_state_table.TryFetchEntry({kCDCSDKSlotEntryTabletId, stream_id1}));
+
+        return stream_deleted && !tablet_stream_entry.has_value() && !slot_entry.has_value();
+      },
+      MonoDelta::FromSeconds(30), "Timed out waiting for stream ID 1 to be deleted"));
+
+  SleepFor(MonoDelta::FromMilliseconds(FLAGS_cdc_intent_retention_ms));
+  stop_get_changes_thread.store(true);
+  get_changes_thread.join();
+
+  // Since table2 was continuously getting polled, UPAM, in the meantime, should have kept moving
+  // forward the cdc_sdk_min_checkpoint_op_id_expiration time for tablets of table2. So, tablet
+  // checkpoint should be not Max().
+  auto tablet_peer =
+      ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), table2_tablets[0].tablet_id()));
+  ASSERT_NE(tablet_peer->GetLatestCheckPoint(), OpId::Max());
+}
+
+void CDCSDKYsqlTest::TestStreamsDroppedOnDBDropAndMasterRestart(
+    const std::string& sync_point_name, bool use_logical_replication) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 10 * 1000;
+
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, false /* colocated */,
+      true /* cdc_populate_safepoint_record */));
+  auto table1 = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> table1_tablets;
+  ASSERT_OK(test_client()->GetTablets(table1, 0, &table1_tablets, nullptr));
+  ASSERT_EQ(table1_tablets.size(), 1);
+
+  xrepl::StreamId stream_id1, stream_id2;
+  if (use_logical_replication) {
+    stream_id1 = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot("slot_1"));
+    stream_id2 = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot("slot_2"));
+  } else {
+    stream_id1 = ASSERT_RESULT(CreateConsistentSnapshotStream());
+    stream_id2 = ASSERT_RESULT(CreateConsistentSnapshotStream());
+  }
+
+  // Crash the Master after table has been marked as dropped in sys catalog, but before tablets
+  // are dropped, or xCluster streams dropped.
+  auto* sync_point_instance = yb::SyncPoint::GetInstance();
+  Synchronizer sync;
+  sync_point_instance->SetCallBack(
+      sync_point_name, [sync_point_instance, callback = sync.AsStdStatusCallback()](void* arg) {
+        LOG(INFO) << "Forcing master failure";
+        *reinterpret_cast<bool*>(arg) = true;
+
+        sync_point_instance->DisableProcessing();
+        callback(Status::OK());
+      });
+  sync_point_instance->EnableProcessing();
+
+  auto test_thread_holder = TestThreadHolder();
+  test_thread_holder.AddThread([&]() { auto status = DropDB(&test_cluster_); });
+
+  ASSERT_OK(sync.Wait());
+  auto master = test_cluster()->mini_master();
+  ASSERT_OK(master->Restart());
+
+  test_thread_holder.JoinAll();
+
+  auto& cm = master->catalog_manager_impl();
+  auto cdc_state_table = MakeCDCStateTable(test_client());
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        // Check whether both streams are deleted and their related cdc state table entries are
+        // deleted. Also, check that the table in kNamespaceName is deleted.
+        bool checker = true;
+        for (const auto& stream_id : {stream_id1, stream_id2}) {
+          auto stream_info = cm.GetXReplStreamInfo(stream_id);
+          bool stream_deleted = !stream_info.ok() && stream_info.status().IsNotFound();
+          auto tablet_stream_entry = VERIFY_RESULT(
+              cdc_state_table.TryFetchEntry({table1_tablets[0].tablet_id(), stream_id}));
+          // For gRPC streams, we won't have corresponding 'slot_entry'. So, its value won't impact
+          // 'checker' value.
+          auto slot_entry =
+              VERIFY_RESULT(cdc_state_table.TryFetchEntry({kCDCSDKSlotEntryTabletId, stream_id}));
+          checker = checker && stream_deleted && !tablet_stream_entry.has_value() &&
+                    !slot_entry.has_value();
+        }
+
+        checker = checker && !GetTable(&test_cluster_, kNamespaceName, kTableName).ok();
+        return checker;
+      },
+      MonoDelta::FromSeconds(60), "Timed out waiting for all streams to be deleted"));
+}
+
+TEST_F(CDCSDKYsqlTest, TestLogicalStreamsDroppedWhenMasterRestartBeforeStreamsMarkingInDBDrop) {
+  TestStreamsDroppedOnDBDropAndMasterRestart(
+      "DropXReplStreams::FailBeforeStreamsStateChangesPersisted",
+      true /* use_logical_replication */);
+}
+
+TEST_F(CDCSDKYsqlTest, TestLogicalStreamsDroppedWhenMasterRestartBeforeStreamsDeletionInDBDrop) {
+  TestStreamsDroppedOnDBDropAndMasterRestart(
+      "CleanUpDeletedXReplStreams::FailBeforeStreamDeletion", true /* use_logical_replication */);
+}
+
+TEST_F(CDCSDKYsqlTest, TestGRPCStreamsDroppedWhenMasterRestartBeforeStreamsMarkingInDBDrop) {
+  TestStreamsDroppedOnDBDropAndMasterRestart(
+      "DropXReplStreams::FailBeforeStreamsStateChangesPersisted",
+      false /* use_logical_replication */);
+}
+
+TEST_F(CDCSDKYsqlTest, TestGRPCStreamsDroppedWhenMasterRestartBeforeStreamsDeletionInDBDrop) {
+  TestStreamsDroppedOnDBDropAndMasterRestart(
+      "CleanUpDeletedXReplStreams::FailBeforeStreamDeletion", false /* use_logical_replication */);
+}
+
+// This test mimics the following scenario:
+// - Dropping a namespace on an older version (where the streams are not dropped as part of
+// namespace drop). This leads to some stale streams lingering in the system.
+// - Upgrading to a version where dropping a namespace includes associated streams drop. The
+// upgraded system should delete the stale streams.
+TEST_F(CDCSDKYsqlTest, TestStreamWithoutNamespaceDrops) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  // ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  // ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 0;
+  // ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 10 * 1000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_disable_deleted_stream_cleanup) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_disable_stream_drop_during_db_drop) = true;
+
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, false /* colocated */,
+      true /* cdc_populate_safepoint_record */));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  ASSERT_OK(DropDB(&test_cluster_));
+  SleepFor(MonoDelta::FromSeconds(5));
+
+  // Asserting that the stream is not marked as DELETING and so slot entry is present in
+  // cdc_state_table.
+  auto master = test_cluster()->mini_master();
+  auto& cm = master->catalog_manager_impl();
+  auto stream_info = ASSERT_RESULT(cm.GetXReplStreamInfo(stream_id));
+  ASSERT_FALSE(stream_info->LockForRead()->started_deleting());
+  auto cdc_state_table = MakeCDCStateTable(test_client());
+  auto slot_entry =
+      ASSERT_RESULT(cdc_state_table.TryFetchEntry({kCDCSDKSlotEntryTabletId, stream_id}));
+  ASSERT_TRUE(slot_entry.has_value());
+
+  // Simulating cluster upgrade by restarting the master.
+  ASSERT_OK(master->Restart());
+  ASSERT_OK(test_cluster()->WaitForAllTabletServers());
+
+  // The stream should be marked as DELETING during its loading from sys catalog after restart.
+  auto& cm_after_restart = master->catalog_manager_impl();
+  stream_info = ASSERT_RESULT(cm_after_restart.GetXReplStreamInfo(stream_id));
+  ASSERT_TRUE(stream_info->LockForRead()->is_deleting());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_disable_deleted_stream_cleanup) = false;
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto stream_info = cm_after_restart.GetXReplStreamInfo(stream_id);
+        bool stream_deleted = !stream_info.ok() && stream_info.status().IsNotFound();
+        slot_entry =
+            VERIFY_RESULT(cdc_state_table.TryFetchEntry({kCDCSDKSlotEntryTabletId, stream_id}));
+        return stream_deleted && !slot_entry.has_value();
+      },
+      MonoDelta::FromSeconds(60), "Timed out waiting for stream ID 1 to be deleted"));
 }
 
 TEST_F(CDCSDKYsqlTest, TestOriginId) {

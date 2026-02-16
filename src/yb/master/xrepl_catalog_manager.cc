@@ -240,16 +240,15 @@ class CDCStreamLoader : public Visitor<PersistentCDCStreamInfo> {
     scoped_refptr<NamespaceInfo> ns;
     scoped_refptr<TableInfo> table;
 
+    bool should_mark_cdcsdk_stream_as_deleting = false;
     if (metadata.has_namespace_id()) {
       ns = FindPtrOrNull(catalog_manager_->namespace_ids_map_, metadata.namespace_id());
 
+      // If the namespace is not found then ideally this CDCSDK stream should have been deleted. We
+      // will load such stream metadata and mark it as DELETING. The background task will then
+      // cleanup this stream.
       if (!ns) {
-        LOG(DFATAL) << "Invalid namespace ID " << metadata.namespace_id() << " for stream "
-                    << stream_id;
-        // TODO (#2059): Potentially signals a race condition that namesapce got deleted
-        // while stream was being created.
-        // Log error and continue without loading the stream.
-        return Status::OK();
+        should_mark_cdcsdk_stream_as_deleting = true;
       }
     } else {
       table = catalog_manager_->tables_->FindTableOrNull(
@@ -272,10 +271,16 @@ class CDCStreamLoader : public Visitor<PersistentCDCStreamInfo> {
     // a previous version where these options were not present.
     AddDefaultValuesIfMissing(metadata, &l);
 
-    // If the table has been deleted, then mark this stream as DELETING so it can be deleted by the
-    // catalog manager background thread. Otherwise if this stream is missing an entry
-    // for state, then mark its state as Active.
+    // No matter what the state of this CDCSDK stream is persisted in sys catalog, we will mark the
+    // stream as DELETING if its namespace is not found.
+    if (should_mark_cdcsdk_stream_as_deleting) {
+      l.mutable_data()->pb.set_state(SysCDCStreamEntryPB::DELETING);
+    }
 
+    // If the table asscoiated with this xcluster stream is in deleting state or the namespace
+    // associated with this CDCSDK stream is in deleting state, then mark this stream as DELETING so
+    // it can be deleted by the catalog manager background thread. Otherwise if this stream is
+    // missing an entry for state, then mark its state as Active.
     if (((table && table->LockForRead()->is_deleting()) ||
          (ns && ns->state() == SysNamespaceEntryPB::DELETING)) &&
         !l.data().is_deleting()) {
@@ -617,6 +622,30 @@ Status CatalogManager::DropCDCSDKStreams(const std::unordered_set<TableId>& tabl
   // Do not delete them here, just mark them as DELETING_METADATA and the catalog manager background
   // thread will handle the deletion.
   return DropXReplStreams(streams, SysCDCStreamEntryPB::DELETING_METADATA);
+}
+
+Status CatalogManager::DropAllCDCSDKStreams(const NamespaceId& ns_id) {
+  DCHECK(!ns_id.empty()) << "Namespace ID should not be empty for CDCSDK streams deletion";
+
+  std::vector<CDCStreamInfoPtr> streams;
+  {
+    SharedLock lock(mutex_);
+    for (const auto& entry : cdc_stream_map_) {
+      auto ltm = entry.second->LockForRead();
+      if (!ltm->namespace_id().empty() && ltm->namespace_id() == ns_id) {
+        streams.push_back(entry.second);
+      }
+    }
+  }
+
+  if (streams.empty()) {
+    return Status::OK();
+  }
+
+  LOG(INFO) << "Deleting all CDCSDK streams for namespace: " << ns_id;
+  // Do not delete them here, just mark them as DELETING and the catalog manager background thread
+  // will handle the deletion.
+  return DropXReplStreams(streams, SysCDCStreamEntryPB::DELETING);
 }
 
 Status CatalogManager::AddNewTableToCDCDKStreamsMetadata(
@@ -1808,6 +1837,15 @@ Status CatalogManager::DropXReplStreams(
     return Status::OK();
   }
 
+  bool TEST_fail = false;
+  TEST_SYNC_POINT_CALLBACK("DropXReplStreams::FailBeforeStreamsStateChangesPersisted", &TEST_fail);
+  if (TEST_fail) {
+    LOG(INFO) << "Failed before streams " << CDCStreamInfosAsString(streams_to_mark)
+              << " states are persisted to " << SysCDCStreamEntryPB::State_Name(delete_state)
+              << " in sys catalog";
+  }
+  SCHECK(!TEST_fail, IllegalState, "Failing for TESTING");
+
   // The mutation will be aborted when 'l' exits the scope on early return.
   RETURN_NOT_OK(CheckStatus(
       sys_catalog_->Upsert(leader_ready_term(), streams_to_mark),
@@ -2969,6 +3007,14 @@ Status CatalogManager::CleanUpDeletedXReplStreams(const LeaderEpoch& epoch) {
   }
 
   RETURN_NOT_OK(xcluster_manager_->RemoveStreamsFromSysCatalog(epoch, streams_to_delete));
+
+  bool TEST_fail = false;
+  TEST_SYNC_POINT_CALLBACK("CleanUpDeletedXReplStreams::FailBeforeStreamDeletion", &TEST_fail);
+  if (TEST_fail) {
+    LOG(INFO) << "Failed before streams " << CDCStreamInfosAsString(streams_to_delete)
+              << " are deleted from sys catalog";
+  }
+  SCHECK(!TEST_fail, IllegalState, "Failing for TESTING");
 
   RETURN_NOT_OK_PREPEND(
       sys_catalog_->Delete(epoch, streams_to_delete),

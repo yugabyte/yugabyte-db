@@ -150,6 +150,7 @@ DECLARE_bool(TEST_enable_table_rewrite_for_cdcsdk_table);
 DECLARE_uint64(TEST_delay_before_complete_expired_pg_sessions_shutdown_ms);
 DECLARE_uint32(cdcsdk_vwal_tablets_to_poll_batch_size);
 DECLARE_uint32(TEST_cdcsdk_vwal_getchanges_rpc_delay_ms);
+DECLARE_bool(TEST_cdcsdk_disable_stream_drop_during_db_drop);
 
 namespace yb {
 
@@ -905,6 +906,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
                                         initial_intents_and_intent_sst_file_count);
 
   void TestLagMetricWithConsistentSnapshotStream(bool expire_table);
+
+  void TestStreamsDroppedOnDBDropAndMasterRestart(
+      const string& sync_point_name, bool use_logical_replication);
 };
 
 }  // namespace cdc
