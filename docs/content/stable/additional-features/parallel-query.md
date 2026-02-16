@@ -18,17 +18,16 @@ YugabyteDB supports the use of [PostgreSQL parallel queries](https://www.postgre
 
 Currently, YugabyteDB supports parallel queries for [colocated tables](../colocation/); support for hash- and range-sharded tables is planned.
 
-To enable and configure parallel queries, set the following configuration parameters.
+Parallel queries are enabled by default. To configure parallel queries, set the following configuration parameters.
 
 | Parameter | Description | Default |
 | :--- | :--- | :--- |
-| yb_enable_parallel_append | Enables the planner's use of parallel append plans. To enable parallel query, set this to true. | false |
-| yb_parallel_range_rows | The number of rows to plan per parallel worker. To enable parallel query, set this to a value other than 0. (Recommended: 10000) | 0 |
-| yb_parallel_range_size | Approximate size of parallel range for DocDB relation scans. | 1MB |
+| yb_enable_parallel_append | Enables the planner's use of parallel append plans. To enable parallel query, set this to true. | true |
+| yb_enable_parallel_scan_colocated | Enables the planner's use of parallel queries for colocated tables. | true |
+| yb_parallel_range_rows | The number of rows to plan per parallel worker. To enable parallel query, set this to a value other than 0. | 10000 |
+| yb_parallel_range_size | Approximate size of parallel range for DocDB relation scans, in MB. | 1 |
 
-For new universes running v2025.2 or later, parallel append is enabled by default when you deploy using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon.
-
-In addition, when upgrading a deployment to v2025.2 or later, if the universe has the cost-based optimizer enabled (`on`), YugabyteDB will enable parallel append.
+Note that When upgrading a deployment to v2025.2 or later, if the universe has the cost-based optimizer enabled (`on`), YugabyteDB will enable parallel queries.
 
 In addition, you can use the following PostgreSQL configuration parameters to configure parallel queries:
 
