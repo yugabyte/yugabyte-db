@@ -332,6 +332,7 @@ YbcSamplingAlgorithmEnum
 YbcServerDescriptor
 YbcSliceSet
 YbcSliceVector
+YbcSlotEntryDescriptor
 YbcSortKey
 YbcStatus
 YbcSwitchMemoryContextFn

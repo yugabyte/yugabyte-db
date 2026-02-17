@@ -12,6 +12,7 @@
 //
 package org.yb.pgsql;
 
+import static org.yb.AssertionWrappers.assertNotEquals;
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertNull;
 import static org.yb.AssertionWrappers.assertTrue;
@@ -4088,12 +4089,15 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     Thread.sleep(kPublicationRefreshIntervalSec * 2 * 1000);
     try (Statement stmt = connection.createStatement()) {
       ResultSet res1 = stmt.executeQuery("SELECT * FROM pg_stat_replication");
-      int xmin1 = -2;
       assertTrue(res1.next());
-      xmin1 = res1.getInt("backend_xmin");
-      String state = res1.getString("state");
 
+      String state = res1.getString("state");
       assertEquals("streaming", state);
+
+      // TODO(#30340): Once we start populating backend_xmin correctly in this view,
+      // we should assert that xmin1 comes out equal to xmin2.
+      int xmin1 = res1.getInt("backend_xmin");
+      assertEquals(xmin1, 0);
 
       ResultSet res2 = stmt.executeQuery(String.format("SELECT * FROM pg_replication_slots"));
       int xmin2 = -1;
@@ -4101,7 +4105,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
       xmin2 = res2.getInt("xmin");
 
       res2.close();
-      assertEquals(xmin2, xmin1);
+      assertNotEquals(xmin2, xmin1);
     }
     conn.close();
   }

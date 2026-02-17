@@ -2405,6 +2405,10 @@ Result<tserver::PgCreateReplicationSlotResponsePB> PgApiImpl::ExecCreateReplicat
   return VERIFY_RESULT_REF(GetStatementAs<PgCreateReplicationSlot>(handle)).Exec();
 }
 
+Result<tserver::PgListSlotEntriesResponsePB> PgApiImpl::ListSlotEntries() {
+  return pg_client_.ListSlotEntries();
+}
+
 Result<tserver::PgListReplicationSlotsResponsePB> PgApiImpl::ListReplicationSlots() {
   return pg_client_.ListReplicationSlots();
 }
