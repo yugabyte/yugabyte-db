@@ -911,5 +911,11 @@ TEST_F(SysCatalogTest, TestTabletMemTracker) {
   ASSERT_EQ("mem_tracker_server_Tablets_overhead_PerTablet", tablet_mem_tracker->metric_name());
 }
 
+TEST_F(SysCatalogTest, TestSysCatalogNamespaceId) {
+  auto tablet = ASSERT_RESULT(sys_catalog_->TEST_GetTabletPeer()->shared_tablet());
+  auto primary_table_info = tablet->metadata()->primary_table_info();
+  ASSERT_EQ(primary_table_info->namespace_id, kSystemNamespaceId);
+}
+
 } // namespace master
 } // namespace yb
