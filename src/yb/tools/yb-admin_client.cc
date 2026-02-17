@@ -1444,15 +1444,45 @@ Result<std::unordered_set<std::string>> ClusterAdminClient::ListAllKnownTabletSe
 Status ClusterAdminClient::ListAllMasters() {
   const auto lresp = VERIFY_RESULT(GetAllMasters());
 
+  // Fetch heartbeat delay info (best-effort, only available on leader).
+  std::unordered_map<std::string, int64_t> lag_by_uuid;
+  bool has_lag_data = false;
+  {
+    rpc::RpcController rpc;
+    rpc.set_timeout(timeout_);
+    master::GetMasterHeartbeatDelaysRequestPB hb_req;
+    master::GetMasterHeartbeatDelaysResponsePB hb_resp;
+    auto s = master_admin_proxy_->GetMasterHeartbeatDelays(hb_req, &hb_resp, &rpc);
+    if (s.ok() && !hb_resp.has_error()) {
+      has_lag_data = true;
+      for (const auto& delay : hb_resp.heartbeat_delay()) {
+        lag_by_uuid[delay.master_uuid()] = delay.last_heartbeat_delta_ms();
+      }
+    }
+  }
+
+  // Identify leader UUID.
+  std::string leader_uuid;
+  for (const auto& master : lresp.masters()) {
+    if (master.has_role() && master.role() == PeerRole::LEADER &&
+        master.has_instance_id()) {
+      leader_uuid = master.instance_id().permanent_uuid();
+      break;
+    }
+  }
+
   cout << RightPadToUuidWidth("Master UUID") << kColumnSep
         << RightPadToWidth(kRpcHostPortHeading, kHostPortColWidth) << kColumnSep
         << RightPadToWidth("State", kSmallColWidth) << kColumnSep
-        << "Role" << kColumnSep << RightPadToWidth(kBroadcastHeading, kHostPortColWidth) << endl;
+        << RightPadToWidth("Role", kSmallColWidth) << kColumnSep
+        << RightPadToWidth(kBroadcastHeading, kHostPortColWidth) << kColumnSep
+        << "Heartbeat Lag" << endl;
 
   for (const auto& master : lresp.masters()) {
       const auto master_reg = master.has_registration() ? &master.registration() : nullptr;
-      cout << (master.has_instance_id() ? master.instance_id().permanent_uuid()
-                          : RightPadToUuidWidth("UNKNOWN_UUID")) << kColumnSep;
+      const auto uuid = master.has_instance_id()
+          ? master.instance_id().permanent_uuid() : "";
+      cout << (uuid.empty() ? RightPadToUuidWidth("UNKNOWN_UUID") : uuid) << kColumnSep;
       cout << RightPadToWidth(
                 master_reg ? FormatFirstHostPort(master_reg->private_rpc_addresses())
                             : "UNKNOWN", kHostPortColWidth)
@@ -1461,10 +1491,24 @@ Status ClusterAdminClient::ListAllMasters() {
                                 PBEnumToString(master.error().code()) : "ALIVE"),
                               kSmallColWidth)
             << kColumnSep;
-      cout << (master.has_role() ? PBEnumToString(master.role()) : "UNKNOWN") << kColumnSep;
+      cout << RightPadToWidth(
+                master.has_role() ? PBEnumToString(master.role()) : "UNKNOWN",
+                kSmallColWidth)
+            << kColumnSep;
       cout << RightPadToWidth(
         master_reg ? FormatFirstHostPort(master_reg->broadcast_addresses()) : "UNKNOWN",
-        kHostPortColWidth) << endl;
+        kHostPortColWidth) << kColumnSep;
+      // Heartbeat lag column.
+      if (!has_lag_data) {
+        cout << "N/A";
+      } else if (!uuid.empty() && uuid == leader_uuid) {
+        cout << "0ms";
+      } else if (auto it = lag_by_uuid.find(uuid); it != lag_by_uuid.end()) {
+        cout << it->second << "ms";
+      } else {
+        cout << "N/A";
+      }
+      cout << endl;
   }
 
   return Status::OK();
