@@ -974,7 +974,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     ShellResponse shellResponse2 = new ShellResponse();
     shellResponse2.message = "Command output:\\nLocale is present";
     shellResponse2.code = 0;
-    when(mockNodeUniverseManager.runCommand(any(), any(), eq(command), any()))
+    lenient()
+        .when(mockNodeUniverseManager.runCommand(any(), any(), eq(command), any()))
         .thenReturn(shellResponse2);
   }
 
@@ -1031,7 +1032,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       when(listLiveTabletServersResponse.getTabletServers()).thenReturn(tabletServerInfoList);
       when(mockClient.listLiveTabletServers()).thenReturn(listLiveTabletServersResponse);
     } catch (Exception e) {
-      fail();
+      fail(e.getMessage());
     }
   }
 
