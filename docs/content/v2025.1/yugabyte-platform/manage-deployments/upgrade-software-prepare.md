@@ -36,7 +36,7 @@ cron and root-level systemd have been deprecated in favor of user-level systemd 
 
 In particular, cron-based universes will no longer be supported in YugabyteDB Anywhere v2025.2 and later. Before you can upgrade to v2025.2 or later, all your universes must be using systemd.
 
-To update cron-based universes, in YugabyteDB Anywhere v2024.2.8 or later, navigate to the universe and choose **Actions>Upgrade to Systemd**. If you are running a version earlier than v2024.2.8 and you want to upgrade to v2025.2 or later, first upgrade to the latest version in the {{<release "2024.2">}} series and update your universes to systemd.
+To update cron-based universes, in YugabyteDB Anywhere v2024.2.2 or later, navigate to the universe and choose **Actions>Upgrade to Systemd**. If the universe is running an earlier version, first upgrade the universe to the latest version in the {{<release "2024.2">}} series.
 
 ## Node agent
 
