@@ -2068,6 +2068,11 @@ Status Tablet::ApplyKeyValueRowOperations(
     regular_write_batch.SetDirectWriter(&batcher);
     WriteToRocksDB(frontiers, &regular_write_batch, StorageDbType::kRegular);
 
+    if (!vector_indexes_->has_vector_deletion() &&
+        frontiers.Largest().has_vector_deletion()) {
+      vector_indexes_->SetHasVectorDeletion();
+    }
+
     if (intents_write_batch.Count() != 0) {
       TEST_SYNC_POINT("Tablet::ApplyKeyValueRowOperations:BeforeIntentsWrite");
       if (PREDICT_FALSE(RandomActWithProbability(
