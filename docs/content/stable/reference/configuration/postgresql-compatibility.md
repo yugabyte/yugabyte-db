@@ -26,7 +26,7 @@ After turning EPCM on, as you upgrade universes, YugabyteDB will automatically e
 
 As features included in the PostgreSQL compatibility mode transition from {{<tags/feature/ea>}} to {{<tags/feature/ga>}} in subsequent versions of YugabyteDB, they are no longer managed under EPCM on your existing universes after the upgrade.
 
-Note that in v2025.2 and later, the following features in EPCM are enabled by default when you deploy a universe using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon:
+Note that in v2025.2 and later, the following features in EPCM are enabled by default when you deploy a universe using [yugabyted](../../../deploy/manual-deployment/start-yugabyted/), [YugabyteDB Anywhere](../../../yugabyte-platform/create-deployments/create-universe-multi-zone/), or [YugabyteDB Aeon](../../../yugabyte-cloud/cloud-basics/create-clusters/):
 
 - [Read committed](#read-committed) (yb_enable_read_committed_isolation=true)
 - [Cost-based optimizer](#cost-based-optimizer) (ysql_pg_conf_csv=yb_enable_cbo=on)
@@ -51,13 +51,13 @@ The following features are currently included in EPCM.
 | Feature | Flag/Configuration Parameter | EA | GA |
 | :--- | :--- | :--- | :--- |
 | [Read committed](#read-committed) | [yb_enable_read_committed_isolation](../yb-tserver/#ysql-default-transaction-isolation) | {{<release "2.20, 2024.1">}} | {{<release "2024.2.2">}} |
-| [Wait-on-conflict](#wait-on-conflict-concurrency)<sup>1</sup> | [enable_wait_queues](../yb-tserver/#enable-wait-queues) | {{<release "2.20">}} | {{<release "2024.1">}} |
-| [Cost-based optimizer](#cost-based-optimizer) | [yb_enable_cbo](../yb-tserver/#yb-enable-cbo) | {{<release "2024.1">}} | {{<release "2025.1">}} |
-| [Batch nested loop join](#batched-nested-loop-join)<sup>1</sup> | [yb_enable_batchednl](../yb-tserver/#yb-enable-batchednl) | {{<release "2.20">}} | {{<release "2024.1">}} |
+| [Wait-on-conflict](#wait-on-conflict-concurrency)<sup>1</sup> | [enable_wait_queues](../yb-tserver/#enable-wait-queues) | {{<release "2.20">}} | {{<release "2024.1.0.0">}} |
+| [Cost-based optimizer](#cost-based-optimizer) | [yb_enable_cbo](../yb-tserver/#yb-enable-cbo) | {{<release "2024.1.0.0">}} | {{<release "2025.1.0.0">}} |
+| [Batch nested loop join](#batched-nested-loop-join)<sup>1</sup> | [yb_enable_batchednl](../yb-tserver/#yb-enable-batchednl) | {{<release "2.20">}} | {{<release "2024.1.0.0">}} |
 | [Ascending indexing by default](#default-ascending-indexing) | [yb_use_hash_splitting_by_default](../yb-tserver/#yb-use-hash-splitting-by-default) | {{<release "2024.1">}} | |
-| [YugabyteDB bitmap scan](#yugabytedb-bitmap-scan) | [yb_enable_bitmapscan](../yb-tserver/#yb-enable-bitmapscan) | {{<release "2024.1.3">}} | {{<release "2025.1">}} |
-| [Efficient communication<br>between PostgreSQL and DocDB](#efficient-communication-between-postgresql-and-docdb) | [pg_client_use_shared_memory](../yb-tserver/#pg-client-use-shared-memory) | {{<release "2024.1">}} | {{<release "2024.2">}} |
-| [Parallel query](#parallel-query)<sup>2</sup><br>- Parallel append<br>- Parallel query | <br>[yb_enable_parallel_append](../../../additional-features/parallel-query/)<br>[yb_parallel_range_rows](../../../additional-features/parallel-query/) | {{<release "2024.2.3">}} | {{<release "2025.1">}} |
+| [YugabyteDB bitmap scan](#yugabytedb-bitmap-scan) | [yb_enable_bitmapscan](../yb-tserver/#yb-enable-bitmapscan) | {{<release "2024.1.3.0">}} | {{<release "2025.1.0.0">}} |
+| [Efficient communication<br>between PostgreSQL and DocDB](#efficient-communication-between-postgresql-and-docdb) | [pg_client_use_shared_memory](../yb-tserver/#pg-client-use-shared-memory) | {{<release "2024.1">}} | {{<release "2024.2.0.0">}} |
+| [Parallel query](#parallel-query)<sup>2</sup><br>- Parallel append<br>- Parallel query | <br>[yb_enable_parallel_append](../../../additional-features/parallel-query/)<br>[yb_parallel_range_rows](../../../additional-features/parallel-query/) | {{<release "2024.2.3.0">}} | {{<release "2025.1.0.0">}} |
 
 (1) Wait-on-conflict concurrency and Batched nested loop join are enabled by default in v2024.1 and later.<br>
 (2) Parallel query is not included in EPCM, but is included here because it contributes to PostgreSQL parity.
@@ -86,7 +86,7 @@ When enabling this parameter, you must run ANALYZE on user tables to maintain up
 To learn how CBO works, see [Query Planner / CBO](../../../architecture/query-layer/planner-optimizer/)
 {{</lead>}}
 
-#### Wait-on-conflict concurrency
+### Wait-on-conflict concurrency
 
 Flag: `enable_wait_queues=true`
 
@@ -164,7 +164,7 @@ You can enable EPCM as follows.
 ### YugabyteDB
 
 {{<note title="Note">}}
-If you have set EPCM features independent of EPCM, you cannot use EPCM.
+If you have set any of the compatibility features using their own flags, you cannot enable EPCM.
 
 Conversely, if you are using EPCM on a universe, you cannot set any of the features independently.
 {{</note>}}
