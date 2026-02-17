@@ -9,8 +9,6 @@ menu:
     identifier: antivirus
     parent: faq
     weight: 200
-    params:
-      classes: separator
 type: docs
 unversioned: true
 rightNav:
