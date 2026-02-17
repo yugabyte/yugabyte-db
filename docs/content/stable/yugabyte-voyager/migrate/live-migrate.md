@@ -1389,7 +1389,7 @@ DROP USER ybvoyager;
 - Tables without primary key are not supported.
 - Truncating a table on the source database is not taken into account; you need to manually truncate tables on your YugabyteDB cluster.
 - Some Oracle data types are unsupported - User Defined Types (UDT), NCHAR, NVARCHAR, VARRAY, BLOB, CLOB, and NCLOB.
-- Some PostgreSQL data types are unsupported - POINT, LINE, LSEG, BOX, PATH, POLYGON, CIRCLE, GEOMETRY, GEOGRAPHY, BOX2D, BOX3D, TOPOGEOMETRY, RASTER, PG_LSN, TXID_SNAPSHOT, XML, LO, INT4MULTIRANGE, INT8MULTIRANGE, NUMMULTIRANGE, TSMULTIRANGE, TSTZMULTIRANGE, DATEMULTIRANGE.
+- Some PostgreSQL data types are unsupported - POINT, LINE, LSEG, BOX, PATH, POLYGON, CIRCLE, GEOMETRY, GEOGRAPHY, BOX2D, BOX3D, TOPOGEOMETRY, RASTER, PG_LSN, TXID_SNAPSHOT, XML, LO, INT4MULTIRANGE, INT8MULTIRANGE, NUMMULTIRANGE, TSMULTIRANGE, TSTZMULTIRANGE, DATEMULTIRANGE, VECTOR, TIMETZ.
 - Case-sensitive table names or column names are partially supported. YugabyteDB Voyager converts them to case-insensitive names. For example, an "Accounts" table in a source Oracle database is migrated as `accounts` (case-insensitive) to a YugabyteDB database.
 - For Oracle source databases, schema, table, and column names with more than 30 characters are not supported.
 - Sequences that are not associated with any column or are attached to columns of non-integer types are not supported for resuming value generation. These sequences must be manually resumed during the cutover phase.

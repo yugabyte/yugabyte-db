@@ -618,7 +618,9 @@ If you want yb-voyager to connect to the source database over SSL, refer to [SSL
 
 ## Prepare the target database
 
-Make sure the TServer (9100) and Master (7100) ports are open on the target YugabyteDB cluster. The ports are used during the `export data from target` phase (after the `cutover to target` step) when using the [YugabyteDB gRPC Connector](../../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/) to initiate Change Data Capture (CDC) from the target and begin streaming ongoing changes.
+If you plan to use the [YugabyteDB gRPC Connector](../../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/), ensure that the TServer (9100) and Master (7100) ports are open on the target YugabyteDB cluster. These ports are required during the `export data from target` phase (after the `cutover to target` step) to initiate Change Data Capture (CDC) from the target and stream ongoing changes.
+
+However, if you are using the [YugabyteDB Connector](../../../additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/), no additional port configuration or setup is required.
 
 Prepare your target YugabyteDB database cluster by creating a database, and a user for your cluster.
 
@@ -1304,8 +1306,7 @@ Then run the following command:
 
 ```sh
 # Replace the argument values with those applicable for your migration.
-yb-voyager initiate cutover to target --config-file <path-to-config-file> \
-  --use-yb-grpc-connector false
+yb-voyager initiate cutover to target --config-file <path-to-config-file>
 ```
 
 {{% /tab %}}
@@ -1320,6 +1321,10 @@ yb-voyager initiate cutover to target --export-dir <EXPORT_DIR> --prepare-for-fa
 {{% /tab %}}
 
     {{< /tabpane >}}
+
+    {{< note title="CDC options" >}}
+The [YugabyteDB Connector](../../../additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/) is the default and GA option (supported in YugabyteDB v2024.2.4+), and is recommended for all deployments. To use the [YugabyteDB gRPC Connector](../../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/), explicitly enable it using the `use-yb-grpc-connector` flag or configuration parameter; this connector requires access to the TServer (9100) and Master (7100) ports.
+    {{</ note >}}
 
     Refer to [initiate cutover to target](../../reference/cutover-archive/cutover/#cutover-to-target) for more information.
 
@@ -1737,11 +1742,10 @@ In addition to the Live migration [limitations](../live-migrate/#limitations), t
 
 - For [YugabyteDB gRPC Connector](../../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/), fall-back is unsupported with a YugabyteDB cluster running on YugabyteDB Aeon.
 - For YugabyteDB gRPC Connector, [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity) is partially supported for export or streaming events from YugabyteDB during `export data from target`. Basic SSL and server authentication via root certificate is supported. Client authentication is not supported.
-- For YugabyteDB gRPC Connector, the following data types are unsupported when exporting from the target YugabyteDB: BOX, CIRCLE, LINE, LSEG, PATH, PG_LSN, POINT, POLYGON, TSQUERY, TSVECTOR, TXID_SNAPSHOT, GEOMETRY, GEOGRAPHY, RASTER, HSTORE, CITEXT, LTREE, INT4MULTIRANGE, INT8MULTIRANGE, NUMMULTIRANGE, TSMULTIRANGE, TSTZMULTIRANGE, DATEMULTIRANGE, user-defined types, and array of user-defined types.
-- For YugabyteDB Connector (logical replication), the following data types are unsupported when exporting from the target YugabyteDB: BOX, CIRCLE, LINE, LSEG, PATH, PG_LSN, POINT, POLYGON, TSQUERY, TXID_SNAPSHOT, GEOMETRY, GEOGRAPHY, RASTER, INT4MULTIRANGE, INT8MULTIRANGE, NUMMULTIRANGE, TSMULTIRANGE, TSTZMULTIRANGE, DATEMULTIRANGE, and user-defined range types.
+- For YugabyteDB gRPC Connector, the following data types are unsupported when exporting from the target YugabyteDB: BOX, CIRCLE, LINE, LSEG, PATH, PG_LSN, POINT, POLYGON, TSQUERY, TSVECTOR, TXID_SNAPSHOT, GEOMETRY, GEOGRAPHY, RASTER, HSTORE, CITEXT, LTREE, INT4MULTIRANGE, INT8MULTIRANGE, NUMMULTIRANGE, TSMULTIRANGE, TSTZMULTIRANGE, DATEMULTIRANGE, VECTOR, TIMETZ, user-defined types, and array of user-defined types.
+- For YugabyteDB Connector (logical replication), the following data types are unsupported when exporting from the target YugabyteDB: BOX, CIRCLE, LINE, LSEG, PATH, PG_LSN, POINT, POLYGON, TSQUERY, TXID_SNAPSHOT, GEOMETRY, GEOGRAPHY, RASTER, INT4MULTIRANGE, INT8MULTIRANGE, NUMMULTIRANGE, TSMULTIRANGE, TSTZMULTIRANGE, DATEMULTIRANGE, VECTOR, TIMETZ, and user-defined range types.
 - In the fall-back phase, you need to manually disable (and subsequently re-enable if required) constraints/indexes/triggers on the source database.
 - [Export data from target](../../reference/data-migration/export-data/#export-data-from-target) supports DECIMAL/NUMERIC datatypes for YugabyteDB versions 2.20.1.1 and later.
 - [Savepoint](/stable/explore/ysql-language-features/advanced-features/savepoints/) statements within transactions on the target database are not supported. Transactions rolling back to some savepoint may cause data inconsistency between the databases.
 - Rows larger than 4MB in the target database can cause consistency issues during migration. Refer to [TA-29060](/stable/releases/techadvisories/ta-29060/) for more details.
 - Workloads with [Read Committed isolation level](/stable/architecture/transactions/read-committed/) are not fully supported. It is recommended to use [Repeatable Read or Serializable isolation levels](/stable/architecture/transactions/isolation-levels/) for the duration of the migration.
-
