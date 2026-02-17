@@ -4,6 +4,7 @@ test: yb.orig.read_committed_insert
 test: yb.orig.read_committed_insert_duplicate_key_error
 test: yb.orig.read_committed_test_internal_savepoint
 test: yb.orig.read_committed_test_do_call
+test: yb.orig.read_committed_non_atomic_commit_no_retry
 
 # Skip locked related tests newly added at YB
 test: yb.orig.modification-followed-by-lock
