@@ -9,6 +9,7 @@ menu:
     parent: reference
     weight: 2590
 type: docs
+unversioned: true
 ---
 
 Use the YugabyteDB Docs MCP Server to access official YugabyteDB documentation, including API and CLI references, blogs, and support articles, directly from your IDE or AI tool (including ChatGPT, Claude, Cursor, and VS Code).
