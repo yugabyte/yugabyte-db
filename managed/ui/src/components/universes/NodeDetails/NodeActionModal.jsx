@@ -76,7 +76,6 @@ export default class NodeActionModal extends Component {
 
   render() {
     const { visible, onHide, nodeInfo, actionType, precheckNodeActions } = this.props;
-    console.warn('Nide Actions', precheckNodeActions);
     if (actionType === null || nodeInfo === null) {
       return <span />;
     }
@@ -91,7 +90,7 @@ export default class NodeActionModal extends Component {
           onHide={onHide}
           showCancelButton={true}
           cancelLabel={'Cancel'}
-          onFormSubmit={this.performNodeAction}
+          onFormSubmit={() => this.performNodeAction(false)}
           footerAccessory={
             precheckNodeActions.includes(actionType) && (
               <div>
