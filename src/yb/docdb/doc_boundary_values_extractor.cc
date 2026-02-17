@@ -65,7 +65,7 @@ class DocBoundaryValuesExtractor : public rocksdb::BoundaryValuesExtractor {
     return Status::OK();
   }
 
-  rocksdb::UserFrontierPtr CreateFrontier() override {
+  storage::UserFrontierPtr CreateFrontier() override {
     return new docdb::ConsensusFrontier();
   }
 };

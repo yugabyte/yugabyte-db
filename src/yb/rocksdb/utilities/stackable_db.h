@@ -273,12 +273,12 @@ class StackableDB : public DB {
     db_->GetLiveFilesMetaData(metadata);
   }
 
-  UserFrontierPtr GetFlushedFrontier() override {
+  yb::storage::UserFrontierPtr GetFlushedFrontier() override {
     return db_->GetFlushedFrontier();
   }
 
   Status ModifyFlushedFrontier(
-      UserFrontierPtr values,
+      yb::storage::UserFrontierPtr values,
       FrontierModificationMode mode) override {
     return db_->ModifyFlushedFrontier(std::move(values), mode);
   }

@@ -27,6 +27,8 @@
 
 #include "yb/rpc/rpc_fwd.h"
 
+#include "yb/storage/storage_types.h"
+
 #include "yb/tablet/tablet_fwd.h"
 
 #include "yb/util/kv_util.h"
@@ -122,7 +124,7 @@ class DocVectorIndex {
   virtual const DocVectorIndexMetrics& metrics() const = 0;
 
   virtual Status Insert(
-      const DocVectorIndexInsertEntries& entries, const rocksdb::UserFrontiers& frontiers) = 0;
+      const DocVectorIndexInsertEntries& entries, const storage::UserFrontiers& frontiers) = 0;
   virtual Result<DocVectorIndexSearchResult> Search(
       Slice vector, const vector_index::SearchOptions& options,
       bool could_have_missing_entries) = 0;
@@ -133,7 +135,7 @@ class DocVectorIndex {
   virtual Status Flush() = 0;
   virtual Status WaitForFlush() = 0;
   virtual docdb::ConsensusFrontierPtr GetFlushedFrontier() = 0;
-  virtual rocksdb::FlushAbility GetFlushAbility() = 0;
+  virtual storage::FlushAbility GetFlushAbility() = 0;
   virtual Status CreateCheckpoint(const std::string& out) = 0;
   virtual const std::string& ToString() const = 0;
   virtual Result<bool> HasVectorId(const vector_index::VectorId& vector_id) const = 0;

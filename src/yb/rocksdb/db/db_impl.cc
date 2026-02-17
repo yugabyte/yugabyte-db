@@ -145,14 +145,8 @@ DEFINE_RUNTIME_bool(use_priority_thread_pool_for_compactions, true,
     "When true priority thread pool will be used for compactions, otherwise "
     "Env thread pool with Priority::LOW will be used.");
 
-DEFINE_RUNTIME_int32(compaction_priority_start_bound, 10,
-    "Compaction task of DB that has number of SST files less than specified will have "
-    "priority 0.");
-
-DEFINE_RUNTIME_int32(compaction_priority_step_size, 5,
-    "Compaction task of DB that has number of SST files greater that "
-    "compaction_priority_start_bound will get 1 extra priority per every "
-    "compaction_priority_step_size files.");
+DECLARE_int32(compaction_priority_start_bound);
+DECLARE_int32(compaction_priority_step_size);
 
 DEFINE_RUNTIME_int32(small_compaction_extra_priority, 1,
     "Small compaction will get small_compaction_extra_priority extra priority.");
@@ -529,7 +523,7 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
   }
 
   int CalculateGroupNoPriority(int active_tasks) const override {
-    return internal::kTopDiskCompactionPriority - active_tasks;
+    return yb::PriorityThreadPool::kPriorityGroupBase - active_tasks;
   }
 
   ColumnFamilyData* column_family_data() const {
@@ -579,7 +573,7 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
     db_impl_->mutex_.AssertHeld();
 
     if (db_impl_->IsShuttingDown()) {
-      return internal::kShuttingDownPriority;
+      return yb::PriorityThreadPool::kPriorityShuttingDown;
     }
 
     auto* current_version = cfd_->GetSuperVersion()->current;
@@ -6390,7 +6384,7 @@ void DBImpl::GetLiveFilesMetaData(std::vector<LiveFileMetaData>* metadata) {
   versions_->GetLiveFilesMetaData(metadata);
 }
 
-UserFrontierPtr DBImpl::GetFlushedFrontier() {
+yb::storage::UserFrontierPtr DBImpl::GetFlushedFrontier() {
   InstrumentedMutexLock l(&mutex_);
   auto result = versions_->FlushedFrontier();
   if (result) {
@@ -6398,25 +6392,28 @@ UserFrontierPtr DBImpl::GetFlushedFrontier() {
   }
   std::vector<LiveFileMetaData> files;
   versions_->GetLiveFilesMetaData(&files);
-  UserFrontierPtr accumulated;
+  yb::storage::UserFrontierPtr accumulated;
   for (const auto& file : files) {
     if (!file.imported) {
-      UserFrontier::Update(
-          file.largest.user_frontier.get(), UpdateUserValueType::kLargest, &accumulated);
+      yb::storage::UserFrontier::Update(
+          file.largest.user_frontier.get(), yb::storage::UpdateUserValueType::kLargest,
+          &accumulated);
     }
   }
   return accumulated;
 }
 
-UserFrontierPtr DBImpl::CalcMemTableFrontier(UpdateUserValueType frontier_type) {
+yb::storage::UserFrontierPtr DBImpl::CalcMemTableFrontier(
+    yb::storage::UpdateUserValueType frontier_type) {
   InstrumentedMutexLock l(&mutex_);
   auto cfd = default_cf_handle_->cfd();
   return cfd->imm()->GetFrontier(cfd->mem()->GetFrontier(frontier_type), frontier_type);
 }
 
-UserFrontierPtr DBImpl::GetMutableMemTableFrontier(UpdateUserValueType type) {
+yb::storage::UserFrontierPtr DBImpl::GetMutableMemTableFrontier(
+    yb::storage::UpdateUserValueType type) {
   InstrumentedMutexLock l(&mutex_);
-  UserFrontierPtr accumulated;
+  yb::storage::UserFrontierPtr accumulated;
   for (auto cfd : *versions_->GetColumnFamilySet()) {
     if (cfd) {
       const auto* mem = cfd->mem();
@@ -6427,7 +6424,7 @@ UserFrontierPtr DBImpl::GetMutableMemTableFrontier(UpdateUserValueType type) {
           // but not yet updated frontiers (this happens in scope of WriteThread::Writer, but not
           // under lock).
           if (frontier) {
-            UserFrontier::Update(frontier.get(), type, &accumulated);
+            yb::storage::UserFrontier::Update(frontier.get(), type, &accumulated);
           }
         }
       } else {
@@ -6465,7 +6462,8 @@ Status DBImpl::ApplyVersionEdit(VersionEdit* edit) {
   return Status::OK();
 }
 
-Status DBImpl::ModifyFlushedFrontier(UserFrontierPtr frontier, FrontierModificationMode mode) {
+Status DBImpl::ModifyFlushedFrontier(
+    yb::storage::UserFrontierPtr frontier, FrontierModificationMode mode) {
   VersionEdit edit;
   edit.ModifyFlushedFrontier(std::move(frontier), mode);
   RETURN_NOT_OK(ApplyVersionEdit(&edit));

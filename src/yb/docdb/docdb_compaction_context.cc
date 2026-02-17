@@ -743,8 +743,8 @@ class DocDBCompactionFeed : public rocksdb::CompactionFeed, public PackedRowFeed
     }
     user_values_.clear();
     RETURN_NOT_OK(boundary_extractor_->Extract(rocksdb::ExtractUserKey(key), &user_values_));
-    rocksdb::UpdateUserValues(user_values_, rocksdb::UpdateUserValueType::kSmallest, &smallest_);
-    rocksdb::UpdateUserValues(user_values_, rocksdb::UpdateUserValueType::kLargest, &largest_);
+    rocksdb::UpdateUserValues(user_values_, storage::UpdateUserValueType::kSmallest, &smallest_);
+    rocksdb::UpdateUserValues(user_values_, storage::UpdateUserValueType::kLargest, &largest_);
     return Status::OK();
   }
 
@@ -1318,7 +1318,7 @@ class DocDBCompactionContext : public rocksdb::CompactionContext {
 
   // This is used to provide the history_cutoff timestamp to the compaction as a field in the
   // ConsensusFrontier, so that it can be persisted in RocksDB metadata and recovered on bootstrap.
-  rocksdb::UserFrontierPtr GetLargestUserFrontier() const override;
+  storage::UserFrontierPtr GetLargestUserFrontier() const override;
 
   // Returns an empty list when key_ranges_ is not set, denoting that the whole key range of the
   // tablet should be considered live.
@@ -1357,10 +1357,10 @@ DocDBCompactionContext::DocDBCompactionContext(
           vector_metadata_iterator_provider)) {
 }
 
-rocksdb::UserFrontierPtr DocDBCompactionContext::GetLargestUserFrontier() const {
+storage::UserFrontierPtr DocDBCompactionContext::GetLargestUserFrontier() const {
   auto* consensus_frontier = new ConsensusFrontier();
   consensus_frontier->set_history_cutoff_information(history_cutoff_);
-  return rocksdb::UserFrontierPtr(consensus_frontier);
+  return storage::UserFrontierPtr(consensus_frontier);
 }
 
 std::vector<std::pair<Slice, Slice>> DocDBCompactionContext::GetLiveRanges() const {

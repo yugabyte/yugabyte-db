@@ -38,6 +38,8 @@
 #include "yb/rocksdb/transaction_log.h"
 #include "yb/rocksdb/types.h"
 
+#include "yb/storage/storage_types.h"
+
 #ifdef _WIN32
 // Windows API macro interference
 #undef DeleteFile
@@ -63,6 +65,8 @@ class EventListener;
 class WriteBatch;
 
 YB_STRONGLY_TYPED_BOOL(SkipLastEntry);
+
+using FlushAbility = yb::storage::FlushAbility;
 
 extern const char kDefaultColumnFamilyName[];
 
@@ -832,10 +836,10 @@ class DB {
     return result;
   }
 
-  virtual UserFrontierPtr GetFlushedFrontier() { return nullptr; }
+  virtual yb::storage::UserFrontierPtr GetFlushedFrontier() { return nullptr; }
 
   virtual Status ModifyFlushedFrontier(
-      UserFrontierPtr values,
+      yb::storage::UserFrontierPtr values,
       FrontierModificationMode mode) {
     return Status::OK();
   }
@@ -844,9 +848,12 @@ class DB {
 
   // Might return stale frontiers if invoked after records have been written to the memtable, but
   // before frontiers are updated.
-  virtual UserFrontierPtr GetMutableMemTableFrontier(UpdateUserValueType type) { return nullptr; }
+  virtual yb::storage::UserFrontierPtr GetMutableMemTableFrontier(
+      yb::storage::UpdateUserValueType type) {
+    return nullptr;
+  }
 
-  virtual UserFrontierPtr CalcMemTableFrontier(UpdateUserValueType type) {
+  virtual yb::storage::UserFrontierPtr CalcMemTableFrontier(yb::storage::UpdateUserValueType type) {
     return nullptr;
   }
 

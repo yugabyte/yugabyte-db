@@ -16,24 +16,26 @@
 #include <queue>
 #include <thread>
 
+#include <boost/function.hpp>
 #include <boost/intrusive/list.hpp>
 
-#include "yb/rocksdb/db/db_impl.h"
-#include "yb/rocksdb/metadata.h"
-
 #include "yb/rpc/thread_pool.h"
+
+#include "yb/storage/frontier.h"
 
 #include "yb/util/countdown_latch.h"
 #include "yb/util/flags.h"
 #include "yb/util/path_util.h"
 #include "yb/util/priority_thread_pool.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/unique_lock.h"
 
 #include "yb/vector_index/vector_lsm_metadata.h"
 
 using namespace std::literals;
+using namespace yb::size_literals;
 
 DEFINE_NON_RUNTIME_uint32(vector_index_concurrent_reads, 0,
     "Max number of concurrent reads on vector index chunk. 0 - use number of CPUs for it");
@@ -537,7 +539,7 @@ struct VectorLSM<Vector, DistanceResult>::MutableChunk {
   // is set and it is safe to trigger save_callback only when num_tasks < kRunningMark.
   std::function<void()> save_callback;
 
-  rocksdb::UserFrontiersPtr user_frontiers;
+  storage::UserFrontiersPtr user_frontiers;
 
   // Used to indicates this chunk insertion failed and hence save_callback should not be called.
   std::atomic<bool> insertion_failed { false };
@@ -546,14 +548,14 @@ struct VectorLSM<Vector, DistanceResult>::MutableChunk {
   // Invoked when owning VectorLSM holds the mutex.
   bool RegisterInsert(
       const std::vector<InsertEntry>& entries, const Options& options, size_t new_tasks,
-      const rocksdb::UserFrontiers* frontiers) {
+      const storage::UserFrontiers* frontiers) {
     if (num_entries && num_entries + entries.size() > index->Capacity()) {
       return false;
     }
     num_entries += entries.size();
     num_tasks += new_tasks;
     if (frontiers) {
-      rocksdb::UpdateFrontiers(user_frontiers, *frontiers);
+      storage::UpdateFrontiers(user_frontiers, *frontiers);
     }
     return true;
   }
@@ -598,7 +600,7 @@ struct VectorLSM<Vector, DistanceResult>::ImmutableChunk {
   VectorIndexPtr index;
 
   // Must be accessed under LSM::mutex_ lock to guarantee thread-safety.
-  const rocksdb::UserFrontiersPtr user_frontiers;
+  const storage::UserFrontiersPtr user_frontiers;
 
  private:
   // Must be accessed under LSM::mutex_ lock to guarantee thread-safety.
@@ -611,7 +613,7 @@ struct VectorLSM<Vector, DistanceResult>::ImmutableChunk {
       size_t order_no_,
       VectorLSMFileMetaDataPtr&& file_,
       VectorIndexPtr&& index_,
-      rocksdb::UserFrontiersPtr&& user_frontiers_,
+      storage::UserFrontiersPtr&& user_frontiers_,
       ImmutableChunkState state_)
       : file(std::move(file_)),
         order_no(order_no_),
@@ -623,7 +625,7 @@ struct VectorLSM<Vector, DistanceResult>::ImmutableChunk {
   ImmutableChunk(
       size_t order_no_,
       VectorIndexPtr&& index_,
-      rocksdb::UserFrontiersPtr&& user_frontiers_,
+      storage::UserFrontiersPtr&& user_frontiers_,
       std::promise<Status>* flush_promise_)
       : order_no(order_no_),
         state(ImmutableChunkState::kInMemory),
@@ -903,12 +905,12 @@ class VectorLSM<Vector, DistanceResult>::CompactionTask : public PriorityThreadP
   }
 
   int CalculateGroupNoPriority(int active_tasks) const override {
-    return rocksdb::internal::kTopDiskCompactionPriority - active_tasks;
+    return PriorityThreadPool::kPriorityGroupBase - active_tasks;
   }
 
   int CalculatePriority() const {
     if (lsm_.IsShuttingDown()) {
-      return rocksdb::internal::kShuttingDownPriority;
+      return PriorityThreadPool::kPriorityShuttingDown;
     }
 
     const int num_chunks  = narrow_cast<int>(lsm_.NumSavedImmutableChunks());
@@ -1801,8 +1803,8 @@ Status VectorLSM<Vector, DistanceResult>::Flush(bool wait) {
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-rocksdb::UserFrontierPtr VectorLSM<Vector, DistanceResult>::GetFlushedFrontier() {
-  rocksdb::UserFrontierPtr result;
+storage::UserFrontierPtr VectorLSM<Vector, DistanceResult>::GetFlushedFrontier() {
+  storage::UserFrontierPtr result;
   std::lock_guard lock(mutex_);
   VLOG_WITH_PREFIX_AND_FUNC(5) << "immutable_chunks: " << AsString(immutable_chunks_);
 
@@ -1810,24 +1812,24 @@ rocksdb::UserFrontierPtr VectorLSM<Vector, DistanceResult>::GetFlushedFrontier()
     if (!chunk->IsInManifest()) {
       continue;
     }
-    rocksdb::UserFrontier::Update(
-        &chunk->user_frontiers->Largest(), rocksdb::UpdateUserValueType::kLargest, &result);
+    storage::UserFrontier::Update(
+        &chunk->user_frontiers->Largest(), storage::UpdateUserValueType::kLargest, &result);
   }
   return result;
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-rocksdb::FlushAbility VectorLSM<Vector, DistanceResult>::GetFlushAbility() {
+storage::FlushAbility VectorLSM<Vector, DistanceResult>::GetFlushAbility() {
   std::lock_guard lock(mutex_);
   for (const auto& chunk : immutable_chunks_) {
     if (!chunk->IsInManifest()) {
-      return rocksdb::FlushAbility::kAlreadyFlushing;
+      return storage::FlushAbility::kAlreadyFlushing;
     }
   }
   if (mutable_chunk_ && mutable_chunk_->num_entries) {
-    return rocksdb::FlushAbility::kHasNewData;
+    return storage::FlushAbility::kHasNewData;
   }
-  return rocksdb::FlushAbility::kNoNewData;
+  return storage::FlushAbility::kNoNewData;
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -2319,7 +2321,7 @@ class FilteringIterator {
 
       while (inner_it_ != inner_end_) {
         value_ = *inner_it_;
-        if (filter_.Filter(value_.first) == rocksdb::FilterDecision::kKeep) {
+        if (filter_.Filter(value_.first) == storage::FilterDecision::kKeep) {
           return true;
         }
         ++inner_it_;
@@ -2458,14 +2460,14 @@ VectorLSM<Vector, DistanceResult>::DoCompactChunks(const ImmutableChunkPtrs& inp
 
   // Collect indexes and frontiers.
   size_t input_size = 0;
-  rocksdb::UserFrontiersPtr merged_frontiers;
+  storage::UserFrontiersPtr merged_frontiers;
   for (const auto& chunk : input_chunks) {
     if (chunk->index) {
       indexes.push_back(chunk->index);
       input_size += indexes.back()->Size();
     }
     if (chunk->user_frontiers) {
-      rocksdb::UpdateFrontiers(merged_frontiers, *(chunk->user_frontiers));
+      UpdateFrontiers(merged_frontiers, *(chunk->user_frontiers));
     }
   }
 

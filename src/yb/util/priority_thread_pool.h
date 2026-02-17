@@ -27,7 +27,6 @@ namespace yb {
 
 YB_DEFINE_ENUM(PriorityThreadPoolTaskState, (kPaused)(kNotStarted)(kRunning));
 constexpr uint64_t kDefaultGroupNo = 0;
-constexpr int kHighPriority = 300;
 
 // Used to contain both priorities
 struct PriorityThreadPoolPriorities {
@@ -91,6 +90,10 @@ class PriorityThreadPoolTask {
 // Tasks submitted to this pool have assigned priority and are picked from queue using it.
 class PriorityThreadPool {
  public:
+  static constexpr int kPriorityGroupBase = 100;
+  static constexpr int kPriorityShuttingDown = 200;
+  static constexpr int kPriorityHigh = 300;
+
   explicit PriorityThreadPool(size_t max_running_tasks, bool use_group_no_priority = false);
   ~PriorityThreadPool();
 
