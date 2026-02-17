@@ -1240,6 +1240,9 @@ public enum TaskType {
 
   CheckNodeReachable(com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodeReachable.class),
 
+  CheckDbNodePortConnectivity(
+      com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckDbNodePortConnectivity.class),
+
   SupportBundleComponentDownload(
       com.yugabyte.yw.commissioner.tasks.subtasks.SupportBundleComponentDownload.class),
 

@@ -186,7 +186,9 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
               .filter(n -> n.state != NodeState.Live)
               .findFirst();
       if (nonLive.isEmpty()) {
-        createComprehensivePrecheckTasks(nodesToBeRestarted);
+        if (confGetter.getConfForScope(universe, UniverseConfKeys.enableComprehensivePrechecks)) {
+          createComprehensivePrecheckTasks(nodesToBeRestarted);
+        }
 
         RollMaxBatchSize rollMaxBatchSize = getCurrentRollBatchSize(universe);
         // Use only primary nodes

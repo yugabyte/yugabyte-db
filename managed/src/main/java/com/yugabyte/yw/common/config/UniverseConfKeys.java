@@ -1260,6 +1260,17 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
 
+  public static final ConfKeyInfo<Boolean> enableComprehensivePrechecks =
+      new ConfKeyInfo<>(
+          "yb.checks.comprehensive_prechecks.enabled",
+          ScopeType.UNIVERSE,
+          "Enable comprehensive prechecks",
+          "When enabled (default), extra runtime prechecks run during universe create/edit and "
+              + "rolling upgrades (e.g. node connectivity and service/command checks). Disable to "
+              + "skip these checks.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+
   public static final ConfKeyInfo<Integer> nodesAreSafeToTakeDownParallelism =
       new ConfKeyInfo<>(
           "yb.checks.nodes_safe_to_take_down.parallelism",
