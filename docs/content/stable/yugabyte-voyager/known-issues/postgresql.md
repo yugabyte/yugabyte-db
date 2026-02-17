@@ -1397,7 +1397,7 @@ Suggested change is to manually create the SERVER and USER MAPPING on the target
 For live migration with fall-forward/fall-back, the migration skips data from source databases that have the following data types on any column:
 
 - Always skipped (both connectors): `POINT`, `LINE`, `LSEG`, `BOX`, `PATH`, `POLYGON`, `TSQUERY`, `CIRCLE`, `VECTOR`, or `TIMETZ`.
-- Supported with [YugabyteDB Connector](../../../additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/)(default), skipped with [YugabyteDB gRPC Connector](../../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/): `HSTORE`, `TSVECTOR`, `CITEXT`, `LTREE`, or `ARRAY OF ENUMS`.
+- Skipped by [YugabyteDB gRPC Connector](../../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/): `HSTORE`, `TSVECTOR`, `CITEXT`, `LTREE`, or `ARRAY OF ENUMS`. (These are supported by the [YugabyteDB Connector](../../../additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/) (default).)
 
 Refer to [cutover to target](../../reference/cutover-archive/cutover/#yugabytedb-grpc-vs-yugabytedb-connector) for how or when to configure these connectors.
 

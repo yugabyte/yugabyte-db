@@ -497,7 +497,7 @@ If you want yb-voyager to connect to the source database over SSL, refer to [SSL
 
 If you plan to use the [YugabyteDB gRPC Connector](../../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/), ensure that the TServer (9100) and Master (7100) ports are open on the target YugabyteDB cluster. These ports are required during the `export data from target` phase (after the `cutover to target` step) to initiate Change Data Capture (CDC) from the target and stream ongoing changes.
 
-However, if you are using the [YugabyteDB Connector](../../../additional-features/change-data-capture/using-logical-replication/) (GA), no additional port configuration or setup is required.
+However, if you are using the [YugabyteDB Connector](../../../additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/), no additional port configuration or setup is required.
 
 Prepare your target YugabyteDB database cluster by creating a database, and a user for your cluster.
 
@@ -1409,7 +1409,7 @@ yb-voyager initiate cutover to target --export-dir <EXPORT_DIR>
     {{< /tabpane >}}
 
     {{< note title="CDC options" >}}
-The [YugabyteDB Connector](../../../additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/) is the default and GA option (supported in YugabyteDB v2024.2.4+), and is recommended for all the deployments. To use the [YugabyteDB gRPC Connector](../../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/) instead, explicitly enable it using the `use-yb-grpc-connector` flag or configuration parameter; this connector requires access to the TServer (9100) and Master (7100) ports.
+The [YugabyteDB Connector](../../../additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/) is the default and GA option (supported in YugabyteDB v2024.2.4+), and is recommended for all deployments. To use the [YugabyteDB gRPC Connector](../../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/), explicitly enable it using the `use-yb-grpc-connector` flag or configuration parameter; this connector requires access to the TServer (9100) and Master (7100) ports.
     {{</ note >}}
 
     Refer to [initiate cutover to target](../../reference/cutover-archive/cutover/#cutover-to-target) for more information.
