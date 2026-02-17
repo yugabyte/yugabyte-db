@@ -5100,6 +5100,31 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 	}
 
 	/*
+	 * If a non-atomic (in-procedure) COMMIT has been executed during this
+	 * top-level query (e.g., inside a CALL or DO block), we cannot safely
+	 * retry. Retrying would re-execute the entire CALL/DO from the beginning,
+	 * but the already-committed work would persist, potentially leading to
+	 * duplicate inserts or other incorrect behavior.
+	 *
+	 * The GUC yb_enable_retry_after_non_atomic_commit can be set to true to
+	 * revert to the old behavior if a customer depends on it.
+	 */
+	if (yb_is_non_atomic_commit_done && !yb_enable_retry_after_non_atomic_commit)
+	{
+		const char *retry_err = ("query layer retry isn't possible because "
+								 "a COMMIT has already been executed inside "
+								 "the stored procedure or DO block. Retrying "
+								 "would re-execute already-committed work. "
+								 "Set yb_enable_retry_after_non_atomic_commit "
+								 "to true to override.");
+
+		edata->message = psprintf("%s (%s)", edata->message, retry_err);
+		if (yb_debug_log_internal_restarts)
+			elog(LOG, "%s", retry_err);
+		return false;
+	}
+
+	/*
 	 * In READ COMMITTED isolation, if the current statement is a DDL, then we
 	 * don't support retrying it, if transactional DDL is enabled. This is
 	 * because we don't support savepoint rollback for DDLs, so we can't rely
@@ -5721,6 +5746,14 @@ yb_exec_query_wrapper(MemoryContext exec_context,
 					  const void *functor_context)
 {
 	bool		retry = true;
+
+	/*
+	 * Reset the flag that tracks whether a non-atomic (in-procedure) COMMIT
+	 * has been executed. This flag is set in _SPI_commit() and checked in
+	 * yb_is_retry_possible() to prevent unsafe retries of CALL/DO statements
+	 * that have already committed work.
+	 */
+	yb_is_non_atomic_commit_done = false;
 
 	for (int attempt = 0; retry; ++attempt)
 	{

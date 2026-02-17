@@ -2198,6 +2198,10 @@ bool		yb_debug_report_error_stacktrace = false;
 
 bool		yb_debug_log_internal_restarts = false;
 
+bool		yb_is_non_atomic_commit_done = false;
+
+bool		yb_enable_retry_after_non_atomic_commit = false;
+
 bool		yb_test_system_catalogs_creation = false;
 
 bool		yb_test_fail_next_ddl = false;
