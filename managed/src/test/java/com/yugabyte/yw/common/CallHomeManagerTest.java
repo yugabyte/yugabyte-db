@@ -3,6 +3,8 @@
 package com.yugabyte.yw.common;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -12,6 +14,7 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.jayway.jsonpath.Configuration;
 import com.jayway.jsonpath.DocumentContext;
@@ -23,8 +26,10 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Base64;
@@ -135,5 +140,81 @@ public class CallHomeManagerTest extends FakeDBApplication {
     ModelFactory.setCallhomeLevel(defaultCustomer, "NONE");
     callHomeManager.sendDiagnostics(defaultCustomer);
     verifyNoInteractions(apiHelper);
+  }
+
+  @Test
+  public void testOnPremProviderEnrichmentFields() {
+
+    Provider onprem = ModelFactory.onpremProvider(defaultCustomer);
+    ProviderDetails d = onprem.getDetails();
+    d.airGapInstall = true;
+    d.skipProvisioning = true;
+    d.setUpChrony = true;
+    d.ntpServers = ImmutableList.of("0.pool.ntp.org");
+    onprem.setDetails(d);
+    onprem.save();
+
+    when(configHelper.getConfig(ConfigHelper.ConfigType.YugawareMetadata))
+        .thenReturn(
+            ImmutableMap.of("yugaware_uuid", UUID.randomUUID().toString(), "version", "0.0.1"));
+    when(mockRuntimeConf.getGlobalConf(GlobalConfKeys.KubernetesOperatorEnabled)).thenReturn(false);
+    when(clock.instant()).thenReturn(Instant.parse("2019-01-24T18:46:07.517Z"));
+
+    JsonNode payload =
+        callHomeManager.collectDiagnostics(defaultCustomer, CallHomeManager.CollectionLevel.LOW);
+
+    assertEquals(2, payload.get("providers").size());
+    JsonNode onpremProvider = null;
+    for (JsonNode p : payload.get("providers")) {
+      if ("onprem".equals(p.get("code").asText())) {
+        onpremProvider = p;
+        break;
+      }
+    }
+    assertNotNull(onpremProvider);
+    assertEquals("onprem", onpremProvider.get("code").asText());
+    assertEquals(true, onpremProvider.get("is_airgap").asBoolean());
+    assertEquals(true, onpremProvider.get("on_prem_manually_provision").asBoolean());
+    assertEquals("SPECIFY_CUSTOM_NTP_SERVERS", onpremProvider.get("ntp_setup_detail").asText());
+    assertTrue(onpremProvider.get("public_cloud_credential_type").isNull());
+  }
+
+  @Test
+  public void testAwsProviderNtpAndCredentialType() {
+    Provider aws = defaultProvider;
+    ProviderDetails d = aws.getDetails();
+
+    d.setUpChrony = true;
+    d.ntpServers = ImmutableList.of();
+
+    ProviderDetails.CloudInfo ci = new ProviderDetails.CloudInfo();
+    AWSCloudInfo awsInfo = new AWSCloudInfo();
+    awsInfo.awsAccessKeyID = "ACCESS_KEY_TEST";
+    ci.aws = awsInfo;
+    d.setCloudInfo(ci);
+    aws.setDetails(d);
+    aws.save();
+
+    when(configHelper.getConfig(ConfigHelper.ConfigType.YugawareMetadata))
+        .thenReturn(
+            ImmutableMap.of("yugaware_uuid", UUID.randomUUID().toString(), "version", "0.0.1"));
+    when(mockRuntimeConf.getGlobalConf(GlobalConfKeys.KubernetesOperatorEnabled)).thenReturn(false);
+    when(clock.instant()).thenReturn(Instant.parse("2019-01-24T18:46:07.517Z"));
+
+    JsonNode payload =
+        callHomeManager.collectDiagnostics(defaultCustomer, CallHomeManager.CollectionLevel.LOW);
+
+    JsonNode awsJson = null;
+    for (JsonNode p : payload.get("providers")) {
+      if ("aws".equals(p.get("code").asText())) {
+        awsJson = p;
+        break;
+      }
+    }
+    assertNotNull(awsJson);
+
+    assertTrue(awsJson.get("on_prem_manually_provision").isNull());
+    assertEquals("USE_CLOUD_NTP_SERVER", awsJson.get("ntp_setup_detail").asText());
+    assertEquals("SPECIFY_ACCESS_KEY", awsJson.get("public_cloud_credential_type").asText());
   }
 }

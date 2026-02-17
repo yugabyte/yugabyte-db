@@ -13,6 +13,7 @@ import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Users;
@@ -62,6 +63,17 @@ public class CallHomeManager {
     public Boolean collectAll() {
       return ordinal() == HIGH.ordinal();
     }
+  }
+
+  private enum NtpSetupDetail {
+    SPECIFY_CUSTOM_NTP_SERVERS,
+    USE_CLOUD_NTP_SERVER,
+    ASSUME_NTP_CONFIGURED_IN_MACHINE_IMAGE
+  }
+
+  private enum CloudCredentialType {
+    SPECIFY_ACCESS_KEY,
+    USE_INSTANCE_ROLE
   }
 
   @Inject
@@ -123,6 +135,9 @@ public class CallHomeManager {
       provider.put("provider_uuid", p.getUuid().toString());
       provider.put("code", p.getCode());
       provider.put("name", p.getName());
+
+      enrichProviderDiagnostics(provider, p);
+
       ArrayNode regions = Json.newArray();
       for (Region r : p.getRegions()) {
         regions.add(r.getName());
@@ -169,5 +184,64 @@ public class CallHomeManager {
     payload.put("timestamp", clock.instant().getEpochSecond());
     payload.set("errors", errors);
     return RedactingService.filterSecretFields(payload, RedactingService.RedactionTarget.LOGS);
+  }
+
+  private void enrichProviderDiagnostics(ObjectNode provider, Provider p) {
+    ProviderDetails details = p.getDetails();
+    String providerCode = p.getCode();
+
+    provider.put("is_airgap", details.airGapInstall);
+    if (providerCode.equals("onprem")) {
+      provider.put("on_prem_manually_provision", details.skipProvisioning);
+    } else {
+      provider.putNull("on_prem_manually_provision");
+    }
+
+    boolean isPublicCloud =
+        providerCode.equals("aws") || providerCode.equals("gcp") || providerCode.equals("azu");
+    boolean hasCustomNtpServers = details.ntpServers != null && !details.ntpServers.isEmpty();
+
+    NtpSetupDetail ntpSetupDetail;
+    if (!details.setUpChrony) {
+      ntpSetupDetail = NtpSetupDetail.ASSUME_NTP_CONFIGURED_IN_MACHINE_IMAGE;
+    } else if (hasCustomNtpServers) {
+      ntpSetupDetail = NtpSetupDetail.SPECIFY_CUSTOM_NTP_SERVERS;
+    } else if (isPublicCloud) {
+      ntpSetupDetail = NtpSetupDetail.USE_CLOUD_NTP_SERVER;
+    } else {
+      ntpSetupDetail = NtpSetupDetail.ASSUME_NTP_CONFIGURED_IN_MACHINE_IMAGE;
+    }
+
+    provider.put("ntp_setup_detail", ntpSetupDetail.toString());
+    provider.putNull("public_cloud_credential_type");
+    ProviderDetails.CloudInfo cloudInfo = details.getCloudInfo();
+    if (cloudInfo != null) {
+
+      Boolean useAccessKey = null;
+
+      if (providerCode.equals("aws") && cloudInfo.getAws() != null) {
+        useAccessKey =
+            cloudInfo.getAws().awsAccessKeyID != null
+                && !cloudInfo.getAws().awsAccessKeyID.isEmpty();
+
+      } else if (providerCode.equals("gcp") && cloudInfo.getGcp() != null) {
+        Boolean useHostCreds = cloudInfo.getGcp().getUseHostCredentials();
+        useAccessKey = !(useHostCreds != null && useHostCreds);
+
+      } else if (providerCode.equals("azu") && cloudInfo.getAzu() != null) {
+        useAccessKey =
+            cloudInfo.getAzu().azuClientSecret != null
+                && !cloudInfo.getAzu().azuClientSecret.isEmpty();
+      }
+
+      if (useAccessKey != null) {
+        CloudCredentialType type =
+            useAccessKey
+                ? CloudCredentialType.SPECIFY_ACCESS_KEY
+                : CloudCredentialType.USE_INSTANCE_ROLE;
+
+        provider.put("public_cloud_credential_type", type.toString());
+      }
+    }
   }
 }
