@@ -88,6 +88,8 @@ Use this URL in clients that accept an MCP server URL:
 
 **Option B — Local config (for example, Claude Desktop)**
 
+**Prerequisite**: Node v18 or higher.
+
 Add the server to your client config (for example, `claude_desktop_config.json`):
 
 ```json
@@ -111,7 +113,7 @@ Note that you must fully quit Claude Desktop (from the menu bar, not just closin
 
 If the logs for the MCP server shows a SyntaxError, it is likely due to an outdated version of Node.js.
 
-- Check your version: Run `node -v` in your terminal. The MCP server requires Node v18 or higher (v22.14.0+ recommended).
+- Check your version: Run `node -v` in your terminal.
 
 - Verify the path: If you use NVM, Claude might still pick up an older system version of Node. You can check which version is actually running by looking at the **Claude > Developer > View Logs** and searching for the "Using MCP server command" line.
 
