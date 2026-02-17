@@ -56,7 +56,7 @@ When two database clusters are connected via [xCluster replication](../../create
 
 In addition, YugabyteDB Anywhere obtains the replication lag information using Prometheus metrics from YB-TServer at port 9000. If this port is closed, the xCluster replication is not affected, but YugabyteDB Anywhere would not be able to display the replication lag.
 
-YugabyteDB Anywhere uses ICMP to verify connectivity between universes during xCluster setup. Ensure your firewall rules allow ICMP traffic between the source and target universes.
+YugabyteDB Anywhere uses ICMP to verify connectivity between universes during xCluster setup. Ensure your firewall rules allow ICMP traffic between the source and target universes. Alternatively, you can turn off the **Enable network connectivity check for xCluster** Global Runtime Configuration option (config key `yb.xcluster.network_connectivity_check.enabled`). Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
 
 ### Overriding default port assignments
 
