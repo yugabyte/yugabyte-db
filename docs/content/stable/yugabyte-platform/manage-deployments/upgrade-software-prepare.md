@@ -12,6 +12,14 @@ menu:
 type: docs
 ---
 
+## Minimum version for upgrading to v2025.2
+
+Upgrading a universe from a version based on PostgreSQL 11 ({{<release "2024.2">}} and earlier) to a version based on PostgreSQL 15 ({{<release "2025.1">}} or later) requires a [YSQL major upgrade](../ysql-major-upgrade-yba/), and your universe must be running {{<release "2024.2.3.0">}} or later.
+
+If you have a universe running an earlier version, first upgrade it to the latest version in the v2024.2 series before upgrading to v2025.1 or later.
+
+YSQL major upgrades require additional steps. See [YSQL major upgrade](../ysql-major-upgrade-yba/).
+
 ## Verify software requirements for nodes
 
 Make sure the universe nodes meet the software requirements for running the version of YugabyteDB you are installing.
@@ -26,9 +34,9 @@ If your universe is running on a [deprecated OS](../../../reference/configuratio
 
 cron and root-level systemd have been deprecated in favor of user-level systemd with node agent for management of universe nodes.
 
-In particular, cron-based universes are no longer supported in YugabyteDB Anywhere v2025.2 and later. Before you will be able to upgrade to v2025.2 or later, all your universes must be using systemd. YugabyteDB Anywhere will automatically upgrade universes that use a cloud provider configuration to systemd.
+In particular, cron-based universes are no longer supported in YugabyteDB Anywhere v2025.2 and later. Before you will be able to upgrade to v2025.2 or later, all your universes must be using systemd.
 
-However, on-premises cron-based universes must be upgraded manually. To do this, in YugabyteDB Anywhere v2024.2.2 or later, navigate to the universe and choose **Actions>Upgrade to Systemd**.
+To update cron-based universes, in YugabyteDB Anywhere v2024.2.8 or later, navigate to the universe and choose **Actions>Upgrade to Systemd**. If you are running a version earlier than v2024.2.8 and you want to upgrade to v2025.2 or later, first upgrade to the latest version in the {{<release "2024.2">}} series and update your universes to systemd.
 
 ## Node agent
 
