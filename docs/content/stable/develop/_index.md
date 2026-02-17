@@ -10,7 +10,7 @@ cascade:
 ---
 
 {{< tip title="Docs MCP Server" >}}
-Developing with YugabyteDB? Access the YugabyteDB Docs AI from your IDE. See [Docs MCP Server](../reference/docs-mcp-server/).
+Developing with YugabyteDB? Access the YugabyteDB Docs AI from your IDE or CLI. See [Docs MCP Server](../reference/docs-mcp-server/).
 {{< /tip >}}
 
 ## Tutorials
