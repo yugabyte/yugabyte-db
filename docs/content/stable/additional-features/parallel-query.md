@@ -18,12 +18,12 @@ YugabyteDB supports the use of [PostgreSQL parallel queries](https://www.postgre
 
 Currently, YugabyteDB supports parallel queries for [colocated tables](../colocation/); support for hash- and range-sharded tables is planned.
 
-Parallel queries are enabled by default. To configure parallel queries, set the following configuration parameters.
+To configure parallel queries, set the following configuration parameters.
 
 | Parameter | Description | Default |
 | :--- | :--- | :--- |
 | yb_enable_parallel_append | Enables the planner's use of parallel append plans. To enable parallel query, set this to true. | true |
-| yb_enable_parallel_scan_colocated | Enables the planner's use of parallel queries for colocated tables. | true |
+| yb_enable_parallel_scan_colocated | Enables the planner's use of parallel queries for colocated tables. | false |
 | yb_parallel_range_rows | The number of rows to plan per parallel worker. To enable parallel query, set this to a value other than 0. | 10000 |
 | yb_parallel_range_size | Approximate size of parallel range for DocDB relation scans, in MB. | 1 |
 
