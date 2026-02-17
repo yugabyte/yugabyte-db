@@ -1,0 +1,46 @@
+Parsed test spec with 2 sessions
+
+starting permutation: s1_update s2_call s1_commit s2_select_test s2_select_side_table
+step s1_update: UPDATE test SET v = 100 WHERE k = 1;
+step s2_call: CALL proc_with_commit(); <waiting ...>
+step s1_commit: COMMIT;
+step s2_call: <... completed>
+error in steps s1_commit s2_call: ERROR:  could not serialize access due to concurrent update (query layer retry isn't possible because a COMMIT has already been executed inside the stored procedure or DO block. Retrying would re-execute already-committed work. Set yb_enable_retry_after_non_atomic_commit to true to override.)
+step s2_select_test: SELECT * FROM test ORDER BY k;
+k              v
+
+1              100
+step s2_select_side_table: SELECT COUNT(*) AS side_table_updates FROM side_table;
+side_table_updates
+
+1
+
+starting permutation: s1_update s2_do s1_commit s2_select_test s2_select_side_table
+step s1_update: UPDATE test SET v = 100 WHERE k = 1;
+step s2_do: DO $$ BEGIN INSERT INTO side_table VALUES (1); COMMIT; UPDATE test SET v = v + 10; END $$; <waiting ...>
+step s1_commit: COMMIT;
+step s2_do: <... completed>
+error in steps s1_commit s2_do: ERROR:  could not serialize access due to concurrent update (query layer retry isn't possible because a COMMIT has already been executed inside the stored procedure or DO block. Retrying would re-execute already-committed work. Set yb_enable_retry_after_non_atomic_commit to true to override.)
+step s2_select_test: SELECT * FROM test ORDER BY k;
+k              v
+
+1              100
+step s2_select_side_table: SELECT COUNT(*) AS side_table_updates FROM side_table;
+side_table_updates
+
+1
+
+starting permutation: s2_enable_guc s1_update s2_call s1_commit s2_select_test s2_select_side_table
+step s2_enable_guc: SET yb_enable_retry_after_non_atomic_commit = true;
+step s1_update: UPDATE test SET v = 100 WHERE k = 1;
+step s2_call: CALL proc_with_commit(); <waiting ...>
+step s1_commit: COMMIT;
+step s2_call: <... completed>
+step s2_select_test: SELECT * FROM test ORDER BY k;
+k              v
+
+1              110
+step s2_select_side_table: SELECT COUNT(*) AS side_table_updates FROM side_table;
+side_table_updates
+
+2
