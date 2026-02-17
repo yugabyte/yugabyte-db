@@ -1395,10 +1395,6 @@ Perform the following steps as part of the cutover process:
 yb-voyager initiate cutover to target --config-file <path-to-config-file>
 ```
 
-{{< note title="CDC options" >}}
-The [YugabyteDB Connector](../../../additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/) is the default and GA option (supported in YugabyteDB v2024.2.4+), and is recommended for all the deployments. To use the [YugabyteDB gRPC Connector](../../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/) instead, explicitly enable it using the `use-yb-grpc-connector` flag or configuration parameter; this connector requires access to the TServer (9100) and Master (7100) ports.
-{{</ note >}}
-
 {{% /tab %}}
 
 {{% tab header="CLI" lang="cli" %}}
@@ -1411,6 +1407,10 @@ yb-voyager initiate cutover to target --export-dir <EXPORT_DIR>
 {{% /tab %}}
 
     {{< /tabpane >}}
+
+    {{< note title="CDC options" >}}
+The [YugabyteDB Connector](../../../additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/) is the default and GA option (supported in YugabyteDB v2024.2.4+), and is recommended for all the deployments. To use the [YugabyteDB gRPC Connector](../../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/) instead, explicitly enable it using the `use-yb-grpc-connector` flag or configuration parameter; this connector requires access to the TServer (9100) and Master (7100) ports.
+    {{</ note >}}
 
     Refer to [initiate cutover to target](../../reference/cutover-archive/cutover/#cutover-to-target) for more information.
 

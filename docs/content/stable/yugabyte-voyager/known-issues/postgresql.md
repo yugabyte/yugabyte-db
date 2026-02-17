@@ -1393,7 +1393,6 @@ Suggested change is to manually create the SERVER and USER MAPPING on the target
 **GitHub**: [Issue 1731](https://github.com/yugabyte/yb-voyager/issues/1731)
 
 **Description**: For live migration, the migration skips data from source databases that have the following data types on any column: `POINT`, `LINE`, `LSEG`, `BOX`, `PATH`, `POLYGON`, `CIRCLE`, `VECTOR`, or `TIMETZ`.
-.
 
 For live migration with fall-forward/fall-back, the migration skips data from source databases that have the following data types on any column:
 
