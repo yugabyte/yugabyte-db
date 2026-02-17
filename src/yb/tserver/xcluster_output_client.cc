@@ -534,6 +534,17 @@ Result<bool> XClusterOutputClient::ProcessChangeMetadataOp(const cdc::CDCRecordP
     return true;
   }
 
+  // Ignore CHANGE_METADATA add_table for vector indexes on the target: DDL replication creates the
+  // index, and apply-external-intent maintains it. Target backfill covers pre-index rows; applying
+  // this CM op through the poller would be redundant.
+  if (record.change_metadata_request().has_add_table() &&
+      record.change_metadata_request().add_table().has_index_info() &&
+      record.change_metadata_request().add_table().index_info().has_vector_idx_options()) {
+    LOG_WITH_PREFIX(INFO) << "Ignoring change metadata add_table with vector index for tablet "
+                          << producer_tablet_info_.tablet_id;
+    return true;
+  }
+
   if (!record.change_metadata_request().has_schema() &&
       !record.change_metadata_request().has_add_table()) {
     LOG_WITH_PREFIX(INFO) << "Ignoring change metadata request for tablet : "

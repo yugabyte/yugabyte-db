@@ -1915,11 +1915,16 @@ Status Tablet::ApplyKeyValueRowOperations(
     rocksdb::WriteBatch intents_write_batch;
     docdb::NonTransactionalBatchWriter batcher(
         put_batch, write_hybrid_time, batch_hybrid_time, intents_db_.get(), &intents_write_batch,
-        GetSchemaPackingProvider(), frontiers);
+        GetSchemaPackingProvider(), frontiers, vector_indexes_->List());
 
     rocksdb::WriteBatch regular_write_batch;
     regular_write_batch.SetDirectWriter(&batcher);
     WriteToRocksDB(frontiers, &regular_write_batch, StorageDbType::kRegular);
+
+    if (!vector_indexes_->has_vector_deletion() &&
+        frontiers.Largest().has_vector_deletion()) {
+      vector_indexes_->SetHasVectorDeletion();
+    }
 
     if (intents_write_batch.Count() != 0) {
       if (!metadata_->IsUnderXClusterReplication()) {

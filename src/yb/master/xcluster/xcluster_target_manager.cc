@@ -1680,6 +1680,14 @@ Status XClusterTargetManager::ProcessCreateTableReq(
   if (colocation_id == kColocationIdNotSet) {
     return Status::OK();
   }
+
+  // Vector index: skip UpdateColocatedTableWithHistoricalSchemaPackings. Colocated tables need
+  // old heap packings when rows replicate in before CREATE lands on the consumer. The index is
+  // filled by backfill, not that path.
+  if (req.has_index_info() && req.index_info().has_vector_idx_options()) {
+    return Status::OK();
+  }
+
   SCHECK(
       !IsColocationParentTableId(req.table_id()), InvalidArgument,
       "Received unexpected parent colocation table id: $0", req.table_id());

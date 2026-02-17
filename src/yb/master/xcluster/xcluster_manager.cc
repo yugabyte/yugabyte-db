@@ -1069,7 +1069,8 @@ Status XClusterManager::ValidateCreateTableRequest(const CreateTableRequestPB& r
   if (!req.old_rewrite_table_id().empty()) {
     table_id = req.old_rewrite_table_id();
     error_str = "Cannot rewrite a table that is a part of non-automatic mode XCluster replication.";
-  } else if (IsIndex(req) && req.skip_index_backfill()) {
+  } else if (IsIndex(req) && req.skip_index_backfill() &&
+             !req.index_info().has_vector_idx_options()) {
     table_id = req.indexed_table_id();
     error_str =
         "Cannot create nonconcurrent index on a table that is a part of non-automatic mode "

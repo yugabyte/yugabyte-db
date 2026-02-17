@@ -106,6 +106,7 @@ Status UpdatePackedRow(
 Status CombineExternalIntents(
     const tablet::TransactionStatePB& transaction_state, SubTransactionId subtransaction_id,
     const google::protobuf::RepeatedPtrField<cdc::KeyValuePairPB>& pairs,
+    Slice delete_vector_ids,
     docdb::KeyValuePairMsg* out, std::unordered_set<SchemaVersion>& used_packed_schema_versions,
     const cdc::XClusterSchemaVersionMap& schema_versions_map) {
   class Provider : public docdb::ExternalIntentsProvider {
@@ -177,7 +178,14 @@ Status CombineExternalIntents(
 
   Provider provider(source_tablet, &pairs, schema_versions_map, out, used_packed_schema_versions);
   docdb::CombineExternalIntents(txn_id, subtransaction_id, &provider);
-  return provider.GetOutcome();
+  RETURN_NOT_OK(provider.GetOutcome());
+
+  if (!delete_vector_ids.empty()) {
+    auto* value = out->mutable_value();
+    value->append(delete_vector_ids.cdata(), delete_vector_ids.size());
+  }
+
+  return Status::OK();
 }
 
 Status AddRecord(
@@ -217,10 +225,14 @@ Status AddRecord(
 
   if (record.has_transaction_state()) {
     auto* write_pair = write_batch->mutable_write_pairs()->Add();
+    Slice delete_vector_ids;
+    if (record.has_delete_vector_ids()) {
+      delete_vector_ids = Slice(record.delete_vector_ids());
+    }
     return CombineExternalIntents(
         record.transaction_state(),
         record.has_subtransaction_id() ? record.subtransaction_id() : kMinSubTransactionId,
-        record.changes(), write_pair, used_packed_schema_versions,
+        record.changes(), delete_vector_ids, write_pair, used_packed_schema_versions,
         process_record_info.schema_versions_map);
   }
 

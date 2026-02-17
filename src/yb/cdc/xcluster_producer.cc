@@ -166,6 +166,12 @@ Status PopulateWriteRecord(
     kv_pair->set_key(write_pair.key().ToBuffer());
     kv_pair->mutable_value()->set_binary_value(write_pair.value().ToBuffer());
   }
+
+  if (record && batch.has_delete_vector_ids()) {
+    record->set_delete_vector_ids(
+        batch.delete_vector_ids().cdata(), batch.delete_vector_ids().size());
+  }
+
   return Status::OK();
 }
 

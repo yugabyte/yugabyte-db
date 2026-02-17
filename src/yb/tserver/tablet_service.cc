@@ -277,6 +277,9 @@ DEFINE_test_flag(bool, txn_status_moved_rpc_force_fail_retryable, true,
 DEFINE_test_flag(int32, txn_status_moved_rpc_handle_delay_ms, 0,
     "Inject delay to slowdown handling of updates in transaction status location.");
 
+DEFINE_test_flag(bool, block_apply_intent, false,
+    "When set, block handling of UpdateTransaction(APPLYING) until the flag is cleared.");
+
 DECLARE_bool(ysql_enable_db_catalog_version_mode);
 
 DEFINE_test_flag(bool, skip_aborting_active_transactions_during_schema_change, false,
@@ -1416,6 +1419,10 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
   if (req->state().status() == TransactionStatus::APPLYING ||
       req->state().status() == TransactionStatus::PROMOTING ||
       cleanup) {
+    if (req->state().status() == TransactionStatus::APPLYING &&
+        tablet.tablet->table_type() != TableType::TRANSACTION_STATUS_TABLE_TYPE) {
+      TEST_PAUSE_IF_FLAG(TEST_block_apply_intent);
+    }
     auto* participant = tablet.tablet->transaction_participant();
     if (participant) {
       participant->Handle(std::move(state), tablet.leader_term);
