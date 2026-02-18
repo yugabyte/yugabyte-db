@@ -674,6 +674,13 @@ HINT:  Run UPDATE pg_index SET indisvalid = false WHERE indexrelid = '<index_nam
 UPDATE pg_index SET indisvalid = false
     WHERE indexrelid = 'parted_even_i_idx'::regclass;
 \c
+-- Mark parted_odd_i_idx as invalid again because the above failed REINDEX INDEX
+-- statement marks it as valid. This happens because each partition starts its
+-- own transaction. The 'parted_odd_i_idx' partition gets processed first and
+-- completes successfully before we get the error for 'parted_even_i_idx'.
+UPDATE pg_index SET indisvalid = false
+    WHERE indexrelid = 'parted_odd_i_idx'::regclass;
+\c
 REINDEX INDEX parted_i_idx; -- succeed
 -- we can also reindex just a child index
 UPDATE pg_index SET indisvalid = false
