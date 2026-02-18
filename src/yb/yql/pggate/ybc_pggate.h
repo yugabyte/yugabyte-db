@@ -746,6 +746,7 @@ YbcStatus YBCPgAbortPlainTransaction();
 YbcStatus YBCPgSetTransactionIsolationLevel(int isolation);
 YbcStatus YBCPgSetTransactionReadOnly(bool read_only);
 YbcStatus YBCPgSetTransactionDeferrable(bool deferrable);
+void YBCPgSetClampUncertaintyWindow(bool clamp);
 YbcStatus YBCPgSetInTxnBlock(bool in_txn_blk);
 YbcStatus YBCPgSetReadOnlyStmt(bool read_only_stmt);
 YbcStatus YBCPgSetEnableTracing(bool tracing);

@@ -6675,6 +6675,8 @@ PostgresMain(const char *dbname, const char *username)
 			yb_is_multi_statement_query = false;
 			/* New Query => Did not sent any data for the current query. */
 			YBMarkDataNotSentForCurrQuery();
+			/* Unclamp uncertainty window at the start of each new query. */
+			YBCPgSetClampUncertaintyWindow(false);
 		}
 
 		switch (firstchar)

@@ -1948,6 +1948,10 @@ YbcStatus YBCPgSetTransactionDeferrable(bool deferrable) {
   return ToYBCStatus(pgapi->SetTransactionDeferrable(deferrable));
 }
 
+void YBCPgSetClampUncertaintyWindow(bool clamp) {
+  return pgapi->SetClampUncertaintyWindow(clamp);
+}
+
 YbcStatus YBCPgSetInTxnBlock(bool in_txn_blk) {
   return ToYBCStatus(pgapi->SetInTxnBlock(in_txn_blk));
 }

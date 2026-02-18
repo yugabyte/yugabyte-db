@@ -7663,8 +7663,9 @@ static struct config_enum ConfigureNamesEnum[] =
 						 " show \"ERROR:  Query error: Restart read required at: ...\". The database"
 						 " attempts to retry on such errors internally but that is not always possible."
 						 " (b) relaxed: With this option, the read-after-commit-visibility guarantee is"
-						 " relaxed. Read only statements/transactions do not see read restart errors but"
-						 " may miss recent updates with staleness bounded by clock skew."
+						 " relaxed. Do not see read restart errors but may miss recent updates with"
+						 " staleness bounded by clock skew. This mode does not apply to"
+						 " serializable isolation level and fast path writes."
 						 " (c) deferred: Defers read point. Higher latency but read-after-commit-visibility"
 						 " guarantee is maintained."
 			),

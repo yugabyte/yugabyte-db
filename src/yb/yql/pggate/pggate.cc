@@ -2084,6 +2084,10 @@ Status PgApiImpl::SetTransactionDeferrable(bool deferrable) {
   return pg_txn_manager_->SetDeferrable(deferrable);
 }
 
+void PgApiImpl::SetClampUncertaintyWindow(bool clamp) {
+  pg_txn_manager_->SetClampUncertaintyWindow(clamp);
+}
+
 Status PgApiImpl::SetInTxnBlock(bool in_txn_blk) {
   return pg_txn_manager_->SetInTxnBlock(in_txn_blk);
 }

@@ -159,6 +159,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   bool IsTableLockingEnabledForCurrentTxn() const;
   bool ShouldEnableTableLocking() const;
 
+  void SetClampUncertaintyWindow(bool clamp) { clamp_uncertainty_window_ = clamp; }
+
  private:
   class SerialNo {
    public:
@@ -269,6 +271,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   std::unordered_map<YbcReadPointHandle, uint64_t> explicit_snapshot_read_time_;
   bool is_read_time_history_cutoff_disabled_{false};
+  bool clamp_uncertainty_window_{false};
 
 #ifndef NDEBUG
  public:
