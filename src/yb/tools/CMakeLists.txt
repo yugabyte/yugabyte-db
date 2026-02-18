@@ -160,10 +160,20 @@ target_link_libraries(yb-bulk_load
   yb-generate_partitions
 )
 
-add_executable(yb-pbc-dump pbc-dump.cc)
-target_link_libraries(yb-pbc-dump
+add_library(pbc_tools_lib pbc_tools_lib.cc)
+target_link_libraries(pbc_tools_lib
   ${LINK_LIBS}
   encryption
+)
+
+add_executable(yb-pbc-dump pbc-dump.cc)
+target_link_libraries(yb-pbc-dump
+  pbc_tools_lib
+)
+
+add_executable(yb-pbc-write pbc-write.cc)
+target_link_libraries(yb-pbc-write
+  pbc_tools_lib
 )
 
 add_library(admin-test-base admin-test-base.cc)
@@ -225,6 +235,7 @@ ADD_YB_TEST(yb-admin-snapshot-test)
 ADD_YB_TEST(yb-admin-xcluster-test)
 ADD_YB_TEST(yb-admin_client-test)
 ADD_YB_TEST(yb-admin-are-nodes-safe-test)
+ADD_YB_TEST(pbc_tools_test)
 
 add_executable(run-with-timeout run-with-timeout.cc)
 target_link_libraries(run-with-timeout yb_util)
