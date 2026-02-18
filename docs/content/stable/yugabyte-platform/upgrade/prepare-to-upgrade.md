@@ -19,9 +19,7 @@ For information on upgrading universes, refer to [Upgrade the YugabyteDB softwar
 
 YugabyteDB Anywhere v2025.2 has the following prerequisites that, if not satisfied, will prevent you from upgrading:
 
-- cron-based universes are not supported.
-
-  If you are running YugabyteDB Anywhere v2024.2.7 or earlier, before you can upgrade to v2025.2 or later, you should first upgrade to v2024.2.8 or later and update your universes to systemd. See [Cron-based universes](#cron-based-universes).
+- cron-based universes are not supported. You must first update any cron-based universes to systemd. See [Cron-based universes](#cron-based-universes).
 
 - Universes must be running node agent. See [Node agent](#node-agent).
 
@@ -80,7 +78,7 @@ What action you take will depend on the type of provider used to create a univer
 
 ## Node agent
 
-YugabyteDB Anywhere v2025.2 and later require universes have node agent running on their nodes. Before you will be able to upgrade to v2025.2 or later, all your universes must be using node agent. (Note that this does not apply to universes deployed on Kubernetes.)
+YugabyteDB Anywhere v2025.2 and later require universes have node agent running on their nodes. Before you can upgrade to v2025.2 or later, all your universes must be using node agent. (Note that this does not apply to universes deployed on Kubernetes.)
 
 If any universe nodes require an update to node agent, YugabyteDB Anywhere displays a banner on the **Dashboard** to that effect.
 
