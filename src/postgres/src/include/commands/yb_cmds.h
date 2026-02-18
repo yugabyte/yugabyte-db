@@ -131,6 +131,9 @@ extern void YBCCreateReplicationSlot(const char *slot_name,
 									 YbCRSLsnType lsn_type,
 									 YbCRSOrderingMode yb_ordering_mode);
 
+extern void YBCListSlotEntries(YbcSlotEntryDescriptor **slot_entries,
+							   size_t *num_slot_entries);
+
 extern void YBCListReplicationSlots(YbcReplicationSlotDescriptor **replication_slots,
 									size_t *numreplicationslots);
 

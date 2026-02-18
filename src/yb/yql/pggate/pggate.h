@@ -819,6 +819,8 @@ class PgApiImpl {
   Result<tserver::PgCreateReplicationSlotResponsePB> ExecCreateReplicationSlot(
       PgStatement *handle);
 
+  Result<tserver::PgListSlotEntriesResponsePB> ListSlotEntries();
+
   Result<tserver::PgListReplicationSlotsResponsePB> ListReplicationSlots();
 
   Result<tserver::PgGetReplicationSlotResponsePB> GetReplicationSlot(

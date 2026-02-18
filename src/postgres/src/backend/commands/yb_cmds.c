@@ -2283,6 +2283,13 @@ YBCCreateReplicationSlot(const char *slot_name,
 }
 
 void
+YBCListSlotEntries(YbcSlotEntryDescriptor **slot_entries,
+				   size_t *num_slot_entries)
+{
+	HandleYBStatus(YBCPgListSlotEntries(slot_entries, num_slot_entries));
+}
+
+void
 YBCListReplicationSlots(YbcReplicationSlotDescriptor **replication_slots,
 						size_t *numreplicationslots)
 {

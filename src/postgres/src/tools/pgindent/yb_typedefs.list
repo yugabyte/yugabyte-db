@@ -296,6 +296,7 @@ YbcSamplingAlgorithmEnum
 YbcServerDescriptor
 YbcSliceSet
 YbcSliceVector
+YbcSlotEntryDescriptor
 YbcStatus
 YbcTableProperties
 YbcTablePropertiesData

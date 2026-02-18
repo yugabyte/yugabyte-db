@@ -314,6 +314,8 @@ class PgClient {
   Result<tserver::PgCreateReplicationSlotResponsePB> CreateReplicationSlot(
       tserver::PgCreateReplicationSlotRequestPB* req, CoarseTimePoint deadline);
 
+  Result<tserver::PgListSlotEntriesResponsePB> ListSlotEntries();
+
   Result<tserver::PgListReplicationSlotsResponsePB> ListReplicationSlots();
 
   Result<tserver::PgGetReplicationSlotResponsePB> GetReplicationSlot(

@@ -1548,6 +1548,58 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     return Status::OK();
   }
 
+  Status ListSlotEntries(
+      const PgListSlotEntriesRequestPB& req, PgListSlotEntriesResponsePB* resp,
+      rpc::RpcContext* context) {
+    Status iteration_status;
+    auto range_result = VERIFY_RESULT(cdc_state_table_->GetTableRange(
+        cdc::CDCStateTableEntrySelector()
+            .IncludeConfirmedFlushLSN()
+            .IncludeRestartLSN()
+            .IncludeXmin()
+            .IncludeRecordIdCommitTime()
+            .IncludeLastPubRefreshTime()
+            .IncludeActivePid(),
+        &iteration_status));
+
+    for (const auto& entry_result : range_result) {
+      RETURN_NOT_OK(entry_result);
+      const auto& entry = *entry_result;
+      if (entry.key.tablet_id != kCDCSDKSlotEntryTabletId) {
+        continue;
+      }
+      RSTATUS_DCHECK(
+          entry.confirmed_flush_lsn.has_value(), IllegalState,
+          "Slot entry for stream $0 does not have confirmed flush LSN", entry.key.stream_id);
+      RSTATUS_DCHECK(
+          entry.restart_lsn.has_value(), IllegalState,
+          "Slot entry for stream $0 does not have restart LSN", entry.key.stream_id);
+      RSTATUS_DCHECK(
+          entry.xmin.has_value(), IllegalState, "Slot entry for stream $0 does not have xmin",
+          entry.key.stream_id);
+      RSTATUS_DCHECK(
+          entry.record_id_commit_time.has_value(), IllegalState,
+          "Slot entry for stream $0 does not have record id commit time", entry.key.stream_id);
+      RSTATUS_DCHECK(
+          entry.last_pub_refresh_time.has_value(), IllegalState,
+          "Slot entry for stream $0 does not have last pub refresh time", entry.key.stream_id);
+      RSTATUS_DCHECK(
+          entry.active_pid.has_value(), IllegalState,
+          "Slot entry for stream $0 does not have active pid", entry.key.stream_id);
+
+      auto slot_entry = resp->add_slot_entries();
+      slot_entry->set_stream_id(entry.key.stream_id.ToString());
+      slot_entry->set_confirmed_flush_lsn(entry.confirmed_flush_lsn.value());
+      slot_entry->set_restart_lsn(entry.restart_lsn.value());
+      slot_entry->set_xmin(entry.xmin.value());
+      slot_entry->set_record_id_commit_time_ht(entry.record_id_commit_time.value());
+      slot_entry->set_last_pub_refresh_time(entry.last_pub_refresh_time.value());
+      slot_entry->set_active_pid(entry.active_pid.value());
+    }
+
+    return Status::OK();
+  }
+
   Status ListReplicationSlots(
       const PgListReplicationSlotsRequestPB& req, PgListReplicationSlotsResponsePB* resp,
       rpc::RpcContext* context) {

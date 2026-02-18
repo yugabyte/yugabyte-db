@@ -1544,6 +1544,16 @@ class PgClient::Impl : public BigDataFetcher {
     return resp;
   }
 
+  Result<tserver::PgListSlotEntriesResponsePB> ListSlotEntries() {
+    tserver::PgListSlotEntriesRequestPB req;
+    tserver::PgListSlotEntriesResponsePB resp;
+
+    RETURN_NOT_OK(DoSyncRPC(&tserver::PgClientServiceProxy::ListSlotEntries,
+        req, resp, ash::PggateRPC::kListSlotEntries));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp;
+  }
+
   Result<tserver::PgListReplicationSlotsResponsePB> ListReplicationSlots() {
     tserver::PgListReplicationSlotsRequestPB req;
     tserver::PgListReplicationSlotsResponsePB resp;
@@ -2163,6 +2173,10 @@ Status PgClient::CancelTransaction(const unsigned char* transaction_id) {
 Result<tserver::PgCreateReplicationSlotResponsePB> PgClient::CreateReplicationSlot(
     tserver::PgCreateReplicationSlotRequestPB* req, CoarseTimePoint deadline) {
   return impl_->CreateReplicationSlot(req, deadline);
+}
+
+Result<tserver::PgListSlotEntriesResponsePB> PgClient::ListSlotEntries() {
+  return impl_->ListSlotEntries();
 }
 
 Result<tserver::PgListReplicationSlotsResponsePB> PgClient::ListReplicationSlots() {

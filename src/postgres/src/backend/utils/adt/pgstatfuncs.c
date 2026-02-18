@@ -653,9 +653,6 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 
 	YbcPgSessionTxnInfo *txn_infos = NULL;
 
-	YbcReplicationSlotDescriptor *yb_replication_slots = NULL;
-	size_t		yb_numreplicationslots = 0;
-
 	if (YBIsEnabledInPostgresEnvVar() && yb_enable_pg_locks)
 	{
 		txn_infos = (YbcPgSessionTxnInfo *)
@@ -672,9 +669,6 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 		yb_txn_rpc_timestamp = GetCurrentTimestamp();
 		HandleYBStatus(YBCPgActiveTransactions(txn_infos, num_backends));
 	}
-
-	if (IsYugaByteEnabled())
-		YBCListReplicationSlots(&yb_replication_slots, &yb_numreplicationslots);
 
 	/* 1-based index */
 	for (curr_backend = 1; curr_backend <= num_backends; curr_backend++)
@@ -746,21 +740,6 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 			values[16] = TransactionIdGetDatum(local_beentry->backend_xmin);
 		else
 			nulls[16] = true;
-
-		if (IsYugaByteEnabled())
-		{
-			int slotno;
-			for (slotno = 0; slotno < yb_numreplicationslots; slotno++)
-			{
-				YbcReplicationSlotDescriptor *slot = &yb_replication_slots[slotno];
-				if (slot->active_pid == beentry->st_procpid)
-				{
-					values[16] = slot->xmin;
-					nulls[16]  = false;
-					break;
-				}
-			}
-		}
 
 		/* Values only available to role member or pg_read_all_stats */
 		if (HAS_PGSTAT_PERMISSIONS(beentry->st_userid))
