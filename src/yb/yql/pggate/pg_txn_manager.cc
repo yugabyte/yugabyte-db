@@ -866,8 +866,10 @@ YbcReadPointHandle PgTxnManager::GetCurrentReadPoint() const {
   return serial_no_.read_time();
 }
 
-YbcReadPointHandle PgTxnManager::GetMaxReadPoint() const {
-  return serial_no_.max_read_time();
+YbcReadPointHandle PgTxnManager::GetMaxReadPoint() const { return serial_no_.max_read_time(); }
+
+TxnReadPoint PgTxnManager::GetCurrentReadPointState() const {
+  return TxnReadPoint{serial_no_.txn(), serial_no_.read_time()};
 }
 
 Status PgTxnManager::RestoreReadPoint(YbcReadPointHandle read_point) {
@@ -877,6 +879,18 @@ Status PgTxnManager::RestoreReadPoint(YbcReadPointHandle read_point) {
               << " for txn serial number: " << serial_no_.txn();
   }
   return serial_no_.RestoreReadTime(read_point);
+}
+
+Status PgTxnManager::RestoreReadPoint(const TxnReadPoint& saved_read_point) {
+  // Only restore if the current txn matches the saved
+  if (serial_no_.txn() != saved_read_point.txn) {
+    if (VLOG_IS_ON(2) || yb_debug_log_snapshot_mgmt) {
+      LOG(INFO) << "Skipping RestoreReadPoint: saved txn " << saved_read_point.txn
+                << " but current is " << serial_no_.txn();
+    }
+    return Status::OK();
+  }
+  return RestoreReadPoint(saved_read_point.read_time_serial_no);
 }
 
 Result<YbcReadPointHandle> PgTxnManager::RegisterSnapshotReadTime(
