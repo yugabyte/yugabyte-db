@@ -18,6 +18,10 @@ YugabyteDB Anywhere is a control plane used to deploy and manage YugabyteDB data
 Don't install YugabyteDB Anywhere on servers that you will use for database clusters, and vice-versa.
 {{< /warning >}}
 
+{{< warning title="Antivirus and endpoint scanning" >}}
+Antivirus and endpoint scanning software can potentially impact the operation of YugabyteDB Anywhere and the universes it manages. Refer to [Antivirus and endpoint scanning](../../faq/antivirus/) for recommendations on using antivirus and endpoint scanning tools.
+{{< /warning >}}
+
 {{< tip title="Track your progress" >}}
 To track your progress while you prepare your infrastructure, you can use the following checklists:
 
