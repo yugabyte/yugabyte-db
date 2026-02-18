@@ -11,6 +11,13 @@ export const getClusterAuditLogConfig = (cluster: Cluster) =>
   cluster.userIntent.auditLogConfig?.universeLogsExporterConfig?.[0];
 
 /**
+ * Although we support more than one universe query log exporter config from the backend,
+ * the designed UI for YBA supports only a single query log exporter config per universe.
+ */
+export const getClusterQueryLogConfig = (cluster: Cluster) =>
+  cluster.userIntent.queryLogConfig?.universeLogsExporterConfig?.[0];
+
+/**
  * Although we support more than one universe metrics exporter config from the backend,
  * the designed UI for YBA supports only a single metrics exporter config per universe.
  */
@@ -79,7 +86,8 @@ export const getLinkedUniverses = (
 
       if (
         primaryCluster &&
-        getClusterAuditLogConfig(primaryCluster)?.exporterUuid === exporterUuid
+        (getClusterAuditLogConfig(primaryCluster)?.exporterUuid === exporterUuid ||
+          getClusterQueryLogConfig(primaryCluster)?.exporterUuid === exporterUuid)
       ) {
         linkedUniverses.universesWithLogExporter.push(universe);
       }
