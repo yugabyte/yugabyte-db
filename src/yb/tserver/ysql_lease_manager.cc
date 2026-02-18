@@ -108,20 +108,26 @@ YSQLLeaseManager::Impl::Impl(TabletServer& server)
 Status YSQLLeaseManager::Impl::ProcessLeaseUpdate(
     const master::RefreshYsqlLeaseInfoPB& lease_refresh_info) {
   VLOG(2) << __func__;
-  // We hold lease_toggle_lock_ for function scope to sychronize with the lease checker.
-  // We do not hold lock_ for function scope so that RPCs are not blocked for too long.
-  MutexLock l(lease_toggle_lock_);
-  lease_expiry_time_ =
-      CoarseTimePoint{std::chrono::milliseconds(lease_refresh_info.lease_expiry_time_ms())};
-  if (lease_expiry_time_ < CoarseMonoClock::Now()) {
+  CoarseTimePoint new_lease_expiry_time{
+      std::chrono::milliseconds(lease_refresh_info.lease_expiry_time_ms())};
+  if (new_lease_expiry_time < CoarseMonoClock::Now()) {
     // This function is passed the timestamp from before the RefreshYsqlLeaseRpc is sent.  So it
     // is possible the RPC takes longer than the lease TTL the master gave us, in which case
     // this tserver still does not have a live lease.
     return Status::OK();
   }
-  bool restart_pg = false;
+  MutexLock l(lease_toggle_lock_);
+  // We hold lease_toggle_lock_ for function scope to sychronize with the lease checker.
+  // We do not hold lock_ for function scope so that RPCs are not blocked for too long.
+  bool restart_pg{false};
   {
     std::lock_guard lock(lock_);
+    if (!lease_is_live_ && !lease_refresh_info.new_lease()) {
+      // We should not keep using this lease if we thought it has expired. Ignore the master's
+      // refresh. The master leader should give us a new lease epoch when we send the next request.
+      return STATUS(
+          IllegalState, "Master refreshed ysql lease but it has expired. Ignoring lease refresh.");
+    }
     if (!lease_is_live_ || lease_refresh_info.new_lease() ||
         lease_epoch_ != lease_refresh_info.lease_epoch()) {
       LOG_IF(
@@ -129,12 +135,9 @@ Status YSQLLeaseManager::Impl::ProcessLeaseUpdate(
           << Format(
                  "Received new lease epoch $0 from the master leader. Clearing all pg sessions.",
                  lease_refresh_info.lease_epoch());
-      LOG_IF(INFO, !lease_refresh_info.new_lease() && !lease_is_live_) << Format(
-          "Master leader refreshed our lease for epoch $0. We thought this lease had "
-          "expired but it hadn't. Restarting pg.",
-          lease_epoch_);
       restart_pg = true;
     }
+    lease_expiry_time_ = new_lease_expiry_time;
     lease_is_live_ = true;
     lease_epoch_ = lease_refresh_info.lease_epoch();
   }
