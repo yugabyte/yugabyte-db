@@ -154,6 +154,7 @@ public class ConfKeysTest extends FakeDBApplication {
         ImmutableSet.of(
             ConfDataType.StringListType,
             ConfDataType.StringType,
+            ConfDataType.RawStringType,
             ConfDataType.TagListType,
             ConfDataType.IntegerListType);
 
