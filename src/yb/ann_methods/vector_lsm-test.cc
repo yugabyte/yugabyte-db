@@ -789,6 +789,7 @@ void VectorLSMTest::TestBackgroundCompactionSizeRatio(bool test_metrics) {
 
   if (test_metrics) {
     ASSERT_EQ(lsm.metrics().compact_write_bytes->value(), 0);
+    ASSERT_EQ(lsm.metrics().compact_read_bytes->value(), 0);
   }
 
   // Insert the last min chunk to trigger background compaction.
@@ -803,6 +804,7 @@ void VectorLSMTest::TestBackgroundCompactionSizeRatio(bool test_metrics) {
   if (test_metrics) {
     // The write metric should be incremented by the size of the new chunk created by compaction.
     ASSERT_EQ(lsm.metrics().compact_write_bytes->value(), lsm.TEST_LatestChunkSize());
+    ASSERT_GT(lsm.metrics().compact_read_bytes->value(), 0);
   } else {
     // Check expected files after the compaction.
     expected_files.str({});
@@ -869,10 +871,12 @@ TEST_P(VectorLSMTest, SimpleCompactionMetrics) {
   ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kDefaultChunkSize));
   ASSERT_EQ(0, lsm.TEST_NextManifestFileNo());
   ASSERT_EQ(lsm.metrics().compact_write_bytes->value(), 0);
+  ASSERT_EQ(lsm.metrics().compact_read_bytes->value(), 0);
 
   // Empty compaction, write metric remains unchanged.
   ASSERT_OK(lsm.Compact(/* wait = */ true));
   ASSERT_EQ(lsm.metrics().compact_write_bytes->value(), 0);
+  ASSERT_EQ(lsm.metrics().compact_read_bytes->value(), 0);
 
   // Insert 1 batch of entries to create 1 chunk file.
   ASSERT_OK(InsertRandomAndFlush(lsm, kDimensions, kNumEntriesPerChunk));
@@ -880,16 +884,22 @@ TEST_P(VectorLSMTest, SimpleCompactionMetrics) {
   ASSERT_EQ(1, lsm.NumImmutableChunks());
 
   // Compact single file into a single file, write metric increases by size of new chunk file.
+  // The single input chunk is read during compaction.
+  auto compaction_reads = lsm.TEST_LatestChunkSize();
   ASSERT_OK(lsm.Compact(/* wait = */ true));
   ASSERT_EQ(1, lsm.NumImmutableChunks());
   auto compaction_writes = lsm.TEST_LatestChunkSize();
   ASSERT_EQ(lsm.metrics().compact_write_bytes->value(), compaction_writes);
+  ASSERT_EQ(lsm.metrics().compact_read_bytes->value(), compaction_reads);
 
   // Insert 5 more batches for a total of 6 chunk files.
+  // Track input sizes: the compacted chunk from the 1st compaction is now an input to the 2nd.
   constexpr size_t kNumChunks = 6;
+  compaction_reads += compaction_writes;
   for (size_t i = 1; i < kNumChunks; ++i) {
     ASSERT_OK(InsertRandomAndFlush(lsm, kDimensions, kNumEntriesPerChunk));
     ASSERT_EQ(kNumEntriesPerChunk, inserted_entries_.size());
+    compaction_reads += lsm.TEST_LatestChunkSize();
   }
   ASSERT_EQ(kNumChunks, lsm.NumImmutableChunks());
 
@@ -898,6 +908,7 @@ TEST_P(VectorLSMTest, SimpleCompactionMetrics) {
   ASSERT_EQ(1, lsm.NumImmutableChunks());
   compaction_writes += lsm.TEST_LatestChunkSize();
   ASSERT_EQ(lsm.metrics().compact_write_bytes->value(), compaction_writes);
+  ASSERT_EQ(lsm.metrics().compact_read_bytes->value(), compaction_reads);
 }
 
 void VectorLSMTest::TestBootstrap(bool flush) {

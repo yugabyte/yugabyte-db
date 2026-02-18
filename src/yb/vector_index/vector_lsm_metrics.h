@@ -21,6 +21,7 @@ struct VectorLSMMetrics {
   explicit VectorLSMMetrics(const MetricEntityPtr& entity);
 
   CounterPtr compact_write_bytes;
+  CounterPtr compact_read_bytes;
   EventStatsPtr num_chunks;
   EventStatsPtr total_found_entries;
   EventStatsPtr insert_registry_entries;
