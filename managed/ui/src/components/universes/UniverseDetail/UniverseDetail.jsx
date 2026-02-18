@@ -60,7 +60,8 @@ import { EditConnectionPoolModal } from '../../../redesign/features/universe/uni
 import { EditGflagsModal } from '../../../redesign/features/universe/universe-actions/edit-gflags/EditGflags';
 import { EditUniverse } from '@app/redesign/features-v2/universe/edit-universe';
 import { UpgradeLinuxVersionModal } from '../../configRedesign/providerRedesign/components/linuxVersionCatalog/UpgradeLinuxVersionModal';
-import { DBUpgradeModal } from '../../../redesign/features/universe/universe-actions/rollback-upgrade/DBUpgradeModal';
+import { DBUpgradeModal as LegacyDbUpgradeModal } from '../../../redesign/features/universe/universe-actions/rollback-upgrade/DBUpgradeModal';
+import { DbUpgradeModal } from '@app/redesign/features/universe/universe-actions/software-upgrade/DbUpgradeModal';
 import { DBRollbackModal } from '../../../redesign/features/universe/universe-actions/rollback-upgrade/DBRollbackModal';
 import { ReplicationSlotTable } from '../../../redesign/features/universe/universe-tabs/replication-slots/ReplicationSlotTable';
 import { AuditLog } from '../../../redesign/features/universe/universe-tabs/db-audit-logs/AuditLog';
@@ -307,8 +308,8 @@ class UniverseDetail extends Component {
   };
 
   isUniverseDeleting = () => {
-    const updateInProgress = this.props.universe?.currentUniverse?.data?.universeDetails
-      ?.updateInProgress;
+    const updateInProgress =
+      this.props.universe?.currentUniverse?.data?.universeDetails?.updateInProgress;
     const universeUUID = this.props.universe.currentUniverse.data.universeUUID;
     const currentUniverseTasks = this.isCurrentUniverseDeleteTask(universeUUID);
     if (currentUniverseTasks?.length > 0 && updateInProgress) {
@@ -494,6 +495,11 @@ class UniverseDetail extends Component {
     const isRollBackFeatureEnabled =
       runtimeConfigs?.data?.configEntries?.find(
         (c) => c.key === 'yb.upgrade.enable_rollback_support'
+      )?.value === 'true';
+
+    const isCanaryUpgradeEnabled =
+      runtimeConfigs?.data?.configEntries?.find(
+        (c) => c.key === RuntimeConfigKey.ENABLE_CANARY_UPGRADE
       )?.value === 'true';
 
     const isOsPatchingEnabled =
@@ -1789,16 +1795,31 @@ class UniverseDetail extends Component {
           }}
           universeData={currentUniverse.data}
         />
-
-        <DBUpgradeModal
-          open={showModal && visibleModal === 'softwareUpgradesNewModal'}
-          onClose={() => {
-            closeModal();
-            this.props.fetchCustomerTasks();
-            this.props.getUniverseInfo(currentUniverse.data.universeUUID);
-          }}
-          universeData={currentUniverse.data}
-        />
+        {showModal &&
+          visibleModal === 'softwareUpgradesNewModal' &&
+          (isCanaryUpgradeEnabled ? (
+            <DbUpgradeModal
+              universeData={currentUniverse.data}
+              modalProps={{
+                open: showModal && visibleModal === 'softwareUpgradesNewModal',
+                onClose: () => {
+                  closeModal();
+                  this.props.fetchCustomerTasks();
+                  this.props.getUniverseInfo(currentUniverse.data.universeUUID);
+                }
+              }}
+            />
+          ) : (
+            <LegacyDbUpgradeModal
+              open={showModal && visibleModal === 'softwareUpgradesNewModal'}
+              onClose={() => {
+                closeModal();
+                this.props.fetchCustomerTasks();
+                this.props.getUniverseInfo(currentUniverse.data.universeUUID);
+              }}
+              universeData={currentUniverse.data}
+            />
+          ))}
 
         <DBRollbackModal
           open={showModal && visibleModal === 'rollbackModal'}

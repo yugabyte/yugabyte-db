@@ -88,7 +88,7 @@
     "jsdom": "27.4.0",
     "ncp": "2.0.0",
     "orval": "6.4.1",
-    "prettier": "2.1.0",
+    "prettier": "3.8.1",
     "rimraf": "2.7.1",
     "sass": "1.52.1",
     "source-map-explorer": "2.5.0",
