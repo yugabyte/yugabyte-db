@@ -145,9 +145,6 @@ class CDCSDKTestBase : public YBTest {
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 0;
 
-    // TODO(#23000) Rationalize the tests to run with consistent / non-consistent snapshot streams.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = false;
-
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = true;
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_dcheck_for_missing_schema_packing) = false;
@@ -269,5 +266,5 @@ class CDCSDKTestBase : public YBTest {
 
   PostgresMiniCluster test_cluster_;
 };
-} // namespace cdc
-} // namespace yb
+}  // namespace cdc
+}  // namespace yb
