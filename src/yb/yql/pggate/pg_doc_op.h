@@ -551,6 +551,99 @@ class PgDocResponse {
   std::variant<FutureInfo, ProviderPtr> holder_;
 };
 
+//--------------------------------------------------------------------------------------------------
+// Classes to facilitate IN clause permutations.
+// The input is one or more expressions of following supported types:
+// 1. Single value representing an equality condition
+// 2. A tuple of values representing IN clause condition
+// 3. A tuple of tuples, where the first inner tuple contains column references, and remaining
+//    tuples contain values, representing ROW(<columns>) IN (ROW(values1), ... ROW(valuesN))
+// The facility is initialized by the InPermutationBuilder class. The participating expressions are
+// added to the builder using AddExpression method. Since expressions of type 1. and 2. do not
+// contain column information, the caller must provide the index of the associated column. If the
+// expression is of type 3., the indexes are retrieved from the expression and the index passed in
+// is ignored. The participating expressions may only refer table's key columns, must refer all the
+// hash column and must not refer any column more than once.
+// After all participating expressions are added to the builder, the Build() method initializes and
+// returns the permutations state. Call to Build() invalidates the builder.
+// The InPermutationGenerator class is the core of the permutations state. It tracks the current
+// permutation and provides it as a vector of pointers to the values in the respective expressions.
+// Not referenced indexes in the permutation contain null pointers.
+// The InExpressionWrapper keeps current position in one participating expression and configured to
+// efficiently retrieve current value(s) into the permutation.
+class InExpressionWrapper {
+ public:
+  static InExpressionWrapper Make(
+      const PgTable& table, size_t idx, const LWPgsqlExpressionPB* expr);
+
+  const std::vector<size_t>& Targets() const { return targets_; }
+  size_t Size() const { return values_.size(); }
+
+  bool Next();
+  void GetValues(std::vector<const LWQLValuePB*>* permutation);
+  void ResetPos() { pos_ = 0; }
+
+ private:
+  InExpressionWrapper(
+      std::vector<size_t>&& targets, std::vector<const LWPgsqlExpressionPB*>&& values,
+      void (InExpressionWrapper::*fn)(std::vector<const LWQLValuePB*>*))
+      : pos_(0),
+        targets_(std::move(targets)),
+        values_(std::move(values)),
+        GetValuesFn_(fn) {}
+
+  // GetValues implementations for supported expression types
+  void GetSingleValue(std::vector<const LWQLValuePB*>* permutation);
+  void GetInValue(std::vector<const LWQLValuePB*>* permutation);
+  void GetRowInValues(std::vector<const LWQLValuePB*>* permutation);
+
+  size_t pos_;
+  const std::vector<size_t> targets_;
+  const std::vector<const LWPgsqlExpressionPB*> values_;
+  void (InExpressionWrapper::*GetValuesFn_)(std::vector<const LWQLValuePB*>*);
+};
+
+class InPermutationGenerator {
+ public:
+  InPermutationGenerator(InPermutationGenerator&& other) = default;
+
+  const std::vector<size_t>& Targets() const { return all_targets_; }
+  size_t Size();
+
+  bool HasPermutation() { return !done_; }
+  const std::vector<const LWQLValuePB*>& NextPermutation();
+  void Reset();
+
+ private:
+  friend class InPermutationBuilder;
+  InPermutationGenerator(
+      PgTable& table,
+      std::vector<InExpressionWrapper>&& source_exprs,
+      std::vector<size_t>&& targets);
+  void Next();
+
+  const std::vector<size_t> all_targets_;
+  std::vector<InExpressionWrapper> source_exprs_;
+  std::vector<const LWQLValuePB*> current_permutation_;
+  bool done_ = false;
+  DISALLOW_COPY_AND_ASSIGN(InPermutationGenerator);
+};
+
+class InPermutationBuilder {
+ public:
+  explicit InPermutationBuilder(PgTable& table) : table_(table) {}
+
+  void AddExpression(size_t idx, const LWPgsqlExpressionPB* expr);
+  InPermutationGenerator Build();
+
+ private:
+  bool TargetsAreValid(const std::vector<size_t>& all_targets);
+  PgTable& table_;
+  std::vector<InExpressionWrapper> source_exprs_;
+};
+
+//--------------------------------------------------------------------------------------------------
+
 class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
  public:
   using SharedPtr = std::shared_ptr<PgDocOp>;
@@ -597,7 +690,8 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   // sort keys and conditions on the template requests.
   // Check requests boundaries and discard those that are out of bounds.
   // Returns true if requests are successfully created, false if all are out of bounds.
-  Result<bool> PopulateMergeStreams(MergeSortKeysPtr merge_sort_keys);
+  Result<bool> PopulateMergeStreamRequests(
+      MergeSortKeysPtr merge_sort_keys, PgTable& bind, InPermutationGenerator&& merge_streams);
 
   bool has_out_param_backfill_spec() {
     return !out_param_backfill_spec_.empty();
@@ -627,7 +721,8 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
 
   virtual Status DoPopulateByYbctidOps(const YbctidGenerator& generator, KeepOrder keep_order) = 0;
 
-  virtual Status DoPopulateMergeStreams(MergeSortKeysPtr merge_sort_keys) = 0;
+  virtual Status DoPopulateMergeStreamRequests(
+      MergeSortKeysPtr merge_sort_keys, PgTable& bind, InPermutationGenerator&& merge_streams) = 0;
 
   // Sorts the operators in "pgsql_ops_" to move "inactive" operators to the end of the list.
   void MoveInactiveOpsOutside();
@@ -730,98 +825,6 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   DISALLOW_COPY_AND_ASSIGN(PgDocOp);
 };
 
-//--------------------------------------------------------------------------------------------------
-// Classes to facilitate IN clause permutations.
-// The input is one or more expressions of following supported types:
-// 1. Single value representing an equality condition
-// 2. A tuple of values representing IN clause condition
-// 3. A tuple of tuples, where the first inner tuple contains column references, and remaining
-//    tuples contain values, representing ROW(<columns>) IN (ROW(values1), ... ROW(valuesN))
-// The facility is initialized by the InPermutationBuilder class. The participating expressions are
-// added to the builder using AddExpression method. Since expressions of type 1. and 2. do not
-// contain column information, the caller must provide the index of the associated column. If the
-// expression is of type 3., the indexes are retrieved from the expression and the index passed in
-// is ignored. The participating expressions may only refer table's key columns, must refer all the
-// hash column and must not refer any column more than once.
-// After all participating expressions are added to the builder, the Build() method initializes and
-// returns the permutations state. Call to Build() invalidates the builder.
-// The InPermutationGenerator class is the core of the permutations state. It tracks the current
-// permutation and provides it as a vector of pointers to the values in the respective expressions.
-// Not referenced indexes in the permutation contain null pointers.
-// The InExpressionWrapper keeps current position in one participating expression and configured to
-// efficiently retrieve current value(s) into the permutation.
-class InExpressionWrapper {
- public:
-  static InExpressionWrapper Make(
-      const PgTable& table, size_t idx, const LWPgsqlExpressionPB* expr);
-
-  const std::vector<size_t>& Targets() const { return targets_; }
-  size_t Size() const { return values_.size(); }
-
-  bool Next();
-  void GetValues(std::vector<const LWQLValuePB*>* permutation);
-  void ResetPos() { pos_ = 0; }
-
- private:
-  InExpressionWrapper(
-      std::vector<size_t>&& targets, std::vector<const LWPgsqlExpressionPB*>&& values,
-      void (InExpressionWrapper::*fn)(std::vector<const LWQLValuePB*>*))
-      : pos_(0),
-        targets_(std::move(targets)),
-        values_(std::move(values)),
-        GetValuesFn_(fn) {}
-
-  // GetValues implementations for supported expression types
-  void GetSingleValue(std::vector<const LWQLValuePB*>* permutation);
-  void GetInValue(std::vector<const LWQLValuePB*>* permutation);
-  void GetRowInValues(std::vector<const LWQLValuePB*>* permutation);
-
-  size_t pos_;
-  const std::vector<size_t> targets_;
-  const std::vector<const LWPgsqlExpressionPB*> values_;
-  void (InExpressionWrapper::*GetValuesFn_)(std::vector<const LWQLValuePB*>*);
-};
-
-class InPermutationGenerator {
- public:
-  InPermutationGenerator(InPermutationGenerator&& other) = default;
-
-  const std::vector<size_t>& Targets() const { return all_targets_; }
-  size_t Size();
-
-  bool HasPermutation() { return !done_; }
-  const std::vector<const LWQLValuePB*>& NextPermutation();
-  void Reset();
-
- private:
-  friend class InPermutationBuilder;
-  InPermutationGenerator(
-      PgTable& table,
-      std::vector<InExpressionWrapper>&& source_exprs,
-      std::vector<size_t>&& targets);
-  void Next();
-
-  const std::vector<size_t> all_targets_;
-  std::vector<InExpressionWrapper> source_exprs_;
-  std::vector<const LWQLValuePB*> current_permutation_;
-  bool done_ = false;
-  DISALLOW_COPY_AND_ASSIGN(InPermutationGenerator);
-};
-
-class InPermutationBuilder {
- public:
-  explicit InPermutationBuilder(PgTable& table) : table_(table) {}
-
-  void AddExpression(size_t idx, const LWPgsqlExpressionPB* expr);
-  InPermutationGenerator Build();
-
- private:
-  bool TargetsAreValid(const std::vector<size_t>& all_targets);
-  PgTable& table_;
-  std::vector<InExpressionWrapper> source_exprs_;
-};
-
-//--------------------------------------------------------------------------------------------------
 class PgDocReadOp : public PgDocOp {
  public:
   PgDocReadOp(const PgSession::ScopedRefPtr& pg_session, PgTable* table, PgsqlReadOpPtr read_op);
@@ -837,7 +840,9 @@ class PgDocReadOp : public PgDocOp {
 
   Status DoPopulateByYbctidOps(const YbctidGenerator& generator, KeepOrder keep_order) override;
 
-  Status DoPopulateMergeStreams(MergeSortKeysPtr merge_sort_keys) override;
+  Status DoPopulateMergeStreamRequests(
+      MergeSortKeysPtr merge_sort_keys, PgTable& bind,
+      InPermutationGenerator&& merge_streams) override;
 
   Status ResetPgsqlOps();
 
@@ -874,7 +879,7 @@ class PgDocReadOp : public PgDocOp {
  private:
   // Check request conditions if they allow to limit the scan range
   // Returns true if resulting range is not empty, false otherwise
-  Result<bool> SetScanBounds(LWPgsqlReadRequestPB& request);
+  Result<bool> SetScanBounds(PgTable& table, LWPgsqlReadRequestPB& request);
 
   // Create protobuf requests using template_op_.
   Result<bool> DoCreateRequests() override;
@@ -905,7 +910,7 @@ class PgDocReadOp : public PgDocOp {
   // added as equality conditions to the condition_expr.
   // Performs boundary check, if the request range is empty, returns false
   Result<bool> BindExprsRegular(
-    LWPgsqlReadRequestPB& read_req, const std::vector<const LWQLValuePB*>& values);
+    PgTable& table, LWPgsqlReadRequestPB& read_req, const std::vector<const LWQLValuePB*>& values);
 
   // Binds the given values to the partition defined by hash column values.
   // The partition_batches vector for each partition stores the flag indicating the partition
@@ -1009,7 +1014,9 @@ class PgDocWriteOp : public PgDocOp {
     return Status::OK();
   }
 
-  Status DoPopulateMergeStreams(MergeSortKeysPtr merge_sort_keys) override {
+  Status DoPopulateMergeStreamRequests(
+      MergeSortKeysPtr merge_sort_keys, PgTable& bind,
+      InPermutationGenerator&& merge_streams) override {
     LOG(FATAL) << "Not yet implemented";
     return Status::OK();
   }

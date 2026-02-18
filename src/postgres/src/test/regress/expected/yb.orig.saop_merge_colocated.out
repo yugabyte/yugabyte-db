@@ -1,6 +1,7 @@
 --
 -- See yb_saop_merge_schedule for details about the test.
 --
+\c co
 \getenv abs_srcdir PG_ABS_SRCDIR
 \set filename :abs_srcdir '/data/explainrun_saop_merge.sql'
 \i :filename
@@ -42,8 +43,8 @@
          Output: n, r5, r3, r1, r2, r4
          Storage Filter: (r5n.r1 = ANY ('{0,1,2,3}'::integer[]))
          Storage Table Read Requests: 1
-         Storage Table Read Ops: 6
-         Storage Table Rows Scanned: 21
+         Storage Table Read Ops: 1
+         Storage Table Rows Scanned: 5
 (8 rows)
 
                            QUERY PLAN                            
@@ -54,8 +55,8 @@
          Output: n, r5, r3, r1, r2, r4
          Storage Filter: (r5n.r1 = ANY ('{0,1,2,3}'::integer[]))
          Storage Table Read Requests: 1
-         Storage Table Read Ops: 6
-         Storage Table Rows Scanned: 21
+         Storage Table Read Ops: 1
+         Storage Table Rows Scanned: 5
 (8 rows)
 
 -- No limit
@@ -71,7 +72,7 @@
          Output: n, r5, r3, r1, r2, r4
          Index Cond: (r5n.r1 = ANY ('{0,1,2,3}'::integer[]))
          Storage Table Read Requests: 2
-         Storage Table Read Ops: 8
+         Storage Table Read Ops: 2
          Storage Table Rows Scanned: 1983
 (10 rows)
 
@@ -84,8 +85,8 @@
    Merge Stream Key: r5n.r1
    Merge Streams: 4
    Merge Cond: (r5n.r1 = ANY ('{0,1,2,3}'::integer[]))
-   Storage Table Read Requests: 5
-   Storage Table Read Ops: 8
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 4
    Storage Table Rows Scanned: 1983
 (10 rows)
 
@@ -104,7 +105,7 @@
                Output: n, r5, r3, r1, r2, r4
                Index Cond: (r5n.r1 = ANY ('{0,1,2,3}'::integer[]))
                Storage Table Read Requests: 2
-               Storage Table Read Ops: 8
+               Storage Table Read Ops: 2
                Storage Table Rows Scanned: 1983
 (12 rows)
 
@@ -162,7 +163,7 @@
                Output: n, r5, r3, r1, r2, r4
                Index Cond: (r5n.r1 = ANY ('{0,1,2,3}'::integer[]))
                Storage Table Read Requests: 2
-               Storage Table Read Ops: 8
+               Storage Table Read Ops: 2
                Storage Table Rows Scanned: 1983
 (12 rows)
 
@@ -220,7 +221,7 @@
                Output: n, r5, r3, r1, r2, r4
                Index Cond: (r5n.r1 = ANY ('{0,1,2,3}'::integer[]))
                Storage Table Read Requests: 2
-               Storage Table Read Ops: 8
+               Storage Table Read Ops: 2
                Storage Table Rows Scanned: 1983
 (12 rows)
 
@@ -243,7 +244,7 @@
                Merge Cond: (r5n.r1 = ANY ('{0,1,2,3}'::integer[]))
                Storage Table Read Requests: 2
                Storage Table Read Ops: 8
-               Storage Table Rows Scanned: 1579
+               Storage Table Rows Scanned: 1983
 (18 rows)
 
    n   | r5 | r3 | r1 | r2 | r4 
@@ -279,7 +280,7 @@
                Output: n, r5, r3, r1, r2, r4
                Index Cond: (r5n.r1 = ANY ('{0,1,2,3}'::integer[]))
                Storage Table Read Requests: 2
-               Storage Table Read Ops: 8
+               Storage Table Read Ops: 2
                Storage Table Rows Scanned: 1983
 (12 rows)
 
@@ -302,7 +303,7 @@
                Merge Cond: (r5n.r1 = ANY ('{0,1,2,3}'::integer[]))
                Storage Table Read Requests: 2
                Storage Table Read Ops: 8
-               Storage Table Rows Scanned: 1860
+               Storage Table Rows Scanned: 1983
 (18 rows)
 
    n   | r5 | r3 | r1 | r2 | r4 
@@ -338,7 +339,7 @@
                Output: r5, 1, r5, r2, r3, r4, n
                Index Cond: (r5n.r1 = ANY ('{0,1,2,3}'::integer[]))
                Storage Table Read Requests: 2
-               Storage Table Read Ops: 8
+               Storage Table Read Ops: 2
                Storage Table Rows Scanned: 1983
 (12 rows)
 
@@ -361,7 +362,7 @@
                Merge Cond: (r5n.r1 = ANY ('{0,1,2,3}'::integer[]))
                Storage Table Read Requests: 2
                Storage Table Read Ops: 8
-               Storage Table Rows Scanned: 1860
+               Storage Table Rows Scanned: 1983
 (18 rows)
 
  r5 | ?column? | r5 
@@ -396,13 +397,13 @@
          ->  HashAggregate (actual rows=100 loops=1)
                Output: r2, r3
                Group Key: r5n.r2, r5n.r3
-               ->  Distinct Index Scan using r5n_pkey on public.r5n (actual rows=400 loops=1)
+               ->  Distinct Index Scan using r5n_pkey on public.r5n (actual rows=399 loops=1)
                      Output: r2, r3
                      Index Cond: (r5n.r1 = ANY ('{0,1,2,3}'::integer[]))
                      Distinct Keys: r5n.r1, r5n.r2, r5n.r3
-                     Storage Table Read Requests: 2
-                     Storage Table Read Ops: 8
-                     Storage Table Rows Scanned: 400
+                     Storage Table Read Requests: 1
+                     Storage Table Read Ops: 1
+                     Storage Table Rows Scanned: 399
 (16 rows)
 
                                       QUERY PLAN                                       
@@ -460,7 +461,7 @@
                      Output: r2, r3
                      Index Cond: (r5n.r1 = ANY ('{0,1,2,3}'::integer[]))
                      Storage Table Read Requests: 2
-                     Storage Table Read Ops: 8
+                     Storage Table Read Ops: 2
                      Storage Table Rows Scanned: 1983
 (15 rows)
 
@@ -479,8 +480,8 @@
                Merge Streams: 4
                Merge Cond: (r5n.r1 = ANY ('{0,1,2,3}'::integer[]))
                Storage Table Read Requests: 1
-               Storage Table Read Ops: 5
-               Storage Table Rows Scanned: 1579
+               Storage Table Read Ops: 4
+               Storage Table Rows Scanned: 1983
 (15 rows)
 
  count | r2 | r3 
@@ -518,9 +519,9 @@
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=149 loops=1)
                Output: r1, n, r2, r3
                Index Cond: (r5n.r2 = ANY ('{0,1,2}'::bigint[]))
-               Storage Table Read Requests: 3
-               Storage Table Read Ops: 3
-               Storage Table Rows Scanned: 291
+               Storage Table Read Requests: 2
+               Storage Table Read Ops: 2
+               Storage Table Rows Scanned: 1029
 (14 rows)
 
                                   QUERY PLAN                                   
@@ -536,9 +537,9 @@
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=149 loops=1)
                Output: r1, n, r2, r3
                Index Cond: (r5n.r2 = ANY ('{0,1,2}'::bigint[]))
-               Storage Table Read Requests: 3
-               Storage Table Read Ops: 3
-               Storage Table Rows Scanned: 291
+               Storage Table Read Requests: 2
+               Storage Table Read Ops: 2
+               Storage Table Rows Scanned: 1029
 (14 rows)
 
 -- _, IN, sort...
@@ -556,8 +557,8 @@
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=1539 loops=1)
                Output: r3, r4, r5, n, r2, r1
                Index Cond: (r5n.r2 = ANY ('{0,1,2}'::bigint[]))
-               Storage Table Read Requests: 3
-               Storage Table Read Ops: 9
+               Storage Table Read Requests: 2
+               Storage Table Read Ops: 2
                Storage Table Rows Scanned: 1539
 (12 rows)
 
@@ -572,8 +573,8 @@
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=1539 loops=1)
                Output: r3, r4, r5, n, r2, r1
                Index Cond: (r5n.r2 = ANY ('{0,1,2}'::bigint[]))
-               Storage Table Read Requests: 3
-               Storage Table Read Ops: 9
+               Storage Table Read Requests: 2
+               Storage Table Read Ops: 2
                Storage Table Rows Scanned: 1539
 (12 rows)
 
@@ -592,7 +593,7 @@
                Output: r2, r4, r5, n, r1, r3
                Index Cond: (r5n.r1 = ANY ('{0,1,2}'::integer[]))
                Storage Table Read Requests: 2
-               Storage Table Read Ops: 7
+               Storage Table Read Ops: 2
                Storage Table Rows Scanned: 1489
 (12 rows)
 
@@ -615,7 +616,7 @@
                Merge Cond: (r5n.r1 = ANY ('{0,1,2}'::integer[]))
                Storage Table Read Requests: 2
                Storage Table Read Ops: 6
-               Storage Table Rows Scanned: 1085
+               Storage Table Rows Scanned: 1489
 (18 rows)
 
  r2 | r4 | r5 |   n   | r1 | r3 
@@ -650,8 +651,8 @@
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=445 loops=1)
                Output: r3, r4, r5, n, r1, r2
                Index Cond: ((r5n.r1 = ANY ('{0,1,2}'::integer[])) AND (r5n.r2 = ANY ('{3,4,5}'::bigint[])))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 7
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 1
                Storage Table Rows Scanned: 445
 (12 rows)
 
@@ -712,7 +713,7 @@
                Index Cond: ((r5n.r1 = ANY ('{0,2,4,6,8}'::integer[])) AND (r5n.r1 = 2))
                Storage Table Read Requests: 2
                Storage Table Read Ops: 2
-               Storage Table Rows Scanned: 116
+               Storage Table Rows Scanned: 520
 (13 rows)
 
                                        QUERY PLAN                                       
@@ -729,7 +730,7 @@
                Index Cond: ((r5n.r1 = ANY ('{0,2,4,6,8}'::integer[])) AND (r5n.r1 = 2))
                Storage Table Read Requests: 2
                Storage Table Read Ops: 2
-               Storage Table Rows Scanned: 116
+               Storage Table Rows Scanned: 520
 (13 rows)
 
  r1 | r2 | r3 | r4 | r5 |   n   
@@ -764,8 +765,8 @@
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=170 loops=1)
                Output: r2, r4, r5, n, r1, r3
                Index Cond: ((r5n.r1 = ANY ('{1,2,3,4}'::integer[])) AND (r5n.r2 = ANY ('{1,9}'::bigint[])) AND (r5n.r3 = ANY ('{5,6,7,8}'::integer[])))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 7
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 1
                Storage Table Rows Scanned: 170
 (12 rows)
 
@@ -822,8 +823,8 @@
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=88 loops=1)
                Output: r2, r4, r5, n, r1, r3
                Index Cond: ((r5n.r1 = ANY ('{1,2,3,4}'::integer[])) AND (r5n.r2 = 7) AND (r5n.r3 = ANY ('{5,6,7,8}'::integer[])))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 7
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 1
                Storage Table Rows Scanned: 88
 (12 rows)
 
@@ -880,8 +881,8 @@
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=88 loops=1)
                Output: r2, r4, r5, n, r1, r3
                Index Cond: ((r5n.r1 = ANY ('{1,2,3,4}'::integer[])) AND (r5n.r2 = 7) AND (r5n.r3 = ANY ('{5,6,7,8}'::integer[])))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 7
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 1
                Storage Table Rows Scanned: 88
 (12 rows)
 
@@ -938,8 +939,8 @@
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=88 loops=1)
                Output: r2, r4, r5, n, r1, r3
                Index Cond: ((r5n.r1 = ANY ('{1,2,3,4}'::integer[])) AND (r5n.r2 = 7) AND (r5n.r3 = ANY ('{5,6,7,8}'::integer[])))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 7
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 1
                Storage Table Rows Scanned: 88
 (12 rows)
 
@@ -996,8 +997,8 @@
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=88 loops=1)
                Output: r2, r3, r4, r5, n, r1
                Index Cond: ((r5n.r1 = ANY ('{1,2,3,4}'::integer[])) AND (r5n.r2 = 7) AND (r5n.r3 = ANY ('{5,6,7,8}'::integer[])))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 7
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 1
                Storage Table Rows Scanned: 88
 (12 rows)
 
@@ -1054,8 +1055,8 @@
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=338 loops=1)
                Output: r2, r3, r4, r5, n, r1
                Index Cond: ((r5n.r1 = ANY ('{0,1,2,3,4,5,6}'::integer[])) AND (r5n.r2 = ANY ('{0,1,2}'::bigint[])) AND (r5n.r2 = ANY ('{1,2,3}'::bigint[])) AND (r5n.r2 = 2))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 8
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 1
                Storage Table Rows Scanned: 338
 (12 rows)
 
@@ -1113,7 +1114,7 @@
                Output: r1, r3, r4, r5, n, r2
                Index Cond: ((r5n.r1 = ANY ('{0,1,2}'::integer[])) AND (r5n.r1 = ANY ('{1,2,3}'::integer[])) AND (r5n.r1 = 2) AND (r5n.r2 = ANY ('{0,1,2,3,4,5,6}'::bigint[])))
                Storage Table Read Requests: 1
-               Storage Table Read Ops: 5
+               Storage Table Read Ops: 1
                Storage Table Rows Scanned: 364
 (12 rows)
 
@@ -1292,7 +1293,7 @@
                Index Cond: ((r5n.r1 > 1) AND (r5n.r1 = ANY ('{0,2,4,6,8}'::integer[])) AND (r5n.r1 < 7))
                Rows Removed by Index Recheck: 1014
                Storage Table Read Requests: 3
-               Storage Table Read Ops: 9
+               Storage Table Read Ops: 3
                Storage Table Rows Scanned: 2560
 (13 rows)
 
@@ -1352,7 +1353,7 @@
                Output: r2, r3, r4, r5, n, r1
                Storage Filter: (r5n.r1 <> ALL ('{0,2,4,6,8}'::integer[]))
                Storage Table Read Requests: 3
-               Storage Table Read Ops: 9
+               Storage Table Read Ops: 3
                Storage Table Rows Scanned: 5048
 (12 rows)
 
@@ -1368,7 +1369,7 @@
                Output: r2, r3, r4, r5, n, r1
                Storage Filter: (r5n.r1 <> ALL ('{0,2,4,6,8}'::integer[]))
                Storage Table Read Requests: 3
-               Storage Table Read Ops: 9
+               Storage Table Read Ops: 3
                Storage Table Rows Scanned: 5048
 (12 rows)
 
@@ -1387,7 +1388,7 @@
                Output: r2, r3, r4, r5, n, r1
                Index Cond: (r5n.r1 = ANY ('{{{0},{2}},{{4},{6}},{{8},{10}}}'::integer[]))
                Storage Table Read Requests: 3
-               Storage Table Read Ops: 9
+               Storage Table Read Ops: 3
                Storage Table Rows Scanned: 2560
 (12 rows)
 
@@ -1447,7 +1448,7 @@
                Index Cond: (r5n.r1 > ANY ('{0,2,4,6,8}'::integer[]))
                Rows Removed by Index Recheck: 477
                Storage Table Read Requests: 5
-               Storage Table Read Ops: 11
+               Storage Table Read Ops: 5
                Storage Table Rows Scanned: 5048
 (13 rows)
 
@@ -1464,7 +1465,7 @@
                Index Cond: (r5n.r1 > ANY ('{0,2,4,6,8}'::integer[]))
                Rows Removed by Index Recheck: 477
                Storage Table Read Requests: 5
-               Storage Table Read Ops: 11
+               Storage Table Read Ops: 5
                Storage Table Rows Scanned: 5048
 (13 rows)
 
@@ -1483,8 +1484,8 @@
          ->  Seq Scan on public.r5n (actual rows=1034 loops=1)
                Output: r2, r3, r4, r5, n, r1
                Storage Filter: (r5n.r1 >= ALL ('{0,2,4,6,8}'::integer[]))
-               Storage Table Read Requests: 3
-               Storage Table Read Ops: 9
+               Storage Table Read Requests: 2
+               Storage Table Read Ops: 2
                Storage Table Rows Scanned: 5048
 (12 rows)
 
@@ -1499,8 +1500,8 @@
          ->  Seq Scan on public.r5n (actual rows=1034 loops=1)
                Output: r2, r3, r4, r5, n, r1
                Storage Filter: (r5n.r1 >= ALL ('{0,2,4,6,8}'::integer[]))
-               Storage Table Read Requests: 3
-               Storage Table Read Ops: 9
+               Storage Table Read Requests: 2
+               Storage Table Read Ops: 2
                Storage Table Rows Scanned: 5048
 (12 rows)
 
@@ -1518,8 +1519,8 @@
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=302 loops=1)
                Output: r3, r2, r4, n, r1
                Index Cond: ((r5n.r1 = ANY ('{0,1,2,3,4,5}'::integer[])) AND (r5n.r3 = 2))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 8
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 1
                Storage Table Rows Scanned: 302
 (12 rows)
 
@@ -1580,7 +1581,7 @@
                Index Cond: ((r5n.r1 = 2) AND (r5n.r3 = ANY ('{0,1,2,3,4,5}'::integer[])))
                Storage Table Read Requests: 2
                Storage Table Read Ops: 2
-               Storage Table Rows Scanned: 70
+               Storage Table Rows Scanned: 301
 (13 rows)
 
                                         QUERY PLAN                                        
@@ -1618,8 +1619,8 @@
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=427 loops=1)
                Output: r2, r4, r5, n, r1, r3
                Index Cond: ((r5n.r1 = ANY ('{0,1,2}'::integer[])) AND (r5n.r3 = ANY ('{3,4,5}'::integer[])))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 7
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 1
                Storage Table Rows Scanned: 427
 (12 rows)
 
@@ -1676,8 +1677,8 @@
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=427 loops=1)
                Output: r2, r3, r4, r5, n, r1
                Index Cond: ((r5n.r1 = ANY ('{0,1,2}'::integer[])) AND (r5n.r3 = ANY ('{3,4,5}'::integer[])))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 7
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 1
                Storage Table Rows Scanned: 427
 (12 rows)
 
@@ -1736,8 +1737,8 @@
                Output: r3, r4, r5, n, r1, r2
                Index Cond: (r5n.r2 = ANY ('{7,8,9}'::bigint[]))
                Storage Filter: (r5n.r2 = r5n.r1)
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 8
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 1
                Storage Table Rows Scanned: 1496
 (13 rows)
 
@@ -1753,8 +1754,8 @@
                Output: r3, r4, r5, n, r1, r2
                Index Cond: (r5n.r2 = ANY ('{7,8,9}'::bigint[]))
                Storage Filter: (r5n.r2 = r5n.r1)
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 8
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 1
                Storage Table Rows Scanned: 1496
 (13 rows)
 
@@ -1792,9 +1793,9 @@
                Output: r1, r3, r4, r5, n, r2
                Index Cond: ((r5n.r1 = ANY ('{1,2,3,4,5,6,7,8,9}'::integer[])) AND (r5n.r2 = ANY ('{6,0,5}'::bigint[])))
                Storage Filter: (r5n.r1 = r5n.r3)
-               Storage Table Read Requests: 3
-               Storage Table Read Ops: 3
-               Storage Table Rows Scanned: 198
+               Storage Table Read Requests: 2
+               Storage Table Read Ops: 2
+               Storage Table Rows Scanned: 1364
 (14 rows)
 
                                                        QUERY PLAN                                                       
@@ -1853,9 +1854,9 @@
                Output: r1, r3, r4, r5, n, r2
                Index Cond: ((r5n.r1 = ANY ('{1,2,3,4,5,6,7,8,9}'::integer[])) AND (r5n.r2 = ANY ('{6,0,5}'::bigint[])))
                Storage Filter: (r5n.r1 = r5n.r3)
-               Storage Table Read Requests: 3
-               Storage Table Read Ops: 3
-               Storage Table Rows Scanned: 198
+               Storage Table Read Requests: 2
+               Storage Table Read Ops: 2
+               Storage Table Rows Scanned: 1364
 (14 rows)
 
                                                        QUERY PLAN                                                       
@@ -1913,8 +1914,8 @@
                Output: r3, r4, r1, r5, n, r2
                Index Cond: ((r5n.r1 = ANY ('{1,2,3,4,5,6,7,8,9}'::integer[])) AND (r5n.r2 = ANY ('{6,0,5}'::bigint[])))
                Storage Filter: ((r5n.r1)::double precision = r5n.r5)
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 7
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 1
                Storage Table Rows Scanned: 1364
 (13 rows)
 
@@ -1973,8 +1974,8 @@
                Output: r3, r4, n, r1, r5, r2
                Index Cond: ((r5n.r1 = ANY ('{1,2,3,4,5,6,7,8,9}'::integer[])) AND (r5n.r2 = ANY ('{6,0,5}'::bigint[])))
                Storage Filter: ((r5n.r1)::double precision = r5n.r5)
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 7
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 1
                Storage Table Rows Scanned: 1364
 (13 rows)
 
@@ -2033,8 +2034,8 @@
                Output: r3, r4, r5, r1, n, r2
                Index Cond: ((r5n.r1 = ANY ('{1,2,3,4,5,6,7,8,9}'::integer[])) AND (r5n.r2 = ANY ('{6,0,5}'::bigint[])))
                Storage Filter: (r5n.r1 = r5n.n)
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 7
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 1
                Storage Table Rows Scanned: 1364
 (13 rows)
 
@@ -2088,8 +2089,8 @@
                Output: r4, r5, n, r3, r1, r2
                Index Cond: (r5n.r3 = ANY ('{7,8,9}'::integer[]))
                Storage Filter: (r5n.r1 = r5n.r2)
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 8
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 1
                Storage Table Rows Scanned: 1514
 (13 rows)
 
@@ -2105,8 +2106,8 @@
                Output: r4, r5, n, r3, r1, r2
                Index Cond: (r5n.r3 = ANY ('{7,8,9}'::integer[]))
                Storage Filter: (r5n.r1 = r5n.r2)
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 8
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 1
                Storage Table Rows Scanned: 1514
 (13 rows)
 
@@ -2163,8 +2164,8 @@
                Output: r3, r4, r5, n, r1, r2
                Index Cond: ((r5n.r1 = ANY ('{0,1,2}'::integer[])) AND (r5n.r2 = ANY ('{0,1,2,3,4,5,6}'::bigint[])))
                Storage Filter: ((r5n.r1 = 2) OR (r5n.r1 = ANY ('{1,2,3}'::integer[])))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 7
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 1
                Storage Table Rows Scanned: 1050
 (13 rows)
 
@@ -2225,7 +2226,7 @@
                Index Cond: (r5n.r2 = ANY ('{0,1,2,3,4,5,6}'::bigint[]))
                Storage Filter: ((r5n.r1 = ANY ('{0,1,2}'::integer[])) OR (r5n.r1 = 2) OR (r5n.r1 = ANY ('{1,2,3}'::integer[])))
                Storage Table Read Requests: 2
-               Storage Table Read Ops: 8
+               Storage Table Read Ops: 2
                Storage Table Rows Scanned: 3552
 (13 rows)
 
@@ -2242,7 +2243,7 @@
                Index Cond: (r5n.r2 = ANY ('{0,1,2,3,4,5,6}'::bigint[]))
                Storage Filter: ((r5n.r1 = ANY ('{0,1,2}'::integer[])) OR (r5n.r1 = 2) OR (r5n.r1 = ANY ('{1,2,3}'::integer[])))
                Storage Table Read Requests: 2
-               Storage Table Read Ops: 8
+               Storage Table Read Ops: 2
                Storage Table Rows Scanned: 3552
 (13 rows)
 
@@ -2261,7 +2262,7 @@
                Output: r2, r3, r4, r5, n, r1
                Index Cond: (r5n.r1 = ANY ('{0,2,4,6,8}'::bigint[]))
                Storage Table Read Requests: 3
-               Storage Table Read Ops: 9
+               Storage Table Read Ops: 3
                Storage Table Rows Scanned: 2560
 (12 rows)
 
@@ -2320,7 +2321,7 @@
                Output: r2, r3, r4, r5, n, r1
                Storage Filter: ((r5n.r1)::double precision = ANY ('{0,2,4,6,8}'::double precision[]))
                Storage Table Read Requests: 3
-               Storage Table Read Ops: 9
+               Storage Table Read Ops: 3
                Storage Table Rows Scanned: 5048
 (12 rows)
 
@@ -2336,7 +2337,7 @@
                Output: r2, r3, r4, r5, n, r1
                Storage Filter: ((r5n.r1)::double precision = ANY ('{0,2,4,6,8}'::double precision[]))
                Storage Table Read Requests: 3
-               Storage Table Read Ops: 9
+               Storage Table Read Ops: 3
                Storage Table Rows Scanned: 5048
 (12 rows)
 
@@ -2357,7 +2358,7 @@
                Filter: ((r5n.r1)::text = ANY ('{0,2,4,6,8}'::text[]))
                Rows Removed by Filter: 2488
                Storage Table Read Requests: 5
-               Storage Table Read Ops: 11
+               Storage Table Read Ops: 5
                Storage Table Rows Scanned: 5048
 (13 rows)
 
@@ -2374,7 +2375,7 @@
                Filter: ((r5n.r1)::text = ANY ('{0,2,4,6,8}'::text[]))
                Rows Removed by Filter: 2488
                Storage Table Read Requests: 5
-               Storage Table Read Ops: 11
+               Storage Table Read Ops: 5
                Storage Table Rows Scanned: 5048
 (13 rows)
 
@@ -2395,7 +2396,7 @@
                Filter: (r5n.r1 = ANY (ARRAY[0, 1, (random())::integer]))
                Rows Removed by Filter: 4079
                Storage Table Read Requests: 5
-               Storage Table Read Ops: 11
+               Storage Table Read Ops: 5
                Storage Table Rows Scanned: 5048
 (13 rows)
 
@@ -2412,7 +2413,7 @@
                Filter: (r5n.r1 = ANY (ARRAY[0, 1, (random())::integer]))
                Rows Removed by Filter: 4079
                Storage Table Read Requests: 5
-               Storage Table Read Ops: 11
+               Storage Table Read Ops: 5
                Storage Table Rows Scanned: 5048
 (13 rows)
 
@@ -2433,7 +2434,7 @@
                Filter: (r5n.r1 = ANY (ARRAY[1, (100 + (random())::integer)]))
                Rows Removed by Filter: 4556
                Storage Table Read Requests: 5
-               Storage Table Read Ops: 11
+               Storage Table Read Ops: 5
                Storage Table Rows Scanned: 5048
 (13 rows)
 
@@ -2450,7 +2451,7 @@
                Filter: (r5n.r1 = ANY (ARRAY[1, (100 + (random())::integer)]))
                Rows Removed by Filter: 4556
                Storage Table Read Requests: 5
-               Storage Table Read Ops: 11
+               Storage Table Read Ops: 5
                Storage Table Rows Scanned: 5048
 (13 rows)
 
@@ -2465,10 +2466,10 @@
    InitPlan 1 (returns $0)
      ->  Finalize Aggregate (actual rows=1 loops=1)
            Output: count(*)
-           ->  Index Only Scan using r5n_pkey on public.r5n (actual rows=7 loops=1)
+           ->  Index Only Scan using r5n_pkey on public.r5n (actual rows=1 loops=1)
                  Heap Fetches: 0
-                 Storage Table Read Requests: 2
-                 Storage Table Read Ops: 8
+                 Storage Table Read Requests: 1
+                 Storage Table Read Ops: 1
                  Storage Table Rows Scanned: 5048
                  Partial Aggregate: true
    ->  Sort (actual rows=5 loops=1)
@@ -2478,8 +2479,8 @@
          ->  Index Scan using r5n_pkey on public.r5n r5n_1 (actual rows=492 loops=1)
                Output: r5n_1.r2, r5n_1.r3, r5n_1.r4, r5n_1.r5, r5n_1.n, r5n_1.r1
                Index Cond: (r5n_1.r1 = ANY (ARRAY['1'::bigint, $0]))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 7
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 1
                Storage Table Rows Scanned: 492
 (21 rows)
 
@@ -2490,10 +2491,10 @@
    InitPlan 1 (returns $0)
      ->  Finalize Aggregate (actual rows=1 loops=1)
            Output: count(*)
-           ->  Index Only Scan using r5n_pkey on public.r5n (actual rows=7 loops=1)
+           ->  Index Only Scan using r5n_pkey on public.r5n (actual rows=1 loops=1)
                  Heap Fetches: 0
-                 Storage Table Read Requests: 2
-                 Storage Table Read Ops: 8
+                 Storage Table Read Requests: 1
+                 Storage Table Read Ops: 1
                  Storage Table Rows Scanned: 5048
                  Partial Aggregate: true
    ->  Sort (actual rows=5 loops=1)
@@ -2503,8 +2504,8 @@
          ->  Index Scan using r5n_pkey on public.r5n r5n_1 (actual rows=492 loops=1)
                Output: r5n_1.r2, r5n_1.r3, r5n_1.r4, r5n_1.r5, r5n_1.n, r5n_1.r1
                Index Cond: (r5n_1.r1 = ANY (ARRAY['1'::bigint, $0]))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 7
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 1
                Storage Table Rows Scanned: 492
 (21 rows)
 
@@ -2523,7 +2524,7 @@
          ->  YB Bitmap Table Scan on public.r5n (actual rows=83 loops=1)
                Output: r3, r4, r5, n, r1, r2
                Storage Table Read Requests: 1
-               Storage Table Read Ops: 2
+               Storage Table Read Ops: 1
                Storage Table Rows Scanned: 83
                ->  BitmapOr (actual rows=83 loops=1)
                      ->  Bitmap Index Scan on r5n_pkey (actual rows=44 loops=1)
@@ -2549,7 +2550,7 @@
          ->  YB Bitmap Table Scan on public.r5n (actual rows=83 loops=1)
                Output: r3, r4, r5, n, r1, r2
                Storage Table Read Requests: 1
-               Storage Table Read Ops: 2
+               Storage Table Read Ops: 1
                Storage Table Rows Scanned: 83
                ->  BitmapOr (actual rows=83 loops=1)
                      ->  Bitmap Index Scan on r5n_pkey (actual rows=44 loops=1)
@@ -2608,8 +2609,8 @@
                ->  Index Scan using r5n_pkey on public.r5n (actual rows=83 loops=1)
                      Output: r5n.r3, r5n.r4, r5n.r5, r5n.n, r5n.r1, r5n.r2
                      Index Cond: (ROW(r5n.r1, r5n.r2) = ANY (ARRAY[ROW("*VALUES*".column1, "*VALUES*".column2), ROW($1, $1025), ROW($2, $1026), ROW($3, $1027), ROW($4, $1028), ROW($5, $1029), ROW($6, $1030), ROW($7, $1031), ROW($8, $1032), ROW($9, $1033), ROW($10, $1034), ROW($11, $1035), ROW($12, $1036), ROW($13, $1037), ROW($14, $1038), ROW($15, $1039), ROW($16, $1040), ROW($17, $1041), ROW($18, $1042), ROW($19, $1043), ROW($20, $1044), ROW($21, $1045), ROW($22, $1046), ROW($23, $1047), ROW($24, $1048), ROW($25, $1049), ROW($26, $1050), ROW($27, $1051), ROW($28, $1052), ROW($29, $1053), ROW($30, $1054), ROW($31, $1055), ROW($32, $1056), ROW($33, $1057), ROW($34, $1058), ROW($35, $1059), ROW($36, $1060), ROW($37, $1061), ROW($38, $1062), ROW($39, $1063), ROW($40, $1064), ROW($41, $1065), ROW($42, $1066), ROW($43, $1067), ROW($44, $1068), ROW($45, $1069), ROW($46, $1070), ROW($47, $1071), ROW($48, $1072), ROW($49, $1073), ROW($50, $1074), ROW($51, $1075), ROW($52, $1076), ROW($53, $1077), ROW($54, $1078), ROW($55, $1079), ROW($56, $1080), ROW($57, $1081), ROW($58, $1082), ROW($59, $1083), ROW($60, $1084), ROW($61, $1085), ROW($62, $1086), ROW($63, $1087), ROW($64, $1088), ROW($65, $1089), ROW($66, $1090), ROW($67, $1091), ROW($68, $1092), ROW($69, $1093), ROW($70, $1094), ROW($71, $1095), ROW($72, $1096), ROW($73, $1097), ROW($74, $1098), ROW($75, $1099), ROW($76, $1100), ROW($77, $1101), ROW($78, $1102), ROW($79, $1103), ROW($80, $1104), ROW($81, $1105), ROW($82, $1106), ROW($83, $1107), ROW($84, $1108), ROW($85, $1109), ROW($86, $1110), ROW($87, $1111), ROW($88, $1112), ROW($89, $1113), ROW($90, $1114), ROW($91, $1115), ROW($92, $1116), ROW($93, $1117), ROW($94, $1118), ROW($95, $1119), ROW($96, $1120), ROW($97, $1121), ROW($98, $1122), ROW($99, $1123), ROW($100, $1124), ROW($101, $1125), ROW($102, $1126), ROW($103, $1127), ROW($104, $1128), ROW($105, $1129), ROW($106, $1130), ROW($107, $1131), ROW($108, $1132), ROW($109, $1133), ROW($110, $1134), ROW($111, $1135), ROW($112, $1136), ROW($113, $1137), ROW($114, $1138), ROW($115, $1139), ROW($116, $1140), ROW($117, $1141), ROW($118, $1142), ROW($119, $1143), ROW($120, $1144), ROW($121, $1145), ROW($122, $1146), ROW($123, $1147), ROW($124, $1148), ROW($125, $1149), ROW($126, $1150), ROW($127, $1151), ROW($128, $1152), ROW($129, $1153), ROW($130, $1154), ROW($131, $1155), ROW($132, $1156), ROW($133, $1157), ROW($134, $1158), ROW($135, $1159), ROW($136, $1160), ROW($137, $1161), ROW($138, $1162), ROW($139, $1163), ROW($140, $1164), ROW($141, $1165), ROW($142, $1166), ROW($143, $1167), ROW($144, $1168), ROW($145, $1169), ROW($146, $1170), ROW($147, $1171), ROW($148, $1172), ROW($149, $1173), ROW($150, $1174), ROW($151, $1175), ROW($152, $1176), ROW($153, $1177), ROW($154, $1178), ROW($155, $1179), ROW($156, $1180), ROW($157, $1181), ROW($158, $1182), ROW($159, $1183), ROW($160, $1184), ROW($161, $1185), ROW($162, $1186), ROW($163, $1187), ROW($164, $1188), ROW($165, $1189), ROW($166, $1190), ROW($167, $1191), ROW($168, $1192), ROW($169, $1193), ROW($170, $1194), ROW($171, $1195), ROW($172, $1196), ROW($173, $1197), ROW($174, $1198), ROW($175, $1199), ROW($176, $1200), ROW($177, $1201), ROW($178, $1202), ROW($179, $1203), ROW($180, $1204), ROW($181, $1205), ROW($182, $1206), ROW($183, $1207), ROW($184, $1208), ROW($185, $1209), ROW($186, $1210), ROW($187, $1211), ROW($188, $1212), ROW($189, $1213), ROW($190, $1214), ROW($191, $1215), ROW($192, $1216), ROW($193, $1217), ROW($194, $1218), ROW($195, $1219), ROW($196, $1220), ROW($197, $1221), ROW($198, $1222), ROW($199, $1223), ROW($200, $1224), ROW($201, $1225), ROW($202, $1226), ROW($203, $1227), ROW($204, $1228), ROW($205, $1229), ROW($206, $1230), ROW($207, $1231), ROW($208, $1232), ROW($209, $1233), ROW($210, $1234), ROW($211, $1235), ROW($212, $1236), ROW($213, $1237), ROW($214, $1238), ROW($215, $1239), ROW($216, $1240), ROW($217, $1241), ROW($218, $1242), ROW($219, $1243), ROW($220, $1244), ROW($221, $1245), ROW($222, $1246), ROW($223, $1247), ROW($224, $1248), ROW($225, $1249), ROW($226, $1250), ROW($227, $1251), ROW($228, $1252), ROW($229, $1253), ROW($230, $1254), ROW($231, $1255), ROW($232, $1256), ROW($233, $1257), ROW($234, $1258), ROW($235, $1259), ROW($236, $1260), ROW($237, $1261), ROW($238, $1262), ROW($239, $1263), ROW($240, $1264), ROW($241, $1265), ROW($242, $1266), ROW($243, $1267), ROW($244, $1268), ROW($245, $1269), ROW($246, $1270), ROW($247, $1271), ROW($248, $1272), ROW($249, $1273), ROW($250, $1274), ROW($251, $1275), ROW($252, $1276), ROW($253, $1277), ROW($254, $1278), ROW($255, $1279), ROW($256, $1280), ROW($257, $1281), ROW($258, $1282), ROW($259, $1283), ROW($260, $1284), ROW($261, $1285), ROW($262, $1286), ROW($263, $1287), ROW($264, $1288), ROW($265, $1289), ROW($266, $1290), ROW($267, $1291), ROW($268, $1292), ROW($269, $1293), ROW($270, $1294), ROW($271, $1295), ROW($272, $1296), ROW($273, $1297), ROW($274, $1298), ROW($275, $1299), ROW($276, $1300), ROW($277, $1301), ROW($278, $1302), ROW($279, $1303), ROW($280, $1304), ROW($281, $1305), ROW($282, $1306), ROW($283, $1307), ROW($284, $1308), ROW($285, $1309), ROW($286, $1310), ROW($287, $1311), ROW($288, $1312), ROW($289, $1313), ROW($290, $1314), ROW($291, $1315), ROW($292, $1316), ROW($293, $1317), ROW($294, $1318), ROW($295, $1319), ROW($296, $1320), ROW($297, $1321), ROW($298, $1322), ROW($299, $1323), ROW($300, $1324), ROW($301, $1325), ROW($302, $1326), ROW($303, $1327), ROW($304, $1328), ROW($305, $1329), ROW($306, $1330), ROW($307, $1331), ROW($308, $1332), ROW($309, $1333), ROW($310, $1334), ROW($311, $1335), ROW($312, $1336), ROW($313, $1337), ROW($314, $1338), ROW($315, $1339), ROW($316, $1340), ROW($317, $1341), ROW($318, $1342), ROW($319, $1343), ROW($320, $1344), ROW($321, $1345), ROW($322, $1346), ROW($323, $1347), ROW($324, $1348), ROW($325, $1349), ROW($326, $1350), ROW($327, $1351), ROW($328, $1352), ROW($329, $1353), ROW($330, $1354), ROW($331, $1355), ROW($332, $1356), ROW($333, $1357), ROW($334, $1358), ROW($335, $1359), ROW($336, $1360), ROW($337, $1361), ROW($338, $1362), ROW($339, $1363), ROW($340, $1364), ROW($341, $1365), ROW($342, $1366), ROW($343, $1367), ROW($344, $1368), ROW($345, $1369), ROW($346, $1370), ROW($347, $1371), ROW($348, $1372), ROW($349, $1373), ROW($350, $1374), ROW($351, $1375), ROW($352, $1376), ROW($353, $1377), ROW($354, $1378), ROW($355, $1379), ROW($356, $1380), ROW($357, $1381), ROW($358, $1382), ROW($359, $1383), ROW($360, $1384), ROW($361, $1385), ROW($362, $1386), ROW($363, $1387), ROW($364, $1388), ROW($365, $1389), ROW($366, $1390), ROW($367, $1391), ROW($368, $1392), ROW($369, $1393), ROW($370, $1394), ROW($371, $1395), ROW($372, $1396), ROW($373, $1397), ROW($374, $1398), ROW($375, $1399), ROW($376, $1400), ROW($377, $1401), ROW($378, $1402), ROW($379, $1403), ROW($380, $1404), ROW($381, $1405), ROW($382, $1406), ROW($383, $1407), ROW($384, $1408), ROW($385, $1409), ROW($386, $1410), ROW($387, $1411), ROW($388, $1412), ROW($389, $1413), ROW($390, $1414), ROW($391, $1415), ROW($392, $1416), ROW($393, $1417), ROW($394, $1418), ROW($395, $1419), ROW($396, $1420), ROW($397, $1421), ROW($398, $1422), ROW($399, $1423), ROW($400, $1424), ROW($401, $1425), ROW($402, $1426), ROW($403, $1427), ROW($404, $1428), ROW($405, $1429), ROW($406, $1430), ROW($407, $1431), ROW($408, $1432), ROW($409, $1433), ROW($410, $1434), ROW($411, $1435), ROW($412, $1436), ROW($413, $1437), ROW($414, $1438), ROW($415, $1439), ROW($416, $1440), ROW($417, $1441), ROW($418, $1442), ROW($419, $1443), ROW($420, $1444), ROW($421, $1445), ROW($422, $1446), ROW($423, $1447), ROW($424, $1448), ROW($425, $1449), ROW($426, $1450), ROW($427, $1451), ROW($428, $1452), ROW($429, $1453), ROW($430, $1454), ROW($431, $1455), ROW($432, $1456), ROW($433, $1457), ROW($434, $1458), ROW($435, $1459), ROW($436, $1460), ROW($437, $1461), ROW($438, $1462), ROW($439, $1463), ROW($440, $1464), ROW($441, $1465), ROW($442, $1466), ROW($443, $1467), ROW($444, $1468), ROW($445, $1469), ROW($446, $1470), ROW($447, $1471), ROW($448, $1472), ROW($449, $1473), ROW($450, $1474), ROW($451, $1475), ROW($452, $1476), ROW($453, $1477), ROW($454, $1478), ROW($455, $1479), ROW($456, $1480), ROW($457, $1481), ROW($458, $1482), ROW($459, $1483), ROW($460, $1484), ROW($461, $1485), ROW($462, $1486), ROW($463, $1487), ROW($464, $1488), ROW($465, $1489), ROW($466, $1490), ROW($467, $1491), ROW($468, $1492), ROW($469, $1493), ROW($470, $1494), ROW($471, $1495), ROW($472, $1496), ROW($473, $1497), ROW($474, $1498), ROW($475, $1499), ROW($476, $1500), ROW($477, $1501), ROW($478, $1502), ROW($479, $1503), ROW($480, $1504), ROW($481, $1505), ROW($482, $1506), ROW($483, $1507), ROW($484, $1508), ROW($485, $1509), ROW($486, $1510), ROW($487, $1511), ROW($488, $1512), ROW($489, $1513), ROW($490, $1514), ROW($491, $1515), ROW($492, $1516), ROW($493, $1517), ROW($494, $1518), ROW($495, $1519), ROW($496, $1520), ROW($497, $1521), ROW($498, $1522), ROW($499, $1523), ROW($500, $1524), ROW($501, $1525), ROW($502, $1526), ROW($503, $1527), ROW($504, $1528), ROW($505, $1529), ROW($506, $1530), ROW($507, $1531), ROW($508, $1532), ROW($509, $1533), ROW($510, $1534), ROW($511, $1535), ROW($512, $1536), ROW($513, $1537), ROW($514, $1538), ROW($515, $1539), ROW($516, $1540), ROW($517, $1541), ROW($518, $1542), ROW($519, $1543), ROW($520, $1544), ROW($521, $1545), ROW($522, $1546), ROW($523, $1547), ROW($524, $1548), ROW($525, $1549), ROW($526, $1550), ROW($527, $1551), ROW($528, $1552), ROW($529, $1553), ROW($530, $1554), ROW($531, $1555), ROW($532, $1556), ROW($533, $1557), ROW($534, $1558), ROW($535, $1559), ROW($536, $1560), ROW($537, $1561), ROW($538, $1562), ROW($539, $1563), ROW($540, $1564), ROW($541, $1565), ROW($542, $1566), ROW($543, $1567), ROW($544, $1568), ROW($545, $1569), ROW($546, $1570), ROW($547, $1571), ROW($548, $1572), ROW($549, $1573), ROW($550, $1574), ROW($551, $1575), ROW($552, $1576), ROW($553, $1577), ROW($554, $1578), ROW($555, $1579), ROW($556, $1580), ROW($557, $1581), ROW($558, $1582), ROW($559, $1583), ROW($560, $1584), ROW($561, $1585), ROW($562, $1586), ROW($563, $1587), ROW($564, $1588), ROW($565, $1589), ROW($566, $1590), ROW($567, $1591), ROW($568, $1592), ROW($569, $1593), ROW($570, $1594), ROW($571, $1595), ROW($572, $1596), ROW($573, $1597), ROW($574, $1598), ROW($575, $1599), ROW($576, $1600), ROW($577, $1601), ROW($578, $1602), ROW($579, $1603), ROW($580, $1604), ROW($581, $1605), ROW($582, $1606), ROW($583, $1607), ROW($584, $1608), ROW($585, $1609), ROW($586, $1610), ROW($587, $1611), ROW($588, $1612), ROW($589, $1613), ROW($590, $1614), ROW($591, $1615), ROW($592, $1616), ROW($593, $1617), ROW($594, $1618), ROW($595, $1619), ROW($596, $1620), ROW($597, $1621), ROW($598, $1622), ROW($599, $1623), ROW($600, $1624), ROW($601, $1625), ROW($602, $1626), ROW($603, $1627), ROW($604, $1628), ROW($605, $1629), ROW($606, $1630), ROW($607, $1631), ROW($608, $1632), ROW($609, $1633), ROW($610, $1634), ROW($611, $1635), ROW($612, $1636), ROW($613, $1637), ROW($614, $1638), ROW($615, $1639), ROW($616, $1640), ROW($617, $1641), ROW($618, $1642), ROW($619, $1643), ROW($620, $1644), ROW($621, $1645), ROW($622, $1646), ROW($623, $1647), ROW($624, $1648), ROW($625, $1649), ROW($626, $1650), ROW($627, $1651), ROW($628, $1652), ROW($629, $1653), ROW($630, $1654), ROW($631, $1655), ROW($632, $1656), ROW($633, $1657), ROW($634, $1658), ROW($635, $1659), ROW($636, $1660), ROW($637, $1661), ROW($638, $1662), ROW($639, $1663), ROW($640, $1664), ROW($641, $1665), ROW($642, $1666), ROW($643, $1667), ROW($644, $1668), ROW($645, $1669), ROW($646, $1670), ROW($647, $1671), ROW($648, $1672), ROW($649, $1673), ROW($650, $1674), ROW($651, $1675), ROW($652, $1676), ROW($653, $1677), ROW($654, $1678), ROW($655, $1679), ROW($656, $1680), ROW($657, $1681), ROW($658, $1682), ROW($659, $1683), ROW($660, $1684), ROW($661, $1685), ROW($662, $1686), ROW($663, $1687), ROW($664, $1688), ROW($665, $1689), ROW($666, $1690), ROW($667, $1691), ROW($668, $1692), ROW($669, $1693), ROW($670, $1694), ROW($671, $1695), ROW($672, $1696), ROW($673, $1697), ROW($674, $1698), ROW($675, $1699), ROW($676, $1700), ROW($677, $1701), ROW($678, $1702), ROW($679, $1703), ROW($680, $1704), ROW($681, $1705), ROW($682, $1706), ROW($683, $1707), ROW($684, $1708), ROW($685, $1709), ROW($686, $1710), ROW($687, $1711), ROW($688, $1712), ROW($689, $1713), ROW($690, $1714), ROW($691, $1715), ROW($692, $1716), ROW($693, $1717), ROW($694, $1718), ROW($695, $1719), ROW($696, $1720), ROW($697, $1721), ROW($698, $1722), ROW($699, $1723), ROW($700, $1724), ROW($701, $1725), ROW($702, $1726), ROW($703, $1727), ROW($704, $1728), ROW($705, $1729), ROW($706, $1730), ROW($707, $1731), ROW($708, $1732), ROW($709, $1733), ROW($710, $1734), ROW($711, $1735), ROW($712, $1736), ROW($713, $1737), ROW($714, $1738), ROW($715, $1739), ROW($716, $1740), ROW($717, $1741), ROW($718, $1742), ROW($719, $1743), ROW($720, $1744), ROW($721, $1745), ROW($722, $1746), ROW($723, $1747), ROW($724, $1748), ROW($725, $1749), ROW($726, $1750), ROW($727, $1751), ROW($728, $1752), ROW($729, $1753), ROW($730, $1754), ROW($731, $1755), ROW($732, $1756), ROW($733, $1757), ROW($734, $1758), ROW($735, $1759), ROW($736, $1760), ROW($737, $1761), ROW($738, $1762), ROW($739, $1763), ROW($740, $1764), ROW($741, $1765), ROW($742, $1766), ROW($743, $1767), ROW($744, $1768), ROW($745, $1769), ROW($746, $1770), ROW($747, $1771), ROW($748, $1772), ROW($749, $1773), ROW($750, $1774), ROW($751, $1775), ROW($752, $1776), ROW($753, $1777), ROW($754, $1778), ROW($755, $1779), ROW($756, $1780), ROW($757, $1781), ROW($758, $1782), ROW($759, $1783), ROW($760, $1784), ROW($761, $1785), ROW($762, $1786), ROW($763, $1787), ROW($764, $1788), ROW($765, $1789), ROW($766, $1790), ROW($767, $1791), ROW($768, $1792), ROW($769, $1793), ROW($770, $1794), ROW($771, $1795), ROW($772, $1796), ROW($773, $1797), ROW($774, $1798), ROW($775, $1799), ROW($776, $1800), ROW($777, $1801), ROW($778, $1802), ROW($779, $1803), ROW($780, $1804), ROW($781, $1805), ROW($782, $1806), ROW($783, $1807), ROW($784, $1808), ROW($785, $1809), ROW($786, $1810), ROW($787, $1811), ROW($788, $1812), ROW($789, $1813), ROW($790, $1814), ROW($791, $1815), ROW($792, $1816), ROW($793, $1817), ROW($794, $1818), ROW($795, $1819), ROW($796, $1820), ROW($797, $1821), ROW($798, $1822), ROW($799, $1823), ROW($800, $1824), ROW($801, $1825), ROW($802, $1826), ROW($803, $1827), ROW($804, $1828), ROW($805, $1829), ROW($806, $1830), ROW($807, $1831), ROW($808, $1832), ROW($809, $1833), ROW($810, $1834), ROW($811, $1835), ROW($812, $1836), ROW($813, $1837), ROW($814, $1838), ROW($815, $1839), ROW($816, $1840), ROW($817, $1841), ROW($818, $1842), ROW($819, $1843), ROW($820, $1844), ROW($821, $1845), ROW($822, $1846), ROW($823, $1847), ROW($824, $1848), ROW($825, $1849), ROW($826, $1850), ROW($827, $1851), ROW($828, $1852), ROW($829, $1853), ROW($830, $1854), ROW($831, $1855), ROW($832, $1856), ROW($833, $1857), ROW($834, $1858), ROW($835, $1859), ROW($836, $1860), ROW($837, $1861), ROW($838, $1862), ROW($839, $1863), ROW($840, $1864), ROW($841, $1865), ROW($842, $1866), ROW($843, $1867), ROW($844, $1868), ROW($845, $1869), ROW($846, $1870), ROW($847, $1871), ROW($848, $1872), ROW($849, $1873), ROW($850, $1874), ROW($851, $1875), ROW($852, $1876), ROW($853, $1877), ROW($854, $1878), ROW($855, $1879), ROW($856, $1880), ROW($857, $1881), ROW($858, $1882), ROW($859, $1883), ROW($860, $1884), ROW($861, $1885), ROW($862, $1886), ROW($863, $1887), ROW($864, $1888), ROW($865, $1889), ROW($866, $1890), ROW($867, $1891), ROW($868, $1892), ROW($869, $1893), ROW($870, $1894), ROW($871, $1895), ROW($872, $1896), ROW($873, $1897), ROW($874, $1898), ROW($875, $1899), ROW($876, $1900), ROW($877, $1901), ROW($878, $1902), ROW($879, $1903), ROW($880, $1904), ROW($881, $1905), ROW($882, $1906), ROW($883, $1907), ROW($884, $1908), ROW($885, $1909), ROW($886, $1910), ROW($887, $1911), ROW($888, $1912), ROW($889, $1913), ROW($890, $1914), ROW($891, $1915), ROW($892, $1916), ROW($893, $1917), ROW($894, $1918), ROW($895, $1919), ROW($896, $1920), ROW($897, $1921), ROW($898, $1922), ROW($899, $1923), ROW($900, $1924), ROW($901, $1925), ROW($902, $1926), ROW($903, $1927), ROW($904, $1928), ROW($905, $1929), ROW($906, $1930), ROW($907, $1931), ROW($908, $1932), ROW($909, $1933), ROW($910, $1934), ROW($911, $1935), ROW($912, $1936), ROW($913, $1937), ROW($914, $1938), ROW($915, $1939), ROW($916, $1940), ROW($917, $1941), ROW($918, $1942), ROW($919, $1943), ROW($920, $1944), ROW($921, $1945), ROW($922, $1946), ROW($923, $1947), ROW($924, $1948), ROW($925, $1949), ROW($926, $1950), ROW($927, $1951), ROW($928, $1952), ROW($929, $1953), ROW($930, $1954), ROW($931, $1955), ROW($932, $1956), ROW($933, $1957), ROW($934, $1958), ROW($935, $1959), ROW($936, $1960), ROW($937, $1961), ROW($938, $1962), ROW($939, $1963), ROW($940, $1964), ROW($941, $1965), ROW($942, $1966), ROW($943, $1967), ROW($944, $1968), ROW($945, $1969), ROW($946, $1970), ROW($947, $1971), ROW($948, $1972), ROW($949, $1973), ROW($950, $1974), ROW($951, $1975), ROW($952, $1976), ROW($953, $1977), ROW($954, $1978), ROW($955, $1979), ROW($956, $1980), ROW($957, $1981), ROW($958, $1982), ROW($959, $1983), ROW($960, $1984), ROW($961, $1985), ROW($962, $1986), ROW($963, $1987), ROW($964, $1988), ROW($965, $1989), ROW($966, $1990), ROW($967, $1991), ROW($968, $1992), ROW($969, $1993), ROW($970, $1994), ROW($971, $1995), ROW($972, $1996), ROW($973, $1997), ROW($974, $1998), ROW($975, $1999), ROW($976, $2000), ROW($977, $2001), ROW($978, $2002), ROW($979, $2003), ROW($980, $2004), ROW($981, $2005), ROW($982, $2006), ROW($983, $2007), ROW($984, $2008), ROW($985, $2009), ROW($986, $2010), ROW($987, $2011), ROW($988, $2012), ROW($989, $2013), ROW($990, $2014), ROW($991, $2015), ROW($992, $2016), ROW($993, $2017), ROW($994, $2018), ROW($995, $2019), ROW($996, $2020), ROW($997, $2021), ROW($998, $2022), ROW($999, $2023), ROW($1000, $2024), ROW($1001, $2025), ROW($1002, $2026), ROW($1003, $2027), ROW($1004, $2028), ROW($1005, $2029), ROW($1006, $2030), ROW($1007, $2031), ROW($1008, $2032), ROW($1009, $2033), ROW($1010, $2034), ROW($1011, $2035), ROW($1012, $2036), ROW($1013, $2037), ROW($1014, $2038), ROW($1015, $2039), ROW($1016, $2040), ROW($1017, $2041), ROW($1018, $2042), ROW($1019, $2043), ROW($1020, $2044), ROW($1021, $2045), ROW($1022, $2046), ROW($1023, $2047)]))
-                     Storage Table Read Requests: 7
-                     Storage Table Read Ops: 7
+                     Storage Table Read Requests: 1
+                     Storage Table Read Ops: 1
                      Storage Table Rows Scanned: 83
 (23 rows)
 
@@ -2635,8 +2636,8 @@
                ->  Index Scan using r5n_pkey on public.r5n (actual rows=83 loops=1)
                      Output: r5n.r3, r5n.r4, r5n.r5, r5n.n, r5n.r1, r5n.r2
                      Index Cond: (ROW(r5n.r1, r5n.r2) = ANY (ARRAY[ROW("*VALUES*".column1, "*VALUES*".column2), ROW($1, $1025), ROW($2, $1026), ROW($3, $1027), ROW($4, $1028), ROW($5, $1029), ROW($6, $1030), ROW($7, $1031), ROW($8, $1032), ROW($9, $1033), ROW($10, $1034), ROW($11, $1035), ROW($12, $1036), ROW($13, $1037), ROW($14, $1038), ROW($15, $1039), ROW($16, $1040), ROW($17, $1041), ROW($18, $1042), ROW($19, $1043), ROW($20, $1044), ROW($21, $1045), ROW($22, $1046), ROW($23, $1047), ROW($24, $1048), ROW($25, $1049), ROW($26, $1050), ROW($27, $1051), ROW($28, $1052), ROW($29, $1053), ROW($30, $1054), ROW($31, $1055), ROW($32, $1056), ROW($33, $1057), ROW($34, $1058), ROW($35, $1059), ROW($36, $1060), ROW($37, $1061), ROW($38, $1062), ROW($39, $1063), ROW($40, $1064), ROW($41, $1065), ROW($42, $1066), ROW($43, $1067), ROW($44, $1068), ROW($45, $1069), ROW($46, $1070), ROW($47, $1071), ROW($48, $1072), ROW($49, $1073), ROW($50, $1074), ROW($51, $1075), ROW($52, $1076), ROW($53, $1077), ROW($54, $1078), ROW($55, $1079), ROW($56, $1080), ROW($57, $1081), ROW($58, $1082), ROW($59, $1083), ROW($60, $1084), ROW($61, $1085), ROW($62, $1086), ROW($63, $1087), ROW($64, $1088), ROW($65, $1089), ROW($66, $1090), ROW($67, $1091), ROW($68, $1092), ROW($69, $1093), ROW($70, $1094), ROW($71, $1095), ROW($72, $1096), ROW($73, $1097), ROW($74, $1098), ROW($75, $1099), ROW($76, $1100), ROW($77, $1101), ROW($78, $1102), ROW($79, $1103), ROW($80, $1104), ROW($81, $1105), ROW($82, $1106), ROW($83, $1107), ROW($84, $1108), ROW($85, $1109), ROW($86, $1110), ROW($87, $1111), ROW($88, $1112), ROW($89, $1113), ROW($90, $1114), ROW($91, $1115), ROW($92, $1116), ROW($93, $1117), ROW($94, $1118), ROW($95, $1119), ROW($96, $1120), ROW($97, $1121), ROW($98, $1122), ROW($99, $1123), ROW($100, $1124), ROW($101, $1125), ROW($102, $1126), ROW($103, $1127), ROW($104, $1128), ROW($105, $1129), ROW($106, $1130), ROW($107, $1131), ROW($108, $1132), ROW($109, $1133), ROW($110, $1134), ROW($111, $1135), ROW($112, $1136), ROW($113, $1137), ROW($114, $1138), ROW($115, $1139), ROW($116, $1140), ROW($117, $1141), ROW($118, $1142), ROW($119, $1143), ROW($120, $1144), ROW($121, $1145), ROW($122, $1146), ROW($123, $1147), ROW($124, $1148), ROW($125, $1149), ROW($126, $1150), ROW($127, $1151), ROW($128, $1152), ROW($129, $1153), ROW($130, $1154), ROW($131, $1155), ROW($132, $1156), ROW($133, $1157), ROW($134, $1158), ROW($135, $1159), ROW($136, $1160), ROW($137, $1161), ROW($138, $1162), ROW($139, $1163), ROW($140, $1164), ROW($141, $1165), ROW($142, $1166), ROW($143, $1167), ROW($144, $1168), ROW($145, $1169), ROW($146, $1170), ROW($147, $1171), ROW($148, $1172), ROW($149, $1173), ROW($150, $1174), ROW($151, $1175), ROW($152, $1176), ROW($153, $1177), ROW($154, $1178), ROW($155, $1179), ROW($156, $1180), ROW($157, $1181), ROW($158, $1182), ROW($159, $1183), ROW($160, $1184), ROW($161, $1185), ROW($162, $1186), ROW($163, $1187), ROW($164, $1188), ROW($165, $1189), ROW($166, $1190), ROW($167, $1191), ROW($168, $1192), ROW($169, $1193), ROW($170, $1194), ROW($171, $1195), ROW($172, $1196), ROW($173, $1197), ROW($174, $1198), ROW($175, $1199), ROW($176, $1200), ROW($177, $1201), ROW($178, $1202), ROW($179, $1203), ROW($180, $1204), ROW($181, $1205), ROW($182, $1206), ROW($183, $1207), ROW($184, $1208), ROW($185, $1209), ROW($186, $1210), ROW($187, $1211), ROW($188, $1212), ROW($189, $1213), ROW($190, $1214), ROW($191, $1215), ROW($192, $1216), ROW($193, $1217), ROW($194, $1218), ROW($195, $1219), ROW($196, $1220), ROW($197, $1221), ROW($198, $1222), ROW($199, $1223), ROW($200, $1224), ROW($201, $1225), ROW($202, $1226), ROW($203, $1227), ROW($204, $1228), ROW($205, $1229), ROW($206, $1230), ROW($207, $1231), ROW($208, $1232), ROW($209, $1233), ROW($210, $1234), ROW($211, $1235), ROW($212, $1236), ROW($213, $1237), ROW($214, $1238), ROW($215, $1239), ROW($216, $1240), ROW($217, $1241), ROW($218, $1242), ROW($219, $1243), ROW($220, $1244), ROW($221, $1245), ROW($222, $1246), ROW($223, $1247), ROW($224, $1248), ROW($225, $1249), ROW($226, $1250), ROW($227, $1251), ROW($228, $1252), ROW($229, $1253), ROW($230, $1254), ROW($231, $1255), ROW($232, $1256), ROW($233, $1257), ROW($234, $1258), ROW($235, $1259), ROW($236, $1260), ROW($237, $1261), ROW($238, $1262), ROW($239, $1263), ROW($240, $1264), ROW($241, $1265), ROW($242, $1266), ROW($243, $1267), ROW($244, $1268), ROW($245, $1269), ROW($246, $1270), ROW($247, $1271), ROW($248, $1272), ROW($249, $1273), ROW($250, $1274), ROW($251, $1275), ROW($252, $1276), ROW($253, $1277), ROW($254, $1278), ROW($255, $1279), ROW($256, $1280), ROW($257, $1281), ROW($258, $1282), ROW($259, $1283), ROW($260, $1284), ROW($261, $1285), ROW($262, $1286), ROW($263, $1287), ROW($264, $1288), ROW($265, $1289), ROW($266, $1290), ROW($267, $1291), ROW($268, $1292), ROW($269, $1293), ROW($270, $1294), ROW($271, $1295), ROW($272, $1296), ROW($273, $1297), ROW($274, $1298), ROW($275, $1299), ROW($276, $1300), ROW($277, $1301), ROW($278, $1302), ROW($279, $1303), ROW($280, $1304), ROW($281, $1305), ROW($282, $1306), ROW($283, $1307), ROW($284, $1308), ROW($285, $1309), ROW($286, $1310), ROW($287, $1311), ROW($288, $1312), ROW($289, $1313), ROW($290, $1314), ROW($291, $1315), ROW($292, $1316), ROW($293, $1317), ROW($294, $1318), ROW($295, $1319), ROW($296, $1320), ROW($297, $1321), ROW($298, $1322), ROW($299, $1323), ROW($300, $1324), ROW($301, $1325), ROW($302, $1326), ROW($303, $1327), ROW($304, $1328), ROW($305, $1329), ROW($306, $1330), ROW($307, $1331), ROW($308, $1332), ROW($309, $1333), ROW($310, $1334), ROW($311, $1335), ROW($312, $1336), ROW($313, $1337), ROW($314, $1338), ROW($315, $1339), ROW($316, $1340), ROW($317, $1341), ROW($318, $1342), ROW($319, $1343), ROW($320, $1344), ROW($321, $1345), ROW($322, $1346), ROW($323, $1347), ROW($324, $1348), ROW($325, $1349), ROW($326, $1350), ROW($327, $1351), ROW($328, $1352), ROW($329, $1353), ROW($330, $1354), ROW($331, $1355), ROW($332, $1356), ROW($333, $1357), ROW($334, $1358), ROW($335, $1359), ROW($336, $1360), ROW($337, $1361), ROW($338, $1362), ROW($339, $1363), ROW($340, $1364), ROW($341, $1365), ROW($342, $1366), ROW($343, $1367), ROW($344, $1368), ROW($345, $1369), ROW($346, $1370), ROW($347, $1371), ROW($348, $1372), ROW($349, $1373), ROW($350, $1374), ROW($351, $1375), ROW($352, $1376), ROW($353, $1377), ROW($354, $1378), ROW($355, $1379), ROW($356, $1380), ROW($357, $1381), ROW($358, $1382), ROW($359, $1383), ROW($360, $1384), ROW($361, $1385), ROW($362, $1386), ROW($363, $1387), ROW($364, $1388), ROW($365, $1389), ROW($366, $1390), ROW($367, $1391), ROW($368, $1392), ROW($369, $1393), ROW($370, $1394), ROW($371, $1395), ROW($372, $1396), ROW($373, $1397), ROW($374, $1398), ROW($375, $1399), ROW($376, $1400), ROW($377, $1401), ROW($378, $1402), ROW($379, $1403), ROW($380, $1404), ROW($381, $1405), ROW($382, $1406), ROW($383, $1407), ROW($384, $1408), ROW($385, $1409), ROW($386, $1410), ROW($387, $1411), ROW($388, $1412), ROW($389, $1413), ROW($390, $1414), ROW($391, $1415), ROW($392, $1416), ROW($393, $1417), ROW($394, $1418), ROW($395, $1419), ROW($396, $1420), ROW($397, $1421), ROW($398, $1422), ROW($399, $1423), ROW($400, $1424), ROW($401, $1425), ROW($402, $1426), ROW($403, $1427), ROW($404, $1428), ROW($405, $1429), ROW($406, $1430), ROW($407, $1431), ROW($408, $1432), ROW($409, $1433), ROW($410, $1434), ROW($411, $1435), ROW($412, $1436), ROW($413, $1437), ROW($414, $1438), ROW($415, $1439), ROW($416, $1440), ROW($417, $1441), ROW($418, $1442), ROW($419, $1443), ROW($420, $1444), ROW($421, $1445), ROW($422, $1446), ROW($423, $1447), ROW($424, $1448), ROW($425, $1449), ROW($426, $1450), ROW($427, $1451), ROW($428, $1452), ROW($429, $1453), ROW($430, $1454), ROW($431, $1455), ROW($432, $1456), ROW($433, $1457), ROW($434, $1458), ROW($435, $1459), ROW($436, $1460), ROW($437, $1461), ROW($438, $1462), ROW($439, $1463), ROW($440, $1464), ROW($441, $1465), ROW($442, $1466), ROW($443, $1467), ROW($444, $1468), ROW($445, $1469), ROW($446, $1470), ROW($447, $1471), ROW($448, $1472), ROW($449, $1473), ROW($450, $1474), ROW($451, $1475), ROW($452, $1476), ROW($453, $1477), ROW($454, $1478), ROW($455, $1479), ROW($456, $1480), ROW($457, $1481), ROW($458, $1482), ROW($459, $1483), ROW($460, $1484), ROW($461, $1485), ROW($462, $1486), ROW($463, $1487), ROW($464, $1488), ROW($465, $1489), ROW($466, $1490), ROW($467, $1491), ROW($468, $1492), ROW($469, $1493), ROW($470, $1494), ROW($471, $1495), ROW($472, $1496), ROW($473, $1497), ROW($474, $1498), ROW($475, $1499), ROW($476, $1500), ROW($477, $1501), ROW($478, $1502), ROW($479, $1503), ROW($480, $1504), ROW($481, $1505), ROW($482, $1506), ROW($483, $1507), ROW($484, $1508), ROW($485, $1509), ROW($486, $1510), ROW($487, $1511), ROW($488, $1512), ROW($489, $1513), ROW($490, $1514), ROW($491, $1515), ROW($492, $1516), ROW($493, $1517), ROW($494, $1518), ROW($495, $1519), ROW($496, $1520), ROW($497, $1521), ROW($498, $1522), ROW($499, $1523), ROW($500, $1524), ROW($501, $1525), ROW($502, $1526), ROW($503, $1527), ROW($504, $1528), ROW($505, $1529), ROW($506, $1530), ROW($507, $1531), ROW($508, $1532), ROW($509, $1533), ROW($510, $1534), ROW($511, $1535), ROW($512, $1536), ROW($513, $1537), ROW($514, $1538), ROW($515, $1539), ROW($516, $1540), ROW($517, $1541), ROW($518, $1542), ROW($519, $1543), ROW($520, $1544), ROW($521, $1545), ROW($522, $1546), ROW($523, $1547), ROW($524, $1548), ROW($525, $1549), ROW($526, $1550), ROW($527, $1551), ROW($528, $1552), ROW($529, $1553), ROW($530, $1554), ROW($531, $1555), ROW($532, $1556), ROW($533, $1557), ROW($534, $1558), ROW($535, $1559), ROW($536, $1560), ROW($537, $1561), ROW($538, $1562), ROW($539, $1563), ROW($540, $1564), ROW($541, $1565), ROW($542, $1566), ROW($543, $1567), ROW($544, $1568), ROW($545, $1569), ROW($546, $1570), ROW($547, $1571), ROW($548, $1572), ROW($549, $1573), ROW($550, $1574), ROW($551, $1575), ROW($552, $1576), ROW($553, $1577), ROW($554, $1578), ROW($555, $1579), ROW($556, $1580), ROW($557, $1581), ROW($558, $1582), ROW($559, $1583), ROW($560, $1584), ROW($561, $1585), ROW($562, $1586), ROW($563, $1587), ROW($564, $1588), ROW($565, $1589), ROW($566, $1590), ROW($567, $1591), ROW($568, $1592), ROW($569, $1593), ROW($570, $1594), ROW($571, $1595), ROW($572, $1596), ROW($573, $1597), ROW($574, $1598), ROW($575, $1599), ROW($576, $1600), ROW($577, $1601), ROW($578, $1602), ROW($579, $1603), ROW($580, $1604), ROW($581, $1605), ROW($582, $1606), ROW($583, $1607), ROW($584, $1608), ROW($585, $1609), ROW($586, $1610), ROW($587, $1611), ROW($588, $1612), ROW($589, $1613), ROW($590, $1614), ROW($591, $1615), ROW($592, $1616), ROW($593, $1617), ROW($594, $1618), ROW($595, $1619), ROW($596, $1620), ROW($597, $1621), ROW($598, $1622), ROW($599, $1623), ROW($600, $1624), ROW($601, $1625), ROW($602, $1626), ROW($603, $1627), ROW($604, $1628), ROW($605, $1629), ROW($606, $1630), ROW($607, $1631), ROW($608, $1632), ROW($609, $1633), ROW($610, $1634), ROW($611, $1635), ROW($612, $1636), ROW($613, $1637), ROW($614, $1638), ROW($615, $1639), ROW($616, $1640), ROW($617, $1641), ROW($618, $1642), ROW($619, $1643), ROW($620, $1644), ROW($621, $1645), ROW($622, $1646), ROW($623, $1647), ROW($624, $1648), ROW($625, $1649), ROW($626, $1650), ROW($627, $1651), ROW($628, $1652), ROW($629, $1653), ROW($630, $1654), ROW($631, $1655), ROW($632, $1656), ROW($633, $1657), ROW($634, $1658), ROW($635, $1659), ROW($636, $1660), ROW($637, $1661), ROW($638, $1662), ROW($639, $1663), ROW($640, $1664), ROW($641, $1665), ROW($642, $1666), ROW($643, $1667), ROW($644, $1668), ROW($645, $1669), ROW($646, $1670), ROW($647, $1671), ROW($648, $1672), ROW($649, $1673), ROW($650, $1674), ROW($651, $1675), ROW($652, $1676), ROW($653, $1677), ROW($654, $1678), ROW($655, $1679), ROW($656, $1680), ROW($657, $1681), ROW($658, $1682), ROW($659, $1683), ROW($660, $1684), ROW($661, $1685), ROW($662, $1686), ROW($663, $1687), ROW($664, $1688), ROW($665, $1689), ROW($666, $1690), ROW($667, $1691), ROW($668, $1692), ROW($669, $1693), ROW($670, $1694), ROW($671, $1695), ROW($672, $1696), ROW($673, $1697), ROW($674, $1698), ROW($675, $1699), ROW($676, $1700), ROW($677, $1701), ROW($678, $1702), ROW($679, $1703), ROW($680, $1704), ROW($681, $1705), ROW($682, $1706), ROW($683, $1707), ROW($684, $1708), ROW($685, $1709), ROW($686, $1710), ROW($687, $1711), ROW($688, $1712), ROW($689, $1713), ROW($690, $1714), ROW($691, $1715), ROW($692, $1716), ROW($693, $1717), ROW($694, $1718), ROW($695, $1719), ROW($696, $1720), ROW($697, $1721), ROW($698, $1722), ROW($699, $1723), ROW($700, $1724), ROW($701, $1725), ROW($702, $1726), ROW($703, $1727), ROW($704, $1728), ROW($705, $1729), ROW($706, $1730), ROW($707, $1731), ROW($708, $1732), ROW($709, $1733), ROW($710, $1734), ROW($711, $1735), ROW($712, $1736), ROW($713, $1737), ROW($714, $1738), ROW($715, $1739), ROW($716, $1740), ROW($717, $1741), ROW($718, $1742), ROW($719, $1743), ROW($720, $1744), ROW($721, $1745), ROW($722, $1746), ROW($723, $1747), ROW($724, $1748), ROW($725, $1749), ROW($726, $1750), ROW($727, $1751), ROW($728, $1752), ROW($729, $1753), ROW($730, $1754), ROW($731, $1755), ROW($732, $1756), ROW($733, $1757), ROW($734, $1758), ROW($735, $1759), ROW($736, $1760), ROW($737, $1761), ROW($738, $1762), ROW($739, $1763), ROW($740, $1764), ROW($741, $1765), ROW($742, $1766), ROW($743, $1767), ROW($744, $1768), ROW($745, $1769), ROW($746, $1770), ROW($747, $1771), ROW($748, $1772), ROW($749, $1773), ROW($750, $1774), ROW($751, $1775), ROW($752, $1776), ROW($753, $1777), ROW($754, $1778), ROW($755, $1779), ROW($756, $1780), ROW($757, $1781), ROW($758, $1782), ROW($759, $1783), ROW($760, $1784), ROW($761, $1785), ROW($762, $1786), ROW($763, $1787), ROW($764, $1788), ROW($765, $1789), ROW($766, $1790), ROW($767, $1791), ROW($768, $1792), ROW($769, $1793), ROW($770, $1794), ROW($771, $1795), ROW($772, $1796), ROW($773, $1797), ROW($774, $1798), ROW($775, $1799), ROW($776, $1800), ROW($777, $1801), ROW($778, $1802), ROW($779, $1803), ROW($780, $1804), ROW($781, $1805), ROW($782, $1806), ROW($783, $1807), ROW($784, $1808), ROW($785, $1809), ROW($786, $1810), ROW($787, $1811), ROW($788, $1812), ROW($789, $1813), ROW($790, $1814), ROW($791, $1815), ROW($792, $1816), ROW($793, $1817), ROW($794, $1818), ROW($795, $1819), ROW($796, $1820), ROW($797, $1821), ROW($798, $1822), ROW($799, $1823), ROW($800, $1824), ROW($801, $1825), ROW($802, $1826), ROW($803, $1827), ROW($804, $1828), ROW($805, $1829), ROW($806, $1830), ROW($807, $1831), ROW($808, $1832), ROW($809, $1833), ROW($810, $1834), ROW($811, $1835), ROW($812, $1836), ROW($813, $1837), ROW($814, $1838), ROW($815, $1839), ROW($816, $1840), ROW($817, $1841), ROW($818, $1842), ROW($819, $1843), ROW($820, $1844), ROW($821, $1845), ROW($822, $1846), ROW($823, $1847), ROW($824, $1848), ROW($825, $1849), ROW($826, $1850), ROW($827, $1851), ROW($828, $1852), ROW($829, $1853), ROW($830, $1854), ROW($831, $1855), ROW($832, $1856), ROW($833, $1857), ROW($834, $1858), ROW($835, $1859), ROW($836, $1860), ROW($837, $1861), ROW($838, $1862), ROW($839, $1863), ROW($840, $1864), ROW($841, $1865), ROW($842, $1866), ROW($843, $1867), ROW($844, $1868), ROW($845, $1869), ROW($846, $1870), ROW($847, $1871), ROW($848, $1872), ROW($849, $1873), ROW($850, $1874), ROW($851, $1875), ROW($852, $1876), ROW($853, $1877), ROW($854, $1878), ROW($855, $1879), ROW($856, $1880), ROW($857, $1881), ROW($858, $1882), ROW($859, $1883), ROW($860, $1884), ROW($861, $1885), ROW($862, $1886), ROW($863, $1887), ROW($864, $1888), ROW($865, $1889), ROW($866, $1890), ROW($867, $1891), ROW($868, $1892), ROW($869, $1893), ROW($870, $1894), ROW($871, $1895), ROW($872, $1896), ROW($873, $1897), ROW($874, $1898), ROW($875, $1899), ROW($876, $1900), ROW($877, $1901), ROW($878, $1902), ROW($879, $1903), ROW($880, $1904), ROW($881, $1905), ROW($882, $1906), ROW($883, $1907), ROW($884, $1908), ROW($885, $1909), ROW($886, $1910), ROW($887, $1911), ROW($888, $1912), ROW($889, $1913), ROW($890, $1914), ROW($891, $1915), ROW($892, $1916), ROW($893, $1917), ROW($894, $1918), ROW($895, $1919), ROW($896, $1920), ROW($897, $1921), ROW($898, $1922), ROW($899, $1923), ROW($900, $1924), ROW($901, $1925), ROW($902, $1926), ROW($903, $1927), ROW($904, $1928), ROW($905, $1929), ROW($906, $1930), ROW($907, $1931), ROW($908, $1932), ROW($909, $1933), ROW($910, $1934), ROW($911, $1935), ROW($912, $1936), ROW($913, $1937), ROW($914, $1938), ROW($915, $1939), ROW($916, $1940), ROW($917, $1941), ROW($918, $1942), ROW($919, $1943), ROW($920, $1944), ROW($921, $1945), ROW($922, $1946), ROW($923, $1947), ROW($924, $1948), ROW($925, $1949), ROW($926, $1950), ROW($927, $1951), ROW($928, $1952), ROW($929, $1953), ROW($930, $1954), ROW($931, $1955), ROW($932, $1956), ROW($933, $1957), ROW($934, $1958), ROW($935, $1959), ROW($936, $1960), ROW($937, $1961), ROW($938, $1962), ROW($939, $1963), ROW($940, $1964), ROW($941, $1965), ROW($942, $1966), ROW($943, $1967), ROW($944, $1968), ROW($945, $1969), ROW($946, $1970), ROW($947, $1971), ROW($948, $1972), ROW($949, $1973), ROW($950, $1974), ROW($951, $1975), ROW($952, $1976), ROW($953, $1977), ROW($954, $1978), ROW($955, $1979), ROW($956, $1980), ROW($957, $1981), ROW($958, $1982), ROW($959, $1983), ROW($960, $1984), ROW($961, $1985), ROW($962, $1986), ROW($963, $1987), ROW($964, $1988), ROW($965, $1989), ROW($966, $1990), ROW($967, $1991), ROW($968, $1992), ROW($969, $1993), ROW($970, $1994), ROW($971, $1995), ROW($972, $1996), ROW($973, $1997), ROW($974, $1998), ROW($975, $1999), ROW($976, $2000), ROW($977, $2001), ROW($978, $2002), ROW($979, $2003), ROW($980, $2004), ROW($981, $2005), ROW($982, $2006), ROW($983, $2007), ROW($984, $2008), ROW($985, $2009), ROW($986, $2010), ROW($987, $2011), ROW($988, $2012), ROW($989, $2013), ROW($990, $2014), ROW($991, $2015), ROW($992, $2016), ROW($993, $2017), ROW($994, $2018), ROW($995, $2019), ROW($996, $2020), ROW($997, $2021), ROW($998, $2022), ROW($999, $2023), ROW($1000, $2024), ROW($1001, $2025), ROW($1002, $2026), ROW($1003, $2027), ROW($1004, $2028), ROW($1005, $2029), ROW($1006, $2030), ROW($1007, $2031), ROW($1008, $2032), ROW($1009, $2033), ROW($1010, $2034), ROW($1011, $2035), ROW($1012, $2036), ROW($1013, $2037), ROW($1014, $2038), ROW($1015, $2039), ROW($1016, $2040), ROW($1017, $2041), ROW($1018, $2042), ROW($1019, $2043), ROW($1020, $2044), ROW($1021, $2045), ROW($1022, $2046), ROW($1023, $2047)]))
-                     Storage Table Read Requests: 7
-                     Storage Table Read Ops: 7
+                     Storage Table Read Requests: 1
+                     Storage Table Read Ops: 1
                      Storage Table Rows Scanned: 83
 (23 rows)
 
@@ -2673,7 +2674,7 @@
                Output: r5n.r2, r5n.r3, r5n.r4, r5n.n
                Index Cond: (r5n.r1 = ANY ('{0,1,2,3}'::integer[]))
                Storage Table Read Requests: 2
-               Storage Table Read Ops: 8
+               Storage Table Read Ops: 2
                Storage Table Rows Scanned: 1983
 (12 rows)
 
@@ -2731,7 +2732,7 @@
                Output: r5n.r2, r5n.r3, r5n.r4, r5n.n
                Index Cond: (r5n.r1 = ANY ('{0,1,2,3}'::integer[]))
                Storage Table Read Requests: 2
-               Storage Table Read Ops: 8
+               Storage Table Read Ops: 2
                Storage Table Rows Scanned: 1983
 (12 rows)
 
@@ -2790,7 +2791,7 @@
                Output: r2, r3, r4, r5, n, r1
                Index Cond: (r5n.r1 = ANY ('{1,2,NULL,3}'::integer[]))
                Storage Table Read Requests: 2
-               Storage Table Read Ops: 7
+               Storage Table Read Ops: 2
                Storage Table Rows Scanned: 1506
 (12 rows)
 
@@ -2972,7 +2973,7 @@
                Output: r2, r3, r4, r5, n, r1
                Storage Filter: ((r5n.r1 = ANY ('{1,2}'::integer[])) OR (r5n.r1 = r5n.r2))
                Storage Table Read Requests: 2
-               Storage Table Read Ops: 8
+               Storage Table Read Ops: 2
                Storage Table Rows Scanned: 5048
 (12 rows)
 
@@ -2988,7 +2989,7 @@
                Output: r2, r3, r4, r5, n, r1
                Storage Filter: ((r5n.r1 = ANY ('{1,2}'::integer[])) OR (r5n.r1 = r5n.r2))
                Storage Table Read Requests: 2
-               Storage Table Read Ops: 8
+               Storage Table Read Ops: 2
                Storage Table Rows Scanned: 5048
 (12 rows)
 
@@ -3006,8 +3007,8 @@
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=351 loops=1)
                Output: r4, r5, n, r1, r2, r3
                Index Cond: ((r5n.r1 = ANY ('{0,1,2,3}'::integer[])) AND (r5n.r2 = ANY ('{0,1,2,3}'::bigint[])) AND (r5n.r3 = ANY ('{0,1,2,3}'::integer[])))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 8
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 1
                Storage Table Rows Scanned: 351
 (12 rows)
 
@@ -3029,7 +3030,7 @@
                Merge Cond: ((r5n.r1 = ANY ('{0,1,2,3}'::integer[])) AND (r5n.r2 = ANY ('{0,1,2,3}'::bigint[])) AND (r5n.r3 = ANY ('{0,1,2,3}'::integer[])))
                Storage Table Read Requests: 1
                Storage Table Read Ops: 64
-               Storage Table Rows Scanned: 275
+               Storage Table Rows Scanned: 277
 (17 rows)
 
  r4 | r5 |   n   | r1 | r2 | r3 
@@ -3067,7 +3068,7 @@
                Output: r2, r3, r4, r5, n, r1
                Index Cond: (r5n.r1 = ANY ('{0,2,4,6,8,10}'::integer[]))
                Storage Table Read Requests: 3
-               Storage Table Read Ops: 9
+               Storage Table Read Ops: 3
                Storage Table Rows Scanned: 2560
 (12 rows)
 
@@ -3083,7 +3084,7 @@
                Output: r2, r3, r4, r5, n, r1
                Index Cond: (r5n.r1 = ANY ('{0,2,4,6,8,10}'::integer[]))
                Storage Table Read Requests: 3
-               Storage Table Read Ops: 9
+               Storage Table Read Ops: 3
                Storage Table Rows Scanned: 2560
 (12 rows)
 
@@ -3102,8 +3103,8 @@
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=318 loops=1)
                Output: r3, r4, r5, n, r1, r2
                Index Cond: ((r5n.r1 = ANY ('{0,2,4}'::integer[])) AND (r5n.r2 = ANY ('{6,8}'::bigint[])))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 8
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 1
                Storage Table Rows Scanned: 318
 (12 rows)
 
@@ -3118,8 +3119,8 @@
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=318 loops=1)
                Output: r3, r4, r5, n, r1, r2
                Index Cond: ((r5n.r1 = ANY ('{0,2,4}'::integer[])) AND (r5n.r2 = ANY ('{6,8}'::bigint[])))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 8
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 1
                Storage Table Rows Scanned: 318
 (12 rows)
 
@@ -3306,8 +3307,8 @@
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=2547 loops=1)
                Output: r2, r3, r4, r5, n, r1
                Index Cond: (r5n.r1 = ANY ('{1,1,1,2,3,3,4,5,5,5,1}'::integer[]))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 8
+               Storage Table Read Requests: 3
+               Storage Table Read Ops: 3
                Storage Table Rows Scanned: 2547
 (12 rows)
 
@@ -3322,8 +3323,8 @@
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=2547 loops=1)
                Output: r2, r3, r4, r5, n, r1
                Index Cond: (r5n.r1 = ANY ('{1,1,1,2,3,3,4,5,5,5,1}'::integer[]))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 8
+               Storage Table Read Requests: 3
+               Storage Table Read Ops: 3
                Storage Table Rows Scanned: 2547
 (12 rows)
 
@@ -3349,8 +3350,8 @@
 \set on '/*+Set(yb_max_saop_merge_streams 64)*/'
 -- #30096: SAOP merge shouldn't be used in a parallel scan.
 \set query 'SELECT * FROM r5n WHERE r1 IN (0, 2, 4) AND r2 IN (6, 8) ORDER BY r3, r4, r5'
-\set hint3 '/*+Parallel(r5n 2) Set(yb_enable_parallel_scan_range_sharded true) Set(yb_parallel_range_rows 1) Set(yb_max_saop_merge_streams 0)*/'
-\set hint4 '/*+Parallel(r5n 2) Set(yb_enable_parallel_scan_range_sharded true) Set(yb_parallel_range_rows 1) Set(yb_max_saop_merge_streams 64)*/'
+\set hint3 '/*+Parallel(r5n 2) Set(yb_enable_parallel_scan_colocated true) Set(yb_parallel_range_rows 1) Set(yb_max_saop_merge_streams 0)*/'
+\set hint4 '/*+Parallel(r5n 2) Set(yb_enable_parallel_scan_colocated true) Set(yb_parallel_range_rows 1) Set(yb_max_saop_merge_streams 64)*/'
 :explain4
                                              QUERY PLAN                                             
 ----------------------------------------------------------------------------------------------------
@@ -3361,8 +3362,8 @@
    ->  Index Scan using r5n_pkey on public.r5n (actual rows=318 loops=1)
          Output: n, r5, r3, r1, r2, r4
          Index Cond: ((r5n.r1 = ANY ('{0,2,4}'::integer[])) AND (r5n.r2 = ANY ('{6,8}'::bigint[])))
-         Storage Table Read Requests: 2
-         Storage Table Read Ops: 8
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 318
 (10 rows)
 
@@ -3397,9 +3398,9 @@
          ->  Parallel Index Scan using r5n_pkey on public.r5n (actual rows=106 loops=3)
                Output: n, r5, r3, r1, r2, r4
                Index Cond: ((r5n.r1 = ANY ('{0,2,4}'::integer[])) AND (r5n.r2 = ANY ('{6,8}'::bigint[])))
-               Rows Removed by Index Recheck: 17
-               Storage Table Read Requests: 3
-               Storage Table Read Ops: 3
+               Rows Removed by Index Recheck: 11
+               Storage Table Read Requests: 0
+               Storage Table Read Ops: 0
                Storage Table Rows Scanned: 106
                Worker 0:  actual rows=0 loops=1
                Worker 1:  actual rows=0 loops=1
@@ -3422,9 +3423,9 @@
          ->  Parallel Index Scan using r5n_pkey on public.r5n (actual rows=106 loops=3)
                Output: n, r5, r3, r1, r2, r4
                Index Cond: ((r5n.r1 = ANY ('{0,2,4}'::integer[])) AND (r5n.r2 = ANY ('{6,8}'::bigint[])))
-               Rows Removed by Index Recheck: 17
-               Storage Table Read Requests: 3
-               Storage Table Read Ops: 3
+               Rows Removed by Index Recheck: 11
+               Storage Table Read Requests: 0
+               Storage Table Read Ops: 0
                Storage Table Rows Scanned: 106
                Worker 0:  actual rows=0 loops=1
                Worker 1:  actual rows=0 loops=1
@@ -3442,8 +3443,8 @@
    ->  Index Scan using r5n_pkey on public.r5n (actual rows=318 loops=1)
          Output: n, r5, r3, r1, r2, r4
          Index Cond: ((r5n.r1 = ANY ('{0,2,4}'::integer[])) AND (r5n.r2 = ANY ('{6,8}'::bigint[])))
-         Storage Table Read Requests: 2
-         Storage Table Read Ops: 8
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
          Storage Table Rows Scanned: 318
 (10 rows)
 
@@ -3478,9 +3479,9 @@
          ->  Parallel Index Scan using r5n_pkey on public.r5n (actual rows=106 loops=3)
                Output: n, r5, r3, r1, r2, r4
                Index Cond: ((r5n.r1 = ANY ('{0,2,4}'::integer[])) AND (r5n.r2 = ANY ('{6,8}'::bigint[])))
-               Rows Removed by Index Recheck: 17
-               Storage Table Read Requests: 3
-               Storage Table Read Ops: 3
+               Rows Removed by Index Recheck: 11
+               Storage Table Read Requests: 0
+               Storage Table Read Ops: 0
                Storage Table Rows Scanned: 106
                Worker 0:  actual rows=0 loops=1
                Worker 1:  actual rows=0 loops=1
@@ -3503,9 +3504,9 @@
          ->  Parallel Index Scan using r5n_pkey on public.r5n (actual rows=106 loops=3)
                Output: n, r5, r3, r1, r2, r4
                Index Cond: ((r5n.r1 = ANY ('{0,2,4}'::integer[])) AND (r5n.r2 = ANY ('{6,8}'::bigint[])))
-               Rows Removed by Index Recheck: 17
-               Storage Table Read Requests: 3
-               Storage Table Read Ops: 3
+               Rows Removed by Index Recheck: 11
+               Storage Table Read Requests: 0
+               Storage Table Read Ops: 0
                Storage Table Rows Scanned: 106
                Worker 0:  actual rows=0 loops=1
                Worker 1:  actual rows=0 loops=1
@@ -3514,41 +3515,36 @@
 --
 -- Secondary index
 --
-CREATE INDEX NONCONCURRENTLY ON r5n (r2 ASC, r3, r4, r5)
-SPLIT AT VALUES (
-    (1),
-    (2),
-    (2, 2),
-    (2, 2, 2),
-    (2, 2, 2, 2),
-    (3));
+CREATE INDEX NONCONCURRENTLY ON r5n (r2 ASC, r3, r4, r5);
 -- No order
 -- SAOP merge should not be used.
 \set query 'SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) LIMIT 5'
 :explain2
-                           QUERY PLAN                           
-----------------------------------------------------------------
+                                    QUERY PLAN                                    
+----------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
    Output: n, r5, r3, r1, r2, r4
-   ->  Seq Scan on public.r5n (actual rows=5 loops=1)
+   ->  Index Scan using r5n_r2_r3_r4_r5_idx on public.r5n (actual rows=5 loops=1)
          Output: n, r5, r3, r1, r2, r4
-         Storage Filter: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
-         Storage Table Read Requests: 1
-         Storage Table Read Ops: 6
-         Storage Table Rows Scanned: 21
-(8 rows)
+         Index Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
+         Storage Table Rows Scanned: 5
+         Storage Index Read Requests: 1
+         Storage Index Read Ops: 1
+         Storage Index Rows Scanned: 5
+(9 rows)
 
-                           QUERY PLAN                           
-----------------------------------------------------------------
+                                    QUERY PLAN                                    
+----------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
    Output: n, r5, r3, r1, r2, r4
-   ->  Seq Scan on public.r5n (actual rows=5 loops=1)
+   ->  Index Scan using r5n_r2_r3_r4_r5_idx on public.r5n (actual rows=5 loops=1)
          Output: n, r5, r3, r1, r2, r4
-         Storage Filter: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
-         Storage Table Read Requests: 1
-         Storage Table Read Ops: 6
-         Storage Table Rows Scanned: 21
-(8 rows)
+         Index Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
+         Storage Table Rows Scanned: 5
+         Storage Index Read Requests: 1
+         Storage Index Read Ops: 1
+         Storage Index Rows Scanned: 5
+(9 rows)
 
 -- No limit
 -- TODO(#29078): this likely should use SAOP merge.
@@ -3563,8 +3559,8 @@ SPLIT AT VALUES (
    ->  Index Scan using r5n_pkey on public.r5n (actual rows=2045 loops=1)
          Output: n, r5, r3, r1, r2, r4
          Index Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
-         Storage Table Read Requests: 3
-         Storage Table Read Ops: 9
+         Storage Table Read Requests: 2
+         Storage Table Read Ops: 2
          Storage Table Rows Scanned: 2045
 (10 rows)
 
@@ -3577,8 +3573,8 @@ SPLIT AT VALUES (
    ->  Index Scan using r5n_pkey on public.r5n (actual rows=2045 loops=1)
          Output: n, r5, r3, r1, r2, r4
          Index Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
-         Storage Table Read Requests: 3
-         Storage Table Read Ops: 9
+         Storage Table Read Requests: 2
+         Storage Table Read Ops: 2
          Storage Table Rows Scanned: 2045
 (10 rows)
 
@@ -3745,22 +3741,48 @@ SPLIT AT VALUES (
 \set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
 -- Secondary index scan VS SAOP merge PK scan
 \set query 'SELECT r2, r3, r4, n, r1 FROM r5n WHERE r1 IN (1, 2, 3, 4, 5) AND r2 = 4 ORDER BY r3, r4, n LIMIT 5'
-:explain2run2
+-- When PgGate does not have to make a separate round trip to the secondary index, the secondary index scan
+-- becomes viable alternative to the SAOP merge PK scan. It wins in this case, so we use the third hint to
+-- force the use of the primary key.
+\set hint3 '/*+IndexScan(r5n r5n_pkey) Set(yb_max_saop_merge_streams 64)*/'
+:explain3run3
                                        QUERY PLAN                                       
 ----------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
    Output: r2, r3, r4, n, r1
-   ->  Sort (actual rows=5 loops=1)
+   ->  Incremental Sort (actual rows=5 loops=1)
          Output: r2, r3, r4, n, r1
          Sort Key: r5n.r3, r5n.r4, r5n.n
-         Sort Method: top-N heapsort
-         ->  Index Scan using r5n_pkey on public.r5n (actual rows=234 loops=1)
+         Presorted Key: r5n.r3, r5n.r4
+         Full-sort Groups: 1  Sort Method: quicksort
+         ->  Index Scan using r5n_r2_r3_r4_r5_idx on public.r5n (actual rows=9 loops=1)
                Output: r2, r3, r4, n, r1
-               Index Cond: ((r5n.r1 = ANY ('{1,2,3,4,5}'::integer[])) AND (r5n.r2 = 4))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 7
-               Storage Table Rows Scanned: 234
-(12 rows)
+               Index Cond: (r5n.r2 = 4)
+               Storage Filter: (r5n.r1 = ANY ('{1,2,3,4,5}'::integer[]))
+               Storage Table Rows Scanned: 482
+               Storage Index Read Requests: 2
+               Storage Index Read Ops: 2
+               Storage Index Rows Scanned: 482
+(15 rows)
+
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: r2, r3, r4, n, r1
+   ->  Incremental Sort (actual rows=5 loops=1)
+         Output: r2, r3, r4, n, r1
+         Sort Key: r5n.r3, r5n.r4, r5n.n
+         Presorted Key: r5n.r3, r5n.r4
+         Full-sort Groups: 1  Sort Method: quicksort
+         ->  Index Scan using r5n_r2_r3_r4_r5_idx on public.r5n (actual rows=9 loops=1)
+               Output: r2, r3, r4, n, r1
+               Index Cond: (r5n.r2 = 4)
+               Storage Filter: (r5n.r1 = ANY ('{1,2,3,4,5}'::integer[]))
+               Storage Table Rows Scanned: 482
+               Storage Index Read Requests: 2
+               Storage Index Read Ops: 2
+               Storage Index Rows Scanned: 482
+(15 rows)
 
                                        QUERY PLAN                                       
 ----------------------------------------------------------------------------------------
@@ -3801,6 +3823,15 @@ SPLIT AT VALUES (
   4 |  0 |  1 | 11045 |  5
 (5 rows)
 
+ r2 | r3 | r4 |   n   | r1 
+----+----+----+-------+----
+  4 |  0 |  0 |    44 |  4
+  4 |  0 |  0 | 20044 |  4
+  4 |  0 |  0 | 60041 |  1
+  4 |  0 |  0 | 70045 |  5
+  4 |  0 |  1 | 11045 |  5
+(5 rows)
+
 -- SAOP merge secondary index scan VS SAOP merge PK scan
 -- Third hint is to use the secondary index as the second hint ends up using
 -- the PK index.
@@ -3818,31 +3849,10 @@ SPLIT AT VALUES (
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=793 loops=1)
                Output: r3, r4, r5, n, r1, r2
                Index Cond: ((r5n.r1 = ANY ('{1,2,3,4}'::integer[])) AND (r5n.r2 = ANY ('{1,2,3,4}'::bigint[])))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 7
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 1
                Storage Table Rows Scanned: 793
 (12 rows)
-
-                                                   QUERY PLAN                                                   
-----------------------------------------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
-   Output: r3, r4, r5, n, r1, r2
-   ->  Incremental Sort (actual rows=5 loops=1)
-         Output: r3, r4, r5, n, r1, r2
-         Sort Key: r5n.r3, r5n.r4, r5n.r5, r5n.n
-         Presorted Key: r5n.r3, r5n.r4, r5n.r5
-         Full-sort Groups: 1  Sort Method: quicksort
-         ->  Index Scan using r5n_pkey on public.r5n (actual rows=8 loops=1)
-               Output: r3, r4, r5, n, r1, r2
-               Index Cond: ((r5n.r1 = ANY ('{1,2,3,4}'::integer[])) AND (r5n.r2 = ANY ('{1,2,3,4}'::bigint[])))
-               Merge Sort Key: r5n.r3, r5n.r4, r5n.r5
-               Merge Stream Key: r5n.r1, r5n.r2
-               Merge Streams: 16
-               Merge Cond: ((r5n.r1 = ANY ('{1,2,3,4}'::integer[])) AND (r5n.r2 = ANY ('{1,2,3,4}'::bigint[])))
-               Storage Table Read Requests: 1
-               Storage Table Read Ops: 16
-               Storage Table Rows Scanned: 80
-(17 rows)
 
                                        QUERY PLAN                                       
 ----------------------------------------------------------------------------------------
@@ -3861,13 +3871,34 @@ SPLIT AT VALUES (
                Merge Streams: 4
                Merge Cond: (r5n.r2 = ANY ('{1,2,3,4}'::bigint[]))
                Storage Filter: (r5n.r1 = ANY ('{1,2,3,4}'::integer[]))
-               Storage Table Read Requests: 1
-               Storage Table Read Ops: 4
-               Storage Table Rows Scanned: 15
+               Storage Table Rows Scanned: 40
                Storage Index Read Requests: 1
                Storage Index Read Ops: 4
-               Storage Index Rows Scanned: 20
-(21 rows)
+               Storage Index Rows Scanned: 40
+(19 rows)
+
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: r3, r4, r5, n, r1, r2
+   ->  Incremental Sort (actual rows=5 loops=1)
+         Output: r3, r4, r5, n, r1, r2
+         Sort Key: r5n.r3, r5n.r4, r5n.r5, r5n.n
+         Presorted Key: r5n.r3, r5n.r4, r5n.r5
+         Full-sort Groups: 1  Sort Method: quicksort
+         ->  Index Scan using r5n_r2_r3_r4_r5_idx on public.r5n (actual rows=8 loops=1)
+               Output: r3, r4, r5, n, r1, r2
+               Index Cond: (r5n.r2 = ANY ('{1,2,3,4}'::bigint[]))
+               Merge Sort Key: r5n.r3, r5n.r4, r5n.r5
+               Merge Stream Key: r5n.r2
+               Merge Streams: 4
+               Merge Cond: (r5n.r2 = ANY ('{1,2,3,4}'::bigint[]))
+               Storage Filter: (r5n.r1 = ANY ('{1,2,3,4}'::integer[]))
+               Storage Table Rows Scanned: 40
+               Storage Index Read Requests: 1
+               Storage Index Read Ops: 4
+               Storage Index Rows Scanned: 40
+(19 rows)
 
  r3 | r4 | r5 |   n   | r1 | r2 
 ----+----+----+-------+----+----
@@ -3994,14 +4025,7 @@ CREATE OPERATOR CLASS test_numeric_ops FOR TYPE numeric USING lsm AS
     OPERATOR 1 #<# (numeric,numeric), OPERATOR 2 #<=# (numeric,numeric),
     OPERATOR 3 #=# (numeric,numeric), OPERATOR 4 #>=# (numeric,numeric),
     OPERATOR 5 #># (numeric,numeric), FUNCTION 1 my_numeric_sort(numeric,numeric);
-CREATE INDEX NONCONCURRENTLY ON r5n (r2 test_int8_ops ASC, r3, r4 test_numeric_ops, r5)
-SPLIT AT VALUES (
-    (1),
-    (2),
-    (2, 2),
-    (2, 2, 2),
-    (2, 2, 2, 2),
-    (3));
+CREATE INDEX NONCONCURRENTLY ON r5n (r2 test_int8_ops ASC, r3, r4 test_numeric_ops, r5);
 -- No order
 -- SAOP merge should not be used.
 \set query 'SELECT * FROM r5n WHERE r2 =#= ANY(ARRAY[0, 1, 2, 3]) LIMIT 5'
@@ -4014,8 +4038,8 @@ SPLIT AT VALUES (
          Output: n, r5, r3, r1, r2, r4
          Storage Filter: (r5n.r2 =#= ANY ('{0,1,2,3}'::bigint[]))
          Storage Table Read Requests: 1
-         Storage Table Read Ops: 6
-         Storage Table Rows Scanned: 21
+         Storage Table Read Ops: 1
+         Storage Table Rows Scanned: 5
 (8 rows)
 
                             QUERY PLAN                            
@@ -4026,8 +4050,8 @@ SPLIT AT VALUES (
          Output: n, r5, r3, r1, r2, r4
          Storage Filter: (r5n.r2 =#= ANY ('{0,1,2,3}'::bigint[]))
          Storage Table Read Requests: 1
-         Storage Table Read Ops: 6
-         Storage Table Rows Scanned: 21
+         Storage Table Read Ops: 1
+         Storage Table Rows Scanned: 5
 (8 rows)
 
 -- Forward scan
@@ -4043,14 +4067,7 @@ DROP INDEX r5n_r2_r3_r4_r5_idx;
 --
 -- INCLUDE index
 --
-CREATE INDEX NONCONCURRENTLY ON r5n (r2 ASC, r3, r4, r5) INCLUDE (r1, n)
-SPLIT AT VALUES (
-    (1),
-    (2),
-    (2, 2),
-    (2, 2, 2),
-    (2, 2, 2, 2),
-    (3));
+CREATE INDEX NONCONCURRENTLY ON r5n (r2 ASC, r3, r4, r5) INCLUDE (r1, n);
 -- No order
 -- SAOP merge should not be used.
 \set query 'SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) LIMIT 5'
@@ -4063,8 +4080,8 @@ SPLIT AT VALUES (
          Output: n, r5, r3, r1, r2, r4
          Storage Filter: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
          Storage Table Read Requests: 1
-         Storage Table Read Ops: 6
-         Storage Table Rows Scanned: 21
+         Storage Table Read Ops: 1
+         Storage Table Rows Scanned: 5
 (8 rows)
 
                            QUERY PLAN                           
@@ -4075,8 +4092,8 @@ SPLIT AT VALUES (
          Output: n, r5, r3, r1, r2, r4
          Storage Filter: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
          Storage Table Read Requests: 1
-         Storage Table Read Ops: 6
-         Storage Table Rows Scanned: 21
+         Storage Table Read Ops: 1
+         Storage Table Rows Scanned: 5
 (8 rows)
 
 -- Following queries send various numbers of requests/scan various number of rows
@@ -4264,7 +4281,7 @@ SPLIT AT VALUES (
                Heap Fetches: 0
                Storage Index Read Requests: 2
                Storage Index Read Ops: 2
-               Storage Index Rows Scanned: 487
+               Storage Index Rows Scanned: 2089
 (14 rows)
 
                                             QUERY PLAN                                            
@@ -4282,7 +4299,7 @@ SPLIT AT VALUES (
                Heap Fetches: 0
                Storage Index Read Requests: 2
                Storage Index Read Ops: 2
-               Storage Index Rows Scanned: 487
+               Storage Index Rows Scanned: 2089
 (14 rows)
 
  r2 | r3 | r4 |   n   | r1 
@@ -4308,14 +4325,7 @@ DROP INDEX r5n_r2_r3_r4_r5_r1_n_idx;
 --
 -- Expression prefix secondary index
 --
-CREATE INDEX NONCONCURRENTLY ON r5n ((greatest(r2, r3, r4) - least(r2, r3, r4)) ASC, r2, r3, r4)
-SPLIT AT VALUES (
-    (1),
-    (2),
-    (2, 2),
-    (2, 2, 2),
-    (2, 2, 2, 2),
-    (3));
+CREATE INDEX NONCONCURRENTLY ON r5n ((greatest(r2, r3, r4) - least(r2, r3, r4)) ASC, r2, r3, r4);
 -- No order
 -- SAOP merge should not be used.
 \set query 'SELECT * FROM r5n WHERE (greatest(r2, r3, r4) - least(r2, r3, r4)) IN (0, 2) LIMIT 5'
@@ -4327,13 +4337,11 @@ SPLIT AT VALUES (
    ->  Index Scan using r5n_expr_r2_r3_r4_idx on public.r5n (actual rows=5 loops=1)
          Output: n, r5, r3, r1, r2, r4
          Index Cond: ((GREATEST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4) - LEAST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4)) = ANY ('{0,2}'::numeric[]))
-         Storage Table Read Requests: 1
-         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 5
          Storage Index Read Requests: 1
-         Storage Index Read Ops: 6
-         Storage Index Rows Scanned: 25
-(11 rows)
+         Storage Index Read Ops: 1
+         Storage Index Rows Scanned: 5
+(9 rows)
 
                                                                            QUERY PLAN                                                                            
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -4342,13 +4350,11 @@ SPLIT AT VALUES (
    ->  Index Scan using r5n_expr_r2_r3_r4_idx on public.r5n (actual rows=5 loops=1)
          Output: n, r5, r3, r1, r2, r4
          Index Cond: ((GREATEST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4) - LEAST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4)) = ANY ('{0,2}'::numeric[]))
-         Storage Table Read Requests: 1
-         Storage Table Read Ops: 3
          Storage Table Rows Scanned: 5
          Storage Index Read Requests: 1
-         Storage Index Read Ops: 6
-         Storage Index Rows Scanned: 25
-(11 rows)
+         Storage Index Read Ops: 1
+         Storage Index Rows Scanned: 5
+(9 rows)
 
 -- Forward scan
 \set query 'SELECT * FROM r5n WHERE (greatest(r2, r3, r4) - least(r2, r3, r4)) IN (0, 2) ORDER BY r2, r3, r4, n LIMIT 5'
@@ -4364,13 +4370,11 @@ SPLIT AT VALUES (
          ->  Index Scan using r5n_expr_r2_r3_r4_idx on public.r5n (actual rows=521 loops=1)
                Output: n, r5, r3, r1, r2, r4
                Index Cond: ((GREATEST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4) - LEAST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4)) = ANY ('{0,2}'::numeric[]))
-               Storage Table Read Requests: 5
-               Storage Table Read Ops: 19
                Storage Table Rows Scanned: 521
                Storage Index Read Requests: 1
-               Storage Index Read Ops: 6
+               Storage Index Read Ops: 1
                Storage Index Rows Scanned: 521
-(15 rows)
+(13 rows)
 
                                                                               QUERY PLAN                                                                               
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -4388,13 +4392,11 @@ SPLIT AT VALUES (
                Merge Stream Key: (GREATEST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4) - LEAST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4))
                Merge Streams: 2
                Merge Cond: ((GREATEST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4) - LEAST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4)) = ANY ('{0,2}'::numeric[]))
-               Storage Table Read Requests: 1
-               Storage Table Read Ops: 3
-               Storage Table Rows Scanned: 9
+               Storage Table Rows Scanned: 10
                Storage Index Read Requests: 1
                Storage Index Read Ops: 2
                Storage Index Rows Scanned: 10
-(20 rows)
+(18 rows)
 
    n   | r5 | r3 | r1 | r2 | r4 
 -------+----+----+----+----+----
@@ -4428,13 +4430,11 @@ SPLIT AT VALUES (
          ->  Index Scan using r5n_expr_r2_r3_r4_idx on public.r5n (actual rows=521 loops=1)
                Output: n, r5, r3, r1, r2, r4
                Index Cond: ((GREATEST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4) - LEAST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4)) = ANY ('{0,2}'::numeric[]))
-               Storage Table Read Requests: 5
-               Storage Table Read Ops: 19
                Storage Table Rows Scanned: 521
                Storage Index Read Requests: 1
-               Storage Index Read Ops: 6
+               Storage Index Read Ops: 1
                Storage Index Rows Scanned: 521
-(15 rows)
+(13 rows)
 
                                                                               QUERY PLAN                                                                               
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -4452,13 +4452,11 @@ SPLIT AT VALUES (
                Merge Stream Key: (GREATEST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4) - LEAST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4))
                Merge Streams: 2
                Merge Cond: ((GREATEST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4) - LEAST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4)) = ANY ('{0,2}'::numeric[]))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 7
-               Storage Table Rows Scanned: 421
+               Storage Table Rows Scanned: 521
                Storage Index Read Requests: 2
                Storage Index Read Ops: 4
-               Storage Index Rows Scanned: 432
-(20 rows)
+               Storage Index Rows Scanned: 521
+(18 rows)
 
    n   | r5 | r3 | r1 | r2 | r4 
 -------+----+----+----+----+----
@@ -4492,13 +4490,11 @@ SPLIT AT VALUES (
          ->  Index Scan using r5n_expr_r2_r3_r4_idx on public.r5n (actual rows=521 loops=1)
                Output: (GREATEST((r2)::numeric, (r3)::numeric, r4) - LEAST((r2)::numeric, (r3)::numeric, r4)), 1, (GREATEST((r2)::numeric, (r3)::numeric, r4) - LEAST((r2)::numeric, (r3)::numeric, r4)), r2, r3, r4, n
                Index Cond: ((GREATEST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4) - LEAST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4)) = ANY ('{0,2}'::numeric[]))
-               Storage Table Read Requests: 5
-               Storage Table Read Ops: 19
                Storage Table Rows Scanned: 521
                Storage Index Read Requests: 1
-               Storage Index Read Ops: 6
+               Storage Index Read Ops: 1
                Storage Index Rows Scanned: 521
-(15 rows)
+(13 rows)
 
                                                                                                        QUERY PLAN                                                                                                       
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -4516,13 +4512,11 @@ SPLIT AT VALUES (
                Merge Stream Key: (GREATEST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4) - LEAST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4))
                Merge Streams: 2
                Merge Cond: ((GREATEST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4) - LEAST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4)) = ANY ('{0,2}'::numeric[]))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 7
-               Storage Table Rows Scanned: 421
+               Storage Table Rows Scanned: 521
                Storage Index Read Requests: 2
                Storage Index Read Ops: 4
-               Storage Index Rows Scanned: 432
-(20 rows)
+               Storage Index Rows Scanned: 521
+(18 rows)
 
  ?column? | ?column? | ?column? 
 ----------+----------+----------
@@ -4561,13 +4555,11 @@ SPLIT AT VALUES (
                Output: (GREATEST((r2)::numeric, (r3)::numeric, r4) - LEAST((r2)::numeric, (r3)::numeric, r4)), r2, r3, r4, n, r1
                Index Cond: ((GREATEST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4) - LEAST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4)) = '4'::numeric)
                Storage Filter: (r5n.r1 = ANY ('{1,2,3,4,5}'::integer[]))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 8
                Storage Table Rows Scanned: 768
                Storage Index Read Requests: 2
                Storage Index Read Ops: 2
                Storage Index Rows Scanned: 768
-(17 rows)
+(15 rows)
 
                                                                         QUERY PLAN                                                                         
 -----------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -4582,13 +4574,11 @@ SPLIT AT VALUES (
                Output: (GREATEST((r2)::numeric, (r3)::numeric, r4) - LEAST((r2)::numeric, (r3)::numeric, r4)), r2, r3, r4, n, r1
                Index Cond: ((GREATEST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4) - LEAST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4)) = '4'::numeric)
                Storage Filter: (r5n.r1 = ANY ('{1,2,3,4,5}'::integer[]))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 8
                Storage Table Rows Scanned: 768
                Storage Index Read Requests: 2
                Storage Index Read Ops: 2
                Storage Index Rows Scanned: 768
-(17 rows)
+(15 rows)
 
                                                                       QUERY PLAN                                                                       
 -------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -4609,8 +4599,8 @@ SPLIT AT VALUES (
                Filter: ((GREATEST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4) - LEAST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4)) = '4'::numeric)
                Rows Removed by Filter: 30
                Storage Table Read Requests: 1
-               Storage Table Read Ops: 6
-               Storage Table Rows Scanned: 2143
+               Storage Table Read Ops: 5
+               Storage Table Rows Scanned: 2547
 (19 rows)
 
  ?column? | r2 | r3 | r4 |   n   | r1 
@@ -4658,13 +4648,11 @@ SPLIT AT VALUES (
                Output: r2, r3, r4, n, r1, (GREATEST((r2)::numeric, (r3)::numeric, r4) - LEAST((r2)::numeric, (r3)::numeric, r4))
                Index Cond: ((GREATEST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4) - LEAST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4)) = ANY ('{1,2,3,4}'::numeric[]))
                Storage Filter: (r5n.r1 = ANY ('{1,2,3,4}'::integer[]))
-               Storage Table Read Requests: 7
-               Storage Table Read Ops: 29
                Storage Table Rows Scanned: 2124
-               Storage Index Read Requests: 2
-               Storage Index Read Ops: 7
+               Storage Index Read Requests: 1
+               Storage Index Read Ops: 1
                Storage Index Rows Scanned: 2124
-(16 rows)
+(14 rows)
 
                                                                                 QUERY PLAN                                                                                 
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -4683,13 +4671,11 @@ SPLIT AT VALUES (
                Merge Streams: 4
                Merge Cond: ((GREATEST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4) - LEAST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4)) = ANY ('{1,2,3,4}'::numeric[]))
                Storage Filter: (r5n.r1 = ANY ('{1,2,3,4}'::integer[]))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 7
-               Storage Table Rows Scanned: 236
+               Storage Table Rows Scanned: 2124
                Storage Index Read Requests: 2
                Storage Index Read Ops: 8
-               Storage Index Rows Scanned: 1709
-(21 rows)
+               Storage Index Rows Scanned: 2124
+(19 rows)
 
                                                                               QUERY PLAN                                                                               
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -4710,8 +4696,8 @@ SPLIT AT VALUES (
                Filter: ((GREATEST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4) - LEAST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4)) = ANY ('{1,2,3,4}'::numeric[]))
                Rows Removed by Filter: 12
                Storage Table Read Requests: 1
-               Storage Table Read Ops: 5
-               Storage Table Rows Scanned: 1619
+               Storage Table Read Ops: 4
+               Storage Table Rows Scanned: 2023
 (19 rows)
 
  r2 | r3 | r4 |   n   | r1 | ?column? 
@@ -4745,56 +4731,50 @@ SPLIT AT VALUES (
 DROP INDEX r5n_expr_r2_r3_r4_idx;
 --
 -- Expression suffix secondary index
+-- Expressions in a secondary colocated index are useless for SAOP merge
 --
-CREATE INDEX NONCONCURRENTLY ON r5n (r2 ASC, (-r3), (-r4))
-SPLIT AT VALUES (
-    (1),
-    (2),
-    (2, -2),
-    (2, -2, -2),
-    (3));
+CREATE INDEX NONCONCURRENTLY ON r5n (r2 ASC, r3 DESC, (-r4));
 -- Forward scan
-\set query 'SELECT * FROM r5n WHERE r2 IN (0, 2) ORDER BY -r3, -r4, n LIMIT 5'
+\set query 'SELECT * FROM r5n WHERE r2 IN (0, 2) ORDER BY r3 DESC, -r4, n LIMIT 5'
 :explain2run2
                                   QUERY PLAN                                   
 -------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
-   Output: n, r5, r3, r1, r2, r4, ((- r3)), ((- r4))
+   Output: n, r5, r3, r1, r2, r4, ((- r4))
    ->  Sort (actual rows=5 loops=1)
-         Output: n, r5, r3, r1, r2, r4, ((- r3)), ((- r4))
-         Sort Key: ((- r5n.r3)), ((- r5n.r4)), r5n.n
+         Output: n, r5, r3, r1, r2, r4, ((- r4))
+         Sort Key: r5n.r3 DESC, ((- r5n.r4)), r5n.n
          Sort Method: top-N heapsort
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=998 loops=1)
-               Output: n, r5, r3, r1, r2, r4, (- r3), (- r4)
+               Output: n, r5, r3, r1, r2, r4, (- r4)
                Index Cond: (r5n.r2 = ANY ('{0,2}'::bigint[]))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 8
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 1
                Storage Table Rows Scanned: 998
 (12 rows)
 
-                                        QUERY PLAN                                         
--------------------------------------------------------------------------------------------
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
-   Output: n, r5, r3, r1, r2, r4, ((- r3)), ((- r4))
+   Output: n, r5, r3, r1, r2, r4, ((- r4))
    ->  Incremental Sort (actual rows=5 loops=1)
-         Output: n, r5, r3, r1, r2, r4, ((- r3)), ((- r4))
-         Sort Key: ((- r5n.r3)), ((- r5n.r4)), r5n.n
-         Presorted Key: ((- r5n.r3)), ((- r5n.r4))
+         Output: n, r5, r3, r1, r2, r4, ((- r4))
+         Sort Key: r5n.r3 DESC, ((- r5n.r4)), r5n.n
+         Presorted Key: r5n.r3
          Full-sort Groups: 1  Sort Method: top-N heapsort
-         ->  Index Scan using r5n_r2_expr_expr1_idx on public.r5n (actual rows=12 loops=1)
-               Output: n, r5, r3, r1, r2, r4, (- r3), (- r4)
+         Pre-sorted Groups: 1  Sort Method: top-N heapsort
+         ->  Index Scan using r5n_r2_r3_expr_idx on public.r5n (actual rows=93 loops=1)
+               Output: n, r5, r3, r1, r2, r4, (- r4)
                Index Cond: (r5n.r2 = ANY ('{0,2}'::bigint[]))
-               Merge Sort Key: (- r5n.r3), (- r5n.r4)
+               Merge Sort Key: r5n.r3 DESC
                Merge Stream Key: r5n.r2
                Merge Streams: 2
                Merge Cond: (r5n.r2 = ANY ('{0,2}'::bigint[]))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 8
-               Storage Table Rows Scanned: 693
+               Storage Table Rows Scanned: 998
                Storage Index Read Requests: 2
                Storage Index Read Ops: 4
-               Storage Index Rows Scanned: 850
-(20 rows)
+               Storage Index Rows Scanned: 998
+(19 rows)
 
    n   | r5 | r3 | r1 | r2 | r4 
 -------+----+----+----+----+----
@@ -4815,47 +4795,46 @@ SPLIT AT VALUES (
 (5 rows)
 
 -- Backward scan
-\set query 'SELECT * FROM r5n WHERE r2 IN (0, 2) ORDER BY -r3 DESC, -r4 DESC, n LIMIT 5'
+\set query 'SELECT * FROM r5n WHERE r2 IN (0, 2) ORDER BY r3 ASC, -r4 DESC, n LIMIT 5'
 :explain2run2
                                   QUERY PLAN                                   
 -------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
-   Output: n, r5, r3, r1, r2, r4, ((- r3)), ((- r4))
+   Output: n, r5, r3, r1, r2, r4, ((- r4))
    ->  Sort (actual rows=5 loops=1)
-         Output: n, r5, r3, r1, r2, r4, ((- r3)), ((- r4))
-         Sort Key: ((- r5n.r3)) DESC, ((- r5n.r4)) DESC, r5n.n
+         Output: n, r5, r3, r1, r2, r4, ((- r4))
+         Sort Key: r5n.r3, ((- r5n.r4)) DESC, r5n.n
          Sort Method: top-N heapsort
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=998 loops=1)
-               Output: n, r5, r3, r1, r2, r4, (- r3), (- r4)
+               Output: n, r5, r3, r1, r2, r4, (- r4)
                Index Cond: (r5n.r2 = ANY ('{0,2}'::bigint[]))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 8
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 1
                Storage Table Rows Scanned: 998
 (12 rows)
 
-                                             QUERY PLAN                                             
-----------------------------------------------------------------------------------------------------
+                                           QUERY PLAN                                            
+-------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
-   Output: n, r5, r3, r1, r2, r4, ((- r3)), ((- r4))
+   Output: n, r5, r3, r1, r2, r4, ((- r4))
    ->  Incremental Sort (actual rows=5 loops=1)
-         Output: n, r5, r3, r1, r2, r4, ((- r3)), ((- r4))
-         Sort Key: ((- r5n.r3)) DESC, ((- r5n.r4)) DESC, r5n.n
-         Presorted Key: ((- r5n.r3)), ((- r5n.r4))
+         Output: n, r5, r3, r1, r2, r4, ((- r4))
+         Sort Key: r5n.r3, ((- r5n.r4)) DESC, r5n.n
+         Presorted Key: r5n.r3
          Full-sort Groups: 1  Sort Method: top-N heapsort
-         ->  Index Scan Backward using r5n_r2_expr_expr1_idx on public.r5n (actual rows=13 loops=1)
-               Output: n, r5, r3, r1, r2, r4, (- r3), (- r4)
+         Pre-sorted Groups: 1  Sort Method: top-N heapsort
+         ->  Index Scan Backward using r5n_r2_r3_expr_idx on public.r5n (actual rows=92 loops=1)
+               Output: n, r5, r3, r1, r2, r4, (- r4)
                Index Cond: (r5n.r2 = ANY ('{0,2}'::bigint[]))
-               Merge Sort Key: (- r5n.r3) DESC, (- r5n.r4) DESC
+               Merge Sort Key: r5n.r3
                Merge Stream Key: r5n.r2
                Merge Streams: 2
                Merge Cond: (r5n.r2 = ANY ('{0,2}'::bigint[]))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 9
-               Storage Table Rows Scanned: 214
+               Storage Table Rows Scanned: 998
                Storage Index Read Requests: 2
                Storage Index Read Ops: 4
-               Storage Index Rows Scanned: 592
-(20 rows)
+               Storage Index Rows Scanned: 998
+(19 rows)
 
    n   | r5 | r3 | r1 | r2 | r4 
 -------+----+----+----+----+----
@@ -4876,47 +4855,46 @@ SPLIT AT VALUES (
 (5 rows)
 
 -- Targets
-\set query 'SELECT -r4, 1, -r4 FROM r5n WHERE r2 IN (0, 2) ORDER BY -r3 DESC, -r4 DESC, n LIMIT 5'
+\set query 'SELECT -r4, 1, -r4 FROM r5n WHERE r2 IN (0, 2) ORDER BY r3 ASC, -r4 DESC, n LIMIT 5'
 :explain2run2
                                   QUERY PLAN                                   
 -------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
-   Output: ((- r4)), 1, ((- r4)), ((- r3)), n
+   Output: ((- r4)), 1, ((- r4)), r3, n
    ->  Sort (actual rows=5 loops=1)
-         Output: ((- r4)), 1, ((- r4)), ((- r3)), n
-         Sort Key: ((- r5n.r3)) DESC, ((- r5n.r4)) DESC, r5n.n
+         Output: ((- r4)), 1, ((- r4)), r3, n
+         Sort Key: r5n.r3, ((- r5n.r4)) DESC, r5n.n
          Sort Method: top-N heapsort
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=998 loops=1)
-               Output: (- r4), 1, (- r4), (- r3), n
+               Output: (- r4), 1, (- r4), r3, n
                Index Cond: (r5n.r2 = ANY ('{0,2}'::bigint[]))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 8
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 1
                Storage Table Rows Scanned: 998
 (12 rows)
 
-                                             QUERY PLAN                                             
-----------------------------------------------------------------------------------------------------
+                                           QUERY PLAN                                            
+-------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
-   Output: ((- r4)), 1, ((- r4)), ((- r3)), n
+   Output: ((- r4)), 1, ((- r4)), r3, n
    ->  Incremental Sort (actual rows=5 loops=1)
-         Output: ((- r4)), 1, ((- r4)), ((- r3)), n
-         Sort Key: ((- r5n.r3)) DESC, ((- r5n.r4)) DESC, r5n.n
-         Presorted Key: ((- r5n.r3)), ((- r5n.r4))
+         Output: ((- r4)), 1, ((- r4)), r3, n
+         Sort Key: r5n.r3, ((- r5n.r4)) DESC, r5n.n
+         Presorted Key: r5n.r3
          Full-sort Groups: 1  Sort Method: top-N heapsort
-         ->  Index Scan Backward using r5n_r2_expr_expr1_idx on public.r5n (actual rows=13 loops=1)
-               Output: (- r4), 1, (- r4), (- r3), n
+         Pre-sorted Groups: 1  Sort Method: top-N heapsort
+         ->  Index Scan Backward using r5n_r2_r3_expr_idx on public.r5n (actual rows=92 loops=1)
+               Output: (- r4), 1, (- r4), r3, n
                Index Cond: (r5n.r2 = ANY ('{0,2}'::bigint[]))
-               Merge Sort Key: (- r5n.r3) DESC, (- r5n.r4) DESC
+               Merge Sort Key: r5n.r3
                Merge Stream Key: r5n.r2
                Merge Streams: 2
                Merge Cond: (r5n.r2 = ANY ('{0,2}'::bigint[]))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 9
-               Storage Table Rows Scanned: 214
+               Storage Table Rows Scanned: 998
                Storage Index Read Requests: 2
                Storage Index Read Ops: 4
-               Storage Index Rows Scanned: 592
-(20 rows)
+               Storage Index Rows Scanned: 998
+(19 rows)
 
  ?column? | ?column? | ?column? 
 ----------+----------+----------
@@ -4937,51 +4915,47 @@ SPLIT AT VALUES (
 (5 rows)
 
 -- (Drop this index)
-DROP INDEX r5n_r2_expr_expr1_idx;
+DROP INDEX r5n_r2_r3_expr_idx;
 --
 -- Duplicate columns secondary index
 --
-CREATE INDEX NONCONCURRENTLY ON r5n (r2 ASC, (r3 + r4), r2 DESC, (r3 + r4), r2)
-SPLIT AT VALUES (
-    (1),
-    (2),
-    (2, 2),
-    (2, 2, 2),
-    (2, 2, 2, 2),
-    (2, 2, 2, 2, 2),
-    (3));
+CREATE INDEX NONCONCURRENTLY ON r5n (r2 ASC, (r3 + r4), r2 DESC, (r3 + r4), r2);
 -- No order
 -- SAOP merge should not be used.
 \set query 'SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) LIMIT 5'
 :explain2
-                           QUERY PLAN                           
-----------------------------------------------------------------
+                                         QUERY PLAN                                         
+--------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
    Output: n, r5, r3, r1, r2, r4
-   ->  Seq Scan on public.r5n (actual rows=5 loops=1)
+   ->  Index Scan using r5n_r2_expr_r21_expr1_r22_idx on public.r5n (actual rows=5 loops=1)
          Output: n, r5, r3, r1, r2, r4
-         Storage Filter: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
-         Storage Table Read Requests: 1
-         Storage Table Read Ops: 6
-         Storage Table Rows Scanned: 21
-(8 rows)
+         Index Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
+         Storage Table Rows Scanned: 5
+         Storage Index Read Requests: 1
+         Storage Index Read Ops: 1
+         Storage Index Rows Scanned: 5
+(9 rows)
 
-                           QUERY PLAN                           
-----------------------------------------------------------------
+                                         QUERY PLAN                                         
+--------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
    Output: n, r5, r3, r1, r2, r4
-   ->  Seq Scan on public.r5n (actual rows=5 loops=1)
+   ->  Index Scan using r5n_r2_expr_r21_expr1_r22_idx on public.r5n (actual rows=5 loops=1)
          Output: n, r5, r3, r1, r2, r4
-         Storage Filter: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
-         Storage Table Read Requests: 1
-         Storage Table Read Ops: 6
-         Storage Table Rows Scanned: 21
-(8 rows)
+         Index Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
+         Storage Table Rows Scanned: 5
+         Storage Index Read Requests: 1
+         Storage Index Read Ops: 1
+         Storage Index Rows Scanned: 5
+(9 rows)
 
 -- Following queries send various numbers of requests/scan various number of rows
 -- due to non-deterministic order of equal rows in merge sort, hide their DIST
 \set explain 'EXPLAIN (ANALYZE, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
 -- Forward scan
+-- Order by an expression in the embedded index
+-- SAOP merge should not be used.
 \set query 'SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY (r3 + r4), n LIMIT 5'
 :explain2run2
                                    QUERY PLAN                                   
@@ -4997,23 +4971,18 @@ SPLIT AT VALUES (
                Index Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
 (9 rows)
 
-                                            QUERY PLAN                                             
----------------------------------------------------------------------------------------------------
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
    Output: n, r5, r3, r1, r2, r4, (((r3)::numeric + r4))
-   ->  Incremental Sort (actual rows=5 loops=1)
+   ->  Sort (actual rows=5 loops=1)
          Output: n, r5, r3, r1, r2, r4, (((r3)::numeric + r4))
          Sort Key: (((r5n.r3)::numeric + r5n.r4)), r5n.n
-         Presorted Key: (((r5n.r3)::numeric + r5n.r4))
-         Full-sort Groups: 1  Sort Method: top-N heapsort
-         ->  Index Scan using r5n_r2_expr_r21_expr1_r22_idx on public.r5n (actual rows=25 loops=1)
+         Sort Method: top-N heapsort
+         ->  Index Scan using r5n_pkey on public.r5n (actual rows=2045 loops=1)
                Output: n, r5, r3, r1, r2, r4, ((r3)::numeric + r4)
                Index Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
-               Merge Sort Key: ((r5n.r3)::numeric + r5n.r4)
-               Merge Stream Key: r5n.r2
-               Merge Streams: 4
-               Merge Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
-(14 rows)
+(9 rows)
 
    n   | r5 | r3 | r1 | r2 | r4 
 -------+----+----+----+----+----
@@ -5064,6 +5033,8 @@ SPLIT AT VALUES (
 (9 rows)
 
 -- Backward scan
+-- Order by an expression in the embedded index
+-- SAOP merge should not be used.
 \set query 'SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY (r3 + r4) DESC, n LIMIT 5'
 :explain2run2
                                    QUERY PLAN                                   
@@ -5079,23 +5050,18 @@ SPLIT AT VALUES (
                Index Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
 (9 rows)
 
-                                                 QUERY PLAN                                                 
-------------------------------------------------------------------------------------------------------------
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
    Output: n, r5, r3, r1, r2, r4, (((r3)::numeric + r4))
-   ->  Incremental Sort (actual rows=5 loops=1)
+   ->  Sort (actual rows=5 loops=1)
          Output: n, r5, r3, r1, r2, r4, (((r3)::numeric + r4))
          Sort Key: (((r5n.r3)::numeric + r5n.r4)) DESC, r5n.n
-         Presorted Key: (((r5n.r3)::numeric + r5n.r4))
-         Full-sort Groups: 1  Sort Method: top-N heapsort
-         ->  Index Scan Backward using r5n_r2_expr_r21_expr1_r22_idx on public.r5n (actual rows=22 loops=1)
+         Sort Method: top-N heapsort
+         ->  Index Scan using r5n_pkey on public.r5n (actual rows=2045 loops=1)
                Output: n, r5, r3, r1, r2, r4, ((r3)::numeric + r4)
                Index Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
-               Merge Sort Key: ((r5n.r3)::numeric + r5n.r4) DESC
-               Merge Stream Key: r5n.r2
-               Merge Streams: 4
-               Merge Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
-(14 rows)
+(9 rows)
 
    n   | r5 | r3 | r1 | r2 | r4 
 -------+----+----+----+----+----
@@ -5146,6 +5112,8 @@ SPLIT AT VALUES (
 (9 rows)
 
 -- Targets
+-- Order by an expression in the embedded index
+-- SAOP merge should not be used.
 \set query 'SELECT r5, 1, r5 FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY (r3 + r4) DESC, n LIMIT 5'
 :explain2run2
                                    QUERY PLAN                                   
@@ -5161,23 +5129,18 @@ SPLIT AT VALUES (
                Index Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
 (9 rows)
 
-                                                 QUERY PLAN                                                 
-------------------------------------------------------------------------------------------------------------
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
    Output: r5, 1, r5, (((r3)::numeric + r4)), n
-   ->  Incremental Sort (actual rows=5 loops=1)
+   ->  Sort (actual rows=5 loops=1)
          Output: r5, 1, r5, (((r3)::numeric + r4)), n
          Sort Key: (((r5n.r3)::numeric + r5n.r4)) DESC, r5n.n
-         Presorted Key: (((r5n.r3)::numeric + r5n.r4))
-         Full-sort Groups: 1  Sort Method: top-N heapsort
-         ->  Index Scan Backward using r5n_r2_expr_r21_expr1_r22_idx on public.r5n (actual rows=22 loops=1)
+         Sort Method: top-N heapsort
+         ->  Index Scan using r5n_pkey on public.r5n (actual rows=2045 loops=1)
                Output: r5, 1, r5, ((r3)::numeric + r4), n
                Index Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
-               Merge Sort Key: ((r5n.r3)::numeric + r5n.r4) DESC
-               Merge Stream Key: r5n.r2
-               Merge Streams: 4
-               Merge Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
-(14 rows)
+(9 rows)
 
  r5 | ?column? | r5 
 ----+----------+----

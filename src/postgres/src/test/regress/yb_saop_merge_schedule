@@ -27,6 +27,7 @@ test: yb.orig.saop_merge_temp
 test: yb.orig.saop_merge_range
 test: yb.orig.saop_merge_hash
 test: yb.orig.saop_merge_partition
+test: yb.orig.saop_merge_colocated
 
 # These tests touch multiple tables.
 test: yb.orig.saop_merge_join

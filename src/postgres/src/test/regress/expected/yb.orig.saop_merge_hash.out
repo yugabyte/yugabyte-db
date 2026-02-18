@@ -512,7 +512,7 @@
          ->  Parallel Index Scan using h3r2n_pkey on public.h3r2n (actual rows=15 loops=3)
                Output: n, r1, r2, h1, h2, h3
                Index Cond: ((h3r2n.h1 = 1) AND (h3r2n.h2 = ANY ('{1,2,3,4,5,6,7,8,9}'::bigint[])) AND (h3r2n.h3 = 1))
-               Rows Removed by Index Recheck: 16
+               Rows Removed by Index Recheck: 17
                Storage Table Read Requests: 2
                Storage Table Read Ops: 2
                Storage Table Rows Scanned: 15
@@ -537,7 +537,7 @@
          ->  Parallel Index Scan using h3r2n_pkey on public.h3r2n (actual rows=15 loops=3)
                Output: n, r1, r2, h1, h2, h3
                Index Cond: ((h3r2n.h1 = 1) AND (h3r2n.h2 = ANY ('{1,2,3,4,5,6,7,8,9}'::bigint[])) AND (h3r2n.h3 = 1))
-               Rows Removed by Index Recheck: 16
+               Rows Removed by Index Recheck: 17
                Storage Table Read Requests: 2
                Storage Table Read Ops: 2
                Storage Table Rows Scanned: 15
@@ -593,7 +593,7 @@
          ->  Parallel Index Scan using h3r2n_pkey on public.h3r2n (actual rows=15 loops=3)
                Output: n, r1, r2, h1, h2, h3
                Index Cond: ((h3r2n.h1 = 1) AND (h3r2n.h2 = ANY ('{1,2,3,4,5,6,7,8,9}'::bigint[])) AND (h3r2n.h3 = 1))
-               Rows Removed by Index Recheck: 16
+               Rows Removed by Index Recheck: 17
                Storage Table Read Requests: 2
                Storage Table Read Ops: 2
                Storage Table Rows Scanned: 15
@@ -618,7 +618,7 @@
          ->  Parallel Index Scan using h3r2n_pkey on public.h3r2n (actual rows=15 loops=3)
                Output: n, r1, r2, h1, h2, h3
                Index Cond: ((h3r2n.h1 = 1) AND (h3r2n.h2 = ANY ('{1,2,3,4,5,6,7,8,9}'::bigint[])) AND (h3r2n.h3 = 1))
-               Rows Removed by Index Recheck: 16
+               Rows Removed by Index Recheck: 17
                Storage Table Read Requests: 2
                Storage Table Read Ops: 2
                Storage Table Rows Scanned: 15
