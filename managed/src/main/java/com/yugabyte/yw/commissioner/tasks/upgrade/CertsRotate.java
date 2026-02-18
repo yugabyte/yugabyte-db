@@ -276,10 +276,18 @@ public class CertsRotate extends UpgradeTaskBase {
           universeConfigured);
       return false;
     }
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    if (!CertsRotateParams.isHotCertReloadSupportedForUniverse(
+        userIntent.ybSoftwareVersion,
+        userIntent.enableClientToNodeEncrypt,
+        userIntent.enableNodeToNodeEncrypt)) {
+      log.info(
+          "hot cert reload cannot be performed for client-to-node-only universe with DB < {}",
+          CertsRotateParams.HOT_CERT_RELOAD_C2N_ONLY_MIN_VERSION);
+      return false;
+    }
     return Util.compareYbVersions(
-            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
-            "2.14.0.0-b1",
-            true /* suppressFormatError */)
+            userIntent.ybSoftwareVersion, "2.14.0.0-b1", true /* suppressFormatError */)
         >= 0;
   }
 
