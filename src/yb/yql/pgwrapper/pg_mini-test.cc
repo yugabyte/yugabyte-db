@@ -1016,14 +1016,13 @@ TEST_F_EX(PgMiniTest, BulkCopyWithRestart, PgMiniSmallWriteBufferTest) {
     });
 
     while (!stop.load(std::memory_order_acquire) && key < kBatchSize * kTotalBatches) {
-      ASSERT_OK(connection.CopyBegin(Format("COPY $0 FROM STDIN WITH BINARY", kTableName)));
-      for (int j = 0; j != kBatchSize; ++j) {
-        connection.CopyStartRow(2);
-        connection.CopyPutInt32(++key);
-        connection.CopyPutString(RandomHumanReadableString(kValueSize));
-      }
-
-      ASSERT_OK(connection.CopyEnd());
+      ASSERT_OK(connection.CopyFromStdin(
+          kTableName,
+          [&key](PGConn::RowMaker<int32_t, std::string_view>& row) {
+            for (int j = 0; j != kBatchSize; ++j) {
+              row(++key, RandomHumanReadableString(kValueSize));
+            }
+          }));
     }
   });
 
@@ -2585,14 +2584,13 @@ TEST_F_EX(PgMiniTest, DISABLED_ReadsDuringRBS, PgMiniStreamCompressionTest) {
 
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, value BYTEA) SPLIT INTO 1 TABLETS"));
-  ASSERT_OK(conn.CopyBegin("COPY t FROM STDIN WITH BINARY"));
-  for (auto key : Range(kNumRows)) {
-    conn.CopyStartRow(2);
-    conn.CopyPutInt32(key);
-    conn.CopyPutString(RandomString(kValueSize));
-  }
-  ASSERT_OK(conn.CopyEnd());
-
+  ASSERT_OK(conn.CopyFromStdin(
+      "t",
+      [](PGConn::RowMaker<int32_t, std::string_view>& row) {
+        for (auto key : Range(kNumRows)) {
+          row(key, RandomString(kValueSize));
+        }
+      }));
   FlushAndCompactTablets();
 
   LOG(INFO) << "Rows: " << ASSERT_RESULT(conn.FetchAllAsString("SELECT key FROM t"));
@@ -3312,6 +3310,15 @@ TEST_F(PgMiniTest, TestYbGetLocalTserverUuid) {
       Uuid::FromHexStringBigEndian(cluster_->mini_tablet_server(0)->server()->permanent_uuid()));
   ASSERT_EQ(local_tserver_uuid, expected_uuid)
       << "Local tserver UUID mismatch";
+}
+
+Status FetchMatrix(PGConn& conn, const std::string& command, int rows, int cols) {
+  auto res = VERIFY_RESULT(conn.FetchRows<RowAsString>(command));
+  SCHECK_EQ(res.size(), rows, RuntimeError, "Unexpected number of rows");
+  if (!res.empty()) {
+    SCHECK_EQ(res.front().size(), cols, RuntimeError, "Unexpected number of cols");
+  }
+  return Status::OK();
 }
 
 }  // namespace yb::pgwrapper
