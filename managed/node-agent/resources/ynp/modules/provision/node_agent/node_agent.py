@@ -203,7 +203,7 @@ class InstallNodeAgent(BaseYnpModule):
         provider_url = self._get_provider_url(context)
         yba_url = context.get('url')
         skip_tls_verify = not yba_url.lower().startswith('https') or \
-            context.get('skip_tls_verify', False)
+            not context.get('skip_tls_verify', False)
         response = self._make_request(provider_url,
                                       headers=self._get_headers(context.get('api_key')),
                                       verify_ssl=skip_tls_verify)
@@ -211,7 +211,8 @@ class InstallNodeAgent(BaseYnpModule):
 
     def _create_instance_if_not_exists(self, context, provider):
         yba_url = context.get('url')
-        skip_tls_verify = not yba_url.lower().startswith('https')
+        skip_tls_verify = not yba_url.lower().startswith('https') or \
+            not context.get('skip_tls_verify', False)
         get_instance_type_url = self._get_instance_type(context.get('url'), context.get(
             'customer_uuid'), provider.get('uuid'), context.get('instance_type_name'))
 

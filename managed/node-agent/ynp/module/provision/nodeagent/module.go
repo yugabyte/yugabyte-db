@@ -315,7 +315,8 @@ func (m *InstallNodeAgent) createInstanceIfNotExists(
 	provider *model.Provider,
 ) error {
 	ybaURL := values["url"].(string)
-	skipTLSVerify := !strings.HasPrefix(strings.ToLower(ybaURL), "https")
+	skipTLSVerify := !strings.HasPrefix(strings.ToLower(ybaURL), "https") ||
+		config.GetBool(values, "skip_tls_verify", false)
 	getInstanceTypeURL := m.getInstanceTypeURL(
 		values["url"].(string),
 		values["customer_uuid"].(string),

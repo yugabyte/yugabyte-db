@@ -178,6 +178,9 @@ func setDefaultConfigs(ynpConfig map[string]map[string]any) {
 	if _, ok := extraSection["cloud_type"]; !ok {
 		extraSection["cloud_type"] = "onprem"
 	}
+	if _, ok := extraSection["is_cloud"]; !ok {
+		extraSection["is_cloud"] = false
+	}
 	if _, ok := extraSection["is_ybm"]; !ok {
 		extraSection["is_ybm"] = false
 	}
