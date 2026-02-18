@@ -25,6 +25,14 @@
 namespace yb::pggate {
 namespace {
 
+Status ExecuteInit(PgDocOp& op, const YbctidReader::Options& options) {
+  auto exec_params = op.ExecParameters();
+  exec_params.rowmark = options.rowmark.value_or(exec_params.rowmark);
+  exec_params.pg_wait_policy = options.pg_wait_policy.value_or(exec_params.pg_wait_policy);
+  exec_params.docdb_wait_policy = options.docdb_wait_policy.value_or(exec_params.docdb_wait_policy);
+  return op.ExecuteInit(&exec_params);
+}
+
 struct PgsqlReadOpWithPgTable {
   PgsqlReadOpWithPgTable(
       ThreadSafeArena* arena, const PgTableDescPtr& descr,
@@ -141,15 +149,13 @@ YbctidReader::YbctidReader(const PgSessionPtr& session)
 YbctidReader::~YbctidReader() = default;
 
 Result<std::span<LightweightTableYbctid>> YbctidReader::Read(
-    PgOid database_id, const TableLocalityMap& tables_locality,
-    const ExecParametersMutator& exec_params_mutator,
-    std::optional<PgSessionRunOperationMarker> marker) {
+    PgOid database_id, const TableLocalityMap& tables_locality, const Options& options) {
   // Group the items by the table ID.
   std::ranges::sort(ybctids_, [](const auto& a, const auto& b) { return a.table_id < b.table_id; });
 
   auto arena = std::make_shared<ThreadSafeArena>();
 
-  PrecastRequestSender precast_sender(marker);
+  PrecastRequestSender precast_sender(options.run_marker);
   boost::container::small_vector<std::unique_ptr<PgDocReadOp>, 16> doc_ops;
   auto request_sender = [&precast_sender](
       PgSession* session, std::span<const PgsqlOpPtr> ops, const PgTableDesc& table,
@@ -171,9 +177,7 @@ Result<std::span<LightweightTableYbctid>> YbctidReader::Read(
     doc_ops.push_back(std::make_unique<PgDocReadOp>(
         session_, &read_op_with_table->table, std::move(read_op), request_sender));
     auto& doc_op = *doc_ops.back();
-    auto exec_params = doc_op.ExecParameters();
-    exec_params_mutator(exec_params);
-    RETURN_NOT_OK(doc_op.ExecuteInit(&exec_params));
+    RETURN_NOT_OK(ExecuteInit(doc_op, options));
     // Populate doc_op with ybctids which belong to current table.
     RSTATUS_DCHECK(VERIFY_RESULT(doc_op.PopulateByYbctidOps({make_lw_function([&it, table_id, end] {
       return it != end && it->table_id == table_id ? Slice((it++)->ybctid) : Slice();

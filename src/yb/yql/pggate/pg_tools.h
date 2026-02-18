@@ -152,8 +152,6 @@ using TableYbctidSet = TableYbctidSetHelper<TableYbctid>;
 template <class U>
 using TableYbctidMap = std::unordered_map<TableYbctid, U, TableYbctidHasher, TableYbctidComparator>;
 
-using ExecParametersMutator = LWFunction<void(YbcPgExecParameters&)>;
-
 struct YbctidBatch {
   YbctidBatch(std::span<const Slice> ybctids_, bool keep_order_)
       : ybctids(ybctids_), keep_order(keep_order_) {}

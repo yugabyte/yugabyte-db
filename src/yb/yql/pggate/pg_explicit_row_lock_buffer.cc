@@ -71,12 +71,10 @@ Status ExplicitRowLockBuffer::DoFlushImpl() {
   }
   const auto existing_ybctids_count = VERIFY_RESULT(batch.Read(
       info_->database_id, table_locality_map_,
-      make_lw_function(
-          [&info = *info_](YbcPgExecParameters& params) {
-            params.rowmark = info.rowmark;
-            params.pg_wait_policy = info.pg_wait_policy;
-            params.docdb_wait_policy = info.docdb_wait_policy;
-          }), PgSessionRunOperationMarker::ExplicitRowLock)).size();
+      {.rowmark = info_->rowmark,
+       .pg_wait_policy = info_->pg_wait_policy,
+       .docdb_wait_policy = info_->docdb_wait_policy,
+       .run_marker = PgSessionRunOperationMarker::ExplicitRowLock})).size();
   SCHECK_EQ(
       existing_ybctids_count, intents_count, NotFound, "Some of the requested ybctids are missing");
   return Status::OK();
