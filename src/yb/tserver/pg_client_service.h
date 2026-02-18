@@ -80,6 +80,7 @@ class TserverXClusterContextIf;
     (IsObjectPartOfXRepl) \
     (ListClones) \
     (ListLiveTabletServers) \
+    (ListSlotEntries) \
     (ListReplicationSlots) \
     (ReadSequenceTuple) \
     (ReserveOids) \
