@@ -279,7 +279,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           ScopeType.GLOBAL,
           "Application Logs Regex Pattern",
           "Regex pattern used to filter application log files when creating support bundles.",
-          ConfDataType.RegexStringType,
+          ConfDataType.RawStringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<String> supportBundleApplicationLogsSdfPattern =
       new ConfKeyInfo<>(
