@@ -419,8 +419,8 @@ Status PgDocOp::SendRequestImpl(ForceNonBufferable force_non_bufferable) {
   }
 
   response_ = VERIFY_RESULT(sender_(
-      pg_session_.get(), pgsql_ops_.data(), send_count, *table_,
-      HybridTime::FromPB(GetInTxnLimitHt()), force_non_bufferable, IsForWritePgDoc(IsWrite())));
+      pg_session_.get(), {pgsql_ops_.begin(), send_count}, *table_,
+      {HybridTime::FromPB(GetInTxnLimitHt()), force_non_bufferable}, IsForWritePgDoc(IsWrite())));
   return Status::OK();
 }
 
@@ -573,11 +573,10 @@ Status PgDocOp::CompleteRequests() {
 }
 
 Result<PgDocResponse> PgDocOp::DefaultSender(
-    PgSession* session, const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
-    HybridTime in_txn_limit, ForceNonBufferable force_non_bufferable, IsForWritePgDoc is_write) {
-  const PgDocResponse::MetricInfo metrics{ResolveRelationType(**ops, table), is_write};
-  auto result = PgDocResponse{VERIFY_RESULT(session->RunAsync(
-      ops, ops_count, table, in_txn_limit, force_non_bufferable)), metrics};
+    PgSession* session,  std::span<const PgsqlOpPtr> ops, const PgTableDesc& table,
+    const PgSession::RunOptions& options, IsForWritePgDoc is_write) {
+  const PgDocResponse::MetricInfo metrics{ResolveRelationType(*ops.front(), table), is_write};
+  auto result = PgDocResponse{VERIFY_RESULT(session->RunAsync(ops, table, options)), metrics};
   if (!result.Valid()) {
     RETURN_NOT_OK(UpdateMetricOnRequestBuffering(metrics, session->metrics()));
   }

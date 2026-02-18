@@ -968,7 +968,7 @@ Status PgSession::ValidatePlacement(const std::string& placement_info, bool chec
 
 template<class Generator>
 Result<PerformFuture> PgSession::DoRunAsync(
-    const Generator& generator, HybridTime in_txn_limit, ForceNonBufferable force_non_bufferable,
+    const Generator& generator, const RunOptions& options,
     std::optional<CacheOptions>&& cache_options) {
   const auto first_table_op = generator();
   RSTATUS_DCHECK(!first_table_op.IsEmpty(), IllegalState, "Operation list must not be empty");
@@ -977,7 +977,7 @@ Result<PerformFuture> PgSession::DoRunAsync(
   auto table_op = generator();
   const auto multiple_ops_for_processing = !table_op.IsEmpty();
   RunHelper runner(
-      this, group_session_type, in_txn_limit, force_non_bufferable,
+      this, group_session_type, options.in_txn_limit, options.force_non_bufferable,
       ForceFlushBeforeNonBufferableOp{multiple_ops_for_processing});
   const auto is_ddl = pg_txn_manager_->IsDdlMode();
   auto processor = [this, &runner, is_ddl, group_session_type](const auto& table_op) -> Status {
@@ -998,24 +998,28 @@ Result<PerformFuture> PgSession::DoRunAsync(
   return runner.Flush(std::move(cache_options));
 }
 
-Result<PerformFuture> PgSession::RunAsync(const OperationGenerator& generator,
-                                          HybridTime in_txn_limit,
-                                          ForceNonBufferable force_non_bufferable) {
-  return DoRunAsync(generator, in_txn_limit, force_non_bufferable);
-}
-
-Result<PerformFuture> PgSession::RunAsync(const ReadOperationGenerator& generator,
-                                          HybridTime in_txn_limit,
-                                          ForceNonBufferable force_non_bufferable) {
-  return DoRunAsync(generator, in_txn_limit, force_non_bufferable);
+Result<PerformFuture> PgSession::RunAsync(
+    std::span<const PgsqlOpPtr> ops, const PgTableDesc& table, const RunOptions& options) {
+  const auto generator = [i = ops.begin(), end = ops.end(), t = &table]() mutable {
+      using TO = TableOperation<PgsqlOpPtr>;
+      return i != end ? TO{.operation = &*i++, .table = t} : TO();
+  };
+  return DoRunAsync(make_lw_function(generator), options);
 }
 
 Result<PerformFuture> PgSession::RunAsync(
-    const ReadOperationGenerator& generator, CacheOptions&& cache_options) {
-  RSTATUS_DCHECK(!cache_options.key_value.empty(), InvalidArgument, "Cache key can't be empty");
-  // Ensure no buffered requests will be added to cached request.
-  RETURN_NOT_OK(buffer_.Flush());
-  return DoRunAsync(generator, HybridTime(), ForceNonBufferable::kFalse, std::move(cache_options));
+    const OperationGenerator& generator, const RunOptions& options) {
+  return DoRunAsync(generator, options);
+}
+
+Result<PerformFuture> PgSession::RunAsync(
+    const ReadOperationGenerator& generator, std::optional<CacheOptions>&& cache_options) {
+  if (cache_options) {
+    RSTATUS_DCHECK(!cache_options->key_value.empty(), InvalidArgument, "Cache key can't be empty");
+    // Ensure no buffered requests will be added to cached request.
+    RETURN_NOT_OK(buffer_.Flush());
+  }
+  return DoRunAsync(generator, {}, std::move(cache_options));
 }
 
 Result<bool> PgSession::CheckIfPitrActive() {

@@ -15,6 +15,7 @@
 
 #include <functional>
 #include <optional>
+#include <span>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -45,10 +46,20 @@
 
 namespace yb::pggate {
 
-YB_STRONGLY_TYPED_BOOL(OpBuffered);
 YB_STRONGLY_TYPED_BOOL(InvalidateOnPgClient);
 YB_STRONGLY_TYPED_BOOL(UseCatalogSession);
 YB_STRONGLY_TYPED_BOOL(ForceNonBufferable);
+
+struct PgSessionRunOptions {
+  HybridTime in_txn_limit{};
+  ForceNonBufferable force_non_bufferable{ForceNonBufferable::kFalse};
+
+  friend bool operator==(const PgSessionRunOptions&, const PgSessionRunOptions&) = default;
+
+  std::string ToString() const {
+      return YB_STRUCT_TO_STRING(in_txn_limit, force_non_bufferable);
+  }
+};
 
 // This class is not thread-safe as it is mostly used by a single-threaded PostgreSQL backend
 // process.
@@ -178,24 +189,7 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
 
   using OperationGenerator = LWFunction<TableOperation<PgsqlOpPtr>()>;
   using ReadOperationGenerator = LWFunction<TableOperation<PgsqlReadOpPtr>()>;
-
-  template<class... Args>
-  Result<PerformFuture> RunAsync(
-      const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
-      Args&&... args) {
-    const auto generator = [ops, end = ops + ops_count, &table]() mutable {
-        using TO = TableOperation<PgsqlOpPtr>;
-        return ops != end ? TO{.operation = ops++, .table = &table} : TO();
-    };
-    return RunAsync(make_lw_function(generator), std::forward<Args>(args)...);
-  }
-
-  Result<PerformFuture> RunAsync(
-      const OperationGenerator& generator, HybridTime in_txn_limit,
-      ForceNonBufferable force_non_bufferable = ForceNonBufferable::kFalse);
-  Result<PerformFuture> RunAsync(
-      const ReadOperationGenerator& generator, HybridTime in_txn_limit,
-      ForceNonBufferable force_non_bufferable = ForceNonBufferable::kFalse);
+  using RunOptions = PgSessionRunOptions;
 
   struct CacheOptions {
     uint32_t key_group;
@@ -203,7 +197,14 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
     std::optional<uint32_t> lifetime_threshold_ms;
   };
 
-  Result<PerformFuture> RunAsync(const ReadOperationGenerator& generator, CacheOptions&& options);
+  Result<PerformFuture> RunAsync(
+      std::span<const PgsqlOpPtr> ops, const PgTableDesc& table, const RunOptions& options = {});
+
+  Result<PerformFuture> RunAsync(
+      const OperationGenerator& generator, const RunOptions& options = {});
+
+  Result<PerformFuture> RunAsync(
+      const ReadOperationGenerator& generator, std::optional<CacheOptions>&& cache_options = {});
 
   // Lock functions.
   // -------------
@@ -306,7 +307,7 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
 
   template<class Generator>
   Result<PerformFuture> DoRunAsync(
-      const Generator& generator, HybridTime in_txn_limit, ForceNonBufferable force_non_bufferable,
+      const Generator& generator, const RunOptions& options,
       std::optional<CacheOptions>&& cache_options = std::nullopt);
 
   struct TxnSerialNoPerformInfo {
