@@ -647,7 +647,9 @@ message PgListLiveTabletServersResponsePB {
   string universe_uuid = 3;
 }
 
-message PgListSlotEntriesRequestPB {}
+message PgListSlotEntriesRequestPB {
+  reserved 1; // ASH metadata is now passed in RequestHeader PB
+}
 
 message PgSlotEntryInfoPB {
   string stream_id = 1;
