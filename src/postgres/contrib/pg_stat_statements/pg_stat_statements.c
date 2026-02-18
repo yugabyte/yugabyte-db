@@ -515,6 +515,8 @@ static int	query_buffer_helper(FILE *file, FILE *qfile, int qlen,
 static void enforce_bucket_factor(int *value);
 static bool yb_track_nested_queries(void);
 static int	YbGetPgssNormalizedQueryText(Size query_offset, int actual_query_len, char *normalized_query);
+static char *yb_generate_normalized_backfill_query(YbBackfillIndexStmt *stmt,
+												   int *query_len_p);
 
 /*
  * Module load callback
@@ -1736,19 +1738,47 @@ pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 		 * YB note: UTILITY statements are the only kind that are treated as
 		 * sensitive. The other pgss hooks (planner, analyze, end-of-execution)
 		 * are not invoked for utility statements.
+		 *
+		 * For BACKFILL INDEX commands, generate a normalized query string so
+		 * that all backfill calls for the same index are aggregated.
 		 */
-		pgss_store(queryString,
-				   saved_queryId,
-				   saved_stmt_location,
-				   saved_stmt_len,
-				   PGSS_EXEC,
-				   INSTR_TIME_GET_MILLISEC(duration),
-				   rows,
-				   &bufusage,
-				   &walusage,
-				   NULL,
-				   NULL,
-				   true /* yb_is_sensitive_stmt */ );
+		if (IsA(parsetree, YbBackfillIndexStmt))
+		{
+			char	   *norm_query;
+			int			norm_query_len;
+
+			YbBackfillIndexStmt *bf_stmt =
+				(YbBackfillIndexStmt *) parsetree;
+			norm_query = yb_generate_normalized_backfill_query(bf_stmt, &norm_query_len);
+			pgss_store(norm_query,
+					   saved_queryId,
+					   0,
+					   norm_query_len,
+					   PGSS_EXEC,
+					   INSTR_TIME_GET_MILLISEC(duration),
+					   rows,
+					   &bufusage,
+					   &walusage,
+					   NULL,
+					   NULL,
+					   false /* yb_is_sensitive_stmt */ );
+			pfree(norm_query);
+		}
+		else
+		{
+			pgss_store(queryString,
+					   saved_queryId,
+					   saved_stmt_location,
+					   saved_stmt_len,
+					   PGSS_EXEC,
+					   INSTR_TIME_GET_MILLISEC(duration),
+					   rows,
+					   &bufusage,
+					   &walusage,
+					   NULL,
+					   NULL,
+					   true /* yb_is_sensitive_stmt */ );
+		}
 	}
 	else
 	{
@@ -3822,4 +3852,57 @@ YbGetPgssNormalizedQueryText(Size query_offset, int actual_query_len, char *norm
 
 	free(qbuffer);
 	return YB_DIAGNOSTICS_SUCCESS;
+}
+
+/*
+ * YB: Generate a normalized query string for a BACKFILL command.
+ *
+ * Replaces varying parameters (bfinstr, read_time, partition key, row keys)
+ * with $N parameter placeholders so that all BACKFILL calls for the same
+ * index are represented by a single normalized query in pg_stat_statements.
+ *
+ * Returns a palloc'd string.
+ */
+static char *
+yb_generate_normalized_backfill_query(YbBackfillIndexStmt *stmt,
+									  int *query_len_p)
+{
+	StringInfoData buf;
+	ListCell   *lc;
+	bool		first = true;
+	int			param_num = 1;
+
+	initStringInfo(&buf);
+
+	appendStringInfoString(&buf, "BACKFILL INDEX ");
+
+	/* Append OID list (these are part of the query identity, not abstracted) */
+	foreach(lc, stmt->oid_list)
+	{
+		if (!first)
+			appendStringInfoString(&buf, ", ");
+		appendStringInfo(&buf, "%u", lfirst_oid(lc));
+		first = false;
+	}
+
+	/* Append normalized parameters */
+	if (stmt->bfinfo->bfinstr)
+		appendStringInfo(&buf, " WITH $%d", param_num++);
+
+	appendStringInfo(&buf, " READ TIME $%d", param_num++);
+
+	if (stmt->bfinfo->row_bounds)
+	{
+		if (stmt->bfinfo->row_bounds->partition_key)
+			appendStringInfo(&buf, " PARTITION $%d", param_num++);
+
+		if (stmt->bfinfo->row_bounds->row_key_start)
+			appendStringInfo(&buf, " FROM $%d", param_num++);
+
+		if (stmt->bfinfo->row_bounds->row_key_end)
+			appendStringInfo(&buf, " TO $%d", param_num++);
+	}
+
+	*query_len_p = buf.len;
+	return buf.data;
 }
