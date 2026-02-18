@@ -58,6 +58,10 @@
 #define GET_PUBOID_FROM_PG_PUBLICATION_REL_RECORD(record) \
   record->row_message().new_tuple().Get(1).pg_catalog_value().uint32_value()
 
+DEFINE_RUNTIME_uint32(cdcsdk_vwal_tablets_to_poll_batch_size, 200,
+    "The maximum number of tablets to poll in a single GetConsistentChanges call. If there are "
+    "more tablets to be polled, then an empty response is sent in current call.");
+
 DEFINE_RUNTIME_uint32(cdcsdk_max_consistent_records, 500,
     "Controls the maximum number of records sent in GetConsistentChanges response. Only used when "
     "cdc_vwal_use_byte_threshold_for_consistent_changes flag is set to false.");
@@ -103,6 +107,9 @@ DEFINE_RUNTIME_bool(cdcsdk_update_restart_time_when_nothing_to_stream, true,
     "most recently popped COMMIT / SAFEPOINT record from the priority queue iff restart lsn is "
     "equal to the last shipped lsn");
 TAG_FLAG(cdcsdk_update_restart_time_when_nothing_to_stream, advanced);
+
+DEFINE_test_flag(uint32, cdcsdk_vwal_getchanges_rpc_delay_ms, 0,
+    "Delay in milliseconds to simulate a slow GetChanges RPC call.");
 
 DECLARE_uint64(cdc_stream_records_threshold_size_bytes);
 DECLARE_bool(ysql_yb_enable_consistent_replication_from_hash_range);
@@ -565,6 +572,9 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
   MicrosecondsInt64 time_in_get_changes_micros = 0;
 
   std::unordered_set<TabletId> tablet_to_poll_list;
+  // We will poll only a maximum of 'FLAGS_cdcsdk_vwal_tablets_to_poll_batch_size' empty tablet
+  // queues. If there are more than that, then their ids will be stored in 'empty_tablet_queues'.
+  std::vector<TabletId> empty_tablet_queues;
   for (const auto& tablet_queue : tablet_queues_) {
     auto tablet_id = tablet_queue.first;
     auto records_queue = tablet_queue.second;
@@ -582,7 +592,11 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
           RETURN_NOT_OK(PushNextPublicationRefreshRecord());
         }
       } else {
-        tablet_to_poll_list.insert(tablet_id);
+        if (tablet_to_poll_list.size() < FLAGS_cdcsdk_vwal_tablets_to_poll_batch_size) {
+          tablet_to_poll_list.insert(tablet_id);
+        } else {
+          empty_tablet_queues.push_back(tablet_id);
+        }
       }
     }
   }
@@ -593,21 +607,27 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
   }
 
   TabletRecordPriorityQueue sorted_records;
-  std::vector<TabletId> empty_tablet_queues;
-  for (const auto& entry : tablet_queues_) {
-    auto s = AddRecordToVirtualWalPriorityQueue(entry.first, &sorted_records);
-    if (!s.ok()) {
-      VLOG_WITH_PREFIX(1)
-          << "Couldnt add entries to the VirtualWAL Queue for stream_id: " << stream_id_
-          << " and tablet_id: " << entry.first;
-      RETURN_NOT_OK(s.CloneAndReplaceCode(Status::Code::kTryAgain));
+  // We will hold off on adding the records to the virtual WAL priority queue until we have polled
+  // all the empty tablet queues. So once there is no tablet in 'empty_tablet_queues', we can add
+  // the records from tablet_queues_ to the priority queue.
+  if (empty_tablet_queues.empty()) {
+    for (const auto& entry : tablet_queues_) {
+      auto s = AddRecordToVirtualWalPriorityQueue(entry.first, &sorted_records);
+      if (!s.ok()) {
+        VLOG_WITH_PREFIX(1) << "Couldnt add entries to the VirtualWAL Queue for stream_id: "
+                            << stream_id_ << " and tablet_id: " << entry.first;
+        RETURN_NOT_OK(s.CloneAndReplaceCode(Status::Code::kTryAgain));
+      }
     }
   }
 
   GetConsistentChangesRespMetadata metadata;
   uint64_t resp_records_size = 0;
+  // We won't send any record in the response until we have polled all the empty tablet queues. So
+  // once there is no tablet in 'empty_tablet_queues', we can start populating the records in the
+  // response.
   while (CanAddMoreRecords(resp_records_size, resp->cdc_sdk_proto_records_size()) &&
-         !sorted_records.empty() && empty_tablet_queues.size() == 0) {
+         !sorted_records.empty() && empty_tablet_queues.empty()) {
     auto tablet_record_info_pair = VERIFY_RESULT(
         GetNextRecordToBeShipped(&sorted_records, &empty_tablet_queues, hostport, deadline));
     const auto tablet_id = tablet_record_info_pair.first;
@@ -793,8 +813,10 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
   std::ostringstream oss;
   if (resp->cdc_sdk_proto_records_size() == 0) {
     oss.clear();
-    oss << "Sending empty GetConsistentChanges response from total tablet queues: "
-        << tablet_queues_.size();
+    oss << "Sending empty GetConsistentChanges response"
+        << (empty_tablet_queues.empty()
+                ? Format(" from total tablet queues: $0", tablet_queues_.size())
+                : Format(" because $0 tablets are not polled yet", empty_tablet_queues.size()));
     YB_CDC_LOG_WITH_PREFIX_EVERY_N_SECS_OR_VLOG(oss, 300, 1);
   } else {
     MonoDelta vwal_lag;
@@ -931,6 +953,10 @@ Status CDCSDKVirtualWAL::GetChangesInternal(
 
     RETURN_NOT_OK(AddRecordsToTabletQueue(tablet_id, &resp));
     RETURN_NOT_OK(UpdateTabletCheckpointForNextRequest(tablet_id, &resp));
+
+    if (PREDICT_FALSE(FLAGS_TEST_cdcsdk_vwal_getchanges_rpc_delay_ms > 0)) {
+      SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_cdcsdk_vwal_getchanges_rpc_delay_ms));
+    }
   }
 
   return Status::OK();

@@ -148,6 +148,8 @@ DECLARE_bool(cdcsdk_update_restart_time_when_nothing_to_stream);
 DECLARE_string(TEST_cdc_tablet_id_to_stall_state_table_updates);
 DECLARE_bool(TEST_enable_table_rewrite_for_cdcsdk_table);
 DECLARE_uint64(TEST_delay_before_complete_expired_pg_sessions_shutdown_ms);
+DECLARE_uint32(cdcsdk_vwal_tablets_to_poll_batch_size);
+DECLARE_uint32(TEST_cdcsdk_vwal_getchanges_rpc_delay_ms);
 
 namespace yb {
 
