@@ -207,6 +207,11 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
   Result<TxnSnapshotId> GetSuitableSnapshotForRestore(
       const SnapshotScheduleId& schedule_id, HybridTime restore_at, int64_t leader_term,
       CoarseTimePoint deadline);
+
+  // Waits for a snapshot to complete creation. Used by xCluster failover to ensure
+  // the on-demand snapshot is ready before restoring from it.
+  Status WaitForSnapshotToComplete(
+      const TxnSnapshotId& snapshot_id, CoarseTimePoint deadline);
   Result<bool> IsTableCoveredBySomeSnapshotSchedule(const TableInfo& table_info) const;
 
   // Returns true if the namespace is currently retained due to ongoing snapshot operations.

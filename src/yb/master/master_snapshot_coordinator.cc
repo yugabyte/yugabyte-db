@@ -826,8 +826,8 @@ class MasterSnapshotCoordinator::Impl {
         restore_at);
   }
 
-  Result<TxnSnapshotId> WaitForSnapshotToComplete(
-      const TxnSnapshotId& snapshot_id, HybridTime restore_at, CoarseTimePoint deadline) {
+  Status WaitForSnapshotToComplete(
+      const TxnSnapshotId& snapshot_id, CoarseTimePoint deadline) {
     while (CoarseMonoClock::now() < deadline) {
       // Have to look up the snapshot each iteration because the snapshot is only valid while the
       // mutex is held.
@@ -835,7 +835,7 @@ class MasterSnapshotCoordinator::Impl {
         std::lock_guard lock(mutex_);
         const auto& snapshot = VERIFY_RESULT(FindSnapshot(snapshot_id)).get();
         if (VERIFY_RESULT(snapshot.Complete())) {
-          return snapshot.id();
+          return Status::OK();
         }
       }
       std::this_thread::sleep_for(100ms);
@@ -866,7 +866,8 @@ class MasterSnapshotCoordinator::Impl {
     while (CoarseMonoClock::now() < deadline) {
       auto result = try_get_suitable_snapshot();
       if (result.ok()) {
-        return WaitForSnapshotToComplete(*result, restore_at, deadline);
+        RETURN_NOT_OK(WaitForSnapshotToComplete(*result, deadline));
+        return *result;
       } else if (MasterError(result.status()) == MasterErrorPB::PARALLEL_SNAPSHOT_OPERATION) {
         continue;
       } else {
@@ -2599,6 +2600,11 @@ Result<TxnSnapshotId> MasterSnapshotCoordinator::GetSuitableSnapshotForRestore(
     const SnapshotScheduleId& schedule_id, HybridTime restore_at, int64_t leader_term,
     CoarseTimePoint deadline) {
   return impl_->GetSuitableSnapshotForRestore(schedule_id, restore_at, leader_term, deadline);
+}
+
+Status MasterSnapshotCoordinator::WaitForSnapshotToComplete(
+    const TxnSnapshotId& snapshot_id, CoarseTimePoint deadline) {
+  return impl_->WaitForSnapshotToComplete(snapshot_id, deadline);
 }
 
 Result<bool> MasterSnapshotCoordinator::IsTableCoveredBySomeSnapshotSchedule(

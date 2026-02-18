@@ -29,17 +29,18 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_manager.h"
+#include "yb/master/master.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_replication.pb.h"
-#include "yb/master/master.h"
-#include "yb/master/xcluster_consumer_registry_service.h"
 #include "yb/master/xcluster/add_index_to_bidirectional_xcluster_target_task.h"
 #include "yb/master/xcluster/add_table_to_xcluster_target_task.h"
+#include "yb/master/xcluster_consumer_registry_service.h"
 #include "yb/master/xcluster/handle_new_schema_for_automatic_xcluster_target_task.h"
 #include "yb/master/xcluster/master_xcluster_util.h"
 #include "yb/master/xcluster/xcluster_bootstrap_helper.h"
+#include "yb/master/xcluster/xcluster_failover_task.h"
 #include "yb/master/xcluster/xcluster_replication_group.h"
 #include "yb/master/xcluster/xcluster_safe_time_service.h"
 #include "yb/master/xcluster/xcluster_status.h"
@@ -153,6 +154,67 @@ void XClusterTargetManager::CreateXClusterSafeTimeTableAndStartService() {
       "Creation of XClusterSafeTime table failed");
 
   safe_time_service_->ScheduleTaskIfNeeded();
+}
+
+Status XClusterTargetManager::XClusterFailover(
+    const xcluster::ReplicationGroupId& replication_group_id,
+    const LeaderEpoch& epoch,
+    CoarseTimePoint deadline,
+    ThreadPool* background_tasks_thread_pool,
+    XClusterFailoverResponsePB* resp) {
+  auto replication_info = catalog_manager_.GetUniverseReplication(replication_group_id);
+  SCHECK(
+      replication_info, NotFound,
+      Format("Replication group $0 not found", replication_group_id.ToString()));
+
+  SCHECK(
+      replication_info->IsAutomaticDdlMode(),
+      InvalidArgument,
+      Format("Replication group $0 is not an xCluster target in automatic mode",
+             replication_group_id));
+
+  std::vector<NamespaceId> replication_group_namespaces;
+  {
+    auto repl_info_lock = replication_info->LockForRead();
+    for (const auto& namespace_info :
+         repl_info_lock->pb.db_scoped_info().namespace_infos()) {
+      SCHECK(
+          !namespace_info.consumer_namespace_id().empty(), IllegalState,
+          Format("Replication group $0 contains a namespace entry without a consumer namespace id",
+                 replication_group_id));
+      replication_group_namespaces.push_back(namespace_info.consumer_namespace_id());
+    }
+  }
+  SCHECK(
+      !replication_group_namespaces.empty(), IllegalState,
+      Format("Replication group $0 has no namespaces to snapshot", replication_group_id));
+
+  SCHECK(
+      background_tasks_thread_pool, IllegalState, "Background task pool unavailable");
+
+  auto* xcluster_manager = catalog_manager_.GetXClusterManagerImpl();
+  SCHECK(
+      xcluster_manager, IllegalState,
+      "XClusterManager unavailable while scheduling failover snapshot cleanup");
+
+  auto sync = std::make_shared<Synchronizer>();
+  auto completion_callback = [resp, sync](const Status& status) {
+    if (resp && !status.ok()) {
+      StatusToPB(status, resp->mutable_error()->mutable_status());
+    }
+    sync->AsStdStatusCallback()(status);
+  };
+
+  auto failover_task = std::make_shared<XClusterFailoverTask>(
+      &master_, *background_tasks_thread_pool, *master_.messenger(),
+      *xcluster_manager, *this, replication_group_id, std::move(replication_group_namespaces),
+      epoch, deadline, completion_callback);
+
+  failover_task->Start();
+  // TODO(#30564): Make the failover asynchronous and resilient to master failover.
+  RETURN_NOT_OK(sync->Wait());
+
+  return Status::OK();
 }
 
 Status XClusterTargetManager::GetXClusterSafeTime(

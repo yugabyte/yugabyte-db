@@ -208,6 +208,9 @@ class XClusterYsqlTestBase : public XClusterTestBase {
  protected:
   void TestReplicationWithSchemaChanges(TableId producer_table_id, bool bootstrap);
 
+  Status XClusterFailover(
+      const xcluster::ReplicationGroupId& replication_group_id);
+
  private:
   void InitFlags(const MiniClusterOptions& opts);
 

@@ -24,11 +24,12 @@
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_ddl.proxy.h"
+#include "yb/master/master_replication.pb.h"
+#include "yb/master/master_replication.proxy.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog_initialization.h"
 
 #include "yb/server/server_base.h"
-
 #include "yb/tools/yb-admin_client.h"
 
 #include "yb/tserver/mini_tablet_server.h"
@@ -1049,8 +1050,19 @@ Status XClusterYsqlTestBase::AddNamespaceToXClusterReplication(
   auto source_xcluster_client = client::XClusterClient(*producer_client());
   auto target_master_address = consumer_cluster()->GetMasterAddresses();
 
-  RETURN_NOT_OK(source_xcluster_client.AddNamespaceToXClusterReplication(
-      kReplicationGroupId, target_master_address, source_namespace_id));
+  RETURN_NOT_OK(LoggedWaitFor(
+      [&]() -> Result<bool> {
+        auto status = source_xcluster_client.AddNamespaceToXClusterReplication(
+            kReplicationGroupId, target_master_address, source_namespace_id);
+        if (status.ok()) {
+          return true;
+        }
+        if (status.IsTryAgain()) {
+          return false;
+        }
+        return status;
+      },
+      MonoDelta::FromSeconds(kRpcTimeout), "AddNamespaceToXClusterReplication"));
   RETURN_NOT_OK(LoggedWaitFor(
       [this, &target_master_address]() -> Result<bool> {
         auto result = VERIFY_RESULT(
@@ -1156,6 +1168,32 @@ Status XClusterYsqlTestBase::PerformPITROnConsumerCluster(HybridTime time) {
   RETURN_NOT_OK(yb_admin_client->RestoreSnapshotSchedule(snapshot_schedule_id, time));
   RETURN_NOT_OK(sink.WaitFor(300s));
   LOG(INFO) << "PITR has been completed";
+  return Status::OK();
+}
+
+Status XClusterYsqlTestBase::XClusterFailover(
+    const xcluster::ReplicationGroupId& replication_group_id) {
+  const MonoDelta kFailoverRestoreRpcTimeout = MonoDelta::FromSeconds(60 * kTimeMultiplier);
+  rpc::RpcController rpc;
+  rpc.set_timeout(kFailoverRestoreRpcTimeout);
+
+  master::XClusterFailoverRequestPB req;
+  req.set_replication_group_id(replication_group_id.ToString());
+
+  master::XClusterFailoverResponsePB resp;
+
+  auto master_address =
+      VERIFY_RESULT(consumer_cluster_.mini_cluster_->GetLeaderMasterBoundRpcAddr());
+  master::MasterReplicationProxy master_replication_proxy(
+      &consumer_cluster_.client_->proxy_cache(), master_address);
+
+  RETURN_NOT_OK(
+      master_replication_proxy.XClusterFailover(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
   return Status::OK();
 }
 
