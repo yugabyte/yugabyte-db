@@ -92,8 +92,11 @@ class XClusterDDLReplicationTest : public XClusterDDLReplicationTestBase {
   Status SetUpClustersAndCheckpointReplicationGroup(
       const SetupParams& params = XClusterDDLReplicationTestBase::kDefaultParams) {
     RETURN_NOT_OK(SetUpClusters(params));
+    LOG(INFO) << "SetupClusters done";
+
     RETURN_NOT_OK(
         CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+    LOG(INFO) << "CheckpointReplicationGroup done";
     // Bootstrap here would have no effect because the database is empty so we skip it for the test.
     return Status::OK();
   }
@@ -101,7 +104,10 @@ class XClusterDDLReplicationTest : public XClusterDDLReplicationTestBase {
   Status SetUpClustersAndReplication(
       const SetupParams& params = XClusterDDLReplicationTestBase::kDefaultParams) {
     RETURN_NOT_OK(SetUpClustersAndCheckpointReplicationGroup(params));
+    LOG(INFO) << "SetUpClustersAndCheckpointReplicationGroup done";
+
     RETURN_NOT_OK(CreateReplicationFromCheckpoint());
+    LOG(INFO) << "CreateReplicationFromCheckpoint done";
     return Status::OK();
   }
 
@@ -163,7 +169,24 @@ TEST_F(XClusterDDLReplicationTest, CheckSequenceDataTable) {
   }));
 }
 
-TEST_F(XClusterDDLReplicationTest, BasicSetupAlterTeardown) {
+class XClusterDDLReplicationConcurrentDDLTest : public XClusterDDLReplicationTest,
+                                                public ::testing::WithParamInterface<bool> {
+ public:
+  void SetUp() override {
+    auto original_value = FLAGS_ysql_pg_conf_csv;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = Format(
+        "$0$1yb_fallback_to_legacy_catalog_read_time=$2", original_value,
+        original_value.empty() ? "" : ",", GetParam());
+    XClusterDDLReplicationTest::SetUp();
+  }
+};
+
+INSTANTIATE_TEST_CASE_P(
+    ConcurrentDDLDisabled, XClusterDDLReplicationConcurrentDDLTest, ::testing::Values(true));
+INSTANTIATE_TEST_CASE_P(
+    ConcurrentDDLEnabled, XClusterDDLReplicationConcurrentDDLTest, ::testing::Values(false));
+
+TEST_P(XClusterDDLReplicationConcurrentDDLTest, BasicSetupAlterTeardown) {
   ASSERT_OK(SetUpClustersAndReplication());
 
   auto source_xcluster_client = client::XClusterClient(*producer_client());

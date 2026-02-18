@@ -329,6 +329,8 @@ class PgSession::RunHelper {
             << ", force_non_bufferable: " << force_non_bufferable_;
   }
 
+  void SetHasCatalogOps() { has_catalog_ops_ = true; }
+
   Status Apply(const PgTableDesc& table, PgsqlOpPtr op) {
     // Refer src/yb/yql/pggate/README for details about buffering.
     //
@@ -432,11 +434,10 @@ class PgSession::RunHelper {
     }
 
     return pg_session_.Perform(
-        std::move(ops_info_.ops),
-        {.use_catalog_session = IsCatalog(),
-         .cache_options = std::move(cache_options),
-         .in_txn_limit = in_txn_limit_
-        });
+        std::move(ops_info_.ops), {.use_catalog_session = IsCatalog(),
+                                   .has_catalog_ops = has_catalog_ops_,
+                                   .cache_options = std::move(cache_options),
+                                   .in_txn_limit = in_txn_limit_});
   }
 
  private:
@@ -485,6 +486,7 @@ class PgSession::RunHelper {
   const SessionType session_type_;
   const HybridTime in_txn_limit_;
   const ForceNonBufferable force_non_bufferable_;
+  bool has_catalog_ops_ = false;
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -762,12 +764,29 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
   options.set_is_all_region_local(std::ranges::all_of(
       ops.operations(), [](const auto& op) { return op->locality_info().is_region_local; }));
 
-  // For DDLs, ysql_upgrades and PGCatalog accesses, we always use the default read-time
-  // and effectively skip xcluster_database_consistency which enables reads as of xcluster safetime.
-  options.set_use_xcluster_database_consistency(
-      yb_xcluster_consistency_level == XCLUSTER_CONSISTENCY_DATABASE &&
-      !(ops_options.use_catalog_session || pg_txn_manager_->IsDdlMode() ||
-        yb_non_ddl_txn_for_sys_tables_allowed));
+  // On xcluster target, user tables are read as of safe time but catalog table ops use regular
+  // time. This is because any DDL run on the target writes catalog entries as of current time -
+  // these entries may not be visible as of safe time. Catalog ops may be performed by actual DDL or
+  // as part of catalog cache lookups for metadata while parsing a query on a user table (for
+  // example, SELECT col1 from tbl1 may need to read pg_class for tbl1)
+  if (yb_xcluster_consistency_level == XCLUSTER_CONSISTENCY_DATABASE) {
+    bool has_catalog_ops = false;
+    // Catalog ops are identified by one of the following
+    // DDL mode (TODO: #30401: consider switching this to a narrow check for catalog writes/reads)
+    has_catalog_ops = has_catalog_ops || pg_txn_manager_->IsDdlMode();
+    // Manual updates to catalog
+    has_catalog_ops = has_catalog_ops || yb_non_ddl_txn_for_sys_tables_allowed;
+    // Reads (typically catalog cache lookups) on catalog tables
+    if (YBCIsLegacyModeForCatalogOps()) {
+      // TODO: #30401: consider unifying these two checks.
+      has_catalog_ops = has_catalog_ops || ops_options.use_catalog_session;
+    } else {
+      has_catalog_ops = has_catalog_ops || ops_options.has_catalog_ops;
+    }
+    options.set_use_xcluster_database_consistency(!has_catalog_ops);
+  } else {
+    options.set_use_xcluster_database_consistency(false);
+  }
 
   if (yb_read_time != 0) {
     SCHECK(
@@ -1041,6 +1060,9 @@ Result<PerformFuture> PgSession::DoRunAsync(
             IllegalState, "Operations on different sessions can't be mixed");
         const bool is_ysql_catalog_table =
             table.schema().table_properties().is_ysql_catalog_table();
+        if (is_ysql_catalog_table) {
+          runner.SetHasCatalogOps();
+        }
         if (force_catalog_modification && is_ysql_catalog_table) {
           ApplyForceCatalogModification(*op);
         }
