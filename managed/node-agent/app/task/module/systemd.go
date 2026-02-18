@@ -325,7 +325,7 @@ func UpdateUserSystemdUnits(
 	}
 	util.FileLogger().Infof(ctx, "Updating user systemd unit at %s", path)
 	logOut.WriteLine("Updating user systemd unit at %s", path)
-	err = CopyFile(
+	_, err = CopyFile(
 		ctx,
 		templateCtx,
 		filepath.Join(ServerTemplateSubpath, fileInfo.Src),

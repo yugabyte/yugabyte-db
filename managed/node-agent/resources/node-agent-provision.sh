@@ -12,6 +12,9 @@ set -euo pipefail
 PYTHON_VERSION="python3"
 VENV_SETUP_COMPLETION_MARKER=".yb_env_setup_complete"
 
+SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(dirname "$SCRIPT_PATH")"
+
 # Function to display usage information
 show_usage() {
     echo "Usage: $0 [-c|--command COMMAND]"
@@ -25,10 +28,11 @@ err_msg() {
 }
 
 is_csp=false
-cloud_type=""
+cloud_type="onprem"
 is_airgap=false
 # By default, we use the virtual environment.
 use_system_python=false
+use_python_driver=false
 
 # Retry function with 30 seconds delay between retries.
 retry_cmd() {
@@ -295,12 +299,40 @@ import_gpg_key_if_required() {
     fi
 }
 
+# Main function for Python execution.
+main_python() {
+    setup_virtualenv
+    if [[ "$is_csp" == true && "$is_airgap" == false ]]; then
+        setup_pip
+    fi
+    check_python
+    install_pywheels
+    execute_python "${filtered_args[@]}"
+}
+
+# Function to execute the Go script.
+execute_go() {
+    COMMAND_PATH="$SCRIPT_DIR/node-provisioner"
+    if [[ ! -f "$COMMAND_PATH" ]]; then
+        COMMAND_PATH="$SCRIPT_DIR/../bin/node-provisioner"
+    fi
+    YNP_BASE_PATH="$SCRIPT_DIR/ynp"
+    "$COMMAND_PATH" --ynp_base_path "$YNP_BASE_PATH" "$@"
+}
+
+# Main function for Go execution.
+main_go() {
+    execute_go "${filtered_args[@]}"
+}
+
 # Main function
 main() {
     filtered_args=()
 
     for ((i=1; i<=$#; i++)); do
-        if [[ "${!i}" == "--cloud_type" ]]; then
+        if [[ "${!i}" == "--use_python_driver" ]]; then
+            use_python_driver="true"
+        elif [[ "${!i}" == "--cloud_type" ]]; then
             # Skip --cloud_type and its value
             next_index=$((i + 1))
             if [[ $next_index -le $# && ! "${!next_index}" =~ ^-- ]]; then
@@ -334,13 +366,12 @@ main() {
         fi
         setup_symlinks
     fi
-    setup_virtualenv
-    if [[ "$is_csp" == true && "$is_airgap" == false ]]; then
-        setup_pip
+    if [[ "$use_python_driver" == "true" ]]; then
+        echo "Warning: Python driver is deprecated and will be removed in future releases."
+        main_python "${filtered_args[@]}"
+    else
+        main_go "${filtered_args[@]}"
     fi
-    check_python
-    install_pywheels
-    execute_python "${filtered_args[@]}"
 }
 
 # Call the main function and pass all arguments

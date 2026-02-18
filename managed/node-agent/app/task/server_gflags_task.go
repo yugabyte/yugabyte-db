@@ -164,7 +164,7 @@ func (handler *ServerGflagsHandler) Handle(
 		"gflags": processedGflags,
 	}
 	destination := filepath.Join(handler.param.GetServerHome(), ServerConfSubpath)
-	err := module.CopyFile(
+	_, err := module.CopyFile(
 		ctx,
 		gflagsContext,
 		ServerConfTemplateSubpath,

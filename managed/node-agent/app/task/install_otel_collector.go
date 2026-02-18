@@ -74,7 +74,7 @@ func (h *InstallOtelCollector) Handle(ctx context.Context) (*pb.DescribeTaskResp
 	}
 
 	// Copy otel-collector.service
-	err = module.CopyFile(
+	_, err = module.CopyFile(
 		ctx,
 		otelCollectorServiceContext,
 		filepath.Join(module.ServerTemplateSubpath, OtelCollectorService),

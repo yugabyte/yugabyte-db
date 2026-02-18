@@ -13,10 +13,10 @@ type RegisterRequest struct {
 
 type NodeAgent struct {
 	CommonInfo
-	Uuid         string          `json:"uuid"`
-	CustomerUuid string          `json:"customerUuid"`
-	UpdatedAt    time.Time       `json:"updatedAt"`
-	Config       NodeAgentConfig `json:"config"`
+	Uuid         string          `json:"uuid,omitempty"`
+	CustomerUuid string          `json:"customerUuid,omitempty"`
+	UpdatedAt    time.Time       `json:"updatedAt,omitempty"`
+	Config       NodeAgentConfig `json:"config,omitempty"`
 }
 
 type RegisterResponseSuccess struct {
@@ -24,47 +24,47 @@ type RegisterResponseSuccess struct {
 }
 
 type ResponseError struct {
-	SuccessStatus bool   `json:"success"`
-	Message       string `json:"error"`
+	SuccessStatus bool   `json:"success,omitempty"`
+	Message       string `json:"error,omitempty"`
 }
 
 type ResponseMessage struct {
-	SuccessStatus bool   `json:"success"`
-	Message       string `json:"message"`
+	SuccessStatus bool   `json:"success,omitempty"`
+	Message       string `json:"message,omitempty"`
 }
 
 type CommonInfo struct {
-	Name     string `json:"name"`
-	IP       string `json:"ip"`
-	State    string `json:"state"`
-	Version  string `json:"version"`
-	ArchType string `json:"archType"`
-	OSType   string `json:"osType"`
-	Home     string `json:"home"`
-	Port     int    `json:"port"`
+	Name     string `json:"name,omitempty"`
+	IP       string `json:"ip,omitempty"`
+	State    string `json:"state,omitempty"`
+	Version  string `json:"version,omitempty"`
+	ArchType string `json:"archType,omitempty"`
+	OSType   string `json:"osType,omitempty"`
+	Home     string `json:"home,omitempty"`
+	Port     int    `json:"port,omitempty"`
 }
 
 type NodeAgentConfig struct {
-	ServerCert string `json:"serverCert"`
-	ServerKey  string `json:"serverKey"`
+	ServerCert string `json:"serverCert,omitempty"`
+	ServerKey  string `json:"serverKey,omitempty"`
 }
 
 type Customer struct {
-	CustomerId   string `json:"uuid"`
-	CustomerName string `json:"name"`
-	CustomerCode string `json:"code"`
+	CustomerId   string `json:"uuid,omitempty"`
+	CustomerName string `json:"name,omitempty"`
+	CustomerCode string `json:"code,omitempty"`
 }
 
 type User struct {
-	UserId     string `json:"uuid"`
-	CustomerId string `json:"customerUUID"`
-	Email      string `json:"email"`
-	Role       string `json:"role"`
+	UserId     string `json:"uuid,omitempty"`
+	CustomerId string `json:"customerUUID,omitempty"`
+	Email      string `json:"email,omitempty"`
+	Role       string `json:"role,omitempty"`
 }
 
 type SessionInfo struct {
-	CustomerId string `json:"customerUUID"`
-	UserId     string `json:"UserUUID"`
+	CustomerId string `json:"customerUUID,omitempty"`
+	UserId     string `json:"UserUUID,omitempty"`
 }
 
 type DisplayInterface interface {

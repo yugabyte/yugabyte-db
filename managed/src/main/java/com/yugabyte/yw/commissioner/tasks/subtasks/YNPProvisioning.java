@@ -13,14 +13,14 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.FileHelperService;
-import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
-import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.AdditionalServicesStateData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.NodeAgent;
@@ -40,8 +40,6 @@ import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class YNPProvisioning extends AbstractTaskBase {
-  private final NodeUniverseManager nodeUniverseManager;
-  private final RuntimeConfGetter confGetter;
   private final CloudQueryHelper queryHelper;
   private final FileHelperService fileHelperService;
   private ShellProcessContext shellContext =
@@ -50,13 +48,9 @@ public class YNPProvisioning extends AbstractTaskBase {
   @Inject
   protected YNPProvisioning(
       BaseTaskDependencies baseTaskDependencies,
-      NodeUniverseManager nodeUniverseManager,
-      RuntimeConfGetter confGetter,
       CloudQueryHelper queryHelper,
       FileHelperService fileHelperService) {
     super(baseTaskDependencies);
-    this.nodeUniverseManager = nodeUniverseManager;
-    this.confGetter = confGetter;
     this.queryHelper = queryHelper;
     this.fileHelperService = fileHelperService;
   }
@@ -93,12 +87,12 @@ public class YNPProvisioning extends AbstractTaskBase {
       ynpNode.put("yb_user_id", "1994");
       ynpNode.put("is_airgap", provider.getDetails().airGapInstall);
       ynpNode.put("is_yb_prebuilt_image", taskParams().isYbPrebuiltImage);
-      ynpNode.put(
-          "node_exporter_port", universe.getUniverseDetails().communicationPorts.nodeExporterPort);
+      ynpNode.put("is_ybcontroller_disabled", !universe.getUniverseDetails().isEnableYbc());
       ynpNode.put(
           "tmp_directory",
           confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory));
       ynpNode.put("is_configure_clockbound", userIntent.isUseClockbound());
+      setCommunicationPorts(ynpNode, universe.getUniverseDetails().communicationPorts);
       if (!provider.getYbHome().isEmpty()) {
         ynpNode.put("yb_home_dir", provider.getYbHome());
       }
@@ -242,6 +236,8 @@ public class YNPProvisioning extends AbstractTaskBase {
     Provider provider =
         Provider.getOrBadRequest(
             UUID.fromString(universe.getCluster(node.placementUuid).userIntent.provider));
+    boolean disableGolangYnpDriver =
+        confGetter.getGlobalConf(GlobalConfKeys.disableGolangYnpDriver);
     String customTmpDirectory =
         confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory);
     String targetConfigPath =
@@ -259,6 +255,9 @@ public class YNPProvisioning extends AbstractTaskBase {
     sb.append(" && mv -f ").append(targetConfigPath);
     sb.append(" config.json && chmod +x node-agent-provision.sh");
     sb.append(" && ./node-agent-provision.sh --extra_vars config.json");
+    if (disableGolangYnpDriver) {
+      sb.append(" --use_python_driver");
+    }
     sb.append(" --cloud_type ").append(node.cloudInfo.cloud);
     if (provider.getDetails().airGapInstall) {
       sb.append(" --is_airgap");
@@ -269,6 +268,22 @@ public class YNPProvisioning extends AbstractTaskBase {
     nodeUniverseManager
         .runCommand(node, universe, command, shellContext)
         .processErrors("Installation failed");
+  }
+
+  private void setCommunicationPorts(
+      ObjectNode ynpNode, UniverseTaskParams.CommunicationPorts ports) {
+    // TODO consume all these ports in YNP.
+    ynpNode.put("master_http_port", String.valueOf(ports.masterHttpPort));
+    ynpNode.put("master_rpc_port", String.valueOf(ports.masterRpcPort));
+    ynpNode.put("tserver_http_port", String.valueOf(ports.tserverHttpPort));
+    ynpNode.put("tserver_rpc_port", String.valueOf(ports.tserverRpcPort));
+    ynpNode.put("yb_controller_http_port", String.valueOf(ports.ybControllerHttpPort));
+    ynpNode.put("yb_controller_rpc_port", String.valueOf(ports.ybControllerrRpcPort));
+    ynpNode.put("ycql_server_http_port", String.valueOf(ports.yqlServerHttpPort));
+    ynpNode.put("ycql_server_rpc_port", String.valueOf(ports.yqlServerRpcPort));
+    ynpNode.put("ysql_server_http_port", String.valueOf(ports.ysqlServerHttpPort));
+    ynpNode.put("ysql_server_rpc_port", String.valueOf(ports.ysqlServerRpcPort));
+    ynpNode.put("node_exporter_port", String.valueOf(ports.nodeExporterPort));
   }
 
   private List<String> getCommand(String... args) {

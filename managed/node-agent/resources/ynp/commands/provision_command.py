@@ -27,7 +27,7 @@ class OSFamily(Enum):
 
 class ProvisionCommand(Command):
 
-    cloud_only_modules = ['Preprovision', 'MountEpemeralDrive', 'InstallPackages']
+    cloud_only_modules = ['Preprovision', 'MountEphemeralDrive', 'InstallPackages']
     onprem_only_modules = ['RebootNode']
     required_os_packages = {
         OSFamily.REDHAT.value: ['openssl', 'policycoreutils'],
@@ -285,7 +285,7 @@ class ProvisionCommand(Command):
             logger.info(f"{package_name} is installed.")
         except subprocess.CalledProcessError:
             logger.info(f"{package_name} is not installed.")
-            sys.exit()
+            sys.exit(1)
 
     def _discover_package_manager(self):
         package_manager = None
@@ -316,8 +316,8 @@ class ProvisionCommand(Command):
             self._check_package(package)
         key = next(iter(self.config), None)
         context = self.config[key]
-        is_cloud = context.get('is_cloud')
-        if is_cloud:
+        is_cloud = context.get('is_cloud', 'False')
+        if is_cloud == 'True':
             cloud_only_packages = ['gzip']
             for package in cloud_only_packages:
                 self._check_package(package)

@@ -49,10 +49,16 @@ ynp:
   is_configure_clockbound: false
 
   configure_thp_settings: true
+
+  # YB Controller backup agent is disabled.
+  is_ybcontroller_disabled: false
 yba:
   # The base URL of the Yugabyte Anywhere instance.
   # Example: 'https://yba.example.com'.
   url: <url>
+
+  # Skip TLS certificate verification.
+  skip_tls_verify: false
 
   # The UUID of the customer in Yugabyte Anywhere.
   # This is a unique identifier provided by YBA.

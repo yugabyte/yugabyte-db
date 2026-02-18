@@ -13829,7 +13829,6 @@
         "instanceType",
         "ip",
         "region",
-        "sshUser",
         "zone"
       ],
       "type" : "object"
@@ -36351,7 +36350,7 @@
             "type" : "string"
           },
           {
-            "default" : false,
+            "default" : true,
             "in" : "query",
             "name" : "validate",
             "required" : false,
@@ -37083,7 +37082,7 @@
             "type" : "string"
           },
           {
-            "default" : false,
+            "default" : true,
             "in" : "query",
             "name" : "validate",
             "required" : false,

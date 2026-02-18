@@ -145,7 +145,7 @@ public class GCPProjectApiClient {
     try {
       compute = buildComputeClient(cloudInfo);
     } catch (GeneralSecurityException | IOException e) {
-      log.error(e.getMessage());
+      log.error("Error in building GCP client", e);
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "Failed to initialilze GCP service.");
     }
@@ -165,9 +165,11 @@ public class GCPProjectApiClient {
     try {
       instanceGroup = compute.instanceGroups().get(project, zone, instanceGroupName).execute();
     } catch (GoogleJsonResponseException e) {
+      log.error("Error in fetching instance groups", e);
       throw new PlatformServiceException(
           BAD_REQUEST, "Failed to fetch instance group name: " + instanceGroupName);
     } catch (IOException e) {
+      log.error("Error in fetching instance groups", e);
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Failed to connect to GCP.");
     }
     if (instanceGroup == null) {
@@ -184,7 +186,7 @@ public class GCPProjectApiClient {
           compute.instanceTemplates().list(project).setFilter(filter).execute();
       return instanceTemplateList.getItems() != null;
     } catch (Exception e) {
-      log.error("Error in retrieving instance template: ", e);
+      log.error("Error in retrieving instance template", e);
       throw new PlatformServiceException(
           BAD_REQUEST, "Error in retrieving instance template [check logs for more info]");
     }
@@ -207,10 +209,10 @@ public class GCPProjectApiClient {
       backendService =
           compute.regionBackendServices().get(project, region, backendServiceName).execute();
     } catch (GoogleJsonResponseException e) {
-      log.error("Response error = " + e.getMessage());
+      log.error("Error in getting region backend services", e);
       throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
     } catch (IOException e) {
-      log.error("IO Exception = " + e.toString());
+      log.error("Error in getting region backend services", e);
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Failed to connect to GCP.");
     }
     if (backendService == null) {
@@ -374,9 +376,11 @@ public class GCPProjectApiClient {
           compute.regionHealthChecks().get(project, region, healthCheckName).execute();
       return healthCheck;
     } catch (GoogleJsonResponseException e) {
+      log.error("Error in getting region health checks", e);
       throw new PlatformServiceException(
           BAD_REQUEST, "Failed to fetch health check for name: " + healthCheckName);
     } catch (IOException e) {
+      log.error("Error in getting region health checks", e);
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "Failed to fetch health check " + healthCheckName);
     }
@@ -488,9 +492,11 @@ public class GCPProjectApiClient {
       log.info("Sucessfully fetched all forwarding rules");
       return forwardingRules;
     } catch (GoogleJsonResponseException e) {
+      log.error("Failed to fetch forwarding rules for region {}", region, e);
       throw new PlatformServiceException(
           BAD_REQUEST, "Failed to fetch forwarding rules for region: " + region);
     } catch (IOException e) {
+      log.error("Failed to fetch forwarding rules for region {}", region, e);
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "Failed to fetch forwarding rules for backend " + backendUrl);
     }
@@ -525,8 +531,10 @@ public class GCPProjectApiClient {
         }
       } while (response.getNextPageToken() != null);
     } catch (GoogleJsonResponseException e) {
+      log.error("Failed to fetch instances in zone {}", zone, e);
       throw new PlatformServiceException(BAD_REQUEST, "Failed to fetch instances in zone: " + zone);
     } catch (IOException e) {
+      log.error("Failed to fetch instances in zone {}", zone, e);
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Failed to connect to GCP.");
     }
     if (instances.size() != nodeNames.size()) {
@@ -546,7 +554,7 @@ public class GCPProjectApiClient {
    */
   public List<InstanceReference> getInstancesForInstanceGroup(
       String zone, String instanceGroupName) {
-    List<InstanceReference> instances = new ArrayList();
+    List<InstanceReference> instances = new ArrayList<>();
     if (instanceGroupName == null || zone == null) {
       return instances;
     }
@@ -568,9 +576,11 @@ public class GCPProjectApiClient {
       } while (response.getNextPageToken() != null);
       log.info("Sucessfully fetched instances for instance group " + instanceGroupName);
     } catch (GoogleJsonResponseException e) {
+      log.error("Failed to fetch instances for instance group " + instanceGroupName, e);
       throw new PlatformServiceException(
           BAD_REQUEST, "Failed to fetch instances for instance group: " + instanceGroupName);
     } catch (IOException e) {
+      log.error("Failed to fetch instances for instance group " + instanceGroupName, e);
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "Error in getting instances for group " + instanceGroupName);
     }
@@ -626,7 +636,7 @@ public class GCPProjectApiClient {
 
       return firewallTagsList;
     } catch (Exception e) {
-      log.error("Error in retrieving tags: ", e);
+      log.error("Error in retrieving tags", e);
       String errorMsg = "Error in retrieving tags [check logs for more info]";
       throw new PlatformServiceException(BAD_REQUEST, errorMsg);
     }
@@ -638,7 +648,7 @@ public class GCPProjectApiClient {
       NetworkList network = compute.networks().list(vpcProject).setFilter(filter).execute();
       return network.getItems() != null;
     } catch (Exception e) {
-      log.error("Error in retrieving vpc: ", e);
+      log.error("Error in retrieving vpc", e);
       String errorMsg = "Error in retrieving vpc [check logs for more info]";
       throw new PlatformServiceException(BAD_REQUEST, errorMsg);
     }
@@ -667,7 +677,7 @@ public class GCPProjectApiClient {
       }
       return reqPermissions;
     } catch (Exception e) {
-      log.error("Error in testing permissions: ", e);
+      log.error("Error in testing permissions", e);
       String errorMsg = "Error in testing permissions of the SA [check logs for more info]";
       throw new PlatformServiceException(BAD_REQUEST, errorMsg);
     }
@@ -680,7 +690,7 @@ public class GCPProjectApiClient {
       // Validate existence in the specified image project
       compute.images().get(imageProject, imageName).execute();
     } catch (Exception e) {
-      log.error("Error in retrieving images: ", e);
+      log.error("Error in retrieving images", e);
       String errorMsg = "Error in retrieving images [check logs for more info]";
       if (e instanceof GoogleJsonResponseException) {
         errorMsg =
@@ -716,7 +726,7 @@ public class GCPProjectApiClient {
     } catch (PlatformServiceException e) {
       throw e;
     } catch (Exception e) {
-      log.error("Error in retrieving subnets: ", e);
+      log.error("Error in retrieving subnets", e);
       errorMsg = "Error in retrieving subnets [check logs for more info]";
       throw new PlatformServiceException(BAD_REQUEST, errorMsg);
     }
@@ -745,7 +755,7 @@ public class GCPProjectApiClient {
       log.info("Sucessfully fetched all firewall rules");
       return firewalls;
     } catch (Exception e) {
-      log.error("Error in retrieving firewall rules: ", e);
+      log.error("Error in retrieving firewall rules", e);
       String errorMsg = "Error in retrieving firewall rules [check logs for more info]";
       throw new PlatformServiceException(BAD_REQUEST, errorMsg);
     }
@@ -806,7 +816,7 @@ public class GCPProjectApiClient {
       }
       return policy;
     } catch (Exception e) {
-      log.error("Error in retrieving firewall policy: ", e);
+      log.error("Error in retrieving firewall policy", e);
       String errorMsg = "Error in retrieving firewall policy [check logs for more info]";
       throw new PlatformServiceException(BAD_REQUEST, errorMsg);
     }
@@ -818,7 +828,7 @@ public class GCPProjectApiClient {
         Network network = compute.networks().get(vpcProject, vpcNetwork).execute();
         return network.getNetworkFirewallPolicyEnforcementOrder();
       } catch (Exception e) {
-        log.error("Error in retrieving firewall policy enforcement order: ", e);
+        log.error("Error in retrieving firewall policy enforcement order", e);
         String errorMsg =
             "Error in retrieving firewall policy enforcement order [check logs for more info]";
         throw new PlatformServiceException(BAD_REQUEST, errorMsg);

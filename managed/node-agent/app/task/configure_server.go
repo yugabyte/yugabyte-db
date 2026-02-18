@@ -233,7 +233,7 @@ func (h *ConfigureServerHandler) setupServerScript(
 
 	for _, fileInfo := range ScriptFilesToCopy {
 		// Copy the script.
-		err := module.CopyFile(
+		_, err := module.CopyFile(
 			ctx,
 			serverScriptContext,
 			filepath.Join(module.ServerTemplateSubpath, fileInfo.Src),

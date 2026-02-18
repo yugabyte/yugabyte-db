@@ -1970,4 +1970,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Disable running platform HA restore operations in a transaction",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> disableGolangYnpDriver =
+      new ConfKeyInfo<>(
+          "yb.node_agent.disable_golang_ynp_driver",
+          ScopeType.GLOBAL,
+          "Disable Golang YNP Driver",
+          "Disable golang YNP driver to use python instead",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.FEATURE_FLAG));
 }

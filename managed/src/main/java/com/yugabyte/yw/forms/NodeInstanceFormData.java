@@ -29,8 +29,7 @@ public class NodeInstanceFormData {
     @ApiModelProperty(value = "IP address", example = "1.1.1.1", required = true)
     public String ip;
 
-    @NotNull
-    @ApiModelProperty(value = "SSH user", example = "centos", required = true)
+    @ApiModelProperty(value = "SSH user", example = "centos")
     public String sshUser;
 
     @NotNull
