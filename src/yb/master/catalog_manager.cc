@@ -795,6 +795,18 @@ bool IsIndexBackfillEnabled(TableType table_type, bool is_transactional) {
 constexpr auto kDefaultYQLPartitionsRefreshBgTaskSleep = 10s;
 
 int GetTransactionTableNumShardsPerTServer() {
+  // GHI #30087. This logic does not seem to be reliable.
+  // 1. This code is exercised during yb-master startup
+  //  and looks at CPU cores on yb-master leader node,
+  //  and not the CPU cores for tservers that host these tablets.
+  // 2. Even with an explicit change to transaction_table_num_tablets_per_tserver
+  //  value (and reboot), the number of tablets for the existing
+  //  transaction status tables will not be changed.
+  //
+  // With GHI #29555 code to automatically add tablets
+  // when config changes (on reboot) or tservers are added, we can replace
+  // this with a simple default irrespective of CPU cores.
+  // GHI #30087 tracks that.
   int value = 8;
   if (IsTsan()) {
     value = 2;
@@ -5280,11 +5292,25 @@ Status CatalogManager::CreateTransactionStatusTableInternal(
   if (FLAGS_transaction_table_num_tablets > 0) {
     num_tablets = FLAGS_transaction_table_num_tablets;
   } else {
-    auto placement_uuid =
-        ClusterConfig()->LockForRead()->pb.replication_info().live_replicas().placement_uuid();
-    num_tablets = narrow_cast<int>(GetNumLiveTServersForPlacement(placement_uuid) *
-                                   FLAGS_transaction_table_num_tablets_per_tserver);
+    // When the local transaction status table is created, the number
+    // of tablets should be set based on the number of live tservers
+    // that match the placement info.
+    if (req.has_tablespace_id() || req.has_replication_info()) {
+      const ReplicationInfoPB& table_replication_info =
+          VERIFY_RESULT(GetTableReplicationInfo(req.replication_info(), req.tablespace_id()));
+      auto live_tservers = VERIFY_RESULT(FindTServersForPlacementInfo(
+          table_replication_info.live_replicas(), GetAllLiveNotBlacklistedTServers()));
+      num_tablets = narrow_cast<int>(
+          live_tservers.size() * FLAGS_transaction_table_num_tablets_per_tserver);
+    } else {
+      auto placement_uuid =
+          ClusterConfig()->LockForRead()->pb.replication_info().live_replicas().placement_uuid();
+      num_tablets = narrow_cast<int>(
+          GetNumLiveTServersForPlacement(placement_uuid) *
+          FLAGS_transaction_table_num_tablets_per_tserver);
+    }
   }
+
   req.mutable_schema()->mutable_table_properties()->set_num_tablets(num_tablets);
 
   ColumnSchema hash(kRedisKeyColumnName, DataType::BINARY, ColumnKind::HASH);
