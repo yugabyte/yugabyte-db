@@ -42,7 +42,7 @@ You can configure YugabyteDB Anywhere to automatically update universes to node 
 
 Transparent hugepages (THP) should be enabled on nodes for optimal performance. If you have on-premises universes with legacy provisioning where THP are not enabled, you can update THP settings by following the [node patching](../../manage-deployments/upgrade-nodes/) procedure; THP settings are automatically updated in step 3 when re-provisioning the node.
 
-## Backups and point-in-time-restore
+## Backups and point-in-time-recovery
 
 - Backups
 
@@ -50,10 +50,16 @@ Transparent hugepages (THP) should be enabled on nodes for optimal performance. 
   - Backups taken during the upgrade cannot be restored to universes running a previous version.
   - Backups taken before the upgrade _can_ be used for restore to the new version.
 
-- [Point-in-time-restore](../../back-up-restore-universes/pitr/) (PITR)
+- [Point-in-time-recovery](../../back-up-restore-universes/pitr/) (PITR)
 
-  - If you have PITR enabled, you must disable it before performing an upgrade. Re-enable it only after the upgrade is either finalized or rolled back.
-  - After the upgrade, PITR cannot be done to a time before the upgrade.
+  When you start the [upgrade](../upgrade-software-install/#perform-the-upgrade), the PITR change history is invalidated. This means that after an upgrade starts, you will no longer be able to access or restore to any time before the upgrade was started - _regardless of the outcome of the upgrade_.
+
+  During the [monitoring phase](../upgrade-software-install/#monitor-the-universe) (that is, after upgrading but before finalizing or rolling back), any attempt to perform any PITR-based actions (such as rewind or clone a database to a point in time, back up and restore a database with PITR, or inspect a database at a point in time) will fail.
+
+  After [finalizing](../upgrade-software-install/#finalize-an-upgrade) or [rolling back](../upgrade-software-install/#roll-back-an-upgrade) the upgrade, PITR-based actions become available again. However, keep in mind the following:
+
+  - After finalizing, you cannot perform a PITR-based action targeting a time before the upgrade was started.
+  - After rollback, you cannot perform a PITR-based action targeting a time before the upgrade was started.
 
 ## Review major changes in previous YugabyteDB releases
 

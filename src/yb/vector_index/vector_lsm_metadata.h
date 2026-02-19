@@ -13,8 +13,6 @@
 
 #pragma once
 
-#include "yb/rocksdb/rocksdb_fwd.h"
-
 #include "yb/util/env.h"
 #include "yb/util/result.h"
 

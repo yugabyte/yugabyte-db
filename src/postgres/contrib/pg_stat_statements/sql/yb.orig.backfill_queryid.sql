@@ -1,0 +1,44 @@
+-- Test: BACKFILL INDEX commands are aggregated into a single pg_stat_statements entry per index.
+CREATE EXTENSION pg_stat_statements;
+
+SET pg_stat_statements.track_utility = TRUE;
+
+CREATE TABLE backfill_test(k INT PRIMARY KEY, v INT);
+INSERT INTO backfill_test SELECT i, i FROM generate_series(1, 5000) AS i;
+
+--Test: there should be exactly one BACKFILL entry.
+SELECT pg_stat_statements_reset();
+CREATE INDEX ON backfill_test(v);
+
+SELECT COUNT(*) AS num_backfill_entries
+FROM pg_stat_statements
+WHERE query LIKE 'BACKFILL%';
+
+--Test: query text should be normalized with $N placeholders.
+SELECT
+  query LIKE 'BACKFILL INDEX % WITH $1 READ TIME $2 PARTITION $3'
+    AS query_is_normalized
+FROM pg_stat_statements
+WHERE query LIKE 'BACKFILL%';
+
+--Test: each index should have its own separate entry.
+CREATE INDEX ON backfill_test(k, v);
+
+SELECT COUNT(*) AS num_backfill_entries
+FROM pg_stat_statements
+WHERE query LIKE 'BACKFILL%';
+
+--Verify that normal DML normalization is unaffected.
+SELECT pg_stat_statements_reset();
+
+SELECT * FROM backfill_test WHERE k = 1;
+SELECT * FROM backfill_test WHERE k = 2;
+SELECT * FROM backfill_test WHERE k = 3;
+
+SELECT COUNT(*), SUM(calls)
+FROM pg_stat_statements
+WHERE query LIKE 'SELECT %FROM backfill_test WHERE k%';
+
+-- Cleanup.
+DROP TABLE backfill_test;
+DROP EXTENSION pg_stat_statements;

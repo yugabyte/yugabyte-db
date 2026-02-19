@@ -176,6 +176,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
   private static final List<TaskType> REMOVE_NODE_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.CheckLeaderlessTablets,
+          TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.UpdateConsistencyCheck,
           TaskType.FreezeUniverse,
           TaskType.SetNodeState,
@@ -192,6 +193,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Removing")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -204,6 +206,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
   private static final List<TaskType> REMOVE_NODE_WITH_MASTER_REPLACE =
       ImmutableList.of(
           TaskType.CheckLeaderlessTablets,
+          TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.UpdateConsistencyCheck,
           TaskType.FreezeUniverse,
           TaskType.SetNodeState,
@@ -235,6 +238,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
 
   private static final List<JsonNode> REMOVE_NODE_WITH_MASTER_REPLACE_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -271,6 +275,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
   private static final List<TaskType> REMOVE_NODE_WITH_MASTER =
       ImmutableList.of(
           TaskType.CheckLeaderlessTablets,
+          TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.UpdateConsistencyCheck,
           TaskType.FreezeUniverse,
           TaskType.SetNodeState,
@@ -292,6 +297,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
 
   private static final List<JsonNode> REMOVE_NODE_WITH_MASTER_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),

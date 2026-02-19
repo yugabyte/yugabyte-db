@@ -457,6 +457,51 @@ Status PgDmlRead::HnswSetReadOptions(int ef_search) {
   return Status::OK();
 }
 
+InPermutationGenerator PgDmlRead::MergeStreamPermutations() {
+  DCHECK(merge_sort_keys_);
+  DCHECK(bind_);
+  InPermutationBuilder builder(bind_);
+  auto sortkey_it = merge_sort_keys_->cbegin();
+  size_t c_idx = 0;
+  // All partition_column_values are expected to have merge stream conditions
+  for (const auto& col_expr : read_req_->partition_column_values()) {
+    DCHECK_LT(c_idx, sortkey_it->att_idx) << "Can't merge sort by a hash column";
+    DCHECK_NE(col_expr.expr_case(), PgsqlExpressionPB::EXPR_NOT_SET)
+        << "Missing condition on a merge stream column at " << c_idx;
+    VLOG_WITH_FUNC(4) << "Merge stream condition found on a hash column at index " << c_idx;
+    builder.AddExpression(c_idx, &col_expr);
+    ++c_idx;
+  }
+  // range_column_values preceding any of the sort columns are expected to have
+  // merge stream conditions
+  auto col_expr_it = read_req_->range_column_values().cbegin();
+  for (; c_idx < bind_->num_key_columns(); ++c_idx) {
+    if (c_idx == sortkey_it->att_idx) { // sort column
+      VLOG_WITH_FUNC(4) << "Sort column at index " << c_idx
+                        << ", target value at " << sortkey_it->value_idx;
+      // no expressions should be after the last sort column
+      if (++sortkey_it == merge_sort_keys_->cend()) {
+        DCHECK(col_expr_it == read_req_->range_column_values().cend())
+            << "Found an expression after all sort columns at " << c_idx;
+        break;
+      }
+    } else { // merge stream column
+      DCHECK(col_expr_it != read_req_->range_column_values().cend())
+          << "Missing condition on a merge stream column at " << c_idx;
+      DCHECK_LT(c_idx, sortkey_it->att_idx) << "Merge sort key is out of order";
+      DCHECK_NE(col_expr_it->expr_case(), PgsqlExpressionPB::EXPR_NOT_SET)
+          << "Missing values on a merge stream column at " << c_idx;
+      VLOG_WITH_FUNC(4) << "Merge stream expression on a range column at index " << c_idx;
+      builder.AddExpression(c_idx, &*col_expr_it);
+      ++col_expr_it;
+    }
+  }
+  DCHECK(sortkey_it == merge_sort_keys_->cend())
+      << "Sort key is not an index key: " << sortkey_it->att_idx;
+
+  return builder.Build();
+}
+
 Status PgDmlRead::Exec(const YbcPgExecParameters* exec_params) {
   RSTATUS_DCHECK(
       !pg_exec_params_ || pg_exec_params_ == exec_params,
@@ -489,15 +534,34 @@ Status PgDmlRead::Exec(const YbcPgExecParameters* exec_params) {
   if (targets_) {
     doc_op_->SetFetchedTargets(targets_);
   }
-  if (merge_sort_keys_) {
-    // Create requests for the merge streams
-    if (!VERIFY_RESULT(doc_op_->PopulateMergeStreams(merge_sort_keys_))) {
-      doc_op_->AbandonExecution();
-      return Status::OK();
-    }
-  }
 
+  // If secondary index is defined, it is executed here.
+  // Even if the secondary index does not have its own DocOp, the execution would normalize the
+  // binds, which is critical to properly capture the permutations.
   const auto has_ybctid = VERIFY_RESULT(ProcessProvidedYbctids());
+  if (merge_sort_keys_) {
+    auto* secondary_index = SecondaryIndexQuery();
+    if (!secondary_index) {
+      // No secondary index means the buckets are on the primary key.
+      // Also this PgDmlRead may be the secondary index to other PgDmlRead.
+      if (!VERIFY_RESULT(doc_op_->PopulateMergeStreamRequests(
+          merge_sort_keys_, bind_, MergeStreamPermutations()))) {
+        doc_op_->AbandonExecution();
+        return Status::OK();
+      }
+    } else if (!secondary_index->doc_op_) {
+      // Secondary index without a DocOp is an embedded index. The secondary index query still has
+      // the key bindings we need to create the permutations, but the merge stream requests are
+      // created in the local DocOp.
+      if (!VERIFY_RESULT(doc_op_->PopulateMergeStreamRequests(
+          merge_sort_keys_, secondary_index->bind_, secondary_index->MergeStreamPermutations()))) {
+        doc_op_->AbandonExecution();
+        return Status::OK();
+      }
+    }
+    // else here is a regular secondary index already executed by the ProcessProvidedYbctids().
+    // It is going to provide the ybctids in the right order.
+  }
 
   if (!has_ybctid && ybctid_provider()) {
     // No ybctids are provided. Instruct "doc_op_" to abandon the execution and not querying
@@ -749,12 +813,16 @@ Status PgDmlRead::AddRowLowerBound(
 }
 
 Status PgDmlRead::SetMergeSortKeys(int num_keys, const YbcSortKey* sort_keys) {
+  DCHECK(!merge_sort_keys_) << "Merge sort keys are already set";
   if (auto* secondary_index = SecondaryIndexQuery(); secondary_index) {
-    return secondary_index->SetMergeSortKeys(num_keys, sort_keys);
+    RETURN_NOT_OK(secondary_index->SetMergeSortKeys(num_keys, sort_keys));
+    if (!secondary_index->doc_op_) {
+      merge_sort_keys_ = secondary_index->merge_sort_keys_;
+    }
+  } else {
+    merge_sort_keys_ = std::make_shared<MergeSortKeys>(sort_keys, sort_keys + num_keys);
   }
 
-  DCHECK(!merge_sort_keys_) << "Merge sort keys are already set";
-  merge_sort_keys_ = std::make_shared<MergeSortKeys>(sort_keys, sort_keys + num_keys);
   return Status::OK();
 }
 

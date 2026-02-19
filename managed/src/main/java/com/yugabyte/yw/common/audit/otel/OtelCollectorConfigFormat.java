@@ -264,6 +264,7 @@ public class OtelCollectorConfigFormat {
     private TlsSettings tls;
     private String timeout;
     private String logs_endpoint;
+    private String metrics_endpoint;
     private AuthConfig auth;
   }
 

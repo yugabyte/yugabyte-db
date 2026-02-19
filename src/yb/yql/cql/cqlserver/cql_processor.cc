@@ -30,6 +30,7 @@
 
 #include "yb/rpc/messenger.h"
 
+#include "yb/util/cql_pg_util.h"
 #include "yb/util/format.h"
 #include "yb/util/jwt_util.h"
 #include "yb/util/logging.h"
@@ -41,6 +42,9 @@
 
 #include "yb/yql/cql/cqlserver/cql_service.h"
 #include "yb/yql/cql/ql/util/errcodes.h"
+
+#include "ybgate/ybgate_api.h"
+#include "ybgate/ybgate_cpp_util.h"
 
 using namespace std::literals;
 
@@ -108,6 +112,7 @@ DECLARE_int32(client_read_write_timeout_ms);
 DECLARE_bool(ycql_enable_stat_statements);
 DECLARE_bool(TEST_ycql_use_jwt_auth);
 DECLARE_string(ycql_jwt_users_to_skip_csv);
+DECLARE_string(ycql_ident_conf_csv);
 
 DEFINE_RUNTIME_bool(ycql_enable_tracing_flag, true,
     "If enabled, setting TRACING ON in cqlsh will cause "
@@ -156,6 +161,7 @@ constexpr const char* const kCassandraPasswordAuthenticator =
 
 extern const char* const kRoleColumnNameSaltedHash;
 extern const char* const kRoleColumnNameCanLogin;
+extern const char* const kJwtIdentMapName;
 
 using namespace yb::ql; // NOLINT
 
@@ -934,7 +940,8 @@ Result<bool> CheckJWTAuth(
     const ql::AuthResponseRequest::AuthQueryParameters& params, const std::string& jwks,
     const std::string& matching_claim_key,
     const std::vector<std::string>& allowed_issuers,
-    const std::vector<std::string>& allowed_audience) {
+    const std::vector<std::string>& allowed_audience,
+    const YbgMemoryContext& ident_memctx) {
   VLOG(4) << "Attempting JWT Authentication";
 
   std::vector<std::string> identity_claims;
@@ -952,12 +959,16 @@ Result<bool> CheckJWTAuth(
   // 2. Multiple entry identity such as "groups" or "roles". In such cases identity_claims can be
   // have multiple entries and the identity match will be successful if at least one entry matches
   // with the YCQL username.
+  bool match = false;
+  bool use_ident_mapping = !FLAGS_ycql_ident_conf_csv.empty();
+  ScopedSetMemoryContext set_memctx(ident_memctx);
   for (const auto& idp_identity : identity_claims) {
     VLOG(5) << "Matching YCQL user with IDP identity: " << idp_identity;
-    // TODO(#29861): Support regex mapping between IDP identity and the YCQL username instead of an
-    // exact match.
-    if (idp_identity == params.username) {
-      VLOG(4) << "JWT identity check successful";
+    PG_RETURN_NOT_OK(YbgCheckUsermap(
+      use_ident_mapping ? kJwtIdentMapName : nullptr, params.username.c_str(),
+        idp_identity.c_str(), false /* case_insensitive */, &match));
+    if (match) {
+      LOG(INFO) << "JWT identity match successful";
       return true;
     }
   }
@@ -997,7 +1008,8 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessAuthResult(const string& saved_hash
   if (FLAGS_TEST_ycql_use_jwt_auth && !UserIn(params.username, FLAGS_ycql_jwt_users_to_skip_csv)) {
     Result<bool> jwt_auth_result = CheckJWTAuth(
         params, service_impl_->GetJwtJwks(), service_impl_->GetJwtMatchingClaimKey(),
-        service_impl_->GetJwtAllowedIssuers(), service_impl_->GetJwtAllowedAudience());
+        service_impl_->GetJwtAllowedIssuers(), service_impl_->GetJwtAllowedAudience(),
+        service_impl_->GetJwtIdentMemCtx());
     if (!jwt_auth_result.ok()) {
       return make_unique<ErrorResponse>(
           *request_, ErrorResponse::Code::SERVER_ERROR,

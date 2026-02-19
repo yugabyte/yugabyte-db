@@ -508,9 +508,9 @@ void InitFrontiers(const RemoveIntentsData& data, docdb::ConsensusFrontiers& fro
   InitFrontiers(data.op_id, data.log_ht, HybridTime::kInvalid, frontiers);
 }
 
-rocksdb::UserFrontierPtr GetMutableMemTableFrontierFromDb(
+storage::UserFrontierPtr GetMutableMemTableFrontierFromDb(
     rocksdb::DB* db,
-    rocksdb::UpdateUserValueType type) {
+    storage::UpdateUserValueType type) {
   if (FLAGS_TEST_disable_getting_user_frontier_from_mem_table) {
     return nullptr;
   }
@@ -676,7 +676,7 @@ class Tablet::RegularRocksDbListener : public Tablet::RocksDbListener {
       return;
     }
     {
-      auto smallest = db->CalcMemTableFrontier(rocksdb::UpdateUserValueType::kSmallest);
+      auto smallest = db->CalcMemTableFrontier(storage::UpdateUserValueType::kSmallest);
       if (smallest) {
         down_cast<docdb::ConsensusFrontier&>(*smallest).MakeExternalSchemaVersionsAtMost(
             table_id_to_min_schema_version);
@@ -904,7 +904,7 @@ struct Tablet::IntentsDbFlushFilterState {
   boost::container::small_vector<int64_t, 4> largest_flushed_index;
   boost::container::small_vector<rocksdb::FlushAbility, 4> flush_ability;
 
-  void AddLargestFlushedIndex(const rocksdb::UserFrontierPtr& flushed_frontier) {
+  void AddLargestFlushedIndex(const storage::UserFrontierPtr& flushed_frontier) {
     if (!flushed_frontier) {
       largest_flushed_index.push_back(std::numeric_limits<int64_t>::min());
       return;
@@ -1836,7 +1836,7 @@ Status Tablet::WriteTransactionalBatch(
     int64_t batch_idx,
     const docdb::LWKeyValueWriteBatchPB& put_batch,
     HybridTime hybrid_time,
-    const rocksdb::UserFrontiers& frontiers) {
+    const storage::UserFrontiers& frontiers) {
   auto transaction_id = VERIFY_RESULT(
       FullyDecodeTransactionId(put_batch.transaction().transaction_id()));
 
@@ -1941,7 +1941,7 @@ Status Tablet::ApplyKeyValueRowOperations(
 }
 
 void Tablet::WriteToRocksDB(
-    const rocksdb::UserFrontiers& frontiers,
+    const storage::UserFrontiers& frontiers,
     rocksdb::WriteBatch* write_batch,
     docdb::StorageDbType storage_db_type) {
   rocksdb::DB* dest_db = nullptr;
@@ -4019,7 +4019,7 @@ void Tablet::FlushIntentsDbIfNecessary(const yb::OpId& lastest_log_entry_op_id) 
 
   auto intents_frontier = intents_db_
                               ? GetMutableMemTableFrontierFromDb(
-                                    intents_db_.get(), rocksdb::UpdateUserValueType::kLargest)
+                                    intents_db_.get(), storage::UpdateUserValueType::kLargest)
                               : nullptr;
   if (intents_frontier) {
     auto index_delta =
@@ -4109,7 +4109,7 @@ Result<HybridTime> Tablet::OldestMutableMemtableWriteHybridTime() const {
   for (auto* db : { regular_db_.get(), intents_db_.get() }) {
     if (db) {
       auto mem_frontier =
-          GetMutableMemTableFrontierFromDb(db, rocksdb::UpdateUserValueType::kSmallest);
+          GetMutableMemTableFrontierFromDb(db, storage::UpdateUserValueType::kSmallest);
       if (mem_frontier) {
         const auto hybrid_time =
             static_cast<const docdb::ConsensusFrontier&>(*mem_frontier).hybrid_time();
@@ -5191,7 +5191,7 @@ HybridTime Tablet::DeleteMarkerRetentionTime(const std::vector<rocksdb::FileMeta
       ? transaction_participant_->MinRunningHybridTime()
       : HybridTime::kMax;
 
-  auto smallest = regular_db_->CalcMemTableFrontier(rocksdb::UpdateUserValueType::kSmallest);
+  auto smallest = regular_db_->CalcMemTableFrontier(storage::UpdateUserValueType::kSmallest);
   if (smallest) {
     result = std::min(
         result, down_cast<const docdb::ConsensusFrontier&>(*smallest).hybrid_time());

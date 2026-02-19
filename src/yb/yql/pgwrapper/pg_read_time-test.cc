@@ -661,24 +661,26 @@ TEST_F(PgReadTimeTest, CheckRelaxedReadAfterCommitVisibility) {
   ASSERT_OK(conn.Execute("SET log_statement = 'all'"));
 
   // 1. no pipeline, single operation in first batch, no distributed txn
-  //
-  // relaxed yb_read_after_commit_visibility does not affect DML queries.
   for (const auto& table_name : {kTable, kSingleTabletTable}) {
+    // TODO(#30357): Clamp uncertainty window in the storage layer.
     CheckReadTimeProvidedToDocdb(
         [&conn, table_name]() {
           ASSERT_OK(conn.FetchFormat("SELECT * FROM $0 WHERE k=1", table_name));
         });
 
+    // fast path unaffected
     CheckReadTimePickedOnDocdb(
         [&conn, table_name]() {
           ASSERT_OK(conn.ExecuteFormat("UPDATE $0 SET v=1 WHERE k=1", table_name));
         });
 
+    // fast path
     CheckReadTimePickedOnDocdb(
         [&conn, table_name]() {
           ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1000, 1000)", table_name));
         });
 
+    // fast path
     CheckReadTimePickedOnDocdb(
         [&conn, table_name]() {
           ASSERT_OK(conn.ExecuteFormat("DELETE FROM $0 WHERE k=1000", table_name));
@@ -699,17 +701,13 @@ TEST_F(PgReadTimeTest, CheckRelaxedReadAfterCommitVisibility) {
 
   // 4. no pipeline, single operation in first batch, starts a distributed transation
   //
-  // expected_num_picked_read_time_on_doc_db_metric is set because in case of a SELECT FOR UPDATE,
-  // a read time is picked in read_query.cc, but an extra picking is done in write_query.cc just
-  // after conflict resolution is done (see DoTransactionalConflictsResolved()).
-  //
-  // relaxed yb_read_after_commit_visibility does not affect FOR UPDATE queries.
-  CheckReadTimePickedOnDocdb(
+  // relaxed yb_read_after_commit_visibility now clamps the read time for FOR UPDATE queries.
+  CheckReadTimeProvidedToDocdb(
       [&conn, kTable]() {
         ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
         ASSERT_OK(conn.FetchFormat("SELECT * FROM $0 WHERE k=1 FOR UPDATE", kTable));
         ASSERT_OK(conn.CommitTransaction());
-      }, 2);
+      });
 
   // 5. no pipeline, multiple operations to various tablets in first batch, starts a distributed
   //    transation

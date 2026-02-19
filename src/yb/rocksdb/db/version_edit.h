@@ -186,8 +186,8 @@ class VersionEdit {
   void SetLastSequence(SequenceNumber seq) {
     last_sequence_ = seq;
   }
-  void UpdateFlushedFrontier(UserFrontierPtr value);
-  void ModifyFlushedFrontier(UserFrontierPtr value, FrontierModificationMode mode);
+  void UpdateFlushedFrontier(yb::storage::UserFrontierPtr value);
+  void ModifyFlushedFrontier(yb::storage::UserFrontierPtr value, FrontierModificationMode mode);
   void SetMaxColumnFamily(uint32_t max_column_family) {
     max_column_family_ = max_column_family;
   }
@@ -280,7 +280,7 @@ class VersionEdit {
   std::optional<uint64_t> next_file_number_;
   std::optional<uint32_t> max_column_family_;
   std::optional<SequenceNumber> last_sequence_;
-  UserFrontierPtr flushed_frontier_;
+  yb::storage::UserFrontierPtr flushed_frontier_;
   FrontierModificationMode frontier_modification_mode_ = FrontierModificationMode::kUpdate;
 
   DeletedFileSet deleted_files_;

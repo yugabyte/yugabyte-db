@@ -674,6 +674,7 @@ class PgApiImpl {
   Status SetTransactionIsolationLevel(int isolation);
   Status SetTransactionReadOnly(bool read_only);
   Status SetTransactionDeferrable(bool deferrable);
+  void SetClampUncertaintyWindow(bool clamp);
   Status SetInTxnBlock(bool in_txn_blk);
   Status SetReadOnlyStmt(bool read_only_stmt);
   Status SetEnableTracing(bool tracing);
@@ -825,6 +826,8 @@ class PgApiImpl {
   Result<tserver::PgCreateReplicationSlotResponsePB> ExecCreateReplicationSlot(
       PgStatement *handle);
 
+  Result<tserver::PgListSlotEntriesResponsePB> ListSlotEntries();
+
   Result<tserver::PgListReplicationSlotsResponsePB> ListReplicationSlots();
 
   Result<tserver::PgGetReplicationSlotResponsePB> GetReplicationSlot(
@@ -963,14 +966,13 @@ class PgApiImpl {
 
   PgSharedDataHolder pg_shared_data_;
 
+  tserver::TServerSharedData& tserver_shared_object_;
+
   // TODO Rename to client_ when YBClient is removed.
   PgClient pg_client_;
   std::unique_ptr<Interrupter> interrupter_;
 
   scoped_refptr<server::HybridClock> clock_;
-
-  // Local tablet-server shared memory data.
-  tserver::TServerSharedData* tserver_shared_object_;
 
   const bool enable_table_locking_;
   scoped_refptr<PgTxnManager> pg_txn_manager_;

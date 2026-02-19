@@ -38,6 +38,9 @@ ADD_YB_LIBRARY(cql_service_proto
 # CQL server
 #########################################
 
+include_directories(${YB_BUILD_ROOT}/postgres/include/server)
+include_directories("${YB_BUILD_ROOT}/postgres_build/src/include")
+
 set(CQLSERVER_SRCS
   cql_processor.cc
   cql_rpc.cc
@@ -61,6 +64,7 @@ target_link_libraries(yb-cql
   server_process
   ldap
   lber)
+add_dependencies(yb-cql postgres)
 
 # Tests
 set(YB_TEST_LINK_LIBS yb-cql integration-tests ${YB_MIN_TEST_LIBS})

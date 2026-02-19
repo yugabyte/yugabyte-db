@@ -1948,6 +1948,10 @@ YbcStatus YBCPgSetTransactionDeferrable(bool deferrable) {
   return ToYBCStatus(pgapi->SetTransactionDeferrable(deferrable));
 }
 
+void YBCPgSetClampUncertaintyWindow(bool clamp) {
+  return pgapi->SetClampUncertaintyWindow(clamp);
+}
+
 YbcStatus YBCPgSetInTxnBlock(bool in_txn_blk) {
   return ToYBCStatus(pgapi->SetInTxnBlock(in_txn_blk));
 }
@@ -2502,6 +2506,41 @@ char GetReplicaIdentity(yb::tserver::PgReplicaIdentityPB replica_identity_pb) {
           "Received unexpected replica identity $0", replica_identity_pb.DebugString());
       return 'a';
   }
+}
+
+YbcStatus YBCPgListSlotEntries(YbcSlotEntryDescriptor** slot_entries, size_t* num_slot_entries) {
+  const auto result = pgapi->ListSlotEntries();
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
+  }
+  VLOG(4) << "The ListSlotEntries response: " << result->DebugString();
+
+  const auto& slot_entries_info = result.get().slot_entries();
+  *DCHECK_NOTNULL(num_slot_entries) = slot_entries_info.size();
+  *DCHECK_NOTNULL(slot_entries) = nullptr;
+
+  if (slot_entries_info.empty()) {
+    return YBCStatusOK();
+  }
+
+  *slot_entries = static_cast<YbcSlotEntryDescriptor*>(
+      YBCPAlloc(sizeof(YbcSlotEntryDescriptor) * slot_entries_info.size()));
+  YbcSlotEntryDescriptor* dest = *slot_entries;
+
+  for (const auto& info : slot_entries_info) {
+    new (dest) YbcSlotEntryDescriptor{
+        .stream_id = YBCPAllocStdString(info.stream_id()),
+        .confirmed_flush_lsn = info.confirmed_flush_lsn(),
+        .restart_lsn = info.restart_lsn(),
+        .xmin = info.xmin(),
+        .record_id_commit_time_ht = info.record_id_commit_time_ht(),
+        .last_pub_refresh_time = info.last_pub_refresh_time(),
+        .active_pid = info.active_pid(),
+    };
+    ++dest;
+  }
+
+  return YBCStatusOK();
 }
 
 YbcStatus YBCPgListReplicationSlots(

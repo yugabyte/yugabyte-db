@@ -809,7 +809,7 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
         return false;
       }
 
-      int priority = kHighPriority;
+      int priority = kPriorityHigh;
       bool freeze = true;
       // Change Task Priority
       index.modify(it, [priority, freeze](PriorityThreadPoolInternalTask& task) {
@@ -822,7 +822,7 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
 
       return true;
     }
-    return ChangeTaskPriority(serial_no, kHighPriority);
+    return ChangeTaskPriority(serial_no, kPriorityHigh);
   }
 
 

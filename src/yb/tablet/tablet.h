@@ -353,7 +353,7 @@ class Tablet : public AbstractTablet,
       HybridTime write_hybrid_time, HybridTime local_hybrid_time);
 
   void WriteToRocksDB(
-      const rocksdb::UserFrontiers& frontiers,
+      const storage::UserFrontiers& frontiers,
       rocksdb::WriteBatch* write_batch,
       docdb::StorageDbType storage_db_type);
 
@@ -1041,7 +1041,7 @@ class Tablet : public AbstractTablet,
   Status WriteTransactionalBatch(
       int64_t batch_idx,  // index of this batch in its transaction
       const docdb::LWKeyValueWriteBatchPB& put_batch, HybridTime hybrid_time,
-      const rocksdb::UserFrontiers& frontiers);
+      const storage::UserFrontiers& frontiers);
 
   Result<TransactionOperationContext> CreateTransactionOperationContext(
       const std::optional<TransactionId>& transaction_id, bool is_ysql_catalog_table,

@@ -1411,30 +1411,6 @@ templates:
         Minimum expiry time is {{ $value | printf "%.0f" }} ms (less than 2 hours remaining).
         Affected replication slots: {{ $labels.affected_slot_names_warning }}{{ end }}
 
-  CDCSDK_IDLE_STREAM:
-    name: CDC SDK Idle Stream
-    description: CDC SDK replication slot is idle (no messages emitted, change event count rate is 0)
-    queryTemplate: count by (universe_uuid) (rate(cdcsdk_change_event_count{universe_uuid="__universeUuid__"}[10m])
-      == 0) {{ query_condition }} {{ query_threshold }}
-    createForNewCustomer: true
-    defaultThresholdMap:
-      WARNING:
-        threshold: 0.0
-    targetType: UNIVERSE
-    defaultThresholdCondition: GREATER_THAN
-    defaultThresholdUnit: COUNT
-    thresholdUnitName: slot(s)
-    thresholdReadOnly: true
-    labels:
-      affected_slot_names: >-
-        {{ range $index, $element := query "rate(cdcsdk_change_event_count{universe_uuid='{{ $labels.universe_uuid }}'}[10m])
-        == 0" }}{{if $index}},{{end}}{{ $element.Labels.slot_name }}{{ end }}
-    annotations:
-      summary: >-
-        CDC SDK replication slot(s) are idle for universe '{{ $labels.source_name }}'.
-        No messages are being emitted (change event count rate is 0).
-        Idle replication slots: {{ $labels.affected_slot_names }}
-
   SSH_KEY_ROTATION_FAILURE:
     name: SSH Key Rotation Failure
     description: Last SSH Key Rotation task failed for universe

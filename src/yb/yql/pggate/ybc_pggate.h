@@ -746,6 +746,7 @@ YbcStatus YBCPgAbortPlainTransaction();
 YbcStatus YBCPgSetTransactionIsolationLevel(int isolation);
 YbcStatus YBCPgSetTransactionReadOnly(bool read_only);
 YbcStatus YBCPgSetTransactionDeferrable(bool deferrable);
+void YBCPgSetClampUncertaintyWindow(bool clamp);
 YbcStatus YBCPgSetInTxnBlock(bool in_txn_blk);
 YbcStatus YBCPgSetReadOnlyStmt(bool read_only_stmt);
 YbcStatus YBCPgSetEnableTracing(bool tracing);
@@ -962,6 +963,8 @@ YbcStatus YBCPgNewCreateReplicationSlot(const char *slot_name,
                                         YbcPgStatement *handle);
 YbcStatus YBCPgExecCreateReplicationSlot(YbcPgStatement handle,
                                          uint64_t *consistent_snapshot_time);
+
+YbcStatus YBCPgListSlotEntries(YbcSlotEntryDescriptor** slot_entries, size_t* num_slot_entries);
 
 YbcStatus YBCPgListReplicationSlots(
     YbcReplicationSlotDescriptor **replication_slots, size_t *numreplicationslots);

@@ -277,7 +277,7 @@ public class PlatformReplicationHelper {
 
   // This makes calls to the remote instances to demote.
   boolean demoteRemoteInstance(PlatformInstance remoteInstance, boolean promote) {
-    if (remoteInstance.getIsLocal()) {
+    if (remoteInstance.isLocal()) {
       log.warn("Cannot perform demoteRemoteInstance action on a local instance");
       return false;
     }
@@ -302,7 +302,7 @@ public class PlatformReplicationHelper {
                         localInstance.getAddress(), config.getLastFailover().getTime(), promote);
                   })
               .orElse(false);
-      if (succeeded && remoteInstance.getIsLeader()) {
+      if (succeeded && remoteInstance.isLeader()) {
         // Ensure all local records for remote instances are set to follower state.
         remoteInstance.demote();
       }
@@ -414,7 +414,7 @@ public class PlatformReplicationHelper {
               .getLocal()
               .ifPresent(
                   localInstance -> {
-                    if (!localInstance.getIsLeader()) {
+                    if (!localInstance.isLeader()) {
                       config
                           .getLeader()
                           .ifPresent(

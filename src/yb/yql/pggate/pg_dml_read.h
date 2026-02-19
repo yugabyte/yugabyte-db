@@ -195,6 +195,11 @@ class PgDmlRead : public PgDml {
     return MergeSortColumnType::kNone;
   }
 
+  // Collects the IN and equality conditions on the hash and range key columns and sets up
+  // the permutations generator. Each permutation corresponds to a set of conditions on a request
+  // making a stream of rows to merge sort with the other streams.
+  InPermutationGenerator MergeStreamPermutations();
+
   // Holds original doc_op_ object after call of the UpgradeDocOp method.
   // Required to prevent structures related to request from being freed.
   PgDocOp::SharedPtr original_doc_op_;

@@ -212,12 +212,13 @@ macro(yb_find_third_party_dependencies)
   ADD_THIRDPARTY_LIB(hiredis STATIC_LIB "${HIREDIS_STATIC_LIB}")
 
   # Abseil
-  find_package(Abseil REQUIRED)
-  ADD_THIRDPARTY_LIB(abseil
-    STATIC_LIB "${ABSEIL_STATIC_LIB}"
-    SHARED_LIB "${ABSEIL_SHARED_LIB}")
-  list(APPEND YB_BASE_LIBS abseil)
-
+  if (NOT APPLE)
+    find_package(Abseil REQUIRED)
+    ADD_THIRDPARTY_LIB(abseil
+      STATIC_LIB "${ABSEIL_STATIC_LIB}"
+      SHARED_LIB "${ABSEIL_SHARED_LIB}")
+    ADD_CXX_FLAGS("-DYB_ABSL_ENABLED")
+  endif()
   # ------------------------------------------------------------------------------------------------
   # Deciding whether to use tcmalloc
   # ------------------------------------------------------------------------------------------------

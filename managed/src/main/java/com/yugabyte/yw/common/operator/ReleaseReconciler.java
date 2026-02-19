@@ -23,11 +23,13 @@ import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
 import io.fabric8.kubernetes.client.informers.cache.Lister;
 import io.yugabyte.operator.v1alpha1.Release;
 import io.yugabyte.operator.v1alpha1.ReleaseStatus;
+import io.yugabyte.operator.v1alpha1.releasespec.config.DownloadConfig;
 import io.yugabyte.operator.v1alpha1.releasespec.config.downloadconfig.gcs.CredentialsJsonSecret;
 import io.yugabyte.operator.v1alpha1.releasespec.config.downloadconfig.s3.SecretAccessKeySecret;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 
@@ -42,6 +44,19 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
   private final String namespace;
   private final RuntimeConfGetter confGetter;
   private final OperatorUtils operatorUtils;
+
+  private final ResourceTracker resourceTracker = new ResourceTracker();
+
+  // The current release resource being reconciled, used for associating secret dependencies.
+  private KubernetesResourceDetails currentReconcileResource;
+
+  public Set<KubernetesResourceDetails> getTrackedResources() {
+    return resourceTracker.getTrackedResources();
+  }
+
+  public ResourceTracker getResourceTracker() {
+    return resourceTracker;
+  }
 
   public static Pair<String, ReleaseMetadata> crToReleaseMetadata(Release release) {
     return OperatorUtils.crToReleaseMetadata(release);
@@ -67,6 +82,11 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
 
   @Override
   public void onAdd(Release release) {
+    KubernetesResourceDetails resourceDetails = KubernetesResourceDetails.fromResource(release);
+    resourceTracker.trackResource(release);
+    currentReconcileResource = resourceDetails;
+    log.trace("Tracking resource {}, all tracked: {}", resourceDetails, getTrackedResources());
+
     ObjectMeta releaseMetadata = release.getMetadata();
     log.info("Adding release {} ", releaseMetadata.getName());
     if (confGetter.getGlobalConf(GlobalConfKeys.enableReleasesRedesign)) {
@@ -128,6 +148,8 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
       onDelete(newRelease, true);
       return;
     }
+    // Persist the latest resource YAML so the OperatorResource table stays current.
+    resourceTracker.trackResource(newRelease);
     if (confGetter.getGlobalConf(GlobalConfKeys.enableReleasesRedesign)) {
       String version = newRelease.getSpec().getConfig().getVersion();
       com.yugabyte.yw.models.Release ybRelease;
@@ -218,6 +240,9 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
 
   @Override
   public void onDelete(Release release, boolean deletedFinalStateUnknown) {
+    KubernetesResourceDetails resourceDetails = KubernetesResourceDetails.fromResource(release);
+    Set<KubernetesResourceDetails> orphaned = resourceTracker.untrackResource(resourceDetails);
+    log.info("Untracked release {} and orphaned dependencies: {}", resourceDetails, orphaned);
     operatorUtils.deleteReleaseCr(release);
   }
 
@@ -257,7 +282,11 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
             release.getSpec().getConfig().getDownloadConfig().getS3().getSecretAccessKeySecret();
         String secret =
             operatorUtils.getAndParseSecretForKey(
-                awsSecret.getName(), awsSecret.getNamespace(), "AWS_SECRET_ACCESS_KEY");
+                awsSecret.getName(),
+                awsSecret.getNamespace(),
+                "AWS_SECRET_ACCESS_KEY",
+                resourceTracker,
+                currentReconcileResource);
         if (secret != null) {
           s3File.secretAccessKey = secret;
         } else {
@@ -302,7 +331,11 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
             release.getSpec().getConfig().getDownloadConfig().getGcs().getCredentialsJsonSecret();
         String secret =
             operatorUtils.getAndParseSecretForKey(
-                gcsSecret.getName(), gcsSecret.getNamespace(), "CREDENTIALS_JSON");
+                gcsSecret.getName(),
+                gcsSecret.getNamespace(),
+                "CREDENTIALS_JSON",
+                resourceTracker,
+                currentReconcileResource);
         if (secret != null) {
           gcsFile.credentialsJson = secret;
         } else {
@@ -374,89 +407,63 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
 
   // Validate if the artifact remotes have changed.
   private boolean artifactHasChanges(ReleaseArtifact artifact, Release release) {
+    if (release.getSpec() == null
+        || release.getSpec().getConfig() == null
+        || release.getSpec().getConfig().getDownloadConfig() == null) {
+      return false;
+    }
+    DownloadConfig downloadConfig = release.getSpec().getConfig().getDownloadConfig();
     if (artifact.getPlatform() == Platform.LINUX) {
-      if (artifact.getPackageURL() != null
-          && !artifact
-              .getPackageURL()
-              .equals(
-                  release
-                      .getSpec()
-                      .getConfig()
-                      .getDownloadConfig()
-                      .getHttp()
-                      .getPaths()
-                      .getX86_64())) {
-        return true;
+      if (artifact.getPackageURL() != null) {
+        if (downloadConfig.getHttp() != null
+            && !artifact.getPackageURL().equals(downloadConfig.getHttp().getPaths().getX86_64())) {
+          return true;
+        }
+        if (downloadConfig.getHttp() == null) return true;
       }
-      if (artifact.getS3File() != null
-          && !artifact
-              .getS3File()
-              .path
-              .equals(
-                  release
-                      .getSpec()
-                      .getConfig()
-                      .getDownloadConfig()
-                      .getS3()
-                      .getPaths()
-                      .getX86_64())) {
-        return true;
+      if (artifact.getS3File() != null) {
+        if (downloadConfig.getS3() != null
+            && !artifact.getS3File().path.equals(downloadConfig.getS3().getPaths().getX86_64())) {
+          return true;
+        }
+        if (downloadConfig.getS3() == null) return true;
       }
-      if (artifact.getGcsFile() != null
-          && !artifact
-              .getGcsFile()
-              .path
-              .equals(
-                  release
-                      .getSpec()
-                      .getConfig()
-                      .getDownloadConfig()
-                      .getGcs()
-                      .getPaths()
-                      .getX86_64())) {
-        return true;
+      if (artifact.getGcsFile() != null) {
+        if (downloadConfig.getGcs() != null
+            && !artifact.getGcsFile().path.equals(downloadConfig.getGcs().getPaths().getX86_64())) {
+          return true;
+        }
+        if (downloadConfig.getGcs() == null) return true;
       }
     } else {
-      if (artifact.getPackageURL() != null
-          && !artifact
-              .getPackageURL()
-              .equals(
-                  release
-                      .getSpec()
-                      .getConfig()
-                      .getDownloadConfig()
-                      .getHttp()
-                      .getPaths()
-                      .getHelmChart())) {
-        return true;
+      if (artifact.getPackageURL() != null) {
+        if (downloadConfig.getHttp() != null
+            && !artifact
+                .getPackageURL()
+                .equals(downloadConfig.getHttp().getPaths().getHelmChart())) {
+          return true;
+        }
+        if (downloadConfig.getHttp() == null) return true;
       }
-      if (artifact.getS3File() != null
-          && !artifact
-              .getS3File()
-              .path
-              .equals(
-                  release
-                      .getSpec()
-                      .getConfig()
-                      .getDownloadConfig()
-                      .getS3()
-                      .getPaths()
-                      .getHelmChart())) {
-        return true;
+      if (artifact.getS3File() != null) {
+        if (downloadConfig.getS3() != null
+            && !artifact
+                .getS3File()
+                .path
+                .equals(downloadConfig.getS3().getPaths().getHelmChart())) {
+          return true;
+        }
+        if (downloadConfig.getS3() == null) return true;
       }
-      if (artifact.getGcsFile() != null
-          && !artifact
-              .getGcsFile()
-              .path
-              .equals(
-                  release
-                      .getSpec()
-                      .getConfig()
-                      .getDownloadConfig()
-                      .getGcs()
-                      .getPaths()
-                      .getHelmChart())) {
-        return true;
+      if (artifact.getGcsFile() != null) {
+        if (downloadConfig.getGcs() != null
+            && !artifact
+                .getGcsFile()
+                .path
+                .equals(downloadConfig.getGcs().getPaths().getHelmChart())) {
+          return true;
+        }
+        if (downloadConfig.getGcs() == null) return true;
       }
     }
     return false;

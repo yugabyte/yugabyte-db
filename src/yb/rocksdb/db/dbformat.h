@@ -232,7 +232,7 @@ class InternalKey {
 class BoundaryValuesExtractor {
  public:
   virtual Status Extract(Slice user_key, UserBoundaryValueRefs* values) = 0;
-  virtual UserFrontierPtr CreateFrontier() = 0;
+  virtual yb::storage::UserFrontierPtr CreateFrontier() = 0;
  protected:
   ~BoundaryValuesExtractor() {}
 };

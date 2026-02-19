@@ -442,9 +442,9 @@ You can also perform the following modifications:
 
 You can execute DDL operations after replication has been already been configured. Depending on the type of DDL operations, additional considerations are required.
 
-### Adding new objects (Tables, Partitions, Indexes)
+### Add new objects (Tables, Partitions, Indexes)
 
-#### Adding tables (or partitions)
+#### Add tables (or partitions)
 
 When new tables (or partitions) are created, to ensure that all changes from the time of object creation are replicated, writes should start on the new objects only after they are added to replication. If tables (or partitions) already have existing data before they are added to replication, then follow the bootstrap process described in [Bootstrap a target universe](#bootstrap-a-target-universe).
 
@@ -496,9 +496,9 @@ When new tables (or partitions) are created, to ensure that all changes from the
     Replication altered successfully
    ```
 
-#### Adding indexes in unidirectional replication
+#### Add indexes in unidirectional replication
 
-To add a new index to an empty table, follow the same steps as described in [Adding Tables (or Partitions)](#adding-tables-or-partitions).
+To add a new index to an empty table, follow the same steps as described in [Add Tables (or Partitions)](#add-tables-or-partitions).
 
 However, to add a new index to a table that already has data, the following additional steps are required to ensure that the index has all the updates:
 
@@ -553,11 +553,11 @@ However, to add a new index to a table that already has data, the following addi
     Replication altered successfully
     ```
 
-#### Adding indexes in bidirectional replication
+#### Add indexes in bidirectional replication
 
 Stop all write traffic when adding a new index to a table that is bidirectionally replicated.
 
-Follow the same steps as described in [Adding indexes in unidirectional replication](#adding-indexes-in-unidirectional-replication), followed by bootstrapping the index on the target universe and adding it to the source universe (steps 4 and 8 in the opposite direction).
+Follow the same steps as described in [Add indexes in unidirectional replication](#add-indexes-in-unidirectional-replication), followed by bootstrapping the index on the target universe and adding it to the source universe (steps 4 and 8 in the opposite direction).
 
 ### Removing objects
 
@@ -612,34 +612,39 @@ Alters involving adding/removing columns or modifying data types require replica
     ```output
     Replication enabled successfully
     ```
-#### Adding a column with a non-volatile default value
 
-When adding a new column with a (non-volatile) default expression, make sure to perform the schema modification on the target with the _computed_ default value. 
+#### Add a column with a non-volatile default value
+
+When adding a new column with a (non-volatile) default expression, make sure to perform the schema modification on the target with the *computed* default value.
 
 For example, say you have a replicated table `test_table`.
 
-1. Pause replication on both sides. 
+1. Pause replication on both sides.
 1. Execute add column command on the source:
+
    ```sql
    ALTER TABLE test_table ADD COLUMN test_column TIMESTAMP DEFAULT NOW()
    ```
+
 1. Run the preceding `ALTER TABLE` command with the computed default value on the target as follows:
-   
-    - The computed default value can be retrieved from the `attmissingval` column in the `pg_attribute` catalog table.
+
+    - Retrieve the computed default value from the `attmissingval` column in the `pg_attribute` catalog table.
 
       Example:
-   
+
       ```sql
       SELECT attmissingval FROM pg_attribute WHERE attrelid='test'::regclass AND attname='test_column';
       ```
+
       ```output
                 attmissingval         
        -------------------------------
         {"2024-01-09 12:29:11.88894"}
        (1 row)
       ```
-   
+
     - Execute the `ADD COLUMN` command on the target with the computed default value.
+
       ```sql
-         ALTER TABLE test ADD COLUMN test_column TIMESTAMP DEFAULT "2024-01-09 12:29:11.88894"
+      ALTER TABLE test ADD COLUMN test_column TIMESTAMP DEFAULT "2024-01-09 12:29:11.88894"
       ```

@@ -6,6 +6,7 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.FileHelperService;
 import com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat.MultilineConfig;
+import com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat.RetryConfig;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.yaml.SkipNullRepresenter;
@@ -31,6 +32,7 @@ import com.yugabyte.yw.models.helpers.telemetry.AuthCredentials.AuthType;
 import com.yugabyte.yw.models.helpers.telemetry.DataDogConfig;
 import com.yugabyte.yw.models.helpers.telemetry.DynatraceConfig;
 import com.yugabyte.yw.models.helpers.telemetry.ExportType;
+import com.yugabyte.yw.models.helpers.telemetry.ExporterRetryConfig;
 import com.yugabyte.yw.models.helpers.telemetry.GCPCloudMonitoringConfig;
 import com.yugabyte.yw.models.helpers.telemetry.LokiConfig;
 import com.yugabyte.yw.models.helpers.telemetry.OTLPConfig;
@@ -84,7 +86,7 @@ public class OtelCollectorConfigGenerator {
   private static final String PARAM_SHOW_HELP = "__param_show_help";
   private static final String PARAM_PRIORITY_REGEX = "__param_priority_regex";
   private static final String PARAM_METRICS = "__param_metrics";
-  private static final String DEFAULT_SHOW_HELP = "false";
+  private static final String DEFAULT_SHOW_HELP = "true";
 
   // Receiver prefixes
   private static final String RECEIVER_PREFIX_FILELOG = "filelog/";
@@ -398,17 +400,6 @@ public class OtelCollectorConfigGenerator {
           processorNames.add(attributesProcessorName);
         }
 
-        // Add BatchProcessor for metrics.
-        String batchProcessorName = PROCESSOR_PREFIX_BATCH + exportTypeAndUUIDString;
-        OtelCollectorConfigFormat.BatchProcessor batchProcessor =
-            new OtelCollectorConfigFormat.BatchProcessor();
-        batchProcessor.setSend_batch_size(exporterConfig.getSendBatchSize());
-        batchProcessor.setSend_batch_max_size(exporterConfig.getSendBatchMaxSize());
-        batchProcessor.setTimeout(exporterConfig.getSendBatchTimeoutSeconds().toString() + "s");
-        collectorConfigFormat.getProcessors().put(batchProcessorName, batchProcessor);
-        // Add BatchProcessor to the pipeline
-        processorNames.add(batchProcessorName);
-
         // Add MemoryLimiterProcessor for metrics.
         String memoryLimiterProcessorName =
             PROCESSOR_PREFIX_MEMORY_LIMITER + exportTypeAndUUIDString;
@@ -458,6 +449,16 @@ public class OtelCollectorConfigGenerator {
           // Add CumulativeToDeltaProcessor to the pipeline
           processorNames.add(cumulativetodeltaProcessorName);
         }
+
+        // Add BatchProcessor at the end, after cumulativetodelta, so processors know metric type
+        String batchProcessorName = PROCESSOR_PREFIX_BATCH + exportTypeAndUUIDString;
+        OtelCollectorConfigFormat.BatchProcessor batchProcessor =
+            new OtelCollectorConfigFormat.BatchProcessor();
+        batchProcessor.setSend_batch_size(exporterConfig.getSendBatchSize());
+        batchProcessor.setSend_batch_max_size(exporterConfig.getSendBatchMaxSize());
+        batchProcessor.setTimeout(exporterConfig.getSendBatchTimeoutSeconds().toString() + "s");
+        collectorConfigFormat.getProcessors().put(batchProcessorName, batchProcessor);
+        processorNames.add(batchProcessorName);
 
         // Add all the processor names to the pipeline
         pipeline.setProcessors(processorNames);
@@ -1722,8 +1723,11 @@ public class OtelCollectorConfigGenerator {
         otlpTLSSettings.setInsecure_skip_verify(true);
         otlpExporter.setTls(otlpTLSSettings);
 
-        if (otlpConfig.getLogsEndpoint() != null && !otlpConfig.getLogsEndpoint().isEmpty()) {
+        if (StringUtils.isNotBlank(otlpConfig.getLogsEndpoint())) {
           otlpExporter.setLogs_endpoint(otlpConfig.getLogsEndpoint());
+        }
+        if (StringUtils.isNotBlank(otlpConfig.getMetricsEndpoint())) {
+          otlpExporter.setMetrics_endpoint(otlpConfig.getMetricsEndpoint());
         }
 
         // Add authentication extension if auth type is not NoAuth
@@ -1777,7 +1781,10 @@ public class OtelCollectorConfigGenerator {
         String exporterTypePrefix = otlpConfig.getProtocol().getExporterType();
 
         exporterName = exporterTypePrefix + "/" + exportTypeAndUUIDString;
-        exporters.put(exporterName, setExporterCommonConfig(otlpExporter, true, true, exportType));
+        exporters.put(
+            exporterName,
+            setExporterCommonConfig(
+                otlpExporter, true, true, exportType, otlpConfig.getRetryOnFailure()));
 
         break;
       default:
@@ -1803,27 +1810,24 @@ public class OtelCollectorConfigGenerator {
       boolean setQueueEnabled,
       boolean setRetryOnFailure,
       ExportType exportType) {
+    return setExporterCommonConfig(exporter, setQueueEnabled, setRetryOnFailure, exportType, null);
+  }
+
+  private OtelCollectorConfigFormat.Exporter setExporterCommonConfig(
+      OtelCollectorConfigFormat.Exporter exporter,
+      boolean setQueueEnabled,
+      boolean setRetryOnFailure,
+      ExportType exportType,
+      ExporterRetryConfig apiRetry) {
+    // Set retry on failure with defaults / requested values.
     if (setRetryOnFailure) {
-      OtelCollectorConfigFormat.RetryConfig retryConfig =
-          new OtelCollectorConfigFormat.RetryConfig();
-      String initialInterval, maxInterval, maxElapsedTime;
-      if (exportType == ExportType.AUDIT_LOGS) {
-        initialInterval = "1m";
-        maxInterval = "1800m";
-        maxElapsedTime = "1800m";
-      } else {
-        initialInterval = "30s";
-        maxInterval = "10m";
-        maxElapsedTime = "60m";
-      }
-      retryConfig.setEnabled(true);
-      retryConfig.setInitial_interval(initialInterval);
-      retryConfig.setMax_interval(maxInterval);
-      retryConfig.setMax_elapsed_time(maxElapsedTime);
+      RetryConfig retryConfig = buildRetryConfig(exportType, apiRetry);
       exporter.setRetry_on_failure(retryConfig);
     } else {
       exporter.setRetry_on_failure(null);
     }
+
+    // Set sending queue, only for DBAL and not other exports due to memory constraints.
     if (exportType == ExportType.AUDIT_LOGS) {
       OtelCollectorConfigFormat.QueueConfig queueConfig =
           new OtelCollectorConfigFormat.QueueConfig();
@@ -1836,6 +1840,32 @@ public class OtelCollectorConfigGenerator {
       }
     }
     return exporter;
+  }
+
+  /**
+   * Builds Otel RetryConfig from export-type defaults and applies API-provided overrides if
+   * present.
+   */
+  private RetryConfig buildRetryConfig(ExportType exportType, ExporterRetryConfig apiRetry) {
+    RetryConfig retryConfig = new RetryConfig();
+
+    // Apply YBA set defaults.
+    retryConfig.setEnabled(true);
+    switch (exportType) {
+      case AUDIT_LOGS:
+        retryConfig.setInitial_interval("1m");
+        retryConfig.setMax_interval("1800m");
+        retryConfig.setMax_elapsed_time("1800m");
+        break;
+      default:
+        retryConfig.setInitial_interval("30s");
+        retryConfig.setMax_interval("10m");
+        retryConfig.setMax_elapsed_time("60m");
+        break;
+    }
+
+    // Override with API-provided values if present.
+    return ExporterRetryConfig.applyOverrides(retryConfig, apiRetry);
   }
 
   private OtelCollectorConfigFormat.Extension createStorageExtension(

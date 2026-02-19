@@ -1042,9 +1042,9 @@ void FrontierSchemaVersionUpdater::FlushSchemaVersion() {
     return;
   }
   frontiers_.Smallest().UpdateSchemaVersion(
-      schema_version_table_, min_schema_version_, rocksdb::UpdateUserValueType::kSmallest);
+      schema_version_table_, min_schema_version_, storage::UpdateUserValueType::kSmallest);
   frontiers_.Largest().UpdateSchemaVersion(
-      schema_version_table_, max_schema_version_, rocksdb::UpdateUserValueType::kLargest);
+      schema_version_table_, max_schema_version_, storage::UpdateUserValueType::kLargest);
   min_schema_version_ = std::numeric_limits<SchemaVersion>::max();
   max_schema_version_ = std::numeric_limits<SchemaVersion>::min();
 }

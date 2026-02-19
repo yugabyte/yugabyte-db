@@ -170,18 +170,21 @@ using WaitEventWatcher = std::function<PgWaitEventWatcher(ash::WaitStateCode, as
 
 class PgClient {
  public:
+  struct ProxyInitInfo {
+    rpc::ProxyCache& cache;
+    HostPort host_port;
+    MonoDelta resolve_cache_timeout;
+  };
+
   PgClient(
+      const ProxyInitInfo& proxy_init_info,
       std::reference_wrapper<const WaitEventWatcher> wait_event_watcher,
       std::atomic<uint64_t>& next_perform_op_serial_no);
   ~PgClient();
 
-  Status Start(rpc::ProxyCache* proxy_cache,
-               rpc::Scheduler* scheduler,
-               const tserver::TServerSharedData& tserver_shared_object,
-               std::optional<uint64_t> session_id);
-  // TODO (dmitry): Consider joining of Interrupt and Shutdown into single method.
+  Status Start(rpc::Scheduler& scheduler, std::optional<uint64_t> session_id);
+
   void Interrupt();
-  void Shutdown();
 
   void SetTimeout(int timeout_ms);
   void ClearTimeout();
@@ -307,6 +310,8 @@ class PgClient {
 
   Result<tserver::PgCreateReplicationSlotResponsePB> CreateReplicationSlot(
       tserver::PgCreateReplicationSlotRequestPB* req, CoarseTimePoint deadline);
+
+  Result<tserver::PgListSlotEntriesResponsePB> ListSlotEntries();
 
   Result<tserver::PgListReplicationSlotsResponsePB> ListReplicationSlots();
 

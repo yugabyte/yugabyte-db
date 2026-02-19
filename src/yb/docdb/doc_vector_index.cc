@@ -306,7 +306,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
 
   Status Insert(
       const DocVectorIndexInsertEntries& entries,
-      const rocksdb::UserFrontiers& frontiers) override {
+      const storage::UserFrontiers& frontiers) override {
     typename LSM::InsertEntries lsm_entries;
     lsm_entries.reserve(entries.size());
     for (const auto& entry : entries) {

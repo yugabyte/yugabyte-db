@@ -171,8 +171,6 @@ if("${YB_THIRDPARTY_DIR}" STREQUAL "")
   endif()
   set(ENV{YB_THIRDPARTY_DIR} "${YB_THIRDPARTY_DIR}")
 endif()
-# Remove trailing slash from YB_THIRDPARTY_DIR if it exists.
-string(REGEX REPLACE "/+$" "" YB_THIRDPARTY_DIR "${YB_THIRDPARTY_DIR}")
 message("YB_THIRDPARTY_DIR: ${YB_THIRDPARTY_DIR}")
 
 set(YB_BUILD_ROOT "${CMAKE_CURRENT_BINARY_DIR}")
@@ -915,6 +913,7 @@ set(YB_SUBDIR_NAMES
     rocksutil
     rpc
     server
+    storage
     tablet
     tools
     tserver

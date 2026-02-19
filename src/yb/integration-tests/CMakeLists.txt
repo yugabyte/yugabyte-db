@@ -243,6 +243,8 @@ ADD_YB_TEST(restart-test)
 ADD_YB_TEST(yb-ts-cli-itest)
 ADD_YB_TEST_DEPENDENCIES(yb-ts-cli-itest
   yb-ts-cli)
+YB_TEST_TARGET_INCLUDE_DIRECTORIES(yb-ts-cli-itest PRIVATE
+  "${YB_BUILD_ROOT}/postgres_build/src/include")
 ADD_YB_TEST(cql-backup-test)
 ADD_YB_TEST(snapshot-test)
 ADD_YB_TEST(cdc_service-int-test)

@@ -3459,22 +3459,18 @@ class PgClientSession::Impl {
         // TODO: Shouldn't the below logic for DDL transactions as well?
         session.SetInTxnLimit(in_txn_limit);
       }
-
-      if (options.clamp_uncertainty_window() &&
-          !session.read_point()->GetReadTime()) {
-        RSTATUS_DCHECK(
-          !(txn && txn->isolation() == SERIALIZABLE_ISOLATION),
-          IllegalState, "Clamping does not apply to SERIALIZABLE txns.");
-        // Set read time with clamped uncertainty window when requested by
-        // the query layer.
-        // Do not mess with the read time if already set.
-        session.read_point()->SetCurrentReadTime(ClampUncertaintyWindow::kTrue);
-        VLOG_WITH_PREFIX_AND_FUNC(2)
-          << "Setting read time to "
-          << session.read_point()->GetReadTime()
-          << " for read only txn/stmt";
-      }
     }
+
+    // Do not clamp uncertainty window for legacy catalog reads.
+    // TODO(#30357): Measure the performance of picking time here instead of the storage layer.
+    if (options.clamp_uncertainty_window() && !session.read_point()->GetReadTime()) {
+      RSTATUS_DCHECK(
+        !(txn && txn->isolation() == SERIALIZABLE_ISOLATION),
+        IllegalState, "Clamping does not apply to SERIALIZABLE txns.");
+      session.read_point()->SetCurrentReadTime(ClampUncertaintyWindow::kTrue);
+      VLOG_WITH_PREFIX(2) << "Clamping read time to " << session.read_point()->GetReadTime();
+    }
+
     return Status::OK();
   }
 

@@ -1,0 +1,189 @@
+!!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat
+exporters:
+  otlp/metrics_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$OTLPExporter
+    compression: gzip
+    endpoint: http://otlp:3100
+    logs_endpoint: http://otlp:3000/logs
+    metrics_endpoint: http://otlp:3000/metrics
+    retry_on_failure: {enabled: true, initial_interval: 30s, max_elapsed_time: 60m,
+      max_interval: 10m}
+    timeout: 5s
+    tls: {insecure_skip_verify: true}
+extensions:
+  file_storage/queue: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$StorageExtension
+    compaction: {directory: /mnt/d0/otel-collector/queue, on_rebound: true, on_start: true,
+      rebound_needed_threshold_mib: 100, rebound_trigger_threshold_mib: 10}
+    directory: /mnt/d0/otel-collector/queue
+processors:
+  attributes/metrics_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$AttributesProcessor
+    actions:
+    - {action: upsert, key: host, value: test-node}
+    - {action: upsert, key: yugabyte.node_name, value: test-node}
+    - {action: upsert, key: yugabyte.cloud, value: ''}
+    - {action: upsert, key: yugabyte.universe_uuid, value: 00000000-0000-0000-0000-000000000000}
+    - {action: upsert, key: yugabyte.node_type, value: PRIMARY}
+    - {action: upsert, key: yugabyte.region, value: ''}
+    - {action: upsert, key: yugabyte.zone, value: ''}
+    - {action: upsert, key: yugabyte.purpose, value: OTLP_METRICS_EXPORT}
+    - {action: upsert, key: tag, value: value}
+    - {action: upsert, key: env, value: prod}
+    - {action: upsert, key: region, value: us-west}
+  memory_limiter/metrics_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$MemoryLimiterProcessor {
+    check_interval: 10s, limit_mib: 2048}
+  batch/metrics_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$BatchProcessor {
+    send_batch_max_size: 1000, send_batch_size: 500, timeout: 5s}
+receivers:
+  prometheus/yugabyte: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$PrometheusReceiver
+    config:
+      global: {scrape_interval: 15s, scrape_timeout: 10s}
+      scrape_configs:
+      - job_name: yugabyte
+        metric_relabel_configs:
+        - regex: (.*)
+          replacement: $1
+          source_labels: [__name__]
+          target_label: saved_name
+        - regex: handler_latency_(yb_[^_]*)_([^_]*)_([^_]*)(.*)
+          replacement: $1
+          source_labels: [__name__]
+          target_label: server_type
+        - regex: handler_latency_(yb_[^_]*)_([^_]*)_([^_]*)(.*)
+          replacement: $2
+          source_labels: [__name__]
+          target_label: service_type
+        - regex: handler_latency_(yb_[^_]*)_([^_]*)_([^_]*)(_sum|_count)?
+          replacement: $3
+          source_labels: [__name__]
+          target_label: service_method
+        - regex: handler_latency_(yb_[^_]*)_([^_]*)_([^_]*)(_sum|_count)?
+          replacement: rpc_latency$4
+          source_labels: [__name__]
+          target_label: __name__
+        metrics_path: /prometheus-metrics
+        scheme: http
+        static_configs:
+        - labels: {export_type: master_export, __param_show_help: 'true', service: yb-master,
+            __param_priority_regex: 'rocksdb_(number_db_(next|seek|prev)|db_iter_bytes_read|block_cache_(add|single_touch_add|multi_touch_add)|current_version_(sst_files_size|num_sst_files)|db_([^_]+_micros_[^_]+|mutex_wait_micros)|block_cache_(hit|miss)|bloom_filter_(checked|useful)|stall_micros|flush_write_bytes|compact_[^_]+_bytes|compaction_times_micros_[^_]+|numfiles_in_singlecompaction_[^_]+)|mem_tracker_(RegularDB_MemTable|IntentsDB_MemTable)|mem_tracker_server_PerTablet_(RegularDB_MemTable|IntentsDB_MemTable)|mem_tracker_server_Tablets_overhead_PerTablet_(RegularDB_MemTable|IntentsDB_MemTable)|async_replication_[^_]+_lag_micros|consumer_safe_time_[^_]+|transaction_conflicts|majority_sst_files_rejections|expired_transactions|log_(sync_latency_[^_]+|group_commit_latency_[^_]+|append_latency_[^_]+|bytes_logged|reader_bytes_read|cache_size|cache_num_ops)|follower_lag_ms|[^_]+_memory_pressure_rejections|log_wal_size|ql_read_latency_[^_]+|(all|write)_operations_inflight|ql_write_latency_[^_]+|write_lock_latency_[^_]+|is_raft_leader|ts_live_tablet_peers|xcluster_consumer_replication_error_count'}
+          targets: ['127.0.0.1:7000']
+        - labels: {export_type: tserver_export, __param_show_help: 'true', service: yb-tserver,
+            __param_priority_regex: 'rocksdb_(number_db_(next|seek|prev)|db_iter_bytes_read|block_cache_(add|single_touch_add|multi_touch_add)|current_version_(sst_files_size|num_sst_files)|db_([^_]+_micros_[^_]+|mutex_wait_micros)|block_cache_(hit|miss)|bloom_filter_(checked|useful)|stall_micros|flush_write_bytes|compact_[^_]+_bytes|compaction_times_micros_[^_]+|numfiles_in_singlecompaction_[^_]+)|mem_tracker_(RegularDB_MemTable|IntentsDB_MemTable)|mem_tracker_server_PerTablet_(RegularDB_MemTable|IntentsDB_MemTable)|mem_tracker_server_Tablets_overhead_PerTablet_(RegularDB_MemTable|IntentsDB_MemTable)|async_replication_[^_]+_lag_micros|consumer_safe_time_[^_]+|transaction_conflicts|majority_sst_files_rejections|expired_transactions|log_(sync_latency_[^_]+|group_commit_latency_[^_]+|append_latency_[^_]+|bytes_logged|reader_bytes_read|cache_size|cache_num_ops)|follower_lag_ms|[^_]+_memory_pressure_rejections|log_wal_size|ql_read_latency_[^_]+|(all|write)_operations_inflight|ql_write_latency_[^_]+|write_lock_latency_[^_]+|is_raft_leader|ts_live_tablet_peers|xcluster_consumer_replication_error_count'}
+          targets: ['127.0.0.1:9000']
+        - labels: {export_type: ysql_export, __param_show_help: 'true', service: yb-tserver}
+          targets: ['127.0.0.1:13000']
+        - labels: {export_type: cql_export, __param_show_help: 'true', service: yb-tserver}
+          targets: ['127.0.0.1:12000']
+        tls_config: {insecure_skip_verify: true}
+      - job_name: node
+        metric_relabel_configs:
+        - regex: node_cpu
+          replacement: node_cpu_seconds_total
+          source_labels: [__name__]
+          target_label: __name__
+        - regex: node_filesystem_free
+          replacement: node_filesystem_free_bytes
+          source_labels: [__name__]
+          target_label: __name__
+        - regex: node_filesystem_size
+          replacement: node_filesystem_size_bytes
+          source_labels: [__name__]
+          target_label: __name__
+        - regex: node_disk_reads_completed
+          replacement: node_disk_reads_completed_total
+          source_labels: [__name__]
+          target_label: __name__
+        - regex: node_disk_writes_completed
+          replacement: node_disk_writes_completed_total
+          source_labels: [__name__]
+          target_label: __name__
+        - regex: node_memory_MemTotal
+          replacement: node_memory_MemTotal_bytes
+          source_labels: [__name__]
+          target_label: __name__
+        - regex: node_memory_Slab
+          replacement: node_memory_Slab_bytes
+          source_labels: [__name__]
+          target_label: __name__
+        - regex: node_memory_Cached
+          replacement: node_memory_Cached_bytes
+          source_labels: [__name__]
+          target_label: __name__
+        - regex: node_memory_Buffers
+          replacement: node_memory_Buffers_bytes
+          source_labels: [__name__]
+          target_label: __name__
+        - regex: node_memory_MemFree
+          replacement: node_memory_MemFree_bytes
+          source_labels: [__name__]
+          target_label: __name__
+        - regex: node_network_receive_bytes
+          replacement: node_network_receive_bytes_total
+          source_labels: [__name__]
+          target_label: __name__
+        - regex: node_network_transmit_bytes
+          replacement: node_network_transmit_bytes_total
+          source_labels: [__name__]
+          target_label: __name__
+        - regex: node_network_receive_packets
+          replacement: node_network_receive_packets_total
+          source_labels: [__name__]
+          target_label: __name__
+        - regex: node_network_transmit_packets
+          replacement: node_network_transmit_packets_total
+          source_labels: [__name__]
+          target_label: __name__
+        - regex: node_network_receive_errs
+          replacement: node_network_receive_errs_total
+          source_labels: [__name__]
+          target_label: __name__
+        - regex: node_network_transmit_errs
+          replacement: node_network_transmit_errs_total
+          source_labels: [__name__]
+          target_label: __name__
+        - regex: node_disk_bytes_read
+          replacement: node_disk_read_bytes_total
+          source_labels: [__name__]
+          target_label: __name__
+        - regex: node_disk_bytes_written
+          replacement: node_disk_written_bytes_total
+          source_labels: [__name__]
+          target_label: __name__
+        - regex: node_boot_time
+          replacement: node_boot_time_seconds
+          source_labels: [__name__]
+          target_label: __name__
+        - regex: (.*)
+          replacement: $1
+          source_labels: [__name__]
+          target_label: saved_name
+        metrics_path: /metrics
+        scheme: http
+        static_configs:
+        - labels: {export_type: node_export, service: node-exporter}
+          targets: ['127.0.0.1:9300']
+        tls_config: {insecure_skip_verify: true}
+      - job_name: node-agent
+        metrics_path: /metrics
+        scheme: http
+        static_configs:
+        - labels: {export_type: node_agent, service: node-agent}
+          targets: ['127.0.0.1:9070']
+        tls_config: {insecure_skip_verify: true}
+      - job_name: otel-collector
+        metrics_path: /metrics
+        scheme: http
+        static_configs:
+        - labels: {export_type: otel_export, service: otel-collector}
+          targets: ['127.0.0.1:8889']
+        tls_config: {insecure_skip_verify: true}
+service:
+  extensions: [file_storage/queue]
+  pipelines:
+    metrics/metrics_00000000-0000-0000-0000-000000000000:
+      exporters: [otlp/metrics_00000000-0000-0000-0000-000000000000]
+      processors: [attributes/metrics_00000000-0000-0000-0000-000000000000, memory_limiter/metrics_00000000-0000-0000-0000-000000000000,
+        batch/metrics_00000000-0000-0000-0000-000000000000]
+      receivers: [prometheus/yugabyte]
+  telemetry:
+    logs:
+      output_paths: [/home/yugabyte/otel-collector/logs/otel-collector.logs]
+    metrics: {address: '0.0.0.0:8889'}

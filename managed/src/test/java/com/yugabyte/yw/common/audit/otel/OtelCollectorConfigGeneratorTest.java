@@ -719,6 +719,40 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
   }
 
   @Test
+  public void generateOtelColConfigMetricsPlusOTLP() {
+    OTLPConfig config = new OTLPConfig();
+    config.setType(ProviderType.OTLP);
+    config.setEndpoint("http://otlp:3100");
+    config.setAuthType(AuthType.NoAuth);
+    config.setLogsEndpoint("http://otlp:3000/logs");
+    config.setMetricsEndpoint("http://otlp:3000/metrics");
+
+    TelemetryProvider telemetryProvider =
+        createTelemetryProvider(new UUID(0, 0), "OTLP", ImmutableMap.of("tag", "value"), config);
+
+    when(mockTelemetryProviderService.getOrBadRequest(telemetryProvider.getUuid()))
+        .thenReturn(telemetryProvider);
+
+    MetricsExportConfig metricsExportConfig =
+        createMetricsExportConfig(
+            telemetryProvider.getUuid(),
+            ImmutableMap.of("env", "prod", "region", "us-west"),
+            15,
+            10,
+            MetricCollectionLevel.NORMAL);
+
+    UniverseMetricsExporterConfig metricsExporterConfig =
+        (UniverseMetricsExporterConfig)
+            metricsExportConfig.getUniverseMetricsExporterConfig().get(0);
+    metricsExporterConfig.setSendBatchSize(500);
+    metricsExporterConfig.setSendBatchMaxSize(1000);
+    metricsExporterConfig.setSendBatchTimeoutSeconds(5);
+    metricsExporterConfig.setMetricsPrefix("");
+
+    generateAndAssertConfig(null, null, metricsExportConfig, "audit/metrics_otlp_config.yml");
+  }
+
+  @Test
   public void generateOtelColConfigAuditAndQueryLogPlusMultiProvider() {
     AWSCloudWatchConfig awsConfig = new AWSCloudWatchConfig();
     awsConfig.setType(ProviderType.AWS_CLOUDWATCH);
