@@ -2309,6 +2309,8 @@ bool		yb_enable_parallel_scan_hash_sharded = false;
 bool		yb_enable_parallel_scan_range_sharded = false;
 bool		yb_enable_parallel_scan_system = false;
 bool        yb_test_make_all_ddl_statements_incrementing = false;
+bool		yb_always_increment_catalog_version_on_ddl = false;
+bool		yb_enable_negative_catcache_entries = false;
 
 /* DEPRECATED */
 bool		yb_enable_advisory_locks = true;
@@ -3554,6 +3556,9 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 			 bool *requires_autonomous_transaction)
 {
 	bool		is_ddl = true;
+	bool		should_increment_version_by_default =
+		yb_test_make_all_ddl_statements_incrementing ||
+		yb_always_increment_catalog_version_on_ddl;
 	bool		is_version_increment = true;
 	bool		is_breaking_change = true;
 	bool		is_altering_existing_data = false;
@@ -3645,7 +3650,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 			 * Simple add objects are not breaking changes, and they do not even require
 			 * a version increment because we do not do any negative caching for them.
 			 */
-			is_version_increment = false;
+			is_version_increment = should_increment_version_by_default;
 			is_breaking_change = false;
 			break;
 
@@ -3669,7 +3674,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 			 * increment.
 			 */
 			if (!yb_enable_alter_table_rewrite)
-				is_version_increment = false;
+				is_version_increment = should_increment_version_by_default;
 			is_breaking_change = false;
 			break;
 
@@ -3688,7 +3693,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 
 			/* Create or replace view needs to increment catalog version. */
 			if (!castNode(ViewStmt, parsetree)->replace)
-				is_version_increment = false;
+				is_version_increment = should_increment_version_by_default;
 			break;
 
 		case T_CompositeTypeStmt:	/* Create (composite) type */
@@ -3740,7 +3745,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 				int			nopts = list_length(stmt->options);
 
 				if (nopts == 0)
-					is_version_increment = false;
+					is_version_increment = should_increment_version_by_default;
 				else
 				{
 					bool		reference_other_role = false;
@@ -3759,7 +3764,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 						}
 					}
 					if (!reference_other_role)
-						is_version_increment = false;
+						is_version_increment = should_increment_version_by_default;
 				}
 				break;
 			}
@@ -3816,9 +3821,15 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 				}
 
 				if (stmt->relation->relpersistence == RELPERSISTENCE_TEMP)
+				{
+					is_version_increment = false;
+					is_altering_existing_data = true;
 					YBMarkTxnUsesTempRelAndSetTxnId();
-
-				is_version_increment = false;
+				}
+				else
+				{
+					is_version_increment = should_increment_version_by_default;
+				}
 				break;
 			}
 
@@ -3831,7 +3842,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 			 * Simple add objects are not breaking changes, and they do not even require
 			 * a version increment because we do not do any negative caching for them.
 			 */
-			is_version_increment = false;
+			is_version_increment = should_increment_version_by_default;
 			is_breaking_change = false;
 			break;
 
@@ -3843,7 +3854,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 			 * cache is updated.
 			 */
 			if (!OidIsValid(castNode(CreateSeqStmt, parsetree)->ownerId))
-				is_version_increment = false;
+				is_version_increment = should_increment_version_by_default;
 			break;
 
 		case T_CreateFunctionStmt:
@@ -3937,7 +3948,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 			 * catalog version mode.
 			 */
 			if (YBIsDBCatalogVersionMode())
-				is_version_increment = false;
+				is_version_increment = should_increment_version_by_default;
 			break;
 
 			/* All T_Alter... tags from nodes.h: */
@@ -3995,7 +4006,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 					if (strcmp(def->defname, "password") == 0)
 					{
 						is_breaking_change = false;
-						is_version_increment = false;
+						is_version_increment = should_increment_version_by_default;
 					}
 				}
 				break;
@@ -4100,7 +4111,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 
 		case T_VacuumStmt:
 			/* Vacuum with analyze updates relation and attribute statistics */
-			is_version_increment = false;
+			is_version_increment = should_increment_version_by_default;
 			is_breaking_change = false;
 			VacuumStmt *vacuum_stmt = castNode(VacuumStmt, parsetree);
 
@@ -4174,7 +4185,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 			 * corruption, manual intervention is already needed, so might as
 			 * well let the user deal with refreshing clients.
 			 */
-			is_version_increment = false;
+			is_version_increment = should_increment_version_by_default;
 			is_breaking_change = false;
 			break;
 
@@ -4255,12 +4266,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 	 */
 	if (yb_make_next_ddl_statement_nonbreaking)
 		is_breaking_change = false;
-	/*
-	 * If yb_test_make_all_ddl_statements_incrementing is true, we should be incrementing
-	 * the catalog version for all DDL statements.
-	 */
-	if (yb_test_make_all_ddl_statements_incrementing)
-		is_version_increment = true;
+
 	/*
 	 * If yb_make_next_ddl_statement_nonincrementing is true, then no DDL statement
 	 * will cause a catalog version to increment. Note that we also disable breaking

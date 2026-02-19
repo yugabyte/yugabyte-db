@@ -3751,11 +3751,69 @@ static struct config_bool ConfigureNamesBool[] =
 			gettext_noop("When set, all DDL statements will cause the "
 						 "catalog version to increment. This mainly affects "
 						 "CREATE commands such as CREATE TABLE, CREATE VIEW, "
-						 "and CREATE SEQUENCE."),
+						 "and CREATE SEQUENCE. This also enables negative "
+						 "catcache entries."),
 			NULL
 		},
 		&yb_test_make_all_ddl_statements_incrementing,
 		false,
+		NULL, NULL, NULL
+	},
+
+	/*
+	 * This flag should be enabled first on all the nodes in a cluster
+	 * before enabling yb_enable_negative_catcache_entries.
+	 */
+	{
+		{"yb_always_increment_catalog_version_on_ddl", PGC_SIGHUP, DEVELOPER_OPTIONS,
+			gettext_noop("When set, all DDL statements will cause the "
+						 "catalog version to increment. Unlike "
+						 "yb_test_make_all_ddl_statements_incrementing, this "
+						 "only controls the version incrementing behavior."),
+			NULL
+		},
+		&yb_always_increment_catalog_version_on_ddl,
+		false,
+		NULL, NULL, NULL
+	},
+
+	/*
+	 * This flag should only be enabled after enabling
+	 * yb_test_make_all_ddl_statements_incrementing.
+	 */
+	{
+		{"yb_enable_negative_catcache_entries", PGC_SIGHUP, DEVELOPER_OPTIONS,
+			gettext_noop("When set, negative catcache entries are enabled. "),
+			NULL
+		},
+		&yb_enable_negative_catcache_entries,
+		false,
+		NULL, NULL, NULL
+	},
+
+	/*
+	 * TODOs:
+	 *
+	 * (1) Flush the catalog cache when changing from legacy to the new mode since the legacy mode
+	 * could have stale catalog information but the new mode relies on the fact that no catalog
+	 * information in the cache is stale.
+	 *
+	 * (2) Disallow setting this GUC in the middle of a transaction.
+	 */
+	{
+		{"yb_fallback_to_legacy_catalog_read_time", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("[This is an advanced flag, avoid using it unless recommened by Yugabyte"
+				"support.] If object locking is enabled, concurrent DDLs are allowed. This is done by "
+				"using the new mode for catalog reads and writes using PG's catalog snapshot. Set this "
+				"flag to true for falling back to the legacy mode which involves using pggate's catalog "
+				"read time for catalog reads when running a DML transaction (and) the transaction snapshot "
+				"for catalog reads and writes when running a DDL transaction. Concurrent DDLs will not be "
+				"supported if this flag is set. If object locking is disabled, only the legacy mode is "
+				"used."),
+			NULL
+		},
+		&yb_fallback_to_legacy_catalog_read_time,
+		true,
 		NULL, NULL, NULL
 	},
 
@@ -3783,32 +3841,6 @@ static struct config_bool ConfigureNamesBool[] =
 		&yb_disable_pg_snapshot_mgmt_in_repeatable_read,
 		false,
 		check_yb_disable_pg_snapshot_mgmt_in_repeatable_read, NULL, NULL
-  },
-
-	/*
-	 * TODOs:
-	 *
-	 * (1) Flush the catalog cache when changing from legacy to the new mode since the legacy mode
-	 * could have stale catalog information but the new mode relies on the fact that no catalog
-	 * information in the cache is stale.
-	 *
-	 * (2) Disallow setting this GUC in the middle of a transaction.
-	 */
-	{
-		{"yb_fallback_to_legacy_catalog_read_time", PGC_USERSET, CUSTOM_OPTIONS,
-			gettext_noop("[This is an advanced flag, avoid using it unless recommened by Yugabyte"
-				"support.] If object locking is enabled, concurrent DDLs are allowed. This is done by "
-				"using the new mode for catalog reads and writes using PG's catalog snapshot. Set this "
-				"flag to true for falling back to the legacy mode which involves using pggate's catalog "
-				"read time for catalog reads when running a DML transaction (and) the transaction snapshot "
-				"for catalog reads and writes when running a DDL transaction. Concurrent DDLs will not be "
-				"supported if this flag is set. If object locking is disabled, only the legacy mode is "
-				"used."),
-			NULL
-		},
-		&yb_fallback_to_legacy_catalog_read_time,
-		true,
-		NULL, NULL, NULL
 	},
 
 	/* End-of-list marker */

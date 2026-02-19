@@ -3765,5 +3765,119 @@ TEST_F(PgCatalogVersionTest, ConcurrentNonSuperuserNewConnectionsTest) {
   ASSERT_GT(authorized_connections, relcache_preloads);
 }
 
+// Test the two-step upgrade process for enabling negative caching safely.
+// This test verifies that we can:
+// 1. Enable yb_always_increment_catalog_version_on_ddl to make all DDLs
+//    increment the catalog version
+// 2. Turn on yb_enable_negative_catcache_entries to enable negative caching
+TEST_F(PgCatalogVersionTest, TwoPhaseNegativeCacheUpgrade) {
+  // ======================================================
+  // Initial state: No catalog version bump, no negative caching
+  // ======================================================
+  RestartClusterWithInvalMessageEnabled({
+      "--ysql_pg_conf_csv="
+      "yb_test_make_all_ddl_statements_incrementing=false,"
+      "yb_always_increment_catalog_version_on_ddl=false,"
+      "yb_enable_negative_catcache_entries=false"});
+
+  {
+    auto conn1 = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+    auto conn2 = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+
+    auto initial_version = ASSERT_RESULT(GetCatalogVersion(&conn1));
+
+    // This query should cause cache misses on pg_class (RELNAMENSP cache) when looking
+    // up the non-existent table. If negative caching were enabled, this would create a
+    // negative cache entry.
+    ASSERT_NOK(conn1.FetchRow<int32_t>("SELECT 1 FROM no_version_bump LIMIT 1"));
+
+    // Catalog version should not be incremented on CREATE TABLE.
+    ASSERT_OK(conn2.Execute("CREATE TABLE no_version_bump (id int)"));
+    auto version = ASSERT_RESULT(GetCatalogVersion(&conn1));
+    LOG(INFO) << "Catalog version after CREATE TABLE: " << version;
+    ASSERT_EQ(version, initial_version);
+
+    // Verify we did not create a negative cache entry.
+    ASSERT_OK(conn2.Execute("INSERT INTO no_version_bump VALUES (1)"));
+    auto pg_class_misses_before = ASSERT_RESULT(GetCatCacheTableMissMetric("pg_class"));
+    ASSERT_EQ(ASSERT_RESULT(conn1.FetchRow<int32_t>("SELECT 1 FROM no_version_bump LIMIT 1")), 1);
+    auto pg_class_misses_after = ASSERT_RESULT(GetCatCacheTableMissMetric("pg_class"));
+    ASSERT_GT(pg_class_misses_after, pg_class_misses_before);
+  }
+
+  // ======================================================
+  // Phase one: Catalog version bump enabled, no negative caching
+  // This simulates the first step of the upgrade: enabling version bumps.
+  // ======================================================
+  RestartClusterWithInvalMessageEnabled({
+    "--ysql_pg_conf_csv="
+    "yb_test_make_all_ddl_statements_incrementing=false,"
+    "yb_always_increment_catalog_version_on_ddl=true,"
+    "yb_enable_negative_catcache_entries=false"});
+
+  {
+    auto conn1 = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+    auto conn2 = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+
+    auto initial_version = ASSERT_RESULT(GetCatalogVersion(&conn1));
+
+    // This query should cause cache misses on pg_class (RELNAMENSP cache) when looking
+    // up the non-existent table. If negative caching were enabled, this would create a
+    // negative cache entry.
+    ASSERT_NOK(conn1.FetchRow<int32_t>("SELECT 1 FROM version_bump_1 LIMIT 1"));
+
+    // Catalog version should be incremented on CREATE TABLE.
+    ASSERT_OK(conn2.Execute("CREATE TABLE version_bump_1 (id int)"));
+    auto version = ASSERT_RESULT(GetCatalogVersion(&conn1));
+    LOG(INFO) << "Catalog version after CREATE TABLE: " << version;
+    ASSERT_GT(version, initial_version);
+
+    // Verify we did not create a negative cache entry.
+    ASSERT_OK(conn2.Execute("INSERT INTO version_bump_1 VALUES (1)"));
+    auto pg_class_misses_before = ASSERT_RESULT(GetCatCacheTableMissMetric("pg_class"));
+    ASSERT_EQ(ASSERT_RESULT(conn1.FetchRow<int32_t>("SELECT 1 FROM version_bump_1 LIMIT 1")), 1);
+    auto pg_class_misses_after = ASSERT_RESULT(GetCatCacheTableMissMetric("pg_class"));
+    ASSERT_GT(pg_class_misses_after, pg_class_misses_before);
+  }
+
+  // ======================================================
+  // Second phase of the upgrade: Enabling negative caching after all nodes
+  // are incrementing the catalog version.
+  // ======================================================
+  RestartClusterWithInvalMessageEnabled({
+    "--ysql_pg_conf_csv="
+    "yb_test_make_all_ddl_statements_incrementing=false,"
+    "yb_always_increment_catalog_version_on_ddl=true,"
+    "yb_enable_negative_catcache_entries=true"});
+
+  {
+    auto conn1 = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+    auto conn2 = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+
+    auto initial_version = ASSERT_RESULT(GetCatalogVersion(&conn1));
+
+    // This query should cause cache misses on pg_class (RELNAMENSP cache) when looking
+    // up the non-existent table. If negative caching were enabled, this would create a
+    // negative cache entry.
+    ASSERT_NOK(conn1.FetchRow<int32_t>("SELECT 1 FROM version_bump_2 LIMIT 1"));
+
+    // Verify we created a negative cache entry.
+    auto pg_class_misses_before = ASSERT_RESULT(GetCatCacheTableMissMetric("pg_class"));
+    ASSERT_NOK(conn1.FetchRow<int32_t>("SELECT 1 FROM version_bump_2 LIMIT 1"));
+    auto pg_class_misses_after = ASSERT_RESULT(GetCatCacheTableMissMetric("pg_class"));
+    ASSERT_EQ(pg_class_misses_after, pg_class_misses_before);
+
+    // Catalog version should be incremented by CREATE TABLE.
+    ASSERT_OK(conn2.Execute("CREATE TABLE version_bump_2 (id int)"));
+    auto version = ASSERT_RESULT(GetCatalogVersion(&conn1));
+    LOG(INFO) << "Catalog version after CREATE TABLE: " << version;
+    ASSERT_GT(version, initial_version);
+
+    // Verify the negative cache entry was invalidated by the CREATE TABLE
+    ASSERT_OK(conn2.Execute("INSERT INTO version_bump_2 VALUES (1)"));
+    ASSERT_EQ(ASSERT_RESULT(conn1.FetchRow<int32_t>("SELECT 1 FROM version_bump_2 LIMIT 1")), 1);
+  }
+}
+
 } // namespace pgwrapper
 } // namespace yb

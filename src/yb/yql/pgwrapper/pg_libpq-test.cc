@@ -166,8 +166,6 @@ class PgLibPqTest : public LibPqTestBase {
 
   Result<string> GetSchemaName(const string& relname, PGConn* conn);
 
-  Result<YsqlMetric> GetCatCacheTableMissMetric(const std::string& table_name);
-
  private:
   Result<PGConn> RestartTSAndConnectToPostgres(int ts_idx, const std::string& db_name);
 };
@@ -1870,27 +1868,6 @@ Result<string> PgLibPqTest::GetSchemaName(const string& relname, PGConn* conn) {
       "SELECT nspname FROM pg_class JOIN pg_namespace "
       "ON pg_class.relnamespace = pg_namespace.oid WHERE relname = '$0'",
       relname));
-}
-
-Result<YsqlMetric> PgLibPqTest::GetCatCacheTableMissMetric(const std::string& table_name) {
-  auto hostport = Format("$0:$1", pg_ts->bind_host(), pg_ts->pgsql_http_port());
-  EasyCurl c;
-  faststring buf;
-
-  auto json_metrics_url =
-      Substitute("http://$0/metrics?reset_histograms=false&show_help=true", hostport);
-  RETURN_NOT_OK(c.FetchURL(json_metrics_url, &buf));
-  auto json_metrics = ParseJsonMetrics(buf.ToString());
-  auto found_it =
-      std::find_if(json_metrics.begin(), json_metrics.end(), [table_name](YsqlMetric& metric) {
-        return (
-            metric.name.find("yb_ysqlserver_CatalogCacheTableMisses") != std::string::npos &&
-            metric.labels["table_name"] == table_name);
-      });
-  if (found_it == json_metrics.end()) {
-    return STATUS(NotFound, "metric for " + table_name + " not found");
-  }
-  return *found_it;
 }
 
 // Ensure if client sends out duplicate create table requests, one create table request can
@@ -4291,9 +4268,9 @@ class PgLibPqAmopNegCacheTest : public PgLibPqTest {
           conn2.FetchAllAsString("EXPLAIN (ANALYZE, DIST) SELECT * FROM test WHERE k <> 'a'"));
       LOG(INFO) << "output " << str;
 
-      auto value = VERIFY_RESULT(PgLibPqTest::GetCatCacheTableMissMetric("pg_amop"));
-      LOG(INFO) << "metric value for pg_amop misses " << value.value;
-      return value.value;
+      auto value = VERIFY_RESULT(GetCatCacheTableMissMetric("pg_amop"));
+      LOG(INFO) << "metric value for pg_amop misses " << value;
+      return value;
     };
 
     int64_t value1 = ASSERT_RESULT(runQueryAndGetMetricLambda());
@@ -4328,16 +4305,31 @@ class PgLibPqAmopNegCacheTest : public PgLibPqTest {
   }
 };
 
+class PgLibPqAmopNoPreloadNegCacheTest : public PgLibPqAmopNegCacheTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.emplace_back(
+        "--ysql_pg_conf_csv=yb_test_make_all_ddl_statements_incrementing=false,"
+        "yb_enable_negative_catcache_entries=false,"
+        "yb_debug_log_catcache_events=true");
+    PgLibPqTest::UpdateMiniClusterOptions(options);
+  }
+};
+
 class PgLibPqAmopPreloadNegCacheTest : public PgLibPqAmopNegCacheTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_tserver_flags.emplace_back(
+        "--ysql_pg_conf_csv=yb_test_make_all_ddl_statements_incrementing=false,"
+        "yb_enable_negative_catcache_entries=false,"
+        "yb_debug_log_catcache_events=true");
+    options->extra_tserver_flags.emplace_back(
         "--ysql_catalog_preload_additional_table_list=pg_amop");
-    PgLibPqAmopNegCacheTest::UpdateMiniClusterOptions(options);
+    PgLibPqTest::UpdateMiniClusterOptions(options);
   }
 };
 
-TEST_F_EX(PgLibPqTest, PgAmopNegCacheTest, PgLibPqAmopNegCacheTest) {
+TEST_F_EX(PgLibPqTest, PgAmopNegCacheTest, PgLibPqAmopNoPreloadNegCacheTest) {
   TestAmopNegCacheMiss(false);
 }
 
@@ -4367,14 +4359,14 @@ class PgLibPqPgInheritsNegCacheTest : public PgLibPqTest {
       "CREATE UNIQUE INDEX ON foo (v1, r);"
       "INSERT INTO foo VALUES (1,1,1,1);"));
 
-    auto start_value = ASSERT_RESULT(PgLibPqTest::GetCatCacheTableMissMetric("pg_inherits"));
+    auto start_value = ASSERT_RESULT(GetCatCacheTableMissMetric("pg_inherits"));
 
     // Run the query on a fresh conn
     auto conn2 = ASSERT_RESULT(Connect());
     auto str = conn2.FetchAllAsString(
         "EXPLAIN (ANALYZE, DIST) INSERT INTO foo VALUES (1,1,1,1) ON CONFLICT (h, r) DO UPDATE SET "
         "v2=foo.v2+1");
-    auto end_value = ASSERT_RESULT(PgLibPqTest::GetCatCacheTableMissMetric("pg_inherits"));
+    auto end_value = ASSERT_RESULT(GetCatCacheTableMissMetric("pg_inherits"));
 
     int32_t updated_v2 = ASSERT_RESULT(conn2.FetchRow<int32_t>(
         "SELECT v2 FROM foo WHERE h=1 AND r=1"));
@@ -4383,9 +4375,9 @@ class PgLibPqPgInheritsNegCacheTest : public PgLibPqTest {
     // Given we are preloaded, we should not have any cache misses (incl neg misses)
     // for the query above which should cause lookups for ancestors of a table in pg_inherits
     if (!minimal_preload)
-      ASSERT_EQ(end_value.value, start_value.value);
+      ASSERT_EQ(end_value, start_value);
     else
-      ASSERT_GT(end_value.value, start_value.value);
+      ASSERT_GT(end_value, start_value);
   }
 };
 
@@ -4418,7 +4410,7 @@ class BasePgEnumTest : public PgLibPqTest {
         "CREATE TABLE e (c color);"
         "INSERT INTO e VALUES ('cerulean');"));
 
-    auto start_value = ASSERT_RESULT(PgLibPqTest::GetCatCacheTableMissMetric("pg_enum"));
+    auto start_value = ASSERT_RESULT(GetCatCacheTableMissMetric("pg_enum"));
 
     auto conn2 = ASSERT_RESULT(Connect());
 
@@ -4428,15 +4420,15 @@ class BasePgEnumTest : public PgLibPqTest {
     // Trigger ENUMOID via enum->text output.
     auto s2 = ASSERT_RESULT(conn2.FetchAllAsString("SELECT c::text FROM e"));
 
-    auto end_value = ASSERT_RESULT(PgLibPqTest::GetCatCacheTableMissMetric("pg_enum"));
+    auto end_value = ASSERT_RESULT(GetCatCacheTableMissMetric("pg_enum"));
 
-    LOG(INFO) << "pg_enum cache misses start value: " << start_value.value
-              << " end value: " << end_value.value;
+    LOG(INFO) << "pg_enum cache misses start value: " << start_value
+              << " end value: " << end_value;
 
     if (is_pg_enum_preloaded) {
-      ASSERT_EQ(end_value.value, start_value.value);
+      ASSERT_EQ(end_value, start_value);
     } else {
-      ASSERT_EQ(end_value.value, start_value.value + 2);
+      ASSERT_EQ(end_value, start_value + 2);
     }
   }
 };
@@ -4521,7 +4513,7 @@ TEST_P(PgRangeTest, PgRangeCatalogCacheTest) {
       "    resource_id    INT PRIMARY KEY,"
       "    active_hours   INT4MULTIRANGE)"));
 
-  auto start_value = ASSERT_RESULT(PgLibPqTest::GetCatCacheTableMissMetric("pg_range"));
+  auto start_value = ASSERT_RESULT(GetCatCacheTableMissMetric("pg_range"));
 
   auto conn2 = ASSERT_RESULT(Connect());
 
@@ -4529,15 +4521,15 @@ TEST_P(PgRangeTest, PgRangeCatalogCacheTest) {
   ASSERT_OK(conn2.Execute("INSERT INTO resource_schedule (resource_id, active_hours)"
                           "VALUES (101, '{[9,12), [13,17)}')"));
 
-  auto end_value = ASSERT_RESULT(PgLibPqTest::GetCatCacheTableMissMetric("pg_range"));
+  auto end_value = ASSERT_RESULT(GetCatCacheTableMissMetric("pg_range"));
 
-  LOG(INFO) << "pg_range cache misses start value: " << start_value.value
-            << " end value: " << end_value.value;
+  LOG(INFO) << "pg_range cache misses start value: " << start_value
+            << " end value: " << end_value;
 
   if (is_pg_range_preloaded) {
-    ASSERT_EQ(end_value.value, start_value.value);
+    ASSERT_EQ(end_value, start_value);
   } else {
-    ASSERT_EQ(end_value.value, start_value.value + 2);
+    ASSERT_EQ(end_value, start_value + 2);
   }
 };
 

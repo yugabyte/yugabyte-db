@@ -426,5 +426,17 @@ void LibPqTestBase::WaitForCatalogVersionToPropagate() {
   std::this_thread::sleep_for(kSleepSeconds * 1s);
 }
 
+Result<int64_t> LibPqTestBase::GetCatCacheTableMissMetric(const std::string& table_name) {
+  auto metrics = GetJsonMetrics();
+  for (const auto& metric : metrics) {
+    if (metric.name.find("yb_ysqlserver_CatalogCacheTableMisses") != std::string::npos &&
+        metric.labels.count("table_name") &&
+        metric.labels.at("table_name") == table_name) {
+      return metric.value;
+    }
+  }
+  return STATUS(NotFound, "metric for " + table_name + " not found");
+}
+
 } // namespace pgwrapper
 } // namespace yb
