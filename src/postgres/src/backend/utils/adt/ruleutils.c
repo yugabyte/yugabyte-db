@@ -1609,14 +1609,14 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 
 		appendStringInfoChar(&buf, ')');
 
+		if (idxrec->indnullsnotdistinct)
+			appendStringInfo(&buf, " NULLS NOT DISTINCT");
+
 		if (includeYbMetadata && IsYBRelation(indexrel) &&
 			!idxrec->indisprimary && !amroutine->yb_amiscopartitioned)
 		{
 			YbAppendIndexReloptions(&buf, indexrelid, YbGetTableProperties(indexrel));
 		}
-
-		if (idxrec->indnullsnotdistinct)
-			appendStringInfo(&buf, " NULLS NOT DISTINCT");
 
 		if (!IsYBRelation(indexrel))
 		{

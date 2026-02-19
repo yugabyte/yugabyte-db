@@ -1442,6 +1442,51 @@ SELECT * FROM test_index_with_oids ORDER BY v1;
 
 CREATE INDEX index_with_duplicate_table_oid ON test_index_with_oids (v1) with (table_oid = 1111111);
 ERROR:  table OID 1111111 is in use
+-- Test NULLS [NOT] DISTINCT WITH (...)
+CREATE INDEX index_with_nulls_and_table_oid ON test_index_with_oids (v2) NULLS NOT DISTINCT with (table_oid = 2222222);
+CREATE UNIQUE INDEX index_with_nulls_and_row_type_oid ON test_index_with_oids (v3) NULLS DISTINCT with (row_type_oid = 3333333);
+\d test_index_with_oids
+        Table "public.test_index_with_oids"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ v1     | integer |           |          | 
+ v2     | integer |           |          | 
+ v3     | integer |           |          | 
+Indexes:
+    "index_with_nulls_and_row_type_oid" UNIQUE, lsm (v3 HASH)
+    "index_with_nulls_and_table_oid" lsm (v2 HASH) NULLS NOT DISTINCT
+    "index_with_table_oid" lsm (v1 HASH)
+
+SELECT * FROM get_table_indexes('test_index_with_oids');
+              relname              | indisprimary | indisunique |                                                  indexdef                                                  | constraintdef 
+-----------------------------------+--------------+-------------+------------------------------------------------------------------------------------------------------------+---------------
+ index_with_nulls_and_row_type_oid | f            | t           | CREATE UNIQUE INDEX index_with_nulls_and_row_type_oid ON test_index_with_oids USING lsm (v3 HASH)          | 
+ index_with_nulls_and_table_oid    | f            | f           | CREATE INDEX index_with_nulls_and_table_oid ON test_index_with_oids USING lsm (v2 HASH) NULLS NOT DISTINCT | 
+ index_with_table_oid              | f            | f           | CREATE INDEX index_with_table_oid ON test_index_with_oids USING lsm (v1 HASH)                              | 
+(3 rows)
+
+set yb_format_funcs_include_yb_metadata=1;
+\d test_index_with_oids
+        Table "public.test_index_with_oids"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ v1     | integer |           |          | 
+ v2     | integer |           |          | 
+ v3     | integer |           |          | 
+Indexes:
+    "index_with_nulls_and_row_type_oid" UNIQUE, lsm (v3 HASH) WITH (row_type_oid='3333333') SPLIT INTO 3 TABLETS
+    "index_with_nulls_and_table_oid" lsm (v2 HASH) NULLS NOT DISTINCT WITH (table_oid='2222222') SPLIT INTO 3 TABLETS
+    "index_with_table_oid" lsm (v1 HASH) WITH (table_oid='1111111') SPLIT INTO 3 TABLETS
+
+SELECT * FROM get_table_indexes('test_index_with_oids');
+              relname              | indisprimary | indisunique |                                                                                  indexdef                                                                                  | constraintdef 
+-----------------------------------+--------------+-------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------+---------------
+ index_with_nulls_and_row_type_oid | f            | t           | CREATE UNIQUE INDEX NONCONCURRENTLY index_with_nulls_and_row_type_oid ON test_index_with_oids USING lsm (v3 HASH) WITH (row_type_oid='3333333') SPLIT INTO 3 TABLETS       | 
+ index_with_nulls_and_table_oid    | f            | f           | CREATE INDEX NONCONCURRENTLY index_with_nulls_and_table_oid ON test_index_with_oids USING lsm (v2 HASH) NULLS NOT DISTINCT WITH (table_oid='2222222') SPLIT INTO 3 TABLETS | 
+ index_with_table_oid              | f            | f           | CREATE INDEX NONCONCURRENTLY index_with_table_oid ON test_index_with_oids USING lsm (v1 HASH) WITH (table_oid='1111111') SPLIT INTO 3 TABLETS                              | 
+(3 rows)
+
+set yb_format_funcs_include_yb_metadata=0;
 set yb_enable_create_with_table_oid=0;
 -- Test creating index nonconcurrently (i.e. without online schema migration)
 CREATE TABLE test_index_nonconcurrently (i INT, t TEXT);

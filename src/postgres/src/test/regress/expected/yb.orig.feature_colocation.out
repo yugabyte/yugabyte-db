@@ -1287,5 +1287,60 @@ SELECT * FROM non_col_table_partition;
  4
 (1 row)
 
+-- Test NULLS [NOT] DISTINCT WITH
+CREATE TABLE tbl3 (k int, v int);
+CREATE UNIQUE INDEX tbl3_k_u ON tbl3(k) NULLS NOT DISTINCT WITH (colocation_id=2929292929);
+CREATE INDEX tbl3_v_rtoid ON tbl3(v) NULLS DISTINCT WITH (row_type_oid = 1111111, colocation_id=2828282828);
+set yb_enable_create_with_table_oid = on;
+CREATE UNIQUE INDEX tbl3_v_u_toid ON tbl3(v) NULLS NOT DISTINCT WITH (table_oid = 2222222, colocation_id=2727272727);
+CREATE INDEX tbl3_k_many_oids ON tbl3(k) NULLS NOT DISTINCT WITH (colocation_id=2626262626, row_type_oid = 3333333, table_oid = 4444444);
+set yb_enable_create_with_table_oid = off;
+\d tbl3
+                Table "public.tbl3"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ k      | integer |           |          | 
+ v      | integer |           |          | 
+Indexes:
+    "tbl3_k_many_oids" lsm (k ASC) NULLS NOT DISTINCT, colocation: true
+    "tbl3_k_u" UNIQUE, lsm (k ASC) NULLS NOT DISTINCT, colocation: true
+    "tbl3_v_rtoid" lsm (v ASC), colocation: true
+    "tbl3_v_u_toid" UNIQUE, lsm (v ASC) NULLS NOT DISTINCT, colocation: true
+Colocation: true
+
+SELECT * FROM get_table_indexes('tbl3');
+     relname      | indisprimary | indisunique |                                    indexdef                                    | constraintdef 
+------------------+--------------+-------------+--------------------------------------------------------------------------------+---------------
+ tbl3_k_u         | f            | t           | CREATE UNIQUE INDEX tbl3_k_u ON tbl3 USING lsm (k ASC) NULLS NOT DISTINCT      | 
+ tbl3_v_u_toid    | f            | t           | CREATE UNIQUE INDEX tbl3_v_u_toid ON tbl3 USING lsm (v ASC) NULLS NOT DISTINCT | 
+ tbl3_k_many_oids | f            | f           | CREATE INDEX tbl3_k_many_oids ON tbl3 USING lsm (k ASC) NULLS NOT DISTINCT     | 
+ tbl3_v_rtoid     | f            | f           | CREATE INDEX tbl3_v_rtoid ON tbl3 USING lsm (v ASC)                            | 
+(4 rows)
+
+-- Test include_yb_metadata = true
+SET yb_format_funcs_include_yb_metadata = on;
+\d tbl3
+                Table "public.tbl3"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ k      | integer |           |          | 
+ v      | integer |           |          | 
+Indexes:
+    "tbl3_k_many_oids" lsm (k ASC) NULLS NOT DISTINCT WITH (row_type_oid='3333333', table_oid='4444444', colocation_id=2626262626), colocation: true
+    "tbl3_k_u" UNIQUE, lsm (k ASC) NULLS NOT DISTINCT WITH (colocation_id=2929292929), colocation: true
+    "tbl3_v_rtoid" lsm (v ASC) WITH (row_type_oid='1111111', colocation_id=2828282828), colocation: true
+    "tbl3_v_u_toid" UNIQUE, lsm (v ASC) NULLS NOT DISTINCT WITH (table_oid='2222222', colocation_id=2727272727), colocation: true
+Colocation: true
+
+SELECT * FROM get_table_indexes('tbl3');
+     relname      | indisprimary | indisunique |                                                                                indexdef                                                                                 | constraintdef 
+------------------+--------------+-------------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------+---------------
+ tbl3_k_u         | f            | t           | CREATE UNIQUE INDEX NONCONCURRENTLY tbl3_k_u ON tbl3 USING lsm (k ASC) NULLS NOT DISTINCT WITH (colocation_id=2929292929)                                               | 
+ tbl3_v_u_toid    | f            | t           | CREATE UNIQUE INDEX NONCONCURRENTLY tbl3_v_u_toid ON tbl3 USING lsm (v ASC) NULLS NOT DISTINCT WITH (table_oid='2222222', colocation_id=2727272727)                     | 
+ tbl3_k_many_oids | f            | f           | CREATE INDEX NONCONCURRENTLY tbl3_k_many_oids ON tbl3 USING lsm (k ASC) NULLS NOT DISTINCT WITH (row_type_oid='3333333', table_oid='4444444', colocation_id=2626262626) | 
+ tbl3_v_rtoid     | f            | f           | CREATE INDEX NONCONCURRENTLY tbl3_v_rtoid ON tbl3 USING lsm (v ASC) WITH (row_type_oid='1111111', colocation_id=2828282828)                                             | 
+(4 rows)
+
+SET yb_format_funcs_include_yb_metadata = off;
 \c yugabyte
 DROP DATABASE colocation_test;
