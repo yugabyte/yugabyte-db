@@ -1013,5 +1013,69 @@ COUNT(*) FROM employees_hash_age_changes_25;
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
+class YBBackupTestCboEnabled : public YBBackupTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    YBBackupTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back("--ysql_yb_enable_cbo=on");
+  }
+};
+
+TEST_F_EX(YBBackupTest,
+          YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLBackupRestoreStats),
+          YBBackupTestCboEnabled) {
+  const string kTableName = "stats_tbl";
+  const string restore_db = "backup_stats_restored_db";
+
+  auto cbo_value = ASSERT_RESULT(RunPsqlCommand("SHOW yb_enable_cbo"));
+  ASSERT_STR_CONTAINS(cbo_value, "on");
+
+  ASSERT_NO_FATALS(
+      CreateTable(Format("CREATE TABLE $0 (id INT PRIMARY KEY, value TEXT)",
+                         kTableName)));
+  ASSERT_NO_FATALS(CreateIndex(Format("CREATE INDEX ON $0 (value)", kTableName)));
+  ASSERT_NO_FATALS(InsertRows(
+      Format(
+          "INSERT INTO $0 (id, value) "
+          "SELECT i, md5(i::TEXT) FROM generate_series(1, 1000) AS i",
+          kTableName),
+      1000));
+  ASSERT_NO_FATALS(RunPsqlCommand(Format("ANALYZE $0", kTableName), "ANALYZE"));
+
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      Format("SELECT relpages, reltuples, relallvisible "
+             "FROM pg_class WHERE oid = '$0'::regclass",
+             kTableName),
+      R"#(
+         relpages | reltuples | relallvisible
+        ----------+-----------+---------------
+                0 |      1000 |             0
+        (1 row)
+      )#"));
+
+  auto get_relation_stats = [this, kTableName]() {
+    return RunPsqlCommand(Format(
+        "SELECT relpages, reltuples, relallvisible FROM pg_class "
+        "WHERE oid = '$0'::regclass",
+        kTableName));
+  };
+
+  const auto initial_relation_stats = ASSERT_RESULT(get_relation_stats());
+  LOG(INFO) << "Relation stats before backup: " << initial_relation_stats;
+
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", restore_db), "restore"}));
+
+  SetDbName(restore_db);
+  cbo_value = ASSERT_RESULT(RunPsqlCommand("SHOW yb_enable_cbo"));
+  ASSERT_STR_CONTAINS(cbo_value, "on");
+  ASSERT_EQ(initial_relation_stats, ASSERT_RESULT(get_relation_stats()));
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
 }  // namespace tools
 }  // namespace yb

@@ -303,3 +303,14 @@ ALTER TABLE inh2_par1 ADD COLUMN parc6 numeric(8,1);
 ALTER TABLE inh2_par2 ADD COLUMN parc7 TEXT DEFAULT 'PAR2_C7_DEF';
 ALTER TABLE inh2_ch ALTER COLUMN parc7 SET DEFAULT 'CH_C7_DEF';
 INSERT INTO inh2_ch values (2, '2_FOO', 2.2, 20, '2_CH_2', '2_CH_5', 2.2);
+
+-- Table with PK + secondary index and data
+CREATE TABLE stats_tbl (id INT PRIMARY KEY, value TEXT);
+CREATE INDEX stats_tbl_value_idx ON stats_tbl (value ASC);
+INSERT INTO stats_tbl VALUES (1, 'alpha'), (2, 'bravo'), (3, 'charlie'),
+    (4, 'delta'), (5, 'echo');
+
+-- Analyze tables with data
+RESET SESSION AUTHORIZATION;
+ANALYZE part_uniq_const;
+ANALYZE stats_tbl;

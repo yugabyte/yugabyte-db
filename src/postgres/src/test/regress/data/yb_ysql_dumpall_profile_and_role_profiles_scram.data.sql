@@ -165,8 +165,8 @@ WHERE rolprfrole = (SELECT oid FROM pg_authid WHERE rolname = 'test_user3')
 -- YSQL database dump
 --
 
--- Dumped from database version 15.12-YB-2.27.0.0-b0
--- Dumped by ysql_dump version 15.12-YB-2.27.0.0-b0
+-- Dumped from database version 15.12-YB-2025.2.3.0-b0
+-- Dumped by ysql_dump version 15.12-YB-2025.2.3.0-b0
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
@@ -263,8 +263,8 @@ END $$;
 -- YSQL database dump
 --
 
--- Dumped from database version 15.12-YB-2.27.0.0-b0
--- Dumped by ysql_dump version 15.12-YB-2.27.0.0-b0
+-- Dumped from database version 15.12-YB-2025.2.3.0-b0
+-- Dumped by ysql_dump version 15.12-YB-2025.2.3.0-b0
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
@@ -359,8 +359,8 @@ END $$;
 -- YSQL database dump
 --
 
--- Dumped from database version 15.12-YB-2.27.0.0-b0
--- Dumped by ysql_dump version 15.12-YB-2.27.0.0-b0
+-- Dumped from database version 15.12-YB-2025.2.3.0-b0
+-- Dumped by ysql_dump version 15.12-YB-2025.2.3.0-b0
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
@@ -479,8 +479,8 @@ SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 -- YSQL database dump
 --
 
--- Dumped from database version 15.12-YB-2.27.0.0-b0
--- Dumped by ysql_dump version 15.12-YB-2.27.0.0-b0
+-- Dumped from database version 15.12-YB-2025.2.3.0-b0
+-- Dumped by ysql_dump version 15.12-YB-2025.2.3.0-b0
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;

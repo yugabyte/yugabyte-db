@@ -3099,7 +3099,8 @@ class YBBackup:
             sql_dump_path = os.path.join(self.get_tmp_dir(), SQL_DUMP_FILE_NAME)
             db_name = keyspace_name(self.args.keyspace[0])
             ysql_dump_args = ['--include-yb-metadata', '--serializable-deferrable', '--create',
-                              '--schema-only', '--dbname=' + db_name, '--file=' + sql_dump_path]
+                              '--schema-only', '--with-statistics',
+                              '--dbname=' + db_name, '--file=' + sql_dump_path]
 
             if self.args.dump_role_checks:
                 ysql_dump_args.append('--dump-role-checks')

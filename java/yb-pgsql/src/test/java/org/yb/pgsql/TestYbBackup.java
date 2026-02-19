@@ -166,6 +166,11 @@ public class TestYbBackup extends BasePgSQLTest {
     ), "ysqlsh (" + testName + ")");
 
 
+    // Gather stats before backup so restored dumps include deterministic stats output.
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("ANALYZE");
+    }
+
     // Perform the backup
     String backupDir = YBBackupUtil.getTempBackupDir();
     String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,

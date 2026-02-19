@@ -2,8 +2,8 @@
 -- YSQL database dump
 --
 
--- Dumped from database version 15.12-YB-2.27.0.0-b0
--- Dumped by ysql_dump version 15.12-YB-2.27.0.0-b0
+-- Dumped from database version 15.12-YB-2025.2.3.0-b0
+-- Dumped by ysql_dump version 15.12-YB-2025.2.3.0-b0
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
@@ -1299,6 +1299,40 @@ SPLIT INTO 2 TABLETS;
 \endif
 
 --
+-- Name: stats_tbl; Type: TABLE; Schema: public; Owner: regress_rls_alice
+--
+
+
+-- For binary upgrade, must preserve pg_type oid
+SELECT pg_catalog.binary_upgrade_set_next_pg_type_oid('16738'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_type array oid
+SELECT pg_catalog.binary_upgrade_set_next_array_pg_type_oid('16737'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_heap_pg_class_oid('16736'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16736'::pg_catalog.oid);
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16739'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16739'::pg_catalog.oid);
+
+CREATE TABLE public.stats_tbl (
+    id integer NOT NULL,
+    value text,
+    CONSTRAINT stats_tbl_pkey PRIMARY KEY((id) HASH)
+)
+SPLIT INTO 2 TABLETS;
+
+
+\if :use_roles
+    ALTER TABLE public.stats_tbl OWNER TO regress_rls_alice;
+\endif
+
+--
 -- Name: tbl1; Type: TABLE; Schema: public; Owner: yugabyte_test
 --
 
@@ -2227,6 +2261,19 @@ COPY public.rls_public (k, v) FROM stdin;
 
 
 --
+-- Data for Name: stats_tbl; Type: TABLE DATA; Schema: public; Owner: regress_rls_alice
+--
+
+COPY public.stats_tbl (id, value) FROM stdin;
+5	echo
+1	alpha
+4	delta
+2	bravo
+3	charlie
+\.
+
+
+--
 -- Data for Name: tbl1; Type: TABLE DATA; Schema: public; Owner: yugabyte_test
 --
 
@@ -2525,6 +2572,18 @@ SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16535'::pg_catalog
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16535'::pg_catalog.oid);
 
 CREATE UNIQUE INDEX NONCONCURRENTLY non_unique_idx_with_include_clause ON public.hash_tbl_pk_with_include_clause USING lsm (k1 HASH, k2 ASC) INCLUDE (v) SPLIT INTO 2 TABLETS;
+
+
+--
+-- Name: stats_tbl_value_idx; Type: INDEX; Schema: public; Owner: regress_rls_alice
+--
+
+
+-- For binary upgrade, must preserve pg_class oids and relfilenodes
+SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16741'::pg_catalog.oid);
+SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16741'::pg_catalog.oid);
+
+CREATE INDEX NONCONCURRENTLY stats_tbl_value_idx ON public.stats_tbl USING lsm (value ASC);
 
 
 --
