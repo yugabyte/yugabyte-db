@@ -10,15 +10,6 @@ The brew install on macOS does not support installing ora2pg, which is required 
 
 {{< /note >}}
 
-### Dependencies
-
-When installing YugabyteDB Voyager using Homebrew, the following dependencies are installed automatically as part of the formula.
-
-- yugabyte/tap/debezium@2.5.2-\<voyager_version\>
-- postgresql@17
-- sqlite
-- go@1.24 (build-time)
-
 Perform the following steps to install yb-voyager using brew for macOS:
 
 1. [Tap](https://docs.brew.sh/Taps) the `yugabyte` Homebrew repository using the following command:
@@ -74,3 +65,12 @@ Perform the following steps to install yb-voyager using brew for macOS:
     ```sh
     yb-voyager version
     ```
+
+### Dependencies
+
+When installing YugabyteDB Voyager using Homebrew, the following dependencies are installed automatically as part of the formula.
+
+- `yugabyte/tap/debezium@2.5.2-\<voyager_version\>`
+- `postgresql@17`
+- `sqlite`
+- `go@1.24` (build-time)

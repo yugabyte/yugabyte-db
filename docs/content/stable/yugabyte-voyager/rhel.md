@@ -4,25 +4,6 @@ private=true
 +++
 -->
 
-### Dependencies
-
-YugabyteDB Voyager requires the following dependencies on RHEL 8 and RHEL 9 systems. These packages are automatically installed or resolved when you install Voyager using the official RPM package.
-
-| Dependency | Version / Constraint |
-| :--------- | :------------------- |
-| bash | – |
-| binutils | > 2.25 |
-| debezium | = 2.5.2-\<voyager_version\> |
-| mysql-devel | – |
-| oracle-instantclient-basic | = 21.5.0.0.0-1 |
-| oracle-instantclient-devel | = 21.5.0.0.0-1 |
-| oracle-instantclient-jdbc | = 21.5.0.0.0-1 |
-| oracle-instantclient-sqlplus | = 21.5.0.0.0-1 |
-| oracle-instantclient-tools | = 21.5.0.0.0-1 |
-| ora2pg | = 23.2-yb.2 |
-| postgresql17 | – |
-| sqlite | – |
-
 {{< tabpane text=true >}}
 
 {{% tab header="RHEL 8" lang="rhel8" %}}
@@ -98,6 +79,25 @@ Perform the following steps to install yb-voyager using yum for RHEL 8 and CentO
     ```sh
     yb-voyager version
     ```
+
+### Dependencies
+
+YugabyteDB Voyager relies on the following dependencies on RHEL 8 and RHEL 9 systems, which are automatically installed or resolved when you install Voyager using the official RPM package.
+
+| Dependency | Version / Constraint |
+| :--------- | :------------------- |
+| bash | – |
+| binutils | > 2.25 |
+| debezium | = 2.5.2-\<voyager_version\> |
+| mysql-devel | – |
+| oracle-instantclient-basic | = 21.5.0.0.0-1 |
+| oracle-instantclient-devel | = 21.5.0.0.0-1 |
+| oracle-instantclient-jdbc | = 21.5.0.0.0-1 |
+| oracle-instantclient-sqlplus | = 21.5.0.0.0-1 |
+| oracle-instantclient-tools | = 21.5.0.0.0-1 |
+| ora2pg | = 23.2-yb.2 |
+| postgresql17 | – |
+| sqlite | – |
 
 ### Upgrade yb-voyager
 
@@ -192,6 +192,25 @@ Perform the following steps to install yb-voyager using yum for RHEL 9 and CentO
     ```sh
     yb-voyager version
     ```
+
+### Dependencies
+
+YugabyteDB Voyager relies on the following dependencies on RHEL 8 and RHEL 9 systems, which are automatically installed or resolved when you install Voyager using the official RPM package.
+
+| Dependency | Version / Constraint |
+| :--------- | :------------------- |
+| bash | – |
+| binutils | > 2.25 |
+| debezium | = 2.5.2-\<voyager_version\> |
+| mysql-devel | – |
+| oracle-instantclient-basic | = 21.5.0.0.0-1 |
+| oracle-instantclient-devel | = 21.5.0.0.0-1 |
+| oracle-instantclient-jdbc | = 21.5.0.0.0-1 |
+| oracle-instantclient-sqlplus | = 21.5.0.0.0-1 |
+| oracle-instantclient-tools | = 21.5.0.0.0-1 |
+| ora2pg | = 23.2-yb.2 |
+| postgresql17 | – |
+| sqlite | – |
 
 ### Upgrade yb-voyager
 

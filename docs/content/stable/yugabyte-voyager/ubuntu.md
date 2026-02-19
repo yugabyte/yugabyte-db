@@ -4,24 +4,6 @@ private=true
 +++
 -->
 
-### Dependencies
-
-YugabyteDB Voyager requires the following dependencies on supported Ubuntu systems. These packages are automatically installed or resolved when you install Voyager using the official package.
-
-| Dependency | Version / Constraint |
-| :--------- | :------------------- |
-| binutils | > 2.25 |
-| debezium | = 2.5.2-\<voyager_version\> |
-| libmysqlclient-dev | – |
-| oracle-instantclient-basic | = 21.5.0.0.0-1 |
-| oracle-instantclient-devel | = 21.5.0.0.0-1 |
-| oracle-instantclient-jdbc | = 21.5.0.0.0-1 |
-| oracle-instantclient-sqlplus | = 21.5.0.0.0-1 |
-| oracle-instantclient-tools | = 21.5.0.0.0-1 |
-| ora2pg | = 23.2-yb.2 |
-| postgresql-client-17 | – |
-| sqlite3 | – |
-
 Perform the following steps to install yb-voyager using apt for Ubuntu:
 
 {{< note title="Note" >}}
@@ -80,6 +62,25 @@ Perform the following steps to install yb-voyager using apt for Ubuntu:
     ```sh
     yb-voyager version
     ```
+
+
+### Dependencies
+
+YugabyteDB Voyager relies on the following dependencies on supported Ubuntu systems, which are automatically installed or resolved when you install Voyager using the official package.
+
+| Dependency | Version / Constraint |
+| :--------- | :------------------- |
+| binutils | > 2.25 |
+| debezium | = 2.5.2-\<voyager_version\> |
+| libmysqlclient-dev | – |
+| oracle-instantclient-basic | = 21.5.0.0.0-1 |
+| oracle-instantclient-devel | = 21.5.0.0.0-1 |
+| oracle-instantclient-jdbc | = 21.5.0.0.0-1 |
+| oracle-instantclient-sqlplus | = 21.5.0.0.0-1 |
+| oracle-instantclient-tools | = 21.5.0.0.0-1 |
+| ora2pg | = 23.2-yb.2 |
+| postgresql-client-17 | – |
+| sqlite3 | – |
 
 ### Upgrade yb-voyager
 
