@@ -3457,6 +3457,19 @@ _reconnectToDB(ArchiveHandle *AH, const char *dbname)
 
 	/* re-establish fixed state */
 	_doSetFixedOutputState(AH);
+
+	/*
+	 * YB: in createDB restore flows, we reconnect to the target database.
+	 * Re-apply this session-scoped setting after reconnect so CREATE INDEX
+	 * does not overwrite restored reltuples when statistics restore is enabled.
+	 */
+	if (AH->public.dopt->include_yb_metadata && AH->public.ropt->dumpStatistics)
+	{
+		ahprintf(AH,
+				 "\n-- YB: preserve restored reltuples during index creation\n");
+		YbBackwardCompatibleSetGuc(AH,
+			"yb_enable_update_reltuples_after_create_index", "false", false);
+	}
 }
 
 /*
