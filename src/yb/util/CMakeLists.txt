@@ -250,6 +250,7 @@ set(UTIL_SRCS
   )
 
 set(UTIL_LIBS
+  absl
   boost_system
   boost_thread
   boost_atomic
@@ -272,7 +273,6 @@ if(NOT APPLE)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DROCKSDB_FALLOCATE_PRESENT")
   set(UTIL_LIBS
     ${UTIL_LIBS}
-    absl
     rt
     libbacktrace)
 endif()
