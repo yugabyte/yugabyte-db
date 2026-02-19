@@ -24,18 +24,19 @@ const (
 )
 
 type Args struct {
-	Command         string
-	YnpBasePath     string
-	SpecificModules []string
-	SkipModules     []string
-	ConfigFile      string
-	ConfigIniFile   string
-	PreflightCheck  bool
-	YnpConfig       map[string]map[string]any
-	DryRun          bool
-	ListModules     bool
-	NoRoot          bool
-	Root            bool
+	Command               string
+	YnpBasePath           string
+	SpecificModules       []string
+	SkipModules           []string
+	ConfigFile            string
+	ConfigIniFile         string
+	PreflightCheck        bool
+	PreflightCheckOutFile string
+	YnpConfig             map[string]map[string]any
+	DryRun                bool
+	ListModules           bool
+	NoRoot                bool
+	Root                  bool
 }
 
 // YnpConfigPathValue retrieves a value from the YNP config based on the provided dotted path.

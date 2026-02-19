@@ -458,7 +458,8 @@ public class YbcUpgrade {
     Optional<NodeAgent> optional =
         confGetter.getGlobalConf(GlobalConfKeys.nodeAgentDisableConfigureServer)
             ? Optional.empty()
-            : nodeUniverseManager.maybeGetNodeAgent(universe, node, true /*check feature flag*/);
+            : nodeUniverseManager.maybeUpgradeAndGetNodeAgent(
+                universe, node, true /*check feature flag*/);
     if (optional.isPresent()) {
       nodeAgentClient.runInstallYbcSoftware(
           optional.get(),

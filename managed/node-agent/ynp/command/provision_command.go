@@ -248,6 +248,7 @@ func (pc *ProvisionCommand) DryRun() error {
 	if err != nil {
 		return err
 	}
+	// Do not clean up the scripts for dry run.
 	util.ConsoleLogger().Infof(pc.ctx, "Install Script: %s", installScript)
 	util.ConsoleLogger().Infof(pc.ctx, "Precheck Script: %s", precheckScript)
 	return nil
@@ -258,6 +259,7 @@ func (pc *ProvisionCommand) RunPreflightChecks() error {
 	if err != nil {
 		return err
 	}
+	defer os.Remove(precheckScript)
 	if err := pc.compareYnpVersion(true /*strict*/); err != nil {
 		return err
 	}
@@ -281,6 +283,8 @@ func (pc *ProvisionCommand) Execute() error {
 	if err != nil {
 		return err
 	}
+	defer os.Remove(runScript)
+	defer os.Remove(precheckScript)
 	errMsg := []string{}
 	var exitCode int
 	if runErr := pc.runScript("provision", runScript); runErr != nil {
@@ -397,6 +401,29 @@ func (pc *ProvisionCommand) checkPackage(pkg string) error {
 	}
 	util.FileLogger().Infof(pc.ctx, "%s is installed.", pkg)
 	return nil
+}
+
+// tempDir returns the effective temp directory to be used.
+func (pc *ProvisionCommand) tempDir() string {
+	dir := "/tmp"
+	defaultValue := pc.iniConfig.DefaultSectionValue()
+	if tmp, ok := defaultValue["tmp_directory"].(string); ok {
+		dir = tmp
+	}
+	return dir
+}
+
+// createTempFile creates a temporary file in the effective temp directory with the given pattern.
+// If close is true, the file is closed before returning.
+func (pc *ProvisionCommand) createTempFile(pattern string) (*os.File, error) {
+	tmpDir := pc.tempDir()
+	file, err := os.CreateTemp(tmpDir, pattern)
+	if err != nil {
+		util.FileLogger().
+			Errorf(pc.ctx, "Failed to create temp file in %s with pattern %s: %v", tmpDir, pattern, err)
+		return nil, err
+	}
+	return file, nil
 }
 
 func (pc *ProvisionCommand) runScript(name, scriptPath string) error {
@@ -581,6 +608,9 @@ add_fatal_result() {
     json_results+='
 ]}'
     echo "$json_results"
+	if [ -n "$PRECHECK_RESULT_FILE" ]; then
+		echo "$json_results" > "$PRECHECK_RESULT_FILE"
+	fi
     exit 2
 }
 `)
@@ -598,7 +628,9 @@ print_results() {
 
     # Output the JSON
     echo "$json_results"
-
+	if [ -n "$PRECHECK_RESULT_FILE" ]; then
+		echo "$json_results" > "$PRECHECK_RESULT_FILE"
+	fi
     if [ $any_fail -eq 1 ]; then
         echo "Pre-flight checks failed, Please fix them before continuing."
         exit 1
@@ -623,20 +655,27 @@ func (pc *ProvisionCommand) buildScript(
 	phase string,
 	createSubshell bool,
 ) (string, error) {
-	defaultValue := pc.iniConfig.DefaultSectionValue()
-	dir := "/tmp"
-	if tmp, ok := defaultValue["tmp_directory"].(string); ok {
-		dir = tmp
-	}
-	f, err := os.CreateTemp(dir, "tmp*")
+	f, err := pc.createTempFile("tmp*")
 	if err != nil {
 		return "", err
 	}
 	defer f.Close()
+	defaultValue := pc.iniConfig.DefaultSectionValue()
 	f.WriteString("#!/bin/bash\n\n")
 	if defaultValue["loglevel"] == "DEBUG" {
 		f.WriteString("set -x\n")
 	}
+	if pc.args.PreflightCheckOutFile != "" {
+		dir := filepath.Dir(pc.args.PreflightCheckOutFile)
+		err = os.MkdirAll(dir, 0755)
+		if err != nil {
+			util.FileLogger().
+				Errorf(pc.ctx, "Failed to create directory for precheck result file: %v", err)
+			return "", err
+		}
+	}
+	// Set the precheck result file variable in the script.
+	fmt.Fprintf(f, "\nPRECHECK_RESULT_FILE=%s\n", pc.args.PreflightCheckOutFile)
 	if createSubshell {
 		// Initialize parent exit code and errors array.
 		fmt.Fprintf(f, "parent_exit_code=0\n")

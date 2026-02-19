@@ -40,6 +40,7 @@ func (e *Executor) Exec(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("Failed to initialize %s command: %v", e.args.Command, err)
 	}
+	defer command.Cleanup()
 	// Need to validate only in case of onprem manual.
 	if !config.GetBool(e.iniConfig.DefaultSectionValue(), "is_cloud", false) {
 		if err := command.Validate(); err != nil {

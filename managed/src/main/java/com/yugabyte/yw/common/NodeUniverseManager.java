@@ -74,7 +74,8 @@ public class NodeUniverseManager extends DevopsBase {
   public void downloadNodeLogs(NodeDetails node, Universe universe, String targetLocalFile) {
     universeLock.acquireLock(universe.getUniverseUUID());
     try {
-      Optional<NodeAgent> optional = maybeGetNodeAgent(universe, node, true /*check feature flag*/);
+      Optional<NodeAgent> optional =
+          maybeUpgradeAndGetNodeAgent(universe, node, true /*check feature flag*/);
       if (optional.isPresent()) {
         nodeActionRunner.downloadLogs(
             optional.get(), node, getYbHomeDir(node, universe), targetLocalFile, DEFAULT_CONTEXT);
@@ -150,7 +151,8 @@ public class NodeUniverseManager extends DevopsBase {
           getRemoteTmpDir(node, universe)
               + "/"
               + Paths.get(filesListFilePath).getFileName().toString();
-      Optional<NodeAgent> optional = maybeGetNodeAgent(universe, node, true /*check feature flag*/);
+      Optional<NodeAgent> optional =
+          maybeUpgradeAndGetNodeAgent(universe, node, true /*check feature flag*/);
       if (optional.isPresent()) {
         nodeActionRunner.downloadFile(
             optional.get(),
@@ -245,7 +247,7 @@ public class NodeUniverseManager extends DevopsBase {
     Optional<NodeAgent> optional =
         context.isUseSshConnectionOnly()
             ? Optional.empty()
-            : maybeGetNodeAgent(universe, node, true /*check feature flag*/);
+            : maybeUpgradeAndGetNodeAgent(universe, node, true /*check feature flag*/);
     if (optional.isPresent()) {
       nodeActionRunner.copyFile(optional.get(), remoteFile, localFile, DEFAULT_CONTEXT);
     } else {
@@ -300,7 +302,7 @@ public class NodeUniverseManager extends DevopsBase {
     Optional<NodeAgent> optional =
         context.isUseSshConnectionOnly()
             ? Optional.empty()
-            : maybeGetNodeAgent(universe, node, true /*check feature flag*/);
+            : maybeUpgradeAndGetNodeAgent(universe, node, true /*check feature flag*/);
     if (optional.isPresent()) {
       nodeActionRunner.uploadFile(optional.get(), sourceFile, targetFile, permissions, context);
     } else {
@@ -339,7 +341,7 @@ public class NodeUniverseManager extends DevopsBase {
     Optional<NodeAgent> optional =
         context.isUseSshConnectionOnly()
             ? Optional.empty()
-            : maybeGetNodeAgent(universe, node, true /*check feature flag*/);
+            : maybeUpgradeAndGetNodeAgent(universe, node, true /*check feature flag*/);
     if (optional.isPresent()) {
       return nodeActionRunner.runCommand(optional.get(), command, context, useBash);
     }
@@ -403,7 +405,7 @@ public class NodeUniverseManager extends DevopsBase {
     Optional<NodeAgent> optional =
         context.isUseSshConnectionOnly()
             ? Optional.empty()
-            : maybeGetNodeAgent(universe, node, true /*check feature flag*/);
+            : maybeUpgradeAndGetNodeAgent(universe, node, true /*check feature flag*/);
     if (optional.isPresent()) {
       return nodeActionRunner.runScript(optional.get(), localScriptPath, params, context);
     }
@@ -611,7 +613,7 @@ public class NodeUniverseManager extends DevopsBase {
     return "/tmp";
   }
 
-  public Optional<NodeAgent> maybeGetNodeAgent(
+  public Optional<NodeAgent> maybeUpgradeAndGetNodeAgent(
       String nodeIp, Provider provider, @Nullable Universe universe) {
     if (provider.getCloudCode() == CloudType.kubernetes) {
       log.debug("Node agent is not supported on provider type {}", provider.getCloudCode());
@@ -631,7 +633,7 @@ public class NodeUniverseManager extends DevopsBase {
     return optional;
   }
 
-  public Optional<NodeAgent> maybeGetNodeAgent(
+  public Optional<NodeAgent> maybeUpgradeAndGetNodeAgent(
       Universe universe, NodeDetails node, boolean checkJavaClient) {
     UniverseDefinitionTaskParams.Cluster cluster =
         universe.getUniverseDetails().getClusterByUuid(node.placementUuid);
@@ -647,7 +649,7 @@ public class NodeUniverseManager extends DevopsBase {
       log.debug("Node agent is not enabled for java client");
       return Optional.empty();
     }
-    return maybeGetNodeAgent(
+    return maybeUpgradeAndGetNodeAgent(
         node.cloudInfo.private_ip,
         Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider)),
         universe);
@@ -679,7 +681,7 @@ public class NodeUniverseManager extends DevopsBase {
       Optional<NodeAgent> optional =
           context.isUseSshConnectionOnly()
               ? Optional.empty()
-              : maybeGetNodeAgent(universe, node, false /*check feature flag*/);
+              : maybeUpgradeAndGetNodeAgent(universe, node, false /*check feature flag*/);
       if (optional.isPresent()) {
         NodeAgent nodeAgent = optional.get();
         commandArgs.add("rpc");

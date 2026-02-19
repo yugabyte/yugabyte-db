@@ -107,6 +107,8 @@ func setupCommand(cmd *cobra.Command) {
 		false,
 		"Generate YNP configuration file and provision",
 	)
+	cmd.Flags().
+		String("preflight_check_out_file", "", "Optional path to the preflight check output file")
 	// Hide internally used flags from help output.
 	cmd.Flags().MarkHidden("ynp_base_path")
 	cmd.Flags().MarkHidden("extra_vars")
@@ -178,19 +180,24 @@ func parseArguments(cmd *cobra.Command) (*parsedArgs, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Error parsing generate_and_run flag: %v\n", err)
 	}
+	preflightCheckOutFile, err := cmd.Flags().GetString("preflight_check_out_file")
+	if err != nil {
+		return nil, fmt.Errorf("Error parsing preflight_check_out_file flag: %v\n", err)
+	}
 	return &parsedArgs{
 		Args: config.Args{
-			Command:         command,
-			YnpBasePath:     ynpBasePath,
-			SpecificModules: specificModules,
-			SkipModules:     skipModules,
-			ConfigFile:      configFile,
-			ConfigIniFile:   configIniFile,
-			PreflightCheck:  preflightCheck,
-			ListModules:     listModules,
-			DryRun:          dryRun,
-			NoRoot:          noRoot,
-			Root:            root,
+			Command:               command,
+			YnpBasePath:           ynpBasePath,
+			SpecificModules:       specificModules,
+			SkipModules:           skipModules,
+			ConfigFile:            configFile,
+			ConfigIniFile:         configIniFile,
+			PreflightCheck:        preflightCheck,
+			PreflightCheckOutFile: preflightCheckOutFile,
+			ListModules:           listModules,
+			DryRun:                dryRun,
+			NoRoot:                noRoot,
+			Root:                  root,
 		},
 		extraVars:       extraVars,
 		configOverrides: configOverrides,
@@ -226,6 +233,14 @@ func processArguments(ctx context.Context, pArgs *parsedArgs) error {
 		if err != nil {
 			return fmt.Errorf("Error loading extra_vars: %v", err)
 		}
+	}
+	if pArgs.PreflightCheckOutFile != "" {
+		// Get the absolute path because the script can be executed from a different path.
+		absPath, err := filepath.Abs(pArgs.PreflightCheckOutFile)
+		if err != nil {
+			return fmt.Errorf("Failed to get absolute path for preflight_check_out_file: %v", err)
+		}
+		pArgs.PreflightCheckOutFile = absPath
 	}
 	setDefaultConfigs(ynpConfig)
 	mergeConfigs(ynpConfig, exVars)

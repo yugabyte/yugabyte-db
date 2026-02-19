@@ -2085,4 +2085,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Allow duplicates in already existing availability zones",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> disableYnpNodePreflightCheck =
+      new ConfKeyInfo<>(
+          "yb.node_agent.disable_ynp_node_preflight_check",
+          ScopeType.GLOBAL,
+          "Disable YNP Node Preflight Check",
+          "Disable preflight check in YNP node agent provision",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

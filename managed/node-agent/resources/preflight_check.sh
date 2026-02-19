@@ -8,6 +8,9 @@
 #
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
+# DEPRECATED: This script is deprecated and will be removed in a future release in favor of YNP preflight checks.
+# Please do not make any new changes to this file.
+
 check_type="provision"
 node_agent_mode=false
 airgap=false
@@ -335,7 +338,7 @@ preflight_all_checks() {
   # Check mount points volume size.
   IFS="," read -ra mount_points_arr <<< "$mount_points"
   for path in "${mount_points_arr[@]}"; do
-    volume=$(df -m "$path" | awk 'FNR == 2 {print $4}' 2>&1)
+    volume=$(df -B1G "$path" | awk 'FNR == 2 {print $4}' 2>&1)
     update_result_json "mount_points_volume:$path" "$volume"
   done
 
@@ -416,13 +419,13 @@ check_free_space() {
     path=$(dirname "$path")
   fi
 
-  result=$(df -m "$path" 2>&1)
+  result=$(df -B1G "$path" 2>&1)
 
   # If parent does not exist, set space to 0.
   if [ $? == "1" ]; then
     update_result_json "$test_type:$path" 0
   else
-    result=$(df -m "$path" | awk 'FNR == 2 {print $4}' 2>&1)
+    result=$(df -B1G "$path" | awk 'FNR == 2 {print $4}' 2>&1)
     update_result_json "$test_type:$path" "$result"
   fi
 }

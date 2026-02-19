@@ -19,9 +19,11 @@ import com.typesafe.config.ConfigFactory;
 import com.typesafe.config.ConfigValueFactory;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.payload.YNPConfigGenerator;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.CustomWsClientFactoryProvider;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.Util;
@@ -63,6 +65,8 @@ public class YNPProvisioningTest extends FakeDBApplication {
 
   @Mock private RuntimeConfGetter confGetter;
 
+  @Mock ImageBundleUtil mockImageBundleUtil;
+
   private Customer customer;
   private Provider provider;
   private YNPProvisioning ynpProvisioning;
@@ -81,8 +85,10 @@ public class YNPProvisioningTest extends FakeDBApplication {
                 any(), any(), anyString(), any(), any(), anyString()))
         .thenReturn(List.of("/dev/sdb", "/dev/sdc"));
     when(baseTaskDependencies.getConfGetter()).thenReturn(confGetter);
-    ynpProvisioning =
-        new YNPProvisioning(baseTaskDependencies, mockCloudQueryHelper, mockFileHelperService);
+    YNPConfigGenerator ynpConfigGenerator =
+        new YNPConfigGenerator(
+            confGetter, mockCloudQueryHelper, mockImageBundleUtil, mockFileHelperService);
+    ynpProvisioning = new YNPProvisioning(baseTaskDependencies, ynpConfigGenerator);
   }
 
   private void setTaskParams(YNPProvisioning.Params params) throws Exception {
@@ -256,12 +262,10 @@ public class YNPProvisioningTest extends FakeDBApplication {
 
     // Create temp file for output
     Path tempFile = Files.createTempFile("ynp-test-primary-", ".json");
-    String outputPath = tempFile.toString();
     Path nodeAgentHome = Paths.get("/tmp/node-agent");
-
+    when(mockFileHelperService.createTempFile(anyString(), anyString())).thenReturn(tempFile);
     // Call the method
-    ynpProvisioning.generateProvisionConfig(
-        universe, primaryNode, provider, outputPath, nodeAgentHome);
+    ynpProvisioning.generateProvisionConfig(universe, primaryNode, provider, nodeAgentHome);
 
     // Verify the JSON file was created and contains expected data
     assertTrue(Files.exists(tempFile));
@@ -273,11 +277,13 @@ public class YNPProvisioningTest extends FakeDBApplication {
     assertEquals("10.0.0.1", ynpNode.get("node_ip").asText());
     assertEquals(false, ynpNode.get("is_install_node_agent").asBoolean());
     assertEquals(true, ynpNode.get("is_configure_clockbound").asBoolean());
+    assertEquals(false, ynpNode.get("is_yb_prebuilt_image").asBoolean());
 
     // Verify extra node
     JsonNode extraNode = rootNode.get("extra");
     assertNotNull(extraNode);
     assertEquals("aws", extraNode.get("cloud_type").asText());
+    assertEquals("/tmp/node-agent/thirdparty", extraNode.get("package_path").asText());
 
     // Clean up
     Files.deleteIfExists(tempFile);
@@ -371,11 +377,10 @@ public class YNPProvisioningTest extends FakeDBApplication {
 
     // Create temp file for output
     Path tempFile = Files.createTempFile("ynp-test-rr-", ".json");
-    String outputPath = tempFile.toString();
     Path nodeAgentHome = Paths.get("/tmp/node-agent");
-
+    when(mockFileHelperService.createTempFile(anyString(), anyString())).thenReturn(tempFile);
     // Call the method
-    ynpProvisioning.generateProvisionConfig(universe, rrNode, provider, outputPath, nodeAgentHome);
+    ynpProvisioning.generateProvisionConfig(universe, rrNode, provider, nodeAgentHome);
 
     // Verify the JSON file was created and contains expected data
     assertTrue(Files.exists(tempFile));
@@ -494,9 +499,10 @@ public class YNPProvisioningTest extends FakeDBApplication {
 
     Path tempFilePrimary = Files.createTempFile("ynp-test-primary-", ".json");
     Path nodeAgentHome = Paths.get("/tmp/node-agent");
+    when(mockFileHelperService.createTempFile(anyString(), anyString()))
+        .thenReturn(tempFilePrimary);
 
-    ynpProvisioning.generateProvisionConfig(
-        universe, primaryNode, provider, tempFilePrimary.toString(), nodeAgentHome);
+    ynpProvisioning.generateProvisionConfig(universe, primaryNode, provider, nodeAgentHome);
 
     JsonNode primaryRoot = objectMapper.readTree(Files.readAllBytes(tempFilePrimary));
     assertEquals("10.0.0.10", primaryRoot.get("ynp").get("node_ip").asText());
@@ -523,9 +529,9 @@ public class YNPProvisioningTest extends FakeDBApplication {
     setTaskParams(params);
 
     Path tempFileRR = Files.createTempFile("ynp-test-rr-", ".json");
+    when(mockFileHelperService.createTempFile(anyString(), anyString())).thenReturn(tempFileRR);
 
-    ynpProvisioning.generateProvisionConfig(
-        universe, rrNode, provider, tempFileRR.toString(), nodeAgentHome);
+    ynpProvisioning.generateProvisionConfig(universe, rrNode, provider, nodeAgentHome);
 
     JsonNode rrRoot = objectMapper.readTree(Files.readAllBytes(tempFileRR));
     assertEquals("10.0.0.20", rrRoot.get("ynp").get("node_ip").asText());

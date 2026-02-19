@@ -3,7 +3,10 @@
 #       if there are any other firewalls,configured this will need to be
 #       verified from Yugabyte Anywhere or outside the universe from the client side.
 #
-ports=({{ports}})
+ports=({{node_exporter_port}} {{master_http_port}} {{master_rpc_port}} {{tserver_http_port}} \
+{{tserver_rpc_port}} {{yb_controller_http_port}} {{yb_controller_rpc_port}} {{redis_server_http_port}} \
+{{redis_server_rpc_port}} {{ycql_server_http_port}} {{ycql_server_rpc_port}} {{ysql_server_http_port}} \
+{{ysql_server_rpc_port}})
 
 
 # IP address of the VM (assuming localhost)
@@ -22,8 +25,16 @@ start_server() {
 check_port() {
     local ip=$1
     local port=$2
-    (echo > /dev/tcp/$ip/$port) >/dev/null 2>&1
-    if [ $? -eq 0 ]; then
+    count=0
+    # Start checking the port to respond faster for reachable ports.
+    until "echo > /dev/tcp/$ip/$port" >/dev/null 2>&1; do
+        count=$((count + 1))
+        if [ $count -gt 5 ]; then
+            break
+        fi
+        sleep 0.5
+    done
+    if [ $count -le 5 ]; then
         echo "Port $port is open on $ip"
         add_result "Port $port Check" "PASS" "Port $port is open on $ip"
     else
@@ -50,19 +61,51 @@ force_kill_on_exit() {
     fi
 }
 
+check_port_available() {
+  ip=$1
+  port=$2
+  if ss -lntu | grep -q ":$port\s" >/dev/null 2>&1; then
+    echo "Port $port is unavailable on $ip"
+    add_result "Port $port Check" "FAIL" "Port $port is unavailable on $ip"
+  else
+    echo "Port $port is available on $ip"
+    add_result "Port $port Check" "PASS" "Port $port is available on $ip"
+  fi
+}
+
+# Check for internet access.
+if [[ "{{ is_airgap }}" == 'False' ]]; then
+    # Attempt to run "/dev/tcp" 3 times with a 3 second timeout and return success if any succeed.
+    # --preserve-status flag will maintain the exit code of the "/dev/tcp" command.
+    HOST="yugabyte.com"
+    PORT=443
+
+    for i in 1 2 3; do
+      timeout 5 bash -c "cat < /dev/null > /dev/tcp/${HOST}/${PORT}" --preserve-status && break
+    done
+    if [[ $? -ne 0 ]]; then
+        add_result "Internet Connection" "FAIL" "Internet connection check failed for non-airgap environment"
+    else
+        add_result "Internet Connection" "PASS" "Internet connection check passed for non-airgap environment"
+    fi
+fi
+
+# Optional check for available ports. Cannot be run if the services are expected to be up.
+if [ "{{ check_available_ports }}" == "True" ]; then
+    for port in "${ports[@]}"; do
+        # Node exporter is already running. Skip its port.
+        [ "$port" -ne "{{node_exporter_port}}" ] && check_port_available "$vm_ip" "$port"
+    done
+fi
 
 # Iterate through the list of ports, start server, check port, and stop server
-if [ "$is_cloud" == "False" ]; then
+if [ "$cloud_type" == "onprem" ]; then
     for port in "${ports[@]}"; do
         # Start the server and get its PID
         server_pid=$(start_server $port)
         if [ -n "$server_pid" ]; then
             trap "force_kill_on_exit $server_pid" EXIT
         fi
-
-        # Give the server a moment to start
-        sleep 2
-
         # Check if the port is open
         check_port "$vm_ip" "$port"
 
