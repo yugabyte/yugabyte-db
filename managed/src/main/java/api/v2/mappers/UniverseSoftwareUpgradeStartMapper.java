@@ -15,6 +15,7 @@ public interface UniverseSoftwareUpgradeStartMapper {
   @Mapping(target = "sleepAfterTServerRestartMillis", source = "sleepAfterTserverRestartMillis")
   @Mapping(target = "ybSoftwareVersion", source = "version")
   @Mapping(target = "upgradeOption", source = "source")
+  @Mapping(target = "runOnlyPrechecks", source = "runOnlyPrechecks")
   public SoftwareUpgradeParams copyToV1SoftwareUpgradeParams(
       UniverseSoftwareUpgradeStart source, @MappingTarget SoftwareUpgradeParams target);
 

@@ -158,6 +158,47 @@ public class UniverseApiControllerUpgradeTest extends UniverseControllerTestBase
   }
 
   @Test
+  public void testV2UniverseUpgradeRunOnlyPrechecksTrue() throws ApiException {
+    UUID taskUUID = UUID.randomUUID();
+    when(mockUpgradeUniverseHandler.upgradeDBVersion(any(), eq(customer), eq(universe)))
+        .thenReturn(taskUUID);
+    UniverseSoftwareUpgradeStart req = new UniverseSoftwareUpgradeStart();
+    req.setAllowRollback(true);
+    req.setVersion(upgradeRelease.getVersion());
+    req.setRunOnlyPrechecks(true);
+    YBATask resp =
+        apiClient.startSoftwareUpgrade(customer.getUuid(), universe.getUniverseUUID(), req);
+    assertEquals(taskUUID, resp.getTaskUuid());
+    ArgumentCaptor<SoftwareUpgradeParams> captor =
+        ArgumentCaptor.forClass(SoftwareUpgradeParams.class);
+    verify(mockUpgradeUniverseHandler)
+        .upgradeDBVersion(captor.capture(), eq(customer), eq(universe));
+    SoftwareUpgradeParams params = captor.getValue();
+    assertTrue("runOnlyPrechecks should be true", Boolean.TRUE.equals(params.runOnlyPrechecks));
+  }
+
+  @Test
+  public void testV2UniverseUpgradeRunOnlyPrechecksDefaultFalse() throws ApiException {
+    UUID taskUUID = UUID.randomUUID();
+    when(mockUpgradeUniverseHandler.upgradeSoftware(any(), eq(customer), eq(universe)))
+        .thenReturn(taskUUID);
+    UniverseSoftwareUpgradeStart req = new UniverseSoftwareUpgradeStart();
+    req.setAllowRollback(false);
+    req.setVersion(upgradeRelease.getVersion());
+    YBATask resp =
+        apiClient.startSoftwareUpgrade(customer.getUuid(), universe.getUniverseUUID(), req);
+    assertEquals(taskUUID, resp.getTaskUuid());
+    ArgumentCaptor<SoftwareUpgradeParams> captor =
+        ArgumentCaptor.forClass(SoftwareUpgradeParams.class);
+    verify(mockUpgradeUniverseHandler)
+        .upgradeSoftware(captor.capture(), eq(customer), eq(universe));
+    SoftwareUpgradeParams params = captor.getValue();
+    assertFalse(
+        "runOnlyPrechecks should be false when not set",
+        Boolean.TRUE.equals(params.runOnlyPrechecks));
+  }
+
+  @Test
   public void testV2UniverseFinalizeInfoNoXCluster() throws ApiException {
     UUID taskUUID = UUID.randomUUID();
     FinalizeUpgradeInfoResponse response = new FinalizeUpgradeInfoResponse();
