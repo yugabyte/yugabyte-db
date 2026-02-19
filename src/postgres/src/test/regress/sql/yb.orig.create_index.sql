@@ -445,6 +445,18 @@ select relname, oid from pg_class where relname = 'index_with_table_oid';
 SELECT * FROM test_index_with_oids ORDER BY v1;
 
 CREATE INDEX index_with_duplicate_table_oid ON test_index_with_oids (v1) with (table_oid = 1111111);
+
+-- Test NULLS [NOT] DISTINCT WITH (...)
+CREATE INDEX index_with_nulls_and_table_oid ON test_index_with_oids (v2) NULLS NOT DISTINCT with (table_oid = 2222222);
+CREATE UNIQUE INDEX index_with_nulls_and_row_type_oid ON test_index_with_oids (v3) NULLS DISTINCT with (row_type_oid = 3333333);
+\d test_index_with_oids
+SELECT * FROM get_table_indexes('test_index_with_oids');
+
+set yb_format_funcs_include_yb_metadata=1;
+\d test_index_with_oids
+SELECT * FROM get_table_indexes('test_index_with_oids');
+
+set yb_format_funcs_include_yb_metadata=0;
 set yb_enable_create_with_table_oid=0;
 
 -- Test creating index nonconcurrently (i.e. without online schema migration)
