@@ -505,6 +505,13 @@ extern bool yb_enable_distinct_pushdown;
 extern bool yb_enable_index_aggregate_pushdown;
 
 /*
+ * If true, secondary indexes are extended with decodable PK columns, enabling
+ * Index Only Scans that decode PK values from ybidxbasectid without reading
+ * the base table.
+ */
+extern bool yb_enable_primary_key_decode_from_index;
+
+/*
  * YSQL guc variable that is used to enable the use of Postgres's selectivity
  * functions and YSQL table statistics.
  * e.g. 'SET yb_enable_optimizer_statistics = true'

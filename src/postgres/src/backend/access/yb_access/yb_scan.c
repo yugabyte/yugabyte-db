@@ -2753,6 +2753,30 @@ ybcAddNonDroppedAttr(const TupleDesc tup_desc,
 }
 
 /*
+ * Replace decoded PK column requests with a request for ybidxbasectid.
+ */
+static void
+ybcReplacePkReqWithBasectid(IndexOnlyScan *ios_plan,
+							YbAttnumBmsState *result)
+{
+	if (ios_plan->yb_num_decoded_pk_cols > 0)
+	{
+		int			phys_natts = list_length(ios_plan->indextlist) -
+								 ios_plan->yb_num_decoded_pk_cols;
+		bool		removed = false;
+		int			bms_idx = ybcAttnumBmsIndex(result, phys_natts);
+
+		while ((bms_idx = bms_next_member(result->bms, bms_idx)) >= 0)
+		{
+			bms_del_member(result->bms, bms_idx);
+			removed = true;
+		}
+		if (removed)
+			ybcAttnumBmsAdd(result, YBIdxBaseTupleIdAttributeNumber);
+	}
+}
+
+/*
  * Returns list of target columns required by scan plan.
  */
 static YbAttnumBmsState
@@ -2862,6 +2886,13 @@ ybcBuildRequiredAttrs(YbScanDesc yb_scan, YbScanPlan scan_plan,
 			for (AttrNumber attnum = 1; attnum <= target_desc->natts; ++attnum)
 				ybcAddNonDroppedAttr(target_desc, attnum, &result);
 	}
+
+	/*
+	 * For index-only scans with decoded primary key columns, do not request
+	 * their values from DocDB. Instead, request ybidxbasectid for decoding.
+	 */
+	if (pg_scan_plan && IsA(pg_scan_plan, IndexOnlyScan))
+		ybcReplacePkReqWithBasectid((IndexOnlyScan *) pg_scan_plan, &result);
 
 	return result;
 }

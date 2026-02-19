@@ -689,6 +689,7 @@ typedef struct IndexOnlyScan
 	YbPlanInfo	yb_plan_info;
 	int			yb_distinct_prefixlen;	/* distinct index scan prefix */
 	YbSaopMergeInfo *yb_saop_merge_info;
+	int			yb_num_decoded_pk_cols;	/* number of decoded pk columns in index */
 } IndexOnlyScan;
 
 /* ----------------

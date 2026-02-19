@@ -3025,6 +3025,19 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_primary_key_decode_from_index", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Allow Index Only Scans to decode base table primary "
+						 "key columns from secondary index entries."),
+			gettext_noop("When enabled, PK columns are decoded from "
+						 "ybidxbasectid in secondary index entries."),
+			GUC_EXPLAIN
+		},
+		&yb_enable_primary_key_decode_from_index,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		/* Intended for rolling upgrade scenarios; tied to an auto-flag. */
 		{"yb_enable_index_aggregate_pushdown", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Push supported index aggregate operations to DocDB."),

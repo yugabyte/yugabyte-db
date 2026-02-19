@@ -1,0 +1,1277 @@
+-- Test Index Only Scan with decoded PK columns decoded from ybidxbasectid.
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set filename :abs_srcdir '/yb_commands/explainrun.sql'
+\i :filename
+-- A helper script to explain and run a query.  Use in regress tests by
+-- defining :explain, :query, and optionally :hint#.
+\set explain1 ':explain :hint1 :query;'
+\set explain2 ':explain1 :explain :hint2 :query;'
+\set explain3 ':explain2 :explain :hint3 :query;'
+\set explain4 ':explain3 :explain :hint4 :query;'
+\set explain5 ':explain4 :explain :hint5 :query;'
+\set explain1run1 ':explain1; :hint1 :query;'
+\set explain2run2 ':explain2; :hint1 :query; :hint2 :query;'
+\set explain3run3 ':explain3; :hint1 :query; :hint2 :query; :hint3 :query;'
+\set explain4run4 ':explain4; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query;'
+\set explain5run5 ':explain5; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query; :hint5 :query;'
+-- Default to no hints.
+\set hint1 ''
+\set hint2 ''
+\set hint3 ''
+\set hint4 ''
+\set hint5 ''
+\set explain 'EXPLAIN (COSTS OFF)'
+SET yb_enable_cbo = on;
+SET yb_enable_primary_key_decode_from_index = on;
+-- Test: hash sharded single-column primary key
+CREATE TABLE t_hash(id bigserial PRIMARY KEY, v text);
+INSERT INTO t_hash(v) SELECT 'val_' || i FROM generate_series(1, 5) i;
+CREATE INDEX t_hash_v ON t_hash(v);
+ANALYZE t_hash;
+SELECT $$
+SELECT id FROM t_hash WHERE v = 'val_1'
+$$ AS query \gset
+:explain1run1
+                QUERY PLAN                
+------------------------------------------
+ Index Only Scan using t_hash_v on t_hash
+   Index Cond: (v = 'val_1'::text)
+(2 rows)
+
+ id 
+----
+  1
+(1 row)
+
+SELECT $$
+SELECT id, v FROM t_hash WHERE v = 'val_3'
+$$ AS query \gset
+:explain1run1
+                QUERY PLAN                
+------------------------------------------
+ Index Only Scan using t_hash_v on t_hash
+   Index Cond: (v = 'val_3'::text)
+(2 rows)
+
+ id |   v   
+----+-------
+  3 | val_3
+(1 row)
+
+:explain SELECT v FROM t_hash WHERE v = 'val_1';
+                QUERY PLAN                
+------------------------------------------
+ Index Only Scan using t_hash_v on t_hash
+   Index Cond: (v = 'val_1'::text)
+(2 rows)
+
+-- Test: fallback to another scan type for non-PK/non-index columns
+ALTER TABLE t_hash ADD COLUMN extra int DEFAULT 0;
+:explain SELECT id, extra FROM t_hash WHERE v = 'val_1';
+              QUERY PLAN               
+---------------------------------------
+ Seq Scan on t_hash
+   Storage Filter: (v = 'val_1'::text)
+(2 rows)
+
+-- Test: range-sharded PK, range scan, primary key scan unchanged
+CREATE TABLE t_range(id int, v text, PRIMARY KEY(id ASC));
+INSERT INTO t_range SELECT i, 'val_' || i FROM generate_series(1, 20) i;
+CREATE INDEX t_range_v ON t_range(v ASC);
+ANALYZE t_range;
+SELECT $$
+SELECT id FROM t_range WHERE v = 'val_5'
+$$ AS query \gset
+:explain1run1
+                 QUERY PLAN                 
+--------------------------------------------
+ Index Only Scan using t_range_v on t_range
+   Index Cond: (v = 'val_5'::text)
+(2 rows)
+
+ id 
+----
+  5
+(1 row)
+
+SELECT $$
+SELECT id, v FROM t_range WHERE v >= 'val_10' AND v < 'val_15' ORDER BY v
+$$ AS query \gset
+:explain1run1
+                           QUERY PLAN                           
+----------------------------------------------------------------
+ Index Only Scan using t_range_v on t_range
+   Index Cond: ((v >= 'val_10'::text) AND (v < 'val_15'::text))
+(2 rows)
+
+ id |   v    
+----+--------
+ 10 | val_10
+ 11 | val_11
+ 12 | val_12
+ 13 | val_13
+ 14 | val_14
+(5 rows)
+
+SELECT $$
+SELECT id FROM t_range WHERE id = 5
+$$ AS query \gset
+:explain1run1
+                QUERY PLAN                
+------------------------------------------
+ Index Scan using t_range_pkey on t_range
+   Index Cond: (id = 5)
+(2 rows)
+
+ id 
+----
+  5
+(1 row)
+
+-- Test: composite primary key (multi-column)
+CREATE TABLE t_composite(a int, b int, c text, v text, PRIMARY KEY(a, b ASC));
+INSERT INTO t_composite SELECT i / 10, i % 10, 'c_' || i, 'v_' || i FROM generate_series(1, 20) i;
+CREATE INDEX t_composite_v ON t_composite(v);
+ANALYZE t_composite;
+SELECT $$
+SELECT a, b FROM t_composite WHERE v = 'v_15'
+$$ AS query \gset
+:explain1run1
+                     QUERY PLAN                     
+----------------------------------------------------
+ Index Only Scan using t_composite_v on t_composite
+   Index Cond: (v = 'v_15'::text)
+(2 rows)
+
+ a | b 
+---+---
+ 1 | 5
+(1 row)
+
+SELECT $$
+SELECT a, b, v FROM t_composite WHERE v = 'v_15'
+$$ AS query \gset
+:explain1run1
+                     QUERY PLAN                     
+----------------------------------------------------
+ Index Only Scan using t_composite_v on t_composite
+   Index Cond: (v = 'v_15'::text)
+(2 rows)
+
+ a | b |  v   
+---+---+------
+ 1 | 5 | v_15
+(1 row)
+
+:explain SELECT a, b, c FROM t_composite WHERE v = 'v_15';
+              QUERY PLAN              
+--------------------------------------
+ Seq Scan on t_composite
+   Storage Filter: (v = 'v_15'::text)
+(2 rows)
+
+-- Test: primary key column already included in secondary index
+CREATE TABLE t_pk_in_idx(id int PRIMARY KEY, v1 int, v2 int);
+INSERT INTO t_pk_in_idx SELECT i, i * 10, i * 100 FROM generate_series(1, 10) i;
+CREATE INDEX t_pk_in_idx_v1_id ON t_pk_in_idx(v1, id);
+ANALYZE t_pk_in_idx;
+SELECT $$
+SELECT id FROM t_pk_in_idx WHERE v1 = 100
+$$ AS query \gset
+:explain1run1
+                       QUERY PLAN                       
+--------------------------------------------------------
+ Index Only Scan using t_pk_in_idx_v1_id on t_pk_in_idx
+   Index Cond: (v1 = 100)
+(2 rows)
+
+ id 
+----
+ 10
+(1 row)
+
+:explain SELECT id, v2 FROM t_pk_in_idx WHERE v1 = 100;
+          QUERY PLAN          
+------------------------------
+ Seq Scan on t_pk_in_idx
+   Storage Filter: (v1 = 100)
+(2 rows)
+
+-- Test: unique secondary index
+CREATE TABLE t_uniq(id int PRIMARY KEY, email text UNIQUE, name text);
+INSERT INTO t_uniq SELECT i, 'user' || i || '@test.com', 'name_' || i FROM generate_series(1, 10) i;
+ANALYZE t_uniq;
+SELECT $$
+SELECT id FROM t_uniq WHERE email = 'user5@test.com'
+$$ AS query \gset
+:explain1run1
+                    QUERY PLAN                    
+--------------------------------------------------
+ Index Only Scan using t_uniq_email_key on t_uniq
+   Index Cond: (email = 'user5@test.com'::text)
+(2 rows)
+
+ id 
+----
+  5
+(1 row)
+
+:explain SELECT id, name FROM t_uniq WHERE email = 'user5@test.com';
+                     QUERY PLAN                     
+----------------------------------------------------
+ Seq Scan on t_uniq
+   Storage Filter: (email = 'user5@test.com'::text)
+(2 rows)
+
+-- Test: partial index
+CREATE TABLE t_partial(id int PRIMARY KEY, status text, val int);
+INSERT INTO t_partial SELECT i, CASE WHEN i % 2 = 0 THEN 'active' ELSE 'inactive' END, i FROM generate_series(1, 20) i;
+CREATE INDEX t_partial_val ON t_partial(val) WHERE status = 'active';
+ANALYZE t_partial;
+:explain SELECT id FROM t_partial WHERE val > 15 AND status = 'active';
+                    QUERY PLAN                    
+--------------------------------------------------
+ Index Only Scan using t_partial_val on t_partial
+   Storage Filter: (val > 15)
+(2 rows)
+
+SELECT id FROM t_partial WHERE val > 15 AND status = 'active' ORDER BY id;
+ id 
+----
+ 16
+ 18
+ 20
+(3 rows)
+
+:explain SELECT id FROM t_partial WHERE val > 15;
+          QUERY PLAN          
+------------------------------
+ Seq Scan on t_partial
+   Storage Filter: (val > 15)
+(2 rows)
+
+-- Test: multi-column secondary index, multiple rows returned
+CREATE TABLE t_multi_col(id int PRIMARY KEY, a int, b int, c int);
+INSERT INTO t_multi_col SELECT i, i % 5, i % 10, i FROM generate_series(1, 20) i;
+CREATE INDEX t_multi_col_ab ON t_multi_col(a, b ASC);
+ANALYZE t_multi_col;
+SELECT $$
+SELECT id FROM t_multi_col WHERE a = 2 AND b = 2
+$$ AS query \gset
+:explain1run1
+                     QUERY PLAN                      
+-----------------------------------------------------
+ Index Only Scan using t_multi_col_ab on t_multi_col
+   Index Cond: ((a = 2) AND (b = 2))
+(2 rows)
+
+ id 
+----
+ 12
+  2
+(2 rows)
+
+:explain SELECT id, a, b FROM t_multi_col WHERE a = 2;
+                     QUERY PLAN                      
+-----------------------------------------------------
+ Index Only Scan using t_multi_col_ab on t_multi_col
+   Index Cond: (a = 2)
+(2 rows)
+
+:explain SELECT id, c FROM t_multi_col WHERE a = 2 AND b = 2;
+               QUERY PLAN                
+-----------------------------------------
+ Seq Scan on t_multi_col
+   Storage Filter: ((a = 2) AND (b = 2))
+(2 rows)
+
+SELECT id FROM t_multi_col WHERE a = 3 ORDER BY id;
+ id 
+----
+  3
+  8
+ 13
+ 18
+(4 rows)
+
+-- Test: hash-sharded composite primary key
+CREATE TABLE t_hash_comp(h1 int, h2 int, v int, PRIMARY KEY((h1, h2) HASH));
+INSERT INTO t_hash_comp SELECT i, i + 100, i * 10 FROM generate_series(1, 10) i;
+CREATE INDEX t_hash_comp_v ON t_hash_comp(v);
+ANALYZE t_hash_comp;
+SELECT $$
+SELECT h1, h2 FROM t_hash_comp WHERE v = 50
+$$ AS query \gset
+:explain1run1
+                     QUERY PLAN                     
+----------------------------------------------------
+ Index Only Scan using t_hash_comp_v on t_hash_comp
+   Index Cond: (v = 50)
+(2 rows)
+
+ h1 | h2  
+----+-----
+  5 | 105
+(1 row)
+
+SELECT $$
+SELECT h1, h2, v FROM t_hash_comp WHERE v = 50
+$$ AS query \gset
+:explain1run1
+                     QUERY PLAN                     
+----------------------------------------------------
+ Index Only Scan using t_hash_comp_v on t_hash_comp
+   Index Cond: (v = 50)
+(2 rows)
+
+ h1 | h2  | v  
+----+-----+----
+  5 | 105 | 50
+(1 row)
+
+-- Test: mixed hash + range composite primary key
+CREATE TABLE t_mixed_pk(h int, r int, v text, PRIMARY KEY(h HASH, r ASC));
+INSERT INTO t_mixed_pk SELECT i / 5, i, 'v_' || i FROM generate_series(1, 10) i;
+CREATE INDEX t_mixed_pk_v ON t_mixed_pk(v ASC);
+ANALYZE t_mixed_pk;
+SELECT $$
+SELECT h, r FROM t_mixed_pk WHERE v = 'v_7'
+$$ AS query \gset
+:explain1run1
+                    QUERY PLAN                    
+--------------------------------------------------
+ Index Only Scan using t_mixed_pk_v on t_mixed_pk
+   Index Cond: (v = 'v_7'::text)
+(2 rows)
+
+ h | r 
+---+---
+ 1 | 7
+(1 row)
+
+-- Test: filter on decoded PK column (pushdown disabled)
+SELECT $$
+SELECT id FROM t_range WHERE v = 'val_5' AND id % 2 = 1
+$$ AS query \gset
+:explain1run1
+                 QUERY PLAN                 
+--------------------------------------------
+ Index Only Scan using t_range_v on t_range
+   Index Cond: (v = 'val_5'::text)
+   Filter: ((id % 2) = 1)
+(3 rows)
+
+ id 
+----
+  5
+(1 row)
+
+SELECT $$
+SELECT id, v FROM t_range WHERE v >= 'val_10' AND v < 'val_20' AND id % 3 = 1 ORDER BY v
+$$ AS query \gset
+:explain1run1
+                           QUERY PLAN                           
+----------------------------------------------------------------
+ Index Only Scan using t_range_v on t_range
+   Index Cond: ((v >= 'val_10'::text) AND (v < 'val_20'::text))
+   Filter: ((id % 3) = 1)
+(3 rows)
+
+ id |   v    
+----+--------
+ 10 | val_10
+ 13 | val_13
+ 16 | val_16
+ 19 | val_19
+(4 rows)
+
+-- Test: aggregates on decoded PK columns (pushdown disabled)
+SELECT $$
+SELECT COUNT(id) FROM t_range WHERE v >= 'val_10' AND v < 'val_20'
+$$ AS query \gset
+:explain1run1
+                              QUERY PLAN                              
+----------------------------------------------------------------------
+ Aggregate
+   ->  Index Only Scan using t_range_v on t_range
+         Index Cond: ((v >= 'val_10'::text) AND (v < 'val_20'::text))
+(3 rows)
+
+ count 
+-------
+    11
+(1 row)
+
+SELECT $$
+SELECT MIN(id), MAX(id) FROM t_range WHERE v >= 'val_10' AND v < 'val_20'
+$$ AS query \gset
+:explain1run1
+                              QUERY PLAN                              
+----------------------------------------------------------------------
+ Aggregate
+   ->  Index Only Scan using t_range_v on t_range
+         Index Cond: ((v >= 'val_10'::text) AND (v < 'val_20'::text))
+(3 rows)
+
+ min | max 
+-----+-----
+   2 |  19
+(1 row)
+
+-- Test: filters on physical columns still push down
+SELECT $$
+SELECT id FROM t_range WHERE v >= 'val_10' AND v < 'val_15'
+$$ AS query \gset
+:explain1run1
+                           QUERY PLAN                           
+----------------------------------------------------------------
+ Index Only Scan using t_range_v on t_range
+   Index Cond: ((v >= 'val_10'::text) AND (v < 'val_15'::text))
+(2 rows)
+
+ id 
+----
+ 10
+ 11
+ 12
+ 13
+ 14
+(5 rows)
+
+-- Test: aggregates on physical index columns still push down
+SELECT $$
+SELECT COUNT(*) FROM t_range WHERE v >= 'val_10' AND v < 'val_20'
+$$ AS query \gset
+:explain1run1
+                              QUERY PLAN                              
+----------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using t_range_v on t_range
+         Index Cond: ((v >= 'val_10'::text) AND (v < 'val_20'::text))
+         Partial Aggregate: true
+(4 rows)
+
+ count 
+-------
+    11
+(1 row)
+
+-- Test: NULL index column with primary key decoded
+CREATE TABLE t_null_idx(id int PRIMARY KEY, v int);
+INSERT INTO t_null_idx VALUES (1, NULL), (2, 10), (3, NULL), (4, 20);
+CREATE INDEX t_null_idx_v ON t_null_idx(v ASC);
+ANALYZE t_null_idx;
+:explain SELECT id FROM t_null_idx WHERE v IS NULL;
+                    QUERY PLAN                    
+--------------------------------------------------
+ Index Only Scan using t_null_idx_v on t_null_idx
+   Index Cond: (v IS NULL)
+(2 rows)
+
+SELECT id FROM t_null_idx WHERE v IS NULL ORDER BY id;
+ id 
+----
+  1
+  3
+(2 rows)
+
+SELECT $$
+SELECT id FROM t_null_idx WHERE v = 10
+$$ AS query \gset
+:explain1run1
+                    QUERY PLAN                    
+--------------------------------------------------
+ Index Only Scan using t_null_idx_v on t_null_idx
+   Index Cond: (v = 10)
+(2 rows)
+
+ id 
+----
+  2
+(1 row)
+
+-- Test: different primary key data types
+CREATE TABLE t_text_pk(id text PRIMARY KEY, v int);
+INSERT INTO t_text_pk SELECT 'key_' || i, i FROM generate_series(1, 5) i;
+CREATE INDEX t_text_pk_v ON t_text_pk(v);
+ANALYZE t_text_pk;
+SELECT $$
+SELECT id FROM t_text_pk WHERE v = 3
+$$ AS query \gset
+:explain1run1
+                   QUERY PLAN                   
+------------------------------------------------
+ Index Only Scan using t_text_pk_v on t_text_pk
+   Index Cond: (v = 3)
+(2 rows)
+
+  id   
+-------
+ key_3
+(1 row)
+
+CREATE TABLE t_uuid_pk(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), v int);
+INSERT INTO t_uuid_pk(v) SELECT i FROM generate_series(1, 5) i;
+CREATE INDEX t_uuid_pk_v ON t_uuid_pk(v);
+ANALYZE t_uuid_pk;
+:explain SELECT id FROM t_uuid_pk WHERE v = 3;
+                   QUERY PLAN                   
+------------------------------------------------
+ Index Only Scan using t_uuid_pk_v on t_uuid_pk
+   Index Cond: (v = 3)
+(2 rows)
+
+CREATE TABLE t_float_pk(id float4 PRIMARY KEY, v int);
+INSERT INTO t_float_pk SELECT i * 1.5, i FROM generate_series(1, 5) i;
+CREATE INDEX t_float_pk_v ON t_float_pk(v);
+ANALYZE t_float_pk;
+SELECT $$
+SELECT id FROM t_float_pk WHERE v = 3
+$$ AS query \gset
+:explain1run1
+                    QUERY PLAN                    
+--------------------------------------------------
+ Index Only Scan using t_float_pk_v on t_float_pk
+   Index Cond: (v = 3)
+(2 rows)
+
+ id  
+-----
+ 4.5
+(1 row)
+
+CREATE TABLE t_double_pk(id float8 PRIMARY KEY, v int);
+INSERT INTO t_double_pk SELECT i * 1.1, i FROM generate_series(1, 5) i;
+CREATE INDEX t_double_pk_v ON t_double_pk(v);
+ANALYZE t_double_pk;
+SELECT $$
+SELECT id FROM t_double_pk WHERE v = 3
+$$ AS query \gset
+:explain1run1
+                     QUERY PLAN                     
+----------------------------------------------------
+ Index Only Scan using t_double_pk_v on t_double_pk
+   Index Cond: (v = 3)
+(2 rows)
+
+ id  
+-----
+ 3.3
+(1 row)
+
+CREATE TABLE t_ts_pk(id timestamp PRIMARY KEY, v int);
+INSERT INTO t_ts_pk SELECT '2024-01-01'::timestamp + (i || ' hours')::interval, i
+    FROM generate_series(1, 5) i;
+CREATE INDEX t_ts_pk_v ON t_ts_pk(v);
+ANALYZE t_ts_pk;
+SELECT $$
+SELECT id FROM t_ts_pk WHERE v = 3
+$$ AS query \gset
+:explain1run1
+                 QUERY PLAN                 
+--------------------------------------------
+ Index Only Scan using t_ts_pk_v on t_ts_pk
+   Index Cond: (v = 3)
+(2 rows)
+
+            id            
+--------------------------
+ Mon Jan 01 03:00:00 2024
+(1 row)
+
+CREATE TABLE t_bool_pk(id boolean, v int, extra int, PRIMARY KEY(id, extra));
+INSERT INTO t_bool_pk VALUES (true, 1, 1), (false, 2, 2), (true, 3, 3), (false, 4, 4);
+CREATE INDEX t_bool_pk_v ON t_bool_pk(v);
+ANALYZE t_bool_pk;
+SELECT $$
+SELECT id, extra FROM t_bool_pk WHERE v = 3
+$$ AS query \gset
+:explain1run1
+                   QUERY PLAN                   
+------------------------------------------------
+ Index Only Scan using t_bool_pk_v on t_bool_pk
+   Index Cond: (v = 3)
+(2 rows)
+
+ id | extra 
+----+-------
+ t  |     3
+(1 row)
+
+-- Test: Join where the join key is a decoded decoded PK column.
+CREATE TABLE t_join_parent(tag_id int, label text, PRIMARY KEY(tag_id ASC));
+INSERT INTO t_join_parent SELECT i, 'label_' || i FROM generate_series(1, 500) i;
+ANALYZE t_join_parent;
+CREATE TABLE t_join_child(item_id int, tag int, name text, PRIMARY KEY(item_id ASC));
+INSERT INTO t_join_child SELECT i, i % 50, 'name_' || i FROM generate_series(1, 1000) i;
+CREATE INDEX t_join_child_tag ON t_join_child(tag ASC);
+ANALYZE t_join_child;
+SELECT $$
+SELECT i.item_id, t.label FROM t_join_child i JOIN t_join_parent t ON i.item_id = t.tag_id WHERE i.tag = 1 ORDER BY i.item_id
+$$ AS query \gset
+:explain1run1
+                                   QUERY PLAN                                    
+---------------------------------------------------------------------------------
+ Sort
+   Sort Key: i.item_id
+   ->  YB Batched Nested Loop Join
+         Join Filter: (i.item_id = t.tag_id)
+         ->  Index Only Scan using t_join_child_tag on t_join_child i
+               Index Cond: (tag = 1)
+         ->  Index Scan using t_join_parent_pkey on t_join_parent t
+               Index Cond: (tag_id = ANY (ARRAY[i.item_id, $1, $2, ..., $1023]))
+(8 rows)
+
+ item_id |   label   
+---------+-----------
+       1 | label_1
+      51 | label_51
+     101 | label_101
+     151 | label_151
+     201 | label_201
+     251 | label_251
+     301 | label_301
+     351 | label_351
+     401 | label_401
+     451 | label_451
+(10 rows)
+
+-- Test: join with filter on decoded PK column (pushdown disabled)
+SELECT $$
+SELECT i.item_id, t.label FROM t_join_child i JOIN t_join_parent t ON i.item_id = t.tag_id WHERE i.tag = 1 AND i.item_id % 500 = 1 ORDER BY i.item_id
+$$ AS query \gset
+:explain1run1
+                                   QUERY PLAN                                    
+---------------------------------------------------------------------------------
+ Sort
+   Sort Key: i.item_id
+   ->  YB Batched Nested Loop Join
+         Join Filter: (i.item_id = t.tag_id)
+         ->  Index Only Scan using t_join_child_tag on t_join_child i
+               Index Cond: (tag = 1)
+               Filter: ((item_id % 500) = 1)
+         ->  Index Scan using t_join_parent_pkey on t_join_parent t
+               Index Cond: (tag_id = ANY (ARRAY[i.item_id, $1, $2, ..., $1023]))
+(9 rows)
+
+ item_id |  label  
+---------+---------
+       1 | label_1
+(1 row)
+
+-- Test: optimizer should prefer INCLUDE index over decoded pk index due to pushdown limitations
+CREATE TABLE t_include_cmp(id int, v int, pad text, PRIMARY KEY(id ASC));
+INSERT INTO t_include_cmp SELECT i, i % 100, repeat('x', 20)
+    FROM generate_series(1, 10000) i;
+CREATE INDEX idx_decoded_pk ON t_include_cmp(v ASC);
+CREATE INDEX idx_include_pk ON t_include_cmp(v ASC) INCLUDE (id);
+ANALYZE t_include_cmp;
+SELECT $$
+SELECT id FROM t_include_cmp WHERE v = 50 AND id > 5000
+$$ AS query \gset
+:explain1run1
+                      QUERY PLAN                       
+-------------------------------------------------------
+ Index Only Scan using idx_include_pk on t_include_cmp
+   Index Cond: (v = 50)
+   Storage Filter: (id > 5000)
+(3 rows)
+
+  id  
+------
+ 5050
+ 5150
+ 5250
+ 5350
+ 5450
+ 5550
+ 5650
+ 5750
+ 5850
+ 5950
+ 6050
+ 6150
+ 6250
+ 6350
+ 6450
+ 6550
+ 6650
+ 6750
+ 6850
+ 6950
+ 7050
+ 7150
+ 7250
+ 7350
+ 7450
+ 7550
+ 7650
+ 7750
+ 7850
+ 7950
+ 8050
+ 8150
+ 8250
+ 8350
+ 8450
+ 8550
+ 8650
+ 8750
+ 8850
+ 8950
+ 9050
+ 9150
+ 9250
+ 9350
+ 9450
+ 9550
+ 9650
+ 9750
+ 9850
+ 9950
+(50 rows)
+
+SELECT $$
+SELECT COUNT(id) FROM t_include_cmp WHERE v = 50
+$$ AS query \gset
+:explain1run1
+                         QUERY PLAN                          
+-------------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using idx_include_pk on t_include_cmp
+         Index Cond: (v = 50)
+         Partial Aggregate: true
+(4 rows)
+
+ count 
+-------
+   100
+(1 row)
+
+SELECT $$
+SELECT COUNT(id) FROM t_include_cmp WHERE v >= 20 AND v < 80
+$$ AS query \gset
+:explain1run1
+                         QUERY PLAN                          
+-------------------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using idx_include_pk on t_include_cmp
+         Index Cond: ((v >= 20) AND (v < 80))
+         Partial Aggregate: true
+(4 rows)
+
+ count 
+-------
+  6000
+(1 row)
+
+-- Test: partial INCLUDE with both decoded and included pk columns.
+CREATE TABLE t_partial_include(h1 int, h2 int, v int, extra text, PRIMARY KEY(h1 ASC, h2 ASC));
+INSERT INTO t_partial_include
+    SELECT (i / 100) + 1, i, i % 50, 'pad_' || i FROM generate_series(1, 1000) i;
+CREATE INDEX t_partial_include_v ON t_partial_include(v ASC) INCLUDE (h1);
+ANALYZE t_partial_include;
+SELECT $$
+SELECT h1, h2 FROM t_partial_include WHERE v = 25 AND h1 > 5 AND h2 > 800 ORDER BY h2
+$$ AS query \gset
+:explain1run1
+                              QUERY PLAN                              
+----------------------------------------------------------------------
+ Sort
+   Sort Key: h2
+   ->  Index Only Scan using t_partial_include_v on t_partial_include
+         Index Cond: (v = 25)
+         Storage Filter: (h1 > 5)
+         Filter: (h2 > 800)
+(6 rows)
+
+ h1 | h2  
+----+-----
+  9 | 825
+  9 | 875
+ 10 | 925
+ 10 | 975
+(4 rows)
+
+SELECT $$
+SELECT COUNT(h1), COUNT(h2) FROM t_partial_include WHERE v >= 20 AND v < 30
+$$ AS query \gset
+:explain1run1
+                              QUERY PLAN                              
+----------------------------------------------------------------------
+ Aggregate
+   ->  Index Only Scan using t_partial_include_v on t_partial_include
+         Index Cond: ((v >= 20) AND (v < 30))
+(3 rows)
+
+ count | count 
+-------+-------
+   200 |   200
+(1 row)
+
+-- Test: join on table with included pk column
+SELECT $$
+SELECT c.h1, c.h2, p.label FROM t_partial_include c JOIN t_join_parent p ON c.h1 = p.tag_id WHERE c.v = 25 ORDER BY c.h2
+$$ AS query \gset
+:explain1run1
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Sort
+   Sort Key: c.h2
+   ->  YB Batched Nested Loop Join
+         Join Filter: (c.h1 = p.tag_id)
+         ->  Index Only Scan using t_partial_include_v on t_partial_include c
+               Index Cond: (v = 25)
+         ->  Index Scan using t_join_parent_pkey on t_join_parent p
+               Index Cond: (tag_id = ANY (ARRAY[c.h1, $1, $2, ..., $1023]))
+(8 rows)
+
+ h1 | h2  |  label   
+----+-----+----------
+  1 |  25 | label_1
+  1 |  75 | label_1
+  2 | 125 | label_2
+  2 | 175 | label_2
+  3 | 225 | label_3
+  3 | 275 | label_3
+  4 | 325 | label_4
+  4 | 375 | label_4
+  5 | 425 | label_5
+  5 | 475 | label_5
+  6 | 525 | label_6
+  6 | 575 | label_6
+  7 | 625 | label_7
+  7 | 675 | label_7
+  8 | 725 | label_8
+  8 | 775 | label_8
+  9 | 825 | label_9
+  9 | 875 | label_9
+ 10 | 925 | label_10
+ 10 | 975 | label_10
+(20 rows)
+
+-- Test: expression index
+CREATE TABLE t_expr(id int PRIMARY KEY, name text);
+INSERT INTO t_expr SELECT i, 'Name_' || i FROM generate_series(1, 10) i;
+CREATE INDEX t_expr_lower ON t_expr(lower(name));
+ANALYZE t_expr;
+SELECT $$
+SELECT id FROM t_expr WHERE lower(name) = 'name_5'
+$$ AS query \gset
+:explain1run1
+                    QUERY PLAN                    
+--------------------------------------------------
+ Seq Scan on t_expr
+   Storage Filter: (lower(name) = 'name_5'::text)
+(2 rows)
+
+ id 
+----
+  5
+(1 row)
+
+SELECT $$
+SELECT id, lower(name) FROM t_expr WHERE lower(name) = 'name_3'
+$$ AS query \gset
+:explain1run1
+                    QUERY PLAN                    
+--------------------------------------------------
+ Seq Scan on t_expr
+   Storage Filter: (lower(name) = 'name_3'::text)
+(2 rows)
+
+ id | lower  
+----+--------
+  3 | name_3
+(1 row)
+
+-- Test: IN queries with decoded PK
+SELECT $$
+SELECT id FROM t_range WHERE v IN ('val_3', 'val_7', 'val_15') ORDER BY id
+$$ AS query \gset
+:explain1run1
+                          QUERY PLAN                          
+--------------------------------------------------------------
+ Index Scan using t_range_pkey on t_range
+   Storage Filter: (v = ANY ('{val_3,val_7,val_15}'::text[]))
+(2 rows)
+
+ id 
+----
+  3
+  7
+ 15
+(3 rows)
+
+SELECT $$
+SELECT id FROM t_multi_col WHERE a IN (1, 3) AND b = 2 ORDER BY id
+$$ AS query \gset
+:explain1run1
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ Sort
+   Sort Key: id
+   ->  Index Only Scan using t_multi_col_ab on t_multi_col
+         Index Cond: ((a = ANY ('{1,3}'::integer[])) AND (b = 2))
+(4 rows)
+
+ id 
+----
+(0 rows)
+
+-- Test: LIKE queries with decoded PK
+SELECT $$
+SELECT id FROM t_range WHERE v LIKE 'val_1%' ORDER BY v
+$$ AS query \gset
+:explain1run1
+                        QUERY PLAN                        
+----------------------------------------------------------
+ Index Only Scan using t_range_v on t_range
+   Index Cond: ((v >= 'val'::text) AND (v < 'vam'::text))
+   Storage Filter: (v ~~ 'val_1%'::text)
+(3 rows)
+
+ id 
+----
+  1
+ 10
+ 11
+ 12
+ 13
+ 14
+ 15
+ 16
+ 17
+ 18
+ 19
+(11 rows)
+
+-- Test: partial index with composite columns
+CREATE TABLE t_partial_comp(id int PRIMARY KEY, cat text, sub int, val int);
+INSERT INTO t_partial_comp
+    SELECT i, CASE WHEN i % 3 = 0 THEN 'A' WHEN i % 3 = 1 THEN 'B' ELSE 'C' END,
+           i % 5, i
+    FROM generate_series(1, 30) i;
+CREATE INDEX t_partial_comp_idx ON t_partial_comp(sub, val ASC) WHERE cat = 'A';
+ANALYZE t_partial_comp;
+SELECT $$
+SELECT id FROM t_partial_comp WHERE cat = 'A' AND sub = 2 AND val > 10 ORDER BY id
+$$ AS query \gset
+:explain1run1
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ Sort
+   Sort Key: id
+   ->  Index Only Scan using t_partial_comp_idx on t_partial_comp
+         Index Cond: ((sub = 2) AND (val > 10))
+(4 rows)
+
+ id 
+----
+ 12
+ 27
+(2 rows)
+
+:explain SELECT id, val FROM t_partial_comp WHERE cat = 'A' AND sub = 0;
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Index Only Scan using t_partial_comp_idx on t_partial_comp
+   Index Cond: (sub = 0)
+(2 rows)
+
+-- Test: index on jsonb key expression
+CREATE TABLE t_jsonb_expr(id int PRIMARY KEY, data jsonb);
+INSERT INTO t_jsonb_expr SELECT i, jsonb_build_object('key', i, 'val', 'x')
+    FROM generate_series(1, 500) i;
+CREATE INDEX t_jsonb_expr_key ON t_jsonb_expr(((data->>'key')::int));
+ANALYZE t_jsonb_expr;
+SELECT $$
+SELECT id FROM t_jsonb_expr WHERE (data->>'key')::int = 5
+$$ AS query \gset
+:explain1run1
+                      QUERY PLAN                       
+-------------------------------------------------------
+ Index Scan using t_jsonb_expr_key on t_jsonb_expr
+   Index Cond: (((data ->> 'key'::text))::integer = 5)
+(2 rows)
+
+ id 
+----
+  5
+(1 row)
+
+-- Test: temporary table should not use decoded PK
+CREATE TEMP TABLE t_temp(id int PRIMARY KEY, v int);
+INSERT INTO t_temp SELECT i, i * 10 FROM generate_series(1, 10) i;
+CREATE INDEX t_temp_v ON t_temp(v);
+ANALYZE t_temp;
+SELECT $$
+SELECT id FROM t_temp WHERE v = 50
+$$ AS query \gset
+:explain1run1
+     QUERY PLAN     
+--------------------
+ Seq Scan on t_temp
+   Filter: (v = 50)
+(2 rows)
+
+ id 
+----
+  5
+(1 row)
+
+DROP TABLE t_temp;
+-- Test: GIN index should not use decoded PK
+CREATE TABLE t_gin(id int PRIMARY KEY, tags jsonb);
+INSERT INTO t_gin SELECT i, ('["tag_' || i || '"]')::jsonb FROM generate_series(1, 10) i;
+CREATE INDEX t_gin_tags ON t_gin USING gin(tags);
+ANALYZE t_gin;
+:explain SELECT id FROM t_gin WHERE tags @> '"tag_5"';
+                QUERY PLAN                
+------------------------------------------
+ Index Scan using t_gin_tags on t_gin
+   Index Cond: (tags @> '"tag_5"'::jsonb)
+(2 rows)
+
+-- Test: vector index should not use decoded PK
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE TABLE t_vector(id int PRIMARY KEY, emb vector(3));
+INSERT INTO t_vector SELECT i, ('[' || i || ',0,0]')::vector FROM generate_series(1, 10) i;
+CREATE INDEX t_vector_emb ON t_vector USING ybhnsw (emb vector_l2_ops);
+:explain SELECT id FROM t_vector ORDER BY emb <-> '[5,0,0]' LIMIT 3;
+                   QUERY PLAN                    
+-------------------------------------------------
+ Limit
+   ->  Index Scan using t_vector_emb on t_vector
+         Order By: (emb <-> '[5,0,0]'::vector)
+(3 rows)
+
+-- Test: yb_enable_primary_key_decode_from_index = off disables decoded PK.
+SET yb_enable_primary_key_decode_from_index = off;
+SELECT $$
+SELECT id FROM t_range WHERE v = 'val_5'
+$$ AS query \gset
+:explain1run1
+              QUERY PLAN               
+---------------------------------------
+ Seq Scan on t_range
+   Storage Filter: (v = 'val_5'::text)
+(2 rows)
+
+ id 
+----
+  5
+(1 row)
+
+SELECT $$
+SELECT a, b FROM t_composite WHERE v = 'v_15'
+$$ AS query \gset
+:explain1run1
+              QUERY PLAN              
+--------------------------------------
+ Seq Scan on t_composite
+   Storage Filter: (v = 'v_15'::text)
+(2 rows)
+
+ a | b 
+---+---
+ 1 | 5
+(1 row)
+
+SELECT $$
+SELECT COUNT(id) FROM t_range WHERE v >= 'val_10' AND v < 'val_20'
+$$ AS query \gset
+:explain1run1
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on t_range
+         Storage Filter: ((v >= 'val_10'::text) AND (v < 'val_20'::text))
+         Partial Aggregate: true
+(4 rows)
+
+ count 
+-------
+    11
+(1 row)
+
+SELECT $$
+SELECT id FROM t_range WHERE v = 'val_5' AND id % 2 = 1
+$$ AS query \gset
+:explain1run1
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Seq Scan on t_range
+   Storage Filter: ((v = 'val_5'::text) AND ((id % 2) = 1))
+(2 rows)
+
+ id 
+----
+  5
+(1 row)
+
+SELECT $$
+SELECT i.item_id, t.label FROM t_join_child i JOIN t_join_parent t ON i.item_id = t.tag_id WHERE i.tag = 1 ORDER BY i.item_id
+$$ AS query \gset
+:explain1run1
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (i.item_id = t.tag_id)
+   Sort Keys: i.item_id
+   ->  Index Scan using t_join_child_pkey on t_join_child i
+         Storage Filter: (tag = 1)
+   ->  Index Scan using t_join_parent_pkey on t_join_parent t
+         Index Cond: (tag_id = ANY (ARRAY[i.item_id, $1, $2, ..., $1023]))
+(7 rows)
+
+ item_id |   label   
+---------+-----------
+       1 | label_1
+      51 | label_51
+     101 | label_101
+     151 | label_151
+     201 | label_201
+     251 | label_251
+     301 | label_301
+     351 | label_351
+     401 | label_401
+     451 | label_451
+(10 rows)
+
+-- Cleanup non-colocated tables before switching database.
+DROP TABLE t_expr CASCADE;
+DROP TABLE t_partial_comp CASCADE;
+DROP TABLE t_include_cmp CASCADE;
+DROP TABLE t_partial_include CASCADE;
+DROP TABLE t_hash CASCADE;
+DROP TABLE t_range CASCADE;
+DROP TABLE t_composite CASCADE;
+DROP TABLE t_pk_in_idx CASCADE;
+DROP TABLE t_uniq CASCADE;
+DROP TABLE t_partial CASCADE;
+DROP TABLE t_multi_col CASCADE;
+DROP TABLE t_hash_comp CASCADE;
+DROP TABLE t_mixed_pk CASCADE;
+DROP TABLE t_null_idx CASCADE;
+DROP TABLE t_text_pk CASCADE;
+DROP TABLE t_uuid_pk CASCADE;
+DROP TABLE t_float_pk CASCADE;
+DROP TABLE t_double_pk CASCADE;
+DROP TABLE t_ts_pk CASCADE;
+DROP TABLE t_bool_pk CASCADE;
+DROP TABLE t_gin CASCADE;
+DROP TABLE t_vector CASCADE;
+DROP EXTENSION vector;
+DROP TABLE t_jsonb_expr CASCADE;
+DROP TABLE t_join_parent CASCADE;
+DROP TABLE t_join_child CASCADE;
+-- Test: colocated tables with decoded PK
+CREATE DATABASE colo_ios_test WITH COLOCATION = true;
+\c colo_ios_test
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set filename :abs_srcdir '/yb_commands/explainrun.sql'
+\i :filename
+-- A helper script to explain and run a query.  Use in regress tests by
+-- defining :explain, :query, and optionally :hint#.
+\set explain1 ':explain :hint1 :query;'
+\set explain2 ':explain1 :explain :hint2 :query;'
+\set explain3 ':explain2 :explain :hint3 :query;'
+\set explain4 ':explain3 :explain :hint4 :query;'
+\set explain5 ':explain4 :explain :hint5 :query;'
+\set explain1run1 ':explain1; :hint1 :query;'
+\set explain2run2 ':explain2; :hint1 :query; :hint2 :query;'
+\set explain3run3 ':explain3; :hint1 :query; :hint2 :query; :hint3 :query;'
+\set explain4run4 ':explain4; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query;'
+\set explain5run5 ':explain5; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query; :hint5 :query;'
+-- Default to no hints.
+\set hint1 ''
+\set hint2 ''
+\set hint3 ''
+\set hint4 ''
+\set hint5 ''
+\set explain 'EXPLAIN (COSTS OFF)'
+SET yb_enable_cbo = on;
+SET yb_enable_primary_key_decode_from_index = on;
+CREATE TABLE t_colocated(id int PRIMARY KEY, v int, extra text);
+INSERT INTO t_colocated SELECT i, i % 20, 'pad' FROM generate_series(1, 100) i;
+CREATE INDEX t_colocated_v ON t_colocated(v ASC);
+ANALYZE t_colocated;
+-- Test: Index Only Scan with decoded PK on colocated table.
+SELECT $$
+SELECT id FROM t_colocated WHERE v = 5
+$$ AS query \gset
+:explain1run1
+                     QUERY PLAN                     
+----------------------------------------------------
+ Index Only Scan using t_colocated_v on t_colocated
+   Index Cond: (v = 5)
+(2 rows)
+
+ id 
+----
+  5
+ 25
+ 45
+ 65
+ 85
+(5 rows)
+
+-- Test: range scan on colocated table.
+SELECT $$
+SELECT id, v FROM t_colocated WHERE v >= 10 AND v < 15 ORDER BY v
+$$ AS query \gset
+:explain1run1
+                     QUERY PLAN                     
+----------------------------------------------------
+ Index Only Scan using t_colocated_v on t_colocated
+   Index Cond: ((v >= 10) AND (v < 15))
+(2 rows)
+
+ id | v  
+----+----
+ 10 | 10
+ 30 | 10
+ 50 | 10
+ 70 | 10
+ 90 | 10
+ 11 | 11
+ 31 | 11
+ 51 | 11
+ 71 | 11
+ 91 | 11
+ 12 | 12
+ 32 | 12
+ 52 | 12
+ 72 | 12
+ 92 | 12
+ 13 | 13
+ 33 | 13
+ 53 | 13
+ 73 | 13
+ 93 | 13
+ 14 | 14
+ 34 | 14
+ 54 | 14
+ 74 | 14
+ 94 | 14
+(25 rows)
+
+-- Test: filter on decoded PK should not push down on colocated table.
+:explain SELECT id FROM t_colocated WHERE v = 5 AND id > 50;
+                    QUERY PLAN                    
+--------------------------------------------------
+ Index Scan using t_colocated_pkey on t_colocated
+   Index Cond: (id > 50)
+   Storage Filter: (v = 5)
+(3 rows)
+
+-- Test: fallback to another scan type when non-index column is needed.
+:explain SELECT id, extra FROM t_colocated WHERE v = 5;
+        QUERY PLAN         
+---------------------------
+ Seq Scan on t_colocated
+   Storage Filter: (v = 5)
+(2 rows)
+
+DROP TABLE t_colocated CASCADE;

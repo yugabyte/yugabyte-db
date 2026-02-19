@@ -1560,6 +1560,19 @@ YbcStatus YBCPgBuildYBTupleId(const YbcPgYBTupleIdDescriptor *source, uint64_t *
   });
 }
 
+YbcStatus YBCPgDecodePKColumnsFromBasectid(
+    YbcPgOid database_oid,
+    YbcPgOid table_relfilenode_oid,
+    const char *basectid_data,
+    int64_t basectid_len,
+    int num_attrs,
+    YbcPgAttrValueDescriptor *attrs) {
+  return ToYBCStatus(pgapi->DecodePKColumnsFromBasectid(
+      PgObjectId(database_oid, table_relfilenode_oid),
+      Slice(basectid_data, basectid_len),
+      num_attrs, attrs));
+}
+
 YbcStatus YBCPgNewSample(
     const YbcPgOid database_oid, const YbcPgOid table_relfilenode_oid,
     YbcPgTableLocalityInfo locality_info,

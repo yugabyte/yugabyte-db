@@ -638,6 +638,7 @@ _outIndexOnlyScan(StringInfo str, const IndexOnlyScan *node)
 	WRITE_NODE_FIELD(yb_pushdown.quals);
 	WRITE_NODE_FIELD(yb_pushdown.colrefs);
 	WRITE_INT_FIELD(yb_distinct_prefixlen);
+	WRITE_INT_FIELD(yb_num_decoded_pk_cols);
 }
 
 static void
