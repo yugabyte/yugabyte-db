@@ -38,6 +38,8 @@ Ensure the universes have the following characteristics:
 
     The default value is 3 days.
 
+- They have network connectivity; see [Networking for xCluster](../../../prepare/networking/#networking-for-xcluster). If the source and target universe Master and TServer nodes use DNS addresses, those addresses must be resolvable on all nodes.
+
 - Neither universe is already being used for xCluster replication.
 
 Prepare your database and tables on the DR primary. The DR primary can be empty or have data. If the DR primary has a lot of data, the DR setup will take longer because the data must be copied in full to the DR replica before on-going asynchronous replication starts.
