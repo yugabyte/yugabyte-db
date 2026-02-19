@@ -42,12 +42,6 @@ Ensure the universes have the following characteristics:
 
 - Neither universe is already being used for xCluster replication.
 
-Prepare your database and tables on the DR primary. The DR primary can be empty or have data. If the DR primary has a lot of data, the DR setup will take longer because the data must be copied in full to the DR replica before on-going asynchronous replication starts.
-
-On the DR replica, create a database with the same name as that on the DR primary. During initial DR setup, you don't need to create objects on the DR replica. DR performs a full copy of the data to be replicated on the DR primary, and automatically creates tables and objects, and restores data on the DR replica from the DR primary.
-
-After DR is configured, the DR replica will only be available for reads.
-
 ### Best practices
 
 - Monitor CPU and keep its  use below 65%.
@@ -62,6 +56,12 @@ After DR is configured, the DR replica will only be available for reads.
 - Add new tables and databases to the DR configuration soon after creating them, and before performing any writes to avoid the overhead of a full copy.
 
 ## Set up disaster recovery
+
+Prepare your database and tables on the DR primary. The DR primary can be empty or have data. If the DR primary has a lot of data, the DR setup will take longer because the data must be copied in full to the DR replica before on-going asynchronous replication starts.
+
+On the DR replica, create a database with the same name as that on the DR primary. During initial DR setup, you don't need to create objects on the DR replica. DR performs a full copy of the data to be replicated on the DR primary, and automatically creates tables and objects, and restores data on the DR replica from the DR primary.
+
+After DR is configured, the DR replica will only be available for reads.
 
 To set up disaster recovery for a universe, do the following:
 
