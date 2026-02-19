@@ -1217,6 +1217,19 @@ public class Util {
     return Provider.getOrBadRequest(getSingleProviderUUID(userIntent));
   }
 
+  public static Set<NodeDetails> filterByProviderType(
+      Collection<NodeDetails> nodes, Collection<Cluster> clusters, CloudType expectedType) {
+    Map<UUID, Cluster> clusterMap =
+        clusters.stream().collect(Collectors.toMap(c -> c.uuid, c -> c));
+    return nodes.stream()
+        .filter(
+            n -> {
+              Cluster cluster = clusterMap.get(n.placementUuid);
+              return cluster.getProviderCloudType(n) == expectedType;
+            })
+        .collect(Collectors.toSet());
+  }
+
   public static Function<NodeDetails, Provider> getProviderGetter(Universe universe) {
     return getProviderGetter(universe.getUniverseDetails());
   }
@@ -1228,6 +1241,13 @@ public class Util {
     return (n) ->
         providerMap.computeIfAbsent(
             n.azUuid, uuid -> getProviderForNode(n, params.getClusterByUuid(n.placementUuid)));
+  }
+
+  public static Function<NodeDetails, Provider> getProviderGetter(
+      UniverseDefinitionTaskParams.Cluster cluster) {
+    // Caching by AZ.
+    Map<UUID, Provider> providerMap = new HashMap<>();
+    return (n) -> providerMap.computeIfAbsent(n.azUuid, uuid -> getProviderForNode(n, cluster));
   }
 
   public static Set<UUID> getAllProviderUUIDs(Universe universe) {

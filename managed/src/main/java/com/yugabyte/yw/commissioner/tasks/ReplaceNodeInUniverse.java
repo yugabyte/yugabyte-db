@@ -116,7 +116,7 @@ public class ReplaceNodeInUniverse extends EditUniverseTaskBase {
           taskParamsCluster,
           getNodesInCluster(taskParamsCluster.uuid, addedMasters),
           getNodesInCluster(taskParamsCluster.uuid, removedMasters),
-          true /* force */,
+          node -> true /* force */,
           true /* moveMastersFirst */);
 
       createUpdateUniverseIntentTask(taskParamsCluster);
