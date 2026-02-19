@@ -153,11 +153,11 @@ To learn about using parallel queries, see [Parallel queries](../../../additiona
 
 ## Enable EPCM
 
-In v2025.2 and later, most of the features in EPCM are _enabled by default_ in new universes when you deploy using [yugabyted](../yugabyted/), YugabyteDB Anywhere, or YugabyteDB Aeon.
+In v2025.2 and later, most of the features in EPCM are _enabled by default_ in new universes when you deploy using [yugabyted](../yugabyted/), YugabyteDB Anywhere, or YugabyteDB Aeon. If you are deploying v2025.2 or later:
 
-In YugabyteDB and YugabyteDB Anywhere, use individual flags to set features instead of EPCM.
+- In YugabyteDB and YugabyteDB Anywhere, use individual flags to set features instead of EPCM.
 
-In YugabyteDB Aeon, if you want [Ascending indexing by default](#default-ascending-indexing), enable EPCM.
+- In YugabyteDB Aeon, if you want [Ascending indexing by default](#default-ascending-indexing), enable EPCM.
 
 You can enable EPCM as follows.
 
