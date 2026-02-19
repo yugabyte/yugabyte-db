@@ -8625,7 +8625,7 @@ YbNewUpdateForDb(Oid db_oid, Relation rel, YbcPgTransactionSetting transaction_s
 {
 	YbcPgStatement result = NULL;
 	HandleYBStatus(YBCPgNewUpdate(db_oid, YbGetRelfileNodeId(rel),
-								  YbBuildTableLocalityInfo(rel), &result, transaction_setting));
+								  YbBuildTableLocalityInfo(rel), transaction_setting, &result));
 	return result;
 }
 
@@ -8640,7 +8640,7 @@ YbNewDelete(Relation rel, YbcPgTransactionSetting transaction_setting)
 {
 	YbcPgStatement result = NULL;
 	HandleYBStatus(YBCPgNewDelete(YBCGetDatabaseOid(rel), YbGetRelfileNodeId(rel),
-								  YbBuildTableLocalityInfo(rel), &result, transaction_setting));
+								  YbBuildTableLocalityInfo(rel), transaction_setting, &result));
 	return result;
 }
 
@@ -8649,7 +8649,7 @@ YbNewInsertForDb(Oid db_oid, Relation rel, YbcPgTransactionSetting transaction_s
 {
 	YbcPgStatement result = NULL;
 	HandleYBStatus(YBCPgNewInsert(db_oid, YbGetRelfileNodeId(rel),
-								  YbBuildTableLocalityInfo(rel), &result, transaction_setting));
+								  YbBuildTableLocalityInfo(rel), transaction_setting, &result));
 	return result;
 }
 
@@ -8674,7 +8674,7 @@ YbNewTruncateColocatedImpl(Relation rel, YbcPgTransactionSetting transaction_set
 						   YbcPgStatement *result)
 {
 	return YBCPgNewTruncateColocated(YBCGetDatabaseOid(rel), YbGetRelfileNodeId(rel),
-									 YbBuildTableLocalityInfo(rel), result, transaction_setting);
+									 YbBuildTableLocalityInfo(rel), transaction_setting, result);
 }
 
 YbcPgStatement

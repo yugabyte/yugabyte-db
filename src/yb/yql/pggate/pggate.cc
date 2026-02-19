@@ -1534,8 +1534,9 @@ Result<PgStatement*> PgApiImpl::NewInsertBlock(
 }
 
 Status PgApiImpl::NewInsert(
-    const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info, PgStatement **handle,
-    YbcPgTransactionSetting transaction_setting) {
+    const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info,
+    YbcPgTransactionSetting transaction_setting,
+    PgStatement **handle) {
   *handle = nullptr;
   return AddToCurrentPgMemctx(
     VERIFY_RESULT(PgInsert::Make(
@@ -1564,8 +1565,9 @@ Status PgApiImpl::InsertStmtSetIsBackfill(PgStatement* handle, bool is_backfill)
 // Update ------------------------------------------------------------------------------------------
 
 Status PgApiImpl::NewUpdate(
-    const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info, PgStatement** handle,
-    YbcPgTransactionSetting transaction_setting) {
+    const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info,
+    YbcPgTransactionSetting transaction_setting,
+    PgStatement** handle) {
   *handle = nullptr;
   return AddToCurrentPgMemctx(
       VERIFY_RESULT(PgUpdate::Make(pg_session_, table_id, locality_info, transaction_setting)),
@@ -1579,8 +1581,9 @@ Status PgApiImpl::ExecUpdate(PgStatement* handle) {
 // Delete ------------------------------------------------------------------------------------------
 
 Status PgApiImpl::NewDelete(
-    const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info, PgStatement** handle,
-    YbcPgTransactionSetting transaction_setting) {
+    const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info,
+    YbcPgTransactionSetting transaction_setting,
+    PgStatement** handle) {
   *handle = nullptr;
   return AddToCurrentPgMemctx(
       VERIFY_RESULT(PgDelete::Make(pg_session_, table_id, locality_info, transaction_setting)),

@@ -67,8 +67,8 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
   // INSERT ----------------------------------------------------------------------------------------
   // Allocate new insert.
   CHECK_YBC_STATUS(YBCPgNewInsert(
-      kDefaultDatabaseOid, tab_oid, kDefaultTableLocality, &pg_stmt,
-      YbcPgTransactionSetting::YB_TRANSACTIONAL));
+      kDefaultDatabaseOid, tab_oid, kDefaultTableLocality,
+      YbcPgTransactionSetting::YB_TRANSACTIONAL, &pg_stmt));
 
   int h = 0, r = 0;
   // Allocate constant expressions.

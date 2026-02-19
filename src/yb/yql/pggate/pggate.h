@@ -556,9 +556,8 @@ class PgApiImpl {
 
   Status NewInsert(const PgObjectId& table_id,
                    const YbcPgTableLocalityInfo& locality_info,
-                   PgStatement **handle,
-                   YbcPgTransactionSetting transaction_setting =
-                       YbcPgTransactionSetting::YB_TRANSACTIONAL);
+                   YbcPgTransactionSetting transaction_setting,
+                   PgStatement **handle);
 
   Status ExecInsert(PgStatement *handle);
 
@@ -572,9 +571,8 @@ class PgApiImpl {
   // Update.
   Status NewUpdate(const PgObjectId& table_id,
                    const YbcPgTableLocalityInfo& locality_info,
-                   PgStatement **handle,
-                   YbcPgTransactionSetting transaction_setting =
-                       YbcPgTransactionSetting::YB_TRANSACTIONAL);
+                   YbcPgTransactionSetting transaction_setting,
+                   PgStatement **handle);
 
   Status ExecUpdate(PgStatement *handle);
 
@@ -582,9 +580,8 @@ class PgApiImpl {
   // Delete.
   Status NewDelete(const PgObjectId& table_id,
                    const YbcPgTableLocalityInfo& locality_info,
-                   PgStatement **handle,
-                   YbcPgTransactionSetting transaction_setting =
-                       YbcPgTransactionSetting::YB_TRANSACTIONAL);
+                   YbcPgTransactionSetting transaction_setting,
+                   PgStatement **handle);
 
   Status ExecDelete(PgStatement *handle);
 

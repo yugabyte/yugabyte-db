@@ -652,8 +652,8 @@ YbcStatus YBCPgNewInsertBlock(
 YbcStatus YBCPgNewInsert(YbcPgOid database_oid,
                          YbcPgOid table_relfilenode_oid,
                          YbcPgTableLocalityInfo locality_info,
-                         YbcPgStatement *handle,
-                         YbcPgTransactionSetting transaction_setting);
+                         YbcPgTransactionSetting transaction_setting,
+                         YbcPgStatement *handle);
 
 YbcStatus YBCPgExecInsert(YbcPgStatement handle);
 
@@ -667,8 +667,8 @@ YbcStatus YBCPgInsertStmtSetIsBackfill(YbcPgStatement handle, const bool is_back
 YbcStatus YBCPgNewUpdate(YbcPgOid database_oid,
                          YbcPgOid table_relfilenode_oid,
                          YbcPgTableLocalityInfo locality_info,
-                         YbcPgStatement *handle,
-                         YbcPgTransactionSetting transaction_setting);
+                         YbcPgTransactionSetting transaction_setting,
+                         YbcPgStatement *handle);
 
 YbcStatus YBCPgExecUpdate(YbcPgStatement handle);
 
@@ -676,8 +676,8 @@ YbcStatus YBCPgExecUpdate(YbcPgStatement handle);
 YbcStatus YBCPgNewDelete(YbcPgOid database_oid,
                          YbcPgOid table_relfilenode_oid,
                          YbcPgTableLocalityInfo locality_info,
-                         YbcPgStatement *handle,
-                         YbcPgTransactionSetting transaction_setting);
+                         YbcPgTransactionSetting transaction_setting,
+                         YbcPgStatement *handle);
 
 YbcStatus YBCPgExecDelete(YbcPgStatement handle);
 
@@ -687,8 +687,8 @@ YbcStatus YBCPgDeleteStmtSetIsPersistNeeded(YbcPgStatement handle, const bool is
 YbcStatus YBCPgNewTruncateColocated(YbcPgOid database_oid,
                                     YbcPgOid table_relfilenode_oid,
                                     YbcPgTableLocalityInfo locality_info,
-                                    YbcPgStatement *handle,
-                                    YbcPgTransactionSetting transaction_setting);
+                                    YbcPgTransactionSetting transaction_setting,
+                                    YbcPgStatement *handle);
 
 YbcStatus YBCPgExecTruncateColocated(YbcPgStatement handle);
 

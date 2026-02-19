@@ -1602,10 +1602,10 @@ YbcStatus YBCPgNewInsertBlock(
 YbcStatus YBCPgNewInsert(const YbcPgOid database_oid,
                          const YbcPgOid table_relfilenode_oid,
                          YbcPgTableLocalityInfo locality_info,
-                         YbcPgStatement *handle,
-                         YbcPgTransactionSetting transaction_setting) {
+                         YbcPgTransactionSetting transaction_setting,
+                         YbcPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_relfilenode_oid);
-  return ToYBCStatus(pgapi->NewInsert(table_id, locality_info, handle, transaction_setting));
+  return ToYBCStatus(pgapi->NewInsert(table_id, locality_info, transaction_setting, handle));
 }
 
 YbcStatus YBCPgExecInsert(YbcPgStatement handle) {
@@ -1634,10 +1634,10 @@ YbcStatus YBCPgInsertStmtSetIsBackfill(YbcPgStatement handle, const bool is_back
 YbcStatus YBCPgNewUpdate(const YbcPgOid database_oid,
                          const YbcPgOid table_relfilenode_oid,
                          YbcPgTableLocalityInfo locality_info,
-                         YbcPgStatement *handle,
-                         YbcPgTransactionSetting transaction_setting) {
+                         YbcPgTransactionSetting transaction_setting,
+                         YbcPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_relfilenode_oid);
-  return ToYBCStatus(pgapi->NewUpdate(table_id, locality_info, handle, transaction_setting));
+  return ToYBCStatus(pgapi->NewUpdate(table_id, locality_info, transaction_setting, handle));
 }
 
 YbcStatus YBCPgExecUpdate(YbcPgStatement handle) {
@@ -1648,10 +1648,10 @@ YbcStatus YBCPgExecUpdate(YbcPgStatement handle) {
 YbcStatus YBCPgNewDelete(const YbcPgOid database_oid,
                          const YbcPgOid table_relfilenode_oid,
                          YbcPgTableLocalityInfo locality_info,
-                         YbcPgStatement *handle,
-                         YbcPgTransactionSetting transaction_setting) {
+                         YbcPgTransactionSetting transaction_setting,
+                         YbcPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_relfilenode_oid);
-  return ToYBCStatus(pgapi->NewDelete(table_id, locality_info, handle, transaction_setting));
+  return ToYBCStatus(pgapi->NewDelete(table_id, locality_info, transaction_setting, handle));
 }
 
 YbcStatus YBCPgExecDelete(YbcPgStatement handle) {
@@ -1666,8 +1666,8 @@ YbcStatus YBCPgDeleteStmtSetIsPersistNeeded(YbcPgStatement handle, const bool is
 YbcStatus YBCPgNewTruncateColocated(const YbcPgOid database_oid,
                                     const YbcPgOid table_relfilenode_oid,
                                     YbcPgTableLocalityInfo locality_info,
-                                    YbcPgStatement *handle,
-                                    YbcPgTransactionSetting transaction_setting) {
+                                    YbcPgTransactionSetting transaction_setting,
+                                    YbcPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_relfilenode_oid);
   return ToYBCStatus(pgapi->NewTruncateColocated(
       table_id, locality_info, handle, transaction_setting));
