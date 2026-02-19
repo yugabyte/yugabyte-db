@@ -22,7 +22,7 @@ Create two clusters, the Source cluster which will serve reads and writes, and t
 
 Ensure the clusters have the following characteristics:
 
-- Both clusters are running the same version of YugabyteDB ({{<release "2024.1.4">}} or later).
+- Both clusters are running the same version of YugabyteDB ({{<release "2025.2">}} or later).
 - Both clusters are deployed in a [VPC](../../../cloud-basics/cloud-vpcs/cloud-vpc-intro/) and are on the same cloud provider.
 - They have enough disk space to support storage of write-ahead logs (WALs) in case of a network partition or a temporary outage of the Target cluster. During these cases, WALs will continue to write until replication is restored. Consider sizing your disk according to your ability to respond and recover from network or other infrastructure outages.
 - DR enables point-in-time-recovery (PITR) on both the Source and the Target. Although PITR is not required on the Source for DR purposes, enabling it reduces the switchover task execution time. This leads to increase storage use for the sake of performance.
@@ -30,8 +30,6 @@ Ensure the clusters have the following characteristics:
     PITR is used by DR during failover to restore the database to a consistent state. Note that if the Target cluster already has PITR configured, that configuration is replaced by the PITR configuration set during DR setup.
 
 Prepare your database and tables on the Source. Make sure the database and tables aren't already being used for xCluster replication; databases and tables can only be used in one replication at a time. The Source can be empty or have data. If the Source has a lot of data, the DR setup will take longer because the data must be copied in full to the Target before on-going asynchronous replication starts.
-
-During DR setup, create objects on the Target as well.
 
 DR performs a full copy of the data to be replicated on the Source, and restores the data to the Target.
 
@@ -184,8 +182,6 @@ The following statuses describe replication errors. More than one of these error
 ## Manage replication
 
 ### Add or remove a database
-
-When adding a database, on the Target, create a database with the same name as that on the Source. You need to create all objects (tables, indexes, and so on) on the Target exactly as they are on the Source _prior_ to setting up DR.
 
 To add a database to DR, do the following:
 
