@@ -167,6 +167,7 @@ TEST_F(CloneOperationTest, Hardlink) {
 
   auto target_tablet = ASSERT_RESULT(
       mini_server_->server()->tablet_manager()->GetTablet(kTargetTabletId));
+  ASSERT_TRUE(target_tablet->tablet_metadata()->namespace_id().empty());
 
   const string source_snapshot_dir = GetSnapshotDir(source_tablet, kSourceSnapshotId);
   const string target_snapshot_dir = GetSnapshotDir(target_tablet, kTargetSnapshotId);
